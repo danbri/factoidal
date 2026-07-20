@@ -337,7 +337,18 @@ function buildApi(driver) {
           'query(parse)');
         nq += r.nquads;
       }
-      const r = entryResult(e.queryDataset(nq, sparql), 'query');
+      // SPARQL 1.2 opt-in: {sparql12:true} or {version:'1.2'} routes to
+      // the entry's queryDataset12 (tokenize_12 parser: triple-term
+      // patterns, TRIPLE/isTRIPLE/SUBJECT/PREDICATE/OBJECT, VERSION,
+      // lang-dir builtins). Default stays SPARQL 1.1, byte-identical.
+      const sparql12 = opts.sparql12 === true || String(opts.version || '') === '1.2';
+      if (sparql12 && typeof e.queryDataset12 !== 'function') {
+        throw new Error(
+          'SPARQL 1.2 requested but this npm-entry bundle predates ' +
+          'queryDataset12 — rebuild build-ocaml.sh js + npm.');
+      }
+      const r = entryResult(
+        (sparql12 ? e.queryDataset12 : e.queryDataset)(nq, sparql), 'query');
       if (r.kind === 'ask') return r.boolean;
       if (r.kind === 'construct') {
         return Dataset.fromNQuads(r.nquads, {
@@ -420,7 +431,15 @@ function buildApi(driver) {
         'update(parse)');
       nq += r.nquads;
     }
-    const r = entryResult(e.updateDataset(nq, updateText), 'update');
+    const opts = options || {};
+    const sparql12 = opts.sparql12 === true || String(opts.version || '') === '1.2';
+    if (sparql12 && typeof e.updateDataset12 !== 'function') {
+      throw new Error(
+        'SPARQL 1.2 UPDATE requested but this npm-entry bundle predates ' +
+        'updateDataset12 — rebuild build-ocaml.sh js + npm.');
+    }
+    const r = entryResult(
+      (sparql12 ? e.updateDataset12 : e.updateDataset)(nq, updateText), 'update');
     return Dataset.fromNQuads(r.nquads, {
       blankNodePrefix: freshBnodePrefix(),
     });

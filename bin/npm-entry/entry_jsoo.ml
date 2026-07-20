@@ -547,10 +547,23 @@ let construct_triples_to_ntriples (triples : triple list) : string =
     triples;
   Buffer.contents buf
 
-let query_dataset (nq : string) (sparql : string) : string =
+(* SPARQL 1.2 opt-in (rule #11 DISPATCH only): sparql12=true selects the
+   extracted parse_sparql_12_with_base (tokenize_12: TRIPLE/isTRIPLE/
+   SUBJECT/PREDICATE/OBJECT/VERSION/lang-dir builtins + <<( )>> triple-term
+   patterns), gated exactly as w3c_runner --sparql12. sparql12=false keeps
+   the SPARQL 1.1 parser byte-identical so the protected 1.1 suite is
+   unaffected. All algebra/eval is the shared extracted F* code below. *)
+let query_dataset_mode (sparql12 : bool) (nq : string) (sparql : string)
+    : string =
   guarded (fun () ->
     let ds = dataset_of_nquads nq in
-    match SPARQL11_Parser.parse_sparql sparql with
+    let parsed =
+      if sparql12 then
+        SPARQL11_Parser.parse_sparql_12_with_base
+          FStar_Pervasives_Native.None sparql
+      else SPARQL11_Parser.parse_sparql sparql
+    in
+    match parsed with
     | SPARQL11_Parser.ParseErr msg -> err_json ("SPARQL parse error: " ^ msg)
     | SPARQL11_Parser.ParseOk (q, _) ->
       let q = OWL_QueryRewrite.rewrite_query q in
@@ -584,10 +597,22 @@ let query_dataset (nq : string) (sparql : string) : string =
        | QF_Describe _ ->
          err_json "DESCRIBE is not supported by the npm entry yet"))
 
-let ask_dataset (nq : string) (sparql : string) : string =
+let query_dataset (nq : string) (sparql : string) : string =
+  query_dataset_mode false nq sparql
+let query_dataset_12 (nq : string) (sparql : string) : string =
+  query_dataset_mode true nq sparql
+
+let ask_dataset_mode (sparql12 : bool) (nq : string) (sparql : string)
+    : string =
   guarded (fun () ->
     let ds = dataset_of_nquads nq in
-    match SPARQL11_Parser.parse_sparql sparql with
+    let parsed =
+      if sparql12 then
+        SPARQL11_Parser.parse_sparql_12_with_base
+          FStar_Pervasives_Native.None sparql
+      else SPARQL11_Parser.parse_sparql sparql
+    in
+    match parsed with
     | SPARQL11_Parser.ParseErr msg -> err_json ("SPARQL parse error: " ^ msg)
     | SPARQL11_Parser.ParseOk (q, _) ->
       (match q.q_form with
@@ -605,15 +630,32 @@ let ask_dataset (nq : string) (sparql : string) : string =
          "{\"ok\":true,\"boolean\":" ^ (if b then "true" else "false") ^ "}"
        | _ -> err_json "askDataset: query is not an ASK query"))
 
-let update_dataset (nq : string) (update_text : string) : string =
+let ask_dataset (nq : string) (sparql : string) : string =
+  ask_dataset_mode false nq sparql
+let ask_dataset_12 (nq : string) (sparql : string) : string =
+  ask_dataset_mode true nq sparql
+
+let update_dataset_mode (sparql12 : bool) (nq : string) (update_text : string)
+    : string =
   guarded (fun () ->
     let ds = dataset_of_nquads nq in
-    match SPARQL11_Parser.parse_sparql_update update_text with
+    let parsed =
+      if sparql12 then
+        SPARQL11_Parser.parse_sparql_update_12_with_base
+          FStar_Pervasives_Native.None update_text
+      else SPARQL11_Parser.parse_sparql_update update_text
+    in
+    match parsed with
     | SPARQL11_Parser.ParseErr msg ->
       err_json ("SPARQL update parse error: " ^ msg)
     | SPARQL11_Parser.ParseOk (u, _) ->
       let ds' = SPARQL11_Algebra.apply_update ds u in
       ok_nquads_json (RDF_Canonical.canonical_nquads ds'))
+
+let update_dataset (nq : string) (update_text : string) : string =
+  update_dataset_mode false nq update_text
+let update_dataset_12 (nq : string) (update_text : string) : string =
+  update_dataset_mode true nq update_text
 
 let serialize_nquads (nq : string) : string =
   guarded (fun () ->
@@ -2230,6 +2272,11 @@ let () =
           ("queryDataset", s2 query_dataset);
           ("askDataset", s2 ask_dataset);
           ("updateDataset", s2 update_dataset);
+          (* SPARQL 1.2 variants (tokenize_12 parser); selected by
+             api.js when {sparql12:true}/{version:"1.2"} is requested. *)
+          ("queryDataset12", s2 query_dataset_12);
+          ("askDataset12", s2 ask_dataset_12);
+          ("updateDataset12", s2 update_dataset_12);
           ("serializeNQuads", s1 serialize_nquads);
           ("canonicalizeToNQuads", s1 canonicalize_to_nquads);
           ("serializeTurtle", s1 serialize_turtle);
