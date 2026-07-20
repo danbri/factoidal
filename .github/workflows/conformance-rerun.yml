@@ -98,17 +98,48 @@ jobs:
               print('::warning::0/0 rows with nonzero universe (fixtures may be missing): ' + ', '.join(map(str, bad)))
           EOF
 
-      - name: Commit refreshed logs + dashboard if changed
+      - name: Commit refreshed logs + dashboard ONLY on real score drift
         run: |
           set -eu
           git config user.name  "factoidal-ci[bot]"
           git config user.email "factoidal-ci@users.noreply.github.com"
-          git add -A formal/fstar/ocaml-output/*_results.log docs/test-results/ 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "No conformance drift — committed scores are current. Nothing to commit."
+
+          # WHY A SCORE-ONLY GATE (not a plain `git diff --quiet`):
+          # Every --run stamps a wall-clock time and the current commit into
+          # latest.{json,csv} + index.html, and per-test millisecond timings
+          # into the *_results.log files. A naive diff is therefore ALWAYS
+          # non-empty, so a plain gate would commit timing/timestamp churn
+          # every single day — recreating precisely the worthless-timeseries
+          # that was scrubbed on 2026-07-20 (owner directive). The point of
+          # this job is to surface *score* drift, so the commit must fire IFF
+          # a pass/fail/skip/unsupported count (or the set of suites) actually
+          # changed — never on a timestamp/timing bump alone.
+          #
+          # latest.csv is the canonical one-row-per-suite score table:
+          #   timestamp,commit,branch,category,suite,pass,fail,skip,unsupported
+          # Dropping the two volatile leading columns (timestamp, commit) and
+          # sorting yields a pure score fingerprint. If it matches HEAD, no
+          # score changed anywhere — discard all regenerated files and exit.
+          score_fp() { cut -d',' -f3- | LC_ALL=C sort; }
+          NEW_FP=$(score_fp < docs/test-results/latest.csv 2>/dev/null || true)
+          OLD_FP=$(git show HEAD:docs/test-results/latest.csv 2>/dev/null | score_fp || true)
+
+          if [ -n "$NEW_FP" ] && [ "$NEW_FP" = "$OLD_FP" ]; then
+            echo "No score drift — only timestamp/timings changed. Discarding regenerated files; nothing to commit."
+            git checkout -- formal/fstar/ocaml-output/*_results.log docs/test-results/ 2>/dev/null || true
             exit 0
           fi
-          echo "=== Conformance drift detected — refreshing committed scores ==="
+          if [ -z "$NEW_FP" ]; then
+            echo "::warning::latest.csv absent or empty after --run; committing whatever refreshed as a safety net."
+          fi
+
+          echo "=== Real conformance SCORE drift detected — refreshing committed scores ==="
+          diff <(printf '%s\n' "$OLD_FP") <(printf '%s\n' "$NEW_FP") | grep -E '^[<>]' | head -60 || true
+          git add -A formal/fstar/ocaml-output/*_results.log docs/test-results/ 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "Nothing staged after all — nothing to commit."
+            exit 0
+          fi
           git --no-pager diff --cached --stat
           git commit -m "ci: scheduled conformance re-run — refresh suite scores (#235)"
           # Concurrent-safe push: reconcile with any push that landed
