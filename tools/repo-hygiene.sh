@@ -17,6 +17,12 @@
 # but dead/redundant" and "unreached but valuable" are irreducibly human
 # judgement — that is why the project has review, not just a graph.
 #
+# ADVISORY ONLY — HUMAN IN THE LOOP. This script FLAGS and REPORTS; it never
+# deletes, never edits, never auto-fixes. A human reviews every finding and
+# decides every deletion. --ci may fail a check to surface a finding, but the
+# remedy is always a human's call, not an automated commit. Do not wire this
+# (or any hygiene tool) to delete on its own.
+#
 # HONEST SCOPE (rewritten 2026-07-20 after the first version was correctly
 # called out as unsound, then again as insufficient). Within the orphan
 # floor, it is built on ONE thing the build itself computes soundly:
