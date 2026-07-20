@@ -110,13 +110,15 @@ it becomes a standing directive — treat it as permanent.
 
 Ranked by my judgement of impact:
 
-1. **RDF-star / SPARQL 1.2.** Not implemented at all. The rdf12
-   working group's test suites exist; a 2026 "world class" RDF
-   database without quoted triples is increasingly conspicuous.
-   LATERAL was the first 1.2-track feature; RDF-star is the second
-   and much larger. Needs a design doc first (term model change
-   touches RDF.Term — the deepest possible change; the stratification
-   work makes it cheaper if sequenced after).
+1. **RDF-star / SPARQL 1.2.** ~~Not implemented at all.~~ **DONE (as of
+   2026-07-16 un-park, #305) for the term model + text/line syntaxes:**
+   `RDF.Term.T_TripleTerm` + `text_direction` landed; N-Triples/N-Quads/
+   Turtle/TriG triple terms, reifiers, annotations, `VERSION`, directional
+   literals verified — RDF 1.2 syntax/eval 212/0, SPARQL 1.2 248/6.
+   Remaining: RDF/XML 1.2, c14n-1.2 + entailment suites, 6 SPARQL eval
+   fails, RML-star mapping-gen, and browser/npm-API + dashboard exposure.
+   (This note is from before the un-park; the "biggest standards gap"
+   framing no longer holds for syntax/eval.)
 2. **Join algorithm + planner** (see §3.1). sc_estimate exists;
    nothing reorders BGPs by it, and OPTIONAL appears to re-issue
    per-row searches (q6 hypothesis, unconfirmed — verify first).
@@ -234,7 +236,9 @@ Medium term:
    then the directory restructure via the store/hdt pilot
    (docs/designissues/2026-07-06-fstar-directory-structure.md is
    ratification-ready).
-6. RDF-star design doc → implementation (the biggest standards gap).
+6. RDF-star design doc → implementation. (DONE for syntax/eval under
+   #305, 2026-07-16; residue: RDF/XML 1.2, c14n-1.2 + entailment,
+   RML-star mapping-gen, browser/dashboard wiring.)
 7. Byte-buffer string/solution core (the structural perf unlock —
    do AFTER stratification, the blast radius needs the cleaner
    module graph).

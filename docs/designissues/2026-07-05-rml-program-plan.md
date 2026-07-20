@@ -281,7 +281,7 @@ deferred with RML-star.
 | 8 | **DONE** (same session/commit as Stage 5 above). `bin/rml-runner/rml_runner.ml` (jsonld_runner mold: repo-root walk, F*-extracted parsers only — metadata.csv read via `RML_Sources.csv_parse_rows` per rule #7, mapping.ttl via `Parser_Turtle`, comparison via `RDF_Canonical.canonicalize_to_nquads`), `.github/test-suites/rml.yaml` (trigger paths: the three RML modules, Turtle/NTriples/JSON/NQuads parsers, RDF.Canonical, SPARQL11.Algebra for the reused ENCODE_FOR_URI, the runner dir, the submodules), and `build-ocaml.sh` wiring (ALL_MODULES extract list + `COMMON_MODULES` + a lock-gated rml_runner stanza + `NATIVE_TARGETS`/`NATIVE_SOURCES` staleness entries — the rif_runner lesson: runners missing from those arrays never rebuild). Runner covers rml-core (primary, gates exit code) + rml-io behind `--io` (secondary; `RMLTTC0*` logical-target fixtures SKIP explicitly — Stage 9's scope, not silent). **Measured (2026-07-05): rml-core 76 pass, 0 fail (out of 76); rml-io 17 pass, 15 fail, 41 skip (out of 73)** — the 41 skips are the RMLTTC0* target tests, the 15 fails are Stage 3's documented gaps unchanged (7 XPath/XML = Stage 4 not built, 4 compressed archives, 1 UTF-16, 1 direct-RDF `.nt` source, 1 SQL/D2RQ deferred, 1 `RMLSTC0009a` quoted-columns anomaly per open decision #9); rml-io aggregate identical before/after this wave — no regression. `rml-cc`/`rml-fnml` sections join the runner when Stages 6-7 land. | Stage 3 (first stage with a nontrivial signal) |
 | 9 (indefinite) | RML-IO's 41 `RMLTTC0*` target/output-serialization tests | Mostly re-exposes existing serializers (Turtle/N-Quads/N-Triples/JSON-LD/RDF-XML writers already extracted); compression wrapping (`gz`/`zip`/`xz`/`tar`) is OCaml-side I/O glue (rule #11 ASSUME-IO), not mapping semantics — low priority, own commit | Stage 2 |
 | 10 (indefinite) | Relational/SQL logical source | Blocked on the assume-val SQL seam decision above; 1 known fixture, no vendored suite | own program |
-| 11 (indefinite) | RML-star | Blocked on an RDF-star (quoted-triple) term type — `RDF.Graph.Executable.fst` has no `T_Triple`/quoted-triple constructor today (see `rdf12-compatibility.md`); `rml-star`'s 20 tests need that prerequisite first, in RDF core, not in this program | RDF-star term-type program |
+| 11 (indefinite) | RML-star | RDF-star term-type prerequisite is now DONE (`RDF.Term` has `T_TripleTerm`, landed under #305). `rml-star`'s 20 tests are now blocked only on mapping-side triple-term GENERATION — `RML.Mapping.fst` still returns `None` for a `T_TripleTerm` object map — not on a missing term type. | this program (mapping-gen) |
 
 **Recommended commit-sized Stage 1, today:** add the five submodules
 (`git submodule add` for `kg-construct/rml-core`, `rml-io`, `rml-cc`,
@@ -362,8 +362,10 @@ JSON-LD programs' Stage 1 shape.
    `RML.Sources`'s existing CSV path and closes `rml-io` to 33/33
    non-target, non-XPath-blocked tests instead of 32/33. Cheap enough
    that it may not deserve a placement in Stage 10 at all.
-5. **RML-star's dependency on RDF-star.** If an RDF-star/RDF 1.2
-   quoted-triple term type lands in `RDF.Graph.Executable.fst` for
+5. **RML-star's dependency on RDF-star.** (UPDATE: the quoted-triple
+   term type DID land — `RDF.Term.T_TripleTerm`, under #305 — so this
+   "if" is now "when, and it happened".) As originally written: if an
+   RDF-star/RDF 1.2 quoted-triple term type lands for
    unrelated reasons (SPARQL-star, N-Triples-star parsing) before
    this program reaches Stage 11, re-scope Stage 11 as "wire into
    existing quoted-triple support" rather than "blocked" — check

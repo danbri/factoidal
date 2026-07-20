@@ -9,7 +9,9 @@ blocks, VERSION directive, N-Triples/N-Quads triple terms; RDF.Canonical
 triple-term bnode recursion) behind a threaded `rdf_syntax_mode`
 (Mode_11 default, so RDF 1.1 output stays byte-identical); the
 rdf-semantics + c14n-1.2 suites are the next waves (#305); SPARQL 1.2
-triple-term/reifier syntax landed (219/254, see the SPARQL 1.2 row). Anything short of full is listed here as a **failure**,
+triple-term/reifier syntax landed (see the SPARQL 1.2 row below for the
+current count — this inline used to read "219/254" and had gone stale).
+Anything short of full is listed here as a **failure**,
 not softened as a skip. Focus: in-depth coverage and performance. Every
 capability gets an npm API and Hub documentation.
 

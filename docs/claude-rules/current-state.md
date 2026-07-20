@@ -23,8 +23,12 @@ current headline numbers, all measured on the shipped tree:
   parser, and the `regex_match` assume val RETIRED — SPARQL
   REGEX/fn:matches now runs on the verified engine (`regex_replace`
   is the one remaining Str seam, #63).
-- RDF 1.2 / SPARQL 1.2 investigation landed (#305): measured census
-  (RDF 1.2 eval 14/84 true gap), term-model-first strategy.
+- RDF 1.2 / SPARQL 1.2 (#305): term model + text/line syntaxes landed
+  and verified — RDF 1.2 syntax/eval 212 pass, 0 fail; SPARQL 1.2 248
+  pass, 6 fail (out of 254). Still open: RDF/XML 1.2, c14n-1.2 (86) +
+  entailment (74) suites, 6 SPARQL eval fails, RML-star mapping gen, and
+  browser/npm-API + dashboard wiring (JS `parse`/`query` still 1.1-only).
+  (The earlier "14/84 true gap" census predated the syntax/eval landings.)
 - Dispositions table landed in the completeness ledger (day-closure
   /goal): every residual fail/skip named with a one-line disposition.
 
@@ -407,7 +411,8 @@ both beat TDB2.
 
 **Prior /goal (owner, 2026-07-11), still standing:** the north star —
 exemplary and FULL implementation of every official W3C RDF/semweb spec
-we touch (RDF 1.2/star parked; protocols deprioritized), tracked in
+we touch (RDF 1.2/star was un-parked 2026-07-16 — syntax/eval landed,
+see above; protocols un-parked too), tracked in
 [`w3c-completeness-ledger.md`](w3c-completeness-ledger.md), with full
 coverage as the FOUNDATION FOR AUTOMATED PERF RESEARCH and every
 capability getting an npm API + Hub page. Re-rank when one lands; a

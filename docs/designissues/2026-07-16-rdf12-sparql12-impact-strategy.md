@@ -186,7 +186,14 @@ unparseable lines.
 
 ### Latent 1.2 / star artifacts in our tree (grep census)
 
-Minimal — no real triple-term or dirLangString support exists:
+> **HISTORICAL (pre-landing census).** This section captured the tree
+> BEFORE the Wave 2/3 landings in this same doc (and commits
+> `ee3ea837`/`9ceaa1c4`). The "no real triple-term or dirLangString
+> support exists" line below is no longer true — `RDF.Term.T_TripleTerm`
+> and `text_direction` shipped and are verified (RDF 1.2 212/0). Kept for
+> provenance; read the Wave 2 landing section further down for current state.
+
+Original census text (minimal — no real triple-term or dirLangString support existed at the time):
 
 - `formal/fstar/RML.Mapping.fst:54` — "RML-star (Stage 11, blocked on an
   RDF-star term type)." The term-model gap is already a known blocker

@@ -51,7 +51,10 @@ module RML.Mapping
 // Out of scope for Stage 1 (see the plan's staged table):
 //   - RML-IO's CSV/XML logical sources beyond the AST fields above
 //     (Stages 3-4), RML-CC gather/gatherAs (Stage 6), RML-FNML
-//     (Stage 7), RML-star (Stage 11, blocked on an RDF-star term type).
+//     (Stage 7), RML-star (Stage 11). NB the RDF-star term-type
+//     prerequisite is DONE — RDF.Term now has T_TripleTerm — so
+//     RML-star is now blocked only on mapping-side generation of
+//     triple terms, not on a missing term type.
 //   - Any evaluation: term-map interpolation, join execution,
 //     triple production. That is RML.Eval.fst, Stage 2+.
 //

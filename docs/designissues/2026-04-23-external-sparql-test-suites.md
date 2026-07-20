@@ -127,9 +127,10 @@ typical licence-compliance readings.
 
 1. `tests/external/oxigraph-optimization/` — import the `sparql-optimization/`
    directory; wire into w3c_runner as a new suite.
-2. `tests/external/rdf4j-sparql12/` — import `testcases-sparql-1.2/`; many
-   will fail until we add 1.2 support but the corpus is where we'll
-   measure progress.
+2. `tests/external/rdf4j-sparql12/` — import `testcases-sparql-1.2/`.
+   (SPARQL 1.2 support has since landed — 248/6 on the W3C sparql12 suite
+   via `w3c_runner --sparql12`; this third-party corpus would be an
+   additional cross-check, not the primary measure.)
 3. `tests/external/jena-rdfs/` — import `testing/RDFS/`; will bump our
    rdf-mt / entailment coverage meaningfully.
 4. `bench/bsbm/` — BSBM submodule + a shell runner comparing native

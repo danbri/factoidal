@@ -31,14 +31,30 @@ require HTML parsing and web-platform semantics ("we don't go near
 'web platform' yet" — owner, 2026-07-05). Revisit only if the project
 grows a browser-ingestion story.
 
-### RDF 1.2 / RDF-star — deferred to v1 by design (owner decision, 2026-07-05)
+### RDF 1.2 / RDF-star — SUPERSEDED: un-parked and largely landed
 
-No quoted-triple term type exists in the tree (this is also the known
-blocker for RML-star's 20 tests, noted in the RML program plan).
-Deliberate sequencing: "when we get to our own v1 we will be ready" —
-the foundational refactor's `RDF.Term` module is where a quoted-triple
-constructor would land, so the refactor is the prerequisite, not this
-being forgotten.
+> This entry previously said "deferred to v1 by design (owner, 2026-07-05),
+> no quoted-triple term type exists in the tree." Both halves are now
+> false. RDF 1.2 / SPARQL 1.2 was **un-parked (owner, 2026-07-16)** and the
+> term-model + text/line syntaxes are implemented and verified. Kept here
+> only as a pointer, since other docs cited this section as the authority
+> for "1.2 is future work."
+
+Current state (see
+[`w3c-completeness-ledger.md`](w3c-completeness-ledger.md) for the live
+scoreboard): `RDF.Term` now carries the `T_TripleTerm` constructor and
+`text_direction` / `rdf:dirLangString`. Landed + verified (no `--lax`):
+N-Triples, N-Quads, Turtle, TriG triple terms `<<( s p o )>>`, `~`
+reifiers, `{| |}` annotation blocks, `VERSION` directive, directional
+literals `"x"@lang--dir` — **RDF 1.2 syntax/eval 212 pass, 0 fail**;
+**SPARQL 1.2 248 pass, 6 fail (out of 254)**.
+
+Still genuinely open (do NOT claim these): RDF/XML 1.2, the RDF 1.2
+canonicalization suite (86 tests) and entailment regime (74 tests), the
+6 remaining SPARQL 1.2 eval fails, RML-star mapping generation, and
+exposure through the browser/npm API + dashboard (the `parse`/`query`
+JS surface still runs 1.1 mode only — a triple term handed to `fn.parse`
+today is silently dropped). Tracked under epic #305.
 
 ### RIF Core (Rule Interchange Format) — supported subset only
 
