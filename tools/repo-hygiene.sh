@@ -1,126 +1,110 @@
 #!/usr/bin/env bash
-# tools/repo-hygiene.sh — reachability proof that the F*/OCaml build-chain
-# files earn their place. Every such tracked file is either proven reachable
-# from a live-system ROOT (and we print the root that reaches it), or flagged
-# DEAD. This is dead-code reachability, not inspection: it is exhaustive over
-# the buckets it covers and proves the negative (nothing worthy is missed).
+# tools/repo-hygiene.sh — build-artifact hygiene gate for the F*/OCaml tree.
 #
-# ROOTS (live-system entry points):
-#   - F* build root:   formal/fstar/build-ocaml.sh  ALL_MODULES(...)  + the
-#                      .fsti interface pre-check glob.
-#   - OCaml link root: build-ocaml.sh COMMON_MODULES + every `ocamlfind
-#                      ocamlopt`/`ocamlc` link line + experimental_ocaml_glue
-#                      realisation references.
-#   - Consumer root:   bin/*/*.ml runners that `open`/qualify a module.
+# HONEST SCOPE (rewritten 2026-07-20 after the first version was correctly
+# called out as unsound). This is NOT a general "reachability proof." It is a
+# gate built on ONE thing the build itself computes soundly:
 #
-# COVERAGE (v1): the F*/OCaml build chain — where dead code actually hides
-#   (~1160 files). Fixtures (manifest-reachable) and docs (link-reachable)
-#   are a documented v2; see TODO at the bottom. Branch litter is checked too.
+#   A module is compiled into the shipped native artifacts IFF the build
+#   emitted its `.cmx`. The native build (build-ocaml.sh) only compiles what
+#   is in its module list and reachable from it, so `.cmx` EXISTENCE is the
+#   build's own verdict — not a grep guess. A tracked `.fst` with no `.cmx`
+#   was never compiled: it is not in the build. That is sound and exact.
 #
-# Usage:  tools/repo-hygiene.sh            # summary + any DEAD findings
-#         tools/repo-hygiene.sh --list     # also print WORTHY verdict per file
-#         tools/repo-hygiene.sh --ci       # exit 1 if any DEAD file found
+# What this DOES prove (soundly):
+#   - Every tracked `.fst` is compiled into the rule-#9 native artifacts
+#     (has a `.cmx`), or it is DEAD (no `.cmx`). Zero false positives on the
+#     "no `.cmx`" verdict — PageCache.Bounds.fst was exactly this.
+#   - No orphaned `.cmx`/`.cmi`/`.o` (compiled object whose `.ml` is gone).
+#   - No orphaned extracted `.ml` (no `.fst` source AND no `.cmx` AND not a
+#     referenced hand-written realisation).
+#
+# What this does NOT prove (stated so it never overclaims again):
+#   - "Linked into a specific shipped binary." A module could be compiled
+#     (`.cmx` exists) yet linked into no binary's link line — a weaker,
+#     rarer dead. Detecting that needs parsing the 30 multi-line
+#     `ocamlfind ocamlopt … -o` invocations (with their `$COMMON_MODULES`
+#     shell expansion); TODO, tier 2.
+#   - The js_of_ocaml / wasm / KaRaMeL-C / formal/roaring build backends —
+#     a module live ONLY via one of those is out of this gate's scope.
+#   - Fixture worthiness (manifest-reachability) and doc worthiness
+#     (link-reachability). Separate buckets, not attempted here.
+#
+# The genuinely-sound design for the full claim is "build-as-oracle": have
+# build-ocaml.sh emit, after linking, the exact set of `.cmx` each binary
+# consumed, and diff the tree against that union. The build already computes
+# reachability; capture it rather than re-deriving it with a script. Until
+# that lands, this gate covers the compiled/orphaned checks only.
+#
+# Usage:  tools/repo-hygiene.sh            # findings
+#         tools/repo-hygiene.sh --list     # also list the compiled modules
+#         tools/repo-hygiene.sh --ci       # exit 1 on any DEAD/orphan finding
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
-F=formal/fstar
-BUILD=$F/build-ocaml.sh
+F=formal/fstar; OUT=$F/ocaml-output
 LIST=0; CI=0
 for a in "$@"; do [ "$a" = "--list" ] && LIST=1; [ "$a" = "--ci" ] && CI=1; done
-dead=0; worthy=0
+u() { echo "$1" | sed 's/\./_/g'; }   # dotted module -> underscore .ml/.cmx stem
+dead=0; ok=0
 
-# --- root sets -------------------------------------------------------------
-# F* modules named in ALL_MODULES(...) (dotted basenames, e.g. RDF.Term.fst).
-mapfile -t FST_ROOTS < <(sed -n '/ALL_MODULES=(/,/^[[:space:]]*)/p' "$BUILD" \
-                         | grep -oE '[A-Z][A-Za-z0-9_.]+\.fst' | sort -u)
-in_fst_roots() { printf '%s\n' "${FST_ROOTS[@]}" | grep -qxF "$1"; }
-
-# OCaml names referenced by any link line / COMMON_MODULES / glue patch.
-# We test membership by grepping the underscore .ml basename across those.
-ocaml_referenced() {  # $1 = underscore basename without .ml, e.g. Sparql_Parser_Stubs
-  grep -rqE "\b$1\b" "$BUILD" $F/experimental_ocaml_glue/*.sh \
-        $F/ocaml-patches.sh bin/*/*.ml 2>/dev/null
-}
-
-echo "=== repo-hygiene reachability report ($(git rev-parse --short HEAD)) ==="
+echo "=== repo-hygiene: build-artifact gate ($(git rev-parse --short HEAD)) ==="
+echo "    Oracle: a .fst is compiled into the rule-#9 native artifacts iff its"
+echo "    .cmx exists (the build's own output). See header for scope + limits."
 echo
 
-# --- Check 1: F* source (.fst) reachability -------------------------------
-echo "-- [1] F* source (.fst): in build roots OR open/include/qualified by a live module --"
+# --- [1] .fst with no .cmx = not compiled = DEAD (sound, exact) -------------
+echo "-- [1] tracked .fst compiled into the native build (.cmx exists)? --"
 while IFS= read -r f; do
-  base=$(basename "$f"); mod="${base%.fst}"; esc="${mod//./\\.}"
-  if in_fst_roots "$base"; then
-    worthy=$((worthy+1)); [ $LIST -eq 1 ] && echo "  WORTHY $f  <- ALL_MODULES"
-    continue
-  fi
-  # not a declared root: reachable only if another live .fst/.fsti or a bin
-  # runner opens/includes/qualifies it.
-  refs=$(grep -rlE "(open|include)[[:space:]]+${esc}\b|\b${esc}\." \
-         $F/*.fst $F/*.fsti bin/*/*.ml 2>/dev/null | grep -vxF "$f")
-  if [ -n "$refs" ]; then
-    worthy=$((worthy+1)); [ $LIST -eq 1 ] && echo "  WORTHY $f  <- referenced by $(echo "$refs" | head -1)"
+  stem=$(u "$(basename "$f" .fst)")
+  if [ -f "$OUT/${stem}.cmx" ]; then
+    ok=$((ok+1)); [ $LIST -eq 1 ] && echo "  compiled  $f"
   else
-    echo "  DEAD   $f  (not in ALL_MODULES; zero open/include/qualified refs)"; dead=$((dead+1))
+    # A .fst with no .cmx is either dead, or (rarely) an interface-only /
+    # JS-only module. Flag it; a false alarm here is a JS/roaring-only module
+    # (see scope limits) — verify against depend.make before deleting.
+    echo "  NO-CMX    $f  (not compiled into native build — DEAD unless JS/roaring-only; verify vs depend.make)"; dead=$((dead+1))
   fi
 done < <(git ls-files "$F/*.fst")
 
-# --- Check 2: extracted / hand-written OCaml (.ml) -------------------------
+# --- [2] extracted .ml orphans (no .fst, no .cmx, not a live realisation) ---
 echo
-echo "-- [2] ocaml-output/*.ml: extracted-from-a-live-.fst OR a referenced hand-written realisation --"
+echo "-- [2] ocaml-output/*.ml backed by a .fst OR a compiled/referenced realisation? --"
 while IFS= read -r m; do
   b=$(basename "$m" .ml); dotted="${b//_/.}"
-  # (a) extracted: a .fst/.fsti source with the dotted name exists
-  if [ -f "$F/${dotted}.fst" ] || [ -f "$F/${dotted}.fsti" ]; then
-    worthy=$((worthy+1)); [ $LIST -eq 1 ] && echo "  WORTHY $m  <- extracted from ${dotted}.fst"
-    continue
-  fi
-  # (b) hand-written realisation referenced by a link line / glue / consumer
-  if ocaml_referenced "$b"; then
-    worthy=$((worthy+1)); [ $LIST -eq 1 ] && echo "  WORTHY $m  <- referenced hand-written realisation"
+  if [ -f "$F/${dotted}.fst" ] || [ -f "$F/${dotted}.fsti" ] || [ -f "$OUT/${b}.cmx" ] \
+     || grep -rqE "\b${b}\b" "$F/build-ocaml.sh" $F/experimental_ocaml_glue/*.sh $F/ocaml-patches.sh bin/*/*.ml 2>/dev/null; then
+    ok=$((ok+1)); [ $LIST -eq 1 ] && echo "  ok        $m"
   else
-    echo "  DEAD   $m  (no .fst source; referenced by no link line / glue / consumer)"; dead=$((dead+1))
+    echo "  ORPHAN-ML $m  (no .fst source, no .cmx, no build/glue/consumer reference)"; dead=$((dead+1))
   fi
-done < <(git ls-files "$F/ocaml-output/*.ml")
+done < <(git ls-files "$OUT/*.ml")
 
-# --- Check 3: orphaned compiled objects (.cmi/.cmx/.o) whose .ml is gone ---
+# --- [3] orphaned compiled objects: .cmx/.cmi/.o whose .ml/.c is gone -------
 echo
-echo "-- [3] ocaml-output/*.{cmi,cmx,o}: a corresponding .ml (or .c stub) must exist --"
+echo "-- [3] ocaml-output/*.{cmi,cmx,o}: a .ml or .c stub source must exist --"
 while IFS= read -r o; do
-  b=$(basename "$o"); stem="${b%.*}"
-  if [ -f "$F/ocaml-output/${stem}.ml" ] \
+  stem=$(basename "$o"); stem="${stem%.*}"
+  # Worthy if: a .ml source exists, OR a .c stub (local glue OR vendored,
+  # e.g. HACL* hacl-obj/Hacl_*.o compiled from $HACL_DIR/src and linked via
+  # $HACL_NATIVE_STUBS), OR the build names it (vendored/generated object).
+  if [ -f "$OUT/${stem}.ml" ] \
      || git ls-files --error-unmatch "$F/experimental_ocaml_glue/${stem}.c" >/dev/null 2>&1 \
-     || grep -rqE "\b${stem}\b" "$BUILD" 2>/dev/null; then
-    worthy=$((worthy+1)); [ $LIST -eq 1 ] && echo "  WORTHY $o"
+     || grep -rqE "\b${stem}\b" "$F/build-ocaml.sh" 2>/dev/null; then
+    ok=$((ok+1)); [ $LIST -eq 1 ] && echo "  ok        $o"
   else
-    echo "  DEAD   $o  (no .ml source, no .c stub, no build reference)"; dead=$((dead+1))
+    echo "  ORPHAN-OBJ $o  (no .ml source, no .c stub, not named by the build)"; dead=$((dead+1))
   fi
-done < <(git ls-files "$F/ocaml-output/*.cmi" "$F/ocaml-output/*.cmx" "$F/ocaml-output/*.o")
+done < <(git ls-files "$OUT/*.cmi" "$OUT/*.cmx" "$OUT/*.o")
 
-# --- Check 4: patch scripts referenced by nothing --------------------------
+# --- [4] merged-branch litter (advisory) -----------------------------------
 echo
-echo "-- [4] experimental_ocaml_glue + top-level patch scripts: applied by a build step --"
-while IFS= read -r p; do
-  b=$(basename "$p")
-  if grep -rqE "\b${b}\b" "$BUILD" $F/ocaml-patches.sh $F/build-js.sh 2>/dev/null \
-     || grep -qE 'for .* in .*glue' "$BUILD" 2>/dev/null; then
-    worthy=$((worthy+1)); [ $LIST -eq 1 ] && echo "  WORTHY $p"
-  else
-    echo "  NOTE   $p  (not named by a build step — confirm it is applied by a glob loop)"
-  fi
-done < <(git ls-files "$F/sparql-parser-patches.sh")
+merged=$(git branch --merged claude/main 2>/dev/null | grep -vcE '^\*|claude/main')
+echo "-- [4] $merged local branch(es) fully merged into claude/main (safe 'git branch -d') --"
 
-# --- Check 5: stale local branches (fully merged into claude/main) ---------
 echo
-echo "-- [5] local branches fully merged into claude/main (routine litter) --"
-merged=$(git branch --merged claude/main 2>/dev/null | grep -vE '^\*|claude/main' | wc -l | tr -d ' ')
-echo "  $merged local branch(es) fully merged into claude/main — safe 'git branch -d'."
-
-# --- summary ---------------------------------------------------------------
-echo
-echo "=== SUMMARY: $worthy proven-worthy (path-to-root shown with --list), $dead DEAD ==="
-echo "    Coverage: F*/OCaml build chain + patch scripts + branches."
-echo "    NOT yet proven by this tool (v2 TODO): third_party/testing fixtures"
-echo "    (manifest-reachability from .github/test-suites/*.yaml) and docs/"
-echo "    (link-reachability from CLAUDE.md/README/ledger). docs/test-results/"
-echo "    history/ needs a RETENTION policy, not reachability (append-only)."
+echo "=== $ok build-artifact checks passed, $dead DEAD/orphan finding(s) ==="
+echo "    This gate covers the native compiled/orphaned checks ONLY — see the"
+echo "    header for what it does NOT cover (deliverable-link closure, JS/C/"
+echo "    roaring backends, fixtures, docs). It is a gate, not a worthiness proof."
 [ $CI -eq 1 ] && [ $dead -gt 0 ] && exit 1
 exit 0
