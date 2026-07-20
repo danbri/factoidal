@@ -370,6 +370,20 @@ let dataset_of_nquads (nq : string) : rdf_dataset =
 let parse_text_to_dataset (text : string) (format_tag : string)
     (base_iri : string) : (rdf_dataset, string) result =
   let base = if base_iri = "" then None else Some base_iri in
+  (* Consumer-side RDF 1.2 opt-in (rule #11: DISPATCH only -- all Mode_12
+     parsing logic lives in the extracted F* parsers; this just selects
+     which extracted entrypoint to call, exactly as w3c_runner --rdf12
+     does). A "*12" format tag routes to the Parser_*.*_mode Mode_12
+     entrypoints; every other tag keeps the Mode_11 path byte-identical. *)
+  let mode, format_tag =
+    match String.lowercase_ascii format_tag with
+    | "ttl12" | "turtle12"   -> (Parser_NTriples.Mode_12, "ttl")
+    | "nt12"  | "ntriples12" -> (Parser_NTriples.Mode_12, "nt")
+    | "nq12"  | "nquads12"   -> (Parser_NTriples.Mode_12, "nq")
+    | "trig12"               -> (Parser_NTriples.Mode_12, "trig")
+    | _ -> (Parser_NTriples.Mode_11, format_tag)
+  in
+  let is12 = (mode = Parser_NTriples.Mode_12) in
   let fmt =
     if format_tag = "" then Some RDF_Format.Turtle
     else
@@ -382,18 +396,42 @@ let parse_text_to_dataset (text : string) (format_tag : string)
   | Some fmt ->
     let ds =
       match fmt with
-      | RDF_Format.NQuads -> Parser_NQuads.parse_nquads text
+      | RDF_Format.NQuads ->
+        if is12 then Parser_NQuads.parse_nquads_mode mode text
+        else Parser_NQuads.parse_nquads text
       | RDF_Format.TriG ->
-        (match base with
-         | Some b -> Parser_TriG.parse_trig_with_base_lenient text b
-         | None -> Parser_TriG.parse_trig_lenient text)
+        if is12 then
+          (match base with
+           | Some b -> Parser_TriG.parse_trig_with_base_lenient_mode mode text b
+           | None -> Parser_TriG.parse_trig_with_base_lenient_mode mode text "")
+        else
+          (match base with
+           | Some b -> Parser_TriG.parse_trig_with_base_lenient text b
+           | None -> Parser_TriG.parse_trig_lenient text)
       | RDF_Format.NT ->
-        { ds_default = Parser_NTriples.parse_ntriples text; ds_named = [] }
+        let triples =
+          if is12 then
+            (* Mode_12 N-Triples has only a STRICT entrypoint (option);
+               None = parse error, surfaced via failwith like the JSONLD
+               branch below (the caller's `guarded` wraps it to an error
+               envelope) -- never silently dropped to []. *)
+            (match Parser_NTriples.parse_ntriples_mode mode text with
+             | FStar_Pervasives_Native.Some ts -> ts
+             | FStar_Pervasives_Native.None ->
+               failwith "invalid RDF 1.2 N-Triples (Mode_12 parse error)")
+          else Parser_NTriples.parse_ntriples text
+        in
+        { ds_default = triples; ds_named = [] }
       | RDF_Format.Turtle ->
         let triples =
-          match base with
-          | Some b -> Parser_Turtle.parse_turtle_with_base text b
-          | None -> Parser_Turtle.parse_turtle text
+          if is12 then
+            (match base with
+             | Some b -> Parser_Turtle.parse_turtle_with_base_mode mode text b
+             | None -> Parser_Turtle.parse_turtle_with_base_mode mode text "")
+          else
+            match base with
+            | Some b -> Parser_Turtle.parse_turtle_with_base text b
+            | None -> Parser_Turtle.parse_turtle text
         in
         { ds_default = triples; ds_named = [] }
       | RDF_Format.RDFXML ->
