@@ -52,13 +52,13 @@ jobs:
             "fstar_pure_hashes.ml"
             # parquet_probe.ml relocated to bin/parquet-probe/ on
             # 2026-05-08 (#200 PR5). No longer in ocaml-output/.
-            # SPARQL parser assume-val realisation: provides
-            # Sparql_parser_stubs.{utf8_of_codepoint,process_iri_escapes,
-            # process_string_escapes}_impl. Wired by
-            # formal/fstar/sparql-parser-patches.sh into the F*-extracted
-            # SPARQL11_Parser.ml. Pure OCaml; rule #11(c) host-engine
-            # call-out. Permanent fixture — not a retirement candidate.
-            "sparql_parser_stubs.ml"
+            # sparql_parser_stubs.ml + sparql-parser-patches.sh REMOVED
+            # 2026-07-20 (tools/repo-hygiene.sh dead-code verdict): the
+            # escape functions (utf8_of_codepoint/process_iri_escapes/
+            # process_string_escapes) are pure F* in SPARQL11.Parser.fst
+            # since 2026-05-11 (#64); the stub .ml had no .cmi/.cmx/.o, no
+            # link line, and its patch script was never invoked by
+            # build-ocaml.sh. Allowlist entry retired with the file.
             # test_fstar_parser.ml retired 2026-05-08 (dead — no references
             # in build scripts; smoke test that was never integrated).
             # factoidal_http_client.ml relocated to bin/factoidal-http-client/

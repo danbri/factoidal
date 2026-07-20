@@ -21,8 +21,7 @@ factoidal/
 │   │   ├── ocaml-patches.sh      applies all glue patches
 │   │   ├── ocaml-output/         extracted .ml + symlinks to bin/
 │   │   │   ├── *.ml              extracted F* OCaml output (tracked)
-│   │   │   ├── fstar_pure_hashes.ml   allowlisted hand-written assume-val realisation
-│   │   │   └── sparql_parser_stubs.ml allowlisted hand-written assume-val realisation
+│   │   │   └── fstar_pure_hashes.ml   allowlisted hand-written assume-val realisation
 │   │   ├── minimal_regrettable_glue_code_each_with_an_open_issue/
 │   │   │   └── <issue>_*.sh      assume-val realisations + bug fixes
 │   │   ├── experimental_ocaml_glue/    Layer-2 unwind targets (rule #11 violators)

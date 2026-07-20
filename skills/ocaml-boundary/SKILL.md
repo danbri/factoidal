@@ -68,9 +68,11 @@ hashing F\*-computed bytes against on-disk bytes) — pattern in
   MD5/SHA family realising the `SPARQL11.Algebra` hash assume-vals;
   pure so the same code runs on native, js_of_ocaml, AND wasm — the
   C-backed `Digest`/`Digestif` route crashed under wasm; must be
-  linked *before* `SPARQL11_Algebra.ml`) and `sparql_parser_stubs.ml`
-  (UTF-8 codepoint encoding + IRI escape realisations). Anything else
-  hand-written here fails `check-ocaml-output-cleanliness.yml`.
+  linked *before* `SPARQL11_Algebra.ml`). (A former
+  `sparql_parser_stubs.ml` realising UTF-8/IRI escapes was REMOVED
+  2026-07-20 — those functions are pure F* in `SPARQL11.Parser.fst`
+  since #64; `tools/repo-hygiene.sh` flagged the stub dead.) Anything
+  else hand-written here fails `check-ocaml-output-cleanliness.yml`.
 - `formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/`
   — sanctioned build-time patches, one per `assume val` gap, named
   `<issue>_<description>.sh`. Currently 8; each maps to an open issue
