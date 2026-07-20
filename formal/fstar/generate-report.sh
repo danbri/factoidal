@@ -98,7 +98,7 @@ RML_IO_LOG="$OCAML_DIR/rml_io_results.log"
 XFORMS_NPM_LOG="$OCAML_DIR/xforms_npm_results.log"
 TOAN_MATRIX_LOG="$OCAML_DIR/toan_matrix_results.log"
 
-mkdir -p "$OUTPUT_DIR" "$HISTORY_DIR"
+mkdir -p "$OUTPUT_DIR"
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)
@@ -956,7 +956,7 @@ CSV="$OUTPUT_DIR/latest.csv"
   emit_csv_row_if_present TOAN_MATRIX       engines     toan-matrix
   emit_csv_row_if_present XFORMS_NPM        engines     xforms-npm
 } > "$CSV"
-cp "$CSV" "$HISTORY_DIR/${TIMESTAMP_ISO}.csv"
+# history snapshots retired 2026-07-20 (owner: worthless timeseries). latest.{csv,json} only.
 
 # --- JSON artifact -----------------------------------------------------------
 JSON="$OUTPUT_DIR/latest.json"
@@ -1140,7 +1140,7 @@ emit_json_suites () {
   printf '\n  }\n'
   printf '}\n'
 } > "$JSON"
-cp "$JSON" "$HISTORY_DIR/${TIMESTAMP_ISO}.json"
+# history snapshot retired (see above).
 
 # --- HTML suite rows ---------------------------------------------------------
 # status_for — green/amber/grey classifier shared by every suite-node
