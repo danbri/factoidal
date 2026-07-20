@@ -485,6 +485,19 @@ const RDF_LANGSTRING = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
 
 function parseNQuadsTerm(str, i) {
   while (i < str.length && (str[i] === " " || str[i] === "\t")) i++;
+  // RDF 1.2 triple term: <<( s p o )>> -> a Quad-shaped term. Checked
+  // before the '<' IRI case (a triple term also opens with '<').
+  if (str[i] === "<" && str[i + 1] === "<" && str[i + 2] === "(") {
+    let j = i + 3;
+    const [subject, a]   = parseNQuadsTerm(str, j); j = a;
+    const [predicate, b] = parseNQuadsTerm(str, j); j = b;
+    const [object, c]    = parseNQuadsTerm(str, j); j = c;
+    while (j < str.length && /\s/.test(str[j])) j++;
+    if (str[j] === ")" && str[j + 1] === ">" && str[j + 2] === ">") {
+      return [{ termType: "Quad", value: "", subject, predicate, object }, j + 3];
+    }
+    throw new Error("parseNQuads: unterminated triple term at offset " + i);
+  }
   if (str[i] === "<") {
     const end = str.indexOf(">", i);
     return [{ termType: "NamedNode", value: str.slice(i + 1, end) }, end + 1];
@@ -577,6 +590,16 @@ function sniffQueryForm(sparql) {
 function srjTermToFn(t) {
   if (t.type === "uri") return { termType: "NamedNode", value: t.value };
   if (t.type === "bnode") return { termType: "BlankNode", value: t.value };
+  if (t.type === "triple") {
+    // RDF 1.2 triple term in SPARQL Results JSON -> a Quad-shaped term.
+    const v = t.value || {};
+    return {
+      termType: "Quad", value: "",
+      subject: srjTermToFn(v.subject),
+      predicate: srjTermToFn(v.predicate),
+      object: srjTermToFn(v.object),
+    };
+  }
   // 'literal' | 'typed-literal'
   const language = t["xml:lang"] || "";
   const datatype = t.datatype || (language ? RDF_LANGSTRING : XSD_STRING);
@@ -600,15 +623,18 @@ const fn = {
   async query(dataset, sparql, options) {
     const opts = options || {};
     const entail = opts.entail || "none";
+    // SPARQL 1.2 opt-in: {sparql12:true} or {version:'1.2'} forwards to
+    // the engine's tokenize_12 parser + Mode_12 data load.
+    const sparql12 = opts.sparql12 === true || String(opts.version || "") === "1.2";
     const form = sniffQueryForm(sparql);
     if (form === "construct" || form === "describe") {
       const nt = await Factoidal.query(dataset.toNQuads(), sparql, {
-        dataFormat: "nquads", entail, output: "ntriples",
+        dataFormat: "nquads", entail, output: "ntriples", sparql12,
       });
       return new FnDataset(nt);
     }
     const result = await Factoidal.query(dataset.toNQuads(), sparql, {
-      dataFormat: "nquads", entail, output: "json",
+      dataFormat: "nquads", entail, output: "json", sparql12,
     });
     if (form === "ask") return !!result.boolean;
     const rows = (result.results && result.results.bindings) || [];
@@ -945,6 +971,18 @@ function prettyTermNode(term) {
       }
       span.textContent = text;
       span.title = detail;
+    } else if (term.termType === "Quad") {
+      // RDF 1.2 triple term: render as <<( s p o )>> with inner terms
+      // shortened (a nested triple-term object collapses to <<(…)>>).
+      const part = (x) =>
+        !x ? "" :
+        x.termType === "Quad" ? "<<(…)>>" :
+        x.termType === "Literal" ? JSON.stringify(String(x.value)) :
+        x.termType === "BlankNode" ? "_:" + x.value :
+        prettyShortenIri(x.value || "");
+      span.textContent =
+        "<<( " + part(term.subject) + " " + part(term.predicate) + " " + part(term.object) + " )>>";
+      span.title = span.textContent;
     } else {
       span.textContent = String(term.value);
     }

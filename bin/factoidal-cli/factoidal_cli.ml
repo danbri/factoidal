@@ -212,6 +212,15 @@ let bnode_scope_counter = ref 0
    triple terms and `@lang--dir` directional literals. *)
 let rdf12_mode = ref false
 
+(* SPARQL 1.2 query mode (epic #305). Off by default. When `--sparql12`
+   is present, the -e / --query text is parsed with the tokenize_12
+   parser (parse_sparql_12_with_base) so TRIPLE/isTRIPLE/SUBJECT/
+   PREDICATE/OBJECT/VERSION/lang-dir builtins and `<<( )>>` triple-term
+   patterns are recognised; SPARQL 1.1 parsing stays byte-identical
+   otherwise. Independent of --rdf12 (which governs the DATA loaders),
+   though a 1.2 query over 1.2 data typically wants both. *)
+let sparql12_mode = ref false
+
 let scope_dataset_bnodes ds =
   let n = !bnode_scope_counter in
   incr bnode_scope_counter;
@@ -960,6 +969,7 @@ let parse_args ?args () =
     | "--canonicalize" :: rest -> cfg.canonicalize_mode <- true; loop rest
     | "--count" :: rest -> cfg.count_mode <- true; loop rest
     | "--rdf12" :: rest -> rdf12_mode := true; loop rest
+    | "--sparql12" :: rest -> sparql12_mode := true; loop rest
     | "--explain" :: q :: rest ->
       (* `--explain SPARQL` is the new "plan dump without execution" mode.
          The argument is the SPARQL query text (or use --query-file with
@@ -2829,9 +2839,15 @@ let () =
       exit 1
   in
 
-  (* Parse SPARQL query *)
+  (* Parse SPARQL query (Mode_12 when --sparql12, else 1.1 byte-identical) *)
   let query = try
-    match SPARQL11_Parser.parse_sparql query_text with
+    let parsed =
+      if !sparql12_mode then
+        SPARQL11_Parser.parse_sparql_12_with_base
+          FStar_Pervasives_Native.None query_text
+      else SPARQL11_Parser.parse_sparql query_text
+    in
+    match parsed with
     | SPARQL11_Parser.ParseOk (q, _) -> q
     | SPARQL11_Parser.ParseErr msg ->
       Printf.eprintf "SPARQL parse error: %s\n" msg; exit 1
