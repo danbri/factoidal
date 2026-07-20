@@ -1,9 +1,25 @@
 #!/usr/bin/env bash
 # tools/repo-hygiene.sh — build-artifact hygiene gate for the F*/OCaml tree.
 #
+# REACHABILITY IS NOT WORTHINESS. This gate finds ORPHANS (files nothing
+# reaches). It says NOTHING about worth, and cannot, because worth fails
+# reachability in both directions:
+#   - REACHABLE JUNK: the COTTAS OCaml shadows retired in 2026-07 were
+#     compiled, linked, and executing in production — fully reachable — AND
+#     were unverified iron-rule-#11 junk. A reachability gate green-lights
+#     them. Shadows/duplicates, linked-but-never-called code, and cargo-cult
+#     modules all reach.
+#   - UNREACHED GEMS: SPARQL.GraphStore.fst was a complete, correct module
+#     before its runner was wired — consumed by nothing, yet a gem. Specs
+#     (THE PRODUCT, per CLAUDE.md), proofs, design docs, and a superior
+#     unreferenced implementation are all valuable while unreachable.
+# So: this is a FLOOR (catch orphans), never a ceiling (prove worth). "Reached
+# but dead/redundant" and "unreached but valuable" are irreducibly human
+# judgement — that is why the project has review, not just a graph.
+#
 # HONEST SCOPE (rewritten 2026-07-20 after the first version was correctly
-# called out as unsound). This is NOT a general "reachability proof." It is a
-# gate built on ONE thing the build itself computes soundly:
+# called out as unsound, then again as insufficient). Within the orphan
+# floor, it is built on ONE thing the build itself computes soundly:
 #
 #   A module is compiled into the shipped native artifacts IFF the build
 #   emitted its `.cmx`. The native build (build-ocaml.sh) only compiles what
