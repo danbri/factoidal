@@ -37,8 +37,55 @@ or repeated.**
    matches any") still disclosed in `skills/test-suites` months…
    days after the strict runner retired them.
 
+5. **"RDFC-1.0 … all remaining out of scope; within scope DONE."**
+   `current-state.md`, dated 2026-07-04. The 3 poison "evil" fails + 1
+   poison-clique NegEval stub it wrote off were SOLVED the very next day
+   (2026-07-05 HNDQ work-budget). The "out of scope" line was never
+   retracted, so a 2026-07-19 audit — and the owner — read a **86/86
+   complete** capability as partial-and-excluded. "Out of scope" written
+   as a *disposition of hard residual work* is the most dangerous label
+   in the repo: it looks like a decision, but it is often just "we
+   haven't done this yet" — and when the work then lands, nobody unlabels
+   it. Never write "out of scope" for something merely hard; write
+   "not done yet (hard because …)" so the next landing knows to retract
+   it.
+
 Every one was corrected only after an external reader challenged it.
 This skill exists so the correction happens at landing time instead.
+
+## Rot cuts BOTH ways — and scores rot silently
+
+Two failure modes, one root cause (docs don't auto-refresh from code):
+
+- **Optimistic overclaim** — "X is done / works" when it isn't (war
+  stories 1-3, 5). Erodes trust when caught.
+- **Pessimistic undersell** — "X is a gap / lenient / out of scope" when
+  it's actually FIXED and stricter than claimed (war story 4; and the
+  2026-07-19 ASK-boolean + bnode-isomorphism caveats that described
+  already-retired runner leniency). Hides real strength; makes you
+  distrust *correct* numbers. **When writing ANY negative claim ("we
+  don't / can't / lenient / out of scope"), grep the code FIRST — negative
+  claims rot fastest.**
+
+**The score-staleness trap (the structural one).** A committed
+`*_results.log` or dashboard number is only as fresh as the last time a
+human re-ran the suite. If no workflow re-runs a suite, its number can
+drift for days with zero signal — proven 2026-07-19: committed
+`owl_type_inconsistency` + `csvw` logs predated their own source files by
+a day. Consequences for this skill's discipline:
+
+- A score you are about to quote as current is NOT trustworthy because it
+  is committed — it is trustworthy only if a run produced it recently.
+  When it matters, **re-run the suite (committed binaries, no toolchain
+  needed) and read the LIVE number**, don't trust the committed log.
+- The durable fix is a scheduled re-run that commits refreshed logs, so
+  drift becomes a visible diff (`.github/workflows/conformance-rerun.yml`,
+  epic #235). A suite with no scheduled/triggered re-run path is a silent
+  gap regardless of how green its committed number looks.
+- Cross-ref `test-suites` (§ Drift signal) and the boundary-audit method:
+  when auditing "what's silently missing," the dangerous pattern is NOT
+  big labeled skip pools (those are honest) — it's clean-looking fully-
+  dispositioned scores that nobody re-verifies.
 
 ## The sweep
 

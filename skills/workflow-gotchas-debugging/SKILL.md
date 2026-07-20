@@ -77,6 +77,30 @@ Every agent prompt now includes:
 
 Plus a post-condition check the agent runs before pushing.
 
+### Reinforcements from the 2026-07-19 session (many agents, many hours)
+
+- **Leakage is not only edited files — it's UNTRACKED output too.** An agent
+  authoring NEW files (e.g. `.github/test-suites/owl-*.yaml`) wrote them into
+  the MAIN checkout, so `git status` in main showed untracked files nobody in
+  the main session created. Detection: after dispatching an agent, a
+  `git status` in main that shows files you didn't touch — tracked OR
+  untracked — means leakage. Also seen: the main checkout ended up switched
+  ONTO the agent's branch (`git branch --show-current` was the agent's
+  branch), which then collided with the agent's own `checkout -b`.
+- **The deeper mitigation is COMMIT-FIRST** (`subagent-prompting` Rule 3):
+  because the agent pushes its verified source to a branch before doing
+  anything else, leakage into main becomes recoverable-by-design — you reset
+  main clean (`git checkout -B claude/main origin/claude/main`) and merge the
+  agent's pushed branch, rather than salvaging stashes. If an agent is
+  actively leaking and you can see its deliverable is essentially done,
+  `TaskStop` it and finish the last mechanical step (the commit) yourself
+  rather than let it keep contaminating main.
+- **Agents WILL kick their own extract/compile despite an explicit
+  "do not build" instruction** — recurring, in most long agent runs. Don't
+  fight it: commit-first makes the stray build harmless, and you kill it by
+  `/proc/<pid>/cwd` match (see `autonomous-time-discipline` §6b), never by
+  `pkill -f build-ocaml`.
+
 ## 2. Concurrent F\* extracts racing the cache
 
 ### Symptom

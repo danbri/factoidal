@@ -130,6 +130,53 @@ until ! pgrep -fa 'build-ocaml.sh extract' \
 until [ ! -f /home/user/factoidal/formal/fstar/.build-running ]; do sleep 5; done
 ```
 
+### 6b. The detached-build-script recipe (and the absolute-log trap)
+
+The reliable way to run a 15-25 min extract+compile without foregrounding
+it: write a small script, launch it `setsid`-detached, and wait on its
+completion MARKER — not on process liveness. The recipe, and the two bugs
+that silently break it:
+
+```bash
+#!/bin/bash
+cd /home/user/factoidal
+# (1) opam env does NOT survive a container restart — set PATH EXPLICITLY.
+export PATH="/root/.opam/fstar/bin:$PATH"; eval $(opam env --switch=fstar) 2>/dev/null
+export PATH="/root/.opam/fstar/bin:/opt/node22/bin:$PATH"
+rm -f formal/fstar/.build.lock formal/fstar/.build-running   # always, first
+# (2) LOG MUST BE ABSOLUTE. The script `cd`s into formal/fstar; a RELATIVE
+#     log path then resolves under formal/fstar/, so every `echo RC >>`
+#     after the cd writes to a DIFFERENT (or nonexistent) file. Symptom:
+#     the log you read is nearly empty (only the pre-cd lines + a final
+#     marker), no EXTRACT_RC/COMPILE_RC, and you wrongly conclude "the
+#     build didn't run" when it ran fine and wrote its RCs elsewhere.
+LOG=/home/user/factoidal/.claude-runs/mybuild.log; : > "$LOG"
+cd formal/fstar
+RC=0; timeout 1400 ./build-ocaml.sh extract >> "$LOG" 2>&1 || RC=$?
+echo "EXTRACT_RC=$RC" >> "$LOG"; [ $RC -ne 0 ] && { echo FAIL >> "$LOG"; exit 1; }
+RC=0; timeout 1400 ./build-ocaml.sh compile >> "$LOG" 2>&1 || RC=$?
+echo "COMPILE_RC=$RC" >> "$LOG"
+echo "DONE" >> "$LOG"
+```
+
+Launch + wait on the marker, not the process:
+`setsid bash mybuild.sh >/dev/null 2>&1 </dev/null &` then poll for `DONE`.
+
+**Liveness by lock + `/proc` cwd, NEVER by log timestamps.** A healthy
+extract writes to per-step logs, so the TOP log looks quiet for minutes —
+that is NORMAL, not a hang. Judge alive by: the `.build.lock` is held AND
+`readlink /proc/<pid>/cwd` for the build pid is under `formal/fstar`. When
+you must kill ONE build among several (e.g. a stray worktree build), select
+by that `/proc/<pid>/cwd` match, never by `pkill -f build-ocaml` (which
+also matches your own waiter's argv and sibling builds).
+
+**Glue-patch changes need `extract`, not `compile`.** `build-ocaml.sh
+compile` does NOT re-apply `experimental_ocaml_glue/*.sh` /
+`ocaml-patches.sh`. After editing any `.fst` OR any glue patch, run
+`extract` (which re-applies patches) then `compile`. A patch whose `sed`
+anchor you deleted will WARN "anchor not found" — usually cosmetic (a dead
+hook), but confirm via the suite gates, not the warning count.
+
 ### 7. SessionStart and PostToolUse hooks
 
 For things that should happen every session (env activation, lock

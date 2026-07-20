@@ -268,6 +268,75 @@ tests are wired in — and `tools/affected-tests.sh` (see "Run only
 affected suites" above) wraps it with actual execution. When you add
 a suite (W3C or local script), add its manifest.
 
+## Drift signal: a suite that runs but is never RE-run is a silent gap
+
+The manifest system triggers a suite on a PR that touches ITS trigger
+paths. That leaves two silent gaps, both surfaced by the 2026-07-19 audit:
+
+1. A change that affects a suite TRANSITIVELY (not via its trigger paths)
+   never re-runs it — its committed score drifts with no signal.
+2. A suite with no manifest at all (the OWL 2 DL semantics catalogs had
+   none) is never triggered even by relevant changes.
+
+Proof it's real, not theoretical: committed `owl_type_inconsistency` +
+`csvw` result logs predated their own source files by a day. The green
+number on the dashboard was stale, not wrong-then — but nothing would have
+caught a *real* regression either.
+
+The durable fix (landed as `.github/workflows/conformance-rerun.yml`,
+epic #235): a **scheduled** (daily cron + `workflow_dispatch`) job that
+re-runs EVERY suite off the committed `bin/linux-x86_64` binaries via
+`generate-report.sh --run` and commits refreshed logs back — so drift
+becomes a visible scheduled-commit diff. Rules that follow:
+
+- Every new suite gets a manifest AND is covered by the scheduled re-run
+  (it is, automatically, if `generate-report.sh --run` invokes its runner —
+  check that it does).
+- Before quoting a suite's score as *current*, remember the committed log
+  may be stale. If it matters, re-run the suite and read the LIVE number
+  (committed binaries, no toolchain). Cross-ref `obsolescence-sweep`
+  § "score-staleness trap."
+- Auditing "what's silently untested": the dangerous pattern is a clean
+  fully-dispositioned score nobody re-verifies — NOT a big labeled skip
+  pool (those are honest). Labeled skips = good discipline; un-re-run
+  scores = the hole.
+
+## Reporting a correct-but-net-zero change honestly
+
+Sometimes a spec-correct, F\*-verified fix flips ZERO tests because the
+target cases have a SEPARATE blocker (e.g. the XML UTF-8-BOM skip was
+correct per XML 1.0 §4.3.3, but its two BOM tests were also blocked by an
+internal-DTD subset and an undecoded encoding; the SPARQL 1.2 UPDATE
+VarOrIri-graph parser fix was necessary but the tests also needed the
+runner-side `.trig` dataset load). Land these — correct behaviour and a
+prerequisite are worth having — but label the commit and the report
+**"net-zero conformance"** with the reason, NEVER as the "+N" you
+predicted. Predicting +N and reporting +N when it was +0 is exactly the
+misleading-score anti-pattern (#3/#25), just in a subtler form. Measure
+before you claim the delta; re-baseline against the LAST landing's
+numbers, not an older snapshot.
+
+## Proving zero live callers before deleting verified code
+
+Retiring dead F\* (or its shadow OCaml glue) is high-value cleanup, but
+"dead" must be PROVEN, not assumed — and the audit doc that says something
+is dead can itself be stale (2026-07-19: the boundary audit claimed Bet7
+was "blocked on a Tot→ML cascade through `cottas_ondisk_row_to_quad`"; the
+whole chain already had zero callers — the code had moved past the doc).
+Before deleting a definition:
+
+- grep for callers across ALL of `*.fst`, `formal/fstar/ocaml-output/*.ml`,
+  `bin/*/*.ml`, `tests/unit/*.ml`, AND `experimental_ocaml_glue/*.sh`.
+- **Distinguish real call sites from comment/prose references** — most
+  hits on a retired name are historical `//` / `(* *)` / markdown
+  mentions. A name in `cottas_memory_buffer_unit.ml` was pure comment;
+  the live calls had migrated to the `_tok` variant.
+- Watch for cross-module callers the local grep misses (a
+  `Parser.Ballyhoo*` backend calling into the module you're pruning).
+- Gate the deletion on the real suites (unit 47/47, the relevant
+  conformance floors), not just "it still compiles" — a dead-code delete
+  that changes a live number means it wasn't dead.
+
 ## Regression-pinning discipline
 
 When fixing a bug, write the regression BEFORE rebuilding, assert the

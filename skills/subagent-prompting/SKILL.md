@@ -56,6 +56,42 @@ with $WORKTREE_PATH, STOP and translate it.
 
 ### Rule 2 — post-condition self-check before pushing
 
+## Rule 3 — COMMIT-FIRST: push VERIFIED source before building (load-bearing)
+
+The single highest-leverage agent-orchestration discipline, learned over
+~25 agent dispatches in one multi-day session. **An F\* agent's deliverable
+is VERIFIED SOURCE, not a built binary.** Full builds take 15-25 min;
+agents routinely stall, get killed by container recycles, or (despite
+explicit instructions) kick their own long build and then dead-wait on a
+completion event that never reaches them. Every one of those is a total
+loss IF the verified source is still sitting uncommitted in the agent's
+worktree.
+
+The fix makes all of it a non-event. Every F\*-editing agent brief MUST say:
+
+> The MOMENT your F\* source verifies clean (`fstar.exe --z3version 4.13.3
+> --cache_checked_modules <Module>.fst`, no `--lax`/admits), IMMEDIATELY
+> `git checkout -b <branch>`, commit the verified `.fst`, and
+> `git push -u origin <branch>` — BEFORE attempting any build, and before
+> anything else. Then, if you find a further verified improvement, commit
+> and push it too. Never sit on verified source.
+
+Then the orchestrator — not the agent — merges the branch into main,
+builds ONCE under the disciplined-build recipe (see
+`autonomous-time-discipline`), and gates. Consequences that follow:
+
+- An agent killed mid-build loses nothing — its verified source is on
+  origin. You salvage by merging the branch, not by reconstructing work.
+- "The agent kicked its own build again" stops mattering — kill the stray
+  worktree build (by `/proc/<pid>/cwd` matching the worktree, never by
+  name) and build in main yourself. Agents WILL do this; plan for it
+  rather than fighting it.
+- ALWAYS check the returned worktree for a 2nd/3rd uncommitted verified
+  fix the agent made after its commit-first push (`git -C <worktree>
+  status` filtered to `*.fst`); commit+push it to capture full value.
+- The agent's F\* verify is the gate for LANDING the source; your build +
+  suite run is the gate for MEASURING it. Keep the two separate.
+
 ## Step 0 in every worktree brief (MANDATORY): restore test fixtures
 
 `git worktree add` populates ZERO of the 14 `third_party/testing/*`
