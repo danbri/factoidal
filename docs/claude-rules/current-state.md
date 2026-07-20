@@ -752,13 +752,20 @@ by `assert_norm`, and LIMIT/OFFSET results are ascribed to `nat`. The
 whole file verifies under z3 4.13.3 with no `--lax` and no admitted
 obligations.
 
-**ASK query comparison in w3c_runner.ml** does not check the expected
-boolean value — ASK tests always pass regardless of the query result. This
-inflates the pass count slightly.
+**ASK query comparison in w3c_runner.ml** — ~~does not check the expected
+boolean value~~ **FIXED (verified 2026-07-19)**: `w3c_runner.ml:1297-1298,
+1488-1489` now evaluates the ASK boolean via the F\* evaluator and compares
+it against the expected `.srx`/`.srj` boolean. ASK tests no longer pass
+unconditionally; the pass count is not inflated by this.
 
-**Blank node comparison** in the test runner uses a simplified matching
-(any bnode matches any other bnode) rather than proper graph isomorphism.
-Some tests may pass that shouldn't under strict comparison.
+**Blank node comparison** in the test runner — ~~simplified (any bnode
+matches any other)~~ **FIXED (verified 2026-07-19)**: `w3c_runner.ml:751`
+uses `RDF_GraphIsomorphism.graphs_isomorphic_outcome` (real
+canonicalization-based isomorphism, `Iso_Equal`/`Iso_NotEqual`/
+`Iso_BudgetExceeded` with a logged budget fallback), not lenient bnode
+matching. (These two paragraphs were stale in the *optimistic-undersell*
+direction — the runner is stricter than they claimed — an instance of the
+doc-rot the 2026-07-19 audit flagged.)
 
 ## Known Gaps in RDF.Graph.Executable.fst
 

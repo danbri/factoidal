@@ -43,11 +43,23 @@ The two that corrupt files silently:
 2. **Code is extracted, not hand-written.** Use `fstar.exe --codegen OCaml`
    or KaRaMeL for C/WASM. Never vibe-code an implementation that "mirrors"
    the spec.
-3. **`assume val` = acknowledged gap.** Every `assume val` must have a
-   stub patch in
+3. **`assume val` = acknowledged gap OR allowed realisation — never a
+   silent hole.** An `assume val` is one of two things, and each has a
+   home:
+   (a) an acknowledged **GAP** (logic that should be extracted-from-F\*
+   but isn't yet) — MUST have a stub patch in
    `formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/`
    named `<issue>_<description>.sh` with a corresponding open GitHub
-   issue. No silent holes.
+   issue; or
+   (b) an allowed **realisation** under rule #11 (pure I/O — file/clock/
+   socket; a host-engine call-out; a vendored crypto primitive; or an
+   Option-B perf realisation whose byte-format spec lives in F\* with a
+   hash-witness CI test) — realised in `experimental_ocaml_glue/*.sh`.
+   Most of the ~148 `assume val`s today are (b) (the COTTAS/HDT storage
+   I/O layer). Neither kind may be a *silent* hole: a (a)-gap without an
+   issue, or a (b)-realisation carrying semantic/planning/byte-layout
+   logic that belongs in F\*, is a violation. (Audit: `docs/designissues/
+   fstar-ocaml-boundary-audit.md`.)
 4. **Parsers belong in F\*.** RDF format parsers (N-Triples, Turtle,
    N-Quads, TriG, RDF/XML, CSV/TSV results) are F\*-implemented and
    extracted. New parsers MUST be written in F\* first.
