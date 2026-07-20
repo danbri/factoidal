@@ -310,6 +310,34 @@ export function tableauDlInconsistent(
 ): Promise<{ inconsistent: boolean; rlAlone: boolean }>;
 
 /**
+ * OWL DL consistency verdict via the verified clash-detecting tableau
+ * (Tableau.Refute.tableau_consistent over the OWL-RL closure -- the
+ * pure verified chain bin/owl-runner runs under `--regime dl`, minus
+ * its native-only z3 oracle). Needs the npm-entry engine bundle.
+ * Default graph only. `consistent` is three-valued: `false` (a clash on
+ * every branch), `true` (a model built), or `null` -- a budget-out, with
+ * `reason` naming the fuel cap (never a silent false).
+ */
+export function owlIsConsistent(
+  data: DataInput,
+  options?: { format?: DataFormat; fuel?: number | string }
+): Promise<{ consistent: boolean | null; reason?: string }>;
+
+/**
+ * OWL entailment check: does `premise` entail `conclusion`? Verified
+ * two-path dispatch: `via: "closure"` (the conclusion is in the OWL-RL
+ * closure of the premise) or `via: "refutation"` (the negated
+ * conclusion is refuted on every goal). Needs the npm-entry engine
+ * bundle. Default graph only. `entailed` is `true`, `false`, or `null`
+ * (a refutation budget-out, with `reason` naming the cap).
+ */
+export function owlEntails(
+  premise: DataInput,
+  conclusion: DataInput,
+  options?: { format?: DataFormat; fuel?: number | string }
+): Promise<{ entailed: boolean | null; via: 'closure' | 'refutation'; reason?: string }>;
+
+/**
  * Evaluate an RML mapping graph against one logical source's raw data,
  * returning the generated triples as a Dataset. Needs the npm-entry
  * engine bundle. Every triples map in `mapping` reads the SAME
@@ -881,6 +909,8 @@ declare const _default: {
   owlClosure: typeof owlClosure;
   tableauMaterialise: typeof tableauMaterialise;
   tableauDlInconsistent: typeof tableauDlInconsistent;
+  owlIsConsistent: typeof owlIsConsistent;
+  owlEntails: typeof owlEntails;
   rmlMap: typeof rmlMap;
   csvwToRdf: typeof csvwToRdf;
   jsonldToRdf: typeof jsonldToRdf;

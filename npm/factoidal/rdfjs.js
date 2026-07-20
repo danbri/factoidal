@@ -267,6 +267,13 @@ function termToNQuads(term) {
     }
     case 'DefaultGraph':
       return '';
+    case 'Quad':
+      // RDF 1.2 triple term -> <<( s p o )>> (matches the engine's
+      // Mode_12 N-Quads serializer, so it round-trips back through the
+      // *12 parse path).
+      return '<<( ' + termToNQuads(term.subject) + ' ' +
+        termToNQuads(term.predicate) + ' ' +
+        termToNQuads(term.object) + ' )>>';
     default:
       throw new TypeError(
         `termToNQuads: cannot serialize termType '${term.termType}'`);
@@ -332,6 +339,23 @@ function unescapeLiteral(s, lineNo) {
 // Read one term starting at s[i]; returns [term, nextIndex].
 function readTerm(s, i, lineNo, factory) {
   const c = s[i];
+  // RDF 1.2 triple term: <<( s p o )>> -> an RDF/JS Quad term
+  // (termType 'Quad'). Checked BEFORE the '<' IRI case since a triple
+  // term also opens with '<'. This reads the engine's own Mode_12
+  // N-Quads serializer output (RDF.NQuads.Serialize) into RDF/JS
+  // objects; it is not a conformance parser (that is the F* --rdf12
+  // path) — same interop role the rest of this reader plays.
+  if (c === '<' && s[i + 1] === '<' && s[i + 2] === '(') {
+    let j = skipWs(s, i + 3);
+    const [sub, a] = readTerm(s, j, lineNo, factory); j = skipWs(s, a);
+    const [pred, b] = readTerm(s, j, lineNo, factory); j = skipWs(s, b);
+    const [obj, d] = readTerm(s, j, lineNo, factory); j = skipWs(s, d);
+    if (s[j] === ')' && s[j + 1] === '>' && s[j + 2] === '>') {
+      return [factory.quad(sub, pred, obj), j + 3];
+    }
+    throw new SyntaxError(
+      `N-Quads line ${lineNo}: unterminated triple term (expected ')>>')`);
+  }
   if (c === '<') {
     const end = s.indexOf('>', i + 1);
     if (end < 0) throw new SyntaxError(`N-Quads line ${lineNo}: unclosed IRI`);

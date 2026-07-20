@@ -475,6 +475,47 @@ async function tableauDlInconsistent(ds) {
 }
 
 /**
+ * OWL DL consistency verdict via the verified clash-detecting tableau
+ * (formal/fstar/Tableau.Refute.fst's `tableau_consistent` over the
+ * OWL-RL closure -- the pure verified chain bin/owl-runner runs under
+ * `--regime dl`, minus its native-only z3 oracle). Needs the npm-entry
+ * bundle. Default graph only.
+ *
+ * `consistent` is three-valued: `false` (a clash on every tableau
+ * branch), `true` (a model was constructed), or `null` -- the refuter
+ * exhausted its fuel budget before deciding, with `reason` naming the
+ * cap. `null` is never collapsed to `false`.
+ *
+ * @param {FnDataset|string} ontology the ontology + ABox graph -- an
+ *   FnDataset, or raw RDF text (Turtle by default, per `options.format`)
+ * @param {{format?: string, fuel?: number|string}} [options]
+ * @returns {Promise<{consistent: boolean|null, reason?: string}>}
+ */
+async function owlIsConsistent(ontology, options) {
+  const data = ontology instanceof FnDataset ? toDataset(ontology) : ontology;
+  return engineApi.owlIsConsistent(data, options);
+}
+
+/**
+ * OWL entailment check: does `premise` entail `conclusion`? Verified
+ * two-path dispatch (`via: "closure"` for the OWL-RL closure path,
+ * `via: "refutation"` for negate-and-refute), mirroring bin/owl-runner.
+ * Needs the npm-entry bundle. Default graph only. `entailed` is
+ * three-valued (`true` / `false` / `null` budget-out, `reason` names the
+ * cap).
+ *
+ * @param {FnDataset|string} premise an FnDataset or raw RDF text
+ * @param {FnDataset|string} conclusion an FnDataset or raw RDF text
+ * @param {{format?: string, fuel?: number|string}} [options]
+ * @returns {Promise<{entailed: boolean|null, via: 'closure'|'refutation', reason?: string}>}
+ */
+async function owlEntails(premise, conclusion, options) {
+  const p = premise instanceof FnDataset ? toDataset(premise) : premise;
+  const c = conclusion instanceof FnDataset ? toDataset(conclusion) : conclusion;
+  return engineApi.owlEntails(p, c, options);
+}
+
+/**
  * RDFC-1.0 canonicalization: canonical N-Quads text. Needs the
  * npm-entry bundle (same gating as index.js's canonicalize()).
  */
@@ -765,6 +806,8 @@ module.exports = {
   rif,
   tableauMaterialise,
   tableauDlInconsistent,
+  owlIsConsistent,
+  owlEntails,
   canonicalize,
   hash,
   equals,

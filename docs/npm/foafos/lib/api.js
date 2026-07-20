@@ -42,13 +42,29 @@ const DATA_FORMAT_EXT = {
   rdf:       'rdf',
   jsonld:    'jsonld',
   'json-ld': 'jsonld',
+  // RDF 1.2 opt-in: these select the engine's Mode_12 parsers (triple
+  // terms <<( s p o )>>, ~ reifiers, {| |} annotations, VERSION,
+  // directional literals "x"@lang--dir). Only reachable via the
+  // npm-entry bundle (the entry ABI routes the *12 tag to
+  // Parser_*.*_mode Mode_12); the plain names above stay Mode_11 so 1.1
+  // output is byte-identical.
+  turtle12:   'ttl12',
+  ttl12:      'ttl12',
+  ntriples12: 'nt12',
+  nt12:       'nt12',
+  nquads12:   'nq12',
+  nq12:       'nq12',
+  trig12:     'trig12',
 };
 
-// Canonical format tag for the npm-entry ABI (RDF_Format.format_of_string
-// accepts these names directly).
+// Canonical format tag for the npm-entry ABI. The plain tags are what
+// RDF_Format.format_of_string accepts directly; the *12 tags are
+// intercepted by entry_jsoo's parse_text_to_dataset (before
+// format_of_string) to select Mode_12.
 const DATA_FORMAT_TAG = {
   ttl: 'turtle', nt: 'ntriples', nq: 'nquads', trig: 'trig', rdf: 'rdfxml',
   jsonld: 'jsonld',
+  ttl12: 'turtle12', nt12: 'ntriples12', nq12: 'nquads12', trig12: 'trig12',
 };
 
 const ENTAIL_VALUES = new Set(['none', 'RDFS', 'OWL-RL']);
@@ -698,6 +714,72 @@ function buildApi(driver) {
     const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'tableauDlInconsistent(data)');
     const r = entryResult(e.tableauDlInconsistent(dataNq), 'tableauDlInconsistent');
     return { inconsistent: r.inconsistent, rlAlone: r.rlAlone };
+  }
+
+  /**
+   * OWL DL consistency verdict via the verified clash-detecting tableau
+   * (formal/fstar/Tableau.Refute.fst's `tableau_consistent` over the
+   * OWL-RL closure -- the same pure verified chain bin/owl-runner runs
+   * under `--regime dl`, minus its native-only z3 counting oracle, which
+   * the JS bundle cannot spawn). Needs the npm-entry bundle. Default
+   * graph only (same scope cut as tableauDlInconsistent).
+   *
+   * Three-valued and honest: `consistent` is `false` (a clash on every
+   * tableau branch), `true` (a model was constructed with no clash), or
+   * `null` -- the refuter ran out of budget before deciding, with
+   * `reason` naming the fuel cap. `null` is never collapsed to `false`.
+   *
+   * @param {Dataset|string|Array} data the ontology + ABox graph
+   * @param {{format?: string, fuel?: number|string}} [options] format
+   *   parses `data` (default 'turtle'); fuel overrides the refutation
+   *   budget (default 20000).
+   * @returns {Promise<{consistent: boolean|null, reason?: string}>}
+   */
+  async function owlIsConsistent(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('OWL DL consistency check');
+    requireEntryFn(e, 'owlIsConsistent', 'OWL DL consistency check');
+    const opts = options || {};
+    const dataNq = docsToEntryNQuads(e, toDocs(data, opts), 'owlIsConsistent(data)');
+    const optsJson = JSON.stringify(opts.fuel != null ? { fuel: String(opts.fuel) } : {});
+    const r = entryResult(e.owlIsConsistent(dataNq, optsJson), 'owlIsConsistent');
+    return r.reason === undefined
+      ? { consistent: r.consistent }
+      : { consistent: r.consistent, reason: r.reason };
+  }
+
+  /**
+   * OWL entailment check: does `premise` entail `conclusion`? Two
+   * verified paths, mirroring bin/owl-runner's PositiveEntailment
+   * dispatch: `via: "closure"` when every conclusion triple is in the
+   * OWL-RL closure of the premise; `via: "refutation"` when the negated
+   * conclusion (Tableau.Refute's `negation_goals`) is refuted on every
+   * goal by the clash-detecting tableau. Needs the npm-entry bundle.
+   * Default graph only. Verified-only chain (no z3).
+   *
+   * Three-valued: `entailed` is `true`, `false`, or `null` (a refutation
+   * goal exhausted its fuel budget -- indeterminate, never a silent
+   * `false`; `reason` names the cap).
+   *
+   * @param {Dataset|string|Array} premise
+   * @param {Dataset|string|Array} conclusion
+   * @param {{format?: string, fuel?: number|string}} [options] format
+   *   parses both graphs (default 'turtle'); fuel overrides the
+   *   refutation budget (default 20000).
+   * @returns {Promise<{entailed: boolean|null, via: 'closure'|'refutation', reason?: string}>}
+   */
+  async function owlEntails(premise, conclusion, options) {
+    const e = await entry();
+    if (!e) throw pendingError('OWL entailment check');
+    requireEntryFn(e, 'owlEntails', 'OWL entailment check');
+    const opts = options || {};
+    const premiseNq = docsToEntryNQuads(e, toDocs(premise, opts), 'owlEntails(premise)');
+    const conclusionNq = docsToEntryNQuads(e, toDocs(conclusion, opts), 'owlEntails(conclusion)');
+    const optsJson = JSON.stringify(opts.fuel != null ? { fuel: String(opts.fuel) } : {});
+    const r = entryResult(e.owlEntails(premiseNq, conclusionNq, optsJson), 'owlEntails');
+    return r.reason === undefined
+      ? { entailed: r.entailed, via: r.via }
+      : { entailed: r.entailed, via: r.via, reason: r.reason };
   }
 
   /**
@@ -1736,6 +1818,8 @@ function buildApi(driver) {
     owlClosure,
     tableauMaterialise,
     tableauDlInconsistent,
+    owlIsConsistent,
+    owlEntails,
     rmlMap,
     csvwToRdf,
     jsonldToRdf,
