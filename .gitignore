@@ -73,3 +73,7 @@ third_party/testing/vc-di-eddsa/localConfig.cjs
 third_party/testing/vc-di-eddsa/reports/*.json
 third_party/testing/vc-di-eddsa/suite.log
 third_party/testing/vc/localConfig.cjs
+
+# Score-history snapshots: not a reliable timeseries (record-keeping conventions
+# changed repeatedly). Re-evaluate old builds against a common tool instead.
+docs/test-results/history/
