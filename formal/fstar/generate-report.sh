@@ -26,10 +26,38 @@ OUTPUT_DIR="$SCRIPT_DIR/../../docs/test-results"
 HISTORY_DIR="$OUTPUT_DIR/history"
 SPARQL_LOG="$OCAML_DIR/sparql_results.log"
 RDF_LOG="$OCAML_DIR/rdf_results.log"
-# RDF 1.2 / SPARQL 1.2 (#305): w3c_runner --rdf12 / --sparql12. Same
-# "Suite Results:" score-line format as the 1.1 suites above.
-RDF12_LOG="$OCAML_DIR/rdf12_results.log"
-SPARQL12_LOG="$OCAML_DIR/sparql12_results.log"
+# =====================================================================
+# EXTRA-SUITE REGISTRY — automation for seamless expansion (#305).
+#
+# Any conformance suite whose w3c_runner mode prints the standard
+# "Suite Results:" score-line block (lines like
+#   "  some-suite-name        pass:29 fail:0 skip:0 unsupported:0")
+# can be added here as ONE line and it flows AUTOMATICALLY into:
+#   - --run execution (w3c_runner <args> -> <key>_results.log)
+#   - latest.json  totals.<key> and suites.<key>
+#   - latest.csv   per-sub-suite rows under category <key>
+#   - the dashboard "W3C Working Drafts (emerging)" group, one family node
+# No other edits anywhere. Present-guarded: a key whose log has no score
+# lines (old binary / fixture-less run) is silently omitted, never 0/0.
+#
+# Fields, pipe-separated:  key | csv_category | runner_args | display_title | spec_url
+# (Today these are the RDF 1.2 / SPARQL 1.2 Working-Draft suites; add
+# shacl12, rdf12-rdfxml, etc. here as they land.)
+EXTRA_SUITES_REGISTRY=(
+  "rdf12|rdf12|--rdf12|RDF 1.2 (N-Triples / N-Quads / Turtle / TriG)|https://www.w3.org/TR/rdf12-n-triples/"
+  "sparql12|sparql12|--sparql12|SPARQL 1.2 Query|https://www.w3.org/TR/sparql12-query/"
+)
+declare -A EXTRA_LOG EXTRA_CAT EXTRA_ARGS EXTRA_TITLE EXTRA_URL
+declare -A EXTRA_BLOB EXTRA_PASS EXTRA_FAIL EXTRA_SKIP EXTRA_UNSUP EXTRA_TOTAL EXTRA_PRESENT
+EXTRA_KEYS=()
+for _row in "${EXTRA_SUITES_REGISTRY[@]}"; do
+  IFS='|' read -r _k _cat _args _title _url <<<"$_row"
+  EXTRA_KEYS+=("$_k")
+  EXTRA_LOG[$_k]="$OCAML_DIR/${_k}_results.log"
+  EXTRA_CAT[$_k]="$_cat"; EXTRA_ARGS[$_k]="$_args"
+  EXTRA_TITLE[$_k]="$_title"; EXTRA_URL[$_k]="$_url"
+done
+
 OWL_LOG="$OCAML_DIR/owl_profile_rl_results.log"
 # Phase 2.3 DL catalog logs (added 2026-05-08). Per-catalog log
 # path so we can score independently and surface separate dashboard
@@ -196,12 +224,14 @@ if [ "$1" = "--run" ]; then
   echo "Running RDF 1.1 suite…"
   ( cd "$REPO_ROOT" && "$RUNNER" --rdf > "$RDF_LOG" 2>&1 ) || true
   echo "  done."
-  echo "Running RDF 1.2 suite (--rdf12)…"
-  ( cd "$REPO_ROOT" && "$RUNNER" --rdf12 > "$RDF12_LOG" 2>&1 ) || true
-  echo "  done."
-  echo "Running SPARQL 1.2 suite (--sparql12)…"
-  ( cd "$REPO_ROOT" && "$RUNNER" --sparql12 > "$SPARQL12_LOG" 2>&1 ) || true
-  echo "  done."
+  # Registry-driven extra suites (RDF 1.2 / SPARQL 1.2 today; see the
+  # EXTRA_SUITES_REGISTRY at the top). Adding a suite there is all it
+  # takes to have it run here.
+  for _k in "${EXTRA_KEYS[@]}"; do
+    echo "Running extra suite ${_k} (${EXTRA_ARGS[$_k]})…"
+    ( cd "$REPO_ROOT" && "$RUNNER" ${EXTRA_ARGS[$_k]} > "${EXTRA_LOG[$_k]}" 2>&1 ) || true
+    echo "  done."
+  done
   if [ -x "$OWL_RUNNER" ]; then
     echo "Running OWL 2 RL profile suite (PositiveEntailmentTests)…"
     ( cd "$REPO_ROOT" && "$OWL_RUNNER" > "$OWL_LOG" 2>&1 ) || true
@@ -408,20 +438,18 @@ RDF_UNSUP=$(extract_field    unsupported "$RDF_SUITES")
 # (an old binary without --rdf12/--sparql12, or a fixture-less run, yields
 # an empty blob -> PRESENT 0 -> the suite is simply omitted, never a lying
 # 0/0).
-RDF12_SUITES=$(grep    '^  [a-z]' "$RDF12_LOG"    2>/dev/null | grep 'pass:' || true)
-SPARQL12_SUITES=$(grep '^  [a-z]' "$SPARQL12_LOG" 2>/dev/null | grep 'pass:' || true)
-RDF12_PASS=$(extract_field  pass        "$RDF12_SUITES")
-RDF12_FAIL=$(extract_field  fail        "$RDF12_SUITES")
-RDF12_SKIP=$(extract_field  skip        "$RDF12_SUITES")
-RDF12_UNSUP=$(extract_field unsupported "$RDF12_SUITES")
-RDF12_TOTAL=$((RDF12_PASS + RDF12_FAIL + RDF12_SKIP + RDF12_UNSUP))
-RDF12_PRESENT=$([ -n "$RDF12_SUITES" ] && echo 1 || echo 0)
-SPARQL12_PASS=$(extract_field  pass        "$SPARQL12_SUITES")
-SPARQL12_FAIL=$(extract_field  fail        "$SPARQL12_SUITES")
-SPARQL12_SKIP=$(extract_field  skip        "$SPARQL12_SUITES")
-SPARQL12_UNSUP=$(extract_field unsupported "$SPARQL12_SUITES")
-SPARQL12_TOTAL=$((SPARQL12_PASS + SPARQL12_FAIL + SPARQL12_SKIP + SPARQL12_UNSUP))
-SPARQL12_PRESENT=$([ -n "$SPARQL12_SUITES" ] && echo 1 || echo 0)
+# Registry-driven parse: every EXTRA_SUITES_REGISTRY key, same uniform
+# "  name  pass:N fail:N skip:N unsupported:N" score-line format.
+for _k in "${EXTRA_KEYS[@]}"; do
+  _blob=$(grep '^  [a-z]' "${EXTRA_LOG[$_k]}" 2>/dev/null | grep 'pass:' || true)
+  EXTRA_BLOB[$_k]="$_blob"
+  EXTRA_PASS[$_k]=$(extract_field  pass        "$_blob")
+  EXTRA_FAIL[$_k]=$(extract_field  fail        "$_blob")
+  EXTRA_SKIP[$_k]=$(extract_field  skip        "$_blob")
+  EXTRA_UNSUP[$_k]=$(extract_field unsupported "$_blob")
+  EXTRA_TOTAL[$_k]=$(( ${EXTRA_PASS[$_k]} + ${EXTRA_FAIL[$_k]} + ${EXTRA_SKIP[$_k]} + ${EXTRA_UNSUP[$_k]} ))
+  EXTRA_PRESENT[$_k]=$([ -n "$_blob" ] && echo 1 || echo 0)
+done
 
 # --- OWL 2 RL scoreboard (orthogonal to the SPARQL/RDF tables) --------------
 # Score line in owl_runner stdout:
@@ -936,8 +964,9 @@ CSV="$OUTPUT_DIR/latest.csv"
   }
   emit_csv_rows "$SPARQL_SUITES" sparql
   emit_csv_rows "$RDF_SUITES"    rdf
-  if [ "$RDF12_PRESENT"    -eq 1 ]; then emit_csv_rows "$RDF12_SUITES"    rdf12;    fi
-  if [ "$SPARQL12_PRESENT" -eq 1 ]; then emit_csv_rows "$SPARQL12_SUITES" sparql12; fi
+  for _k in "${EXTRA_KEYS[@]}"; do
+    if [ "${EXTRA_PRESENT[$_k]}" -eq 1 ]; then emit_csv_rows "${EXTRA_BLOB[$_k]}" "${EXTRA_CAT[$_k]}"; fi
+  done
   if [ "$RDFC10_PRESENT" -eq 1 ]; then
     echo "${TIMESTAMP_HUMAN},${GIT_SHA_FULL},${GIT_BRANCH},rdf,rdf-canon,${RDFC10_PASS},${RDFC10_FAIL},${RDFC10_SKIP},0"
   fi
@@ -1020,14 +1049,12 @@ emit_json_suites () {
     "$SPARQL_PASS" "$SPARQL_FAIL" "$SPARQL_SKIP" "$SPARQL_UNSUP" "$SPARQL_TOTAL"
   printf '    "rdf":      {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s},\n' \
     "$RDF_PASS" "$RDF_FAIL" "$RDF_SKIP" "$RDF_UNSUP" "$RDF_TOTAL"
-  if [ "$RDF12_PRESENT" -eq 1 ]; then
-    printf '    "rdf12":    {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s},\n' \
-      "$RDF12_PASS" "$RDF12_FAIL" "$RDF12_SKIP" "$RDF12_UNSUP" "$RDF12_TOTAL"
-  fi
-  if [ "$SPARQL12_PRESENT" -eq 1 ]; then
-    printf '    "sparql12": {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s},\n' \
-      "$SPARQL12_PASS" "$SPARQL12_FAIL" "$SPARQL12_SKIP" "$SPARQL12_UNSUP" "$SPARQL12_TOTAL"
-  fi
+  for _k in "${EXTRA_KEYS[@]}"; do
+    if [ "${EXTRA_PRESENT[$_k]}" -eq 1 ]; then
+      printf '    "%s": {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s},\n' \
+        "$_k" "${EXTRA_PASS[$_k]}" "${EXTRA_FAIL[$_k]}" "${EXTRA_SKIP[$_k]}" "${EXTRA_UNSUP[$_k]}" "${EXTRA_TOTAL[$_k]}"
+    fi
+  done
   printf '    "combined": {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s,"pass_pct_of_runnable":%s},\n' \
     "$COMBINED_PASS" "$COMBINED_FAIL" "$COMBINED_SKIP" "$COMBINED_UNSUP" "$COMBINED_TOTAL" "$COMBINED_PCT"
   printf '    "owl_rl_positive_entailment": {"pass":%s,"fail":%s,"total":%s,"catalog":"third_party/testing/owl/profile-RL.rdf"},\n' \
@@ -1137,8 +1164,13 @@ emit_json_suites () {
   # their totals) plus the 2026-07-09 vendor/document + local/JS suites, so
   # the machine-readable `suites` map lists every shipped engine, not just
   # the two W3C core families.
-  emit_json_suite_obj "rdf12"    RDF12
-  emit_json_suite_obj "sparql12" SPARQL12
+  # Registry-driven suite objects (leading comma, like emit_json_suite_obj).
+  for _k in "${EXTRA_KEYS[@]}"; do
+    if [ "${EXTRA_PRESENT[$_k]}" -eq 1 ]; then
+      printf ',\n    "%s": {"name":"%s","pass":%s,"fail":%s,"skip":%s,"total":%s}' \
+        "$_k" "$_k" "${EXTRA_PASS[$_k]}" "${EXTRA_FAIL[$_k]}" "${EXTRA_SKIP[$_k]}" "${EXTRA_TOTAL[$_k]}"
+    fi
+  done
   emit_json_suite_obj "owl_rl_positive_entailment" OWL
   emit_json_suite_obj "owl_syntax_dl_species" OWL_SYNDL
   emit_json_suite_obj "owl2_profile_ql" OWL_QL_AGG
@@ -1971,21 +2003,20 @@ SPARQL_FAMILY_HTML=$(family_section "sparql11" "SPARQL 1.1" "$SPARQL_STATUS" "$S
 # --- RDF 1.2 / SPARQL 1.2 (W3C Working Drafts, epic #305) ----------------
 # Emerging next-revision suites: kept in their own Working-Drafts group
 # (below), NOT under Recommendations, since 1.2 is not yet a Rec.
-V12_FAMILY_HTML=""
-if [ "$RDF12_PRESENT" -eq 1 ] || [ "$SPARQL12_PRESENT" -eq 1 ]; then
-  V12_ROWS_HTML=$(
-    emit_rec_subsection "RDF 1.2 (N-Triples / N-Quads / Turtle / TriG)" "https://www.w3.org/TR/rdf12-n-triples/" "$RDF12_SUITES"
-    emit_rec_subsection "SPARQL 1.2 Query"                              "https://www.w3.org/TR/sparql12-query/"   "$SPARQL12_SUITES"
-  )
-  V12_PASS=$((RDF12_PASS + SPARQL12_PASS))
-  V12_FAIL=$((RDF12_FAIL + SPARQL12_FAIL))
-  V12_SKIP=$((RDF12_SKIP + SPARQL12_SKIP))
-  V12_TOTAL=$((RDF12_TOTAL + SPARQL12_TOTAL))
-  V12_STATUS=$(status_for "$V12_FAIL" 1)
-  V12_HEADLINE="RDF 1.2 ${RDF12_PASS} pass, ${RDF12_FAIL} fail (of ${RDF12_TOTAL}); SPARQL 1.2 ${SPARQL12_PASS} pass, ${SPARQL12_FAIL} fail (of ${SPARQL12_TOTAL}). Triple terms &lt;&lt;( s p o )&gt;&gt;, reifiers, annotations, VERSION, directional literals — parsed and queried live in the browser demo. Still open: RDF/XML 1.2, RDF 1.2 canonicalization (86) and entailment (74), and a handful of SPARQL 1.2 eval cases."
-  V12_FAMILY_HTML=$(family_section "rdf-sparql-12" "RDF 1.2 / SPARQL 1.2" "$V12_STATUS" "$V12_HEADLINE" "$V12_ROWS_HTML" "" \
-    "$V12_PASS" "$V12_FAIL" "$V12_SKIP" "$V12_TOTAL")
-fi
+# Registry-driven dashboard: one family node per present extra suite,
+# collected into WD_BODY for the "W3C Working Drafts" group below. A new
+# EXTRA_SUITES_REGISTRY entry appears here automatically.
+WD_BODY=""
+for _k in "${EXTRA_KEYS[@]}"; do
+  if [ "${EXTRA_PRESENT[$_k]}" -eq 1 ]; then
+    _rows=$(emit_rec_subsection "${EXTRA_TITLE[$_k]}" "${EXTRA_URL[$_k]}" "${EXTRA_BLOB[$_k]}")
+    _st=$(status_for "${EXTRA_FAIL[$_k]}" 1)
+    _hl="${EXTRA_PASS[$_k]} pass, ${EXTRA_FAIL[$_k]} fail, ${EXTRA_SKIP[$_k]} skip (of ${EXTRA_TOTAL[$_k]}) — W3C Working Draft, run via w3c_runner ${EXTRA_ARGS[$_k]}."
+    _fam=$(family_section "extra-${_k}" "${EXTRA_TITLE[$_k]}" "$_st" "$_hl" "$_rows" "" \
+      "${EXTRA_PASS[$_k]}" "${EXTRA_FAIL[$_k]}" "${EXTRA_SKIP[$_k]}" "${EXTRA_TOTAL[$_k]}")
+    WD_BODY=$(printf '%s\n%s' "$WD_BODY" "$_fam")
+  fi
+done
 
 # --- Reasoning: RDFS / OWL 2 ---------------------------------------------
 # OWL_HTML already carries its own rich prose (scope + pass-rate context)
@@ -2520,8 +2551,8 @@ GROUP1_HTML=$(group_section "group-w3c-rec" "W3C Recommendations" "$GROUP1_BODY"
 # Its own group so it is never mistaken for a Recommendation. Empty (and
 # therefore omitted) if the 1.2 runners produced no rows this run.
 GROUP_WD_HTML=""
-if [ -n "$V12_FAMILY_HTML" ]; then
-  GROUP_WD_HTML=$(group_section "group-w3c-wd" "W3C Working Drafts (emerging)" "$V12_FAMILY_HTML")
+if [ -n "$(echo "$WD_BODY" | tr -d '[:space:]')" ]; then
+  GROUP_WD_HTML=$(group_section "group-w3c-wd" "W3C Working Drafts (emerging)" "$WD_BODY")
 fi
 
 GROUP2_BODY=$(printf '%s\n' "$SHEX_HTML" "$HDT_HTML" "$RML_HTML")
