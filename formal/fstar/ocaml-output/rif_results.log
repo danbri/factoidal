@@ -30,7 +30,7 @@ PASS corpus:RDF_Combination_Blank_Node (PositiveEntailmentTest)
 PASS corpus:RDF_Combination_Constant_Equivalence_1 (PositiveEntailmentTest)
 PASS corpus:RDF_Combination_Constant_Equivalence_2 (PositiveEntailmentTest)
 PASS corpus:RDF_Combination_Constant_Equivalence_3 (PositiveEntailmentTest)
-FAIL corpus:RDF_Combination_Constant_Equivalence_4 (PositiveEntailmentTest): expected entailed=true, got false -- KNOWN-DEFECT: malformed xsd:string datatype IRI in the official W3C corpus itself (both the Core_v1.22.zip files and the archived authoritative wiki source at https://www.w3.org/2005/rules/wiki/RDF_Combination_Constant_Equivalence_4 carry the scheme-less prefix, checked 2026-07-10; see bin/rif-runner/README.md Score section) -- not an engine gap
+OVERRIDE corpus:RDF_Combination_Constant_Equivalence_4 (PositiveEntailmentTest): local-override (tests/local-overrides/rif/RDF_Combination_Constant_Equivalence_4.override) -- observed expected entailed=true, got false
 PASS corpus:RDF_Combination_Constant_Equivalence_Graph_Entailment (PositiveEntailmentTest)
 PASS corpus:RDF_Combination_SubClass_2 (PositiveEntailmentTest)
 PASS corpus:Local_Constant (NegativeEntailmentTest)
@@ -51,9 +51,9 @@ PASS corpus:RDF_Combination_Invalid_Constant_1 (ImportRejectionTest)
 PASS corpus:RDF_Combination_Invalid_Constant_2 (ImportRejectionTest)
 PASS corpus:RDF_Combination_Invalid_Profiles_1 (ImportRejectionTest)
 ========================================
-rif-core-suite (vendored W3C RIF Core dialect corpus): 42 pass, 1 fail, 3 skip (out of 46)
+rif-core-suite (vendored W3C RIF Core dialect corpus): 42 pass, 0 fail, 1 local-override, 3 skip (out of 46)
 Skip buckets (by construct/reason):
     2  List (RIF list terms)
     1  External (unimplemented builtin: is-literal-dateTimeStamp)
 ========================================
-rif TOTAL: 46 pass, 1 fail, 3 skip (out of 50)
+rif TOTAL: 46 pass, 0 fail, 1 local-override, 3 skip (out of 50)

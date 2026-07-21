@@ -35,7 +35,7 @@
   [35/246] #t0035 ok
   [36/246] #t0036 ok
   [37/246] #t0037 ok
-  [38/246] #t0038 skip
+  [38/246] #t0038 local-override
   [39/246] #ta038 ok
   [40/246] #t0039 ok
   [41/246] #t0040 ok
@@ -245,7 +245,7 @@
   [245/246] #ttn02 ok
   [246/246] #ttn03 ok
 === JSON-LD 1.1 Compaction Test Runner ===
-Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/compact-manifest.jsonld
+Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/compact-manifest.jsonld
 
 Totals: 246 test entries
 
@@ -286,6 +286,7 @@ Totals: 246 test entries
   PASS: Compact @reverse node references using strings
   PASS: Compact reverse properties using index containers
   PASS: Compact keys in @reverse using @vocab
+  PASS (local-override): Index map round-tripping (#t0038) — carefully-disputed fixture (see tests/local-overrides/): output differs from the vendored expectation by design
   PASS: Index map round-tripping
   PASS: @graph is array
   PASS: @list is array
@@ -497,9 +498,9 @@ Totals: 246 test entries
 
 ========================================
 Suite Results:
-  compact-Positive     pass:228 fail:0 skip:1
-  compact-Negative     pass:17 fail:0 skip:0
+  compact-Positive     pass:228 local-override:1 fail:0 skip:0
+  compact-Negative     pass:17 local-override:0 fail:0 skip:0
 ========================================
-TOTAL: 245 pass, 0 fail, 1 skip (out of 246)
+TOTAL: 245 pass, 0 fail, 1 local-override, 0 skip (out of 246)
 ========================================
-jsonld-compact: 245 pass, 0 fail, 1 skip (out of 246)
+jsonld-compact: 245 pass, 0 fail, 1 local-override, 0 skip (out of 246)

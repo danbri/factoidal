@@ -1,12 +1,12 @@
   additionalItems.json           19 pass,   0 fail,   0 skip
-  additionalProperties.json       8 pass,   0 fail,   8 skip
+  additionalProperties.json      16 pass,   0 fail,   0 skip
   allOf.json                     30 pass,   0 fail,   0 skip
   anyOf.json                     18 pass,   0 fail,   0 skip
   boolean_schema.json            18 pass,   0 fail,   0 skip
   const.json                     54 pass,   0 fail,   0 skip
   contains.json                  21 pass,   0 fail,   0 skip
   default.json                    7 pass,   0 fail,   0 skip
-  definitions.json                0 pass,   0 fail,   2 skip
+  definitions.json                2 pass,   0 fail,   0 skip
   dependencies.json              36 pass,   0 fail,   0 skip
   enum.json                      45 pass,   0 fail,   0 skip
   exclusiveMaximum.json           4 pass,   0 fail,   0 skip
@@ -25,11 +25,11 @@
   multipleOf.json                11 pass,   0 fail,   0 skip
   not.json                       38 pass,   0 fail,   0 skip
   oneOf.json                     27 pass,   0 fail,   0 skip
-  properties.json                20 pass,   0 fail,   8 skip
-  propertyNames.json             20 pass,   0 fail,   2 skip
-  ref.json                       40 pass,   0 fail,  38 skip
+  properties.json                28 pass,   0 fail,   0 skip
+  propertyNames.json             22 pass,   0 fail,   0 skip
+  ref.json                       78 pass,   0 fail,   0 skip
   required.json                  18 pass,   0 fail,   0 skip
   type.json                      80 pass,   0 fail,   0 skip
   uniqueItems.json               69 pass,   0 fail,   0 skip
 
-^JSON Schema (draft7): 712 pass, 0 fail, 58 skip (of 770)
+^JSON Schema (draft7): 770 pass, 0 fail, 0 skip (of 770)

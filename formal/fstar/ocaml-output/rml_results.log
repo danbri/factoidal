@@ -1,6 +1,6 @@
 === RML Test Runner ===
 
-=== rml-core: /home/user/factoidal/third_party/testing/rml-modules/rml-core/test-cases (76 test rows) ===
+=== rml-core: /home/runner/work/factoidal/factoidal/third_party/testing/rml-modules/rml-core/test-cases (76 test rows) ===
 PASS RMLTC0000-JSON
 PASS RMLTC0001a-JSON
 PASS RMLTC0001b-JSON

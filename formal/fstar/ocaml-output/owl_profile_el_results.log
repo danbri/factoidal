@@ -115,7 +115,7 @@
   [inc-running] string-integer-clash
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/profile-EL.rdf
-  parsed 1809 triples in 0.23s
+  parsed 1809 triples in 0.04s
 Totals: 87 test cases
   PositiveEntailmentTest:    29
   NegativeEntailmentTest:    6
@@ -154,7 +154,7 @@ Running 29 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  chain2trans1
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 21 pass, 8 fail (out of 29 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.31s
+Profile-RL PositiveEntailmentTests: 21 pass, 8 fail (out of 29 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.27s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -165,7 +165,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   PASS  WebOnt-equivalentClass-008
   PASS  WebOnt-miscellaneous-302
 
-Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.08s
+Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.06s
 
 Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  FS2RDF-different-individuals-2-annotation-ar
@@ -241,7 +241,7 @@ Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-invalid-rightside-somevaluesfrom
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 72 pass, 0 fail (out of 72), 0 skipped (functional-syntax-only) in 0.96s
+Profile-RL ConsistencyTests: 72 pass, 0 fail (out of 72), 0 skipped (functional-syntax-only) in 0.80s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -256,7 +256,8 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  WebOnt-Restriction-001
   FAIL/unexpected-consistency  WebOnt-Restriction-002
   PASS  WebOnt-Thing-003
-  FAIL/unexpected-consistency  WebOnt-Thing-005
+  SKIP/semantics-rdf-based-only  WebOnt-Thing-005
+      reason: catalog test:semantics = RDF-BASED only (DIRECT not asserted; catalog also ships an owl:NegativePropertyAssertion explicitly denying test:semantics DIRECT for this TestCase) — Direct Semantics, which is what this runner's RL closure and DL tableau implement, does not apply; RDF-Based (OWL Full) domain-size/comprehension reasoning over owl:Thing's extension is out of scope (see docs/claude-rules/w3c-completeness-ledger.md, #299)
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 9 pass, 5 fail (out of 14), 0 skipped (functional-syntax-only) in 0.18s
+Profile-RL InconsistencyTests: 9 pass, 4 fail (out of 13), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 0.13s

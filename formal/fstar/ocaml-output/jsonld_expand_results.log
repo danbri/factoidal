@@ -68,7 +68,7 @@
   [68/385] #t0068 ok
   [69/385] #t0069 ok
   [70/385] #t0070 ok
-  [71/385] #t0071 skip
+  [71/385] #t0071 ok
   [72/385] #t0072 ok
   [73/385] #t0073 ok
   [74/385] #t0074 ok
@@ -384,7 +384,7 @@
   [384/385] #ttn01 ok
   [385/385] #ttn02 ok
 === JSON-LD 1.1 Expansion Test Runner ===
-Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/expand-manifest.jsonld
+Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/expand-manifest.jsonld
 
 Totals: 385 test entries
 
@@ -458,6 +458,7 @@ Totals: 385 test entries
   PASS: _:suffix values are not a compact IRI
   PASS: Compact IRI as term with type mapping
   PASS: Compact IRI as term defined using equivalent compact IRI
+  PASS: Redefine terms looking like compact IRIs
   PASS: Redefine term using @vocab, not itself
   PASS: @context not first property
   PASS: @id not first property
@@ -775,9 +776,9 @@ Totals: 385 test entries
 
 ========================================
 Suite Results:
-  expand-Positive      pass:275 fail:0 skip:1
+  expand-Positive      pass:276 fail:0 skip:0
   expand-Negative      pass:109 fail:0 skip:0
 ========================================
-TOTAL: 384 pass, 0 fail, 1 skip (out of 385)
+TOTAL: 385 pass, 0 fail, 0 skip (out of 385)
 ========================================
-jsonld-expand: 384 pass, 0 fail, 1 skip (out of 385)
+jsonld-expand: 385 pass, 0 fail, 0 skip (out of 385)

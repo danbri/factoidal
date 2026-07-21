@@ -174,7 +174,7 @@
   [174/467] #te068 ok
   [175/467] #te069 ok
   [176/467] #te070 ok
-  [177/467] #te071 skip
+  [177/467] #te071 ok
   [178/467] #te072 ok
   [179/467] #te073 ok
   [180/467] #te074 ok
@@ -466,7 +466,7 @@
   [466/467] #twf05 ok
   [467/467] #twf07 ok
 === JSON-LD 1.1 toRdf Test Runner ===
-Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/toRdf-manifest.jsonld
+Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/toRdf-manifest.jsonld
 
 Totals: 467 test entries
 
@@ -646,6 +646,7 @@ Totals: 467 test entries
   PASS: _::sufffix not a compact IRI
   PASS: Compact IRI as term with type mapping
   PASS: Redefine compact IRI with itself
+  PASS: Redefine terms looking like compact IRIs
   PASS: Redefine term using @vocab, not itself
   PASS: @context not first property
   PASS: @id not first property
@@ -939,10 +940,10 @@ Totals: 467 test entries
 
 ========================================
 Suite Results:
-  toRdf-Positive            pass:344 fail:0 skip:1
+  toRdf-Positive            pass:345 fail:0 skip:0
   toRdf-Negative            pass:106 fail:0 skip:0
   toRdf-PositiveSyntax      pass:16 fail:0 skip:0
 ========================================
-TOTAL: 466 pass, 0 fail, 1 skip (out of 467)
+TOTAL: 467 pass, 0 fail, 0 skip (out of 467)
 ========================================
-jsonld-toRdf: 466 pass, 0 fail, 1 skip (out of 467)
+jsonld-toRdf: 467 pass, 0 fail, 0 skip (out of 467)

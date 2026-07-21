@@ -128,7 +128,7 @@
   [inc-running] string-integer-clash
 Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/type-inconsistency.rdf
-  parsed 3220 triples in 0.12s
+  parsed 3220 triples in 0.10s
 Totals: 128 test cases
   PositiveEntailmentTest:    0
   NegativeEntailmentTest:    0
@@ -150,7 +150,7 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Footnote-not-about-self
   PASS  Inconsistent Byte Filler
   PASS  Inconsistent Data Complement with the Restrictions
-  FAIL/unexpected-consistency  Inconsistent Disjoint Dataproperties
+  PASS  Inconsistent Disjoint Dataproperties
   PASS  Inconsistent String Pattern with Disjoint Dataproperties
   FAIL/unexpected-consistency  Minus Infinity is not in owl:real
   PASS  New-Feature-AsymmetricProperty-001
@@ -174,7 +174,8 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-Restriction-001
   PASS  WebOnt-Restriction-002
   PASS  WebOnt-Thing-003
-  FAIL/unexpected-consistency  WebOnt-Thing-005
+  SKIP/semantics-rdf-based-only  WebOnt-Thing-005
+      reason: catalog test:semantics = RDF-BASED only (DIRECT not asserted; catalog also ships an owl:NegativePropertyAssertion explicitly denying test:semantics DIRECT for this TestCase) — Direct Semantics, which is what this runner's RL closure and DL tableau implement, does not apply; RDF-Based (OWL Full) domain-size/comprehension reasoning over owl:Thing's extension is out of scope (see docs/claude-rules/w3c-completeness-ledger.md, #299)
   PASS  WebOnt-description-logic-001
   PASS  WebOnt-description-logic-002
   PASS  WebOnt-description-logic-003
@@ -271,4 +272,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 123 pass, 5 fail (out of 128), 0 skipped (functional-syntax-only) in 32.45s
+Profile-RL InconsistencyTests: 124 pass, 3 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 26.74s

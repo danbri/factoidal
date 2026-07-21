@@ -568,7 +568,7 @@
   [cons-running] somevaluesfrom2bnode
 Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/type-consistency.rdf
-  parsed 8767 triples in 0.61s
+  parsed 8767 triples in 0.36s
 Totals: 354 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -786,7 +786,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 136 pass, 68 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 126.93s
+Profile-RL PositiveEntailmentTests: 136 pass, 68 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 118.37s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -814,7 +814,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 6.13s
+Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 5.51s
 
 Running 354 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Consistent Datatype restrictions with Different Types
@@ -1174,4 +1174,4 @@ Running 354 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 352 pass, 0 fail (out of 352), 2 skipped (functional-syntax-only) in 284.14s
+Profile-RL ConsistencyTests: 352 pass, 0 fail (out of 352), 2 skipped (functional-syntax-only) in 270.09s

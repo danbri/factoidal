@@ -695,7 +695,7 @@
   [inc-running] string-integer-clash
 Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/semantics-direct.rdf
-  parsed 12070 triples in 0.55s
+  parsed 12070 triples in 0.48s
 Totals: 488 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -913,7 +913,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 136 pass, 68 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 127.58s
+Profile-RL PositiveEntailmentTests: 136 pass, 68 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 118.15s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -941,7 +941,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 6.24s
+Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 5.44s
 
 Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Consistent Datatype restrictions with Different Types
@@ -1300,7 +1300,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 351 pass, 0 fail (out of 351), 2 skipped (functional-syntax-only) in 282.44s
+Profile-RL ConsistencyTests: 351 pass, 0 fail (out of 351), 2 skipped (functional-syntax-only) in 270.23s
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Contradicting datatype Restrictions
@@ -1311,7 +1311,7 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Footnote-not-about-self
   PASS  Inconsistent Byte Filler
   PASS  Inconsistent Data Complement with the Restrictions
-  FAIL/unexpected-consistency  Inconsistent Disjoint Dataproperties
+  PASS  Inconsistent Disjoint Dataproperties
   PASS  Inconsistent String Pattern with Disjoint Dataproperties
   FAIL/unexpected-consistency  Minus Infinity is not in owl:real
   PASS  New-Feature-AsymmetricProperty-001
@@ -1335,7 +1335,8 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-Restriction-001
   PASS  WebOnt-Restriction-002
   PASS  WebOnt-Thing-003
-  FAIL/unexpected-consistency  WebOnt-Thing-005
+  SKIP/semantics-rdf-based-only  WebOnt-Thing-005
+      reason: catalog test:semantics = RDF-BASED only (DIRECT not asserted; catalog also ships an owl:NegativePropertyAssertion explicitly denying test:semantics DIRECT for this TestCase) — Direct Semantics, which is what this runner's RL closure and DL tableau implement, does not apply; RDF-Based (OWL Full) domain-size/comprehension reasoning over owl:Thing's extension is out of scope (see docs/claude-rules/w3c-completeness-ledger.md, #299)
   PASS  WebOnt-description-logic-001
   PASS  WebOnt-description-logic-002
   PASS  WebOnt-description-logic-003
@@ -1432,4 +1433,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 123 pass, 5 fail (out of 128), 0 skipped (functional-syntax-only) in 31.31s
+Profile-RL InconsistencyTests: 124 pass, 3 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 26.85s

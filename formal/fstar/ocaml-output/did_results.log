@@ -1,5 +1,5 @@
 === did:key resolution vector runner ===
-Vector dir: /home/user/factoidal/tests/did
+Vector dir: /home/runner/work/factoidal/factoidal/tests/did
 
   PASS: spec-canonical-z6MkhaXg
   PASS: spec-test-vectors-z6MkiTBz

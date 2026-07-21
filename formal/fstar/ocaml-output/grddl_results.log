@@ -1,20 +1,23 @@
 === GRDDL Stage 2 Runner (local docroot, no live network) ===
-suite dir: /home/user/factoidal/third_party/testing/grddl
-manifest:  /home/user/factoidal/third_party/testing/grddl/grddl-tests-normative.rdf
+suite dir: /home/runner/work/factoidal/factoidal/third_party/testing/grddl
+manifest:  /home/runner/work/factoidal/factoidal/third_party/testing/grddl/grddl-tests-normative.rdf
 
 manifest triples: 528
 test entries: 68
 
--- PASS (15) --
+-- PASS (18) --
   base-param
+  card5n
   grddlonrdf
   grddlonrdf-xmlmediatype
+  hcard1
   htmlbase3
   inline
   inline-rdf1
   inline-rdf2
   inline-rdf3
   multipleRepresentations
+  projectsSpreadsheet
   rdfXMLDoc
   xhtmlWithGrddlProfile
   xhtmlWithGrddlTransformationInBody
@@ -22,8 +25,7 @@ test entries: 68
   xmlWithGrddlAttributeAndNonXMLNamespaceDocument
   xmlbase3
 
--- FAIL (53) --
-  card5n                                   fail-graph-mismatch
+-- FAIL (50) --
   card5na                                  fail-no-transformation-discovered
   four-transforms                          fail-graph-mismatch
   glean-profile                            fail-transform-not-vendored
@@ -31,7 +33,6 @@ test entries: 68
   grddlProfileBase2                        fail-graph-mismatch
   grddlProfileBase3                        fail-transform-not-vendored
   hcard                                    fail-graph-mismatch
-  hcard1                                   fail-graph-mismatch
   hcarda                                   fail-no-transformation-discovered
   hl7-to-owl                               fail-graph-mismatch
   html-and-transformation-attr             fail-transform-not-vendored
@@ -59,8 +60,7 @@ test entries: 68
   ns-ns-pf-pf                              fail-no-transformation-discovered
   ns-pf-ns-pf-ns                           fail-no-transformation-discovered
   pf-pf-pf-ns                              fail-no-transformation-discovered
-  projectsSpreadsheet                      fail-graph-mismatch
-  rdfa1                                    fail-graph-mismatch
+  rdfa1                                    fail-exception:Parser_RDFXML.Rdfxml_error("Forbidden node element name: http://www.w3.org/1999/02/22-rdf-syntax-ns#RDF")
   spaces-in-rel                            fail-transform-not-vendored
   sq1                                      fail-no-transformation-discovered
   sq2                                      fail-no-transformation-discovered
@@ -80,10 +80,11 @@ test entries: 68
 -- SKIP (0) --
 
 -- reason buckets --
-  fail-graph-mismatch                    30
+  fail-exception:Parser_RDFXML.Rdfxml_error("Forbidden node element name: http://www.w3.org/1999/02/22-rdf-syntax-ns#RDF") 1
+  fail-graph-mismatch                    26
   fail-known-gap-xslt-feature            6
   fail-no-transformation-discovered      10
   fail-transform-not-vendored            7
 
 ========================================
-grddl: 15 pass, 53 fail, 0 skip (out of 68)
+grddl: 18 pass, 50 fail, 0 skip (out of 68)
