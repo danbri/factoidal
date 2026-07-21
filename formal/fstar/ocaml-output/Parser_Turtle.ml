@@ -993,7 +993,7 @@ let parse_at_prefix (st : turtle_state) (input : Prims.string)
 let parse_sparql_prefix (st : turtle_state) (input : Prims.string)
   (pos : Prims.nat) :
   (Prims.string * Prims.string) Parser_Combinators.parse_result=
-  match Parser_Combinators.pstring "PREFIX" input pos with
+  match Parser_Combinators.pstring_ci "PREFIX" input pos with
   | Parser_Combinators.ParseOk (uu___, pos1) ->
       (match turtle_ws input pos1 with
        | Parser_Combinators.ParseOk ((), pos2) ->
@@ -1051,7 +1051,7 @@ let parse_at_base (st : turtle_state) (input : Prims.string)
       Parser_Combinators.ParseFail (msg, fpos)
 let parse_sparql_base (st : turtle_state) (input : Prims.string)
   (pos : Prims.nat) : Prims.string Parser_Combinators.parse_result=
-  match Parser_Combinators.pstring "BASE" input pos with
+  match Parser_Combinators.pstring_ci "BASE" input pos with
   | Parser_Combinators.ParseOk (uu___, pos1) ->
       (match turtle_ws input pos1 with
        | Parser_Combinators.ParseOk ((), pos2) ->

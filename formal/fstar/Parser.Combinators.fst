@@ -81,6 +81,33 @@ let pstring (s:string) : parser string =
       else ParseFail (String.concat "" ["expected \""; s; "\""]) pos
     else ParseFail (String.concat "" ["expected \""; s; "\""]) pos
 
+// ASCII case fold for a single byte (A-Z -> a-z); leaves every other
+// byte (incl. UTF-8 continuation bytes) untouched.
+let ascii_lower_byte (b : nat) : nat = if b >= 0x41 && b <= 0x5A then b + 0x20 else b
+
+// Case-insensitive byte match of ASCII keyword `kw` at input[pos..].
+// `i <= klen` refinement keeps `klen - i` a clean nat for the measure.
+let rec match_ci_at (kw : string) (klen : nat) (input : string) (pos : nat)
+                    (i : nat { i <= klen })
+  : Tot bool (decreases (klen - i)) =
+  if i >= klen then true
+  else if pos + i >= fs_byte_length input then false
+  else if ascii_lower_byte (int_of_char (fs_byte_index kw i))
+        = ascii_lower_byte (int_of_char (fs_byte_index input (pos + i)))
+       then match_ci_at kw klen input pos (i + 1)
+       else false
+
+// Case-insensitive `pstring`. Used for the SPARQL-style `PREFIX`/`BASE`
+// Turtle directives, whose keywords are case-insensitive per the grammar
+// (`@prefix`/`@base` stay lowercase-only and use `pstring`). Keywords are
+// pure ASCII, so byte-level folding is codepoint-correct.
+let pstring_ci (s : string) : parser string =
+  fun input pos ->
+    let slen = fs_byte_length s in
+    if pos + slen <= fs_byte_length input && match_ci_at s slen input pos 0
+    then ParseOk s (pos + slen)
+    else ParseFail (String.concat "" ["expected (case-insensitive) \""; s; "\""]) pos
+
 
 (* ================================================================ *)
 (* Combinators                                                       *)

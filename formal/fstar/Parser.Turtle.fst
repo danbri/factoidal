@@ -786,7 +786,7 @@ let parse_at_prefix (st: turtle_state) (input: string) (pos: nat) : parse_result
 
 // Parse SPARQL-style PREFIX directive: PREFIX prefix: <iri> (no dot)
 let parse_sparql_prefix (st: turtle_state) (input: string) (pos: nat) : parse_result (string & string) =
-  match pstring "PREFIX" input pos with
+  match pstring_ci "PREFIX" input pos with
   | ParseOk _ pos1 ->
     begin match turtle_ws input pos1 with
     | ParseOk () pos2 ->
@@ -836,7 +836,7 @@ let parse_at_base (st: turtle_state) (input: string) (pos: nat) : parse_result s
 
 // Parse SPARQL-style BASE directive: BASE <iri> (no dot)
 let parse_sparql_base (st: turtle_state) (input: string) (pos: nat) : parse_result string =
-  match pstring "BASE" input pos with
+  match pstring_ci "BASE" input pos with
   | ParseOk _ pos1 ->
     begin match turtle_ws input pos1 with
     | ParseOk () pos2 ->
@@ -1438,6 +1438,11 @@ let parse_tt_predicate (st: turtle_state) (input: string) (pos: nat) : parse_res
       | ParseFail msg fpos -> ParseFail msg fpos
       end
 
+// z3rlimit bump: the trivial `fuel`-decreases proof of this mutual block
+// became z3-brittle after `pstring_ci`/`match_ci_at` entered scope (an
+// unrelated recursive combinator perturbing the solver's search). The VCs
+// still discharge — no --lax/--admit — they just need more budget.
+#push-options "--z3rlimit 40"
 let rec parse_tt_object (st: turtle_state) (input: string) (pos: nat) (fuel: nat)
   : Tot (parse_result rdf_term) (decreases fuel) =
   if fuel = 0 then ParseFail "triple-term nesting too deep" pos
@@ -1550,6 +1555,7 @@ and parse_turtle_triple_term (st: turtle_state) (input: string) (pos: nat) (fuel
 // Convert a reifier term (always an IRI or blank node) to a subject.
 // The wildcard arm is unreachable: parse_reifier / parse_reified_triple
 // only ever produce T_IRI or T_BNode reifiers.
+#pop-options
 let subject_of_reifier (t: rdf_term) : subject =
   match t with
   | T_IRI i -> S_IRI i

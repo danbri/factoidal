@@ -3149,6 +3149,39 @@ let run_rdf12_test assumed_base tc =
             else Fail "Canonical N-Quads output mismatch"
           with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e)))))
 
+  (* ---- RDF 1.2 Semantics: simple entailment ----
+     Action graph (mf:action) entails result graph (mf:result) under the
+     "simple" regime, via the F*-extracted RDF.Entailment.Simple.simple_entails
+     (blank-node homomorphism recursing into triple terms). Graphs are parsed
+     with Turtle 1.2 so triple terms / reifier+annotation shorthand survive.
+     Phase A covers the "simple" regime only; RDF / RDFS / RDFS-Plus regime
+     tests (datatype value closure, rdfs:Proposition axioms) are honestly
+     skipped until those layers land. *)
+  | "PositiveEntailmentTest" | "NegativeEntailmentTest" ->
+    let regime = tc.test_type_detail in
+    if regime <> "simple" then
+      Skip (Printf.sprintf "entailment regime '%s' not yet supported (simple only)" regime)
+    else
+      (match read_file tc.query_file, tc.result_file with
+       | None, _ -> Skip "Action file missing"
+       | _, None -> Skip "No result file (mf:result false — inconsistency test)"
+       | Some action_content, Some rf ->
+         (match read_file rf with
+          | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+          | Some result_content ->
+            (try
+              let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+              let action_g = parse_turtle_12 action_content base in
+              let result_g = parse_turtle_12 result_content base in
+              let entails = RDF_Entailment_Simple.simple_entails action_g result_g in
+              if tc.test_type = "PositiveEntailmentTest" then
+                (if entails then Pass
+                 else Fail (Printf.sprintf "Should entail but doesn't (action %d, result %d triples)"
+                              (List.length action_g) (List.length result_g)))
+              else
+                (if not entails then Pass else Fail "Should NOT entail but does")
+            with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e)))))
+
   (* ---- RDF/XML 1.2 eval ----
      Same shape as run_rdf_test's TestXMLEval arm, but the expected .nt oracle
      is parsed with the RDF 1.2 N-Triples parser (parse_ntriples_expected_12)
@@ -3281,10 +3314,11 @@ let () =
   let run_rdf_mode = List.mem "--rdf" args in
   let run_rdf12_mode = List.mem "--rdf12" args in
   let run_rdf12c14n_mode = List.mem "--rdf12c14n" args in
+  let run_rdf12entail_mode = List.mem "--rdf12entail" args in
   let run_sparql12_mode = List.mem "--sparql12" args in
   let run_all_mode = List.mem "--all" args in
   let suite_args = List.filter (fun s ->
-    s <> "--rdf" && s <> "--rdf12" && s <> "--rdf12c14n" && s <> "--sparql12" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
+    s <> "--rdf" && s <> "--rdf12" && s <> "--rdf12c14n" && s <> "--rdf12entail" && s <> "--sparql12" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
 
   let any_fail = ref false in
 
@@ -3306,6 +3340,15 @@ let () =
       else suite_args in
     let (_, f, _, _) = run_and_tally run_rdf12_suite c14n_suites
       "W3C RDF 1.2 Canonicalization Test Runner" rdf12_tests_base in
+    if f > 0 then any_fail := true
+  end else if run_rdf12entail_mode then begin
+    (* RDF 1.2 Semantics: simple entailment (epic #305 P9, phase A). The
+       rdf-semantics leaf manifest; handled by run_rdf12_test's
+       Positive/NegativeEntailmentTest cases via the F* simple_entails.
+       Non-"simple" regimes are skipped (reported honestly), not failed. *)
+    let entail_suites = if suite_args = [] then ["rdf-semantics"] else suite_args in
+    let (_, f, _, _) = run_and_tally run_rdf12_suite entail_suites
+      "W3C RDF 1.2 Semantics (simple entailment) Test Runner" rdf12_tests_base in
     if f > 0 then any_fail := true
   end else if run_rdf12_mode then begin
     (* RDF 1.2 suites (epic #305 phase 1). Default: the N-Triples syntax

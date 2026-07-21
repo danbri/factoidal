@@ -381,6 +381,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Graph.Executable.fst Parquet.Footer.fst
     RDF.IRI.fst
     RDF.NQuads.Serialize.fst
+    RDF.Entailment.Simple.fst
     RDF.List.Helpers.fst
     RDF.Bytes.fst
     RDF.Store.Loader.fst
@@ -804,7 +805,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   COMMON_MODULES="Util_Log.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml \
-    RDF_NQuads_Serialize.ml \
+    RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml \
     Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml \
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml \
     Parser_OWLFunctional.ml \
@@ -1836,7 +1837,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml
-    RDF_NQuads_Serialize.ml
+    RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml
     Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml
     Parser_OWLFunctional.ml

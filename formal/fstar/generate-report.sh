@@ -46,6 +46,7 @@ RDF_LOG="$OCAML_DIR/rdf_results.log"
 EXTRA_SUITES_REGISTRY=(
   "rdf12|rdf12|--rdf12|RDF 1.2 (N-Triples / N-Quads / Turtle / TriG)|https://www.w3.org/TR/rdf12-n-triples/"
   "rdf12c14n|rdf12c14n|--rdf12c14n|RDF 1.2 Canonicalization (N-Triples / N-Quads)|https://www.w3.org/TR/rdf12-n-triples/#canonical-ntriples"
+  "rdf12entail|rdf12entail|--rdf12entail|RDF 1.2 Semantics (simple entailment)|https://www.w3.org/TR/rdf12-semantics/"
   "sparql12|sparql12|--sparql12|SPARQL 1.2 Query|https://www.w3.org/TR/sparql12-query/"
 )
 declare -A EXTRA_LOG EXTRA_CAT EXTRA_ARGS EXTRA_TITLE EXTRA_URL

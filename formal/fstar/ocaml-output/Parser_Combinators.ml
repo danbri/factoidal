@@ -67,6 +67,38 @@ let pstring (s : Prims.string) : Prims.string parser=
        else
          ParseFail ((FStar_String.concat "" ["expected \""; s; "\""]), pos))
     else ParseFail ((FStar_String.concat "" ["expected \""; s; "\""]), pos)
+let ascii_lower_byte (b : Prims.nat) : Prims.nat=
+  if (b >= (Prims.of_int (0x41))) && (b <= (Prims.of_int (0x5A)))
+  then b + (Prims.of_int (0x20))
+  else b
+let rec match_ci_at (kw : Prims.string) (klen : Prims.nat)
+  (input : Prims.string) (pos : Prims.nat) (i : Prims.nat) : Prims.bool=
+  if i >= klen
+  then true
+  else
+    if (pos + i) >= (Parser_FastString.fs_byte_length input)
+    then false
+    else
+      if
+        (ascii_lower_byte
+           (FStar_Char.int_of_char (Parser_FastString.fs_byte_index kw i)))
+          =
+          (ascii_lower_byte
+             (FStar_Char.int_of_char
+                (Parser_FastString.fs_byte_index input (pos + i))))
+      then match_ci_at kw klen input pos (i + Prims.int_one)
+      else false
+let pstring_ci (s : Prims.string) : Prims.string parser=
+  fun input pos ->
+    let slen = Parser_FastString.fs_byte_length s in
+    if
+      ((pos + slen) <= (Parser_FastString.fs_byte_length input)) &&
+        (match_ci_at s slen input pos Prims.int_zero)
+    then ParseOk (s, (pos + slen))
+    else
+      ParseFail
+        ((FStar_String.concat "" ["expected (case-insensitive) \""; s; "\""]),
+          pos)
 let pbind (p : 'a parser) (f : 'a -> 'b parser) : 'b parser=
   fun input pos ->
     match p input pos with
