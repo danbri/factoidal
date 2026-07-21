@@ -8223,11 +8223,11 @@ let rec instantiate_ggp_quads
       RDF_List_Helpers.append_tr (instantiate_ggp_quads outer a mu)
         (instantiate_ggp_quads outer b mu)
   | GP_Graph (gt, inner) ->
-      (match gt with
-       | PT_IRI g_iri ->
+      (match bound_predicate_of_pattern gt mu with
+       | FStar_Pervasives_Native.Some g_iri ->
            instantiate_ggp_quads (FStar_Pervasives_Native.Some g_iri) inner
              mu
-       | uu___ -> instantiate_ggp_quads outer inner mu)
+       | FStar_Pervasives_Native.None -> instantiate_ggp_quads outer inner mu)
   | uu___ -> []
 let rec instantiate_ggp_quads_freshen (op_salt : Prims.string)
   (sol_ix : Prims.nat)
@@ -8245,11 +8245,12 @@ let rec instantiate_ggp_quads_freshen (op_salt : Prims.string)
         (instantiate_ggp_quads_freshen op_salt sol_ix outer a mu)
         (instantiate_ggp_quads_freshen op_salt sol_ix outer b mu)
   | GP_Graph (gt, inner) ->
-      (match gt with
-       | PT_IRI g_iri ->
+      (match bound_predicate_of_pattern gt mu with
+       | FStar_Pervasives_Native.Some g_iri ->
            instantiate_ggp_quads_freshen op_salt sol_ix
              (FStar_Pervasives_Native.Some g_iri) inner mu
-       | uu___ -> instantiate_ggp_quads_freshen op_salt sol_ix outer inner mu)
+       | FStar_Pervasives_Native.None ->
+           instantiate_ggp_quads_freshen op_salt sol_ix outer inner mu)
   | uu___ -> []
 let rec instantiate_ggp_all
   (outer : RDF_Term.wf_iri FStar_Pervasives_Native.option)

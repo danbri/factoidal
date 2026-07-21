@@ -2648,6 +2648,13 @@ let rec select_items_has_var (v : SPARQL11_Algebra.var_name)
   | [] -> false
   | item::rest ->
       (streq (select_item_var item) v) || (select_items_has_var v rest)
+let rec var_list_has_dup (vs : SPARQL11_Algebra.var_name Prims.list) :
+  Prims.bool=
+  match vs with
+  | [] -> false
+  | x::rest ->
+      (FStar_List_Tot_Base.existsb (fun y -> streq x y) rest) ||
+        (var_list_has_dup rest)
 let rec parse_expr (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
   SPARQL11_Algebra.expr parse_result=
   if fuel = Prims.int_zero
@@ -2881,21 +2888,18 @@ and parse_unary_expr (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
   else
     (match parse_peek ts with
      | Tok_BANG ->
-         (match parse_primary_expr pm (fuel - Prims.int_one)
-                  (parse_advance ts)
+         (match parse_unary_expr pm (fuel - Prims.int_one) (parse_advance ts)
           with
           | ParseErr m -> ParseErr m
           | ParseOk (e, ts') -> ParseOk ((SPARQL11_Algebra.E_Not e), ts'))
      | Tok_PLUS ->
-         (match parse_primary_expr pm (fuel - Prims.int_one)
-                  (parse_advance ts)
+         (match parse_unary_expr pm (fuel - Prims.int_one) (parse_advance ts)
           with
           | ParseErr m -> ParseErr m
           | ParseOk (e, ts') ->
               ParseOk ((SPARQL11_Algebra.E_UnaryPlus e), ts'))
      | Tok_MINUS_OP ->
-         (match parse_primary_expr pm (fuel - Prims.int_one)
-                  (parse_advance ts)
+         (match parse_unary_expr pm (fuel - Prims.int_one) (parse_advance ts)
           with
           | ParseErr m -> ParseErr m
           | ParseOk (e, ts') ->
@@ -4719,16 +4723,21 @@ and parse_values_clause (pm : prefix_map) (fuel : Prims.nat)
                                   let check_row row =
                                     (FStar_List_Tot_Base.length row) =
                                       vars_len in
-                                  if
-                                    FStar_List_Tot_Base.for_all check_row
-                                      rows
+                                  if var_list_has_dup vars
                                   then
-                                    ParseOk
-                                      ((SPARQL11_Algebra.GP_Values
-                                          (vars, rows)), ts6)
-                                  else
                                     ParseErr
-                                      "VALUES row has wrong number of terms")))))
+                                      "duplicate variable in VALUES clause"
+                                  else
+                                    if
+                                      FStar_List_Tot_Base.for_all check_row
+                                        rows
+                                    then
+                                      ParseOk
+                                        ((SPARQL11_Algebra.GP_Values
+                                            (vars, rows)), ts6)
+                                    else
+                                      ParseErr
+                                        "VALUES row has wrong number of terms")))))
      | uu___1 -> ParseErr "expected variable or '(' after VALUES")
 and parse_single_var_values (pm : prefix_map) (fuel : Prims.nat)
   (acc : RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list)

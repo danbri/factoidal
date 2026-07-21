@@ -1473,6 +1473,13 @@ let rec select_items_has_var (v : var_name) (items : list select_item) : Tot boo
   | [] -> false
   | item :: rest -> streq (select_item_var item) v || select_items_has_var v rest
 
+(* True iff a variable name repeats in the list — used to reject
+   `VALUES (?a ?a) {...}` (SPARQL 1.2 negative-syntax test). *)
+let rec var_list_has_dup (vs : list var_name) : Tot bool (decreases vs) =
+  match vs with
+  | [] -> false
+  | x :: rest -> List.Tot.existsb (fun y -> streq x y) rest || var_list_has_dup rest
+
 (* ---- Mutually recursive parser block ---- *)
 
 let rec parse_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -1640,13 +1647,16 @@ and parse_unary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
   if fuel = 0 then ParseErr "recursion limit"
   else match parse_peek ts with
   | Tok_BANG ->
-    (match parse_primary_expr pm (fuel - 1) (parse_advance ts) with
+    (* Operand is a UnaryExpression, not a PrimaryExpression, so a unary
+       operator can stack (SPARQL 1.2 not-not: `!!?v`). fuel-1 keeps the
+       decreases measure; no 1.1 negative-syntax test rejects `!!`. *)
+    (match parse_unary_expr pm (fuel - 1) (parse_advance ts) with
      | ParseErr m -> ParseErr m | ParseOk e ts' -> ParseOk (E_Not e) ts')
   | Tok_PLUS ->
-    (match parse_primary_expr pm (fuel - 1) (parse_advance ts) with
+    (match parse_unary_expr pm (fuel - 1) (parse_advance ts) with
      | ParseErr m -> ParseErr m | ParseOk e ts' -> ParseOk (E_UnaryPlus e) ts')
   | Tok_MINUS_OP ->
-    (match parse_primary_expr pm (fuel - 1) (parse_advance ts) with
+    (match parse_unary_expr pm (fuel - 1) (parse_advance ts) with
      | ParseErr m -> ParseErr m | ParseOk e ts' -> ParseOk (E_UnaryMinus e) ts')
   | _ -> parse_primary_expr pm (fuel - 1) ts
 
@@ -2703,7 +2713,9 @@ and parse_values_clause (pm : prefix_map) (fuel : nat) (ts : token_stream)
                let vars_len = List.Tot.length vars in
                let check_row (row : list (option rdf_term)) : bool =
                  List.Tot.length row = vars_len in
-               if List.Tot.for_all check_row rows then
+               if var_list_has_dup vars then
+                 ParseErr "duplicate variable in VALUES clause"
+               else if List.Tot.for_all check_row rows then
                  ParseOk (GP_Values vars rows) ts6
                else
                  ParseErr "VALUES row has wrong number of terms"

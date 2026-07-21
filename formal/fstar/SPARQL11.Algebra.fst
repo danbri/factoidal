@@ -7434,9 +7434,13 @@ let rec instantiate_ggp_quads (outer : option wf_iri) (g : group_graph_pattern)
   | GP_Join a b ->
     Lh.append_tr (instantiate_ggp_quads outer a mu) (instantiate_ggp_quads outer b mu)
   | GP_Graph gt inner ->
-    (match gt with
-     | PT_IRI g_iri -> instantiate_ggp_quads (Some g_iri) inner mu
-     | _ -> instantiate_ggp_quads outer inner mu)
+    (* Resolve the GRAPH target: a fixed IRI, OR a variable bound to an
+       IRI by mu (SPARQL 1.2 update-2: DELETE { GRAPH ?g {...} } must
+       target the graphs ?g is bound to, not the default graph).
+       bound_predicate_of_pattern handles PT_IRI and PT_Var->T_IRI. *)
+    (match bound_predicate_of_pattern gt mu with
+     | Some g_iri -> instantiate_ggp_quads (Some g_iri) inner mu
+     | None -> instantiate_ggp_quads outer inner mu)
   | _ -> []
 
 // Freshening variant: only PS_BNode/PT_BNode template positions are
@@ -7456,10 +7460,11 @@ let rec instantiate_ggp_quads_freshen (op_salt : string) (sol_ix : nat)
       (instantiate_ggp_quads_freshen op_salt sol_ix outer a mu)
       (instantiate_ggp_quads_freshen op_salt sol_ix outer b mu)
   | GP_Graph gt inner ->
-    (match gt with
-     | PT_IRI g_iri ->
+    (* Same variable-GRAPH resolution as instantiate_ggp_quads above. *)
+    (match bound_predicate_of_pattern gt mu with
+     | Some g_iri ->
        instantiate_ggp_quads_freshen op_salt sol_ix (Some g_iri) inner mu
-     | _ -> instantiate_ggp_quads_freshen op_salt sol_ix outer inner mu)
+     | None -> instantiate_ggp_quads_freshen op_salt sol_ix outer inner mu)
   | _ -> []
 
 let rec instantiate_ggp_all (outer : option wf_iri) (g : group_graph_pattern)
