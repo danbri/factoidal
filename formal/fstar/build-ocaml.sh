@@ -810,9 +810,9 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_OWLFunctional.ml \
     RDF_Turtle_Serialize.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml Math_Series.ml MathML_Present.ml Math_Sigmoid.ml \
-    Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
+    Parser_SRX.ml Parser_CSVResults.ml \
     SPARQL_JSON_Escape.ml \
-    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml \
+    Parser_JSON.ml Parser_JSONResults.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml \
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
     SPARQL_HTTP_Response.ml \
@@ -1842,9 +1842,9 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_OWLFunctional.ml
     RDF_Turtle_Serialize.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml Math_Series.ml MathML_Present.ml Math_Sigmoid.ml
-    Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
+    Parser_SRX.ml Parser_CSVResults.ml
     SPARQL_JSON_Escape.ml
-    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml
+    Parser_JSON.ml Parser_JSONResults.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml
     SPARQL_Eval_TimeBudget.ml
     SPARQL_Eval_Limits.ml
     SPARQL_HTTP_Response.ml

@@ -403,3 +403,14 @@ let json_get_array (key:string) (obj:json_val) : option (list json_val) =
   match json_get_field key obj with
   | Some (JArray items) -> Some items
   | _ -> None
+
+// A JSON array field whose every element is a string, flattened to
+// [string]. Non-string elements are dropped. Used by SPARQL Results JSON
+// ingestion (head.vars) — Parser.JSONResults, migrated onto this module.
+let json_get_string_array (key:string) (obj:json_val) : option (list string) =
+  match json_get_field key obj with
+  | Some (JArray items) ->
+    Some (List.Tot.concatMap
+            (fun (v:json_val) -> match v with | JString s -> [s] | _ -> [])
+            items)
+  | _ -> None
