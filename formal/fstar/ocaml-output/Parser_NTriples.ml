@@ -1646,6 +1646,26 @@ let parse_lang_dir_12 (input : Prims.string) (pos : Prims.nat) :
                            Parser_Combinators.ParseFail
                              ("invalid base direction (expected ltr or rtl)",
                                pos))))
+let parse_datatype_ws_12 (input : Prims.string) (pos : Prims.nat) :
+  RDF_Term.wf_iri Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  if (pos + (Prims.of_int (2))) > len
+  then Parser_Combinators.ParseFail ("expected '^^'", pos)
+  else
+    (let c0 =
+       FStar_Char.int_of_char (Parser_FastString.fs_byte_index input pos) in
+     let c1 =
+       FStar_Char.int_of_char
+         (Parser_FastString.fs_byte_index input (pos + Prims.int_one)) in
+     if (c0 = (Prims.of_int (0x5E))) && (c1 = (Prims.of_int (0x5E)))
+     then
+       let ws2 =
+         match pws input (pos + (Prims.of_int (2))) with
+         | Parser_Combinators.ParseOk (uu___1, p) -> p
+         | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+             pos + (Prims.of_int (2)) in
+       parse_iri input ws2
+     else Parser_Combinators.ParseFail ("expected '^^'", pos))
 let parse_literal_12 (input : Prims.string) (pos : Prims.nat) :
   RDF_Term.wf_literal Parser_Combinators.parse_result=
   match parse_string_literal input pos with
@@ -1653,7 +1673,11 @@ let parse_literal_12 (input : Prims.string) (pos : Prims.nat) :
       Parser_Combinators.ParseFail (msg, fpos)
   | Parser_Combinators.ParseOk (lexical, pos') ->
       let len = Parser_FastString.fs_byte_length input in
-      if pos' >= len
+      let ws_pos =
+        match pws input pos' with
+        | Parser_Combinators.ParseOk (uu___, p) -> p
+        | Parser_Combinators.ParseFail (uu___, uu___1) -> pos' in
+      if ws_pos >= len
       then
         let lit =
           {
@@ -1668,10 +1692,10 @@ let parse_literal_12 (input : Prims.string) (pos : Prims.nat) :
       else
         (let next_code =
            FStar_Char.int_of_char
-             (Parser_FastString.fs_byte_index input pos') in
+             (Parser_FastString.fs_byte_index input ws_pos) in
          if next_code = (Prims.of_int (0x40))
          then
-           match parse_lang_dir_12 input pos' with
+           match parse_lang_dir_12 input ws_pos with
            | Parser_Combinators.ParseFail (msg, fpos) ->
                Parser_Combinators.ParseFail (msg, fpos)
            | Parser_Combinators.ParseOk ((langtag, dopt), pos'') ->
@@ -1693,7 +1717,7 @@ let parse_literal_12 (input : Prims.string) (pos : Prims.nat) :
          else
            if next_code = (Prims.of_int (0x5E))
            then
-             (match parse_datatype input pos' with
+             (match parse_datatype_ws_12 input ws_pos with
               | Parser_Combinators.ParseFail (msg, fpos) ->
                   Parser_Combinators.ParseFail (msg, fpos)
               | Parser_Combinators.ParseOk (dt, pos'') ->

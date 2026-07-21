@@ -1199,30 +1199,53 @@ let parse_lang_dir_12 (input:string) (pos:nat)
 // rejects an explicit `^^rdf:langString` / `^^rdf:dirLangString`
 // (langdir-bad-3 / langdir-bad-5) because those datatypes require a
 // language tag (and, for dirLangString, a direction).
+// RDF 1.2 N-Triples / N-Quads permit inline whitespace (space/tab)
+// between the closing string quote and a following `@lang` / `^^datatype`,
+// and between `^^` and the datatype IRI (W3C c14n suite extra_whitespace-03
+// `"Alice" @en`, extra_whitespace-04 `"2"  ^^  <int>`). This is a 1.2-only
+// relaxation — parse_literal (RDF 1.1) stays byte-strict. The whitespace is
+// consumed ONLY when a `@`/`^^` actually follows; a plain xsd:string literal
+// returns pos' (before the run) so trailing whitespace stays with the outer
+// triple parser (which skips it before the terminating '.').
+let parse_datatype_ws_12 (input:string) (pos:nat) : parse_result wf_iri =
+  let len = fs_byte_length input in
+  if pos + 2 > len then ParseFail "expected '^^'" pos
+  else
+    let c0 = FStar.Char.int_of_char (fs_byte_index input pos) in
+    let c1 = FStar.Char.int_of_char (fs_byte_index input (pos + 1)) in
+    if c0 = 0x5E && c1 = 0x5E then
+      let ws2 = (match pws input (pos + 2) with ParseOk _ p -> p | ParseFail _ _ -> pos + 2) in
+      parse_iri input ws2
+    else
+      ParseFail "expected '^^'" pos
+
 let parse_literal_12 (input:string) (pos:nat) : parse_result wf_literal =
   match parse_string_literal input pos with
   | ParseFail msg fpos -> ParseFail msg fpos
   | ParseOk lexical pos' ->
     let len = fs_byte_length input in
-    if pos' >= len then
+    let ws_pos = (match pws input pos' with ParseOk _ p -> p | ParseFail _ _ -> pos') in
+    if ws_pos >= len then
       let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None } in
       if literal_wf lit then ParseOk lit pos' else ParseFail "invalid literal" pos
     else
-      let next_code = FStar.Char.int_of_char (fs_byte_index input pos') in
+      let next_code = FStar.Char.int_of_char (fs_byte_index input ws_pos) in
       if next_code = 0x40 then (* '@' *)
-        (match parse_lang_dir_12 input pos' with
+        (match parse_lang_dir_12 input ws_pos with
          | ParseFail msg fpos -> ParseFail msg fpos
          | ParseOk (langtag, dopt) pos'' ->
            let dt = (match dopt with None -> rdf_lang_string | Some _ -> rdf_dir_lang_string) in
            let lit = { lexical_form = lexical; datatype = dt; lang_tag = Some langtag; direction = dopt } in
            if literal_wf lit then ParseOk lit pos'' else ParseFail "invalid literal" pos)
       else if next_code = 0x5E then (* '^^' *)
-        (match parse_datatype input pos' with
+        (match parse_datatype_ws_12 input ws_pos with
          | ParseFail msg fpos -> ParseFail msg fpos
          | ParseOk dt pos'' ->
            let lit = { lexical_form = lexical; datatype = dt; lang_tag = None; direction = None } in
            if literal_wf lit then ParseOk lit pos'' else ParseFail "invalid literal" pos)
       else
+        (* No langtag/datatype follows — plain xsd:string. Return pos'
+           (before the whitespace run) so the outer parser owns it. *)
         let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None } in
         if literal_wf lit then ParseOk lit pos' else ParseFail "invalid literal" pos
 

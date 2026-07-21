@@ -561,6 +561,8 @@ SPARQL_HTTP_QueriesIndex.cmx: \
 
 RDF.NQuads.Serialize.fst.checked: \
 	RDF.NQuads.Serialize.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
 	Parser.NTriples.fst.checked \
 	Parser.FastString.fst.checked \
 	RDF.Graph.Executable.fst.checked \

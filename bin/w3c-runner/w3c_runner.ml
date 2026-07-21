@@ -3112,6 +3112,43 @@ let run_rdf12_test assumed_base tc =
           with e ->
             Fail (Printf.sprintf "Parse error: %s" (Printexc.to_string e)))))
 
+  (* ---- RDF 1.2 Canonicalization (c14n) ----
+     Parse the input in Mode_12, re-serialize with the F*-extracted
+     canonical serializer (RDF.NQuads.Serialize.canonical_{nt,nq}_document),
+     and byte-compare to the expected `-c14n.{nt,nq}` oracle. mf:action /
+     mf:result are IRIs pointing directly at the files (no qt: blank node),
+     so tc.query_file / tc.result_file already hold their paths. *)
+  | "TestNTriplesPositiveC14N" ->
+    (match read_file tc.query_file, tc.result_file with
+     | None, _ -> Skip "Input file missing"
+     | _, None -> Skip "No expected result file"
+     | Some input, Some rf ->
+       (match read_file rf with
+        | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+        | Some expected ->
+          (try
+            match parse_ntriples_strict_12 input with
+            | None -> Fail "Input failed to parse (RDF 1.2 N-Triples)"
+            | Some ts ->
+              let actual = RDF_NQuads_Serialize.canonical_nt_document ts in
+              if actual = expected then Pass
+              else Fail "Canonical N-Triples output mismatch"
+          with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e)))))
+  | "TestNQuadsPositiveC14N" ->
+    (match read_file tc.query_file, tc.result_file with
+     | None, _ -> Skip "Input file missing"
+     | _, None -> Skip "No expected result file"
+     | Some input, Some rf ->
+       (match read_file rf with
+        | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+        | Some expected ->
+          (try
+            let ds = parse_nquads_12 input in
+            let actual = RDF_NQuads_Serialize.canonical_nq_document ds in
+            if actual = expected then Pass
+            else Fail "Canonical N-Quads output mismatch"
+          with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e)))))
+
   | _ -> run_rdf_test assumed_base tc
 
 let run_rdf12_suite suite_name =
@@ -3208,10 +3245,11 @@ let () =
     verbose_mode := true;
   let run_rdf_mode = List.mem "--rdf" args in
   let run_rdf12_mode = List.mem "--rdf12" args in
+  let run_rdf12c14n_mode = List.mem "--rdf12c14n" args in
   let run_sparql12_mode = List.mem "--sparql12" args in
   let run_all_mode = List.mem "--all" args in
   let suite_args = List.filter (fun s ->
-    s <> "--rdf" && s <> "--rdf12" && s <> "--sparql12" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
+    s <> "--rdf" && s <> "--rdf12" && s <> "--rdf12c14n" && s <> "--sparql12" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
 
   let any_fail = ref false in
 
@@ -3223,6 +3261,16 @@ let () =
     let s12_suites = if suite_args = [] then discover_sparql12_suites () else suite_args in
     let (_, f, _, _) = run_and_tally run_sparql12_suite s12_suites
       "W3C SPARQL 1.2 Test Runner" sparql12_tests_base in
+    if f > 0 then any_fail := true
+  end else if run_rdf12c14n_mode then begin
+    (* RDF 1.2 Canonicalization suites (epic #305 P5). The two c14n leaf
+       manifests (rdf12/rdf-n-{triples,quads}/c14n/manifest.ttl); handled by
+       run_rdf12_test's TestN{Triples,Quads}PositiveC14N cases. *)
+    let c14n_suites = if suite_args = [] then
+        ["rdf-n-triples/c14n"; "rdf-n-quads/c14n"]
+      else suite_args in
+    let (_, f, _, _) = run_and_tally run_rdf12_suite c14n_suites
+      "W3C RDF 1.2 Canonicalization Test Runner" rdf12_tests_base in
     if f > 0 then any_fail := true
   end else if run_rdf12_mode then begin
     (* RDF 1.2 suites (epic #305 phase 1). Default: the N-Triples syntax

@@ -236,7 +236,7 @@ SPARQL_HTTP_QueriesIndex.cmx:  	SPARQL_HTTP_QueriesIndex.ml  	SPARQL_JSON_Escape
 
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.UInt.fsti.checked:  	/root/.opam/fstar/lib/fstar/ulib/FStar.UInt.fsti  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Seq.Base.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Math.Lemmas.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.BitVector.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Mul.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
-RDF.NQuads.Serialize.fst.checked:  	RDF.NQuads.Serialize.fst  	Parser.NTriples.fst.checked  	Parser.FastString.fst.checked  	RDF.Graph.Executable.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+RDF.NQuads.Serialize.fst.checked:  	RDF.NQuads.Serialize.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	Parser.NTriples.fst.checked  	Parser.FastString.fst.checked  	RDF.Graph.Executable.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
 RDF_NQuads_Serialize.ml:  	RDF.NQuads.Serialize.fst.checked
 

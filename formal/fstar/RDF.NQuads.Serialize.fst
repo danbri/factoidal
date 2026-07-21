@@ -191,3 +191,116 @@ let nq_line_for_triple (graph_iri : string) (t : triple) : Tot string =
 let nq_line_for_triple_default_graph (t : triple) : Tot string =
   nq_subject_to_string t.s ^ " <" ^ t.p ^ "> "
   ^ nq_term_to_string t.o ^ " .\n"
+
+// ---------------------------------------------------------------
+// RDF 1.2 CANONICAL N-Triples / N-Quads serialization (#305 P5).
+//
+// Canonical form as exercised by the W3C RDF 1.2 c14n suite: single
+// space between terms (by construction), CANONICAL literal escaping,
+// language tags lowercased, triple-term spacing `<<( s p o )>>`, blank
+// nodes and statement order PRESERVED (this is canonical serialization,
+// NOT RDFC-1.0 blank-node relabelling — the parser already decoded input
+// escapes into raw codepoints in lexical_form, so this only re-escapes).
+// ---------------------------------------------------------------
+
+// Uppercase hex digit for a nibble.
+let canon_hex_upper (n : nat) : string =
+  if n = 0 then "0" else if n = 1 then "1" else if n = 2 then "2"
+  else if n = 3 then "3" else if n = 4 then "4" else if n = 5 then "5"
+  else if n = 6 then "6" else if n = 7 then "7" else if n = 8 then "8"
+  else if n = 9 then "9" else if n = 10 then "A" else if n = 11 then "B"
+  else if n = 12 then "C" else if n = 13 then "D" else if n = 14 then "E"
+  else "F"
+
+// \u00XX for a single byte (uppercase hex, canonical form).
+let canon_byte_uchar (b : nat) : string =
+  "\\u00" ^ canon_hex_upper (b / 16) ^ canon_hex_upper (b % 16)
+
+// A byte needing an escape in canonical N-Triples: every C0 control, the
+// quote, the backslash, and DEL (0x7F).
+let nq_canon_special_byte (b : nat) : bool =
+  b < 0x20 || b = 0x22 || b = 0x5C || b = 0x7F
+
+let nq_canon_escape_byte (b : nat) : string =
+  if b = 0x08 then "\\b"
+  else if b = 0x09 then "\\t"
+  else if b = 0x0A then "\\n"
+  else if b = 0x0C then "\\f"
+  else if b = 0x0D then "\\r"
+  else if b = 0x22 then "\\\""
+  else if b = 0x5C then "\\\\"
+  else canon_byte_uchar b   // 0x00-0x07, 0x0B, 0x0E-0x1F, 0x7F
+
+// Byte walk: copy runs of ordinary bytes with fs_byte_sub, splice in an
+// escape at a special byte, and detect the BMP non-characters U+FFFE /
+// U+FFFF (UTF-8 EF BF BE / EF BF BF) -> ￾ / ￿.
+let rec nq_canon_walk (s : string) (len : nat) (run_start : nat) (pos : nat) (acc : string)
+  : Tot string (decreases (len - pos)) =
+  if pos >= len then
+    (if pos > run_start then acc ^ fs_byte_sub s run_start (pos - run_start) else acc)
+  else
+    let b = fs_byte_at s pos in
+    if b = 0xEF && pos + 2 < len && fs_byte_at s (pos + 1) = 0xBF
+       && (fs_byte_at s (pos + 2) = 0xBE || fs_byte_at s (pos + 2) = 0xBF) then
+      let run = if pos > run_start then fs_byte_sub s run_start (pos - run_start) else "" in
+      let esc = if fs_byte_at s (pos + 2) = 0xBE then "\\uFFFE" else "\\uFFFF" in
+      nq_canon_walk s len (pos + 3) (pos + 3) (acc ^ run ^ esc)
+    else if nq_canon_special_byte b then
+      let run = if pos > run_start then fs_byte_sub s run_start (pos - run_start) else "" in
+      nq_canon_walk s len (pos + 1) (pos + 1) (acc ^ run ^ nq_canon_escape_byte b)
+    else
+      nq_canon_walk s len run_start (pos + 1) acc
+
+let nq_canon_escape_literal (s : string) : Tot string =
+  nq_canon_walk s (fs_byte_length s) 0 0 ""
+
+let rec nq_canon_term (t : rdf_term) : Tot string (decreases t) =
+  match t with
+  | T_IRI i   -> "<" ^ i ^ ">"
+  | T_BNode b -> "_:" ^ b
+  | T_Literal l ->
+    let esc = nq_canon_escape_literal l.lexical_form in
+    (match l.lang_tag with
+     | Some tag ->
+       let dir_suffix = (match l.direction with
+                         | Some Dir_LTR -> "--ltr"
+                         | Some Dir_RTL -> "--rtl"
+                         | None -> "") in
+       // Language tags are ASCII (BCP47), so FStar.String.lowercase is
+       // byte-safe here and produces the canonical lowercase form.
+       "\"" ^ esc ^ "\"@" ^ FStar.String.lowercase tag ^ dir_suffix
+     | None ->
+       if l.datatype = xsd_string then "\"" ^ esc ^ "\""
+       else "\"" ^ esc ^ "\"^^<" ^ l.datatype ^ ">")
+  | T_TripleTerm s p o ->
+    let subj_str = (match s with
+                    | S_IRI i   -> "<" ^ i ^ ">"
+                    | S_BNode b -> "_:" ^ b) in
+    "<<( " ^ subj_str ^ " <" ^ p ^ "> " ^ nq_canon_term o ^ " )>>"
+
+let nq_canon_line_default (t : triple) : Tot string =
+  nq_subject_to_string t.s ^ " <" ^ t.p ^ "> " ^ nq_canon_term t.o ^ " .\n"
+
+let nq_canon_line_graph (graph_iri : string) (t : triple) : Tot string =
+  nq_subject_to_string t.s ^ " <" ^ t.p ^ "> " ^ nq_canon_term t.o
+  ^ " <" ^ graph_iri ^ "> .\n"
+
+// Canonical N-Triples document: one line per triple, input order.
+let rec canonical_nt_document (ts : list triple) : Tot string (decreases ts) =
+  match ts with
+  | [] -> ""
+  | t :: rest -> nq_canon_line_default t ^ canonical_nt_document rest
+
+let rec canon_nq_named_lines (name : string) (ts : list triple) : Tot string (decreases ts) =
+  match ts with
+  | [] -> ""
+  | t :: rest -> nq_canon_line_graph name t ^ canon_nq_named_lines name rest
+
+let rec canon_nq_named (ngs : list named_graph) : Tot string (decreases ngs) =
+  match ngs with
+  | [] -> ""
+  | ng :: rest -> canon_nq_named_lines ng.ng_name ng.ng_graph ^ canon_nq_named rest
+
+// Canonical N-Quads document: default-graph lines then named-graph lines.
+let canonical_nq_document (ds : rdf_dataset) : string =
+  canonical_nt_document ds.ds_default ^ canon_nq_named ds.ds_named
