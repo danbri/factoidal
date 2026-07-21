@@ -146,7 +146,7 @@ unparseable lines.
 | **RDF 1.2 eval** (parse → N-Triples compare) | **14** | **70** | 0 | **84** |
 | &nbsp;&nbsp;rdf-turtle/eval | 4 | 25 | 0 | 29 |
 | &nbsp;&nbsp;rdf-trig/eval | 0 | 25 | 0 | 25 |
-| &nbsp;&nbsp;rdf-xml/eval | 10 | 20 | 0 | 30 |
+| &nbsp;&nbsp;rdf-xml/eval | **30** ✅ | **0** | 0 | 30 (RDF/XML 1.2: `its:dir`, `parseType="Triple"`, `rdf:annotation` reifiers — folded into `--rdf12`) |
 | **RDF 1.2 canonicalization** (NT/NQ c14n) | **82** | **0** | 0 | **82** (4 fixtures commented out upstream in the manifests; `w3c_runner --rdf12c14n`, F* canonical serializer in `RDF.NQuads.Serialize.fst`) |
 | **RDF 1.2 semantics** (entailment) | — | — | — | 74 (regime not exercised in this census) |
 | **SPARQL 1.2** | **73** | **158** | **20** | **251** |
@@ -181,8 +181,10 @@ unparseable lines.
 - **The eval failures are uniform** — "got 0" / partial-graph: reifiers,
   annotation blocks, and nested triple terms all vanish.
 
-- **rdf-xml eval 10/30** — the 10 passing are 1.1-compatible fixtures;
-  the 20 fails need the RDF/XML 1.2 triple-term + reifier productions.
+- **rdf-xml eval 30/30 ✅** — RDF/XML 1.2 done: `its:dir` directional
+  literals, `parseType="Triple"` triple terms (version-gated; recursive),
+  `rdf:annotation`/`rdf:annotationNodeID` reifiers (incl. on
+  Resource/Collection/Literal). Runs under `--rdf12`.
 
 ### Latent 1.2 / star artifacts in our tree (grep census)
 
@@ -333,7 +335,7 @@ Per-suite 1.1 floors (RDF): n-triples 70, n-quads 87, turtle 313, trig
 | **P1** N-Triples 1.2 + dirlang | `Parser.NTriples` strict: `<<( )>>` object, `@lang--dir` + **direction validation**, reject legacy `<<>>`; NT serializer | ~4–6 | nt-syntax **29/29**; 10 base-dir negatives now rejected; nt 1.1 floor 70 held |
 | **P2** Turtle + TriG 1.2 | Reifier `~`, annotation, `<<( )>>`, `VERSION`; serializers | ~6–10 | turtle-syntax 67→67, turtle-eval 29, trig-eval 25 climbing; 1.1 turtle 313 / trig 356 held |
 | **P3** N-Quads 1.2 | `Parser.NQuads` delta + serializer | ~2–3 | nq-syntax 27/27; nq 1.1 floor 87 held |
-| **P4** RDF/XML 1.2 | `Parser.RDFXML` triple-term + reifier; term-emitting model | ~4–6 | rdf-xml-eval 30 climbing; 1.1 rdf-xml 166 held |
+| **P4** RDF/XML 1.2 ✅ | `Parser.RDFXML` triple-term + reifier + `its:dir` + version gating | done | rdf-xml-eval 30/0; 1.1 rdf-xml 166/0 held |
 | **P5** Serializers + c14n + RDFC | Canonical NT/NQ (c14n fixtures) ✅ 82/0; RDFC-1.0 triple-term recursion + dirlang canonical form (pending) | ~4–6 | c14n 82/0 (`--rdf12c14n`); RDFC-1.0 REC suite floor held |
 | **P6** SPARQL 1.2 syntax | `SPARQL11.Parser`: triple-term patterns, `VERSION` | ~4–6 | sparql12 syntax-triple-terms-positive 113 climbing; **SPARQL 1.1 631 floor held** |
 | **P7** SPARQL 1.2 functions + algebra | `TRIPLE`/`isTRIPLE`/`SUBJECT`/`PREDICATE`/`OBJECT`; matching semantics; results-format encoding | ~5–8 | eval-triple-terms 41 + version 9 + lang-basedir 11 climbing |

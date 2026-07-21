@@ -210,6 +210,36 @@
   [23/25] rdf-trig/eval/TriG 1.2 - Annotation with reified triples ok
   [24/25] rdf-trig/eval/TriG 1.2 - Annotation on triple with reified triple subject ok
   [25/25] rdf-trig/eval/TriG 1.2 - Annotation on triple with reified triple object ok
+  [1/30] rdf-xml/eval/rdf12-xml-dir-01 ok
+  [2/30] rdf-xml/eval/rdf12-xml-dir-02 ok
+  [3/30] rdf-xml/eval/rdf12-xml-dir-03 ok
+  [4/30] rdf-xml/eval/rdf12-xml-dir-04 ok
+  [5/30] rdf-xml/eval/rdf12-xml-dir-05 ok
+  [6/30] rdf-xml/eval/rdf12-xml-dir-06 ok
+  [7/30] rdf-xml/eval/rdf12-xml-tt-01 ok
+  [8/30] rdf-xml/eval/rdf12-xml-tt-02 ok
+  [9/30] rdf-xml/eval/rdf12-xml-tt-03 ok
+  [10/30] rdf-xml/eval/rdf12-xml-tt-04 ok
+  [11/30] rdf-xml/eval/rdf12-xml-tt-05 ok
+  [12/30] rdf-xml/eval/rdf12-xml-tt-06 ok
+  [13/30] rdf-xml/eval/rdf12-xml-tt-07 ok
+  [14/30] rdf-xml/eval/rdf12-xml-tt-08 ok
+  [15/30] rdf-xml/eval/rdf12-xml-an-01 ok
+  [16/30] rdf-xml/eval/rdf12-xml-an-02 ok
+  [17/30] rdf-xml/eval/rdf12-xml-an-03 ok
+  [18/30] rdf-xml/eval/rdf12-xml-an-04 ok
+  [19/30] rdf-xml/eval/rdf12-xml-an-05 ok
+  [20/30] rdf-xml/eval/rdf12-xml-an-06 ok
+  [21/30] rdf-xml/eval/rdf12-xml-an-07 ok
+  [22/30] rdf-xml/eval/rdf12-xml-an-08 ok
+  [23/30] rdf-xml/eval/rdf12-xml-an-09 ok
+  [24/30] rdf-xml/eval/rdf12-xml-an-10 ok
+  [25/30] rdf-xml/eval/rdf12-xml-an-11 ok
+  [26/30] rdf-xml/eval/rdf12-xml-an-12 ok
+  [27/30] rdf-xml/eval/rdf12-xml-an-13 ok
+  [28/30] rdf-xml/eval/rdf12-xml-an-14 ok
+  [29/30] rdf-xml/eval/rdf12-xml-an-15 ok
+  [30/30] rdf-xml/eval/rdf12-xml-an-16 ok
 === W3C RDF 1.2 Test Runner ===
 Test base: third_party/testing/w3c/rdf/rdf12
 
@@ -444,6 +474,39 @@ Test base: third_party/testing/w3c/rdf/rdf12
   PASS: TriG 1.2 - Annotation on triple with reified triple object
   [suite time: 0.0s]
 
+--- rdf-xml/eval ---
+  PASS: rdf12-xml-dir-01
+  PASS: rdf12-xml-dir-02
+  PASS: rdf12-xml-dir-03
+  PASS: rdf12-xml-dir-04
+  PASS: rdf12-xml-dir-05
+  PASS: rdf12-xml-dir-06
+  PASS: rdf12-xml-tt-01
+  PASS: rdf12-xml-tt-02
+  PASS: rdf12-xml-tt-03
+  PASS: rdf12-xml-tt-04
+  PASS: rdf12-xml-tt-05
+  PASS: rdf12-xml-tt-06
+  PASS: rdf12-xml-tt-07
+  PASS: rdf12-xml-tt-08
+  PASS: rdf12-xml-an-01
+  PASS: rdf12-xml-an-02
+  PASS: rdf12-xml-an-03
+  PASS: rdf12-xml-an-04
+  PASS: rdf12-xml-an-05
+  PASS: rdf12-xml-an-06
+  PASS: rdf12-xml-an-07
+  PASS: rdf12-xml-an-08
+  PASS: rdf12-xml-an-09
+  PASS: rdf12-xml-an-10
+  PASS: rdf12-xml-an-11
+  PASS: rdf12-xml-an-12
+  PASS: rdf12-xml-an-13
+  PASS: rdf12-xml-an-14
+  PASS: rdf12-xml-an-15
+  PASS: rdf12-xml-an-16
+  [suite time: 0.0s]
+
 ========================================
 Suite Results:
   rdf-n-triples/syntax                pass:29 fail:0 skip:0 unsupported:0
@@ -452,6 +515,7 @@ Suite Results:
   rdf-turtle/eval                     pass:29 fail:0 skip:0 unsupported:0
   rdf-trig/syntax                     pass:35 fail:0 skip:0 unsupported:0
   rdf-trig/eval                       pass:25 fail:0 skip:0 unsupported:0
+  rdf-xml/eval                        pass:30 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 212 pass, 0 fail, 0 skip, 0 unsupported
+TOTAL: 242 pass, 0 fail, 0 skip, 0 unsupported
 ========================================

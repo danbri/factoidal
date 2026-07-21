@@ -44,6 +44,13 @@ let rdf_rest_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
 let rdf_nil_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 let rdf_xmlliteral_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
 
+// RDF 1.2 reifier predicate (used by rdf:annotation reifiers). Kept as a
+// wf_iri so it can sit directly in the triple `p` field without re-proving
+// is_iri at every use site (mirrors Parser.Turtle.fst's rdf_reifies_iri).
+let rdf_reifies_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
+
 
 (* ================================================================ *)
 (* Parser state                                                      *)
@@ -53,6 +60,14 @@ noeq type rdfxml_state = {
   base_iri : string;
   namespaces : list (string * string);   (* prefix -> namespace IRI *)
   lang : option string;                  (* inherited xml:lang *)
+  direction : option text_direction;     (* inherited its:dir base direction
+                                            (RDF 1.2). Applied to a plain literal
+                                            only when a lang tag is ALSO in scope
+                                            AND rdf:version="1.2" is active. *)
+  saw_version_12 : bool;                 (* rdf:version="1.2" declared on this
+                                            element or an ancestor — gates the
+                                            RDF 1.2 triple-term and direction
+                                            features (inherited, scoped). *)
   bnode_counter : nat;                   (* counter for generating fresh blank nodes *)
   li_counter : nat;                      (* counter for rdf:li numbering *)
   seen_ids : list string;                (* resolved rdf:ID IRIs seen so far
@@ -66,6 +81,8 @@ let initial_state (base : string) : rdfxml_state = {
   base_iri = base;
   namespaces = [("rdf", rdf_ns); ("rdfs", rdfs_ns); ("xml", xml_ns); ("xmlns", xmlns_ns); ("xsd", xsd_ns)];
   lang = None;
+  direction = None;
+  saw_version_12 = false;
   bnode_counter = 0;
   li_counter = 1;
   seen_ids = [];
@@ -221,6 +238,29 @@ let extract_lang (attrs : list xml_attribute) (current_lang : option string) : o
     else Some lang_val
   | None -> current_lang
 
+(* Extract its:dir (RDF 1.2 base direction) from attributes. The attribute
+   is literally named `its:dir` (ITS namespace http://www.w3.org/2005/11/its).
+   its:dir="ltr"/"rtl" set the direction; its:dir="" clears it; any other
+   value leaves the inherited direction unchanged. *)
+let extract_dir (attrs : list xml_attribute) (current_dir : option text_direction)
+  : option text_direction =
+  match find_attr "its:dir" attrs with
+  | Some dv ->
+    if dv = "ltr" then Some Dir_LTR
+    else if dv = "rtl" then Some Dir_RTL
+    else if String.length dv = 0 then None
+    else current_dir
+  | None -> current_dir
+
+(* Extract rdf:version. Only "1.2" activates RDF 1.2 features; the flag is
+   sticky-within-scope: once an ancestor set it, descendants inherit it (it
+   flows down through the threaded state and restore_scope resets it for
+   siblings). *)
+let extract_version (attrs : list xml_attribute) (current : bool) : bool =
+  match find_attr "rdf:version" attrs with
+  | Some v -> if v = "1.2" then true else current
+  | None -> current
+
 (* Strip any `#fragment` tail from an IRI. XML Base §3.3 and RFC 3986
    §5.1 require that a base IRI carry no fragment identifier; if the
    authored `xml:base` value includes one, the fragment is discarded.
@@ -250,7 +290,10 @@ let update_state_from_attrs (st : rdfxml_state) (attrs : list xml_attribute) : r
   let new_nss = extract_namespaces attrs st.namespaces in
   let new_lang = extract_lang attrs st.lang in
   let new_base = extract_base attrs st.base_iri in
-  { st with namespaces = new_nss; lang = new_lang; base_iri = new_base }
+  let new_dir = extract_dir attrs st.direction in
+  let new_ver = extract_version attrs st.saw_version_12 in
+  { st with namespaces = new_nss; lang = new_lang; base_iri = new_base;
+            direction = new_dir; saw_version_12 = new_ver }
 
 
 (* ================================================================ *)
@@ -287,7 +330,17 @@ let is_rdf_syntax_attr (full_iri : string) : bool =
   full_iri = String.concat "" [rdf_ns; "about"] ||
   full_iri = String.concat "" [rdf_ns; "RDF"] ||
   full_iri = String.concat "" [rdf_ns; "Description"] ||
-  full_iri = String.concat "" [rdf_ns; "li"]
+  full_iri = String.concat "" [rdf_ns; "li"] ||
+  // RDF 1.2 syntax attributes: version announcement + annotation
+  // reifiers. These are consumed by the parser (version gating,
+  // rdf:reifies emission) and must NOT surface as property-attribute
+  // triples. Excluding rdf:annotation here also lets an empty property
+  // element carrying only `rdf:annotation` fall through to the empty-
+  // literal case ("") instead of the non-rdf-property-attr bnode case
+  // (rdf12-xml-an-04..12).
+  full_iri = String.concat "" [rdf_ns; "version"] ||
+  full_iri = String.concat "" [rdf_ns; "annotation"] ||
+  full_iri = String.concat "" [rdf_ns; "annotationNodeID"]
 
 let is_xml_or_xmlns_attr (name : string) : bool =
   let (prefix, _local) = split_qname name in
@@ -319,20 +372,39 @@ let make_iri_object (iri_str : string) : option rdf_term =
   if is_iri iri_str then Some (T_IRI iri_str)
   else None
 
-let make_plain_literal (lex : string) (lang : option string) : option rdf_term =
-  match lang with
-  | Some l ->
+(* Build the object literal for a plain (non-datatyped) property value.
+   RDF 1.2: when BOTH a language tag and a base direction are in scope the
+   result is a directional language-tagged string (rdf:dirLangString). A
+   direction WITHOUT a language tag is meaningless (RDF 1.2 Concepts §3.3:
+   "direction without a lang tag is always ill-formed"), so it degrades to a
+   plain xsd:string. Callers pass `dir = None` whenever rdf:version="1.2" is
+   not active, so direction is silently ignored for RDF 1.1 documents. *)
+let make_plain_literal (lex : string) (lang : option string)
+                       (dir : option text_direction) : option rdf_term =
+  match lang, dir with
+  | Some l, Some d ->
+    Some (T_Literal ({
+      lexical_form = lex;
+      datatype = rdf_dir_lang_string;
+      lang_tag = Some l; direction = Some d
+    }))
+  | Some l, None ->
     Some (T_Literal ({
       lexical_form = lex;
       datatype = rdf_lang_string;
-      lang_tag = Some l; direction = None 
+      lang_tag = Some l; direction = None
     }))
-  | None ->
+  | None, _ ->
     Some (T_Literal ({
       lexical_form = lex;
       datatype = xsd_string;
-      lang_tag = None; direction = None 
+      lang_tag = None; direction = None
     }))
+
+(* The direction that actually applies given the current state: only when
+   rdf:version="1.2" is active. See make_plain_literal. *)
+let effective_dir (st : rdfxml_state) : option text_direction =
+  if st.saw_version_12 then st.direction else None
 
 let make_typed_literal (lex : string) (dt : string) : option rdf_term =
   if is_iri dt then
@@ -683,7 +755,7 @@ let rec collect_property_attributes (st : rdfxml_state) (subj : subject) (attrs 
         else
           (* Regular property attribute — object is a plain literal *)
           if is_iri full_iri then
-            match make_plain_literal attr.attr_value st.lang with
+            match make_plain_literal attr.attr_value st.lang (effective_dir st) with
             | Some lit_term ->
               ({ s = subj; p = full_iri; o = lit_term }) :: rest_triples
             | None -> rest_triples
@@ -741,6 +813,11 @@ let compute_reif_iri (st : rdfxml_state) (attrs : list xml_attribute) : option s
 (* Mutual recursion: process_node_element and process_property_element*)
 (* ================================================================ *)
 
+// The RDF 1.2 additions (triple-term dispatch, annotation reifiers threaded
+// through the collection builders) enlarge the SMT context for this mutually
+// recursive block past the default rlimit; 60 clears it (cf. Parser.Turtle.fst
+// which pushes 30 for its own reifier work). No --admit / --lax involved.
+#push-options "--z3rlimit 60"
 let rec process_node_element (st : rdfxml_state) (node : xml_node) (fuel : nat)
   : Tot process_result (decreases fuel) =
   if fuel = 0 then empty_result st
@@ -825,10 +902,34 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
          Compute the statement IRI up-front so every main-triple path
          below can tack on the four reification quads. *)
       let reif_iri_opt = compute_reif_iri st1 attrs in
-      let reif_of (pred_iri : string) (obj : rdf_term) : list triple =
-        match reif_iri_opt with
-        | Some r -> make_reification_triples r subj pred_iri obj
+      (* RDF 1.2 rdf:annotation / rdf:annotationNodeID reifier (§ RDF/XML 1.2).
+         Not version-gated. The reifier (an IRI or blank node) is asserted to
+         `rdf:reifies` the triple term built from the base triple this property
+         element produces. *)
+      let annot_reifier_opt : option subject =
+        match find_attr "rdf:annotation" attrs with
+        | Some iri_val ->
+          let r = resolve_iri st1.base_iri iri_val in
+          if is_iri r then Some (S_IRI r) else None
+        | None ->
+          (match find_attr "rdf:annotationNodeID" attrs with
+           | Some nid -> Some (S_BNode nid)
+           | None -> None)
+      in
+      let annot_of (pred_iri : string) (obj : rdf_term) : list triple =
+        match annot_reifier_opt with
+        | Some reifier ->
+          if is_iri pred_iri
+          then [ { s = reifier; p = rdf_reifies_iri;
+                   o = T_TripleTerm subj pred_iri obj } ]
+          else []
         | None -> []
+      in
+      let reif_of (pred_iri : string) (obj : rdf_term) : list triple =
+        (match reif_iri_opt with
+         | Some r -> make_reification_triples r subj pred_iri obj
+         | None -> [])
+        @ annot_of pred_iri obj
       in
       (* Determine the predicate IRI *)
       let (pred_iri_opt, st2) =
@@ -887,9 +988,43 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                (or rdf:nil for an empty Collection). See
                rdfms-seq-representation-test002. *)
             let collection_result = process_collection st2 subj pred_iri
-                                                        reif_iri_opt
+                                                        reif_iri_opt annot_reifier_opt
                                                         children (fuel - 1) in
             collection_result
+          | Some "Triple" ->
+            (* RDF 1.2 triple term (rdf:parseType="Triple"). The property
+               element contains at most ONE child rdf:Description; processing
+               it as a node element yields exactly ONE triple, which becomes
+               the triple term { s p o } used as this property's object.
+               Gated on rdf:version="1.2": when 1.2 is not active the term is
+               IGNORED and no triple is emitted (rdf12-xml-tt-01). When 1.2 IS
+               active a malformed inner Description (zero, or more than one,
+               produced triple; or not exactly one child element) is a
+               syntax error — has_error is raised so parse_rdfxml_strict
+               returns None (rdf12-xml-tt-07/08). *)
+            if not st1.saw_version_12 then empty_result st2
+            else
+              let child_elems = List.Tot.filter (fun (c : xml_node) ->
+                match c with XElement _ _ _ -> true | _ -> false) children in
+              begin match child_elems with
+              | [ child_desc ] ->
+                let inner = process_node_element st2 child_desc (fuel - 1) in
+                begin match inner.pr_triples with
+                | [ tt_triple ] ->
+                  let tt_obj : rdf_term =
+                    T_TripleTerm tt_triple.s tt_triple.p tt_triple.o in
+                  let base_t : triple = { s = subj; p = pred_iri; o = tt_obj } in
+                  { pr_triples = base_t :: reif_of pred_iri tt_obj;
+                    pr_state = restore_scope st2 inner.pr_state; }
+                | _ ->
+                  (* Malformed: inner Description has no single property. *)
+                  { pr_triples = [];
+                    pr_state = { (restore_scope st2 inner.pr_state) with has_error = true }; }
+                end
+              | _ ->
+                (* Malformed: not exactly one triple-term subject element. *)
+                { pr_triples = []; pr_state = { st2 with has_error = true }; }
+              end
           | _ ->
             (* No parseType — normal property element *)
             (* Check for rdf:resource or rdf:nodeID attribute *)
@@ -1005,7 +1140,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                       let full_dt = resolve_iri st2.base_iri dt in
                       make_typed_literal text_val full_dt
                     | None ->
-                      make_plain_literal text_val st2.lang
+                      make_plain_literal text_val st2.lang (effective_dir st2)
                     end
                   in
                   begin match obj_opt with
@@ -1023,6 +1158,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
 
 and process_collection (st : rdfxml_state) (subj : subject) (pred_iri : string)
                         (reif_iri_opt : option string)
+                        (annot_reifier_opt : option subject)
                         (items : list xml_node) (fuel : nat)
   : Tot process_result (decreases fuel) =
   if fuel = 0 then empty_result st
@@ -1033,9 +1169,14 @@ and process_collection (st : rdfxml_state) (subj : subject) (pred_iri : string)
       | XElement _ _ _ -> true
       | _ -> false) items in
     let reif_for (obj : rdf_term) : list triple =
-      match reif_iri_opt with
-      | Some r -> make_reification_triples r subj pred_iri obj
-      | None -> []
+      (match reif_iri_opt with
+       | Some r -> make_reification_triples r subj pred_iri obj
+       | None -> [])
+      @ (match annot_reifier_opt with
+         | Some reifier -> if is_iri pred_iri
+             then [ { s = reifier; p = rdf_reifies_iri; o = T_TripleTerm subj pred_iri obj } ]
+             else []
+         | None -> [])
     in
     if List.Tot.length elem_items = 0 then
       (* Empty collection — link to rdf:nil *)
@@ -1045,18 +1186,24 @@ and process_collection (st : rdfxml_state) (subj : subject) (pred_iri : string)
         { pr_triples = t :: reif_for obj; pr_state = st; }
       else empty_result st
     else
-      build_collection_list st subj pred_iri reif_iri_opt elem_items (fuel - 1)
+      build_collection_list st subj pred_iri reif_iri_opt annot_reifier_opt elem_items (fuel - 1)
 
 and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : string)
                            (reif_iri_opt : option string)
+                           (annot_reifier_opt : option subject)
                            (items : list xml_node) (fuel : nat)
   : Tot process_result (decreases fuel) =
   if fuel = 0 then empty_result st
   else
     let reif_for (obj : rdf_term) : list triple =
-      match reif_iri_opt with
-      | Some r -> make_reification_triples r subj pred_iri obj
-      | None -> []
+      (match reif_iri_opt with
+       | Some r -> make_reification_triples r subj pred_iri obj
+       | None -> [])
+      @ (match annot_reifier_opt with
+         | Some reifier -> if is_iri pred_iri
+             then [ { s = reifier; p = rdf_reifies_iri; o = T_TripleTerm subj pred_iri obj } ]
+             else []
+         | None -> [])
     in
     match items with
     | [] ->
@@ -1111,7 +1258,7 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
            links. *)
         let rest_result =
           if is_iri rdf_rest_iri then
-            build_collection_list st3 list_node rdf_rest_iri None rest (fuel - 1)
+            build_collection_list st3 list_node rdf_rest_iri None None rest (fuel - 1)
           else empty_result st3
         in
         let all_triples =
@@ -1121,13 +1268,14 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
       else
         let rest_result =
           if is_iri rdf_rest_iri then
-            build_collection_list st3 list_node rdf_rest_iri None rest (fuel - 1)
+            build_collection_list st3 list_node rdf_rest_iri None None rest (fuel - 1)
           else empty_result st3
         in
         let all_triples =
           link_triple :: link_reif @ item_result.pr_triples @ rest_result.pr_triples
         in
         { pr_triples = all_triples; pr_state = rest_result.pr_state; }
+#pop-options
 
 
 (* ================================================================ *)

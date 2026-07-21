@@ -46,14 +46,16 @@ with open(sys.argv[1], 'r') as f:
 # verified). The OCaml side here is pure adapter glue: type
 # conversion + raise-on-Some-msg.
 if 'exception Rdfxml_error' not in content:
+    # Anchor on `type rdfxml_state =` ALONE (unique in the extracted
+    # module). The earlier anchor keyed off the `rdf_xmlliteral_iri`
+    # definition immediately preceding the type; RDF 1.2 support (#305)
+    # added `rdf_reifies_iri` between them, which shifted the extracted
+    # output and silently broke the old 3-line anchor (anti-pattern #27).
+    # The injected glue references neither constant, so placing it right
+    # before the type decl is position-independent.
     content = content.replace(
-        '''let rdf_xmlliteral_iri : Prims.string=
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
-type rdfxml_state =''',
-        '''let rdf_xmlliteral_iri : Prims.string=
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
-
-(* RDF/XML validation: thin adapter over XML_Wellformedness.
+        '''type rdfxml_state =''',
+        '''(* RDF/XML validation: thin adapter over XML_Wellformedness.
    The validation LOGIC (NCName productions, forbidden-name lists,
    mutual-exclusion rules) lives in formal/fstar/XML.Wellformedness.fst
    under #200 PR5. This patch is rule-#11(a) glue only. *)

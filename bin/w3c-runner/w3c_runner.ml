@@ -3149,6 +3149,41 @@ let run_rdf12_test assumed_base tc =
             else Fail "Canonical N-Quads output mismatch"
           with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e)))))
 
+  (* ---- RDF/XML 1.2 eval ----
+     Same shape as run_rdf_test's TestXMLEval arm, but the expected .nt oracle
+     is parsed with the RDF 1.2 N-Triples parser (parse_ntriples_expected_12)
+     so triple-term / reifies lines (<<( s p o )>>) survive; the 1.1 parser
+     silently drops them, which made every dir/tt/an oracle read as 0 triples. *)
+  | "TestXMLEval" ->
+    (match read_file tc.query_file, tc.result_file with
+     | None, _ -> Skip "Input file missing"
+     | _, None -> Skip "No expected result file"
+     | Some input, Some rf ->
+       (match read_file rf with
+        | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+        | Some expected_content ->
+          (try
+            let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+            let actual = parse_rdfxml_fstar input (Some base) in
+            let expected = parse_ntriples_expected_12 expected_content in
+            if graphs_equal_strict tc.name expected actual then Pass
+            else
+              Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
+                      (List.length expected) (List.length actual))
+          with e ->
+            Fail (Printf.sprintf "Parse error: %s" (Printexc.to_string e)))))
+
+  (* RDF/XML 1.2 negative syntax: strict parse must reject. *)
+  | "TestXMLNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          (match Parser_RDFXML.parse_rdfxml_strict content with
+           | FStar_Pervasives_Native.Some _ -> Fail "Should reject but parsed OK"
+           | FStar_Pervasives_Native.None -> Pass)
+        with _ -> Pass))
+
   | _ -> run_rdf_test assumed_base tc
 
 let run_rdf12_suite suite_name =
@@ -3278,7 +3313,8 @@ let () =
     let rdf12_suites = if suite_args = [] then
         ["rdf-n-triples/syntax"; "rdf-n-quads/syntax";
          "rdf-turtle/syntax"; "rdf-turtle/eval";
-         "rdf-trig/syntax"; "rdf-trig/eval"]
+         "rdf-trig/syntax"; "rdf-trig/eval";
+         "rdf-xml/eval"]
       else suite_args in
     let (_, f, _, _) = run_and_tally run_rdf12_suite rdf12_suites
       "W3C RDF 1.2 Test Runner" rdf12_tests_base in

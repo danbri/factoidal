@@ -14,7 +14,8 @@ let rdf_nil_iri : Prims.string=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 let rdf_xmlliteral_iri : Prims.string=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
-
+let rdf_reifies_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
 (* RDF/XML validation: thin adapter over XML_Wellformedness.
    The validation LOGIC (NCName productions, forbidden-name lists,
    mutual-exclusion rules) lives in formal/fstar/XML.Wellformedness.fst
@@ -60,6 +61,8 @@ type rdfxml_state =
   base_iri: Prims.string ;
   namespaces: (Prims.string * Prims.string) Prims.list ;
   lang: Prims.string FStar_Pervasives_Native.option ;
+  direction: RDF_Term.text_direction FStar_Pervasives_Native.option ;
+  saw_version_12: Prims.bool ;
   bnode_counter: Prims.nat ;
   li_counter: Prims.nat ;
   seen_ids: Prims.string Prims.list ;
@@ -67,38 +70,48 @@ type rdfxml_state =
 let __proj__Mkrdfxml_state__item__base_iri (projectee : rdfxml_state) :
   Prims.string=
   match projectee with
-  | { base_iri; namespaces; lang; bnode_counter; li_counter; seen_ids;
-      has_error;_} -> base_iri
+  | { base_iri; namespaces; lang; direction; saw_version_12; bnode_counter;
+      li_counter; seen_ids; has_error;_} -> base_iri
 let __proj__Mkrdfxml_state__item__namespaces (projectee : rdfxml_state) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
-  | { base_iri; namespaces; lang; bnode_counter; li_counter; seen_ids;
-      has_error;_} -> namespaces
+  | { base_iri; namespaces; lang; direction; saw_version_12; bnode_counter;
+      li_counter; seen_ids; has_error;_} -> namespaces
 let __proj__Mkrdfxml_state__item__lang (projectee : rdfxml_state) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
-  | { base_iri; namespaces; lang; bnode_counter; li_counter; seen_ids;
-      has_error;_} -> lang
+  | { base_iri; namespaces; lang; direction; saw_version_12; bnode_counter;
+      li_counter; seen_ids; has_error;_} -> lang
+let __proj__Mkrdfxml_state__item__direction (projectee : rdfxml_state) :
+  RDF_Term.text_direction FStar_Pervasives_Native.option=
+  match projectee with
+  | { base_iri; namespaces; lang; direction; saw_version_12; bnode_counter;
+      li_counter; seen_ids; has_error;_} -> direction
+let __proj__Mkrdfxml_state__item__saw_version_12 (projectee : rdfxml_state) :
+  Prims.bool=
+  match projectee with
+  | { base_iri; namespaces; lang; direction; saw_version_12; bnode_counter;
+      li_counter; seen_ids; has_error;_} -> saw_version_12
 let __proj__Mkrdfxml_state__item__bnode_counter (projectee : rdfxml_state) :
   Prims.nat=
   match projectee with
-  | { base_iri; namespaces; lang; bnode_counter; li_counter; seen_ids;
-      has_error;_} -> bnode_counter
+  | { base_iri; namespaces; lang; direction; saw_version_12; bnode_counter;
+      li_counter; seen_ids; has_error;_} -> bnode_counter
 let __proj__Mkrdfxml_state__item__li_counter (projectee : rdfxml_state) :
   Prims.nat=
   match projectee with
-  | { base_iri; namespaces; lang; bnode_counter; li_counter; seen_ids;
-      has_error;_} -> li_counter
+  | { base_iri; namespaces; lang; direction; saw_version_12; bnode_counter;
+      li_counter; seen_ids; has_error;_} -> li_counter
 let __proj__Mkrdfxml_state__item__seen_ids (projectee : rdfxml_state) :
   Prims.string Prims.list=
   match projectee with
-  | { base_iri; namespaces; lang; bnode_counter; li_counter; seen_ids;
-      has_error;_} -> seen_ids
+  | { base_iri; namespaces; lang; direction; saw_version_12; bnode_counter;
+      li_counter; seen_ids; has_error;_} -> seen_ids
 let __proj__Mkrdfxml_state__item__has_error (projectee : rdfxml_state) :
   Prims.bool=
   match projectee with
-  | { base_iri; namespaces; lang; bnode_counter; li_counter; seen_ids;
-      has_error;_} -> has_error
+  | { base_iri; namespaces; lang; direction; saw_version_12; bnode_counter;
+      li_counter; seen_ids; has_error;_} -> has_error
 let initial_state (base : Prims.string) : rdfxml_state=
   {
     base_iri = base;
@@ -109,6 +122,8 @@ let initial_state (base : Prims.string) : rdfxml_state=
       ("xmlns", xmlns_ns);
       ("xsd", xsd_ns)];
     lang = FStar_Pervasives_Native.None;
+    direction = FStar_Pervasives_Native.None;
+    saw_version_12 = false;
     bnode_counter = Prims.int_zero;
     li_counter = Prims.int_one;
     seen_ids = [];
@@ -127,6 +142,8 @@ let fresh_bnode (st : rdfxml_state) : (Prims.string * rdfxml_state)=
       base_iri = (st.base_iri);
       namespaces = (st.namespaces);
       lang = (st.lang);
+      direction = (st.direction);
+      saw_version_12 = (st.saw_version_12);
       bnode_counter = (st.bnode_counter + Prims.int_one);
       li_counter = (st.li_counter);
       seen_ids = (st.seen_ids);
@@ -137,6 +154,8 @@ let reset_li_counter (st : rdfxml_state) : rdfxml_state=
     base_iri = (st.base_iri);
     namespaces = (st.namespaces);
     lang = (st.lang);
+    direction = (st.direction);
+    saw_version_12 = (st.saw_version_12);
     bnode_counter = (st.bnode_counter);
     li_counter = Prims.int_one;
     seen_ids = (st.seen_ids);
@@ -150,6 +169,8 @@ let next_li (st : rdfxml_state) : (Prims.string * rdfxml_state)=
       base_iri = (st.base_iri);
       namespaces = (st.namespaces);
       lang = (st.lang);
+      direction = (st.direction);
+      saw_version_12 = (st.saw_version_12);
       bnode_counter = (st.bnode_counter);
       li_counter = (st.li_counter + Prims.int_one);
       seen_ids = (st.seen_ids);
@@ -161,6 +182,8 @@ let restore_scope (parent : rdfxml_state) (child : rdfxml_state) :
     base_iri = (parent.base_iri);
     namespaces = (parent.namespaces);
     lang = (parent.lang);
+    direction = (parent.direction);
+    saw_version_12 = (parent.saw_version_12);
     bnode_counter = (child.bnode_counter);
     li_counter = (parent.li_counter);
     seen_ids = (child.seen_ids);
@@ -290,6 +313,26 @@ let extract_lang (attrs : Parser_XML.xml_attribute Prims.list)
       then FStar_Pervasives_Native.None
       else FStar_Pervasives_Native.Some lang_val
   | FStar_Pervasives_Native.None -> current_lang
+let extract_dir (attrs : Parser_XML.xml_attribute Prims.list)
+  (current_dir : RDF_Term.text_direction FStar_Pervasives_Native.option) :
+  RDF_Term.text_direction FStar_Pervasives_Native.option=
+  match Parser_XML.find_attr "its:dir" attrs with
+  | FStar_Pervasives_Native.Some dv ->
+      if dv = "ltr"
+      then FStar_Pervasives_Native.Some RDF_Term.Dir_LTR
+      else
+        if dv = "rtl"
+        then FStar_Pervasives_Native.Some RDF_Term.Dir_RTL
+        else
+          if (FStar_String.strlen dv) = Prims.int_zero
+          then FStar_Pervasives_Native.None
+          else current_dir
+  | FStar_Pervasives_Native.None -> current_dir
+let extract_version (attrs : Parser_XML.xml_attribute Prims.list)
+  (current : Prims.bool) : Prims.bool=
+  match Parser_XML.find_attr "rdf:version" attrs with
+  | FStar_Pervasives_Native.Some v -> if v = "1.2" then true else current
+  | FStar_Pervasives_Native.None -> current
 let rec strip_fragment_from (s : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : Prims.string=
   let len = FStar_String.strlen s in
@@ -314,10 +357,14 @@ let update_state_from_attrs (st : rdfxml_state)
   let new_nss = extract_namespaces attrs st.namespaces in
   let new_lang = extract_lang attrs st.lang in
   let new_base = extract_base attrs st.base_iri in
+  let new_dir = extract_dir attrs st.direction in
+  let new_ver = extract_version attrs st.saw_version_12 in
   {
     base_iri = new_base;
     namespaces = new_nss;
     lang = new_lang;
+    direction = new_dir;
+    saw_version_12 = new_ver;
     bnode_counter = (st.bnode_counter);
     li_counter = (st.li_counter);
     seen_ids = (st.seen_ids);
@@ -342,16 +389,19 @@ let resolve_name (st : rdfxml_state) (name : Prims.string) :
                (FStar_String.concat "" [ns_iri; name])
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let is_rdf_syntax_attr (full_iri : Prims.string) : Prims.bool=
-  (((((((((full_iri = (FStar_String.concat "" [rdf_ns; "about"])) ||
-            (full_iri = (FStar_String.concat "" [rdf_ns; "ID"])))
-           || (full_iri = (FStar_String.concat "" [rdf_ns; "resource"])))
-          || (full_iri = (FStar_String.concat "" [rdf_ns; "datatype"])))
-         || (full_iri = (FStar_String.concat "" [rdf_ns; "nodeID"])))
-        || (full_iri = (FStar_String.concat "" [rdf_ns; "parseType"])))
-       || (full_iri = (FStar_String.concat "" [rdf_ns; "about"])))
-      || (full_iri = (FStar_String.concat "" [rdf_ns; "RDF"])))
-     || (full_iri = (FStar_String.concat "" [rdf_ns; "Description"])))
-    || (full_iri = (FStar_String.concat "" [rdf_ns; "li"]))
+  ((((((((((((full_iri = (FStar_String.concat "" [rdf_ns; "about"])) ||
+               (full_iri = (FStar_String.concat "" [rdf_ns; "ID"])))
+              || (full_iri = (FStar_String.concat "" [rdf_ns; "resource"])))
+             || (full_iri = (FStar_String.concat "" [rdf_ns; "datatype"])))
+            || (full_iri = (FStar_String.concat "" [rdf_ns; "nodeID"])))
+           || (full_iri = (FStar_String.concat "" [rdf_ns; "parseType"])))
+          || (full_iri = (FStar_String.concat "" [rdf_ns; "about"])))
+         || (full_iri = (FStar_String.concat "" [rdf_ns; "RDF"])))
+        || (full_iri = (FStar_String.concat "" [rdf_ns; "Description"])))
+       || (full_iri = (FStar_String.concat "" [rdf_ns; "li"])))
+      || (full_iri = (FStar_String.concat "" [rdf_ns; "version"])))
+     || (full_iri = (FStar_String.concat "" [rdf_ns; "annotation"])))
+    || (full_iri = (FStar_String.concat "" [rdf_ns; "annotationNodeID"]))
 let is_xml_or_xmlns_attr (name : Prims.string) : Prims.bool=
   let uu___ = split_qname name in
   match uu___ with
@@ -375,10 +425,20 @@ let make_iri_object (iri_str : Prims.string) :
   then FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri_str)
   else FStar_Pervasives_Native.None
 let make_plain_literal (lex : Prims.string)
-  (lang : Prims.string FStar_Pervasives_Native.option) :
+  (lang : Prims.string FStar_Pervasives_Native.option)
+  (dir : RDF_Term.text_direction FStar_Pervasives_Native.option) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
-  match lang with
-  | FStar_Pervasives_Native.Some l ->
+  match (lang, dir) with
+  | (FStar_Pervasives_Native.Some l, FStar_Pervasives_Native.Some d) ->
+      FStar_Pervasives_Native.Some
+        (RDF_Term.T_Literal
+           {
+             RDF_Term.lexical_form = lex;
+             RDF_Term.datatype = RDF_Term.rdf_dir_lang_string;
+             RDF_Term.lang_tag = (FStar_Pervasives_Native.Some l);
+             RDF_Term.direction = (FStar_Pervasives_Native.Some d)
+           })
+  | (FStar_Pervasives_Native.Some l, FStar_Pervasives_Native.None) ->
       FStar_Pervasives_Native.Some
         (RDF_Term.T_Literal
            {
@@ -387,7 +447,7 @@ let make_plain_literal (lex : Prims.string)
              RDF_Term.lang_tag = (FStar_Pervasives_Native.Some l);
              RDF_Term.direction = FStar_Pervasives_Native.None
            })
-  | FStar_Pervasives_Native.None ->
+  | (FStar_Pervasives_Native.None, uu___) ->
       FStar_Pervasives_Native.Some
         (RDF_Term.T_Literal
            {
@@ -396,6 +456,9 @@ let make_plain_literal (lex : Prims.string)
              RDF_Term.lang_tag = FStar_Pervasives_Native.None;
              RDF_Term.direction = FStar_Pervasives_Native.None
            })
+let effective_dir (st : rdfxml_state) :
+  RDF_Term.text_direction FStar_Pervasives_Native.option=
+  if st.saw_version_12 then st.direction else FStar_Pervasives_Native.None
 let make_typed_literal (lex : Prims.string) (dt : Prims.string) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
   if RDF_Term.is_iri dt
@@ -631,6 +694,8 @@ let determine_subject (st : rdfxml_state)
                base_iri = (st.base_iri);
                namespaces = (st.namespaces);
                lang = (st.lang);
+               direction = (st.direction);
+               saw_version_12 = (st.saw_version_12);
                bnode_counter = (st.bnode_counter);
                li_counter = (st.li_counter);
                seen_ids = (dup_key :: (st.seen_ids));
@@ -694,7 +759,7 @@ let rec collect_property_attributes (st : rdfxml_state)
                  if RDF_Term.is_iri full_iri
                  then
                    (match make_plain_literal attr.Parser_XML.attr_value
-                            st.lang
+                            st.lang (effective_dir st)
                     with
                     | FStar_Pervasives_Native.Some lit_term ->
                         {
@@ -911,11 +976,38 @@ and process_property_element (st : rdfxml_state) (subj : RDF_Term.subject)
          check_conflicting_attrs_property attrs;
          let st1 = update_state_from_attrs st attrs in
          let reif_iri_opt = compute_reif_iri st1 attrs in
-         let reif_of pred_iri obj =
-           match reif_iri_opt with
-           | FStar_Pervasives_Native.Some r ->
-               make_reification_triples r subj pred_iri obj
+         let annot_reifier_opt =
+           match Parser_XML.find_attr "rdf:annotation" attrs with
+           | FStar_Pervasives_Native.Some iri_val ->
+               let r = resolve_iri st1.base_iri iri_val in
+               if RDF_Term.is_iri r
+               then FStar_Pervasives_Native.Some (RDF_Term.S_IRI r)
+               else FStar_Pervasives_Native.None
+           | FStar_Pervasives_Native.None ->
+               (match Parser_XML.find_attr "rdf:annotationNodeID" attrs with
+                | FStar_Pervasives_Native.Some nid ->
+                    FStar_Pervasives_Native.Some (RDF_Term.S_BNode nid)
+                | FStar_Pervasives_Native.None ->
+                    FStar_Pervasives_Native.None) in
+         let annot_of pred_iri obj =
+           match annot_reifier_opt with
+           | FStar_Pervasives_Native.Some reifier ->
+               if RDF_Term.is_iri pred_iri
+               then
+                 [{
+                    RDF_Triple.s = reifier;
+                    RDF_Triple.p = rdf_reifies_iri;
+                    RDF_Triple.o =
+                      (RDF_Term.T_TripleTerm (subj, pred_iri, obj))
+                  }]
+               else []
            | FStar_Pervasives_Native.None -> [] in
+         let reif_of pred_iri obj =
+           FStar_List_Tot_Base.op_At
+             (match reif_iri_opt with
+              | FStar_Pervasives_Native.Some r ->
+                  make_reification_triples r subj pred_iri obj
+              | FStar_Pervasives_Native.None -> []) (annot_of pred_iri obj) in
          let uu___1 =
            match resolve_name st1 tag with
            | FStar_Pervasives_Native.Some full_iri ->
@@ -993,8 +1085,80 @@ and process_property_element (st : rdfxml_state) (subj : RDF_Term.subject)
                       | FStar_Pervasives_Native.Some "Collection" ->
                           let collection_result =
                             process_collection st2 subj pred_iri reif_iri_opt
-                              children (fuel - Prims.int_one) in
+                              annot_reifier_opt children
+                              (fuel - Prims.int_one) in
                           collection_result
+                      | FStar_Pervasives_Native.Some "Triple" ->
+                          if Prims.op_Negation st1.saw_version_12
+                          then empty_result st2
+                          else
+                            (let child_elems =
+                               FStar_List_Tot_Base.filter
+                                 (fun c ->
+                                    match c with
+                                    | Parser_XML.XElement
+                                        (uu___4, uu___5, uu___6) -> true
+                                    | uu___4 -> false) children in
+                             match child_elems with
+                             | child_desc::[] ->
+                                 let inner =
+                                   process_node_element st2 child_desc
+                                     (fuel - Prims.int_one) in
+                                 (match inner.pr_triples with
+                                  | tt_triple::[] ->
+                                      let tt_obj =
+                                        RDF_Term.T_TripleTerm
+                                          ((tt_triple.RDF_Triple.s),
+                                            (tt_triple.RDF_Triple.p),
+                                            (tt_triple.RDF_Triple.o)) in
+                                      let base_t =
+                                        {
+                                          RDF_Triple.s = subj;
+                                          RDF_Triple.p = pred_iri;
+                                          RDF_Triple.o = tt_obj
+                                        } in
+                                      {
+                                        pr_triples = (base_t ::
+                                          (reif_of pred_iri tt_obj));
+                                        pr_state =
+                                          (restore_scope st2 inner.pr_state)
+                                      }
+                                  | uu___4 ->
+                                      {
+                                        pr_triples = [];
+                                        pr_state =
+                                          (let uu___5 =
+                                             restore_scope st2 inner.pr_state in
+                                           {
+                                             base_iri = (uu___5.base_iri);
+                                             namespaces = (uu___5.namespaces);
+                                             lang = (uu___5.lang);
+                                             direction = (uu___5.direction);
+                                             saw_version_12 =
+                                               (uu___5.saw_version_12);
+                                             bnode_counter =
+                                               (uu___5.bnode_counter);
+                                             li_counter = (uu___5.li_counter);
+                                             seen_ids = (uu___5.seen_ids);
+                                             has_error = true
+                                           })
+                                      })
+                             | uu___4 ->
+                                 {
+                                   pr_triples = [];
+                                   pr_state =
+                                     {
+                                       base_iri = (st2.base_iri);
+                                       namespaces = (st2.namespaces);
+                                       lang = (st2.lang);
+                                       direction = (st2.direction);
+                                       saw_version_12 = (st2.saw_version_12);
+                                       bnode_counter = (st2.bnode_counter);
+                                       li_counter = (st2.li_counter);
+                                       seen_ids = (st2.seen_ids);
+                                       has_error = true
+                                     }
+                                 })
                       | uu___3 ->
                           (match determine_property_object_from_attrs st2
                                    attrs
@@ -1178,7 +1342,8 @@ and process_property_element (st : rdfxml_state) (subj : RDF_Term.subject)
                                                   full_dt
                                             | FStar_Pervasives_Native.None ->
                                                 make_plain_literal text_val
-                                                  st2.lang in
+                                                  st2.lang
+                                                  (effective_dir st2) in
                                           match obj_opt with
                                           | FStar_Pervasives_Native.Some obj
                                               ->
@@ -1199,6 +1364,7 @@ and process_property_element (st : rdfxml_state) (subj : RDF_Term.subject)
 and process_collection (st : rdfxml_state) (subj : RDF_Term.subject)
   (pred_iri : Prims.string)
   (reif_iri_opt : Prims.string FStar_Pervasives_Native.option)
+  (annot_reifier_opt : RDF_Term.subject FStar_Pervasives_Native.option)
   (items : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
   process_result=
   if fuel = Prims.int_zero
@@ -1211,10 +1377,23 @@ and process_collection (st : rdfxml_state) (subj : RDF_Term.subject)
             | Parser_XML.XElement (uu___1, uu___2, uu___3) -> true
             | uu___1 -> false) items in
      let reif_for obj =
-       match reif_iri_opt with
-       | FStar_Pervasives_Native.Some r ->
-           make_reification_triples r subj pred_iri obj
-       | FStar_Pervasives_Native.None -> [] in
+       FStar_List_Tot_Base.op_At
+         (match reif_iri_opt with
+          | FStar_Pervasives_Native.Some r ->
+              make_reification_triples r subj pred_iri obj
+          | FStar_Pervasives_Native.None -> [])
+         (match annot_reifier_opt with
+          | FStar_Pervasives_Native.Some reifier ->
+              if RDF_Term.is_iri pred_iri
+              then
+                [{
+                   RDF_Triple.s = reifier;
+                   RDF_Triple.p = rdf_reifies_iri;
+                   RDF_Triple.o =
+                     (RDF_Term.T_TripleTerm (subj, pred_iri, obj))
+                 }]
+              else []
+          | FStar_Pervasives_Native.None -> []) in
      if (FStar_List_Tot_Base.length elem_items) = Prims.int_zero
      then
        (if (RDF_Term.is_iri rdf_nil_iri) && (RDF_Term.is_iri pred_iri)
@@ -1229,21 +1408,35 @@ and process_collection (st : rdfxml_state) (subj : RDF_Term.subject)
           { pr_triples = (t :: (reif_for obj)); pr_state = st }
         else empty_result st)
      else
-       build_collection_list st subj pred_iri reif_iri_opt elem_items
-         (fuel - Prims.int_one))
+       build_collection_list st subj pred_iri reif_iri_opt annot_reifier_opt
+         elem_items (fuel - Prims.int_one))
 and build_collection_list (st : rdfxml_state) (subj : RDF_Term.subject)
   (pred_iri : Prims.string)
   (reif_iri_opt : Prims.string FStar_Pervasives_Native.option)
+  (annot_reifier_opt : RDF_Term.subject FStar_Pervasives_Native.option)
   (items : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
   process_result=
   if fuel = Prims.int_zero
   then empty_result st
   else
     (let reif_for obj =
-       match reif_iri_opt with
-       | FStar_Pervasives_Native.Some r ->
-           make_reification_triples r subj pred_iri obj
-       | FStar_Pervasives_Native.None -> [] in
+       FStar_List_Tot_Base.op_At
+         (match reif_iri_opt with
+          | FStar_Pervasives_Native.Some r ->
+              make_reification_triples r subj pred_iri obj
+          | FStar_Pervasives_Native.None -> [])
+         (match annot_reifier_opt with
+          | FStar_Pervasives_Native.Some reifier ->
+              if RDF_Term.is_iri pred_iri
+              then
+                [{
+                   RDF_Triple.s = reifier;
+                   RDF_Triple.p = rdf_reifies_iri;
+                   RDF_Triple.o =
+                     (RDF_Term.T_TripleTerm (subj, pred_iri, obj))
+                 }]
+              else []
+          | FStar_Pervasives_Native.None -> []) in
      match items with
      | [] ->
          if (RDF_Term.is_iri rdf_nil_iri) && (RDF_Term.is_iri pred_iri)
@@ -1299,6 +1492,7 @@ and build_collection_list (st : rdfxml_state) (subj : RDF_Term.subject)
                          if RDF_Term.is_iri rdf_rest_iri
                          then
                            build_collection_list st3 list_node rdf_rest_iri
+                             FStar_Pervasives_Native.None
                              FStar_Pervasives_Native.None rest
                              (fuel - Prims.int_one)
                          else empty_result st3 in
@@ -1316,6 +1510,7 @@ and build_collection_list (st : rdfxml_state) (subj : RDF_Term.subject)
                           if RDF_Term.is_iri rdf_rest_iri
                           then
                             build_collection_list st3 list_node rdf_rest_iri
+                              FStar_Pervasives_Native.None
                               FStar_Pervasives_Native.None rest
                               (fuel - Prims.int_one)
                           else empty_result st3 in
