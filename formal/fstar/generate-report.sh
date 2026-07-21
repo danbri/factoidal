@@ -1968,6 +1968,25 @@ SPARQL_REMAINING=$(family_remaining sparql11-protocol)
 SPARQL_FAMILY_HTML=$(family_section "sparql11" "SPARQL 1.1" "$SPARQL_STATUS" "$SPARQL_HEADLINE" "$SPARQL_ROWS_HTML" "$SPARQL_FAILURE_DETAIL_HTML" \
   "$SPARQL_PASS" "$SPARQL_FAIL" "$SPARQL_SKIP" "$SPARQL_TOTAL" "" "$SPARQL_REMAINING")
 
+# --- RDF 1.2 / SPARQL 1.2 (W3C Working Drafts, epic #305) ----------------
+# Emerging next-revision suites: kept in their own Working-Drafts group
+# (below), NOT under Recommendations, since 1.2 is not yet a Rec.
+V12_FAMILY_HTML=""
+if [ "$RDF12_PRESENT" -eq 1 ] || [ "$SPARQL12_PRESENT" -eq 1 ]; then
+  V12_ROWS_HTML=$(
+    emit_rec_subsection "RDF 1.2 (N-Triples / N-Quads / Turtle / TriG)" "https://www.w3.org/TR/rdf12-n-triples/" "$RDF12_SUITES"
+    emit_rec_subsection "SPARQL 1.2 Query"                              "https://www.w3.org/TR/sparql12-query/"   "$SPARQL12_SUITES"
+  )
+  V12_PASS=$((RDF12_PASS + SPARQL12_PASS))
+  V12_FAIL=$((RDF12_FAIL + SPARQL12_FAIL))
+  V12_SKIP=$((RDF12_SKIP + SPARQL12_SKIP))
+  V12_TOTAL=$((RDF12_TOTAL + SPARQL12_TOTAL))
+  V12_STATUS=$(status_for "$V12_FAIL" 1)
+  V12_HEADLINE="RDF 1.2 ${RDF12_PASS} pass, ${RDF12_FAIL} fail (of ${RDF12_TOTAL}); SPARQL 1.2 ${SPARQL12_PASS} pass, ${SPARQL12_FAIL} fail (of ${SPARQL12_TOTAL}). Triple terms &lt;&lt;( s p o )&gt;&gt;, reifiers, annotations, VERSION, directional literals — parsed and queried live in the browser demo. Still open: RDF/XML 1.2, RDF 1.2 canonicalization (86) and entailment (74), and a handful of SPARQL 1.2 eval cases."
+  V12_FAMILY_HTML=$(family_section "rdf-sparql-12" "RDF 1.2 / SPARQL 1.2" "$V12_STATUS" "$V12_HEADLINE" "$V12_ROWS_HTML" "" \
+    "$V12_PASS" "$V12_FAIL" "$V12_SKIP" "$V12_TOTAL")
+fi
+
 # --- Reasoning: RDFS / OWL 2 ---------------------------------------------
 # OWL_HTML already carries its own rich prose (scope + pass-rate context)
 # from the earlier catalog-by-catalog wiring; wrap it as this family's
@@ -2497,6 +2516,14 @@ GROUP1_BODY=$(printf '%s\n' \
   "$RULES_HTML" "$GRDDL_HTML" "$XSLTFAM_HTML" "$XMLCONFFAM_HTML" "$MATHMLFAM_HTML")
 GROUP1_HTML=$(group_section "group-w3c-rec" "W3C Recommendations" "$GROUP1_BODY")
 
+# W3C Working Drafts (emerging next-revision specs) — RDF 1.2 / SPARQL 1.2.
+# Its own group so it is never mistaken for a Recommendation. Empty (and
+# therefore omitted) if the 1.2 runners produced no rows this run.
+GROUP_WD_HTML=""
+if [ -n "$V12_FAMILY_HTML" ]; then
+  GROUP_WD_HTML=$(group_section "group-w3c-wd" "W3C Working Drafts (emerging)" "$V12_FAMILY_HTML")
+fi
+
 GROUP2_BODY=$(printf '%s\n' "$SHEX_HTML" "$HDT_HTML" "$RML_HTML")
 GROUP2_HTML=$(group_section "group-w3c-cg" "W3C Community Group / Notes / Submissions" "$GROUP2_BODY")
 
@@ -2926,7 +2953,7 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
       <span class="row"><span class="label">Tests</span><strong class="tests">${TESTS_TIMESTAMP_HUMAN}</strong></span>
     </div>
     <h1>W3C test results</h1>
-    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
+    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDF 1.2 / SPARQL 1.2 (W3C Working Drafts), RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
     <nav>
       <a href="/factoidal/">Home</a>
       <a href="/factoidal/fstar-extracted/">Demos</a>
@@ -2973,6 +3000,7 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
 ${LEGEND_HTML}
 
 ${GROUP1_HTML}
+${GROUP_WD_HTML}
 
 ${GROUP2_HTML}
 

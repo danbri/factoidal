@@ -398,11 +398,11 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-21 03:53 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-21 03:58 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-17 17:54 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
-    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
+    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDF 1.2 / SPARQL 1.2 (W3C Working Drafts), RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
     <nav>
       <a href="/factoidal/">Home</a>
       <a href="/factoidal/fstar-extracted/">Demos</a>
@@ -1509,6 +1509,140 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
 </details>
   </div>
 </details>
+<details class="group-section" id="group-w3c-wd" open>
+  <summary class="group-summary">W3C Working Drafts (emerging)</summary>
+  <div class="group-body">
+<details class="family-node amber" id="rdf-sparql-12">
+  <summary>
+    <span class="fam-name">RDF 1.2 / SPARQL 1.2</span>
+    <span class="fam-score">460/6/0 of 466</span>
+    
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">RDF 1.2 212 pass, 0 fail (of 212); SPARQL 1.2 248 pass, 6 fail (of 254). Triple terms &lt;&lt;( s p o )&gt;&gt;, reifiers, annotations, VERSION, directional literals — parsed and queried live in the browser demo. Still open: RDF/XML 1.2, RDF 1.2 canonicalization (86) and entailment (74), and a handful of SPARQL 1.2 eval cases.</p>
+    <div class="suites">
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf12-n-triples/" target="_blank" rel="noopener">RDF 1.2 (N-Triples / N-Quads / Turtle / TriG)</a></h3>
+      <details class="suite-node green">
+        <summary><span class="suite-name">rdf-n-triples/syntax</span><span class="suite-numbers">29/0/0 of 29</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">29 pass, 0 fail, 0 skip (out of 29)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">rdf-n-quads/syntax</span><span class="suite-numbers">27/0/0 of 27</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">27 pass, 0 fail, 0 skip (out of 27)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">rdf-turtle/syntax</span><span class="suite-numbers">67/0/0 of 67</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">67 pass, 0 fail, 0 skip (out of 67)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">rdf-turtle/eval</span><span class="suite-numbers">29/0/0 of 29</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">29 pass, 0 fail, 0 skip (out of 29)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">rdf-trig/syntax</span><span class="suite-numbers">35/0/0 of 35</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">35 pass, 0 fail, 0 skip (out of 35)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">rdf-trig/eval</span><span class="suite-numbers">25/0/0 of 25</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">25 pass, 0 fail, 0 skip (out of 25)</p>
+        </div>
+      </details>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql12-query/" target="_blank" rel="noopener">SPARQL 1.2 Query</a></h3>
+      <details class="suite-node green">
+        <summary><span class="suite-name">codepoint-escapes</span><span class="suite-numbers">8/0/0 of 8</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">8 pass, 0 fail, 0 skip (out of 8)</p>
+        </div>
+      </details>
+      <details class="suite-node amber">
+        <summary><span class="suite-name">eval-triple-terms</span><span class="suite-numbers">39/2/0 of 41</span><span class="dot amber"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:95.12%"></div><div class="seg seg-fail" style="width:4.88%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">39 pass, 2 fail, 0 skip (out of 41)</p>
+        </div>
+      </details>
+      <details class="suite-node amber">
+        <summary><span class="suite-name">expression</span><span class="suite-numbers">0/1/0 of 1</span><span class="dot amber"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:0.00%"></div><div class="seg seg-fail" style="width:100.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">0 pass, 1 fail, 0 skip (out of 1)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">grouping</span><span class="suite-numbers">1/0/0 of 1</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">1 pass, 0 fail, 0 skip (out of 1)</p>
+        </div>
+      </details>
+      <details class="suite-node amber">
+        <summary><span class="suite-name">lang-basedir</span><span class="suite-numbers">10/1/0 of 11</span><span class="dot amber"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:90.91%"></div><div class="seg seg-fail" style="width:9.09%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">10 pass, 1 fail, 0 skip (out of 11)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">rdf11</span><span class="suite-numbers">3/0/0 of 3</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">3 pass, 0 fail, 0 skip (out of 3)</p>
+        </div>
+      </details>
+      <details class="suite-node amber">
+        <summary><span class="suite-name">syntax</span><span class="suite-numbers">0/2/0 of 2</span><span class="dot amber"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:0.00%"></div><div class="seg seg-fail" style="width:100.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">0 pass, 2 fail, 0 skip (out of 2)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">syntax-triple-terms-negative</span><span class="suite-numbers">65/0/0 of 65</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">65 pass, 0 fail, 0 skip (out of 65)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">syntax-triple-terms-positive</span><span class="suite-numbers">113/0/0 of 113</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">113 pass, 0 fail, 0 skip (out of 113)</p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">version</span><span class="suite-numbers">9/0/0 of 9</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">9 pass, 0 fail, 0 skip (out of 9)</p>
+        </div>
+      </details>
+    </div>
+    
+
+  </div>
+</details>
+  </div>
+</details>
 
 <details class="group-section" id="group-w3c-cg" open>
   <summary class="group-summary">W3C Community Group / Notes / Submissions</summary>
@@ -1970,9 +2104,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-21 03:53 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/adf511177e6435763863f7e724736a8c7207a2a3">adf51117</a></code>
-  on branch <code>claude/main</code> — &ldquo;bundle: factoidal_cli.cmi from the --sparql12 rebuild (rule #9) (#305)&rdquo;.
+  Generated <strong>2026-07-21 03:58 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/18ae35f8967173928d302f01a04211dafdf95701">18ae35f8</a></code>
+  on branch <code>claude/main</code> — &ldquo;dashboard: wire RDF 1.2 + SPARQL 1.2 into generate-report / latest.json (#305)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
