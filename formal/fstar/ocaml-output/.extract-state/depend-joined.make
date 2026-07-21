@@ -1708,7 +1708,7 @@ SPARQL11_Parser.krml:  	SPARQL11.Parser.fst.checked
 
 SPARQL11_Parser.cmx:  	SPARQL11_Parser.ml  	RDF_Bytes.cmx  	SPARQL11_Algebra.cmx  	SPARQL_FullText.cmx  	RDF_Graph_Executable.cmx
 
-Parser.JSONResults.fst.checked:  	Parser.JSONResults.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	RDF.Graph.Executable.fst.checked  	Parser.Combinators.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+Parser.JSONResults.fst.checked:  	Parser.JSONResults.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	Parser.JSON.fst.checked  	RDF.Graph.Executable.fst.checked  	Parser.Combinators.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
 Parser_JSONResults.ml:  	Parser.JSONResults.fst.checked
 
@@ -1716,7 +1716,7 @@ Parser_JSONResults.fs:  	Parser.JSONResults.fst.checked
 
 Parser_JSONResults.krml:  	Parser.JSONResults.fst.checked
 
-Parser_JSONResults.cmx:  	Parser_JSONResults.ml  	RDF_Graph_Executable.cmx  	Parser_Combinators.cmx
+Parser_JSONResults.cmx:  	Parser_JSONResults.ml  	Parser_JSON.cmx  	RDF_Graph_Executable.cmx  	Parser_Combinators.cmx
 
 SPARQL.HTTP.BackendInfo.fst.checked:  	SPARQL.HTTP.BackendInfo.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	RDF.Graph.Executable.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	SPARQL.JSON.Escape.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 

@@ -4152,8 +4152,7 @@ SPARQL11_Parser.cmx: \
 Parser.JSONResults.fst.checked: \
 	Parser.JSONResults.fst \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
-	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
-	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
+	Parser.JSON.fst.checked \
 	RDF.Graph.Executable.fst.checked \
 	Parser.Combinators.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
@@ -4171,6 +4170,7 @@ Parser_JSONResults.krml: \
 
 Parser_JSONResults.cmx: \
 	Parser_JSONResults.ml \
+	Parser_JSON.cmx \
 	RDF_Graph_Executable.cmx \
 	Parser_Combinators.cmx
 

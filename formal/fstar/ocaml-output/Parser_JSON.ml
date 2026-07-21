@@ -530,3 +530,11 @@ let json_get_array (key : Prims.string) (obj : json_val) :
   | FStar_Pervasives_Native.Some (JArray items) ->
       FStar_Pervasives_Native.Some items
   | uu___ -> FStar_Pervasives_Native.None
+let json_get_string_array (key : Prims.string) (obj : json_val) :
+  Prims.string Prims.list FStar_Pervasives_Native.option=
+  match json_get_field key obj with
+  | FStar_Pervasives_Native.Some (JArray items) ->
+      FStar_Pervasives_Native.Some
+        (FStar_List_Tot_Base.concatMap
+           (fun v -> match v with | JString s -> [s] | uu___ -> []) items)
+  | uu___ -> FStar_Pervasives_Native.None

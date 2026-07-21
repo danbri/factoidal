@@ -8,8 +8,8 @@
   [8/8] codepoint-escapes/codepoint-esc-08.rq ok
   [1/41] eval-triple-terms/Triple terms - all graph triples (JSON results) ok
   [2/41] eval-triple-terms/Triple terms - all graph triples (XML results) ok
-  [3/41] eval-triple-terms/Reified triples - all graph triples (JSON results) ok (244ms)
-  [4/41] eval-triple-terms/Reified triples - all graph triples (XML results) ok (21ms)
+  [3/41] eval-triple-terms/Reified triples - all graph triples (JSON results) ok (20ms)
+  [4/41] eval-triple-terms/Reified triples - all graph triples (XML results) ok (18ms)
   [5/41] eval-triple-terms/Reified triples - match constant reified triple ok
   [6/41] eval-triple-terms/Reified triples - match reified triple, var subject ok
   [7/41] eval-triple-terms/Reified triples - match reified triple, var predicate ok
@@ -18,8 +18,8 @@
   [10/41] eval-triple-terms/Annotated triple - match constant reified triple ok
   [11/41] eval-triple-terms/Triple terms - in VALUES ok
   [12/41] eval-triple-terms/Triple terms - in expressions and equality ok
-  [13/41] eval-triple-terms/Reified triples - Asserted and reified triple ok (44ms)
-  [14/41] eval-triple-terms/Reified triples - Asserted and reified triple ok (44ms)
+  [13/41] eval-triple-terms/Reified triples - Asserted and reified triple ok
+  [14/41] eval-triple-terms/Reified triples - Asserted and reified triple ok
   [15/41] eval-triple-terms/Reified triples - Pattern - Variable for reified triple reifier ok
   [16/41] eval-triple-terms/Reified triples - Pattern - Variable for reified triple ok
   [17/41] eval-triple-terms/Reified triples - Pattern - No match ok
@@ -37,13 +37,13 @@
   [29/41] eval-triple-terms/Reified triples - CONSTRUCT with annotation syntax ok
   [30/41] eval-triple-terms/Reified triples - CONSTRUCT WHERE with annotation syntax ok
   [31/41] eval-triple-terms/Reified triples - GRAPH ok
-  [32/41] eval-triple-terms/Reified triples - GRAPHs with blank node ok (16ms)
+  [32/41] eval-triple-terms/Reified triples - GRAPHs with blank node ok
   [33/41] eval-triple-terms/Reified triples - Embedded triple - BIND - CONSTRUCT ok
   [34/41] eval-triple-terms/Reified triples - Embedded triple - Functions ok
-  [35/41] eval-triple-terms/Reified triples - Embedded triple - sameTerm ok (33ms)
-  [36/41] eval-triple-terms/Reified triples - Embedded triple - value-equality ok (58ms)
-  [37/41] eval-triple-terms/Reified triples - Embedded triple - ORDER BY ok (62ms)
-  [38/41] eval-triple-terms/Reified triples - Embedded triple - ordering ok (129ms)
+  [35/41] eval-triple-terms/Reified triples - Embedded triple - sameTerm ok
+  [36/41] eval-triple-terms/Reified triples - Embedded triple - value-equality ok
+  [37/41] eval-triple-terms/Reified triples - Embedded triple - ORDER BY ok (73ms)
+  [38/41] eval-triple-terms/Reified triples - Embedded triple - ordering ok (76ms)
   [39/41] eval-triple-terms/Reified triples - Update ok
   [40/41] eval-triple-terms/Reified triples - Update - annotation ok
   [41/41] eval-triple-terms/Reified triples - Update - data ok
@@ -56,7 +56,7 @@
   [5/11] lang-basedir/LANGDIR with inline literals ok
   [6/11] lang-basedir/Literal with invalid base direction ok
   [7/11] lang-basedir/STRLANG ok
-  [8/11] lang-basedir/STRLANGDIR FAIL
+  [8/11] lang-basedir/STRLANGDIR ok
   [9/11] lang-basedir/DATATYPE and rdf:dirLangString ok
   [10/11] lang-basedir/CONCAT and rdf:dirLangString ok
   [11/11] lang-basedir/CONTAINS and rdf:dirLangString ok
@@ -270,8 +270,8 @@ Test base: third_party/testing/w3c/sparql/sparql12
 --- eval-triple-terms ---
   PASS: Triple terms - all graph triples (JSON results)
   PASS: Triple terms - all graph triples (XML results)
-  PASS: Reified triples - all graph triples (JSON results) (244ms)
-  PASS: Reified triples - all graph triples (XML results) (21ms)
+  PASS: Reified triples - all graph triples (JSON results) (20ms)
+  PASS: Reified triples - all graph triples (XML results) (18ms)
   PASS: Reified triples - match constant reified triple
   PASS: Reified triples - match reified triple, var subject
   PASS: Reified triples - match reified triple, var predicate
@@ -280,8 +280,8 @@ Test base: third_party/testing/w3c/sparql/sparql12
   PASS: Annotated triple - match constant reified triple
   PASS: Triple terms - in VALUES
   PASS: Triple terms - in expressions and equality
-  PASS: Reified triples - Asserted and reified triple (44ms)
-  PASS: Reified triples - Asserted and reified triple (44ms)
+  PASS: Reified triples - Asserted and reified triple
+  PASS: Reified triples - Asserted and reified triple
   PASS: Reified triples - Pattern - Variable for reified triple reifier
   PASS: Reified triples - Pattern - Variable for reified triple
   PASS: Reified triples - Pattern - No match
@@ -299,17 +299,17 @@ Test base: third_party/testing/w3c/sparql/sparql12
   PASS: Reified triples - CONSTRUCT with annotation syntax
   PASS: Reified triples - CONSTRUCT WHERE with annotation syntax
   PASS: Reified triples - GRAPH
-  PASS: Reified triples - GRAPHs with blank node (16ms)
+  PASS: Reified triples - GRAPHs with blank node
   PASS: Reified triples - Embedded triple - BIND - CONSTRUCT
   PASS: Reified triples - Embedded triple - Functions
-  PASS: Reified triples - Embedded triple - sameTerm (33ms)
-  PASS: Reified triples - Embedded triple - value-equality (58ms)
-  PASS: Reified triples - Embedded triple - ORDER BY (62ms)
-  PASS: Reified triples - Embedded triple - ordering (129ms)
+  PASS: Reified triples - Embedded triple - sameTerm
+  PASS: Reified triples - Embedded triple - value-equality
+  PASS: Reified triples - Embedded triple - ORDER BY (73ms)
+  PASS: Reified triples - Embedded triple - ordering (76ms)
   PASS: Reified triples - Update
   PASS: Reified triples - Update - annotation
   PASS: Reified triples - Update - data
-  [suite time: 0.7s]
+  [suite time: 0.2s]
 
 --- expression ---
   PASS: not-not
@@ -327,7 +327,7 @@ Test base: third_party/testing/w3c/sparql/sparql12
   PASS: LANGDIR with inline literals
   PASS: Literal with invalid base direction
   PASS: STRLANG
-  FAIL: STRLANGDIR — Runtime: Failed to parse SRJ (JSON) results
+  PASS: STRLANGDIR
   PASS: DATATYPE and rdf:dirLangString
   PASS: CONCAT and rdf:dirLangString
   PASS: CONTAINS and rdf:dirLangString
@@ -546,12 +546,12 @@ Suite Results:
   eval-triple-terms                   pass:41 fail:0 skip:0 unsupported:0
   expression                          pass:1 fail:0 skip:0 unsupported:0
   grouping                            pass:1 fail:0 skip:0 unsupported:0
-  lang-basedir                        pass:10 fail:1 skip:0 unsupported:0
+  lang-basedir                        pass:11 fail:0 skip:0 unsupported:0
   rdf11                               pass:3 fail:0 skip:0 unsupported:0
   syntax                              pass:2 fail:0 skip:0 unsupported:0
   syntax-triple-terms-negative        pass:65 fail:0 skip:0 unsupported:0
   syntax-triple-terms-positive        pass:113 fail:0 skip:0 unsupported:0
   version                             pass:9 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 253 pass, 1 fail, 0 skip, 0 unsupported
+TOTAL: 254 pass, 0 fail, 0 skip, 0 unsupported
 ========================================
