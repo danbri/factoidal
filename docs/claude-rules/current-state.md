@@ -349,6 +349,17 @@ resolved `assume val`s).
 
 ## Standing priorities (as of 2026-07-16)
 
+**Reaffirmed (owner, 2026-07-21):** drive conformance to 100% for every
+standard. RDF 1.2 / SPARQL 1.2 is no longer just an investigation — the
+term model + all four line/text syntaxes are landed and verified (RDF
+1.2 212/0), SPARQL 1.2 syntax + builtins landed (248/6), and 1.2 is now
+reachable through the browser/npm API and shown on the dashboard (a
+"W3C Working Drafts" group), with a live hub notebook (post 31). Open
+1.2 work being driven next, in order taken: the 6 SPARQL 1.2 eval fails
+and (done) dashboard wiring, then RDF/XML 1.2, RDF 1.2 canonicalization
+(86) + entailment (74), RML-star mapping generation, COTTAS on-disk 1.2,
+and JSON-LD `@direction` roundtrip. Tracked under epic #305.
+
 **Active /goal (owner, 2026-07-16, day-closure):** every W3C + ShEx
 suite either fully green or every residual fail named with a one-line
 written disposition (disputed-fixture / dependency-blocked /
