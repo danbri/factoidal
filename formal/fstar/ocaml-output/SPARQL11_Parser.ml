@@ -2655,6 +2655,119 @@ let rec var_list_has_dup (vs : SPARQL11_Algebra.var_name Prims.list) :
   | x::rest ->
       (FStar_List_Tot_Base.existsb (fun y -> streq x y) rest) ||
         (var_list_has_dup rest)
+let rec expr_has_aggregate (e : SPARQL11_Algebra.expr) : Prims.bool=
+  match e with
+  | SPARQL11_Algebra.E_Var uu___ -> false
+  | SPARQL11_Algebra.E_IRI uu___ -> false
+  | SPARQL11_Algebra.E_Literal uu___ -> false
+  | SPARQL11_Algebra.E_BoolLit uu___ -> false
+  | SPARQL11_Algebra.E_NumericLit uu___ -> false
+  | SPARQL11_Algebra.E_DecimalLit uu___ -> false
+  | SPARQL11_Algebra.E_DoubleLit uu___ -> false
+  | SPARQL11_Algebra.E_Arith (uu___, e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_UnaryMinus e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_UnaryPlus e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Compare (uu___, e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_And (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_Or (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_Not e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_IsIRI e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_IsBlank e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_IsLiteral e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_IsNumeric e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Str e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Lang e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Datatype e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_IRI_fn e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_HasLang e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_HasLangDir e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_LangDir e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_StrDt (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_StrLang (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_StrLangDir (e1, e2, e3) ->
+      ((expr_has_aggregate e1) || (expr_has_aggregate e2)) ||
+        (expr_has_aggregate e3)
+  | SPARQL11_Algebra.E_Bound uu___ -> false
+  | SPARQL11_Algebra.E_If (c, t, f) ->
+      ((expr_has_aggregate c) || (expr_has_aggregate t)) ||
+        (expr_has_aggregate f)
+  | SPARQL11_Algebra.E_Coalesce es -> expr_list_has_aggregate es
+  | SPARQL11_Algebra.E_In (e1, es) ->
+      (expr_has_aggregate e1) || (expr_list_has_aggregate es)
+  | SPARQL11_Algebra.E_NotIn (e1, es) ->
+      (expr_has_aggregate e1) || (expr_list_has_aggregate es)
+  | SPARQL11_Algebra.E_StrLen e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Substr (e1, e2, e3_opt) ->
+      ((expr_has_aggregate e1) || (expr_has_aggregate e2)) ||
+        (expr_opt_has_aggregate e3_opt)
+  | SPARQL11_Algebra.E_UCase e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_LCase e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_StrStarts (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_StrEnds (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_Contains (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_StrBefore (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_StrAfter (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_Concat es -> expr_list_has_aggregate es
+  | SPARQL11_Algebra.E_EncodeForUri e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Replace (e1, e2, e3, e4_opt) ->
+      (((expr_has_aggregate e1) || (expr_has_aggregate e2)) ||
+         (expr_has_aggregate e3))
+        || (expr_opt_has_aggregate e4_opt)
+  | SPARQL11_Algebra.E_Regex (e1, e2, e3_opt) ->
+      ((expr_has_aggregate e1) || (expr_has_aggregate e2)) ||
+        (expr_opt_has_aggregate e3_opt)
+  | SPARQL11_Algebra.E_Abs e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Round e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Ceil e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Floor e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_MD5 e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_SHA1 e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_SHA256 e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_SHA384 e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_SHA512 e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Now -> false
+  | SPARQL11_Algebra.E_Year e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Month e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Day e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Hours e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Minutes e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Seconds e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Timezone e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_Tz e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_SameTerm (e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | SPARQL11_Algebra.E_Exists uu___ -> false
+  | SPARQL11_Algebra.E_NotExists uu___ -> false
+  | SPARQL11_Algebra.E_Aggregate (uu___, uu___1, uu___2) -> true
+  | SPARQL11_Algebra.E_FunctionCall (uu___, es) -> expr_list_has_aggregate es
+  | SPARQL11_Algebra.E_TripleTerm (a, b, c) ->
+      ((expr_has_aggregate a) || (expr_has_aggregate b)) ||
+        (expr_has_aggregate c)
+  | SPARQL11_Algebra.E_TTSubject e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_TTPredicate e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_TTObject e1 -> expr_has_aggregate e1
+  | SPARQL11_Algebra.E_IsTriple e1 -> expr_has_aggregate e1
+and expr_list_has_aggregate (es : SPARQL11_Algebra.expr Prims.list) :
+  Prims.bool=
+  match es with
+  | [] -> false
+  | e::rest -> (expr_has_aggregate e) || (expr_list_has_aggregate rest)
+and expr_opt_has_aggregate
+  (eo : SPARQL11_Algebra.expr FStar_Pervasives_Native.option) : Prims.bool=
+  match eo with
+  | FStar_Pervasives_Native.None -> false
+  | FStar_Pervasives_Native.Some e -> expr_has_aggregate e
 let rec parse_expr (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
   SPARQL11_Algebra.expr parse_result=
   if fuel = Prims.int_zero
@@ -3502,9 +3615,14 @@ and parse_aggregate (pm : prefix_map) (fuel : Prims.nat)
                         (match parse_expect Tok_RPAREN ts3 with
                          | ParseErr m -> ParseErr m
                          | ParseOk ((), ts4) ->
-                             ParseOk
-                               ((SPARQL11_Algebra.E_Aggregate (agg, dist, e)),
-                                 ts4))))))
+                             if expr_has_aggregate e
+                             then
+                               ParseErr
+                                 "nested aggregate in aggregate argument"
+                             else
+                               ParseOk
+                                 ((SPARQL11_Algebra.E_Aggregate
+                                     (agg, dist, e)), ts4))))))
 and parse_group_concat (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.expr parse_result=
   if fuel = Prims.int_zero
@@ -3546,10 +3664,15 @@ and parse_group_concat (pm : prefix_map) (fuel : Prims.nat)
                         (match parse_expect Tok_RPAREN ts4 with
                          | ParseErr m -> ParseErr m
                          | ParseOk ((), ts5) ->
-                             ParseOk
-                               ((SPARQL11_Algebra.E_Aggregate
-                                   ((SPARQL11_Algebra.Agg_GroupConcat sep),
-                                     dist, e)), ts5))))))
+                             if expr_has_aggregate e
+                             then
+                               ParseErr
+                                 "nested aggregate in GROUP_CONCAT argument"
+                             else
+                               ParseOk
+                                 ((SPARQL11_Algebra.E_Aggregate
+                                     ((SPARQL11_Algebra.Agg_GroupConcat sep),
+                                       dist, e)), ts5))))))
 and parse_b1 (pm : prefix_map) (fuel : Prims.nat)
   (ctor : SPARQL11_Algebra.expr -> SPARQL11_Algebra.expr) (ts : token_stream)
   : SPARQL11_Algebra.expr parse_result=

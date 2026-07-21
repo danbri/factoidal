@@ -8,8 +8,8 @@
   [8/8] codepoint-escapes/codepoint-esc-08.rq ok
   [1/41] eval-triple-terms/Triple terms - all graph triples (JSON results) ok
   [2/41] eval-triple-terms/Triple terms - all graph triples (XML results) ok
-  [3/41] eval-triple-terms/Reified triples - all graph triples (JSON results) ok (210ms)
-  [4/41] eval-triple-terms/Reified triples - all graph triples (XML results) ok (16ms)
+  [3/41] eval-triple-terms/Reified triples - all graph triples (JSON results) ok (244ms)
+  [4/41] eval-triple-terms/Reified triples - all graph triples (XML results) ok (21ms)
   [5/41] eval-triple-terms/Reified triples - match constant reified triple ok
   [6/41] eval-triple-terms/Reified triples - match reified triple, var subject ok
   [7/41] eval-triple-terms/Reified triples - match reified triple, var predicate ok
@@ -18,8 +18,8 @@
   [10/41] eval-triple-terms/Annotated triple - match constant reified triple ok
   [11/41] eval-triple-terms/Triple terms - in VALUES ok
   [12/41] eval-triple-terms/Triple terms - in expressions and equality ok
-  [13/41] eval-triple-terms/Reified triples - Asserted and reified triple ok (39ms)
-  [14/41] eval-triple-terms/Reified triples - Asserted and reified triple ok (40ms)
+  [13/41] eval-triple-terms/Reified triples - Asserted and reified triple ok (44ms)
+  [14/41] eval-triple-terms/Reified triples - Asserted and reified triple ok (44ms)
   [15/41] eval-triple-terms/Reified triples - Pattern - Variable for reified triple reifier ok
   [16/41] eval-triple-terms/Reified triples - Pattern - Variable for reified triple ok
   [17/41] eval-triple-terms/Reified triples - Pattern - No match ok
@@ -37,13 +37,13 @@
   [29/41] eval-triple-terms/Reified triples - CONSTRUCT with annotation syntax ok
   [30/41] eval-triple-terms/Reified triples - CONSTRUCT WHERE with annotation syntax ok
   [31/41] eval-triple-terms/Reified triples - GRAPH ok
-  [32/41] eval-triple-terms/Reified triples - GRAPHs with blank node ok (14ms)
+  [32/41] eval-triple-terms/Reified triples - GRAPHs with blank node ok (16ms)
   [33/41] eval-triple-terms/Reified triples - Embedded triple - BIND - CONSTRUCT ok
   [34/41] eval-triple-terms/Reified triples - Embedded triple - Functions ok
-  [35/41] eval-triple-terms/Reified triples - Embedded triple - sameTerm ok (30ms)
-  [36/41] eval-triple-terms/Reified triples - Embedded triple - value-equality ok (50ms)
-  [37/41] eval-triple-terms/Reified triples - Embedded triple - ORDER BY ok (52ms)
-  [38/41] eval-triple-terms/Reified triples - Embedded triple - ordering FAIL (110ms)
+  [35/41] eval-triple-terms/Reified triples - Embedded triple - sameTerm ok (33ms)
+  [36/41] eval-triple-terms/Reified triples - Embedded triple - value-equality ok (58ms)
+  [37/41] eval-triple-terms/Reified triples - Embedded triple - ORDER BY ok (62ms)
+  [38/41] eval-triple-terms/Reified triples - Embedded triple - ordering ok (129ms)
   [39/41] eval-triple-terms/Reified triples - Update ok
   [40/41] eval-triple-terms/Reified triples - Update - annotation ok
   [41/41] eval-triple-terms/Reified triples - Update - data ok
@@ -63,7 +63,7 @@
   [1/3] rdf11/DATATYPE on rdf:langString ok
   [2/3] rdf11/DATATYPE on plain string literal ok
   [3/3] rdf11/xsd:string and plain literals are the same ok
-  [1/2] syntax/Nested aggregate functions FAIL
+  [1/2] syntax/Nested aggregate functions ok
   [2/2] syntax/Duplicated variable in a VALUES clause ok
   [1/65] syntax-triple-terms-negative/alternate-path-anonreifier.rq ok
   [2/65] syntax-triple-terms-negative/alternate-path-reifier.rq ok
@@ -270,8 +270,8 @@ Test base: third_party/testing/w3c/sparql/sparql12
 --- eval-triple-terms ---
   PASS: Triple terms - all graph triples (JSON results)
   PASS: Triple terms - all graph triples (XML results)
-  PASS: Reified triples - all graph triples (JSON results) (210ms)
-  PASS: Reified triples - all graph triples (XML results) (16ms)
+  PASS: Reified triples - all graph triples (JSON results) (244ms)
+  PASS: Reified triples - all graph triples (XML results) (21ms)
   PASS: Reified triples - match constant reified triple
   PASS: Reified triples - match reified triple, var subject
   PASS: Reified triples - match reified triple, var predicate
@@ -280,8 +280,8 @@ Test base: third_party/testing/w3c/sparql/sparql12
   PASS: Annotated triple - match constant reified triple
   PASS: Triple terms - in VALUES
   PASS: Triple terms - in expressions and equality
-  PASS: Reified triples - Asserted and reified triple (39ms)
-  PASS: Reified triples - Asserted and reified triple (40ms)
+  PASS: Reified triples - Asserted and reified triple (44ms)
+  PASS: Reified triples - Asserted and reified triple (44ms)
   PASS: Reified triples - Pattern - Variable for reified triple reifier
   PASS: Reified triples - Pattern - Variable for reified triple
   PASS: Reified triples - Pattern - No match
@@ -299,23 +299,17 @@ Test base: third_party/testing/w3c/sparql/sparql12
   PASS: Reified triples - CONSTRUCT with annotation syntax
   PASS: Reified triples - CONSTRUCT WHERE with annotation syntax
   PASS: Reified triples - GRAPH
-  PASS: Reified triples - GRAPHs with blank node (14ms)
+  PASS: Reified triples - GRAPHs with blank node (16ms)
   PASS: Reified triples - Embedded triple - BIND - CONSTRUCT
   PASS: Reified triples - Embedded triple - Functions
-  PASS: Reified triples - Embedded triple - sameTerm (30ms)
-  PASS: Reified triples - Embedded triple - value-equality (50ms)
-  PASS: Reified triples - Embedded triple - ORDER BY (52ms)
-  FAIL: Reified triples - Embedded triple - ordering — Results mismatch: expected 9 rows, got 9
-      UNMATCHED: ?v=<<( <http://example.com/s> <http://example.com/p> "-456"^^<http://www.w3.org/2001/XMLSchema#integer> )>>, ?index="C-4"^^<http://www.w3.org/2001/XMLSchema#string>
-      UNMATCHED: ?v=<<( <http://example.com/s> <http://example.com/p> "123"^^<http://www.w3.org/2001/XMLSchema#integer> )>>, ?index="B-5"^^<http://www.w3.org/2001/XMLSchema#string>
-      UNMATCHED: ?v=<<( <http://example.com/s> <http://example.com/p> <<( <http://example.com/x> <http://example.com/y> <http://example.com/z> )>> )>>, ?index="B-6"^^<http://www.w3.org/2001/XMLSchema#string>
-      UNMATCHED: ?v=<<( <http://example.com/s1> <http://example.com/a> "999"^^<http://www.w3.org/2001/XMLSchema#integer> )>>, ?index="C-7"^^<http://www.w3.org/2001/XMLSchema#string>
-      UNMATCHED: ?v=<<( <http://example.com/s1> <http://example.com/p> "999"^^<http://www.w3.org/2001/XMLSchema#integer> )>>, ?index="C-8"^^<http://www.w3.org/2001/XMLSchema#string>
-      UNMATCHED: ?v=<<( <http://example.com/s2> <http://example.com/p> "900"^^<http://www.w3.org/2001/XMLSchema#integer> )>>, ?index="A-9"^^<http://www.w3.org/2001/XMLSchema#string> (110ms)
+  PASS: Reified triples - Embedded triple - sameTerm (33ms)
+  PASS: Reified triples - Embedded triple - value-equality (58ms)
+  PASS: Reified triples - Embedded triple - ORDER BY (62ms)
+  PASS: Reified triples - Embedded triple - ordering (129ms)
   PASS: Reified triples - Update
   PASS: Reified triples - Update - annotation
   PASS: Reified triples - Update - data
-  [suite time: 0.6s]
+  [suite time: 0.7s]
 
 --- expression ---
   PASS: not-not
@@ -346,7 +340,7 @@ Test base: third_party/testing/w3c/sparql/sparql12
   [suite time: 0.0s]
 
 --- syntax ---
-  FAIL: Nested aggregate functions — Should reject but parsed OK
+  PASS: Nested aggregate functions
   PASS: Duplicated variable in a VALUES clause
   [suite time: 0.0s]
 
@@ -549,15 +543,15 @@ Test base: third_party/testing/w3c/sparql/sparql12
 ========================================
 Suite Results:
   codepoint-escapes                   pass:8 fail:0 skip:0 unsupported:0
-  eval-triple-terms                   pass:40 fail:1 skip:0 unsupported:0
+  eval-triple-terms                   pass:41 fail:0 skip:0 unsupported:0
   expression                          pass:1 fail:0 skip:0 unsupported:0
   grouping                            pass:1 fail:0 skip:0 unsupported:0
   lang-basedir                        pass:10 fail:1 skip:0 unsupported:0
   rdf11                               pass:3 fail:0 skip:0 unsupported:0
-  syntax                              pass:1 fail:1 skip:0 unsupported:0
+  syntax                              pass:2 fail:0 skip:0 unsupported:0
   syntax-triple-terms-negative        pass:65 fail:0 skip:0 unsupported:0
   syntax-triple-terms-positive        pass:113 fail:0 skip:0 unsupported:0
   version                             pass:9 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 251 pass, 3 fail, 0 skip, 0 unsupported
+TOTAL: 253 pass, 1 fail, 0 skip, 0 unsupported
 ========================================

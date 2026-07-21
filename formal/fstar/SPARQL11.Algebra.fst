@@ -5086,6 +5086,60 @@ let eval_group_condition (base : option wf_iri) (gc : group_condition) (mu : sol
 let eval_group_key (base : option wf_iri) (conds : list group_condition) (mu : solution_mapping) : list eval_result =
   List.Tot.map (fun gc -> eval_group_condition base gc mu) conds
 
+(* Literal total-order (datatype, then lexical, then language tag) —
+   factored out of sparql_order so term_order below shares it exactly. *)
+let literal_order (l1 l2 : wf_literal) : int =
+  let dc = String.compare (lit_datatype l1) (lit_datatype l2) in
+  if dc <> 0 then dc
+  else
+    let lc = String.compare (lit_lexical l1) (lit_lexical l2) in
+    if lc <> 0 then lc
+    else
+      (match lit_lang l1, lit_lang l2 with
+       | None, None -> 0
+       | None, Some _ -> (-1)
+       | Some _, None -> 1
+       | Some t1, Some t2 -> String.compare t1 t2)
+
+(* Subject position of a triple term: S_BNode < S_IRI (matches the term
+   hierarchy bnode < IRI). *)
+let subject_order (s1 s2 : subject) : int =
+  match s1, s2 with
+  | S_BNode x, S_BNode y -> String.compare x y
+  | S_IRI x, S_IRI y -> String.compare (iri_to_string x) (iri_to_string y)
+  | S_BNode _, S_IRI _ -> (-1)
+  | S_IRI _, S_BNode _ -> 1
+
+let term_rank (t : rdf_term) : int =
+  match t with
+  | T_BNode _ -> 1
+  | T_IRI _ -> 2
+  | T_Literal _ -> 7
+  | T_TripleTerm _ _ _ -> 8
+
+(* Recursive rdf_term ordering for SPARQL ORDER BY over RDF 1.2 triple
+   terms (#305): bnode < IRI < literal < triple-term, triple terms
+   compared by subject, then predicate, then object (recursing into the
+   object, a strict subterm — so `decreases t1`). *)
+let rec term_order (t1 t2 : rdf_term) : Tot int (decreases t1) =
+  let r1 = term_rank t1 in
+  let r2 = term_rank t2 in
+  if r1 < r2 then (-1)
+  else if r1 > r2 then 1
+  else
+    match t1, t2 with
+    | T_BNode x, T_BNode y -> String.compare x y
+    | T_IRI x, T_IRI y -> String.compare (iri_to_string x) (iri_to_string y)
+    | T_Literal l1, T_Literal l2 -> literal_order l1 l2
+    | T_TripleTerm s1 p1 o1, T_TripleTerm s2 p2 o2 ->
+      let sc = subject_order s1 s2 in
+      if sc <> 0 then sc
+      else
+        let pc = String.compare (iri_to_string p1) (iri_to_string p2) in
+        if pc <> 0 then pc
+        else term_order o1 o2
+    | _, _ -> 0
+
 (* Rank of an eval_result for the SPARQL ordering type hierarchy.
    Unbound/Error < Blank nodes < IRIs < Literals (booleans, numerics, strings). *)
 let er_rank (v : eval_result) : int =
@@ -5122,18 +5176,9 @@ let sparql_order (a b : eval_result) : int =
       (match numeric_compare a b with
        | Some cmp -> cmp
        | None -> 0)
-    | ER_Term (T_Literal l1), ER_Term (T_Literal l2) ->
-      let dc = String.compare (lit_datatype l1) (lit_datatype l2) in
-      if dc <> 0 then dc
-      else
-        let lc = String.compare (lit_lexical l1) (lit_lexical l2) in
-        if lc <> 0 then lc
-        else
-          (match lit_lang l1, lit_lang l2 with
-           | None, None -> 0
-           | None, Some _ -> -1
-           | Some _, None -> 1
-           | Some t1, Some t2 -> String.compare t1 t2)
+    | ER_Term (T_Literal l1), ER_Term (T_Literal l2) -> literal_order l1 l2
+    | ER_Term (T_TripleTerm s1 p1 o1), ER_Term (T_TripleTerm s2 p2 o2) ->
+      term_order (T_TripleTerm s1 p1 o1) (T_TripleTerm s2 p2 o2)
     | _, _ -> 0
 
 (* Check if two eval_result values are equal by SPARQL ordering *)

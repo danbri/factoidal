@@ -1480,6 +1480,66 @@ let rec var_list_has_dup (vs : list var_name) : Tot bool (decreases vs) =
   | [] -> false
   | x :: rest -> List.Tot.existsb (fun y -> streq x y) rest || var_list_has_dup rest
 
+(* True iff an aggregate node appears in an expression's OWN scope — used
+   to reject a nested aggregate like a COUNT of a COUNT-star. Mirrors expr_vars'
+   constructor coverage; does NOT descend into E_Exists/E_NotExists (a
+   sub-SELECT is a separate grouping scope). *)
+let rec expr_has_aggregate (e : expr) : Tot bool (decreases e) =
+  match e with
+  | E_Var _ -> false
+  | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
+  | E_DecimalLit _ | E_DoubleLit _ -> false
+  | E_Arith _ e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_UnaryMinus e1 | E_UnaryPlus e1 -> expr_has_aggregate e1
+  | E_Compare _ e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_And e1 e2 | E_Or e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_Not e1 -> expr_has_aggregate e1
+  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1 -> expr_has_aggregate e1
+  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1 -> expr_has_aggregate e1
+  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1 -> expr_has_aggregate e1
+  | E_StrDt e1 e2 | E_StrLang e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_StrLangDir e1 e2 e3 -> expr_has_aggregate e1 || expr_has_aggregate e2 || expr_has_aggregate e3
+  | E_Bound _ -> false
+  | E_If c t f -> expr_has_aggregate c || expr_has_aggregate t || expr_has_aggregate f
+  | E_Coalesce es -> expr_list_has_aggregate es
+  | E_In e1 es -> expr_has_aggregate e1 || expr_list_has_aggregate es
+  | E_NotIn e1 es -> expr_has_aggregate e1 || expr_list_has_aggregate es
+  | E_StrLen e1 -> expr_has_aggregate e1
+  | E_Substr e1 e2 e3_opt -> expr_has_aggregate e1 || expr_has_aggregate e2 || expr_opt_has_aggregate e3_opt
+  | E_UCase e1 | E_LCase e1 -> expr_has_aggregate e1
+  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
+  | E_StrBefore e1 e2 | E_StrAfter e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_Concat es -> expr_list_has_aggregate es
+  | E_EncodeForUri e1 -> expr_has_aggregate e1
+  | E_Replace e1 e2 e3 e4_opt ->
+    expr_has_aggregate e1 || expr_has_aggregate e2 || expr_has_aggregate e3 || expr_opt_has_aggregate e4_opt
+  | E_Regex e1 e2 e3_opt -> expr_has_aggregate e1 || expr_has_aggregate e2 || expr_opt_has_aggregate e3_opt
+  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1 -> expr_has_aggregate e1
+  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1 -> expr_has_aggregate e1
+  | E_Now -> false
+  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
+  | E_Seconds e1 | E_Timezone e1 | E_Tz e1 -> expr_has_aggregate e1
+  | E_SameTerm e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_Exists _ -> false
+  | E_NotExists _ -> false
+  | E_Aggregate _ _ _ -> true
+  | E_FunctionCall _ es -> expr_list_has_aggregate es
+  | E_TripleTerm a b c -> expr_has_aggregate a || expr_has_aggregate b || expr_has_aggregate c
+  | E_TTSubject e1 -> expr_has_aggregate e1
+  | E_TTPredicate e1 -> expr_has_aggregate e1
+  | E_TTObject e1 -> expr_has_aggregate e1
+  | E_IsTriple e1 -> expr_has_aggregate e1
+
+and expr_list_has_aggregate (es : list expr) : Tot bool (decreases es) =
+  match es with
+  | [] -> false
+  | e :: rest -> expr_has_aggregate e || expr_list_has_aggregate rest
+
+and expr_opt_has_aggregate (eo : option expr) : Tot bool (decreases eo) =
+  match eo with
+  | None -> false
+  | Some e -> expr_has_aggregate e
+
 (* ---- Mutually recursive parser block ---- *)
 
 let rec parse_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -2027,7 +2087,10 @@ and parse_aggregate (pm : prefix_map) (fuel : nat) (agg : aggregate_fn) (ts : to
       | ParseOk e ts3 ->
         begin match parse_expect Tok_RPAREN ts3 with
         | ParseErr m -> ParseErr m
-        | ParseOk () ts4 -> ParseOk (E_Aggregate agg dist e) ts4
+        | ParseOk () ts4 ->
+          if expr_has_aggregate e
+          then ParseErr "nested aggregate in aggregate argument"
+          else ParseOk (E_Aggregate agg dist e) ts4
         end end end
 
 (* Parse GROUP_CONCAT ( [DISTINCT] expr [; SEPARATOR = string] ) *)
@@ -2059,7 +2122,10 @@ and parse_group_concat (pm : prefix_map) (fuel : nat) (ts : token_stream)
         | _ -> (None, ts3) end in
       begin match parse_expect Tok_RPAREN ts4 with
       | ParseErr m -> ParseErr m
-      | ParseOk () ts5 -> ParseOk (E_Aggregate (Agg_GroupConcat sep) dist e) ts5
+      | ParseOk () ts5 ->
+        if expr_has_aggregate e
+        then ParseErr "nested aggregate in GROUP_CONCAT argument"
+        else ParseOk (E_Aggregate (Agg_GroupConcat sep) dist e) ts5
       end end
 
 (* Parse builtin 1-arg: ( expr ) *)

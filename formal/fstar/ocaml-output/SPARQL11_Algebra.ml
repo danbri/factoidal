@@ -6318,6 +6318,65 @@ let eval_group_key (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (conds : group_condition Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result Prims.list=
   FStar_List_Tot_Base.map (fun gc -> eval_group_condition base gc mu) conds
+let literal_order (l1 : RDF_Term.wf_literal) (l2 : RDF_Term.wf_literal) :
+  Prims.int=
+  let dc = FStar_String.compare (lit_datatype l1) (lit_datatype l2) in
+  if dc <> Prims.int_zero
+  then dc
+  else
+    (let lc = FStar_String.compare (lit_lexical l1) (lit_lexical l2) in
+     if lc <> Prims.int_zero
+     then lc
+     else
+       (match ((lit_lang l1), (lit_lang l2)) with
+        | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
+            Prims.int_zero
+        | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some uu___2)
+            -> (Prims.of_int (-1))
+        | (FStar_Pervasives_Native.Some uu___2, FStar_Pervasives_Native.None)
+            -> Prims.int_one
+        | (FStar_Pervasives_Native.Some t1, FStar_Pervasives_Native.Some t2)
+            -> FStar_String.compare t1 t2))
+let subject_order (s1 : RDF_Term.subject) (s2 : RDF_Term.subject) :
+  Prims.int=
+  match (s1, s2) with
+  | (RDF_Term.S_BNode x, RDF_Term.S_BNode y) -> FStar_String.compare x y
+  | (RDF_Term.S_IRI x, RDF_Term.S_IRI y) ->
+      FStar_String.compare (iri_to_string x) (iri_to_string y)
+  | (RDF_Term.S_BNode uu___, RDF_Term.S_IRI uu___1) -> (Prims.of_int (-1))
+  | (RDF_Term.S_IRI uu___, RDF_Term.S_BNode uu___1) -> Prims.int_one
+let term_rank (t : RDF_Term.rdf_term) : Prims.int=
+  match t with
+  | RDF_Term.T_BNode uu___ -> Prims.int_one
+  | RDF_Term.T_IRI uu___ -> (Prims.of_int (2))
+  | RDF_Term.T_Literal uu___ -> (Prims.of_int (7))
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> (Prims.of_int (8))
+let rec term_order (t1 : RDF_Term.rdf_term) (t2 : RDF_Term.rdf_term) :
+  Prims.int=
+  let r1 = term_rank t1 in
+  let r2 = term_rank t2 in
+  if r1 < r2
+  then (Prims.of_int (-1))
+  else
+    if r1 > r2
+    then Prims.int_one
+    else
+      (match (t1, t2) with
+       | (RDF_Term.T_BNode x, RDF_Term.T_BNode y) -> FStar_String.compare x y
+       | (RDF_Term.T_IRI x, RDF_Term.T_IRI y) ->
+           FStar_String.compare (iri_to_string x) (iri_to_string y)
+       | (RDF_Term.T_Literal l1, RDF_Term.T_Literal l2) ->
+           literal_order l1 l2
+       | (RDF_Term.T_TripleTerm (s1, p1, o1), RDF_Term.T_TripleTerm
+          (s2, p2, o2)) ->
+           let sc = subject_order s1 s2 in
+           if sc <> Prims.int_zero
+           then sc
+           else
+             (let pc =
+                FStar_String.compare (iri_to_string p1) (iri_to_string p2) in
+              if pc <> Prims.int_zero then pc else term_order o1 o2)
+       | (uu___2, uu___3) -> Prims.int_zero)
 let er_rank (v : eval_result) : Prims.int=
   match v with
   | ER_Error -> Prims.int_zero
@@ -6361,26 +6420,11 @@ let sparql_order (a : eval_result) (b : eval_result) : Prims.int=
             | FStar_Pervasives_Native.Some cmp -> cmp
             | FStar_Pervasives_Native.None -> Prims.int_zero)
        | (ER_Term (RDF_Term.T_Literal l1), ER_Term (RDF_Term.T_Literal l2))
-           ->
-           let dc = FStar_String.compare (lit_datatype l1) (lit_datatype l2) in
-           if dc <> Prims.int_zero
-           then dc
-           else
-             (let lc = FStar_String.compare (lit_lexical l1) (lit_lexical l2) in
-              if lc <> Prims.int_zero
-              then lc
-              else
-                (match ((lit_lang l1), (lit_lang l2)) with
-                 | (FStar_Pervasives_Native.None,
-                    FStar_Pervasives_Native.None) -> Prims.int_zero
-                 | (FStar_Pervasives_Native.None,
-                    FStar_Pervasives_Native.Some uu___4) ->
-                     (Prims.of_int (-1))
-                 | (FStar_Pervasives_Native.Some uu___4,
-                    FStar_Pervasives_Native.None) -> Prims.int_one
-                 | (FStar_Pervasives_Native.Some t1,
-                    FStar_Pervasives_Native.Some t2) ->
-                     FStar_String.compare t1 t2))
+           -> literal_order l1 l2
+       | (ER_Term (RDF_Term.T_TripleTerm (s1, p1, o1)), ER_Term
+          (RDF_Term.T_TripleTerm (s2, p2, o2))) ->
+           term_order (RDF_Term.T_TripleTerm (s1, p1, o1))
+             (RDF_Term.T_TripleTerm (s2, p2, o2))
        | (uu___2, uu___3) -> Prims.int_zero)
 let er_equal (a : eval_result) (b : eval_result) : Prims.bool=
   (sparql_order a b) = Prims.int_zero
