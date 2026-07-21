@@ -349,16 +349,28 @@ resolved `assume val`s).
 
 ## Standing priorities (as of 2026-07-16)
 
-**Reaffirmed (owner, 2026-07-21):** drive conformance to 100% for every
-standard. RDF 1.2 / SPARQL 1.2 is no longer just an investigation — the
-term model + all four line/text syntaxes are landed and verified (RDF
-1.2 212/0), SPARQL 1.2 syntax + builtins landed (248/6), and 1.2 is now
-reachable through the browser/npm API and shown on the dashboard (a
-"W3C Working Drafts" group), with a live hub notebook (post 31). Open
-1.2 work being driven next, in order taken: the 6 SPARQL 1.2 eval fails
-and (done) dashboard wiring, then RDF/XML 1.2, RDF 1.2 canonicalization
-(86) + entailment (74), RML-star mapping generation, COTTAS on-disk 1.2,
-and JSON-LD `@direction` roundtrip. Tracked under epic #305.
+**Active /goal (owner, 2026-07-21, verbatim):** _"important fixes
+urgent: RDF/XML 1.2, RDF 1.2 canonicalization (86) and entailment (74)
+suites, the 6 residual SPARQL 1.2 eval fails, RML-star mapping
+generation, and dashboard wiring (automate it for future seamless
+expansion)."_
+
+Current state against that goal (2026-07-21):
+- SPARQL 1.2 eval fails: the goal says "6 residual"; wave 1 already
+  cleared 3 (not-not, dup-VALUES-var, variable-GRAPH update →
+  **sparql12 251/3**), so **3 remain**: nested-aggregate rejection,
+  triple-term ordering (order-2), STRLANGDIR UTF-8 SRJ ingestion. All
+  root-caused with fix sketches (see the day's SPARQL-1.2 investigation).
+- Dashboard wiring: rdf12/sparql12 rows land in latest.json + a visible
+  "W3C Working Drafts" section (done); the **automation** part — a suite
+  registry so future suites auto-report without hand-editing
+  generate-report.sh — is the next dashboard task.
+- RDF/XML 1.2, RDF 1.2 c14n (86) + entailment (74), RML-star mapping
+  gen: not started; these are the bulk of the remaining 1.2 work.
+
+**Umbrella (reaffirmed owner, 2026-07-21):** drive conformance to 100%
+for every standard. The /goal above is the current urgent slice.
+Tracked under epic #305.
 
 **Active /goal (owner, 2026-07-16, day-closure):** every W3C + ShEx
 suite either fully green or every residual fail named with a one-line
