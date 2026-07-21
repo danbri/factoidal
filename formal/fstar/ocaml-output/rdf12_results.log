@@ -1,0 +1,457 @@
+  [1/29] rdf-n-triples/syntax/N-Triples-12 - object triple term ok (54ms)
+  [2/29] rdf-n-triples/syntax/N-Triples-12 - object triple term, no whitespace ok
+  [3/29] rdf-n-triples/syntax/N-Triples-12 - Nested, no whitespace ok
+  [4/29] rdf-n-triples/syntax/N-Triples-12 - Blank node subject ok
+  [5/29] rdf-n-triples/syntax/N-Triples-12 - Nested object term ok
+  [6/29] rdf-n-triples/syntax/N-Triples literal with base direction ltr ok
+  [7/29] rdf-n-triples/syntax/N-Triples literal with base direction rtl ok
+  [8/29] rdf-n-triples/syntax/N-Triples-12 - Bad - reified triple as predicate ok
+  [9/29] rdf-n-triples/syntax/N-Triples-12 - Bad - reified triple, literal subject ok
+  [10/29] rdf-n-triples/syntax/N-Triples-12 - Bad - reified triple, literal predicate ok
+  [11/29] rdf-n-triples/syntax/N-Triples-12 - Bad - reified triple, blank node predicate ok
+  [12/29] rdf-n-triples/syntax/N-Triples-12 - Bad - triple term as predicate ok
+  [13/29] rdf-n-triples/syntax/N-Triples-12 - Bad - triple term, literal subject ok
+  [14/29] rdf-n-triples/syntax/N-Triples-12 - Bad - triple term, literal predicate ok
+  [15/29] rdf-n-triples/syntax/N-Triples-12 - Bad - triple term, blank node predicate ok
+  [16/29] rdf-n-triples/syntax/N-Triples-12 - Bad - reified triple object ok
+  [17/29] rdf-n-triples/syntax/N-Triples-12 - Bad - triple term as subject ok
+  [18/29] rdf-n-triples/syntax/N-Triples - Bad - invalid IRI ok
+  [19/29] rdf-n-triples/syntax/N-Triples-12 - Bad - subject reified triple ok
+  [20/29] rdf-n-triples/syntax/N-Triples-12 - Bad - object reified triple ok
+  [21/29] rdf-n-triples/syntax/N-Triples-12 - Bad - subject and object reified triples ok
+  [22/29] rdf-n-triples/syntax/N-Triples-12 - Bad - predicate reified triple ok
+  [23/29] rdf-n-triples/syntax/N-Triples-12 - Bad - annotated triple, blank node subject ok
+  [24/29] rdf-n-triples/syntax/N-Triples-12 - Bad - annotated triple, blank node object ok
+  [25/29] rdf-n-triples/syntax/N-Triples literal- Bad - undefined base direction ok
+  [26/29] rdf-n-triples/syntax/N-Triples literal- Bad - upper case LTR ok
+  [27/29] rdf-n-triples/syntax/N-Triples - Bad - literal with missing language tag ok
+  [28/29] rdf-n-triples/syntax/N-Triples - Bad - literal with bad language tag ok
+  [29/29] rdf-n-triples/syntax/N-Triples - Bad - literal with missing language tag and direction ok
+  [1/27] rdf-n-quads/syntax/N-Quads-12 - object triple term ok
+  [2/27] rdf-n-quads/syntax/N-Quads-12 - object triple term, no whitespace ok
+  [3/27] rdf-n-quads/syntax/N-Quads-12 - Nested, no whitespace ok
+  [4/27] rdf-n-quads/syntax/N-Quads-12 - Blank node subject ok
+  [5/27] rdf-n-quads/syntax/N-Quads-12 - Nested object term ok
+  [6/27] rdf-n-quads/syntax/N-Quads literal with base direction ltr ok
+  [7/27] rdf-n-quads/syntax/N-Quads literal with base direction rtl ok
+  [8/27] rdf-n-quads/syntax/N-Quads-12 - Bad - reified triple as predicate ok
+  [9/27] rdf-n-quads/syntax/N-Quads-12 - Bad - reified triple, literal subject ok
+  [10/27] rdf-n-quads/syntax/N-Quads-12 - Bad - reified triple, literal predicate ok
+  [11/27] rdf-n-quads/syntax/N-Quads-12 - Bad - reified triple, blank node predicate ok
+  [12/27] rdf-n-quads/syntax/N-Quads-12 - Bad - triple term as predicate ok
+  [13/27] rdf-n-quads/syntax/N-Quads-12 - Bad - triple term, literal subject ok
+  [14/27] rdf-n-quads/syntax/N-Quads-12 - Bad - triple term, literal predicate ok
+  [15/27] rdf-n-quads/syntax/N-Quads-12 - Bad - triple term, blank node predicate ok
+  [16/27] rdf-n-quads/syntax/N-Quads-12 - Bad - reified triple object ok
+  [17/27] rdf-n-quads/syntax/N-Quads-12 - Bad - triple term as subject ok
+  [18/27] rdf-n-quads/syntax/N-Quads-12 - Bad - subject reified triple ok
+  [19/27] rdf-n-quads/syntax/N-Quads-12 - Bad - object reified triple ok
+  [20/27] rdf-n-quads/syntax/N-Quads-12 - Bad - subject and object reified triples ok
+  [21/27] rdf-n-quads/syntax/N-Quads-12 - Bad - predicate reified triple ok
+  [22/27] rdf-n-quads/syntax/N-Quads-12 - Bad - annotated triple, blank node subject ok
+  [23/27] rdf-n-quads/syntax/N-Quads-12 - Bad - annotated triple, blank node object ok
+  [24/27] rdf-n-quads/syntax/N-Quads-12 - Bad - annotated triple, nested subject term ok
+  [25/27] rdf-n-quads/syntax/N-Quads-12 - Bad - annotated triple, nested object term ok
+  [26/27] rdf-n-quads/syntax/N-Quads literal- Bad - undefined base direction ok
+  [27/27] rdf-n-quads/syntax/N-Quads literal- Bad - upper case LTR ok
+  [1/67] rdf-turtle/syntax/Turtle 1.2 - subject reified triple ok
+  [2/67] rdf-turtle/syntax/Turtle 1.2 - object reified triple ok
+  [3/67] rdf-turtle/syntax/Turtle 1.2 - triple term object ok
+  [4/67] rdf-turtle/syntax/Turtle 1.2 - reified triple outside triple ok
+  [5/67] rdf-turtle/syntax/Turtle 1.2 - reified triple with literal object ok
+  [6/67] rdf-turtle/syntax/Turtle 1.2 - reified triple with keyword object ok
+  [7/67] rdf-turtle/syntax/Turtle 1.2 - triple term with literal object ok
+  [8/67] rdf-turtle/syntax/Turtle 1.2 - triple term with keyword object ok
+  [9/67] rdf-turtle/syntax/Turtle 1.2 - reified triple inside blankNodePropertyList ok
+  [10/67] rdf-turtle/syntax/Turtle 1.2 - reified triple inside collection ok
+  [11/67] rdf-turtle/syntax/Turtle 1.2 - reified triple with IRI identifier ok
+  [12/67] rdf-turtle/syntax/Turtle 1.2 - reified triple with blank node identifier ok
+  [13/67] rdf-turtle/syntax/Turtle 1.2 - nested reified triple, subject position ok
+  [14/67] rdf-turtle/syntax/Turtle 1.2 - nested reified triple, object position ok
+  [15/67] rdf-turtle/syntax/Turtle 1.2 - compound forms ok
+  [16/67] rdf-turtle/syntax/Turtle 1.2 - blank node subject ok
+  [17/67] rdf-turtle/syntax/Turtle 1.2 - blank node object ok
+  [18/67] rdf-turtle/syntax/Turtle 1.2 - blank node ok
+  [19/67] rdf-turtle/syntax/Turtle 1.2 - bad - reified triple as predicate ok
+  [20/67] rdf-turtle/syntax/Turtle 1.2 - bad - literal in subject position of reified triple ok
+  [21/67] rdf-turtle/syntax/Turtle 1.2 - bad - blank node  as predicate in reified triple ok
+  [22/67] rdf-turtle/syntax/Turtle 1.2 - bad - incomplete reified triple ok
+  [23/67] rdf-turtle/syntax/Turtle 1.2 - bad - over-long reified triple ok
+  [24/67] rdf-turtle/syntax/Turtle 1.2 - bad - reified with list object ok
+  [25/67] rdf-turtle/syntax/Turtle 1.2 - bad - compound blank node expression ok
+  [26/67] rdf-turtle/syntax/Turtle 1.2 - Annotation form ok
+  [27/67] rdf-turtle/syntax/Turtle 1.2 - Annotation example ok
+  [28/67] rdf-turtle/syntax/Turtle 1.2 - Annotation predicateObjecetList ok
+  [29/67] rdf-turtle/syntax/Turtle 1.2 - Annotation followed by predicate/object ok
+  [30/67] rdf-turtle/syntax/Turtle 1.2 - Reifier without annotation block ok
+  [31/67] rdf-turtle/syntax/Turtle 1.2 - Empty reifier without annotation block ok
+  [32/67] rdf-turtle/syntax/Turtle 1.2 - Reifier with annotation block ok
+  [33/67] rdf-turtle/syntax/Turtle 1.2 - Empty reifier with annotation block ok
+  [34/67] rdf-turtle/syntax/Turtle 1.2 - bad - empty annotation ok
+  [35/67] rdf-turtle/syntax/Turtle 1.2 - bad - triple as annotation ok
+  [36/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - triple term ok
+  [37/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - whitespace and terms ok
+  [38/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Nested, no whitespace ok
+  [39/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Blank node object ok
+  [40/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Nested subject term ok
+  [41/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - base direction ltr ok
+  [42/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - base direction ltr ok
+  [43/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - undefined base direction ok
+  [44/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - upper case LTR ok
+  [45/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Bad - triple term as predicate ok
+  [46/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Bad - triple term, literal subject ok
+  [47/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Bad - triple term, literal predicate ok
+  [48/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Bad - triple term, blank node predicate ok
+  [49/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Bad - triple term as subject ok
+  [50/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Bad - reified triple as predicate ok
+  [51/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Bad - reified triple, literal subject ok
+  [52/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Bad - reified triple, literal predicate ok
+  [53/67] rdf-turtle/syntax/N-Triples 1.2 as Turtle 1.2 - Bad - reified triple, blank node predicate ok
+  [54/67] rdf-turtle/syntax/Turtle 1.2 - VERSION ok
+  [55/67] rdf-turtle/syntax/Turtle 1.2 - @version ok
+  [56/67] rdf-turtle/syntax/Turtle 1.2 - VERSION in data  ok
+  [57/67] rdf-turtle/syntax/Turtle 1.2 - @version in data ok
+  [58/67] rdf-turtle/syntax/Turtle 1.2 - VERSION other version string ok
+  [59/67] rdf-turtle/syntax/Turtle 1.2 - @version other version string ok
+  [60/67] rdf-turtle/syntax/Turtle 1.2 - mixed versions ok
+  [61/67] rdf-turtle/syntax/Turtle 1.2 - many versions ok
+  [62/67] rdf-turtle/syntax/Turtle 1.2 - VERSION - not string ok
+  [63/67] rdf-turtle/syntax/Turtle 1.2 - VERSION - triple-'-quoted string ok
+  [64/67] rdf-turtle/syntax/Turtle 1.2 - VERSION - triple-"-quoted string ok
+  [65/67] rdf-turtle/syntax/Turtle 1.2 - @version - not string ok
+  [66/67] rdf-turtle/syntax/Turtle 1.2 - @version - triple-'-quoted string ok
+  [67/67] rdf-turtle/syntax/Turtle 1.2 - @version - triple-"-quoted string ok
+  [1/29] rdf-turtle/eval/Turtle 1.2 - subject reification ok
+  [2/29] rdf-turtle/eval/Turtle 1.2 - object reification ok
+  [3/29] rdf-turtle/eval/Turtle 1.2 - subject reification with identifier ok
+  [4/29] rdf-turtle/eval/Turtle 1.2 - object reification with identifier ok
+  [5/29] rdf-turtle/eval/Turtle 1.2 - subject reification with bnode identifier ok
+  [6/29] rdf-turtle/eval/Turtle 1.2 - object reification with bnode identifier ok
+  [7/29] rdf-turtle/eval/Turtle 1.2 - subject reification with empty identifier ok
+  [8/29] rdf-turtle/eval/Turtle 1.2 - object reification with empty identifier ok
+  [9/29] rdf-turtle/eval/Turtle 1.2 - blank node label ok
+  [10/29] rdf-turtle/eval/Turtle 1.2 - blank node labels ok
+  [11/29] rdf-turtle/eval/Turtle 1.2 - object triple term ok
+  [12/29] rdf-turtle/eval/Turtle 1.2 - object triple term, no whitespace ok
+  [13/29] rdf-turtle/eval/Turtle 1.2 - Nested, no whitespace ok
+  [14/29] rdf-turtle/eval/Turtle 1.2 - Nested object term ok
+  [15/29] rdf-turtle/eval/Turtle 1.2 - Annotation form ok
+  [16/29] rdf-turtle/eval/Turtle 1.2 - Annotation example ok
+  [17/29] rdf-turtle/eval/Turtle 1.2 - Annotation - predicate and object lists ok
+  [18/29] rdf-turtle/eval/Turtle 1.2 - Annotation - nested ok
+  [19/29] rdf-turtle/eval/Turtle 1.2 - Annotation object list ok
+  [20/29] rdf-turtle/eval/Turtle 1.2 - Annotation with identifier ok
+  [21/29] rdf-turtle/eval/Turtle 1.2 - Different annotations have different default identifiers ok
+  [22/29] rdf-turtle/eval/Turtle 1.2 - Annotation form with explicit identifier ok
+  [23/29] rdf-turtle/eval/Turtle 1.2 - Annotation form with multiple reifiers ok
+  [24/29] rdf-turtle/eval/Turtle 1.2 - Annotation form with multiple annotation blocks ok
+  [25/29] rdf-turtle/eval/Turtle 1.2 - Annotation form with annotation block followed by reifier ok
+  [26/29] rdf-turtle/eval/Turtle 1.2 - Annotation form with alternating reifiers and annotation blocks ok
+  [27/29] rdf-turtle/eval/Turtle 1.2 - Annotation with reified triples ok
+  [28/29] rdf-turtle/eval/Turtle 1.2 - Annotation on triple with reified triple subject ok
+  [29/29] rdf-turtle/eval/Turtle 1.2 - Annotation on triple with reified triple object ok
+  [1/35] rdf-trig/syntax/TriG 1.2 - subject reified triple ok
+  [2/35] rdf-trig/syntax/TriG 1.2 - object reified triple ok
+  [3/35] rdf-trig/syntax/TriG 1.2 - triple term object ok
+  [4/35] rdf-trig/syntax/TriG 1.2 - reified triple outside triple ok
+  [5/35] rdf-trig/syntax/TriG 1.2 - reified triple inside blankNodePropertyList ok
+  [6/35] rdf-trig/syntax/TriG 1.2 - reified triple inside collection ok
+  [7/35] rdf-trig/syntax/TriG 1.2 - reified triple with IRI identifier ok
+  [8/35] rdf-trig/syntax/TriG 1.2 - reified triple with blank node identifier ok
+  [9/35] rdf-trig/syntax/TriG 1.2 - nested quoted triple, subject position ok
+  [10/35] rdf-trig/syntax/TriG 1.2 - nested quoted triple, object position ok
+  [11/35] rdf-trig/syntax/TriG 1.2 - compound forms ok
+  [12/35] rdf-trig/syntax/TriG 1.2 - blank node subject ok
+  [13/35] rdf-trig/syntax/TriG 1.2 - blank node object ok
+  [14/35] rdf-trig/syntax/TriG 1.2 - blank node ok
+  [15/35] rdf-trig/syntax/TriG 1.2 - bad - reified triple as predicate ok
+  [16/35] rdf-trig/syntax/TriG 1.2 - bad - literal in subject position of reified triple ok
+  [17/35] rdf-trig/syntax/TriG 1.2 - bad - blank node  as predicate in reified triple ok
+  [18/35] rdf-trig/syntax/TriG 1.2 - bad - incomplete reified triple ok
+  [19/35] rdf-trig/syntax/TriG 1.2 - bad - over-long reified triple ok
+  [20/35] rdf-trig/syntax/TriG 1.2 - bad - reified with list object ok
+  [21/35] rdf-trig/syntax/TriG 1.2 - bad - compound blank node expression ok
+  [22/35] rdf-trig/syntax/TriG 1.2 - Annotation form ok
+  [23/35] rdf-trig/syntax/TriG 1.2 - Annotation example ok
+  [24/35] rdf-trig/syntax/TriG 1.2 - Annotation predicateObjecetList ok
+  [25/35] rdf-trig/syntax/TriG 1.2 - Annotation followed by predicate/object ok
+  [26/35] rdf-trig/syntax/TriG 1.2 - Reifier without annotation block ok
+  [27/35] rdf-trig/syntax/TriG 1.2 - Empty reifier without annotation block ok
+  [28/35] rdf-trig/syntax/TriG 1.2 - Reifier with annotation block ok
+  [29/35] rdf-trig/syntax/TriG 1.2 - Empty reifier with annotation block ok
+  [30/35] rdf-trig/syntax/TriG 1.2 - bad - empty annotation ok
+  [31/35] rdf-trig/syntax/TriG 1.2 - bad - triple as annotation ok
+  [32/35] rdf-trig/syntax/base direction ltr ok
+  [33/35] rdf-trig/syntax/base direction ltr ok
+  [34/35] rdf-trig/syntax/undefined base direction ok
+  [35/35] rdf-trig/syntax/upper case LTR ok
+  [1/25] rdf-trig/eval/TriG 1.2 - subject reification ok
+  [2/25] rdf-trig/eval/TriG 1.2 - object reification ok
+  [3/25] rdf-trig/eval/TriG 1.2 - subject reification with identifier ok
+  [4/25] rdf-trig/eval/TriG 1.2 - object reification with identifier ok
+  [5/25] rdf-trig/eval/TriG 1.2 - subject reification with bnode identifier ok
+  [6/25] rdf-trig/eval/TriG 1.2 - object reification with bnode identifier ok
+  [7/25] rdf-trig/eval/TriG 1.2 - subject reification with empty identifier ok
+  [8/25] rdf-trig/eval/TriG 1.2 - object reification with empty identifier ok
+  [9/25] rdf-trig/eval/TriG 1.2 - blank node label ok
+  [10/25] rdf-trig/eval/TriG 1.2 - blank node labels ok
+  [11/25] rdf-trig/eval/TriG 1.2 - Annotation form ok
+  [12/25] rdf-trig/eval/TriG 1.2 - Annotation example ok
+  [13/25] rdf-trig/eval/TriG 1.2 - Annotation - predicate and object lists ok
+  [14/25] rdf-trig/eval/TriG 1.2 - Annotation - nested ok
+  [15/25] rdf-trig/eval/TriG 1.2 - Annotation object list ok
+  [16/25] rdf-trig/eval/TriG 1.2 - Annotation with identifier ok
+  [17/25] rdf-trig/eval/TriG 1.2 - Different annotations have different default identifiers ok
+  [18/25] rdf-trig/eval/TriG 1.2 - Annotation form with explicit identifier ok
+  [19/25] rdf-trig/eval/TriG 1.2 - Annotation form with multiple reifiers ok
+  [20/25] rdf-trig/eval/TriG 1.2 - Annotation form with multiple annotation blocks ok
+  [21/25] rdf-trig/eval/TriG 1.2 - Annotation form with annotation block followed by reifier ok
+  [22/25] rdf-trig/eval/TriG 1.2 - Annotation form with alternating reifiers and annotation blocks ok
+  [23/25] rdf-trig/eval/TriG 1.2 - Annotation with reified triples ok
+  [24/25] rdf-trig/eval/TriG 1.2 - Annotation on triple with reified triple subject ok
+  [25/25] rdf-trig/eval/TriG 1.2 - Annotation on triple with reified triple object ok
+=== W3C RDF 1.2 Test Runner ===
+Test base: third_party/testing/w3c/rdf/rdf12
+
+
+--- rdf-n-triples/syntax ---
+  PASS: N-Triples-12 - object triple term (54ms)
+  PASS: N-Triples-12 - object triple term, no whitespace
+  PASS: N-Triples-12 - Nested, no whitespace
+  PASS: N-Triples-12 - Blank node subject
+  PASS: N-Triples-12 - Nested object term
+  PASS: N-Triples literal with base direction ltr
+  PASS: N-Triples literal with base direction rtl
+  PASS: N-Triples-12 - Bad - reified triple as predicate
+  PASS: N-Triples-12 - Bad - reified triple, literal subject
+  PASS: N-Triples-12 - Bad - reified triple, literal predicate
+  PASS: N-Triples-12 - Bad - reified triple, blank node predicate
+  PASS: N-Triples-12 - Bad - triple term as predicate
+  PASS: N-Triples-12 - Bad - triple term, literal subject
+  PASS: N-Triples-12 - Bad - triple term, literal predicate
+  PASS: N-Triples-12 - Bad - triple term, blank node predicate
+  PASS: N-Triples-12 - Bad - reified triple object
+  PASS: N-Triples-12 - Bad - triple term as subject
+  PASS: N-Triples - Bad - invalid IRI
+  PASS: N-Triples-12 - Bad - subject reified triple
+  PASS: N-Triples-12 - Bad - object reified triple
+  PASS: N-Triples-12 - Bad - subject and object reified triples
+  PASS: N-Triples-12 - Bad - predicate reified triple
+  PASS: N-Triples-12 - Bad - annotated triple, blank node subject
+  PASS: N-Triples-12 - Bad - annotated triple, blank node object
+  PASS: N-Triples literal- Bad - undefined base direction
+  PASS: N-Triples literal- Bad - upper case LTR
+  PASS: N-Triples - Bad - literal with missing language tag
+  PASS: N-Triples - Bad - literal with bad language tag
+  PASS: N-Triples - Bad - literal with missing language tag and direction
+  [suite time: 0.1s]
+
+--- rdf-n-quads/syntax ---
+  PASS: N-Quads-12 - object triple term
+  PASS: N-Quads-12 - object triple term, no whitespace
+  PASS: N-Quads-12 - Nested, no whitespace
+  PASS: N-Quads-12 - Blank node subject
+  PASS: N-Quads-12 - Nested object term
+  PASS: N-Quads literal with base direction ltr
+  PASS: N-Quads literal with base direction rtl
+  PASS: N-Quads-12 - Bad - reified triple as predicate
+  PASS: N-Quads-12 - Bad - reified triple, literal subject
+  PASS: N-Quads-12 - Bad - reified triple, literal predicate
+  PASS: N-Quads-12 - Bad - reified triple, blank node predicate
+  PASS: N-Quads-12 - Bad - triple term as predicate
+  PASS: N-Quads-12 - Bad - triple term, literal subject
+  PASS: N-Quads-12 - Bad - triple term, literal predicate
+  PASS: N-Quads-12 - Bad - triple term, blank node predicate
+  PASS: N-Quads-12 - Bad - reified triple object
+  PASS: N-Quads-12 - Bad - triple term as subject
+  PASS: N-Quads-12 - Bad - subject reified triple
+  PASS: N-Quads-12 - Bad - object reified triple
+  PASS: N-Quads-12 - Bad - subject and object reified triples
+  PASS: N-Quads-12 - Bad - predicate reified triple
+  PASS: N-Quads-12 - Bad - annotated triple, blank node subject
+  PASS: N-Quads-12 - Bad - annotated triple, blank node object
+  PASS: N-Quads-12 - Bad - annotated triple, nested subject term
+  PASS: N-Quads-12 - Bad - annotated triple, nested object term
+  PASS: N-Quads literal- Bad - undefined base direction
+  PASS: N-Quads literal- Bad - upper case LTR
+  [suite time: 0.0s]
+
+--- rdf-turtle/syntax ---
+  PASS: Turtle 1.2 - subject reified triple
+  PASS: Turtle 1.2 - object reified triple
+  PASS: Turtle 1.2 - triple term object
+  PASS: Turtle 1.2 - reified triple outside triple
+  PASS: Turtle 1.2 - reified triple with literal object
+  PASS: Turtle 1.2 - reified triple with keyword object
+  PASS: Turtle 1.2 - triple term with literal object
+  PASS: Turtle 1.2 - triple term with keyword object
+  PASS: Turtle 1.2 - reified triple inside blankNodePropertyList
+  PASS: Turtle 1.2 - reified triple inside collection
+  PASS: Turtle 1.2 - reified triple with IRI identifier
+  PASS: Turtle 1.2 - reified triple with blank node identifier
+  PASS: Turtle 1.2 - nested reified triple, subject position
+  PASS: Turtle 1.2 - nested reified triple, object position
+  PASS: Turtle 1.2 - compound forms
+  PASS: Turtle 1.2 - blank node subject
+  PASS: Turtle 1.2 - blank node object
+  PASS: Turtle 1.2 - blank node
+  PASS: Turtle 1.2 - bad - reified triple as predicate
+  PASS: Turtle 1.2 - bad - literal in subject position of reified triple
+  PASS: Turtle 1.2 - bad - blank node  as predicate in reified triple
+  PASS: Turtle 1.2 - bad - incomplete reified triple
+  PASS: Turtle 1.2 - bad - over-long reified triple
+  PASS: Turtle 1.2 - bad - reified with list object
+  PASS: Turtle 1.2 - bad - compound blank node expression
+  PASS: Turtle 1.2 - Annotation form
+  PASS: Turtle 1.2 - Annotation example
+  PASS: Turtle 1.2 - Annotation predicateObjecetList
+  PASS: Turtle 1.2 - Annotation followed by predicate/object
+  PASS: Turtle 1.2 - Reifier without annotation block
+  PASS: Turtle 1.2 - Empty reifier without annotation block
+  PASS: Turtle 1.2 - Reifier with annotation block
+  PASS: Turtle 1.2 - Empty reifier with annotation block
+  PASS: Turtle 1.2 - bad - empty annotation
+  PASS: Turtle 1.2 - bad - triple as annotation
+  PASS: N-Triples 1.2 as Turtle 1.2 - triple term
+  PASS: N-Triples 1.2 as Turtle 1.2 - whitespace and terms
+  PASS: N-Triples 1.2 as Turtle 1.2 - Nested, no whitespace
+  PASS: N-Triples 1.2 as Turtle 1.2 - Blank node object
+  PASS: N-Triples 1.2 as Turtle 1.2 - Nested subject term
+  PASS: N-Triples 1.2 as Turtle 1.2 - base direction ltr
+  PASS: N-Triples 1.2 as Turtle 1.2 - base direction ltr
+  PASS: N-Triples 1.2 as Turtle 1.2 - undefined base direction
+  PASS: N-Triples 1.2 as Turtle 1.2 - upper case LTR
+  PASS: N-Triples 1.2 as Turtle 1.2 - Bad - triple term as predicate
+  PASS: N-Triples 1.2 as Turtle 1.2 - Bad - triple term, literal subject
+  PASS: N-Triples 1.2 as Turtle 1.2 - Bad - triple term, literal predicate
+  PASS: N-Triples 1.2 as Turtle 1.2 - Bad - triple term, blank node predicate
+  PASS: N-Triples 1.2 as Turtle 1.2 - Bad - triple term as subject
+  PASS: N-Triples 1.2 as Turtle 1.2 - Bad - reified triple as predicate
+  PASS: N-Triples 1.2 as Turtle 1.2 - Bad - reified triple, literal subject
+  PASS: N-Triples 1.2 as Turtle 1.2 - Bad - reified triple, literal predicate
+  PASS: N-Triples 1.2 as Turtle 1.2 - Bad - reified triple, blank node predicate
+  PASS: Turtle 1.2 - VERSION
+  PASS: Turtle 1.2 - @version
+  PASS: Turtle 1.2 - VERSION in data 
+  PASS: Turtle 1.2 - @version in data
+  PASS: Turtle 1.2 - VERSION other version string
+  PASS: Turtle 1.2 - @version other version string
+  PASS: Turtle 1.2 - mixed versions
+  PASS: Turtle 1.2 - many versions
+  PASS: Turtle 1.2 - VERSION - not string
+  PASS: Turtle 1.2 - VERSION - triple-'-quoted string
+  PASS: Turtle 1.2 - VERSION - triple-"-quoted string
+  PASS: Turtle 1.2 - @version - not string
+  PASS: Turtle 1.2 - @version - triple-'-quoted string
+  PASS: Turtle 1.2 - @version - triple-"-quoted string
+  [suite time: 0.0s]
+
+--- rdf-turtle/eval ---
+  PASS: Turtle 1.2 - subject reification
+  PASS: Turtle 1.2 - object reification
+  PASS: Turtle 1.2 - subject reification with identifier
+  PASS: Turtle 1.2 - object reification with identifier
+  PASS: Turtle 1.2 - subject reification with bnode identifier
+  PASS: Turtle 1.2 - object reification with bnode identifier
+  PASS: Turtle 1.2 - subject reification with empty identifier
+  PASS: Turtle 1.2 - object reification with empty identifier
+  PASS: Turtle 1.2 - blank node label
+  PASS: Turtle 1.2 - blank node labels
+  PASS: Turtle 1.2 - object triple term
+  PASS: Turtle 1.2 - object triple term, no whitespace
+  PASS: Turtle 1.2 - Nested, no whitespace
+  PASS: Turtle 1.2 - Nested object term
+  PASS: Turtle 1.2 - Annotation form
+  PASS: Turtle 1.2 - Annotation example
+  PASS: Turtle 1.2 - Annotation - predicate and object lists
+  PASS: Turtle 1.2 - Annotation - nested
+  PASS: Turtle 1.2 - Annotation object list
+  PASS: Turtle 1.2 - Annotation with identifier
+  PASS: Turtle 1.2 - Different annotations have different default identifiers
+  PASS: Turtle 1.2 - Annotation form with explicit identifier
+  PASS: Turtle 1.2 - Annotation form with multiple reifiers
+  PASS: Turtle 1.2 - Annotation form with multiple annotation blocks
+  PASS: Turtle 1.2 - Annotation form with annotation block followed by reifier
+  PASS: Turtle 1.2 - Annotation form with alternating reifiers and annotation blocks
+  PASS: Turtle 1.2 - Annotation with reified triples
+  PASS: Turtle 1.2 - Annotation on triple with reified triple subject
+  PASS: Turtle 1.2 - Annotation on triple with reified triple object
+  [suite time: 0.0s]
+
+--- rdf-trig/syntax ---
+  PASS: TriG 1.2 - subject reified triple
+  PASS: TriG 1.2 - object reified triple
+  PASS: TriG 1.2 - triple term object
+  PASS: TriG 1.2 - reified triple outside triple
+  PASS: TriG 1.2 - reified triple inside blankNodePropertyList
+  PASS: TriG 1.2 - reified triple inside collection
+  PASS: TriG 1.2 - reified triple with IRI identifier
+  PASS: TriG 1.2 - reified triple with blank node identifier
+  PASS: TriG 1.2 - nested quoted triple, subject position
+  PASS: TriG 1.2 - nested quoted triple, object position
+  PASS: TriG 1.2 - compound forms
+  PASS: TriG 1.2 - blank node subject
+  PASS: TriG 1.2 - blank node object
+  PASS: TriG 1.2 - blank node
+  PASS: TriG 1.2 - bad - reified triple as predicate
+  PASS: TriG 1.2 - bad - literal in subject position of reified triple
+  PASS: TriG 1.2 - bad - blank node  as predicate in reified triple
+  PASS: TriG 1.2 - bad - incomplete reified triple
+  PASS: TriG 1.2 - bad - over-long reified triple
+  PASS: TriG 1.2 - bad - reified with list object
+  PASS: TriG 1.2 - bad - compound blank node expression
+  PASS: TriG 1.2 - Annotation form
+  PASS: TriG 1.2 - Annotation example
+  PASS: TriG 1.2 - Annotation predicateObjecetList
+  PASS: TriG 1.2 - Annotation followed by predicate/object
+  PASS: TriG 1.2 - Reifier without annotation block
+  PASS: TriG 1.2 - Empty reifier without annotation block
+  PASS: TriG 1.2 - Reifier with annotation block
+  PASS: TriG 1.2 - Empty reifier with annotation block
+  PASS: TriG 1.2 - bad - empty annotation
+  PASS: TriG 1.2 - bad - triple as annotation
+  PASS: base direction ltr
+  PASS: base direction ltr
+  PASS: undefined base direction
+  PASS: upper case LTR
+  [suite time: 0.0s]
+
+--- rdf-trig/eval ---
+  PASS: TriG 1.2 - subject reification
+  PASS: TriG 1.2 - object reification
+  PASS: TriG 1.2 - subject reification with identifier
+  PASS: TriG 1.2 - object reification with identifier
+  PASS: TriG 1.2 - subject reification with bnode identifier
+  PASS: TriG 1.2 - object reification with bnode identifier
+  PASS: TriG 1.2 - subject reification with empty identifier
+  PASS: TriG 1.2 - object reification with empty identifier
+  PASS: TriG 1.2 - blank node label
+  PASS: TriG 1.2 - blank node labels
+  PASS: TriG 1.2 - Annotation form
+  PASS: TriG 1.2 - Annotation example
+  PASS: TriG 1.2 - Annotation - predicate and object lists
+  PASS: TriG 1.2 - Annotation - nested
+  PASS: TriG 1.2 - Annotation object list
+  PASS: TriG 1.2 - Annotation with identifier
+  PASS: TriG 1.2 - Different annotations have different default identifiers
+  PASS: TriG 1.2 - Annotation form with explicit identifier
+  PASS: TriG 1.2 - Annotation form with multiple reifiers
+  PASS: TriG 1.2 - Annotation form with multiple annotation blocks
+  PASS: TriG 1.2 - Annotation form with annotation block followed by reifier
+  PASS: TriG 1.2 - Annotation form with alternating reifiers and annotation blocks
+  PASS: TriG 1.2 - Annotation with reified triples
+  PASS: TriG 1.2 - Annotation on triple with reified triple subject
+  PASS: TriG 1.2 - Annotation on triple with reified triple object
+  [suite time: 0.0s]
+
+========================================
+Suite Results:
+  rdf-n-triples/syntax                pass:29 fail:0 skip:0 unsupported:0
+  rdf-n-quads/syntax                  pass:27 fail:0 skip:0 unsupported:0
+  rdf-turtle/syntax                   pass:67 fail:0 skip:0 unsupported:0
+  rdf-turtle/eval                     pass:29 fail:0 skip:0 unsupported:0
+  rdf-trig/syntax                     pass:35 fail:0 skip:0 unsupported:0
+  rdf-trig/eval                       pass:25 fail:0 skip:0 unsupported:0
+========================================
+TOTAL: 212 pass, 0 fail, 0 skip, 0 unsupported
+========================================

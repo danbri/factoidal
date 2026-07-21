@@ -26,6 +26,10 @@ OUTPUT_DIR="$SCRIPT_DIR/../../docs/test-results"
 HISTORY_DIR="$OUTPUT_DIR/history"
 SPARQL_LOG="$OCAML_DIR/sparql_results.log"
 RDF_LOG="$OCAML_DIR/rdf_results.log"
+# RDF 1.2 / SPARQL 1.2 (#305): w3c_runner --rdf12 / --sparql12. Same
+# "Suite Results:" score-line format as the 1.1 suites above.
+RDF12_LOG="$OCAML_DIR/rdf12_results.log"
+SPARQL12_LOG="$OCAML_DIR/sparql12_results.log"
 OWL_LOG="$OCAML_DIR/owl_profile_rl_results.log"
 # Phase 2.3 DL catalog logs (added 2026-05-08). Per-catalog log
 # path so we can score independently and surface separate dashboard
@@ -191,6 +195,12 @@ if [ "$1" = "--run" ]; then
   echo "  done."
   echo "Running RDF 1.1 suite…"
   ( cd "$REPO_ROOT" && "$RUNNER" --rdf > "$RDF_LOG" 2>&1 ) || true
+  echo "  done."
+  echo "Running RDF 1.2 suite (--rdf12)…"
+  ( cd "$REPO_ROOT" && "$RUNNER" --rdf12 > "$RDF12_LOG" 2>&1 ) || true
+  echo "  done."
+  echo "Running SPARQL 1.2 suite (--sparql12)…"
+  ( cd "$REPO_ROOT" && "$RUNNER" --sparql12 > "$SPARQL12_LOG" 2>&1 ) || true
   echo "  done."
   if [ -x "$OWL_RUNNER" ]; then
     echo "Running OWL 2 RL profile suite (PositiveEntailmentTests)…"
@@ -392,6 +402,26 @@ RDF_PASS=$(extract_field     pass        "$RDF_SUITES")
 RDF_FAIL=$(extract_field     fail        "$RDF_SUITES")
 RDF_SKIP=$(extract_field     skip        "$RDF_SUITES")
 RDF_UNSUP=$(extract_field    unsupported "$RDF_SUITES")
+
+# RDF 1.2 / SPARQL 1.2 (#305): same score-line parse as sparql/rdf. A row
+# is PRESENT iff the runner produced at least one "  name  pass:N" line
+# (an old binary without --rdf12/--sparql12, or a fixture-less run, yields
+# an empty blob -> PRESENT 0 -> the suite is simply omitted, never a lying
+# 0/0).
+RDF12_SUITES=$(grep    '^  [a-z]' "$RDF12_LOG"    2>/dev/null | grep 'pass:' || true)
+SPARQL12_SUITES=$(grep '^  [a-z]' "$SPARQL12_LOG" 2>/dev/null | grep 'pass:' || true)
+RDF12_PASS=$(extract_field  pass        "$RDF12_SUITES")
+RDF12_FAIL=$(extract_field  fail        "$RDF12_SUITES")
+RDF12_SKIP=$(extract_field  skip        "$RDF12_SUITES")
+RDF12_UNSUP=$(extract_field unsupported "$RDF12_SUITES")
+RDF12_TOTAL=$((RDF12_PASS + RDF12_FAIL + RDF12_SKIP + RDF12_UNSUP))
+RDF12_PRESENT=$([ -n "$RDF12_SUITES" ] && echo 1 || echo 0)
+SPARQL12_PASS=$(extract_field  pass        "$SPARQL12_SUITES")
+SPARQL12_FAIL=$(extract_field  fail        "$SPARQL12_SUITES")
+SPARQL12_SKIP=$(extract_field  skip        "$SPARQL12_SUITES")
+SPARQL12_UNSUP=$(extract_field unsupported "$SPARQL12_SUITES")
+SPARQL12_TOTAL=$((SPARQL12_PASS + SPARQL12_FAIL + SPARQL12_SKIP + SPARQL12_UNSUP))
+SPARQL12_PRESENT=$([ -n "$SPARQL12_SUITES" ] && echo 1 || echo 0)
 
 # --- OWL 2 RL scoreboard (orthogonal to the SPARQL/RDF tables) --------------
 # Score line in owl_runner stdout:
@@ -906,6 +936,8 @@ CSV="$OUTPUT_DIR/latest.csv"
   }
   emit_csv_rows "$SPARQL_SUITES" sparql
   emit_csv_rows "$RDF_SUITES"    rdf
+  if [ "$RDF12_PRESENT"    -eq 1 ]; then emit_csv_rows "$RDF12_SUITES"    rdf12;    fi
+  if [ "$SPARQL12_PRESENT" -eq 1 ]; then emit_csv_rows "$SPARQL12_SUITES" sparql12; fi
   if [ "$RDFC10_PRESENT" -eq 1 ]; then
     echo "${TIMESTAMP_HUMAN},${GIT_SHA_FULL},${GIT_BRANCH},rdf,rdf-canon,${RDFC10_PASS},${RDFC10_FAIL},${RDFC10_SKIP},0"
   fi
@@ -988,6 +1020,14 @@ emit_json_suites () {
     "$SPARQL_PASS" "$SPARQL_FAIL" "$SPARQL_SKIP" "$SPARQL_UNSUP" "$SPARQL_TOTAL"
   printf '    "rdf":      {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s},\n' \
     "$RDF_PASS" "$RDF_FAIL" "$RDF_SKIP" "$RDF_UNSUP" "$RDF_TOTAL"
+  if [ "$RDF12_PRESENT" -eq 1 ]; then
+    printf '    "rdf12":    {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s},\n' \
+      "$RDF12_PASS" "$RDF12_FAIL" "$RDF12_SKIP" "$RDF12_UNSUP" "$RDF12_TOTAL"
+  fi
+  if [ "$SPARQL12_PRESENT" -eq 1 ]; then
+    printf '    "sparql12": {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s},\n' \
+      "$SPARQL12_PASS" "$SPARQL12_FAIL" "$SPARQL12_SKIP" "$SPARQL12_UNSUP" "$SPARQL12_TOTAL"
+  fi
   printf '    "combined": {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s,"pass_pct_of_runnable":%s},\n' \
     "$COMBINED_PASS" "$COMBINED_FAIL" "$COMBINED_SKIP" "$COMBINED_UNSUP" "$COMBINED_TOTAL" "$COMBINED_PCT"
   printf '    "owl_rl_positive_entailment": {"pass":%s,"fail":%s,"total":%s,"catalog":"third_party/testing/owl/profile-RL.rdf"},\n' \
@@ -1097,6 +1137,8 @@ emit_json_suites () {
   # their totals) plus the 2026-07-09 vendor/document + local/JS suites, so
   # the machine-readable `suites` map lists every shipped engine, not just
   # the two W3C core families.
+  emit_json_suite_obj "rdf12"    RDF12
+  emit_json_suite_obj "sparql12" SPARQL12
   emit_json_suite_obj "owl_rl_positive_entailment" OWL
   emit_json_suite_obj "owl_syntax_dl_species" OWL_SYNDL
   emit_json_suite_obj "owl2_profile_ql" OWL_QL_AGG

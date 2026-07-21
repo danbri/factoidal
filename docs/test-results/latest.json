@@ -1,10 +1,12 @@
 {
-  "timestamp": "2026-07-20 14:13 UTC",
-  "commit": "44c951a90f4de2bd90b030fac78c8975ac6f255c",
+  "timestamp": "2026-07-21 03:53 UTC",
+  "commit": "adf511177e6435763863f7e724736a8c7207a2a3",
   "branch": "claude/main",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
     "rdf":      {"pass":1031,"fail":0,"skip":0,"unsupported":0,"total":1031},
+    "rdf12":    {"pass":212,"fail":0,"skip":0,"unsupported":0,"total":212},
+    "sparql12": {"pass":248,"fail":6,"skip":0,"unsupported":0,"total":254},
     "combined": {"pass":1662,"fail":0,"skip":0,"unsupported":0,"total":1662,"pass_pct_of_runnable":100.0},
     "owl_rl_positive_entailment": {"pass":28,"fail":2,"total":30,"catalog":"third_party/testing/owl/profile-RL.rdf"},
     "owl_syntax_dl_species": {"pass":319,"fail":2,"skip":2,"total":323,"present":true,"catalog":"third_party/testing/owl/syntax-dl.rdf"},
@@ -89,6 +91,8 @@
       {"name":"rdf-turtle","pass":313,"fail":0,"skip":0,"unsupported":0},
       {"name":"rdf-xml","pass":166,"fail":0,"skip":0,"unsupported":0}
     ],
+    "rdf12": {"name":"rdf12","pass":212,"fail":0,"skip":0,"total":212},
+    "sparql12": {"name":"sparql12","pass":248,"fail":6,"skip":0,"total":254},
     "owl_rl_positive_entailment": {"name":"owl_rl_positive_entailment","pass":28,"fail":2,"skip":0,"total":30},
     "owl_syntax_dl_species": {"name":"owl_syntax_dl_species","pass":319,"fail":2,"skip":2,"total":323},
     "owl2_profile_ql": {"name":"owl2_profile_ql","pass":83,"fail":4,"skip":0,"total":87},
