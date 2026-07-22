@@ -76,6 +76,8 @@ let sh_UniqueMembersConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#UniqueMembersConstraintComponent"
 let sh_MemberShapeConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#MemberShapeConstraintComponent"
+let sh_UniqueValuesForConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#UniqueValuesForConstraintComponent"
 let sh_LanguageInConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
 let sh_UniqueLangConstraintComponent : RDF_Term.wf_iri=
@@ -253,6 +255,7 @@ type constraint_component =
   | CC_SomeValue of shape_ref 
   | CC_UniqueMembers 
   | CC_MemberShape of shape_ref 
+  | CC_UniqueValuesFor of RDF_Term.wf_iri Prims.list 
   | CC_LanguageIn of Prims.string Prims.list 
   | CC_UniqueLang of Prims.bool 
   | CC_MinInclusive of RDF_Term.rdf_term 
@@ -357,6 +360,12 @@ let uu___is_CC_MemberShape (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_MemberShape _0 -> true | uu___ -> false
 let __proj__CC_MemberShape__item___0 (projectee : constraint_component) :
   shape_ref= match projectee with | CC_MemberShape _0 -> _0
+let uu___is_CC_UniqueValuesFor (projectee : constraint_component) :
+  Prims.bool=
+  match projectee with | CC_UniqueValuesFor _0 -> true | uu___ -> false
+let __proj__CC_UniqueValuesFor__item___0 (projectee : constraint_component) :
+  RDF_Term.wf_iri Prims.list=
+  match projectee with | CC_UniqueValuesFor _0 -> _0
 let uu___is_CC_LanguageIn (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_LanguageIn _0 -> true | uu___ -> false
 let __proj__CC_LanguageIn__item___0 (projectee : constraint_component) :
@@ -805,6 +814,8 @@ let sh_uniqueMembers : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#uniqueMembers"
 let sh_memberShape : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#memberShape"
+let sh_uniqueValuesFor : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#uniqueValuesFor"
 let sh_languageIn : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#languageIn"
 let sh_uniqueLang : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#uniqueLang"
 let sh_minInclusive : RDF_Term.wf_iri=
@@ -1598,6 +1609,14 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
          | FStar_Pervasives_Native.Some r -> [CC_MemberShape r]
          | FStar_Pervasives_Native.None -> [])
       (RDF_Graph_Executable.find_objects g s sh_memberShape) in
+  let uvf =
+    match RDF_Graph_Executable.find_objects g s sh_uniqueValuesFor with
+    | [] -> []
+    | (RDF_Term.T_IRI i)::uu___ -> [CC_UniqueValuesFor [i]]
+    | head::uu___ ->
+        (match iris_of_list head with
+         | [] -> []
+         | ps -> [CC_UniqueValuesFor ps]) in
   let langin =
     match RDF_Graph_Executable.find_objects g s sh_languageIn with
     | head::uu___ ->
@@ -1709,16 +1728,18 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                                  (FStar_List_Tot_Base.op_At
                                                     membershape
                                                     (FStar_List_Tot_Base.op_At
-                                                       langin
+                                                       uvf
                                                        (FStar_List_Tot_Base.op_At
-                                                          uniquelang
+                                                          langin
                                                           (FStar_List_Tot_Base.op_At
-                                                             mininc
+                                                             uniquelang
                                                              (FStar_List_Tot_Base.op_At
-                                                                maxinc
+                                                                mininc
                                                                 (FStar_List_Tot_Base.op_At
-                                                                   minexc
+                                                                   maxinc
                                                                    (FStar_List_Tot_Base.op_At
+                                                                    minexc
+                                                                    (FStar_List_Tot_Base.op_At
                                                                     maxexc
                                                                     (FStar_List_Tot_Base.op_At
                                                                     nots
@@ -1742,7 +1763,7 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                                                     lessthaneq
                                                                     (FStar_List_Tot_Base.op_At
                                                                     closed_
-                                                                    sparqls)))))))))))))))))))))))))))))))))
+                                                                    sparqls))))))))))))))))))))))))))))))))))
 let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
   let path_objs = RDF_Graph_Executable.find_objects g s sh_path in
   let is_prop = Prims.uu___is_Cons path_objs in
@@ -2190,6 +2211,7 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
                            v_detail = inner
                          })]))
        | CC_SomeValue uu___1 -> []
+       | CC_UniqueValuesFor uu___1 -> []
        | CC_LanguageIn langs ->
            (match v with
             | RDF_Term.T_Literal l ->
@@ -3175,6 +3197,93 @@ let rec custom_violations_for_shapes (data : RDF_Graph.rdf_graph)
                   ((match f1 with
                     | FStar_Pervasives_Native.Some uu___2 -> f1
                     | FStar_Pervasives_Native.None -> f2)))))
+let objects_of_focus (data : RDF_Graph.rdf_graph) (fn : RDF_Term.rdf_term)
+  (p : RDF_Term.wf_iri) : RDF_Term.rdf_term Prims.list=
+  match RDF_Graph.term_to_subject fn with
+  | FStar_Pervasives_Native.None -> []
+  | FStar_Pervasives_Native.Some s ->
+      RDF_Graph_Executable.find_objects data s p
+let rec uvf_key (data : RDF_Graph.rdf_graph) (fn : RDF_Term.rdf_term)
+  (props : RDF_Term.wf_iri Prims.list) :
+  RDF_Term.rdf_term Prims.list Prims.list FStar_Pervasives_Native.option=
+  match props with
+  | [] -> FStar_Pervasives_Native.Some []
+  | p::rest ->
+      (match objects_of_focus data fn p with
+       | [] -> FStar_Pervasives_Native.None
+       | objs ->
+           (match uvf_key data fn rest with
+            | FStar_Pervasives_Native.Some tl ->
+                FStar_Pervasives_Native.Some (objs :: tl)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None))
+let term_list_set_eq (a : RDF_Term.rdf_term Prims.list)
+  (b : RDF_Term.rdf_term Prims.list) : Prims.bool=
+  (((FStar_List_Tot_Base.length a) = (FStar_List_Tot_Base.length b)) &&
+     (FStar_List_Tot_Base.for_all
+        (fun x -> FStar_List_Tot_Base.existsb (RDF_Term.rdf_term_eq x) b) a))
+    &&
+    (FStar_List_Tot_Base.for_all
+       (fun x -> FStar_List_Tot_Base.existsb (RDF_Term.rdf_term_eq x) a) b)
+let rec key_eq (a : RDF_Term.rdf_term Prims.list Prims.list)
+  (b : RDF_Term.rdf_term Prims.list Prims.list) : Prims.bool=
+  match (a, b) with
+  | ([], []) -> true
+  | (x::xr, y::yr) -> (term_list_set_eq x y) && (key_eq xr yr)
+  | (uu___, uu___1) -> false
+let uvf_props_of_shape (s : shape) : RDF_Term.wf_iri Prims.list Prims.list=
+  FStar_List_Tot_Base.concatMap
+    (fun cc -> match cc with | CC_UniqueValuesFor ps -> [ps] | uu___ -> [])
+    s.constraints
+let uvf_violations_for_shape (data : RDF_Graph.rdf_graph)
+  (closed_cls : RDF_Graph.rdf_graph)
+  (all_subjects : RDF_Term.subject Prims.list) (s : shape) :
+  violation Prims.list=
+  let foci =
+    dedup_terms
+      (FStar_List_Tot_Base.concatMap
+         (fun tgt -> eval_target data closed_cls all_subjects tgt) s.targets) in
+  FStar_List_Tot_Base.concatMap
+    (fun props ->
+       let keyed =
+         FStar_List_Tot_Base.map (fun fn -> (fn, (uvf_key data fn props)))
+           foci in
+       FStar_List_Tot_Base.concatMap
+         (fun fk ->
+            let uu___ = fk in
+            match uu___ with
+            | (fn, ko) ->
+                (match ko with
+                 | FStar_Pervasives_Native.None -> []
+                 | FStar_Pervasives_Native.Some k ->
+                     if
+                       FStar_List_Tot_Base.existsb
+                         (fun gk ->
+                            let uu___1 = gk in
+                            match uu___1 with
+                            | (gn, ko2) ->
+                                (Prims.op_Negation
+                                   (RDF_Term.rdf_term_eq gn fn))
+                                  &&
+                                  ((match ko2 with
+                                    | FStar_Pervasives_Native.Some k2 ->
+                                        key_eq k k2
+                                    | FStar_Pervasives_Native.None -> false)))
+                         keyed
+                     then
+                       [focus_violation fn FStar_Pervasives_Native.None
+                          s.shape_id (CC_UniqueValuesFor props) s.shape_sev
+                          s.message]
+                     else [])) keyed) (uvf_props_of_shape s)
+let rec uvf_violations_for_shapes (data : RDF_Graph.rdf_graph)
+  (closed_cls : RDF_Graph.rdf_graph)
+  (all_subjects : RDF_Term.subject Prims.list) (ss : shape Prims.list) :
+  violation Prims.list=
+  match ss with
+  | [] -> []
+  | s::rest ->
+      FStar_List_Tot_Base.op_At
+        (uvf_violations_for_shape data closed_cls all_subjects s)
+        (uvf_violations_for_shapes data closed_cls all_subjects rest)
 let parse_shape_from_graph (g : RDF_Graph.rdf_graph) : shapes_graph=
   parse_shape_from_graph_pure g
 let validate (data : RDF_Graph.rdf_graph) (shapes_raw : RDF_Graph.rdf_graph)
@@ -3210,9 +3319,13 @@ let validate (data : RDF_Graph.rdf_graph) (shapes_raw : RDF_Graph.rdf_graph)
           root_shapes fuel0 in
       (match uu___1 with
        | (custom_violations, custom_failure) ->
+           let uvf_violations =
+             uvf_violations_for_shapes data closed_cls all_subjects
+               root_shapes in
            let all_results =
              FStar_List_Tot_Base.op_At per_shape_violations
-               (FStar_List_Tot_Base.op_At sparql_violations custom_violations) in
+               (FStar_List_Tot_Base.op_At sparql_violations
+                  (FStar_List_Tot_Base.op_At custom_violations uvf_violations)) in
            {
              conforms =
                (Prims.op_Negation
@@ -3254,6 +3367,7 @@ let constraint_component_iri (cc : constraint_component) : RDF_Term.wf_iri=
   | CC_SomeValue uu___ -> sh_SomeValueConstraintComponent
   | CC_UniqueMembers -> sh_UniqueMembersConstraintComponent
   | CC_MemberShape uu___ -> sh_MemberShapeConstraintComponent
+  | CC_UniqueValuesFor uu___ -> sh_UniqueValuesForConstraintComponent
   | CC_LanguageIn uu___ -> sh_LanguageInConstraintComponent
   | CC_UniqueLang uu___ -> sh_UniqueLangConstraintComponent
   | CC_MinInclusive uu___ -> sh_MinInclusiveConstraintComponent

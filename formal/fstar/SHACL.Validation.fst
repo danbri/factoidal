@@ -205,6 +205,9 @@ let sh_UniqueMembersConstraintComponent : wf_iri =
 let sh_MemberShapeConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#MemberShapeConstraintComponent");
   "http://www.w3.org/ns/shacl#MemberShapeConstraintComponent"
+let sh_UniqueValuesForConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#UniqueValuesForConstraintComponent");
+  "http://www.w3.org/ns/shacl#UniqueValuesForConstraintComponent"
 let sh_LanguageInConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#LanguageInConstraintComponent");
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
@@ -438,6 +441,12 @@ noeq type constraint_component =
   // with a failing member, yields one list-level violation (value = the
   // list); each failing member's own violations are nested as sh:detail.
   | CC_MemberShape  : shape_ref -> constraint_component
+  // CC_UniqueValuesFor — SHACL 1.2 cross-focus-node uniqueness key: across
+  // ALL focus nodes of the owning shape, the combination of values for the
+  // listed key properties must be unique. A focus node missing a value for
+  // any key property has no key and never conflicts. Evaluated as a
+  // shape-level pass (uvf_violations_for_shapes), not per value node.
+  | CC_UniqueValuesFor : list wf_iri -> constraint_component
   | CC_LanguageIn   : list string -> constraint_component
   | CC_UniqueLang   : bool -> constraint_component
   // Range constraints (lexical / numeric forms — evaluator decides).
@@ -900,6 +909,9 @@ let sh_uniqueMembers : wf_iri =
 let sh_memberShape : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#memberShape");
   "http://www.w3.org/ns/shacl#memberShape"
+let sh_uniqueValuesFor : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#uniqueValuesFor");
+  "http://www.w3.org/ns/shacl#uniqueValuesFor"
 let sh_languageIn : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#languageIn");
   "http://www.w3.org/ns/shacl#languageIn"
@@ -1701,6 +1713,11 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
   let uniquemembers = (match first_bool (find_objects g s sh_uniqueMembers) with Some true -> [CC_UniqueMembers] | _ -> []) in
   let membershape =
     List.Tot.concatMap (fun t -> match term_to_shape_ref t with Some r -> [CC_MemberShape r] | None -> []) (find_objects g s sh_memberShape) in
+  let uvf =
+    (match find_objects g s sh_uniqueValuesFor with
+     | []            -> []
+     | (T_IRI i) :: _ -> [CC_UniqueValuesFor [i]]                       // single key property
+     | (head :: _)    -> (match iris_of_list head with [] -> [] | ps -> [CC_UniqueValuesFor ps])) in  // composite key (rdf:List)
   let langin =
     (match find_objects g s sh_languageIn with
      | (head :: _) ->
@@ -1748,7 +1765,7 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
      | _ -> []) in
   let sparqls = build_sparql_constraints g s in
   mincount @ maxcount @ datatype @ nodekind @ cls @ in_ @ hasvalue @ pattern @ minlen @ maxlen @
-  singleline @ minlistlen @ maxlistlen @ rootcls @ somevalue @ uniquemembers @ membershape @
+  singleline @ minlistlen @ maxlistlen @ rootcls @ somevalue @ uniquemembers @ membershape @ uvf @
   langin @ uniquelang @ mininc @ maxinc @ minexc @ maxexc @ nots @ ands @ ors @ xones @ nodes @
   qualified @ equals @ disjoint @ lessthan @ lessthaneq @ closed_ @ sparqls
 #pop-options
@@ -2084,6 +2101,7 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
              if Nil? inner then []
              else [ { value_violation focus path_opt source cc sev msg v with v_detail = inner } ]))
      | CC_SomeValue _ -> []   // aggregate — see eval_aggregate_constraints
+     | CC_UniqueValuesFor _ -> []  // shape-level cross-focus pass — see uvf_violations_for_shapes
      | CC_LanguageIn langs ->
        (match v with
         | T_Literal l ->
@@ -2888,6 +2906,75 @@ let rec custom_violations_for_shapes
     let (vs2, f2) = custom_violations_for_shapes data closed_cls all_subjects sg rest fuel in
     (vs1 @ vs2, (match f1 with Some _ -> f1 | None -> f2))
 
+// --- 11i-bis. sh:uniqueValuesFor (SHACL 1.2 cross-focus-node key) -----
+// A shape-level pass, not a per-value one: it needs ALL of a shape's
+// focus nodes at once to detect two nodes sharing a key. For each focus
+// node compute its key (the tuple of value-sets for the key properties);
+// a node missing a value for any key property has NO key and never
+// conflicts (uniqueValuesFor-004). Any node whose key equals another
+// focus node's key gets one focus-level violation.
+
+let objects_of_focus (data : rdf_graph) (fn : rdf_term) (p : wf_iri) : list rdf_term =
+  match term_to_subject fn with
+  | None   -> []
+  | Some s -> find_objects data s p
+
+let rec uvf_key (data : rdf_graph) (fn : rdf_term) (props : list wf_iri)
+  : Tot (option (list (list rdf_term))) (decreases props)
+  =
+  match props with
+  | []       -> Some []
+  | p :: rest ->
+    (match objects_of_focus data fn p with
+     | []   -> None
+     | objs -> (match uvf_key data fn rest with Some tl -> Some (objs :: tl) | None -> None))
+
+let term_list_set_eq (a b : list rdf_term) : bool =
+  List.Tot.length a = List.Tot.length b &&
+  List.Tot.for_all (fun x -> List.Tot.existsb (rdf_term_eq x) b) a &&
+  List.Tot.for_all (fun x -> List.Tot.existsb (rdf_term_eq x) a) b
+
+let rec key_eq (a b : list (list rdf_term)) : Tot bool (decreases a) =
+  match a, b with
+  | [], []           -> true
+  | x :: xr, y :: yr -> term_list_set_eq x y && key_eq xr yr
+  | _, _             -> false
+
+let uvf_props_of_shape (s : shape) : list (list wf_iri) =
+  List.Tot.concatMap (fun cc -> match cc with CC_UniqueValuesFor ps -> [ps] | _ -> []) s.constraints
+
+let uvf_violations_for_shape (data : rdf_graph) (closed_cls : rdf_graph)
+                             (all_subjects : list subject) (s : shape) : list violation =
+  let foci = dedup_terms (List.Tot.concatMap (fun tgt -> eval_target data closed_cls all_subjects tgt) s.targets) in
+  List.Tot.concatMap
+    (fun props ->
+       let keyed : list (rdf_term & option (list (list rdf_term))) =
+         List.Tot.map (fun fn -> (fn, uvf_key data fn props)) foci in
+       List.Tot.concatMap
+         (fun (fk : (rdf_term & option (list (list rdf_term)))) ->
+            let (fn, ko) = fk in
+            match ko with
+            | None   -> []
+            | Some k ->
+              if List.Tot.existsb
+                   (fun (gk : (rdf_term & option (list (list rdf_term)))) ->
+                      let (gn, ko2) = gk in
+                      not (rdf_term_eq gn fn) && (match ko2 with Some k2 -> key_eq k k2 | None -> false))
+                   keyed
+              then [focus_violation fn None s.shape_id (CC_UniqueValuesFor props) s.shape_sev s.message]
+              else [])
+         keyed)
+    (uvf_props_of_shape s)
+
+let rec uvf_violations_for_shapes (data : rdf_graph) (closed_cls : rdf_graph)
+                                  (all_subjects : list subject) (ss : list shape)
+  : Tot (list violation) (decreases ss)
+  =
+  match ss with
+  | []      -> []
+  | s :: rest -> uvf_violations_for_shape data closed_cls all_subjects s
+               @ uvf_violations_for_shapes data closed_cls all_subjects rest
+
 // --- 11j. Top-level entry points --------------------------------------
 
 let parse_shape_from_graph (g : rdf_graph) : ML shapes_graph =
@@ -2919,7 +3006,8 @@ let validate (data : rdf_graph) (shapes_raw : rdf_graph) (shapes : shapes_graph)
     sparql_violations_for_shapes data shapes_raw closed_cls all_subjects root_shapes in
   let (custom_violations, custom_failure) =
     custom_violations_for_shapes data closed_cls all_subjects sg root_shapes fuel0 in
-  let all_results = per_shape_violations @ sparql_violations @ custom_violations in
+  let uvf_violations = uvf_violations_for_shapes data closed_cls all_subjects root_shapes in
+  let all_results = per_shape_violations @ sparql_violations @ custom_violations @ uvf_violations in
   { conforms = not (List.Tot.existsb (fun (v : violation) -> severity_breaks_conformance v.v_severity) all_results);
     results = all_results;
     report_failure = (match sparql_failure with Some _ -> sparql_failure | None -> custom_failure) }
@@ -3005,6 +3093,7 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_SomeValue _ -> sh_SomeValueConstraintComponent
   | CC_UniqueMembers -> sh_UniqueMembersConstraintComponent
   | CC_MemberShape _ -> sh_MemberShapeConstraintComponent
+  | CC_UniqueValuesFor _ -> sh_UniqueValuesForConstraintComponent
   | CC_LanguageIn _ -> sh_LanguageInConstraintComponent
   | CC_UniqueLang _ -> sh_UniqueLangConstraintComponent
   | CC_MinInclusive _ -> sh_MinInclusiveConstraintComponent
