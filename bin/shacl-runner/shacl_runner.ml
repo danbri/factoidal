@@ -176,6 +176,7 @@ let sht_Failure     = sht_ns ^ "Failure"
 let sh_result       = sh_ns ^ "result"
 let sh_resultPath   = sh_ns ^ "resultPath"
 let sh_resultMessage = sh_ns ^ "resultMessage"
+let sh_detail       = sh_ns ^ "detail"
 
 (* ------------------------------------------------------------------ *)
 (* Phase 3 (issue #181 follow-up): full report comparison.
@@ -210,13 +211,28 @@ let rec bnode_path_closure (g : rdf_graph) (frontier : rdf_term list) (acc : tri
          bnode_path_closure g (rest @ objs) (acc @ ts) (fuel - 1)
        | _ -> bnode_path_closure g rest acc (fuel - 1))
 
+(* One ValidationResult's expected triples: its own triples, the
+   bnode-closure of its sh:resultPath, and — recursively — every
+   sh:detail sub-result (SHACL 1.2 sh:uniqueMembers / sh:memberShape
+   nest their per-member findings under sh:detail). Without the
+   sh:detail recursion the expected graph carries the `R sh:detail _:d`
+   link but none of _:d's own triples, so a correct actual report can
+   never be isomorphic to it. *)
+let rec result_closure (g : rdf_graph) (rv : rdf_term) (fuel : int) : triple list =
+  if fuel <= 0 then []
+  else
+    let own = triples_with_subject g rv in
+    let path_objs = objs_of g rv sh_resultPath in
+    let path_triples = bnode_path_closure g path_objs [] 50 in
+    let detail_objs = objs_of g rv sh_detail in
+    let detail_triples = List.concat_map (fun d -> result_closure g d (fuel - 1)) detail_objs in
+    own @ path_triples @ detail_triples
+
 let expected_report_graph (g : rdf_graph) (res_term : rdf_term) : rdf_graph =
   let r_triples = triples_with_subject g res_term in
   let result_values = objs_of g res_term sh_result in
-  let result_triples = List.concat_map (fun rv -> triples_with_subject g rv) result_values in
-  let path_objs = List.concat_map (fun rv -> objs_of g rv sh_resultPath) result_values in
-  let path_triples = bnode_path_closure g path_objs [] 50 in
-  r_triples @ result_triples @ path_triples
+  let result_triples = List.concat_map (fun rv -> result_closure g rv 50) result_values in
+  r_triples @ result_triples
 
 (* The suite's sh:resultMessage carve-out: drop every actual
    sh:resultMessage triple whose literal object does not ALSO appear

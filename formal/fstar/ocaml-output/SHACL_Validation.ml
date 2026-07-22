@@ -27,6 +27,7 @@ let sh_ValidationReport : RDF_Term.wf_iri=
 let sh_ValidationResult : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#ValidationResult"
 let sh_result : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#result"
+let sh_detail : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#detail"
 let sh_conforms_pred : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#conforms"
 let sh_focusNode : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#focusNode"
 let sh_resultPath : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#resultPath"
@@ -69,6 +70,12 @@ let sh_MaxListLengthConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#MaxListLengthConstraintComponent"
 let sh_RootClassConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#RootClassConstraintComponent"
+let sh_SomeValueConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#SomeValueConstraintComponent"
+let sh_UniqueMembersConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#UniqueMembersConstraintComponent"
+let sh_MemberShapeConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#MemberShapeConstraintComponent"
 let sh_LanguageInConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
 let sh_UniqueLangConstraintComponent : RDF_Term.wf_iri=
@@ -231,6 +238,9 @@ type constraint_component =
   | CC_Datatype of RDF_Term.wf_iri 
   | CC_NodeKind of node_kind 
   | CC_Class of RDF_Term.wf_iri 
+  | CC_DatatypeIn of RDF_Term.wf_iri Prims.list 
+  | CC_NodeKindOneOf of node_kind Prims.list 
+  | CC_ClassOneOf of RDF_Term.wf_iri Prims.list 
   | CC_In of RDF_Term.rdf_term Prims.list 
   | CC_HasValue of RDF_Term.rdf_term 
   | CC_Pattern of Prims.string * Prims.string 
@@ -240,6 +250,9 @@ type constraint_component =
   | CC_MinListLength of Prims.nat 
   | CC_MaxListLength of Prims.nat 
   | CC_RootClass of RDF_Term.wf_iri 
+  | CC_SomeValue of shape_ref 
+  | CC_UniqueMembers 
+  | CC_MemberShape of shape_ref 
   | CC_LanguageIn of Prims.string Prims.list 
   | CC_UniqueLang of Prims.bool 
   | CC_MinInclusive of RDF_Term.rdf_term 
@@ -282,6 +295,18 @@ let uu___is_CC_Class (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_Class _0 -> true | uu___ -> false
 let __proj__CC_Class__item___0 (projectee : constraint_component) :
   RDF_Term.wf_iri= match projectee with | CC_Class _0 -> _0
+let uu___is_CC_DatatypeIn (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_DatatypeIn _0 -> true | uu___ -> false
+let __proj__CC_DatatypeIn__item___0 (projectee : constraint_component) :
+  RDF_Term.wf_iri Prims.list= match projectee with | CC_DatatypeIn _0 -> _0
+let uu___is_CC_NodeKindOneOf (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_NodeKindOneOf _0 -> true | uu___ -> false
+let __proj__CC_NodeKindOneOf__item___0 (projectee : constraint_component) :
+  node_kind Prims.list= match projectee with | CC_NodeKindOneOf _0 -> _0
+let uu___is_CC_ClassOneOf (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_ClassOneOf _0 -> true | uu___ -> false
+let __proj__CC_ClassOneOf__item___0 (projectee : constraint_component) :
+  RDF_Term.wf_iri Prims.list= match projectee with | CC_ClassOneOf _0 -> _0
 let uu___is_CC_In (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_In _0 -> true | uu___ -> false
 let __proj__CC_In__item___0 (projectee : constraint_component) :
@@ -322,6 +347,16 @@ let uu___is_CC_RootClass (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_RootClass _0 -> true | uu___ -> false
 let __proj__CC_RootClass__item___0 (projectee : constraint_component) :
   RDF_Term.wf_iri= match projectee with | CC_RootClass _0 -> _0
+let uu___is_CC_SomeValue (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_SomeValue _0 -> true | uu___ -> false
+let __proj__CC_SomeValue__item___0 (projectee : constraint_component) :
+  shape_ref= match projectee with | CC_SomeValue _0 -> _0
+let uu___is_CC_UniqueMembers (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_UniqueMembers -> true | uu___ -> false
+let uu___is_CC_MemberShape (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_MemberShape _0 -> true | uu___ -> false
+let __proj__CC_MemberShape__item___0 (projectee : constraint_component) :
+  shape_ref= match projectee with | CC_MemberShape _0 -> _0
 let uu___is_CC_LanguageIn (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_LanguageIn _0 -> true | uu___ -> false
 let __proj__CC_LanguageIn__item___0 (projectee : constraint_component) :
@@ -506,46 +541,54 @@ type violation =
   v_constraint: constraint_component ;
   v_severity: severity ;
   v_message: RDF_Term.wf_literal FStar_Pervasives_Native.option ;
-  v_source_constraint: RDF_Term.rdf_term FStar_Pervasives_Native.option }
+  v_source_constraint: RDF_Term.rdf_term FStar_Pervasives_Native.option ;
+  v_detail: violation Prims.list }
 let __proj__Mkviolation__item__v_focus_node (projectee : violation) :
   RDF_Term.rdf_term=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message; v_source_constraint;_} -> v_focus_node
+      v_severity; v_message; v_source_constraint; v_detail;_} -> v_focus_node
 let __proj__Mkviolation__item__v_path (projectee : violation) :
   path FStar_Pervasives_Native.option=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message; v_source_constraint;_} -> v_path
+      v_severity; v_message; v_source_constraint; v_detail;_} -> v_path
 let __proj__Mkviolation__item__v_value (projectee : violation) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message; v_source_constraint;_} -> v_value
+      v_severity; v_message; v_source_constraint; v_detail;_} -> v_value
 let __proj__Mkviolation__item__v_source_shape (projectee : violation) :
   shape_ref=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message; v_source_constraint;_} -> v_source_shape
+      v_severity; v_message; v_source_constraint; v_detail;_} ->
+      v_source_shape
 let __proj__Mkviolation__item__v_constraint (projectee : violation) :
   constraint_component=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message; v_source_constraint;_} -> v_constraint
+      v_severity; v_message; v_source_constraint; v_detail;_} -> v_constraint
 let __proj__Mkviolation__item__v_severity (projectee : violation) : severity=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message; v_source_constraint;_} -> v_severity
+      v_severity; v_message; v_source_constraint; v_detail;_} -> v_severity
 let __proj__Mkviolation__item__v_message (projectee : violation) :
   RDF_Term.wf_literal FStar_Pervasives_Native.option=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message; v_source_constraint;_} -> v_message
+      v_severity; v_message; v_source_constraint; v_detail;_} -> v_message
 let __proj__Mkviolation__item__v_source_constraint (projectee : violation) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message; v_source_constraint;_} -> v_source_constraint
+      v_severity; v_message; v_source_constraint; v_detail;_} ->
+      v_source_constraint
+let __proj__Mkviolation__item__v_detail (projectee : violation) :
+  violation Prims.list=
+  match projectee with
+  | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
+      v_severity; v_message; v_source_constraint; v_detail;_} -> v_detail
 type validation_report =
   {
   conforms: Prims.bool ;
@@ -660,6 +703,19 @@ let has_line_break (str : Prims.string) : Prims.bool=
        (((i = (Prims.of_int (0x0A))) || (i = (Prims.of_int (0x0B)))) ||
           (i = (Prims.of_int (0x0C))))
          || (i = (Prims.of_int (0x0D)))) (FStar_String.list_of_string str)
+let rdf_term_duplicates (xs : RDF_Term.rdf_term Prims.list) :
+  RDF_Term.rdf_term Prims.list=
+  let rec go seen rest =
+    match rest with
+    | [] -> []
+    | x::tl ->
+        if FStar_List_Tot_Base.existsb (RDF_Term.rdf_term_eq x) seen
+        then go seen tl
+        else
+          if FStar_List_Tot_Base.existsb (RDF_Term.rdf_term_eq x) tl
+          then x :: (go (x :: seen) tl)
+          else go (x :: seen) tl in
+  go [] xs
 let rec distinct_subjects_acc (g : RDF_Graph.rdf_graph)
   (acc : RDF_Term.subject Prims.list) : RDF_Term.subject Prims.list=
   match g with
@@ -744,6 +800,11 @@ let sh_minListLength : RDF_Term.wf_iri=
 let sh_maxListLength : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#maxListLength"
 let sh_rootClass : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#rootClass"
+let sh_someValue : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#someValue"
+let sh_uniqueMembers : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#uniqueMembers"
+let sh_memberShape : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#memberShape"
 let sh_languageIn : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#languageIn"
 let sh_uniqueLang : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#uniqueLang"
 let sh_minInclusive : RDF_Term.wf_iri=
@@ -1426,11 +1487,20 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
     match first_int (RDF_Graph_Executable.find_objects g s sh_maxCount) with
     | FStar_Pervasives_Native.Some n -> [CC_MaxCount n]
     | FStar_Pervasives_Native.None -> [] in
+  let iris_of_list t =
+    FStar_List_Tot_Base.concatMap
+      (fun x -> match x with | RDF_Term.T_IRI i -> [i] | uu___ -> [])
+      (rdf_list_terms g t fuel) in
   let datatype =
     FStar_List_Tot_Base.concatMap
       (fun t ->
-         match t with | RDF_Term.T_IRI i -> [CC_Datatype i] | uu___ -> [])
-      (RDF_Graph_Executable.find_objects g s sh_datatype) in
+         match t with
+         | RDF_Term.T_IRI i -> [CC_Datatype i]
+         | RDF_Term.T_BNode uu___ ->
+             (match iris_of_list t with
+              | [] -> []
+              | dts -> [CC_DatatypeIn dts])
+         | uu___ -> []) (RDF_Graph_Executable.find_objects g s sh_datatype) in
   let nodekind =
     FStar_List_Tot_Base.concatMap
       (fun t ->
@@ -1439,11 +1509,26 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
              (match node_kind_of_iri i with
               | FStar_Pervasives_Native.Some nk -> [CC_NodeKind nk]
               | FStar_Pervasives_Native.None -> [])
+         | RDF_Term.T_BNode uu___ ->
+             let nks =
+               FStar_List_Tot_Base.concatMap
+                 (fun x ->
+                    match x with
+                    | RDF_Term.T_IRI i ->
+                        (match node_kind_of_iri i with
+                         | FStar_Pervasives_Native.Some nk -> [nk]
+                         | FStar_Pervasives_Native.None -> [])
+                    | uu___1 -> []) (rdf_list_terms g t fuel) in
+             (match nks with | [] -> [] | uu___1 -> [CC_NodeKindOneOf nks])
          | uu___ -> []) (RDF_Graph_Executable.find_objects g s sh_nodeKind) in
   let cls =
     FStar_List_Tot_Base.concatMap
-      (fun t -> match t with | RDF_Term.T_IRI i -> [CC_Class i] | uu___ -> [])
-      (RDF_Graph_Executable.find_objects g s sh_class) in
+      (fun t ->
+         match t with
+         | RDF_Term.T_IRI i -> [CC_Class i]
+         | RDF_Term.T_BNode uu___ ->
+             (match iris_of_list t with | [] -> [] | cs -> [CC_ClassOneOf cs])
+         | uu___ -> []) (RDF_Graph_Executable.find_objects g s sh_class) in
   let in_ =
     match RDF_Graph_Executable.find_objects g s sh_in with
     | head::uu___ -> [CC_In (rdf_list_terms g head fuel)]
@@ -1488,6 +1573,25 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
       (fun t ->
          match t with | RDF_Term.T_IRI i -> [CC_RootClass i] | uu___ -> [])
       (RDF_Graph_Executable.find_objects g s sh_rootClass) in
+  let somevalue =
+    FStar_List_Tot_Base.concatMap
+      (fun t ->
+         match term_to_shape_ref t with
+         | FStar_Pervasives_Native.Some r -> [CC_SomeValue r]
+         | FStar_Pervasives_Native.None -> [])
+      (RDF_Graph_Executable.find_objects g s sh_someValue) in
+  let uniquemembers =
+    match first_bool (RDF_Graph_Executable.find_objects g s sh_uniqueMembers)
+    with
+    | FStar_Pervasives_Native.Some true -> [CC_UniqueMembers]
+    | uu___ -> [] in
+  let membershape =
+    FStar_List_Tot_Base.concatMap
+      (fun t ->
+         match term_to_shape_ref t with
+         | FStar_Pervasives_Native.Some r -> [CC_MemberShape r]
+         | FStar_Pervasives_Native.None -> [])
+      (RDF_Graph_Executable.find_objects g s sh_memberShape) in
   let langin =
     match RDF_Graph_Executable.find_objects g s sh_languageIn with
     | head::uu___ ->
@@ -1592,22 +1696,29 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                   (FStar_List_Tot_Base.op_At minlistlen
                                      (FStar_List_Tot_Base.op_At maxlistlen
                                         (FStar_List_Tot_Base.op_At rootcls
-                                           (FStar_List_Tot_Base.op_At langin
+                                           (FStar_List_Tot_Base.op_At
+                                              somevalue
                                               (FStar_List_Tot_Base.op_At
-                                                 uniquelang
+                                                 uniquemembers
                                                  (FStar_List_Tot_Base.op_At
-                                                    mininc
+                                                    membershape
                                                     (FStar_List_Tot_Base.op_At
-                                                       maxinc
+                                                       langin
                                                        (FStar_List_Tot_Base.op_At
-                                                          minexc
+                                                          uniquelang
                                                           (FStar_List_Tot_Base.op_At
-                                                             maxexc
+                                                             mininc
                                                              (FStar_List_Tot_Base.op_At
-                                                                nots
+                                                                maxinc
                                                                 (FStar_List_Tot_Base.op_At
-                                                                   ands
+                                                                   minexc
                                                                    (FStar_List_Tot_Base.op_At
+                                                                    maxexc
+                                                                    (FStar_List_Tot_Base.op_At
+                                                                    nots
+                                                                    (FStar_List_Tot_Base.op_At
+                                                                    ands
+                                                                    (FStar_List_Tot_Base.op_At
                                                                     ors
                                                                     (FStar_List_Tot_Base.op_At
                                                                     xones
@@ -1625,7 +1736,7 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                                                     lessthaneq
                                                                     (FStar_List_Tot_Base.op_At
                                                                     closed_
-                                                                    sparqls))))))))))))))))))))))))))))))
+                                                                    sparqls)))))))))))))))))))))))))))))))))
 let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
   let path_objs = RDF_Graph_Executable.find_objects g s sh_path in
   let is_prop = Prims.uu___is_Cons path_objs in
@@ -1778,7 +1889,8 @@ let value_violation (focus : RDF_Term.rdf_term)
     v_constraint = cc;
     v_severity = sev;
     v_message = msg;
-    v_source_constraint = FStar_Pervasives_Native.None
+    v_source_constraint = FStar_Pervasives_Native.None;
+    v_detail = []
   }
 let focus_violation (focus : RDF_Term.rdf_term)
   (path_opt : path FStar_Pervasives_Native.option) (source : shape_ref)
@@ -1792,7 +1904,8 @@ let focus_violation (focus : RDF_Term.rdf_term)
     v_constraint = cc;
     v_severity = sev;
     v_message = msg;
-    v_source_constraint = FStar_Pervasives_Native.None
+    v_source_constraint = FStar_Pervasives_Native.None;
+    v_detail = []
   }
 let rec collect_shape_violations (data : RDF_Graph.rdf_graph)
   (sg : shape Prims.list) (closed_cls : RDF_Graph.rdf_graph)
@@ -1920,6 +2033,34 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
                     (RDF_Graph.subject_to_term subj) c
                 then []
                 else viol ())
+       | CC_DatatypeIn dts ->
+           (match v with
+            | RDF_Term.T_Literal l ->
+                if
+                  (FStar_List_Tot_Base.existsb
+                     (fun dt -> l.RDF_Term.datatype = dt) dts)
+                    &&
+                    (Prims.op_Negation
+                       (literal_ill_formed l.RDF_Term.datatype
+                          l.RDF_Term.lexical_form))
+                then []
+                else viol ()
+            | uu___1 -> viol ())
+       | CC_NodeKindOneOf nks ->
+           if FStar_List_Tot_Base.existsb (node_kind_ok v) nks
+           then []
+           else viol ()
+       | CC_ClassOneOf cs ->
+           (match RDF_Graph.term_to_subject v with
+            | FStar_Pervasives_Native.None -> viol ()
+            | FStar_Pervasives_Native.Some subj ->
+                if
+                  FStar_List_Tot_Base.existsb
+                    (fun c ->
+                       is_shacl_instance closed_cls
+                         (RDF_Graph.subject_to_term subj) c) cs
+                then []
+                else viol ())
        | CC_In items ->
            if FStar_List_Tot_Base.existsb (RDF_Term.rdf_term_eq v) items
            then []
@@ -1985,6 +2126,64 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
                   then []
                   else viol ()
               | FStar_Pervasives_Native.None -> viol ())
+       | CC_UniqueMembers ->
+           (match rdf_list_opt data v
+                    ((RDF_Graph.graph_len data) + Prims.int_one)
+            with
+            | FStar_Pervasives_Native.None -> viol ()
+            | FStar_Pervasives_Native.Some terms ->
+                (match rdf_term_duplicates terms with
+                 | [] -> []
+                 | dups ->
+                     let details =
+                       FStar_List_Tot_Base.map
+                         (fun d ->
+                            value_violation focus path_opt source cc sev msg
+                              d) dups in
+                     [(let uu___1 =
+                         value_violation focus path_opt source cc sev msg v in
+                       {
+                         v_focus_node = (uu___1.v_focus_node);
+                         v_path = (uu___1.v_path);
+                         v_value = (uu___1.v_value);
+                         v_source_shape = (uu___1.v_source_shape);
+                         v_constraint = (uu___1.v_constraint);
+                         v_severity = (uu___1.v_severity);
+                         v_message = (uu___1.v_message);
+                         v_source_constraint = (uu___1.v_source_constraint);
+                         v_detail = details
+                       })]))
+       | CC_MemberShape r ->
+           (match rdf_list_opt data v
+                    ((RDF_Graph.graph_len data) + Prims.int_one)
+            with
+            | FStar_Pervasives_Native.None -> viol ()
+            | FStar_Pervasives_Native.Some members ->
+                (match lookup_shape r sg with
+                 | FStar_Pervasives_Native.None -> []
+                 | FStar_Pervasives_Native.Some ms ->
+                     let inner =
+                       FStar_List_Tot_Base.concatMap
+                         (fun m ->
+                            collect_shape_violations data sg closed_cls m ms
+                              fuel') members in
+                     if Prims.uu___is_Nil inner
+                     then []
+                     else
+                       [(let uu___2 =
+                           value_violation focus path_opt source cc sev msg v in
+                         {
+                           v_focus_node = (uu___2.v_focus_node);
+                           v_path = (uu___2.v_path);
+                           v_value = (uu___2.v_value);
+                           v_source_shape = (uu___2.v_source_shape);
+                           v_constraint = (uu___2.v_constraint);
+                           v_severity = (uu___2.v_severity);
+                           v_message = (uu___2.v_message);
+                           v_source_constraint = (uu___2.v_source_constraint);
+                           v_detail = inner
+                         })]))
+       | CC_SomeValue uu___1 -> []
        | CC_LanguageIn langs ->
            (match v with
             | RDF_Term.T_Literal l ->
@@ -2133,7 +2332,8 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                               v_severity = sev;
                               v_message = msg;
                               v_source_constraint =
-                                FStar_Pervasives_Native.None
+                                FStar_Pervasives_Native.None;
+                              v_detail = []
                             }]
                          else []) data)
            | CC_Equals p ->
@@ -2194,6 +2394,18 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                else [focus_violation focus path_opt source cc sev msg]
            | CC_QualifiedMaxCount (qref, qmax, qdisjoint) ->
                if (qualifying_count qref qdisjoint) <= qmax
+               then []
+               else [focus_violation focus path_opt source cc sev msg]
+           | CC_SomeValue r ->
+               if
+                 FStar_List_Tot_Base.existsb
+                   (fun v ->
+                      match lookup_shape r sg with
+                      | FStar_Pervasives_Native.None -> false
+                      | FStar_Pervasives_Native.Some s2 ->
+                          Prims.uu___is_Nil
+                            (collect_shape_violations data sg closed_cls v s2
+                               fuel')) values
                then []
                else [focus_violation focus path_opt source cc sev msg]
            | uu___1 -> []) s.constraints
@@ -2595,7 +2807,8 @@ let sparql_violations_for_focus (data : RDF_Graph.rdf_graph)
                v_severity = (s.shape_sev);
                v_message = row_msg;
                v_source_constraint =
-                 (FStar_Pervasives_Native.Some (shape_ref_to_term cref))
+                 (FStar_Pervasives_Native.Some (shape_ref_to_term cref));
+               v_detail = []
              } in
            ((FStar_List_Tot_Base.map mk_violation rows),
              FStar_Pervasives_Native.None))
@@ -2729,7 +2942,8 @@ let eval_custom_component_ask (data : RDF_Graph.rdf_graph)
                    v_constraint = cc;
                    v_severity = (s.shape_sev);
                    v_message = (s.message);
-                   v_source_constraint = FStar_Pervasives_Native.None
+                   v_source_constraint = FStar_Pervasives_Native.None;
+                   v_detail = []
                  }), FStar_Pervasives_Native.None))
 let rec eval_custom_component_ask_values (data : RDF_Graph.rdf_graph)
   (focus : RDF_Term.rdf_term) (s : shape) (cc : constraint_component)
@@ -2820,7 +3034,8 @@ let eval_custom_component_select (data : RDF_Graph.rdf_graph)
                v_constraint = cc;
                v_severity = (s.shape_sev);
                v_message = row_msg;
-               v_source_constraint = FStar_Pervasives_Native.None
+               v_source_constraint = FStar_Pervasives_Native.None;
+               v_detail = []
              } in
            ((FStar_List_Tot_Base.map mk_violation rows),
              FStar_Pervasives_Native.None))
@@ -3014,6 +3229,9 @@ let constraint_component_iri (cc : constraint_component) : RDF_Term.wf_iri=
   | CC_Datatype uu___ -> sh_DatatypeConstraintComponent
   | CC_NodeKind uu___ -> sh_NodeKindConstraintComponent
   | CC_Class uu___ -> sh_ClassConstraintComponent
+  | CC_DatatypeIn uu___ -> sh_DatatypeConstraintComponent
+  | CC_NodeKindOneOf uu___ -> sh_NodeKindConstraintComponent
+  | CC_ClassOneOf uu___ -> sh_ClassConstraintComponent
   | CC_In uu___ -> sh_InConstraintComponent
   | CC_HasValue uu___ -> sh_HasValueConstraintComponent
   | CC_Pattern (uu___, uu___1) -> sh_PatternConstraintComponent
@@ -3023,6 +3241,9 @@ let constraint_component_iri (cc : constraint_component) : RDF_Term.wf_iri=
   | CC_MinListLength uu___ -> sh_MinListLengthConstraintComponent
   | CC_MaxListLength uu___ -> sh_MaxListLengthConstraintComponent
   | CC_RootClass uu___ -> sh_RootClassConstraintComponent
+  | CC_SomeValue uu___ -> sh_SomeValueConstraintComponent
+  | CC_UniqueMembers -> sh_UniqueMembersConstraintComponent
+  | CC_MemberShape uu___ -> sh_MemberShapeConstraintComponent
   | CC_LanguageIn uu___ -> sh_LanguageInConstraintComponent
   | CC_UniqueLang uu___ -> sh_UniqueLangConstraintComponent
   | CC_MinInclusive uu___ -> sh_MinInclusiveConstraintComponent
@@ -3147,8 +3368,9 @@ and path_to_rdf (p : path) (ctr : Prims.nat) :
                      RDF_Triple.p = sh_zeroOrOnePath;
                      RDF_Triple.o = inner
                    } :: its), ctr2)))
-let violation_to_triples (report_subj : RDF_Term.subject) (v : violation)
-  (ctr : Prims.nat) : (RDF_Triple.triple Prims.list * Prims.nat)=
+let rec result_to_triples (parent_subj : RDF_Term.subject)
+  (link_pred : RDF_Term.wf_iri) (v : violation) (ctr : Prims.nat) :
+  (RDF_Triple.triple Prims.list * Prims.nat)=
   let uu___ = fresh_report_bnode "_shacl_result" ctr in
   match uu___ with
   | (bid, ctr1) ->
@@ -3160,8 +3382,8 @@ let violation_to_triples (report_subj : RDF_Term.subject) (v : violation)
            RDF_Triple.o = (RDF_Term.T_IRI sh_ValidationResult)
          };
         {
-          RDF_Triple.s = report_subj;
-          RDF_Triple.p = sh_result;
+          RDF_Triple.s = parent_subj;
+          RDF_Triple.p = link_pred;
           RDF_Triple.o = (RDF_Term.T_BNode bid)
         };
         {
@@ -3226,21 +3448,28 @@ let violation_to_triples (report_subj : RDF_Term.subject) (v : violation)
                     RDF_Triple.o = sc
                   }]
              | FStar_Pervasives_Native.None -> [] in
-           ((FStar_List_Tot_Base.op_At base
-               (FStar_List_Tot_Base.op_At path_ts
-                  (FStar_List_Tot_Base.op_At value_ts
-                     (FStar_List_Tot_Base.op_At msg_ts sc_ts)))), ctr2))
-let rec violations_to_triples (report_subj : RDF_Term.subject)
-  (vs : violation Prims.list) (ctr : Prims.nat) :
-  RDF_Triple.triple Prims.list=
+           let uu___2 = results_to_triples rsubj sh_detail v.v_detail ctr2 in
+           (match uu___2 with
+            | (detail_ts, ctr3) ->
+                ((FStar_List_Tot_Base.op_At base
+                    (FStar_List_Tot_Base.op_At path_ts
+                       (FStar_List_Tot_Base.op_At value_ts
+                          (FStar_List_Tot_Base.op_At msg_ts
+                             (FStar_List_Tot_Base.op_At sc_ts detail_ts))))),
+                  ctr3)))
+and results_to_triples (parent_subj : RDF_Term.subject)
+  (link_pred : RDF_Term.wf_iri) (vs : violation Prims.list) (ctr : Prims.nat)
+  : (RDF_Triple.triple Prims.list * Prims.nat)=
   match vs with
-  | [] -> []
+  | [] -> ([], ctr)
   | v::rest ->
-      let uu___ = violation_to_triples report_subj v ctr in
+      let uu___ = result_to_triples parent_subj link_pred v ctr in
       (match uu___ with
        | (ts, ctr1) ->
-           FStar_List_Tot_Base.op_At ts
-             (violations_to_triples report_subj rest ctr1))
+           let uu___1 = results_to_triples parent_subj link_pred rest ctr1 in
+           (match uu___1 with
+            | (rest_ts, ctr2) ->
+                ((FStar_List_Tot_Base.op_At ts rest_ts), ctr2)))
 let validation_report_to_graph (r : validation_report) : RDF_Graph.rdf_graph=
   let report_subj = RDF_Term.S_BNode "_shacl_report0" in
   let header =
@@ -3262,4 +3491,5 @@ let validation_report_to_graph (r : validation_report) : RDF_Graph.rdf_graph=
            })
     }] in
   FStar_List_Tot_Base.op_At header
-    (violations_to_triples report_subj r.results Prims.int_zero)
+    (FStar_Pervasives_Native.fst
+       (results_to_triples report_subj sh_result r.results Prims.int_zero))

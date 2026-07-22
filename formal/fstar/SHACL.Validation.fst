@@ -119,6 +119,9 @@ let sh_ValidationResult : wf_iri =
 let sh_result : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#result");
   "http://www.w3.org/ns/shacl#result"
+let sh_detail : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#detail");
+  "http://www.w3.org/ns/shacl#detail"
 let sh_conforms_pred : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#conforms");
   "http://www.w3.org/ns/shacl#conforms"
@@ -193,6 +196,15 @@ let sh_MaxListLengthConstraintComponent : wf_iri =
 let sh_RootClassConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#RootClassConstraintComponent");
   "http://www.w3.org/ns/shacl#RootClassConstraintComponent"
+let sh_SomeValueConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#SomeValueConstraintComponent");
+  "http://www.w3.org/ns/shacl#SomeValueConstraintComponent"
+let sh_UniqueMembersConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#UniqueMembersConstraintComponent");
+  "http://www.w3.org/ns/shacl#UniqueMembersConstraintComponent"
+let sh_MemberShapeConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#MemberShapeConstraintComponent");
+  "http://www.w3.org/ns/shacl#MemberShapeConstraintComponent"
 let sh_LanguageInConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#LanguageInConstraintComponent");
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
@@ -385,6 +397,13 @@ noeq type constraint_component =
   | CC_Datatype     : wf_iri -> constraint_component
   | CC_NodeKind     : node_kind -> constraint_component
   | CC_Class        : wf_iri -> constraint_component
+  // SHACL 1.2 list-valued ("one of") forms: when sh:datatype / sh:nodeKind
+  // / sh:class carry an rdf:List, the value must match ONE OF the listed
+  // datatypes / node kinds / classes. Reported under the SAME component
+  // IRI as their singular counterparts (sh:DatatypeConstraintComponent etc.).
+  | CC_DatatypeIn   : list wf_iri -> constraint_component
+  | CC_NodeKindOneOf : list node_kind -> constraint_component
+  | CC_ClassOneOf   : list wf_iri -> constraint_component
   // Value enumeration / fixed value.
   | CC_In           : list rdf_term -> constraint_component
   | CC_HasValue     : rdf_term -> constraint_component
@@ -405,6 +424,20 @@ noeq type constraint_component =
   // CC_RootClass — value must be the given class or a transitive
   // rdfs:subClassOf-subclass of it (checked against the class closure).
   | CC_RootClass    : wf_iri -> constraint_component
+  // CC_SomeValue — AT LEAST ONE value node must conform to the given
+  // (nested) shape. Aggregate over the value set: emits one focus-level
+  // violation (no sh:value) when none conform.
+  | CC_SomeValue    : shape_ref -> constraint_component
+  // CC_UniqueMembers — value must be a well-formed rdf:List whose members
+  // are pairwise distinct. Emits one list-level violation (value = the
+  // list) plus one per DISTINCT duplicated member (value = that member);
+  // a non-list value is a single list-level violation. Built only when true.
+  | CC_UniqueMembers : constraint_component
+  // CC_MemberShape — value must be a well-formed rdf:List every member of
+  // which conforms to the referenced shape. A non-list value, or a list
+  // with a failing member, yields one list-level violation (value = the
+  // list); each failing member's own violations are nested as sh:detail.
+  | CC_MemberShape  : shape_ref -> constraint_component
   | CC_LanguageIn   : list string -> constraint_component
   | CC_UniqueLang   : bool -> constraint_component
   // Range constraints (lexical / numeric forms — evaluator decides).
@@ -549,6 +582,12 @@ noeq type violation = {
   // (per the spec's isomorphism-comparison rules, an implementation
   // is not required to produce it at all outside SPARQL constraints).
   v_source_constraint : option rdf_term;
+  // sh:detail — nested sub-results (SHACL 1.2). Empty for every 1.1
+  // constraint; populated by sh:uniqueMembers (one detail per duplicated
+  // member) and sh:memberShape (the member shape's own violations), which
+  // report their per-member findings NESTED under the list-level result
+  // rather than as top-level sh:result entries.
+  v_detail : list violation;
 }
 
 noeq type validation_report = {
@@ -711,6 +750,20 @@ let has_line_break (str : string) : bool =
               i = 0x0A || i = 0x0B || i = 0x0C || i = 0x0D)
     (String.list_of_string str)
 
+// Distinct terms that occur two or more times in `xs`, in first-
+// appearance order (order is immaterial: reports compare by graph
+// isomorphism). Used by the SHACL 1.2 sh:uniqueMembers constraint to
+// report one violation per duplicated member value.
+let rdf_term_duplicates (xs : list rdf_term) : list rdf_term =
+  let rec go (seen : list rdf_term) (rest : list rdf_term) : Tot (list rdf_term) (decreases rest) =
+    match rest with
+    | []      -> []
+    | x :: tl ->
+      if List.Tot.existsb (rdf_term_eq x) seen then go seen tl
+      else if List.Tot.existsb (rdf_term_eq x) tl then x :: go (x :: seen) tl
+      else go (x :: seen) tl
+  in go [] xs
+
 // All distinct subjects appearing anywhere in the graph.
 let rec distinct_subjects_acc (g : rdf_graph) (acc : list subject)
   : Tot (list subject) (decreases g)
@@ -838,6 +891,15 @@ let sh_maxListLength : wf_iri =
 let sh_rootClass : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#rootClass");
   "http://www.w3.org/ns/shacl#rootClass"
+let sh_someValue : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#someValue");
+  "http://www.w3.org/ns/shacl#someValue"
+let sh_uniqueMembers : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#uniqueMembers");
+  "http://www.w3.org/ns/shacl#uniqueMembers"
+let sh_memberShape : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#memberShape");
+  "http://www.w3.org/ns/shacl#memberShape"
 let sh_languageIn : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#languageIn");
   "http://www.w3.org/ns/shacl#languageIn"
@@ -1572,16 +1634,33 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
   let fuel = graph_len g + 1 in
   let mincount = match first_int (find_objects g s sh_minCount) with Some n -> [CC_MinCount n] | None -> [] in
   let maxcount = match first_int (find_objects g s sh_maxCount) with Some n -> [CC_MaxCount n] | None -> [] in
+  let iris_of_list (t : rdf_term) : list wf_iri =
+    List.Tot.concatMap (fun x -> match x with T_IRI i -> [i] | _ -> []) (rdf_list_terms g t fuel) in
   let datatype =
-    List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_Datatype i] | _ -> []) (find_objects g s sh_datatype) in
+    List.Tot.concatMap
+      (fun t -> match t with
+                | T_IRI i    -> [CC_Datatype i]
+                | T_BNode _  -> (match iris_of_list t with [] -> [] | dts -> [CC_DatatypeIn dts])
+                | _          -> [])
+      (find_objects g s sh_datatype) in
   let nodekind =
     List.Tot.concatMap
       (fun t -> match t with
                 | T_IRI i -> (match node_kind_of_iri i with Some nk -> [CC_NodeKind nk] | None -> [])
+                | T_BNode _ ->
+                  let nks = List.Tot.concatMap
+                              (fun x -> match x with T_IRI i -> (match node_kind_of_iri i with Some nk -> [nk] | None -> []) | _ -> [])
+                              (rdf_list_terms g t fuel) in
+                  (match nks with [] -> [] | _ -> [CC_NodeKindOneOf nks])
                 | _ -> [])
       (find_objects g s sh_nodeKind) in
   let cls =
-    List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_Class i] | _ -> []) (find_objects g s sh_class) in
+    List.Tot.concatMap
+      (fun t -> match t with
+                | T_IRI i    -> [CC_Class i]
+                | T_BNode _  -> (match iris_of_list t with [] -> [] | cs -> [CC_ClassOneOf cs])
+                | _          -> [])
+      (find_objects g s sh_class) in
   let in_ =
     (match find_objects g s sh_in with
      | (head :: _) -> [CC_In (rdf_list_terms g head fuel)]
@@ -1600,6 +1679,11 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
   let maxlistlen = match first_int (find_objects g s sh_maxListLength) with Some n -> [CC_MaxListLength n] | None -> [] in
   let rootcls =
     List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_RootClass i] | _ -> []) (find_objects g s sh_rootClass) in
+  let somevalue =
+    List.Tot.concatMap (fun t -> match term_to_shape_ref t with Some r -> [CC_SomeValue r] | None -> []) (find_objects g s sh_someValue) in
+  let uniquemembers = (match first_bool (find_objects g s sh_uniqueMembers) with Some true -> [CC_UniqueMembers] | _ -> []) in
+  let membershape =
+    List.Tot.concatMap (fun t -> match term_to_shape_ref t with Some r -> [CC_MemberShape r] | None -> []) (find_objects g s sh_memberShape) in
   let langin =
     (match find_objects g s sh_languageIn with
      | (head :: _) ->
@@ -1647,7 +1731,7 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
      | _ -> []) in
   let sparqls = build_sparql_constraints g s in
   mincount @ maxcount @ datatype @ nodekind @ cls @ in_ @ hasvalue @ pattern @ minlen @ maxlen @
-  singleline @ minlistlen @ maxlistlen @ rootcls @
+  singleline @ minlistlen @ maxlistlen @ rootcls @ somevalue @ uniquemembers @ membershape @
   langin @ uniquelang @ mininc @ maxinc @ minexc @ maxexc @ nots @ ands @ ors @ xones @ nodes @
   qualified @ equals @ disjoint @ lessthan @ lessthaneq @ closed_ @ sparqls
 #pop-options
@@ -1806,14 +1890,14 @@ let value_violation (focus : rdf_term) (path_opt : option path) (source : shape_
   : violation =
   { v_focus_node = focus; v_path = path_opt; v_value = Some v;
     v_source_shape = source; v_constraint = cc; v_severity = sev; v_message = msg;
-    v_source_constraint = None }
+    v_source_constraint = None; v_detail = [] }
 
 let focus_violation (focus : rdf_term) (path_opt : option path) (source : shape_ref)
                      (cc : constraint_component) (sev : severity) (msg : option wf_literal)
   : violation =
   { v_focus_node = focus; v_path = path_opt; v_value = None;
     v_source_shape = source; v_constraint = cc; v_severity = sev; v_message = msg;
-    v_source_constraint = None }
+    v_source_constraint = None; v_detail = [] }
 
 // --- 11i. Per-value constraints + shape conformance (mutual) ---------
 //
@@ -1924,6 +2008,17 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
        (match term_to_subject v with
         | None -> viol ()
         | Some subj -> if is_shacl_instance closed_cls (subject_to_term subj) c then [] else viol ())
+     | CC_DatatypeIn dts ->
+       (match v with
+        | T_Literal l ->
+          if List.Tot.existsb (fun dt -> l.datatype = dt) dts && not (literal_ill_formed l.datatype l.lexical_form)
+          then [] else viol ()
+        | _ -> viol ())
+     | CC_NodeKindOneOf nks -> if List.Tot.existsb (node_kind_ok v) nks then [] else viol ()
+     | CC_ClassOneOf cs ->
+       (match term_to_subject v with
+        | None -> viol ()
+        | Some subj -> if List.Tot.existsb (fun c -> is_shacl_instance closed_cls (subject_to_term subj) c) cs then [] else viol ())
      | CC_In items -> if List.Tot.existsb (rdf_term_eq v) items then [] else viol ()
      | CC_HasValue _ -> []   // aggregate — see eval_aggregate_constraints
      | CC_Pattern re flags ->
@@ -1947,6 +2042,31 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
        else (match term_to_subject v with
              | Some vs -> if mem_triple ({ s = vs; p = rdfs_subClassOf; o = T_IRI rc }) closed_cls then [] else viol ()
              | None    -> viol ())
+     | CC_UniqueMembers ->
+       (match rdf_list_opt data v (graph_len data + 1) with
+        | None       -> viol ()
+        | Some terms ->
+          (match rdf_term_duplicates terms with
+           | []   -> []
+           | dups ->
+             // One list-level result (value = the list) carrying one
+             // sh:detail per DISTINCT duplicated member (value = that member).
+             let details = List.Tot.map (fun d -> value_violation focus path_opt source cc sev msg d) dups in
+             [ { value_violation focus path_opt source cc sev msg v with v_detail = details } ]))
+     | CC_MemberShape r ->
+       (match rdf_list_opt data v (graph_len data + 1) with
+        | None -> viol ()   // not a well-formed list
+        | Some members ->
+          (match lookup_shape r sg with
+           | None    -> []
+           | Some ms ->
+             let inner =
+               List.Tot.concatMap
+                 (fun m -> collect_shape_violations data sg closed_cls m ms fuel')
+                 members in
+             if Nil? inner then []
+             else [ { value_violation focus path_opt source cc sev msg v with v_detail = inner } ]))
+     | CC_SomeValue _ -> []   // aggregate — see eval_aggregate_constraints
      | CC_LanguageIn langs ->
        (match v with
         | T_Literal l ->
@@ -2066,7 +2186,7 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
                    if subject_eq t.s subj && not (List.Tot.existsb (fun p -> p = t.p) allowed)
                    then [{ v_focus_node = focus; v_path = Some (P_Predicate t.p); v_value = Some t.o;
                            v_source_shape = source; v_constraint = cc; v_severity = sev; v_message = msg;
-                           v_source_constraint = None }]
+                           v_source_constraint = None; v_detail = [] }]
                    else [])
                 data)
          // Both directions, one result per mismatched value (spec:
@@ -2108,6 +2228,14 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
            if qualifying_count qref qdisjoint >= qmin then [] else [focus_violation focus path_opt source cc sev msg]
          | CC_QualifiedMaxCount qref qmax qdisjoint ->
            if qualifying_count qref qdisjoint <= qmax then [] else [focus_violation focus path_opt source cc sev msg]
+         | CC_SomeValue r ->
+           // At least one value node must conform to the referenced shape.
+           if List.Tot.existsb
+                (fun v -> match lookup_shape r sg with
+                          | None    -> false
+                          | Some s2 -> Nil? (collect_shape_violations data sg closed_cls v s2 fuel'))
+                values
+           then [] else [focus_violation focus path_opt source cc sev msg]
          | _ -> [])
       s.constraints
 
@@ -2484,7 +2612,7 @@ let sparql_violations_for_focus
       { v_focus_node = focus; v_path = path_result; v_value = Some value;
         v_source_shape = s.shape_id; v_constraint = CC_Sparql cref query_text cmsg;
         v_severity = s.shape_sev; v_message = row_msg;
-        v_source_constraint = Some (shape_ref_to_term cref) }
+        v_source_constraint = Some (shape_ref_to_term cref); v_detail = [] }
     in
     (List.Tot.map mk_violation rows, None))
 
@@ -2584,7 +2712,7 @@ let eval_custom_component_ask
        else
          (Some ({ v_focus_node = focus; v_path = s.shape_path; v_value = Some v;
                   v_source_shape = s.shape_id; v_constraint = cc; v_severity = s.shape_sev;
-                  v_message = s.message; v_source_constraint = None }),
+                  v_message = s.message; v_source_constraint = None; v_detail = [] }),
           None))
 
 let rec eval_custom_component_ask_values
@@ -2638,7 +2766,7 @@ let eval_custom_component_select
             | _ -> s.message) in
          { v_focus_node = focus; v_path = path_result; v_value = Some value;
            v_source_shape = s.shape_id; v_constraint = cc; v_severity = s.shape_sev;
-           v_message = row_msg; v_source_constraint = None }
+           v_message = row_msg; v_source_constraint = None; v_detail = [] }
        in
        (List.Tot.map mk_violation rows, None))
 
@@ -2844,6 +2972,9 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_Datatype _ -> sh_DatatypeConstraintComponent
   | CC_NodeKind _ -> sh_NodeKindConstraintComponent
   | CC_Class _ -> sh_ClassConstraintComponent
+  | CC_DatatypeIn _ -> sh_DatatypeConstraintComponent
+  | CC_NodeKindOneOf _ -> sh_NodeKindConstraintComponent
+  | CC_ClassOneOf _ -> sh_ClassConstraintComponent
   | CC_In _ -> sh_InConstraintComponent
   | CC_HasValue _ -> sh_HasValueConstraintComponent
   | CC_Pattern _ _ -> sh_PatternConstraintComponent
@@ -2853,6 +2984,9 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_MinListLength _ -> sh_MinListLengthConstraintComponent
   | CC_MaxListLength _ -> sh_MaxListLengthConstraintComponent
   | CC_RootClass _ -> sh_RootClassConstraintComponent
+  | CC_SomeValue _ -> sh_SomeValueConstraintComponent
+  | CC_UniqueMembers -> sh_UniqueMembersConstraintComponent
+  | CC_MemberShape _ -> sh_MemberShapeConstraintComponent
   | CC_LanguageIn _ -> sh_LanguageInConstraintComponent
   | CC_UniqueLang _ -> sh_UniqueLangConstraintComponent
   | CC_MinInclusive _ -> sh_MinInclusiveConstraintComponent
@@ -2929,14 +3063,19 @@ and path_to_rdf (p : path) (ctr : nat)
 // One ValidationResult's triples (see the section comment for exactly
 // which predicates). `ctr` in, updated `ctr` out (threaded across the
 // whole report by `violations_to_triples` below).
-let violation_to_triples (report_subj : subject) (v : violation) (ctr : nat)
-  : Tot (list triple & nat)
+// Render a violation and, recursively, its sh:detail sub-results. A
+// result is linked to its `parent_subj` via `link_pred` (sh:result at
+// the report top level, sh:detail for a nested sub-result). Mutually
+// recursive with `results_to_triples` over the detail list; termination
+// is by the subterm order (`v.v_detail << v`, and each element `<< vs`).
+let rec result_to_triples (parent_subj : subject) (link_pred : wf_iri) (v : violation) (ctr : nat)
+  : Tot (list triple & nat) (decreases v)
   =
   let (bid, ctr1) = fresh_report_bnode "_shacl_result" ctr in
   let rsubj = S_BNode bid in
   let base =
     [ { s = rsubj; p = rdf_type; o = T_IRI sh_ValidationResult };
-      { s = report_subj; p = sh_result; o = T_BNode bid };
+      { s = parent_subj; p = link_pred; o = T_BNode bid };
       { s = rsubj; p = sh_focusNode; o = v.v_focus_node };
       { s = rsubj; p = sh_resultSeverity; o = T_IRI (severity_to_iri v.v_severity) };
       { s = rsubj; p = sh_sourceConstraintComponent; o = T_IRI (constraint_component_iri v.v_constraint) };
@@ -2953,16 +3092,18 @@ let violation_to_triples (report_subj : subject) (v : violation) (ctr : nat)
      | Some m -> [{ s = rsubj; p = sh_resultMessage; o = T_Literal m }]
      | None -> []) in
   let sc_ts = (match v.v_source_constraint with Some sc -> [{ s = rsubj; p = sh_sourceConstraint; o = sc }] | None -> []) in
-  (base @ path_ts @ value_ts @ msg_ts @ sc_ts, ctr2)
+  let (detail_ts, ctr3) = results_to_triples rsubj sh_detail v.v_detail ctr2 in
+  (base @ path_ts @ value_ts @ msg_ts @ sc_ts @ detail_ts, ctr3)
 
-let rec violations_to_triples (report_subj : subject) (vs : list violation) (ctr : nat)
-  : Tot (list triple) (decreases vs)
+and results_to_triples (parent_subj : subject) (link_pred : wf_iri) (vs : list violation) (ctr : nat)
+  : Tot (list triple & nat) (decreases vs)
   =
   match vs with
-  | [] -> []
+  | [] -> ([], ctr)
   | v :: rest ->
-    let (ts, ctr1) = violation_to_triples report_subj v ctr in
-    ts @ violations_to_triples report_subj rest ctr1
+    let (ts, ctr1) = result_to_triples parent_subj link_pred v ctr in
+    let (rest_ts, ctr2) = results_to_triples parent_subj link_pred rest ctr1 in
+    (ts @ rest_ts, ctr2)
 
 // Top-level entry point: one ValidationReport blank node
 // ("_shacl_report0" — stable/deterministic, harmless since
@@ -2974,4 +3115,4 @@ let validation_report_to_graph (r : validation_report) : rdf_graph =
     [ { s = report_subj; p = rdf_type; o = T_IRI sh_ValidationReport };
       { s = report_subj; p = sh_conforms_pred;
         o = T_Literal ({ lexical_form = (if r.conforms then "true" else "false"); datatype = xsd_boolean; lang_tag = None; direction = None }) } ] in
-  header @ violations_to_triples report_subj r.results 0
+  header @ fst (results_to_triples report_subj sh_result r.results 0)
