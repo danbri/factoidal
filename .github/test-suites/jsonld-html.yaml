@@ -1,0 +1,40 @@
+name: JSON-LD 1.1 HTML (JSON-LD embedded in HTML documents)
+spec: https://www.w3.org/TR/json-ld11-api/#dom-jsonldoptions-extractallscripts
+runner: bin/linux-x86_64/jsonld_html_runner
+runner_args: []
+manifest: third_party/testing/json-ld/tests/html-manifest.jsonld
+log_path: formal/fstar/ocaml-output/jsonld_html_results.log
+result_path: docs/test-results/by-suite/jsonld-html.json
+domain: RDF
+foundational: false
+
+# The html suite's inputs are HTML documents carrying JSON-LD in
+# <script type="application/ld+json"> elements. Parser.JSONLD.Html.fst
+# (F*-extracted) does the script extraction — fragment-select by id,
+# extractAllScripts -> JSON array, first-script default, <base href>
+# discovery, and the empty-document ([]) case — and the runner then
+# dispatches Expand / ToRDF tests to the SAME F* algorithms the other
+# JSON-LD runners use (Parser_JSONLD.expand_document / parse_jsonld).
+#
+# CompactTest / FlattenTest via HTML are reported skip (their algorithms
+# have their own manifests; only Expand/ToRDF are wired through the HTML
+# extractor so far). Residual fails are the array-splice case of
+# extractAllScripts (a script whose content is itself a top-level array
+# must have its items spliced, not nested) — honest fails, not skips
+# (CLAUDE.md anti-pattern #3/#25).
+
+triggers:
+  paths:
+    # The HTML script extractor under test.
+    - formal/fstar/Parser.JSONLD.Html.fst
+    # The JSON-LD algorithms the extracted script is fed to.
+    - formal/fstar/Parser.JSONLD.fst
+    - formal/fstar/Parser.JSON.fst
+    - formal/fstar/RDF.Canonical.fst
+    - formal/fstar/Parser.NQuads.fst
+    # The runner.
+    - bin/jsonld-html-runner/**
+    # Vendored W3C JSON-LD test suite (html manifest + html/*.html fixtures).
+    - third_party/testing/json-ld/**
+
+  excludes: []

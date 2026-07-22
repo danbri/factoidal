@@ -415,7 +415,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.SRX.fst Parser.CSVResults.fst
     Parser.JSONResults.fst
     SPARQL.JSON.Escape.fst
-    Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst JSONLD.Compact.fst JSONLD.Flatten.fst JSONLD.FromRdf.fst JSONSchema.Validate.fst
+    Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst Parser.JSONLD.Html.fst JSONLD.Compact.fst JSONLD.Flatten.fst JSONLD.FromRdf.fst JSONSchema.Validate.fst
     ShEx.Schema.fst Parser.ShExC.fst ShEx.SchemaEq.fst ShEx.Validation.fst
     VC.Context.fst
     VC.Credential.fst
@@ -814,7 +814,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml Math_Series.ml MathML_Present.ml Math_Sigmoid.ml \
     Parser_SRX.ml Parser_CSVResults.ml \
     SPARQL_JSON_Escape.ml \
-    Parser_JSON.ml Parser_JSONResults.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml \
+    Parser_JSON.ml Parser_JSONResults.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml Parser_JSONLD_Html.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml \
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
     SPARQL_HTTP_Response.ml \
@@ -984,6 +984,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/jsonld_expand_runner"
     "$BINDIR/jsonld_compact_runner"
     "$BINDIR/jsonld_flatten_runner"
+    "$BINDIR/jsonld_html_runner"
     "$BINDIR/shacl_runner"
     "$BINDIR/qudt_runner"
     "$BINDIR/rml_runner"
@@ -1023,6 +1024,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/jsonld-expand-runner/jsonld_expand_runner.ml
     ../../../bin/jsonld-compact-runner/jsonld_compact_runner.ml
     ../../../bin/jsonld-flatten-runner/jsonld_flatten_runner.ml
+    ../../../bin/jsonld-html-runner/jsonld_html_runner.ml
     ../../../bin/rml-runner/rml_runner.ml
     ../../../bin/csvw-runner/csvw_runner.ml
     ../../../bin/vc-runner/vc_runner.ml
@@ -1214,6 +1216,27 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       exit 1
     fi
     echo "  Built: bin/${PLATFORM}/jsonld_runner ($(wc -c < "$BINDIR/jsonld_runner") bytes)"
+
+    # jsonld_html_runner — JSON-LD 1.1 HTML manifest runner. Reads
+    # third_party/testing/json-ld/tests/html-manifest.jsonld, extracts the
+    # embedded JSON-LD from each .html input via the F*-extracted
+    # Parser_JSONLD_Html.extract_jsonld_from_html, then dispatches Expand /
+    # ToRDF tests to the same F* algorithms the other jsonld runners use.
+    JSONLD_HTML_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt jsonld_html_runner" "_ocamlopt_jsonld_html_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/jsonld-html-runner/jsonld_html_runner.ml \
+      -o "$BINDIR/jsonld_html_runner" || JSONLD_HTML_RUNNER_RC=$?
+    cat _ocamlopt_jsonld_html_runner.log
+    if [[ "$JSONLD_HTML_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: jsonld_html_runner build failed (ocamlopt rc=$JSONLD_HTML_RUNNER_RC)" >&2
+      exit "$JSONLD_HTML_RUNNER_RC"
+    fi
+    echo "  Built: bin/${PLATFORM}/jsonld_html_runner ($(wc -c < "$BINDIR/jsonld_html_runner") bytes)"
 
     # jsonld_fromrdf_runner — JSON-LD 1.1 fromRdf ("Serialize RDF as
     # JSON-LD") manifest runner. Reads
@@ -1846,7 +1869,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml Math_Series.ml MathML_Present.ml Math_Sigmoid.ml
     Parser_SRX.ml Parser_CSVResults.ml
     SPARQL_JSON_Escape.ml
-    Parser_JSON.ml Parser_JSONResults.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml
+    Parser_JSON.ml Parser_JSONResults.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml Parser_JSONLD_Html.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml
     SPARQL_Eval_TimeBudget.ml
     SPARQL_Eval_Limits.ml
     SPARQL_HTTP_Response.ml
