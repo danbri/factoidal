@@ -833,6 +833,12 @@ let sh_deactivated : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#deactivated"
 let sh_Info : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#Info"
 let sh_Warning : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#Warning"
+let sh_Debug : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#Debug"
+let sh_Trace : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#Trace"
+let severity_breaks_conformance (sev : severity) : Prims.bool=
+  match sev with
+  | Sev_Custom i -> Prims.op_Negation ((i = sh_Debug) || (i = sh_Trace))
+  | uu___ -> true
 let sh_inversePath : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#inversePath"
 let sh_alternativePath : RDF_Term.wf_iri=
@@ -3208,7 +3214,11 @@ let validate (data : RDF_Graph.rdf_graph) (shapes_raw : RDF_Graph.rdf_graph)
              FStar_List_Tot_Base.op_At per_shape_violations
                (FStar_List_Tot_Base.op_At sparql_violations custom_violations) in
            {
-             conforms = (Prims.uu___is_Nil all_results);
+             conforms =
+               (Prims.op_Negation
+                  (FStar_List_Tot_Base.existsb
+                     (fun v -> severity_breaks_conformance v.v_severity)
+                     all_results));
              results = all_results;
              report_failure =
                ((match sparql_failure with

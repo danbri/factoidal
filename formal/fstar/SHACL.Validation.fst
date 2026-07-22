@@ -963,6 +963,23 @@ let sh_Info : wf_iri =
 let sh_Warning : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#Warning");
   "http://www.w3.org/ns/shacl#Warning"
+// SHACL 1.2 severities below Info: a result at sh:Debug or sh:Trace is
+// still REPORTED but does NOT make the report non-conformant.
+let sh_Debug : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#Debug");
+  "http://www.w3.org/ns/shacl#Debug"
+let sh_Trace : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#Trace");
+  "http://www.w3.org/ns/shacl#Trace"
+
+// Does a result at this severity make the report non-conformant? Every
+// severity does EXCEPT the two SHACL 1.2 diagnostic levels sh:Debug and
+// sh:Trace (which round-trip as Sev_Custom, since the parser maps only
+// Info/Warning/Violation to named constructors). severity-004/005.
+let severity_breaks_conformance (sev : severity) : bool =
+  match sev with
+  | Sev_Custom i -> not (i = sh_Debug || i = sh_Trace)
+  | _            -> true
 let sh_inversePath : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#inversePath");
   "http://www.w3.org/ns/shacl#inversePath"
@@ -2903,7 +2920,8 @@ let validate (data : rdf_graph) (shapes_raw : rdf_graph) (shapes : shapes_graph)
   let (custom_violations, custom_failure) =
     custom_violations_for_shapes data closed_cls all_subjects sg root_shapes fuel0 in
   let all_results = per_shape_violations @ sparql_violations @ custom_violations in
-  { conforms = Nil? all_results; results = all_results;
+  { conforms = not (List.Tot.existsb (fun (v : violation) -> severity_breaks_conformance v.v_severity) all_results);
+    results = all_results;
     report_failure = (match sparql_failure with Some _ -> sparql_failure | None -> custom_failure) }
 
 // ------------------------------------------------------------------
