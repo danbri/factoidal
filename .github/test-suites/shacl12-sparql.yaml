@@ -1,0 +1,12 @@
+name: SHACL 1.2 SPARQL (W3C shacl12-test-suite)
+spec: https://www.w3.org/TR/shacl12-sparql/
+runner: bin/linux-x86_64/shacl_runner
+runner_args:
+  - third_party/testing/shacl/shacl12-test-suite/tests/sparql/manifest.ttl
+manifest: third_party/testing/shacl/shacl12-test-suite/tests/sparql/manifest.ttl
+log_path: formal/fstar/ocaml-output/shacl12_sparql_results.log
+result_path: docs/test-results/by-suite/shacl12-sparql.json
+domain: RDF
+foundational: false
+
+# SHACL 1.2 SPARQL-based-constraints suite, same shacl_runner. #12.

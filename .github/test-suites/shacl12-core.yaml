@@ -1,0 +1,20 @@
+name: SHACL 1.2 Core (W3C shacl12-test-suite)
+spec: https://www.w3.org/TR/shacl12-core/
+runner: bin/linux-x86_64/shacl_runner
+runner_args:
+  - third_party/testing/shacl/shacl12-test-suite/tests/core/manifest.ttl
+manifest: third_party/testing/shacl/shacl12-test-suite/tests/core/manifest.ttl
+log_path: formal/fstar/ocaml-output/shacl12_core_results.log
+result_path: docs/test-results/by-suite/shacl12-core.json
+domain: RDF
+foundational: false
+
+# SHACL 1.2 (Working Draft) core suite, run through the same F*-extracted
+# validator as SHACL 1.1. Implemented 1.2 components so far: sh:singleLine,
+# sh:minListLength / sh:maxListLength, sh:rootClass, sh:someValue,
+# sh:uniqueMembers, sh:memberShape (the last two via sh:detail sub-results),
+# and list-valued sh:datatype / sh:nodeKind / sh:class ("one of"). Remaining
+# honest FAILs: sh:uniqueValuesFor (cross-focus-node key), sh:Debug/sh:Trace
+# severity conformance semantics, RDF-1.2 reified annotations {| ... |},
+# sh:reifierShape / sh:reificationRequired, node expressions, sequence-path
+# property-pair constraints, and sh:closed sh:ByTypes. Tracked in #12.

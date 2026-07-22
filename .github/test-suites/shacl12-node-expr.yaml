@@ -1,0 +1,13 @@
+name: SHACL 1.2 Node Expressions (W3C shacl12-test-suite)
+spec: https://www.w3.org/TR/shacl12-core/#node-expressions
+runner: bin/linux-x86_64/shacl_runner
+runner_args:
+  - third_party/testing/shacl/shacl12-test-suite/tests/node-expr/manifest.ttl
+manifest: third_party/testing/shacl/shacl12-test-suite/tests/node-expr/manifest.ttl
+log_path: formal/fstar/ocaml-output/shacl12_node_expr_results.log
+result_path: docs/test-results/by-suite/shacl12-node-expr.json
+domain: RDF
+foundational: false
+
+# SHACL 1.2 node-expression suite. Node expressions (sh:nodeByExpression et al.)
+# are not yet implemented in the F* validator; scored as honest FAILs. #12.
