@@ -180,6 +180,19 @@ let sh_MinLengthConstraintComponent : wf_iri =
 let sh_MaxLengthConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#MaxLengthConstraintComponent");
   "http://www.w3.org/ns/shacl#MaxLengthConstraintComponent"
+// --- SHACL 1.2 constraint components (new in the 1.2 test suite) ---
+let sh_SingleLineConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#SingleLineConstraintComponent");
+  "http://www.w3.org/ns/shacl#SingleLineConstraintComponent"
+let sh_MinListLengthConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#MinListLengthConstraintComponent");
+  "http://www.w3.org/ns/shacl#MinListLengthConstraintComponent"
+let sh_MaxListLengthConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#MaxListLengthConstraintComponent");
+  "http://www.w3.org/ns/shacl#MaxListLengthConstraintComponent"
+let sh_RootClassConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#RootClassConstraintComponent");
+  "http://www.w3.org/ns/shacl#RootClassConstraintComponent"
 let sh_LanguageInConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#LanguageInConstraintComponent");
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
@@ -379,6 +392,19 @@ noeq type constraint_component =
   | CC_Pattern      : pattern_re:string -> flags:string -> constraint_component
   | CC_MinLength    : nat -> constraint_component
   | CC_MaxLength    : nat -> constraint_component
+  // SHACL 1.2 string / list / class-hierarchy constraints.
+  // CC_SingleLine — value's lexical form must contain no line-break
+  // char (U+000A/000B/000C/000D). Constructed only when sh:singleLine
+  // is true (false imposes nothing).
+  | CC_SingleLine   : constraint_component
+  // CC_MinListLength / CC_MaxListLength — value must be a well-formed
+  // rdf:List (rdf:nil = length 0) whose length meets the bound; a value
+  // that is not a well-formed list violates either bound.
+  | CC_MinListLength : nat -> constraint_component
+  | CC_MaxListLength : nat -> constraint_component
+  // CC_RootClass — value must be the given class or a transitive
+  // rdfs:subClassOf-subclass of it (checked against the class closure).
+  | CC_RootClass    : wf_iri -> constraint_component
   | CC_LanguageIn   : list string -> constraint_component
   | CC_UniqueLang   : bool -> constraint_component
   // Range constraints (lexical / numeric forms — evaluator decides).
@@ -650,6 +676,41 @@ let rec rdf_list_terms (g : rdf_graph) (head : rdf_term) (fuel : nat)
            | _, _ -> []))
      | _ -> [])
 
+// Extract a WELL-FORMED rdf:List, distinguishing "empty valid list"
+// (rdf:nil -> Some []) from "not a list at all" (-> None). Unlike
+// `rdf_list_terms` above this also follows IRI-named list heads (e.g.
+// ex:list0), and treats a node with rdf:first but no rdf:rest (or a
+// cyclic rest chain that exhausts fuel) as malformed (None). Needed by
+// the SHACL 1.2 sh:minListLength / sh:maxListLength / sh:uniqueMembers /
+// sh:memberShape constraints, which must tell an empty list apart from
+// a non-list value.
+let rec rdf_list_opt (g : rdf_graph) (head : rdf_term) (fuel : nat)
+  : Tot (option (list rdf_term)) (decreases fuel)
+  =
+  if rdf_term_eq head (T_IRI rdf_nil_iri) then Some []
+  else
+    match fuel with
+    | 0 -> None
+    | n ->
+      (match term_to_subject head with
+       | None -> None
+       | Some s ->
+         (match find_objects g s rdf_first, find_objects g s rdf_rest with
+          | (h :: _), (r :: _) ->
+            (match rdf_list_opt g r (n - 1) with
+             | Some tl -> Some (h :: tl)
+             | None    -> None)
+          | _, _ -> None))
+
+// True iff the string contains any Unicode line-break control character:
+// U+000A (LF), U+000B (VT), U+000C (FF), U+000D (CR). Used by the SHACL
+// 1.2 sh:singleLine constraint (singleLine-001 rejects \n \r \f \v).
+let has_line_break (str : string) : bool =
+  List.Tot.existsb
+    (fun c -> let i = FStar.Char.int_of_char c in
+              i = 0x0A || i = 0x0B || i = 0x0C || i = 0x0D)
+    (String.list_of_string str)
+
 // All distinct subjects appearing anywhere in the graph.
 let rec distinct_subjects_acc (g : rdf_graph) (acc : list subject)
   : Tot (list subject) (decreases g)
@@ -764,6 +825,19 @@ let sh_minLength : wf_iri =
 let sh_maxLength : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#maxLength");
   "http://www.w3.org/ns/shacl#maxLength"
+// SHACL 1.2 property IRIs.
+let sh_singleLine : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#singleLine");
+  "http://www.w3.org/ns/shacl#singleLine"
+let sh_minListLength : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#minListLength");
+  "http://www.w3.org/ns/shacl#minListLength"
+let sh_maxListLength : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#maxListLength");
+  "http://www.w3.org/ns/shacl#maxListLength"
+let sh_rootClass : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#rootClass");
+  "http://www.w3.org/ns/shacl#rootClass"
 let sh_languageIn : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#languageIn");
   "http://www.w3.org/ns/shacl#languageIn"
@@ -1493,7 +1567,7 @@ let build_custom_constraints (g : rdf_graph) (s : subject) (is_prop : bool) : li
 // combined VC even though each binding is individually trivial.
 // Matches the established idiom (RDF.List.Helpers.fst,
 // Parser.Turtle.fst) rather than inventing a new one.
-#push-options "--z3rlimit 60 --split_queries always"
+#push-options "--z3rlimit 400 --split_queries always"
 let build_constraints (g : rdf_graph) (s : subject) : list constraint_component =
   let fuel = graph_len g + 1 in
   let mincount = match first_int (find_objects g s sh_minCount) with Some n -> [CC_MinCount n] | None -> [] in
@@ -1521,6 +1595,11 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
      | _ -> []) in
   let minlen = match first_int (find_objects g s sh_minLength) with Some n -> [CC_MinLength n] | None -> [] in
   let maxlen = match first_int (find_objects g s sh_maxLength) with Some n -> [CC_MaxLength n] | None -> [] in
+  let singleline = (match first_bool (find_objects g s sh_singleLine) with Some true -> [CC_SingleLine] | _ -> []) in
+  let minlistlen = match first_int (find_objects g s sh_minListLength) with Some n -> [CC_MinListLength n] | None -> [] in
+  let maxlistlen = match first_int (find_objects g s sh_maxListLength) with Some n -> [CC_MaxListLength n] | None -> [] in
+  let rootcls =
+    List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_RootClass i] | _ -> []) (find_objects g s sh_rootClass) in
   let langin =
     (match find_objects g s sh_languageIn with
      | (head :: _) ->
@@ -1568,6 +1647,7 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
      | _ -> []) in
   let sparqls = build_sparql_constraints g s in
   mincount @ maxcount @ datatype @ nodekind @ cls @ in_ @ hasvalue @ pattern @ minlen @ maxlen @
+  singleline @ minlistlen @ maxlistlen @ rootcls @
   langin @ uniquelang @ mininc @ maxinc @ minexc @ maxexc @ nots @ ands @ ors @ xones @ nodes @
   qualified @ equals @ disjoint @ lessthan @ lessthaneq @ closed_ @ sparqls
 #pop-options
@@ -1852,6 +1932,21 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
         | Some lex -> if Alg.regex_match lex re (if flags = "" then None else Some flags) then [] else viol ())
      | CC_MinLength n -> (match term_lexical v with Some lex -> if String.length lex >= n then [] else viol () | None -> viol ())
      | CC_MaxLength n -> (match term_lexical v with Some lex -> if String.length lex <= n then [] else viol () | None -> viol ())
+     | CC_SingleLine ->
+       (match term_lexical v with Some lex -> if has_line_break lex then viol () else [] | None -> [])
+     | CC_MinListLength n ->
+       (match rdf_list_opt data v (graph_len data + 1) with
+        | Some terms -> if List.Tot.length terms >= n then [] else viol ()
+        | None       -> viol ())
+     | CC_MaxListLength n ->
+       (match rdf_list_opt data v (graph_len data + 1) with
+        | Some terms -> if List.Tot.length terms <= n then [] else viol ()
+        | None       -> viol ())
+     | CC_RootClass rc ->
+       if rdf_term_eq v (T_IRI rc) then []
+       else (match term_to_subject v with
+             | Some vs -> if mem_triple ({ s = vs; p = rdfs_subClassOf; o = T_IRI rc }) closed_cls then [] else viol ()
+             | None    -> viol ())
      | CC_LanguageIn langs ->
        (match v with
         | T_Literal l ->
@@ -2754,6 +2849,10 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_Pattern _ _ -> sh_PatternConstraintComponent
   | CC_MinLength _ -> sh_MinLengthConstraintComponent
   | CC_MaxLength _ -> sh_MaxLengthConstraintComponent
+  | CC_SingleLine -> sh_SingleLineConstraintComponent
+  | CC_MinListLength _ -> sh_MinListLengthConstraintComponent
+  | CC_MaxListLength _ -> sh_MaxListLengthConstraintComponent
+  | CC_RootClass _ -> sh_RootClassConstraintComponent
   | CC_LanguageIn _ -> sh_LanguageInConstraintComponent
   | CC_UniqueLang _ -> sh_UniqueLangConstraintComponent
   | CC_MinInclusive _ -> sh_MinInclusiveConstraintComponent

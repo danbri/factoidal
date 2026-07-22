@@ -61,6 +61,14 @@ let sh_MinLengthConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#MinLengthConstraintComponent"
 let sh_MaxLengthConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#MaxLengthConstraintComponent"
+let sh_SingleLineConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#SingleLineConstraintComponent"
+let sh_MinListLengthConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#MinListLengthConstraintComponent"
+let sh_MaxListLengthConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#MaxListLengthConstraintComponent"
+let sh_RootClassConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#RootClassConstraintComponent"
 let sh_LanguageInConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
 let sh_UniqueLangConstraintComponent : RDF_Term.wf_iri=
@@ -228,6 +236,10 @@ type constraint_component =
   | CC_Pattern of Prims.string * Prims.string 
   | CC_MinLength of Prims.nat 
   | CC_MaxLength of Prims.nat 
+  | CC_SingleLine 
+  | CC_MinListLength of Prims.nat 
+  | CC_MaxListLength of Prims.nat 
+  | CC_RootClass of RDF_Term.wf_iri 
   | CC_LanguageIn of Prims.string Prims.list 
   | CC_UniqueLang of Prims.bool 
   | CC_MinInclusive of RDF_Term.rdf_term 
@@ -296,6 +308,20 @@ let uu___is_CC_MaxLength (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_MaxLength _0 -> true | uu___ -> false
 let __proj__CC_MaxLength__item___0 (projectee : constraint_component) :
   Prims.nat= match projectee with | CC_MaxLength _0 -> _0
+let uu___is_CC_SingleLine (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_SingleLine -> true | uu___ -> false
+let uu___is_CC_MinListLength (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_MinListLength _0 -> true | uu___ -> false
+let __proj__CC_MinListLength__item___0 (projectee : constraint_component) :
+  Prims.nat= match projectee with | CC_MinListLength _0 -> _0
+let uu___is_CC_MaxListLength (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_MaxListLength _0 -> true | uu___ -> false
+let __proj__CC_MaxListLength__item___0 (projectee : constraint_component) :
+  Prims.nat= match projectee with | CC_MaxListLength _0 -> _0
+let uu___is_CC_RootClass (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_RootClass _0 -> true | uu___ -> false
+let __proj__CC_RootClass__item___0 (projectee : constraint_component) :
+  RDF_Term.wf_iri= match projectee with | CC_RootClass _0 -> _0
 let uu___is_CC_LanguageIn (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_LanguageIn _0 -> true | uu___ -> false
 let __proj__CC_LanguageIn__item___0 (projectee : constraint_component) :
@@ -603,6 +629,37 @@ let rec rdf_list_terms (g : RDF_Graph.rdf_graph) (head : RDF_Term.rdf_term)
                      (rdf_list_terms g r (n - Prims.int_one))
                  | (uu___1, uu___2) -> []))
        | uu___ -> [])
+let rec rdf_list_opt (g : RDF_Graph.rdf_graph) (head : RDF_Term.rdf_term)
+  (fuel : Prims.nat) :
+  RDF_Term.rdf_term Prims.list FStar_Pervasives_Native.option=
+  if RDF_Term.rdf_term_eq head (RDF_Term.T_IRI OWL_Closure.rdf_nil_iri)
+  then FStar_Pervasives_Native.Some []
+  else
+    (match fuel with
+     | uu___1 when uu___1 = Prims.int_zero -> FStar_Pervasives_Native.None
+     | n ->
+         (match RDF_Graph.term_to_subject head with
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+          | FStar_Pervasives_Native.Some s ->
+              (match ((RDF_Graph_Executable.find_objects g s
+                         OWL_Closure.rdf_first),
+                       (RDF_Graph_Executable.find_objects g s
+                          OWL_Closure.rdf_rest))
+               with
+               | (h::uu___1, r::uu___2) ->
+                   (match rdf_list_opt g r (n - Prims.int_one) with
+                    | FStar_Pervasives_Native.Some tl ->
+                        FStar_Pervasives_Native.Some (h :: tl)
+                    | FStar_Pervasives_Native.None ->
+                        FStar_Pervasives_Native.None)
+               | (uu___1, uu___2) -> FStar_Pervasives_Native.None)))
+let has_line_break (str : Prims.string) : Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun c ->
+       let i = FStar_Char.int_of_char c in
+       (((i = (Prims.of_int (0x0A))) || (i = (Prims.of_int (0x0B)))) ||
+          (i = (Prims.of_int (0x0C))))
+         || (i = (Prims.of_int (0x0D)))) (FStar_String.list_of_string str)
 let rec distinct_subjects_acc (g : RDF_Graph.rdf_graph)
   (acc : RDF_Term.subject Prims.list) : RDF_Term.subject Prims.list=
   match g with
@@ -681,6 +738,12 @@ let sh_pattern : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#pattern"
 let sh_flags : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#flags"
 let sh_minLength : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#minLength"
 let sh_maxLength : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#maxLength"
+let sh_singleLine : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#singleLine"
+let sh_minListLength : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#minListLength"
+let sh_maxListLength : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#maxListLength"
+let sh_rootClass : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#rootClass"
 let sh_languageIn : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#languageIn"
 let sh_uniqueLang : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#uniqueLang"
 let sh_minInclusive : RDF_Term.wf_iri=
@@ -1405,6 +1468,26 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
     match first_int (RDF_Graph_Executable.find_objects g s sh_maxLength) with
     | FStar_Pervasives_Native.Some n -> [CC_MaxLength n]
     | FStar_Pervasives_Native.None -> [] in
+  let singleline =
+    match first_bool (RDF_Graph_Executable.find_objects g s sh_singleLine)
+    with
+    | FStar_Pervasives_Native.Some true -> [CC_SingleLine]
+    | uu___ -> [] in
+  let minlistlen =
+    match first_int (RDF_Graph_Executable.find_objects g s sh_minListLength)
+    with
+    | FStar_Pervasives_Native.Some n -> [CC_MinListLength n]
+    | FStar_Pervasives_Native.None -> [] in
+  let maxlistlen =
+    match first_int (RDF_Graph_Executable.find_objects g s sh_maxListLength)
+    with
+    | FStar_Pervasives_Native.Some n -> [CC_MaxListLength n]
+    | FStar_Pervasives_Native.None -> [] in
+  let rootcls =
+    FStar_List_Tot_Base.concatMap
+      (fun t ->
+         match t with | RDF_Term.T_IRI i -> [CC_RootClass i] | uu___ -> [])
+      (RDF_Graph_Executable.find_objects g s sh_rootClass) in
   let langin =
     match RDF_Graph_Executable.find_objects g s sh_languageIn with
     | head::uu___ ->
@@ -1505,26 +1588,34 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                       (FStar_List_Tot_Base.op_At pattern
                          (FStar_List_Tot_Base.op_At minlen
                             (FStar_List_Tot_Base.op_At maxlen
-                               (FStar_List_Tot_Base.op_At langin
-                                  (FStar_List_Tot_Base.op_At uniquelang
-                                     (FStar_List_Tot_Base.op_At mininc
-                                        (FStar_List_Tot_Base.op_At maxinc
-                                           (FStar_List_Tot_Base.op_At minexc
+                               (FStar_List_Tot_Base.op_At singleline
+                                  (FStar_List_Tot_Base.op_At minlistlen
+                                     (FStar_List_Tot_Base.op_At maxlistlen
+                                        (FStar_List_Tot_Base.op_At rootcls
+                                           (FStar_List_Tot_Base.op_At langin
                                               (FStar_List_Tot_Base.op_At
-                                                 maxexc
+                                                 uniquelang
                                                  (FStar_List_Tot_Base.op_At
-                                                    nots
+                                                    mininc
                                                     (FStar_List_Tot_Base.op_At
-                                                       ands
+                                                       maxinc
                                                        (FStar_List_Tot_Base.op_At
-                                                          ors
+                                                          minexc
                                                           (FStar_List_Tot_Base.op_At
-                                                             xones
+                                                             maxexc
                                                              (FStar_List_Tot_Base.op_At
-                                                                nodes
+                                                                nots
                                                                 (FStar_List_Tot_Base.op_At
-                                                                   qualified
+                                                                   ands
                                                                    (FStar_List_Tot_Base.op_At
+                                                                    ors
+                                                                    (FStar_List_Tot_Base.op_At
+                                                                    xones
+                                                                    (FStar_List_Tot_Base.op_At
+                                                                    nodes
+                                                                    (FStar_List_Tot_Base.op_At
+                                                                    qualified
+                                                                    (FStar_List_Tot_Base.op_At
                                                                     equals
                                                                     (FStar_List_Tot_Base.op_At
                                                                     disjoint
@@ -1534,7 +1625,7 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                                                     lessthaneq
                                                                     (FStar_List_Tot_Base.op_At
                                                                     closed_
-                                                                    sparqls))))))))))))))))))))))))))
+                                                                    sparqls))))))))))))))))))))))))))))))
 let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
   let path_objs = RDF_Graph_Executable.find_objects g s sh_path in
   let is_prop = Prims.uu___is_Cons path_objs in
@@ -1855,6 +1946,45 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
             | FStar_Pervasives_Native.Some lex ->
                 if (FStar_String.strlen lex) <= n then [] else viol ()
             | FStar_Pervasives_Native.None -> viol ())
+       | CC_SingleLine ->
+           (match term_lexical v with
+            | FStar_Pervasives_Native.Some lex ->
+                if has_line_break lex then viol () else []
+            | FStar_Pervasives_Native.None -> [])
+       | CC_MinListLength n ->
+           (match rdf_list_opt data v
+                    ((RDF_Graph.graph_len data) + Prims.int_one)
+            with
+            | FStar_Pervasives_Native.Some terms ->
+                if (FStar_List_Tot_Base.length terms) >= n
+                then []
+                else viol ()
+            | FStar_Pervasives_Native.None -> viol ())
+       | CC_MaxListLength n ->
+           (match rdf_list_opt data v
+                    ((RDF_Graph.graph_len data) + Prims.int_one)
+            with
+            | FStar_Pervasives_Native.Some terms ->
+                if (FStar_List_Tot_Base.length terms) <= n
+                then []
+                else viol ()
+            | FStar_Pervasives_Native.None -> viol ())
+       | CC_RootClass rc ->
+           if RDF_Term.rdf_term_eq v (RDF_Term.T_IRI rc)
+           then []
+           else
+             (match RDF_Graph.term_to_subject v with
+              | FStar_Pervasives_Native.Some vs ->
+                  if
+                    RDF_Graph.mem_triple
+                      {
+                        RDF_Triple.s = vs;
+                        RDF_Triple.p = RDFS_Closure.rdfs_subClassOf;
+                        RDF_Triple.o = (RDF_Term.T_IRI rc)
+                      } closed_cls
+                  then []
+                  else viol ()
+              | FStar_Pervasives_Native.None -> viol ())
        | CC_LanguageIn langs ->
            (match v with
             | RDF_Term.T_Literal l ->
@@ -2889,6 +3019,10 @@ let constraint_component_iri (cc : constraint_component) : RDF_Term.wf_iri=
   | CC_Pattern (uu___, uu___1) -> sh_PatternConstraintComponent
   | CC_MinLength uu___ -> sh_MinLengthConstraintComponent
   | CC_MaxLength uu___ -> sh_MaxLengthConstraintComponent
+  | CC_SingleLine -> sh_SingleLineConstraintComponent
+  | CC_MinListLength uu___ -> sh_MinListLengthConstraintComponent
+  | CC_MaxListLength uu___ -> sh_MaxListLengthConstraintComponent
+  | CC_RootClass uu___ -> sh_RootClassConstraintComponent
   | CC_LanguageIn uu___ -> sh_LanguageInConstraintComponent
   | CC_UniqueLang uu___ -> sh_UniqueLangConstraintComponent
   | CC_MinInclusive uu___ -> sh_MinInclusiveConstraintComponent

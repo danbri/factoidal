@@ -1569,8 +1569,8 @@ RDF_CottasStore_BaseWriter.cmx: \
 
 SHACL.Validation.fst.checked: \
 	SHACL.Validation.fst \
-	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	XSD.Datatypes.fst.checked \
@@ -6356,25 +6356,27 @@ ALL_ML_FILES= \
 	RDF_CottasStore_PresenceWriter.ml
 
 ALL_KRML_FILES= \
+	FStar_Pervasives_Native.krml \
 	FStar_Attributes.krml \
 	FStar_NormSteps.krml \
-	FStar_Pervasives_Native.krml \
 	FStar_Pervasives.krml \
 	FStar_Prelude.krml \
-	FStar_Mul.krml \
 	FStar_Ghost.krml \
 	FStar_IndefiniteDescription.krml \
 	FStar_Squash.krml \
 	FStar_Classical.krml \
-	FStar_Sealed.krml \
-	FStar_Range.krml \
-	FStar_Preorder.krml \
-	FStar_Calc.krml \
 	FStar_StrongExcludedMiddle.krml \
 	FStar_Classical_Sugar.krml \
 	FStar_List_Tot_Base.krml \
 	FStar_List_Tot_Properties.krml \
 	FStar_List_Tot.krml \
+	FStar_Exn.krml \
+	FStar_Sealed.krml \
+	FStar_Range.krml \
+	FStar_Float.krml \
+	FStar_Mul.krml \
+	FStar_Preorder.krml \
+	FStar_Calc.krml \
 	FStar_Seq_Base.krml \
 	FStar_Seq_Properties.krml \
 	FStar_Seq.krml \
@@ -6384,8 +6386,6 @@ ALL_KRML_FILES= \
 	FStar_UInt.krml \
 	FStar_UInt32.krml \
 	FStar_Char.krml \
-	FStar_Exn.krml \
-	FStar_Float.krml \
 	FStar_Pprint.krml \
 	FStar_Issue.krml \
 	FStar_Errors_Msg.krml \
