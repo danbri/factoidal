@@ -2988,27 +2988,6 @@ let run_rdf_suite suite_name =
    exercised (anti-pattern #3). Any other rdf12 test type is delegated to
    the RDF 1.1 handler unchanged. *)
 
-(* Datatypes whose VALUE-space D-entailment the F* engine does not yet
-   model — IEEE-754 xsd:float / xsd:double (±0, round-to-even, infinity)
-   and rdf:JSON (canonical value). Scans literals, including those nested
-   inside triple terms. Used only to declare such tests Unsupported (not
-   silently mis-answered); this is reporting/gating, not entailment
-   semantics. *)
-let unmodelled_value_datatypes = [
-  "http://www.w3.org/2001/XMLSchema#float";
-  "http://www.w3.org/2001/XMLSchema#double";
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON";
-]
-let rec term_has_unmodelled_dt (t : RDF_Graph_Executable.rdf_term) : bool =
-  let open RDF_Graph_Executable in
-  match t with
-  | T_Literal l -> List.mem l.datatype unmodelled_value_datatypes
-  | T_TripleTerm (_, _, o) -> term_has_unmodelled_dt o
-  | _ -> false
-let graph_has_unmodelled_value_dt (g : RDF_Graph_Executable.triple list) : bool =
-  List.exists (fun (t : RDF_Graph_Executable.triple) ->
-    term_has_unmodelled_dt t.RDF_Graph_Executable.o) g
-
 let run_rdf12_test assumed_base tc =
   match tc.test_type with
   | "TestNTriplesPositiveSyntax" ->
@@ -3211,15 +3190,10 @@ let run_rdf12_test assumed_base tc =
                let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
                let action_g = parse_turtle_12 action_content base in
                let result_g = parse_turtle_12 result_content base in
-               (* Capability boundary: D-entailment over xsd:float / xsd:double
-                  (IEEE-754 ±0, round-to-even, infinity) and rdf:JSON
-                  (canonical value) is not yet modelled. Declare any test
-                  whose graphs carry such a literal Unsupported rather than
-                  mis-comparing it — applied uniformly by datatype, not
-                  cherry-picked per test. *)
-               if graph_has_unmodelled_value_dt action_g || graph_has_unmodelled_value_dt result_g then
-                 Unsupported_feature "float/double/JSON value D-entailment not yet modelled"
-               else
+               (* xsd:float / xsd:double (IEEE-754, incl. +/-0, round-to-even,
+                  overflow->inf) and rdf:JSON (structural + IEEE numbers) value
+                  D-entailment are now modelled in RDF.Entailment.Regime via
+                  the verified XSD.IEEE754 converter — no capability gate. *)
                let entails = efn action_g result_g in
                if tc.test_type = "PositiveEntailmentTest" then
                  (if entails then Pass

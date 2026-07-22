@@ -32,6 +32,8 @@ open RDF.Graph.Executable
 open RDF.Term
 open RDF.Entailment.Simple
 open XSD.Datatypes
+open XSD.IEEE754
+open Parser.JSON
 open FStar.List.Tot
 
 // ---- Vocabulary IRIs (wf_iri, built like RDF.Term's xsd_* constants) ----
@@ -47,6 +49,49 @@ let rdfs_proposition_iri : wf_iri =
 let owl_sameas_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#sameAs");
   "http://www.w3.org/2002/07/owl#sameAs"
+let rdf_json_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON"
+
+// ---- rdf:JSON value equality (structural, IEEE-754 numbers) ------------
+// Two rdf:JSON literals are value-equal iff their JSON values are equal:
+// objects are UNORDERED (json-object-unordered), arrays are ORDERED
+// (json-array-ordered NEGATIVE), and numbers compare by IEEE-754 binary64
+// value so +0 <> -0 (json-zero) and decimals that round to the same double
+// are equal (json-round-same). Fuel-bounded on the JSON tree size.
+let rec json_value_eq (fuel : nat) (v1 v2 : json_val) : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    match v1, v2 with
+    | JNull, JNull       -> true
+    | JBool a, JBool b   -> a = b
+    | JString a, JString b -> a = b
+    | JNumber a, JNumber b -> json_number_eq a b
+    | JArray xs, JArray ys -> json_arr_eq (fuel - 1) xs ys
+    | JObject fs, JObject gs ->
+      length fs = length gs && json_obj_eq (fuel - 1) fs gs
+    | _, _ -> false
+and json_arr_eq (fuel : nat) (xs ys : list json_val) : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    match xs, ys with
+    | [], [] -> true
+    | x :: xr, y :: yr -> json_value_eq (fuel - 1) x y && json_arr_eq (fuel - 1) xr yr
+    | _, _ -> false
+and json_obj_eq (fuel : nat) (fs gs : list (string & json_val)) : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    match fs with
+    | [] -> true
+    | (k, v) :: rest ->
+      (match assoc k gs with
+       | Some v' -> json_value_eq (fuel - 1) v v' && json_obj_eq (fuel - 1) rest gs
+       | None    -> false)
+
+let rdf_json_value_eq (lex1 lex2 : string) : bool =
+  match parse_json lex1, parse_json lex2 with
+  | Some v1, Some v2 -> json_value_eq (json_size v1 + json_size v2 + 1) v1 v2
+  | _, _             -> lex1 = lex2
 
 // ---- Value-aware literal equality --------------------------------------
 
@@ -61,17 +106,46 @@ let owl_sameas_iri : wf_iri =
 let is_exact_scaled_dt (dt : wf_iri) : bool =
   dt = xsd_integer || dt = xsd_decimal
 
-// D-entailment literal equality: xsd:integer / xsd:decimal compare by
-// value (so "042"^^xsd:integer = "42"^^xsd:integer); every other literal
-// falls back to RDF.Term.literal_eq (which, per RDF 1.1 Concepts §3.3,
-// compares language tags case-INSENSITIVELY — `@en-us` = `@en-US`, which
-// the opaque-language-string fixtures require).
-let dt_value_leq (l1 l2 : literal) : bool =
-  if is_exact_scaled_dt l1.datatype && is_exact_scaled_dt l2.datatype then
+// Opaque (case-SENSITIVE) literal equality — the exact syntactic token,
+// language tag included. Used for directional language strings sitting
+// inside a triple term (see dt_value_leq).
+let lit_opaque_eq (l1 l2 : literal) : bool =
+  l1.lexical_form = l2.lexical_form && l1.datatype = l2.datatype &&
+  l1.lang_tag = l2.lang_tag && l1.direction = l2.direction
+
+// D-entailment literal equality, POSITION-AWARE (inside_tt = are these
+// literals inside a triple term?).
+//   * A directional language string inside a triple term is OPAQUE:
+//     compared case-sensitively, so "x"@en-us--ltr <> "x"@en-US--ltr
+//     (the opaque-dir-language-string NEGATIVE fixture). Outside a triple
+//     term, and for plain language strings anywhere, the RDF 1.1
+//     case-insensitive rule applies (the opaque-language-string fixtures).
+//   * xsd:integer / xsd:decimal compare by value ("042" = "42").
+//   * everything else falls back to RDF.Term.literal_eq.
+let dt_value_leq (inside_tt : bool) (l1 l2 : literal) : bool =
+  if inside_tt && Some? l1.direction && Some? l2.direction then
+    lit_opaque_eq l1 l2
+  else if l1.datatype = xsd_double && l2.datatype = xsd_double then
+    // IEEE-754 binary64 value equality (+0 <> -0, round-to-even, overflow->inf).
+    double_value_eq l1.lexical_form l2.lexical_form
+  else if l1.datatype = xsd_float && l2.datatype = xsd_float then
+    float_value_eq l1.lexical_form l2.lexical_form
+  else if l1.datatype = rdf_json_iri && l2.datatype = rdf_json_iri then
+    rdf_json_value_eq l1.lexical_form l2.lexical_form
+  else if is_exact_scaled_dt l1.datatype && is_exact_scaled_dt l2.datatype then
     (match literal_to_scaled l1, literal_to_scaled l2 with
      | Some s1, Some s2 -> l1.datatype = l2.datatype && scaled_cmp s1 s2 = 0
      | _, _             -> literal_eq l1 l2)
   else literal_eq l1 l2
+
+// A blank node may NOT range over a MALFORMED literal in a recognized
+// datatype — a malformed literal denotes nothing, so no term (and no
+// existential blank node) can be it (the malformed-literal-bnode-neg
+// fixture). Well-formed literals, IRIs and triple terms are all bindable.
+let bnd_rdf (t : rdf_term) : bool =
+  match t with
+  | T_Literal l -> not (literal_ill_formed l.datatype l.lexical_form)
+  | _           -> true
 
 // ---- RDFS reifies-range closure ----------------------------------------
 
@@ -127,16 +201,15 @@ let owl_closure (ts : list triple) : list triple =
 
 // ---- Regime entrypoints ------------------------------------------------
 
-// RDF (D-)entailment: recognized-datatype value equality, no axiomatic
-// triples added (the tractable RDF-regime fixtures are value/identity).
+// RDF (D-)entailment: recognized-datatype value equality (position-aware)
+// + no blank-node ranging over malformed literals.
 let entails_rdf (a b : list triple) : bool =
-  entails_with dt_value_leq a b
+  entails_with dt_value_leq bnd_rdf a b
 
-// RDFS entailment: value equality + reifies-range closure.
+// RDFS entailment: + reifies-range closure.
 let entails_rdfs (a b : list triple) : bool =
-  entails_with dt_value_leq (rdfs_closure a) b
+  entails_with dt_value_leq bnd_rdf (rdfs_closure a) b
 
-// RDFS-Plus entailment: value equality + owl:sameAs (IRI transparency)
-// + reifies-range closure.
+// RDFS-Plus entailment: + owl:sameAs (IRI transparency) + reifies-range.
 let entails_rdfs_plus (a b : list triple) : bool =
-  entails_with dt_value_leq (owl_closure (rdfs_closure a)) b
+  entails_with dt_value_leq bnd_rdf (owl_closure (rdfs_closure a)) b

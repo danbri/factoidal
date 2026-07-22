@@ -67,35 +67,51 @@ let match_subj (b : binding) (ps : subject) (gs : subject) : option binding =
 // does NOT participate in the termination measures, so the Phase A proof
 // is unchanged. Bnode-bound consistency still uses structural
 // `rdf_term_eq` (a bnode re-seen must denote the same ground term).
-let rec match_term (leq : literal -> literal -> bool)
+// The engine is parameterized by TWO predicates:
+//   * `leq : inside_tt -> literal -> literal -> bool` — literal match,
+//     given whether the literals sit INSIDE a triple term (opaque
+//     position). Simple entailment ignores the flag; the D-entailment
+//     layer uses it (e.g. directional language strings are opaque —
+//     case-sensitive — only inside a triple term).
+//   * `bnd : rdf_term -> bool` — may a pattern blank node RANGE OVER this
+//     ground term? Simple entailment: always. D-entailment: NOT over a
+//     malformed recognized-datatype literal (it denotes nothing).
+// Both are plain value arguments — threaded untouched, not in the
+// termination measure, so the Phase A proof is unchanged. Bnode re-see
+// consistency stays structural (`rdf_term_eq`).
+let rec match_term (leq : bool -> literal -> literal -> bool)
+                   (bnd : rdf_term -> bool)
+                   (inside_tt : bool)
                    (b : binding) (pat : rdf_term) (g : rdf_term)
   : Tot (option binding) (decreases pat) =
   match pat with
   | T_BNode lbl ->
     (match assoc lbl b with
      | Some t -> if rdf_term_eq t g then Some b else None
-     | None   -> Some ((lbl, g) :: b))
+     | None   -> if bnd g then Some ((lbl, g) :: b) else None)
   | T_IRI i ->
     (match g with T_IRI j -> if i = j then Some b else None | _ -> None)
   | T_Literal l ->
-    (match g with T_Literal m -> if leq l m then Some b else None | _ -> None)
+    (match g with T_Literal m -> if leq inside_tt l m then Some b else None | _ -> None)
   | T_TripleTerm ps pp po ->
     (match g with
      | T_TripleTerm gs gp go ->
        if pp = gp then
          (match match_subj b ps gs with
-          | Some b1 -> match_term leq b1 po go
+          | Some b1 -> match_term leq bnd true b1 po go
           | None    -> None)
        else None
      | _ -> None)
 
 // Match a whole B-triple against a candidate A-triple, threading the
-// binding: predicate exact, then subject, then object.
-let match_triple (leq : literal -> literal -> bool)
+// binding: predicate exact, then subject, then object (top level, so the
+// object matcher starts with inside_tt = false).
+let match_triple (leq : bool -> literal -> literal -> bool)
+                 (bnd : rdf_term -> bool)
                  (b : binding) (tb : triple) (ta : triple) : option binding =
   if tb.p = ta.p then
     (match match_subj b tb.s ta.s with
-     | Some b1 -> match_term leq b1 tb.o ta.o
+     | Some b1 -> match_term leq bnd false b1 tb.o ta.o
      | None    -> None)
   else None
 
@@ -107,13 +123,13 @@ let match_triple (leq : literal -> literal -> bool)
 //                                                 vs try_match's `1+len a`.
 //   try_alts(ta::more)   -> try_match(rest)    : B-level strictly shrinks.
 //   try_alts(ta::more)   -> try_alts(more)     : same B-level, cand shrinks.
-let rec try_match (leq : literal -> literal -> bool)
+let rec try_match (leq : bool -> literal -> literal -> bool) (bnd : rdf_term -> bool)
                   (bs : list triple) (b : binding) (a : list triple)
   : Tot bool (decreases %[length bs; 1 + length a]) =
   match bs with
   | [] -> true
-  | tb :: rest -> try_alts leq bs tb rest b a a
-and try_alts (leq : literal -> literal -> bool)
+  | tb :: rest -> try_alts leq bnd bs tb rest b a a
+and try_alts (leq : bool -> literal -> literal -> bool) (bnd : rdf_term -> bool)
              (bs : list triple) (tb : triple)
              (rest : list triple { length rest < length bs }) (b : binding)
              (a : list triple) (cand : list triple)
@@ -126,14 +142,17 @@ and try_alts (leq : literal -> literal -> bool)
   match cand with
   | [] -> false
   | ta :: more ->
-    (match match_triple leq b tb ta with
-     | Some b1 -> if try_match leq rest b1 a then true else try_alts leq bs tb rest b a more
-     | None    -> try_alts leq bs tb rest b a more)
+    (match match_triple leq bnd b tb ta with
+     | Some b1 -> if try_match leq bnd rest b1 a then true else try_alts leq bnd bs tb rest b a more
+     | None    -> try_alts leq bnd bs tb rest b a more)
 
-// Graph `a` entails graph `b` under literal-equality `leq`.
-let entails_with (leq : literal -> literal -> bool) (a b : list triple) : bool =
-  try_match leq b [] a
+// Graph `a` entails graph `b` under literal-match `leq` (position-aware)
+// and bnode-range predicate `bnd`.
+let entails_with (leq : bool -> literal -> literal -> bool) (bnd : rdf_term -> bool)
+                 (a b : list triple) : bool =
+  try_match leq bnd b [] a
 
-// Graph `a` simply-entails graph `b` (structural literal equality).
+// Graph `a` simply-entails graph `b`: structural literal equality (position
+// ignored), and blank nodes may range over any ground term.
 let simple_entails (a b : list triple) : bool =
-  entails_with literal_eq a b
+  entails_with (fun _ l m -> literal_eq l m) (fun _ -> true) a b
