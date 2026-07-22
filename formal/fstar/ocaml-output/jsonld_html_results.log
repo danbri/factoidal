@@ -22,15 +22,15 @@ Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/html-manifest.j
   PASS: Expands embedded JSON-LD script element relative to HTML base
   PASS: Expands embedded JSON-LD script element relative to relative HTML base
   PASS: Expands targeted JSON-LD script element with fragment and HTML base
-  skip: Compacts embedded JSON-LD script element — CompactTest via HTML not yet wired
-  skip: Compacts first embedded JSON-LD script element — CompactTest via HTML not yet wired
-  skip: Compacts targeted JSON-LD script element — CompactTest via HTML not yet wired
-  skip: Compacts all embedded JSON-LD script elements with extractAllScripts option — CompactTest via HTML not yet wired
-  skip: Flattens embedded JSON-LD script element — FlattenTest via HTML not yet wired
-  skip: Flattens first embedded JSON-LD script element — FlattenTest via HTML not yet wired
-  skip: Flattens targeted JSON-LD script element — FlattenTest via HTML not yet wired
-  skip: Flattens first script element by default — FlattenTest via HTML not yet wired
-  skip: Flattens all script elements if extractAllScripts set to true — FlattenTest via HTML not yet wired
+  PASS: Compacts embedded JSON-LD script element
+  PASS: Compacts first embedded JSON-LD script element
+  PASS: Compacts targeted JSON-LD script element
+  PASS: Compacts all embedded JSON-LD script elements with extractAllScripts option
+  PASS: Flattens embedded JSON-LD script element
+  PASS: Flattens first embedded JSON-LD script element
+  PASS: Flattens targeted JSON-LD script element
+  PASS: Flattens first script element by default
+  PASS: Flattens all script elements if extractAllScripts set to true
   PASS: Transforms embedded JSON-LD script element
   PASS: Transforms first embedded JSON-LD script element
   PASS: Transforms targeted JSON-LD script element
@@ -54,6 +54,6 @@ Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/html-manifest.j
 
 ========================================
 Suite Results:
-  jsonld-html                         pass:41 fail:0 skip:9 unsupported:0
+  jsonld-html                         pass:50 fail:0 skip:0 unsupported:0
 ========================================
-jsonld-html: 41 pass, 0 fail, 9 skip (out of 50)
+jsonld-html: 50 pass, 0 fail, 0 skip (out of 50)

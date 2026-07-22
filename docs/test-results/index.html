@@ -398,8 +398,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-22 16:08 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-21 07:29 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-22 19:07 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-22 16:09 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDF 1.2 / SPARQL 1.2 (W3C Working Drafts), RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -1150,15 +1150,15 @@
     </div>
   </div>
 </details>
-<details class="family-node green" id="jsonld11">
+<details class="family-node amber" id="jsonld11">
   <summary>
     <span class="fam-name">JSON-LD 1.1</span>
-    <span class="fam-score">1249/0/11 of 1260 &middot; 6 of 7 suites</span>
-    <span class="gap-badge">2 gaps</span>
-    <span class="dot green"></span>
+    <span class="fam-score">1264/86/2 of 1352 &middot; 7 of 7 suites</span>
+    <span class="gap-badge">1 gap</span>
+    <span class="dot amber"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline green">1249 pass, 0 fail, 11 skip (of 1260) across the W3C JSON-LD 1.1 toRdf, fromRdf, expand, compact and flatten manifests.</p>
+    <p class="fam-headline amber">1264 pass, 86 fail, 2 skip (of 1352) across the W3C JSON-LD 1.1 toRdf, fromRdf, expand, compact and flatten manifests.</p>
     <div class="suites">
       <details class="suite-node green">
         <summary><span class="suite-name">JSON-LD 1.1 toRdf</span><span class="suite-numbers">467/0/0 of 467</span><span class="dot green"></span></summary>
@@ -1206,12 +1206,21 @@
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="suite-name">JSON-LD 1.1 HTML</span><span class="suite-numbers">41/0/9 of 50</span><span class="dot green"></span></summary>
+        <summary><span class="suite-name">JSON-LD 1.1 HTML</span><span class="suite-numbers">50/0/0 of 50</span><span class="dot green"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:82.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:18.00%"></div></div>
-          <p class="suite-numbers-full">41 pass, 0 fail, 9 skip (out of 50)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">50 pass, 0 fail, 0 skip (out of 50)</p>
           <p class="suite-prov">Runner: <code>bin/jsonld-html-runner</code> (<code>bin/linux-x86_64/jsonld_html_runner</code>) &middot; Suite: W3C JSON-LD 1.1 html manifest (JSON-LD embedded in HTML &lt;script&gt; elements)</p>
           
+        </div>
+      </details>
+      <details class="suite-node amber">
+        <summary><span class="suite-name">JSON-LD 1.1 Framing</span><span class="suite-numbers">6/86/0 of 92</span><span class="dot amber"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:6.52%"></div><div class="seg seg-fail" style="width:93.48%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 86 fail, 0 skip (out of 92)</p>
+          <p class="suite-prov">Runner: <code>bin/jsonld-frame-runner</code> (<code>bin/linux-x86_64/jsonld_frame_runner</code>) &middot; Suite: W3C json-ld-framing manifest (Framing Algorithm)</p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/jsonld-frame.yaml" target="_blank" rel="noopener">diagnosis: first-cut F* framing (expand+flatten+match/embed+compact); residual fails are the un-implemented frame features (@explicit/@default/@embed variants/@reverse/@included/named graphs) — see the suite manifest</a></p>
         </div>
       </details>
     </div>
@@ -1219,8 +1228,7 @@
     <div class="remaining">
       <p class="remaining-title">Remaining work</p>
       <ul>
-        <li>frame suite (Framing Algorithm): NOT vendored in this repo — the W3C framing tests live in the separate json-ld-framing suite, which is not checked out here, and no F* framing algorithm exists yet. So there is nothing to run, not merely a missing runner.</li>
-        <li>html suite: extraction + Expand/ToRDF wired (jsonld-html.yaml); the 9 CompactTest/FlattenTest-via-HTML entries are skips, and the extractAllScripts array-splice case fails — see jsonld-html.yaml.</li>
+        <li>frame suite (Framing Algorithm): first-cut F* algorithm — passes the basic match/embed cases; residual fails are the un-implemented frame features (@explicit, @default, @omitDefault, @embed @always/@never/@link, @reverse, @included, named graphs, value-level matching). See jsonld-frame.yaml.</li>
       </ul>
     </div>
   </div>
@@ -2189,9 +2197,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-22 16:08 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/e000f24f38003e341ea1efd6c947702d19b051db">e000f24f</a></code>
-  on branch <code>claude/main</code> — &ldquo;RDF 1.2 entailment Phase B: RDF/RDFS/RDFS-Plus regimes in F* (rdf12entail 24/5/3, 15 unsupported)&rdquo;.
+  Generated <strong>2026-07-22 19:07 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/64157982496025a1fdb80d94f42b72f416a6b0b6">64157982</a></code>
+  on branch <code>claude/main</code> — &ldquo;JSON-LD html Compact/Flatten + framing wiring (source; binaries follow post-build)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
