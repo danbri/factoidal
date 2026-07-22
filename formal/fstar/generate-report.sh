@@ -116,6 +116,7 @@ JSONLD_EXPAND_LOG="$OCAML_DIR/jsonld_expand_results.log"
 JSONLD_COMPACT_LOG="$OCAML_DIR/jsonld_compact_results.log"
 JSONLD_FLATTEN_LOG="$OCAML_DIR/jsonld_flatten_results.log"
 JSONLD_HTML_LOG="$OCAML_DIR/jsonld_html_results.log"
+JSONLD_FRAME_LOG="$OCAML_DIR/jsonld_frame_results.log"
 # hdt-parity is a committed shell script (tests/local/hdt_stage4_parity.sh),
 # not a runner binary; JS-side hub/npm suites run through node --test.
 HDT_PARITY_LOG="$OCAML_DIR/hdt_parity_results.log"
@@ -161,6 +162,7 @@ case "$(uname -s)-$(uname -m)" in
     JSONLD_COMPACT_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_compact_runner"
     JSONLD_FLATTEN_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_flatten_runner"
     JSONLD_HTML_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_html_runner"
+    JSONLD_FRAME_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_frame_runner"
     ;;
   Linux-x86_64)
     RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/w3c_runner"
@@ -187,6 +189,7 @@ case "$(uname -s)-$(uname -m)" in
     JSONLD_COMPACT_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_compact_runner"
     JSONLD_FLATTEN_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_flatten_runner"
     JSONLD_HTML_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_html_runner"
+    JSONLD_FRAME_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_frame_runner"
     ;;
   *)
     RUNNER="$OCAML_DIR/w3c_runner"
@@ -213,6 +216,7 @@ case "$(uname -s)-$(uname -m)" in
     JSONLD_COMPACT_RUNNER="$OCAML_DIR/jsonld_compact_runner"
     JSONLD_FLATTEN_RUNNER="$OCAML_DIR/jsonld_flatten_runner"
     JSONLD_HTML_RUNNER="$OCAML_DIR/jsonld_html_runner"
+    JSONLD_FRAME_RUNNER="$OCAML_DIR/jsonld_frame_runner"
     ;;
 esac
 
@@ -360,6 +364,7 @@ if [ "$1" = "--run" ]; then
   run_optional_suite "JSON-LD 1.1 compact suite"     "$JSONLD_COMPACT_RUNNER" "$JSONLD_COMPACT_LOG" 120
   run_optional_suite "JSON-LD 1.1 flatten suite"     "$JSONLD_FLATTEN_RUNNER" "$JSONLD_FLATTEN_LOG" 120
   run_optional_suite "JSON-LD 1.1 HTML suite"        "$JSONLD_HTML_RUNNER"    "$JSONLD_HTML_LOG"    120
+  run_optional_suite "JSON-LD 1.1 Framing suite"     "$JSONLD_FRAME_RUNNER"   "$JSONLD_FRAME_LOG"   180
   run_optional_suite "GRDDL Stage 1 (local subset)"  "$GRDDL_RUNNER"      "$GRDDL_LOG"       120
 
   # hdt-parity is a committed shell script, not a runner binary; it needs
@@ -737,6 +742,7 @@ scrape_last_summary JSONLD_COMPACT "$JSONLD_COMPACT_LOG"
 # final-line shape ("jsonld-flatten: N pass, M fail, K skip (out of T)").
 scrape_last_summary JSONLD_FLATTEN "$JSONLD_FLATTEN_LOG"
 scrape_last_summary JSONLD_HTML "$JSONLD_HTML_LOG"
+scrape_last_summary JSONLD_FRAME "$JSONLD_FRAME_LOG"
 # RIF Core: rif_runner prints THREE summary lines in one log (Part 1 —
 # the 4 vendored SPARQL-manifest cases; Part 2 — the 46-test W3C
 # Core_v1.22 corpus walk; and a combined total) — anchor each explicitly
@@ -2170,7 +2176,7 @@ CSVW_HTML=$(family_section "csvw" "CSVW (CSV on the Web)" "$CSVW_STATUS" "$CSVW_
 # (jsonld_fromrdf_runner, 2026-07-09) + expand (jsonld_expand_runner,
 # 2026-07-10) + compact (jsonld_compact_runner, 2026-07-10) + flatten
 # (jsonld_flatten_runner, 2026-07-10).
-read -r JSONLD_FAM_PASS JSONLD_FAM_FAIL JSONLD_FAM_SKIP JSONLD_FAM_TOTAL JSONLD_FAM_ANY <<< "$(sum_family "JSONLD JSONLD_FROMRDF JSONLD_EXPAND JSONLD_COMPACT JSONLD_FLATTEN JSONLD_HTML")"
+read -r JSONLD_FAM_PASS JSONLD_FAM_FAIL JSONLD_FAM_SKIP JSONLD_FAM_TOTAL JSONLD_FAM_ANY <<< "$(sum_family "JSONLD JSONLD_FROMRDF JSONLD_EXPAND JSONLD_COMPACT JSONLD_FLATTEN JSONLD_HTML JSONLD_FRAME")"
 JSONLD_STATUS=$(status_for "$JSONLD_FAM_FAIL" "$JSONLD_FAM_ANY")
 if [ "$JSONLD_FAM_ANY" -eq 1 ]; then
   JSONLD_FAMILY_HEADLINE="${JSONLD_FAM_PASS} pass, ${JSONLD_FAM_FAIL} fail, ${JSONLD_FAM_SKIP} skip (of ${JSONLD_FAM_TOTAL}) across the W3C JSON-LD 1.1 toRdf, fromRdf, expand, compact and flatten manifests."
@@ -2195,9 +2201,12 @@ JSONLD_BODY=$(
     "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/jsonld-flatten.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: residual fails are enumerated Flattening-Algorithm gaps — see the suite manifest and the landing commit for the per-bucket breakdown</a>"
   family_suite_row "JSON-LD 1.1 HTML" "$JSONLD_HTML_PASS" "$JSONLD_HTML_FAIL" "$JSONLD_HTML_SKIP" "$JSONLD_HTML_TOTAL" "$JSONLD_HTML_PRESENT" \
     "Runner: <code>bin/jsonld-html-runner</code> (<code>bin/linux-x86_64/jsonld_html_runner</code>) &middot; Suite: W3C JSON-LD 1.1 html manifest (JSON-LD embedded in HTML &lt;script&gt; elements)" \
-    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/jsonld-html.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: extraction + Expand/ToRDF are wired (Compact/Flatten via HTML are skips); residual fails are the array-splice extractAllScripts case — see the suite manifest</a>"
+    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/jsonld-html.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: extraction + Expand / Compact / Flatten / ToRDF all wired — 50/50, complete</a>"
+  family_suite_row "JSON-LD 1.1 Framing" "$JSONLD_FRAME_PASS" "$JSONLD_FRAME_FAIL" "$JSONLD_FRAME_SKIP" "$JSONLD_FRAME_TOTAL" "$JSONLD_FRAME_PRESENT" \
+    "Runner: <code>bin/jsonld-frame-runner</code> (<code>bin/linux-x86_64/jsonld_frame_runner</code>) &middot; Suite: W3C json-ld-framing manifest (Framing Algorithm)" \
+    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/jsonld-frame.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: first-cut F* framing (expand+flatten+match/embed+compact); residual fails are the un-implemented frame features (@explicit/@default/@embed variants/@reverse/@included/named graphs) — see the suite manifest</a>"
 )
-JSONLD_SUITES_RUN=$(( JSONLD_PRESENT + JSONLD_FROMRDF_PRESENT + JSONLD_EXPAND_PRESENT + JSONLD_COMPACT_PRESENT + JSONLD_FLATTEN_PRESENT + JSONLD_HTML_PRESENT ))
+JSONLD_SUITES_RUN=$(( JSONLD_PRESENT + JSONLD_FROMRDF_PRESENT + JSONLD_EXPAND_PRESENT + JSONLD_COMPACT_PRESENT + JSONLD_FLATTEN_PRESENT + JSONLD_HTML_PRESENT + JSONLD_FRAME_PRESENT ))
 JSONLD_FAMILY_HTML=$(family_section "jsonld11" "JSON-LD 1.1" "$JSONLD_STATUS" "$JSONLD_FAMILY_HEADLINE" "$JSONLD_BODY" "" \
   "$JSONLD_FAM_PASS" "$JSONLD_FAM_FAIL" "$JSONLD_FAM_SKIP" "$JSONLD_FAM_TOTAL" "${JSONLD_SUITES_RUN} of 7" \
   "$(family_remaining _jsonld-family)")

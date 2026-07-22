@@ -3,10 +3,11 @@
 # family-wide bookkeeping that doesn't fit any single per-suite
 # manifest). The JSON-LD 1.1 family spans 7 suites across the toRdf,
 # fromRdf, Expansion, Compaction, Flattening, Framing, and HTML-to-RDF
-# algorithms defined by the JSON-LD 1.1 API spec. 6 have a runner and a
-# live score today (jsonld-tordf, jsonld-fromrdf, jsonld-expand,
-# jsonld-compact, jsonld-flatten, jsonld-html). The 7th (Framing) has
-# neither a runner NOR vendored tests — see the `remaining` note.
+# algorithms defined by the JSON-LD 1.1 API + Framing specs. All 7 now
+# have a runner and a live score (jsonld-tordf, jsonld-fromrdf,
+# jsonld-expand, jsonld-compact, jsonld-flatten, jsonld-html,
+# jsonld-frame). Framing was vendored 2026-07-22 (from the separate
+# w3c/json-ld-framing repo) with a first-cut F* algorithm.
 name: JSON-LD 1.1 (family bookkeeping)
 spec: https://www.w3.org/TR/json-ld11-api/
 runner: none
@@ -27,5 +28,4 @@ triggers:
 # JSON-LD 1.1 row, 2026-07-10). Counted as failing until measured, per
 # the project's completeness ledger — not softened to "skipped".
 remaining:
-  - "frame suite (Framing Algorithm): NOT vendored in this repo — the W3C framing tests live in the separate json-ld-framing suite, which is not checked out here, and no F* framing algorithm exists yet. So there is nothing to run, not merely a missing runner."
-  - "html suite: extraction + Expand/ToRDF wired (jsonld-html.yaml); the 9 CompactTest/FlattenTest-via-HTML entries are skips, and the extractAllScripts array-splice case fails — see jsonld-html.yaml."
+  - "frame suite (Framing Algorithm): first-cut F* algorithm — passes the basic match/embed cases; residual fails are the un-implemented frame features (@explicit, @default, @omitDefault, @embed @always/@never/@link, @reverse, @included, named graphs, value-level matching). See jsonld-frame.yaml."

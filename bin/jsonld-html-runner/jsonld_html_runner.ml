@@ -106,6 +106,7 @@ type test_case = {
   fragment : string option;
   extract_all : bool;
   expect : string option;
+  context : string option;         (* Compact/Flatten compaction context *)
   base_override : string option;
   expand_context : string option;
   processing_mode : string option;
@@ -135,6 +136,7 @@ let build_test_cases manifest_dir root =
           input_path = path; fragment = frag;
           extract_all = (match opt_bool_field "extractAllScripts" e with Some b -> b | None -> false);
           expect = str_field "expect" e;
+          context = str_field "context" e;
           base_override = opt_str_field "base" e;
           expand_context = opt_str_field "expandContext" e;
           processing_mode = opt_str_field "processingMode" e;
@@ -214,12 +216,72 @@ let run_torqf tc base json =
              let ec = RDF_Canonical.canonicalize_to_nquads exp_ds in
              if gc = ec then Pass else Fail "canonical N-Quads differ")))
 
+(* Shared: compare an already-produced json_val result against the parsed
+   `expect` .jsonld via jsonld_expanded_equal (the JSON-LD structural
+   equality the compact/flatten runners use). *)
+let compare_json_result tc got what =
+  match tc.kind with
+  | K_Negative -> (match got with None -> Pass | Some _ -> Fail ("should reject but " ^ what))
+  | K_Unknown -> Skip "unknown evaluation kind"
+  | K_Positive ->
+    (match tc.expect with
+     | None -> Fail "positive test has no `expect` file"
+     | Some rel ->
+       (match read_file (Filename.concat tc.manifest_dir rel) with
+        | None -> Fail (Printf.sprintf "expected .jsonld not found: %s" rel)
+        | Some exp_raw ->
+          (match got, opt_of_fs (Parser_JSON.parse_json exp_raw) with
+           | Some g, Some exp ->
+             if Parser_JSONLD.jsonld_expanded_equal g exp then Pass
+             else Fail (what ^ " JSON-LD differs from expected")
+           | None, _ -> Fail (what ^ "_document returned None on a positive test")
+           | _, None -> Fail "could not parse expected .jsonld")))
+
+(* Read the compaction context doc named by the test's `context` field. *)
+let read_context tc =
+  match tc.context with
+  | None -> None
+  | Some rel -> read_file (Filename.concat tc.manifest_dir rel)
+
+let fs_ctx_url tc =
+  match tc.context with
+  | Some rel -> FStar_Pervasives_Native.Some (jsonld_test_base ^ rel)
+  | None -> FStar_Pervasives_Native.None
+
+let run_compact tc base json =
+  match read_context tc with
+  | None -> Fail "CompactTest has no `context`"
+  | Some ctx ->
+    let got = opt_of_fs
+      (JSONLD_Compact.compact_document json ctx
+         (FStar_Pervasives_Native.Some base) (fs_ctx_url tc)
+         true true                    (* compactArrays / compactToRelative default true *)
+         (fs_processing_mode tc)) in
+    compare_json_result tc got "compact"
+
+let run_flatten tc base json =
+  let fs_ctx_doc = match read_context tc with
+    | Some c -> FStar_Pervasives_Native.Some c
+    | None -> FStar_Pervasives_Native.None in
+  let got = opt_of_fs
+    (JSONLD_Flatten.flatten_document json fs_ctx_doc
+       (FStar_Pervasives_Native.Some base) (fs_ctx_url tc)
+       true                           (* compactArrays default true *)
+       (fs_processing_mode tc)) in
+  compare_json_result tc got "flatten"
+
+let dispatch tc base json =
+  match tc.algo with
+  | A_Expand  -> run_expand tc base json
+  | A_ToRdf   -> run_torqf tc base json
+  | A_Compact -> run_compact tc base json
+  | A_Flatten -> run_flatten tc base json
+  | A_Other   -> Skip "unrecognized JSON-LD test type"
+
 let run_test tc =
   match tc.algo with
-  | A_Compact -> Skip "CompactTest via HTML not yet wired"
-  | A_Flatten -> Skip "FlattenTest via HTML not yet wired"
   | A_Other -> Skip "unrecognized JSON-LD test type"
-  | A_Expand | A_ToRdf ->
+  | A_Expand | A_ToRdf | A_Compact | A_Flatten ->
     let input_full = Filename.concat tc.manifest_dir tc.input_path in
     (match read_file input_full with
      | None -> (match tc.kind with K_Negative -> Pass
@@ -235,18 +297,8 @@ let run_test tc =
              the empty JSON-LD document [] to the algorithm. *)
           (match tc.kind with
            | K_Negative -> Pass
-           | _ ->
-             let base = compute_base tc html in
-             (match tc.algo with
-              | A_Expand -> run_expand tc base "[]"
-              | A_ToRdf -> run_torqf tc base "[]"
-              | _ -> Skip "unreachable"))
-        | Some json ->
-          let base = compute_base tc html in
-          (match tc.algo with
-           | A_Expand -> run_expand tc base json
-           | A_ToRdf -> run_torqf tc base json
-           | _ -> Skip "unreachable")))
+           | _ -> dispatch tc (compute_base tc html) "[]")
+        | Some json -> dispatch tc (compute_base tc html) json))
 
 (* ---- manifest driver ---- *)
 let manifest_candidates () =

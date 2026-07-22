@@ -1,0 +1,42 @@
+name: JSON-LD 1.1 Framing (Framing Algorithm)
+spec: https://www.w3.org/TR/json-ld11-framing/
+runner: bin/linux-x86_64/jsonld_frame_runner
+runner_args: []
+manifest: third_party/testing/json-ld-framing/tests/frame-manifest.jsonld
+log_path: formal/fstar/ocaml-output/jsonld_frame_results.log
+result_path: docs/test-results/by-suite/jsonld-frame.json
+domain: RDF
+foundational: false
+
+# The 7th JSON-LD 1.1 algorithm. Its tests live in the SEPARATE
+# w3c/json-ld-framing repo (NOT the json-ld-api submodule the other
+# JSON-LD suites draw from), which is why it was un-vendored and unrun
+# for so long. Now vendored as plain files under
+# third_party/testing/json-ld-framing/ (92 tests: 89 positive, 3
+# negative).
+#
+# Algorithm: formal/fstar/JSONLD.Frame.fst (F*, verified + extracted) —
+# a FIRST CUT composing the existing pieces: expand input + frame ->
+# flatten input to a node map (JSONLD.Flatten) -> frame-match/embed
+# (the new core: @type / @id / property presence matching + recursive
+# embedding of referenced nodes, default @embed=@once via a visited
+# set) -> serialize -> compact against the frame's context.
+#
+# NOT yet implemented (refine-later; residual fails name these):
+# @explicit, @default, @omitDefault, @requireAll variations, @embed
+# variants (@always / @never / @link), @reverse, @included, named
+# graphs, and value-level property matching. Fails are honest (scored,
+# not skipped) per CLAUDE.md anti-pattern #3/#25.
+
+triggers:
+  paths:
+    - formal/fstar/JSONLD.Frame.fst
+    - formal/fstar/JSONLD.Expand.fst
+    - formal/fstar/JSONLD.Flatten.fst
+    - formal/fstar/JSONLD.Compact.fst
+    - formal/fstar/Parser.JSONLD.fst
+    - formal/fstar/Parser.JSON.fst
+    - bin/jsonld-frame-runner/**
+    - third_party/testing/json-ld-framing/**
+
+  excludes: []
