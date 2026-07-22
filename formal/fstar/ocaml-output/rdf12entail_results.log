@@ -13,38 +13,38 @@
   [13/47] rdf-semantics/https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#literal-type skip
   [14/47] rdf-semantics/malformed-literal-control skip
   [15/47] rdf-semantics/malformed-literal skip
-  [16/47] rdf-semantics/malformed-literal-accepted skip
-  [17/47] rdf-semantics/malformed-literal-no-spurious skip
-  [18/47] rdf-semantics/malformed-literal-bnode-neg skip
-  [19/47] rdf-semantics/opaque-literal-control skip
-  [20/47] rdf-semantics/opaque-literal FAIL
+  [16/47] rdf-semantics/malformed-literal-accepted ok
+  [17/47] rdf-semantics/malformed-literal-no-spurious ok
+  [18/47] rdf-semantics/malformed-literal-bnode-neg FAIL
+  [19/47] rdf-semantics/opaque-literal-control ok
+  [20/47] rdf-semantics/opaque-literal ok
   [21/47] rdf-semantics/opaque-language-string-control ok
   [22/47] rdf-semantics/opaque-language-string ok
   [23/47] rdf-semantics/opaque-dir-language-string-control ok
   [24/47] rdf-semantics/opaque-dir-language-string FAIL
-  [25/47] rdf-semantics/opaque-iri-control skip
-  [26/47] rdf-semantics/opaque-iri skip
+  [25/47] rdf-semantics/opaque-iri-control ok
+  [26/47] rdf-semantics/opaque-iri ok
   [27/47] rdf-semantics/triple-term-not-asserted ok
   [28/47] rdf-semantics/annotated-asserted ok
   [29/47] rdf-semantics/annotation FAIL
   [30/47] rdf-semantics/annotation-unfolded FAIL
-  [31/47] rdf-semantics/json-array-unordered skip
-  [32/47] rdf-semantics/json-object-unordered skip
-  [33/47] rdf-semantics/json-zero skip
-  [34/47] rdf-semantics/json-zero-array skip
-  [35/47] rdf-semantics/json-round-different skip
-  [36/47] rdf-semantics/json-round-same skip
-  [37/47] rdf-semantics/json-infinity skip
-  [38/47] rdf-semantics/float-zero skip
-  [39/47] rdf-semantics/float-round-different skip
-  [40/47] rdf-semantics/float-round-same skip
-  [41/47] rdf-semantics/float-infinity skip
-  [42/47] rdf-semantics/double-zero skip
-  [43/47] rdf-semantics/double-round-different skip
-  [44/47] rdf-semantics/double-round-same skip
-  [45/47] rdf-semantics/double-infinity skip
-  [46/47] rdf-semantics/triple-terms-propositions skip
-  [47/47] rdf-semantics/reifies-range skip
+  [31/47] rdf-semantics/json-array-unordered unsup
+  [32/47] rdf-semantics/json-object-unordered unsup
+  [33/47] rdf-semantics/json-zero unsup
+  [34/47] rdf-semantics/json-zero-array unsup
+  [35/47] rdf-semantics/json-round-different unsup
+  [36/47] rdf-semantics/json-round-same unsup
+  [37/47] rdf-semantics/json-infinity unsup
+  [38/47] rdf-semantics/float-zero unsup
+  [39/47] rdf-semantics/float-round-different unsup
+  [40/47] rdf-semantics/float-round-same unsup
+  [41/47] rdf-semantics/float-infinity unsup
+  [42/47] rdf-semantics/double-zero unsup
+  [43/47] rdf-semantics/double-round-different unsup
+  [44/47] rdf-semantics/double-round-same unsup
+  [45/47] rdf-semantics/double-infinity unsup
+  [46/47] rdf-semantics/triple-terms-propositions FAIL
+  [47/47] rdf-semantics/reifies-range ok
 === W3C RDF 1.2 Semantics (simple entailment) Test Runner ===
 Test base: third_party/testing/w3c/rdf/rdf12
 
@@ -62,45 +62,45 @@ Test base: third_party/testing/w3c/rdf/rdf12
   PASS: constrained-bnodes-in-triple-term-object
   PASS: constrained-bnodes-in-triple-term-fail
   PASS: constrained-bnodes-on-literal
-  skip: malformed-literal-control — entailment regime 'RDF' not yet supported (simple only)
-  skip: malformed-literal — entailment regime 'RDF' not yet supported (simple only)
-  skip: malformed-literal-accepted — entailment regime 'RDF' not yet supported (simple only)
-  skip: malformed-literal-no-spurious — entailment regime 'RDF' not yet supported (simple only)
-  skip: malformed-literal-bnode-neg — entailment regime 'RDF' not yet supported (simple only)
-  skip: opaque-literal-control — entailment regime 'RDF' not yet supported (simple only)
-  FAIL: opaque-literal — Should entail but doesn't (action 1, result 1 triples)
+  skip: malformed-literal-control — No result file (mf:result false — inconsistency test)
+  skip: malformed-literal — No result file (mf:result false — inconsistency test)
+  PASS: malformed-literal-accepted
+  PASS: malformed-literal-no-spurious
+  FAIL: malformed-literal-bnode-neg — Should NOT entail but does
+  PASS: opaque-literal-control
+  PASS: opaque-literal
   PASS: opaque-language-string-control
   PASS: opaque-language-string
   PASS: opaque-dir-language-string-control
   FAIL: opaque-dir-language-string — Should NOT entail but does
-  skip: opaque-iri-control — entailment regime 'RDFS-Plus' not yet supported (simple only)
-  skip: opaque-iri — entailment regime 'RDFS-Plus' not yet supported (simple only)
+  PASS: opaque-iri-control
+  PASS: opaque-iri
   PASS: triple-term-not-asserted
   PASS: annotated-asserted
   FAIL: annotation — Should entail but doesn't (action 3, result 1 triples)
   FAIL: annotation-unfolded — Should entail but doesn't (action 2, result 3 triples)
-  skip: json-array-unordered — entailment regime 'RDF' not yet supported (simple only)
-  skip: json-object-unordered — entailment regime 'RDF' not yet supported (simple only)
-  skip: json-zero — entailment regime 'RDF' not yet supported (simple only)
-  skip: json-zero-array — entailment regime 'RDF' not yet supported (simple only)
-  skip: json-round-different — entailment regime 'RDF' not yet supported (simple only)
-  skip: json-round-same — entailment regime 'RDF' not yet supported (simple only)
-  skip: json-infinity — entailment regime 'RDF' not yet supported (simple only)
-  skip: float-zero — entailment regime 'RDF' not yet supported (simple only)
-  skip: float-round-different — entailment regime 'RDF' not yet supported (simple only)
-  skip: float-round-same — entailment regime 'RDF' not yet supported (simple only)
-  skip: float-infinity — entailment regime 'RDF' not yet supported (simple only)
-  skip: double-zero — entailment regime 'RDF' not yet supported (simple only)
-  skip: double-round-different — entailment regime 'RDF' not yet supported (simple only)
-  skip: double-round-same — entailment regime 'RDF' not yet supported (simple only)
-  skip: double-infinity — entailment regime 'RDF' not yet supported (simple only)
-  skip: triple-terms-propositions — entailment regime 'RDFS' not yet supported (simple only)
-  skip: reifies-range — entailment regime 'RDFS' not yet supported (simple only)
+  unsup: json-array-unordered — float/double/JSON value D-entailment not yet modelled
+  unsup: json-object-unordered — float/double/JSON value D-entailment not yet modelled
+  unsup: json-zero — float/double/JSON value D-entailment not yet modelled
+  unsup: json-zero-array — float/double/JSON value D-entailment not yet modelled
+  unsup: json-round-different — float/double/JSON value D-entailment not yet modelled
+  unsup: json-round-same — float/double/JSON value D-entailment not yet modelled
+  unsup: json-infinity — float/double/JSON value D-entailment not yet modelled
+  unsup: float-zero — float/double/JSON value D-entailment not yet modelled
+  unsup: float-round-different — float/double/JSON value D-entailment not yet modelled
+  unsup: float-round-same — float/double/JSON value D-entailment not yet modelled
+  unsup: float-infinity — float/double/JSON value D-entailment not yet modelled
+  unsup: double-zero — float/double/JSON value D-entailment not yet modelled
+  unsup: double-round-different — float/double/JSON value D-entailment not yet modelled
+  unsup: double-round-same — float/double/JSON value D-entailment not yet modelled
+  unsup: double-infinity — float/double/JSON value D-entailment not yet modelled
+  FAIL: triple-terms-propositions — Should entail but doesn't (action 1, result 2 triples)
+  PASS: reifies-range
   [suite time: 0.0s]
 
 ========================================
 Suite Results:
-  rdf-semantics                       pass:17 fail:4 skip:26 unsupported:0
+  rdf-semantics                       pass:24 fail:5 skip:3 unsupported:15
 ========================================
-TOTAL: 17 pass, 4 fail, 26 skip, 0 unsupported
+TOTAL: 24 pass, 5 fail, 3 skip, 15 unsupported
 ========================================

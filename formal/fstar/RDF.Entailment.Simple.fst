@@ -59,7 +59,16 @@ let match_subj (b : binding) (ps : subject) (gs : subject) : option binding =
 // through subject then object. `decreases pat`: the only recursive call
 // is on `po`, a strict sub-term of `T_TripleTerm ps pp po` (the subject
 // side goes through the non-recursive `match_subj`).
-let rec match_term (b : binding) (pat : rdf_term) (g : rdf_term)
+// The engine is parameterized by a literal-equality predicate `leq`
+// (`literal -> literal -> bool`). Simple entailment passes structural
+// `literal_eq`; the RDF/RDFS (D-)entailment layer in RDF.Entailment.Regime
+// passes a value-aware predicate for recognized datatypes. `leq` is a
+// plain value argument — it is threaded through the matchers untouched and
+// does NOT participate in the termination measures, so the Phase A proof
+// is unchanged. Bnode-bound consistency still uses structural
+// `rdf_term_eq` (a bnode re-seen must denote the same ground term).
+let rec match_term (leq : literal -> literal -> bool)
+                   (b : binding) (pat : rdf_term) (g : rdf_term)
   : Tot (option binding) (decreases pat) =
   match pat with
   | T_BNode lbl ->
@@ -69,23 +78,24 @@ let rec match_term (b : binding) (pat : rdf_term) (g : rdf_term)
   | T_IRI i ->
     (match g with T_IRI j -> if i = j then Some b else None | _ -> None)
   | T_Literal l ->
-    (match g with T_Literal m -> if literal_eq l m then Some b else None | _ -> None)
+    (match g with T_Literal m -> if leq l m then Some b else None | _ -> None)
   | T_TripleTerm ps pp po ->
     (match g with
      | T_TripleTerm gs gp go ->
        if pp = gp then
          (match match_subj b ps gs with
-          | Some b1 -> match_term b1 po go
+          | Some b1 -> match_term leq b1 po go
           | None    -> None)
        else None
      | _ -> None)
 
 // Match a whole B-triple against a candidate A-triple, threading the
 // binding: predicate exact, then subject, then object.
-let match_triple (b : binding) (tb : triple) (ta : triple) : option binding =
+let match_triple (leq : literal -> literal -> bool)
+                 (b : binding) (tb : triple) (ta : triple) : option binding =
   if tb.p = ta.p then
     (match match_subj b tb.s ta.s with
-     | Some b1 -> match_term b1 tb.o ta.o
+     | Some b1 -> match_term leq b1 tb.o ta.o
      | None    -> None)
   else None
 
@@ -97,12 +107,14 @@ let match_triple (b : binding) (tb : triple) (ta : triple) : option binding =
 //                                                 vs try_match's `1+len a`.
 //   try_alts(ta::more)   -> try_match(rest)    : B-level strictly shrinks.
 //   try_alts(ta::more)   -> try_alts(more)     : same B-level, cand shrinks.
-let rec try_match (bs : list triple) (b : binding) (a : list triple)
+let rec try_match (leq : literal -> literal -> bool)
+                  (bs : list triple) (b : binding) (a : list triple)
   : Tot bool (decreases %[length bs; 1 + length a]) =
   match bs with
   | [] -> true
-  | tb :: rest -> try_alts bs tb rest b a a
-and try_alts (bs : list triple) (tb : triple)
+  | tb :: rest -> try_alts leq bs tb rest b a a
+and try_alts (leq : literal -> literal -> bool)
+             (bs : list triple) (tb : triple)
              (rest : list triple { length rest < length bs }) (b : binding)
              (a : list triple) (cand : list triple)
   : Tot bool (decreases %[length bs; length cand]) =
@@ -114,10 +126,14 @@ and try_alts (bs : list triple) (tb : triple)
   match cand with
   | [] -> false
   | ta :: more ->
-    (match match_triple b tb ta with
-     | Some b1 -> if try_match rest b1 a then true else try_alts bs tb rest b a more
-     | None    -> try_alts bs tb rest b a more)
+    (match match_triple leq b tb ta with
+     | Some b1 -> if try_match leq rest b1 a then true else try_alts leq bs tb rest b a more
+     | None    -> try_alts leq bs tb rest b a more)
 
-// Graph `a` simply-entails graph `b`.
+// Graph `a` entails graph `b` under literal-equality `leq`.
+let entails_with (leq : literal -> literal -> bool) (a b : list triple) : bool =
+  try_match leq b [] a
+
+// Graph `a` simply-entails graph `b` (structural literal equality).
 let simple_entails (a b : list triple) : bool =
-  try_match b [] a
+  entails_with literal_eq a b

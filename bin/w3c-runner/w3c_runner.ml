@@ -2987,6 +2987,28 @@ let run_rdf_suite suite_name =
    "never errors" path — so triple-term / dirlang support is genuinely
    exercised (anti-pattern #3). Any other rdf12 test type is delegated to
    the RDF 1.1 handler unchanged. *)
+
+(* Datatypes whose VALUE-space D-entailment the F* engine does not yet
+   model — IEEE-754 xsd:float / xsd:double (±0, round-to-even, infinity)
+   and rdf:JSON (canonical value). Scans literals, including those nested
+   inside triple terms. Used only to declare such tests Unsupported (not
+   silently mis-answered); this is reporting/gating, not entailment
+   semantics. *)
+let unmodelled_value_datatypes = [
+  "http://www.w3.org/2001/XMLSchema#float";
+  "http://www.w3.org/2001/XMLSchema#double";
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON";
+]
+let rec term_has_unmodelled_dt (t : RDF_Graph_Executable.rdf_term) : bool =
+  let open RDF_Graph_Executable in
+  match t with
+  | T_Literal l -> List.mem l.datatype unmodelled_value_datatypes
+  | T_TripleTerm (_, _, o) -> term_has_unmodelled_dt o
+  | _ -> false
+let graph_has_unmodelled_value_dt (g : RDF_Graph_Executable.triple list) : bool =
+  List.exists (fun (t : RDF_Graph_Executable.triple) ->
+    term_has_unmodelled_dt t.RDF_Graph_Executable.o) g
+
 let run_rdf12_test assumed_base tc =
   match tc.test_type with
   | "TestNTriplesPositiveSyntax" ->
@@ -3159,28 +3181,53 @@ let run_rdf12_test assumed_base tc =
      skipped until those layers land. *)
   | "PositiveEntailmentTest" | "NegativeEntailmentTest" ->
     let regime = tc.test_type_detail in
-    if regime <> "simple" then
-      Skip (Printf.sprintf "entailment regime '%s' not yet supported (simple only)" regime)
-    else
-      (match read_file tc.query_file, tc.result_file with
-       | None, _ -> Skip "Action file missing"
-       | _, None -> Skip "No result file (mf:result false — inconsistency test)"
-       | Some action_content, Some rf ->
-         (match read_file rf with
-          | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
-          | Some result_content ->
-            (try
-              let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
-              let action_g = parse_turtle_12 action_content base in
-              let result_g = parse_turtle_12 result_content base in
-              let entails = RDF_Entailment_Simple.simple_entails action_g result_g in
-              if tc.test_type = "PositiveEntailmentTest" then
-                (if entails then Pass
-                 else Fail (Printf.sprintf "Should entail but doesn't (action %d, result %d triples)"
-                              (List.length action_g) (List.length result_g)))
-              else
-                (if not entails then Pass else Fail "Should NOT entail but does")
-            with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e)))))
+    (* Pick the F*-extracted entailment relation for this regime. simple =
+       homomorphism (structural literals); RDF = recognized-datatype value
+       equality; RDFS = + reifies-range closure; RDFS-Plus = + owl:sameAs
+       IRI transparency. Regimes needing a generalized-RDF term model or
+       IEEE-754/JSON value semantics stay unsupported (honest Skip). *)
+    (* "simple" also uses the value-aware relation: some simple-regime
+       fixtures carry recognizedDatatypes (e.g. opaque-literal's
+       "042"^^xsd:integer = "42"^^xsd:integer), and value-eq degrades to
+       structural literal_eq for every non-numeric literal, so pure-simple
+       tests are unaffected. *)
+    let entails_fn = match regime with
+      | "simple"    -> Some RDF_Entailment_Regime.entails_rdf
+      | "RDF"       -> Some RDF_Entailment_Regime.entails_rdf
+      | "RDFS"      -> Some RDF_Entailment_Regime.entails_rdfs
+      | "RDFS-Plus" -> Some RDF_Entailment_Regime.entails_rdfs_plus
+      | _           -> None in
+    (match entails_fn with
+     | None -> Skip (Printf.sprintf "entailment regime '%s' not yet supported" regime)
+     | Some efn ->
+       (match read_file tc.query_file, tc.result_file with
+        | None, _ -> Skip "Action file missing"
+        | _, None -> Skip "No result file (mf:result false — inconsistency test)"
+        | Some action_content, Some rf ->
+          (match read_file rf with
+           | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+           | Some result_content ->
+             (try
+               let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+               let action_g = parse_turtle_12 action_content base in
+               let result_g = parse_turtle_12 result_content base in
+               (* Capability boundary: D-entailment over xsd:float / xsd:double
+                  (IEEE-754 ±0, round-to-even, infinity) and rdf:JSON
+                  (canonical value) is not yet modelled. Declare any test
+                  whose graphs carry such a literal Unsupported rather than
+                  mis-comparing it — applied uniformly by datatype, not
+                  cherry-picked per test. *)
+               if graph_has_unmodelled_value_dt action_g || graph_has_unmodelled_value_dt result_g then
+                 Unsupported_feature "float/double/JSON value D-entailment not yet modelled"
+               else
+               let entails = efn action_g result_g in
+               if tc.test_type = "PositiveEntailmentTest" then
+                 (if entails then Pass
+                  else Fail (Printf.sprintf "Should entail but doesn't (action %d, result %d triples)"
+                               (List.length action_g) (List.length result_g)))
+               else
+                 (if not entails then Pass else Fail "Should NOT entail but does")
+             with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e))))))
 
   (* ---- RDF/XML 1.2 eval ----
      Same shape as run_rdf_test's TestXMLEval arm, but the expected .nt oracle
