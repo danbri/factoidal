@@ -305,6 +305,56 @@ let rec any_block_nt_recursive (bs : list string) (all_body_pnames : list string
   | [] -> false
   | b :: rest -> block_new_term_recursive b all_body_pnames || any_block_nt_recursive rest all_body_pnames
 
+// Capture chars up to the brace that closes the current group (depth 0);
+// returns (inner, rest-after-close).
+let rec capture_braces (cs : list char) (depth : int) (acc : list char) (fuel : nat)
+  : Tot (string & list char) (decreases fuel)
+  =
+  if fuel = 0 then (Str.string_of_list (List.Tot.rev acc), cs) else
+  match cs with
+  | [] -> (Str.string_of_list (List.Tot.rev acc), [])
+  | '}' :: rest -> if depth = 0 then (Str.string_of_list (List.Tot.rev acc), rest)
+                   else capture_braces rest (depth - 1) ('}' :: acc) (fuel - 1)
+  | '{' :: rest -> capture_braces rest (depth + 1) ('{' :: acc) (fuel - 1)
+  | c :: rest -> capture_braces rest depth (c :: acc) (fuel - 1)
+
+// The brace-group content of every `NOT { ... }` occurring in a body.
+let rec extract_not_contents (cs : list char) (fuel : nat) : Tot (list string) (decreases fuel) =
+  if fuel = 0 then [] else
+  match cs with
+  | [] -> []
+  | _ :: rest ->
+    if chars_prefix_match ['N'; 'O'; 'T'] cs
+    then (match drop_ws (chars_drop 3 cs) with
+          | '{' :: inner -> let (content, after) = capture_braces inner 0 [] fuel in
+                            content :: extract_not_contents after (fuel - 1)
+          | _ -> extract_not_contents rest (fuel - 1))
+    else extract_not_contents rest (fuel - 1)
+
+// Quoted-string literals in `s` (the `"..."` runs), with their quotes.
+let rec collect_literals (cs : list char) (fuel : nat) : Tot (list string) (decreases fuel) =
+  if fuel = 0 then [] else
+  match cs with
+  | [] -> []
+  | '"' :: rest ->
+    let run = take_while (fun c -> not (c = '"')) rest in
+    Str.concat "" ["\""; Str.string_of_list run; "\""]
+      :: collect_literals (chars_drop 1 (drop_while (fun c -> not (c = '"')) rest)) (fuel - 1)
+  | _ :: rest -> collect_literals rest (fuel - 1)
+
+let sig_tokens (s : string) : list string =
+  collect_pnames (Str.list_of_string s) (Str.length s + 1)
+  @ collect_literals (Str.list_of_string s) (Str.length s + 1)
+
+let rec all_contained (toks : list string) (hay : string) : Tot bool (decreases toks) =
+  match toks with [] -> true | t :: r -> str_contains hay t && all_contained r hay
+
+// A NOT block negates DERIVED data iff some rule head contains all of
+// its significant (predicate/literal) tokens — the negation-cycle signal.
+let neg_matches_head (not_content : string) (heads : list string) : bool =
+  let toks = sig_tokens not_content in
+  Cons? toks && List.Tot.existsb (fun h -> all_contained toks h) heads
+
 let srl_stratifiable (srl : string) : bool =
   match scan_blocks (Str.list_of_string srl) 0 true [] [] (Str.length srl + 2) with
   | [] -> true
@@ -313,7 +363,15 @@ let srl_stratifiable (srl : string) : bool =
       List.Tot.concatMap
         (fun b -> let bd = rule_body b in collect_pnames (Str.list_of_string bd) (Str.length bd + 1))
         blocks in
-    not (any_block_nt_recursive blocks all_body_pnames)
+    let heads = List.Tot.concatMap (fun b -> match line_kind b with Some true -> [rule_head b] | _ -> []) blocks in
+    let not_blocks =
+      List.Tot.concatMap
+        (fun b -> match line_kind b with
+                  | Some true -> extract_not_contents (Str.list_of_string (rule_body b)) (Str.length b + 1)
+                  | _ -> [])
+        blocks in
+    not (any_block_nt_recursive blocks all_body_pnames
+         || List.Tot.existsb (fun nb -> neg_matches_head nb heads) not_blocks)
 
 // --- fixpoint evaluation ---------------------------------------------
 
