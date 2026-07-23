@@ -3177,6 +3177,14 @@ let rec prebinding_unsupported (p : SPARQL11_Algebra.group_graph_pattern) :
   | uu___ -> FStar_Pervasives_Native.None
 let shacl_internal_shapes_graph_iri : RDF_Term.wf_iri=
   "http://factoidal.example/shacl-internal#shapesGraph"
+let sparql_constraint_severity (shapes_raw : RDF_Graph.rdf_graph)
+  (cref : shape_ref) (dsev : severity) : severity=
+  match RDF_Graph.term_to_subject (shape_ref_to_term cref) with
+  | FStar_Pervasives_Native.Some cs ->
+      (match RDF_Graph_Executable.find_objects shapes_raw cs sh_severity with
+       | (RDF_Term.T_IRI i)::uu___ -> severity_of_iri i
+       | uu___ -> dsev)
+  | FStar_Pervasives_Native.None -> dsev
 let sparql_violations_for_focus (data : RDF_Graph.rdf_graph)
   (shapes_raw : RDF_Graph.rdf_graph) (focus : RDF_Term.rdf_term) (s : shape)
   (cref : shape_ref) (query_text : Prims.string)
@@ -3225,6 +3233,7 @@ let sparql_violations_for_focus (data : RDF_Graph.rdf_graph)
                   }]
              } in
            let rows = SPARQL11_Algebra.eval_select_query q' data ds in
+           let csev = sparql_constraint_severity shapes_raw cref s.shape_sev in
            let mk_violation mu =
              let value =
                match SPARQL11_Algebra.sm_lookup "value" mu with
@@ -3249,7 +3258,7 @@ let sparql_violations_for_focus (data : RDF_Graph.rdf_graph)
                v_value = (FStar_Pervasives_Native.Some value);
                v_source_shape = (s.shape_id);
                v_constraint = (CC_Sparql (cref, query_text, cmsg));
-               v_severity = (s.shape_sev);
+               v_severity = csev;
                v_message = row_msg;
                v_source_constraint =
                  (FStar_Pervasives_Native.Some (shape_ref_to_term cref));

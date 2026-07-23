@@ -2905,6 +2905,13 @@ let shacl_internal_shapes_graph_iri : wf_iri =
   assert_norm (is_iri "http://factoidal.example/shacl-internal#shapesGraph");
   "http://factoidal.example/shacl-internal#shapesGraph"
 
+// sh:severity of a sh:sparql CONSTRAINT node (read from the raw shapes
+// graph), else the owning shape's severity. Factored to its own VC.
+let sparql_constraint_severity (shapes_raw : rdf_graph) (cref : shape_ref) (dsev : severity) : severity =
+  match term_to_subject (shape_ref_to_term cref) with
+  | Some cs -> (match find_objects shapes_raw cs sh_severity with (T_IRI i) :: _ -> severity_of_iri i | _ -> dsev)
+  | None -> dsev
+
 let sparql_violations_for_focus
   (data : rdf_graph) (shapes_raw : rdf_graph) (focus : rdf_term) (s : shape)
   (cref : shape_ref) (query_text : string) (cmsg : option wf_literal)
@@ -2940,6 +2947,10 @@ let sparql_violations_for_focus
     let ds = { ds_default = data;
                ds_named = [{ ng_name = shacl_internal_shapes_graph_iri; ng_graph = shapes_raw }] } in
     let rows = Alg.eval_select_query q' data ds in
+    // The sh:severity may be declared on the sh:sparql CONSTRAINT node
+    // (cref), not on the owning shape — read it from the raw shapes graph
+    // (sparql-001), falling back to the shape's own severity.
+    let csev = sparql_constraint_severity shapes_raw cref s.shape_sev in
     let mk_violation (mu : solution_mapping) : violation =
       let value = (match Alg.sm_lookup "value" mu with Some v -> v | None -> focus) in
       let path_result =
@@ -2952,7 +2963,7 @@ let sparql_violations_for_focus
          | _ -> (match cmsg with Some _ -> cmsg | None -> s.message)) in
       { v_focus_node = focus; v_path = path_result; v_value = Some value;
         v_source_shape = s.shape_id; v_constraint = CC_Sparql cref query_text cmsg;
-        v_severity = s.shape_sev; v_message = row_msg;
+        v_severity = csev; v_message = row_msg;
         v_source_constraint = Some (shape_ref_to_term cref); v_detail = [] }
     in
     (List.Tot.map mk_violation rows, None))

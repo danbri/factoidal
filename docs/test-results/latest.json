@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-07-23 06:31 UTC",
-  "commit": "e97b0b18f4e573a669cd4be46db4568e3a3bca76",
+  "timestamp": "2026-07-23 07:03 UTC",
+  "commit": "c54095804658c113608189e9b571aaf5cf158a57",
   "branch": "claude/main",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
@@ -20,7 +20,7 @@
     "shacl_sparql": {"pass":22,"fail":0,"skip":0,"total":22,"present":true,"spec":"https://www.w3.org/TR/shacl/#sparql-constraints"},
     "shacl12_core":   {"pass":136,"fail":2,"skip":0,"total":138,"present":true,"spec":"https://www.w3.org/TR/shacl12-core/"},
     "shacl12_node_expr": {"pass":1,"fail":1,"skip":0,"total":2,"present":true,"spec":"https://www.w3.org/TR/shacl12-core/#node-expressions"},
-    "shacl12_sparql": {"pass":19,"fail":6,"skip":0,"total":25,"present":true,"spec":"https://www.w3.org/TR/shacl12-sparql/"},
+    "shacl12_sparql": {"pass":20,"fail":5,"skip":0,"total":25,"present":true,"spec":"https://www.w3.org/TR/shacl12-sparql/"},
     "shex":         {"pass":1181,"fail":0,"skip":1,"total":1182,"present":true,"spec":"https://shex.io/shex-semantics/"},
     "shex_negative_syntax": {"pass":100,"fail":0,"skip":0,"total":100,"present":true,"spec":"https://shex.io/shex-semantics/#shexc"},
     "jsonld_tordf": {"pass":467,"fail":0,"skip":0,"total":467,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#deserialize-json-ld-to-rdf-algorithm"},
@@ -109,7 +109,7 @@
     "shacl_sparql": {"name":"shacl_sparql","pass":22,"fail":0,"skip":0,"total":22},
     "shacl12_core": {"name":"shacl12_core","pass":136,"fail":2,"skip":0,"total":138},
     "shacl12_node_expr": {"name":"shacl12_node_expr","pass":1,"fail":1,"skip":0,"total":2},
-    "shacl12_sparql": {"name":"shacl12_sparql","pass":19,"fail":6,"skip":0,"total":25},
+    "shacl12_sparql": {"name":"shacl12_sparql","pass":20,"fail":5,"skip":0,"total":25},
     "shex": {"name":"shex","pass":1181,"fail":0,"skip":1,"total":1182},
     "shex_negative_syntax": {"name":"shex_negative_syntax","pass":100,"fail":0,"skip":0,"total":100},
     "jsonld_tordf": {"name":"jsonld_tordf","pass":467,"fail":0,"skip":0,"total":467},
