@@ -234,7 +234,7 @@ let term_cmp (a b : rdf_term) : int =
 
 // --- the evaluator ---------------------------------------------------
 
-#push-options "--z3rlimit 150"
+#push-options "--z3rlimit 300"
 let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string & rdf_term))
                 (expr : rdf_term) (fuel : nat)
   : Tot (list rdf_term) (decreases %[fuel; 0; 0])
@@ -245,10 +245,14 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
   // A literal (or triple term) is a constant expression -> itself.
   | None -> [expr]
   | Some es ->
+    // A shnex:focusNode on THIS node overrides the start node(s) for its
+    // pathValues (constant, or a nested expression evaluated against the
+    // ambient focus); absent it, the ambient focus is the start.
+    let start_nodes : list rdf_term =
+      (match find_objects g es shnex_focusNode with
+       | (fe :: _) -> eval_ne g focus scope fe fuel'
+       | [] -> (match focus with Some f -> [f] | None -> [])) in
     let base : list rdf_term =
-      if Cons? (find_objects g es shnex_focusNode)
-      then (match focus with Some f -> [f] | None -> [])
-      else
       match find_objects g es shnex_var with
       | (T_Literal l) :: _ ->
         if l.lexical_form = "focusNode"
@@ -257,7 +261,7 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
               | Some (_, t) -> [t] | None -> [])
       | _ ->
       (match find_objects g es shnex_pathValues with
-       | (p :: _) -> (match focus with Some f -> eval_path g f (parse_path g p fuel') | None -> [])
+       | (p :: _) -> List.Tot.concatMap (fun st -> eval_path g st (parse_path g p fuel')) start_nodes
        | [] ->
       (match find_objects g es shnex_nodes with
        // shnex:nodes takes ONE node expression (often a bare rdf:List,
