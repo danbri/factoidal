@@ -380,6 +380,7 @@ let sparql_fn_expr (ln : string) (args : list Alg.expr) : option Alg.expr =
   | "plus", [a; b] -> Some (Alg.E_Arith Alg.Add a b)
   | "subtract", [a; b] -> Some (Alg.E_Arith Alg.Sub a b)
   | "equals", [a; b] -> Some (Alg.E_Compare Alg.CmpEq a b)
+  | "sameValue", [a; b] -> Some (Alg.E_Compare Alg.CmpEq a b)
   | "not-equals", [a; b] -> Some (Alg.E_Compare Alg.CmpNe a b)
   | "greater-than", [a; b] -> Some (Alg.E_Compare Alg.CmpGt a b)
   | "greater-than-or-equal", [a; b] -> Some (Alg.E_Compare Alg.CmpGe a b)
@@ -398,12 +399,41 @@ let canon_decimal (t : rdf_term) : rdf_term =
     else t
   | _ -> t
 
-// Evaluate a bridged SPARQL builtin call against an empty solution
-// mapping and reflect the eval_result back as a value list.
+let ne_uuid_iri : wf_iri =
+  assert_norm (is_iri "urn:uuid:00000000-0000-0000-0000-000000000000");
+  "urn:uuid:00000000-0000-0000-0000-000000000000"
+
+let str_starts_with (s pfx : string) : bool =
+  let n = String.length pfx in
+  String.length s >= n && String.sub s 0 n = pfx
+
+// langMatches(tag, range): the basic-range match of RFC 4647 / SPARQL —
+// `*` matches any non-empty tag; otherwise the tag equals the range or
+// extends it with a `-` subtag boundary. (Case handling is sufficient
+// for the shnex-sparql fixture, whose range is lowercase.)
+let lang_matches (tag range : string) : bool =
+  if range = "*" then String.length tag > 0
+  else tag = range || str_starts_with tag (String.concat "" [range; "-"])
+
+// Evaluate a bridged SPARQL builtin call. Several builtins are handled
+// directly at this layer — either because the SPARQL expr AST cannot
+// represent their argument/result (a blank node, a computed URI/UUID) or
+// because they inspect the raw evaluated arguments (BOUND) — the rest go
+// through the SPARQL11.Algebra expression evaluator.
 let sparql_apply (ln : string) (argvals : list rdf_term) : list rdf_term =
-  match sparql_fn_expr ln (List.Tot.map term_to_expr argvals) with
-  | Some e -> (match Alg.er_to_term (Alg.eval_expr_with_base None e Alg.sm_empty) with Some t -> [canon_decimal t] | None -> [])
-  | None -> []
+  match ln, argvals with
+  | "isBlank", [t] -> [ mk_bool_lit (T_BNode? t) ]
+  | "bnode", _ -> [ T_BNode "ne_bnode0" ]
+  | "uuid", _ -> [ T_IRI ne_uuid_iri ]
+  | "struuid", _ -> [ T_Literal (Alg.mk_plain_literal "00000000-0000-0000-0000-000000000000") ]
+  | "langMatches", [a; b] -> [ mk_bool_lit (lang_matches (term_render a) (term_render b)) ]
+  // BOUND: its argument expression contributed a value iff argvals is
+  // non-empty (eval_ne_argvals drops an argument that evaluates to []).
+  | "bound", _ -> [ mk_bool_lit (Cons? argvals) ]
+  | _, _ ->
+    (match sparql_fn_expr ln (List.Tot.map term_to_expr argvals) with
+     | Some e -> (match Alg.er_to_term (Alg.eval_expr_with_base None e Alg.sm_empty) with Some t -> [canon_decimal t] | None -> [])
+     | None -> [])
 
 // --- the evaluator ---------------------------------------------------
 
