@@ -217,6 +217,34 @@ let rec split_at_needle (cs : list char) (needle : list char) (acc : list char) 
 let rec all_mem (xs : list string) (ys : list string) : Tot bool (decreases xs) =
   match xs with [] -> true | x :: r -> List.Tot.mem x ys && all_mem r ys
 
+// Capture chars up to the paren that closes the current group (depth 0);
+// returns (inner, rest-after-close).
+let rec capture_parens (cs : list char) (depth : int) (acc : list char) (fuel : nat)
+  : Tot (string & list char) (decreases fuel)
+  =
+  if fuel = 0 then (Str.string_of_list (List.Tot.rev acc), cs) else
+  match cs with
+  | [] -> (Str.string_of_list (List.Tot.rev acc), [])
+  | ')' :: rest -> if depth = 0 then (Str.string_of_list (List.Tot.rev acc), rest)
+                   else capture_parens rest (depth - 1) (')' :: acc) (fuel - 1)
+  | '(' :: rest -> capture_parens rest (depth + 1) ('(' :: acc) (fuel - 1)
+  | c :: rest -> capture_parens rest depth (c :: acc) (fuel - 1)
+
+// Datalog range-restriction on a FILTER: every variable in the first
+// FILTER's expression must already be bound by a pattern BEFORE it
+// (SPARQL scopes FILTER over the whole group, but SHACL rules require
+// the safe left-to-right ordering — see rules/wellformed bad-02).
+let filter_safe (body : string) : bool =
+  match split_at_needle (Str.list_of_string body) ['F'; 'I'; 'L'; 'T'; 'E'; 'R'] []
+          (Str.length body + 1) with
+  | Some (before, after) ->
+    (match drop_ws (Str.list_of_string after) with
+     | '(' :: inner ->
+       let (expr, _) = capture_parens inner 0 [] (Str.length body + 1) in
+       all_mem (vars_in expr) (vars_in before)
+     | _ -> true)
+  | None -> true
+
 // A RULE is well-formed iff every variable used in its HEAD is bound by
 // its body (the range-restriction / safety condition — an unbound head
 // variable cannot be instantiated). DATA blocks and non-rule segments
@@ -228,7 +256,7 @@ let block_well_formed (header : string) (block : string) : bool =
     let hv_ok =
       (match split_at_needle (Str.list_of_string (line_body block)) ['W'; 'H'; 'E'; 'R'; 'E'] []
                (Str.length block + 1) with
-       | Some (head, body) -> all_mem (vars_in head) (vars_in body)
+       | Some (head, body) -> all_mem (vars_in head) (vars_in body) && filter_safe body
        | None -> true) in
     // ...and the rule's SPARQL body must be well-scoped — the 1.2 parser
     // rejects e.g. a BIND that re-binds a variable already in scope.
