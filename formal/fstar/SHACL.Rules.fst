@@ -84,8 +84,21 @@ let line_body (line : string) : string =
   let t = lstrip line in
   if Str.length t >= 4 then Str.sub t 4 (Str.length t - 4) else ""
 
+// A top-level segment boundary: RULE / DATA (directives) or PREFIX /
+// BASE (prologue declarations, which may be interspersed between rules
+// and must all be gathered into the header).
 let is_block_kw (cs : list char) : bool =
   chars_prefix_match ['R'; 'U'; 'L'; 'E'] cs || chars_prefix_match ['D'; 'A'; 'T'; 'A'] cs
+  || chars_prefix_match ['P'; 'R'; 'E'; 'F'; 'I'; 'X'] cs || chars_prefix_match ['B'; 'A'; 'S'; 'E'] cs
+
+let is_prefix_seg (s : string) : bool =
+  let t = lstrip s in starts_with t "PREFIX" || starts_with t "BASE"
+
+// Header for every translated CONSTRUCT: the leading segment plus EVERY
+// PREFIX/BASE segment anywhere in the file (SPARQL requires the prologue
+// up front, but SRL allows prefixes between rules — so we hoist them).
+let compute_header (first : string) (segs : list string) : string =
+  Str.concat "\n" (first :: List.Tot.filter is_prefix_seg segs)
 
 // Split the srl into brace-aware segments: a new segment starts at each
 // top-level (brace-depth 0) RULE/DATA keyword that follows whitespace.
@@ -124,7 +137,7 @@ let rec rule_texts (header : string) (ls : list string) : Tot (list string) (dec
 let translate_srl (srl : string) : list string =
   match scan_blocks (Str.list_of_string srl) 0 true [] [] (Str.length srl + 2) with
   | [] -> []
-  | header :: blocks -> rule_texts header blocks
+  | first :: blocks -> rule_texts (compute_header first blocks) blocks
 
 // --- syntax validation (rules/syntax suite) --------------------------
 
@@ -138,11 +151,11 @@ let block_valid (header : string) (block : string) : bool =
   | Some true ->
     let txt = Str.concat "" [header; "\nCONSTRUCT ";
                              replace_all (line_body block) "NOT {" "FILTER NOT EXISTS {"] in
-    (match Parser11.parse_sparql txt with Parser11.ParseOk _ _ -> true | _ -> false)
+    (match Parser11.parse_sparql_12_with_base None txt with Parser11.ParseOk _ _ -> true | _ -> false)
   | Some false ->
     let body = line_body block in
     if str_has_char '?' body || str_has_char '$' body then false
-    else (match Parser11.parse_sparql (Str.concat "" [header; "\nCONSTRUCT "; body; " WHERE {}"]) with
+    else (match Parser11.parse_sparql_12_with_base None (Str.concat "" [header; "\nCONSTRUCT "; body; " WHERE {}"]) with
           | Parser11.ParseOk _ _ -> true | _ -> false)
   | None -> true
 
@@ -156,7 +169,7 @@ let rec all_blocks_valid (header : string) (bs : list string) : Tot bool (decrea
 let srl_valid_syntax (srl : string) : bool =
   match scan_blocks (Str.list_of_string srl) 0 true [] [] (Str.length srl + 2) with
   | [] -> true
-  | header :: blocks -> all_blocks_valid header blocks
+  | first :: blocks -> all_blocks_valid (compute_header first blocks) blocks
 
 // --- well-formedness (rules/wellformed suite) ------------------------
 
@@ -296,7 +309,7 @@ let srl_stratifiable (srl : string) : bool =
 
 let parse_constructs (srl : string) : list Alg.query =
   List.Tot.concatMap
-    (fun t -> match Parser11.parse_sparql t with
+    (fun t -> match Parser11.parse_sparql_12_with_base None t with
               | Parser11.ParseOk q _ -> [q]
               | _ -> [])
     (translate_srl srl)
