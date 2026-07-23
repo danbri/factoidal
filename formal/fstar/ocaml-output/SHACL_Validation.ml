@@ -127,6 +127,8 @@ let sh_SPARQLConstraintComponent : RDF_Term.wf_iri=
 let sh_sparql : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#sparql"
 let sh_prefixes : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#prefixes"
 let sh_declare : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#declare"
+let sh_ShapesGraph : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#ShapesGraph"
 let sh_decl_prefix : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#prefix"
 let sh_decl_namespace : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#namespace"
@@ -1409,8 +1411,15 @@ let prefix_header_for (g : RDF_Graph.rdf_graph)
   (constraint_subj : RDF_Term.subject) : Prims.string=
   let via_nodes =
     RDF_Graph_Executable.find_objects g constraint_subj sh_prefixes in
+  let prefix_nodes =
+    if Prims.uu___is_Cons via_nodes
+    then via_nodes
+    else
+      FStar_List_Tot_Base.map RDF_Graph.subject_to_term
+        (RDF_Graph_Executable.find_subjects g RDFS_Closure.rdf_type
+           (RDF_Term.T_IRI sh_ShapesGraph)) in
   let all_declares =
-    collect_declares g via_nodes []
+    collect_declares g prefix_nodes []
       ((RDF_Graph.graph_len g) + (Prims.of_int (10))) in
   declares_to_header g all_declares
 let build_sparql_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject)

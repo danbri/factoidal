@@ -290,6 +290,9 @@ let sh_prefixes : wf_iri =
 let sh_declare : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#declare");
   "http://www.w3.org/ns/shacl#declare"
+let sh_ShapesGraph : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#ShapesGraph");
+  "http://www.w3.org/ns/shacl#ShapesGraph"
 let sh_decl_prefix : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#prefix");
   "http://www.w3.org/ns/shacl#prefix"
@@ -1571,7 +1574,13 @@ let rec collect_declares (g : rdf_graph) (frontier : list rdf_term) (visited : l
 
 let prefix_header_for (g : rdf_graph) (constraint_subj : subject) : string =
   let via_nodes = find_objects g constraint_subj sh_prefixes in
-  let all_declares = collect_declares g via_nodes [] (graph_len g + 10) in
+  // SHACL 1.2: with no explicit sh:prefixes on the constraint, default to
+  // the prefixes declared for the shapes graph itself — every sh:ShapesGraph
+  // node's sh:declare (prefixes-002).
+  let prefix_nodes =
+    if Cons? via_nodes then via_nodes
+    else List.Tot.map subject_to_term (find_subjects g rdf_type (T_IRI sh_ShapesGraph)) in
+  let all_declares = collect_declares g prefix_nodes [] (graph_len g + 10) in
   declares_to_header g all_declares
 
 // Factored out for the same reason as `build_qualified_constraints`

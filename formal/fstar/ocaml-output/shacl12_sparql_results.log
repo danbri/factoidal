@@ -2,7 +2,7 @@
   [2/25] Test of sh:propertyValidator with SELECT 001 FAIL
   [3/25] Test of sh:validator 001 ok
   [4/25] Test of sh:prefixes 001 ok
-  [5/25] Test of sh:prefixes 002 without explicit sh:prefixes triple FAIL
+  [5/25] Test of sh:prefixes 002 without explicit sh:prefixes triple ok
   [6/25] Test of sh:sparql at node shape 001 ok
   [7/25] Test of sh:sparql at node shape 002 ok
   [8/25] Test of sh:sparql at node shape 003 ok
@@ -72,21 +72,7 @@ _:c14n2 <http://www.w3.org/ns/shacl#value> "Muenchen" .
 
   PASS: Test of sh:validator 001
   PASS: Test of sh:prefixes 001
-  FAIL: Test of sh:prefixes 002 without explicit sh:prefixes triple (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/sparql/node/prefixes-002.ttl) — report not isomorphic to expected
-    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraint> <http://example.com/ns#TestSPARQL> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SPARQLConstraintComponent> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape> .
-_:c14n0 <http://www.w3.org/ns/shacl#value> <http://test.com/ns#Value> .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
-
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-
+  PASS: Test of sh:prefixes 002 without explicit sh:prefixes triple
   PASS: Test of sh:sparql at node shape 001
   PASS: Test of sh:sparql at node shape 002
   PASS: Test of sh:sparql at node shape 003
@@ -162,6 +148,6 @@ _:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XM
 
 
 ========================================
-TOTAL: 20 pass, 5 fail, 0 skip (out of 25)
+TOTAL: 21 pass, 4 fail, 0 skip (out of 25)
 ========================================
-shacl-sparql: 20 pass, 5 fail, 0 skip (out of 25)
+shacl-sparql: 21 pass, 4 fail, 0 skip (out of 25)
