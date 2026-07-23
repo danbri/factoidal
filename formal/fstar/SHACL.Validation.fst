@@ -75,6 +75,12 @@ let sh_NodeShape : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#NodeShape");
   "http://www.w3.org/ns/shacl#NodeShape"
 
+// SHACL 1.2 sh:ShapeClass: a class that is ALSO a node shape, so its
+// instances are implicit class-target focus nodes (targetClassImplicit-002).
+let sh_ShapeClass : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#ShapeClass");
+  "http://www.w3.org/ns/shacl#ShapeClass"
+
 let sh_PropertyShape : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#PropertyShape");
   "http://www.w3.org/ns/shacl#PropertyShape"
@@ -1589,7 +1595,10 @@ let build_targets (g : rdf_graph) (s : subject) : list target =
            (find_objects g s rdf_type) in
        let is_nodeshape =
          List.Tot.existsb (fun t -> rdf_term_eq t (T_IRI sh_NodeShape)) (find_objects g s rdf_type) in
-       if is_class && is_nodeshape then [T_ImplicitClass i] else []
+       // SHACL 1.2: `a sh:ShapeClass` makes a node both class and shape.
+       let is_shapeclass =
+         List.Tot.existsb (fun t -> rdf_term_eq t (T_IRI sh_ShapeClass)) (find_objects g s rdf_type) in
+       if (is_class && is_nodeshape) || is_shapeclass then [T_ImplicitClass i] else []
      | S_BNode _ -> [])
   in
   // Any IRI-named shape can be data-targeted via `N sh:shape <thisShape>`.
@@ -3297,6 +3306,7 @@ let fill_message_template (tmpl : string) (params : list (string & rdf_term)) (m
 // the component parameters and the row's own bindings
 // (propertyValidator-select-001); otherwise the row falls back to a
 // `?message` SELECT binding, then the owning shape's own sh:message.
+#push-options "--z3rlimit 300"
 let eval_custom_component_select
   (data : rdf_graph) (focus : rdf_term) (s : shape) (cc : constraint_component)
   (query_text : string) (params : list (string & rdf_term)) (msg_tmpl : option string)
@@ -3336,6 +3346,7 @@ let eval_custom_component_select
            v_message = row_msg; v_source_constraint = None; v_detail = [] }
        in
        (List.Tot.map mk_violation rows, None))
+#pop-options
 
 let eval_one_custom_component
   (data : rdf_graph) (focus : rdf_term) (s : shape) (values : list rdf_term) (cc : constraint_component)

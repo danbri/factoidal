@@ -10,6 +10,7 @@ open Prims
      181_shacl_validate_stub.sh
    for the wiring plan. *)
 let sh_NodeShape : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#NodeShape"
+let sh_ShapeClass : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#ShapeClass"
 let sh_PropertyShape : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#PropertyShape"
 let sh_targetClass : RDF_Term.wf_iri=
@@ -1397,7 +1398,13 @@ let build_targets (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
           FStar_List_Tot_Base.existsb
             (fun t -> RDF_Term.rdf_term_eq t (RDF_Term.T_IRI sh_NodeShape))
             (RDF_Graph_Executable.find_objects g s RDFS_Closure.rdf_type) in
-        if is_class && is_nodeshape then [T_ImplicitClass i] else []
+        let is_shapeclass =
+          FStar_List_Tot_Base.existsb
+            (fun t -> RDF_Term.rdf_term_eq t (RDF_Term.T_IRI sh_ShapeClass))
+            (RDF_Graph_Executable.find_objects g s RDFS_Closure.rdf_type) in
+        if (is_class && is_nodeshape) || is_shapeclass
+        then [T_ImplicitClass i]
+        else []
     | RDF_Term.S_BNode uu___ -> [] in
   let data_shape =
     match s with

@@ -30,17 +30,10 @@
 * Warning 361 at SPARQL11.Parser.fst(5144,0-5307,40):
   - Some #push-options have not been popped. Current depth is 1.
 
-* Warning 328 at SHACL.Validation.fst(1391,8-1391,27):
+* Warning 328 at SHACL.Validation.fst(1397,8-1397,27):
   - Global binding
         'SHACL.Validation.path_to_sparql_expr'
     is recursive but not used in its body
-
-* Warning 349 at SHACL.Validation.fst(3304,3-3338,46):
-  - The verification condition succeeded after splitting it to localize
-    potential errors, although the original non-split verification condition
-    failed. If you want to rely on splitting queries for verifying your program
-    please use the '--split_queries always' option rather than relying on it
-    implicitly.
 
 * Warning 247 at SHACL.Validation.fst(0,0-0,0):
   - Checked file SHACL.Validation.fst.checked was not written.
