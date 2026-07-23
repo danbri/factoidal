@@ -119,7 +119,12 @@ let parse_ttl_file (path : string) : (rdf_graph * string) option =
   | None -> None
   | Some raw ->
     let base = file_uri path in
-    Some (Parser_Turtle.parse_turtle_with_base raw base, base)
+    (* SHACL 1.2 shapes/data are RDF 1.2 documents: parse in Mode_12 so the
+       `<< >>` triple terms and the `{| ... |}` / `~` reifier annotations
+       expand (needed for sh:reifierShape and the reified sh:severity /
+       sh:message annotations). Mode_12 is a superset of 1.1 Turtle, so
+       plain 1.1 shape files parse unchanged (SHACL 1.1 suite stays green). *)
+    Some (Parser_Turtle.parse_turtle_with_base_12 raw base, base)
 
 (* ------------------------------------------------------------------ *)
 (* Thin RDF-graph accessors over an rdf_term "subject". *)

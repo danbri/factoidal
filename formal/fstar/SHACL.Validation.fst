@@ -1698,6 +1698,33 @@ let build_custom_constraints (g : rdf_graph) (s : subject) (is_prop : bool) : li
 // combined VC even though each binding is individually trivial.
 // Matches the established idiom (RDF.List.Helpers.fst,
 // Parser.Turtle.fst) rather than inventing a new one.
+// True iff the reifier of triple term `tt` carries `sh:deactivated true`.
+// SHACL 1.2 lets a per-constraint `{| sh:deactivated true |}` annotation
+// switch off one constraint (or one sh:property link) without deactivating
+// the whole shape (deactivated-003).
+let reifier_deactivated (g : rdf_graph) (tt : rdf_term) : bool =
+  match find_reifiers g tt with
+  | []     -> false
+  | r :: _ -> (match first_bool (find_objects g r sh_deactivated) with Some b -> b | None -> false)
+
+// The asserted triple (as a triple term) a constraint was built from, for
+// the IRI/term-valued constraints that a `{| ... |}` annotation can target.
+// Constraints with no cleanly reconstructable source triple return None
+// (never deactivated by annotation — conservatively kept).
+let cc_source_tt (s_subj : subject) (cc : constraint_component) : option rdf_term =
+  match cc with
+  | CC_Datatype i -> Some (T_TripleTerm s_subj sh_datatype (T_IRI i))
+  | CC_Class i    -> Some (T_TripleTerm s_subj sh_class (T_IRI i))
+  | CC_HasValue t -> Some (T_TripleTerm s_subj sh_hasValue t)
+  | _             -> None
+
+// Drop the constraints whose own annotation deactivates them.
+let filter_active_constraints (g : rdf_graph) (s : subject) (ccs : list constraint_component)
+  : list constraint_component =
+  List.Tot.filter
+    (fun cc -> match cc_source_tt s cc with Some tt -> not (reifier_deactivated g tt) | None -> true)
+    ccs
+
 // Factored out of build_constraints (own VC) to keep that function's
 // monolithic split-query from growing: sh:reifierShape + the optional
 // sh:reificationRequired flag.
@@ -1843,8 +1870,14 @@ let build_shape (g : rdf_graph) (s : subject) : shape =
     (match find_objects g s sh_message with
      | (T_Literal l) :: _ -> Some l
      | _ -> None) in
+  // Drop sh:property links whose own `{| sh:deactivated true |}` annotation
+  // deactivates them (deactivated-003).
   let prefs =
-    List.Tot.concatMap (fun t -> match term_to_shape_ref t with Some r -> [r] | None -> []) (find_objects g s sh_property) in
+    List.Tot.concatMap
+      (fun t -> match term_to_shape_ref t with
+                | Some r -> if reifier_deactivated g (T_TripleTerm s sh_property t) then [] else [r]
+                | None -> [])
+      (find_objects g s sh_property) in
   {
     shape_id = subject_to_shape_ref s;
     is_property = is_prop;
@@ -1852,7 +1885,7 @@ let build_shape (g : rdf_graph) (s : subject) : shape =
     targets = build_targets g s;
     shape_sev = sev;
     message = msg;
-    constraints = build_constraints g s @ build_custom_constraints g s is_prop;
+    constraints = filter_active_constraints g s (build_constraints g s @ build_custom_constraints g s is_prop);
     property_refs = prefs;
   }
 
@@ -1950,8 +1983,18 @@ let path_predicates_of_shape (sg : list shape) (s : shape) : list wf_iri =
 // (core/property/uniqueLang-001.ttl expects TWO structurally identical
 // results for a focus node with duplicated @en AND duplicated @de).
 let duplicated_lang_tags (values : list rdf_term) : list string =
+  // The uniqueness key folds in the BASE DIRECTION (rdf:dirLangString):
+  // "A"@ar--ltr, "A"@ar and "A"@ar--rtl are three DIFFERENT languages, so
+  // only a repeat of the exact (tag, direction) pair is a duplicate
+  // (uniqueLang-003). Plain language strings keep the bare tag as key.
   let langs =
-    List.Tot.concatMap (fun t -> match t with T_Literal l -> (match l.lang_tag with Some lt -> [lt] | None -> []) | _ -> []) values in
+    List.Tot.concatMap
+      (fun t -> match t with
+                | T_Literal l ->
+                  (match l.lang_tag with
+                   | Some lt -> [String.concat "" [lt; (match l.direction with Some Dir_LTR -> "--ltr" | Some Dir_RTL -> "--rtl" | None -> "")]]
+                   | None -> [])
+                | _ -> []) values in
   let count (x : string) : nat = List.Tot.length (List.Tot.filter (lang_tag_eq x) langs) in
   let rec distinct_dups (seen : list string) (xs : list string) : Tot (list string) (decreases xs) =
     match xs with

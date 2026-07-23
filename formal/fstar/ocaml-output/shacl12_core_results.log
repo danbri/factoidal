@@ -47,15 +47,15 @@
   [47/138] Test of sh:or at node shape 001 ok
   [48/138] Test of sh:pattern at node shape 001 ok
   [49/138] Test of sh:pattern at node shape 002 ok
-  [50/138] Test of sh:uniqueMembers on node shape 001 ok
-  [51/138] Test of sh:uniqueValuesFor at node shape 001 (single property) ok
-  [52/138] Test of sh:uniqueValuesFor at node shape 002 (composite key) ok
-  [53/138] Test of sh:uniqueValuesFor at node shape 003 (targetSubjectsOf, global uniqueness) ok
-  [54/138] Test of sh:uniqueValuesFor at node shape 004 (No violation if values missing) ok
-  [55/138] Test of sh:uniqueValuesFor at node shape 005 (three instances sharing the same value) ok
-  [56/138] Test of sh:xone at node shape 001 ok
-  [57/138] Test of validation report for shape xone-duplicate by property constraints ok
-  [58/138] Test of qualified parameters allowed in node shapes ok
+  [50/138] Test of qualified parameters allowed in node shapes ok
+  [51/138] Test of sh:uniqueMembers on node shape 001 ok
+  [52/138] Test of sh:uniqueValuesFor at node shape 001 (single property) ok
+  [53/138] Test of sh:uniqueValuesFor at node shape 002 (composite key) ok
+  [54/138] Test of sh:uniqueValuesFor at node shape 003 (targetSubjectsOf, global uniqueness) ok
+  [55/138] Test of sh:uniqueValuesFor at node shape 004 (No violation if values missing) ok
+  [56/138] Test of sh:uniqueValuesFor at node shape 005 (three instances sharing the same value) ok
+  [57/138] Test of sh:xone at node shape 001 ok
+  [58/138] Test of validation report for shape xone-duplicate by property constraints ok
   [59/138] Test of path sh:alternativePath 001 ok
   [60/138] Test of path complex (rdf:type/rdfs:subClassOf*) 001 ok
   [61/138] Test of complex path validation results ok
@@ -64,9 +64,9 @@
   [64/138] Test of path sequence 001 ok
   [65/138] Test of path sequence 002 ok
   [66/138] Test of path sequence with duplicate 001 ok
-  [67/138] Test of path sh:zeroOrMorePath 001 ok
-  [68/138] Test of path sh:zeroOrOnePath 001 ok
-  [69/138] Test with unused ill-formed path ok
+  [67/138] Test with unused ill-formed path ok
+  [68/138] Test of path sh:zeroOrMorePath 001 ok
+  [69/138] Test of path sh:zeroOrOnePath 001 ok
   [70/138] Test of sh:and at property shape 001 ok
   [71/138] Test of sh:class at property shape 001 ok
   [72/138] Test of sh:class at property shape 002 ok
@@ -112,7 +112,7 @@
   [112/138] Test of sh:qualifiedMinCount with disjoint shapes at property shape 001 ok
   [113/138] Test of sh:qualifiedValueShape at property shape 001 ok
   [114/138] Test of sh:qualifiedValueShapesDisjoint at property shape 001 ok
-  [115/138] Test of sh:reifierShape 001 FAIL
+  [115/138] Test of sh:reifierShape 001 ok
   [116/138] Test of sh:reifierShape 002 with sh:reificationRequired ok
   [117/138] Test of sh:rootClass at property shape 001 ok
   [118/138] Test of sh:singleLine at property shape 001 ok
@@ -159,8 +159,15 @@ _:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/
 _:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
 _:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
 
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidNode> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> <http://example.com/ns#InvalidNode> .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
 
   PASS: Test of sh:severity 001
   PASS: Test of sh:severity 002
@@ -176,7 +183,14 @@ _:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShap
 _:c14n1 <http://www.w3.org/ns/shacl#value> "Hello" .
 
     actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n0 <http://www.w3.org/ns/shacl#result> _:c14n1 .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n1 <http://www.w3.org/ns/shacl#focusNode> "Hello" .
+_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape> .
+_:c14n1 <http://www.w3.org/ns/shacl#value> "Hello" .
 
   PASS: Test of sh:severity sh:Debug 004
   PASS: Test of sh:severity sh:Trace 005
@@ -259,6 +273,7 @@ _:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XM
   PASS: Test of sh:or at node shape 001
   PASS: Test of sh:pattern at node shape 001
   PASS: Test of sh:pattern at node shape 002
+  PASS: Test of qualified parameters allowed in node shapes
   PASS: Test of sh:uniqueMembers on node shape 001
   PASS: Test of sh:uniqueValuesFor at node shape 001 (single property)
   PASS: Test of sh:uniqueValuesFor at node shape 002 (composite key)
@@ -267,7 +282,6 @@ _:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XM
   PASS: Test of sh:uniqueValuesFor at node shape 005 (three instances sharing the same value)
   PASS: Test of sh:xone at node shape 001
   PASS: Test of validation report for shape xone-duplicate by property constraints
-  PASS: Test of qualified parameters allowed in node shapes
   PASS: Test of path sh:alternativePath 001
   PASS: Test of path complex (rdf:type/rdfs:subClassOf*) 001
   PASS: Test of complex path validation results
@@ -276,9 +290,9 @@ _:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XM
   PASS: Test of path sequence 001
   PASS: Test of path sequence 002
   PASS: Test of path sequence with duplicate 001
+  PASS: Test with unused ill-formed path
   PASS: Test of path sh:zeroOrMorePath 001
   PASS: Test of path sh:zeroOrOnePath 001
-  PASS: Test with unused ill-formed path
   PASS: Test of sh:and at property shape 001
   PASS: Test of sh:class at property shape 001
   PASS: Test of sh:class at property shape 002
@@ -324,21 +338,7 @@ _:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XM
   PASS: Test of sh:qualifiedMinCount with disjoint shapes at property shape 001
   PASS: Test of sh:qualifiedValueShape at property shape 001
   PASS: Test of sh:qualifiedValueShapesDisjoint at property shape 001
-  FAIL: Test of sh:reifierShape 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/property/reifierShape-001.ttl) — report not isomorphic to expected
-    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#propertyA> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-propertyA> .
-_:c14n0 <http://www.w3.org/ns/shacl#value> "invalid" .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
-
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-
+  PASS: Test of sh:reifierShape 001
   PASS: Test of sh:reifierShape 002 with sh:reificationRequired
   PASS: Test of sh:rootClass at property shape 001
   PASS: Test of sh:singleLine at property shape 001
@@ -426,6 +426,6 @@ _:c14n1 <http://www.w3.org/ns/shacl#value> "twenty two" .
   PASS: Test of validation report for shape shared by property constraints
 
 ========================================
-TOTAL: 128 pass, 10 fail, 0 skip (out of 138)
+TOTAL: 129 pass, 9 fail, 0 skip (out of 138)
 ========================================
-shacl-core: 128 pass, 10 fail, 0 skip (out of 138)
+shacl-core: 129 pass, 9 fail, 0 skip (out of 138)

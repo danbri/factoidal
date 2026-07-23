@@ -1525,6 +1525,38 @@ let build_custom_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject)
                     | RDF_Term.S_IRI ci ->
                         [CC_Custom (ci, is_ask, query_text, bindings)]
                     | RDF_Term.S_BNode uu___1 -> [])))) comp_subjs
+let reifier_deactivated (g : RDF_Graph.rdf_graph) (tt : RDF_Term.rdf_term) :
+  Prims.bool=
+  match find_reifiers g tt with
+  | [] -> false
+  | r::uu___ ->
+      (match first_bool
+               (RDF_Graph_Executable.find_objects g r sh_deactivated)
+       with
+       | FStar_Pervasives_Native.Some b -> b
+       | FStar_Pervasives_Native.None -> false)
+let cc_source_tt (s_subj : RDF_Term.subject) (cc : constraint_component) :
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  match cc with
+  | CC_Datatype i ->
+      FStar_Pervasives_Native.Some
+        (RDF_Term.T_TripleTerm (s_subj, sh_datatype, (RDF_Term.T_IRI i)))
+  | CC_Class i ->
+      FStar_Pervasives_Native.Some
+        (RDF_Term.T_TripleTerm (s_subj, sh_class, (RDF_Term.T_IRI i)))
+  | CC_HasValue t ->
+      FStar_Pervasives_Native.Some
+        (RDF_Term.T_TripleTerm (s_subj, sh_hasValue, t))
+  | uu___ -> FStar_Pervasives_Native.None
+let filter_active_constraints (g : RDF_Graph.rdf_graph)
+  (s : RDF_Term.subject) (ccs : constraint_component Prims.list) :
+  constraint_component Prims.list=
+  FStar_List_Tot_Base.filter
+    (fun cc ->
+       match cc_source_tt s cc with
+       | FStar_Pervasives_Native.Some tt ->
+           Prims.op_Negation (reifier_deactivated g tt)
+       | FStar_Pervasives_Native.None -> true) ccs
 let build_reifier_constraints (g : RDF_Graph.rdf_graph)
   (s : RDF_Term.subject) : constraint_component Prims.list=
   match RDF_Graph_Executable.find_objects g s sh_reifierShape with
@@ -1833,7 +1865,12 @@ let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
     FStar_List_Tot_Base.concatMap
       (fun t ->
          match term_to_shape_ref t with
-         | FStar_Pervasives_Native.Some r -> [r]
+         | FStar_Pervasives_Native.Some r ->
+             if
+               reifier_deactivated g
+                 (RDF_Term.T_TripleTerm (s, sh_property, t))
+             then []
+             else [r]
          | FStar_Pervasives_Native.None -> [])
       (RDF_Graph_Executable.find_objects g s sh_property) in
   {
@@ -1844,8 +1881,9 @@ let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
     shape_sev = sev;
     message = msg;
     constraints =
-      (FStar_List_Tot_Base.op_At (build_constraints g s)
-         (build_custom_constraints g s is_prop));
+      (filter_active_constraints g s
+         (FStar_List_Tot_Base.op_At (build_constraints g s)
+            (build_custom_constraints g s is_prop)));
     property_refs = prefs
   }
 let parse_shape_from_graph_pure (g : RDF_Graph.rdf_graph) : shapes_graph=
@@ -1925,7 +1963,15 @@ let duplicated_lang_tags (values : RDF_Term.rdf_term Prims.list) :
          match t with
          | RDF_Term.T_Literal l ->
              (match l.RDF_Term.lang_tag with
-              | FStar_Pervasives_Native.Some lt -> [lt]
+              | FStar_Pervasives_Native.Some lt ->
+                  [FStar_String.concat ""
+                     [lt;
+                     (match l.RDF_Term.direction with
+                      | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) ->
+                          "--ltr"
+                      | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) ->
+                          "--rtl"
+                      | FStar_Pervasives_Native.None -> "")]]
               | FStar_Pervasives_Native.None -> [])
          | uu___ -> []) values in
   let count x =
