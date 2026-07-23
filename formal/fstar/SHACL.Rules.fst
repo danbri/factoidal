@@ -221,22 +221,32 @@ let rec all_mem (xs : list string) (ys : list string) : Tot bool (decreases xs) 
 // its body (the range-restriction / safety condition — an unbound head
 // variable cannot be instantiated). DATA blocks and non-rule segments
 // are trivially well-formed here.
-let block_well_formed (block : string) : bool =
+let block_well_formed (header : string) (block : string) : bool =
   match line_kind block with
   | Some true ->
-    (match split_at_needle (Str.list_of_string (line_body block)) ['W'; 'H'; 'E'; 'R'; 'E'] []
-             (Str.length block + 1) with
-     | Some (head, body) -> all_mem (vars_in head) (vars_in body)
-     | None -> true)
+    // Head-variable safety: every head var must be bound by the body.
+    let hv_ok =
+      (match split_at_needle (Str.list_of_string (line_body block)) ['W'; 'H'; 'E'; 'R'; 'E'] []
+               (Str.length block + 1) with
+       | Some (head, body) -> all_mem (vars_in head) (vars_in body)
+       | None -> true) in
+    // ...and the rule's SPARQL body must be well-scoped — the 1.2 parser
+    // rejects e.g. a BIND that re-binds a variable already in scope.
+    let parse_ok =
+      (match Parser11.parse_sparql_12_with_base None
+               (Str.concat "" [header; "\nCONSTRUCT ";
+                               replace_all (line_body block) "NOT {" "FILTER NOT EXISTS {"]) with
+       | Parser11.ParseOk _ _ -> true | _ -> false) in
+    hv_ok && parse_ok
   | _ -> true
 
-let rec all_blocks_well_formed (bs : list string) : Tot bool (decreases bs) =
-  match bs with [] -> true | b :: rest -> block_well_formed b && all_blocks_well_formed rest
+let rec all_blocks_well_formed (header : string) (bs : list string) : Tot bool (decreases bs) =
+  match bs with [] -> true | b :: rest -> block_well_formed header b && all_blocks_well_formed header rest
 
 let srl_well_formed (srl : string) : bool =
   match scan_blocks (Str.list_of_string srl) 0 true [] [] (Str.length srl + 2) with
   | [] -> true
-  | _ :: blocks -> all_blocks_well_formed blocks
+  | first :: blocks -> all_blocks_well_formed (compute_header first blocks) blocks
 
 // --- stratification (rules/stratification suite) ---------------------
 //
