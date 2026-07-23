@@ -183,6 +183,27 @@ let sh_resultPath   = sh_ns ^ "resultPath"
 let sh_resultMessage = sh_ns ^ "resultMessage"
 let sh_detail       = sh_ns ^ "detail"
 
+(* SHACL 1.2 node-expression evaluation tests (shnex suite). Each
+   `sht:EvalNodeExpr` entry evaluates a node expression against the
+   manifest's own graph and compares the result list to mf:result. *)
+let sht_EvalNodeExpr = sht_ns ^ "EvalNodeExpr"
+let sht_nodeExpr     = sht_ns ^ "nodeExpr"
+let sht_focusNode    = sht_ns ^ "focusNode"
+let sht_ignoreOrder  = sht_ns ^ "ignoreOrder"
+let sht_scope_prefix = sht_ns ^ "scope-"
+let rdf_first_iri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
+let rdf_rest_iri  = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+let rdf_nil_iri   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
+
+let rec rdf_list_ml (g : rdf_graph) (head : rdf_term) (fuel : int) : rdf_term list =
+  if fuel <= 0 then []
+  else match head with
+    | T_IRI i when i = rdf_nil_iri -> []
+    | _ ->
+      (match obj1_of g head rdf_first_iri, obj1_of g head rdf_rest_iri with
+       | Some h, Some r -> h :: rdf_list_ml g r (fuel - 1)
+       | _ -> [])
+
 (* ------------------------------------------------------------------ *)
 (* Phase 3 (issue #181 follow-up): full report comparison.
 
@@ -289,6 +310,17 @@ type test_case = {
      suite's convention for "this engine may legitimately fail on
      this query"). *)
   tc_expect_failure : bool;
+  (* SHACL 1.2 sht:EvalNodeExpr payload (node-expression evaluation);
+     None for an ordinary sht:Validate entry. *)
+  tc_node_expr : ne_spec option;
+}
+and ne_spec = {
+  ne_graph : rdf_graph;                  (* graph the expression runs against *)
+  ne_expr : rdf_term;                    (* the sht:nodeExpr node *)
+  ne_focus : rdf_term option;            (* sht:focusNode, if any *)
+  ne_scope : (string * rdf_term) list;   (* sht:scope-<name> bindings *)
+  ne_expected : rdf_term list;           (* mf:result rdf:List *)
+  ne_ignore_order : bool;                (* sht:ignoreOrder true *)
 }
 
 (* Resolve a dataGraph/shapesGraph object to a parsed graph: reuse the
@@ -387,10 +419,56 @@ let rec collect_from_file (visited : string list ref) (path : string) : test_cas
                tc_data_graph = dgraph; tc_shapes_graph = sgraph;
                tc_expect_conforms = expect;
                tc_expect_report = expect_report;
-               tc_expect_failure = expect_failure })
+               tc_expect_failure = expect_failure;
+               tc_node_expr = None })
           (subjects_typed g sht_Validate)
       in
-      included @ own_tests
+      let node_expr_tests =
+        List.filter_map
+          (fun t ->
+             let name =
+               match string_of_lit (obj1_of g t mf_name) with
+               | Some n -> n
+               | None ->
+                 (match string_of_lit (obj1_of g t rdfs_label) with
+                  | Some n -> n
+                  | None -> (match t with T_IRI i -> i | T_BNode b -> "_:" ^ b | _ -> "<test>"))
+             in
+             match obj1_of g t mf_action with
+             | None -> None
+             | Some act ->
+               (match obj1_of g act sht_nodeExpr with
+                | None -> None
+                | Some expr ->
+                  let focus = obj1_of g act sht_focusNode in
+                  let ignore_order =
+                    match bool_of_lit (obj1_of g act sht_ignoreOrder) with Some b -> b | None -> false in
+                  (* sht:scope-<name> action properties become variable bindings. *)
+                  let scope =
+                    List.filter_map
+                      (fun (tr : triple) ->
+                         let p = tr.p in
+                         let plen = String.length sht_scope_prefix in
+                         if String.length p > plen && String.sub p 0 plen = sht_scope_prefix
+                         then Some (String.sub p plen (String.length p - plen), tr.o)
+                         else None)
+                      (triples_with_subject g act)
+                  in
+                  let expected =
+                    match obj1_of g t mf_result with
+                    | Some rl -> rdf_list_ml g rl 1000
+                    | None -> []
+                  in
+                  Some { tc_name = name; tc_file = path;
+                         tc_data_graph = None; tc_shapes_graph = None;
+                         tc_expect_conforms = None; tc_expect_report = None;
+                         tc_expect_failure = false;
+                         tc_node_expr = Some { ne_graph = g; ne_expr = expr; ne_focus = focus;
+                                               ne_scope = scope; ne_expected = expected;
+                                               ne_ignore_order = ignore_order } }))
+          (subjects_typed g sht_EvalNodeExpr)
+      in
+      included @ own_tests @ node_expr_tests
   end
 
 (* ------------------------------------------------------------------ *)
@@ -398,11 +476,46 @@ let rec collect_from_file (visited : string list ref) (path : string) : test_cas
 
 type outcome = Pass | Fail of string | Skip of string
 
+(* Render a term for node-expr mismatch diagnostics. *)
+let rec term_key (t : rdf_term) : string =
+  match t with
+  | T_IRI i -> "<" ^ i ^ ">"
+  | T_BNode b -> "_:" ^ b
+  | T_Literal l ->
+    "\"" ^ l.lexical_form ^ "\"^^" ^ l.datatype
+    ^ (match l.lang_tag with FStar_Pervasives_Native.Some lt -> "@" ^ lt | _ -> "")
+  | T_TripleTerm (s, p, o) ->
+    "<<(" ^ (match s with S_IRI i -> "<" ^ i ^ ">" | S_BNode b -> "_:" ^ b)
+    ^ " <" ^ p ^ "> " ^ term_key o ^ ")>>"
+
+(* SHACL 1.2 sht:EvalNodeExpr: evaluate the node expression via the
+   F*-extracted evaluator and compare the result list to mf:result.
+   Ordered by default; sht:ignoreOrder true compares as a multiset. *)
+let run_node_expr_test (ne : ne_spec) : outcome =
+  try
+    let focus =
+      match ne.ne_focus with
+      | Some f -> FStar_Pervasives_Native.Some f
+      | None -> FStar_Pervasives_Native.None in
+    let actual = SHACL_NodeExpr.eval_node_expr_top ne.ne_graph focus ne.ne_scope ne.ne_expr in
+    let ok =
+      if ne.ne_ignore_order
+      then List.sort compare actual = List.sort compare ne.ne_expected
+      else actual = ne.ne_expected in
+    if ok then Pass
+    else Fail (Printf.sprintf "node expr result mismatch: expected [%s], got [%s]"
+                 (String.concat "; " (List.map term_key ne.ne_expected))
+                 (String.concat "; " (List.map term_key actual)))
+  with e -> Fail (Printf.sprintf "exception: %s" (Printexc.to_string e))
+
 (* Slice-1 floor: compare only sh:conforms. Kept as the `--conforms-only`
    fallback — CLAUDE.md's Phase 3 brief requires this mode to stay at
    98/98 on the core manifest even as the default (report-compare)
    mode is free to be stricter and score lower. *)
 let run_test_conforms_only (tc : test_case) : outcome =
+  match tc.tc_node_expr with
+  | Some ne -> run_node_expr_test ne
+  | None ->
   match tc.tc_data_graph, tc.tc_shapes_graph, tc.tc_expect_conforms with
   | None, _, _ -> Skip "no dataGraph resolved from mf:action"
   | _, None, _ -> Skip "no shapesGraph resolved from mf:action"
@@ -422,6 +535,9 @@ let run_test_conforms_only (tc : test_case) : outcome =
    acknowledgement) — see the file header + expected_report_graph doc
    comments for exactly what "full compliance" means here. *)
 let run_test_report (tc : test_case) : outcome =
+  match tc.tc_node_expr with
+  | Some ne -> run_node_expr_test ne
+  | None ->
   match tc.tc_data_graph, tc.tc_shapes_graph with
   | None, _ -> Skip "no dataGraph resolved from mf:action"
   | _, None -> Skip "no shapesGraph resolved from mf:action"
