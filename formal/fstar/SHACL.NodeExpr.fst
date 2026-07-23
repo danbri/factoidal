@@ -109,6 +109,22 @@ let shnex_desc : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#desc");
   "http://www.w3.org/ns/shacl-node-expr#desc"
 
+let shnex_filterShape : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#filterShape");
+  "http://www.w3.org/ns/shacl-node-expr#filterShape"
+
+let shnex_matchAll : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#matchAll");
+  "http://www.w3.org/ns/shacl-node-expr#matchAll"
+
+let shnex_findFirst : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#findFirst");
+  "http://www.w3.org/ns/shacl-node-expr#findFirst"
+
+let shnex_nodesMatching : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#nodesMatching");
+  "http://www.w3.org/ns/shacl-node-expr#nodesMatching"
+
 let shnex_limit : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#limit");
   "http://www.w3.org/ns/shacl-node-expr#limit"
@@ -147,9 +163,28 @@ let rec list_take (n : nat) (l : list rdf_term) : Tot (list rdf_term) (decreases
   | _, [] -> []
   | _, hd :: tl -> hd :: list_take (n - 1) tl
 
-// shnex:instancesOf C -> the subjects that are rdf:type C in the graph.
+// shnex:instancesOf C -> the subjects that are rdf:type C, INCLUDING
+// instances of subclasses of C (rdfs:subClassOf closure, via
+// shacl_class_closure which materialises inferred rdf:type triples).
 let instances_of (g : rdf_graph) (c : wf_iri) : list rdf_term =
-  dedup_terms (List.Tot.map subject_to_term (find_subjects g rdf_type (T_IRI c)))
+  let closed = shacl_class_closure g (graph_len g + 20) in
+  dedup_terms (List.Tot.map subject_to_term (find_subjects closed rdf_type (T_IRI c)))
+
+// Does value node `v` conform to the shape denoted by `shape_term`
+// (an IRI/blank-node shape reference resolved against `g`)? Reuses the
+// SHACL.Validation conformance judgment (empty violation list = conforms).
+// An unresolvable / non-shape reference conforms vacuously. Used by
+// shnex:filterShape / matchAll / findFirst / nodesMatching.
+let node_conforms (g : rdf_graph) (shape_term : rdf_term) (v : rdf_term) : bool =
+  match term_to_shape_ref shape_term with
+  | None -> true
+  | Some r ->
+    let sg = (parse_shape_from_graph_pure g).shapes in
+    (match lookup_shape r sg with
+     | None -> true
+     | Some sh ->
+       let closed_cls = shacl_class_closure g (graph_len g + 20) in
+       Nil? (collect_shape_violations g sg closed_cls v sh (graph_len g + 100)))
 
 // --- numeric aggregates (integer-valued; decimal/double deferred) -----
 
@@ -259,6 +294,10 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
       (match find_objects g es shnex_intersection with
        | (l :: _) -> dedup_terms (eval_ne_intersect g focus scope (rdf_list_terms g l fuel') fuel')
        | [] ->
+      (match find_objects g es shnex_nodesMatching with
+       | (s :: _) -> dedup_terms (List.Tot.filter (fun v -> node_conforms g s v)
+                                    (List.Tot.map subject_to_term (distinct_subjects g)))
+       | [] ->
       (match find_objects g es shnex_instancesOf with
        | (T_IRI c) :: _ -> instances_of g c
        | _ ->
@@ -268,7 +307,7 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
          // IRI (incl. rdf:nil from `()`) or literal is a constant -> itself.
          (match find_objects g es rdf_first with
           | (_ :: _) -> eval_ne_list g focus scope (rdf_list_terms g expr fuel') fuel'
-          | [] -> (match expr with T_BNode _ -> [] | _ -> [expr]))))))))))))))
+          | [] -> (match expr with T_BNode _ -> [] | _ -> [expr])))))))))))))))
     in
     // Modifiers apply after the generator: flatMap (per-element re-focus),
     // remove (set difference by term), then offset/limit slicing.
@@ -290,7 +329,23 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
          let ordered = List.Tot.map (fun (p : (rdf_term & rdf_term)) -> fst p) sorted in
          if desc then List.Tot.rev ordered else ordered
        | [] -> after_remove) in
-    let after_offset = (match first_int (find_objects g es shnex_offset) with Some n -> list_drop n after_orderby | None -> after_orderby) in
+    // Conformance modifiers (SHACL 1.2 shnex): filterShape keeps the
+    // source elements that conform to a shape; matchAll reduces to a
+    // single boolean (do ALL conform?); findFirst yields the first
+    // conforming element.
+    let after_filter =
+      (match find_objects g es shnex_filterShape with
+       | (s :: _) -> List.Tot.filter (fun v -> node_conforms g s v) after_orderby
+       | [] -> after_orderby) in
+    let after_matchall =
+      (match find_objects g es shnex_matchAll with
+       | (s :: _) -> [ mk_bool_lit (List.Tot.for_all (fun v -> node_conforms g s v) after_filter) ]
+       | [] -> after_filter) in
+    let after_findfirst =
+      (match find_objects g es shnex_findFirst with
+       | (s :: _) -> (match List.Tot.find (fun v -> node_conforms g s v) after_matchall with Some v -> [v] | None -> [])
+       | [] -> after_matchall) in
+    let after_offset = (match first_int (find_objects g es shnex_offset) with Some n -> list_drop n after_findfirst | None -> after_findfirst) in
     (match first_int (find_objects g es shnex_limit) with Some n -> list_take n after_offset | None -> after_offset)
 
 // Evaluate each expression in `es` and concatenate the results (order
