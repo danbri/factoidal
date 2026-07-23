@@ -330,6 +330,8 @@ let sparql_fn_expr (ln : string) (args : list Alg.expr) : option Alg.expr =
   | "sha384", [a] -> Some (Alg.E_SHA384 a)
   | "sha512", [a] -> Some (Alg.E_SHA512 a)
   | "logical-not", [a] -> Some (Alg.E_Not a)
+  | "unary-minus", [a] -> Some (Alg.E_UnaryMinus a)
+  | "unary-plus", [a] -> Some (Alg.E_UnaryPlus a)
   | "logical-and", [a; b] -> Some (Alg.E_And a b)
   | "logical-or", [a; b] -> Some (Alg.E_Or a b)
   | "divide", [a; b] -> Some (Alg.E_Arith Alg.Div a b)

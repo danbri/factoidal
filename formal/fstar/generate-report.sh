@@ -90,6 +90,7 @@ SHACL12_CORE_LOG="$OCAML_DIR/shacl12_core_results.log"
 SHACL12_NODEEXPR_LOG="$OCAML_DIR/shacl12_node_expr_results.log"
 SHACL12_SPARQL_LOG="$OCAML_DIR/shacl12_sparql_results.log"
 SHACL12_RULES_LOG="$OCAML_DIR/shacl12_rules_results.log"
+SHACL12_RULES_SYNTAX_LOG="$OCAML_DIR/shacl12_rules_syntax_results.log"
 SHEX_LOG="$OCAML_DIR/shex_results.log"
 # ShEx negativeSyntax (grammar-reject) suite — Parser.ShExC must REJECT
 # every fixture; scored by `shex_runner --negative-syntax` (2026-07-10).
@@ -342,6 +343,8 @@ if [ "$1" = "--run" ]; then
     "third_party/testing/shacl/shacl12-test-suite/tests/sparql/manifest.ttl"
   run_optional_suite "SHACL 1.2 Rules suite"          "$SHACL_RUNNER"  "$SHACL12_RULES_LOG"     60 \
     "third_party/testing/shacl/shacl12-test-suite/tests/rules/eval/manifest.ttl"
+  run_optional_suite "SHACL 1.2 Rules syntax suite"   "$SHACL_RUNNER"  "$SHACL12_RULES_SYNTAX_LOG" 60 \
+    "third_party/testing/shacl/shacl12-test-suite/tests/rules/syntax/manifest.ttl"
   run_optional_suite "ShEx validation suite"          "$SHEX_RUNNER"   "$SHEX_LOG"    180
   run_optional_suite "JSON-LD 1.1 toRdf suite"        "$JSONLD_RUNNER" "$JSONLD_LOG"   90
   run_optional_suite "RML rml-core suite"             "$RML_RUNNER"    "$RML_LOG"      90
@@ -740,6 +743,7 @@ scrape_last_summary SHACL12_CORE     "$SHACL12_CORE_LOG"
 scrape_last_summary SHACL12_NODEEXPR "$SHACL12_NODEEXPR_LOG"
 scrape_last_summary SHACL12_SPARQL   "$SHACL12_SPARQL_LOG"
 scrape_last_summary SHACL12_RULES    "$SHACL12_RULES_LOG"
+scrape_last_summary SHACL12_RULES_SYNTAX "$SHACL12_RULES_SYNTAX_LOG"
 scrape_last_summary SHEX         "$SHEX_LOG"
 # ShEx negativeSyntax: shex_runner --negative-syntax prints a TOTAL line
 # and then a labelled "shex-negative-syntax: N pass, M fail (out of K)"
@@ -1020,6 +1024,7 @@ CSV="$OUTPUT_DIR/latest.csv"
   emit_csv_row_if_present SHACL12_NODEEXPR  shacl shacl12-node-expr
   emit_csv_row_if_present SHACL12_SPARQL    shacl shacl12-sparql
   emit_csv_row_if_present SHACL12_RULES     shacl shacl12-rules
+  emit_csv_row_if_present SHACL12_RULES_SYNTAX shacl shacl12-rules-syntax
   emit_csv_row_if_present SHEX              shex  shex-validation
   emit_csv_row_if_present SHEXNEG           shex  shex-negative-syntax
   emit_csv_row_if_present JSONLD            jsonld jsonld-tordf
@@ -1130,6 +1135,8 @@ emit_json_suites () {
     "$SHACL12_SPARQL_PASS" "$SHACL12_SPARQL_FAIL" "$SHACL12_SPARQL_SKIP" "$SHACL12_SPARQL_TOTAL" "$([ "$SHACL12_SPARQL_PRESENT" -eq 1 ] && echo true || echo false)"
   printf '    "shacl12_rules": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/shacl12-core/#rules"},\n' \
     "$SHACL12_RULES_PASS" "$SHACL12_RULES_FAIL" "$SHACL12_RULES_SKIP" "$SHACL12_RULES_TOTAL" "$([ "$SHACL12_RULES_PRESENT" -eq 1 ] && echo true || echo false)"
+  printf '    "shacl12_rules_syntax": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/shacl12-core/#rules"},\n' \
+    "$SHACL12_RULES_SYNTAX_PASS" "$SHACL12_RULES_SYNTAX_FAIL" "$SHACL12_RULES_SYNTAX_SKIP" "$SHACL12_RULES_SYNTAX_TOTAL" "$([ "$SHACL12_RULES_SYNTAX_PRESENT" -eq 1 ] && echo true || echo false)"
   printf '    "shex":         {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://shex.io/shex-semantics/"},\n' \
     "$SHEX_PASS" "$SHEX_FAIL" "$SHEX_SKIP" "$SHEX_TOTAL" "$([ "$SHEX_PRESENT" -eq 1 ] && echo true || echo false)"
   printf '    "shex_negative_syntax": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://shex.io/shex-semantics/#shexc"},\n' \
@@ -1226,6 +1233,7 @@ emit_json_suites () {
   emit_json_suite_obj "shacl12_node_expr" SHACL12_NODEEXPR
   emit_json_suite_obj "shacl12_sparql"    SHACL12_SPARQL
   emit_json_suite_obj "shacl12_rules"     SHACL12_RULES
+  emit_json_suite_obj "shacl12_rules_syntax" SHACL12_RULES_SYNTAX
   emit_json_suite_obj "shex"              SHEX
   emit_json_suite_obj "shex_negative_syntax" SHEXNEG
   emit_json_suite_obj "jsonld_tordf"      JSONLD

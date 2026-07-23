@@ -199,6 +199,8 @@ let srt_ns = "http://www.w3.org/ns/shacl-rules-test#"
 let srt_RulesEvalTest = srt_ns ^ "RulesEvalTest"
 let srt_ruleset = srt_ns ^ "ruleset"
 let srt_data    = srt_ns ^ "data"
+let srt_RulesPositiveSyntaxTest = srt_ns ^ "RulesPositiveSyntaxTest"
+let srt_RulesNegativeSyntaxTest = srt_ns ^ "RulesNegativeSyntaxTest"
 let rdf_first_iri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
 let rdf_rest_iri  = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
 let rdf_nil_iri   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
@@ -324,11 +326,18 @@ type test_case = {
   (* SHACL 1.2 srt:RulesEvalTest payload (rule inference); None
      otherwise. *)
   tc_rules : rules_spec option;
+  (* SHACL 1.2 srt:RulesPositive/NegativeSyntaxTest payload; None
+     otherwise. *)
+  tc_syntax : syntax_spec option;
 }
 and rules_spec = {
   rs_data : rdf_graph;      (* the input data graph *)
   rs_srl : string;          (* raw .srl ruleset text *)
   rs_expected : rdf_graph;  (* expected inferred closure (mf:result) *)
+}
+and syntax_spec = {
+  sy_srl : string;          (* raw .srl ruleset text *)
+  sy_expect_valid : bool;   (* true for a positive test, false for negative *)
 }
 and ne_spec = {
   ne_graph : rdf_graph;                  (* graph the expression runs against *)
@@ -436,7 +445,7 @@ let rec collect_from_file (visited : string list ref) (path : string) : test_cas
                tc_expect_conforms = expect;
                tc_expect_report = expect_report;
                tc_expect_failure = expect_failure;
-               tc_node_expr = None; tc_rules = None })
+               tc_node_expr = None; tc_rules = None; tc_syntax = None })
           (subjects_typed g sht_Validate)
       in
       let node_expr_tests =
@@ -482,7 +491,7 @@ let rec collect_from_file (visited : string list ref) (path : string) : test_cas
                          tc_node_expr = Some { ne_graph = g; ne_expr = expr; ne_focus = focus;
                                                ne_scope = scope; ne_expected = expected;
                                                ne_ignore_order = ignore_order };
-                         tc_rules = None }))
+                         tc_rules = None; tc_syntax = None }))
           (subjects_typed g sht_EvalNodeExpr)
       in
       let rules_tests =
@@ -518,11 +527,39 @@ let rec collect_from_file (visited : string list ref) (path : string) : test_cas
                          tc_data_graph = None; tc_shapes_graph = None;
                          tc_expect_conforms = None; tc_expect_report = None;
                          tc_expect_failure = false; tc_node_expr = None;
-                         tc_rules = Some { rs_data = d; rs_srl = s; rs_expected = r } }
+                         tc_rules = Some { rs_data = d; rs_srl = s; rs_expected = r };
+                         tc_syntax = None }
                 | _ -> None))
           (subjects_typed g srt_RulesEvalTest)
       in
-      included @ own_tests @ node_expr_tests @ rules_tests
+      let syntax_tests =
+        let collect_syntax type_iri expect_valid =
+          List.filter_map
+            (fun t ->
+               let name =
+                 match string_of_lit (obj1_of g t mf_name) with
+                 | Some n -> n
+                 | None -> (match t with T_IRI i -> i | _ -> "<syntax-test>") in
+               let srl =
+                 match obj1_of g t mf_action with
+                 | Some at -> (match iri_str at with
+                               | Some iri -> (match path_of_file_iri iri with
+                                              | Some p -> read_file p | None -> None)
+                               | None -> None)
+                 | None -> None in
+               (match srl with
+                | Some s ->
+                  Some { tc_name = name; tc_file = path;
+                         tc_data_graph = None; tc_shapes_graph = None;
+                         tc_expect_conforms = None; tc_expect_report = None;
+                         tc_expect_failure = false; tc_node_expr = None; tc_rules = None;
+                         tc_syntax = Some { sy_srl = s; sy_expect_valid = expect_valid } }
+                | None -> None))
+            (subjects_typed g type_iri) in
+        collect_syntax srt_RulesPositiveSyntaxTest true
+        @ collect_syntax srt_RulesNegativeSyntaxTest false
+      in
+      included @ own_tests @ node_expr_tests @ rules_tests @ syntax_tests
   end
 
 (* ------------------------------------------------------------------ *)
@@ -572,6 +609,17 @@ let run_rules_test (rs : rules_spec) : outcome =
                  (canon_graph rs.rs_expected) (canon_graph inferred))
   with e -> Fail (Printf.sprintf "exception: %s" (Printexc.to_string e))
 
+(* SHACL 1.2 srt:RulesPositive/NegativeSyntaxTest: does the .srl parse
+   as a well-formed ruleset? *)
+let run_syntax_test (sy : syntax_spec) : outcome =
+  try
+    let valid = SHACL_Rules.srl_valid_syntax sy.sy_srl in
+    if valid = sy.sy_expect_valid then Pass
+    else Fail (Printf.sprintf "expected syntactically %s, got %s"
+                 (if sy.sy_expect_valid then "valid" else "invalid")
+                 (if valid then "valid" else "invalid"))
+  with e -> Fail (Printf.sprintf "exception: %s" (Printexc.to_string e))
+
 (* Slice-1 floor: compare only sh:conforms. Kept as the `--conforms-only`
    fallback — CLAUDE.md's Phase 3 brief requires this mode to stay at
    98/98 on the core manifest even as the default (report-compare)
@@ -579,6 +627,9 @@ let run_rules_test (rs : rules_spec) : outcome =
 let run_test_conforms_only (tc : test_case) : outcome =
   match tc.tc_rules with
   | Some rs -> run_rules_test rs
+  | None ->
+  match tc.tc_syntax with
+  | Some sy -> run_syntax_test sy
   | None ->
   match tc.tc_node_expr with
   | Some ne -> run_node_expr_test ne
@@ -604,6 +655,9 @@ let run_test_conforms_only (tc : test_case) : outcome =
 let run_test_report (tc : test_case) : outcome =
   match tc.tc_rules with
   | Some rs -> run_rules_test rs
+  | None ->
+  match tc.tc_syntax with
+  | Some sy -> run_syntax_test sy
   | None ->
   match tc.tc_node_expr with
   | Some ne -> run_node_expr_test ne

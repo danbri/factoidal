@@ -126,6 +126,38 @@ let translate_srl (srl : string) : list string =
   | [] -> []
   | header :: blocks -> rule_texts header blocks
 
+// --- syntax validation (rules/syntax suite) --------------------------
+
+let str_has_char (c : char) (s : string) : bool = List.Tot.mem c (Str.list_of_string s)
+
+// A single RULE/DATA block is syntactically valid iff its translated
+// CONSTRUCT query parses; additionally a DATA block must be GROUND (no
+// query variables — SHACL rules DATA is asserted data, not a pattern).
+let block_valid (header : string) (block : string) : bool =
+  match line_kind block with
+  | Some true ->
+    let txt = Str.concat "" [header; "\nCONSTRUCT ";
+                             replace_all (line_body block) "NOT {" "FILTER NOT EXISTS {"] in
+    (match Parser11.parse_sparql txt with Parser11.ParseOk _ _ -> true | _ -> false)
+  | Some false ->
+    let body = line_body block in
+    if str_has_char '?' body || str_has_char '$' body then false
+    else (match Parser11.parse_sparql (Str.concat "" [header; "\nCONSTRUCT "; body; " WHERE {}"]) with
+          | Parser11.ParseOk _ _ -> true | _ -> false)
+  | None -> true
+
+let rec all_blocks_valid (header : string) (bs : list string) : Tot bool (decreases bs) =
+  match bs with
+  | [] -> true
+  | b :: rest -> block_valid header b && all_blocks_valid header rest
+
+// Is the whole ruleset syntactically valid? (Every RULE/DATA block
+// translates to a parseable CONSTRUCT, DATA blocks are ground.)
+let srl_valid_syntax (srl : string) : bool =
+  match scan_blocks (Str.list_of_string srl) 0 true [] [] (Str.length srl + 2) with
+  | [] -> true
+  | header :: blocks -> all_blocks_valid header blocks
+
 // --- fixpoint evaluation ---------------------------------------------
 
 let parse_constructs (srl : string) : list Alg.query =
