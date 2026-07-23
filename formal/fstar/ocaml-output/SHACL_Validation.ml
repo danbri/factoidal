@@ -82,6 +82,8 @@ let sh_SubsetOfConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#SubsetOfConstraintComponent"
 let sh_ReifierShapeConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent"
+let sh_NodeByExpressionConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#NodeByExpressionConstraintComponent"
 let shv_rdf_reifies : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
 let sh_LanguageInConstraintComponent : RDF_Term.wf_iri=
@@ -282,6 +284,8 @@ type constraint_component =
   | CC_SubsetOf of path 
   | CC_ReifierShape of shape_ref * Prims.bool 
   | CC_Closed of RDF_Term.wf_iri Prims.list 
+  | CC_ClosedByTypes of RDF_Term.wf_iri Prims.list 
+  | CC_NodeByExpression of shape_ref 
   | CC_Sparql of shape_ref * Prims.string * RDF_Term.wf_literal
   FStar_Pervasives_Native.option 
   | CC_Custom of RDF_Term.wf_iri * Prims.bool * Prims.string * (Prims.string
@@ -473,6 +477,16 @@ let uu___is_CC_Closed (projectee : constraint_component) : Prims.bool=
 let __proj__CC_Closed__item__ignored (projectee : constraint_component) :
   RDF_Term.wf_iri Prims.list=
   match projectee with | CC_Closed ignored -> ignored
+let uu___is_CC_ClosedByTypes (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_ClosedByTypes ignored -> true | uu___ -> false
+let __proj__CC_ClosedByTypes__item__ignored
+  (projectee : constraint_component) : RDF_Term.wf_iri Prims.list=
+  match projectee with | CC_ClosedByTypes ignored -> ignored
+let uu___is_CC_NodeByExpression (projectee : constraint_component) :
+  Prims.bool=
+  match projectee with | CC_NodeByExpression _0 -> true | uu___ -> false
+let __proj__CC_NodeByExpression__item___0 (projectee : constraint_component)
+  : shape_ref= match projectee with | CC_NodeByExpression _0 -> _0
 let uu___is_CC_Sparql (projectee : constraint_component) : Prims.bool=
   match projectee with
   | CC_Sparql (constraint_node, query, message) -> true
@@ -862,6 +876,9 @@ let sh_reifierShape : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#reifierShape"
 let sh_reificationRequired : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#reificationRequired"
+let sh_ByTypes : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#ByTypes"
+let sh_nodeByExpression : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#nodeByExpression"
 let sh_languageIn : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#languageIn"
 let sh_uniqueLang : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#uniqueLang"
 let sh_minInclusive : RDF_Term.wf_iri=
@@ -1849,20 +1866,28 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
     FStar_List_Tot_Base.map (fun t -> CC_SubsetOf (parse_path g t fuel))
       (RDF_Graph_Executable.find_objects g s sh_subsetOf) in
   let reifiershape = build_reifier_constraints g s in
+  let nodebyexpr =
+    FStar_List_Tot_Base.concatMap
+      (fun t ->
+         match t with
+         | RDF_Term.T_IRI i -> [CC_NodeByExpression i]
+         | uu___ -> [])
+      (RDF_Graph_Executable.find_objects g s sh_nodeByExpression) in
   let closed_ =
-    match first_bool (RDF_Graph_Executable.find_objects g s sh_closed) with
-    | FStar_Pervasives_Native.Some true ->
-        let ign =
-          match RDF_Graph_Executable.find_objects g s sh_ignoredProperties
-          with
-          | head::uu___ ->
-              FStar_List_Tot_Base.concatMap
-                (fun t ->
-                   match t with | RDF_Term.T_IRI i -> [i] | uu___1 -> [])
-                (rdf_list_terms g head fuel)
-          | [] -> [] in
-        [CC_Closed ign]
-    | uu___ -> [] in
+    let ign =
+      match RDF_Graph_Executable.find_objects g s sh_ignoredProperties with
+      | head::uu___ ->
+          FStar_List_Tot_Base.concatMap
+            (fun t -> match t with | RDF_Term.T_IRI i -> [i] | uu___1 -> [])
+            (rdf_list_terms g head fuel)
+      | [] -> [] in
+    match RDF_Graph_Executable.find_objects g s sh_closed with
+    | (RDF_Term.T_IRI i)::uu___ ->
+        if i = sh_ByTypes then [CC_ClosedByTypes ign] else []
+    | objs ->
+        (match first_bool objs with
+         | FStar_Pervasives_Native.Some true -> [CC_Closed ign]
+         | uu___ -> []) in
   let sparqls = build_sparql_constraints g s in
   FStar_List_Tot_Base.op_At mincount
     (FStar_List_Tot_Base.op_At maxcount
@@ -1923,8 +1948,10 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                                                     (FStar_List_Tot_Base.op_At
                                                                     reifiershape
                                                                     (FStar_List_Tot_Base.op_At
+                                                                    nodebyexpr
+                                                                    (FStar_List_Tot_Base.op_At
                                                                     closed_
-                                                                    sparqls))))))))))))))))))))))))))))))))))))
+                                                                    sparqls)))))))))))))))))))))))))))))))))))))
 let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
   let path_objs = RDF_Graph_Executable.find_objects g s sh_path in
   let is_prop = Prims.uu___is_Cons path_objs in
@@ -2037,6 +2064,11 @@ let path_predicates_of_shape (sg : shape Prims.list) (s : shape) :
             | FStar_Pervasives_Native.Some (P_Predicate p) -> [p]
             | uu___ -> [])
        | FStar_Pervasives_Native.None -> []) s.property_refs
+let shape_closed_by_types (s : shape) : Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun cc ->
+       match cc with | CC_ClosedByTypes uu___ -> true | uu___ -> false)
+    s.constraints
 let duplicated_lang_tags (values : RDF_Term.rdf_term Prims.list) :
   Prims.string Prims.list=
   let langs =
@@ -2221,6 +2253,29 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
                     (collect_shape_violations data sg closed_cls v s2 fuel')
                 then []
                 else viol ())
+       | CC_NodeByExpression r ->
+           (match lookup_shape r sg with
+            | FStar_Pervasives_Native.None -> []
+            | FStar_Pervasives_Native.Some s2 ->
+                if
+                  Prims.uu___is_Nil
+                    (collect_shape_violations data sg closed_cls v s2 fuel')
+                then []
+                else
+                  [(let uu___2 =
+                      value_violation focus path_opt source cc sev msg v in
+                    {
+                      v_focus_node = (uu___2.v_focus_node);
+                      v_path = (uu___2.v_path);
+                      v_value = (uu___2.v_value);
+                      v_source_shape = (uu___2.v_source_shape);
+                      v_constraint = (uu___2.v_constraint);
+                      v_severity = (uu___2.v_severity);
+                      v_message = (uu___2.v_message);
+                      v_source_constraint =
+                        (FStar_Pervasives_Native.Some (shape_ref_to_term r));
+                      v_detail = (uu___2.v_detail)
+                    })])
        | CC_Datatype dt ->
            (match v with
             | RDF_Term.T_Literal l ->
@@ -2465,6 +2520,7 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
        | CC_LessThanOrEq uu___1 -> []
        | CC_SubsetOf uu___1 -> []
        | CC_Closed uu___1 -> []
+       | CC_ClosedByTypes uu___1 -> []
        | CC_QualifiedMinCount (uu___1, uu___2, uu___3) -> []
        | CC_QualifiedMaxCount (uu___1, uu___2, uu___3) -> []
        | CC_Sparql (uu___1, uu___2, uu___3) -> []
@@ -2544,6 +2600,56 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                     let allowed =
                       FStar_List_Tot_Base.op_At
                         (path_predicates_of_shape sg s) ign in
+                    FStar_List_Tot_Base.concatMap
+                      (fun t ->
+                         if
+                           (RDF_Term.subject_eq t.RDF_Triple.s subj) &&
+                             (Prims.op_Negation
+                                (FStar_List_Tot_Base.existsb
+                                   (fun p -> p = t.RDF_Triple.p) allowed))
+                         then
+                           [{
+                              v_focus_node = focus;
+                              v_path =
+                                (FStar_Pervasives_Native.Some
+                                   (P_Predicate (t.RDF_Triple.p)));
+                              v_value =
+                                (FStar_Pervasives_Native.Some
+                                   (t.RDF_Triple.o));
+                              v_source_shape = source;
+                              v_constraint = cc;
+                              v_severity = sev;
+                              v_message = msg;
+                              v_source_constraint =
+                                FStar_Pervasives_Native.None;
+                              v_detail = []
+                            }]
+                         else []) data)
+           | CC_ClosedByTypes ign ->
+               (match RDF_Graph.term_to_subject focus with
+                | FStar_Pervasives_Native.None -> []
+                | FStar_Pervasives_Native.Some subj ->
+                    let types =
+                      FStar_List_Tot_Base.concatMap
+                        (fun t ->
+                           if
+                             (RDF_Term.subject_eq t.RDF_Triple.s subj) &&
+                               (t.RDF_Triple.p = RDFS_Closure.rdf_type)
+                           then
+                             match t.RDF_Triple.o with
+                             | RDF_Term.T_IRI c -> [c]
+                             | uu___1 -> []
+                           else []) closed_cls in
+                    let allowed = RDFS_Closure.rdf_type ::
+                      (FStar_List_Tot_Base.op_At ign
+                         (FStar_List_Tot_Base.concatMap
+                            (fun sh ->
+                               if
+                                 (FStar_List_Tot_Base.existsb
+                                    (fun ty -> ty = sh.shape_id) types)
+                                   && (shape_closed_by_types sh)
+                               then path_predicates_of_shape sg sh
+                               else []) sg)) in
                     FStar_List_Tot_Base.concatMap
                       (fun t ->
                          if
@@ -3605,6 +3711,8 @@ let constraint_component_iri (cc : constraint_component) : RDF_Term.wf_iri=
   | CC_SubsetOf uu___ -> sh_SubsetOfConstraintComponent
   | CC_ReifierShape (uu___, uu___1) -> sh_ReifierShapeConstraintComponent
   | CC_Closed uu___ -> sh_ClosedConstraintComponent
+  | CC_ClosedByTypes uu___ -> sh_ClosedConstraintComponent
+  | CC_NodeByExpression uu___ -> sh_NodeByExpressionConstraintComponent
   | CC_Sparql (uu___, uu___1, uu___2) -> sh_SPARQLConstraintComponent
   | CC_Custom (comp, uu___, uu___1, uu___2) -> comp
 let severity_to_iri (s : severity) : RDF_Term.wf_iri=

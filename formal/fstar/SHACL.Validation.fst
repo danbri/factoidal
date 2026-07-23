@@ -214,6 +214,9 @@ let sh_SubsetOfConstraintComponent : wf_iri =
 let sh_ReifierShapeConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent");
   "http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent"
+let sh_NodeByExpressionConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#NodeByExpressionConstraintComponent");
+  "http://www.w3.org/ns/shacl#NodeByExpressionConstraintComponent"
 let shv_rdf_reifies : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
@@ -512,6 +515,17 @@ noeq type constraint_component =
   | CC_ReifierShape : shape_ref -> bool -> constraint_component
   // Closed-shape constraint.
   | CC_Closed       : ignored:list wf_iri -> constraint_component
+  // SHACL 1.2 `sh:closed sh:ByTypes`: the allowed properties for a focus
+  // node are the union of the sh:property paths declared by every
+  // ByTypes-closed node-shape whose class the focus node is an instance of
+  // (rdf:type, subclass-closed). Reports sh:ClosedConstraintComponent.
+  | CC_ClosedByTypes : ignored:list wf_iri -> constraint_component
+  // SHACL 1.2 sh:nodeByExpression: validate each value node against the
+  // shape produced by a node expression. Core only exercises the IRI-
+  // expression form (a bare shape reference), which behaves like sh:node
+  // but reports sh:NodeByExpressionConstraintComponent. Non-IRI node
+  // expressions are not modelled (skipped at parse time).
+  | CC_NodeByExpression : shape_ref -> constraint_component
   // SPARQL-based constraint (sh:sparql / sh:select), Phase 3 (issue
   // #181 follow-up). Carries: the sh:sparql constraint node's own
   // shape_ref (reported as sh:sourceConstraint — distinct from the
@@ -958,6 +972,12 @@ let sh_reifierShape : wf_iri =
 let sh_reificationRequired : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#reificationRequired");
   "http://www.w3.org/ns/shacl#reificationRequired"
+let sh_ByTypes : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#ByTypes");
+  "http://www.w3.org/ns/shacl#ByTypes"
+let sh_nodeByExpression : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#nodeByExpression");
+  "http://www.w3.org/ns/shacl#nodeByExpression"
 let sh_languageIn : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#languageIn");
   "http://www.w3.org/ns/shacl#languageIn"
@@ -1887,21 +1907,23 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
   let subsetof =
     List.Tot.map (fun t -> CC_SubsetOf (parse_path g t fuel)) (find_objects g s sh_subsetOf) in
   let reifiershape = build_reifier_constraints g s in
+  // sh:nodeByExpression — only the IRI-expression (bare shape reference) form.
+  let nodebyexpr =
+    List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_NodeByExpression i] | _ -> []) (find_objects g s sh_nodeByExpression) in
   let closed_ =
-    (match first_bool (find_objects g s sh_closed) with
-     | Some true ->
-       let ign =
-         (match find_objects g s sh_ignoredProperties with
-          | (head :: _) ->
-            List.Tot.concatMap (fun t -> match t with T_IRI i -> [i] | _ -> []) (rdf_list_terms g head fuel)
-          | [] -> []) in
-       [CC_Closed ign]
-     | _ -> []) in
+    let ign =
+      (match find_objects g s sh_ignoredProperties with
+       | (head :: _) ->
+         List.Tot.concatMap (fun t -> match t with T_IRI i -> [i] | _ -> []) (rdf_list_terms g head fuel)
+       | [] -> []) in
+    (match find_objects g s sh_closed with
+     | (T_IRI i) :: _ -> if i = sh_ByTypes then [CC_ClosedByTypes ign] else []
+     | objs -> (match first_bool objs with Some true -> [CC_Closed ign] | _ -> [])) in
   let sparqls = build_sparql_constraints g s in
   mincount @ maxcount @ datatype @ nodekind @ cls @ in_ @ hasvalue @ pattern @ minlen @ maxlen @
   singleline @ minlistlen @ maxlistlen @ rootcls @ somevalue @ uniquemembers @ membershape @ uvf @
   langin @ uniquelang @ mininc @ maxinc @ minexc @ maxexc @ nots @ ands @ ors @ xones @ nodes @
-  qualified @ equals @ disjoint @ lessthan @ lessthaneq @ subsetof @ reifiershape @ closed_ @ sparqls
+  qualified @ equals @ disjoint @ lessthan @ lessthaneq @ subsetof @ reifiershape @ nodebyexpr @ closed_ @ sparqls
 #pop-options
 
 let build_shape (g : rdf_graph) (s : subject) : shape =
@@ -2024,6 +2046,10 @@ let path_predicates_of_shape (sg : list shape) (s : shape) : list wf_iri =
               | Some ps -> (match ps.shape_path with Some (P_Predicate p) -> [p] | _ -> [])
               | None -> [])
     s.property_refs
+
+// Does this shape carry `sh:closed sh:ByTypes`?
+let shape_closed_by_types (s : shape) : bool =
+  List.Tot.existsb (fun cc -> match cc with CC_ClosedByTypes _ -> true | _ -> false) s.constraints
 
 // All distinct language tags used by at least two of `values`
 // (case-insensitive per lang_tag_eq; first-seen spelling kept). One
@@ -2185,6 +2211,12 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
        (match lookup_shape r sg with
         | None -> []
         | Some s2 -> if Nil? (collect_shape_violations data sg closed_cls v s2 fuel') then [] else viol ())
+     | CC_NodeByExpression r ->
+       (match lookup_shape r sg with
+        | None -> []
+        | Some s2 ->
+          if Nil? (collect_shape_violations data sg closed_cls v s2 fuel') then []
+          else [ { value_violation focus path_opt source cc sev msg v with v_source_constraint = Some (shape_ref_to_term r) } ])
      | CC_Datatype dt ->
        (match v with
         | T_Literal l ->
@@ -2303,6 +2335,7 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
      | CC_LessThanOrEq _ -> []   // aggregate
      | CC_SubsetOf _ -> []       // aggregate
      | CC_Closed _ -> []         // aggregate
+     | CC_ClosedByTypes _ -> []  // aggregate
      | CC_QualifiedMinCount _ _ _ -> []  // aggregate
      | CC_QualifiedMaxCount _ _ _ -> []  // aggregate
      | CC_Sparql _ _ _ -> []     // per-focus-node, not per-value — real dispatch is section 13's sparql_violations_for_shape, run as a separate pass over `validate`'s root_shapes (never inside this per-value/per-constraint judgment)
@@ -2386,6 +2419,32 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
             | None -> []
             | Some subj ->
               let allowed = path_predicates_of_shape sg s @ ign in
+              List.Tot.concatMap
+                (fun (t : triple) ->
+                   if subject_eq t.s subj && not (List.Tot.existsb (fun p -> p = t.p) allowed)
+                   then [{ v_focus_node = focus; v_path = Some (P_Predicate t.p); v_value = Some t.o;
+                           v_source_shape = source; v_constraint = cc; v_severity = sev; v_message = msg;
+                           v_source_constraint = None; v_detail = [] }]
+                   else [])
+                data)
+         // sh:closed sh:ByTypes — allowed set is the union of sh:property
+         // paths from every ByTypes-closed node-shape whose class the focus
+         // node is an instance of (rdf:type is itself always allowed).
+         | CC_ClosedByTypes ign ->
+           (match term_to_subject focus with
+            | None -> []
+            | Some subj ->
+              let types =
+                List.Tot.concatMap
+                  (fun (t : triple) -> if subject_eq t.s subj && t.p = rdf_type then (match t.o with T_IRI c -> [c] | _ -> []) else [])
+                  closed_cls in
+              let allowed =
+                rdf_type :: (ign @
+                  List.Tot.concatMap
+                    (fun (sh : shape) ->
+                       if List.Tot.existsb (fun (ty : wf_iri) -> (ty <: shape_ref) = sh.shape_id) types && shape_closed_by_types sh
+                       then path_predicates_of_shape sg sh else [])
+                    sg) in
               List.Tot.concatMap
                 (fun (t : triple) ->
                    if subject_eq t.s subj && not (List.Tot.existsb (fun p -> p = t.p) allowed)
@@ -3291,6 +3350,8 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_SubsetOf _ -> sh_SubsetOfConstraintComponent
   | CC_ReifierShape _ _ -> sh_ReifierShapeConstraintComponent
   | CC_Closed _ -> sh_ClosedConstraintComponent
+  | CC_ClosedByTypes _ -> sh_ClosedConstraintComponent
+  | CC_NodeByExpression _ -> sh_NodeByExpressionConstraintComponent
   | CC_Sparql _ _ _ -> sh_SPARQLConstraintComponent
   | CC_Custom comp _ _ _ -> comp
 
