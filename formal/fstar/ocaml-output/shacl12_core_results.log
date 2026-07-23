@@ -1,0 +1,505 @@
+  [1/138] Test of personexample ok
+  [2/138] frozen eat your own ( eat your own frozen dogfood ) ok
+  [3/138] Test of sh:deactivated 001 ok
+  [4/138] Test of sh:deactivated 002 ok
+  [5/138] Test of sh:deactivated 003 ok
+  [6/138] Test of custom sh:message 001 ok
+  [7/138] Test of custom sh:message 002 FAIL
+  [8/138] Test of sh:severity 001 ok
+  [9/138] Test of sh:severity 002 ok
+  [10/138] Test of sh:severity 003 FAIL
+  [11/138] Test of sh:severity sh:Debug 004 ok
+  [12/138] Test of sh:severity sh:Trace 005 ok
+  [13/138] Test of sh:and at node shape 001 ok
+  [14/138] Test of sh:and at node shape 002 ok
+  [15/138] Test of sh:class at node shape 001 ok
+  [16/138] Test of sh:class at node shape 002 ok
+  [17/138] Test of sh:class at node shape 003 multiple classes, overlapping target sets ok
+  [18/138] Test of sh:closed at node shape 001 ok
+  [19/138] Test of sh:closed at node shape 002 ok
+  [20/138] Test of sh:closed at node shape 003 FAIL
+  [21/138] Test of sh:closed at node shape 004 FAIL
+  [22/138] Test of sh:datatype at node shape 001 ok
+  [23/138] Test of sh:datatype at node shape 002 ok
+  [24/138] Test of sh:datatype at node shape 003 ok
+  [25/138] Test of sh:disjoint at node shape 001 ok
+  [26/138] Test of sh:equals at node shape 001 ok
+  [27/138] Test of sh:hasValue at node shape 001 ok
+  [28/138] Test of sh:in at node shape 001 ok
+  [29/138] Test of sh:languageIn at node shape 001 ok
+  [30/138] Test of sh:maxExclusive at node shape 001 ok
+  [31/138] Test of sh:maxInclusive at node shape 001 ok
+  [32/138] Test of sh:maxLength at node shape 001 ok
+  [33/138] Test of sh:maxListLength on node shape 001 ok
+  [34/138] Test of sh:memberShape on node shape 001 ok
+  [35/138] Test of sh:minExclusive at node shape 001 ok
+  [36/138] Test of sh:minInclusive at node shape 001 ok
+  [37/138] Test of sh:minInclusive at node shape 002 - dateTime with timezone ok
+  [38/138] Test of sh:minInclusive at node shape 003 - dateTime without timezone ok
+  [39/138] Test of sh:minLength at node shape 001 ok
+  [40/138] Test of sh:minListLength on node shape 001 ok
+  [41/138] Test of sh:node at node shape 001 ok
+  [42/138] Test of sh:nodeByExpression at node shape 001 FAIL
+  [43/138] Test of sh:nodeKind at node shape 001 ok
+  [44/138] Test of sh:nodeKind at node shape 002 ok
+  [45/138] Test of sh:not at node shape 001 ok
+  [46/138] Test of sh:not at node shape 002 ok
+  [47/138] Test of sh:or at node shape 001 ok
+  [48/138] Test of sh:pattern at node shape 001 ok
+  [49/138] Test of sh:pattern at node shape 002 ok
+  [50/138] Test of sh:uniqueMembers on node shape 001 ok
+  [51/138] Test of sh:uniqueValuesFor at node shape 001 (single property) ok
+  [52/138] Test of sh:uniqueValuesFor at node shape 002 (composite key) ok
+  [53/138] Test of sh:uniqueValuesFor at node shape 003 (targetSubjectsOf, global uniqueness) ok
+  [54/138] Test of sh:uniqueValuesFor at node shape 004 (No violation if values missing) ok
+  [55/138] Test of sh:uniqueValuesFor at node shape 005 (three instances sharing the same value) ok
+  [56/138] Test of sh:xone at node shape 001 ok
+  [57/138] Test of validation report for shape xone-duplicate by property constraints ok
+  [58/138] Test of qualified parameters allowed in node shapes ok
+  [59/138] Test of path sh:alternativePath 001 ok
+  [60/138] Test of path complex (rdf:type/rdfs:subClassOf*) 001 ok
+  [61/138] Test of complex path validation results ok
+  [62/138] Test of path sh:inversePath 001 ok
+  [63/138] Test of path sh:oneOrMorePath 001 ok
+  [64/138] Test of path sequence 001 ok
+  [65/138] Test of path sequence 002 ok
+  [66/138] Test of path sequence with duplicate 001 ok
+  [67/138] Test of path sh:zeroOrMorePath 001 ok
+  [68/138] Test of path sh:zeroOrOnePath 001 ok
+  [69/138] Test with unused ill-formed path ok
+  [70/138] Test of sh:and at property shape 001 ok
+  [71/138] Test of sh:class at property shape 001 ok
+  [72/138] Test of sh:class at property shape 002 ok
+  [73/138] Test of sh:datatype at property shape 001 ok
+  [74/138] Test of sh:datatype at property shape 002 ok
+  [75/138] Test of sh:datatype at property shape 003 ok
+  [76/138] Test of sh:datatype at property shape 004 ok
+  [77/138] Test of validation report for ill-formed literals ok
+  [78/138] Test of sh:disjoint at property shape 001 ok
+  [79/138] Test of sh:disjoint at property shape 002 ok
+  [80/138] Test of sh:equals at property shape 001 ok
+  [81/138] Test of sh:equals at property shape 002 ok
+  [82/138] Test of sh:hasValue at property shape 001 ok
+  [83/138] Test of sh:in at property shape 001 ok
+  [84/138] Test of sh:languageIn at property shape 001 ok
+  [85/138] Test of sh:lessThan at property shape 001 ok
+  [86/138] Test of sh:lessThan at property shape 002 ok
+  [87/138] Test of sh:lessThan at property shape 003 ok
+  [88/138] Test of sh:lessThanOrEquals at property shape 001 ok
+  [89/138] Test of sh:lessThanOrEquals at property shape 002 ok
+  [90/138] Test of sh:maxCount at property shape 001 ok
+  [91/138] Test of sh:maxCount at property shape 002 ok
+  [92/138] Test of sh:maxExclusive at property shape 001 ok
+  [93/138] Test of sh:maxInclusive at property shape 001 ok
+  [94/138] Test of sh:maxLength at property shape 001 ok
+  [95/138] Test of sh:maxListLength on property shape 001 ok
+  [96/138] Test of sh:memberShape at property shape 001 ok
+  [97/138] Test of sh:minCount at property shape 001 ok
+  [98/138] Test of sh:minCount at property shape 001 ok
+  [99/138] Test of sh:minExclusive at property shape 001 ok
+  [100/138] Test of sh:minExclusive at property shape 002 ok
+  [101/138] Test of sh:minLength at property shape 001 ok
+  [102/138] Test of sh:minListLength on property shape 001 ok
+  [103/138] Test of sh:node at property shape 001 ok
+  [104/138] Test of sh:node at property shape 002 ok
+  [105/138] Test of sh:nodeKind at property shape 001 ok
+  [106/138] Test of sh:not at property shape 001 ok
+  [107/138] Test of sh:or at property shape 001 ok
+  [108/138] Test of sh:or of sh:datatypes at property shape 001 ok
+  [109/138] Test of sh:pattern at property shape 001 ok
+  [110/138] Test of sh:pattern at property shape 002 ok
+  [111/138] Test of sh:property at property shape 001 ok
+  [112/138] Test of sh:qualifiedMinCount with disjoint shapes at property shape 001 ok
+  [113/138] Test of sh:qualifiedValueShape at property shape 001 ok
+  [114/138] Test of sh:qualifiedValueShapesDisjoint at property shape 001 ok
+  [115/138] Test of sh:reifierShape 001 FAIL
+  [116/138] Test of sh:reifierShape 002 with sh:reificationRequired FAIL
+  [117/138] Test of sh:rootClass at property shape 001 ok
+  [118/138] Test of sh:singleLine at property shape 001 ok
+  [119/138] Test of sh:someValue at property shape 001 ok
+  [120/138] Test of sh:subsetOf at property shape 001 FAIL
+  [121/138] Test of sh:subsetOf at property shape 002 FAIL
+  [122/138] Test of sh:uniqueLang at property shape 001 ok
+  [123/138] Test uniqueLang with other boolean literal for true ok
+  [124/138] Test of sh:uniqueLang with rdf:dirLangString values ok
+  [125/138] Test of sh:uniqueMembers on property shape 001 ok
+  [126/138] Test of multiple targets 001 ok
+  [127/138] Test of sh:shape 001 FAIL
+  [128/138] Test of sh:targetClass 001 ok
+  [129/138] Test of implicit sh:targetClass 001 ok
+  [130/138] Verify that sh:ShapeClass is interpreted as implicit class target FAIL
+  [131/138] Test of sh:targetNode 001 ok
+  [132/138] Test of sh:targetObjectsOf 001 ok
+  [133/138] Test of sh:targetSubjectsOf 001 ok
+  [134/138] Test of sh:targetSubjectsOf 002 ok
+  [135/138] Test of sh:targetWhere 001 FAIL
+  [136/138] Test of path sh:conformanceDisallows 001 FAIL
+  [137/138] Test of path sh:conformanceDisallows 002 ok
+  [138/138] Test of validation report for shape shared by property constraints ok
+=== SHACL W3C Test Runner (full report comparison) ===
+Manifest: third_party/testing/shacl/shacl12-test-suite/tests/core/manifest.ttl
+
+Totals: 138 test entries
+
+  PASS: Test of personexample
+  PASS: frozen eat your own ( eat your own frozen dogfood )
+  PASS: Test of sh:deactivated 001
+  PASS: Test of sh:deactivated 002
+  PASS: Test of sh:deactivated 003
+  PASS: Test of custom sh:message 001
+  FAIL: Test of custom sh:message 002 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/misc/message-002.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidNode> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultMessage> "Test message"@en .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> <http://example.com/ns#InvalidNode> .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  PASS: Test of sh:severity 001
+  PASS: Test of sh:severity 002
+  FAIL: Test of sh:severity 003 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/misc/severity-003.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n0 <http://www.w3.org/ns/shacl#result> _:c14n1 .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n1 <http://www.w3.org/ns/shacl#focusNode> "Hello" .
+_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Warning> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape> .
+_:c14n1 <http://www.w3.org/ns/shacl#value> "Hello" .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  PASS: Test of sh:severity sh:Debug 004
+  PASS: Test of sh:severity sh:Trace 005
+  PASS: Test of sh:and at node shape 001
+  PASS: Test of sh:and at node shape 002
+  PASS: Test of sh:class at node shape 001
+  PASS: Test of sh:class at node shape 002
+  PASS: Test of sh:class at node shape 003 multiple classes, overlapping target sets
+  PASS: Test of sh:closed at node shape 001
+  PASS: Test of sh:closed at node shape 002
+  FAIL: Test of sh:closed at node shape 003 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/node/closed-003.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidInstance1> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#subClassProperty1> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#ClosedConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#RootClass> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> "1"^^<http://www.w3.org/2001/XMLSchema#integer> .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  FAIL: Test of sh:closed at node shape 004 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/node/closed-004.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidInstance1> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#subClassProperty1> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#ClosedConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#RootClass> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> "1"^^<http://www.w3.org/2001/XMLSchema#integer> .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  PASS: Test of sh:datatype at node shape 001
+  PASS: Test of sh:datatype at node shape 002
+  PASS: Test of sh:datatype at node shape 003
+  PASS: Test of sh:disjoint at node shape 001
+  PASS: Test of sh:equals at node shape 001
+  PASS: Test of sh:hasValue at node shape 001
+  PASS: Test of sh:in at node shape 001
+  PASS: Test of sh:languageIn at node shape 001
+  PASS: Test of sh:maxExclusive at node shape 001
+  PASS: Test of sh:maxInclusive at node shape 001
+  PASS: Test of sh:maxLength at node shape 001
+  PASS: Test of sh:maxListLength on node shape 001
+  PASS: Test of sh:memberShape on node shape 001
+  PASS: Test of sh:minExclusive at node shape 001
+  PASS: Test of sh:minInclusive at node shape 001
+  PASS: Test of sh:minInclusive at node shape 002 - dateTime with timezone
+  PASS: Test of sh:minInclusive at node shape 003 - dateTime without timezone
+  PASS: Test of sh:minLength at node shape 001
+  PASS: Test of sh:minListLength on node shape 001
+  PASS: Test of sh:node at node shape 001
+  FAIL: Test of sh:nodeByExpression at node shape 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/node/nodeByExpression-001.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidInstance> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraint> <http://example.com/ns#TestNodeShape> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#NodeByExpressionConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestClass> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> <http://example.com/ns#InvalidInstance> .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  PASS: Test of sh:nodeKind at node shape 001
+  PASS: Test of sh:nodeKind at node shape 002
+  PASS: Test of sh:not at node shape 001
+  PASS: Test of sh:not at node shape 002
+  PASS: Test of sh:or at node shape 001
+  PASS: Test of sh:pattern at node shape 001
+  PASS: Test of sh:pattern at node shape 002
+  PASS: Test of sh:uniqueMembers on node shape 001
+  PASS: Test of sh:uniqueValuesFor at node shape 001 (single property)
+  PASS: Test of sh:uniqueValuesFor at node shape 002 (composite key)
+  PASS: Test of sh:uniqueValuesFor at node shape 003 (targetSubjectsOf, global uniqueness)
+  PASS: Test of sh:uniqueValuesFor at node shape 004 (No violation if values missing)
+  PASS: Test of sh:uniqueValuesFor at node shape 005 (three instances sharing the same value)
+  PASS: Test of sh:xone at node shape 001
+  PASS: Test of validation report for shape xone-duplicate by property constraints
+  PASS: Test of qualified parameters allowed in node shapes
+  PASS: Test of path sh:alternativePath 001
+  PASS: Test of path complex (rdf:type/rdfs:subClassOf*) 001
+  PASS: Test of complex path validation results
+  PASS: Test of path sh:inversePath 001
+  PASS: Test of path sh:oneOrMorePath 001
+  PASS: Test of path sequence 001
+  PASS: Test of path sequence 002
+  PASS: Test of path sequence with duplicate 001
+  PASS: Test of path sh:zeroOrMorePath 001
+  PASS: Test of path sh:zeroOrOnePath 001
+  PASS: Test with unused ill-formed path
+  PASS: Test of sh:and at property shape 001
+  PASS: Test of sh:class at property shape 001
+  PASS: Test of sh:class at property shape 002
+  PASS: Test of sh:datatype at property shape 001
+  PASS: Test of sh:datatype at property shape 002
+  PASS: Test of sh:datatype at property shape 003
+  PASS: Test of sh:datatype at property shape 004
+  PASS: Test of validation report for ill-formed literals
+  PASS: Test of sh:disjoint at property shape 001
+  PASS: Test of sh:disjoint at property shape 002
+  PASS: Test of sh:equals at property shape 001
+  PASS: Test of sh:equals at property shape 002
+  PASS: Test of sh:hasValue at property shape 001
+  PASS: Test of sh:in at property shape 001
+  PASS: Test of sh:languageIn at property shape 001
+  PASS: Test of sh:lessThan at property shape 001
+  PASS: Test of sh:lessThan at property shape 002
+  PASS: Test of sh:lessThan at property shape 003
+  PASS: Test of sh:lessThanOrEquals at property shape 001
+  PASS: Test of sh:lessThanOrEquals at property shape 002
+  PASS: Test of sh:maxCount at property shape 001
+  PASS: Test of sh:maxCount at property shape 002
+  PASS: Test of sh:maxExclusive at property shape 001
+  PASS: Test of sh:maxInclusive at property shape 001
+  PASS: Test of sh:maxLength at property shape 001
+  PASS: Test of sh:maxListLength on property shape 001
+  PASS: Test of sh:memberShape at property shape 001
+  PASS: Test of sh:minCount at property shape 001
+  PASS: Test of sh:minCount at property shape 001
+  PASS: Test of sh:minExclusive at property shape 001
+  PASS: Test of sh:minExclusive at property shape 002
+  PASS: Test of sh:minLength at property shape 001
+  PASS: Test of sh:minListLength on property shape 001
+  PASS: Test of sh:node at property shape 001
+  PASS: Test of sh:node at property shape 002
+  PASS: Test of sh:nodeKind at property shape 001
+  PASS: Test of sh:not at property shape 001
+  PASS: Test of sh:or at property shape 001
+  PASS: Test of sh:or of sh:datatypes at property shape 001
+  PASS: Test of sh:pattern at property shape 001
+  PASS: Test of sh:pattern at property shape 002
+  PASS: Test of sh:property at property shape 001
+  PASS: Test of sh:qualifiedMinCount with disjoint shapes at property shape 001
+  PASS: Test of sh:qualifiedValueShape at property shape 001
+  PASS: Test of sh:qualifiedValueShapesDisjoint at property shape 001
+  FAIL: Test of sh:reifierShape 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/property/reifierShape-001.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#propertyA> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-propertyA> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> "invalid" .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  FAIL: Test of sh:reifierShape 002 with sh:reificationRequired (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/property/reifierShape-002.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#propertyA> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-propertyA> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> "invalid" .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  PASS: Test of sh:rootClass at property shape 001
+  PASS: Test of sh:singleLine at property shape 001
+  PASS: Test of sh:someValue at property shape 001
+  FAIL: Test of sh:subsetOf at property shape 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/property/subsetOf-001.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource2> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> "A" .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n1 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource3> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
+_:c14n1 <http://www.w3.org/ns/shacl#value> "B" .
+_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n2 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
+_:c14n2 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
+_:c14n2 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n2 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
+_:c14n2 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
+_:c14n2 <http://www.w3.org/ns/shacl#value> "A" .
+_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n3 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n1 .
+_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n2 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  FAIL: Test of sh:subsetOf at property shape 002 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/property/subsetOf-002.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource2> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> "A" .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n1 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource3> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
+_:c14n1 <http://www.w3.org/ns/shacl#value> "B" .
+_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n2 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
+_:c14n2 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
+_:c14n2 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n2 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
+_:c14n2 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
+_:c14n2 <http://www.w3.org/ns/shacl#value> "A" .
+_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n3 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n1 .
+_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n2 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  PASS: Test of sh:uniqueLang at property shape 001
+  PASS: Test uniqueLang with other boolean literal for true
+  PASS: Test of sh:uniqueLang with rdf:dirLangString values
+  PASS: Test of sh:uniqueMembers on property shape 001
+  PASS: Test of multiple targets 001
+  FAIL: Test of sh:shape 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/targets/shape-001.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://www.w3.org/2000/01/rdf-schema#label> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#MaxCountConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-label> .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  PASS: Test of sh:targetClass 001
+  PASS: Test of implicit sh:targetClass 001
+  FAIL: Verify that sh:ShapeClass is interpreted as implicit class target (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/targets/targetClassImplicit-002.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidInstance> .
+_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#InConstraintComponent> .
+_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#SuperClass> .
+_:c14n0 <http://www.w3.org/ns/shacl#value> <http://example.com/ns#InvalidInstance> .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  PASS: Test of sh:targetNode 001
+  PASS: Test of sh:targetObjectsOf 001
+  PASS: Test of sh:targetSubjectsOf 001
+  PASS: Test of sh:targetSubjectsOf 002
+  FAIL: Test of sh:targetWhere 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/targets/targetWhere-001.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n0 <http://www.w3.org/ns/shacl#result> _:c14n1 .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n1 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#votedFor> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#MinCountConstraintComponent> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#AdultShape-votedFor> .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+
+  FAIL: Test of path sh:conformanceDisallows 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/validation-reports/conformance-disallows-001.ttl) — report not isomorphic to expected
+    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conformanceDisallows> <http://www.w3.org/ns/shacl#Violation> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n0 <http://www.w3.org/ns/shacl#result> _:c14n1 .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n1 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#Bob> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#age> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Warning> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#PersonShape-age> .
+_:c14n1 <http://www.w3.org/ns/shacl#value> "twenty two" .
+
+    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
+_:c14n0 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:c14n0 <http://www.w3.org/ns/shacl#result> _:c14n1 .
+_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
+_:c14n1 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#Bob> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#age> .
+_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Warning> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
+_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#PersonShape-age> .
+_:c14n1 <http://www.w3.org/ns/shacl#value> "twenty two" .
+
+  PASS: Test of path sh:conformanceDisallows 002
+  PASS: Test of validation report for shape shared by property constraints
+
+========================================
+TOTAL: 125 pass, 13 fail, 0 skip (out of 138)
+========================================
+shacl-core: 125 pass, 13 fail, 0 skip (out of 138)

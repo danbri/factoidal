@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-07-22 20:23 UTC",
-  "commit": "40bc6bc534c3d003e6958cce8312e34b0b39de5b",
+  "timestamp": "2026-07-23 00:26 UTC",
+  "commit": "23e9f28f020e0f8ed7a94d651288a472e5e04dba",
   "branch": "claude/main",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
@@ -18,6 +18,9 @@
     "rdfc10": {"pass":86,"fail":0,"skip":0,"total":86,"spec":"https://www.w3.org/TR/rdf-canon/"},
     "shacl_core":   {"pass":98,"fail":0,"skip":0,"total":98,"present":true,"spec":"https://www.w3.org/TR/shacl/"},
     "shacl_sparql": {"pass":22,"fail":0,"skip":0,"total":22,"present":true,"spec":"https://www.w3.org/TR/shacl/#sparql-constraints"},
+    "shacl12_core":   {"pass":125,"fail":13,"skip":0,"total":138,"present":true,"spec":"https://www.w3.org/TR/shacl12-core/"},
+    "shacl12_node_expr": {"pass":0,"fail":2,"skip":0,"total":2,"present":true,"spec":"https://www.w3.org/TR/shacl12-core/#node-expressions"},
+    "shacl12_sparql": {"pass":19,"fail":6,"skip":0,"total":25,"present":true,"spec":"https://www.w3.org/TR/shacl12-sparql/"},
     "shex":         {"pass":1181,"fail":0,"skip":1,"total":1182,"present":true,"spec":"https://shex.io/shex-semantics/"},
     "shex_negative_syntax": {"pass":100,"fail":0,"skip":0,"total":100,"present":true,"spec":"https://shex.io/shex-semantics/#shexc"},
     "jsonld_tordf": {"pass":467,"fail":0,"skip":0,"total":467,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#deserialize-json-ld-to-rdf-algorithm"},
@@ -104,6 +107,9 @@
     "rdfc10": {"name":"rdfc10","pass":86,"fail":0,"skip":0,"total":86},
     "shacl_core": {"name":"shacl_core","pass":98,"fail":0,"skip":0,"total":98},
     "shacl_sparql": {"name":"shacl_sparql","pass":22,"fail":0,"skip":0,"total":22},
+    "shacl12_core": {"name":"shacl12_core","pass":125,"fail":13,"skip":0,"total":138},
+    "shacl12_node_expr": {"name":"shacl12_node_expr","pass":0,"fail":2,"skip":0,"total":2},
+    "shacl12_sparql": {"name":"shacl12_sparql","pass":19,"fail":6,"skip":0,"total":25},
     "shex": {"name":"shex","pass":1181,"fail":0,"skip":1,"total":1182},
     "shex_negative_syntax": {"name":"shex_negative_syntax","pass":100,"fail":0,"skip":0,"total":100},
     "jsonld_tordf": {"name":"jsonld_tordf","pass":467,"fail":0,"skip":0,"total":467},
