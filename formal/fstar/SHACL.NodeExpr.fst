@@ -204,9 +204,70 @@ let rec ints_of (l : list rdf_term) : Tot (option (list int)) (decreases l) =
                | Some n, Some ns -> Some (n :: ns)
                | _, _ -> None)
 
+// --- decimal-aware numeric sum ---------------------------------------
+//
+// Each numeric value is parsed to (scaled_int, scale) so that value =
+// scaled_int / 10^scale; summing rescales to the common (maximum) scale.
+// An all-integer sum keeps scale 0 (integer result); any decimal member
+// makes the result a decimal.
+
+let rec pow10 (n : nat) : Tot int (decreases n) = if n = 0 then 1 else op_Multiply 10 (pow10 (n - 1))
+
+// Split a char list at the first '.', returning (before, Some after) or
+// (whole, None) when there is no point.
+let rec split_dot (cs : list char) (acc : list char) : Tot (list char & option (list char)) (decreases cs) =
+  match cs with
+  | [] -> (List.Tot.rev acc, None)
+  | '.' :: rest -> (List.Tot.rev acc, Some rest)
+  | c :: rest -> split_dot rest (c :: acc)
+
+let parse_dec_lexical (s : string) : option (int & nat) =
+  let (before, after_opt) = split_dot (String.list_of_string s) [] in
+  match after_opt with
+  | None -> (match Alg.parse_int_string s with Some n -> Some (n, 0) | None -> None)
+  | Some after ->
+    (match Alg.parse_int_string (String.string_of_list (before @ after)) with
+     | Some n -> Some (n, List.Tot.length after) | None -> None)
+
+let parse_num_term (t : rdf_term) : option (int & nat) =
+  match t with
+  | T_Literal l ->
+    if l.datatype = xsd_integer || l.datatype = xsd_decimal then parse_dec_lexical l.lexical_form else None
+  | _ -> None
+
+let rec nums_of (l : list rdf_term) : Tot (option (list (int & nat))) (decreases l) =
+  match l with
+  | [] -> Some []
+  | h :: r -> (match parse_num_term h, nums_of r with
+               | Some p, Some ps -> Some (p :: ps) | _, _ -> None)
+
+let rec max_scale (ps : list (int & nat)) (acc : nat) : Tot nat (decreases ps) =
+  match ps with [] -> acc | (_, sc) :: r -> max_scale r (if sc > acc then sc else acc)
+
+let rec sum_scaled (ps : list (int & nat)) (ms : nat) : Tot int (decreases ps) =
+  match ps with [] -> 0 | (n, sc) :: r -> op_Multiply n (pow10 (if ms >= sc then ms - sc else 0)) + sum_scaled r ms
+
+let rec repeat0 (n : nat) : Tot (list char) (decreases n) = if n = 0 then [] else '0' :: repeat0 (n - 1)
+
+// Render (scaled_val / 10^scale) as an xsd:decimal / xsd:integer literal.
+let mk_decimal_lit (scaled_val : int) (scale : nat) : rdf_term =
+  if scale = 0 then mk_int_lit scaled_val
+  else
+    let neg = scaled_val < 0 in
+    let a = if neg then 0 - scaled_val else scaled_val in
+    let digits = String.list_of_string (string_of_int a) in
+    let dlen = List.Tot.length digits in
+    let padded = (if dlen >= scale + 1 then [] else repeat0 (scale + 1 - dlen)) @ digits in
+    let n = List.Tot.length padded in
+    let k = if n >= scale then n - scale else 0 in
+    let (intp, fracp) = List.Tot.splitAt k padded in
+    let body = String.string_of_list (intp @ ['.'] @ fracp) in
+    let lex = if neg then String.concat "" ["-"; body] else body in
+    T_Literal ({ lexical_form = lex; datatype = xsd_decimal; lang_tag = None; direction = None })
+
 let sum_expr (vals : list rdf_term) : list rdf_term =
-  match ints_of vals with
-  | Some ns -> [ mk_int_lit (List.Tot.fold_left (fun a b -> a + b) 0 ns) ]
+  match nums_of vals with
+  | Some ps -> let ms = max_scale ps 0 in [ mk_decimal_lit (sum_scaled ps ms) ms ]
   | None -> []
 
 let rec max_int (ns : list int) (acc : int) : Tot int (decreases ns) =

@@ -4,6 +4,7 @@
   Parquet/Zstd stub: enabled (-ccopt -I/usr/include -cclib -L/usr/lib/x86_64-linux-gnu -lzstd)
   HACL* crypto stubs: enabled (Ed25519 + SHA-256, vendored C)
   Platform: linux-x86_64
+      …ocamlopt w3c_runner still running  (30s elapsed, 2 log lines)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -32,7 +33,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/w3c_runner (14361816 bytes)
+  Built: bin/linux-x86_64/w3c_runner (14365024 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
 (.text.caml_dlopen+0x13): warning: Using 'dlopen' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
@@ -60,7 +61,7 @@ findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/factoidal (16505192 bytes)
+  Built: bin/linux-x86_64/factoidal (16513680 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
 (.text.caml_dlopen+0x13): warning: Using 'dlopen' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
@@ -88,36 +89,7 @@ findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/factoidal-http (16142808 bytes)
-findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
-ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
-/usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
-(.text.caml_dlopen+0x13): warning: Using 'dlopen' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getgr.o): in function `unix_getgrgid':
-(.text.unix_getgrgid+0x22): warning: Using 'getgrgid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getgr.o): in function `unix_getgrnam':
-(.text.unix_getgrnam+0x28): warning: Using 'getgrnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(initgroups.o): in function `unix_initgroups':
-(.text.unix_initgroups+0x23): warning: Using 'initgroups' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getaddrinfo.o): in function `unix_getaddrinfo':
-(.text.unix_getaddrinfo+0x249): warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(gethost.o): in function `unix_gethostbyaddr':
-(.text.unix_gethostbyaddr+0x69): warning: Using 'gethostbyaddr_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(gethost.o): in function `unix_gethostbyname':
-(.text.unix_gethostbyname+0x71): warning: Using 'gethostbyname_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getproto.o): in function `unix_getprotobynumber':
-(.text.unix_getprotobynumber+0xc): warning: Using 'getprotobynumber' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getproto.o): in function `unix_getprotobyname':
-(.text.unix_getprotobyname+0x15): warning: Using 'getprotobyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getpw.o): in function `unix_getpwnam':
-(.text.unix_getpwnam+0x28): warning: Using 'getpwnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getpw.o): in function `unix_getpwuid':
-(.text.unix_getpwuid+0x22): warning: Using 'getpwuid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyname':
-(.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
-(.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/owl_runner (14259968 bytes)
+  Built: bin/linux-x86_64/factoidal-http (16151304 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -146,7 +118,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/rdfc10_runner (14188312 bytes)
+  Built: bin/linux-x86_64/owl_runner (14263208 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -175,7 +147,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/grddl_runner (14192432 bytes)
+  Built: bin/linux-x86_64/rdfc10_runner (14195616 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -204,7 +176,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/jsonld_runner (14188720 bytes)
+  Built: bin/linux-x86_64/grddl_runner (14199744 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -233,7 +205,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/jsonld_html_runner (14186592 bytes)
+  Built: bin/linux-x86_64/jsonld_runner (14196024 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -262,7 +234,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/jsonld_fromrdf_runner (14185224 bytes)
+  Built: bin/linux-x86_64/jsonld_html_runner (14197992 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -291,7 +263,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/jsonld_expand_runner (14189568 bytes)
+  Built: bin/linux-x86_64/jsonld_fromrdf_runner (14192560 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -320,7 +292,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/jsonld_compact_runner (14197440 bytes)
+  Built: bin/linux-x86_64/jsonld_expand_runner (14196904 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -349,7 +321,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/jsonld_flatten_runner (14190544 bytes)
+  Built: bin/linux-x86_64/jsonld_compact_runner (14200648 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -378,7 +350,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/jsonld_frame_runner (14180520 bytes)
+  Built: bin/linux-x86_64/jsonld_flatten_runner (14197888 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -407,7 +379,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/mathml_runner (14178400 bytes)
+  Built: bin/linux-x86_64/jsonld_frame_runner (14183768 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -436,7 +408,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/jsonschema_runner (14175024 bytes)
+  Built: bin/linux-x86_64/mathml_runner (14181640 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -465,7 +437,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/schematron_runner (14183728 bytes)
+  Built: bin/linux-x86_64/jsonschema_runner (14178232 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -494,7 +466,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/xslt_runner (14198744 bytes)
+  Built: bin/linux-x86_64/schematron_runner (14186968 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -523,7 +495,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/vc_runner (14190904 bytes)
+  Built: bin/linux-x86_64/xslt_runner (14206056 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -552,7 +524,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/did_runner (14173256 bytes)
+  Built: bin/linux-x86_64/vc_runner (14198208 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -581,7 +553,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/shacl_runner (14216216 bytes)
+  Built: bin/linux-x86_64/did_runner (14180568 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -610,7 +582,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/qudt_runner (14231176 bytes)
+  Built: bin/linux-x86_64/shacl_runner (14223528 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -639,7 +611,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/rml_runner (14193264 bytes)
+  Built: bin/linux-x86_64/qudt_runner (14238512 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -668,7 +640,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/csvw_runner (14196920 bytes)
+  Built: bin/linux-x86_64/rml_runner (14204664 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -697,7 +669,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/shex_runner (14235104 bytes)
+  Built: bin/linux-x86_64/csvw_runner (14204224 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -726,7 +698,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/rif_runner (14250496 bytes)
+  Built: bin/linux-x86_64/shex_runner (14242448 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -755,7 +727,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/factoidal_http_client (14166792 bytes)
+  Built: bin/linux-x86_64/rif_runner (14253712 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -784,7 +756,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/parquet_probe (14201056 bytes)
+  Built: bin/linux-x86_64/factoidal_http_client (14174096 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -813,8 +785,37 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/cottas_ondisk_smoketest (14166728 bytes)
-  [timing] phase=compile seconds=842 changed_modules=0
+  Built: bin/linux-x86_64/parquet_probe (14204272 bytes)
+findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+/usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
+(.text.caml_dlopen+0x13): warning: Using 'dlopen' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(getgr.o): in function `unix_getgrgid':
+(.text.unix_getgrgid+0x22): warning: Using 'getgrgid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(getgr.o): in function `unix_getgrnam':
+(.text.unix_getgrnam+0x28): warning: Using 'getgrnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(initgroups.o): in function `unix_initgroups':
+(.text.unix_initgroups+0x23): warning: Using 'initgroups' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(getaddrinfo.o): in function `unix_getaddrinfo':
+(.text.unix_getaddrinfo+0x249): warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(gethost.o): in function `unix_gethostbyaddr':
+(.text.unix_gethostbyaddr+0x69): warning: Using 'gethostbyaddr_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(gethost.o): in function `unix_gethostbyname':
+(.text.unix_gethostbyname+0x71): warning: Using 'gethostbyname_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(getproto.o): in function `unix_getprotobynumber':
+(.text.unix_getprotobynumber+0xc): warning: Using 'getprotobynumber' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(getproto.o): in function `unix_getprotobyname':
+(.text.unix_getprotobyname+0x15): warning: Using 'getprotobyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(getpw.o): in function `unix_getpwnam':
+(.text.unix_getpwnam+0x28): warning: Using 'getpwnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(getpw.o): in function `unix_getpwuid':
+(.text.unix_getpwuid+0x22): warning: Using 'getpwuid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyname':
+(.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
+(.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+  Built: bin/linux-x86_64/cottas_ondisk_smoketest (14174072 bytes)
+  [timing] phase=compile seconds=873 changed_modules=0
 
 === Pipeline complete ===
 BUILD_STATUS=OK
