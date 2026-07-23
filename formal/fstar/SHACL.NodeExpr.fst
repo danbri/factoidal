@@ -89,6 +89,26 @@ let shnex_max : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#max");
   "http://www.w3.org/ns/shacl-node-expr#max"
 
+let shnex_intersection : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#intersection");
+  "http://www.w3.org/ns/shacl-node-expr#intersection"
+
+let shnex_remove : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#remove");
+  "http://www.w3.org/ns/shacl-node-expr#remove"
+
+let shnex_flatMap : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#flatMap");
+  "http://www.w3.org/ns/shacl-node-expr#flatMap"
+
+let shnex_orderBy : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#orderBy");
+  "http://www.w3.org/ns/shacl-node-expr#orderBy"
+
+let shnex_desc : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#desc");
+  "http://www.w3.org/ns/shacl-node-expr#desc"
+
 let shnex_limit : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl-node-expr#limit");
   "http://www.w3.org/ns/shacl-node-expr#limit"
@@ -163,6 +183,20 @@ let max_expr (vals : list rdf_term) : list rdf_term =
 let min_expr (vals : list rdf_term) : list rdf_term =
   match ints_of vals with Some (h :: t) -> [ mk_int_lit (min_int t h) ] | _ -> []
 
+// Term membership by structural RDF-term equality (shnex remove /
+// intersection compare TERMS, not values: "01"^^xsd:integer is NOT the
+// same term as "1"^^xsd:integer even though value-equal).
+let rec term_mem (t : rdf_term) (l : list rdf_term) : Tot bool (decreases l) =
+  match l with [] -> false | h :: r -> rdf_term_eq t h || term_mem t r
+
+// Ordering for shnex:orderBy sort keys: numeric when both are integer
+// literals; otherwise treated as equal (stable / no reorder), which
+// covers the suite's integer orderBy fixtures.
+let term_cmp (a b : rdf_term) : int =
+  match parse_int_term a, parse_int_term b with
+  | Some x, Some y -> if x < y then (-1) else if x > y then 1 else 0
+  | _, _ -> 0
+
 // --- the evaluator ---------------------------------------------------
 
 #push-options "--z3rlimit 150"
@@ -191,7 +225,9 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
        | (p :: _) -> (match focus with Some f -> eval_path g f (parse_path g p fuel') | None -> [])
        | [] ->
       (match find_objects g es shnex_nodes with
-       | (l :: _) -> eval_ne_list g focus scope (rdf_list_terms g l fuel') fuel'
+       // shnex:nodes takes ONE node expression (often a bare rdf:List,
+       // which itself evaluates to its members) — not a list of exprs.
+       | (l :: _) -> eval_ne g focus scope l fuel'
        | [] ->
       (match find_objects g es shnex_concat with
        | (l :: _) -> eval_ne_list g focus scope (rdf_list_terms g l fuel') fuel'
@@ -220,6 +256,9 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
       (match find_objects g es shnex_max with
        | (e :: _) -> max_expr (eval_ne g focus scope e fuel')
        | [] ->
+      (match find_objects g es shnex_intersection with
+       | (l :: _) -> dedup_terms (eval_ne_intersect g focus scope (rdf_list_terms g l fuel') fuel')
+       | [] ->
       (match find_objects g es shnex_instancesOf with
        | (T_IRI c) :: _ -> instances_of g c
        | _ ->
@@ -229,10 +268,29 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
          // IRI (incl. rdf:nil from `()`) or literal is a constant -> itself.
          (match find_objects g es rdf_first with
           | (_ :: _) -> eval_ne_list g focus scope (rdf_list_terms g expr fuel') fuel'
-          | [] -> (match expr with T_BNode _ -> [] | _ -> [expr])))))))))))))
+          | [] -> (match expr with T_BNode _ -> [] | _ -> [expr]))))))))))))))
     in
-    // Slicing modifiers apply after the generator.
-    let after_offset = (match first_int (find_objects g es shnex_offset) with Some n -> list_drop n base | None -> base) in
+    // Modifiers apply after the generator: flatMap (per-element re-focus),
+    // remove (set difference by term), then offset/limit slicing.
+    let after_flatmap =
+      (match find_objects g es shnex_flatMap with
+       | (m :: _) -> eval_ne_flatmap g scope m base fuel'
+       | [] -> base) in
+    let after_remove =
+      (match find_objects g es shnex_remove with
+       | (r :: _) -> let rm = eval_ne g focus scope r fuel' in
+                     List.Tot.filter (fun x -> not (term_mem x rm)) after_flatmap
+       | [] -> after_flatmap) in
+    let after_orderby =
+      (match find_objects g es shnex_orderBy with
+       | (k :: _) ->
+         let desc = (match first_bool (find_objects g es shnex_desc) with Some true -> true | _ -> false) in
+         let keyed = eval_ne_keyed g scope k after_remove fuel' in
+         let sorted = List.Tot.sortWith (fun (p1 : (rdf_term & rdf_term)) (p2 : (rdf_term & rdf_term)) -> term_cmp (snd p1) (snd p2)) keyed in
+         let ordered = List.Tot.map (fun (p : (rdf_term & rdf_term)) -> fst p) sorted in
+         if desc then List.Tot.rev ordered else ordered
+       | [] -> after_remove) in
+    let after_offset = (match first_int (find_objects g es shnex_offset) with Some n -> list_drop n after_orderby | None -> after_orderby) in
     (match first_int (find_objects g es shnex_limit) with Some n -> list_take n after_offset | None -> after_offset)
 
 // Evaluate each expression in `es` and concatenate the results (order
@@ -246,6 +304,43 @@ and eval_ne_list (g : rdf_graph) (focus : option rdf_term) (scope : list (string
   match es with
   | [] -> []
   | e :: rest -> eval_ne g focus scope e fuel @ eval_ne_list g focus scope rest fuel
+
+// shnex:intersection: evaluate each member expression separately and
+// keep only the terms present in ALL of them (term equality).
+and eval_ne_intersect (g : rdf_graph) (focus : option rdf_term) (scope : list (string & rdf_term))
+                      (members : list rdf_term) (fuel : nat)
+  : Tot (list rdf_term) (decreases %[fuel; 1; List.Tot.length members])
+  =
+  match members with
+  | [] -> []
+  | [m] -> eval_ne g focus scope m fuel
+  | m :: rest ->
+    let hd = eval_ne g focus scope m fuel in
+    let tl = eval_ne_intersect g focus scope rest fuel in
+    List.Tot.filter (fun x -> term_mem x tl) hd
+
+// shnex:flatMap: for each element of the source, re-evaluate the mapper
+// expression with that element as the focus node, concatenating results.
+and eval_ne_flatmap (g : rdf_graph) (scope : list (string & rdf_term))
+                    (mapper : rdf_term) (elems : list rdf_term) (fuel : nat)
+  : Tot (list rdf_term) (decreases %[fuel; 1; List.Tot.length elems])
+  =
+  match elems with
+  | [] -> []
+  | el :: rest -> eval_ne g (Some el) scope mapper fuel @ eval_ne_flatmap g scope mapper rest fuel
+
+// shnex:orderBy: pair each source element with its sort key (the key
+// expression re-evaluated with that element as focus; the element
+// itself when the key is empty), for a subsequent sortWith.
+and eval_ne_keyed (g : rdf_graph) (scope : list (string & rdf_term))
+                  (keyexpr : rdf_term) (elems : list rdf_term) (fuel : nat)
+  : Tot (list (rdf_term & rdf_term)) (decreases %[fuel; 1; List.Tot.length elems])
+  =
+  match elems with
+  | [] -> []
+  | el :: rest ->
+    let k = (match eval_ne g (Some el) scope keyexpr fuel with kk :: _ -> kk | [] -> el) in
+    (el, k) :: eval_ne_keyed g scope keyexpr rest fuel
 #pop-options
 
 // Entry point for the runner: evaluate `expr` against `g` with an
