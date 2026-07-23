@@ -232,6 +232,125 @@ let term_cmp (a b : rdf_term) : int =
   | Some x, Some y -> if x < y then (-1) else if x > y then 1 else 0
   | _, _ -> 0
 
+// --- SHACL-SPARQL node expressions (shnex-sparql) --------------------
+//
+// A `[ sparql:<fn> ( arg1 arg2 .. ) ]` node expression applies the
+// SPARQL built-in function <fn> to its evaluated arguments. We bridge
+// to SPARQL11.Algebra's expression AST + evaluator: each argument value
+// is wrapped as a constant `expr`, dispatched to the matching
+// constructor, evaluated with an empty solution mapping, and the
+// eval_result converted back to a term.
+
+let sparql_ns : string = "http://www.w3.org/ns/sparql#"
+
+let sparql_localname (p : wf_iri) : option string =
+  let n = String.length sparql_ns in
+  if String.length p > n && String.sub p 0 n = sparql_ns
+  then Some (String.sub p n (String.length p - n)) else None
+
+// The (localname, argument-list-head) of a sparql: function call on `es`,
+// found by scanning the graph for a sparql:-namespaced predicate.
+let sparql_call_of (g : rdf_graph) (es : subject) : option (string & rdf_term) =
+  match List.Tot.filter (fun (tr : triple) -> subject_eq tr.s es && Some? (sparql_localname tr.p)) g with
+  | tr :: _ -> (match sparql_localname tr.p with Some ln -> Some (ln, tr.o) | None -> None)
+  | [] -> None
+
+// Wrap an already-computed value term as a constant SPARQL expression,
+// promoting numeric/boolean literals to their typed expr forms so the
+// arithmetic / numeric builtins see numbers rather than opaque literals.
+let term_to_expr (t : rdf_term) : Alg.expr =
+  match t with
+  | T_IRI i -> Alg.E_IRI i
+  | T_Literal l ->
+    if l.datatype = xsd_integer
+    then (match Alg.parse_int_string l.lexical_form with Some n -> Alg.E_NumericLit n | None -> Alg.E_Literal l)
+    else if l.datatype = xsd_decimal then Alg.E_DecimalLit l.lexical_form
+    else if l.datatype = xsd_double then Alg.E_DoubleLit l.lexical_form
+    else if l.datatype = xsd_boolean then Alg.E_BoolLit (l.lexical_form = "true")
+    else Alg.E_Literal l
+  | _ -> Alg.E_Literal (Alg.mk_plain_literal "")
+
+// Dispatch a SPARQL builtin localname + argument expressions to the
+// SPARQL11.Algebra `expr` AST. None for a name/arity we do not bridge
+// (langMatches, uuid/struuid, bnode, sameValue, triple-term ctors, and
+// bound — which needs a variable, not a value).
+let sparql_fn_expr (ln : string) (args : list Alg.expr) : option Alg.expr =
+  match ln, args with
+  | "abs", [a] -> Some (Alg.E_Abs a)
+  | "ceil", [a] -> Some (Alg.E_Ceil a)
+  | "floor", [a] -> Some (Alg.E_Floor a)
+  | "round", [a] -> Some (Alg.E_Round a)
+  | "str", [a] -> Some (Alg.E_Str a)
+  | "strlen", [a] -> Some (Alg.E_StrLen a)
+  | "ucase", [a] -> Some (Alg.E_UCase a)
+  | "lcase", [a] -> Some (Alg.E_LCase a)
+  | "lang", [a] -> Some (Alg.E_Lang a)
+  | "langdir", [a] -> Some (Alg.E_LangDir a)
+  | "hasLang", [a] -> Some (Alg.E_HasLang a)
+  | "hasLangdir", [a] -> Some (Alg.E_HasLangDir a)
+  | "datatype", [a] -> Some (Alg.E_Datatype a)
+  | "iri", [a] -> Some (Alg.E_IRI_fn a)
+  | "uri", [a] -> Some (Alg.E_IRI_fn a)
+  | "encode-for-uri", [a] -> Some (Alg.E_EncodeForUri a)
+  | "isIRI", [a] -> Some (Alg.E_IsIRI a)
+  | "isURI", [a] -> Some (Alg.E_IsIRI a)
+  | "isBlank", [a] -> Some (Alg.E_IsBlank a)
+  | "isLiteral", [a] -> Some (Alg.E_IsLiteral a)
+  | "isNumeric", [a] -> Some (Alg.E_IsNumeric a)
+  | "isTriple", [a] -> Some (Alg.E_IsTriple a)
+  | "contains", [a; b] -> Some (Alg.E_Contains a b)
+  | "strstarts", [a; b] -> Some (Alg.E_StrStarts a b)
+  | "strends", [a; b] -> Some (Alg.E_StrEnds a b)
+  | "strbefore", [a; b] -> Some (Alg.E_StrBefore a b)
+  | "strafter", [a; b] -> Some (Alg.E_StrAfter a b)
+  | "strdt", [a; b] -> Some (Alg.E_StrDt a b)
+  | "strlang", [a; b] -> Some (Alg.E_StrLang a b)
+  | "strlangdir", [a; b; c] -> Some (Alg.E_StrLangDir a b c)
+  | "concat", _ -> Some (Alg.E_Concat args)
+  | "coalesce", _ -> Some (Alg.E_Coalesce args)
+  | "sameTerm", [a; b] -> Some (Alg.E_SameTerm a b)
+  | "if", [a; b; c] -> Some (Alg.E_If a b c)
+  | "substr", [a; b] -> Some (Alg.E_Substr a b None)
+  | "substr", [a; b; c] -> Some (Alg.E_Substr a b (Some c))
+  | "replace", [a; b; c] -> Some (Alg.E_Replace a b c None)
+  | "replace", [a; b; c; d] -> Some (Alg.E_Replace a b c (Some d))
+  | "regex", [a; b] -> Some (Alg.E_Regex a b None)
+  | "regex", [a; b; c] -> Some (Alg.E_Regex a b (Some c))
+  | "year", [a] -> Some (Alg.E_Year a)
+  | "month", [a] -> Some (Alg.E_Month a)
+  | "day", [a] -> Some (Alg.E_Day a)
+  | "hours", [a] -> Some (Alg.E_Hours a)
+  | "minutes", [a] -> Some (Alg.E_Minutes a)
+  | "seconds", [a] -> Some (Alg.E_Seconds a)
+  | "timezone", [a] -> Some (Alg.E_Timezone a)
+  | "tz", [a] -> Some (Alg.E_Tz a)
+  | "md5", [a] -> Some (Alg.E_MD5 a)
+  | "sha1", [a] -> Some (Alg.E_SHA1 a)
+  | "sha256", [a] -> Some (Alg.E_SHA256 a)
+  | "sha384", [a] -> Some (Alg.E_SHA384 a)
+  | "sha512", [a] -> Some (Alg.E_SHA512 a)
+  | "logical-not", [a] -> Some (Alg.E_Not a)
+  | "logical-and", [a; b] -> Some (Alg.E_And a b)
+  | "logical-or", [a; b] -> Some (Alg.E_Or a b)
+  | "divide", [a; b] -> Some (Alg.E_Arith Alg.Div a b)
+  | "multiply", [a; b] -> Some (Alg.E_Arith Alg.Mul a b)
+  | "plus", [a; b] -> Some (Alg.E_Arith Alg.Add a b)
+  | "subtract", [a; b] -> Some (Alg.E_Arith Alg.Sub a b)
+  | "equals", [a; b] -> Some (Alg.E_Compare Alg.CmpEq a b)
+  | "not-equals", [a; b] -> Some (Alg.E_Compare Alg.CmpNe a b)
+  | "greater-than", [a; b] -> Some (Alg.E_Compare Alg.CmpGt a b)
+  | "greater-than-or-equal", [a; b] -> Some (Alg.E_Compare Alg.CmpGe a b)
+  | "less-than", [a; b] -> Some (Alg.E_Compare Alg.CmpLt a b)
+  | "less-than-or-equal", [a; b] -> Some (Alg.E_Compare Alg.CmpLe a b)
+  | _, _ -> None
+
+// Evaluate a bridged SPARQL builtin call against an empty solution
+// mapping and reflect the eval_result back as a value list.
+let sparql_apply (ln : string) (argvals : list rdf_term) : list rdf_term =
+  match sparql_fn_expr ln (List.Tot.map term_to_expr argvals) with
+  | Some e -> (match Alg.er_to_term (Alg.eval_expr_with_base None e Alg.sm_empty) with Some t -> [t] | None -> [])
+  | None -> []
+
 // --- the evaluator ---------------------------------------------------
 
 #push-options "--z3rlimit 300"
@@ -302,6 +421,9 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
        | (s :: _) -> dedup_terms (List.Tot.filter (fun v -> node_conforms g s v)
                                     (List.Tot.map subject_to_term (distinct_subjects g)))
        | [] ->
+      (match sparql_call_of g es with
+       | Some (ln, arglist) -> sparql_apply ln (eval_ne_argvals g focus scope (rdf_list_terms g arglist fuel') fuel')
+       | None ->
       (match find_objects g es shnex_instancesOf with
        | (T_IRI c) :: _ -> instances_of g c
        | _ ->
@@ -311,7 +433,7 @@ let rec eval_ne (g : rdf_graph) (focus : option rdf_term) (scope : list (string 
          // IRI (incl. rdf:nil from `()`) or literal is a constant -> itself.
          (match find_objects g es rdf_first with
           | (_ :: _) -> eval_ne_list g focus scope (rdf_list_terms g expr fuel') fuel'
-          | [] -> (match expr with T_BNode _ -> [] | _ -> [expr])))))))))))))))
+          | [] -> (match expr with T_BNode _ -> [] | _ -> [expr]))))))))))))))))
     in
     // Modifiers apply after the generator: flatMap (per-element re-focus),
     // remove (set difference by term), then offset/limit slicing.
@@ -400,6 +522,17 @@ and eval_ne_keyed (g : rdf_graph) (scope : list (string & rdf_term))
   | el :: rest ->
     let k = (match eval_ne g (Some el) scope keyexpr fuel with kk :: _ -> kk | [] -> el) in
     (el, k) :: eval_ne_keyed g scope keyexpr rest fuel
+
+// Evaluate each SPARQL-builtin argument expression to a single value
+// (its first result; skipped if it yields none) for sparql_apply.
+and eval_ne_argvals (g : rdf_graph) (focus : option rdf_term) (scope : list (string & rdf_term))
+                    (argexprs : list rdf_term) (fuel : nat)
+  : Tot (list rdf_term) (decreases %[fuel; 1; List.Tot.length argexprs])
+  =
+  match argexprs with
+  | [] -> []
+  | a :: rest ->
+    (match eval_ne g focus scope a fuel with v :: _ -> [v] | [] -> []) @ eval_ne_argvals g focus scope rest fuel
 #pop-options
 
 // Entry point for the runner: evaluate `expr` against `g` with an
