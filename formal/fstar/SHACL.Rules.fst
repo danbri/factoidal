@@ -158,6 +158,73 @@ let srl_valid_syntax (srl : string) : bool =
   | [] -> true
   | header :: blocks -> all_blocks_valid header blocks
 
+// --- well-formedness (rules/wellformed suite) ------------------------
+
+// A variable-name continuation char: anything that is NOT one of the
+// SPARQL token delimiters (so `?name` runs up to the next delimiter).
+let is_var_name_char (c : char) : bool =
+  not (c = ' ' || c = '\n' || c = '\t' || c = '\r' || c = '.' || c = '{' || c = '}'
+       || c = '(' || c = ')' || c = ';' || c = ',' || c = '?' || c = '$'
+       || c = '<' || c = '>' || c = '"' || c = '\'' || c = '[' || c = ']')
+
+let rec take_while (p : char -> bool) (cs : list char) : Tot (list char) (decreases cs) =
+  match cs with c :: r -> if p c then c :: take_while p r else [] | [] -> []
+
+let rec drop_while (p : char -> bool) (cs : list char) : Tot (list char) (decreases cs) =
+  match cs with c :: r -> if p c then drop_while p r else cs | [] -> []
+
+// Every `?name` / `$name` variable token in the char list.
+let rec collect_vars (cs : list char) (fuel : nat) : Tot (list string) (decreases fuel) =
+  if fuel = 0 then [] else
+  match cs with
+  | [] -> []
+  | c :: rest ->
+    if c = '?' || c = '$'
+    then (match take_while is_var_name_char rest with
+          | [] -> collect_vars rest (fuel - 1)
+          | nm -> Str.string_of_list nm :: collect_vars (drop_while is_var_name_char rest) (fuel - 1))
+    else collect_vars rest (fuel - 1)
+
+let vars_in (s : string) : list string = collect_vars (Str.list_of_string s) (Str.length s + 1)
+
+// Split `cs` at the first occurrence of `needle`, returning
+// (before, after) as strings; None if the needle never appears.
+let rec split_at_needle (cs : list char) (needle : list char) (acc : list char) (fuel : nat)
+  : Tot (option (string & string)) (decreases fuel)
+  =
+  if fuel = 0 then None else
+  match cs with
+  | [] -> None
+  | c :: rest ->
+    if chars_prefix_match needle cs
+    then Some (Str.string_of_list (List.Tot.rev acc),
+               Str.string_of_list (chars_drop (List.Tot.length needle) cs))
+    else split_at_needle rest needle (c :: acc) (fuel - 1)
+
+let rec all_mem (xs : list string) (ys : list string) : Tot bool (decreases xs) =
+  match xs with [] -> true | x :: r -> List.Tot.mem x ys && all_mem r ys
+
+// A RULE is well-formed iff every variable used in its HEAD is bound by
+// its body (the range-restriction / safety condition — an unbound head
+// variable cannot be instantiated). DATA blocks and non-rule segments
+// are trivially well-formed here.
+let block_well_formed (block : string) : bool =
+  match line_kind block with
+  | Some true ->
+    (match split_at_needle (Str.list_of_string (line_body block)) ['W'; 'H'; 'E'; 'R'; 'E'] []
+             (Str.length block + 1) with
+     | Some (head, body) -> all_mem (vars_in head) (vars_in body)
+     | None -> true)
+  | _ -> true
+
+let rec all_blocks_well_formed (bs : list string) : Tot bool (decreases bs) =
+  match bs with [] -> true | b :: rest -> block_well_formed b && all_blocks_well_formed rest
+
+let srl_well_formed (srl : string) : bool =
+  match scan_blocks (Str.list_of_string srl) 0 true [] [] (Str.length srl + 2) with
+  | [] -> true
+  | _ :: blocks -> all_blocks_well_formed blocks
+
 // --- fixpoint evaluation ---------------------------------------------
 
 let parse_constructs (srl : string) : list Alg.query =
