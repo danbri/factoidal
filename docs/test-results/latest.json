@@ -111,7 +111,7 @@
     "rdfc10": {"name":"rdfc10","pass":86,"fail":0,"skip":0,"total":86},
     "shacl_core": {"name":"shacl_core","pass":98,"fail":0,"skip":0,"total":98},
     "shacl_sparql": {"name":"shacl_sparql","pass":22,"fail":0,"skip":0,"total":22},
-    "shacl12_core": {"name":"shacl12_core","pass":136,"fail":2,"skip":0,"total":138},
+    "shacl12_core": {"name":"shacl12_core","pass":137,"fail":1,"skip":0,"total":138},
     "shacl12_node_expr": {"name":"shacl12_node_expr","pass":142,"fail":0,"skip":0,"total":142},
     "shacl12_sparql": {"name":"shacl12_sparql","pass":25,"fail":0,"skip":0,"total":25},
     "shacl12_rules": {"name":"shacl12_rules","pass":11,"fail":0,"skip":0,"total":11},
