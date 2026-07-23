@@ -203,6 +203,8 @@ let srt_RulesPositiveSyntaxTest = srt_ns ^ "RulesPositiveSyntaxTest"
 let srt_RulesNegativeSyntaxTest = srt_ns ^ "RulesNegativeSyntaxTest"
 let srt_RulesPositiveWellFormednessTest = srt_ns ^ "RulesPositiveWellFormednessTest"
 let srt_RulesNegativeWellFormednessTest = srt_ns ^ "RulesNegativeWellFormednessTest"
+let srt_RulesPositiveStratificationTest = srt_ns ^ "RulesPositiveStratificationTest"
+let srt_RulesNegativeStratificationTest = srt_ns ^ "RulesNegativeStratificationTest"
 let rdf_first_iri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
 let rdf_rest_iri  = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
 let rdf_nil_iri   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
@@ -340,7 +342,7 @@ and rules_spec = {
 and syntax_spec = {
   sy_srl : string;          (* raw .srl ruleset text *)
   sy_expect_valid : bool;   (* true for a positive test, false for negative *)
-  sy_wellformed : bool;     (* true = well-formedness check, false = syntax *)
+  sy_check : int;           (* 0 = syntax, 1 = well-formedness, 2 = stratification *)
 }
 and ne_spec = {
   ne_graph : rdf_graph;                  (* graph the expression runs against *)
@@ -536,7 +538,7 @@ let rec collect_from_file (visited : string list ref) (path : string) : test_cas
           (subjects_typed g srt_RulesEvalTest)
       in
       let syntax_tests =
-        let collect_syntax type_iri expect_valid wellformed =
+        let collect_syntax type_iri expect_valid check =
           List.filter_map
             (fun t ->
                let name =
@@ -557,13 +559,15 @@ let rec collect_from_file (visited : string list ref) (path : string) : test_cas
                          tc_expect_conforms = None; tc_expect_report = None;
                          tc_expect_failure = false; tc_node_expr = None; tc_rules = None;
                          tc_syntax = Some { sy_srl = s; sy_expect_valid = expect_valid;
-                                            sy_wellformed = wellformed } }
+                                            sy_check = check } }
                 | None -> None))
             (subjects_typed g type_iri) in
-        collect_syntax srt_RulesPositiveSyntaxTest true false
-        @ collect_syntax srt_RulesNegativeSyntaxTest false false
-        @ collect_syntax srt_RulesPositiveWellFormednessTest true true
-        @ collect_syntax srt_RulesNegativeWellFormednessTest false true
+        collect_syntax srt_RulesPositiveSyntaxTest true 0
+        @ collect_syntax srt_RulesNegativeSyntaxTest false 0
+        @ collect_syntax srt_RulesPositiveWellFormednessTest true 1
+        @ collect_syntax srt_RulesNegativeWellFormednessTest false 1
+        @ collect_syntax srt_RulesPositiveStratificationTest true 2
+        @ collect_syntax srt_RulesNegativeStratificationTest false 2
       in
       included @ own_tests @ node_expr_tests @ rules_tests @ syntax_tests
   end
@@ -620,7 +624,8 @@ let run_rules_test (rs : rules_spec) : outcome =
 let run_syntax_test (sy : syntax_spec) : outcome =
   try
     let valid =
-      if sy.sy_wellformed then SHACL_Rules.srl_well_formed sy.sy_srl
+      if sy.sy_check = 2 then SHACL_Rules.srl_stratifiable sy.sy_srl
+      else if sy.sy_check = 1 then SHACL_Rules.srl_well_formed sy.sy_srl
       else SHACL_Rules.srl_valid_syntax sy.sy_srl in
     if valid = sy.sy_expect_valid then Pass
     else Fail (Printf.sprintf "expected syntactically %s, got %s"

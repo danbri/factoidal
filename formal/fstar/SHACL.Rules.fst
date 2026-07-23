@@ -225,6 +225,73 @@ let srl_well_formed (srl : string) : bool =
   | [] -> true
   | _ :: blocks -> all_blocks_well_formed blocks
 
+// --- stratification (rules/stratification suite) ---------------------
+//
+// A conservative approximation of SHACL Rules stratification: we report
+// a ruleset NON-stratifiable when a rule MINTS A FRESH BLANK NODE in its
+// head (`[]`) yet reads a predicate its own head derives — new-term
+// recursion never reaches a fixpoint (each round mints new subjects).
+// This is the signal the suite's `*-new-terms` negatives exercise; a
+// full dependency-graph analyzer (negative-cycle detection over the
+// predicate graph) is future work — see the suite README.
+
+let str_contains (s needle : string) : bool =
+  Some? (split_at_needle (Str.list_of_string s) (Str.list_of_string needle) [] (Str.length s + 1))
+
+// Maximal variable-name-char runs that contain a ':' — i.e. the
+// prefixed-name (predicate/class) tokens, excluding plain variables.
+let rec collect_pnames (cs : list char) (fuel : nat) : Tot (list string) (decreases fuel) =
+  if fuel = 0 then [] else
+  match cs with
+  | [] -> []
+  | c :: rest ->
+    if is_var_name_char c
+    then let run = take_while is_var_name_char cs in
+         let s = Str.string_of_list run in
+         (if str_contains s ":" then [s] else []) @ collect_pnames (drop_while is_var_name_char cs) (fuel - 1)
+    else collect_pnames rest (fuel - 1)
+
+let rule_head (block : string) : string =
+  match split_at_needle (Str.list_of_string (line_body block)) ['W'; 'H'; 'E'; 'R'; 'E'] []
+          (Str.length block + 1) with
+  | Some (h, _) -> h | None -> line_body block
+
+let rule_body (block : string) : string =
+  match split_at_needle (Str.list_of_string (line_body block)) ['W'; 'H'; 'E'; 'R'; 'E'] []
+          (Str.length block + 1) with
+  | Some (_, b) -> b | None -> ""
+
+let rec any_mem (xs : list string) (ys : list string) : Tot bool (decreases xs) =
+  match xs with [] -> false | x :: r -> List.Tot.mem x ys || any_mem r ys
+
+// A RULE is new-term-recursive iff its head mints a fresh blank node
+// (`[]` / `_:`) and shares a predicate token with SOME rule body.
+let block_new_term_recursive (block : string) (all_body_pnames : list string) : bool =
+  match line_kind block with
+  | Some true ->
+    let h = rule_head block in
+    if str_contains h "[]" || str_contains h "_:"
+    then any_mem (collect_pnames (Str.list_of_string h) (Str.length h + 1)) all_body_pnames
+    else false
+  | _ -> false
+
+let rec any_block_nt_recursive (bs : list string) (all_body_pnames : list string)
+  : Tot bool (decreases bs)
+  =
+  match bs with
+  | [] -> false
+  | b :: rest -> block_new_term_recursive b all_body_pnames || any_block_nt_recursive rest all_body_pnames
+
+let srl_stratifiable (srl : string) : bool =
+  match scan_blocks (Str.list_of_string srl) 0 true [] [] (Str.length srl + 2) with
+  | [] -> true
+  | _ :: blocks ->
+    let all_body_pnames =
+      List.Tot.concatMap
+        (fun b -> let bd = rule_body b in collect_pnames (Str.list_of_string bd) (Str.length bd + 1))
+        blocks in
+    not (any_block_nt_recursive blocks all_body_pnames)
+
 // --- fixpoint evaluation ---------------------------------------------
 
 let parse_constructs (srl : string) : list Alg.query =
