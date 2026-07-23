@@ -5219,12 +5219,12 @@ FStar_List_Tot_Properties.krml: \
 
 SHACL.NodeExpr.fst.checked: \
 	SHACL.NodeExpr.fst \
-	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	SPARQL11.Algebra.fst.checked \
 	SHACL.Validation.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
 	RDF.Graph.Executable.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked

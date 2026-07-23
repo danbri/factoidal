@@ -21,6 +21,7 @@ module SHACL.NodeExpr
 
 open FStar.List.Tot
 open RDF.Graph.Executable
+open FStar.Char
 open SHACL.Validation
 
 module Alg = SPARQL11.Algebra
@@ -224,13 +225,34 @@ let min_expr (vals : list rdf_term) : list rdf_term =
 let rec term_mem (t : rdf_term) (l : list rdf_term) : Tot bool (decreases l) =
   match l with [] -> false | h :: r -> rdf_term_eq t h || term_mem t r
 
+// Lexical comparison of char lists / strings (codepoint order).
+let rec clist_cmp (a b : list char) : Tot int (decreases a) =
+  match a, b with
+  | [], [] -> 0
+  | [], _ -> (-1)
+  | _, [] -> 1
+  | x :: xs, y :: ys ->
+    let cx = FStar.Char.int_of_char x in
+    let cy = FStar.Char.int_of_char y in
+    if cx < cy then (-1) else if cx > cy then 1 else clist_cmp xs ys
+
+let str_cmp (a b : string) : int = clist_cmp (String.list_of_string a) (String.list_of_string b)
+
+let term_render (t : rdf_term) : string =
+  match t with
+  | T_IRI i -> i
+  | T_Literal l -> l.lexical_form
+  | T_BNode b -> b
+  | T_TripleTerm _ _ _ -> ""
+
 // Ordering for shnex:orderBy sort keys: numeric when both are integer
-// literals; otherwise treated as equal (stable / no reorder), which
-// covers the suite's integer orderBy fixtures.
+// literals; otherwise a lexical comparison of the rendered term (which
+// orders ISO dates / plain strings correctly, and puts the empty-string
+// "no value" sentinel first).
 let term_cmp (a b : rdf_term) : int =
   match parse_int_term a, parse_int_term b with
   | Some x, Some y -> if x < y then (-1) else if x > y then 1 else 0
-  | _, _ -> 0
+  | _, _ -> str_cmp (term_render a) (term_render b)
 
 // --- SHACL-SPARQL node expressions (shnex-sparql) --------------------
 //
@@ -296,12 +318,17 @@ let sparql_fn_expr (ln : string) (args : list Alg.expr) : option Alg.expr =
   | "lcase", [a] -> Some (Alg.E_LCase a)
   | "lang", [a] -> Some (Alg.E_Lang a)
   | "langdir", [a] -> Some (Alg.E_LangDir a)
+  // hasLang / hasLangdir: the shnex-sparql fixtures pass an optional
+  // second (language) argument; the presence test uses the first term.
   | "hasLang", [a] -> Some (Alg.E_HasLang a)
+  | "hasLang", [a; _] -> Some (Alg.E_HasLang a)
   | "hasLangdir", [a] -> Some (Alg.E_HasLangDir a)
+  | "hasLangdir", [a; _] -> Some (Alg.E_HasLangDir a)
   | "datatype", [a] -> Some (Alg.E_Datatype a)
   | "iri", [a] -> Some (Alg.E_IRI_fn a)
   | "uri", [a] -> Some (Alg.E_IRI_fn a)
   | "encode-for-uri", [a] -> Some (Alg.E_EncodeForUri a)
+  | "encode", [a] -> Some (Alg.E_EncodeForUri a)
   | "isIRI", [a] -> Some (Alg.E_IsIRI a)
   | "isURI", [a] -> Some (Alg.E_IsIRI a)
   | "isBlank", [a] -> Some (Alg.E_IsBlank a)
@@ -547,7 +574,12 @@ and eval_ne_keyed (g : rdf_graph) (scope : list (string & rdf_term))
   match elems with
   | [] -> []
   | el :: rest ->
-    let k = (match eval_ne g (Some el) scope keyexpr fuel with kk :: _ -> kk | [] -> el) in
+    // A missing key sorts FIRST (the "no value goes to the beginning"
+    // rule) — use the empty-string sentinel, which term_cmp orders before
+    // any real key.
+    let k = (match eval_ne g (Some el) scope keyexpr fuel
+             with kk :: _ -> kk
+                | [] -> T_Literal ({ lexical_form = ""; datatype = xsd_string; lang_tag = None; direction = None })) in
     (el, k) :: eval_ne_keyed g scope keyexpr rest fuel
 
 // Evaluate each SPARQL-builtin argument expression to a single value
