@@ -578,6 +578,12 @@ noeq type shape = {
   // into sh:resultMessage verbatim.
   message      : option wf_literal;
   constraints  : list constraint_component;
+  // Per-constraint reified-annotation overrides (SHACL 1.2
+  // `{| sh:severity .. ; sh:message .. |}`): (predicate, object,
+  // sev-override, msg-override). Looked up by a constraint's source
+  // (predicate, object) at evaluation time; empty for a shape with no
+  // such annotations. See build_constraint_meta / constraint_override.
+  constraint_meta : list (wf_iri & rdf_term & option severity & option wf_literal);
   // Nested shapes by id (for sh:property on a NodeShape — a node
   // shape may carry property shapes, validated against each focus
   // node). Resolved through the shapes graph at validation time.
@@ -648,14 +654,14 @@ let mk_shape_node (id_ : shape_ref) (ts : list target)
   : shape
   = { shape_id = id_; is_property = false; shape_path = None;
       targets = ts; shape_sev = Sev_Violation; message = None;
-      constraints = cs; property_refs = []; }
+      constraints = cs; constraint_meta = []; property_refs = []; }
 
 let mk_shape_property (id_ : shape_ref) (p : path)
                       (ts : list target) (cs : list constraint_component)
   : shape
   = { shape_id = id_; is_property = true; shape_path = Some p;
       targets = ts; shape_sev = Sev_Violation; message = None;
-      constraints = cs; property_refs = []; }
+      constraints = cs; constraint_meta = []; property_refs = []; }
 
 let shapes_graph_of_list (ss : list shape) : shapes_graph =
   { shapes = ss }
@@ -1725,6 +1731,49 @@ let filter_active_constraints (g : rdf_graph) (s : subject) (ccs : list constrai
     (fun cc -> match cc_source_tt s cc with Some tt -> not (reifier_deactivated g tt) | None -> true)
     ccs
 
+// Collect per-constraint sh:severity / sh:message overrides carried by
+// reified annotations `{| sh:severity .. ; sh:message .. |}` on this
+// shape's own triples: for every `r rdf:reifies <<( s p o )>>` whose
+// subject side is this shape `s`, record (p, o, sev?, msg?) from r.
+let build_constraint_meta (g : rdf_graph) (s : subject)
+  : list (wf_iri & rdf_term & option severity & option wf_literal) =
+  List.Tot.concatMap
+    (fun (t : triple) ->
+       if t.p = shv_rdf_reifies then
+         (match t.o with
+          | T_TripleTerm ts tp to ->
+            if subject_eq ts s then
+              let sev = (match find_objects g t.s sh_severity with (T_IRI i) :: _ -> Some (severity_of_iri i) | _ -> None) in
+              let msg = (match find_objects g t.s sh_message with (T_Literal l) :: _ -> Some l | _ -> None) in
+              (match sev, msg with None, None -> [] | _, _ -> [(tp, to, sev, msg)])
+            else []
+          | _ -> [])
+       else [])
+    g
+
+// The (predicate, object) a constraint was built from, for the
+// annotatable IRI/term-valued constraints (mirror of cc_source_tt).
+let cc_source_pred_obj (cc : constraint_component) : option (wf_iri & rdf_term) =
+  match cc with
+  | CC_Datatype i -> Some (sh_datatype, T_IRI i)
+  | CC_Class i    -> Some (sh_class, T_IRI i)
+  | CC_HasValue t -> Some (sh_hasValue, t)
+  | _             -> None
+
+// Effective (severity, message) for a constraint: its per-constraint
+// annotation override if any, else the shape-level defaults.
+let constraint_override
+  (meta : list (wf_iri & rdf_term & option severity & option wf_literal))
+  (cc : constraint_component) (dsev : severity) (dmsg : option wf_literal)
+  : (severity & option wf_literal) =
+  match cc_source_pred_obj cc with
+  | None -> (dsev, dmsg)
+  | Some (p, o) ->
+    (match List.Tot.find (fun (mp, mo, _, _) -> mp = p && rdf_term_eq mo o) meta with
+     | Some (_, _, msev, mmsg) ->
+       ((match msev with Some x -> x | None -> dsev), (match mmsg with Some x -> Some x | None -> dmsg))
+     | None -> (dsev, dmsg))
+
 // Factored out of build_constraints (own VC) to keep that function's
 // monolithic split-query from growing: sh:reifierShape + the optional
 // sh:reificationRequired flag.
@@ -1886,6 +1935,7 @@ let build_shape (g : rdf_graph) (s : subject) : shape =
     shape_sev = sev;
     message = msg;
     constraints = filter_active_constraints g s (build_constraints g s @ build_custom_constraints g s is_prop);
+    constraint_meta = build_constraint_meta g s;
     property_refs = prefs;
   }
 
@@ -2072,7 +2122,9 @@ let rec collect_shape_violations (data : rdf_graph) (sg : list shape) (closed_cl
       List.Tot.concatMap
         (fun v ->
            List.Tot.concatMap
-             (fun cc -> eval_one_constraint data sg closed_cls node path_opt s.shape_id s.shape_sev s.message v cc fuel')
+             (fun cc ->
+                let (esev, emsg) = constraint_override s.constraint_meta cc s.shape_sev s.message in
+                eval_one_constraint data sg closed_cls node path_opt s.shape_id esev emsg v cc fuel')
              s.constraints)
         values
     in

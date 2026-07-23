@@ -4,10 +4,10 @@
   [4/138] Test of sh:deactivated 002 ok
   [5/138] Test of sh:deactivated 003 ok
   [6/138] Test of custom sh:message 001 ok
-  [7/138] Test of custom sh:message 002 FAIL
+  [7/138] Test of custom sh:message 002 ok
   [8/138] Test of sh:severity 001 ok
   [9/138] Test of sh:severity 002 ok
-  [10/138] Test of sh:severity 003 FAIL
+  [10/138] Test of sh:severity 003 ok
   [11/138] Test of sh:severity sh:Debug 004 ok
   [12/138] Test of sh:severity sh:Trace 005 ok
   [13/138] Test of sh:and at node shape 001 ok
@@ -147,51 +147,10 @@ Totals: 138 test entries
   PASS: Test of sh:deactivated 002
   PASS: Test of sh:deactivated 003
   PASS: Test of custom sh:message 001
-  FAIL: Test of custom sh:message 002 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/misc/message-002.ttl) — report not isomorphic to expected
-    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidNode> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultMessage> "Test message"@en .
-_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape> .
-_:c14n0 <http://www.w3.org/ns/shacl#value> <http://example.com/ns#InvalidNode> .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
-
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidNode> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape> .
-_:c14n0 <http://www.w3.org/ns/shacl#value> <http://example.com/ns#InvalidNode> .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
-
+  PASS: Test of custom sh:message 002
   PASS: Test of sh:severity 001
   PASS: Test of sh:severity 002
-  FAIL: Test of sh:severity 003 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/misc/severity-003.ttl) — report not isomorphic to expected
-    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n0 <http://www.w3.org/ns/shacl#result> _:c14n1 .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n1 <http://www.w3.org/ns/shacl#focusNode> "Hello" .
-_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Warning> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape> .
-_:c14n1 <http://www.w3.org/ns/shacl#value> "Hello" .
-
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n0 <http://www.w3.org/ns/shacl#result> _:c14n1 .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n1 <http://www.w3.org/ns/shacl#focusNode> "Hello" .
-_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#DatatypeConstraintComponent> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape> .
-_:c14n1 <http://www.w3.org/ns/shacl#value> "Hello" .
-
+  PASS: Test of sh:severity 003
   PASS: Test of sh:severity sh:Debug 004
   PASS: Test of sh:severity sh:Trace 005
   PASS: Test of sh:and at node shape 001
@@ -426,6 +385,6 @@ _:c14n1 <http://www.w3.org/ns/shacl#value> "twenty two" .
   PASS: Test of validation report for shape shared by property constraints
 
 ========================================
-TOTAL: 129 pass, 9 fail, 0 skip (out of 138)
+TOTAL: 131 pass, 7 fail, 0 skip (out of 138)
 ========================================
-shacl-core: 129 pass, 9 fail, 0 skip (out of 138)
+shacl-core: 131 pass, 7 fail, 0 skip (out of 138)

@@ -517,43 +517,55 @@ type shape =
   shape_sev: severity ;
   message: RDF_Term.wf_literal FStar_Pervasives_Native.option ;
   constraints: constraint_component Prims.list ;
+  constraint_meta:
+    (RDF_Term.wf_iri * RDF_Term.rdf_term * severity
+      FStar_Pervasives_Native.option * RDF_Term.wf_literal
+      FStar_Pervasives_Native.option) Prims.list
+    ;
   property_refs: shape_ref Prims.list }
 let __proj__Mkshape__item__shape_id (projectee : shape) : shape_ref=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; property_refs;_} -> shape_id
+      constraints; constraint_meta; property_refs;_} -> shape_id
 let __proj__Mkshape__item__is_property (projectee : shape) : Prims.bool=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; property_refs;_} -> is_property
+      constraints; constraint_meta; property_refs;_} -> is_property
 let __proj__Mkshape__item__shape_path (projectee : shape) :
   path FStar_Pervasives_Native.option=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; property_refs;_} -> shape_path
+      constraints; constraint_meta; property_refs;_} -> shape_path
 let __proj__Mkshape__item__targets (projectee : shape) : target Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; property_refs;_} -> targets
+      constraints; constraint_meta; property_refs;_} -> targets
 let __proj__Mkshape__item__shape_sev (projectee : shape) : severity=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; property_refs;_} -> shape_sev
+      constraints; constraint_meta; property_refs;_} -> shape_sev
 let __proj__Mkshape__item__message (projectee : shape) :
   RDF_Term.wf_literal FStar_Pervasives_Native.option=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; property_refs;_} -> message
+      constraints; constraint_meta; property_refs;_} -> message
 let __proj__Mkshape__item__constraints (projectee : shape) :
   constraint_component Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; property_refs;_} -> constraints
+      constraints; constraint_meta; property_refs;_} -> constraints
+let __proj__Mkshape__item__constraint_meta (projectee : shape) :
+  (RDF_Term.wf_iri * RDF_Term.rdf_term * severity
+    FStar_Pervasives_Native.option * RDF_Term.wf_literal
+    FStar_Pervasives_Native.option) Prims.list=
+  match projectee with
+  | { shape_id; is_property; shape_path; targets; shape_sev; message;
+      constraints; constraint_meta; property_refs;_} -> constraint_meta
 let __proj__Mkshape__item__property_refs (projectee : shape) :
   shape_ref Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; property_refs;_} -> property_refs
+      constraints; constraint_meta; property_refs;_} -> property_refs
 type shapes_graph = {
   shapes: shape Prims.list }
 let __proj__Mkshapes_graph__item__shapes (projectee : shapes_graph) :
@@ -648,6 +660,7 @@ let mk_shape_node (id_ : shape_ref) (ts : target Prims.list)
     shape_sev = Sev_Violation;
     message = FStar_Pervasives_Native.None;
     constraints = cs;
+    constraint_meta = [];
     property_refs = []
   }
 let mk_shape_property (id_ : shape_ref) (p : path) (ts : target Prims.list)
@@ -660,6 +673,7 @@ let mk_shape_property (id_ : shape_ref) (p : path) (ts : target Prims.list)
     shape_sev = Sev_Violation;
     message = FStar_Pervasives_Native.None;
     constraints = cs;
+    constraint_meta = [];
     property_refs = []
   }
 let shapes_graph_of_list (ss : shape Prims.list) : shapes_graph=
@@ -1557,6 +1571,73 @@ let filter_active_constraints (g : RDF_Graph.rdf_graph)
        | FStar_Pervasives_Native.Some tt ->
            Prims.op_Negation (reifier_deactivated g tt)
        | FStar_Pervasives_Native.None -> true) ccs
+let build_constraint_meta (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
+  (RDF_Term.wf_iri * RDF_Term.rdf_term * severity
+    FStar_Pervasives_Native.option * RDF_Term.wf_literal
+    FStar_Pervasives_Native.option) Prims.list=
+  FStar_List_Tot_Base.concatMap
+    (fun t ->
+       if t.RDF_Triple.p = shv_rdf_reifies
+       then
+         match t.RDF_Triple.o with
+         | RDF_Term.T_TripleTerm (ts, tp, to1) ->
+             (if RDF_Term.subject_eq ts s
+              then
+                let sev =
+                  match RDF_Graph_Executable.find_objects g t.RDF_Triple.s
+                          sh_severity
+                  with
+                  | (RDF_Term.T_IRI i)::uu___ ->
+                      FStar_Pervasives_Native.Some (severity_of_iri i)
+                  | uu___ -> FStar_Pervasives_Native.None in
+                let msg =
+                  match RDF_Graph_Executable.find_objects g t.RDF_Triple.s
+                          sh_message
+                  with
+                  | (RDF_Term.T_Literal l)::uu___ ->
+                      FStar_Pervasives_Native.Some l
+                  | uu___ -> FStar_Pervasives_Native.None in
+                match (sev, msg) with
+                | (FStar_Pervasives_Native.None,
+                   FStar_Pervasives_Native.None) -> []
+                | (uu___, uu___1) -> [(tp, to1, sev, msg)]
+              else [])
+         | uu___ -> []
+       else []) g
+let cc_source_pred_obj (cc : constraint_component) :
+  (RDF_Term.wf_iri * RDF_Term.rdf_term) FStar_Pervasives_Native.option=
+  match cc with
+  | CC_Datatype i ->
+      FStar_Pervasives_Native.Some (sh_datatype, (RDF_Term.T_IRI i))
+  | CC_Class i -> FStar_Pervasives_Native.Some (sh_class, (RDF_Term.T_IRI i))
+  | CC_HasValue t -> FStar_Pervasives_Native.Some (sh_hasValue, t)
+  | uu___ -> FStar_Pervasives_Native.None
+let constraint_override
+  (meta :
+    (RDF_Term.wf_iri * RDF_Term.rdf_term * severity
+      FStar_Pervasives_Native.option * RDF_Term.wf_literal
+      FStar_Pervasives_Native.option) Prims.list)
+  (cc : constraint_component) (dsev : severity)
+  (dmsg : RDF_Term.wf_literal FStar_Pervasives_Native.option) :
+  (severity * RDF_Term.wf_literal FStar_Pervasives_Native.option)=
+  match cc_source_pred_obj cc with
+  | FStar_Pervasives_Native.None -> (dsev, dmsg)
+  | FStar_Pervasives_Native.Some (p, o) ->
+      (match FStar_List_Tot_Base.find
+               (fun uu___ ->
+                  match uu___ with
+                  | (mp, mo, uu___1, uu___2) ->
+                      (mp = p) && (RDF_Term.rdf_term_eq mo o)) meta
+       with
+       | FStar_Pervasives_Native.Some (uu___, uu___1, msev, mmsg) ->
+           (((match msev with
+              | FStar_Pervasives_Native.Some x -> x
+              | FStar_Pervasives_Native.None -> dsev)),
+             ((match mmsg with
+               | FStar_Pervasives_Native.Some x ->
+                   FStar_Pervasives_Native.Some x
+               | FStar_Pervasives_Native.None -> dmsg)))
+       | FStar_Pervasives_Native.None -> (dsev, dmsg))
 let build_reifier_constraints (g : RDF_Graph.rdf_graph)
   (s : RDF_Term.subject) : constraint_component Prims.list=
   match RDF_Graph_Executable.find_objects g s sh_reifierShape with
@@ -1884,6 +1965,7 @@ let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
       (filter_active_constraints g s
          (FStar_List_Tot_Base.op_At (build_constraints g s)
             (build_custom_constraints g s is_prop)));
+    constraint_meta = (build_constraint_meta g s);
     property_refs = prefs
   }
 let parse_shape_from_graph_pure (g : RDF_Graph.rdf_graph) : shapes_graph=
@@ -2049,9 +2131,14 @@ let rec collect_shape_violations (data : RDF_Graph.rdf_graph)
           (fun v ->
              FStar_List_Tot_Base.concatMap
                (fun cc ->
-                  eval_one_constraint data sg closed_cls node path_opt
-                    s.shape_id s.shape_sev s.message v cc fuel')
-               s.constraints) values in
+                  let uu___1 =
+                    constraint_override s.constraint_meta cc s.shape_sev
+                      s.message in
+                  match uu___1 with
+                  | (esev, emsg) ->
+                      eval_one_constraint data sg closed_cls node path_opt
+                        s.shape_id esev emsg v cc fuel') s.constraints)
+          values in
       let agg =
         eval_aggregate_constraints data sg closed_cls node path_opt
           s.shape_id s.shape_sev s.message values s fuel' in
