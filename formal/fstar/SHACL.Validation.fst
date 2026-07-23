@@ -605,6 +605,10 @@ noeq type shape = {
   // shape may carry property shapes, validated against each focus
   // node). Resolved through the shapes graph at validation time.
   property_refs : list shape_ref;
+  // SHACL 1.2 sh:targetWhere: shapes whose CONFORMING nodes are the focus
+  // nodes of this shape (target-by-conformance). Resolved at validation
+  // time against every candidate subject.
+  target_where : list shape_ref;
 }
 
 noeq type shapes_graph = {
@@ -671,14 +675,14 @@ let mk_shape_node (id_ : shape_ref) (ts : list target)
   : shape
   = { shape_id = id_; is_property = false; shape_path = None;
       targets = ts; shape_sev = Sev_Violation; message = None;
-      constraints = cs; constraint_meta = []; property_refs = []; }
+      constraints = cs; constraint_meta = []; property_refs = []; target_where = []; }
 
 let mk_shape_property (id_ : shape_ref) (p : path)
                       (ts : list target) (cs : list constraint_component)
   : shape
   = { shape_id = id_; is_property = true; shape_path = Some p;
       targets = ts; shape_sev = Sev_Violation; message = None;
-      constraints = cs; constraint_meta = []; property_refs = []; }
+      constraints = cs; constraint_meta = []; property_refs = []; target_where = []; }
 
 let shapes_graph_of_list (ss : list shape) : shapes_graph =
   { shapes = ss }
@@ -986,6 +990,9 @@ let sh_nodeByExpression : wf_iri =
 let sh_shape_pred : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#shape");
   "http://www.w3.org/ns/shacl#shape"
+let sh_targetWhere : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#targetWhere");
+  "http://www.w3.org/ns/shacl#targetWhere"
 let sh_languageIn : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#languageIn");
   "http://www.w3.org/ns/shacl#languageIn"
@@ -1971,6 +1978,8 @@ let build_shape (g : rdf_graph) (s : subject) : shape =
     constraints = filter_active_constraints g s (build_constraints g s @ build_custom_constraints g s is_prop);
     constraint_meta = build_constraint_meta g s;
     property_refs = prefs;
+    target_where =
+      List.Tot.concatMap (fun t -> match term_to_shape_ref t with Some r -> [r] | None -> []) (find_objects g s sh_targetWhere);
   }
 
 let parse_shape_from_graph_pure (g : rdf_graph) : shapes_graph =
@@ -2596,6 +2605,26 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
 // deliberately) surfaces as `report_failure`, not an exception —
 // keeping `validate` a total function. `shacl_runner` maps
 // `mf:result sht:Failure` test cases onto `Some? report.report_failure`.
+
+// Focus nodes of a shape: its declared targets PLUS (SHACL 1.2
+// sh:targetWhere) every candidate subject that CONFORMS to a targetWhere
+// shape. The conformance check reuses collect_shape_violations, so this
+// must follow the mutual group above.
+let shape_focus_nodes (data : rdf_graph) (sg : list shape) (closed_cls : rdf_graph)
+                      (all_subjects : list subject) (s : shape) : list rdf_term =
+  let via_targets = List.Tot.concatMap (fun tgt -> eval_target data closed_cls all_subjects tgt) s.targets in
+  let via_where =
+    List.Tot.concatMap
+      (fun wref -> match lookup_shape wref sg with
+                   | None -> []
+                   | Some ws ->
+                     List.Tot.concatMap
+                       (fun subj -> let n = subject_to_term subj in
+                                    if Nil? (collect_shape_violations data sg closed_cls n ws (graph_len data + 20))
+                                    then [n] else [])
+                       all_subjects)
+      s.target_where in
+  dedup_terms (via_targets @ via_where)
 
 let sparql_constraints_of (s : shape) : list (shape_ref & string & option wf_literal) =
   List.Tot.concatMap
@@ -3241,12 +3270,11 @@ let validate (data : rdf_graph) (shapes_raw : rdf_graph) (shapes : shapes_graph)
   let closed_cls = shacl_class_closure data (graph_len data + 20) in
   let all_subjects = distinct_subjects data in
   let fuel0 = op_Multiply (List.Tot.length sg) 4 + 50 in
-  let root_shapes = List.Tot.filter (fun s -> Cons? s.targets) sg in
+  let root_shapes = List.Tot.filter (fun s -> Cons? s.targets || Cons? s.target_where) sg in
   let per_shape_violations =
     List.Tot.concatMap
       (fun (s : shape) ->
-         let focus_nodes =
-           dedup_terms (List.Tot.concatMap (fun tgt -> eval_target data closed_cls all_subjects tgt) s.targets) in
+         let focus_nodes = shape_focus_nodes data sg closed_cls all_subjects s in
          List.Tot.concatMap (fun fn -> collect_shape_violations data sg closed_cls fn s fuel0) focus_nodes)
       root_shapes
   in

@@ -132,7 +132,7 @@
   [132/138] Test of sh:targetObjectsOf 001 ok
   [133/138] Test of sh:targetSubjectsOf 001 ok
   [134/138] Test of sh:targetSubjectsOf 002 ok
-  [135/138] Test of sh:targetWhere 001 FAIL
+  [135/138] Test of sh:targetWhere 001 ok
   [136/138] Test of path sh:conformanceDisallows 001 FAIL
   [137/138] Test of path sh:conformanceDisallows 002 ok
   [138/138] Test of validation report for shape shared by property constraints ok
@@ -358,20 +358,7 @@ _:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XM
   PASS: Test of sh:targetObjectsOf 001
   PASS: Test of sh:targetSubjectsOf 001
   PASS: Test of sh:targetSubjectsOf 002
-  FAIL: Test of sh:targetWhere 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/targets/targetWhere-001.ttl) — report not isomorphic to expected
-    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n0 <http://www.w3.org/ns/shacl#result> _:c14n1 .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n1 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
-_:c14n1 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#votedFor> .
-_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#MinCountConstraintComponent> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#AdultShape-votedFor> .
-
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-
+  PASS: Test of sh:targetWhere 001
   FAIL: Test of path sh:conformanceDisallows 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/validation-reports/conformance-disallows-001.ttl) — report not isomorphic to expected
     expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
 _:c14n0 <http://www.w3.org/ns/shacl#conformanceDisallows> <http://www.w3.org/ns/shacl#Violation> .
@@ -400,6 +387,6 @@ _:c14n1 <http://www.w3.org/ns/shacl#value> "twenty two" .
   PASS: Test of validation report for shape shared by property constraints
 
 ========================================
-TOTAL: 134 pass, 4 fail, 0 skip (out of 138)
+TOTAL: 135 pass, 3 fail, 0 skip (out of 138)
 ========================================
-shacl-core: 134 pass, 4 fail, 0 skip (out of 138)
+shacl-core: 135 pass, 3 fail, 0 skip (out of 138)

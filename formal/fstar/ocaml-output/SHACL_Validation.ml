@@ -541,50 +541,64 @@ type shape =
       FStar_Pervasives_Native.option * RDF_Term.wf_literal
       FStar_Pervasives_Native.option) Prims.list
     ;
-  property_refs: shape_ref Prims.list }
+  property_refs: shape_ref Prims.list ;
+  target_where: shape_ref Prims.list }
 let __proj__Mkshape__item__shape_id (projectee : shape) : shape_ref=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs;_} -> shape_id
+      constraints; constraint_meta; property_refs; target_where;_} ->
+      shape_id
 let __proj__Mkshape__item__is_property (projectee : shape) : Prims.bool=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs;_} -> is_property
+      constraints; constraint_meta; property_refs; target_where;_} ->
+      is_property
 let __proj__Mkshape__item__shape_path (projectee : shape) :
   path FStar_Pervasives_Native.option=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs;_} -> shape_path
+      constraints; constraint_meta; property_refs; target_where;_} ->
+      shape_path
 let __proj__Mkshape__item__targets (projectee : shape) : target Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs;_} -> targets
+      constraints; constraint_meta; property_refs; target_where;_} -> targets
 let __proj__Mkshape__item__shape_sev (projectee : shape) : severity=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs;_} -> shape_sev
+      constraints; constraint_meta; property_refs; target_where;_} ->
+      shape_sev
 let __proj__Mkshape__item__message (projectee : shape) :
   RDF_Term.wf_literal FStar_Pervasives_Native.option=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs;_} -> message
+      constraints; constraint_meta; property_refs; target_where;_} -> message
 let __proj__Mkshape__item__constraints (projectee : shape) :
   constraint_component Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs;_} -> constraints
+      constraints; constraint_meta; property_refs; target_where;_} ->
+      constraints
 let __proj__Mkshape__item__constraint_meta (projectee : shape) :
   (RDF_Term.wf_iri * RDF_Term.rdf_term * severity
     FStar_Pervasives_Native.option * RDF_Term.wf_literal
     FStar_Pervasives_Native.option) Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs;_} -> constraint_meta
+      constraints; constraint_meta; property_refs; target_where;_} ->
+      constraint_meta
 let __proj__Mkshape__item__property_refs (projectee : shape) :
   shape_ref Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs;_} -> property_refs
+      constraints; constraint_meta; property_refs; target_where;_} ->
+      property_refs
+let __proj__Mkshape__item__target_where (projectee : shape) :
+  shape_ref Prims.list=
+  match projectee with
+  | { shape_id; is_property; shape_path; targets; shape_sev; message;
+      constraints; constraint_meta; property_refs; target_where;_} ->
+      target_where
 type shapes_graph = {
   shapes: shape Prims.list }
 let __proj__Mkshapes_graph__item__shapes (projectee : shapes_graph) :
@@ -680,7 +694,8 @@ let mk_shape_node (id_ : shape_ref) (ts : target Prims.list)
     message = FStar_Pervasives_Native.None;
     constraints = cs;
     constraint_meta = [];
-    property_refs = []
+    property_refs = [];
+    target_where = []
   }
 let mk_shape_property (id_ : shape_ref) (p : path) (ts : target Prims.list)
   (cs : constraint_component Prims.list) : shape=
@@ -693,7 +708,8 @@ let mk_shape_property (id_ : shape_ref) (p : path) (ts : target Prims.list)
     message = FStar_Pervasives_Native.None;
     constraints = cs;
     constraint_meta = [];
-    property_refs = []
+    property_refs = [];
+    target_where = []
   }
 let shapes_graph_of_list (ss : shape Prims.list) : shapes_graph=
   { shapes = ss }
@@ -885,6 +901,8 @@ let sh_ByTypes : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#ByTypes"
 let sh_nodeByExpression : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#nodeByExpression"
 let sh_shape_pred : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#shape"
+let sh_targetWhere : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#targetWhere"
 let sh_languageIn : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#languageIn"
 let sh_uniqueLang : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#uniqueLang"
 let sh_minInclusive : RDF_Term.wf_iri=
@@ -2013,7 +2031,14 @@ let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
          (FStar_List_Tot_Base.op_At (build_constraints g s)
             (build_custom_constraints g s is_prop)));
     constraint_meta = (build_constraint_meta g s);
-    property_refs = prefs
+    property_refs = prefs;
+    target_where =
+      (FStar_List_Tot_Base.concatMap
+         (fun t ->
+            match term_to_shape_ref t with
+            | FStar_Pervasives_Native.Some r -> [r]
+            | FStar_Pervasives_Native.None -> [])
+         (RDF_Graph_Executable.find_objects g s sh_targetWhere))
   }
 let parse_shape_from_graph_pure (g : RDF_Graph.rdf_graph) : shapes_graph=
   let subs = distinct_subjects g in
@@ -2778,6 +2803,29 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                then []
                else [focus_violation focus path_opt source cc sev msg]
            | uu___1 -> []) s.constraints
+let shape_focus_nodes (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
+  (closed_cls : RDF_Graph.rdf_graph)
+  (all_subjects : RDF_Term.subject Prims.list) (s : shape) :
+  RDF_Term.rdf_term Prims.list=
+  let via_targets =
+    FStar_List_Tot_Base.concatMap
+      (fun tgt -> eval_target data closed_cls all_subjects tgt) s.targets in
+  let via_where =
+    FStar_List_Tot_Base.concatMap
+      (fun wref ->
+         match lookup_shape wref sg with
+         | FStar_Pervasives_Native.None -> []
+         | FStar_Pervasives_Native.Some ws ->
+             FStar_List_Tot_Base.concatMap
+               (fun subj ->
+                  let n = RDF_Graph.subject_to_term subj in
+                  if
+                    Prims.uu___is_Nil
+                      (collect_shape_violations data sg closed_cls n ws
+                         ((RDF_Graph.graph_len data) + (Prims.of_int (20))))
+                  then [n]
+                  else []) all_subjects) s.target_where in
+  dedup_terms (FStar_List_Tot_Base.op_At via_targets via_where)
 let sparql_constraints_of (s : shape) :
   (shape_ref * Prims.string * RDF_Term.wf_literal
     FStar_Pervasives_Native.option) Prims.list=
@@ -3638,15 +3686,15 @@ let validate (data : RDF_Graph.rdf_graph) (shapes_raw : RDF_Graph.rdf_graph)
     ((FStar_List_Tot_Base.length sg) * (Prims.of_int (4))) +
       (Prims.of_int (50)) in
   let root_shapes =
-    FStar_List_Tot_Base.filter (fun s -> Prims.uu___is_Cons s.targets) sg in
+    FStar_List_Tot_Base.filter
+      (fun s ->
+         (Prims.uu___is_Cons s.targets) ||
+           (Prims.uu___is_Cons s.target_where)) sg in
   let per_shape_violations =
     FStar_List_Tot_Base.concatMap
       (fun s ->
          let focus_nodes =
-           dedup_terms
-             (FStar_List_Tot_Base.concatMap
-                (fun tgt -> eval_target data closed_cls all_subjects tgt)
-                s.targets) in
+           shape_focus_nodes data sg closed_cls all_subjects s in
          FStar_List_Tot_Base.concatMap
            (fun fn -> collect_shape_violations data sg closed_cls fn s fuel0)
            focus_nodes) root_shapes in
