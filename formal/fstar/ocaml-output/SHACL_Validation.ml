@@ -84,6 +84,8 @@ let sh_ReifierShapeConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent"
 let sh_NodeByExpressionConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#NodeByExpressionConstraintComponent"
+let sh_ExpressionConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#ExpressionConstraintComponent"
 let shv_rdf_reifies : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
 let sh_LanguageInConstraintComponent : RDF_Term.wf_iri=
@@ -293,6 +295,7 @@ type constraint_component =
   | CC_Closed of RDF_Term.wf_iri Prims.list 
   | CC_ClosedByTypes of RDF_Term.wf_iri Prims.list 
   | CC_NodeByExpression of shape_ref 
+  | CC_Expression of RDF_Term.rdf_term 
   | CC_Sparql of shape_ref * Prims.string * RDF_Term.wf_literal
   FStar_Pervasives_Native.option 
   | CC_Custom of RDF_Term.wf_iri * Prims.bool * Prims.string * (Prims.string
@@ -494,6 +497,10 @@ let uu___is_CC_NodeByExpression (projectee : constraint_component) :
   match projectee with | CC_NodeByExpression _0 -> true | uu___ -> false
 let __proj__CC_NodeByExpression__item___0 (projectee : constraint_component)
   : shape_ref= match projectee with | CC_NodeByExpression _0 -> _0
+let uu___is_CC_Expression (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_Expression _0 -> true | uu___ -> false
+let __proj__CC_Expression__item___0 (projectee : constraint_component) :
+  RDF_Term.rdf_term= match projectee with | CC_Expression _0 -> _0
 let uu___is_CC_Sparql (projectee : constraint_component) : Prims.bool=
   match projectee with
   | CC_Sparql (constraint_node, query, message) -> true
@@ -902,6 +909,7 @@ let sh_reificationRequired : RDF_Term.wf_iri=
 let sh_ByTypes : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#ByTypes"
 let sh_nodeByExpression : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#nodeByExpression"
+let sh_expression : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#expression"
 let sh_shape_pred : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#shape"
 let sh_targetWhere : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#targetWhere"
@@ -1920,6 +1928,9 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
          | RDF_Term.T_IRI i -> [CC_NodeByExpression i]
          | uu___ -> [])
       (RDF_Graph_Executable.find_objects g s sh_nodeByExpression) in
+  let expression =
+    FStar_List_Tot_Base.map (fun t -> CC_Expression t)
+      (RDF_Graph_Executable.find_objects g s sh_expression) in
   let closed_ =
     let ign =
       match RDF_Graph_Executable.find_objects g s sh_ignoredProperties with
@@ -1959,14 +1970,16 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                                     (FStar_List_Tot_Base.op_At
                                                        uvf
                                                        (FStar_List_Tot_Base.op_At
-                                                          langin
+                                                          expression
                                                           (FStar_List_Tot_Base.op_At
-                                                             uniquelang
+                                                             langin
                                                              (FStar_List_Tot_Base.op_At
-                                                                mininc
+                                                                uniquelang
                                                                 (FStar_List_Tot_Base.op_At
-                                                                   maxinc
+                                                                   mininc
                                                                    (FStar_List_Tot_Base.op_At
+                                                                    maxinc
+                                                                    (FStar_List_Tot_Base.op_At
                                                                     minexc
                                                                     (FStar_List_Tot_Base.op_At
                                                                     maxexc
@@ -1998,7 +2011,7 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                                                     nodebyexpr
                                                                     (FStar_List_Tot_Base.op_At
                                                                     closed_
-                                                                    sparqls)))))))))))))))))))))))))))))))))))))
+                                                                    sparqls))))))))))))))))))))))))))))))))))))))
 let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
   let path_objs = RDF_Graph_Executable.find_objects g s sh_path in
   let is_prop = Prims.uu___is_Cons path_objs in
@@ -2358,6 +2371,28 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
                         (FStar_Pervasives_Native.Some (shape_ref_to_term r));
                       v_detail = (uu___2.v_detail)
                     })])
+       | CC_Expression e ->
+           (match e with
+            | RDF_Term.T_Literal l ->
+                if
+                  (l.RDF_Term.datatype = RDF_Term.xsd_boolean) &&
+                    (l.RDF_Term.lexical_form = "true")
+                then []
+                else
+                  [(let uu___2 =
+                      value_violation focus path_opt source cc sev msg v in
+                    {
+                      v_focus_node = (uu___2.v_focus_node);
+                      v_path = (uu___2.v_path);
+                      v_value = (uu___2.v_value);
+                      v_source_shape = (uu___2.v_source_shape);
+                      v_constraint = (uu___2.v_constraint);
+                      v_severity = (uu___2.v_severity);
+                      v_message = (uu___2.v_message);
+                      v_source_constraint = (FStar_Pervasives_Native.Some e);
+                      v_detail = (uu___2.v_detail)
+                    })]
+            | uu___1 -> [])
        | CC_Datatype dt ->
            (match v with
             | RDF_Term.T_Literal l ->
@@ -3827,6 +3862,7 @@ let constraint_component_iri (cc : constraint_component) : RDF_Term.wf_iri=
   | CC_Closed uu___ -> sh_ClosedConstraintComponent
   | CC_ClosedByTypes uu___ -> sh_ClosedConstraintComponent
   | CC_NodeByExpression uu___ -> sh_NodeByExpressionConstraintComponent
+  | CC_Expression uu___ -> sh_ExpressionConstraintComponent
   | CC_Sparql (uu___, uu___1, uu___2) -> sh_SPARQLConstraintComponent
   | CC_Custom (comp, uu___, uu___1, uu___2) -> comp
 let severity_to_iri (s : severity) : RDF_Term.wf_iri=

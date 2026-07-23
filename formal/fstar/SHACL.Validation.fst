@@ -217,6 +217,9 @@ let sh_ReifierShapeConstraintComponent : wf_iri =
 let sh_NodeByExpressionConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#NodeByExpressionConstraintComponent");
   "http://www.w3.org/ns/shacl#NodeByExpressionConstraintComponent"
+let sh_ExpressionConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#ExpressionConstraintComponent");
+  "http://www.w3.org/ns/shacl#ExpressionConstraintComponent"
 let shv_rdf_reifies : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
@@ -532,6 +535,13 @@ noeq type constraint_component =
   // but reports sh:NodeByExpressionConstraintComponent. Non-IRI node
   // expressions are not modelled (skipped at parse time).
   | CC_NodeByExpression : shape_ref -> constraint_component
+  // SHACL 1.2 sh:expression: the node expression must evaluate to true for
+  // the focus node. Only the CONSTANT-boolean expression form is modelled
+  // (sh:expression true / false); general node expressions (paths,
+  // function calls, filters) are not evaluated. Reports
+  // sh:ExpressionConstraintComponent with sh:sourceConstraint = the
+  // expression node.
+  | CC_Expression   : rdf_term -> constraint_component
   // SPARQL-based constraint (sh:sparql / sh:select), Phase 3 (issue
   // #181 follow-up). Carries: the sh:sparql constraint node's own
   // shape_ref (reported as sh:sourceConstraint — distinct from the
@@ -988,6 +998,9 @@ let sh_ByTypes : wf_iri =
 let sh_nodeByExpression : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#nodeByExpression");
   "http://www.w3.org/ns/shacl#nodeByExpression"
+let sh_expression : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#expression");
+  "http://www.w3.org/ns/shacl#expression"
 // SHACL 1.2 sh:shape data-side target: a data triple `N sh:shape S` makes
 // N a focus node of shape S (the inverse of the shape-declared targets).
 let sh_shape_pred : wf_iri =
@@ -1938,6 +1951,8 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
   // sh:nodeByExpression — only the IRI-expression (bare shape reference) form.
   let nodebyexpr =
     List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_NodeByExpression i] | _ -> []) (find_objects g s sh_nodeByExpression) in
+  let expression =
+    List.Tot.map (fun t -> CC_Expression t) (find_objects g s sh_expression) in
   let closed_ =
     let ign =
       (match find_objects g s sh_ignoredProperties with
@@ -1949,7 +1964,7 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
      | objs -> (match first_bool objs with Some true -> [CC_Closed ign] | _ -> [])) in
   let sparqls = build_sparql_constraints g s in
   mincount @ maxcount @ datatype @ nodekind @ cls @ in_ @ hasvalue @ pattern @ minlen @ maxlen @
-  singleline @ minlistlen @ maxlistlen @ rootcls @ somevalue @ uniquemembers @ membershape @ uvf @
+  singleline @ minlistlen @ maxlistlen @ rootcls @ somevalue @ uniquemembers @ membershape @ uvf @ expression @
   langin @ uniquelang @ mininc @ maxinc @ minexc @ maxexc @ nots @ ands @ ors @ xones @ nodes @
   qualified @ equals @ disjoint @ lessthan @ lessthaneq @ subsetof @ reifiershape @ nodebyexpr @ closed_ @ sparqls
 #pop-options
@@ -2276,6 +2291,13 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
         | Some s2 ->
           if Nil? (collect_shape_violations data sg closed_cls v s2 fuel') then []
           else [ { value_violation focus path_opt source cc sev msg v with v_source_constraint = Some (shape_ref_to_term r) } ])
+     | CC_Expression e ->
+       // Constant-boolean node expression only: must evaluate to true.
+       (match e with
+        | T_Literal l ->
+          if l.datatype = xsd_boolean && l.lexical_form = "true" then []
+          else [ { value_violation focus path_opt source cc sev msg v with v_source_constraint = Some e } ]
+        | _ -> [])
      | CC_Datatype dt ->
        (match v with
         | T_Literal l ->
@@ -3441,6 +3463,7 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_Closed _ -> sh_ClosedConstraintComponent
   | CC_ClosedByTypes _ -> sh_ClosedConstraintComponent
   | CC_NodeByExpression _ -> sh_NodeByExpressionConstraintComponent
+  | CC_Expression _ -> sh_ExpressionConstraintComponent
   | CC_Sparql _ _ _ -> sh_SPARQLConstraintComponent
   | CC_Custom comp _ _ _ -> comp
 
