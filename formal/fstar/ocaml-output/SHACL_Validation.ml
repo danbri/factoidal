@@ -2114,6 +2114,34 @@ let shape_closed_by_types (s : shape) : Prims.bool=
     (fun cc ->
        match cc with | CC_ClosedByTypes uu___ -> true | uu___ -> false)
     s.constraints
+let rec shape_and_node_paths (sg : shape Prims.list) (s : shape)
+  (fuel : Prims.nat) : RDF_Term.wf_iri Prims.list=
+  if fuel = Prims.int_zero
+  then path_predicates_of_shape sg s
+  else
+    (let own = path_predicates_of_shape sg s in
+     let node_refs =
+       FStar_List_Tot_Base.concatMap
+         (fun cc -> match cc with | CC_Node r -> [r] | uu___1 -> [])
+         s.constraints in
+     let nested =
+       FStar_List_Tot_Base.concatMap
+         (fun r ->
+            match lookup_shape r sg with
+            | FStar_Pervasives_Native.Some ns ->
+                shape_and_node_paths sg ns (fuel - Prims.int_one)
+            | FStar_Pervasives_Native.None -> []) node_refs in
+     FStar_List_Tot_Base.op_At own nested)
+let shape_applies_to_types (types : RDF_Term.wf_iri Prims.list) (sh : shape)
+  : Prims.bool=
+  (FStar_List_Tot_Base.existsb (fun ty -> ty = sh.shape_id) types) ||
+    (FStar_List_Tot_Base.existsb
+       (fun tgt ->
+          match tgt with
+          | T_Class c -> FStar_List_Tot_Base.existsb (fun ty -> ty = c) types
+          | T_ImplicitClass c ->
+              FStar_List_Tot_Base.existsb (fun ty -> ty = c) types
+          | uu___ -> false) sh.targets)
 let duplicated_lang_tags (values : RDF_Term.rdf_term Prims.list) :
   Prims.string Prims.list=
   let langs =
@@ -2689,11 +2717,11 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                       (FStar_List_Tot_Base.op_At ign
                          (FStar_List_Tot_Base.concatMap
                             (fun sh ->
-                               if
-                                 (FStar_List_Tot_Base.existsb
-                                    (fun ty -> ty = sh.shape_id) types)
-                                   && (shape_closed_by_types sh)
-                               then path_predicates_of_shape sg sh
+                               if shape_applies_to_types types sh
+                               then
+                                 shape_and_node_paths sg sh
+                                   ((FStar_List_Tot_Base.length sg) +
+                                      Prims.int_one)
                                else []) sg)) in
                     FStar_List_Tot_Base.concatMap
                       (fun t ->

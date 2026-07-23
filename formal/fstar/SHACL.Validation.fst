@@ -2072,6 +2072,35 @@ let path_predicates_of_shape (sg : list shape) (s : shape) : list wf_iri =
 let shape_closed_by_types (s : shape) : bool =
   List.Tot.existsb (fun cc -> match cc with CC_ClosedByTypes _ -> true | _ -> false) s.constraints
 
+// Path predicates declared by a shape AND (transitively) by every shape it
+// pulls in through sh:node — needed by sh:closed sh:ByTypes, where a shape
+// reached via sh:node contributes its properties to the allowed set
+// (closed-004: SubShape sh:node SuperShape). Fuel-bounded on shape count.
+let rec shape_and_node_paths (sg : list shape) (s : shape) (fuel : nat)
+  : Tot (list wf_iri) (decreases fuel)
+  =
+  if fuel = 0 then path_predicates_of_shape sg s
+  else
+    let own = path_predicates_of_shape sg s in
+    let node_refs = List.Tot.concatMap (fun cc -> match cc with CC_Node r -> [r] | _ -> []) s.constraints in
+    let nested =
+      List.Tot.concatMap
+        (fun r -> match lookup_shape r sg with Some ns -> shape_and_node_paths sg ns (fuel - 1) | None -> [])
+        node_refs in
+    own @ nested
+
+// The node-shapes that APPLY to a focus node whose (subclass-closed) types
+// are `types`: a shape named as one of those types (shape_id) OR a shape
+// whose sh:targetClass / implicit-class target is one of them.
+let shape_applies_to_types (types : list wf_iri) (sh : shape) : bool =
+  List.Tot.existsb (fun (ty : wf_iri) -> (ty <: shape_ref) = sh.shape_id) types ||
+  List.Tot.existsb
+    (fun tgt -> match tgt with
+                | T_Class c -> List.Tot.existsb (fun ty -> ty = c) types
+                | T_ImplicitClass c -> List.Tot.existsb (fun ty -> ty = c) types
+                | _ -> false)
+    sh.targets
+
 // All distinct language tags used by at least two of `values`
 // (case-insensitive per lang_tag_eq; first-seen spelling kept). One
 // sh:uniqueLang validation result is emitted per entry — SHACL's
@@ -2463,8 +2492,8 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
                 rdf_type :: (ign @
                   List.Tot.concatMap
                     (fun (sh : shape) ->
-                       if List.Tot.existsb (fun (ty : wf_iri) -> (ty <: shape_ref) = sh.shape_id) types && shape_closed_by_types sh
-                       then path_predicates_of_shape sg sh else [])
+                       if shape_applies_to_types types sh
+                       then shape_and_node_paths sg sh (List.Tot.length sg + 1) else [])
                     sg) in
               List.Tot.concatMap
                 (fun (t : triple) ->

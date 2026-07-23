@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-07-23 05:58 UTC",
-  "commit": "c933c5111732adab124f431fab39033884e790c9",
+  "timestamp": "2026-07-23 06:27 UTC",
+  "commit": "1ad99a075a0d6a767f9d33f618f9ac6f76e6513c",
   "branch": "claude/main",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
@@ -18,7 +18,7 @@
     "rdfc10": {"pass":86,"fail":0,"skip":0,"total":86,"spec":"https://www.w3.org/TR/rdf-canon/"},
     "shacl_core":   {"pass":98,"fail":0,"skip":0,"total":98,"present":true,"spec":"https://www.w3.org/TR/shacl/"},
     "shacl_sparql": {"pass":22,"fail":0,"skip":0,"total":22,"present":true,"spec":"https://www.w3.org/TR/shacl/#sparql-constraints"},
-    "shacl12_core":   {"pass":135,"fail":3,"skip":0,"total":138,"present":true,"spec":"https://www.w3.org/TR/shacl12-core/"},
+    "shacl12_core":   {"pass":136,"fail":2,"skip":0,"total":138,"present":true,"spec":"https://www.w3.org/TR/shacl12-core/"},
     "shacl12_node_expr": {"pass":0,"fail":2,"skip":0,"total":2,"present":true,"spec":"https://www.w3.org/TR/shacl12-core/#node-expressions"},
     "shacl12_sparql": {"pass":19,"fail":6,"skip":0,"total":25,"present":true,"spec":"https://www.w3.org/TR/shacl12-sparql/"},
     "shex":         {"pass":1181,"fail":0,"skip":1,"total":1182,"present":true,"spec":"https://shex.io/shex-semantics/"},
@@ -107,7 +107,7 @@
     "rdfc10": {"name":"rdfc10","pass":86,"fail":0,"skip":0,"total":86},
     "shacl_core": {"name":"shacl_core","pass":98,"fail":0,"skip":0,"total":98},
     "shacl_sparql": {"name":"shacl_sparql","pass":22,"fail":0,"skip":0,"total":22},
-    "shacl12_core": {"name":"shacl12_core","pass":135,"fail":3,"skip":0,"total":138},
+    "shacl12_core": {"name":"shacl12_core","pass":136,"fail":2,"skip":0,"total":138},
     "shacl12_node_expr": {"name":"shacl12_node_expr","pass":0,"fail":2,"skip":0,"total":2},
     "shacl12_sparql": {"name":"shacl12_sparql","pass":19,"fail":6,"skip":0,"total":25},
     "shex": {"name":"shex","pass":1181,"fail":0,"skip":1,"total":1182},
