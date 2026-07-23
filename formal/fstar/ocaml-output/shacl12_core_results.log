@@ -113,7 +113,7 @@
   [113/138] Test of sh:qualifiedValueShape at property shape 001 ok
   [114/138] Test of sh:qualifiedValueShapesDisjoint at property shape 001 ok
   [115/138] Test of sh:reifierShape 001 FAIL
-  [116/138] Test of sh:reifierShape 002 with sh:reificationRequired FAIL
+  [116/138] Test of sh:reifierShape 002 with sh:reificationRequired ok
   [117/138] Test of sh:rootClass at property shape 001 ok
   [118/138] Test of sh:singleLine at property shape 001 ok
   [119/138] Test of sh:someValue at property shape 001 ok
@@ -339,21 +339,7 @@ _:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
     actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
 _:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
 
-  FAIL: Test of sh:reifierShape 002 with sh:reificationRequired (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/property/reifierShape-002.ttl) — report not isomorphic to expected
-    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#propertyA> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-propertyA> .
-_:c14n0 <http://www.w3.org/ns/shacl#value> "invalid" .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
-
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-
+  PASS: Test of sh:reifierShape 002 with sh:reificationRequired
   PASS: Test of sh:rootClass at property shape 001
   PASS: Test of sh:singleLine at property shape 001
   PASS: Test of sh:someValue at property shape 001
@@ -440,6 +426,6 @@ _:c14n1 <http://www.w3.org/ns/shacl#value> "twenty two" .
   PASS: Test of validation report for shape shared by property constraints
 
 ========================================
-TOTAL: 127 pass, 11 fail, 0 skip (out of 138)
+TOTAL: 128 pass, 10 fail, 0 skip (out of 138)
 ========================================
-shacl-core: 127 pass, 11 fail, 0 skip (out of 138)
+shacl-core: 128 pass, 10 fail, 0 skip (out of 138)

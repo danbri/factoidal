@@ -211,6 +211,12 @@ let sh_UniqueValuesForConstraintComponent : wf_iri =
 let sh_SubsetOfConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#SubsetOfConstraintComponent");
   "http://www.w3.org/ns/shacl#SubsetOfConstraintComponent"
+let sh_ReifierShapeConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent");
+  "http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent"
+let shv_rdf_reifies : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
 let sh_LanguageInConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#LanguageInConstraintComponent");
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
@@ -498,6 +504,12 @@ noeq type constraint_component =
   // SHACL 1.2 sh:subsetOf — every value node must ALSO be a value of the
   // compared path. One violation per value not in the compared value set.
   | CC_SubsetOf     : path -> constraint_component
+  // SHACL 1.2 sh:reifierShape — each value node's REIFIER (the subject of
+  // an `X rdf:reifies <<( focus path value )>>` triple, produced by the
+  // `{| ... |}` annotation sugar) must conform to the referenced shape.
+  // The bool is sh:reificationRequired: when true, a value with NO reifier
+  // is itself a violation. Both report sh:ReifierShapeConstraintComponent.
+  | CC_ReifierShape : shape_ref -> bool -> constraint_component
   // Closed-shape constraint.
   | CC_Closed       : ignored:list wf_iri -> constraint_component
   // SPARQL-based constraint (sh:sparql / sh:select), Phase 3 (issue
@@ -784,6 +796,14 @@ let rdf_term_duplicates (xs : list rdf_term) : list rdf_term =
       else go (x :: seen) tl
   in go [] xs
 
+// Subjects `r` of a reification triple `r rdf:reifies tt` (tt a triple
+// term). The `{| ... |}` annotation sugar produces exactly these, so this
+// finds the reifiers of a given asserted triple. Used by sh:reifierShape.
+let find_reifiers (g : rdf_graph) (tt : rdf_term) : list subject =
+  List.Tot.concatMap
+    (fun (t : triple) -> if t.p = shv_rdf_reifies && rdf_term_eq t.o tt then [t.s] else [])
+    g
+
 // All distinct subjects appearing anywhere in the graph.
 let rec distinct_subjects_acc (g : rdf_graph) (acc : list subject)
   : Tot (list subject) (decreases g)
@@ -926,6 +946,12 @@ let sh_uniqueValuesFor : wf_iri =
 let sh_subsetOf : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#subsetOf");
   "http://www.w3.org/ns/shacl#subsetOf"
+let sh_reifierShape : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#reifierShape");
+  "http://www.w3.org/ns/shacl#reifierShape"
+let sh_reificationRequired : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#reificationRequired");
+  "http://www.w3.org/ns/shacl#reificationRequired"
 let sh_languageIn : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#languageIn");
   "http://www.w3.org/ns/shacl#languageIn"
@@ -1672,6 +1698,19 @@ let build_custom_constraints (g : rdf_graph) (s : subject) (is_prop : bool) : li
 // combined VC even though each binding is individually trivial.
 // Matches the established idiom (RDF.List.Helpers.fst,
 // Parser.Turtle.fst) rather than inventing a new one.
+// Factored out of build_constraints (own VC) to keep that function's
+// monolithic split-query from growing: sh:reifierShape + the optional
+// sh:reificationRequired flag.
+let build_reifier_constraints (g : rdf_graph) (s : subject) : list constraint_component =
+  match find_objects g s sh_reifierShape with
+  | (t :: _) ->
+    (match term_to_shape_ref t with
+     | Some r ->
+       let req = (match first_bool (find_objects g s sh_reificationRequired) with Some b -> b | None -> false) in
+       [CC_ReifierShape r req]
+     | None -> [])
+  | [] -> []
+
 #push-options "--z3rlimit 400 --split_queries always"
 let build_constraints (g : rdf_graph) (s : subject) : list constraint_component =
   let fuel = graph_len g + 1 in
@@ -1771,6 +1810,7 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
     List.Tot.map (fun t -> CC_LessThanOrEq (parse_path g t fuel)) (find_objects g s sh_lessThanOrEquals) in
   let subsetof =
     List.Tot.map (fun t -> CC_SubsetOf (parse_path g t fuel)) (find_objects g s sh_subsetOf) in
+  let reifiershape = build_reifier_constraints g s in
   let closed_ =
     (match first_bool (find_objects g s sh_closed) with
      | Some true ->
@@ -1785,7 +1825,7 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
   mincount @ maxcount @ datatype @ nodekind @ cls @ in_ @ hasvalue @ pattern @ minlen @ maxlen @
   singleline @ minlistlen @ maxlistlen @ rootcls @ somevalue @ uniquemembers @ membershape @ uvf @
   langin @ uniquelang @ mininc @ maxinc @ minexc @ maxexc @ nots @ ands @ ors @ xones @ nodes @
-  qualified @ equals @ disjoint @ lessthan @ lessthaneq @ subsetof @ closed_ @ sparqls
+  qualified @ equals @ disjoint @ lessthan @ lessthaneq @ subsetof @ reifiershape @ closed_ @ sparqls
 #pop-options
 
 let build_shape (g : rdf_graph) (s : subject) : shape =
@@ -2120,6 +2160,22 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
              else [ { value_violation focus path_opt source cc sev msg v with v_detail = inner } ]))
      | CC_SomeValue _ -> []   // aggregate — see eval_aggregate_constraints
      | CC_UniqueValuesFor _ -> []  // shape-level cross-focus pass — see uvf_violations_for_shapes
+     | CC_ReifierShape r req ->
+       // Only predicate paths have a reifiable asserted triple (focus p v).
+       (match path_opt, term_to_subject focus with
+        | Some (P_Predicate pp), Some fsubj ->
+          let tt = T_TripleTerm fsubj pp v in
+          (match find_reifiers data tt with
+           | []       -> if req then viol () else []   // reificationRequired: no reifier -> violation
+           | reifiers ->
+             (match lookup_shape r sg with
+              | None    -> []
+              | Some rs ->
+                if List.Tot.existsb
+                     (fun rf -> not (Nil? (collect_shape_violations data sg closed_cls (subject_to_term rf) rs fuel')))
+                     reifiers
+                then viol () else []))
+        | _, _ -> [])
      | CC_LanguageIn langs ->
        (match v with
         | T_Literal l ->
@@ -3138,6 +3194,7 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_LessThan _ -> sh_LessThanConstraintComponent
   | CC_LessThanOrEq _ -> sh_LessThanOrEqualsConstraintComponent
   | CC_SubsetOf _ -> sh_SubsetOfConstraintComponent
+  | CC_ReifierShape _ _ -> sh_ReifierShapeConstraintComponent
   | CC_Closed _ -> sh_ClosedConstraintComponent
   | CC_Sparql _ _ _ -> sh_SPARQLConstraintComponent
   | CC_Custom comp _ _ _ -> comp

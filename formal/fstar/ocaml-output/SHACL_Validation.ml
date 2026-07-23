@@ -80,6 +80,10 @@ let sh_UniqueValuesForConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#UniqueValuesForConstraintComponent"
 let sh_SubsetOfConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#SubsetOfConstraintComponent"
+let sh_ReifierShapeConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#ReifierShapeConstraintComponent"
+let shv_rdf_reifies : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
 let sh_LanguageInConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
 let sh_UniqueLangConstraintComponent : RDF_Term.wf_iri=
@@ -276,6 +280,7 @@ type constraint_component =
   | CC_LessThan of path 
   | CC_LessThanOrEq of path 
   | CC_SubsetOf of path 
+  | CC_ReifierShape of shape_ref * Prims.bool 
   | CC_Closed of RDF_Term.wf_iri Prims.list 
   | CC_Sparql of shape_ref * Prims.string * RDF_Term.wf_literal
   FStar_Pervasives_Native.option 
@@ -457,6 +462,12 @@ let uu___is_CC_SubsetOf (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_SubsetOf _0 -> true | uu___ -> false
 let __proj__CC_SubsetOf__item___0 (projectee : constraint_component) : 
   path= match projectee with | CC_SubsetOf _0 -> _0
+let uu___is_CC_ReifierShape (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_ReifierShape (_0, _1) -> true | uu___ -> false
+let __proj__CC_ReifierShape__item___0 (projectee : constraint_component) :
+  shape_ref= match projectee with | CC_ReifierShape (_0, _1) -> _0
+let __proj__CC_ReifierShape__item___1 (projectee : constraint_component) :
+  Prims.bool= match projectee with | CC_ReifierShape (_0, _1) -> _1
 let uu___is_CC_Closed (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_Closed ignored -> true | uu___ -> false
 let __proj__CC_Closed__item__ignored (projectee : constraint_component) :
@@ -732,6 +743,15 @@ let rdf_term_duplicates (xs : RDF_Term.rdf_term Prims.list) :
           then x :: (go (x :: seen) tl)
           else go (x :: seen) tl in
   go [] xs
+let find_reifiers (g : RDF_Graph.rdf_graph) (tt : RDF_Term.rdf_term) :
+  RDF_Term.subject Prims.list=
+  FStar_List_Tot_Base.concatMap
+    (fun t ->
+       if
+         (t.RDF_Triple.p = shv_rdf_reifies) &&
+           (RDF_Term.rdf_term_eq t.RDF_Triple.o tt)
+       then [t.RDF_Triple.s]
+       else []) g
 let rec distinct_subjects_acc (g : RDF_Graph.rdf_graph)
   (acc : RDF_Term.subject Prims.list) : RDF_Term.subject Prims.list=
   match g with
@@ -824,6 +844,10 @@ let sh_memberShape : RDF_Term.wf_iri=
 let sh_uniqueValuesFor : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#uniqueValuesFor"
 let sh_subsetOf : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#subsetOf"
+let sh_reifierShape : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#reifierShape"
+let sh_reificationRequired : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#reificationRequired"
 let sh_languageIn : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#languageIn"
 let sh_uniqueLang : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#uniqueLang"
 let sh_minInclusive : RDF_Term.wf_iri=
@@ -1501,6 +1525,22 @@ let build_custom_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject)
                     | RDF_Term.S_IRI ci ->
                         [CC_Custom (ci, is_ask, query_text, bindings)]
                     | RDF_Term.S_BNode uu___1 -> [])))) comp_subjs
+let build_reifier_constraints (g : RDF_Graph.rdf_graph)
+  (s : RDF_Term.subject) : constraint_component Prims.list=
+  match RDF_Graph_Executable.find_objects g s sh_reifierShape with
+  | t::uu___ ->
+      (match term_to_shape_ref t with
+       | FStar_Pervasives_Native.Some r ->
+           let req =
+             match first_bool
+                     (RDF_Graph_Executable.find_objects g s
+                        sh_reificationRequired)
+             with
+             | FStar_Pervasives_Native.Some b -> b
+             | FStar_Pervasives_Native.None -> false in
+           [CC_ReifierShape (r, req)]
+       | FStar_Pervasives_Native.None -> [])
+  | [] -> []
 let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
   constraint_component Prims.list=
   let fuel = (RDF_Graph.graph_len g) + Prims.int_one in
@@ -1695,6 +1735,7 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
   let subsetof =
     FStar_List_Tot_Base.map (fun t -> CC_SubsetOf (parse_path g t fuel))
       (RDF_Graph_Executable.find_objects g s sh_subsetOf) in
+  let reifiershape = build_reifier_constraints g s in
   let closed_ =
     match first_bool (RDF_Graph_Executable.find_objects g s sh_closed) with
     | FStar_Pervasives_Native.Some true ->
@@ -1767,8 +1808,10 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                                                     (FStar_List_Tot_Base.op_At
                                                                     subsetof
                                                                     (FStar_List_Tot_Base.op_At
+                                                                    reifiershape
+                                                                    (FStar_List_Tot_Base.op_At
                                                                     closed_
-                                                                    sparqls)))))))))))))))))))))))))))))))))))
+                                                                    sparqls))))))))))))))))))))))))))))))))))))
 let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
   let path_objs = RDF_Graph_Executable.find_objects g s sh_path in
   let is_prop = Prims.uu___is_Cons path_objs in
@@ -2217,6 +2260,29 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
                          })]))
        | CC_SomeValue uu___1 -> []
        | CC_UniqueValuesFor uu___1 -> []
+       | CC_ReifierShape (r, req) ->
+           (match (path_opt, (RDF_Graph.term_to_subject focus)) with
+            | (FStar_Pervasives_Native.Some (P_Predicate pp),
+               FStar_Pervasives_Native.Some fsubj) ->
+                let tt = RDF_Term.T_TripleTerm (fsubj, pp, v) in
+                (match find_reifiers data tt with
+                 | [] -> if req then viol () else []
+                 | reifiers ->
+                     (match lookup_shape r sg with
+                      | FStar_Pervasives_Native.None -> []
+                      | FStar_Pervasives_Native.Some rs ->
+                          if
+                            FStar_List_Tot_Base.existsb
+                              (fun rf ->
+                                 Prims.op_Negation
+                                   (Prims.uu___is_Nil
+                                      (collect_shape_violations data sg
+                                         closed_cls
+                                         (RDF_Graph.subject_to_term rf) rs
+                                         fuel'))) reifiers
+                          then viol ()
+                          else []))
+            | (uu___1, uu___2) -> [])
        | CC_LanguageIn langs ->
            (match v with
             | RDF_Term.T_Literal l ->
@@ -3404,6 +3470,7 @@ let constraint_component_iri (cc : constraint_component) : RDF_Term.wf_iri=
   | CC_LessThan uu___ -> sh_LessThanConstraintComponent
   | CC_LessThanOrEq uu___ -> sh_LessThanOrEqualsConstraintComponent
   | CC_SubsetOf uu___ -> sh_SubsetOfConstraintComponent
+  | CC_ReifierShape (uu___, uu___1) -> sh_ReifierShapeConstraintComponent
   | CC_Closed uu___ -> sh_ClosedConstraintComponent
   | CC_Sparql (uu___, uu___1, uu___2) -> sh_SPARQLConstraintComponent
   | CC_Custom (comp, uu___, uu___1, uu___2) -> comp
