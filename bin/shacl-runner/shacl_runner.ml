@@ -191,6 +191,14 @@ let sht_nodeExpr     = sht_ns ^ "nodeExpr"
 let sht_focusNode    = sht_ns ^ "focusNode"
 let sht_ignoreOrder  = sht_ns ^ "ignoreOrder"
 let sht_scope_prefix = sht_ns ^ "scope-"
+
+(* SHACL 1.2 Rules evaluation tests (rules/eval suite). Each
+   srt:RulesEvalTest names a .srl ruleset + a data graph; the inferred
+   closure is compared to mf:result. *)
+let srt_ns = "http://www.w3.org/ns/shacl-rules-test#"
+let srt_RulesEvalTest = srt_ns ^ "RulesEvalTest"
+let srt_ruleset = srt_ns ^ "ruleset"
+let srt_data    = srt_ns ^ "data"
 let rdf_first_iri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
 let rdf_rest_iri  = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
 let rdf_nil_iri   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
@@ -313,6 +321,14 @@ type test_case = {
   (* SHACL 1.2 sht:EvalNodeExpr payload (node-expression evaluation);
      None for an ordinary sht:Validate entry. *)
   tc_node_expr : ne_spec option;
+  (* SHACL 1.2 srt:RulesEvalTest payload (rule inference); None
+     otherwise. *)
+  tc_rules : rules_spec option;
+}
+and rules_spec = {
+  rs_data : rdf_graph;      (* the input data graph *)
+  rs_srl : string;          (* raw .srl ruleset text *)
+  rs_expected : rdf_graph;  (* expected inferred closure (mf:result) *)
 }
 and ne_spec = {
   ne_graph : rdf_graph;                  (* graph the expression runs against *)
@@ -420,7 +436,7 @@ let rec collect_from_file (visited : string list ref) (path : string) : test_cas
                tc_expect_conforms = expect;
                tc_expect_report = expect_report;
                tc_expect_failure = expect_failure;
-               tc_node_expr = None })
+               tc_node_expr = None; tc_rules = None })
           (subjects_typed g sht_Validate)
       in
       let node_expr_tests =
@@ -465,10 +481,48 @@ let rec collect_from_file (visited : string list ref) (path : string) : test_cas
                          tc_expect_failure = false;
                          tc_node_expr = Some { ne_graph = g; ne_expr = expr; ne_focus = focus;
                                                ne_scope = scope; ne_expected = expected;
-                                               ne_ignore_order = ignore_order } }))
+                                               ne_ignore_order = ignore_order };
+                         tc_rules = None }))
           (subjects_typed g sht_EvalNodeExpr)
       in
-      included @ own_tests @ node_expr_tests
+      let rules_tests =
+        List.filter_map
+          (fun t ->
+             let name =
+               match string_of_lit (obj1_of g t rdfs_label) with
+               | Some n -> n
+               | None -> (match string_of_lit (obj1_of g t mf_name) with
+                          | Some n -> n
+                          | None -> (match t with T_IRI i -> i | _ -> "<rules-test>")) in
+             match obj1_of g t mf_action with
+             | None -> None
+             | Some act ->
+               let srl =
+                 match obj1_of g act srt_ruleset with
+                 | Some rt -> (match iri_str rt with
+                               | Some iri -> (match path_of_file_iri iri with
+                                              | Some p -> read_file p | None -> None)
+                               | None -> None)
+                 | None -> None in
+               let data =
+                 match obj1_of g act srt_data with
+                 | Some dt -> resolve_graph_ref ~own_graph:g ~own_base:base dt
+                 | None -> None in
+               let result =
+                 match obj1_of g t mf_result with
+                 | Some rr -> resolve_graph_ref ~own_graph:g ~own_base:base rr
+                 | None -> None in
+               (match srl, data, result with
+                | Some s, Some d, Some r ->
+                  Some { tc_name = name; tc_file = path;
+                         tc_data_graph = None; tc_shapes_graph = None;
+                         tc_expect_conforms = None; tc_expect_report = None;
+                         tc_expect_failure = false; tc_node_expr = None;
+                         tc_rules = Some { rs_data = d; rs_srl = s; rs_expected = r } }
+                | _ -> None))
+          (subjects_typed g srt_RulesEvalTest)
+      in
+      included @ own_tests @ node_expr_tests @ rules_tests
   end
 
 (* ------------------------------------------------------------------ *)
@@ -508,11 +562,24 @@ let run_node_expr_test (ne : ne_spec) : outcome =
                  (String.concat "; " (List.map term_key actual)))
   with e -> Fail (Printf.sprintf "exception: %s" (Printexc.to_string e))
 
+(* SHACL 1.2 srt:RulesEvalTest: infer the closure of the data graph
+   under the .srl ruleset and compare (isomorphic) to mf:result. *)
+let run_rules_test (rs : rules_spec) : outcome =
+  try
+    let inferred = SHACL_Rules.run_rules rs.rs_data rs.rs_srl in
+    if canon_graph inferred = canon_graph rs.rs_expected then Pass
+    else Fail (Printf.sprintf "inferred graph not isomorphic to expected\n    expected: %s\n    actual:   %s"
+                 (canon_graph rs.rs_expected) (canon_graph inferred))
+  with e -> Fail (Printf.sprintf "exception: %s" (Printexc.to_string e))
+
 (* Slice-1 floor: compare only sh:conforms. Kept as the `--conforms-only`
    fallback — CLAUDE.md's Phase 3 brief requires this mode to stay at
    98/98 on the core manifest even as the default (report-compare)
    mode is free to be stricter and score lower. *)
 let run_test_conforms_only (tc : test_case) : outcome =
+  match tc.tc_rules with
+  | Some rs -> run_rules_test rs
+  | None ->
   match tc.tc_node_expr with
   | Some ne -> run_node_expr_test ne
   | None ->
@@ -535,6 +602,9 @@ let run_test_conforms_only (tc : test_case) : outcome =
    acknowledgement) — see the file header + expected_report_graph doc
    comments for exactly what "full compliance" means here. *)
 let run_test_report (tc : test_case) : outcome =
+  match tc.tc_rules with
+  | Some rs -> run_rules_test rs
+  | None ->
   match tc.tc_node_expr with
   | Some ne -> run_node_expr_test ne
   | None ->

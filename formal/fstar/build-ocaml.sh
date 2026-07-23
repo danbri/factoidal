@@ -402,6 +402,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RIF.Core.Syntax.fst RIF.Core.Translation.fst
     SHACL.Validation.fst
     SHACL.NodeExpr.fst
+    SHACL.Rules.fst
     RDF.Geo.Types.fst RDF.Geo.BBox.fst RDF.Geo.Topology.fst RDF.Geo.Functions.fst
     Parser.FastString.fst Parser.IRI.fst
     Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst Parser.WKT.fst
@@ -858,7 +859,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_GraphIsomorphism.ml \
     GRDDL_Discovery.ml \
     service_wrap_hook.ml \
-    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XSD_IEEE754.ml RDF_Entailment_Regime.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml OWL2_SyntaxDL.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml SHACL_NodeExpr.ml \
+    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XSD_IEEE754.ml RDF_Entailment_Regime.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml OWL2_SyntaxDL.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml SHACL_NodeExpr.ml SHACL_Rules.ml \
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml \
     VC_Context.ml \
     VC_Multibase.ml \
@@ -1938,7 +1939,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_GraphIsomorphism.ml
     GRDDL_Discovery.ml
     service_wrap_hook.ml
-    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XSD_IEEE754.ml RDF_Entailment_Regime.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml OWL2_SyntaxDL.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml SHACL_NodeExpr.ml
+    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XSD_IEEE754.ml RDF_Entailment_Regime.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml OWL2_SyntaxDL.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml SHACL_NodeExpr.ml SHACL_Rules.ml
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Formats.ml CSVW_Conversion.ml
