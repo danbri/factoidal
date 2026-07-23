@@ -346,11 +346,22 @@ let sparql_fn_expr (ln : string) (args : list Alg.expr) : option Alg.expr =
   | "less-than-or-equal", [a; b] -> Some (Alg.E_Compare Alg.CmpLe a b)
   | _, _ -> None
 
+// Canonicalise an xsd:decimal literal: the canonical lexical form must
+// contain a decimal point (ABS/CEIL/FLOOR/ROUND of a decimal yield a
+// decimal, and Alg emits e.g. "4" where the canonical form is "4.0").
+let canon_decimal (t : rdf_term) : rdf_term =
+  match t with
+  | T_Literal l ->
+    if l.datatype = xsd_decimal && not (List.Tot.mem '.' (String.list_of_string l.lexical_form))
+    then T_Literal ({ l with lexical_form = String.concat "" [l.lexical_form; ".0"] })
+    else t
+  | _ -> t
+
 // Evaluate a bridged SPARQL builtin call against an empty solution
 // mapping and reflect the eval_result back as a value list.
 let sparql_apply (ln : string) (argvals : list rdf_term) : list rdf_term =
   match sparql_fn_expr ln (List.Tot.map term_to_expr argvals) with
-  | Some e -> (match Alg.er_to_term (Alg.eval_expr_with_base None e Alg.sm_empty) with Some t -> [t] | None -> [])
+  | Some e -> (match Alg.er_to_term (Alg.eval_expr_with_base None e Alg.sm_empty) with Some t -> [canon_decimal t] | None -> [])
   | None -> []
 
 // --- the evaluator ---------------------------------------------------
