@@ -124,7 +124,7 @@
   [124/138] Test of sh:uniqueLang with rdf:dirLangString values ok
   [125/138] Test of sh:uniqueMembers on property shape 001 ok
   [126/138] Test of multiple targets 001 ok
-  [127/138] Test of sh:shape 001 FAIL
+  [127/138] Test of sh:shape 001 ok
   [128/138] Test of sh:targetClass 001 ok
   [129/138] Test of implicit sh:targetClass 001 ok
   [130/138] Verify that sh:ShapeClass is interpreted as implicit class target FAIL
@@ -337,20 +337,7 @@ _:c14n7 <http://www.w3.org/ns/shacl#result> _:c14n6 .
   PASS: Test of sh:uniqueLang with rdf:dirLangString values
   PASS: Test of sh:uniqueMembers on property shape 001
   PASS: Test of multiple targets 001
-  FAIL: Test of sh:shape 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/targets/shape-001.ttl) — report not isomorphic to expected
-    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://www.w3.org/2000/01/rdf-schema#label> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#MaxCountConstraintComponent> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-label> .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n1 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n1 <http://www.w3.org/ns/shacl#result> _:c14n0 .
-
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-
+  PASS: Test of sh:shape 001
   PASS: Test of sh:targetClass 001
   PASS: Test of implicit sh:targetClass 001
   FAIL: Verify that sh:ShapeClass is interpreted as implicit class target (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/targets/targetClassImplicit-002.ttl) — report not isomorphic to expected
@@ -413,6 +400,6 @@ _:c14n1 <http://www.w3.org/ns/shacl#value> "twenty two" .
   PASS: Test of validation report for shape shared by property constraints
 
 ========================================
-TOTAL: 133 pass, 5 fail, 0 skip (out of 138)
+TOTAL: 134 pass, 4 fail, 0 skip (out of 138)
 ========================================
-shacl-core: 133 pass, 5 fail, 0 skip (out of 138)
+shacl-core: 134 pass, 4 fail, 0 skip (out of 138)

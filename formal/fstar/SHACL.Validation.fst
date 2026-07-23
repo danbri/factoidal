@@ -390,6 +390,9 @@ noeq type target =
   | T_ObjectsOf     : wf_iri -> target
   | T_ImplicitClass : wf_iri -> target
   | T_Sparql        : string -> target
+  // SHACL 1.2 sh:shape data-side target: focus nodes are the subjects N of
+  // `N sh:shape <this shape IRI>` triples in the data graph.
+  | T_DataShape     : wf_iri -> target
 
 // ------------------------------------------------------------------
 // 6. Constraint components.
@@ -978,6 +981,11 @@ let sh_ByTypes : wf_iri =
 let sh_nodeByExpression : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#nodeByExpression");
   "http://www.w3.org/ns/shacl#nodeByExpression"
+// SHACL 1.2 sh:shape data-side target: a data triple `N sh:shape S` makes
+// N a focus node of shape S (the inverse of the shape-declared targets).
+let sh_shape_pred : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#shape");
+  "http://www.w3.org/ns/shacl#shape"
 let sh_languageIn : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#languageIn");
   "http://www.w3.org/ns/shacl#languageIn"
@@ -1414,6 +1422,8 @@ let eval_target (data : rdf_graph) (closed_g : rdf_graph) (all_subjects : list s
   | T_ObjectsOf p ->
     dedup_terms (List.Tot.concatMap (fun (tr : triple) -> if tr.p = p then [tr.o] else []) data)
   | T_Sparql _ -> []   // resolved only via eval_sparql_target_select (unused this slice)
+  | T_DataShape i ->
+    dedup_terms (List.Tot.concatMap (fun (tr : triple) -> if tr.p = sh_shape_pred && rdf_term_eq tr.o (T_IRI i) then [subject_to_term tr.s] else []) data)
 
 // --- 11f. Shape-graph parsing ----------------------------------------
 
@@ -1467,7 +1477,9 @@ let build_targets (g : rdf_graph) (s : subject) : list target =
        if is_class && is_nodeshape then [T_ImplicitClass i] else []
      | S_BNode _ -> [])
   in
-  via_class @ via_node @ via_subj_of @ via_obj_of @ implicit
+  // Any IRI-named shape can be data-targeted via `N sh:shape <thisShape>`.
+  let data_shape = (match s with S_IRI i -> [T_DataShape i] | S_BNode _ -> []) in
+  via_class @ via_node @ via_subj_of @ via_obj_of @ implicit @ data_shape
 
 let collect_shape_ref_list (g : rdf_graph) (head : rdf_term) (fuel : nat) : list shape_ref =
   List.Tot.concatMap

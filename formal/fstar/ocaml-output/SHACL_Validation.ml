@@ -217,6 +217,7 @@ type target =
   | T_ObjectsOf of RDF_Term.wf_iri 
   | T_ImplicitClass of RDF_Term.wf_iri 
   | T_Sparql of Prims.string 
+  | T_DataShape of RDF_Term.wf_iri 
 let uu___is_T_Class (projectee : target) : Prims.bool=
   match projectee with | T_Class _0 -> true | uu___ -> false
 let __proj__T_Class__item___0 (projectee : target) : RDF_Term.wf_iri=
@@ -241,6 +242,10 @@ let uu___is_T_Sparql (projectee : target) : Prims.bool=
   match projectee with | T_Sparql _0 -> true | uu___ -> false
 let __proj__T_Sparql__item___0 (projectee : target) : Prims.string=
   match projectee with | T_Sparql _0 -> _0
+let uu___is_T_DataShape (projectee : target) : Prims.bool=
+  match projectee with | T_DataShape _0 -> true | uu___ -> false
+let __proj__T_DataShape__item___0 (projectee : target) : RDF_Term.wf_iri=
+  match projectee with | T_DataShape _0 -> _0
 type shape_ref = Prims.string
 type constraint_component =
   | CC_MinCount of Prims.nat 
@@ -879,6 +884,7 @@ let sh_reificationRequired : RDF_Term.wf_iri=
 let sh_ByTypes : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#ByTypes"
 let sh_nodeByExpression : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#nodeByExpression"
+let sh_shape_pred : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#shape"
 let sh_languageIn : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#languageIn"
 let sh_uniqueLang : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#uniqueLang"
 let sh_minInclusive : RDF_Term.wf_iri=
@@ -1213,6 +1219,15 @@ let eval_target (data : RDF_Graph.rdf_graph) (closed_g : RDF_Graph.rdf_graph)
            (fun tr -> if tr.RDF_Triple.p = p then [tr.RDF_Triple.o] else [])
            data)
   | T_Sparql uu___ -> []
+  | T_DataShape i ->
+      dedup_terms
+        (FStar_List_Tot_Base.concatMap
+           (fun tr ->
+              if
+                (tr.RDF_Triple.p = sh_shape_pred) &&
+                  (RDF_Term.rdf_term_eq tr.RDF_Triple.o (RDF_Term.T_IRI i))
+              then [RDF_Graph.subject_to_term tr.RDF_Triple.s]
+              else []) data)
 let sh_ns_prefix : Prims.string= "http://www.w3.org/ns/shacl#"
 let has_shacl_ns_prefix (p : Prims.string) : Prims.bool=
   let n = FStar_String.strlen sh_ns_prefix in
@@ -1275,10 +1290,15 @@ let build_targets (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
             (RDF_Graph_Executable.find_objects g s RDFS_Closure.rdf_type) in
         if is_class && is_nodeshape then [T_ImplicitClass i] else []
     | RDF_Term.S_BNode uu___ -> [] in
+  let data_shape =
+    match s with
+    | RDF_Term.S_IRI i -> [T_DataShape i]
+    | RDF_Term.S_BNode uu___ -> [] in
   FStar_List_Tot_Base.op_At via_class
     (FStar_List_Tot_Base.op_At via_node
        (FStar_List_Tot_Base.op_At via_subj_of
-          (FStar_List_Tot_Base.op_At via_obj_of implicit)))
+          (FStar_List_Tot_Base.op_At via_obj_of
+             (FStar_List_Tot_Base.op_At implicit data_shape))))
 let collect_shape_ref_list (g : RDF_Graph.rdf_graph)
   (head : RDF_Term.rdf_term) (fuel : Prims.nat) : shape_ref Prims.list=
   FStar_List_Tot_Base.concatMap
