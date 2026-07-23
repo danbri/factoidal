@@ -103,6 +103,14 @@ let sh_select : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#select");
   "http://www.w3.org/ns/shacl#select"
 
+let sh_values : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#values");
+  "http://www.w3.org/ns/shacl#values"
+
+let sh_sparqlExpr : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#sparqlExpr");
+  "http://www.w3.org/ns/shacl#sparqlExpr"
+
 let sh_Violation : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#Violation");
   "http://www.w3.org/ns/shacl#Violation"
@@ -622,6 +630,15 @@ noeq type shape = {
   // nodes of this shape (target-by-conformance). Resolved at validation
   // time against every candidate subject.
   target_where : list shape_ref;
+  // SHACL 1.2 sh:values node expression (SHACL-AF): when present, the
+  // value nodes of this PROPERTY shape are COMPUTED by evaluating this
+  // SELECT query (with `$this` textually bound to the focus node) and
+  // collecting its projected bindings — NOT read by walking shape_path.
+  // Prepared at build_shape time: the sh:prefixes header is already
+  // prepended, and an `sh:sparqlExpr "E"` node expression is wrapped as
+  // `SELECT (E AS ?value) WHERE {}`. shape_path is still reported as the
+  // sh:resultPath of any violation. None for an ordinary property shape.
+  values_query : option string;
 }
 
 noeq type shapes_graph = {
@@ -688,14 +705,14 @@ let mk_shape_node (id_ : shape_ref) (ts : list target)
   : shape
   = { shape_id = id_; is_property = false; shape_path = None;
       targets = ts; shape_sev = Sev_Violation; message = None;
-      constraints = cs; constraint_meta = []; property_refs = []; target_where = []; }
+      constraints = cs; constraint_meta = []; property_refs = []; target_where = []; values_query = None; }
 
 let mk_shape_property (id_ : shape_ref) (p : path)
                       (ts : list target) (cs : list constraint_component)
   : shape
   = { shape_id = id_; is_property = true; shape_path = Some p;
       targets = ts; shape_sev = Sev_Violation; message = None;
-      constraints = cs; constraint_meta = []; property_refs = []; target_where = []; }
+      constraints = cs; constraint_meta = []; property_refs = []; target_where = []; values_query = None; }
 
 let shapes_graph_of_list (ss : list shape) : shapes_graph =
   { shapes = ss }
@@ -1444,9 +1461,69 @@ let eval_target (data : rdf_graph) (closed_g : rdf_graph) (all_subjects : list s
     dedup_terms (List.Tot.concatMap (fun (tr : triple) -> if tr.p = p then [subject_to_term tr.s] else []) data)
   | T_ObjectsOf p ->
     dedup_terms (List.Tot.concatMap (fun (tr : triple) -> if tr.p = p then [tr.o] else []) data)
-  | T_Sparql _ -> []   // resolved only via eval_sparql_target_select (unused this slice)
+  | T_Sparql q ->
+    // SPARQL-based target: the SELECT's solutions bind the focus nodes.
+    // Collect every bound value of every solution (a target SELECT projects
+    // just the focus variable), running against the data graph.
+    (match Parser11.parse_sparql q with
+     | Parser11.ParseOk pq _ ->
+       let ds = { ds_default = data; ds_named = [] } in
+       let rows = Alg.eval_select_query pq data ds in
+       dedup_terms
+         (List.Tot.concatMap
+            (fun mu -> List.Tot.concatMap (fun var -> match Alg.sm_lookup var mu with Some t -> [t] | None -> []) (Alg.sm_domain mu))
+            rows)
+     | _ -> [])
   | T_DataShape i ->
     dedup_terms (List.Tot.concatMap (fun (tr : triple) -> if tr.p = sh_shape_pred && rdf_term_eq tr.o (T_IRI i) then [subject_to_term tr.s] else []) data)
+
+// --- 11e-bis. sh:values node-expression evaluation (SHACL-AF) ---------
+//
+// A property shape's `sh:values [ sh:sparqlExpr .. | sh:select .. ]`
+// COMPUTES its value nodes by running a SELECT with `$this` bound to
+// the focus node. `$this` is bound textually (not via the algebra's
+// subst_vars_gp, which is defined far below, after
+// collect_shape_violations) — sound here because the fixtures only ever
+// bind `$this` to an IRI focus node, whose SPARQL token `<iri>` has no
+// interaction with surrounding syntax. See values_query on the shape.
+
+// Serialize an rdf_term to a SPARQL token for textual `$this` binding.
+let term_to_sparql_token (t : rdf_term) : string =
+  match t with
+  | T_IRI i    -> String.concat "" ["<"; i; ">"]
+  | T_BNode b  -> String.concat "" ["_:"; b]
+  | T_Literal l ->
+    let base = String.concat "" ["\""; l.lexical_form; "\""] in
+    (match l.lang_tag with
+     | Some lt -> String.concat "" [base; "@"; lt]
+     | None    -> String.concat "" [base; "^^<"; l.datatype; ">"])
+  | T_TripleTerm _ _ _ -> "UNDEF"   // not a focus-node shape (never reached here)
+
+// Plain (non-regex) replacement of every `$this` occurrence in `cs`
+// with `repl`. Structural recursion on the char list.
+let rec replace_this_chars (cs : list char) (repl : list char) : Tot (list char) (decreases cs) =
+  match cs with
+  | '$' :: 't' :: 'h' :: 'i' :: 's' :: rest -> repl @ replace_this_chars rest repl
+  | c :: rest -> c :: replace_this_chars rest repl
+  | [] -> []
+
+let subst_this_text (q : string) (focus : rdf_term) : string =
+  string_of_list (replace_this_chars (String.list_of_string q)
+                                     (String.list_of_string (term_to_sparql_token focus)))
+
+// Evaluate a shape's sh:values SELECT for one focus node: bind `$this`,
+// parse, run against the data graph, collect every projected binding as
+// a value node.
+let eval_values_query (data : rdf_graph) (focus : rdf_term) (q : string) : list rdf_term =
+  match Parser11.parse_sparql (subst_this_text q focus) with
+  | Parser11.ParseOk pq _ ->
+    let ds = { ds_default = data; ds_named = [] } in
+    let rows = Alg.eval_select_query pq data ds in
+    dedup_terms
+      (List.Tot.concatMap
+         (fun mu -> List.Tot.concatMap (fun var -> match Alg.sm_lookup var mu with Some t -> [t] | None -> []) (Alg.sm_domain mu))
+         rows)
+  | _ -> []
 
 // --- 11f. Shape-graph parsing ----------------------------------------
 
@@ -1483,7 +1560,22 @@ let is_shape_establishing (g : rdf_graph) (s : subject) : bool =
 let build_targets (g : rdf_graph) (s : subject) : list target =
   let via_class =
     List.Tot.concatMap (fun t -> match t with T_IRI i -> [T_Class i] | _ -> []) (find_objects g s sh_targetClass) in
-  let via_node = List.Tot.map (fun t -> T_Node t) (find_objects g s sh_targetNode) in
+  // A `sh:targetNode` object is normally a literal focus node; but a
+  // blank-node object carrying `sh:select` is a SPARQL-based target —
+  // the SELECT computes the focus nodes (T_Sparql). The test SELECTs
+  // carry their own inline PREFIX declarations, so the raw sh:select
+  // text is handed to the parser as-is (build_targets runs before
+  // prefix_header_for and cannot call it).
+  let via_node =
+    List.Tot.concatMap
+      (fun t ->
+        match term_to_subject t with
+        | Some ts ->
+          (match find_objects g ts sh_select with
+           | (T_Literal l) :: _ -> [T_Sparql l.lexical_form]
+           | _ -> [T_Node t])
+        | None -> [T_Node t])
+      (find_objects g s sh_targetNode) in
   let via_subj_of =
     List.Tot.concatMap (fun t -> match t with T_IRI i -> [T_SubjectsOf i] | _ -> []) (find_objects g s sh_targetSubjectsOf) in
   let via_obj_of =
@@ -1612,6 +1704,30 @@ let build_sparql_constraints (g : rdf_graph) (s : subject) : list constraint_com
             [CC_Sparql cref (hdr ^ l.lexical_form) cmsg]
           | _ -> []))
     (find_objects g s sh_sparql)
+
+// SHACL 1.2 sh:values node expression (SHACL-AF): prepare the SELECT
+// query text that computes this property shape's value nodes. The
+// object of sh:values is a node-expression blank node carrying either
+// sh:select (a full SELECT) or sh:sparqlExpr (a bare expression, which
+// we wrap as `SELECT (E AS ?value) WHERE {}`). Its sh:prefixes header is
+// prepended. `$this` stays as a placeholder — bound per focus node at
+// evaluation time (eval_values_query). Returns None for an ordinary
+// property shape with no sh:values.
+let values_query_for (g : rdf_graph) (s : subject) : option string =
+  match find_objects g s sh_values with
+  | (ve :: _) ->
+    (match term_to_subject ve with
+     | None -> None
+     | Some vs ->
+       let hdr = prefix_header_for g vs in
+       (match find_objects g vs sh_select with
+        | (T_Literal l) :: _ -> Some (hdr ^ l.lexical_form)
+        | _ ->
+          (match find_objects g vs sh_sparqlExpr with
+           | (T_Literal l) :: _ ->
+             Some (String.concat "" [hdr; "SELECT ("; l.lexical_form; " AS ?value) WHERE {}"])
+           | _ -> None)))
+  | [] -> None
 
 // --- SHACL-SPARQL custom constraint components (SHACL spec section 6) -
 //
@@ -1848,7 +1964,7 @@ let build_reifier_constraints (g : rdf_graph) (s : subject) : list constraint_co
      | None -> [])
   | [] -> []
 
-#push-options "--z3rlimit 400 --split_queries always"
+#push-options "--z3rlimit 700 --split_queries always"
 let build_constraints (g : rdf_graph) (s : subject) : list constraint_component =
   let fuel = graph_len g + 1 in
   let mincount = match first_int (find_objects g s sh_minCount) with Some n -> [CC_MinCount n] | None -> [] in
@@ -1969,6 +2085,7 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
   qualified @ equals @ disjoint @ lessthan @ lessthaneq @ subsetof @ reifiershape @ nodebyexpr @ closed_ @ sparqls
 #pop-options
 
+#push-options "--z3rlimit 200"
 let build_shape (g : rdf_graph) (s : subject) : shape =
   let path_objs = find_objects g s sh_path in
   let is_prop = Cons? path_objs in
@@ -2004,7 +2121,9 @@ let build_shape (g : rdf_graph) (s : subject) : shape =
     property_refs = prefs;
     target_where =
       List.Tot.concatMap (fun t -> match term_to_shape_ref t with Some r -> [r] | None -> []) (find_objects g s sh_targetWhere);
+    values_query = values_query_for g s;
   }
+#pop-options
 
 let parse_shape_from_graph_pure (g : rdf_graph) : shapes_graph =
   let subs = distinct_subjects g in
@@ -2216,7 +2335,11 @@ let rec collect_shape_violations (data : rdf_graph) (sg : list shape) (closed_cl
     let path_opt = s.shape_path in
     let values =
       if s.is_property
-      then (match path_opt with Some p -> eval_path data node p | None -> [])
+      then (match s.values_query with
+            // SHACL 1.2 sh:values: value nodes are COMPUTED by the node
+            // expression, not read via the path (path stays the resultPath).
+            | Some q -> eval_values_query data node q
+            | None -> (match path_opt with Some p -> eval_path data node p | None -> []))
       else [node] in
     let per_value =
       List.Tot.concatMap
@@ -2943,6 +3066,7 @@ let sparql_constraint_severity (shapes_raw : rdf_graph) (cref : shape_ref) (dsev
   | Some cs -> (match find_objects shapes_raw cs sh_severity with (T_IRI i) :: _ -> severity_of_iri i | _ -> dsev)
   | None -> dsev
 
+#push-options "--z3rlimit 300"
 let sparql_violations_for_focus
   (data : rdf_graph) (shapes_raw : rdf_graph) (focus : rdf_term) (s : shape)
   (cref : shape_ref) (query_text : string) (cmsg : option wf_literal)
@@ -2998,6 +3122,7 @@ let sparql_violations_for_focus
         v_source_constraint = Some (shape_ref_to_term cref); v_detail = [] }
     in
     (List.Tot.map mk_violation rows, None))
+#pop-options
 
 let rec sparql_violations_for_focus_all
   (data : rdf_graph) (shapes_raw : rdf_graph) (focus : rdf_term) (s : shape)

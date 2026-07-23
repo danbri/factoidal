@@ -1,0 +1,46 @@
+* Warning 241 at SPARQL11.IRI.Resolve.fst(0,0-0,0):
+  - Unable to load SPARQL11.IRI.Resolve.fst.checked since checked file
+    SPARQL11.IRI.Resolve.fst.checked is stale (digest mismatch for
+    SPARQL11.IRI.Resolve.fst); will recheck SPARQL11.IRI.Resolve.fst
+    (suppressing this warning for further modules)
+
+* Warning 361 at SPARQL11.Algebra.fst(8088,0-8089,40):
+  - Some #push-options have not been popped. Current depth is 1.
+
+* Warning 328 at SPARQL11.Parser.fst(2861,6-2861,19):
+  - Global binding
+        'SPARQL11.Parser.parse_subject'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Parser.fst(3310,4-3310,16):
+  - Global binding
+        'SPARQL11.Parser.parse_object'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Parser.fst(4199,8-4199,25):
+  - Global binding
+        'SPARQL11.Parser.string_add_unique'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Parser.fst(4690,8-4690,30):
+  - Global binding
+        'SPARQL11.Parser.parse_single_update_op'
+    is recursive but not used in its body
+
+* Warning 361 at SPARQL11.Parser.fst(5144,0-5307,40):
+  - Some #push-options have not been popped. Current depth is 1.
+
+* Warning 328 at SHACL.Validation.fst(1391,8-1391,27):
+  - Global binding
+        'SHACL.Validation.path_to_sparql_expr'
+    is recursive but not used in its body
+
+* Warning 247 at SHACL.Validation.fst(0,0-0,0):
+  - Checked file SHACL.Validation.fst.checked was not written.
+  - Reason:
+      checked file SPARQL11.Algebra.fst.checked is stale (digest mismatch for
+      SPARQL11.Algebra.fst)
+
+Verified module: SHACL.Validation
+All verification conditions discharged successfully
+VERIFY_RC=0

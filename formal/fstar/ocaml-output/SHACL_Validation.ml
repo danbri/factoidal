@@ -21,6 +21,8 @@ let sh_targetObjectsOf : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#targetObjectsOf"
 let sh_path : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#path"
 let sh_select : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#select"
+let sh_values : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#values"
+let sh_sparqlExpr : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#sparqlExpr"
 let sh_Violation : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#Violation"
 let sh_ValidationReport : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#ValidationReport"
@@ -551,63 +553,72 @@ type shape =
       FStar_Pervasives_Native.option) Prims.list
     ;
   property_refs: shape_ref Prims.list ;
-  target_where: shape_ref Prims.list }
+  target_where: shape_ref Prims.list ;
+  values_query: Prims.string FStar_Pervasives_Native.option }
 let __proj__Mkshape__item__shape_id (projectee : shape) : shape_ref=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} ->
-      shape_id
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> shape_id
 let __proj__Mkshape__item__is_property (projectee : shape) : Prims.bool=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} ->
-      is_property
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> is_property
 let __proj__Mkshape__item__shape_path (projectee : shape) :
   path FStar_Pervasives_Native.option=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} ->
-      shape_path
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> shape_path
 let __proj__Mkshape__item__targets (projectee : shape) : target Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} -> targets
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> targets
 let __proj__Mkshape__item__shape_sev (projectee : shape) : severity=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} ->
-      shape_sev
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> shape_sev
 let __proj__Mkshape__item__message (projectee : shape) :
   RDF_Term.wf_literal FStar_Pervasives_Native.option=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} -> message
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> message
 let __proj__Mkshape__item__constraints (projectee : shape) :
   constraint_component Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} ->
-      constraints
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> constraints
 let __proj__Mkshape__item__constraint_meta (projectee : shape) :
   (RDF_Term.wf_iri * RDF_Term.rdf_term * severity
     FStar_Pervasives_Native.option * RDF_Term.wf_literal
     FStar_Pervasives_Native.option) Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} ->
-      constraint_meta
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> constraint_meta
 let __proj__Mkshape__item__property_refs (projectee : shape) :
   shape_ref Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} ->
-      property_refs
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> property_refs
 let __proj__Mkshape__item__target_where (projectee : shape) :
   shape_ref Prims.list=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
-      constraints; constraint_meta; property_refs; target_where;_} ->
-      target_where
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> target_where
+let __proj__Mkshape__item__values_query (projectee : shape) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { shape_id; is_property; shape_path; targets; shape_sev; message;
+      constraints; constraint_meta; property_refs; target_where;
+      values_query;_} -> values_query
 type shapes_graph = {
   shapes: shape Prims.list }
 let __proj__Mkshapes_graph__item__shapes (projectee : shapes_graph) :
@@ -704,7 +715,8 @@ let mk_shape_node (id_ : shape_ref) (ts : target Prims.list)
     constraints = cs;
     constraint_meta = [];
     property_refs = [];
-    target_where = []
+    target_where = [];
+    values_query = FStar_Pervasives_Native.None
   }
 let mk_shape_property (id_ : shape_ref) (p : path) (ts : target Prims.list)
   (cs : constraint_component Prims.list) : shape=
@@ -718,7 +730,8 @@ let mk_shape_property (id_ : shape_ref) (p : path) (ts : target Prims.list)
     constraints = cs;
     constraint_meta = [];
     property_refs = [];
-    target_where = []
+    target_where = [];
+    values_query = FStar_Pervasives_Native.None
   }
 let shapes_graph_of_list (ss : shape Prims.list) : shapes_graph=
   { shapes = ss }
@@ -1246,7 +1259,21 @@ let eval_target (data : RDF_Graph.rdf_graph) (closed_g : RDF_Graph.rdf_graph)
         (FStar_List_Tot_Base.concatMap
            (fun tr -> if tr.RDF_Triple.p = p then [tr.RDF_Triple.o] else [])
            data)
-  | T_Sparql uu___ -> []
+  | T_Sparql q ->
+      (match SPARQL11_Parser.parse_sparql q with
+       | SPARQL11_Parser.ParseOk (pq, uu___) ->
+           let ds = { RDF_Graph.ds_default = data; RDF_Graph.ds_named = [] } in
+           let rows = SPARQL11_Algebra.eval_select_query pq data ds in
+           dedup_terms
+             (FStar_List_Tot_Base.concatMap
+                (fun mu ->
+                   FStar_List_Tot_Base.concatMap
+                     (fun var ->
+                        match SPARQL11_Algebra.sm_lookup var mu with
+                        | FStar_Pervasives_Native.Some t1 -> [t1]
+                        | FStar_Pervasives_Native.None -> [])
+                     (SPARQL11_Algebra.sm_domain mu)) rows)
+       | uu___ -> [])
   | T_DataShape i ->
       dedup_terms
         (FStar_List_Tot_Base.concatMap
@@ -1256,6 +1283,47 @@ let eval_target (data : RDF_Graph.rdf_graph) (closed_g : RDF_Graph.rdf_graph)
                   (RDF_Term.rdf_term_eq tr.RDF_Triple.o (RDF_Term.T_IRI i))
               then [RDF_Graph.subject_to_term tr.RDF_Triple.s]
               else []) data)
+let term_to_sparql_token (t : RDF_Term.rdf_term) : Prims.string=
+  match t with
+  | RDF_Term.T_IRI i -> FStar_String.concat "" ["<"; i; ">"]
+  | RDF_Term.T_BNode b -> FStar_String.concat "" ["_:"; b]
+  | RDF_Term.T_Literal l ->
+      let base = FStar_String.concat "" ["\""; l.RDF_Term.lexical_form; "\""] in
+      (match l.RDF_Term.lang_tag with
+       | FStar_Pervasives_Native.Some lt ->
+           FStar_String.concat "" [base; "@"; lt]
+       | FStar_Pervasives_Native.None ->
+           FStar_String.concat "" [base; "^^<"; l.RDF_Term.datatype; ">"])
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> "UNDEF"
+let rec replace_this_chars (cs : FStar_String.char Prims.list)
+  (repl : FStar_String.char Prims.list) : FStar_String.char Prims.list=
+  match cs with
+  | 36::116::104::105::115::rest ->
+      FStar_List_Tot_Base.op_At repl (replace_this_chars rest repl)
+  | c::rest -> c :: (replace_this_chars rest repl)
+  | [] -> []
+let subst_this_text (q : Prims.string) (focus : RDF_Term.rdf_term) :
+  Prims.string=
+  FStar_String.string_of_list
+    (replace_this_chars (FStar_String.list_of_string q)
+       (FStar_String.list_of_string (term_to_sparql_token focus)))
+let eval_values_query (data : RDF_Graph.rdf_graph)
+  (focus : RDF_Term.rdf_term) (q : Prims.string) :
+  RDF_Term.rdf_term Prims.list=
+  match SPARQL11_Parser.parse_sparql (subst_this_text q focus) with
+  | SPARQL11_Parser.ParseOk (pq, uu___) ->
+      let ds = { RDF_Graph.ds_default = data; RDF_Graph.ds_named = [] } in
+      let rows = SPARQL11_Algebra.eval_select_query pq data ds in
+      dedup_terms
+        (FStar_List_Tot_Base.concatMap
+           (fun mu ->
+              FStar_List_Tot_Base.concatMap
+                (fun var ->
+                   match SPARQL11_Algebra.sm_lookup var mu with
+                   | FStar_Pervasives_Native.Some t -> [t]
+                   | FStar_Pervasives_Native.None -> [])
+                (SPARQL11_Algebra.sm_domain mu)) rows)
+  | uu___ -> []
 let sh_ns_prefix : Prims.string= "http://www.w3.org/ns/shacl#"
 let has_shacl_ns_prefix (p : Prims.string) : Prims.bool=
   let n = FStar_String.strlen sh_ns_prefix in
@@ -1288,7 +1356,15 @@ let build_targets (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
       (fun t -> match t with | RDF_Term.T_IRI i -> [T_Class i] | uu___ -> [])
       (RDF_Graph_Executable.find_objects g s sh_targetClass) in
   let via_node =
-    FStar_List_Tot_Base.map (fun t -> T_Node t)
+    FStar_List_Tot_Base.concatMap
+      (fun t ->
+         match RDF_Graph.term_to_subject t with
+         | FStar_Pervasives_Native.Some ts ->
+             (match RDF_Graph_Executable.find_objects g ts sh_select with
+              | (RDF_Term.T_Literal l)::uu___ ->
+                  [T_Sparql (l.RDF_Term.lexical_form)]
+              | uu___ -> [T_Node t])
+         | FStar_Pervasives_Native.None -> [T_Node t])
       (RDF_Graph_Executable.find_objects g s sh_targetNode) in
   let via_subj_of =
     FStar_List_Tot_Base.concatMap
@@ -1450,6 +1526,30 @@ let build_sparql_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject)
                 [CC_Sparql
                    (cref, (Prims.strcat hdr l.RDF_Term.lexical_form), cmsg)]
             | uu___ -> [])) (RDF_Graph_Executable.find_objects g s sh_sparql)
+let values_query_for (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
+  Prims.string FStar_Pervasives_Native.option=
+  match RDF_Graph_Executable.find_objects g s sh_values with
+  | ve::uu___ ->
+      (match RDF_Graph.term_to_subject ve with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some vs ->
+           let hdr = prefix_header_for g vs in
+           (match RDF_Graph_Executable.find_objects g vs sh_select with
+            | (RDF_Term.T_Literal l)::uu___1 ->
+                FStar_Pervasives_Native.Some
+                  (Prims.strcat hdr l.RDF_Term.lexical_form)
+            | uu___1 ->
+                (match RDF_Graph_Executable.find_objects g vs sh_sparqlExpr
+                 with
+                 | (RDF_Term.T_Literal l)::uu___2 ->
+                     FStar_Pervasives_Native.Some
+                       (FStar_String.concat ""
+                          [hdr;
+                          "SELECT (";
+                          l.RDF_Term.lexical_form;
+                          " AS ?value) WHERE {}"])
+                 | uu___2 -> FStar_Pervasives_Native.None)))
+  | [] -> FStar_Pervasives_Native.None
 let rec find_last_name_sep (cs : FStar_Char.char Prims.list)
   (idx : Prims.nat) (last : Prims.nat FStar_Pervasives_Native.option) :
   Prims.nat FStar_Pervasives_Native.option=
@@ -2060,7 +2160,8 @@ let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
             match term_to_shape_ref t with
             | FStar_Pervasives_Native.Some r -> [r]
             | FStar_Pervasives_Native.None -> [])
-         (RDF_Graph_Executable.find_objects g s sh_targetWhere))
+         (RDF_Graph_Executable.find_objects g s sh_targetWhere));
+    values_query = (values_query_for g s)
   }
 let parse_shape_from_graph_pure (g : RDF_Graph.rdf_graph) : shapes_graph=
   let subs = distinct_subjects g in
@@ -2249,9 +2350,12 @@ let rec collect_shape_violations (data : RDF_Graph.rdf_graph)
       let values =
         if s.is_property
         then
-          match path_opt with
-          | FStar_Pervasives_Native.Some p -> eval_path data node p
-          | FStar_Pervasives_Native.None -> []
+          match s.values_query with
+          | FStar_Pervasives_Native.Some q -> eval_values_query data node q
+          | FStar_Pervasives_Native.None ->
+              (match path_opt with
+               | FStar_Pervasives_Native.Some p -> eval_path data node p
+               | FStar_Pervasives_Native.None -> [])
         else [node] in
       let per_value =
         FStar_List_Tot_Base.concatMap
