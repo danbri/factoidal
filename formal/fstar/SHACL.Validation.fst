@@ -596,7 +596,7 @@ noeq type constraint_component =
   // so the only sound default is the owning shape's own sh:message
   // (already threaded through via `s.message`, same as every other
   // constraint kind).
-  | CC_Custom       : component:wf_iri -> is_ask:bool -> query:string -> params:list (string & rdf_term) -> constraint_component
+  | CC_Custom       : component:wf_iri -> is_ask:bool -> query:string -> params:list (string & rdf_term) -> msg_tmpl:option string -> constraint_component
 
 // ------------------------------------------------------------------
 // 7. Shape. A single record covers both NodeShape and PropertyShape:
@@ -1826,23 +1826,26 @@ let component_applies_and_params (g : rdf_graph) (s : subject) (params : list cu
 // Recognise the validator's kind structurally (sh:ask vs sh:select
 // presence — see CC_Custom's doc comment) and prefix-header its query
 // text, same convention as CC_Sparql's own sh:select handling.
-let validator_query_of (g : rdf_graph) (val_term : rdf_term) : option (bool & string) =
+let validator_query_of (g : rdf_graph) (val_term : rdf_term) : option (bool & string & option string) =
   match term_to_subject val_term with
   | None -> None
   | Some vs ->
+    // Validator-level sh:message template (SHACL 6.3): the {?param}/{$param}
+    // and {?resultVar} placeholders are filled per violation row.
+    let mtmpl = (match find_objects g vs sh_message with (T_Literal l) :: _ -> Some l.lexical_form | _ -> None) in
     (match find_objects g vs sh_ask with
-     | (T_Literal l) :: _ -> Some (true, prefix_header_for g vs ^ l.lexical_form)
+     | (T_Literal l) :: _ -> Some (true, prefix_header_for g vs ^ l.lexical_form, mtmpl)
      | _ ->
        (match find_objects g vs sh_select with
-        | (T_Literal l) :: _ -> Some (false, prefix_header_for g vs ^ l.lexical_form)
+        | (T_Literal l) :: _ -> Some (false, prefix_header_for g vs ^ l.lexical_form, mtmpl)
         | _ -> None))
 
 // Validator selection order (SHACL spec section 6): a value for
 // sh:nodeValidator (node-shape context) / sh:propertyValidator
 // (property-shape context) is used in preference to the generic
 // sh:validator, which is the fallback for both contexts.
-let choose_validator (g : rdf_graph) (comp_subj : subject) (is_property : bool) : option (bool & string) =
-  let generic () : option (bool & string) =
+let choose_validator (g : rdf_graph) (comp_subj : subject) (is_property : bool) : option (bool & string & option string) =
+  let generic () : option (bool & string & option string) =
     (match find_objects g comp_subj sh_validator with
      | (v :: _) -> validator_query_of g v
      | [] -> None) in
@@ -1870,9 +1873,9 @@ let build_custom_constraints (g : rdf_graph) (s : subject) (is_prop : bool) : li
          | Some bindings ->
            (match choose_validator g comp_subj is_prop with
             | None -> []
-            | Some (is_ask, query_text) ->
+            | Some (is_ask, query_text, mtmpl) ->
               (match comp_subj with
-               | S_IRI ci -> [CC_Custom ci is_ask query_text bindings]
+               | S_IRI ci -> [CC_Custom ci is_ask query_text bindings mtmpl]
                | S_BNode _ -> [])))
     comp_subjs
 
@@ -2324,6 +2327,7 @@ let focus_violation (focus : rdf_term) (path_opt : option path) (source : shape_
 // sound-by-omission in the same spirit as Tableau's "return None when
 // unsure".
 
+#push-options "--z3rlimit 120"
 let rec collect_shape_violations (data : rdf_graph) (sg : list shape) (closed_cls : rdf_graph)
                                   (node : rdf_term) (s : shape) (fuel : nat)
   : Tot (list violation) (decreases fuel)
@@ -2543,7 +2547,7 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
      | CC_QualifiedMinCount _ _ _ -> []  // aggregate
      | CC_QualifiedMaxCount _ _ _ -> []  // aggregate
      | CC_Sparql _ _ _ -> []     // per-focus-node, not per-value — real dispatch is section 13's sparql_violations_for_shape, run as a separate pass over `validate`'s root_shapes (never inside this per-value/per-constraint judgment)
-     | CC_Custom _ _ _ _ -> [])  // own dispatch (custom_violations_for_occurrence below) — needs a separate `option string` failure channel this Tot-list-only judgment has no room for, same reason CC_Sparql is dispatched separately
+     | CC_Custom _ _ _ _ _ -> [])  // own dispatch (custom_violations_for_occurrence below) — needs a separate `option string` failure channel this Tot-list-only judgment has no room for, same reason CC_Sparql is dispatched separately
 
 // `eval_aggregate_constraints` — folded into this `and` group (see the
 // section comment above) because CC_QualifiedMinCount/MaxCount need to
@@ -2788,6 +2792,8 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
 // deliberately) surfaces as `report_failure`, not an exception —
 // keeping `validate` a total function. `shacl_runner` maps
 // `mf:result sht:Failure` test cases onto `Some? report.report_failure`.
+
+#pop-options
 
 // Focus nodes of a shape: its declared targets PLUS (SHACL 1.2
 // sh:targetWhere) every candidate subject that CONFORMS to a targetWhere
@@ -3235,15 +3241,65 @@ let rec eval_custom_component_ask_values
     let (vs2, f2) = eval_custom_component_ask_values data focus s cc query_text params rest in
     ((match vo with Some vv -> [vv] | None -> []) @ vs2, (match f1 with Some _ -> f1 | None -> f2))
 
+// --- SHACL 6.3 message-template substitution -------------------------
+//
+// A validator/component sh:message may carry `{?name}` / `{$name}`
+// placeholders, filled with the component-parameter value (e.g. $lang)
+// or a SELECT result-variable binding (e.g. ?value). Rendered to a
+// plain xsd:string sh:resultMessage (propertyValidator-select-001).
+
+// Render a term as the plain string a message placeholder expects:
+// literal lexical form, IRI text, or `_:id` for a blank node.
+let term_to_plain_string (t : rdf_term) : string =
+  match t with
+  | T_IRI i    -> i
+  | T_BNode b  -> String.concat "" ["_:"; b]
+  | T_Literal l -> l.lexical_form
+  | T_TripleTerm _ _ _ -> ""
+
+// Collect the placeholder name chars up to the closing `}`; returns
+// (name, rest-after-brace) or None when there is no closing brace.
+let rec split_at_close_brace (cs : list char) : Tot (option (list char & list char)) (decreases cs) =
+  match cs with
+  | '}' :: rest -> Some ([], rest)
+  | c :: rest -> (match split_at_close_brace rest with Some (nm, r) -> Some (c :: nm, r) | None -> None)
+  | [] -> None
+
+// Substitute every `{?name}` / `{$name}` placeholder in the char list
+// via `lookup`; fuel bounds the recursion (each step consumes >=1 char).
+let rec fill_tmpl_chars (fuel : nat) (cs : list char) (lookup : string -> Tot (option string))
+  : Tot (list char) (decreases fuel)
+  =
+  if fuel = 0 then cs else
+  match cs with
+  | '{' :: '?' :: rest
+  | '{' :: '$' :: rest ->
+    (match split_at_close_brace rest with
+     | Some (nm, after) ->
+       let repl = (match lookup (string_of_list nm) with Some v -> String.list_of_string v | None -> []) in
+       repl @ fill_tmpl_chars (fuel - 1) after lookup
+     | None -> '{' :: fill_tmpl_chars (fuel - 1) (List.Tot.tl cs) lookup)
+  | c :: rest -> c :: fill_tmpl_chars (fuel - 1) rest lookup
+  | [] -> []
+
+let fill_message_template (tmpl : string) (params : list (string & rdf_term)) (mu : solution_mapping) : wf_literal =
+  let lookup (name : string) : Tot (option string) =
+    match List.Tot.find (fun (n, _) -> n = name) params with
+    | Some (_, t) -> Some (term_to_plain_string t)
+    | None -> (match Alg.sm_lookup name mu with Some t -> Some (term_to_plain_string t) | None -> None) in
+  let cs = String.list_of_string tmpl in
+  let filled = string_of_list (fill_tmpl_chars (List.Tot.length cs + 1) cs lookup) in
+  { lexical_form = filled; datatype = xsd_string; lang_tag = None; direction = None }
+
 // SPARQLSelectValidator: run once per FOCUS (the query's own BGP
-// determines ?value, same as sh:sparql/CC_Sparql). Unlike
-// propertyValidator-select-001's validator sh:message, which the
-// expected report does NOT surface (see CC_Custom's doc comment), the
-// row default falls back straight to the owning shape's own
-// sh:message — never to any component/validator-level message.
+// determines ?value, same as sh:sparql/CC_Sparql). A validator-level
+// sh:message template (SHACL 6.3), when present, is filled per row with
+// the component parameters and the row's own bindings
+// (propertyValidator-select-001); otherwise the row falls back to a
+// `?message` SELECT binding, then the owning shape's own sh:message.
 let eval_custom_component_select
   (data : rdf_graph) (focus : rdf_term) (s : shape) (cc : constraint_component)
-  (query_text : string) (params : list (string & rdf_term))
+  (query_text : string) (params : list (string & rdf_term)) (msg_tmpl : option string)
   : Tot (list violation & option string)
   =
   let substituted = substitute_path query_text s.shape_path in
@@ -3269,9 +3325,12 @@ let eval_custom_component_select
             | Some (T_IRI p) -> Some (P_Predicate p)
             | _ -> s.shape_path) in
          let row_msg =
-           (match Alg.sm_lookup "message" mu with
-            | Some (T_Literal l) -> Some l
-            | _ -> s.message) in
+           (match msg_tmpl with
+            | Some tmpl -> Some (fill_message_template tmpl params mu)
+            | None ->
+              (match Alg.sm_lookup "message" mu with
+               | Some (T_Literal l) -> Some l
+               | _ -> s.message)) in
          { v_focus_node = focus; v_path = path_result; v_value = Some value;
            v_source_shape = s.shape_id; v_constraint = cc; v_severity = s.shape_sev;
            v_message = row_msg; v_source_constraint = None; v_detail = [] }
@@ -3283,10 +3342,10 @@ let eval_one_custom_component
   : Tot (list violation & option string)
   =
   match cc with
-  | CC_Custom _ is_ask query_text params ->
+  | CC_Custom _ is_ask query_text params msg_tmpl ->
     if is_ask
     then eval_custom_component_ask_values data focus s cc query_text params values
-    else eval_custom_component_select data focus s cc query_text params
+    else eval_custom_component_select data focus s cc query_text params msg_tmpl
   | _ -> ([], None)
 
 let rec eval_custom_components
@@ -3331,7 +3390,7 @@ let rec custom_violations_for_occurrence
       then (match s.shape_path with Some p -> eval_path data node p | None -> [])
       else [node] in
     let customs =
-      List.Tot.concatMap (fun cc -> match cc with CC_Custom _ _ _ _ -> [cc] | _ -> []) s.constraints in
+      List.Tot.concatMap (fun cc -> match cc with CC_Custom _ _ _ _ _ -> [cc] | _ -> []) s.constraints in
     let (own_vs, own_f) =
       if Nil? customs then ([], None) else eval_custom_components data node s values customs in
     let nested_pairs =
@@ -3590,7 +3649,7 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_NodeByExpression _ -> sh_NodeByExpressionConstraintComponent
   | CC_Expression _ -> sh_ExpressionConstraintComponent
   | CC_Sparql _ _ _ -> sh_SPARQLConstraintComponent
-  | CC_Custom comp _ _ _ -> comp
+  | CC_Custom comp _ _ _ _ -> comp
 
 let severity_to_iri (s : severity) : wf_iri =
   match s with

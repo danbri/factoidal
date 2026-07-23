@@ -301,7 +301,8 @@ type constraint_component =
   | CC_Sparql of shape_ref * Prims.string * RDF_Term.wf_literal
   FStar_Pervasives_Native.option 
   | CC_Custom of RDF_Term.wf_iri * Prims.bool * Prims.string * (Prims.string
-  * RDF_Term.rdf_term) Prims.list 
+  * RDF_Term.rdf_term) Prims.list * Prims.string
+  FStar_Pervasives_Native.option 
 let uu___is_CC_MinCount (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_MinCount _0 -> true | uu___ -> false
 let __proj__CC_MinCount__item___0 (projectee : constraint_component) :
@@ -520,24 +521,28 @@ let __proj__CC_Sparql__item__message (projectee : constraint_component) :
   | CC_Sparql (constraint_node, query, message) -> message
 let uu___is_CC_Custom (projectee : constraint_component) : Prims.bool=
   match projectee with
-  | CC_Custom (component, is_ask, query, params) -> true
+  | CC_Custom (component, is_ask, query, params, msg_tmpl) -> true
   | uu___ -> false
 let __proj__CC_Custom__item__component (projectee : constraint_component) :
   RDF_Term.wf_iri=
   match projectee with
-  | CC_Custom (component, is_ask, query, params) -> component
+  | CC_Custom (component, is_ask, query, params, msg_tmpl) -> component
 let __proj__CC_Custom__item__is_ask (projectee : constraint_component) :
   Prims.bool=
   match projectee with
-  | CC_Custom (component, is_ask, query, params) -> is_ask
+  | CC_Custom (component, is_ask, query, params, msg_tmpl) -> is_ask
 let __proj__CC_Custom__item__query (projectee : constraint_component) :
   Prims.string=
   match projectee with
-  | CC_Custom (component, is_ask, query, params) -> query
+  | CC_Custom (component, is_ask, query, params, msg_tmpl) -> query
 let __proj__CC_Custom__item__params (projectee : constraint_component) :
   (Prims.string * RDF_Term.rdf_term) Prims.list=
   match projectee with
-  | CC_Custom (component, is_ask, query, params) -> params
+  | CC_Custom (component, is_ask, query, params, msg_tmpl) -> params
+let __proj__CC_Custom__item__msg_tmpl (projectee : constraint_component) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | CC_Custom (component, is_ask, query, params, msg_tmpl) -> msg_tmpl
 type shape =
   {
   shape_id: shape_ref ;
@@ -1656,26 +1661,34 @@ let component_applies_and_params (g : RDF_Graph.rdf_graph)
   | uu___ -> FStar_Pervasives_Native.None
 let validator_query_of (g : RDF_Graph.rdf_graph)
   (val_term : RDF_Term.rdf_term) :
-  (Prims.bool * Prims.string) FStar_Pervasives_Native.option=
+  (Prims.bool * Prims.string * Prims.string FStar_Pervasives_Native.option)
+    FStar_Pervasives_Native.option=
   match RDF_Graph.term_to_subject val_term with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some vs ->
+      let mtmpl =
+        match RDF_Graph_Executable.find_objects g vs sh_message with
+        | (RDF_Term.T_Literal l)::uu___ ->
+            FStar_Pervasives_Native.Some (l.RDF_Term.lexical_form)
+        | uu___ -> FStar_Pervasives_Native.None in
       (match RDF_Graph_Executable.find_objects g vs sh_ask with
        | (RDF_Term.T_Literal l)::uu___ ->
            FStar_Pervasives_Native.Some
              (true,
-               (Prims.strcat (prefix_header_for g vs) l.RDF_Term.lexical_form))
+               (Prims.strcat (prefix_header_for g vs) l.RDF_Term.lexical_form),
+               mtmpl)
        | uu___ ->
            (match RDF_Graph_Executable.find_objects g vs sh_select with
             | (RDF_Term.T_Literal l)::uu___1 ->
                 FStar_Pervasives_Native.Some
                   (false,
                     (Prims.strcat (prefix_header_for g vs)
-                       l.RDF_Term.lexical_form))
+                       l.RDF_Term.lexical_form), mtmpl)
             | uu___1 -> FStar_Pervasives_Native.None))
 let choose_validator (g : RDF_Graph.rdf_graph) (comp_subj : RDF_Term.subject)
   (is_property : Prims.bool) :
-  (Prims.bool * Prims.string) FStar_Pervasives_Native.option=
+  (Prims.bool * Prims.string * Prims.string FStar_Pervasives_Native.option)
+    FStar_Pervasives_Native.option=
   let generic uu___ =
     match RDF_Graph_Executable.find_objects g comp_subj sh_validator with
     | v::uu___1 -> validator_query_of g v
@@ -1706,10 +1719,10 @@ let build_custom_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject)
           | FStar_Pervasives_Native.Some bindings ->
               (match choose_validator g comp_subj is_prop with
                | FStar_Pervasives_Native.None -> []
-               | FStar_Pervasives_Native.Some (is_ask, query_text) ->
+               | FStar_Pervasives_Native.Some (is_ask, query_text, mtmpl) ->
                    (match comp_subj with
                     | RDF_Term.S_IRI ci ->
-                        [CC_Custom (ci, is_ask, query_text, bindings)]
+                        [CC_Custom (ci, is_ask, query_text, bindings, mtmpl)]
                     | RDF_Term.S_BNode uu___1 -> [])))) comp_subjs
 let reifier_deactivated (g : RDF_Graph.rdf_graph) (tt : RDF_Term.rdf_term) :
   Prims.bool=
@@ -2745,7 +2758,7 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
        | CC_QualifiedMinCount (uu___1, uu___2, uu___3) -> []
        | CC_QualifiedMaxCount (uu___1, uu___2, uu___3) -> []
        | CC_Sparql (uu___1, uu___2, uu___3) -> []
-       | CC_Custom (uu___1, uu___2, uu___3, uu___4) -> [])
+       | CC_Custom (uu___1, uu___2, uu___3, uu___4, uu___5) -> [])
 and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
   (sg : shape Prims.list) (closed_cls : RDF_Graph.rdf_graph)
   (focus : RDF_Term.rdf_term)
@@ -3572,10 +3585,89 @@ let rec eval_custom_component_ask_values (data : RDF_Graph.rdf_graph)
                   ((match f1 with
                     | FStar_Pervasives_Native.Some uu___2 -> f1
                     | FStar_Pervasives_Native.None -> f2)))))
+let term_to_plain_string (t : RDF_Term.rdf_term) : Prims.string=
+  match t with
+  | RDF_Term.T_IRI i -> i
+  | RDF_Term.T_BNode b -> FStar_String.concat "" ["_:"; b]
+  | RDF_Term.T_Literal l -> l.RDF_Term.lexical_form
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> ""
+let rec split_at_close_brace (cs : FStar_String.char Prims.list) :
+  (FStar_String.char Prims.list * FStar_String.char Prims.list)
+    FStar_Pervasives_Native.option=
+  match cs with
+  | 125::rest -> FStar_Pervasives_Native.Some ([], rest)
+  | c::rest ->
+      (match split_at_close_brace rest with
+       | FStar_Pervasives_Native.Some (nm, r) ->
+           FStar_Pervasives_Native.Some ((c :: nm), r)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+  | [] -> FStar_Pervasives_Native.None
+let rec fill_tmpl_chars (fuel : Prims.nat)
+  (cs : FStar_String.char Prims.list)
+  (lookup : Prims.string -> Prims.string FStar_Pervasives_Native.option) :
+  FStar_String.char Prims.list=
+  if fuel = Prims.int_zero
+  then cs
+  else
+    (match cs with
+     | 123::63::rest ->
+         (match split_at_close_brace rest with
+          | FStar_Pervasives_Native.Some (nm, after) ->
+              let repl =
+                match lookup (FStar_String.string_of_list nm) with
+                | FStar_Pervasives_Native.Some v ->
+                    FStar_String.list_of_string v
+                | FStar_Pervasives_Native.None -> [] in
+              FStar_List_Tot_Base.op_At repl
+                (fill_tmpl_chars (fuel - Prims.int_one) after lookup)
+          | FStar_Pervasives_Native.None -> 123 ::
+              (fill_tmpl_chars (fuel - Prims.int_one)
+                 (FStar_List_Tot_Base.tl cs) lookup))
+     | 123::36::rest ->
+         (match split_at_close_brace rest with
+          | FStar_Pervasives_Native.Some (nm, after) ->
+              let repl =
+                match lookup (FStar_String.string_of_list nm) with
+                | FStar_Pervasives_Native.Some v ->
+                    FStar_String.list_of_string v
+                | FStar_Pervasives_Native.None -> [] in
+              FStar_List_Tot_Base.op_At repl
+                (fill_tmpl_chars (fuel - Prims.int_one) after lookup)
+          | FStar_Pervasives_Native.None -> 123 ::
+              (fill_tmpl_chars (fuel - Prims.int_one)
+                 (FStar_List_Tot_Base.tl cs) lookup))
+     | c::rest -> c :: (fill_tmpl_chars (fuel - Prims.int_one) rest lookup)
+     | [] -> [])
+let fill_message_template (tmpl : Prims.string)
+  (params : (Prims.string * RDF_Term.rdf_term) Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) : RDF_Term.wf_literal=
+  let lookup name =
+    match FStar_List_Tot_Base.find
+            (fun uu___ -> match uu___ with | (n, uu___1) -> n = name) params
+    with
+    | FStar_Pervasives_Native.Some (uu___, t) ->
+        FStar_Pervasives_Native.Some (term_to_plain_string t)
+    | FStar_Pervasives_Native.None ->
+        (match SPARQL11_Algebra.sm_lookup name mu with
+         | FStar_Pervasives_Native.Some t ->
+             FStar_Pervasives_Native.Some (term_to_plain_string t)
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None) in
+  let cs = FStar_String.list_of_string tmpl in
+  let filled =
+    FStar_String.string_of_list
+      (fill_tmpl_chars ((FStar_List_Tot_Base.length cs) + Prims.int_one) cs
+         lookup) in
+  {
+    RDF_Term.lexical_form = filled;
+    RDF_Term.datatype = RDF_Term.xsd_string;
+    RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+    RDF_Term.direction = FStar_Pervasives_Native.None
+  }
 let eval_custom_component_select (data : RDF_Graph.rdf_graph)
   (focus : RDF_Term.rdf_term) (s : shape) (cc : constraint_component)
   (query_text : Prims.string)
-  (params : (Prims.string * RDF_Term.rdf_term) Prims.list) :
+  (params : (Prims.string * RDF_Term.rdf_term) Prims.list)
+  (msg_tmpl : Prims.string FStar_Pervasives_Native.option) :
   (violation Prims.list * Prims.string FStar_Pervasives_Native.option)=
   let substituted = substitute_path query_text s.shape_path in
   match SPARQL11_Parser.parse_sparql substituted with
@@ -3624,10 +3716,15 @@ let eval_custom_component_select (data : RDF_Graph.rdf_graph)
                    FStar_Pervasives_Native.Some (P_Predicate p)
                | uu___1 -> s.shape_path in
              let row_msg =
-               match SPARQL11_Algebra.sm_lookup "message" mu with
-               | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) ->
-                   FStar_Pervasives_Native.Some l
-               | uu___1 -> s.message in
+               match msg_tmpl with
+               | FStar_Pervasives_Native.Some tmpl ->
+                   FStar_Pervasives_Native.Some
+                     (fill_message_template tmpl params mu)
+               | FStar_Pervasives_Native.None ->
+                   (match SPARQL11_Algebra.sm_lookup "message" mu with
+                    | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) ->
+                        FStar_Pervasives_Native.Some l
+                    | uu___1 -> s.message) in
              {
                v_focus_node = focus;
                v_path = path_result;
@@ -3646,12 +3743,14 @@ let eval_one_custom_component (data : RDF_Graph.rdf_graph)
   (values : RDF_Term.rdf_term Prims.list) (cc : constraint_component) :
   (violation Prims.list * Prims.string FStar_Pervasives_Native.option)=
   match cc with
-  | CC_Custom (uu___, is_ask, query_text, params) ->
+  | CC_Custom (uu___, is_ask, query_text, params, msg_tmpl) ->
       if is_ask
       then
         eval_custom_component_ask_values data focus s cc query_text params
           values
-      else eval_custom_component_select data focus s cc query_text params
+      else
+        eval_custom_component_select data focus s cc query_text params
+          msg_tmpl
   | uu___ -> ([], FStar_Pervasives_Native.None)
 let rec eval_custom_components (data : RDF_Graph.rdf_graph)
   (focus : RDF_Term.rdf_term) (s : shape)
@@ -3690,7 +3789,7 @@ let rec custom_violations_for_occurrence (data : RDF_Graph.rdf_graph)
         FStar_List_Tot_Base.concatMap
           (fun cc ->
              match cc with
-             | CC_Custom (uu___1, uu___2, uu___3, uu___4) -> [cc]
+             | CC_Custom (uu___1, uu___2, uu___3, uu___4, uu___5) -> [cc]
              | uu___1 -> []) s.constraints in
       let uu___1 =
         if Prims.uu___is_Nil customs
@@ -3968,7 +4067,7 @@ let constraint_component_iri (cc : constraint_component) : RDF_Term.wf_iri=
   | CC_NodeByExpression uu___ -> sh_NodeByExpressionConstraintComponent
   | CC_Expression uu___ -> sh_ExpressionConstraintComponent
   | CC_Sparql (uu___, uu___1, uu___2) -> sh_SPARQLConstraintComponent
-  | CC_Custom (comp, uu___, uu___1, uu___2) -> comp
+  | CC_Custom (comp, uu___, uu___1, uu___2, uu___3) -> comp
 let severity_to_iri (s : severity) : RDF_Term.wf_iri=
   match s with
   | Sev_Info -> sh_Info
