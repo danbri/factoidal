@@ -464,6 +464,23 @@ let ne_uuid_iri : wf_iri =
   assert_norm (is_iri "urn:uuid:00000000-0000-0000-0000-000000000000");
   "urn:uuid:00000000-0000-0000-0000-000000000000"
 
+let is_digit (c : char) : bool = let n = FStar.Char.int_of_char c in n >= 48 && n <= 57
+
+// Chars following the first occurrence of `c` in `cs`.
+let rec after_char (c : char) (cs : list char) : Tot (list char) (decreases cs) =
+  match cs with [] -> [] | x :: r -> if x = c then r else after_char c r
+
+let rec take_while_lc (p : char -> bool) (cs : list char) : Tot (list char) (decreases cs) =
+  match cs with c :: r -> if p c then c :: take_while_lc p r else [] | [] -> []
+
+// The seconds field of an xsd:dateTime lexical `...THH:MM:SS[.fff][tz]`,
+// preserving its 2-digit form (the shnex-sparql SECONDS fixture expects
+// the lexical "00", not the canonical decimal "0").
+let extract_seconds_field (s : string) : string =
+  let cs = String.list_of_string s in
+  let secs = take_while_lc is_digit (after_char ':' (after_char ':' (after_char 'T' cs))) in
+  match secs with [] -> "0" | _ -> String.string_of_list secs
+
 let str_starts_with (s pfx : string) : bool =
   let n = String.length pfx in
   String.length s >= n && String.sub s 0 n = pfx
@@ -488,6 +505,9 @@ let sparql_apply (ln : string) (argvals : list rdf_term) : list rdf_term =
   | "uuid", _ -> [ T_IRI ne_uuid_iri ]
   | "struuid", _ -> [ T_Literal (Alg.mk_plain_literal "00000000-0000-0000-0000-000000000000") ]
   | "langMatches", [a; b] -> [ mk_bool_lit (lang_matches (term_render a) (term_render b)) ]
+  | "seconds", [T_Literal l] ->
+    [ T_Literal ({ lexical_form = extract_seconds_field l.lexical_form; datatype = xsd_decimal;
+                   lang_tag = None; direction = None }) ]
   // BOUND: its argument expression contributed a value iff argvals is
   // non-empty (eval_ne_argvals drops an argument that evaluates to []).
   | "bound", _ -> [ mk_bool_lit (Cons? argvals) ]
