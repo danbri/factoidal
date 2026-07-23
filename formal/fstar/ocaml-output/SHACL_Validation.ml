@@ -269,10 +269,10 @@ type constraint_component =
   | CC_Node of shape_ref 
   | CC_QualifiedMinCount of shape_ref * Prims.nat * Prims.bool 
   | CC_QualifiedMaxCount of shape_ref * Prims.nat * Prims.bool 
-  | CC_Equals of RDF_Term.wf_iri 
-  | CC_Disjoint of RDF_Term.wf_iri 
-  | CC_LessThan of RDF_Term.wf_iri 
-  | CC_LessThanOrEq of RDF_Term.wf_iri 
+  | CC_Equals of path 
+  | CC_Disjoint of path 
+  | CC_LessThan of path 
+  | CC_LessThanOrEq of path 
   | CC_Closed of RDF_Term.wf_iri Prims.list 
   | CC_Sparql of shape_ref * Prims.string * RDF_Term.wf_literal
   FStar_Pervasives_Native.option 
@@ -436,20 +436,20 @@ let __proj__CC_QualifiedMaxCount__item___2 (projectee : constraint_component)
   match projectee with | CC_QualifiedMaxCount (_0, _1, _2) -> _2
 let uu___is_CC_Equals (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_Equals _0 -> true | uu___ -> false
-let __proj__CC_Equals__item___0 (projectee : constraint_component) :
-  RDF_Term.wf_iri= match projectee with | CC_Equals _0 -> _0
+let __proj__CC_Equals__item___0 (projectee : constraint_component) : 
+  path= match projectee with | CC_Equals _0 -> _0
 let uu___is_CC_Disjoint (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_Disjoint _0 -> true | uu___ -> false
-let __proj__CC_Disjoint__item___0 (projectee : constraint_component) :
-  RDF_Term.wf_iri= match projectee with | CC_Disjoint _0 -> _0
+let __proj__CC_Disjoint__item___0 (projectee : constraint_component) : 
+  path= match projectee with | CC_Disjoint _0 -> _0
 let uu___is_CC_LessThan (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_LessThan _0 -> true | uu___ -> false
-let __proj__CC_LessThan__item___0 (projectee : constraint_component) :
-  RDF_Term.wf_iri= match projectee with | CC_LessThan _0 -> _0
+let __proj__CC_LessThan__item___0 (projectee : constraint_component) : 
+  path= match projectee with | CC_LessThan _0 -> _0
 let uu___is_CC_LessThanOrEq (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_LessThanOrEq _0 -> true | uu___ -> false
 let __proj__CC_LessThanOrEq__item___0 (projectee : constraint_component) :
-  RDF_Term.wf_iri= match projectee with | CC_LessThanOrEq _0 -> _0
+  path= match projectee with | CC_LessThanOrEq _0 -> _0
 let uu___is_CC_Closed (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_Closed ignored -> true | uu___ -> false
 let __proj__CC_Closed__item__ignored (projectee : constraint_component) :
@@ -1673,24 +1673,16 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
       (RDF_Graph_Executable.find_objects g s sh_node) in
   let qualified = build_qualified_constraints g s in
   let equals =
-    FStar_List_Tot_Base.concatMap
-      (fun t ->
-         match t with | RDF_Term.T_IRI i -> [CC_Equals i] | uu___ -> [])
+    FStar_List_Tot_Base.map (fun t -> CC_Equals (parse_path g t fuel))
       (RDF_Graph_Executable.find_objects g s sh_equals) in
   let disjoint =
-    FStar_List_Tot_Base.concatMap
-      (fun t ->
-         match t with | RDF_Term.T_IRI i -> [CC_Disjoint i] | uu___ -> [])
+    FStar_List_Tot_Base.map (fun t -> CC_Disjoint (parse_path g t fuel))
       (RDF_Graph_Executable.find_objects g s sh_disjoint) in
   let lessthan =
-    FStar_List_Tot_Base.concatMap
-      (fun t ->
-         match t with | RDF_Term.T_IRI i -> [CC_LessThan i] | uu___ -> [])
+    FStar_List_Tot_Base.map (fun t -> CC_LessThan (parse_path g t fuel))
       (RDF_Graph_Executable.find_objects g s sh_lessThan) in
   let lessthaneq =
-    FStar_List_Tot_Base.concatMap
-      (fun t ->
-         match t with | RDF_Term.T_IRI i -> [CC_LessThanOrEq i] | uu___ -> [])
+    FStar_List_Tot_Base.map (fun t -> CC_LessThanOrEq (parse_path g t fuel))
       (RDF_Graph_Executable.find_objects g s sh_lessThanOrEquals) in
   let closed_ =
     match first_bool (RDF_Graph_Executable.find_objects g s sh_closed) with
@@ -2365,7 +2357,7 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                             }]
                          else []) data)
            | CC_Equals p ->
-               let others = other_property_values data focus p in
+               let others = eval_path data focus p in
                FStar_List_Tot_Base.op_At
                  (FStar_List_Tot_Base.concatMap
                     (fun v ->
@@ -2386,7 +2378,7 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                          [value_violation focus path_opt source cc sev msg o])
                     others)
            | CC_Disjoint p ->
-               let others = other_property_values data focus p in
+               let others = eval_path data focus p in
                FStar_List_Tot_Base.concatMap
                  (fun v ->
                     if
@@ -2395,7 +2387,7 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                     then [value_violation focus path_opt source cc sev msg v]
                     else []) values
            | CC_LessThan p ->
-               let others = other_property_values data focus p in
+               let others = eval_path data focus p in
                FStar_List_Tot_Base.concatMap
                  (fun v ->
                     FStar_List_Tot_Base.concatMap
@@ -2406,7 +2398,7 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                            [value_violation focus path_opt source cc sev msg
                               v]) others) values
            | CC_LessThanOrEq p ->
-               let others = other_property_values data focus p in
+               let others = eval_path data focus p in
                FStar_List_Tot_Base.concatMap
                  (fun v ->
                     FStar_List_Tot_Base.concatMap

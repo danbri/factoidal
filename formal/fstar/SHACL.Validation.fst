@@ -483,10 +483,15 @@ noeq type constraint_component =
   | CC_QualifiedMinCount : shape_ref -> nat -> bool -> constraint_component
   | CC_QualifiedMaxCount : shape_ref -> nat -> bool -> constraint_component
   // Property-pair constraints.
-  | CC_Equals       : wf_iri -> constraint_component
-  | CC_Disjoint     : wf_iri -> constraint_component
-  | CC_LessThan     : wf_iri -> constraint_component
-  | CC_LessThanOrEq : wf_iri -> constraint_component
+  // Property-pair constraints. The compared property is a PATH, not just
+  // a predicate: SHACL 1.2 lets sh:equals / sh:disjoint / sh:lessThan /
+  // sh:lessThanOrEquals take a sequence path (an rdf:List). A single IRI
+  // parses to P_Predicate, so the 1.1 single-predicate behaviour is
+  // unchanged (eval_path on P_Predicate p == the old other_property_values p).
+  | CC_Equals       : path -> constraint_component
+  | CC_Disjoint     : path -> constraint_component
+  | CC_LessThan     : path -> constraint_component
+  | CC_LessThanOrEq : path -> constraint_component
   // Closed-shape constraint.
   | CC_Closed       : ignored:list wf_iri -> constraint_component
   // SPARQL-based constraint (sh:sparql / sh:select), Phase 3 (issue
@@ -1745,14 +1750,16 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
   // `build_qualified_constraints` (own top-level VC) — see its doc
   // comment for why.
   let qualified = build_qualified_constraints g s in
+  // The compared property is parsed as a PATH (parse_path handles both a
+  // single predicate IRI -> P_Predicate and a sequence rdf:List -> P_Sequence).
   let equals =
-    List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_Equals i] | _ -> []) (find_objects g s sh_equals) in
+    List.Tot.map (fun t -> CC_Equals (parse_path g t fuel)) (find_objects g s sh_equals) in
   let disjoint =
-    List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_Disjoint i] | _ -> []) (find_objects g s sh_disjoint) in
+    List.Tot.map (fun t -> CC_Disjoint (parse_path g t fuel)) (find_objects g s sh_disjoint) in
   let lessthan =
-    List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_LessThan i] | _ -> []) (find_objects g s sh_lessThan) in
+    List.Tot.map (fun t -> CC_LessThan (parse_path g t fuel)) (find_objects g s sh_lessThan) in
   let lessthaneq =
-    List.Tot.concatMap (fun t -> match t with T_IRI i -> [CC_LessThanOrEq i] | _ -> []) (find_objects g s sh_lessThanOrEquals) in
+    List.Tot.map (fun t -> CC_LessThanOrEq (parse_path g t fuel)) (find_objects g s sh_lessThanOrEquals) in
   let closed_ =
     (match first_bool (find_objects g s sh_closed) with
      | Some true ->
@@ -2229,7 +2236,7 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
          // $equals ... and for each value of $equals ... that is not
          // one of the value nodes").
          | CC_Equals p ->
-           let others = other_property_values data focus p in
+           let others = eval_path data focus p in
            List.Tot.concatMap
              (fun v -> if List.Tot.existsb (rdf_term_eq v) others then [] else [value_violation focus path_opt source cc sev msg v])
              values
@@ -2238,7 +2245,7 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
                others
          // One result per shared value.
          | CC_Disjoint p ->
-           let others = other_property_values data focus p in
+           let others = eval_path data focus p in
            List.Tot.concatMap
              (fun v -> if List.Tot.existsb (rdf_term_eq v) others then [value_violation focus path_opt source cc sev msg v] else [])
              values
@@ -2250,12 +2257,12 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
          // for 2 values x 2 incomparable others, so the per-pair
          // multiplicity is observable and must be preserved.
          | CC_LessThan p ->
-           let others = other_property_values data focus p in
+           let others = eval_path data focus p in
            List.Tot.concatMap
              (fun v -> List.Tot.concatMap (fun w -> if term_lt v w then [] else [value_violation focus path_opt source cc sev msg v]) others)
              values
          | CC_LessThanOrEq p ->
-           let others = other_property_values data focus p in
+           let others = eval_path data focus p in
            List.Tot.concatMap
              (fun v -> List.Tot.concatMap (fun w -> if term_le v w then [] else [value_violation focus path_opt source cc sev msg v]) others)
              values
