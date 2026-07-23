@@ -255,10 +255,19 @@ let sparql_call_of (g : rdf_graph) (es : subject) : option (string & rdf_term) =
   | tr :: _ -> (match sparql_localname tr.p with Some ln -> Some (ln, tr.o) | None -> None)
   | [] -> None
 
+// A triple-term subject is always an IRI or blank node (never a nested
+// triple term), so this needs no recursion.
+let subj_to_expr (s : subject) : Alg.expr =
+  match s with
+  | S_IRI i -> Alg.E_IRI i
+  | S_BNode _ -> Alg.E_Literal (Alg.mk_plain_literal "")
+
 // Wrap an already-computed value term as a constant SPARQL expression,
 // promoting numeric/boolean literals to their typed expr forms so the
-// arithmetic / numeric builtins see numbers rather than opaque literals.
-let term_to_expr (t : rdf_term) : Alg.expr =
+// arithmetic / numeric builtins see numbers rather than opaque literals,
+// and reflecting a triple term as E_TripleTerm so the triple-term
+// accessors (SUBJECT/PREDICATE/OBJECT/isTRIPLE) can project it.
+let rec term_to_expr (t : rdf_term) : Tot Alg.expr (decreases t) =
   match t with
   | T_IRI i -> Alg.E_IRI i
   | T_Literal l ->
@@ -268,7 +277,8 @@ let term_to_expr (t : rdf_term) : Alg.expr =
     else if l.datatype = xsd_double then Alg.E_DoubleLit l.lexical_form
     else if l.datatype = xsd_boolean then Alg.E_BoolLit (l.lexical_form = "true")
     else Alg.E_Literal l
-  | _ -> Alg.E_Literal (Alg.mk_plain_literal "")
+  | T_TripleTerm s p o -> Alg.E_TripleTerm (subj_to_expr s) (Alg.E_IRI p) (term_to_expr o)
+  | T_BNode _ -> Alg.E_Literal (Alg.mk_plain_literal "")
 
 // Dispatch a SPARQL builtin localname + argument expressions to the
 // SPARQL11.Algebra `expr` AST. None for a name/arity we do not bridge
@@ -298,6 +308,10 @@ let sparql_fn_expr (ln : string) (args : list Alg.expr) : option Alg.expr =
   | "isLiteral", [a] -> Some (Alg.E_IsLiteral a)
   | "isNumeric", [a] -> Some (Alg.E_IsNumeric a)
   | "isTriple", [a] -> Some (Alg.E_IsTriple a)
+  | "triple", [a; b; c] -> Some (Alg.E_TripleTerm a b c)
+  | "subject", [a] -> Some (Alg.E_TTSubject a)
+  | "predicate", [a] -> Some (Alg.E_TTPredicate a)
+  | "object", [a] -> Some (Alg.E_TTObject a)
   | "contains", [a; b] -> Some (Alg.E_Contains a b)
   | "strstarts", [a; b] -> Some (Alg.E_StrStarts a b)
   | "strends", [a; b] -> Some (Alg.E_StrEnds a b)
