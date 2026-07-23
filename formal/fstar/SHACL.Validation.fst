@@ -208,6 +208,9 @@ let sh_MemberShapeConstraintComponent : wf_iri =
 let sh_UniqueValuesForConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#UniqueValuesForConstraintComponent");
   "http://www.w3.org/ns/shacl#UniqueValuesForConstraintComponent"
+let sh_SubsetOfConstraintComponent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#SubsetOfConstraintComponent");
+  "http://www.w3.org/ns/shacl#SubsetOfConstraintComponent"
 let sh_LanguageInConstraintComponent : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#LanguageInConstraintComponent");
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
@@ -492,6 +495,9 @@ noeq type constraint_component =
   | CC_Disjoint     : path -> constraint_component
   | CC_LessThan     : path -> constraint_component
   | CC_LessThanOrEq : path -> constraint_component
+  // SHACL 1.2 sh:subsetOf — every value node must ALSO be a value of the
+  // compared path. One violation per value not in the compared value set.
+  | CC_SubsetOf     : path -> constraint_component
   // Closed-shape constraint.
   | CC_Closed       : ignored:list wf_iri -> constraint_component
   // SPARQL-based constraint (sh:sparql / sh:select), Phase 3 (issue
@@ -917,6 +923,9 @@ let sh_memberShape : wf_iri =
 let sh_uniqueValuesFor : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#uniqueValuesFor");
   "http://www.w3.org/ns/shacl#uniqueValuesFor"
+let sh_subsetOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#subsetOf");
+  "http://www.w3.org/ns/shacl#subsetOf"
 let sh_languageIn : wf_iri =
   assert_norm (is_iri "http://www.w3.org/ns/shacl#languageIn");
   "http://www.w3.org/ns/shacl#languageIn"
@@ -1760,6 +1769,8 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
     List.Tot.map (fun t -> CC_LessThan (parse_path g t fuel)) (find_objects g s sh_lessThan) in
   let lessthaneq =
     List.Tot.map (fun t -> CC_LessThanOrEq (parse_path g t fuel)) (find_objects g s sh_lessThanOrEquals) in
+  let subsetof =
+    List.Tot.map (fun t -> CC_SubsetOf (parse_path g t fuel)) (find_objects g s sh_subsetOf) in
   let closed_ =
     (match first_bool (find_objects g s sh_closed) with
      | Some true ->
@@ -1774,7 +1785,7 @@ let build_constraints (g : rdf_graph) (s : subject) : list constraint_component 
   mincount @ maxcount @ datatype @ nodekind @ cls @ in_ @ hasvalue @ pattern @ minlen @ maxlen @
   singleline @ minlistlen @ maxlistlen @ rootcls @ somevalue @ uniquemembers @ membershape @ uvf @
   langin @ uniquelang @ mininc @ maxinc @ minexc @ maxexc @ nots @ ands @ ors @ xones @ nodes @
-  qualified @ equals @ disjoint @ lessthan @ lessthaneq @ closed_ @ sparqls
+  qualified @ equals @ disjoint @ lessthan @ lessthaneq @ subsetof @ closed_ @ sparqls
 #pop-options
 
 let build_shape (g : rdf_graph) (s : subject) : shape =
@@ -2139,6 +2150,7 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
      | CC_Disjoint _ -> []       // aggregate
      | CC_LessThan _ -> []       // aggregate
      | CC_LessThanOrEq _ -> []   // aggregate
+     | CC_SubsetOf _ -> []       // aggregate
      | CC_Closed _ -> []         // aggregate
      | CC_QualifiedMinCount _ _ _ -> []  // aggregate
      | CC_QualifiedMaxCount _ _ _ -> []  // aggregate
@@ -2265,6 +2277,13 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
            let others = eval_path data focus p in
            List.Tot.concatMap
              (fun v -> List.Tot.concatMap (fun w -> if term_le v w then [] else [value_violation focus path_opt source cc sev msg v]) others)
+             values
+         // sh:subsetOf — one result per value node NOT among the compared
+         // path's values (the mirror image of CC_Disjoint's condition).
+         | CC_SubsetOf p ->
+           let others = eval_path data focus p in
+           List.Tot.concatMap
+             (fun v -> if List.Tot.existsb (rdf_term_eq v) others then [] else [value_violation focus path_opt source cc sev msg v])
              values
          | CC_QualifiedMinCount qref qmin qdisjoint ->
            if qualifying_count qref qdisjoint >= qmin then [] else [focus_violation focus path_opt source cc sev msg]
@@ -3118,6 +3137,7 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_Disjoint _ -> sh_DisjointConstraintComponent
   | CC_LessThan _ -> sh_LessThanConstraintComponent
   | CC_LessThanOrEq _ -> sh_LessThanOrEqualsConstraintComponent
+  | CC_SubsetOf _ -> sh_SubsetOfConstraintComponent
   | CC_Closed _ -> sh_ClosedConstraintComponent
   | CC_Sparql _ _ _ -> sh_SPARQLConstraintComponent
   | CC_Custom comp _ _ _ -> comp

@@ -78,6 +78,8 @@ let sh_MemberShapeConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#MemberShapeConstraintComponent"
 let sh_UniqueValuesForConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#UniqueValuesForConstraintComponent"
+let sh_SubsetOfConstraintComponent : RDF_Term.wf_iri=
+  "http://www.w3.org/ns/shacl#SubsetOfConstraintComponent"
 let sh_LanguageInConstraintComponent : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
 let sh_UniqueLangConstraintComponent : RDF_Term.wf_iri=
@@ -273,6 +275,7 @@ type constraint_component =
   | CC_Disjoint of path 
   | CC_LessThan of path 
   | CC_LessThanOrEq of path 
+  | CC_SubsetOf of path 
   | CC_Closed of RDF_Term.wf_iri Prims.list 
   | CC_Sparql of shape_ref * Prims.string * RDF_Term.wf_literal
   FStar_Pervasives_Native.option 
@@ -450,6 +453,10 @@ let uu___is_CC_LessThanOrEq (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_LessThanOrEq _0 -> true | uu___ -> false
 let __proj__CC_LessThanOrEq__item___0 (projectee : constraint_component) :
   path= match projectee with | CC_LessThanOrEq _0 -> _0
+let uu___is_CC_SubsetOf (projectee : constraint_component) : Prims.bool=
+  match projectee with | CC_SubsetOf _0 -> true | uu___ -> false
+let __proj__CC_SubsetOf__item___0 (projectee : constraint_component) : 
+  path= match projectee with | CC_SubsetOf _0 -> _0
 let uu___is_CC_Closed (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_Closed ignored -> true | uu___ -> false
 let __proj__CC_Closed__item__ignored (projectee : constraint_component) :
@@ -816,6 +823,7 @@ let sh_memberShape : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#memberShape"
 let sh_uniqueValuesFor : RDF_Term.wf_iri=
   "http://www.w3.org/ns/shacl#uniqueValuesFor"
+let sh_subsetOf : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#subsetOf"
 let sh_languageIn : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#languageIn"
 let sh_uniqueLang : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#uniqueLang"
 let sh_minInclusive : RDF_Term.wf_iri=
@@ -1684,6 +1692,9 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
   let lessthaneq =
     FStar_List_Tot_Base.map (fun t -> CC_LessThanOrEq (parse_path g t fuel))
       (RDF_Graph_Executable.find_objects g s sh_lessThanOrEquals) in
+  let subsetof =
+    FStar_List_Tot_Base.map (fun t -> CC_SubsetOf (parse_path g t fuel))
+      (RDF_Graph_Executable.find_objects g s sh_subsetOf) in
   let closed_ =
     match first_bool (RDF_Graph_Executable.find_objects g s sh_closed) with
     | FStar_Pervasives_Native.Some true ->
@@ -1754,8 +1765,10 @@ let build_constraints (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
                                                                     (FStar_List_Tot_Base.op_At
                                                                     lessthaneq
                                                                     (FStar_List_Tot_Base.op_At
+                                                                    subsetof
+                                                                    (FStar_List_Tot_Base.op_At
                                                                     closed_
-                                                                    sparqls))))))))))))))))))))))))))))))))))
+                                                                    sparqls)))))))))))))))))))))))))))))))))))
 let build_shape (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) : shape=
   let path_objs = RDF_Graph_Executable.find_objects g s sh_path in
   let is_prop = Prims.uu___is_Cons path_objs in
@@ -2251,6 +2264,7 @@ and eval_one_constraint (data : RDF_Graph.rdf_graph) (sg : shape Prims.list)
        | CC_Disjoint uu___1 -> []
        | CC_LessThan uu___1 -> []
        | CC_LessThanOrEq uu___1 -> []
+       | CC_SubsetOf uu___1 -> []
        | CC_Closed uu___1 -> []
        | CC_QualifiedMinCount (uu___1, uu___2, uu___3) -> []
        | CC_QualifiedMaxCount (uu___1, uu___2, uu___3) -> []
@@ -2408,6 +2422,16 @@ and eval_aggregate_constraints (data : RDF_Graph.rdf_graph)
                          else
                            [value_violation focus path_opt source cc sev msg
                               v]) others) values
+           | CC_SubsetOf p ->
+               let others = eval_path data focus p in
+               FStar_List_Tot_Base.concatMap
+                 (fun v ->
+                    if
+                      FStar_List_Tot_Base.existsb (RDF_Term.rdf_term_eq v)
+                        others
+                    then []
+                    else [value_violation focus path_opt source cc sev msg v])
+                 values
            | CC_QualifiedMinCount (qref, qmin, qdisjoint) ->
                if (qualifying_count qref qdisjoint) >= qmin
                then []
@@ -3379,6 +3403,7 @@ let constraint_component_iri (cc : constraint_component) : RDF_Term.wf_iri=
   | CC_Disjoint uu___ -> sh_DisjointConstraintComponent
   | CC_LessThan uu___ -> sh_LessThanConstraintComponent
   | CC_LessThanOrEq uu___ -> sh_LessThanOrEqualsConstraintComponent
+  | CC_SubsetOf uu___ -> sh_SubsetOfConstraintComponent
   | CC_Closed uu___ -> sh_ClosedConstraintComponent
   | CC_Sparql (uu___, uu___1, uu___2) -> sh_SPARQLConstraintComponent
   | CC_Custom (comp, uu___, uu___1, uu___2) -> comp

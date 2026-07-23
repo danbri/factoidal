@@ -117,8 +117,8 @@
   [117/138] Test of sh:rootClass at property shape 001 ok
   [118/138] Test of sh:singleLine at property shape 001 ok
   [119/138] Test of sh:someValue at property shape 001 ok
-  [120/138] Test of sh:subsetOf at property shape 001 FAIL
-  [121/138] Test of sh:subsetOf at property shape 002 FAIL
+  [120/138] Test of sh:subsetOf at property shape 001 ok
+  [121/138] Test of sh:subsetOf at property shape 002 ok
   [122/138] Test of sh:uniqueLang at property shape 001 ok
   [123/138] Test uniqueLang with other boolean literal for true ok
   [124/138] Test of sh:uniqueLang with rdf:dirLangString values ok
@@ -357,68 +357,8 @@ _:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XM
   PASS: Test of sh:rootClass at property shape 001
   PASS: Test of sh:singleLine at property shape 001
   PASS: Test of sh:someValue at property shape 001
-  FAIL: Test of sh:subsetOf at property shape 001 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/property/subsetOf-001.ttl) — report not isomorphic to expected
-    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource2> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
-_:c14n0 <http://www.w3.org/ns/shacl#value> "A" .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n1 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource3> .
-_:c14n1 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
-_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
-_:c14n1 <http://www.w3.org/ns/shacl#value> "B" .
-_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n2 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
-_:c14n2 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
-_:c14n2 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n2 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
-_:c14n2 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
-_:c14n2 <http://www.w3.org/ns/shacl#value> "A" .
-_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n3 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n0 .
-_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n1 .
-_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n2 .
-
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-
-  FAIL: Test of sh:subsetOf at property shape 002 (/home/user/factoidal/third_party/testing/shacl/shacl12-test-suite/tests/core/property/subsetOf-002.ttl) — report not isomorphic to expected
-    expected: _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n0 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource2> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
-_:c14n0 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
-_:c14n0 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
-_:c14n0 <http://www.w3.org/ns/shacl#value> "A" .
-_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n1 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource3> .
-_:c14n1 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
-_:c14n1 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
-_:c14n1 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
-_:c14n1 <http://www.w3.org/ns/shacl#value> "B" .
-_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationResult> .
-_:c14n2 <http://www.w3.org/ns/shacl#focusNode> <http://example.com/ns#InvalidResource1> .
-_:c14n2 <http://www.w3.org/ns/shacl#resultPath> <http://example.com/ns#property1> .
-_:c14n2 <http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Violation> .
-_:c14n2 <http://www.w3.org/ns/shacl#sourceConstraintComponent> <http://www.w3.org/ns/shacl#SubsetOfConstraintComponent> .
-_:c14n2 <http://www.w3.org/ns/shacl#sourceShape> <http://example.com/ns#TestShape-property1> .
-_:c14n2 <http://www.w3.org/ns/shacl#value> "A" .
-_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n3 <http://www.w3.org/ns/shacl#conforms> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n0 .
-_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n1 .
-_:c14n3 <http://www.w3.org/ns/shacl#result> _:c14n2 .
-
-    actual:   _:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#ValidationReport> .
-_:c14n0 <http://www.w3.org/ns/shacl#conforms> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-
+  PASS: Test of sh:subsetOf at property shape 001
+  PASS: Test of sh:subsetOf at property shape 002
   PASS: Test of sh:uniqueLang at property shape 001
   PASS: Test uniqueLang with other boolean literal for true
   PASS: Test of sh:uniqueLang with rdf:dirLangString values
@@ -500,6 +440,6 @@ _:c14n1 <http://www.w3.org/ns/shacl#value> "twenty two" .
   PASS: Test of validation report for shape shared by property constraints
 
 ========================================
-TOTAL: 125 pass, 13 fail, 0 skip (out of 138)
+TOTAL: 127 pass, 11 fail, 0 skip (out of 138)
 ========================================
-shacl-core: 125 pass, 13 fail, 0 skip (out of 138)
+shacl-core: 127 pass, 11 fail, 0 skip (out of 138)
