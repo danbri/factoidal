@@ -892,13 +892,17 @@ let rec csvw_decode_column_list (items : Parser_JSON.json_val Prims.list) :
   match items with
   | [] -> FStar_Pervasives_Native.Some []
   | hd::tl ->
-      (match csvw_decode_column hd with
-       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-       | FStar_Pervasives_Native.Some c ->
-           (match csvw_decode_column_list tl with
+      (match hd with
+       | Parser_JSON.JObject uu___ ->
+           (match csvw_decode_column hd with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-            | FStar_Pervasives_Native.Some rest ->
-                FStar_Pervasives_Native.Some (c :: rest)))
+            | FStar_Pervasives_Native.Some c ->
+                (match csvw_decode_column_list tl with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some rest ->
+                     FStar_Pervasives_Native.Some (c :: rest)))
+       | uu___ -> csvw_decode_column_list tl)
 let csvw_decode_dialect (v : Parser_JSON.json_val) :
   csvw_dialect FStar_Pervasives_Native.option=
   match v with
@@ -1046,13 +1050,17 @@ let rec csvw_decode_table_list (items : Parser_JSON.json_val Prims.list) :
   match items with
   | [] -> FStar_Pervasives_Native.Some []
   | hd::tl ->
-      (match csvw_decode_table hd with
-       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-       | FStar_Pervasives_Native.Some t ->
-           (match csvw_decode_table_list tl with
+      (match hd with
+       | Parser_JSON.JObject uu___ ->
+           (match csvw_decode_table hd with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-            | FStar_Pervasives_Native.Some rest ->
-                FStar_Pervasives_Native.Some (t :: rest)))
+            | FStar_Pervasives_Native.Some t ->
+                (match csvw_decode_table_list tl with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some rest ->
+                     FStar_Pervasives_Native.Some (t :: rest)))
+       | uu___ -> csvw_decode_table_list tl)
 let csvw_str_starts_with (pfx : Prims.string) (s : Prims.string) :
   Prims.bool=
   let lp = FStar_String.strlen pfx in
@@ -1534,7 +1542,10 @@ let rec csvw_tables_all_valid (items : Parser_JSON.json_val Prims.list) :
   Prims.bool=
   match items with
   | [] -> true
-  | t::tl -> (csvw_table_valid true t) && (csvw_tables_all_valid tl)
+  | t::tl ->
+      (match t with
+       | Parser_JSON.JObject uu___ -> csvw_table_valid true t
+       | uu___ -> true) && (csvw_tables_all_valid tl)
 let csvw_context_valid (v : Parser_JSON.json_val) : Prims.bool=
   match Parser_JSON.json_get_field "@context" v with
   | FStar_Pervasives_Native.Some (Parser_JSON.JArray

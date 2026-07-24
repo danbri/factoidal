@@ -190,10 +190,12 @@ let cv_check_table (v : json_val) : list string =
   let dia = cv_check_dialect v in
   idt @ url @ sch @ dia
 
+// A non-object element of the "tables" array is ignored (section 4,
+// test094), not a structural error.
 let rec cv_check_tables (xs : list json_val) : Tot (list string) (decreases xs) =
   match xs with
   | [] -> []
-  | t :: tl -> cv_check_table t @ cv_check_tables tl
+  | t :: tl -> (match t with JObject _ -> cv_check_table t | _ -> []) @ cv_check_tables tl
 
 // ================================================================
 // Top-level metadata validation. A document is either a TableGroup

@@ -637,17 +637,24 @@ let csvw_decode_column (v:json_val) : option csvw_column =
 // a structurally-wrong shape (not a leaf-facet mismatch), so it
 // propagates None out, mirroring ShEx.Schema.fst's
 // decode_shape_decl_list discipline.
+// Per tabular-metadata section 4 ("Any items within an array that are
+// not valid objects of the type expected are ignored", test096): a
+// non-object element of a "columns" array is dropped, not a hard decode
+// failure.
 let rec csvw_decode_column_list (items:list json_val)
   : Tot (option (list csvw_column)) (decreases items) =
   match items with
   | [] -> Some []
   | hd :: tl ->
-    (match csvw_decode_column hd with
-     | None -> None
-     | Some c ->
-       (match csvw_decode_column_list tl with
+    (match hd with
+     | JObject _ ->
+       (match csvw_decode_column hd with
         | None -> None
-        | Some rest -> Some (c :: rest)))
+        | Some c ->
+          (match csvw_decode_column_list tl with
+           | None -> None
+           | Some rest -> Some (c :: rest)))
+     | _ -> csvw_decode_column_list tl)
 
 // ================================================================
 // Dialect decode
@@ -789,19 +796,23 @@ let csvw_decode_table_schema_text (input:string) : option csvw_table_schema =
 let csvw_table_inline_schema (t:csvw_table) (ts:csvw_table_schema) : csvw_table =
   { t with tbl_table_schema = Some ts; tbl_schema_ref = None }
 
-// All-or-nothing over the table-group's "tables" list — same
-// structural-shape discipline as csvw_decode_column_list.
+// A non-object element of a "tables" array is ignored (test094, same
+// section-4 rule as csvw_decode_column_list); a malformed table OBJECT
+// still propagates None.
 let rec csvw_decode_table_list (items:list json_val)
   : Tot (option (list csvw_table)) (decreases items) =
   match items with
   | [] -> Some []
   | hd :: tl ->
-    (match csvw_decode_table hd with
-     | None -> None
-     | Some t ->
-       (match csvw_decode_table_list tl with
+    (match hd with
+     | JObject _ ->
+       (match csvw_decode_table hd with
         | None -> None
-        | Some rest -> Some (t :: rest)))
+        | Some t ->
+          (match csvw_decode_table_list tl with
+           | None -> None
+           | Some rest -> Some (t :: rest)))
+     | _ -> csvw_decode_table_list tl)
 
 // ================================================================
 // Metadata validation (NegativeRdfTest support). The Metadata
@@ -1186,10 +1197,12 @@ let csvw_table_valid (in_group:bool) (v:json_val) : bool =
     csvw_common_props_valid v
   | _ -> false
 
+// A non-object element of the "tables" array is ignored (section 4,
+// test094), not a validity failure.
 let rec csvw_tables_all_valid (items : list json_val) : Tot bool (decreases items) =
   match items with
   | [] -> true
-  | t :: tl -> csvw_table_valid true t && csvw_tables_all_valid tl
+  | t :: tl -> (match t with JObject _ -> csvw_table_valid true t | _ -> true) && csvw_tables_all_valid tl
 
 // @context (if present in the array form) restricted to a string sentinel
 // followed by an object holding only @base / @language (test274).
