@@ -317,7 +317,7 @@ let flush_csv_row (buf : string) (row_acc : list string) (rows_acc : list (list 
 // on the doubled-quote-escape branch), same idiom as
 // RML.Mapping.fst's scan_template_acc.
 let rec csv_scan_acc
-    (s : string) (pos : nat) (fuel : nat) (in_quotes : bool)
+    (delim : nat) (s : string) (pos : nat) (fuel : nat) (in_quotes : bool)
     (buf : string) (row_acc : list string) (rows_acc : list (list string))
   : Tot (list (list string)) (decreases fuel) =
   let finish () : list (list string) =
@@ -331,26 +331,32 @@ let rec csv_scan_acc
       if in_quotes then
         if c = 0x22 (* '"' *) then
           if pos + 1 < len && FStar.Char.int_of_char (String.index s (pos + 1)) = 0x22
-          then csv_scan_acc s (pos + 2) (fuel - 1) true (buf ^ "\"") row_acc rows_acc  // "" -> literal "
-          else csv_scan_acc s (pos + 1) (fuel - 1) false buf row_acc rows_acc          // closing quote
+          then csv_scan_acc delim s (pos + 2) (fuel - 1) true (buf ^ "\"") row_acc rows_acc  // "" -> literal "
+          else csv_scan_acc delim s (pos + 1) (fuel - 1) false buf row_acc rows_acc          // closing quote
         else
-          csv_scan_acc s (pos + 1) (fuel - 1) true (buf ^ String.sub s pos 1) row_acc rows_acc
+          csv_scan_acc delim s (pos + 1) (fuel - 1) true (buf ^ String.sub s pos 1) row_acc rows_acc
       else
         if c = 0x22 (* '"' *) && buf = "" then
-          csv_scan_acc s (pos + 1) (fuel - 1) true buf row_acc rows_acc  // opening quote (only at field start)
-        else if c = 0x2C (* ',' *) then
-          csv_scan_acc s (pos + 1) (fuel - 1) false "" (flush_csv_field buf row_acc) rows_acc
+          csv_scan_acc delim s (pos + 1) (fuel - 1) true buf row_acc rows_acc  // opening quote (only at field start)
+        else if c = delim then
+          csv_scan_acc delim s (pos + 1) (fuel - 1) false "" (flush_csv_field buf row_acc) rows_acc
         else if c = 0x0A (* '\n' *) then
-          csv_scan_acc s (pos + 1) (fuel - 1) false "" [] (flush_csv_row buf row_acc rows_acc)
+          csv_scan_acc delim s (pos + 1) (fuel - 1) false "" [] (flush_csv_row buf row_acc rows_acc)
         else if c = 0x0D (* '\r' *) then
-          csv_scan_acc s (pos + 1) (fuel - 1) false buf row_acc rows_acc  // drop CR; \r\n and lone \n both work
+          csv_scan_acc delim s (pos + 1) (fuel - 1) false buf row_acc rows_acc  // drop CR; \r\n and lone \n both work
         else
-          csv_scan_acc s (pos + 1) (fuel - 1) false (buf ^ String.sub s pos 1) row_acc rows_acc
+          csv_scan_acc delim s (pos + 1) (fuel - 1) false (buf ^ String.sub s pos 1) row_acc rows_acc
 
 // Tokenize a whole CSV document into rows of raw (unquoted, escape-
-// resolved) cell strings. The first row (if any) is the header.
+// resolved) cell strings, splitting fields on `delim` (a codepoint). The
+// first row (if any) is the header.
+let csv_parse_rows_delim (delim : nat) (s : string) : list (list string) =
+  csv_scan_acc delim s 0 (String.length s + 1) false "" [] []
+
+// RFC 4180 (comma-separated) tokenizer — the default for RML and any
+// CSVW table without a dialect `delimiter`.
 let csv_parse_rows (s : string) : list (list string) =
-  csv_scan_acc s 0 (String.length s + 1) false "" [] []
+  csv_parse_rows_delim 0x2C s
 
 let rec zip_strings (a : list string) (b : list string) : Tot (list (string & string)) (decreases a) =
   match a, b with

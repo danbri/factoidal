@@ -344,10 +344,20 @@ let test_number (te : test_entry) =
    CSVW_Conversion's document-level entry points need, from a decoded
    metadata document (or the "no metadata at all" synthetic table). *)
 
-let read_rows (path : string) : string list list =
+(* Field delimiter codepoint from a table's dialect (`delimiter`),
+   defaulting to comma (0x2C) — test050's TSV uses "\t". *)
+let dialect_delim (tbl : CSVW_Metadata.csvw_table) : int =
+  match opt_of_fs tbl.CSVW_Metadata.tbl_dialect with
+  | Some dia ->
+    (match opt_of_fs dia.CSVW_Metadata.dia_delimiter with
+     | Some d when String.length d > 0 -> Char.code d.[0]
+     | _ -> 0x2C)
+  | None -> 0x2C
+
+let read_rows (delim : int) (path : string) : string list list =
   match read_file path with
   | None -> []
-  | Some content -> RML_Sources.csv_parse_rows content
+  | Some content -> RML_Sources.csv_parse_rows_delim (Z.of_int delim) content
 
 (* `fallback_url` is only consulted by CSVW_Conversion when a table's
    own `tbl_url` is absent — normally true only for the "no metadata
@@ -362,7 +372,7 @@ let tables_with_rows (test_dir : string) (action_path : string) (meta_opt : CSVW
        — strip it for the actual disk read only; `fallback_url` (passed
        through unchanged to CSVW_Conversion for IRI construction) keeps it. *)
     let path = Filename.concat test_dir (strip_query_frag rel) in
-    (tbl, fallback_url, read_rows path)
+    (tbl, fallback_url, read_rows (dialect_delim tbl) path)
   in
   match meta_opt with
   | None ->

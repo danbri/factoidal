@@ -260,8 +260,8 @@ let flush_csv_row (buf : Prims.string) (row_acc : Prims.string Prims.list)
   (rows_acc : Prims.string Prims.list Prims.list) :
   Prims.string Prims.list Prims.list=
   (FStar_List_Tot_Base.rev (flush_csv_field buf row_acc)) :: rows_acc
-let rec csv_scan_acc (s : Prims.string) (pos : Prims.nat) (fuel : Prims.nat)
-  (in_quotes : Prims.bool) (buf : Prims.string)
+let rec csv_scan_acc (delim : Prims.nat) (s : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) (in_quotes : Prims.bool) (buf : Prims.string)
   (row_acc : Prims.string Prims.list)
   (rows_acc : Prims.string Prims.list Prims.list) :
   Prims.string Prims.list Prims.list=
@@ -288,44 +288,50 @@ let rec csv_scan_acc (s : Prims.string) (pos : Prims.nat) (fuel : Prims.nat)
                       (FStar_String.index s (pos + Prims.int_one)))
                      = (Prims.of_int (0x22)))
               then
-                csv_scan_acc s (pos + (Prims.of_int (2)))
+                csv_scan_acc delim s (pos + (Prims.of_int (2)))
                   (fuel - Prims.int_one) true (Prims.strcat buf "\"") row_acc
                   rows_acc
               else
-                csv_scan_acc s (pos + Prims.int_one) (fuel - Prims.int_one)
-                  false buf row_acc rows_acc)
+                csv_scan_acc delim s (pos + Prims.int_one)
+                  (fuel - Prims.int_one) false buf row_acc rows_acc)
            else
-             csv_scan_acc s (pos + Prims.int_one) (fuel - Prims.int_one) true
+             csv_scan_acc delim s (pos + Prims.int_one)
+               (fuel - Prims.int_one) true
                (Prims.strcat buf (FStar_String.sub s pos Prims.int_one))
                row_acc rows_acc)
         else
           if (c = (Prims.of_int (0x22))) && (buf = "")
           then
-            csv_scan_acc s (pos + Prims.int_one) (fuel - Prims.int_one) true
-              buf row_acc rows_acc
+            csv_scan_acc delim s (pos + Prims.int_one) (fuel - Prims.int_one)
+              true buf row_acc rows_acc
           else
-            if c = (Prims.of_int (0x2C))
+            if c = delim
             then
-              csv_scan_acc s (pos + Prims.int_one) (fuel - Prims.int_one)
-                false "" (flush_csv_field buf row_acc) rows_acc
+              csv_scan_acc delim s (pos + Prims.int_one)
+                (fuel - Prims.int_one) false "" (flush_csv_field buf row_acc)
+                rows_acc
             else
               if c = (Prims.of_int (0x0A))
               then
-                csv_scan_acc s (pos + Prims.int_one) (fuel - Prims.int_one)
-                  false "" [] (flush_csv_row buf row_acc rows_acc)
+                csv_scan_acc delim s (pos + Prims.int_one)
+                  (fuel - Prims.int_one) false "" []
+                  (flush_csv_row buf row_acc rows_acc)
               else
                 if c = (Prims.of_int (0x0D))
                 then
-                  csv_scan_acc s (pos + Prims.int_one) (fuel - Prims.int_one)
-                    false buf row_acc rows_acc
+                  csv_scan_acc delim s (pos + Prims.int_one)
+                    (fuel - Prims.int_one) false buf row_acc rows_acc
                 else
-                  csv_scan_acc s (pos + Prims.int_one) (fuel - Prims.int_one)
-                    false
+                  csv_scan_acc delim s (pos + Prims.int_one)
+                    (fuel - Prims.int_one) false
                     (Prims.strcat buf (FStar_String.sub s pos Prims.int_one))
                     row_acc rows_acc))
+let csv_parse_rows_delim (delim : Prims.nat) (s : Prims.string) :
+  Prims.string Prims.list Prims.list=
+  csv_scan_acc delim s Prims.int_zero
+    ((FStar_String.strlen s) + Prims.int_one) false "" [] []
 let csv_parse_rows (s : Prims.string) : Prims.string Prims.list Prims.list=
-  csv_scan_acc s Prims.int_zero ((FStar_String.strlen s) + Prims.int_one)
-    false "" [] []
+  csv_parse_rows_delim (Prims.of_int (0x2C)) s
 let rec zip_strings (a : Prims.string Prims.list)
   (b : Prims.string Prims.list) : (Prims.string * Prims.string) Prims.list=
   match (a, b) with
