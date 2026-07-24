@@ -26,7 +26,6 @@ triggers:
 remaining:
   - "foreign-key referential integrity (cross-table): test257, test258"
   - "referenced-schema roles example: test034, test035"
-  - "multi-column primaryKey uniqueness (only single-column is checked): test234"
   - "string-datatype format-pattern mismatch: test154"
   - "an absolute-URL datatype string treated as an error: test308 (test150/test238 show non-builtin / absolute-URL datatype strings are WARNINGS, not errors)"
   - "two WarningValidationTest fixtures whose bare-number members the lenient metadata decoder rejects rather than degrading gracefully: test094, test096"

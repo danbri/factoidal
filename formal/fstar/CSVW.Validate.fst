@@ -341,8 +341,60 @@ let rec cv_title_compat (dl : string) (cols_meta : list csvw_column) (header : l
     here @ cv_title_compat dl mt ht
   | _, _ -> []
 
+// Multi-column primaryKey names for a table, read from the RAW metadata
+// JSON (the decoder only captures the single-string form): a "primaryKey"
+// that is a JArray of strings. Kept in F* (rule #4) rather than the OCaml
+// runner.
+let cv_pk_names_of_raw (tblj : json_val) : list string =
+  match cv_field "tableSchema" tblj with
+  | Some ts ->
+    (match cv_field "primaryKey" ts with
+     | Some (JArray xs) -> L.choose (fun (x : json_val) -> match x with JString s -> Some s | _ -> None) xs
+     | _ -> [])
+  | None -> []
+
+// Locate the raw JSON object for a table by its (unresolved) url.
+let cv_find_raw_table (root : json_val) (url : option string) : option json_val =
+  match cv_field "tables" root with
+  | Some (JArray ts) ->
+    (match L.find (fun (t : json_val) ->
+                     match cv_field "url" t, url with
+                     | Some (JString u), Some u2 -> u = u2
+                     | _, _ -> false) ts with
+     | Some t -> Some (t <: json_val)
+     | None -> None)
+  | _ -> Some root
+
+// Join a list of equal-length column value-lists into one composite
+// string per row (for multi-column primaryKey uniqueness). `fuel` bounds
+// the row count.
+let rec cv_zip_join (fuel : nat) (cols : list (list string)) : Tot (list string) (decreases fuel) =
+  if fuel = 0 then []
+  else if L.existsb Nil? cols then []
+  else
+    let heads = L.map (fun (c : list string) -> match c with h :: _ -> h | [] -> "") cols in
+    let tails = L.map (fun (c : list string) -> match c with _ :: t -> t | [] -> []) cols in
+    Str.concat "~|~" heads :: cv_zip_join (fuel - 1) tails
+
+// Composite (multi-column) primaryKey uniqueness (test234). Single-column
+// PK is handled by cv_check_primary_key; this covers >= 2 columns.
+let cv_check_composite_pk (cols : list (csvw_col_spec & list string)) (pk_names : list string) : list string =
+  if L.length pk_names < 2 then []
+  else
+    let pk_val_lists = L.choose
+      (fun (name : string) ->
+         match L.find (fun (p : (csvw_col_spec & list string)) -> (fst p).cs_name = name) cols with
+         | Some (_, vals) -> Some vals
+         | None -> None)
+      pk_names in
+    if L.length pk_val_lists <> L.length pk_names then []
+    else
+      let nrows = (match pk_val_lists with c :: _ -> L.length c | [] -> 0) in
+      if cv_has_dup [] (cv_zip_join nrows pk_val_lists)
+      then [ "duplicate multi-column primaryKey" ] else []
+
 let cv_check_data_table
-    (default_lang : string) (grp_inherited : csvw_inherited_props) (base_iri : string)
+    (root : json_val) (default_lang : string) (grp_inherited : csvw_inherited_props) (base_iri : string)
     (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
   : list string =
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
@@ -359,6 +411,10 @@ let cv_check_data_table
   let cols = cv_transpose phys_specs data_rows in
   let cell_errs = L.collect (fun (p : (csvw_col_spec & list string)) -> cv_check_cells (fst p) (snd p)) cols in
   let pk = (match tbl.tbl_table_schema with Some ts -> ts.ts_primary_key | None -> None) in
+  // Multi-column primaryKey (from the raw JSON, since the decoder keeps
+  // only the single-string form).
+  let pk_names = (match cv_find_raw_table root tbl.tbl_url with Some tj -> cv_pk_names_of_raw tj | None -> []) in
+  let composite_pk = cv_check_composite_pk cols pk_names in
   // Schema / CSV compatibility (tabular-data-model 5.4.2 / test278): an
   // explicit schema's non-virtual column count MUST equal the data width.
   let declared = (match tbl.tbl_table_schema with Some ts -> ts.ts_columns | None -> []) in
@@ -387,14 +443,14 @@ let cv_check_data_table
          | None -> (match grp_inherited.inh_lang with Some l -> l | None -> default_lang)) in
       cv_title_compat table_lang declared_nonvirt header_cells
     else [] in
-  cell_errs @ cv_check_primary_key cols pk @ compat @ req @ title_compat
+  cell_errs @ cv_check_primary_key cols pk @ composite_pk @ compat @ req @ title_compat
 
 let cv_check_data
-    (default_lang : string) (grp_inherited : csvw_inherited_props) (base_iri : string)
+    (root : json_val) (default_lang : string) (grp_inherited : csvw_inherited_props) (base_iri : string)
     (tables_with_rows : list (csvw_table & string & list (list string)))
   : list string =
   L.collect (fun (t : (csvw_table & string & list (list string))) ->
                let (tbl, fallback_url, rows) = t in
                if csvw_table_suppressed tbl then []
-               else cv_check_data_table default_lang grp_inherited base_iri fallback_url tbl rows)
+               else cv_check_data_table root default_lang grp_inherited base_iri fallback_url tbl rows)
             tables_with_rows

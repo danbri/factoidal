@@ -738,19 +738,22 @@ let run_test_json (te : test_entry) =
    until the decoder degrades those gracefully. *)
 let validation_errors (cc : conv_ctx) : string list =
   let decode_errs = if cc.cc_decode_failed then [ "metadata failed to decode" ] else [] in
+  let root_opt =
+    match cc.cc_metadata_path with
+    | Some p -> (match read_file p with
+                 | Some content -> opt_of_fs (Parser_JSON.parse_json content)
+                 | None -> None)
+    | None -> None in
   let meta_errs =
     match cc.cc_metadata_path with
-    | Some p ->
-      (match read_file p with
-       | Some content ->
-         (match opt_of_fs (Parser_JSON.parse_json content) with
-          | Some root -> CSVW_Validate.csvw_validate_metadata_json root
-          | None -> [ "metadata is not valid JSON" ])
-       | None -> [])
+    | Some _ -> (match root_opt with
+                 | Some root -> CSVW_Validate.csvw_validate_metadata_json root
+                 | None -> [ "metadata is not valid JSON" ])
     | None -> [] in
   let dl = match cc.cc_default_lang with Some l -> l | None -> "und" in
+  let root = match root_opt with Some r -> r | None -> Parser_JSON.JNull in
   let data_errs =
-    CSVW_Validate.cv_check_data dl cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables in
+    CSVW_Validate.cv_check_data root dl cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables in
   decode_errs @ meta_errs @ data_errs
 
 let run_test_validate (te : test_entry) =
