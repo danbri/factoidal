@@ -748,8 +748,9 @@ let validation_errors (cc : conv_ctx) : string list =
           | None -> [ "metadata is not valid JSON" ])
        | None -> [])
     | None -> [] in
+  let dl = match cc.cc_default_lang with Some l -> l | None -> "und" in
   let data_errs =
-    CSVW_Validate.cv_check_data cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables in
+    CSVW_Validate.cv_check_data dl cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables in
   decode_errs @ meta_errs @ data_errs
 
 let run_test_validate (te : test_entry) =

@@ -25,7 +25,6 @@ triggers:
 # Remaining (271 pass, 11 fail out of 282), grouped by cause:
 remaining:
   - "foreign-key referential integrity (cross-table): test257, test258"
-  - "language-sensitive title compatibility (case-sensitive title intersection, name-vs-header, and column-count compat are implemented): test148"
   - "referenced-schema roles example: test034, test035"
   - "multi-column primaryKey uniqueness (only single-column is checked): test234"
   - "string-datatype format-pattern mismatch: test154"

@@ -296,22 +296,39 @@ let rec cv_check_required
     here @ cv_check_required mt dt
   | _, _ -> []
 
+// BCP47 language match (the subset the suite needs): equal, "und"
+// matches anything, or one is the other truncated to a subtag boundary
+// (approximated as a prefix). test148: title language "en" vs the header
+// default "de" does NOT match.
+let cv_lang_match (a b : string) : bool =
+  a = b || a = "und" || b = "und"
+  || (let la = Str.length a in let lb = Str.length b in
+      if la <= lb then Str.sub b 0 la = a else Str.sub a 0 lb = b)
+
 // Title compatibility (tabular-data-model 5.4.2): a declared column that
-// HAS titles must have a non-empty CASE-SENSITIVE intersection with the
-// CSV header cell at the same index (test147: metadata "gid" vs header
-// "GID" is incompatible; test148 mismatched language likewise). A column
-// with no titles is compatible (name-based).
-let rec cv_title_compat (cols_meta : list csvw_column) (header : list string)
+// HAS titles must have a case-sensitive, LANGUAGE-matching intersection
+// with the CSV header cell (which carries the default language) at the
+// same index — test147 (case: "gid" vs "GID"), test148 (language: "en"
+// title vs "de" default). A column with only a name must have that name
+// equal the header title's encoded name (test124). `dl` is the effective
+// default language.
+let rec cv_title_compat (dl : string) (cols_meta : list csvw_column) (header : list string)
   : Tot (list string) (decreases cols_meta) =
   match cols_meta, header with
   | c :: mt, h :: ht ->
     // The default dialect trims header cells, so compare trimmed forms
     // (test032's header " Start Date" vs title "Start Date").
     let ht0 = csvw_trim h in
-    let here = (match c.col_titles with
+    let here = (match c.col_titles_l with
                 | _ :: _ ->
-                  // A titled column must intersect the header title.
-                  if L.mem ht0 (L.map csvw_trim c.col_titles) then []
+                  // A titled column: some title must match the header text
+                  // AND have a language matching the header default.
+                  if L.existsb (fun (tl : (string & option string)) ->
+                                  let (t, lo) = tl in
+                                  csvw_trim t = ht0
+                                  && cv_lang_match (match lo with Some l -> l | None -> dl) dl)
+                               c.col_titles_l
+                  then []
                   else [ "column title incompatible with CSV header: " ^ ht0 ]
                 | [] ->
                   // A column with a name but no titles must have that name
@@ -321,11 +338,11 @@ let rec cv_title_compat (cols_meta : list csvw_column) (header : list string)
                    | Some n -> if n = csvw_encode_name ht0 then []
                               else [ "column name incompatible with CSV header: " ^ ht0 ]
                    | None -> [])) in
-    here @ cv_title_compat mt ht
+    here @ cv_title_compat dl mt ht
   | _, _ -> []
 
 let cv_check_data_table
-    (grp_inherited : csvw_inherited_props) (base_iri : string)
+    (default_lang : string) (grp_inherited : csvw_inherited_props) (base_iri : string)
     (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
   : list string =
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
@@ -361,15 +378,23 @@ let cv_check_data_table
   // Title compatibility only when a header row is present and the column
   // counts already match (so index alignment is sound).
   let title_compat =
-    if compat = [] && Cons? header_cells then cv_title_compat declared_nonvirt header_cells else [] in
+    if compat = [] && Cons? header_cells then
+      // The header cells carry the table's effective (inherited) language;
+      // titles must match on it (test148: title "en" vs table lang "de").
+      let table_lang =
+        (match tbl.tbl_inherited.inh_lang with
+         | Some l -> l
+         | None -> (match grp_inherited.inh_lang with Some l -> l | None -> default_lang)) in
+      cv_title_compat table_lang declared_nonvirt header_cells
+    else [] in
   cell_errs @ cv_check_primary_key cols pk @ compat @ req @ title_compat
 
 let cv_check_data
-    (grp_inherited : csvw_inherited_props) (base_iri : string)
+    (default_lang : string) (grp_inherited : csvw_inherited_props) (base_iri : string)
     (tables_with_rows : list (csvw_table & string & list (list string)))
   : list string =
   L.collect (fun (t : (csvw_table & string & list (list string))) ->
                let (tbl, fallback_url, rows) = t in
                if csvw_table_suppressed tbl then []
-               else cv_check_data_table grp_inherited base_iri fallback_url tbl rows)
+               else cv_check_data_table default_lang grp_inherited base_iri fallback_url tbl rows)
             tables_with_rows
