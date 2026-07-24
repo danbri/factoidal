@@ -120,6 +120,7 @@ SCHEMATRON_LOG="$OCAML_DIR/schematron_results.log"
 QUDT_LOG="$OCAML_DIR/qudt_results.log"
 CSVW_LOG="$OCAML_DIR/csvw_results.log"
 CSVW_JSON_LOG="$OCAML_DIR/csvw_json_results.log"
+CSVW_VALIDATE_LOG="$OCAML_DIR/csvw_validate_results.log"
 DID_LOG="$OCAML_DIR/did_results.log"
 JSONLD_FROMRDF_LOG="$OCAML_DIR/jsonld_fromrdf_results.log"
 JSONLD_EXPAND_LOG="$OCAML_DIR/jsonld_expand_results.log"
@@ -383,6 +384,7 @@ if [ "$1" = "--run" ]; then
   run_optional_suite "QUDT v3.4.0 SHACL suites"      "$QUDT_RUNNER"       "$QUDT_LOG"        600
   run_optional_suite "CSVW csv2rdf suite"            "$CSVW_RUNNER"       "$CSVW_LOG"        180
   run_optional_suite "CSVW csv2json suite"           "$CSVW_RUNNER"       "$CSVW_JSON_LOG"   180 --json
+  run_optional_suite "CSVW validation suite"         "$CSVW_RUNNER"       "$CSVW_VALIDATE_LOG" 180 --validate
   run_optional_suite "DID did:key suite"             "$DID_RUNNER"        "$DID_LOG"          60
   run_optional_suite "JSON-LD 1.1 fromRdf suite"     "$JSONLD_FROMRDF_RUNNER" "$JSONLD_FROMRDF_LOG" 90
   run_optional_suite "JSON-LD 1.1 expand suite"      "$JSONLD_EXPAND_RUNNER"  "$JSONLD_EXPAND_LOG"  120
@@ -837,6 +839,7 @@ scrape_added_summary QUDT_INTEGRITY "$QUDT_LOG"           'qudt-integrity: [0-9]
 scrape_added_summary QUDT_USER      "$QUDT_LOG"           'qudt-user-shapes: [0-9]+ pass'
 scrape_added_summary CSVW2RDF       "$CSVW_LOG"           'csv2rdf: [0-9]+ pass'
 scrape_added_summary CSVW2JSON      "$CSVW_JSON_LOG"      'csv2json: [0-9]+ pass'
+scrape_added_summary CSVWVALID      "$CSVW_VALIDATE_LOG"  'validation: [0-9]+ pass'
 scrape_added_summary DIDKEY         "$DID_LOG"            'did:key: [0-9]+ pass'
 
 # Task #88 (canivc.com community-compatibility integration): these two
@@ -1055,6 +1058,7 @@ CSV="$OUTPUT_DIR/latest.csv"
   emit_csv_row_if_present QUDT_USER         qudt        qudt-user-shapes
   emit_csv_row_if_present CSVW2RDF          csvw        csvw-csv2rdf
   emit_csv_row_if_present CSVW2JSON         csvw        csvw-csv2json
+  emit_csv_row_if_present CSVWVALID         csvw        csvw-validation
   emit_csv_row_if_present DIDKEY            did         did-key
   emit_csv_row_if_present JSONLD_FROMRDF    jsonld      jsonld-fromrdf
   emit_csv_row_if_present JSONLD_EXPAND     jsonld      jsonld-expand
@@ -1198,6 +1202,8 @@ emit_json_suites () {
     "$CSVW2RDF_PASS" "$CSVW2RDF_FAIL" "$CSVW2RDF_SKIP" "$CSVW2RDF_TOTAL" "$(bp "$CSVW2RDF_PRESENT")"
   printf '    "csvw_csv2json":  {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/csv2json/"},\n' \
     "$CSVW2JSON_PASS" "$CSVW2JSON_FAIL" "$CSVW2JSON_SKIP" "$CSVW2JSON_TOTAL" "$(bp "$CSVW2JSON_PRESENT")"
+  printf '    "csvw_validation":{"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/tabular-data-model/"},\n' \
+    "$CSVWVALID_PASS" "$CSVWVALID_FAIL" "$CSVWVALID_SKIP" "$CSVWVALID_TOTAL" "$(bp "$CSVWVALID_PRESENT")"
   printf '    "did_key":        {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/did-core/"},\n' \
     "$DIDKEY_PASS" "$DIDKEY_FAIL" "$DIDKEY_SKIP" "$DIDKEY_TOTAL" "$(bp "$DIDKEY_PRESENT")"
   printf '    "vc_di_eddsa":    {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://w3c.github.io/vc-di-eddsa-test-suite/"},\n' \

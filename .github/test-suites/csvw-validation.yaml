@@ -1,0 +1,34 @@
+name: CSVW validation
+spec: https://www.w3.org/TR/tabular-data-model/
+runner: bin/linux-x86_64/csvw_runner
+runner_args: ["--validate"]
+manifest: third_party/testing/csvw/tests/manifest-validation.ttl
+log_path: formal/fstar/ocaml-output/csvw_validate_results.log
+result_path: docs/test-results/by-suite/csvw-validation.json
+domain: RDF
+foundational: false
+
+# Validation mode over the vendored W3C corpus (Positive / Warning /
+# Negative ValidationTest buckets). A document conforms iff its metadata
+# decodes, the raw-JSON structural checks in formal/fstar/CSVW.Validate.fst
+# find no violation (@id/@type role, required url, columns/tableSchema/
+# titles shape, language-tag well-formedness), and no data cell is
+# ill-formed for its datatype; single-column primaryKey uniqueness is
+# checked too. A NegativeValidationTest passes iff a violation is found.
+triggers:
+  paths:
+    - bin/csvw-runner/**
+    - formal/fstar/CSVW.Validate.fst
+    - third_party/testing/csvw/**
+  excludes: []
+
+# Remaining (266 pass, 16 fail out of 282), grouped by cause:
+remaining:
+  - "foreign-key referential integrity (cross-table): test257, test258"
+  - "schema compatibility between metadata columns and the CSV header (count, case-sensitive and language-sensitive title intersection): test124, test127, test147, test148, test278"
+  - "required-column empty/null-cell checks (needs the column `required` facet propagated into the column spec): test125, test126"
+  - "referenced-schema roles example: test034, test035"
+  - "multi-column primaryKey uniqueness (only single-column is checked): test234"
+  - "string-datatype format-pattern mismatch: test154"
+  - "an absolute-URL datatype string treated as an error: test308 (removed because test150/test238 show non-builtin / absolute-URL datatype strings are WARNINGS, not errors)"
+  - "two WarningValidationTest fixtures whose bare-number members the lenient metadata decoder rejects rather than degrading gracefully: test094, test096"

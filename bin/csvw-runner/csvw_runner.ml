@@ -152,6 +152,8 @@ let p_negative_json_test = csvt_ns ^ "NegativeJsonTest"
 (* manifest-nonnorm reuses ToJsonTest for its positive entries and a lone
    NegativeValidationTest for its single negative one. *)
 let p_negative_validation_test = csvt_ns ^ "NegativeValidationTest"
+let p_positive_validation_test = csvt_ns ^ "PositiveValidationTest"
+let p_warning_validation_test = csvt_ns ^ "WarningValidationTest"
 let p_action = mf_ns ^ "action"
 let p_result = mf_ns ^ "result"
 let p_name = mf_ns ^ "name"
@@ -315,6 +317,11 @@ let json_kinds =
     (PositiveWithWarnings, p_to_json_test_warn);
     (Negative, p_negative_json_test);
     (* nonnorm's single negative entry *)
+    (Negative, p_negative_validation_test) ]
+
+let validation_kinds =
+  [ (Positive, p_positive_validation_test);
+    (PositiveWithWarnings, p_warning_validation_test);
     (Negative, p_negative_validation_test) ]
 
 (* Sort by the numeric suffix of the test's own IRI fragment (test001,
@@ -524,6 +531,7 @@ type conv_ctx = {
   cc_default_lang : string option;
   cc_grp_meta : CSVW_Metadata.csvw_group_meta;
   cc_tables : (CSVW_Metadata.csvw_table * string * string list list) list;
+  cc_metadata_path : string option;
 }
 
 let build_ctx (te : test_entry) : conv_ctx =
@@ -618,7 +626,7 @@ let build_ctx (te : test_entry) : conv_ctx =
   in
   { cc_decode_failed = decode_failed; cc_minimal = te.te_minimal;
     cc_base_iri = base_iri; cc_doc_url = doc_url; cc_default_lang = default_lang;
-    cc_grp_meta = grp_meta; cc_tables = tables }
+    cc_grp_meta = grp_meta; cc_tables = tables; cc_metadata_path = metadata_path }
 
 (* ---- csv2rdf backend ---- *)
 let run_test (te : test_entry) =
@@ -711,6 +719,52 @@ let run_test_json (te : test_entry) =
                   Fail (Printf.sprintf "json differs\n      expected:\n%s\n      got:\n%s"
                           (head (json_to_string exp_json) 4000) (head (json_to_string got_json) 4000))))))
 
+(* ---- validation backend ----
+
+   A document CONFORMS iff its metadata decodes, its raw metadata JSON has
+   no structural error (CSVW_Validate.csvw_validate_metadata_json), and no
+   data cell is ill-formed for its datatype (CSVW_Validate.cv_check_data).
+   A PositiveValidationTest / WarningValidationTest passes iff it conforms
+   (warnings do not fail); a NegativeValidationTest passes iff it does
+   NOT. *)
+(* Conformance combines three signals: a lenient CSVW.Metadata decode
+   failure (the metadata is malformed enough that no annotated table can
+   be built — most NegativeValidation fixtures), the raw-JSON structural
+   checks (CSVW_Validate.csvw_validate_metadata_json, for docs that decode
+   but violate a tabular-metadata constraint), and the data-level checks
+   (CSVW_Validate.cv_check_data). A NegativeValidationTest passes iff any
+   fires. The two WarningValidationTest fixtures whose bare-number members
+   the lenient decoder rejects (test094/096) are accepted false-positives
+   until the decoder degrades those gracefully. *)
+let validation_errors (cc : conv_ctx) : string list =
+  let decode_errs = if cc.cc_decode_failed then [ "metadata failed to decode" ] else [] in
+  let meta_errs =
+    match cc.cc_metadata_path with
+    | Some p ->
+      (match read_file p with
+       | Some content ->
+         (match opt_of_fs (Parser_JSON.parse_json content) with
+          | Some root -> CSVW_Validate.csvw_validate_metadata_json root
+          | None -> [ "metadata is not valid JSON" ])
+       | None -> [])
+    | None -> [] in
+  let data_errs =
+    CSVW_Validate.cv_check_data cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables in
+  decode_errs @ meta_errs @ data_errs
+
+let run_test_validate (te : test_entry) =
+  let cc = build_ctx te in
+  let errs = validation_errors cc in
+  let conforms = (errs = []) in
+  match te.te_kind with
+  | Negative ->
+    if not conforms then Pass
+    else Fail "expected a validation error (Negative) but the document conforms"
+  | Positive | PositiveWithWarnings ->
+    if conforms then Pass
+    else Fail (Printf.sprintf "expected conformance but found: %s"
+                 (head (String.concat "; " errs) 400))
+
 (* ------------------------------------------------------------------ *)
 (* Suite run + reporting. *)
 
@@ -737,6 +791,7 @@ let print_help () =
      \  ./csvw_runner                Run the csv2rdf manifest (manifest-rdf.ttl)\n\
      \  ./csvw_runner --json         Run the csv2json manifest (manifest-json.ttl)\n\
      \  ./csvw_runner --nonnorm      Run the non-normative manifest (manifest-nonnorm.ttl)\n\
+     \  ./csvw_runner --validate     Run the validation manifest (manifest-validation.ttl)\n\
      \  ./csvw_runner --filter P     Only run test IDs whose local name starts with P\n\
      \  ./csvw_runner --list         List parsed test entries (no execution)\n\
      \  ./csvw_runner -v|--verbose   Show expected-vs-got diff on FAIL\n\
@@ -744,7 +799,7 @@ let print_help () =
      \n\
      See docs/designissues/2026-07-05-csvw-program-plan.md for scope/gaps.\n"
 
-type run_mode = Rdf | Json | Nonnorm
+type run_mode = Rdf | Json | Nonnorm | Validate
 
 let () =
   let args = Array.to_list Sys.argv |> List.tl in
@@ -759,6 +814,7 @@ let () =
     | "--list" :: rest -> list_only := true; loop rest
     | "--json" :: rest -> mode := Json; loop rest
     | "--nonnorm" :: rest -> mode := Nonnorm; loop rest
+    | "--validate" :: rest -> mode := Validate; loop rest
     | "--filter" :: p :: rest -> filter := Some p; loop rest
     | _ -> Printf.eprintf "csvw_runner: unexpected arguments; try --help\n"; exit 2
   in
@@ -769,6 +825,7 @@ let () =
     | Rdf     -> ("manifest-rdf.ttl", rdf_kinds, run_test, "csv2rdf", "csv2rdf")
     | Json    -> ("manifest-json.ttl", json_kinds, run_test_json, "csv2json", "csv2json")
     | Nonnorm -> ("manifest-nonnorm.ttl", json_kinds, run_test_json, "csv2json (non-normative)", "nonnorm")
+    | Validate -> ("manifest-validation.ttl", validation_kinds, run_test_validate, "validation", "validation")
   in
   let manifest_path = Filename.concat test_dir manifest_name in
   Printf.printf "=== CSVW %s Test Runner ===\n" banner;
