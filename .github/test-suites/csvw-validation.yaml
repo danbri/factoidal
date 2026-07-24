@@ -24,7 +24,6 @@ triggers:
 
 # Remaining (271 pass, 11 fail out of 282), grouped by cause:
 remaining:
-  - "foreign-key referential integrity (cross-table): test257, test258"
   - "referenced-schema roles example: test034, test035"
   - "string-datatype format-pattern mismatch: test154"
   - "an absolute-URL datatype string treated as an error: test308 (test150/test238 show non-builtin / absolute-URL datatype strings are WARNINGS, not errors)"

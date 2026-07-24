@@ -445,12 +445,122 @@ let cv_check_data_table
     else [] in
   cell_errs @ cv_check_primary_key cols pk @ composite_pk @ compat @ req @ title_compat
 
+// ================================================================
+// Foreign-key referential integrity (cross-table, test257/258). Read
+// from the raw metadata JSON (the decoder does not capture foreignKeys).
+// ================================================================
+
+// A columnReference is a single name or an array of names.
+let cv_col_ref_names (v : option json_val) : list string =
+  match v with
+  | Some (JString s) -> [ s ]
+  | Some (JArray xs) -> L.choose (fun (x : json_val) -> match x with JString s -> Some s | _ -> None) xs
+  | _ -> []
+
+// (local columns, referenced resource url, referenced columns) per
+// foreignKey of a table's raw JSON.
+let cv_read_fks (tblj : json_val) : list (list string & string & list string) =
+  match cv_field "tableSchema" tblj with
+  | Some ts ->
+    (match cv_field "foreignKeys" ts with
+     | Some (JArray fks) ->
+       L.choose
+         (fun (fk : json_val) ->
+            let local = cv_col_ref_names (cv_field "columnReference" fk) in
+            match cv_field "reference" fk with
+            | Some refj ->
+              (match json_get_string "resource" refj with
+               | Some res -> Some (local, res, cv_col_ref_names (cv_field "columnReference" refj))
+               | None -> None)
+            | None -> None)
+         fks
+     | _ -> [])
+  | None -> []
+
+// A table's non-virtual columns as (spec, values) — same construction as
+// cv_check_data_table, reused for both sides of a foreign key.
+let cv_table_cols
+    (grp_inherited : csvw_inherited_props) (base_iri : string)
+    (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
+  : list (csvw_col_spec & list string) =
+  let dia = tbl.tbl_dialect in
+  let after_skip_rows = csvw_drop (csvw_skip_rows_count dia) all_rows in
+  let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
+  let header_cells =
+    if csvw_header_row_count dia > 0 then (match after_skip_rows with h :: _ -> h | [] -> [])
+    else (match tbl.tbl_table_schema with
+          | Some _ -> []
+          | None -> (match data_rows with r :: _ -> L.map (fun (_:string) -> "") r | [] -> [])) in
+  let col_specs = csvw_build_col_specs grp_inherited tbl.tbl_inherited tbl.tbl_table_schema header_cells in
+  let phys_specs = L.filter (fun (s : csvw_col_spec) -> not s.cs_virtual) col_specs in
+  cv_transpose phys_specs data_rows
+
+// Composite value per row over the named columns.
+let cv_composite_of (cols : list (csvw_col_spec & list string)) (names : list string) : list string =
+  let vlists = L.choose
+    (fun (name : string) ->
+       match L.find (fun (p : (csvw_col_spec & list string)) -> (fst p).cs_name = name) cols with
+       | Some (_, vals) -> Some vals
+       | None -> None)
+    names in
+  if L.length vlists = L.length names && Cons? vlists
+  then cv_zip_join (match vlists with c :: _ -> L.length c | [] -> 0) vlists
+  else []
+
+let cv_find_table_by_resource
+    (tables_with_rows : list (csvw_table & string & list (list string))) (resource : string)
+  : option (csvw_table & string & list (list string)) =
+  match L.find (fun (t : (csvw_table & string & list (list string))) ->
+                  let (tbl, _, _) = t in
+                  match tbl.tbl_url with Some u -> u = resource | None -> false)
+               tables_with_rows with
+  | Some t -> Some (t <: (csvw_table & string & list (list string)))
+  | None -> None
+
+let cv_check_table_fks
+    (root : json_val) (grp_inherited : csvw_inherited_props) (base_iri : string)
+    (all_tables : list (csvw_table & string & list (list string)))
+    (tbl : csvw_table) (fallback_url : string) (rows : list (list string))
+  : list string =
+  match cv_find_raw_table root tbl.tbl_url with
+  | None -> []
+  | Some tj ->
+    let fks = cv_read_fks tj in
+    let local_cols = cv_table_cols grp_inherited base_iri fallback_url tbl rows in
+    L.collect
+      (fun (fk : (list string & string & list string)) ->
+         let (local_names, resource, ref_names) = fk in
+         match cv_find_table_by_resource all_tables resource with
+         | None -> []
+         | Some (ttbl, tfallback, trows) ->
+           let target_cols = cv_table_cols grp_inherited base_iri tfallback ttbl trows in
+           let local_vals = cv_composite_of local_cols local_names in
+           let ref_vals = cv_composite_of target_cols ref_names in
+           L.collect
+             (fun (lv : string) ->
+                if lv = "" then []
+                else
+                  let n = L.length (L.filter (fun (v : string) -> v = lv) ref_vals) in
+                  if n = 0 then [ "foreign key value has no referenced row: " ^ lv ]
+                  else if n > 1 then [ "foreign key value references multiple rows: " ^ lv ]
+                  else [])
+             local_vals)
+      fks
+
 let cv_check_data
     (root : json_val) (default_lang : string) (grp_inherited : csvw_inherited_props) (base_iri : string)
     (tables_with_rows : list (csvw_table & string & list (list string)))
   : list string =
-  L.collect (fun (t : (csvw_table & string & list (list string))) ->
-               let (tbl, fallback_url, rows) = t in
-               if csvw_table_suppressed tbl then []
-               else cv_check_data_table root default_lang grp_inherited base_iri fallback_url tbl rows)
-            tables_with_rows
+  let per_table =
+    L.collect (fun (t : (csvw_table & string & list (list string))) ->
+                 let (tbl, fallback_url, rows) = t in
+                 if csvw_table_suppressed tbl then []
+                 else cv_check_data_table root default_lang grp_inherited base_iri fallback_url tbl rows)
+              tables_with_rows in
+  let fk_errs =
+    L.collect (fun (t : (csvw_table & string & list (list string))) ->
+                 let (tbl, fallback_url, rows) = t in
+                 if csvw_table_suppressed tbl then []
+                 else cv_check_table_fks root grp_inherited base_iri tables_with_rows tbl fallback_url rows)
+              tables_with_rows in
+  per_table @ fk_errs
