@@ -1,0 +1,32 @@
+# CSVW non-normative test suite (csv2json against manifest-nonnorm.ttl).
+# Non-conformance-gating: these exercise dialect edge-cases the CSVW
+# Recommendation marks non-normative. Runner: bin/csvw-runner --nonnorm.
+name: csvw-nonnorm
+kind: csvw
+runner: "bin/linux-x86_64/csvw_runner --nonnorm"
+manifest: third_party/testing/csvw/tests/manifest-nonnorm.ttl
+score: "4 pass, 14 fail (out of 18)"
+
+triggers:
+  paths:
+    - bin/csvw-runner/**
+    - formal/fstar/CSVW.Conversion.fst
+    - formal/fstar/CSVW.Json.fst
+    - formal/fstar/RML.Sources.fst
+    - third_party/testing/csvw/**
+  excludes: []
+
+# Passing: dialect delimiter/TSV (test050) + 3 baseline.
+# Remaining 14 — the dialect layer, decoded in CSVW.Metadata but not yet
+# applied in the shared conversion:
+remaining:
+  - "trim modes true/start/end/false: test020, test021, test022, test262 — correct handling requires the RFC-4180 tokenizer (RML.Sources.csv_scan_acc) to record per-cell quoted-ness so quoted whitespace is NOT trimmed; applying trim unconditionally would regress quoted-cell fixtures"
+  - "commentPrefix (skip comment lines): test051 (header), test052 (rows)"
+  - "skipColumns: test054"
+  - "skipBlankRows: test055"
+  - "skipInitialSpace: test056"
+  - "dialect given as a URL reference: test057"
+  - "table dialect vs tablegroup dialect precedence: test058"
+  - "header=false with skipRows: test025"
+  - "no header line: test019"
+  - "same number of columns in each row (NegativeValidationTest): test091"
