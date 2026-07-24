@@ -4,6 +4,7 @@
   Parquet/Zstd stub: enabled (-ccopt -I/usr/include -cclib -L/usr/lib/x86_64-linux-gnu -lzstd)
   HACL* crypto stubs: enabled (Ed25519 + SHA-256, vendored C)
   Platform: linux-x86_64
+      …ocamlopt w3c_runner still running  (30s elapsed, 2 log lines)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -581,7 +582,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 (.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-  Built: bin/linux-x86_64/shacl_runner (14225104 bytes)
+  Built: bin/linux-x86_64/shacl_runner (14231120 bytes)
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
@@ -814,7 +815,7 @@ ocamlfind: [WARNING] Package `threads': Linking problems may arise because of th
 /usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
 (.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
   Built: bin/linux-x86_64/cottas_ondisk_smoketest (14175648 bytes)
-  [timing] phase=compile seconds=841 changed_modules=0
+  [timing] phase=compile seconds=871 changed_modules=0
 
 === Pipeline complete ===
 BUILD_STATUS=OK

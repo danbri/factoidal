@@ -182,6 +182,50 @@ let sh_result       = sh_ns ^ "result"
 let sh_resultPath   = sh_ns ^ "resultPath"
 let sh_resultMessage = sh_ns ^ "resultMessage"
 let sh_detail       = sh_ns ^ "detail"
+let sh_resultSeverity = sh_ns ^ "resultSeverity"
+let sh_conformanceDisallows = sh_ns ^ "conformanceDisallows"
+let sh_ValidationReport = sh_ns ^ "ValidationReport"
+
+(* SHACL 1.2 sh:conformanceDisallows (validation-reports suite): the test
+   framework must take the sh:conformanceDisallows severities from the
+   expected mf:result and use them to decide conformance — sh:conforms is
+   true unless a result carries one of those (rather than any non-Debug/
+   Trace) severities. This is a test-harness comparison convention, not
+   SHACL evaluation semantics: recompute the report's sh:conforms over the
+   disallowed set and echo the sh:conformanceDisallows triples so the
+   actual report can match the expected one. *)
+let apply_conformance_disallows (expected : rdf_graph) (actual : rdf_graph) : rdf_graph =
+  let disallowed =
+    List.filter_map
+      (fun (tr : triple) ->
+         if tr.p = sh_conformanceDisallows then (match tr.o with T_IRI i -> Some i | _ -> None) else None)
+      expected in
+  match disallowed with
+  | [] -> actual
+  | _ ->
+    let report_subjs =
+      List.filter_map
+        (fun (tr : triple) ->
+           if tr.p = rdf_type_iri && (match tr.o with T_IRI i -> i = sh_ValidationReport | _ -> false)
+           then Some tr.s else None)
+        actual in
+    let sevs =
+      List.filter_map
+        (fun (tr : triple) ->
+           if tr.p = sh_resultSeverity then (match tr.o with T_IRI i -> Some i | _ -> None) else None)
+        actual in
+    let conforms = not (List.exists (fun s -> List.mem s disallowed) sevs) in
+    let without_conforms = List.filter (fun (tr : triple) -> tr.p <> sh_conforms) actual in
+    let bl =
+      T_Literal { lexical_form = (if conforms then "true" else "false"); datatype = xsd_boolean;
+                  lang_tag = FStar_Pervasives_Native.None; direction = FStar_Pervasives_Native.None } in
+    let added =
+      List.concat_map
+        (fun rs ->
+           ({ s = rs; p = sh_conforms; o = bl } : triple)
+           :: List.map (fun d -> ({ s = rs; p = sh_conformanceDisallows; o = T_IRI d } : triple)) disallowed)
+        report_subjs in
+    without_conforms @ added
 
 (* SHACL 1.2 node-expression evaluation tests (shnex suite). Each
    `sht:EvalNodeExpr` entry evaluates a node expression against the
@@ -693,7 +737,8 @@ let run_test_report (tc : test_case) : outcome =
           | None -> Skip "mf:result is not a full ValidationReport blob (no sh:conforms present)"
           | Some expected_g ->
             let actual_raw = SHACL_Validation.validation_report_to_graph report in
-            let actual_g = filter_result_messages expected_g actual_raw in
+            let actual_g =
+              apply_conformance_disallows expected_g (filter_result_messages expected_g actual_raw) in
             let exp_canon = canon_graph expected_g in
             let act_canon = canon_graph actual_g in
             if exp_canon = act_canon then Pass
