@@ -309,9 +309,18 @@ let rec cv_title_compat (cols_meta : list csvw_column) (header : list string)
     // (test032's header " Start Date" vs title "Start Date").
     let ht0 = csvw_trim h in
     let here = (match c.col_titles with
-                | [] -> []
-                | ts -> if L.mem ht0 (L.map csvw_trim ts) then []
-                        else [ "column title incompatible with CSV header: " ^ ht0 ]) in
+                | _ :: _ ->
+                  // A titled column must intersect the header title.
+                  if L.mem ht0 (L.map csvw_trim c.col_titles) then []
+                  else [ "column title incompatible with CSV header: " ^ ht0 ]
+                | [] ->
+                  // A column with a name but no titles must have that name
+                  // equal the name the header title encodes to (test124:
+                  // metadata name "GID1" vs header "GID" -> name "GID").
+                  (match c.col_name with
+                   | Some n -> if n = csvw_encode_name ht0 then []
+                              else [ "column name incompatible with CSV header: " ^ ht0 ]
+                   | None -> [])) in
     here @ cv_title_compat mt ht
   | _, _ -> []
 
