@@ -146,6 +146,12 @@ let mf_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#"
 let p_to_rdf_test = csvt_ns ^ "ToRdfTest"
 let p_to_rdf_test_warn = csvt_ns ^ "ToRdfTestWithWarnings"
 let p_negative_rdf_test = csvt_ns ^ "NegativeRdfTest"
+let p_to_json_test = csvt_ns ^ "ToJsonTest"
+let p_to_json_test_warn = csvt_ns ^ "ToJsonTestWithWarnings"
+let p_negative_json_test = csvt_ns ^ "NegativeJsonTest"
+(* manifest-nonnorm reuses ToJsonTest for its positive entries and a lone
+   NegativeValidationTest for its single negative one. *)
+let p_negative_validation_test = csvt_ns ^ "NegativeValidationTest"
 let p_action = mf_ns ^ "action"
 let p_result = mf_ns ^ "result"
 let p_name = mf_ns ^ "name"
@@ -265,7 +271,12 @@ type test_entry = {
   te_http_link : string option;         (* csvt:httpLink literal value, if given *)
 }
 
-let load_entries (g : RDF_Graph_Executable.triple list) =
+(* [kinds] pairs each output-kind with the manifest rdf:type IRI that
+   marks it, so the same loader serves the rdf, json, and nonnorm
+   manifests (which use ToRdfTest / ToJsonTest / ToJsonTest+... type
+   IRIs over identical mf:action/mf:result/csvt:option structure). *)
+let load_entries_of (g : RDF_Graph_Executable.triple list)
+    (kinds : (test_kind * string) list) =
   let of_kind kind ty_iri =
     List.filter_map
       (fun subj_key ->
@@ -292,9 +303,19 @@ let load_entries (g : RDF_Graph_Executable.triple list) =
                   te_http_link = http_link })
       (subjects_with_type g ty_iri)
   in
-  of_kind Positive p_to_rdf_test
-  @ of_kind PositiveWithWarnings p_to_rdf_test_warn
-  @ of_kind Negative p_negative_rdf_test
+  List.concat_map (fun (k, ty) -> of_kind k ty) kinds
+
+let rdf_kinds =
+  [ (Positive, p_to_rdf_test);
+    (PositiveWithWarnings, p_to_rdf_test_warn);
+    (Negative, p_negative_rdf_test) ]
+
+let json_kinds =
+  [ (Positive, p_to_json_test);
+    (PositiveWithWarnings, p_to_json_test_warn);
+    (Negative, p_negative_json_test);
+    (* nonnorm's single negative entry *)
+    (Negative, p_negative_validation_test) ]
 
 (* Sort by the numeric suffix of the test's own IRI fragment (test001,
    test005, ... ) purely for readable, stable output ordering — the
@@ -492,7 +513,20 @@ let resolve_schema_refs (dir : string) (meta : CSVW_Metadata.csvw_metadata)
   | CSVW_Metadata.CSVW_TableGroup (ts, g) ->
     CSVW_Metadata.CSVW_TableGroup (List.map inline_one ts, g)
 
-let run_test (te : test_entry) =
+(* The per-test conversion context, shared by the csv2rdf and csv2json
+   backends: everything derived from metadata discovery / base-IRI
+   resolution / row reading is output-format-independent. *)
+type conv_ctx = {
+  cc_decode_failed : bool;
+  cc_minimal : bool;
+  cc_base_iri : string;
+  cc_doc_url : string option;
+  cc_default_lang : string option;
+  cc_grp_meta : CSVW_Metadata.csvw_group_meta;
+  cc_tables : (CSVW_Metadata.csvw_table * string * string list list) list;
+}
+
+let build_ctx (te : test_entry) : conv_ctx =
   let action_path = file_iri_to_path te.te_action in
   let test_dir = Filename.dirname action_path in
   let base_iri0 = web_base_of_dir (abs_path test_dir) in
@@ -582,16 +616,23 @@ let run_test (te : test_entry) =
       Some (web_base_of_dir (abs_path (Filename.dirname p)) ^ Filename.basename p)
     | None -> None
   in
+  { cc_decode_failed = decode_failed; cc_minimal = te.te_minimal;
+    cc_base_iri = base_iri; cc_doc_url = doc_url; cc_default_lang = default_lang;
+    cc_grp_meta = grp_meta; cc_tables = tables }
+
+(* ---- csv2rdf backend ---- *)
+let run_test (te : test_entry) =
+  let cc = build_ctx te in
   let triples =
-    if decode_failed then []
-    else if te.te_minimal then
-      CSVW_Conversion.csvw_convert_document_minimal grp_meta.CSVW_Metadata.grp_inherited base_iri tables
-    else CSVW_Conversion.csvw_convert_document_standard grp_meta (fs_of_opt default_lang) base_iri (fs_of_opt doc_url) tables
+    if cc.cc_decode_failed then []
+    else if cc.cc_minimal then
+      CSVW_Conversion.csvw_convert_document_minimal cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables
+    else CSVW_Conversion.csvw_convert_document_standard cc.cc_grp_meta (fs_of_opt cc.cc_default_lang) cc.cc_base_iri (fs_of_opt cc.cc_doc_url) cc.cc_tables
   in
   let got_ds : RDF_Graph_Executable.rdf_dataset = { RDF_Graph_Executable.ds_default = triples; ds_named = [] } in
   match te.te_kind with
   | Negative ->
-    if decode_failed || triples = [] then Pass
+    if cc.cc_decode_failed || triples = [] then Pass
     else
       Fail (Printf.sprintf "expected no output (NegativeRdfTest) but got:\n%s"
               (head (RDF_Canonical.canonicalize_to_nquads got_ds) 400))
@@ -603,7 +644,7 @@ let run_test (te : test_entry) =
        (match read_file result_path with
         | None -> Fail (Printf.sprintf "expected output file not found: %s" result_path)
         | Some exp_ttl ->
-          let exp_triples = Parser_Turtle.parse_turtle_with_base exp_ttl base_iri in
+          let exp_triples = Parser_Turtle.parse_turtle_with_base exp_ttl cc.cc_base_iri in
           let exp_ds : RDF_Graph_Executable.rdf_dataset = { RDF_Graph_Executable.ds_default = exp_triples; ds_named = [] } in
           let exp_canon = RDF_Canonical.canonicalize_to_nquads exp_ds in
           let got_canon = RDF_Canonical.canonicalize_to_nquads got_ds in
@@ -611,6 +652,64 @@ let run_test (te : test_entry) =
           else
             Fail (Printf.sprintf "canonical N-Quads differ\n      expected:\n%s      got:\n%s"
                     (head exp_canon 400) (head got_canon 400))))
+
+(* ---- csv2json backend ---- *)
+
+(* A compact debug rendering of a produced json_val — consumer-side
+   pretty-printing only (comparison itself is the F* structural jeq). *)
+let rec json_to_string (v : Parser_JSON.json_val) : string =
+  match v with
+  | Parser_JSON.JNull -> "null"
+  | Parser_JSON.JBool b -> if b then "true" else "false"
+  | Parser_JSON.JNumber n -> n
+  | Parser_JSON.JString s -> "\"" ^ s ^ "\""
+  | Parser_JSON.JArray xs ->
+    "[" ^ String.concat "," (List.map json_to_string xs) ^ "]"
+  | Parser_JSON.JObject kvs ->
+    "{" ^ String.concat "," (List.map (fun (k, x) -> "\"" ^ k ^ "\":" ^ json_to_string x) kvs) ^ "}"
+
+let convert_json (cc : conv_ctx) : Parser_JSON.json_val option =
+  if cc.cc_decode_failed then None
+  else Some
+    (if cc.cc_minimal
+     then CSVW_Json.cj_document_json_minimal cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables
+     else CSVW_Json.cj_document_json_standard cc.cc_grp_meta (fs_of_opt cc.cc_doc_url) cc.cc_base_iri cc.cc_tables)
+
+(* "No output" for a negative json test: decode failed, or the flat
+   minimal conversion yields no root objects at all (JArray []). *)
+let json_is_empty (cc : conv_ctx) : bool =
+  cc.cc_decode_failed
+  || (match CSVW_Json.cj_document_json_minimal cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables with
+      | Parser_JSON.JArray [] -> true
+      | _ -> false)
+
+let run_test_json (te : test_entry) =
+  let cc = build_ctx te in
+  match te.te_kind with
+  | Negative ->
+    if json_is_empty cc then Pass
+    else
+      (match convert_json cc with
+       | Some got -> Fail (Printf.sprintf "expected no output (Negative) but got:\n%s" (head (json_to_string got) 400))
+       | None -> Pass)
+  | Positive | PositiveWithWarnings ->
+    (match te.te_result with
+     | None -> Fail "no mf:result recorded for a positive test"
+     | Some result_iri ->
+       let result_path = file_iri_to_path result_iri in
+       (match read_file result_path with
+        | None -> Fail (Printf.sprintf "expected output file not found: %s" result_path)
+        | Some exp_json_text ->
+          (match opt_of_fs (Parser_JSON.parse_json exp_json_text) with
+           | None -> Fail (Printf.sprintf "could not parse expected json: %s" result_path)
+           | Some exp_json ->
+             (match convert_json cc with
+              | None -> Fail "conversion produced no output for a positive test"
+              | Some got_json ->
+                if JSONSchema_Validate.jeq got_json exp_json then Pass
+                else
+                  Fail (Printf.sprintf "json differs\n      expected:\n%s\n      got:\n%s"
+                          (head (json_to_string exp_json) 4000) (head (json_to_string got_json) 4000))))))
 
 (* ------------------------------------------------------------------ *)
 (* Suite run + reporting. *)
@@ -635,7 +734,9 @@ let print_help () =
     "CSVW (CSV on the Web) csv2rdf test-suite runner — Stage 10 of the CSVW program.\n\
      \n\
      Usage:\n\
-     \  ./csvw_runner                Run the csv2rdf manifest\n\
+     \  ./csvw_runner                Run the csv2rdf manifest (manifest-rdf.ttl)\n\
+     \  ./csvw_runner --json         Run the csv2json manifest (manifest-json.ttl)\n\
+     \  ./csvw_runner --nonnorm      Run the non-normative manifest (manifest-nonnorm.ttl)\n\
      \  ./csvw_runner --filter P     Only run test IDs whose local name starts with P\n\
      \  ./csvw_runner --list         List parsed test entries (no execution)\n\
      \  ./csvw_runner -v|--verbose   Show expected-vs-got diff on FAIL\n\
@@ -643,30 +744,41 @@ let print_help () =
      \n\
      See docs/designissues/2026-07-05-csvw-program-plan.md for scope/gaps.\n"
 
+type run_mode = Rdf | Json | Nonnorm
+
 let () =
   let args = Array.to_list Sys.argv |> List.tl in
   let verbose = ref false in
   let list_only = ref false in
   let filter = ref None in
+  let mode = ref Rdf in
   let rec loop = function
     | [] -> ()
     | ("-v" | "--verbose") :: rest -> verbose := true; loop rest
     | ("--help" | "-h") :: _ -> print_help (); exit 0
     | "--list" :: rest -> list_only := true; loop rest
+    | "--json" :: rest -> mode := Json; loop rest
+    | "--nonnorm" :: rest -> mode := Nonnorm; loop rest
     | "--filter" :: p :: rest -> filter := Some p; loop rest
     | _ -> Printf.eprintf "csvw_runner: unexpected arguments; try --help\n"; exit 2
   in
   loop args;
   let test_dir = default_dir (tests_dir_candidates ()) in
-  let manifest_path = Filename.concat test_dir "manifest-rdf.ttl" in
-  Printf.printf "=== CSVW csv2rdf Test Runner ===\n";
+  let manifest_name, kinds, runner, banner, suite_label =
+    match !mode with
+    | Rdf     -> ("manifest-rdf.ttl", rdf_kinds, run_test, "csv2rdf", "csv2rdf")
+    | Json    -> ("manifest-json.ttl", json_kinds, run_test_json, "csv2json", "csv2json")
+    | Nonnorm -> ("manifest-nonnorm.ttl", json_kinds, run_test_json, "csv2json (non-normative)", "nonnorm")
+  in
+  let manifest_path = Filename.concat test_dir manifest_name in
+  Printf.printf "=== CSVW %s Test Runner ===\n" banner;
   Printf.printf "manifest: %s\n\n" manifest_path;
   match read_file manifest_path with
   | None -> Printf.eprintf "csvw_runner: cannot read manifest at %s\n" manifest_path; exit 2
   | Some manifest_ttl ->
-    let manifest_base = "file://" ^ abs_path test_dir ^ "/manifest-rdf.ttl" in
+    let manifest_base = "file://" ^ abs_path test_dir ^ "/" ^ manifest_name in
     let g = Parser_Turtle.parse_turtle_with_base manifest_ttl manifest_base in
-    let all_entries = load_entries g in
+    let all_entries = load_entries_of g kinds in
     let entries =
       List.filter (fun te -> matches_filter !filter te.te_id) all_entries
       |> List.sort (fun a b -> compare (test_number a) (test_number b))
@@ -682,7 +794,7 @@ let () =
     let fail_buckets = Hashtbl.create 8 in
     List.iter
       (fun te ->
-         match run_test te with
+         match runner te with
          | Pass -> incr pass; Printf.printf "PASS %-10s %s\n" (kind_label te.te_kind) te.te_id
          | Fail msg ->
            incr fail;
@@ -693,7 +805,7 @@ let () =
          | Skip _ -> ())
       entries;
     Printf.printf "\n========================================\n";
-    Printf.printf "csv2rdf: %d pass, %d fail (out of %d)\n" !pass !fail (List.length entries);
+    Printf.printf "%s: %d pass, %d fail (out of %d)\n" suite_label !pass !fail (List.length entries);
     Hashtbl.iter (fun k v -> Printf.printf "  fail bucket %-24s %d\n" k v) fail_buckets;
     Printf.printf "========================================\n";
     if !fail > 0 then exit 1

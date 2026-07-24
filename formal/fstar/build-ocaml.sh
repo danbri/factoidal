@@ -426,7 +426,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     DID.Key.fst
     VC.DataIntegrity.fst
     RML.Mapping.fst RML.Sources.fst RML.Eval.fst
-    CSVW.Metadata.fst CSVW.URITemplate.fst CSVW.Formats.fst CSVW.Conversion.fst
+    CSVW.Metadata.fst CSVW.URITemplate.fst CSVW.Formats.fst CSVW.Conversion.fst CSVW.Json.fst
     SPARQL.Eval.TimeBudget.fst
     SPARQL.Eval.Limits.fst
     SPARQL.HTTP.Response.fst
@@ -868,7 +868,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fstar_hacl_crypto.ml \
     VC_DataIntegrity.ml \
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml \
-    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Formats.ml CSVW_Conversion.ml \
+    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Formats.ml CSVW_Conversion.ml CSVW_Json.ml \
     RDF_Store_Columnar_DeltaMerge.ml \
     SPARQL_Plan_Streamable.ml RDF_Store_Capabilities.ml RDF_Store_Capabilities_Cottas.ml RDF_Store_Capabilities_Delta.ml \
     RML_VirtualSource.ml \
@@ -1942,7 +1942,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XSD_IEEE754.ml RDF_Entailment_Regime.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml OWL2_SyntaxDL.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml SHACL_NodeExpr.ml SHACL_Rules.ml
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
-    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Formats.ml CSVW_Conversion.ml
+    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Formats.ml CSVW_Conversion.ml CSVW_Json.ml
     VC_Context.ml
     VC_Multibase.ml
     VC_Credential.ml

@@ -1,0 +1,25 @@
+name: CSVW csv2json
+spec: https://www.w3.org/TR/csv2json/
+runner: bin/linux-x86_64/csvw_runner
+runner_args: ["--json"]
+manifest: third_party/testing/csvw/tests/manifest-json.ttl
+log_path: formal/fstar/ocaml-output/csvw_json_results.log
+result_path: docs/test-results/by-suite/csvw-csv2json.json
+domain: RDF
+foundational: false
+
+# csv2json over the vendored W3C corpus (ToJson / ToJsonWithWarnings /
+# NegativeJson buckets). The JSON serializer (formal/fstar/CSVW.Json.fst)
+# reuses the same annotated-table machinery as csv2rdf and re-serializes
+# it per the "Generating JSON from Tabular Data on the Web" Recommendation:
+# datatype -> JSON primitive mapping, propertyUrl compaction, aboutUrl
+# grouping / @id, valueUrl->aboutUrl nesting, and the JSON-LD-to-JSON
+# transform for notes and non-core annotations.
+triggers:
+  paths:
+    - bin/csvw-runner/**
+    - formal/fstar/CSVW.Json.fst
+    - third_party/testing/csvw/**
+  excludes: []
+
+remaining: []
