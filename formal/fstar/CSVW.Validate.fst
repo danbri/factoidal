@@ -296,6 +296,25 @@ let rec cv_check_required
     here @ cv_check_required mt dt
   | _, _ -> []
 
+// Title compatibility (tabular-data-model 5.4.2): a declared column that
+// HAS titles must have a non-empty CASE-SENSITIVE intersection with the
+// CSV header cell at the same index (test147: metadata "gid" vs header
+// "GID" is incompatible; test148 mismatched language likewise). A column
+// with no titles is compatible (name-based).
+let rec cv_title_compat (cols_meta : list csvw_column) (header : list string)
+  : Tot (list string) (decreases cols_meta) =
+  match cols_meta, header with
+  | c :: mt, h :: ht ->
+    // The default dialect trims header cells, so compare trimmed forms
+    // (test032's header " Start Date" vs title "Start Date").
+    let ht0 = csvw_trim h in
+    let here = (match c.col_titles with
+                | [] -> []
+                | ts -> if L.mem ht0 (L.map csvw_trim ts) then []
+                        else [ "column title incompatible with CSV header: " ^ ht0 ]) in
+    here @ cv_title_compat mt ht
+  | _, _ -> []
+
 let cv_check_data_table
     (grp_inherited : csvw_inherited_props) (base_iri : string)
     (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
@@ -330,7 +349,11 @@ let cv_check_data_table
   // the (non-virtual) per-column data lists — only meaningful when the
   // counts already match (compat empty).
   let req = if compat = [] then cv_check_required declared_nonvirt cols else [] in
-  cell_errs @ cv_check_primary_key cols pk @ compat @ req
+  // Title compatibility only when a header row is present and the column
+  // counts already match (so index alignment is sound).
+  let title_compat =
+    if compat = [] && Cons? header_cells then cv_title_compat declared_nonvirt header_cells else [] in
+  cell_errs @ cv_check_primary_key cols pk @ compat @ req @ title_compat
 
 let cv_check_data
     (grp_inherited : csvw_inherited_props) (base_iri : string)
