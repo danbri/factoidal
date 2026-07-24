@@ -1043,3 +1043,19 @@ let csvw_format_convert (base_name : Prims.string)
                then FO_Valid txt
                else FO_Invalid)
         else FO_NoFormat
+let csvw_string_format_ok (base_name : Prims.string)
+  (format_str : Prims.string FStar_Pervasives_Native.option)
+  (txt : Prims.string) : Prims.bool=
+  if
+    (((base_name = "boolean") || (is_numeric_base base_name)) ||
+       (is_date_base base_name))
+      || (is_duration_base base_name)
+  then true
+  else
+    (match format_str with
+     | FStar_Pervasives_Native.Some fmt ->
+         (match Regex_XSDPattern.parse_xsd_pattern fmt with
+          | FStar_Pervasives_Native.Some r ->
+              Regex_Exec.matches_norm r (Regex_XSDPattern.cps_of_string txt)
+          | FStar_Pervasives_Native.None -> true)
+     | FStar_Pervasives_Native.None -> true)

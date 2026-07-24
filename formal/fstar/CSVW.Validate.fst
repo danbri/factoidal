@@ -230,6 +230,9 @@ let cv_cell_valid (spec : csvw_col_spec) (txt : string) : bool =
     else
       let base_name = csvw_dt_base_name_of spec.cs_datatype in
       let (fmt_str, pat, grp, dec) = csvw_dt_format_facets spec.cs_datatype in
+      // A string-base `format` is a regex the value must match (test154);
+      // csvw_format_convert's else-branch does not apply it, so gate here.
+      csvw_string_format_ok base_name fmt_str txt &&
       (match csvw_format_convert base_name fmt_str pat grp dec txt with
        | FO_Invalid -> false
        | FO_Valid canonical ->

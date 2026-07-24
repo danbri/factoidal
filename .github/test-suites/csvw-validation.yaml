@@ -22,7 +22,6 @@ triggers:
     - third_party/testing/csvw/**
   excludes: []
 
-# Remaining (280 pass, 2 fail out of 282), grouped by cause:
+# Remaining (281 pass, 1 fail out of 282), grouped by cause:
 remaining:
-  - "test154: string-datatype `format` regex-pattern validation — needs a regex matcher wired into CSVW.Validate cell checks"
   - "test308: a non-built-in absolute-URL datatype STRING expected as an error, but test238 (WarningValidationTest, expects conformance) has an equivalent non-built-in absolute-URL datatype string `http://example.org/datatype` — the two differ only in the URL value, so no value-agnostic rule can fail test308 without regressing test238"

@@ -765,3 +765,22 @@ let csvw_format_convert
       else FO_Invalid
   end
   else FO_NoFormat
+
+// tabular-metadata: "If the datatype base is not numeric, boolean, a
+// date/time type, or a duration type, the datatype format annotation
+// provides a regular expression for the string values" (test154). The
+// value MUST match the whole pattern. Kept separate from
+// csvw_format_convert (whose else-branch returns FO_NoFormat) so the
+// csv2rdf/csv2json conversion behaviour is unchanged; only the VALIDATION
+// path consults this. An unparseable pattern never rejects.
+let csvw_string_format_ok (base_name : string) (format_str : option string) (txt : string) : bool =
+  if base_name = "boolean" || is_numeric_base base_name
+     || is_date_base base_name || is_duration_base base_name
+  then true
+  else
+    match format_str with
+    | Some fmt ->
+      (match RXP.parse_xsd_pattern fmt with
+       | Some r -> RXE.matches_norm r (RXP.cps_of_string txt)
+       | None -> true)
+    | None -> true
