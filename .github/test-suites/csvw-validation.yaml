@@ -22,13 +22,12 @@ triggers:
     - third_party/testing/csvw/**
   excludes: []
 
-# Remaining (266 pass, 16 fail out of 282), grouped by cause:
+# Remaining (269 pass, 13 fail out of 282), grouped by cause:
 remaining:
   - "foreign-key referential integrity (cross-table): test257, test258"
-  - "schema compatibility between metadata columns and the CSV header (count, case-sensitive and language-sensitive title intersection): test124, test127, test147, test148, test278"
-  - "required-column empty/null-cell checks (needs the column `required` facet propagated into the column spec): test125, test126"
+  - "schema compatibility on title intersection (case-sensitive and language-sensitive), beyond the non-virtual column-count check already implemented: test124, test127, test147, test148"
   - "referenced-schema roles example: test034, test035"
   - "multi-column primaryKey uniqueness (only single-column is checked): test234"
   - "string-datatype format-pattern mismatch: test154"
-  - "an absolute-URL datatype string treated as an error: test308 (removed because test150/test238 show non-builtin / absolute-URL datatype strings are WARNINGS, not errors)"
+  - "an absolute-URL datatype string treated as an error: test308 (test150/test238 show non-builtin / absolute-URL datatype strings are WARNINGS, not errors)"
   - "two WarningValidationTest fixtures whose bare-number members the lenient metadata decoder rejects rather than degrading gracefully: test094, test096"

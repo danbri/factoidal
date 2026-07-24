@@ -273,6 +273,29 @@ let cv_check_primary_key (cols : list (csvw_col_spec & list string)) (pk : optio
      | Some (_, vals) -> if cv_has_dup [] vals then [ "duplicate primaryKey value in column " ^ name ] else []
      | None -> [])
 
+let cv_col_is_virtual (c : csvw_column) : bool = match c.col_virtual with Some b -> b | None -> false
+let cv_col_required (c : csvw_column) : bool = match c.col_required with Some b -> b | None -> false
+
+// A required column MUST have a non-null value in every data row
+// (tabular-data-model 6.4.9): an empty cell, or one matching the column's
+// null value, is an error (test125/126).
+let rec cv_required_cells (spec : csvw_col_spec) (vals : list string) : Tot (list string) (decreases vals) =
+  match vals with
+  | [] -> []
+  | v :: tl ->
+    let is_null = v = "" || (match spec.cs_null with Some n -> v = n | None -> false) in
+    let here = if is_null then [ "required column " ^ spec.cs_name ^ " has a null/empty cell" ] else [] in
+    here @ cv_required_cells spec tl
+
+let rec cv_check_required
+    (cols_meta : list csvw_column) (cols_data : list (csvw_col_spec & list string))
+  : Tot (list string) (decreases cols_meta) =
+  match cols_meta, cols_data with
+  | c :: mt, (spec, vals) :: dt ->
+    let here = if cv_col_required c then cv_required_cells spec vals else [] in
+    here @ cv_check_required mt dt
+  | _, _ -> []
+
 let cv_check_data_table
     (grp_inherited : csvw_inherited_props) (base_iri : string)
     (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
@@ -291,7 +314,23 @@ let cv_check_data_table
   let cols = cv_transpose phys_specs data_rows in
   let cell_errs = L.collect (fun (p : (csvw_col_spec & list string)) -> cv_check_cells (fst p) (snd p)) cols in
   let pk = (match tbl.tbl_table_schema with Some ts -> ts.ts_primary_key | None -> None) in
-  cell_errs @ cv_check_primary_key cols pk
+  // Schema / CSV compatibility (tabular-data-model 5.4.2 / test278): an
+  // explicit schema's non-virtual column count MUST equal the data width.
+  let declared = (match tbl.tbl_table_schema with Some ts -> ts.ts_columns | None -> []) in
+  let declared_nonvirt = L.filter (fun (c : csvw_column) -> not (cv_col_is_virtual c)) declared in
+  let actual_width =
+    if Cons? header_cells then L.length header_cells
+    else (match data_rows with r :: _ -> L.length r | [] -> 0) in
+  let compat =
+    if Cons? declared_nonvirt && actual_width > 0 && L.length declared_nonvirt <> actual_width
+    then [ "schema declares " ^ string_of_int (L.length declared_nonvirt)
+           ^ " non-virtual columns but the data has " ^ string_of_int actual_width ]
+    else [] in
+  // Required-column checks align the non-virtual metadata columns with
+  // the (non-virtual) per-column data lists — only meaningful when the
+  // counts already match (compat empty).
+  let req = if compat = [] then cv_check_required declared_nonvirt cols else [] in
+  cell_errs @ cv_check_primary_key cols pk @ compat @ req
 
 let cv_check_data
     (grp_inherited : csvw_inherited_props) (base_iri : string)
