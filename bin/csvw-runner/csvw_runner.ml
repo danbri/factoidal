@@ -736,14 +736,63 @@ let run_test_json (te : test_entry) =
    fires. The two WarningValidationTest fixtures whose bare-number members
    the lenient decoder rejects (test094/096) are accepted false-positives
    until the decoder degrades those gracefully. *)
+let raw_table_list (root : Parser_JSON.json_val) : Parser_JSON.json_val list =
+  match root with
+  | Parser_JSON.JObject fs ->
+    (match List.assoc_opt "tables" fs with
+     | Some (Parser_JSON.JArray ts) -> ts
+     | _ -> [root])
+  | _ -> [root]
+
+(* Collect the tableSchema-by-reference URLs from a raw metadata JSON. *)
+let schema_ref_urls (root : Parser_JSON.json_val) : string list =
+  List.filter_map
+    (fun t -> match t with
+       | Parser_JSON.JObject fs ->
+         (match List.assoc_opt "tableSchema" fs with
+          | Some (Parser_JSON.JString u) -> Some u
+          | _ -> None)
+       | _ -> None)
+    (raw_table_list root)
+
+(* Map schema basename -> table url, for resolving foreignKey
+   schemaReference (test034/035). *)
+let schemaref_map (root : Parser_JSON.json_val) : (string * string) list =
+  List.filter_map
+    (fun t -> match t with
+       | Parser_JSON.JObject fs ->
+         (match List.assoc_opt "tableSchema" fs, List.assoc_opt "url" fs with
+          | Some (Parser_JSON.JString su), Some (Parser_JSON.JString tu) ->
+            Some (Filename.basename su, tu)
+          | _ -> None)
+       | _ -> None)
+    (raw_table_list root)
+
 let validation_errors (cc : conv_ctx) : string list =
   let decode_errs = if cc.cc_decode_failed then [ "metadata failed to decode" ] else [] in
-  let root_opt =
+  let root_opt0 =
     match cc.cc_metadata_path with
     | Some p -> (match read_file p with
                  | Some content -> opt_of_fs (Parser_JSON.parse_json content)
                  | None -> None)
     | None -> None in
+  (* Inline referenced table schemas (test034/035): read each tableSchema
+     URL relative to the metadata document, parse it, and substitute it in
+     so the F* FK/structural checks see the external schema's members. *)
+  let root_opt =
+    match root_opt0, cc.cc_metadata_path with
+    | Some root, Some mp ->
+      let dir = Filename.dirname mp in
+      let schemas =
+        List.filter_map
+          (fun url ->
+             match read_file (Filename.concat dir (strip_query_frag url)) with
+             | Some c -> (match opt_of_fs (Parser_JSON.parse_json c) with
+                          | Some sj -> Some (url, sj) | None -> None)
+             | None -> None)
+          (schema_ref_urls root) in
+      Some (match schemas with [] -> root | _ -> CSVW_Validate.cv_inline_schema_refs root schemas)
+    | _ -> root_opt0 in
   let meta_errs =
     match cc.cc_metadata_path with
     | Some _ -> (match root_opt with
@@ -752,8 +801,11 @@ let validation_errors (cc : conv_ctx) : string list =
     | None -> [] in
   let dl = match cc.cc_default_lang with Some l -> l | None -> "und" in
   let root = match root_opt with Some r -> r | None -> Parser_JSON.JNull in
+  (* schemaReference map is built from the PRE-inline root (which still has
+     the tableSchema URL strings). *)
+  let sref_map = match root_opt0 with Some r -> schemaref_map r | None -> [] in
   let data_errs =
-    CSVW_Validate.cv_check_data root dl cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables in
+    CSVW_Validate.cv_check_data root sref_map dl cc.cc_grp_meta.CSVW_Metadata.grp_inherited cc.cc_base_iri cc.cc_tables in
   decode_errs @ meta_errs @ data_errs
 
 let run_test_validate (te : test_entry) =

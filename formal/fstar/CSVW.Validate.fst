@@ -47,6 +47,12 @@ let cv_starts_with (s pfx : string) : bool =
 
 let cv_is_object (v : json_val) : bool = match v with JObject _ -> true | _ -> false
 
+// Replace (or add) a field in a JSON object.
+let cv_set_field (k : string) (nv : json_val) (obj : json_val) : json_val =
+  match obj with
+  | JObject fs -> JObject ((k, nv) :: L.filter (fun (kv : (string & json_val)) -> fst kv <> k) fs)
+  | _ -> obj
+
 let cv_field (k : string) (v : json_val) : option json_val = json_get_field k v
 
 let cv_has (k : string) (v : json_val) : bool = Some? (cv_field k v)
@@ -457,9 +463,44 @@ let cv_col_ref_names (v : option json_val) : list string =
   | Some (JArray xs) -> L.choose (fun (x : json_val) -> match x with JString s -> Some s | _ -> None) xs
   | _ -> []
 
+// Inline referenced table schemas (tableSchema given as a URL string)
+// into the raw metadata JSON, using a runner-supplied (url -> schema
+// JSON) map, so downstream FK reading (test034/035) sees the foreignKeys
+// that live in the external schema files. The runner does the file I/O
+// (rule #11); this only substitutes into the tree.
+let rec cv_assoc_j (k : string) (xs : list (string & json_val)) : option json_val =
+  match xs with
+  | [] -> None
+  | (k2, v) :: tl -> if k2 = k then Some v else cv_assoc_j k tl
+
+let cv_inline_one_table (schemas : list (string & json_val)) (t : json_val) : json_val =
+  match cv_field "tableSchema" t with
+  | Some (JString url) -> (match cv_assoc_j url schemas with
+                           | Some sj -> cv_set_field "tableSchema" sj t
+                           | None -> t)
+  | _ -> t
+
+let cv_inline_schema_refs (root : json_val) (schemas : list (string & json_val)) : json_val =
+  match cv_field "tables" root with
+  | Some (JArray ts) -> cv_set_field "tables" (JArray (L.map (cv_inline_one_table schemas) ts)) root
+  | _ -> cv_inline_one_table schemas root
+
+// Last path segment of a slash-separated URL.
+let cv_basename (s : string) : string =
+  match L.rev (Str.split ['/'] s) with h :: _ -> h | [] -> s
+
+let rec cv_assoc_s (k : string) (xs : list (string & string)) : option string =
+  match xs with
+  | [] -> None
+  | (k2, v) :: tl -> if k2 = k then Some v else cv_assoc_s k tl
+
 // (local columns, referenced resource url, referenced columns) per
-// foreignKey of a table's raw JSON.
-let cv_read_fks (tblj : json_val) : list (list string & string & list string) =
+// foreignKey of a table's raw JSON. A reference is either by `resource`
+// (a table url, test257/258) or by `schemaReference` (a schema url whose
+// table is found via `schemaref_map`: schema basename -> table url,
+// test034/035).
+let cv_read_fks (schemaref_map : list (string & string)) (tblj : json_val)
+  : list (list string & string & list string) =
   match cv_field "tableSchema" tblj with
   | Some ts ->
     (match cv_field "foreignKeys" ts with
@@ -469,9 +510,14 @@ let cv_read_fks (tblj : json_val) : list (list string & string & list string) =
             let local = cv_col_ref_names (cv_field "columnReference" fk) in
             match cv_field "reference" fk with
             | Some refj ->
-              (match json_get_string "resource" refj with
-               | Some res -> Some (local, res, cv_col_ref_names (cv_field "columnReference" refj))
-               | None -> None)
+              let refcols = cv_col_ref_names (cv_field "columnReference" refj) in
+              let res =
+                (match json_get_string "resource" refj with
+                 | Some r -> Some r
+                 | None -> (match json_get_string "schemaReference" refj with
+                            | Some sr -> cv_assoc_s (cv_basename sr) schemaref_map
+                            | None -> None)) in
+              (match res with Some r -> Some (local, r, refcols) | None -> None)
             | None -> None)
          fks
      | _ -> [])
@@ -518,14 +564,15 @@ let cv_find_table_by_resource
   | None -> None
 
 let cv_check_table_fks
-    (root : json_val) (grp_inherited : csvw_inherited_props) (base_iri : string)
+    (root : json_val) (schemaref_map : list (string & string))
+    (grp_inherited : csvw_inherited_props) (base_iri : string)
     (all_tables : list (csvw_table & string & list (list string)))
     (tbl : csvw_table) (fallback_url : string) (rows : list (list string))
   : list string =
   match cv_find_raw_table root tbl.tbl_url with
   | None -> []
   | Some tj ->
-    let fks = cv_read_fks tj in
+    let fks = cv_read_fks schemaref_map tj in
     let local_cols = cv_table_cols grp_inherited base_iri fallback_url tbl rows in
     L.collect
       (fun (fk : (list string & string & list string)) ->
@@ -548,7 +595,8 @@ let cv_check_table_fks
       fks
 
 let cv_check_data
-    (root : json_val) (default_lang : string) (grp_inherited : csvw_inherited_props) (base_iri : string)
+    (root : json_val) (schemaref_map : list (string & string)) (default_lang : string)
+    (grp_inherited : csvw_inherited_props) (base_iri : string)
     (tables_with_rows : list (csvw_table & string & list (list string)))
   : list string =
   let per_table =
@@ -561,6 +609,6 @@ let cv_check_data
     L.collect (fun (t : (csvw_table & string & list (list string))) ->
                  let (tbl, fallback_url, rows) = t in
                  if csvw_table_suppressed tbl then []
-                 else cv_check_table_fks root grp_inherited base_iri tables_with_rows tbl fallback_url rows)
+                 else cv_check_table_fks root schemaref_map grp_inherited base_iri tables_with_rows tbl fallback_url rows)
               tables_with_rows in
   per_table @ fk_errs

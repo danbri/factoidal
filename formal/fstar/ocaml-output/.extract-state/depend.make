@@ -4437,10 +4437,10 @@ FStar_NormSteps.krml: \
 
 CSVW.Validate.fst.checked: \
 	CSVW.Validate.fst \
-	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	XSD.Datatypes.fst.checked \
-	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	Parser.JSON.fst.checked \
 	CSVW.Formats.fst.checked \
 	CSVW.Conversion.fst.checked \
