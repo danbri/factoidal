@@ -1,0 +1,117 @@
+=== RML Test Runner ===
+
+=== rml-core: /home/runner/work/factoidal/factoidal/third_party/testing/rml-modules/rml-core/test-cases (76 test rows) ===
+PASS RMLTC0000-JSON
+PASS RMLTC0001a-JSON
+PASS RMLTC0001b-JSON
+PASS RMLTC0002a-JSON
+PASS RMLTC0002b-JSON
+PASS RMLTC0002e-JSON
+PASS RMLTC0002g-JSON
+PASS RMLTC0003c-JSON
+PASS RMLTC0004a-JSON
+PASS RMLTC0004b-JSON
+PASS RMLTC0005a-JSON
+PASS RMLTC0006a-JSON
+PASS RMLTC0007a-JSON
+PASS RMLTC0007b-JSON
+PASS RMLTC0007c-JSON
+PASS RMLTC0007d-JSON
+PASS RMLTC0007e-JSON
+PASS RMLTC0007f-JSON
+PASS RMLTC0007g-JSON
+PASS RMLTC0007h-JSON
+PASS RMLTC0008a-JSON
+PASS RMLTC0008b-JSON
+PASS RMLTC0008c-JSON
+PASS RMLTC0009a-JSON
+PASS RMLTC0009b-JSON
+PASS RMLTC0010a-JSON
+PASS RMLTC0010b-JSON
+PASS RMLTC0010c-JSON
+PASS RMLTC0011b-JSON
+PASS RMLTC0012a-JSON
+PASS RMLTC0012b-JSON
+PASS RMLTC0012c-JSON
+PASS RMLTC0012d-JSON
+PASS RMLTC0012e-JSON
+PASS RMLTC0013a-JSON
+PASS RMLTC0015a-JSON
+PASS RMLTC0015b-JSON
+PASS RMLTC0019a-JSON
+PASS RMLTC0019b-JSON
+PASS RMLTC0020a-JSON
+PASS RMLTC0021a-JSON
+PASS RMLTC0022a-JSON
+PASS RMLTC0022b-JSON
+PASS RMLTC0022c-JSON
+PASS RMLTC0022d-JSON
+PASS RMLTC0022e-JSON
+PASS RMLTC0023a-JSON
+PASS RMLTC0023b-JSON
+PASS RMLTC0023c-JSON
+PASS RMLTC0023d-JSON
+PASS RMLTC0023e-JSON
+PASS RMLTC0023f-JSON
+PASS RMLTC0024a-JSON
+PASS RMLTC0025a-JSON
+PASS RMLTC0025b-JSON
+PASS RMLTC0025c-JSON
+PASS RMLTC0026a-JSON
+PASS RMLTC0026b-JSON
+PASS RMLTC0026c-JSON
+PASS RMLTC0026d-JSON
+PASS RMLTC0027a-JSON
+PASS RMLTC0027b-JSON
+PASS RMLTC0027c-JSON
+PASS RMLTC0028a-JSON
+PASS RMLTC0028b-JSON
+PASS RMLTC0028c-JSON
+PASS RMLTC0029a-JSON
+PASS RMLTC0030a-JSON
+PASS RMLTC0030b-JSON
+PASS RMLTC0030c-JSON
+PASS RMLTC0030d-JSON
+PASS RMLTC0030e-JSON
+PASS RMLTC0030f-JSON
+PASS RMLTC0031a-JSON
+PASS RMLTC0031b-JSON
+PASS RMLTC0031c-JSON
+rml-core: 76 pass, 0 fail, 0 skip (out of 76)
+
+=== rml-io: /home/runner/work/factoidal/factoidal/third_party/testing/rml-modules/rml-io/test-cases (73 test rows) ===
+PASS RMLSTC0011a
+PASS RMLSTC0004c
+PASS RMLSTC0010a
+PASS RMLSTC0002a
+PASS RMLSTC0004b
+PASS RMLSTC0007b
+PASS RMLSTC0011d
+PASS RMLSTC0010b
+PASS RMLSTC0008a
+PASS RMLSTC0011e
+PASS RMLSTC0007a
+PASS RMLSTC0001a
+PASS RMLSTC0008b
+PASS RMLSTC0011c
+FAIL RMLSTC0009a — expected empty dataset (error=true) but got:
+<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33" .
+<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
+<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34" .
+<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
+<http://example.org/2> <http://xmlns.com/foaf/0.1/age> "35" .
+<http://example.org/2> <http://xmlns.com/foaf/0.1/name> "Joey Tribb …(truncated)
+PASS RMLSTC0011b
+PASS RMLSTC0006b
+PASS RMLSTC0004a
+rml-io: 17 pass, 1 fail, 55 skip (out of 73)
+
+========================================
+rml-core: 76 pass, 0 fail (out of 76)
+rml-io:   17 pass, 1 fail, 55 skip (out of 73)
+rml-star: not run — needs an RDF-star quoted-triple term; the core
+          rdf_term algebra (RDF.Term.fsti) has only T_IRI/T_BNode/
+          T_Literal, so << s p o >> cannot be represented yet.
+rml-fnml: not run — needs an FnO/GREL function registry + parameter
+          binding model (function execution), not yet implemented.
+========================================

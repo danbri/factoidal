@@ -1,0 +1,16 @@
+=== did:key resolution vector runner ===
+Vector dir: /home/runner/work/factoidal/factoidal/tests/did
+
+  PASS: spec-canonical-z6MkhaXg
+  PASS: spec-test-vectors-z6MkiTBz
+  PASS: vendored-spruce-z6MkpTHR
+
+  PASS: reject — no did:key: prefix
+  PASS: reject — empty string
+  PASS: reject — did:key: with empty multibase value
+  PASS: reject — multibase not 'z' (base64url 'm')
+  PASS: reject — wrong multicodec (secp256k1)
+
+========================================
+did:key: 8 pass, 0 fail (out of 8)
+========================================

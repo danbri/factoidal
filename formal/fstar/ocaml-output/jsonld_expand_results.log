@@ -1,0 +1,784 @@
+  [1/385] #t0001 ok
+  [2/385] #t0002 ok
+  [3/385] #t0003 ok
+  [4/385] #t0004 ok
+  [5/385] #t0005 ok
+  [6/385] #t0006 ok
+  [7/385] #t0007 ok
+  [8/385] #t0008 ok
+  [9/385] #t0009 ok
+  [10/385] #t0010 ok
+  [11/385] #t0011 ok
+  [12/385] #t0012 ok
+  [13/385] #t0013 ok
+  [14/385] #t0014 ok
+  [15/385] #t0015 ok
+  [16/385] #t0016 ok
+  [17/385] #t0017 ok
+  [18/385] #t0018 ok
+  [19/385] #t0019 ok
+  [20/385] #t0020 ok
+  [21/385] #t0021 ok
+  [22/385] #t0022 ok
+  [23/385] #t0023 ok
+  [24/385] #t0024 ok
+  [25/385] #t0025 ok
+  [26/385] #t0026 ok
+  [27/385] #t0027 ok
+  [28/385] #t0028 ok
+  [29/385] #t0029 ok
+  [30/385] #t0030 ok
+  [31/385] #t0031 ok
+  [32/385] #t0032 ok
+  [33/385] #t0033 ok
+  [34/385] #t0034 ok
+  [35/385] #t0035 ok
+  [36/385] #t0036 ok
+  [37/385] #t0037 ok
+  [38/385] #t0038 ok
+  [39/385] #t0039 ok
+  [40/385] #t0040 ok
+  [41/385] #t0041 ok
+  [42/385] #t0042 ok
+  [43/385] #t0043 ok
+  [44/385] #t0044 ok
+  [45/385] #t0045 ok
+  [46/385] #t0046 ok
+  [47/385] #t0047 ok
+  [48/385] #t0048 ok
+  [49/385] #t0049 ok
+  [50/385] #t0050 ok
+  [51/385] #t0051 ok
+  [52/385] #t0052 ok
+  [53/385] #t0053 ok
+  [54/385] #t0054 ok
+  [55/385] #t0055 ok
+  [56/385] #t0056 ok
+  [57/385] #t0057 ok
+  [58/385] #t0058 ok
+  [59/385] #t0059 ok
+  [60/385] #t0060 ok
+  [61/385] #t0061 ok
+  [62/385] #t0062 ok
+  [63/385] #t0063 ok
+  [64/385] #t0064 ok
+  [65/385] #t0065 ok
+  [66/385] #t0066 ok
+  [67/385] #t0067 ok
+  [68/385] #t0068 ok
+  [69/385] #t0069 ok
+  [70/385] #t0070 ok
+  [71/385] #t0071 ok
+  [72/385] #t0072 ok
+  [73/385] #t0073 ok
+  [74/385] #t0074 ok
+  [75/385] #t0075 ok
+  [76/385] #t0076 ok
+  [77/385] #t0077 ok
+  [78/385] #t0078 ok
+  [79/385] #t0079 ok
+  [80/385] #t0080 ok
+  [81/385] #t0081 ok
+  [82/385] #t0082 ok
+  [83/385] #t0083 ok
+  [84/385] #t0084 ok
+  [85/385] #t0085 ok
+  [86/385] #t0086 ok
+  [87/385] #t0087 ok
+  [88/385] #t0088 ok
+  [89/385] #t0089 ok
+  [90/385] #t0090 ok
+  [91/385] #t0091 ok
+  [92/385] #t0092 ok
+  [93/385] #t0093 ok
+  [94/385] #t0094 ok
+  [95/385] #t0095 ok
+  [96/385] #t0096 ok
+  [97/385] #t0097 ok
+  [98/385] #t0098 ok
+  [99/385] #t0099 ok
+  [100/385] #t0100 ok
+  [101/385] #t0101 ok
+  [102/385] #t0102 ok
+  [103/385] #t0103 ok
+  [104/385] #t0104 ok
+  [105/385] #t0105 ok
+  [106/385] #t0106 ok
+  [107/385] #t0107 ok
+  [108/385] #t0108 ok
+  [109/385] #t0109 ok
+  [110/385] #t0110 ok
+  [111/385] #t0111 ok
+  [112/385] #t0112 ok
+  [113/385] #t0113 ok
+  [114/385] #t0114 ok
+  [115/385] #t0115 ok
+  [116/385] #t0116 ok
+  [117/385] #t0117 ok
+  [118/385] #t0118 ok
+  [119/385] #t0119 ok
+  [120/385] #t0120 ok
+  [121/385] #t0121 ok
+  [122/385] #t0122 ok
+  [123/385] #t0123 ok
+  [124/385] #t0124 ok
+  [125/385] #t0125 ok
+  [126/385] #t0126 ok
+  [127/385] #t0127 ok
+  [128/385] #t0128 ok
+  [129/385] #t0129 ok
+  [130/385] #t0130 ok
+  [131/385] #t0131 ok
+  [132/385] #tc001 ok
+  [133/385] #tc002 ok
+  [134/385] #tc003 ok
+  [135/385] #tc004 ok
+  [136/385] #tc005 ok
+  [137/385] #tc006 ok
+  [138/385] #tc007 ok
+  [139/385] #tc008 ok
+  [140/385] #tc009 ok
+  [141/385] #tc010 ok
+  [142/385] #tc011 ok
+  [143/385] #tc012 ok
+  [144/385] #tc013 ok
+  [145/385] #tc014 ok
+  [146/385] #tc015 ok
+  [147/385] #tc016 ok
+  [148/385] #tc017 ok
+  [149/385] #tc018 ok
+  [150/385] #tc019 ok
+  [151/385] #tc020 ok
+  [152/385] #tc021 ok
+  [153/385] #tc022 ok
+  [154/385] #tc023 ok
+  [155/385] #tc024 ok
+  [156/385] #tc025 ok
+  [157/385] #tc026 ok
+  [158/385] #tc027 ok
+  [159/385] #tc028 ok
+  [160/385] #tc029 ok
+  [161/385] #tc030 ok
+  [162/385] #tc031 ok
+  [163/385] #tc032 ok
+  [164/385] #tc033 ok
+  [165/385] #tc034 ok
+  [166/385] #tc035 ok
+  [167/385] #tc036 ok
+  [168/385] #tc037 ok
+  [169/385] #tc038 ok
+  [170/385] #tdi01 ok
+  [171/385] #tdi02 ok
+  [172/385] #tdi03 ok
+  [173/385] #tdi04 ok
+  [174/385] #tdi05 ok
+  [175/385] #tdi06 ok
+  [176/385] #tdi07 ok
+  [177/385] #tdi08 ok
+  [178/385] #tdi09 ok
+  [179/385] #tec01 ok
+  [180/385] #tec02 ok
+  [181/385] #tem01 ok
+  [182/385] #ten01 ok
+  [183/385] #ten02 ok
+  [184/385] #ten03 ok
+  [185/385] #ten04 ok
+  [186/385] #ten05 ok
+  [187/385] #ten06 ok
+  [188/385] #tep02 ok
+  [189/385] #tep03 ok
+  [190/385] #ter01 ok
+  [191/385] #ter02 ok
+  [192/385] #ter03 ok
+  [193/385] #ter04 ok
+  [194/385] #ter05 ok
+  [195/385] #ter06 ok
+  [196/385] #ter07 ok
+  [197/385] #ter08 ok
+  [198/385] #ter09 ok
+  [199/385] #ter10 ok
+  [200/385] #ter11 ok
+  [201/385] #ter12 ok
+  [202/385] #ter13 ok
+  [203/385] #ter14 ok
+  [204/385] #ter15 ok
+  [205/385] #ter17 ok
+  [206/385] #ter18 ok
+  [207/385] #ter19 ok
+  [208/385] #ter20 ok
+  [209/385] #ter21 ok
+  [210/385] #ter22 ok
+  [211/385] #ter23 ok
+  [212/385] #ter24 ok
+  [213/385] #ter25 ok
+  [214/385] #ter26 ok
+  [215/385] #ter27 ok
+  [216/385] #ter28 ok
+  [217/385] #ter29 ok
+  [218/385] #ter30 ok
+  [219/385] #ter31 ok
+  [220/385] #ter32 ok
+  [221/385] #ter33 ok
+  [222/385] #ter34 ok
+  [223/385] #ter35 ok
+  [224/385] #ter36 ok
+  [225/385] #ter37 ok
+  [226/385] #ter38 ok
+  [227/385] #ter39 ok
+  [228/385] #ter40 ok
+  [229/385] #ter41 ok
+  [230/385] #ter42 ok
+  [231/385] #ter43 ok
+  [232/385] #ter44 ok
+  [233/385] #ter48 ok
+  [234/385] #ter49 ok
+  [235/385] #ter50 ok
+  [236/385] #ter51 ok
+  [237/385] #ter52 ok
+  [238/385] #ter53 ok
+  [239/385] #ter54 ok
+  [240/385] #ter55 ok
+  [241/385] #ter56 ok
+  [242/385] #tes01 ok
+  [243/385] #tes02 ok
+  [244/385] #tin01 ok
+  [245/385] #tin02 ok
+  [246/385] #tin03 ok
+  [247/385] #tin04 ok
+  [248/385] #tin05 ok
+  [249/385] #tin06 ok
+  [250/385] #tin07 ok
+  [251/385] #tin08 ok
+  [252/385] #tin09 ok
+  [253/385] #tjs01 ok
+  [254/385] #tjs02 ok
+  [255/385] #tjs03 ok
+  [256/385] #tjs04 ok
+  [257/385] #tjs05 ok
+  [258/385] #tjs06 ok
+  [259/385] #tjs07 ok
+  [260/385] #tjs08 ok
+  [261/385] #tjs09 ok
+  [262/385] #tjs10 ok
+  [263/385] #tjs11 ok
+  [264/385] #tjs12 ok
+  [265/385] #tjs13 ok
+  [266/385] #tjs14 ok
+  [267/385] #tjs15 ok
+  [268/385] #tjs16 ok
+  [269/385] #tjs17 ok
+  [270/385] #tjs18 ok
+  [271/385] #tjs19 ok
+  [272/385] #tjs20 ok
+  [273/385] #tjs21 ok
+  [274/385] #tjs22 ok
+  [275/385] #tjs23 ok
+  [276/385] #tl001 ok
+  [277/385] #tli01 ok
+  [278/385] #tli02 ok
+  [279/385] #tli03 ok
+  [280/385] #tli04 ok
+  [281/385] #tli05 ok
+  [282/385] #tli06 ok
+  [283/385] #tli07 ok
+  [284/385] #tli08 ok
+  [285/385] #tli09 ok
+  [286/385] #tli10 ok
+  [287/385] #tm001 ok
+  [288/385] #tm002 ok
+  [289/385] #tm003 ok
+  [290/385] #tm004 ok
+  [291/385] #tm005 ok
+  [292/385] #tm006 ok
+  [293/385] #tm007 ok
+  [294/385] #tm008 ok
+  [295/385] #tm009 ok
+  [296/385] #tm010 ok
+  [297/385] #tm011 ok
+  [298/385] #tm012 ok
+  [299/385] #tm013 ok
+  [300/385] #tm014 ok
+  [301/385] #tm015 ok
+  [302/385] #tm016 ok
+  [303/385] #tm017 ok
+  [304/385] #tm018 ok
+  [305/385] #tm019 ok
+  [306/385] #tm020 ok
+  [307/385] #tn001 ok
+  [308/385] #tn002 ok
+  [309/385] #tn003 ok
+  [310/385] #tn004 ok
+  [311/385] #tn005 ok
+  [312/385] #tn006 ok
+  [313/385] #tn007 ok
+  [314/385] #tn008 ok
+  [315/385] #tp001 ok
+  [316/385] #tp002 ok
+  [317/385] #tp003 ok
+  [318/385] #tp004 ok
+  [319/385] #tpi01 ok
+  [320/385] #tpi02 ok
+  [321/385] #tpi03 ok
+  [322/385] #tpi04 ok
+  [323/385] #tpi05 ok
+  [324/385] #tpi06 ok
+  [325/385] #tpi07 ok
+  [326/385] #tpi08 ok
+  [327/385] #tpi09 ok
+  [328/385] #tpi10 ok
+  [329/385] #tpi11 ok
+  [330/385] #tpr01 ok
+  [331/385] #tpr02 ok
+  [332/385] #tpr03 ok
+  [333/385] #tpr04 ok
+  [334/385] #tpr05 ok
+  [335/385] #tpr06 ok
+  [336/385] #tpr08 ok
+  [337/385] #tpr09 ok
+  [338/385] #tpr10 ok
+  [339/385] #tpr11 ok
+  [340/385] #tpr12 ok
+  [341/385] #tpr13 ok
+  [342/385] #tpr14 ok
+  [343/385] #tpr15 ok
+  [344/385] #tpr16 ok
+  [345/385] #tpr17 ok
+  [346/385] #tpr18 ok
+  [347/385] #tpr19 ok
+  [348/385] #tpr20 ok
+  [349/385] #tpr21 ok
+  [350/385] #tpr22 ok
+  [351/385] #tpr23 ok
+  [352/385] #tpr24 ok
+  [353/385] #tpr25 ok
+  [354/385] #tpr26 ok
+  [355/385] #tpr27 ok
+  [356/385] #tpr28 ok
+  [357/385] #tpr29 ok
+  [358/385] #tpr30 ok
+  [359/385] #tpr31 ok
+  [360/385] #tpr32 ok
+  [361/385] #tpr33 ok
+  [362/385] #tpr34 ok
+  [363/385] #tpr35 ok
+  [364/385] #tpr36 ok
+  [365/385] #tpr37 ok
+  [366/385] #tpr38 ok
+  [367/385] #tpr39 ok
+  [368/385] #tpr40 ok
+  [369/385] #tpr41 ok
+  [370/385] #tpr42 ok
+  [371/385] #tpr43 ok
+  [372/385] #tso01 ok
+  [373/385] #tso02 ok
+  [374/385] #tso03 ok
+  [375/385] #tso05 ok
+  [376/385] #tso06 ok
+  [377/385] #tso07 ok
+  [378/385] #tso08 ok
+  [379/385] #tso09 ok
+  [380/385] #tso10 ok
+  [381/385] #tso11 ok
+  [382/385] #tso12 ok
+  [383/385] #tso13 ok
+  [384/385] #ttn01 ok
+  [385/385] #ttn02 ok
+=== JSON-LD 1.1 Expansion Test Runner ===
+Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/expand-manifest.jsonld
+
+Totals: 385 test entries
+
+  PASS: drop free-floating nodes
+  PASS: basic
+  PASS: drop null and unmapped properties
+  PASS: optimize @set, keep empty arrays
+  PASS: do not expand aliased @id/@type
+  PASS: alias keywords
+  PASS: date type-coercion
+  PASS: @value with @language
+  PASS: @graph with terms
+  PASS: native types
+  PASS: coerced @id
+  PASS: @graph with embed
+  PASS: expand already expanded
+  PASS: @set of @value objects with keyword aliases
+  PASS: collapse set of sets, keep empty lists
+  PASS: context reset
+  PASS: @graph and @id aliased
+  PASS: override default @language
+  PASS: remove @value = null
+  PASS: do not remove @graph if not at top-level
+  PASS: do not remove @graph at top-level if not only property
+  PASS: expand value with default language
+  PASS: Expanding list/set with coercion
+  PASS: Multiple contexts
+  PASS: Problematic IRI expansion tests
+  PASS: Term definition with @id: @type
+  PASS: Duplicate values in @list and @set
+  PASS: Use @vocab in properties and @type but not in @id
+  PASS: Relative IRIs
+  PASS: Language maps
+  PASS: type-coercion of native types
+  PASS: Null term and @vocab
+  PASS: Using @vocab with with type-coercion
+  PASS: Multiple properties expanding to the same IRI
+  PASS: Language maps with @vocab, default language, and colliding property
+  PASS: Expanding @index
+  PASS: Expanding @reverse
+  PASS: Expanding blank node labels
+  PASS: Using terms in a reverse-maps
+  PASS: language and index expansion on non-objects
+  PASS: @language: null
+  PASS: Reverse properties
+  PASS: Using reverse properties inside a @reverse-container
+  PASS: Index maps with language mappings
+  PASS: Top-level value objects
+  PASS: Free-floating nodes
+  PASS: Free-floating values in sets and free-floating lists
+  PASS: Terms are ignored in @id
+  PASS: String values of reverse properties
+  PASS: Term definitions with prefix separate from prefix definitions
+  PASS: Expansion of keyword aliases in term definitions
+  PASS: @vocab-relative IRIs in term definitions
+  PASS: Expand absolute IRI with @type: @vocab
+  PASS: Expand term with @type: @vocab
+  PASS: Expand @vocab-relative term with @type: @vocab
+  PASS: Use terms with @type: @vocab but not with @type: @id
+  PASS: Expand relative IRI with @type: @vocab
+  PASS: Expand compact IRI with @type: @vocab
+  PASS: Reset @vocab by setting it to null
+  PASS: Overwrite document base with @base and reset it again
+  PASS: Coercing native types to arbitrary datatypes
+  PASS: Various relative IRIs with with @base
+  PASS: Reverse property and index container
+  PASS: bnode values of reverse properties
+  PASS: Drop unmapped keys in reverse map
+  PASS: Reverse-map keys with @vocab
+  PASS: prefix://suffix not a compact IRI
+  PASS: _:suffix values are not a compact IRI
+  PASS: Compact IRI as term with type mapping
+  PASS: Compact IRI as term defined using equivalent compact IRI
+  PASS: Redefine terms looking like compact IRIs
+  PASS: Redefine term using @vocab, not itself
+  PASS: @context not first property
+  PASS: @id not first property
+  PASS: @vocab as blank node identifier
+  PASS: base option overrides document location
+  PASS: expandContext option
+  PASS: multiple reverse properties
+  PASS: expand @graph container
+  PASS: expand [@graph, @set] container
+  PASS: Creates an @graph container if value is a graph
+  PASS: expand [@graph, @index] container
+  PASS: expand [@graph, @index, @set] container
+  PASS: Do not expand [@graph, @index] container if value is a graph
+  PASS: expand [@graph, @id] container
+  PASS: expand [@graph, @id, @set] container
+  PASS: Do not expand [@graph, @id] container if value is a graph
+  PASS: Do not expand native values to IRIs
+  PASS: empty @base applied to the base option
+  PASS: relative @base overrides base option and document location
+  PASS: relative and absolute @base overrides base option and document location
+  PASS: Various relative IRIs as properties with with @vocab: ''
+  PASS: expand @graph container (multiple objects)
+  PASS: expand [@graph, @set] container (multiple objects)
+  PASS: Creates an @graph container if value is a graph (multiple objects)
+  PASS: expand [@graph, @index] container (multiple indexed objects)
+  PASS: expand [@graph, @index, @set] container (multiple objects)
+  PASS: Do not expand [@graph, @index] container if value is a graph (multiple objects)
+  PASS: expand [@graph, @id] container (multiple objects)
+  PASS: expand [@graph, @id, @set] container (multiple objects)
+  PASS: Do not expand [@graph, @id] container if value is a graph (multiple objects)
+  PASS: Expand @graph container if value is a graph (multiple objects)
+  PASS: Expand @graph container if value is a graph (multiple graphs)
+  PASS: Creates an @graph container if value is a graph (mixed graph and object)
+  PASS: Do not expand [@graph, @index] container if value is a graph (mixed graph and object)
+  PASS: Do not expand [@graph, @id] container if value is a graph (mixed graph and object)
+  PASS: expand [@graph, @index] container (indexes with multiple objects)
+  PASS: expand [@graph, @id] container (multiple ids and objects)
+  PASS: IRI expansion of fragments including ':'
+  PASS: Various relative IRIs as properties with with relative @vocab
+  PASS: Various relative IRIs as properties with with relative @vocab itself relative to an existing vocabulary base
+  PASS: Various relative IRIs as properties with with relative @vocab relative to another relative vocabulary base
+  PASS: context with JavaScript Object property names
+  PASS: Expansion allows multiple properties expanding to @type
+  PASS: Verifies that relative IRIs as properties with @vocab: '' in 1.0 generate an error
+  PASS: Verifies that relative IRIs as properties with relative @vocab in 1.0 generate an error
+  PASS: A term starting with a colon can expand to a different IRI
+  PASS: Expanding a value staring with a colon does not treat that value as an IRI
+  PASS: Ignore some terms with @, allow others.
+  PASS: Ignore some values of @id with @, allow others.
+  PASS: Ignore some values of @reverse with @, allow others.
+  PASS: Ignore some IRIs when that start with @ when expanding.
+  PASS: Value objects including invalid literal datatype IRIs are rejected
+  PASS: compact IRI as @vocab
+  PASS: term as @vocab
+  PASS: A scoped context may include itself recursively (direct)
+  PASS: A scoped context may include itself recursively (indirect)
+  PASS: Two scoped context may include a shared context
+  PASS: Base without trailing slash, without path
+  PASS: Base without trailing slash, with path
+  PASS: Reverse term with property based indexed container
+  PASS: adding new term
+  PASS: overriding a term
+  PASS: property and value with different terms mapping to the same expanded property
+  PASS: deep @context affects nested nodes
+  PASS: scoped context layers on intemediate contexts
+  PASS: adding new term
+  PASS: overriding a term
+  PASS: alias of @type
+  PASS: deep @type-scoped @context does NOT affect nested nodes
+  PASS: scoped context layers on intemediate contexts
+  PASS: orders @type terms when applying scoped contexts
+  PASS: deep property-term scoped @context in @type-scoped @context affects nested nodes
+  PASS: type maps use scoped context from type index and not scoped context from containing
+  PASS: type-scoped context nullification
+  PASS: type-scoped base
+  PASS: type-scoped vocab
+  PASS: multiple type-scoped contexts are properly reverted
+  PASS: multiple type-scoped types resolved against previous context
+  PASS: type-scoped context with multiple property scoped terms
+  PASS: type-scoped value
+  PASS: type-scoped value mix
+  PASS: type-scoped property-scoped contexts including @type:@vocab
+  PASS: composed type-scoped property-scoped contexts including @type:@vocab
+  PASS: type-scoped + property-scoped + values evaluates against previous context
+  PASS: type-scoped + graph container
+  PASS: @propagate: true on type-scoped context
+  PASS: @propagate: false on property-scoped context
+  PASS: @propagate: false on embedded context
+  PASS: @propagate is invalid in 1.0
+  PASS: @propagate must be boolean valued
+  PASS: @context resolutions respects relative URLs.
+  PASS: Unused embedded context with error.
+  PASS: Unused context with an embedded context error.
+  PASS: Remote scoped context.
+  PASS: Term scoping with embedded contexts.
+  PASS: Expansion with empty property-scoped context.
+  PASS: property-scoped contexts which are alias of @nest
+  PASS: Bibframe example (poor-mans inferrence)
+  PASS: Expand string using default and term directions
+  PASS: Expand string using default and term directions and languages
+  PASS: expand list values with @direction
+  PASS: simple language map with term direction
+  PASS: simple language mapwith overriding term direction
+  PASS: simple language mapwith overriding null direction
+  PASS: simple language map with mismatching term direction
+  PASS: @direction must be one of ltr or rtl
+  PASS: @direction is incompatible with @type
+  PASS: Invalid keyword in term definition
+  PASS: Term definition on @type with empty map
+  PASS: Invalid container mapping
+  PASS: @nest MUST NOT have a string value
+  PASS: @nest MUST NOT have a boolen value
+  PASS: @nest MUST NOT have a numeric value
+  PASS: @nest MUST NOT have a value object value
+  PASS: does not allow a keyword other than @nest for the value of @nest
+  PASS: does not allow @nest with @reverse
+  PASS: processingMode json-ld-1.0 conflicts with @version: 1.1
+  PASS: @version must be 1.1
+  PASS: Keywords cannot be aliased to other keywords
+  PASS: A context may not include itself recursively (direct)
+  PASS: A context may not include itself recursively (indirect)
+  PASS: Error dereferencing a remote context
+  PASS: Invalid remote context
+  PASS: Invalid local context
+  PASS: Invalid base IRI
+  PASS: Invalid vocab mapping
+  PASS: Invalid default language
+  PASS: Cyclic IRI mapping
+  PASS: Invalid term definition
+  PASS: Invalid type mapping (not a string)
+  PASS: Invalid type mapping (not absolute IRI)
+  PASS: Invalid reverse property (contains @id)
+  PASS: Invalid IRI mapping (@reverse not a string)
+  PASS: Invalid reverse property (invalid @container)
+  PASS: Invalid IRI mapping (@id not a string)
+  PASS: Invalid keyword alias (@context)
+  PASS: Invalid IRI mapping (no vocab mapping)
+  PASS: Invalid container mapping
+  PASS: Invalid language mapping
+  PASS: Invalid IRI mapping (relative IRI in @type)
+  PASS: List of lists (from array)
+  PASS: Invalid reverse property map
+  PASS: Colliding keywords
+  PASS: Invalid @id value
+  PASS: Invalid type value
+  PASS: Invalid value object value
+  PASS: Invalid language-tagged string
+  PASS: Invalid @index value
+  PASS: List of lists (from array)
+  PASS: Invalid @reverse value
+  PASS: Invalid reverse property value (in @reverse)
+  PASS: Invalid language map value
+  PASS: Invalid reverse property value (through coercion)
+  PASS: Invalid value object (unexpected keyword)
+  PASS: Invalid value object (@type and @language)
+  PASS: Invalid language-tagged value
+  PASS: Invalid typed value
+  PASS: Invalid set or list object
+  PASS: Keywords may not be redefined in 1.0
+  PASS: Term definition with @id: @type
+  PASS: Redefine terms looking like compact IRIs
+  PASS: Invalid term as relative IRI
+  PASS: A relative IRI cannot be used as a prefix
+  PASS: Invalid reverse id
+  PASS: Invalid value object value using a value alias
+  PASS: Definition for the empty term
+  PASS: Invalid prefix value
+  PASS: Invalid value object, multiple values for @type.
+  PASS: Invalid term definition, multiple values for @type.
+  PASS: Invalid redefinition of @context keyword.
+  PASS: Using an array value for @context is illegal in JSON-LD 1.0
+  PASS: Mapping @container: [@list, @set] is invalid
+  PASS: Basic Included array
+  PASS: Basic Included object
+  PASS: Multiple properties mapping to @included are folded together
+  PASS: Included containing @included
+  PASS: Property value with @included
+  PASS: json.api example
+  PASS: Error if @included value is a string
+  PASS: Error if @included value is a value object
+  PASS: Error if @included value is a list object
+  PASS: Expand JSON literal (boolean true)
+  PASS: Expand JSON literal (boolean false)
+  PASS: Expand JSON literal (double)
+  PASS: Expand JSON literal (double-zero)
+  PASS: Expand JSON literal (integer)
+  PASS: Expand JSON literal (object)
+  PASS: Expand JSON literal (array)
+  PASS: Expand JSON literal with array canonicalization
+  PASS: Transform JSON literal with string canonicalization
+  PASS: Expand JSON literal with structural canonicalization
+  PASS: Expand JSON literal with unicode canonicalization
+  PASS: Expand JSON literal with value canonicalization
+  PASS: Expand JSON literal with wierd canonicalization
+  PASS: Expand JSON literal without expanding contents
+  PASS: Expand JSON literal aleady in expanded form
+  PASS: Expand JSON literal aleady in expanded form with aliased keys
+  PASS: Expand JSON literal (string)
+  PASS: Expand JSON literal (null)
+  PASS: Expand JSON literal with aliased @type
+  PASS: Expand JSON literal with aliased @value
+  PASS: Expand JSON literal with @context
+  PASS: Expand JSON literal (null) aleady in expanded form.
+  PASS: Expand JSON literal (empty array).
+  PASS: Language map with null value
+  PASS: @list containing @list
+  PASS: @list containing empty @list
+  PASS: @list containing @list (with coercion)
+  PASS: @list containing empty @list (with coercion)
+  PASS: coerced @list containing an array
+  PASS: coerced @list containing an empty array
+  PASS: coerced @list containing deep arrays
+  PASS: coerced @list containing deep empty arrays
+  PASS: coerced @list containing multiple lists
+  PASS: coerced @list containing mixed list values
+  PASS: Adds @id to object not having an @id
+  PASS: Retains @id in object already having an @id
+  PASS: Adds @type to object not having an @type
+  PASS: Prepends @type in object already having an @type
+  PASS: Adds expanded @id to object
+  PASS: Adds vocabulary expanded @type to object
+  PASS: Adds document expanded @type to object
+  PASS: When type is in a type map
+  PASS: language map with @none
+  PASS: language map with alias of @none
+  PASS: id map with @none
+  PASS: type map with alias of @none
+  PASS: graph index map with @none
+  PASS: graph index map with alias @none
+  PASS: graph id index map with aliased @none
+  PASS: graph id index map with aliased @none
+  PASS: string value of type map expands to node reference
+  PASS: string value of type map expands to node reference with @type: @id
+  PASS: string value of type map expands to node reference with @type: @vocab
+  PASS: string value of type map must not be a literal
+  PASS: Expands input using @nest
+  PASS: Expands input using aliased @nest
+  PASS: Appends nested values when property at base and nested
+  PASS: Appends nested values from all @nest aliases
+  PASS: Nested nested containers
+  PASS: Arrays of nested values
+  PASS: A nest of arrays
+  PASS: Multiple keys may mapping to @type when nesting
+  PASS: @version may be specified after first context
+  PASS: @version setting [1.0, 1.1, 1.0]
+  PASS: @version setting [1.1, 1.0]
+  PASS: @version setting [1.1, 1.0, 1.1]
+  PASS: error if @version is json-ld-1.0 for property-valued index
+  PASS: error if @container does not include @index for property-valued index
+  PASS: error if @index is a keyword for property-valued index
+  PASS: error if @index is not a string for property-valued index
+  PASS: error if attempting to add property to value object for property-valued index
+  PASS: property-valued index expands to property value, instead of @index (value)
+  PASS: property-valued index appends to property value, instead of @index (value)
+  PASS: property-valued index expands to property value, instead of @index (node)
+  PASS: property-valued index appends to property value, instead of @index (node)
+  PASS: property-valued index does not output property for @none
+  PASS: property-valued index adds property to graph object
+  PASS: Protect a term
+  PASS: Set a term to not be protected
+  PASS: Protect all terms in context
+  PASS: Do not protect term with @protected: false
+  PASS: Clear active context with protected terms from an embedded context
+  PASS: Clear active context of protected terms from a term.
+  PASS: Term with protected scoped context.
+  PASS: Attempt to redefine term in other protected context.
+  PASS: Simple protected and unprotected terms.
+  PASS: Fail to override protected term.
+  PASS: Scoped context fail to override protected term.
+  PASS: Override unprotected term.
+  PASS: Clear protection with null context.
+  PASS: Clear protection with array with null context
+  PASS: Override protected terms after null.
+  PASS: Fail to override protected terms with type.
+  PASS: Fail to override protected terms with type+null+ctx.
+  PASS: Mix of protected and unprotected terms.
+  PASS: Fail with mix of protected and unprotected terms with type+null+ctx.
+  PASS: Fail with mix of protected and unprotected terms with type+null.
+  PASS: Check legal overriding of type-scoped protected term from nested node.
+  PASS: Allows redefinition of protected alias term with same definition.
+  PASS: Allows redefinition of protected prefix term with same definition.
+  PASS: Allows redefinition of terms with scoped contexts using same definitions.
+  PASS: Fails on redefinition of terms with scoped contexts using different definitions.
+  PASS: Allows redefinition of protected alias term with same definition modulo protected flag.
+  PASS: Fails if trying to redefine a protected null term.
+  PASS: Does not expand a Compact IRI using a non-prefix term.
+  PASS: Keywords may be protected.
+  PASS: Protected keyword aliases cannot be overridden.
+  PASS: Protected @type cannot be overridden.
+  PASS: Fails if trying to declare a keyword alias as prefix.
+  PASS: Ignores a non-keyword term starting with '@'
+  PASS: Ignores a non-keyword term starting with '@' (with @vocab)
+  PASS: Ignores a term mapping to a value in the form of a keyword.
+  PASS: Ignores a term mapping to a value in the form of a keyword (with @vocab).
+  PASS: Ignores a term mapping to a value in the form of a keyword (@reverse).
+  PASS: Ignores a term mapping to a value in the form of a keyword (@reverse with @vocab).
+  PASS: Protected terms and property-scoped contexts
+  PASS: Allows protected redefinition of equivalent id terms
+  PASS: Fail if protected flag not retained during redefinition
+  PASS: Clear protection in @graph @container with null context.
+  PASS: @import is invalid in 1.0.
+  PASS: @import must be a string
+  PASS: @import overflow
+  PASS: @propagate: true on type-scoped context with @import
+  PASS: @propagate: false on property-scoped context with @import
+  PASS: Protect all terms in sourced context
+  PASS: Override term defined in sourced context
+  PASS: Override @vocab defined in sourced context
+  PASS: Protect terms in sourced context
+  PASS: Override protected terms in sourced context
+  PASS: @import may not be used in an imported context.
+  PASS: @import can only reference a single context
+  PASS: @type: @none is illegal in 1.0.
+  PASS: @type: @none expands strings as value objects
+
+========================================
+Suite Results:
+  expand-Positive      pass:276 fail:0 skip:0
+  expand-Negative      pass:109 fail:0 skip:0
+========================================
+TOTAL: 385 pass, 0 fail, 0 skip (out of 385)
+========================================
+jsonld-expand: 385 pass, 0 fail, 0 skip (out of 385)

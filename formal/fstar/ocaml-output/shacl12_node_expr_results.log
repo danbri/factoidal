@@ -1,0 +1,294 @@
+  [1/142] Test of sh:expression at node shape 001 ok
+  [2/142] Test of sh:nodeByExpression at property shape 001 ok
+  [3/142] Test of a sparql:abs expression based on the shnex-sparql:example ok
+  [4/142] Test of a sparql:bnode expression, checking whether it produces a blank node ok
+  [5/142] Test of a sparql:bound expression based on the shnex-sparql:example ok
+  [6/142] Test of a sparql:ceil expression based on the shnex-sparql:example ok
+  [7/142] Test of a sparql:coalesce expression based on the shnex-sparql:example ok
+  [8/142] Test of a sparql:concat expression based on the shnex-sparql:example ok
+  [9/142] Test of a sparql:contains expression based on the shnex-sparql:example ok
+  [10/142] Test of a sparql:datatype expression based on the shnex-sparql:example ok
+  [11/142] Test of a sparql:day expression based on the shnex-sparql:example ok
+  [12/142] Test of a sparql:divide expression based on the shnex-sparql:example ok
+  [13/142] Test of a sparql:encode expression based on the shnex-sparql:example ok
+  [14/142] Test of a sparql:equals expression based on the shnex-sparql:example ok
+  [15/142] Test of a sparql:floor expression based on the shnex-sparql:example ok
+  [16/142] Test of a sparql:greater-than-or-equal expression based on the shnex-sparql:example ok
+  [17/142] Test of a sparql:greater-than expression based on the shnex-sparql:example ok
+  [18/142] Test of a sparql:hasLang expression based on the shnex-sparql:example ok
+  [19/142] Test of a sparql:hasLangdir expression based on the shnex-sparql:example ok
+  [20/142] Test of a sparql:hours expression based on the shnex-sparql:example ok
+  [21/142] Test of a sparql:if expression based on the shnex-sparql:example ok
+  [22/142] Test of a sparql:iri expression based on the shnex-sparql:example ok
+  [23/142] Test of a sparql:isBlank expression based on the shnex-sparql:example ok
+  [24/142] Test of a sparql:isBlank with a literal argument ok
+  [25/142] Test of a sparql:isIRI expression based on the shnex-sparql:example ok
+  [26/142] Test of a sparql:isLiteral expression based on the shnex-sparql:example ok
+  [27/142] Test of a sparql:isNumeric expression based on the shnex-sparql:example ok
+  [28/142] Test of a sparql:isTriple expression based on the shnex-sparql:example ok
+  [29/142] Test of a sparql:isURI expression based on the shnex-sparql:example ok
+  [30/142] Test of a sparql:lang expression based on the shnex-sparql:example ok
+  [31/142] Test of a sparql:langMatches expression based on the shnex-sparql:example ok
+  [32/142] Test of a sparql:langdir expression based on the shnex-sparql:example ok
+  [33/142] Test of a sparql:lcase expression based on the shnex-sparql:example ok
+  [34/142] Test of a sparql:less-than-or-equal expression based on the shnex-sparql:example ok
+  [35/142] Test of a sparql:less-than expression based on the shnex-sparql:example ok
+  [36/142] Test of a sparql:logical-and expression based on the shnex-sparql:example ok
+  [37/142] Test of a sparql:logical-not expression based on the shnex-sparql:example ok
+  [38/142] Test of a sparql:logical-or expression based on the shnex-sparql:example ok
+  [39/142] Test of a sparql:md5 expression based on the shnex-sparql:example ok
+  [40/142] Test of a sparql:minutes expression based on the shnex-sparql:example ok
+  [41/142] Test of a sparql:month expression based on the shnex-sparql:example ok
+  [42/142] Test of a sparql:multiply expression based on the shnex-sparql:example ok
+  [43/142] Test of a sparql:not-equals expression based on the shnex-sparql:example ok
+  [44/142] Test of a sparql:object expression based on the shnex-sparql:example ok
+  [45/142] Test of a sparql:plus expression based on the shnex-sparql:example ok
+  [46/142] Test of a sparql:predicate expression based on the shnex-sparql:example ok
+  [47/142] Test of a sparql:regex expression based on the shnex-sparql:example ok
+  [48/142] Test of a sparql:replace expression based on the shnex-sparql:example ok
+  [49/142] Test of a sparql:round expression based on the shnex-sparql:example ok
+  [50/142] Test of a sparql:sameTerm expression based on the shnex-sparql:example ok
+  [51/142] Test of a sparql:sameValue expression based on the shnex-sparql:example ok
+  [52/142] Test of a sparql:seconds expression based on the shnex-sparql:example ok
+  [53/142] Test of a sparql:sha1 expression based on the shnex-sparql:example ok
+  [54/142] Test of a sparql:sha256 expression based on the shnex-sparql:example ok
+  [55/142] Test of a sparql:sha384 expression based on the shnex-sparql:example ok
+  [56/142] Test of a sparql:sha512 expression based on the shnex-sparql:example ok
+  [57/142] Test of a sparql:str expression based on the shnex-sparql:example ok
+  [58/142] Test of a sparql:strafter expression based on the shnex-sparql:example ok
+  [59/142] Test of a sparql:strbefore expression based on the shnex-sparql:example ok
+  [60/142] Test of a sparql:strdt expression based on the shnex-sparql:example ok
+  [61/142] Test of a sparql:strends expression based on the shnex-sparql:example ok
+  [62/142] Test of a sparql:strlang expression based on the shnex-sparql:example ok
+  [63/142] Test of a sparql:strlangdir expression based on the shnex-sparql:example ok
+  [64/142] Test of a sparql:strlen expression based on the shnex-sparql:example ok
+  [65/142] Test of a sparql:strstarts expression based on the shnex-sparql:example ok
+  [66/142] Test of a sparql:uuid expression to ensure it returns a literal ok
+  [67/142] Test of a sparql:subject expression based on the shnex-sparql:example ok
+  [68/142] Test of a sparql:substr expression based on the shnex-sparql:example ok
+  [69/142] Test of a sparql:subtract expression based on the shnex-sparql:example ok
+  [70/142] Test of a sparql:timezone expression based on the shnex-sparql:example ok
+  [71/142] Test of a sparql:triple expression based on the shnex-sparql:example ok
+  [72/142] Test of a sparql:tz expression based on the shnex-sparql:example ok
+  [73/142] Test of a sparql:ucase expression based on the shnex-sparql:example ok
+  [74/142] Test of a sparql:unary-minus expression based on the shnex-sparql:example ok
+  [75/142] Test of a sparql:unary-plus expression based on the shnex-sparql:example ok
+  [76/142] Test of a sparql:uri expression based on the shnex-sparql:example ok
+  [77/142] Test of a sparql:uuid expression to ensure it returns a URI ok
+  [78/142] Test of a sparql:year expression based on the shnex-sparql:example ok
+  [79/142] Test of a concat expression that just has a single member that needs to be evaluated ok
+  [80/142] Test of a concat expression that concatenates 4 constants, including a duplicate ok
+  [81/142] Test of a concat expression that concatenates two lists ok
+  [82/142] Test of constant node expression returning an IRI ok
+  [83/142] Test of constant node expression returning a literal ok
+  [84/142] Test of constant node expression returning a triple term ok
+  [85/142] Test of a count expression on an empty list ok
+  [86/142] Test of a count expression on a list with three members ok
+  [87/142] Test of a distinct expression on just the focus node ok
+  [88/142] Test of a distinct expression on a list with three members and one duplicate ok
+  [89/142] Test of an distinct expression on a list with 3 members and no term-equal duplicate ok
+  [90/142] Test of an empty node expression (blank node without triples) ok
+  [91/142] Test of an exists expression with a constant expression as input ok
+  [92/142] Test of an exists expression with an empty expression as input ok
+  [93/142] Test of a filter shape expression against a shape that requires xsd:integers ok
+  [94/142] Test of a filter shape expression against a shape that requires rdfs:labels ok
+  [95/142] Test of a filter shape expression against a shape that doesn't define any constraints ok
+  [96/142] Test of a findFirst expression on empty input ok
+  [97/142] Test of a findFirst expression on an input list of numbers, using a minInclusive shape ok
+  [98/142] Test of a flatMap expression, similar to the one in the spec example ok
+  [99/142] Test of a flatMap expression with a simple list ok
+  [100/142] Test of an if expression with complex expressions in if and then ok
+  [101/142] Test of an if expression with a simple then result ok
+  [102/142] Test of an if expression with a simple else result ok
+  [103/142] Test of an if expression evaluating to false but there is no else ok
+  [104/142] Test of an instancesOf expression for the base class ok
+  [105/142] Test of an instancesOf expression for the sub-class ok
+  [106/142] Test of an intersection expression with three lists as members ok
+  [107/142] Test of an intersection expression with two empty expressions as members ok
+  [108/142] Test of an intersection expression with two lists as members ok
+  [109/142] Test of a limit expression of 2 on a list with 4 literals ok
+  [110/142] Test of a limit expression with an empty list. ok
+  [111/142] Test of a list expression with an empty list which is really the constant rdf:nil ok
+  [112/142] Test of a list expression with 3 literals ok
+  [113/142] Test of a matchAll expression on empty input ok
+  [114/142] Test of a matchAll expression on an input list of numbers, using a minInclusive shape ok
+  [115/142] Test of a matchAll expression on an input list of numbers, using a minInclusive shape ok
+  [116/142] Test of a max expression on an empty list ok
+  [117/142] Test of a max expression on a list with three members ok
+  [118/142] Test of a min expression on an empty list ok
+  [119/142] Test of a min expression on a list with three members ok
+  [120/142] Test of a nodesMatching expression for the base class ok
+  [121/142] Test of a nodesMatching expression for the sub-class ok
+  [122/142] Test of an offset expression of 1 on a list with 4 literals but a limit of 2 ok
+  [123/142] Test of an offset expression with an empty list. ok
+  [124/142] Test of an offset expression of 2 on a list with 4 literals ok
+  [125/142] Test of an orderBy expression with a pathValues expression ok
+  [126/142] Test of an orderBy expression with a pathValues expression using incomplete values ok
+  [127/142] Test of an orderBy expression with a simple integer list ok
+  [128/142] Test of an orderBy expression with a simple integer list but in descending order ok
+  [129/142] Test of a path values expression with an sh:inversePath ok
+  [130/142] Test of a simple path values expression that returns no values ok
+  [131/142] Test of a simple path values expression ok
+  [132/142] Test of a simple path values expression with an explicit (constant) shnex:focusNode ok
+  [133/142] Test of a simple path values expression with a shnex:focusNode that is an expression by itself ok
+  [134/142] Test of a remove expression using two lists ok
+  [135/142] Test of a remove expression using two nested expressions ok
+  [136/142] Test of a sum expression on an empty list ok
+  [137/142] Test of a sum expression on a list with three integers ok
+  [138/142] Test of a sum expression on a list with three numbers including a mix of integers and decimals ok
+  [139/142] Test of a sum expression similar to the example in the spec ok
+  [140/142] Test of a var expression querying a bound variable ok
+  [141/142] Test of a var expression querying the focus node ok
+  [142/142] Test of a var expression querying an unbound variable ok
+=== SHACL W3C Test Runner (full report comparison) ===
+Manifest: third_party/testing/shacl/shacl12-test-suite/tests/node-expr/manifest.ttl
+
+Totals: 142 test entries
+
+  PASS: Test of sh:expression at node shape 001
+  PASS: Test of sh:nodeByExpression at property shape 001
+  PASS: Test of a sparql:abs expression based on the shnex-sparql:example
+  PASS: Test of a sparql:bnode expression, checking whether it produces a blank node
+  PASS: Test of a sparql:bound expression based on the shnex-sparql:example
+  PASS: Test of a sparql:ceil expression based on the shnex-sparql:example
+  PASS: Test of a sparql:coalesce expression based on the shnex-sparql:example
+  PASS: Test of a sparql:concat expression based on the shnex-sparql:example
+  PASS: Test of a sparql:contains expression based on the shnex-sparql:example
+  PASS: Test of a sparql:datatype expression based on the shnex-sparql:example
+  PASS: Test of a sparql:day expression based on the shnex-sparql:example
+  PASS: Test of a sparql:divide expression based on the shnex-sparql:example
+  PASS: Test of a sparql:encode expression based on the shnex-sparql:example
+  PASS: Test of a sparql:equals expression based on the shnex-sparql:example
+  PASS: Test of a sparql:floor expression based on the shnex-sparql:example
+  PASS: Test of a sparql:greater-than-or-equal expression based on the shnex-sparql:example
+  PASS: Test of a sparql:greater-than expression based on the shnex-sparql:example
+  PASS: Test of a sparql:hasLang expression based on the shnex-sparql:example
+  PASS: Test of a sparql:hasLangdir expression based on the shnex-sparql:example
+  PASS: Test of a sparql:hours expression based on the shnex-sparql:example
+  PASS: Test of a sparql:if expression based on the shnex-sparql:example
+  PASS: Test of a sparql:iri expression based on the shnex-sparql:example
+  PASS: Test of a sparql:isBlank expression based on the shnex-sparql:example
+  PASS: Test of a sparql:isBlank with a literal argument
+  PASS: Test of a sparql:isIRI expression based on the shnex-sparql:example
+  PASS: Test of a sparql:isLiteral expression based on the shnex-sparql:example
+  PASS: Test of a sparql:isNumeric expression based on the shnex-sparql:example
+  PASS: Test of a sparql:isTriple expression based on the shnex-sparql:example
+  PASS: Test of a sparql:isURI expression based on the shnex-sparql:example
+  PASS: Test of a sparql:lang expression based on the shnex-sparql:example
+  PASS: Test of a sparql:langMatches expression based on the shnex-sparql:example
+  PASS: Test of a sparql:langdir expression based on the shnex-sparql:example
+  PASS: Test of a sparql:lcase expression based on the shnex-sparql:example
+  PASS: Test of a sparql:less-than-or-equal expression based on the shnex-sparql:example
+  PASS: Test of a sparql:less-than expression based on the shnex-sparql:example
+  PASS: Test of a sparql:logical-and expression based on the shnex-sparql:example
+  PASS: Test of a sparql:logical-not expression based on the shnex-sparql:example
+  PASS: Test of a sparql:logical-or expression based on the shnex-sparql:example
+  PASS: Test of a sparql:md5 expression based on the shnex-sparql:example
+  PASS: Test of a sparql:minutes expression based on the shnex-sparql:example
+  PASS: Test of a sparql:month expression based on the shnex-sparql:example
+  PASS: Test of a sparql:multiply expression based on the shnex-sparql:example
+  PASS: Test of a sparql:not-equals expression based on the shnex-sparql:example
+  PASS: Test of a sparql:object expression based on the shnex-sparql:example
+  PASS: Test of a sparql:plus expression based on the shnex-sparql:example
+  PASS: Test of a sparql:predicate expression based on the shnex-sparql:example
+  PASS: Test of a sparql:regex expression based on the shnex-sparql:example
+  PASS: Test of a sparql:replace expression based on the shnex-sparql:example
+  PASS: Test of a sparql:round expression based on the shnex-sparql:example
+  PASS: Test of a sparql:sameTerm expression based on the shnex-sparql:example
+  PASS: Test of a sparql:sameValue expression based on the shnex-sparql:example
+  PASS: Test of a sparql:seconds expression based on the shnex-sparql:example
+  PASS: Test of a sparql:sha1 expression based on the shnex-sparql:example
+  PASS: Test of a sparql:sha256 expression based on the shnex-sparql:example
+  PASS: Test of a sparql:sha384 expression based on the shnex-sparql:example
+  PASS: Test of a sparql:sha512 expression based on the shnex-sparql:example
+  PASS: Test of a sparql:str expression based on the shnex-sparql:example
+  PASS: Test of a sparql:strafter expression based on the shnex-sparql:example
+  PASS: Test of a sparql:strbefore expression based on the shnex-sparql:example
+  PASS: Test of a sparql:strdt expression based on the shnex-sparql:example
+  PASS: Test of a sparql:strends expression based on the shnex-sparql:example
+  PASS: Test of a sparql:strlang expression based on the shnex-sparql:example
+  PASS: Test of a sparql:strlangdir expression based on the shnex-sparql:example
+  PASS: Test of a sparql:strlen expression based on the shnex-sparql:example
+  PASS: Test of a sparql:strstarts expression based on the shnex-sparql:example
+  PASS: Test of a sparql:uuid expression to ensure it returns a literal
+  PASS: Test of a sparql:subject expression based on the shnex-sparql:example
+  PASS: Test of a sparql:substr expression based on the shnex-sparql:example
+  PASS: Test of a sparql:subtract expression based on the shnex-sparql:example
+  PASS: Test of a sparql:timezone expression based on the shnex-sparql:example
+  PASS: Test of a sparql:triple expression based on the shnex-sparql:example
+  PASS: Test of a sparql:tz expression based on the shnex-sparql:example
+  PASS: Test of a sparql:ucase expression based on the shnex-sparql:example
+  PASS: Test of a sparql:unary-minus expression based on the shnex-sparql:example
+  PASS: Test of a sparql:unary-plus expression based on the shnex-sparql:example
+  PASS: Test of a sparql:uri expression based on the shnex-sparql:example
+  PASS: Test of a sparql:uuid expression to ensure it returns a URI
+  PASS: Test of a sparql:year expression based on the shnex-sparql:example
+  PASS: Test of a concat expression that just has a single member that needs to be evaluated
+  PASS: Test of a concat expression that concatenates 4 constants, including a duplicate
+  PASS: Test of a concat expression that concatenates two lists
+  PASS: Test of constant node expression returning an IRI
+  PASS: Test of constant node expression returning a literal
+  PASS: Test of constant node expression returning a triple term
+  PASS: Test of a count expression on an empty list
+  PASS: Test of a count expression on a list with three members
+  PASS: Test of a distinct expression on just the focus node
+  PASS: Test of a distinct expression on a list with three members and one duplicate
+  PASS: Test of an distinct expression on a list with 3 members and no term-equal duplicate
+  PASS: Test of an empty node expression (blank node without triples)
+  PASS: Test of an exists expression with a constant expression as input
+  PASS: Test of an exists expression with an empty expression as input
+  PASS: Test of a filter shape expression against a shape that requires xsd:integers
+  PASS: Test of a filter shape expression against a shape that requires rdfs:labels
+  PASS: Test of a filter shape expression against a shape that doesn't define any constraints
+  PASS: Test of a findFirst expression on empty input
+  PASS: Test of a findFirst expression on an input list of numbers, using a minInclusive shape
+  PASS: Test of a flatMap expression, similar to the one in the spec example
+  PASS: Test of a flatMap expression with a simple list
+  PASS: Test of an if expression with complex expressions in if and then
+  PASS: Test of an if expression with a simple then result
+  PASS: Test of an if expression with a simple else result
+  PASS: Test of an if expression evaluating to false but there is no else
+  PASS: Test of an instancesOf expression for the base class
+  PASS: Test of an instancesOf expression for the sub-class
+  PASS: Test of an intersection expression with three lists as members
+  PASS: Test of an intersection expression with two empty expressions as members
+  PASS: Test of an intersection expression with two lists as members
+  PASS: Test of a limit expression of 2 on a list with 4 literals
+  PASS: Test of a limit expression with an empty list.
+  PASS: Test of a list expression with an empty list which is really the constant rdf:nil
+  PASS: Test of a list expression with 3 literals
+  PASS: Test of a matchAll expression on empty input
+  PASS: Test of a matchAll expression on an input list of numbers, using a minInclusive shape
+  PASS: Test of a matchAll expression on an input list of numbers, using a minInclusive shape
+  PASS: Test of a max expression on an empty list
+  PASS: Test of a max expression on a list with three members
+  PASS: Test of a min expression on an empty list
+  PASS: Test of a min expression on a list with three members
+  PASS: Test of a nodesMatching expression for the base class
+  PASS: Test of a nodesMatching expression for the sub-class
+  PASS: Test of an offset expression of 1 on a list with 4 literals but a limit of 2
+  PASS: Test of an offset expression with an empty list.
+  PASS: Test of an offset expression of 2 on a list with 4 literals
+  PASS: Test of an orderBy expression with a pathValues expression
+  PASS: Test of an orderBy expression with a pathValues expression using incomplete values
+  PASS: Test of an orderBy expression with a simple integer list
+  PASS: Test of an orderBy expression with a simple integer list but in descending order
+  PASS: Test of a path values expression with an sh:inversePath
+  PASS: Test of a simple path values expression that returns no values
+  PASS: Test of a simple path values expression
+  PASS: Test of a simple path values expression with an explicit (constant) shnex:focusNode
+  PASS: Test of a simple path values expression with a shnex:focusNode that is an expression by itself
+  PASS: Test of a remove expression using two lists
+  PASS: Test of a remove expression using two nested expressions
+  PASS: Test of a sum expression on an empty list
+  PASS: Test of a sum expression on a list with three integers
+  PASS: Test of a sum expression on a list with three numbers including a mix of integers and decimals
+  PASS: Test of a sum expression similar to the example in the spec
+  PASS: Test of a var expression querying a bound variable
+  PASS: Test of a var expression querying the focus node
+  PASS: Test of a var expression querying an unbound variable
+
+========================================
+TOTAL: 142 pass, 0 fail, 0 skip (out of 142)
+========================================
+shacl-core: 142 pass, 0 fail, 0 skip (out of 142)

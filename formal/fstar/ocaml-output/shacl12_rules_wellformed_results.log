@@ -1,0 +1,24 @@
+  [1/7] wellformed-01.srl ok
+  [2/7] wellformed-02.srl ok
+  [3/7] wellformed-03.srl ok
+  [4/7] wellformed-04.srl ok
+  [5/7] wellformed-bad-01.srl ok
+  [6/7] wellformed-bad-02.srl ok
+  [7/7] wellformed-bad-03.srl ok
+=== SHACL W3C Test Runner (full report comparison) ===
+Manifest: third_party/testing/shacl/shacl12-test-suite/tests/rules/wellformed/manifest.ttl
+
+Totals: 7 test entries
+
+  PASS: wellformed-01.srl
+  PASS: wellformed-02.srl
+  PASS: wellformed-03.srl
+  PASS: wellformed-04.srl
+  PASS: wellformed-bad-01.srl
+  PASS: wellformed-bad-02.srl
+  PASS: wellformed-bad-03.srl
+
+========================================
+TOTAL: 7 pass, 0 fail, 0 skip (out of 7)
+========================================
+shacl-core: 7 pass, 0 fail, 0 skip (out of 7)

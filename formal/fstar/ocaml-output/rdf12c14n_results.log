@@ -1,0 +1,181 @@
+  [1/41] rdf-n-triples/c14n/C14N comment_following_triple ok
+  [2/41] rdf-n-triples/c14n/C14N extra_whitespace-01 ok
+  [3/41] rdf-n-triples/c14n/C14N extra_whitespace-02 ok
+  [4/41] rdf-n-triples/c14n/C14N extra_whitespace-03 ok
+  [5/41] rdf-n-triples/c14n/C14N extra_whitespace-04 ok
+  [6/41] rdf-n-triples/c14n/C14N langtagged_string ok
+  [7/41] rdf-n-triples/c14n/C14N literal with base direction ltr ok
+  [8/41] rdf-n-triples/c14n/C14N literal_all_controls ok
+  [9/41] rdf-n-triples/c14n/C14N literal_all_punctuation ok
+  [10/41] rdf-n-triples/c14n/C14N literal_ascii_boundaries ok
+  [11/41] rdf-n-triples/c14n/C14N literal_with_2_dquotes ok
+  [12/41] rdf-n-triples/c14n/C14N literal_with_2_squotes ok
+  [13/41] rdf-n-triples/c14n/C14N literal_with_BACKSPACE ok
+  [14/41] rdf-n-triples/c14n/C14N literal_with_CARRIAGE_RETURN ok
+  [15/41] rdf-n-triples/c14n/C14N literal_with_CHARACTER_TABULATION ok
+  [16/41] rdf-n-triples/c14n/C14N literal_with_dquote ok
+  [17/41] rdf-n-triples/c14n/C14N literal_with_FORM_FEED ok
+  [18/41] rdf-n-triples/c14n/C14N literal_with_LINE_FEED ok
+  [19/41] rdf-n-triples/c14n/C14N literal_with_numeric_escape4 ok
+  [20/41] rdf-n-triples/c14n/C14N literal_with_numeric_escape8 ok
+  [21/41] rdf-n-triples/c14n/C14N literal_with_REVERSE_SOLIDUS ok
+  [22/41] rdf-n-triples/c14n/C14N literal_with_REVERSE_SOLIDUS2 ok
+  [23/41] rdf-n-triples/c14n/C14N literal_with_squote ok
+  [24/41] rdf-n-triples/c14n/C14N literal_with_string_dt ok
+  [25/41] rdf-n-triples/c14n/C14N literal_with_extra_whitespace ok
+  [26/41] rdf-n-triples/c14n/C14N literal_with_UTF8_boundaries ok
+  [27/41] rdf-n-triples/c14n/C14N minimal_whitespace-01 ok
+  [28/41] rdf-n-triples/c14n/C14N minimal_whitespace-02 ok
+  [29/41] rdf-n-triples/c14n/C14N triple-term-01 ok
+  [30/41] rdf-n-triples/c14n/C14N triple-term-02 ok
+  [31/41] rdf-n-triples/c14n/C14N triple-term-03 ok
+  [32/41] rdf-n-triples/c14n/C14N triple-term-04 ok
+  [33/41] rdf-n-triples/c14n/C14N nt-syntax-uri-01 ok
+  [34/41] rdf-n-triples/c14n/C14N nt-syntax-uri-02 ok
+  [35/41] rdf-n-triples/c14n/C14N nt-syntax-uri-03 ok
+  [36/41] rdf-n-triples/c14n/C14N nt-syntax-uri-04 ok
+  [37/41] rdf-n-triples/c14n/C14N nt-syntax-str-esc-01 ok
+  [38/41] rdf-n-triples/c14n/C14N nt-syntax-str-esc-02 ok
+  [39/41] rdf-n-triples/c14n/C14N nt-syntax-str-esc-03 ok
+  [40/41] rdf-n-triples/c14n/C14N literal_needing_uchar_escaping-01 ok
+  [41/41] rdf-n-triples/c14n/C14N literal_needing_uchar_escaping-02 ok
+  [1/41] rdf-n-quads/c14n/C14N comment_following_triple ok
+  [2/41] rdf-n-quads/c14n/C14N extra_whitespace-01 ok
+  [3/41] rdf-n-quads/c14n/C14N extra_whitespace-02 ok
+  [4/41] rdf-n-quads/c14n/C14N extra_whitespace-03 ok
+  [5/41] rdf-n-quads/c14n/C14N extra_whitespace-04 ok
+  [6/41] rdf-n-quads/c14n/C14N langtagged_string ok
+  [7/41] rdf-n-quads/c14n/C14N literal with base direction ltr ok
+  [8/41] rdf-n-quads/c14n/C14N literal_all_controls ok
+  [9/41] rdf-n-quads/c14n/C14N literal_all_punctuation ok
+  [10/41] rdf-n-quads/c14n/C14N literal_ascii_boundaries ok
+  [11/41] rdf-n-quads/c14n/C14N literal_with_2_dquotes ok
+  [12/41] rdf-n-quads/c14n/C14N literal_with_2_squotes ok
+  [13/41] rdf-n-quads/c14n/C14N literal_with_BACKSPACE ok
+  [14/41] rdf-n-quads/c14n/C14N literal_with_CARRIAGE_RETURN ok
+  [15/41] rdf-n-quads/c14n/C14N literal_with_CHARACTER_TABULATION ok
+  [16/41] rdf-n-quads/c14n/C14N literal_with_dquote ok
+  [17/41] rdf-n-quads/c14n/C14N literal_with_FORM_FEED ok
+  [18/41] rdf-n-quads/c14n/C14N literal_with_LINE_FEED ok
+  [19/41] rdf-n-quads/c14n/C14N literal_with_numeric_escape4 ok
+  [20/41] rdf-n-quads/c14n/C14N literal_with_numeric_escape8 ok
+  [21/41] rdf-n-quads/c14n/C14N literal_with_REVERSE_SOLIDUS ok
+  [22/41] rdf-n-quads/c14n/C14N literal_with_REVERSE_SOLIDUS2 ok
+  [23/41] rdf-n-quads/c14n/C14N literal_with_squote ok
+  [24/41] rdf-n-quads/c14n/C14N literal_with_string_dt ok
+  [25/41] rdf-n-quads/c14n/C14N literal_with_extra_whitespace ok
+  [26/41] rdf-n-quads/c14n/C14N literal_with_UTF8_boundaries ok
+  [27/41] rdf-n-quads/c14n/C14N minimal_whitespace-01 ok
+  [28/41] rdf-n-quads/c14n/C14N minimal_whitespace-02 ok
+  [29/41] rdf-n-quads/c14n/C14N triple-term-01 ok
+  [30/41] rdf-n-quads/c14n/C14N triple-term-02 ok
+  [31/41] rdf-n-quads/c14n/C14N triple-term-03 ok
+  [32/41] rdf-n-quads/c14n/C14N triple-term-03 ok
+  [33/41] rdf-n-quads/c14n/C14N nq-syntax-uri-01 ok
+  [34/41] rdf-n-quads/c14n/C14N nq-syntax-uri-02 ok
+  [35/41] rdf-n-quads/c14n/C14N nq-syntax-uri-03 ok
+  [36/41] rdf-n-quads/c14n/C14N nq-syntax-uri-04 ok
+  [37/41] rdf-n-quads/c14n/C14N nq-syntax-str-esc-01 ok
+  [38/41] rdf-n-quads/c14n/C14N nq-syntax-str-esc-02 ok
+  [39/41] rdf-n-quads/c14n/C14N nq-syntax-str-esc-03 ok
+  [40/41] rdf-n-quads/c14n/C14N literal_needing_uchar_escaping-01 ok
+  [41/41] rdf-n-quads/c14n/C14N literal_needing_uchar_escaping-02 ok
+=== W3C RDF 1.2 Canonicalization Test Runner ===
+Test base: third_party/testing/w3c/rdf/rdf12
+
+
+--- rdf-n-triples/c14n ---
+  PASS: C14N comment_following_triple
+  PASS: C14N extra_whitespace-01
+  PASS: C14N extra_whitespace-02
+  PASS: C14N extra_whitespace-03
+  PASS: C14N extra_whitespace-04
+  PASS: C14N langtagged_string
+  PASS: C14N literal with base direction ltr
+  PASS: C14N literal_all_controls
+  PASS: C14N literal_all_punctuation
+  PASS: C14N literal_ascii_boundaries
+  PASS: C14N literal_with_2_dquotes
+  PASS: C14N literal_with_2_squotes
+  PASS: C14N literal_with_BACKSPACE
+  PASS: C14N literal_with_CARRIAGE_RETURN
+  PASS: C14N literal_with_CHARACTER_TABULATION
+  PASS: C14N literal_with_dquote
+  PASS: C14N literal_with_FORM_FEED
+  PASS: C14N literal_with_LINE_FEED
+  PASS: C14N literal_with_numeric_escape4
+  PASS: C14N literal_with_numeric_escape8
+  PASS: C14N literal_with_REVERSE_SOLIDUS
+  PASS: C14N literal_with_REVERSE_SOLIDUS2
+  PASS: C14N literal_with_squote
+  PASS: C14N literal_with_string_dt
+  PASS: C14N literal_with_extra_whitespace
+  PASS: C14N literal_with_UTF8_boundaries
+  PASS: C14N minimal_whitespace-01
+  PASS: C14N minimal_whitespace-02
+  PASS: C14N triple-term-01
+  PASS: C14N triple-term-02
+  PASS: C14N triple-term-03
+  PASS: C14N triple-term-04
+  PASS: C14N nt-syntax-uri-01
+  PASS: C14N nt-syntax-uri-02
+  PASS: C14N nt-syntax-uri-03
+  PASS: C14N nt-syntax-uri-04
+  PASS: C14N nt-syntax-str-esc-01
+  PASS: C14N nt-syntax-str-esc-02
+  PASS: C14N nt-syntax-str-esc-03
+  PASS: C14N literal_needing_uchar_escaping-01
+  PASS: C14N literal_needing_uchar_escaping-02
+  [suite time: 0.0s]
+
+--- rdf-n-quads/c14n ---
+  PASS: C14N comment_following_triple
+  PASS: C14N extra_whitespace-01
+  PASS: C14N extra_whitespace-02
+  PASS: C14N extra_whitespace-03
+  PASS: C14N extra_whitespace-04
+  PASS: C14N langtagged_string
+  PASS: C14N literal with base direction ltr
+  PASS: C14N literal_all_controls
+  PASS: C14N literal_all_punctuation
+  PASS: C14N literal_ascii_boundaries
+  PASS: C14N literal_with_2_dquotes
+  PASS: C14N literal_with_2_squotes
+  PASS: C14N literal_with_BACKSPACE
+  PASS: C14N literal_with_CARRIAGE_RETURN
+  PASS: C14N literal_with_CHARACTER_TABULATION
+  PASS: C14N literal_with_dquote
+  PASS: C14N literal_with_FORM_FEED
+  PASS: C14N literal_with_LINE_FEED
+  PASS: C14N literal_with_numeric_escape4
+  PASS: C14N literal_with_numeric_escape8
+  PASS: C14N literal_with_REVERSE_SOLIDUS
+  PASS: C14N literal_with_REVERSE_SOLIDUS2
+  PASS: C14N literal_with_squote
+  PASS: C14N literal_with_string_dt
+  PASS: C14N literal_with_extra_whitespace
+  PASS: C14N literal_with_UTF8_boundaries
+  PASS: C14N minimal_whitespace-01
+  PASS: C14N minimal_whitespace-02
+  PASS: C14N triple-term-01
+  PASS: C14N triple-term-02
+  PASS: C14N triple-term-03
+  PASS: C14N triple-term-03
+  PASS: C14N nq-syntax-uri-01
+  PASS: C14N nq-syntax-uri-02
+  PASS: C14N nq-syntax-uri-03
+  PASS: C14N nq-syntax-uri-04
+  PASS: C14N nq-syntax-str-esc-01
+  PASS: C14N nq-syntax-str-esc-02
+  PASS: C14N nq-syntax-str-esc-03
+  PASS: C14N literal_needing_uchar_escaping-01
+  PASS: C14N literal_needing_uchar_escaping-02
+  [suite time: 0.0s]
+
+========================================
+Suite Results:
+  rdf-n-triples/c14n                  pass:41 fail:0 skip:0 unsupported:0
+  rdf-n-quads/c14n                    pass:41 fail:0 skip:0 unsupported:0
+========================================
+TOTAL: 82 pass, 0 fail, 0 skip, 0 unsupported
+========================================

@@ -1,0 +1,134 @@
+  [1/62] syntax-ruleset-structure-01.srl ok
+  [2/62] syntax-rule-terms-10.srl ok
+  [3/62] syntax-rule-terms-12.srl ok
+  [4/62] syntax-rule-terms-13.srl ok
+  [5/62] syntax-rule-terms-14.srl ok
+  [6/62] syntax-rule-terms-15.srl ok
+  [7/62] syntax-rule-terms-16.srl ok
+  [8/62] syntax-rule-terms-17.srl ok
+  [9/62] syntax-rule-terms-18.srl ok
+  [10/62] syntax-rule-terms-19.srl ok
+  [11/62] syntax-ruleset-structure-02.srl ok
+  [12/62] syntax-rule-terms-20.srl ok
+  [13/62] syntax-rule-terms-21.srl ok
+  [14/62] syntax-rule-elements-01.srl ok
+  [15/62] syntax-rule-elements-02.srl ok
+  [16/62] syntax-rule-elements-03.srl ok
+  [17/62] syntax-rule-elements-04.srl ok
+  [18/62] syntax-rule-elements-05.srl ok
+  [19/62] syntax-rule-elements-filter-01.srl ok
+  [20/62] syntax-rule-elements-filter-02.srl ok
+  [21/62] syntax-rule-elements-filter-03.srl ok
+  [22/62] syntax-ruleset-structure-03.srl ok
+  [23/62] syntax-rule-elements-not-01.srl ok
+  [24/62] syntax-rule-head-02.srl ok
+  [25/62] syntax-rule-elements-not-03.srl ok
+  [26/62] syntax-rule-elements-not-04.srl ok
+  [27/62] syntax-rule-elements-not-05.srl ok
+  [28/62] syntax-reification-01.srl ok
+  [29/62] syntax-reification-02.srl ok
+  [30/62] syntax-reification-03.srl ok
+  [31/62] syntax-reification-04.srl ok
+  [32/62] syntax-reification-05.srl ok
+  [33/62] syntax-ruleset-structure-04.srl ok
+  [34/62] syntax-reification-06.srl ok
+  [35/62] syntax-reification-07.srl ok
+  [36/62] syntax-reification-08.srl ok
+  [37/62] syntax-reification-09.srl ok
+  [38/62] syntax-rule-head-01.srl ok
+  [39/62] syntax-rule-head-02.srl ok
+  [40/62] syntax-rule-head-03.srl ok
+  [41/62] syntax-rule-head-04.srl ok
+  [42/62] syntax-rule-head-05.srl ok
+  [43/62] syntax-rule-head-06.srl ok
+  [44/62] syntax-ruleset-structure-05.srl ok
+  [45/62] syntax-rule-head-07.srl ok
+  [46/62] syntax-data-08.srl ok
+  [47/62] syntax-data-09.srl ok
+  [48/62] syntax-data-10.srl ok
+  [49/62] syntax-data-11.srl ok
+  [50/62] syntax-data-12.srl ok
+  [51/62] syntax-data-13.srl ok
+  [52/62] syntax-rule-terms-06.srl ok
+  [53/62] syntax-rule-terms-07.srl ok
+  [54/62] syntax-rule-terms-08.srl ok
+  [55/62] syntax-rule-terms-09.srl ok
+  [56/62] syntax-rule-bad-01.srl ok
+  [57/62] syntax-rule-bad-02.srl ok
+  [58/62] syntax-rule-bad-03.srl ok
+  [59/62] syntax-rule-bad-04.srl ok
+  [60/62] syntax-rule-bad-05.srl ok
+  [61/62] syntax-rule-bad-06.srl ok
+  [62/62] syntax-data-bad-01.srl ok
+=== SHACL W3C Test Runner (full report comparison) ===
+Manifest: third_party/testing/shacl/shacl12-test-suite/tests/rules/syntax/manifest.ttl
+
+Totals: 62 test entries
+
+  PASS: syntax-ruleset-structure-01.srl
+  PASS: syntax-rule-terms-10.srl
+  PASS: syntax-rule-terms-12.srl
+  PASS: syntax-rule-terms-13.srl
+  PASS: syntax-rule-terms-14.srl
+  PASS: syntax-rule-terms-15.srl
+  PASS: syntax-rule-terms-16.srl
+  PASS: syntax-rule-terms-17.srl
+  PASS: syntax-rule-terms-18.srl
+  PASS: syntax-rule-terms-19.srl
+  PASS: syntax-ruleset-structure-02.srl
+  PASS: syntax-rule-terms-20.srl
+  PASS: syntax-rule-terms-21.srl
+  PASS: syntax-rule-elements-01.srl
+  PASS: syntax-rule-elements-02.srl
+  PASS: syntax-rule-elements-03.srl
+  PASS: syntax-rule-elements-04.srl
+  PASS: syntax-rule-elements-05.srl
+  PASS: syntax-rule-elements-filter-01.srl
+  PASS: syntax-rule-elements-filter-02.srl
+  PASS: syntax-rule-elements-filter-03.srl
+  PASS: syntax-ruleset-structure-03.srl
+  PASS: syntax-rule-elements-not-01.srl
+  PASS: syntax-rule-head-02.srl
+  PASS: syntax-rule-elements-not-03.srl
+  PASS: syntax-rule-elements-not-04.srl
+  PASS: syntax-rule-elements-not-05.srl
+  PASS: syntax-reification-01.srl
+  PASS: syntax-reification-02.srl
+  PASS: syntax-reification-03.srl
+  PASS: syntax-reification-04.srl
+  PASS: syntax-reification-05.srl
+  PASS: syntax-ruleset-structure-04.srl
+  PASS: syntax-reification-06.srl
+  PASS: syntax-reification-07.srl
+  PASS: syntax-reification-08.srl
+  PASS: syntax-reification-09.srl
+  PASS: syntax-rule-head-01.srl
+  PASS: syntax-rule-head-02.srl
+  PASS: syntax-rule-head-03.srl
+  PASS: syntax-rule-head-04.srl
+  PASS: syntax-rule-head-05.srl
+  PASS: syntax-rule-head-06.srl
+  PASS: syntax-ruleset-structure-05.srl
+  PASS: syntax-rule-head-07.srl
+  PASS: syntax-data-08.srl
+  PASS: syntax-data-09.srl
+  PASS: syntax-data-10.srl
+  PASS: syntax-data-11.srl
+  PASS: syntax-data-12.srl
+  PASS: syntax-data-13.srl
+  PASS: syntax-rule-terms-06.srl
+  PASS: syntax-rule-terms-07.srl
+  PASS: syntax-rule-terms-08.srl
+  PASS: syntax-rule-terms-09.srl
+  PASS: syntax-rule-bad-01.srl
+  PASS: syntax-rule-bad-02.srl
+  PASS: syntax-rule-bad-03.srl
+  PASS: syntax-rule-bad-04.srl
+  PASS: syntax-rule-bad-05.srl
+  PASS: syntax-rule-bad-06.srl
+  PASS: syntax-data-bad-01.srl
+
+========================================
+TOTAL: 62 pass, 0 fail, 0 skip (out of 62)
+========================================
+shacl-core: 62 pass, 0 fail, 0 skip (out of 62)

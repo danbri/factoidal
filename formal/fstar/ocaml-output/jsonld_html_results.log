@@ -1,0 +1,59 @@
+=== W3C JSON-LD 1.1 HTML Test Runner ===
+Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/html-manifest.jsonld
+
+  PASS: Expands embedded JSON-LD script element
+  PASS: Expands embedded JSON-LD script element (xhtml)
+  PASS: Expands first embedded JSON-LD script element
+  PASS: Expands targeted JSON-LD script element
+  PASS: Expands all embedded JSON-LD script elements with extractAllScripts option
+  PASS: Expands multiple embedded JSON-LD script elements where one is an array
+  PASS: Expands as empty with no embedded JSON-LD script elements
+  PASS: Expands as empty with no embedded JSON-LD script elements and extractAllScripts
+  PASS: Expands embedded JSON-LD script element with HTML character references
+  PASS: Errors if no element found at target
+  PASS: Errors if targeted element is not a script element
+  PASS: Errors if targeted element does not have type application/ld+json
+  PASS: Errors if uncommented script text contains comment
+  PASS: Errors if end comment missing
+  PASS: Errors if start comment missing
+  PASS: Errors if uncommented script is not valid JSON
+  PASS: Expands embedded JSON-LD script element relative to document base
+  PASS: Expands embedded JSON-LD script element relative to base option
+  PASS: Expands embedded JSON-LD script element relative to HTML base
+  PASS: Expands embedded JSON-LD script element relative to relative HTML base
+  PASS: Expands targeted JSON-LD script element with fragment and HTML base
+  PASS: Compacts embedded JSON-LD script element
+  PASS: Compacts first embedded JSON-LD script element
+  PASS: Compacts targeted JSON-LD script element
+  PASS: Compacts all embedded JSON-LD script elements with extractAllScripts option
+  PASS: Flattens embedded JSON-LD script element
+  PASS: Flattens first embedded JSON-LD script element
+  PASS: Flattens targeted JSON-LD script element
+  PASS: Flattens first script element by default
+  PASS: Flattens all script elements if extractAllScripts set to true
+  PASS: Transforms embedded JSON-LD script element
+  PASS: Transforms first embedded JSON-LD script element
+  PASS: Transforms targeted JSON-LD script element
+  PASS: Expands all embedded JSON-LD script elements with extractAllScripts option
+  PASS: Expands multiple embedded JSON-LD script elements where one is an array
+  PASS: Expands as empty with no embedded JSON-LD script elements
+  PASS: Expands as empty with no embedded JSON-LD script elements and extractAllScripts
+  PASS: Expands embedded JSON-LD script element with HTML character references
+  PASS: Errors if no element found at target
+  PASS: Errors if targeted element is not a script element
+  PASS: Errors if targeted element does not have type application/ld+json
+  PASS: Errors if uncommented script text contains comment
+  PASS: Errors if end comment missing
+  PASS: Errors if start comment missing
+  PASS: Errors if uncommented script is not valid JSON
+  PASS: Expands embedded JSON-LD script element relative to document base
+  PASS: Expands embedded JSON-LD script element relative to base option
+  PASS: Expands embedded JSON-LD script element relative to HTML base
+  PASS: Expands embedded JSON-LD script element relative to relative HTML base
+  PASS: Expands targeted JSON-LD script element with fragment and HTML base
+
+========================================
+Suite Results:
+  jsonld-html                         pass:50 fail:0 skip:0 unsupported:0
+========================================
+jsonld-html: 50 pass, 0 fail, 0 skip (out of 50)
