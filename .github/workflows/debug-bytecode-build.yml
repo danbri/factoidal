@@ -66,7 +66,7 @@ jobs:
           fi
           eval $(opam env --switch=fstar)
           opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
-          opam install -y fstar z3.4.13.3 zarith sha digestif
+          opam install -y fstar z3.4.13.3 zarith sha digestif uucp
           echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
 
       - name: Extract F* to OCaml

@@ -58,7 +58,7 @@ jobs:
           eval $(opam env --switch=fstar)
           # Install F* and deps (pin z3 to 4.13.3 — F* 2025.12.15 requires exact match)
           opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
-          opam install -y fstar z3.4.13.3 zarith sha digestif ocamlfind
+          opam install -y fstar z3.4.13.3 zarith sha digestif ocamlfind uucp
           echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
           # Verify tools are available and correct versions
           fstar.exe --version

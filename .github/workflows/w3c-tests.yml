@@ -352,7 +352,7 @@ jobs:
           eval $(opam env --switch=fstar)
           # Pin z3 to 4.13.3 — F* 2025.12.15 requires exact match
           opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
-          opam install -y fstar z3.4.13.3 zarith sha digestif
+          opam install -y fstar z3.4.13.3 zarith sha digestif uucp
           echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
 
       - name: Build native (extract + compile)
@@ -587,7 +587,7 @@ jobs:
           fi
           eval $(opam env --switch=fstar)
           opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
-          opam install -y fstar z3.4.13.3 zarith sha digestif
+          opam install -y fstar z3.4.13.3 zarith sha digestif uucp
           opam install -y --assume-depexts js_of_ocaml js_of_ocaml-compiler zarith_stubs_js wasm_of_ocaml-compiler
           echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
 
