@@ -1,3 +1,5 @@
+> **only report to me in ASD-STE100 Simplified Technical English.**
+
 # Factoidal — Verified RDF/SPARQL from F\*
 
 A formally verified RDF/SPARQL implementation. The **F\* specifications are

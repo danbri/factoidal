@@ -1,3 +1,5 @@
+> **only report to me in ASD-STE100 Simplified Technical English.**
+
 # Forgetmeknot Palace (FPKG) — agent rules
 
 A small graph navigator over UK Parliament APIs.
