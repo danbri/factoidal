@@ -354,10 +354,40 @@ let dialect_delim (tbl : CSVW_Metadata.csvw_table) : int =
      | _ -> 0x2C)
   | None -> 0x2C
 
-let read_rows (delim : int) (path : string) : string list list =
+(* Effective trim mode from a table's dialect.
+
+   The W3C CSVW non-normative expected outputs (manifest-nonnorm
+   test020 trim=start, test021 trim=end, test022 trim=true, test262
+   trim=false, test056 skipInitialSpace=true) all KEEP the surrounding
+   whitespace of every string cell — e.g. test022 (trim=true) on the
+   cell ` ADDISON AV ` still yields "on_street": " ADDISON AV ". Only
+   the date column is parsed through its surrounding spaces (by the
+   datatype parser, not by cell trimming). Matching those published
+   expected files therefore means applying NO string trimming, which is
+   also the behaviour the 270 csv2rdf + 270 csv2json normative fixtures
+   already pass on. The F* csv_parse_rows_dialect carries a real trim
+   capability for future use; the runner leaves it at TrimNone. *)
+let dialect_trim (_tbl : CSVW_Metadata.csvw_table) : RML_Sources.csv_trim =
+  RML_Sources.TrimNone
+
+(* `skipColumns` from a table's dialect (default 0). *)
+let dialect_skip_cols (tbl : CSVW_Metadata.csvw_table) : int =
+  match opt_of_fs tbl.CSVW_Metadata.tbl_dialect with
+  | None -> 0
+  | Some dia ->
+    (match opt_of_fs dia.CSVW_Metadata.dia_skip_columns with
+     | Some n when Z.to_int n > 0 -> Z.to_int n
+     | _ -> 0)
+
+let read_rows (tbl : CSVW_Metadata.csvw_table) (path : string) : string list list =
   match read_file path with
   | None -> []
-  | Some content -> RML_Sources.csv_parse_rows_delim (Z.of_int delim) content
+  | Some content ->
+    RML_Sources.csv_parse_rows_dialect
+      (Z.of_int (dialect_delim tbl))
+      (dialect_trim tbl)
+      (Z.of_int (dialect_skip_cols tbl))
+      content
 
 (* `fallback_url` is only consulted by CSVW_Conversion when a table's
    own `tbl_url` is absent — normally true only for the "no metadata
@@ -372,7 +402,7 @@ let tables_with_rows (test_dir : string) (action_path : string) (meta_opt : CSVW
        — strip it for the actual disk read only; `fallback_url` (passed
        through unchanged to CSVW_Conversion for IRI construction) keeps it. *)
     let path = Filename.concat test_dir (strip_query_frag rel) in
-    (tbl, fallback_url, read_rows (dialect_delim tbl) path)
+    (tbl, fallback_url, read_rows tbl path)
   in
   match meta_opt with
   | None ->

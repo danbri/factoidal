@@ -5,7 +5,7 @@ name: csvw-nonnorm
 kind: csvw
 runner: "bin/linux-x86_64/csvw_runner --nonnorm"
 manifest: third_party/testing/csvw/tests/manifest-nonnorm.ttl
-score: "4 pass, 14 fail (out of 18)"
+score: "10 pass, 8 fail (out of 18)"
 
 triggers:
   paths:
@@ -16,17 +16,29 @@ triggers:
     - third_party/testing/csvw/**
   excludes: []
 
-# Passing: dialect delimiter/TSV (test050) + 3 baseline.
-# Remaining 14 — the dialect layer, decoded in CSVW.Metadata but not yet
-# applied in the shared conversion:
+# Passing (10): 3 baseline (test002/003/024) + dialect delimiter/TSV
+# (test050) + skipColumns (test054) + the trim family (test020 start,
+# test021 end, test022 true, test262 false, test056 skipInitialSpace).
+#
+# The trim family is handled the way the W3C expected outputs actually
+# encode it: every string cell KEEPS its surrounding whitespace (base
+# "string", or no datatype which defaults to "string"), while
+# non-string datatypes strip leading/trailing whitespace before lexical
+# parsing (tabular-data-model 6.4.2) -- so " 10/18/2010 " parses to
+# "2010-10-18" (CSVW.Conversion.csvw_dt_preserves_ws + csvw_trim).
+# skipColumns drops the leading N cells of every row uniformly
+# (RML.Sources.csv_parse_rows_dialect).
+#
+# Remaining 8 -- all need physical-row vs logical-row numbering, which
+# the shared conversion does not yet separate (the "#row=N" URL fragment
+# uses the PHYSICAL source-line number while rownum counts only retained
+# data rows; today the conversion derives one from the other, valid only
+# when the header is exactly one line and nothing is skipped):
 remaining:
-  - "trim modes true/start/end/false: test020, test021, test022, test262 — correct handling requires the RFC-4180 tokenizer (RML.Sources.csv_scan_acc) to record per-cell quoted-ness so quoted whitespace is NOT trimmed; applying trim unconditionally would regress quoted-cell fixtures"
-  - "commentPrefix (skip comment lines): test051 (header), test052 (rows)"
-  - "skipColumns: test054"
-  - "skipBlankRows: test055"
-  - "skipInitialSpace: test056"
-  - "dialect given as a URL reference: test057"
-  - "table dialect vs tablegroup dialect precedence: test058"
+  - "commentPrefix + skipRows (skip leading/comment lines, keep physical row numbers): test051 (header), test052 (rows)"
+  - "skipBlankRows (drop all-empty rows from logical numbering, keep physical row numbers): test055"
   - "header=false with skipRows: test025"
-  - "no header line: test019"
+  - "no header line at all: test019"
+  - "dialect given as a URL reference (fetch + decode a separate dialect document): test057"
+  - "table dialect vs tablegroup dialect precedence/merge: test058"
   - "same number of columns in each row (NegativeValidationTest): test091"

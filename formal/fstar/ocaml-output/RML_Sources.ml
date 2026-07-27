@@ -332,6 +332,55 @@ let csv_parse_rows_delim (delim : Prims.nat) (s : Prims.string) :
     ((FStar_String.strlen s) + Prims.int_one) false "" [] []
 let csv_parse_rows (s : Prims.string) : Prims.string Prims.list Prims.list=
   csv_parse_rows_delim (Prims.of_int (0x2C)) s
+type csv_trim =
+  | TrimNone 
+  | TrimStart 
+  | TrimEnd 
+  | TrimBoth 
+let uu___is_TrimNone (projectee : csv_trim) : Prims.bool=
+  match projectee with | TrimNone -> true | uu___ -> false
+let uu___is_TrimStart (projectee : csv_trim) : Prims.bool=
+  match projectee with | TrimStart -> true | uu___ -> false
+let uu___is_TrimEnd (projectee : csv_trim) : Prims.bool=
+  match projectee with | TrimEnd -> true | uu___ -> false
+let uu___is_TrimBoth (projectee : csv_trim) : Prims.bool=
+  match projectee with | TrimBoth -> true | uu___ -> false
+let is_ws_char (c : FStar_Char.char) : Prims.bool=
+  let i = FStar_Char.int_of_char c in
+  (i = (Prims.of_int (0x20))) || (i = (Prims.of_int (0x09)))
+let rec drop_leading_ws (cs : FStar_Char.char Prims.list) :
+  FStar_Char.char Prims.list=
+  match cs with
+  | c::rest -> if is_ws_char c then drop_leading_ws rest else cs
+  | [] -> []
+let trim_cell (mode : csv_trim) (s : Prims.string) : Prims.string=
+  let cs = FStar_String.list_of_string s in
+  let cs' =
+    match mode with
+    | TrimNone -> cs
+    | TrimStart -> drop_leading_ws cs
+    | TrimEnd ->
+        FStar_List_Tot_Base.rev
+          (drop_leading_ws (FStar_List_Tot_Base.rev cs))
+    | TrimBoth ->
+        drop_leading_ws
+          (FStar_List_Tot_Base.rev
+             (drop_leading_ws (FStar_List_Tot_Base.rev cs))) in
+  FStar_String.string_of_list cs'
+let rec drop_first_n (n : Prims.nat) (xs : Prims.string Prims.list) :
+  Prims.string Prims.list=
+  match (n, xs) with
+  | (uu___, uu___1) when uu___ = Prims.int_zero -> xs
+  | (uu___, []) -> []
+  | (uu___, uu___1::rest) -> drop_first_n (n - Prims.int_one) rest
+let csv_parse_rows_dialect (delim : Prims.nat) (mode : csv_trim)
+  (skip_cols : Prims.nat) (s : Prims.string) :
+  Prims.string Prims.list Prims.list=
+  let rows = csv_parse_rows_delim delim s in
+  FStar_List_Tot_Base.map
+    (fun r ->
+       FStar_List_Tot_Base.map (trim_cell mode) (drop_first_n skip_cols r))
+    rows
 let rec zip_strings (a : Prims.string Prims.list)
   (b : Prims.string Prims.list) : (Prims.string * Prims.string) Prims.list=
   match (a, b) with

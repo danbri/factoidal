@@ -663,6 +663,38 @@ let csvw_row_lookup (phys_bindings : list (string & string)) (row_num : nat) (so
 let csvw_term_of_subject (s : subject) : rdf_term =
   match s with S_IRI i -> T_IRI i | S_BNode b -> T_BNode b
 
+// ASCII whitespace test (space/tab/LF/CR) for trimming (tabular-data-
+// model 6.4): used both when splitting a `separator` cell and when
+// stripping surrounding whitespace ahead of NON-string datatype parsing.
+let csvw_char_ws (c : FStar.Char.char) : bool =
+  let n = FStar.Char.int_of_char c in n = 32 || n = 9 || n = 10 || n = 13
+
+let rec csvw_drop_leading_ws (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases cs) =
+  match cs with
+  | c :: tl -> if csvw_char_ws c then csvw_drop_leading_ws tl else cs
+  | [] -> []
+
+// Trim both ends: drop leading whitespace, then drop leading whitespace
+// of the reversed remainder and reverse back (drops the trailing run).
+let csvw_trim (s : string) : string =
+  let front = csvw_drop_leading_ws (String.list_of_string s) in
+  String.string_of_list (List.Tot.rev (csvw_drop_leading_ws (List.Tot.rev front)))
+
+// Whether a datatype base preserves the cell's surrounding whitespace.
+// Only the string family keeps it (XSD whiteSpace=preserve for `string`;
+// the structured literals xml/html/json also keep their content). Every
+// other base (numeric, date/time, duration, boolean, …) has leading and
+// trailing whitespace stripped before lexical parsing — tabular-data-
+// model 6.4.2. This is what makes manifest-nonnorm test020/021/022/056/
+// 262 pass: their string cells keep the spaces (base "string", or no
+// datatype which also defaults to "string") while the `date` cell parses
+// through its surrounding spaces (" 10/18/2010 " -> "2010-10-18").
+let csvw_dt_preserves_ws (base_name : string) : bool =
+  base_name = "string" || base_name = "normalizedString"
+  || base_name = "anyAtomicType" || base_name = "xml"
+  || base_name = "html" || base_name = "json"
+
 // aboutUrl/propertyUrl/valueUrl templates resolve against the CURRENT
 // TABLE's own (already base_iri-resolved) URL, not the outer document
 // base — csv2rdf's URI Template Properties (tabular-data-model §5.1.1):
@@ -734,6 +766,12 @@ let csvw_cell_object
             // test172-182 for ill-formed, test196-198/test203-215 for
             // constraint violations).
             let base_name = csvw_dt_base_name_of spec.cs_datatype in
+            // Non-string datatypes strip leading/trailing whitespace off
+            // the cell before lexical parsing (tabular-data-model 6.4.2);
+            // string-family bases keep it. The null-check above already
+            // ran against the raw text, so trimming here only feeds the
+            // datatype parser a clean lexical.
+            let txt = if csvw_dt_preserves_ws base_name then txt else csvw_trim txt in
             // UAX-35 format facets first: a `format`/`pattern` (numbers,
             // dates) or a boolean base converts the raw cell to a
             // canonical lexical, or rejects it (keeping the raw string).
@@ -769,27 +807,6 @@ let csvw_encode_name (s : string) : string =
           then [FStar.Char.char_of_int 37; FStar.Char.char_of_int 50; FStar.Char.char_of_int 68]  // %2D
           else [c])
        (String.list_of_string (string_encode_uri s)))
-
-// ASCII whitespace test (space/tab/LF/CR) for trimming split list
-// elements (tabular-data-model 6.4: with the default dialect `trim`=true
-// each value produced by splitting on a `separator` has leading and
-// trailing whitespace removed — test036/037's `comments` cells:
-// "cavity or decay; trunk decay; ..." splits to " trunk decay" etc.,
-// each of which trims to "trunk decay").
-let csvw_char_ws (c : FStar.Char.char) : bool =
-  let n = FStar.Char.int_of_char c in n = 32 || n = 9 || n = 10 || n = 13
-
-let rec csvw_drop_leading_ws (cs : list FStar.Char.char)
-  : Tot (list FStar.Char.char) (decreases cs) =
-  match cs with
-  | c :: tl -> if csvw_char_ws c then csvw_drop_leading_ws tl else cs
-  | [] -> []
-
-// Trim both ends: drop leading whitespace, then drop leading whitespace
-// of the reversed remainder and reverse back (drops the trailing run).
-let csvw_trim (s : string) : string =
-  let front = csvw_drop_leading_ws (String.list_of_string s) in
-  String.string_of_list (List.Tot.rev (csvw_drop_leading_ws (List.Tot.rev front)))
 
 // Split a list-valued cell (tabular-metadata `separator`) on the first
 // character of the separator string, trimming whitespace off each

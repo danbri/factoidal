@@ -744,6 +744,27 @@ let csvw_term_of_subject (s : RDF_Term.subject) : RDF_Term.rdf_term=
   match s with
   | RDF_Term.S_IRI i -> RDF_Term.T_IRI i
   | RDF_Term.S_BNode b -> RDF_Term.T_BNode b
+let csvw_char_ws (c : FStar_Char.char) : Prims.bool=
+  let n = FStar_Char.int_of_char c in
+  (((n = (Prims.of_int (32))) || (n = (Prims.of_int (9)))) ||
+     (n = (Prims.of_int (10))))
+    || (n = (Prims.of_int (13)))
+let rec csvw_drop_leading_ws (cs : FStar_Char.char Prims.list) :
+  FStar_Char.char Prims.list=
+  match cs with
+  | c::tl -> if csvw_char_ws c then csvw_drop_leading_ws tl else cs
+  | [] -> []
+let csvw_trim (s : Prims.string) : Prims.string=
+  let front = csvw_drop_leading_ws (FStar_String.list_of_string s) in
+  FStar_String.string_of_list
+    (FStar_List_Tot_Base.rev
+       (csvw_drop_leading_ws (FStar_List_Tot_Base.rev front)))
+let csvw_dt_preserves_ws (base_name : Prims.string) : Prims.bool=
+  (((((base_name = "string") || (base_name = "normalizedString")) ||
+       (base_name = "anyAtomicType"))
+      || (base_name = "xml"))
+     || (base_name = "html"))
+    || (base_name = "json")
 let csvw_cell_object (table_url_resolved : Prims.string)
   (spec : csvw_col_spec)
   (cell_text0 : Prims.string FStar_Pervasives_Native.option)
@@ -798,18 +819,22 @@ let csvw_cell_object (table_url_resolved : Prims.string)
                      FStar_Pervasives_Native.None
                  | FStar_Pervasives_Native.Some d ->
                      let base_name = csvw_dt_base_name_of spec.cs_datatype in
+                     let txt1 =
+                       if csvw_dt_preserves_ws base_name
+                       then txt
+                       else csvw_trim txt in
                      let uu___2 = csvw_dt_format_facets spec.cs_datatype in
                      (match uu___2 with
                       | (fmt_str, pat, grp, dec) ->
                           let uu___3 =
                             match CSVW_Formats.csvw_format_convert base_name
-                                    fmt_str pat grp dec txt
+                                    fmt_str pat grp dec txt1
                             with
                             | CSVW_Formats.FO_Invalid ->
-                                (txt, RDF_Term.xsd_string)
+                                (txt1, RDF_Term.xsd_string)
                             | CSVW_Formats.FO_Valid canonical ->
                                 (canonical, d)
-                            | CSVW_Formats.FO_NoFormat -> (txt, d) in
+                            | CSVW_Formats.FO_NoFormat -> (txt1, d) in
                           (match uu___3 with
                            | (lex, dt_eff) ->
                                let violate =
@@ -834,21 +859,6 @@ let csvw_encode_name (s : Prims.string) : Prims.string=
             FStar_Char.char_of_int (Prims.of_int (68))]
           else [c])
        (FStar_String.list_of_string (SPARQL11_Algebra.string_encode_uri s)))
-let csvw_char_ws (c : FStar_Char.char) : Prims.bool=
-  let n = FStar_Char.int_of_char c in
-  (((n = (Prims.of_int (32))) || (n = (Prims.of_int (9)))) ||
-     (n = (Prims.of_int (10))))
-    || (n = (Prims.of_int (13)))
-let rec csvw_drop_leading_ws (cs : FStar_Char.char Prims.list) :
-  FStar_Char.char Prims.list=
-  match cs with
-  | c::tl -> if csvw_char_ws c then csvw_drop_leading_ws tl else cs
-  | [] -> []
-let csvw_trim (s : Prims.string) : Prims.string=
-  let front = csvw_drop_leading_ws (FStar_String.list_of_string s) in
-  FStar_String.string_of_list
-    (FStar_List_Tot_Base.rev
-       (csvw_drop_leading_ws (FStar_List_Tot_Base.rev front)))
 let csvw_split_list_cell (sep : Prims.string) (s : Prims.string) :
   Prims.string Prims.list=
   match FStar_String.list_of_string sep with

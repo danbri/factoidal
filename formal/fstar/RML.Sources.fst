@@ -358,6 +358,60 @@ let csv_parse_rows_delim (delim : nat) (s : string) : list (list string) =
 let csv_parse_rows (s : string) : list (list string) =
   csv_parse_rows_delim 0x2C s
 
+// ------------------------------------------------------------------
+// CSVW dialect cell post-processing (tabular-data-model §8): `trim`
+// and `skipColumns`. Kept separate from the RFC 4180 tokenizer so the
+// normative RML / csv2rdf / csv2json path (which calls csv_parse_rows
+// with no dialect) is byte-for-byte unchanged. The runner only calls
+// csv_parse_rows_dialect with non-default arguments when the table
+// carries an explicit dialect setting.
+// ------------------------------------------------------------------
+type csv_trim =
+  | TrimNone   // no whitespace stripping
+  | TrimStart  // strip leading  (skipInitialSpace / trim="start")
+  | TrimEnd    // strip trailing (trim="end")
+  | TrimBoth   // strip both     (trim="true")
+
+let is_ws_char (c : FStar.Char.char) : bool =
+  let i = FStar.Char.int_of_char c in i = 0x20 (* space *) || i = 0x09 (* tab *)
+
+let rec drop_leading_ws (cs : list FStar.Char.char) : Tot (list FStar.Char.char) (decreases cs) =
+  match cs with
+  | c :: rest -> if is_ws_char c then drop_leading_ws rest else cs
+  | [] -> []
+
+// Apply one trim mode to a single cell via a char-list round-trip
+// (total; no String.sub length obligations).
+let trim_cell (mode : csv_trim) (s : string) : string =
+  let cs = FStar.String.list_of_string s in
+  let cs' =
+    match mode with
+    | TrimNone  -> cs
+    | TrimStart -> drop_leading_ws cs
+    | TrimEnd   -> List.Tot.rev (drop_leading_ws (List.Tot.rev cs))
+    | TrimBoth  -> drop_leading_ws (List.Tot.rev (drop_leading_ws (List.Tot.rev cs)))
+  in
+  FStar.String.string_of_list cs'
+
+// Drop the first `n` cells of a row (CSVW `skipColumns`: the leading
+// columns are not part of the tabular data; applied uniformly to the
+// header and every data row so column alignment is preserved).
+let rec drop_first_n (n : nat) (xs : list string) : Tot (list string) (decreases n) =
+  match n, xs with
+  | 0, _ -> xs
+  | _, [] -> []
+  | _, _ :: rest -> drop_first_n (n - 1) rest
+
+// Dialect-aware row tokenizer: split on `delim`, drop the first
+// `skip_cols` cells of every row, then apply the trim `mode` to each
+// remaining cell.
+let csv_parse_rows_dialect (delim : nat) (mode : csv_trim) (skip_cols : nat) (s : string)
+  : list (list string) =
+  let rows = csv_parse_rows_delim delim s in
+  List.Tot.map
+    (fun (r : list string) -> List.Tot.map (trim_cell mode) (drop_first_n skip_cols r))
+    rows
+
 let rec zip_strings (a : list string) (b : list string) : Tot (list (string & string)) (decreases a) =
   match a, b with
   | x :: xs, y :: ys -> (x, y) :: zip_strings xs ys
