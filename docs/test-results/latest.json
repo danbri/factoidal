@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-07-27 19:42 UTC",
-  "commit": "03dd34f342f991bcaf14a9eacf045151457179ba",
+  "timestamp": "2026-07-27 21:50 UTC",
+  "commit": "dad35199eb11976bf491b9db836e03e9252c53cd",
   "branch": "claude/main",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
@@ -45,7 +45,6 @@
     "csvw_csv2rdf":   {"pass":270,"fail":0,"skip":0,"total":270,"present":true,"spec":"https://www.w3.org/TR/csv2rdf/"},
     "csvw_csv2json":  {"pass":270,"fail":0,"skip":0,"total":270,"present":true,"spec":"https://www.w3.org/TR/csv2json/"},
     "csvw_validation":{"pass":281,"fail":1,"skip":0,"total":282,"present":true,"spec":"https://www.w3.org/TR/tabular-data-model/"},
-    "csvw_nonnorm":   {"pass":10,"fail":8,"skip":0,"total":18,"present":true,"spec":"https://www.w3.org/TR/tabular-data-model/"},
     "did_key":        {"pass":8,"fail":0,"skip":0,"total":8,"present":true,"spec":"https://www.w3.org/TR/did-core/"},
     "vc_di_eddsa":    {"pass":31,"fail":0,"skip":0,"total":31,"present":true,"spec":"https://w3c.github.io/vc-di-eddsa-test-suite/"},
     "vc20_api":       {"pass":59,"fail":0,"skip":0,"total":59,"present":true,"spec":"https://w3c.github.io/vc-data-model-2.0-test-suite/"},
@@ -54,7 +53,6 @@
     "jsonld_expand":  {"pass":385,"fail":0,"skip":0,"total":385,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#expansion-algorithm"},
     "jsonld_compact": {"pass":245,"fail":0,"skip":1,"total":246,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#compaction-algorithm"},
     "jsonld_flatten": {"pass":58,"fail":0,"skip":0,"total":58,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#flattening-algorithm"},
-    "jsonld_frame":   {"pass":6,"fail":86,"skip":0,"total":92,"present":true,"spec":"https://www.w3.org/TR/json-ld11-framing/"},
     "hdt_stage4_parity":{"pass":6,"fail":0,"skip":0,"total":6,"present":true,"spec":"internal (HDT backend parity vs in-memory)"},
     "hub_browser_bundle":{"pass":253,"fail":1,"skip":0,"total":254,"present":true,"spec":"internal (node --test tests/hub)"},
     "npm_package":    {"pass":162,"fail":0,"skip":1,"total":163,"present":true,"spec":"internal (node --test npm/factoidal/test)"}
