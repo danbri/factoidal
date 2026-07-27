@@ -29,15 +29,27 @@ triggers:
 # skipColumns drops the leading N cells of every row uniformly
 # (RML.Sources.csv_parse_rows_dialect).
 #
-# Remaining 8 -- all need physical-row vs logical-row numbering, which
-# the shared conversion does not yet separate (the "#row=N" URL fragment
-# uses the PHYSICAL source-line number while rownum counts only retained
-# data rows; today the conversion derives one from the other, valid only
-# when the header is exactly one line and nothing is skipped):
+# Remaining 8. NORMATIVE CSVW is complete (csv2rdf 270/270, csv2json
+# 270/270, validation 281/282); these 8 are non-conformance-gating.
+# Five (test025/051/052/055/058) need two shared-conversion additions:
+#   (a) the comment model -- skipRows'd rows and commentPrefix rows are
+#       dropped from the data AND emitted as table rdfs:comment
+#       annotations (test025 keeps the whole line; test051/052 strip the
+#       "#" prefix + leading space). The comment VALUE is the raw source
+#       record, so a faithful build wants the parser to carry each
+#       record's raw text, not just its tokenized cells.
+#   (b) physical-row vs logical-row numbering under row filtering -- the
+#       "#row=N" URL fragment is the PHYSICAL source-line number while
+#       rownum counts only retained data rows; today source_row_num =
+#       header_offset + logical + 1, exact only when no row is filtered
+#       out of the middle. commentPrefix/skipBlankRows filter mid-stream.
+# The 270 do not exercise these (the only normative fixture with a valid
+# commentPrefix is test023, whose CSV has no "#" lines; test059/068/071
+# pass invalid dialect values that are ignored with a warning).
 remaining:
-  - "commentPrefix + skipRows (skip leading/comment lines, keep physical row numbers): test051 (header), test052 (rows)"
+  - "commentPrefix + skipRows -> rdfs:comment, physical numbering preserved: test051 (header), test052 (rows)"
   - "skipBlankRows (drop all-empty rows from logical numbering, keep physical row numbers): test055"
-  - "header=false with skipRows: test025"
+  - "header=false with skipRows -> rdfs:comment: test025"
   - "no header line at all: test019"
   - "dialect given as a URL reference (fetch + decode a separate dialect document): test057"
   - "table dialect vs tablegroup dialect precedence/merge: test058"
