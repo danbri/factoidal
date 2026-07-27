@@ -54,6 +54,7 @@
     "jsonld_expand":  {"pass":385,"fail":0,"skip":0,"total":385,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#expansion-algorithm"},
     "jsonld_compact": {"pass":245,"fail":0,"skip":1,"total":246,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#compaction-algorithm"},
     "jsonld_flatten": {"pass":58,"fail":0,"skip":0,"total":58,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#flattening-algorithm"},
+    "jsonld_frame":   {"pass":6,"fail":86,"skip":0,"total":92,"present":true,"spec":"https://www.w3.org/TR/json-ld11-framing/"},
     "hdt_stage4_parity":{"pass":6,"fail":0,"skip":0,"total":6,"present":true,"spec":"internal (HDT backend parity vs in-memory)"},
     "hub_browser_bundle":{"pass":253,"fail":1,"skip":0,"total":254,"present":true,"spec":"internal (node --test tests/hub)"},
     "npm_package":    {"pass":162,"fail":0,"skip":1,"total":163,"present":true,"spec":"internal (node --test npm/factoidal/test)"}
