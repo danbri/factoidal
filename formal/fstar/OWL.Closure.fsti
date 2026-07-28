@@ -4020,6 +4020,117 @@ let owl_rule_cardinality_to_min_max (g : rdf_graph) (ig : indexed_graph) : rdf_g
     g
     g
 
+// ---- Group D(b): max-1 qualified cardinality forces sameAs ---------------
+//
+// OWL 2 Profiles (W3C Rec. 11 Dec 2012), section 4.3, Table 6 — the two
+// equality-forcing max-QCR rules, transcribed:
+//
+//   cls-maxqc3
+//     T(?x, owl:maxQualifiedCardinality, "1"^^xsd:nonNegativeInteger)
+//     T(?x, owl:onProperty, ?p) . T(?x, owl:onClass, ?c)
+//     T(?u, rdf:type, ?x)
+//     T(?u, ?p, ?y1) . T(?y1, rdf:type, ?c)
+//     T(?u, ?p, ?y2) . T(?y2, rdf:type, ?c)
+//     ==> T(?y1, owl:sameAs, ?y2)
+//
+//   cls-maxqc4
+//     same, but T(?x, owl:onClass, owl:Thing) and no rdf:type premise on
+//     ?y1 / ?y2 — everything is in owl:Thing, so the class filter is
+//     vacuous.
+//
+// The QUALIFIED sibling of cls-maxc2, which this file already implements
+// (owl_rule_cls_maxc2). The two differ only in the bound predicate
+// (owl:maxCardinality vs owl:maxQualifiedCardinality) and the
+// owl:onClass filter on the witnesses.
+//
+// SEPARATE MECHANISM FROM ISSUE #236. OWL.QueryRewrite.fst's
+// CE_MaxCardinality rewrite works around the same semantics at QUERY
+// time by emitting an anchor triple, and is documented as narrow (it
+// multiplies rows per P-edge and drops vacuous-truth individuals). This
+// rule materialises the owl:sameAs triple in the closure instead. The
+// two must not be conflated: the anchor rewrite is a projection-time
+// device with no effect on the closed graph, and this rule introduces no
+// anchor variables.
+//
+// NARROWING: restricted to ASSERTED restriction nodes
+// (restriction_node_is_asserted), matching the posture
+// owl_rule_cls_maxc2's header already states ("fires only on data-side
+// restriction bnodes"). Two `__rl_` skolem families in this file carry
+// owl:maxQualifiedCardinality "1": cls-maxqc1's canonicals, whose
+// membership emission is already guarded to at most one C-typed
+// successor per member (so this rule could only ever re-derive a
+// reflexive sameAs from them), and Group D(a)'s __rl_maxqcard__ nodes,
+// which are comprehension artefacts of this closure rather than premise
+// vocabulary. Deriving individual equality — the one conclusion that
+// then rewrites subjects, predicates and objects graph-wide through
+// eq-rep-s/p/o — from a node the closure invented is the amplification
+// the wave-1 prp-fp blowup taught us to refuse. The resulting
+// incompleteness is exactly: an asserted `owl:qualifiedCardinality 1`
+// (exact, not max) does not yet force the merge.
+//
+// Complexity: the outer fold filters |g| on the (predicate, object)
+// pair; onProperty / onClass / member lookups are O(1) bucket reads; the
+// per-member y1 x y2 nesting is bounded by p's fan-out for that member,
+// not a graph-wide cross product. Identical shape and bound to
+// owl_rule_cls_maxc2.
+//
+// Targets rdfbased-sem-restrict-maxqcr-inst-obj-one.
+let owl_rule_cls_maxqc34 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_maxQualifiedCardinality_iri
+         && rdf_term_eq t.o (T_Literal one_nonNegInteger_literal)
+         && restriction_node_is_asserted t.s then
+        let r_subj = t.s in
+        let props   = find_objects_indexed ig r_subj owl_onProperty_iri in
+        let classes = find_objects_indexed ig r_subj owl_onClass_iri in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (p_term : rdf_term) ->
+            match p_term with
+            | T_IRI p ->
+              List.Tot.fold_left
+                (fun (acc3 : rdf_graph) (c_term : rdf_term) ->
+                  match c_term with
+                  | T_IRI c ->
+                    // cls-maxqc4 is cls-maxqc3 with the class filter
+                    // made vacuous by owl:Thing.
+                    let unqualified = (c = owl_Thing) in
+                    let members =
+                      find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
+                    List.Tot.fold_left
+                      (fun (acc4 : rdf_graph) (u : subject) ->
+                        let ys = find_objects_indexed ig u p in
+                        let ws : list rdf_term =
+                          if unqualified then ys
+                          else List.Tot.filter
+                                 (fun (y : rdf_term) -> object_has_type ig y c) ys in
+                        List.Tot.fold_left
+                          (fun (acc5 : rdf_graph) (y1 : rdf_term) ->
+                            List.Tot.fold_left
+                              (fun (acc6 : rdf_graph) (y2 : rdf_term) ->
+                                if rdf_term_eq y1 y2 then acc6
+                                else
+                                  match term_to_subject y1 with
+                                  | None -> acc6
+                                  | Some y1_subj ->
+                                    add_triple_unchecked acc6
+                                      ({ s = y1_subj; p = owl_sameAs; o = y2 } <: triple))
+                              acc5
+                              ws)
+                          acc4
+                          ws)
+                      acc3
+                      members
+                  | _ -> acc3)
+                acc2
+                classes
+            | _ -> acc2)
+          acc
+          props
+      else acc)
+    g
+    g
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -4619,10 +4730,15 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // so the emitted nodes reach cls-maxc2 / rdfs11 on the next fixpoint
   // iteration regardless of where this sits.
   let g28e = owl_rule_cardinality_to_min_max g28d ig in
+  // Group D(b): cls-maxqc3 / cls-maxqc4 (OWL 2 Profiles Table 6) — the
+  // qualified sibling of cls-maxc2 at g18. Kept next to D(a) rather than
+  // beside cls-maxc2 because the two share restriction_node_is_asserted;
+  // step placement is immaterial under the ig-snapshot convention.
+  let g28f = owl_rule_cls_maxqc34 g28e ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28e
+graph_dedup_sort g28f
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
