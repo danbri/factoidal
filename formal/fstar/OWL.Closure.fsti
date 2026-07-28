@@ -3855,6 +3855,72 @@ let canonical_adfl2_bnode (k1 k2 : string) : bnode_id =
 // inner rescan of g or ig. See the design doc's risk note on this rule
 // and the module header comment on #262 above for why this shape
 // matters here specifically.
+let owl_distinctMembers_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#distinctMembers");
+  "http://www.w3.org/2002/07/owl#distinctMembers"
+
+// ---- Group F: forward AllDifferent -> pairwise differentFrom -------------
+//
+// The FORWARD direction of the rule pair that ends this section. The
+// reverse rule below (owl_rule_differentFrom_to_allDifferent) synthesises
+// a canonical 2-member owl:AllDifferent scaffold FROM existing
+// differentFrom pairs so other rules can consume it; this one reads an
+// ASSERTED owl:AllDifferent node's member list and emits the full
+// n-choose-2 pairwise owl:differentFrom closure.
+//
+// Both the OWL 1 spelling (owl:distinctMembers) and the OWL 2 spelling
+// (owl:members) are accepted, matching cax-adc-expand / cax-adp-expand's
+// use of owl:members. Reuses decode_chain_list, the same IRI-only
+// rdf:Collection decoder those two rules use, so a list with bnode or
+// literal elements decodes to None and the rule no-ops on it.
+//
+// Interaction with the reverse rule: the scaffolds it emits are
+// 2-member owl:AllDifferent nodes over exactly the pair they came from,
+// so re-reading them here re-derives a differentFrom triple that is
+// already present — idempotent, no growth across fixpoint iterations.
+//
+// Complexity: n-choose-2 per AllDifferent axiom, n bounded by the
+// declared member-list length (a schema-level arity, not an individual
+// count) — the same bound cax-adc-expand carries, not the #262
+// quadratic-in-individuals shape.
+//
+// Targets WebOnt-AllDifferent-001, WebOnt-differentFrom-002,
+// WebOnt-distinctMembers-001.
+let owl_rule_allDifferent_to_differentFrom (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_AllDifferent_iri) then
+        let lists =
+          List.Tot.append
+            (find_objects_indexed ig t.s owl_distinctMembers_iri)
+            (find_objects_indexed ig t.s owl_members_iri)
+        in
+        List.Tot.fold_left
+          (fun (acc1 : rdf_graph) (l_term : rdf_term) ->
+            match term_to_subject l_term with
+            | None -> acc1
+            | Some l_subj ->
+              (match decode_chain_list g ig l_subj with
+               | None -> acc1
+               | Some ms ->
+                 List.Tot.fold_left
+                   (fun (acc2 : rdf_graph) (x : wf_iri) ->
+                      List.Tot.fold_left
+                        (fun (acc3 : rdf_graph) (y : wf_iri) ->
+                           if x = y then acc3
+                           else add_triple_unchecked acc3
+                                  ({ s = S_IRI x; p = owl_differentFrom;
+                                     o = T_IRI y }))
+                        acc2
+                        ms)
+                   acc1
+                   ms))
+          acc
+          lists
+      else acc)
+    g
+    g
+
 let owl_rule_differentFrom_to_allDifferent (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (xy : subject * subject) ->
@@ -3955,7 +4021,14 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // iteration (snapshot semantics: differentFrom_canonical_pairs reads
   // the step-input ig, not this step's g12c) while still threading the
   // accumulator forward within this step.
-  let g12d = owl_rule_differentFrom_to_allDifferent g12c ig in
+  // Group F, forward AllDifferent: an ASSERTED owl:AllDifferent node's
+  // owl:distinctMembers / owl:members list expands to pairwise
+  // owl:differentFrom. Runs immediately before the reverse rule so the
+  // freshly derived pairs are visible to eq-diff-sym and the
+  // contrapositives on the NEXT fixpoint iteration (the reverse rule
+  // reads the step-input snapshot, so it does not consume them here).
+  let g12c1 = owl_rule_allDifferent_to_differentFrom g12c ig in
+  let g12d = owl_rule_differentFrom_to_allDifferent g12c1 ig in
   // Restriction-membership rules (parent4 / parent5 / parent6).
   let g13 = owl_rule_minc1_bridge g12d ig in
   // svf2 existential-witness synthesis (paper-Q3 gap 1, 2026-04-25
