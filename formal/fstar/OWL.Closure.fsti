@@ -4276,6 +4276,110 @@ let owl_rule_fp_pinned_subproperty (g : rdf_graph) (ig : indexed_graph) : rdf_gr
     g
     g
 
+// ---- Group E(e): singleton nominals pin functionality --------------------
+//
+// WebOnt-FunctionalProperty-004 and WebOnt-InverseFunctionalProperty-004
+// are NOT the inverseOf pair that -003 forms with them (see E(b) above);
+// they are nominal-cardinality tests. Premise: an owl:ObjectProperty
+// whose rdfs:range (resp. rdfs:domain) is a class defined by
+// `owl:oneOf` over a ONE-element list. Conclusion: the property is
+// owl:FunctionalProperty (resp. owl:InverseFunctionalProperty).
+//
+// Derivation from the RDF-Based Semantics conditions for owl:oneOf,
+// rdfs:range, rdfs:domain, owl:FunctionalProperty and
+// owl:InverseFunctionalProperty. If (c,l) is in EXT(owl:oneOf) and l is
+// an rdf:List of exactly one element a, then CEXT(c) = { a }.
+//
+//   RANGE case. p rdfs:range c means every <x,y> in EXT(p) has y in
+//   CEXT(c) = { a }. So any <x,y1>, <x,y2> in EXT(p) give y1 = a = y2,
+//   which is exactly the owl:FunctionalProperty condition.
+//
+//   DOMAIN case. p rdfs:domain c means every <x,y> in EXT(p) has x in
+//   CEXT(c) = { a }. So any <y1,z>, <y2,z> in EXT(p) give y1 = a = y2,
+//   which is exactly the owl:InverseFunctionalProperty condition.
+//
+// Neither direction is in the OWL 2 RL/RDF tables or in pD*: both rule
+// sets keep terminological conclusions out, and neither reasons about
+// nominal cardinality at all.
+//
+// The one-element list's member is NOT inspected — only the list's
+// LENGTH matters, which is what lets this fire on the fixtures' member
+// (an anonymous `<rdf:Description/>`, i.e. a bare bnode). decode_iri_list,
+// used by cls-oneof / cls-uni, requires IRI members and returns None
+// here, which is why this rule walks the list itself.
+//
+// Complexity: outer fold filters |g| to owl:oneOf triples; per hit, one
+// fuel-bounded rdf:List walk plus two O(1) bucket reads for the
+// properties whose domain / range is that class. Nothing data-sized.
+//
+// SCALE NOTE: like E(b)/E(c), the rule's output is a new
+// owl:FunctionalProperty declaration, whose downstream consumers
+// (owl_rule_functional, owl_rule_fp_diff_to_diff) scan the graph per
+// functional predicate. The set it can grow is bounded by the number of
+// properties whose asserted domain or range is a singleton nominal —
+// schema-sized, and empty in every graph that declares no owl:oneOf.
+
+// Length of a well-formed rdf:List starting at `head`, or None if the
+// chain is malformed (a cell without an rdf:first, without exactly one
+// rdf:rest, or a cycle that exhausts the fuel).
+let subject_is_rdf_nil (s : subject) : bool =
+  match s with
+  | S_IRI i -> i = rdf_nil_iri
+  | S_BNode _ -> false
+
+let rec rdf_list_length_fuel (ig : indexed_graph) (head : subject) (fuel : nat)
+  : Tot (option nat) (decreases fuel) =
+  if subject_is_rdf_nil head then Some 0
+  else
+    match fuel with
+    | 0 -> None
+    | _ ->
+      let firsts = find_objects_indexed ig head rdf_first in
+      let rests  = find_objects_indexed ig head rdf_rest in
+      if Nil? firsts then None
+      else
+        (match rests with
+         | [r] ->
+           (match term_to_subject r with
+            | None -> None
+            | Some rs ->
+              (match rdf_list_length_fuel ig rs (fuel - 1) with
+               | None -> None
+               | Some n -> Some (n + 1)))
+         | _ -> None)
+
+let owl_rule_singleton_nominal_functionality
+  (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_oneOf_iri then
+        match term_to_subject t.o with
+        | None -> acc
+        | Some list_subj ->
+          (match rdf_list_length_fuel ig list_subj fuel with
+           | Some 1 ->
+             let c_term = subject_to_term t.s in
+             let ranged  = find_subjects_indexed ig rdfs_range  c_term in
+             let domained = find_subjects_indexed ig rdfs_domain c_term in
+             let acc1 =
+               List.Tot.fold_left
+                 (fun (a : rdf_graph) (p : subject) ->
+                    add_triple_unchecked a
+                      ({ s = p; p = rdf_type;
+                         o = T_IRI owl_FunctionalProperty } <: triple))
+                 acc ranged in
+             List.Tot.fold_left
+               (fun (a : rdf_graph) (p : subject) ->
+                  add_triple_unchecked a
+                    ({ s = p; p = rdf_type;
+                       o = T_IRI owl_InverseFunctionalProperty } <: triple))
+               acc1 domained
+           | _ -> acc)
+      else acc)
+    g
+    g
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -4886,10 +4990,14 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // subproperties, which the already-present scm-eqp2 (g2b) turns into
   // owl:equivalentProperty on the next fixpoint iteration.
   let g28g = owl_rule_fp_pinned_subproperty g28f ig in
+  // Group E(e): a class defined by owl:oneOf over a ONE-element list is
+  // a singleton, so a property with that class as rdfs:range is
+  // functional and one with it as rdfs:domain is inverse-functional.
+  let g28h = owl_rule_singleton_nominal_functionality g28g ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28g
+graph_dedup_sort g28h
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
