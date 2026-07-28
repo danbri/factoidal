@@ -1858,7 +1858,7 @@ RDF_CottasStore.cmx:  	RDF_CottasStore.ml  	RDF_Store_Columnar_SubjectOffsetInde
 
 RDF.Vocabulary.fsti.checked:  	RDF.Vocabulary.fsti  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
-Tableau.CountingOracle.fst.checked:  	Tableau.CountingOracle.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Math.Lemmas.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	Tableau.fst.checked  	RDF.Graph.Executable.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Mul.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+Tableau.CountingOracle.fst.checked:  	Tableau.CountingOracle.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Math.Lemmas.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	Tableau.fst.checked  	RDF.Graph.Executable.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Mul.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
 Tableau_CountingOracle.ml:  	Tableau.CountingOracle.fst.checked
 

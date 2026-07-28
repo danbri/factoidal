@@ -4448,14 +4448,22 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
 let regime_rdf : string = "RDF"
 let regime_rdfs : string = "RDFS"
 let regime_owl_rl : string = "OWL-RL"
-// OWL-Direct is the DL-semantics regime. Stage (a) of the tableau
-// (Tableau.fst) is a skeleton: we run the existing OWL-RL Datalog
-// closure as the baseline (sound wrt OWL-Direct), and for any goals
-// it doesn't entail the caller MAY consult owl_tableau_entails. The
-// tableau currently returns None for everything non-trivial, so the
-// observable behaviour of OWL-Direct and OWL-RL is identical until
-// later tableau stages land. See docs/designissues/2026-04-19-
-// tableau-owl-plan.md §5.
+// OWL-Direct is the DL-semantics regime. This dispatch runs the
+// OWL-RL Datalog closure as the baseline (sound wrt OWL-Direct); the
+// caller MAY consult owl_tableau_entails for goals it doesn't entail.
+// The tableau is NO LONGER a skeleton (2026-07-28): Tableau.fst
+// materialises class-expression memberships/witnesses, and
+// Tableau.Refute.fst carries a clash-detecting refutation calculus
+// (NNF + contrapositive unfolding, union/merge/identify/nominal
+// branching, analytic min-sum counting clash, bottom-normalisation)
+// that closes the DL98 WebOnt-description-logic PE family and dl-502;
+// Tableau.CountingOracle.fst decides the finite class-size fragment
+// with a verified Farkas validator. The owl-runner's DL regime wires
+// these in (bin/owl-runner/owl_runner.ml apply_closure_stages /
+// pe_refute_entails); THIS entailment_closure dispatch still runs the
+// RL closure only. History: docs/designissues/2026-04-19-tableau-owl-
+// plan.md §5; current state: docs/designissues/2026-07-28-tableau-
+// classification-design.md.
 let regime_owl_direct : string = "OWL-Direct"
 
 // entailment_closure : dispatch on regime name, apply the appropriate

@@ -346,10 +346,24 @@ let ico_is_facet_pred (p : wf_iri) : bool =
 // finite domain and stay in fragment; only complement whose subject is
 // NOT an RL-canonical bnode (an authored / nested class expression, as
 // in dl-026 / dl-027) is the general-boolean structure to reject.
+// PE-negation scaffolding bnodes (Tableau.Refute negation_goals):
+// "__factoidal_pe_..." complement bnodes only assert the negated-
+// conclusion membership a PE refutation goal is built from. Like the
+// RL-canonical complements they are engine-generated, never authored
+// boolean class structure, and no row extractor below reads them —
+// exempting them from the reject scan is scope-hygiene, not a
+// soundness lever (section-8 banner: the Farkas validator + per-row
+// entailment carry soundness regardless of gating).
+let ico_pe_scaffold_prefix : string = "__factoidal_pe_"
+let bnode_is_pe_scaffold (b : bnode_id) : bool =
+  let plen = String.length ico_pe_scaffold_prefix in
+  if String.length b < plen then false
+  else String.sub b 0 plen = ico_pe_scaffold_prefix
+
 let ico_authored_complement (t : triple) : bool =
   t.p = ico_owl_complementOf
   && (match t.s with
-      | S_BNode b -> not (bnode_is_rl_canonical b)
+      | S_BNode b -> not (bnode_is_rl_canonical b || bnode_is_pe_scaffold b)
       | S_IRI _   -> true)
 
 let ico_reject_triple (t : triple) : bool =
@@ -1261,6 +1275,203 @@ let rec lc_oneof_all (g : rdf_graph) (n : nat) (classes : list wf_iri)
      else [])
     @ lc_oneof_all g n classes tl
 
+// ---- 8b2. Finite-pinned classes + member-nonemptiness rows ----
+//
+// (owl2-counting-extension wave, design note 2026-07-28 —
+// Consistent-but-all-unsat.) The integer class-size variables are
+// model-meaningful only for classes whose extension is FINITE in every
+// model; the member row below is therefore gated on a PROVABLE
+// finiteness pin:
+//   - DIRECT pin: the class carries / is equivalent to an owl:oneOf
+//     enumeration (ico_class_has_oneof), or has a subClassOf /
+//     equivalentClass bound that is an owl:oneOf list or an
+//     owl:unionOf list ALL of whose members carry owl:oneOf lists —
+//     CEXT(C) is then contained in a finite union of finite
+//     enumerations.
+//   - PROPAGATION: finiteness transfers along exactly the relations
+//     the row builders read. A bijection row |A| = |B| transfers it
+//     either way; a fiber row |D| = k·|X| (k >= 1) either way
+//     (D finite => X, being in bijection with a subset of D's fibers,
+//     finite; X finite => D = k·X finite); a disjoint-union row
+//     |Z| = |B| + |C| both up (parts finite => Z finite) and down
+//     (parts are subclasses of Z, so Z finite => parts finite).
+// MEMBER row: an asserted `x rdf:type C` with x an IRI or bnode
+// denotes SOME element of CEXT(C) in every model, so |C| >= 1 —
+// emitted only for finite-pinned C, keeping every row about an
+// integer that exists. Withholding a row is always sound.
+
+let rec ico_list_members_all_oneof (g : rdf_graph) (ms : list rdf_term)
+  : Tot bool (decreases ms) =
+  match ms with
+  | [] -> true
+  | m :: tl ->
+    (match term_as_subject m with
+     | Some s -> (match find_first_object g s ico_owl_oneOf2 with
+                  | Some _ -> ico_list_members_all_oneof g tl
+                  | None -> false)
+     | None -> false)
+
+let ico_enum_bound_object (g : rdf_graph) (o : rdf_term) : bool =
+  match term_as_subject o with
+  | Some s ->
+    (match find_first_object g s ico_owl_oneOf2 with
+     | Some _ -> true
+     | None ->
+       (match find_first_object g s ico_owl_unionOf with
+        | Some l -> ico_list_members_all_oneof g (walk_rdf_list g l (length g))
+        | None -> false))
+  | None -> false
+
+let rec ico_has_enum_bound (g : rdf_graph) (os : list rdf_term)
+  : Tot bool (decreases os) =
+  match os with
+  | [] -> false
+  | o :: tl -> ico_enum_bound_object g o || ico_has_enum_bound g tl
+
+let ico_directly_pinned (g : rdf_graph) (c : wf_iri) : bool =
+  ico_class_has_oneof g c
+  || ico_has_enum_bound g (ico_restr_of g c)
+
+// Finiteness-transfer edges, mirroring the row builders exactly.
+let rec ico_fiber_edges (g : rdf_graph) (ps : list wf_iri)
+  : Tot (list (wf_iri & wf_iri)) (decreases ps) =
+  match ps with
+  | [] -> []
+  | p :: tl ->
+    (match ico_find_dom g p, ico_find_inv g p with
+     | Some d, Some ip ->
+       (match ico_svf_via g (ico_restr_of g d) p with
+        | Some x ->
+          (match ico_exactcard_via g (ico_restr_of g x) ip with
+           | Some k -> if k >= 1 then [(d, x)] else []
+           | None -> [])
+        | None -> [])
+     | _, _ -> [])
+    @ ico_fiber_edges g tl
+
+let rec ico_bij_edges_for (g : rdf_graph) (p : wf_iri) (ip : wf_iri)
+                          (cs : list wf_iri)
+  : Tot (list (wf_iri & wf_iri)) (decreases cs) =
+  match cs with
+  | [] -> []
+  | d :: tl ->
+    (match ico_svf_via g (ico_restr_of g d) p with
+     | Some y ->
+       (match ico_svf_via g (ico_restr_of g y) ip with
+        | Some dback -> if dback = d then [(d, y)] else []
+        | None -> [])
+     | None -> [])
+    @ ico_bij_edges_for g p ip tl
+
+let rec ico_bij_edges (g : rdf_graph) (classes : list wf_iri) (ps : list wf_iri)
+  : Tot (list (wf_iri & wf_iri)) (decreases ps) =
+  match ps with
+  | [] -> []
+  | p :: tl ->
+    (match ico_find_inv g p with
+     | Some ip -> ico_bij_edges_for g p ip classes
+     | None -> [])
+    @ ico_bij_edges g classes tl
+
+let rec ico_union_edges (g : rdf_graph) (ts : list triple)
+  : Tot (list (wf_iri & wf_iri)) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    (if t.p = ico_owl_equivalentClass
+     then (match t.s, t.o with
+           | S_IRI z, T_BNode _ ->
+             (match term_as_subject t.o with
+              | Some bs ->
+                (match find_first_object g bs ico_owl_unionOf with
+                 | Some lterm ->
+                   (match walk_rdf_list g lterm (length g) with
+                    | [T_IRI m1; T_IRI m2] ->
+                      if ico_disjoint g m1 m2 then [(z, m1); (z, m2)] else []
+                    | _ -> [])
+                 | None -> [])
+              | None -> [])
+           | _, _ -> [])
+     else [])
+    @ ico_union_edges g tl
+
+let rec ico_edge_step (edges : list (wf_iri & wf_iri)) (c : wf_iri)
+  : Tot (list wf_iri) (decreases edges) =
+  match edges with
+  | [] -> []
+  | (a, b) :: tl ->
+    (if a = c then [b] else if b = c then [a] else [])
+    @ ico_edge_step tl c
+
+let rec ico_step_all (edges : list (wf_iri & wf_iri)) (frontier : list wf_iri)
+  : Tot (list wf_iri) (decreases frontier) =
+  match frontier with
+  | [] -> []
+  | c :: tl -> ico_edge_step edges c @ ico_step_all edges tl
+
+let rec ico_filter_new (visited : list wf_iri) (cands : list wf_iri)
+  : Tot (list wf_iri) (decreases cands) =
+  match cands with
+  | [] -> []
+  | c :: tl ->
+    let rest = ico_filter_new visited tl in
+    if ico_mem_iri c visited || ico_mem_iri c rest then rest else c :: rest
+
+// Fuel-bounded undirected BFS: running out of fuel only WITHHOLDS
+// finiteness (fewer member rows) — sound.
+let rec ico_finite_bfs (edges : list (wf_iri & wf_iri))
+                       (frontier : list wf_iri) (visited : list wf_iri)
+                       (fuel : nat)
+  : Tot (list wf_iri) (decreases fuel) =
+  if fuel = 0 then visited
+  else
+    match frontier with
+    | [] -> visited
+    | _ ->
+      let fresh = ico_filter_new visited (ico_step_all edges frontier) in
+      (match fresh with
+       | [] -> visited
+       | _ -> ico_finite_bfs edges fresh (visited @ fresh) (fuel - 1))
+
+let rec ico_pinned_of (g : rdf_graph) (cs : list wf_iri)
+  : Tot (list wf_iri) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c :: tl ->
+    let rest = ico_pinned_of g tl in
+    if ico_directly_pinned g c then c :: rest else rest
+
+let ico_finite_classes (g : rdf_graph) (classes : list wf_iri)
+                       (fprops : list wf_iri) (bprops : list wf_iri)
+  : list wf_iri =
+  let pinned = ico_pinned_of g classes in
+  let edges = ico_fiber_edges g fprops
+              @ ico_bij_edges g classes bprops
+              @ ico_union_edges g g in
+  ico_finite_bfs edges pinned pinned (List.Tot.length edges + 1)
+
+let rec ico_class_has_member (ts : list triple) (c : wf_iri)
+  : Tot bool (decreases ts) =
+  match ts with
+  | [] -> false
+  | t :: tl ->
+    (t.p = ico_rdf_type
+     && (match t.o with T_IRI x -> x = c | _ -> false)
+     && (match t.s with S_IRI _ | S_BNode _ -> true))
+    || ico_class_has_member tl c
+
+let rec lc_member_all (g : rdf_graph) (n : nat) (classes : list wf_iri)
+                      (finite : list wf_iri) (cs : list wf_iri)
+  : Tot (list lin_constraint) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c :: tl ->
+    (if ico_mem_iri c finite && ico_class_has_member g c
+     then [ { lc_coeffs = mk_row n 0 [(cidx classes c, 1)];
+              lc_rhs = 1; lc_is_eq = false } ]
+     else [])
+    @ lc_member_all g n classes finite tl
+
 // The equality rows (FIBER / BIJECTION / DISJOINT-UNION) come first,
 // then the ONEOF `>= 1` bound rows. `class_of_sys` returns (N, classes,
 // eq-rows, bound-rows) so the searcher and validator share the ordering.
@@ -1275,7 +1486,9 @@ let build_lin_system (g : rdf_graph)
     lc_fiber_all g n classes fprops
     @ lc_bij_all g n classes bprops
     @ lc_union_all g n classes g in
-  let bounds = lc_oneof_all g n classes classes in
+  let finite = ico_finite_classes g classes fprops bprops in
+  let bounds = lc_oneof_all g n classes classes
+               @ lc_member_all g n classes finite classes in
   (n, classes, eqs, bounds)
 
 // ---- 8c. Certificate searcher (UNVERIFIED -- validated by farkas_check) ----
