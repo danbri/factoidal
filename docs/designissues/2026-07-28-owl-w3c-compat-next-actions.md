@@ -436,7 +436,24 @@ Ordered by (tests gained) / (estimated effort), one commit-sized item each.
 14. **Group G — OWL Full meta-modeling axioms.** Park (see 🧭 below). **3
     tests, not recommended unless OWL Full becomes an explicit goal.**
 
-## 5. Open questions for the owner
+## 5. Open questions for the owner — ANSWERED 2026-07-28
+
+Owner steers, quoted verbatim (same day, in reply to the three 🧭 items
+below, in order):
+
+1. On OWL Full meta-modeling (Group G): "If we can do it - eg under a flag
+   or engine mode or api if not directly alongside other OWL variants,
+   then sure" — **in scope, gated behind a flag/engine mode**; item 14
+   changes from "park" to "implement under an explicit mode, never in the
+   default DL/RL paths".
+2. On tableau priority: "You've been doing tableau very very slowly for
+   weeks now. Just get it all done please." — **the tableau program
+   (Group H + J + the 2 DL98 inconsistency fails) is promoted to top
+   priority alongside, not after, the closure-rule quick wins.**
+3. On dashboard regen: "Sure, but it's just us here (and yr subagents)."
+   — regen approved.
+
+## 5-orig. Open questions for the owner (as originally asked)
 
 🧭 **Is OWL Full punning/meta-modeling (Group G, 3 tests: `WebOnt-Class-001/
 002/003`) in scope at all?** The W3C suite itself marks these DL-excluded
