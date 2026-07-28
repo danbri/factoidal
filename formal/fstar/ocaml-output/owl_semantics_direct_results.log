@@ -597,6 +597,7 @@
   [inc-running] WebOnt-Restriction-001
   [inc-running] WebOnt-Restriction-002
   [inc-running] WebOnt-Thing-003
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-Thing-005
   [inc-running] WebOnt-description-logic-001
   [inc-running] WebOnt-description-logic-002
@@ -695,7 +696,7 @@
   [inc-running] string-integer-clash
 Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/semantics-direct.rdf
-  parsed 12070 triples in 0.62s
+  parsed 12070 triples in 0.93s
 Totals: 488 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -704,14 +705,14 @@ Totals: 488 test cases
   ProfileIdentificationTest: 417
 
 Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
-  FAIL  Consistent-but-all-unsat
+  PASS  Consistent-but-all-unsat
   PASS  DisjointClasses-001
   PASS  DisjointClasses-003
   PASS  New-Feature-DataQCR-001
   PASS  New-Feature-DisjointDataProperties-002
   PASS  New-Feature-DisjointObjectProperties-001
   PASS  New-Feature-DisjointObjectProperties-002
-  FAIL  New-Feature-DisjointUnion-001
+  PASS  New-Feature-DisjointUnion-001
   PASS  New-Feature-Keys-001
   PASS  New-Feature-Keys-003
   PASS  New-Feature-ObjectPropertyChain-001
@@ -720,13 +721,13 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  New-Feature-ObjectQCR-001
   PASS  New-Feature-ObjectQCR-002
   PASS  New-Feature-ReflexiveProperty-001
-  FAIL  New-Feature-SelfRestriction-001
-  FAIL  New-Feature-SelfRestriction-002
+  PASS  New-Feature-SelfRestriction-001
+  PASS  New-Feature-SelfRestriction-002
   SKIP/functional-syntax-only  Qualified-cardinality-boolean
       reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 Functional Syntax) with test:normativeSyntax FUNCTIONAL, and either no fs premise/conclusion literal is present or it uses Functional-Syntax constructs beyond Parser_OWLFunctional's narrow subset (Prefix/Ontology/Declaration + ~6 axiom forms; see docs/designissues/2026-07-05-owl-functional-syntax-plan.md)
   SKIP/functional-syntax-only  Qualified-cardinality-restricted-int
       reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 Functional Syntax) with test:normativeSyntax FUNCTIONAL, and either no fs premise/conclusion literal is present or it uses Functional-Syntax constructs beyond Parser_OWLFunctional's narrow subset (Prefix/Ontology/Declaration + ~6 axiom forms; see docs/designissues/2026-07-05-owl-functional-syntax-plan.md)
-  FAIL  WebOnt-AllDifferent-001
+  PASS  WebOnt-AllDifferent-001
   PASS  WebOnt-AnnotationProperty-002
   FAIL  WebOnt-Class-001
   FAIL  WebOnt-Class-002
@@ -743,8 +744,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-I4.6-005-Direct
   PASS  WebOnt-I5.1-001
   PASS  WebOnt-I5.2-002
-  FAIL  WebOnt-I5.2-004
-  FAIL  WebOnt-I5.2-006
+  PASS  WebOnt-I5.2-004
+  PASS  WebOnt-I5.2-006
   FAIL  WebOnt-I5.21-002
   PASS  WebOnt-I5.24-001
   FAIL  WebOnt-I5.24-002
@@ -754,8 +755,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-I5.26-010
   FAIL  WebOnt-I5.3-014
   FAIL  WebOnt-I5.3-015
-  FAIL  WebOnt-I5.5-001
-  FAIL  WebOnt-I5.5-002
+  PASS  WebOnt-I5.5-001
+  PASS  WebOnt-I5.5-002
   FAIL  WebOnt-I5.5-005
   FAIL  WebOnt-I5.8-004
   PASS  WebOnt-I5.8-006
@@ -783,29 +784,29 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-cardinality-002
   FAIL  WebOnt-cardinality-003
   PASS  WebOnt-cardinality-004
-  FAIL  WebOnt-cardinality-006
+  PASS  WebOnt-cardinality-006
   FAIL  WebOnt-complementOf-001
-  FAIL  WebOnt-description-logic-201
-  FAIL  WebOnt-description-logic-202
+  PASS  WebOnt-description-logic-201
+  PASS  WebOnt-description-logic-202
   PASS  WebOnt-description-logic-203
   PASS  WebOnt-description-logic-204
   PASS  WebOnt-description-logic-205
-  FAIL  WebOnt-description-logic-206
+  PASS  WebOnt-description-logic-206
   PASS  WebOnt-description-logic-207
-  FAIL  WebOnt-description-logic-208
-  FAIL  WebOnt-description-logic-661
-  FAIL  WebOnt-description-logic-662
+  PASS  WebOnt-description-logic-208
+  PASS  WebOnt-description-logic-661
+  PASS  WebOnt-description-logic-662
   PASS  WebOnt-description-logic-663
   PASS  WebOnt-description-logic-664
   PASS  WebOnt-description-logic-665
   PASS  WebOnt-description-logic-667
-  FAIL  WebOnt-description-logic-901
-  FAIL  WebOnt-description-logic-903
+  PASS  WebOnt-description-logic-901
+  PASS  WebOnt-description-logic-903
   PASS  WebOnt-differentFrom-001
-  FAIL  WebOnt-differentFrom-002
-  FAIL  WebOnt-disjointWith-001
-  FAIL  WebOnt-disjointWith-002
-  FAIL  WebOnt-distinctMembers-001
+  PASS  WebOnt-differentFrom-002
+  PASS  WebOnt-disjointWith-001
+  PASS  WebOnt-disjointWith-002
+  PASS  WebOnt-distinctMembers-001
   PASS  WebOnt-equivalentClass-001
   PASS  WebOnt-equivalentClass-002
   PASS  WebOnt-equivalentClass-003
@@ -824,14 +825,14 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-extra-credit-004
   PASS  WebOnt-imports-001
   PASS  WebOnt-imports-003
-  FAIL  WebOnt-imports-010
+  PASS  WebOnt-imports-010
   PASS  WebOnt-imports-011
   PASS  WebOnt-intersectionOf-001
   PASS  WebOnt-inverseOf-001
   PASS  WebOnt-miscellaneous-011
-  FAIL  WebOnt-miscellaneous-302-Direct
-  FAIL  WebOnt-oneOf-002
-  FAIL  WebOnt-oneOf-003
+  PASS  WebOnt-miscellaneous-302-Direct
+  PASS  WebOnt-oneOf-002
+  PASS  WebOnt-oneOf-003
   FAIL  WebOnt-oneOf-004
   PASS  WebOnt-sameAs-001
   PASS  WebOnt-someValuesFrom-001
@@ -860,7 +861,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-class-nothing-type
   PASS  rdfbased-sem-class-thing-term
   PASS  rdfbased-sem-class-thing-type
-  FAIL  rdfbased-sem-enum-inst-included
+  PASS  rdfbased-sem-enum-inst-included
   PASS  rdfbased-sem-eqdis-eqclass-inst
   PASS  rdfbased-sem-eqdis-eqclass-rflxv
   PASS  rdfbased-sem-eqdis-eqclass-subclass-1
@@ -881,24 +882,24 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-eqdis-sameas-trans
   PASS  rdfbased-sem-inv-inst
   PASS  rdfbased-sem-key-def
-  FAIL  rdfbased-sem-prop-backwardcompatiblewith-type-annot
-  FAIL  rdfbased-sem-prop-comment-type
-  FAIL  rdfbased-sem-prop-deprecated-type
-  FAIL  rdfbased-sem-prop-incompatiblewith-type-annot
-  FAIL  rdfbased-sem-prop-isdefinedby-type
-  FAIL  rdfbased-sem-prop-label-type
-  FAIL  rdfbased-sem-prop-priorversion-type-annot
-  FAIL  rdfbased-sem-prop-seealso-type
-  FAIL  rdfbased-sem-prop-versioninfo-type
+  PASS  rdfbased-sem-prop-backwardcompatiblewith-type-annot
+  PASS  rdfbased-sem-prop-comment-type
+  PASS  rdfbased-sem-prop-deprecated-type
+  PASS  rdfbased-sem-prop-incompatiblewith-type-annot
+  PASS  rdfbased-sem-prop-isdefinedby-type
+  PASS  rdfbased-sem-prop-label-type
+  PASS  rdfbased-sem-prop-priorversion-type-annot
+  PASS  rdfbased-sem-prop-seealso-type
+  PASS  rdfbased-sem-prop-versioninfo-type
   PASS  rdfbased-sem-rdfs-domain-cond
   PASS  rdfbased-sem-rdfs-range-cond
   PASS  rdfbased-sem-rdfs-subclass-cond
   PASS  rdfbased-sem-rdfs-subclass-trans
   PASS  rdfbased-sem-rdfs-subprop-cond
   PASS  rdfbased-sem-rdfs-subprop-trans
-  FAIL  rdfbased-sem-rdfsext-domain-subprop
+  PASS  rdfbased-sem-rdfsext-domain-subprop
   PASS  rdfbased-sem-rdfsext-domain-superclass
-  FAIL  rdfbased-sem-rdfsext-range-subprop
+  PASS  rdfbased-sem-rdfsext-range-subprop
   PASS  rdfbased-sem-rdfsext-range-superclass
   PASS  rdfbased-sem-restrict-allvalues-cmp-class
   PASS  rdfbased-sem-restrict-allvalues-cmp-prop
@@ -913,7 +914,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 135 pass, 69 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 135.83s
+Profile-RL PositiveEntailmentTests: 173 pass, 31 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 194.69s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -936,12 +937,12 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-description-logic-904
   PASS  WebOnt-equivalentClass-005
   PASS  WebOnt-equivalentClass-008
-  FAIL/unexpected-entailment  WebOnt-imports-002
+  PASS  WebOnt-imports-002
   PASS  WebOnt-miscellaneous-301
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 7.25s
+Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 10.38s
 
 Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Consistent Datatype restrictions with Different Types
@@ -1300,7 +1301,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 351 pass, 0 fail (out of 351), 2 skipped (functional-syntax-only) in 296.34s
+Profile-RL ConsistencyTests: 351 pass, 0 fail (out of 351), 2 skipped (functional-syntax-only) in 473.05s
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Contradicting datatype Restrictions
@@ -1433,4 +1434,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 124 pass, 3 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 34.26s
+Profile-RL InconsistencyTests: 124 pass, 3 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 75.03s

@@ -398,8 +398,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-28 17:05 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-25 07:29 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-28 22:51 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-28 17:18 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDF 1.2 / SPARQL 1.2 (W3C Working Drafts), RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -849,6 +849,8 @@
   and <code>semantics-direct.rdf</code>. The ninth catalog
   (<code>syntax-dl.rdf</code>) scores through the F\*
   <code>OWL2.SyntaxDL</code> species checker (its row appears above).
+  Every remaining failure is named, explained, and dispositioned on the
+  <a href="../web/conformance/owl2/">OWL 2 conformance page</a>.
 </p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Tableau on the live codepath.</strong> The F\*
@@ -924,10 +926,10 @@
     </div>
   </details>
   <details class="suite-node amber">
-    <summary><span class="suite-name">type-PosEnt PE [DL]</span><span class="suite-numbers">140/64/0 of 204</span><span class="dot amber"></span></summary>
+    <summary><span class="suite-name">type-PosEnt PE [DL]</span><span class="suite-numbers">173/31/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:68.63%"></div><div class="seg seg-fail" style="width:31.37%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">140 pass, 64 fail, 0 skip (out of 204)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:84.80%"></div><div class="seg seg-fail" style="width:15.20%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">173 pass, 31 fail, 0 skip (out of 204)</p>
     </div>
   </details><details class="suite-node green">
     <summary><span class="suite-name">type-PosEnt Cons [DL]</span><span class="suite-numbers">204/0/0 of 204</span><span class="dot green"></span></summary>
@@ -952,6 +954,24 @@
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
       <p class="suite-numbers-full">23 pass, 0 fail, 0 skip (out of 23)</p>
+    </div>
+  </details><details class="suite-node amber">
+    <summary><span class="suite-name">type-Cons PE [DL]</span><span class="suite-numbers">173/31/0 of 204</span><span class="dot amber"></span></summary>
+    <div class="suite-body">
+      <div class="meter"><div class="seg seg-pass" style="width:84.80%"></div><div class="seg seg-fail" style="width:15.20%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">173 pass, 31 fail, 0 skip (out of 204)</p>
+    </div>
+  </details><details class="suite-node green">
+    <summary><span class="suite-name">type-Cons NE [DL]</span><span class="suite-numbers">23/0/0 of 23</span><span class="dot green"></span></summary>
+    <div class="suite-body">
+      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">23 pass, 0 fail, 0 skip (out of 23)</p>
+    </div>
+  </details><details class="suite-node green">
+    <summary><span class="suite-name">type-Cons Cons [DL]</span><span class="suite-numbers">352/0/0 of 352</span><span class="dot green"></span></summary>
+    <div class="suite-body">
+      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">352 pass, 0 fail, 0 skip (out of 352)</p>
     </div>
   </details><details class="suite-node grey">
     <summary><span class="suite-name">type-Inc PE [DL]</span><span class="suite-numbers">0/0/0 of 0</span><span class="dot grey"></span></summary>
@@ -1014,16 +1034,16 @@
       <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="suite-name">sem-Direct PE [DL]</span><span class="suite-numbers">135/69/0 of 204</span><span class="dot amber"></span></summary>
+    <summary><span class="suite-name">sem-Direct PE [DL]</span><span class="suite-numbers">173/31/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:66.18%"></div><div class="seg seg-fail" style="width:33.82%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">135 pass, 69 fail, 0 skip (out of 204)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:84.80%"></div><div class="seg seg-fail" style="width:15.20%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">173 pass, 31 fail, 0 skip (out of 204)</p>
     </div>
-  </details><details class="suite-node amber">
-    <summary><span class="suite-name">sem-Direct NE [DL]</span><span class="suite-numbers">22/1/0 of 23</span><span class="dot amber"></span></summary>
+  </details><details class="suite-node green">
+    <summary><span class="suite-name">sem-Direct NE [DL]</span><span class="suite-numbers">23/0/0 of 23</span><span class="dot green"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">22 pass, 1 fail, 0 skip (out of 23)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">23 pass, 0 fail, 0 skip (out of 23)</p>
     </div>
   </details><details class="suite-node green">
     <summary><span class="suite-name">sem-Direct Cons [DL]</span><span class="suite-numbers">351/0/0 of 351</span><span class="dot green"></span></summary>
@@ -2191,9 +2211,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-28 17:05 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/0642e8117203cbc4db6d9b538c640688332d88cd">0642e81</a></code>
-  on branch <code>claude/autoexec-scratchpad-assess-37oeok</code> — &ldquo;OWL next-actions: record owner steers — tableau promoted to top priority, OWL Full gated-mode approved, dashboard regen approved&rdquo;.
+  Generated <strong>2026-07-28 22:51 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/983d69481c8ed55f717b3e5f663d184b6ef884dd">983d694</a></code>
+  on branch <code>claude/autoexec-scratchpad-assess-37oeok</code> — &ldquo;OWL next-actions: record owner steer — dl-909 approved as flag-gated arithmetic-semantics variant, cross-ref #299&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
