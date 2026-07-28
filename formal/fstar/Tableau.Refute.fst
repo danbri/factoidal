@@ -2452,17 +2452,135 @@ let parse_nnf_subject (g : rdf_graph) (s : subject) : class_expr =
   | S_BNode b -> if is_scaffold_bnode b then CE_Unknown else parse_nnf g (subject_to_term s)
   | _ -> parse_nnf g (subject_to_term s)
 
-let rec collect_axioms_aux (gfull : rdf_graph) (ts : rdf_graph)
+// -------------------------------------------------------------------
+// 7a. Provably-unsatisfiable named classes -> owl:Nothing normalisation
+// (owl2-bottom-normalise wave; the I5.2-004/-006 fixtures' fixture-
+// defined "first:Nothing" pattern, design note 2026-07-28).
+//
+// A named class C carrying — via rdfs:subClassOf / owl:equivalentClass
+// superclass restrictions — BOTH a `>= k P` (k >= 1) and a `<= j P`
+// (j < k) bound on the SAME property P has CEXT(C) = ∅ in every model
+// (a member would need at least k and at most j < k P-successors at
+// once). Substituting owl:Nothing for such C inside parsed class
+// expressions replaces a class with one of IDENTICAL (empty) extension
+// in every model of the graph — sound in every polarity, positive or
+// negated. The payoff is syntactic convergence for ce_eq-based lazy
+// unfolding: a fixture-defined bottom makes `∀q.first:Nothing`
+// (a defined complement's body) and `∀q.owl:Nothing` (the NNF negation
+// of `∃q.owl:Thing`) become the SAME expression, so equivalence
+// definitions routed through the fixture bottom fire against
+// contrapositive-derived labels.
+//
+// Detection is deliberately narrow (the direct min/max pair), and only
+// classes appearing as an owl:allValuesFrom filler are tested — the
+// place the normalisation pays — keeping the pre-pass linear-ish
+// (#avf-fillers × |g|). Missing an unsat class is sound (no
+// normalisation, today's behaviour); claiming one falsely is not, and
+// cannot happen: the min/max pair is entailed of C by rdfs9/eq
+// semantics, and k > j has no model.
+
+let rec collect_superclass_ces (g : rdf_graph) (ts : rdf_graph) (c : wf_iri)
+  : Tot (list class_expr) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = collect_superclass_ces g tl c in
+    if (t.p = rdfs_subClassOf || t.p = owl_equivalentClass)
+       && (match t.s with S_IRI x -> x = c | _ -> false)
+    then parse_class_expr g t.o 8 :: rest
+    else rest
+
+let rec exists_ce_max_below (ces : list class_expr) (k : nat) (p : wf_iri) : bool =
+  match ces with
+  | [] -> false
+  | ce :: tl ->
+    (match ce with
+     | CE_MaxCard j p' -> (p' = p && j < k) || exists_ce_max_below tl k p
+     | _ -> exists_ce_max_below tl k p)
+
+let rec ces_min_max_clash (all_ces : list class_expr) (iter : list class_expr) : bool =
+  match iter with
+  | [] -> false
+  | ce :: tl ->
+    (match ce with
+     | CE_MinCard k p -> (k >= 1 && exists_ce_max_below all_ces k p)
+                         || ces_min_max_clash all_ces tl
+     | _ -> ces_min_max_clash all_ces tl)
+
+let class_provably_empty (g : rdf_graph) (c : wf_iri) : bool =
+  let ces = collect_superclass_ces g g c in
+  ces_min_max_clash ces ces
+
+let rec avf_filler_classes (ts : rdf_graph) : Tot (list wf_iri) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = avf_filler_classes tl in
+    if t.p = owl_allValuesFrom
+    then (match t.o with
+          | T_IRI c -> if mem_iri c rest then rest else c :: rest
+          | _ -> rest)
+    else rest
+
+let rec filter_provably_empty (g : rdf_graph) (cs : list wf_iri)
+  : Tot (list wf_iri) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c :: tl ->
+    let rest = filter_provably_empty g tl in
+    if class_provably_empty g c then c :: rest else rest
+
+let unsat_named_classes (g : rdf_graph) : list wf_iri =
+  filter_provably_empty g (avf_filler_classes g)
+
+let rec normalize_unsat_ce (us : list wf_iri) (ce : class_expr)
+  : Tot class_expr (decreases ce) =
+  match ce with
+  | CE_Named c -> if mem_iri c us then CE_Named owl_Nothing else ce
+  | CE_SomeValuesFrom p c -> CE_SomeValuesFrom p (normalize_unsat_ce us c)
+  | CE_AllValuesFrom p c -> CE_AllValuesFrom p (normalize_unsat_ce us c)
+  | CE_ComplementOf c -> CE_ComplementOf (normalize_unsat_ce us c)
+  | CE_IntersectionOf cs -> CE_IntersectionOf (normalize_unsat_ce_list us cs)
+  | CE_UnionOf cs -> CE_UnionOf (normalize_unsat_ce_list us cs)
+  | CE_MinQualCard k p c -> CE_MinQualCard k p (normalize_unsat_ce us c)
+  | CE_MaxQualCard k p c -> CE_MaxQualCard k p (normalize_unsat_ce us c)
+  | CE_ExactQualCard k p c -> CE_ExactQualCard k p (normalize_unsat_ce us c)
+  | _ -> ce
+and normalize_unsat_ce_list (us : list wf_iri) (cs : list class_expr)
+  : Tot (list class_expr) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c :: tl -> normalize_unsat_ce us c :: normalize_unsat_ce_list us tl
+
+// Normalisation-aware parse: normalise BETWEEN parse and NNF, so the
+// NNF negation of a normalised bottom simplifies (`nnf_neg owl:Nothing
+// = owl:Thing`) and the two spellings of a complement pair converge to
+// ce_eq-identical expressions. (Normalising after NNF would leave
+// `∃q.¬first:Nothing` vs `∃q.owl:Thing` — same extension, no match.)
+let parse_nnf_norm (us : list wf_iri) (g : rdf_graph) (t : rdf_term) : class_expr =
+  match t with
+  | T_BNode b ->
+    if is_scaffold_bnode b then CE_Unknown
+    else nnf (normalize_unsat_ce us (parse_class_expr g t 32))
+  | _ -> nnf (normalize_unsat_ce us (parse_class_expr g t 32))
+
+let parse_nnf_norm_subject (us : list wf_iri) (g : rdf_graph) (s : subject) : class_expr =
+  match s with
+  | S_BNode b -> if is_scaffold_bnode b then CE_Unknown
+                 else parse_nnf_norm us g (subject_to_term s)
+  | _ -> parse_nnf_norm us g (subject_to_term s)
+
+let rec collect_axioms_aux (us : list wf_iri) (gfull : rdf_graph) (ts : rdf_graph)
   : Tot (list (class_expr & class_expr)) (decreases ts) =
   match ts with
   | [] -> []
   | t :: tl ->
-    let rest = collect_axioms_aux gfull tl in
+    let rest = collect_axioms_aux us gfull tl in
     if t.p = rdfs_subClassOf then
-      (parse_nnf_subject gfull t.s, parse_nnf gfull t.o) :: rest
+      (parse_nnf_norm_subject us gfull t.s, parse_nnf_norm us gfull t.o) :: rest
     else if t.p = owl_equivalentClass then
-      let a = parse_nnf_subject gfull t.s in
-      let b = parse_nnf gfull t.o in
+      let a = parse_nnf_norm_subject us gfull t.s in
+      let b = parse_nnf_norm us gfull t.o in
       (* Contrapositive unfolding (owl2-contrapositive wave, construct-gap:
          "contrapositive unfolding" in the Wave E profile). owl:equivalentClass
          asserts a GENUINE iff — both a ⊑ b and b ⊑ a already go into the pair
@@ -2498,10 +2616,10 @@ let rec collect_axioms_aux (gfull : rdf_graph) (ts : rdf_graph)
       let nb = nnf_neg b in
       (a, b) :: (b, a) :: (nb, na) :: (na, nb) :: rest
     else if t.p = owl_disjointWith || t.p = owl_complementOf then
-      let a = parse_nnf_subject gfull t.s in
-      let b = parse_nnf gfull t.o in
-      let na = nnf (CE_ComplementOf (parse_class_expr gfull (subject_to_term t.s) 32)) in
-      let nb = nnf (CE_ComplementOf (parse_class_expr gfull t.o 32)) in
+      let a = parse_nnf_norm_subject us gfull t.s in
+      let b = parse_nnf_norm us gfull t.o in
+      let na = nnf (CE_ComplementOf (normalize_unsat_ce us (parse_class_expr gfull (subject_to_term t.s) 32))) in
+      let nb = nnf (CE_ComplementOf (normalize_unsat_ce us (parse_class_expr gfull t.o 32))) in
       (a, nb) :: (b, na) :: rest
     else if t.p = owl_oneOf && S_IRI? t.s then
       // Named enumerated class (owl2-nominal wave, dl-502 family):
@@ -2537,15 +2655,15 @@ let rec collect_axioms_aux (gfull : rdf_graph) (ts : rdf_graph)
          NNF-negated disjunction). *)
       (match t.s with
        | S_IRI z ->
-         let ce = nnf (parse_ce_of_subject gfull t.s) in
-         let nz = nnf_neg (CE_Named z) in
+         let ce = nnf (normalize_unsat_ce us (parse_ce_of_subject gfull t.s)) in
+         let nz = nnf_neg (normalize_unsat_ce us (CE_Named z)) in
          let nce = nnf_neg ce in
          (CE_Named z, ce) :: (ce, CE_Named z) :: (nce, nz) :: (nz, nce) :: rest
        | _ -> rest)
     else rest
 
 let collect_axioms (g : rdf_graph) : list (class_expr & class_expr) =
-  collect_axioms_aux g g
+  collect_axioms_aux (unsat_named_classes g) g g
 
 (* -------------------------------------------------------------------
    8. Expansion rules (deterministic part).
@@ -2638,6 +2756,50 @@ let apply_axioms_edges (tb : list (class_expr & class_expr)) (g : rdf_graph)
                        (st : rstate) (i : subject)
   : rstate & bool =
   apply_axioms_edges_ls tb g st i (labels_of st i)
+
+// CONJUNCTION-INTRODUCTION unfolding (owl2-bottom-normalise wave,
+// I5.2-006 / lazy-unfolding completeness): apply_axioms fires an axiom
+// only when ONE stored label is ce_eq to its whole LHS, so an axiom
+// whose LHS is an intersection (e.g. z ≡ C1 ⊓ C2 collected from a
+// named-subject owl:intersectionOf marker) never fires on a node
+// carrying C1 and C2 as SEPARATE labels. When every conjunct of the
+// LHS is present as a label, the node is entailed in the intersection
+// (labels are entailed memberships — the `pass` invariant — and
+// x ∈ C1 ∩ ... ∩ Cn is exactly x ∈ each Ci), hence in the RHS by the
+// axiom pair's own ⊑ soundness. The LHS label is added too so
+// label-level clash rules see it (mirroring apply_axioms_edges).
+// Guarded to nonempty conjunct lists; idempotent via mem_ce_syn +
+// add_label's dedup.
+let rec conj_lhs_satisfied (ls : list class_expr) (cs : list class_expr)
+  : Tot bool (decreases cs) =
+  match cs with
+  | [] -> true
+  | c :: tl -> mem_ce c ls && conj_lhs_satisfied ls tl
+
+let rec apply_axioms_conj_ls (tb : list (class_expr & class_expr)) (st : rstate)
+                             (i : subject) (ls_i : list class_expr)
+  : Tot (rstate & bool) (decreases tb) =
+  match tb with
+  | [] -> (st, false)
+  | (a, d) :: tl ->
+    (match a with
+     | CE_IntersectionOf cs ->
+       if Cons? cs
+          && not (mem_ce_syn a ls_i)
+          && conj_lhs_satisfied ls_i cs
+       then
+         let (sta, ca) = add_label st i a in
+         let (stb, cb) = add_label sta i d in
+         let (st2, c2) = apply_axioms_conj_ls tl stb i (labels_of stb i) in
+         (st2, ca || cb || c2)
+       else
+         let (st2, c2) = apply_axioms_conj_ls tl st i ls_i in (st2, c2)
+     | _ ->
+       let (st2, c2) = apply_axioms_conj_ls tl st i ls_i in (st2, c2))
+
+let apply_axioms_conj (tb : list (class_expr & class_expr)) (st : rstate)
+                      (i : subject) : rstate & bool =
+  apply_axioms_conj_ls tb st i (labels_of st i)
 
 (* ∀-propagation: x ∈ ∀P.C and (x,y) ∈ P imply y ∈ C — for asserted
    edges, hasValue edges AND witness edges (the witness stands for a
@@ -2995,8 +3157,9 @@ let rec pass_nodes (tb : list (class_expr & class_expr)) (g : rdf_graph)
     let (st0f, c0f) = inject_functional tb g st.rs_funcprops st0 n.rn_id in
     let (st1, c1) = pass_labels tb g st0f n.rn_id n.rn_labels in
     let (st1b, c1b) = apply_axioms_edges tb g st1 n.rn_id in
-    let (st2, c2) = pass_nodes tb g st1b tl in
-    (st2, c0 || c0f || c1 || c1b || c2)
+    let (st1c, c1c) = apply_axioms_conj tb st1b n.rn_id in
+    let (st2, c2) = pass_nodes tb g st1c tl in
+    (st2, c0 || c0f || c1 || c1b || c1c || c2)
 
 (* One full deterministic round over a snapshot of the current nodes.
    Nodes/labels added during the round are picked up next round. *)
@@ -3575,17 +3738,17 @@ let immediate_inconsistency (g : rdf_graph) : bool =
    11. Initial state + entry point.
    ------------------------------------------------------------------- *)
 
-let rec init_nodes_aux (gfull : rdf_graph) (ts : rdf_graph) (st : rstate)
+let rec init_nodes_aux (us : list wf_iri) (gfull : rdf_graph) (ts : rdf_graph) (st : rstate)
   : Tot rstate (decreases ts) =
   match ts with
   | [] -> st
   | t :: tl ->
     let st' =
       if t.p = rdf_type then
-        let (st1, _) = add_label st t.s (parse_nnf gfull t.o) in st1
+        let (st1, _) = add_label st t.s (parse_nnf_norm us gfull t.o) in st1
       else st
     in
-    init_nodes_aux gfull tl st'
+    init_nodes_aux us gfull tl st'
 
 // Named-enumerated-class member seeding (owl2-nominal wave): for every
 // `z owl:oneOf (m1 ... mk)` with z an IRI, each listed member is
@@ -3630,14 +3793,16 @@ let init_state (g : rdf_graph) : rstate =
      need). Collected once, like every other schema-level table. *)
   let subprops0 = collect_subprop_pairs g in
   let invpairs0 = collect_inverse_pairs g in
-  init_nodes_aux g g
-    { rs_nodes = []; rs_extra = []; rs_fresh = 0; rs_wdepth = [];
-      rs_inv = invpairs0; rs_gendistinct = [];
-      rs_subprop = subprops0 @ inverse_lift_subprops subprops0 invpairs0;
-      rs_transprops = collect_transitive_props g;
-      rs_funcprops = collect_functional_props g;
-      rs_ident = [];
-      rs_range = collect_range_pairs g }
+  let us = unsat_named_classes g in
+  seed_oneof_members g g
+    (init_nodes_aux us g g
+      { rs_nodes = []; rs_extra = []; rs_fresh = 0; rs_wdepth = [];
+        rs_inv = invpairs0; rs_gendistinct = [];
+        rs_subprop = subprops0 @ inverse_lift_subprops subprops0 invpairs0;
+        rs_transprops = collect_transitive_props g;
+        rs_funcprops = collect_functional_props g;
+        rs_ident = [];
+        rs_range = collect_range_pairs g })
 
 (* tableau_consistent — the public satisfiability check.
 
