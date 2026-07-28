@@ -47,7 +47,46 @@ still FAIL (45s); fuel 20,000 (default) + cap 120s **PASS in 12.5s
 total** (~8 goals, ~1-2s each). → **BUDGET-shaped**: the refutation
 completes within default fuel but needs more than 5s of wall per
 `pe_refute_entails` invocation. 202 already passes on the current binary.
-206/208/661/662 probe pending below.
+
+📊 Full probe table (single-test catalogs, committed binary,
+cap 120s + fuel 2M unless noted):
+
+| Test | Probe verdict | Classification |
+|---|---|---|
+| dl-201 | PASS 12.5s (cap 120, default fuel) | budget |
+| dl-202 | PASS already (default budget) | fixed earlier today |
+| dl-206 | FAIL at cap 120; cap-450 probe pending | budget(large) or perf |
+| dl-208 | FAIL at cap 120 (176s spent); cap-450 probe pending | budget(large) or perf |
+| dl-661 | PASS 118s (9-way parallel, inflated) | budget |
+| dl-662 | PASS 55s (parallel, inflated) | budget |
+| dl-901 | FAIL fast 0.1s | rule → C7 min-sum clash (landed) |
+| dl-903 | (same shape as 901, larger k) | rule → C7 |
+| Consistent-but-all-unsat | FAIL fast 1.8s | rule → counting extension |
+| I5.2-004 | FAIL fast 0.5s | rule → complementOf arm (landed) |
+| I5.2-006 | FAIL fast 0.8s | rule → named-unionOf arm (landed) |
+| dl-502 (inc) | FAIL fast 0.8s | rule → nominal branching (below) |
+| dl-909 (inc) | FAIL fast 0.3s | rule → counting extension |
+
+### dl-502 nominal wave (scoped from the premise, read in full)
+
+The 3-SAT encoding is entirely named-class oneOf machinery:
+`TorF owl:oneOf (T F)` plus nine more `TorF owl:oneOf (plus_k minus_k)`
+lists (set equalities), ~90 clause labels `T rdf:type [oneOf (l1 l2 l3)]`,
+and `T owl:differentFrom F`. Three mechanisms, all in `Tableau.Refute.fst`:
+1. **Named-subject oneOf axioms** in `collect_axioms` (z ≡ {ms}, both
+   unfolding directions) + **member seeding** at `init_state` (each listed
+   member is entailed in CEXT(z) — so members of one list flow into the
+   OTHER lists' constraints).
+2. **Nominal branching** (the standard O-rule choice): a node labelled
+   `{m1..mk}`, not yet identified with any member, branches by
+   IDENTIFYING it with each not-provably-distinct member —
+   AND-semantics over choices, reusing `identify_branch` verbatim.
+   Members provably distinct are dropped (no model realises them); a
+   member that cannot be identified (literal) withholds branching.
+3. **Group-aware O-rule clash**: the `CE_OneOf` clash arm upgrades
+   `all_provably_distinct` to the ident-partition-aware
+   `provably_distinct_grouped`, so "m was identified with F and F ≠ T"
+   counts as m provably distinct from T.
 
 Fix: a separate PE-refutation wall cap (runner budget plumbing, no
 semantics): PE goals get their own, larger cap
@@ -147,14 +186,45 @@ before deciding. Otherwise park behind its own issue.
 
 ### WebOnt-description-logic-909 (inconsistency) — cardinality multiplication
 
-N×M pigeonhole via chained functional/inverse bijections and
-cardinality 2/3/5 equivalences — the exact fragment the CountingOracle
-was built for (its banner names dl-909). Today `class_size_refutes`
-consults `class_size_unsat` on the RL-base closure for InconsistencyTests;
-it evidently does not fire (probe pending — check whether the fragment
-recogniser rejects the premise or the linear system misses the
-multiplicative constraint |cardinality-N-times-M| = 3·|cardinality-N|
-etc.). The z3 oracle path is explicitly NOT the goal (verified-only).
+N×M pigeonhole via chained functional/inverse fibers. ❌ PARKED, with
+the reason already written into `Tableau.CountingOracle.fst`'s section-8
+banner (read this session): "dl-909 is NOT decided by this path: its
+class-size system is genuinely satisfiable (the all-empty assignment
+with |only-d| >= 1 is a model), so no Farkas certificate exists ...
+deriving |finite| >= 1 would need an UNSOUND nonemptiness rule (see the
+2026-07-15 refutation note)". Independent hand-analysis this session
+reached the same wall: no premise axiom soundly forces |finite| ≥ 1.
+Nothing to implement without a new, genuinely different decision
+procedure (finite-model reasoning over the ≤-cardinality complement
+trick); out of this wave's scope.
+
+### Consistent-but-all-unsat — counting extension, precise remaining design
+
+The PE goal graph (fresh `x : a` + complement scaffolding) reaches the
+`class_size_unsat` rung landed this session, but three gaps keep it
+from firing, mapped precisely:
+1. `in_counting_fragment` REJECTS the goal graph — the PE negation's
+   `__factoidal_pe_neg_class owl:complementOf ...` bnode trips
+   `ico_authored_complement` (only `__rl_`-canonical complement bnodes
+   are exempt). Fix: exempt the `__factoidal_pe_` prefix as well —
+   sound for the same reason the gate is advisory (per-row entailment +
+   the Farkas validator carry soundness; the banner says so).
+2. No MEMBER-nonemptiness row: `x rdf:type a` (x an IRI/bnode) entails
+   |CEXT(a)| ≥ 1 in every model where CEXT(a) is finite — the sound
+   nonemptiness the 909 note could not have (there, no member exists).
+3. No ONEOF UPPER bound row (|a| ≤ 3 from `a ⊑ [unionOf of singleton
+   oneOfs]`) — this is also the FINITENESS discipline: integer
+   class-size rows are only model-sound for provably-finite classes,
+   and today's system never establishes finiteness at all (trust
+   boundary prose). A sound extension should build rows only over the
+   finiteness-closed component (oneOf-bounded classes + bijection/
+   fiber/union closure).
+The bijection rows themselves already extract for this premise
+(subClassOf-someValuesFrom shape both directions + declared inverses +
+functional/inverse-functional: |a|=|2a|=|bUNIONc|, |b|=|a|, |c|=|b|,
+disjoint-union |bUNIONc|=|b|+|c|). With (2)+(3) the system is
+|a| = 2|a|, 1 ≤ |a| ≤ 3 — Farkas-certifiable. 🟡 Next session's
+commit-sized item; the searcher must also learn ≤-rows.
 
 ## Commit plan (one deliverable each)
 
