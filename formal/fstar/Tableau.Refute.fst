@@ -3640,7 +3640,21 @@ let is_structural_triple (t : triple) : bool =
      (match t.o with
       | T_IRI c -> is_meta_type_iri c
       | _ -> false))
-  || is_structural_predicate t.p
+  || (if t.p = owl_complementOf || t.p = owl_unionOf || t.p = owl_intersectionOf
+      // Boolean class markers are STRUCTURAL when they build an
+      // anonymous class expression (bnode subject) but are ASSERTED
+      // CLASS AXIOMS when they sit on a NAMED class (2026-07-28,
+      // tableau-classification design note: WebOnt-I5.2-004's
+      // conclusion is exactly `notA owl:complementOf A`, and
+      // WebOnt-I5.2-006's is `AorB owl:unionOf (A B)` — treating those
+      // as scaffolding left the conclusion with zero content
+      // assertions and negation_goals at None). A named-subject
+      // marker becomes a content assertion with its own
+      // negate_content_triple arm below; misclassifying MORE triples
+      // as content is the safe direction (it can only push a
+      // conclusion to `None`, never hide an assertion).
+      then S_BNode? t.s
+      else is_structural_predicate t.p)
 
 // The content assertions of a conclusion graph — every non-structural
 // triple.
@@ -3798,6 +3812,11 @@ let pe_prop_b_bnode     : bnode_id = "__factoidal_pe_prop_b"
 let pe_prop_restr_bnode : bnode_id = "__factoidal_pe_prop_restr"
 let pe_prop_oneof_bnode : bnode_id = "__factoidal_pe_prop_oneof"
 let pe_prop_list_bnode  : bnode_id = "__factoidal_pe_prop_list"
+// Second complement-class bnode (the complementOf / boolean-marker
+// arms need TWO independent negated classes inside one goal) and the
+// stand-in bnode carrying a named class's boolean marker.
+let pe_neg_class_bnode_b : bnode_id = "__factoidal_pe_neg_class_b"
+let pe_bool_ce_bnode     : bnode_id = "__factoidal_pe_bool_ce"
 
 // The structural (class-expression-building / list / declaration)
 // triples of a conclusion graph — kept verbatim in every refutation
@@ -3918,6 +3937,66 @@ let negate_content_triple (base : rdf_graph) (t : triple)
      | S_IRI p, T_IRI q ->
        Some [prop_inclusion_goal base p q; prop_inclusion_goal base q p]
      | _, _             -> None)
+  else if t.p = owl_complementOf then
+    // X owl:complementOf Y (named-subject only — bnode-subject markers
+    // are structural and never reach here): CEXT(X) = Δ \ CEXT(Y),
+    // i.e. disjointness AND coverage. Its negation is
+    //   ∃x. (x ∈ X ⊓ Y)  ∨  ∃x. (x ∈ ¬X ⊓ ¬Y)
+    // and P ∪ (A ∨ B) is unsatisfiable iff P ∪ A and P ∪ B each are —
+    // so TWO goals, both required:
+    //   goal 1 (disjointness half): fresh x with x ∈ X and x ∈ Y;
+    //   goal 2 (coverage half):     fresh x with x ∈ ¬X and x ∈ ¬Y.
+    // Each goal asserts exactly its disjunct on a fresh individual —
+    // nothing stronger — so the negation is faithful (the wave-2
+    // banner's over-strong-negation hazard does not arise).
+    (match term_to_subject t.o with
+     | None   -> None
+     | Some _ ->
+       let x : subject = S_BNode pe_sub_fresh_bnode in
+       let g1 : rdf_graph =
+         [ { s = x; p = rdf_type; o = subject_to_term t.s };
+           { s = x; p = rdf_type; o = t.o } ] @ base in
+       let comp_s : triple =
+         { s = S_BNode pe_neg_class_bnode; p = owl_complementOf;
+           o = subject_to_term t.s } in
+       let comp_o : triple =
+         { s = S_BNode pe_neg_class_bnode_b; p = owl_complementOf; o = t.o } in
+       let g2 : rdf_graph =
+         [ comp_s; { s = x; p = rdf_type; o = T_BNode pe_neg_class_bnode };
+           comp_o; { s = x; p = rdf_type; o = T_BNode pe_neg_class_bnode_b } ]
+         @ base in
+       Some [g1; g2])
+  else if t.p = owl_unionOf || t.p = owl_intersectionOf then
+    // S owl:unionOf (L) / S owl:intersectionOf (L) with S NAMED
+    // (bnode-subject markers are structural and never reach here): the
+    // OWL 2 RDF mapping reads a named-subject boolean marker as the
+    // class EQUALITY S ≡ CE(L) — refute S ⊑ CE(L) and CE(L) ⊑ S,
+    // mirroring the owl:equivalentClass arm. A fresh bnode carrying
+    // the SAME marker over the SAME list stands for CE(L); the list
+    // cells are structural and already kept in `base`.
+    (match t.s with
+     | S_BNode _ -> None  // unreachable given the structural split
+     | S_IRI _ ->
+       let x : subject = S_BNode pe_sub_fresh_bnode in
+       let ce : triple =
+         { s = S_BNode pe_bool_ce_bnode; p = t.p; o = t.o } in
+       let comp_ce : triple =
+         { s = S_BNode pe_neg_class_bnode; p = owl_complementOf;
+           o = T_BNode pe_bool_ce_bnode } in
+       let g1 : rdf_graph =
+         [ ce;
+           { s = x; p = rdf_type; o = subject_to_term t.s };
+           comp_ce;
+           { s = x; p = rdf_type; o = T_BNode pe_neg_class_bnode } ] @ base in
+       let comp_s : triple =
+         { s = S_BNode pe_neg_class_bnode_b; p = owl_complementOf;
+           o = subject_to_term t.s } in
+       let g2 : rdf_graph =
+         [ ce;
+           { s = x; p = rdf_type; o = T_BNode pe_bool_ce_bnode };
+           comp_s;
+           { s = x; p = rdf_type; o = T_BNode pe_neg_class_bnode_b } ] @ base in
+       Some [g1; g2])
   else if is_negatable_property_assertion t then
     // s p o  ->  ¬p(s,o)  on the existing named terms.
     (match t.s with

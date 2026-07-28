@@ -656,6 +656,37 @@ let with_refute_cap (f : unit -> 'a) : 'a =
   | v -> restore (); v
   | exception e -> restore (); raise e
 
+(* PE-refutation wall cap, LARGER than the (5s) consistency-side refuter
+   cap above (tableau-classification design note, 2026-07-28). The 5s
+   cap exists because every CONSISTENCY test pays the refuter cap as
+   pure overhead; pe_refute_entails, by contrast, runs only for
+   PositiveEntailmentTests that already MISSED the closure check — a
+   population where the DL98 ABox refutations (WebOnt-description-
+   logic-201/661/662 measured this session) genuinely need 10-60s of
+   wall to close their goal conjunctions. Budget plumbing only: the cap
+   bounds work, never changes a verdict's soundness (a cap-trip keeps
+   the closure-miss verdict). Override via
+   FACTOIDAL_OWL_PE_REFUTE_CAP_SEC. *)
+let pe_refute_cap_seconds : float =
+  match Sys.getenv_opt "FACTOIDAL_OWL_PE_REFUTE_CAP_SEC" with
+  | Some s -> (try float_of_string s with _ -> 60.0)
+  | None -> 60.0
+
+let with_pe_refute_cap (f : unit -> 'a) : 'a =
+  let prev =
+    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+  in
+  let restore () =
+    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigalrm prev
+  in
+  let _ = Unix.setitimer Unix.ITIMER_REAL
+            { Unix.it_interval = 0.0; it_value = pe_refute_cap_seconds }
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
+
 (* DL-regime refutation check (2026-07-10): consult the F*-extracted
    clash-detecting tableau (Tableau_Refute.tableau_consistent) over the
    closed graph. `true` ONLY on `Some false` — a genuine clash on every
@@ -738,16 +769,35 @@ let pe_refute_entails
        All splitting/negation logic is F*-extracted; this stays pure
        dispatch (rule #15). Any None / cap-trip / exception falls back to
        the pre-existing closure-miss verdict, so PE only ever GAINS. *)
+    (* Cap + input discipline (2026-07-28, tableau-classification design
+       note): runs under the LARGER PE-only cap (with_pe_refute_cap —
+       see its banner), and callers must pass the RL-BASE closure, never
+       the tableau-materialised or witness-augmented one: those layers
+       emit conclusion-matching triples that are NOT all model-
+       theoretically entailed (max-0 vacuous memberships, witness
+       edges — see apply_closure_stages' banner), and an over-asserted
+       input could manufacture a refutation of the negated conclusion,
+       i.e. a fabricated PE pass. Same soundness rationale that already
+       routes dl_refutes onto g_rl.
+       Per goal, after an indeterminate tableau verdict, the VERIFIED
+       class-size counting check (Tableau_CountingOracle.class_size_
+       unsat, Farkas-certificate validated in F*) is consulted as a
+       second rung — same dispatch shape as class_size_refutes on the
+       inconsistency side; a `true` is a proven no-integer-assignment
+       verdict, a plain verified PASS. *)
     (match Tableau_Refute.negation_goals g_c with
      | None -> false
      | Some goals ->
-       (try with_refute_cap (fun () ->
+       (try with_pe_refute_cap (fun () ->
           List.for_all
             (fun neg ->
-               match Tableau_Refute.tableau_consistent
-                       (List.append closure neg) refute_fuel with
-               | Some false -> true
-               | _ -> false)
+               let goal_graph = List.append closure neg in
+               (match Tableau_Refute.tableau_consistent
+                        goal_graph refute_fuel with
+                | Some false -> true
+                | _ ->
+                  (try Tableau_CountingOracle.class_size_unsat goal_graph
+                   with _ -> false)))
             goals)
         with _ -> false))
 
@@ -1160,7 +1210,8 @@ let run_positive_entailment_functional_syntax
     match (try Parser_OWLFunctional.parse_functional_syntax fs_c_lex with _ -> None) with
     | None -> None
     | Some g_c ->
-      let closure = try apply_closure g_p with _ -> g_p in
+      let (closure_rl, closure) =
+        try apply_closure_stages g_p with _ -> (g_p, g_p) in
       let rec check = function
         | [] -> Pass
         | t :: rest ->
@@ -1171,8 +1222,9 @@ let run_positive_entailment_functional_syntax
       (match check g_c with
        | Pass -> Some Pass
        | miss ->
-         (* PE-via-refutation fallback (issue #298). *)
-         if pe_refute_entails closure g_c then Some Pass else Some miss)
+         (* PE-via-refutation fallback (issue #298) — over the RL-base
+            closure, per pe_refute_entails' input discipline. *)
+         if pe_refute_entails closure_rl g_c then Some Pass else Some miss)
 
 let run_positive_entailment
       (info : test_case_info)
@@ -1225,9 +1277,9 @@ let run_positive_entailment
          conclusion matching on tests that passed under the plain
          closure. The retry is sound — both closures under-approximate
          entailment — and monotone by construction. *)
-      let closure =
-        try apply_closure g_p
-        with _ -> g_p in
+      let (closure_rl, closure) =
+        try apply_closure_stages g_p
+        with _ -> (g_p, g_p) in
       (* DIRECT-only tests: drop conclusion triples whose predicate is
          declared owl:AnnotationProperty/OntologyProperty within the
          conclusion graph itself before checking — see
@@ -1246,17 +1298,25 @@ let run_positive_entailment
       (match check closure g_c_checked with
        | Pass -> Pass
        | miss ->
-         (* PE-via-refutation fallback (issue #298). *)
-         if pe_refute_entails closure g_c_checked then Pass
+         (* PE-via-refutation fallback (issue #298) — over the RL-BASE
+            closure only (2026-07-28): the tableau-materialised and
+            witness-augmented closures carry conclusion-matching triples
+            that are not all model-theoretically entailed, and feeding
+            them to the refuter could fabricate a PE pass — see
+            pe_refute_entails' input-discipline banner. The former
+            second refutation attempt over closure_w is dropped for the
+            same reason (it would also be redundant: closure_rl does not
+            change between the two rungs). The witness-augmented closure
+            is still consulted for plain conclusion CONTAINMENT below,
+            exactly as before. *)
+         if pe_refute_entails closure_rl g_c_checked then Pass
          else
            let closure_w =
              try apply_closure_with_witnesses g_p
              with _ -> closure in
            (match check closure_w g_c_checked with
             | Pass -> Pass
-            | _ ->
-              if pe_refute_entails closure_w g_c_checked then Pass
-              else miss))
+            | _ -> miss))
       end)
 
 (* NegativeEntailmentTest: the conclusion is asserted to NOT be a
