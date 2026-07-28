@@ -1105,6 +1105,25 @@ let owl_disjointWith_iri : wf_iri =
 // — referenced via its concrete IRI literal).
 let is_schema_metapredicate (p : wf_iri) : bool =
   is_owl_metapredicate p
+  // owl:differentFrom is an identity-vocabulary predicate exactly as
+  // owl:sameAs (covered by is_owl_metapredicate) is, and must never be
+  // read as a DATA edge by the restriction-membership rules. Without
+  // this line those rules synthesise
+  //   _:__rl_maxqc1_<owl:differentFrom>__on__<C>
+  // — a "at most one C-valued differentFrom successor" restriction — and
+  // type every C-instance into it. Any individual differentFrom two
+  // others then trips cls-maxqc1 (emitting a sameAs that contradicts the
+  // differentFrom) or cls-maxqc-comp (typing one of them into
+  // complementOf(C), which the cls-com check reads as a clash), so a
+  // perfectly consistent DifferentIndividuals axiom over three or more
+  // individuals is reported INCONSISTENT. Found 2026-07-28 when the
+  // Group F forward AllDifferent rule started deriving 3-way
+  // differentFrom cliques: WebOnt-AllDifferent-001,
+  // WebOnt-differentFrom-002 and WebOnt-distinctMembers-001 all flipped
+  // to FAIL/unexpected-inconsistency in the ConsistencyTest section while
+  // passing as PositiveEntailmentTests. The bug was latent before, not
+  // introduced by that rule — it needed a 3-clique to surface.
+  || p = "http://www.w3.org/2002/07/owl#differentFrom"
   || p = rdfs_subClassOf
   || p = rdfs_subPropertyOf
   || p = rdfs_domain
