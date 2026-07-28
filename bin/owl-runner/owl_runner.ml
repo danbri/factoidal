@@ -781,7 +781,7 @@ let pe_refute_entails
        routes dl_refutes onto g_rl.
        Per goal, after an indeterminate tableau verdict, the VERIFIED
        class-size counting check (Tableau_CountingOracle.class_size_
-       unsat, Farkas-certificate validated in F*) is consulted as a
+       unsat, Farkas-certificate validated in F-star) is consulted as a
        second rung — same dispatch shape as class_size_refutes on the
        inconsistency side; a `true` is a proven no-integer-assignment
        verdict, a plain verified PASS. *)

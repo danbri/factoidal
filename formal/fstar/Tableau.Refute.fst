@@ -1142,6 +1142,23 @@ let provably_distinct_grouped (g : rdf_graph) (gd : list (list rdf_term))
                               (a : rdf_term) (b : rdf_term) : bool =
   exists_distinct_cross g gd (ident_group_of ident a) (ident_group_of ident b)
 
+// Ident-partition-aware "distinct from EVERY member" (owl2-nominal
+// wave): the group-aware sibling of `all_provably_distinct` below.
+// Needed so the O-rule clash sees distinctness THROUGH branch-hypothesis
+// identifications — e.g. dl-502: once `m` is identified with `F` and
+// `T owl:differentFrom F` holds, `m` is forced apart from `T` even
+// though no direct differentFrom links them. Same soundness as
+// `provably_distinct_grouped` (which this merely folds over the list).
+let rec all_provably_distinct_grouped (g : rdf_graph) (gd : list (list rdf_term))
+                                      (ident : list (list rdf_term))
+                                      (x : rdf_term) (ms : list rdf_term)
+  : Tot bool (decreases ms) =
+  match ms with
+  | [] -> true
+  | m :: tl ->
+    provably_distinct_grouped g gd ident x m
+    && all_provably_distinct_grouped g gd ident x tl
+
 (* Keep only candidates provably distinct from h, with a length bound
    so the subset search below has a decreasing measure. *)
 let rec filter_distinct_from (g : rdf_graph) (gd : list (list rdf_term))
@@ -2195,6 +2212,85 @@ let rec find_identify_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
      | Some prs -> Some prs
      | None -> find_identify_nodes g st tl)
 
+(* -------------------------------------------------------------------
+   6c. Nominal (oneOf) branching — the O-rule CHOICE (owl2-nominal
+   wave, dl-502 family; design note 2026-07-28).
+
+   `i : {m1,...,mk}` entails, in EVERY model, that i's denotation
+   EQUALS some member's denotation (OWL 2 Direct Semantics of
+   ObjectOneOf — that is the entire content of the label). The
+   refutation-sound encoding of that nondeterministic choice is the
+   same AND-branching `identify_branch` already implements for the
+   ≤-rule (section 6b): hypothesise i = m for EACH member m in turn
+   (extend the rs_ident partition) and require EVERY choice's branch to
+   close before reporting TClash.
+
+   Dropped choices are the ones `provably_distinct_grouped` already
+   forces apart — no model realises them (that is what provable
+   distinctness means), so the AND over the REMAINING choices still
+   covers every model. A member that cannot be identified at all (a
+   literal — its identity is fixed by its value, cf. the
+   all_candidate_subjects banner) makes the whole label's branching
+   WITHHELD (None), never partially explored: exploring only the
+   representable choices while silently dropping a live literal choice
+   would claim to cover every model without doing so — the unsound
+   direction. Withholding is sound (the label simply contributes no
+   branch; TOpen was never a consistency proof).
+
+   A label whose choice is already MADE (i identified with some member,
+   `same_individual`) is skipped — that is also the idempotence
+   guard: each branch strictly grows the partition toward resolution,
+   and the threaded budget bounds everything regardless. *)
+
+let oneof_choice_made (st : rstate) (i : subject) (ms : list rdf_term) : bool =
+  List.Tot.existsb
+    (fun m -> same_individual st.rs_ident (subject_to_term i) m) ms
+
+// Some [] = every member provably distinct (the clash arm's case — no
+// branch offered here); None = a member is unrepresentable (withhold).
+let rec nominal_candidate_pairs (g : rdf_graph) (st : rstate) (i : subject)
+                                (ms : list rdf_term)
+  : Tot (option (list (subject & subject))) (decreases ms) =
+  match ms with
+  | [] -> Some []
+  | m :: tl ->
+    (match nominal_candidate_pairs g st i tl with
+     | None -> None
+     | Some rest ->
+       if provably_distinct_grouped g st.rs_gendistinct st.rs_ident
+            (subject_to_term i) m
+       then Some rest
+       else
+         (match term_to_subject m with
+          | Some m_subj -> Some ((i, m_subj) :: rest)
+          | None -> None))
+
+let rec find_nominal_labels (g : rdf_graph) (st : rstate) (i : subject)
+                            (ls : list class_expr)
+  : Tot (option (list (subject & subject))) (decreases ls) =
+  match ls with
+  | [] -> None
+  | l :: tl ->
+    (match l with
+     | CE_OneOf ms ->
+       if oneof_choice_made st i ms then find_nominal_labels g st i tl
+       else
+         (match nominal_candidate_pairs g st i ms with
+          | Some (p :: rest) -> Some (p :: rest)
+          // Some [] : all members forced apart — clash_for_label's
+          // CE_OneOf arm owns that verdict; None : withheld.
+          | _ -> find_nominal_labels g st i tl)
+     | _ -> find_nominal_labels g st i tl)
+
+let rec find_nominal_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
+  : Tot (option (list (subject & subject))) (decreases ns) =
+  match ns with
+  | [] -> None
+  | n :: tl ->
+    (match find_nominal_labels g st n.rn_id n.rn_labels with
+     | Some prs -> Some prs
+     | None -> find_nominal_nodes g st tl)
+
 (* Per-label clash test against the node's full label set + edges.
 
    Soundness arguments:
@@ -2250,10 +2346,13 @@ let clash_for_label (g : rdf_graph) (st : rstate) (i : subject)
        the members in every model (that is what owl:oneOf asserts). If
        i is provably distinct (owl:differentFrom, either direction, or
        incomparable-value literals) from EVERY member, no member can be
-       i — clash. Sound, no cardinality reasoning needed; kept from the
-       first Wave-A probe (#209) even though it fires on zero corpus
-       tests by itself — it is free and still correct. *)
-    all_provably_distinct g st.rs_gendistinct (subject_to_term i) members
+       i — clash. Sound, no cardinality reasoning needed. Upgraded to
+       the ident-partition-aware read (owl2-nominal wave) so nominal-
+       branching hypotheses count: identifying i (or a member) with an
+       individual already forced apart from the other side surfaces
+       here as a genuine clash of that branch. *)
+    all_provably_distinct_grouped g st.rs_gendistinct st.rs_ident
+      (subject_to_term i) members
   | CE_MaxCard k p ->
     let succs = countable_successors g st i p in
     (if k = 0 then Cons? succs
@@ -2404,6 +2503,22 @@ let rec collect_axioms_aux (gfull : rdf_graph) (ts : rdf_graph)
       let na = nnf (CE_ComplementOf (parse_class_expr gfull (subject_to_term t.s) 32)) in
       let nb = nnf (CE_ComplementOf (parse_class_expr gfull t.o 32)) in
       (a, nb) :: (b, na) :: rest
+    else if t.p = owl_oneOf && S_IRI? t.s then
+      // Named enumerated class (owl2-nominal wave, dl-502 family):
+      // `z owl:oneOf (m1 ... mk)` with z an IRI defines CEXT(z) as
+      // EXACTLY the member set (OWL 2 Direct Semantics ObjectOneOf).
+      // Both unfolding directions are therefore sound: z ⊑ {ms} and
+      // {ms} ⊑ z. The ({ms}, z) direction matches by exact ce_eq on
+      // the member list — narrow but sound. Contrapositives are
+      // skipped: nnf_neg wraps CE_OneOf in CE_ComplementOf and no rule
+      // here consumes a ¬{ms} label (withholding is sound). Anonymous
+      // (bnode-subject) oneOf classes are untouched — parse_class_expr
+      // already builds CE_OneOf wherever they appear as fillers.
+      (match t.s with
+       | S_IRI z ->
+         let ms = walk_rdf_list gfull t.o 64 in
+         (CE_Named z, CE_OneOf ms) :: (CE_OneOf ms, CE_Named z) :: rest
+       | _ -> rest)
     else if (t.p = owl_onProperty || t.p = owl_intersectionOf || t.p = owl_unionOf)
             && S_IRI? t.s then
       (* Named class-expression subject: z ≡ CE(z). One axiom pair per
@@ -3242,7 +3357,18 @@ let rec check (tb : list (class_expr & class_expr)) (g : rdf_graph)
             (match find_identify_nodes g st' st'.rs_nodes with
              | Some prs ->
                let (r, b') = identify_branch tb g prs st' (b - 1) in (r, b')
-             | None -> (TOpen, b - 1))))
+             | None ->
+               (* Nominal (oneOf) branching — section 6c: the O-rule
+                  choice, encoded with the SAME AND-semantics and the
+                  SAME identify_branch machinery as section 6b (each
+                  pair hypothesises i = member via the rs_ident
+                  partition; every choice must close). Last tier: only
+                  consulted when unions, merges and max-card
+                  identifications all have nothing left to offer. *)
+               (match find_nominal_nodes g st' st'.rs_nodes with
+                | Some prs ->
+                  let (r, b') = identify_branch tb g prs st' (b - 1) in (r, b')
+                | None -> (TOpen, b - 1)))))
 and branch (tb : list (class_expr & class_expr)) (g : rdf_graph)
            (i : subject) (ds : list class_expr) (st : rstate) (b : nat)
   : Tot (tri & (r : nat { r <= b })) (decreases %[b; List.Tot.length ds]) =
@@ -3460,6 +3586,41 @@ let rec init_nodes_aux (gfull : rdf_graph) (ts : rdf_graph) (st : rstate)
       else st
     in
     init_nodes_aux gfull tl st'
+
+// Named-enumerated-class member seeding (owl2-nominal wave): for every
+// `z owl:oneOf (m1 ... mk)` with z an IRI, each listed member is
+// entailed in CEXT(z) — CEXT(z) IS the member set (ObjectOneOf, Direct
+// Semantics) — so each member node gains the `CE_Named z` label up
+// front. This is what routes one oneOf definition's members into z's
+// OTHER definitions (a second member list, a restriction equivalence)
+// via ordinary lazy unfolding: the dl-502 3-SAT encoding is built
+// entirely from that pattern (TorF ≡ {T,F} ≡ {plus_k, minus_k}).
+// Members that never got a node (no rdf:type assertion anywhere) are
+// silently skipped by add_label's node walk — withholding, sound.
+let rec seed_oneof_member_labels (z : wf_iri) (ms : list rdf_term) (st : rstate)
+  : Tot rstate (decreases ms) =
+  match ms with
+  | [] -> st
+  | m :: tl ->
+    let st' =
+      (match term_to_subject m with
+       | Some s -> fst (add_label st s (CE_Named z))
+       | None -> st) in
+    seed_oneof_member_labels z tl st'
+
+let rec seed_oneof_members (gfull : rdf_graph) (ts : rdf_graph) (st : rstate)
+  : Tot rstate (decreases ts) =
+  match ts with
+  | [] -> st
+  | t :: tl ->
+    let st' =
+      (match t.s with
+       | S_IRI z ->
+         if t.p = owl_oneOf
+         then seed_oneof_member_labels z (walk_rdf_list gfull t.o 64) st
+         else st
+       | _ -> st) in
+    seed_oneof_members gfull tl st'
 
 let init_state (g : rdf_graph) : rstate =
   (* Role hierarchy is inverse-lifted once, up front: a declared
