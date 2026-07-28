@@ -2167,6 +2167,7 @@ let owl_rule_named_sameAs_to_equivClass (g : RDF_Graph.rdf_graph)
        else acc) g g
 let owl_semantics_direct : Prims.string= "DIRECT"
 let owl_semantics_rdf_based : Prims.string= "RDF-BASED"
+let owl_semantics_rdf_based_full : Prims.string= "RDF-BASED-FULL"
 let owl_rule_named_equivClass_to_sameAs_mode (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) (mode : Prims.string) :
   RDF_Graph.rdf_graph=
@@ -3047,6 +3048,55 @@ let owl_rule_differentFrom_to_allDifferent (g : RDF_Graph.rdf_graph)
                RDF_Triple.p = rdf_rest;
                RDF_Triple.o = (RDF_Term.T_IRI rdf_nil_iri)
              }]) g (differentFrom_canonical_pairs ig)
+let owl_DataRange_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#DataRange"
+let rdf_based_full_meta_class_pairs :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  [(RDFS_Closure.owl_Class, RDFS_Closure.rdfs_Class);
+  (RDFS_Closure.owl_Thing, RDFS_Closure.rdfs_Resource);
+  (owl_DataRange_iri, RDFS_Closure.rdfs_Datatype);
+  (RDFS_Closure.owl_ObjectProperty, RDFS_Closure.rdf_Property)]
+let owl_rule_rdf_based_full_meta_axioms_mode (g : RDF_Graph.rdf_graph)
+  (mode : Prims.string) : RDF_Graph.rdf_graph=
+  if mode <> owl_semantics_rdf_based_full
+  then g
+  else
+    FStar_List_Tot_Base.fold_left
+      (fun acc pr ->
+         let uu___1 = pr in
+         match uu___1 with
+         | (a, b) ->
+             RDF_Graph.add_triples_if_new acc
+               [{
+                  RDF_Triple.s = (RDF_Term.S_IRI a);
+                  RDF_Triple.p = owl_equivalentClass;
+                  RDF_Triple.o = (RDF_Term.T_IRI b)
+                };
+               {
+                 RDF_Triple.s = (RDF_Term.S_IRI b);
+                 RDF_Triple.p = owl_equivalentClass;
+                 RDF_Triple.o = (RDF_Term.T_IRI a)
+               };
+               {
+                 RDF_Triple.s = (RDF_Term.S_IRI a);
+                 RDF_Triple.p = RDFS_Closure.rdfs_subClassOf;
+                 RDF_Triple.o = (RDF_Term.T_IRI b)
+               };
+               {
+                 RDF_Triple.s = (RDF_Term.S_IRI b);
+                 RDF_Triple.p = RDFS_Closure.rdfs_subClassOf;
+                 RDF_Triple.o = (RDF_Term.T_IRI a)
+               };
+               {
+                 RDF_Triple.s = (RDF_Term.S_IRI a);
+                 RDF_Triple.p = RDFS_Closure.rdf_type;
+                 RDF_Triple.o = (RDF_Term.T_IRI RDFS_Closure.owl_Class)
+               };
+               {
+                 RDF_Triple.s = (RDF_Term.S_IRI b);
+                 RDF_Triple.p = RDFS_Closure.rdf_type;
+                 RDF_Triple.o = (RDF_Term.T_IRI RDFS_Closure.owl_Class)
+               }]) g rdf_based_full_meta_class_pairs
 let owl_rl_closure_step_mode (g : RDF_Graph.rdf_graph) (mode : Prims.string)
   : RDF_Graph.rdf_graph=
   let ig = RDF_Indexed.build_indexed g in
@@ -3108,7 +3158,8 @@ let owl_rl_closure_step_mode (g : RDF_Graph.rdf_graph) (mode : Prims.string)
   let g25a = owl_rule_dt_range_intersect g25 ig in
   let g26 = owl_rule_xsd_core_datatype_axioms g25a ig in
   let g26a = owl_rule_builtin_vocabulary_axioms g26 ig in
-  let g27 = owl_rule_scm_dom2 g26a ig in
+  let g26b = owl_rule_rdf_based_full_meta_axioms_mode g26a mode in
+  let g27 = owl_rule_scm_dom2 g26b ig in
   let g28 = owl_rule_scm_rng2 g27 ig in
   let g28a = owl_rule_subprop_domain_range g28 ig in
   RDF_Graph.graph_dedup_sort g28a

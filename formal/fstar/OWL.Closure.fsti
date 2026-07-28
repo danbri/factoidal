@@ -2864,6 +2864,16 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) (ig : indexed_graph) : r
 // DIRECT.
 let owl_semantics_direct : string = "DIRECT"
 let owl_semantics_rdf_based : string = "RDF-BASED"
+// Flag-gated OWL Full meta-modeling mode (2026-07-28, owner-approved
+// "under a flag or engine mode"): DIRECT's unconditional rule firing
+// PLUS the OWL 2 RDF-Based Semantics meta-vocabulary equalities
+// (owl_rule_rdf_based_full_meta_axioms_mode below). Every existing
+// `mode = owl_semantics_rdf_based` comparison is unaffected — this
+// mode is a distinct string, so rules exempted under RDF-BASED fire
+// normally here, exactly as under DIRECT. Selected only by
+// bin/owl-runner/owl_runner.ml's `--semantics rdf-based-full` flag
+// (default OFF); no other caller ever passes it.
+let owl_semantics_rdf_based_full : string = "RDF-BASED-FULL"
 
 let owl_rule_named_equivClass_to_sameAs_mode
     (g : rdf_graph) (ig : indexed_graph) (mode : string) : rdf_graph =
@@ -4010,14 +4020,74 @@ let owl_rule_differentFrom_to_allDifferent (g : rdf_graph) (ig : indexed_graph) 
     g
     (differentFrom_canonical_pairs ig)
 
+// ---- Flag-gated OWL Full meta-modeling axioms (mode = RDF-BASED-FULL) -----
+//
+// OWL 2 RDF-Based Semantics (W3C Rec., 2012-12-11) Table 5.2 fixes the
+// class extensions of the meta-vocabulary so that four OWL/RDF(S) class
+// pairs coincide EXACTLY:
+//   ICEXT(owl:Class)          = IC  = ICEXT(rdfs:Class)
+//   ICEXT(owl:Thing)          = IR  = ICEXT(rdfs:Resource)
+//   ICEXT(owl:DataRange)      = IDC = ICEXT(rdfs:Datatype)
+//   ICEXT(owl:ObjectProperty) = IP  = ICEXT(rdf:Property)
+// Under that semantics classes are simultaneously individuals
+// (metamodeling); under OWL 2 Direct Semantics the meta-vocabulary is
+// not in the interpretation domain at all, and the DL-safe reading of
+// mixed class/individual names is punning — Motik, "On the Properties
+// of Metamodeling in OWL" (ISWC 2005 / J. Logic and Computation 17(4),
+// 2007) — which deliberately does NOT identify these pairs. So these
+// axioms are correct exactly when the RDF-Based reading is the one
+// under test, and MUST stay out of every other mode: the rule below is
+// a no-op unless mode = owl_semantics_rdf_based_full, which only the
+// owl_runner's opt-in `--semantics rdf-based-full` flag selects.
+// Targets WebOnt-Class-001/-002/-003 (test:species FULL only; the
+// catalog ships owl:NegativePropertyAssertions explicitly denying
+// test:species DL for all three).
+//
+// Emission per pair (A, B): owl:equivalentClass both directions (the
+// extensional identity itself — WebOnt-Class-001's conclusion triple),
+// rdfs:subClassOf both directions (so plain rdfs9 carries memberships
+// across — WebOnt-Class-002/-003), and rdf:type owl:Class for both
+// (each names a class; combined with the subClassOf edges the fixpoint
+// derives e.g. `owl:Class rdf:type rdfs:Class`). Static table, fires
+// even on an empty premise — WebOnt-Class-001's premise IS empty.
+let owl_DataRange_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#DataRange");
+  "http://www.w3.org/2002/07/owl#DataRange"
+
+let rdf_based_full_meta_class_pairs : list (wf_iri & wf_iri) = [
+  (owl_Class, rdfs_Class);
+  (owl_Thing, rdfs_Resource);
+  (owl_DataRange_iri, rdfs_Datatype);
+  (owl_ObjectProperty, rdf_Property)
+]
+
+let owl_rule_rdf_based_full_meta_axioms_mode (g : rdf_graph) (mode : string) : rdf_graph =
+  if mode <> owl_semantics_rdf_based_full then g
+  else
+    List.Tot.fold_left
+      (fun (acc : rdf_graph) (pr : (wf_iri & wf_iri)) ->
+        let (a, b) = pr in
+        add_triples_if_new acc [
+          { s = S_IRI a; p = owl_equivalentClass; o = T_IRI b };
+          { s = S_IRI b; p = owl_equivalentClass; o = T_IRI a };
+          { s = S_IRI a; p = rdfs_subClassOf; o = T_IRI b };
+          { s = S_IRI b; p = rdfs_subClassOf; o = T_IRI a };
+          { s = S_IRI a; p = rdf_type; o = T_IRI owl_Class };
+          { s = S_IRI b; p = rdf_type; o = T_IRI owl_Class }
+        ])
+      g
+      rdf_based_full_meta_class_pairs
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
 // no change.
 //
-// `mode` (owl_semantics_direct / owl_semantics_rdf_based, 2026-07-05)
-// reaches exactly one rule below (owl_rule_named_equivClass_to_sameAs_mode
-// at g5a) — see that rule's header comment for why. Every other rule is
+// `mode` (owl_semantics_direct / owl_semantics_rdf_based /
+// owl_semantics_rdf_based_full, 2026-07-05, extended 2026-07-28)
+// reaches exactly two rules below (owl_rule_named_equivClass_to_sameAs_mode
+// at g5a; owl_rule_rdf_based_full_meta_axioms_mode at g26b) — see those
+// rules' header comments for why. Every other rule is
 // semantics-mode-invariant.
 let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   (* OWL-RL Commit B: build the index once per step; thread to all
@@ -4211,11 +4281,16 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // owl:imports' domain/range are visible to the propagation rules in
   // the same step.
   let g26a = owl_rule_builtin_vocabulary_axioms g26 ig in
+  // Flag-gated OWL Full meta-modeling table (no-op in every mode except
+  // owl_semantics_rdf_based_full — see the rule's banner above). Placed
+  // with the other axiom-table rules and BEFORE scm-dom2/scm-rng2 for
+  // the same visibility reason as g26a.
+  let g26b = owl_rule_rdf_based_full_meta_axioms_mode g26a mode in
   // scm-dom2 / scm-rng2: propagate rdfs:domain and rdfs:range upward
   // through the rdfs:subClassOf chain. After step g25 the XSD hierarchy
   // edges are in scope, so a `:p rdfs:range xsd:byte` premise yields
   // `:p rdfs:range xsd:short` (WebOnt-I5.8-006).
-  let g27 = owl_rule_scm_dom2 g26a ig in
+  let g27 = owl_rule_scm_dom2 g26b ig in
   let g28 = owl_rule_scm_rng2 g27 ig in
   // Group B: carry rdfs:domain / rdfs:range DOWN the rdfs:subPropertyOf
   // chain. After scm-dom2/scm-rng2 so a domain already lifted up the
