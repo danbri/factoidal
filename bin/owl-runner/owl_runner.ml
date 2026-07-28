@@ -803,12 +803,19 @@ let pe_refute_entails
           List.for_all
             (fun neg ->
                let goal_graph = List.append closure neg in
-               (match Tableau_Refute.tableau_consistent
-                        goal_graph refute_fuel with
-                | Some false -> true
-                | _ ->
-                  (try Tableau_CountingOracle.class_size_unsat goal_graph
-                   with _ -> false)))
+               (* Counting check FIRST: it is milliseconds (build the
+                  linear system, search a Farkas certificate) while the
+                  tableau can grind a large share of the shared PE wall
+                  cap on one goal — running it second starved it of the
+                  cap entirely (measured: Consistent-but-all-unsat's
+                  first goal burned the whole budget in the tableau).
+                  Order is pure dispatch; both checks are verified. *)
+               (try Tableau_CountingOracle.class_size_unsat goal_graph
+                with _ -> false)
+               || (match Tableau_Refute.tableau_consistent
+                         goal_graph refute_fuel with
+                   | Some false -> true
+                   | _ -> false))
             goals)
         with _ -> false))
 
