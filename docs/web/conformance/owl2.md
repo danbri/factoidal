@@ -162,7 +162,7 @@ the catalog expects a clash. Under-derivation, not a wrong entailment.
 | Test | Disposition | Reason |
 |---|---|---|
 | `Minus Infinity is not in owl:real` | planned-family | Numeric datatype value-space reasoning: `owl:real` excludes `-INF`, which needs interval handling across `DataAllValuesFrom` / `DataOneOf` / `NegativeDataPropertyAssertion`. |
-| `WebOnt-description-logic-502` | planned-family | "The classic 3 SAT problem" encoded in nested `owl:oneOf` / `owl:differentFrom` pairs; the refuter's linear work budget is exhausted before the clash is found. |
+| `WebOnt-description-logic-502` | planned-family | "The classic 3 SAT problem" encoded as ten `owl:oneOf` enumerations on one class plus 45 three-literal clause classes. The engine returns a definite model with zero refuter cap trips: the clause constraints never reach the tableau, because a class expression's enumeration is read once per class rather than intersected across repeated `owl:oneOf`. A loading gap upstream of the refuter, not a search-budget one. |
 | `WebOnt-description-logic-909` | disputed-fixture | Integer multiplication via chained `owl:FunctionalProperty` / `owl:inverseOf` cardinality arithmetic. The clash is not soundly derivable under Direct Semantics as the fixture is written, so the default engine keeps the satisfiable verdict; the owner approved a flag-gated arithmetic-semantics variant (2026-07-28, [#299](https://github.com/danbri/factoidal/issues/299)) rather than a test-ID exemption. Also carries `test:status test;Extracredit`. |
 
 One inconsistency test is skipped: `WebOnt-Thing-005` asserts
