@@ -226,6 +226,23 @@ disjoint-union |bUNIONc|=|b|+|c|). With (2)+(3) the system is
 |a| = 2|a|, 1 ≤ |a| ≤ 3 — Farkas-certifiable. 🟡 Next session's
 commit-sized item; the searcher must also learn ≤-rows.
 
+## FINAL gate table (final binary: all waves + counting extension + rung order)
+
+| Suite | Baseline (task brief) | This branch | Δ |
+|---|---|---|---|
+| type-positive-entailment (DL) | 140 pass, 64 fail (out of 204) | **155 pass, 49 fail (out of 204)**, 2 skipped | ✅ +15, fail set strict subset of baseline |
+| type-inconsistency (DL) | 124 pass, 3 fail (out of 127) | **125 pass, 2 fail (out of 127)**, 1 skipped | ✅ +1 (dl-502) |
+| type-consistency (DL) | 352 pass, 0 fail (out of 352) | **352 pass, 0 fail (out of 352)** | ✅ held |
+| type-negative-entailment (DL) | 23 pass, 0 fail (out of 23)* | 22 pass, 1 fail (out of 23) | ⚠️ imports-002 — fails identically with the BRANCH-BASE binary (inherited, next-actions item 6), not from this branch |
+| profile-EL (aggregate) | 118 pass, 2 fail (out of 120) | 118 pass, 2 fail (PE 27/2 + NE 6/0 + Cons 72/0 + Inc 13/0) | ✅ held |
+| profile-QL (aggregate) | 85 pass, 2 fail (out of 87) | 85 pass, 2 fail | ✅ held |
+| profile-RL PE section | 28 pass, 2 fail (out of 30) | 28 pass, 2 fail | ✅ held |
+
+Target scorecard (13 named targets): 201 ✅ 202 ✅ 206 ✅ 208 ✅ 661 ✅
+662 ✅ 901 ✅ 903 ✅ Consistent-but-all-unsat ✅ I5.2-004 ✅ I5.2-006 ✅
+dl-502 ✅ · dl-909 ❌ parked (soundly underivable nonemptiness — see the
+909 section). All flips at DEFAULT runner budgets, in-catalog.
+
 ## In-catalog results (final binary, all waves)
 
 📊 PE section (measured inside the type-consistency catalog run, which
