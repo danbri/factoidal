@@ -452,6 +452,18 @@ below, in order):
    priority alongside, not after, the closure-rule quick wins.**
 3. On dashboard regen: "Sure, but it's just us here (and yr subagents)."
    — regen approved.
+4. On description-logic-909 (later the same day, after the park rationale
+   was explained): "maybe put the implementation behind a flag if there
+   are concerns" — **approved as flag-gated work**. Constraint carried
+   over from the soundness analysis: the DEFAULT engine keeps the
+   satisfiable verdict (a sound reasoner must not derive the clash);
+   the flagged mode must be a real F* decision-procedure variant that
+   formalizes the test authors' intended arithmetic reading (integers
+   with true multiplication over an infinite domain), NOT a
+   special-cased test-ID exemption in the runner (anti-pattern #15).
+   Queued behind the closure-rules landing and the OWL-Full gated mode
+   (steer 1), since all three touch the same modules. Cross-reference:
+   issue #299.
 
 ## 5-orig. Open questions for the owner (as originally asked)
 
