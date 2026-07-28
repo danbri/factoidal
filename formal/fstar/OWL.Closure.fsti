@@ -3338,6 +3338,116 @@ let owl_xsd_core_datatype_axioms : list triple =
 let owl_rule_xsd_core_datatype_axioms (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   add_triples_if_new g owl_xsd_core_datatype_axioms
 
+// ---- Group A: static OWL/RDFS built-in vocabulary axiom table --------------
+//
+// The RDF-Based Semantics (OWL 2 RDF-Based Semantics, section "Semantic
+// Conditions for the OWL 2 RDF-Based Vocabulary") fixes the type of a
+// closed set of built-in vocabulary terms, and the domain/range of
+// owl:imports. These are UNCONDITIONAL axioms — they hold in every
+// interpretation, so they are entailed by every graph including the
+// empty graph. No traversal, no premise pattern: a fixed triple list
+// merged in with add_triples_if_new, exactly like
+// owl_rule_xsd_core_datatype_axioms above.
+//
+// Targets (all with an EMPTY premise graph):
+//   rdfbased-sem-prop-label-type, -comment-type, -seealso-type,
+//   -isdefinedby-type, -deprecated-type, -versioninfo-type,
+//   -backwardcompatiblewith-type-annot, -incompatiblewith-type-annot,
+//   -priorversion-type-annot  (9 annotation-property typings)
+//   WebOnt-imports-010        (owl:imports domain/range owl:Ontology)
+//   WebOnt-I5.5-001 / -002    (rdf:first / rdf:rest FunctionalProperty)
+//
+// Deliberately kept SMALL. The RDFS-side experiment recorded in
+// RDFS.Closure.fsti's rdfs_closure_with_reflexivity comment (seeding
+// the full RDF.Vocabulary.Axioms table) regressed profile-RL
+// ConsistencyTests, because blanket rdfs:domain/rdfs:range axioms on
+// core vocabulary inflate the rdf:type set through rdfs2/rdfs3 and feed
+// the N=1 qualified-cardinality complement scaffolding. This table adds
+// domain/range for exactly ONE property (owl:imports, whose domain and
+// range are owl:Ontology — a class no cardinality restriction in the
+// suites mentions), so it does not reopen that interaction.
+let owl_AnnotationProperty_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AnnotationProperty");
+  "http://www.w3.org/2002/07/owl#AnnotationProperty"
+
+let owl_Ontology_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Ontology");
+  "http://www.w3.org/2002/07/owl#Ontology"
+
+let owl_imports_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#imports");
+  "http://www.w3.org/2002/07/owl#imports"
+
+let rdfs_label_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#label");
+  "http://www.w3.org/2000/01/rdf-schema#label"
+
+let rdfs_comment_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#comment");
+  "http://www.w3.org/2000/01/rdf-schema#comment"
+
+let rdfs_seeAlso_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#seeAlso");
+  "http://www.w3.org/2000/01/rdf-schema#seeAlso"
+
+let rdfs_isDefinedBy_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#isDefinedBy");
+  "http://www.w3.org/2000/01/rdf-schema#isDefinedBy"
+
+let owl_deprecated_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#deprecated");
+  "http://www.w3.org/2002/07/owl#deprecated"
+
+let owl_versionInfo_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#versionInfo");
+  "http://www.w3.org/2002/07/owl#versionInfo"
+
+let owl_backwardCompatibleWith_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#backwardCompatibleWith");
+  "http://www.w3.org/2002/07/owl#backwardCompatibleWith"
+
+let owl_incompatibleWith_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#incompatibleWith");
+  "http://www.w3.org/2002/07/owl#incompatibleWith"
+
+let owl_priorVersion_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#priorVersion");
+  "http://www.w3.org/2002/07/owl#priorVersion"
+
+// The nine built-in annotation properties whose rdf:type is fixed to
+// owl:AnnotationProperty by the RDF-Based Semantics vocabulary table.
+let owl_builtin_annotation_properties : list wf_iri = [
+  rdfs_label_iri;
+  rdfs_comment_iri;
+  rdfs_seeAlso_iri;
+  rdfs_isDefinedBy_iri;
+  owl_deprecated_iri;
+  owl_versionInfo_iri;
+  owl_backwardCompatibleWith_iri;
+  owl_incompatibleWith_iri;
+  owl_priorVersion_iri;
+]
+
+let owl_builtin_vocabulary_axioms : list triple =
+  List.Tot.append
+    (List.Tot.map
+       (fun (i : wf_iri) ->
+          ({ s = S_IRI i; p = rdf_type; o = T_IRI owl_AnnotationProperty_iri } <: triple))
+       owl_builtin_annotation_properties)
+    [
+      // owl:imports is an ontology-to-ontology property.
+      { s = S_IRI owl_imports_iri; p = rdf_type;    o = T_IRI rdf_Property };
+      { s = S_IRI owl_imports_iri; p = rdfs_domain; o = T_IRI owl_Ontology_iri };
+      { s = S_IRI owl_imports_iri; p = rdfs_range;  o = T_IRI owl_Ontology_iri };
+      // rdf:first / rdf:rest are functional: an rdf:List cell has exactly
+      // one head and exactly one tail.
+      { s = S_IRI rdf_first; p = rdf_type; o = T_IRI owl_FunctionalProperty };
+      { s = S_IRI rdf_rest;  p = rdf_type; o = T_IRI owl_FunctionalProperty };
+    ]
+
+let owl_rule_builtin_vocabulary_axioms (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  add_triples_if_new g owl_builtin_vocabulary_axioms
+
 let owl_AllDisjointClasses_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#AllDisjointClasses");
   "http://www.w3.org/2002/07/owl#AllDisjointClasses"
@@ -3684,11 +3794,20 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // Required for WebOnt-I5.8-011 which entails the declarations from an
   // empty graph (the gated rule above does not fire on empty input).
   let g26 = owl_rule_xsd_core_datatype_axioms g25a ig in
+  // Group A: static OWL/RDFS built-in vocabulary axiom table (fixed
+  // annotation-property typings, owl:imports domain/range, rdf:first /
+  // rdf:rest functionality). Unconditional — fires even on an empty
+  // premise, which is exactly what the rdfbased-sem-prop-*-type /
+  // WebOnt-imports-010 / WebOnt-I5.5-001/-002 fixtures need. Placed
+  // beside the other axiom-table rules and BEFORE scm-dom2/scm-rng2 so
+  // owl:imports' domain/range are visible to the propagation rules in
+  // the same step.
+  let g26a = owl_rule_builtin_vocabulary_axioms g26 ig in
   // scm-dom2 / scm-rng2: propagate rdfs:domain and rdfs:range upward
   // through the rdfs:subClassOf chain. After step g25 the XSD hierarchy
   // edges are in scope, so a `:p rdfs:range xsd:byte` premise yields
   // `:p rdfs:range xsd:short` (WebOnt-I5.8-006).
-  let g27 = owl_rule_scm_dom2 g26 ig in
+  let g27 = owl_rule_scm_dom2 g26a ig in
   let g28 = owl_rule_scm_rng2 g27 ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
