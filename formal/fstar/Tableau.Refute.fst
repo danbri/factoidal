@@ -1675,6 +1675,128 @@ let rec filter_in_filler (st : rstate) (c : class_expr) (ts : list rdf_term)
      | Some j -> if mem_ce c (labels_of st j) then t :: rest else rest
      | None -> rest)
 
+// -------------------------------------------------------------------
+// 6a-pre. C7: analytic min-sum counting clash (dl-901 / dl-903 family,
+// tableau-classification design note 2026-07-28).
+//
+// Shape: a node labelled `<= k R` that ALSO carries min-successor
+// obligations `>= m_i P_i` (i ranging over a chosen subset) where
+//   (1) every P_i ⊑* R (the role-hierarchy closure rs_subprop:
+//       EXT(P_i) ⊆ EXT(R) in every model, rdfs7/scm-spo);
+//   (2) the picked P_i are pairwise DIFFERENT properties; and
+//   (3) their declared rdfs:range classes are pairwise PROVABLY
+//       disjoint (an owl:disjointWith or owl:complementOf triple in
+//       the graph, either direction).
+// Then in every model: each `>= m_i P_i` forces m_i pairwise-distinct
+// P_i-successors; each P_i-successor lies in CEXT(range(P_i))
+// (rdfs:range semantics: (x,y) ∈ EXT(P) ⇒ y ∈ CEXT(D)); pairwise-
+// disjoint ranges make the successor groups pairwise disjoint (if a
+// range is degenerate — e.g. self-disjoint, hence empty — the >= m_i
+// obligation is itself unsatisfiable, so the no-model conclusion
+// still holds); every group member is an R-successor by (1). Hence
+// the node has at least Σ m_i pairwise-distinct R-successors, and
+// Σ m_i > k contradicts `<= k R`. A genuine model-theoretic clash,
+// derived ARITHMETICALLY with no witness materialisation — which is
+// what lets dl-903's 200/300/500 cardinalities (far beyond
+// max_generated_witnesses) close, and dl-901's cross-group
+// distinctness (p-witnesses vs q-witnesses, forced only by range
+// disjointness) be seen at all.
+
+// All declared rdfs:range classes of p in the (property, class) table.
+let rec declared_ranges (pairs : list (wf_iri & wf_iri)) (p : wf_iri)
+  : Tot (list wf_iri) (decreases pairs) =
+  match pairs with
+  | [] -> []
+  | (q, d) :: tl ->
+    let rest = declared_ranges tl p in
+    if q = p then d :: rest else rest
+
+// A and B provably denote disjoint classes: an owl:disjointWith or
+// owl:complementOf triple links them (either direction). complementOf
+// is disjointness-plus-coverage; only the disjointness half is used.
+let classes_provably_disjoint (g : rdf_graph) (a : wf_iri) (b : wf_iri) : bool =
+  List.Tot.existsb
+    (fun (t : triple) ->
+      (t.p = owl_disjointWith || t.p = owl_complementOf) &&
+      (match t.s, t.o with
+       | S_IRI x, T_IRI y -> (x = a && y = b) || (x = b && y = a)
+       | _, _ -> false))
+    g
+
+// Some declared range of p is provably disjoint from some declared
+// range of q. Since EVERY declared range confines the property's
+// successors (conjunctive semantics), any disjoint pair suffices.
+let ranges_provably_disjoint (g : rdf_graph) (rng : list (wf_iri & wf_iri))
+                             (p : wf_iri) (q : wf_iri) : bool =
+  List.Tot.existsb
+    (fun (a : wf_iri) ->
+      List.Tot.existsb
+        (fun (b : wf_iri) -> classes_provably_disjoint g a b)
+        (declared_ranges rng q))
+    (declared_ranges rng p)
+
+// The min-successor obligation one label imposes, as (m, P):
+// `>= m P` and `>= m P.C` (the qualified form still forces m distinct
+// P-successors); ∃P.C and hasValue-P each force >= 1 P.
+let min_obligation_of_label (l : class_expr) : option (nat & wf_iri) =
+  match l with
+  | CE_MinCard m p        -> if m >= 1 then Some (m, p) else None
+  | CE_MinQualCard m p _  -> if m >= 1 then Some (m, p) else None
+  | CE_SomeValuesFrom p _ -> Some (1, p)
+  | CE_HasValue p _       -> Some (1, p)
+  | _                     -> None
+
+// Every min-obligation among `ls` whose property is in the ⊑*-closure
+// below R (`subs` = subproperties_of rs_subprop R).
+let rec min_obligations_below (ls : list class_expr) (subs : list wf_iri)
+  : Tot (list (nat & wf_iri)) (decreases ls) =
+  match ls with
+  | [] -> []
+  | l :: tl ->
+    let rest = min_obligations_below tl subs in
+    (match min_obligation_of_label l with
+     | Some (m, p) -> if mem_iri p subs then (m, p) :: rest else rest
+     | None -> rest)
+
+// Candidates compatible with picked head-property p: a DIFFERENT
+// property whose declared ranges are provably disjoint from p's.
+let rec filter_range_disjoint (g : rdf_graph) (rng : list (wf_iri & wf_iri))
+                              (p : wf_iri) (cs : list (nat & wf_iri))
+  : Tot (r : list (nat & wf_iri) { List.Tot.length r <= List.Tot.length cs })
+    (decreases cs) =
+  match cs with
+  | [] -> []
+  | (m2, q) :: tl ->
+    let rest = filter_range_disjoint g rng p tl in
+    if q <> p && ranges_provably_disjoint g rng p q
+    then (m2, q) :: rest else rest
+
+// Does `cands` contain a subset with pairwise-different properties and
+// pairwise provably-disjoint ranges whose min-counts sum to >= need?
+// Branch-on-first-element search mirroring `exists_distinct_subset`:
+// each pick filters the remaining candidates against ITS head, and the
+// filtered lists nest, so every chosen pair went through a filter —
+// pairwise compatibility of the whole chosen set follows.
+let rec exists_min_sum (g : rdf_graph) (rng : list (wf_iri & wf_iri))
+                       (cands : list (nat & wf_iri)) (need : nat)
+  : Tot bool (decreases (List.Tot.length cands)) =
+  if need = 0 then true
+  else
+    match cands with
+    | [] -> false
+    | (m, p) :: tl ->
+      (let filtered = filter_range_disjoint g rng p tl in
+       exists_min_sum g rng filtered (if m >= need then 0 else need - m))
+      || exists_min_sum g rng tl need
+
+// C7 entry: node labels `ls_all` contain min-obligations over
+// ⊑*-subproperties of R with pairwise-disjoint ranges summing past k.
+let min_sum_counting_clash (g : rdf_graph) (st : rstate)
+                           (ls_all : list class_expr)
+                           (k : nat) (r : wf_iri) : bool =
+  let cands = min_obligations_below ls_all (subproperties_of st.rs_subprop r) in
+  exists_min_sum g st.rs_range cands (k + 1)
+
 (* -------------------------------------------------------------------
    6a. The tableau ≤-rule (witness merging — owl2-le-rule wave).
 
@@ -2134,8 +2256,11 @@ let clash_for_label (g : rdf_graph) (st : rstate) (i : subject)
     all_provably_distinct g st.rs_gendistinct (subject_to_term i) members
   | CE_MaxCard k p ->
     let succs = countable_successors g st i p in
-    if k = 0 then Cons? succs
-    else exists_distinct_subset g st.rs_gendistinct succs (k + 1)
+    (if k = 0 then Cons? succs
+     else exists_distinct_subset g st.rs_gendistinct succs (k + 1))
+    // C7 (section 6a-pre): min-obligations over disjoint-range
+    // ⊑*-subproperties of p summing past k — analytic, no witnesses.
+    || min_sum_counting_clash g st ls_all k p
   | CE_MaxQualCard k p c ->
     let succs = filter_in_filler st c (countable_successors g st i p) in
     if k = 0 then Cons? succs
