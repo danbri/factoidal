@@ -1825,6 +1825,8 @@ OWL_HTML=$(cat <<OWLEOF
   and <code>semantics-direct.rdf</code>. The ninth catalog
   (<code>syntax-dl.rdf</code>) scores through the F\*
   <code>OWL2.SyntaxDL</code> species checker (its row appears above).
+  Every remaining failure is named, explained, and dispositioned on the
+  <a href="../web/conformance/owl2/">OWL 2 conformance page</a>.
 </p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Tableau on the live codepath.</strong> The F\*
