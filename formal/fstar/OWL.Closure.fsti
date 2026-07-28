@@ -636,6 +636,29 @@ let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) : rdf
     g
     (sameas_pairs ig)
 
+// rdf:first / rdf:rest are declared owl:FunctionalProperty by the Group A
+// built-in vocabulary axiom table further down — WebOnt-I5.5-001/-002
+// entail exactly those two triples from an EMPTY graph, so the
+// declaration has to be unconditional. Letting the prp-fp DERIVATION
+// rules fire on them is a separate question, and measurably harmful:
+// owl_rule_fp_diff_to_diff's inner fold is O(|g|) for every triple whose
+// predicate is functional, so treating every rdf:List cell in every graph
+// as a functional-property edge makes that rule quadratic in the graph.
+// Measured 2026-07-28 on type-inconsistency under --regime dl: 124 pass,
+// 3 fail (out of 127) in 60s BEFORE, versus 123 pass, 4 fail (out of 127)
+// in 381s with 11 closure-cap trips (up from 1) AFTER —
+// New-Feature-Keys-002 stopped being reported inconsistent because the
+// closure ran out of budget, not because the added facts were wrong.
+//
+// On a well-formed rdf:List each cell carries exactly one rdf:first and
+// one rdf:rest, so every derivation skipped here is vacuous. Skipping is
+// therefore an incompleteness on malformed lists only, never an
+// unsoundness. The IRIs are spelled literally because rdf_first/rdf_rest
+// are declared further down the file.
+let is_list_cell_functional_property (p : wf_iri) : bool =
+  p = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first" ||
+  p = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+
 // prp-fp: if (P rdf:type owl:FunctionalProperty), (x P y), (x P z) and
 // y =/= z, then (y owl:sameAs z). Mirrors prp-ifp but on the object side:
 // two values for the same subject under a functional property must be
@@ -648,7 +671,9 @@ let owl_rule_functional (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
       (fun (acc : list wf_iri) (t : triple) ->
         if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
           match t.s with
-          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | S_IRI p_iri ->
+            if is_list_cell_functional_property p_iri then acc
+            else cons_if_new_iri p_iri acc
           | _ -> acc
         else acc)
       []
@@ -840,7 +865,12 @@ let owl_rule_fp_diff_to_diff (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
       (fun (acc : list wf_iri) (t : triple) ->
         if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
           match t.s with
-          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | S_IRI p_iri ->
+            // rdf:first / rdf:rest excluded — see
+            // is_list_cell_functional_property above; this is the rule
+            // whose quadratic inner fold made the measurement regress.
+            if is_list_cell_functional_property p_iri then acc
+            else cons_if_new_iri p_iri acc
           | _ -> acc
         else acc)
       []
@@ -4589,6 +4619,7 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
                     rdf_term_eq decl.o (T_IRI owl_FunctionalProperty) &&
                     (match decl.s with
                      | S_IRI prop_iri ->
+                       not (is_list_cell_functional_property prop_iri) &&
                        List.Tot.existsb
                          (fun (t1 : triple) ->
                            t1.p = prop_iri &&
