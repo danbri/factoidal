@@ -636,6 +636,29 @@ let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) : rdf
     g
     (sameas_pairs ig)
 
+// rdf:first / rdf:rest are declared owl:FunctionalProperty by the Group A
+// built-in vocabulary axiom table further down — WebOnt-I5.5-001/-002
+// entail exactly those two triples from an EMPTY graph, so the
+// declaration has to be unconditional. Letting the prp-fp DERIVATION
+// rules fire on them is a separate question, and measurably harmful:
+// owl_rule_fp_diff_to_diff's inner fold is O(|g|) for every triple whose
+// predicate is functional, so treating every rdf:List cell in every graph
+// as a functional-property edge makes that rule quadratic in the graph.
+// Measured 2026-07-28 on type-inconsistency under --regime dl: 124 pass,
+// 3 fail (out of 127) in 60s BEFORE, versus 123 pass, 4 fail (out of 127)
+// in 381s with 11 closure-cap trips (up from 1) AFTER —
+// New-Feature-Keys-002 stopped being reported inconsistent because the
+// closure ran out of budget, not because the added facts were wrong.
+//
+// On a well-formed rdf:List each cell carries exactly one rdf:first and
+// one rdf:rest, so every derivation skipped here is vacuous. Skipping is
+// therefore an incompleteness on malformed lists only, never an
+// unsoundness. The IRIs are spelled literally because rdf_first/rdf_rest
+// are declared further down the file.
+let is_list_cell_functional_property (p : wf_iri) : bool =
+  p = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first" ||
+  p = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+
 // prp-fp: if (P rdf:type owl:FunctionalProperty), (x P y), (x P z) and
 // y =/= z, then (y owl:sameAs z). Mirrors prp-ifp but on the object side:
 // two values for the same subject under a functional property must be
@@ -648,7 +671,9 @@ let owl_rule_functional (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
       (fun (acc : list wf_iri) (t : triple) ->
         if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
           match t.s with
-          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | S_IRI p_iri ->
+            if is_list_cell_functional_property p_iri then acc
+            else cons_if_new_iri p_iri acc
           | _ -> acc
         else acc)
       []
@@ -840,7 +865,12 @@ let owl_rule_fp_diff_to_diff (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
       (fun (acc : list wf_iri) (t : triple) ->
         if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
           match t.s with
-          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | S_IRI p_iri ->
+            // rdf:first / rdf:rest excluded — see
+            // is_list_cell_functional_property above; this is the rule
+            // whose quadratic inner fold made the measurement regress.
+            if is_list_cell_functional_property p_iri then acc
+            else cons_if_new_iri p_iri acc
           | _ -> acc
         else acc)
       []
@@ -1075,6 +1105,25 @@ let owl_disjointWith_iri : wf_iri =
 // — referenced via its concrete IRI literal).
 let is_schema_metapredicate (p : wf_iri) : bool =
   is_owl_metapredicate p
+  // owl:differentFrom is an identity-vocabulary predicate exactly as
+  // owl:sameAs (covered by is_owl_metapredicate) is, and must never be
+  // read as a DATA edge by the restriction-membership rules. Without
+  // this line those rules synthesise
+  //   _:__rl_maxqc1_<owl:differentFrom>__on__<C>
+  // — a "at most one C-valued differentFrom successor" restriction — and
+  // type every C-instance into it. Any individual differentFrom two
+  // others then trips cls-maxqc1 (emitting a sameAs that contradicts the
+  // differentFrom) or cls-maxqc-comp (typing one of them into
+  // complementOf(C), which the cls-com check reads as a clash), so a
+  // perfectly consistent DifferentIndividuals axiom over three or more
+  // individuals is reported INCONSISTENT. Found 2026-07-28 when the
+  // Group F forward AllDifferent rule started deriving 3-way
+  // differentFrom cliques: WebOnt-AllDifferent-001,
+  // WebOnt-differentFrom-002 and WebOnt-distinctMembers-001 all flipped
+  // to FAIL/unexpected-inconsistency in the ConsistencyTest section while
+  // passing as PositiveEntailmentTests. The bug was latent before, not
+  // introduced by that rule — it needed a 3-clique to surface.
+  || p = "http://www.w3.org/2002/07/owl#differentFrom"
   || p = rdfs_subClassOf
   || p = rdfs_subPropertyOf
   || p = rdfs_domain
@@ -1099,6 +1148,11 @@ let is_schema_metapredicate (p : wf_iri) : bool =
   || p = "http://www.w3.org/2002/07/owl#propertyChainAxiom"
   || p = "http://www.w3.org/2002/07/owl#distinctMembers"
   || p = "http://www.w3.org/2002/07/owl#members"
+  // owl:disjointUnionOf is a class-expression construct in exactly the
+  // sense owl:unionOf above is — spelled as a literal here because its
+  // wf_iri constant is declared further down, next to the Group C
+  // comprehension rules that consume it.
+  || p = "http://www.w3.org/2002/07/owl#disjointUnionOf"
 
 let xsd_nonNegativeInteger : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#nonNegativeInteger");
@@ -2956,6 +3010,225 @@ let owl_rule_cls_int1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
     g
     g
 
+// ---- Group C: oneOf / unionOf / disjointUnionOf comprehension -------------
+//
+// The three class-forming list constructs whose forward direction the
+// closure was missing. All three reuse decode_iri_list — the same
+// IRI-only rdf:Collection decoder cls-int1 and prp-key already use — so
+// a list carrying literals (an owl:DataRange enumeration) or anonymous
+// class-expression bnodes decodes to None and the rule is a no-op on it.
+//
+// Subjects are restricted to IRIs (BNODE-POLLUTION GUARD, same rationale
+// as owl_rule_equivalent_class / scm-dom2): an anonymous class-expression
+// bnode must not become an exposed ?C binding.
+
+let owl_disjointUnionOf_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#disjointUnionOf");
+  "http://www.w3.org/2002/07/owl#disjointUnionOf"
+
+// cls-oneof: (C owl:oneOf (i1 ... in)) implies (ik rdf:type C) for every
+// k. owl:oneOf is class-DEFINING — C denotes exactly the enumerated set —
+// so every listed individual is a member.
+// Targets WebOnt-oneOf-002, rdfbased-sem-enum-inst-included.
+let owl_rule_cls_oneof (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_oneOf_iri then
+        match t.s, term_to_subject t.o with
+        | S_IRI c_iri, Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | None -> acc
+           | Some members ->
+             List.Tot.fold_left
+               (fun (acc1 : rdf_graph) (i : wf_iri) ->
+                  add_triple_unchecked acc1
+                    ({ s = S_IRI i; p = rdf_type; o = T_IRI c_iri }))
+               acc
+               members)
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// cls-uni: (C owl:unionOf (c1 ... cn)) implies (ck rdfs:subClassOf C) for
+// every k — each disjunct is contained in the union.
+//
+// owl:disjointUnionOf is handled in the same fold: it is a unionOf whose
+// members are additionally pairwise disjoint, so it emits (a) the same
+// subClassOf edges, (b) the plain (C owl:unionOf L) form over the SAME
+// list node so the union-elimination rule below and any downstream
+// unionOf consumer see it, and (c) pairwise owl:disjointWith — the same
+// n-choose-2 emission shape as cax-adc-expand.
+// Targets WebOnt-unionOf-003/-004, New-Feature-DisjointUnion-001.
+let owl_rule_cls_uni (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_unionOf_iri || t.p = owl_disjointUnionOf_iri then
+        match t.s, term_to_subject t.o with
+        | S_IRI c_iri, Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | None -> acc
+           | Some members ->
+             let acc_sub =
+               List.Tot.fold_left
+                 (fun (acc1 : rdf_graph) (ci : wf_iri) ->
+                    add_triple_unchecked acc1
+                      ({ s = S_IRI ci; p = rdfs_subClassOf; o = T_IRI c_iri }))
+                 acc
+                 members
+             in
+             if t.p = owl_disjointUnionOf_iri then
+               let acc_u =
+                 add_triple_unchecked acc_sub
+                   ({ s = t.s; p = owl_unionOf_iri; o = t.o })
+               in
+               List.Tot.fold_left
+                 (fun (acc2 : rdf_graph) (c1 : wf_iri) ->
+                    List.Tot.fold_left
+                      (fun (acc3 : rdf_graph) (c2 : wf_iri) ->
+                         if c1 = c2 then acc3
+                         else add_triple_unchecked acc3
+                                ({ s = S_IRI c1; p = owl_disjointWith_iri;
+                                   o = T_IRI c2 }))
+                      acc2
+                      members)
+                 acc_u
+                 members
+             else acc_sub)
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// Does the step-input snapshot already witness that x is NOT a member of
+// class c? Two sound witnesses, both read off ig only:
+//   (a) x rdf:type d, and d owl:complementOf c (either direction);
+//   (b) x rdf:type d, and d owl:disjointWith c (either direction).
+// Both give x in d and d disjoint from c, hence x not in c.
+let known_not_member (ig : indexed_graph) (x : subject) (c : wf_iri) : bool =
+  let types = find_objects_indexed ig x rdf_type in
+  let c_excl =
+    List.Tot.append
+      (find_objects_indexed ig (S_IRI c) owl_complementOf_iri)
+      (find_objects_indexed ig (S_IRI c) owl_disjointWith_iri)
+  in
+  List.Tot.existsb
+    (fun (d : rdf_term) ->
+       List.Tot.existsb (fun (z : rdf_term) -> rdf_term_eq z d) c_excl
+       || (match term_to_subject d with
+           | None -> false
+           | Some d_subj ->
+             let d_excl =
+               List.Tot.append
+                 (find_objects_indexed ig d_subj owl_complementOf_iri)
+                 (find_objects_indexed ig d_subj owl_disjointWith_iri)
+             in
+             List.Tot.existsb
+               (fun (z : rdf_term) -> rdf_term_eq z (T_IRI c)) d_excl))
+    types
+
+// cls-uni-elim (disjunctive syllogism over a union class): if
+// (C owl:unionOf (c1 ... cn)), (x rdf:type C), and every member but one
+// is ruled out by known_not_member, then x belongs to the survivor.
+// Sound: C is exactly the union, so x lies in some ck; excluding n-1 of
+// them leaves exactly one.
+// Fires only when EXACTLY one candidate survives — a 2-of-3 elimination
+// stays silent rather than guessing.
+// Targets New-Feature-DisjointUnion-001 (Stewie is a Child, and Child is
+// the disjoint union of Boy and Girl; Stewie is typed by an anonymous
+// complementOf(Girl) class, so Boy is the only survivor).
+let owl_rule_cls_uni_elim (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_unionOf_iri || t.p = owl_disjointUnionOf_iri then
+        match term_to_subject t.o with
+        | None -> acc
+        | Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | None -> acc
+           | Some members ->
+             if List.Tot.length members < 2 then acc
+             else
+               let xs = find_subjects_indexed ig rdf_type (subject_to_term t.s) in
+               List.Tot.fold_left
+                 (fun (acc1 : rdf_graph) (x : subject) ->
+                    let remaining =
+                      List.Tot.filter
+                        (fun (ci : wf_iri) -> not (known_not_member ig x ci))
+                        members
+                    in
+                    match remaining with
+                    | [ck] ->
+                      add_triple_unchecked acc1
+                        ({ s = x; p = rdf_type; o = T_IRI ck })
+                    | _ -> acc1)
+                 acc
+                 xs)
+      else acc)
+    g
+    g
+
+// Set equality over two decoded IRI lists (order- and
+// multiplicity-insensitive) — owl:oneOf denotes a SET, so two
+// enumerations listing the same individuals denote the same class.
+let iri_list_subset (a : list wf_iri) (b : list wf_iri) : bool =
+  List.Tot.for_all (fun (i : wf_iri) -> List.Tot.mem i b) a
+
+let iri_list_set_eq (a : list wf_iri) (b : list wf_iri) : bool =
+  iri_list_subset a b && iri_list_subset b a
+
+// Collect (class IRI, decoded member list) for every owl:oneOf axiom with
+// an IRI subject and an all-IRI list. Mirrors collect_haskey_axioms.
+let collect_oneof_axioms (g : rdf_graph) (ig : indexed_graph)
+  : list (wf_iri & list wf_iri)
+  =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : list (wf_iri & list wf_iri)) (t : triple) ->
+      if t.p = owl_oneOf_iri then
+        match t.s, term_to_subject t.o with
+        | S_IRI c_iri, Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | Some members -> (c_iri, members) :: acc
+           | None -> acc)
+        | _, _ -> acc
+      else acc)
+    []
+    g
+
+// Two owl:oneOf classes enumerating the same set of individuals are the
+// same class. Emits owl:equivalentClass, which cls-eqc1/cls-eqc2 then
+// expand into subClassOf both ways so ordinary rdfs9 membership
+// propagation carries individuals across.
+// Complexity: quadratic in the number of owl:oneOf AXIOMS (a schema-level
+// count, typically single digits), not in individuals — not the #262
+// shape.
+// Targets WebOnt-oneOf-003 (T1 and T2 enumerate the same three sizes in
+// different order; myT is a T1, hence a T2).
+let owl_rule_oneof_set_equivalence (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let axioms = collect_oneof_axioms g ig in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (a1 : (wf_iri & list wf_iri)) ->
+      let (c1, m1) = a1 in
+      match m1 with
+      | [] -> acc
+      | _ ->
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (a2 : (wf_iri & list wf_iri)) ->
+             let (c2, m2) = a2 in
+             if c1 = c2 then acc2
+             else if iri_list_set_eq m1 m2 then
+               add_triple_unchecked acc2
+                 ({ s = S_IRI c1; p = owl_equivalentClass; o = T_IRI c2 })
+             else acc2)
+          acc
+          axioms)
+    g
+    axioms
+
 // Find all named-individual subjects (IRIs only) typed as `cls` in `g`.
 // Bnodes are excluded — OWL 2 RL prp-key applies to named individuals.
 let members_of_class (g : rdf_graph) (cls : wf_iri) : list wf_iri =
@@ -3325,6 +3598,57 @@ let owl_rule_scm_rng2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
     g
     g
 
+// ---- Group B: rdfsext domain/range through subPropertyOf -----------------
+//
+// (p1 rdfs:subPropertyOf p2) and (p2 rdfs:domain c) imply
+// (p1 rdfs:domain c); likewise for rdfs:range. Sound: every p1-edge is a
+// p2-edge, so p2's domain and range constrain p1 too.
+//
+// Sibling of scm-dom2 / scm-rng2 above, which walk the OTHER axis — they
+// lift a domain/range UP the rdfs:subClassOf chain of the domain class;
+// this one carries a domain/range DOWN the rdfs:subPropertyOf chain of
+// the property. Plain rdfs2/rdfs3 do not give this without also
+// materialising subPropertyOf transitivity.
+//
+// BNODE-POLLUTION GUARD on the emitted object, matching scm-dom2's: only
+// NAMED domain/range classes propagate, so anonymous class-expression
+// bnodes cannot leak into ?C bindings against rdfs:domain / rdfs:range.
+//
+// Targets rdfbased-sem-rdfsext-domain-subprop and
+// rdfbased-sem-rdfsext-range-subprop.
+let owl_rule_subprop_domain_range (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subPropertyOf then
+        match term_to_subject t.o with
+        | None -> acc
+        | Some p2 ->
+          let doms = find_objects_indexed ig p2 rdfs_domain in
+          let rngs = find_objects_indexed ig p2 rdfs_range in
+          let acc_d =
+            List.Tot.fold_left
+              (fun (acc1 : rdf_graph) (c : rdf_term) ->
+                 match c with
+                 | T_IRI _ ->
+                   add_triple_unchecked acc1
+                     ({ s = t.s; p = rdfs_domain; o = c })
+                 | _ -> acc1)
+              acc
+              doms
+          in
+          List.Tot.fold_left
+            (fun (acc1 : rdf_graph) (c : rdf_term) ->
+               match c with
+               | T_IRI _ ->
+                 add_triple_unchecked acc1
+                   ({ s = t.s; p = rdfs_range; o = c })
+               | _ -> acc1)
+            acc_d
+            rngs
+      else acc)
+    g
+    g
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -3337,6 +3661,116 @@ let owl_xsd_core_datatype_axioms : list triple =
 
 let owl_rule_xsd_core_datatype_axioms (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   add_triples_if_new g owl_xsd_core_datatype_axioms
+
+// ---- Group A: static OWL/RDFS built-in vocabulary axiom table --------------
+//
+// The RDF-Based Semantics (OWL 2 RDF-Based Semantics, section "Semantic
+// Conditions for the OWL 2 RDF-Based Vocabulary") fixes the type of a
+// closed set of built-in vocabulary terms, and the domain/range of
+// owl:imports. These are UNCONDITIONAL axioms — they hold in every
+// interpretation, so they are entailed by every graph including the
+// empty graph. No traversal, no premise pattern: a fixed triple list
+// merged in with add_triples_if_new, exactly like
+// owl_rule_xsd_core_datatype_axioms above.
+//
+// Targets (all with an EMPTY premise graph):
+//   rdfbased-sem-prop-label-type, -comment-type, -seealso-type,
+//   -isdefinedby-type, -deprecated-type, -versioninfo-type,
+//   -backwardcompatiblewith-type-annot, -incompatiblewith-type-annot,
+//   -priorversion-type-annot  (9 annotation-property typings)
+//   WebOnt-imports-010        (owl:imports domain/range owl:Ontology)
+//   WebOnt-I5.5-001 / -002    (rdf:first / rdf:rest FunctionalProperty)
+//
+// Deliberately kept SMALL. The RDFS-side experiment recorded in
+// RDFS.Closure.fsti's rdfs_closure_with_reflexivity comment (seeding
+// the full RDF.Vocabulary.Axioms table) regressed profile-RL
+// ConsistencyTests, because blanket rdfs:domain/rdfs:range axioms on
+// core vocabulary inflate the rdf:type set through rdfs2/rdfs3 and feed
+// the N=1 qualified-cardinality complement scaffolding. This table adds
+// domain/range for exactly ONE property (owl:imports, whose domain and
+// range are owl:Ontology — a class no cardinality restriction in the
+// suites mentions), so it does not reopen that interaction.
+let owl_AnnotationProperty_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AnnotationProperty");
+  "http://www.w3.org/2002/07/owl#AnnotationProperty"
+
+let owl_Ontology_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Ontology");
+  "http://www.w3.org/2002/07/owl#Ontology"
+
+let owl_imports_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#imports");
+  "http://www.w3.org/2002/07/owl#imports"
+
+let rdfs_label_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#label");
+  "http://www.w3.org/2000/01/rdf-schema#label"
+
+let rdfs_comment_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#comment");
+  "http://www.w3.org/2000/01/rdf-schema#comment"
+
+let rdfs_seeAlso_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#seeAlso");
+  "http://www.w3.org/2000/01/rdf-schema#seeAlso"
+
+let rdfs_isDefinedBy_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#isDefinedBy");
+  "http://www.w3.org/2000/01/rdf-schema#isDefinedBy"
+
+let owl_deprecated_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#deprecated");
+  "http://www.w3.org/2002/07/owl#deprecated"
+
+let owl_versionInfo_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#versionInfo");
+  "http://www.w3.org/2002/07/owl#versionInfo"
+
+let owl_backwardCompatibleWith_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#backwardCompatibleWith");
+  "http://www.w3.org/2002/07/owl#backwardCompatibleWith"
+
+let owl_incompatibleWith_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#incompatibleWith");
+  "http://www.w3.org/2002/07/owl#incompatibleWith"
+
+let owl_priorVersion_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#priorVersion");
+  "http://www.w3.org/2002/07/owl#priorVersion"
+
+// The nine built-in annotation properties whose rdf:type is fixed to
+// owl:AnnotationProperty by the RDF-Based Semantics vocabulary table.
+let owl_builtin_annotation_properties : list wf_iri = [
+  rdfs_label_iri;
+  rdfs_comment_iri;
+  rdfs_seeAlso_iri;
+  rdfs_isDefinedBy_iri;
+  owl_deprecated_iri;
+  owl_versionInfo_iri;
+  owl_backwardCompatibleWith_iri;
+  owl_incompatibleWith_iri;
+  owl_priorVersion_iri;
+]
+
+let owl_builtin_vocabulary_axioms : list triple =
+  List.Tot.append
+    (List.Tot.map
+       (fun (i : wf_iri) ->
+          ({ s = S_IRI i; p = rdf_type; o = T_IRI owl_AnnotationProperty_iri } <: triple))
+       owl_builtin_annotation_properties)
+    [
+      // owl:imports is an ontology-to-ontology property.
+      { s = S_IRI owl_imports_iri; p = rdf_type;    o = T_IRI rdf_Property };
+      { s = S_IRI owl_imports_iri; p = rdfs_domain; o = T_IRI owl_Ontology_iri };
+      { s = S_IRI owl_imports_iri; p = rdfs_range;  o = T_IRI owl_Ontology_iri };
+      // rdf:first / rdf:rest are functional: an rdf:List cell has exactly
+      // one head and exactly one tail.
+      { s = S_IRI rdf_first; p = rdf_type; o = T_IRI owl_FunctionalProperty };
+      { s = S_IRI rdf_rest;  p = rdf_type; o = T_IRI owl_FunctionalProperty };
+    ]
+
+let owl_rule_builtin_vocabulary_axioms (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  add_triples_if_new g owl_builtin_vocabulary_axioms
 
 let owl_AllDisjointClasses_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#AllDisjointClasses");
@@ -3491,6 +3925,72 @@ let canonical_adfl2_bnode (k1 k2 : string) : bnode_id =
 // inner rescan of g or ig. See the design doc's risk note on this rule
 // and the module header comment on #262 above for why this shape
 // matters here specifically.
+let owl_distinctMembers_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#distinctMembers");
+  "http://www.w3.org/2002/07/owl#distinctMembers"
+
+// ---- Group F: forward AllDifferent -> pairwise differentFrom -------------
+//
+// The FORWARD direction of the rule pair that ends this section. The
+// reverse rule below (owl_rule_differentFrom_to_allDifferent) synthesises
+// a canonical 2-member owl:AllDifferent scaffold FROM existing
+// differentFrom pairs so other rules can consume it; this one reads an
+// ASSERTED owl:AllDifferent node's member list and emits the full
+// n-choose-2 pairwise owl:differentFrom closure.
+//
+// Both the OWL 1 spelling (owl:distinctMembers) and the OWL 2 spelling
+// (owl:members) are accepted, matching cax-adc-expand / cax-adp-expand's
+// use of owl:members. Reuses decode_chain_list, the same IRI-only
+// rdf:Collection decoder those two rules use, so a list with bnode or
+// literal elements decodes to None and the rule no-ops on it.
+//
+// Interaction with the reverse rule: the scaffolds it emits are
+// 2-member owl:AllDifferent nodes over exactly the pair they came from,
+// so re-reading them here re-derives a differentFrom triple that is
+// already present — idempotent, no growth across fixpoint iterations.
+//
+// Complexity: n-choose-2 per AllDifferent axiom, n bounded by the
+// declared member-list length (a schema-level arity, not an individual
+// count) — the same bound cax-adc-expand carries, not the #262
+// quadratic-in-individuals shape.
+//
+// Targets WebOnt-AllDifferent-001, WebOnt-differentFrom-002,
+// WebOnt-distinctMembers-001.
+let owl_rule_allDifferent_to_differentFrom (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_AllDifferent_iri) then
+        let lists =
+          List.Tot.append
+            (find_objects_indexed ig t.s owl_distinctMembers_iri)
+            (find_objects_indexed ig t.s owl_members_iri)
+        in
+        List.Tot.fold_left
+          (fun (acc1 : rdf_graph) (l_term : rdf_term) ->
+            match term_to_subject l_term with
+            | None -> acc1
+            | Some l_subj ->
+              (match decode_chain_list g ig l_subj with
+               | None -> acc1
+               | Some ms ->
+                 List.Tot.fold_left
+                   (fun (acc2 : rdf_graph) (x : wf_iri) ->
+                      List.Tot.fold_left
+                        (fun (acc3 : rdf_graph) (y : wf_iri) ->
+                           if x = y then acc3
+                           else add_triple_unchecked acc3
+                                  ({ s = S_IRI x; p = owl_differentFrom;
+                                     o = T_IRI y }))
+                        acc2
+                        ms)
+                   acc1
+                   ms))
+          acc
+          lists
+      else acc)
+    g
+    g
+
 let owl_rule_differentFrom_to_allDifferent (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (xy : subject * subject) ->
@@ -3591,7 +4091,14 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // iteration (snapshot semantics: differentFrom_canonical_pairs reads
   // the step-input ig, not this step's g12c) while still threading the
   // accumulator forward within this step.
-  let g12d = owl_rule_differentFrom_to_allDifferent g12c ig in
+  // Group F, forward AllDifferent: an ASSERTED owl:AllDifferent node's
+  // owl:distinctMembers / owl:members list expands to pairwise
+  // owl:differentFrom. Runs immediately before the reverse rule so the
+  // freshly derived pairs are visible to eq-diff-sym and the
+  // contrapositives on the NEXT fixpoint iteration (the reverse rule
+  // reads the step-input snapshot, so it does not consume them here).
+  let g12c1 = owl_rule_allDifferent_to_differentFrom g12c ig in
+  let g12d = owl_rule_differentFrom_to_allDifferent g12c1 ig in
   // Restriction-membership rules (parent4 / parent5 / parent6).
   let g13 = owl_rule_minc1_bridge g12d ig in
   // svf2 existential-witness synthesis (paper-Q3 gap 1, 2026-04-25
@@ -3650,6 +4157,17 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // IntersectionOf(C1..Cn) => x rdf:type Ci for each i). Targets
   // WebOnt-description-logic-101/103/104.
   let g21a = owl_rule_cls_int1 g21 ig in
+  // Group C comprehension: cls-oneof (enumerated members are instances),
+  // cls-uni (disjuncts are subclasses; disjointUnionOf additionally emits
+  // the plain unionOf form + pairwise disjointWith), oneOf set-equality
+  // (equal enumerations denote the same class), and cls-uni-elim
+  // (disjunctive syllogism when all but one disjunct is ruled out).
+  // Ordered so cls-uni's disjointUnionOf-to-unionOf surfacing is visible
+  // to cls-uni-elim within the same step.
+  let g21b = owl_rule_cls_oneof g21a ig in
+  let g21c = owl_rule_cls_uni g21b ig in
+  let g21d = owl_rule_oneof_set_equivalence g21c ig in
+  let g21e = owl_rule_cls_uni_elim g21d ig in
   // Tier-2: prp-spo2 (n=2 chain composition), then prp-spo2 (n>=3
   // generalised chain), then scm-trans-from-chain (chain (P P)
   // recognises P as transitive), then named-sameAs-to-eqClass.
@@ -3657,7 +4175,7 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // covers arbitrary chain length and is idempotent on n=2 inputs
   // (add_triple_unchecked dedupes). Cluster A of OWL 2 RL next-steps
   // (issue #207).
-  let g22 = owl_rule_property_chain_2 g21a ig in
+  let g22 = owl_rule_property_chain_2 g21e ig in
   let g22a = owl_rule_property_chain_n g22 ig in
   let g23 = owl_rule_chain_to_transitive g22a ig in
   // prp-trp-to-chain: converse of scm-trans-from-chain above — a
@@ -3684,16 +4202,29 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // Required for WebOnt-I5.8-011 which entails the declarations from an
   // empty graph (the gated rule above does not fire on empty input).
   let g26 = owl_rule_xsd_core_datatype_axioms g25a ig in
+  // Group A: static OWL/RDFS built-in vocabulary axiom table (fixed
+  // annotation-property typings, owl:imports domain/range, rdf:first /
+  // rdf:rest functionality). Unconditional — fires even on an empty
+  // premise, which is exactly what the rdfbased-sem-prop-*-type /
+  // WebOnt-imports-010 / WebOnt-I5.5-001/-002 fixtures need. Placed
+  // beside the other axiom-table rules and BEFORE scm-dom2/scm-rng2 so
+  // owl:imports' domain/range are visible to the propagation rules in
+  // the same step.
+  let g26a = owl_rule_builtin_vocabulary_axioms g26 ig in
   // scm-dom2 / scm-rng2: propagate rdfs:domain and rdfs:range upward
   // through the rdfs:subClassOf chain. After step g25 the XSD hierarchy
   // edges are in scope, so a `:p rdfs:range xsd:byte` premise yields
   // `:p rdfs:range xsd:short` (WebOnt-I5.8-006).
-  let g27 = owl_rule_scm_dom2 g26 ig in
+  let g27 = owl_rule_scm_dom2 g26a ig in
   let g28 = owl_rule_scm_rng2 g27 ig in
+  // Group B: carry rdfs:domain / rdfs:range DOWN the rdfs:subPropertyOf
+  // chain. After scm-dom2/scm-rng2 so a domain already lifted up the
+  // subClassOf chain in this step is available to inherit.
+  let g28a = owl_rule_subprop_domain_range g28 ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28
+graph_dedup_sort g28a
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
@@ -4235,6 +4766,7 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
                     rdf_term_eq decl.o (T_IRI owl_FunctionalProperty) &&
                     (match decl.s with
                      | S_IRI prop_iri ->
+                       not (is_list_cell_functional_property prop_iri) &&
                        List.Tot.existsb
                          (fun (t1 : triple) ->
                            t1.p = prop_iri &&
