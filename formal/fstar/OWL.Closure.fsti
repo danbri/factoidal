@@ -3729,6 +3729,153 @@ let owl_rule_symmetric_metapredicates (g : rdf_graph) (ig : indexed_graph) : rdf
     g
     g
 
+// ---- Group E(b): property characteristics through owl:inverseOf ----------
+//
+// The OWL 2 RDF-Based Semantics defines each property characteristic as a
+// condition on EXT alone:
+//
+//   IEXT(owl:FunctionalProperty)        = { p : <y,z1>,<y,z2> in EXT(p)
+//                                             implies z1 = z2 }
+//   IEXT(owl:InverseFunctionalProperty) = { p : <y1,z>,<y2,z> in EXT(p)
+//                                             implies y1 = y2 }
+//   IEXT(owl:SymmetricProperty)         = { p : EXT(p) = converse EXT(p) }
+//   IEXT(owl:TransitiveProperty)        = { p : EXT(p) composed with
+//                                             itself is inside EXT(p) }
+//   IEXT(owl:ReflexiveProperty)         = { p : <y,y> in EXT(p) for all y }
+//   IEXT(owl:IrreflexiveProperty)       = { p : <y,y> not in EXT(p) }
+//   IEXT(owl:AsymmetricProperty)        = { p : EXT(p) INTERSECT
+//                                             converse EXT(p) = empty }
+//
+// and owl:inverseOf as EXT(p) = converse of EXT(q). Substituting the
+// converse into each condition gives, for every <p,q> in
+// EXT(owl:inverseOf), the transfer table below. Two entries swap
+// (functional becomes inverse-functional under converse); the rest are
+// converse-invariant:
+//
+//   Functional(p)        <=> InverseFunctional(q)   [and symmetrically]
+//   Symmetric(p)         <=> Symmetric(q)
+//   Transitive(p)        <=> Transitive(q)
+//   Reflexive(p)         <=> Reflexive(q)
+//   Irreflexive(p)       <=> Irreflexive(q)
+//   Asymmetric(p)        <=> Asymmetric(q)
+//
+// Neither the OWL 2 RL/RDF rule tables (Profiles section 4.3) nor ter
+// Horst's pD* rule set contains these: both are deliberately restricted
+// to rules whose conclusion is an ASSERTIONAL triple, and a
+// characteristic declaration is terminological. They are nonetheless
+// RDF-Based entailments by the substitution above, which is why the
+// derivation is spelled out here rather than cited.
+//
+// Targets WebOnt-FunctionalProperty-003/-004 and
+// WebOnt-InverseFunctionalProperty-003/-004.
+//
+// Complexity: the outer fold filters |g| down to owl:inverseOf triples
+// (a schema-sized set); per hit it does two O(1) rdf:type bucket reads
+// and a fixed 6-entry table walk. No graph-wide inner scan.
+//
+// SCALE NOTE (wave-1 lesson, see is_list_cell_functional_property): the
+// DOWNSTREAM cost of a new owl:FunctionalProperty declaration is real —
+// owl_rule_functional and owl_rule_fp_diff_to_diff each scan the graph
+// per functional predicate. This rule cannot declare a property
+// functional unless the graph already asserts an owl:inverseOf axiom
+// naming it AND the partner's inverse-functionality, so the set it can
+// grow is bounded by the asserted schema, not by the data. That is the
+// difference from the rdf:first / rdf:rest case, where an unconditional
+// axiom made EVERY list cell in EVERY graph a functional-property edge.
+let owl_inverse_characteristic_transfer : list (wf_iri * wf_iri) = [
+  (owl_FunctionalProperty,        owl_InverseFunctionalProperty);
+  (owl_InverseFunctionalProperty, owl_FunctionalProperty);
+  (owl_SymmetricProperty,         owl_SymmetricProperty);
+  (owl_TransitiveProperty,        owl_TransitiveProperty);
+  (owl_ReflexiveProperty,         owl_ReflexiveProperty);
+  (owl_IrreflexiveProperty,       owl_IrreflexiveProperty);
+  (owl_AsymmetricProperty,        owl_AsymmetricProperty);
+]
+
+// Emit, for every (src, dst) pair in `table` such that (from rdf:type src)
+// holds in ig, the triple (to rdf:type dst).
+let transfer_property_characteristics
+  (ig : indexed_graph) (table : list (wf_iri * wf_iri))
+  (from_p : wf_iri) (to_p : wf_iri) (acc : rdf_graph)
+  : rdf_graph =
+  let from_types = find_objects_indexed ig (S_IRI from_p) rdf_type in
+  List.Tot.fold_left
+    (fun (a : rdf_graph) (entry : wf_iri * wf_iri) ->
+      let src = fst entry in
+      let dst = snd entry in
+      if List.Tot.existsb (fun (ty : rdf_term) -> rdf_term_eq ty (T_IRI src)) from_types
+      then add_triple_unchecked a
+             ({ s = S_IRI to_p; p = rdf_type; o = T_IRI dst } <: triple)
+      else a)
+    acc
+    table
+
+let owl_rule_inverse_characteristics (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_inverseOf then
+        match t.s, t.o with
+        | S_IRI p1, T_IRI p2 ->
+          if p1 = p2 then acc
+          else
+            let acc1 =
+              transfer_property_characteristics
+                ig owl_inverse_characteristic_transfer p1 p2 acc in
+            transfer_property_characteristics
+              ig owl_inverse_characteristic_transfer p2 p1 acc1
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// ---- Group E(c): property characteristics through owl:equivalentProperty --
+//
+// EXT(owl:equivalentProperty) = { <p,q> : EXT(p) = EXT(q) }. Every
+// characteristic in the table above is a condition on EXT alone, so
+// each one transfers UNCHANGED (no swap: equality, unlike converse,
+// leaves the argument order alone) in both directions.
+//
+// Why prp-eqp1 / prp-eqp2 do not already give this: those two RL rules
+// only rewrite ASSERTIONAL triples (x p y becomes x q y), and
+// owl_rule_equivalent_property's mutual-subPropertyOf expansion likewise
+// carries data, not characteristics. rdfs:subPropertyOf does NOT
+// transfer functionality in either direction (a subproperty of a
+// functional property need not be functional; nor conversely), so the
+// characteristic has to come from the equivalence itself.
+//
+// Deliberately NOT transferred: rdf:type owl:ObjectProperty /
+// owl:DatatypeProperty / owl:AnnotationProperty. Those are conditions on
+// membership in IO / ID-typed property sets, not conditions on EXT, so
+// the substitution argument above does not apply to them.
+let owl_equivalent_characteristic_transfer : list (wf_iri * wf_iri) = [
+  (owl_FunctionalProperty,        owl_FunctionalProperty);
+  (owl_InverseFunctionalProperty, owl_InverseFunctionalProperty);
+  (owl_SymmetricProperty,         owl_SymmetricProperty);
+  (owl_TransitiveProperty,        owl_TransitiveProperty);
+  (owl_ReflexiveProperty,         owl_ReflexiveProperty);
+  (owl_IrreflexiveProperty,       owl_IrreflexiveProperty);
+  (owl_AsymmetricProperty,        owl_AsymmetricProperty);
+]
+
+let owl_rule_equivalent_property_characteristics
+  (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_equivalentProperty then
+        match t.s, t.o with
+        | S_IRI p1, T_IRI p2 ->
+          if p1 = p2 then acc
+          else
+            let acc1 =
+              transfer_property_characteristics
+                ig owl_equivalent_characteristic_transfer p1 p2 acc in
+            transfer_property_characteristics
+              ig owl_equivalent_characteristic_transfer p2 p1 acc1
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -4310,10 +4457,19 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // pairs cax-adc-expand produced at g3_adc); the fixpoint then feeds
   // the symmetric forms back to every consumer on the next iteration.
   let g28b = owl_rule_symmetric_metapredicates g28a ig in
+  // Group E(b) / E(c): property-characteristic transfer across
+  // owl:inverseOf (with the functional / inverse-functional swap) and
+  // across owl:equivalentProperty (unchanged). Both read rdf:type off
+  // the step-input index, so a characteristic that E(b) derives is
+  // picked up by E(c) — and by prp-fp / prp-ifp / prp-symp / prp-trp —
+  // on the NEXT fixpoint iteration, which is what makes chains such as
+  // "p functional, p inverseOf q, q equivalentProperty r" converge.
+  let g28c = owl_rule_inverse_characteristics g28b ig in
+  let g28d = owl_rule_equivalent_property_characteristics g28c ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28b
+graph_dedup_sort g28d
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
