@@ -226,6 +226,16 @@ disjoint-union |bUNIONc|=|b|+|c|). With (2)+(3) the system is
 |a| = 2|a|, 1 ≤ |a| ≤ 3 — Farkas-certifiable. 🟡 Next session's
 commit-sized item; the searcher must also learn ≤-rows.
 
+## Final-binary flips (single-test catalogs, all waves + new defaults)
+
+✅ WebOnt-I5.2-006 PASS 0.13s — the bottom-normalise + conjunction-
+introduction pair closed exactly the two goals the design trace
+predicted. ✅ dl-502 PASS ~5.5s at the new runner defaults (refuter
+fuel 20000→5M, cap 5s→10s — dl-502's nominal-branching refutation
+needed both; measured failing at either old default alone).
+Regression re-check on the same binary: 901/903/I5.2-004/201/662 all
+still PASS.
+
 ## Interim measured flips (single-test catalogs, post-C7/arms/cap binary)
 
 ✅ dl-901 PASS 0.04s (C7) · ✅ dl-903 PASS 0.04s (C7) · ✅ I5.2-004 PASS
