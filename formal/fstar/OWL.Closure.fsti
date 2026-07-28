@@ -3649,6 +3649,86 @@ let owl_rule_subprop_domain_range (g : rdf_graph) (ig : indexed_graph) : rdf_gra
     g
     g
 
+// ---- Group E(a): symmetric OWL metapredicates ----------------------------
+//
+// A binary OWL vocabulary predicate is SYMMETRIC exactly when the
+// semantic condition the RDF-Based Semantics attaches to it is invariant
+// under swapping its two arguments. That is a property of the condition,
+// not of any one test, so the rule is table-driven: one entry per
+// predicate whose condition is visibly symmetric in the OWL 2 RDF-Based
+// Semantics (W3C Rec. 11 Dec 2012), section 5 "Semantic Conditions".
+//
+//   owl:complementOf
+//     <x,y> in EXT(owl:complementOf) iff x,y in IC and
+//     CEXT(x) = IOT \ CEXT(y).  Both CEXTs are subsets of IOT, and
+//     relative complement within IOT is an involution, so
+//     CEXT(x) = IOT \ CEXT(y)  iff  CEXT(y) = IOT \ CEXT(x).
+//     [WebOnt-complementOf-001 states exactly this: "complementOf is a
+//      SymmetricProperty".]
+//
+//   owl:disjointWith
+//     condition is CEXT(x) INTERSECT CEXT(y) = empty; intersection
+//     commutes.  [Already emitted by owl_rule_disjoint_with_propagation
+//     for the IRI-IRI case; listed here so the table is the single
+//     statement of the principle. Re-emission is deduped.]
+//
+//   owl:propertyDisjointWith
+//     condition is EXT(x) INTERSECT EXT(y) = empty; same argument.
+//
+//   owl:inverseOf
+//     condition is EXT(x) = converse of EXT(y); converse is an
+//     involution, so the condition is symmetric in x and y.
+//
+//   owl:equivalentClass / owl:equivalentProperty
+//     conditions are CEXT(x) = CEXT(y) and EXT(x) = EXT(y); equality of
+//     sets is symmetric.  [Derivable today via cls-eqc1/2 + scm-eqc2
+//     over two fixpoint iterations; stating it directly costs one pass
+//     and makes the family uniform.]
+//
+// NOT in the table, deliberately: owl:disjointUnionOf, owl:oneOf,
+// owl:unionOf, owl:intersectionOf, owl:onProperty, owl:sameAs and
+// owl:differentFrom. The first five have conditions that are not
+// argument-swap invariant (their second argument is an rdf:List, not a
+// class); the last two are already covered by the dedicated
+// owl_rule_sameAs_symmetry / owl_rule_differentFrom_symmetry rules and
+// carry their own literal/bnode handling.
+//
+// IRI-IRI GUARD, matching every sibling rule in this file: a bnode in
+// either position is an anonymous class or property EXPRESSION, and
+// emitting schema edges whose subject is such a bnode feeds the
+// bnode-pollution chain documented on owl_rule_equivalent_class.
+//
+// Complexity: one O(|g|) pass with an O(1) table membership test per
+// triple. No inner scan, so this rule cannot contribute a quadratic
+// factor (contrast the prp-fp narrowing recorded at
+// is_list_cell_functional_property).
+let owl_symmetric_metapredicates : list wf_iri = [
+  owl_complementOf_iri;
+  owl_disjointWith_iri;
+  owl_propertyDisjointWith;
+  owl_inverseOf;
+  owl_equivalentClass;
+  owl_equivalentProperty;
+]
+
+let is_owl_symmetric_metapredicate (p : wf_iri) : bool =
+  List.Tot.mem p owl_symmetric_metapredicates
+
+let owl_rule_symmetric_metapredicates (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if is_owl_symmetric_metapredicate t.p then
+        match t.s, t.o with
+        | S_IRI a, T_IRI b ->
+          if a = b then acc
+          else
+            add_triple_unchecked acc
+              ({ s = S_IRI b; p = t.p; o = T_IRI a } <: triple)
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -4221,10 +4301,19 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // chain. After scm-dom2/scm-rng2 so a domain already lifted up the
   // subClassOf chain in this step is available to inherit.
   let g28a = owl_rule_subprop_domain_range g28 ig in
+  // Group E(a): symmetric-predicate closure over the OWL vocabulary
+  // predicates whose RDF-Based semantic condition is argument-swap
+  // invariant (owl:complementOf, owl:disjointWith,
+  // owl:propertyDisjointWith, owl:inverseOf, owl:equivalentClass,
+  // owl:equivalentProperty). Runs LAST in the step so it also
+  // symmetrises pairs this same step derived (e.g. the disjointWith
+  // pairs cax-adc-expand produced at g3_adc); the fixpoint then feeds
+  // the symmetric forms back to every consumer on the next iteration.
+  let g28b = owl_rule_symmetric_metapredicates g28a ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28a
+graph_dedup_sort g28b
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
