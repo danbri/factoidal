@@ -3230,16 +3230,6 @@ let owl_rl_closure_with_reflexivity_mode (g : RDF_Graph.rdf_graph)
 let owl_rl_closure_with_reflexivity (g : RDF_Graph.rdf_graph)
   (fuel : Prims.nat) : RDF_Graph.rdf_graph=
   owl_rl_closure_with_reflexivity_mode g fuel owl_semantics_direct
-let owl_rl_closure_with_reflexivity_and_witnesses (g : RDF_Graph.rdf_graph)
-  (fuel : Prims.nat) : RDF_Graph.rdf_graph=
-  let base = owl_rl_closure_with_reflexivity g fuel in
-  let ig1 = RDF_Indexed.build_indexed base in
-  let w1 = owl_rule_cls_hasself2_synth base ig1 in
-  let ig2 = RDF_Indexed.build_indexed w1 in
-  let w2 = owl_rule_cls_svf_thing_materialize w1 ig2 in
-  let ig3 = RDF_Indexed.build_indexed w2 in
-  let w3 = owl_rule_cls_svf_thing_witness w2 ig3 in
-  owl_rl_closure_with_reflexivity w3 fuel
 let is_digit (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
@@ -3352,6 +3342,376 @@ let datatype_value_eq (l1 : RDF_Term.literal) (l2 : RDF_Term.literal) :
               l2.RDF_Term.lang_tag)
        else RDF_Term.literal_eq l1 l2)
   else false
+let rdf_List_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#List"
+let one_xsd_int_literal : RDF_Term.wf_literal=
+  let l =
+    {
+      RDF_Term.lexical_form = "1";
+      RDF_Term.datatype = xsd_int;
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None
+    } in
+  l
+let rec comp_list_cells (prefix : Prims.string)
+  (elems : RDF_Term.wf_iri Prims.list) :
+  (RDF_Term.rdf_term * RDF_Triple.triple Prims.list)=
+  match elems with
+  | [] -> ((RDF_Term.T_IRI rdf_nil_iri), [])
+  | e::rest ->
+      let tail = comp_list_cells prefix rest in
+      let uu___ = tail in
+      (match uu___ with
+       | (tail_term, tail_ts) ->
+           let cell_id = FStar_String.concat "" [prefix; "__cell__"; e] in
+           let cs = RDF_Term.S_BNode cell_id in
+           ((RDF_Term.T_BNode cell_id),
+             ({
+                RDF_Triple.s = cs;
+                RDF_Triple.p = RDFS_Closure.rdf_type;
+                RDF_Triple.o = (RDF_Term.T_IRI rdf_List_iri)
+              } ::
+             {
+               RDF_Triple.s = cs;
+               RDF_Triple.p = rdf_first;
+               RDF_Triple.o = (RDF_Term.T_IRI e)
+             } ::
+             {
+               RDF_Triple.s = cs;
+               RDF_Triple.p = rdf_rest;
+               RDF_Triple.o = tail_term
+             } :: tail_ts)))
+let owl_rule_comp_singleton_union (base : RDF_Graph.rdf_graph)
+  (acc0 : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if
+         (t.RDF_Triple.p = RDFS_Closure.rdf_type) &&
+           (RDF_Term.rdf_term_eq t.RDF_Triple.o
+              (RDF_Term.T_IRI RDFS_Closure.owl_Class))
+       then
+         match t.RDF_Triple.s with
+         | RDF_Term.S_IRI c ->
+             let u_id = FStar_String.concat "" ["__rl_compw_uni1__"; c] in
+             let spine =
+               comp_list_cells
+                 (FStar_String.concat "" ["__rl_compw_uni1l__"; c]) [c] in
+             let uu___ = spine in
+             (match uu___ with
+              | (head_term, cell_ts) ->
+                  let u_subj = RDF_Term.S_BNode u_id in
+                  RDF_Graph.add_triples_if_new acc
+                    ({
+                       RDF_Triple.s = u_subj;
+                       RDF_Triple.p = RDFS_Closure.rdf_type;
+                       RDF_Triple.o = (RDF_Term.T_IRI RDFS_Closure.owl_Class)
+                     } ::
+                    {
+                      RDF_Triple.s = u_subj;
+                      RDF_Triple.p = owl_unionOf_iri;
+                      RDF_Triple.o = head_term
+                    } :: cell_ts))
+         | uu___ -> acc
+       else acc) acc0 base
+let owl_rule_comp_min1_restriction (base : RDF_Graph.rdf_graph)
+  (acc0 : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if
+         (t.RDF_Triple.p = RDFS_Closure.rdf_type) &&
+           ((RDF_Term.rdf_term_eq t.RDF_Triple.o
+               (RDF_Term.T_IRI RDFS_Closure.owl_ObjectProperty))
+              ||
+              (RDF_Term.rdf_term_eq t.RDF_Triple.o
+                 (RDF_Term.T_IRI RDFS_Closure.owl_DatatypeProperty)))
+       then
+         match t.RDF_Triple.s with
+         | RDF_Term.S_IRI p ->
+             let r_id = FStar_String.concat "" ["__rl_compw_minc1__"; p] in
+             let r_subj = RDF_Term.S_BNode r_id in
+             RDF_Graph.add_triples_if_new acc
+               [{
+                  RDF_Triple.s = r_subj;
+                  RDF_Triple.p = RDFS_Closure.rdf_type;
+                  RDF_Triple.o = (RDF_Term.T_IRI owl_Restriction_iri)
+                };
+               {
+                 RDF_Triple.s = r_subj;
+                 RDF_Triple.p = owl_onProperty_iri;
+                 RDF_Triple.o = (RDF_Term.T_IRI p)
+               };
+               {
+                 RDF_Triple.s = r_subj;
+                 RDF_Triple.p = owl_minCardinality_iri;
+                 RDF_Triple.o = (RDF_Term.T_Literal one_xsd_int_literal)
+               }]
+         | uu___ -> acc
+       else acc) acc0 base
+let owl_rule_comp_oneof_union (base : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) (acc0 : RDF_Graph.rdf_graph) :
+  RDF_Graph.rdf_graph=
+  let axioms = collect_oneof_axioms base ig in
+  FStar_List_Tot_Base.fold_left
+    (fun acc_a a3 ->
+       let uu___ = a3 in
+       match uu___ with
+       | (c3, m3) ->
+           FStar_List_Tot_Base.fold_left
+             (fun acc_b a1 ->
+                let uu___1 = a1 in
+                match uu___1 with
+                | (c1, m1) ->
+                    FStar_List_Tot_Base.fold_left
+                      (fun acc_c a2 ->
+                         let uu___2 = a2 in
+                         match uu___2 with
+                         | (c2, m2) ->
+                             if
+                               (((c1 <> c2) && (c3 <> c1)) && (c3 <> c2)) &&
+                                 (iri_list_set_eq m3
+                                    (FStar_List_Tot_Base.append m1 m2))
+                             then
+                               let prefix =
+                                 FStar_String.concat ""
+                                   ["__rl_compw_uoo3__";
+                                   c3;
+                                   "__of__";
+                                   c1;
+                                   "__and__";
+                                   c2] in
+                               let spine = comp_list_cells prefix [c1; c2] in
+                               let uu___3 = spine in
+                               (match uu___3 with
+                                | (head_term, cell_ts) ->
+                                    RDF_Graph.add_triples_if_new acc_c
+                                      ({
+                                         RDF_Triple.s = (RDF_Term.S_IRI c3);
+                                         RDF_Triple.p = owl_unionOf_iri;
+                                         RDF_Triple.o = head_term
+                                       } :: cell_ts))
+                             else acc_c) acc_b axioms) acc_a axioms) acc0
+    axioms
+let rec oneof_members_for
+  (axioms : (RDF_Term.wf_iri * RDF_Term.wf_iri Prims.list) Prims.list)
+  (c : RDF_Term.wf_iri) :
+  RDF_Term.wf_iri Prims.list FStar_Pervasives_Native.option=
+  match axioms with
+  | [] -> FStar_Pervasives_Native.None
+  | a::rest ->
+      let uu___ = a in
+      (match uu___ with
+       | (c', m) ->
+           if c' = c
+           then FStar_Pervasives_Native.Some m
+           else oneof_members_for rest c)
+let rec all_oneof_members
+  (axioms : (RDF_Term.wf_iri * RDF_Term.wf_iri Prims.list) Prims.list)
+  (cs : RDF_Term.wf_iri Prims.list) :
+  RDF_Term.wf_iri Prims.list FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> FStar_Pervasives_Native.Some []
+  | c::rest ->
+      (match oneof_members_for axioms c with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some m ->
+           (match all_oneof_members axioms rest with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some ms ->
+                FStar_Pervasives_Native.Some
+                  (FStar_List_Tot_Base.append m ms)))
+let rec iri_dedup_acc (seen : RDF_Term.wf_iri Prims.list)
+  (l : RDF_Term.wf_iri Prims.list) : RDF_Term.wf_iri Prims.list=
+  match l with
+  | [] -> []
+  | x::rest ->
+      if FStar_List_Tot_Base.mem x seen
+      then iri_dedup_acc seen rest
+      else x :: (iri_dedup_acc (x :: seen) rest)
+let owl_rule_comp_union_oneof (base : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) (acc0 : RDF_Graph.rdf_graph) :
+  RDF_Graph.rdf_graph=
+  let fuel = FStar_List_Tot_Base.length base in
+  let axioms = collect_oneof_axioms base ig in
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.RDF_Triple.p = owl_unionOf_iri
+       then
+         match ((t.RDF_Triple.s), (RDF_Graph.term_to_subject t.RDF_Triple.o))
+         with
+         | (RDF_Term.S_IRI c, FStar_Pervasives_Native.Some list_subj) ->
+             (match decode_iri_list base ig list_subj fuel with
+              | FStar_Pervasives_Native.None -> acc
+              | FStar_Pervasives_Native.Some members ->
+                  (match all_oneof_members axioms members with
+                   | FStar_Pervasives_Native.None -> acc
+                   | FStar_Pervasives_Native.Some indivs ->
+                       (match iri_dedup_acc [] indivs with
+                        | [] -> acc
+                        | u ->
+                            let prefix =
+                              FStar_String.concat "" ["__rl_compw_uof__"; c] in
+                            let spine = comp_list_cells prefix u in
+                            let uu___ = spine in
+                            (match uu___ with
+                             | (head_term, cell_ts) ->
+                                 RDF_Graph.add_triples_if_new acc
+                                   ({
+                                      RDF_Triple.s = (RDF_Term.S_IRI c);
+                                      RDF_Triple.p = owl_oneOf_iri;
+                                      RDF_Triple.o = head_term
+                                    } :: cell_ts)))))
+         | (uu___, uu___1) -> acc
+       else acc) acc0 base
+let rec decode_literal_list (ig : RDF_Indexed.indexed_graph)
+  (head_subj : RDF_Term.subject) (fuel : Prims.nat) :
+  RDF_Term.wf_literal Prims.list FStar_Pervasives_Native.option=
+  let is_nil_head =
+    match head_subj with
+    | RDF_Term.S_IRI i -> i = rdf_nil_iri
+    | uu___ -> false in
+  if is_nil_head
+  then FStar_Pervasives_Native.Some []
+  else
+    if fuel = Prims.int_zero
+    then FStar_Pervasives_Native.None
+    else
+      (let firsts = RDF_Indexed.find_objects_indexed ig head_subj rdf_first in
+       let rests = RDF_Indexed.find_objects_indexed ig head_subj rdf_rest in
+       match (firsts, rests) with
+       | ((RDF_Term.T_Literal l)::uu___2, tail_term::uu___3) ->
+           (match RDF_Graph.term_to_subject tail_term with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some tail_subj ->
+                (match decode_literal_list ig tail_subj
+                         (fuel - Prims.int_one)
+                 with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some rest_lits ->
+                     FStar_Pervasives_Native.Some (l :: rest_lits)))
+       | (uu___2, uu___3) -> FStar_Pervasives_Native.None)
+let lexical_is_positive_int (s : Prims.string) : Prims.bool=
+  let cs = FStar_String.list_of_string s in
+  (match cs with
+   | [] -> false
+   | uu___ -> FStar_List_Tot_Base.for_all is_digit cs) &&
+    ((normalize_integer_lexical s) <> "0")
+let term_is_positive_int_literal (t : RDF_Term.rdf_term) : Prims.bool=
+  match t with
+  | RDF_Term.T_Literal l -> lexical_is_positive_int l.RDF_Term.lexical_form
+  | uu___ -> false
+let restriction_forces_value (ig : RDF_Indexed.indexed_graph)
+  (r_subj : RDF_Term.subject) : Prims.bool=
+  let mins =
+    RDF_Indexed.find_objects_indexed ig r_subj owl_minCardinality_iri in
+  let cards = RDF_Indexed.find_objects_indexed ig r_subj owl_cardinality_iri in
+  let svfs =
+    RDF_Indexed.find_objects_indexed ig r_subj owl_someValuesFrom_iri in
+  ((FStar_List_Tot_Base.existsb term_is_positive_int_literal mins) ||
+     (FStar_List_Tot_Base.existsb term_is_positive_int_literal cards))
+    || (Prims.uu___is_Cons svfs)
+let enumerated_range_lists (base : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) (p : RDF_Term.wf_iri) :
+  RDF_Term.wf_literal Prims.list Prims.list=
+  let fuel = FStar_List_Tot_Base.length base in
+  let ranges =
+    RDF_Indexed.find_objects_indexed ig (RDF_Term.S_IRI p)
+      RDFS_Closure.rdfs_range in
+  FStar_List_Tot_Base.fold_left
+    (fun acc r ->
+       match RDF_Graph.term_to_subject r with
+       | FStar_Pervasives_Native.None -> acc
+       | FStar_Pervasives_Native.Some r_subj ->
+           let oneofs =
+             RDF_Indexed.find_objects_indexed ig r_subj owl_oneOf_iri in
+           FStar_List_Tot_Base.fold_left
+             (fun acc2 o ->
+                match RDF_Graph.term_to_subject o with
+                | FStar_Pervasives_Native.None -> acc2
+                | FStar_Pervasives_Native.Some list_subj ->
+                    (match decode_literal_list ig list_subj fuel with
+                     | FStar_Pervasives_Native.None -> acc2
+                     | FStar_Pervasives_Native.Some lits -> lits :: acc2))
+             acc oneofs) [] ranges
+let literal_in_list_by_value (l : RDF_Term.wf_literal)
+  (ls : RDF_Term.wf_literal Prims.list) : Prims.bool=
+  FStar_List_Tot_Base.existsb (fun x -> datatype_value_eq x l) ls
+let literals_in_all_lists (lists : RDF_Term.wf_literal Prims.list Prims.list)
+  : RDF_Term.wf_literal Prims.list=
+  match lists with
+  | [] -> []
+  | uu___ ->
+      let pool =
+        FStar_List_Tot_Base.fold_left
+          (fun acc ls -> FStar_List_Tot_Base.append acc ls) [] lists in
+      FStar_List_Tot_Base.filter
+        (fun l ->
+           FStar_List_Tot_Base.for_all
+             (fun ls -> literal_in_list_by_value l ls) lists) pool
+let all_value_equal (ls : RDF_Term.wf_literal Prims.list) : Prims.bool=
+  FStar_List_Tot_Base.for_all
+    (fun a -> FStar_List_Tot_Base.for_all (fun b -> datatype_value_eq a b) ls)
+    ls
+let owl_rule_comp_enum_range_value (base : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) (acc0 : RDF_Graph.rdf_graph) :
+  RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.RDF_Triple.p = RDFS_Closure.rdf_type
+       then
+         match RDF_Graph.term_to_subject t.RDF_Triple.o with
+         | FStar_Pervasives_Native.None -> acc
+         | FStar_Pervasives_Native.Some r_subj ->
+             (if restriction_forces_value ig r_subj
+              then
+                let onprops =
+                  RDF_Indexed.find_objects_indexed ig r_subj
+                    owl_onProperty_iri in
+                FStar_List_Tot_Base.fold_left
+                  (fun acc2 op ->
+                     match op with
+                     | RDF_Term.T_IRI p ->
+                         (match enumerated_range_lists base ig p with
+                          | [] -> acc2
+                          | lists ->
+                              (match literals_in_all_lists lists with
+                               | [] -> acc2
+                               | inter ->
+                                   if all_value_equal inter
+                                   then
+                                     FStar_List_Tot_Base.fold_left
+                                       (fun acc3 v ->
+                                          RDF_Graph.add_triple_unchecked acc3
+                                            {
+                                              RDF_Triple.s = (t.RDF_Triple.s);
+                                              RDF_Triple.p = p;
+                                              RDF_Triple.o =
+                                                (RDF_Term.T_Literal v)
+                                            }) acc2 inter
+                                   else acc2))
+                     | uu___ -> acc2) acc onprops
+              else acc)
+       else acc) acc0 base
+let owl_rl_closure_with_reflexivity_and_witnesses_mode
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) (mode : Prims.string) :
+  RDF_Graph.rdf_graph=
+  let base = owl_rl_closure_with_reflexivity_mode g fuel mode in
+  let ig1 = RDF_Indexed.build_indexed base in
+  let w1 = owl_rule_cls_hasself2_synth base ig1 in
+  let ig2 = RDF_Indexed.build_indexed w1 in
+  let w2 = owl_rule_cls_svf_thing_materialize w1 ig2 in
+  let ig3 = RDF_Indexed.build_indexed w2 in
+  let w3 = owl_rule_cls_svf_thing_witness w2 ig3 in
+  let c1 = owl_rule_comp_singleton_union base w3 in
+  let c2 = owl_rule_comp_min1_restriction base c1 in
+  let c3 = owl_rule_comp_oneof_union base ig1 c2 in
+  let c4 = owl_rule_comp_union_oneof base ig1 c3 in
+  let c5 = owl_rule_comp_enum_range_value base ig1 c4 in
+  owl_rl_closure_with_reflexivity_mode c5 fuel mode
+let owl_rl_closure_with_reflexivity_and_witnesses (g : RDF_Graph.rdf_graph)
+  (fuel : Prims.nat) : RDF_Graph.rdf_graph=
+  owl_rl_closure_with_reflexivity_and_witnesses_mode g fuel
+    owl_semantics_direct
 let has_disjoint_with (g : RDF_Graph.rdf_graph) (c1 : RDF_Term.rdf_term)
   (c2 : RDF_Term.rdf_term) : Prims.bool=
   FStar_List_Tot_Base.existsb
