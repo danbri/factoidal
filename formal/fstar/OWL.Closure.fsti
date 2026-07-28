@@ -3876,6 +3876,150 @@ let owl_rule_equivalent_property_characteristics
     g
     g
 
+// ---- Group D(a): exact cardinality is min-and-max ------------------------
+//
+// OWL 2 RDF-Based Semantics, the class-expression conditions for
+// cardinality restrictions. Writing card(u,p) for the number of v with
+// (u,v) in EXT(p), a restriction node r with (r,p) in EXT(owl:onProperty)
+// satisfies:
+//
+//   (r,n) in EXT(owl:cardinality)     implies CEXT(r) = { u : card = n }
+//   (r,n) in EXT(owl:minCardinality)  implies CEXT(r) = { u : card >= n }
+//   (r,n) in EXT(owl:maxCardinality)  implies CEXT(r) = { u : card <= n }
+//
+// and the qualified forms are the same with card counted only over v in
+// CEXT(c) for the node's owl:onClass c.
+//
+// Each condition is an EQUALITY on CEXT(r), NOT a constraint that can be
+// conjoined. So the exact-n reading must NOT be expressed by adding
+// owl:minCardinality n and owl:maxCardinality n to the SAME node r: that
+// would assert { card >= n } = CEXT(r) = { card <= n }, which is false
+// in any interpretation containing an individual of card n+1. Instead we
+// use the RDF-Based Semantics' COMPREHENSION CONDITIONS, which guarantee
+// that for every property p and every n a class-expression node with the
+// min-n (resp. max-n) restriction on p exists. We materialise those two
+// nodes as deterministic skolems and relate them to r by
+// rdfs:subClassOf, which is the sound direction and the only one needed:
+//
+//   { card = n } is a subset of { card >= n }  and of  { card <= n }.
+//
+// The conclusion fixtures of WebOnt-cardinality-001 / -003 have exactly
+// this shape: c rdfs:subClassOf [onProperty p; maxCardinality n] and
+// c rdfs:subClassOf [onProperty p; minCardinality n] as two SEPARATE
+// anonymous restrictions, not two predicates on one node. The named
+// subject c reaches the skolems through rdfs11 (subClassOf transitivity,
+// RDFS.Closure.rdfs_rule_subClassOf_trans, which handles bnodes in
+// either position).
+//
+// Not an OWL 2 RL/RDF table rule — RL has no rule whose conclusion is a
+// terminological triple over a comprehended class expression — and pD*
+// excludes comprehension entirely. It is the comprehension conditions
+// plus set inclusion, as derived above.
+//
+// SKOLEM KEY: the min/max node is keyed on (property, cardinality
+// lexical form) for the plain form and (property, onClass, lexical form)
+// for the qualified form, so restrictions of the same shape share one
+// skolem and the closure converges instead of growing a node per
+// iteration. `__rl_` prefix per the file-wide convention, so
+// bnode_is_rl_canonical / edge_subject_is_safe already exclude these
+// nodes from the data-edge rules.
+//
+// NARROWING: skipped when the source restriction node is itself an
+// `__rl_`-prefixed closure skolem. cls-maxqc1 / cls-exactqc1 materialise
+// canonicals carrying owl:qualifiedCardinality "1"; re-normalising those
+// would grow a second skolem generation without adding any entailment
+// over the ASSERTED vocabulary, and would feed cls-maxqc-comp and the
+// max-QCR equality rule from nodes this closure invented rather than
+// from the premise.
+let canonical_min_card_bnode (p : wf_iri) (n : string) : bnode_id =
+  String.concat "" ["__rl_mincard__"; p; "__n__"; n]
+let canonical_max_card_bnode (p : wf_iri) (n : string) : bnode_id =
+  String.concat "" ["__rl_maxcard__"; p; "__n__"; n]
+let canonical_min_qcard_bnode (p : wf_iri) (c : wf_iri) (n : string) : bnode_id =
+  String.concat "" ["__rl_minqcard__"; p; "__on__"; c; "__n__"; n]
+let canonical_max_qcard_bnode (p : wf_iri) (c : wf_iri) (n : string) : bnode_id =
+  String.concat "" ["__rl_maxqcard__"; p; "__on__"; c; "__n__"; n]
+
+// A closure-invented restriction node must not be re-normalised — see
+// the NARROWING paragraph above.
+let restriction_node_is_asserted (r : subject) : bool =
+  match r with
+  | S_IRI _   -> true
+  | S_BNode b -> not (bnode_is_rl_canonical b)
+
+// Emit one comprehended bound-restriction node `b` carrying
+// `bound_pred` = `card_lit` on property `p`, optionally qualified by
+// `on_class`, plus the inclusion (r rdfs:subClassOf b).
+let emit_bound_restriction
+  (r : subject) (b : bnode_id) (p : wf_iri) (bound_pred : wf_iri)
+  (card_lit : wf_literal) (on_class : option wf_iri) (acc : rdf_graph)
+  : rdf_graph =
+  let b_subj : subject = S_BNode b in
+  let base : list triple = [
+    { s = b_subj; p = rdf_type;           o = T_IRI owl_Restriction_iri };
+    { s = b_subj; p = owl_onProperty_iri; o = T_IRI p };
+    { s = b_subj; p = bound_pred;         o = T_Literal card_lit };
+    { s = r;      p = rdfs_subClassOf;    o = T_BNode b };
+  ] in
+  let all_t : list triple =
+    match on_class with
+    | None   -> base
+    | Some c -> ({ s = b_subj; p = owl_onClass_iri; o = T_IRI c } <: triple) :: base
+  in
+  List.Tot.fold_left add_triple_unchecked acc all_t
+
+let owl_rule_cardinality_to_min_max (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if not (restriction_node_is_asserted t.s) then acc
+      else if t.p = owl_cardinality_iri then
+        match t.o with
+        | T_Literal lit ->
+          let props = find_objects_indexed ig t.s owl_onProperty_iri in
+          List.Tot.fold_left
+            (fun (a : rdf_graph) (pt : rdf_term) ->
+              match pt with
+              | T_IRI p ->
+                let n = lit.lexical_form in
+                let a1 =
+                  emit_bound_restriction t.s (canonical_min_card_bnode p n)
+                    p owl_minCardinality_iri lit None a in
+                emit_bound_restriction t.s (canonical_max_card_bnode p n)
+                  p owl_maxCardinality_iri lit None a1
+              | _ -> a)
+            acc
+            props
+        | _ -> acc
+      else if t.p = owl_qualifiedCardinality_iri then
+        match t.o with
+        | T_Literal lit ->
+          let props   = find_objects_indexed ig t.s owl_onProperty_iri in
+          let classes = find_objects_indexed ig t.s owl_onClass_iri in
+          List.Tot.fold_left
+            (fun (a : rdf_graph) (pt : rdf_term) ->
+              match pt with
+              | T_IRI p ->
+                List.Tot.fold_left
+                  (fun (a1 : rdf_graph) (ct : rdf_term) ->
+                    match ct with
+                    | T_IRI c ->
+                      let n = lit.lexical_form in
+                      let a2 =
+                        emit_bound_restriction t.s (canonical_min_qcard_bnode p c n)
+                          p owl_minQualifiedCardinality_iri lit (Some c) a1 in
+                      emit_bound_restriction t.s (canonical_max_qcard_bnode p c n)
+                        p owl_maxQualifiedCardinality_iri lit (Some c) a2
+                    | _ -> a1)
+                  a
+                  classes
+              | _ -> a)
+            acc
+            props
+        | _ -> acc
+      else acc)
+    g
+    g
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -4466,10 +4610,19 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // "p functional, p inverseOf q, q equivalentProperty r" converge.
   let g28c = owl_rule_inverse_characteristics g28b ig in
   let g28d = owl_rule_equivalent_property_characteristics g28c ig in
+  // Group D(a): owl:cardinality n (and owl:qualifiedCardinality n) is
+  // shorthand for the min-n and max-n restrictions, expressed as two
+  // comprehended skolem nodes plus rdfs:subClassOf inclusions — never as
+  // extra predicates on the source node, which the equality form of the
+  // semantic conditions forbids (see the rule's header). Placement in
+  // the step is immaterial: every rule reads the step-input index `ig`,
+  // so the emitted nodes reach cls-maxc2 / rdfs11 on the next fixpoint
+  // iteration regardless of where this sits.
+  let g28e = owl_rule_cardinality_to_min_max g28d ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28d
+graph_dedup_sort g28e
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
