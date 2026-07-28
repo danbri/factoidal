@@ -4131,6 +4131,151 @@ let owl_rule_cls_maxqc34 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
     g
     g
 
+// ---- Group E(d): extensionally pinned functional properties --------------
+//
+// EXT(owl:equivalentProperty) = { <p,q> : EXT(p) = EXT(q) }, so the
+// entailment "p and q have the same property extension, therefore p
+// owl:equivalentProperty q" is immediate FROM the semantics — the work
+// is finding a sufficient condition on the graph that a forward-chaining
+// closure can check. OWL 2 RL supplies one already: scm-eqp2 (mutual
+// rdfs:subPropertyOf implies owl:equivalentProperty), implemented above
+// as owl_rule_scm_eqp2. What is missing is a way to DERIVE the two
+// inclusions when they follow from cardinality rather than from an
+// asserted subPropertyOf.
+//
+// The condition below is that derivation. A functional property whose
+// domain lies inside a hasValue restriction on ITSELF is extensionally
+// pinned: it can only be the constant map from its domain to that value.
+// Two properties pinned to the same domain and the same value therefore
+// have the same extension.
+//
+//   PREMISES
+//     p rdf:type owl:FunctionalProperty
+//     p rdfs:domain D
+//     R1 owl:onProperty p . R1 owl:hasValue v .  D subClassOf R1  (or R1 = D)
+//     R2 owl:onProperty q . R2 owl:hasValue v .  D subClassOf R2  (or R2 = D)
+//     q distinct from p
+//   CONCLUSION
+//     p rdfs:subPropertyOf q
+//
+//   DERIVATION, from the RDF-Based Semantics conditions for
+//   owl:FunctionalProperty, rdfs:domain and owl:hasValue. Take
+//   <x,y> in EXT(p).
+//     * rdfs:domain gives x in CEXT(D).
+//     * CEXT(D) is a subset of CEXT(R1), and the hasValue condition
+//       gives CEXT(R1) = { u : <u,v> in EXT(p) }, so <x,v> in EXT(p).
+//     * p functional then forces y = v.
+//     * CEXT(D) is also a subset of CEXT(R2), whose hasValue condition
+//       gives <x,v> in EXT(q).
+//     * Hence <x,y> = <x,v> is in EXT(q).
+//   So EXT(p) is a subset of EXT(q), which is exactly
+//   p rdfs:subPropertyOf q.
+//
+// When q is functional with the same domain the symmetric instance
+// fires too, and the existing scm-eqp2 turns the two inclusions into
+// owl:equivalentProperty on the next fixpoint iteration. Deriving a
+// subPropertyOf and letting a PUBLISHED rule close the loop is
+// deliberate: it keeps the new rule's conclusion assertional-strength
+// and leaves the terminological step where OWL 2 RL already put it.
+//
+// This is a SOUND SUFFICIENT condition, not a complete one — extensional
+// property equality is undecidable for a forward-chaining closure in
+// general. The shape covered is the one where the closure can see the
+// pinning syntactically.
+//
+// R1 and R2 range over D itself as well as D's rdfs:subClassOf
+// ancestors, because a restriction node can BE the domain (the ancestor
+// set does not contain D: rdfs_reflexivity_axioms only emits
+// (C subClassOf C) for IRIs, and a restriction used as a domain is
+// typically a bnode).
+//
+// Complexity: the outer fold filters |g| to owl:FunctionalProperty
+// declarations. Per declaration the work is (domains) x (candidate
+// restrictions)^2, where candidates are D plus D's subClassOf ancestors
+// FILTERED to nodes carrying owl:hasValue — a schema-sized set, and the
+// filter is what keeps the square small on graphs with deep class
+// hierarchies. No data-sized quantity enters the bound.
+//
+// Targets WebOnt-equivalentProperty-004 and -005.
+
+// The candidate restriction nodes for a domain D: D itself plus every
+// rdfs:subClassOf ancestor of D that carries an owl:hasValue.
+let hasvalue_restriction_candidates (ig : indexed_graph) (d : subject)
+  : list subject =
+  let sups = find_objects_indexed ig d rdfs_subClassOf in
+  List.Tot.fold_left
+    (fun (acc : list subject) (s : rdf_term) ->
+      match term_to_subject s with
+      | None -> acc
+      | Some x ->
+        if Cons? (find_objects_indexed ig x owl_hasValue_iri)
+        then x :: acc else acc)
+    (if Cons? (find_objects_indexed ig d owl_hasValue_iri) then [d] else [])
+    sups
+
+// Does candidate node r carry (r owl:onProperty q) and (r owl:hasValue v)?
+let restriction_pins (ig : indexed_graph) (r : subject) (q : wf_iri) (v : rdf_term)
+  : bool =
+  List.Tot.existsb
+    (fun (pt : rdf_term) -> rdf_term_eq pt (T_IRI q))
+    (find_objects_indexed ig r owl_onProperty_iri)
+  && List.Tot.existsb
+       (fun (vt : rdf_term) -> rdf_term_eq vt v)
+       (find_objects_indexed ig r owl_hasValue_iri)
+
+let owl_rule_fp_pinned_subproperty (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
+        match t.s with
+        | S_IRI p ->
+          let doms = find_objects_indexed ig (S_IRI p) rdfs_domain in
+          List.Tot.fold_left
+            (fun (a : rdf_graph) (d_term : rdf_term) ->
+              match term_to_subject d_term with
+              | None -> a
+              | Some d ->
+                let cands = hasvalue_restriction_candidates ig d in
+                // R1: pins p to some value v.
+                List.Tot.fold_left
+                  (fun (a1 : rdf_graph) (r1 : subject) ->
+                    let p_on =
+                      List.Tot.existsb
+                        (fun (pt : rdf_term) -> rdf_term_eq pt (T_IRI p))
+                        (find_objects_indexed ig r1 owl_onProperty_iri) in
+                    if not p_on then a1
+                    else
+                      List.Tot.fold_left
+                        (fun (a2 : rdf_graph) (v : rdf_term) ->
+                          // R2: pins some other q to the SAME v.
+                          List.Tot.fold_left
+                            (fun (a3 : rdf_graph) (r2 : subject) ->
+                              List.Tot.fold_left
+                                (fun (a4 : rdf_graph) (qt : rdf_term) ->
+                                  match qt with
+                                  | T_IRI q ->
+                                    if q = p then a4
+                                    else if restriction_pins ig r2 q v
+                                    then add_triple_unchecked a4
+                                           ({ s = S_IRI p; p = rdfs_subPropertyOf;
+                                              o = T_IRI q } <: triple)
+                                    else a4
+                                  | _ -> a4)
+                                a3
+                                (find_objects_indexed ig r2 owl_onProperty_iri))
+                            a2
+                            cands)
+                        a1
+                        (find_objects_indexed ig r1 owl_hasValue_iri))
+                  a
+                  cands)
+            acc
+            doms
+        | _ -> acc
+      else acc)
+    g
+    g
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -4735,10 +4880,16 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // beside cls-maxc2 because the two share restriction_node_is_asserted;
   // step placement is immaterial under the ig-snapshot convention.
   let g28f = owl_rule_cls_maxqc34 g28e ig in
+  // Group E(d): a functional property whose domain sits inside a
+  // hasValue restriction on itself is extensionally pinned; two such
+  // properties over the same domain and value are mutual
+  // subproperties, which the already-present scm-eqp2 (g2b) turns into
+  // owl:equivalentProperty on the next fixpoint iteration.
+  let g28g = owl_rule_fp_pinned_subproperty g28f ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28f
+graph_dedup_sort g28g
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
