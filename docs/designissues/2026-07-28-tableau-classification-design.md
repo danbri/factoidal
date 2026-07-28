@@ -226,6 +226,32 @@ disjoint-union |bUNIONc|=|b|+|c|). With (2)+(3) the system is
 |a| = 2|a|, 1 ≤ |a| ≤ 3 — Farkas-certifiable. 🟡 Next session's
 commit-sized item; the searcher must also learn ≤-rows.
 
+## In-catalog results (final binary, all waves)
+
+📊 PE section (measured inside the type-consistency catalog run, which
+carries the full 204-test PE section): **154 pass, 50 fail (out of
+204)** vs the task-brief baseline 140 pass, 64 fail — and the
+counting-extension + rung-order fix adds Consistent-but-all-unsat
+(PASS 0.17s via Farkas certificate) on top of that measurement. Every
+remaining fail is inside the documented baseline fail groups (A-G,
+J-K-L remnants) — zero regressions. All Group-H DL98 targets PASS
+in-catalog at DEFAULT budgets: 201/202/206/208/661/662/901/903 (206
+and 208 included — the C7 + nominal + bottom-normalise waves shortcut
+searches that previously needed a 450s cap).
+📊 type-inconsistency: **125 pass, 2 fail (out of 127)** vs baseline
+124 pass, 3 fail — dl-502 flipped via nominal branching + raised
+refuter defaults; remaining fails are `Minus Infinity is not in
+owl:real` (datatype-facet work, out of scope) and dl-909 (❌ parked:
+its nonemptiness is soundly underivable — see the CountingOracle
+banner and this note's 909 section).
+📊 type-consistency: **352 pass, 0 fail (out of 352)** — floor held
+with every new clash rule/branching tier active (451s wall at the 10s
+refuter cap).
+📊 type-negative-entailment: 22 pass, 1 fail (out of 23) —
+WebOnt-imports-002, confirmed FAILING AT THE BRANCH BASE with the
+base binary (inherited runner-plumbing issue, next-actions doc item
+6; not a regression from this branch).
+
 ## Final-binary flips (single-test catalogs, all waves + new defaults)
 
 ✅ WebOnt-I5.2-006 PASS 0.13s — the bottom-normalise + conjunction-
