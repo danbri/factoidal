@@ -3579,6 +3579,57 @@ let owl_rule_scm_rng2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
     g
     g
 
+// ---- Group B: rdfsext domain/range through subPropertyOf -----------------
+//
+// (p1 rdfs:subPropertyOf p2) and (p2 rdfs:domain c) imply
+// (p1 rdfs:domain c); likewise for rdfs:range. Sound: every p1-edge is a
+// p2-edge, so p2's domain and range constrain p1 too.
+//
+// Sibling of scm-dom2 / scm-rng2 above, which walk the OTHER axis — they
+// lift a domain/range UP the rdfs:subClassOf chain of the domain class;
+// this one carries a domain/range DOWN the rdfs:subPropertyOf chain of
+// the property. Plain rdfs2/rdfs3 do not give this without also
+// materialising subPropertyOf transitivity.
+//
+// BNODE-POLLUTION GUARD on the emitted object, matching scm-dom2's: only
+// NAMED domain/range classes propagate, so anonymous class-expression
+// bnodes cannot leak into ?C bindings against rdfs:domain / rdfs:range.
+//
+// Targets rdfbased-sem-rdfsext-domain-subprop and
+// rdfbased-sem-rdfsext-range-subprop.
+let owl_rule_subprop_domain_range (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subPropertyOf then
+        match term_to_subject t.o with
+        | None -> acc
+        | Some p2 ->
+          let doms = find_objects_indexed ig p2 rdfs_domain in
+          let rngs = find_objects_indexed ig p2 rdfs_range in
+          let acc_d =
+            List.Tot.fold_left
+              (fun (acc1 : rdf_graph) (c : rdf_term) ->
+                 match c with
+                 | T_IRI _ ->
+                   add_triple_unchecked acc1
+                     ({ s = t.s; p = rdfs_domain; o = c })
+                 | _ -> acc1)
+              acc
+              doms
+          in
+          List.Tot.fold_left
+            (fun (acc1 : rdf_graph) (c : rdf_term) ->
+               match c with
+               | T_IRI _ ->
+                 add_triple_unchecked acc1
+                   ({ s = t.s; p = rdfs_range; o = c })
+               | _ -> acc1)
+            acc_d
+            rngs
+      else acc)
+    g
+    g
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -4147,10 +4198,14 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // `:p rdfs:range xsd:short` (WebOnt-I5.8-006).
   let g27 = owl_rule_scm_dom2 g26a ig in
   let g28 = owl_rule_scm_rng2 g27 ig in
+  // Group B: carry rdfs:domain / rdfs:range DOWN the rdfs:subPropertyOf
+  // chain. After scm-dom2/scm-rng2 so a domain already lifted up the
+  // subClassOf chain in this step is available to inherit.
+  let g28a = owl_rule_subprop_domain_range g28 ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28
+graph_dedup_sort g28a
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
