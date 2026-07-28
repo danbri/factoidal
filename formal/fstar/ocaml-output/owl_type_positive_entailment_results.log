@@ -78,14 +78,17 @@
   [pe-running] WebOnt-cardinality-006
   [pe-running] WebOnt-complementOf-001
   [pe-running] WebOnt-description-logic-201
+  [owl_closure_timeout] DL witness layer exceeded 30s cap; falling back to tableau closure
   [pe-running] WebOnt-description-logic-202
   [pe-running] WebOnt-description-logic-203
   [pe-running] WebOnt-description-logic-204
   [pe-running] WebOnt-description-logic-205
   [pe-running] WebOnt-description-logic-206
+  [owl_closure_timeout] DL witness layer exceeded 30s cap; falling back to tableau closure
   [pe-running] WebOnt-description-logic-207
   [pe-running] WebOnt-description-logic-208
   [pe-running] WebOnt-description-logic-661
+  [owl_closure_timeout] DL witness layer exceeded 30s cap; falling back to tableau closure
   [pe-running] WebOnt-description-logic-662
   [pe-running] WebOnt-description-logic-663
   [pe-running] WebOnt-description-logic-664
@@ -121,8 +124,8 @@
   [pe-running] WebOnt-intersectionOf-001
   [pe-running] WebOnt-inverseOf-001
   [pe-running] WebOnt-miscellaneous-011
-  [owl_closure_timeout] DL RL-base closure exceeded 20s cap; falling back to un-closed graph
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
+  [owl_closure_timeout] DL RL-base closure exceeded 30s cap; falling back to un-closed graph
+  [owl_closure_timeout] DL tableau closure exceeded 30s cap; falling back to RL closure
   [pe-running] WebOnt-miscellaneous-302-Direct
   [pe-running] WebOnt-oneOf-002
   [pe-running] WebOnt-oneOf-003
@@ -329,8 +332,8 @@
   [cons-running] WebOnt-intersectionOf-001
   [cons-running] WebOnt-inverseOf-001
   [cons-running] WebOnt-miscellaneous-011
-  [owl_closure_timeout] DL RL-base closure exceeded 20s cap; falling back to un-closed graph
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
+  [owl_closure_timeout] DL RL-base closure exceeded 30s cap; falling back to un-closed graph
+  [owl_closure_timeout] DL tableau closure exceeded 30s cap; falling back to RL closure
   [cons-running] WebOnt-miscellaneous-302-Direct
   [cons-running] WebOnt-oneOf-002
   [cons-running] WebOnt-oneOf-003
@@ -416,7 +419,7 @@
   [cons-running] somevaluesfrom2bnode
 Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/type-positive-entailment.rdf
-  parsed 5400 triples in 0.30s
+  parsed 5400 triples in 0.28s
 Totals: 206 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    0
@@ -441,8 +444,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  New-Feature-ObjectQCR-001
   PASS  New-Feature-ObjectQCR-002
   PASS  New-Feature-ReflexiveProperty-001
-  FAIL  New-Feature-SelfRestriction-001
-  FAIL  New-Feature-SelfRestriction-002
+  PASS  New-Feature-SelfRestriction-001
+  PASS  New-Feature-SelfRestriction-002
   SKIP/functional-syntax-only  Qualified-cardinality-boolean
       reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 Functional Syntax) with test:normativeSyntax FUNCTIONAL, and either no fs premise/conclusion literal is present or it uses Functional-Syntax constructs beyond Parser_OWLFunctional's narrow subset (Prefix/Ontology/Declaration + ~6 axiom forms; see docs/designissues/2026-07-05-owl-functional-syntax-plan.md)
   SKIP/functional-syntax-only  Qualified-cardinality-restricted-int
@@ -524,8 +527,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-description-logic-903
   PASS  WebOnt-differentFrom-001
   FAIL  WebOnt-differentFrom-002
-  FAIL  WebOnt-disjointWith-001
-  FAIL  WebOnt-disjointWith-002
+  PASS  WebOnt-disjointWith-001
+  PASS  WebOnt-disjointWith-002
   FAIL  WebOnt-distinctMembers-001
   PASS  WebOnt-equivalentClass-001
   PASS  WebOnt-equivalentClass-002
@@ -550,7 +553,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-intersectionOf-001
   PASS  WebOnt-inverseOf-001
   PASS  WebOnt-miscellaneous-011
-  FAIL  WebOnt-miscellaneous-302-Direct
+  PASS  WebOnt-miscellaneous-302-Direct
   FAIL  WebOnt-oneOf-002
   FAIL  WebOnt-oneOf-003
   FAIL  WebOnt-oneOf-004
@@ -634,7 +637,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 135 pass, 69 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 136.96s
+Profile-RL PositiveEntailmentTests: 140 pass, 64 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 330.21s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
@@ -847,4 +850,4 @@ Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 204 pass, 0 fail (out of 204), 2 skipped (functional-syntax-only) in 178.99s
+Profile-RL ConsistencyTests: 204 pass, 0 fail (out of 204), 2 skipped (functional-syntax-only) in 190.74s

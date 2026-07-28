@@ -4,6 +4,39 @@ Last refreshed: 2026-07-14 (nine landings from a long autonomous
 shift, gated on the same regime — floors, named diffs, soundness
 where applicable — all measured on the current `claude/main` tree):
 
+**Update 2026-07-28 (dashboard regen + WebOnt-imports-002 runner fix):**
+- 📊 `docs/test-results/latest.json` was under-reporting ~10 already-fixed
+  OWL profile tests (stale since an `OWL.Closure.fsti` edit earlier the
+  same day); regenerated via `formal/fstar/generate-report.sh` (no hand
+  edits): `owl2_profile_el` **118 pass, 2 fail (out of 120)** (was 108
+  pass, 12 fail), `owl2_profile_ql` **85 pass, 2 fail (out of 87)** (was
+  83 pass, 4 fail). The 4 remaining fails across both are
+  `WebOnt-I5.26-010` + `WebOnt-I5.5-005` (see `docs/claude-rules/
+  scope.md`'s OWL 1 Full comprehension-principle section — these are
+  the 2 permanent failures, cited once per profile catalog).
+  `owl_rl_positive_entailment` unchanged at 28 pass, 2 fail (out of 30).
+- 🧹 `bin/owl-runner/owl_runner.ml`'s `load_imports_into_premise` used
+  to merge every `test:importedOntology` catalog link into the premise
+  unconditionally, so `WebOnt-imports-002` (a NegativeEntailmentTest
+  checking that an unimported namespace's axioms must NOT be pulled in)
+  scored the wrong verdict. Fixed by gating the merge on a plain
+  triple-membership check (does the premise, as assembled so far,
+  actually assert `_ owl:imports <iri>`?), iterated to a fixpoint since
+  the corpus itself has a transitive-imports test
+  (`WebOnt-imports-003`). Also fixed: the catalog's
+  `test:importedOntology` link points at a synthetic wrapper node, not
+  the real ontology IRI asserted in the premise's `owl:imports` triple —
+  resolved via the wrapper's `test:importedOntologyIRI` sibling
+  property. Gated on all four DL catalogs: `type-positive-entailment`
+  **140 pass, 64 fail (out of 204)** (FAIL name list byte-identical to
+  the pre-fix baseline — no regression), `type-negative-entailment`
+  **23 pass, 0 fail (out of 23)** (standalone catalog, unaffected),
+  `type-consistency`'s NE section **23 pass, 0 fail (out of 23)**
+  (was 22/1 pre-fix — `WebOnt-imports-002` confirmed flipped, the exact
+  target), `type-inconsistency` **124 pass, 3 fail (out of 127)**
+  (unchanged, same 3 named fails), `type-consistency` **352 pass, 0
+  fail (out of 352)** (unchanged).
+
 **Update 2026-07-16 (the day-closure run, ~20 gated landings):**
 current headline numbers, all measured on the shipped tree:
 - 📊 OWL 2 DL type-inconsistency **123 pass, 5 fail (out of 128), zero

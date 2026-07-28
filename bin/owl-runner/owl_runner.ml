@@ -130,6 +130,15 @@ let test_conclusion = test_ns ^ "rdfXmlConclusionOntology"
 let test_non_conclusion = test_ns ^ "rdfXmlNonConclusionOntology"
 let test_imported_ontology = test_ns ^ "importedOntology"
 let test_input_ontology   = test_ns ^ "rdfXmlInputOntology"
+(* The catalog's test:importedOntology link points at a synthetic
+   wrapper node (an owl:Thing sibling in the manifest, e.g.
+   "http://owl.semanticweb.org/id/WebOnt-2Dimports-2D001-2Dimport-2D...")
+   — NOT the real ontology IRI that appears in the premise's actual
+   owl:imports triple. That real IRI is a separate property on the same
+   wrapper node, test:importedOntologyIRI. Needed so the imports-gating
+   check (premise_declares_import, below) compares against the IRI that
+   is actually asserted, not the catalog's internal bookkeeping ID. *)
+let test_imported_ontology_iri = test_ns ^ "importedOntologyIRI"
 (* Some catalog entries carry only a functional-syntax premise
    (test:fsPremiseOntology / test:fsConclusionOntology) instead of an
    RDF/XML one. This runner reads only the rdfXml* literals; when
@@ -263,6 +272,11 @@ let empty_info iri = {
 let build_index (graph : triple list) : test_case_info list * (string, string) Hashtbl.t =
   let tbl : (string, test_case_info) Hashtbl.t = Hashtbl.create 1024 in
   let imports_lookup : (string, string) Hashtbl.t = Hashtbl.create 64 in
+  (* wrapper-node IRI -> real ontology IRI (test:importedOntologyIRI),
+     collected in the same pass; resolved into info.imports/imports_lookup
+     below once the whole graph has been walked (see test_imported_ontology_iri
+     comment above). *)
+  let imported_ontology_iri_lookup : (string, string) Hashtbl.t = Hashtbl.create 64 in
   let get subj =
     match Hashtbl.find_opt tbl subj with
     | Some info -> info
@@ -354,8 +368,31 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
            match object_literal_opt t.o with
            | Some lex -> Hashtbl.replace imports_lookup subj lex
            | None -> ()
+         end else if t.p = test_imported_ontology_iri then begin
+           match object_iri_opt t.o with
+           | Some obj -> Hashtbl.replace imported_ontology_iri_lookup subj obj
+           | None -> ()
          end)
     graph;
+  (* Resolve wrapper-node IRIs (test:importedOntology's object) to the
+     real ontology IRI (test:importedOntologyIRI) that actually appears
+     in the premise's owl:imports triple. Mirror imports_lookup's entry
+     under the resolved key too, so a lookup by the real IRI still finds
+     the imported document's literal content. A wrapper with no
+     importedOntologyIRI triple (shouldn't happen in the vendored
+     catalogs, but keep this total) resolves to itself, preserving the
+     old behaviour for that entry. *)
+  let resolve_import_iri w =
+    match Hashtbl.find_opt imported_ontology_iri_lookup w with
+    | Some real -> real
+    | None -> w
+  in
+  Hashtbl.iter
+    (fun wrapper real ->
+       match Hashtbl.find_opt imports_lookup wrapper with
+       | Some lex -> Hashtbl.replace imports_lookup real lex
+       | None -> ())
+    imported_ontology_iri_lookup;
   (* Keep only subjects that actually carry a test-type — or, for the
      species facet (2026-07-10), a test:species annotation: the four
      WebOnt-imports-005..008 cases in syntax-dl.rdf carry species +
@@ -364,7 +401,8 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
     Hashtbl.fold
       (fun _ info acc ->
          if StrSet.is_empty info.types && StrSet.is_empty info.species
-         then acc else info :: acc)
+         then acc
+         else { info with imports = StrSet.map resolve_import_iri info.imports } :: acc)
       tbl []
   in
   (cases, imports_lookup)
@@ -1112,6 +1150,10 @@ let apply_closure_with_semantics
 let parsed_imports_cache : (string, triple list) Hashtbl.t = Hashtbl.create 64
 let parsed_imports_count = ref 0
 
+(* owl:imports IRI, needed here to gate load_imports_into_premise below;
+   also used later by resolve_species_imports (species-catalog path). *)
+let owl_imports_iri = "http://www.w3.org/2002/07/owl#imports"
+
 let parse_import_cached (import_iri : string) (lit : string) : triple list =
   match Hashtbl.find_opt parsed_imports_cache import_iri with
   | Some g -> g
@@ -1129,17 +1171,58 @@ let parse_import_cached (import_iri : string) (lit : string) : triple list =
     Hashtbl.replace parsed_imports_cache import_iri g;
     g
 
+(* Merge catalog-linked imports into the premise, gated on plain
+   triple-membership (no reasoning): an import is only merged once the
+   graph assembled SO FAR actually asserts `_ owl:imports <import_iri>`
+   for it. WebOnt-imports-002 is a NegativeEntailmentTest whose premise
+   never declares owl:imports at all -- a reasoner must not treat a term
+   from an unimported namespace as pulling in that namespace's axioms,
+   so an import must never be merged unless its owl:imports triple is
+   actually present.
+
+   Iterated to a fixpoint (cycle-safe via `seen`) because owl:imports
+   is transitive in the W3C corpus itself: WebOnt-imports-003's premise
+   only asserts `owl:imports support003-A`; support003-A's own document
+   asserts `owl:imports support003-B`. The catalog flatly links both A
+   and B to the TestCase's test:importedOntology (so both are in
+   info.imports), but B's assertion only becomes visible after A is
+   merged in — hence re-scanning the growing graph each round, exactly
+   mirroring resolve_species_imports below (same structural-closure
+   technique, applied to the PE/NE/Cons/Inc harness path instead of the
+   syntax-dl species path). Restricting candidates to info.imports (not
+   an open-ended registry) keeps this a closed, catalog-scoped merge,
+   never open-world import-chasing. *)
 let load_imports_into_premise
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t)
       (g_p : triple list) : triple list =
-  StrSet.fold
-    (fun import_iri acc ->
-       match Hashtbl.find_opt imports_lookup import_iri with
-       | None -> acc
-       | Some lit -> parse_import_cached import_iri lit @ acc)
-    info.imports
-    g_p
+  let rec go (g : triple list) (seen : StrSet.t) : triple list =
+    let targets =
+      List.filter_map
+        (fun (t : triple) ->
+           if t.p = owl_imports_iri then
+             (match t.o with
+              | T_IRI i when (not (StrSet.mem i seen)) && StrSet.mem i info.imports -> Some i
+              | _ -> None)
+           else None)
+        g
+      |> List.sort_uniq compare
+    in
+    match targets with
+    | [] -> g
+    | _ ->
+      let seen = List.fold_left (fun s i -> StrSet.add i s) seen targets in
+      let g =
+        List.fold_left
+          (fun acc import_iri ->
+             match Hashtbl.find_opt imports_lookup import_iri with
+             | None -> acc
+             | Some lit -> parse_import_cached import_iri lit @ acc)
+          g targets
+      in
+      go g seen
+  in
+  go g_p StrSet.empty
 
 (* OWL 2 Functional Syntax path for PositiveEntailmentTest (2026-07-05).
    See docs/designissues/2026-07-05-owl-functional-syntax-plan.md.
@@ -1613,7 +1696,7 @@ let parse_doc_literal (base : string) (lex : string) : triple list option =
    imports013 have an xml:base but no header). owl:imports objects are
    resolved against these keys. *)
 let owl_ontology_iri = "http://www.w3.org/2002/07/owl#Ontology"
-let owl_imports_iri  = "http://www.w3.org/2002/07/owl#imports"
+(* owl_imports_iri is defined earlier, near load_imports_into_premise. *)
 
 let xml_base_of (lex : string) : string option =
   let re = Str.regexp "xml:base[ \t\r\n]*=[ \t\r\n]*[\"']\\([^\"']*\\)[\"']" in

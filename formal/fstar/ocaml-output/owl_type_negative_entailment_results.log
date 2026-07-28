@@ -56,12 +56,12 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-description-logic-904
   PASS  WebOnt-equivalentClass-005
   PASS  WebOnt-equivalentClass-008
-  FAIL/unexpected-entailment  WebOnt-imports-002
+  PASS  WebOnt-imports-002
   PASS  WebOnt-miscellaneous-301
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 7.47s
+Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 6.85s
 
 Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-004
@@ -88,4 +88,4 @@ Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23), 0 skipped (functional-syntax-only) in 17.83s
+Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23), 0 skipped (functional-syntax-only) in 16.73s
