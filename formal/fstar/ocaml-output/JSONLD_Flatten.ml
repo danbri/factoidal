@@ -578,7 +578,7 @@ let flatten_document (input : Prims.string)
   (processing_mode : Prims.string FStar_Pervasives_Native.option) :
   Parser_JSON.json_val FStar_Pervasives_Native.option=
   match Parser_JSONLD.expand_document input base FStar_Pervasives_Native.None
-          processing_mode
+          processing_mode false
   with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some expanded ->
@@ -624,7 +624,9 @@ let flatten_document (input : Prims.string)
                             | FStar_Pervasives_Native.None -> base);
                          JSONLD_Context.ac_original_base = base;
                          JSONLD_Context.ac_suppress_pop =
-                           (JSONLD_Context.empty_active_context.JSONLD_Context.ac_suppress_pop)
+                           (JSONLD_Context.empty_active_context.JSONLD_Context.ac_suppress_pop);
+                         JSONLD_Context.ac_frame_expansion =
+                           (JSONLD_Context.empty_active_context.JSONLD_Context.ac_frame_expansion)
                        } in
                      (match JSONLD_Context.context_process ac_seed ctx_val
                               false JSONLD_Context.jld_remote_context_fuel []

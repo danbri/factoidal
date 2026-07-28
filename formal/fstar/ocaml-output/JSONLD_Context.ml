@@ -134,64 +134,74 @@ type active_context =
   ac_mode10: Prims.bool ;
   ac_doc_url: Prims.string FStar_Pervasives_Native.option ;
   ac_original_base: Prims.string FStar_Pervasives_Native.option ;
-  ac_suppress_pop: Prims.bool }
+  ac_suppress_pop: Prims.bool ;
+  ac_frame_expansion: Prims.bool }
 let __proj__Mkactive_context__item__ac_terms (projectee : active_context) :
   (Prims.string * term_def) Prims.list=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} -> ac_terms
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_terms
 let __proj__Mkactive_context__item__ac_vocab (projectee : active_context) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} -> ac_vocab
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_vocab
 let __proj__Mkactive_context__item__ac_base (projectee : active_context) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} -> ac_base
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_base
 let __proj__Mkactive_context__item__ac_language (projectee : active_context)
   : Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} ->
-      ac_language
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_language
 let __proj__Mkactive_context__item__ac_direction (projectee : active_context)
   : Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} ->
-      ac_direction
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_direction
 let __proj__Mkactive_context__item__ac_previous (projectee : active_context)
   : active_context FStar_Pervasives_Native.option=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} ->
-      ac_previous
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_previous
 let __proj__Mkactive_context__item__ac_mode10 (projectee : active_context) :
   Prims.bool=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} ->
-      ac_mode10
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_mode10
 let __proj__Mkactive_context__item__ac_doc_url (projectee : active_context) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} ->
-      ac_doc_url
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_doc_url
 let __proj__Mkactive_context__item__ac_original_base
   (projectee : active_context) : Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} ->
-      ac_original_base
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_original_base
 let __proj__Mkactive_context__item__ac_suppress_pop
   (projectee : active_context) : Prims.bool=
   match projectee with
   | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
-      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;_} ->
-      ac_suppress_pop
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_suppress_pop
+let __proj__Mkactive_context__item__ac_frame_expansion
+  (projectee : active_context) : Prims.bool=
+  match projectee with
+  | { ac_terms; ac_vocab; ac_base; ac_language; ac_direction; ac_previous;
+      ac_mode10; ac_doc_url; ac_original_base; ac_suppress_pop;
+      ac_frame_expansion;_} -> ac_frame_expansion
 let empty_active_context : active_context=
   {
     ac_terms = [];
@@ -203,7 +213,8 @@ let empty_active_context : active_context=
     ac_mode10 = false;
     ac_doc_url = FStar_Pervasives_Native.None;
     ac_original_base = FStar_Pervasives_Native.None;
-    ac_suppress_pop = false
+    ac_suppress_pop = false;
+    ac_frame_expansion = false
   }
 let jldctx_is_keyword (s : Prims.string) : Prims.bool=
   ((Parser_FastString.fs_byte_length s) > Prims.int_zero) &&
@@ -953,7 +964,8 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
            ac_mode10 = (ac.ac_mode10);
            ac_doc_url = (ac.ac_doc_url);
            ac_original_base = (ac.ac_original_base);
-           ac_suppress_pop = (ac.ac_suppress_pop)
+           ac_suppress_pop = (ac.ac_suppress_pop);
+           ac_frame_expansion = (ac.ac_frame_expansion)
          }
        else ac in
      match jldctx_term_obj_fields ac_fields FStar_Pervasives_Native.None
@@ -1025,7 +1037,9 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                                    ac_mode10 = (ac.ac_mode10);
                                    ac_doc_url = (ac.ac_doc_url);
                                    ac_original_base = (ac.ac_original_base);
-                                   ac_suppress_pop = (ac.ac_suppress_pop)
+                                   ac_suppress_pop = (ac.ac_suppress_pop);
+                                   ac_frame_expansion =
+                                     (ac.ac_frame_expansion)
                                  } key true)
                                 <> (FStar_Pervasives_Native.Some iri))
                          then FStar_Pervasives_Native.None
@@ -1062,7 +1076,9 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                                     ac_mode10 = (ac.ac_mode10);
                                     ac_doc_url = (ac.ac_doc_url);
                                     ac_original_base = (ac.ac_original_base);
-                                    ac_suppress_pop = (ac.ac_suppress_pop)
+                                    ac_suppress_pop = (ac.ac_suppress_pop);
+                                    ac_frame_expansion =
+                                      (ac.ac_frame_expansion)
                                   }
                             | FStar_Pervasives_Native.None ->
                                 FStar_Pervasives_Native.None)
@@ -1108,7 +1124,9 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                                     ac_mode10 = (ac.ac_mode10);
                                     ac_doc_url = (ac.ac_doc_url);
                                     ac_original_base = (ac.ac_original_base);
-                                    ac_suppress_pop = (ac.ac_suppress_pop)
+                                    ac_suppress_pop = (ac.ac_suppress_pop);
+                                    ac_frame_expansion =
+                                      (ac.ac_frame_expansion)
                                   }
                             | FStar_Pervasives_Native.None ->
                                 FStar_Pervasives_Native.None)
@@ -1126,7 +1144,9 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                                   ac_mode10 = (ac.ac_mode10);
                                   ac_doc_url = (ac.ac_doc_url);
                                   ac_original_base = (ac.ac_original_base);
-                                  ac_suppress_pop = (ac.ac_suppress_pop)
+                                  ac_suppress_pop = (ac.ac_suppress_pop);
+                                  ac_frame_expansion =
+                                    (ac.ac_frame_expansion)
                                 } key true
                         with
                         | FStar_Pervasives_Native.None ->
@@ -1164,7 +1184,9 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                                      ac_mode10 = (ac.ac_mode10);
                                      ac_doc_url = (ac.ac_doc_url);
                                      ac_original_base = (ac.ac_original_base);
-                                     ac_suppress_pop = (ac.ac_suppress_pop)
+                                     ac_suppress_pop = (ac.ac_suppress_pop);
+                                     ac_frame_expansion =
+                                       (ac.ac_frame_expansion)
                                    }
                              | FStar_Pervasives_Native.None ->
                                  FStar_Pervasives_Native.None)))))
@@ -1246,7 +1268,8 @@ let rec jldctx_preview_prefixes (ac : active_context)
                     ac_mode10 = (ac.ac_mode10);
                     ac_doc_url = (ac.ac_doc_url);
                     ac_original_base = (ac.ac_original_base);
-                    ac_suppress_pop = (ac.ac_suppress_pop)
+                    ac_suppress_pop = (ac.ac_suppress_pop);
+                    ac_frame_expansion = (ac.ac_frame_expansion)
                   } rest))
   | uu___::rest -> jldctx_preview_prefixes ac rest
 let rec context_process (ac : active_context) (ctx : Parser_JSON.json_val)
@@ -1271,7 +1294,8 @@ let rec context_process (ac : active_context) (ctx : Parser_JSON.json_val)
             ac_mode10 = (ac.ac_mode10);
             ac_doc_url = (ac.ac_doc_url);
             ac_original_base = (ac.ac_original_base);
-            ac_suppress_pop = (ac.ac_suppress_pop)
+            ac_suppress_pop = (ac.ac_suppress_pop);
+            ac_frame_expansion = (ac.ac_frame_expansion)
           }
   | Parser_JSON.JString s ->
       if fuel = Prims.int_zero
@@ -1299,7 +1323,8 @@ let rec context_process (ac : active_context) (ctx : Parser_JSON.json_val)
                                ac_doc_url =
                                  (FStar_Pervasives_Native.Some resolved);
                                ac_original_base = (ac.ac_original_base);
-                               ac_suppress_pop = (ac.ac_suppress_pop)
+                               ac_suppress_pop = (ac.ac_suppress_pop);
+                               ac_frame_expansion = (ac.ac_frame_expansion)
                              } inner override_protected
                              (fuel - Prims.int_one) (resolved :: visited)
                      with
@@ -1317,7 +1342,8 @@ let rec context_process (ac : active_context) (ctx : Parser_JSON.json_val)
                              ac_mode10 = (ac'.ac_mode10);
                              ac_doc_url = (ac.ac_doc_url);
                              ac_original_base = (ac'.ac_original_base);
-                             ac_suppress_pop = (ac'.ac_suppress_pop)
+                             ac_suppress_pop = (ac'.ac_suppress_pop);
+                             ac_frame_expansion = (ac'.ac_frame_expansion)
                            })))
   | Parser_JSON.JArray items ->
       context_process_array ac items override_protected fuel visited
@@ -1429,7 +1455,8 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
             ac_mode10 = (ac.ac_mode10);
             ac_doc_url = (ac.ac_doc_url);
             ac_original_base = (ac.ac_original_base);
-            ac_suppress_pop = (ac.ac_suppress_pop)
+            ac_suppress_pop = (ac.ac_suppress_pop);
+            ac_frame_expansion = (ac.ac_frame_expansion)
           }
     | Parser_JSON.JNull ->
         FStar_Pervasives_Native.Some
@@ -1443,7 +1470,8 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
             ac_mode10 = (ac.ac_mode10);
             ac_doc_url = (ac.ac_doc_url);
             ac_original_base = (ac.ac_original_base);
-            ac_suppress_pop = (ac.ac_suppress_pop)
+            ac_suppress_pop = (ac.ac_suppress_pop);
+            ac_frame_expansion = (ac.ac_frame_expansion)
           }
     | uu___ -> FStar_Pervasives_Native.None
   else
@@ -1483,7 +1511,8 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                       ac_mode10 = (ac.ac_mode10);
                       ac_doc_url = (ac.ac_doc_url);
                       ac_original_base = (ac.ac_original_base);
-                      ac_suppress_pop = (ac.ac_suppress_pop)
+                      ac_suppress_pop = (ac.ac_suppress_pop);
+                      ac_frame_expansion = (ac.ac_frame_expansion)
                     }
               | FStar_Pervasives_Native.None ->
                   (match ac.ac_base with
@@ -1501,7 +1530,8 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                            ac_mode10 = (ac.ac_mode10);
                            ac_doc_url = (ac.ac_doc_url);
                            ac_original_base = (ac.ac_original_base);
-                           ac_suppress_pop = (ac.ac_suppress_pop)
+                           ac_suppress_pop = (ac.ac_suppress_pop);
+                           ac_frame_expansion = (ac.ac_frame_expansion)
                          }
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None))
@@ -1517,7 +1547,8 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                ac_mode10 = (ac.ac_mode10);
                ac_doc_url = (ac.ac_doc_url);
                ac_original_base = (ac.ac_original_base);
-               ac_suppress_pop = (ac.ac_suppress_pop)
+               ac_suppress_pop = (ac.ac_suppress_pop);
+               ac_frame_expansion = (ac.ac_frame_expansion)
              }
        | uu___1 -> FStar_Pervasives_Native.None)
     else
@@ -1536,7 +1567,8 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                  ac_mode10 = (ac.ac_mode10);
                  ac_doc_url = (ac.ac_doc_url);
                  ac_original_base = (ac.ac_original_base);
-                 ac_suppress_pop = (ac.ac_suppress_pop)
+                 ac_suppress_pop = (ac.ac_suppress_pop);
+                 ac_frame_expansion = (ac.ac_frame_expansion)
                }
          | Parser_JSON.JNull ->
              FStar_Pervasives_Native.Some
@@ -1550,7 +1582,8 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                  ac_mode10 = (ac.ac_mode10);
                  ac_doc_url = (ac.ac_doc_url);
                  ac_original_base = (ac.ac_original_base);
-                 ac_suppress_pop = (ac.ac_suppress_pop)
+                 ac_suppress_pop = (ac.ac_suppress_pop);
+                 ac_frame_expansion = (ac.ac_frame_expansion)
                }
          | uu___2 -> FStar_Pervasives_Native.None)
       else
@@ -1571,7 +1604,8 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                      ac_mode10 = (ac.ac_mode10);
                      ac_doc_url = (ac.ac_doc_url);
                      ac_original_base = (ac.ac_original_base);
-                     ac_suppress_pop = (ac.ac_suppress_pop)
+                     ac_suppress_pop = (ac.ac_suppress_pop);
+                     ac_frame_expansion = (ac.ac_frame_expansion)
                    }
                else FStar_Pervasives_Native.None
            | Parser_JSON.JNull ->
@@ -1586,7 +1620,8 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                    ac_mode10 = (ac.ac_mode10);
                    ac_doc_url = (ac.ac_doc_url);
                    ac_original_base = (ac.ac_original_base);
-                   ac_suppress_pop = (ac.ac_suppress_pop)
+                   ac_suppress_pop = (ac.ac_suppress_pop);
+                   ac_frame_expansion = (ac.ac_frame_expansion)
                  }
            | uu___3 -> FStar_Pervasives_Native.None)
         else
@@ -1692,7 +1727,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                      ac_mode10 = (ac.ac_mode10);
                                      ac_doc_url = (ac.ac_doc_url);
                                      ac_original_base = (ac.ac_original_base);
-                                     ac_suppress_pop = (ac.ac_suppress_pop)
+                                     ac_suppress_pop = (ac.ac_suppress_pop);
+                                     ac_frame_expansion =
+                                       (ac.ac_frame_expansion)
                                    })
                       | uu___8 -> FStar_Pervasives_Native.None))
                 else
@@ -1750,7 +1787,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                          ac_original_base =
                                            (ac.ac_original_base);
                                          ac_suppress_pop =
-                                           (ac.ac_suppress_pop)
+                                           (ac.ac_suppress_pop);
+                                         ac_frame_expansion =
+                                           (ac.ac_frame_expansion)
                                        })
                               | FStar_Pervasives_Native.None ->
                                   let td =
@@ -1784,7 +1823,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                       ac_doc_url = (ac.ac_doc_url);
                                       ac_original_base =
                                         (ac.ac_original_base);
-                                      ac_suppress_pop = (ac.ac_suppress_pop)
+                                      ac_suppress_pop = (ac.ac_suppress_pop);
+                                      ac_frame_expansion =
+                                        (ac.ac_frame_expansion)
                                     })
                          | Parser_JSON.JString s ->
                              if jldctx_keyword_lookalike s
@@ -1809,7 +1850,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                         ac_original_base =
                                           (ac.ac_original_base);
                                         ac_suppress_pop =
-                                          (ac.ac_suppress_pop)
+                                          (ac.ac_suppress_pop);
+                                        ac_frame_expansion =
+                                          (ac.ac_frame_expansion)
                                       }
                                     else ac in
                                   match jldctx_expand_iri_ctx ac_lookup s
@@ -1840,7 +1883,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                                 ac_original_base =
                                                   (ac.ac_original_base);
                                                 ac_suppress_pop =
-                                                  (ac.ac_suppress_pop)
+                                                  (ac.ac_suppress_pop);
+                                                ac_frame_expansion =
+                                                  (ac.ac_frame_expansion)
                                               } key true)
                                              <>
                                              (FStar_Pervasives_Native.Some
@@ -1891,7 +1936,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                                  ac_original_base =
                                                    (ac.ac_original_base);
                                                  ac_suppress_pop =
-                                                   (ac.ac_suppress_pop)
+                                                   (ac.ac_suppress_pop);
+                                                 ac_frame_expansion =
+                                                   (ac.ac_frame_expansion)
                                                }
                                          | FStar_Pervasives_Native.None ->
                                              FStar_Pervasives_Native.None))
@@ -1964,7 +2011,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                              ac_original_base =
                                                (ac.ac_original_base);
                                              ac_suppress_pop =
-                                               (ac.ac_suppress_pop)
+                                               (ac.ac_suppress_pop);
+                                             ac_frame_expansion =
+                                               (ac.ac_frame_expansion)
                                            })
                                   | FStar_Pervasives_Native.None ->
                                       let td =
@@ -2002,7 +2051,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                           ac_original_base =
                                             (ac.ac_original_base);
                                           ac_suppress_pop =
-                                            (ac.ac_suppress_pop)
+                                            (ac.ac_suppress_pop);
+                                          ac_frame_expansion =
+                                            (ac.ac_frame_expansion)
                                         })
                                else
                                  if fuel = Prims.int_zero
@@ -2051,7 +2102,10 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                                            ac_original_base =
                                                              (ac'.ac_original_base);
                                                            ac_suppress_pop =
-                                                             (ac'.ac_suppress_pop)
+                                                             (ac'.ac_suppress_pop);
+                                                           ac_frame_expansion
+                                                             =
+                                                             (ac'.ac_frame_expansion)
                                                          } raw true
                                                          (fuel -
                                                             Prims.int_one)
@@ -2104,7 +2158,8 @@ let apply_context_with_propagate (ac : active_context)
              ac_mode10 = (ac1.ac_mode10);
              ac_doc_url = (ac1.ac_doc_url);
              ac_original_base = (ac1.ac_original_base);
-             ac_suppress_pop = (ac1.ac_suppress_pop)
+             ac_suppress_pop = (ac1.ac_suppress_pop);
+             ac_frame_expansion = (ac1.ac_frame_expansion)
            })
 let rec jldctx_insert_sorted (x : Prims.string)
   (xs : Prims.string Prims.list) : Prims.string Prims.list=
@@ -2141,7 +2196,8 @@ let rec jldctx_apply_type_scoped (ac0 : active_context)
                            ac_mode10 = (ac_acc.ac_mode10);
                            ac_doc_url = def_doc_url;
                            ac_original_base = (ac_acc.ac_original_base);
-                           ac_suppress_pop = (ac_acc.ac_suppress_pop)
+                           ac_suppress_pop = (ac_acc.ac_suppress_pop);
+                           ac_frame_expansion = (ac_acc.ac_frame_expansion)
                          } scoped false jld_remote_context_fuel []
                  with
                  | FStar_Pervasives_Native.None ->
@@ -2175,6 +2231,7 @@ let apply_type_scoped_contexts (ac0 : active_context)
              ac_mode10 = (ac1.ac_mode10);
              ac_doc_url = (ac1.ac_doc_url);
              ac_original_base = (ac1.ac_original_base);
-             ac_suppress_pop = (ac1.ac_suppress_pop)
+             ac_suppress_pop = (ac1.ac_suppress_pop);
+             ac_frame_expansion = (ac1.ac_frame_expansion)
            }
          else ac1)
