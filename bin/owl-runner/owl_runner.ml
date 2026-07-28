@@ -980,15 +980,33 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
          g
        | _ -> g)
     in
+    (* Staged like the RL arm above: establish the tableau+plain-closure
+       result FIRST (the pre-witness DL behavior), then attempt the
+       witness layer as a separate capped step. A one-shot
+       tableau+witness closure under a single cap regressed
+       WebOnt-description-logic-205/-207 (measured 2026-07-28): the
+       witness pass pushed those tests past the 30s cap and the old
+       fallback discarded the tableau results too, scoring below the
+       pre-witness runner. *)
+    let g_dl =
+      (try with_owl_cap (fun () ->
+         let g2 = Tableau.tableau_materialise g_rl in
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100)
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
+           owl_closure_cap_seconds;
+         g_rl
+       | _ -> g_rl)
+    in
     (try with_owl_cap (fun () ->
-       let g2 = Tableau.tableau_materialise g_rl in
-       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses g2 fuel_100)
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses g_dl fuel_100)
      with
      | Owl_closure_timeout ->
-       Printf.eprintf "  [owl_closure_timeout] DL tableau closure (with witnesses) exceeded %.0fs cap; falling back to RL closure\n%!"
+       Printf.eprintf "  [owl_closure_timeout] DL witness layer exceeded %.0fs cap; falling back to tableau closure\n%!"
          owl_closure_cap_seconds;
-       g_rl
-     | _ -> g_rl)
+       g_dl
+     | _ -> g_dl)
 
 (* test:semantics dispatch (2026-07-05) — see the constant definitions
    above and RDF.Graph.Executable.fst's owl_rule_named_equivClass_to_
@@ -1198,8 +1216,17 @@ let run_positive_entailment
       let g_p = load_imports_into_premise info imports_lookup g_p_authored in
       if g_c = [] then Fail_parse_conclusion
       else begin
+      (* Two-phase closure: the plain closure first (byte-for-byte the
+         pre-witness path, so no test that passed before can regress),
+         and ONLY on a miss the witness-augmented closure as a retry.
+         The one-phase witness-only version regressed 5 tests
+         (measured 2026-07-28): 2 via the DL cap-trip fixed in
+         apply_closure_with_witnesses, 3 via witness bnodes perturbing
+         conclusion matching on tests that passed under the plain
+         closure. The retry is sound — both closures under-approximate
+         entailment — and monotone by construction. *)
       let closure =
-        try apply_closure_with_witnesses g_p
+        try apply_closure g_p
         with _ -> g_p in
       (* DIRECT-only tests: drop conclusion triples whose predicate is
          declared owl:AnnotationProperty/OntologyProperty within the
@@ -1209,18 +1236,27 @@ let run_positive_entailment
         if is_direct_semantics_only info
         then OWL_DirectMapping_Filter.exclude_annotation_triples g_c
         else g_c in
-      let rec check = function
+      let rec check clo = function
         | [] -> Pass
         | t :: rest ->
-          if conclusion_triple_in_closure closure t
-          then check rest
+          if conclusion_triple_in_closure clo t
+          then check clo rest
           else Fail_conclusion_miss t
       in
-      (match check g_c_checked with
+      (match check closure g_c_checked with
        | Pass -> Pass
        | miss ->
          (* PE-via-refutation fallback (issue #298). *)
-         if pe_refute_entails closure g_c_checked then Pass else miss)
+         if pe_refute_entails closure g_c_checked then Pass
+         else
+           let closure_w =
+             try apply_closure_with_witnesses g_p
+             with _ -> closure in
+           (match check closure_w g_c_checked with
+            | Pass -> Pass
+            | _ ->
+              if pe_refute_entails closure_w g_c_checked then Pass
+              else miss))
       end)
 
 (* NegativeEntailmentTest: the conclusion is asserted to NOT be a
