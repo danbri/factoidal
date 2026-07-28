@@ -226,6 +226,17 @@ disjoint-union |bUNIONc|=|b|+|c|). With (2)+(3) the system is
 |a| = 2|a|, 1 ≤ |a| ≤ 3 — Farkas-certifiable. 🟡 Next session's
 commit-sized item; the searcher must also learn ≤-rows.
 
+## Interim measured flips (single-test catalogs, post-C7/arms/cap binary)
+
+✅ dl-901 PASS 0.04s (C7) · ✅ dl-903 PASS 0.04s (C7) · ✅ I5.2-004 PASS
+0.06s (complementOf arm) · ✅ dl-201 PASS 6.3s (PE cap) · ✅ dl-661 PASS
+55.8s (PE cap, contention) · ✅ dl-662 PASS 17.3s (PE cap). ⚠️ dl-206 /
+dl-208 refutations complete but need FACTOIDAL_OWL_PE_REFUTE_CAP_SEC
+≈ 450 (probe2: 206 PASS at 450s cap; 208 PASS, 252s spent) — the 60s
+default keeps them failing in-catalog; raising the default trades PE
+catalog wall time (🧭 owner/orchestrator call). Full-catalog gates run
+after the final build (nominal + bottom-normalise waves included).
+
 ## Commit plan (one deliverable each)
 
 1. This design note.
