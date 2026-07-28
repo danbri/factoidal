@@ -1292,14 +1292,19 @@ and expand_one_field (ac:active_context) (ac0:active_context) (key:string) (valu
        (match expand_iri ac s false with
         | None -> Some (Some [("@id", JString s)])
         | Some iri -> Some (Some [("@id", JString iri)]))
-     | JArray items when ac.ac_frame_expansion ->
+     | JArray items ->
        // Framing grammar extension: "@id": [IRI+] or "@id": [{}] — see
-       // jexp_id_frame_entries_valid's comment above.
-       if jexp_id_frame_entries_valid items
+       // jexp_id_frame_entries_valid's comment above. Plain pattern +
+       // if (no `when` guard — F* --verify mode rejects those, error
+       // 236); the non-frame-expansion case falls back to None, same
+       // as the old wildcard arm.
+       if ac.ac_frame_expansion && jexp_id_frame_entries_valid items
        then Some (Some [("@id", JArray (jexp_expand_id_frame_items ac items))])
        else None
-     | JObject [] when ac.ac_frame_expansion ->
-       Some (Some [("@id", JObject [])])
+     | JObject ofields ->
+       if ac.ac_frame_expansion && Nil? ofields
+       then Some (Some [("@id", JObject [])])
+       else None
      | _ -> None)
   else if key = "@type" then
     // toRdf/er28: a non-string @type entry is an "invalid type value".
