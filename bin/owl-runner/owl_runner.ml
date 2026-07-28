@@ -624,10 +624,16 @@ let regime_label () = match !regime with
    Override via FACTOIDAL_OWL_REFUTE_FUEL. Plumbing only: the fuel
    value bounds work, it never changes a verdict's soundness (fuel
    exhaustion returns None = indeterminate). *)
+(* Default raised 20000 -> 5_000_000 (2026-07-28, owl2-nominal wave):
+   fuel bounds WORK, the SIGALRM caps bound TIME, so on the native
+   runner a larger fuel only lets a within-cap search finish instead of
+   returning None at an arbitrary depth. dl-502's 3-SAT refutation
+   (nominal identify-branching) completes in ~5.5s wall but needs well
+   over 20000 budget units; measured passing at 5M fuel + 10s cap. *)
 let refute_fuel : Prims.nat =
   match Sys.getenv_opt "FACTOIDAL_OWL_REFUTE_FUEL" with
-  | Some s -> (try Z.of_int (int_of_string s) with _ -> Z.of_int 20000)
-  | None -> Z.of_int 20000
+  | Some s -> (try Z.of_int (int_of_string s) with _ -> Z.of_int 5_000_000)
+  | None -> Z.of_int 5_000_000
 
 (* Refuter-specific SIGALRM cap, SMALLER than the closure cap: measured
    on type-inconsistency.rdf, every refutation the tableau finds at a
@@ -636,10 +642,15 @@ let refute_fuel : Prims.nat =
    tests pay the full cap as pure overhead — 346 ConsistencyTests x
    20s nearly tripled the type-consistency catalog wall time. Override
    via FACTOIDAL_OWL_REFUTE_CAP_SEC. *)
+(* Default raised 5.0 -> 10.0 (2026-07-28, owl2-nominal wave): dl-502's
+   nominal-branching refutation lands at ~5.5s wall, just past the old
+   cap. Wall-time trade re-measured against the full type-consistency
+   catalog in the same session (gate logs in the branch's design
+   note). *)
 let refute_cap_seconds : float =
   match Sys.getenv_opt "FACTOIDAL_OWL_REFUTE_CAP_SEC" with
-  | Some s -> (try float_of_string s with _ -> 5.0)
-  | None -> 5.0
+  | Some s -> (try float_of_string s with _ -> 10.0)
+  | None -> 10.0
 
 let with_refute_cap (f : unit -> 'a) : 'a =
   let prev =
