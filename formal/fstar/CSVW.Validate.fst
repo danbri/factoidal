@@ -410,6 +410,16 @@ let cv_check_data_table
   : list string =
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
   let dia = tbl.tbl_dialect in
+  // skipColumns is no longer pre-applied by the runner's tokenizer
+  // (CSVW.Conversion/CSVW.Json now apply it themselves, per-zone, so a
+  // comment line's own text survives skipColumns intact — test057).
+  // This validator doesn't (yet) share that per-zone classification;
+  // dropping skipColumns uniformly over every row here reproduces the
+  // PRIOR behaviour exactly (the tokenizer used to do this
+  // unconditionally for every row too) rather than changing what this
+  // module validates.
+  let skip_cols_n = csvw_skip_columns_count dia in
+  let all_rows = L.map (csvw_drop skip_cols_n) all_rows in
   let after_skip_rows = csvw_drop (csvw_skip_rows_count dia) all_rows in
   let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
   let header_cells =
@@ -535,6 +545,11 @@ let cv_table_cols
     (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
   : list (csvw_col_spec & list string) =
   let dia = tbl.tbl_dialect in
+  // See cv_check_data_table's comment: reproduces the tokenizer's PRIOR
+  // uniform skipColumns behaviour now that CSVW.Conversion/CSVW.Json
+  // apply it per-zone instead of the runner applying it to every row.
+  let skip_cols_n = csvw_skip_columns_count dia in
+  let all_rows = L.map (csvw_drop skip_cols_n) all_rows in
   let after_skip_rows = csvw_drop (csvw_skip_rows_count dia) all_rows in
   let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
   let header_cells =

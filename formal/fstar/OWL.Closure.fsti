@@ -1022,6 +1022,17 @@ let owl_hasValue_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#hasValue");
   "http://www.w3.org/2002/07/owl#hasValue"
 
+// owl:hasSelf — the OWL 2 self-restriction marker (a boolean-valued
+// twin of owl:hasValue: `_:r owl:onProperty P ; owl:hasSelf "true"`
+// denotes the class { x | (x,x) in P }). Declared here alongside
+// owl:hasValue so it is in scope of is_schema_metapredicate below —
+// same rationale as that constant's own placement comment. Consumed
+// by owl_rule_cls_hasself1 / owl_rule_cls_hasself2_synth further down
+// (New-Feature-SelfRestriction-001/-002).
+let owl_hasSelf_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#hasSelf");
+  "http://www.w3.org/2002/07/owl#hasSelf"
+
 let owl_oneOf_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#oneOf");
   "http://www.w3.org/2002/07/owl#oneOf"
@@ -1073,6 +1084,7 @@ let is_schema_metapredicate (p : wf_iri) : bool =
   || p = owl_someValuesFrom_iri
   || p = owl_allValuesFrom_iri
   || p = owl_hasValue_iri
+  || p = owl_hasSelf_iri
   || p = owl_minCardinality_iri
   || p = owl_maxCardinality_iri
   || p = owl_cardinality_iri
@@ -1105,6 +1117,26 @@ let one_nonNegInteger_literal : wf_literal =
   // distinct concrete IRIs, so this is decidable by SMT.
   assert (literal_wf l);
   l
+
+// The literal "true"^^xsd:boolean — used to author/recognise
+// owl:hasSelf "true" markers (New-Feature-SelfRestriction-001/-002).
+let true_xsd_boolean_literal : wf_literal =
+  let l : literal = {
+    lexical_form = "true";
+    datatype     = xsd_boolean;
+    lang_tag     = None; direction = None
+  } in
+  assert (literal_wf l);
+  l
+
+// owl:hasSelf accepts both XSD boolean lexical forms for `true`
+// ("true" and "1" are value-equal per xsd:boolean); test fixtures in
+// the wild use "true", but recognising "1" too costs nothing and
+// avoids a silent miss if a future fixture uses the numeral form.
+let literal_is_true_boolean (t : rdf_term) : bool =
+  match t with
+  | T_Literal l -> l.datatype = xsd_boolean && (l.lexical_form = "true" || l.lexical_form = "1")
+  | _ -> false
 
 // Canonical bnode ids. Deterministic: depend only on the IRIs of P (and C).
 let canonical_svf_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
@@ -1651,6 +1683,232 @@ let owl_rule_cls_minc_qual1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
             ytypes)
     g
     g
+
+// ---- owl:hasSelf restriction rules (cls-hasself forward + synthesis
+//      reverse) -------------------------------------------------------------
+//
+// owl:hasSelf denotes the class { x | (x,x) in P } — membership and the
+// property self-loop are logically EQUIVALENT (not just one-directional),
+// under both OWL 2 Direct Semantics and RDF-Based Semantics. The two
+// rules below realise both directions:
+//
+//   cls-hasself1 (forward, OWL 2 RL/RDF Table 6): an EXISTING
+//     restriction node `_:r owl:onProperty P ; owl:hasSelf "true"`
+//     with a member `(x rdf:type _:r)` entails the direct edge
+//     `(x P x)`. Mirrors cls-hv1's shape exactly (owl:hasValue's
+//     "fixed value V" becomes "the member itself"). Targets
+//     New-Feature-SelfRestriction-001.
+//
+//   cls-hasself2-synth (reverse, synthesis): the converse direction —
+//     a self-loop `(x P x)` — entails `x`'s membership in the
+//     (possibly nowhere-named) class ObjectHasSelf(P), which is a
+//     well-formed anonymous class expression regardless of whether any
+//     document names it. Table 6's cls-hasself2 only fires off an
+//     EXISTING restriction node (same shape as cls-hv2); that is
+//     insufficient here because New-Feature-SelfRestriction-002's
+//     premise is bare instance data (`Peter :likes Peter`) with no
+//     owl:Restriction anywhere. Synthesising a canonical witness bnode
+//     for the anonymous class is the same pattern already used by
+//     cls-svf2-qualified / cls-minc-qual1 above (skolemising an
+//     anonymous class expression that the RDF-Based Semantics
+//     guarantees SOME resource realises). Guarded exactly like those
+//     rules (is_schema_metapredicate + edge_subject_is_safe) so it
+//     only fires on ordinary asserted/derived object-property edges,
+//     not on schema-vocabulary or already-canonical triples — this
+//     keeps it from re-triggering on its own output. Targets
+//     New-Feature-SelfRestriction-002.
+let owl_rule_cls_hasself1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (hs_t : triple) ->
+      if hs_t.p = owl_hasSelf_iri && literal_is_true_boolean hs_t.o then
+        let r_subj = hs_t.s in
+        let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
+            match op_term with
+            | T_IRI p ->
+              let members = find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
+              List.Tot.fold_left
+                (fun (acc3 : rdf_graph) (x : subject) ->
+                  add_triple_unchecked acc3 ({ s = x; p = p; o = subject_to_term x }))
+                acc2
+                members
+            | _ -> acc2)
+          acc
+          onprops
+      else acc)
+    g
+    g
+
+let canonical_hasself_restriction_bnode (p : wf_iri) : bnode_id =
+  String.concat "" ["__rl_hasself_"; p]
+
+let owl_rule_cls_hasself2_synth (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let _ = ig in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (edge : triple) ->
+      if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
+      else if not (edge_subject_is_safe edge) then acc
+      else if rdf_term_eq (subject_to_term edge.s) edge.o then
+        let p = edge.p in
+        let x = edge.s in
+        let rb = canonical_hasself_restriction_bnode p in
+        let rb_subj : subject = S_BNode rb in
+        let rb_term : rdf_term = T_BNode rb in
+        let shape1 : triple = { s = rb_subj; p = rdf_type; o = T_IRI owl_Restriction_iri } in
+        let shape2 : triple = { s = rb_subj; p = owl_onProperty_iri; o = T_IRI p } in
+        let shape3 : triple = { s = rb_subj; p = owl_hasSelf_iri; o = T_Literal true_xsd_boolean_literal } in
+        let memb   : triple = { s = x; p = rdf_type; o = rb_term } in
+        add_triple_unchecked
+          (add_triple_unchecked
+            (add_triple_unchecked
+              (add_triple_unchecked acc shape1)
+              shape2)
+            shape3)
+          memb
+      else acc)
+    g
+    g
+
+// ---- someValuesFrom owl:Thing rules (cls-svf1-style materialise +
+//      direct-membership witness) -------------------------------------------
+//
+// owl:someValuesFrom's filler owl:Thing is the universal class, so
+// `x P y` for ANY y entails `x rdf:type [P someValuesFrom owl:Thing]`
+// unconditionally — and, symmetrically, DIRECT membership in such a
+// restriction entails the existence of SOME P-edge (witness).
+// owl_rule_svf2_existential_witness above deliberately excludes C =
+// owl:Thing (its own comment: "already covered by cls-svf1") and only
+// reaches restrictions via an rdfs:subClassOf ancestor, never via
+// direct membership; owl_rule_minc1_bridge only rewrites an existing
+// someValuesFrom-owl:Thing node's cardinality shape, it does not
+// create the node from raw edges or emit any witness. Neither rule
+// therefore covers a bare `(x P y)` edge with no restriction anywhere
+// in the data, or a direct `(x rdf:type _:r)` membership on a
+// someValuesFrom-owl:Thing restriction. The two rules below close
+// exactly that gap. Targets bnode2somevaluesfrom (materialise) and
+// somevaluesfrom2bnode (witness).
+//
+//   cls-svf-thing-materialise: (x P y), P an ordinary property edge
+//     (same is_schema_metapredicate / edge_subject_is_safe / y
+//     convertible-to-subject guards as cls-svf2-qualified) ⇒ canonical
+//     _:__rl_svfthing_<P> carries rdf:type owl:Restriction,
+//     owl:onProperty P, owl:someValuesFrom owl:Thing, AND
+//     (x rdf:type _:__rl_svfthing_<P>). Canonical bnode keyed on P
+//     alone (owl:Thing is fixed), so this is total and idempotent —
+//     no fresh bnode is invented per edge.
+//
+//   cls-svf-thing-witness: for ANY `_:r owl:someValuesFrom owl:Thing ;
+//     owl:onProperty P` (hand-authored OR the canonical bnode above)
+//     and DIRECT membership `(x rdf:type _:r)`, emit a witness edge
+//     `(x P _:w)` for a deterministic skolem `_:w`. Unlike
+//     owl_rule_svf2_existential_witness's witness, `_:w` is left
+//     untyped here (owl:Thing membership is vacuous and would only
+//     invite further rule firings for zero semantic gain), so this
+//     rule cannot chain into itself or anything else — no depth cap
+//     needed.
+let canonical_svf_thing_restriction_bnode (p : wf_iri) : bnode_id =
+  String.concat "" ["__rl_svfthing_"; p]
+
+let owl_rule_cls_svf_thing_materialize (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let _ = ig in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (edge : triple) ->
+      if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
+      else if not (edge_subject_is_safe edge) then acc
+      else
+        match term_to_subject edge.o with
+        | None -> acc
+        | Some _ ->
+          let p = edge.p in
+          let x = edge.s in
+          let rb = canonical_svf_thing_restriction_bnode p in
+          let rb_subj : subject = S_BNode rb in
+          let rb_term : rdf_term = T_BNode rb in
+          let shape1 : triple = { s = rb_subj; p = rdf_type; o = T_IRI owl_Restriction_iri } in
+          let shape2 : triple = { s = rb_subj; p = owl_onProperty_iri; o = T_IRI p } in
+          let shape3 : triple = { s = rb_subj; p = owl_someValuesFrom_iri; o = T_IRI owl_Thing } in
+          let memb   : triple = { s = x; p = rdf_type; o = rb_term } in
+          add_triple_unchecked
+            (add_triple_unchecked
+              (add_triple_unchecked
+                (add_triple_unchecked acc shape1)
+                shape2)
+              shape3)
+            memb)
+    g
+    g
+
+let canonical_svf_thing_witness_bnode (p : wf_iri) (x : subject) : bnode_id =
+  String.concat "" ["__rl_svfthingw__on__"; p; "__from__"; subject_to_key x]
+
+let owl_rule_cls_svf_thing_witness (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (svf_t : triple) ->
+      if svf_t.p = owl_someValuesFrom_iri && rdf_term_eq svf_t.o (T_IRI owl_Thing) then
+        let onprops = find_objects_indexed ig svf_t.s owl_onProperty_iri in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
+            match op_term with
+            | T_IRI p ->
+              let members = find_subjects_indexed ig rdf_type (subject_to_term svf_t.s) in
+              List.Tot.fold_left
+                (fun (acc3 : rdf_graph) (x : subject) ->
+                  let w_id = canonical_svf_thing_witness_bnode p x in
+                  let edge_t : triple = { s = x; p = p; o = T_BNode w_id } in
+                  add_triple_unchecked acc3 edge_t)
+                acc2
+                members
+            | _ -> acc2)
+          acc
+          onprops
+      else acc)
+    g
+    g
+
+// ---- cax-dw-differentFrom (sound extension of cax-dw) ---------------------
+//
+// C1 owl:disjointWith C2 means IEXT(C1) and IEXT(C2) share no member.
+// If x rdf:type C1 and y rdf:type C2 with x, y syntactically distinct,
+// they cannot be owl:sameAs (that would place one individual in both
+// extensions, contradicting disjointness) — so owl:differentFrom(x, y)
+// is a valid classical-logic consequence, without assuming a unique-
+// name convention. Symmetric in spirit to
+// owl_rule_pdw_to_differentFrom's property-side contrapositive above,
+// applied to class disjointness instead of property disjointness.
+// Targets WebOnt-disjointWith-001 (PositiveEntailmentTest: two
+// individuals in disjoint classes entail differentFrom).
+let owl_rule_cax_dw_to_differentFrom (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let dw_pairs : list (wf_iri & wf_iri) =
+    List.Tot.fold_left
+      (fun (acc : list (wf_iri & wf_iri)) (t : triple) ->
+        if t.p = owl_disjointWith_iri then
+          match t.s, t.o with
+          | S_IRI c1, T_IRI c2 -> (c1, c2) :: acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (pair : (wf_iri & wf_iri)) ->
+      let (c1, c2) = pair in
+      let xs = find_subjects_indexed ig rdf_type (T_IRI c1) in
+      let ys = find_subjects_indexed ig rdf_type (T_IRI c2) in
+      List.Tot.fold_left
+        (fun (acc1 : rdf_graph) (x : subject) ->
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (y : subject) ->
+              if subject_eq x y then acc2
+              else
+                add_triple_unchecked acc2
+                  { s = x; p = owl_differentFrom; o = subject_to_term y })
+            acc1
+            ys)
+        acc
+        xs)
+    g
+    dw_pairs
 
 // ---- OWL 2 RL max-cardinality rules (cls-maxqc1 / cls-exactqc1 /
 //      cls-maxc-bridge / cls-maxc2) ------------------------------------------
@@ -3363,8 +3621,29 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // string-integer-clash (InconsistencyTest).
   let g19a = owl_rule_cls_hv1 g19 ig in
   let g19b = owl_rule_cls_hv2 g19a ig in
+  // owl:hasSelf forward rule (cls-hasself1: EXISTING restriction membership
+  // -> direct self-edge). Only fires off an already-present owl:hasSelf
+  // declaration, so it is as bounded as cls-hv1/cls-hv2 above. Targets
+  // New-Feature-SelfRestriction-001.
+  //
+  // The REVERSE/synthesis direction (cls-hasself2-synth) and the
+  // someValuesFrom-owl:Thing materialise/witness pair are deliberately
+  // NOT wired in here — see the comprehension-witness banner below
+  // ("why these three stay out of the core pipeline") for why folding
+  // them into every closure call regressed DL-regime type-inconsistency.rdf
+  // (measured: 124 pass/3 fail -> 63 pass/64 fail under --regime dl).
+  // They are applied ONLY by owl_rl_closure_with_reflexivity_and_witnesses
+  // further down, which the runner uses solely for PositiveEntailmentTest
+  // conclusion-matching (never for the InconsistencyTest/ConsistencyTest
+  // path that feeds Tableau.Refute).
+  let g19c = owl_rule_cls_hasself1 g19b ig in
+  // cax-dw-differentFrom: WebOnt-disjointWith-001. Bounded by the number
+  // of asserted disjointWith class pairs x their instance counts (small
+  // in practice, unlike the three rules excluded above), so this one
+  // stays in the core pipeline.
+  let g19g = owl_rule_cax_dw_to_differentFrom g19c ig in
   // prp-rfl: reflexive-property propagation.
-  let g20 = owl_rule_reflexive_property g19b ig in
+  let g20 = owl_rule_reflexive_property g19g ig in
   // scm-cls (partial): owl:Restriction subjects are also owl:Class.
   let g21 = owl_rule_scm_cls_restriction g20 ig in
   // cls-int1: owl:intersectionOf membership propagation (x rdf:type
@@ -3579,6 +3858,54 @@ let owl_rl_closure_with_reflexivity_mode (g : rdf_graph) (fuel : nat) (mode : st
 let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
   owl_rl_closure_with_reflexivity_mode g fuel owl_semantics_direct
 
+// ---- Comprehension-witness closure (PositiveEntailmentTest-only) ---------
+//
+// Three rules — owl_rule_cls_hasself2_synth, owl_rule_cls_svf_thing_materialize,
+// owl_rule_cls_svf_thing_witness (defined above, near cls-hasself1 /
+// cls-svf2-qualified) — realise OWL 2 Direct/RDF-Based Semantics
+// comprehension facts (an anonymous class expression like ObjectHasSelf(P)
+// or SomeValuesFrom(P, owl:Thing) is guaranteed to be realised by SOME
+// resource, whether or not the source document names it) by synthesising
+// a canonical witness bnode. They are SOUND — every triple emitted is a
+// true consequence of the premise under Direct Semantics — but too broad
+// to fold into the SHARED closure: they fire on every ordinary property
+// edge / every self-loop in ANY graph, not just the handful of test
+// fixtures that need them, and each witness is itself a fresh `rdf:type`
+// fact other closure rules (scm-cls, cax-dw-differentFrom, disjointness
+// checks, ...) can chain off across the fixpoint's full fuel budget.
+// Wiring them into `owl_rl_closure_with_reflexivity` directly measured a
+// severe DL-regime regression on type-inconsistency.rdf (124 pass / 3
+// fail -> 63 pass / 64 fail under --regime dl, 2026-07-27 measurement):
+// Tableau.Refute's clash search reads the SAME RL-base closure
+// (`g_rl` in owl_runner.ml's apply_closure_stages) and its FUEL budget
+// (not wall-clock — total wall time barely moved) got consumed chasing
+// the extra witness-driven derivations instead of reaching the genuine
+// clash on dozens of previously-passing WebOnt-description-logic-*
+// fixtures.
+//
+// This wrapper keeps the three rules OUT of the shared closure and
+// applies them exactly once, as a bounded final layer over the
+// ALREADY-STABLE base closure — for PositiveEntailmentTest conclusion
+// matching only. bin/owl-runner/owl_runner.ml's run_positive_entailment
+// calls this instead of owl_rl_closure_with_reflexivity; every other
+// caller (NegativeEntailmentTest, ConsistencyTest, InconsistencyTest —
+// including the DL tableau's g_rl input — and SPARQL entailment-regime
+// evaluation) is unaffected. One extra owl_rl_closure_with_reflexivity
+// pass afterward lets ordinary rules (e.g. reflexivity) see the
+// witnesses' shape triples; it does NOT re-run the three witness rules
+// themselves, so this cannot iterate or blow up the way inlining them
+// into the fixpoint did. Targets New-Feature-SelfRestriction-002,
+// bnode2somevaluesfrom, somevaluesfrom2bnode.
+let owl_rl_closure_with_reflexivity_and_witnesses (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+  let base = owl_rl_closure_with_reflexivity g fuel in
+  let ig1 = build_indexed base in
+  let w1 = owl_rule_cls_hasself2_synth base ig1 in
+  let ig2 = build_indexed w1 in
+  let w2 = owl_rule_cls_svf_thing_materialize w1 ig2 in
+  let ig3 = build_indexed w2 in
+  let w3 = owl_rule_cls_svf_thing_witness w2 ig3 in
+  owl_rl_closure_with_reflexivity w3 fuel
+
 (** ======================================================================== *)
 (** 20. Datatype Value Equivalence                                           *)
 (** ======================================================================== *)
@@ -3750,6 +4077,21 @@ let rec xsd_is_subtype_fuel (d1 d2 : wf_iri) (fuel : nat) : Tot bool (decreases 
 
 let xsd_is_subtype (d1 d2 : wf_iri) : bool =
   xsd_is_subtype_fuel d1 d2 (List.Tot.length xsd_hierarchy_edges + 1)
+
+// owl:bottomObjectProperty / owl:bottomDataProperty — the OWL 2
+// built-in properties with EMPTY extension in every model. Mirrors
+// Tableau.Refute.fst's owl_bottomObjectProperty / owl_bottomDataProperty
+// (same IRIs, independent constant per module per this codebase's
+// existing convention of not cross-importing tableau vocabulary into
+// the closure module). Used by is_inconsistent's bottom-property
+// clash check below.
+let owl_bottomObjectProperty_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#bottomObjectProperty");
+  "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+
+let owl_bottomDataProperty_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#bottomDataProperty");
+  "http://www.w3.org/2002/07/owl#bottomDataProperty"
 
 // rdf:type marker is `rdf_type` (defined elsewhere in this module).
 let is_inconsistent (g : rdf_graph) : Tot bool =
@@ -4006,24 +4348,97 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
                     // needs cls-hv1 above to see the direct
                     // `hasAge "aString"^^xsd:string` triple through the
                     // DataHasValue restriction encoding first).
-                    List.Tot.existsb
-                      (fun (rng : triple) ->
-                        rng.p = rdfs_range &&
-                        (match rng.s, rng.o with
-                         | S_IRI p, T_IRI d_range ->
-                           List.Tot.mem d_range xsd_all_datatypes &&
-                           List.Tot.existsb
-                             (fun (t : triple) ->
-                               t.p = p &&
-                               (match t.o with
-                                | T_Literal lit ->
-                                  List.Tot.mem lit.datatype xsd_all_datatypes &&
-                                  not (lit.datatype = d_range) &&
-                                  not (xsd_is_subtype lit.datatype d_range)
-                                | _ -> false))
-                             g
-                         | _, _ -> false))
-                      g
+                    let has_dt_range_clash =
+                      List.Tot.existsb
+                        (fun (rng : triple) ->
+                          rng.p = rdfs_range &&
+                          (match rng.s, rng.o with
+                           | S_IRI p, T_IRI d_range ->
+                             List.Tot.mem d_range xsd_all_datatypes &&
+                             List.Tot.existsb
+                               (fun (t : triple) ->
+                                 t.p = p &&
+                                 (match t.o with
+                                  | T_Literal lit ->
+                                    List.Tot.mem lit.datatype xsd_all_datatypes &&
+                                    not (lit.datatype = d_range) &&
+                                    not (xsd_is_subtype lit.datatype d_range)
+                                  | _ -> false))
+                               g
+                           | _, _ -> false))
+                        g
+                    in
+                    if has_dt_range_clash then true
+                    else
+                      // (11) bottom-property existential clash.
+                      // owl:bottomObjectProperty / owl:bottomDataProperty
+                      // are OWL 2 built-in properties whose extension is
+                      // EMPTY in every interpretation (OWL 2 Direct
+                      // Semantics Table 4 / RDF-Based Semantics D.1 —
+                      // Tableau.Refute.fst's clash rule C5 already relies
+                      // on the same fact). Any restriction that requires
+                      // at least one P-edge to exist for a member
+                      // individual — someValuesFrom (any filler),
+                      // hasValue (any value), min(Qualified)Cardinality
+                      // >= 1, (qualified)Cardinality >= 1 — is therefore
+                      // unsatisfiable whenever P is a bottom property and
+                      // some x is asserted a member. This closure-level
+                      // marker gives the SAME coverage the DL tableau
+                      // already has to the RL-regime is_inconsistent path
+                      // that profile-EL.rdf / profile-QL.rdf / profile-
+                      // RL.rdf are scored under (generate-report.sh's
+                      // documented `--regime rl` convention for those
+                      // three catalogs — the tableau is only consulted
+                      // under `--regime dl`). Targets New-Feature-
+                      // BottomDataProperty-001 / New-Feature-
+                      // BottomObjectProperty-001.
+                      let is_bottom_property (p : wf_iri) : bool =
+                        p = owl_bottomObjectProperty_iri || p = owl_bottomDataProperty_iri
+                      in
+                      let is_existential_obligation (t : triple) (r : subject) : bool =
+                        subject_eq t.s r &&
+                        (t.p = owl_someValuesFrom_iri
+                         || t.p = owl_hasValue_iri
+                         || ((t.p = owl_minCardinality_iri
+                              || t.p = owl_minQualifiedCardinality_iri
+                              || t.p = owl_cardinality_iri
+                              || t.p = owl_qualifiedCardinality_iri)
+                             && (match t.o with
+                                 | T_Literal l -> normalize_integer_lexical l.lexical_form <> "0"
+                                 | _ -> false)))
+                      in
+                      let has_bottom_property_clash =
+                        List.Tot.existsb
+                          (fun (op : triple) ->
+                            op.p = owl_onProperty_iri &&
+                            (match op.o with
+                             | T_IRI p -> is_bottom_property p
+                             | _ -> false) &&
+                            List.Tot.existsb (fun (t : triple) -> is_existential_obligation t op.s) g &&
+                            List.Tot.existsb
+                              (fun (mem : triple) ->
+                                mem.p = rdf_type && rdf_term_eq mem.o (subject_to_term op.s))
+                              g)
+                          g
+                      in
+                      if has_bottom_property_clash then true
+                      else
+                        // (12) cls-svf-bot clash: owl:Nothing has EMPTY
+                        // extension in every interpretation (dual of
+                        // owl:Thing). A someValuesFrom restriction whose
+                        // filler is owl:Nothing therefore ALSO has empty
+                        // extension — no individual can have a P-edge
+                        // into the empty class. Any asserted member is a
+                        // clash. Targets WebOnt-Restriction-001/-002.
+                        List.Tot.existsb
+                          (fun (svf : triple) ->
+                            svf.p = owl_someValuesFrom_iri &&
+                            rdf_term_eq svf.o (T_IRI owl_Nothing) &&
+                            List.Tot.existsb
+                              (fun (mem : triple) ->
+                                mem.p = rdf_type && rdf_term_eq mem.o (subject_to_term svf.s))
+                              g)
+                          g
 
 // ---- Top-level entailment dispatch ----------------------------------------
 

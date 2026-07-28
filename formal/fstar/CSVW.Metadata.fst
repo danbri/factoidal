@@ -342,6 +342,14 @@ type csvw_table = {
   // the referenced local file and calls csvw_table_inline_schema to fold
   // the decoded schema in, as if it had been written inline.
   tbl_schema_ref   : option string;
+  // Dialect-by-reference (tabular-metadata §5.9 Dialect Descriptions:
+  // "the value of the dialect property MUST be a Dialect Description
+  // or a link to it" — test057): when the `dialect` value is a bare
+  // JSON string this holds that (unresolved) URL and `tbl_dialect`
+  // stays None. The consumer (runner I/O) reads the referenced local
+  // file and calls csvw_table_inline_dialect to fold the decoded
+  // dialect in, mirroring tbl_schema_ref above.
+  tbl_dialect_ref  : option string;
   // Table-level `suppressOutput` (tabular-metadata): a table with
   // suppressOutput=true contributes NO output at all — no csvw:Table
   // node, no rows, no cell triples (test034/035: the professions and
@@ -751,8 +759,16 @@ let csvw_decode_notes (v:json_val) : list json_val =
 let csvw_decode_table (v:json_val) : option csvw_table =
   match v with
   | JObject _ ->
+    // A `dialect` given as a bare STRING is a URL reference to an
+    // external Dialect Description document (tabular-metadata §5.9,
+    // test057): defer it to `tbl_dialect_ref` and leave `tbl_dialect`
+    // None for the consumer to resolve; an inline object decodes as
+    // before.
+    let dialect_ref = match json_get_field "dialect" v with
+                      | Some (JString s) -> Some s | _ -> None in
     let dialect =
       match json_get_field "dialect" v with
+      | Some (JString _) -> None
       | Some dv -> csvw_decode_dialect dv
       | None -> None in
     // A `tableSchema` given as a bare STRING is a URL reference to an
@@ -780,6 +796,7 @@ let csvw_decode_table (v:json_val) : option csvw_table =
         tbl_common       = csvw_common_fields v;
         tbl_inherited    = csvw_decode_inherited v;
         tbl_schema_ref   = schema_ref;
+        tbl_dialect_ref  = dialect_ref;
         tbl_suppress_output = json_get_bool "suppressOutput" v;
       })
   | _ -> None
@@ -795,6 +812,31 @@ let csvw_decode_table_schema_text (input:string) : option csvw_table_schema =
 
 let csvw_table_inline_schema (t:csvw_table) (ts:csvw_table_schema) : csvw_table =
   { t with tbl_table_schema = Some ts; tbl_schema_ref = None }
+
+// Dialect-by-reference resolution (tabular-metadata §5.9, test057):
+// parse an external Dialect Description document's TEXT (the runner
+// reads the referenced local file) into a dialect, then fold it into
+// a table that carried only a `tbl_dialect_ref`, as if the dialect had
+// been written inline. Mirrors csvw_decode_table_schema_text /
+// csvw_table_inline_schema above.
+let csvw_decode_dialect_text (input:string) : option csvw_dialect =
+  match parse_json input with
+  | None -> None
+  | Some v -> csvw_decode_dialect v
+
+let csvw_table_inline_dialect (t:csvw_table) (d:csvw_dialect) : csvw_table =
+  { t with tbl_dialect = Some d; tbl_dialect_ref = None }
+
+// An empty dialect (every facet unset) — the base record `dialect`-
+// forcing helpers (e.g. a synthetic no-metadata table whose only
+// override is `header: false`, test019's `text/csv;header=absent`
+// Content-Type parameter) start from and merge single fields into.
+let csvw_dialect_empty : csvw_dialect = {
+  dia_delimiter = None; dia_quote_char = None; dia_double_quote = None;
+  dia_header = None; dia_header_row_count = None; dia_skip_rows = None;
+  dia_skip_columns = None; dia_skip_blank_rows = None; dia_skip_initial_space = None;
+  dia_comment_prefix = None; dia_encoding = None; dia_trim = None;
+}
 
 // A non-object element of a "tables" array is ignored (test094, same
 // section-4 rule as csvw_decode_column_list); a malformed table OBJECT
@@ -1405,6 +1447,17 @@ let csvw_link_header_describedby (link_value:string) : option string =
   if csvw_str_contains "describedby" link_value
   then csvw_bracketed_url link_value
   else None
+
+// The simulated HTTP Content-Type response's `header` media-type
+// parameter (csvt:contentType, test019: "text/csv;header=absent" — no
+// dialect object at all, just a bare CSV file served with this
+// Content-Type, which is the ONLY way to signal "the file's first
+// line is data, not a header" absent any metadata document). A
+// substring test, same precision level as csvw_link_header_describedby
+// above — the corpus's own fixture never varies whitespace/casing/
+// parameter order around it.
+let csvw_content_type_header_absent (ct:string) : bool =
+  csvw_str_contains "header=absent" ct
 
 // The document's default language, declared by the @context array's
 // second element ({"@language": "en"} in the [sentinel, {...}] form).

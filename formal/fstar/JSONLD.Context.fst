@@ -293,12 +293,38 @@ type active_context = {
   // stops suppressing by the time a GRANDCHILD of the scoped value is
   // reached — see that function's updated comment.
   ac_suppress_pop : bool;
+  // Root cause #2, 2026-07-27 framing diagnosis (docs/designissues/
+  // 2026-07-27-jsonld-framing-diagnosis.md): JSON-LD Framing's algorithm
+  // expands its FRAME document (never the input document being framed —
+  // see JSONLD.Frame.frame_document's two expand_document calls) with the
+  // "frameExpansion" flag set, which relaxes ordinary Expansion in two
+  // ways JSONLD.Expand.fst gates on this field: the five framing
+  // keywords (@explicit/@default/@omitDefault/@requireAll/@embed), which
+  // ordinary expansion drops as unrecognized keyword-lookalikes, pass
+  // through as ordinary object members instead; and a value object whose
+  // @value/@type/@language is itself pattern-shaped ({} "any", []
+  // "none", or an array of candidates — JSON-LD Framing's "Value
+  // Pattern") is carried through verbatim instead of failing ordinary
+  // Expansion's "invalid typed value" / "invalid value object" checks.
+  // Piggy-backed onto active_context (default false) rather than a fresh
+  // parameter threaded through every JSONLD.Expand mutual-recursion
+  // function, same rationale as ac_mode10 above: active_context is
+  // already the one value every expansion call passes down, so this
+  // needs zero signature changes to the fuel-threaded expand_node/
+  // expand_item/... group — only the specific call sites that read it
+  // (JSONLD.Expand's expand_one_field and jexp_expand_value_object_frame)
+  // change at all. Ordinary callers (parse_jsonld, JSONLD.Compact,
+  // JSONLD.Flatten, the un-modified expand_document call in
+  // JSONLD.Frame.frame_document for the INPUT document) never set this,
+  // so their output is BYTE-IDENTICAL to before this field existed.
+  ac_frame_expansion : bool;
 }
 
 let empty_active_context : active_context =
   { ac_terms = []; ac_vocab = None; ac_base = None; ac_language = None;
     ac_direction = None; ac_previous = None; ac_mode10 = false;
-    ac_doc_url = None; ac_original_base = None; ac_suppress_pop = false }
+    ac_doc_url = None; ac_original_base = None; ac_suppress_pop = false;
+    ac_frame_expansion = false }
 
 // ================================================================
 // Small string / list helpers

@@ -144,6 +144,17 @@ let jexp_as_array (v:json_val) : list json_val =
 let jexp_has_field (name:string) (fields:list (string & json_val)) : bool =
   List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = name) fields
 
+// The five JSON-LD Framing (https://www.w3.org/TR/json-ld11-framing/)
+// directive keywords — ordinary Expansion has no vocabulary for these (they
+// are keyword LOOKALIKES per jldctx_actual_keyword/jldctx_keyword_lookalike
+// below), so under ac.ac_frame_expansion expand_one_field special-cases
+// them to pass through instead of dropping them. See that field's doc
+// comment on JSONLD.Context.active_context and root cause #2 of
+// docs/designissues/2026-07-27-jsonld-framing-diagnosis.md.
+let jexp_is_framing_keyword (k:string) : bool =
+  k = "@explicit" || k = "@default" || k = "@omitDefault"
+  || k = "@requireAll" || k = "@embed"
+
 // JSON-LD 1.0's "list of lists" restriction (Expansion algorithm, List
 // Expansion step): once already inside a @list's own contents, an item
 // that is ITSELF list-shaped is an error. JSON-LD 1.1 lifted this
@@ -357,6 +368,72 @@ let jexp_expand_value_object (ac:active_context) (fields:list (string & json_val
                else Some (JObject (("@value", v) :: ("@type", JString iri) :: idx)))
           | (None, None) -> Some (JObject (("@value", v) :: idx))))
 
+// Root cause #2 (2026-07-27 framing diagnosis): canonicalize each field's
+// key to its alias-resolved keyword spelling, leaving the VALUE untouched.
+// Used only by jexp_expand_value_object_frame's pattern-shaped fallback
+// below — a genuinely ordinary value object goes through
+// jexp_expand_value_object instead, which already resolves a compact-IRI
+// @type to an absolute IRI; a pattern's own member strings (a @type
+// array's IRIs, a @language array's tags) are left exactly as written,
+// since matching them against a node's actual values is JSONLD.Frame's
+// job (root cause #3, tracked as follow-up), not this module's.
+let rec jexp_canon_pattern_fields (ac:active_context) (fields:list (string & json_val))
+  : Tot (list (string & json_val)) (decreases fields) =
+  match fields with
+  | [] -> []
+  | (k, v) :: rest ->
+    (match expand_iri ac k true with
+     | Some e -> (e, v) :: jexp_canon_pattern_fields ac rest
+     | None -> (k, v) :: jexp_canon_pattern_fields ac rest)
+
+// Frame-expansion companion to jexp_expand_value_object above: JSON-LD
+// Framing's "Value Pattern" legally uses value-object shapes ordinary
+// Expansion rejects outright as malformed:
+//   - @value: {} / @value: [...] (a bare scalar array, no @type: @json) —
+//     "any value" / "one of these literals" (framing test 0040/0045/0057);
+//   - @type: {} / @type: [] / @type: [<iri>, ...] — "any type" / "no type
+//     at all" / "one of these types", instead of ordinary Expansion's
+//     single-datatype-or-@id-coercion string (0038/0040/0043);
+//   - @language: {} / @language: [] / @language: [<tag>, ...] — the same
+//     shape for language tags (0039/0041/0058).
+// jexp_expand_value_object's validation (a SINGLE string @type/@language,
+// no structured @value without @type: @json) would return None for every
+// one of these — failing the WHOLE document, not just this property
+// (the diagnosis's "frame_document returned None" bucket, since
+// JSONLD.Frame.frame_document's expand_document call on the FRAME
+// document propagates any None straight out). Only called when
+// ac.ac_frame_expansion is set (JSONLD.Frame's frame-document expand
+// call — see JSONLD.Context.active_context.ac_frame_expansion); when the
+// object's @value/@type/@language are all ordinary (absent, or a single
+// string/null — the normal shapes), this defers entirely to
+// jexp_expand_value_object, so an actually-ordinary value used inside a
+// frame document (0036's "ex:q": {"@value": "Q", "@type": "ex:q"}) is
+// expanded exactly as it would be outside framing (compact-IRI @type
+// resolved to an absolute IRI, etc.) — BYTE-IDENTICAL to
+// jexp_expand_value_object's own result, since that is literally what
+// runs. Only a genuinely pattern-shaped field falls through to the raw
+// canonicalized-keys/untouched-values passthrough (jexp_canon_
+// pattern_fields) instead of erroring.
+let jexp_json_val_is_array_or_object (v:json_val) : bool =
+  match v with
+  | JArray _ -> true
+  | JObject _ -> true
+  | _ -> false
+
+let jexp_expand_value_object_frame (ac:active_context) (fields:list (string & json_val))
+  : option json_val =
+  if not (jexp_value_object_keys_valid ac fields) then None
+  else if (match jexp_find_aliased_field ac "@index" fields with
+           | Some (_, JString _) -> false | Some _ -> true | None -> false) then None
+  else
+    let is_pattern_shaped (name:string) : bool =
+      (match jexp_find_aliased_field ac name fields with
+       | Some (_, v) -> jexp_json_val_is_array_or_object v
+       | None -> false) in
+    if is_pattern_shaped "@value" || is_pattern_shaped "@type" || is_pattern_shaped "@language"
+    then Some (JObject (jexp_canon_pattern_fields ac fields))
+    else jexp_expand_value_object ac fields
+
 // Split a node object's members into its (at most one) @context value and
 // the rest, so the caller can re-run context_process before expanding the
 // remaining members.
@@ -449,6 +526,39 @@ let rec jexp_expand_type_items (ac:active_context) (items:list json_val)
 
 let expand_type_values (ac:active_context) (value:json_val) : list json_val =
   jexp_expand_type_items ac (jexp_as_array value)
+
+// Framing's grammar extension (root cause #3, 2026-07-27 framing
+// diagnosis): a frame's own "@id" entry MAY be an array of IRIs (to match
+// any of several specific subjects — JSONLD.Frame's Frame Matching
+// Algorithm "multiple @id match" case) or an array containing a single
+// empty map (the "@id": [{}] wildcard, equivalent to no @id constraint at
+// all). Ordinary Expansion's "@id" branch above only accepts a bare
+// JString; only reached under ac.ac_frame_expansion (that field stays
+// JString-only for every non-frame caller, so this is additive, zero risk
+// to the 385/385 expand suite). Every entry must be a string or an empty
+// object — anything else is an invalid frame @id value.
+let rec jexp_id_frame_entries_valid (items:list json_val) : Tot bool (decreases items) =
+  match items with
+  | [] -> true
+  | JString _ :: rest -> jexp_id_frame_entries_valid rest
+  | JObject [] :: rest -> jexp_id_frame_entries_valid rest
+  | _ -> false
+
+// Resolve each string entry the same way the single-IRI "@id" branch does
+// (expand_iri ac s false — document-relative, no vocab); an unresolvable
+// string is retained literally, mirroring that branch's own fallback. The
+// {} wildcard entry passes through untouched (JSONLD.Frame's is_wildcard
+// reads it directly).
+let rec jexp_expand_id_frame_items (ac:active_context) (items:list json_val)
+  : Tot (list json_val) (decreases items) =
+  match items with
+  | [] -> []
+  | JString s :: rest ->
+    (match expand_iri ac s false with
+     | Some iri -> JString iri :: jexp_expand_id_frame_items ac rest
+     | None -> JString s :: jexp_expand_id_frame_items ac rest)
+  | JObject [] :: rest -> JObject [] :: jexp_expand_id_frame_items ac rest
+  | _ :: rest -> jexp_expand_id_frame_items ac rest
 
 // ================================================================
 // PHASE 4: scoped-context helpers (no fuel needed — these call
@@ -1182,6 +1292,14 @@ and expand_one_field (ac:active_context) (ac0:active_context) (key:string) (valu
        (match expand_iri ac s false with
         | None -> Some (Some [("@id", JString s)])
         | Some iri -> Some (Some [("@id", JString iri)]))
+     | JArray items when ac.ac_frame_expansion ->
+       // Framing grammar extension: "@id": [IRI+] or "@id": [{}] — see
+       // jexp_id_frame_entries_valid's comment above.
+       if jexp_id_frame_entries_valid items
+       then Some (Some [("@id", JArray (jexp_expand_id_frame_items ac items))])
+       else None
+     | JObject [] when ac.ac_frame_expansion ->
+       Some (Some [("@id", JObject [])])
      | _ -> None)
   else if key = "@type" then
     // toRdf/er28: a non-string @type entry is an "invalid type value".
@@ -1244,6 +1362,23 @@ and expand_one_field (ac:active_context) (ac0:active_context) (key:string) (valu
   // warning (toRdf/pr34/pr35/e119); an at-prefixed key WITHOUT keyword
   // form ("@", "@foo.bar") is an ordinary term key and falls through to
   // expand_iri (e119's "allowed" pair).
+  //
+  // Root cause #2 (2026-07-27 framing diagnosis): under ac.ac_frame_
+  // expansion, the five JSON-LD Framing keywords are keyword
+  // LOOKALIKES by the same jldctx_keyword_lookalike test above (they are
+  // not among jldctx_actual_keyword's ordinary-Expansion vocabulary), so
+  // without this branch they would be silently dropped here exactly like
+  // "@ignoreMe" — the frame's own @explicit/@embed/etc. directives never
+  // reach JSONLD.Frame at all. Passed through as an ordinary object
+  // member, RAW value (no further expansion: these are boolean/string/
+  // arbitrary-default-node payloads, not property values with their own
+  // coercion rules) — matching that value against a node is JSONLD.Frame's
+  // job (root causes #1/#3 in the same diagnosis), not this function's.
+  // Checked on the literal key spelling only (frame documents always use
+  // the literal keyword, never a term alias, for these five) — same
+  // literal-spelling scope as the "@id"/"@type"/... checks above.
+  else if ac.ac_frame_expansion && jexp_is_framing_keyword key then
+    Some (Some [(key, value)])
   else if jldctx_actual_keyword key then None
   else if jldctx_keyword_lookalike key then Some None
   else
@@ -1952,15 +2087,24 @@ and expand_item (ac:active_context) (type_map:option string) (lang_ovr:option (o
            (match jexp_find_aliased_field ac "@type" fields with
             | Some (_, JString t) -> expand_iri ac t true = Some "@json"
             | _ -> false) in
+         // Root cause #2 (2026-07-27 framing diagnosis): under
+         // ac.ac_frame_expansion, dispatch through
+         // jexp_expand_value_object_frame instead — it defers to
+         // jexp_expand_value_object unchanged for an ordinary (non-
+         // pattern-shaped) value object, so this is a no-op when the flag
+         // is unset or the object isn't a Framing Value Pattern.
+         let expand_vo (fs:list (string & json_val)) : option json_val =
+           if ac.ac_frame_expansion then jexp_expand_value_object_frame ac fs
+           else jexp_expand_value_object ac fs in
          match jexp_find_aliased_field ac "@value" fields with
          | Some (_, JNull) ->
            if json_typed then
-             (match jexp_expand_value_object ac fields with
+             (match expand_vo fields with
               | None -> None
               | Some vo -> Some (Some vo))
            else if jexp_value_object_keys_valid ac fields then Some None else None
          | _ ->
-           (match jexp_expand_value_object ac fields with
+           (match expand_vo fields with
             | None -> None
             | Some vo -> Some (Some vo)))
       else if jexp_has_aliased_field ac "@list" fields then

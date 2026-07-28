@@ -568,37 +568,51 @@ let cj_row_json_standard
       @ cj_row_titles col_specs cells row_titles
       @ [ ("describes", JArray roots) ] )
 
-// One table's data rows -> (table json object for standard mode, list of
-// all root objects for minimal mode).
+// The table-level `rdfs:comment` member (csv+ syntax REC "Parsing
+// Tabular Data" — comment-prefix-matched / skip-rows-zone rows, per
+// CSVW.Conversion.csvw_classify_table_rows): present only when the
+// table actually produced at least one comment ("If M.rdfs:comment is
+// an empty array, remove the rdfs:comment property from M", quoted
+// verbatim in the REC's own parsing algorithm).
+let cj_comment_pairs (comments : list string) : list (string & json_val) =
+  match comments with
+  | [] -> []
+  | _ -> [ ("rdfs:comment", JArray (L.map (fun (c:string) -> JString c) comments)) ]
+
+// One table's data rows -> (table json object for standard mode, list
+// of all root objects for minimal mode, table-level rdfs:comment
+// strings).
 let cj_table_rows
     (grp_inherited : csvw_inherited_props) (base_iri : string)
     (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
-  : (string & list json_val & list json_val) =   // (table_url, standard-row-objs, minimal-root-objs)
+  : (string & list json_val & list json_val & list string) =
+  // (table_url, standard-row-objs, minimal-root-objs, comments)
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
   let dia = tbl.tbl_dialect in
-  let skip_n = csvw_skip_rows_count dia + csvw_header_row_count dia in
-  let after_skip_rows = csvw_drop (csvw_skip_rows_count dia) all_rows in
-  let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
-  let header_cells =
-    if csvw_header_row_count dia > 0 then (match after_skip_rows with h :: _ -> h | [] -> [])
-    else (match tbl.tbl_table_schema with
-          | Some _ -> []
-          | None -> (match data_rows with r :: _ -> L.map (fun (_:string) -> "") r | [] -> [])) in
+  let skip_cols_n = csvw_skip_columns_count dia in
+  let (comments, header_row_opt, data_entries) = csvw_classify_table_rows dia all_rows in
+  let header_cells_raw =
+    match header_row_opt with
+    | Some h -> h
+    | None ->
+      (match tbl.tbl_table_schema with
+       | Some _ -> []
+       | None -> (match data_entries with (_, _, r) :: _ -> L.map (fun (_:string) -> "") r | [] -> [])) in
+  let header_cells = csvw_drop skip_cols_n header_cells_raw in
   let col_specs = csvw_build_col_specs grp_inherited tbl.tbl_inherited tbl.tbl_table_schema header_cells in
   let row_titles = (match tbl.tbl_table_schema with Some ts -> ts.ts_row_titles | None -> []) in
-  let indexed = csvw_index_from 0 data_rows in
   let std_rows =
-    L.map (fun (p : (nat & list string)) ->
-             let (i, rc) = p in
-             cj_row_json_standard table_url_resolved col_specs row_titles (i + 1) (skip_n + i + 1) rc)
-          indexed in
+    L.map (fun (p : (nat & nat & list string)) ->
+             let (row_num, source_row_num, raw_cells) = p in
+             cj_row_json_standard table_url_resolved col_specs row_titles row_num source_row_num (csvw_drop skip_cols_n raw_cells))
+          data_entries in
   let min_roots =
-    L.collect (fun (p : (nat & list string)) ->
-                 let (i, rc) = p in
-                 let row_cells = cj_row_cells table_url_resolved col_specs (i + 1) (skip_n + i + 1) rc in
+    L.collect (fun (p : (nat & nat & list string)) ->
+                 let (row_num, source_row_num, raw_cells) = p in
+                 let row_cells = cj_row_cells table_url_resolved col_specs row_num source_row_num (csvw_drop skip_cols_n raw_cells) in
                  cj_row_roots row_cells)
-              indexed in
-  (table_url_resolved, std_rows, min_roots)
+              data_entries in
+  (table_url_resolved, std_rows, min_roots, comments)
 
 // Minimal mode: the flat array of every root object across every table.
 let cj_document_json_minimal
@@ -610,12 +624,13 @@ let cj_document_json_minimal
        (fun (t : (csvw_table & string & list (list string))) ->
           let (tbl, fallback_url, rows) = t in
           if csvw_table_suppressed tbl then []
-          else let (_, _, mins) = cj_table_rows grp_inherited base_iri fallback_url tbl rows in mins)
+          else let (_, _, mins, _) = cj_table_rows grp_inherited base_iri fallback_url tbl rows in mins)
        tables_with_rows)
 
 // Standard mode: {<group common>, tables:[{url, <table common>, notes,
-// row:[...]}]}. Group- and table-level non-core annotations / notes are
-// emitted alongside the core url/row structure (csv2json standard mode).
+// row:[...], rdfs:comment?}]}. Group- and table-level non-core
+// annotations / notes are emitted alongside the core url/row structure
+// (csv2json standard mode).
 let cj_document_json_standard
     (grp : csvw_group_meta) (doc_url : option string)
     (base_iri : string) (tables_with_rows : list (csvw_table & string & list (list string)))
@@ -624,12 +639,13 @@ let cj_document_json_standard
     L.map
       (fun (t : (csvw_table & string & list (list string))) ->
          let (tbl, fallback_url, rows) = t in
-         let (turl, std_rows, _) = cj_table_rows grp.grp_inherited base_iri fallback_url tbl rows in
+         let (turl, std_rows, _, comments) = cj_table_rows grp.grp_inherited base_iri fallback_url tbl rows in
          JObject ( cj_table_id_pairs base_iri doc_url tbl
                    @ [ ("url", JString turl) ]
                    @ cj_common_pairs tbl.tbl_common
                    @ cj_notes_pairs tbl.tbl_notes
-                   @ [ ("row", JArray std_rows) ] ))
+                   @ [ ("row", JArray std_rows) ]
+                   @ cj_comment_pairs comments ))
       (L.filter (fun (t : (csvw_table & string & list (list string))) ->
                    let (tbl, _, _) = t in not (csvw_table_suppressed tbl))
                 tables_with_rows) in

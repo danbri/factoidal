@@ -927,6 +927,69 @@ let apply_closure (g : RDF_Graph_Executable.rdf_graph)
   : RDF_Graph_Executable.rdf_graph =
   snd (apply_closure_stages g)
 
+(* PositiveEntailmentTest-only closure (2026-07-27): same g_rl/g_dl split
+   as apply_closure_stages, EXCEPT the final closure step uses
+   owl_rl_closure_with_reflexivity_and_witnesses instead of the plain
+   owl_rl_closure_with_reflexivity. That F* function's banner explains
+   why: it layers three sound-but-broad "comprehension witness" rules
+   (owl:hasSelf synthesis, someValuesFrom-owl:Thing materialise +
+   witness) on top of the ALREADY-STABLE base closure as one bounded
+   extra pass, rather than folding them into the shared fixpoint —
+   doing the latter fed the extra derivations into g_rl, which is also
+   the DL tableau's input, and starved Tableau.Refute's fuel budget on
+   dozens of type-inconsistency.rdf fixtures (124 pass/3 fail -> 63
+   pass/64 fail under --regime dl, measured 2026-07-27). g_rl itself is
+   left untouched here for exactly that reason — only the FINAL step
+   (which InconsistencyTest/ConsistencyTest never consult; PE-only)
+   gets the richer closure. Used by run_positive_entailment only. *)
+let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
+  : RDF_Graph_Executable.rdf_graph =
+  match !regime with
+  | Regime_RL ->
+    (* Fall back to the PLAIN closure (base), not the raw un-closed
+       graph, if the witness layer alone trips the cap — the base
+       closure is cheap and already succeeded by construction below, so
+       a witness-stage timeout should only cost the witness triples,
+       not the entire closure's worth of conclusion-matching power. *)
+    let base =
+      (try with_owl_cap (fun () ->
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] RL base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+           owl_closure_cap_seconds;
+         g
+       | _ -> g)
+    in
+    (try with_owl_cap (fun () ->
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses g fuel_100)
+     with
+     | Owl_closure_timeout ->
+       Printf.eprintf "  [owl_closure_timeout] RL closure (with witnesses) exceeded %.0fs cap; falling back to base closure\n%!"
+         owl_closure_cap_seconds;
+       base
+     | _ -> base)
+  | Regime_DL ->
+    let g_rl =
+      (try with_owl_cap (fun () ->
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+           owl_closure_cap_seconds;
+         g
+       | _ -> g)
+    in
+    (try with_owl_cap (fun () ->
+       let g2 = Tableau.tableau_materialise g_rl in
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses g2 fuel_100)
+     with
+     | Owl_closure_timeout ->
+       Printf.eprintf "  [owl_closure_timeout] DL tableau closure (with witnesses) exceeded %.0fs cap; falling back to RL closure\n%!"
+         owl_closure_cap_seconds;
+       g_rl
+     | _ -> g_rl)
+
 (* test:semantics dispatch (2026-07-05) — see the constant definitions
    above and RDF.Graph.Executable.fst's owl_rule_named_equivClass_to_
    sameAs_mode header comment for the RDF semantics this encodes.
@@ -943,6 +1006,28 @@ let owl_semantics_mode_for (info : test_case_info) : string =
      && not (StrSet.mem test_semantics_direct_iri info.semantics)
   then RDF_Graph_Executable.owl_semantics_rdf_based
   else RDF_Graph_Executable.owl_semantics_direct
+
+(* DIRECT-only test:semantics (mirrors owl_semantics_mode_for's RDF-Based-
+   only condition, negated + DIRECT-required): true iff the catalog entry
+   declares test:semantics DIRECT and does NOT also declare RDF-BASED.
+   Used by run_positive_entailment to gate OWL_DirectMapping_Filter's
+   annotation-triple exclusion (see that module's header) onto the
+   conclusion graph — OWL 2 Direct Semantics gives AnnotationAssertion
+   axioms no model-theoretic content, so a DIRECT-only PositiveEntailment
+   conclusion that is purely annotation-typed triples is vacuously
+   entailed regardless of the actual literal/IRI value asserted. Targets
+   WebOnt-miscellaneous-302-Direct (profile-QL.rdf): premise asserts
+   `#a first:prop "foo"`, conclusion asserts `#a first:prop "bar"` with
+   `first:prop` declared owl:AnnotationProperty in both documents — the
+   value mismatch is exactly the "annotation in the entailed ontology is
+   not considered" case the test's own description names. Gated
+   DIRECT-only (not applied to the ~127 catalog entries that declare BOTH
+   DIRECT and RDF-BASED) to keep the exemption from reaching any test
+   whose applicable semantics genuinely includes the RDF-Based reading,
+   where annotation triples carry ordinary RDF-graph content. *)
+let is_direct_semantics_only (info : test_case_info) : bool =
+  StrSet.mem test_semantics_direct_iri info.semantics
+  && not (StrSet.mem test_semantics_rdf_based_iri info.semantics)
 
 let apply_closure_with_semantics
       (g : RDF_Graph_Executable.rdf_graph) (mode : string)
@@ -1114,8 +1199,16 @@ let run_positive_entailment
       if g_c = [] then Fail_parse_conclusion
       else begin
       let closure =
-        try apply_closure g_p
+        try apply_closure_with_witnesses g_p
         with _ -> g_p in
+      (* DIRECT-only tests: drop conclusion triples whose predicate is
+         declared owl:AnnotationProperty/OntologyProperty within the
+         conclusion graph itself before checking — see
+         is_direct_semantics_only and OWL.DirectMapping.Filter.fst. *)
+      let g_c_checked =
+        if is_direct_semantics_only info
+        then OWL_DirectMapping_Filter.exclude_annotation_triples g_c
+        else g_c in
       let rec check = function
         | [] -> Pass
         | t :: rest ->
@@ -1123,11 +1216,11 @@ let run_positive_entailment
           then check rest
           else Fail_conclusion_miss t
       in
-      (match check g_c with
+      (match check g_c_checked with
        | Pass -> Pass
        | miss ->
          (* PE-via-refutation fallback (issue #298). *)
-         if pe_refute_entails closure g_c then Pass else miss)
+         if pe_refute_entails closure g_c_checked then Pass else miss)
       end)
 
 (* NegativeEntailmentTest: the conclusion is asserted to NOT be a

@@ -21,11 +21,18 @@ module JSONLD.Frame
 //   - property matching (must-be-present, must-be-absent [] , wildcard {})
 //   - node embedding of node-references, with a visited set to break cycles
 //     (approximates the default @embed=@once behaviour)
+//   - @explicit default (false): every property the matched NODE carries is
+//     output, sub-framed by the frame's declaration when present, or by an
+//     implicit match-all frame when the frame is silent on it; @explicit=
+//     true restricts output to properties the frame names (2026-07-27
+//     framing diagnosis, root cause #1)
 //
 // NOT YET (refine later — see the framing spec):
-//   - @explicit, @default, @omitDefault, @requireAll variations
-//   - @embed=@always / @never / @link, @reverse, @included, named graphs
+//   - @default, @omitDefault, @requireAll OR-matching, @embed=@always /
+//     @never / @link variations
+//   - @reverse, @included, named graphs
 //   - value-object level matching inside a property frame
+//   - blank-node @id pruning on output
 //
 // All logic here is Tot and verifies with no --lax / no --admit_smt_queries.
 // Recursion over the (untrusted, possibly cyclic) node graph is fuel-bounded.
@@ -120,6 +127,19 @@ let prop_subframe (fv:json_val) : json_val =
   | JObject o -> JObject o
   | _ -> JObject []
 
+// Root cause #1 (2026-07-27 framing diagnosis): the spec default is
+// @explicit=false, which OUTPUTS every property the matched node carries
+// (sub-framed by the frame's declaration for that property when the frame
+// mentions it, or passed through under a match-all frame when it doesn't).
+// Only @explicit=true restricts the output to properties the frame names.
+// Since root cause #2 landed, the frame's own @explicit directive survives
+// frame-mode expansion as a raw member on the frame object, so it can be
+// read directly here.
+let frame_explicit (frame:json_val) : bool =
+  match obj_get frame "@explicit" with
+  | Some (JBool b) -> b
+  | _ -> false
+
 // ================================================================
 // Frame matching
 // ================================================================
@@ -179,27 +199,46 @@ let rec frame_node (map:list (string & json_val)) (frame node:json_val)
       (match obj_get node "@id" with Some v -> [("@id", v)] | None -> []) in
     let type_entry =
       (match obj_get node "@type" with Some v -> [("@type", v)] | None -> []) in
-    let prop_entries = frame_props map (obj_fields frame) node visited fuel in
+    let prop_entries = frame_props map frame (obj_fields node) node visited fuel in
     JObject (id_entry @ type_entry @ prop_entries)
 
-// Walk the frame's members, building output property entries. @id / @type
-// (and every other keyword) are skipped here — @id/@type were copied above.
-and frame_props (map:list (string & json_val)) (frame_fields:list (string & json_val))
+// Walk the NODE's own members, building output property entries. @id /
+// @type (and every other keyword) are skipped here — @id/@type were
+// copied above by frame_node. Per root cause #1: every non-keyword
+// property the NODE carries is output — shaped by the frame's declared
+// sub-frame when the frame mentions that property, or passed through
+// under a match-all (empty) frame when it doesn't — UNLESS the frame sets
+// @explicit=true, in which case properties the frame doesn't mention are
+// dropped. This inverts the walk from the frame's own fields (the old,
+// spec-incorrect "explicit-only" behaviour) to the node's fields, which
+// is why the termination measure below now decreases on the NODE's field
+// list length rather than the frame's.
+and frame_props (map:list (string & json_val)) (frame:json_val)
+                (node_fields:list (string & json_val))
                 (node:json_val) (visited:list string) (fuel:nat)
-  : Tot (list (string & json_val)) (decreases %[fuel; 1; List.Tot.length frame_fields]) =
-  match frame_fields with
+  : Tot (list (string & json_val)) (decreases %[fuel; 1; List.Tot.length node_fields]) =
+  match node_fields with
   | [] -> []
-  | (k, fv) :: tl ->
-    let rest = frame_props map tl node visited fuel in
+  | (k, _) :: tl ->
+    let rest = frame_props map frame tl node visited fuel in
     if is_keyword k then rest
     else
-      (match obj_get node k with
-       | None -> rest
-       | Some _ ->
+      (match obj_get frame k with
+       | Some fv ->
+         // the frame declares a sub-frame for this property: use it
          let vals = prop_values node k in
          let subframe = prop_subframe fv in
          let framed = frame_values map subframe vals visited fuel in
-         (k, JArray framed) :: rest)
+         (k, JArray framed) :: rest
+       | None ->
+         // the frame is silent on this property: @explicit=true drops
+         // it, the default (@explicit=false) passes it through framed
+         // by an implicit match-all (empty) frame
+         if frame_explicit frame then rest
+         else
+           let vals = prop_values node k in
+           let framed = frame_values map (JObject []) vals visited fuel in
+           (k, JArray framed) :: rest)
 
 // Frame each value of a property. A node-reference into the map that is not
 // on the visited path is embedded (recursively framed); everything else is
@@ -269,14 +308,20 @@ let rec top_frame (map:list (string & json_val)) (frame:json_val)
 let frame_document (input_str frame_str:string) (base:option string)
                    (processing_mode:option string)
   : option json_val =
-  match expand_document input_str base None processing_mode with
+  // Root cause #2 (2026-07-27 framing diagnosis): the JSON-LD Framing
+  // algorithm frame-expands the FRAME document only — never the input
+  // document being framed (jsonld.js's frame.js: `expand(input, ...)`
+  // plain, `expand(frame, {isFrame: true, ...})`) — so the input's own
+  // expand_document call stays `false` (ordinary expansion, unchanged),
+  // and only the frame's (below) passes `true`.
+  match expand_document input_str base None processing_mode false with
   | None -> None
   | Some expanded ->
     (match jld_flatten_expanded expanded with
      | None -> None
      | Some nodes ->
        let map = build_node_map nodes in
-       (match expand_document frame_str base None processing_mode with
+       (match expand_document frame_str base None processing_mode true with
         | None -> None
         | Some frame_exp ->
           let frame = first_frame frame_exp in

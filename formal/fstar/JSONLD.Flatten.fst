@@ -545,7 +545,7 @@ let flatten_document (input:string) (ctx_doc:option string)
                      (compact_arrays:bool)
                      (processing_mode:option string)
   : option json_val =
-  match expand_document input base None processing_mode with
+  match expand_document input base None processing_mode false with
   | None -> None
   | Some expanded ->
     (match jld_flatten_expanded expanded with

@@ -1441,7 +1441,7 @@ let compact_document (input ctx_doc:string) (base ctx_url:option string)
                      (compact_arrays compact_to_rel:bool)
                      (processing_mode:option string)
   : option json_val =
-  match expand_document input base None processing_mode with
+  match expand_document input base None processing_mode false with
   | None -> None
   | Some expanded ->
     (match parse_json ctx_doc with

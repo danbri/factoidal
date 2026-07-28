@@ -171,7 +171,7 @@ let run_expand tc base json =
     | None -> FStar_Pervasives_Native.None in
   let got = opt_of_fs
     (Parser_JSONLD.expand_document json
-       (FStar_Pervasives_Native.Some base) fs_ec (fs_processing_mode tc)) in
+       (FStar_Pervasives_Native.Some base) fs_ec (fs_processing_mode tc) false) in
   match tc.kind with
   | K_Negative -> (match got with None -> Pass | Some _ -> Fail "should reject but expanded")
   | K_Unknown -> Skip "unknown evaluation kind"
