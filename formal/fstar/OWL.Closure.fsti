@@ -4380,6 +4380,145 @@ let owl_rule_singleton_nominal_functionality
     g
     g
 
+// ---- Group E(f): hasValue + at-most-one + value distinctness => disjoint --
+//
+// WebOnt-I5.21-002 asserts NO owl:disjointWith at all. It declares a
+// class Reptile whose instances have exactly one family-name, then
+// twelve subclasses of Reptile each pinned by an owl:hasValue
+// restriction to a different family-name string, and concludes all
+// pairwise owl:disjointWith. The matter it illustrates is not symmetry
+// (that half is owl_rule_symmetric_metapredicates /
+// owl_rule_disjoint_with_propagation) but DERIVING disjointness from
+// functionality plus value distinctness.
+//
+// Rule, from the RDF-Based Semantics conditions for owl:hasValue,
+// owl:maxCardinality / owl:cardinality / owl:FunctionalProperty,
+// rdfs:subClassOf and owl:disjointWith:
+//
+//   C1 rdfs:subClassOf R1 . R1 owl:onProperty p . R1 owl:hasValue v1 .
+//   C2 rdfs:subClassOf R2 . R2 owl:onProperty p . R2 owl:hasValue v2 .
+//   v1 and v2 provably denote different values .
+//   C1-instances have at most one p-value .
+//   ==> C1 owl:disjointWith C2
+//
+//   DERIVATION. Suppose x is in CEXT(C1) INTERSECT CEXT(C2). The
+//   hasValue condition on R1 gives CEXT(R1) = { u : <u,v1> in EXT(p) },
+//   and CEXT(C1) is inside CEXT(R1), so <x,v1> is in EXT(p); likewise
+//   <x,v2> is in EXT(p). The at-most-one premise forces v1 = v2,
+//   contradicting distinctness. So the intersection is empty, which is
+//   exactly the owl:disjointWith condition.
+//
+// Not an OWL 2 RL/RDF table rule: RL's cardinality rules (cls-maxc1/2,
+// cls-maxqc1-4) fire on ASSERTED instances and conclude inconsistency or
+// owl:sameAs, never a terminological disjointness; pD* has no
+// cardinality reasoning at all.
+//
+// VALUE DISTINCTNESS is deliberately conservative — two literals
+// provably denote different values only when the datatype's
+// lexical-to-value map is injective on the compared forms. Only
+// xsd:string is taken: its value space IS its lexical space, and RDF 1.1
+// gives plain literals that datatype (Parser.RDFXML's make_plain_literal
+// confirms it). "1" and "01" are the same xsd:integer, so numeric
+// datatypes are excluded; two distinct IRIs are not distinct individuals
+// because OWL makes no unique-name assumption, so IRIs and bnodes are
+// excluded too.
+//
+// AT-MOST-ONE is satisfied by p being an owl:FunctionalProperty, or by
+// C1 having an rdfs:subClassOf ancestor that is a max-1 or exactly-1
+// restriction on p. The bound is matched on lexical form "1" rather than
+// on the full "1"^^xsd:nonNegativeInteger term, because I5.21-002 writes
+// it as "1"^^xsd:int — the predicate position already establishes that
+// the object is a cardinality, so the datatype adds nothing.
+//
+// Complexity: quadratic in the number of (class, property, value)
+// hasValue PINS. That is a schema-sized quantity — one entry per
+// (C rdfs:subClassOf hasValue-restriction) pair, never per individual —
+// and the inner comparison short-circuits on the property, so pins on
+// different properties never pair up.
+let literal_values_provably_distinct (l1 l2 : wf_literal) : bool =
+  l1.datatype = xsd_string && l2.datatype = xsd_string &&
+  None? l1.lang_tag && None? l2.lang_tag &&
+  l1.lexical_form <> l2.lexical_form
+
+let terms_provably_distinct (a b : rdf_term) : bool =
+  match a, b with
+  | T_Literal l1, T_Literal l2 -> literal_values_provably_distinct l1 l2
+  | _, _ -> false
+
+let cardinality_literal_is_one (t : rdf_term) : bool =
+  match t with
+  | T_Literal l -> l.lexical_form = "1"
+  | _ -> false
+
+let class_pins_at_most_one (ig : indexed_graph) (c : subject) (p : wf_iri) : bool =
+  List.Tot.existsb
+    (fun (ty : rdf_term) -> rdf_term_eq ty (T_IRI owl_FunctionalProperty))
+    (find_objects_indexed ig (S_IRI p) rdf_type)
+  || List.Tot.existsb
+       (fun (s : rdf_term) ->
+         match term_to_subject s with
+         | None -> false
+         | Some m ->
+           List.Tot.existsb
+             (fun (pt : rdf_term) -> rdf_term_eq pt (T_IRI p))
+             (find_objects_indexed ig m owl_onProperty_iri)
+           && (List.Tot.existsb cardinality_literal_is_one
+                 (find_objects_indexed ig m owl_maxCardinality_iri)
+               || List.Tot.existsb cardinality_literal_is_one
+                    (find_objects_indexed ig m owl_cardinality_iri)))
+       (find_objects_indexed ig c rdfs_subClassOf)
+
+// One entry per (named class, property, pinned value) triple visible as
+// (C rdfs:subClassOf R), R owl:onProperty p, R owl:hasValue v.
+let collect_hasvalue_pins (g : rdf_graph) (ig : indexed_graph)
+  : list (subject * wf_iri * rdf_term) =
+  List.Tot.fold_left
+    (fun (acc : list (subject * wf_iri * rdf_term)) (t : triple) ->
+      if t.p = rdfs_subClassOf then
+        match t.s with
+        | S_IRI _ ->
+          (match term_to_subject t.o with
+           | None -> acc
+           | Some r ->
+             let vs = find_objects_indexed ig r owl_hasValue_iri in
+             if Nil? vs then acc
+             else
+               List.Tot.fold_left
+                 (fun (a1 : list (subject * wf_iri * rdf_term)) (pt : rdf_term) ->
+                   match pt with
+                   | T_IRI p ->
+                     List.Tot.fold_left
+                       (fun (a2 : list (subject * wf_iri * rdf_term)) (v : rdf_term) ->
+                         (t.s, p, v) :: a2)
+                       a1 vs
+                   | _ -> a1)
+                 acc
+                 (find_objects_indexed ig r owl_onProperty_iri))
+        | _ -> acc
+      else acc)
+    []
+    g
+
+let owl_rule_hasvalue_card_disjoint (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let pins = collect_hasvalue_pins g ig in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (e1 : (subject * wf_iri * rdf_term)) ->
+      let (c1, p1, v1) = e1 in
+      if not (class_pins_at_most_one ig c1 p1) then acc
+      else
+        List.Tot.fold_left
+          (fun (a : rdf_graph) (e2 : (subject * wf_iri * rdf_term)) ->
+            let (c2, p2, v2) = e2 in
+            if p1 = p2 && not (subject_eq c1 c2) && terms_provably_distinct v1 v2
+            then add_triple_unchecked a
+                   ({ s = c1; p = owl_disjointWith_iri;
+                      o = subject_to_term c2 } <: triple)
+            else a)
+          acc
+          pins)
+    g
+    pins
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -4994,10 +5133,16 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // a singleton, so a property with that class as rdfs:range is
   // functional and one with it as rdfs:domain is inverse-functional.
   let g28h = owl_rule_singleton_nominal_functionality g28g ig in
+  // Group E(f): two classes pinned by owl:hasValue to provably different
+  // values of a property that admits at most one value cannot share an
+  // instance, so they are owl:disjointWith. Runs before the symmetric
+  // closure at g28b on the NEXT fixpoint iteration, which is what gives
+  // both directions of every derived pair.
+  let g28i = owl_rule_hasvalue_card_disjoint g28h ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28h
+graph_dedup_sort g28i
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
