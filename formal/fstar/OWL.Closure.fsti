@@ -1099,6 +1099,11 @@ let is_schema_metapredicate (p : wf_iri) : bool =
   || p = "http://www.w3.org/2002/07/owl#propertyChainAxiom"
   || p = "http://www.w3.org/2002/07/owl#distinctMembers"
   || p = "http://www.w3.org/2002/07/owl#members"
+  // owl:disjointUnionOf is a class-expression construct in exactly the
+  // sense owl:unionOf above is — spelled as a literal here because its
+  // wf_iri constant is declared further down, next to the Group C
+  // comprehension rules that consume it.
+  || p = "http://www.w3.org/2002/07/owl#disjointUnionOf"
 
 let xsd_nonNegativeInteger : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#nonNegativeInteger");
@@ -2956,6 +2961,225 @@ let owl_rule_cls_int1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
     g
     g
 
+// ---- Group C: oneOf / unionOf / disjointUnionOf comprehension -------------
+//
+// The three class-forming list constructs whose forward direction the
+// closure was missing. All three reuse decode_iri_list — the same
+// IRI-only rdf:Collection decoder cls-int1 and prp-key already use — so
+// a list carrying literals (an owl:DataRange enumeration) or anonymous
+// class-expression bnodes decodes to None and the rule is a no-op on it.
+//
+// Subjects are restricted to IRIs (BNODE-POLLUTION GUARD, same rationale
+// as owl_rule_equivalent_class / scm-dom2): an anonymous class-expression
+// bnode must not become an exposed ?C binding.
+
+let owl_disjointUnionOf_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#disjointUnionOf");
+  "http://www.w3.org/2002/07/owl#disjointUnionOf"
+
+// cls-oneof: (C owl:oneOf (i1 ... in)) implies (ik rdf:type C) for every
+// k. owl:oneOf is class-DEFINING — C denotes exactly the enumerated set —
+// so every listed individual is a member.
+// Targets WebOnt-oneOf-002, rdfbased-sem-enum-inst-included.
+let owl_rule_cls_oneof (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_oneOf_iri then
+        match t.s, term_to_subject t.o with
+        | S_IRI c_iri, Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | None -> acc
+           | Some members ->
+             List.Tot.fold_left
+               (fun (acc1 : rdf_graph) (i : wf_iri) ->
+                  add_triple_unchecked acc1
+                    ({ s = S_IRI i; p = rdf_type; o = T_IRI c_iri }))
+               acc
+               members)
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// cls-uni: (C owl:unionOf (c1 ... cn)) implies (ck rdfs:subClassOf C) for
+// every k — each disjunct is contained in the union.
+//
+// owl:disjointUnionOf is handled in the same fold: it is a unionOf whose
+// members are additionally pairwise disjoint, so it emits (a) the same
+// subClassOf edges, (b) the plain (C owl:unionOf L) form over the SAME
+// list node so the union-elimination rule below and any downstream
+// unionOf consumer see it, and (c) pairwise owl:disjointWith — the same
+// n-choose-2 emission shape as cax-adc-expand.
+// Targets WebOnt-unionOf-003/-004, New-Feature-DisjointUnion-001.
+let owl_rule_cls_uni (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_unionOf_iri || t.p = owl_disjointUnionOf_iri then
+        match t.s, term_to_subject t.o with
+        | S_IRI c_iri, Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | None -> acc
+           | Some members ->
+             let acc_sub =
+               List.Tot.fold_left
+                 (fun (acc1 : rdf_graph) (ci : wf_iri) ->
+                    add_triple_unchecked acc1
+                      ({ s = S_IRI ci; p = rdfs_subClassOf; o = T_IRI c_iri }))
+                 acc
+                 members
+             in
+             if t.p = owl_disjointUnionOf_iri then
+               let acc_u =
+                 add_triple_unchecked acc_sub
+                   ({ s = t.s; p = owl_unionOf_iri; o = t.o })
+               in
+               List.Tot.fold_left
+                 (fun (acc2 : rdf_graph) (c1 : wf_iri) ->
+                    List.Tot.fold_left
+                      (fun (acc3 : rdf_graph) (c2 : wf_iri) ->
+                         if c1 = c2 then acc3
+                         else add_triple_unchecked acc3
+                                ({ s = S_IRI c1; p = owl_disjointWith_iri;
+                                   o = T_IRI c2 }))
+                      acc2
+                      members)
+                 acc_u
+                 members
+             else acc_sub)
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// Does the step-input snapshot already witness that x is NOT a member of
+// class c? Two sound witnesses, both read off ig only:
+//   (a) x rdf:type d, and d owl:complementOf c (either direction);
+//   (b) x rdf:type d, and d owl:disjointWith c (either direction).
+// Both give x in d and d disjoint from c, hence x not in c.
+let known_not_member (ig : indexed_graph) (x : subject) (c : wf_iri) : bool =
+  let types = find_objects_indexed ig x rdf_type in
+  let c_excl =
+    List.Tot.append
+      (find_objects_indexed ig (S_IRI c) owl_complementOf_iri)
+      (find_objects_indexed ig (S_IRI c) owl_disjointWith_iri)
+  in
+  List.Tot.existsb
+    (fun (d : rdf_term) ->
+       List.Tot.existsb (fun (z : rdf_term) -> rdf_term_eq z d) c_excl
+       || (match term_to_subject d with
+           | None -> false
+           | Some d_subj ->
+             let d_excl =
+               List.Tot.append
+                 (find_objects_indexed ig d_subj owl_complementOf_iri)
+                 (find_objects_indexed ig d_subj owl_disjointWith_iri)
+             in
+             List.Tot.existsb
+               (fun (z : rdf_term) -> rdf_term_eq z (T_IRI c)) d_excl))
+    types
+
+// cls-uni-elim (disjunctive syllogism over a union class): if
+// (C owl:unionOf (c1 ... cn)), (x rdf:type C), and every member but one
+// is ruled out by known_not_member, then x belongs to the survivor.
+// Sound: C is exactly the union, so x lies in some ck; excluding n-1 of
+// them leaves exactly one.
+// Fires only when EXACTLY one candidate survives — a 2-of-3 elimination
+// stays silent rather than guessing.
+// Targets New-Feature-DisjointUnion-001 (Stewie is a Child, and Child is
+// the disjoint union of Boy and Girl; Stewie is typed by an anonymous
+// complementOf(Girl) class, so Boy is the only survivor).
+let owl_rule_cls_uni_elim (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_unionOf_iri || t.p = owl_disjointUnionOf_iri then
+        match term_to_subject t.o with
+        | None -> acc
+        | Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | None -> acc
+           | Some members ->
+             if List.Tot.length members < 2 then acc
+             else
+               let xs = find_subjects_indexed ig rdf_type (subject_to_term t.s) in
+               List.Tot.fold_left
+                 (fun (acc1 : rdf_graph) (x : subject) ->
+                    let remaining =
+                      List.Tot.filter
+                        (fun (ci : wf_iri) -> not (known_not_member ig x ci))
+                        members
+                    in
+                    match remaining with
+                    | [ck] ->
+                      add_triple_unchecked acc1
+                        ({ s = x; p = rdf_type; o = T_IRI ck })
+                    | _ -> acc1)
+                 acc
+                 xs)
+      else acc)
+    g
+    g
+
+// Set equality over two decoded IRI lists (order- and
+// multiplicity-insensitive) — owl:oneOf denotes a SET, so two
+// enumerations listing the same individuals denote the same class.
+let iri_list_subset (a : list wf_iri) (b : list wf_iri) : bool =
+  List.Tot.for_all (fun (i : wf_iri) -> List.Tot.mem i b) a
+
+let iri_list_set_eq (a : list wf_iri) (b : list wf_iri) : bool =
+  iri_list_subset a b && iri_list_subset b a
+
+// Collect (class IRI, decoded member list) for every owl:oneOf axiom with
+// an IRI subject and an all-IRI list. Mirrors collect_haskey_axioms.
+let collect_oneof_axioms (g : rdf_graph) (ig : indexed_graph)
+  : list (wf_iri & list wf_iri)
+  =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : list (wf_iri & list wf_iri)) (t : triple) ->
+      if t.p = owl_oneOf_iri then
+        match t.s, term_to_subject t.o with
+        | S_IRI c_iri, Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | Some members -> (c_iri, members) :: acc
+           | None -> acc)
+        | _, _ -> acc
+      else acc)
+    []
+    g
+
+// Two owl:oneOf classes enumerating the same set of individuals are the
+// same class. Emits owl:equivalentClass, which cls-eqc1/cls-eqc2 then
+// expand into subClassOf both ways so ordinary rdfs9 membership
+// propagation carries individuals across.
+// Complexity: quadratic in the number of owl:oneOf AXIOMS (a schema-level
+// count, typically single digits), not in individuals — not the #262
+// shape.
+// Targets WebOnt-oneOf-003 (T1 and T2 enumerate the same three sizes in
+// different order; myT is a T1, hence a T2).
+let owl_rule_oneof_set_equivalence (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let axioms = collect_oneof_axioms g ig in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (a1 : (wf_iri & list wf_iri)) ->
+      let (c1, m1) = a1 in
+      match m1 with
+      | [] -> acc
+      | _ ->
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (a2 : (wf_iri & list wf_iri)) ->
+             let (c2, m2) = a2 in
+             if c1 = c2 then acc2
+             else if iri_list_set_eq m1 m2 then
+               add_triple_unchecked acc2
+                 ({ s = S_IRI c1; p = owl_equivalentClass; o = T_IRI c2 })
+             else acc2)
+          acc
+          axioms)
+    g
+    axioms
+
 // Find all named-individual subjects (IRIs only) typed as `cls` in `g`.
 // Bnodes are excluded — OWL 2 RL prp-key applies to named individuals.
 let members_of_class (g : rdf_graph) (cls : wf_iri) : list wf_iri =
@@ -3760,6 +3984,17 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // IntersectionOf(C1..Cn) => x rdf:type Ci for each i). Targets
   // WebOnt-description-logic-101/103/104.
   let g21a = owl_rule_cls_int1 g21 ig in
+  // Group C comprehension: cls-oneof (enumerated members are instances),
+  // cls-uni (disjuncts are subclasses; disjointUnionOf additionally emits
+  // the plain unionOf form + pairwise disjointWith), oneOf set-equality
+  // (equal enumerations denote the same class), and cls-uni-elim
+  // (disjunctive syllogism when all but one disjunct is ruled out).
+  // Ordered so cls-uni's disjointUnionOf-to-unionOf surfacing is visible
+  // to cls-uni-elim within the same step.
+  let g21b = owl_rule_cls_oneof g21a ig in
+  let g21c = owl_rule_cls_uni g21b ig in
+  let g21d = owl_rule_oneof_set_equivalence g21c ig in
+  let g21e = owl_rule_cls_uni_elim g21d ig in
   // Tier-2: prp-spo2 (n=2 chain composition), then prp-spo2 (n>=3
   // generalised chain), then scm-trans-from-chain (chain (P P)
   // recognises P as transitive), then named-sameAs-to-eqClass.
@@ -3767,7 +4002,7 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // covers arbitrary chain length and is idempotent on n=2 inputs
   // (add_triple_unchecked dedupes). Cluster A of OWL 2 RL next-steps
   // (issue #207).
-  let g22 = owl_rule_property_chain_2 g21a ig in
+  let g22 = owl_rule_property_chain_2 g21e ig in
   let g22a = owl_rule_property_chain_n g22 ig in
   let g23 = owl_rule_chain_to_transitive g22a ig in
   // prp-trp-to-chain: converse of scm-trans-from-chain above — a
