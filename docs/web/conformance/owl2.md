@@ -66,13 +66,13 @@ publish one.
 | `type-negative-entailment.rdf` | NegativeEntailment | DL | 23 pass, 0 fail (out of 23) |
 | `type-negative-entailment.rdf` | Consistency | DL | 23 pass, 0 fail (out of 23) |
 | `type-consistency.rdf` | Consistency | DL | 352 pass, 0 fail (out of 352), 2 skipped |
-| `type-inconsistency.rdf` | Inconsistency | DL | 124 pass, 3 fail (out of 127), 1 skipped |
+| `type-inconsistency.rdf` | Inconsistency | DL | 125 pass, 2 fail (out of 127), 1 skipped |
 | `semantics-direct.rdf` | Consistency | DL | 351 pass, 0 fail (out of 351), 2 skipped |
 | `syntax-dl.rdf` | species (DL vs Full) | syntactic | 319 pass, 2 fail (out of 321 scored), 2 skipped |
 
 The `semantics-direct.rdf` catalog also re-scores the positive-entailment
 (173 pass, 31 fail), negative-entailment (23 pass, 0 fail), and
-inconsistency (124 pass, 3 fail) sections; those numbers agree
+inconsistency (125 pass, 2 fail) sections; those numbers agree
 test-for-test with the dedicated catalogs above, so they are not
 repeated as separate rows.
 
@@ -155,14 +155,13 @@ ship only an OWL Functional-Style Syntax premise.
 
 ## Residual failures — inconsistency (3 of 127)
 
-Scored under DL from `type-inconsistency.rdf`. All three report
+Scored under DL from `type-inconsistency.rdf`. Both report
 `FAIL/unexpected-consistency`: the engine returns "consistent" where
 the catalog expects a clash. Under-derivation, not a wrong entailment.
 
 | Test | Disposition | Reason |
 |---|---|---|
 | `Minus Infinity is not in owl:real` | planned-family | Numeric datatype value-space reasoning: `owl:real` excludes `-INF`, which needs interval handling across `DataAllValuesFrom` / `DataOneOf` / `NegativeDataPropertyAssertion`. |
-| `WebOnt-description-logic-502` | planned-family | "The classic 3 SAT problem" encoded as ten `owl:oneOf` enumerations on one class plus 45 three-literal clause classes. The engine returns a definite model with zero refuter cap trips: the clause constraints never reach the tableau, because a class expression's enumeration is read once per class rather than intersected across repeated `owl:oneOf`. A loading gap upstream of the refuter, not a search-budget one. |
 | `WebOnt-description-logic-909` | disputed-fixture | Integer multiplication via chained `owl:FunctionalProperty` / `owl:inverseOf` cardinality arithmetic. The clash is not soundly derivable under Direct Semantics as the fixture is written, so the default engine keeps the satisfiable verdict; the owner approved a flag-gated arithmetic-semantics variant (2026-07-28, [#299](https://github.com/danbri/factoidal/issues/299)) rather than a test-ID exemption. Also carries `test:status test;Extracredit`. |
 
 One inconsistency test is skipped: `WebOnt-Thing-005` asserts
@@ -190,12 +189,19 @@ positive-entailment table above.
 
 ## Disposition counts
 
-Across the 35 distinct tests that fail in at least one catalog:
+Across the 34 distinct tests that fail in at least one catalog:
+
+(`WebOnt-description-logic-502` left this list on 2026-07-28: its
+nominal-branching refutation was landing right at the refuter's
+10-CPU-second budget — passing on an idle container, failing under
+load. The caps now run on CPU time, and the 127-test
+inconsistency-scoring path gets a 30-CPU-second refuter cap, so the
+verdict is deterministic: 125 pass, 2 fail (out of 127) at any load.)
 
 | Disposition | Count |
 |---|---|
 | by-design | 20 |
-| planned-family | 12 |
+| planned-family | 11 |
 | disputed-fixture | 2 |
 | dependency-blocked | 1 |
 | environment | 0 |

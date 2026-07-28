@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-07-28 22:51 UTC",
-  "commit": "983d69481c8ed55f717b3e5f663d184b6ef884dd",
+  "timestamp": "2026-07-28 23:53 UTC",
+  "commit": "083e102d78ed2a538898413d9ced8231b313db8f",
   "branch": "claude/autoexec-scratchpad-assess-37oeok",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
@@ -14,7 +14,7 @@
     "owl_syntax_dl_species": {"pass":319,"fail":2,"skip":2,"total":323,"present":true,"catalog":"third_party/testing/owl/syntax-dl.rdf"},
     "owl2_profile_ql": {"pass":85,"fail":2,"skip":0,"total":87,"present":true,"regime":"RL","catalog":"third_party/testing/owl/profile-QL.rdf"},
     "owl2_profile_el": {"pass":118,"fail":2,"skip":0,"total":120,"present":true,"regime":"RL","catalog":"third_party/testing/owl/profile-EL.rdf"},
-    "owl2_dl_inconsistency": {"pass":124,"fail":3,"skip":0,"oracle_assisted":0,"total":127,"present":true,"regime":"DL","catalog":"third_party/testing/owl/type-inconsistency.rdf"},
+    "owl2_dl_inconsistency": {"pass":125,"fail":2,"skip":0,"oracle_assisted":0,"total":127,"present":true,"regime":"DL","catalog":"third_party/testing/owl/type-inconsistency.rdf"},
     "rdfc10": {"pass":86,"fail":0,"skip":0,"total":86,"spec":"https://www.w3.org/TR/rdf-canon/"},
     "shacl_core":   {"pass":98,"fail":0,"skip":0,"total":98,"present":true,"spec":"https://www.w3.org/TR/shacl/"},
     "shacl_sparql": {"pass":22,"fail":0,"skip":0,"total":22,"present":true,"spec":"https://www.w3.org/TR/shacl/#sparql-constraints"},

@@ -603,15 +603,24 @@ let owl_closure_cap_seconds : float =
 
 exception Owl_closure_timeout
 
+(* All caps below run on CPU time (ITIMER_VIRTUAL / SIGVTALRM), not
+   wall clock (2026-07-28). Wall-clock caps made verdicts
+   load-dependent: dl-502's refutation needs ~5.5 CPU-seconds and
+   passed on an idle container but blew the 10s WALL cap whenever
+   sibling builds shared the cores, flipping the catalog between
+   125 pass, 2 fail and 124 pass, 3 fail (measured both same day,
+   same binary). CPU-time budgets give the same verdict at any load.
+   The F* reasoning code is total (fuel-bounded), so a pure CPU cap
+   cannot mask a hang; cap values keep their idle-machine meaning. *)
 let with_owl_cap (f : unit -> 'a) : 'a =
   let prev =
-    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+    Sys.signal Sys.sigvtalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
   in
   let restore () =
-    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
-    Sys.set_signal Sys.sigalrm prev
+    let _ = Unix.setitimer Unix.ITIMER_VIRTUAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigvtalrm prev
   in
-  let _ = Unix.setitimer Unix.ITIMER_REAL
+  let _ = Unix.setitimer Unix.ITIMER_VIRTUAL
             { Unix.it_interval = 0.0; it_value = owl_closure_cap_seconds }
   in
   match f () with
@@ -690,20 +699,37 @@ let refute_cap_seconds : float =
   | Some s -> (try float_of_string s with _ -> 10.0)
   | None -> 10.0
 
-let with_refute_cap (f : unit -> 'a) : 'a =
+(* Inconsistency-scoring refuter cap, LARGER than the consistency-side
+   default above. dl-502's nominal-branching refutation sits right at
+   the 10-CPU-second boundary (passed idle, failed under sibling-build
+   GC pressure — the 125-pass/124-pass flip measured 2026-07-28); at
+   30 CPU-seconds it passes at load average 3+ with the inconsistency
+   catalog at ~105s wall. Only the 127-test inconsistency path pays
+   this larger cap — the 352-test consistency path keeps the cheap
+   default, since there every indeterminate search grinds to the cap
+   as pure overhead. Override via FACTOIDAL_OWL_INC_REFUTE_CAP_SEC. *)
+let inc_refute_cap_seconds : float =
+  match Sys.getenv_opt "FACTOIDAL_OWL_INC_REFUTE_CAP_SEC" with
+  | Some s -> (try float_of_string s with _ -> 30.0)
+  | None -> 30.0
+
+let with_refute_cap_secs (secs : float) (f : unit -> 'a) : 'a =
   let prev =
-    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+    Sys.signal Sys.sigvtalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
   in
   let restore () =
-    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
-    Sys.set_signal Sys.sigalrm prev
+    let _ = Unix.setitimer Unix.ITIMER_VIRTUAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigvtalrm prev
   in
-  let _ = Unix.setitimer Unix.ITIMER_REAL
-            { Unix.it_interval = 0.0; it_value = refute_cap_seconds }
+  let _ = Unix.setitimer Unix.ITIMER_VIRTUAL
+            { Unix.it_interval = 0.0; it_value = secs }
   in
   match f () with
   | v -> restore (); v
   | exception e -> restore (); raise e
+
+let with_refute_cap (f : unit -> 'a) : 'a =
+  with_refute_cap_secs refute_cap_seconds f
 
 (* PE-refutation wall cap, LARGER than the (5s) consistency-side refuter
    cap above (tableau-classification design note, 2026-07-28). The 5s
@@ -723,13 +749,13 @@ let pe_refute_cap_seconds : float =
 
 let with_pe_refute_cap (f : unit -> 'a) : 'a =
   let prev =
-    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+    Sys.signal Sys.sigvtalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
   in
   let restore () =
-    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
-    Sys.set_signal Sys.sigalrm prev
+    let _ = Unix.setitimer Unix.ITIMER_VIRTUAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigvtalrm prev
   in
-  let _ = Unix.setitimer Unix.ITIMER_REAL
+  let _ = Unix.setitimer Unix.ITIMER_VIRTUAL
             { Unix.it_interval = 0.0; it_value = pe_refute_cap_seconds }
   in
   match f () with
@@ -746,11 +772,11 @@ let with_pe_refute_cap (f : unit -> 'a) : 'a =
    the RL baseline. RL regime: never consulted (RL scoring unchanged).
    Dispatch/fallback plumbing only — the satisfiability logic is
    F*-extracted (rule #15 boundary respected). *)
-let dl_refutes (closure : RDF_Graph_Executable.rdf_graph) : bool =
+let dl_refutes ?(cap = refute_cap_seconds) (closure : RDF_Graph_Executable.rdf_graph) : bool =
   match !regime with
   | Regime_RL -> false
   | Regime_DL ->
-    (try with_refute_cap (fun () ->
+    (try with_refute_cap_secs cap (fun () ->
        match Tableau_Refute.tableau_consistent closure refute_fuel with
        | Some false -> true
        | _ -> false)
@@ -770,11 +796,11 @@ let dl_refutes (closure : RDF_Graph_Executable.rdf_graph) : bool =
    back to false (then the z3 oracle is consulted, exactly as before).
    RL regime: never consulted. Dispatch/fallback plumbing only -- all
    satisfiability logic is F*-extracted (rule #15 boundary respected). *)
-let class_size_refutes (closure_rl : RDF_Graph_Executable.rdf_graph) : bool =
+let class_size_refutes ?(cap = refute_cap_seconds) (closure_rl : RDF_Graph_Executable.rdf_graph) : bool =
   match !regime with
   | Regime_RL -> false
   | Regime_DL ->
-    (try with_refute_cap (fun () ->
+    (try with_refute_cap_secs cap (fun () ->
        Tableau_CountingOracle.class_size_unsat closure_rl)
      with _ -> false)
 
@@ -905,13 +931,13 @@ let z3_dump_dir = Sys.getenv_opt "FACTOIDAL_OWL_Z3_DUMP"
 
 let with_z3_cap (f : unit -> 'a) : 'a =
   let prev =
-    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+    Sys.signal Sys.sigvtalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
   in
   let restore () =
-    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
-    Sys.set_signal Sys.sigalrm prev
+    let _ = Unix.setitimer Unix.ITIMER_VIRTUAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigvtalrm prev
   in
-  let _ = Unix.setitimer Unix.ITIMER_REAL
+  let _ = Unix.setitimer Unix.ITIMER_VIRTUAL
             { Unix.it_interval = 0.0; it_value = z3_cap_seconds }
   in
   match f () with
@@ -1582,7 +1608,7 @@ let run_inconsistency_test_functional_syntax (fs_p_lex : string) : outcome optio
   | None -> None
   | Some g_p ->
     let (closure_rl, closure) = try apply_closure_stages g_p with _ -> (g_p, g_p) in
-    if capped_is_inconsistent closure || dl_refutes closure_rl
+    if capped_is_inconsistent closure || dl_refutes ~cap:inc_refute_cap_seconds closure_rl
     then Some Pass
     else Some Fail_unexpected_consistency
 
@@ -1655,14 +1681,14 @@ let run_inconsistency_test
          refuter reads the RL-BASE closure (apply_closure_stages'
          banner: materialise emissions are conclusion-matching-sound,
          not all entailment-sound, and must not feed a refutation). *)
-      if capped_is_inconsistent closure || dl_refutes closure_rl
+      if capped_is_inconsistent closure || dl_refutes ~cap:inc_refute_cap_seconds closure_rl
       then Pass
       (* Z33kr Phase 2: VERIFIED class-size unsat check, BEFORE the z3
          oracle. A `true` here is a proven-sound refutation of the
          class-size linear system, so it flips to a plain verified PASS
          (not oracle-assisted). Retires the z3 oracle for the fixtures it
          decides (dl-910, one=two). *)
-      else if class_size_refutes closure_rl
+      else if class_size_refutes ~cap:inc_refute_cap_seconds closure_rl
       then Pass
       (* Z33kr Phase 1: one rung outside dl_refutes — the native z3
          counting-fragment oracle. Only reached when neither the verified
