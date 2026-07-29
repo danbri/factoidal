@@ -3046,26 +3046,36 @@ let owl_disjointUnionOf_iri : wf_iri =
 // k. owl:oneOf is class-DEFINING — C denotes exactly the enumerated set —
 // so every listed individual is a member.
 // Targets WebOnt-oneOf-002, rdfbased-sem-enum-inst-included.
+// 2026-07-29 (RDF-Based-semantics soundness pilot, design doc
+// 2026-07-29-rdf-based-semantics-formalization.md): the rule body is
+// LAMBDA-LIFTED -- the per-triple step and the per-member emission are
+// named top-level functions instead of inline lambdas. Behaviour is
+// byte-identical (pure lambda lifting, no logic change); the lift is
+// what lets OWL.Semantics.Soundness.fst state and prove the rule's
+// soundness theorem, because inline lambdas under match binders
+// encode to SMT closure symbols a separate proof cannot re-reference,
+// while a named function applied to its captured values closes by
+// congruence. New list-walking rules should use this shape from the
+// start so their soundness proofs stay writable.
+let owl_cls_oneof_emit (c_iri : wf_iri) (acc1 : rdf_graph) (i : wf_iri) : rdf_graph =
+  add_triple_unchecked acc1
+    ({ s = S_IRI i; p = rdf_type; o = T_IRI c_iri })
+
+let owl_cls_oneof_step (g : rdf_graph) (ig : indexed_graph) (fuel : nat)
+    (acc : rdf_graph) (t : triple) : rdf_graph =
+  if t.p = owl_oneOf_iri then
+    match t.s, term_to_subject t.o with
+    | S_IRI c_iri, Some list_subj ->
+      (match decode_iri_list g ig list_subj fuel with
+       | None -> acc
+       | Some members ->
+         List.Tot.fold_left (owl_cls_oneof_emit c_iri) acc members)
+    | _, _ -> acc
+  else acc
+
 let owl_rule_cls_oneof (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let fuel : nat = List.Tot.length g in
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      if t.p = owl_oneOf_iri then
-        match t.s, term_to_subject t.o with
-        | S_IRI c_iri, Some list_subj ->
-          (match decode_iri_list g ig list_subj fuel with
-           | None -> acc
-           | Some members ->
-             List.Tot.fold_left
-               (fun (acc1 : rdf_graph) (i : wf_iri) ->
-                  add_triple_unchecked acc1
-                    ({ s = S_IRI i; p = rdf_type; o = T_IRI c_iri }))
-               acc
-               members)
-        | _, _ -> acc
-      else acc)
-    g
-    g
+  List.Tot.fold_left (owl_cls_oneof_step g ig fuel) g g
 
 // cls-uni: (C owl:unionOf (c1 ... cn)) implies (ck rdfs:subClassOf C) for
 // every k — each disjunct is contained in the union.

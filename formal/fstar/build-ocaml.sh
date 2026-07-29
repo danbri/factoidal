@@ -378,6 +378,9 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Vocabulary.Axioms.fst
     RDFS.Closure.fst
     OWL.Closure.fst
+    OWL.Semantics.fst
+    OWL.Semantics.MemLemmas.fst
+    OWL.Semantics.Soundness.fst
     RDF.Graph.Executable.fst Parquet.Footer.fst
     RDF.IRI.fst
     RDF.NQuads.Serialize.fst
