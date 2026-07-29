@@ -666,6 +666,24 @@ let regime_label () = match !regime with
   | Regime_RL -> "RL"
   | Regime_DL -> "DL"
 
+(* --semantics rdf-based-full (2026-07-28, Group G): opt-in OWL Full
+   meta-modeling mode. Mode PLUMBING ONLY (iron rule #15): when the flag
+   is on, every closure call that previously passed the DIRECT semantics
+   mode passes RDF-BASED-FULL instead; the semantics itself is the
+   F*-extracted owl_rule_rdf_based_full_meta_axioms_mode rule inside
+   owl_rl_closure_step_mode (see OWL.Closure.fsti's banner for the
+   RDF-Based Semantics Table 5.2 citation). Default OFF — the default
+   engine keeps Direct-Semantics behaviour bit-for-bit. *)
+let full_meta_mode : bool ref = ref false
+
+let base_semantics_mode () : string =
+  if !full_meta_mode then RDF_Graph_Executable.owl_semantics_rdf_based_full
+  else RDF_Graph_Executable.owl_semantics_direct
+
+let semantics_label () =
+  if !full_meta_mode then "RDF-BASED-FULL (owl-full meta-modeling flag ON)"
+  else "DIRECT (default)"
+
 (* Tableau refutation fuel (threaded budget inside the F*-extracted
    Tableau_Refute.tableau_consistent — total work is linear in it).
    Override via FACTOIDAL_OWL_REFUTE_FUEL. Plumbing only: the fuel
@@ -1019,7 +1037,7 @@ let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
   | Regime_RL ->
     let c =
       (try with_owl_cap (fun () ->
-         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] RL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
@@ -1034,7 +1052,7 @@ let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
        cap-trip never scores below RL (DL result >= RL result). *)
     let g_rl =
       (try with_owl_cap (fun () ->
-         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
@@ -1045,7 +1063,7 @@ let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
     let g_dl =
       (try with_owl_cap (fun () ->
          let g2 = Tableau.tableau_materialise g_rl in
-         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100)
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g2 fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
@@ -1085,7 +1103,7 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
        not the entire closure's worth of conclusion-matching power. *)
     let base =
       (try with_owl_cap (fun () ->
-         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] RL base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
@@ -1094,7 +1112,7 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
        | _ -> g)
     in
     (try with_owl_cap (fun () ->
-       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses g fuel_100)
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses_mode g fuel_100 (base_semantics_mode ()))
      with
      | Owl_closure_timeout ->
        Printf.eprintf "  [owl_closure_timeout] RL closure (with witnesses) exceeded %.0fs cap; falling back to base closure\n%!"
@@ -1104,7 +1122,7 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
   | Regime_DL ->
     let g_rl =
       (try with_owl_cap (fun () ->
-         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
@@ -1123,7 +1141,7 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
     let g_dl =
       (try with_owl_cap (fun () ->
          let g2 = Tableau.tableau_materialise g_rl in
-         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100)
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g2 fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
@@ -1132,7 +1150,7 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
        | _ -> g_rl)
     in
     (try with_owl_cap (fun () ->
-       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses g_dl fuel_100)
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses_mode g_dl fuel_100 (base_semantics_mode ()))
      with
      | Owl_closure_timeout ->
        Printf.eprintf "  [owl_closure_timeout] DL witness layer exceeded %.0fs cap; falling back to tableau closure\n%!"
@@ -1155,7 +1173,7 @@ let owl_semantics_mode_for (info : test_case_info) : string =
   if StrSet.mem test_semantics_rdf_based_iri info.semantics
      && not (StrSet.mem test_semantics_direct_iri info.semantics)
   then RDF_Graph_Executable.owl_semantics_rdf_based
-  else RDF_Graph_Executable.owl_semantics_direct
+  else base_semantics_mode ()
 
 (* DIRECT-only test:semantics (mirrors owl_semantics_mode_for's RDF-Based-
    only condition, negated + DIRECT-required): true iff the catalog entry
@@ -2044,6 +2062,12 @@ let print_help () =
      \  ./owl_runner <catalog.rdf> --species\n\
      \                                Score the test:species facet (OWL 2 DL vs FULL)\n\
      \                                via the F*-extracted OWL2_SyntaxDL checker\n\
+     \  ./owl_runner --semantics direct|rdf-based-full\n\
+     \                                Closure semantics mode (default: direct).\n\
+     \                                rdf-based-full additionally enables the\n\
+     \                                F*-side OWL Full meta-modeling axiom\n\
+     \                                table (OWL 2 RDF-Based Semantics Table\n\
+     \                                5.2 meta-vocabulary class equalities)\n\
      \  ./owl_runner --help           Show this help\n\
      \n\
      Status: Phase 0 skeleton — reads manifest, prints per-test identifier\n\
@@ -2239,6 +2263,14 @@ let () =
     | ("--help" | "-h") :: _ -> print_help (); exit 0
     | "--list" :: _ -> list_catalogs (); exit 0
     | "--species" :: rest -> species_mode := true; loop rest
+    | "--semantics" :: s :: rest ->
+      (match String.lowercase_ascii s with
+       | "direct" -> full_meta_mode := false
+       | "rdf-based-full" -> full_meta_mode := true
+       | _ ->
+         Printf.eprintf "owl_runner: --semantics expects direct|rdf-based-full, got %S\n" s;
+         exit 2);
+      loop rest
     | "--regime" :: r :: rest ->
       (match String.lowercase_ascii r with
        | "rl" -> regime := Regime_RL
@@ -2254,6 +2286,7 @@ let () =
   in
   loop args;
   Printf.printf "Closure regime: %s\n" (regime_label ());
+  Printf.printf "Closure semantics: %s\n" (semantics_label ());
   let catalog = match !path with
     | Some p -> p
     | None -> default_catalog ()

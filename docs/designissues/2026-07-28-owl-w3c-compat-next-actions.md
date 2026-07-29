@@ -129,6 +129,19 @@ disjunct ⟹ member of the union class), both walking the same `decode_iri_list`
 list-traversal helper `cls-int1` already uses. `disjointUnionOf` layers a
 pairwise-disjoint emission on top once `cls-uni` exists.
 
+**Update 2026-07-28 (second landing):** `cls-oneof`/`cls-uni`/set-equality
+landed earlier today closed the membership-direction tests
+(`oneOf-002`/`-003`, `enum-inst-included`, `DisjointUnion-001`). The five
+remaining Group C fails needed the OTHER direction — synthesising list/class
+structure that is absent from the premise — and are now covered by the five
+`owl_rule_comp_*` comprehension-witness rules in `OWL.Closure.fsti` §20b
+(PE-only witness layer; comp-w3 `unionOf-003`, comp-w4 `unionOf-004`,
+comp-w1 `I5.5-005`, comp-w2 `I5.26-010`, comp-w5 `oneOf-004`). Design,
+literature anchors (OWL 2 RDF-Based Semantics §8 comprehension conditions,
+informative; ter Horst pD* if-semantics for the termination-preserving
+weakening), and the stratification invariant are documented in that
+section's banner.
+
 ### Group D — cardinality reasoning (4 tests, MEDIUM effort)
 
 `WebOnt-cardinality-001`: premise `c ⊑ Restriction(p, maxCardinality 1) ⊓
@@ -208,21 +221,87 @@ Group C/F's list handling) and emit every pairwise `differentFrom`. Same
 shape as the existing reverse rule, just the other direction — should sit
 right next to it with a shared list-decode helper.
 
-### Group G — OWL Full meta-modeling axioms, DL explicitly excluded (3 tests, PARK — see 🧭)
+### Group G — OWL Full meta-modeling axioms, flag-gated mode (3 tests, ✅ IMPLEMENTED 2026-07-28)
 
 `WebOnt-Class-001`: premise is **empty**; conclusion is `rdfs:Class
 owl:equivalentClass owl:Class` — a meta-model axiom that only holds under
-OWL Full's comprehension over the RDFS/OWL vocabulary itself. All three
+OWL Full's reading of the RDFS/OWL vocabulary itself. All three
 tests carry `test:species FULL` only, with an explicit
 `owl:NegativePropertyAssertion` denying `test:species DL` for each — the W3C
 suite itself says these are OWL-Full-only, not OWL DL entailments.
 
 Tests: `WebOnt-Class-001`, `WebOnt-Class-002`, `WebOnt-Class-003`.
 
-Recommendation: park. Implementing bespoke Full meta-axioms for 3 tests when
-the project's stated target is RDF Core / RDFS / OWL(DL+RL/EL/QL profiles) /
-SHACL / SPARQL is a poor tests-gained/effort trade unless OWL Full punning
-becomes an explicit goal.
+**Implemented design (per the 2026-07-28 owner steer "If we can do it - eg
+under a flag or engine mode or api if not directly alongside other OWL
+variants, then sure"; see §5 item 1):**
+
+- **Engine mode, default OFF.** `owl_runner --semantics rdf-based-full`
+  sets a new closure semantics-mode string,
+  `owl_semantics_rdf_based_full = "RDF-BASED-FULL"`
+  (`formal/fstar/OWL.Closure.fsti`, beside the existing `DIRECT` /
+  `RDF-BASED` dispatch keys from 2026-07-05). The runner change is mode
+  plumbing ONLY (iron rule #15): the flag substitutes the mode string
+  wherever the runner previously passed `owl_semantics_direct`; no
+  triple, no rule, no test-ID logic lives runner-side.
+- **The semantics is one F\* closure rule,**
+  `owl_rule_rdf_based_full_meta_axioms_mode`, a static axiom table
+  gated on `mode = owl_semantics_rdf_based_full` and threaded through
+  the existing `owl_rl_closure_step_mode` fixpoint (slot g26b, beside
+  the Group A vocabulary table). It emits, for the four meta-vocabulary
+  class pairs whose class extensions the OWL 2 RDF-Based Semantics
+  (W3C Rec. 2012-12-11, Table 5.2) makes EXACTLY equal —
+  `owl:Class = rdfs:Class` (both ICEXT = IC), `owl:Thing =
+  rdfs:Resource` (= IR), `owl:DataRange = rdfs:Datatype` (= IDC),
+  `owl:ObjectProperty = rdf:Property` (= IP) — the pairwise
+  `owl:equivalentClass` + `rdfs:subClassOf` axioms both directions plus
+  `rdf:type owl:Class` typings. Ordinary rdfs9/cls-eqc propagation then
+  carries memberships across (Class-002/-003) and derives the typing
+  triples (Class-001) with no further special machinery.
+- **Why a mode and not punning:** the default engine implements Direct
+  Semantics, where the DL-safe treatment of a name used as both class
+  and individual is punning/contextual semantics — Motik, "On the
+  Properties of Metamodeling in OWL" (ISWC 2005; J. Logic and
+  Computation 17(4), 2007) — under which these pairs are deliberately
+  NOT identified and the three tests are correctly NOT entailed. The
+  identification is a fact about the RDF-Based (OWL Full) semantics
+  only, so it must be reachable only when that semantics is explicitly
+  requested. The table is the *finite equational fragment* of the
+  RDF-Based meta-semantics: no comprehension over the vocabulary, no
+  iff-conditions, so flag-mode closure stays finite and terminating
+  (same ter Horst-style if-instance weakening as the PE witness layer,
+  documented in `OWL.Closure.fsti` §20b).
+- **FULL inherits the RDF-Based exemptions.**
+  `owl_rule_named_equivClass_to_sameAs_mode` (the Direct-mode heuristic
+  that promotes a named `owl:equivalentClass` pair to `owl:sameAs`) is
+  suppressed under RDF-BASED-FULL exactly as under RDF-BASED — letting
+  it fire refuted `WebOnt-Class-004` (NE: "Annotations about owl:Class
+  are not related to those about rdfs:Class") by copying a `dc:creator`
+  annotation across the meta pair.
+
+**Measured, 2026-07-29 (--regime dl, four-catalog battery, both modes):**
+
+| Catalog | flag OFF (default) | flag ON (`--semantics rdf-based-full`) |
+|---|---|---|
+| type-positive-entailment | 178 pass, 26 fail (out of 204) | 180 pass, 24 fail (out of 204) |
+| type-inconsistency | 124 pass, 3 fail (out of 127) | 123 pass, 4 fail (out of 127) |
+| type-consistency | 352 pass, 0 fail (out of 352) | 352 pass, 0 fail (out of 352) |
+| type-negative-entailment | 23 pass, 0 fail (out of 23) | 23 pass, 0 fail (out of 23) |
+
+Default mode is byte-identical in behaviour to before the flag existed
+(FAIL-name diffs empty on all four catalogs). Flag-on FAIL-name diffs,
+enumerated:
+
+- ✅ fixed under the flag: `WebOnt-Class-001/-002/-003` (the Group G
+  targets).
+- ⚠️ flag-on regressions (2, both explainable, neither touches default
+  mode): `WebOnt-I4.6-005-Direct` (PE; its `-Direct` suffix marks it as
+  testing the Direct-semantics annotation-copying reading of
+  equivalentClass, which the RDF-Based reading — and therefore this
+  mode — rejects; it is the test the suppressed sameAs-promotion rule
+  targets) and `WebOnt-description-logic-910` (inconsistency; the
+  meta-axiom table grows the closure that the Farkas class-size
+  counting pass reads, pushing it past its budget).
 
 ### Group H — hard DL98-style tableau stress tests (9 tests, HIGH effort)
 
@@ -433,8 +512,10 @@ Ordered by (tests gained) / (estimated effort), one commit-sized item each.
 13. **Group L — I5.3-014/015 RDFS-compatible-semantics corner cases.**
     Niche, isolated axioms with no broader payoff. **2 tests, lowest
     priority alongside Group G.**
-14. **Group G — OWL Full meta-modeling axioms.** Park (see 🧭 below). **3
-    tests, not recommended unless OWL Full becomes an explicit goal.**
+14. **Group G — OWL Full meta-modeling axioms.** ✅ Implemented 2026-07-28
+    as the flag-gated `--semantics rdf-based-full` mode (see the Group G
+    section above for the design; default paths unchanged). **3 tests,
+    flag-mode only by design.**
 
 ## 5. Open questions for the owner — ANSWERED 2026-07-28
 
