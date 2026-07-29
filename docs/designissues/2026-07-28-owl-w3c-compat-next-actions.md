@@ -182,9 +182,15 @@ classes not yet seen); conclusion requires the **full** symmetric closure
 rule family as complementOf. `WebOnt-equivalentProperty-004`/`-005`:
 equivalentProperty must propagate property characteristics (Functional/
 InverseFunctional/Symmetric/Transitive) between the two equivalent
-properties, not just domain/range. `WebOnt-SymmetricProperty-002` combines
+properties, not just domain/range. `WebOnt-SymmetricProperty-002` (**LANDED 2026-07-29**) combines
 symmetric-property extensional semantics with an oneOf-based domain
-(overlaps Group C's list machinery).
+(overlaps Group C's list machinery). It did not turn out to be an
+axiom-propagation rule like the rest of this group: Table 5.13's
+condition quantifies over the property's whole extension in the
+interpretation, so it is checkable only where the premise pins that
+extension from above — here inverse-functionality plus an `owl:oneOf`
+range, whose own semantic condition is an equality. See
+OWL.Closure.fsti Group E(h).
 
 Tests: `WebOnt-FunctionalProperty-003`, `WebOnt-FunctionalProperty-004`,
 `WebOnt-InverseFunctionalProperty-003`, `WebOnt-InverseFunctionalProperty-004`,
@@ -333,20 +339,28 @@ items above.
 combined min/max cardinality on the same property, then derives
 `notA owl:complementOf A` from it — genuine interaction between cardinality
 unsatisfiability and complement construction, not a single rule.
-`WebOnt-I5.24-002`: "OWL, unlike RDFS, uses iff semantics for range" —
-premise `prop rdfs:range A`, `A rdfs:subClassOf B`; conclusion involves an
-`owl:intersectionOf` built from the range class — combines Group B/C-style
-list/range reasoning with the OWL-specific range-iff quirk.
-`WebOnt-I5.2-006`, `WebOnt-I5.24-003`, `-004` share the same
-`test:creator`/pattern family (not each individually read).
+`WebOnt-I5.24-002`, `-003`, `-004`: **LANDED 2026-07-29**, all three
+pass. Two corrections to what this section said while they were open.
+(1) The premise described here (`prop rdfs:range A`, `A rdfs:subClassOf
+B`) is `-001`'s, not `-002`'s; `-002` declares TWO ranges
+(`prop rdfs:range A`, `prop rdfs:range B`) and concludes their
+`owl:intersectionOf`. (2) The "OWL-specific range-iff quirk" framing is
+wrong: OWL does not reinterpret `rdfs:range`, and a range declaration is
+never a minimality claim. The mechanism is metamodeling — `rdfs:range`
+relates two ordinary resources, so range facts are themselves derivable
+under the RDF-Based semantic conditions (Table 5.8), which is what lets
+two declared ranges compose into an intersection range. See
+`docs/web/conformance/owl2.md` § "What the I5.24 / SymmetricProperty
+family needed" and OWL.Closure.fsti Group E(g) / comp-w6 / comp-w7.
+`WebOnt-I5.2-006` remains open and shares only the `test:creator`.
 
-Tests: `WebOnt-I5.2-004`, `WebOnt-I5.2-006`, `WebOnt-I5.24-002`,
-`WebOnt-I5.24-003`, `WebOnt-I5.24-004`.
+Tests still open: `WebOnt-I5.2-004`, `WebOnt-I5.2-006`. The three
+`WebOnt-I5.24-*` tests landed 2026-07-29.
 
 Fix: likely `Tableau.fst` territory (cardinality+complement interaction) for
-I5.2-004/006; I5.24-x may be closable with a targeted `OWL.Closure.fst` rule
-once someone reads the -003/-004 fixtures directly — flagged here as
-needing that read before scoping a commit.
+I5.2-004/006. The I5.24 half was indeed closable with targeted
+`OWL.Closure.fsti` rules once the fixtures were read directly — one
+base-closure rule plus two comprehension-witness rules.
 
 ### Group K — Extracredit-status combinatorial/datatype-facet tests (6 tests, HIGH effort, LOW priority)
 
@@ -523,8 +537,12 @@ Verbatim: "This is a good agenda! Sure do 1, 2 now but know that the
 most appealing is 'formalize the RDF-Based semantics itself in F* and
 prove the RL rule set sound against it'."
 
-Dispatched accordingly: (1) datatype value-space engine, (2) range-iff
-+ extensional-property rules, and (3) the semantics-formalization
+Dispatched accordingly: (1) datatype value-space engine, (2) the
+rdfs:range/rdfs:domain metamodeling + extensional-property rules
+(dispatched under the label "range-iff", which the owner corrected
+mid-flight on 2026-07-29 — OWL does not reinterpret rdfs:range; see
+the corrected account in §"Group J" and in
+`docs/web/conformance/owl2.md`), and (3) the semantics-formalization
 FLAGSHIP, starting as a design + pilot phase (formalization strategy
 doc + a small set of RL rules proven sound end-to-end against a
 formalized interpretation structure) before committing to the full
