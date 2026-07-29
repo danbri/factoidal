@@ -249,3 +249,52 @@ it easy to pick up next.
 - **The forced fillers reach only the entailment closure**, for the
   marker-path reason above. A consistency or inconsistency verdict does
   not see them.
+
+## Scoped follow-up: the two functional-syntax-only cardinality tests
+
+`Qualified-cardinality-boolean` and `Qualified-cardinality-restricted-int`
+are reported `SKIP/functional-syntax-only`, so they sit OUTSIDE the
+204-test denominator; deciding them is a coverage gain, not a pass/fail
+flip. Their reasoning is already this note's section 6 rule verbatim —
+`DataExactCardinality(2 :dp xsd:boolean)` over a two-member value space,
+`DataExactCardinality(3 :dp DatatypeRestriction(xsd:integer [1,3]))` over
+a three-member one. Nothing new is needed on the counting side.
+
+An attempt to land them was measured and reverted (commit `bdcfd80`,
+reverted by `6e7490d`). It moved `type-positive-entailment` from
+191 pass, 13 fail to 190 pass, 14 fail and did NOT unskip the targets.
+Four coupled pieces are needed, and that commit had two:
+
+1. **`Data{Exact,Min,Max}Cardinality` in `Parser.OWLFunctional.fst`** —
+   written and verified in the reverted commit, mapped per the OWL 2
+   Mapping to RDF Graphs Data Property Cardinality Restrictions rows.
+   Correct as far as it goes. Needs a bare-integer scanner: the syntax
+   writes cardinalities unquoted and untyped.
+2. **`owl:onDataRange` as a qualified-cardinality filler in
+   `Tableau.parse_class_expr`** — written, and the more faithful reading;
+   without it `DataExactCardinality(n DP DR)` silently reads as the
+   unqualified `= n DP`. This is what regressed
+   `New-Feature-DataQCR-001`, whose conclusion is a restriction with
+   `owl:minQualifiedCardinality 2` + `owl:onDataRange xsd:string`: read
+   unqualified it was provable from two asserted string values, read
+   correctly it is not — because of piece 4.
+3. **`Ontology(<IRI> Axiom*)`** — NOT started, and the actual reason the
+   two targets still skip. `parse_functional_syntax` hands the position
+   straight to `parse_axioms_acc` after `(`, so a leading ontology IRI
+   fails the parse. Independent of cardinality, and invisible until the
+   cardinality gap was closed.
+4. **Qualified cardinality counted over LITERAL fillers** — NOT started
+   and not small. `Tableau.count_qual_successors` decides filler
+   membership through `is_member`, which takes a `subject`; a literal is
+   not a subject. Data-range-qualified counting is structurally absent,
+   not a missing case.
+
+Order that works: 4, then 2, then 1 and 3 together. Landing 1+2 alone
+regresses; landing 1+3 without 2 converts two honest skips into two
+fails, since the filler is dropped and the count cannot be decided.
+
+The one datatype fact still missing on the reasoning side is trivial:
+`value_set_exact_values` should enumerate the `xsd:boolean` value space,
+`{true, false}` (XSD 1.1 Datatypes section 3.3.2) — the only finite
+value space in the OWL 2 datatype map that is not a numeric interval.
+Three lines, carried in the reverted commit.
