@@ -95,7 +95,7 @@ Caveats, all CONFIRMED by experiment or source:
 | `.checked` files | Serialized typechecked module (`--cache_checked_modules`) | `formal/fstar/*.fst.checked`, next to source; gitignored | Source **content digest** change (not mtime — CONFIRMED); any dependency's `.checked` going stale (cascades — CONFIRMED); F\* version change (PROPOSED, from F\* release practice; not tested here). NOT invalidated by `--z3rlimit_factor` change (CONFIRMED) | RDF.Bytes: 6.4s cold → 0.5s warm, 12x (CONFIRMED) |
 | ulib `.checked` | Pre-checked F\* stdlib | `~/.opam/fstar/lib/fstar/ulib.checked/` | Reinstalling/upgrading the fstar opam package | Ships with the package; stdlib never re-verified (CONFIRMED via --dep output paths) |
 | `.hints` files | Recorded z3 unsat cores for proof replay (`--record_hints` / `--use_hints`) | `Foo.fst.hints` next to source (or `--hint_dir`); JSON text | Query hash mismatch per top-level name; z3 version or `--z3seed` drift can break replay (PROPOSED) | **Measured negative on every module tested — REJECTED for the pipeline, 2026-07-04** (CONFIRMED, 4 modules incl. SPARQL11.Algebra, 2-3 repeats each; full table in P5). Slowdowns +20% to +80%; a hint MISS degrades gracefully (rc=0, warning line, plain-verify speed) |
-| Incremental-extract manifest | Per-module `.fst` source SHA-256 recorded from the last successful extract; `--force-full` bypasses it | `ocaml-output/.extract-state/manifest.tsv`, gitignored | Any change to a module's own `.fst` content (CONFIRMED — see P2 below); NOT invalidated by a dependency's content changing unless the dependent's own source also changes (CONFIRMED, this is the accepted trade-off) | Skips fstar.exe invocation entirely (not just codegen) for modules unrelated to the edit — replaces the old flat "everyone after this point in the list" cascade. CONFIRMED via scratch harness, see P2 |
+| Incremental-extract manifest | Per-module **dependency-closure digest** recorded from the last successful extract; `--force-full` bypasses it | `ocaml-output/.extract-state/manifest.tsv` — **tracked in git**, despite `.gitignore` claiming otherwise (see below) | Any change to the module's own `.fst`/`.fsti` **or to anything in its transitive in-list dependency closure** (CONFIRMED — see P2). Before 2026-07-29 a dependency-only change did NOT invalidate it, which was unsound for proofs (issue #320) | Skips fstar.exe invocation entirely (not just codegen) for modules genuinely unaffected by the edit — replaces the old flat "everyone after this point in the list" cascade. CONFIRMED via scratch harness, see P2 |
 | Committed `.ml` + binaries | Extraction output + `bin/<platform>/` | git (iron rule #9) | Re-extraction; `ocaml-patches.sh` rewrites `.ml` in place | Fresh clone runs tests with no toolchain |
 | Compile skip | `needs_rebuild_from_sources` mtime check over all `.ml` + consumer sources | build-ocaml.sh lines 523-532 | Any single `.ml` newer than any binary → **full** recompile of everything (CONFIRMED) | Skips all ocamlopt invocations on a no-op |
 | CI opam cache | `~/.opam` via actions/cache | [w3c-tests.yml](../../.github/workflows/w3c-tests.yml), [check-extraction.yml](../../.github/workflows/check-extraction.yml) | Manual key bump only (static keys `opam-fstar-<OS>-v3` / `-v4`) | Skips ~10 min toolchain install (CONFIRMED present) |
@@ -401,45 +401,134 @@ extract step. `EXTRACT_CHAIN_DIRTY` (which forced every module
 re-run fstar.exe, regardless of true dependency) is gone, replaced by
 an incremental-extract manifest.
 
-**Design.** `ocaml-output/.extract-state/manifest.tsv` records, per
-module, the SHA-256 of its `.fst` source as of the last successful
-extract (one line per module: `<fst-path>\t<sha256>`, gitignored —
-digest-keyed like `.checked`, so a missing/stale copy just costs a
-full re-extract, never a correctness bug). Before invoking fstar.exe
-on module `M`, the loop computes `M.fst`'s current hash and skips the
-invocation entirely — no fstar.exe process at all — when: (a) the
-hash matches the manifest entry, and (b) `M`'s `.ml` already exists in
-`ocaml-output/`. `--force-full` (`./build-ocaml.sh extract
---force-full`) bypasses the manifest and reprocesses every module,
-same as the old unconditional behavior — the escape hatch for anyone
-who distrusts the manifest state.
+**Design (current, after the 2026-07-29 soundness fix).**
+`ocaml-output/.extract-state/manifest.tsv` records, per module, a
+**dependency-closure digest** as of the last successful extract (one
+line per module: `<fst-path>\t<sha256>`). The digest is sha256 over the
+module's own source hash — `.fst` plus its sibling `.fsti` if present,
+issue #293 — concatenated with the closure digests of every in-list
+dependency, sorted. `LAYERS` is already topologically ordered, so one
+pass computes them all; they are written to
+`.extract-state/closure.tsv` because the extract workers are forked
+processes that cannot read the parent's arrays. Before invoking
+fstar.exe on module `M`, the loop skips the invocation entirely — no
+fstar.exe process at all — when (a) `M`'s closure digest matches its
+manifest entry, and (b) `M`'s `.ml` already exists in `ocaml-output/`.
+`--force-full` bypasses the manifest and reprocesses everything.
 
-**Why this is correct despite skipping on the module's OWN hash only
-(no real dependency graph).** Verified experimentally in a scratch dir
-(`Parser.FastString.fst` → `Parser.IRI.fst`, a real one-hop dependency
-in this repo): editing `Parser.FastString.fst` (a comment-only,
-interface-preserving change) and re-verifying `Parser.IRI.fst` changes
-`Parser.IRI.fst.checked`'s hash (F* embeds each dependency's digest in
-the `.checked` file, so ANY upstream change ripples into every
-dependent's `.checked` bytes — this is why a pure "skip when
-`.checked` hash unchanged" design, floated as the "simpler" option
-before this was implemented, would NOT have skipped true dependents
-and wasn't chosen) but leaves the extracted `Parser_IRI.ml`
-**byte-identical**. Codegen output is a function of the module's own
-`.fst` content (given a fixed F* version) plus the *names* it calls in
-dependencies, not their internal proofs/implementations — so skipping
-re-codegen based on the dependent's own source hash is safe whenever
-the dependency's edit doesn't change its OCaml-visible signature. The
-residual gap — a dependency changing its extracted signature
-incompatibly, with a stale, unreprocessed dependent still referencing
-the old shape — is caught loudly at `ocamlopt` compile time (a build
-failure, not a silently wrong `.ml`), and `--force-full` is there for
-anyone who wants to bypass the manifest and reprocess everything
-regardless. `ocaml-patches.sh`'s per-patch idempotency guards (e.g.
+`ocaml-patches.sh`'s per-patch idempotency guards (e.g.
 `89_fast_string_primitives.sh`'s "already applied, skip" check) make
 leaving an untouched, already-patched `.ml` in place safe: the
 unconditional whole-directory patch re-run at the end of extract is a
 no-op for it.
+
+**The original justification was wrong — issue #320.** Until
+2026-07-29 the skip was keyed on the module's OWN source hash, and this
+document plus `build-ocaml.sh`'s comments recorded the reasoning as
+settled. It ran: a comment-only edit to `Parser.FastString.fst` changes
+`Parser.IRI.fst.checked`'s hash (F\* embeds each dependency's digest)
+but leaves the extracted `Parser_IRI.ml` byte-identical, because codegen
+output is a function of the module's own `.fst` plus the *names* it
+calls, not the dependency's internal proofs; and the residual gap — a
+dependency changing its extracted signature incompatibly — is caught
+loudly at `ocamlopt`.
+
+Every observation there is true. The conclusion is not. **The argument
+is about extraction output, but the skip also suppresses
+verification.** A dependency can change *semantically* while its
+extracted signature stays identical; that invalidates any theorem an
+unchanged dependent states about it, and precisely because the `.ml` is
+byte-identical, `ocamlopt` has nothing to catch. The developer sees
+green. This mattered little when modules mostly carried totality and
+refinements; it matters now that `OWL.Semantics.Soundness.fst` and
+friends state theorems about *other modules'* functions.
+
+Demonstrated end-to-end against `build-ocaml.sh` (2026-07-29), not
+argued:
+
+```fstar
+// ZZGap.Dep.fst
+let bump (x:nat) : nat = x + 1
+// ZZGap.Thm.fst  -- unchanged throughout
+let apply_bump (x:nat) : nat = bump x
+let lemma_bump_increases (x:nat) : Lemma (bump x > x) = ()
+```
+
+Change `bump` to `if x = 0 then 0 else x - 1` — same extracted type
+`Prims.nat -> Prims.nat` — and re-run `./build-ocaml.sh extract`:
+
+| | Own-hash skip (before) | Closure digest (after) |
+|---|---|---|
+| `ZZGap.Thm.fst` | `(up to date, skipped)` | re-verified |
+| Re-extracted | 1 (190 skipped) | 2 |
+| `Error 19 ... could not prove post-condition` | not reported | reported |
+| `BUILD_STATUS` | `OK` | `FATAL: layer 1 had failures` |
+| Exit code | **0** | **1** |
+
+`ZZGap_Thm.ml` was byte-identical across the change, so `ocamlopt`
+could never have caught it; verifying `ZZGap.Thm.fst` by hand gave the
+Error 19 the build had swallowed.
+
+**A second hole surfaced during the fix.** The worker treated the
+presence of an `Extracted module` line in F\*'s output as success and
+ignored `fstar.exe`'s exit code. F\* prints that line **even when
+verification failed** — the run above exits 1, prints `Error 19`, and
+still prints `Extracted module ZZGap.Thm` and writes the `.ml`. So a
+module that failed to verify was recorded OK. The exit code is now the
+authority. Without this, the closure-digest fix would have re-verified
+the module and still gone green.
+
+**Cost, honestly.** Editing a wide-fanout hub module
+(`RDF.Graph.Executable`, `SPARQL11.Algebra`) now re-verifies its
+dependents rather than silently skipping them. That is correctness work
+the old scheme bought its speed by not doing. Leaf edits — most
+format/parser modules depend on nothing else in the list — are
+unaffected, and P1's layered parallel scheduler is what absorbs the hub
+case. Manifests written before this change hold bare source hashes,
+which match no closure digest, so the first run after it re-extracts
+everything once and then self-heals.
+
+**The manifest is tracked in git — CI was never protected from this.**
+Issue #320 recorded a mitigating belief worth stating precisely because
+it turned out to be false: *"clean CI checkouts do not restore the
+manifest, so main-branch CI is likely unaffected."* Checked, not
+trusted:
+
+```
+$ git cat-file -p HEAD:formal/fstar/ocaml-output/.extract-state/manifest.tsv | wc -l
+189
+```
+
+`.gitignore` does carry
+`formal/fstar/ocaml-output/.extract-state/` with the comment "Local
+build-cache state, not a committed artifact" — but gitignore does not
+untrack files already in the index, and these were added before the
+rule. So **every fresh checkout restores the manifest**, and the
+committed `.ml` files (iron rule #9) satisfy the other half of the skip
+predicate. Confirmed by running `./build-ocaml.sh extract` in a copy of
+the committed state with zero `.checked` files, i.e. what CI has:
+
+```
+Re-extracted modules: 10 (181 skipped as unchanged)
+```
+
+181 of 191 modules skipped with no `fstar.exe` process at all, in a tree
+that had never been verified. The dev-loop/CI distinction the issue
+hoped for does not exist; the gap was repo-wide. (The 10 that did run
+are the 2 experiment fixtures plus 8 modules whose `.ml` is not
+committed — see the note on `ocaml-output/` completeness in the
+clean-room artifact.)
+
+**What the digest still does NOT cover.** Do not read it as a proof
+that a module's verification is current:
+
+- A changed **patch script** moves no `.fst` hash, so an already-patched
+  `.ml` is still left alone — see the invalidate-and-delete recipe just
+  below.
+- An **F\* or z3 version change** is not in the digest; `.checked`
+  digests handle that separately.
+- Dependencies **outside the module list** are not in the closure (ulib
+  is pre-checked and version-pinned, so this is theoretical today).
 
 **BUT the same guards mean EDITING a patch script does nothing to an
 already-patched module.** The guard sees the old patch's marker in
