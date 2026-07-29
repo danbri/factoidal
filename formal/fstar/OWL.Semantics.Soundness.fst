@@ -404,3 +404,103 @@ let owl_rule_cls_oneof_sound i a g ig =
   end;
   fold_left_inv (holds_all i a) (owl_cls_oneof_step g ig fuel) g g
 #pop-options
+
+// ===================================================================
+// Entailment corollaries — from per-assignment truth preservation to
+// satisfaction and pilot_entails, with the index hypotheses
+// discharged against build_indexed where the pilot can discharge
+// them. Note (build_indexed g).ig_triples is definitionally g, and
+// the pilot rules mint no fresh blank nodes, so the assignment
+// chosen for g serves the conclusion graph too.
+// ===================================================================
+
+// prp-symp ignores its index argument, so the corollary holds for
+// ANY indexed_graph.
+val owl_rule_symmetric_property_entailed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (pilot_entails g (owl_rule_symmetric_property g ig))
+
+let owl_rule_symmetric_property_entailed g ig =
+  introduce forall (i : interp).
+      owl_rl_pilot_conditions i ==> satisfies i g ==>
+      satisfies i (owl_rule_symmetric_property g ig)
+  with introduce owl_rl_pilot_conditions i ==>
+                 (satisfies i g ==> satisfies i (owl_rule_symmetric_property g ig))
+  with _ . introduce satisfies i g ==> satisfies i (owl_rule_symmetric_property g ig)
+  with _ . begin
+    eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+    returns satisfies i (owl_rule_symmetric_property g ig)
+    with _ . begin
+      owl_rule_symmetric_property_sound i a g ig;
+      assert (holds_all i a (owl_rule_symmetric_property g ig))
+    end
+  end
+
+val rdfs_rule_domain_entailed (g : rdf_graph)
+  : Lemma (pilot_entails g (rdfs_rule_domain g (build_indexed g)))
+
+let rdfs_rule_domain_entailed g =
+  introduce forall (i : interp).
+      owl_rl_pilot_conditions i ==> satisfies i g ==>
+      satisfies i (rdfs_rule_domain g (build_indexed g))
+  with introduce owl_rl_pilot_conditions i ==>
+                 (satisfies i g ==> satisfies i (rdfs_rule_domain g (build_indexed g)))
+  with _ . introduce satisfies i g ==> satisfies i (rdfs_rule_domain g (build_indexed g))
+  with _ . begin
+    eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+    returns satisfies i (rdfs_rule_domain g (build_indexed g))
+    with _ . begin
+      lemma_build_indexed_wf_pred g;
+      assert ((build_indexed g).ig_triples == g);
+      rdfs_rule_domain_sound i a g (build_indexed g);
+      assert (holds_all i a (rdfs_rule_domain g (build_indexed g)))
+    end
+  end
+
+val owl_rule_sameAs_symmetry_entailed (g : rdf_graph)
+  : Lemma (pilot_entails g (owl_rule_sameAs_symmetry g (build_indexed g)))
+
+let owl_rule_sameAs_symmetry_entailed g =
+  introduce forall (i : interp).
+      owl_rl_pilot_conditions i ==> satisfies i g ==>
+      satisfies i (owl_rule_sameAs_symmetry g (build_indexed g))
+  with introduce owl_rl_pilot_conditions i ==>
+                 (satisfies i g ==> satisfies i (owl_rule_sameAs_symmetry g (build_indexed g)))
+  with _ . introduce satisfies i g ==> satisfies i (owl_rule_sameAs_symmetry g (build_indexed g))
+  with _ . begin
+    eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+    returns satisfies i (owl_rule_sameAs_symmetry g (build_indexed g))
+    with _ . begin
+      assert ((build_indexed g).ig_triples == g);
+      owl_rule_sameAs_symmetry_sound i a g (build_indexed g);
+      assert (holds_all i a (owl_rule_sameAs_symmetry g (build_indexed g)))
+    end
+  end
+
+// cls-oo's corollary is CONDITIONAL on the ig_sp component-recovery
+// clause: the pilot proves the weak half against build_indexed
+// (lemma_build_indexed_wf_sp_weak — membership plus the composite-key
+// equation); recovering t.s == s /\ t.p == p from the key equation
+// needs sp_key injectivity, which fails if a blank-node label may
+// contain U+001F. Finding F1 in the design doc; the framework keeps
+// the hypothesis explicit rather than assuming it silently.
+val owl_rule_cls_oneof_entailed (g : rdf_graph)
+  : Lemma
+    (requires ig_wf_sp (build_indexed g))
+    (ensures pilot_entails g (owl_rule_cls_oneof g (build_indexed g)))
+
+let owl_rule_cls_oneof_entailed g =
+  introduce forall (i : interp).
+      owl_rl_pilot_conditions i ==> satisfies i g ==>
+      satisfies i (owl_rule_cls_oneof g (build_indexed g))
+  with introduce owl_rl_pilot_conditions i ==>
+                 (satisfies i g ==> satisfies i (owl_rule_cls_oneof g (build_indexed g)))
+  with _ . introduce satisfies i g ==> satisfies i (owl_rule_cls_oneof g (build_indexed g))
+  with _ . begin
+    eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+    returns satisfies i (owl_rule_cls_oneof g (build_indexed g))
+    with _ . begin
+      assert ((build_indexed g).ig_triples == g);
+      owl_rule_cls_oneof_sound i a g (build_indexed g);
+      assert (holds_all i a (owl_rule_cls_oneof g (build_indexed g)))
+    end
+  end
