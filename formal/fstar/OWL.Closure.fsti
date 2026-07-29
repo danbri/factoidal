@@ -4535,6 +4535,251 @@ let owl_rule_hasvalue_card_disjoint (g : rdf_graph) (ig : indexed_graph) : rdf_g
     g
     pins
 
+// ---- Group E(g): rdfs:range as a relation between resources --------------
+//
+// WHAT THIS IS NOT. It is NOT a reinterpretation of rdfs:range. The
+// reading of a range triple is unchanged and stays ONE-WAY: from
+// (P rdfs:range C) and (x P y) infer (y rdf:type C), and nothing else.
+// A range declaration never says "the range is exactly C" — many
+// classes satisfy it at once, and no rule in this file may read one as
+// a minimality claim.
+//
+// WHAT IT IS. Under the OWL 2 RDF-Based Semantics (W3C Rec. 11 Dec
+// 2012) rdfs:range is an ordinary property of the domain of discourse:
+// its extension IEXT(I(rdfs:range)) relates a resource that is a
+// property to a resource that is a class, and both are things the
+// language can talk about. So the RANGE RELATIONSHIP ITSELF is an
+// object of discourse, and the semantic conditions say when a pair
+// belongs to it — which is what licenses deriving NEW facts ABOUT a
+// property's range rather than only consuming declared ones. Table 5.8:
+//
+//   (p, c) in IEXT(I(rdfs:range))  IF  p in IP, c in IC,
+//     for all x, y: (x, y) in IEXT(p) implies y in ICEXT(c)
+//
+// This is metamodeling, not a stronger reading of the triple: the
+// one-way value constraint above is exactly the antecedent here, and
+// the conclusion is membership of the PAIR (p, c) in the range
+// relation. WebOnt-I5.24-002's own 2004 description words the same
+// phenomenon as "OWL, unlike RDFS, uses iff semantics for range" —
+// quoted as the fixture's wording, not adopted as the account of it.
+//
+// The rule needs the antecedent "every p-value is in c" as a visible
+// graph pattern. There is one shape in which it is one:
+//
+//   (owl:Thing rdfs:subClassOf R) AND (R owl:onProperty P) AND
+//   (R owl:allValuesFrom C)
+//   ==> (P rdfs:range C)
+//
+// Soundness: ICEXT(owl:Thing) is the whole universe under the RDF-Based
+// Semantics (Table 5.2 makes owl:Thing and rdfs:Resource extensionally
+// equal) and is the object domain under the Direct Semantics, so the
+// subClassOf triple says every resource satisfies AllValuesFrom(P, C) —
+// i.e. for all x, y: (x, y) in IEXT(P) implies y in ICEXT(C), which is
+// Table 5.8's antecedent verbatim. Nothing is claimed about C being the
+// only, smallest, or intended range.
+//
+// Targets WebOnt-I5.24-004 ("a typical definition of range from
+// description logic ... It works both ways"): its premise IS the
+// universal restriction and its conclusion IS the range triple. The
+// opposite direction (range triple to restriction) is the plain one-way
+// reading; it mints a fresh restriction node and therefore lives in the
+// comprehension-witness layer, as owl_rule_comp_range_avf.
+//
+// NAMED-FILLER GUARD on C, matching scm-dom2 / scm-rng2: an anonymous
+// class-expression bnode must not leak into ?C bindings against
+// rdfs:range (see the bnode-pollution note on owl_rule_scm_dom2).
+// Complexity: one O(|g|) pass, two index lookups per owl:Thing
+// rdfs:subClassOf edge, no scan over the data.
+let owl_rule_avf_thing_to_range (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      let subj_is_thing =
+        match t.s with
+        | S_IRI i -> i = owl_Thing
+        | S_BNode _ -> false
+      in
+      if t.p = rdfs_subClassOf && subj_is_thing then
+        match term_to_subject t.o with
+        | None -> acc
+        | Some r_subj ->
+          let props   = find_objects_indexed ig r_subj owl_onProperty_iri in
+          let fillers = find_objects_indexed ig r_subj owl_allValuesFrom_iri in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (p_term : rdf_term) ->
+              match p_term with
+              | T_IRI p ->
+                List.Tot.fold_left
+                  (fun (acc3 : rdf_graph) (c_term : rdf_term) ->
+                    match c_term with
+                    | T_IRI _ ->
+                      add_triple_unchecked acc3
+                        ({ s = S_IRI p; p = rdfs_range; o = c_term } <: triple)
+                    | _ -> acc3)
+                  acc2
+                  fillers
+              | _ -> acc2)
+            acc
+            props
+      else acc)
+    g
+    g
+
+// ---- Group E(h): extensional reading of owl:SymmetricProperty ------------
+//
+// OWL 2 RDF-Based Semantics Table 5.13:
+//
+//   p in ICEXT(I(owl:SymmetricProperty))  IFF  p in IP,
+//     for all x, y: (x, y) in IEXT(p) implies (y, x) in IEXT(p)
+//
+// The OWL 2 RL rule prp-symp realises the LEFT-TO-RIGHT half (a declared
+// symmetric property gets its converse edges). This rule realises the
+// RIGHT-TO-LEFT half — a property whose extension IS symmetric is an
+// owl:SymmetricProperty.
+//
+// EXTENSIONAL, NOT MODAL. The condition quantifies over IEXT(p), the
+// property's actual extension in the interpretation. It is not "every
+// case the property could apply to" and not "every pair the graph might
+// later assert" — it is the relation itself, and it either is symmetric
+// or is not. That is what WebOnt-SymmetricProperty-002 means by
+// "extensional semantics of owl:SymmetricProperty".
+//
+// That half is normally out of reach for a forward-chaining closure: a
+// closure only ever computes a LOWER bound on IEXT(p) (the derived
+// edges), and the condition ranges over ALL of IEXT(p), including pairs
+// the closure has not seen. It becomes checkable only when the premise
+// also pins IEXT(p) from ABOVE, which the following combination does:
+//
+//   (a) (p rdf:type owl:InverseFunctionalProperty). Table 5.13:
+//       for all x, y, z: (x,z) in IEXT(p) and (y,z) in IEXT(p) implies
+//       x = y — at most one subject per object.
+//   (b) (p rdfs:range C) and (C owl:oneOf (o1 ... on)). Note where the
+//       exactness comes from: NOT from the range triple, which is read
+//       one-way as always (rdfs3 puts every p-object inside ICEXT(C)
+//       and says nothing more — C is not claimed to be a minimal or
+//       exclusive range). It comes from owl:oneOf, whose own semantic
+//       condition is an EQUALITY — ICEXT(C) is exactly {o1, ..., on}.
+//       The two compose: p-objects are inside a set that is pinned.
+//   (c) coverage: every oi already carries a derived edge (si, oi).
+//
+// Then for any (x, y) in IEXT(p): (b) forces y = oi for some i, and (a)
+// applied to (x, oi) and (si, oi) forces x = si. So IEXT(p) is exactly
+// the set of derived p-edges, as denotations — an UPPER bound, not just
+// a lower one. Symmetry is now decidable by inspecting that set, and
+// Table 5.13's right-to-left half licenses the type triple.
+//
+// This is the "extensional semantics of owl:SymmetricProperty" that
+// WebOnt-SymmetricProperty-002 is titled after: its equalityOnA is
+// inverse-functional with range oneOf(a, b) and carries exactly the
+// edges (a, a) and (b, b), so its extension is pinned and self-loops
+// only, hence symmetric.
+//
+// IRI-IRI DISCIPLINE: collect_pinned_edges returns None if ANY p-edge
+// has a bnode or literal endpoint. A bnode is an existential, and a
+// pinned extension containing one would over-commit on identity; a
+// literal object cannot be an owl:oneOf individual, so the range bound
+// would not apply to it.
+// Complexity: one O(|g|) pass per declared inverse-functional property
+// plus O(|edges of p|^2) for the symmetry test. Inverse-functional
+// declarations are a schema-level count.
+
+// All p-edges of g as (subject IRI, object IRI) pairs — None as soon as
+// one endpoint is not an IRI (see IRI-IRI DISCIPLINE above).
+let rec collect_pinned_edges (ts : list triple) (p : wf_iri)
+  : Tot (option (list (wf_iri & wf_iri))) (decreases ts)
+  =
+  match ts with
+  | [] -> Some []
+  | t :: rest ->
+    if t.p = p then
+      (match t.s, t.o with
+       | S_IRI s_iri, T_IRI o_iri ->
+         (match collect_pinned_edges rest p with
+          | None -> None
+          | Some es -> Some ((s_iri, o_iri) :: es))
+       | _, _ -> None)
+    else collect_pinned_edges rest p
+
+let edge_set_is_symmetric (es : list (wf_iri & wf_iri)) : bool =
+  List.Tot.for_all
+    (fun (e : (wf_iri & wf_iri)) ->
+      let (x, y) = e in
+      List.Tot.existsb
+        (fun (f : (wf_iri & wf_iri)) -> let (u, v) = f in u = y && v = x)
+        es)
+    es
+
+// Does every enumeration member already occur as the OBJECT of a
+// derived edge? Condition (c) of the pinning argument.
+let edges_cover_members (es : list (wf_iri & wf_iri)) (ms : list wf_iri) : bool =
+  List.Tot.for_all
+    (fun (m : wf_iri) ->
+      List.Tot.existsb (fun (e : (wf_iri & wf_iri)) -> let (_, y) = e in y = m) es)
+    ms
+
+// Every owl:oneOf member list reachable as an rdfs:range of p. The range
+// class may be named or anonymous; only the LIST elements must be IRIs
+// (decode_iri_list's contract).
+let oneof_range_member_lists (g : rdf_graph) (ig : indexed_graph) (p : wf_iri)
+  : list (list wf_iri)
+  =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : list (list wf_iri)) (r : rdf_term) ->
+      match term_to_subject r with
+      | None -> acc
+      | Some r_subj ->
+        List.Tot.fold_left
+          (fun (acc2 : list (list wf_iri)) (o : rdf_term) ->
+            match term_to_subject o with
+            | None -> acc2
+            | Some l_subj ->
+              (match decode_iri_list g ig l_subj fuel with
+               | None -> acc2
+               | Some ms -> ms :: acc2))
+          acc
+          (find_objects_indexed ig r_subj owl_oneOf_iri))
+    []
+    (find_objects_indexed ig (S_IRI p) rdfs_range)
+
+// Conditions (a)+(b)+(c) together. Some es = "IEXT(p) is exactly es".
+let pinned_property_extension (g : rdf_graph) (ig : indexed_graph) (p : wf_iri)
+  : option (list (wf_iri & wf_iri))
+  =
+  let is_ifp =
+    List.Tot.existsb
+      (fun (t : rdf_term) -> rdf_term_eq t (T_IRI owl_InverseFunctionalProperty))
+      (find_objects_indexed ig (S_IRI p) rdf_type)
+  in
+  if not is_ifp then None
+  else
+    match collect_pinned_edges g p with
+    | None -> None
+    | Some es ->
+      if List.Tot.existsb
+           (fun (ms : list wf_iri) -> Cons? ms && edges_cover_members es ms)
+           (oneof_range_member_lists g ig p)
+      then Some es
+      else None
+
+let owl_rule_extensional_symmetry (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty) then
+        match t.s with
+        | S_IRI p ->
+          (match pinned_property_extension g ig p with
+           | None -> acc
+           | Some es ->
+             if edge_set_is_symmetric es then
+               add_triple_unchecked acc
+                 ({ s = S_IRI p; p = rdf_type;
+                    o = T_IRI owl_SymmetricProperty } <: triple)
+             else acc)
+        | _ -> acc
+      else acc)
+    g
+    g
+
 // Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
 // rdfs:Datatype` and the same for `xsd:string` regardless of whether the
 // premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
@@ -5220,10 +5465,19 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // closure at g28b on the NEXT fixpoint iteration, which is what gives
   // both directions of every derived pair.
   let g28i = owl_rule_hasvalue_card_disjoint g28h ig in
+  // Group E(g): the OWL 2 RDF-Based Table 5.8 direction of rdfs:range —
+  // a universal restriction that owl:Thing is subsumed by IS a range
+  // declaration. Placement in the step is immaterial under the
+  // ig-snapshot convention; kept beside the other Group E rules.
+  let g28j = owl_rule_avf_thing_to_range g28i ig in
+  // Group E(h): the right-to-left half of Table 5.13's owl:Symmetric-
+  // Property condition, usable only where inverse-functionality plus an
+  // enumerated range pin IEXT(p) from above (see the rule's banner).
+  let g28k = owl_rule_extensional_symmetry g28j ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
 
-graph_dedup_sort g28i
+graph_dedup_sort g28k
 
 // Arity-preserving wrapper — see the 2026-07-05 note above
 // owl_rl_closure_step_mode. Every existing caller of this name
@@ -5988,6 +6242,233 @@ let owl_rule_comp_enum_range_value (base : rdf_graph) (ig : indexed_graph) (acc0
     acc0
     base
 
+// ---- comp-w6: range as a universal restriction on owl:Thing --------------
+//
+// The plain one-way reading of a range triple — rdfs3 / prp-rng, the
+// only thing a range declaration ever says: (P rdfs:range C) implies
+// that for all x, y, (x, y) in IEXT(P) implies y in ICEXT(C). Read over
+// the whole universe that is exactly "every resource satisfies
+// AllValuesFrom(P, C)", i.e.
+//
+//   (P rdfs:range C) ==>
+//     (owl:Thing rdfs:subClassOf R), (R rdf:type owl:Restriction),
+//     (R owl:onProperty P), (R owl:allValuesFrom C)
+//
+// for the restriction class R that §8.4 restriction comprehension
+// guarantees exists. It is the exact converse of the base-closure rule
+// owl_rule_avf_thing_to_range (Table 5.8), and it lives HERE rather
+// than in the base closure only because it mints R.
+// Targets WebOnt-I5.24-003 ("This is a typical definition of range from
+// description logic") — the conclusion is that restriction, verbatim.
+//
+// Anchored on premise-present structures per weakening (1): P must be a
+// DECLARED owl:ObjectProperty / owl:DatatypeProperty (the same anchor
+// comp-w2 uses), and C a named class other than owl:Thing — the
+// restriction AllValuesFrom(P, owl:Thing) is vacuous, and admitting it
+// would mint one witness for every predicate the Group E axioms touch.
+let is_declared_owl_property (ig : indexed_graph) (p : wf_iri) : bool =
+  List.Tot.existsb
+    (fun (t : rdf_term) ->
+      rdf_term_eq t (T_IRI owl_ObjectProperty) ||
+      rdf_term_eq t (T_IRI owl_DatatypeProperty))
+    (find_objects_indexed ig (S_IRI p) rdf_type)
+
+let owl_rule_comp_range_avf (base : rdf_graph) (ig : indexed_graph) (acc0 : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_range then
+        match t.s, t.o with
+        | S_IRI p, T_IRI c ->
+          if c = owl_Thing || not (is_declared_owl_property ig p) then acc
+          else
+            let r_id : bnode_id =
+              String.concat "" ["__rl_compw_rngavf__"; p; "__"; c] in
+            let r_subj : subject = S_BNode r_id in
+            add_triples_if_new acc [
+              { s = r_subj; p = rdf_type; o = T_IRI owl_Restriction_iri };
+              { s = r_subj; p = owl_onProperty_iri; o = T_IRI p };
+              { s = r_subj; p = owl_allValuesFrom_iri; o = T_IRI c };
+              { s = S_IRI owl_Thing; p = rdfs_subClassOf; o = T_BNode r_id }
+            ]
+        | _, _ -> acc
+      else acc)
+    acc0
+    base
+
+// ---- comp-w7: several declared ranges also intersect ---------------------
+//
+// When a property carries more than one range declaration, the ranges
+// COMPOSE: (P rdfs:range C1) and (P rdfs:range C2) each constrain the
+// values one-way (rdfs3), so every P-value is in ICEXT(C1) and in
+// ICEXT(C2), hence in ICEXT(C1) INTERSECT ICEXT(C2) — which is ICEXT of
+// the class IntersectionOf(C1, C2) that §8.2 Boolean-connective
+// comprehension guarantees exists. Table 5.8's condition on the
+// rdfs:range RELATION (see Group E(g)'s banner: the pair (p, c) is
+// itself an object of discourse) then puts the pair
+// (P, IntersectionOf(C1, C2)) in that relation, so the new range triple
+// is a fact ABOUT the range, derived from the two declared ones. That
+// is what WebOnt-I5.24-002's owl:intersectionOf conclusion expresses:
+// with two ranges declared, the range behaves like their intersection.
+//
+// NOT A MINIMALITY CLAIM. The emitted triple says IntersectionOf(C1, C2)
+// is ALSO a range of P. It does not say it is THE range, the smallest
+// range, or the intended one — C1, C2, every superclass of either, and
+// owl:Thing all remain ranges of P simultaneously, and the closure
+// keeps deriving and using them.
+//
+// Per weakening (2) this emits the PAIRWISE instances rather than the
+// full 2^n family of sub-intersections; both argument orders are
+// emitted, as in comp-w3, because set intersection commutes.
+//
+// REDUNDANT-CONJUNCT NARROWING (a witness-budget choice, not a semantic
+// claim): if C1 rdfs:subClassOf C2 without the converse, then
+// ICEXT(C1) INTERSECT ICEXT(C2) = ICEXT(C1), so materialising that pair
+// would mint a witness class extensionally equal to a range already
+// present. Skipping those keeps the witness count independent of how
+// far scm-rng2 lifted a range up the class hierarchy — it is why
+// owl:Thing (a superclass of everything by the Group E axioms) never
+// reaches the pair loop — and loses no derivable range fact.
+// `minimal_named_ranges` below is named for the conjuncts it keeps, NOT
+// for any claim that they are the property's minimal range.
+// Mutually-equivalent ranges are all kept (the "without the converse"
+// clause), so the narrowing never empties a nonempty range set.
+let iri_subclass_of (ig : indexed_graph) (a : wf_iri) (b : wf_iri) : bool =
+  List.Tot.existsb
+    (fun (t : rdf_term) -> rdf_term_eq t (T_IRI b))
+    (find_objects_indexed ig (S_IRI a) rdfs_subClassOf)
+
+let minimal_named_ranges (ig : indexed_graph) (p : wf_iri) : list wf_iri =
+  let all_ranges =
+    List.Tot.fold_left
+      (fun (acc : list wf_iri) (r : rdf_term) ->
+        match r with
+        | T_IRI c -> if c = owl_Thing then acc else cons_if_new_iri c acc
+        | _ -> acc)
+      []
+      (find_objects_indexed ig (S_IRI p) rdfs_range)
+  in
+  List.Tot.filter
+    (fun (c : wf_iri) ->
+      not (List.Tot.existsb
+             (fun (c2 : wf_iri) ->
+                c2 <> c && iri_subclass_of ig c2 c && not (iri_subclass_of ig c c2))
+             all_ranges))
+    all_ranges
+
+// Every IRI that carries a named-class rdfs:range in the base closure.
+let range_subject_properties (base : rdf_graph) : list wf_iri =
+  List.Tot.fold_left
+    (fun (acc : list wf_iri) (t : triple) ->
+      if t.p = rdfs_range then
+        match t.s, t.o with
+        | S_IRI p, T_IRI _ -> cons_if_new_iri p acc
+        | _, _ -> acc
+      else acc)
+    []
+    base
+
+let owl_rule_comp_range_intersection (base : rdf_graph) (ig : indexed_graph) (acc0 : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (p : wf_iri) ->
+      let rs = minimal_named_ranges ig p in
+      List.Tot.fold_left
+        (fun (acc1 : rdf_graph) (c1 : wf_iri) ->
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (c2 : wf_iri) ->
+              if c1 = c2 then acc2
+              else
+                let key = String.concat "" [p; "__"; c1; "__and__"; c2] in
+                let i_id : bnode_id = String.concat "" ["__rl_compw_rngint__"; key] in
+                let spine =
+                  comp_list_cells (String.concat "" ["__rl_compw_rngintl__"; key]) [c1; c2] in
+                let (head_term, cell_ts) = spine in
+                let i_subj : subject = S_BNode i_id in
+                add_triples_if_new acc2
+                  (({ s = i_subj; p = rdf_type; o = T_IRI owl_Class } <: triple) ::
+                   ({ s = i_subj; p = owl_intersectionOf_iri; o = head_term } <: triple) ::
+                   ({ s = S_IRI p; p = rdfs_range; o = T_BNode i_id } <: triple) ::
+                   cell_ts))
+            acc1
+            rs)
+        acc
+        rs)
+    acc0
+    (range_subject_properties base)
+
+// ---- comp-w8: the domain of a pinned property is enumerable --------------
+//
+// Companion to the base-closure rule owl_rule_extensional_symmetry:
+// once (a)+(b)+(c) there pin IEXT(p) to exactly the derived edge set,
+// every first component of IEXT(p) is among the SUBJECTS of that set.
+// Any class whose extension CONTAINS those subjects then satisfies
+// Table 5.8's domain condition — the same metamodeling reading Group
+// E(g) uses for range, applied to the rdfs:domain relation. Note this
+// is a containment, not a minimality claim: many classes qualify at
+// once, the fixture's own answer is a strict SUPERSET of the two
+// actual subjects, and nothing here says the emitted class is the
+// smallest or the intended domain. The canonical
+// instance chosen here — one per pinned property, per weakening (2) —
+// is the §8.3 enumeration of the individuals the PREMISE itself
+// declares, i.e. the IRIs carrying an asserted (x rdf:type owl:Thing).
+//
+// The premise graph, not the closure, is the anchor on purpose: Group E
+// types every IRI it sees as an owl:Thing (see owl_thing_subject_iris'
+// own "harmless over-approximation" note), so anchoring on the closure
+// would enumerate the entire vocabulary. Reading the original graph is
+// also safe for the termination invariant — g0 is fixed input, strictly
+// smaller than base, and no witness rule writes to it.
+//
+// Emitted only when every pinned subject is inside that enumeration, so
+// the domain triple is entailed rather than merely plausible.
+// Targets WebOnt-SymmetricProperty-002, whose conclusion states the
+// domain of the pinned property as oneOf(a, b, c) — a superset of its
+// two actual subjects, and a list that appears nowhere in the premise.
+let asserted_thing_individuals (g0 : rdf_graph) : list wf_iri =
+  List.Tot.rev
+    (List.Tot.fold_left
+      (fun (acc : list wf_iri) (t : triple) ->
+        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_Thing) then
+          match t.s with
+          | S_IRI i -> cons_if_new_iri i acc
+          | S_BNode _ -> acc
+        else acc)
+      []
+      g0)
+
+let owl_rule_comp_pinned_domain_enum
+  (g0 : rdf_graph) (base : rdf_graph) (ig : indexed_graph) (acc0 : rdf_graph) : rdf_graph =
+  let indivs = asserted_thing_individuals g0 in
+  if Nil? indivs then acc0
+  else
+    List.Tot.fold_left
+      (fun (acc : rdf_graph) (t : triple) ->
+        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty) then
+          match t.s with
+          | S_IRI p ->
+            (match pinned_property_extension base ig p with
+             | None -> acc
+             | Some es ->
+               if List.Tot.for_all
+                    (fun (e : (wf_iri & wf_iri)) ->
+                      let (x, _) = e in List.Tot.mem x indivs)
+                    es
+               then
+                 let e_id : bnode_id = String.concat "" ["__rl_compw_pindom__"; p] in
+                 let spine =
+                   comp_list_cells (String.concat "" ["__rl_compw_pindoml__"; p]) indivs in
+                 let (head_term, cell_ts) = spine in
+                 let e_subj : subject = S_BNode e_id in
+                 add_triples_if_new acc
+                   (({ s = e_subj; p = rdf_type; o = T_IRI owl_Class } <: triple) ::
+                    ({ s = e_subj; p = owl_oneOf_iri; o = head_term } <: triple) ::
+                    ({ s = S_IRI p; p = rdfs_domain; o = T_BNode e_id } <: triple) ::
+                    cell_ts)
+               else acc)
+          | _ -> acc
+        else acc)
+      acc0
+      base
+
 // The PE-only wrapper. Stage 1: the three legacy witness rules, chained
 // exactly as before (materialise -> witness is an intentional two-step;
 // see their own headers). Stage 2: the five comp rules, each reading
@@ -6008,7 +6489,10 @@ let owl_rl_closure_with_reflexivity_and_witnesses_mode (g : rdf_graph) (fuel : n
   let c3 = owl_rule_comp_oneof_union base ig1 c2 in
   let c4 = owl_rule_comp_union_oneof base ig1 c3 in
   let c5 = owl_rule_comp_enum_range_value base ig1 c4 in
-  owl_rl_closure_with_reflexivity_mode c5 fuel mode
+  let c6 = owl_rule_comp_range_avf base ig1 c5 in
+  let c7 = owl_rule_comp_range_intersection base ig1 c6 in
+  let c8 = owl_rule_comp_pinned_domain_enum g base ig1 c7 in
+  owl_rl_closure_with_reflexivity_mode c8 fuel mode
 
 // Arity-preserving wrapper — the historical 2-arg entry point
 // (owl_runner.ml's apply_closure_with_witnesses). Fixed at

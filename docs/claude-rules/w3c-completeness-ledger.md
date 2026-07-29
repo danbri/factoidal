@@ -433,12 +433,20 @@ tinc 124 pass, 3 fail (out of 127), 1 skip — 46.26s; tcon 352 pass, 0
 fail (out of 352), ZERO unexpected-inconsistency — 389.3s; floors
 rdf-turtle 313/0, w3c_runner `--rdf12` 29/0.
 
-### OWL 2 DL positive entailment (PE) — 173 pass, 31 fail, 2 skip (out of 204) [re-measured 2026-07-28]
+### OWL 2 DL positive entailment (PE) — 193 pass, 11 fail, 2 skip (out of 204) [re-measured 2026-07-29]
 
-Linked: #298, #209. Every one of the 31 residuals is now named, with a
+Linked: #298, #209. Every one of the 11 residuals is named, with a
 per-test reason and disposition, on the public conformance page
 `docs/web/conformance/owl2.md` (`/web/conformance/owl2/`) — that page
-is the source of truth for this row; the counts below are its summary.
+is the source of truth for this row, and its disposition table
+(10 by-design, 2 planned-family, 3 disputed-fixture across all OWL
+catalogs) is current. The per-item lists below are a 2026-07-28
+snapshot kept for the reasoning they record; where they disagree with
+the conformance page, the page wins. Items struck from them on
+2026-07-29: `WebOnt-I5.24-002/-003/-004` and
+`WebOnt-SymmetricProperty-002` now PASS (rdfs:range/rdfs:domain
+metamodeling + extensional `owl:SymmetricProperty`, OWL.Closure.fsti
+Groups E(g)/E(h) and comp-w6/w7/w8).
 
 - **20 by-design.** 17 of them carry `test:species FULL` plus an
   explicit `owl:NegativePropertyAssertion` in the catalog denying
@@ -447,7 +455,7 @@ is the source of truth for this row; the counts below are its summary.
   `WebOnt-FunctionalProperty-003/004`,
   `WebOnt-InverseFunctionalProperty-003/004`,
   `WebOnt-complementOf-001`, `WebOnt-equivalentProperty-005`,
-  `WebOnt-I5.24-002`, `WebOnt-I5.3-014/015`, `WebOnt-I5.8-017`,
+  `WebOnt-I5.3-014/015`, `WebOnt-I5.8-017`,
   `WebOnt-extra-credit-002/003/004`,
   `rdfbased-sem-restrict-maxqcr-inst-obj-one`. Plus `WebOnt-I5.8-004`
   (`test:status test;Extracredit`) and `WebOnt-I5.5-005` /
@@ -457,10 +465,9 @@ is the source of truth for this row; the counts below are its summary.
   if not directly alongside other OWL variants, then sure"); when that
   mode exists, the 17 species-denied tests become planned work rather
   than by-design.
-- **10 planned-family.** `WebOnt-I5.21-002`,
-  `WebOnt-SymmetricProperty-002` (property-characteristic
-  propagation); `WebOnt-cardinality-001/003` (`owl:cardinality`
-  shorthand); `WebOnt-I5.24-003/004` (OWL range-iff);
+- **10 planned-family.** `WebOnt-I5.21-002`
+  (property-characteristic propagation); `WebOnt-cardinality-001/003`
+  (`owl:cardinality` shorthand);
   `WebOnt-I5.8-010` (datatype value-space intersection);
   `WebOnt-oneOf-004` (`owl:dataRange` over literals);
   `WebOnt-unionOf-003/004` (extensional unionOf).

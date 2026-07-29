@@ -61,7 +61,7 @@ publish one.
 | `profile-RL.rdf` | Inconsistency | RL | 14 pass, 0 fail (out of 14) |
 | `profile-EL.rdf` | all four sections | RL | 120 pass, 0 fail (out of 120), 1 skipped |
 | `profile-QL.rdf` | all four sections | RL | 87 pass, 0 fail (out of 87) |
-| `type-positive-entailment.rdf` | PositiveEntailment | DL | 189 pass, 15 fail (out of 204), 2 skipped |
+| `type-positive-entailment.rdf` | PositiveEntailment | DL | 193 pass, 11 fail (out of 204), 2 skipped |
 | `type-positive-entailment.rdf` | Consistency | DL | 204 pass, 0 fail (out of 204), 2 skipped |
 | `type-negative-entailment.rdf` | NegativeEntailment | DL | 23 pass, 0 fail (out of 23) |
 | `type-negative-entailment.rdf` | Consistency | DL | 23 pass, 0 fail (out of 23) |
@@ -101,15 +101,15 @@ ledger's fixed vocabulary (issue
 - **environment** — toolchain or harness, not semantics. No OWL
   residual carries this label today.
 
-## Residual failures — positive entailment (15 of 204)
+## Residual failures — positive entailment (11 of 204)
 
 Scored under DL from `type-positive-entailment.rdf`.
 
 Every remaining fail is one of three kinds: an OWL Full entailment the
 catalog itself denies is OWL DL (`test:species FULL` plus an explicit
 `owl:NegativePropertyAssertion` against `test:species DL`), a
-`test:status test;Extracredit` bonus test, or one of six genuinely-hard
-cases tracked as planned work. Three of the OWL Full tests
+`test:status test;Extracredit` bonus test, or one genuinely-hard
+case tracked as planned work. Three of the OWL Full tests
 (`WebOnt-Class-001/-002/-003`) PASS under the flag-gated
 `--semantics rdf-based-full` engine mode landed 2026-07-29 (owner-approved
 2026-07-28); the default DL engine deliberately does not derive them.
@@ -126,18 +126,17 @@ cases tracked as planned work. Three of the OWL Full tests
 | `WebOnt-extra-credit-003` | by-design | Catalog denies `test:species DL`. "Prime factorization can be expressed in OWL Full." |
 | `WebOnt-extra-credit-004` | by-design | Catalog denies `test:species DL`. Harder prime-factorization variant. |
 | `WebOnt-I5.8-004` | by-design | `test:status test;Extracredit` — a bonus test. Exact datatype-facet interval counting ("precisely 128 values of `xsd:byte` that are also `xsd:unsignedInt`"). |
-| `WebOnt-I5.24-002` | planned-family | OWL range-iff semantics over an `owl:intersectionOf` built from the range class. |
-| `WebOnt-I5.24-003` | planned-family | Same range-iff rule: "a typical definition of range from description logic". |
-| `WebOnt-I5.24-004` | planned-family | Same range-iff rule, both directions. |
 | `WebOnt-I5.8-010` | planned-family | Datatype value-space intersection: 0 is the only value in both `xsd:nonNegativeInteger` and `xsd:nonPositiveInteger`. |
-| `WebOnt-SymmetricProperty-002` | planned-family | Extensional `owl:SymmetricProperty` semantics over an `owl:oneOf`-based domain. |
 
 Two positive-entailment tests are skipped rather than failed:
 `Qualified-cardinality-boolean` and `Qualified-cardinality-restricted-int`
 ship only an OWL Functional-Style Syntax premise.
 
 Fixed since this page's first publication (2026-07-28, from 31 residuals
-to 15): the property-characteristic family
+to 11): the metamodeling family — `I5.24-002/-003/-004` (facts derived
+ABOUT a property's rdfs:range / rdfs:domain, see below) and
+`SymmetricProperty-002` (extensional `owl:SymmetricProperty`) on
+2026-07-29; the property-characteristic family
 (`complementOf-001`, `FunctionalProperty-003/-004`,
 `InverseFunctionalProperty-003/-004`, `equivalentProperty-004/-005`,
 `I5.21-002`), cardinality shorthand (`cardinality-001/-003`,
@@ -146,6 +145,34 @@ family (`unionOf-003/-004`, `oneOf-004`, `I5.5-005`, `I5.26-010`) —
 closure-rule and witness-layer work on 2026-07-28/29, each rule derived
 from the OWL 2 RDF-Based Semantics conditions or the OWL 2 RL/RDF rule
 tables (see the granular commits on the two wave branches).
+
+### What the I5.24 / SymmetricProperty family needed
+
+Recorded here because the family was mis-labelled "range-iff" while it
+was open, and the label was wrong in a way that would mislead anyone
+reading these rules later.
+
+OWL does **not** reinterpret `rdfs:range`. The reading of a range
+triple stays one-way — from `P rdfs:range C` and `x P y` infer
+`y rdf:type C`, and nothing more. A range declaration is never a
+minimality claim: many classes are ranges of the same property
+simultaneously.
+
+What the I5.24 conclusions exercise is **metamodeling**. Under the OWL
+2 RDF-Based Semantics `rdfs:range` is an ordinary property relating two
+ordinary resources (a property and a class), so the range relationship
+is itself an object of discourse, and Table 5.8 states when a pair
+belongs to it. That is what licenses deriving new facts *about* a
+property's range rather than only consuming declared ones — including
+the behaviour the fixtures' `owl:intersectionOf` conclusions express:
+declare two ranges and the ranges compose, so their intersection is
+also a range. `WebOnt-SymmetricProperty-002` is a different mechanism
+again — Table 5.13's condition on `owl:SymmetricProperty` quantifies
+over the property's whole extension in the interpretation, which a
+forward-chaining closure can only check where the premise pins that
+extension from above (there: inverse-functionality plus an
+`owl:oneOf` range whose *own* condition is an equality). Rule-by-rule
+citations are in `formal/fstar/OWL.Closure.fsti`.
 
 ## Residual failures — inconsistency (3 of 127)
 
@@ -182,8 +209,8 @@ layer.
 
 ## Disposition counts
 
-Across the 19 distinct tests that fail in at least one catalog
-(15 positive-entailment, 2 inconsistency, 2 species; no overlaps —
+Across the 15 distinct tests that fail in at least one catalog
+(11 positive-entailment, 2 inconsistency, 2 species; no overlaps —
 `WebOnt-I5.5-005` now fails only in the species checker):
 
 (`WebOnt-description-logic-502` left this list on 2026-07-28: its
@@ -196,7 +223,7 @@ verdict is deterministic: 125 pass, 2 fail (out of 127) at any load.)
 | Disposition | Count |
 |---|---|
 | by-design | 10 |
-| planned-family | 6 |
+| planned-family | 2 |
 | disputed-fixture | 3 |
 | dependency-blocked | 0 |
 | environment | 0 |
@@ -207,7 +234,8 @@ the latter now fails ONLY there) and `WebOnt-description-logic-909`
 (inconsistency; flag-gated arithmetic-semantics variant approved,
 [#299](https://github.com/danbri/factoidal/issues/299)). The
 `Minus Infinity is not in owl:real` inconsistency fail is the one
-planned-family entry outside positive entailment.
+planned-family entry outside positive entailment; the only one inside
+it is `WebOnt-I5.8-010` (datatype value-space intersection).
 
 ## Where the numbers live
 
