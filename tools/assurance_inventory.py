@@ -213,9 +213,6 @@ DECL_START_RE = re.compile(
     % "|".join(QUALIFIERS)
 )
 
-ATTR_LINE_RE = re.compile(r"^\[@")
-
-
 def scan_decls(text: str) -> list[dict]:
     """Split a decommented F* module into top-level declaration blocks."""
     lines = text.split("\n")
@@ -298,11 +295,6 @@ WORD = lambda w: re.compile(r"(?<![A-Za-z0-9_'])%s(?![A-Za-z0-9_'])" % re.escape
 LEMMA_RE = WORD("Lemma")
 REQUIRES_RE = WORD("requires")
 SQUASH_RE = WORD("squash")
-
-PROP_RETURN_RE = re.compile(
-    r":\s*(?:GTot\s+|Tot\s+)?(prop|Type0|logical)\s*$"
-)
-
 
 def return_type_head(sig: str) -> str:
     """Best-effort head of the declared return type, or '' when unknown."""
@@ -585,9 +577,6 @@ ADMISSION_PATTERNS = [
     ("assume-tactic", re.compile(
         r"(?<![A-Za-z0-9_'])Tactics\.admit_all(?![A-Za-z0-9_'])")),
 ]
-ESCAPE_FLAGS = ["--lax", "--admit_smt_queries", "--admit_except",
-                "--MLish_effect", "--warn_error"]
-# --warn_error is benign; only the first three are escape hatches.
 HARD_ESCAPE_FLAGS = ["--lax", "--admit_smt_queries", "--admit_except"]
 
 PRAGMA_RE = re.compile(r"#(?:set|push)-options\s+\"([^\"]*)\"")
@@ -764,7 +753,6 @@ def analyse(root: str) -> dict:
         for d in m["decls"]:
             if d.get("kind") != "lemma":
                 continue
-            key = (d["name"], d["file"] != d["file"])
             group = by_name[d["name"]]
             vals = [g for g in group if g["kw"] == "val" and g.get("is_lemma")]
             stmt_decl = vals[0] if vals else d
