@@ -169,11 +169,37 @@ find "$CLONE/formal/fstar" -maxdepth 1 \( -name '*.checked' -o -name '*.verified
 find "$CLONE/formal/fstar" -maxdepth 2 -name '*.checked' -delete 2>/dev/null
 rm -rf "$CLONE/formal/fstar/ocaml-output/.extract-state"
 rm -rf "$CLONE/formal/fstar/c-output"
-# Extracted OCaml only. Hand-written consumer sources live under bin/<consumer>/
-# and hand-written glue is applied by patch scripts, so clearing ocaml-output's
-# *.ml removes generated code exclusively.
+# Extracted OCaml only.
+#
+# NOT every .ml in ocaml-output/ is generated. A handful are hand-written
+# rule-#11 realisations that live there permanently and are tracked in git —
+# fstar_pure_hashes.ml (vendored pure-OCaml MD5/SHA-1/SHA-2 realising the
+# hash_* assume vals), fstar_hacl_crypto.ml, service_wrap_hook.ml,
+# service_wrap_http.ml. Deleting those does not test reproducibility, it just
+# breaks the build with a missing source file, which is exactly what the first
+# run of this script did: `Error: I/O error: fstar_pure_hashes.ml: No such
+# file or directory`.
+#
+# The distinction is derivable rather than hardcoded: a generated .ml is named
+# after an F* module, so Foo_Bar.ml is generated iff Foo.Bar.fst exists. That
+# stays correct as modules and glue files come and go.
+python3 - "$CLONE" <<'PYEOF'
+import os, sys, glob
+clone = sys.argv[1]
+fstdir = os.path.join(clone, 'formal/fstar')
+outdir = os.path.join(fstdir, 'ocaml-output')
+modules = {os.path.basename(p)[:-4].replace('.', '_')
+           for p in glob.glob(os.path.join(fstdir, '*.fst'))}
+removed = kept = 0
+for p in glob.glob(os.path.join(outdir, '*.ml')):
+    if os.path.basename(p)[:-3] in modules:
+        os.remove(p); removed += 1
+    else:
+        kept += 1
+print(f"clean-room: removed {removed} F*-generated .ml; kept {kept} hand-written (rule #11 realisations)")
+PYEOF
 find "$CLONE/formal/fstar/ocaml-output" -maxdepth 1 \
-     \( -name '*.ml' -o -name '*.cmi' -o -name '*.cmx' -o -name '*.cmo' \
+     \( -name '*.cmi' -o -name '*.cmx' -o -name '*.cmo' \
         -o -name '*.o' -o -name '*.a' -o -name '*.cmxa' -o -name '*.bc.js' \) \
      -delete 2>/dev/null
 # Committed binaries (iron rule #9) — the thing a cold build must reproduce.
@@ -184,10 +210,21 @@ find "$CLONE/formal/fstar/ocaml-output" -maxdepth 1 -xtype l -delete 2>/dev/null
 echo "clean-room: purged ${N_CHECKED} .checked, ${N_ML} extracted .ml, ${N_BIN} binaries, and the extract manifest"
 
 # Assert the purge actually happened — a silent no-op here would make the
-# whole run a lie.
-REMAIN=$(( $(purge_count "$CLONE/formal/fstar" -maxdepth 1 -name '*.checked') \
-         + $(purge_count "$CLONE/formal/fstar/ocaml-output" -maxdepth 1 -name '*.ml') ))
-[ "$REMAIN" -eq 0 ] || die "purge left $REMAIN generated files behind; aborting rather than reporting a warm build as cold"
+# whole run a lie. Checks for GENERATED leftovers specifically, so the
+# hand-written realisations deliberately kept above do not trip it.
+REMAIN_CHECKED=$(purge_count "$CLONE/formal/fstar" -maxdepth 1 -name '*.checked')
+REMAIN_ML=$(python3 - "$CLONE" <<'PYEOF'
+import os, sys, glob
+clone = sys.argv[1]
+fstdir = os.path.join(clone, 'formal/fstar')
+modules = {os.path.basename(p)[:-4].replace('.', '_')
+           for p in glob.glob(os.path.join(fstdir, '*.fst'))}
+print(sum(1 for p in glob.glob(os.path.join(fstdir, 'ocaml-output/*.ml'))
+          if os.path.basename(p)[:-3] in modules))
+PYEOF
+)
+REMAIN=$(( REMAIN_CHECKED + REMAIN_ML ))
+[ "$REMAIN" -eq 0 ] || die "purge left $REMAIN generated files behind ($REMAIN_CHECKED .checked, $REMAIN_ML extracted .ml); aborting rather than reporting a warm build as cold"
 [ -f "$CLONE/formal/fstar/ocaml-output/.extract-state/manifest.tsv" ] \
   && die "extract manifest survived the purge"
 
