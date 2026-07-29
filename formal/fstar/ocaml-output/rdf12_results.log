@@ -519,3 +519,13 @@ Suite Results:
 ========================================
 TOTAL: 242 pass, 0 fail, 0 skip, 0 unsupported
 ========================================
+
+Harness Diagnostics (escape branches, #316):
+HARNESS-DIAG rdf-n-triples/syntax           budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-n-quads/syntax             budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-turtle/syntax              budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-turtle/eval                budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-trig/syntax                budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-trig/eval                  budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-xml/eval                   budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG-TOTAL budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0 discovered_tests:242

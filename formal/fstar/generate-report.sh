@@ -1098,6 +1098,145 @@ emit_json_suites () {
   done <<<"$blob"
 }
 
+# --- Harness diagnostics (#316) ----------------------------------------------
+# w3c_runner prints, after each mode's score table, one machine-readable
+# line per suite plus a total:
+#
+#   HARNESS-DIAG <suite> budget_exceeded:N gsp_seed:N no_manifest:N \
+#                        zero_tests:N skip:N unsupported:N
+#   HARNESS-DIAG-TOTAL budget_exceeded:N ... discovered_tests:N
+#
+# These are the harness's escape branches — every place a test can leave
+# the plain "run it and compare it" path. Publishing them means a rising
+# escape rate shows on the dashboard instead of only in a stderr log.
+# `budget_exceeded` is the one that used to be able to produce a PASS on
+# the lenient bnode-collapsing comparator; since #316 it scores FAIL, so
+# a nonzero count here is a real defect signal, not a curiosity.
+#
+# An older runner binary prints no such lines; that mode then reports
+# `"measured": false` rather than a fabricated set of zeros.
+diag_field () {  # diag_field <line> <field>
+  echo "$1" | sed -nE "s/.*[[:space:]]$2:([0-9]+).*/\1/p"
+}
+
+emit_json_harness_one () {  # emit_json_harness_one <key> <log>
+  local key="$1" log="$2"
+  local total_line rows first=1
+  total_line=$(grep -h '^HARNESS-DIAG-TOTAL ' "$log" 2>/dev/null | tail -1 || true)
+  if [ -z "$total_line" ]; then
+    printf '    "%s": {"measured": false}' "$key"
+    return
+  fi
+  printf '    "%s": {"measured": true, "totals": {' "$key"
+  printf '"budget_exceeded":%s,"gsp_seed":%s,"no_manifest":%s,"zero_tests":%s,"skip":%s,"unsupported":%s,"discovered_tests":%s}' \
+    "$(diag_field "$total_line" budget_exceeded)" \
+    "$(diag_field "$total_line" gsp_seed)" \
+    "$(diag_field "$total_line" no_manifest)" \
+    "$(diag_field "$total_line" zero_tests)" \
+    "$(diag_field "$total_line" skip)" \
+    "$(diag_field "$total_line" unsupported)" \
+    "$(diag_field "$total_line" discovered_tests)"
+  printf ', "suites": ['
+  rows=$(grep -h '^HARNESS-DIAG ' "$log" 2>/dev/null || true)
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    local nm
+    nm=$(echo "$line" | awk '{print $2}')
+    [ "$first" -eq 0 ] && printf ','
+    first=0
+    printf '{"name":"%s","budget_exceeded":%s,"gsp_seed":%s,"no_manifest":%s,"zero_tests":%s,"skip":%s,"unsupported":%s}' \
+      "$nm" \
+      "$(diag_field "$line" budget_exceeded)" \
+      "$(diag_field "$line" gsp_seed)" \
+      "$(diag_field "$line" no_manifest)" \
+      "$(diag_field "$line" zero_tests)" \
+      "$(diag_field "$line" skip)" \
+      "$(diag_field "$line" unsupported)"
+  done <<<"$rows"
+  printf ']}'
+}
+
+# OWL catalogs report a different escape: the per-test SIGALRM closure cap.
+# A cap-trip abandons the closure and scores the test on a LESS-closed
+# graph. That direction is not uniformly safe — a ConsistencyTest on a
+# truncated closure finds no contradiction and therefore PASSES — so the
+# per-catalog count and the affected test names are published rather than
+# left in stderr. Scores are unchanged by this reporting.
+OWL_DIAG_LOGS=(
+  "profile_rl:$OWL_LOG"
+  "type_positive_entailment:$OWL_TPE_LOG"
+  "type_negative_entailment:$OWL_TNE_LOG"
+  "type_consistency:$OWL_TCON_LOG"
+  "type_inconsistency:$OWL_TINC_LOG"
+  "profile_el:$OWL_EL_LOG"
+  "profile_ql:$OWL_QL_LOG"
+  "semantics_direct:$OWL_SEMDL_LOG"
+)
+
+emit_json_harness_owl () {
+  local first=1 ent key log line
+  printf '    "owl_catalogs": {'
+  for ent in "${OWL_DIAG_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    line=$(grep -h '^HARNESS-DIAG-OWL ' "$log" 2>/dev/null | tail -1 || true)
+    [ "$first" -eq 0 ] && printf ','
+    first=0
+    if [ -z "$line" ]; then
+      printf '"%s":{"measured":false}' "$key"
+      continue
+    fi
+    local names
+    names=$(grep -h '^HARNESS-DIAG-OWL-TEST ' "$log" 2>/dev/null \
+            | awk '{print "\""$2"\""}' | paste -sd, - || true)
+    printf '"%s":{"measured":true,"degraded_closure_marked":%s,"degraded_closure_silent":%s,"tests_on_degraded_closure":%s,"tests":[%s]}' \
+      "$key" \
+      "$(diag_field "$line" degraded_closure_marked)" \
+      "$(diag_field "$line" degraded_closure_silent)" \
+      "$(diag_field "$line" tests_on_degraded_closure)" \
+      "$names"
+  done
+  printf '}'
+}
+
+# Consumer-runner LOCAL OVERRIDES (#316). tests/local-overrides/ lets a
+# runner reclassify a carefully-disputed upstream fixture from MISMATCH
+# to its own bucket, with the dispute written up in the override file.
+# The runners count that bucket correctly; the dashboard used to fold it
+# into `skip`, so a reader saw "1 skip" and never learned an upstream
+# expectation had been overridden. Counted and named here instead.
+OVERRIDE_LOGS=(
+  "shex:$SHEX_LOG"
+  "rif_core:$RIFCORE_LOG"
+)
+
+override_count () {  # override_count <log>
+  grep -hoE '[0-9]+ local-override' "$1" 2>/dev/null | tail -1 | awk '{print $1}'
+}
+
+override_names () {  # override_names <log>  -> newline-separated test names
+  { grep -hoE '^OVERRIDE [^ ]+' "$1" 2>/dev/null | awk '{print $2}'
+    grep -hoE 'PASS \(local-override\): [^ ]+' "$1" 2>/dev/null | awk '{print $3}'
+  } | sort -u
+}
+
+emit_json_harness_overrides () {
+  local first=1 ent key log cnt names
+  printf '    "local_overrides": {'
+  for ent in "${OVERRIDE_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    [ "$first" -eq 0 ] && printf ','
+    first=0
+    if [ ! -f "$log" ]; then
+      printf '"%s":{"measured":false}' "$key"
+      continue
+    fi
+    cnt=$(override_count "$log"); cnt=${cnt:-0}
+    names=$(override_names "$log" | awk '{print "\""$0"\""}' | paste -sd, -)
+    printf '"%s":{"measured":true,"count":%s,"tests":[%s]}' "$key" "$cnt" "$names"
+  done
+  printf '}'
+}
+
 {
   printf '{\n'
   printf '  "timestamp": "%s",\n' "$TIMESTAMP_HUMAN"
@@ -1295,6 +1434,22 @@ emit_json_suites () {
   emit_json_suite_obj "rml_io"            RML_IO
   emit_json_suite_obj "toan_matrix"       TOAN_MATRIX
   emit_json_suite_obj "xforms"            XFORMS_NPM
+  printf '\n  },\n'
+  # Harness escape counts per w3c_runner mode (#316). Sits alongside
+  # `suites` rather than inside it: these are properties of the HARNESS,
+  # not scores of a specification.
+  printf '  "harness_diagnostics": {\n'
+  emit_json_harness_one "sparql" "$SPARQL_LOG"
+  printf ',\n'
+  emit_json_harness_one "rdf" "$RDF_LOG"
+  for _k in "${EXTRA_KEYS[@]}"; do
+    printf ',\n'
+    emit_json_harness_one "$_k" "${EXTRA_LOG[$_k]}"
+  done
+  printf ',\n'
+  emit_json_harness_owl
+  printf ',\n'
+  emit_json_harness_overrides
   printf '\n  }\n'
   printf '}\n'
 } > "$JSON"
@@ -2657,6 +2812,135 @@ GROUP3_HTML=$(group_section "group-other-standards" "Other standards (OGC / ISO 
 GROUP4_BODY=$(printf '%s\n' "$RUNTIME_HTML" "$ENGINES_HTML")
 GROUP4_HTML=$(group_section "group-internal" "Factoidal internal suites (engine end-to-end, parity, regressions)" "$GROUP4_BODY")
 
+# --- Harness diagnostics card (#316) -----------------------------------------
+# Every escape branch in the W3C harness, per suite, on the page. Before
+# #316 these lived only in stderr, so a growing escape rate was invisible
+# to anyone reading the published numbers. `budget_exceeded` is the one
+# that used to be able to score a test PASS on a bnode-collapsing
+# comparator the runner itself called lenient; it now scores FAIL, so any
+# nonzero count is a defect to chase rather than a footnote.
+build_harness_card () {
+  local rows="" any_escape=0 measured=0
+  local keys=("sparql:$SPARQL_LOG" "rdf:$RDF_LOG")
+  local _k
+  for _k in "${EXTRA_KEYS[@]}"; do keys+=("$_k:${EXTRA_LOG[$_k]}"); done
+  local ent key log line
+  for ent in "${keys[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    line=$(grep -h '^HARNESS-DIAG-TOTAL ' "$log" 2>/dev/null | tail -1 || true)
+    if [ -z "$line" ]; then
+      rows+=$(printf '<tr><td><code>%s</code></td><td colspan="6" class="hd-nm">not measured this run (runner predates #316)</td></tr>' "$key")
+      continue
+    fi
+    measured=1
+    local be gs nm zt sk un dt cls
+    be=$(diag_field "$line" budget_exceeded); gs=$(diag_field "$line" gsp_seed)
+    nm=$(diag_field "$line" no_manifest);     zt=$(diag_field "$line" zero_tests)
+    sk=$(diag_field "$line" skip);            un=$(diag_field "$line" unsupported)
+    dt=$(diag_field "$line" discovered_tests)
+    if [ "${be:-0}" -gt 0 ] || [ "${nm:-0}" -gt 0 ] || [ "${zt:-0}" -gt 0 ]; then
+      any_escape=1; cls="hd-bad"
+    else
+      cls="hd-ok"
+    fi
+    rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
+      "$cls" "$key" "${dt:-0}" "${be:-0}" "${gs:-0}" "${nm:-0}" "${zt:-0}" "$((${sk:-0} + ${un:-0}))")
+  done
+  # OWL catalogs: the closure cap, reported in its own small table
+  # because the escape has a different shape (a degraded computation,
+  # not an undecidable comparison).
+  local owl_rows="" owl_any=0 owl_measured=0
+  for ent in "${OWL_DIAG_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    line=$(grep -h '^HARNESS-DIAG-OWL ' "$log" 2>/dev/null | tail -1 || true)
+    [ -z "$line" ] && continue
+    owl_measured=1
+    local dm ds dt names cls2
+    dm=$(diag_field "$line" degraded_closure_marked)
+    ds=$(diag_field "$line" degraded_closure_silent)
+    dt=$(diag_field "$line" tests_on_degraded_closure)
+    names=$(grep -h '^HARNESS-DIAG-OWL-TEST ' "$log" 2>/dev/null \
+            | awk '{print $2}' | paste -sd', ' - || true)
+    if [ "${dt:-0}" -gt 0 ]; then owl_any=1; cls2="hd-bad"; else cls2="hd-ok"; fi
+    owl_rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
+      "$cls2" "$key" "${dm:-0}" "${ds:-0}" "${dt:-0}" "${names:-&mdash;}")
+  done
+  local owl_block=""
+  if [ "$owl_measured" -eq 1 ]; then
+    local owl_note
+    if [ "$owl_any" -eq 1 ]; then
+      owl_note='<p class="hd-note hd-bad">Listed tests were scored on a closure the runner abandoned part-way. For a ConsistencyTest that direction manufactures a PASS (a truncated closure finds no contradiction), so these passes are weaker than the rest.</p>'
+    else
+      owl_note='<p class="hd-note">No closure cap-trips: every OWL catalog test was scored on a complete closure.</p>'
+    fi
+    owl_block=$(cat <<OWLHDEOF
+  <p class="legend-title" style="margin-top:1em">OWL 2 catalogs &mdash; closure cap escapes</p>
+  <p class="legend-note">The OWL runner puts a per-test CPU cap on the RL/DL closure so one hard ontology cannot hang a catalog. On a cap-trip it falls back to a less-closed graph and scores the test anyway. <strong>marked</strong> counts logged cap-trips; <strong>silent</strong> counts the unlogged catch-all arms.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>catalog</th><th>marked</th><th>silent</th><th>tests affected</th><th>which</th></tr></thead>
+    <tbody>${owl_rows}</tbody>
+  </table>
+  </div>
+  ${owl_note}
+OWLHDEOF
+)
+  fi
+  # Local overrides: a deliberate, documented disagreement with an
+  # upstream fixture. Legitimate, but it is not a "skip" and the reader
+  # is entitled to see it named.
+  local ov_rows="" ov_any=0
+  for ent in "${OVERRIDE_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    [ -f "$log" ] || continue
+    local cnt names
+    cnt=$(override_count "$log"); cnt=${cnt:-0}
+    [ "$cnt" -eq 0 ] && continue
+    ov_any=1
+    names=$(override_names "$log" | paste -sd', ' -)
+    ov_rows+=$(printf '<tr class="hd-bad"><td><code>%s</code></td><td>%s</td><td>%s</td></tr>' \
+      "$key" "$cnt" "${names:-&mdash;}")
+  done
+  local ov_block=""
+  if [ "$ov_any" -eq 1 ]; then
+    ov_block=$(cat <<OVEOF
+  <p class="legend-title" style="margin-top:1em">Local overrides of upstream fixtures</p>
+  <p class="legend-note">A fixture whose upstream expectation we dispute in writing, under <code>tests/local-overrides/</code>. The runner scores it in its own bucket rather than as a pass or a fail. Listed here because folding it into &ldquo;skip&rdquo; hid a deliberate disagreement with the spec suite.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>suite</th><th>overrides</th><th>which</th></tr></thead>
+    <tbody>${ov_rows}</tbody>
+  </table>
+  </div>
+OVEOF
+)
+  fi
+  local verdict
+  if [ "$measured" -eq 0 ]; then
+    verdict='<p class="hd-note">No harness-diagnostic data in this run&rsquo;s logs.</p>'
+  elif [ "$any_escape" -eq 0 ]; then
+    verdict='<p class="hd-note">No comparator escapes, no discovery faults. Every score above came from the strict RDFC-1.0 comparator on a suite that discovered its tests.</p>'
+  else
+    verdict='<p class="hd-note hd-bad">One or more escapes fired &mdash; the scores above are NOT wholly strict-comparator results. See the per-suite counts.</p>'
+  fi
+  cat <<HDEOF
+<div class="legend">
+  <p class="legend-title">Harness diagnostics &mdash; escape branches (<a href="https://github.com/danbri/factoidal/issues/316">#316</a>)</p>
+  <p class="legend-note">A conformance number is only as strong as its weakest comparator. These are the branches where a test leaves the plain run-it-and-compare-it path. <strong>budget exceeded</strong> = the RDFC-1.0 canonicalizer hit its Hash-N-Degree-Quads work budget, so graph isomorphism could not be decided; that test is scored FAIL (before 2026-07-29 it fell back to a blank-node-collapsing multiset comparison that could score it PASS). <strong>GSP seed</strong> = the Graph Store Protocol pre-state seeding branch fired. <strong>no manifest</strong> / <strong>zero tests</strong> = a suite discovered nothing; either makes the run exit 2 rather than report green.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>mode</th><th>tests discovered</th><th>budget exceeded</th><th>GSP seed</th><th>no manifest</th><th>zero tests</th><th>skip + unsupported</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  </div>
+  ${verdict}
+${owl_block}
+${ov_block}
+</div>
+HDEOF
+}
+HARNESS_CARD_HTML=$(build_harness_card)
+
 # --- Legend -----------------------------------------------------------------
 LEGEND_HTML=$(cat <<'LEGENDEOF'
 <div class="legend">
@@ -2783,6 +3067,17 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
     margin: 0.35em 0; font-size: 0.92rem;
   }
   .legend-note { margin: 0; font-size: 0.85rem; color: var(--muted); }
+  /* Harness diagnostics table (#316) — escape-branch counts per suite. */
+  .hd-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.6em 0; }
+  .hd-table th, .hd-table td {
+    text-align: left; padding: 0.35em 0.5em; border-bottom: 1px solid #e3e3e3;
+    white-space: nowrap;
+  }
+  .hd-table th { color: var(--muted); font-weight: 600; }
+  .hd-table tr.hd-ok td { color: var(--fg); }
+  .hd-table tr.hd-bad td, .hd-bad { color: #a8410f; font-weight: 600; }
+  .hd-nm { color: var(--muted); font-style: italic; font-weight: 400; }
+  .hd-note { margin: 0.4em 0 0; font-size: 0.85rem; color: var(--muted); }
   .dot {
     flex: none; width: 0.85em; height: 0.85em; border-radius: 50%;
     margin-top: 0.25em;
@@ -3121,6 +3416,8 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
 </div>
 
 ${LEGEND_HTML}
+
+${HARNESS_CARD_HTML}
 
 ${GROUP1_HTML}
 ${GROUP_WD_HTML}

@@ -1911,7 +1911,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.2s]
+  [suite time: 0.1s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001
@@ -2093,3 +2093,12 @@ Suite Results:
 ========================================
 TOTAL: 1031 pass, 0 fail, 0 skip, 0 unsupported
 ========================================
+
+Harness Diagnostics (escape branches, #316):
+HARNESS-DIAG rdf-mt                         budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-n-quads                    budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-n-triples                  budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-trig                       budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-turtle                     budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-xml                        budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG-TOTAL budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0 discovered_tests:1031

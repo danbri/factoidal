@@ -109,6 +109,17 @@
     margin: 0.35em 0; font-size: 0.92rem;
   }
   .legend-note { margin: 0; font-size: 0.85rem; color: var(--muted); }
+  /* Harness diagnostics table (#316) — escape-branch counts per suite. */
+  .hd-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.6em 0; }
+  .hd-table th, .hd-table td {
+    text-align: left; padding: 0.35em 0.5em; border-bottom: 1px solid #e3e3e3;
+    white-space: nowrap;
+  }
+  .hd-table th { color: var(--muted); font-weight: 600; }
+  .hd-table tr.hd-ok td { color: var(--fg); }
+  .hd-table tr.hd-bad td, .hd-bad { color: #a8410f; font-weight: 600; }
+  .hd-nm { color: var(--muted); font-style: italic; font-weight: 400; }
+  .hd-note { margin: 0.4em 0 0; font-size: 0.85rem; color: var(--muted); }
   .dot {
     flex: none; width: 0.85em; height: 0.85em; border-radius: 50%;
     margin-top: 0.25em;
@@ -398,8 +409,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-28 23:53 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-28 22:52 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-29 17:57 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-29 17:28 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDF 1.2 / SPARQL 1.2 (W3C Working Drafts), RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -454,6 +465,27 @@
     <li><span class="dot grey"></span><strong>Grey</strong> — not measured this run, or out of scope for this suite (e.g. skipped fixtures, a roadmap item with no runner yet).</li>
   </ul>
   <p class="legend-note">Collapsed rows show a condensed score in <strong>pass/fail/skip of total</strong> order (e.g. &ldquo;461/0/6 of 467&rdquo; means 461 pass, 0 fail, 6 skip out of 467) — tap a row to expand it for the fully-labelled sentence and a stacked pass/fail/skip meter, measured against that suite's own total so proportions are comparable across suites of very different sizes. A family row with an amber <strong>N gaps</strong> badge has a &ldquo;Remaining work&rdquo; list inside it; an expanded family with no badge and no fails is marked complete against the vendored suites.</p>
+</div>
+
+<div class="legend">
+  <p class="legend-title">Harness diagnostics &mdash; escape branches (<a href="https://github.com/danbri/factoidal/issues/316">#316</a>)</p>
+  <p class="legend-note">A conformance number is only as strong as its weakest comparator. These are the branches where a test leaves the plain run-it-and-compare-it path. <strong>budget exceeded</strong> = the RDFC-1.0 canonicalizer hit its Hash-N-Degree-Quads work budget, so graph isomorphism could not be decided; that test is scored FAIL (before 2026-07-29 it fell back to a blank-node-collapsing multiset comparison that could score it PASS). <strong>GSP seed</strong> = the Graph Store Protocol pre-state seeding branch fired. <strong>no manifest</strong> / <strong>zero tests</strong> = a suite discovered nothing; either makes the run exit 2 rather than report green.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>mode</th><th>tests discovered</th><th>budget exceeded</th><th>GSP seed</th><th>no manifest</th><th>zero tests</th><th>skip + unsupported</th></tr></thead>
+    <tbody><tr class="hd-ok"><td><code>sparql</code></td><td>631</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td></tr><tr class="hd-ok"><td><code>rdf</code></td><td>1031</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr><tr class="hd-ok"><td><code>rdf12</code></td><td>242</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr><tr class="hd-ok"><td><code>rdf12c14n</code></td><td>82</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr><tr class="hd-ok"><td><code>rdf12entail</code></td><td>47</td><td>0</td><td>0</td><td>0</td><td>0</td><td>3</td></tr><tr class="hd-ok"><td><code>sparql12</code></td><td>254</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr></tbody>
+  </table>
+  </div>
+  <p class="hd-note">No comparator escapes, no discovery faults. Every score above came from the strict RDFC-1.0 comparator on a suite that discovered its tests.</p>
+
+  <p class="legend-title" style="margin-top:1em">Local overrides of upstream fixtures</p>
+  <p class="legend-note">A fixture whose upstream expectation we dispute in writing, under <code>tests/local-overrides/</code>. The runner scores it in its own bucket rather than as a pass or a fail. Listed here because folding it into &ldquo;skip&rdquo; hid a deliberate disagreement with the spec suite.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>suite</th><th>overrides</th><th>which</th></tr></thead>
+    <tbody><tr class="hd-bad"><td><code>shex</code></td><td>1</td><td>start2RefS1-IstartS2</td></tr><tr class="hd-bad"><td><code>rif_core</code></td><td>1</td><td>corpus:RDF_Combination_Constant_Equivalence_4</td></tr></tbody>
+  </table>
+  </div>
 </div>
 
 <details class="group-section" id="group-w3c-rec" open>
@@ -1234,7 +1266,7 @@
           <div class="meter"><div class="seg seg-pass" style="width:6.52%"></div><div class="seg seg-fail" style="width:93.48%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
           <p class="suite-numbers-full">6 pass, 86 fail, 0 skip (out of 92)</p>
           <p class="suite-prov">Runner: <code>bin/jsonld-frame-runner</code> (<code>bin/linux-x86_64/jsonld_frame_runner</code>) &middot; Suite: W3C json-ld-framing manifest (Framing Algorithm)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/autoexec-scratchpad-assess-37oeok/.github/test-suites/jsonld-frame.yaml" target="_blank" rel="noopener">diagnosis: first-cut F* framing (expand+flatten+match/embed+compact); residual fails are the un-implemented frame features (@explicit/@default/@embed variants/@reverse/@included/named graphs) — see the suite manifest</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/strict-harness-20260729/.github/test-suites/jsonld-frame.yaml" target="_blank" rel="noopener">diagnosis: first-cut F* framing (expand+flatten+match/embed+compact); residual fails are the un-implemented frame features (@explicit/@default/@embed variants/@reverse/@included/named graphs) — see the suite manifest</a></p>
         </div>
       </details>
     </div>
@@ -1296,7 +1328,7 @@
       <details class="suite-node grey">
         <summary><span class="suite-name">VC community compatibility (canivc.com)</span><span class="suite-numbers">snapshot 2026-07-10</span><span class="dot grey"></span></summary>
         <div class="suite-body">
-          <p class="suite-numbers-full">Digital Bazaar's <a href="https://canivc.com" target="_blank" rel="noopener">canivc.com</a> aggregates the same official W3C/CCG test-suite reports across ~20 implementations. Per-suite comparison (community min/median/max % across registered implementations, from a snapshot vendored at <code>third_party/testing/canivc-snapshot/</code>; full scoping + gap rationale in <a href="https://github.com/danbri/factoidal/blob/claude/autoexec-scratchpad-assess-37oeok/docs/designissues/2026-07-10-canivc-community-compat.md" target="_blank" rel="noopener">the canivc.com integration doc</a>):</p>
+          <p class="suite-numbers-full">Digital Bazaar's <a href="https://canivc.com" target="_blank" rel="noopener">canivc.com</a> aggregates the same official W3C/CCG test-suite reports across ~20 implementations. Per-suite comparison (community min/median/max % across registered implementations, from a snapshot vendored at <code>third_party/testing/canivc-snapshot/</code>; full scoping + gap rationale in <a href="https://github.com/danbri/factoidal/blob/claude/strict-harness-20260729/docs/designissues/2026-07-10-canivc-community-compat.md" target="_blank" rel="noopener">the canivc.com integration doc</a>):</p>
           <table class="canivc-compat">
             <thead><tr><th>suite</th><th>Factoidal</th><th>community min / median / max</th><th>status</th></tr></thead>
             <tbody>
@@ -1836,7 +1868,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           <div class="meter"><div class="seg seg-pass" style="width:23.29%"></div><div class="seg seg-fail" style="width:1.37%"></div><div class="seg seg-skip" style="width:75.34%"></div></div>
           <p class="suite-numbers-full">17 pass, 1 fail, 55 skip (out of 73)</p>
           <p class="suite-prov">Runner: <code>bin/linux-x86_64/rml_runner --io</code> &middot; Suite: <code>third_party/testing/rml-modules/rml-io/</code> (RMLSTC0* source tests) &middot; rml-cc (content-container) has no row: the committed runner exposes no <code>--cc</code> mode yet (tracked with the rml program plan)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/autoexec-scratchpad-assess-37oeok/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/strict-harness-20260729/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
         </div>
       </details>
     </div>
@@ -2042,7 +2074,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           <div class="meter"><div class="seg seg-pass" style="width:99.61%"></div><div class="seg seg-fail" style="width:0.39%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
           <p class="suite-numbers-full">253 pass, 1 fail, 0 skip (out of 254)</p>
           <p class="suite-prov">Runner: <code>node --test tests/hub/*.mjs</code> &middot; live cells for every docs-hub post, run against the JS/wasm bundle</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/autoexec-scratchpad-assess-37oeok/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/strict-harness-20260729/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
         </div>
       </details>
       <details class="suite-node green">
@@ -2211,9 +2243,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-28 23:53 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/083e102d78ed2a538898413d9ced8231b313db8f">083e102</a></code>
-  on branch <code>claude/autoexec-scratchpad-assess-37oeok</code> — &ldquo;Ledger: fix stale #93 pointer, refresh OWL rows, triage EL/QL per #308&rdquo;.
+  Generated <strong>2026-07-29 17:57 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/c44c9d448e37af26cf64bbad317083e42f1a30ad">c44c9d4</a></code>
+  on branch <code>claude/strict-harness-20260729</code> — &ldquo;Count and publish the OWL closure-cap escapes; refresh the W3C logs and dashboard (#316)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
