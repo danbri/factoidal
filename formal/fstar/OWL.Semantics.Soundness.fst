@@ -181,3 +181,94 @@ let rdfs_rule_domain_sound i a g ig =
   end;
   fold_left_inv (holds_all i a) outer_step decls g;
   assert_norm (rdfs_rule_domain g ig == List.Tot.fold_left outer_step g decls)
+
+// ===================================================================
+// Rule 3: owl_rule_sameAs_symmetry (eq-sym).
+// OWL 2 RL/RDF rules table: T(?x, owl:sameAs, ?y) => T(?y,
+// owl:sameAs, ?x). The rule folds over the deduped snapshot pair
+// list (#262 perf shape), so the proof first carries truth through
+// the collect / sortWith / dedup pipeline.
+// ===================================================================
+
+// Membership preservation through OWL.Closure's pair dedup walk.
+let rec lemma_dedup_pairs_memP (prev : option string)
+    (ps acc : list (subject * subject)) (x : subject * subject)
+  : Lemma
+    (ensures List.Tot.memP x (dedup_pairs_sorted_aux prev ps acc) ==>
+             (List.Tot.memP x ps \/ List.Tot.memP x acc))
+    (decreases ps) =
+  match ps with
+  | [] -> List.Tot.rev_memP acc x
+  | p :: rest ->
+    lemma_dedup_pairs_memP prev rest acc x;
+    lemma_dedup_pairs_memP (Some (sameas_pair_key p)) rest (p :: acc) x
+
+// Every pair the snapshot machinery yields is a true sameAs edge.
+let sameas_pairs_hold (i : interp) (a : bnode_assignment i.idom)
+    (ps : list (subject * subject)) : prop =
+  forall (xy : subject * subject). List.Tot.memP xy ps ==>
+    i.iext (i.i_iri owl_sameAs)
+           (denot_subject i a (fst xy)) (denot_subject i a (snd xy))
+
+let lemma_sameas_pairs_hold
+    (i : interp) (a : bnode_assignment i.idom) (ig : indexed_graph)
+  : Lemma
+    (requires holds_all i a ig.ig_triples)
+    (ensures  sameas_pairs_hold i a (sameas_pairs ig)) =
+  let collect_step : list (subject * subject) -> triple -> list (subject * subject) =
+    fun (acc : list (subject * subject)) (t : triple) ->
+      if t.p = owl_sameAs then
+        match term_to_subject t.o with
+        | Some y -> if subject_eq t.s y then acc else (t.s, y) :: acc
+        | None -> acc
+      else acc in
+  let raw = List.Tot.fold_left collect_step [] ig.ig_triples in
+  introduce forall (acc : list (subject * subject)) (t : triple).
+      (List.Tot.memP t ig.ig_triples /\ sameas_pairs_hold i a acc) ==>
+      sameas_pairs_hold i a (collect_step acc t)
+  with introduce (List.Tot.memP t ig.ig_triples /\ sameas_pairs_hold i a acc) ==>
+                 sameas_pairs_hold i a (collect_step acc t)
+  with _ . begin
+    if t.p = owl_sameAs then
+      match term_to_subject t.o with
+      | Some y ->
+        lemma_denot_term_to_subject i a t.o y;
+        assert (triple_holds i a t)
+      | None -> ()
+    else ()
+  end;
+  fold_left_inv (sameas_pairs_hold i a) collect_step ig.ig_triples [];
+  let sorted = List.Tot.sortWith sameas_pair_cmp raw in
+  lemma_sortWith_memP_forall sameas_pair_cmp raw;
+  FStar.Classical.forall_intro (lemma_dedup_pairs_memP None sorted []);
+  assert_norm (sameas_pairs ig == dedup_pairs_sorted_aux None sorted [])
+
+val owl_rule_sameAs_symmetry_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_sameas_identity i /\ holds_all i a g /\ holds_all i a ig.ig_triples)
+    (ensures  holds_all i a (owl_rule_sameAs_symmetry g ig))
+
+let owl_rule_sameAs_symmetry_sound i a g ig =
+  lemma_sameas_pairs_hold i a ig;
+  let emit_step : rdf_graph -> (subject * subject) -> rdf_graph =
+    fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, y) = xy in
+      let new_t : triple = { s = y; p = owl_sameAs; o = subject_to_term x } in
+      add_triple_unchecked acc new_t in
+  introduce forall (acc : rdf_graph) (xy : subject * subject).
+      (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+      holds_all i a (emit_step acc xy)
+  with introduce (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc xy)
+  with _ . begin
+    let (x, y) = xy in
+    lemma_denot_subject_to_term i a x;
+    // sameas_pairs_hold gives IEXT(sameAs)(dx, dy); the identity
+    // condition collapses dx == dy, and then gives the flipped edge.
+    assert (i.iext (i.i_iri owl_sameAs)
+                   (denot_subject i a x) (denot_subject i a y))
+  end;
+  fold_left_inv (holds_all i a) emit_step (sameas_pairs ig) g;
+  assert_norm (owl_rule_sameAs_symmetry g ig ==
+               List.Tot.fold_left emit_step g (sameas_pairs ig))
