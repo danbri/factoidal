@@ -13,5 +13,12 @@
     "https://github.com/w3c/json-ld-api/blob/main/tests/compact-manifest.jsonld"
   ],
   "date": "2026-07-17",
-  "owner_directive": "if we carefully disagree with test make our own local override of it. Shex Also. (owner, 2026-07-17)"
+  "owner_directive": "if we carefully disagree with test make our own local override of it. Shex Also. (owner, 2026-07-17)",
+  "recheck_log": [
+    {
+      "date": "2026-07-29",
+      "result": "still required",
+      "note": "Re-checked 2026-07-29 against upstream w3c/json-ld-api at 92f0770 (submodule is AT upstream HEAD, 0 commits behind): fixture unchanged, override still fires. This is a VERSION dispute, not a fixture defect — the test declares option.specVersion=json-ld-1.0 and we implement 1.1, whose behaviour the suite's own #tp001 pins. Upstream has no defect to fix; expect this override to be permanent unless we add a genuine 1.0 processing mode."
+    }
+  ]
 }

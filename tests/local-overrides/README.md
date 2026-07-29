@@ -62,3 +62,39 @@ A runner that honours overrides MUST:
 Because an override is a standing disagreement with a published test,
 each file must carry enough provenance for a reviewer to confirm the
 defect independently.
+
+## Periodic upstream re-check
+
+An override records a disagreement with a fixture *at a point in time*.
+Upstream corpora move: the ShEx `start2RefS2` override was retired on
+2026-07-29 when shexSpec/shexTest commit `0f45c51` reconciled the
+p1/p2 defect it documented and added synchronization actions. A stale
+override that no longer fires is the same failure mode as stale
+documentation — it reads as a live disagreement when the dispute is
+settled.
+
+**Procedure** (run alongside the `issue-hygiene` sweep, or whenever a
+suite's submodule is updated):
+
+1. `git -C <submodule> fetch origin` and compare `HEAD` with upstream.
+2. If behind, update, re-run the suite, and see whether the override
+   still fires.
+3. If it no longer fires, **delete the file** — do not leave it inert.
+   Update the ledger and the `test-suites` skill, keeping a dated note
+   explaining why the score moved.
+4. If it still fires, append a dated entry to `recheck_log` (JSON
+   overrides) or an `RE-CHECK <date>` block (`.override` text files),
+   recording the upstream commit checked.
+
+**Overrides that cannot be retired by an upstream fix** — record this
+once rather than re-deriving it each sweep:
+
+| Override | Why permanent |
+|---|---|
+| `jsonld-compact__t0038` | Version dispute, not a defect. The test declares `option.specVersion=json-ld-1.0`; we implement 1.1, whose behaviour the suite's own `#tp001` pins. Retirable only by adding a real 1.0 processing mode. |
+| `jsonld-fromrdf__t0008` | Same version dispute. The manifest's own `purpose` says the input is deliberately only partially ordered. |
+| `xslt-node-1601` | XPath 1.0 §5.4 makes namespace-node order implementation-defined. The fixture pins one processor's hash-table order; ours is equally conformant. No upstream fix is possible in principle. |
+| `rif/RDF_Combination_Constant_Equivalence_4` | Corpus data defect in a **read-only archive** (W3C rules WG closed), so nobody can correct it upstream. |
+
+Last full re-check: **2026-07-29** — all four still required; ShEx
+retired.

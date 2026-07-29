@@ -11,5 +11,12 @@
   "spec": "https://www.w3.org/TR/1999/REC-xpath-19991116/#namespaces",
   "disposition": "local-override",
   "date": "2026-07-17",
-  "owner_directive": "implementation defined ordering doesn't sound like we failed compatibility, explain or progress us (owner, node-1601, 2026-07-17)"
+  "owner_directive": "implementation defined ordering doesn't sound like we failed compatibility, explain or progress us (owner, node-1601, 2026-07-17)",
+  "recheck_log": [
+    {
+      "date": "2026-07-29",
+      "result": "still required",
+      "note": "Re-checked 2026-07-29 against upstream xalan-test at 5120be9b (submodule is AT upstream HEAD, 0 commits behind): fixture unchanged, override still fires. NOT a defect in either direction — XPath 1.0 §5.4 makes namespace-node order implementation-defined, so the fixture pins one processor's hash-table order and ours is equally conformant. No upstream fix is possible in principle; this override is permanent by construction."
+    }
+  ]
 }

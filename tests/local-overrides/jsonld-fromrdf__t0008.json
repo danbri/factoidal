@@ -13,5 +13,12 @@
     "https://github.com/w3c/json-ld-api/blob/main/tests/fromRdf-manifest.jsonld"
   ],
   "date": "2026-07-17",
-  "owner_directive": "if we carefully disagree with test make our own local override of it. Shex Also. (owner, 2026-07-17)"
+  "owner_directive": "if we carefully disagree with test make our own local override of it. Shex Also. (owner, 2026-07-17)",
+  "recheck_log": [
+    {
+      "date": "2026-07-29",
+      "result": "still required",
+      "note": "Re-checked 2026-07-29 against upstream w3c/json-ld-api at 92f0770 (submodule is AT upstream HEAD, 0 commits behind): fixture unchanged, override still fires. VERSION dispute as above — the manifest's own `purpose` states the input is deliberately only partially ordered, and 1.0's node-by-node list conversion produces a shape 1.1's order-independent pass does not. Permanent unless a real 1.0 mode is added."
+    }
+  ]
 }
