@@ -356,10 +356,24 @@ or `bin/linux-x86_64/`), with symlinks in `formal/fstar/ocaml-output/`:
 
 ```bash
 cd formal/fstar
-make verify    # requires z3
+make verify                  # whole corpus; hours from cold, seconds warm
+make -j$(nproc) verify       # same, parallel over the dependency DAG
+make verify-smoke            # six core modules only; fast sanity check
+make verify-RDF.Canonical    # one module
 ```
 
-This type-checks all F\* modules against the SMT solver. The RDF graph
+`make verify` type-checks every `.fst` in `formal/fstar/` against the SMT
+solver — the target derives its module list from the directory, so it
+cannot drift from the corpus. Read the claim precisely: **what these
+modules state, Z3 checked.** For most modules that means totality,
+termination and refinement types plus whatever local lemmas the module
+declares; it is not a proof that the module implements the W3C
+Recommendation it is named after. Standards behaviour is measured by the
+conformance suites below, not by this command. (Until 2026-07-29 this
+target checked six modules by hand while this paragraph claimed all of
+them — [#319](https://github.com/danbri/factoidal/issues/319).)
+
+The RDF graph
 and SPARQL algebra modules are fully verified — zero `admit()` anywhere
 in the F\* source (the 4 SPARQL proof-lemma admits an earlier README
 disclosed have since been eliminated). `SPARQL11.Parser.fst` is now in

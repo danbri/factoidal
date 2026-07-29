@@ -230,11 +230,15 @@ fstar.exe --version     # should print a version string
 cd /path/to/factoidal
 eval $(opam env --switch=fstar)
 cd formal/fstar
-make verify
+make verify-smoke     # six core modules — the right size for a toolchain check
 ```
 
-`make verify` should walk the `MODULES` list in the Makefile and emit a
-per-module `.verified` marker file. Any failure here is either:
+Use `verify-smoke`, not `verify`, to confirm an install: `make verify`
+covers the whole corpus (~190 modules) and takes hours from cold, which
+tells you nothing extra about whether opam and z3 are wired up.
+
+`make verify-smoke` should emit a `<module>.fst.checked` file per module.
+Any failure here is either:
 
 - A bug in the spec (rare during setup; common during development).
 - A missing/wrong-version z3 (most likely cause during setup).
@@ -306,7 +310,7 @@ without re-extracting. **Important: `compile` does not apply
 |---|---|---|
 | `fstar.exe: command not found` | Switch not activated | `eval $(opam env --switch=fstar)` |
 | `Z3 version 4.8.x` etc. | Wrong z3 binary | Reinstall per §3 |
-| `make verify` hangs > 5 min on one module | z3 timeout / wrong solver | Check z3 version, then look for a deep proof obligation |
+| `make verify-smoke` hangs > 5 min on one module | z3 timeout / wrong solver | Check z3 version, then look for a deep proof obligation. (Whole-corpus `make verify` legitimately runs for hours — use `verify-smoke` when diagnosing the env.) |
 | Mysterious "Syntax error" far from real issue | Reserved word (`total`, `in_mem`, …) or `*)` inside a comment | Check the line *above* the reported one; grep for parens-stars in comments |
 | `./build-ocaml.sh` fails with linking error | OCaml stdlib mismatch from old switch | `opam reinstall fstar.lib zarith` |
 | Compile dies: ``Package `batteries'/`uucp'/`pprint' not found`` | Binary-untar F\* bypassed opam dep resolution; the background deps didn't finish (or predate the fix) | Re-run `tools/install-toolchain-cache.sh` (idempotent); wait for `.claude-runs/toolchain-deps.ok`. See §2. |
@@ -338,12 +342,14 @@ eval $(opam env --switch=fstar)
 z3 --version | grep -q 4.13.3 || { echo "z3 wrong version"; exit 1; }
 fstar.exe --version | head -1 || { echo "fstar broken"; exit 1; }
 cd formal/fstar
-make verify >/dev/null && echo "verify OK"
+make verify-smoke >/dev/null && echo "verify OK"
 echo "env appears healthy"
 ```
 
-If all three of the version check, `make verify`, and the final echo
-succeed, the toolchain is good.
+If all three of the version check, `make verify-smoke`, and the final
+echo succeed, the toolchain is good. `verify-smoke` is the six-module
+check; `make verify` covers the whole ~190-module corpus and is a
+multi-hour job, not an env sanity test (issue #319).
 
 ## What this skill does NOT do
 

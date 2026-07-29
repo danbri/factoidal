@@ -195,11 +195,20 @@ inside one `.fsti` file):
   obligations. Do not introduce new admit regions.
 - z3 must be exactly **4.13.3**; the Makefile and `build-ocaml.sh`
   pass `--z3version 4.13.3`.
-- `make verify` covers only the short `MODULES` list (5 core modules).
-  Full-tree checking happens as a side effect of
-  `./build-ocaml.sh extract` (every module through
-  `--cache_checked_modules`). Don't read "make verify passed" as
-  "whole tree verified".
+- `make verify` covers the **whole corpus** — every `.fst` in
+  `formal/fstar/`, derived from `$(wildcard *.fst)` so it cannot drift
+  from the directory (fixed 2026-07-29, issue #319; before that it
+  named six modules by hand while the README claimed all of them). It
+  now shares the `.checked` cache with `./build-ocaml.sh extract`, so
+  verify-then-extract no longer pays verification twice.
+  `make verify-smoke` is the old six-module fast check, under a name
+  that does not overclaim.
+- Still don't read "make verify passed" as "the W3C Recommendation is
+  proved". It means every module type-checked and every proof
+  obligation *the modules state* was discharged — for most modules that
+  is totality, termination and refinements plus local lemmas. Proof
+  DEPTH is a separate axis from proof COVERAGE; `make verify` fixes
+  coverage only.
 - For interactive proof/diagnosis, use the F\* MCP server
   (`fstar-mcp` skill) instead of batch `fstar.exe` reruns.
 - Every `assume val` is an acknowledged gap: stub patch in

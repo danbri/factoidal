@@ -166,10 +166,11 @@ extract step now runs this: `--dep full` once, Kahn-layered, each
 layer's modules through `xargs -P $BUILD_JOBS`, barrier between
 layers (P1, implemented 2026-07-04 — full design + scratch evidence
 below). [formal/fstar/Makefile](../../formal/fstar/Makefile) `verify`
-still covers only 5 modules via `.verified` touch-markers and does
-**not** pass `--cache_checked_modules`, so `make verify` still shares
-no cache with the extract pipeline (CONFIRMED from source, unchanged
-by P1 — see P7).
+now uses exactly this shape — `--dep full` filtered to local rules,
+real `.checked` targets, `--cache_checked_modules` — over
+`$(wildcard *.fst)` instead of a hand-written list, so it covers the
+whole corpus and shares the cache with the extract pipeline (P7,
+implemented 2026-07-29 for issue #319).
 
 ## Concurrency safety rules
 
@@ -607,20 +608,53 @@ Expected win: first verify of a session drops from cold to warm.
 Measurement: time-to-first-successful-single-module-verify in a
 fresh session, before/after.
 
-### P7 — make `make verify` share the cache
+### P7 — make `make verify` share the cache — IMPLEMENTED 2026-07-29 (issue #319)
 
-Add `--cache_checked_modules` to the `FSTAR` variable in
-[formal/fstar/Makefile](../../formal/fstar/Makefile) and extend
-`MODULES` (5 modules today) to the full list via `--dep full`
-inclusion, retiring the `.verified` touch-markers in favor of
-`.checked` targets. Today a `make verify` run does work that the
-next `./build-ocaml.sh extract` cannot reuse (CONFIRMED: no cache
-flag in the Makefile). Subsumed by P1 if the generated Makefile
-serves both entry points.
+Done, in [formal/fstar/Makefile](../../formal/fstar/Makefile), and it
+turned out to be a correctness fix as much as a speed one.
 
-Expected win: verify-then-extract sessions stop paying verification
-twice. Measurement: `make verify && ./build-ocaml.sh extract` total
-wall-clock, before/after.
+The `MODULES` list named **six** modules while `README.md` said the
+command "type-checks all F\* modules against the SMT solver". A
+developer following the README got a green result having checked about
+3% of the corpus. Issue #319 filed that as the review's cleanest
+documentation overclaim.
+
+What landed:
+
+- `ALL_FST := $(sort $(wildcard *.fst))` — the module list is *derived
+  from the directory*, so it cannot drift again. Adding a `.fst` adds
+  it to `make verify` with no edit to the Makefile. (This also caught
+  `RDF.CottasStore.PageCache.Bounds.fst`, present on disk and absent
+  from build-ocaml.sh's `ALL_MODULES`, hence verified by nothing.)
+- `FSTAR` now carries `--cache_checked_modules`, so the `.checked`
+  files `make verify` writes are the ones `./build-ocaml.sh extract`
+  consumes, and vice versa. Verify-then-extract no longer pays twice.
+- `.verified` touch-markers are gone; the targets are real
+  `%.fst.checked` / `%.fsti.checked` files.
+- Ordering comes from `fstar.exe --dep full`, regenerated into
+  `.depend` whenever any source changes, **filtered** to rules whose
+  target is a local `.checked` with absolute-path (ulib) prerequisites
+  stripped. Without that filter make sees rules for the F\* standard
+  library's own `.checked` files inside the opam switch and may try to
+  rewrite them. Measured: 198 local rules (190 `.fst` + 8 `.fsti`),
+  zero opam targets in `make -n verify`.
+- The recipe fails loudly if `fstar.exe` returns 0 without writing the
+  `.checked` (F\* Warning 247 — a dependency lacked a valid `.checked`).
+  Otherwise make would loop or, worse, report green.
+- `make verify-smoke` preserves the old six-module fast check under a
+  name that does not overclaim; `make verify-<Module>` does one module;
+  `make verify-list` prints the corpus for anyone auditing a coverage
+  claim.
+
+`make -j$(nproc) verify` is safe because make owns one writer per
+`.checked` target and orders writers after their prerequisites — this
+is concurrency-safety rule 4 above, and the reason to route parallelism
+through make rather than backgrounded `fstar.exe` fan-out.
+
+Cost: a cold `make verify` re-proves the whole corpus (hours — see
+`docs/clean-room/` for the measured figure). A warm run over an
+unchanged tree is seconds. Point env-sanity checks at `verify-smoke`,
+not `verify`.
 
 ## What this skill does NOT cover
 

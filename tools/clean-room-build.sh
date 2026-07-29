@@ -94,7 +94,10 @@ done
 [ -n "$WORKDIR" ] || die "--workdir is required"
 [ -n "$THIS_CHECKOUT" ] || die "must be run from inside a git checkout"
 [ -n "$SOURCE_REPO" ] || SOURCE_REPO="$THIS_CHECKOUT"
-[ -n "$REF" ] || REF="$(git rev-parse HEAD)"
+# A BRANCH (or tag) name, not a bare sha: the clone is shallow, and a
+# --depth 1 clone can only be pointed at a named ref.
+[ -n "$REF" ] || REF="$(git rev-parse --abbrev-ref HEAD)"
+[ "$REF" != "HEAD" ] || die "detached HEAD — pass --ref <branch-or-tag>"
 [ -n "$ARTIFACT" ] || ARTIFACT="$THIS_CHECKOUT/docs/clean-room/$(date -u +%Y-%m-%d).md"
 
 if [ -e "$WORKDIR" ] && [ -n "$(ls -A "$WORKDIR" 2>/dev/null)" ]; then
@@ -127,16 +130,29 @@ echo "clean-room: workdir $WORKDIR"
 echo "clean-room: cap     ${CAP_MINUTES}m"
 
 # ---------------------------------------------------------------------------
-# 1. Bare clone. --no-hardlinks so the clone shares no object storage with
-#    the source checkout; --no-local for the same reason on local paths.
+# 1. Bare clone of exactly the commit under test.
+#
+# Shallow (--depth 1) over a file:// URL, deliberately. A full local clone
+# would either hardlink the source repo's object store (shared state — the
+# thing this script exists to eliminate) or, with --no-local, re-pack every
+# byte of history: this repository carries ~5 GB of it, largely committed
+# binaries under iron rule #9, which is hours of work and gigabytes of disk
+# that tell us nothing about reproducibility.
+#
+# A shallow clone shares no object storage with the source and materialises
+# the tree purely from git, which is the property that matters here: nothing
+# in the built tree can have come from the source checkout's build state.
+# History depth is irrelevant to whether the corpus rebuilds from source.
 # ---------------------------------------------------------------------------
-echo "clean-room: [1/6] cloning..."
-git clone --no-hardlinks --no-local "$SOURCE_REPO" "$CLONE" >/dev/null 2>&1 \
-  || git clone --no-hardlinks "$SOURCE_REPO" "$CLONE" \
-  || die "clone failed"
-git -C "$CLONE" checkout --detach "$REF" >/dev/null 2>&1 || die "checkout $REF failed"
+echo "clean-room: [1/6] cloning (shallow, from git only)..."
+case "$SOURCE_REPO" in
+  /*) CLONE_URL="file://$SOURCE_REPO" ;;
+  *)  CLONE_URL="$SOURCE_REPO" ;;
+esac
+git clone --depth 1 --no-hardlinks --branch "$REF" "$CLONE_URL" "$CLONE" 2>&1 | tail -3
+[ -d "$CLONE/.git" ] || die "clone of branch '$REF' from $CLONE_URL failed"
 CLONE_SHA="$(git -C "$CLONE" rev-parse HEAD)"
-echo "clean-room: cloned at $CLONE_SHA"
+echo "clean-room: cloned $REF at $CLONE_SHA"
 
 # ---------------------------------------------------------------------------
 # 2. PURGE every generated artifact. This is the whole point: if any of
