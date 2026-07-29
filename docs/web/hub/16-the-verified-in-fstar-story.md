@@ -47,8 +47,14 @@ Iron Rule #11:
 
 Concretely: the RDF format parsers and the query algebra — the code
 paths every post in this series exercised, in-memory, in your browser
-— are F\*, checked under Z3 4.13.3 with no `--lax` and zero `admit()`
-(Iron Rule #10). This post originally disclosed one carve-out inside
+— are F\*, checked under Z3 4.13.3 with no `--lax` and no
+`--admit_smt_queries` region anywhere in the tree (Iron Rule #10).
+That clause is measured rather than asserted: the
+[assurance inventory](../conformance/assurance-inventory.md) counts
+those pragma regions from source on every dashboard refresh, and it
+also names the residue it finds — three `admit ()` sites, all in
+`SPARQL11.Algebra.fst` solution-mapping lemmas, none in evaluator
+code. This post originally disclosed a larger carve-out inside
 that boundary: `SPARQL11.Parser.fst`'s mutually-recursive expression
 and UPDATE parser blocks (~64% of that one file) carried
 `--admit_smt_queries true`, so their SMT obligations (termination,

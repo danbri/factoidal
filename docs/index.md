@@ -47,6 +47,15 @@ commit-linked — see the [performance hub]({{ '/web/perf/' | url }}).
 per-catalog OWL scores and names every test that still fails, with its
 reason and disposition.
 
+The [per-module assurance inventory]({{ '/web/conformance/assurance-inventory/' | url }})
+is derived from the F\* source and the extracted OCaml, with no
+hand-written rows. For every module it says whether the module is
+merely total, carries local refinement lemmas, carries an
+algorithm-correctness theorem, or carries a refinement theorem against
+an independently-stated formalisation — plus its active `assume val`
+count, any admissions, and which official suites exercise it at what
+coverage.
+
 Parser and algebra spec are verified in F\*; the on-disk backend has
 unverified OCaml-side optimization layers being migrated back to F\*.
 [How Factoidal works]({{ '/web/how-it-works/' | url }}) covers the

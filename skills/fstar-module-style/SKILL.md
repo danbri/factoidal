@@ -191,8 +191,14 @@ inside one `.fsti` file):
 
 - **No `--lax`, no `--admit_smt_queries`** (Iron Rule #10). The one
   legacy exception — `SPARQL11.Parser.fst`'s two admit regions — was
-  eliminated 2026-07-10; the whole tree verifies with zero admitted
-  obligations. Do not introduce new admit regions.
+  eliminated 2026-07-10; the tree now carries zero such pragma
+  regions. Do not introduce new ones. That count is machine-checked
+  rather than asserted: `tools/assurance-inventory.sh --check` derives
+  it from source and exits non-zero on any active admission. The same
+  check currently reports three `admit ()` sites in
+  `SPARQL11.Algebra.fst` solution-mapping lemmas — an `admit ()` makes
+  its lemma vacuous, so do not cite that file as fully proved, and do
+  not add more.
 - z3 must be exactly **4.13.3**; the Makefile and `build-ocaml.sh`
   pass `--z3version 4.13.3`.
 - `make verify` covers only the short `MODULES` list (5 core modules).

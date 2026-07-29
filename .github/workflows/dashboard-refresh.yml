@@ -109,6 +109,26 @@ jobs:
           echo "=== latest.json head ==="
           head -50 ../../docs/test-results/latest.json 2>/dev/null || true
 
+      - name: Regenerate per-module assurance inventory
+        run: |
+          set -eu
+          # Issue #315. Same "no toolchain, read committed artifacts"
+          # contract as the dashboard step above: this reads F* source,
+          # the committed extracted OCaml, the build module list, the
+          # per-suite manifests and the committed *_results.log files.
+          # It never runs F* and never runs a test.
+          tools/assurance-inventory.sh
+          echo "=== assurance inventory totals ==="
+          python3 - <<'EOF'
+          import json
+          t = json.load(open('docs/test-results/assurance-inventory.json'))['totals']
+          for k in ('modules', 'assume_val_active', 'admissions_active',
+                    'lax_or_admit_pragmas', 'w3c_refinement_theorem_count',
+                    'algorithm_correctness_theorem_count'):
+              print(f"  {k}: {t[k]}")
+          print("  tiers:", t['tiers'])
+          EOF
+
       - name: Gate against lying rows (0 pass + 0 fail with a nonzero universe)
         run: |
           # A suite whose committed log was produced in a fixture-less
@@ -153,6 +173,34 @@ jobs:
             mkdir -p "$PAYLOAD/docs"
             cp -a docs/test-results "$PAYLOAD/docs/test-results"
           fi
+          # The assurance inventory's site page (issue #315) lives outside
+          # docs/test-results/, so it needs its own carry-over.
+          INV_MD=docs/web/conformance/assurance-inventory.md
+          if [ -f "$INV_MD" ]; then
+            mkdir -p "$PAYLOAD/inv"
+            cp -a "$INV_MD" "$PAYLOAD/inv/assurance-inventory.md"
+          fi
+
+          # Assurance-drift fingerprint helper, written once outside the
+          # retry loop (a nested heredoc inside the loop would have to
+          # survive YAML block-scalar de-indentation; a file does not).
+          INV_FP_PY="$PAYLOAD/inv_fp.py"
+          cat > "$INV_FP_PY" <<'PY'
+          import json, sys
+          try:
+              d = json.load(open(sys.argv[1]))
+          except Exception:
+              sys.exit(0)
+          rows = [[r["module"], r["assurance_tier"], r["assume_val_active"],
+                   r["admissions_active"], len(r["lax_or_admit_pragmas"]),
+                   r["local_refinement_lemma_count"],
+                   len(r["algorithm_correctness_theorems"]),
+                   len(r["internal_refinement_theorems"]),
+                   len(r["w3c_refinement_theorems"])]
+                  for r in d.get("modules", [])]
+          print(json.dumps([d.get("totals", {}).get("tiers"), rows],
+                           sort_keys=True))
+          PY
 
           PUSH_RC=1
           for attempt in 1 2 3 4 5; do
@@ -169,8 +217,12 @@ jobs:
               rm -rf docs/test-results
               cp -a "$PAYLOAD/docs/test-results" docs/test-results
             fi
+            if [ -f "$PAYLOAD/inv/assurance-inventory.md" ]; then
+              mkdir -p docs/web/conformance
+              cp -a "$PAYLOAD/inv/assurance-inventory.md" "$INV_MD"
+            fi
 
-            git add -A docs/test-results
+            git add -A docs/test-results "$INV_MD"
 
             if git diff --cached --quiet; then
               echo "No dashboard changes vs origin tip; nothing to commit."
@@ -198,13 +250,26 @@ jobs:
             score_fp() { cut -d',' -f3- | LC_ALL=C sort; }
             NEW_FP=$(score_fp < docs/test-results/latest.csv 2>/dev/null || true)
             OLD_FP=$(git show HEAD:docs/test-results/latest.csv 2>/dev/null | score_fp || true)
-            if [ -n "$NEW_FP" ] && [ "$NEW_FP" = "$OLD_FP" ]; then
-              echo "Only timestamp/timings changed — no test score drift. Skipping commit (avoids timeseries churn)."
+
+            # Same churn-avoidance for the assurance inventory (#315): its
+            # JSON carries the tree's short SHA, so a raw diff is non-empty
+            # on every push. Fingerprint the tier counts + per-module
+            # assurance fields with the volatile keys stripped; commit only
+            # when a real assurance fact moved.
+            inv_fp() { python3 "$INV_FP_PY" "$1" 2>/dev/null || true; }
+            INV_JSON=docs/test-results/assurance-inventory.json
+            NEW_INV=$(inv_fp "$INV_JSON")
+            git show "HEAD:$INV_JSON" > /tmp/inv-old.json 2>/dev/null || true
+            OLD_INV=$(inv_fp /tmp/inv-old.json)
+
+            if [ -n "$NEW_FP" ] && [ "$NEW_FP" = "$OLD_FP" ] \
+               && [ "$NEW_INV" = "$OLD_INV" ]; then
+              echo "Only timestamp/timings changed — no test score or assurance drift. Skipping commit (avoids timeseries churn)."
               PUSH_RC=0
               break
             fi
 
-            git commit -m "ci: refresh dashboard — score drift"
+            git commit -m "ci: refresh dashboard + assurance inventory — measured drift"
 
             if git push origin "HEAD:${GITHUB_REF_NAME}"; then
               PUSH_RC=0
