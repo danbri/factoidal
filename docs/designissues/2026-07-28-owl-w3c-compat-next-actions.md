@@ -517,6 +517,18 @@ Ordered by (tests gained) / (estimated effort), one commit-sized item each.
     section above for the design; default paths unchanged). **3 tests,
     flag-mode only by design.**
 
+## 6. Composed flag-mode battery (2026-07-29, post-landing)
+
+`--semantics rdf-based-full` on the composed tree (closure wave 2 +
+comprehension witnesses + CPU-time caps), measured on this container:
+positive-entailment 191 pass, 13 fail (out of 204), 2 skipped, in
+486s; consistency 204 pass, 0 fail (out of 204). Relative to the
+default mode's 189 pass: +3 (WebOnt-Class-001/-002/-003), -1
+(WebOnt-I4.6-005-Direct — the Direct-semantics annotation-copy
+reading of equivalentClass, which the RDF-Based reading rejects; the
+enumerated, accepted flag-on trade-off). The earlier 900s-timeout on
+this battery was budget, not a hang.
+
 ## 5. Open questions for the owner — ANSWERED 2026-07-28
 
 Owner steers, quoted verbatim (same day, in reply to the three 🧭 items
