@@ -620,6 +620,31 @@ let owl_closure_cap_seconds : float =
 
 exception Owl_closure_timeout
 
+(* ------------------------------------------------------------------ *)
+(* Harness diagnostics (#316) -- count every degraded-closure fallback *)
+(*                                                                     *)
+(* A cap-trip abandons the closure part-way and scores the test on a   *)
+(* LESS-closed graph. The direction of that error is not uniformly     *)
+(* safe: for a ConsistencyTest a truncated closure finds no            *)
+(* contradiction, so the test PASSES -- a cap-trip can manufacture a   *)
+(* pass. Measured on the committed logs (2026-07-29): ten PASSes       *)
+(* across type-consistency, semantics-direct and                       *)
+(* type-positive-entailment ran on a degraded closure.                 *)
+(*                                                                     *)
+(* These counters do NOT change any score. They exist so the rate is   *)
+(* published next to the numbers instead of living only in stderr,     *)
+(* which is what #316 (c) asks for. Deciding WHICH catalogs must FAIL  *)
+(* on a cap-trip needs its own measured change.                        *)
+let owl_degraded_marked = ref 0   (* cap-trip fallbacks, marked        *)
+let owl_degraded_silent = ref 0   (* the unmarked "| _ -> g" arms      *)
+let owl_degraded_tests : (string, unit) Hashtbl.t = Hashtbl.create 32
+let owl_current_test = ref ""
+
+let owl_note_degraded (silent : bool) =
+  if silent then incr owl_degraded_silent else incr owl_degraded_marked;
+  if !owl_current_test <> "" then
+    Hashtbl.replace owl_degraded_tests !owl_current_test ()
+
 (* All caps below run on CPU time (ITIMER_VIRTUAL / SIGVTALRM), not
    wall clock (2026-07-28). Wall-clock caps made verdicts
    load-dependent: dl-502's refutation needs ~5.5 CPU-seconds and
@@ -1059,8 +1084,9 @@ let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] RL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g
-       | _ -> g)
+       | _ -> owl_note_degraded true; g)
     in
     (c, c)
   | Regime_DL ->
@@ -1074,8 +1100,9 @@ let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g
-       | _ -> g)
+       | _ -> owl_note_degraded true; g)
     in
     let g_dl =
       (try with_owl_cap (fun () ->
@@ -1085,8 +1112,9 @@ let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g_rl
-       | _ -> g_rl)
+       | _ -> owl_note_degraded true; g_rl)
     in
     (g_rl, g_dl)
 
@@ -1125,8 +1153,9 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] RL base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g
-       | _ -> g)
+       | _ -> owl_note_degraded true; g)
     in
     (try with_owl_cap (fun () ->
        RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses_mode g fuel_100 (base_semantics_mode ()))
@@ -1134,6 +1163,7 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
      | Owl_closure_timeout ->
        Printf.eprintf "  [owl_closure_timeout] RL closure (with witnesses) exceeded %.0fs cap; falling back to base closure\n%!"
          owl_closure_cap_seconds;
+       owl_note_degraded false;
        base
      | _ -> base)
   | Regime_DL ->
@@ -1144,8 +1174,9 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g
-       | _ -> g)
+       | _ -> owl_note_degraded true; g)
     in
     (* Staged like the RL arm above: establish the tableau+plain-closure
        result FIRST (the pre-witness DL behavior), then attempt the
@@ -1180,8 +1211,9 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g_rl
-       | _ -> g_rl)
+       | _ -> owl_note_degraded true; g_rl)
     in
     (try with_owl_cap (fun () ->
        RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses_mode g_dl fuel_100 (base_semantics_mode ()))
@@ -1189,6 +1221,7 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
      | Owl_closure_timeout ->
        Printf.eprintf "  [owl_closure_timeout] DL witness layer exceeded %.0fs cap; falling back to tableau closure\n%!"
          owl_closure_cap_seconds;
+       owl_note_degraded false;
        g_dl
      | _ -> g_dl)
 
@@ -1242,8 +1275,9 @@ let apply_closure_with_semantics
      | Owl_closure_timeout ->
        Printf.eprintf "  [owl_closure_timeout] RL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
          owl_closure_cap_seconds;
+       owl_note_degraded false;
        g
-     | _ -> g)
+     | _ -> owl_note_degraded true; g)
   | Regime_DL ->
     (* Mode-aware sibling of apply_closure's DL branch: RL-mode closure
        first (the timeout fallback), then Tableau + RL-mode re-closure. *)
@@ -1254,8 +1288,9 @@ let apply_closure_with_semantics
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g
-       | _ -> g)
+       | _ -> owl_note_degraded true; g)
     in
     (try with_owl_cap (fun () ->
        let g2 = Tableau.tableau_materialise g_rl in
@@ -1264,8 +1299,9 @@ let apply_closure_with_semantics
      | Owl_closure_timeout ->
        Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
          owl_closure_cap_seconds;
+       owl_note_degraded false;
        g_rl
-     | _ -> g_rl)
+     | _ -> owl_note_degraded true; g_rl)
 
 (* Parse and merge imported-ontology literals into the premise graph
    before closure. Each imports_lookup hit gives us an RDF/XML literal
@@ -1409,6 +1445,10 @@ let run_positive_entailment
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
   Printf.eprintf "  [pe-running] %s\n%!"
+    (match info.identifier with Some id -> id | None -> info.iri);
+  (* #316: name the test so a degraded-closure fallback below can be
+     attributed to it in the harness-diagnostics block. *)
+  owl_current_test :=
     (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise, info.conclusion with
   | None, _ ->
@@ -1601,6 +1641,10 @@ let run_consistency_test
      kill doesn't lose the whole phase's output. *)
   Printf.eprintf "  [cons-running] %s\n%!"
     (match info.identifier with Some id -> id | None -> info.iri);
+  (* #316: name the test so a degraded-closure fallback below can be
+     attributed to it in the harness-diagnostics block. *)
+  owl_current_test :=
+    (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise with
   | None ->
     (match info.fs_premise with
@@ -1677,6 +1721,10 @@ let run_inconsistency_test
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
   Printf.eprintf "  [inc-running] %s\n%!"
+    (match info.identifier with Some id -> id | None -> info.iri);
+  (* #316: name the test so a degraded-closure fallback below can be
+     attributed to it in the harness-diagnostics block. *)
+  owl_current_test :=
     (match info.identifier with Some id -> id | None -> info.iri);
   (* 2026-07-17 categorization fix: a test:semantics RDF-BASED-only
      catalog entry (see Skip_semantics_rdf_based_only's comment) is out
@@ -2325,4 +2373,17 @@ let () =
     | Some p -> p
     | None -> default_catalog ()
   in
-  run_catalog ~verbose:!verbose catalog
+  run_catalog ~verbose:!verbose catalog;
+  (* #316 (c): publish the escape counts. A degraded closure scores the
+     test on a LESS-closed graph; for a ConsistencyTest that direction
+     manufactures a PASS, so these counts belong next to the scores, not
+     only in stderr. Fixed format, scraped by generate-report.sh. *)
+  let degraded_tests =
+    List.sort String.compare
+      (Hashtbl.fold (fun k () acc -> k :: acc) owl_degraded_tests []) in
+  Printf.printf "\nHarness Diagnostics (escape branches, #316):\n";
+  Printf.printf
+    "HARNESS-DIAG-OWL degraded_closure_marked:%d degraded_closure_silent:%d \
+     tests_on_degraded_closure:%d\n"
+    !owl_degraded_marked !owl_degraded_silent (List.length degraded_tests);
+  List.iter (fun t -> Printf.printf "HARNESS-DIAG-OWL-TEST %s\n" t) degraded_tests

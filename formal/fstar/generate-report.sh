@@ -1156,6 +1156,48 @@ emit_json_harness_one () {  # emit_json_harness_one <key> <log>
   printf ']}'
 }
 
+# OWL catalogs report a different escape: the per-test SIGALRM closure cap.
+# A cap-trip abandons the closure and scores the test on a LESS-closed
+# graph. That direction is not uniformly safe — a ConsistencyTest on a
+# truncated closure finds no contradiction and therefore PASSES — so the
+# per-catalog count and the affected test names are published rather than
+# left in stderr. Scores are unchanged by this reporting.
+OWL_DIAG_LOGS=(
+  "profile_rl:$OWL_LOG"
+  "type_positive_entailment:$OWL_TPE_LOG"
+  "type_negative_entailment:$OWL_TNE_LOG"
+  "type_consistency:$OWL_TCON_LOG"
+  "type_inconsistency:$OWL_TINC_LOG"
+  "profile_el:$OWL_EL_LOG"
+  "profile_ql:$OWL_QL_LOG"
+  "semantics_direct:$OWL_SEMDL_LOG"
+)
+
+emit_json_harness_owl () {
+  local first=1 ent key log line
+  printf '    "owl_catalogs": {'
+  for ent in "${OWL_DIAG_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    line=$(grep -h '^HARNESS-DIAG-OWL ' "$log" 2>/dev/null | tail -1 || true)
+    [ "$first" -eq 0 ] && printf ','
+    first=0
+    if [ -z "$line" ]; then
+      printf '"%s":{"measured":false}' "$key"
+      continue
+    fi
+    local names
+    names=$(grep -h '^HARNESS-DIAG-OWL-TEST ' "$log" 2>/dev/null \
+            | awk '{print "\""$2"\""}' | paste -sd, - || true)
+    printf '"%s":{"measured":true,"degraded_closure_marked":%s,"degraded_closure_silent":%s,"tests_on_degraded_closure":%s,"tests":[%s]}' \
+      "$key" \
+      "$(diag_field "$line" degraded_closure_marked)" \
+      "$(diag_field "$line" degraded_closure_silent)" \
+      "$(diag_field "$line" tests_on_degraded_closure)" \
+      "$names"
+  done
+  printf '}'
+}
+
 {
   printf '{\n'
   printf '  "timestamp": "%s",\n' "$TIMESTAMP_HUMAN"
@@ -1365,6 +1407,8 @@ emit_json_harness_one () {  # emit_json_harness_one <key> <log>
     printf ',\n'
     emit_json_harness_one "$_k" "${EXTRA_LOG[$_k]}"
   done
+  printf ',\n'
+  emit_json_harness_owl
   printf '\n  }\n'
   printf '}\n'
 } > "$JSON"
@@ -2761,6 +2805,46 @@ build_harness_card () {
     rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
       "$cls" "$key" "${dt:-0}" "${be:-0}" "${gs:-0}" "${nm:-0}" "${zt:-0}" "$((${sk:-0} + ${un:-0}))")
   done
+  # OWL catalogs: the closure cap, reported in its own small table
+  # because the escape has a different shape (a degraded computation,
+  # not an undecidable comparison).
+  local owl_rows="" owl_any=0 owl_measured=0
+  for ent in "${OWL_DIAG_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    line=$(grep -h '^HARNESS-DIAG-OWL ' "$log" 2>/dev/null | tail -1 || true)
+    [ -z "$line" ] && continue
+    owl_measured=1
+    local dm ds dt names cls2
+    dm=$(diag_field "$line" degraded_closure_marked)
+    ds=$(diag_field "$line" degraded_closure_silent)
+    dt=$(diag_field "$line" tests_on_degraded_closure)
+    names=$(grep -h '^HARNESS-DIAG-OWL-TEST ' "$log" 2>/dev/null \
+            | awk '{print $2}' | paste -sd', ' - || true)
+    if [ "${dt:-0}" -gt 0 ]; then owl_any=1; cls2="hd-bad"; else cls2="hd-ok"; fi
+    owl_rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
+      "$cls2" "$key" "${dm:-0}" "${ds:-0}" "${dt:-0}" "${names:-&mdash;}")
+  done
+  local owl_block=""
+  if [ "$owl_measured" -eq 1 ]; then
+    local owl_note
+    if [ "$owl_any" -eq 1 ]; then
+      owl_note='<p class="hd-note hd-bad">Listed tests were scored on a closure the runner abandoned part-way. For a ConsistencyTest that direction manufactures a PASS (a truncated closure finds no contradiction), so these passes are weaker than the rest.</p>'
+    else
+      owl_note='<p class="hd-note">No closure cap-trips: every OWL catalog test was scored on a complete closure.</p>'
+    fi
+    owl_block=$(cat <<OWLHDEOF
+  <p class="legend-title" style="margin-top:1em">OWL 2 catalogs &mdash; closure cap escapes</p>
+  <p class="legend-note">The OWL runner puts a per-test CPU cap on the RL/DL closure so one hard ontology cannot hang a catalog. On a cap-trip it falls back to a less-closed graph and scores the test anyway. <strong>marked</strong> counts logged cap-trips; <strong>silent</strong> counts the unlogged catch-all arms.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>catalog</th><th>marked</th><th>silent</th><th>tests affected</th><th>which</th></tr></thead>
+    <tbody>${owl_rows}</tbody>
+  </table>
+  </div>
+  ${owl_note}
+OWLHDEOF
+)
+  fi
   local verdict
   if [ "$measured" -eq 0 ]; then
     verdict='<p class="hd-note">No harness-diagnostic data in this run&rsquo;s logs.</p>'
@@ -2780,6 +2864,7 @@ build_harness_card () {
   </table>
   </div>
   ${verdict}
+${owl_block}
 </div>
 HDEOF
 }
