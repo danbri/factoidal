@@ -504,6 +504,44 @@ let simple_entails_sound (a b : list triple)
     assert (simple_entailment_spec a b)
 
 // ===================================================================
+// THEOREMS at the PARAMETERIZED engine `entails_with`.
+//
+// `simple_entails` is one instantiation of `entails_with`. The W3C
+// runner's entailment path goes through OTHER instantiations
+// (RDF.Entailment.Regime's `entails_rdf` / `entails_rdfs` /
+// `entails_rdfs_plus`, which pass `dt_value_leq` and `bnd_rdf`) -- see
+// finding SE-3 in the design doc. These two theorems are the same
+// refinement result stated for ANY instantiation, so a follow-up only
+// has to discharge the three hypotheses for its own predicates.
+// ===================================================================
+
+let entails_with_complete (leq : bool -> literal -> literal -> bool)
+                          (bnd : rdf_term -> bool) (a b : list triple)
+  : Lemma (requires leq_reflexive leq /\ bnd_total bnd /\ simple_entailment_spec a b)
+          (ensures  entails_with leq bnd a b == true) =
+  eliminate exists (m : bnode_subst).
+      (forall (tb : triple). memP tb b ==>
+         (exists (ta : triple). memP ta a /\ triple_inst m tb ta))
+  returns (entails_with leq bnd a b == true)
+  with _pf.
+    (assert (binding_compat m []);
+     assert (all_matched m b a);
+     lemma_try_match_complete leq bnd m b [] a)
+
+let entails_with_sound (leq : bool -> literal -> literal -> bool)
+                       (bnd : rdf_term -> bool) (a b : list triple)
+  : Lemma (requires leq_exact_identity leq /\ graph_exact a /\ graph_exact b /\
+                    entails_with leq bnd a b == true)
+          (ensures  simple_entailment_spec a b) =
+  assert (binding_exact []);
+  lemma_try_match_sound leq bnd b [] a;
+  eliminate exists (bd' : binding).
+      binding_extends bd' [] /\ binding_exact bd' /\ all_matched (bsubst bd') b a
+  returns (simple_entailment_spec a b)
+  with _pf.
+    assert (simple_entailment_spec a b)
+
+// ===================================================================
 // COROLLARY (decision procedure, on the exact-literal fragment).
 // ===================================================================
 let simple_entails_iff_spec (a b : list triple)
