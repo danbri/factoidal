@@ -385,6 +385,10 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.IRI.fst
     RDF.NQuads.Serialize.fst
     RDF.Entailment.Simple.fst
+    RDF.Entailment.Simple.Spec.fst
+    RDF.Entailment.Simple.Refinement.fst
+    RDF.Entailment.Simple.ModelTheory.fst
+    RDF.Entailment.Simple.Boundary.fst
     RDF.List.Helpers.fst
     RDF.Bytes.fst
     RDF.Store.Loader.fst
