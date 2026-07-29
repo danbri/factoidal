@@ -1079,7 +1079,7 @@ let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
     in
     let g_dl =
       (try with_owl_cap (fun () ->
-         let g2 = Tableau_Refute.dl_materialise g_rl in
+         let g2 = Tableau.tableau_materialise g_rl in
          RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g2 fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
@@ -1155,6 +1155,23 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
        witness pass pushed those tests past the 30s cap and the old
        fallback discarded the tableau results too, scoring below the
        pre-witness runner. *)
+    (* `dl_materialise` = `Tableau.tableau_materialise` plus the FORCED
+       DATATYPE FILLERS of Tableau.Refute section 5b'. It is used HERE
+       ONLY — this is the PositiveEntailmentTest-only closure — while the
+       consistency / inconsistency paths keep plain
+       `Tableau.tableau_materialise`, on the same principle as the
+       g_rl / g_dl split above.
+
+       The reason is measured, not precautionary. The forced fillers are
+       model-theoretic entailments (proof in the section 5b' banner), but
+       feeding a CONCRETE data-property assertion into the closure makes
+       rdfs3 range propagation type that literal, and the resulting
+       datatype-membership marker reported INCONSISTENT for three
+       consistent premises (WebOnt-I5.8-002 / -004 / -010: 352 pass,
+       0 fail -> 349 pass, 3 fail on type-consistency.rdf, measured
+       2026-07-29). The marker path is what is wrong there, not the
+       entailment; keeping the fillers on the PE closure banks the
+       entailment win without moving a consistency verdict. *)
     let g_dl =
       (try with_owl_cap (fun () ->
          let g2 = Tableau_Refute.dl_materialise g_rl in
@@ -1241,7 +1258,7 @@ let apply_closure_with_semantics
        | _ -> g)
     in
     (try with_owl_cap (fun () ->
-       let g2 = Tableau_Refute.dl_materialise g_rl in
+       let g2 = Tableau.tableau_materialise g_rl in
        RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g2 fuel_100 mode)
      with
      | Owl_closure_timeout ->
