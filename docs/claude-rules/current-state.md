@@ -915,6 +915,24 @@ isomorphism. These may inflate the pass count slightly.
 
 ## W3C Test Results (as of 2026-05-07)
 
+> **Last clean-room (cold) build: 2026-07-29** —
+> [`docs/clean-room/2026-07-29.md`](../clean-room/2026-07-29.md).
+> A bare clone with every `.checked` file, extracted `.ml`, committed
+> binary and the extraction manifest deleted rebuilt and ran every suite
+> green: verify+extract 19m, compile 14m, suites 44m on 4 cores. Before
+> that date, no published score here had been shown to survive the
+> removal of accumulated build state (issue #314).
+>
+> ⚠️ That run also showed the numbers **below and on the dashboard are
+> stale in both directions**: four OWL suites score *better* cold than
+> the committed logs claim (`owl2_profile_el` 120 pass 0 fail,
+> `owl2_profile_ql` 87 pass 0 fail, `owl_rl_positive_entailment` 30 pass
+> 0 fail, `owl2_dl_inconsistency` 126 pass 1 fail), and three suites the
+> dashboard reports as absent or zero — `geosparql` 37 pass 0 fail,
+> `xpath_unit` 100 pass 0 fail, `tests_unit` 46 pass 1 fail — actually
+> run and score. Treat the per-suite figures in this section as a
+> historical record, not as current measurement, until a refresh lands.
+
 **SPARQL 1.1 — 630 pass, 1 fail (out of 631)**
 
 Per-suite: add 8/8, aggregates 47/47, basic-update 13/13, bind 10/10,
