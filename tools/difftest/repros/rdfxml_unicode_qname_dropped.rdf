@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Differential-testing finding (issue #317): a well-formed RDF/XML property
+  element whose local name is non-ASCII (here, Japanese) causes Factoidal's
+  RDF/XML parser to silently return ZERO triples and exit code 0 -- no
+  error is printed. pyoxigraph and rdflib both parse this file and produce
+  the expected single triple. Repro:
+
+    bin/linux-x86_64/factoidal count tools/difftest/repros/rdfxml_unicode_qname_dropped.rdf
+    # Factoidal: "... : 0 triples" (WRONG -- should be 1)
+    # python3 -c "import pyoxigraph as ox; print(list(ox.parse(path='...', format=ox.RdfFormat.RDF_XML)))"
+    #   -> 1 quad, as expected
+
+  See docs/designissues/2026-07-29-differential-testing-ledger.md, finding 1.
+-->
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:ex="http://example.org/onto#">
+  <rdf:Description rdf:about="http://example.org/s">
+    <ex:日本語 rdf:datatype="http://www.w3.org/2001/XMLSchema#double">1.0E-300</ex:日本語>
+  </rdf:Description>
+</rdf:RDF>

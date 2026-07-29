@@ -1,0 +1,16 @@
+# Differential-testing finding (issue #317): a Turtle IRIREF ("<...>") whose
+# non-ASCII bytes are UTF-8-encoded Unicode characters is double-encoded by
+# Factoidal's Turtle parser -- the resulting IRI is corrupted (mojibake),
+# and the corruption is VALID UTF-8 (so it looks fine to `file`/naive
+# byte-count checks; only decoding it reveals the wrong characters).
+# TriG has the identical bug (shares the same IRIREF scanner). N-Triples
+# parsing of an IRIREF with the SAME raw bytes is correct.
+#
+# Repro:
+#   bin/linux-x86_64/factoidal canonicalize tools/difftest/repros/turtle_iriref_unicode_mojibake.ttl
+#   # Factoidal: "<https://example.org/æ¥æ¬èª> ..." (WRONG -- corrupted IRI)
+#   # pyoxigraph / rdflib (format=turtle): "<https://example.org/日本語> ..." (correct)
+#
+# See docs/designissues/2026-07-29-differential-testing-ledger.md, finding 2.
+@prefix ex: <http://example.org/onto#> .
+<https://example.org/日本語> ex:p "plain literal café" .
