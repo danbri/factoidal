@@ -257,10 +257,14 @@ and 208 included — the C7 + nominal + bottom-normalise waves shortcut
 searches that previously needed a 450s cap).
 📊 type-inconsistency: **125 pass, 2 fail (out of 127)** vs baseline
 124 pass, 3 fail — dl-502 flipped via nominal branching + raised
-refuter defaults; remaining fails are `Minus Infinity is not in
-owl:real` (datatype-facet work, out of scope) and dl-909 (❌ parked:
-its nonemptiness is soundly underivable — see the CountingOracle
-banner and this note's 909 section).
+refuter defaults; remaining fails were `Minus Infinity is not in
+owl:real` and dl-909 (❌ parked: its nonemptiness is soundly
+underivable — see the CountingOracle banner and this note's 909
+section). (Superseded 2026-07-29: `Minus Infinity is not in owl:real`
+is FIXED — the "datatype-facet work, out of scope" note above described
+this wave's scope, not the project's; see
+`docs/designissues/2026-07-29-xsd-value-space-decision-procedure.md`.
+The catalog now reads 126 pass, 1 fail out of 127.)
 📊 type-consistency: **352 pass, 0 fail (out of 352)** — floor held
 with every new clash rule/branching tier active (451s wall at the 10s
 refuter cap).

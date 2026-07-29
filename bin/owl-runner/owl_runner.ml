@@ -472,12 +472,28 @@ let subject_matches
   | RDF_Graph_Executable.S_BNode _ -> let _ = sub in true
   | _ -> RDF_Graph_Executable.subject_eq pat sub
 
+(* Object matching is by DATA VALUE, not by lexical form plus datatype
+   IRI. OWL 2 Direct Semantics interprets a literal as the value its
+   datatype's lexical-to-value map assigns, so `"0"^^xsd:int` and
+   `"0"^^xsd:integer` are the SAME data-property assertion, and a graph
+   entails one exactly when it entails the other; likewise `"01"` and
+   `"1"` as xsd:decimal, and `"0.5"^^xsd:decimal` and
+   `"1/2"^^owl:rational` (OWL 2 Syntax section 4.1 puts xsd:decimal
+   inside owl:rational with both maps exact).
+
+   The decision itself is NOT made here — `XSD_Facets.term_provably_equal`
+   is the F*-extracted, verified value-equality procedure, and it is
+   one-sided by construction: true only on a PROOF that two terms denote
+   one value, false (not "distinct") when it cannot tell. It subsumes
+   `rdf_term_eq`, which is its first disjunct. Rule #15 boundary: the
+   runner picks WHICH F* predicate to call, it does not decide anything
+   itself. *)
 let object_matches
       (pat : RDF_Graph_Executable.rdf_term)
       (obj : RDF_Graph_Executable.rdf_term) : bool =
   match pat with
   | RDF_Graph_Executable.T_BNode _ -> let _ = obj in true
-  | _ -> RDF_Graph_Executable.rdf_term_eq pat obj
+  | _ -> XSD_Facets.term_provably_equal pat obj
 
 let triple_matches
       (pat : RDF_Graph_Executable.triple)
@@ -486,13 +502,14 @@ let triple_matches
   && pat.p = t.p
   && object_matches pat.o t.o
 
+(* Both branches now go through `triple_matches`: for a bnode-free
+   pattern it is subject_eq + predicate equality + `object_matches`,
+   which is `triple_eq` widened by exactly the datatype-value equality
+   documented above. *)
 let conclusion_triple_in_closure
       (closure : RDF_Graph_Executable.rdf_graph)
       (pat : RDF_Graph_Executable.triple) : bool =
-  if triple_has_bnode pat then
-    List.exists (triple_matches pat) closure
-  else
-    List.exists (RDF_Graph_Executable.triple_eq pat) closure
+  List.exists (triple_matches pat) closure
 
 type outcome =
   | Pass
@@ -1138,9 +1155,26 @@ let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
        witness pass pushed those tests past the 30s cap and the old
        fallback discarded the tableau results too, scoring below the
        pre-witness runner. *)
+    (* `dl_materialise` = `Tableau.tableau_materialise` plus the FORCED
+       DATATYPE FILLERS of Tableau.Refute section 5b'. It is used HERE
+       ONLY — this is the PositiveEntailmentTest-only closure — while the
+       consistency / inconsistency paths keep plain
+       `Tableau.tableau_materialise`, on the same principle as the
+       g_rl / g_dl split above.
+
+       The reason is measured, not precautionary. The forced fillers are
+       model-theoretic entailments (proof in the section 5b' banner), but
+       feeding a CONCRETE data-property assertion into the closure makes
+       rdfs3 range propagation type that literal, and the resulting
+       datatype-membership marker reported INCONSISTENT for three
+       consistent premises (WebOnt-I5.8-002 / -004 / -010: 352 pass,
+       0 fail -> 349 pass, 3 fail on type-consistency.rdf, measured
+       2026-07-29). The marker path is what is wrong there, not the
+       entailment; keeping the fillers on the PE closure banks the
+       entailment win without moving a consistency verdict. *)
     let g_dl =
       (try with_owl_cap (fun () ->
-         let g2 = Tableau.tableau_materialise g_rl in
+         let g2 = Tableau_Refute.dl_materialise g_rl in
          RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g2 fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->

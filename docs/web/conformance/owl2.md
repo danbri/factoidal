@@ -66,7 +66,7 @@ publish one.
 | `type-negative-entailment.rdf` | NegativeEntailment | DL | 23 pass, 0 fail (out of 23) |
 | `type-negative-entailment.rdf` | Consistency | DL | 23 pass, 0 fail (out of 23) |
 | `type-consistency.rdf` | Consistency | DL | 352 pass, 0 fail (out of 352), 2 skipped |
-| `type-inconsistency.rdf` | Inconsistency | DL | 125 pass, 2 fail (out of 127), 1 skipped |
+| `type-inconsistency.rdf` | Inconsistency | DL | 126 pass, 1 fail (out of 127), 1 skipped |
 | `semantics-direct.rdf` | Consistency | DL | 351 pass, 0 fail (out of 351), 2 skipped |
 | `syntax-dl.rdf` | species (DL vs Full) | syntactic | 319 pass, 2 fail (out of 321 scored), 2 skipped |
 
@@ -105,7 +105,7 @@ ledger's fixed vocabulary (issue
 
 Scored under DL from `type-positive-entailment.rdf`.
 
-Every remaining fail is one of three kinds: an OWL Full entailment the
+Every remaining fail is one of two kinds: an OWL Full entailment the
 catalog itself denies is OWL DL (`test:species FULL` plus an explicit
 `owl:NegativePropertyAssertion` against `test:species DL`), a
 `test:status test;Extracredit` bonus test, or one genuinely-hard
@@ -141,6 +141,14 @@ finite-value-space entailments (`xsd:boolean` has exactly 2 values; the
 restricted integer range [1,3] exactly 3, so an exact-cardinality-N
 restriction forces every member), tracked with the datatype
 value-space work.
+
+`WebOnt-I5.8-004` (the `test:status test;Extracredit` interval-counting
+bonus test) and `WebOnt-I5.8-010` left this list on 2026-07-29: both
+now fall out of the XSD value-space decision procedure (`XSD.Facets.fst`
+plus the forced-datatype-filler rule of `Tableau.Refute.fst`
+section 5b'), which enumerates a finite value space exactly and asserts
+every member an exact cardinality forces. Design note:
+`docs/designissues/2026-07-29-xsd-value-space-decision-procedure.md`.
 
 Fixed since this page's first publication (2026-07-28, from 31 residuals
 to 11): the metamodeling family — `I5.24-002/-003/-004` (facts derived
@@ -186,13 +194,17 @@ citations are in `formal/fstar/OWL.Closure.fsti`.
 
 ## Residual failures — inconsistency (3 of 127)
 
-Scored under DL from `type-inconsistency.rdf`. Both report
+Scored under DL from `type-inconsistency.rdf`. It reports
 `FAIL/unexpected-consistency`: the engine returns "consistent" where
 the catalog expects a clash. Under-derivation, not a wrong entailment.
 
+`Minus Infinity is not in owl:real` left this list on 2026-07-29, via
+the XSD value-space decision procedure (`XSD.Facets.fst` +
+`Tableau.Refute.fst` section 5b'; design note
+`docs/designissues/2026-07-29-xsd-value-space-decision-procedure.md`).
+
 | Test | Disposition | Reason |
 |---|---|---|
-| `Minus Infinity is not in owl:real` | planned-family | Numeric datatype value-space reasoning: `owl:real` excludes `-INF`, which needs interval handling across `DataAllValuesFrom` / `DataOneOf` / `NegativeDataPropertyAssertion`. |
 | `WebOnt-description-logic-909` | disputed-fixture | Integer multiplication via chained `owl:FunctionalProperty` / `owl:inverseOf` cardinality arithmetic. The clash is not soundly derivable under Direct Semantics as the fixture is written, so the default engine keeps the satisfiable verdict; the owner approved a flag-gated arithmetic-semantics variant (2026-07-28, [#299](https://github.com/danbri/factoidal/issues/299)) rather than a test-ID exemption. Also carries `test:status test;Extracredit`. |
 
 One inconsistency test is skipped: `WebOnt-Thing-005` asserts
