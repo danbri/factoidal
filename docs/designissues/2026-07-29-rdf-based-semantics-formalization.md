@@ -340,3 +340,148 @@ MemLemmas ~50 s, Soundness ~3 min.
    lambda-lift refactor) but every theorem now names the function
    the engine runs. The price is codified as the F3 shape rule so
    later sessions pay it at write-time, not proof-time.
+
+## External review 2026-07-29 (owner-run, external model; phase-2 specification)
+
+The owner ran the two foundation questions (superset soundness; bnode
+existential faithfulness) past an external model. The response is
+preserved verbatim below and is the phase-2 work order: the W3C
+embedding/truth-preservation theorem, the i_tt / OWL-2 theorem-surface
+separation, the per-deviation enlargement audit, the rename to
+"sufficient per-rule semantic conditions", the bundle-composition
+lemma, the total-vs-graph-local assignment equivalence, the generic
+fresh-assignment extension lemma (freshness / agreement-where-preserved
+/ one-assignment-per-output-graph), and the no_fresh_bnodes_sound /
+fresh_bnodes_sound theorem split.
+
+```text
+1. "Weakest-conditions superset"
+
+Yes, in principle. The logical direction is correct.
+
+Let:
+
+* W be the genuine W3C class of OWL 2 RDF-Based interpretations;
+* F be the formalisation's weaker class;
+* W ⊆ F.
+
+If the mechanisation proves
+
+  ∀ I ∈ F,  I ⊨ G ⟹ I ⊨ R(G),
+
+then it follows immediately for every I ∈ W. Therefore G entails R(G) under the genuine OWL semantics.
+
+The design note states exactly this intended inclusion: omitted semantic conditions and retained one-way conditions enlarge the admitted interpretation class, so soundness over that larger class implies soundness over the standard class. The W3C definition likewise makes OWL entailment universal over all genuine OWL 2 RDF-Based interpretations.
+
+What must actually be proved
+
+The phrase "every deviation enlarges the interpretation class" should not merely be asserted. The load-bearing theorem should be an explicit embedding or conservativity lemma:
+
+For every W3C OWL 2 RDF-Based interpretation J,
+there exists a formal interp I such that:
+1. I satisfies the formal condition bundle;
+2. denotation of every relevant RDF term agrees;
+3. truth of every relevant RDF triple and graph agrees.
+
+Without that bridge, "superset" is an architectural intention, not a machine-checked fact.
+
+Several listed changes are plausibly safe:
+
+* Omitting semantic conditions enlarges the class.
+* Replacing an iff condition by only the implication needed by a rule enlarges the class.
+* Totalising IEXT outside the formal analogue of IP is harmless provided the values outside IP are semantically ignored.
+* A total blank-node assignment is equivalent to the W3C graph-local partial assignment because the interpretation domain is nonempty.
+
+But not every representational simplification is automatically class-enlarging. A new datatype, constructor, equality principle, compositionality requirement, or fixed vocabulary discipline could accidentally restrict the structures that can be represented. The note's i_tt triple-term constructor particularly deserves separation from the OWL 2/RDF 1.1 theorem surface: OWL 2 RDF-Based Semantics is defined over the RDF semantics of its period, not RDF 1.2 triple terms.
+
+What is lost
+
+Nothing is lost for the narrow claim:
+
+  This executable rule is sound with respect to OWL 2 RDF-Based semantics.
+
+But several stronger results are lost:
+
+* Completeness: failure to prove or derive a conclusion in the weak class says nothing about whether OWL entails it.
+* Exact characterisation: entails_under weak_conditions is generally weaker than OWL entailment.
+* Countermodels: a countermodel in the enlarged class need not be a legal OWL model, so it does not establish OWL non-entailment.
+* Inconsistency detection: a graph satisfiable in the enlarged class may be inconsistent under the full semantics.
+* Composition across changing bundles: the overall driver theorem must use a condition bundle sufficient for every constituent rule. Per-rule proofs against different weak classes do not automatically compose unless a common stronger bundle implies all their assumptions.
+
+There is also a terminology issue. "Weakest conditions" is safe only if minimality has actually been established. What the pilot appears to use is better described as sufficient per-rule semantic conditions. They may be weak without being weakest.
+
+Verdict on question 1
+
+Sound, subject to one required addition: formalise and prove the W3C-to-interp embedding/truth-preservation theorem. The current direction of implication is right. What is intentionally surrendered is completeness, standard-valid countermodels, and exact equivalence with OWL entailment.
+
+2. Blank-node existentials and assignment threading
+
+The core definition is faithful:
+
+  satisfies i g = exists a. holds_all i a g
+
+Hayes' condition says that an interpretation satisfies a graph when there exists a mapping from the blank nodes of that graph into the interpretation domain that makes the graph true. Treating blank nodes as existentially quantified variables over the conjunction of graph triples is exactly the intended reading.
+
+Using a total function
+
+  bnode_id -> idom
+
+rather than a function whose domain is precisely the graph's blank nodes is also faithful. Since idom is inhabited, any graph-local assignment can be extended arbitrarily to all blank-node identifiers; conversely, a total assignment can be restricted to the blank nodes occurring in the graph.
+
+Reusing the input assignment
+
+For a rule that introduces no fresh blank nodes, proving
+
+  ∀ a,  holds(I,a,G) ⟹ holds(I,a,R(G))
+
+is stronger than necessary but sound.
+
+From ∃ a. holds(I,a,G) one chooses that witness a, applies the theorem, and repackages the same a as the existential witness for the output. The note's unpack/repack argument is therefore correct.
+
+This does not incorrectly force the antecedent and consequent blank nodes to have a shared existential scope in the definition of entailment. It merely constructs a valid witness for the consequent from a witness for the antecedent. Consequent satisfaction still has its own existential quantifier.
+
+Fresh blank nodes
+
+The proposed shape is also correct:
+
+  holds(I,a,G) ⟹ ∃ a'. a'|bnodes(G) = a|bnodes(G) ∧ holds(I,a',R(G)).
+
+However, "assignment-extension construction" alone is not enough. For each minted blank node, the proof must obtain an appropriate semantic witness from the relevant OWL condition. The extension combinator only records those witnesses in an assignment.
+
+Three conditions need to be explicit:
+
+1. Freshness: minted identifiers must not collide with any blank node already in the input graph or with one another when distinct witnesses are required syntactically.
+2. Agreement only where needed: agreement should be required on blank nodes whose occurrences are preserved from the input, not necessarily on every global identifier.
+3. One output graph: all triples emitted in a single rule result share one existential assignment. Different locally constructed witnesses cannot be proved independently and then combined unless their assignments are shown compatible.
+
+The W3C semantics warns that blank-node identity and scope depend on whether graphs are unioned, merged, or share nodes. The implementation appears to operate on a single accumulated graph, so threading one assignment through that accumulated graph is the correct model. If the formal API later handles collections of graphs independently, it will need an explicit union/merge policy; RDF 1.1 does not define entailment directly between arbitrary sets of graphs without first combining them.
+
+A useful theorem split
+
+I would encode two reusable lemmas:
+
+  no_fresh_bnodes_sound:
+    holds_all I a G ->
+    holds_all I a (R G)
+
+  fresh_bnodes_sound:
+    holds_all I a G ->
+    exists a'.
+      agrees_on (bnodes G) a a' /\
+      holds_all I a' (R G)
+
+Then derive the satisfaction theorem uniformly. This makes the stronger no-fresh result visibly distinct from the genuinely existential fresh-witness case.
+
+Verdict on question 2
+
+Yes. The existential satisfaction definition and same-assignment threading for no-fresh-blank-node rules are faithful to Hayes. For witness-producing rules, the proposed assignment-extension shape is also right, provided freshness, compatibility, and the semantic source of each witness are proved explicitly.
+
+Bottom line
+
+The design is viable. I would not commit the full programme without adding these two formal obligations near the foundation:
+
+1. W3C embedding/truth preservation: every genuine relevant OWL interpretation induces a formal interp satisfying the chosen conditions, with graph truth preserved.
+2. Blank-node assignment equivalence: total assignments are equivalent to Hayes' graph-local mappings, plus a generic fresh-assignment extension lemma.
+
+Those lemmas turn the two most consequential informal arguments in the note into checked infrastructure rather than recurring proof assumptions.
+```
