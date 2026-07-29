@@ -827,7 +827,14 @@ let rec fold_datatype_constraint (acc : XSD_Facets.value_set)
             (if XSD_Facets.float_restriction_provably_empty dt facets
              then XSD_Facets.VS_Empty
              else acc)
-          else acc
+          else
+            if XSD_Facets.is_dense_numeric_datatype dt
+            then
+              XSD_Facets.value_set_intersect acc
+                (XSD_Facets.VS_Dense
+                   (XSD_Facets.dense_facets_to_qinterval facets
+                      XSD_Facets.full_qinterval))
+            else acc
   | Tableau.CE_OneOf members ->
       if
         (Prims.uu___is_Cons members) &&
@@ -840,13 +847,20 @@ let rec fold_datatype_constraint (acc : XSD_Facets.value_set)
         XSD_Facets.value_set_intersect acc
           (XSD_Facets.VS_DateInterval XSD_Facets.full_interval)
       else
-        (match XSD_Facets.classify_family dt with
-         | FStar_Pervasives_Native.Some (XSD_Facets.Fam_Numeric) ->
-             XSD_Facets.value_set_intersect acc
-               (XSD_Facets.VS_Interval (XSD_Facets.base_interval_for dt))
-         | FStar_Pervasives_Native.Some f ->
-             XSD_Facets.value_set_intersect acc (XSD_Facets.VS_Family f)
-         | FStar_Pervasives_Native.None -> acc)
+        if XSD_Facets.is_dense_numeric_datatype dt
+        then
+          XSD_Facets.value_set_intersect acc
+            (XSD_Facets.VS_Dense XSD_Facets.full_qinterval)
+        else
+          (match XSD_Facets.classify_family dt with
+           | FStar_Pervasives_Native.Some (XSD_Facets.Fam_Numeric) ->
+               XSD_Facets.value_set_intersect acc
+                 (XSD_Facets.VS_Interval (XSD_Facets.base_interval_for dt))
+           | FStar_Pervasives_Native.Some (XSD_Facets.Fam_Float) -> acc
+           | FStar_Pervasives_Native.Some (XSD_Facets.Fam_Double) -> acc
+           | FStar_Pervasives_Native.Some f ->
+               XSD_Facets.value_set_intersect acc (XSD_Facets.VS_Family f)
+           | FStar_Pervasives_Native.None -> acc)
   | Tableau.CE_ComplementOf inner ->
       let inner_vs =
         fold_datatype_constraint XSD_Facets.VS_Unconstrained inner in
@@ -864,18 +878,51 @@ let rec universal_for_property
          then fold_datatype_constraint acc d
          else acc)
   | uu___::tl -> universal_for_property subprop_pairs p tl acc
+let rec graph_has_target_value (ts : RDF_Graph.rdf_graph) : Prims.bool=
+  match ts with
+  | [] -> false
+  | t::tl ->
+      (t.RDF_Triple.p = OWL_Closure.owl_targetValue) ||
+        (graph_has_target_value tl)
+let rec negated_values (g : RDF_Graph.rdf_graph) (i : RDF_Term.subject)
+  (ps : RDF_Term.wf_iri Prims.list) (ts : RDF_Graph.rdf_graph) :
+  RDF_Term.rdf_term Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let rest = negated_values g i ps tl in
+      (match t.RDF_Triple.o with
+       | RDF_Term.T_Literal uu___ ->
+           if
+             ((t.RDF_Triple.p = OWL_Closure.owl_targetValue) &&
+                (FStar_List_Tot_Base.existsb
+                   (RDF_Term.rdf_term_eq (RDF_Graph.subject_to_term i))
+                   (RDF_Graph_Executable.find_objects g t.RDF_Triple.s
+                      OWL_Closure.owl_sourceIndividual)))
+               &&
+               (FStar_List_Tot_Base.existsb
+                  (fun o ->
+                     match o with
+                     | RDF_Term.T_IRI q -> mem_iri q ps
+                     | uu___1 -> false)
+                  (RDF_Graph_Executable.find_objects g t.RDF_Triple.s
+                     OWL_Closure.owl_assertionProperty))
+           then (t.RDF_Triple.o) :: rest
+           else rest
+       | uu___ -> rest)
 let rec exists_unsatisfiable_witness (p : RDF_Term.wf_iri)
-  (ls : Tableau.class_expr Prims.list) (universal : XSD_Facets.value_set) :
-  Prims.bool=
+  (ls : Tableau.class_expr Prims.list) (universal : XSD_Facets.value_set)
+  (negs : RDF_Term.rdf_term Prims.list) : Prims.bool=
   match ls with
   | [] -> false
   | (Tableau.CE_SomeValuesFrom (q, d))::tl ->
       if
         (q = p) &&
           (XSD_Facets.value_set_is_empty
-             (fold_datatype_constraint universal d))
+             (XSD_Facets.remove_negated_values negs
+                (fold_datatype_constraint universal d)))
       then true
-      else exists_unsatisfiable_witness p tl universal
+      else exists_unsatisfiable_witness p tl universal negs
   | (Tableau.CE_HasValue (q, v))::tl ->
       if q = p
       then
@@ -883,20 +930,25 @@ let rec exists_unsatisfiable_witness (p : RDF_Term.wf_iri)
          | RDF_Term.T_Literal uu___ ->
              if
                XSD_Facets.value_set_is_empty
-                 (XSD_Facets.value_set_intersect universal
-                    (XSD_Facets.VS_Enum [v]))
+                 (XSD_Facets.remove_negated_values negs
+                    (XSD_Facets.value_set_intersect universal
+                       (XSD_Facets.VS_Enum [v])))
              then true
-             else exists_unsatisfiable_witness p tl universal
-         | uu___ -> exists_unsatisfiable_witness p tl universal)
-      else exists_unsatisfiable_witness p tl universal
-  | uu___::tl -> exists_unsatisfiable_witness p tl universal
-let property_datatype_clash
+             else exists_unsatisfiable_witness p tl universal negs
+         | uu___ -> exists_unsatisfiable_witness p tl universal negs)
+      else exists_unsatisfiable_witness p tl universal negs
+  | uu___::tl -> exists_unsatisfiable_witness p tl universal negs
+let negated_values_for (g : RDF_Graph.rdf_graph) (i : RDF_Term.subject)
+  (ps : RDF_Term.wf_iri Prims.list) : RDF_Term.rdf_term Prims.list=
+  if graph_has_target_value g then negated_values g i ps g else []
+let property_datatype_clash (g : RDF_Graph.rdf_graph) (i : RDF_Term.subject)
   (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
   (p : RDF_Term.wf_iri) (ls_all : Tableau.class_expr Prims.list) :
   Prims.bool=
   let universal =
     universal_for_property subprop_pairs p ls_all XSD_Facets.VS_Unconstrained in
-  exists_unsatisfiable_witness p ls_all universal
+  let negs = negated_values_for g i (superproperties_of subprop_pairs p) in
+  exists_unsatisfiable_witness p ls_all universal negs
 let rec collect_dt_properties (ls : Tableau.class_expr Prims.list) :
   RDF_Term.wf_iri Prims.list=
   match ls with
@@ -907,20 +959,21 @@ let rec collect_dt_properties (ls : Tableau.class_expr Prims.list) :
       (collect_dt_properties tl)
   | (Tableau.CE_HasValue (p, uu___))::tl -> p :: (collect_dt_properties tl)
   | uu___::tl -> collect_dt_properties tl
-let rec any_property_datatype_clash
+let rec any_property_datatype_clash (g : RDF_Graph.rdf_graph)
+  (i : RDF_Term.subject)
   (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
   (ps : RDF_Term.wf_iri Prims.list) (ls_all : Tableau.class_expr Prims.list)
   : Prims.bool=
   match ps with
   | [] -> false
   | p::tl ->
-      (property_datatype_clash subprop_pairs p ls_all) ||
-        (any_property_datatype_clash subprop_pairs tl ls_all)
-let datatype_range_clash
+      (property_datatype_clash g i subprop_pairs p ls_all) ||
+        (any_property_datatype_clash g i subprop_pairs tl ls_all)
+let datatype_range_clash (g : RDF_Graph.rdf_graph) (i : RDF_Term.subject)
   (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
   (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
-  any_property_datatype_clash subprop_pairs (collect_dt_properties ls_all)
-    ls_all
+  any_property_datatype_clash g i subprop_pairs
+    (collect_dt_properties ls_all) ls_all
 let rec range_value_set
   (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
   (range_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
@@ -971,6 +1024,130 @@ let datatype_cardinality_clash
   (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
   any_card_valuespace_clash subprop_pairs range_pairs
     (collect_card_props ls_all) ls_all
+let is_scaffold_bnode (b : RDF_Term.bnode_id) : Prims.bool=
+  ((FStar_String.strlen b) >= (Prims.of_int (5))) &&
+    ((FStar_String.sub b Prims.int_zero (Prims.of_int (5))) = "__rl_")
+let rec parsed_type_labels (g : RDF_Graph.rdf_graph)
+  (ts : RDF_Term.rdf_term Prims.list) : Tableau.class_expr Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let ce =
+        match t with
+        | RDF_Term.T_BNode b ->
+            if is_scaffold_bnode b
+            then Tableau.CE_Unknown
+            else Tableau.parse_class_expr g t (Prims.of_int (32))
+        | uu___ -> Tableau.parse_class_expr g t (Prims.of_int (32)) in
+      ce :: (parsed_type_labels g tl)
+let rec forced_obligations_for (p : RDF_Term.wf_iri)
+  (ls : Tableau.class_expr Prims.list) :
+  (Prims.nat * Tableau.class_expr) Prims.list=
+  match ls with
+  | [] -> []
+  | (Tableau.CE_SomeValuesFrom (q, d))::tl ->
+      let rest = forced_obligations_for p tl in
+      if q = p then (Prims.int_one, d) :: rest else rest
+  | (Tableau.CE_MinCard (k, q))::tl ->
+      let rest = forced_obligations_for p tl in
+      if q = p then (k, Tableau.CE_Unknown) :: rest else rest
+  | (Tableau.CE_ExactCard (k, q))::tl ->
+      let rest = forced_obligations_for p tl in
+      if q = p then (k, Tableau.CE_Unknown) :: rest else rest
+  | (Tableau.CE_MinQualCard (k, q, c))::tl ->
+      let rest = forced_obligations_for p tl in
+      if q = p then (k, c) :: rest else rest
+  | (Tableau.CE_ExactQualCard (k, q, c))::tl ->
+      let rest = forced_obligations_for p tl in
+      if q = p then (k, c) :: rest else rest
+  | uu___::tl -> forced_obligations_for p tl
+let rec filler_triples (i : RDF_Term.subject) (p : RDF_Term.wf_iri)
+  (vs : RDF_Term.rdf_term Prims.list) : RDF_Triple.triple Prims.list=
+  match vs with
+  | [] -> []
+  | v::tl -> { RDF_Triple.s = i; RDF_Triple.p = p; RDF_Triple.o = v } ::
+      (filler_triples i p tl)
+let rec forced_triples_for_obligations (i : RDF_Term.subject)
+  (p : RDF_Term.wf_iri) (u : XSD_Facets.value_set)
+  (negs : RDF_Term.rdf_term Prims.list)
+  (obs : (Prims.nat * Tableau.class_expr) Prims.list) :
+  RDF_Triple.triple Prims.list=
+  match obs with
+  | [] -> []
+  | (k, d)::tl ->
+      let rest = forced_triples_for_obligations i p u negs tl in
+      if k = Prims.int_zero
+      then rest
+      else
+        (let w =
+           XSD_Facets.remove_negated_values negs
+             (fold_datatype_constraint u d) in
+         match XSD_Facets.value_set_exact_values w with
+         | FStar_Pervasives_Native.Some vs ->
+             if (FStar_List_Tot_Base.length vs) = k
+             then FStar_List_Tot_Base.op_At (filler_triples i p vs) rest
+             else rest
+         | FStar_Pervasives_Native.None -> rest)
+let forced_triples_for_prop (g : RDF_Graph.rdf_graph)
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (range_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (i : RDF_Term.subject) (ls : Tableau.class_expr Prims.list)
+  (p : RDF_Term.wf_iri) : RDF_Triple.triple Prims.list=
+  let u =
+    XSD_Facets.value_set_intersect
+      (universal_for_property subprop_pairs p ls XSD_Facets.VS_Unconstrained)
+      (range_value_set subprop_pairs range_pairs p
+         XSD_Facets.VS_Unconstrained) in
+  let negs = negated_values_for g i (superproperties_of subprop_pairs p) in
+  forced_triples_for_obligations i p u negs (forced_obligations_for p ls)
+let rec card_prop_iris (ls : Tableau.class_expr Prims.list) :
+  RDF_Term.wf_iri Prims.list=
+  match ls with
+  | [] -> []
+  | (Tableau.CE_MinCard (uu___, p))::tl -> p :: (card_prop_iris tl)
+  | (Tableau.CE_ExactCard (uu___, p))::tl -> p :: (card_prop_iris tl)
+  | (Tableau.CE_MinQualCard (uu___, p, uu___1))::tl -> p ::
+      (card_prop_iris tl)
+  | (Tableau.CE_ExactQualCard (uu___, p, uu___1))::tl -> p ::
+      (card_prop_iris tl)
+  | uu___::tl -> card_prop_iris tl
+let rec forced_triples_for_props (g : RDF_Graph.rdf_graph)
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (range_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (i : RDF_Term.subject) (ls : Tableau.class_expr Prims.list)
+  (ps : RDF_Term.wf_iri Prims.list) : RDF_Triple.triple Prims.list=
+  match ps with
+  | [] -> []
+  | p::tl ->
+      FStar_List_Tot_Base.op_At
+        (forced_triples_for_prop g subprop_pairs range_pairs i ls p)
+        (forced_triples_for_props g subprop_pairs range_pairs i ls tl)
+let forced_fillers_for_individual (g : RDF_Graph.rdf_graph)
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (range_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (i : RDF_Term.subject) : RDF_Triple.triple Prims.list=
+  let ls =
+    parsed_type_labels g
+      (RDF_Graph_Executable.find_objects g i RDFS_Closure.rdf_type) in
+  forced_triples_for_props g subprop_pairs range_pairs i ls
+    (FStar_List_Tot_Base.op_At (collect_dt_properties ls) (card_prop_iris ls))
+let rec forced_fillers_all (g : RDF_Graph.rdf_graph)
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (range_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (is_ : RDF_Term.subject Prims.list) : RDF_Triple.triple Prims.list=
+  match is_ with
+  | [] -> []
+  | i::tl ->
+      FStar_List_Tot_Base.op_At
+        (forced_fillers_for_individual g subprop_pairs range_pairs i)
+        (forced_fillers_all g subprop_pairs range_pairs tl)
+let datatype_forced_filler_triples (g : RDF_Graph.rdf_graph) :
+  RDF_Triple.triple Prims.list=
+  forced_fillers_all g (collect_subprop_pairs g) (collect_range_pairs g)
+    (Tableau.collect_candidate_individuals g g)
+let dl_materialise (g : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
+  RDF_Graph.add_triples_if_new (Tableau.tableau_materialise g)
+    (datatype_forced_filler_triples g)
 let rec facet_pattern_string
   (facets : (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list) :
   Prims.string FStar_Pervasives_Native.option=
@@ -1558,16 +1735,13 @@ let rec clash_nodes (g : RDF_Graph.rdf_graph) (st : rstate)
         | FStar_Pervasives_Native.Some uu___ -> labels_of st n.rn_id
         | FStar_Pervasives_Native.None -> n.rn_labels in
       (((((clash_labels g st n.rn_id ls ls) ||
-            (datatype_range_clash st.rs_subprop ls))
+            (datatype_range_clash g n.rn_id st.rs_subprop ls))
            || (datatype_cardinality_clash st.rs_subprop st.rs_range ls))
           || (disjoint_dataprop_pattern_clash g n.rn_id ls))
          || (disjoint_dataprop_singleton_clash g n.rn_id ls))
         || (clash_nodes g st tl)
 let has_clash (g : RDF_Graph.rdf_graph) (st : rstate) : Prims.bool=
   clash_nodes g st st.rs_nodes
-let is_scaffold_bnode (b : RDF_Term.bnode_id) : Prims.bool=
-  ((FStar_String.strlen b) >= (Prims.of_int (5))) &&
-    ((FStar_String.sub b Prims.int_zero (Prims.of_int (5))) = "__rl_")
 let parse_nnf (g : RDF_Graph.rdf_graph) (t : RDF_Term.rdf_term) :
   Tableau.class_expr=
   match t with

@@ -180,6 +180,50 @@ pick that spelling; it can only match by value.
 Nothing above is coded per test. Each is the same three steps: normalise
 the value spaces, intersect, count.
 
+Measured, all four OWL 2 DL catalogs re-run 2026-07-29 against the
+rebuilt `bin/linux-x86_64/owl_runner`:
+
+| Catalog / section | Before | After |
+|---|---|---|
+| `type-positive-entailment.rdf` PositiveEntailment | 189 pass, 15 fail (out of 204) | 191 pass, 13 fail (out of 204) |
+| `type-inconsistency.rdf` Inconsistency | 125 pass, 2 fail (out of 127) | 126 pass, 1 fail (out of 127) |
+| `type-consistency.rdf` Consistency | 352 pass, 0 fail (out of 352) | 352 pass, 0 fail (out of 352) |
+| `type-negative-entailment.rdf` NegativeEntailment | 23 pass, 0 fail (out of 23) | 23 pass, 0 fail (out of 23) |
+
+FAIL-name diff: `WebOnt-I5.8-004`, `WebOnt-I5.8-010` and `Minus Infinity
+is not in owl:real` leave; nothing joins.
+
+## Two measured soundness traps, and what each forced
+
+Both were caught by the gates, not by inspection, and both are recorded
+here because the reasoning that produced them looked correct.
+
+**1. A DERIVED range triple is not an asserted one.** Classifying
+`xsd:double` as its own value space made `p rdfs:range xsd:double`
+empty an integer value space. But that range triple is not in any
+premise: the RL/RDFS closure ships an RDF-Based datatype-subsumption
+table with `xsd:byte rdfs:subClassOf xsd:double`, and range propagation
+manufactures it from the asserted `p rdfs:range xsd:byte`. Three
+consistent premises were refuted (`WebOnt-I5.8-002 / -004 / -005`).
+`fold_datatype_constraint` therefore adds NO constraint for
+`Fam_Float` / `Fam_Double`; the disjointness is used only where it is
+read off an asserted literal's own datatype, which is what the
+`Minus Infinity` test needs. The underlying tension — an RDF-Based
+subsumption table feeding a Direct Semantics fold — is still there.
+
+**2. Asserting an entailed data value can trip the marker path.** The
+forced fillers are entailments, but feeding a concrete data-property
+assertion into the closure makes rdfs3 range propagation type that
+literal, and the datatype-membership marker then reported three
+consistent premises as inconsistent (`WebOnt-I5.8-002 / -004 / -010`,
+352 pass 0 fail -> 349 pass 3 fail). The fillers are therefore routed
+through the PositiveEntailmentTest-only closure
+(`apply_closure_with_witnesses`), the same `g_rl` / `g_dl` separation the
+runner already applies to the materialiser's other emissions. The marker
+path's false positive on a typed literal is a real defect and is
+unfixed — it is now reachable by a one-line routing change, which makes
+it easy to pick up next.
+
 ## What it does not reach
 
 - **`WebOnt-I5.8-017`** (datatype aliasing). Its premise says
@@ -202,3 +246,6 @@ the value spaces, intersect, count.
   Withholding is sound; widening this is the obvious next step.
 - **`xsd:double` has no ordinal grid.** `xsd:float` does (section 4c);
   the double grid would be the same construction at 52 mantissa bits.
+- **The forced fillers reach only the entailment closure**, for the
+  marker-path reason above. A consistency or inconsistency verdict does
+  not see them.

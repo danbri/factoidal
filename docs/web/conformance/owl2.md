@@ -61,12 +61,12 @@ publish one.
 | `profile-RL.rdf` | Inconsistency | RL | 14 pass, 0 fail (out of 14) |
 | `profile-EL.rdf` | all four sections | RL | 120 pass, 0 fail (out of 120), 1 skipped |
 | `profile-QL.rdf` | all four sections | RL | 87 pass, 0 fail (out of 87) |
-| `type-positive-entailment.rdf` | PositiveEntailment | DL | 189 pass, 15 fail (out of 204), 2 skipped |
+| `type-positive-entailment.rdf` | PositiveEntailment | DL | 191 pass, 13 fail (out of 204), 2 skipped |
 | `type-positive-entailment.rdf` | Consistency | DL | 204 pass, 0 fail (out of 204), 2 skipped |
 | `type-negative-entailment.rdf` | NegativeEntailment | DL | 23 pass, 0 fail (out of 23) |
 | `type-negative-entailment.rdf` | Consistency | DL | 23 pass, 0 fail (out of 23) |
 | `type-consistency.rdf` | Consistency | DL | 352 pass, 0 fail (out of 352), 2 skipped |
-| `type-inconsistency.rdf` | Inconsistency | DL | 125 pass, 2 fail (out of 127), 1 skipped |
+| `type-inconsistency.rdf` | Inconsistency | DL | 126 pass, 1 fail (out of 127), 1 skipped |
 | `semantics-direct.rdf` | Consistency | DL | 351 pass, 0 fail (out of 351), 2 skipped |
 | `syntax-dl.rdf` | species (DL vs Full) | syntactic | 319 pass, 2 fail (out of 321 scored), 2 skipped |
 
@@ -101,15 +101,14 @@ ledger's fixed vocabulary (issue
 - **environment** — toolchain or harness, not semantics. No OWL
   residual carries this label today.
 
-## Residual failures — positive entailment (15 of 204)
+## Residual failures — positive entailment (13 of 204)
 
 Scored under DL from `type-positive-entailment.rdf`.
 
-Every remaining fail is one of three kinds: an OWL Full entailment the
+Every remaining fail is one of two kinds: an OWL Full entailment the
 catalog itself denies is OWL DL (`test:species FULL` plus an explicit
-`owl:NegativePropertyAssertion` against `test:species DL`), a
-`test:status test;Extracredit` bonus test, or one of six genuinely-hard
-cases tracked as planned work. Three of the OWL Full tests
+`owl:NegativePropertyAssertion` against `test:species DL`), or one of
+four genuinely-hard cases tracked as planned work. Three of the OWL Full tests
 (`WebOnt-Class-001/-002/-003`) PASS under the flag-gated
 `--semantics rdf-based-full` engine mode landed 2026-07-29 (owner-approved
 2026-07-28); the default DL engine deliberately does not derive them.
@@ -125,19 +124,25 @@ cases tracked as planned work. Three of the OWL Full tests
 | `WebOnt-extra-credit-002` | by-design | Catalog denies `test:species DL`. "A relationship between integer multiplication and OWL Full." |
 | `WebOnt-extra-credit-003` | by-design | Catalog denies `test:species DL`. "Prime factorization can be expressed in OWL Full." |
 | `WebOnt-extra-credit-004` | by-design | Catalog denies `test:species DL`. Harder prime-factorization variant. |
-| `WebOnt-I5.8-004` | by-design | `test:status test;Extracredit` — a bonus test. Exact datatype-facet interval counting ("precisely 128 values of `xsd:byte` that are also `xsd:unsignedInt`"). |
 | `WebOnt-I5.24-002` | planned-family | OWL range-iff semantics over an `owl:intersectionOf` built from the range class. |
 | `WebOnt-I5.24-003` | planned-family | Same range-iff rule: "a typical definition of range from description logic". |
 | `WebOnt-I5.24-004` | planned-family | Same range-iff rule, both directions. |
-| `WebOnt-I5.8-010` | planned-family | Datatype value-space intersection: 0 is the only value in both `xsd:nonNegativeInteger` and `xsd:nonPositiveInteger`. |
 | `WebOnt-SymmetricProperty-002` | planned-family | Extensional `owl:SymmetricProperty` semantics over an `owl:oneOf`-based domain. |
 
 Two positive-entailment tests are skipped rather than failed:
 `Qualified-cardinality-boolean` and `Qualified-cardinality-restricted-int`
 ship only an OWL Functional-Style Syntax premise.
 
+`WebOnt-I5.8-004` (the `test:status test;Extracredit` interval-counting
+bonus test) and `WebOnt-I5.8-010` left this list on 2026-07-29: both
+now fall out of the XSD value-space decision procedure (`XSD.Facets.fst`
+plus the forced-datatype-filler rule of `Tableau.Refute.fst`
+section 5b'), which enumerates a finite value space exactly and asserts
+every member an exact cardinality forces. Design note:
+`docs/designissues/2026-07-29-xsd-value-space-decision-procedure.md`.
+
 Fixed since this page's first publication (2026-07-28, from 31 residuals
-to 15): the property-characteristic family
+to 13): the property-characteristic family
 (`complementOf-001`, `FunctionalProperty-003/-004`,
 `InverseFunctionalProperty-003/-004`, `equivalentProperty-004/-005`,
 `I5.21-002`), cardinality shorthand (`cardinality-001/-003`,
@@ -147,15 +152,19 @@ closure-rule and witness-layer work on 2026-07-28/29, each rule derived
 from the OWL 2 RDF-Based Semantics conditions or the OWL 2 RL/RDF rule
 tables (see the granular commits on the two wave branches).
 
-## Residual failures — inconsistency (3 of 127)
+## Residual failures — inconsistency (1 of 127)
 
-Scored under DL from `type-inconsistency.rdf`. Both report
+Scored under DL from `type-inconsistency.rdf`. It reports
 `FAIL/unexpected-consistency`: the engine returns "consistent" where
 the catalog expects a clash. Under-derivation, not a wrong entailment.
 
+`Minus Infinity is not in owl:real` left this list on 2026-07-29, via
+the XSD value-space decision procedure (`XSD.Facets.fst` +
+`Tableau.Refute.fst` section 5b'; design note
+`docs/designissues/2026-07-29-xsd-value-space-decision-procedure.md`).
+
 | Test | Disposition | Reason |
 |---|---|---|
-| `Minus Infinity is not in owl:real` | planned-family | Numeric datatype value-space reasoning: `owl:real` excludes `-INF`, which needs interval handling across `DataAllValuesFrom` / `DataOneOf` / `NegativeDataPropertyAssertion`. |
 | `WebOnt-description-logic-909` | disputed-fixture | Integer multiplication via chained `owl:FunctionalProperty` / `owl:inverseOf` cardinality arithmetic. The clash is not soundly derivable under Direct Semantics as the fixture is written, so the default engine keeps the satisfiable verdict; the owner approved a flag-gated arithmetic-semantics variant (2026-07-28, [#299](https://github.com/danbri/factoidal/issues/299)) rather than a test-ID exemption. Also carries `test:status test;Extracredit`. |
 
 One inconsistency test is skipped: `WebOnt-Thing-005` asserts
@@ -182,8 +191,8 @@ layer.
 
 ## Disposition counts
 
-Across the 19 distinct tests that fail in at least one catalog
-(15 positive-entailment, 2 inconsistency, 2 species; no overlaps —
+Across the 16 distinct tests that fail in at least one catalog
+(13 positive-entailment, 1 inconsistency, 2 species; no overlaps —
 `WebOnt-I5.5-005` now fails only in the species checker):
 
 (`WebOnt-description-logic-502` left this list on 2026-07-28: its
@@ -195,8 +204,8 @@ verdict is deterministic: 125 pass, 2 fail (out of 127) at any load.)
 
 | Disposition | Count |
 |---|---|
-| by-design | 10 |
-| planned-family | 6 |
+| by-design | 9 |
+| planned-family | 4 |
 | disputed-fixture | 3 |
 | dependency-blocked | 0 |
 | environment | 0 |
