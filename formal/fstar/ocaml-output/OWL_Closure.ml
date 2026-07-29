@@ -2302,29 +2302,32 @@ let owl_rule_cls_int1 (g : RDF_Graph.rdf_graph)
        else acc) g g
 let owl_disjointUnionOf_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#disjointUnionOf"
+let owl_cls_oneof_emit (c_iri : RDF_Term.wf_iri) (acc1 : RDF_Graph.rdf_graph)
+  (i : RDF_Term.wf_iri) : RDF_Graph.rdf_graph=
+  RDF_Graph.add_triple_unchecked acc1
+    {
+      RDF_Triple.s = (RDF_Term.S_IRI i);
+      RDF_Triple.p = RDFS_Closure.rdf_type;
+      RDF_Triple.o = (RDF_Term.T_IRI c_iri)
+    }
+let owl_cls_oneof_step (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) (fuel : Prims.nat)
+  (acc : RDF_Graph.rdf_graph) (t : RDF_Triple.triple) : RDF_Graph.rdf_graph=
+  if t.RDF_Triple.p = owl_oneOf_iri
+  then
+    match ((t.RDF_Triple.s), (RDF_Graph.term_to_subject t.RDF_Triple.o)) with
+    | (RDF_Term.S_IRI c_iri, FStar_Pervasives_Native.Some list_subj) ->
+        (match decode_iri_list g ig list_subj fuel with
+         | FStar_Pervasives_Native.None -> acc
+         | FStar_Pervasives_Native.Some members ->
+             FStar_List_Tot_Base.fold_left (owl_cls_oneof_emit c_iri) acc
+               members)
+    | (uu___, uu___1) -> acc
+  else acc
 let owl_rule_cls_oneof (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   let fuel = FStar_List_Tot_Base.length g in
-  FStar_List_Tot_Base.fold_left
-    (fun acc t ->
-       if t.RDF_Triple.p = owl_oneOf_iri
-       then
-         match ((t.RDF_Triple.s), (RDF_Graph.term_to_subject t.RDF_Triple.o))
-         with
-         | (RDF_Term.S_IRI c_iri, FStar_Pervasives_Native.Some list_subj) ->
-             (match decode_iri_list g ig list_subj fuel with
-              | FStar_Pervasives_Native.None -> acc
-              | FStar_Pervasives_Native.Some members ->
-                  FStar_List_Tot_Base.fold_left
-                    (fun acc1 i ->
-                       RDF_Graph.add_triple_unchecked acc1
-                         {
-                           RDF_Triple.s = (RDF_Term.S_IRI i);
-                           RDF_Triple.p = RDFS_Closure.rdf_type;
-                           RDF_Triple.o = (RDF_Term.T_IRI c_iri)
-                         }) acc members)
-         | (uu___, uu___1) -> acc
-       else acc) g g
+  FStar_List_Tot_Base.fold_left (owl_cls_oneof_step g ig fuel) g g
 let owl_rule_cls_uni (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   let fuel = FStar_List_Tot_Base.length g in
