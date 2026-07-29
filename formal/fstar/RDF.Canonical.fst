@@ -1,26 +1,31 @@
 module RDF.Canonical
 
-(* RDF Dataset Canonicalization 1.0 (RDFC-1.0) — Phase 1 (HFDQ).
+(* RDF Dataset Canonicalization 1.0 (RDFC-1.0).
 
    Spec: https://www.w3.org/TR/rdf-canon/
 
-   This module implements the Hash First Degree Quads ("HFDQ") branch
-   of the RDFC-1.0 algorithm plus a deterministic identifier issuer.
-   Phase-1 scope:
+   This module implements the full RDFC-1.0 algorithm: Hash First
+   Degree Quads ("HFDQ", Section 5 below) plus Hash N-Degree Quads
+   ("HNDQ", Section 6b/6d) with full permutation enumeration over
+   colliding neighbour bnodes, under a work budget that makes the
+   §4.9 "excessive calls to Hash N-Degree Quads" negative-test rule
+   (test074c, the poison-clique case) an explicit abort rather than
+   a silent wrong answer. W3C rdf-canon suite: 86 pass, 0 fail (out
+   of 86; see docs/test-results/latest.json, key "rdfc10").
 
      - Render quads in canonical N-Quads form (per spec §4.7.3).
      - For each blank node, compute its HFDQ — SHA-256 over its
        lexicographically-sorted, locally-rewritten incident quads
        (own bnode → "_:a", others → "_:z").
-     - Assign canonical labels "_:c14n0", "_:c14n1", … in HFDQ-sort
-       order. Ties (HFDQ collisions) are currently broken by the
-       original blank-node label, which is wrong for symmetric
-       graphs where Phase 2 (HNDQ) is required.
+     - Sort by (HFDQ, bounded 3-level neighbour hash, original label);
+       assign canonical labels "_:c14n0", "_:c14n1", … in that order
+       for bnodes whose HFDQ is unique.
+     - For each remaining HFDQ-collision group, run HNDQ (Section 6d)
+       — permutation enumeration over related bnodes via a cloned
+       issuer, capped at 6 members per bucket — and commit the
+       lex-smallest resulting path-hash's issuer state.
      - Produce a canonicalised dataset where every blank-node label
        is replaced by its canonical form.
-
-   Phase 2 (Hash N-Degree Quads) handles HFDQ collisions properly via
-   bounded permutation enumeration over neighbouring bnodes; deferred.
 
    Per CLAUDE.md rules #1, #4, #10 — semantic logic lives here in F*,
    not in OCaml glue. The runner just calls `canonicalize`.
@@ -917,9 +922,10 @@ let rec lookup_hfdq (b : bnode_id) (xs : list bn_hfdq_pair)
    list of HFDQ pairs, no fuel needed.
 
    Two passes (level-1 then level-2 over the level-1 results) catch
-   collisions one structural step deeper than HFDQ alone. Spec-correct
-   resolution of n-step-symmetric graphs requires the full
-   permutation algorithm — deferred (see plan doc, test074c). *)
+   collisions one structural step deeper than HFDQ alone and feed the
+   Section 6c sort key. Spec-correct resolution of n-step-symmetric
+   graphs needs the full permutation algorithm; that is Section 6d
+   below, which this sort key merely narrows the candidate order for. *)
 
 (* Position-tag for a quad mentioning `target`. We do NOT distinguish
    "target as subject" vs "target as object" in the rendered quad
@@ -2094,10 +2100,9 @@ let canonicalize_to_nquads (ds : rdf_dataset) : string =
 // docs/designissues/2026-07-05-graphs-api-design.md section 1.1).
 // Composes two existing things (component projection via
 // lookup_named_graph, whole-dataset canonicalize_to_nquads), not a
-// new algorithm. Inherits the existing HFDQ-only limitation unchanged
-// (HNDQ not implemented, 23/86 rdf-canon fails): it adds no
-// tie-detection or decline-to-hash guard beyond what
-// canonicalize_to_nquads already does.
+// new algorithm. Inherits canonicalize_to_nquads's full HFDQ+HNDQ
+// behaviour unchanged: it adds no tie-detection or decline-to-hash
+// guard beyond what canonicalize_to_nquads already does.
 let canonicalize_named_graph (ds : rdf_dataset) (name : RDF.Dataset.Graphs.graph_ref)
     : option string =
   match lookup_named_graph name ds.ds_named with

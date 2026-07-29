@@ -869,17 +869,22 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 
 141 assume val declarations across 20 modules. Summary by module (largest first):
 
-**SPARQL11.Algebra.fst** (13 assume vals — query evaluator core):
+**SPARQL11.Algebra.fst** (14 assume vals — query evaluator core; verified
+against the tree 2026-07-29 — `regex_match`/`regex_replace` are GONE from
+this list: both retired to pure, verified F\* over the
+Regex.Syntax/Exec/XSDPattern derivative engine, issue #304 phases 4-5):
 
 | assume val | Purpose | Stub |
 |-----------|---------|------|
-| `regex_match` | SPARQL REGEX | OCaml `Str` in ocaml-patches.sh |
-| `regex_replace` | SPARQL REPLACE | OCaml `Str` in ocaml-patches.sh (forward ref) |
-| `hash_md5` | MD5 hash | OCaml `Digest` in ocaml-patches.sh |
-| `hash_sha1` | SHA-1 hash | OCaml `Digest` in ocaml-patches.sh |
-| `hash_sha256` | SHA-256 hash | OCaml `Digest` in ocaml-patches.sh |
-| `hash_sha384` | SHA-384 hash | OCaml `Digest` in ocaml-patches.sh |
-| `hash_sha512` | SHA-512 hash | OCaml `Digest` in ocaml-patches.sh |
+| `hash_md5` | MD5 hash | OCaml `Digest` (issue #63 patch) |
+| `hash_sha1` | SHA-1 hash | OCaml `Digest` (issue #63 patch) |
+| `hash_sha256` | SHA-256 hash | OCaml `Digest` (issue #63 patch) |
+| `hash_sha384` | SHA-384 hash | OCaml `Digest` (issue #63 patch) |
+| `hash_sha512` | SHA-512 hash | OCaml `Digest` (issue #63 patch) |
+| `string_uppercase_unicode` | SPARQL UCASE | `250_unicode_case_mapping.sh` |
+| `string_lowercase_unicode` | SPARQL LCASE | `250_unicode_case_mapping.sh` |
+| `fx_current_datetime` | SPARQL NOW() | `287_fx_current_datetime.sh` |
+| `service_endpoint_lookup` | SPARQL SERVICE | `57_service_client_bind.sh` (host-defined per spec) |
 | `eval_expr_ebv` | forward decl (mutual recursion) | wired in ocaml-patches.sh |
 | `eval_expr_fwd` | forward decl (mutual recursion) | wired in ocaml-patches.sh |
 | `eval_exists_fwd` | forward decl (EXISTS) | wired in ocaml-patches.sh |
@@ -908,10 +913,9 @@ On the RDF parsing side, **all six RDF suites are at 100%**: rdf-turtle
 313/313, rdf-trig 356/356, rdf-n-triples 70/70, rdf-n-quads 87/87,
 rdf-xml 166/166, rdf-mt 39/39 (1031/1031 combined).
 
-**Caveats on test numbers (be honest):** ASK query comparison in w3c_runner.ml
-does not check the expected boolean value — ASK tests always pass. Blank node
-matching is simplified (any bnode matches any other) rather than proper graph
-isomorphism. These may inflate the pass count slightly.
+(ASK query comparison and blank-node graph isomorphism in the test
+runner: see "⚠ Verification Gaps" above — both were fixed 2026-07-19,
+not lenient.)
 
 ## W3C Test Results (as of 2026-05-07)
 
@@ -975,7 +979,7 @@ blank node mapping.
 | Literal/datatype semantics | 20 | Value equivalence, plain↔xsd:string, lang tag case, ill-formedness | **PASS** |
 | RDF closure rules | 4 | Container membership (rdf:\_n), rdfs:member superProperty | **PASS** |
 | RDFS closure rules | 14 | subClassOf, subPropertyOf, domain, range, intensional semantics | **PASS** (via ocaml-patches.sh closure) |
-| Advanced model theory | 3 | Value space disjointness, completeness axioms | **PASS** (not tested — 9 skipped) |
+| Advanced model theory | 3 | Value space disjointness, completeness axioms | **PASS** |
 
 ## What Was Removed (junk/do_not_use/)
 
@@ -1015,9 +1019,11 @@ is 630 pass, 1 fail (out of 631). See "W3C Test Results (as of
 2. **Plain literal ↔ xsd:string equivalence** — DONE (`literal_value_eq`)
 3. **Datatype value space equivalence** — DONE (`datatype_value_eq`, `normalize_integer_lexical`)
 4. **RDFS closure rules** — DONE (`rdfs_closure` with subPropertyOf, domain, range, subClassOf, container membership)
-5. **Simple entailment** (blank node as existential variable) — TODO
-
-Remaining: re-extract, wire into test runner, run rdf-mt tests.
+5. **Simple entailment** (blank node as existential variable) — DONE.
+   rdf-mt 39 pass, 0 fail (out of 39; docs/test-results/latest.json,
+   key "rdf-mt"). `RDF.Entailment.Simple.fst` implements the
+   blank-node homomorphism search used by the SPARQL entailment
+   regime (`RDF.Entailment.Regime.fst`).
 
 ### Phase 3 — F\* parsers (IN PROGRESS)
 

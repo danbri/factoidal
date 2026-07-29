@@ -1,6 +1,9 @@
 # RDFC-1.0 N-Degree Hash conformance — root cause + fix plan (2026-07-04)
 
-**Status:** diagnosis complete, fix not yet implemented. Ground truth:
+**Status:** DONE. The Stage 1 + Stage 2 fix landed; rdf-canon is 86
+pass, 0 fail (out of 86; docs/test-results/latest.json, key
+"rdfc10"). `RDF.Canonical.fst`'s header comment now matches (see the
+2026-07-29 doc-sediment fix). Ground truth at the time of this plan:
 `bin/linux-x86_64/rdfc10_runner` → 63 pass, 22 fail, 1 stub (out of 86).
 
 ## Summary of the finding

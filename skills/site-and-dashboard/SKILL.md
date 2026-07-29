@@ -158,10 +158,11 @@ how "379 pass" survived in the README months after the engine hit
   demo pages, and talks carry the qualifier: "parser and algebra spec
   verified in F\*; on-disk backend has unverified OCaml-side
   optimization layers being migrated back to F\*".
-- Disclose the verification caveats when quoting scores publicly
-  (ASK boolean unchecked, lenient bnode matching — see
-  `test-suites`; the parser `--admit_smt_queries` caveat ended
-  2026-07-10, zero admits).
+- The former ASK-boolean-unchecked and lenient-bnode-matching caveats
+  are gone (fixed 2026-07-19 — see `test-suites` skill and
+  `docs/claude-rules/current-state.md` "Verification Gaps"); the
+  parser `--admit_smt_queries` caveat ended 2026-07-10, zero admits.
+  Don't republish either retired caveat in new public prose.
 - **Every perf number on the site carries its measurement date and a
   commit link** (owner directive 2026-07-03). The front page's
   Performance table is the pattern: what / measured value / date +
