@@ -2774,6 +2774,552 @@ let owl_rule_subprop_domain_range (g : RDF_Graph.rdf_graph)
                         }
                   | uu___ -> acc1) acc_d rngs
        else acc) g g
+let owl_symmetric_metapredicates : RDF_Term.wf_iri Prims.list=
+  [owl_complementOf_iri;
+  owl_disjointWith_iri;
+  owl_propertyDisjointWith;
+  owl_inverseOf;
+  owl_equivalentClass;
+  owl_equivalentProperty]
+let is_owl_symmetric_metapredicate (p : RDF_Term.wf_iri) : Prims.bool=
+  FStar_List_Tot_Base.mem p owl_symmetric_metapredicates
+let owl_rule_symmetric_metapredicates (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if is_owl_symmetric_metapredicate t.RDF_Triple.p
+       then
+         match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+         | (RDF_Term.S_IRI a, RDF_Term.T_IRI b) ->
+             (if a = b
+              then acc
+              else
+                RDF_Graph.add_triple_unchecked acc
+                  {
+                    RDF_Triple.s = (RDF_Term.S_IRI b);
+                    RDF_Triple.p = (t.RDF_Triple.p);
+                    RDF_Triple.o = (RDF_Term.T_IRI a)
+                  })
+         | (uu___, uu___1) -> acc
+       else acc) g g
+let owl_inverse_characteristic_transfer :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  [(owl_FunctionalProperty, owl_InverseFunctionalProperty);
+  (owl_InverseFunctionalProperty, owl_FunctionalProperty);
+  (owl_SymmetricProperty, owl_SymmetricProperty);
+  (owl_TransitiveProperty, owl_TransitiveProperty);
+  (owl_ReflexiveProperty, owl_ReflexiveProperty);
+  (owl_IrreflexiveProperty, owl_IrreflexiveProperty);
+  (owl_AsymmetricProperty, owl_AsymmetricProperty)]
+let transfer_property_characteristics (ig : RDF_Indexed.indexed_graph)
+  (table : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (from_p : RDF_Term.wf_iri) (to_p : RDF_Term.wf_iri)
+  (acc : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
+  let from_types =
+    RDF_Indexed.find_objects_indexed ig (RDF_Term.S_IRI from_p)
+      RDFS_Closure.rdf_type in
+  FStar_List_Tot_Base.fold_left
+    (fun a entry ->
+       let src = FStar_Pervasives_Native.fst entry in
+       let dst = FStar_Pervasives_Native.snd entry in
+       if
+         FStar_List_Tot_Base.existsb
+           (fun ty -> RDF_Term.rdf_term_eq ty (RDF_Term.T_IRI src))
+           from_types
+       then
+         RDF_Graph.add_triple_unchecked a
+           {
+             RDF_Triple.s = (RDF_Term.S_IRI to_p);
+             RDF_Triple.p = RDFS_Closure.rdf_type;
+             RDF_Triple.o = (RDF_Term.T_IRI dst)
+           }
+       else a) acc table
+let owl_rule_inverse_characteristics (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.RDF_Triple.p = owl_inverseOf
+       then
+         match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+         | (RDF_Term.S_IRI p1, RDF_Term.T_IRI p2) ->
+             (if p1 = p2
+              then acc
+              else
+                (let acc1 =
+                   transfer_property_characteristics ig
+                     owl_inverse_characteristic_transfer p1 p2 acc in
+                 transfer_property_characteristics ig
+                   owl_inverse_characteristic_transfer p2 p1 acc1))
+         | (uu___, uu___1) -> acc
+       else acc) g g
+let owl_equivalent_characteristic_transfer :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  [(owl_FunctionalProperty, owl_FunctionalProperty);
+  (owl_InverseFunctionalProperty, owl_InverseFunctionalProperty);
+  (owl_SymmetricProperty, owl_SymmetricProperty);
+  (owl_TransitiveProperty, owl_TransitiveProperty);
+  (owl_ReflexiveProperty, owl_ReflexiveProperty);
+  (owl_IrreflexiveProperty, owl_IrreflexiveProperty);
+  (owl_AsymmetricProperty, owl_AsymmetricProperty)]
+let owl_rule_equivalent_property_characteristics (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.RDF_Triple.p = owl_equivalentProperty
+       then
+         match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+         | (RDF_Term.S_IRI p1, RDF_Term.T_IRI p2) ->
+             (if p1 = p2
+              then acc
+              else
+                (let acc1 =
+                   transfer_property_characteristics ig
+                     owl_equivalent_characteristic_transfer p1 p2 acc in
+                 transfer_property_characteristics ig
+                   owl_equivalent_characteristic_transfer p2 p1 acc1))
+         | (uu___, uu___1) -> acc
+       else acc) g g
+let canonical_min_card_bnode (p : RDF_Term.wf_iri) (n : Prims.string) :
+  RDF_Term.bnode_id= FStar_String.concat "" ["__rl_mincard__"; p; "__n__"; n]
+let canonical_max_card_bnode (p : RDF_Term.wf_iri) (n : Prims.string) :
+  RDF_Term.bnode_id= FStar_String.concat "" ["__rl_maxcard__"; p; "__n__"; n]
+let canonical_min_qcard_bnode (p : RDF_Term.wf_iri) (c : RDF_Term.wf_iri)
+  (n : Prims.string) : RDF_Term.bnode_id=
+  FStar_String.concat "" ["__rl_minqcard__"; p; "__on__"; c; "__n__"; n]
+let canonical_max_qcard_bnode (p : RDF_Term.wf_iri) (c : RDF_Term.wf_iri)
+  (n : Prims.string) : RDF_Term.bnode_id=
+  FStar_String.concat "" ["__rl_maxqcard__"; p; "__on__"; c; "__n__"; n]
+let restriction_node_is_asserted (r : RDF_Term.subject) : Prims.bool=
+  match r with
+  | RDF_Term.S_IRI uu___ -> true
+  | RDF_Term.S_BNode b -> Prims.op_Negation (bnode_is_rl_canonical b)
+let emit_bound_restriction (r : RDF_Term.subject) (b : RDF_Term.bnode_id)
+  (p : RDF_Term.wf_iri) (bound_pred : RDF_Term.wf_iri)
+  (card_lit : RDF_Term.wf_literal)
+  (on_class : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (acc : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
+  let b_subj = RDF_Term.S_BNode b in
+  let base =
+    [{
+       RDF_Triple.s = b_subj;
+       RDF_Triple.p = RDFS_Closure.rdf_type;
+       RDF_Triple.o = (RDF_Term.T_IRI owl_Restriction_iri)
+     };
+    {
+      RDF_Triple.s = b_subj;
+      RDF_Triple.p = owl_onProperty_iri;
+      RDF_Triple.o = (RDF_Term.T_IRI p)
+    };
+    {
+      RDF_Triple.s = b_subj;
+      RDF_Triple.p = bound_pred;
+      RDF_Triple.o = (RDF_Term.T_Literal card_lit)
+    };
+    {
+      RDF_Triple.s = r;
+      RDF_Triple.p = RDFS_Closure.rdfs_subClassOf;
+      RDF_Triple.o = (RDF_Term.T_BNode b)
+    }] in
+  let all_t =
+    match on_class with
+    | FStar_Pervasives_Native.None -> base
+    | FStar_Pervasives_Native.Some c ->
+        {
+          RDF_Triple.s = b_subj;
+          RDF_Triple.p = owl_onClass_iri;
+          RDF_Triple.o = (RDF_Term.T_IRI c)
+        } :: base in
+  FStar_List_Tot_Base.fold_left RDF_Graph.add_triple_unchecked acc all_t
+let owl_rule_cardinality_to_min_max (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if Prims.op_Negation (restriction_node_is_asserted t.RDF_Triple.s)
+       then acc
+       else
+         if t.RDF_Triple.p = owl_cardinality_iri
+         then
+           (match t.RDF_Triple.o with
+            | RDF_Term.T_Literal lit ->
+                let props =
+                  RDF_Indexed.find_objects_indexed ig t.RDF_Triple.s
+                    owl_onProperty_iri in
+                FStar_List_Tot_Base.fold_left
+                  (fun a pt ->
+                     match pt with
+                     | RDF_Term.T_IRI p ->
+                         let n = lit.RDF_Term.lexical_form in
+                         let a1 =
+                           emit_bound_restriction t.RDF_Triple.s
+                             (canonical_min_card_bnode p n) p
+                             owl_minCardinality_iri lit
+                             FStar_Pervasives_Native.None a in
+                         emit_bound_restriction t.RDF_Triple.s
+                           (canonical_max_card_bnode p n) p
+                           owl_maxCardinality_iri lit
+                           FStar_Pervasives_Native.None a1
+                     | uu___1 -> a) acc props
+            | uu___1 -> acc)
+         else
+           if t.RDF_Triple.p = owl_qualifiedCardinality_iri
+           then
+             (match t.RDF_Triple.o with
+              | RDF_Term.T_Literal lit ->
+                  let props =
+                    RDF_Indexed.find_objects_indexed ig t.RDF_Triple.s
+                      owl_onProperty_iri in
+                  let classes =
+                    RDF_Indexed.find_objects_indexed ig t.RDF_Triple.s
+                      owl_onClass_iri in
+                  FStar_List_Tot_Base.fold_left
+                    (fun a pt ->
+                       match pt with
+                       | RDF_Term.T_IRI p ->
+                           FStar_List_Tot_Base.fold_left
+                             (fun a1 ct ->
+                                match ct with
+                                | RDF_Term.T_IRI c ->
+                                    let n = lit.RDF_Term.lexical_form in
+                                    let a2 =
+                                      emit_bound_restriction t.RDF_Triple.s
+                                        (canonical_min_qcard_bnode p c n) p
+                                        owl_minQualifiedCardinality_iri lit
+                                        (FStar_Pervasives_Native.Some c) a1 in
+                                    emit_bound_restriction t.RDF_Triple.s
+                                      (canonical_max_qcard_bnode p c n) p
+                                      owl_maxQualifiedCardinality_iri lit
+                                      (FStar_Pervasives_Native.Some c) a2
+                                | uu___2 -> a1) a classes
+                       | uu___2 -> a) acc props
+              | uu___2 -> acc)
+           else acc) g g
+let owl_rule_cls_maxqc34 (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if
+         ((t.RDF_Triple.p = owl_maxQualifiedCardinality_iri) &&
+            (RDF_Term.rdf_term_eq t.RDF_Triple.o
+               (RDF_Term.T_Literal one_nonNegInteger_literal)))
+           && (restriction_node_is_asserted t.RDF_Triple.s)
+       then
+         let r_subj = t.RDF_Triple.s in
+         let props =
+           RDF_Indexed.find_objects_indexed ig r_subj owl_onProperty_iri in
+         let classes =
+           RDF_Indexed.find_objects_indexed ig r_subj owl_onClass_iri in
+         FStar_List_Tot_Base.fold_left
+           (fun acc2 p_term ->
+              match p_term with
+              | RDF_Term.T_IRI p ->
+                  FStar_List_Tot_Base.fold_left
+                    (fun acc3 c_term ->
+                       match c_term with
+                       | RDF_Term.T_IRI c ->
+                           let unqualified = c = RDFS_Closure.owl_Thing in
+                           let members =
+                             RDF_Indexed.find_subjects_indexed ig
+                               RDFS_Closure.rdf_type
+                               (RDF_Graph.subject_to_term r_subj) in
+                           FStar_List_Tot_Base.fold_left
+                             (fun acc4 u ->
+                                let ys =
+                                  RDF_Indexed.find_objects_indexed ig u p in
+                                let ws =
+                                  if unqualified
+                                  then ys
+                                  else
+                                    FStar_List_Tot_Base.filter
+                                      (fun y -> object_has_type ig y c) ys in
+                                FStar_List_Tot_Base.fold_left
+                                  (fun acc5 y1 ->
+                                     FStar_List_Tot_Base.fold_left
+                                       (fun acc6 y2 ->
+                                          if RDF_Term.rdf_term_eq y1 y2
+                                          then acc6
+                                          else
+                                            (match RDF_Graph.term_to_subject
+                                                     y1
+                                             with
+                                             | FStar_Pervasives_Native.None
+                                                 -> acc6
+                                             | FStar_Pervasives_Native.Some
+                                                 y1_subj ->
+                                                 RDF_Graph.add_triple_unchecked
+                                                   acc6
+                                                   {
+                                                     RDF_Triple.s = y1_subj;
+                                                     RDF_Triple.p =
+                                                       owl_sameAs;
+                                                     RDF_Triple.o = y2
+                                                   })) acc5 ws) acc4 ws) acc3
+                             members
+                       | uu___ -> acc3) acc2 classes
+              | uu___ -> acc2) acc props
+       else acc) g g
+let hasvalue_restriction_candidates (ig : RDF_Indexed.indexed_graph)
+  (d : RDF_Term.subject) : RDF_Term.subject Prims.list=
+  let sups =
+    RDF_Indexed.find_objects_indexed ig d RDFS_Closure.rdfs_subClassOf in
+  FStar_List_Tot_Base.fold_left
+    (fun acc s ->
+       match RDF_Graph.term_to_subject s with
+       | FStar_Pervasives_Native.None -> acc
+       | FStar_Pervasives_Native.Some x ->
+           if
+             Prims.uu___is_Cons
+               (RDF_Indexed.find_objects_indexed ig x owl_hasValue_iri)
+           then x :: acc
+           else acc)
+    (if
+       Prims.uu___is_Cons
+         (RDF_Indexed.find_objects_indexed ig d owl_hasValue_iri)
+     then [d]
+     else []) sups
+let restriction_pins (ig : RDF_Indexed.indexed_graph) (r : RDF_Term.subject)
+  (q : RDF_Term.wf_iri) (v : RDF_Term.rdf_term) : Prims.bool=
+  (FStar_List_Tot_Base.existsb
+     (fun pt -> RDF_Term.rdf_term_eq pt (RDF_Term.T_IRI q))
+     (RDF_Indexed.find_objects_indexed ig r owl_onProperty_iri))
+    &&
+    (FStar_List_Tot_Base.existsb (fun vt -> RDF_Term.rdf_term_eq vt v)
+       (RDF_Indexed.find_objects_indexed ig r owl_hasValue_iri))
+let owl_rule_fp_pinned_subproperty (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if
+         (t.RDF_Triple.p = RDFS_Closure.rdf_type) &&
+           (RDF_Term.rdf_term_eq t.RDF_Triple.o
+              (RDF_Term.T_IRI owl_FunctionalProperty))
+       then
+         match t.RDF_Triple.s with
+         | RDF_Term.S_IRI p ->
+             let doms =
+               RDF_Indexed.find_objects_indexed ig (RDF_Term.S_IRI p)
+                 RDFS_Closure.rdfs_domain in
+             FStar_List_Tot_Base.fold_left
+               (fun a d_term ->
+                  match RDF_Graph.term_to_subject d_term with
+                  | FStar_Pervasives_Native.None -> a
+                  | FStar_Pervasives_Native.Some d ->
+                      let cands = hasvalue_restriction_candidates ig d in
+                      FStar_List_Tot_Base.fold_left
+                        (fun a1 r1 ->
+                           let p_on =
+                             FStar_List_Tot_Base.existsb
+                               (fun pt ->
+                                  RDF_Term.rdf_term_eq pt (RDF_Term.T_IRI p))
+                               (RDF_Indexed.find_objects_indexed ig r1
+                                  owl_onProperty_iri) in
+                           if Prims.op_Negation p_on
+                           then a1
+                           else
+                             FStar_List_Tot_Base.fold_left
+                               (fun a2 v ->
+                                  FStar_List_Tot_Base.fold_left
+                                    (fun a3 r2 ->
+                                       FStar_List_Tot_Base.fold_left
+                                         (fun a4 qt ->
+                                            match qt with
+                                            | RDF_Term.T_IRI q ->
+                                                if q = p
+                                                then a4
+                                                else
+                                                  if
+                                                    restriction_pins ig r2 q
+                                                      v
+                                                  then
+                                                    RDF_Graph.add_triple_unchecked
+                                                      a4
+                                                      {
+                                                        RDF_Triple.s =
+                                                          (RDF_Term.S_IRI p);
+                                                        RDF_Triple.p =
+                                                          RDFS_Closure.rdfs_subPropertyOf;
+                                                        RDF_Triple.o =
+                                                          (RDF_Term.T_IRI q)
+                                                      }
+                                                  else a4
+                                            | uu___1 -> a4) a3
+                                         (RDF_Indexed.find_objects_indexed ig
+                                            r2 owl_onProperty_iri)) a2 cands)
+                               a1
+                               (RDF_Indexed.find_objects_indexed ig r1
+                                  owl_hasValue_iri)) a cands) acc doms
+         | uu___ -> acc
+       else acc) g g
+let subject_is_rdf_nil (s : RDF_Term.subject) : Prims.bool=
+  match s with
+  | RDF_Term.S_IRI i -> i = rdf_nil_iri
+  | RDF_Term.S_BNode uu___ -> false
+let rec rdf_list_length_fuel (ig : RDF_Indexed.indexed_graph)
+  (head : RDF_Term.subject) (fuel : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  if subject_is_rdf_nil head
+  then FStar_Pervasives_Native.Some Prims.int_zero
+  else
+    (match fuel with
+     | uu___1 when uu___1 = Prims.int_zero -> FStar_Pervasives_Native.None
+     | uu___1 ->
+         let firsts = RDF_Indexed.find_objects_indexed ig head rdf_first in
+         let rests = RDF_Indexed.find_objects_indexed ig head rdf_rest in
+         if Prims.uu___is_Nil firsts
+         then FStar_Pervasives_Native.None
+         else
+           (match rests with
+            | r::[] ->
+                (match RDF_Graph.term_to_subject r with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some rs ->
+                     (match rdf_list_length_fuel ig rs (fuel - Prims.int_one)
+                      with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some n ->
+                          FStar_Pervasives_Native.Some (n + Prims.int_one)))
+            | uu___3 -> FStar_Pervasives_Native.None))
+let owl_rule_singleton_nominal_functionality (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  let fuel = FStar_List_Tot_Base.length g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.RDF_Triple.p = owl_oneOf_iri
+       then
+         match RDF_Graph.term_to_subject t.RDF_Triple.o with
+         | FStar_Pervasives_Native.None -> acc
+         | FStar_Pervasives_Native.Some list_subj ->
+             (match rdf_list_length_fuel ig list_subj fuel with
+              | FStar_Pervasives_Native.Some uu___ when uu___ = Prims.int_one
+                  ->
+                  let c_term = RDF_Graph.subject_to_term t.RDF_Triple.s in
+                  let ranged =
+                    RDF_Indexed.find_subjects_indexed ig
+                      RDFS_Closure.rdfs_range c_term in
+                  let domained =
+                    RDF_Indexed.find_subjects_indexed ig
+                      RDFS_Closure.rdfs_domain c_term in
+                  let acc1 =
+                    FStar_List_Tot_Base.fold_left
+                      (fun a p ->
+                         RDF_Graph.add_triple_unchecked a
+                           {
+                             RDF_Triple.s = p;
+                             RDF_Triple.p = RDFS_Closure.rdf_type;
+                             RDF_Triple.o =
+                               (RDF_Term.T_IRI owl_FunctionalProperty)
+                           }) acc ranged in
+                  FStar_List_Tot_Base.fold_left
+                    (fun a p ->
+                       RDF_Graph.add_triple_unchecked a
+                         {
+                           RDF_Triple.s = p;
+                           RDF_Triple.p = RDFS_Closure.rdf_type;
+                           RDF_Triple.o =
+                             (RDF_Term.T_IRI owl_InverseFunctionalProperty)
+                         }) acc1 domained
+              | uu___ -> acc)
+       else acc) g g
+let literal_values_provably_distinct (l1 : RDF_Term.wf_literal)
+  (l2 : RDF_Term.wf_literal) : Prims.bool=
+  ((((l1.RDF_Term.datatype = RDF_Term.xsd_string) &&
+       (l2.RDF_Term.datatype = RDF_Term.xsd_string))
+      && (FStar_Pervasives_Native.uu___is_None l1.RDF_Term.lang_tag))
+     && (FStar_Pervasives_Native.uu___is_None l2.RDF_Term.lang_tag))
+    && (l1.RDF_Term.lexical_form <> l2.RDF_Term.lexical_form)
+let terms_provably_distinct (a : RDF_Term.rdf_term) (b : RDF_Term.rdf_term) :
+  Prims.bool=
+  match (a, b) with
+  | (RDF_Term.T_Literal l1, RDF_Term.T_Literal l2) ->
+      literal_values_provably_distinct l1 l2
+  | (uu___, uu___1) -> false
+let cardinality_literal_is_one (t : RDF_Term.rdf_term) : Prims.bool=
+  match t with
+  | RDF_Term.T_Literal l -> l.RDF_Term.lexical_form = "1"
+  | uu___ -> false
+let class_pins_at_most_one (ig : RDF_Indexed.indexed_graph)
+  (c : RDF_Term.subject) (p : RDF_Term.wf_iri) : Prims.bool=
+  (FStar_List_Tot_Base.existsb
+     (fun ty ->
+        RDF_Term.rdf_term_eq ty (RDF_Term.T_IRI owl_FunctionalProperty))
+     (RDF_Indexed.find_objects_indexed ig (RDF_Term.S_IRI p)
+        RDFS_Closure.rdf_type))
+    ||
+    (FStar_List_Tot_Base.existsb
+       (fun s ->
+          match RDF_Graph.term_to_subject s with
+          | FStar_Pervasives_Native.None -> false
+          | FStar_Pervasives_Native.Some m ->
+              (FStar_List_Tot_Base.existsb
+                 (fun pt -> RDF_Term.rdf_term_eq pt (RDF_Term.T_IRI p))
+                 (RDF_Indexed.find_objects_indexed ig m owl_onProperty_iri))
+                &&
+                ((FStar_List_Tot_Base.existsb cardinality_literal_is_one
+                    (RDF_Indexed.find_objects_indexed ig m
+                       owl_maxCardinality_iri))
+                   ||
+                   (FStar_List_Tot_Base.existsb cardinality_literal_is_one
+                      (RDF_Indexed.find_objects_indexed ig m
+                         owl_cardinality_iri))))
+       (RDF_Indexed.find_objects_indexed ig c RDFS_Closure.rdfs_subClassOf))
+let collect_hasvalue_pins (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) :
+  (RDF_Term.subject * RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.RDF_Triple.p = RDFS_Closure.rdfs_subClassOf
+       then
+         match t.RDF_Triple.s with
+         | RDF_Term.S_IRI uu___ ->
+             (match RDF_Graph.term_to_subject t.RDF_Triple.o with
+              | FStar_Pervasives_Native.None -> acc
+              | FStar_Pervasives_Native.Some r ->
+                  let vs =
+                    RDF_Indexed.find_objects_indexed ig r owl_hasValue_iri in
+                  if Prims.uu___is_Nil vs
+                  then acc
+                  else
+                    FStar_List_Tot_Base.fold_left
+                      (fun a1 pt ->
+                         match pt with
+                         | RDF_Term.T_IRI p ->
+                             FStar_List_Tot_Base.fold_left
+                               (fun a2 v -> ((t.RDF_Triple.s), p, v) :: a2)
+                               a1 vs
+                         | uu___2 -> a1) acc
+                      (RDF_Indexed.find_objects_indexed ig r
+                         owl_onProperty_iri))
+         | uu___ -> acc
+       else acc) [] g
+let owl_rule_hasvalue_card_disjoint (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  let pins = collect_hasvalue_pins g ig in
+  FStar_List_Tot_Base.fold_left
+    (fun acc e1 ->
+       let uu___ = e1 in
+       match uu___ with
+       | (c1, p1, v1) ->
+           if Prims.op_Negation (class_pins_at_most_one ig c1 p1)
+           then acc
+           else
+             FStar_List_Tot_Base.fold_left
+               (fun a e2 ->
+                  let uu___2 = e2 in
+                  match uu___2 with
+                  | (c2, p2, v2) ->
+                      if
+                        ((p1 = p2) &&
+                           (Prims.op_Negation (RDF_Term.subject_eq c1 c2)))
+                          && (terms_provably_distinct v1 v2)
+                      then
+                        RDF_Graph.add_triple_unchecked a
+                          {
+                            RDF_Triple.s = c1;
+                            RDF_Triple.p = owl_disjointWith_iri;
+                            RDF_Triple.o = (RDF_Graph.subject_to_term c2)
+                          }
+                      else a) acc pins) g pins
 let owl_xsd_core_datatype_axioms : RDF_Triple.triple Prims.list=
   [{
      RDF_Triple.s = (RDF_Term.S_IRI RDF_Term.xsd_integer);
@@ -3111,7 +3657,15 @@ let owl_rl_closure_step_mode (g : RDF_Graph.rdf_graph) (mode : Prims.string)
   let g27 = owl_rule_scm_dom2 g26a ig in
   let g28 = owl_rule_scm_rng2 g27 ig in
   let g28a = owl_rule_subprop_domain_range g28 ig in
-  RDF_Graph.graph_dedup_sort g28a
+  let g28b = owl_rule_symmetric_metapredicates g28a ig in
+  let g28c = owl_rule_inverse_characteristics g28b ig in
+  let g28d = owl_rule_equivalent_property_characteristics g28c ig in
+  let g28e = owl_rule_cardinality_to_min_max g28d ig in
+  let g28f = owl_rule_cls_maxqc34 g28e ig in
+  let g28g = owl_rule_fp_pinned_subproperty g28f ig in
+  let g28h = owl_rule_singleton_nominal_functionality g28g ig in
+  let g28i = owl_rule_hasvalue_card_disjoint g28h ig in
+  RDF_Graph.graph_dedup_sort g28i
 let owl_rl_closure_step (g : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
   owl_rl_closure_step_mode g owl_semantics_direct
 let rec owl_rl_closure_mode (g : RDF_Graph.rdf_graph) (fuel : Prims.nat)
