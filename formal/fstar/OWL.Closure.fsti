@@ -2881,10 +2881,16 @@ let owl_rule_named_equivClass_to_sameAs_mode
   // identifies class EXTENSIONS only — it does not license collapsing
   // the two class resources to owl:sameAs, so an annotation triple
   // asserted on one side must NOT be copied to the other. Suppress the
-  // whole rule in that mode; every other mode (including the
-  // owl_semantics_direct default) keeps the historical unconditional
-  // behaviour below.
-  if mode = owl_semantics_rdf_based then g else
+  // whole rule in that mode — and in RDF-BASED-FULL, which is the
+  // RDF-Based reading plus the meta-vocabulary axiom table (2026-07-29:
+  // with the meta table emitting rdfs:Class owl:equivalentClass
+  // owl:Class, letting this rule fire in FULL mode collapsed the two
+  // RESOURCES to owl:sameAs and copied a dc:creator annotation across,
+  // refuting WebOnt-Class-004, whose description is exactly
+  // "Annotations about owl:Class are not related to those about
+  // rdfs:Class"). Every other mode (including the owl_semantics_direct
+  // default) keeps the historical unconditional behaviour below.
+  if mode = owl_semantics_rdf_based || mode = owl_semantics_rdf_based_full then g else
   let is_class (i : wf_iri) : bool =
     let types = find_objects_indexed ig (S_IRI i) rdf_type in
     List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI owl_Class)) types

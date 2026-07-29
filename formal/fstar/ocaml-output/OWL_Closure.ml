@@ -2171,7 +2171,8 @@ let owl_semantics_rdf_based_full : Prims.string= "RDF-BASED-FULL"
 let owl_rule_named_equivClass_to_sameAs_mode (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) (mode : Prims.string) :
   RDF_Graph.rdf_graph=
-  if mode = owl_semantics_rdf_based
+  if
+    (mode = owl_semantics_rdf_based) || (mode = owl_semantics_rdf_based_full)
   then g
   else
     (let is_class i =
