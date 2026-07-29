@@ -32,6 +32,9 @@ module Parser.OWLFunctional
 (*              |  DataSomeValuesFrom(IRI DataRange)                   *)
 (*              |  DataAllValuesFrom(IRI DataRange)                    *)
 (*              |  ObjectComplementOf(ClassExpr)                       *)
+(*              |  DataExactCardinality(n IRI [DataRange])             *)
+(*              |  DataMinCardinality(n IRI [DataRange])               *)
+(*              |  DataMaxCardinality(n IRI [DataRange])               *)
 (*                                                                    *)
 (*   DataRange ::= IRI                                                 *)
 (*              |  DataOneOf(Literal+)                                 *)
@@ -243,6 +246,15 @@ let owl_datatypeComplementOf_iri : wf_iri =
 let owl_NegativePropertyAssertion_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#NegativePropertyAssertion");
   "http://www.w3.org/2002/07/owl#NegativePropertyAssertion"
+
+// owl:onDataRange — the OWL 2 Mapping to RDF Graphs predicate that binds
+// a DATA-range filler to a qualified cardinality restriction, exactly as
+// owl:onClass binds a class filler to an object one. The cardinality
+// predicates themselves (owl:cardinality, owl:qualifiedCardinality, ...)
+// already arrive through RDF.Graph.Executable's `include OWL.Closure`.
+let owl_onDataRange_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onDataRange");
+  "http://www.w3.org/2002/07/owl#onDataRange"
 
 // A class-expression / data-range term is always T_IRI or T_BNode
 // (never T_Literal — no production below ever returns a literal as a
@@ -525,6 +537,38 @@ let parse_data_has_value_expr
           let t3 : triple = { s = restr; p = owl_hasValue_iri; o = T_Literal lit } in
           Some (T_BNode bnode_label, [t1; t2; t3], pos6 + 1, bc + 1)
 
+// A bare non-negative decimal integer, the `nonNegativeInteger` of the
+// OWL 2 Functional-Style Syntax cardinality productions (written
+// unquoted and untyped there, unlike every literal this module's
+// `parse_fs_literal` handles). Consumes a maximal ASCII digit run and
+// returns its value plus the position after it; `None` when there is no
+// digit at `pos`, so a malformed cardinality drops the whole axiom
+// rather than guessing a count.
+let rec scan_fs_digits (input:string) (pos:nat) (acc:nat) (seen:nat) (budget:nat)
+  : Tot (option (nat & nat)) (decreases budget) =
+  if budget = 0 then (if seen = 0 then None else Some (acc, pos))
+  else
+    let code = char_at_code input pos in
+    if code >= 48 && code <= 57
+    then scan_fs_digits input (pos + 1) (op_Multiply acc 10 + (code - 48)) (seen + 1) (budget - 1)
+    else (if seen = 0 then None else Some (acc, pos))
+
+let parse_fs_nonneg_int (input:string) (pos:nat) : option (nat & nat) =
+  let p = skip_ws input pos in
+  scan_fs_digits input p 0 0 (fs_byte_length input + 1)
+
+// The cardinality value as the xsd:nonNegativeInteger literal the OWL 2
+// Mapping to RDF Graphs writes on the restriction node.
+let fs_cardinality_literal (n:nat) : option wf_literal =
+  let lit : literal = { lexical_form = string_of_int n; datatype = xsd_nonNegativeInteger;
+                        lang_tag = None; direction = None } in
+  if literal_wf lit then Some lit else None
+
+// Deterministic bnode label for a cardinality restriction node, in the
+// same "owlfs_<kind><counter>" shape every other production here uses.
+let fs_card_bnode_label (bcx:nat) : string =
+  String.concat "" ["owlfs_cardrestr"; string_of_int bcx]
+
 // DataOneOf(v1..vn) -> _:x rdf:type rdfs:Datatype ; owl:oneOf T([v1..vn]) .
 // Also a leaf (calls only the standalone list-accumulator above, never
 // recurses into the class-expr/data-range group) — plain `let`,
@@ -607,7 +651,81 @@ let rec parse_class_expr
     | None ->
     match try_match_word input pos0 "ObjectComplementOf" with
     | Some pos1 -> parse_object_complement_of prefixes input pos1 bc fuel1
+    | None ->
+    // Data{Exact,Min,Max}Cardinality(n DP [DR]). Each is passed the pair
+    // of predicates the OWL 2 Mapping to RDF Graphs uses for it: the
+    // QUALIFIED one when a data range follows the property, the plain
+    // one when it does not.
+    match try_match_word input pos0 "DataExactCardinality" with
+    | Some pos1 ->
+      parse_data_cardinality prefixes input pos1 bc fuel1
+        owl_qualifiedCardinality_iri owl_cardinality_iri
+    | None ->
+    match try_match_word input pos0 "DataMinCardinality" with
+    | Some pos1 ->
+      parse_data_cardinality prefixes input pos1 bc fuel1
+        owl_minQualifiedCardinality_iri owl_minCardinality_iri
+    | None ->
+    match try_match_word input pos0 "DataMaxCardinality" with
+    | Some pos1 ->
+      parse_data_cardinality prefixes input pos1 bc fuel1
+        owl_maxQualifiedCardinality_iri owl_maxCardinality_iri
     | None -> None
+
+// Data{Exact,Min,Max}Cardinality(n DP)     ->
+//   _:x rdf:type owl:Restriction ; owl:onProperty DP ;
+//       owl:{,min,max}Cardinality "n"^^xsd:nonNegativeInteger .
+// Data{Exact,Min,Max}Cardinality(n DP DR)  ->
+//   _:x rdf:type owl:Restriction ; owl:onProperty DP ;
+//       owl:{,min,max}QualifiedCardinality "n"^^xsd:nonNegativeInteger ;
+//       owl:onDataRange T(DR) .
+// (OWL 2 Mapping to RDF Graphs, the Data Property Cardinality
+// Restrictions rows.) The data range is OPTIONAL: after the property we
+// try `parse_data_range`, and a failure means the unqualified form, so
+// the closing ')' must then follow immediately.
+and parse_data_cardinality
+    (prefixes:list (string & string)) (input:string) (pos:nat) (bc:nat) (fuel:nat)
+    (qual_iri:wf_iri) (plain_iri:wf_iri)
+  : Tot (option (rdf_term & list triple & nat & nat)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel1 : nat = fuel - 1 in
+    let pos1 = skip_ws input pos in
+    if char_at_code input pos1 <> lparen_code then None
+    else
+      match parse_fs_nonneg_int input (pos1 + 1) with
+      | None -> None
+      | Some (card, pos2) ->
+        let pos3 = skip_ws input pos2 in
+        match parse_fs_iri prefixes input pos3 with
+        | None -> None
+        | Some (prop, pos4) ->
+          match fs_cardinality_literal card with
+          | None -> None
+          | Some card_lit ->
+            let pos5 = skip_ws input pos4 in
+            (match parse_data_range prefixes input pos5 bc fuel1 with
+             | Some (dr_term, dr_triples, pos6, bc1) ->
+               let pos7 = skip_ws input pos6 in
+               if char_at_code input pos7 <> rparen_code then None
+               else
+                 let lbl = fs_card_bnode_label bc1 in
+                 let restr = S_BNode lbl in
+                 let t1 : triple = { s = restr; p = rdf_type; o = T_IRI owl_Restriction_iri } in
+                 let t2 : triple = { s = restr; p = owl_onProperty_iri; o = T_IRI prop } in
+                 let t3 : triple = { s = restr; p = qual_iri; o = T_Literal card_lit } in
+                 let t4 : triple = { s = restr; p = owl_onDataRange_iri; o = dr_term } in
+                 Some (T_BNode lbl, dr_triples @ [t1; t2; t3; t4], pos7 + 1, bc1 + 1)
+             | None ->
+               // Unqualified form: nothing but ')' may follow the property.
+               if char_at_code input pos5 <> rparen_code then None
+               else
+                 let lbl = fs_card_bnode_label bc in
+                 let restr = S_BNode lbl in
+                 let t1 : triple = { s = restr; p = rdf_type; o = T_IRI owl_Restriction_iri } in
+                 let t2 : triple = { s = restr; p = owl_onProperty_iri; o = T_IRI prop } in
+                 let t3 : triple = { s = restr; p = plain_iri; o = T_Literal card_lit } in
+                 Some (T_BNode lbl, [t1; t2; t3], pos5 + 1, bc + 1))
 
 // DataSomeValuesFrom(P DR) / DataAllValuesFrom(P DR) ->
 //   _:x rdf:type owl:Restriction ; owl:onProperty P ;
