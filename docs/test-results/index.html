@@ -409,8 +409,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-29 17:27 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-28 22:52 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-29 17:57 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-29 17:28 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDF 1.2 / SPARQL 1.2 (W3C Working Drafts), RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -478,6 +478,14 @@
   </div>
   <p class="hd-note">No comparator escapes, no discovery faults. Every score above came from the strict RDFC-1.0 comparator on a suite that discovered its tests.</p>
 
+  <p class="legend-title" style="margin-top:1em">Local overrides of upstream fixtures</p>
+  <p class="legend-note">A fixture whose upstream expectation we dispute in writing, under <code>tests/local-overrides/</code>. The runner scores it in its own bucket rather than as a pass or a fail. Listed here because folding it into &ldquo;skip&rdquo; hid a deliberate disagreement with the spec suite.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>suite</th><th>overrides</th><th>which</th></tr></thead>
+    <tbody><tr class="hd-bad"><td><code>shex</code></td><td>1</td><td>start2RefS1-IstartS2</td></tr><tr class="hd-bad"><td><code>rif_core</code></td><td>1</td><td>corpus:RDF_Combination_Constant_Equivalence_4</td></tr></tbody>
+  </table>
+  </div>
 </div>
 
 <details class="group-section" id="group-w3c-rec" open>
@@ -2235,9 +2243,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-29 17:27 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/17f295997128481bd29aecc241bba0da0202b178">17f2959</a></code>
-  on branch <code>claude/strict-harness-20260729</code> — &ldquo;Strict W3C harness: budget escape scores FAIL, zero-test runs fatal, escapes on the dashboard (#316); dedupe 7x runner block (#322)&rdquo;.
+  Generated <strong>2026-07-29 17:57 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/c44c9d448e37af26cf64bbad317083e42f1a30ad">c44c9d4</a></code>
+  on branch <code>claude/strict-harness-20260729</code> — &ldquo;Count and publish the OWL closure-cap escapes; refresh the W3C logs and dashboard (#316)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

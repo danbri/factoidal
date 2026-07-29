@@ -1198,6 +1198,45 @@ emit_json_harness_owl () {
   printf '}'
 }
 
+# Consumer-runner LOCAL OVERRIDES (#316). tests/local-overrides/ lets a
+# runner reclassify a carefully-disputed upstream fixture from MISMATCH
+# to its own bucket, with the dispute written up in the override file.
+# The runners count that bucket correctly; the dashboard used to fold it
+# into `skip`, so a reader saw "1 skip" and never learned an upstream
+# expectation had been overridden. Counted and named here instead.
+OVERRIDE_LOGS=(
+  "shex:$SHEX_LOG"
+  "rif_core:$RIFCORE_LOG"
+)
+
+override_count () {  # override_count <log>
+  grep -hoE '[0-9]+ local-override' "$1" 2>/dev/null | tail -1 | awk '{print $1}'
+}
+
+override_names () {  # override_names <log>  -> newline-separated test names
+  { grep -hoE '^OVERRIDE [^ ]+' "$1" 2>/dev/null | awk '{print $2}'
+    grep -hoE 'PASS \(local-override\): [^ ]+' "$1" 2>/dev/null | awk '{print $3}'
+  } | sort -u
+}
+
+emit_json_harness_overrides () {
+  local first=1 ent key log cnt names
+  printf '    "local_overrides": {'
+  for ent in "${OVERRIDE_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    [ "$first" -eq 0 ] && printf ','
+    first=0
+    if [ ! -f "$log" ]; then
+      printf '"%s":{"measured":false}' "$key"
+      continue
+    fi
+    cnt=$(override_count "$log"); cnt=${cnt:-0}
+    names=$(override_names "$log" | awk '{print "\""$0"\""}' | paste -sd, -)
+    printf '"%s":{"measured":true,"count":%s,"tests":[%s]}' "$key" "$cnt" "$names"
+  done
+  printf '}'
+}
+
 {
   printf '{\n'
   printf '  "timestamp": "%s",\n' "$TIMESTAMP_HUMAN"
@@ -1409,6 +1448,8 @@ emit_json_harness_owl () {
   done
   printf ',\n'
   emit_json_harness_owl
+  printf ',\n'
+  emit_json_harness_overrides
   printf '\n  }\n'
   printf '}\n'
 } > "$JSON"
@@ -2845,6 +2886,35 @@ build_harness_card () {
 OWLHDEOF
 )
   fi
+  # Local overrides: a deliberate, documented disagreement with an
+  # upstream fixture. Legitimate, but it is not a "skip" and the reader
+  # is entitled to see it named.
+  local ov_rows="" ov_any=0
+  for ent in "${OVERRIDE_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    [ -f "$log" ] || continue
+    local cnt names
+    cnt=$(override_count "$log"); cnt=${cnt:-0}
+    [ "$cnt" -eq 0 ] && continue
+    ov_any=1
+    names=$(override_names "$log" | paste -sd', ' -)
+    ov_rows+=$(printf '<tr class="hd-bad"><td><code>%s</code></td><td>%s</td><td>%s</td></tr>' \
+      "$key" "$cnt" "${names:-&mdash;}")
+  done
+  local ov_block=""
+  if [ "$ov_any" -eq 1 ]; then
+    ov_block=$(cat <<OVEOF
+  <p class="legend-title" style="margin-top:1em">Local overrides of upstream fixtures</p>
+  <p class="legend-note">A fixture whose upstream expectation we dispute in writing, under <code>tests/local-overrides/</code>. The runner scores it in its own bucket rather than as a pass or a fail. Listed here because folding it into &ldquo;skip&rdquo; hid a deliberate disagreement with the spec suite.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>suite</th><th>overrides</th><th>which</th></tr></thead>
+    <tbody>${ov_rows}</tbody>
+  </table>
+  </div>
+OVEOF
+)
+  fi
   local verdict
   if [ "$measured" -eq 0 ]; then
     verdict='<p class="hd-note">No harness-diagnostic data in this run&rsquo;s logs.</p>'
@@ -2865,6 +2935,7 @@ OWLHDEOF
   </div>
   ${verdict}
 ${owl_block}
+${ov_block}
 </div>
 HDEOF
 }

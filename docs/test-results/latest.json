@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-07-29 17:27 UTC",
-  "commit": "17f295997128481bd29aecc241bba0da0202b178",
+  "timestamp": "2026-07-29 17:57 UTC",
+  "commit": "c44c9d448e37af26cf64bbad317083e42f1a30ad",
   "branch": "claude/strict-harness-20260729",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
@@ -156,6 +156,7 @@
     "rdf12c14n": {"measured": true, "totals": {"budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0,"discovered_tests":82}, "suites": [{"name":"rdf-n-triples/c14n","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"rdf-n-quads/c14n","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0}]},
     "rdf12entail": {"measured": true, "totals": {"budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":3,"unsupported":0,"discovered_tests":47}, "suites": [{"name":"rdf-semantics","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":3,"unsupported":0}]},
     "sparql12": {"measured": true, "totals": {"budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0,"discovered_tests":254}, "suites": [{"name":"codepoint-escapes","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"eval-triple-terms","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"expression","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"grouping","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"lang-basedir","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"rdf11","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"syntax","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"syntax-triple-terms-negative","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"syntax-triple-terms-positive","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0},{"name":"version","budget_exceeded":0,"gsp_seed":0,"no_manifest":0,"zero_tests":0,"skip":0,"unsupported":0}]},
-    "owl_catalogs": {"profile_rl":{"measured":false},"type_positive_entailment":{"measured":false},"type_negative_entailment":{"measured":false},"type_consistency":{"measured":false},"type_inconsistency":{"measured":false},"profile_el":{"measured":false},"profile_ql":{"measured":false},"semantics_direct":{"measured":false}}
+    "owl_catalogs": {"profile_rl":{"measured":false},"type_positive_entailment":{"measured":false},"type_negative_entailment":{"measured":false},"type_consistency":{"measured":false},"type_inconsistency":{"measured":false},"profile_el":{"measured":false},"profile_ql":{"measured":false},"semantics_direct":{"measured":false}},
+    "local_overrides": {"shex":{"measured":true,"count":1,"tests":["start2RefS1-IstartS2"]},"rif_core":{"measured":true,"count":1,"tests":["corpus:RDF_Combination_Constant_Equivalence_4"]}}
   }
 }
