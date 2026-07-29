@@ -139,15 +139,6 @@ let owl_datatypeComplementOf : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#datatypeComplementOf");
   "http://www.w3.org/2002/07/owl#datatypeComplementOf"
 
-(* owl:onDataRange binds a DATA-range filler to a qualified cardinality
-   restriction, exactly as owl:onClass binds a class filler to an object
-   one (OWL 2 Mapping to RDF Graphs, the Data Property Cardinality
-   Restrictions rows). Without it, `DataExactCardinality(n DP DR)` reads
-   as the UNQUALIFIED `= n DP` and silently drops DR. *)
-let owl_onDataRange : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onDataRange");
-  "http://www.w3.org/2002/07/owl#onDataRange"
-
 (* -------------------------------------------------------------------
    3. Helpers over the RDF graph.
    ------------------------------------------------------------------- *)
@@ -279,16 +270,6 @@ let rec parse_facet_pairs (g : rdf_graph) (heads : list rdf_term) (fuel : nat)
     let this_node = (match term_as_subject h with Some s -> facet_pair_for g s | None -> []) in
     this_node @ parse_facet_pairs g tl (fuel - 1)
 
-(* The filler of a QUALIFIED cardinality restriction: owl:onClass for an
-   object one, owl:onDataRange for a data one. A well-formed restriction
-   node carries exactly one of the two, so the probe order is immaterial;
-   when neither is present the caller falls back to the unqualified
-   reading, exactly as before. *)
-let qualified_filler (g : rdf_graph) (s : subject) : option rdf_term =
-  match find_first_object g s owl_onClass with
-  | Some c -> Some c
-  | None -> find_first_object g s owl_onDataRange
-
 let rec parse_class_expr (g : rdf_graph) (t : rdf_term) (fuel : nat)
   : Tot class_expr (decreases %[fuel; 0]) =
   match fuel with
@@ -361,19 +342,19 @@ let rec parse_class_expr (g : rdf_graph) (t : rdf_term) (fuel : nat)
                           (* Stage (c): cardinality restrictions. *)
                           (match cardinality_value g s owl_minQualifiedCardinality with
                            | Some k ->
-                             (match qualified_filler g s with
+                             (match find_first_object g s owl_onClass with
                               | Some c -> CE_MinQualCard k p (parse_class_expr g c (n - 1))
                               | None -> CE_MinCard k p)
                            | None ->
                              match cardinality_value g s owl_maxQualifiedCardinality with
                              | Some k ->
-                               (match qualified_filler g s with
+                               (match find_first_object g s owl_onClass with
                                 | Some c -> CE_MaxQualCard k p (parse_class_expr g c (n - 1))
                                 | None -> CE_MaxCard k p)
                              | None ->
                                match cardinality_value g s owl_qualifiedCardinality with
                                | Some k ->
-                                 (match qualified_filler g s with
+                                 (match find_first_object g s owl_onClass with
                                   | Some c -> CE_ExactQualCard k p (parse_class_expr g c (n - 1))
                                   | None -> CE_ExactCard k p)
                                | None ->

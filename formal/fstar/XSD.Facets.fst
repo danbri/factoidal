@@ -1233,34 +1233,10 @@ let rec pairwise_provably_distinct (xs : list rdf_term) : Tot bool (decreases xs
   | [] -> true
   | h :: tl -> List.Tot.for_all (term_provably_distinct h) tl && pairwise_provably_distinct tl
 
-(* The xsd:boolean value space, in canonical lexical form. XSD 1.1
-   Datatypes section 3.3.2 gives it as the two-element set {true, false}
-   — the only FINITE value space in the OWL 2 datatype map that is not a
-   numeric interval. Naming it lets `value_set_exact_values` treat a bare
-   `xsd:boolean` filler the way it already treats `xsd:byte`: a finite
-   space whose members can be listed. `term_provably_equal` / `_distinct`
-   already fold the "1"/"0" lexical variants onto these two values, so
-   the pair is pairwise distinct and covers the space, as the COVER +
-   DISTINCT contract requires. *)
-let bool_literal_term (b : bool) : rdf_term =
-  let l : literal = { lexical_form = (if b then "true" else "false"); datatype = xsd_boolean;
-                      lang_tag = None; direction = None } in
-  assert_norm (xsd_boolean <> rdf_lang_string);
-  assert_norm (xsd_boolean <> rdf_dir_lang_string);
-  assert (literal_wf l);
-  T_Literal l
-
-let xsd_boolean_value_space : list rdf_term =
-  [bool_literal_term false; bool_literal_term true]
-
 let value_set_exact_values (v : value_set) : option (list rdf_term) =
   match v with
   | VS_Empty -> Some []
   | VS_Enum xs -> if pairwise_provably_distinct xs then Some xs else None
-  // A bare xsd:boolean constraint IS a finite value space, not an
-  // unbounded family: exactly two values. Every other family
-  // (numeric / string / float / double) is infinite -> None below.
-  | VS_Family Fam_Boolean -> Some xsd_boolean_value_space
   | VS_Interval iv ->
     (match interval_count iv with
      | None -> None
