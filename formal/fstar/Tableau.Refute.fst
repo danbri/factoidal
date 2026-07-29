@@ -1293,6 +1293,23 @@ let rec fold_datatype_constraint (acc : value_set) (ce : class_expr)
     else
     (match classify_family dt with
      | Some Fam_Numeric -> value_set_intersect acc (VS_Interval (base_interval_for dt))
+     // WITHHELD, deliberately: a bare xsd:float / xsd:double filler adds
+     // NO constraint here, even though OWL 2 Syntax section 4.1 makes
+     // those two value spaces disjoint from owl:real and from each other.
+     // The reason is the graph this fold reads. The RL/RDFS closure ships
+     // an RDF-Based datatype-subsumption table that derives
+     // `xsd:byte rdfs:subClassOf xsd:double`, and range propagation turns
+     // one asserted `p rdfs:range xsd:byte` into a DERIVED
+     // `p rdfs:range xsd:double`. Reading that derived range as a
+     // disjointness constraint emptied the value space of the CONSISTENT
+     // WebOnt-I5.8-005 premise (byte + unsignedInt ranges, cardinality
+     // 127) and refuted it. The disjointness is still used where it is
+     // read off an ASSERTED literal's own datatype — `term_family` /
+     // `provably_outside_dense`, which is what "Minus Infinity is not in
+     // owl:real" turns on — never off a derived range triple. Withholding
+     // is sound; manufacturing emptiness is not.
+     | Some Fam_Float -> acc
+     | Some Fam_Double -> acc
      | Some f -> value_set_intersect acc (VS_Family f)
      | None -> acc)
   | CE_ComplementOf inner ->
