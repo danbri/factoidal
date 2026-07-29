@@ -1098,6 +1098,64 @@ emit_json_suites () {
   done <<<"$blob"
 }
 
+# --- Harness diagnostics (#316) ----------------------------------------------
+# w3c_runner prints, after each mode's score table, one machine-readable
+# line per suite plus a total:
+#
+#   HARNESS-DIAG <suite> budget_exceeded:N gsp_seed:N no_manifest:N \
+#                        zero_tests:N skip:N unsupported:N
+#   HARNESS-DIAG-TOTAL budget_exceeded:N ... discovered_tests:N
+#
+# These are the harness's escape branches — every place a test can leave
+# the plain "run it and compare it" path. Publishing them means a rising
+# escape rate shows on the dashboard instead of only in a stderr log.
+# `budget_exceeded` is the one that used to be able to produce a PASS on
+# the lenient bnode-collapsing comparator; since #316 it scores FAIL, so
+# a nonzero count here is a real defect signal, not a curiosity.
+#
+# An older runner binary prints no such lines; that mode then reports
+# `"measured": false` rather than a fabricated set of zeros.
+diag_field () {  # diag_field <line> <field>
+  echo "$1" | sed -nE "s/.*[[:space:]]$2:([0-9]+).*/\1/p"
+}
+
+emit_json_harness_one () {  # emit_json_harness_one <key> <log>
+  local key="$1" log="$2"
+  local total_line rows first=1
+  total_line=$(grep -h '^HARNESS-DIAG-TOTAL ' "$log" 2>/dev/null | tail -1 || true)
+  if [ -z "$total_line" ]; then
+    printf '    "%s": {"measured": false}' "$key"
+    return
+  fi
+  printf '    "%s": {"measured": true, "totals": {' "$key"
+  printf '"budget_exceeded":%s,"gsp_seed":%s,"no_manifest":%s,"zero_tests":%s,"skip":%s,"unsupported":%s,"discovered_tests":%s}' \
+    "$(diag_field "$total_line" budget_exceeded)" \
+    "$(diag_field "$total_line" gsp_seed)" \
+    "$(diag_field "$total_line" no_manifest)" \
+    "$(diag_field "$total_line" zero_tests)" \
+    "$(diag_field "$total_line" skip)" \
+    "$(diag_field "$total_line" unsupported)" \
+    "$(diag_field "$total_line" discovered_tests)"
+  printf ', "suites": ['
+  rows=$(grep -h '^HARNESS-DIAG ' "$log" 2>/dev/null || true)
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    local nm
+    nm=$(echo "$line" | awk '{print $2}')
+    [ "$first" -eq 0 ] && printf ','
+    first=0
+    printf '{"name":"%s","budget_exceeded":%s,"gsp_seed":%s,"no_manifest":%s,"zero_tests":%s,"skip":%s,"unsupported":%s}' \
+      "$nm" \
+      "$(diag_field "$line" budget_exceeded)" \
+      "$(diag_field "$line" gsp_seed)" \
+      "$(diag_field "$line" no_manifest)" \
+      "$(diag_field "$line" zero_tests)" \
+      "$(diag_field "$line" skip)" \
+      "$(diag_field "$line" unsupported)"
+  done <<<"$rows"
+  printf ']}'
+}
+
 {
   printf '{\n'
   printf '  "timestamp": "%s",\n' "$TIMESTAMP_HUMAN"
@@ -1295,6 +1353,18 @@ emit_json_suites () {
   emit_json_suite_obj "rml_io"            RML_IO
   emit_json_suite_obj "toan_matrix"       TOAN_MATRIX
   emit_json_suite_obj "xforms"            XFORMS_NPM
+  printf '\n  },\n'
+  # Harness escape counts per w3c_runner mode (#316). Sits alongside
+  # `suites` rather than inside it: these are properties of the HARNESS,
+  # not scores of a specification.
+  printf '  "harness_diagnostics": {\n'
+  emit_json_harness_one "sparql" "$SPARQL_LOG"
+  printf ',\n'
+  emit_json_harness_one "rdf" "$RDF_LOG"
+  for _k in "${EXTRA_KEYS[@]}"; do
+    printf ',\n'
+    emit_json_harness_one "$_k" "${EXTRA_LOG[$_k]}"
+  done
   printf '\n  }\n'
   printf '}\n'
 } > "$JSON"
@@ -2657,6 +2727,64 @@ GROUP3_HTML=$(group_section "group-other-standards" "Other standards (OGC / ISO 
 GROUP4_BODY=$(printf '%s\n' "$RUNTIME_HTML" "$ENGINES_HTML")
 GROUP4_HTML=$(group_section "group-internal" "Factoidal internal suites (engine end-to-end, parity, regressions)" "$GROUP4_BODY")
 
+# --- Harness diagnostics card (#316) -----------------------------------------
+# Every escape branch in the W3C harness, per suite, on the page. Before
+# #316 these lived only in stderr, so a growing escape rate was invisible
+# to anyone reading the published numbers. `budget_exceeded` is the one
+# that used to be able to score a test PASS on a bnode-collapsing
+# comparator the runner itself called lenient; it now scores FAIL, so any
+# nonzero count is a defect to chase rather than a footnote.
+build_harness_card () {
+  local rows="" any_escape=0 measured=0
+  local keys=("sparql:$SPARQL_LOG" "rdf:$RDF_LOG")
+  local _k
+  for _k in "${EXTRA_KEYS[@]}"; do keys+=("$_k:${EXTRA_LOG[$_k]}"); done
+  local ent key log line
+  for ent in "${keys[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    line=$(grep -h '^HARNESS-DIAG-TOTAL ' "$log" 2>/dev/null | tail -1 || true)
+    if [ -z "$line" ]; then
+      rows+=$(printf '<tr><td><code>%s</code></td><td colspan="6" class="hd-nm">not measured this run (runner predates #316)</td></tr>' "$key")
+      continue
+    fi
+    measured=1
+    local be gs nm zt sk un dt cls
+    be=$(diag_field "$line" budget_exceeded); gs=$(diag_field "$line" gsp_seed)
+    nm=$(diag_field "$line" no_manifest);     zt=$(diag_field "$line" zero_tests)
+    sk=$(diag_field "$line" skip);            un=$(diag_field "$line" unsupported)
+    dt=$(diag_field "$line" discovered_tests)
+    if [ "${be:-0}" -gt 0 ] || [ "${nm:-0}" -gt 0 ] || [ "${zt:-0}" -gt 0 ]; then
+      any_escape=1; cls="hd-bad"
+    else
+      cls="hd-ok"
+    fi
+    rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
+      "$cls" "$key" "${dt:-0}" "${be:-0}" "${gs:-0}" "${nm:-0}" "${zt:-0}" "$((${sk:-0} + ${un:-0}))")
+  done
+  local verdict
+  if [ "$measured" -eq 0 ]; then
+    verdict='<p class="hd-note">No harness-diagnostic data in this run&rsquo;s logs.</p>'
+  elif [ "$any_escape" -eq 0 ]; then
+    verdict='<p class="hd-note">No comparator escapes, no discovery faults. Every score above came from the strict RDFC-1.0 comparator on a suite that discovered its tests.</p>'
+  else
+    verdict='<p class="hd-note hd-bad">One or more escapes fired &mdash; the scores above are NOT wholly strict-comparator results. See the per-suite counts.</p>'
+  fi
+  cat <<HDEOF
+<div class="legend">
+  <p class="legend-title">Harness diagnostics &mdash; escape branches (<a href="https://github.com/danbri/factoidal/issues/316">#316</a>)</p>
+  <p class="legend-note">A conformance number is only as strong as its weakest comparator. These are the branches where a test leaves the plain run-it-and-compare-it path. <strong>budget exceeded</strong> = the RDFC-1.0 canonicalizer hit its Hash-N-Degree-Quads work budget, so graph isomorphism could not be decided; that test is scored FAIL (before 2026-07-29 it fell back to a blank-node-collapsing multiset comparison that could score it PASS). <strong>GSP seed</strong> = the Graph Store Protocol pre-state seeding branch fired. <strong>no manifest</strong> / <strong>zero tests</strong> = a suite discovered nothing; either makes the run exit 2 rather than report green.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>mode</th><th>tests discovered</th><th>budget exceeded</th><th>GSP seed</th><th>no manifest</th><th>zero tests</th><th>skip + unsupported</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  </div>
+  ${verdict}
+</div>
+HDEOF
+}
+HARNESS_CARD_HTML=$(build_harness_card)
+
 # --- Legend -----------------------------------------------------------------
 LEGEND_HTML=$(cat <<'LEGENDEOF'
 <div class="legend">
@@ -2783,6 +2911,17 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
     margin: 0.35em 0; font-size: 0.92rem;
   }
   .legend-note { margin: 0; font-size: 0.85rem; color: var(--muted); }
+  /* Harness diagnostics table (#316) — escape-branch counts per suite. */
+  .hd-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.6em 0; }
+  .hd-table th, .hd-table td {
+    text-align: left; padding: 0.35em 0.5em; border-bottom: 1px solid #e3e3e3;
+    white-space: nowrap;
+  }
+  .hd-table th { color: var(--muted); font-weight: 600; }
+  .hd-table tr.hd-ok td { color: var(--fg); }
+  .hd-table tr.hd-bad td, .hd-bad { color: #a8410f; font-weight: 600; }
+  .hd-nm { color: var(--muted); font-style: italic; font-weight: 400; }
+  .hd-note { margin: 0.4em 0 0; font-size: 0.85rem; color: var(--muted); }
   .dot {
     flex: none; width: 0.85em; height: 0.85em; border-radius: 50%;
     margin-top: 0.25em;
@@ -3121,6 +3260,8 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
 </div>
 
 ${LEGEND_HTML}
+
+${HARNESS_CARD_HTML}
 
 ${GROUP1_HTML}
 ${GROUP_WD_HTML}
