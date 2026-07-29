@@ -272,3 +272,135 @@ let owl_rule_sameAs_symmetry_sound i a g ig =
   fold_left_inv (holds_all i a) emit_step (sameas_pairs ig) g;
   assert_norm (owl_rule_sameAs_symmetry g ig ==
                List.Tot.fold_left emit_step g (sameas_pairs ig))
+
+// ===================================================================
+// Rule 4: owl_rule_cls_oneof (cls-oo) — the list-walking case.
+// OWL 2 RL/RDF rules table: T(?c, owl:oneOf, ?x), LIST[?x, ?y1..?yn]
+// => T(?yk, rdf:type, ?c). The structural risk the pilot exists to
+// de-risk: the rule reads a SYNTACTIC rdf:List via decode_iri_list's
+// fueled recursion over ig_sp lookups; the proof turns that decode
+// into a SEMANTIC sequence reading (seq_is) so the oneOf condition
+// can fire. decode_iri_list_sound is the reusable bridge — every
+// other list-walking rule (cls-int1, cls-uni, prp-key, prp-spo2,
+// cax-adc/adp) can reuse it as-is.
+// ===================================================================
+
+// Borderline VC (Warning 349 without the bump): same --z3rlimit idiom
+// as RDFS.Closure.fsti's rdfs_closure — a resource-budget margin, not
+// a logic change.
+#push-options "--z3rlimit 60 --split_queries always"
+let rec decode_iri_list_sound
+    (i : interp) (a : bnode_assignment i.idom)
+    (g : rdf_graph) (ig : indexed_graph) (head_subj : subject) (fuel : nat)
+  : Lemma
+    (requires ig_wf_sp ig /\ holds_all i a ig.ig_triples)
+    (ensures (match decode_iri_list g ig head_subj fuel with
+              | None -> True
+              | Some elems ->
+                seq_is i (denot_subject i a head_subj)
+                       (List.Tot.map (fun (x : wf_iri) -> i.i_iri x) elems)))
+    (decreases fuel) =
+  let is_nil_head = match head_subj with
+    | S_IRI x -> x = rdf_nil_iri
+    | _ -> false in
+  if is_nil_head then ()
+  else if fuel = 0 then ()
+  else begin
+    let fb = bucket_lookup ig.ig_sp (sp_key head_subj rdf_first) in
+    let rb = bucket_lookup ig.ig_sp (sp_key head_subj rdf_rest) in
+    let firsts = find_objects_indexed ig head_subj rdf_first in
+    let rests  = find_objects_indexed ig head_subj rdf_rest in
+    assert (firsts == List.Tot.map (fun (t : triple) -> t.o) fb);
+    assert (rests  == List.Tot.map (fun (t : triple) -> t.o) rb);
+    match firsts, rests with
+    | (T_IRI p_iri) :: _, tail_term :: _ ->
+      (match fb, rb with
+       | ft :: _, rt :: _ ->
+         // The heads of the object lists are the heads of the buckets.
+         assert (ft.o == T_IRI p_iri);
+         assert (rt.o == tail_term);
+         // ig_wf_sp: both are real snapshot triples rooted at
+         // head_subj with predicates rdf:first / rdf:rest.
+         assert (List.Tot.memP ft (bucket_lookup ig.ig_sp (sp_key head_subj rdf_first)));
+         assert (List.Tot.memP rt (bucket_lookup ig.ig_sp (sp_key head_subj rdf_rest)));
+         assert (triple_holds i a ft);
+         assert (triple_holds i a rt);
+         (match term_to_subject tail_term with
+          | None -> ()
+          | Some tail_subj ->
+            decode_iri_list_sound i a g ig tail_subj (fuel - 1);
+            lemma_denot_term_to_subject i a tail_term tail_subj;
+            (match decode_iri_list g ig tail_subj (fuel - 1) with
+             | None -> ()
+             | Some rest_props ->
+               // The three conjuncts of the seq_is cons case, with
+               // denot_term tail_term as the ground witness.
+               assert (i.iext (i.i_iri rdf_first)
+                              (denot_subject i a head_subj) (i.i_iri p_iri));
+               assert (i.iext (i.i_iri rdf_rest)
+                              (denot_subject i a head_subj) (denot_term i a tail_term));
+               assert (seq_is i (denot_term i a tail_term)
+                              (List.Tot.map (fun (x : wf_iri) -> i.i_iri x) rest_props))))
+       | _, _ -> ())
+    | _, _ -> ()
+  end
+#pop-options
+
+// Proof-engineering note (found the hard way, kept for the next ~15
+// list-walking rules): alpha-identical closures over different-but-
+// equal captured variables share one SMT encoding symbol, so
+// "my inner fold equals the rule's inner fold" closes by congruence —
+// but ONLY if the proof-side lambda is written INLINE and UNASCRIBED.
+// A `let step : ty = fun ...` ascription wraps the term and breaks
+// the encoding-cache sharing, making the equality unprovable. So:
+// state the step obligation on the BETA-REDUCED application, pass the
+// verbatim inline lambda to fold_left_inv, and let the closure's
+// defining axiom connect the two.
+
+#push-options "--z3rlimit 90 --ifuel 4 --split_queries always"
+val owl_rule_cls_oneof_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_oneof i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_cls_oneof g ig))
+
+let owl_rule_cls_oneof_sound i a g ig =
+  let fuel : nat = List.Tot.length g in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==>
+      holds_all i a (owl_cls_oneof_step g ig fuel acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (owl_cls_oneof_step g ig fuel acc t)
+  with _ . begin
+    if t.p = owl_oneOf_iri then
+      match t.s, term_to_subject t.o with
+      | S_IRI c_iri, Some list_subj ->
+        (match decode_iri_list g ig list_subj fuel with
+         | None -> ()
+         | Some members ->
+           decode_iri_list_sound i a g ig list_subj fuel;
+           lemma_denot_term_to_subject i a t.o list_subj;
+           assert (triple_holds i a t);
+           let elems_d = List.Tot.map (fun (x : wf_iri) -> i.i_iri x) members in
+           assert (seq_is i (denot_subject i a list_subj) elems_d);
+           assert (i.iext (i.i_iri owl_oneOf_iri)
+                          (i.i_iri c_iri) (denot_subject i a list_subj));
+           // cond_oneof fires on the sequence reading just built.
+           assert (forall (x : i.idom). List.Tot.memP x elems_d ==>
+                     icext i x (i.i_iri c_iri));
+           introduce forall (acc1 : rdf_graph) (m : wf_iri).
+               (List.Tot.memP m members /\ holds_all i a acc1) ==>
+               holds_all i a (owl_cls_oneof_emit c_iri acc1 m)
+           with introduce (List.Tot.memP m members /\ holds_all i a acc1) ==>
+                          holds_all i a (owl_cls_oneof_emit c_iri acc1 m)
+           with _ . begin
+             List.Tot.memP_map_intro (fun (x : wf_iri) -> i.i_iri x) m members;
+             assert (icext i (i.i_iri m) (i.i_iri c_iri))
+           end;
+           fold_left_inv (holds_all i a) (owl_cls_oneof_emit c_iri) members acc)
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) (owl_cls_oneof_step g ig fuel) g g
+#pop-options
