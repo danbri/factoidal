@@ -517,6 +517,19 @@ Ordered by (tests gained) / (estimated effort), one commit-sized item each.
     section above for the design; default paths unchanged). **3 tests,
     flag-mode only by design.**
 
+## 7. Owner steers 2026-07-29 (next wave)
+
+Verbatim: "This is a good agenda! Sure do 1, 2 now but know that the
+most appealing is 'formalize the RDF-Based semantics itself in F* and
+prove the RL rule set sound against it'."
+
+Dispatched accordingly: (1) datatype value-space engine, (2) range-iff
++ extensional-property rules, and (3) the semantics-formalization
+FLAGSHIP, starting as a design + pilot phase (formalization strategy
+doc + a small set of RL rules proven sound end-to-end against a
+formalized interpretation structure) before committing to the full
+rule-set program.
+
 ## 6. Composed flag-mode battery (2026-07-29, post-landing)
 
 `--semantics rdf-based-full` on the composed tree (closure wave 2 +
