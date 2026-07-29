@@ -142,6 +142,31 @@ Turtle graphs into named graphs and serves them with
 | Scope decisions | `docs/claude-rules/scope.md` | humans/agents | update **in the same commit** as the scope-changing code |
 | Parser perf status | `docs/designissues/parser-speed-status.md`, `turtle-parser-metrics.md` | humans/agents | only with fresh measurements (see `perf-benchmarking`) |
 | Parse/serialize throughput | `docs/test-results/perf-parse-serialize.json` (+ `.fragment.html`, surfaced in the dashboard `index.html`) | `tools/bench-parse-serialize.sh` via the `parse-serialize-bench` job in `ukparliament-bench.yml` | committed-binary only, no toolchain; update via the harness, never by hand |
+| Per-module assurance inventory | `docs/web/conformance/assurance-inventory.md` + `docs/test-results/assurance-inventory.{json,html}` | `tools/assurance-inventory.sh`, run by `dashboard-refresh.yml` | never hand-edit; regenerate and commit in the same PR as any change to `.fst` sources, the build module list, or the per-suite manifests |
+
+## The assurance inventory (generated — do not hand-edit)
+
+`tools/assurance-inventory.sh` derives, for every `.fst`/`.fsti` under
+`formal/fstar/`, the fields that keep "implemented in F\*", "accepted
+by the verifier" and "proved correct against a formalisation of the
+spec" apart (issue #315, from the #313 claim-discipline epic). It reads
+F\* source, the committed extracted OCaml, `build-ocaml.sh`'s module
+lists, `.github/test-suites/*.yaml` and the committed `*_results.log`
+files. No toolchain, no test run, no F\*.
+
+- Its oracle is **extraction**: a name present in
+  `ocaml-output/<Module>.ml` as a value binding is a shipping function;
+  a definition F\* erases whose return type is `prop`/`Type0`/`logical`
+  is a declarative relation. That is what makes "theorem about the
+  shipping function" machine-visible rather than a judgement call.
+- It fails **downward** by design — ambiguous names are dropped and a
+  module whose extracted `.ml` is missing reads "unclassified", never
+  promoted. A false "has a correctness theorem" is worse than a gap.
+- `tools/assurance-inventory.sh --check` exits non-zero if any active
+  admission or `--lax`/`--admit_smt_queries` region exists. That is how
+  iron rule #10 gets proved instead of asserted.
+- Any prose making a module-level verification claim must be checkable
+  against this table. When the two disagree, the prose is the bug.
 
 When any session notices a hand-maintained number contradicting
 `latest.json` or a fresh measurement, fixing it is in-scope for that
