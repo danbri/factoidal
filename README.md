@@ -376,10 +376,17 @@ cd formal/fstar
 make verify    # requires z3
 ```
 
-This type-checks all F\* modules against the SMT solver. The RDF graph
-and SPARQL algebra modules are fully verified — zero `admit()` anywhere
-in the F\* source (the 4 SPARQL proof-lemma admits an earlier README
-disclosed have since been eliminated). `SPARQL11.Parser.fst` is now in
+This target checks the six modules named in `formal/fstar/Makefile`'s
+`MODULES` variable — **not** the whole corpus; the full tree is verified
+by `./build-ocaml.sh extract` (issue
+[#319](https://github.com/danbri/factoidal/issues/319) tracks making the
+target cover everything). Three `admit ()` sites remain in
+`SPARQL11.Algebra.fst` (solution-mapping lemmas 19.9, 19.10-left and
+19.18); an earlier version of this paragraph claimed zero, which the
+generated assurance inventory falsified — see
+`docs/web/conformance/assurance-inventory.md` for the counted position
+and [#323](https://github.com/danbri/factoidal/issues/323) for the
+burn-down. `SPARQL11.Parser.fst` is now in
 the same state: the two `#push-options "--admit_smt_queries true"`
 regions that used to cover its mutually-recursive expression and
 UPDATE parser blocks (119 of 233 definitions) were removed on
