@@ -271,6 +271,37 @@ variants, then sure"; see §5 item 1):**
   iff-conditions, so flag-mode closure stays finite and terminating
   (same ter Horst-style if-instance weakening as the PE witness layer,
   documented in `OWL.Closure.fsti` §20b).
+- **FULL inherits the RDF-Based exemptions.**
+  `owl_rule_named_equivClass_to_sameAs_mode` (the Direct-mode heuristic
+  that promotes a named `owl:equivalentClass` pair to `owl:sameAs`) is
+  suppressed under RDF-BASED-FULL exactly as under RDF-BASED — letting
+  it fire refuted `WebOnt-Class-004` (NE: "Annotations about owl:Class
+  are not related to those about rdfs:Class") by copying a `dc:creator`
+  annotation across the meta pair.
+
+**Measured, 2026-07-29 (--regime dl, four-catalog battery, both modes):**
+
+| Catalog | flag OFF (default) | flag ON (`--semantics rdf-based-full`) |
+|---|---|---|
+| type-positive-entailment | 178 pass, 26 fail (out of 204) | 180 pass, 24 fail (out of 204) |
+| type-inconsistency | 124 pass, 3 fail (out of 127) | 123 pass, 4 fail (out of 127) |
+| type-consistency | 352 pass, 0 fail (out of 352) | 352 pass, 0 fail (out of 352) |
+| type-negative-entailment | 23 pass, 0 fail (out of 23) | 23 pass, 0 fail (out of 23) |
+
+Default mode is byte-identical in behaviour to before the flag existed
+(FAIL-name diffs empty on all four catalogs). Flag-on FAIL-name diffs,
+enumerated:
+
+- ✅ fixed under the flag: `WebOnt-Class-001/-002/-003` (the Group G
+  targets).
+- ⚠️ flag-on regressions (2, both explainable, neither touches default
+  mode): `WebOnt-I4.6-005-Direct` (PE; its `-Direct` suffix marks it as
+  testing the Direct-semantics annotation-copying reading of
+  equivalentClass, which the RDF-Based reading — and therefore this
+  mode — rejects; it is the test the suppressed sameAs-promotion rule
+  targets) and `WebOnt-description-logic-910` (inconsistency; the
+  meta-axiom table grows the closure that the Farkas class-size
+  counting pass reads, pushing it past its budget).
 
 ### Group H — hard DL98-style tableau stress tests (9 tests, HIGH effort)
 
