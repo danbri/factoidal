@@ -161,9 +161,29 @@ echo "clean-room: cloned $REF at $CLONE_SHA"
 echo "clean-room: [2/6] purging generated artifacts..."
 purge_count() { find "$@" 2>/dev/null | wc -l | tr -d ' '; }
 
+# bin/ holds TWO different kinds of thing and only one of them is output.
+# bin/<platform>/ (linux-x86_64, darwin-arm64, and the ci- shadows) holds
+# compiled binaries — iron rule #9 artifacts, and exactly what a cold build
+# must reproduce. Every other bin/<consumer>/ holds hand-written consumer
+# SOURCE: rule #11 puts CLI/runner/HTTP entry points there, deliberately
+# outside the verified library boundary. There are 38 such directories.
+# Deleting those does not test reproducibility, it deletes the program —
+# which is what an earlier version of this script did, dying at
+# `Error: I/O error: ../../../bin/w3c-runner/w3c_runner.ml: No such file`.
+PLATFORM_BIN_DIRS=()
+for d in "$CLONE"/bin/linux-* "$CLONE"/bin/darwin-* "$CLONE"/bin/ci-linux-* "$CLONE"/bin/ci-darwin-*; do
+  [ -d "$d" ] || continue
+  # Belt and braces: never touch a directory that contains OCaml source.
+  if find "$d" -maxdepth 1 \( -name '*.ml' -o -name '*.mli' \) | grep -q .; then
+    echo "clean-room: refusing to purge $d — it contains OCaml source" >&2
+    continue
+  fi
+  PLATFORM_BIN_DIRS+=("$d")
+done
+[ "${#PLATFORM_BIN_DIRS[@]}" -gt 0 ] || die "found no bin/<platform>/ directories to purge; the layout must have changed"
+
 N_CHECKED=$(purge_count "$CLONE/formal/fstar" -maxdepth 1 -name '*.checked')
-N_ML=$(purge_count "$CLONE/formal/fstar/ocaml-output" -maxdepth 1 -name '*.ml')
-N_BIN=$(purge_count "$CLONE/bin" -mindepth 2 -type f ! -name '*.md' ! -name '.gitkeep')
+N_BIN=$(find "${PLATFORM_BIN_DIRS[@]}" -type f ! -name '*.md' ! -name '.gitkeep' 2>/dev/null | wc -l | tr -d ' ')
 
 find "$CLONE/formal/fstar" -maxdepth 1 \( -name '*.checked' -o -name '*.verified' \) -delete 2>/dev/null
 find "$CLONE/formal/fstar" -maxdepth 2 -name '*.checked' -delete 2>/dev/null
@@ -197,14 +217,18 @@ for p in glob.glob(os.path.join(outdir, '*.ml')):
     else:
         kept += 1
 print(f"clean-room: removed {removed} F*-generated .ml; kept {kept} hand-written (rule #11 realisations)")
+with open(os.path.join(clone, '.cleanroom-ml-count'), 'w') as fh:
+    fh.write(str(removed))
 PYEOF
+N_ML=$(cat "$CLONE/.cleanroom-ml-count"); rm -f "$CLONE/.cleanroom-ml-count"
 find "$CLONE/formal/fstar/ocaml-output" -maxdepth 1 \
      \( -name '*.cmi' -o -name '*.cmx' -o -name '*.cmo' \
         -o -name '*.o' -o -name '*.a' -o -name '*.cmxa' -o -name '*.bc.js' \) \
      -delete 2>/dev/null
 # Committed binaries (iron rule #9) — the thing a cold build must reproduce.
-find "$CLONE/bin" -mindepth 2 -type f ! -name '*.md' ! -name '.gitkeep' -delete 2>/dev/null
-# Dangling symlinks left behind in ocaml-output now that bin/ is empty.
+# Platform directories only; consumer SOURCE under bin/<consumer>/ is untouched.
+find "${PLATFORM_BIN_DIRS[@]}" -type f ! -name '*.md' ! -name '.gitkeep' -delete 2>/dev/null
+# Dangling symlinks left behind in ocaml-output now that the binaries are gone.
 find "$CLONE/formal/fstar/ocaml-output" -maxdepth 1 -xtype l -delete 2>/dev/null
 
 echo "clean-room: purged ${N_CHECKED} .checked, ${N_ML} extracted .ml, ${N_BIN} binaries, and the extract manifest"
