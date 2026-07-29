@@ -143,6 +143,13 @@ echo "clean-room: cap     ${CAP_MINUTES}m"
 # the tree purely from git, which is the property that matters here: nothing
 # in the built tree can have come from the source checkout's build state.
 # History depth is irrelevant to whether the corpus rebuilds from source.
+#
+# KNOWN CONSEQUENCE: a --depth 1 clone has no history, so the handful of hub
+# tests that assert "the commits this post cites are real, reachable commits"
+# fail here for want of the objects, not for want of correctness. Read those
+# specific failures as an artefact of the clone depth. Deepening the clone
+# would mean transferring ~5 GB of history to answer a question the cold
+# build is not asking.
 # ---------------------------------------------------------------------------
 echo "clean-room: [1/6] cloning (shallow, from git only)..."
 case "$SOURCE_REPO" in
@@ -188,7 +195,12 @@ N_BIN=$(find "${PLATFORM_BIN_DIRS[@]}" -type f ! -name '*.md' ! -name '.gitkeep'
 find "$CLONE/formal/fstar" -maxdepth 1 \( -name '*.checked' -o -name '*.verified' \) -delete 2>/dev/null
 find "$CLONE/formal/fstar" -maxdepth 2 -name '*.checked' -delete 2>/dev/null
 rm -rf "$CLONE/formal/fstar/ocaml-output/.extract-state"
-rm -rf "$CLONE/formal/fstar/c-output"
+# NOT purged: formal/fstar/c-output/. It is output, but of the KaRaMeL C-build
+# pilot (`make extract-c`), which this script does not run and which needs a
+# krml binary outside the standard toolchain. Deleting output we then decline
+# to regenerate does not test reproducibility — it just fails the hub tests
+# that assert the committed C demo exists. Purge it here if the C build is
+# ever wired into this script.
 # Extracted OCaml only.
 #
 # NOT every .ml in ocaml-output/ is generated. A handful are hand-written
