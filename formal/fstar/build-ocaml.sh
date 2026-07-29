@@ -585,6 +585,35 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
           dep="${dep##*/}"
           [[ -n "${MOD_SET[$dep]:-}" ]] && deps+="$dep "
           ;;
+        *.fsti.checked)
+          # Interface-backed dependency. When a module has an adjacent
+          # .fsti, --dep full makes every dependent's .fst.checked depend
+          # on the INTERFACE's .fsti.checked and never on the
+          # implementation's .fst.checked, so this token shape is the only
+          # evidence of the edge. Dropping it (as this parser did until
+          # 2026-07-29) loses real dependencies on the eight .fsti-backed
+          # modules: RDF.Term, RDF.Triple, RDF.Graph, RDF.Indexed,
+          # RDF.Vocabulary, RDF.IRI, OWL.Closure, RDFS.Closure. Measured on
+          # the real graph: 441 edges without this case, 503 with it, and
+          # RDF.Entailment.Simple's transitive closure goes from 1 module
+          # to 9 -- RDF.Term among them.
+          #
+          # That was survivable while layering was the only consumer (the
+          # synchronous .fsti pre-check above makes every .fsti.checked
+          # exist before any layer starts, which is why the old comment
+          # called teaching this parser a new token shape unnecessary). It
+          # is NOT survivable now that the same DEPS map feeds the
+          # dependency-closure digest (issue #320): without this case,
+          # editing RDF.Term.fst would not invalidate anything that
+          # consumes it through RDF.Term.fsti.
+          #
+          # Self-edges are excluded: a module's own .fst.checked depends on
+          # its own .fsti.checked, which would be read as a cycle.
+          dep="${tok%.checked}"
+          dep="${dep##*/}"
+          dep="${dep%i}"
+          [[ "$dep" != "$target" ]] && [[ -n "${MOD_SET[$dep]:-}" ]] && deps+="$dep "
+          ;;
       esac
     done
     DEPS["$target"]="$deps"
