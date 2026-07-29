@@ -485,3 +485,18 @@ The design is viable. I would not commit the full programme without adding these
 
 Those lemmas turn the two most consequential informal arguments in the note into checked infrastructure rather than recurring proof assumptions.
 ```
+
+### Review addendum (same day, follow-up)
+
+Verbatim: "The semantic baseline needs to be pinned down. The design
+note says it transcribes RDF 1.1 Semantics, while claiming soundness
+against OWL 2 RDF-Based Semantics. But the normative OWL 2
+specification from 2012 explicitly builds on the 2004 RDF Semantics,
+not RDF 1.1, which appeared in 2014." (Owner adds: RDF 1.2 muddies the
+waters further.) Phase-2 obligation added: pin the theorem surface to
+OWL 2 (2012) over its normative 2004 RDF basis; audit every
+RDF-1.1-flavored representation choice (literal typing / rdf:langString
+vs 2004 plain literals, IRIs vs RDF URI references, datatype-map
+framing) as enlarging/neutral/restricting relative to 2004-based
+interpretations, with a delta table; quarantine all RDF 1.2 constructs
+from the theorem surface alongside i_tt.
