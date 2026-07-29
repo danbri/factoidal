@@ -1584,12 +1584,27 @@ let datatype_cardinality_clash (subprop_pairs : list (wf_iri & wf_iri))
    exactly what it is today — see owl_runner's g_rl / g_dl split.
    ------------------------------------------------------------------- *)
 
+(* CLOSURE-SCAFFOLDING GUARD, same one section 7 states in full: the RL
+   closure materialises "__rl_svf_..." / "__rl_minqc1_..." /
+   "__rl_maxqc1_..." / "__rl_exactqc1_..." membership bnodes as SUPPORT
+   triples for the corpus's bnode-existential conclusion matching, and
+   their cardinality reading is deliberately loose — NOT sound read as a
+   real restriction. Reading "__rl_exactqc1_P__on__C" as exact-1 P.C here
+   would let the rule below manufacture fillers, so every scaffold bnode
+   parses to CE_Unknown (inert). Dropping a non-constraint is sound. *)
+let is_scaffold_bnode (b : bnode_id) : bool =
+  String.length b >= 5 && String.sub b 0 5 = "__rl_"
+
 // Parsed class expressions of a list of rdf:type objects.
 let rec parsed_type_labels (g : rdf_graph) (ts : list rdf_term)
   : Tot (list class_expr) (decreases ts) =
   match ts with
   | [] -> []
-  | t :: tl -> parse_class_expr g t 32 :: parsed_type_labels g tl
+  | t :: tl ->
+    let ce = (match t with
+              | T_BNode b -> if is_scaffold_bnode b then CE_Unknown else parse_class_expr g t 32
+              | _ -> parse_class_expr g t 32) in
+    ce :: parsed_type_labels g tl
 
 // The (k, filler) obligations on property p carried by a label list.
 // CE_Unknown as the filler means "unrestricted": `fold_datatype_constraint`
@@ -2705,8 +2720,8 @@ let has_clash (g : rdf_graph) (st : rstate) : bool =
    class-expression this module parses therefore maps closure-internal
    scaffold bnodes to CE_Unknown — inert in labels, axioms, and
    branching. Dropping a (non-)constraint is always sound. *)
-let is_scaffold_bnode (b : bnode_id) : bool =
-  String.length b >= 5 && String.sub b 0 5 = "__rl_"
+// `is_scaffold_bnode` itself is defined earlier in the file (just above
+// section 5b', which needs the same guard on the materialisation side).
 
 let parse_nnf (g : rdf_graph) (t : rdf_term) : class_expr =
   match t with
