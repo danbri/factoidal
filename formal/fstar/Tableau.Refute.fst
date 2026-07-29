@@ -1261,6 +1261,14 @@ let rec fold_datatype_constraint (acc : value_set) (ce : class_expr)
     // (acc unchanged), never a false clash on a satisfiable float range.
     else if is_float_datatype dt
     then (if float_restriction_provably_empty dt facets then VS_Empty else acc)
+    // A DatatypeRestriction over a DENSE base (owl:real / owl:rational /
+    // xsd:decimal) folds into a rational-endpoint interval on the
+    // owl:real number line. Emptiness there is the DENSE rule — an open
+    // (a, b) with a < b is never empty, however close a and b are — so
+    // this arm can never manufacture the adjacency clash the integer
+    // arm above is allowed to draw.
+    else if is_dense_numeric_datatype dt
+    then value_set_intersect acc (VS_Dense (dense_facets_to_qinterval facets full_qinterval))
     else acc
   | CE_OneOf members ->
     if Cons? members && all_literal_terms members
@@ -1273,6 +1281,15 @@ let rec fold_datatype_constraint (acc : value_set) (ce : class_expr)
     // an unbounded interval adds no false emptiness on its own.
     if is_datetime_datatype dt
     then value_set_intersect acc (VS_DateInterval full_interval)
+    // A bare owl:real / owl:rational / xsd:decimal filler confines every
+    // filler to the (unbounded) owl:real number line. That is the whole
+    // content of the W3C DL InconsistencyTest "Minus Infinity is not in
+    // owl:real": OWL 2 Syntax section 4.1 puts the xsd:float and
+    // xsd:double value spaces OUTSIDE owl:real, so a DataOneOf member
+    // typed xsd:float — "-INF" included — is provably not admissible,
+    // and `value_set_intersect`'s Dense/Enum case drops it.
+    else if is_dense_numeric_datatype dt
+    then value_set_intersect acc (VS_Dense full_qinterval)
     else
     (match classify_family dt with
      | Some Fam_Numeric -> value_set_intersect acc (VS_Interval (base_interval_for dt))
@@ -1304,33 +1321,103 @@ let rec universal_for_property (subprop_pairs : list (wf_iri & wf_iri))
        then fold_datatype_constraint acc d else acc)
   | _ :: tl -> universal_for_property subprop_pairs p tl acc
 
+(* -------------------------------------------------------------------
+   5a'. Values a NegativeDataPropertyAssertion FORBIDS on this node.
+
+   OWL 2 Syntax section 9.6.6: NegativeDataPropertyAssertion(DP a lt) is
+   satisfied by an interpretation iff the pair (a, lt) is NOT in DP's
+   extension. The OWL 2 Mapping to RDF writes it as a reification:
+
+     _:x rdf:type owl:NegativePropertyAssertion ;
+         owl:sourceIndividual   a ;
+         owl:assertionProperty  DP ;
+         owl:targetValue        lt .
+
+   `negated_values g i ps` collects every such forbidden literal for
+   individual i on any property in `ps`. Callers pass `superproperties_of
+   p` — a negation on a SUPERproperty q of p forbids the pair on p too,
+   since EXT(p) subset-of EXT(q) means an (i, v) pair in EXT(p) would be
+   in EXT(q), which the assertion denies. The reverse direction (a
+   negation on a SUBproperty) does NOT propagate up and is not collected.
+
+   Only LITERAL targets are collected: owl:targetIndividual names an
+   object-property negation, which no datatype value_set can speak about.
+   ------------------------------------------------------------------- *)
+// Cheap guard: no owl:targetValue triple anywhere means no data-value
+// negation exists, so the (quadratic) collection below is skipped. Every
+// node/branch of the refuter passes through here, so the common case
+// must cost one linear scan, not a scan per property per node.
+let rec graph_has_target_value (ts : rdf_graph) : Tot bool (decreases ts) =
+  match ts with
+  | [] -> false
+  | t :: tl -> t.p = owl_targetValue || graph_has_target_value tl
+
+let rec negated_values (g : rdf_graph) (i : subject) (ps : list wf_iri) (ts : rdf_graph)
+  : Tot (list rdf_term) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = negated_values g i ps tl in
+    (match t.o with
+     | T_Literal _ ->
+       if t.p = owl_targetValue
+          && List.Tot.existsb (rdf_term_eq (subject_to_term i))
+                              (find_objects g t.s owl_sourceIndividual)
+          && List.Tot.existsb
+               (fun (o : rdf_term) -> match o with T_IRI q -> mem_iri q ps | _ -> false)
+               (find_objects g t.s owl_assertionProperty)
+       then t.o :: rest
+       else rest
+     | _ -> rest)
+
 (* Does ANY single existence-forcing obligation on property p (one
    CE_SomeValuesFrom filler, or one CE_HasValue literal) fail to fit
-   inside `universal`? Each checked independently — see the soundness
-   note above for why obligations are never combined with each other. *)
-let rec exists_unsatisfiable_witness (p : wf_iri) (ls : list class_expr) (universal : value_set)
+   inside `universal`, once the values `negs` FORBIDS are taken out?
+   Each checked independently — see the soundness note above for why
+   obligations are never combined with each other.
+
+   The `negs` step is what closes "Minus Infinity is not in owl:real":
+   the forced :dp-filler of :a must lie in
+     {-INF^^xsd:float, -0^^xsd:integer} INTERSECT owl:real = {0}
+   and NegativeDataPropertyAssertion(:dp :a "0"^^xsd:unsignedInt) forbids
+   that one remaining value ("-0"^^xsd:integer and "0"^^xsd:unsignedInt
+   denote the same integer, which `term_provably_equal` proves). Nothing
+   is left for the filler to be: clash. Soundness rests on
+   `remove_negated_values` only ever shrinking a value_set shape that
+   COVERS the admissible set, and only on a PROOF of value equality —
+   see its banner in XSD.Facets. *)
+let rec exists_unsatisfiable_witness (p : wf_iri) (ls : list class_expr)
+                                     (universal : value_set) (negs : list rdf_term)
   : Tot bool (decreases ls) =
   match ls with
   | [] -> false
   | CE_SomeValuesFrom q d :: tl ->
-    if q = p && value_set_is_empty (fold_datatype_constraint universal d)
+    if q = p
+       && value_set_is_empty
+            (remove_negated_values negs (fold_datatype_constraint universal d))
     then true
-    else exists_unsatisfiable_witness p tl universal
+    else exists_unsatisfiable_witness p tl universal negs
   | CE_HasValue q v :: tl ->
     if q = p then
       (match v with
        | T_Literal _ ->
-         if value_set_is_empty (value_set_intersect universal (VS_Enum [v]))
+         if value_set_is_empty
+              (remove_negated_values negs (value_set_intersect universal (VS_Enum [v])))
          then true
-         else exists_unsatisfiable_witness p tl universal
-       | _ -> exists_unsatisfiable_witness p tl universal)
-    else exists_unsatisfiable_witness p tl universal
-  | _ :: tl -> exists_unsatisfiable_witness p tl universal
+         else exists_unsatisfiable_witness p tl universal negs
+       | _ -> exists_unsatisfiable_witness p tl universal negs)
+    else exists_unsatisfiable_witness p tl universal negs
+  | _ :: tl -> exists_unsatisfiable_witness p tl universal negs
 
-let property_datatype_clash (subprop_pairs : list (wf_iri & wf_iri))
+let negated_values_for (g : rdf_graph) (i : subject) (ps : list wf_iri) : list rdf_term =
+  if graph_has_target_value g then negated_values g i ps g else []
+
+let property_datatype_clash (g : rdf_graph) (i : subject)
+                            (subprop_pairs : list (wf_iri & wf_iri))
                             (p : wf_iri) (ls_all : list class_expr) : bool =
   let universal = universal_for_property subprop_pairs p ls_all VS_Unconstrained in
-  exists_unsatisfiable_witness p ls_all universal
+  let negs = negated_values_for g i (superproperties_of subprop_pairs p) in
+  exists_unsatisfiable_witness p ls_all universal negs
 
 (* Every property mentioned in a Some/All/HasValue label on this node
    (duplicates harmless — `any_property_datatype_clash` just re-checks
@@ -1348,20 +1435,22 @@ let rec collect_dt_properties (ls : list class_expr) : Tot (list wf_iri) (decrea
   | CE_HasValue p _ :: tl -> p :: collect_dt_properties tl
   | _ :: tl -> collect_dt_properties tl
 
-let rec any_property_datatype_clash (subprop_pairs : list (wf_iri & wf_iri))
+let rec any_property_datatype_clash (g : rdf_graph) (i : subject)
+                                    (subprop_pairs : list (wf_iri & wf_iri))
                                     (ps : list wf_iri) (ls_all : list class_expr)
   : Tot bool (decreases ps) =
   match ps with
   | [] -> false
   | p :: tl ->
-    property_datatype_clash subprop_pairs p ls_all
-    || any_property_datatype_clash subprop_pairs tl ls_all
+    property_datatype_clash g i subprop_pairs p ls_all
+    || any_property_datatype_clash g i subprop_pairs tl ls_all
 
 (* C6 entry point: is there ANY property on this node whose combined
    ∀-constraint + at least one ∃/hasValue obligation is unsatisfiable? *)
-let datatype_range_clash (subprop_pairs : list (wf_iri & wf_iri))
+let datatype_range_clash (g : rdf_graph) (i : subject)
+                         (subprop_pairs : list (wf_iri & wf_iri))
                          (ls_all : list class_expr) : bool =
-  any_property_datatype_clash subprop_pairs (collect_dt_properties ls_all) ls_all
+  any_property_datatype_clash g i subprop_pairs (collect_dt_properties ls_all) ls_all
 
 (* -------------------------------------------------------------------
    5b. Datatype cardinality clash (owl2 concrete-domain intervals).
@@ -1435,6 +1524,183 @@ let datatype_cardinality_clash (subprop_pairs : list (wf_iri & wf_iri))
                                (range_pairs : list (wf_iri & wf_iri))
                                (ls_all : list class_expr) : bool =
   any_card_valuespace_clash subprop_pairs range_pairs (collect_card_props ls_all) ls_all
+
+(* -------------------------------------------------------------------
+   5b'. FORCED DATATYPE FILLERS — the ENTAILMENT side of the same
+        value-space decision procedure.
+
+   Sections 5a/5b use a value space to REFUTE: no admissible value left,
+   or fewer admissible values than a cardinality demands. The identical
+   machinery ENTAILS whenever the count matches exactly.
+
+   THE RULE. Let p be a data property and i an individual. Write
+
+     U = INTERSECTION over every `for-all q.D` label on i with p ⊑* q,
+         intersected with every rdfs:range datatype of every such q,
+         minus every value a NegativeDataPropertyAssertion on p or a
+         super-property of p forbids for i
+
+   so that EVERY p-filler of i lies in U (that is exactly what those
+   axioms say). Let an obligation on i force at least k pairwise-distinct
+   p-fillers, all of them inside a data range D — the shapes are
+
+     for-some p.D                 k = 1, filler D
+     min-cardinality k p          k,     filler unrestricted
+     exact-cardinality k p        k,     filler unrestricted
+     min-qualified k p C          k,     filler C
+     exact-qualified k p C        k,     filler C
+
+   and let W = U INTERSECT D. If `value_set_exact_values W` returns a
+   list L of length exactly k, then EVERY member of L is a p-filler of i,
+   and `i p v` may be asserted for each.
+
+   PROOF. Let A be the true set of p-fillers of i admissible under the
+   axioms. Every filler lies in U and in D, so A subset-of W subset-of
+   set(L) by the COVER half of `value_set_exact_values`' contract. The
+   obligation supplies k pairwise-distinct fillers, all in A, so
+   |A| >= k. The DISTINCT half gives |set(L)| = length L = k. Chaining:
+   k <= |A| <= |set(L)| = k, so A = set(L). Every member of L is realised.
+   Note the argument survives L OVER-approximating W — only the cover and
+   the exact length are used — which is why an enum with unproven-equal
+   members is refused (its length would not be a count) while an enum
+   filtered by an over-approximating intersection is fine.
+
+   WHAT IT CLOSES.
+     - WebOnt-I5.8-010: p rdfs:range xsd:nonNegativeInteger and
+       i in for-some p.xsd:nonPositiveInteger. U = [0, INF),
+       D = (-INF, 0], W = [0, 0], k = 1, L = ["0"] — so `i p 0` follows.
+       That is the test's own sentence: "0 is the only
+       xsd:nonNegativeInteger which is also an xsd:nonPositiveInteger."
+     - WebOnt-I5.8-004: p rdfs:range xsd:byte AND xsd:unsignedInt, i in
+       exact-cardinality 128 p. U = [-128,127] INTERSECT [0,4294967295]
+       = [0,127], k = 128 = length L — so all 128 values follow, "5"
+       among them. Again the test's own sentence: "There are precisely
+       128 different values of xsd:byte that are also xsd:unsignedInt."
+   Neither is coded for; both fall out of the count.
+
+   The emitted triples are model-theoretic entailments, so they are safe
+   anywhere. They are nonetheless routed ONLY through `dl_materialise`
+   (never into the refuter's own input graph) to keep the refuter's input
+   exactly what it is today — see owl_runner's g_rl / g_dl split.
+   ------------------------------------------------------------------- *)
+
+// Parsed class expressions of a list of rdf:type objects.
+let rec parsed_type_labels (g : rdf_graph) (ts : list rdf_term)
+  : Tot (list class_expr) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl -> parse_class_expr g t 32 :: parsed_type_labels g tl
+
+// The (k, filler) obligations on property p carried by a label list.
+// CE_Unknown as the filler means "unrestricted": `fold_datatype_constraint`
+// leaves the value_set untouched on it.
+let rec forced_obligations_for (p : wf_iri) (ls : list class_expr)
+  : Tot (list (nat & class_expr)) (decreases ls) =
+  match ls with
+  | [] -> []
+  | CE_SomeValuesFrom q d :: tl ->
+    let rest = forced_obligations_for p tl in
+    if q = p then (1, d) :: rest else rest
+  | CE_MinCard k q :: tl ->
+    let rest = forced_obligations_for p tl in
+    if q = p then (k, CE_Unknown) :: rest else rest
+  | CE_ExactCard k q :: tl ->
+    let rest = forced_obligations_for p tl in
+    if q = p then (k, CE_Unknown) :: rest else rest
+  | CE_MinQualCard k q c :: tl ->
+    let rest = forced_obligations_for p tl in
+    if q = p then (k, c) :: rest else rest
+  | CE_ExactQualCard k q c :: tl ->
+    let rest = forced_obligations_for p tl in
+    if q = p then (k, c) :: rest else rest
+  | _ :: tl -> forced_obligations_for p tl
+
+let rec filler_triples (i : subject) (p : wf_iri) (vs : list rdf_term)
+  : Tot (list triple) (decreases vs) =
+  match vs with
+  | [] -> []
+  | v :: tl -> ({ s = i; p = p; o = v } <: triple) :: filler_triples i p tl
+
+let rec forced_triples_for_obligations (i : subject) (p : wf_iri)
+                                       (u : value_set) (negs : list rdf_term)
+                                       (obs : list (nat & class_expr))
+  : Tot (list triple) (decreases obs) =
+  match obs with
+  | [] -> []
+  | (k, d) :: tl ->
+    let rest = forced_triples_for_obligations i p u negs tl in
+    if k = 0 then rest
+    else
+      let w = remove_negated_values negs (fold_datatype_constraint u d) in
+      (match value_set_exact_values w with
+       | Some vs -> if List.Tot.length vs = k then filler_triples i p vs @ rest else rest
+       | None -> rest)
+
+let forced_triples_for_prop (g : rdf_graph)
+                            (subprop_pairs : list (wf_iri & wf_iri))
+                            (range_pairs : list (wf_iri & wf_iri))
+                            (i : subject) (ls : list class_expr) (p : wf_iri)
+  : list triple =
+  let u = value_set_intersect
+            (universal_for_property subprop_pairs p ls VS_Unconstrained)
+            (range_value_set subprop_pairs range_pairs p VS_Unconstrained) in
+  let negs = negated_values_for g i (superproperties_of subprop_pairs p) in
+  forced_triples_for_obligations i p u negs (forced_obligations_for p ls)
+
+// Properties a cardinality label names (the Some/All/HasValue ones come
+// from `collect_dt_properties`).
+let rec card_prop_iris (ls : list class_expr) : Tot (list wf_iri) (decreases ls) =
+  match ls with
+  | [] -> []
+  | CE_MinCard _ p :: tl -> p :: card_prop_iris tl
+  | CE_ExactCard _ p :: tl -> p :: card_prop_iris tl
+  | CE_MinQualCard _ p _ :: tl -> p :: card_prop_iris tl
+  | CE_ExactQualCard _ p _ :: tl -> p :: card_prop_iris tl
+  | _ :: tl -> card_prop_iris tl
+
+let rec forced_triples_for_props (g : rdf_graph)
+                                 (subprop_pairs : list (wf_iri & wf_iri))
+                                 (range_pairs : list (wf_iri & wf_iri))
+                                 (i : subject) (ls : list class_expr) (ps : list wf_iri)
+  : Tot (list triple) (decreases ps) =
+  match ps with
+  | [] -> []
+  | p :: tl ->
+    forced_triples_for_prop g subprop_pairs range_pairs i ls p
+    @ forced_triples_for_props g subprop_pairs range_pairs i ls tl
+
+let forced_fillers_for_individual (g : rdf_graph)
+                                  (subprop_pairs : list (wf_iri & wf_iri))
+                                  (range_pairs : list (wf_iri & wf_iri))
+                                  (i : subject) : list triple =
+  let ls = parsed_type_labels g (find_objects g i rdf_type) in
+  forced_triples_for_props g subprop_pairs range_pairs i ls
+    (collect_dt_properties ls @ card_prop_iris ls)
+
+let rec forced_fillers_all (g : rdf_graph)
+                           (subprop_pairs : list (wf_iri & wf_iri))
+                           (range_pairs : list (wf_iri & wf_iri))
+                           (is_ : list subject)
+  : Tot (list triple) (decreases is_) =
+  match is_ with
+  | [] -> []
+  | i :: tl ->
+    forced_fillers_for_individual g subprop_pairs range_pairs i
+    @ forced_fillers_all g subprop_pairs range_pairs tl
+
+(* Public: every data-property assertion FORCED by datatype value-space
+   determinacy over the graph. Each is entailed by the graph in every
+   model (see the proof in the section banner). *)
+let datatype_forced_filler_triples (g : rdf_graph) : list triple =
+  forced_fillers_all g (collect_subprop_pairs g) (collect_range_pairs g)
+                     (collect_candidate_individuals g g)
+
+(* DL materialisation entry: Tableau's materialisation pass plus the
+   forced datatype fillers. Consumers that want today's behaviour keep
+   calling `Tableau.tableau_materialise`; the OWL runner's DL regime
+   calls this. *)
+let dl_materialise (g : rdf_graph) : rdf_graph =
+  add_triples_if_new (tableau_materialise g) (datatype_forced_filler_triples g)
 
 (* -------------------------------------------------------------------
    5c. Disjoint-data-property pattern collision (issue #304 / #299).
@@ -2397,7 +2663,7 @@ let rec clash_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
       | None -> n.rn_labels
     in
     clash_labels g st n.rn_id ls ls
-    || datatype_range_clash st.rs_subprop ls
+    || datatype_range_clash g n.rn_id st.rs_subprop ls
     || datatype_cardinality_clash st.rs_subprop st.rs_range ls
     || disjoint_dataprop_pattern_clash g n.rn_id ls
     || disjoint_dataprop_singleton_clash g n.rn_id ls

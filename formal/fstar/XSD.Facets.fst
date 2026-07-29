@@ -42,6 +42,42 @@ open RDF.Graph.Executable
    1. Integer-family datatype recognition + base-family classification.
    ------------------------------------------------------------------- *)
 
+// Datatype IRIs the OWL 2 datatype map adds on top of the XSD set that
+// RDF.Term.fsti already re-exports (xsd:string / xsd:decimal /
+// xsd:double / xsd:boolean / the integer family). Defined here because
+// neither RDF.Term.fsti nor OWL.Closure.fsti carries them.
+//
+// OWL 2 Syntax, 2nd edition, section 4.1 "Real Numbers, Decimal Numbers,
+// and Integers":
+//   "The value space of owl:real is the set of all real numbers."
+//   "The value space of owl:rational is the set of all rational numbers.
+//    It is a subset of the value space of owl:real, and it contains the
+//    value space of xsd:decimal."
+// so owl:real contains owl:rational contains xsd:decimal contains
+// xsd:integer contains each derived integer type. That single number
+// line is what `Fam_Numeric` below names.
+let owl_real : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#real");
+  "http://www.w3.org/2002/07/owl#real"
+
+let owl_rational : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#rational");
+  "http://www.w3.org/2002/07/owl#rational"
+
+let xsd_float : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#float");
+  "http://www.w3.org/2001/XMLSchema#float"
+
+let is_float_datatype (dt : wf_iri) : bool = dt = xsd_float
+
+// The three datatypes whose value space is DENSE (between any two
+// distinct values lies a third) and unbounded: owl:real, owl:rational
+// and xsd:decimal. A min/max facet pair over one of them is empty only
+// when its endpoints cross or coincide — never merely by adjacency, the
+// way an integer-granularity pair can be.
+let is_dense_numeric_datatype (dt : wf_iri) : bool =
+  dt = owl_real || dt = owl_rational || dt = xsd_decimal
+
 (* xsd:integer and every restriction subtype the RDF/OWL corpus uses.
    xsd:long/xsd:unsignedLong are recognised for VALUE comparison (their
    lexical forms parse as plain digit runs, same as the others) but
@@ -61,22 +97,40 @@ let is_integer_family_datatype (dt : wf_iri) : bool =
    filler simply never participates in this family clash, which is
    sound (nothing is falsely flagged; a real dateTime clash is just
    not caught by this rule). *)
+(* Fam_Float / Fam_Double were added by the 2026-07-29 value-space wave.
+   OWL 2 Syntax section 4.1, on why floating-point values are NOT reals:
+     "In accordance with this principle, the value space of owl:real is
+      defined as being disjoint with the value spaces of xsd:double and
+      xsd:float as well."
+     "Although floating-point values are numbers, they are not contained
+      in the value space of owl:real."
+   and section 4.2 keeps the two floating-point value spaces distinct
+   from each other (single vs double precision grids). So the numeric
+   part of the OWL 2 datatype map is THREE pairwise-disjoint value
+   spaces, not one — modelling them as one would let "1.0"^^xsd:float be
+   proved equal to "1.0"^^xsd:decimal, which OWL 2 denies. *)
 noeq type xsd_family =
-  | Fam_Numeric : xsd_family
+  | Fam_Numeric : xsd_family   // the owl:real number line
   | Fam_String  : xsd_family
   | Fam_Boolean : xsd_family
+  | Fam_Float   : xsd_family   // xsd:float  — IEEE single grid + specials
+  | Fam_Double  : xsd_family   // xsd:double — IEEE double grid + specials
 
 let xsd_family_eq (a b : xsd_family) : bool =
   match a, b with
   | Fam_Numeric, Fam_Numeric -> true
   | Fam_String, Fam_String -> true
   | Fam_Boolean, Fam_Boolean -> true
+  | Fam_Float, Fam_Float -> true
+  | Fam_Double, Fam_Double -> true
   | _, _ -> false
 
 let classify_family (dt : wf_iri) : option xsd_family =
-  if is_integer_family_datatype dt || dt = xsd_decimal then Some Fam_Numeric
+  if is_integer_family_datatype dt || is_dense_numeric_datatype dt then Some Fam_Numeric
   else if dt = xsd_string then Some Fam_String
   else if dt = xsd_boolean then Some Fam_Boolean
+  else if dt = xsd_float then Some Fam_Float
+  else if dt = xsd_double then Some Fam_Double
   else None
 
 (* -------------------------------------------------------------------
@@ -139,18 +193,9 @@ let xsd_dateTime : wf_iri =
 
 let is_datetime_datatype (dt : wf_iri) : bool = dt = xsd_dateTime
 
-(* xsd:float and owl:rational IRI constants (self-contained for the same
-   build-order reason as xsd_dateTime above — neither is re-exported
-   through RDF.Term.fsti / OWL.Closure.fsti, which stop at xsd:double). *)
-let xsd_float : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#float");
-  "http://www.w3.org/2001/XMLSchema#float"
-
-let owl_rational : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#rational");
-  "http://www.w3.org/2002/07/owl#rational"
-
-let is_float_datatype (dt : wf_iri) : bool = dt = xsd_float
+// xsd:float / owl:rational / owl:real and `is_float_datatype` moved to
+// section 1 (they are needed by `classify_family` now that the two
+// floating-point value spaces are first-class families).
 
 // Parse the fixed-width substring [pos, pos+n) as an unsigned decimal
 // integer (every char must be an ASCII digit). Out-of-range or any
@@ -586,6 +631,202 @@ let float_restriction_provably_empty (dt : wf_iri) (facets : list (wf_iri & rdf_
   && interval_empty (float_facets_to_ordinal_interval facets full_interval)
 
 (* -------------------------------------------------------------------
+   4d. The three IEEE SPECIAL values, modelled explicitly.
+
+   XSD 1.1 Datatypes, section 3.3.5 (xsd:float) / 3.3.6 (xsd:double):
+   each value space is "the set of values ... together with the three
+   special values positive infinity, negative infinity and not-a-number",
+   with the canonical lexical forms "INF", "-INF" and "NaN". They are the
+   only members of those value spaces that no decimal lexical form
+   denotes, so `parse_decimal_rational` returns None on them and the
+   float-grid ordinal map of section 4c refuses them — CORRECT but
+   silent. Naming them here makes the reason explicit and gives the
+   owl:real membership test below something to point at: an infinity is
+   not a real number, so no owl:real constraint can ever admit one.
+
+   This is what the W3C DL InconsistencyTest "Minus Infinity is not in
+   owl:real" turns on:
+     SubClassOf(:A DataAllValuesFrom(:dp owl:real))
+     SubClassOf(:A DataSomeValuesFrom(:dp
+                     DataOneOf("-INF"^^xsd:float "-0"^^xsd:integer)))
+   The forced :dp-filler must lie in {-INF, 0} INTERSECT owl:real = {0}.
+   ------------------------------------------------------------------- *)
+
+noeq type float_special =
+  | FSpec_PosInf : float_special
+  | FSpec_NegInf : float_special
+  | FSpec_NaN    : float_special
+
+// The canonical XSD lexical forms of the three specials, plus the
+// "+INF" variant XSD 1.1 admits in the lexical space of xsd:float and
+// xsd:double (it maps to positive infinity, canonical form "INF").
+let float_special_of_lexical (lex : string) : option float_special =
+  if lex = "INF" || lex = "+INF" then Some FSpec_PosInf
+  else if lex = "-INF" then Some FSpec_NegInf
+  else if lex = "NaN" then Some FSpec_NaN
+  else None
+
+let is_floating_point_datatype (dt : wf_iri) : bool =
+  dt = xsd_float || dt = xsd_double
+
+let term_float_special (t : rdf_term) : option float_special =
+  match t with
+  | T_Literal l ->
+    if is_floating_point_datatype l.datatype
+    then float_special_of_lexical l.lexical_form else None
+  | _ -> None
+
+(* THREE-VALUED membership of a term in the owl:real value space — the
+   "membership of a parsed literal" primitive of this decision procedure.
+     Some true  : PROVABLY a real number. The integer family, xsd:decimal,
+                  owl:rational, owl:real: OWL 2 Syntax section 4.1 nests
+                  their value spaces inside the reals, and each lexical
+                  map here is exact (`term_exact_rational`).
+     Some false : PROVABLY NOT a real number. Every xsd:float / xsd:double
+                  value (finite grid point OR special — section 4.1: "the
+                  value space of owl:real is defined as being disjoint
+                  with the value spaces of xsd:double and xsd:float"), and
+                  every string / boolean value (disjoint value spaces,
+                  XSD 1.1 section 3).
+     None       : unknown datatype — WITHHELD. Sound in both directions:
+                  no caller may turn "not proved in" into "proved out". *)
+let term_in_owl_real (t : rdf_term) : option bool =
+  match t with
+  | T_Literal l ->
+    (match classify_family l.datatype with
+     | Some Fam_Numeric -> Some true
+     | Some _ -> Some false
+     | None -> None)
+  | _ -> None
+
+(* -------------------------------------------------------------------
+   4e. DENSE numeric intervals with EXACT RATIONAL endpoints.
+
+   Section 3's `interval` carries `int` endpoints and INTEGER
+   granularity: `interval_empty` treats `(lo, hi)` as empty once the two
+   are adjacent, and `interval_count` counts its members. Both are wrong
+   for xsd:decimal / owl:rational / owl:real, whose value spaces are
+   dense: (0, 1) holds no integer but infinitely many decimals.
+
+   So the dense spaces get their own normalised representation — same
+   bound algebra, endpoints drawn from the exact `rational` type of
+   section 4b (so "0.1"^^xsd:decimal is an endpoint with no rounding),
+   and a dense emptiness rule. The bridge to the integer representation
+   is `qinterval_to_int_interval`, which ceils the lower bound and floors
+   the upper: exactly the integers a dense interval contains.
+   ------------------------------------------------------------------- *)
+
+// a <= b and a < b for exact rationals. Both denominators are `pos`, so
+// cross-multiplication is order-preserving and needs no case split.
+let rational_le (a b : rational) : bool =
+  op_Multiply a.rn_num b.rn_den <= op_Multiply b.rn_num a.rn_den
+
+let rational_lt (a b : rational) : bool =
+  op_Multiply a.rn_num b.rn_den < op_Multiply b.rn_num a.rn_den
+
+noeq type qbound =
+  | QB_Unbounded : qbound
+  | QB_Incl : rational -> qbound
+  | QB_Excl : rational -> qbound
+
+noeq type qinterval = { qv_lo : qbound; qv_hi : qbound }
+
+let full_qinterval : qinterval = { qv_lo = QB_Unbounded; qv_hi = QB_Unbounded }
+
+let rational_in_qinterval (v : rational) (iv : qinterval) : bool =
+  (match iv.qv_lo with
+   | QB_Unbounded -> true | QB_Incl lo -> rational_le lo v | QB_Excl lo -> rational_lt lo v) &&
+  (match iv.qv_hi with
+   | QB_Unbounded -> true | QB_Incl hi -> rational_le v hi | QB_Excl hi -> rational_lt v hi)
+
+let qtighter_lo (a b : qbound) : qbound =
+  match a, b with
+  | QB_Unbounded, _ -> b
+  | _, QB_Unbounded -> a
+  | QB_Incl x, QB_Incl y -> if rational_le y x then a else b
+  | QB_Excl x, QB_Excl y -> if rational_le y x then a else b
+  | QB_Incl x, QB_Excl y -> if rational_lt y x then a else b
+  | QB_Excl x, QB_Incl y -> if rational_le y x then a else b
+
+let qtighter_hi (a b : qbound) : qbound =
+  match a, b with
+  | QB_Unbounded, _ -> b
+  | _, QB_Unbounded -> a
+  | QB_Incl x, QB_Incl y -> if rational_le x y then a else b
+  | QB_Excl x, QB_Excl y -> if rational_le x y then a else b
+  | QB_Incl x, QB_Excl y -> if rational_lt x y then a else b
+  | QB_Excl x, QB_Incl y -> if rational_le x y then a else b
+
+let qinterval_intersect (a b : qinterval) : qinterval =
+  { qv_lo = qtighter_lo a.qv_lo b.qv_lo; qv_hi = qtighter_hi a.qv_hi b.qv_hi }
+
+// PROVABLY empty over a DENSE order: the endpoints cross, or coincide
+// with at least one end open. Adjacency is meaningless here — between
+// any two distinct reals lies a third.
+let qinterval_empty (iv : qinterval) : bool =
+  match iv.qv_lo, iv.qv_hi with
+  | QB_Incl lo, QB_Incl hi -> rational_lt hi lo
+  | QB_Incl lo, QB_Excl hi -> rational_le hi lo
+  | QB_Excl lo, QB_Incl hi -> rational_le hi lo
+  | QB_Excl lo, QB_Excl hi -> rational_le hi lo
+  | _, _ -> false
+
+// floor / ceil of an exact rational. Written so the answer does not
+// depend on whether integer division truncates toward zero or toward
+// minus infinity: take the quotient, then correct by one step if the
+// product misses on the wrong side.
+let rational_floor (r : rational) : int =
+  let q = r.rn_num / r.rn_den in
+  if op_Multiply q r.rn_den > r.rn_num then q - 1 else q
+
+let rational_ceil (r : rational) : int =
+  let q = r.rn_num / r.rn_den in
+  if op_Multiply q r.rn_den < r.rn_num then q + 1 else q
+
+let rational_is_integer (r : rational) : bool =
+  op_Multiply (rational_floor r) r.rn_den = r.rn_num
+
+// The INTEGERS a dense interval contains, as an integer-granularity
+// interval: ceil the lower bound, floor the upper, and step one past an
+// integral endpoint that is EXCLUDED.
+let qbound_to_int_lo (b : qbound) : bound =
+  match b with
+  | QB_Unbounded -> B_Unbounded
+  | QB_Incl r -> B_Incl (rational_ceil r)
+  | QB_Excl r -> B_Incl (if rational_is_integer r then rational_floor r + 1 else rational_ceil r)
+
+let qbound_to_int_hi (b : qbound) : bound =
+  match b with
+  | QB_Unbounded -> B_Unbounded
+  | QB_Incl r -> B_Incl (rational_floor r)
+  | QB_Excl r -> B_Incl (if rational_is_integer r then rational_ceil r - 1 else rational_floor r)
+
+let qinterval_to_int_interval (iv : qinterval) : interval =
+  { iv_lo = qbound_to_int_lo iv.qv_lo; iv_hi = qbound_to_int_hi iv.qv_hi }
+
+(* min/max Inclusive/Exclusive facets over a DENSE numeric base datatype,
+   folded into a rational-endpoint interval. A facet value that is not an
+   EXACT point on the owl:real line (`term_exact_rational` = None — a
+   float, a string, an unparseable lexical form) is DROPPED, which widens
+   the interval: sound narrowing, exactly as `facets_to_interval` does. *)
+let rec dense_facets_to_qinterval (facets : list (wf_iri & rdf_term)) (acc : qinterval)
+  : Tot qinterval (decreases facets) =
+  match facets with
+  | [] -> acc
+  | (firi, fval) :: tl ->
+    let acc' =
+      match term_exact_rational fval with
+      | None -> acc
+      | Some v ->
+        if firi = facet_min_incl_iri then qinterval_intersect acc { qv_lo = QB_Incl v; qv_hi = QB_Unbounded }
+        else if firi = facet_max_incl_iri then qinterval_intersect acc { qv_lo = QB_Unbounded; qv_hi = QB_Incl v }
+        else if firi = facet_min_excl_iri then qinterval_intersect acc { qv_lo = QB_Excl v; qv_hi = QB_Unbounded }
+        else if firi = facet_max_excl_iri then qinterval_intersect acc { qv_lo = QB_Unbounded; qv_hi = QB_Excl v }
+        else acc
+    in
+    dense_facets_to_qinterval tl acc'
+
+(* -------------------------------------------------------------------
    5. Value sets: the combined shape a facet checker needs — an
       interval, a finite literal enumeration (DataOneOf), a bare
       base-datatype family, unconstrained (top), or empty (bottom).
@@ -594,6 +835,13 @@ let float_restriction_provably_empty (dt : wf_iri) (facets : list (wf_iri & rdf_
 noeq type value_set =
   | VS_Unconstrained : value_set
   | VS_Interval : interval -> value_set
+  (* VS_Dense: a DENSE stretch of the owl:real number line (owl:real /
+     owl:rational / xsd:decimal). Distinct from VS_Interval because the
+     granularity changes both rules that matter — emptiness (adjacency
+     empties an integer open interval, never a dense one) and counting
+     (an integer interval with finite ends has an exact finite size; a
+     non-empty dense one is infinite). *)
+  | VS_Dense : qinterval -> value_set
   | VS_DateInterval : interval -> value_set
   | VS_Enum : list rdf_term -> value_set
   | VS_Family : xsd_family -> value_set
@@ -742,12 +990,49 @@ let provably_outside_date_interval (iv : interval) (t : rdf_term) : bool =
    | None -> false)
   || Some? (term_family t)
 
+(* Drop h from a DENSE numeric intersection only when PROVABLY outside:
+   either h is an exact point on the owl:real line that misses the
+   interval, or h's value space is PROVABLY not the real line at all
+   (string / boolean / float / double — OWL 2 Syntax section 4.1). A
+   literal of an unrecognised datatype is KEPT. *)
+let provably_outside_dense (iv : qinterval) (t : rdf_term) : bool =
+  (match term_exact_rational t with
+   | Some q -> not (rational_in_qinterval q iv)
+   | None -> false)
+  || (match term_family t with
+      | Some f -> not (xsd_family_eq f Fam_Numeric)
+      | None -> false)
+
 let value_set_intersect (a b : value_set) : value_set =
   match a, b with
   | VS_Empty, _ -> VS_Empty
   | _, VS_Empty -> VS_Empty
   | VS_Unconstrained, x -> x
   | x, VS_Unconstrained -> x
+  | VS_Dense qa, VS_Dense qb ->
+    let qi = qinterval_intersect qa qb in
+    if qinterval_empty qi then VS_Empty else VS_Dense qi
+  (* Integers are reals: a dense stretch meeting an integer-granularity
+     interval leaves exactly the integers inside both, which is again an
+     integer-granularity interval (discrete emptiness applies). *)
+  | VS_Dense qa, VS_Interval ib ->
+    let ii = interval_intersect (qinterval_to_int_interval qa) ib in
+    if interval_empty ii then VS_Empty else VS_Interval ii
+  | VS_Interval ia, VS_Dense qb ->
+    let ii = interval_intersect ia (qinterval_to_int_interval qb) in
+    if interval_empty ii then VS_Empty else VS_Interval ii
+  | VS_Dense qa, VS_Enum xs ->
+    let e = filter_enum_by (fun t -> not (provably_outside_dense qa t)) xs in
+    if Nil? e then VS_Empty else VS_Enum e
+  | VS_Enum xs, VS_Dense qb ->
+    let e = filter_enum_by (fun t -> not (provably_outside_dense qb t)) xs in
+    if Nil? e then VS_Empty else VS_Enum e
+  (* The owl:real line is disjoint from the string / boolean / float /
+     double value spaces, and from xsd:dateTime. *)
+  | VS_Dense qa, VS_Family f -> if xsd_family_eq f Fam_Numeric then VS_Dense qa else VS_Empty
+  | VS_Family f, VS_Dense qb -> if xsd_family_eq f Fam_Numeric then VS_Dense qb else VS_Empty
+  | VS_Dense _, VS_DateInterval _ -> VS_Empty
+  | VS_DateInterval _, VS_Dense _ -> VS_Empty
   | VS_Interval ia, VS_Interval ib ->
     let ii = interval_intersect ia ib in
     if interval_empty ii then VS_Empty else VS_Interval ii
@@ -801,6 +1086,10 @@ let value_set_is_empty (v : value_set) : bool =
      case (b) of the Wave B clash rules) is empty before any second
      restriction intersects it. Dense emptiness, per interval_empty_dense. *)
   | VS_DateInterval iv -> interval_empty_dense iv
+  (* Same reason on the owl:real line: a DatatypeRestriction whose own
+     min/max facets already cross is empty before anything intersects
+     it. Dense rule — adjacency does not empty a real interval. *)
+  | VS_Dense qi -> qinterval_empty qi
   | _ -> false
 
 (* -------------------------------------------------------------------
@@ -859,6 +1148,9 @@ let value_set_max_size (v : value_set) : option nat =
   | VS_Enum xs -> Some (enum_distinct_count xs)
   | VS_Interval iv -> interval_count iv
   | VS_DateInterval iv -> if interval_empty_dense iv then Some 0 else None
+  (* A non-empty stretch of the owl:real line holds infinitely many
+     values, so no finite bound — the dense-domain lesson again. *)
+  | VS_Dense qi -> if qinterval_empty qi then Some 0 else None
   | VS_Unconstrained -> None
   | VS_Family _ -> None
 
@@ -876,3 +1168,124 @@ let value_set_subtract (acc : value_set) (remove : value_set) : value_set =
     let e = filter_enum_by (fun t -> not (List.Tot.existsb (term_provably_equal t) ys)) xs in
     if Nil? e then VS_Empty else VS_Enum e
   | _, _ -> acc
+
+(* -------------------------------------------------------------------
+   5c. EXACT ENUMERATION of a finite value space.
+
+   `value_set_max_size` above answers "how many values AT MOST?" — the
+   number only. This answers "WHICH values?", and it is what turns a
+   value-space computation into an ENTAILMENT rather than a refutation:
+   when an ontology forces k pairwise-distinct fillers into a value space
+   with exactly k members, every one of those members IS a filler.
+
+   CONTRACT of the returned list L, for a value_set standing for the true
+   admissible set A:
+     (1) COVER   — A subset-of set(L). L never misses an admissible value.
+     (2) DISTINCT — L's members are pairwise distinct BY VALUE, so
+                    |set(L)| = length L exactly (no double count).
+   Consumers get two sound readings from (1) + (2):
+     (a) if every member of L is excluded, then A is empty (refutation);
+     (b) if some axiom forces >= length L pairwise-distinct members of A,
+         then A = set(L) and every member of L is realised (entailment) —
+         |A| >= length L = |set(L)| >= |A| forces equality. Note this
+         holds even when L OVER-approximates A, which is why (1) is a
+         one-sided cover and not an equality.
+
+   Shapes that qualify:
+     - VS_Empty            : the empty list.
+     - VS_Interval iv      : both ends finite -> the integers in [lo, hi],
+                             written in the canonical xsd:integer lexical
+                             form. Exact and pairwise distinct.
+     - VS_Enum xs          : only when the members are PAIRWISE PROVABLY
+                             DISTINCT, so (2) holds. An enum with an
+                             unproven-equal pair (a decimal and a rational
+                             that might denote one value) answers None.
+   Everything else answers None: dense, dateTime, bare family and
+   unconstrained spaces are infinite, and withholding is always sound.
+   ------------------------------------------------------------------- *)
+
+(* Materialisation cap. Above it the answer is None and every consumer
+   withholds — sound, and it bounds the work a pathological facet range
+   (say xsd:int with no facets, 2^32 values) can ask for. 4096 covers
+   every finite XSD integer subtype the corpus enumerates (the largest is
+   xsd:unsignedByte / xsd:byte at 256, and the byte-INTERSECT-unsignedInt
+   window of WebOnt-I5.8-004 at 128). *)
+let exact_enum_cap : nat = 4096
+
+// An integer as a canonical xsd:integer literal term. Well-formed by
+// construction: no language tag and no direction, and xsd:integer is
+// neither rdf:langString nor rdf:dirLangString.
+let int_literal_term (n : int) : rdf_term =
+  let l : literal = { lexical_form = string_of_int n; datatype = xsd_integer;
+                      lang_tag = None; direction = None } in
+  assert_norm (xsd_integer <> rdf_lang_string);
+  assert_norm (xsd_integer <> rdf_dir_lang_string);
+  assert (literal_wf l);
+  T_Literal l
+
+// The integers lo, lo+1, ..., lo+n-1 as canonical xsd:integer literals.
+let rec int_range_literals (lo : int) (n : nat) : Tot (list rdf_term) (decreases n) =
+  if n = 0 then []
+  else int_literal_term lo :: int_range_literals (lo + 1) (n - 1)
+
+let rec pairwise_provably_distinct (xs : list rdf_term) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> true
+  | h :: tl -> List.Tot.for_all (term_provably_distinct h) tl && pairwise_provably_distinct tl
+
+let value_set_exact_values (v : value_set) : option (list rdf_term) =
+  match v with
+  | VS_Empty -> Some []
+  | VS_Enum xs -> if pairwise_provably_distinct xs then Some xs else None
+  | VS_Interval iv ->
+    (match interval_count iv with
+     | None -> None
+     | Some n ->
+       if n > exact_enum_cap then None
+       else
+         (match bound_lo_incl iv.iv_lo with
+          | Some lo -> Some (int_range_literals lo n)
+          | None -> if n = 0 then Some [] else None))
+  | _ -> None
+
+(* -------------------------------------------------------------------
+   5d. Removing values an axiom FORBIDS.
+
+   `negs` is the list of data values some axiom asserts are NOT fillers
+   of the property this value_set constrains — the targets of the
+   NegativeDataPropertyAssertions on that property (OWL 2 Syntax
+   section 9.6.6: NegativeDataPropertyAssertion(DP a lt) is satisfied iff
+   the pair is NOT in the property's extension). Removing them turns a
+   forced-witness obligation into a clash whenever nothing survives.
+
+   A value is removed only when PROVABLY equal to a forbidden one — the
+   same one-sided discipline as `value_set_subtract`; over-removal would
+   manufacture emptiness. Only the two shapes with a COVER (section 5c)
+   can shrink to empty:
+     - VS_Enum: its members cover the admissible set, so if every one is
+       forbidden the admissible set is empty.
+     - VS_Interval: same, via its exact enumeration; guarded on
+       `count <= length negs` so a 4096-value interval is not enumerated
+       against a two-element negation list that cannot possibly cover it.
+   Dense, dateTime, family and unconstrained spaces are infinite: minus a
+   finite set of points they stay non-empty, so they are left alone. *)
+let remove_negated_values (negs : list rdf_term) (v : value_set) : value_set =
+  if Nil? negs then v
+  else
+    match v with
+    | VS_Enum xs ->
+      let e = filter_enum_by (fun t -> not (List.Tot.existsb (term_provably_equal t) negs)) xs in
+      if Nil? e then VS_Empty else VS_Enum e
+    | VS_Interval iv ->
+      (match interval_count iv with
+       | Some n ->
+         if n <= List.Tot.length negs then
+           (match value_set_exact_values v with
+            | Some vs ->
+              if List.Tot.for_all
+                   (fun (t : rdf_term) -> List.Tot.existsb (term_provably_equal t) negs) vs
+              then VS_Empty else v
+            | None -> v)
+         else v
+       | None -> v)
+    | _ -> v
