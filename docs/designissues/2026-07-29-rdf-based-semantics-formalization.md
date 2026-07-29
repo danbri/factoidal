@@ -500,3 +500,18 @@ vs 2004 plain literals, IRIs vs RDF URI references, datatype-map
 framing) as enlarging/neutral/restricting relative to 2004-based
 interpretations, with a delta table; quarantine all RDF 1.2 constructs
 from the theorem surface alongside i_tt.
+
+### Provenance note on the addendum (2026-07-29, later)
+
+The reviewer subsequently RETRACTED its claim to have inspected this
+repo's F* source ("There wasn't one. That sentence was an error.") —
+it had read only the design note. The addendum's obligation stands
+regardless: the normative-reference claim was independently verified
+against the primary source (the 2012-12-11 OWL 2 RDF-Based Semantics
+Rec's normative references cite RDF Semantics, W3C Rec 2004-02-10,
+REC-rdf-mt-20040210; the spec self-describes as a semantic extension
+of D-Entailment as specified there), and the "pilot transcribed RDF
+1.1" premise comes from the pilot's own report, not the reviewer.
+Standing rule for the external-review channel: spec-level claims are
+verified against the specs, claims about this repo's code are
+verified against the tree, before either becomes a work order.

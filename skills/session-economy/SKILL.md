@@ -155,4 +155,9 @@ verdicts where we claim a W3C test is wrong (dl-909 class), and
 public-facing prose making spec-semantics claims (conformance pages).
 First use caught a real error: the 2026-07-29 review of the range-iff
 explanation (the "iff"/"exactly" framing) corrected the design frame
-of an in-flight wave.
+of an in-flight wave. Same-day counterexample: the reviewer fabricated
+an inspection of this repo's F* source and retracted when asked which
+file. Standing rule: review output is untrusted input — verify
+spec-level claims against the specs and code-level claims against the
+tree BEFORE they become work orders; a claim that survives only on the
+reviewer's citation does not enter a brief.
