@@ -174,18 +174,36 @@ let rec seq_is (i : interp) (l : i.idom) (elems : list i.idom)
       seq_is i l' rest
 
 // ===================================================================
-// The pilot semantic conditions. Each is the weakest reading the
-// cited W3C table row implies (only-if halves and IP/IC membership
-// side conditions dropped; see the design doc section "Choosing the
-// condition strength"). Only conditions the four pilot rules need
-// are present; the full-program plan adds one small prop per rule
-// family.
+// The pilot semantic conditions — SUFFICIENT per-rule semantic
+// conditions. (Terminology per the 2026-07-29 external review: the
+// earlier "weakest" claimed a minimality nobody established. These
+// are readings the cited W3C table rows imply — only-if halves and
+// IP/IC membership side conditions dropped — that SUFFICE for the
+// rule soundness proofs; that every faithful W3C row implies its
+// cond_* here is machine-checked by
+// OWL.Semantics.W3C.lemma_embed_conditions.)
+//
+// SEMANTIC BASELINE (phase-2 addendum): the normative target is the
+// OWL 2 RDF-Based Semantics (W3C Rec 2012-12-11), which is defined
+// over the 2004 RDF Semantics — NOT RDF 1.1 (2014) and NOT RDF 1.2.
+// The table rows cited below are identical in wording across the
+// 2004-based and 1.1 presentations for the vocabulary used here; the
+// per-deviation baseline audit (which 1.1/1.2-flavored REPRESENTATION
+// choices are class-enlarging or neutral for 2004-based
+// interpretations) lives in OWL.Semantics.W3C.fst and the design
+// doc's delta table. RDF 1.2 constructs (triple terms, directional
+// literals) are quarantined off the theorem surface by
+// OWL.Semantics.W3C.graph_on_owl2_surface.
+//
+// Only conditions the four pilot rules need are present; the
+// full-program plan adds one small prop per rule family.
 // ===================================================================
 
-// rdfs:domain — RDF 1.1 Semantics section 9 (RDFS interpretations),
-// condition on IEXT(I(rdfs:domain)); identically present in OWL 2
-// RDF-Based Semantics Table 5.8. If <p,c> in IEXT(I(rdfs:domain))
-// and <x,y> in IEXT(p) then x in ICEXT(c).
+// rdfs:domain — 2004 RDF Semantics, RDFS semantic conditions (the
+// normative basis of the OWL 2 RDF-Based Semantics; the same row
+// appears unchanged in RDF 1.1 Semantics section 9 and in OWL 2
+// RDF-Based Table 5.8). If <p,c> in IEXT(I(rdfs:domain)) and <x,y>
+// in IEXT(p) then x in ICEXT(c).
 let cond_domain (i : interp) : prop =
   forall (p c x y : i.idom).
     i.iext (i.i_iri rdfs_domain) p c ==> i.iext p x y ==> icext i x c
@@ -261,3 +279,236 @@ let ig_wf_sp (ig : indexed_graph) : prop =
   forall (s : subject) (p : wf_iri) (t : triple).
     List.Tot.memP t (bucket_lookup ig.ig_sp (sp_key s p)) ==>
     List.Tot.memP t ig.ig_triples /\ t.s == s /\ t.p == p
+
+// ===================================================================
+// Blank-node occurrence and assignment infrastructure (phase-2,
+// external-review obligation 2). Decidable occurrence checks, the
+// "assignments agreeing on a graph's bnodes give the same truth"
+// lemma family, the total-vs-Hayes-graph-local equivalence, the
+// fresh-assignment override machinery, and the two reusable theorem
+// shapes (no_fresh_bnodes_sound_shape / fresh_bnodes_sound_shape)
+// every rule corollary routes through.
+// ===================================================================
+
+// Decidable blank-node occurrence. bnode_id is a string, so equality
+// is decidable and the walk is a boolean, which lets refinement types
+// and Tot assignment constructors branch on it.
+let bnode_in_subject (b : bnode_id) (s : subject) : bool =
+  match s with
+  | S_BNode b' -> b = b'
+  | S_IRI _ -> false
+
+let rec bnode_in_term (b : bnode_id) (t : rdf_term) : Tot bool (decreases t) =
+  match t with
+  | T_BNode b' -> b = b'
+  | T_TripleTerm s _ o -> bnode_in_subject b s || bnode_in_term b o
+  | _ -> false
+
+let bnode_in_triple (b : bnode_id) (t : triple) : bool =
+  bnode_in_subject b t.s || bnode_in_term b t.o
+
+let rec bnode_in_graph (b : bnode_id) (g : rdf_graph) : Tot bool (decreases g) =
+  match g with
+  | [] -> false
+  | t :: tl -> bnode_in_triple b t || bnode_in_graph b tl
+
+// Two assignments agree on every blank node the graph mentions.
+// This is the review's "agreement only where needed" relation: fresh
+// extensions must preserve exactly these values, nothing more.
+let agrees_on_graph_bnodes (#d : Type0) (g : rdf_graph) (a1 a2 : bnode_id -> d) : prop =
+  forall (b : bnode_id). bnode_in_graph b g ==> a1 b == a2 b
+
+// Truth depends only on the values an assignment takes at the
+// blank nodes that actually occur.
+let rec lemma_denot_term_agrees
+    (i : interp) (a1 a2 : bnode_assignment i.idom) (t : rdf_term)
+  : Lemma
+    (requires forall (b : bnode_id). bnode_in_term b t ==> a1 b == a2 b)
+    (ensures denot_term i a1 t == denot_term i a2 t)
+    (decreases t) =
+  match t with
+  | T_TripleTerm _ _ o -> lemma_denot_term_agrees i a1 a2 o
+  | _ -> ()
+
+let lemma_triple_holds_agrees
+    (i : interp) (a1 a2 : bnode_assignment i.idom) (t : triple)
+  : Lemma
+    (requires forall (b : bnode_id). bnode_in_triple b t ==> a1 b == a2 b)
+    (ensures triple_holds i a1 t <==> triple_holds i a2 t) =
+  lemma_denot_term_agrees i a1 a2 t.o
+
+// A member triple's bnodes are among its graph's bnodes.
+let rec lemma_bnode_in_graph_of_triple (t : triple) (g : rdf_graph) (b : bnode_id)
+  : Lemma
+    (ensures (List.Tot.memP t g /\ bnode_in_triple b t) ==> bnode_in_graph b g)
+    (decreases g) =
+  match g with
+  | [] -> ()
+  | _ :: tl -> lemma_bnode_in_graph_of_triple t tl b
+
+let lemma_holds_all_agrees
+    (i : interp) (a1 a2 : bnode_assignment i.idom) (g : rdf_graph)
+  : Lemma
+    (requires agrees_on_graph_bnodes g a1 a2)
+    (ensures holds_all i a1 g <==> holds_all i a2 g) =
+  introduce forall (t : triple).
+      List.Tot.memP t g ==> (triple_holds i a1 t <==> triple_holds i a2 t)
+  with introduce List.Tot.memP t g ==> (triple_holds i a1 t <==> triple_holds i a2 t)
+  with _ . begin
+    introduce forall (b : bnode_id). bnode_in_triple b t ==> a1 b == a2 b
+    with introduce bnode_in_triple b t ==> a1 b == a2 b
+    with _ . lemma_bnode_in_graph_of_triple t g b;
+    lemma_triple_holds_agrees i a1 a2 t
+  end
+
+// ===================================================================
+// Total assignments vs Hayes graph-local mappings (review obligation
+// 2a). Hayes defines satisfaction through a mapping whose domain is
+// exactly the graph's blank nodes; this tree uses total assignments.
+// The two are equivalent: restriction in one direction, extension by
+// the inhabited domain's witness in the other. Machine-checked here.
+// ===================================================================
+
+// The type of a Hayes graph-local mapping: defined exactly on the
+// blank nodes occurring in g.
+let graph_bnode (g : rdf_graph) = b:bnode_id{bnode_in_graph b g}
+
+// Extend a graph-local mapping to a total assignment, sending every
+// off-graph identifier to the domain witness (any value works — truth
+// over g cannot see those, per lemma_holds_all_agrees).
+let extend_local (i : interp) (g : rdf_graph) (al : graph_bnode g -> i.idom)
+  : bnode_assignment i.idom =
+  fun (b : bnode_id) -> if bnode_in_graph b g then al b else i.idom_wit
+
+// Hayes-form satisfaction: some GRAPH-LOCAL mapping makes g true
+// (truth evaluated through its total extension, which agrees with it
+// everywhere on g).
+let satisfies_hayes (i : interp) (g : rdf_graph) : prop =
+  exists (al : graph_bnode g -> i.idom). holds_all i (extend_local i g al) g
+
+// The equivalence, both directions. Left-to-right restricts the total
+// witness to g's bnodes; right-to-left is immediate because the
+// extension IS total.
+let lemma_satisfies_hayes_equiv (i : interp) (g : rdf_graph)
+  : Lemma (satisfies i g <==> satisfies_hayes i g) =
+  introduce satisfies i g ==> satisfies_hayes i g
+  with _ . begin
+    eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+    returns satisfies_hayes i g
+    with _ . begin
+      let al : graph_bnode g -> i.idom = fun b -> a b in
+      assert (agrees_on_graph_bnodes g a (extend_local i g al));
+      lemma_holds_all_agrees i a (extend_local i g al) g;
+      assert (holds_all i (extend_local i g al) g)
+    end
+  end;
+  introduce satisfies_hayes i g ==> satisfies i g
+  with _ . begin
+    eliminate exists (al : graph_bnode g -> i.idom). holds_all i (extend_local i g al) g
+    returns satisfies i g
+    with _ . assert (holds_all i (extend_local i g al) g)
+  end
+
+// ===================================================================
+// Fresh-assignment machinery (review obligation 2b). A witness-
+// minting rule proves satisfaction of its output by OVERRIDING the
+// input assignment at its minted identifiers — one shared override
+// for ALL triples the rule emits (never independent local witnesses;
+// the review's condition 3). The freshness condition is explicit:
+// minted identifiers collide neither with the input graph's bnodes
+// (lemma_override_agrees needs exactly that) nor with one another
+// (upds_keys_distinct, which lemma_override_at_key needs to read a
+// specific witness back).
+// ===================================================================
+
+let override_asg (#d : Type0) (a : bnode_id -> d) (upds : list (bnode_id * d))
+  : bnode_id -> d =
+  fun b -> match List.Tot.assoc b upds with
+        | Some v -> v
+        | None -> a b
+
+let rec lemma_assoc_not_key (#d : Type0) (b : bnode_id) (upds : list (bnode_id * d))
+  : Lemma
+    (requires forall (p : bnode_id * d). List.Tot.memP p upds ==> fst p =!= b)
+    (ensures List.Tot.assoc b upds == None)
+    (decreases upds) =
+  match upds with
+  | [] -> ()
+  | _ :: tl -> lemma_assoc_not_key b tl
+
+// Freshness w.r.t. the input graph gives agreement on the input
+// graph's bnodes — the hypothesis fresh_bnodes_sound_shape consumes.
+let lemma_override_agrees (#d : Type0)
+    (a : bnode_id -> d) (upds : list (bnode_id * d)) (g : rdf_graph)
+  : Lemma
+    (requires forall (p : bnode_id * d).
+                List.Tot.memP p upds ==> not (bnode_in_graph (fst p) g))
+    (ensures agrees_on_graph_bnodes g a (override_asg a upds)) =
+  introduce forall (b : bnode_id).
+      bnode_in_graph b g ==> a b == override_asg a upds b
+  with introduce bnode_in_graph b g ==> a b == override_asg a upds b
+  with _ . lemma_assoc_not_key b upds
+
+// Pairwise-distinct minted identifiers.
+let rec upds_keys_distinct (#d : Type0) (upds : list (bnode_id * d)) : Tot prop =
+  match upds with
+  | [] -> True
+  | (b, _) :: tl ->
+    (forall (p : bnode_id * d). List.Tot.memP p tl ==> fst p =!= b) /\
+    upds_keys_distinct tl
+
+// Read a minted witness back out of the override: with distinct keys,
+// the assignment takes exactly the recorded value at each minted id.
+let rec lemma_override_at_key (#d : Type0)
+    (a : bnode_id -> d) (upds : list (bnode_id * d)) (b : bnode_id) (v : d)
+  : Lemma
+    (requires upds_keys_distinct upds /\ List.Tot.memP (b, v) upds)
+    (ensures override_asg a upds b == v)
+    (decreases upds) =
+  match upds with
+  | [] -> ()
+  | (b', _) :: tl ->
+    if b = b'
+    then eliminate (b', snd (List.Tot.hd upds)) == (b, v) \/ List.Tot.memP (b, v) tl
+         returns squash (override_asg a upds b == v)
+         with _ . ()
+         and  _ . ()   // memP (b,v) tl contradicts distinctness with b = b'
+    else lemma_override_at_key a tl b v
+
+// ===================================================================
+// The two reusable theorem shapes (review obligation 2c). Every rule
+// corollary derives satisfaction through exactly one of these; the
+// stronger no-fresh result stays visibly distinct from the genuinely
+// existential fresh-witness case.
+// ===================================================================
+
+// No fresh blank nodes: the input's witness assignment is reused
+// verbatim.
+let no_fresh_bnodes_sound_shape (i : interp) (g g_out : rdf_graph)
+  : Lemma
+    (requires satisfies i g /\
+              (forall (a : bnode_assignment i.idom).
+                 holds_all i a g ==> holds_all i a g_out))
+    (ensures satisfies i g_out) =
+  eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+  returns satisfies i g_out
+  with _ . assert (holds_all i a g_out)
+
+// Fresh blank nodes: some override of the input's witness — agreeing
+// with it on every input bnode — makes the whole output true at once.
+let fresh_bnodes_sound_shape (i : interp) (g g_out : rdf_graph)
+  : Lemma
+    (requires satisfies i g /\
+              (forall (a : bnode_assignment i.idom).
+                 holds_all i a g ==>
+                 (exists (a' : bnode_assignment i.idom).
+                    agrees_on_graph_bnodes g a a' /\ holds_all i a' g_out)))
+    (ensures satisfies i g_out) =
+  eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+  returns satisfies i g_out
+  with _ . begin
+    eliminate exists (a' : bnode_assignment i.idom).
+        agrees_on_graph_bnodes g a a' /\ holds_all i a' g_out
+    returns satisfies i g_out
+    with _ . assert (holds_all i a' g_out)
+  end
