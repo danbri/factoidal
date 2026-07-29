@@ -128,9 +128,19 @@ case tracked as planned work. Three of the OWL Full tests
 | `WebOnt-I5.8-004` | by-design | `test:status test;Extracredit` — a bonus test. Exact datatype-facet interval counting ("precisely 128 values of `xsd:byte` that are also `xsd:unsignedInt`"). |
 | `WebOnt-I5.8-010` | planned-family | Datatype value-space intersection: 0 is the only value in both `xsd:nonNegativeInteger` and `xsd:nonPositiveInteger`. |
 
-Two positive-entailment tests are skipped rather than failed:
-`Qualified-cardinality-boolean` and `Qualified-cardinality-restricted-int`
-ship only an OWL Functional-Style Syntax premise.
+Two positive-entailment tests are skipped rather than failed, and sit
+outside the 204 denominator: `Qualified-cardinality-boolean` and
+`Qualified-cardinality-restricted-int` ship only an OWL
+Functional-Style Syntax premise. The engine **does** have an F\*
+functional-syntax parser (`Parser.OWLFunctional`, 24 constructs), and
+it is wired into every scoring path; what these two need is the
+cardinality family (`DataExactCardinality`), which is outside its
+current subset — so the parser returns no result and the runner skips
+honestly rather than scoring a test it did not read. Both are
+finite-value-space entailments (`xsd:boolean` has exactly 2 values; the
+restricted integer range [1,3] exactly 3, so an exact-cardinality-N
+restriction forces every member), tracked with the datatype
+value-space work.
 
 Fixed since this page's first publication (2026-07-28, from 31 residuals
 to 11): the metamodeling family — `I5.24-002/-003/-004` (facts derived
