@@ -309,11 +309,53 @@ soundness proof plus a machine-checked witness for the missing case is a
 stronger honesty position than an unconditional claim, and it is the
 reason this vertical is worth pointing at.
 
-**In progress, as of 2026-07-30.** Two agents are working refinement
-proofs right now: one in `RDFS.Closure` plus new RDFS specification
-modules, one in `SPARQL11.Algebra` plus new SPARQL specification
-modules. Their state at the time of this measurement is below. This page
-describes that state; it does not predict how it will end.
+### Landed 2026-07-30 — the RDF and RDFS rungs
+
+The two refinement agents that were in flight when the table below was
+measured have both landed. The table describes the shipping modules,
+and **it is still accurate**: no shipping module changed. The
+declarative relations live in separate, fully-erased companion modules.
+
+| Module | Role | Lines |
+|---|---|---|
+| `RDF.Entailment.RDF.Spec` | RDF rung: rdfD1 / rdfD2, the recognized-datatype set, the axiomatic triples, `rdf_closed` | 209 |
+| `RDF.Entailment.RDFS.Spec` | RDFS rung: the complete rdfs1–rdfs13 table quoted row by row, the axiomatic triples, `rdfs_closed`, the rho-df fragment | 380 |
+| `RDF.Entailment.RDFS.Refinement` | The shipping rules against those tables | 788 |
+| `RDF.Entailment.RDFS.ModelTheory` | Interpretation conditions, rule-table soundness, closure soundness | 724 |
+
+Neither Spec module opens `RDFS.Closure`, `OWL.Closure`,
+`RDF.Graph.Executable` or `RDF.Entailment.Regime`, so each can be
+diffed against the W3C text on its own. All four verify with no
+`admit` and no `--lax`, under z3 4.13.3.
+
+Seven of the shipping rules now carry a transcription-fidelity theorem
+(rdfD2, rdfs2, rdfs3, rdfs5, rdfs7, rdfs9, rdfs11, plus container
+membership): every triple the rule emits is in the seed graph or is
+derived from the source graph by one application of the rule row it
+claims to implement. The model-theory module then proves every row of
+the rule tables truth-preserving, and lifts that through one closure
+step to the fixed-point driver.
+
+🔴 **The attempt found four gaps**, tracked as
+[#335](https://github.com/danbri/factoidal/issues/335). RS-1 is an
+unsoundness in shipping code: `rdfs_reflexivity_axioms` harvests
+reflexive `rdfs:subClassOf` / `rdfs:subPropertyOf` triples more widely
+than any RDFS rule licenses, and the witness
+`reflexivity_axioms_not_rdfs_sound` is hypothesis-free. RS-2 is six
+rule rows with no implementation — rdfs1, rdfs4a, rdfs4b, rdfs8,
+rdfs13 and rdfD1 — plus unseeded axiomatic triples. RS-3 is
+`rdfs_rule_range` dropping literal objects, which the specification
+forces: the rule's conclusion moves the object into subject position,
+and `RDF.Term.subject` is IRI-or-bnode only. RS-4 is the rdf12
+manifests' "RDFS" regime
+running none of rdfs1–rdfs13, because two functions share the name
+`rdfs_closure`.
+
+Design note:
+[`docs/designissues/2026-07-30-rdf-rdfs-entailment-refinement.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-30-rdf-rdfs-entailment-refinement.md).
+
+The SPARQL vertical landed the same day; see
+[the SPARQL conformance page](sparql.md).
 
 **Measured, not proved: everything else on this page.**
 

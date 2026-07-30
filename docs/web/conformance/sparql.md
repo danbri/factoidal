@@ -286,18 +286,58 @@ negative syntax tests in `syntax-query`, 55 in the update syntax suites,
 and the 178 SPARQL 1.2 triple-term syntax tests. `SPARQL.Protocol` (104
 shipping functions) is likewise merely `Tot`, measured by 53 tests.
 
-### In progress, as of 2026-07-30
+### Landed 2026-07-30 — the refinement vertical
 
-Two agents are working refinement proofs at the time of this
-measurement: one in `SPARQL11.Algebra` plus new SPARQL specification
-modules, one in `RDFS.Closure` plus new RDFS specification modules. The
-numbers in the table above are the state **before** that work lands.
-This page describes that state; it does not predict how it will end.
-When the SPARQL work lands, the row to watch is "declarative relations",
-because it is the one that has to move off zero before any
-W3C-refinement theorem is possible.
+The two refinement agents that were in flight when the table above was
+measured have both landed. The table describes `SPARQL11.Algebra`
+itself, and **it is still accurate**: not one line of the shipping
+module changed. The declarative relations live in a separate,
+fully-erased companion module, exactly as the simple-entailment pattern
+prescribes.
 
-### The pattern the SPARQL work is following
+| Module | Role | Size |
+|---|---|---|
+| `SPARQL11.Algebra.Spec` | 22 declarative relations for §18.3 / §18.4 / §18.5, both the set layer and the `Card[·]` bag layer | 834 lines |
+| `SPARQL11.Algebra.Refinement` | 29 `theorem_*` and 34 supporting lemmas relating the shipping evaluator to them | 1,073 lines |
+
+Both verify with no `admit`, no `--lax`, no `--admit_smt_queries` and no
+`assume`, under z3 4.13.3. The Spec module's whole `open` list is
+`FStar.List.Tot` and `RDF.Term` — it names no function and no type of
+the evaluator, so a reader can diff it against the W3C text without the
+evaluator in view. That independence is mechanically checkable, not a
+promise.
+
+The fragment proved is named SPARQL-CORE-8 and is stated in the design
+note. Compatibility, merge, Union, Filter, Project, Minus, Join by the
+nested loop, Extend/BIND and the degenerate LeftJoin arms are covered.
+The general LeftJoin arm, `eval_bgp_store`, and Slice/OrderBy are not.
+
+🔴 **The attempt found two live bugs**, and neither specification was
+weakened to make the proof go through. Both non-refinements are
+machine-checked theorems, and both were then confirmed end to end
+against `bin/linux-x86_64/factoidal`:
+
+* [#336](https://github.com/danbri/factoidal/issues/336) (SR-1) —
+  `SELECT DISTINCT` returns duplicate rows. `distinct_solutions`
+  compares solution mappings position by position; §18.3 makes a
+  solution mapping a partial function, in which binding order carries
+  no meaning.
+* [#337](https://github.com/danbri/factoidal/issues/337) (SR-2) — the
+  hash-join key is **finer** than the compatibility test it narrows, so
+  the candidate set is not a superset of the matching pairs. `OPTIONAL`
+  therefore returns a wrong row rather than dropping one. Same root
+  cause as [#324](https://github.com/danbri/factoidal/issues/324),
+  reached from the other end of the tree.
+
+Both live under suites that score 631 pass, 0 fail (sparql11) and 254
+pass, 0 fail (sparql12). That is the point of the exercise: a
+refinement proof is a claim about all queries, and the suites are a
+claim about the queries in the suites.
+
+Design note:
+[`docs/designissues/2026-07-30-sparql-algebra-refinement.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-30-sparql-algebra-refinement.md).
+
+### The pattern this vertical followed
 
 RDF simple entailment is the one completed semantic-refinement vertical
 in this tree, landed 2026-07-29 (design note
