@@ -39,7 +39,7 @@ module SPARQL11.Algebra.Refinement
 //   NARROWS, so `join` can DROP solutions that `join_nested_loop`
 //   (and therefore the specification) requires.
 //   `theorem_join_key_finer_than_compatibility` is the machine-checked
-//   statement. `sm_join_key` keys on `nq_term_to_string`, which is
+//   statement. `sm_join_key` keys on `RDF.NQuads.Serialize.nq_term_to_string`, which is
 //   injective up to BYTE identity; `sm_compatible` accepts on
 //   `rdf_term_eq`, which is COARSER -- it compares language tags
 //   case-insensitively (`RDF.Term.lang_tag_eq`) and rdf:XMLLiteral
@@ -94,6 +94,7 @@ open RDF.Term
 open SPARQL11.Algebra
 
 module S = SPARQL11.Algebra.Spec
+module T = FStar.Tactics
 module Lh = RDF.List.Helpers
 
 #push-options "--z3rlimit 120 --fuel 3 --ifuel 2"
@@ -429,5 +430,372 @@ let theorem_sm_equal_is_not_smap_eq ()
              S.smap_eq mu1 mu2 /\ sm_equal mu1 mu2 == false) =
   lemma_sr1_same_mapping ();
   lemma_sr1_sm_equal_says_different ()
+
+(** ====================================================================== **)
+(** Part 7: list-membership machinery for the evaluator's own combinators  **)
+(** ====================================================================== **)
+
+let rec lemma_memP_filter_map_acc (#a #b : Type)
+      (f : a -> option b) (l : list a) (acc : list b) (y : b)
+  : Lemma (ensures List.Tot.memP y (list_filter_map_acc f l acc) <==>
+                   ((exists (x : a). List.Tot.memP x l /\ f x == Some y) \/
+                    List.Tot.memP y acc))
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | x :: xs ->
+    (match f x with
+     | Some z -> lemma_memP_filter_map_acc f xs (z :: acc) y
+     | None   -> lemma_memP_filter_map_acc f xs acc y)
+
+let lemma_memP_filter_map (#a #b : Type) (f : a -> option b) (l : list a) (y : b)
+  : Lemma (List.Tot.memP y (list_filter_map f l) <==>
+           (exists (x : a). List.Tot.memP x l /\ f x == Some y)) =
+  lemma_memP_filter_map_acc f l [] y;
+  FStar.List.Tot.Properties.rev_memP (list_filter_map_acc f l []) y
+
+let rec lemma_memP_concatMap (#a #b : Type) (f : a -> list b) (l : list a) (y : b)
+  : Lemma (ensures List.Tot.memP y (List.Tot.concatMap f l) <==>
+                   (exists (x : a). List.Tot.memP x l /\ List.Tot.memP y (f x)))
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | x :: xs ->
+    lemma_memP_append y (f x) (List.Tot.concatMap f xs);
+    lemma_memP_concatMap f xs y
+
+let rec lemma_seq_exact_memP (omega : list S.smap) (mu : S.smap)
+  : Lemma (requires seq_exact omega /\ List.Tot.memP mu omega)
+          (ensures  smap_exact mu)
+          (decreases omega) =
+  match omega with
+  | [] -> ()
+  | m :: rest ->
+    eliminate (mu == m) \/ (List.Tot.memP mu rest)
+    returns smap_exact mu
+    with _. ()
+    and  _. lemma_seq_exact_memP rest mu
+
+let rec lemma_seq_wf_memP (omega : list S.smap) (mu : S.smap)
+  : Lemma (requires seq_wf omega /\ List.Tot.memP mu omega)
+          (ensures  S.smap_wf mu == true)
+          (decreases omega) =
+  match omega with
+  | [] -> ()
+  | m :: rest ->
+    eliminate (mu == m) \/ (List.Tot.memP mu rest)
+    returns S.smap_wf mu == true
+    with _. ()
+    and  _. lemma_seq_wf_memP rest mu
+
+(** ====================================================================== **)
+(** Part 8: Join (section 18.5) at `join_nested_loop`                      **)
+(** ====================================================================== **)
+
+/// `join_nested_loop` is the shipping function `join` falls back to
+/// when the two sides share no bound variable. It is also the only one
+/// of the two that is a transcription of section 18.5's Join; `join`
+/// adds a hash index on top, and that index is where finding SR-2
+/// lives.
+///
+/// `unfold let` rather than a plain `let` for the inner step: the
+/// shipping code passes an INLINE LAMBDA to `concatMap_tr`, and a
+/// plain `let` copy gets an unrelated closure symbol in the SMT
+/// encoding (the simple-entailment vertical's section 7.5, and the OWL
+/// pilot's finding F3 before it). `unfold` makes the connection
+/// definitional.
+unfold let jnl_step (o2 : list S.smap) (mu1 : S.smap) : list S.smap =
+  list_filter_map
+    (fun mu2 -> if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None)
+    o2
+
+let lemma_join_nested_loop_unfold (o1 o2 : list S.smap)
+  : Lemma (join_nested_loop o1 o2 == List.Tot.concatMap (jnl_step o2) o1) =
+  assert (join_nested_loop o1 o2 == Lh.concatMap_tr (jnl_step o2) o1)
+    by (FStar.Tactics.trefl ());
+  Lh.lemma_concatMap_tr_eq (jnl_step o2) o1
+
+/// SOUNDNESS: every solution the nested-loop join emits is a merge of
+/// two compatible mappings from the two inputs, in section 18.5's
+/// sense. `seq_exact` is the fragment hypothesis inherited from
+/// `theorem_sm_compatible_sound`; it is where the coarseness of
+/// `rdf_term_eq` is quarantined.
+let theorem_join_nested_loop_sound (o1 o2 : list S.smap) (mu : S.smap)
+  : Lemma (requires List.Tot.memP mu (join_nested_loop o1 o2) /\ seq_exact o1)
+          (ensures  S.in_join_spec o1 o2 mu) =
+  lemma_join_nested_loop_unfold o1 o2;
+  lemma_memP_concatMap (jnl_step o2) o1 mu;
+  eliminate exists (mu1 : S.smap).
+      (List.Tot.memP mu1 o1 /\ List.Tot.memP mu (jnl_step o2 mu1))
+  returns S.in_join_spec o1 o2 mu
+  with _.
+    (lemma_seq_exact_memP o1 mu1;
+     lemma_memP_filter_map
+       (fun mu2 -> if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None)
+       o2 mu;
+     eliminate exists (mu2 : S.smap).
+         (List.Tot.memP mu2 o2 /\
+          (if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None) == Some mu)
+     returns S.in_join_spec o1 o2 mu
+     with _.
+       (theorem_sm_compatible_sound mu1 mu2;
+        theorem_sm_merge_is_merge mu1 mu2))
+
+/// COMPLETENESS: every merge the specification demands is emitted.
+/// `smap_wf mu1` is the hypothesis inherited from
+/// `theorem_sm_compatible_complete` -- without it `sm_compatible` is
+/// not even reflexive (2026-07-29).
+let theorem_join_nested_loop_complete
+      (o1 o2 : list S.smap) (mu1 mu2 : S.smap)
+  : Lemma (requires List.Tot.memP mu1 o1 /\ List.Tot.memP mu2 o2 /\
+                    S.compatible_spec mu1 mu2 /\ S.smap_wf mu1 == true)
+          (ensures  (exists (mu : S.smap).
+                       List.Tot.memP mu (join_nested_loop o1 o2) /\
+                       S.is_merge mu1 mu2 mu)) =
+  theorem_sm_compatible_complete mu1 mu2;
+  theorem_sm_merge_is_merge mu1 mu2;
+  lemma_memP_filter_map
+    (fun m2 -> if sm_compatible mu1 m2 then Some (sm_merge mu1 m2) else None)
+    o2 (sm_merge mu1 mu2);
+  lemma_join_nested_loop_unfold o1 o2;
+  lemma_memP_concatMap (jnl_step o2) o1 (sm_merge mu1 mu2)
+
+(** 8.1 where `join` and `join_nested_loop` provably agree **)
+
+let rec lemma_concatMap_nil_f (#a #b : Type) (f : a -> list b) (l : list a)
+  : Lemma (requires forall (x : a). f x == [])
+          (ensures  List.Tot.concatMap f l == [])
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | _ :: rest -> lemma_concatMap_nil_f f rest
+
+/// The hash path is skipped entirely when the representative rows of
+/// the two sides share no variable; there `join` IS the specification's
+/// Join, with no side condition beyond the two above.
+let lemma_join_is_nested_loop_no_shared_vars (o1 o2 : list S.smap)
+  : Lemma (requires Cons? o1 /\ Cons? o2 /\
+                    vars_intersect (sm_domain (Cons?.hd o1))
+                                   (sm_domain (Cons?.hd o2)) == [])
+          (ensures  join o1 o2 == join_nested_loop o1 o2) = ()
+
+let lemma_join_is_nested_loop_empty (o1 o2 : list S.smap)
+  : Lemma (requires Nil? o1 \/ Nil? o2)
+          (ensures  join o1 o2 == join_nested_loop o1 o2) =
+  lemma_join_nested_loop_unfold o1 o2;
+  if Nil? o1 then () else lemma_concatMap_nil_f (jnl_step o2) o1
+
+(** ====================================================================== **)
+(** Part 9: FINDING SR-2 -- the hash-join key is finer than compatibility  **)
+(** ====================================================================== **)
+
+/// The witness literal: `"x"` tagged with an arbitrary language tag.
+/// `literal_wf` holds by construction (a language tag with no base
+/// direction forces datatype = rdf:langString).
+let sr2_lit (tag : string) : wf_literal =
+  { lexical_form = "x";
+    datatype     = rdf_lang_string;
+    lang_tag     = Some tag;
+    direction    = None }
+
+/// String-concatenation disequality, from FStar.String.concat_injective.
+/// The side condition concat_injective needs (equal lengths on one
+/// side) is discharged trivially here because the shared factor is
+/// literally the same string.
+let lemma_strcat_left_neq (a b c : string)
+  : Lemma (requires a =!= b) (ensures (a ^ c) =!= (b ^ c)) =
+  FStar.String.concat_injective a b c c
+
+let lemma_strcat_right_neq (a b c : string)
+  : Lemma (requires a =!= b) (ensures (c ^ a) =!= (c ^ b)) =
+  FStar.String.concat_injective c c a b
+
+/// The byte-level fact underneath SR-2: the N-Quads serializer copies
+/// the language tag VERBATIM (RDF.NQuads.Serialize line 123,
+/// `"\"" ^ esc ^ "\"@" ^ tag ^ dir_suffix`), so two literals differing
+/// only in tag CASE serialize to different bytes -- while `literal_eq`
+/// calls them the same term.
+let lemma_sr2_nq_differs (tag1 tag2 : string)
+  : Lemma (requires tag1 =!= tag2)
+          (ensures  RDF.NQuads.Serialize.nq_term_to_string (T_Literal (sr2_lit tag1)) =!=
+                    RDF.NQuads.Serialize.nq_term_to_string (T_Literal (sr2_lit tag2))) =
+  let esc = RDF.NQuads.Serialize.nq_escape_literal "x" in
+  lemma_strcat_left_neq tag1 tag2 "";
+  lemma_strcat_right_neq (tag1 ^ "") (tag2 ^ "") "\"@";
+  lemma_strcat_right_neq ("\"@" ^ (tag1 ^ "")) ("\"@" ^ (tag2 ^ "")) esc;
+  lemma_strcat_right_neq (esc ^ ("\"@" ^ (tag1 ^ ""))) (esc ^ ("\"@" ^ (tag2 ^ ""))) "\""
+
+/// FINDING SR-2, machine-checked.
+///
+/// The tag pair is taken as a HYPOTHESIS rather than instantiated at
+/// string constants, for the reason recorded in section 7.7 of the
+/// simple-entailment design doc: `String.lowercase` is a primitive the
+/// normaliser will not evaluate, so `assert_norm` cannot decide
+/// `lowercase "en" = lowercase "EN"`. `"en"`/`"EN"` is the intended
+/// instance and it is confirmed to fire end-to-end against the shipping
+/// binary -- see the design doc for the exact query and output.
+///
+/// The conclusion is the contradiction itself: the two mappings ARE
+/// compatible by the very test `join`/`left_join` apply after
+/// narrowing (`sm_compatible`), and they are put in DIFFERENT hash
+/// buckets by the narrowing step (`sm_join_key`). A candidate set
+/// keyed this way is therefore NOT a superset of the compatible pairs,
+/// which is the property the hash-join optimisation needs to be
+/// semantics-preserving.
+let theorem_join_key_finer_than_compatibility (v : string) (tag1 tag2 : string)
+  : Lemma (requires String.lowercase tag1 == String.lowercase tag2 /\
+                    tag1 =!= tag2)
+          (ensures  (let t1 = T_Literal (sr2_lit tag1) in
+                     let t2 = T_Literal (sr2_lit tag2) in
+                     let mu1 : S.smap = [(v, t1)] in
+                     let mu2 : S.smap = [(v, t2)] in
+                     rdf_term_eq t1 t2 == true /\
+                     sm_compatible mu1 mu2 == true /\
+                     sm_join_key [v] mu1 =!= sm_join_key [v] mu2)) =
+  lemma_sr2_nq_differs tag1 tag2;
+  lemma_strcat_left_neq
+    (RDF.NQuads.Serialize.nq_term_to_string (T_Literal (sr2_lit tag1)))
+    (RDF.NQuads.Serialize.nq_term_to_string (T_Literal (sr2_lit tag2)))
+    (RDF.Indexed.unit_sep ^ "")
+
+(** ====================================================================== **)
+(** Part 10: Project (section 18.5)                                        **)
+(** ====================================================================== **)
+
+let rec lemma_project_lookup (pv : list var_name) (mu : S.smap) (v : var_name)
+  : Lemma (ensures S.sval v (project pv mu) ==
+                   (if List.Tot.mem v pv then S.sval v mu else None))
+          (decreases mu) =
+  match mu with
+  | [] -> ()
+  | _ :: rest -> lemma_project_lookup pv rest v
+
+/// `project` computes section 18.5's Proj(mu, PV) exactly --
+/// unconditionally, no fragment hypothesis.
+let theorem_project_is_proj (pv : list var_name) (mu : S.smap)
+  : Lemma (S.is_proj pv mu (project pv mu)) =
+  FStar.Classical.forall_intro (fun (v : var_name) -> lemma_project_lookup pv mu v)
+
+let rec lemma_project_solutions_acc_memP
+      (pv : list var_name) (omega acc : list S.smap) (mu' : S.smap)
+  : Lemma (ensures List.Tot.memP mu' (project_solutions_acc pv omega acc) <==>
+                   ((exists (mu : S.smap).
+                       List.Tot.memP mu omega /\ mu' == project pv mu) \/
+                    List.Tot.memP mu' acc))
+          (decreases omega) =
+  match omega with
+  | [] -> ()
+  | _ :: rest -> lemma_project_solutions_acc_memP pv rest (project pv (Cons?.hd omega) :: acc) mu'
+
+let rec lemma_project_solutions_acc_length
+      (pv : list var_name) (omega acc : list S.smap)
+  : Lemma (ensures List.Tot.length (project_solutions_acc pv omega acc) ==
+                   List.Tot.length omega + List.Tot.length acc)
+          (decreases omega) =
+  match omega with
+  | [] -> ()
+  | m :: rest -> lemma_project_solutions_acc_length pv rest (project pv m :: acc)
+
+/// Project neither adds nor removes rows (section 18.5's Project
+/// merges no duplicates -- that is DISTINCT's job) ...
+let theorem_project_solutions_length (pv : list var_name) (omega : list S.smap)
+  : Lemma (List.Tot.length (project_solutions pv omega) == List.Tot.length omega) =
+  lemma_project_solutions_acc_length pv omega [];
+  FStar.List.Tot.Properties.rev_length (project_solutions_acc pv omega [])
+
+/// ... and every row it produces is a Proj of a row it consumed, and
+/// conversely.
+let theorem_project_solutions_spec
+      (pv : list var_name) (omega : list S.smap) (mu' : S.smap)
+  : Lemma (List.Tot.memP mu' (project_solutions pv omega) <==>
+           (exists (mu : S.smap). List.Tot.memP mu omega /\ mu' == project pv mu)) =
+  lemma_project_solutions_acc_memP pv omega [] mu';
+  FStar.List.Tot.Properties.rev_memP (project_solutions_acc pv omega []) mu'
+
+let theorem_project_solutions_sound
+      (pv : list var_name) (omega : list S.smap) (mu' : S.smap)
+  : Lemma (requires List.Tot.memP mu' (project_solutions pv omega))
+          (ensures  S.in_project_spec pv omega mu') =
+  theorem_project_solutions_spec pv omega mu';
+  eliminate exists (mu : S.smap). (List.Tot.memP mu omega /\ mu' == project pv mu)
+  returns S.in_project_spec pv omega mu'
+  with _. theorem_project_is_proj pv mu
+
+(** ====================================================================== **)
+(** Part 11: Minus (section 18.5)                                          **)
+(** ====================================================================== **)
+
+unfold let minus_keep (o2 : list S.smap) (mu1 : S.smap) : bool =
+  not (List.Tot.existsb
+         (fun mu2 -> sm_compatible mu1 mu2 && not (domains_disjoint mu1 mu2))
+         o2)
+
+let lemma_minus_unfold (o1 o2 : list S.smap)
+  : Lemma (minus o1 o2 == List.Tot.filter (minus_keep o2) o1) =
+  assert (minus o1 o2 == List.Tot.filter (minus_keep o2) o1)
+    by (FStar.Tactics.trefl ())
+
+let rec lemma_existsb_memP (#a : Type) (f : a -> bool) (l : list a)
+  : Lemma (ensures List.Tot.existsb f l <==>
+                   (exists (x : a). List.Tot.memP x l /\ f x == true))
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | _ :: rest -> lemma_existsb_memP f rest
+
+let rec lemma_memP_filter (#a : Type) (f : a -> bool) (l : list a) (x : a)
+  : Lemma (ensures List.Tot.memP x (List.Tot.filter f l) <==>
+                   (List.Tot.memP x l /\ f x == true))
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | _ :: rest -> lemma_memP_filter f rest x
+
+/// The contrapositive of `theorem_sm_compatible_complete`: an engine
+/// "not compatible" verdict IS a specification "not compatible"
+/// verdict, on well-formed mappings.
+let lemma_not_compatible_of_engine (mu1 mu2 : S.smap)
+  : Lemma (requires S.smap_wf mu1 == true /\ sm_compatible mu1 mu2 == false)
+          (ensures  ~(S.compatible_spec mu1 mu2)) =
+  FStar.Classical.move_requires (theorem_sm_compatible_complete mu1) mu2
+
+/// SOUNDNESS: everything Minus keeps satisfies section 18.5's
+/// side condition. `smap_wf` is needed to turn the engine's
+/// "not compatible" into the specification's, via the contrapositive of
+/// `theorem_sm_compatible_complete`.
+let theorem_minus_sound (o1 o2 : list S.smap) (mu : S.smap)
+  : Lemma (requires List.Tot.memP mu (minus o1 o2) /\ S.smap_wf mu == true)
+          (ensures  S.in_minus_spec o1 o2 mu) =
+  lemma_memP_filter (minus_keep o2) o1 mu;
+  lemma_existsb_memP
+    (fun mu2 -> sm_compatible mu mu2 && not (domains_disjoint mu mu2)) o2;
+  let aux (mu2 : S.smap)
+    : Lemma (requires List.Tot.memP mu2 o2)
+            (ensures  ~(S.compatible_spec mu mu2) \/ S.dom_disjoint_spec mu mu2) =
+    if sm_compatible mu mu2 then theorem_domains_disjoint_sound mu mu2
+    else lemma_not_compatible_of_engine mu mu2
+  in
+  FStar.Classical.forall_intro (fun mu2 -> FStar.Classical.move_requires aux mu2)
+
+/// COMPLETENESS: everything the specification keeps is kept.
+/// `smap_exact` is the fragment hypothesis, inherited from
+/// `theorem_sm_compatible_sound`.
+let theorem_minus_complete (o1 o2 : list S.smap) (mu : S.smap)
+  : Lemma (requires List.Tot.memP mu o1 /\ smap_exact mu /\
+                    (forall (mu2 : S.smap). List.Tot.memP mu2 o2 ==>
+                       (~(S.compatible_spec mu mu2) \/ S.dom_disjoint_spec mu mu2)))
+          (ensures  List.Tot.memP mu (minus o1 o2)) =
+  lemma_memP_filter (minus_keep o2) o1 mu;
+  lemma_existsb_memP
+    (fun mu2 -> sm_compatible mu mu2 && not (domains_disjoint mu mu2)) o2;
+  let aux (mu2 : S.smap)
+    : Lemma (requires List.Tot.memP mu2 o2)
+            (ensures  (sm_compatible mu mu2 && not (domains_disjoint mu mu2)) == false) =
+    if sm_compatible mu mu2 then begin
+      theorem_sm_compatible_sound mu mu2;
+      theorem_domains_disjoint_complete mu mu2
+    end else ()
+  in
+  FStar.Classical.forall_intro (fun mu2 -> FStar.Classical.move_requires aux mu2)
 
 #pop-options
