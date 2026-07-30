@@ -971,8 +971,16 @@ fi
 if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   echo "--- Step 2: Compile native OCaml ---"
   PHASE_START_COMPILE=$(date +%s)
-  # Clean stale compilation artifacts to avoid signature mismatches
-  rm -f "$OUTDIR"/*.cmi "$OUTDIR"/*.cmx "$OUTDIR"/*.cmo "$OUTDIR"/*.o
+  # NOTE (2026-07-29): the stale-artifact purge used to live HERE, before
+  # the needs_rebuild check ~250 lines below. That made a NO-OP compile
+  # destructive: it deleted all 184 committed *.cmi/*.cmx/*.o, printed
+  # "already up to date; skipping ocamlopt rebuild", and exited
+  # BUILD_STATUS=OK — leaving 184 deletions in the working tree and, worse,
+  # destroying the artifacts `tools/repo-hygiene.sh` uses as its LIVENESS
+  # ORACLE ("a module is either LIVE (has a .cmx) or DEAD (no .cmx)" — the
+  # check that identified the dead PageCache.Bounds module, #327). The purge
+  # is now inside the rebuild branch, so it only runs when a rebuild will
+  # actually regenerate what it removed. Do not hoist it back out.
   cd "$OUTDIR"
 
   # Common modules for all binaries. fstar_pure_hashes.ml must precede
@@ -1227,6 +1235,10 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   if [[ "$NATIVE_NEEDS_REBUILD" -eq 0 ]]; then
     echo "  Native binaries already up to date; skipping ocamlopt rebuild."
   else
+
+    # Clean stale compilation artifacts to avoid signature mismatches.
+    # Deliberately inside this branch — see the note at the top of Step 2.
+    rm -f "$OUTDIR"/*.cmi "$OUTDIR"/*.cmx "$OUTDIR"/*.cmo "$OUTDIR"/*.o
 
     # W3C test runner (reads real W3C manifests, calls F*-extracted code).
     # The Ballyhoo HDT/COTTAS runtime glue pulls in Unix (Unix.open_process_full,
