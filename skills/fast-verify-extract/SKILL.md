@@ -356,20 +356,32 @@ each file's real `open` statements first, not assumed.
 extract`, no `--force-full`, nothing in any `.fst` changed): exit 0,
 `Dependency DAG: 96 modules in 7 layer(s)`, `Extraction outputs
 already up to date; no F* modules re-extracted (96 skipped)` — same
-message format as before P1. Wall-clock was 3m30s (`real 3m30.671s`),
-which looks like a regression against the pre-P1 baseline of ~1s
-recorded in `.claude-runs/build-timings.csv` — **but `user 1.214s +
-sys 0.396s ≈ 1.6s`**, matching the baseline almost exactly. The
-wall-clock inflation was contention from an unrelated CPU-bound
-sibling process sharing the container's 4 cores at 99.9% for the
-entire run (confirmed via `ps aux --sort=-%cpu`, a different
-`bin/linux-x86_64/factoidal` query process, not part of this build);
-a dummy-worker stress test reproducing the exact real 7-layer/
-23-25-15-15-9-7-2-module shape completed in under a second when run
-in isolation, ruling out an algorithmic hang. **The CPU-time figure,
-not the wall-clock figure, is the correct before/after comparison
-under contention** — re-measure wall-clock on an idle container for a
-clean number; do not read 3m30s as "P1 made the no-op case slower."
+message format as before P1. Wall-clock was 3m30s (`real 3m30.671s`)
+against a pre-P1 baseline of ~1s, with `user 1.214s + sys 0.396s ≈
+1.6s` of CPU.
+
+**That was diagnosed as CPU contention from an unrelated sibling
+process. The diagnosis was wrong** (corrected 2026-07-29). The cause
+was the per-layer barrier: it did `sleep 30` *before* re-checking
+whether the layer's `xargs` child had exited, so **every layer cost a
+flat 30 seconds** even when all of its modules were instant manifest
+skips — and printed nothing, because the child exited during the sleep
+and the loop broke before the heartbeat `echo`. The cost was therefore
+invisible in the log. 7 layers x 30s = 3m30s, exactly the number
+observed. `run_with_heartbeat` had the same shape for single
+invocations.
+
+Confirmed and fixed on a warm 189-module tree with nothing changed:
+
+| | Wall-clock | CPU |
+|---|---|---|
+| before (15 layers x 30s of sleeping) | 8m18s | 27s |
+| after (poll 1s, heartbeat every 30s) | **35.6s** | 23s |
+
+Both loops now poll at 1s and emit a tick every 30s, so the heartbeat
+cadence is unchanged and an all-skip layer costs about a second. The
+lesson generalises: **when wall-clock hugely exceeds CPU in a build
+step, suspect the build's own sleeps before blaming the machine.**
 
 **Expected win, revised with real DAG shape in hand**: parallelism
 helps in proportion to layer *width*, and is bounded by the DAG's

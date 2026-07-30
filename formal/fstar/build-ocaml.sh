@@ -187,15 +187,22 @@ run_with_heartbeat() {
   "$@" > "$log" 2>&1 &
   local pid=$!
   local t0=$(date +%s)
-  # Heartbeat loop — one tick every 30s, until the child exits.
+  # Heartbeat loop — poll at 1s, emit a tick every 30s, until the child exits.
+  # Polling at 30s instead cost every fast invocation a full 30 seconds of
+  # sleeping while printing nothing (the child exited during the sleep, so the
+  # loop broke before the echo). Same bug as the per-layer barrier below.
+  local last_beat=0
   while kill -0 "$pid" 2>/dev/null; do
-    sleep 30
+    sleep 1
     # Check again: if child exited during sleep, stop before emitting.
     kill -0 "$pid" 2>/dev/null || break
     local now=$(date +%s)
     local elapsed=$(( now - t0 ))
-    local lines=$(wc -l < "$log" 2>/dev/null | tr -d ' ')
-    echo "      …${label} still running  (${elapsed}s elapsed, ${lines} log lines)"
+    if (( elapsed - last_beat >= 30 )); then
+      local lines=$(wc -l < "$log" 2>/dev/null | tr -d ' ')
+      echo "      …${label} still running  (${elapsed}s elapsed, ${lines} log lines)"
+      last_beat=$elapsed
+    fi
   done
   local rc=0
   wait "$pid" || rc=$?
@@ -825,10 +832,29 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
         2>&1 | tee -a "$LAYER_LOG" ) &
     layer_pid=$!
     t0=$(date +%s)
+    # Poll at 1s and emit a heartbeat only every 30s.
+    #
+    # This loop used to `sleep 30` BEFORE re-checking liveness, which taxed
+    # every layer a full 30 seconds even when all of its modules were instant
+    # manifest skips -- and emitted nothing, because the child exited during
+    # the sleep and the loop broke before the echo. So the cost was invisible
+    # in the log. Measured on a warm 189-module tree, nothing changed: the
+    # no-op `extract` took 8m18s wall for 27s of CPU. 15 layers x 30s = 7m30s
+    # of pure sleeping.
+    #
+    # This also explains the 3m30s warm no-op recorded in
+    # skills/fast-verify-extract/SKILL.md P1, which was attributed to CPU
+    # contention from an unrelated sibling process. 7 layers x 30s = 3m30s,
+    # exactly. That diagnosis was wrong.
+    layer_last_beat=0
     while kill -0 "$layer_pid" 2>/dev/null; do
-      sleep 30
+      sleep 1
       kill -0 "$layer_pid" 2>/dev/null || break
-      echo "      …layer ${layer_idx} still running ($(( $(date +%s) - t0 ))s elapsed)"
+      layer_elapsed=$(( $(date +%s) - t0 ))
+      if (( layer_elapsed - layer_last_beat >= 30 )); then
+        echo "      …layer ${layer_idx} still running (${layer_elapsed}s elapsed)"
+        layer_last_beat=$layer_elapsed
+      fi
     done
     wait "$layer_pid"
     set -e
