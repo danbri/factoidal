@@ -423,6 +423,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     OWL.DirectMapping.Filter.fst
     XSD.Facets.fst
     Tableau.fst Tableau.Refute.fst Tableau.CountingOracle.fst SPARQL11.IRI.Resolve.fst SPARQL.FullText.fst SPARQL11.Algebra.fst
+    SPARQL11.Algebra.Spec.fst
     XSD.Datatypes.fst
     XSD.IEEE754.fst
     RDF.Entailment.Regime.fst
