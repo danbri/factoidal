@@ -424,6 +424,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     XSD.Facets.fst
     Tableau.fst Tableau.Refute.fst Tableau.CountingOracle.fst SPARQL11.IRI.Resolve.fst SPARQL.FullText.fst SPARQL11.Algebra.fst
     SPARQL11.Algebra.Spec.fst
+    SPARQL11.Algebra.Refinement.fst
     XSD.Datatypes.fst
     XSD.IEEE754.fst
     RDF.Entailment.Regime.fst
