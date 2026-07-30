@@ -412,6 +412,24 @@ before quoting a multiplier — not yet done in this container because
 of the sibling-process contention above; re-run when the container is
 idle.
 
+
+### P1 addendum (2026-07-29, second correction)
+
+The 3m30s no-op this document originally blamed on an unrelated
+CPU-bound process was the **layer barrier's own `sleep 30`** — 7 layers
+x 30s exactly. That was corrected when #320 landed. But the fix went
+into only ONE of the two loops with that shape: `run_with_heartbeat`
+kept `sleep 30; kill -0 || break`, and a warm no-op extract still cost
+**472s wall** measured on the merged tree. Both loops now poll at 0.2s
+and emit at most every 30s. Warm no-op after the second fix: **31s**.
+
+Rule this leaves behind: when wall-clock and CPU-time disagree by two
+orders of magnitude, suspect our own waiting before blaming the
+machine. A `sleep` is invisible to CPU accounting AND to logs, so it
+looks exactly like an environment problem. Grep for every loop of the
+same shape when fixing one — this bug survived its own correction
+because the second site was never searched for.
+
 ### P2 — retire the mtime chain-dirty skip — CONFIRMED, implemented 2026-07-04
 
 Implemented in [build-ocaml.sh](../../formal/fstar/build-ocaml.sh)'s

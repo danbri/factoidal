@@ -187,15 +187,24 @@ run_with_heartbeat() {
   "$@" > "$log" 2>&1 &
   local pid=$!
   local t0=$(date +%s)
-  # Heartbeat loop — one tick every 30s, until the child exits.
+  # Heartbeat loop — poll at 0.2s granularity, EMIT at most every ~30s.
+  # The earlier `sleep 30; kill -0 || break` shape charged a flat 30s to
+  # every invocation whose child finished quickly: the work was already
+  # done but the loop could not notice until its sleep expired. Silent,
+  # so it never appeared in any log. This is the same bug as the
+  # extract-layer barrier below and it was NOT fixed when that one was —
+  # measured 2026-07-29 after landing #320: warm no-op extract still
+  # 472s wall. Keep the two loops in the same shape.
+  local hb_last=$t0
   while kill -0 "$pid" 2>/dev/null; do
-    sleep 30
-    # Check again: if child exited during sleep, stop before emitting.
+    sleep 0.2
     kill -0 "$pid" 2>/dev/null || break
     local now=$(date +%s)
-    local elapsed=$(( now - t0 ))
-    local lines=$(wc -l < "$log" 2>/dev/null | tr -d ' ')
-    echo "      …${label} still running  (${elapsed}s elapsed, ${lines} log lines)"
+    if [ $(( now - hb_last )) -ge 30 ]; then
+      hb_last=$now
+      local lines=$(wc -l < "$log" 2>/dev/null | tr -d ' ')
+      echo "      …${label} still running  ($(( now - t0 ))s elapsed, ${lines} log lines)"
+    fi
   done
   local rc=0
   wait "$pid" || rc=$?
