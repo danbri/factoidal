@@ -430,6 +430,30 @@ looks exactly like an environment problem. Grep for every loop of the
 same shape when fixing one — this bug survived its own correction
 because the second site was never searched for.
 
+
+### The manifest is UNTRACKED (2026-07-29) — do not re-add it
+
+`formal/fstar/ocaml-output/.extract-state/` is derived state and
+`.gitignore:46` has always said so, but three files inside it
+(`manifest.tsv`, `depend.make`, `depend-joined.make`) were **tracked**
+anyway — gitignore does not untrack what is already in the index. The
+consequence was measured, not theorised: a copy of the committed state
+with zero `.checked` files (i.e. what CI gets) **skipped 181 of 191
+modules**, and a semantic-only change to a dependency left a dependent's
+theorem unchecked while the build reported `BUILD_STATUS=OK` exit 0.
+
+All three are now `git rm --cached`. A fresh clone regenerates them:
+`mkdir -p` + `touch` on an empty manifest reads as "nothing extracted
+yet", which extracts everything — the safe direction. `--dep full`
+recomputes the dependency files each run.
+
+**Rule: never commit a cache that can suppress verification.** If a
+future change wants the manifest tracked for CI speed, the bar is an
+experiment, not an argument — change a dependency semantically while
+keeping its extracted OCaml signature identical, with an unchanged
+dependent carrying a theorem about it, and show the build FAILS.
+Owner-directed, 2026-07-29.
+
 ### P2 — retire the mtime chain-dirty skip — CONFIRMED, implemented 2026-07-04
 
 Implemented in [build-ocaml.sh](../../formal/fstar/build-ocaml.sh)'s
