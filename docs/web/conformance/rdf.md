@@ -336,6 +336,24 @@ claims to implement. The model-theory module then proves every row of
 the rule tables truth-preserving, and lifts that through one closure
 step to the fixed-point driver.
 
+⚠️ **The fixed-point theorem has no machine-checked instance**
+([#338](https://github.com/danbri/factoidal/issues/338)). Its
+hypothesis `closure_chain_wf` cannot be discharged for a single graph,
+including the empty one, because `sp_key` is not proved injective —
+and it is not injective on IRI subjects alone, since `is_iri` admits a
+control character. The hypothesis is true of any graph avoiding
+U+001F, so the theorem is **not vacuous**; what is missing is anyone
+able to instantiate it. The per-rule truth-preservation theorems above
+are unaffected. A theorem nobody can instantiate carries no assurance
+until someone can, so this row should be read as pending, not as
+closure soundness established.
+
+The condition bundle those theorems quantify over **is** now proved
+consistent, and proved to admit a model that falsifies a graph — so
+`rdfs_entails` is a proper relation and the soundness theorems are not
+vacuous for that reason either. Both were unproved before 2026-07-30;
+see [`docs/designissues/2026-07-30-hypothesis-satisfiability.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-30-hypothesis-satisfiability.md).
+
 🔴 **The attempt found four gaps**, tracked as
 [#335](https://github.com/danbri/factoidal/issues/335). RS-1 is an
 unsoundness in shipping code: `rdfs_reflexivity_axioms` harvests

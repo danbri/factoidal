@@ -49,7 +49,8 @@ machine-checked instance, so neither theorem is *known in the tree* to
 apply to any graph. That is a weaker defect than vacuity and a real one:
 a theorem nobody can instantiate carries no assurance until someone can.
 
-**The fix is named and scoped** — see §5, follow-up F-1.
+**The fix is named and scoped** — see §5, follow-up F-1. Filed as
+[#338](https://github.com/danbri/factoidal/issues/338).
 
 ---
 

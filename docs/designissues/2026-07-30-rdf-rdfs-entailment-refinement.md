@@ -238,6 +238,18 @@ hypothesis is a `forall` over an unproven predicate, ask whether the
 predicate is actually true of everything. If not, the theorem is
 vacuous, however green the checkmark.**
 
+⚠️ **Follow-up, 2026-07-30.** The landed `closure_chain_wf` form is
+satisfiable, but the satisfiability pass could not discharge it for a
+**single graph, including the empty one** — `rdfs_rule_container_membership`
+emits ten rows with no premise, so the chain leaves `[]` at n = 1 and
+runs into `sp_key` non-injectivity. `rdfs_closure_sound` and
+`rdfs_closure_entails` are therefore not vacuous but have no
+machine-checked instance. The root cause is also wider than finding F1
+records: `sp_key` is non-injective on **IRI subjects alone**, because
+`is_iri` admits U+001F. Tracked as
+[#338](https://github.com/danbri/factoidal/issues/338); see
+[`2026-07-30-hypothesis-satisfiability.md`](2026-07-30-hypothesis-satisfiability.md).
+
 ## 4. Findings
 
 ### RS-1 — `rdfs_reflexivity_axioms` is unsound at the RDFS rung
