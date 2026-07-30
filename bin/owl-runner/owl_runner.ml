@@ -875,10 +875,35 @@ let refute_fuel : Prims.nat =
    cap. Wall-time trade re-measured against the full type-consistency
    catalog in the same session (gate logs in the branch's design
    note). *)
+(* Raised 10.0 -> 60.0 (2026-07-29, issue #332). At 10 CPU-seconds
+   WebOnt-description-logic-203 sat ON the boundary: two runs of the
+   SAME binary on the SAME idle container gave 337 pass, 15 fail and
+   336 pass, 16 fail. CPU-time caps (2026-07-28) removed sensitivity to
+   machine LOAD, but CPU time itself varies run-to-run with cache and
+   memory pressure, and dl-203's work landed inside that margin — so
+   the published score moved without a code change, which makes it
+   useless as a regression gate.
+
+   At 60 CPU-seconds the catalog is REPRODUCIBLE and strictly more
+   honest, measured twice back-to-back on this container:
+     cap 10:  336 pass, 16 fail (out of 352)   613s   [and 337/15 on
+                                                       another run]
+     cap 60:  341 pass, 11 fail (out of 352)  1086s
+     cap 60:  341 pass, 11 fail (out of 352)  1091s   <- identical
+   Five tests stop being abandoned and complete as genuine passes:
+   description-logic-203/-206/-208/-209/-501. Cost is 1.8x wall on this
+   catalog.
+
+   This is a stabiliser, not the fix. The escapes that REMAIN at 60s are
+   dominated by is_inconsistent's marker scan being cubic in closure
+   size, with #262 (sameAs blowup) underneath; fixing that removes the
+   boundary rather than moving it. Do not lower this back for wall-clock
+   reasons without re-checking reproducibility — a faster number that
+   changes between runs is worth less than a slower one that does not. *)
 let refute_cap_seconds : float =
   match Sys.getenv_opt "FACTOIDAL_OWL_REFUTE_CAP_SEC" with
-  | Some s -> (try float_of_string s with _ -> 10.0)
-  | None -> 10.0
+  | Some s -> (try float_of_string s with _ -> 60.0)
+  | None -> 60.0
 
 (* Inconsistency-scoring refuter cap, LARGER than the consistency-side
    default above. dl-502's nominal-branching refutation sits right at
