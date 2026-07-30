@@ -21,9 +21,12 @@ prose:
    What these modules state, Z3 checked. (`SPARQL11.Parser.fst`
    formerly admitted the SMT obligations for 119 of its definitions in
    two pragma regions; those obligations are discharged as of
-   2026-07-10.) Three `admit ()` sites remain, all in
-   `SPARQL11.Algebra.fst` solution-mapping lemmas rather than in
-   evaluator code; the inventory names them by file and line.
+   2026-07-10.) The inventory now counts zero active `admit ()` as
+   well: the last three, all `SPARQL11.Algebra.fst` solution-mapping
+   lemmas, were discharged 2026-07-30
+   ([#323](https://github.com/danbri/factoidal/issues/323)) — two of
+   them only after the statement turned out to be false as written, so
+   the module now also carries the refutations as theorems.
    **What most of these modules state is totality, termination and
    local refinements — not conformance to a W3C Recommendation.** The
    inventory's last columns separate modules carrying an
@@ -393,11 +396,19 @@ correctness property at all. (Until 2026-07-29 this target checked six
 modules by hand while this paragraph claimed all of them —
 [#319](https://github.com/danbri/factoidal/issues/319).)
 
-Three `admit ()` sites remain in `SPARQL11.Algebra.fst` (solution-mapping
-lemmas 19.9, 19.10-left and 19.18); earlier versions of this paragraph
-claimed zero, which the assurance inventory falsified —
-[#323](https://github.com/danbri/factoidal/issues/323) tracks the
-burn-down. One module, `RDF.CottasStore.PageCache.Bounds.fst`, currently
+The three `admit ()` sites in `SPARQL11.Algebra.fst` (solution-mapping
+lemmas 19.9, 19.10-left and 19.18) are discharged as of 2026-07-30, so
+the inventory now counts zero active admissions. Earlier versions of this
+paragraph claimed zero while three were in the tree, which the assurance
+inventory falsified — [#323](https://github.com/danbri/factoidal/issues/323).
+Two of the three were unprovable as written: `sm_merge [] mu == mu` is
+false (`sm_merge` reverses, because `sm_merge_aux` recurses on its second
+argument and prepends) and `sm_compatible mu mu` is false for a mapping
+carrying two conflicting bindings for one variable. Both were restated —
+one over `sm_lookup`, one under a no-duplicate-keys hypothesis — and the
+two refutations are now themselves theorems in the module, so the
+correction cannot quietly regress. One module,
+`RDF.CottasStore.PageCache.Bounds.fst`, currently
 **fails** verification: it is orphaned (referenced by no other module and
 in no build list), so nothing had ever checked it until `make verify`
 covered the directory — [#327](https://github.com/danbri/factoidal/issues/327).

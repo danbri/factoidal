@@ -194,11 +194,15 @@ inside one `.fsti` file):
   eliminated 2026-07-10; the tree now carries zero such pragma
   regions. Do not introduce new ones. That count is machine-checked
   rather than asserted: `tools/assurance-inventory.sh --check` derives
-  it from source and exits non-zero on any active admission. The same
-  check currently reports three `admit ()` sites in
-  `SPARQL11.Algebra.fst` solution-mapping lemmas — an `admit ()` makes
-  its lemma vacuous, so do not cite that file as fully proved, and do
-  not add more.
+  it from source and exits non-zero on any active admission. That check
+  reports **zero** active admissions as of 2026-07-30, when the last
+  three (`SPARQL11.Algebra.fst` solution-mapping lemmas, #323) were
+  discharged. Keep it that way: an `admit ()` makes its lemma vacuous
+  while leaving the build green, so it is invisible to every gate except
+  this one. Two of those three lemmas were FALSE as stated, which is the
+  more useful lesson — when a proof will not close, first ask whether the
+  statement is true, and if it is not, restate it and prove the
+  refutation too rather than admitting the original.
 - z3 must be exactly **4.13.3**; the Makefile and `build-ocaml.sh`
   pass `--z3version 4.13.3`.
 - `make verify` covers the **whole corpus** — every `.fst` in
