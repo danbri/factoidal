@@ -6954,7 +6954,7 @@ let lemma_sm_compatible_refl (mu : solution_mapping) :
   Lemma (sm_compatible mu mu = true) =
   admit ()
 
-(** 19.10 sm_merge with empty — PROVED **)
+(** 19.10 sm_merge with empty — _r PROVED, _l ADMITTED (#323) **)
 let lemma_sm_merge_empty_r (mu : solution_mapping) :
   Lemma (sm_merge mu [] == mu) = ()
 
@@ -7005,7 +7005,7 @@ let lemma_join_empty_r (omega1 : solution_sequence) :
   // rewrite and is no longer needed.
   ()
 
-(** 19.18 Minus with empty right operand is identity — PROVED **)
+(** 19.18 Minus with empty right operand is identity — ADMITTED (#323) **)
 let lemma_minus_empty_r (omega : solution_sequence) :
   Lemma (minus omega [] == omega) =
   (* TODO: proof needs rework after = → == migration (was previously proved) *)
