@@ -33,6 +33,8 @@ the shipping binary**.
 
 ### 🔴 SR-1 — `SELECT DISTINCT` returns duplicate rows
 
+Filed as [#336](https://github.com/danbri/factoidal/issues/336).
+
 `distinct_solutions` decides "same solution" with `sm_equal`, which
 compares two solution mappings **position by position as ordered
 association lists**:
@@ -88,6 +90,8 @@ therefore out of this issue's scope; it needs its own commit with the
 sparql11/sparql12 suites re-run.
 
 ### 🔴 SR-2 — the hash-join key is finer than the compatibility test it narrows
+
+Filed as [#337](https://github.com/danbri/factoidal/issues/337).
 
 The 2026-07-06 join-algorithm perf fix narrows join candidates with a
 hash index keyed by `sm_join_key`, which serializes each bound term
@@ -500,10 +504,10 @@ discharging proof obligations.
 
 * 🔴 **Fix SR-1**: decide DISTINCT with `smap_eqb` (or an equivalent
   order-insensitive comparison). Needs the sparql11 (631 pass, 0 fail)
-  and sparql12 (254 pass, 0 fail) suites re-run. File as a bug.
+  and sparql12 (254 pass, 0 fail) suites re-run. Filed: #336.
 * 🔴 **Fix SR-2**: make `sm_join_key` fold exactly what `rdf_term_eq`
   folds, or retire `rdf_term_eq`'s folding in favour of term identity
-  (shared fix with SE-1). Same suite gate. File as a bug.
+  (shared fix with SE-1, #324). Same suite gate. Filed: #337.
 * Audit `RDF.Indexed`'s other bucket keys for the §6.2 defect.
 * Prove the general `left_join` arm (§6.3 gives the shape).
 * Lift `theorem_tp_match_instantiates` to `eval_bgp_store` against
