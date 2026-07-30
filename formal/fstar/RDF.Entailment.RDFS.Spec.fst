@@ -147,12 +147,14 @@ let rdfs4b_derives (g : list triple) (t : triple) : prop =
 // Generalized-RDF premise on `yyy` (object of the first premise,
 // subject of the second).
 // -------------------------------------------------------------------
-let rdfs5_derives (g : list triple) (t : triple) : prop =
+let rdfs5_derives2 (gd gs : list triple) (t : triple) : prop =
   exists (t1 t2 : triple) (ys : subject).
-    memP t1 g /\ t1.p == i_rdfs_subPropertyOf /\
-    memP t2 g /\ t2.p == i_rdfs_subPropertyOf /\
+    memP t1 gd /\ t1.p == i_rdfs_subPropertyOf /\
+    memP t2 gs /\ t2.p == i_rdfs_subPropertyOf /\
     subj_term ys == t1.o /\ t2.s == ys /\
     t == ({ s = t1.s; p = i_rdfs_subPropertyOf; o = t2.o } <: triple)
+
+let rdfs5_derives (g : list triple) (t : triple) : prop = rdfs5_derives2 g g t
 
 // -------------------------------------------------------------------
 // rdfs6, section 9 rule table, verbatim:
@@ -193,11 +195,20 @@ let rdfs8_derives (g : list triple) (t : triple) : prop =
 // OBJECT of the type premise, so the two occurrences are linked by
 // `subj_term`.
 // -------------------------------------------------------------------
-let rdfs9_derives (g : list triple) (t : triple) : prop =
+// TWO-SOURCE form. The shipping rule reads its `rdf:type` premise
+// from the graph it is folding over and its `rdfs:subClassOf` premise
+// from an index SNAPSHOT that may be older. Splitting the two premise
+// sources is what lets the fixed-point driver's soundness compose (the
+// snapshot is built once per closure step, from the step's input,
+// while the accumulator grows within the step). `rdfs9_derives` is the
+// diagonal and is the form the W3C table states.
+let rdfs9_derives2 (gd gs : list triple) (t : triple) : prop =
   exists (sub typ : triple) (xs : subject).
-    memP sub g /\ sub.p == i_rdfs_subClassOf /\ sub.s == xs /\
-    memP typ g /\ typ.p == i_rdf_type /\ typ.o == subj_term xs /\
+    memP sub gs /\ sub.p == i_rdfs_subClassOf /\ sub.s == xs /\
+    memP typ gd /\ typ.p == i_rdf_type /\ typ.o == subj_term xs /\
     t == ({ s = typ.s; p = i_rdf_type; o = sub.o } <: triple)
+
+let rdfs9_derives (g : list triple) (t : triple) : prop = rdfs9_derives2 g g t
 
 // -------------------------------------------------------------------
 // rdfs10, section 9 rule table, verbatim:
@@ -213,12 +224,14 @@ let rdfs10_derives (g : list triple) (t : triple) : prop =
 //             xxx rdfs:subClassOf zzz ."
 // Generalized-RDF premise on `yyy`, as in rdfs5.
 // -------------------------------------------------------------------
-let rdfs11_derives (g : list triple) (t : triple) : prop =
+let rdfs11_derives2 (gd gs : list triple) (t : triple) : prop =
   exists (t1 t2 : triple) (ys : subject).
-    memP t1 g /\ t1.p == i_rdfs_subClassOf /\
-    memP t2 g /\ t2.p == i_rdfs_subClassOf /\
+    memP t1 gd /\ t1.p == i_rdfs_subClassOf /\
+    memP t2 gs /\ t2.p == i_rdfs_subClassOf /\
     subj_term ys == t1.o /\ t2.s == ys /\
     t == ({ s = t1.s; p = i_rdfs_subClassOf; o = t2.o } <: triple)
+
+let rdfs11_derives (g : list triple) (t : triple) : prop = rdfs11_derives2 g g t
 
 // -------------------------------------------------------------------
 // rdfs12, section 9 rule table, verbatim:
