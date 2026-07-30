@@ -1,0 +1,788 @@
+module RDF.Entailment.RDFS.Refinement
+
+// ===================================================================
+// REFINEMENT: the SHIPPING RDF / RDFS closure rules against the
+// declarative rule tables of RDF.Entailment.RDF.Spec.fst and
+// RDF.Entailment.RDFS.Spec.fst.
+//
+// Every theorem below names a function the engine actually runs
+// (RDFS.Closure.fsti's `rdf_property_axiom_closure`, `rdfs_rule_*`,
+// `rdfs_closure_step`, `rdfs_closure`, `rdfs_reflexivity_axioms`,
+// `rdfs_closure_with_reflexivity`) -- not a model or transcription of
+// it. Verify-only proof layer; no shipping module is edited.
+//
+// -------------------------------------------------------------------
+// WHAT "SOUND" MEANS HERE, precisely
+// -------------------------------------------------------------------
+// A closure rule is a graph transformer, so its soundness statement is
+// the TRANSCRIPTION-FIDELITY property:
+//
+//     every triple in the output is either already in the input, or is
+//     an axiomatic triple, or is derived from the input by ONE
+//     application of the rule row the rule claims to implement.
+//
+// That is `rdfs_licensed` from the Spec module, specialised per rule.
+// Composed with the model-theoretic justification of each rule row
+// (RDF.Entailment.RDFS.ModelTheory.fst), it gives RDFS-soundness of
+// the shipping closure in the entailment sense.
+//
+// Stating it against the INPUT graph (not the growing accumulator) is
+// the shape decision that makes the fixed-point driver's induction go
+// through; it is also strictly stronger than the accumulator form.
+//
+// -------------------------------------------------------------------
+// FINDINGS (details at each theorem)
+// -------------------------------------------------------------------
+//   RS-1  `rdfs_reflexivity_axioms` is UNSOUND at the RDFS rung. It
+//         emits `C rdfs:subClassOf C` for every C typed `owl:Class`
+//         and `P rdfs:subPropertyOf P` for every P typed
+//         `owl:ObjectProperty` / `owl:DatatypeProperty`. Neither is
+//         RDFS-entailed: rdfs10 / rdfs6 fire on `rdfs:Class` and
+//         `rdf:Property`, and an RDFS interpretation is free to read
+//         `owl:Class` as an arbitrary IRI. Machine-checked witness:
+//         `reflexivity_axioms_not_rdfs_sound`.
+//   RS-2  Rules rdfs1, rdfs4a, rdfs4b, rdfs8, rdfs13 and rdfD1 are NOT
+//         implemented anywhere in the tree. This is INCOMPLETENESS,
+//         not unsoundness, and it is why the completeness theorem in
+//         the ModelTheory module is stated for the rho-df fragment,
+//         where none of them is needed.
+//   RS-3  `rdfs_rule_range` (rdfs3) silently drops the case where the
+//         object is a literal or an RDF 1.2 triple term, because the
+//         conclusion would need a literal SUBJECT (generalized RDF,
+//         delta D5). The declarative `rdfs3_derives` carries the same
+//         premise, so the refinement is exact -- the incompleteness is
+//         in the tree's term algebra, not in this proof.
+//   RS-4  `RDF.Entailment.Regime.rdfs_closure` -- the function the
+//         rdf12 entailment manifests reach through `entails_rdfs` --
+//         SHADOWS `RDFS.Closure.rdfs_closure` and implements only an
+//         rdf:reifies range rule. None of rdfs1..rdfs13 runs on that
+//         path. See the design note; nothing is proven about it here
+//         because there is nothing RDFS-shaped to prove.
+// ===================================================================
+
+open FStar.List.Tot
+open RDF.Term
+open RDF.Triple
+open RDF.Graph
+open RDF.Indexed
+open RDFS.Closure
+open OWL.Semantics
+open OWL.Semantics.MemLemmas
+open RDF.Vocabulary.Axioms
+open RDF.Entailment.Simple.Spec
+open RDF.Entailment.RDF.Spec
+open RDF.Entailment.RDFS.Spec
+
+// ===================================================================
+// 0. The vocabulary constants agree.
+//
+// RDFS.Closure and RDF.Vocabulary.Axioms each cast RDF.Vocabulary's
+// canonical strings to `wf_iri` independently (two `assert_norm`
+// sites, by design -- see RDFS.Closure.fsti's banner). The Spec
+// modules are written over the Axioms copies and the shipping rules
+// over the RDFS.Closure copies, so the refinement proofs need the
+// identification. It is definitional; these lemmas make that fact
+// available to the SMT encoding by name.
+// ===================================================================
+
+let lemma_vocab_agree ()
+  : Lemma (RDFS.Closure.rdf_type == i_rdf_type /\
+           RDFS.Closure.rdfs_domain == i_rdfs_domain /\
+           RDFS.Closure.rdfs_range == i_rdfs_range /\
+           RDFS.Closure.rdfs_subClassOf == i_rdfs_subClassOf /\
+           RDFS.Closure.rdfs_subPropertyOf == i_rdfs_subPropertyOf /\
+           RDFS.Closure.rdfs_member == i_rdfs_member /\
+           RDFS.Closure.rdfs_Class == i_rdfs_Class /\
+           RDFS.Closure.rdf_Property == i_rdf_Property /\
+           RDFS.Closure.rdfs_ContainerMembershipProperty ==
+             i_rdfs_ContainerMembershipProperty) = ()
+
+// `term_to_subject` and `subj_term` are mutually inverse where both
+// are defined. The Spec's rules are phrased with `subj_term`, the
+// shipping rules pattern-match with `term_to_subject`.
+let lemma_term_to_subject_subj_term (t : rdf_term) (s : subject)
+  : Lemma (requires term_to_subject t == Some s) (ensures subj_term s == t) =
+  match t with
+  | T_IRI _ -> ()
+  | T_BNode _ -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm _ _ _ -> ()
+
+// ===================================================================
+// 1. rdfD2 -- `rdf_property_axiom_closure` (the pure "RDF" regime).
+//
+// RDFS.Closure.fsti:
+//   rdf_property_axiom_of_triple t = { s = S_IRI t.p; p = rdf_type;
+//                                      o = T_IRI rdf_Property }
+//   rdf_property_axiom_closure g  = graph_dedup_sort
+//                                     (add_triples_if_new g axioms)
+// which is exactly the RDF 1.1 Semantics section 8 row rdfD2.
+// ===================================================================
+
+let lemma_rdf_property_axiom_matches (u : triple)
+  : Lemma (rdf_property_axiom_of_triple u == rdfD2_conclusion u) = ()
+
+// memP through `add_triples_if_new` (which is `graph_add`, i.e.
+// `g @ [t]` guarded by a membership test).
+let rec lemma_add_triples_if_new_memP (g ts : list triple) (x : triple)
+  : Lemma (ensures memP x (add_triples_if_new g ts) ==> memP x g \/ memP x ts)
+          (decreases ts) =
+  match ts with
+  | [] -> ()
+  | hd :: tl ->
+    lemma_add_triples_if_new_memP (add_triple_if_new g hd) tl x;
+    if mem_triple hd g then ()
+    else append_memP g [hd] x
+
+// memP through the dedup walk (the triple analogue of
+// OWL.Semantics.Soundness's `lemma_dedup_pairs_memP`).
+let rec lemma_dedup_sorted_memP (prev : option string)
+    (ts acc : list triple) (x : triple)
+  : Lemma (ensures memP x (dedup_sorted_aux prev ts acc) ==>
+                   (memP x ts \/ memP x acc))
+          (decreases ts) =
+  match ts with
+  | [] -> rev_memP acc x
+  | t :: rest ->
+    lemma_dedup_sorted_memP prev rest acc x;
+    lemma_dedup_sorted_memP (Some (triple_to_key t)) rest (t :: acc) x
+
+let lemma_graph_dedup_sort_memP (g : list triple) (x : triple)
+  : Lemma (ensures memP x (graph_dedup_sort g) ==> memP x g) =
+  lemma_dedup_sorted_memP None (sortWith triple_cmp g) [] x;
+  lemma_sortWith_memP triple_cmp g x
+
+val rdf_property_axiom_closure_licensed (g : rdf_graph)
+  : Lemma (ensures forall (t : triple).
+             memP t (rdf_property_axiom_closure g) ==>
+             (memP t g \/ rdfD2_derives g t))
+
+let rdf_property_axiom_closure_licensed g =
+  let axioms : rdf_graph = map rdf_property_axiom_of_triple g in
+  introduce forall (t : triple).
+      memP t (rdf_property_axiom_closure g) ==>
+      (memP t g \/ rdfD2_derives g t)
+  with introduce memP t (rdf_property_axiom_closure g) ==>
+                 (memP t g \/ rdfD2_derives g t)
+  with _ . begin
+    lemma_graph_dedup_sort_memP (add_triples_if_new g axioms) t;
+    lemma_add_triples_if_new_memP g axioms t;
+    let helper () : Lemma (requires memP t axioms) (ensures rdfD2_derives g t) =
+      memP_map_elim rdf_property_axiom_of_triple t g;
+      eliminate exists (u : triple). memP u g /\ rdf_property_axiom_of_triple u == t
+      returns (rdfD2_derives g t)
+      with _ . assert (memP u g /\ t == rdfD2_conclusion u)
+    in
+    FStar.Classical.move_requires helper ()
+  end
+
+// ===================================================================
+// 2. rdfs2 -- `rdfs_rule_domain`.
+//
+// The rule reads the ig_pred bucket twice (domain declarations, then
+// the data triples of each declared property), so its hypotheses are
+// `ig_wf_pred` plus "the snapshot IS the graph". Exactly the
+// hypotheses OWL.Semantics.Soundness.rdfs_rule_domain_sound uses.
+// ===================================================================
+
+// `licensed_by2 r src seed out`: every triple of `out` is either in
+// the SEED graph the rule was handed, or derived by rule `r` from the
+// SOURCE graph its premises were read from. The two are the same graph
+// for a single rule application, but NOT inside `rdfs_closure_step`,
+// which builds one index snapshot from the step's input and then
+// chains seven rules through a growing accumulator. Keeping them
+// separate is what makes the per-rule results compose through the
+// driver; `licensed_by` is the diagonal.
+let licensed_by2 (r : list triple -> triple -> prop) (src seed acc : list triple) : prop =
+  forall (t : triple). memP t acc ==> (memP t seed \/ r src t)
+
+let licensed_by (r : list triple -> triple -> prop) (g acc : list triple) : prop =
+  licensed_by2 r g g acc
+
+val rdfs_rule_domain_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_pred ig)
+          (ensures licensed_by2 rdfs2_derives ig.ig_triples g (rdfs_rule_domain g ig))
+
+let rdfs_rule_domain_licensed g ig =
+  let inv = licensed_by2 rdfs2_derives ig.ig_triples g in
+  let decls = bucket_lookup ig.ig_pred rdfs_domain in
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (decl : triple) ->
+      match decl.s with
+      | S_IRI p ->
+        let matching = bucket_lookup ig.ig_pred p in
+        fold_left
+          (fun (acc2 : rdf_graph) (t : triple) ->
+            let new_t : triple = { s = t.s; p = rdf_type; o = decl.o } in
+            add_triple_unchecked acc2 new_t)
+          acc matching
+      | _ -> acc in
+  introduce forall (acc : rdf_graph) (decl : triple).
+      (memP decl decls /\ inv acc) ==> inv (outer_step acc decl)
+  with introduce (memP decl decls /\ inv acc) ==> inv (outer_step acc decl)
+  with _ . begin
+    assert (memP decl ig.ig_triples /\ decl.p == rdfs_domain);
+    match decl.s with
+    | S_IRI p ->
+      let matching = bucket_lookup ig.ig_pred p in
+      let inner_step : rdf_graph -> triple -> rdf_graph =
+        fun (acc2 : rdf_graph) (t : triple) ->
+          let new_t : triple = { s = t.s; p = rdf_type; o = decl.o } in
+          add_triple_unchecked acc2 new_t in
+      introduce forall (acc2 : rdf_graph) (t : triple).
+          (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
+      with introduce (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
+      with _ . begin
+        assert (memP t ig.ig_triples /\ t.p == p);
+        let new_t : triple = { s = t.s; p = rdf_type; o = decl.o } in
+        assert (memP decl ig.ig_triples /\ decl.p == i_rdfs_domain /\ decl.s == S_IRI p);
+        assert (memP t ig.ig_triples /\ t.p == p);
+        assert (new_t == ({ s = t.s; p = i_rdf_type; o = decl.o } <: triple));
+        assert (rdfs2_derives ig.ig_triples new_t)
+      end;
+      fold_left_inv inv inner_step matching acc
+    | _ -> ()
+  end;
+  fold_left_inv inv outer_step decls g;
+  assert_norm (rdfs_rule_domain g ig == fold_left outer_step g decls)
+
+// ===================================================================
+// 3. rdfs3 -- `rdfs_rule_range`. Finding RS-3 lives here: the rule
+// only fires when the object is subject-eligible, and so does the
+// declarative rule, so the refinement is exact.
+// ===================================================================
+
+val rdfs_rule_range_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_pred ig)
+          (ensures licensed_by2 rdfs3_derives ig.ig_triples g (rdfs_rule_range g ig))
+
+let rdfs_rule_range_licensed g ig =
+  let inv = licensed_by2 rdfs3_derives ig.ig_triples g in
+  let decls = bucket_lookup ig.ig_pred rdfs_range in
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (decl : triple) ->
+      match decl.s with
+      | S_IRI p ->
+        let matching = bucket_lookup ig.ig_pred p in
+        fold_left
+          (fun (acc2 : rdf_graph) (t : triple) ->
+            match term_to_subject t.o with
+            | Some b_subj ->
+              let new_t : triple = { s = b_subj; p = rdf_type; o = decl.o } in
+              add_triple_unchecked acc2 new_t
+            | None -> acc2)
+          acc matching
+      | _ -> acc in
+  introduce forall (acc : rdf_graph) (decl : triple).
+      (memP decl decls /\ inv acc) ==> inv (outer_step acc decl)
+  with introduce (memP decl decls /\ inv acc) ==> inv (outer_step acc decl)
+  with _ . begin
+    assert (memP decl ig.ig_triples /\ decl.p == rdfs_range);
+    match decl.s with
+    | S_IRI p ->
+      let matching = bucket_lookup ig.ig_pred p in
+      let inner_step : rdf_graph -> triple -> rdf_graph =
+        fun (acc2 : rdf_graph) (t : triple) ->
+          match term_to_subject t.o with
+          | Some b_subj ->
+            let new_t : triple = { s = b_subj; p = rdf_type; o = decl.o } in
+            add_triple_unchecked acc2 new_t
+          | None -> acc2 in
+      introduce forall (acc2 : rdf_graph) (t : triple).
+          (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
+      with introduce (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
+      with _ . begin
+        assert (memP t ig.ig_triples /\ t.p == p);
+        match term_to_subject t.o with
+        | Some b_subj ->
+          lemma_term_to_subject_subj_term t.o b_subj;
+          let new_t : triple = { s = b_subj; p = rdf_type; o = decl.o } in
+          assert (memP decl ig.ig_triples /\ decl.p == i_rdfs_range /\ decl.s == S_IRI p);
+          assert (memP t ig.ig_triples /\ t.p == p /\ subj_term b_subj == t.o);
+          assert (new_t == ({ s = b_subj; p = i_rdf_type; o = decl.o } <: triple));
+          assert (rdfs3_derives ig.ig_triples new_t)
+        | None -> ()
+      end;
+      fold_left_inv inv inner_step matching acc
+    | _ -> ()
+  end;
+  fold_left_inv inv outer_step decls g;
+  assert_norm (rdfs_rule_range g ig == fold_left outer_step g decls)
+
+// ===================================================================
+// 4. rdfs7 -- `rdfs_rule_subPropertyOf`.
+// ===================================================================
+
+val rdfs_rule_subPropertyOf_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_pred ig)
+          (ensures licensed_by2 rdfs7_derives ig.ig_triples g
+                     (rdfs_rule_subPropertyOf g ig))
+
+let rdfs_rule_subPropertyOf_licensed g ig =
+  let inv = licensed_by2 rdfs7_derives ig.ig_triples g in
+  let decls = bucket_lookup ig.ig_pred rdfs_subPropertyOf in
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (decl : triple) ->
+      match decl.s, decl.o with
+      | S_IRI p, T_IRI q ->
+        let matching = bucket_lookup ig.ig_pred p in
+        fold_left
+          (fun (acc2 : rdf_graph) (t : triple) ->
+            let new_t : triple = { s = t.s; p = q; o = t.o } in
+            add_triple_unchecked acc2 new_t)
+          acc matching
+      | _, _ -> acc in
+  introduce forall (acc : rdf_graph) (decl : triple).
+      (memP decl decls /\ inv acc) ==> inv (outer_step acc decl)
+  with introduce (memP decl decls /\ inv acc) ==> inv (outer_step acc decl)
+  with _ . begin
+    assert (memP decl ig.ig_triples /\ decl.p == rdfs_subPropertyOf);
+    // Nested, constructor-complete case analysis rather than a
+    // catch-all on the PAIR: the shipping rule scrutinises
+    // `decl.s, decl.o` as a tuple, and F* only reduces that tuple
+    // match in the fall-through arms when it has the constructor
+    // equation for each component separately.
+    match decl.s, decl.o with
+    | S_BNode _, _ -> ()
+    | S_IRI _, T_BNode _ -> ()
+    | S_IRI _, T_Literal _ -> ()
+    | S_IRI _, T_TripleTerm _ _ _ -> ()
+    | S_IRI p, T_IRI q ->
+      let matching = bucket_lookup ig.ig_pred p in
+      let inner_step : rdf_graph -> triple -> rdf_graph =
+        fun (acc2 : rdf_graph) (t : triple) ->
+          let new_t : triple = { s = t.s; p = q; o = t.o } in
+          add_triple_unchecked acc2 new_t in
+      introduce forall (acc2 : rdf_graph) (t : triple).
+          (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
+      with introduce (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
+      with _ . begin
+        assert (memP t ig.ig_triples /\ t.p == p);
+        let new_t : triple = { s = t.s; p = q; o = t.o } in
+        assert (memP decl ig.ig_triples /\ decl.p == i_rdfs_subPropertyOf /\
+                decl.s == S_IRI p /\ decl.o == T_IRI q);
+        assert (memP t ig.ig_triples /\ t.p == p);
+        assert (rdfs7_derives ig.ig_triples new_t)
+      end;
+      fold_left_inv inv inner_step matching acc;
+      // PROOF-ENGINEERING NOTE (a new trap, not present at the simple
+      // rung; recorded in the design note as pattern 8.2).
+      //
+      // rdfs7 is the only shipping rule whose INNER lambda closes over
+      // a PATTERN-BOUND variable (`q`, bound by the outer rule's
+      // `match decl.s, decl.o with | S_IRI p, T_IRI q ->`). The
+      // fold_left_inv pattern that discharges every other rule fails
+      // here: `fold_left_inv` yields `inv (fold_left inner_step acc
+      // matching)`, and the SMT encoding gives the proof's copy of the
+      // lambda and the one inside `outer_step` unrelated closure
+      // symbols -- the F3 trap of the OWL pilot, in its higher-order
+      // form. The `unfold let` answer of pattern 7.5 does not apply
+      // (the lambda is not an argument of the shipping call, it is
+      // inside a match arm).
+      //
+      // What does work: rebuild the scrutinee as a RECORD LITERAL so
+      // the match iota-reduces, `assert_norm` the reduced form, then
+      // transport along `decl == decl'` by congruence. Verified
+      // minimal reproduction and fix in the session scratch; both
+      // steps are needed.
+      let decl' : triple = { s = S_IRI p; p = decl.p; o = T_IRI q } in
+      assert (decl == decl');
+      assert_norm (outer_step acc decl' == fold_left inner_step acc
+                     (bucket_lookup ig.ig_pred p))
+  end;
+  fold_left_inv inv outer_step decls g;
+  assert_norm (rdfs_rule_subPropertyOf g ig == fold_left outer_step g decls)
+
+// ===================================================================
+// 5. The ig_sp-driven rules: rdfs9, rdfs11, rdfs5.
+//
+// These consult `find_objects_indexed`, i.e. the COMPOSITE-key bucket
+// ig_sp, so they carry `ig_wf_sp` -- the hypothesis the OWL pilot
+// could only prove in its weak form against `build_indexed` (finding
+// F1 there: recovering the components from `sp_key s p` needs sp_key
+// injectivity, which needs "U+001F never occurs in a blank-node
+// label"). The hypothesis is kept explicit rather than assumed, as in
+// the pilot.
+// ===================================================================
+
+let lemma_find_objects_elim (ig : indexed_graph) (s : subject) (p : wf_iri) (x : rdf_term)
+  : Lemma (requires ig_wf_sp ig /\ memP x (find_objects_indexed ig s p))
+          (ensures exists (u : triple).
+                     memP u ig.ig_triples /\ u.s == s /\ u.p == p /\ u.o == x) =
+  let bucket = bucket_lookup ig.ig_sp (sp_key s p) in
+  memP_map_elim (fun (t : triple) -> t.o) x bucket
+
+val rdfs_rule_subClassOf_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig)
+          (ensures licensed_by2 (rdfs9_derives2 g) ig.ig_triples g
+                     (rdfs_rule_subClassOf g ig))
+
+let rdfs_rule_subClassOf_licensed g ig =
+  let inv = licensed_by2 (rdfs9_derives2 g) ig.ig_triples g in
+  let step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type then
+        match t.o with
+        | T_IRI class_iri ->
+          let super_classes = find_objects_indexed ig (S_IRI class_iri) rdfs_subClassOf in
+          fold_left
+            (fun (acc2 : rdf_graph) (b_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = rdf_type; o = b_term } in
+              add_triple_unchecked acc2 new_t)
+            acc super_classes
+        | _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ inv acc) ==> inv (step acc t)
+  with introduce (memP t g /\ inv acc) ==> inv (step acc t)
+  with _ . begin
+    if t.p = rdf_type then
+      match t.o with
+      | T_IRI class_iri ->
+        let super_classes = find_objects_indexed ig (S_IRI class_iri) rdfs_subClassOf in
+        let inner_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc2 : rdf_graph) (b_term : rdf_term) ->
+            let new_t : triple = { s = t.s; p = rdf_type; o = b_term } in
+            add_triple_unchecked acc2 new_t in
+        introduce forall (acc2 : rdf_graph) (b_term : rdf_term).
+            (memP b_term super_classes /\ inv acc2) ==> inv (inner_step acc2 b_term)
+        with introduce (memP b_term super_classes /\ inv acc2) ==>
+                       inv (inner_step acc2 b_term)
+        with _ . begin
+          lemma_find_objects_elim ig (S_IRI class_iri) rdfs_subClassOf b_term;
+          let new_t : triple = { s = t.s; p = rdf_type; o = b_term } in
+          eliminate exists (u : triple).
+              memP u ig.ig_triples /\ u.s == S_IRI class_iri /\
+              u.p == rdfs_subClassOf /\ u.o == b_term
+          returns inv (inner_step acc2 b_term)
+          with _ . begin
+            assert (memP u ig.ig_triples /\ u.p == i_rdfs_subClassOf /\
+                    u.s == S_IRI class_iri);
+            assert (memP t g /\ t.p == i_rdf_type /\
+                    t.o == subj_term (S_IRI class_iri));
+            assert (new_t == ({ s = t.s; p = i_rdf_type; o = u.o } <: triple));
+            assert (rdfs9_derives2 g ig.ig_triples new_t)
+          end
+        end;
+        fold_left_inv inv inner_step super_classes acc
+      | _ -> ()
+    else ()
+  end;
+  fold_left_inv inv step g g;
+  assert_norm (rdfs_rule_subClassOf g ig == fold_left step g g)
+
+val rdfs_rule_subClassOf_trans_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig)
+          (ensures licensed_by2 (rdfs11_derives2 g) ig.ig_triples g
+                     (rdfs_rule_subClassOf_trans g ig))
+
+let rdfs_rule_subClassOf_trans_licensed g ig =
+  let inv = licensed_by2 (rdfs11_derives2 g) ig.ig_triples g in
+  let step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subClassOf then
+        match term_to_subject t.o with
+        | Some b_subj ->
+          let supers = find_objects_indexed ig b_subj rdfs_subClassOf in
+          fold_left
+            (fun (acc2 : rdf_graph) (c_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = rdfs_subClassOf; o = c_term } in
+              add_triple_unchecked acc2 new_t)
+            acc supers
+        | None -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ inv acc) ==> inv (step acc t)
+  with introduce (memP t g /\ inv acc) ==> inv (step acc t)
+  with _ . begin
+    if t.p = rdfs_subClassOf then
+      match term_to_subject t.o with
+      | Some b_subj ->
+        lemma_term_to_subject_subj_term t.o b_subj;
+        let supers = find_objects_indexed ig b_subj rdfs_subClassOf in
+        let inner_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc2 : rdf_graph) (c_term : rdf_term) ->
+            let new_t : triple = { s = t.s; p = rdfs_subClassOf; o = c_term } in
+            add_triple_unchecked acc2 new_t in
+        introduce forall (acc2 : rdf_graph) (c_term : rdf_term).
+            (memP c_term supers /\ inv acc2) ==> inv (inner_step acc2 c_term)
+        with introduce (memP c_term supers /\ inv acc2) ==> inv (inner_step acc2 c_term)
+        with _ . begin
+          lemma_find_objects_elim ig b_subj rdfs_subClassOf c_term;
+          let new_t : triple = { s = t.s; p = rdfs_subClassOf; o = c_term } in
+          eliminate exists (u : triple).
+              memP u ig.ig_triples /\ u.s == b_subj /\
+              u.p == rdfs_subClassOf /\ u.o == c_term
+          returns inv (inner_step acc2 c_term)
+          with _ . begin
+            assert (memP t g /\ t.p == i_rdfs_subClassOf);
+            assert (memP u ig.ig_triples /\ u.p == i_rdfs_subClassOf /\ u.s == b_subj);
+            assert (subj_term b_subj == t.o);
+            assert (new_t == ({ s = t.s; p = i_rdfs_subClassOf; o = u.o } <: triple));
+            assert (rdfs11_derives2 g ig.ig_triples new_t)
+          end
+        end;
+        fold_left_inv inv inner_step supers acc
+      | None -> ()
+    else ()
+  end;
+  fold_left_inv inv step g g;
+  assert_norm (rdfs_rule_subClassOf_trans g ig == fold_left step g g)
+
+val rdfs_rule_subPropertyOf_trans_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig)
+          (ensures licensed_by2 (rdfs5_derives2 g) ig.ig_triples g
+                     (rdfs_rule_subPropertyOf_trans g ig))
+
+let rdfs_rule_subPropertyOf_trans_licensed g ig =
+  let inv = licensed_by2 (rdfs5_derives2 g) ig.ig_triples g in
+  let step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subPropertyOf then
+        match term_to_subject t.o with
+        | Some q_subj ->
+          let supers = find_objects_indexed ig q_subj rdfs_subPropertyOf in
+          fold_left
+            (fun (acc2 : rdf_graph) (r_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = rdfs_subPropertyOf; o = r_term } in
+              add_triple_unchecked acc2 new_t)
+            acc supers
+        | None -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ inv acc) ==> inv (step acc t)
+  with introduce (memP t g /\ inv acc) ==> inv (step acc t)
+  with _ . begin
+    if t.p = rdfs_subPropertyOf then
+      match term_to_subject t.o with
+      | Some q_subj ->
+        lemma_term_to_subject_subj_term t.o q_subj;
+        let supers = find_objects_indexed ig q_subj rdfs_subPropertyOf in
+        let inner_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc2 : rdf_graph) (r_term : rdf_term) ->
+            let new_t : triple = { s = t.s; p = rdfs_subPropertyOf; o = r_term } in
+            add_triple_unchecked acc2 new_t in
+        introduce forall (acc2 : rdf_graph) (r_term : rdf_term).
+            (memP r_term supers /\ inv acc2) ==> inv (inner_step acc2 r_term)
+        with introduce (memP r_term supers /\ inv acc2) ==> inv (inner_step acc2 r_term)
+        with _ . begin
+          lemma_find_objects_elim ig q_subj rdfs_subPropertyOf r_term;
+          let new_t : triple = { s = t.s; p = rdfs_subPropertyOf; o = r_term } in
+          eliminate exists (u : triple).
+              memP u ig.ig_triples /\ u.s == q_subj /\
+              u.p == rdfs_subPropertyOf /\ u.o == r_term
+          returns inv (inner_step acc2 r_term)
+          with _ . begin
+            assert (memP t g /\ t.p == i_rdfs_subPropertyOf);
+            assert (memP u ig.ig_triples /\ u.p == i_rdfs_subPropertyOf /\ u.s == q_subj);
+            assert (subj_term q_subj == t.o);
+            assert (new_t == ({ s = t.s; p = i_rdfs_subPropertyOf; o = u.o } <: triple));
+            assert (rdfs5_derives2 g ig.ig_triples new_t)
+          end
+        end;
+        fold_left_inv inv inner_step supers acc
+      | None -> ()
+    else ()
+  end;
+  fold_left_inv inv step g g;
+  assert_norm (rdfs_rule_subPropertyOf_trans g ig == fold_left step g g)
+
+// ===================================================================
+// 6. `rdfs_rule_container_membership`.
+//
+// The rule emits, unconditionally, for each of rdf:_1 .. rdf:_5:
+//     rdf:_n rdfs:subPropertyOf rdfs:member .
+//     rdf:_n rdf:type rdfs:ContainerMembershipProperty .
+// Both are RDFS AXIOMATIC TRIPLES (RDF 1.1 Semantics section 9, the
+// infinite rdf:_n rows), so the rule is sound with no premises at all
+// -- it is an axiom emitter, not an inference rule. The name in
+// RDFS.Closure.fsti's banner ("container membership axioms") is
+// accurate; the rule-table row it is sometimes filed under (rdfs12)
+// would need the rdf:type premise this rule does not read.
+//
+// The finite rdf:_1..rdf:_5 slice is an INCOMPLETENESS with respect to
+// the infinite family (RS-2), never an unsoundness.
+// ===================================================================
+
+let lemma_rdf_member_iris ()
+  : Lemma (is_rdf_member_iri RDFS.Closure.rdf_1 /\ is_rdf_member_iri RDFS.Closure.rdf_2 /\
+           is_rdf_member_iri RDFS.Closure.rdf_3 /\ is_rdf_member_iri RDFS.Closure.rdf_4 /\
+           is_rdf_member_iri RDFS.Closure.rdf_5) =
+  assert_norm (RDFS.Closure.rdf_1 == rdf_member_iri_str "1");
+  assert_norm (RDFS.Closure.rdf_2 == rdf_member_iri_str "2");
+  assert_norm (RDFS.Closure.rdf_3 == rdf_member_iri_str "3");
+  assert_norm (RDFS.Closure.rdf_4 == rdf_member_iri_str "4");
+  assert_norm (RDFS.Closure.rdf_5 == rdf_member_iri_str "5");
+  introduce exists (n : string). (RDFS.Closure.rdf_1 <: string) == rdf_member_iri_str n
+  with "1" and ();
+  introduce exists (n : string). (RDFS.Closure.rdf_2 <: string) == rdf_member_iri_str n
+  with "2" and ();
+  introduce exists (n : string). (RDFS.Closure.rdf_3 <: string) == rdf_member_iri_str n
+  with "3" and ();
+  introduce exists (n : string). (RDFS.Closure.rdf_4 <: string) == rdf_member_iri_str n
+  with "4" and ();
+  introduce exists (n : string). (RDFS.Closure.rdf_5 <: string) == rdf_member_iri_str n
+  with "5" and ()
+
+// --fuel 8: `memP cmp container_membership_properties` has to unfold
+// five cons cells to become the five-way disjunction the five
+// `is_rdf_member_iri` facts discharge. Default fuel is 2. A budget
+// bump, not a logic change; no --lax, no --admit_smt_queries.
+#push-options "--fuel 8 --z3rlimit 60"
+val rdfs_rule_container_membership_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures forall (t : triple).
+             memP t (rdfs_rule_container_membership g ig) ==>
+             (memP t g \/ rdfs_axiomatic t \/ rdfs_member_subproperty t))
+
+let rdfs_rule_container_membership_licensed g ig =
+  lemma_rdf_member_iris ();
+  let inv : rdf_graph -> prop =
+    fun (acc : rdf_graph) ->
+      forall (t : triple). memP t acc ==>
+        (memP t g \/ rdfs_axiomatic t \/ rdfs_member_subproperty t) in
+  let step : rdf_graph -> wf_iri -> rdf_graph =
+    fun (acc : rdf_graph) (cmp : wf_iri) ->
+      let t1 : triple = { s = S_IRI cmp; p = rdfs_subPropertyOf; o = T_IRI rdfs_member } in
+      let t2 : triple = { s = S_IRI cmp; p = rdf_type;
+                          o = T_IRI rdfs_ContainerMembershipProperty } in
+      add_triple_unchecked (add_triple_unchecked acc t1) t2 in
+  introduce forall (acc : rdf_graph) (cmp : wf_iri).
+      (memP cmp container_membership_properties /\ inv acc) ==> inv (step acc cmp)
+  with introduce (memP cmp container_membership_properties /\ inv acc) ==> inv (step acc cmp)
+  with _ . begin
+    assert_norm (container_membership_properties ==
+                 [RDFS.Closure.rdf_1; RDFS.Closure.rdf_2; RDFS.Closure.rdf_3;
+                  RDFS.Closure.rdf_4; RDFS.Closure.rdf_5]);
+    assert (cmp == RDFS.Closure.rdf_1 \/ cmp == RDFS.Closure.rdf_2 \/
+            cmp == RDFS.Closure.rdf_3 \/ cmp == RDFS.Closure.rdf_4 \/
+            cmp == RDFS.Closure.rdf_5);
+    assert (is_rdf_member_iri cmp);
+    let t1 : triple = { s = S_IRI cmp; p = rdfs_subPropertyOf; o = T_IRI rdfs_member } in
+    let t2 : triple = { s = S_IRI cmp; p = rdf_type;
+                        o = T_IRI rdfs_ContainerMembershipProperty } in
+    assert (t2 == ({ s = S_IRI cmp; p = i_rdf_type;
+                     o = T_IRI i_rdfs_ContainerMembershipProperty } <: triple));
+    assert (rdfs_axiomatic t2);
+    assert (t1 == ({ s = S_IRI cmp; p = i_rdfs_subPropertyOf;
+                     o = T_IRI i_rdfs_member } <: triple));
+    assert (rdfs_member_subproperty t1);
+    assert (step acc cmp == t2 :: t1 :: acc);
+    assert (forall (t : triple). memP t (t2 :: t1 :: acc) ==>
+              (t == t2 \/ t == t1 \/ memP t acc));
+    assert (inv (t2 :: t1 :: acc))
+  end;
+  fold_left_inv inv step container_membership_properties g;
+  assert_norm (rdfs_rule_container_membership g ig ==
+               fold_left step g container_membership_properties)
+#pop-options
+
+// ===================================================================
+// 7. FINDING RS-1 -- `rdfs_reflexivity_axioms` IS UNSOUND AT THE RDFS
+// RUNG, with a machine-checked witness.
+//
+// `collect_classes` treats an IRI as a class if it is the subject or
+// IRI-object of an `rdfs:subClassOf` triple, OR the subject of
+// `rdf:type rdfs:Class`, OR the subject of `rdf:type owl:Class`.
+// `collect_properties` is the dual and additionally accepts
+// `owl:ObjectProperty` and `owl:DatatypeProperty`.
+//
+// The first three sources are licensed: RDF 1.1 Semantics section 9's
+// conditions put the subject and object of an `rdfs:subClassOf` triple
+// in IC, ICEXT(I(rdfs:Class)) IS IC, and rdfs10 emits exactly
+// `xxx rdfs:subClassOf xxx` from `xxx rdf:type rdfs:Class`.
+//
+// The OWL sources are NOT. `owl:Class` is an ordinary IRI to an RDFS
+// interpretation; no RDFS condition relates ICEXT(I(owl:Class)) to
+// ICEXT(I(rdfs:Class)). (Under the OWL 2 RDF-Based Semantics it IS
+// related -- Table 5.3 -- which is why the rule is not a bug in the
+// OWL-RL regime that shares this code. It is a bug in the RDFS
+// regime, which `entailment_closure`'s "RDFS" branch dispatches to.)
+//
+// The theorem below is the SYNTACTIC witness: on a one-triple graph,
+// the shipping function emits a triple that NO row of the RDF or RDFS
+// rule table licenses and that is not an axiomatic triple. No
+// hypothesis on `c` is needed -- the emitted triple is a self-loop
+// (same subject and object) and every axiomatic `rdfs:subClassOf` row
+// has distinct endpoints.
+//
+// The full non-entailment (no MULTI-step derivation reaches it either)
+// is argued rather than machine-checked, and the argument is short:
+// from `c rdf:type owl:Class` the reachable conclusions are
+// `c rdf:type rdfs:Resource` (rdfs4a / rdfs2 through the axiomatic
+// `rdf:type rdfs:domain rdfs:Resource`), `owl:Class rdf:type
+// rdfs:Class` (rdfs3 through the axiomatic `rdf:type rdfs:range
+// rdfs:Class`), and `rdf:type rdf:type rdf:Property` (rdfD2). None
+// puts `c` in ICEXT(rdfs:Class), and rdfs10 is the only rule whose
+// conclusion has the shape `X rdfs:subClassOf X` from a single
+// premise. See the design note.
+// ===================================================================
+
+let owl_class_graph (c : wf_iri) : rdf_graph =
+  [ ({ s = S_IRI c; p = rdf_type; o = T_IRI owl_Class } <: triple) ]
+
+let owl_class_refl_triple (c : wf_iri) : triple =
+  { s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c }
+
+// The shipping function really does emit it.
+#push-options "--fuel 8 --z3rlimit 60"
+val reflexivity_axioms_emit_owl_class (c : wf_iri)
+  : Lemma (memP (owl_class_refl_triple c)
+                (rdfs_reflexivity_axioms (owl_class_graph c)))
+
+let reflexivity_axioms_emit_owl_class c =
+  assert_norm (collect_classes (owl_class_graph c) == [c]);
+  assert_norm (collect_properties (owl_class_graph c) == []);
+  assert_norm (rdfs_reflexivity_axioms (owl_class_graph c) ==
+               [ owl_class_refl_triple c ])
+#pop-options
+
+// It is not an axiomatic triple of either vocabulary. Every axiomatic
+// `rdfs:subClassOf` row has distinct endpoints; every other row has a
+// different predicate.
+#push-options "--fuel 50 --ifuel 2 --z3rlimit 240"
+val selfloop_not_axiomatic (c : wf_iri)
+  : Lemma (~(rdf_axiomatic (owl_class_refl_triple c)) /\
+           ~(rdfs_axiomatic (owl_class_refl_triple c)) /\
+           ~(rdfs_member_subproperty (owl_class_refl_triple c)))
+
+let selfloop_not_axiomatic c =
+  lemma_vocab_agree ();
+  assert_norm (i_rdfs_subClassOf =!= i_rdf_type);
+  assert_norm (i_rdfs_subClassOf =!= i_rdfs_domain);
+  assert_norm (i_rdfs_subClassOf =!= i_rdfs_range);
+  assert_norm (i_rdfs_subClassOf =!= i_rdfs_subPropertyOf);
+  assert_norm (i_rdf_Alt =!= i_rdfs_Container);
+  assert_norm (i_rdf_Bag =!= i_rdfs_Container);
+  assert_norm (i_rdf_Seq =!= i_rdfs_Container);
+  assert_norm (i_rdfs_ContainerMembershipProperty =!= i_rdf_Property);
+  assert_norm (i_rdfs_Datatype =!= i_rdfs_Class)
+#pop-options
+
+// -------------------------------------------------------------------
+// THE WITNESS. Not licensed by any row of either rule table.
+// -------------------------------------------------------------------
+#push-options "--fuel 8 --ifuel 2 --z3rlimit 240"
+val reflexivity_axioms_not_rdfs_sound (c : wf_iri)
+  : Lemma (memP (owl_class_refl_triple c)
+                (rdfs_reflexivity_axioms (owl_class_graph c)) /\
+           ~(rdfs_licensed d_minimal (owl_class_graph c) (owl_class_refl_triple c)))
+
+let reflexivity_axioms_not_rdfs_sound c =
+  reflexivity_axioms_emit_owl_class c;
+  selfloop_not_axiomatic c;
+  lemma_vocab_agree ();
+  assert_norm (i_rdfs_subClassOf =!= i_rdf_type);
+  assert_norm (i_rdfs_subClassOf =!= i_rdfs_subPropertyOf);
+  assert_norm (owl_Class =!= i_rdfs_Class);
+  assert_norm (owl_Class =!= i_rdf_Property);
+  assert_norm (owl_Class =!= i_rdfs_Datatype);
+  assert_norm (owl_Class =!= i_rdfs_ContainerMembershipProperty);
+  // The graph's single triple has predicate rdf:type, so every rule
+  // whose premise demands rdfs:domain / rdfs:range / rdfs:subClassOf /
+  // rdfs:subPropertyOf has no premise to fire on; every rule whose
+  // conclusion has predicate rdf:type or rdfs:subPropertyOf produces a
+  // differently-shaped triple; and the four rules that CAN conclude an
+  // rdfs:subClassOf triple (rdfs8, rdfs10, rdfs11, rdfs13) all demand
+  // an object that is rdfs:Class or rdfs:Datatype, not owl:Class.
+  assert (~(rdfs_licensed d_minimal (owl_class_graph c) (owl_class_refl_triple c)))
+#pop-options
