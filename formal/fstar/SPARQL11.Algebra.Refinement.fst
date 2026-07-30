@@ -923,4 +923,151 @@ let theorem_sm_bind_is_extend (mu : S.smap) (v : var_name) (t : rdf_term)
           (ensures  S.is_extend_at mu v t (sm_bind v t mu)) =
   Lh.lemma_assoc_tr_eq v mu
 
+
+(** ====================================================================== **)
+(** Part 14: BGP matching (sections 18.3.1 / 18.5)                         **)
+(** ====================================================================== **)
+
+/// mu' extends mu: every variable mu binds, mu' binds to the same term.
+let binding_extends (a b : S.smap) : prop =
+  forall (v : string) (x : rdf_term). S.sval v b == Some x ==> S.sval v a == Some x
+
+let lemma_binding_extends_refl (a : S.smap) : Lemma (binding_extends a a) = ()
+
+let lemma_binding_extends_trans (a b c : S.smap)
+  : Lemma (requires binding_extends a b /\ binding_extends b c)
+          (ensures  binding_extends a c) = ()
+
+/// RDF 1.2 triple terms are QUARANTINED from this result, exactly as
+/// the simple-entailment vertical quarantined them from its model
+/// theory (`graph_tt_free`). They are not hard for a different reason
+/// here -- the recursion is routine -- but they double the case
+/// analysis and nothing in the fragment needs them. Stated as an
+/// explicit hypothesis, never silently assumed.
+let ptrm_tt_free (pt : pattern_term) : bool =
+  match pt with
+  | PT_TripleTerm _ _ _ -> false
+  | _ -> true
+
+let psub_tt_free (ps : pattern_subject) : bool =
+  match ps with
+  | PS_TripleTerm _ _ _ -> false
+  | _ -> true
+
+let term_tt_free (t : rdf_term) : bool =
+  match t with
+  | T_TripleTerm _ _ _ -> false
+  | _ -> true
+
+/// The pattern's own literal constants must be exact for the same
+/// reason a mapping's bound terms must be: `try_bind_term` accepts a
+/// graph literal on `literal_eq`, which is coarser than term identity,
+/// and then `instantiate_tp` emits the PATTERN's literal, not the
+/// graph's. Without this the two are different terms.
+let ptrm_exact (pt : pattern_term) : prop =
+  match pt with
+  | PT_Literal l -> term_exact (T_Literal l)
+  | _ -> True
+
+/// A mapping's LOOKUP values are exact when its list entries are.
+let rec lemma_smap_exact_sval (mu : S.smap) (v : string) (x : rdf_term)
+  : Lemma (requires smap_exact mu /\ S.sval v mu == Some x)
+          (ensures  term_exact x)
+          (decreases mu) =
+  match mu with
+  | [] -> ()
+  | (w, _) :: rest -> if w = v then () else lemma_smap_exact_sval rest v x
+
+/// The core of BGP matching, in the shape section 7.3 of the
+/// simple-entailment design doc identifies as the only one that makes
+/// a search-with-accumulator induction go through: the
+/// FORALL-OVER-LATER-EXTENSIONS conjunct. The substitution that finally
+/// explains the whole pattern is read off the FINAL binding, built long
+/// after this step, so a per-step statement of the form "this step
+/// produces a binding that explains this position" is not usable.
+let lemma_try_bind_term_instantiates
+      (pt : pattern_term) (t : rdf_term) (mu mu' : S.smap)
+  : Lemma (requires try_bind_term pt t mu == Some mu' /\
+                    smap_exact mu /\ ptrm_exact pt /\ term_exact t /\
+                    ptrm_tt_free pt /\ term_tt_free t)
+          (ensures  binding_extends mu' mu /\ smap_exact mu' /\
+                    (forall (mu2 : S.smap). binding_extends mu2 mu' ==>
+                       bound_object_of_pattern pt mu2 == Some t)) =
+  match pt with
+  | PT_Var v ->
+    Lh.lemma_assoc_tr_eq v mu;
+    (match sm_lookup v mu with
+     | Some existing ->
+       lemma_smap_exact_sval mu v existing;
+       assert (rdf_term_eq existing t == true);
+       assert (existing == t);
+       assert (mu' == mu);
+       assert (S.sval v mu' == Some existing);
+       let aux (mu2 : S.smap)
+         : Lemma (requires binding_extends mu2 mu')
+                 (ensures  bound_object_of_pattern pt mu2 == Some t) =
+         Lh.lemma_assoc_tr_eq v mu2;
+         assert (S.sval v mu2 == Some existing)
+       in
+       FStar.Classical.forall_intro (fun mu2 -> FStar.Classical.move_requires aux mu2)
+     | None ->
+       assert (mu' == sm_bind v t mu);
+       assert (S.sval v mu' == Some t);
+       let aux (mu2 : S.smap)
+         : Lemma (requires binding_extends mu2 mu')
+                 (ensures  bound_object_of_pattern pt mu2 == Some t) =
+         Lh.lemma_assoc_tr_eq v mu2;
+         assert (S.sval v mu2 == Some t)
+       in
+       FStar.Classical.forall_intro (fun mu2 -> FStar.Classical.move_requires aux mu2))
+  | _ -> ()
+
+let lemma_try_bind_subject_instantiates
+      (ps : pattern_subject) (sj : subject) (mu mu' : S.smap)
+  : Lemma (requires try_bind_subject ps sj mu == Some mu' /\
+                    smap_exact mu /\ psub_tt_free ps)
+          (ensures  binding_extends mu' mu /\ smap_exact mu' /\
+                    (forall (mu2 : S.smap). binding_extends mu2 mu' ==>
+                       bound_subject_of_pattern ps mu2 == Some sj)) =
+  match ps with
+  | PS_Var v ->
+    Lh.lemma_assoc_tr_eq v mu;
+    (match sm_lookup v mu with
+     | Some existing ->
+       (lemma_smap_exact_sval mu v existing;
+        assert (mu' == mu);
+        assert (S.sval v mu' == Some (subject_to_term sj)))
+     | None -> assert (S.sval v mu' == Some (subject_to_term sj)));
+    let aux (mu2 : S.smap)
+      : Lemma (requires binding_extends mu2 mu')
+              (ensures  bound_subject_of_pattern ps mu2 == Some sj) =
+      Lh.lemma_assoc_tr_eq v mu2;
+      assert (S.sval v mu2 == Some (subject_to_term sj))
+    in
+    FStar.Classical.forall_intro (fun mu2 -> FStar.Classical.move_requires aux mu2)
+  | _ -> ()
+
+/// BGP matching, one triple pattern: if `tp_match` accepts, the
+/// resulting binding EXTENDS the incoming one and INSTANTIATES the
+/// pattern to exactly the matched triple -- which is section 18.3.1's
+/// "mu(P) is in G", the subgraph clause of `S.bgp_sol_spec`, for a
+/// single pattern.
+let theorem_tp_match_instantiates
+      (tp : triple_pattern) (t : RDF.Triple.triple) (mu mu' : S.smap)
+  : Lemma (requires tp_match tp t mu == Some mu' /\ smap_exact mu /\
+                    psub_tt_free tp.tp_s /\
+                    ptrm_tt_free tp.tp_p /\ ptrm_exact tp.tp_p /\
+                    ptrm_tt_free tp.tp_o /\ ptrm_exact tp.tp_o /\
+                    term_exact t.o /\ term_tt_free t.o)
+          (ensures  binding_extends mu' mu /\ smap_exact mu' /\
+                    instantiate_tp tp mu' == Some t) =
+  let mu1 = Some?.v (try_bind_subject tp.tp_s t.s mu) in
+  lemma_try_bind_subject_instantiates tp.tp_s t.s mu mu1;
+  let mu2 = Some?.v (try_bind_term tp.tp_p (T_IRI t.p) mu1) in
+  lemma_try_bind_term_instantiates tp.tp_p (T_IRI t.p) mu1 mu2;
+  lemma_try_bind_term_instantiates tp.tp_o t.o mu2 mu';
+  lemma_binding_extends_trans mu' mu2 mu1;
+  lemma_binding_extends_trans mu' mu1 mu;
+  lemma_binding_extends_refl mu'
+
 #pop-options

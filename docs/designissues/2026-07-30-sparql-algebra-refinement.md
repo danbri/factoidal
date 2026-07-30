@@ -356,6 +356,13 @@ val theorem_sm_bind_is_extend
 // LeftJoin — degenerate arms only (see section 5)
 val theorem_left_join_empty_right / _empty_left
 
+// BGP matching, one triple pattern (sections 18.3.1 / 18.5)
+val theorem_tp_match_instantiates (tp) (t) (mu mu')
+  : Lemma (requires tp_match tp t mu == Some mu' /\ smap_exact mu /\
+                    <pattern literals exact, triple terms excluded>)
+          (ensures  binding_extends mu' mu /\ smap_exact mu' /\
+                    instantiate_tp tp mu' == Some t)
+
 // 🔴 SR-2
 val theorem_join_key_finer_than_compatibility
 ```
@@ -379,14 +386,21 @@ bag layer to the set layer.
 
 ## 5. What is not proved, exactly
 
-* **BGP matching against the store.** `bgp_sol_spec` is defined in the
-  Spec module, abstractly over a pattern-instantiation function, and
-  the empty-BGP base case is proved. `eval_bgp_store` is **not** yet
-  refined against it. The missing pieces are (a) `tp_match` sound and
-  complete against "μ' extends μ minimally and μ'(P) = t", and (b)
-  `store_search`'s candidate list is a superset of the matching triples
-  (a lemma about `RDF.Indexed`, needed here for the same reason
-  `join`'s hash path needs one). Both are tractable; neither is small.
+* **BGP matching against the store — partially.** `bgp_sol_spec` is
+  defined in the Spec module abstractly over a pattern-instantiation
+  function, the empty-BGP base case is proved, and
+  `theorem_tp_match_instantiates` proves the per-pattern core: if
+  `tp_match` accepts, the resulting binding **extends** the incoming
+  one and **instantiates the pattern to exactly the matched triple**
+  (§18.3.1's "μ(P) is in G", for one pattern). What is NOT proved is
+  the lift to `eval_bgp_store`, which needs (a) `store_search`'s
+  candidate list to be a superset of the matching triples — a lemma
+  about `RDF.Indexed`, needed for the same reason `join`'s hash path
+  needs one — and (b) the `choose_best_tp` reordering to be
+  semantics-preserving. Both are tractable; neither is small.
+  Triple-term patterns are quarantined from the per-pattern theorem by
+  explicit `tt_free` hypotheses (routine recursion, doubled case
+  analysis, nothing in the fragment needs it).
 * **The general `left_join` arm.** Only the two degenerate arms are
   proved. The obstacle is recorded in the module and in §6.3 below —
   it is proof engineering, not semantics.
@@ -471,9 +485,10 @@ Measured this session, on warm `.checked` dependencies:
 | Module | Lines | Single-module verify |
 |---|---|---|
 | `SPARQL11.Algebra.Spec` | 834 | ~20 s |
-| `SPARQL11.Algebra.Refinement` | ~910 | ~90 s (cold deps recheck dominates) |
+| `SPARQL11.Algebra.Refinement` | ~1050 | ~90 s (cold deps recheck dominates) |
 
-One session, two modules, eight operators touched, two live bugs. As in
+One session, two modules, 29 theorems, nine operators touched, two
+live bugs. As in
 the simple-entailment vertical the dominant cost was **deciding what
 the specification should say** — specifically the multiset-vs-set
 question in §3 and the term-equality question in the Spec banner — not
@@ -491,8 +506,9 @@ discharging proof obligations.
   (shared fix with SE-1). Same suite gate. File as a bug.
 * Audit `RDF.Indexed`'s other bucket keys for the §6.2 defect.
 * Prove the general `left_join` arm (§6.3 gives the shape).
-* Prove `tp_match` and `eval_bgp_store` against `bgp_sol_spec`; needs
-  the `store_search` superset lemma.
+* Lift `theorem_tp_match_instantiates` to `eval_bgp_store` against
+  `bgp_sol_spec`; needs the `store_search` superset lemma and the
+  `choose_best_tp` reordering argument. Add the triple-term cases.
 * Prove `fexpr_congr (eval_expr_ebv base e)`, which unlocks every
   bag-level Filter/LeftJoin statement.
 * Prove `bucket_lookup`'s result is a sublist of the indexed sequence
