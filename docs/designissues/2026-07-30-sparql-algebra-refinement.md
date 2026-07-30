@@ -484,8 +484,8 @@ Measured this session, on warm `.checked` dependencies:
 
 | Module | Lines | Single-module verify |
 |---|---|---|
-| `SPARQL11.Algebra.Spec` | 834 | ~20 s |
-| `SPARQL11.Algebra.Refinement` | ~1050 | ~90 s (cold deps recheck dominates) |
+| `SPARQL11.Algebra.Spec` | 834 | 1.9 s |
+| `SPARQL11.Algebra.Refinement` | ~1050 | 19.5 s |
 
 One session, two modules, 29 theorems, nine operators touched, two
 live bugs. As in
