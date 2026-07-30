@@ -255,6 +255,19 @@ let rdfs_axiomatic (t : triple) : prop =
       t == ({ s = S_IRI i; p = i_rdfs_domain; o = T_IRI i_rdfs_Resource } <: triple) \/
       t == ({ s = S_IRI i; p = i_rdfs_range;  o = T_IRI i_rdfs_Resource } <: triple)))
 
+// The rdfs12 consequence of the axiomatic `rdf:_n rdf:type
+// rdfs:ContainerMembershipProperty` rows. NOT itself an axiomatic
+// triple — RDF 1.1 Semantics section 9 lists only the type / domain /
+// range rows for the rdf:_n family — but RDFS-entailed by the EMPTY
+// graph, since the axiomatic row plus rdfs12 gives it with no premise
+// from the data. Named separately so the shipping container rule's
+// refinement theorem can say exactly which of the two triples it emits
+// is axiomatic and which is one rdfs12 step past an axiom.
+let rdfs_member_subproperty (t : triple) : prop =
+  exists (i : wf_iri). is_rdf_member_iri i /\
+    t == ({ s = S_IRI i; p = i_rdfs_subPropertyOf;
+            o = T_IRI i_rdfs_member } <: triple)
+
 // ===================================================================
 // THE SPECIFICATION, syntactic side.
 //
@@ -272,6 +285,7 @@ let rdfs_axiomatic (t : triple) : prop =
 // ===================================================================
 let rdfs_licensed (dd : datatype_set) (g : list triple) (t : triple) : prop =
   memP t g \/ rdf_axiomatic t \/ rdfs_axiomatic t \/
+  rdfs_member_subproperty t \/
   rdfD2_derives g t \/
   rdfs1_derives dd t \/ rdfs2_derives g t \/ rdfs3_derives g t \/
   rdfs4a_derives g t \/ rdfs4b_derives g t \/ rdfs5_derives g t \/

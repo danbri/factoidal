@@ -169,9 +169,11 @@ let rdfD1_derives (dd : datatype_set) (g : list triple)
 // family rather than by arithmetic on the IRI string: what matters
 // downstream is only that the shipping engine's finite slice
 // (`rdf:_1` .. `rdf:_5`) is CONTAINED in it.
+let rdf_member_iri_str (n : string) : string =
+  FStar.String.concat "" ["http://www.w3.org/1999/02/22-rdf-syntax-ns#_"; n]
+
 let is_rdf_member_iri (i : wf_iri) : prop =
-  exists (n : string).
-    i == FStar.String.concat "" ["http://www.w3.org/1999/02/22-rdf-syntax-ns#_"; n]
+  exists (n : string). (i <: string) == rdf_member_iri_str n
 
 let rdf_axiomatic (t : triple) : prop =
   memP t rdf_axiomatic_triples \/
