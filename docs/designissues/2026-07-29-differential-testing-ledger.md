@@ -135,7 +135,12 @@ misleading (anti-pattern #3/#25 territory even in a brand-new report). ⚠️
 
 ## Findings
 
-### 🔴 Finding 1 (ours-wrong, SILENT FAILURE -- highest priority): RDF/XML drops the whole document on a non-ASCII property-element local name
+### ✅ Finding 1 (was 🔴 ours-wrong, SILENT FAILURE) -- FIXED 2026-07-30 in #325: RDF/XML drops the whole document on a non-ASCII property-element local name
+
+> Resolved. See "Resolution of Findings 1 and 2" below for the root cause,
+> the second defect that turned out to be in this finding's own repro
+> fixture, and the measured suite deltas. The analysis below is kept as
+> written on 2026-07-29, including the parts the fix corrected.
 
 **Repro:** `tools/difftest/repros/rdfxml_unicode_qname_dropped.rdf`
 
@@ -178,7 +183,13 @@ separately the swallowed-error path between the parser and the CLI
 genuine parse failure of a non-empty file -- that symptom alone is worth
 its own defensive fix regardless of the root parser bug).
 
-### 🔴 Finding 2 (ours-wrong, SOUNDNESS-RELEVANT): Turtle/TriG corrupt non-ASCII bytes inside `<IRIREF>`
+### ✅ Finding 2 (was 🔴 ours-wrong, SOUNDNESS-RELEVANT) -- FIXED 2026-07-30 in #325: Turtle/TriG corrupt non-ASCII bytes inside `<IRIREF>`
+
+> Resolved. The locus guess below ("whatever code turns that byte span into
+> the final IRI string value") was right; it was
+> `Parser.Turtle.decode_iri_escapes_acc`. N-Triples and N-Quads turned out
+> to be affected too, on their escaped-IRI slow path. See "Resolution of
+> Findings 1 and 2" below.
 
 **Repro:** `tools/difftest/repros/turtle_iriref_unicode_mojibake.ttl`
 
@@ -297,6 +308,314 @@ Factoidal (agreeing with rdflib, a second independent implementation)
 gets the spec-mandated behavior. Recorded here per the ledger's own
 rule -- disagreements get triaged and reported in both directions, not
 just the direction that finds bugs in us.
+
+### 🔴 Finding 5 (ours-wrong, SOUNDNESS-RELEVANT), found 2026-07-30 while fixing #325: RDF/XML `xml:lang` leaks onto the next SIBLING property element
+
+Tracked in **#329**. Repro:
+`tools/difftest/repros/rdfxml_xmllang_leaks_to_next_sibling.rdf`
+
+```xml
+<rdf:Description rdf:about="http://example.org/s">
+  <ex:tagged xml:lang="de">has a tag</ex:tagged>
+  <ex:plain>should have NO tag</ex:plain>
+</rdf:Description>
+```
+
+We give `ex:plain` the literal `"should have NO tag"@de`. pyoxigraph and
+rdflib both give it a **plain** literal. `xml:lang` is scoped to the
+element SUBTREE (XML Information Set; RDF/XML §6.1.2 defers to it), so it
+must not survive past the closing tag of the element that declared it.
+The tag correctly does NOT leak across an `rdf:Description` boundary,
+which pins this to the sibling loop rather than to a global.
+
+**Not caused by the #325 fix** — the pre-#325 binary reproduces it
+identically, measured. It was invisible on this corpus only because the
+same documents also tripped #325's XML-Name bug and were dropped whole.
+Fixing the drop is what made it observable, which is the useful part:
+**a silent whole-document drop hides every other defect in that
+document.** 8 of the 67 residual `rdf`-format disagreements in the
+post-fix re-run below are this finding.
+
+Located to one line: `Parser.RDFXML.process_property_children` passes
+`result1.pr_state` — the state RETURNED by the previous sibling — into the
+next sibling, and `process_property_element` has already folded that
+element's own `xml:lang` / `xml:base` / `xmlns` into it via
+`update_state_from_attrs`. The fix is not "pass `st`": `pr_state` also
+carries the blank-node counter, the seen-`rdf:ID` set and `has_error`,
+which genuinely must flow across siblings. The scoped fields (`lang`,
+`base_iri`, `namespaces`, `direction`) have to be restored from the
+enclosing state. Deliberately NOT fixed in the #325 work: it is a distinct
+defect in RDF/XML state threading, it needs its own gate run over
+`rdf-xml` (166 pass, 0 fail) and `rdf12` `rdf-xml/eval` (30 pass, 0 fail),
+and guessing wrong about which fields are scoped would trade one soundness
+bug for another. `xml:base` and `xmlns` leaking would corrupt IRIs rather
+than literals — worse, and not yet demonstrated either way.
+
+## Resolution of Findings 1 and 2 (2026-07-30, issue #325)
+
+Both are FIXED, and they turned out to be **one** root cause with seven
+call sites — plus three more instances of the same defect that this
+harness's generator never happened to produce.
+
+### The root cause
+
+`FStar.String.string_of_list` extracts (F\* OCaml runtime,
+`ulib/ml/app/FStar_String.ml`) to
+
+```ocaml
+let string_of_list l = BatUTF8.init (BatList.length l) (fun i -> BatUChar.chr (BatList.at l i))
+```
+
+so it **re-encodes every list element as a UTF-8 codepoint**. Any parser
+that walks bytes with `Parser.FastString.fs_byte_index`, accumulates them
+into an F\* `list char`, and finishes with `string_of_list` therefore
+rewrites all of its non-ASCII input: byte `0xE6` goes in and the two
+bytes `0xC3 0xA6` come out. That is exactly UTF-8 read as Latin-1, and it
+is silent.
+
+This ledger's Finding 2 guessed the locus correctly: *"whatever OCaml/F\*
+code turns that byte span into the final IRI string value"*. It was
+`Parser.Turtle.decode_iri_escapes_acc`. The reason the **literal** on the
+same source line round-tripped correctly is that literals go through
+`scan_short_string_span` + `span_to_string`, i.e. `fs_byte_sub`, which is
+byte-transparent. Nothing about file decoding differed between the two
+tokens — only the primitive each used to leave the parser. That asymmetry
+was the whole bug, and the diagnostic lead in this ledger is what
+isolated it.
+
+Escapes are the mirror-image case, and were correct all along: a
+`\uXXXX` carries a **codepoint**, and `string_of_list` on a ONE-element
+list is precisely "encode this codepoint as UTF-8". Mixing bytes and
+codepoints in one accumulator is the defect; the rule that replaces it is
+now stated once, at the boundary where the hazard lives, on
+`Parser.FastString.fs_utf8_of_codepoint`:
+
+> raw bytes leave through `fs_byte_sub`, codepoints leave through
+> `fs_utf8_of_codepoint`, and the two never share an accumulator.
+
+`FStar.String.string_of_char` is the opposite trap and is worth naming
+alongside it: it extracts to `BatString.of_char (Char.chr c)`, so it is
+byte-oriented (correct for passing a byte through) and **raises** above
+U+00FF (never hand it a codepoint).
+
+### Finding 1 was TWO defects, and the fixture had one of them
+
+**Defect A, the reported one.** The XML Name scan was byte-level. Its
+non-ASCII arm accepted UTF-8 LEAD bytes (`>= 0xC0`) and rejected
+CONTINUATION bytes (`0x80`–`0xBF`), so the scan stopped *inside* the
+first non-ASCII codepoint. `<ex:日本語 …>` scanned as the name `ex:` +
+`0xE6` and then met `0x97` where the element parser wanted `>` or
+whitespace. The element failed, the failure propagated to the document
+root, and the lenient RDF/XML entry point returned `[]`. Hence "0
+triples, exit 0" on a well-formed file — the whole-document drop the
+bisection in Finding 1 observed. Confirmed by direct before/after on a
+minimal fixture, not inferred.
+
+Alongside it, the START character was never checked at codepoint level
+at all: `parse_xml_name` tested the byte and then hand-special-cased the
+single codepoint U+00B7. Every other non-NameStartChar codepoint was
+waved through as a name start; the only reason xmlconf never noticed is
+that the byte-level body scan then truncated the name and the element
+failed anyway — the right verdict for the wrong reason. Fixing the body
+scan removed that accident and two xmlconf cases surfaced the hole
+immediately (`o-p05fail4`, a Name may not start with a CombiningChar;
+`rmt-020`, U+F0000, illegal in BOTH XML 1.0 and 1.1). Both are fixed by
+testing the start codepoint against the real NameStartChar table.
+
+**Defect B, in the fixture itself.** `rdfxml_unicode_qname_dropped.rdf`'s
+own header comment contained four `--` sequences (`exit code 0 -- no
+error is printed`, `(WRONG -- should be 1)`). XML 1.0 §2.5 forbids `--`
+anywhere inside a comment, so the fixture was **not well-formed XML** and
+Factoidal correctly rejected it for that second, independent reason.
+pyoxigraph and rdflib are lenient about it, which is why the fixture
+looked like a clean single-variable repro when it was not. With the
+comment rewritten (2026-07-30) the fixture isolates Defect A exactly:
+the base binary gives `0 triples` with exit code 0, the fixed binary
+gives `1 triples`, and pyoxigraph gives the same single quad. Keep that
+file free of double hyphens.
+
+The lesson generalises: a differential-testing repro is itself an input
+to a parser, and "the reference implementations accept it" is not the
+same as "it is valid". Reduce a repro to a MINIMAL fixture and check the
+minimal one independently — a repro carrying explanatory prose can carry
+a second defect in that prose.
+
+The swallowed-error path this ledger asked for as its own defensive fix
+also landed. `bin/factoidal-cli/factoidal_cli.ml` now diagnoses a parse
+that yields zero triples from a document that has content, and exits
+non-zero. The judgement of "did this document actually parse" stays in
+F\*: every format already ships a strict entry point returning `None` on
+a syntax error (`parse_rdfxml_with_base_strict`,
+`parse_turtle_with_base_strict`, `parse_ntriples_strict`,
+`parse_nquads_strict`, `parse_trig_with_base`), and the CLI only ASKS one
+of them, only on the zero-triple path — so a healthy parse never pays for
+a second pass and no parsing decision moves into the consumer
+(anti-pattern #15). A legitimately triple-free document still exits 0.
+
+### Three more instances the harness did not generate
+
+Worth recording, because each hid behind a fast path that made its format
+look correct — the generator would have had to produce a specific,
+unusual token shape to reach any of them:
+
+- **N-Triples and N-Quads IRIREFs** (`Parser.NTriples.parse_iri_body_acc`).
+  `parse_iri_raw` takes a `scan_iri_end` fast path that slices with
+  `fs_byte_sub` whenever the IRI contains no backslash, so a plain
+  non-ASCII IRIREF is correct and the char accumulator is never entered.
+  This ledger's "same file as N-Triples round-trips correctly" observation
+  was true — but only of escape-free input. `<http://e.org/日a本b語>`
+  parsed to `<http://e.org/æ¥a本bèª>`. Both formats were affected.
+- **Turtle PN_LOCAL names** (`Parser.Turtle.unescape_pn_local`), which
+  short-circuits to the input string unless `has_backslash_fuel` finds a
+  backslash. `ex:日本` was right; `ex:日\-本` resolved to
+  `<http://e.org/æ¥-æ¬>`.
+- **XML CDATA sections, comments, PI bodies, and DTD internal-entity
+  values** (`Parser.XML.parse_cdata_body` / `parse_comment_body` /
+  `collect_pi_body` / `read_entity_value_raw`). CDATA is the one whose
+  content reaches RDF literals, so `<![CDATA[日本 café]]>` produced the
+  literal `"æ¥æ¬ cafÃ©"` — a user-visible corruption that no
+  conformance fixture caught.
+
+### xml-conformance moves, and the composition matters 🧭
+
+Measured on identical runner sources, base parser vs fixed parser:
+**1429 pass, 0 fail, 1156 skip (of 2585) → 1456 pass, 0 fail, 1129 skip.**
+Zero fails before and after. But read the breakdown, because the
+composition changes a lot:
+
+| bucket | base | fixed |
+|---|---|---|
+| valid documents accepted | 399 | **727** |
+| not-wf documents correctly rejected | 1030 | **729** |
+| skip: valid DTD-boundary (rejected) | 386 | 58 |
+| skip: out-of-profile | 37 | **339** |
+
+**+328 valid documents now parse** that were previously rejected — that
+is the bug, and it is the whole point.
+
+**302 not-wf tests moved from pass to skip.** They were "passing" only
+because the parser rejected every non-ASCII name, so it satisfied
+"illegal in XML 1.0 4th edition" by accident while also rejecting every
+LEGAL non-ASCII name. They are almost all in
+`ibm/ibm_oasis_not-wf.xml` — 312 not-wf entries in the corpus carry
+`EDITION="1 2 3 4"`, i.e. they assert the enumerated Appendix B
+Letter/CombiningChar/Extender tables that XML 1.0 **5th edition** (2008)
+retired in favour of the XML 1.1 NameStartChar/NameChar ranges.
+Parser.XML now implements the 5th-edition/1.1 production — the same
+table `XML.Wellformedness.fst` already carried, and the one current XML
+processors implement — so `bin/xml-runner/xml_runner.ml` gained an
+`EDITION`-aware branch that classifies those as out-of-profile, the same
+category it already used for the 37 XML-1.1-only and Namespaces-only
+cases. Not a fail, not a claimed pass.
+
+🧭 **Decision for the owner.** The alternative is to implement the XML
+1.0 **4th**-edition Appendix B tables instead, which would keep those
+302 as real passes AND keep the 328 valid documents (日本語 is
+Ideographic under both editions). Cost: a several-hundred-line hand
+transcription of Appendix B, and Parser.XML would then implement an
+older Name production than `XML.Wellformedness.fst` does — an internal
+inconsistency. The 5th-edition table was chosen for consistency with
+what the tree already had. Say the word if the 4th-edition table is
+wanted instead.
+
+### Not fixed, deliberately
+
+`Parser.Combinators`' `ptake_while` / `ptake_while1` / `ptake_while_acc` /
+`pquoted_body` carry the same byte-into-`list char` pattern. They were
+rewritten byte-transparently and the rewrite was **reverted**: exporting
+`ptake_while_scan`'s refined `r:nat{r >= pos}` return type through them
+puts enough extra facts into every caller's SMT context to break an
+unrelated termination proof in `Parser.WKT.parse_ring_list_rest`
+(measured: WKT verifies on the base tree and fails with the rewrite, same
+z3 4.13.3; stripping the refinement through a plain `nat` moved the
+failure to the next structurally identical recursion rather than removing
+it). No reachable caller can hit the defect — every one passes an
+ASCII-only predicate and `pquoted_string` has no caller at all — so
+destabilising a green module for an unreachable defect was the wrong
+trade. The four functions now carry a warning banner naming the hazard,
+the safe alternatives (`ptake_while_pos` / `ptake_while1_pos`), and the
+condition for redoing the rewrite.
+
+### Why the conformance suites were blind to all of this
+
+Stated in this ledger's own framing, and confirmed: RDF 1.1 scores 1031
+pass, 0 fail with every one of these defects present. The W3C parser
+tests check **acceptance** — did the file parse, to the right triple
+count — not **preservation** of the term strings through to output. This
+is the coverage gap issue #92 named. The regression pin added with the
+fix (`tests/local/parser_unicode_regressions.sh`, wired as
+`.github/test-suites/local-parser-unicode.yaml`) asserts preservation
+instead, comparing exact canonical output bytes, and covers both the
+defective paths and the already-correct ones so a future change cannot
+regress a correct path into a defective one.
+
+### Harness note: the swap classifier earns its keep
+
+The `soundness_suspects` counter now catches same-count "swap" shapes
+(a corrupted triple in place of a correct one), not only one-sided
+add/drop. The 2026-07-29 baseline quoted below predates that fix and so
+undercounts Finding 2 at 134; a re-run of the identical seed range with
+the fixed classifier scores the baseline at **422 soundness_suspects**
+(288 swap + 134 drop). That is the number the post-fix run is measured
+against — see "Post-fix re-run" below.
+
+### Post-fix re-run of the harness
+
+Measured on the **same generator seeds** as the baseline (`--seed-base
+10000`), so this is instance-for-instance comparable rather than two
+independent samples. Restricted to seeds 10000-10059 (60 instances)
+because the full 200-instance run stalled on `seed10125_dataset_large`
+under CPU contention from a concurrent job — a harness-side cost, not a
+parser one: `factoidal canonicalize` on that exact file completes in well
+under a second and its output is the corrected one. The baseline column is
+the 2026-07-29 report filtered to the same 60 seeds.
+
+| | baseline | after #325 |
+|---|---|---|
+| `disagreement` findings | 125 | **67** |
+| `soundness_suspects` | 125 | **67** |
+| … of which "factoidal DROPPED quads pyoxigraph produces" | 40 | **0** |
+| … of which "factoidal produced DIFFERENT quads (swap)" | 85 | 67 |
+| `spec-ambiguous-langtag-case-cascaded` | 35 | 93 |
+| disagreements by format | ttl 40, rdf 40, nq 20, trig 20, nt 5 | ttl 5, rdf 17, nq 20, trig 20, nt 5 |
+
+**The #325 disagreement class is gone.** Two independent checks:
+
+- **Zero** lines in our output anywhere in the 60 instances carry a
+  Latin-1-of-UTF-8 mojibake signature (`Ã`, `Â`, `æ¥`, `è`, `ð`). Before
+  the fix these were in every `ttl`/`trig`/`nq` rendering that contained a
+  non-ASCII IRI.
+- The **DROPPED-quads** soundness class is empty. That class was entirely
+  Finding 1's whole-document RDF/XML drop.
+
+**What the 67 residual disagreements are.** Comparing only the GROUND
+(blank-node-free) triples — so blank-node *labelling* differences, which
+need a real isomorphism check rather than a set diff, are excluded — and
+folding the two already-triaged findings:
+
+- **59 of 67** have byte-identical ground triples once language-tag CASE is
+  folded (Finding 3: we preserve `@En-Us`, Oxigraph lowercases to
+  `@en-us`) and the unbounded-integer literal is set aside (Finding 4:
+  `"-99999999999999999999999999999999999999"^^xsd:integer`, which Oxigraph
+  drops and we and rdflib keep). Both are pre-existing, both are triaged
+  above, neither is ours-wrong. The langtag-case difference cascades into
+  different `_:c14n` labels because RDFC-1.0 hashes the literal including
+  its tag, which is why one one-character difference reshuffles a whole
+  graph's labels and why the `nq`/`trig`/`nt` counts did not move: those
+  formats never had a #325 defect in this corpus, and their disagreements
+  were always Finding 3.
+- **8 of 67**, all format `rdf`, are the newly-visible **Finding 5** above
+  (`xml:lang` leaking to the next sibling). Tracked in #329.
+
+So: zero residual disagreements attributable to #325, and the one new
+class the fix uncovered is filed rather than left in a report.
+
+`self_inconsistencies` stays at 100 on these seeds. That is expected and
+is not a regression: it counts pairs of renderings of the same abstract
+graph whose canonical forms differ, and Finding 3's langtag-case cascade
+produces exactly that whenever two renderings of one graph hash their
+blank nodes differently. It will move when Finding 3 moves, not when a
+parser bug is fixed.
 
 ## Scale of the confirmed run (2026-07-29 baseline)
 

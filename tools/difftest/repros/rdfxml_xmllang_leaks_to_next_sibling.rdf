@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Differential-testing finding: xml:lang on one RDF/XML property element
+  LEAKS onto the following SIBLING property element.
+
+  XML Information Set scoping (and RDF/XML section 6.1.2, which defers to
+  it) scopes xml:lang, xml:base and namespace declarations to the element
+  SUBTREE. Factoidal threads them in DOCUMENT ORDER instead, so the tag
+  survives past the closing tag of the element that declared it.
+
+    bin/linux-x86_64/factoidal canonicalize tools/difftest/repros/rdfxml_xmllang_leaks_to_next_sibling.rdf
+
+  Factoidal:   ex:plain "should have NO tag"@de      WRONG
+  pyoxigraph:  ex:plain "should have NO tag"         plain literal, correct
+  rdflib agrees with pyoxigraph.
+
+  Same class as issue #325's Turtle IRIREF bug: we emit a term no other
+  implementation emits, so downstream joins, canonicalization and
+  entailment all operate on the wrong literal.
+
+  Located: Parser.RDFXML.process_property_children passes
+  result1.pr_state (the state RETURNED by the previous sibling) into the
+  next sibling. process_property_element folds that element's own
+  xml:lang / xml:base / xmlns into the state via
+  update_state_from_attrs, and the mutation escapes. The scoped fields
+  (lang, base_iri, namespaces, direction) must be restored from the
+  enclosing state; the genuinely document-wide fields (bnode counter,
+  seen rdf:ID set, has_error) must keep flowing.
+
+  NOT caused by the #325 fix: the base binary reproduces this
+  identically. It was invisible on the generated corpus only because
+  those documents also tripped the #325 Name bug and were dropped whole.
+  Fixing the drop made it observable.
+
+  Note the third rdf:Description below: the tag correctly does NOT leak
+  across a Description boundary, which is what pins this to the sibling
+  loop rather than to a global.
+-->
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:ex="http://example.org/onto#">
+  <rdf:Description rdf:about="http://example.org/s">
+    <ex:tagged xml:lang="de">has a tag</ex:tagged>
+    <ex:plain>should have NO tag</ex:plain>
+  </rdf:Description>
+  <rdf:Description rdf:about="http://example.org/s2">
+    <ex:plain2>also no tag</ex:plain2>
+  </rdf:Description>
+</rdf:RDF>

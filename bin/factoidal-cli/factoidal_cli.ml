@@ -226,11 +226,95 @@ let scope_dataset_bnodes ds =
   incr bnode_scope_counter;
   RDF_Dataset_Merge.rename_dataset_bnodes (Printf.sprintf "d%d_" n) ds
 
+(* Issue #325 — a non-empty document that yields ZERO triples must be
+   REPORTED, never returned as success.
+
+   The lenient entry points every subcommand loads through return a
+   plain triple list with no error channel, so a parse failure was
+   indistinguishable from "this file contains no triples". That is how
+   the RDF/XML Unicode-QName bug stayed invisible: `factoidal count`
+   printed "0 triples" and exited 0 on a well-formed document that both
+   pyoxigraph and rdflib parse. For anyone importing an ontology with a
+   non-ASCII vocabulary, silent data loss with a success exit code is
+   worse than a crash.
+
+   The JUDGEMENT of "did this document actually parse" stays in F*:
+   every format already ships a strict entry point that returns None on
+   a syntax error. This layer only ASKS one of them, and only when the
+   lenient parse came back empty — so a healthy parse never pays for a
+   second pass, and no parsing decision moves into the consumer
+   (anti-pattern #15). *)
+(* Each strict entry point returns a DIFFERENT payload type (triple list
+   for the graph formats, rdf_dataset for the dataset formats), so this
+   needs an explicit polymorphic annotation — an inferred one unifies with
+   whichever branch the type-checker reaches first. *)
+let fstar_option_is_some : 'a. 'a FStar_Pervasives_Native.option -> bool =
+  fun o ->
+    match o with
+    | FStar_Pervasives_Native.Some _ -> true
+    | FStar_Pervasives_Native.None -> false
+
+let strict_parse_accepts fmt content base_iri =
+  let b = match base_iri with Some b -> b | None -> "" in
+  let some_nt o = fstar_option_is_some o in
+  match fmt with
+  | NT ->
+    fstar_option_is_some (if !rdf12_mode then Parser_NTriples.parse_ntriples_strict_12 content
+             else Parser_NTriples.parse_ntriples_strict content)
+  | NQuads ->
+    fstar_option_is_some (if !rdf12_mode then Parser_NQuads.parse_nquads_strict_12 content
+             else Parser_NQuads.parse_nquads_strict content)
+  | Turtle ->
+    fstar_option_is_some (if !rdf12_mode then Parser_Turtle.parse_turtle_with_base_strict_12 content b
+             else Parser_Turtle.parse_turtle_with_base_strict content b)
+  | TriG ->
+    fstar_option_is_some (if !rdf12_mode then Parser_TriG.parse_trig_with_base_12 content b
+             else Parser_TriG.parse_trig_with_base content b)
+  | RDFXML ->
+    fstar_option_is_some (Parser_RDFXML.parse_rdfxml_with_base_strict b content)
+  | _ ->
+    (* No strict entry point wired for this format: say nothing rather
+       than guess. Better a missed diagnosis than a false one. *)
+    true
+
+(* Non-empty here means "has any content at all", deliberately crude:
+   the question of whether that content SHOULD have produced triples is
+   the strict parser's to answer, not ours. A file of only whitespace is
+   let through so `count` on an empty file stays a success. *)
+let has_any_content content =
+  let n = String.length content in
+  let rec scan i =
+    if i >= n then false
+    else match content.[i] with
+      | ' ' | '\t' | '\n' | '\r' -> scan (i + 1)
+      | _ -> true in
+  scan 0
+
+let diagnose_empty_parse fmt content base_iri path =
+  if has_any_content content && not (strict_parse_accepts fmt content base_iri) then begin
+    Printf.eprintf
+      "Error: %s parsed to zero triples but is not an empty document — \
+       the parse failed and the result would have been silently empty.\n"
+      path;
+    Printf.eprintf
+      "       Re-run with a strict validator, or file a bug: a non-empty \
+       document that yields no triples is a parser defect, not a valid \
+       empty graph (issue #325).\n";
+    exit 1
+  end
+
+let dataset_quad_count (ds : RDF_Graph_Executable.rdf_dataset) =
+  List.length ds.ds_default
+  + List.fold_left (fun acc ng -> acc + List.length ng.ng_graph) 0 ds.ds_named
+
 let load_dataset ?(format=None) ?(base=None) path =
   let content = read_file path in
   let fmt = match format with Some f -> f | None -> detect_format path in
   let base_iri = match base with Some b -> Some b | None -> file_base_iri path in
-  scope_dataset_bnodes @@ match fmt with
+  let diagnose ds =
+    if dataset_quad_count ds = 0 then diagnose_empty_parse fmt content base_iri path;
+    ds in
+  scope_dataset_bnodes @@ diagnose @@ match fmt with
   | NQuads ->
     if !rdf12_mode then Parser_NQuads.parse_nquads_12 content
     else Parser_NQuads.parse_nquads content
@@ -2755,16 +2839,21 @@ let () =
           let n = match base_iri with
             | Some b -> Parser_Turtle.count_turtle_triples_with_base content b
             | None -> Parser_Turtle.count_turtle_triples content in
+          (* Issue #325: these three count fast paths bypass load_dataset,
+             so they need the same zero-triple diagnosis it applies. *)
+          if Z.equal n Z.zero then diagnose_empty_parse fmt content base_iri f;
           Printf.printf "%s: %s triples\n" label (Z.to_string n)
         | NT ->
           (* Issue #121: count-only avoids growing a 7M-element triple list. *)
           let content = read_file f in
           let n = Parser_NTriples.count_ntriples content in
+          if Z.equal n Z.zero then diagnose_empty_parse fmt content cfg.base_iri f;
           Printf.printf "%s: %s triples\n" label (Z.to_string n)
         | NQuads ->
           (* Issue #121: count-only avoids growing the rdf_dataset. *)
           let content = read_file f in
           let n = Parser_NQuads.count_nquads_quads content in
+          if Z.equal n Z.zero then diagnose_empty_parse fmt content cfg.base_iri f;
           Printf.printf "%s: %s triples\n" label (Z.to_string n)
         | _ ->
           let triples = load_triples ~format:cfg.input_format ~base:cfg.base_iri f in

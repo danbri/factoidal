@@ -70,7 +70,7 @@ let is_iri_body_char (c : FStar_Char.char) : Prims.bool=
      (code <> (Prims.of_int (0x5C))))
     && (Prims.op_Negation (is_iri_forbidden_codepoint code))
 let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
-  (acc : FStar_String.char Prims.list) (fuel : Prims.nat) :
+  (acc : Prims.string Prims.list) (fuel : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("IRI too long", pos)
@@ -84,7 +84,7 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
         if code = (Prims.of_int (0x3E))
         then
           Parser_Combinators.ParseOk
-            ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
+            ((FStar_String.concat "" (FStar_List_Tot_Base.rev acc)),
               (pos + Prims.int_one))
         else
           if code = (Prims.of_int (0x5C))
@@ -136,10 +136,10 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
                                 ("IRI-forbidden codepoint in \\u escape",
                                   pos)
                             else
-                              (let c = safe_char_of_int cp in
-                               parse_iri_body_acc input
-                                 (pos + (Prims.of_int (6))) (c :: acc)
-                                 (fuel - Prims.int_one))
+                              parse_iri_body_acc input
+                                (pos + (Prims.of_int (6)))
+                                ((Parser_FastString.fs_utf8_of_codepoint cp)
+                                :: acc) (fuel - Prims.int_one)
                       | uu___5 ->
                           Parser_Combinators.ParseFail
                             ("invalid hex digit in \\u escape", pos)))
@@ -204,10 +204,10 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
                                   ("IRI-forbidden codepoint in \\U escape",
                                     pos)
                               else
-                                (let c = safe_char_of_int cp in
-                                 parse_iri_body_acc input
-                                   (pos + (Prims.of_int (10))) (c :: acc)
-                                   (fuel - Prims.int_one))
+                                parse_iri_body_acc input
+                                  (pos + (Prims.of_int (10)))
+                                  ((Parser_FastString.fs_utf8_of_codepoint cp)
+                                  :: acc) (fuel - Prims.int_one)
                         | uu___6 ->
                             Parser_Combinators.ParseFail
                               ("invalid hex digit in \\U escape", pos)))
@@ -221,8 +221,9 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
             then
               Parser_Combinators.ParseFail ("invalid character in IRI", pos)
             else
-              parse_iri_body_acc input (pos + Prims.int_one) (ch :: acc)
-                (fuel - Prims.int_one)))
+              parse_iri_body_acc input (pos + Prims.int_one)
+                ((Parser_FastString.fs_byte_sub input pos Prims.int_one) ::
+                acc) (fuel - Prims.int_one)))
 let rec scan_iri_end (input : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : Prims.nat Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
