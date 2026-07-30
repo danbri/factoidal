@@ -4,6 +4,51 @@ Last refreshed: 2026-07-14 (nine landings from a long autonomous
 shift, gated on the same regime — floors, named diffs, soundness
 where applicable — all measured on the current `claude/main` tree):
 
+**Update 2026-07-30 (OWL absence-verdict correction, #326 — some
+published OWL numbers move DOWN on purpose):**
+- 🔴 `bin/owl-runner/owl_runner.ml` scored a ConsistencyTest or
+  NegativeEntailmentTest as PASS when the reasoning that should have
+  found the counter-evidence was abandoned on a per-test budget. Both
+  kinds pass on the ABSENCE of a derived fact, and a truncated closure
+  satisfies absence trivially, so the pass was an artifact of giving up.
+  Forced-cap check on `profile-RL.rdf`, before: Consistency 76 pass and
+  NegativeEntailment 6 pass with EVERY closure abandoned. After:
+  Consistency 0 pass / 76 unsupported, NegativeEntailment 0 pass / 6
+  unsupported. Unforced runs are unchanged.
+- ✅ All nine OWL catalogs re-measured in ONE pass (2026-07-30, 2127s
+  wall, budgets as `generate-report.sh --run` sets them) so the nine
+  committed logs agree with each other and with the binary for the first
+  time. The stale ones were badly stale: `owl_profile_rl_results.log`
+  published 28 pass, 2 fail against the binary's 30 pass, 0 fail, and
+  three logs published PE 173 pass, 31 fail against the binary's 195
+  pass, 9 fail.
+- 📊 Corrected numbers: `type-consistency` Consistency **337 pass, 15
+  fail (out of 352)** — all 15 fails are `unsupported` (cap escape), was
+  352 pass, 0 fail in the same run before the gate. `semantics-direct`
+  Consistency **336 pass, 15 fail (out of 351)**, same cause.
+  `type-positive-entailment`'s Consistency section **197 pass, 7 fail
+  (out of 204)**. `type-negative-entailment`'s Consistency section **22
+  pass, 1 fail (out of 23)**. `profile-EL` aggregate **119 pass, 1 fail
+  (out of 120)**.
+- ✅ Unmoved, as designed: PE **195 pass, 9 fail (out of 204)** and
+  type-inconsistency **126 pass, 1 fail (out of 127)**, same FAIL names
+  — both kinds pass on the PRESENCE of a derived fact, so a truncated
+  closure already showed up as a FAIL. Zero NegativeEntailmentTests
+  escaped their budget in any catalog, so no NE verdict moved. `profile-RL`
+  30/6/76/14 and `profile-QL` 20/3/58/6 unchanged, `syntax-dl` species
+  319 pass, 2 fail unchanged.
+- 🧹 Escape audit: the nine formerly-silent closure fallback arms now log
+  their stage and exception; two witness-layer arms and eight outer
+  `try apply_closure* with _ ->` arms were counting nothing at all and now
+  do; the marker-scan and refuter cap-trips (which returned "nothing
+  found" for a search that never finished) are counted and gate the
+  absence verdict. `HARNESS-DIAG-OWL` carries the per-kind counts and
+  names every corrected test.
+- ⚠️ 15 distinct tests are affected, all Consistency; named on
+  `/web/conformance/owl2/`. They are a performance gap, not a wrong
+  answer: the assertions may well hold on a complete closure, and the
+  point of the change is that we could not tell.
+
 **Update 2026-07-28 (dashboard regen + WebOnt-imports-002 runner fix):**
 - 📊 `docs/test-results/latest.json` was under-reporting ~10 already-fixed
   OWL profile tests (stale since an `OWL.Closure.fsti` edit earlier the

@@ -11,12 +11,27 @@ states the scores as measured, defines the two entailment regimes they
 are measured under, and names **every** test that still fails, with the
 reason it fails and how the project dispositions it.
 
-Every number below comes from a re-run of each catalog against the
-committed `bin/linux-x86_64/owl_runner` binary on 2026-07-28 (commit
-`983d694`). The machine-readable copy is the
+Every number below comes from one re-run of all nine catalogs against
+the committed `bin/linux-x86_64/owl_runner` binary on 2026-07-30, in a
+single consistent pass at the default budgets (`FACTOIDAL_OWL_CAP_SEC=20`,
+refuter cap 10 CPU-seconds on the consistency path and 30 on the
+inconsistency path — the values `generate-report.sh --run` uses). The
+machine-readable copy is the
 [test-results dashboard]({{ '/test-results/' | url }}) and its
 `latest.json`; a number here that disagrees with that file is a bug in
 one of them, not a judgement call.
+
+**Some Consistency scores moved DOWN on 2026-07-30, and that is a
+correction rather than a regression**
+([#326](https://github.com/danbri/factoidal/issues/326)). A
+ConsistencyTest passes on the ABSENCE of a derived fact — no
+inconsistency marker anywhere in the closure — and a
+NegativeEntailmentTest passes on a conclusion triple being MISSING from
+the closure. When the per-test budget stops the closure, the marker scan
+or the clash-seeking tableau part-way, absence proves nothing: the engine
+stopped looking. Those verdicts used to score PASS. They now score
+`unsupported`, and they are named in
+[the section below](#unsupported--reasoning-abandoned-on-a-budget-15-distinct-tests).
 
 Parser and algebra spec are verified in F\*; the on-disk backend has
 unverified OCaml-side optimization layers being migrated back to F\*.
@@ -59,22 +74,33 @@ publish one.
 | `profile-RL.rdf` | NegativeEntailment | RL | 6 pass, 0 fail (out of 6) |
 | `profile-RL.rdf` | Consistency | RL | 76 pass, 0 fail (out of 76) |
 | `profile-RL.rdf` | Inconsistency | RL | 14 pass, 0 fail (out of 14) |
-| `profile-EL.rdf` | all four sections | RL | 120 pass, 0 fail (out of 120), 1 skipped |
+| `profile-EL.rdf` | all four sections | RL | 119 pass, 1 fail (out of 120), 1 skipped — the 1 fail is 1 unsupported (`WebOnt-Thing-004`) |
 | `profile-QL.rdf` | all four sections | RL | 87 pass, 0 fail (out of 87) |
 | `type-positive-entailment.rdf` | PositiveEntailment | DL | 195 pass, 9 fail (out of 204), 2 skipped |
-| `type-positive-entailment.rdf` | Consistency | DL | 204 pass, 0 fail (out of 204), 2 skipped |
+| `type-positive-entailment.rdf` | Consistency | DL | 197 pass, 7 fail (out of 204), 2 skipped — all 7 fails are unsupported |
 | `type-negative-entailment.rdf` | NegativeEntailment | DL | 23 pass, 0 fail (out of 23) |
-| `type-negative-entailment.rdf` | Consistency | DL | 23 pass, 0 fail (out of 23) |
-| `type-consistency.rdf` | Consistency | DL | 352 pass, 0 fail (out of 352), 2 skipped |
+| `type-negative-entailment.rdf` | Consistency | DL | 22 pass, 1 fail (out of 23) — the 1 fail is unsupported |
+| `type-consistency.rdf` | Consistency | DL | 337 pass, 15 fail (out of 352), 2 skipped — all 15 fails are unsupported |
 | `type-inconsistency.rdf` | Inconsistency | DL | 126 pass, 1 fail (out of 127), 1 skipped |
-| `semantics-direct.rdf` | Consistency | DL | 351 pass, 0 fail (out of 351), 2 skipped |
+| `semantics-direct.rdf` | Consistency | DL | 336 pass, 15 fail (out of 351), 2 skipped — all 15 fails are unsupported |
 | `syntax-dl.rdf` | species (DL vs Full) | syntactic | 319 pass, 2 fail (out of 321 scored), 2 skipped |
 
+`unsupported` verdicts stay inside the scored denominator, on the
+non-pass side, and are reported additively on the runner's own score
+line (`; K unsupported (cap-escape, #326)`). They are attempted tests
+with a budget gap, not scope exclusions, so they must not shrink the
+denominator the way a skip does. Adding the unsupported count back onto
+the pass count reproduces the pre-#326 number for the same run: 204,
+23, 352, 351 and 120 respectively.
+
 The `semantics-direct.rdf` catalog also re-scores the positive-entailment
-(173 pass, 31 fail), negative-entailment (23 pass, 0 fail), and
-inconsistency (125 pass, 2 fail) sections; those numbers agree
-test-for-test with the dedicated catalogs above, so they are not
-repeated as separate rows.
+(195 pass, 9 fail), negative-entailment (23 pass, 0 fail), and
+inconsistency (126 pass, 1 fail) sections; measured in the same pass,
+those numbers now agree test-for-test with the dedicated catalogs above,
+so they are not repeated as separate rows. (Before 2026-07-30 this page
+quoted 173 pass, 31 fail and 125 pass, 2 fail here — those came from
+committed logs that predated the `--semantics` and CPU-cap work and had
+never been refreshed together with the rest.)
 
 Skips are two kinds, both reported by the runner rather than hidden:
 `functional-syntax-only` (the fixture ships only an OWL
@@ -82,6 +108,100 @@ Functional-Style Syntax premise; the parser targets RDF/XML), and
 `semantics-rdf-based-only` (the catalog asserts `test:semantics
 RDF-BASED` and explicitly denies `DIRECT`, so a Direct Semantics
 reasoner has nothing to answer). `WebOnt-Thing-005` is the second kind.
+
+## Unsupported — reasoning abandoned on a budget (15 distinct tests)
+
+Fifteen distinct `test:TestCase`s produce an `unsupported` Consistency
+verdict at the default budgets. No NegativeEntailmentTest is affected
+in any catalog. Every one of these previously scored PASS, and the pass
+was an artifact of the engine stopping early — not a claim that the
+premise was proved consistent.
+
+Three things can escape, and the runner names which one did:
+
+- **closure stage abandoned** — the RL or DL closure hit
+  `FACTOIDAL_OWL_CAP_SEC` (20 CPU-seconds) and the test was scored on a
+  less-closed graph.
+- **inconsistency-marker scan abandoned** — `is_inconsistent`'s marker
+  scan (worst-case cubic in closure size) hit the 10-CPU-second refuter
+  cap, so "no marker present" was never established.
+- **clash-seeking tableau abandoned** — `Tableau.Refute`'s search hit
+  the same cap, so "no clash found" means "we stopped looking".
+
+| Test | What escaped |
+|---|---|
+| `WebOnt-Thing-004` | closure stage |
+| `WebOnt-description-logic-206` | marker scan + tableau |
+| `WebOnt-description-logic-208` | marker scan + tableau |
+| `WebOnt-description-logic-209` | marker scan + tableau |
+| `WebOnt-description-logic-501` | tableau |
+| `WebOnt-description-logic-661` | closure stage (+ tableau in the PE catalog's Consistency section) |
+| `WebOnt-description-logic-662` | marker scan |
+| `WebOnt-description-logic-663` | marker scan + tableau |
+| `WebOnt-description-logic-664` | closure stage + tableau |
+| `WebOnt-description-logic-905` | tableau |
+| `WebOnt-description-logic-906` | tableau |
+| `WebOnt-description-logic-907` | tableau |
+| `WebOnt-miscellaneous-001` | closure stage |
+| `WebOnt-miscellaneous-002` | closure stage |
+| `WebOnt-miscellaneous-011` | closure stage |
+
+Not every catalog reaches every one of the fifteen: `type-consistency.rdf`
+and `semantics-direct.rdf` see all fifteen and fourteen of them
+respectively (the fifteenth in each case differs by catalog membership),
+`type-positive-entailment.rdf`'s Consistency section sees seven,
+`type-negative-entailment.rdf` sees one (`WebOnt-description-logic-209`),
+and `profile-EL.rdf` sees one (`WebOnt-Thing-004`).
+
+### Does a bigger budget recover them?
+
+Partly, and expensively. Measured 2026-07-30, all on CPU-time budgets so
+the numbers are load-independent:
+
+| Catalog | Budgets (closure / refuter) | Wall | Unsupported |
+|---|---|---|---|
+| `type-negative-entailment.rdf` | 20 / 10 (default) | 38s | 1 |
+| `type-negative-entailment.rdf` | 20 / 60 | 71s | **0** |
+| `type-negative-entailment.rdf` | 20 / 180 | 70s | 0 |
+| `profile-EL.rdf` | 20 / 10 (default) | 23s | 1 |
+| `profile-EL.rdf` | 60 / 10 | 63s | 1 |
+| `profile-EL.rdf` | 180 / 10 | 182s | 1 |
+| `type-consistency.rdf` | 20 / 10 (default) | 699s | 15 |
+| `type-consistency.rdf` | 120 / 60 | 2329s | **11** |
+
+Reading it test by test:
+
+- A 6x refuter budget turns four of the fifteen into genuine, completed
+  PASSes: `WebOnt-description-logic-206`, `-208`, `-209` and `-501`.
+  Their marker scan and clash search were finishing just past the
+  10-CPU-second cap. `type-negative-entailment.rdf` goes to zero
+  unsupported at 1.9x its wall time; nothing further is gained at 180
+  CPU-seconds, so those four are near-misses rather than blow-ups.
+- The other eleven do not recover. `WebOnt-Thing-004` is unsupported at
+  3x and at 9x the closure budget while the catalog wall time grows
+  linearly — its closure simply does not converge. `WebOnt-miscellaneous-001`
+  / `-002` / `-011` behave the same way. And
+  `WebOnt-description-logic-661` … `-664` swap one escape for another:
+  at the larger closure budget the closure now finishes, and the bigger
+  closure then blows the marker scan's budget instead (`is_inconsistent`
+  is worst-case cubic in closure size). Buying more budget moves the
+  bottleneck rather than removing it.
+- The cost of the raise on the heaviest catalog is 3.3x wall
+  (699s -> 2329s) for four recovered tests.
+
+So the project does **not** raise the published budgets: they stay at
+the values `generate-report.sh --run` uses, and the eleven-plus-four
+stay counted as `unsupported`. The fix that actually recovers these is
+the `owl:sameAs` closure blow-up
+([#262](https://github.com/danbri/factoidal/issues/262)) and a cheaper
+inconsistency-marker scan — a performance defect in the reasoner, not a
+budget to buy off. Anyone wanting the four back can set
+`FACTOIDAL_OWL_REFUTE_CAP_SEC=60`.
+
+These fifteen are a performance gap, not a semantic one: the assertions
+may well hold on a complete closure. What the project cannot currently
+do is tell the difference, which is the whole point of scoring them
+`unsupported` instead of PASS.
 
 ## Disposition vocabulary
 
@@ -221,11 +341,13 @@ where the catalog expects `DL`.
 | `FS2RDF-literals-ar` | disputed-fixture | The RDF/XML premise's datatype IRIs are lowercased case-variants (`xsd:unsignedint`, `xsd:anyuri`, `xsd:datetime`) that are not in the OWL 2 datatype map, so the checker reports `reserved-vocabulary-as-datatype` and returns FULL. The catalog's DL label reflects its correctly-cased functional-syntax premise; the runner scores the RDF/XML one. Serialization defect in the fixture, not a checker gap. |
 | `WebOnt-I5.5-005` | disputed-fixture | The classified graph is the header-less premise plus its comprehension conclusion, giving `conclusion: no-ontology-header` and a FULL verdict. Its sibling `I5.5-006` is classified on a strict subset of the same graph and is expected FULL, so no monotone graph classifier can call 005 DL while keeping 006 correct. Structurally blocked. |
 
-## Residual failures — profile catalogs (none)
+## Residual failures — profile catalogs (one unsupported)
 
-As of 2026-07-29 every section of `profile-RL.rdf`, `profile-EL.rdf`,
-and `profile-QL.rdf` is at 0 fail (RL 126 scored, EL 120 scored + 1
-skip, QL 87 scored). The former residual pair `WebOnt-I5.5-005` /
+Every section of `profile-RL.rdf` (126 scored) and `profile-QL.rdf` (87
+scored) is at 0 fail. `profile-EL.rdf` (120 scored + 1 skip) is at 119
+pass, 1 fail, and that single fail is the `unsupported` Consistency
+verdict on `WebOnt-Thing-004` described above — not a wrong answer, an
+absent one. The former residual pair `WebOnt-I5.5-005` /
 `WebOnt-I5.26-010` passes via the stratified comprehension-witness
 layer.
 
@@ -250,6 +372,14 @@ verdict is deterministic: 125 pass, 2 fail (out of 127) at any load.)
 | dependency-blocked | 0 |
 | environment | 0 |
 
+The 15 `unsupported` Consistency verdicts are counted separately and
+carry no disposition label from this vocabulary — they are not answers
+the engine got wrong, they are answers it did not finish computing. They
+are tracked as a performance gap under
+[#326](https://github.com/danbri/factoidal/issues/326) (the scoring fix)
+and [#262](https://github.com/danbri/factoidal/issues/262) (the
+`owl:sameAs` closure blow-up behind the closure-stage escapes).
+
 Counting distinct tests. The 3 disputed-fixture entries are the two
 species-checker residuals (`FS2RDF-literals-ar`, `WebOnt-I5.5-005` —
 the latter now fails ONLY there) and `WebOnt-description-logic-909`
@@ -257,12 +387,14 @@ the latter now fails ONLY there) and `WebOnt-description-logic-909`
 [#299](https://github.com/danbri/factoidal/issues/299)).
 
 **There are no planned-family residuals left in any catalog** as of
-2026-07-29. Every remaining failure is either a test the W3C catalog
-itself declares outside OWL DL (by-design, 9) or a fixture whose own
-correctness is disputed with the analysis recorded (disputed-fixture,
-3). That is the end-state this page was built to make checkable: the
-residual list is now entirely made of things we have argued should not
-pass, rather than things we have not yet done.
+2026-07-29. Every remaining WRONG answer is either a test the W3C
+catalog itself declares outside OWL DL (by-design, 9) or a fixture whose
+own correctness is disputed with the analysis recorded
+(disputed-fixture, 3). That is the end-state this page was built to make
+checkable: the residual failure list is entirely made of things we have
+argued should not pass, rather than things we have not yet done. The 15
+`unsupported` verdicts sit alongside it as the honest count of tests
+whose reasoning does not finish inside the budget.
 
 ## Where the numbers live
 

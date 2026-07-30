@@ -44,4 +44,5 @@ triggers:
 # OWL 2 row, 2026-07-10; see also owl-profile-rl.yaml's `remaining` for
 # the family-wide caveats).
 remaining:
-  - "a small number of the heaviest WebOnt description-logic premises can trip the per-test wall-clock cap during closure/refutation, which is scored as the honest fallback verdict rather than a hang — a performance gap, not a soundness gap"
+  - "15 of the 352 ConsistencyTests trip a per-test CPU budget during closure, marker scan or refutation and score `unsupported` rather than PASS (#326, 2026-07-30): a ConsistencyTest passes on the ABSENCE of a clash, so a pass earned by abandoning the search is not evidence — 337 pass, 15 fail (out of 352) where the same run scored 352 pass, 0 fail before the gate. All 15 are named on /web/conformance/owl2/. A performance gap, not a soundness gap, but no longer counted as a pass"
+  - "the closure-stage escapes among those 15 are the owl:sameAs closure blow-up of #262; raising the cap 3x and 9x on the profile-EL instance (WebOnt-Thing-004) recovered nothing and cost proportional wall time, so the fix belongs in the closure"
