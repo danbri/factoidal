@@ -277,27 +277,37 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   # ---------------------------------------------------------------------
   # Incremental-extract manifest (2026-07-04, build-speed P0).
   #
-  # Skips invoking fstar.exe entirely for a module whose .fst content
-  # hash is unchanged since the last successful extract AND whose .ml is
+  # Skips invoking fstar.exe entirely for a module whose DEPENDENCY-CLOSURE
+  # digest is unchanged since the last successful extract AND whose .ml is
   # already present in $OUTDIR. Replaces the old EXTRACT_CHAIN_DIRTY flag,
   # which forced every module *positioned after* any re-extracted module
   # in this hand-ordered list to re-run fstar.exe regardless of whether it
   # actually depended on the change (see fast-verify-extract SKILL.md P2).
   #
-  # Safety argument (see skills/fast-verify-extract/SKILL.md, "Incremental
-  # codegen manifest"): verified experimentally in a scratch dir
-  # (Parser.FastString.fst -> Parser.IRI.fst) that a dependency-only
+  # The digest and the reasoning behind it live at the closure-digest loop
+  # further down (search: "Dependency-closure digests"). Read that before
+  # touching the skip predicate.
+  #
+  # SUPERSEDED SAFETY ARGUMENT, kept because this comment stated it as
+  # settled fact and it was wrong (issue #320). It ran: a dependency-only
   # change (Parser.FastString.fst edited, Parser.IRI.fst untouched)
   # changes Parser.IRI.fst.checked's hash (F* embeds dependency digests)
-  # but leaves the extracted Parser_IRI.ml BYTE-IDENTICAL. Skipping
-  # invocation based on the DEPENDENT's own .fst hash being unchanged is
-  # therefore safe for the actual codegen OUTPUT in the common case
-  # (interface-preserving dependency edits); the residual risk is a
-  # dependency that changes its OCaml-level signature incompatibly
-  # without us reprocessing the (stale) dependent — this is caught loudly
-  # at `ocamlopt` compile time (a build failure, not a silent bug), and
-  # `--force-full` is the escape hatch for anyone who wants to bypass the
-  # manifest and reprocess every module regardless.
+  # but leaves the extracted Parser_IRI.ml BYTE-IDENTICAL, so skipping on
+  # the DEPENDENT's own .fst hash is safe; and the residual risk — a
+  # dependency changing its OCaml-level signature incompatibly — is caught
+  # loudly at ocamlopt compile time.
+  #
+  # Both observations are true and the conclusion still does not follow.
+  # The argument is about EXTRACTION OUTPUT, but the skip also suppresses
+  # VERIFICATION. A dependency can change semantically while its extracted
+  # signature stays identical; that invalidates any theorem an unchanged
+  # dependent states about it, and precisely because the .ml is
+  # byte-identical, ocamlopt has nothing to catch. The developer sees
+  # green. Confirmed experimentally 2026-07-29 — transcript in the
+  # closure-digest comment below.
+  #
+  # `--force-full` remains the escape hatch for anyone who wants to bypass
+  # the manifest and reprocess every module regardless.
   # ---------------------------------------------------------------------
   EXTRACT_STATE_DIR="$OUTDIR/.extract-state"
   mkdir -p "$EXTRACT_STATE_DIR"
@@ -579,6 +589,35 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
           dep="${dep##*/}"
           [[ -n "${MOD_SET[$dep]:-}" ]] && deps+="$dep "
           ;;
+        *.fsti.checked)
+          # Interface-backed dependency. When a module has an adjacent
+          # .fsti, --dep full makes every dependent's .fst.checked depend
+          # on the INTERFACE's .fsti.checked and never on the
+          # implementation's .fst.checked, so this token shape is the only
+          # evidence of the edge. Dropping it (as this parser did until
+          # 2026-07-29) loses real dependencies on the eight .fsti-backed
+          # modules: RDF.Term, RDF.Triple, RDF.Graph, RDF.Indexed,
+          # RDF.Vocabulary, RDF.IRI, OWL.Closure, RDFS.Closure. Measured on
+          # the real graph: 441 edges without this case, 503 with it, and
+          # RDF.Entailment.Simple's transitive closure goes from 1 module
+          # to 9 -- RDF.Term among them.
+          #
+          # That was survivable while layering was the only consumer (the
+          # synchronous .fsti pre-check above makes every .fsti.checked
+          # exist before any layer starts, which is why the old comment
+          # called teaching this parser a new token shape unnecessary). It
+          # is NOT survivable now that the same DEPS map feeds the
+          # dependency-closure digest (issue #320): without this case,
+          # editing RDF.Term.fst would not invalidate anything that
+          # consumes it through RDF.Term.fsti.
+          #
+          # Self-edges are excluded: a module's own .fst.checked depends on
+          # its own .fsti.checked, which would be read as a cycle.
+          dep="${tok%.checked}"
+          dep="${dep##*/}"
+          dep="${dep%i}"
+          [[ "$dep" != "$target" ]] && [[ -n "${MOD_SET[$dep]:-}" ]] && deps+="$dep "
+          ;;
       esac
     done
     DEPS["$target"]="$deps"
@@ -609,6 +648,100 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   done
   echo "  Dependency DAG: ${#PRESENT_MODULES[@]} modules in ${#LAYERS[@]} layer(s)"
 
+  # ---------------------------------------------------------------------
+  # Dependency-closure digests (2026-07-29, issue #320).
+  #
+  # WHAT WAS WRONG. The manifest used to key its skip decision on a
+  # module's OWN source hash, justified by an experiment showing that an
+  # interface-preserving edit to a dependency leaves the dependent's
+  # extracted .ml byte-identical, with incompatible signature changes
+  # caught at ocamlopt link time. That argument is sound for EXTRACTION
+  # and unsound for PROOFS. A dependency can change SEMANTICALLY while
+  # its extracted OCaml signature stays identical; that invalidates any
+  # theorem an unchanged dependent states about it, and neither the
+  # dependent's own hash nor the OCaml compiler can see it.
+  #
+  # This is not hypothetical. Demonstrated end-to-end on 2026-07-29 in a
+  # scratch copy of this tree, against this script:
+  #   ZZGap.Dep.fst   let bump (x:nat) : nat = x + 1
+  #   ZZGap.Thm.fst   let lemma_bump_increases (x:nat) : Lemma (bump x > x) = ()
+  # Changing bump to `if x = 0 then 0 else x - 1` -- same extracted type
+  # Prims.nat -> Prims.nat -- and re-running `./build-ocaml.sh extract`
+  # gave: "ZZGap.Thm.fst (up to date, skipped)", "Re-extracted modules: 1
+  # (190 skipped)", BUILD_STATUS=OK, exit 0. ZZGap_Thm.ml was
+  # byte-identical, so ocamlopt had nothing to catch. Verifying
+  # ZZGap.Thm.fst by hand: "Error 19 ... Could not prove post-condition".
+  # A green build over a false theorem.
+  #
+  # The gap matters more now than when the manifest was written. Modules
+  # then mostly carried totality and refinements; OWL.Semantics.Soundness
+  # and friends now state theorems ABOUT OTHER MODULES' functions, which
+  # is exactly the case the own-hash skip mishandles.
+  #
+  # THE FIX. Key the skip on the module's DEPENDENCY-CLOSURE digest
+  # instead: sha256 over the module's own source hash plus the closure
+  # digests of every in-list dependency. LAYERS is already in topological
+  # order, so one pass computes them all -- a dependency's digest is
+  # always final before any dependent needs it. Any change anywhere in a
+  # module's transitive dependencies now changes its digest and forces
+  # real re-verification, whether or not the change was visible to OCaml.
+  #
+  # Digests go in closure.tsv rather than being recomputed per worker:
+  # workers are forked processes that cannot read the parent's arrays,
+  # and a worker cannot compute its own closure without walking the DAG
+  # again anyway.
+  #
+  # COST, honestly. Editing a wide-fanout hub module (RDF.Graph.Executable,
+  # SPARQL11.Algebra) now re-verifies its dependents instead of silently
+  # skipping them. That is real correctness work, not the waste the
+  # manifest was built to remove: the previous behaviour bought its speed
+  # by not checking things that needed checking. Edits to leaf modules --
+  # most format/parser modules depend on nothing else in the list -- are
+  # unaffected, and the layered parallel scheduler above is what absorbs
+  # the hub case. `--force-full` remains the "reprocess everything"
+  # escape hatch.
+  #
+  # WHAT THIS STILL DOES NOT COVER (do not read the digest as a proof of
+  # currency): a changed patch script under ocaml-patches.sh does not
+  # move any .fst hash, so an already-patched .ml is still left alone --
+  # see the P2 write-up in skills/fast-verify-extract/SKILL.md for the
+  # invalidate-and-delete recipe. Nor does it cover an F* or z3 version
+  # change; .checked digests handle that separately.
+  #
+  # Manifests written before this change hold bare source hashes, which
+  # no longer match any closure digest, so the first run after it
+  # re-extracts everything once and then self-heals.
+  # ---------------------------------------------------------------------
+  declare -A OWN_HASH=()
+  for m in "${PRESENT_MODULES[@]}"; do
+    # Issue #293: the digest must cover the sibling .fsti too -- interface
+    # files carry real definitions, so a .fsti-only edit must invalidate.
+    if [[ -f "${m}i" ]]; then
+      OWN_HASH["$m"]="$(cat "$m" "${m}i" | sha256sum | awk '{print $1}')"
+    else
+      OWN_HASH["$m"]="$(sha256sum "$m" | awk '{print $1}')"
+    fi
+  done
+
+  declare -A CLOSURE_HASH=()
+  CLOSURE_FILE="$EXTRACT_STATE_DIR/closure.tsv"
+  : > "$CLOSURE_FILE"
+  for layer in "${LAYERS[@]}"; do
+    read -ra closure_layer_mods <<< "$layer"
+    for m in "${closure_layer_mods[@]}"; do
+      dep_digest=""
+      if [[ -n "${DEPS[$m]:-}" ]]; then
+        # Sorted, so the digest does not depend on --dep full's ordering.
+        while IFS= read -r d; do
+          [[ -n "$d" ]] || continue
+          dep_digest+="${CLOSURE_HASH[$d]:-UNRESOLVED} "
+        done < <(printf '%s\n' ${DEPS[$m]} | sort -u)
+      fi
+      CLOSURE_HASH["$m"]="$(printf '%s|%s' "${OWN_HASH[$m]}" "$dep_digest" | sha256sum | awk '{print $1}')"
+      printf '%s\t%s\n' "$m" "${CLOSURE_HASH[$m]}" >> "$CLOSURE_FILE"
+    done
+  done
+
   # Per-module worker: inline manifest skip-check, then fstar.exe if
   # needed. This runs as a forked `bash -c` under xargs -P, so it cannot
   # share the parent's associative arrays -- it reads the manifest file
@@ -625,24 +758,26 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     out_ml="${out_ml//./_}.ml"
     local status_file="$EXTRACT_STATUS_DIR/${fst//./_}.status"
     local fst_hash
-    # Issue #293: the staleness digest must cover the sibling .fsti too.
-    # Interface files carry real definitions (interface `let`s extract),
-    # so a .fsti-only edit with an unchanged .fst previously kept the
-    # stale .ml ("source unchanged") and broke the link with "Unbound
-    # value" — hit twice on 2026-07-12/13. Modules WITH a .fsti get a
-    # one-time re-extract after this change (their old fst-only hashes
-    # no longer match), which self-heals the manifest.
-    if [[ -f "${fst}i" ]]; then
-      fst_hash="$(cat "$fst" "${fst}i" | sha256sum | awk '{print $1}')"
-    else
-      fst_hash="$(sha256sum "$fst" | awk '{print $1}')"
+    # The staleness key is the DEPENDENCY-CLOSURE digest the parent
+    # computed into $CLOSURE_FILE (issue #320 -- see the long comment at
+    # the closure-digest loop for why the module's own hash was unsound
+    # for proof-carrying modules). It already folds in the sibling .fsti
+    # (issue #293) and every transitive in-list dependency.
+    fst_hash="$(awk -F'\t' -v m="$fst" '$1==m{h=$2} END{print h}' "$CLOSURE_FILE")"
+    if [[ -z "$fst_hash" ]]; then
+      # No digest for this module means the parent could not place it in
+      # the DAG. Never skip on missing information -- fall through to a
+      # real fstar.exe run, and use a value that cannot match a manifest
+      # entry so the skip test below is guaranteed to fail.
+      echo "    [$fst] no closure digest available -- verifying rather than skipping"
+      fst_hash="no-closure-digest"
     fi
     local prev_hash
     prev_hash="$(awk -F'\t' -v m="$fst" '$1==m{h=$2} END{print h}' "$MANIFEST_FILE")"
 
     if [[ "$FORCE_FULL" -eq 0 ]] && [[ -f "$out_ml" ]] \
        && [[ -n "$prev_hash" ]] && [[ "$prev_hash" == "$fst_hash" ]]; then
-      echo "    $fst (up to date, skipped -- source unchanged since last extract)"
+      echo "    $fst (up to date, skipped -- module and its whole dependency closure unchanged)"
       printf '%s\tSKIP\t%s\n' "$fst" "$fst_hash" > "$status_file"
       return 0
     fi
@@ -653,8 +788,18 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     fstar.exe --z3version 4.13.3 --codegen OCaml --odir "$OUTDIR" \
       --cache_checked_modules "$fst" > "$fstar_log" 2>&1 || fstar_rc=$?
     grep -E "Extracted|Error|error" "$fstar_log" | sed "s/^/    [$fst] /" || true
-    if ! grep -q "^Extracted module" "$fstar_log"; then
-      echo "    [$fst] ERROR: failed to extract! (exit code $fstar_rc)"
+    # The EXIT CODE is the authority, not the presence of an "Extracted
+    # module" line (issue #320, found 2026-07-29). F* emits that line even
+    # when verification FAILED: a module whose proof obligation Z3 could
+    # not discharge exits 1, prints "Error 19 ... Could not prove
+    # post-condition", and still prints "Extracted module <M>" and writes
+    # the .ml. The old test grepped only for that line, so a module that
+    # failed to verify was recorded OK and the build reported
+    # BUILD_STATUS=OK -- exactly the "no silent failures" property this
+    # step's header claims. Demonstrated with a deliberately false lemma;
+    # fstar.exe exited 1 while the extract loop went green.
+    if [[ "$fstar_rc" -ne 0 ]] || ! grep -q "^Extracted module" "$fstar_log"; then
+      echo "    [$fst] ERROR: verification or extraction FAILED (fstar.exe exit code $fstar_rc) -- see $fstar_log"
       printf '%s\tFAIL\t%s\n' "$fst" "$fst_hash" > "$status_file"
       return 1
     fi
@@ -662,7 +807,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     return 0
   }
   export -f extract_worker
-  export OUTDIR MANIFEST_FILE FORCE_FULL EXTRACT_STATUS_DIR
+  export OUTDIR MANIFEST_FILE FORCE_FULL EXTRACT_STATUS_DIR CLOSURE_FILE
 
   FAILED_MODULES=()
   layer_idx=0

@@ -373,20 +373,35 @@ or `bin/linux-x86_64/`), with symlinks in `formal/fstar/ocaml-output/`:
 
 ```bash
 cd formal/fstar
-make verify    # requires z3
+make verify                  # whole corpus; hours from cold, seconds warm
+make -j$(nproc) verify       # same, parallel over the dependency DAG
+make verify-smoke            # six core modules only; fast sanity check
+make verify-RDF.Canonical    # one module
 ```
 
-This target checks the six modules named in `formal/fstar/Makefile`'s
-`MODULES` variable — **not** the whole corpus; the full tree is verified
-by `./build-ocaml.sh extract` (issue
-[#319](https://github.com/danbri/factoidal/issues/319) tracks making the
-target cover everything). Three `admit ()` sites remain in
-`SPARQL11.Algebra.fst` (solution-mapping lemmas 19.9, 19.10-left and
-19.18); an earlier version of this paragraph claimed zero, which the
-generated assurance inventory falsified — see
-`docs/web/conformance/assurance-inventory.md` for the counted position
-and [#323](https://github.com/danbri/factoidal/issues/323) for the
-burn-down. `SPARQL11.Parser.fst` is now in
+`make verify` type-checks every `.fst` in `formal/fstar/` against the SMT
+solver — the target derives its module list from the directory, so it
+cannot drift from the corpus. Read the claim precisely: **what these
+modules state, Z3 checked.** For most modules that means totality,
+termination and refinement types plus whatever local lemmas the module
+declares; it is not a proof that the module implements the W3C
+Recommendation it is named after. Standards behaviour is measured by the
+conformance suites below, not by this command. The generated
+[assurance inventory](docs/web/conformance/assurance-inventory.md) counts
+exactly which modules carry which kind of theorem — 141 of 190 state no
+correctness property at all. (Until 2026-07-29 this target checked six
+modules by hand while this paragraph claimed all of them —
+[#319](https://github.com/danbri/factoidal/issues/319).)
+
+Three `admit ()` sites remain in `SPARQL11.Algebra.fst` (solution-mapping
+lemmas 19.9, 19.10-left and 19.18); earlier versions of this paragraph
+claimed zero, which the assurance inventory falsified —
+[#323](https://github.com/danbri/factoidal/issues/323) tracks the
+burn-down. One module, `RDF.CottasStore.PageCache.Bounds.fst`, currently
+**fails** verification: it is orphaned (referenced by no other module and
+in no build list), so nothing had ever checked it until `make verify`
+covered the directory — [#327](https://github.com/danbri/factoidal/issues/327).
+`SPARQL11.Parser.fst` is now in
 the same state: the two `#push-options "--admit_smt_queries true"`
 regions that used to cover its mutually-recursive expression and
 UPDATE parser blocks (119 of 233 definitions) were removed on

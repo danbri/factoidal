@@ -20,7 +20,10 @@ the **fstar-env** skill first.
 eval $(opam env --switch=fstar)
 cd formal/fstar
 
-make verify                # F* type-check + SMT discharge
+make verify                # F* type-check + SMT discharge, WHOLE corpus
+make -j$(nproc) verify     # same, parallel over the dependency DAG
+make verify-smoke          # six core modules only (fast sanity check)
+make verify-RDF.Canonical  # one module
 ./build-ocaml.sh           # full extract + compile + test
 ./build-ocaml.sh extract   # extract only
 ./build-ocaml.sh compile   # compile only (skip extract; doesn't run patches)
@@ -42,12 +45,34 @@ cd ocaml-output
 
 ### `make verify`
 
-Walks the `MODULES` list in `formal/fstar/Makefile` and writes a
-`<module>.verified` marker per module. Failure ⇒ a real spec error
-(rare during setup, common during dev). z3 wrong version ⇒ false
-errors that look like real ones; check `z3 --version` first.
+Type-checks **every** `.fst` in `formal/fstar/`. The target's module
+list comes from `$(wildcard *.fst)` and the ordering from
+`fstar.exe --dep full` (regenerated into `.depend`), so a new module is
+covered the moment it lands — no list to update, no way for the target
+to drift from the corpus.
 
-The `Makefile` passes `--z3version 4.13.3` via the `FSTAR` variable.
+Cost: hours from cold (it re-proves the whole tree — see
+`docs/clean-room/` for the measured figure), seconds warm (every
+module's `.checked` is digest-valid and make skips it). `make -j$(nproc)
+verify` parallelises safely because make owns one writer per `.checked`
+target; do **not** fan out backgrounded `fstar.exe` calls instead (that
+is the 2026-05-07 cache-corruption hazard).
+
+`make verify-smoke` is the six-module fast check that `make verify`
+used to be. `make verify-<Module>` does one module.
+
+What a green run means: every module type-checked and every proof
+obligation *the modules state* was discharged under z3 4.13.3 with no
+`--lax`. For most modules that is totality, termination and refinements
+plus local lemmas — **not** a proof of conformance to the W3C
+Recommendation. Standards behaviour is what the suites measure.
+
+Failure ⇒ a real spec error (rare during setup, common during dev). z3
+wrong version ⇒ false errors that look like real ones; check
+`z3 --version` first. The `Makefile` passes `--z3version 4.13.3` and
+`--cache_checked_modules` via the `FSTAR` variable, so its `.checked`
+output is shared with `./build-ocaml.sh extract` rather than duplicated
+(issues #319, and P7 in the `fast-verify-extract` skill).
 
 ### `./build-ocaml.sh extract`
 

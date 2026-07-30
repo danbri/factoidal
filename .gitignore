@@ -77,3 +77,7 @@ third_party/testing/vc/localConfig.cjs
 # Score-history snapshots: not a reliable timeseries (record-keeping conventions
 # changed repeatedly). Re-evaluate old builds against a common tool instead.
 docs/test-results/history/
+
+# Makefile-generated F* dependency graph (fstar.exe --dep full output).
+# Regenerated whenever any .fst/.fsti changes; never a source of truth.
+formal/fstar/.depend
