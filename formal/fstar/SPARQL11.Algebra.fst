@@ -6949,18 +6949,112 @@ let rec lemma_filter_mem (#a:eqtype) (f : a -> bool) (x : a) (l : list a) :
 (** 19.8 BIND does not affect existing variables **)
 (* Proven in RDF.Graph.Executable as lemma_bind_preserves_existing *)
 
-(** 19.9 sm_compatible is reflexive — PROOF DEFERRED (noeq types) **)
-let lemma_sm_compatible_refl (mu : solution_mapping) :
-  Lemma (sm_compatible mu mu = true) =
-  admit ()
+(** 19.9 sm_compatible is reflexive on well-formed mappings — PROVED **)
+(* The former statement here was `sm_compatible mu mu = true` for EVERY
+   mu, admitted with the note "PROOF DEFERRED (noeq types)". Two
+   corrections, 2026-07-30 (#323):
+     1. noeq was never the obstacle. `rdf_term` is noeq, so `=` and
+        List.Tot.mem are unavailable on solution mappings, but
+        `rdf_term_eq` is the structural equality that replaces them and
+        RDF.Term.fsti proves it reflexive (lemma_rdf_term_eq_refl).
+     2. The unconditional statement is FALSE, not merely unproved — see
+        lemma_sm_compatible_not_refl_with_dup_keys below, which proves
+        the refutation. A solution mapping is a partial FUNCTION from
+        variable to term, but the association-list representation admits
+        a repeated key, and List.Tot.assoc resolves a repeat by taking
+        the FIRST binding. For mu = [("x",b1); ("x",b2)] the second entry
+        is compared against the first entry's term and fails.
+   The hypothesis below (no repeated variable in the domain) is the
+   well-formedness invariant the constructors maintain:
+   sm_bind_if_compatible never appends a second binding for a variable,
+   and sm_merge_aux inserts only keys absent from its accumulator. *)
 
-(** 19.10 sm_merge with empty — _r PROVED, _l ADMITTED (#323) **)
+(* Absent from the domain implies no binding. *)
+let rec lemma_assoc_none_of_domain (v : string) (mu : solution_mapping) :
+  Lemma (requires (not (List.Tot.mem v (sm_domain mu))))
+        (ensures None? (List.Tot.assoc v mu)) =
+  match mu with
+  | [] -> ()
+  | (_, _) :: tl -> lemma_assoc_none_of_domain v tl
+
+(* A binding for a variable that mu1 does not mention is invisible to
+   sm_compatible: every lookup sm_compatible performs is keyed by a
+   variable of mu1, and none of those is `v`. *)
+let rec lemma_sm_compatible_extra_binding
+  (mu1 mu2 : solution_mapping) (v : string) (t : rdf_term) :
+  Lemma (requires None? (List.Tot.assoc v mu1))
+        (ensures sm_compatible mu1 ((v, t) :: mu2) == sm_compatible mu1 mu2) =
+  match mu1 with
+  | [] -> ()
+  | (_, _) :: tl -> lemma_sm_compatible_extra_binding tl mu2 v t
+
+let rec lemma_sm_compatible_refl (mu : solution_mapping) :
+  Lemma (requires List.Tot.noRepeats (sm_domain mu))
+        (ensures sm_compatible mu mu = true) =
+  match mu with
+  | [] -> ()
+  | (v, t) :: rest ->
+    lemma_rdf_term_eq_refl t;
+    lemma_assoc_none_of_domain v rest;
+    lemma_sm_compatible_extra_binding rest rest v t;
+    lemma_sm_compatible_refl rest
+
+(* The refutation of the unconditional statement, as a theorem rather
+   than a comment: with a repeated key, self-compatibility fails. *)
+let lemma_sm_compatible_not_refl_with_dup_keys ()
+  : Lemma (exists (mu : solution_mapping). sm_compatible mu mu == false) =
+  let mu : solution_mapping = [("x", T_BNode "b1"); ("x", T_BNode "b2")] in
+  assert_norm (sm_compatible mu mu == false)
+
+(** 19.10 sm_merge with empty — PROVED (both sides; _l restated, #323) **)
 let lemma_sm_merge_empty_r (mu : solution_mapping) :
   Lemma (sm_merge mu [] == mu) = ()
 
+(* sm_merge_aux recurses on its SECOND argument, prepending each accepted
+   binding to the accumulator, so `sm_merge [] mu` REVERSES mu (and drops
+   a repeated key). The former statement `sm_merge [] mu == mu` is
+   therefore FALSE for every mu holding two distinct variables — proved
+   below in lemma_sm_merge_empty_l_not_structural_identity. It was
+   admitted under a section header reading "PROVED".
+   The true law is the one the algebra actually needs: merging into the
+   empty mapping is the identity ON THE MAPPING — same domain, same term
+   for every variable. List order carries no meaning for a solution
+   mapping (§18.6 treats it as a partial function; only a
+   solution_SEQUENCE has order). Stated over sm_lookup, it holds
+   unconditionally — no no-duplicate-keys hypothesis needed, because
+   sm_merge_aux keeps the first binding for a key and assoc reads the
+   first binding for a key. *)
+let rec lemma_sm_merge_aux_lookup (acc mu : solution_mapping) (v : string) :
+  Lemma (ensures List.Tot.assoc v (sm_merge_aux acc mu) ==
+                 (match List.Tot.assoc v acc with
+                  | Some t -> Some t
+                  | None -> List.Tot.assoc v mu))
+        (decreases mu) =
+  match mu with
+  | [] -> ()
+  | (w, s) :: rest ->
+    if Some? (List.Tot.assoc w acc)
+    then lemma_sm_merge_aux_lookup acc rest v
+    else lemma_sm_merge_aux_lookup ((w, s) :: acc) rest v
+
 let lemma_sm_merge_empty_l (mu : solution_mapping) :
-  Lemma (sm_merge [] mu == mu) =
-  admit ()
+  Lemma (forall (v : string). sm_lookup v (sm_merge [] mu) == sm_lookup v mu) =
+  let aux (v : string)
+    : Lemma (sm_lookup v (sm_merge [] mu) == sm_lookup v mu) =
+    lemma_sm_merge_aux_lookup [] mu v;
+    Lh.lemma_assoc_tr_eq v (sm_merge [] mu);
+    Lh.lemma_assoc_tr_eq v mu
+  in
+  FStar.Classical.forall_intro aux
+
+(* The refutation of the former statement, as a theorem. *)
+let lemma_sm_merge_empty_l_not_structural_identity ()
+  : Lemma (exists (mu : solution_mapping). sm_merge [] mu =!= mu) =
+  let a : rdf_term = T_BNode "b1" in
+  let b : rdf_term = T_BNode "b2" in
+  let mu : solution_mapping = [("x", a); ("y", b)] in
+  assert_norm (sm_merge [] mu == [("y", b); ("x", a)]);
+  assert_norm (([("y", b); ("x", a)] <: solution_mapping) =!= mu)
 
 (** 19.11 domains_disjoint with empty — PROVED **)
 let lemma_domains_disjoint_empty_l (mu : solution_mapping) :
@@ -7005,11 +7099,20 @@ let lemma_join_empty_r (omega1 : solution_sequence) :
   // rewrite and is no longer needed.
   ()
 
-(** 19.18 Minus with empty right operand is identity — ADMITTED (#323) **)
-let lemma_minus_empty_r (omega : solution_sequence) :
+(** 19.18 Minus with empty right operand is identity — PROVED **)
+(* Recovered 2026-07-30 (#323) after the = → == migration broke the
+   previous proof and it was patched with an admission. `minus omega []`
+   is `List.Tot.filter p omega` where p reduces to `not (existsb _ [])`
+   = true, so under `=` the whole thing decided by computation. Under
+   `==` the filter has to be walked: one induction step per element,
+   each discharging `filter p (hd :: tl) == hd :: filter p tl` by a
+   single unfold. 19.15's lemma_filter_true does not apply — it is fixed
+   to the literal predicate `fun _ -> true`, not to minus's lambda. *)
+let rec lemma_minus_empty_r (omega : solution_sequence) :
   Lemma (minus omega [] == omega) =
-  (* TODO: proof needs rework after = → == migration (was previously proved) *)
-  admit ()
+  match omega with
+  | [] -> ()
+  | _ :: tl -> lemma_minus_empty_r tl
 
 (** 19.19 Union length (commutativity as multisets) — PROVED **)
 let lemma_union_length (o1 o2 : solution_sequence) :
