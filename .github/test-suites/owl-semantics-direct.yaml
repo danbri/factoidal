@@ -43,4 +43,5 @@ triggers:
 # OWL 2 row, 2026-07-10; see also owl-profile-rl.yaml's `remaining` for
 # the family-wide caveats).
 remaining:
-  - "residual semantics-direct fails are enumerated per-ID in the results log; this is the heaviest catalog and the most likely to be affected by per-test SIGALRM cap-trips on the largest premises"
+  - "residual semantics-direct fails are enumerated per-ID in the results log; this is the heaviest catalog and the most likely to be affected by per-test CPU cap-trips on the largest premises"
+  - "15 of the 351 ConsistencyTests score `unsupported` (cap escape) rather than PASS since #326 (2026-07-30): 336 pass, 15 fail (out of 351). Absence of a clash is only evidence when the search for it finished"

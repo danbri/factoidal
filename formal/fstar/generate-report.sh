@@ -1185,15 +1185,25 @@ emit_json_harness_owl () {
       printf '"%s":{"measured":false}' "$key"
       continue
     fi
-    local names
+    local names unsup_names
     names=$(grep -h '^HARNESS-DIAG-OWL-TEST ' "$log" 2>/dev/null \
             | awk '{print "\""$2"\""}' | paste -sd, - || true)
-    printf '"%s":{"measured":true,"degraded_closure_marked":%s,"degraded_closure_silent":%s,"tests_on_degraded_closure":%s,"tests":[%s]}' \
+    # #326: the absence-shaped verdicts (Consistency / NegativeEntailment)
+    # that a budget escape moved OFF pass, named.
+    unsup_names=$(grep -h '^HARNESS-DIAG-OWL-UNSUPPORTED ' "$log" 2>/dev/null \
+            | awk '{print "\""$2"\""}' | paste -sd, - || true)
+    printf '"%s":{"measured":true,"degraded_closure_marked":%s,"degraded_closure_silent":%s,"marker_scan_escapes":%s,"refuter_escapes":%s,"pe_refuter_escapes":%s,"refuter_indeterminate":%s,"tests_on_degraded_closure":%s,"tests_unsupported_cap_escape":%s,"tests":[%s],"unsupported_tests":[%s]}' \
       "$key" \
       "$(diag_field "$line" degraded_closure_marked)" \
       "$(diag_field "$line" degraded_closure_silent)" \
+      "$(diag_field "$line" marker_scan_escapes)" \
+      "$(diag_field "$line" refuter_escapes)" \
+      "$(diag_field "$line" pe_refuter_escapes)" \
+      "$(diag_field "$line" refuter_indeterminate)" \
       "$(diag_field "$line" tests_on_degraded_closure)" \
-      "$names"
+      "$(diag_field "$line" tests_unsupported_cap_escape)" \
+      "$names" \
+      "$unsup_names"
   done
   printf '}'
 }
@@ -2855,30 +2865,34 @@ build_harness_card () {
     line=$(grep -h '^HARNESS-DIAG-OWL ' "$log" 2>/dev/null | tail -1 || true)
     [ -z "$line" ] && continue
     owl_measured=1
-    local dm ds dt names cls2
+    local dm ds me re dt un names cls2
     dm=$(diag_field "$line" degraded_closure_marked)
     ds=$(diag_field "$line" degraded_closure_silent)
+    me=$(diag_field "$line" marker_scan_escapes)
+    re=$(diag_field "$line" refuter_escapes)
     dt=$(diag_field "$line" tests_on_degraded_closure)
+    # #326: how many absence-shaped verdicts the escapes moved off pass.
+    un=$(diag_field "$line" tests_unsupported_cap_escape)
     names=$(grep -h '^HARNESS-DIAG-OWL-TEST ' "$log" 2>/dev/null \
             | awk '{print $2}' | paste -sd', ' - || true)
     if [ "${dt:-0}" -gt 0 ]; then owl_any=1; cls2="hd-bad"; else cls2="hd-ok"; fi
-    owl_rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
-      "$cls2" "$key" "${dm:-0}" "${ds:-0}" "${dt:-0}" "${names:-&mdash;}")
+    owl_rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
+      "$cls2" "$key" "${dm:-0}" "${ds:-0}" "${me:-0}" "${re:-0}" "${dt:-0}" "${un:-0}" "${names:-&mdash;}")
   done
   local owl_block=""
   if [ "$owl_measured" -eq 1 ]; then
     local owl_note
     if [ "$owl_any" -eq 1 ]; then
-      owl_note='<p class="hd-note hd-bad">Listed tests were scored on a closure the runner abandoned part-way. For a ConsistencyTest that direction manufactures a PASS (a truncated closure finds no contradiction), so these passes are weaker than the rest.</p>'
+      owl_note='<p class="hd-note hd-bad">Listed tests were scored on reasoning the runner abandoned part-way. Since <a href="https://github.com/danbri/factoidal/issues/326">#326</a> the two kinds that pass on the ABSENCE of a derived fact (ConsistencyTest, NegativeEntailmentTest) score <code>unsupported</code> rather than PASS when that happens — a truncated closure satisfies them trivially, so their pass would have been an artifact of giving up. The other two kinds (PositiveEntailment, Inconsistency) are fail-safe under truncation: a missing derivation shows up as a FAIL.</p>'
     else
-      owl_note='<p class="hd-note">No closure cap-trips: every OWL catalog test was scored on a complete closure.</p>'
+      owl_note='<p class="hd-note">No cap escapes: every OWL catalog test was scored on reasoning that ran to completion.</p>'
     fi
     owl_block=$(cat <<OWLHDEOF
   <p class="legend-title" style="margin-top:1em">OWL 2 catalogs &mdash; closure cap escapes</p>
-  <p class="legend-note">The OWL runner puts a per-test CPU cap on the RL/DL closure so one hard ontology cannot hang a catalog. On a cap-trip it falls back to a less-closed graph and scores the test anyway. <strong>marked</strong> counts logged cap-trips; <strong>silent</strong> counts the unlogged catch-all arms.</p>
+  <p class="legend-note">The OWL runner puts a per-test CPU cap on the RL/DL closure, on the inconsistency-marker scan, and on the clash-seeking tableau, so one hard ontology cannot hang a catalog. On a cap-trip it falls back to a less-closed graph or to "nothing found". <strong>closure</strong> and <strong>silent</strong> count closure-stage escapes (the second column is the catch-all arms, which now log too); <strong>marker</strong> counts abandoned inconsistency-marker scans; <strong>refuter</strong> counts abandoned clash searches; <strong>unsupported</strong> counts the Consistency / NegativeEntailment verdicts those escapes moved off PASS (<a href="https://github.com/danbri/factoidal/issues/326">#326</a>).</p>
   <div style="overflow-x:auto">
   <table class="hd-table">
-    <thead><tr><th>catalog</th><th>marked</th><th>silent</th><th>tests affected</th><th>which</th></tr></thead>
+    <thead><tr><th>catalog</th><th>closure</th><th>silent</th><th>marker</th><th>refuter</th><th>tests affected</th><th>unsupported</th><th>which</th></tr></thead>
     <tbody>${owl_rows}</tbody>
   </table>
   </div>
