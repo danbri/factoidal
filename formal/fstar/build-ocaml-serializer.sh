@@ -40,8 +40,8 @@ cd "$OUTDIR"
 
 COMMON_MODULES="RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml \
   Parser_FastString.ml RDF_IRI.ml Parser_IRI.ml \
-  RDF_NQuads_Serialize.ml \
   Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
+  RDF_NQuads_Serialize.ml \
   RDF_Turtle_Serialize.ml \
   Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
   RDF_List_Helpers.ml SPARQL11_IRI_Resolve.ml \
