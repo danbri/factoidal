@@ -409,8 +409,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-29 17:57 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-29 17:28 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-30 12:09 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-29 17:57 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDF 1.2 / SPARQL 1.2 (W3C Working Drafts), RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -477,7 +477,15 @@
   </table>
   </div>
   <p class="hd-note">No comparator escapes, no discovery faults. Every score above came from the strict RDFC-1.0 comparator on a suite that discovered its tests.</p>
-
+  <p class="legend-title" style="margin-top:1em">OWL 2 catalogs &mdash; closure cap escapes</p>
+  <p class="legend-note">The OWL runner puts a per-test CPU cap on the RL/DL closure, on the inconsistency-marker scan, and on the clash-seeking tableau, so one hard ontology cannot hang a catalog. On a cap-trip it falls back to a less-closed graph or to "nothing found". <strong>closure</strong> and <strong>silent</strong> count closure-stage escapes (the second column is the catch-all arms, which now log too); <strong>marker</strong> counts abandoned inconsistency-marker scans; <strong>refuter</strong> counts abandoned clash searches; <strong>unsupported</strong> counts the Consistency / NegativeEntailment verdicts those escapes moved off PASS (<a href="https://github.com/danbri/factoidal/issues/326">#326</a>).</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>catalog</th><th>closure</th><th>silent</th><th>marker</th><th>refuter</th><th>tests affected</th><th>unsupported</th><th>which</th></tr></thead>
+    <tbody><tr class="hd-ok"><td><code>profile_rl</code></td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>&mdash;</td></tr><tr class="hd-bad"><td><code>type_positive_entailment</code></td><td>8</td><td>0</td><td>4</td><td>5</td><td>7</td><td>7</td><td>WebOnt-description-logic-206,WebOnt-description-logic-208 WebOnt-description-logic-661,WebOnt-description-logic-662 WebOnt-description-logic-663,WebOnt-description-logic-664 WebOnt-miscellaneous-011</td></tr><tr class="hd-bad"><td><code>type_negative_entailment</code></td><td>0</td><td>0</td><td>1</td><td>1</td><td>1</td><td>1</td><td>WebOnt-description-logic-209</td></tr><tr class="hd-bad"><td><code>type_consistency</code></td><td>14</td><td>0</td><td>5</td><td>9</td><td>15</td><td>15</td><td>WebOnt-Thing-004,WebOnt-description-logic-206 WebOnt-description-logic-208,WebOnt-description-logic-209 WebOnt-description-logic-501,WebOnt-description-logic-661 WebOnt-description-logic-662,WebOnt-description-logic-663 WebOnt-description-logic-664,WebOnt-description-logic-905 WebOnt-description-logic-906,WebOnt-description-logic-907 WebOnt-miscellaneous-001,WebOnt-miscellaneous-002 WebOnt-miscellaneous-011</td></tr><tr class="hd-bad"><td><code>type_inconsistency</code></td><td>0</td><td>0</td><td>0</td><td>1</td><td>1</td><td>0</td><td>WebOnt-description-logic-910</td></tr><tr class="hd-bad"><td><code>profile_el</code></td><td>1</td><td>0</td><td>0</td><td>0</td><td>1</td><td>1</td><td>WebOnt-Thing-004</td></tr><tr class="hd-ok"><td><code>profile_ql</code></td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>&mdash;</td></tr><tr class="hd-bad"><td><code>semantics_direct</code></td><td>14</td><td>0</td><td>5</td><td>10</td><td>16</td><td>15</td><td>WebOnt-Thing-004,WebOnt-description-logic-206 WebOnt-description-logic-208,WebOnt-description-logic-209 WebOnt-description-logic-501,WebOnt-description-logic-661 WebOnt-description-logic-662,WebOnt-description-logic-663 WebOnt-description-logic-664,WebOnt-description-logic-905 WebOnt-description-logic-906,WebOnt-description-logic-907 WebOnt-description-logic-910,WebOnt-miscellaneous-001 WebOnt-miscellaneous-002,WebOnt-miscellaneous-011</td></tr></tbody>
+  </table>
+  </div>
+  <p class="hd-note hd-bad">Listed tests were scored on reasoning the runner abandoned part-way. Since <a href="https://github.com/danbri/factoidal/issues/326">#326</a> the two kinds that pass on the ABSENCE of a derived fact (ConsistencyTest, NegativeEntailmentTest) score <code>unsupported</code> rather than PASS when that happens — a truncated closure satisfies them trivially, so their pass would have been an artifact of giving up. The other two kinds (PositiveEntailment, Inconsistency) are fail-safe under truncation: a missing derivation shows up as a FAIL.</p>
   <p class="legend-title" style="margin-top:1em">Local overrides of upstream fixtures</p>
   <p class="legend-note">A fixture whose upstream expectation we dispute in writing, under <code>tests/local-overrides/</code>. The runner scores it in its own bucket rather than as a pass or a fail. Listed here because folding it into &ldquo;skip&rdquo; hid a deliberate disagreement with the spec suite.</p>
   <div style="overflow-x:auto">
@@ -856,17 +864,17 @@
     </div>
   </div>
 </details>
-<details class="family-node amber" id="owl2">
+<details class="family-node green" id="owl2">
   <summary>
     <span class="fam-name">OWL 2</span>
-    <span class="fam-score">28/2/0 of 30</span>
+    <span class="fam-score">30/0/0 of 30</span>
     <span class="gap-badge">2 gaps</span>
-    <span class="dot amber"></span>
+    <span class="dot green"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline amber">profile-RL PositiveEntailmentTests: 28 pass, 2 fail (of 30); six further OWL 2 catalogs (NegEnt/Cons/Inc + 4 DL catalogs) scored below, RIF Core scored in its own family.</p>
+    <p class="fam-headline green">profile-RL PositiveEntailmentTests: 30 pass, 0 fail (of 30); six further OWL 2 catalogs (NegEnt/Cons/Inc + 4 DL catalogs) scored below, RIF Core scored in its own family.</p>
     <div class="suites">
-<p class="fam-subhead">OWL 2 <span class="inline-numbers">28+ pass via owl_runner across 8 catalogs (profile-RL/EL/QL + 4 DL + syntax-dl species) &middot; live scoring</span></p>
+<p class="fam-subhead">OWL 2 <span class="inline-numbers">30+ pass via owl_runner across 8 catalogs (profile-RL/EL/QL + 4 DL + syntax-dl species) &middot; live scoring</span></p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Scope.</strong> The OWL 2 W3C Test Cases catalog (~3378
   <code>test:TestCase</code> entries across 9 categories) is vendored
@@ -929,11 +937,11 @@
       <p class="suite-numbers-full">70 pass, 0 fail, 0 skip (out of 70)</p>
     </div>
   </details>
-  <details class="suite-node amber">
-    <summary><span class="suite-name">profile-RL PosEnt</span><span class="suite-numbers">28/2/0 of 30</span><span class="dot amber"></span></summary>
+  <details class="suite-node green">
+    <summary><span class="suite-name">profile-RL PosEnt</span><span class="suite-numbers">30/0/0 of 30</span><span class="dot green"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:93.33%"></div><div class="seg seg-fail" style="width:6.67%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">28 pass, 2 fail, 0 skip (out of 30)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">30 pass, 0 fail, 0 skip (out of 30)</p>
     </div>
   </details>
   <details class="suite-node green">
@@ -958,16 +966,16 @@
     </div>
   </details>
   <details class="suite-node amber">
-    <summary><span class="suite-name">type-PosEnt PE [DL]</span><span class="suite-numbers">173/31/0 of 204</span><span class="dot amber"></span></summary>
+    <summary><span class="suite-name">type-PosEnt PE [DL]</span><span class="suite-numbers">195/9/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:84.80%"></div><div class="seg seg-fail" style="width:15.20%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">173 pass, 31 fail, 0 skip (out of 204)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:95.59%"></div><div class="seg seg-fail" style="width:4.41%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">195 pass, 9 fail, 0 skip (out of 204)</p>
     </div>
-  </details><details class="suite-node green">
-    <summary><span class="suite-name">type-PosEnt Cons [DL]</span><span class="suite-numbers">204/0/0 of 204</span><span class="dot green"></span></summary>
+  </details><details class="suite-node amber">
+    <summary><span class="suite-name">type-PosEnt Cons [DL]</span><span class="suite-numbers">197/7/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">204 pass, 0 fail, 0 skip (out of 204)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:96.57%"></div><div class="seg seg-fail" style="width:3.43%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">197 pass, 7 fail, 0 skip (out of 204)</p>
     </div>
   </details><details class="suite-node grey">
     <summary><span class="suite-name">type-NegEnt PE [DL]</span><span class="suite-numbers">0/0/0 of 0</span><span class="dot grey"></span></summary>
@@ -981,17 +989,17 @@
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
       <p class="suite-numbers-full">23 pass, 0 fail, 0 skip (out of 23)</p>
     </div>
-  </details><details class="suite-node green">
-    <summary><span class="suite-name">type-NegEnt Cons [DL]</span><span class="suite-numbers">23/0/0 of 23</span><span class="dot green"></span></summary>
+  </details><details class="suite-node amber">
+    <summary><span class="suite-name">type-NegEnt Cons [DL]</span><span class="suite-numbers">22/1/0 of 23</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">23 pass, 0 fail, 0 skip (out of 23)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">22 pass, 1 fail, 0 skip (out of 23)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="suite-name">type-Cons PE [DL]</span><span class="suite-numbers">173/31/0 of 204</span><span class="dot amber"></span></summary>
+    <summary><span class="suite-name">type-Cons PE [DL]</span><span class="suite-numbers">195/9/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:84.80%"></div><div class="seg seg-fail" style="width:15.20%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">173 pass, 31 fail, 0 skip (out of 204)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:95.59%"></div><div class="seg seg-fail" style="width:4.41%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">195 pass, 9 fail, 0 skip (out of 204)</p>
     </div>
   </details><details class="suite-node green">
     <summary><span class="suite-name">type-Cons NE [DL]</span><span class="suite-numbers">23/0/0 of 23</span><span class="dot green"></span></summary>
@@ -999,11 +1007,11 @@
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
       <p class="suite-numbers-full">23 pass, 0 fail, 0 skip (out of 23)</p>
     </div>
-  </details><details class="suite-node green">
-    <summary><span class="suite-name">type-Cons Cons [DL]</span><span class="suite-numbers">352/0/0 of 352</span><span class="dot green"></span></summary>
+  </details><details class="suite-node amber">
+    <summary><span class="suite-name">type-Cons Cons [DL]</span><span class="suite-numbers">337/15/0 of 352</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">352 pass, 0 fail, 0 skip (out of 352)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:95.74%"></div><div class="seg seg-fail" style="width:4.26%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">337 pass, 15 fail, 0 skip (out of 352)</p>
     </div>
   </details><details class="suite-node grey">
     <summary><span class="suite-name">type-Inc PE [DL]</span><span class="suite-numbers">0/0/0 of 0</span><span class="dot grey"></span></summary>
@@ -1012,16 +1020,16 @@
       <p class="suite-numbers-full">0 pass, 0 fail, 0 skip (out of 0)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="suite-name">type-Inc Inc [DL]</span><span class="suite-numbers">125/2/0 of 127</span><span class="dot amber"></span></summary>
+    <summary><span class="suite-name">type-Inc Inc [DL]</span><span class="suite-numbers">126/1/0 of 127</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:98.43%"></div><div class="seg seg-fail" style="width:1.57%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">125 pass, 2 fail, 0 skip (out of 127)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:99.21%"></div><div class="seg seg-fail" style="width:0.79%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">126 pass, 1 fail, 0 skip (out of 127)</p>
     </div>
-  </details><details class="suite-node amber">
-    <summary><span class="suite-name">profile-EL PE [RL]</span><span class="suite-numbers">27/2/0 of 29</span><span class="dot amber"></span></summary>
+  </details><details class="suite-node green">
+    <summary><span class="suite-name">profile-EL PE [RL]</span><span class="suite-numbers">29/0/0 of 29</span><span class="dot green"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:93.10%"></div><div class="seg seg-fail" style="width:6.90%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">27 pass, 2 fail, 0 skip (out of 29)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">29 pass, 0 fail, 0 skip (out of 29)</p>
     </div>
   </details><details class="suite-node green">
     <summary><span class="suite-name">profile-EL NE [RL]</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
@@ -1029,11 +1037,11 @@
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
       <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
     </div>
-  </details><details class="suite-node green">
-    <summary><span class="suite-name">profile-EL Cons [RL]</span><span class="suite-numbers">72/0/0 of 72</span><span class="dot green"></span></summary>
+  </details><details class="suite-node amber">
+    <summary><span class="suite-name">profile-EL Cons [RL]</span><span class="suite-numbers">71/1/0 of 72</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">72 pass, 0 fail, 0 skip (out of 72)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:98.61%"></div><div class="seg seg-fail" style="width:1.39%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">71 pass, 1 fail, 0 skip (out of 72)</p>
     </div>
   </details><details class="suite-node green">
     <summary><span class="suite-name">profile-EL Inc [RL]</span><span class="suite-numbers">13/0/0 of 13</span><span class="dot green"></span></summary>
@@ -1041,11 +1049,11 @@
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
       <p class="suite-numbers-full">13 pass, 0 fail, 0 skip (out of 13)</p>
     </div>
-  </details><details class="suite-node amber">
-    <summary><span class="suite-name">profile-QL PE [RL]</span><span class="suite-numbers">18/2/0 of 20</span><span class="dot amber"></span></summary>
+  </details><details class="suite-node green">
+    <summary><span class="suite-name">profile-QL PE [RL]</span><span class="suite-numbers">20/0/0 of 20</span><span class="dot green"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:90.00%"></div><div class="seg seg-fail" style="width:10.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">18 pass, 2 fail, 0 skip (out of 20)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">20 pass, 0 fail, 0 skip (out of 20)</p>
     </div>
   </details><details class="suite-node green">
     <summary><span class="suite-name">profile-QL NE [RL]</span><span class="suite-numbers">3/0/0 of 3</span><span class="dot green"></span></summary>
@@ -1066,10 +1074,10 @@
       <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="suite-name">sem-Direct PE [DL]</span><span class="suite-numbers">173/31/0 of 204</span><span class="dot amber"></span></summary>
+    <summary><span class="suite-name">sem-Direct PE [DL]</span><span class="suite-numbers">195/9/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:84.80%"></div><div class="seg seg-fail" style="width:15.20%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">173 pass, 31 fail, 0 skip (out of 204)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:95.59%"></div><div class="seg seg-fail" style="width:4.41%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">195 pass, 9 fail, 0 skip (out of 204)</p>
     </div>
   </details><details class="suite-node green">
     <summary><span class="suite-name">sem-Direct NE [DL]</span><span class="suite-numbers">23/0/0 of 23</span><span class="dot green"></span></summary>
@@ -1077,17 +1085,17 @@
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
       <p class="suite-numbers-full">23 pass, 0 fail, 0 skip (out of 23)</p>
     </div>
-  </details><details class="suite-node green">
-    <summary><span class="suite-name">sem-Direct Cons [DL]</span><span class="suite-numbers">351/0/0 of 351</span><span class="dot green"></span></summary>
+  </details><details class="suite-node amber">
+    <summary><span class="suite-name">sem-Direct Cons [DL]</span><span class="suite-numbers">336/15/0 of 351</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">351 pass, 0 fail, 0 skip (out of 351)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:95.73%"></div><div class="seg seg-fail" style="width:4.27%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">336 pass, 15 fail, 0 skip (out of 351)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="suite-name">sem-Direct Inc [DL]</span><span class="suite-numbers">124/3/0 of 127</span><span class="dot amber"></span></summary>
+    <summary><span class="suite-name">sem-Direct Inc [DL]</span><span class="suite-numbers">126/1/0 of 127</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-pass" style="width:97.64%"></div><div class="seg seg-fail" style="width:2.36%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-      <p class="suite-numbers-full">124 pass, 3 fail, 0 skip (out of 127)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:99.21%"></div><div class="seg seg-fail" style="width:0.79%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">126 pass, 1 fail, 0 skip (out of 127)</p>
     </div>
   </details><details class="suite-node amber">
     <summary><span class="suite-name">syntax-dl species DL-vs-FULL [syntactic]</span><span class="suite-numbers">319/2/2 of 323</span><span class="dot amber"></span></summary>
@@ -1266,7 +1274,7 @@
           <div class="meter"><div class="seg seg-pass" style="width:6.52%"></div><div class="seg seg-fail" style="width:93.48%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
           <p class="suite-numbers-full">6 pass, 86 fail, 0 skip (out of 92)</p>
           <p class="suite-prov">Runner: <code>bin/jsonld-frame-runner</code> (<code>bin/linux-x86_64/jsonld_frame_runner</code>) &middot; Suite: W3C json-ld-framing manifest (Framing Algorithm)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/strict-harness-20260729/.github/test-suites/jsonld-frame.yaml" target="_blank" rel="noopener">diagnosis: first-cut F* framing (expand+flatten+match/embed+compact); residual fails are the un-implemented frame features (@explicit/@default/@embed variants/@reverse/@included/named graphs) — see the suite manifest</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/owl-cap-soundness-20260729/.github/test-suites/jsonld-frame.yaml" target="_blank" rel="noopener">diagnosis: first-cut F* framing (expand+flatten+match/embed+compact); residual fails are the un-implemented frame features (@explicit/@default/@embed variants/@reverse/@included/named graphs) — see the suite manifest</a></p>
         </div>
       </details>
     </div>
@@ -1328,7 +1336,7 @@
       <details class="suite-node grey">
         <summary><span class="suite-name">VC community compatibility (canivc.com)</span><span class="suite-numbers">snapshot 2026-07-10</span><span class="dot grey"></span></summary>
         <div class="suite-body">
-          <p class="suite-numbers-full">Digital Bazaar's <a href="https://canivc.com" target="_blank" rel="noopener">canivc.com</a> aggregates the same official W3C/CCG test-suite reports across ~20 implementations. Per-suite comparison (community min/median/max % across registered implementations, from a snapshot vendored at <code>third_party/testing/canivc-snapshot/</code>; full scoping + gap rationale in <a href="https://github.com/danbri/factoidal/blob/claude/strict-harness-20260729/docs/designissues/2026-07-10-canivc-community-compat.md" target="_blank" rel="noopener">the canivc.com integration doc</a>):</p>
+          <p class="suite-numbers-full">Digital Bazaar's <a href="https://canivc.com" target="_blank" rel="noopener">canivc.com</a> aggregates the same official W3C/CCG test-suite reports across ~20 implementations. Per-suite comparison (community min/median/max % across registered implementations, from a snapshot vendored at <code>third_party/testing/canivc-snapshot/</code>; full scoping + gap rationale in <a href="https://github.com/danbri/factoidal/blob/claude/owl-cap-soundness-20260729/docs/designissues/2026-07-10-canivc-community-compat.md" target="_blank" rel="noopener">the canivc.com integration doc</a>):</p>
           <table class="canivc-compat">
             <thead><tr><th>suite</th><th>Factoidal</th><th>community min / median / max</th><th>status</th></tr></thead>
             <tbody>
@@ -1868,7 +1876,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           <div class="meter"><div class="seg seg-pass" style="width:23.29%"></div><div class="seg seg-fail" style="width:1.37%"></div><div class="seg seg-skip" style="width:75.34%"></div></div>
           <p class="suite-numbers-full">17 pass, 1 fail, 55 skip (out of 73)</p>
           <p class="suite-prov">Runner: <code>bin/linux-x86_64/rml_runner --io</code> &middot; Suite: <code>third_party/testing/rml-modules/rml-io/</code> (RMLSTC0* source tests) &middot; rml-cc (content-container) has no row: the committed runner exposes no <code>--cc</code> mode yet (tracked with the rml program plan)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/strict-harness-20260729/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/owl-cap-soundness-20260729/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
         </div>
       </details>
     </div>
@@ -2074,7 +2082,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           <div class="meter"><div class="seg seg-pass" style="width:99.61%"></div><div class="seg seg-fail" style="width:0.39%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
           <p class="suite-numbers-full">253 pass, 1 fail, 0 skip (out of 254)</p>
           <p class="suite-prov">Runner: <code>node --test tests/hub/*.mjs</code> &middot; live cells for every docs-hub post, run against the JS/wasm bundle</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/strict-harness-20260729/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/owl-cap-soundness-20260729/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
         </div>
       </details>
       <details class="suite-node green">
@@ -2243,9 +2251,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-29 17:57 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/c44c9d448e37af26cf64bbad317083e42f1a30ad">c44c9d4</a></code>
-  on branch <code>claude/strict-harness-20260729</code> — &ldquo;Count and publish the OWL closure-cap escapes; refresh the W3C logs and dashboard (#316)&rdquo;.
+  Generated <strong>2026-07-30 12:09 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/af26195f74e9630c0ed7e11e25415c9b1810bd94">af26195</a></code>
+  on branch <code>claude/owl-cap-soundness-20260729</code> — &ldquo;OWL runner: a cap-trip can no longer PASS a test that asserts a NON-derivation (#326)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

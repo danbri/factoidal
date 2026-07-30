@@ -86,9 +86,11 @@
   [pe-running] WebOnt-description-logic-207
   [pe-running] WebOnt-description-logic-208
   [pe-running] WebOnt-description-logic-661
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [pe-running] WebOnt-description-logic-662
   [pe-running] WebOnt-description-logic-663
   [pe-running] WebOnt-description-logic-664
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [pe-running] WebOnt-description-logic-665
   [pe-running] WebOnt-description-logic-667
   [pe-running] WebOnt-description-logic-901
@@ -206,6 +208,29 @@
   [pe-running] rdfbased-sem-restrict-somevalues-cmp-prop
   [pe-running] rdfbased-sem-restrict-somevalues-inst-subj
   [pe-running] somevaluesfrom2bnode
+  [neg-running] New-Feature-Keys-004
+  [neg-running] New-Feature-Keys-007
+  [neg-running] New-Feature-ObjectPropertyChain-BJP-004
+  [neg-running] WebOnt-Class-004
+  [neg-running] WebOnt-Class-005
+  [neg-running] WebOnt-I4.6-004
+  [neg-running] WebOnt-I4.6-005
+  [neg-running] WebOnt-I5.5-006
+  [neg-running] WebOnt-I5.5-007
+  [neg-running] WebOnt-I5.8-005
+  [neg-running] WebOnt-I5.8-007
+  [neg-running] WebOnt-Ontology-003
+  [neg-running] WebOnt-Restriction-005
+  [neg-running] WebOnt-allValuesFrom-002
+  [neg-running] WebOnt-description-logic-209
+  [neg-running] WebOnt-description-logic-902
+  [neg-running] WebOnt-description-logic-904
+  [neg-running] WebOnt-equivalentClass-005
+  [neg-running] WebOnt-equivalentClass-008
+  [neg-running] WebOnt-imports-002
+  [neg-running] WebOnt-miscellaneous-301
+  [neg-running] WebOnt-miscellaneous-302
+  [neg-running] WebOnt-someValuesFrom-002
   [cons-running] Consistent Datatype restrictions with Different Types
   [cons-running] Consistent owl:real range with DataOneOf
   [cons-running] Consistent-but-all-unsat
@@ -355,6 +380,8 @@
   [cons-running] WebOnt-SymmetricProperty-002
   [cons-running] WebOnt-SymmetricProperty-003
   [cons-running] WebOnt-Thing-004
+  [owl_closure_timeout] DL RL-base closure exceeded 20s cap; falling back to un-closed graph
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [cons-running] WebOnt-TransitiveProperty-001
   [cons-running] WebOnt-TransitiveProperty-002
   [cons-running] WebOnt-allValuesFrom-001
@@ -385,10 +412,17 @@
   [cons-running] WebOnt-description-logic-204
   [cons-running] WebOnt-description-logic-205
   [cons-running] WebOnt-description-logic-206
+  [owl_marker_escape] is_inconsistent scan abandoned (Owl_runner.Owl_closure_timeout); "no inconsistency marker" was never established
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-207
   [cons-running] WebOnt-description-logic-208
+  [owl_marker_escape] is_inconsistent scan abandoned (Owl_runner.Owl_closure_timeout); "no inconsistency marker" was never established
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-209
+  [owl_marker_escape] is_inconsistent scan abandoned (Owl_runner.Owl_closure_timeout); "no inconsistency marker" was never established
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-501
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-503
   [cons-running] WebOnt-description-logic-605
   [cons-running] WebOnt-description-logic-606
@@ -400,9 +434,15 @@
   [cons-running] WebOnt-description-logic-631
   [cons-running] WebOnt-description-logic-634
   [cons-running] WebOnt-description-logic-661
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [cons-running] WebOnt-description-logic-662
+  [owl_marker_escape] is_inconsistent scan abandoned (Owl_runner.Owl_closure_timeout); "no inconsistency marker" was never established
   [cons-running] WebOnt-description-logic-663
+  [owl_marker_escape] is_inconsistent scan abandoned (Owl_runner.Owl_closure_timeout); "no inconsistency marker" was never established
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-664
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-665
   [cons-running] WebOnt-description-logic-667
   [cons-running] WebOnt-description-logic-901
@@ -410,8 +450,11 @@
   [cons-running] WebOnt-description-logic-903
   [cons-running] WebOnt-description-logic-904
   [cons-running] WebOnt-description-logic-905
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-906
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-907
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-908
   [cons-running] WebOnt-differentFrom-001
   [cons-running] WebOnt-differentFrom-002
@@ -597,7 +640,6 @@
   [inc-running] WebOnt-Restriction-001
   [inc-running] WebOnt-Restriction-002
   [inc-running] WebOnt-Thing-003
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-Thing-005
   [inc-running] WebOnt-description-logic-001
   [inc-running] WebOnt-description-logic-002
@@ -663,6 +705,7 @@
   [inc-running] WebOnt-description-logic-650
   [inc-running] WebOnt-description-logic-909
   [inc-running] WebOnt-description-logic-910
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [inc-running] WebOnt-disjointWith-010
   [inc-running] WebOnt-maxCardinality-001
   [inc-running] WebOnt-miscellaneous-203
@@ -695,8 +738,9 @@
   [inc-running] rdfbased-sem-restrict-maxqcr-inst-obj-zero
   [inc-running] string-integer-clash
 Closure regime: DL
+Closure semantics: DIRECT (default)
 OWL 2 test catalog: third_party/testing/owl/semantics-direct.rdf
-  parsed 12070 triples in 0.93s
+  parsed 12070 triples in 0.60s
 Totals: 488 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -736,8 +780,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-Class-006
   PASS  WebOnt-FunctionalProperty-001
   PASS  WebOnt-FunctionalProperty-002
-  FAIL  WebOnt-FunctionalProperty-003
-  FAIL  WebOnt-FunctionalProperty-004
+  PASS  WebOnt-FunctionalProperty-003
+  PASS  WebOnt-FunctionalProperty-004
   PASS  WebOnt-FunctionalProperty-005
   PASS  WebOnt-I4.5-001
   PASS  WebOnt-I4.6-003
@@ -746,46 +790,46 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-I5.2-002
   PASS  WebOnt-I5.2-004
   PASS  WebOnt-I5.2-006
-  FAIL  WebOnt-I5.21-002
+  PASS  WebOnt-I5.21-002
   PASS  WebOnt-I5.24-001
-  FAIL  WebOnt-I5.24-002
-  FAIL  WebOnt-I5.24-003
-  FAIL  WebOnt-I5.24-004
+  PASS  WebOnt-I5.24-002
+  PASS  WebOnt-I5.24-003
+  PASS  WebOnt-I5.24-004
   PASS  WebOnt-I5.26-009
-  FAIL  WebOnt-I5.26-010
+  PASS  WebOnt-I5.26-010
   FAIL  WebOnt-I5.3-014
   FAIL  WebOnt-I5.3-015
   PASS  WebOnt-I5.5-001
   PASS  WebOnt-I5.5-002
-  FAIL  WebOnt-I5.5-005
-  FAIL  WebOnt-I5.8-004
+  PASS  WebOnt-I5.5-005
+  PASS  WebOnt-I5.8-004
   PASS  WebOnt-I5.8-006
   PASS  WebOnt-I5.8-008
   PASS  WebOnt-I5.8-009
-  FAIL  WebOnt-I5.8-010
+  PASS  WebOnt-I5.8-010
   PASS  WebOnt-I5.8-011
   FAIL  WebOnt-I5.8-017
   PASS  WebOnt-InverseFunctionalProperty-001
   PASS  WebOnt-InverseFunctionalProperty-002
-  FAIL  WebOnt-InverseFunctionalProperty-003
-  FAIL  WebOnt-InverseFunctionalProperty-004
+  PASS  WebOnt-InverseFunctionalProperty-003
+  PASS  WebOnt-InverseFunctionalProperty-004
   PASS  WebOnt-Nothing-002
   PASS  WebOnt-Ontology-001
   PASS  WebOnt-Ontology-004
   PASS  WebOnt-Restriction-005-direct
   PASS  WebOnt-Restriction-006
   PASS  WebOnt-SymmetricProperty-001
-  FAIL  WebOnt-SymmetricProperty-002
+  PASS  WebOnt-SymmetricProperty-002
   PASS  WebOnt-SymmetricProperty-003
   PASS  WebOnt-TransitiveProperty-001
   PASS  WebOnt-TransitiveProperty-002
   PASS  WebOnt-allValuesFrom-001
-  FAIL  WebOnt-cardinality-001
+  PASS  WebOnt-cardinality-001
   PASS  WebOnt-cardinality-002
-  FAIL  WebOnt-cardinality-003
+  PASS  WebOnt-cardinality-003
   PASS  WebOnt-cardinality-004
   PASS  WebOnt-cardinality-006
-  FAIL  WebOnt-complementOf-001
+  PASS  WebOnt-complementOf-001
   PASS  WebOnt-description-logic-201
   PASS  WebOnt-description-logic-202
   PASS  WebOnt-description-logic-203
@@ -817,8 +861,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-equivalentProperty-001
   PASS  WebOnt-equivalentProperty-002
   PASS  WebOnt-equivalentProperty-003
-  FAIL  WebOnt-equivalentProperty-004
-  FAIL  WebOnt-equivalentProperty-005
+  PASS  WebOnt-equivalentProperty-004
+  PASS  WebOnt-equivalentProperty-005
   PASS  WebOnt-equivalentProperty-006
   FAIL  WebOnt-extra-credit-002
   FAIL  WebOnt-extra-credit-003
@@ -833,14 +877,14 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-miscellaneous-302-Direct
   PASS  WebOnt-oneOf-002
   PASS  WebOnt-oneOf-003
-  FAIL  WebOnt-oneOf-004
+  PASS  WebOnt-oneOf-004
   PASS  WebOnt-sameAs-001
   PASS  WebOnt-someValuesFrom-001
   PASS  WebOnt-someValuesFrom-003
   PASS  WebOnt-unionOf-001
   PASS  WebOnt-unionOf-002
-  FAIL  WebOnt-unionOf-003
-  FAIL  WebOnt-unionOf-004
+  PASS  WebOnt-unionOf-003
+  PASS  WebOnt-unionOf-004
   PASS  bnode2somevaluesfrom
   PASS  chain2trans1
   PASS  owl2-rl-rules-fp-differentFrom
@@ -908,13 +952,13 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-restrict-hasvalue-inst-obj
   PASS  rdfbased-sem-restrict-hasvalue-inst-subj
   PASS  rdfbased-sem-restrict-maxcard-inst-obj-one
-  FAIL  rdfbased-sem-restrict-maxqcr-inst-obj-one
+  PASS  rdfbased-sem-restrict-maxqcr-inst-obj-one
   PASS  rdfbased-sem-restrict-somevalues-cmp-class
   PASS  rdfbased-sem-restrict-somevalues-cmp-prop
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 173 pass, 31 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 194.69s
+Profile-RL PositiveEntailmentTests: 195 pass, 9 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 206.08s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -942,7 +986,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 10.38s
+Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 7.99s
 
 Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Consistent Datatype restrictions with Different Types
@@ -1095,7 +1139,8 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-SymmetricProperty-001
   PASS  WebOnt-SymmetricProperty-002
   PASS  WebOnt-SymmetricProperty-003
-  PASS  WebOnt-Thing-004
+  UNSUPPORTED/cap-escape  WebOnt-Thing-004
+      reason: reasoning abandoned on a budget — closure stage abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
   PASS  WebOnt-TransitiveProperty-001
   PASS  WebOnt-TransitiveProperty-002
   PASS  WebOnt-allValuesFrom-001
@@ -1125,11 +1170,15 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-description-logic-203
   PASS  WebOnt-description-logic-204
   PASS  WebOnt-description-logic-205
-  PASS  WebOnt-description-logic-206
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-206
+      reason: reasoning abandoned on a budget — inconsistency-marker scan abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
   PASS  WebOnt-description-logic-207
-  PASS  WebOnt-description-logic-208
-  PASS  WebOnt-description-logic-209
-  PASS  WebOnt-description-logic-501
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-208
+      reason: reasoning abandoned on a budget — inconsistency-marker scan abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-209
+      reason: reasoning abandoned on a budget — inconsistency-marker scan abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-501
+      reason: reasoning abandoned on a budget — clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
   PASS  WebOnt-description-logic-503
   PASS  WebOnt-description-logic-605
   PASS  WebOnt-description-logic-606
@@ -1140,19 +1189,26 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-description-logic-628
   PASS  WebOnt-description-logic-631
   PASS  WebOnt-description-logic-634
-  PASS  WebOnt-description-logic-661
-  PASS  WebOnt-description-logic-662
-  PASS  WebOnt-description-logic-663
-  PASS  WebOnt-description-logic-664
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-661
+      reason: reasoning abandoned on a budget — closure stage abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-662
+      reason: reasoning abandoned on a budget — inconsistency-marker scan abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-663
+      reason: reasoning abandoned on a budget — inconsistency-marker scan abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-664
+      reason: reasoning abandoned on a budget — closure stage abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
   PASS  WebOnt-description-logic-665
   PASS  WebOnt-description-logic-667
   PASS  WebOnt-description-logic-901
   PASS  WebOnt-description-logic-902
   PASS  WebOnt-description-logic-903
   PASS  WebOnt-description-logic-904
-  PASS  WebOnt-description-logic-905
-  PASS  WebOnt-description-logic-906
-  PASS  WebOnt-description-logic-907
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-905
+      reason: reasoning abandoned on a budget — clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-906
+      reason: reasoning abandoned on a budget — clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-907
+      reason: reasoning abandoned on a budget — clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
   PASS  WebOnt-description-logic-908
   PASS  WebOnt-differentFrom-001
   PASS  WebOnt-differentFrom-002
@@ -1193,9 +1249,12 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-imports-012
   PASS  WebOnt-intersectionOf-001
   PASS  WebOnt-inverseOf-001
-  PASS  WebOnt-miscellaneous-001
-  PASS  WebOnt-miscellaneous-002
-  PASS  WebOnt-miscellaneous-011
+  UNSUPPORTED/cap-escape  WebOnt-miscellaneous-001
+      reason: reasoning abandoned on a budget — closure stage abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
+  UNSUPPORTED/cap-escape  WebOnt-miscellaneous-002
+      reason: reasoning abandoned on a budget — closure stage abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
+  UNSUPPORTED/cap-escape  WebOnt-miscellaneous-011
+      reason: reasoning abandoned on a budget — closure stage abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
   PASS  WebOnt-miscellaneous-102
   PASS  WebOnt-miscellaneous-103
   PASS  WebOnt-miscellaneous-202
@@ -1301,7 +1360,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 351 pass, 0 fail (out of 351), 2 skipped (functional-syntax-only) in 473.05s
+Profile-RL ConsistencyTests: 336 pass, 15 fail (out of 351), 2 skipped (functional-syntax-only); 15 unsupported (cap-escape, #326) in 482.97s
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Contradicting datatype Restrictions
@@ -1314,7 +1373,7 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Inconsistent Data Complement with the Restrictions
   PASS  Inconsistent Disjoint Dataproperties
   PASS  Inconsistent String Pattern with Disjoint Dataproperties
-  FAIL/unexpected-consistency  Minus Infinity is not in owl:real
+  PASS  Minus Infinity is not in owl:real
   PASS  New-Feature-AsymmetricProperty-001
   PASS  New-Feature-BottomDataProperty-001
   PASS  New-Feature-BottomObjectProperty-001
@@ -1373,7 +1432,7 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-description-logic-109
   PASS  WebOnt-description-logic-110
   PASS  WebOnt-description-logic-111
-  FAIL/unexpected-consistency  WebOnt-description-logic-502
+  PASS  WebOnt-description-logic-502
   PASS  WebOnt-description-logic-504
   PASS  WebOnt-description-logic-601
   PASS  WebOnt-description-logic-602
@@ -1434,4 +1493,38 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 124 pass, 3 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 75.03s
+Profile-RL InconsistencyTests: 126 pass, 1 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 92.36s
+
+Harness Diagnostics (escape branches, #316 + #326):
+HARNESS-DIAG-OWL degraded_closure_marked:14 degraded_closure_silent:0 marker_scan_escapes:5 refuter_escapes:10 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:16 tests_unsupported_cap_escape:15
+HARNESS-DIAG-OWL-TEST WebOnt-Thing-004
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-206
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-208
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-209
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-501
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-661
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-662
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-663
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-664
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-905
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-906
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-907
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-910
+HARNESS-DIAG-OWL-TEST WebOnt-miscellaneous-001
+HARNESS-DIAG-OWL-TEST WebOnt-miscellaneous-002
+HARNESS-DIAG-OWL-TEST WebOnt-miscellaneous-011
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-Thing-004 | closure stage abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-206 | inconsistency-marker scan abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-208 | inconsistency-marker scan abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-209 | inconsistency-marker scan abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-501 | clash-seeking tableau abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-661 | closure stage abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-662 | inconsistency-marker scan abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-663 | inconsistency-marker scan abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-664 | closure stage abandoned (cap/exception) + clash-seeking tableau abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-905 | clash-seeking tableau abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-906 | clash-seeking tableau abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-907 | clash-seeking tableau abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-miscellaneous-001 | closure stage abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-miscellaneous-002 | closure stage abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-miscellaneous-011 | closure stage abandoned (cap/exception)
