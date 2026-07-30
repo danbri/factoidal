@@ -798,4 +798,129 @@ let theorem_minus_complete (o1 o2 : list S.smap) (mu : S.smap)
   in
   FStar.Classical.forall_intro (fun mu2 -> FStar.Classical.move_requires aux mu2)
 
+
+(** ====================================================================== **)
+(** Part 12: LeftJoin / OPTIONAL (section 18.5)                            **)
+(** ====================================================================== **)
+
+let lemma_filter_map_nil_all_none (#a #b : Type) (f : a -> option b) (l : list a) (x : a)
+  : Lemma (requires list_filter_map f l == [] /\ List.Tot.memP x l)
+          (ensures  f x == None) =
+  match f x with
+  | None -> ()
+  | Some y -> lemma_memP_filter_map f l y
+
+/// The per-left-row step of `left_join`'s no-shared-variable path,
+/// named with `unfold` so the connection to the shipping inline lambda
+/// stays definitional (the F3 trap again).
+unfold let lj_step (base : option wf_iri) (fe : expr)
+                   (o2 : list S.smap) (mu1 : S.smap) : list S.smap =
+  let joins =
+    list_filter_map
+      (fun mu2 ->
+        if sm_compatible mu1 mu2 then
+          let merged = sm_merge mu1 mu2 in
+          if eval_expr_ebv base fe merged then Some merged else None
+        else None)
+      o2 in
+  if List.Tot.length joins > 0 then joins else [mu1]
+
+/// PARTIAL RESULT ONLY, and the boundary is stated rather than hidden.
+///
+/// The two DEGENERATE arms of `left_join` are proved against section
+/// 18.5's LeftJoin below. The general no-shared-variable arm is NOT
+/// proved here, and the obstacle is worth recording so a second pass
+/// does not rediscover it:
+///
+///   `left_join`'s body is `match omega1, omega2 with ... -> let vars =
+///   vars_intersect ... in if vars = [] then concatMap_tr <lambda> ...`.
+///   Relating it to `concatMap (lj_step ...)` needs BOTH a definitional
+///   step (two syntactically distinct closures for the same lambda --
+///   `FStar.Tactics.trefl` handles this, as it does for `jnl_step` in
+///   part 8) AND a hypothesis-driven step (choosing the `vars = []`
+///   branch -- SMT handles this, `trefl` cannot). Neither
+///   `trefl` alone nor `norm [delta_only [left_join]] ; smt` alone
+///   discharges the combination. The shape that should work is a
+///   `trefl`-provable equation with the `if` LEFT IN the statement and
+///   both branches spelled out, then an SMT step to pick the branch;
+///   writing the hash branch out is the cost.
+///
+/// The mathematical content is not in doubt: the arm is the textbook
+/// Filter(expr, Join) union Diff, and `theorem_join_nested_loop_sound`
+/// already proves the Join half's shape. What is missing is the
+/// definitional bridge, which is proof engineering, not semantics.
+
+/// LeftJoin with an empty right side is Diff, which is Omega1 -- and
+/// that is exactly what `left_join` returns.
+let theorem_left_join_empty_right
+      (base : option wf_iri) (fe : expr) (o1 : list S.smap) (mu : S.smap)
+  : Lemma (requires List.Tot.memP mu (left_join base o1 [] fe))
+          (ensures  S.in_leftjoin_spec (eval_expr_ebv base fe) o1 [] mu) = ()
+
+/// LeftJoin with an empty left side is empty.
+let theorem_left_join_empty_left
+      (base : option wf_iri) (fe : expr) (o2 : list S.smap) (mu : S.smap)
+  : Lemma (~(List.Tot.memP mu (left_join base [] o2 fe))) = ()
+
+(** ====================================================================== **)
+(** Part 13: Extend / BIND (section 18.5)                                  **)
+(** ====================================================================== **)
+
+/// `fx_bind_rows` preserves the row count -- BIND is a per-row map,
+/// never a filter and never a fan-out.
+let rec theorem_fx_bind_rows_length
+      (base : option wf_iri) (e : expr) (v : var_name)
+      (omega : list S.smap) (i : nat)
+  : Lemma (ensures List.Tot.length (fx_bind_rows base e v omega i) ==
+                   List.Tot.length omega)
+          (decreases omega) =
+  match omega with
+  | [] -> ()
+  | _ :: rest -> theorem_fx_bind_rows_length base e v rest (i + 1)
+
+/// The per-row characterisation, stated exactly as the code behaves so
+/// that the DIVERGENCES from section 18.5 are visible rather than
+/// smoothed over. Two of them:
+///
+///   (a) the expression is evaluated under `fx_ctx_put`'s CONTEXT
+///       mapping (`mu` plus two non-variable keys carrying the row
+///       index and the call-site tag, so BNODE()/UUID()/RAND() are
+///       fresh per row), not under `mu`. Section 18.5 says expr(mu).
+///       The extra keys start with U+0001 and are unreachable from
+///       SPARQL syntax, so this is invisible to a conforming query --
+///       but it is a departure from the letter of the text and the
+///       reason `in_extend_spec` cannot simply be instantiated with
+///       `eval_expr_fwd base e`.
+///   (b) when `v` is ALREADY BOUND in `mu`, section 18.5 says
+///       Extend is UNDEFINED. The engine silently returns `mu`
+///       unchanged. The grammar forbids BIND to an in-scope variable,
+///       so a conforming query cannot reach it; an
+///       algebra-level caller can.
+let rec theorem_fx_bind_rows_rowwise
+      (base : option wf_iri) (e : expr) (v : var_name)
+      (omega : list S.smap) (i : nat) (mu' : S.smap)
+  : Lemma (ensures List.Tot.memP mu' (fx_bind_rows base e v omega i) ==>
+                   (exists (mu : S.smap) (j : nat).
+                      List.Tot.memP mu omega /\
+                      (let ctx = fx_ctx_put (string_of_int j) v mu in
+                       match er_to_term (eval_expr_fwd base e ctx) with
+                       | Some t ->
+                         (S.sval v mu == None /\ mu' == sm_bind v t mu) \/
+                         (Some? (S.sval v mu) /\ mu' == mu)
+                       | None -> mu' == mu)))
+          (decreases omega) =
+  match omega with
+  | [] -> ()
+  | mu :: rest ->
+    Lh.lemma_assoc_tr_eq v mu;
+    theorem_fx_bind_rows_rowwise base e v rest (i + 1) mu'
+
+/// On the fragment section 18.5 actually covers -- `v` unbound and the
+/// expression yielding a term -- the engine's row IS section 18.5's
+/// Extend(mu, var, term).
+let theorem_sm_bind_is_extend (mu : S.smap) (v : var_name) (t : rdf_term)
+  : Lemma (requires S.sval v mu == None)
+          (ensures  S.is_extend_at mu v t (sm_bind v t mu)) =
+  Lh.lemma_assoc_tr_eq v mu
+
 #pop-options
