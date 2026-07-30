@@ -143,6 +143,44 @@ Turtle graphs into named graphs and serves them with
 | Parser perf status | `docs/designissues/parser-speed-status.md`, `turtle-parser-metrics.md` | humans/agents | only with fresh measurements (see `perf-benchmarking`) |
 | Parse/serialize throughput | `docs/test-results/perf-parse-serialize.json` (+ `.fragment.html`, surfaced in the dashboard `index.html`) | `tools/bench-parse-serialize.sh` via the `parse-serialize-bench` job in `ukparliament-bench.yml` | committed-binary only, no toolchain; update via the harness, never by hand |
 | Per-module assurance inventory | `docs/web/conformance/assurance-inventory.md` + `docs/test-results/assurance-inventory.{json,html}` | `tools/assurance-inventory.sh`, run by `dashboard-refresh.yml` | never hand-edit; regenerate and commit in the same PR as any change to `.fst` sources, the build module list, or the per-suite manifests |
+| Conformance pages (per area) | `docs/web/conformance/{rdf,sparql,owl2}.md` | humans/agents | every score from a FRESH run of the committed binaries, dated on the page, never copied from another doc; every residual named with one of the five #308 dispositions and a reason read off the fixture; refresh in the same PR as any change that moves a score in that area |
+
+## The conformance pages (hand-written, measurement-backed)
+
+One page per standards area, each linked from `docs/index.md` and from
+the matching dashboard family footnote in `generate-report.sh`:
+
+- `docs/web/conformance/rdf.md` — the five syntaxes, `rdf-mt`, the RDF
+  1.2 suites, RDFC-1.0.
+- `docs/web/conformance/sparql.md` — SPARQL 1.1 (all six
+  Recommendations) and the SPARQL 1.2 Working Draft.
+- `docs/web/conformance/owl2.md` — the nine OWL 2 catalogs under the RL
+  and DL regimes.
+
+Rules these pages follow, and that any edit to them must keep:
+
+1. **Fresh measurement or nothing.** Re-run the suite with the committed
+   `bin/<platform>/` binary from the repo root and quote what it printed.
+   Do not copy a number out of a doc, a ledger, or a previous version of
+   the page — several such numbers in this repo have been stale.
+2. **Resolve a suite's score by its exact label, never by a log total.**
+   Six manifests (`rdf-turtle`, `rdf-xml`, `rdf-trig`, `rdf-n-triples`,
+   `rdf-n-quads`, `rdf-mt`) declare
+   `log_path: formal/fstar/ocaml-output/sparql_results.log`, which
+   carries the SPARQL score lines, not theirs — the RDF scores are in
+   `rdf_results.log`. Scraping the declared file's total gives 631 where
+   `rdf-turtle` is 313 pass, 0 fail (out of 313). The RDF page documents
+   the mismatch; until the manifests are corrected, read the labelled
+   line.
+3. **Every residual named, dispositioned, and grounded in the fixture.**
+   Open the `.ttl` / `.rq` / manifest entry before writing a reason.
+   Dispositions come from the fixed #308 vocabulary (by-design /
+   planned-family / dependency-blocked / disputed-fixture / environment).
+4. **Proved and measured stay apart.** Any module-level assurance claim
+   must be checkable against the generated assurance inventory; when the
+   two disagree, the prose is the bug.
+5. **No numbers in the dashboard cross-link paragraphs.** They sit beside
+   a live-scraped score; see the prose rules above.
 
 ## The assurance inventory (generated — do not hand-edit)
 

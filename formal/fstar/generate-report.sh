@@ -1753,6 +1753,28 @@ HTML
 SPARQL_FAILURE_DETAIL_HTML=$(emit_failure_detail "$SPARQL_LOG" "sparql" "SPARQL 1.1")
 RDF_FAILURE_DETAIL_HTML=$(emit_failure_detail "$RDF_LOG" "rdf" "RDF 1.1")
 
+# Public conformance pages (one per area, same pattern as the OWL 2 link
+# inside OWL_HTML above). Each page carries the per-suite scores, the
+# regime definitions, EVERY residual with a disposition, and a
+# "proved versus measured" section. Appended to the family footnote so
+# the dashboard row and the narrative page are one click apart.
+# Deliberately carries NO numbers — the row above them is live-scraped,
+# and prose beside a scraped score must never hardcode a count.
+SPARQL_FAILURE_DETAIL_HTML="${SPARQL_FAILURE_DETAIL_HTML}
+<p style=\"margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;\">
+  Every residual in this family is named, explained, and dispositioned on the
+  <a href=\"../web/conformance/sparql/\">SPARQL conformance page</a>, which also
+  says what these suites do NOT test (&sect;18 algebra conformance is not the
+  same as query-result conformance) and separates proved from measured.
+</p>"
+RDF_FAILURE_DETAIL_HTML="${RDF_FAILURE_DETAIL_HTML}
+<p style=\"margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;\">
+  Every residual in this family is named, explained, and dispositioned on the
+  <a href=\"../web/conformance/rdf/\">RDF conformance page</a>, which also defines
+  the entailment regimes (simple / RDF / RDFS / D), says which one each runner
+  dispatches, and separates proved from measured.
+</p>"
+
 # Note: RDFC-1.0 (RDF Dataset Canonicalization) is a SEPARATE W3C
 # corpus (vendored at third_party/testing/rdf-canon/). Earlier
 # versions of this report stitched a synthetic "rdf-canon" row into
@@ -2241,7 +2263,8 @@ RDFCORE_HTML=$(family_section "rdf-core" "RDF 1.1 core" "$RDFCORE_STATUS" "$RDFC
 # --- RDFC-1.0 (RDF Dataset Canonicalization, W3C Recommendation 2024) -------
 RDFC10FAM_STATUS=$(status_for "$RDFC10_FAIL" 1)
 RDFC10FAM_HEADLINE="${RDFC10_PASS} pass, ${RDFC10_FAIL} fail, ${RDFC10_SKIP} skip (of ${RDFC10_TOTAL}) on the W3C rdf-canon suite."
-RDFC10FAM_HTML=$(family_section "rdfc10" "RDF Dataset Canonicalization (RDFC-1.0)" "$RDFC10FAM_STATUS" "$RDFC10FAM_HEADLINE" "$RDFC10_HTML" "" \
+RDFC10FAM_CROSSREF='<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">Scored alongside the other RDF suites, with its assurance level stated, on the <a href="../web/conformance/rdf/">RDF conformance page</a>.</p>'
+RDFC10FAM_HTML=$(family_section "rdfc10" "RDF Dataset Canonicalization (RDFC-1.0)" "$RDFC10FAM_STATUS" "$RDFC10FAM_HEADLINE" "$RDFC10_HTML" "$RDFC10FAM_CROSSREF" \
   "$RDFC10_PASS" "$RDFC10_FAIL" "$RDFC10_SKIP" "$RDFC10_TOTAL")
 
 # --- SPARQL 1.1 ---------------------------------------------------------
@@ -2263,7 +2286,20 @@ for _k in "${EXTRA_KEYS[@]}"; do
     _rows=$(emit_rec_subsection "${EXTRA_TITLE[$_k]}" "${EXTRA_URL[$_k]}" "${EXTRA_BLOB[$_k]}")
     _st=$(status_for "${EXTRA_FAIL[$_k]}" 1)
     _hl="${EXTRA_PASS[$_k]} pass, ${EXTRA_FAIL[$_k]} fail, ${EXTRA_SKIP[$_k]} skip (of ${EXTRA_TOTAL[$_k]}) — W3C Working Draft, run via w3c_runner ${EXTRA_ARGS[$_k]}."
-    _fam=$(family_section "extra-${_k}" "${EXTRA_TITLE[$_k]}" "$_st" "$_hl" "$_rows" "" \
+    # Conformance-page cross-link, by area. rdf12* -> the RDF page,
+    # sparql12 -> the SPARQL page. Numbers deliberately absent (the row
+    # above is live-scraped; frozen prose beside a scraped score rots).
+    case "$_k" in
+      rdf12*)   _cpath="rdf";    _clabel="RDF" ;;
+      sparql12) _cpath="sparql"; _clabel="SPARQL" ;;
+      *)        _cpath="";       _clabel="" ;;
+    esac
+    if [ -n "$_cpath" ]; then
+      _cnote="<p style=\"margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;\">Residuals for this suite are named and dispositioned on the <a href=\"../web/conformance/${_cpath}/\">${_clabel} conformance page</a>.</p>"
+    else
+      _cnote=""
+    fi
+    _fam=$(family_section "extra-${_k}" "${EXTRA_TITLE[$_k]}" "$_st" "$_hl" "$_rows" "$_cnote" \
       "${EXTRA_PASS[$_k]}" "${EXTRA_FAIL[$_k]}" "${EXTRA_SKIP[$_k]}" "${EXTRA_TOTAL[$_k]}")
     WD_BODY=$(printf '%s\n%s' "$WD_BODY" "$_fam")
   fi

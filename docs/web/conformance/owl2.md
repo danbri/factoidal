@@ -36,6 +36,10 @@ stopped looking. Those verdicts used to score PASS. They now score
 Parser and algebra spec are verified in F\*; the on-disk backend has
 unverified OCaml-side optimization layers being migrated back to F\*.
 
+Sibling pages: [RDF conformance]({{ '/web/conformance/rdf/' | url }})
+&middot; [SPARQL conformance]({{ '/web/conformance/sparql/' | url }})
+&middot; [per-module assurance inventory]({{ '/web/conformance/assurance-inventory/' | url }}).
+
 ## The two regimes
 
 **RL — Datalog closure.** A fixed set of forward-chaining rules
