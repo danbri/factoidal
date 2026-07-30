@@ -1,0 +1,41 @@
+name: Local — Parser UTF-8 preservation (issue 325)
+spec: internal
+runner: tests/local/parser_unicode_regressions.sh
+runner_args: []
+domain: RDF
+foundational: false
+
+# Guards the byte/codepoint boundary on the PARSER side (issue #325,
+# found by the #317 differential harness; same root cause family as
+# #92 and #91). Raw bytes read with Parser.FastString.fs_byte_index
+# must never be accumulated into an F* `list char` and emitted with
+# FStar.String.string_of_list — the extracted realisation re-encodes
+# every element as a UTF-8 codepoint, so a byte 0xE6 comes back out as
+# 0xC3 0xA6 (UTF-8 read as Latin-1).
+#
+# Covers, as round-trip PRESERVATION rather than mere acceptance:
+#   - Turtle / TriG IRIREF bodies, @prefix namespace IRIs, UCHAR
+#     escapes, and runs that mix raw UTF-8 with escapes
+#   - N-Triples / N-Quads IRIREFs (already correct — pinned so a
+#     future change cannot regress them into the Turtle behaviour)
+#   - RDF/XML QName local names and namespace prefixes, XML CDATA
+#     bodies, text content, attribute values, character references
+#   - the diagnosis rule: a non-empty document that yields zero
+#     triples must report and exit non-zero, while a legitimately
+#     triple-free document must still succeed
+
+triggers:
+  paths:
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/Parser.TriG.fst
+    - formal/fstar/Parser.TurtleScanner.fst
+    - formal/fstar/Parser.NTriples.fst
+    - formal/fstar/Parser.NQuads.fst
+    - formal/fstar/Parser.XML.fst
+    - formal/fstar/Parser.RDFXML.fst
+    - formal/fstar/Parser.Combinators.fst
+    - formal/fstar/Parser.FastString.fst
+    - bin/factoidal-cli/**
+    - tests/local/parser_unicode_regressions.sh
+
+  excludes: []
