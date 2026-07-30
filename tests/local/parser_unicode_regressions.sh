@@ -97,6 +97,50 @@ check "turtle-iriref-mixed-raw-and-escape" \
   '<http://e.org/日a本b語> <http://e.org/p> "x" .' \
   "$("${BIN}" canonicalize "${WORKDIR}/mix.ttl" 2>&1)"
 
+# The SAME mixed case in N-Triples and N-Quads. These formats look
+# correct on a plain non-ASCII IRIREF because Parser.NTriples.parse_iri_raw
+# takes a scan_iri_end fast path that slices with fs_byte_sub — the
+# defective char-accumulator (parse_iri_body_acc) is only entered when
+# the IRI contains a backslash. So "N-Triples is fine" was true only of
+# escape-free input, and the differential harness happened to generate
+# only escape-free IRIs. It is a real defect in both formats.
+printf '<http://e.org/\xe6\x97\xa5a\\u672Cb\xe8\xaa\x9e> <http://e.org/p> "x" .\n' \
+  > "${WORKDIR}/mix.nt"
+check "ntriples-iriref-mixed-raw-and-escape" \
+  '<http://e.org/日a本b語> <http://e.org/p> "x" .' \
+  "$("${BIN}" canonicalize "${WORKDIR}/mix.nt" 2>&1)"
+cp "${WORKDIR}/mix.nt" "${WORKDIR}/mix.nq"
+check "nquads-iriref-mixed-raw-and-escape" \
+  '<http://e.org/日a本b語> <http://e.org/p> "x" .' \
+  "$("${BIN}" canonicalize "${WORKDIR}/mix.nq" 2>&1)"
+
+# A PN_LOCAL that carries BOTH a PN_LOCAL_ESC escape and non-ASCII
+# characters. Same shape of hiding place: Parser.Turtle.unescape_pn_local
+# short-circuits to the input unchanged unless a backslash is present, so
+# the defective unescape walk was only reachable with an escape.
+printf '@prefix ex: <http://e.org/> .\nex:\xe6\x97\xa5\\-\xe6\x9c\xac ex:p "x" .\n' \
+  > "${WORKDIR}/pnesc.ttl"
+check "turtle-pn-local-escape-plus-utf8" \
+  '<http://e.org/日-本> <http://e.org/p> "x" .' \
+  "$("${BIN}" canonicalize "${WORKDIR}/pnesc.ttl" 2>&1)"
+
+# XML DTD internal entity whose replacement text is non-ASCII: the entity
+# value was read verbatim into a char accumulator, so it expanded to
+# mojibake.
+cat > "${WORKDIR}/ent.rdf" <<'RDFXML'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE rdf:RDF [ <!ENTITY jp "日本 café"> ]>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:ex="http://example.org/onto#">
+  <rdf:Description rdf:about="http://example.org/s">
+    <ex:p>&jp;</ex:p>
+  </rdf:Description>
+</rdf:RDF>
+RDFXML
+check "rdfxml-dtd-entity-value-utf8" \
+  '<http://example.org/s> <http://example.org/onto#p> "日本 café" .' \
+  "$("${BIN}" canonicalize "${WORKDIR}/ent.rdf" 2>&1)"
+
 # ---------------------------------------------------------------------
 # Bug 1 — RDF/XML non-ASCII QName local name.
 # ---------------------------------------------------------------------
