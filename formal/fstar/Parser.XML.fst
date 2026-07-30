@@ -44,28 +44,13 @@ let is_name_start_char (c:char) : bool =
 
 // Flattened: single function, ASCII fast-path.
 //
-// Issue #325 — the non-ASCII arm is a BYTE test applied to a UTF-8 byte
-// stream, so it must accept both halves of a multi-byte sequence: the
-// lead byte (0xC2-0xF4) AND its continuation bytes (0x80-0xBF). It used
-// to read `code >= 0xC0 || code = 0xB7`, i.e. it accepted lead bytes and
-// rejected continuation bytes. The Name scan therefore stopped INSIDE the
-// first non-ASCII codepoint: `<ex:日本語 ...>` scanned as the name
-// "ex:" + 0xE6 and then hit 0x97 where the element parser wanted '>' or
-// whitespace. The element failed, the failure propagated to the top, and
-// the RDF/XML driver returned an EMPTY graph with exit code 0 — silent
-// loss of a whole document for the sake of one Japanese property name.
-//
-// Accepting every byte >= 0x80 is exactly the codepoint-level reading of
-// what this predicate always meant: "any non-ASCII codepoint is a
-// NameChar". It cannot over-accept, because a bare continuation byte
-// with no lead byte is not valid UTF-8 and the document-level character
-// validation (scan_chars_valid / is_valid_decoded_char) rejects that
-// independently. The old `code = 0xB7` disjunct is subsumed and was in
-// any case unreachable as written: U+00B7 encodes as 0xC2 0xB7, so the
-// byte 0xB7 only ever appears as a continuation byte.
-//
-// U+00B7 remains excluded as a name START char — that check lives in
-// parse_xml_name, where the codepoint (not the byte) is decoded.
+// The non-ASCII arm accepts a UTF-8 LEAD byte and nothing else. That is
+// deliberate and it is not the whole Name-body test: a byte-level
+// predicate cannot decide a multi-byte codepoint, so the Name BODY scan
+// (scan_name_body_end below, issue #325) walks codepoints and consults
+// is_name_char_cp instead. This function survives for the ASCII rules it
+// states clearly, and its non-ASCII arm is kept identical to what it
+// always was so nothing silently shifts.
 let is_name_char (c:char) : bool =
   let code = Char.int_of_char c in
   if code < 0x80 then
@@ -75,7 +60,7 @@ let is_name_char (c:char) : bool =
     code = 0x5F || code = 0x3A ||
     code = 0x2D || code = 0x2E
   else
-    true
+    code >= 0xC0 || code = 0xB7
 
 let is_xml_space (c:char) : bool =
   let code = Char.int_of_char c in
@@ -211,28 +196,136 @@ let is_xml_target_name_ci (s:string) : bool =
 (* XML Name parser                                                   *)
 (* ================================================================ *)
 
+// NameStartChar / NameChar above ASCII, at CODEPOINT level (issue #325).
+//
+// These are the XML 1.1 NameStartChar and NameChar productions
+// (https://www.w3.org/TR/xml11/#NT-NameStartChar). The ranges are
+// deliberately the SAME table as XML.Wellformedness.is_name_start_char /
+// is_name_char, minus that module's exclusion of ':' — Parser.XML is a
+// non-namespace XML 1.0 parser, so ':' is an ordinary Name character
+// here, and the ASCII arm below keeps it. The table is duplicated rather
+// than imported because XML.Wellformedness sits ABOVE Parser.XML in the
+// link order (see bin/xml-runner/README.md's build recipe and
+// build-ocaml.sh's COMMON_MODULES) and inverting that to share one
+// definition is a bigger change than this fix should carry. Hoisting the
+// table into its own leaf module is the right cleanup; it is not this
+// commit's job. If you edit one copy, edit both.
+//
+// Getting this class right is what the whole fix turns on. Three
+// attempts, measured on xmlconf each time:
+//   1. byte test `code >= 0xC0` (the original) — rejects UTF-8
+//      CONTINUATION bytes, so a Name scan stops INSIDE the first
+//      non-ASCII codepoint. 1428 pass, 0 fail, but <ex:日本語 …> does
+//      not parse and its whole document is silently dropped.
+//   2. byte test widened to accept every byte >= 0x80 — makes any stray
+//      high byte a legal Name character. 1330 pass, 4 fail: 98 lost
+//      passes and 4 not-wf documents wrongly accepted.
+//   3. codepoint test, "any non-ASCII codepoint" — still far too wide,
+//      because plenty of non-ASCII codepoints are legitimately NOT
+//      NameChars and xmlconf tests exactly that. 1346 pass, 4 fail.
+//   4. this: the actual XML NameChar codepoint table.
+let is_name_start_char_nonascii_cp (cp:int) : bool =
+  (cp >= 0xC0    && cp <= 0xD6)   ||
+  (cp >= 0xD8    && cp <= 0xF6)   ||
+  (cp >= 0xF8    && cp <= 0x2FF)  ||
+  (cp >= 0x370   && cp <= 0x37D)  ||
+  (cp >= 0x37F   && cp <= 0x1FFF) ||
+  (cp >= 0x200C  && cp <= 0x200D) ||
+  (cp >= 0x2070  && cp <= 0x218F) ||
+  (cp >= 0x2C00  && cp <= 0x2FEF) ||
+  (cp >= 0x3001  && cp <= 0xD7FF) ||
+  (cp >= 0xF900  && cp <= 0xFDCF) ||
+  (cp >= 0xFDF0  && cp <= 0xFFFD) ||
+  (cp >= 0x10000 && cp <= 0xEFFFF)
+
+let is_name_char_nonascii_cp (cp:int) : bool =
+  is_name_start_char_nonascii_cp cp ||
+  cp = 0xB7                         ||   // middle dot (Extender)
+  (cp >= 0x0300 && cp <= 0x036F)    ||   // combining marks
+  (cp >= 0x203F && cp <= 0x2040)
+
+// `adv` — the byte length fs_cp_at consumed — is load-bearing, not
+// decoration. fs_cp_at reports invalid UTF-8 at `pos` as (0xFFFD, 1), and
+// no legitimate one-byte encoding can ever decode to a value >= 0x80. So
+// `cp >= 0x80 && adv = 1` means "these bytes are not valid UTF-8 here" —
+// a lone continuation byte, an overlong form, an encoded surrogate — and
+// must be rejected even when the codepoint value itself is in the table
+// (U+FFFD is, via 0xFDF0-0xFFFD). Same discrimination
+// is_valid_decoded_char applies to content; see its comment.
+let is_name_char_cp (cp:int) (adv:nat) : bool =
+  if cp < 0 then false
+  else if cp < 0x80 then
+    // Delegate so the ASCII NameChar set has ONE definition.
+    let n : nat = cp in
+    is_name_char (Char.char_of_int n)
+  else
+    adv > 1 && is_name_char_nonascii_cp cp
+
+// NameStartChar at codepoint level. The START position never got a
+// codepoint test before: parse_xml_name checked the byte with
+// is_name_start_char, whose non-ASCII arm accepts ANY lead byte >= 0xC0,
+// then special-cased the single codepoint U+00B7 by hand. So every other
+// non-NameStartChar codepoint was waved through as a name start, and the
+// only reason xmlconf did not notice is that the byte-level BODY scan
+// then truncated the name mid-codepoint and the element failed anyway —
+// the right verdict for the wrong reason. With the body scan fixed
+// (issue #325) that accident is gone, and two xmlconf cases immediately
+// exposed the hole: o-p05fail4 (a Name may not start with a
+// CombiningChar) and rmt-020 (U+F0000, illegal as a name character in
+// BOTH XML 1.0 and 1.1). Testing the start codepoint properly is what
+// they were always asking for, and it subsumes the U+00B7 special case:
+// U+00B7 is an Extender, a NameChar but not a NameStartChar, so it now
+// falls out of the table instead of being named in an `if`.
+let is_name_start_cp (cp:int) (adv:nat) : bool =
+  if cp < 0 then false
+  else if cp < 0x80 then
+    (cp >= 0x41 && cp <= 0x5A) ||
+    (cp >= 0x61 && cp <= 0x7A) ||
+    cp = 0x5F || cp = 0x3A
+  else
+    adv > 1 && is_name_start_char_nonascii_cp cp
+
+// Scan the Name BODY from `pos`, one CODEPOINT at a time, and return the
+// first position that is not a NameChar. Byte-stepping here is what
+// truncated `<ex:日本語 …>` to the name "ex:" + 0xE6 (issue #325): the
+// byte 0x97 is a continuation byte, the byte-level predicate rejected it,
+// the element then failed on the leftover bytes, and the RDF/XML driver
+// handed back an EMPTY graph with exit code 0.
+let rec scan_name_body_end (input:string) (pos:nat) (fuel:nat)
+  : Tot (r:nat{r >= pos}) (decreases fuel) =
+  if fuel = 0 then pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then pos
+    else
+      let (cp, adv) = fs_cp_at input pos in
+      let advn : nat = if adv = 0 then 1 else adv in
+      if not (is_name_char_cp cp advn) then pos
+      else if pos + advn > len then pos
+      else
+        let r = scan_name_body_end input (pos + advn) (fuel - 1) in
+        if r >= pos then r else pos
+
 let parse_xml_name : parser string =
   fun input pos ->
     let len = fs_byte_length input in
     if pos >= len then ParseFail "expected XML name" pos
     else
-      let ch = fs_byte_index input pos in
-      if is_name_start_char ch then
-        // U+00B7 (middle dot) is a valid NameChar (Extender) but NOT a
-        // valid NameStartChar -- the byte-lead heuristic above (any
-        // lead byte >= 0xC0 "looks like" a start char) can't see this
-        // distinction from the byte alone, so decode the actual
-        // codepoint here and exclude the one Extender character that
-        // xmlconf exercises (o-p05fail5: "a Name cannot start with an
-        // Extender").
-        let (cp, _adv) = fs_cp_at input pos in
-        if cp = 0xB7 then ParseFail "a Name cannot start with an Extender" pos
-        else
-        match ptake_while_pos is_name_char input (pos + 1) with
-        | ParseOk rest pos' ->
-          ParseOk (String.concat "" [String.string_of_char ch; rest]) pos'
-        | ParseFail msg fpos -> ParseFail msg fpos
-      else ParseFail "expected XML name start character" pos
+      let (cp, adv) = fs_cp_at input pos in
+      let advn : nat = if adv = 0 then 1 else adv in
+      if not (is_name_start_cp cp advn) then
+        ParseFail "expected XML name start character" pos
+      else if pos + advn > len then ParseFail "expected XML name" pos
+      else
+        // The whole Name comes back as ONE fs_byte_sub of the raw input,
+        // so it is byte-transparent (issue #325). The old shape,
+        // `String.concat "" [string_of_char ch; rest]`, only round-tripped
+        // because the start byte was handled byte-wise too — it emitted
+        // the LEAD byte alone and let ptake_while_pos slice the rest.
+        let body_end = scan_name_body_end input (pos + advn) (len - pos + 1) in
+        if body_end <= len then
+          ParseOk (fs_byte_sub input pos (body_end - pos)) body_end
+        else ParseFail "expected XML name" pos
 
 
 (* ================================================================ *)

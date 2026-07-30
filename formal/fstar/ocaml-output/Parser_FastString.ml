@@ -116,3 +116,16 @@ let rec fs_codepoints_of_string_aux (s : Prims.string) (slen : Prims.nat)
       fs_codepoints_of_string_aux s slen (Z.of_int next) (c :: acc)
 let fs_codepoints_of_string (s : Prims.string) : FStar_Char.char Prims.list=
   fs_codepoints_of_string_aux s (Z.of_int (Stdlib.String.length s)) Prims.int_zero []
+let fs_utf8_of_codepoint (cp : Prims.int) : Prims.string=
+  let c =
+    if cp = (Prims.of_int (0xD7FF))
+    then unsafe_char_of_d7ff cp
+    else
+      if
+        (cp >= Prims.int_zero) &&
+          ((cp < (Prims.of_int (0xD7FF))) ||
+             ((cp >= (Prims.of_int (0xE000))) &&
+                (cp <= (Prims.parse_int "0x10FFFF"))))
+      then (let n = cp in FStar_Char.char_of_int n)
+      else FStar_Char.char_of_int (Prims.of_int (0xFFFD)) in
+  FStar_String.string_of_list [c]

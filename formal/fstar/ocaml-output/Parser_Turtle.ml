@@ -61,8 +61,8 @@ let rec lookup_prefix (pfx : Prims.string)
       then FStar_Pervasives_Native.Some v
       else lookup_prefix pfx rest
 let rec unescape_pn_local_fuel (local : Prims.string) (pos : Prims.nat)
-  (acc : FStar_Char.char Prims.list) (fuel : Prims.nat) :
-  FStar_Char.char Prims.list=
+  (acc : Prims.string Prims.list) (fuel : Prims.nat) :
+  Prims.string Prims.list=
   if fuel = Prims.int_zero
   then FStar_List_Tot_Base.rev acc
   else
@@ -75,12 +75,12 @@ let rec unescape_pn_local_fuel (local : Prims.string) (pos : Prims.nat)
           ((FStar_Char.int_of_char c) = (Prims.of_int (0x5C))) &&
             ((pos + Prims.int_one) < len)
         then
-          let c2 =
-            Parser_FastString.fs_byte_index local (pos + Prims.int_one) in
-          unescape_pn_local_fuel local (pos + (Prims.of_int (2))) (c2 :: acc)
-            (fuel - Prims.int_one)
+          unescape_pn_local_fuel local (pos + (Prims.of_int (2)))
+            ((Parser_FastString.fs_byte_sub local (pos + Prims.int_one)
+                Prims.int_one) :: acc) (fuel - Prims.int_one)
         else
-          unescape_pn_local_fuel local (pos + Prims.int_one) (c :: acc)
+          unescape_pn_local_fuel local (pos + Prims.int_one)
+            ((Parser_FastString.fs_byte_sub local pos Prims.int_one) :: acc)
             (fuel - Prims.int_one)))
 let rec has_backslash_fuel (s : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : Prims.bool=
@@ -100,7 +100,7 @@ let unescape_pn_local (local : Prims.string) : Prims.string=
   let len = Parser_FastString.fs_byte_length local in
   if has_backslash_fuel local Prims.int_zero (len + Prims.int_one)
   then
-    FStar_String.string_of_list
+    FStar_String.concat ""
       (unescape_pn_local_fuel local Prims.int_zero [] (len + Prims.int_one))
   else local
 let resolve_prefixed_name (st : turtle_state) (prefix : Prims.string)
@@ -445,12 +445,12 @@ let span_to_string (input : Prims.string) (sp : Parser_TurtleScanner.span) :
     Parser_FastString.fs_byte_sub input sp.Parser_TurtleScanner.sp_start
       (sp.Parser_TurtleScanner.sp_end - sp.Parser_TurtleScanner.sp_start)
   else ""
-let rec decode_iri_escapes_acc (input : Prims.string) (pos : Prims.nat)
-  (end_pos : Prims.nat) (acc : FStar_Char.char Prims.list) (fuel : Prims.nat)
-  : Prims.string=
+let rec decode_iri_escape_frags (input : Prims.string) (pos : Prims.nat)
+  (end_pos : Prims.nat) (acc : Prims.string Prims.list) (fuel : Prims.nat) :
+  Prims.string Prims.list=
   let len = Parser_FastString.fs_byte_length input in
   if ((fuel = Prims.int_zero) || (pos >= end_pos)) || (pos >= len)
-  then FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)
+  then FStar_List_Tot_Base.rev acc
   else
     (let c = Parser_FastString.fs_byte_index input pos in
      let code = FStar_Char.int_of_char c in
@@ -485,8 +485,8 @@ let rec decode_iri_escapes_acc (input : Prims.string) (pos : Prims.nat)
             (((h0 * (Prims.of_int (4096))) + (h1 * (Prims.of_int (256)))) +
                (h2 * (Prims.of_int (16))))
               + h3 in
-          decode_iri_escapes_acc input (pos + (Prims.of_int (6))) end_pos
-            ((Parser_NTriples.safe_char_of_int cp) :: acc)
+          decode_iri_escape_frags input (pos + (Prims.of_int (6))) end_pos
+            ((Parser_FastString.fs_utf8_of_codepoint cp) :: acc)
             (fuel - Prims.int_one)
         else
           if
@@ -535,15 +535,23 @@ let rec decode_iri_escapes_acc (input : Prims.string) (pos : Prims.nat)
                    + (h5 * (Prims.of_int (256))))
                   + (h6 * (Prims.of_int (16))))
                  + h7 in
-             decode_iri_escapes_acc input (pos + (Prims.of_int (10))) end_pos
-               ((Parser_NTriples.safe_char_of_int cp) :: acc)
+             decode_iri_escape_frags input (pos + (Prims.of_int (10)))
+               end_pos ((Parser_FastString.fs_utf8_of_codepoint cp) :: acc)
                (fuel - Prims.int_one))
           else
-            decode_iri_escapes_acc input (pos + Prims.int_one) end_pos (c ::
+            decode_iri_escape_frags input (pos + Prims.int_one) end_pos
+              ((Parser_FastString.fs_byte_sub input pos Prims.int_one) ::
               acc) (fuel - Prims.int_one))
      else
-       decode_iri_escapes_acc input (pos + Prims.int_one) end_pos (c :: acc)
-         (fuel - Prims.int_one))
+       (let nb =
+          Parser_FastString.fs_find_byte input (Prims.of_int (0x5C)) pos in
+        let stop =
+          if nb <= pos
+          then pos + Prims.int_one
+          else if nb < end_pos then nb else end_pos in
+        decode_iri_escape_frags input stop end_pos
+          ((Parser_FastString.fs_byte_sub input pos (stop - pos)) :: acc)
+          (fuel - Prims.int_one)))
 let iri_ref_span_to_raw (input : Prims.string)
   (sp : Parser_TurtleScanner.iri_ref_span) : Prims.string=
   if
@@ -560,8 +568,15 @@ let iri_ref_span_to_raw (input : Prims.string)
     let body_end =
       (sp.Parser_TurtleScanner.irs_span).Parser_TurtleScanner.sp_end -
         Prims.int_one in
-    decode_iri_escapes_acc input body_start body_end []
-      ((body_end - body_start) + Prims.int_one)
+    (if
+       (Parser_FastString.fs_find_byte input (Prims.of_int (0x5C)) body_start)
+         >= body_end
+     then
+       Parser_FastString.fs_byte_sub input body_start (body_end - body_start)
+     else
+       FStar_String.concat ""
+         (decode_iri_escape_frags input body_start body_end []
+            ((body_end - body_start) + Prims.int_one)))
   else ""
 let is_forbidden_iri_cp (c : Prims.int) : Prims.bool=
   (((((((((c <= (Prims.of_int (0x20))) || (c = (Prims.of_int (0x22)))) ||

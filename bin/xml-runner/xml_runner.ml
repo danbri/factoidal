@@ -314,6 +314,9 @@ type raw_test = {
   rt_description : string;
   rt_leaf : string;          (* leaf manifest's relative path *)
   rt_collection : string;
+  rt_edition : string;       (* testcases.dtd EDITION: space-separated list
+                                of the XML 1.0 editions a test applies to.
+                                Absent = applies to every edition. *)
 }
 
 let attr_or_default name default_val attrs =
@@ -334,6 +337,7 @@ let rec collect_tests leaf_rel node acc =
       rt_description = String.trim (Parser_XML.text_content node);
       rt_leaf = leaf_rel;
       rt_collection = collection_of_leaf leaf_rel;
+      rt_edition = attr_or_default "EDITION" "" attrs;
     } in
     t :: acc
   | Some "TESTCASES" ->
@@ -403,6 +407,7 @@ let fallback_scan_tests leaf_rel content =
         rt_entities = get "ENTITIES" "none"; rt_uri = get "URI" "";
         rt_sections = get "SECTIONS" ""; rt_description = desc;
         rt_leaf = leaf_rel; rt_collection = collection_of_leaf leaf_rel;
+        rt_edition = get "EDITION" "";
       } in
       scan (close + 1) (t :: acc)
   in
@@ -538,6 +543,33 @@ type outcome =
   | Fail of string
   | Skip of string
 
+(* testcases.dtd's EDITION attribute lists the XML 1.0 editions a test
+   applies to, e.g. EDITION="1 2 3 4". Absent means "every edition".
+
+   Editions 1-4 and edition 5 differ on the Name productions: the 5th
+   edition (2008) replaced the enumerated Letter / CombiningChar /
+   Extender tables of Appendix B with the same NameStartChar / NameChar
+   ranges XML 1.1 uses. Parser.XML implements the 5th-edition / XML 1.1
+   production -- the same table XML.Wellformedness.fst already carries,
+   and the one current XML processors implement.
+
+   So a not-wf test that names only editions 1-4 asserts a rule this
+   parser deliberately does not impose. That is exactly the existing
+   out-of-profile category (cf. the `ver = "1.1"` branch in `classify`):
+   not a pass, not a fail, an honestly-scoped skip.
+
+   Added 2026-07-30 with issue #325's Name-scanning fix. Before that fix
+   the byte-level Name scan truncated every non-ASCII name mid-codepoint,
+   so the parser rejected 4th-edition-illegal names -- and every
+   5th-edition-LEGAL non-ASCII name with them, which is the silent
+   data-loss bug #325 is about. Two tests (rmt-016, U+1D032; rmt-019,
+   U+EFFFF) were passing on that accident. *)
+let edition_excludes_5 (ed : string) : bool =
+  if String.trim ed = "" then false
+  else
+    let toks = String.split_on_char ' ' ed in
+    not (List.exists (fun t -> String.trim t = "5") toks)
+
 let classify (base_dir : string) (t : raw_test) : outcome =
   if t.rt_type = "invalid" || t.rt_type = "error" then
     Skip "no DTD validation (by design)"
@@ -592,6 +624,10 @@ let classify (base_dir : string) (t : raw_test) : outcome =
               Skip (Printf.sprintf
                       "parser accepted, but test requires external %s entities not read (exempted per testcases.dtd's TYPE=not-wf clause)"
                       t.rt_entities)
+            else if edition_excludes_5 t.rt_edition then
+              Skip (Printf.sprintf
+                      "out-of-profile: not-wf holds only in XML 1.0 editions %s; parser implements the 5th-edition / XML 1.1 Name production — SECTIONS %s"
+                      (String.trim t.rt_edition) t.rt_sections)
             else if ver = "1.1" then
               (* Document declares XML 1.1; this parser implements the
                  XML 1.0 well-formedness profile. The not-wf verdict for
