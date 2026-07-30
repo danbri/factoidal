@@ -364,7 +364,18 @@ make verify-RDF.Canonical    # one module
 
 `make verify` type-checks every `.fst` in `formal/fstar/` against the SMT
 solver — the target derives its module list from the directory, so it
-cannot drift from the corpus. Read the claim precisely: **what these
+cannot drift from the corpus.
+
+⚠️ **Current status: 189 of 190 modules verify clean; `make verify` exits
+nonzero.** The single failure is
+`RDF.CottasStore.PageCache.Bounds.fst` — an orphaned proof-only module
+that is referenced by nothing, is in no build list, and so was verified by
+nothing until this target started covering the corpus. Its lemma
+statements still say `v:list (option string)` where `page_cache` now uses
+the abstract `cottas_column` type, so it no longer type-checks. Nothing
+extracts or links it, so no shipped binary is affected. Tracked
+separately; do not read this as the engine failing to verify, and do not
+claim `make verify` is green until it is fixed. Read the claim precisely: **what these
 modules state, Z3 checked.** For most modules that means totality,
 termination and refinement types plus whatever local lemmas the module
 declares; it is not a proof that the module implements the W3C
