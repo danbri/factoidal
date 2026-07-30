@@ -2558,7 +2558,7 @@ else
 fi
 XMLCONFFAM_BODY=$(
   family_suite_row "XML 1.0 conformance" "$XMLCONF_PASS" "$XMLCONF_FAIL" "$XMLCONF_SKIP" "$XMLCONF_TOTAL" "$XMLCONF_PRESENT" \
-    "Runner: <code>bin/xml-runner</code> (<code>bin/linux-x86_64/xml_runner</code>) &middot; Suite: <code>third_party/testing/xml/xmlconf</code> (OASIS/W3C XML conformance) &middot; skips are DTD-boundary / out-of-XML-1.0-profile fixtures, decomposed in the breakdown below"
+    "Runner: <code>bin/xml-runner</code> (<code>bin/linux-x86_64/xml_runner</code>) &middot; Suite: <code>third_party/testing/xml/xmlconf</code> (OASIS/W3C XML conformance) &middot; skips are DTD-boundary / out-of-XML-1.0-profile fixtures plus the NOT-APPLICABLE fixtures whose own EDITION attribute excludes the 5th edition this parser targets (correct scoping, not a gap) — all decomposed in the breakdown below"
   printf '%s' "$XMLCONF_BREAKDOWN_HTML"
 )
 XMLCONFFAM_HTML=$(family_section "xml10" "XML 1.0" "$XMLCONFFAM_STATUS" "$XMLCONFFAM_HEADLINE" "$XMLCONFFAM_BODY" "" \

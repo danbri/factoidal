@@ -11,7 +11,10 @@ foundational: false
 
 # ~2585 fixtures. The runner reports pass/fail/skip plus an honest
 # integrity breakdown (real not-wf rejects vs DTD-boundary skips vs
-# out-of-XML-1.0-profile skips) surfaced in the dashboard.
+# out-of-XML-1.0-profile skips vs NOT-APPLICABLE fixtures whose own
+# testcases.dtd EDITION attribute excludes the 5th edition this parser
+# targets) surfaced in the dashboard. Not-applicable rides inside the
+# skip total, so this suite's denominator does not move.
 triggers:
   paths:
     - bin/xml-runner/**

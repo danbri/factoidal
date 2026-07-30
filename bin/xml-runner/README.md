@@ -20,12 +20,26 @@ This supersedes the bigger from-scratch rewrite sketched in
 
 ## Build
 
-Standalone `mktemp`-scratch compile, same isolation pattern as
-`bin/rif-runner`/`bin/vc-runner` (so this doesn't poison
+`./build-ocaml.sh compile` builds it (added 2026-07-30 for issue #330).
+Until then this binary was committed under iron rule #9 but produced
+only by the hand-run scratch recipe below, so nothing in the main build
+refreshed it and `BUILD_STATUS=OK` said nothing about whether it matched
+its source — the same shape as the `factoidal-dump-nq` drift #330
+records. It now has a stanza in `build-ocaml.sh`'s consumer-runner
+block, an entry in `NATIVE_TARGETS` (so a change to
+`bin/xml-runner/xml_runner.ml` can no longer stale-skip the rebuild) and
+one in `NATIVE_SOURCES`.
+
+The scratch recipe below still works and is still the fast way to
+iterate on the runner alone (a full `compile` rebuilds every native
+binary). It is a `mktemp` scratch compile, same isolation pattern as
+`bin/rif-runner`/`bin/vc-runner`, so it does not poison
 `formal/fstar/ocaml-output/`'s `.cmi`/`.cmx` for a concurrent
-`build-ocaml.sh` run). The dependency closure is small — just the
+`build-ocaml.sh` run. The dependency closure is small — just the
 parser combinator base and the three modules under test, no RDF/OWL/
-SPARQL modules needed:
+SPARQL modules needed. **Copy the result into `bin/<platform>/` only
+if you are not about to run a full `compile`**, which produces the same
+binary through the checked path:
 
 ```bash
 eval $(opam env --switch=fstar)
@@ -45,7 +59,7 @@ cp xml_runner <repo>/bin/linux-x86_64/xml_runner
 
 `Parser_XML.ml`/`XML_Wellformedness.ml`/`XML_Namespaces.ml` are
 extracted and committed in `ocaml-output/` — this runner does **not**
-re-extract or touch `build-ocaml.sh`; `Parser.XML.fst` and the new
+re-extract; `Parser.XML.fst` and the new
 `XML.Namespaces.fst` are wired into `build-ocaml.sh`'s three module
 lists (extract loop, `COMMON_MODULES`, `FSTAR_MODULES`) alongside
 `XML.Wellformedness.fst` so a future full `build-ocaml.sh extract`
@@ -105,7 +119,61 @@ picks both up normally.
    generically apply to plain XML conformance — is one of this
    assessment's results, not a runner bug.
 
-## Score (2026-07-08, Stage-A DTD support: DOCTYPE internal subset + general entities)
+## Score (2026-07-30, EDITION applicability gate)
+
+**1447 pass, 0 fail, 1138 skip (of 2585 discovered `<TEST>` entries), of
+which 313 are NOT-APPLICABLE.**
+
+`testcases.dtd`'s `EDITION` attribute lists the XML 1.0 editions a
+fixture applies to. Editions 1-4 and edition 5 differ on the `Name`
+productions: the 5th edition (2008) replaced the enumerated
+`Letter`/`CombiningChar`/`Extender` tables of Appendix B with the
+`NameStartChar`/`NameChar` ranges XML 1.1 uses. `Parser.XML.fst`
+implements the 5th-edition production, so a fixture whose `EDITION`
+list excludes 5 asserts a rule this parser deliberately does not
+impose. Owner decision 2026-07-30: score those NOT-APPLICABLE, labelled
+`not-applicable: EDITION <list>, parser targets XML 1.0 5th ed` — not a
+bare skip, which a dashboard reader takes for missing capability. Same
+vocabulary and reporting shape as `bin/owl-runner`'s
+`SKIP/semantics-rdf-based-only` and the JSON-LD runners' `specVersion`
+exclusions. The gate runs ahead of every other rule and for every
+`TYPE`: applicability is prior to capability.
+
+Not-applicable counts stay inside the skip total, so the denominator,
+the dashboard rows and `generate-report.sh`'s score-line regexes do not
+move; they get their own column in each bucket table, their own
+honest-breakdown line, and an additive clause on the tally line.
+
+Composition of the 313, against the run immediately before the gate
+(1456 pass, 0 fail, 1129 skip):
+
+| Was | Count | Note |
+|---|---|---|
+| skip "out-of-profile: … editions 1 2 3 4" | 302 | the narrower, not-wf-branch-only version of this check |
+| **PASS** | **9** | the real change: see below |
+| skip "no DTD validation (by design)" | 1 | one `TYPE=error` fixture |
+| skip `declared encoding "iso-8859-1" not decoded` | 1 | |
+
+Fail stays **0** on both sides. The nine ex-passes are
+`ibm-not-wf-P89-ibm89n06..n12` (`SECTIONS B.`, the Appendix-B
+`Extender` production) and `not-wf-sa-140`/`141` (a `CombiningChar`
+and `#x0E5C` beginning a name). Every one of those codepoints is a
+legal `NameStartChar`/`NameChar` under the 5th edition, so the
+documents are well-formed under the spec this parser targets and our
+rejection of them was not a conformance win — seven of them also carry
+a second top-level element the fixture's own comment flags as
+unintended, so the rejection was not even attributable to the tested
+construct. They were passing for the wrong reason, exactly like the
+~302 that #325's UTF-8 fix exposed.
+
+Deleting the check outright (rather than gating on `EDITION`) would
+turn `rmt-016` and `rmt-019` into FAILs — the parser correctly accepts
+two names that are legal in the 5th edition and illegal in the 4th.
+`FACTOIDAL_XML_EDITION_CENSUS=1` prints, per gated fixture, the verdict
+the engine-facing classifier would have produced; that is how the table
+above was measured.
+
+### Previous headline (2026-07-08, Stage-A DTD support: DOCTYPE internal subset + general entities)
 
 **1414 real pass, 0 fail, 1171 skip (of 2585 discovered `<TEST>` entries).**
 
