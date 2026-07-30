@@ -588,6 +588,7 @@ type outcome =
      visible: pass + unsupported reproduces the pre-#326 pass count for
      the same run. The string carries which stage escaped. *)
   | Unsupported_degraded_closure of string
+  | Unsupported_refuter_indeterminate of string
 
 let outcome_tag = function
   | Pass -> "PASS"
@@ -603,6 +604,7 @@ let outcome_tag = function
   | Skip_functional_syntax_only -> "SKIP/functional-syntax-only"
   | Skip_semantics_rdf_based_only -> "SKIP/semantics-rdf-based-only"
   | Unsupported_degraded_closure _ -> "UNSUPPORTED/cap-escape"
+  | Unsupported_refuter_indeterminate _ -> "UNSUPPORTED/refuter-indeterminate"
 
 let fuel_100 : Prims.nat = Z.of_int 100
 
@@ -675,11 +677,10 @@ exception Owl_closure_timeout
 (*                  looking for the clash rather than ruling it out.   *)
 (* Recorded but NOT gating (reported so the rate is visible):          *)
 (*   indeterminate -- the refuter reached its own conclusion, but that *)
-(*                  conclusion was None (fuel exhausted) or a Some     *)
-(*                  true from an incomplete calculus. Same "we did not *)
-(*                  prove consistency" flavour, but a completeness     *)
-(*                  question rather than a budget escape; gating on it *)
-(*                  is a separate decision (see the #326 comment).     *)
+(*                  conclusion was None: the calculus could not decide *)
+(*                  this input. NOW GATING (2026-07-30, owner's        *)
+(*                  decision), separately from the budget escapes --    *)
+(*                  see owl_absence_indeterminate below.                *)
 (*   pe_refuter  -- pe_refute_entails escapes. PE-only and fail-safe   *)
 (*                  by direction (a lost proof scores FAIL), counted   *)
 (*                  for the audit only.                                *)
@@ -691,6 +692,11 @@ let owl_escape_indeterminate = ref 0
 let owl_escape_pe_refuter = ref 0
 let owl_degraded_tests : (string, unit) Hashtbl.t = Hashtbl.create 32
 let owl_unsupported_tests : (string, string) Hashtbl.t = Hashtbl.create 32
+(* 2026-07-30: kept SEPARATE from owl_unsupported_tests so
+   tests_unsupported_cap_escape keeps meaning exactly "cap escape". A
+   single table would silently inflate that field with a different
+   phenomenon — the reporting error this whole change is about. *)
+let owl_indeterminate_tests : (string, string) Hashtbl.t = Hashtbl.create 32
 let owl_current_test = ref ""
 
 (* Per-test escape flags. Reset by owl_begin_test for EVERY scored test
@@ -765,6 +771,43 @@ let owl_absence_escape_reason () =
        [ (esc_closure, "closure stage abandoned (cap/exception)");
          (esc_marker, "inconsistency-marker scan abandoned (cap/exception)");
          (esc_refuter, "clash-seeking tableau abandoned (cap/exception)") ])
+
+(* Second gate on the same absence verdicts, decided 2026-07-30.
+   Tableau_Refute.tableau_consistent can return None INSIDE its budget:
+   the calculus is incomplete, so on some inputs it simply cannot
+   decide. dl_refutes maps that None to `false`, which reads downstream
+   as "did not refute" — and for the two test kinds whose PASS
+   condition is the ABSENCE of a derivation, "did not refute" becomes a
+   PASS.
+
+   That is the same publishing error #326 fixed for budget escapes, with
+   a different cause. "We did not find X" must never be published as "X
+   is not there". A don't-know from an incomplete calculus is exactly
+   that shape: we looked, we finished looking, and we still do not know.
+   Scoring it as a pass would put an assertion about the world on the
+   board that our own reasoner never made.
+
+   It gets its own outcome rather than reusing the cap-escape one
+   because the two say different things to whoever reads the log. A cap
+   escape says "ran out of time" — raise FACTOIDAL_OWL_*_CAP_SEC and it
+   may resolve. An indeterminate says "our calculus cannot decide this"
+   — no budget will help; the tableau needs to get stronger. Collapsing
+   them would lose the distinction that tells you which of those two
+   pieces of work to do.
+
+   Denominator convention is #326's, unchanged: counted INSIDE the
+   scored denominator, on the non-pass side, and consulted on the pass
+   side only — a FAIL found despite an indeterminate is a positive
+   finding and keeps its verdict.
+
+   Costs nothing today: refuter_indeterminate is 0 across the current
+   type-consistency run, so this fires on zero tests. It is here so the
+   failure cannot appear silently later, when the tableau is pointed at
+   harder inputs. *)
+let owl_absence_indeterminate () = !esc_indeterminate
+
+let owl_absence_indeterminate_reason () =
+  "Tableau_Refute.tableau_consistent returned None within budget — the calculus could not decide this input"
 
 (* All caps below run on CPU time (ITIMER_VIRTUAL / SIGVTALRM), not
    wall clock (2026-07-28). Wall-clock caps made verdicts
@@ -1748,8 +1791,14 @@ let run_negative_entailment
          The refuted direction (every conclusion triple present) is a
          positive finding and keeps its FAIL under any escape. *)
       if any_missing then
-        (if owl_absence_trustworthy () then Pass
-         else Unsupported_degraded_closure (owl_absence_escape_reason ()))
+        (if not (owl_absence_trustworthy ()) then
+           Unsupported_degraded_closure (owl_absence_escape_reason ())
+         (* 2026-07-30: same gate, second cause — an incomplete calculus
+            that returned don't-know cannot underwrite an absence verdict
+            any more than an abandoned search can. *)
+         else if owl_absence_indeterminate () then
+           Unsupported_refuter_indeterminate (owl_absence_indeterminate_reason ())
+         else Pass)
       else Fail_unexpected_entailment
       end)
 
@@ -1790,9 +1839,13 @@ let run_consistency_test_functional_syntax (fs_p_lex : string) : outcome option 
       with e -> owl_note_degraded_silent "apply_closure_stages [outer]" e; (g_p, g_p) in
     if capped_is_inconsistent closure || dl_refutes closure_rl
     then Some Fail_unexpected_inconsistency
-    (* #326: same gate as the rdfXml path below. *)
-    else if owl_absence_trustworthy () then Some Pass
-    else Some (Unsupported_degraded_closure (owl_absence_escape_reason ()))
+    (* #326: same gate as the rdfXml path below, plus the 2026-07-30
+       refuter-indeterminate gate. *)
+    else if not (owl_absence_trustworthy ()) then
+      Some (Unsupported_degraded_closure (owl_absence_escape_reason ()))
+    else if owl_absence_indeterminate () then
+      Some (Unsupported_refuter_indeterminate (owl_absence_indeterminate_reason ()))
+    else Some Pass
 
 let run_consistency_test
       (info : test_case_info)
@@ -1860,8 +1913,15 @@ let run_consistency_test
          verdict is unsupported. The Fail_unexpected_inconsistency
          direction above is a positive finding and keeps its verdict
          under any escape. *)
-      else if owl_absence_trustworthy () then Pass
-      else Unsupported_degraded_closure (owl_absence_escape_reason ())
+      (* 2026-07-30: and if the clash search finished but came back
+         don't-know (Tableau_Refute.tableau_consistent = None within
+         budget), we equally did not prove the premise consistent — the
+         calculus could not decide. Distinct label, same non-pass side. *)
+      else if not (owl_absence_trustworthy ()) then
+        Unsupported_degraded_closure (owl_absence_escape_reason ())
+      else if owl_absence_indeterminate () then
+        Unsupported_refuter_indeterminate (owl_absence_indeterminate_reason ())
+      else Pass
       end)
 
 (* OWL 2 Functional Syntax path for InconsistencyTest (2026-07-05).
@@ -2018,6 +2078,15 @@ let print_outcome verbose info outcome =
      Hashtbl.replace owl_unsupported_tests id why;
      Printf.printf
        "      reason: reasoning abandoned on a budget — %s. This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict\n"
+       why
+   | Unsupported_refuter_indeterminate why ->
+     (* Same unconditional printing as the cap-escape reason above, and
+        recorded in the same table so the end-of-run diagnostics list
+        every corrected test. The wording deliberately does NOT suggest
+        raising a cap: no budget resolves an indeterminate. *)
+     Hashtbl.replace owl_indeterminate_tests id why;
+     Printf.printf
+       "      reason: the refuter finished and returned don't-know — %s. This test's PASS condition is the ABSENCE of a derived fact, and an incomplete calculus that cannot decide the input has not established that absence; publishing it as a PASS would state \"X is not there\" on the strength of \"we did not find X\". Unlike a cap escape this is a completeness gap, not a budget one — raising FACTOIDAL_OWL_REFUTE_CAP_SEC will not convert it; the tableau has to get stronger (2026-07-30, building on issue #326)\n"
        why
    | Skip_semantics_rdf_based_only ->
      Printf.printf
@@ -2441,10 +2510,23 @@ let run_catalog ?(verbose=false) path =
            match o with Unsupported_degraded_closure _ -> acc + 1 | _ -> acc)
         0 n_outcomes
     in
+    (* 2026-07-30: the second unsupported kind rides in its own clause,
+       never folded into the cap-escape one — a budget escape and an
+       undecidable input call for different work. Absent when 0, so a
+       run with no indeterminates prints exactly what it printed before. *)
+    let n_indeterminate =
+      List.fold_left
+        (fun acc (_, o) ->
+           match o with Unsupported_refuter_indeterminate _ -> acc + 1 | _ -> acc)
+        0 n_outcomes
+    in
     let n_unsup_suffix =
-      if n_unsupported > 0 then
-        Printf.sprintf "; %d unsupported (cap-escape, #326)" n_unsupported
-      else "" in
+      (if n_unsupported > 0 then
+         Printf.sprintf "; %d unsupported (cap-escape, #326)" n_unsupported
+       else "")
+      ^ (if n_indeterminate > 0 then
+           Printf.sprintf "; %d unsupported (refuter-indeterminate, #326)" n_indeterminate
+         else "") in
     Printf.printf "\n";
     Printf.printf "Profile-RL NegativeEntailmentTests: %d pass, %d fail (out of %d)%s in %.2fs\n"
       n_passes n_fails nk n_unsup_suffix (t_neg1 -. t_neg0)
@@ -2486,10 +2568,20 @@ let run_catalog ?(verbose=false) path =
            match o with Unsupported_degraded_closure _ -> acc + 1 | _ -> acc)
         0 c_outcomes
     in
+    (* 2026-07-30 — see the NegativeEntailmentTests clause above. *)
+    let c_indeterminate =
+      List.fold_left
+        (fun acc (_, o) ->
+           match o with Unsupported_refuter_indeterminate _ -> acc + 1 | _ -> acc)
+        0 c_outcomes
+    in
     let c_unsup_suffix =
-      if c_unsupported > 0 then
-        Printf.sprintf "; %d unsupported (cap-escape, #326)" c_unsupported
-      else "" in
+      (if c_unsupported > 0 then
+         Printf.sprintf "; %d unsupported (cap-escape, #326)" c_unsupported
+       else "")
+      ^ (if c_indeterminate > 0 then
+           Printf.sprintf "; %d unsupported (refuter-indeterminate, #326)" c_indeterminate
+         else "") in
     Printf.printf "\n";
     Printf.printf "Profile-RL ConsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only)%s in %.2fs\n"
       c_passes c_fails c_scored c_skips c_unsup_suffix (t_cons1 -. t_cons0)
@@ -2600,16 +2692,28 @@ let () =
   let unsupported_tests =
     List.sort (fun (a, _) (b, _) -> String.compare a b)
       (Hashtbl.fold (fun k v acc -> (k, v) :: acc) owl_unsupported_tests []) in
+  (* 2026-07-30: the refuter-indeterminate corrections, named and counted
+     on their own. `refuter_indeterminate` above counts EVENTS (a dl_refutes
+     call that came back None); this counts the TESTS whose verdict that
+     moved off PASS. They are not the same number — an event on a test
+     that FAILs anyway changes no verdict. *)
+  let indeterminate_tests =
+    List.sort (fun (a, _) (b, _) -> String.compare a b)
+      (Hashtbl.fold (fun k v acc -> (k, v) :: acc) owl_indeterminate_tests []) in
   Printf.printf "\nHarness Diagnostics (escape branches, #316 + #326):\n";
   Printf.printf
     "HARNESS-DIAG-OWL degraded_closure_marked:%d degraded_closure_silent:%d \
      marker_scan_escapes:%d refuter_escapes:%d pe_refuter_escapes:%d \
      refuter_indeterminate:%d tests_on_degraded_closure:%d \
-     tests_unsupported_cap_escape:%d\n"
+     tests_unsupported_cap_escape:%d tests_unsupported_refuter_indeterminate:%d\n"
     !owl_degraded_marked !owl_degraded_silent !owl_escape_marker
     !owl_escape_refuter !owl_escape_pe_refuter !owl_escape_indeterminate
-    (List.length degraded_tests) (List.length unsupported_tests);
+    (List.length degraded_tests) (List.length unsupported_tests)
+    (List.length indeterminate_tests);
   List.iter (fun t -> Printf.printf "HARNESS-DIAG-OWL-TEST %s\n" t) degraded_tests;
   List.iter
     (fun (t, why) -> Printf.printf "HARNESS-DIAG-OWL-UNSUPPORTED %s | %s\n" t why)
-    unsupported_tests
+    unsupported_tests;
+  List.iter
+    (fun (t, why) -> Printf.printf "HARNESS-DIAG-OWL-INDETERMINATE %s | %s\n" t why)
+    indeterminate_tests

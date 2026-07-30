@@ -1192,7 +1192,7 @@ emit_json_harness_owl () {
     # that a budget escape moved OFF pass, named.
     unsup_names=$(grep -h '^HARNESS-DIAG-OWL-UNSUPPORTED ' "$log" 2>/dev/null \
             | awk '{print "\""$2"\""}' | paste -sd, - || true)
-    printf '"%s":{"measured":true,"degraded_closure_marked":%s,"degraded_closure_silent":%s,"marker_scan_escapes":%s,"refuter_escapes":%s,"pe_refuter_escapes":%s,"refuter_indeterminate":%s,"tests_on_degraded_closure":%s,"tests_unsupported_cap_escape":%s,"tests":[%s],"unsupported_tests":[%s]}' \
+    printf '"%s":{"measured":true,"degraded_closure_marked":%s,"degraded_closure_silent":%s,"marker_scan_escapes":%s,"refuter_escapes":%s,"pe_refuter_escapes":%s,"refuter_indeterminate":%s,"tests_on_degraded_closure":%s,"tests_unsupported_cap_escape":%s,"tests_unsupported_refuter_indeterminate":%s,"tests":[%s],"unsupported_tests":[%s]}' \
       "$key" \
       "$(diag_field "$line" degraded_closure_marked)" \
       "$(diag_field "$line" degraded_closure_silent)" \
@@ -1202,6 +1202,7 @@ emit_json_harness_owl () {
       "$(diag_field "$line" refuter_indeterminate)" \
       "$(diag_field "$line" tests_on_degraded_closure)" \
       "$(diag_field "$line" tests_unsupported_cap_escape)" \
+      "$(diag_field "$line" tests_unsupported_refuter_indeterminate)" \
       "$names" \
       "$unsup_names"
   done
@@ -2865,7 +2866,7 @@ build_harness_card () {
     line=$(grep -h '^HARNESS-DIAG-OWL ' "$log" 2>/dev/null | tail -1 || true)
     [ -z "$line" ] && continue
     owl_measured=1
-    local dm ds me re dt un names cls2
+    local dm ds me re dt un ind names cls2
     dm=$(diag_field "$line" degraded_closure_marked)
     ds=$(diag_field "$line" degraded_closure_silent)
     me=$(diag_field "$line" marker_scan_escapes)
@@ -2873,11 +2874,15 @@ build_harness_card () {
     dt=$(diag_field "$line" tests_on_degraded_closure)
     # #326: how many absence-shaped verdicts the escapes moved off pass.
     un=$(diag_field "$line" tests_unsupported_cap_escape)
+    # 2026-07-30: and how many the refuter's own don't-know moved off pass.
+    # Its own column: a budget escape and an undecidable input call for
+    # different work, so folding them into one number would lose that.
+    ind=$(diag_field "$line" tests_unsupported_refuter_indeterminate)
     names=$(grep -h '^HARNESS-DIAG-OWL-TEST ' "$log" 2>/dev/null \
             | awk '{print $2}' | paste -sd', ' - || true)
     if [ "${dt:-0}" -gt 0 ]; then owl_any=1; cls2="hd-bad"; else cls2="hd-ok"; fi
-    owl_rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
-      "$cls2" "$key" "${dm:-0}" "${ds:-0}" "${me:-0}" "${re:-0}" "${dt:-0}" "${un:-0}" "${names:-&mdash;}")
+    owl_rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
+      "$cls2" "$key" "${dm:-0}" "${ds:-0}" "${me:-0}" "${re:-0}" "${dt:-0}" "${un:-0}" "${ind:-0}" "${names:-&mdash;}")
   done
   local owl_block=""
   if [ "$owl_measured" -eq 1 ]; then
@@ -2889,10 +2894,10 @@ build_harness_card () {
     fi
     owl_block=$(cat <<OWLHDEOF
   <p class="legend-title" style="margin-top:1em">OWL 2 catalogs &mdash; closure cap escapes</p>
-  <p class="legend-note">The OWL runner puts a per-test CPU cap on the RL/DL closure, on the inconsistency-marker scan, and on the clash-seeking tableau, so one hard ontology cannot hang a catalog. On a cap-trip it falls back to a less-closed graph or to "nothing found". <strong>closure</strong> and <strong>silent</strong> count closure-stage escapes (the second column is the catch-all arms, which now log too); <strong>marker</strong> counts abandoned inconsistency-marker scans; <strong>refuter</strong> counts abandoned clash searches; <strong>unsupported</strong> counts the Consistency / NegativeEntailment verdicts those escapes moved off PASS (<a href="https://github.com/danbri/factoidal/issues/326">#326</a>).</p>
+  <p class="legend-note">The OWL runner puts a per-test CPU cap on the RL/DL closure, on the inconsistency-marker scan, and on the clash-seeking tableau, so one hard ontology cannot hang a catalog. On a cap-trip it falls back to a less-closed graph or to "nothing found". <strong>closure</strong> and <strong>silent</strong> count closure-stage escapes (the second column is the catch-all arms, which now log too); <strong>marker</strong> counts abandoned inconsistency-marker scans; <strong>refuter</strong> counts abandoned clash searches; <strong>unsupported (cap-escape)</strong> counts the Consistency / NegativeEntailment verdicts those escapes moved off PASS (<a href="https://github.com/danbri/factoidal/issues/326">#326</a>). <strong>unsupported (indeterminate)</strong> counts the same two kinds moved off PASS for a different reason: the clash-seeking tableau finished inside its budget and returned don't-know, because the calculus cannot decide that input. A cap escape means "ran out of time" and a bigger budget may resolve it; an indeterminate means "our calculus cannot decide this" and no budget will. Either way, "we did not find X" is not published as "X is not there".</p>
   <div style="overflow-x:auto">
   <table class="hd-table">
-    <thead><tr><th>catalog</th><th>closure</th><th>silent</th><th>marker</th><th>refuter</th><th>tests affected</th><th>unsupported</th><th>which</th></tr></thead>
+    <thead><tr><th>catalog</th><th>closure</th><th>silent</th><th>marker</th><th>refuter</th><th>tests affected</th><th>unsupported<br>(cap-escape)</th><th>unsupported<br>(indeterminate)</th><th>which</th></tr></thead>
     <tbody>${owl_rows}</tbody>
   </table>
   </div>
