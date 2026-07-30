@@ -503,6 +503,46 @@ shrinking metric fails on success and trains you to ignore red.
   + a self-serve command (`grep -c ...`) over a brittle exact figure —
   the number is a claim about one moment; the tree moves.
 
+## 16. mtime rebuild-skip serves a stale binary after any git touch (2026-07-29)
+
+### Symptom
+`./build-ocaml.sh compile` prints `Native binaries already up to date;
+skipping ocamlopt rebuild` and `BUILD_STATUS=OK`, and the suite you then
+run reports the numbers from BEFORE the change you just landed.
+
+### Cause
+`needs_rebuild_from_sources` compares mtimes (`[[ "$src" -nt "$target" ]]`,
+build-ocaml.sh:241). This repo COMMITS its binaries (iron rule #9), so any
+git operation that materialises one — `merge`, `checkout -- bin/`,
+`stash pop`, conflict resolution with `--ours` — stamps it with `now`,
+newer than every source. mtime answers "when did this file appear here",
+which for a committed artifact is unrelated to "what produced it".
+
+### Detection (do this before trusting ANY measurement after a landing)
+Compare source against binary, not source against clock:
+```bash
+grep -c <marker-from-the-new-source> bin/<consumer>/<consumer>.ml
+strings bin/<platform>/<binary> | grep -c <marker>
+```
+A non-zero count in the source and zero in the binary is the signature.
+
+### Recovery
+`touch` the consumer's `.ml`, re-run `./build-ocaml.sh compile`, and
+re-check the marker before measuring.
+
+### War stories, both 2026-07-29
+- Landing #326: `git checkout -- bin/` (restoring `.cmi` a no-op compile
+  had deleted) reverted the merged `owl_runner` with a fresh timestamp.
+  `type-consistency` measured 352 pass, 0 fail — the pre-fix number —
+  and the agent's correction to 337 pass, 15 fail looked wrong. It
+  wasn't; the binary was.
+- `factoidal-dump-nq` still emitted mojibake after the #325 parser fix
+  (#330). Same shape, different root cause: that binary is not in
+  build-ocaml.sh at all.
+
+Tracked as #331. Related: hazard #11 (old-base cherry-picks dropping
+build-list entries) — same family, different trigger.
+
 ## 15. Missing test submodules: worktrees + fresh containers silently lose fixtures (2026-07-09)
 
 ### Symptom
