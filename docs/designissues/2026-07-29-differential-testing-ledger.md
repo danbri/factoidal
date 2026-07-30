@@ -309,6 +309,48 @@ gets the spec-mandated behavior. Recorded here per the ledger's own
 rule -- disagreements get triaged and reported in both directions, not
 just the direction that finds bugs in us.
 
+### 🔴 Finding 5 (ours-wrong, SOUNDNESS-RELEVANT), found 2026-07-30 while fixing #325: RDF/XML `xml:lang` leaks onto the next SIBLING property element
+
+Tracked in **#329**. Repro:
+`tools/difftest/repros/rdfxml_xmllang_leaks_to_next_sibling.rdf`
+
+```xml
+<rdf:Description rdf:about="http://example.org/s">
+  <ex:tagged xml:lang="de">has a tag</ex:tagged>
+  <ex:plain>should have NO tag</ex:plain>
+</rdf:Description>
+```
+
+We give `ex:plain` the literal `"should have NO tag"@de`. pyoxigraph and
+rdflib both give it a **plain** literal. `xml:lang` is scoped to the
+element SUBTREE (XML Information Set; RDF/XML §6.1.2 defers to it), so it
+must not survive past the closing tag of the element that declared it.
+The tag correctly does NOT leak across an `rdf:Description` boundary,
+which pins this to the sibling loop rather than to a global.
+
+**Not caused by the #325 fix** — the pre-#325 binary reproduces it
+identically, measured. It was invisible on this corpus only because the
+same documents also tripped #325's XML-Name bug and were dropped whole.
+Fixing the drop is what made it observable, which is the useful part:
+**a silent whole-document drop hides every other defect in that
+document.** 8 of the 67 residual `rdf`-format disagreements in the
+post-fix re-run below are this finding.
+
+Located to one line: `Parser.RDFXML.process_property_children` passes
+`result1.pr_state` — the state RETURNED by the previous sibling — into the
+next sibling, and `process_property_element` has already folded that
+element's own `xml:lang` / `xml:base` / `xmlns` into it via
+`update_state_from_attrs`. The fix is not "pass `st`": `pr_state` also
+carries the blank-node counter, the seen-`rdf:ID` set and `has_error`,
+which genuinely must flow across siblings. The scoped fields (`lang`,
+`base_iri`, `namespaces`, `direction`) have to be restored from the
+enclosing state. Deliberately NOT fixed in the #325 work: it is a distinct
+defect in RDF/XML state threading, it needs its own gate run over
+`rdf-xml` (166 pass, 0 fail) and `rdf12` `rdf-xml/eval` (30 pass, 0 fail),
+and guessing wrong about which fields are scoped would trade one soundness
+bug for another. `xml:base` and `xmlns` leaking would corrupt IRIs rather
+than literals — worse, and not yet demonstrated either way.
+
 ## Resolution of Findings 1 and 2 (2026-07-30, issue #325)
 
 Both are FIXED, and they turned out to be **one** root cause with seven
@@ -516,6 +558,64 @@ undercounts Finding 2 at 134; a re-run of the identical seed range with
 the fixed classifier scores the baseline at **422 soundness_suspects**
 (288 swap + 134 drop). That is the number the post-fix run is measured
 against — see "Post-fix re-run" below.
+
+### Post-fix re-run of the harness
+
+Measured on the **same generator seeds** as the baseline (`--seed-base
+10000`), so this is instance-for-instance comparable rather than two
+independent samples. Restricted to seeds 10000-10059 (60 instances)
+because the full 200-instance run stalled on `seed10125_dataset_large`
+under CPU contention from a concurrent job — a harness-side cost, not a
+parser one: `factoidal canonicalize` on that exact file completes in well
+under a second and its output is the corrected one. The baseline column is
+the 2026-07-29 report filtered to the same 60 seeds.
+
+| | baseline | after #325 |
+|---|---|---|
+| `disagreement` findings | 125 | **67** |
+| `soundness_suspects` | 125 | **67** |
+| … of which "factoidal DROPPED quads pyoxigraph produces" | 40 | **0** |
+| … of which "factoidal produced DIFFERENT quads (swap)" | 85 | 67 |
+| `spec-ambiguous-langtag-case-cascaded` | 35 | 93 |
+| disagreements by format | ttl 40, rdf 40, nq 20, trig 20, nt 5 | ttl 5, rdf 17, nq 20, trig 20, nt 5 |
+
+**The #325 disagreement class is gone.** Two independent checks:
+
+- **Zero** lines in our output anywhere in the 60 instances carry a
+  Latin-1-of-UTF-8 mojibake signature (`Ã`, `Â`, `æ¥`, `è`, `ð`). Before
+  the fix these were in every `ttl`/`trig`/`nq` rendering that contained a
+  non-ASCII IRI.
+- The **DROPPED-quads** soundness class is empty. That class was entirely
+  Finding 1's whole-document RDF/XML drop.
+
+**What the 67 residual disagreements are.** Comparing only the GROUND
+(blank-node-free) triples — so blank-node *labelling* differences, which
+need a real isomorphism check rather than a set diff, are excluded — and
+folding the two already-triaged findings:
+
+- **59 of 67** have byte-identical ground triples once language-tag CASE is
+  folded (Finding 3: we preserve `@En-Us`, Oxigraph lowercases to
+  `@en-us`) and the unbounded-integer literal is set aside (Finding 4:
+  `"-99999999999999999999999999999999999999"^^xsd:integer`, which Oxigraph
+  drops and we and rdflib keep). Both are pre-existing, both are triaged
+  above, neither is ours-wrong. The langtag-case difference cascades into
+  different `_:c14n` labels because RDFC-1.0 hashes the literal including
+  its tag, which is why one one-character difference reshuffles a whole
+  graph's labels and why the `nq`/`trig`/`nt` counts did not move: those
+  formats never had a #325 defect in this corpus, and their disagreements
+  were always Finding 3.
+- **8 of 67**, all format `rdf`, are the newly-visible **Finding 5** above
+  (`xml:lang` leaking to the next sibling). Tracked in #329.
+
+So: zero residual disagreements attributable to #325, and the one new
+class the fix uncovered is filed rather than left in a report.
+
+`self_inconsistencies` stays at 100 on these seeds. That is expected and
+is not a regression: it counts pairs of renderings of the same abstract
+graph whose canonical forms differ, and Finding 3's langtag-case cascade
+produces exactly that whenever two renderings of one graph hash their
+blank nodes differently. It will move when Finding 3 moves, not when a
+parser bug is fixed.
 
 ## Scale of the confirmed run (2026-07-29 baseline)
 
