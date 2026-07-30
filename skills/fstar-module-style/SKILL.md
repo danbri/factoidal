@@ -219,6 +219,23 @@ inside one `.fsti` file):
   is totality, termination and refinements plus local lemmas. Proof
   DEPTH is a separate axis from proof COVERAGE; `make verify` fixes
   coverage only.
+- **A refinement theorem with a `requires` needs a SATISFIABILITY
+  WITNESS for its hypothesis.** An unsatisfiable hypothesis makes the
+  theorem vacuous, and F\* verifies it green with no warning — it
+  happened here: `rdfs_closure_sound`'s first draft assumed `forall (h
+  : rdf_graph). ig_wf_sp (build_indexed h)`, which is false, and passed.
+  Witnesses live in `formal/fstar/RDF.Semantics.HypothesisWitness.fst`;
+  add one there whenever a vertical introduces a new hypothesis
+  predicate. Three rules: (1) the witness must be NON-DEGENERATE — not
+  the empty graph / empty binding / empty index, because "the theorem
+  holds of nothing" is the failure mode being guarded against; (2) if
+  only a degenerate witness is reachable, label it as such in the module
+  and open a follow-up rather than passing it off as a witness; (3) for
+  a bundle of interpretation conditions prove BOTH consistency (`exists
+  i. conds i`) and non-triviality (`exists i g. conds i /\ ~(satisfies i
+  g)`) — consistency alone is met by the all-true relation, which leaves
+  the entailment relation possibly equal to everything. Full write-up:
+  [`docs/designissues/2026-07-30-hypothesis-satisfiability.md`](../../docs/designissues/2026-07-30-hypothesis-satisfiability.md).
 - For interactive proof/diagnosis, use the F\* MCP server
   (`fstar-mcp` skill) instead of batch `fstar.exe` reruns.
 - Every `assume val` is an acknowledged gap: stub patch in
