@@ -829,10 +829,26 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
         2>&1 | tee -a "$LAYER_LOG" ) &
     layer_pid=$!
     t0=$(date +%s)
+    # Poll at 0.2s granularity and only EMIT a heartbeat every ~30s. The
+    # earlier `sleep 30; kill -0 || break` shape cost a flat 30s per layer
+    # even when every module skipped, because the layer's work finished
+    # during the first sleep and the loop still had to wake before
+    # noticing. Silent, so it never showed in a log: 7 layers x 30s =
+    # 3m30s of pure sleep on a no-op run. (That is also the true cause of
+    # the 3m30s no-op recorded in fast-verify-extract P1, which blamed an
+    # unrelated CPU-bound process -- see the 2026-07-29 correction there.
+    # The sibling fix at the run_with_heartbeat loop above landed with
+    # #320; this is the same bug at the extract-layer barrier, which is
+    # the site that actually dominates a warm no-op.)
+    hb_last=$t0
     while kill -0 "$layer_pid" 2>/dev/null; do
-      sleep 30
+      sleep 0.2
       kill -0 "$layer_pid" 2>/dev/null || break
-      echo "      …layer ${layer_idx} still running ($(( $(date +%s) - t0 ))s elapsed)"
+      now=$(date +%s)
+      if [ $(( now - hb_last )) -ge 30 ]; then
+        hb_last=$now
+        echo "      …layer ${layer_idx} still running ($(( now - t0 ))s elapsed)"
+      fi
     done
     wait "$layer_pid"
     set -e

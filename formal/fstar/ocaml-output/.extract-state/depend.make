@@ -2,7 +2,7 @@
 # Executable: "/root/.opam/fstar/bin/fstar.exe"
 # Hash: 89901492c020c74b82d811d27f3149c222d9b8b5
 # Running in directory "/home/user/factoidal/formal/fstar"
-# Command line arguments: "["fstar.exe", "--dep", "full", "Util.Log.fst", "Regex.Syntax.fst", "Regex.Derivative.fst", "Regex.Exec.fst", "Regex.XSDPattern.fst", "RDF.Format.fst", "RDF.Vocabulary.fst", "RDF.Term.fst", "RDF.Triple.fst", "RDF.Indexed.fst", "RDF.Graph.fst", "RDF.Vocabulary.Axioms.fst", "RDFS.Closure.fst", "OWL.Closure.fst", "OWL.Semantics.fst", "OWL.Semantics.MemLemmas.fst", "OWL.Semantics.Soundness.fst", "RDF.Graph.Executable.fst", "Parquet.Footer.fst", "RDF.IRI.fst", "RDF.NQuads.Serialize.fst", "RDF.Entailment.Simple.fst", "RDF.List.Helpers.fst", "RDF.Bytes.fst", "RDF.Store.Loader.fst", "RDF.Dataset.Graphs.fst", "RDF.Canonical.fst", "RDF.Canonical.Manifest.fst", "RDF.GraphIsomorphism.fst", "OWL.Vocabulary.fst", "OWL.DirectMapping.Filter.fst", "XSD.Facets.fst", "Tableau.fst", "Tableau.Refute.fst", "Tableau.CountingOracle.fst", "SPARQL11.IRI.Resolve.fst", "SPARQL.FullText.fst", "SPARQL11.Algebra.fst", "XSD.Datatypes.fst", "XSD.IEEE754.fst", "RDF.Entailment.Regime.fst", "RDF.Pretty.fst", "OWL.QueryRewrite.fst", "OWL.QueryEval.fst", "OWL.Tests.Manifest.fst", "OWL2.SyntaxDL.fst", "RIF.Core.Syntax.fst", "RIF.Core.Translation.fst", "SHACL.Validation.fst", "SHACL.NodeExpr.fst", "SHACL.Rules.fst", "RDF.Geo.Types.fst", "RDF.Geo.BBox.fst", "RDF.Geo.Topology.fst", "RDF.Geo.Functions.fst", "Parser.FastString.fst", "Parser.IRI.fst", "Parser.Combinators.fst", "Parser.TurtleScanner.fst", "SPARQL11.Parser.fst", "Parser.WKT.fst", "Parser.NTriples.fst", "Parser.Turtle.fst", "HDT.Container.fst", "HDT.Dictionary.fst", "HDT.Triples.fst", "Parser.OWLFunctional.fst", "RDF.Turtle.Serialize.fst", "Parser.NQuads.fst", "Parser.TriG.fst", "Parser.XML.fst", "XML.Wellformedness.fst", "XML.Namespaces.fst", "Parser.XPath.fst", "XPath.Eval.fst", "XSLT.Transform.fst", "Schematron.Validate.fst", "Parser.RDFXML.fst", "Parser.RIFXML.fst", "GRDDL.Discovery.fst", "Math.Expr.fst", "Math.Subst.fst", "Math.Diff.fst", "Math.Simplify.fst", "Math.Matrix.fst", "MathML.Content.fst", "Math.Series.fst", "MathML.Present.fst", "Math.Sigmoid.fst", "XForms.Bind.fst", "RIF.Core.Builtins.fst", "RIF.Core.Conformance.fst", "RIF.Core.Eval.fst", "RIF.Core.Tests.fst", "Parser.SRX.fst", "Parser.CSVResults.fst", "Parser.JSONResults.fst", "SPARQL.JSON.Escape.fst", "Parser.JSON.fst", "JSONLD.Loader.fst", "JSONLD.Context.fst", "JSONLD.Expand.fst", "Parser.JSONLD.fst", "Parser.JSONLD.Html.fst", "JSONLD.Compact.fst", "JSONLD.Flatten.fst", "JSONLD.FromRdf.fst", "JSONLD.Frame.fst", "JSONSchema.Validate.fst", "ShEx.Schema.fst", "Parser.ShExC.fst", "ShEx.SchemaEq.fst", "ShEx.Validation.fst", "VC.Context.fst", "VC.Credential.fst", "VC.Multibase.fst", "DID.Key.fst", "VC.DataIntegrity.fst", "RML.Mapping.fst", "RML.Sources.fst", "RML.Eval.fst", "CSVW.Metadata.fst", "CSVW.URITemplate.fst", "CSVW.Formats.fst", "CSVW.Conversion.fst", "CSVW.Json.fst", "CSVW.Validate.fst", "SPARQL.Eval.TimeBudget.fst", "SPARQL.Eval.Limits.fst", "SPARQL.HTTP.Response.fst", "SPARQL.HTTP.Timing.fst", "SPARQL.HTTP.BackendInfo.fst", "SPARQL.HTTP.QueriesIndex.fst", "SPARQL.HTTP.StaticFiles.fst", "SPARQL.HTTP.Admin.fst", "SPARQL.HTTP.Routes.fst", "Parser.Ballyhoo.fst", "Parser.BallyhooBloom.fst", "Parser.BallyhooHDT.fst", "Parser.BallyhooHDTQ.fst", "Parser.BallyhooCOTTAS.fst", "RDF.CottasStore.ColumnSeq.fst", "RDF.CottasStore.PageCache.fst", "RDF.CottasStore.OnDiskIndex.fst", "RDF.CottasStore.DictWriter.fst", "RDF.CottasStore.PresenceBitmap.fst", "RDF.CottasStore.PresenceWriter.fst", "RDF.CottasStore.CompoundPresenceBitmap.fst", "RDF.CottasStore.CompoundPresenceWriter.fst", "RDF.CottasStore.OffsetsWriter.fst", "RDF.CottasStore.SubjectOffsetsWriter.fst", "RDF.CottasStore.BaseWriter.fst", "RDF.CottasStore.LazyDict.fst", "RDF.CottasStore.LazyDictRegistry.fst", "RDF.Store.LazyTermCache.fst", "RDF.Store.HDTTermCacheRegistry.fst", "RDF.Store.Columnar.OffsetIndex.fst", "RDF.Store.Columnar.SubjectOffsetIndex.fst", "RDF.Store.Columnar.DeltaLog.fst", "SPARQL.Plan.Pruning.fst", "SPARQL.Plan.Estimate.fst", "SPARQL.Plan.Loader.fst", "SPARQL.Plan.AccessPath.fst", "RDF.CottasStore.fst", "RDF.CottasStore.OnDiskRuntime.fst", "RDF.Store.Columnar.DeltaMerge.fst", "RDF.Store.Capabilities.fst", "RDF.Store.Capabilities.Cottas.fst", "RDF.Store.Capabilities.Delta.fst", "RDF.CottasInMem.fst", "SPARQL.Plan.Streamable.fst", "RML.VirtualSource.fst", "SPARQL11.Store.fst", "RDF.Store.Combine.fst", "RDF.Dataset.Merge.fst", "SPARQL.Protocol.fst", "SPARQL.HTTP.RunQuery.fst", "SPARQL.Update.Sandbox.fst", "SPARQL.Update.Analysis.fst", "SPARQL.Diagnostics.fst", "SPARQL.Explain.fst", "SPARQL.Query.Analysis.fst", "SPARQL.Plan.Explain.fst", "SPARQL.HTTP.fst", "SPARQL.HTTP.Client.fst", "SPARQL.Protocol.Client.fst", "SPARQL.ServiceDescription.fst", "SPARQL.GraphStore.fst", "SPARQL.Service.Wrap.fst"]"
+# Command line arguments: "["fstar.exe", "--dep", "full", "Util.Log.fst", "Regex.Syntax.fst", "Regex.Derivative.fst", "Regex.Exec.fst", "Regex.XSDPattern.fst", "RDF.Format.fst", "RDF.Vocabulary.fst", "RDF.Term.fst", "RDF.Triple.fst", "RDF.Indexed.fst", "RDF.Graph.fst", "RDF.Vocabulary.Axioms.fst", "RDFS.Closure.fst", "OWL.Closure.fst", "OWL.Semantics.fst", "OWL.Semantics.MemLemmas.fst", "OWL.Semantics.Soundness.fst", "RDF.Graph.Executable.fst", "Parquet.Footer.fst", "RDF.IRI.fst", "RDF.NQuads.Serialize.fst", "RDF.Entailment.Simple.fst", "RDF.Entailment.Simple.Spec.fst", "RDF.Entailment.Simple.Refinement.fst", "RDF.Entailment.Simple.ModelTheory.fst", "RDF.Entailment.Simple.Boundary.fst", "RDF.List.Helpers.fst", "RDF.Bytes.fst", "RDF.Store.Loader.fst", "RDF.Dataset.Graphs.fst", "RDF.Canonical.fst", "RDF.Canonical.Manifest.fst", "RDF.GraphIsomorphism.fst", "OWL.Vocabulary.fst", "OWL.DirectMapping.Filter.fst", "XSD.Facets.fst", "Tableau.fst", "Tableau.Refute.fst", "Tableau.CountingOracle.fst", "SPARQL11.IRI.Resolve.fst", "SPARQL.FullText.fst", "SPARQL11.Algebra.fst", "XSD.Datatypes.fst", "XSD.IEEE754.fst", "RDF.Entailment.Regime.fst", "RDF.Pretty.fst", "OWL.QueryRewrite.fst", "OWL.QueryEval.fst", "OWL.Tests.Manifest.fst", "OWL2.SyntaxDL.fst", "RIF.Core.Syntax.fst", "RIF.Core.Translation.fst", "SHACL.Validation.fst", "SHACL.NodeExpr.fst", "SHACL.Rules.fst", "RDF.Geo.Types.fst", "RDF.Geo.BBox.fst", "RDF.Geo.Topology.fst", "RDF.Geo.Functions.fst", "Parser.FastString.fst", "Parser.IRI.fst", "Parser.Combinators.fst", "Parser.TurtleScanner.fst", "SPARQL11.Parser.fst", "Parser.WKT.fst", "Parser.NTriples.fst", "Parser.Turtle.fst", "HDT.Container.fst", "HDT.Dictionary.fst", "HDT.Triples.fst", "Parser.OWLFunctional.fst", "RDF.Turtle.Serialize.fst", "Parser.NQuads.fst", "Parser.TriG.fst", "Parser.XML.fst", "XML.Wellformedness.fst", "XML.Namespaces.fst", "Parser.XPath.fst", "XPath.Eval.fst", "XSLT.Transform.fst", "Schematron.Validate.fst", "Parser.RDFXML.fst", "Parser.RIFXML.fst", "GRDDL.Discovery.fst", "Math.Expr.fst", "Math.Subst.fst", "Math.Diff.fst", "Math.Simplify.fst", "Math.Matrix.fst", "MathML.Content.fst", "Math.Series.fst", "MathML.Present.fst", "Math.Sigmoid.fst", "XForms.Bind.fst", "RIF.Core.Builtins.fst", "RIF.Core.Conformance.fst", "RIF.Core.Eval.fst", "RIF.Core.Tests.fst", "Parser.SRX.fst", "Parser.CSVResults.fst", "Parser.JSONResults.fst", "SPARQL.JSON.Escape.fst", "Parser.JSON.fst", "JSONLD.Loader.fst", "JSONLD.Context.fst", "JSONLD.Expand.fst", "Parser.JSONLD.fst", "Parser.JSONLD.Html.fst", "JSONLD.Compact.fst", "JSONLD.Flatten.fst", "JSONLD.FromRdf.fst", "JSONLD.Frame.fst", "JSONSchema.Validate.fst", "ShEx.Schema.fst", "Parser.ShExC.fst", "ShEx.SchemaEq.fst", "ShEx.Validation.fst", "VC.Context.fst", "VC.Credential.fst", "VC.Multibase.fst", "DID.Key.fst", "VC.DataIntegrity.fst", "RML.Mapping.fst", "RML.Sources.fst", "RML.Eval.fst", "CSVW.Metadata.fst", "CSVW.URITemplate.fst", "CSVW.Formats.fst", "CSVW.Conversion.fst", "CSVW.Json.fst", "CSVW.Validate.fst", "SPARQL.Eval.TimeBudget.fst", "SPARQL.Eval.Limits.fst", "SPARQL.HTTP.Response.fst", "SPARQL.HTTP.Timing.fst", "SPARQL.HTTP.BackendInfo.fst", "SPARQL.HTTP.QueriesIndex.fst", "SPARQL.HTTP.StaticFiles.fst", "SPARQL.HTTP.Admin.fst", "SPARQL.HTTP.Routes.fst", "Parser.Ballyhoo.fst", "Parser.BallyhooBloom.fst", "Parser.BallyhooHDT.fst", "Parser.BallyhooHDTQ.fst", "Parser.BallyhooCOTTAS.fst", "RDF.CottasStore.ColumnSeq.fst", "RDF.CottasStore.PageCache.fst", "RDF.CottasStore.OnDiskIndex.fst", "RDF.CottasStore.DictWriter.fst", "RDF.CottasStore.PresenceBitmap.fst", "RDF.CottasStore.PresenceWriter.fst", "RDF.CottasStore.CompoundPresenceBitmap.fst", "RDF.CottasStore.CompoundPresenceWriter.fst", "RDF.CottasStore.OffsetsWriter.fst", "RDF.CottasStore.SubjectOffsetsWriter.fst", "RDF.CottasStore.BaseWriter.fst", "RDF.CottasStore.LazyDict.fst", "RDF.CottasStore.LazyDictRegistry.fst", "RDF.Store.LazyTermCache.fst", "RDF.Store.HDTTermCacheRegistry.fst", "RDF.Store.Columnar.OffsetIndex.fst", "RDF.Store.Columnar.SubjectOffsetIndex.fst", "RDF.Store.Columnar.DeltaLog.fst", "SPARQL.Plan.Pruning.fst", "SPARQL.Plan.Estimate.fst", "SPARQL.Plan.Loader.fst", "SPARQL.Plan.AccessPath.fst", "RDF.CottasStore.fst", "RDF.CottasStore.OnDiskRuntime.fst", "RDF.Store.Columnar.DeltaMerge.fst", "RDF.Store.Capabilities.fst", "RDF.Store.Capabilities.Cottas.fst", "RDF.Store.Capabilities.Delta.fst", "RDF.CottasInMem.fst", "SPARQL.Plan.Streamable.fst", "RML.VirtualSource.fst", "SPARQL11.Store.fst", "RDF.Store.Combine.fst", "RDF.Dataset.Merge.fst", "SPARQL.Protocol.fst", "SPARQL.HTTP.RunQuery.fst", "SPARQL.Update.Sandbox.fst", "SPARQL.Update.Analysis.fst", "SPARQL.Diagnostics.fst", "SPARQL.Explain.fst", "SPARQL.Query.Analysis.fst", "SPARQL.Plan.Explain.fst", "SPARQL.HTTP.fst", "SPARQL.HTTP.Client.fst", "SPARQL.Protocol.Client.fst", "SPARQL.ServiceDescription.fst", "SPARQL.GraphStore.fst", "SPARQL.Service.Wrap.fst"]"
 
 Schematron.Validate.fst.checked: \
 	Schematron.Validate.fst \
@@ -1055,6 +1055,28 @@ OWL_DirectMapping_Filter.cmx: \
 	OWL_DirectMapping_Filter.ml \
 	RDF_Graph_Executable.cmx
 
+RDF.Entailment.Simple.Spec.fst.checked: \
+	RDF.Entailment.Simple.Spec.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
+	RDF.Triple.fsti.checked \
+	RDF.Term.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RDF_Entailment_Simple_Spec.ml: \
+	RDF.Entailment.Simple.Spec.fst.checked
+
+RDF_Entailment_Simple_Spec.fs: \
+	RDF.Entailment.Simple.Spec.fst.checked
+
+RDF_Entailment_Simple_Spec.krml: \
+	RDF.Entailment.Simple.Spec.fst.checked
+
+RDF_Entailment_Simple_Spec.cmx: \
+	RDF_Entailment_Simple_Spec.ml \
+	RDF_Triple.cmx \
+	RDF_Term.cmx
+
 RDF.Bytes.fst.checked: \
 	RDF.Bytes.fst \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Properties.fsti.checked \
@@ -1395,6 +1417,42 @@ SPARQL_HTTP_Admin.cmx: \
 	SPARQL_HTTP_Admin.ml \
 	SPARQL_JSON_Escape.cmx
 
+RDF.Entailment.Simple.Boundary.fst.checked: \
+	RDF.Entailment.Simple.Boundary.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.StrongExcludedMiddle.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	RDF.Entailment.Simple.Refinement.fst.checked \
+	RDF.Entailment.Simple.Spec.fst.checked \
+	RDF.Entailment.Simple.fst.checked \
+	Parser.NTriples.fst.checked \
+	RDF.Graph.Executable.fst.checked \
+	RDF.Triple.fsti.checked \
+	RDF.Term.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RDF_Entailment_Simple_Boundary.ml: \
+	RDF.Entailment.Simple.Boundary.fst.checked
+
+RDF_Entailment_Simple_Boundary.fs: \
+	RDF.Entailment.Simple.Boundary.fst.checked
+
+RDF_Entailment_Simple_Boundary.krml: \
+	RDF.Entailment.Simple.Boundary.fst.checked
+
+RDF_Entailment_Simple_Boundary.cmx: \
+	RDF_Entailment_Simple_Boundary.ml \
+	RDF_Entailment_Simple_Refinement.cmx \
+	RDF_Entailment_Simple_Spec.cmx \
+	RDF_Entailment_Simple.cmx \
+	Parser_NTriples.cmx \
+	RDF_Graph_Executable.cmx \
+	RDF_Triple.cmx \
+	RDF_Term.cmx
+
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.ST.fst.checked: \
 	/root/.opam/fstar/lib/fstar/ulib/FStar.ST.fst \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Set.fsti.checked \
@@ -1468,6 +1526,38 @@ OWL_Closure.cmx: \
 	RDFS_Closure.cmx \
 	RDF_Indexed.cmx \
 	RDF_Graph.cmx \
+	RDF_Triple.cmx \
+	RDF_Term.cmx
+
+RDF.Entailment.Simple.Refinement.fst.checked: \
+	RDF.Entailment.Simple.Refinement.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	RDF.Entailment.Simple.Spec.fst.checked \
+	RDF.Entailment.Simple.fst.checked \
+	RDF.Graph.Executable.fst.checked \
+	RDF.Triple.fsti.checked \
+	RDF.Term.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RDF_Entailment_Simple_Refinement.ml: \
+	RDF.Entailment.Simple.Refinement.fst.checked
+
+RDF_Entailment_Simple_Refinement.fs: \
+	RDF.Entailment.Simple.Refinement.fst.checked
+
+RDF_Entailment_Simple_Refinement.krml: \
+	RDF.Entailment.Simple.Refinement.fst.checked
+
+RDF_Entailment_Simple_Refinement.cmx: \
+	RDF_Entailment_Simple_Refinement.ml \
+	RDF_Entailment_Simple_Spec.cmx \
+	RDF_Entailment_Simple.cmx \
+	RDF_Graph_Executable.cmx \
 	RDF_Triple.cmx \
 	RDF_Term.cmx
 
@@ -5123,6 +5213,41 @@ FStar_UInt.ml: \
 FStar_UInt.krml: \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.UInt.fst.checked
 
+RDF.Entailment.Simple.ModelTheory.fst.checked: \
+	RDF.Entailment.Simple.ModelTheory.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	RDF.Entailment.Simple.Refinement.fst.checked \
+	RDF.Entailment.Simple.Spec.fst.checked \
+	RDF.Entailment.Simple.fst.checked \
+	OWL.Semantics.fst.checked \
+	RDF.Graph.fsti.checked \
+	RDF.Triple.fsti.checked \
+	RDF.Term.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RDF_Entailment_Simple_ModelTheory.ml: \
+	RDF.Entailment.Simple.ModelTheory.fst.checked
+
+RDF_Entailment_Simple_ModelTheory.fs: \
+	RDF.Entailment.Simple.ModelTheory.fst.checked
+
+RDF_Entailment_Simple_ModelTheory.krml: \
+	RDF.Entailment.Simple.ModelTheory.fst.checked
+
+RDF_Entailment_Simple_ModelTheory.cmx: \
+	RDF_Entailment_Simple_ModelTheory.ml \
+	RDF_Entailment_Simple_Refinement.cmx \
+	RDF_Entailment_Simple_Spec.cmx \
+	RDF_Entailment_Simple.cmx \
+	OWL_Semantics.cmx \
+	RDF_Graph.cmx \
+	RDF_Triple.cmx \
+	RDF_Term.cmx
+
 OWL.Vocabulary.fst.checked: \
 	OWL.Vocabulary.fst \
 	RDF.Vocabulary.fsti.checked \
@@ -5782,6 +5907,10 @@ ALL_FST_FILES= \
 	RDF.Dataset.Graphs.fst \
 	RDF.Dataset.Merge.fst \
 	RDF.Entailment.Regime.fst \
+	RDF.Entailment.Simple.Boundary.fst \
+	RDF.Entailment.Simple.ModelTheory.fst \
+	RDF.Entailment.Simple.Refinement.fst \
+	RDF.Entailment.Simple.Spec.fst \
 	RDF.Entailment.Simple.fst \
 	RDF.Format.fst \
 	RDF.Geo.BBox.fst \
@@ -5969,6 +6098,7 @@ ALL_CHECKED_FILES= \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Range.fsti.checked \
 	HDT.Triples.fst.checked \
 	OWL.Vocabulary.fst.checked \
+	RDF.Entailment.Simple.ModelTheory.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.UInt.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Seq.Base.fst.checked \
 	Parser.Ballyhoo.fst.checked \
@@ -6147,10 +6277,12 @@ ALL_CHECKED_FILES= \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
 	RDF.Vocabulary.Axioms.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Sealed.fsti.checked \
+	RDF.Entailment.Simple.Refinement.fst.checked \
 	OWL.Closure.fst.checked \
 	Regex.Syntax.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pprint.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.ST.fst.checked \
+	RDF.Entailment.Simple.Boundary.fst.checked \
 	SPARQL.HTTP.Admin.fst.checked \
 	XSLT.Transform.fst.checked \
 	RDF.Entailment.Regime.fst.checked \
@@ -6169,6 +6301,7 @@ ALL_CHECKED_FILES= \
 	RDF.CottasStore.LazyDict.fst.checked \
 	OWL.QueryRewrite.fst.checked \
 	RDF.Bytes.fst.checked \
+	RDF.Entailment.Simple.Spec.fst.checked \
 	OWL.DirectMapping.Filter.fst.checked \
 	RDF.Dataset.Graphs.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Tactics.Effect.fsti.checked \
@@ -6345,6 +6478,9 @@ ALL_FS_FILES= \
 	Parser_CSVResults.fs \
 	Parser_RIFXML.fs \
 	RIF_Core_Conformance.fs \
+	RDF_Entailment_Simple_Spec.fs \
+	RDF_Entailment_Simple_Refinement.fs \
+	RDF_Entailment_Simple_Boundary.fs \
 	SPARQL_Protocol.fs \
 	HDT_Dictionary.fs \
 	XSD_Facets.fs \
@@ -6380,6 +6516,8 @@ ALL_FS_FILES= \
 	SPARQL_Plan_Loader.fs \
 	VC_DataIntegrity.fs \
 	RDF_Turtle_Serialize.fs \
+	OWL_Semantics.fs \
+	RDF_Entailment_Simple_ModelTheory.fs \
 	RML_VirtualSource.fs \
 	SPARQL11_Store.fs \
 	SPARQL_Diagnostics.fs \
@@ -6400,7 +6538,6 @@ ALL_FS_FILES= \
 	OWL_Tests_Manifest.fs \
 	DID_Key.fs \
 	MathML_Content.fs \
-	OWL_Semantics.fs \
 	OWL_Semantics_Soundness.fs \
 	SPARQL_Protocol_Client.fs \
 	Parser_BallyhooHDTQ.fs \
@@ -6536,6 +6673,9 @@ ALL_ML_FILES= \
 	Parser_CSVResults.ml \
 	Parser_RIFXML.ml \
 	RIF_Core_Conformance.ml \
+	RDF_Entailment_Simple_Spec.ml \
+	RDF_Entailment_Simple_Refinement.ml \
+	RDF_Entailment_Simple_Boundary.ml \
 	SPARQL_Protocol.ml \
 	HDT_Dictionary.ml \
 	XSD_Facets.ml \
@@ -6571,6 +6711,8 @@ ALL_ML_FILES= \
 	SPARQL_Plan_Loader.ml \
 	VC_DataIntegrity.ml \
 	RDF_Turtle_Serialize.ml \
+	OWL_Semantics.ml \
+	RDF_Entailment_Simple_ModelTheory.ml \
 	RML_VirtualSource.ml \
 	SPARQL11_Store.ml \
 	SPARQL_Diagnostics.ml \
@@ -6591,7 +6733,6 @@ ALL_ML_FILES= \
 	OWL_Tests_Manifest.ml \
 	DID_Key.ml \
 	MathML_Content.ml \
-	OWL_Semantics.ml \
 	OWL_Semantics_Soundness.ml \
 	SPARQL_Protocol_Client.ml \
 	Parser_BallyhooHDTQ.ml \
@@ -6791,6 +6932,9 @@ ALL_KRML_FILES= \
 	Parser_RIFXML.krml \
 	RIF_Core_Conformance.krml \
 	SPARQL_Protocol.krml \
+	RDF_Entailment_Simple_Spec.krml \
+	RDF_Entailment_Simple_Refinement.krml \
+	RDF_Entailment_Simple_Boundary.krml \
 	HDT_Dictionary.krml \
 	XSD_Facets.krml \
 	VC_Multibase.krml \
@@ -6825,6 +6969,8 @@ ALL_KRML_FILES= \
 	SPARQL_Plan_Loader.krml \
 	VC_DataIntegrity.krml \
 	RDF_Turtle_Serialize.krml \
+	OWL_Semantics.krml \
+	RDF_Entailment_Simple_ModelTheory.krml \
 	RML_VirtualSource.krml \
 	SPARQL11_Store.krml \
 	SPARQL_Diagnostics.krml \
@@ -6845,7 +6991,6 @@ ALL_KRML_FILES= \
 	OWL_Tests_Manifest.krml \
 	DID_Key.krml \
 	MathML_Content.krml \
-	OWL_Semantics.krml \
 	OWL_Semantics_Soundness.krml \
 	SPARQL_Protocol_Client.krml \
 	Parser_BallyhooHDTQ.krml \

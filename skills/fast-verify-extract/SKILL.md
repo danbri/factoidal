@@ -352,6 +352,25 @@ each file's real `open` statements first, not assumed.
   15.449s cold — consistent with the existing P2 manifest behavior,
   now running through the layered scheduler instead of a flat loop.
 
+**⚠️ CORRECTION 2026-07-29 — the diagnosis below is WRONG, and it was
+recorded as CONFIRMED.** The 3m30s no-op was not sibling-process
+contention. `build-ocaml.sh`'s extract-layer barrier ran
+`sleep 30; kill -0 || break`, so every layer paid a flat 30s even when
+all its modules skipped — the layer's work finished during the first
+sleep and the loop still had to wake before noticing. 7 layers x 30s =
+3m30s exactly, which is why the CPU-time figure looked fine (1.6s) while
+wall-clock did not. It emitted nothing when it slept, so no log ever
+showed it. Fixed by polling at 0.2s and emitting a heartbeat only every
+~30s (two sites: the `run_with_heartbeat` loop, and the layer barrier —
+the barrier is the one that dominates a no-op). **Measured warm no-op on
+the same tree: 472s -> 12s**, identical work (0 extracted, 194 skipped).
+
+Lesson worth more than the fix: "user+sys looks right, so wall-clock
+inflation must be external" is a tempting inference and it was false
+here. A silent sleep is invisible to both CPU accounting and logs. When
+wall-clock and CPU-time disagree, suspect our own waiting before
+blaming the machine.
+
 **Real-tree no-regression check** (2026-07-04, `./build-ocaml.sh
 extract`, no `--force-full`, nothing in any `.fst` changed): exit 0,
 `Dependency DAG: 96 modules in 7 layer(s)`, `Extraction outputs
