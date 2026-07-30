@@ -83,8 +83,17 @@ let rec lookup_prefix (pfx: string) (ps: list (string & string)) : option string
    adding more recursive functions near the doc-level recursion
    sometimes breaks earlier-verified decreases clauses. Fuel bounded by
    string length makes the proof trivial. *)
-let rec unescape_pn_local_fuel (local: string) (pos: nat) (acc: list char) (fuel: nat)
-  : Tot (list char) (decreases fuel) =
+// Issue #325: emits raw BYTE fragments (fs_byte_sub), not a `list char`
+// finished by String.string_of_list — which re-encoded every element as a
+// UTF-8 codepoint and so mojibake'd any non-ASCII local name that also
+// carried a PN_LOCAL_ESC: `ex:日\-本` resolved to <http://e.org/æ¥-æ¬>.
+// Escape-free local names never reach here (has_backslash_fuel below
+// short-circuits to the input unchanged), which is why plain non-ASCII
+// PN_LOCALs were always correct and this path went unnoticed.
+// Every PN_LOCAL_ESC-escapable character is ASCII, so taking the escaped
+// byte on its own is right.
+let rec unescape_pn_local_fuel (local: string) (pos: nat) (acc: list string) (fuel: nat)
+  : Tot (list string) (decreases fuel) =
   if fuel = 0 then List.Tot.rev acc
   else
     let len = fs_byte_length local in
@@ -92,10 +101,11 @@ let rec unescape_pn_local_fuel (local: string) (pos: nat) (acc: list char) (fuel
     else
       let c = fs_byte_index local pos in
       if FStar.Char.int_of_char c = 0x5C && pos + 1 < len then
-        let c2 = fs_byte_index local (pos + 1) in
-        unescape_pn_local_fuel local (pos + 2) (c2 :: acc) (fuel - 1)
+        unescape_pn_local_fuel local (pos + 2)
+          (fs_byte_sub local (pos + 1) 1 :: acc) (fuel - 1)
       else
-        unescape_pn_local_fuel local (pos + 1) (c :: acc) (fuel - 1)
+        unescape_pn_local_fuel local (pos + 1)
+          (fs_byte_sub local pos 1 :: acc) (fuel - 1)
 
 (* Fast check: does the string contain any backslash? If not we can
    return the input unchanged and skip the list allocation. Called on
@@ -112,7 +122,7 @@ let rec has_backslash_fuel (s: string) (pos: nat) (fuel: nat)
 let unescape_pn_local (local: string) : string =
   let len = fs_byte_length local in
   if has_backslash_fuel local 0 (len + 1) then
-    String.string_of_list (unescape_pn_local_fuel local 0 [] (len + 1))
+    String.concat "" (unescape_pn_local_fuel local 0 [] (len + 1))
   else
     local
 
@@ -414,13 +424,34 @@ let span_to_string (input: string) (sp: span) : string =
   else
     ""
 
-// Decode \uXXXX and \UXXXXXXXX escapes in IRI body.
+// Decode \uXXXX and \UXXXXXXXX escapes in an IRI body.
 // Scanner has already validated well-formedness; we just decode.
-let rec decode_iri_escapes_acc (input: string) (pos: nat) (end_pos: nat)
-    (acc: list char) (fuel: nat)
-  : Tot string (decreases fuel) =
+//
+// Issue #325 — WHY THIS RETURNS FRAGMENTS AND NOT A CHAR LIST.
+// This function used to accumulate a `list char` of RAW BYTES read with
+// fs_byte_index and finish with String.string_of_list. Because
+// string_of_list re-encodes every element as a UTF-8 CODEPOINT, a byte
+// 0xE6 went in and the two bytes 0xC3 0xA6 came out: an IRIREF
+// <https://example.org/日本語> parsed to <https://example.org/æ¥æ¬èª>
+// (UTF-8 read as Latin-1) with no error anywhere. The literal on the
+// same source line was correct the whole time — literals go through
+// scan_short_string_span + span_to_string, i.e. fs_byte_sub, which is
+// byte-transparent. That asymmetry WAS the bug.
+//
+// The fix keeps the two kinds of content on the primitive that suits
+// them and never mixes them in one accumulator:
+//   raw bytes  -> fs_byte_sub, sliced in runs, byte-transparent
+//   escapes    -> fs_utf8_of_codepoint, encoded from a codepoint
+// Each recursive step emits one already-correctly-encoded fragment;
+// the caller concatenates once. fs_find_byte locates the next
+// backslash, so a run of raw bytes costs one fs_byte_sub regardless of
+// how many bytes or codepoints it spans (this also keeps the issue-#70
+// hot-path cost model: no per-byte allocation).
+let rec decode_iri_escape_frags (input: string) (pos: nat) (end_pos: nat)
+    (acc: list string) (fuel: nat)
+  : Tot (list string) (decreases fuel) =
   let len = fs_byte_length input in
-  if fuel = 0 || pos >= end_pos || pos >= len then String.string_of_list (List.Tot.rev acc)
+  if fuel = 0 || pos >= end_pos || pos >= len then List.Tot.rev acc
   else
     let c = fs_byte_index input pos in
     let code = int_of_char c in
@@ -433,7 +464,8 @@ let rec decode_iri_escapes_acc (input: string) (pos: nat) (end_pos: nat)
         let h2 = hex_val (fs_byte_index input (pos + 4)) in
         let h3 = hex_val (fs_byte_index input (pos + 5)) in
         let cp = (h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3 in
-        decode_iri_escapes_acc input (pos + 6) end_pos (safe_char_of_int cp :: acc) (fuel - 1)
+        decode_iri_escape_frags input (pos + 6) end_pos
+          (fs_utf8_of_codepoint cp :: acc) (fuel - 1)
       else if ncode = 0x55 && pos + 10 <= end_pos && pos + 10 <= len then
         let h0 = hex_val (fs_byte_index input (pos + 2)) in
         let h1 = hex_val (fs_byte_index input (pos + 3)) in
@@ -447,17 +479,40 @@ let rec decode_iri_escapes_acc (input: string) (pos: nat) (end_pos: nat)
                  (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536) +
                  (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) +
                  (h6 `op_Multiply` 16) + h7 in
-        decode_iri_escapes_acc input (pos + 10) end_pos (safe_char_of_int cp :: acc) (fuel - 1)
+        decode_iri_escape_frags input (pos + 10) end_pos
+          (fs_utf8_of_codepoint cp :: acc) (fuel - 1)
       else
-        decode_iri_escapes_acc input (pos + 1) end_pos (c :: acc) (fuel - 1)
+        // A backslash that is not a UCHAR: pass the byte through raw,
+        // exactly as before, but via fs_byte_sub so it stays a byte.
+        decode_iri_escape_frags input (pos + 1) end_pos
+          (fs_byte_sub input pos 1 :: acc) (fuel - 1)
     else
-      decode_iri_escapes_acc input (pos + 1) end_pos (c :: acc) (fuel - 1)
+      // Byte-transparent run. Copy every byte up to the next backslash
+      // (or to end_pos) in ONE fs_byte_sub. `stop > pos` holds in every
+      // branch, so the fuel measure still decreases and the slice
+      // length `stop - pos` is a nat.
+      let nb = fs_find_byte input 0x5C pos in
+      let stop : nat =
+        if nb <= pos then pos + 1
+        else if nb < end_pos then nb
+        else end_pos
+      in
+      decode_iri_escape_frags input stop end_pos
+        (fs_byte_sub input pos (stop - pos) :: acc) (fuel - 1)
 
 let iri_ref_span_to_raw (input: string) (sp: iri_ref_span) : string =
   if sp.irs_span.sp_end >= sp.irs_span.sp_start + 2 && sp.irs_span.sp_end <= fs_byte_length input then
     let body_start : nat = sp.irs_span.sp_start + 1 in
     let body_end : nat = sp.irs_span.sp_end - 1 in
-    decode_iri_escapes_acc input body_start body_end [] (body_end - body_start + 1)
+    // Fast path: an IRI with no backslash anywhere in its body is one
+    // fs_byte_sub, no fragment list, no concat. This is the case for
+    // essentially every IRI in real data.
+    if fs_find_byte input 0x5C body_start >= body_end then
+      fs_byte_sub input body_start (body_end - body_start)
+    else
+      String.concat ""
+        (decode_iri_escape_frags input body_start body_end []
+           (body_end - body_start + 1))
   else
     ""
 

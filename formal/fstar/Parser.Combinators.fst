@@ -274,24 +274,6 @@ let phex : parser char =
 (* String-building parsers                                           *)
 (* ================================================================ *)
 
-(** Take characters while predicate holds, return as string *)
-let rec ptake_while_acc (pred: char -> bool) (input:string) (pos:nat) (acc: list char) (fuel:nat)
-  : Tot (parse_result string) (decreases fuel) =
-  if fuel = 0 then ParseOk (String.string_of_list (List.Tot.rev acc)) pos
-  else
-    let len = fs_byte_length input in
-    if pos < len then
-      let ch = fs_byte_index input pos in
-      if pred ch then ptake_while_acc pred input (pos + 1) (ch :: acc) (fuel - 1)
-      else ParseOk (String.string_of_list (List.Tot.rev acc)) pos
-    else ParseOk (String.string_of_list (List.Tot.rev acc)) pos
-
-let ptake_while (pred: char -> bool) (input:string) (pos:nat)
-  : parse_result string =
-  let fuel = fs_byte_length input - pos + 1 in
-  if fuel >= 0 then ptake_while_acc pred input pos [] fuel
-  else ParseOk "" pos
-
 // Position-scan version: find the end position, then extract substring in one shot.
 // Avoids building a char list and reversing it. O(n) predicate calls, O(1) substring.
 let rec ptake_while_scan (pred: char -> bool) (input:string) (pos:nat) (fuel:nat)
@@ -327,14 +309,21 @@ let ptake_while1_pos (pred: char -> bool) (input:string) (pos:nat)
     else
       ParseFail "expected at least one matching character" pos
 
+// Issue #325: `ptake_while` and `ptake_while1` used to run their own
+// `list char` accumulator (ptake_while_acc) and finish with
+// String.string_of_list, which re-encodes each list element as a UTF-8
+// codepoint — so any byte >= 0x80 the predicate accepted came back out
+// double-encoded. Only ASCII predicates (whitespace, digits) reach them
+// today, so nothing was visibly broken here, but the trap was armed for
+// the next caller. They are now aliases of the byte-transparent
+// fs_byte_sub scanners, which is what the accumulator versions were
+// always meant to compute.
+let ptake_while (pred: char -> bool) (input:string) (pos:nat)
+  : parse_result string = ptake_while_pos pred input pos
+
 (** Take 1+ characters while predicate holds *)
 let ptake_while1 (pred: char -> bool) (input:string) (pos:nat)
-  : parse_result string =
-  match ptake_while pred input pos with
-  | ParseOk s pos' ->
-    if String.length s > 0 then ParseOk s pos'
-    else ParseFail "expected at least one matching character" pos
-  | ParseFail msg fpos -> ParseFail msg fpos
+  : parse_result string = ptake_while1_pos pred input pos
 
 (** Parse a natural number (sequence of digits) as string *)
 let pnatural (input:string) (pos:nat) : parse_result string =
@@ -347,7 +336,12 @@ let pnatural (input:string) (pos:nat) : parse_result string =
     Backslash escapes the next character. *)
 let backslash_char : char = Char.char_of_int 0x5C
 
-let rec pquoted_body (qch: char) (input:string) (pos:nat) (acc: list char) (fuel:nat)
+// Issue #325: same fix as ptake_while. The accumulator only ever pushed
+// the bytes it stepped over (escapes keep their backslash verbatim), so
+// the result is exactly the raw byte range [start, pos) — return that
+// with one fs_byte_sub instead of rebuilding it through
+// String.string_of_list, which double-encoded every byte >= 0x80.
+let rec pquoted_body (qch: char) (input:string) (start:nat) (pos:nat{pos >= start}) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated quoted string" pos
   else
@@ -356,14 +350,13 @@ let rec pquoted_body (qch: char) (input:string) (pos:nat) (acc: list char) (fuel
     else
       let ch = fs_byte_index input pos in
       if ch = qch then
-        ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 1)
+        ParseOk (fs_byte_sub input start (pos - start)) (pos + 1)
       else if ch = backslash_char then
         if pos + 1 < len then
-          let escaped = fs_byte_index input (pos + 1) in
-          pquoted_body qch input (pos + 2) (escaped :: ch :: acc) (fuel - 1)
+          pquoted_body qch input start (pos + 2) (fuel - 1)
         else ParseFail "backslash at end of input" pos
       else
-        pquoted_body qch input (pos + 1) (ch :: acc) (fuel - 1)
+        pquoted_body qch input start (pos + 1) (fuel - 1)
 
 let pquoted_string (qch: char) (input:string) (pos:nat)
   : parse_result string =
@@ -372,7 +365,7 @@ let pquoted_string (qch: char) (input:string) (pos:nat)
     let ch = fs_byte_index input pos in
     if ch = qch then
       let fuel = len - pos in
-      pquoted_body qch input (pos + 1) [] fuel
+      pquoted_body qch input (pos + 1) (pos + 1) fuel
     else ParseFail "expected opening quote" pos
   else ParseFail "unexpected end of input" pos
 

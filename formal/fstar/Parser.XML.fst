@@ -42,7 +42,30 @@ let is_name_start_char (c:char) : bool =
   else
     code >= 0xC0
 
-// Flattened: single function, ASCII fast-path
+// Flattened: single function, ASCII fast-path.
+//
+// Issue #325 — the non-ASCII arm is a BYTE test applied to a UTF-8 byte
+// stream, so it must accept both halves of a multi-byte sequence: the
+// lead byte (0xC2-0xF4) AND its continuation bytes (0x80-0xBF). It used
+// to read `code >= 0xC0 || code = 0xB7`, i.e. it accepted lead bytes and
+// rejected continuation bytes. The Name scan therefore stopped INSIDE the
+// first non-ASCII codepoint: `<ex:日本語 ...>` scanned as the name
+// "ex:" + 0xE6 and then hit 0x97 where the element parser wanted '>' or
+// whitespace. The element failed, the failure propagated to the top, and
+// the RDF/XML driver returned an EMPTY graph with exit code 0 — silent
+// loss of a whole document for the sake of one Japanese property name.
+//
+// Accepting every byte >= 0x80 is exactly the codepoint-level reading of
+// what this predicate always meant: "any non-ASCII codepoint is a
+// NameChar". It cannot over-accept, because a bare continuation byte
+// with no lead byte is not valid UTF-8 and the document-level character
+// validation (scan_chars_valid / is_valid_decoded_char) rejects that
+// independently. The old `code = 0xB7` disjunct is subsumed and was in
+// any case unreachable as written: U+00B7 encodes as 0xC2 0xB7, so the
+// byte 0xB7 only ever appears as a continuation byte.
+//
+// U+00B7 remains excluded as a name START char — that check lives in
+// parse_xml_name, where the codepoint (not the byte) is decoded.
 let is_name_char (c:char) : bool =
   let code = Char.int_of_char c in
   if code < 0x80 then
@@ -52,7 +75,7 @@ let is_name_char (c:char) : bool =
     code = 0x5F || code = 0x3A ||
     code = 0x2D || code = 0x2E
   else
-    code >= 0xC0 || code = 0xB7
+    true
 
 let is_xml_space (c:char) : bool =
   let code = Char.int_of_char c in
@@ -658,7 +681,23 @@ let parse_xml_text (ents:dtd_entity_table) (input:string) (pos:nat) : parse_resu
 (* XML Comment parser                                                *)
 (* ================================================================ *)
 
-let rec parse_comment_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
+// Issue #325 — this walk used to accumulate the raw bytes it stepped over
+// into a `list char` and finish with String.string_of_list, whose
+// extracted realisation re-encodes each element as a UTF-8 CODEPOINT. A
+// byte 0xE6 went in and the bytes 0xC3 0xA6 came out, so every non-ASCII
+// comment / CDATA / PI body was returned as mojibake (`日本` -> `æ¥æ¬`).
+// CDATA is the one of the three that reaches RDF output, so it was a
+// user-visible corruption of literal content.
+//
+// The accumulator was never inspected — the result is exactly the raw
+// byte range [start, pos) — so the fix removes it entirely and slices
+// once with fs_byte_sub. That is byte-transparent by construction, keeps
+// the per-byte continuation-byte / is_valid_decoded_char validity walk
+// untouched, and drops one allocation per byte.
+//
+// `pos:nat{pos >= start}` is what makes the `pos - start` slice length a
+// nat; every recursive call advances pos, so it is maintained.
+let rec parse_comment_body (input:string) (start:nat) (pos:nat{pos >= start}) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated comment" pos
   else
@@ -668,21 +707,21 @@ let rec parse_comment_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
       let c1 = fs_byte_index input (pos + 1) in
       let c2 = fs_byte_index input (pos + 2) in
       if c0 = '-' && c1 = '-' && c2 = '>' then
-        ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 3)
+        ParseOk (fs_byte_sub input start (pos - start)) (pos + 3)
       else if is_utf8_continuation_byte c0 then
-        parse_comment_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        parse_comment_body input start (pos + 1) (fuel - 1)
       else
         let (cp, adv) = fs_cp_at input pos in
         if not (is_valid_decoded_char cp adv) then ParseFail "invalid character in comment" pos
-        else parse_comment_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        else parse_comment_body input start (pos + 1) (fuel - 1)
     else if pos < len then
       let c0 = fs_byte_index input pos in
       if is_utf8_continuation_byte c0 then
-        parse_comment_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        parse_comment_body input start (pos + 1) (fuel - 1)
       else
         let (cp, adv) = fs_cp_at input pos in
         if not (is_valid_decoded_char cp adv) then ParseFail "invalid character in comment" pos
-        else parse_comment_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        else parse_comment_body input start (pos + 1) (fuel - 1)
     else ParseFail "unterminated comment" pos
 
 let parse_xml_comment (input:string) (pos:nat) : parse_result xml_node =
@@ -690,7 +729,7 @@ let parse_xml_comment (input:string) (pos:nat) : parse_result xml_node =
   | ParseOk _ pos1 ->
     let len = fs_byte_length input in
     let fuel = len - pos1 + 1 in
-    begin match parse_comment_body input pos1 [] fuel with
+    begin match parse_comment_body input pos1 pos1 fuel with
     | ParseOk text pos2 ->
       // Comment ::= '<!--' ((Char - '-') | ('-' (Char - '-')))* '-->'
       // -- "--" may not occur anywhere in the body, and the body may
@@ -710,7 +749,12 @@ let parse_xml_comment (input:string) (pos:nat) : parse_result xml_node =
 (* CDATA section parser                                              *)
 (* ================================================================ *)
 
-let rec parse_cdata_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
+// Issue #325: byte-transparent slice instead of a char accumulator. See
+// the comment on parse_comment_body for the double-encoding this fixes;
+// CDATA is the variant whose content reaches RDF literals, so this was
+// the user-visible one: `<![CDATA[日本 café]]>` produced the literal
+// "æ¥æ¬ cafÃ©".
+let rec parse_cdata_body (input:string) (start:nat) (pos:nat{pos >= start}) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated CDATA section" pos
   else
@@ -720,21 +764,21 @@ let rec parse_cdata_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
       let c1 = fs_byte_index input (pos + 1) in
       let c2 = fs_byte_index input (pos + 2) in
       if c0 = ']' && c1 = ']' && c2 = '>' then
-        ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 3)
+        ParseOk (fs_byte_sub input start (pos - start)) (pos + 3)
       else if is_utf8_continuation_byte c0 then
-        parse_cdata_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        parse_cdata_body input start (pos + 1) (fuel - 1)
       else
         let (cp, adv) = fs_cp_at input pos in
         if not (is_valid_decoded_char cp adv) then ParseFail "invalid character in CDATA section" pos
-        else parse_cdata_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        else parse_cdata_body input start (pos + 1) (fuel - 1)
     else if pos < len then
       let c0 = fs_byte_index input pos in
       if is_utf8_continuation_byte c0 then
-        parse_cdata_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        parse_cdata_body input start (pos + 1) (fuel - 1)
       else
         let (cp, adv) = fs_cp_at input pos in
         if not (is_valid_decoded_char cp adv) then ParseFail "invalid character in CDATA section" pos
-        else parse_cdata_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        else parse_cdata_body input start (pos + 1) (fuel - 1)
     else ParseFail "unterminated CDATA section" pos
 
 let parse_xml_cdata (input:string) (pos:nat) : parse_result xml_node =
@@ -742,7 +786,7 @@ let parse_xml_cdata (input:string) (pos:nat) : parse_result xml_node =
   | ParseOk _ pos1 ->
     let len = fs_byte_length input in
     let fuel = len - pos1 + 1 in
-    begin match parse_cdata_body input pos1 [] fuel with
+    begin match parse_cdata_body input pos1 pos1 fuel with
     | ParseOk text pos2 -> ParseOk (XCDATA text) pos2
     | ParseFail msg fpos -> ParseFail msg fpos
     end
@@ -762,11 +806,14 @@ let parse_xml_cdata (input:string) (pos:nat) : parse_result xml_node =
 (* skipper is for every other target name.                          *)
 (* ================================================================ *)
 
-// Collect the PI data (everything from `pos` up to the closing '?>'),
-// accumulating one byte per step. Same byte-stepping / continuation-byte
-// / character-validity discipline as parse_comment_body and
-// parse_cdata_body. Returns the decoded data string.
-let rec collect_pi_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
+// Collect the PI data (everything from `start` up to the closing '?>'),
+// stepping one byte at a time. Same byte-stepping / continuation-byte /
+// character-validity discipline as parse_comment_body and
+// parse_cdata_body — including the issue-#325 fix: the data is returned
+// as one fs_byte_sub slice of the raw input, never rebuilt from a
+// `list char` through String.string_of_list (which would re-encode each
+// byte as a codepoint and mojibake every non-ASCII PI body).
+let rec collect_pi_body (input:string) (start:nat) (pos:nat{pos >= start}) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated processing instruction" pos
   else
@@ -775,14 +822,14 @@ let rec collect_pi_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
       let c0 = fs_byte_index input pos in
       let c1 = fs_byte_index input (pos + 1) in
       if c0 = '?' && c1 = '>' then
-        ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 2)
+        ParseOk (fs_byte_sub input start (pos - start)) (pos + 2)
       else if is_utf8_continuation_byte c0 then
-        collect_pi_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        collect_pi_body input start (pos + 1) (fuel - 1)
       else
         let (cp, adv) = fs_cp_at input pos in
         if not (is_valid_decoded_char cp adv) then
           ParseFail "invalid character in processing instruction" pos
-        else collect_pi_body input (pos + 1) (c0 :: acc) (fuel - 1)
+        else collect_pi_body input start (pos + 1) (fuel - 1)
     else ParseFail "unterminated processing instruction" pos
 
 // PI ::= '<?' PITarget (S (Char* - (Char* '?>' Char*)))? '?>'
@@ -819,7 +866,7 @@ let parse_xml_pi (input:string) (pos:nat) : parse_result xml_node =
           | ParseFail _ _ -> ParseFail "S after PITarget is required" pos2
           | ParseOk _ pos_data ->
             let fuel = len - pos_data + 1 in
-            begin match collect_pi_body input pos_data [] fuel with
+            begin match collect_pi_body input pos_data pos_data fuel with
             | ParseOk data pos3 -> ParseOk (XPI target data) pos3
             | ParseFail msg fpos -> ParseFail msg fpos
             end
@@ -1172,7 +1219,11 @@ let rec skip_decl_to_gt (input:string) (pos:nat) (fuel:nat)
 // Read the raw characters of an EntityValue up to (not including) the
 // closing quote `q`, returning them verbatim (no reference expansion --
 // that happens lazily at the reference site). Advances past the closer.
-let rec read_entity_value_raw (input:string) (pos:nat) (q:char) (acc:list char) (fuel:nat)
+// Issue #325: "verbatim" has to mean byte-for-byte, so the value is one
+// fs_byte_sub slice of the raw input. The old `list char` accumulator
+// finished by String.string_of_list re-encoded each byte as a codepoint,
+// so a DTD internal entity holding non-ASCII text expanded to mojibake.
+let rec read_entity_value_raw (input:string) (start:nat) (pos:nat{pos >= start}) (q:char) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated entity value" pos
   else
@@ -1180,8 +1231,8 @@ let rec read_entity_value_raw (input:string) (pos:nat) (q:char) (acc:list char) 
     if pos >= len then ParseFail "unterminated entity value" pos
     else
       let ch = fs_byte_index input pos in
-      if ch = q then ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 1)
-      else read_entity_value_raw input (pos + 1) q (ch :: acc) (fuel - 1)
+      if ch = q then ParseOk (fs_byte_sub input start (pos - start)) (pos + 1)
+      else read_entity_value_raw input start (pos + 1) q (fuel - 1)
 
 // Consume a PEReference '%' Name ';' inside the internal subset (we do
 // not expand it -- Stage A). `pos` points just after the '%'.
@@ -1223,7 +1274,7 @@ let parse_entity_decl (input:string) (pos:nat) (ents:dtd_entity_table)
           | ParseOk _ p4 ->
             if p4 < len && (fs_byte_index input p4 = '"' || fs_byte_index input p4 = '\'') then
               let q = fs_byte_index input p4 in
-              begin match read_entity_value_raw input (p4 + 1) q [] (len + 1) with
+              begin match read_entity_value_raw input (p4 + 1) (p4 + 1) q (len + 1) with
               | ParseFail msg fpos -> ParseFail msg fpos
               | ParseOk rawval p5 ->
                 begin match skip_decl_to_gt input p5 (len + 1) with
