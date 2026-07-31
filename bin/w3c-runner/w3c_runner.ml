@@ -1127,7 +1127,7 @@ let run_query_eval_test tc =
          RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 (Z.of_int 100)
        with _ -> graph)
     | "RDFS" ->
-      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100)
+      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch graph (Z.of_int 100)
        with _ -> graph)
     | "RDF" ->
       (* Pure RDF regime: RDFS closure PLUS the rdfD2 axiom (every
@@ -1137,7 +1137,7 @@ let run_query_eval_test tc =
          it is applied here only for ent:RDF (rdf01 "RDF inference
          test"). Regime dispatch, not semantic logic (rule #15). *)
       (try
-         let g1 = RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100) in
+         let g1 = RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch graph (Z.of_int 100) in
          RDF_Graph_Executable.rdf_property_axiom_closure g1
        with _ -> graph)
     | "RIF" ->

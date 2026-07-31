@@ -2359,7 +2359,7 @@ let run_entail (args : string list) : unit =
     let closure tr =
       if norm = "OWL-RL"
       then RDF_Graph_Executable.owl_rl_closure_with_reflexivity tr (Z.of_int 100)
-      else RDF_Graph_Executable.rdfs_closure_with_reflexivity tr (Z.of_int 100)
+      else RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch tr (Z.of_int 100)
     in
     let graph = closure (concat_map_preserve_order (fun ds -> ds.ds_default) datasets) in
     let named = concat_map_preserve_order (fun ds -> ds.ds_named) datasets in
@@ -3194,7 +3194,7 @@ let () =
       (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity tr (Z.of_int 100)
        with _ -> tr)
     | "RDFS" ->
-      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity tr (Z.of_int 100)
+      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch tr (Z.of_int 100)
        with _ -> tr)
     | _ -> tr
   in

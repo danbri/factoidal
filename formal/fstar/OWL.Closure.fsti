@@ -79,6 +79,12 @@ open RDF.Triple
 open RDF.Graph
 open RDF.Indexed
 open RDFS.Closure
+// Phase 1a of docs/designissues/2026-07-31-rdfs-performance-scalability.md:
+// the schema/data-separation fast path for the RDFS regime, with its
+// checked side condition and its fallback to RDFS.Closure's untouched
+// general loop. Only `entailment_closure`'s "RDFS" branch reads it; the
+// OWL-RL path keeps `owl_rdfs_closure_with_reflexivity` unchanged.
+open RDFS.SchemaSplit
 
 (** ======================================================================== *)
 (** 19c. OWL 2 RL Datalog-shaped closure rules                              *)
@@ -6969,7 +6975,12 @@ let entailment_closure (regime : string) (g : rdf_graph) (fuel : nat) : Tot rdf_
     // tableau in Tableau.fst is a wiring point only — it doesn't
     // materialise new triples in this commit.
     owl_rl_closure_with_reflexivity g fuel
-  else if regime = regime_rdfs then rdfs_closure_with_reflexivity g fuel
+  // RDFS regime: dispatch through the Phase 1a schema/data split. When
+  // the input fails `schema_stable_check`, or its schema fragment is
+  // already dense, or a reachability walk exhausts its budget, this
+  // falls straight back to `rdfs_closure_with_reflexivity` — the
+  // general loop is unchanged and stays the fallback.
+  else if regime = regime_rdfs then rdfs_closure_with_reflexivity_dispatch g fuel
   else if regime = regime_rdf then rdfs_closure g fuel
   else g
 
