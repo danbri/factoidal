@@ -755,19 +755,26 @@ let rdfs_rule_recognized_datatypes_licensed g ig =
       forall (t : triple). memP t acc ==> (memP t g \/ rdfs1_derives d_minimal t) in
   let step : rdf_graph -> wf_iri -> rdf_graph =
     fun (acc : rdf_graph) (d : wf_iri) ->
-      let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
-      add_triple_unchecked acc new_t in
+      if snapshot_carries ig (S_IRI d) rdf_type rdfs_Datatype then acc
+      else
+        let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
+        add_triple_unchecked acc new_t in
   introduce forall (acc : rdf_graph) (d : wf_iri).
       (memP d recognized_datatypes /\ inv acc) ==> inv (step acc d)
   with introduce (memP d recognized_datatypes /\ inv acc) ==> inv (step acc d)
   with _ . begin
-    assert_norm (recognized_datatypes == [rdf_lang_string; xsd_string]);
-    assert (d == rdf_lang_string \/ d == xsd_string);
-    assert (d_minimal d);
-    let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
-    assert (new_t == ({ s = S_IRI d; p = i_rdf_type; o = T_IRI i_rdfs_Datatype } <: triple));
-    assert (rdfs1_derives d_minimal new_t);
-    assert (step acc d == new_t :: acc)
+    // The emit-once guard's `then` branch returns the accumulator
+    // untouched, so the invariant is carried across it for free.
+    if snapshot_carries ig (S_IRI d) rdf_type rdfs_Datatype then ()
+    else begin
+      assert_norm (recognized_datatypes == [rdf_lang_string; xsd_string]);
+      assert (d == rdf_lang_string \/ d == xsd_string);
+      assert (d_minimal d);
+      let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
+      assert (new_t == ({ s = S_IRI d; p = i_rdf_type; o = T_IRI i_rdfs_Datatype } <: triple));
+      assert (rdfs1_derives d_minimal new_t);
+      assert (step acc d == new_t :: acc)
+    end
   end;
   fold_left_inv inv step recognized_datatypes g;
   assert_norm (rdfs_rule_recognized_datatypes g ig ==
@@ -785,16 +792,21 @@ let rdfs_rule_resource_subject_licensed g ig =
   let inv = licensed_by rdfs4a_derives g in
   let step : rdf_graph -> triple -> rdf_graph =
     fun (acc : rdf_graph) (t : triple) ->
-      let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
-      add_triple_unchecked acc new_t in
+      if snapshot_carries ig t.s rdf_type rdfs_Resource then acc
+      else
+        let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
+        add_triple_unchecked acc new_t in
   introduce forall (acc : rdf_graph) (t : triple).
       (memP t g /\ inv acc) ==> inv (step acc t)
   with introduce (memP t g /\ inv acc) ==> inv (step acc t)
   with _ . begin
-    let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
-    assert (new_t == ({ s = t.s; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
-    assert (rdfs4a_derives g new_t);
-    assert (step acc t == new_t :: acc)
+    if snapshot_carries ig t.s rdf_type rdfs_Resource then ()
+    else begin
+      let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
+      assert (new_t == ({ s = t.s; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
+      assert (rdfs4a_derives g new_t);
+      assert (step acc t == new_t :: acc)
+    end
   end;
   fold_left_inv inv step g g;
   assert_norm (rdfs_rule_resource_subject g ig == fold_left step g g)
@@ -814,8 +826,10 @@ let rdfs_rule_resource_object_licensed g ig =
     fun (acc : rdf_graph) (t : triple) ->
       match term_to_subject t.o with
       | Some y_subj ->
-        let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
-        add_triple_unchecked acc new_t
+        if snapshot_carries ig y_subj rdf_type rdfs_Resource then acc
+        else
+          let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
+          add_triple_unchecked acc new_t
       | None -> acc in
   introduce forall (acc : rdf_graph) (t : triple).
       (memP t g /\ inv acc) ==> inv (step acc t)
@@ -823,11 +837,14 @@ let rdfs_rule_resource_object_licensed g ig =
   with _ . begin
     match term_to_subject t.o with
     | Some y_subj ->
-      lemma_term_to_subject_subj_term t.o y_subj;
-      let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
-      assert (memP t g /\ subj_term y_subj == t.o);
-      assert (new_t == ({ s = y_subj; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
-      assert (rdfs4b_derives g new_t)
+      if snapshot_carries ig y_subj rdf_type rdfs_Resource then ()
+      else begin
+        lemma_term_to_subject_subj_term t.o y_subj;
+        let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
+        assert (memP t g /\ subj_term y_subj == t.o);
+        assert (new_t == ({ s = y_subj; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
+        assert (rdfs4b_derives g new_t)
+      end
     | None -> ()
   end;
   fold_left_inv inv step g g;
@@ -844,7 +861,8 @@ let rdfs_rule_class_subclass_resource_licensed g ig =
   let inv = licensed_by rdfs8_derives g in
   let step : rdf_graph -> triple -> rdf_graph =
     fun (acc : rdf_graph) (t : triple) ->
-      if is_typed_as t rdfs_Class
+      if is_typed_as t rdfs_Class &&
+         not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Resource)
       then
         let new_t : triple =
           { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } in
@@ -854,7 +872,8 @@ let rdfs_rule_class_subclass_resource_licensed g ig =
       (memP t g /\ inv acc) ==> inv (step acc t)
   with introduce (memP t g /\ inv acc) ==> inv (step acc t)
   with _ . begin
-    if is_typed_as t rdfs_Class then begin
+    if is_typed_as t rdfs_Class &&
+       not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Resource) then begin
       match t.o with
       | T_IRI i ->
         let new_t : triple =
@@ -880,7 +899,8 @@ let rdfs_rule_datatype_subclass_literal_licensed g ig =
   let inv = licensed_by rdfs13_derives g in
   let step : rdf_graph -> triple -> rdf_graph =
     fun (acc : rdf_graph) (t : triple) ->
-      if is_typed_as t rdfs_Datatype
+      if is_typed_as t rdfs_Datatype &&
+         not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Literal)
       then
         let new_t : triple =
           { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } in
@@ -890,7 +910,8 @@ let rdfs_rule_datatype_subclass_literal_licensed g ig =
       (memP t g /\ inv acc) ==> inv (step acc t)
   with introduce (memP t g /\ inv acc) ==> inv (step acc t)
   with _ . begin
-    if is_typed_as t rdfs_Datatype then begin
+    if is_typed_as t rdfs_Datatype &&
+       not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Literal) then begin
       match t.o with
       | T_IRI i ->
         let new_t : triple =

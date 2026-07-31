@@ -165,47 +165,66 @@ let is_typed_as (t : RDF_Triple.triple) (c : RDF_Term.wf_iri) : Prims.bool=
     (match t.RDF_Triple.o with | RDF_Term.T_IRI i -> i = c | uu___ -> false)
 let recognized_datatypes : RDF_Term.wf_iri Prims.list=
   [RDF_Term.rdf_lang_string; RDF_Term.xsd_string]
+let snapshot_carries (ig : RDF_Indexed.indexed_graph) (s : RDF_Term.subject)
+  (p : RDF_Term.wf_iri) (c : RDF_Term.wf_iri) : Prims.bool=
+  (ig.RDF_Indexed.ig_built).RDF_Indexed.bn_sp &&
+    (FStar_List_Tot_Base.existsb
+       (fun o -> match o with | RDF_Term.T_IRI i -> i = c | uu___ -> false)
+       (RDF_Indexed.find_objects_indexed ig s p))
 let rdfs_rule_recognized_datatypes (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc d ->
-       let new_t =
-         {
-           RDF_Triple.s = (RDF_Term.S_IRI d);
-           RDF_Triple.p = rdf_type;
-           RDF_Triple.o = (RDF_Term.T_IRI rdfs_Datatype)
-         } in
-       RDF_Graph.add_triple_unchecked acc new_t) g recognized_datatypes
+       if snapshot_carries ig (RDF_Term.S_IRI d) rdf_type rdfs_Datatype
+       then acc
+       else
+         (let new_t =
+            {
+              RDF_Triple.s = (RDF_Term.S_IRI d);
+              RDF_Triple.p = rdf_type;
+              RDF_Triple.o = (RDF_Term.T_IRI rdfs_Datatype)
+            } in
+          RDF_Graph.add_triple_unchecked acc new_t)) g recognized_datatypes
 let rdfs_rule_resource_subject (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
-       let new_t =
-         {
-           RDF_Triple.s = (t.RDF_Triple.s);
-           RDF_Triple.p = rdf_type;
-           RDF_Triple.o = (RDF_Term.T_IRI rdfs_Resource)
-         } in
-       RDF_Graph.add_triple_unchecked acc new_t) g g
+       if snapshot_carries ig t.RDF_Triple.s rdf_type rdfs_Resource
+       then acc
+       else
+         (let new_t =
+            {
+              RDF_Triple.s = (t.RDF_Triple.s);
+              RDF_Triple.p = rdf_type;
+              RDF_Triple.o = (RDF_Term.T_IRI rdfs_Resource)
+            } in
+          RDF_Graph.add_triple_unchecked acc new_t)) g g
 let rdfs_rule_resource_object (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
        match RDF_Graph.term_to_subject t.RDF_Triple.o with
        | FStar_Pervasives_Native.Some y_subj ->
-           let new_t =
-             {
-               RDF_Triple.s = y_subj;
-               RDF_Triple.p = rdf_type;
-               RDF_Triple.o = (RDF_Term.T_IRI rdfs_Resource)
-             } in
-           RDF_Graph.add_triple_unchecked acc new_t
+           if snapshot_carries ig y_subj rdf_type rdfs_Resource
+           then acc
+           else
+             (let new_t =
+                {
+                  RDF_Triple.s = y_subj;
+                  RDF_Triple.p = rdf_type;
+                  RDF_Triple.o = (RDF_Term.T_IRI rdfs_Resource)
+                } in
+              RDF_Graph.add_triple_unchecked acc new_t)
        | FStar_Pervasives_Native.None -> acc) g g
 let rdfs_rule_class_subclass_resource (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
-       if is_typed_as t rdfs_Class
+       if
+         (is_typed_as t rdfs_Class) &&
+           (Prims.op_Negation
+              (snapshot_carries ig t.RDF_Triple.s rdfs_subClassOf
+                 rdfs_Resource))
        then
          let new_t =
            {
@@ -219,7 +238,11 @@ let rdfs_rule_datatype_subclass_literal (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
-       if is_typed_as t rdfs_Datatype
+       if
+         (is_typed_as t rdfs_Datatype) &&
+           (Prims.op_Negation
+              (snapshot_carries ig t.RDF_Triple.s rdfs_subClassOf
+                 rdfs_Literal))
        then
          let new_t =
            {

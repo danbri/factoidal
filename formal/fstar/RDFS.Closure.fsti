@@ -365,6 +365,45 @@ let is_typed_as (t : triple) (c : wf_iri) : bool =
 // this rule names.
 let recognized_datatypes : list wf_iri = [rdf_lang_string; xsd_string]
 
+// EMIT-ONCE GUARD (issue #340 item 4, 2026-07-31).
+//
+// All five RS-2 rows below are UNCONDITIONAL emitters: rdfs4a emits one
+// triple per triple of the accumulator, rdfs4b one per subject-eligible
+// object, rdfs8 / rdfs13 one per class / datatype declaration, rdfs1 two
+// axioms. `rdfs_closure_step` re-runs every row on every round, so from
+// round 2 onwards each row re-derived a graph-sized block of triples it
+// had already derived. The accumulator handed to `graph_dedup_sort` grew
+// to roughly 4x the graph on EVERY round; measured cost was OWL
+// profile-RL ConsistencyTests 1.51s -> 6.07s.
+//
+// `snapshot_carries ig s p c` is true only when the step's index
+// SNAPSHOT already carries the exact triple (s, p, <c>). A row that sees
+// it true skips the emission.
+//
+// WHY THE RESULT IS UNCHANGED. The snapshot is the step's INPUT graph
+// (`rdfs_closure_step` builds `ig` from `g` and never rebuilds it), and
+// every row seeds its fold with an accumulator that already contains
+// that input. So a suppressed triple is still an element of the row's
+// result: the emitted SET is identical, only the duplicate COUNT drops.
+// The three theorems that pin this per row live in
+// RDF.Entailment.RDFS.Refinement.fst section 6b:
+//   `_licensed`  -- nothing new appears  (unchanged statement)
+//   `_monotone`  -- the seed survives
+//   `_complete`  -- every conclusion the row licenses is still present
+// `_licensed` and `_complete` together bracket the result set from both
+// sides, so the guard cannot lose a derivation.
+//
+// `ig_built.bn_sp` is checked first: a caller that passed a SELECTIVELY
+// built index has `ig_sp = BLeaf` by construction, not because the
+// triple is absent (see the `bucket_needs` banner in RDF.Indexed.fsti),
+// and an unbuilt bucket must never be read as "not present".
+let snapshot_carries (ig : indexed_graph) (s : subject) (p : wf_iri) (c : wf_iri)
+  : Tot bool =
+  ig.ig_built.bn_sp &&
+  List.Tot.existsb
+    (fun (o : rdf_term) -> match o with | T_IRI i -> i = c | _ -> false)
+    (find_objects_indexed ig s p)
+
 // rdfs1, RDF 1.1 Semantics section 9 rule table, verbatim:
 //   "rdfs1 | any IRI aaa in D | aaa rdf:type rdfs:Datatype ."
 // The rule has NO premise from the data, so it is an axiom emitter over
@@ -372,8 +411,10 @@ let recognized_datatypes : list wf_iri = [rdf_lang_string; xsd_string]
 let rdfs_rule_recognized_datatypes (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (d : wf_iri) ->
-      let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
-      add_triple_unchecked acc new_t)
+      if snapshot_carries ig (S_IRI d) rdf_type rdfs_Datatype then acc
+      else
+        let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
+        add_triple_unchecked acc new_t)
     g
     recognized_datatypes
 
@@ -384,8 +425,10 @@ let rdfs_rule_recognized_datatypes (g : rdf_graph) (ig : indexed_graph) : rdf_gr
 let rdfs_rule_resource_subject (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
-      let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
-      add_triple_unchecked acc new_t)
+      if snapshot_carries ig t.s rdf_type rdfs_Resource then acc
+      else
+        let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
+        add_triple_unchecked acc new_t)
     g
     g
 
@@ -403,8 +446,10 @@ let rdfs_rule_resource_object (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
     (fun (acc : rdf_graph) (t : triple) ->
       match term_to_subject t.o with
       | Some y_subj ->
-        let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
-        add_triple_unchecked acc new_t
+        if snapshot_carries ig y_subj rdf_type rdfs_Resource then acc
+        else
+          let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
+          add_triple_unchecked acc new_t
       | None -> acc)
     g
     g
@@ -414,7 +459,8 @@ let rdfs_rule_resource_object (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
 let rdfs_rule_class_subclass_resource (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
-      if is_typed_as t rdfs_Class
+      if is_typed_as t rdfs_Class &&
+         not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Resource)
       then
         let new_t : triple =
           { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } in
@@ -428,7 +474,8 @@ let rdfs_rule_class_subclass_resource (g : rdf_graph) (ig : indexed_graph) : rdf
 let rdfs_rule_datatype_subclass_literal (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
-      if is_typed_as t rdfs_Datatype
+      if is_typed_as t rdfs_Datatype &&
+         not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Literal)
       then
         let new_t : triple =
           { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } in
@@ -456,7 +503,14 @@ let rdfs_closure_step (g : rdf_graph) : rdf_graph =
   (* Rows added 2026-07-31 (RS-2). Order: the two axiom-emitting /
      class-shaped rows first, so the rdfs:Resource rows below see the
      subjects they introduce within this same step. rdfs4a/rdfs4b run
-     last because they read the WHOLE accumulator. *)
+     last because they read the WHOLE accumulator.
+     All five consult `snapshot_carries ig` and skip an emission the
+     SNAPSHOT already carries (issue #340 item 4). `ig` is built from
+     this step's INPUT and every row seeds its fold with an accumulator
+     that contains that input, so the emitted SET is unchanged and only
+     the duplicate count drops; see the guard's banner above and the
+     `_monotone` / `_complete` theorems in
+     RDF.Entailment.RDFS.Refinement.fst section 6b. *)
   let g8  = rdfs_rule_recognized_datatypes g7 ig in      (* rdfs1  *)
   let g9  = rdfs_rule_class_subclass_resource g8 ig in   (* rdfs8  *)
   let g10 = rdfs_rule_datatype_subclass_literal g9 ig in (* rdfs13 *)
