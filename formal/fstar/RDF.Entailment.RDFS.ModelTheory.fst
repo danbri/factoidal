@@ -188,6 +188,41 @@ let cond_cmp_member (i : interp) : prop =
     icext i x (i.i_iri rdfs_ContainerMembershipProperty) ==>
     i.iext (i.i_iri rdfs_subPropertyOf) x (i.i_iri rdfs_member)
 
+// "If <x,y> is in IEXT(I(rdfs:subClassOf)) then x and y are in IC and
+//  ICEXT(x) is a subset of ICEXT(y)."  -- the IC HALF, which
+// `cond_subClassOf` above drops per the enlarging convention. It is
+// restored here (as its own condition, so `cond_subClassOf` keeps the
+// exact strength rdfs9 needs) because the shipping
+// `rdfs_reflexivity_axioms` harvest reads subClassOf ENDPOINTS, and the
+// IC half plus reflexivity on IC is what licenses that. IC is
+// ICEXT(I(rdfs:Class)) by section 9's own definition.
+//
+// Adding a condition SHRINKS the interpretation class, so every
+// soundness theorem below stays true; the class is still a superset of
+// the genuine RDFS interpretations, which satisfy this condition by
+// definition.
+let cond_subClassOf_ic (i : interp) : prop =
+  forall (x y : i.idom).
+    i.iext (i.i_iri rdfs_subClassOf) x y ==>
+    icext i x (i.i_iri rdfs_Class) /\ icext i y (i.i_iri rdfs_Class)
+
+// "If <x,y> is in IEXT(I(rdfs:subPropertyOf)) then x and y are in IP
+//  and IEXT(x) is a subset of IEXT(y)."  -- the IP half, dual to the
+// above. IP is identified with ICEXT(I(rdf:Property)) exactly as
+// `cond_rdf_property` / `cond_subPropertyOf_refl` already do.
+let cond_subPropertyOf_ip (i : interp) : prop =
+  forall (x y : i.idom).
+    i.iext (i.i_iri rdfs_subPropertyOf) x y ==>
+    icext i x (i.i_iri rdf_Property) /\ icext i y (i.i_iri rdf_Property)
+
+// RDF 1.1 Semantics section 8: "RDF interpretations ... recognize the
+// datatype IRIs rdf:langString and xsd:string", i.e. `d_minimal` is a
+// subset of EVERY recognized-datatype set D. Stated as its own
+// condition so that a theorem parameterised by an arbitrary D still has
+// the two guaranteed datatypes available -- which is what the shipping
+// rdfs1 rule emits.
+let cond_datatypes_minimal (i : interp) : prop = cond_datatypes d_minimal i
+
 // "... and the RDFS axiomatic triples must be satisfied."
 let cond_rdfs_axioms (i : interp) : prop =
   forall (a : bnode_assignment i.idom) (t : triple).
@@ -198,9 +233,11 @@ let cond_rdfs_axioms (i : interp) : prop =
 let rdfs_conditions (dd : datatype_set) (i : interp) : prop =
   rdf_conditions i /\
   cond_domain i /\ cond_range i /\
-  cond_datatypes dd i /\ cond_resource i /\
+  cond_datatypes dd i /\ cond_datatypes_minimal i /\ cond_resource i /\
   cond_subPropertyOf i /\ cond_subPropertyOf_trans i /\ cond_subPropertyOf_refl i /\
+  cond_subPropertyOf_ip i /\
   cond_subClassOf i /\ cond_subClassOf_trans i /\ cond_subClassOf_refl i /\
+  cond_subClassOf_ic i /\
   cond_class_subclass_resource i /\ cond_datatype_subclass_literal i /\
   cond_cmp_member i /\ cond_rdfs_axioms i
 
@@ -415,6 +452,51 @@ let rdfs_member_subproperty_true (i : interp) (a : bnode_assignment i.idom) (t :
     assert (icext i (i.i_iri n) (i.i_iri rdfs_ContainerMembershipProperty))
   end
 
+// The two CONDITION-LEVEL consequences the Spec module names alongside
+// `rdfs_member_subproperty`: an endpoint of an `rdfs:subClassOf` triple
+// is in IC, and IEXT(I(rdfs:subClassOf)) is reflexive on IC, so the
+// self-loop holds. Dual for subPropertyOf on IP. These are what license
+// the shipping `rdfs_reflexivity_axioms` harvest (finding RS-1's fix).
+let rdfs_subClassOf_endpoint_refl_true (i : interp) (a : bnode_assignment i.idom)
+                                       (g : rdf_graph) (t : triple)
+  : Lemma (requires cond_subClassOf_ic i /\ cond_subClassOf_refl i /\
+                    holds_all i a g /\ rdfs_subClassOf_endpoint_refl g t)
+          (ensures triple_holds i a t) =
+  lemma_vocab_agree ();
+  eliminate exists (u : triple) (xs : subject).
+      memP u g /\ u.p == i_rdfs_subClassOf /\
+      (u.s == xs \/ u.o == subj_term xs) /\
+      t == ({ s = xs; p = i_rdfs_subClassOf; o = subj_term xs } <: triple)
+  returns triple_holds i a t
+  with _ . begin
+    assert (triple_holds i a u);
+    lemma_subj_term_denot i a xs;
+    lemma_subj_term_denot i a u.s;
+    assert (i.iext (i.i_iri rdfs_subClassOf)
+                   (denot_subject i a u.s) (denot_term i a u.o));
+    assert (icext i (denot_subject i a xs) (i.i_iri rdfs_Class))
+  end
+
+let rdfs_subPropertyOf_endpoint_refl_true (i : interp) (a : bnode_assignment i.idom)
+                                          (g : rdf_graph) (t : triple)
+  : Lemma (requires cond_subPropertyOf_ip i /\ cond_subPropertyOf_refl i /\
+                    holds_all i a g /\ rdfs_subPropertyOf_endpoint_refl g t)
+          (ensures triple_holds i a t) =
+  lemma_vocab_agree ();
+  eliminate exists (u : triple) (xs : subject).
+      memP u g /\ u.p == i_rdfs_subPropertyOf /\
+      (u.s == xs \/ u.o == subj_term xs) /\
+      t == ({ s = xs; p = i_rdfs_subPropertyOf; o = subj_term xs } <: triple)
+  returns triple_holds i a t
+  with _ . begin
+    assert (triple_holds i a u);
+    lemma_subj_term_denot i a xs;
+    lemma_subj_term_denot i a u.s;
+    assert (i.iext (i.i_iri rdfs_subPropertyOf)
+                   (denot_subject i a u.s) (denot_term i a u.o));
+    assert (icext i (denot_subject i a xs) (i.i_iri rdf_Property))
+  end
+
 // -------------------------------------------------------------------
 // THEOREM. The RDF/RDFS rule tables are SOUND: anything they license
 // from a true graph is true. No engine function appears.
@@ -442,7 +524,9 @@ let rdfs_licensed_true dd i a g t =
     FStar.Classical.move_requires (rdfs11_true i a g g) t;
     FStar.Classical.move_requires (rdfs12_true i a g) t;
     FStar.Classical.move_requires (rdfs13_true i a g) t;
-    FStar.Classical.move_requires (rdfs_member_subproperty_true i a) t
+    FStar.Classical.move_requires (rdfs_member_subproperty_true i a) t;
+    FStar.Classical.move_requires (rdfs_subClassOf_endpoint_refl_true i a g) t;
+    FStar.Classical.move_requires (rdfs_subPropertyOf_endpoint_refl_true i a g) t
   end
 #pop-options
 
@@ -532,6 +616,53 @@ let rdfs_rule_container_membership_preserves (i : interp) (a : bnode_assignment 
   rdfs_rule_container_membership_licensed g ig;
   FStar.Classical.forall_intro
     (FStar.Classical.move_requires (rdfs_member_subproperty_true i a))
+
+// The rows added 2026-07-31 (RS-2). Each reads its premises from the
+// graph it folds over, so the source and seed graphs coincide and the
+// bridge is applied at the diagonal.
+let rdfs_rule_recognized_datatypes_preserves (i : interp) (a : bnode_assignment i.idom)
+                                             (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires cond_datatypes_minimal i /\ holds_all i a g)
+          (ensures  holds_all i a (rdfs_rule_recognized_datatypes g ig)) =
+  rdfs_rule_recognized_datatypes_licensed g ig;
+  FStar.Classical.forall_intro
+    (FStar.Classical.move_requires (rdfs1_true d_minimal i a))
+
+let rdfs_rule_resource_subject_preserves (i : interp) (a : bnode_assignment i.idom)
+                                         (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires cond_resource i /\ holds_all i a g)
+          (ensures  holds_all i a (rdfs_rule_resource_subject g ig)) =
+  rdfs_rule_resource_subject_licensed g ig;
+  FStar.Classical.forall_intro
+    (FStar.Classical.move_requires (rdfs4a_true i a g));
+  bridge i a rdfs4a_derives g g (rdfs_rule_resource_subject g ig)
+
+let rdfs_rule_resource_object_preserves (i : interp) (a : bnode_assignment i.idom)
+                                        (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires cond_resource i /\ holds_all i a g)
+          (ensures  holds_all i a (rdfs_rule_resource_object g ig)) =
+  rdfs_rule_resource_object_licensed g ig;
+  FStar.Classical.forall_intro
+    (FStar.Classical.move_requires (rdfs4b_true i a g));
+  bridge i a rdfs4b_derives g g (rdfs_rule_resource_object g ig)
+
+let rdfs_rule_class_subclass_resource_preserves (i : interp) (a : bnode_assignment i.idom)
+                                                (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires cond_class_subclass_resource i /\ holds_all i a g)
+          (ensures  holds_all i a (rdfs_rule_class_subclass_resource g ig)) =
+  rdfs_rule_class_subclass_resource_licensed g ig;
+  FStar.Classical.forall_intro
+    (FStar.Classical.move_requires (rdfs8_true i a g));
+  bridge i a rdfs8_derives g g (rdfs_rule_class_subclass_resource g ig)
+
+let rdfs_rule_datatype_subclass_literal_preserves (i : interp) (a : bnode_assignment i.idom)
+                                                  (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires cond_datatype_subclass_literal i /\ holds_all i a g)
+          (ensures  holds_all i a (rdfs_rule_datatype_subclass_literal g ig)) =
+  rdfs_rule_datatype_subclass_literal_licensed g ig;
+  FStar.Classical.forall_intro
+    (FStar.Classical.move_requires (rdfs13_true i a g));
+  bridge i a rdfs13_derives g g (rdfs_rule_datatype_subclass_literal g ig)
 #pop-options
 
 // -------------------------------------------------------------------
@@ -570,8 +701,19 @@ let rdfs_closure_step_sound dd i a g =
   rdfs_rule_subClassOf_trans_preserves i a g5 ig;
   let g7 = rdfs_rule_subPropertyOf_trans g6 ig in
   rdfs_rule_subPropertyOf_trans_preserves i a g6 ig;
-  FStar.Classical.forall_intro (lemma_graph_dedup_sort_memP g7);
-  assert (rdfs_closure_step g == graph_dedup_sort g7)
+  // The rows added 2026-07-31 (RS-2), in pipeline order.
+  let g8 = rdfs_rule_recognized_datatypes g7 ig in      // rdfs1
+  rdfs_rule_recognized_datatypes_preserves i a g7 ig;
+  let g9 = rdfs_rule_class_subclass_resource g8 ig in   // rdfs8
+  rdfs_rule_class_subclass_resource_preserves i a g8 ig;
+  let g10 = rdfs_rule_datatype_subclass_literal g9 ig in // rdfs13
+  rdfs_rule_datatype_subclass_literal_preserves i a g9 ig;
+  let g11 = rdfs_rule_resource_subject g10 ig in        // rdfs4a
+  rdfs_rule_resource_subject_preserves i a g10 ig;
+  let g12 = rdfs_rule_resource_object g11 ig in         // rdfs4b
+  rdfs_rule_resource_object_preserves i a g11 ig;
+  FStar.Classical.forall_intro (lemma_graph_dedup_sort_memP g12);
+  assert (rdfs_closure_step g == graph_dedup_sort g12)
 #pop-options
 
 // -------------------------------------------------------------------
@@ -605,7 +747,12 @@ let lemma_chain_shift (g : rdf_graph)
 // -------------------------------------------------------------------
 // THEOREM. The whole fixed-point driver preserves truth, at any fuel.
 // -------------------------------------------------------------------
-#push-options "--z3rlimit 60"
+// --z3rlimit 240 + the explicit `fuel > 0` (2026-07-31): the RS-2 rows
+// enlarged the encoding of `rdfs_closure_step` enough that z3 stopped
+// discharging the recursive call's `fuel - 1 : nat` subtyping and its
+// `<<` decreases obligation on its own. A budget bump plus one hint;
+// no --lax, no --admit_smt_queries.
+#push-options "--z3rlimit 240"
 let rec rdfs_closure_sound (dd : datatype_set) (i : interp)
                            (a : bnode_assignment i.idom) (g : rdf_graph) (fuel : nat)
   : Lemma (requires rdfs_conditions dd i /\ holds_all i a g /\ closure_chain_wf g)
@@ -613,6 +760,7 @@ let rec rdfs_closure_sound (dd : datatype_set) (i : interp)
           (decreases fuel) =
   if fuel = 0 then ()
   else begin
+    assert (fuel > 0);
     let g' = rdfs_closure_step g in
     assert (closure_iter g 0 == g);
     rdfs_closure_step_sound dd i a g;
@@ -665,6 +813,82 @@ let rdf_property_axiom_closure_entails g =
   end
 
 // ===================================================================
+// 4c. `rdfs_closure_with_reflexivity` IS SOUND (2026-07-31).
+//
+// Before the RS-1 regime split this theorem was DELIBERATELY ABSENT:
+// the function harvested classes and properties through the OWL typing
+// IRIs, which no RDFS condition licenses, so the only way to prove it
+// sound would have been to weaken the specification -- exactly what
+// this pattern exists to prevent. The split fixed the function, and
+// `RDF.Entailment.RDFS.Refinement.rdfs_reflexivity_axioms_licensed`
+// proves the narrow harvest emits only `rdfs_licensed` triples, so the
+// proof now closes against the specification as written.
+//
+// Stated at `d_minimal`: the licence theorem is at `d_minimal`, and the
+// harvest emits no datatype triple, so no wider D is needed.
+//
+// The hypothesis names the index chain of BOTH closure passes, for the
+// reason section 3 of the design note records: a `forall`-over-all-graphs
+// index hypothesis is false and would make the theorem vacuous.
+// ===================================================================
+
+let rdfs_reflexivity_axioms_preserves (i : interp) (a : bnode_assignment i.idom)
+                                      (g : rdf_graph)
+  : Lemma (requires rdfs_conditions d_minimal i /\ holds_all i a g)
+          (ensures  holds_all i a (rdfs_reflexivity_axioms g)) =
+  rdfs_reflexivity_axioms_licensed g;
+  FStar.Classical.forall_intro
+    (FStar.Classical.move_requires (rdfs_licensed_true d_minimal i a g))
+
+let lemma_add_triples_if_new_holds (i : interp) (a : bnode_assignment i.idom)
+                                   (g ts : rdf_graph)
+  : Lemma (requires holds_all i a g /\ holds_all i a ts)
+          (ensures  holds_all i a (add_triples_if_new g ts)) =
+  FStar.Classical.forall_intro (lemma_add_triples_if_new_memP g ts)
+
+// The second pass's input, named so the hypothesis can mention it.
+let reflexivity_seeded (g : rdf_graph) (fuel : nat) : rdf_graph =
+  let closed = rdfs_closure g fuel in
+  add_triples_if_new closed (rdfs_reflexivity_axioms closed)
+
+#push-options "--z3rlimit 120"
+val rdfs_closure_with_reflexivity_sound (i : interp) (a : bnode_assignment i.idom)
+                                        (g : rdf_graph) (fuel : nat)
+  : Lemma (requires rdfs_conditions d_minimal i /\ holds_all i a g /\
+                    closure_chain_wf g /\
+                    closure_chain_wf (reflexivity_seeded g fuel))
+          (ensures  holds_all i a (rdfs_closure_with_reflexivity g fuel))
+
+let rdfs_closure_with_reflexivity_sound i a g fuel =
+  let closed = rdfs_closure g fuel in
+  rdfs_closure_sound d_minimal i a g fuel;
+  rdfs_reflexivity_axioms_preserves i a closed;
+  lemma_add_triples_if_new_holds i a closed (rdfs_reflexivity_axioms closed);
+  assert (reflexivity_seeded g fuel ==
+          add_triples_if_new closed (rdfs_reflexivity_axioms closed));
+  rdfs_closure_sound d_minimal i a (reflexivity_seeded g fuel) fuel
+#pop-options
+
+// COROLLARY. The RDFS regime's entry point is RDFS-SOUND.
+val rdfs_closure_with_reflexivity_entails (g : rdf_graph) (fuel : nat)
+  : Lemma (requires closure_chain_wf g /\ closure_chain_wf (reflexivity_seeded g fuel))
+          (ensures  rdfs_entails d_minimal g (rdfs_closure_with_reflexivity g fuel))
+
+let rdfs_closure_with_reflexivity_entails g fuel =
+  introduce forall (i : interp).
+      rdfs_conditions d_minimal i ==>
+      satisfies i g ==> satisfies i (rdfs_closure_with_reflexivity g fuel)
+  with introduce rdfs_conditions d_minimal i ==>
+                 (satisfies i g ==> satisfies i (rdfs_closure_with_reflexivity g fuel))
+  with _ . introduce satisfies i g ==> satisfies i (rdfs_closure_with_reflexivity g fuel)
+  with _ . begin
+    eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+    returns satisfies i (rdfs_closure_with_reflexivity g fuel)
+    with _ . rdfs_closure_with_reflexivity_sound i a g fuel
+  end
+
+
+// ===================================================================
 // 4b. FINDING RS-1, the model-theoretic half.
 //
 // RDF.Entailment.RDFS.Refinement.reflexivity_axioms_not_rdfs_sound is
@@ -707,11 +931,15 @@ let reflexivity_needs_rdfs_Class (i : interp) (x : i.idom)
 //   `rho_df_graph` is defined in the Spec module for that purpose and
 //   the theorem is the next commit's target. The blocking analysis is
 //   in the design note.
-// * `rdfs_closure_with_reflexivity`. Deliberately absent: it calls
-//   `rdfs_reflexivity_axioms`, which is UNSOUND at this rung (finding
-//   RS-1, with a machine-checked witness in the Refinement module).
-//   Proving it sound would require weakening the specification, which
-//   is exactly what this vertical must not do.
+// * `rdfs_closure_with_reflexivity`. NO LONGER ABSENT as of 2026-07-31
+//   -- see section 4c. It used to be deliberately unproven because it
+//   called a harvest that read the OWL typing IRIs, which no RDFS
+//   condition licenses (finding RS-1). The regime split fixed the
+//   function rather than weakening the specification, and the theorem
+//   then closed on the specification as written. The OWL-regime
+//   variant, `owl_rdfs_closure_with_reflexivity`, is still NOT proven
+//   RDFS-sound and must not be -- `owl_reflexivity_axioms_not_rdfs_sound`
+//   in the Refinement module is the witness that it cannot be.
 // * The GENUINE RDFS-interpretation class. `interp` is the OWL pilot's
 //   superset. For soundness the inclusion runs the right way and every
 //   theorem above is thereby STRONGER. For completeness it runs the

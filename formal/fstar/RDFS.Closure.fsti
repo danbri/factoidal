@@ -25,11 +25,25 @@ module RDFS.Closure
 //     `rdf:_n` family; see RDF.Vocabulary.Axioms.fst's banner for why
 //     the truly infinite family stays rule-generated, not tabulated)
 //     `rdfs_rule_container_membership`
-// Plus the reflexivity axioms of rdfs4a/4b-adjacent subClassOf/
-// subPropertyOf (every class/property collected from the graph is
-// related to itself — `rdfs_reflexivity_axioms`), which mirrors the
-// pre-F* OCaml patch #60 this block replaced (see the block's own
-// comment below).
+//   - rdfs1  `rdfs_rule_recognized_datatypes`   (aaa in D |- aaa type rdfs:Datatype)
+//   - rdfs4a `rdfs_rule_resource_subject`       (x a y |- x type rdfs:Resource)
+//   - rdfs4b `rdfs_rule_resource_object`        (x a y |- y type rdfs:Resource)
+//   - rdfs8  `rdfs_rule_class_subclass_resource`  (x type rdfs:Class
+//                                                  |- x subClassOf rdfs:Resource)
+//   - rdfs13 `rdfs_rule_datatype_subclass_literal` (x type rdfs:Datatype
+//                                                  |- x subClassOf rdfs:Literal)
+// The last five landed 2026-07-31, closing finding RS-2 of
+// docs/designissues/2026-07-30-rdf-rdfs-entailment-refinement.md for
+// every row that this tree's term algebra can build. Still not
+// implemented: rdfD1 and the 2004 reading of rdfs1, both of which mint
+// fresh blank nodes — see the design note for why that is a scoped gap
+// rather than an oversight.
+// Plus the reflexivity approximation of rdfs6 / rdfs10 (every class /
+// property collected from the graph is related to itself —
+// `rdfs_reflexivity_axioms`), which mirrors the pre-F* OCaml patch #60
+// this block replaced (see the block's own comment below). Since
+// 2026-07-31 that harvest is SPLIT BY REGIME (finding RS-1 / #335) and
+// the RDFS-regime half carries a licence theorem.
 //
 // This module is the base layer OWL.Closure builds on: OWL 2 RL/RDF's
 // Datalog closure interleaves its own rules with `rdfs_closure_step`
@@ -326,6 +340,104 @@ let rdfs_rule_container_membership (g : rdf_graph) (ig : indexed_graph) : rdf_gr
     container_membership_properties
 
 (** ======================================================================== *)
+(** RDFS rule rows added 2026-07-31 (finding RS-2 of                         *)
+(** docs/designissues/2026-07-30-rdf-rdfs-entailment-refinement.md):         *)
+(** rdfs1, rdfs4a, rdfs4b, rdfs8, rdfs13.                                    *)
+(**                                                                          *)
+(** Each is transcribed from RDF 1.1 Semantics section 9's rule table (the   *)
+(** row text is quoted at the function) and proven against the declarative   *)
+(** row in RDF.Entailment.RDFS.Spec.fst by a `_licensed` theorem in          *)
+(** RDF.Entailment.RDFS.Refinement.fst, with a truth-preservation lemma in   *)
+(** RDF.Entailment.RDFS.ModelTheory.fst.                                     *)
+(** ======================================================================== *)
+
+// Helper: is `t` of the shape `xxx rdf:type <c>` ? Written as a match on
+// the object rather than a structural `=` so no decidable-equality
+// instance for the recursive `rdf_term` is needed.
+let is_typed_as (t : triple) (c : wf_iri) : bool =
+  t.p = rdf_type && (match t.o with | T_IRI i -> i = c | _ -> false)
+
+// The recognized datatype IRIs D. RDF 1.1 Semantics section 8: "RDF
+// interpretations ... recognize the datatype IRIs rdf:langString and
+// xsd:string". That MINIMUM D is what this engine recognizes for the
+// purpose of rdfs1; it is the same set as
+// RDF.Entailment.RDF.Spec.d_minimal, which the refinement theorem for
+// this rule names.
+let recognized_datatypes : list wf_iri = [rdf_lang_string; xsd_string]
+
+// rdfs1, RDF 1.1 Semantics section 9 rule table, verbatim:
+//   "rdfs1 | any IRI aaa in D | aaa rdf:type rdfs:Datatype ."
+// The rule has NO premise from the data, so it is an axiom emitter over
+// D, like rdfs_rule_container_membership above.
+let rdfs_rule_recognized_datatypes (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (d : wf_iri) ->
+      let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
+      add_triple_unchecked acc new_t)
+    g
+    recognized_datatypes
+
+// rdfs4a, RDF 1.1 Semantics section 9 rule table, verbatim:
+//   "rdfs4a | xxx aaa yyy . | xxx rdf:type rdfs:Resource ."
+// The subject of the premise stays in subject position, so this row
+// needs no generalized-RDF escape.
+let rdfs_rule_resource_subject (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
+      add_triple_unchecked acc new_t)
+    g
+    g
+
+// rdfs4b, RDF 1.1 Semantics section 9 rule table, verbatim:
+//   "rdfs4b | xxx aaa yyy . | yyy rdf:type rdfs:Resource ."
+// GENERALIZED-RDF PREMISE (delta D5, finding RS-3): the object moves
+// into subject position, so the rule cannot fire when the object is a
+// literal or an RDF 1.2 triple term -- `RDF.Term.subject` is
+// IRI-or-bnode only and the conclusion is unbuildable. `term_to_subject`
+// is that side condition. The declarative `rdfs4b_derives` carries the
+// same premise, so the refinement is EXACT: the incompleteness is in
+// the tree's term algebra, not in the proof.
+let rdfs_rule_resource_object (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      match term_to_subject t.o with
+      | Some y_subj ->
+        let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
+        add_triple_unchecked acc new_t
+      | None -> acc)
+    g
+    g
+
+// rdfs8, RDF 1.1 Semantics section 9 rule table, verbatim:
+//   "rdfs8 | xxx rdf:type rdfs:Class . | xxx rdfs:subClassOf rdfs:Resource ."
+let rdfs_rule_class_subclass_resource (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if is_typed_as t rdfs_Class
+      then
+        let new_t : triple =
+          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } in
+        add_triple_unchecked acc new_t
+      else acc)
+    g
+    g
+
+// rdfs13, RDF 1.1 Semantics section 9 rule table, verbatim:
+//   "rdfs13 | xxx rdf:type rdfs:Datatype . | xxx rdfs:subClassOf rdfs:Literal ."
+let rdfs_rule_datatype_subclass_literal (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if is_typed_as t rdfs_Datatype
+      then
+        let new_t : triple =
+          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } in
+        add_triple_unchecked acc new_t
+      else acc)
+    g
+    g
+
+(** ======================================================================== *)
 (** Fixed-Point RDFS Closure                                                 *)
 (** ======================================================================== *)
 
@@ -341,12 +453,21 @@ let rdfs_closure_step (g : rdf_graph) : rdf_graph =
   let g5 = rdfs_rule_container_membership g4 ig in
   let g6 = rdfs_rule_subClassOf_trans g5 ig in     (* rdfs11: C<C transitivity *)
   let g7 = rdfs_rule_subPropertyOf_trans g6 ig in  (* rdfs5:  P<P transitivity *)
+  (* Rows added 2026-07-31 (RS-2). Order: the two axiom-emitting /
+     class-shaped rows first, so the rdfs:Resource rows below see the
+     subjects they introduce within this same step. rdfs4a/rdfs4b run
+     last because they read the WHOLE accumulator. *)
+  let g8  = rdfs_rule_recognized_datatypes g7 ig in      (* rdfs1  *)
+  let g9  = rdfs_rule_class_subclass_resource g8 ig in   (* rdfs8  *)
+  let g10 = rdfs_rule_datatype_subclass_literal g9 ig in (* rdfs13 *)
+  let g11 = rdfs_rule_resource_subject g10 ig in         (* rdfs4a *)
+  let g12 = rdfs_rule_resource_object g11 ig in          (* rdfs4b *)
   (* #259 followup: each rule now emits duplicates via add_triple_unchecked
      (O(1) prepend). One sort-and-collapse pass here restores set semantics
      for the fixed-point check below and any downstream consumer. O(N log N)
      beats the per-insert O(N) membership scan that previously dominated
      RDFS closure on the lifesci-scale 27K-triple disease graph. *)
-  graph_dedup_sort g7
+  graph_dedup_sort g12
 
 (* Iterate closure until fixed point or max iterations.
    Uses nat fuel parameter for termination.
@@ -433,58 +554,99 @@ let cons_term_iri_if_new (t : rdf_term) (acc : list wf_iri) : list wf_iri =
   | T_IRI i -> cons_if_new_iri i acc
   | _ -> acc
 
-// Is the triple's object one of the class-typing IRIs (rdfs:Class or
-// owl:Class)?
+// ---------------------------------------------------------------------
+// REGIME SPLIT OF THE CLASS / PROPERTY HARVEST (finding RS-1 of
+// docs/designissues/2026-07-30-rdf-rdfs-entailment-refinement.md,
+// section 7; fixed 2026-07-31, issue #335).
+//
+// Before this split there was ONE harvest, used by both the RDFS regime
+// and the OWL-RL regime, and it accepted the OWL typing IRIs
+// (owl:Class / owl:ObjectProperty / owl:DatatypeProperty). That is
+// SOUND under the OWL 2 RDF-Based Semantics, whose Table 5.3 identifies
+// ICEXT(I(owl:Class)) with IC, and UNSOUND at the RDFS rung, where
+// owl:Class is an ordinary IRI that no RDFS condition relates to
+// rdfs:Class. `entailment_closure` dispatched both regimes into the
+// same function, so one regime's licence was being spent in the other.
+// The machine-checked witness is
+// RDF.Entailment.RDFS.Refinement.owl_reflexivity_axioms_not_rdfs_sound
+// (it now names the OWL-regime function; before the split it named the
+// RDFS-regime one, which is what made it a shipping-code unsoundness).
+//
+// The `_rdfs` harvest below reads ONLY what RDF 1.1 Semantics section 9
+// licenses:
+//   * subject and IRI-object of an `rdfs:subClassOf` triple -- the
+//     section 9 condition "if <x,y> is in IEXT(I(rdfs:subClassOf)) then
+//     x and y are in IC", combined with "IEXT(I(rdfs:subClassOf)) is
+//     ... reflexive on IC";
+//   * subject of `rdf:type rdfs:Class` -- rule rdfs10, whose conclusion
+//     is exactly this triple.
+// Duals for properties: `rdfs:subPropertyOf` positions (the IP
+// condition plus reflexivity on IP) and `rdf:type rdf:Property`
+// (rule rdfs6).
+// ---------------------------------------------------------------------
+
+// RDFS-regime class typing: rdfs:Class only.
+let is_class_type_object_rdfs (o : rdf_term) : bool =
+  match o with
+  | T_IRI c -> c = rdfs_Class
+  | _ -> false
+
+// RDFS-regime property typing: rdf:Property only.
+let is_property_type_object_rdfs (o : rdf_term) : bool =
+  match o with
+  | T_IRI c -> c = rdf_Property
+  | _ -> false
+
+// OWL-regime class typing: rdfs:Class or owl:Class. Licensed by OWL 2
+// RDF-Based Semantics Table 5.3, NOT by RDF 1.1 Semantics section 9.
 let is_class_type_object (o : rdf_term) : bool =
   match o with
   | T_IRI c -> c = rdfs_Class || c = owl_Class
   | _ -> false
 
-// Is the triple's object one of the property-typing IRIs (rdf:Property,
-// owl:ObjectProperty, owl:DatatypeProperty)?
+// OWL-regime property typing: rdf:Property, owl:ObjectProperty or
+// owl:DatatypeProperty. Same regime caveat.
 let is_property_type_object (o : rdf_term) : bool =
   match o with
   | T_IRI c -> c = rdf_Property || c = owl_ObjectProperty || c = owl_DatatypeProperty
   | _ -> false
 
-// Walk a graph and gather every IRI that should be treated as a class
-// for the reflexivity of rdfs:subClassOf. Matches patch #60 behaviour
-// exactly: collect subjects and IRI-objects of rdfs:subClassOf triples,
-// plus subjects of (rdf:type rdfs:Class) and (rdf:type owl:Class).
-let collect_classes (g : rdf_graph) : list wf_iri =
+// Generic harvest, parameterised by the typing test, so the two regimes
+// share one walk and differ only in the predicate they are handed.
+let collect_related_iris (typing_ok : rdf_term -> bool) (rel : wf_iri)
+                         (g : rdf_graph) : list wf_iri =
   List.Tot.fold_left
     (fun (acc : list wf_iri) (t : triple) ->
       let acc1 =
-        if t.p = rdfs_subClassOf
+        if t.p = rel
         then cons_term_iri_if_new t.o (cons_subject_iri_if_new t.s acc)
         else acc
       in
-      if t.p = rdf_type && is_class_type_object t.o
+      if t.p = rdf_type && typing_ok t.o
       then cons_subject_iri_if_new t.s acc1
       else acc1)
     []
     g
 
-// Same for properties.
+// RDFS-regime harvests (RS-1 fix).
+let collect_classes_rdfs (g : rdf_graph) : list wf_iri =
+  collect_related_iris is_class_type_object_rdfs rdfs_subClassOf g
+
+let collect_properties_rdfs (g : rdf_graph) : list wf_iri =
+  collect_related_iris is_property_type_object_rdfs rdfs_subPropertyOf g
+
+// OWL-regime harvests. Byte-identical in behaviour to the pre-split
+// `collect_classes` / `collect_properties`; OWL.Closure.fsti keeps
+// using exactly these, so the OWL-RL regime is unchanged.
+let collect_classes (g : rdf_graph) : list wf_iri =
+  collect_related_iris is_class_type_object rdfs_subClassOf g
+
 let collect_properties (g : rdf_graph) : list wf_iri =
-  List.Tot.fold_left
-    (fun (acc : list wf_iri) (t : triple) ->
-      let acc1 =
-        if t.p = rdfs_subPropertyOf
-        then cons_term_iri_if_new t.o (cons_subject_iri_if_new t.s acc)
-        else acc
-      in
-      if t.p = rdf_type && is_property_type_object t.o
-      then cons_subject_iri_if_new t.s acc1
-      else acc1)
-    []
-    g
+  collect_related_iris is_property_type_object rdfs_subPropertyOf g
 
 // Build the reflexivity triples (C rdfs:subClassOf C) and
-// (P rdfs:subPropertyOf P) for every class C and property P in g.
-let rdfs_reflexivity_axioms (g : rdf_graph) : rdf_graph =
-  let classes = collect_classes g in
-  let properties = collect_properties g in
+// (P rdfs:subPropertyOf P) from a class list and a property list.
+let reflexivity_axioms_of (classes properties : list wf_iri) : rdf_graph =
   let class_triples : rdf_graph =
     List.Tot.map
       (fun (c : wf_iri) -> ({ s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c } <: triple))
@@ -496,6 +658,18 @@ let rdfs_reflexivity_axioms (g : rdf_graph) : rdf_graph =
       properties
   in
   class_triples @ property_triples
+
+// RDFS-regime reflexivity axioms. Every emitted triple is licensed by
+// RDF 1.1 Semantics section 9 -- proven in
+// RDF.Entailment.RDFS.Refinement.rdfs_reflexivity_axioms_licensed.
+let rdfs_reflexivity_axioms (g : rdf_graph) : rdf_graph =
+  reflexivity_axioms_of (collect_classes_rdfs g) (collect_properties_rdfs g)
+
+// OWL-regime reflexivity axioms. Behaviourally identical to the
+// pre-split `rdfs_reflexivity_axioms`; NOT RDFS-sound (that is the
+// point of the split), sound under the OWL 2 RDF-Based Semantics.
+let owl_reflexivity_axioms (g : rdf_graph) : rdf_graph =
+  reflexivity_axioms_of (collect_classes g) (collect_properties g)
 
 // Full RDFS closure with reflexivity axioms: run rdfs_closure, harvest
 // classes/properties, add reflexivity triples, then run rdfs_closure
@@ -528,9 +702,38 @@ let rdfs_reflexivity_axioms (g : rdf_graph) : rdf_graph =
 // cardinality-rule interaction — lands. RDF.Vocabulary.Axioms stays
 // verified, wired into the build, and importable; nothing consumes it
 // at runtime yet.
+//
+// STILL DISABLED after the 2026-07-31 RS-2 work. That work did NOT
+// re-attempt the seeding; it implemented five RULE rows instead. The
+// distinction matters: the reverted seed injected `rdf:type rdfs:range
+// rdfs:Class` and the other ~38 core-vocabulary domain/range rows,
+// which is exactly the shape that inflates the rdf:type set through
+// rdfs2 / rdfs3 and trips the qualified-cardinality scaffolding. The
+// rows added instead emit no domain/range triple at all: rdfs1 emits
+// two `<datatype> rdf:type rdfs:Datatype` triples, rdfs8 / rdfs13 emit
+// subClassOf edges to rdfs:Resource / rdfs:Literal, and rdfs4a / rdfs4b
+// emit `rdf:type rdfs:Resource`. Re-attempting the full seed still
+// needs the #236 work.
+//
+// REGIME SPLIT, 2026-07-31 (RS-1 / #335). This function is the RDFS
+// regime's entry point (`entailment_closure`'s "RDFS" branch,
+// RIF.Core.Tests' RDF/RDFS regime), so it harvests with the NARROW,
+// RDFS-licensed `rdfs_reflexivity_axioms`. The OWL-RL path uses
+// `owl_rdfs_closure_with_reflexivity` just below, which keeps the wide
+// harvest; OWL-RL behaviour is therefore unchanged by the split.
 let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
   let closed = rdfs_closure g fuel in
   let refl_axioms = rdfs_reflexivity_axioms closed in
+  let with_refl = add_triples_if_new closed refl_axioms in
+  rdfs_closure with_refl fuel
+
+// The OWL-regime RDFS pre-pass. Byte-identical to what
+// `rdfs_closure_with_reflexivity` did before the RS-1 split: it
+// harvests classes/properties through the OWL typing IRIs as well.
+// OWL.Closure.fsti's `owl_rl_closure_with_reflexivity_mode` calls this.
+let owl_rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+  let closed = rdfs_closure g fuel in
+  let refl_axioms = owl_reflexivity_axioms closed in
   let with_refl = add_triples_if_new closed refl_axioms in
   rdfs_closure with_refl fuel
 

@@ -282,6 +282,43 @@ let rdfs_member_subproperty (t : triple) : prop =
             o = T_IRI i_rdfs_member } <: triple)
 
 // ===================================================================
+// TWO CONDITION-LEVEL CONSEQUENCES that are not rows of the rule table,
+// in the same family as `rdfs_member_subproperty` above.
+//
+// RDF 1.1 Semantics section 9 states, as SEMANTIC CONDITIONS rather
+// than as rules,
+//   "If <x,y> is in IEXT(I(rdfs:subClassOf)) then x and y are in IC and
+//    ICEXT(x) is a subset of ICEXT(y)"
+// and
+//   "IEXT(I(rdfs:subClassOf)) is transitive and reflexive on IC".
+// Together they make `xxx rdfs:subClassOf xxx` hold whenever `xxx` is
+// an ENDPOINT of any `rdfs:subClassOf` triple, with no `rdf:type`
+// premise. Rule rdfs10 reaches the same conclusion from `xxx rdf:type
+// rdfs:Class`; this is the OTHER route, and it is the one the shipping
+// `RDFS.Closure.rdfs_reflexivity_axioms` harvest takes for the
+// subClassOf / subPropertyOf positions. Naming it here is what lets
+// that harvest carry a licence theorem (finding RS-1's fix) instead of
+// a witness of unsoundness.
+//
+// The dual pair for properties is the section 9 conditions
+//   "If <x,y> is in IEXT(I(rdfs:subPropertyOf)) then x and y are in IP
+//    and IEXT(x) is a subset of IEXT(y)"
+// and
+//   "IEXT(I(rdfs:subPropertyOf)) is transitive and reflexive on IP".
+// ===================================================================
+let rdfs_subClassOf_endpoint_refl (g : list triple) (t : triple) : prop =
+  exists (u : triple) (xs : subject).
+    memP u g /\ u.p == i_rdfs_subClassOf /\
+    (u.s == xs \/ u.o == subj_term xs) /\
+    t == ({ s = xs; p = i_rdfs_subClassOf; o = subj_term xs } <: triple)
+
+let rdfs_subPropertyOf_endpoint_refl (g : list triple) (t : triple) : prop =
+  exists (u : triple) (xs : subject).
+    memP u g /\ u.p == i_rdfs_subPropertyOf /\
+    (u.s == xs \/ u.o == subj_term xs) /\
+    t == ({ s = xs; p = i_rdfs_subPropertyOf; o = subj_term xs } <: triple)
+
+// ===================================================================
 // THE SPECIFICATION, syntactic side.
 //
 // `rdfs_licensed g t` — "t is licensed at the RDFS rung by graph g":
@@ -299,6 +336,7 @@ let rdfs_member_subproperty (t : triple) : prop =
 let rdfs_licensed (dd : datatype_set) (g : list triple) (t : triple) : prop =
   memP t g \/ rdf_axiomatic t \/ rdfs_axiomatic t \/
   rdfs_member_subproperty t \/
+  rdfs_subClassOf_endpoint_refl g t \/ rdfs_subPropertyOf_endpoint_refl g t \/
   rdfD2_derives g t \/
   rdfs1_derives dd t \/ rdfs2_derives g t \/ rdfs3_derives g t \/
   rdfs4a_derives g t \/ rdfs4b_derives g t \/ rdfs5_derives g t \/

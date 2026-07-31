@@ -5643,8 +5643,14 @@ let owl_thing_axioms (g : rdf_graph) : rdf_graph =
 // (w3c_runner.ml, factoidal_cli.ml, rif_runner.ml, entailment_closure
 // just below, owl_runner.ml's PositiveEntailmentTest / ConsistencyTest
 // / InconsistencyTest paths) is unaffected by this change.
+// 2026-07-31 (RS-1 / #335): switched from `rdfs_closure_with_reflexivity`
+// to `owl_rdfs_closure_with_reflexivity`. The two were the same function
+// until the regime split; the OWL one keeps the wide class/property
+// harvest (owl:Class / owl:ObjectProperty / owl:DatatypeProperty), which
+// OWL 2 RDF-Based Semantics Table 5.3 licenses and RDF 1.1 Semantics
+// section 9 does not. This call site is therefore behaviour-preserving.
 let owl_rl_closure_with_reflexivity_mode (g : rdf_graph) (fuel : nat) (mode : string) : Tot rdf_graph =
-  let rdfs_closed = rdfs_closure_with_reflexivity g fuel in
+  let rdfs_closed = owl_rdfs_closure_with_reflexivity g fuel in
   let thing_axioms = owl_thing_axioms rdfs_closed in
   let with_thing = add_triples_if_new rdfs_closed thing_axioms in
   owl_rl_closure_mode with_thing fuel mode

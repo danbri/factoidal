@@ -11,9 +11,20 @@ entailment and RDFS entailment. Its §7 reusable-pattern list is the
 method followed here; §8 below records what transferred, what did not,
 and what the next rung needs.
 
-## 0. 🔴 Read this first — finding RS-1, an unsoundness in shipping code
+## 0. ✅ FIXED 2026-07-31 — finding RS-1, an unsoundness in shipping code
 
-`RDFS.Closure.rdfs_reflexivity_axioms` is **unsound at the RDFS rung**,
+> **Status: fixed.** The regime split this section asks for landed on
+> 2026-07-31 (#335) — see [§10.2](#102-rs-1--fixed-and-what-happened-to-the-witness).
+> `rdfs_reflexivity_axioms` is now the narrow, RDFS-licensed harvest and
+> carries a positive licence theorem; the wide harvest lives on as
+> `owl_reflexivity_axioms` for the OWL regime. The witness quoted below
+> was re-stated against that OWL-regime function
+> (`owl_reflexivity_axioms_not_rdfs_sound`) because the original
+> statement is now false. **Everything below this box describes the
+> pre-fix tree** and is kept because it is the argument that motivated
+> the split.
+
+`RDFS.Closure.rdfs_reflexivity_axioms` was **unsound at the RDFS rung**,
 with a machine-checked witness.
 
 ```fstar
@@ -257,6 +268,13 @@ records: `sp_key` is non-injective on **IRI subjects alone**, because
 See §0. Machine-checked.
 
 ### RS-2 — six rule rows have no implementation
+
+> **Status 2026-07-31: five of the six landed** — rdfs1, rdfs4a, rdfs4b,
+> rdfs8, rdfs13. `rdfD1` remains, blocked on blank-node minting; the
+> exact obstacles and their cost are in
+> [§10.3](#103-what-is-still-blocked-and-what-a-fix-costs). The
+> axiomatic-triple seeding is still reverted, and §10.1 says why the new
+> rows do not re-open it.
 
 `rdfs1`, `rdfs4a`, `rdfs4b`, `rdfs8`, `rdfs13` and `rdfD1` are not
 implemented anywhere in the tree, and the axiomatic triples are not
@@ -549,19 +567,39 @@ proof-engineering reasons that are now written down.
 
 ## 9. Follow-ups
 
-* 🔴 Split `collect_classes` / `collect_properties` by regime (RS-1) —
-  the only shipping-code change this vertical asks for.
-* ✅ DONE 2026-07-31 — rename `RDF.Entailment.Regime.rdfs_closure` and
-  un-shadow the rule driver (RS-4, #335). Residual: an `rdf:reifies`
-  triple derived by rdfs7 does not re-trigger the reifies step, since
-  that step runs once before the fixed-point loop. Closing that needs
-  the RDF 1.2 axiom `rdf:reifies rdfs:range rdfs:Proposition` seeded so
-  rdfs3 runs it inside the loop — held back because axiom seeding into
-  a closure already regressed OWL-RL consistency once.
-* 🧭 The `rdf-semantics` manifest has no RDFS-rule coverage at all (see
-  RS-4). Either propose fixtures upstream, or keep growing
+* ✅ **DONE 2026-07-31** — Split `collect_classes` / `collect_properties`
+  by regime (RS-1). See §10.
+* ✅ **DONE 2026-07-31** — Implement the buildable missing rows (RS-2):
+  rdfs1, rdfs4a, rdfs4b, rdfs8, rdfs13. See §10. rdfD1 remains blocked
+  on blank-node minting; rdfs4b's literal-subject case remains blocked
+  by RS-3.
+* ✅ **DONE 2026-07-31** — rename `RDF.Entailment.Regime.rdfs_closure`
+  to `rdf12_reifies_closure` and un-shadow the rule driver (RS-4, #335).
+  Residual: an `rdf:reifies` triple derived by rdfs7 does not re-trigger
+  the reifies step, since that step runs once before the fixed-point
+  loop. Closing that needs the RDF 1.2 axiom
+  `rdf:reifies rdfs:range rdfs:Proposition` seeded so rdfs3 runs it
+  inside the loop — held back because axiom seeding into a closure
+  already regressed OWL-RL consistency once.
+* ⚠️ **The two landed independently and each observed "no test moved",
+  for the same reason.** The rows agent branched before the RS-4 fix, so
+  its five new rows were still dispatched to the one-rule closure; the
+  RS-4 agent had no rows beyond the original seven to exercise. Now that
+  both are merged the combination is exercisable for the first time, and
+  the negative-test vacuity checker
+  (`tools/negative-test-vacuity.py`) is the instrument that should show
+  it — 19 of 42 negative tests were vacuous before this pair landed.
+  Re-run it and diff.
+* 🧭 The `rdf-semantics` manifest has no RDFS-rule coverage at all.
+  Verified 2026-07-31: its four RDFS/RDFS-Plus tests span eight data
+  files containing **zero** occurrences of `rdfs:subClassOf`,
+  `rdfs:subPropertyOf`, `rdfs:domain` or `rdfs:range`. Either propose
+  fixtures upstream, or keep growing
   `tests/local/rdfs_entailment_regime_regressions.sh`. Right now the
   regime's only real coverage is ours.
+* ⚠️ Perf follow-up for rdfs4a / rdfs4b (§10.4): OWL profile-RL wall
+  time roughly quadrupled (ConsistencyTests 1.51 s → 6.07 s). Drive them
+  off the index snapshot, or emit them once after the fixed point.
 * Decide what the `"RDF"` regime should run (RS-5) — plausibly
   `rdf_property_axiom_closure` alone, with the RDFS rules removed.
 * `lemma_build_indexed_complete_pred` (§6 obligation 1) — the
@@ -569,7 +607,252 @@ proof-engineering reasons that are now written down.
 * The `graph_len` fixed-point test in `rdfs_closure` (§6 obligation 2)
   — confirm or refute that a step can add and dedup to the same length.
 * rho-df completeness, once 1 and 2 land.
-* Implement the missing rows (RS-2), starting with rdfs4a/4b/rdfs8/
-  rdfs13, which need no bnode minting.
+* rdfD1 and the 2004 reading of rdfs1 — the two bnode-minting rows,
+  still unimplemented. §10.3 records exactly what blocks them.
 * The genuine-interpretation embedding — shared with the OWL programme
   and the simple rung.
+
+## 10. 2026-07-31 follow-up: RS-2 rows landed, RS-1 fixed
+
+Branch `claude/rdfs-complete-rows-20260731`. No `admit`, no `assume`,
+no `--lax`, no `--admit_smt_queries`, z3 4.13.3.
+
+### 10.1 RS-2 — five rows implemented
+
+| Row | Function in `RDFS.Closure.fsti` | Refinement theorem | Truth lemma |
+|---|---|---|---|
+| rdfs1 | `rdfs_rule_recognized_datatypes` | `rdfs_rule_recognized_datatypes_licensed` | `rdfs1_true` |
+| rdfs4a | `rdfs_rule_resource_subject` | `rdfs_rule_resource_subject_licensed` | `rdfs4a_true` |
+| rdfs4b | `rdfs_rule_resource_object` | `rdfs_rule_resource_object_licensed` | `rdfs4b_true` |
+| rdfs8 | `rdfs_rule_class_subclass_resource` | `rdfs_rule_class_subclass_resource_licensed` | `rdfs8_true` |
+| rdfs13 | `rdfs_rule_datatype_subclass_literal` | `rdfs_rule_datatype_subclass_literal_licensed` | `rdfs13_true` |
+
+All five are wired into `rdfs_closure_step`, which is now a twelve-stage
+pipeline; `rdfs_closure_step_sound` covers every stage. The truth
+lemmas already existed — §3 of the ModelTheory module had proved every
+row of the table sound before any of them had an implementation, which
+is what made this a wiring job rather than a proof job.
+
+**rdfs1's D.** The row reads "any IRI aaa in D". D is a parameter of the
+specification (`datatype_set`), so the implementation has to pick one.
+It picks the minimum D that RDF 1.1 Semantics §8 forces on every RDF
+interpretation — `{rdf:langString, xsd:string}` — as
+`RDFS.Closure.recognized_datatypes`, and the refinement theorem is
+stated at `d_minimal`. A wider D is a one-line change to that list plus
+a matching `datatype_set` in the theorem.
+
+**This is not the reverted axiom seeding.** The 2026-07-05 seeding
+attempt injected `RDF.Vocabulary.Axioms.finite_axiomatic_triples`,
+whose core-vocabulary `rdfs:domain` / `rdfs:range` rows (e.g. `rdf:type
+rdfs:range rdfs:Class`) inflate the `rdf:type` set through rdfs2 /
+rdfs3 and trip the N=1 qualified-cardinality scaffolding (#236). It
+stays disabled. None of the five rows above emits a domain or range
+triple: rdfs1 emits two `rdf:type rdfs:Datatype` triples, rdfs8 /
+rdfs13 emit `rdfs:subClassOf` edges to `rdfs:Resource` / `rdfs:Literal`,
+rdfs4a / rdfs4b emit `rdf:type rdfs:Resource`. That is the difference,
+and it is why this landed where the seeding did not.
+
+### 10.2 RS-1 — fixed, and what happened to the witness
+
+`collect_classes` / `collect_properties` are split by regime, as §7
+proposed.
+
+| | RDFS regime | OWL regime |
+|---|---|---|
+| class harvest | `collect_classes_rdfs` — `rdfs:subClassOf` endpoints, `rdf:type rdfs:Class` | `collect_classes` — the above plus `rdf:type owl:Class` |
+| property harvest | `collect_properties_rdfs` — `rdfs:subPropertyOf` endpoints, `rdf:type rdf:Property` | `collect_properties` — the above plus `owl:ObjectProperty` / `owl:DatatypeProperty` |
+| reflexivity axioms | `rdfs_reflexivity_axioms` | `owl_reflexivity_axioms` |
+| closure entry point | `rdfs_closure_with_reflexivity` | `owl_rdfs_closure_with_reflexivity` |
+
+`OWL.Closure.owl_rl_closure_with_reflexivity_mode` moves to the OWL
+entry point, so the OWL-RL regime is behaviour-preserving.
+`entailment_closure`'s `"RDFS"` branch and `RIF.Core.Tests` keep calling
+`rdfs_closure_with_reflexivity`, which now harvests narrowly.
+
+**The witness.** `reflexivity_axioms_not_rdfs_sound` was true of
+shipping code and would be **false** after the fix, so it is not left in
+place pointing at code that no longer does what it claims. Three
+theorems replace it:
+
+```fstar
+// the RDFS-regime harvest no longer emits the triple at all
+val rdfs_reflexivity_axioms_owl_class_empty (c : wf_iri)
+  : Lemma (rdfs_reflexivity_axioms (owl_class_graph c) == [])
+
+// THE FIX, positive form: everything the RDFS harvest emits is licensed
+val rdfs_reflexivity_axioms_licensed (g : rdf_graph)
+  : Lemma (forall t. memP t (rdfs_reflexivity_axioms g) ==>
+                     rdfs_licensed d_minimal g t)
+
+// the old statement, re-aimed at the OWL-regime function, where it is a
+// REGIME-SCOPE fact (do not run this in the RDFS regime) not a bug
+val owl_reflexivity_axioms_not_rdfs_sound (c : wf_iri)
+  : Lemma (memP (owl_class_refl_triple c)
+                (owl_reflexivity_axioms (owl_class_graph c)) /\
+           ~(rdfs_licensed d_minimal (owl_class_graph c)
+                           (owl_class_refl_triple c)))
+```
+
+`rdfs_reflexivity_axioms_licensed` needed two additions to the
+specification, both quoted from §9's condition table rather than its
+rule table, and both in the same family as the existing
+`rdfs_member_subproperty`:
+
+* `rdfs_subClassOf_endpoint_refl` / `rdfs_subPropertyOf_endpoint_refl`
+  (Spec) — "if `<x,y>` is in IEXT(I(rdfs:subClassOf)) then x and y are
+  in IC" plus "IEXT(I(rdfs:subClassOf)) is … reflexive on IC" gives the
+  self-loop for an ENDPOINT, with no `rdf:type` premise. rdfs10 gives
+  the same conclusion by the other route.
+* `cond_subClassOf_ic` / `cond_subPropertyOf_ip` / `cond_datatypes_minimal`
+  (ModelTheory) — the IC / IP halves that `cond_subClassOf` and
+  `cond_subPropertyOf` had dropped under the enlarging convention, plus
+  §8's "RDF interpretations recognize rdf:langString and xsd:string".
+
+⚠️ Adding conditions SHRINKS the interpretation class. Every soundness
+theorem in the module stays true, and the class is still a superset of
+the genuine RDFS interpretations, so the "soundness is thereby stronger"
+argument of §8.1 is unchanged in direction and slightly weaker in
+degree. Any future completeness result must re-check these three.
+
+**The payoff.** §7 of this note listed
+`rdfs_closure_with_reflexivity` under "what is not proved", with the
+reason: it called an unsound harvest, so proving it sound would have
+meant weakening the specification. The split fixed the function
+instead, and the theorem then closed against the specification as
+written — ModelTheory §4c:
+
+```fstar
+val rdfs_closure_with_reflexivity_entails (g : rdf_graph) (fuel : nat)
+  : Lemma (requires closure_chain_wf g /\
+                    closure_chain_wf (reflexivity_seeded g fuel))
+          (ensures  rdfs_entails d_minimal g
+                      (rdfs_closure_with_reflexivity g fuel))
+```
+
+The OWL-regime variant `owl_rdfs_closure_with_reflexivity` is still
+**not** proven RDFS-sound and must not be:
+`owl_reflexivity_axioms_not_rdfs_sound` is the witness that it cannot
+be. That is the split doing its job — the two functions now have
+different theorems because they answer to different rule tables.
+
+### 10.3 What is still blocked, and what a fix costs
+
+**rdfD1, and the 2004 reading of rdfs1 — blocked on blank-node
+minting, not on generalized RDF.**
+
+```
+rdfD1 | xxx aaa "sss"^^ddd .  (ddd in D) | xxx aaa _:nnn . _:nnn rdf:type ddd .
+```
+
+Three separate obstacles, none of them proof slack:
+
+1. **No name supply.** `rdfs_closure_step : rdf_graph -> rdf_graph` is a
+   pure function of the graph. A label derived from the graph alone is
+   either stable — in which case it is not fresh with respect to the
+   graph that now contains it, and the second iteration re-derives a
+   colliding label — or unstable, in which case every step invents new
+   labels, `graph_len` never repeats, the `graph_len g' = graph_len g`
+   fixed-point test never fires, and the closure is silently truncated
+   when the fuel runs out. Fixing this changes the driver's TYPE (a
+   counter threaded through `rdfs_closure_step` and `rdfs_closure`), not
+   just its body.
+2. **The refinement theorem needs a freshness lemma.**
+   `rdfD1_derives` already takes the label as an explicit parameter with
+   a `bnode_fresh_for b g` side condition, precisely because a rule that
+   invents a name is not a function of its premises. A `_licensed`
+   theorem would have to name the engine's label-choice function and
+   prove `bnode_fresh_for (choose g) g` — a collision-freedom result
+   over arbitrary graphs that this tree does not have. (#338's finding
+   that `sp_key` is non-injective on IRI subjects alone is evidence the
+   label space is not currently disciplined enough to get it cheaply.)
+3. **The spec excludes it from the closure notion.** RDF 1.1 Semantics
+   §8 states completeness for the closure "towards E", and
+   `RDF.Entailment.RDF.Spec.rdf_closed` omits rdfD1 for the stated
+   reason that a graph closed under it is not finite. So the target is
+   not "run rdfD1 to a fixed point" but "run rdfD1 towards a goal
+   graph E", which is a different function with a different signature —
+   entailment-checking, not closure.
+
+Cost estimate: one commit for the fresh-label supply plus its freshness
+lemma, one for a goal-directed `rdf_closure_towards` and its refinement,
+one for the model theory. Not a rule addition.
+
+**rdfs4b, rdfs3, and the `yyy` position of rdfs5 / rdfs11 — blocked on
+generalized RDF (RS-3), and the block is PARTIAL.**
+
+All four rules are implemented and fire; they simply do not fire when
+the term that must move into subject position is a literal or an RDF 1.2
+triple term. `RDF.Term.subject` is
+
+```fstar
+noeq type subject =
+  | S_IRI : wf_iri -> subject
+  | S_BNode : bnode_id -> subject
+```
+
+so `"lit" rdf:type rdfs:Resource` is not a value this tree can build.
+The declarative rows in `RDF.Entailment.RDFS.Spec` carry the same
+`subj_term ys == u.o` premise, so the refinement theorems are EXACT: the
+incompleteness sits in the term algebra, and the proofs report it rather
+than paper over it.
+
+Cost of lifting it: a third constructor on `subject` (and, for full
+generalized RDF, a literal predicate too). Measured blast radius in this
+tree: **848 `S_IRI` / `S_BNode` occurrences across 63 `.fst`/`.fsti`
+files**, plus 68 across 11 consumer `.ml` files. Every one is a
+pattern match that F\* will demand a new arm for, and a large fraction
+sit in parsers and serializers where the new arm is not "add a case" but
+"decide what N-Triples does with a literal subject" — the answer being
+that ordinary RDF syntax cannot write one, so the serializers would need
+a generalized-RDF output mode or a documented lossy drop. This is a
+tree-wide type change, and it buys conclusions that no RDF 1.1 concrete
+syntax can serialize. 🧭 The recommendation is to leave it, keep the
+premises explicit, and treat RS-3 as a permanent, named, proven-exact
+scope boundary rather than a defect to burn down.
+
+### 10.4 Measured effect
+
+📊 Before → after, on the committed `linux-x86_64` binaries:
+
+| Suite | Before | After |
+|---|---|---|
+| `rdf-mt` (inside rdf11) | 39 pass, 0 fail (out of 39) | 39 pass, 0 fail (out of 39) |
+| rdf11 total | 1031 pass, 0 fail (out of 1031) | 1031 pass, 0 fail (out of 1031) |
+| `rdf-semantics` (rdf12entail) | 41 pass, 3 fail, 3 skip (of 47 discovered) | 41 pass, 3 fail, 3 skip (of 47 discovered) |
+| SPARQL `entailment` | 66 pass, 4 fail (out of 70 discovered) | 66 pass, 4 fail (out of 70 discovered) |
+| SPARQL total | 627 pass, 4 fail (out of 631) | 627 pass, 4 fail (out of 631) |
+| OWL 2 profile-RL PositiveEntailment | 30 pass, 0 fail (out of 30) | 30 pass, 0 fail (out of 30) |
+| OWL 2 profile-RL NegativeEntailment | 6 pass, 0 fail (out of 6) | 6 pass, 0 fail (out of 6) |
+| OWL 2 profile-RL Consistency | 76 pass, 0 fail (out of 76) | 76 pass, 0 fail (out of 76) |
+| OWL 2 profile-RL Inconsistency | 14 pass, 0 fail (out of 14) | 14 pass, 0 fail (out of 14) |
+| RDFC-1.0 | — | 86 pass, 0 fail (out of 86) |
+
+Nothing moved. Two readings of that, and both matter:
+
+* ✅ No regression. In particular the OWL-RL ConsistencyTests did not
+  repeat the `New-Feature-ObjectQCR-002` failure the reverted axiom
+  seeding caused, which is the concrete evidence for §10.1's claim that
+  these rows are a different shape from that seed.
+* ⚠️ **No suite exercises the new rows.** Five sound rule rows landed
+  and no test moved, so the suites in this tree do not test rdfs1 /
+  rdfs4a / rdfs4b / rdfs8 / rdfs13 through any path that reaches
+  `RDFS.Closure`. The `rdf-semantics` manifests would be the natural
+  home, and finding RS-4 explains why they do not reach it: their
+  "RDFS" regime dispatches to `RDF.Entailment.Regime.rdfs_closure`,
+  which runs one `rdf:reifies` rule and none of rdfs1..rdfs13. 🧭 Fixing
+  RS-4 is now also the way to get these rows under test.
+
+⚠️ **Measured cost.** OWL profile-RL ConsistencyTests wall time went
+1.51s → 6.07s and PositiveEntailmentTests 0.66s → 2.67s. rdfs4a and
+rdfs4b add one `rdf:type rdfs:Resource` triple per subject and per
+subject-eligible object of the ACCUMULATOR on every closure step, and
+`rdfs_closure_step` is the driver OWL-RL interleaves with. Correctness
+is unchanged; this is a throughput number and it belongs to a perf
+follow-up. Two obvious levers if it matters: drive rdfs4a/rdfs4b off the
+step's index SNAPSHOT rather than the growing accumulator, or emit them
+once after the fixed point instead of inside every iteration (they are
+single-premise rules, so a single post-pass is equivalent up to the
+triples the later rules would have derived FROM `rdf:type
+rdfs:Resource`, which is only rdfs9 through a `rdfs:Resource
+rdfs:subClassOf X` edge).
+

@@ -3973,7 +3973,7 @@ let owl_thing_axioms (g : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
                    (FStar_List_Tot_Base.op_At individual_triples self_axioms))))))
 let owl_rl_closure_with_reflexivity_mode (g : RDF_Graph.rdf_graph)
   (fuel : Prims.nat) (mode : Prims.string) : RDF_Graph.rdf_graph=
-  let rdfs_closed = RDFS_Closure.rdfs_closure_with_reflexivity g fuel in
+  let rdfs_closed = RDFS_Closure.owl_rdfs_closure_with_reflexivity g fuel in
   let thing_axioms = owl_thing_axioms rdfs_closed in
   let with_thing = RDF_Graph.add_triples_if_new rdfs_closed thing_axioms in
   owl_rl_closure_mode with_thing fuel mode

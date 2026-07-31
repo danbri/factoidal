@@ -160,6 +160,75 @@ let rdfs_rule_container_membership (g : RDF_Graph.rdf_graph)
          } in
        RDF_Graph.add_triple_unchecked (RDF_Graph.add_triple_unchecked acc t1)
          t2) g container_membership_properties
+let is_typed_as (t : RDF_Triple.triple) (c : RDF_Term.wf_iri) : Prims.bool=
+  (t.RDF_Triple.p = rdf_type) &&
+    (match t.RDF_Triple.o with | RDF_Term.T_IRI i -> i = c | uu___ -> false)
+let recognized_datatypes : RDF_Term.wf_iri Prims.list=
+  [RDF_Term.rdf_lang_string; RDF_Term.xsd_string]
+let rdfs_rule_recognized_datatypes (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc d ->
+       let new_t =
+         {
+           RDF_Triple.s = (RDF_Term.S_IRI d);
+           RDF_Triple.p = rdf_type;
+           RDF_Triple.o = (RDF_Term.T_IRI rdfs_Datatype)
+         } in
+       RDF_Graph.add_triple_unchecked acc new_t) g recognized_datatypes
+let rdfs_rule_resource_subject (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       let new_t =
+         {
+           RDF_Triple.s = (t.RDF_Triple.s);
+           RDF_Triple.p = rdf_type;
+           RDF_Triple.o = (RDF_Term.T_IRI rdfs_Resource)
+         } in
+       RDF_Graph.add_triple_unchecked acc new_t) g g
+let rdfs_rule_resource_object (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       match RDF_Graph.term_to_subject t.RDF_Triple.o with
+       | FStar_Pervasives_Native.Some y_subj ->
+           let new_t =
+             {
+               RDF_Triple.s = y_subj;
+               RDF_Triple.p = rdf_type;
+               RDF_Triple.o = (RDF_Term.T_IRI rdfs_Resource)
+             } in
+           RDF_Graph.add_triple_unchecked acc new_t
+       | FStar_Pervasives_Native.None -> acc) g g
+let rdfs_rule_class_subclass_resource (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if is_typed_as t rdfs_Class
+       then
+         let new_t =
+           {
+             RDF_Triple.s = (t.RDF_Triple.s);
+             RDF_Triple.p = rdfs_subClassOf;
+             RDF_Triple.o = (RDF_Term.T_IRI rdfs_Resource)
+           } in
+         RDF_Graph.add_triple_unchecked acc new_t
+       else acc) g g
+let rdfs_rule_datatype_subclass_literal (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if is_typed_as t rdfs_Datatype
+       then
+         let new_t =
+           {
+             RDF_Triple.s = (t.RDF_Triple.s);
+             RDF_Triple.p = rdfs_subClassOf;
+             RDF_Triple.o = (RDF_Term.T_IRI rdfs_Literal)
+           } in
+         RDF_Graph.add_triple_unchecked acc new_t
+       else acc) g g
 let rdfs_closure_step (g : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
   let ig = RDF_Indexed.build_indexed g in
   let g1 = rdfs_rule_subPropertyOf g ig in
@@ -169,7 +238,12 @@ let rdfs_closure_step (g : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
   let g5 = rdfs_rule_container_membership g4 ig in
   let g6 = rdfs_rule_subClassOf_trans g5 ig in
   let g7 = rdfs_rule_subPropertyOf_trans g6 ig in
-  RDF_Graph.graph_dedup_sort g7
+  let g8 = rdfs_rule_recognized_datatypes g7 ig in
+  let g9 = rdfs_rule_class_subclass_resource g8 ig in
+  let g10 = rdfs_rule_datatype_subclass_literal g9 ig in
+  let g11 = rdfs_rule_resource_subject g10 ig in
+  let g12 = rdfs_rule_resource_object g11 ig in
+  RDF_Graph.graph_dedup_sort g12
 let rec rdfs_closure (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   RDF_Graph.rdf_graph=
   match fuel with
@@ -199,6 +273,10 @@ let cons_subject_iri_if_new (s : RDF_Term.subject)
 let cons_term_iri_if_new (t : RDF_Term.rdf_term)
   (acc : RDF_Term.wf_iri Prims.list) : RDF_Term.wf_iri Prims.list=
   match t with | RDF_Term.T_IRI i -> cons_if_new_iri i acc | uu___ -> acc
+let is_class_type_object_rdfs (o : RDF_Term.rdf_term) : Prims.bool=
+  match o with | RDF_Term.T_IRI c -> c = rdfs_Class | uu___ -> false
+let is_property_type_object_rdfs (o : RDF_Term.rdf_term) : Prims.bool=
+  match o with | RDF_Term.T_IRI c -> c = rdf_Property | uu___ -> false
 let is_class_type_object (o : RDF_Term.rdf_term) : Prims.bool=
   match o with
   | RDF_Term.T_IRI c -> (c = rdfs_Class) || (c = owl_Class)
@@ -209,37 +287,33 @@ let is_property_type_object (o : RDF_Term.rdf_term) : Prims.bool=
       ((c = rdf_Property) || (c = owl_ObjectProperty)) ||
         (c = owl_DatatypeProperty)
   | uu___ -> false
-let collect_classes (g : RDF_Graph.rdf_graph) : RDF_Term.wf_iri Prims.list=
-  FStar_List_Tot_Base.fold_left
-    (fun acc t ->
-       let acc1 =
-         if t.RDF_Triple.p = rdfs_subClassOf
-         then
-           cons_term_iri_if_new t.RDF_Triple.o
-             (cons_subject_iri_if_new t.RDF_Triple.s acc)
-         else acc in
-       if
-         (t.RDF_Triple.p = rdf_type) && (is_class_type_object t.RDF_Triple.o)
-       then cons_subject_iri_if_new t.RDF_Triple.s acc1
-       else acc1) [] g
-let collect_properties (g : RDF_Graph.rdf_graph) :
+let collect_related_iris (typing_ok : RDF_Term.rdf_term -> Prims.bool)
+  (rel : RDF_Term.wf_iri) (g : RDF_Graph.rdf_graph) :
   RDF_Term.wf_iri Prims.list=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
        let acc1 =
-         if t.RDF_Triple.p = rdfs_subPropertyOf
+         if t.RDF_Triple.p = rel
          then
            cons_term_iri_if_new t.RDF_Triple.o
              (cons_subject_iri_if_new t.RDF_Triple.s acc)
          else acc in
-       if
-         (t.RDF_Triple.p = rdf_type) &&
-           (is_property_type_object t.RDF_Triple.o)
+       if (t.RDF_Triple.p = rdf_type) && (typing_ok t.RDF_Triple.o)
        then cons_subject_iri_if_new t.RDF_Triple.s acc1
        else acc1) [] g
-let rdfs_reflexivity_axioms (g : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
-  let classes = collect_classes g in
-  let properties = collect_properties g in
+let collect_classes_rdfs (g : RDF_Graph.rdf_graph) :
+  RDF_Term.wf_iri Prims.list=
+  collect_related_iris is_class_type_object_rdfs rdfs_subClassOf g
+let collect_properties_rdfs (g : RDF_Graph.rdf_graph) :
+  RDF_Term.wf_iri Prims.list=
+  collect_related_iris is_property_type_object_rdfs rdfs_subPropertyOf g
+let collect_classes (g : RDF_Graph.rdf_graph) : RDF_Term.wf_iri Prims.list=
+  collect_related_iris is_class_type_object rdfs_subClassOf g
+let collect_properties (g : RDF_Graph.rdf_graph) :
+  RDF_Term.wf_iri Prims.list=
+  collect_related_iris is_property_type_object rdfs_subPropertyOf g
+let reflexivity_axioms_of (classes : RDF_Term.wf_iri Prims.list)
+  (properties : RDF_Term.wf_iri Prims.list) : RDF_Graph.rdf_graph=
   let class_triples =
     FStar_List_Tot_Base.map
       (fun c ->
@@ -257,10 +331,20 @@ let rdfs_reflexivity_axioms (g : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
            RDF_Triple.o = (RDF_Term.T_IRI p)
          }) properties in
   FStar_List_Tot_Base.op_At class_triples property_triples
+let rdfs_reflexivity_axioms (g : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
+  reflexivity_axioms_of (collect_classes_rdfs g) (collect_properties_rdfs g)
+let owl_reflexivity_axioms (g : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
+  reflexivity_axioms_of (collect_classes g) (collect_properties g)
 let rdfs_closure_with_reflexivity (g : RDF_Graph.rdf_graph)
   (fuel : Prims.nat) : RDF_Graph.rdf_graph=
   let closed = rdfs_closure g fuel in
   let refl_axioms = rdfs_reflexivity_axioms closed in
+  let with_refl = RDF_Graph.add_triples_if_new closed refl_axioms in
+  rdfs_closure with_refl fuel
+let owl_rdfs_closure_with_reflexivity (g : RDF_Graph.rdf_graph)
+  (fuel : Prims.nat) : RDF_Graph.rdf_graph=
+  let closed = rdfs_closure g fuel in
+  let refl_axioms = owl_reflexivity_axioms closed in
   let with_refl = RDF_Graph.add_triples_if_new closed refl_axioms in
   rdfs_closure with_refl fuel
 let rdf_property_axiom_of_triple (t : RDF_Triple.triple) : RDF_Triple.triple=
