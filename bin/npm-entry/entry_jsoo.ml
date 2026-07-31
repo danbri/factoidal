@@ -1100,7 +1100,7 @@ let owl_closure_json (data_nquads : string) (mode : string) : string =
     match mode with
     | "RDFS" | "rdfs" ->
       ok_nquads_json (construct_triples_to_ntriples
-        (RDF_Graph_Executable.rdfs_closure_with_reflexivity graph fuel))
+        (RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch graph fuel))
     | "OWL-RL" | "owl-rl" | "owl_rl" ->
       ok_nquads_json (construct_triples_to_ntriples
         (RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel))

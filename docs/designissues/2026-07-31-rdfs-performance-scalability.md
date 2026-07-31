@@ -177,6 +177,121 @@ That shape — a fast path with a proved side condition and an honest
 fallback — is the same one `graph_exact` and `closure_chain_wf` already
 use elsewhere in this tree.
 
+#### Phase 1a as landed — `RDFS.SchemaSplit.fst`
+
+**The complete set of schema-injection routes.** Derived row by row from
+the rule table in `RDF.Entailment.RDFS.Spec.fst`, by reading each row's
+conclusion TEMPLATE rather than judging the row's appearance. Eleven of
+the twelve conclusion predicates are constants; only rdfs7's is read out
+of the data (the object of a `rdfs:subPropertyOf` declaration). So the
+question "can this row emit a schema edge?" is decided syntactically,
+with no semantic argument.
+
+| # | Route | Premise that is not a schema edge |
+|---|---|---|
+| R1 | rdfs7 with a `subPropertyOf` object of `rdfs:subClassOf` / `rdfs:subPropertyOf` | any data triple |
+| R2 | rdfs8 | `xxx rdf:type rdfs:Class` |
+| R3 | rdfs13 | `xxx rdf:type rdfs:Datatype` |
+| R4 | container axioms | none — constant |
+| R5 | reflexivity harvest (rdfs6/rdfs10 approximation) | `rdf:type rdfs:Class` / `rdf:Property`; emits SELF-LOOPS only |
+
+R2, R3 and R5 read `rdf:type`, so the enumeration continues into the
+rows that can mint a NEW `rdf:type rdfs:Class` / `rdfs:Datatype` /
+`rdf:Property`:
+
+| # | Route | Needs |
+|---|---|---|
+| R2a | rdfs2 | `ppp rdfs:domain rdfs:Class` (or Datatype / Property) |
+| R2b | rdfs3 | `ppp rdfs:range rdfs:Class` (or …) |
+| R2c | rdfs9 | `xxx rdfs:subClassOf rdfs:Class` (or …) |
+| R2d | rdfs7 with a `subPropertyOf` object of `rdf:type` | any data triple |
+| R2e | rdfs4a / rdfs4b | — conclusion object is always `rdfs:Resource`; SAFE |
+| R2f | rdfs1 | — subject ranges over the fixed set D; CONSTANT |
+| R3a | rdfs7 with a `subPropertyOf` object of `rdfs:domain` / `rdfs:range` | any data triple — re-enables R2a / R2b |
+
+The descent terminates: a new `subPropertyOf` declaration would
+re-enable R1 / R2d / R3a, and the only rows that mint one are rdfs5
+(whose conclusion object is drawn from `subPropertyOf` objects already
+present, so the object SET never grows), R1 itself, the constant
+container axioms, and the reflexivity harvest, which emits self-loops
+and a self-loop composes with any edge to reproduce that edge.
+
+**The side condition.** `RDFS.SchemaSplit.schema_stable` — three
+per-triple clauses, each naming what it blocks:
+
+* **A** no `rdfs:subPropertyOf` declaration targets the rho-df control
+  vocabulary `{subClassOf, subPropertyOf, domain, range, type}` — blocks
+  R1, R2d, R3a;
+* **B** no `rdfs:domain` / `rdfs:range` declaration names
+  `rdfs:Class` / `rdfs:Datatype` / `rdf:Property` — blocks R2a, R2b;
+* **C** no `rdfs:subClassOf` edge points AT those three — blocks R2c.
+
+`schema_stable_check` decides it in one linear pass, and is proved SOUND
+and COMPLETE against the declarative prop.
+
+**What is proved and what is not.** Proved, machine-checked, no `admit`
+and no `--admit_smt_queries`: detector soundness and completeness; that
+emitted closure edges carry the walked predicate and source; that the
+reachability walk's visited set only grows; that every seed edge carries
+a schema predicate; and an anti-vacuity witness pair. NOT proved — and
+this is the gap, stated rather than papered over — full extensional
+equivalence of the fast path with the general fixed point under the side
+condition. That rests on the enumeration above plus "the walk computes
+the transitive closure", and is checked by measurement, not by the SMT
+solver.
+
+**Why the enumeration is not load-bearing at runtime.** Section 3 of
+this document records that this rule set has already defeated confident
+reasoning twice in one day. So the dispatcher does not trust the
+enumeration. It runs the fast path and then CHECKS the property the
+enumeration exists to establish — that no schema edge appeared during
+the loop that the pre-computed closure did not already carry — and
+discards the result for the general loop if the check fails. The check
+is one linear filter and holds unconditionally. If the enumeration has a
+hole, the output is still right; only the speedup is lost.
+
+**Evidence: how often real vocabularies violate the condition.** Eight
+vocabularies, checked against clauses A / B / C:
+
+| Vocabulary | triples | verdict | violating triple |
+|---|---:|---|---|
+| SKOS (`skos.rdf`) | 252 | satisfies | — |
+| FOAF | 633 | satisfies | — |
+| PROV-O | 1145 | satisfies | — |
+| GO slim (generic) | 4604 | satisfies | — |
+| SKOS axioms (`skills/skos-integrity`) | 35 | satisfies | — |
+| **Dublin Core Terms** | 700 | **violates C** | `dcterms:AgentClass rdfs:subClassOf rdfs:Class` |
+| **schema.org** | 17949 | **violates A and C** | `schema:additionalType rdfs:subPropertyOf rdf:type`; `schema:DataType rdfs:subClassOf rdfs:Class` |
+| **W3C Organization Ontology** | 747 | **violates B** | `org:roleProperty rdfs:range rdf:Property` |
+
+📊 3 of 8 violate (5 satisfy). That is the finding, and it is not a
+detail: metamodelling is ordinary practice in shipped vocabularies, and
+schema.org's `additionalType` is the reflective-aliasing trap itself,
+deployed on millions of sites.
+
+Two of the three violations have live instances, so they are not merely
+syntactic: `dcterms:Agent rdf:type dcterms:AgentClass` fires R2c, and
+schema.org has seven `rdf:type schema:DataType` triples that do the
+same. `schema:additionalType` is never used as a predicate inside the
+schema.org vocabulary file, and `org:roleProperty` reaches only the
+reflexivity harvest, which runs outside the checked loop.
+
+⚠️ **The consequence.** Gating the fast path on the a-priori condition
+alone would surrender Dublin Core Terms and schema.org — two of the most
+widely deployed vocabularies there are. That is why the dispatcher gates
+on the POST-HOC check instead and keeps `schema_stable` as the stated
+hypothesis of the equivalence claim. Anyone reading Phase 1a as "close
+the schema first" should read this row of the table first.
+
+**The follow-up this points at.** The post-hoc check turns out to be
+strictly more valuable than the a-priori condition, which suggests
+removing the condition from the design entirely: replace rdfs11 / rdfs5
+INSIDE `rdfs_closure_step` with the reachability-based schema closure,
+so the loop keeps its own fixed point and no side condition is needed
+for correctness at all. The cost is that a round over an already-closed
+hierarchy is expensive for the walk, which is what `schema_dense`
+guards against here. Worth doing before Phase 4.
+
 ### Phase 1 — semi-naive evaluation
 
 Fire rules against the triples derived in the *previous round*, joined

@@ -149,13 +149,29 @@ module RDFS.SchemaSplit
 //     checked empirically at every closure-touching test suite and at
 //     n = 20/40/80/160/300 on the chain benchmark by BYTE comparison of
 //     the two outputs. It is not machine-checked. Anyone extending the
-//     rule table MUST re-run the enumeration; the six clauses below are
-//     the load-bearing part.
+//     rule table MUST re-run the enumeration; the three clauses below
+//     are the load-bearing part.
+//   * that `rdfs_closure_step_no_trans` contains its input as a set.
+//     The five RS-2 rows carry `_monotone` theorems in
+//     RDF.Entailment.RDFS.Refinement.fst; the other rows seed their
+//     fold with the input by inspection. `count_schema_edges`'s
+//     argument below depends on it.
 //
-// SAFETY POSTURE. Every uncertainty falls back to the untouched
-// general loop, never forward into the fast path: an input that fails
-// the detector, an input whose schema fragment is already dense, and a
-// reachability walk that exhausts its step budget all dispatch to
+// SAFETY POSTURE — WHY THE ENUMERATION IS NOT LOAD-BEARING AT RUNTIME.
+// The enumeration above is a reasoning artefact, and this project's
+// record on exactly this rule set is that confident reasoning about it
+// gets caught out by measurement. So the dispatcher does not trust it.
+// It runs the fast path and then CHECKS the one property the
+// enumeration exists to establish — that the loop derived no schema
+// edge the pre-computed closure did not already carry (`fast_pass`) —
+// and discards the result and takes the general loop if that check
+// fails. `schema_stable_check` is the stated hypothesis of the
+// equivalence claim, not the runtime gate.
+//
+// Every uncertainty therefore falls back to the untouched general
+// loop, never forward into the fast path: a dense schema fragment, a
+// reachability walk that exhausts its step budget, and a failed
+// post-hoc injection check all dispatch to
 // `RDFS.Closure.rdfs_closure_with_reflexivity`. `rdfs_closure` and
 // `rdfs_closure_with_reflexivity` are not modified, not weakened, and
 // remain the fallback.
@@ -477,40 +493,91 @@ let rec rdfs_closure_no_trans (g : rdf_graph) (fuel : nat)
 (** 6. THE FAST PATH AND THE DISPATCHER                                  *)
 (** ==================================================================== *)
 
-// The fast path proper. Precondition (not enforced by the type — the
-// dispatcher below is the only intended caller): `schema_stable g`.
-let rdfs_closure_with_reflexivity_fast (base : rdf_graph) (extra : rdf_graph)
-                                       (fuel : nat) : Tot rdf_graph =
-  let seeded = graph_dedup_sort (List.Tot.append extra base) in
-  let closed = rdfs_closure_no_trans seeded fuel in
-  // Same two-pass shape as `RDFS.Closure.rdfs_closure_with_reflexivity`.
-  // The harvest emits only SELF-LOOPS (`C rdfs:subClassOf C`,
-  // `P rdfs:subPropertyOf P`), and a self-loop extends no reachability:
-  // composing it with any edge reproduces that edge. So the schema
-  // fragment stays transitively closed across the harvest and the
-  // second pass needs no transitivity either.
-  let refl_axioms = rdfs_reflexivity_axioms closed in
-  let with_refl = add_triples_if_new closed refl_axioms in
-  rdfs_closure_no_trans with_refl fuel
+// THE POST-HOC INJECTION CHECK.
+//
+// The a-priori side condition `schema_stable` is an ENUMERATION
+// argument, and the design note this work implements records three
+// claims about this rule set that were made confidently and were wrong,
+// all caught by measurement rather than by reasoning. So the fast path
+// does not rest on my enumeration alone. It also CHECKS, after the
+// fact, the one property the enumeration exists to establish: that the
+// loop derived no schema edge the pre-computed closure did not already
+// carry.
+//
+// WHY COUNTING IS ENOUGH. `rdfs_closure_step_no_trans` seeds every
+// row's fold with an accumulator containing its input, and ends with
+// `graph_dedup_sort`, so each step's result CONTAINS its input as a
+// set, and so does the loop. The final schema fragment is therefore a
+// superset of the initial one, and equal CARDINALITY forces equal SETS.
+//
+// WHY EQUAL SETS MAKE THE OMISSION SAFE. The graph grows monotonically
+// through the loop, so if the schema fragment is the same at the end as
+// at the start it was the same at every intermediate round. rdfs11 and
+// rdfs5 read only schema edges; on a fragment that never changed and
+// was transitively closed before the first round, they can derive
+// nothing that is not already present. Removing them is then exactly a
+// removal of re-derivation.
+//
+// This check costs one linear filter per pass, and it holds
+// unconditionally — it does not assume the enumeration is complete. If
+// the enumeration has a hole, the dispatcher takes the general loop and
+// the output is still right; only the speedup is lost.
+let count_schema_edges (g : rdf_graph) : Tot nat =
+  List.Tot.length (List.Tot.filter is_schema_edge g)
 
-// The dispatcher. Three independent reasons to decline the fast path,
-// each falling back to the untouched general loop:
-//   1. the input fails the side-condition detector;
-//   2. the schema fragment is already dense (see `schema_dense`);
-//   3. a reachability walk exhausted its step budget.
+// One fast pass plus its verification. `false` means a schema edge
+// appeared during the loop, so the pass may have lost an rdfs11 / rdfs5
+// derivation and its result must be discarded.
+let fast_pass (g : rdf_graph) (fuel : nat) : Tot (rdf_graph * bool) =
+  let before = count_schema_edges g in
+  let r = rdfs_closure_no_trans g fuel in
+  (r, count_schema_edges r = before)
+
+// The dispatcher. Every uncertainty falls back to the untouched general
+// loop, never forward into the fast path:
+//   1. the schema fragment is already dense (a performance guard —
+//      see `schema_dense`);
+//   2. a reachability walk exhausted its step budget;
+//   3. either fast pass failed its post-hoc injection check.
+//
+// The a-priori `schema_stable_check` is NOT a gate here. It is the
+// stated hypothesis of the equivalence claim — the condition under
+// which reason 3 provably never fires — and it is exported for callers
+// and tests. Gating on it as well would have cost the fast path on
+// vocabularies whose syntactic violation never actually injects
+// anything (Dublin Core Terms and schema.org both violate it by one or
+// two triples; see section 4 of the design note). The runtime
+// guarantee comes from the post-hoc check, which is strictly stronger
+// because it does not depend on the enumeration being complete.
+let rdfs_closure_with_reflexivity_fast (base : rdf_graph) (extra : rdf_graph)
+                                       (fuel : nat) : Tot (rdf_graph * bool) =
+  let seeded = graph_dedup_sort (List.Tot.append extra base) in
+  let (closed, ok1) = fast_pass seeded fuel in
+  if not ok1 then (closed, false)
+  else
+    // Same two-pass shape as `RDFS.Closure.rdfs_closure_with_reflexivity`.
+    // The harvest emits only SELF-LOOPS (`C rdfs:subClassOf C`,
+    // `P rdfs:subPropertyOf P`), and a self-loop extends no reachability:
+    // composing it with any edge reproduces that edge. So the schema
+    // fragment stays transitively closed across the harvest and the
+    // second pass needs no transitivity either. The second
+    // `fast_pass` re-checks that anyway.
+    let refl_axioms = rdfs_reflexivity_axioms closed in
+    let with_refl = add_triples_if_new closed refl_axioms in
+    fast_pass with_refl fuel
+
 let rdfs_closure_with_reflexivity_dispatch (g : rdf_graph) (fuel : nat)
   : Tot rdf_graph =
-  if not (schema_stable_check g)
+  let base = graph_dedup_sort (List.Tot.append (schema_seed_edges g) g) in
+  if schema_dense base
   then rdfs_closure_with_reflexivity g fuel
   else
-    let base = graph_dedup_sort (List.Tot.append (schema_seed_edges g) g) in
-    if schema_dense base
+    let (extra, ok) = schema_closed_edges base in
+    if not ok
     then rdfs_closure_with_reflexivity g fuel
     else
-      let (extra, ok) = schema_closed_edges base in
-      if not ok
-      then rdfs_closure_with_reflexivity g fuel
-      else rdfs_closure_with_reflexivity_fast base extra fuel
+      let (r, ok_fast) = rdfs_closure_with_reflexivity_fast base extra fuel in
+      if ok_fast then r else rdfs_closure_with_reflexivity g fuel
 
 (** ==================================================================== *)
 (** 7. PROOFS                                                            *)
