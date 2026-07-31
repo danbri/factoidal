@@ -396,6 +396,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Graph.fst
     RDF.Vocabulary.Axioms.fst
     RDFS.Closure.fst
+    RDFS.SchemaSplit.fst
     OWL.Closure.fst
     OWL.Semantics.fst
     OWL.Semantics.MemLemmas.fst
@@ -963,7 +964,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   # OWL_Closure directly.
   RGE_ML="$OUTDIR/RDF_Graph_Executable.ml"
   if [[ -f "$RGE_ML" ]] && ! grep -q '^include RDF_Term$' "$RGE_ML"; then
-    { printf 'include RDF_Term\ninclude RDF_Triple\ninclude RDF_Graph\ninclude RDF_Indexed\ninclude RDFS_Closure\ninclude OWL_Closure\n'; cat "$RGE_ML"; } > "$RGE_ML.tmp"
+    { printf 'include RDF_Term\ninclude RDF_Triple\ninclude RDF_Graph\ninclude RDF_Indexed\ninclude RDFS_Closure\ninclude RDFS_SchemaSplit\ninclude OWL_Closure\n'; cat "$RGE_ML"; } > "$RGE_ML.tmp"
     mv "$RGE_ML.tmp" "$RGE_ML"
   fi
 
@@ -998,7 +999,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
+  COMMON_MODULES="Util_Log.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_SchemaSplit.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml \
     RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml \
@@ -2078,7 +2079,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Format.ml RDF_Vocabulary.ml
     RDF_Term.ml RDF_Triple.ml
     RDF_Indexed.ml RDF_Graph.ml
-    RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml
+    RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_SchemaSplit.ml OWL_Closure.ml
     RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml

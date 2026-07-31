@@ -38,7 +38,7 @@ mkdir -p "$BINDIR"
 
 cd "$OUTDIR"
 
-COMMON_MODULES="RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml \
+COMMON_MODULES="RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_SchemaSplit.ml OWL_Closure.ml RDF_Graph_Executable.ml \
   Parser_FastString.ml RDF_IRI.ml Parser_IRI.ml \
   Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
   RDF_NQuads_Serialize.ml \

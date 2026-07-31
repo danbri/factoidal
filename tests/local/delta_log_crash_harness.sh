@@ -71,7 +71,7 @@ fi
 # build-ocaml.sh).
 COMMON_MODULES=(
   Util_Log RDF_Format RDF_Vocabulary RDF_Term RDF_Triple RDF_Indexed RDF_Graph
-  RDF_Vocabulary_Axioms RDFS_Closure OWL_Closure RDF_Graph_Executable RDF_List_Helpers
+  RDF_Vocabulary_Axioms RDFS_Closure RDFS_SchemaSplit OWL_Closure RDF_Graph_Executable RDF_List_Helpers
   RDF_Bytes RDF_Store_Loader Parquet_Footer OWL_Vocabulary Tableau Parser_FastString
   RDF_IRI RDF_NQuads_Serialize Parser_IRI Parser_Combinators Parser_TurtleScanner
   Parser_NTriples HDT_Container Parser_Turtle Parser_NQuads Parser_TriG Parser_XML

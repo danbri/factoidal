@@ -72,6 +72,7 @@ COMMON_MODULES=(
   RDF_Graph
   RDF_Vocabulary_Axioms
   RDFS_Closure
+  RDFS_SchemaSplit
   OWL_Closure
   RDF_Graph_Executable
   RDF_List_Helpers

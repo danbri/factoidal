@@ -210,7 +210,7 @@ if ! command -v ocamlfind >/dev/null 2>&1; then
 fi
 COMMON_MODULES=(
   Util_Log RDF_Format RDF_Vocabulary RDF_Term RDF_Triple RDF_Indexed RDF_Graph
-  RDF_Vocabulary_Axioms RDFS_Closure OWL_Closure RDF_Graph_Executable RDF_List_Helpers
+  RDF_Vocabulary_Axioms RDFS_Closure RDFS_SchemaSplit OWL_Closure RDF_Graph_Executable RDF_List_Helpers
   RDF_Bytes RDF_Store_Loader Parquet_Footer OWL_Vocabulary OWL_DirectMapping_Filter Tableau
   Parser_FastString RDF_IRI SPARQL11_IRI_Resolve Parser_IRI
   RDF_NQuads_Serialize
