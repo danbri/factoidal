@@ -280,6 +280,17 @@ Same for `rdfs4b`, and for the `yyy` position of `rdfs5` / `rdfs11`.
 
 ### RS-4 — the rdf12 manifests' "RDFS" regime runs none of rdfs1–rdfs13
 
+> ✅ **FIXED 2026-07-31** on `claude/rdfs-regime-unshadow-20260731`
+> (issue #335). The local one-argument function is now
+> `rdf12_reifies_closure`; a new `rdfs_regime_closure` composes it with
+> `RDFS.Closure.rdfs_closure` at fuel 100, written module-qualified;
+> `entails_rdfs` and `entails_rdfs_plus` both call it. The bare driver
+> is used, **not** `rdfs_closure_with_reflexivity`, because of RS-1
+> above. **No suite score moved** — see the note at the end of this
+> finding for why that is itself the point, and for the regression pin
+> that now covers the gap. The description below is kept in the past
+> tense as the record of what was wrong.
+
 `RDF.Entailment.Regime.fst` opens `RDF.Graph.Executable` (which
 `include`s `RDFS.Closure`) and then defines its **own** one-argument
 `rdfs_closure`, shadowing the two-argument RDFS rule driver:
@@ -307,6 +318,46 @@ and rdf-mt paths, not the rdf12-entailment path.
 Nothing is proven about the shadowed function because there is nothing
 RDFS-shaped in it. 🧭 The naming is the hazard: two functions called
 `rdfs_closure`, one of which is not an RDFS closure.
+
+⚠️ **The fix moved no score, and that is the finding.** Before and
+after the 2026-07-31 fix, `rdf12entail` (`rdf-semantics`) reads 41
+pass, 3 fail, 3 skip (out of 47 discovered); `rdf-mt` reads 39 pass, 0
+fail; `rdf11` reads 1031 pass, 0 fail (out of 1031); `rdf12` reads 242
+pass, 0 fail (out of 242); `rdf12c14n` reads 82 pass, 0 fail (out of
+82). No test changed verdict, in either direction.
+
+The reason is that the manifest cannot see the difference. The whole
+`rdf-semantics` manifest carries **four** tests in the two affected
+regimes — `reifies-range` and `triple-terms-propositions` ("RDFS"),
+`opaque-iri` and `opaque-iri-control` ("RDFS-Plus") — and **none of the
+four mentions `rdfs:subClassOf`, `rdfs:domain`, `rdfs:range` or
+`rdfs:subPropertyOf`.** Their fixtures are one `rdf:reifies` triple,
+one triple term, and two `owl:sameAs` graphs. An engine that ran no
+RDFS rule at all scored exactly the same as one that runs six of them.
+`triple-terms-propositions` still fails, for the unrelated reason the
+module header already gave: its conclusion needs a **triple term in
+subject position**, and `RDF.Term.subject` is IRI-or-bnode (the same
+generalized-RDF limit as RS-3).
+
+So the regime was never measured, and passing the regime is not
+evidence that it works. `tests/local/rdfs_entailment_regime_regressions.sh`
+(with `tests/local/rdfs_entailment_regime_probe.ml`) supplies the
+missing coverage: 16 checks calling `entails_rdf` / `entails_rdfs` /
+`entails_rdfs_plus` directly — one per implemented rule row, a
+two-row chained derivation that a single pass cannot produce, three
+negative controls including one that fires if anyone swaps in
+`rdfs_closure_with_reflexivity` (RS-1), and two that pin the "RDF"
+regime as **not** having gained the RDFS rules (RS-5).
+
+📊 Measured, not asserted. Against the **pre-fix** module (`HEAD~1`
+re-extracted and relinked into the same probe): **7 pass, 9 fail (out
+of 16 checks)**. Against the **post-fix** module: **16 pass, 0 fail
+(out of 16 checks)**. The nine that flip are the six rule rows, the
+chained two-row derivation, the reifies-feeds-rdfs9 case, and the
+RDFS-Plus rdfs9 case. The seven that pass in both are the reifies step
+itself, the three negative controls, the `owl:sameAs` case, and the two
+RDF-regime pins — i.e. the fix widened exactly the RDFS rows and
+nothing else.
 
 ### RS-5 — the "RDF" regime runs the RDFS rule set
 
@@ -500,9 +551,17 @@ proof-engineering reasons that are now written down.
 
 * 🔴 Split `collect_classes` / `collect_properties` by regime (RS-1) —
   the only shipping-code change this vertical asks for.
-* 🧭 Rename `RDF.Entailment.Regime.rdfs_closure` (RS-4). Two functions
-  with that name, one of which is not an RDFS closure, is a trap for
-  the next reader.
+* ✅ DONE 2026-07-31 — rename `RDF.Entailment.Regime.rdfs_closure` and
+  un-shadow the rule driver (RS-4, #335). Residual: an `rdf:reifies`
+  triple derived by rdfs7 does not re-trigger the reifies step, since
+  that step runs once before the fixed-point loop. Closing that needs
+  the RDF 1.2 axiom `rdf:reifies rdfs:range rdfs:Proposition` seeded so
+  rdfs3 runs it inside the loop — held back because axiom seeding into
+  a closure already regressed OWL-RL consistency once.
+* 🧭 The `rdf-semantics` manifest has no RDFS-rule coverage at all (see
+  RS-4). Either propose fixtures upstream, or keep growing
+  `tests/local/rdfs_entailment_regime_regressions.sh`. Right now the
+  regime's only real coverage is ours.
 * Decide what the `"RDF"` regime should run (RS-5) — plausibly
   `rdf_property_axiom_closure` alone, with the RDFS rules removed.
 * `lemma_build_indexed_complete_pred` (§6 obligation 1) — the

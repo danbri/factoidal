@@ -15,8 +15,14 @@ module RDF.Entailment.Regime
 //     opacity tests require (`@en-us--ltr` <> `@en-US--ltr`). This is
 //     deliberately stricter than RDF.Term.literal_eq, whose langtag
 //     compare is case-insensitive.
-//   * reifies-range closure (RDFS) — `X rdf:reifies Y` with Y an IRI/bnode
-//     adds `Y rdf:type rdfs:Proposition`.
+//   * RDFS closure — the RDFS.Closure rule driver (rdfs2 domain, rdfs3
+//     range, rdfs5 subPropertyOf-transitivity, rdfs7 subPropertyOf,
+//     rdfs9 subClassOf, rdfs11 subClassOf-transitivity, plus the finite
+//     container-membership slice), run to its fixed point, PRECEDED by
+//     the RDF 1.2 reifies-range step (`X rdf:reifies Y` with Y an IRI or
+//     bnode adds `Y rdf:type rdfs:Proposition`). Before 2026-07-31 the
+//     reifies step was named `rdfs_closure` and shadowed the rule driver,
+//     so this regime ran that ONE rule — finding RS-4, issue #335.
 //   * owl:sameAs closure (RDFS-Plus) — IRIs are transparent, INCLUDING
 //     inside triple terms, so equal IRIs are inter-substitutable.
 //
@@ -147,7 +153,7 @@ let bnd_rdf (t : rdf_term) : bool =
   | T_Literal l -> not (literal_ill_formed l.datatype l.lexical_form)
   | _           -> true
 
-// ---- RDFS reifies-range closure ----------------------------------------
+// ---- RDF 1.2 rdf:reifies range step ------------------------------------
 
 let reifies_prop_triples (t : triple) : list triple =
   if t.p = rdf_reifies_iri then
@@ -157,8 +163,56 @@ let reifies_prop_triples (t : triple) : list triple =
      | _         -> [])
   else []
 
-let rdfs_closure (ts : list triple) : list triple =
+// The RDF 1.2 `rdf:reifies` range step ALONE — one rule:
+//   X rdf:reifies Y  |-  Y rdf:type rdfs:Proposition   (Y an IRI or bnode)
+//
+// This function was called `rdfs_closure` until 2026-07-31. Under that
+// name it SHADOWED `RDFS.Closure.rdfs_closure` — the real rdfs2 / rdfs3 /
+// rdfs5 / rdfs7 / rdfs9 / rdfs11 rule driver, which this module gets in
+// scope through `open RDF.Graph.Executable` (that module `include`s
+// RDFS.Closure). The shadow made `entails_rdfs` below apply this ONE rule
+// and none of rdfs1-rdfs13, so the rdf12 manifests' "RDFS" regime measured
+// an engine that did no RDFS reasoning. Recorded as finding RS-4 in
+// docs/designissues/2026-07-30-rdf-rdfs-entailment-refinement.md §4 and
+// tracked in #335. The name now says what the function is; the RDFS
+// closure below says what it is.
+let rdf12_reifies_closure (ts : list triple) : list triple =
   ts @ collect reifies_prop_triples ts
+
+// ---- RDFS-regime antecedent closure ------------------------------------
+
+// Fuel for the RDFS rule driver. 100 everywhere else in the tree that
+// calls RDFS.Closure.rdfs_closure (OWL.Closure's entailment_closure
+// callers, RIF.Core.Tests.default_fuel, the runner's
+// apply_entailment_regime); kept identical here so the rdf12-entailment
+// path and the SPARQL-entailment / rdf-mt paths cannot diverge on fuel.
+let rdfs_regime_fuel : nat = 100
+
+// The antecedent closure the "RDFS" regime applies: the RDF 1.2
+// rdf:reifies range step, then the RDFS.Closure rule driver run to its
+// fixed point.
+//
+// Order: reifies FIRST, so the `rdf:type rdfs:Proposition` triples it
+// emits are visible to rdfs9 (subClassOf) / rdfs2 (domain) / rdfs3
+// (range) inside the fixed-point loop. Residual incompleteness, stated
+// rather than hidden: an `rdf:reifies` triple DERIVED by rdfs7
+// (subPropertyOf) does not re-trigger the reifies step, because that step
+// runs once before the loop rather than inside `rdfs_closure_step`. No
+// fixture in the tree exercises that shape. The clean fix is to seed the
+// RDF 1.2 vocabulary axiom `rdf:reifies rdfs:range rdfs:Proposition` and
+// let rdfs3 do the work inside the loop — deliberately NOT done here,
+// because axiom seeding into a closure is exactly the change that
+// regressed OWL-RL consistency once already (see RDFS.Closure.fsti's
+// `rdfs_closure_with_reflexivity` banner) and it needs its own commit.
+//
+// Deliberately the BARE `rdfs_closure`, NOT
+// `rdfs_closure_with_reflexivity`: finding RS-1 of the same design note
+// gives a machine-checked witness that the reflexivity harvest emits
+// triples no RDFS rule licenses (it reads owl:Class / owl:ObjectProperty
+// typing, which is an OWL-rung licence). Using it here would make
+// NegativeEntailmentTests wrongly pass.
+let rdfs_regime_closure (ts : list triple) : list triple =
+  RDFS.Closure.rdfs_closure (rdf12_reifies_closure ts) rdfs_regime_fuel
 
 // ---- owl:sameAs closure (IRI transparency, incl. triple-term interiors) -
 
@@ -206,10 +260,12 @@ let owl_closure (ts : list triple) : list triple =
 let entails_rdf (a b : list triple) : bool =
   entails_with dt_value_leq bnd_rdf a b
 
-// RDFS entailment: + reifies-range closure.
+// RDFS entailment: + the RDFS rule driver (rdfs2/3/5/7/9/11 + the
+// container-membership slice) + the RDF 1.2 reifies-range step.
 let entails_rdfs (a b : list triple) : bool =
-  entails_with dt_value_leq bnd_rdf (rdfs_closure a) b
+  entails_with dt_value_leq bnd_rdf (rdfs_regime_closure a) b
 
-// RDFS-Plus entailment: + owl:sameAs (IRI transparency) + reifies-range.
+// RDFS-Plus entailment: the RDFS-regime closure + owl:sameAs (IRI
+// transparency, including inside triple terms).
 let entails_rdfs_plus (a b : list triple) : bool =
-  entails_with dt_value_leq bnd_rdf (owl_closure (rdfs_closure a)) b
+  entails_with dt_value_leq bnd_rdf (owl_closure (rdfs_regime_closure a)) b
