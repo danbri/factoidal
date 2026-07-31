@@ -102,6 +102,10 @@ not cubic.
 
 ## 2. Plan
 
+⚠️ Revised 2026-07-31: Phase 1a (schema/data separation) was added after
+the fact and outranks the rest for real-world data. The original ordering
+below was written before that idea was on the table.
+
 Ordered by value per unit of risk. Each phase states its own acceptance
 criterion, because "it felt faster" is not a measurement (anti-pattern
 #25, and the reason this document exists at all).
@@ -123,6 +127,55 @@ wall time, with committed baselines and a regression gate.
 
 Acceptance: running it reproduces the n³ curve above, and a deliberate
 10% slowdown is caught.
+
+### Phase 1a — separate the schema from the data. **Probably the biggest win.**
+
+Added 2026-07-31 after the owner asked what the field's baselines are.
+This outranks semi-naive for real data and was missing from the first
+draft of this plan.
+
+Real vocabularies have hundreds to a few thousand classes. Real *data*
+has millions of statements. Production reasoners exploit that: compute
+the class/property hierarchy closure **once, on the schema alone** — a
+small graph, with proper algorithms available — then push results to the
+instance data in a single pass. The expensive recursive part never
+touches the big data.
+
+We do the opposite: one generic fixed-point loop over everything, so
+instance triples are dragged through every round of the transitive
+computation. The tell is that our chain benchmark is **pure schema**, a
+few hundred triples, and takes minutes.
+
+The RDFS rules divide cleanly on paper:
+
+* **Recursive, schema-only:** rdfs5 and rdfs11 (transitivity of
+  `subPropertyOf` / `subClassOf`). This is the only real recursion.
+* **One-pass, given the schema closure:** rdfs2, rdfs3, rdfs7, rdfs9,
+  rdfs4a, rdfs4b, rdfs1, rdfs8, rdfs13 — each a lookup against the
+  closed hierarchy.
+
+🔴 **The trap, and why this is not the trivial change it looks like.**
+RDFS is *reflective*: the vocabulary can describe itself. A graph may
+assert `:p rdfs:subPropertyOf rdfs:subClassOf`, after which an ordinary
+instance triple `:A :p :B` **injects a new schema edge** `:A
+rdfs:subClassOf :B`. A stratification that computes the schema closure
+first and then never revisits it is **unsound** on such a graph. The
+same reflectivity is what the metamodeling discussion around RS-1 and
+the OWL range-iff correction was circling.
+
+So the deliverable is not "stratify". It is:
+
+1. a **checkable side condition** on the input graph under which the
+   fast path is provably equivalent to the general fixed point;
+2. the fast path, proved equivalent under that condition;
+3. a **detector** for the condition, with fallback to the existing
+   general loop when it does not hold;
+4. evidence about how often real vocabularies violate it — measure SKOS,
+   schema.org, FOAF, Dublin Core rather than assuming.
+
+That shape — a fast path with a proved side condition and an honest
+fallback — is the same one `graph_exact` and `closure_chain_wf` already
+use elsewhere in this tree.
 
 ### Phase 1 — semi-naive evaluation
 
