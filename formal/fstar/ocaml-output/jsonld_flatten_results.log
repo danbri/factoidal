@@ -57,7 +57,7 @@
   [57/58] #tli02 ok
   [58/58] #tli03 ok
 === JSON-LD 1.1 Flattening Test Runner ===
-Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/flatten-manifest.jsonld
+Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/flatten-manifest.jsonld
 
 Totals: 58 test entries
 
