@@ -637,6 +637,27 @@ the genuine RDFS interpretations, so the "soundness is thereby stronger"
 argument of §8.1 is unchanged in direction and slightly weaker in
 degree. Any future completeness result must re-check these three.
 
+**The payoff.** §7 of this note listed
+`rdfs_closure_with_reflexivity` under "what is not proved", with the
+reason: it called an unsound harvest, so proving it sound would have
+meant weakening the specification. The split fixed the function
+instead, and the theorem then closed against the specification as
+written — ModelTheory §4c:
+
+```fstar
+val rdfs_closure_with_reflexivity_entails (g : rdf_graph) (fuel : nat)
+  : Lemma (requires closure_chain_wf g /\
+                    closure_chain_wf (reflexivity_seeded g fuel))
+          (ensures  rdfs_entails d_minimal g
+                      (rdfs_closure_with_reflexivity g fuel))
+```
+
+The OWL-regime variant `owl_rdfs_closure_with_reflexivity` is still
+**not** proven RDFS-sound and must not be:
+`owl_reflexivity_axioms_not_rdfs_sound` is the witness that it cannot
+be. That is the split doing its job — the two functions now have
+different theorems because they answer to different rule tables.
+
 ### 10.3 What is still blocked, and what a fix costs
 
 **rdfD1, and the 2004 reading of rdfs1 — blocked on blank-node

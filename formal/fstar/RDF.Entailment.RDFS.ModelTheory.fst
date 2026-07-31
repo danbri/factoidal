@@ -813,6 +813,82 @@ let rdf_property_axiom_closure_entails g =
   end
 
 // ===================================================================
+// 4c. `rdfs_closure_with_reflexivity` IS SOUND (2026-07-31).
+//
+// Before the RS-1 regime split this theorem was DELIBERATELY ABSENT:
+// the function harvested classes and properties through the OWL typing
+// IRIs, which no RDFS condition licenses, so the only way to prove it
+// sound would have been to weaken the specification -- exactly what
+// this pattern exists to prevent. The split fixed the function, and
+// `RDF.Entailment.RDFS.Refinement.rdfs_reflexivity_axioms_licensed`
+// proves the narrow harvest emits only `rdfs_licensed` triples, so the
+// proof now closes against the specification as written.
+//
+// Stated at `d_minimal`: the licence theorem is at `d_minimal`, and the
+// harvest emits no datatype triple, so no wider D is needed.
+//
+// The hypothesis names the index chain of BOTH closure passes, for the
+// reason section 3 of the design note records: a `forall`-over-all-graphs
+// index hypothesis is false and would make the theorem vacuous.
+// ===================================================================
+
+let rdfs_reflexivity_axioms_preserves (i : interp) (a : bnode_assignment i.idom)
+                                      (g : rdf_graph)
+  : Lemma (requires rdfs_conditions d_minimal i /\ holds_all i a g)
+          (ensures  holds_all i a (rdfs_reflexivity_axioms g)) =
+  rdfs_reflexivity_axioms_licensed g;
+  FStar.Classical.forall_intro
+    (FStar.Classical.move_requires (rdfs_licensed_true d_minimal i a g))
+
+let lemma_add_triples_if_new_holds (i : interp) (a : bnode_assignment i.idom)
+                                   (g ts : rdf_graph)
+  : Lemma (requires holds_all i a g /\ holds_all i a ts)
+          (ensures  holds_all i a (add_triples_if_new g ts)) =
+  FStar.Classical.forall_intro (lemma_add_triples_if_new_memP g ts)
+
+// The second pass's input, named so the hypothesis can mention it.
+let reflexivity_seeded (g : rdf_graph) (fuel : nat) : rdf_graph =
+  let closed = rdfs_closure g fuel in
+  add_triples_if_new closed (rdfs_reflexivity_axioms closed)
+
+#push-options "--z3rlimit 120"
+val rdfs_closure_with_reflexivity_sound (i : interp) (a : bnode_assignment i.idom)
+                                        (g : rdf_graph) (fuel : nat)
+  : Lemma (requires rdfs_conditions d_minimal i /\ holds_all i a g /\
+                    closure_chain_wf g /\
+                    closure_chain_wf (reflexivity_seeded g fuel))
+          (ensures  holds_all i a (rdfs_closure_with_reflexivity g fuel))
+
+let rdfs_closure_with_reflexivity_sound i a g fuel =
+  let closed = rdfs_closure g fuel in
+  rdfs_closure_sound d_minimal i a g fuel;
+  rdfs_reflexivity_axioms_preserves i a closed;
+  lemma_add_triples_if_new_holds i a closed (rdfs_reflexivity_axioms closed);
+  assert (reflexivity_seeded g fuel ==
+          add_triples_if_new closed (rdfs_reflexivity_axioms closed));
+  rdfs_closure_sound d_minimal i a (reflexivity_seeded g fuel) fuel
+#pop-options
+
+// COROLLARY. The RDFS regime's entry point is RDFS-SOUND.
+val rdfs_closure_with_reflexivity_entails (g : rdf_graph) (fuel : nat)
+  : Lemma (requires closure_chain_wf g /\ closure_chain_wf (reflexivity_seeded g fuel))
+          (ensures  rdfs_entails d_minimal g (rdfs_closure_with_reflexivity g fuel))
+
+let rdfs_closure_with_reflexivity_entails g fuel =
+  introduce forall (i : interp).
+      rdfs_conditions d_minimal i ==>
+      satisfies i g ==> satisfies i (rdfs_closure_with_reflexivity g fuel)
+  with introduce rdfs_conditions d_minimal i ==>
+                 (satisfies i g ==> satisfies i (rdfs_closure_with_reflexivity g fuel))
+  with _ . introduce satisfies i g ==> satisfies i (rdfs_closure_with_reflexivity g fuel)
+  with _ . begin
+    eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+    returns satisfies i (rdfs_closure_with_reflexivity g fuel)
+    with _ . rdfs_closure_with_reflexivity_sound i a g fuel
+  end
+
+
+// ===================================================================
 // 4b. FINDING RS-1, the model-theoretic half.
 //
 // RDF.Entailment.RDFS.Refinement.reflexivity_axioms_not_rdfs_sound is
@@ -855,11 +931,15 @@ let reflexivity_needs_rdfs_Class (i : interp) (x : i.idom)
 //   `rho_df_graph` is defined in the Spec module for that purpose and
 //   the theorem is the next commit's target. The blocking analysis is
 //   in the design note.
-// * `rdfs_closure_with_reflexivity`. Deliberately absent: it calls
-//   `rdfs_reflexivity_axioms`, which is UNSOUND at this rung (finding
-//   RS-1, with a machine-checked witness in the Refinement module).
-//   Proving it sound would require weakening the specification, which
-//   is exactly what this vertical must not do.
+// * `rdfs_closure_with_reflexivity`. NO LONGER ABSENT as of 2026-07-31
+//   -- see section 4c. It used to be deliberately unproven because it
+//   called a harvest that read the OWL typing IRIs, which no RDFS
+//   condition licenses (finding RS-1). The regime split fixed the
+//   function rather than weakening the specification, and the theorem
+//   then closed on the specification as written. The OWL-regime
+//   variant, `owl_rdfs_closure_with_reflexivity`, is still NOT proven
+//   RDFS-sound and must not be -- `owl_reflexivity_axioms_not_rdfs_sound`
+//   in the Refinement module is the witness that it cannot be.
 // * The GENUINE RDFS-interpretation class. `interp` is the OWL pilot's
 //   superset. For soundness the inclusion runs the right way and every
 //   theorem above is thereby STRONGER. For completeness it runs the
