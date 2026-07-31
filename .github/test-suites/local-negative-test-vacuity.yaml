@@ -1,0 +1,62 @@
+name: Local — negative-test vacuity audit (issue 333)
+spec: internal
+runner: tools/negative-test-vacuity.py
+runner_args:
+  - --markdown
+  - docs/test-results/by-suite/negative-test-vacuity.md
+result_path: docs/test-results/by-suite/negative-test-vacuity.json
+domain: RDF
+foundational: false
+
+# A NEGATIVE test asserts a non-entailment: the engine must NOT derive X.
+# An engine that derives nothing at all passes every such test trivially.
+# Those are vacuous passes, and they make a suite look green while
+# measuring nothing.
+#
+# This audit measures. It runs no engine change and alters no other
+# suite's score. Its own `pass`/`fail` numbers mean something different
+# from every other suite in this directory — read `metric` in the JSON
+# before quoting them:
+#
+#   pass  negative tests on which the engine did premise-attributable,
+#         non-self-loop, on-target derivation
+#   fail  negative tests that are VACUOUS: the closure of the premise adds
+#         nothing beyond the regime's own axioms, so nothing the engine
+#         does can turn the test red
+#   skip  weak + exempt + unscored + untrusted + error, broken out in
+#         skip_breakdown
+#
+# The criterion, its exemptions, and its false-positive and
+# false-negative modes are written out in full in the module docstring of
+# tools/negative-test-vacuity.py and copied into the JSON under
+# `criterion`. Exemptions rest on a stated, checkable property of each
+# test's own data (today: the test's declared mf:entailmentRegime is
+# "simple", which has no derivation rules). There is no name list.
+#
+# NOT a gate yet. `--fail-on-vacuous` exists but is off by default: the
+# vacuity count is a finding to track while the RDFS rule gaps it exposes
+# (RS-2, RS-4) are closed, not a red build. Turn it on once the count is
+# where it should be, and it becomes a ratchet.
+
+triggers:
+  paths:
+    # The closure rules whose absence produces the vacuity.
+    - formal/fstar/RDFS.Closure.fsti
+    - formal/fstar/RDFS.Closure.fst
+    - formal/fstar/RDF.Entailment.Regime.fst
+    - formal/fstar/RDF.Graph.Executable.fst
+    - formal/fstar/OWL.Closure.fst
+    - formal/fstar/OWL.Vocabulary.fst
+    # `factoidal entail` / `factoidal --dump` are how this tool reaches
+    # the engine; a change to either changes what it measures.
+    - bin/factoidal-cli/**
+    - tools/negative-test-vacuity.py
+
+  excludes: []
+
+# What this audit cannot determine yet, in plain language.
+remaining:
+  - "OWL 2 negative-entailment and consistency catalogs are censused but not scored: their premise ontologies are embedded as literals inside the catalog, and the engine's N-Triples serializer emits those literals with raw newlines and unescaped quotes, so they cannot be recovered through `factoidal --dump`"
+  - "negative SYNTAX tests are excluded with a reason, not scored: 'did work' there means the parser reached and rejected a specific construct, and the F* parsers surface no error offset through any CLI (they return None)"
+  - "SHACL/ShEx/JSON-Schema validation tests are excluded with a reason: their degenerate engine is report-everything-invalid or check-nothing, not derive-nothing, so the closure criterion does not transfer"
+  - "the on-target refinement is coarse — a closure can derive many triples sharing a predicate with the conclusion without exercising the rule that could have produced it; narrowing that needs per-rule firing counts out of the F* closure"
