@@ -386,12 +386,20 @@ let recognized_datatypes : list wf_iri = [rdf_lang_string; xsd_string]
 // that input. So a suppressed triple is still an element of the row's
 // result: the emitted SET is identical, only the duplicate COUNT drops.
 // The three theorems that pin this per row live in
-// RDF.Entailment.RDFS.Refinement.fst section 6b:
-//   `_licensed`  -- nothing new appears  (unchanged statement)
-//   `_monotone`  -- the seed survives
+// RDF.Entailment.RDFS.Refinement.fst section 6c:
+//   `_licensed`  -- nothing new appears  (unchanged statement, section 6b)
+//   `_monotone`  -- the fold's seed survives
 //   `_complete`  -- every conclusion the row licenses is still present
 // `_licensed` and `_complete` together bracket the result set from both
 // sides, so the guard cannot lose a derivation.
+//
+// NOT A HOIST. Issue #340's item 4 proposed lifting these rows out of
+// the loop and running them once after the fixed point. That is UNSOUND
+// -- every one of the five feeds rdfs9 or rdfs11, so a post-pass loses
+// derivations. The counterexamples are in section 10.5 of
+// docs/designissues/2026-07-30-rdf-rdfs-entailment-refinement.md. All
+// twelve rows stay in the loop; what changes is that each conclusion is
+// emitted once instead of once per round.
 //
 // `ig_built.bn_sp` is checked first: a caller that passed a SELECTIVELY
 // built index has `ig_sp = BLeaf` by construction, not because the
@@ -404,33 +412,33 @@ let snapshot_carries (ig : indexed_graph) (s : subject) (p : wf_iri) (c : wf_iri
     (fun (o : rdf_term) -> match o with | T_IRI i -> i = c | _ -> false)
     (find_objects_indexed ig s p)
 
+// The guarded emission all five rows perform. Named (rather than
+// inlined at each call site) so section 6c's fold lemmas can be stated
+// about it once instead of five times.
+let emit_once (ig : indexed_graph) (acc : rdf_graph)
+              (sub : subject) (prd : wf_iri) (cls : wf_iri) : Tot rdf_graph =
+  if snapshot_carries ig sub prd cls then acc
+  else add_triple_unchecked acc ({ s = sub; p = prd; o = T_IRI cls } <: triple)
+
 // rdfs1, RDF 1.1 Semantics section 9 rule table, verbatim:
 //   "rdfs1 | any IRI aaa in D | aaa rdf:type rdfs:Datatype ."
 // The rule has NO premise from the data, so it is an axiom emitter over
 // D, like rdfs_rule_container_membership above.
+let rdfs1_step (ig : indexed_graph) (acc : rdf_graph) (d : wf_iri) : Tot rdf_graph =
+  emit_once ig acc (S_IRI d) rdf_type rdfs_Datatype
+
 let rdfs_rule_recognized_datatypes (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (d : wf_iri) ->
-      if snapshot_carries ig (S_IRI d) rdf_type rdfs_Datatype then acc
-      else
-        let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
-        add_triple_unchecked acc new_t)
-    g
-    recognized_datatypes
+  List.Tot.fold_left (rdfs1_step ig) g recognized_datatypes
 
 // rdfs4a, RDF 1.1 Semantics section 9 rule table, verbatim:
 //   "rdfs4a | xxx aaa yyy . | xxx rdf:type rdfs:Resource ."
 // The subject of the premise stays in subject position, so this row
 // needs no generalized-RDF escape.
+let rdfs4a_step (ig : indexed_graph) (acc : rdf_graph) (t : triple) : Tot rdf_graph =
+  emit_once ig acc t.s rdf_type rdfs_Resource
+
 let rdfs_rule_resource_subject (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      if snapshot_carries ig t.s rdf_type rdfs_Resource then acc
-      else
-        let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
-        add_triple_unchecked acc new_t)
-    g
-    g
+  List.Tot.fold_left (rdfs4a_step ig) g g
 
 // rdfs4b, RDF 1.1 Semantics section 9 rule table, verbatim:
 //   "rdfs4b | xxx aaa yyy . | yyy rdf:type rdfs:Resource ."
@@ -441,48 +449,33 @@ let rdfs_rule_resource_subject (g : rdf_graph) (ig : indexed_graph) : rdf_graph 
 // is that side condition. The declarative `rdfs4b_derives` carries the
 // same premise, so the refinement is EXACT: the incompleteness is in
 // the tree's term algebra, not in the proof.
+let rdfs4b_step (ig : indexed_graph) (acc : rdf_graph) (t : triple) : Tot rdf_graph =
+  match term_to_subject t.o with
+  | Some y_subj -> emit_once ig acc y_subj rdf_type rdfs_Resource
+  | None -> acc
+
 let rdfs_rule_resource_object (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      match term_to_subject t.o with
-      | Some y_subj ->
-        if snapshot_carries ig y_subj rdf_type rdfs_Resource then acc
-        else
-          let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
-          add_triple_unchecked acc new_t
-      | None -> acc)
-    g
-    g
+  List.Tot.fold_left (rdfs4b_step ig) g g
 
 // rdfs8, RDF 1.1 Semantics section 9 rule table, verbatim:
 //   "rdfs8 | xxx rdf:type rdfs:Class . | xxx rdfs:subClassOf rdfs:Resource ."
+let rdfs8_step (ig : indexed_graph) (acc : rdf_graph) (t : triple) : Tot rdf_graph =
+  if is_typed_as t rdfs_Class
+  then emit_once ig acc t.s rdfs_subClassOf rdfs_Resource
+  else acc
+
 let rdfs_rule_class_subclass_resource (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      if is_typed_as t rdfs_Class &&
-         not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Resource)
-      then
-        let new_t : triple =
-          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } in
-        add_triple_unchecked acc new_t
-      else acc)
-    g
-    g
+  List.Tot.fold_left (rdfs8_step ig) g g
 
 // rdfs13, RDF 1.1 Semantics section 9 rule table, verbatim:
 //   "rdfs13 | xxx rdf:type rdfs:Datatype . | xxx rdfs:subClassOf rdfs:Literal ."
+let rdfs13_step (ig : indexed_graph) (acc : rdf_graph) (t : triple) : Tot rdf_graph =
+  if is_typed_as t rdfs_Datatype
+  then emit_once ig acc t.s rdfs_subClassOf rdfs_Literal
+  else acc
+
 let rdfs_rule_datatype_subclass_literal (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      if is_typed_as t rdfs_Datatype &&
-         not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Literal)
-      then
-        let new_t : triple =
-          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } in
-        add_triple_unchecked acc new_t
-      else acc)
-    g
-    g
+  List.Tot.fold_left (rdfs13_step ig) g g
 
 (** ======================================================================== *)
 (** Fixed-Point RDFS Closure                                                 *)
