@@ -632,3 +632,42 @@ imported type (RDF.Term, RDF.Triple, core algebra types) MUST rebuild
 with `./build-ocaml.sh extract --force-full` (all modules re-verified,
 0 skipped) before compile. Targeted extracts remain fine for leaf-module
 edits.
+
+## Hazard #17 — `pgrep -f <script>` matches your OWN shell, so a dead job reads as RUNNING
+
+2026-07-31. A W3C gate battery died silently ~3.5 hours before anyone
+noticed, because every liveness check was
+
+```bash
+pgrep -f "w3c-tests.sh" >/dev/null && echo RUNNING || echo STOPPED
+```
+
+`pgrep -f` matches against the full command line of every process — and
+the checking shell's own command line **contains the string
+`w3c-tests.sh`**. So the check matches itself and can never report
+STOPPED. A `Monitor` armed with the same idiom in its death-branch
+inherits the bug and never fires.
+
+The tell, when it finally showed: `ps -o etimes=` on the "found" PID
+returned `0` — a process that has been running for zero seconds is the
+grep, not the job.
+
+**Detect liveness by the artifact advancing, not by process name.**
+
+```bash
+AGE=$(( $(date +%s) - $(date -r "$LOG" +%s) ))
+[ "$AGE" -gt 3000 ] && echo "STALLED OR DEAD after $(grep -c '^  done\.' "$LOG") suites"
+```
+
+A log that has not been written in N minutes is stalled or dead, and the
+answer is the same either way. This also catches the case a process check
+never can: a job still resident but wedged.
+
+If a process check is genuinely wanted, match the *binary* rather than
+the script name (`pgrep -f "bin/linux-x86_64/owl_runner"`), and confirm
+with `ps -o etimes=` that the elapsed time is plausible.
+
+⚠️ Related: the same run showed that launching three verification agents
+while a gate battery runs is enough contention to kill the battery. The
+previous gate passed the same suite cleanly. Stagger heavy work, or
+expect to re-run the gate.
