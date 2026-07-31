@@ -155,8 +155,8 @@
    "log_path": "formal/fstar/ocaml-output/jsonld_frame_results.log",
    "domain": "RDF",
    "coverage": {
-    "pass": 6,
-    "fail": 86,
+    "pass": 28,
+    "fail": 64,
     "skip": 0,
     "total": 92,
     "source": "suite-log:named-line:formal/fstar/ocaml-output/jsonld_frame_results.log"
@@ -359,6 +359,20 @@
    "spec": "internal",
    "log_path": null,
    "domain": "COTTAS",
+   "coverage": {
+    "pass": null,
+    "fail": null,
+    "skip": null,
+    "total": null,
+    "source": "unresolved",
+    "reason": "declared log_path missing: None"
+   }
+  },
+  "local-parser-unicode": {
+   "name": "Local \u2014 Parser UTF-8 preservation (issue 325)",
+   "spec": "internal",
+   "log_path": null,
+   "domain": "RDF",
    "coverage": {
     "pass": null,
     "fail": null,
@@ -825,9 +839,9 @@
    "log_path": "formal/fstar/ocaml-output/shex_results.log",
    "domain": "SHEX",
    "coverage": {
-    "pass": 1181,
+    "pass": 1182,
     "fail": 0,
-    "skip": 1,
+    "skip": 0,
     "total": 1182,
     "source": "docs/test-results/latest.json:shex"
    }
@@ -1007,9 +1021,9 @@
    "log_path": "formal/fstar/ocaml-output/xml_conformance_results.log",
    "domain": "XML",
    "coverage": {
-    "pass": 1428,
+    "pass": 1456,
     "fail": 0,
-    "skip": 1157,
+    "skip": 1129,
     "total": 2585,
     "source": "suite-log:named-line:formal/fstar/ocaml-output/xml_conformance_results.log"
    }
@@ -2639,6 +2653,10 @@
      "how": "foundational-path"
     },
     {
+     "suite": "local-parser-unicode",
+     "how": "foundational-path"
+    },
+    {
      "suite": "local-serializer-unicode",
      "how": "foundational-path"
     },
@@ -3175,7 +3193,7 @@
    "files": [
     "formal/fstar/Parser.Combinators.fst"
    ],
-   "loc": 424,
+   "loc": 451,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -3200,6 +3218,10 @@
    "w3c_refinement_theorems": [],
    "assurance_tier": "merely-tot",
    "suites": [
+    {
+     "suite": "local-parser-unicode",
+     "how": "direct-trigger"
+    },
     {
      "suite": "local-sparql-parser",
      "how": "direct-trigger"
@@ -3243,7 +3265,7 @@
    "files": [
     "formal/fstar/Parser.FastString.fst"
    ],
-   "loc": 211,
+   "loc": 256,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -3251,7 +3273,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_FastString.ml",
    "in_build_module_list": true,
    "foundational_path": true,
-   "shipping_function_count": 12,
+   "shipping_function_count": 13,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 7,
@@ -3383,6 +3405,10 @@
     {
      "suite": "local-parquet-footer",
      "how": "foundational-path"
+    },
+    {
+     "suite": "local-parser-unicode",
+     "how": "direct-trigger"
     },
     {
      "suite": "local-serializer-unicode",
@@ -3726,6 +3752,10 @@
     },
     {
      "suite": "local-parquet-footer",
+     "how": "foundational-path"
+    },
+    {
+     "suite": "local-parser-unicode",
      "how": "foundational-path"
     },
     {
@@ -4181,6 +4211,10 @@
      "how": "direct-trigger"
     },
     {
+     "suite": "local-parser-unicode",
+     "how": "direct-trigger"
+    },
+    {
      "suite": "rdf-n-quads",
      "how": "direct-trigger"
     },
@@ -4203,7 +4237,7 @@
    "files": [
     "formal/fstar/Parser.NTriples.fst"
    ],
-   "loc": 1420,
+   "loc": 1442,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -4243,6 +4277,10 @@
    ],
    "assurance_tier": "w3c-refinement",
    "suites": [
+    {
+     "suite": "local-parser-unicode",
+     "how": "direct-trigger"
+    },
     {
      "suite": "rdf-mt",
      "how": "direct-trigger"
@@ -4363,6 +4401,10 @@
    "w3c_refinement_theorems": [],
    "assurance_tier": "merely-tot",
    "suites": [
+    {
+     "suite": "local-parser-unicode",
+     "how": "direct-trigger"
+    },
     {
      "suite": "owl-profile-el",
      "how": "direct-trigger"
@@ -4564,6 +4606,10 @@
    "assurance_tier": "merely-tot",
    "suites": [
     {
+     "suite": "local-parser-unicode",
+     "how": "direct-trigger"
+    },
+    {
      "suite": "rdf-trig",
      "how": "direct-trigger"
     },
@@ -4582,7 +4628,7 @@
    "files": [
     "formal/fstar/Parser.Turtle.fst"
    ],
-   "loc": 2704,
+   "loc": 2759,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -4607,6 +4653,10 @@
    "w3c_refinement_theorems": [],
    "assurance_tier": "merely-tot",
    "suites": [
+    {
+     "suite": "local-parser-unicode",
+     "how": "direct-trigger"
+    },
     {
      "suite": "local-turtle-pretty",
      "how": "direct-trigger"
@@ -4692,6 +4742,10 @@
    "assurance_tier": "merely-tot",
    "suites": [
     {
+     "suite": "local-parser-unicode",
+     "how": "direct-trigger"
+    },
+    {
      "suite": "local-turtle-pretty",
      "how": "direct-trigger"
     },
@@ -4770,7 +4824,7 @@
    "files": [
     "formal/fstar/Parser.XML.fst"
    ],
-   "loc": 1794,
+   "loc": 1938,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -4778,7 +4832,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_XML.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 85,
+   "shipping_function_count": 90,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -4795,6 +4849,10 @@
    "w3c_refinement_theorems": [],
    "assurance_tier": "merely-tot",
    "suites": [
+    {
+     "suite": "local-parser-unicode",
+     "how": "direct-trigger"
+    },
     {
      "suite": "owl-profile-el",
      "how": "direct-trigger"
@@ -6307,6 +6365,159 @@
    ]
   },
   {
+   "module": "RDF.Entailment.RDF.Spec",
+   "files": [
+    "formal/fstar/RDF.Entailment.RDF.Spec.fst"
+   ],
+   "loc": 210,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "fully-erased",
+   "extraction_oracle_available": true,
+   "extracted_ml": null,
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 7,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 0,
+   "local_refinement_lemma_names": [],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "specification-and-proof",
+   "suites": []
+  },
+  {
+   "module": "RDF.Entailment.RDFS.ModelTheory",
+   "files": [
+    "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst"
+   ],
+   "loc": 725,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "fully-erased",
+   "extraction_oracle_available": true,
+   "extracted_ml": null,
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 19,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 20,
+   "local_refinement_lemma_names": [
+    "lemma_subj_term_denot",
+    "rdfD2_true",
+    "rdfs1_true",
+    "rdfs2_true",
+    "rdfs3_true",
+    "rdfs4a_true",
+    "rdfs4b_true",
+    "rdfs5_true",
+    "rdfs6_true",
+    "rdfs7_true",
+    "rdfs8_true",
+    "rdfs9_true",
+    "rdfs10_true",
+    "rdfs11_true",
+    "rdfs12_true",
+    "rdfs13_true",
+    "rdfs_member_subproperty_true",
+    "rdfs_licensed_true",
+    "bridge",
+    "lemma_closure_iter_shift"
+   ],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "specification-and-proof",
+   "suites": []
+  },
+  {
+   "module": "RDF.Entailment.RDFS.Refinement",
+   "files": [
+    "formal/fstar/RDF.Entailment.RDFS.Refinement.fst"
+   ],
+   "loc": 789,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "fully-erased",
+   "extraction_oracle_available": true,
+   "extracted_ml": null,
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 2,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 7,
+   "local_refinement_lemma_names": [
+    "lemma_term_to_subject_subj_term",
+    "lemma_rdf_property_axiom_matches",
+    "lemma_add_triples_if_new_memP",
+    "lemma_dedup_sorted_memP",
+    "lemma_graph_dedup_sort_memP",
+    "reflexivity_axioms_emit_owl_class",
+    "selfloop_not_axiomatic"
+   ],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "specification-and-proof",
+   "suites": []
+  },
+  {
+   "module": "RDF.Entailment.RDFS.Spec",
+   "files": [
+    "formal/fstar/RDF.Entailment.RDFS.Spec.fst"
+   ],
+   "loc": 381,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "fully-erased",
+   "extraction_oracle_available": true,
+   "extracted_ml": null,
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 28,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 0,
+   "local_refinement_lemma_names": [],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "specification-and-proof",
+   "suites": []
+  },
+  {
    "module": "RDF.Entailment.Regime",
    "files": [
     "formal/fstar/RDF.Entailment.Regime.fst"
@@ -6961,6 +7172,10 @@
      "how": "foundational-path"
     },
     {
+     "suite": "local-parser-unicode",
+     "how": "foundational-path"
+    },
+    {
      "suite": "local-serializer-unicode",
      "how": "foundational-path"
     },
@@ -7485,6 +7700,10 @@
      "how": "foundational-path"
     },
     {
+     "suite": "local-parser-unicode",
+     "how": "foundational-path"
+    },
+    {
      "suite": "local-serializer-unicode",
      "how": "foundational-path"
     },
@@ -7915,6 +8134,88 @@
       "ig_wf_sp",
       "pilot_entails"
      ]
+    },
+    {
+     "name": "rdfs_closure_step_sound",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 548,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_closure_step"
+     ],
+     "names_declarative_relations": [
+      "holds_all",
+      "ig_wf_sp",
+      "rdfs_conditions"
+     ]
+    },
+    {
+     "name": "lemma_find_objects_elim",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 408,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "find_objects_indexed"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp"
+     ]
+    },
+    {
+     "name": "theorem_ig_wf_pred_witness",
+     "proved_in": "RDF.Semantics.HypothesisWitness",
+     "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+     "line": 504,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "bucket_lookup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_pred"
+     ]
+    },
+    {
+     "name": "theorem_ig_wf_sp_satisfiable_degenerately",
+     "proved_in": "RDF.Semantics.HypothesisWitness",
+     "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+     "line": 570,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "bucket_lookup",
+      "sp_key"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp"
+     ]
+    },
+    {
+     "name": "lemma_ig_wf_sp_of_empty",
+     "proved_in": "RDF.Semantics.HypothesisWitness",
+     "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+     "line": 629,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "build_indexed"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp"
+     ]
+    },
+    {
+     "name": "theorem_closure_chain_wf_n0_of_empty",
+     "proved_in": "RDF.Semantics.HypothesisWitness",
+     "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+     "line": 633,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "build_indexed"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp"
+     ]
     }
    ],
    "assurance_tier": "w3c-refinement",
@@ -8036,6 +8337,70 @@
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
    "assurance_tier": "merely-tot",
+   "suites": []
+  },
+  {
+   "module": "RDF.Semantics.HypothesisWitness",
+   "files": [
+    "formal/fstar/RDF.Semantics.HypothesisWitness.fst"
+   ],
+   "loc": 660,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "fully-erased",
+   "extraction_oracle_available": true,
+   "extracted_ml": null,
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 2,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 32,
+   "local_refinement_lemma_names": [
+    "lemma_trivial_rdf_conditions",
+    "lemma_trivial_rdfs_conditions",
+    "lemma_trivial_owl_rl_pilot_conditions",
+    "theorem_rdf_conditions_satisfiable",
+    "theorem_rdfs_conditions_satisfiable",
+    "theorem_owl_rl_pilot_conditions_satisfiable",
+    "lemma_memP_obj_is_iri",
+    "lemma_sep_denot_iri",
+    "lemma_sep_holds_of_iri_object",
+    "lemma_sep_rdf_axioms",
+    "lemma_sep_rdfs_axioms",
+    "lemma_separating_rdf_conditions",
+    "lemma_separating_rdfs_conditions",
+    "lemma_separating_rejects",
+    "lemma_everything_satisfies_empty",
+    "theorem_rdfs_conditions_nontrivially_satisfiable",
+    "theorem_rdf_conditions_nontrivially_satisfiable",
+    "theorem_rdfs_entails_not_everything",
+    "theorem_rdf_entails_not_everything",
+    "lemma_owl_separating_conditions",
+    "lemma_owl_separating_rejects",
+    "theorem_owl_rl_pilot_conditions_nontrivially_satisfiable",
+    "theorem_pilot_entails_not_everything",
+    "theorem_graph_exact_witness",
+    "theorem_graph_exact_not_universal",
+    "theorem_binding_exact_witness",
+    "theorem_leq_hypotheses_satisfiable",
+    "theorem_bnd_total_satisfiable",
+    "theorem_smap_exact_witness",
+    "theorem_ig_wf_sp_not_universal",
+    "theorem_sp_key_not_injective",
+    "theorem_closure_step_of_empty_is_nonempty"
+   ],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "specification-and-proof",
    "suites": []
   },
   {
@@ -8869,7 +9234,20 @@
     "lemma_literal_eq_refl",
     "lemma_rdf_term_eq_refl"
    ],
-   "algorithm_correctness_theorems": [],
+   "algorithm_correctness_theorems": [
+    {
+     "name": "theorem_join_key_finer_than_compatibility",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 645,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdf_term_eq",
+      "sm_compatible",
+      "sm_join_key"
+     ]
+    }
+   ],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [
     {
@@ -9026,13 +9404,41 @@
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": true,
+   "merely_tot": false,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
+   "algorithm_correctness_theorems": [
+    {
+     "name": "lemma_vocab_agree",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 88,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "i_rdf_Property",
+      "i_rdf_type",
+      "i_rdfs_Class",
+      "i_rdfs_ContainerMembershipProperty",
+      "i_rdfs_domain",
+      "i_rdfs_member",
+      "i_rdfs_range",
+      "i_rdfs_subClassOf",
+      "i_rdfs_subPropertyOf",
+      "rdf_Property",
+      "rdf_type",
+      "rdfs_Class",
+      "rdfs_ContainerMembershipProperty",
+      "rdfs_domain",
+      "rdfs_member",
+      "rdfs_range",
+      "rdfs_subClassOf",
+      "rdfs_subPropertyOf"
+     ]
+    }
+   ],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
+   "assurance_tier": "algorithm-correctness",
    "suites": []
   },
   {
@@ -9061,8 +9467,86 @@
    "merely_tot": false,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
+   "algorithm_correctness_theorems": [
+    {
+     "name": "lemma_vocab_agree",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 88,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "i_rdf_Property",
+      "i_rdf_type",
+      "i_rdfs_Class",
+      "i_rdfs_ContainerMembershipProperty",
+      "i_rdfs_domain",
+      "i_rdfs_member",
+      "i_rdfs_range",
+      "i_rdfs_subClassOf",
+      "i_rdfs_subPropertyOf",
+      "rdf_Property",
+      "rdf_type",
+      "rdfs_Class",
+      "rdfs_ContainerMembershipProperty",
+      "rdfs_domain",
+      "rdfs_member",
+      "rdfs_range",
+      "rdfs_subClassOf",
+      "rdfs_subPropertyOf"
+     ]
+    }
+   ],
+   "internal_refinement_theorems": [
+    {
+     "name": "lemma_chain_shift",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 600,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_closure_step"
+     ],
+     "names_declarative_relations": [
+      "closure_chain_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.ModelTheory"
+     ]
+    },
+    {
+     "name": "rdfs_closure_entails",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 629,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_closure"
+     ],
+     "names_declarative_relations": [
+      "closure_chain_wf",
+      "rdfs_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.ModelTheory"
+     ]
+    },
+    {
+     "name": "rdf_property_axiom_closure_entails",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 648,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "rdf_property_axiom_closure"
+     ],
+     "names_declarative_relations": [
+      "rdf_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.ModelTheory"
+     ]
+    }
+   ],
    "w3c_refinement_theorems": [
     {
      "name": "rdfs_rule_domain_sound",
@@ -9091,6 +9575,304 @@
      ],
      "names_declarative_relations": [
       "pilot_entails"
+     ]
+    },
+    {
+     "name": "rdfs_rule_subPropertyOf_preserves",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 468,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_subPropertyOf"
+     ],
+     "names_declarative_relations": [
+      "cond_subPropertyOf",
+      "holds_all",
+      "ig_wf_pred"
+     ]
+    },
+    {
+     "name": "rdfs_rule_domain_preserves",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 478,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_domain"
+     ],
+     "names_declarative_relations": [
+      "cond_domain",
+      "holds_all",
+      "ig_wf_pred"
+     ]
+    },
+    {
+     "name": "rdfs_rule_range_preserves",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 488,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_range"
+     ],
+     "names_declarative_relations": [
+      "cond_range",
+      "holds_all",
+      "ig_wf_pred"
+     ]
+    },
+    {
+     "name": "rdfs_rule_subClassOf_preserves",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 498,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_subClassOf"
+     ],
+     "names_declarative_relations": [
+      "cond_subClassOf",
+      "holds_all",
+      "ig_wf_sp"
+     ]
+    },
+    {
+     "name": "rdfs_rule_subClassOf_trans_preserves",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 508,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_subClassOf_trans"
+     ],
+     "names_declarative_relations": [
+      "cond_subClassOf_trans",
+      "holds_all",
+      "ig_wf_sp"
+     ]
+    },
+    {
+     "name": "rdfs_rule_subPropertyOf_trans_preserves",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 518,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_subPropertyOf_trans"
+     ],
+     "names_declarative_relations": [
+      "cond_subPropertyOf_trans",
+      "holds_all",
+      "ig_wf_sp"
+     ]
+    },
+    {
+     "name": "rdfs_rule_container_membership_preserves",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 528,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_container_membership"
+     ],
+     "names_declarative_relations": [
+      "cond_cmp_member",
+      "cond_rdfs_axioms",
+      "holds_all"
+     ]
+    },
+    {
+     "name": "rdfs_closure_step_sound",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 548,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_closure_step"
+     ],
+     "names_declarative_relations": [
+      "holds_all",
+      "ig_wf_sp",
+      "rdfs_conditions"
+     ]
+    },
+    {
+     "name": "rdfs_closure_sound",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 609,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_closure"
+     ],
+     "names_declarative_relations": [
+      "closure_chain_wf",
+      "holds_all",
+      "rdfs_conditions"
+     ]
+    },
+    {
+     "name": "reflexivity_needs_rdfs_Class",
+     "proved_in": "RDF.Entailment.RDFS.ModelTheory",
+     "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+     "line": 688,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_Class",
+      "rdfs_subClassOf"
+     ],
+     "names_declarative_relations": [
+      "cond_subClassOf_refl",
+      "icext"
+     ]
+    },
+    {
+     "name": "rdf_property_axiom_closure_licensed",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 155,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "rdf_property_axiom_closure"
+     ],
+     "names_declarative_relations": [
+      "rdfD2_derives"
+     ]
+    },
+    {
+     "name": "rdfs_rule_domain_licensed",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 202,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_domain"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_pred",
+      "licensed_by2",
+      "rdfs2_derives"
+     ]
+    },
+    {
+     "name": "rdfs_rule_range_licensed",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 255,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_range"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_pred",
+      "licensed_by2",
+      "rdfs3_derives"
+     ]
+    },
+    {
+     "name": "rdfs_rule_subPropertyOf_licensed",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 316,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_subPropertyOf"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_pred",
+      "licensed_by2",
+      "rdfs7_derives"
+     ]
+    },
+    {
+     "name": "rdfs_rule_subClassOf_licensed",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 415,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_subClassOf"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "licensed_by2",
+      "rdfs9_derives2"
+     ]
+    },
+    {
+     "name": "rdfs_rule_subClassOf_trans_licensed",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 474,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_subClassOf_trans"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "licensed_by2",
+      "rdfs11_derives2"
+     ]
+    },
+    {
+     "name": "rdfs_rule_subPropertyOf_trans_licensed",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 532,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdfs_rule_subPropertyOf_trans"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "licensed_by2",
+      "rdfs5_derives2"
+     ]
+    },
+    {
+     "name": "lemma_rdf_member_iris",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 607,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "rdf_1",
+      "rdf_2",
+      "rdf_3",
+      "rdf_4",
+      "rdf_5"
+     ],
+     "names_declarative_relations": [
+      "is_rdf_member_iri"
+     ]
+    },
+    {
+     "name": "rdfs_rule_container_membership_licensed",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 632,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "rdfs_rule_container_membership"
+     ],
+     "names_declarative_relations": [
+      "rdfs_axiomatic",
+      "rdfs_member_subproperty"
+     ]
+    },
+    {
+     "name": "reflexivity_axioms_not_rdfs_sound",
+     "proved_in": "RDF.Entailment.RDFS.Refinement",
+     "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+     "line": 765,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "rdfs_reflexivity_axioms"
+     ],
+     "names_declarative_relations": [
+      "rdfs_licensed"
      ]
     }
    ],
@@ -11734,6 +12516,100 @@
      ]
     },
     {
+     "name": "theorem_filter_sound",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 316,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_expr_ebv",
+      "filter_solutions"
+     ]
+    },
+    {
+     "name": "theorem_filter_complete",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 328,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_expr_ebv",
+      "filter_solutions"
+     ]
+    },
+    {
+     "name": "lemma_join_is_nested_loop_no_shared_vars",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 576,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "join",
+      "join_nested_loop",
+      "sm_domain",
+      "vars_intersect"
+     ]
+    },
+    {
+     "name": "lemma_join_is_nested_loop_empty",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 582,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "join",
+      "join_nested_loop"
+     ]
+    },
+    {
+     "name": "theorem_join_key_finer_than_compatibility",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 645,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rdf_term_eq",
+      "sm_compatible",
+      "sm_join_key"
+     ]
+    },
+    {
+     "name": "lemma_project_solutions_acc_memP",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 679,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "project",
+      "project_solutions_acc"
+     ]
+    },
+    {
+     "name": "theorem_project_solutions_spec",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 708,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "project",
+      "project_solutions"
+     ]
+    },
+    {
+     "name": "theorem_fx_bind_rows_rowwise",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 899,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "er_to_term",
+      "eval_expr_fwd",
+      "fx_bind_rows",
+      "fx_ctx_put",
+      "sm_bind"
+     ]
+    },
+    {
      "name": "lemma_filter_union",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
@@ -11800,9 +12676,325 @@
      ]
     }
    ],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "algorithm-correctness",
+   "internal_refinement_theorems": [
+    {
+     "name": "lemma_sm_compatible_sound",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 157,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "sm_compatible"
+     ],
+     "names_declarative_relations": [
+      "smap_exact"
+     ],
+     "declarative_relations_from": [
+      "SPARQL11.Algebra.Refinement"
+     ]
+    },
+    {
+     "name": "lemma_try_bind_term_instantiates",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 988,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "bound_object_of_pattern",
+      "try_bind_term"
+     ],
+     "names_declarative_relations": [
+      "binding_extends",
+      "ptrm_exact",
+      "smap_exact",
+      "term_exact"
+     ],
+     "declarative_relations_from": [
+      "SPARQL11.Algebra.Refinement"
+     ]
+    },
+    {
+     "name": "lemma_try_bind_subject_instantiates",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 1025,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "bound_subject_of_pattern",
+      "try_bind_subject"
+     ],
+     "names_declarative_relations": [
+      "binding_extends",
+      "smap_exact"
+     ],
+     "declarative_relations_from": [
+      "SPARQL11.Algebra.Refinement"
+     ]
+    },
+    {
+     "name": "theorem_tp_match_instantiates",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 1055,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_tp",
+      "tp_match"
+     ],
+     "names_declarative_relations": [
+      "binding_extends",
+      "ptrm_exact",
+      "smap_exact",
+      "term_exact"
+     ],
+     "declarative_relations_from": [
+      "SPARQL11.Algebra.Refinement"
+     ]
+    }
+   ],
+   "w3c_refinement_theorems": [
+    {
+     "name": "theorem_sm_compatible_sound",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 168,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "sm_compatible"
+     ],
+     "names_declarative_relations": [
+      "compatible_spec",
+      "smap_exact"
+     ]
+    },
+    {
+     "name": "theorem_sm_compatible_complete",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 186,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "sm_compatible"
+     ],
+     "names_declarative_relations": [
+      "compatible_spec"
+     ]
+    },
+    {
+     "name": "theorem_sm_merge_is_merge",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 222,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "sm_merge"
+     ],
+     "names_declarative_relations": [
+      "is_merge"
+     ]
+    },
+    {
+     "name": "theorem_domains_disjoint_sound",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 229,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "domains_disjoint"
+     ],
+     "names_declarative_relations": [
+      "dom_disjoint_spec"
+     ]
+    },
+    {
+     "name": "theorem_domains_disjoint_complete",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 243,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "domains_disjoint"
+     ],
+     "names_declarative_relations": [
+      "dom_disjoint_spec"
+     ]
+    },
+    {
+     "name": "theorem_union_card",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 288,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "union"
+     ],
+     "names_declarative_relations": [
+      "union_card_spec"
+     ]
+    },
+    {
+     "name": "theorem_union_sound",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 295,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "union"
+     ],
+     "names_declarative_relations": [
+      "in_union_spec"
+     ]
+    },
+    {
+     "name": "theorem_distinct_not_card_conformant",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 414,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "distinct_solutions"
+     ],
+     "names_declarative_relations": [
+      "distinct_card_spec"
+     ]
+    },
+    {
+     "name": "theorem_sm_equal_is_not_smap_eq",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 428,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "sm_equal"
+     ],
+     "names_declarative_relations": [
+      "smap_eq"
+     ]
+    },
+    {
+     "name": "theorem_join_nested_loop_sound",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 523,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "join_nested_loop"
+     ],
+     "names_declarative_relations": [
+      "in_join_spec",
+      "seq_exact"
+     ]
+    },
+    {
+     "name": "theorem_join_nested_loop_complete",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 548,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "join_nested_loop"
+     ],
+     "names_declarative_relations": [
+      "compatible_spec",
+      "is_merge"
+     ]
+    },
+    {
+     "name": "theorem_project_is_proj",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 675,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "project"
+     ],
+     "names_declarative_relations": [
+      "is_proj"
+     ]
+    },
+    {
+     "name": "theorem_project_solutions_sound",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 715,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "project_solutions"
+     ],
+     "names_declarative_relations": [
+      "in_project_spec"
+     ]
+    },
+    {
+     "name": "lemma_not_compatible_of_engine",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 757,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "sm_compatible"
+     ],
+     "names_declarative_relations": [
+      "compatible_spec"
+     ]
+    },
+    {
+     "name": "theorem_minus_sound",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 766,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "minus"
+     ],
+     "names_declarative_relations": [
+      "in_minus_spec"
+     ]
+    },
+    {
+     "name": "theorem_minus_complete",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 783,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "minus"
+     ],
+     "names_declarative_relations": [
+      "compatible_spec",
+      "dom_disjoint_spec",
+      "smap_exact"
+     ]
+    },
+    {
+     "name": "theorem_left_join_empty_right",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 855,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_expr_ebv",
+      "left_join"
+     ],
+     "names_declarative_relations": [
+      "in_leftjoin_spec"
+     ]
+    },
+    {
+     "name": "theorem_sm_bind_is_extend",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 921,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "sm_bind"
+     ],
+     "names_declarative_relations": [
+      "is_extend_at"
+     ]
+    }
+   ],
+   "assurance_tier": "w3c-refinement",
    "suites": [
     {
      "suite": "local-backend-parity-full",
@@ -11865,6 +13057,139 @@
      "how": "direct-trigger"
     }
    ]
+  },
+  {
+   "module": "SPARQL11.Algebra.Refinement",
+   "files": [
+    "formal/fstar/SPARQL11.Algebra.Refinement.fst"
+   ],
+   "loc": 1074,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "fully-erased",
+   "extraction_oracle_available": true,
+   "extracted_ml": null,
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 7,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 33,
+   "local_refinement_lemma_names": [
+    "lemma_assoc_some_mem",
+    "lemma_mult_append",
+    "lemma_memP_append",
+    "lemma_union_is_append",
+    "theorem_union_complete",
+    "theorem_filter_card",
+    "lemma_dedup_acc_sound",
+    "theorem_distinct_sound",
+    "lemma_sr1_same_mapping",
+    "lemma_sr1_sm_equal_says_different",
+    "lemma_sr1_distinct_keeps_both",
+    "lemma_memP_filter_map_acc",
+    "lemma_memP_filter_map",
+    "lemma_memP_concatMap",
+    "lemma_seq_exact_memP",
+    "lemma_seq_wf_memP",
+    "lemma_join_nested_loop_unfold",
+    "lemma_concatMap_nil_f",
+    "lemma_strcat_left_neq",
+    "lemma_strcat_right_neq",
+    "lemma_sr2_nq_differs",
+    "lemma_project_lookup",
+    "lemma_project_solutions_acc_length",
+    "theorem_project_solutions_length",
+    "lemma_minus_unfold",
+    "lemma_existsb_memP",
+    "lemma_memP_filter",
+    "lemma_filter_map_nil_all_none",
+    "theorem_left_join_empty_left",
+    "theorem_fx_bind_rows_length",
+    "lemma_binding_extends_refl",
+    "lemma_binding_extends_trans",
+    "lemma_smap_exact_sval"
+   ],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "specification-and-proof",
+   "suites": []
+  },
+  {
+   "module": "SPARQL11.Algebra.Spec",
+   "files": [
+    "formal/fstar/SPARQL11.Algebra.Spec.fst"
+   ],
+   "loc": 835,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "fully-erased",
+   "extraction_oracle_available": true,
+   "extracted_ml": null,
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 22,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 36,
+   "local_refinement_lemma_names": [
+    "lemma_lit_id_eqb_sound",
+    "lemma_subj_id_eqb_sound",
+    "lemma_term_id_eqb_sound",
+    "lemma_term_id_eqb_complete",
+    "lemma_term_id_eqb_refl",
+    "lemma_smap_eq_refl",
+    "lemma_smap_eq_sym",
+    "lemma_smap_eq_trans",
+    "lemma_sval_none_outside_dom",
+    "lemma_agrees_on_mem",
+    "lemma_opt_term_id_eqb_sound",
+    "lemma_smap_eqb_sound",
+    "lemma_agrees_on_of_smap_eq",
+    "lemma_smap_eqb_complete",
+    "lemma_compatible_empty_l",
+    "lemma_compatible_empty_r",
+    "lemma_compatible_of_disjoint",
+    "lemma_compatible_refl",
+    "lemma_compatible_sym",
+    "lemma_compatible_congr_l",
+    "lemma_assoc_append",
+    "lemma_merge_canonical_is_merge",
+    "lemma_merge_unique",
+    "lemma_merge_comm_compatible",
+    "lemma_merge_extends_l",
+    "lemma_merge_extends_r",
+    "lemma_merge_dom",
+    "lemma_merge_compatible_l",
+    "lemma_occurs_memP",
+    "lemma_join_comm_witness",
+    "lemma_join_comm_spec",
+    "lemma_mult_congr",
+    "lemma_mult_pos_implies_occurs",
+    "lemma_occurs_witness_implies_mult_pos",
+    "lemma_mult_pos_iff_occurs",
+    "lemma_bgp_empty"
+   ],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "specification-and-proof",
+   "suites": []
   },
   {
    "module": "SPARQL11.IRI.Resolve",
@@ -14859,6 +16184,1303 @@
    "class": "algorithm_correctness"
   },
   {
+   "name": "lemma_subj_term_denot",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 76,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfD2_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 218,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_rdf_property",
+    "holds_all",
+    "rdfD2_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDF.Spec",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDF.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs1_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 226,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_datatypes",
+    "rdfs1_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs2_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 230,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_domain",
+    "holds_all",
+    "rdfs2_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs3_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 247,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_range",
+    "holds_all",
+    "rdfs3_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs4a_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 265,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_resource",
+    "rdfs4a_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs4b_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 269,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_resource",
+    "rdfs4b_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs5_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 273,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_subPropertyOf_trans",
+    "holds_all",
+    "rdfs5_derives2",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs6_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 290,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_subPropertyOf_refl",
+    "holds_all",
+    "rdfs6_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs7_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 303,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_subPropertyOf",
+    "holds_all",
+    "rdfs7_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs8_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 318,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_class_subclass_resource",
+    "holds_all",
+    "rdfs8_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs9_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 328,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_subClassOf",
+    "holds_all",
+    "rdfs9_derives2",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs10_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 348,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_subClassOf_refl",
+    "holds_all",
+    "rdfs10_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs11_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 361,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_subClassOf_trans",
+    "holds_all",
+    "rdfs11_derives2",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs12_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 378,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_cmp_member",
+    "holds_all",
+    "rdfs12_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs13_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 389,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_datatype_subclass_literal",
+    "holds_all",
+    "rdfs13_derives",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs_member_subproperty_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 403,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "cond_cmp_member",
+    "cond_rdfs_axioms",
+    "rdfs_member_subproperty",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs_licensed_true",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 423,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "holds_all",
+    "rdfs_conditions",
+    "rdfs_licensed",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "bridge",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 459,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "holds_all",
+    "licensed_by2",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Refinement"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Refinement"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdfs_rule_subPropertyOf_preserves",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 468,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_subPropertyOf"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "cond_subPropertyOf",
+    "holds_all",
+    "ig_wf_pred"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_domain_preserves",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 478,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_domain"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "cond_domain",
+    "holds_all",
+    "ig_wf_pred"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_range_preserves",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 488,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_range"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "cond_range",
+    "holds_all",
+    "ig_wf_pred"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_subClassOf_preserves",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 498,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_subClassOf"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "cond_subClassOf",
+    "holds_all",
+    "ig_wf_sp"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_subClassOf_trans_preserves",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 508,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_subClassOf_trans"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "cond_subClassOf_trans",
+    "holds_all",
+    "ig_wf_sp"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_subPropertyOf_trans_preserves",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 518,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_subPropertyOf_trans"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "cond_subPropertyOf_trans",
+    "holds_all",
+    "ig_wf_sp"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_container_membership_preserves",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 528,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_container_membership"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "cond_cmp_member",
+    "cond_rdfs_axioms",
+    "holds_all"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_closure_step_sound",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 548,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "build_indexed",
+    "rdfs_closure_step"
+   ],
+   "shipping_modules": [
+    "RDF.Indexed",
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "holds_all",
+    "ig_wf_sp",
+    "rdfs_conditions"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_closure_iter_shift",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 597,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rdfs_closure_step"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_chain_shift",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 600,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_closure_step"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "closure_chain_wf"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "rdfs_closure_sound",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 609,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_closure"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "closure_chain_wf",
+    "holds_all",
+    "rdfs_conditions"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_closure_entails",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 629,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_closure"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "closure_chain_wf",
+    "rdfs_entails"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "rdf_property_axiom_closure_entails",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 648,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rdf_property_axiom_closure"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "rdf_entails"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "reflexivity_needs_rdfs_Class",
+   "host_module": "RDF.Entailment.RDFS.ModelTheory",
+   "file": "formal/fstar/RDF.Entailment.RDFS.ModelTheory.fst",
+   "line": 688,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_Class",
+    "rdfs_subClassOf"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "cond_subClassOf_refl",
+    "icext"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_vocab_agree",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 88,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "i_rdf_Property",
+    "i_rdf_type",
+    "i_rdfs_Class",
+    "i_rdfs_ContainerMembershipProperty",
+    "i_rdfs_domain",
+    "i_rdfs_member",
+    "i_rdfs_range",
+    "i_rdfs_subClassOf",
+    "i_rdfs_subPropertyOf",
+    "rdf_Property",
+    "rdf_type",
+    "rdfs_Class",
+    "rdfs_ContainerMembershipProperty",
+    "rdfs_domain",
+    "rdfs_member",
+    "rdfs_range",
+    "rdfs_subClassOf",
+    "rdfs_subPropertyOf"
+   ],
+   "shipping_modules": [
+    "RDF.Vocabulary.Axioms",
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_term_to_subject_subj_term",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 103,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "term_to_subject"
+   ],
+   "shipping_modules": [
+    "RDF.Graph"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_rdf_property_axiom_matches",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 122,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rdf_property_axiom_of_triple"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_add_triples_if_new_memP",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 127,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "add_triples_if_new"
+   ],
+   "shipping_modules": [
+    "RDF.Graph"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_dedup_sorted_memP",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 139,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "dedup_sorted_aux"
+   ],
+   "shipping_modules": [
+    "RDF.Graph"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_graph_dedup_sort_memP",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 150,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "graph_dedup_sort"
+   ],
+   "shipping_modules": [
+    "RDF.Graph"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "rdf_property_axiom_closure_licensed",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 155,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rdf_property_axiom_closure"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "rdfD2_derives"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDF.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDF.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_domain_licensed",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 202,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_domain"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_pred",
+    "licensed_by2",
+    "rdfs2_derives"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Refinement",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_range_licensed",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 255,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_range"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_pred",
+    "licensed_by2",
+    "rdfs3_derives"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Refinement",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_subPropertyOf_licensed",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 316,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_subPropertyOf"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_pred",
+    "licensed_by2",
+    "rdfs7_derives"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Refinement",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_find_objects_elim",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 408,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "find_objects_indexed"
+   ],
+   "shipping_modules": [
+    "RDF.Indexed"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_sp"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_subClassOf_licensed",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 415,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_subClassOf"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_sp",
+    "licensed_by2",
+    "rdfs9_derives2"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Refinement",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_subClassOf_trans_licensed",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 474,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_subClassOf_trans"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_sp",
+    "licensed_by2",
+    "rdfs11_derives2"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Refinement",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_subPropertyOf_trans_licensed",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 532,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdfs_rule_subPropertyOf_trans"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_sp",
+    "licensed_by2",
+    "rdfs5_derives2"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Refinement",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_rdf_member_iris",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 607,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rdf_1",
+    "rdf_2",
+    "rdf_3",
+    "rdf_4",
+    "rdf_5"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "is_rdf_member_iri"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDF.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDF.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rdfs_rule_container_membership_licensed",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 632,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rdfs_rule_container_membership"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "rdfs_axiomatic",
+    "rdfs_member_subproperty"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "reflexivity_axioms_emit_owl_class",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 728,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rdfs_reflexivity_axioms"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "selfloop_not_axiomatic",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 743,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdf_axiomatic",
+    "rdfs_axiomatic",
+    "rdfs_member_subproperty"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDF.Spec",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDF.Spec",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "reflexivity_axioms_not_rdfs_sound",
+   "host_module": "RDF.Entailment.RDFS.Refinement",
+   "file": "formal/fstar/RDF.Entailment.RDFS.Refinement.fst",
+   "line": 765,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rdfs_reflexivity_axioms"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
+   ],
+   "declarative_relations_named": [
+    "rdfs_licensed"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
    "name": "relabelling",
    "host_module": "RDF.Entailment.Simple.Boundary",
    "file": "formal/fstar/RDF.Entailment.Simple.Boundary.fst",
@@ -16271,6 +18893,747 @@
    ],
    "shipping_modules": [
     "RDF.List.Helpers"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_trivial_rdf_conditions",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 110,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdf_conditions"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_trivial_rdfs_conditions",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 113,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdfs_conditions"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_trivial_owl_rl_pilot_conditions",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 116,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "owl_rl_pilot_conditions"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_rdf_conditions_satisfiable",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 119,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdf_conditions"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_rdfs_conditions_satisfiable",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 123,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdfs_conditions"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_owl_rl_pilot_conditions_satisfiable",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 127,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "owl_rl_pilot_conditions"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_memP_obj_is_iri",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 200,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sep_denot_iri",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 212,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sep_holds_of_iri_object",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 219,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sep_rdf_axioms",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 224,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdf_axiomatic",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDF.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDF.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sep_rdfs_axioms",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 236,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdfs_axiomatic",
+    "triple_holds"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_separating_rdf_conditions",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 254,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdf_conditions"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_separating_rdfs_conditions",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 261,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdfs_conditions"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_separating_rejects",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 275,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "satisfies"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_everything_satisfies_empty",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 283,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "satisfies"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_rdfs_conditions_nontrivially_satisfiable",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 291,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdfs_conditions",
+    "satisfies"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_rdf_conditions_nontrivially_satisfiable",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 298,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdf_conditions",
+    "satisfies"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics",
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_rdfs_entails_not_everything",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 311,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdfs_entails"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_rdf_entails_not_everything",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 318,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "rdf_entails"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.ModelTheory"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_owl_separating_conditions",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 352,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "owl_rl_pilot_conditions"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_owl_separating_rejects",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 355,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "satisfies"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_owl_rl_pilot_conditions_nontrivially_satisfiable",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 365,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "owl_rl_pilot_conditions",
+    "satisfies"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_pilot_entails_not_everything",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 372,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "pilot_entails"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_graph_exact_witness",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 398,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "graph_exact",
+    "lit_exact",
+    "triple_exact"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [
+    "term_exact"
+   ],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_graph_exact_not_universal",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 417,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "graph_exact"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_binding_exact_witness",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 436,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "binding_exact"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_leq_hypotheses_satisfiable",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 440,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "leq_exact_identity",
+    "leq_reflexive"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_bnd_total_satisfiable",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 450,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "bnd_total"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_smap_exact_witness",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 467,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "ptrm_exact",
+    "seq_exact",
+    "smap_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_ig_wf_pred_witness",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 504,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "bucket_lookup"
+   ],
+   "shipping_modules": [
+    "RDF.Indexed"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_pred"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_ig_wf_sp_not_universal",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 530,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "ig_wf_sp"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_ig_wf_sp_satisfiable_degenerately",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 570,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "bucket_lookup",
+    "sp_key"
+   ],
+   "shipping_modules": [
+    "RDF.Indexed"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_sp"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_sp_key_not_injective",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 586,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "sp_key"
+   ],
+   "shipping_modules": [
+    "RDF.Indexed"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_ig_wf_sp_of_empty",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 629,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "build_indexed"
+   ],
+   "shipping_modules": [
+    "RDF.Indexed"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_sp"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_closure_chain_wf_n0_of_empty",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 633,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "build_indexed"
+   ],
+   "shipping_modules": [
+    "RDF.Indexed"
+   ],
+   "declarative_relations_named": [
+    "ig_wf_sp"
+   ],
+   "declarative_modules": [
+    "OWL.Semantics"
+   ],
+   "independent_formalisation_modules": [
+    "OWL.Semantics"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_closure_step_of_empty_is_nonempty",
+   "host_module": "RDF.Semantics.HypothesisWitness",
+   "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
+   "line": 639,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rdfs_closure_step"
+   ],
+   "shipping_modules": [
+    "RDFS.Closure"
    ],
    "declarative_relations_named": [],
    "declarative_modules": [],
@@ -19210,6 +22573,1890 @@
    "class": "local_refinement"
   },
   {
+   "name": "lemma_assoc_some_mem",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 142,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sm_compatible_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 157,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "sm_compatible"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "smap_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "theorem_sm_compatible_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 168,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "sm_compatible"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "compatible_spec",
+    "smap_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement",
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_sm_compatible_complete",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 186,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "sm_compatible"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "compatible_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_sm_merge_is_merge",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 222,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "sm_merge"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "is_merge"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_domains_disjoint_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 229,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "domains_disjoint"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "dom_disjoint_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_domains_disjoint_complete",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 243,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "domains_disjoint"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "dom_disjoint_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_mult_append",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 260,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_memP_append",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 268,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_union_is_append",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 281,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "union"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_union_card",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 288,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "union"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "union_card_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_union_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 295,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "union"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "in_union_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_union_complete",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 301,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "union"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_filter_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 316,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "eval_expr_ebv",
+    "filter_solutions"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "theorem_filter_complete",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 328,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "eval_expr_ebv",
+    "filter_solutions"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "theorem_filter_card",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 349,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "fexpr_congr",
+    "filter_card_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement",
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_dedup_acc_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 370,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "list_deduplicate_sm_acc"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_distinct_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 380,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "distinct_solutions"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sr1_same_mapping",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 396,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sr1_sm_equal_says_different",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 399,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "sm_equal"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sr1_distinct_keeps_both",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 402,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "distinct_solutions"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_distinct_not_card_conformant",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 414,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "distinct_solutions"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "distinct_card_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_sm_equal_is_not_smap_eq",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 428,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "sm_equal"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_memP_filter_map_acc",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 438,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "list_filter_map_acc"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_memP_filter_map",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 451,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "list_filter_map"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_memP_concatMap",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 457,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_seq_exact_memP",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 467,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "seq_exact",
+    "smap_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_seq_wf_memP",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 479,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "seq_wf"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_join_nested_loop_unfold",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 512,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "join_nested_loop"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_join_nested_loop_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 523,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "join_nested_loop"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "in_join_spec",
+    "seq_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement",
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_join_nested_loop_complete",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 548,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "join_nested_loop"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "compatible_spec",
+    "is_merge"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_concatMap_nil_f",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 565,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_join_is_nested_loop_no_shared_vars",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 576,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "join",
+    "join_nested_loop",
+    "sm_domain",
+    "vars_intersect"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_join_is_nested_loop_empty",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 582,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "join",
+    "join_nested_loop"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_strcat_left_neq",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 605,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_strcat_right_neq",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 609,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sr2_nq_differs",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 618,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "nq_term_to_string"
+   ],
+   "shipping_modules": [
+    "RDF.NQuads.Serialize"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_join_key_finer_than_compatibility",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 645,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rdf_term_eq",
+    "sm_compatible",
+    "sm_join_key"
+   ],
+   "shipping_modules": [
+    "RDF.Term",
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_project_lookup",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 665,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "project"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_project_is_proj",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 675,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "project"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "is_proj"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_project_solutions_acc_memP",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 679,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "project",
+    "project_solutions_acc"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_project_solutions_acc_length",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 690,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "project_solutions_acc"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_project_solutions_length",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 701,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "project_solutions"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_project_solutions_spec",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 708,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "project",
+    "project_solutions"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "theorem_project_solutions_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 715,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "project_solutions"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "in_project_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_minus_unfold",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 733,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "minus"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_existsb_memP",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 738,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_memP_filter",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 746,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_not_compatible_of_engine",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 757,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "sm_compatible"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "compatible_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_minus_sound",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 766,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "minus"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "in_minus_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_minus_complete",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 783,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "minus"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "compatible_spec",
+    "dom_disjoint_spec",
+    "smap_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement",
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_filter_map_nil_all_none",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 806,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "list_filter_map"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_left_join_empty_right",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 855,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "eval_expr_ebv",
+    "left_join"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "in_leftjoin_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "theorem_left_join_empty_left",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 861,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "left_join"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_fx_bind_rows_length",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 871,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "fx_bind_rows"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "theorem_fx_bind_rows_rowwise",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 899,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "er_to_term",
+    "eval_expr_fwd",
+    "fx_bind_rows",
+    "fx_ctx_put",
+    "sm_bind"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "theorem_sm_bind_is_extend",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 921,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "sm_bind"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "is_extend_at"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_binding_extends_refl",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 935,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "binding_extends"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_binding_extends_trans",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 937,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "binding_extends"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_smap_exact_sval",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 973,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_exact",
+    "term_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_try_bind_term_instantiates",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 988,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "bound_object_of_pattern",
+    "try_bind_term"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "binding_extends",
+    "ptrm_exact",
+    "smap_exact",
+    "term_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_try_bind_subject_instantiates",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 1025,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "bound_subject_of_pattern",
+    "try_bind_subject"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "binding_extends",
+    "smap_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "theorem_tp_match_instantiates",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 1055,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "instantiate_tp",
+    "tp_match"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "binding_extends",
+    "ptrm_exact",
+    "smap_exact",
+    "term_exact"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_lit_id_eqb_sound",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 311,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_subj_id_eqb_sound",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 314,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_term_id_eqb_sound",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 318,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_term_id_eqb_complete",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 328,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_term_id_eqb_refl",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 335,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_smap_eq_refl",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 347,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_smap_eq_sym",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 349,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_smap_eq_trans",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 352,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_sval_none_outside_dom",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 375,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_agrees_on_mem",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 383,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_opt_term_id_eqb_sound",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 391,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_smap_eqb_sound",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 398,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_agrees_on_of_smap_eq",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 418,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_smap_eqb_complete",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 430,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_compatible_empty_l",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 451,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_compatible_empty_r",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 452,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_compatible_of_disjoint",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 458,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec",
+    "dom_disjoint_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_compatible_refl",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 467,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_compatible_sym",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 468,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_compatible_congr_l",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 473,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec",
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_assoc_append",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 498,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_merge_canonical_is_merge",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 506,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "is_merge"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_merge_unique",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 513,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "is_merge",
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_merge_comm_compatible",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 519,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec",
+    "is_merge"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_merge_extends_l",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 530,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "is_merge"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_merge_extends_r",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 534,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec",
+    "is_merge"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_merge_dom",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 542,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "is_merge"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_merge_compatible_l",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 548,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec",
+    "is_merge"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_occurs_memP",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 572,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "occurs"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_join_comm_witness",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 599,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "compatible_spec",
+    "in_join_spec",
+    "is_merge"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_join_comm_spec",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 606,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "in_join_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_mult_congr",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 710,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_mult_pos_implies_occurs",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 726,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "occurs"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_occurs_witness_implies_mult_pos",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 735,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "smap_eq"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_mult_pos_iff_occurs",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 749,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "occurs"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_bgp_empty",
+   "host_module": "SPARQL11.Algebra.Spec",
+   "file": "formal/fstar/SPARQL11.Algebra.Spec.fst",
+   "line": 828,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "bgp_sol_spec"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "lemma_union_assoc",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
@@ -19994,38 +25241,45 @@
   }
  ],
  "totals": {
-  "modules": 194,
-  "files": 202,
+  "modules": 201,
+  "files": 209,
   "assume_val_active": 143,
   "assume_other_active": 5,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
-  "modules_with_w3c_refinement_theorem": 6,
-  "modules_with_algorithm_correctness_theorem": 23,
-  "modules_with_internal_refinement_theorem": 9,
-  "modules_merely_tot": 139,
-  "w3c_refinement_theorem_count": 30,
-  "internal_refinement_theorem_count": 14,
-  "algorithm_correctness_theorem_count": 124,
+  "modules_with_w3c_refinement_theorem": 7,
+  "modules_with_algorithm_correctness_theorem": 26,
+  "modules_with_internal_refinement_theorem": 11,
+  "modules_merely_tot": 138,
+  "w3c_refinement_theorem_count": 73,
+  "internal_refinement_theorem_count": 21,
+  "algorithm_correctness_theorem_count": 133,
   "unclassified_lemma_count": 0,
   "pure_formalisation_modules": [
    "OWL.Semantics",
    "OWL.Semantics.MemLemmas",
    "OWL.Semantics.Soundness",
+   "RDF.Entailment.RDF.Spec",
+   "RDF.Entailment.RDFS.ModelTheory",
+   "RDF.Entailment.RDFS.Refinement",
+   "RDF.Entailment.RDFS.Spec",
    "RDF.Entailment.Simple.ModelTheory",
    "RDF.Entailment.Simple.Refinement",
-   "RDF.Entailment.Simple.Spec"
+   "RDF.Entailment.Simple.Spec",
+   "RDF.Semantics.HypothesisWitness",
+   "SPARQL11.Algebra.Refinement",
+   "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 368,
+  "lemma_count": 555,
   "tiers": {
    "algorithm-correctness": 19,
    "internal-refinement": 7,
    "local-lemmas-only": 11,
-   "merely-tot": 139,
-   "specification-and-proof": 6,
+   "merely-tot": 138,
+   "specification-and-proof": 13,
    "unclassified": 6,
-   "w3c-refinement": 6
+   "w3c-refinement": 7
   }
  },
- "commit": "fcb83d8"
+ "commit": "027b1db"
 }
