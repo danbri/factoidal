@@ -959,7 +959,16 @@ element sets to equal lists. `triple_to_key` is injective on triples and
 canonicity result about `List.Tot.sortWith` plus `dedup_sorted_aux` that
 this tree does not have. It is carried as prose here and backed by a
 byte-for-byte differential run of `factoidal entail` in both regimes
-over a 1200-graph corpus drawn from the vendored W3C and OWL suites.
+over a 1200-graph corpus drawn from the vendored W3C and OWL suites:
+
+📊 **2028 runs byte-identical, 0 differing, 0 exit-code mismatches**
+(out of 2400 attempted; the remaining 372 are files the CLI declines to
+load — negative-syntax fixtures and the like — and it declines them
+identically on both binaries).
+
+That is evidence, not a proof. The theorem it stands in for is the
+canonicity of `graph_dedup_sort`, and anyone closing that gap should
+prove that lemma rather than widen the corpus.
 
 ### 10.5.4 Measured
 
