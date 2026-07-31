@@ -8,10 +8,18 @@ Nothing here is hand-written. Add and refresh with
 `index.json` is generated.
 
 ```
-tools/jsonld-context-cache.sh add URL...   # fetch + store (idempotent)
-tools/jsonld-context-cache.sh verify       # re-hash every snapshot, no network
-tools/jsonld-context-cache.sh list         # print the index
+tools/jsonld-context-cache.sh add URL...     # fetch + store (idempotent)
+tools/jsonld-context-cache.sh resolve URL    # print body — READ PATH, no network
+tools/jsonld-context-cache.sh refresh        # re-fetch every known URL
+tools/jsonld-context-cache.sh verify         # re-hash every snapshot, no network
+tools/jsonld-context-cache.sh list           # print the index
 ```
+
+📖 **Operating manual:
+[`skills/jsonld-context-cache/SKILL.md`](../../skills/jsonld-context-cache/SKILL.md)**
+— the five rules and their reasons, the licence-per-URL rule, the
+add-a-context checklist, and why an empty-context documentLoader
+fallback is banned. Read it before changing anything here.
 
 ## Layout
 

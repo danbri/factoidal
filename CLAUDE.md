@@ -360,6 +360,13 @@ session.
 - [`jsoo-debug-bundle`](skills/jsoo-debug-bundle/SKILL.md) — build a
   source-mapped JS bundle so browser-only crashes show real OCaml
   stacks.
+- [`jsonld-context-cache`](skills/jsonld-context-cache/SKILL.md) —
+  resolve remote JSON-LD `@context` IRIs offline from
+  `third_party/jsonld-context-cache/` (URL-keyed, content-addressed,
+  versioned). Read when a JSON-LD/DID/VC document will not parse
+  because its context is remote, when adding or refreshing a cached
+  context, or when wiring a documentLoader (#275). Carries the
+  per-URL licence rule and why an empty-context fallback is banned.
 
 ## Expanded docs (full reference)
 
