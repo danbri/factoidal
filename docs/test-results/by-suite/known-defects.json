@@ -1,15 +1,14 @@
 {
   "suite": "known-defects",
   "description": "Defects found, proved and filed but not yet fixed. XFAIL = still reproduces (expected). XPASS = gone, update the test.",
-  "xfail": 7,
+  "xfail": 6,
   "xpass": 0,
   "errors": 0,
-  "total": 7,
+  "total": 6,
   "cases": [
     {"id":"SR-1","issue":"336","title":"SELECT DISTINCT returns duplicate rows","state":"XFAIL","detail":"same row returned 2 times under DISTINCT"},
     {"id":"SR-2","issue":"337","title":"OPTIONAL misses a match the BGP finds (lang-tag case)","state":"XFAIL","detail":"BGP binds ?t, OPTIONAL leaves it unbound — engine self-contradiction"},
     {"id":"SE-1","issue":"324","title":"sameTerm case-folds language tags (term identity)","state":"XFAIL","detail":"sameTerm(\"x\"@en,\"x\"@EN) is TRUE; identity says they differ"},
-    {"id":"RS-1","issue":"335","title":"reflexive subClassOf emitted for an untyped class","state":"XFAIL","detail":"derived :C rdfs:subClassOf :C though :C is not typed rdfs:Class"},
     {"id":"TTL-PFX","issue":"334","title":"Turtle drops undeclared-prefix statements silently","state":"XFAIL","detail":"parsed 1 of 2 statements, exit 0, no diagnostic"},
     {"id":"JSONLD-MSG","issue":"275","title":"syntax error and missing loader share one message","state":"XFAIL","detail":"inline-context syntax error still blamed on remote contexts"},
     {"id":"NT-ESC","issue":"339","title":"dump emits unescaped literals (invalid N-Triples)","state":"XFAIL","detail":"one triple written as 2 lines; own parser rejects the output"}

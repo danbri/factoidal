@@ -158,37 +158,24 @@ else
 fi
 
 # ---------------------------------------------------------------------
-# RS-1 (#335) -- rdfs_reflexivity_axioms harvests reflexive subClassOf
-# more widely than any RDFS rule licenses. rdfs10 licenses `?c rdfs:subClassOf
-# ?c` only for ?c typed rdfs:Class. Here :C is typed nothing -- it appears
-# only as the SUBJECT of a subClassOf triple -- so emitting :C rdfs:subClassOf
-# :C is underivable. The F* witness reflexivity_axioms_not_rdfs_sound is
-# hypothesis-free; this is the same unsoundness seen from the CLI.
+# RS-1 (#335) -- FIXED 2026-07-31, case removed.
 #
-# NOTE ON RS-4: the sibling finding (the rdf12 manifests' RDFS regime runs
-# none of rdfs1-13, because RDF.Entailment.Regime shadows the real driver)
-# is NOT probeable here -- the CLI `entail --regime RDFS` calls the real
-# RDFS.Closure driver and derives rdfs9 correctly. RS-4 lives on the
-# w3c_runner's rdf12entail path and is measured by the negative-test
-# vacuity checker instead. Do not add a CLI probe for it that appears to
-# pass; it would measure the wrong code path.
+# collect_classes/collect_properties are now split by regime: the RDFS
+# harvest reads only what RDF 1.1 Semantics s9 licenses, the wide OWL
+# reading moved to owl_reflexivity_axioms behind
+# owl_rdfs_closure_with_reflexivity. Verified against the rebuilt binary:
+# a graph asserting `:X rdf:type owl:Class` yields NO `:X rdfs:subClassOf
+# :X` under --regime RDFS, and still does under --regime OWL-RL where the
+# wide harvest is sound.
+#
+# ⚠️ DO NOT re-add the probe that was here. It fed `:C rdfs:subClassOf :D`
+# and asserted that deriving `:C rdfs:subClassOf :C` was unsound. It is
+# NOT: s9's condition table puts both endpoints of an rdfs:subClassOf
+# triple in IC, and rdfs10 makes every class a subclass of itself, so that
+# derivation is licensed. The probe was testing correct behaviour and
+# would have XFAILed forever. The real witness needs an OWL typing IRI,
+# which is what the F* witness used.
 # ---------------------------------------------------------------------
-cat > "${WORKDIR}/rs1.nt" <<'EOF'
-<http://ex.org/C> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://ex.org/D> .
-EOF
-RS1_N=$("$BIN" entail --data "${WORKDIR}/rs1.nt" --regime RDFS 2>/dev/null \
-        | grep -c 'ex.org/C> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://ex.org/C>')
-RS1_RC=$?
-if [ "${RS1_N:-0}" -ge 1 ]; then
-  record RS-1 335 "reflexive subClassOf emitted for an untyped class" XFAIL \
-    "derived :C rdfs:subClassOf :C though :C is not typed rdfs:Class"
-elif [ "$RS1_RC" -ne 0 ]; then
-  record RS-1 335 "reflexive subClassOf emitted for an untyped class" ERROR \
-    "entail --regime RDFS did not run"
-else
-  record RS-1 335 "reflexive subClassOf emitted for an untyped class" XPASS \
-    "no unlicensed reflexive axiom -- defect appears FIXED"
-fi
 
 # ---------------------------------------------------------------------
 # #334 — Turtle silently DROPS statements using an undeclared prefix
