@@ -97,6 +97,17 @@ let lemma_vocab_agree ()
            RDFS.Closure.rdfs_ContainerMembershipProperty ==
              i_rdfs_ContainerMembershipProperty) = ()
 
+// The three constants the rows added in 2026-07-31 (rdfs1, rdfs4a,
+// rdfs4b, rdfs8, rdfs13) need. Kept as a SEPARATE lemma rather than as
+// extra conjuncts of `lemma_vocab_agree`: growing that lemma changed
+// the SMT context enough to break `selfloop_not_axiomatic`'s 50-fuel
+// enumeration of the axiomatic tables, and a budget bump did not
+// recover it.
+let lemma_vocab_agree_rs2 ()
+  : Lemma (RDFS.Closure.rdfs_Resource == i_rdfs_Resource /\
+           RDFS.Closure.rdfs_Literal == i_rdfs_Literal /\
+           RDFS.Closure.rdfs_Datatype == i_rdfs_Datatype) = ()
+
 // `term_to_subject` and `subj_term` are mutually inverse where both
 // are defined. The Spec's rules are phrased with `subj_term`, the
 // shipping rules pattern-match with `term_to_subject`.
@@ -676,70 +687,29 @@ let rdfs_rule_container_membership_licensed g ig =
                fold_left step g container_membership_properties)
 #pop-options
 
-// ===================================================================
-// 7. FINDING RS-1 -- `rdfs_reflexivity_axioms` IS UNSOUND AT THE RDFS
-// RUNG, with a machine-checked witness.
-//
-// `collect_classes` treats an IRI as a class if it is the subject or
-// IRI-object of an `rdfs:subClassOf` triple, OR the subject of
-// `rdf:type rdfs:Class`, OR the subject of `rdf:type owl:Class`.
-// `collect_properties` is the dual and additionally accepts
-// `owl:ObjectProperty` and `owl:DatatypeProperty`.
-//
-// The first three sources are licensed: RDF 1.1 Semantics section 9's
-// conditions put the subject and object of an `rdfs:subClassOf` triple
-// in IC, ICEXT(I(rdfs:Class)) IS IC, and rdfs10 emits exactly
-// `xxx rdfs:subClassOf xxx` from `xxx rdf:type rdfs:Class`.
-//
-// The OWL sources are NOT. `owl:Class` is an ordinary IRI to an RDFS
-// interpretation; no RDFS condition relates ICEXT(I(owl:Class)) to
-// ICEXT(I(rdfs:Class)). (Under the OWL 2 RDF-Based Semantics it IS
-// related -- Table 5.3 -- which is why the rule is not a bug in the
-// OWL-RL regime that shares this code. It is a bug in the RDFS
-// regime, which `entailment_closure`'s "RDFS" branch dispatches to.)
-//
-// The theorem below is the SYNTACTIC witness: on a one-triple graph,
-// the shipping function emits a triple that NO row of the RDF or RDFS
-// rule table licenses and that is not an axiomatic triple. No
-// hypothesis on `c` is needed -- the emitted triple is a self-loop
-// (same subject and object) and every axiomatic `rdfs:subClassOf` row
-// has distinct endpoints.
-//
-// The full non-entailment (no MULTI-step derivation reaches it either)
-// is argued rather than machine-checked, and the argument is short:
-// from `c rdf:type owl:Class` the reachable conclusions are
-// `c rdf:type rdfs:Resource` (rdfs4a / rdfs2 through the axiomatic
-// `rdf:type rdfs:domain rdfs:Resource`), `owl:Class rdf:type
-// rdfs:Class` (rdfs3 through the axiomatic `rdf:type rdfs:range
-// rdfs:Class`), and `rdf:type rdf:type rdf:Property` (rdfD2). None
-// puts `c` in ICEXT(rdfs:Class), and rdfs10 is the only rule whose
-// conclusion has the shape `X rdfs:subClassOf X` from a single
-// premise. See the design note.
-// ===================================================================
-
 let owl_class_graph (c : wf_iri) : rdf_graph =
   [ ({ s = S_IRI c; p = rdf_type; o = T_IRI owl_Class } <: triple) ]
 
 let owl_class_refl_triple (c : wf_iri) : triple =
   { s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c }
 
-// The shipping function really does emit it.
-#push-options "--fuel 8 --z3rlimit 60"
-val reflexivity_axioms_emit_owl_class (c : wf_iri)
-  : Lemma (memP (owl_class_refl_triple c)
-                (rdfs_reflexivity_axioms (owl_class_graph c)))
-
-let reflexivity_axioms_emit_owl_class c =
-  assert_norm (collect_classes (owl_class_graph c) == [c]);
-  assert_norm (collect_properties (owl_class_graph c) == []);
-  assert_norm (rdfs_reflexivity_axioms (owl_class_graph c) ==
-               [ owl_class_refl_triple c ])
-#pop-options
-
-// It is not an axiomatic triple of either vocabulary. Every axiomatic
-// `rdfs:subClassOf` row has distinct endpoints; every other row has a
-// different predicate.
-#push-options "--fuel 50 --ifuel 2 --z3rlimit 240"
+// The witness graph and the self-loop triple finding RS-1 is about.
+// They sit HERE, above section 6b, rather than in section 7 with the
+// rest of RS-1: `selfloop_not_axiomatic` below is a 50-fuel enumeration
+// of the axiomatic tables and its query is sensitive to how much else
+// is in scope.
+//
+// `owl_class_refl_triple c` is not an axiomatic triple of either
+// vocabulary. Every axiomatic `rdfs:subClassOf` row has distinct
+// endpoints; every other row has a different predicate.
+//
+// --split_queries always (2026-07-31): the RS-2 rows enlarged
+// RDFS.Closure's SMT encoding enough that z3 returned "unknown because
+// (incomplete quantifiers)" on the conjoined goal -- at 75 of a 240
+// rlimit, so it was quantifier saturation, not budget. Splitting the
+// three conjuncts into three queries recovers it. A proof-splitting
+// flag, not an escape hatch: no --lax, no --admit_smt_queries.
+#push-options "--fuel 50 --ifuel 2 --z3rlimit 600 --split_queries always"
 val selfloop_not_axiomatic (c : wf_iri)
   : Lemma (~(rdf_axiomatic (owl_class_refl_triple c)) /\
            ~(rdfs_axiomatic (owl_class_refl_triple c)) /\
@@ -758,17 +728,497 @@ let selfloop_not_axiomatic c =
   assert_norm (i_rdfs_Datatype =!= i_rdfs_Class)
 #pop-options
 
+// ===================================================================
+// 6b. THE ROWS ADDED 2026-07-31 (finding RS-2 closed for the buildable
+// rows): rdfs1, rdfs4a, rdfs4b, rdfs8, rdfs13.
+//
+// Each rule reads its premises from the graph it folds over, so the
+// source graph and the seed graph coincide and the statements use the
+// diagonal `licensed_by`. rdfs1 has no premise at all and is stated
+// like the container rule.
+// ===================================================================
+
+// rdfs1. The rule emits, unconditionally, one triple per recognized
+// datatype IRI. `RDFS.Closure.recognized_datatypes` is the minimum D of
+// RDF 1.1 Semantics section 8, so the licence is stated at `d_minimal`.
+#push-options "--fuel 8 --z3rlimit 60"
+val rdfs_rule_recognized_datatypes_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures forall (t : triple).
+             memP t (rdfs_rule_recognized_datatypes g ig) ==>
+             (memP t g \/ rdfs1_derives d_minimal t))
+
+let rdfs_rule_recognized_datatypes_licensed g ig =
+  lemma_vocab_agree ();
+  lemma_vocab_agree_rs2 ();
+  let inv : rdf_graph -> prop =
+    fun (acc : rdf_graph) ->
+      forall (t : triple). memP t acc ==> (memP t g \/ rdfs1_derives d_minimal t) in
+  let step : rdf_graph -> wf_iri -> rdf_graph =
+    fun (acc : rdf_graph) (d : wf_iri) ->
+      let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
+      add_triple_unchecked acc new_t in
+  introduce forall (acc : rdf_graph) (d : wf_iri).
+      (memP d recognized_datatypes /\ inv acc) ==> inv (step acc d)
+  with introduce (memP d recognized_datatypes /\ inv acc) ==> inv (step acc d)
+  with _ . begin
+    assert_norm (recognized_datatypes == [rdf_lang_string; xsd_string]);
+    assert (d == rdf_lang_string \/ d == xsd_string);
+    assert (d_minimal d);
+    let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
+    assert (new_t == ({ s = S_IRI d; p = i_rdf_type; o = T_IRI i_rdfs_Datatype } <: triple));
+    assert (rdfs1_derives d_minimal new_t);
+    assert (step acc d == new_t :: acc)
+  end;
+  fold_left_inv inv step recognized_datatypes g;
+  assert_norm (rdfs_rule_recognized_datatypes g ig ==
+               fold_left step g recognized_datatypes)
+#pop-options
+
+// rdfs4a. The premise's subject stays a subject, so the rule fires on
+// every triple with no escape.
+val rdfs_rule_resource_subject_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures licensed_by rdfs4a_derives g (rdfs_rule_resource_subject g ig))
+
+let rdfs_rule_resource_subject_licensed g ig =
+  lemma_vocab_agree ();
+  lemma_vocab_agree_rs2 ();
+  let inv = licensed_by rdfs4a_derives g in
+  let step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
+      add_triple_unchecked acc new_t in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ inv acc) ==> inv (step acc t)
+  with introduce (memP t g /\ inv acc) ==> inv (step acc t)
+  with _ . begin
+    let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
+    assert (new_t == ({ s = t.s; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
+    assert (rdfs4a_derives g new_t);
+    assert (step acc t == new_t :: acc)
+  end;
+  fold_left_inv inv step g g;
+  assert_norm (rdfs_rule_resource_subject g ig == fold_left step g g)
+
+// rdfs4b. FINDING RS-3 applies here exactly as it does to rdfs3: the
+// object moves into subject position, so the rule cannot fire on a
+// literal or triple-term object. `rdfs4b_derives` carries the same
+// `subj_term ys == u.o` premise, so the refinement is EXACT.
+val rdfs_rule_resource_object_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures licensed_by rdfs4b_derives g (rdfs_rule_resource_object g ig))
+
+let rdfs_rule_resource_object_licensed g ig =
+  lemma_vocab_agree ();
+  lemma_vocab_agree_rs2 ();
+  let inv = licensed_by rdfs4b_derives g in
+  let step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      match term_to_subject t.o with
+      | Some y_subj ->
+        let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
+        add_triple_unchecked acc new_t
+      | None -> acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ inv acc) ==> inv (step acc t)
+  with introduce (memP t g /\ inv acc) ==> inv (step acc t)
+  with _ . begin
+    match term_to_subject t.o with
+    | Some y_subj ->
+      lemma_term_to_subject_subj_term t.o y_subj;
+      let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
+      assert (memP t g /\ subj_term y_subj == t.o);
+      assert (new_t == ({ s = y_subj; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
+      assert (rdfs4b_derives g new_t)
+    | None -> ()
+  end;
+  fold_left_inv inv step g g;
+  assert_norm (rdfs_rule_resource_object g ig == fold_left step g g)
+
+// rdfs8.
+val rdfs_rule_class_subclass_resource_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures licensed_by rdfs8_derives g
+                     (rdfs_rule_class_subclass_resource g ig))
+
+let rdfs_rule_class_subclass_resource_licensed g ig =
+  lemma_vocab_agree ();
+  lemma_vocab_agree_rs2 ();
+  let inv = licensed_by rdfs8_derives g in
+  let step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if is_typed_as t rdfs_Class
+      then
+        let new_t : triple =
+          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } in
+        add_triple_unchecked acc new_t
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ inv acc) ==> inv (step acc t)
+  with introduce (memP t g /\ inv acc) ==> inv (step acc t)
+  with _ . begin
+    if is_typed_as t rdfs_Class then begin
+      match t.o with
+      | T_IRI i ->
+        let new_t : triple =
+          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } in
+        assert (t.p == i_rdf_type /\ t.o == T_IRI i_rdfs_Class);
+        assert (new_t ==
+                ({ s = t.s; p = i_rdfs_subClassOf; o = T_IRI i_rdfs_Resource } <: triple));
+        assert (rdfs8_derives g new_t)
+      | _ -> ()
+    end else ()
+  end;
+  fold_left_inv inv step g g;
+  assert_norm (rdfs_rule_class_subclass_resource g ig == fold_left step g g)
+
+// rdfs13.
+val rdfs_rule_datatype_subclass_literal_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures licensed_by rdfs13_derives g
+                     (rdfs_rule_datatype_subclass_literal g ig))
+
+let rdfs_rule_datatype_subclass_literal_licensed g ig =
+  lemma_vocab_agree ();
+  lemma_vocab_agree_rs2 ();
+  let inv = licensed_by rdfs13_derives g in
+  let step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if is_typed_as t rdfs_Datatype
+      then
+        let new_t : triple =
+          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } in
+        add_triple_unchecked acc new_t
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ inv acc) ==> inv (step acc t)
+  with introduce (memP t g /\ inv acc) ==> inv (step acc t)
+  with _ . begin
+    if is_typed_as t rdfs_Datatype then begin
+      match t.o with
+      | T_IRI i ->
+        let new_t : triple =
+          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } in
+        assert (t.p == i_rdf_type /\ t.o == T_IRI i_rdfs_Datatype);
+        assert (new_t ==
+                ({ s = t.s; p = i_rdfs_subClassOf; o = T_IRI i_rdfs_Literal } <: triple));
+        assert (rdfs13_derives g new_t)
+      | _ -> ()
+    end else ()
+  end;
+  fold_left_inv inv step g g;
+  assert_norm (rdfs_rule_datatype_subclass_literal g ig == fold_left step g g)
+
+// ===================================================================
+// 7. FINDING RS-1 -- FIXED 2026-07-31 (issue #335), and the witness
+// re-stated against what remains.
+//
 // -------------------------------------------------------------------
-// THE WITNESS. Not licensed by any row of either rule table.
+// WHAT WAS WRONG
+// -------------------------------------------------------------------
+// There used to be ONE class/property harvest, shared by the RDFS
+// regime and the OWL-RL regime. It treated an IRI as a class if it was
+// the subject or IRI-object of an `rdfs:subClassOf` triple, OR the
+// subject of `rdf:type rdfs:Class`, OR the subject of `rdf:type
+// owl:Class`; the property harvest was the dual and additionally
+// accepted `owl:ObjectProperty` / `owl:DatatypeProperty`.
+//
+// The first three sources are licensed: RDF 1.1 Semantics section 9's
+// conditions put the subject and object of an `rdfs:subClassOf` triple
+// in IC, ICEXT(I(rdfs:Class)) IS IC, and rdfs10 emits exactly
+// `xxx rdfs:subClassOf xxx` from `xxx rdf:type rdfs:Class`.
+//
+// The OWL sources are NOT. `owl:Class` is an ordinary IRI to an RDFS
+// interpretation; no RDFS condition relates ICEXT(I(owl:Class)) to
+// ICEXT(I(rdfs:Class)). (Under the OWL 2 RDF-Based Semantics it IS
+// related -- Table 5.3 -- which is why the same code is sound in the
+// OWL-RL regime.) `entailment_closure`'s "RDFS" branch dispatched into
+// that shared function, so one regime's licence was being spent in the
+// other: a shipping-code unsoundness.
+//
+// -------------------------------------------------------------------
+// THE FIX
+// -------------------------------------------------------------------
+// RDFS.Closure.fsti now carries two harvests. `collect_classes_rdfs` /
+// `collect_properties_rdfs` read only the RDFS-licensed sources and
+// feed `rdfs_reflexivity_axioms`, which is what
+// `rdfs_closure_with_reflexivity` -- the RDFS regime's entry point --
+// uses. `collect_classes` / `collect_properties` keep the wider OWL
+// reading and feed `owl_reflexivity_axioms`, which
+// `owl_rdfs_closure_with_reflexivity` uses and OWL.Closure calls; the
+// OWL-RL regime is therefore unchanged.
+//
+// Two theorems below make that precise:
+//
+//   * `rdfs_reflexivity_axioms_licensed` -- POSITIVE. Every triple the
+//     RDFS-regime harvest emits is `rdfs_licensed`. This is the fix,
+//     machine-checked, and it is what the pre-fix function could not
+//     have.
+//   * `owl_reflexivity_axioms_not_rdfs_sound` -- the old witness,
+//     re-stated. It now names the OWL-regime function, where the same
+//     fact is a REGIME-SCOPE statement (do not run this in the RDFS
+//     regime) rather than a bug report. `rdfs_reflexivity_axioms_owl_class_empty`
+//     records that the RDFS-regime function no longer emits the triple
+//     at all, so the old statement of the witness is now FALSE and has
+//     been removed rather than left pointing at fixed code.
+//
+// The full non-entailment (no MULTI-step derivation reaches
+// `c rdfs:subClassOf c` either) is argued rather than machine-checked,
+// and the argument is short: from `c rdf:type owl:Class` the reachable
+// conclusions are `c rdf:type rdfs:Resource` (rdfs4a / rdfs2 through
+// the axiomatic `rdf:type rdfs:domain rdfs:Resource`), `owl:Class
+// rdf:type rdfs:Class` (rdfs3 through the axiomatic `rdf:type
+// rdfs:range rdfs:Class`), and `rdf:type rdf:type rdf:Property`
+// (rdfD2). None puts `c` in ICEXT(rdfs:Class), and rdfs10 is the only
+// rule whose conclusion has the shape `X rdfs:subClassOf X` from a
+// single premise. See the design note.
+// ===================================================================
+
+// -------------------------------------------------------------------
+// 7a. THE FIX, machine-checked: the RDFS-regime harvest emits only
+// RDFS-licensed triples.
+// -------------------------------------------------------------------
+
+// Membership through the three "cons if new" helpers.
+let cons_if_new_iri_memP (i : wf_iri) (acc : list wf_iri) (x : wf_iri)
+  : Lemma (memP x (cons_if_new_iri i acc) ==> x == i \/ memP x acc) = ()
+
+let cons_subject_iri_if_new_memP (s : subject) (acc : list wf_iri) (x : wf_iri)
+  : Lemma (memP x (cons_subject_iri_if_new s acc) ==> s == S_IRI x \/ memP x acc) =
+  match s with
+  | S_IRI i -> cons_if_new_iri_memP i acc x
+  | S_BNode _ -> ()
+
+let cons_term_iri_if_new_memP (o : rdf_term) (acc : list wf_iri) (x : wf_iri)
+  : Lemma (memP x (cons_term_iri_if_new o acc) ==> o == T_IRI x \/ memP x acc) =
+  match o with
+  | T_IRI i -> cons_if_new_iri_memP i acc x
+  | T_BNode _ -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm _ _ _ -> ()
+
+// The two sources `collect_related_iris` reads.
+let harvest_source (typing_ok : rdf_term -> bool) (rel : wf_iri)
+                   (g : rdf_graph) (c : wf_iri) : prop =
+  (exists (u : triple). memP u g /\ u.p == rel /\
+     (u.s == S_IRI c \/ u.o == T_IRI c)) \/
+  (exists (u : triple). memP u g /\ u.p == RDFS.Closure.rdf_type /\
+     typing_ok u.o /\ u.s == S_IRI c)
+
+#push-options "--z3rlimit 60"
+val collect_related_iris_source (typing_ok : rdf_term -> bool) (rel : wf_iri)
+                                (g : rdf_graph)
+  : Lemma (ensures forall (c : wf_iri).
+             memP c (collect_related_iris typing_ok rel g) ==>
+             harvest_source typing_ok rel g c)
+
+let collect_related_iris_source typing_ok rel g =
+  let inv : list wf_iri -> prop =
+    fun (acc : list wf_iri) ->
+      forall (c : wf_iri). memP c acc ==> harvest_source typing_ok rel g c in
+  let step : list wf_iri -> triple -> list wf_iri =
+    fun (acc : list wf_iri) (t : triple) ->
+      let acc1 =
+        if t.p = rel
+        then cons_term_iri_if_new t.o (cons_subject_iri_if_new t.s acc)
+        else acc
+      in
+      if t.p = rdf_type && typing_ok t.o
+      then cons_subject_iri_if_new t.s acc1
+      else acc1 in
+  introduce forall (acc : list wf_iri) (t : triple).
+      (memP t g /\ inv acc) ==> inv (step acc t)
+  with introduce (memP t g /\ inv acc) ==> inv (step acc t)
+  with _ . begin
+    let acc1 =
+      if t.p = rel
+      then cons_term_iri_if_new t.o (cons_subject_iri_if_new t.s acc)
+      else acc in
+    introduce forall (c : wf_iri). memP c acc1 ==> harvest_source typing_ok rel g c
+    with introduce memP c acc1 ==> harvest_source typing_ok rel g c
+    with _ . begin
+      if t.p = rel then begin
+        cons_term_iri_if_new_memP t.o (cons_subject_iri_if_new t.s acc) c;
+        cons_subject_iri_if_new_memP t.s acc c
+      end else ()
+    end;
+    introduce forall (c : wf_iri).
+        memP c (step acc t) ==> harvest_source typing_ok rel g c
+    with introduce memP c (step acc t) ==> harvest_source typing_ok rel g c
+    with _ . begin
+      if t.p = rdf_type && typing_ok t.o
+      then cons_subject_iri_if_new_memP t.s acc1 c
+      else ()
+    end
+  end;
+  fold_left_inv inv step g [];
+  assert_norm (collect_related_iris typing_ok rel g == fold_left step [] g)
+#pop-options
+
+let lemma_class_typing_rdfs (o : rdf_term)
+  : Lemma (requires is_class_type_object_rdfs o)
+          (ensures o == T_IRI RDFS.Closure.rdfs_Class) =
+  match o with
+  | T_IRI _ -> ()
+  | T_BNode _ -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm _ _ _ -> ()
+
+let lemma_property_typing_rdfs (o : rdf_term)
+  : Lemma (requires is_property_type_object_rdfs o)
+          (ensures o == T_IRI RDFS.Closure.rdf_Property) =
+  match o with
+  | T_IRI _ -> ()
+  | T_BNode _ -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm _ _ _ -> ()
+
+// One harvested class is licensed: either it is an endpoint of a
+// subClassOf triple (the section 9 IC condition plus reflexivity on IC
+// -- `rdfs_subClassOf_endpoint_refl`), or it is the subject of
+// `rdf:type rdfs:Class` (rule rdfs10).
+#push-options "--z3rlimit 120"
+let lemma_class_refl_licensed (g : rdf_graph) (c : wf_iri)
+  : Lemma (requires harvest_source is_class_type_object_rdfs rdfs_subClassOf g c)
+          (ensures rdfs_licensed d_minimal g
+                     ({ s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c } <: triple)) =
+  lemma_vocab_agree ();
+  let t : triple = { s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c } in
+  assert (subj_term (S_IRI c) == T_IRI c);
+  eliminate
+    (exists (u : triple). memP u g /\ u.p == rdfs_subClassOf /\
+       (u.s == S_IRI c \/ u.o == T_IRI c))
+    \/
+    (exists (u : triple). memP u g /\ u.p == RDFS.Closure.rdf_type /\
+       is_class_type_object_rdfs u.o /\ u.s == S_IRI c)
+  returns rdfs_licensed d_minimal g t
+  with _ . begin
+    eliminate exists (u : triple). memP u g /\ u.p == rdfs_subClassOf /\
+                (u.s == S_IRI c \/ u.o == T_IRI c)
+    returns rdfs_licensed d_minimal g t
+    with _ . assert (rdfs_subClassOf_endpoint_refl g t)
+  end
+  and _ . begin
+    eliminate exists (u : triple). memP u g /\ u.p == RDFS.Closure.rdf_type /\
+                is_class_type_object_rdfs u.o /\ u.s == S_IRI c
+    returns rdfs_licensed d_minimal g t
+    with _ . begin
+      lemma_class_typing_rdfs u.o;
+      assert (rdfs10_derives g t)
+    end
+  end
+
+let lemma_property_refl_licensed (g : rdf_graph) (p : wf_iri)
+  : Lemma (requires harvest_source is_property_type_object_rdfs rdfs_subPropertyOf g p)
+          (ensures rdfs_licensed d_minimal g
+                     ({ s = S_IRI p; p = rdfs_subPropertyOf; o = T_IRI p } <: triple)) =
+  lemma_vocab_agree ();
+  let t : triple = { s = S_IRI p; p = rdfs_subPropertyOf; o = T_IRI p } in
+  assert (subj_term (S_IRI p) == T_IRI p);
+  eliminate
+    (exists (u : triple). memP u g /\ u.p == rdfs_subPropertyOf /\
+       (u.s == S_IRI p \/ u.o == T_IRI p))
+    \/
+    (exists (u : triple). memP u g /\ u.p == RDFS.Closure.rdf_type /\
+       is_property_type_object_rdfs u.o /\ u.s == S_IRI p)
+  returns rdfs_licensed d_minimal g t
+  with _ . begin
+    eliminate exists (u : triple). memP u g /\ u.p == rdfs_subPropertyOf /\
+                (u.s == S_IRI p \/ u.o == T_IRI p)
+    returns rdfs_licensed d_minimal g t
+    with _ . assert (rdfs_subPropertyOf_endpoint_refl g t)
+  end
+  and _ . begin
+    eliminate exists (u : triple). memP u g /\ u.p == RDFS.Closure.rdf_type /\
+                is_property_type_object_rdfs u.o /\ u.s == S_IRI p
+    returns rdfs_licensed d_minimal g t
+    with _ . begin
+      lemma_property_typing_rdfs u.o;
+      assert (rdfs6_derives g t)
+    end
+  end
+#pop-options
+
+// THE FIX, stated. Every triple the RDFS-regime reflexivity harvest
+// emits is licensed by RDF 1.1 Semantics section 9.
+#push-options "--z3rlimit 180"
+val rdfs_reflexivity_axioms_licensed (g : rdf_graph)
+  : Lemma (ensures forall (t : triple).
+             memP t (rdfs_reflexivity_axioms g) ==> rdfs_licensed d_minimal g t)
+
+let rdfs_reflexivity_axioms_licensed g =
+  let classes = collect_classes_rdfs g in
+  let properties = collect_properties_rdfs g in
+  let class_f : wf_iri -> triple =
+    fun (c : wf_iri) -> ({ s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c } <: triple) in
+  let prop_f : wf_iri -> triple =
+    fun (p : wf_iri) -> ({ s = S_IRI p; p = rdfs_subPropertyOf; o = T_IRI p } <: triple) in
+  let class_triples : rdf_graph = map class_f classes in
+  let property_triples : rdf_graph = map prop_f properties in
+  collect_related_iris_source is_class_type_object_rdfs rdfs_subClassOf g;
+  collect_related_iris_source is_property_type_object_rdfs rdfs_subPropertyOf g;
+  assert (rdfs_reflexivity_axioms g == class_triples @ property_triples);
+  introduce forall (t : triple).
+      memP t (rdfs_reflexivity_axioms g) ==> rdfs_licensed d_minimal g t
+  with introduce memP t (rdfs_reflexivity_axioms g) ==> rdfs_licensed d_minimal g t
+  with _ . begin
+    append_memP class_triples property_triples t;
+    let from_classes () : Lemma (requires memP t class_triples)
+                                (ensures rdfs_licensed d_minimal g t) =
+      memP_map_elim class_f t classes;
+      eliminate exists (c : wf_iri). memP c classes /\ class_f c == t
+      returns rdfs_licensed d_minimal g t
+      with _ . lemma_class_refl_licensed g c
+    in
+    let from_properties () : Lemma (requires memP t property_triples)
+                                   (ensures rdfs_licensed d_minimal g t) =
+      memP_map_elim prop_f t properties;
+      eliminate exists (p : wf_iri). memP p properties /\ prop_f p == t
+      returns rdfs_licensed d_minimal g t
+      with _ . lemma_property_refl_licensed g p
+    in
+    FStar.Classical.move_requires from_classes ();
+    FStar.Classical.move_requires from_properties ()
+  end
+#pop-options
+
+// -------------------------------------------------------------------
+// 7b. The old witness, re-stated. The RDFS-regime harvest is now
+// EMPTY on the witness graph.
+// -------------------------------------------------------------------
+#push-options "--fuel 8 --z3rlimit 60"
+val rdfs_reflexivity_axioms_owl_class_empty (c : wf_iri)
+  : Lemma (rdfs_reflexivity_axioms (owl_class_graph c) == [])
+
+let rdfs_reflexivity_axioms_owl_class_empty c =
+  assert_norm (collect_classes_rdfs (owl_class_graph c) == []);
+  assert_norm (collect_properties_rdfs (owl_class_graph c) == []);
+  assert_norm (rdfs_reflexivity_axioms (owl_class_graph c) == [])
+#pop-options
+
+// The OWL-regime harvest still emits it.
+#push-options "--fuel 8 --z3rlimit 60"
+val owl_reflexivity_axioms_emit_owl_class (c : wf_iri)
+  : Lemma (memP (owl_class_refl_triple c)
+                (owl_reflexivity_axioms (owl_class_graph c)))
+
+let owl_reflexivity_axioms_emit_owl_class c =
+  assert_norm (collect_classes (owl_class_graph c) == [c]);
+  assert_norm (collect_properties (owl_class_graph c) == []);
+  assert_norm (owl_reflexivity_axioms (owl_class_graph c) ==
+               [ owl_class_refl_triple c ])
+#pop-options
+
+
+// -------------------------------------------------------------------
+// THE WITNESS, re-stated against the OWL-regime function. Not licensed
+// by any row of either rule table -- which is exactly why the RDFS
+// regime must not call it, and no longer does.
 // -------------------------------------------------------------------
 #push-options "--fuel 8 --ifuel 2 --z3rlimit 240"
-val reflexivity_axioms_not_rdfs_sound (c : wf_iri)
+val owl_reflexivity_axioms_not_rdfs_sound (c : wf_iri)
   : Lemma (memP (owl_class_refl_triple c)
-                (rdfs_reflexivity_axioms (owl_class_graph c)) /\
+                (owl_reflexivity_axioms (owl_class_graph c)) /\
            ~(rdfs_licensed d_minimal (owl_class_graph c) (owl_class_refl_triple c)))
 
-let reflexivity_axioms_not_rdfs_sound c =
-  reflexivity_axioms_emit_owl_class c;
+let owl_reflexivity_axioms_not_rdfs_sound c =
+  owl_reflexivity_axioms_emit_owl_class c;
   selfloop_not_axiomatic c;
   lemma_vocab_agree ();
   assert_norm (i_rdfs_subClassOf =!= i_rdf_type);
