@@ -99,6 +99,9 @@ if [[ -f "${OCAML_OUT}/parquet_zstd_stubs.o" ]]; then
 fi
 
 PROBE_BIN="${WORKDIR}/rdfs_entailment_regime_probe"
+# ocamlopt writes the probe's .cmi / .cmx / .o beside its SOURCE, so
+# compile from a copy inside WORKDIR and leave tests/local clean.
+cp "${PROBE_ML}" "${WORKDIR}/rdfs_entailment_regime_probe.ml"
 note "building rdfs_entailment_regime_probe"
 BUILD_RC=0
 BUILD_OUT=$(cd "${WORKDIR}" && timeout 600 ocamlfind ocamlopt \
@@ -108,7 +111,7 @@ BUILD_OUT=$(cd "${WORKDIR}" && timeout 600 ocamlfind ocamlopt \
   "${CMX_LIST[@]}" \
   "${STUB_OBJ[@]}" \
   "${ZSTD_LIB_FLAGS[@]}" \
-  "${PROBE_ML}" \
+  "${WORKDIR}/rdfs_entailment_regime_probe.ml" \
   -o "${PROBE_BIN}" 2>&1) || BUILD_RC=$?
 
 if [[ ${BUILD_RC} -ne 0 ]]; then
