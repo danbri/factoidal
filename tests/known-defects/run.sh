@@ -238,6 +238,31 @@ else
 fi
 
 # ---------------------------------------------------------------------
+# NT-ESC (#339) -- RDF.Pretty.term_to_ntriples escapes NOTHING, so the
+# `dump` verb emits invalid N-Triples for any literal containing a quote,
+# backslash, newline, CR or tab. Decisive form: our own parser cannot read
+# our own output back. dump-nq and dump-turtle are correct; this is one
+# function carrying a second, weaker notion of how a literal is written.
+# ---------------------------------------------------------------------
+cat > "${WORKDIR}/nt.ttl" <<'EOF'
+@prefix : <http://ex.org/> .
+:s :p "q\"z\nw" .
+EOF
+"$BIN" dump "${WORKDIR}/nt.ttl" > "${WORKDIR}/nt.out" 2>/dev/null
+NT_LINES=$(grep -c . "${WORKDIR}/nt.out" 2>/dev/null || echo 0)
+NT_RT=$("$BIN" count "${WORKDIR}/nt.out" 2>&1)
+if [ "${NT_LINES:-0}" -gt 1 ] || echo "$NT_RT" | grep -q "zero triples"; then
+  record NT-ESC 339 "dump emits unescaped literals (invalid N-Triples)" XFAIL \
+    "one triple written as ${NT_LINES} lines; own parser rejects the output"
+elif [ "${NT_LINES:-0}" = "1" ]; then
+  record NT-ESC 339 "dump emits unescaped literals (invalid N-Triples)" XPASS \
+    "one line and it round-trips -- defect appears FIXED"
+else
+  record NT-ESC 339 "dump emits unescaped literals (invalid N-Triples)" ERROR \
+    "dump produced no output"
+fi
+
+# ---------------------------------------------------------------------
 # Summary + JSON
 # ---------------------------------------------------------------------
 TOTAL=$((XFAIL + XPASS + ERRORS))
