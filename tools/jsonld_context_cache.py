@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline, URL-keyed cache of remote JSON-LD `@context` documents.
 
-    third_party/jsonld-context-cache/<domain>/<sha256(url)>.v<N>.jsonld
+    third_party/jsonld-context-cache/<domain>/<sha256(url)>/v<N>.jsonld
 
 Commands (all also reachable via tools/jsonld-context-cache.sh):
 
@@ -287,9 +287,14 @@ def store(cache: str, url: str, raw: bytes, ctype: str, final: str) -> str:
         if versions and versions[-1]["content_sha256"] == content_sha:
             return f"unchanged  v{versions[-1]['version']}  {key}"
 
+        # The url hash names a FOLDER, and each snapshot is a plain
+        # v<N>.jsonld inside it. Every version of one URL therefore sits
+        # together, `ls` of a domain lists URLs rather than a flat wall of
+        # hash-dot-version filenames, and a whole URL is removed by
+        # deleting one directory.
         version = (versions[-1]["version"] + 1) if versions else 1
-        rel = os.path.join(domain, f"{digest}.v{version}.jsonld")
-        os.makedirs(os.path.join(cache, domain), exist_ok=True)
+        rel = os.path.join(domain, digest, f"v{version}.jsonld")
+        os.makedirs(os.path.join(cache, domain, digest), exist_ok=True)
         write_atomic(os.path.join(cache, rel), raw)
         versions.append({
             "version": version,

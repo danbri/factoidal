@@ -81,3 +81,6 @@ docs/test-results/history/
 # Makefile-generated F* dependency graph (fstar.exe --dep full output).
 # Regenerated whenever any .fst/.fsti changes; never a source of truth.
 formal/fstar/.depend
+
+# jsonld context cache: transient flock file, never content
+third_party/jsonld-context-cache/.index.lock

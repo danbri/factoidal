@@ -21,7 +21,50 @@ char 1043. Fixed 2026-07-31 by inserting the missing `]` before
 `"name"`; both parsers now accept it and it carries two verification
 methods as intended.
 
-## What still blocks it: every `@context` entry is a remote IRI
+## Reading of the document (2026-07-31, after the loader landed)
+
+It now parses to **10 triples**. Five observations, in rough order of how
+much they would matter if this were a real DID document.
+
+**1. Three of the seven keys produce no triples at all.** `name`,
+`created` and `updated` are not defined by `did/v1` and there is no
+`@vocab`, so JSON-LD expansion drops them. This is *correct* JSON-LD —
+and it means metadata the author clearly intended to state is invisible
+to every consumer. If they are wanted, they need a context that defines
+them (`dcterms:created`/`dcterms:modified` and `rdfs:label` are the
+conventional choices).
+
+**2. Relative verification-method IDs resolve against the wrong base
+unless you say otherwise.** With no `--base`, `#ed25519-key-1` becomes
+`file:///…/fdid1.json#ed25519-key-1`. DID Core says a relative ID in a
+DID document resolves against the **DID subject**. Passing
+`--base did:example:7d4f…` yields the correct
+`did:example:7d4f…#ed25519-key-1`. Anything consuming a DID document must
+set the base to the subject; the file path is never right.
+
+**3. The Ed25519 key is not a well-formed multikey.** The multibase
+string decodes to 34 bytes — the right length for a 2-byte multicodec
+prefix plus a 32-byte key — but the prefix is `0416`, where
+`ed25519-pub` is `ed01`. It is shaped like a real `z6Mk…` identifier and
+is not one.
+
+**4. The JWK coordinates are the wrong length.** P-256 `x` and `y` must
+each be 32 bytes, i.e. 43 base64url characters. Here `x` is 39 and `y` is
+40. Not decodable as a P-256 point.
+
+**5. No verification relationships.** The document declares two
+verification methods but no `authentication`, `assertionMethod`,
+`keyAgreement`, `capabilityInvocation` or `capabilityDelegation`. Under
+DID Core a verification method that no relationship references cannot be
+used to authenticate, assert or delegate anything — the keys are present
+but inert.
+
+Points 3 and 4 are exactly what one expects of an illustrative example
+and are not defects in the document's purpose. Points 1, 2 and 5 are the
+ones that would bite a real deployment, and 2 is a property of *our*
+processing that any DID consumer we build has to get right.
+
+## Historical: what used to block it — every `@context` entry is a remote IRI
 
 `https://www.w3.org/ns/did/v1` and the three `w3id.org` suites all have to
 be dereferenced. Neither the `factoidal` CLI nor the npm bundle registers a
@@ -29,10 +72,11 @@ document loader (issue
 [#275](https://github.com/danbri/factoidal/issues/275); the `assume val` is
 stubbed in
 `minimal_regrettable_glue_code_each_with_an_open_issue/275_jsonld_document_loader.sh`),
-so both still refuse the document — now for this reason alone.
-
-Any real DID document hits this, because DID documents essentially always
-use remote contexts.
+...which was true until the loader landed. `bin/factoidal-cli` now
+resolves these four IRIs from `third_party/jsonld-context-cache/`
+(see `skills/jsonld-context-cache/SKILL.md`), so the document parses
+offline. Consumers that have not yet registered a loader — the npm
+bundle among them — still refuse it.
 
 ## Measured behaviour (2026-07-31)
 

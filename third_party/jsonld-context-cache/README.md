@@ -26,17 +26,23 @@ fallback is banned. Read it before changing anything here.
 ```
 third_party/jsonld-context-cache/
   index.json                                     generated
-  <domain>/<sha256(url)>.v<N>.jsonld
+  <domain>/<sha256(url)>/v<N>.jsonld
 ```
 
 * **`<domain>`** — the host of the **requested** URL.
-* **`<sha256(url)>`** — sha256 of the **requested** URL, full 64-hex.
-* **`.v<N>`** — snapshot generation, from 1.
+* **`<sha256(url)>`** — a FOLDER named for the sha256 of the **requested**
+  URL, full 64-hex.
+* **`v<N>.jsonld`** — snapshot generation inside it, from 1.
+
+The hash names a folder rather than part of a filename so that every
+version of one URL sits together, `ls` of a domain lists URLs rather than
+a flat wall of hash-dot-version names, and one whole URL is removed by
+deleting one directory.
 
 Example:
 
 ```
-www.w3.org/a6e5bae7721672996bc597d40685cb6405734cde907c291024956a4c72c0e2f2.v1.jsonld
+www.w3.org/a6e5bae7721672996bc597d40685cb6405734cde907c291024956a4c72c0e2f2/v1.jsonld
   = https://www.w3.org/ns/did/v1
 ```
 
@@ -88,7 +94,7 @@ in F\* comments and CI path filters. It is left exactly as it is.
 
 ⚠️ **One resource is currently in both.**
 `https://w3id.org/security/multikey/v1` is `security-multikey-v1.jsonld`
-there and `w3id.org/05a185db….v1.jsonld` here. Verified 2026-07-31: the
+there and `w3id.org/05a185db…/v1.jsonld` here. Verified 2026-07-31: the
 two files are **byte-identical**, sha256
 `ba2c182de2d92f7e47184bcca8fcf0beaee6d3986c527bf664c195bbc7c58597`, so the
 2026-07-10 vendoring and today's fetch agree and upstream has not moved.

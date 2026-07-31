@@ -40,7 +40,7 @@ documentLoader realisation maps onto it directly.
 ```
 third_party/jsonld-context-cache/
   index.json                              generated — never hand-edit
-  <domain>/<sha256(normalized-url)>.v<N>.jsonld
+  <domain>/<sha256(normalized-url)>/v<N>.jsonld
 ```
 
 ## The five rules, and why each exists
