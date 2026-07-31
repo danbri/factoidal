@@ -31,6 +31,15 @@
     }
   }
   * { box-sizing: border-box; }
+  /* Known-defects table (top-level XFAIL card). Colour is a secondary
+     cue only -- the State column carries the word, so the table still
+     reads correctly in monochrome or to a colour-blind reader. */
+  .kd-table { width: 100%; border-collapse: collapse; margin: 0.75em 0; font-size: 0.92em; }
+  .kd-table th, .kd-table td { border: 1px solid var(--border); padding: 0.35em 0.55em; text-align: left; vertical-align: top; }
+  .kd-table th { background: rgba(127,127,127,0.12); }
+  .kd-table tr.kd-xfail td:nth-child(4) { color: var(--brand-dark); }
+  .kd-table tr.kd-xpass td, .kd-table tr.kd-error td { background: rgba(200,80,60,0.12); font-weight: 600; }
+  @media (max-width: 640px) { .kd-table { display: block; overflow-x: auto; } }
   html, body { margin: 0; padding: 0; }
   html { font-size: 100%; } /* 1rem/1em = 16px equivalent, never shrunk below this in body copy */
   body {
@@ -409,8 +418,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-31 08:12 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-31 07:04 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-31 13:12 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-31 08:13 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDF 1.2 / SPARQL 1.2 (W3C Working Drafts), RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -495,6 +504,50 @@
   </table>
   </div>
 </div>
+
+<details class="group-section" id="group-known-defects" open>
+  <summary class="group-summary">Known defects — found, filed, not yet fixed</summary>
+  <div class="group-body">
+<details class="family-node green" id="known-defects">
+  <summary>
+    <span class="fam-name">Known defects (found, filed, unfixed)</span>
+    <span class="fam-score">6/0/0 of 6</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">6 known defects reproduce on this build, as expected; 0 unexpectedly gone; 0 probe errors (out of 6).</p>
+    <div class="suites">
+  <p>Defects we have found, reproduced and filed, and have <strong>not yet
+  fixed</strong>. Each row is an executable probe run on every build, not a
+  note in a tracker.</p>
+  <p><strong>6 still reproduce</strong> (expected),
+  0 unexpectedly gone, 0 probe errors
+  (out of 6).</p>
+  <p class="legend-note">Every one of these lives underneath a suite that
+  is green. <code>SR-1</code> and <code>SR-2</code> sit inside SPARQL 1.1 at
+  631 pass, 0 fail — a conformance suite measures the fixtures it ships,
+  and these defects have no fixture. When a row flips to <strong>XPASS</strong>
+  the known-defects suite fails on purpose: either it was fixed and the row
+  should go, or the probe drifted and stopped measuring what it claims.</p>
+  <table class="kd-table">
+    <thead><tr><th>ID</th><th>Issue</th><th>Defect</th><th>State</th><th>Observed</th></tr></thead>
+    <tbody>
+<tr class="kd-xfail"><td><code>SR-1</code></td><td><a href="https://github.com/danbri/factoidal/issues/336">#336</a></td><td>SELECT DISTINCT returns duplicate rows</td><td><strong>XFAIL</strong></td><td>same row returned 2 times under DISTINCT</td></tr>
+<tr class="kd-xfail"><td><code>SR-2</code></td><td><a href="https://github.com/danbri/factoidal/issues/337">#337</a></td><td>OPTIONAL misses a match the BGP finds (lang-tag case)</td><td><strong>XFAIL</strong></td><td>BGP binds ?t, OPTIONAL leaves it unbound — engine self-contradiction</td></tr>
+<tr class="kd-xfail"><td><code>SE-1</code></td><td><a href="https://github.com/danbri/factoidal/issues/324">#324</a></td><td>sameTerm case-folds language tags (term identity)</td><td><strong>XFAIL</strong></td><td>sameTerm(&quot;x&quot;@en,&quot;x&quot;@EN) is TRUE; identity says they differ</td></tr>
+<tr class="kd-xfail"><td><code>RS-1</code></td><td><a href="https://github.com/danbri/factoidal/issues/335">#335</a></td><td>reflexive subClassOf emitted for an untyped class</td><td><strong>XFAIL</strong></td><td>derived :C rdfs:subClassOf :C though :C is not typed rdfs:Class</td></tr>
+<tr class="kd-xfail"><td><code>TTL-PFX</code></td><td><a href="https://github.com/danbri/factoidal/issues/334">#334</a></td><td>Turtle drops undeclared-prefix statements silently</td><td><strong>XFAIL</strong></td><td>parsed 1 of 2 statements, exit 0, no diagnostic</td></tr>
+<tr class="kd-xfail"><td><code>JSONLD-MSG</code></td><td><a href="https://github.com/danbri/factoidal/issues/275">#275</a></td><td>syntax error and missing loader share one message</td><td><strong>XFAIL</strong></td><td>inline-context syntax error still blamed on remote contexts</td></tr>
+    </tbody>
+  </table>
+    </div>
+    
+    <p class="remaining-complete">Complete against the vendored suites.</p>
+  </div>
+</details>
+  </div>
+</details>
 
 <details class="group-section" id="group-w3c-rec" open>
   <summary class="group-summary">W3C Recommendations</summary>
@@ -2263,9 +2316,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-31 08:12 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/320bfdb9932691d3f4173e89db8e7df923f4a61f">320bfdb</a></code>
-  on branch <code>claude/autoexec-scratchpad-assess-37oeok</code> — &ldquo;tests: refresh the remaining completed suite logs&rdquo;.
+  Generated <strong>2026-07-31 13:12 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/2326d9d167e5cc4d52bf6a586c0283ad9f83da53">2326d9d</a></code>
+  on branch <code>claude/autoexec-scratchpad-assess-37oeok</code> — &ldquo;jsonld-context-cache: robust general fetch/resolve, and a skill&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

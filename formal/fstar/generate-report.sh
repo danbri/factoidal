@@ -2245,6 +2245,79 @@ ${body}
 GRP
 }
 
+# =============================================================================
+# Known defects (XFAIL) — rendered ABOVE the conformance groups.
+#
+# Suite scores answer "does the engine do the right thing on the vendored
+# fixtures". They cannot answer "what do we KNOW is wrong", because a
+# defect no fixture exercises leaves every number green. SR-1 and SR-2
+# both sit under sparql11 at 631 pass, 0 fail. This card carries those
+# claims where a reader meets them first, instead of leaving them in
+# issue threads.
+#
+# Source: tests/known-defects/run.sh -> docs/test-results/by-suite/known-defects.json
+# XFAIL = the defect still reproduces (expected). XPASS = it no longer
+# does, which FAILS that suite on purpose so somebody looks.
+# =============================================================================
+KNOWN_DEFECTS_HTML=""
+KD_JSON="${SCRIPT_DIR}/../../docs/test-results/by-suite/known-defects.json"
+if [ -f "$KD_JSON" ]; then
+  KD_XFAIL=$(sed -n 's/.*"xfail": *\([0-9]*\).*/\1/p' "$KD_JSON" | head -1)
+  KD_XPASS=$(sed -n 's/.*"xpass": *\([0-9]*\).*/\1/p' "$KD_JSON" | head -1)
+  KD_ERR=$(sed -n 's/.*"errors": *\([0-9]*\).*/\1/p' "$KD_JSON" | head -1)
+  KD_TOTAL=$(sed -n 's/.*"total": *\([0-9]*\).*/\1/p' "$KD_JSON" | head -1)
+  KD_ROWS=$(python3 - "$KD_JSON" <<'KDPY'
+import html, json, sys
+data = json.load(open(sys.argv[1]))
+out = []
+for c in data["cases"]:
+    state = c["state"]
+    cls = {"XFAIL": "kd-xfail", "XPASS": "kd-xpass"}.get(state, "kd-error")
+    issue = html.escape(c["issue"])
+    out.append(
+        '<tr class="%s"><td><code>%s</code></td>'
+        '<td><a href="https://github.com/danbri/factoidal/issues/%s">#%s</a></td>'
+        '<td>%s</td><td><strong>%s</strong></td><td>%s</td></tr>'
+        % (cls, html.escape(c["id"]), issue, issue,
+           html.escape(c["title"]), html.escape(state), html.escape(c["detail"])))
+print("\n".join(out))
+KDPY
+)
+  # Page status vocabulary is green/amber/grey (status_for). Green here
+  # means "every known defect is in the state we expect", NOT "no defects"
+  # — the headline and the legend note both say so in words, because a
+  # green badge on a defects card is otherwise easy to misread.
+  KD_OFF=$(( ${KD_XPASS:-0} + ${KD_ERR:-0} ))
+  KD_STATUS=$(status_for "$KD_OFF" 1)
+  KNOWN_DEFECTS_BODY=$(cat <<KDBODY
+  <p>Defects we have found, reproduced and filed, and have <strong>not yet
+  fixed</strong>. Each row is an executable probe run on every build, not a
+  note in a tracker.</p>
+  <p><strong>${KD_XFAIL:-0} still reproduce</strong> (expected),
+  ${KD_XPASS:-0} unexpectedly gone, ${KD_ERR:-0} probe errors
+  (out of ${KD_TOTAL:-0}).</p>
+  <p class="legend-note">Every one of these lives underneath a suite that
+  is green. <code>SR-1</code> and <code>SR-2</code> sit inside SPARQL 1.1 at
+  631 pass, 0 fail — a conformance suite measures the fixtures it ships,
+  and these defects have no fixture. When a row flips to <strong>XPASS</strong>
+  the known-defects suite fails on purpose: either it was fixed and the row
+  should go, or the probe drifted and stopped measuring what it claims.</p>
+  <table class="kd-table">
+    <thead><tr><th>ID</th><th>Issue</th><th>Defect</th><th>State</th><th>Observed</th></tr></thead>
+    <tbody>
+${KD_ROWS}
+    </tbody>
+  </table>
+KDBODY
+)
+  # Meter mapping: XFAIL counts as "pass" because the probe reported the
+  # state we expect; XPASS and ERROR count as "fail" because both demand a
+  # human. That keeps the card's bar comparable with every other card.
+  KNOWN_DEFECTS_HTML=$(family_section "known-defects" "Known defects (found, filed, unfixed)" \
+    "$KD_STATUS" "${KD_XFAIL:-0} known defects reproduce on this build, as expected; ${KD_XPASS:-0} unexpectedly gone; ${KD_ERR:-0} probe errors (out of ${KD_TOTAL:-0})." \
+    "$KNOWN_DEFECTS_BODY" "" "${KD_XFAIL:-0}" "$KD_OFF" "0" "${KD_TOTAL:-0}")
+fi
+
 # --- RDF 1.1 core: syntaxes + semantics --------------------------------------
 # rdf-mt carries the RDFS entailment tests (RDF Schema 1.1 shares the RDF
 # 1.1 Semantics suite). RDFC-1.0 is a separate 2024 Recommendation and
@@ -2840,6 +2913,14 @@ GROUP1_BODY=$(printf '%s\n' \
   "$RULES_HTML" "$GRDDL_HTML" "$XSLTFAM_HTML" "$XMLCONFFAM_HTML" "$MATHMLFAM_HTML")
 GROUP1_HTML=$(group_section "group-w3c-rec" "W3C Recommendations" "$GROUP1_BODY")
 
+# Its own top-level group so it reads as a peer of the conformance groups,
+# not as a footnote inside one.
+KNOWN_DEFECTS_GROUP_HTML=""
+if [ -n "$KNOWN_DEFECTS_HTML" ]; then
+  KNOWN_DEFECTS_GROUP_HTML=$(group_section "group-known-defects" \
+    "Known defects — found, filed, not yet fixed" "$KNOWN_DEFECTS_HTML")
+fi
+
 # W3C Working Drafts (emerging next-revision specs) — RDF 1.2 / SPARQL 1.2.
 # Its own group so it is never mistaken for a Recommendation. Empty (and
 # therefore omitted) if the 1.2 runners produced no rows this run.
@@ -3039,6 +3120,15 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
     }
   }
   * { box-sizing: border-box; }
+  /* Known-defects table (top-level XFAIL card). Colour is a secondary
+     cue only -- the State column carries the word, so the table still
+     reads correctly in monochrome or to a colour-blind reader. */
+  .kd-table { width: 100%; border-collapse: collapse; margin: 0.75em 0; font-size: 0.92em; }
+  .kd-table th, .kd-table td { border: 1px solid var(--border); padding: 0.35em 0.55em; text-align: left; vertical-align: top; }
+  .kd-table th { background: rgba(127,127,127,0.12); }
+  .kd-table tr.kd-xfail td:nth-child(4) { color: var(--brand-dark); }
+  .kd-table tr.kd-xpass td, .kd-table tr.kd-error td { background: rgba(200,80,60,0.12); font-weight: 600; }
+  @media (max-width: 640px) { .kd-table { display: block; overflow-x: auto; } }
   html, body { margin: 0; padding: 0; }
   html { font-size: 100%; } /* 1rem/1em = 16px equivalent, never shrunk below this in body copy */
   body {
@@ -3468,6 +3558,8 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
 ${LEGEND_HTML}
 
 ${HARNESS_CARD_HTML}
+
+${KNOWN_DEFECTS_GROUP_HTML}
 
 ${GROUP1_HTML}
 ${GROUP_WD_HTML}

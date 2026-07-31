@@ -17,13 +17,139 @@
 open RDF_Graph_Executable
 open SPARQL11_Algebra
 
-(* Issue #275 (rule #11 ASSUME-IO): explicitly realise the JSON-LD
-   documentLoader seam as an honest "no remote loading" for this CLI —
-   see JSONLD.Loader.fst's banner and jsonld_runner.ml (the ONE
-   consumer with a real fixture-file loader). Explicit rather than
-   relying on the ref cell's own default so the choice is auditable
-   here, not implicit. *)
-let () = JSONLD_Loader.jsonld_loader_register (fun _ -> FStar_Pervasives_Native.None)
+(* Issue #275 (rule #11 ASSUME-IO): realise the JSON-LD documentLoader
+   seam for this CLI against the offline context cache in
+   third_party/jsonld-context-cache/. See JSONLD.Loader.fst's banner,
+   skills/jsonld-context-cache/SKILL.md, and jsonld_runner.ml (the
+   fixture-file loader for the W3C suite).
+
+   Rule #11 boundary: this code performs I/O and a LOOKUP only. It does
+   NOT know the cache's naming convention — no sha256-of-URL, no
+   <domain>/<hash>.v<N> path assembly. It reads the generated index.json
+   and follows the "path" recorded there. The layout convention stays in
+   tools/jsonld_context_cache.py, which owns it; if that layout changes,
+   nothing here needs to. The only decision made here is WHICH bytes come
+   back for which IRI, which is exactly what the patch banner says is the
+   consumer's own business.
+
+   Resolution order:
+     1. the local cache (offline, default, always tried first)
+     2. GitHub raw of the SAME cached snapshot — opt-in via
+        FACTOIDAL_JSONLD_REMOTE=1, and it announces itself on stderr
+
+   The remote step is opt-in rather than automatic on purpose: a
+   conformance run that silently reaches the network is not reproducible,
+   and a context fetched mid-parse is a context nobody reviewed. Default
+   behaviour stays fully offline. *)
+
+let jsonld_cache_root () =
+  match Sys.getenv_opt "FACTOIDAL_JSONLD_CACHE" with
+  | Some d -> d
+  | None ->
+    (* Repo layout relative to the executable, then CWD, so the CLI works
+       from a checkout and from bin/<platform>/ alike. *)
+    let exe_dir = Filename.dirname Sys.executable_name in
+    let candidates = [
+      Filename.concat (Filename.concat exe_dir "../..") "third_party/jsonld-context-cache";
+      Filename.concat exe_dir "third_party/jsonld-context-cache";
+      "third_party/jsonld-context-cache";
+    ] in
+    (try List.find (fun d -> Sys.file_exists (Filename.concat d "index.json")) candidates
+     with Not_found -> "third_party/jsonld-context-cache")
+
+let jsonld_read_file_opt path =
+  if Sys.file_exists path then
+    (try
+       let ic = open_in_bin path in
+       let n = in_channel_length ic in
+       let s = really_input_string ic n in
+       close_in ic; Some s
+     with Sys_error _ -> None)
+  else None
+
+(* (relative path, expected content sha256) for [iri], read out of the
+   generated index. Uses the F*-extracted JSON parser rather than a
+   hand-rolled one (iron rule #4: no parallel parser in OCaml). *)
+let jsonld_cache_lookup (iri : string) : (string * string) option =
+  match jsonld_read_file_opt (Filename.concat (jsonld_cache_root ()) "index.json") with
+  | None -> None
+  | Some raw ->
+    (match Parser_JSON.parse_json raw with
+     | FStar_Pervasives_Native.None -> None
+     | FStar_Pervasives_Native.Some idx ->
+       let field k o = match Parser_JSON.json_get_field k o with
+         | FStar_Pervasives_Native.Some v -> Some v | FStar_Pervasives_Native.None -> None in
+       (match field "contexts" idx with
+        | None -> None
+        | Some contexts ->
+          (match field iri contexts with
+           | None -> None
+           | Some entry ->
+             (match Parser_JSON.json_get_array "versions" entry with
+              | FStar_Pervasives_Native.None -> None
+              | FStar_Pervasives_Native.Some vs ->
+                let vs = List.rev vs in            (* newest snapshot wins *)
+                (match vs with
+                 | [] -> None
+                 | newest :: _ ->
+                   (match Parser_JSON.json_get_string "path" newest,
+                          Parser_JSON.json_get_string "content_sha256" newest with
+                    | FStar_Pervasives_Native.Some p,
+                      FStar_Pervasives_Native.Some d -> Some (p, d)
+                    | _ -> None))))))
+
+(* Fail CLOSED on a digest mismatch. A cached context that does not match
+   its recorded hash is tampered or truncated; feeding it into expansion
+   would silently change what every document means. *)
+let jsonld_checked_body ~(what : string) (body : string) (expect : string) : string option =
+  let got = Fstar_pure_hashes.sha256 body in
+  if got = expect then Some body
+  else begin
+    Printf.eprintf
+      "factoidal: REFUSING cached JSON-LD context %s — sha256 %s does not match\n\
+      \           the recorded %s. Run tools/jsonld-context-cache.sh verify.\n"
+      what (String.sub got 0 16) (String.sub expect 0 16);
+    None
+  end
+
+let jsonld_remote_base =
+  "https://raw.githubusercontent.com/danbri/factoidal/claude/main/third_party/jsonld-context-cache/"
+
+let jsonld_fetch_remote (rel : string) : string option =
+  match Sys.getenv_opt "FACTOIDAL_JSONLD_REMOTE" with
+  | Some ("1" | "true" | "yes") ->
+    let url = jsonld_remote_base ^ rel in
+    Printf.eprintf "factoidal: fetching JSON-LD context from %s\n%!" url;
+    let tmp = Filename.temp_file "factoidal-ctx-" ".jsonld" in
+    let rc =
+      Sys.command (Printf.sprintf
+        "curl -sS -L --max-time 20 --proto '=https' --proto-redir '=https' -o %s %s"
+        (Filename.quote tmp) (Filename.quote url)) in
+    let body = if rc = 0 then jsonld_read_file_opt tmp else None in
+    (try Sys.remove tmp with Sys_error _ -> ());
+    if rc <> 0 then
+      Printf.eprintf "factoidal: remote context fetch failed (curl exit %d)\n" rc;
+    body
+  | _ -> None
+
+let jsonld_document_loader (iri : string) : string option =
+  match jsonld_cache_lookup iri with
+  | None -> None
+  | Some (rel, digest) ->
+    let local = Filename.concat (jsonld_cache_root ()) rel in
+    (match jsonld_read_file_opt local with
+     | Some body -> jsonld_checked_body ~what:rel body digest
+     | None ->
+       (match jsonld_fetch_remote rel with
+        | Some body -> jsonld_checked_body ~what:(rel ^ " (remote)") body digest
+        | None -> None))
+
+let () =
+  JSONLD_Loader.jsonld_loader_register
+    (fun iri ->
+       match jsonld_document_loader iri with
+       | Some s -> FStar_Pervasives_Native.Some s
+       | None -> FStar_Pervasives_Native.None)
 
 (* ============================================================================
    Remote SPARQL 1.1 Protocol client (`query --endpoint URL`)
