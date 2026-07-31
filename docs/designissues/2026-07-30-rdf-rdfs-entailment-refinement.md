@@ -856,3 +856,202 @@ triples the later rules would have derived FROM `rdf:type
 rdfs:Resource`, which is only rdfs9 through a `rdfs:Resource
 rdfs:subClassOf X` edge).
 
+
+## 10.5 2026-07-31 follow-up: the throughput regression, removed
+
+Branch `claude/rdfs-emit-once-20260731`, issue **#340** item (4). No
+`admit`, no `assume`, no `--lax`, no `--admit_smt_queries`, z3 4.13.3.
+
+### 10.5.1 The hoist proposed in #340 item (4) is unsound
+
+#340 item (4) reads the five RS-2 rows as non-recursive and proposes
+lifting rdfs4a / rdfs4b / rdfs8 / rdfs13 out of `rdfs_closure_step` and
+running them once after the fixed point, with rdfs1 flagged as needing a
+separate check. ❌ **That is wrong for all five.** Every one of them
+emits a triple that is a premise of rdfs9 or rdfs11, both of which stay
+in the loop, so a post-pass loses derivations.
+
+The premise patterns of the seven rows that would remain in the loop:
+rdfs7 fires on any triple whose predicate has a `rdfs:subPropertyOf`
+edge; rdfs2 and rdfs3 on any triple whose predicate has a
+`rdfs:domain` / `rdfs:range` edge; rdfs9 on any `x rdf:type A` triple
+with an `A rdfs:subClassOf B` edge; rdfs11 and rdfs5 on
+`rdfs:subClassOf` / `rdfs:subPropertyOf` edges. Against those:
+
+| Row | Emits | Consumed by | Counterexample graph | Lost by a hoist |
+|---|---|---|---|---|
+| rdfs13 | `x rdfs:subClassOf rdfs:Literal` | rdfs9 | `:d rdf:type rdfs:Datatype . :a rdf:type :d .` | `:a rdf:type rdfs:Literal` |
+| rdfs1 | `<d> rdf:type rdfs:Datatype` | rdfs13, then rdfs9 | `:a rdf:type xsd:string .` | `xsd:string rdfs:subClassOf rdfs:Literal`, `:a rdf:type rdfs:Literal` |
+| rdfs8 | `x rdfs:subClassOf rdfs:Resource` | rdfs11 | `:C rdf:type rdfs:Class . rdfs:Resource rdfs:subClassOf :Top .` | `:C rdfs:subClassOf :Top` |
+| rdfs4a / rdfs4b | `x rdf:type rdfs:Resource` | rdfs9 | `:a :p :b . rdfs:Resource rdfs:subClassOf :Top .` | `:a rdf:type :Top`, `:b rdf:type :Top` |
+
+All four counterexamples were **run**, not reasoned about: the closure
+of each graph under the 2026-07-31 engine contains the "lost by a hoist"
+column. §10.4's last paragraph had already spotted the rdfs4a-to-rdfs9
+half of this; the rdfs8-to-rdfs11 and rdfs1-to-rdfs13-to-rdfs9 halves
+are new here.
+
+⚠️ Note how ordinary the rdfs13 and rdfs1 cases are. They need only
+"declare a datatype and use it" — no unusual statement about the RDFS
+vocabulary at all. A hoist would have silently lost derivations on
+routine data.
+
+🧭 **Conclusion: no row is hoisted. All twelve stay in the loop.**
+
+### 10.5.2 What was actually done: emit once, not once per round
+
+The cost was never that the rows run every round. It was that they
+re-derive their whole output every round. rdfs4a emits one triple per
+triple of the ACCUMULATOR and rdfs4b one per subject-eligible object, so
+from round 2 onward the list handed to `graph_dedup_sort` was roughly 4x
+the graph, and almost all of it was triples the graph already had.
+
+`RDFS.Closure.snapshot_carries ig sub prd cls` is true only when the
+step's index SNAPSHOT already carries the exact triple `(sub, prd,
+<cls>)`. `emit_once` skips the emission when it is true, and all five
+rows emit through `emit_once`.
+
+**Why the result is unchanged.** `rdfs_closure_step` builds `ig` from
+the step's INPUT graph and never rebuilds it, and every row seeds its
+fold with an accumulator that already contains that input. A suppressed
+triple is therefore still an element of the row's result: the emitted
+SET is identical and only the duplicate COUNT drops.
+
+`ig_built.bn_sp` is tested first. A selectively built index has
+`ig_sp = BLeaf` by construction rather than by absence (the
+`bucket_needs` banner in `RDF.Indexed.fsti`), and an unbuilt bucket must
+never read as "not present".
+
+### 10.5.3 What is proved, and what is prose
+
+Proved, per row, in `RDF.Entailment.RDFS.Refinement.fst` §6c:
+
+| Theorem | Statement |
+|---|---|
+| `_licensed` (§6b, unchanged) | everything in the result is in `g` or is licensed by the row — the bound from ABOVE |
+| `_monotone` | the fold's seed survives — **no hypothesis at all** |
+| `_complete` | every conclusion the row draws on `g` is in the result, under `ig_wf_sp ig /\ snapshot_subset ig g` — the bound from BELOW |
+
+The two bounds pin the result's element set to exactly (elements of `g`)
+union (conclusions of the row on `g`), which is also the UNGUARDED row's
+element set. So the guard cannot lose a derivation.
+
+`rs2_rows_complete_at_build_indexed` restates all five at
+`ig = build_indexed g`, where `snapshot_subset` discharges outright and
+only `ig_wf_sp (build_indexed g)` remains — the same hypothesis
+`rdfs_closure_step_sound` already carries (§3 of this note explains why
+that hypothesis is scoped rather than universal). That corollary is also
+the anti-vacuity check on the five `_complete` lemmas: its hypothesis
+set is one the tree already treats as satisfiable and its conclusions
+name concrete triples.
+
+The soundness chain is re-established with **no statement change**:
+`rdfs_closure_step_sound`, `rdfs_closure_sound`, `rdfs_closure_entails`
+and `rdfs_closure_with_reflexivity_entails` all verify as written. The
+guard only ever removes emissions, so each row's truth-preservation
+lemma crosses the guard's `then` branch for free.
+
+⚠️ **Not proved: LIST equality of `rdfs_closure_step`'s output.** Set
+equality per row is a theorem; "therefore the whole step returns the
+same list" needs one more fact — that `graph_dedup_sort` maps equal
+element sets to equal lists. `triple_to_key` is injective on triples and
+`triple_cmp` is `String.compare` on it, so the fact is true, but it is a
+canonicity result about `List.Tot.sortWith` plus `dedup_sorted_aux` that
+this tree does not have. It is carried as prose here and backed by a
+byte-for-byte differential run of `factoidal entail` in both regimes
+over a 1200-graph corpus drawn from the vendored W3C and OWL suites:
+
+📊 **2028 runs byte-identical, 0 differing, 0 exit-code mismatches**
+(out of 2400 attempted; the remaining 372 are files the CLI declines to
+load — negative-syntax fixtures and the like — and it declines them
+identically on both binaries).
+
+That is evidence, not a proof. The theorem it stands in for is the
+canonicity of `graph_dedup_sort`, and anyone closing that gap should
+prove that lemma rather than widen the corpus.
+
+### 10.5.4 Measured
+
+📊 Same machine, back to back. The "before" column is the post-RS-2 /
+pre-guard binary recovered from commit `56b9e39` — see §10.5.5 for why
+it had to be recovered rather than read out of `bin/`.
+
+`factoidal entail --regime RDFS` on a `subClassOf` chain of length n
+plus one typed individual:
+
+| n | before | after | speedup | output triples |
+|---:|---:|---:|---:|---:|
+| 20 | 0.160 s | 0.042 s | 3.8x | 309, both |
+| 40 | 0.702 s | 0.200 s | 3.5x | 979, both |
+| 80 | 6.331 s | 1.683 s | 3.8x | 3519, both |
+| 160 | 57.317 s | 14.745 s | 3.9x | 13399, both |
+
+Outputs are byte-identical at every n. For scale: the same benchmark on
+the pre-RS-2 binary (no rdfs1/4a/4b/8/13 at all) runs n=160 in 13.20 s,
+so the five rows now cost about 12% rather than 4.3x.
+
+⚠️ The exponent is unchanged. Time still fits n³ — the guard is a
+constant-factor win, and the extra factor of n that #340 items (1)–(3)
+describe (the snapshot is never rebuilt inside a step, so a chain needs
+O(n) rounds) is untouched and remains the open item.
+
+OWL 2 profile-RL:
+
+| Suite | before | after | score |
+|---|---:|---:|---|
+| PositiveEntailmentTests | 2.57 s | 1.16 s | 30 pass, 0 fail (out of 30), both |
+| NegativeEntailmentTests | 0.35 s | 0.17 s | 6 pass, 0 fail (out of 6), both |
+| ConsistencyTests | 5.79 s | 2.97 s | 76 pass, 0 fail (out of 76), both |
+| InconsistencyTests | 0.95 s | 0.44 s | 14 pass, 0 fail (out of 14), both |
+
+✅ Correctness gates, every one measured on both binaries on this
+machine, every one identical:
+
+| Suite | before | after |
+|---|---|---|
+| `rdf-mt` | 39 pass, 0 fail (out of 39) | 39 pass, 0 fail (out of 39) |
+| rdf11 total | 1031 pass, 0 fail (out of 1031) | 1031 pass, 0 fail (out of 1031) |
+| `rdf-semantics` (rdf12entail) | 41 pass, 3 fail, 3 skip (of 47) | 41 pass, 3 fail, 3 skip (of 47) |
+| SPARQL `entailment` | 70 pass, 0 fail (out of 70) | 70 pass, 0 fail (out of 70) |
+| SPARQL total | 631 pass, 0 fail (out of 631) | 631 pass, 0 fail (out of 631) |
+| `tools/negative-test-vacuity.py` | 11 worked, 14 weak, 3 vacuous (out of 42) | 11 worked, 14 weak, 3 vacuous (out of 42) |
+
+🧹 Two numbers in §10.4 are stale against a re-measurement on this
+machine and are corrected here rather than edited in place: SPARQL
+`entailment` measures **70 pass, 0 fail (out of 70)** on BOTH binaries,
+not the "66 pass, 4 fail (out of 70)" §10.4 records, and SPARQL total
+measures **631 pass, 0 fail (out of 631)**, not "627 pass, 4 fail". The
+difference is not attributable to any change on this branch — the
+control binary reports the same figures.
+
+### 10.5.5 🔴 The committed linux binaries did not carry the RS-2 rows
+
+Found while establishing the baseline. Commit `56b9e39` ("Rebuild:
+extracted OCaml + native binaries for the RDFS RS-2 / RS-1 work") did
+update all 28 files under `bin/linux-x86_64/`. The merge `49779fd`
+(`claude/rdfs-complete-rows-20260731` into
+`claude/autoexec-scratchpad-assess-37oeok`) then **reverted every one of
+them** to its `7e71266` blob, which predates the RS-2 rows.
+
+The symptom: on the branch tip before this work, `factoidal entail
+--regime RDFS` over `:d rdf:type rdfs:Datatype . :a rdf:type :d .`
+returned 18 triples and not one `rdf:type rdfs:Resource`. The binary
+recovered from `56b9e39` returns 42 triples on the same input.
+
+Two consequences:
+
+* Anti-pattern #27, in the other direction — a merge silently dropping
+  consumer artifacts rather than an old-base cherry-pick dropping them.
+  Worth a detection step: after any merge that touches `bin/`, diff
+  `bin/linux-x86_64/` against **both** parents.
+* ⚠️ §10.4's table says "measured on the committed `linux-x86_64`
+  binaries". If that measurement was taken after the merge, it was taken
+  on binaries without the five rows, and "nothing moved" has a more
+  ordinary explanation than "no suite exercises the new rows". The
+  re-measurement in §10.5.4 above runs the RS-2 binary explicitly and
+  confirms the scores are genuinely unchanged, so §10.4's conclusion
+  survives — but its provenance did not, and the RS-4 reading of the
+  result should be re-derived from §10.5.4 rather than from §10.4.
+
+The binaries committed on this branch carry both the RS-2 rows and the
+guard, so the revert is repaired.

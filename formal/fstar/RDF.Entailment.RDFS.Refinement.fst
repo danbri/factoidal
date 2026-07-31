@@ -753,21 +753,23 @@ let rdfs_rule_recognized_datatypes_licensed g ig =
   let inv : rdf_graph -> prop =
     fun (acc : rdf_graph) ->
       forall (t : triple). memP t acc ==> (memP t g \/ rdfs1_derives d_minimal t) in
-  let step : rdf_graph -> wf_iri -> rdf_graph =
-    fun (acc : rdf_graph) (d : wf_iri) ->
-      let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
-      add_triple_unchecked acc new_t in
+  let step : rdf_graph -> wf_iri -> rdf_graph = rdfs1_step ig in
   introduce forall (acc : rdf_graph) (d : wf_iri).
       (memP d recognized_datatypes /\ inv acc) ==> inv (step acc d)
   with introduce (memP d recognized_datatypes /\ inv acc) ==> inv (step acc d)
   with _ . begin
-    assert_norm (recognized_datatypes == [rdf_lang_string; xsd_string]);
-    assert (d == rdf_lang_string \/ d == xsd_string);
-    assert (d_minimal d);
-    let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
-    assert (new_t == ({ s = S_IRI d; p = i_rdf_type; o = T_IRI i_rdfs_Datatype } <: triple));
-    assert (rdfs1_derives d_minimal new_t);
-    assert (step acc d == new_t :: acc)
+    // The emit-once guard's `then` branch returns the accumulator
+    // untouched, so the invariant is carried across it for free.
+    if snapshot_carries ig (S_IRI d) rdf_type rdfs_Datatype then ()
+    else begin
+      assert_norm (recognized_datatypes == [rdf_lang_string; xsd_string]);
+      assert (d == rdf_lang_string \/ d == xsd_string);
+      assert (d_minimal d);
+      let new_t : triple = { s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } in
+      assert (new_t == ({ s = S_IRI d; p = i_rdf_type; o = T_IRI i_rdfs_Datatype } <: triple));
+      assert (rdfs1_derives d_minimal new_t);
+      assert (step acc d == new_t :: acc)
+    end
   end;
   fold_left_inv inv step recognized_datatypes g;
   assert_norm (rdfs_rule_recognized_datatypes g ig ==
@@ -783,18 +785,18 @@ let rdfs_rule_resource_subject_licensed g ig =
   lemma_vocab_agree ();
   lemma_vocab_agree_rs2 ();
   let inv = licensed_by rdfs4a_derives g in
-  let step : rdf_graph -> triple -> rdf_graph =
-    fun (acc : rdf_graph) (t : triple) ->
-      let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
-      add_triple_unchecked acc new_t in
+  let step : rdf_graph -> triple -> rdf_graph = rdfs4a_step ig in
   introduce forall (acc : rdf_graph) (t : triple).
       (memP t g /\ inv acc) ==> inv (step acc t)
   with introduce (memP t g /\ inv acc) ==> inv (step acc t)
   with _ . begin
-    let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
-    assert (new_t == ({ s = t.s; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
-    assert (rdfs4a_derives g new_t);
-    assert (step acc t == new_t :: acc)
+    if snapshot_carries ig t.s rdf_type rdfs_Resource then ()
+    else begin
+      let new_t : triple = { s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } in
+      assert (new_t == ({ s = t.s; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
+      assert (rdfs4a_derives g new_t);
+      assert (step acc t == new_t :: acc)
+    end
   end;
   fold_left_inv inv step g g;
   assert_norm (rdfs_rule_resource_subject g ig == fold_left step g g)
@@ -810,24 +812,21 @@ let rdfs_rule_resource_object_licensed g ig =
   lemma_vocab_agree ();
   lemma_vocab_agree_rs2 ();
   let inv = licensed_by rdfs4b_derives g in
-  let step : rdf_graph -> triple -> rdf_graph =
-    fun (acc : rdf_graph) (t : triple) ->
-      match term_to_subject t.o with
-      | Some y_subj ->
-        let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
-        add_triple_unchecked acc new_t
-      | None -> acc in
+  let step : rdf_graph -> triple -> rdf_graph = rdfs4b_step ig in
   introduce forall (acc : rdf_graph) (t : triple).
       (memP t g /\ inv acc) ==> inv (step acc t)
   with introduce (memP t g /\ inv acc) ==> inv (step acc t)
   with _ . begin
     match term_to_subject t.o with
     | Some y_subj ->
-      lemma_term_to_subject_subj_term t.o y_subj;
-      let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
-      assert (memP t g /\ subj_term y_subj == t.o);
-      assert (new_t == ({ s = y_subj; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
-      assert (rdfs4b_derives g new_t)
+      if snapshot_carries ig y_subj rdf_type rdfs_Resource then ()
+      else begin
+        lemma_term_to_subject_subj_term t.o y_subj;
+        let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } in
+        assert (memP t g /\ subj_term y_subj == t.o);
+        assert (new_t == ({ s = y_subj; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple));
+        assert (rdfs4b_derives g new_t)
+      end
     | None -> ()
   end;
   fold_left_inv inv step g g;
@@ -842,19 +841,13 @@ let rdfs_rule_class_subclass_resource_licensed g ig =
   lemma_vocab_agree ();
   lemma_vocab_agree_rs2 ();
   let inv = licensed_by rdfs8_derives g in
-  let step : rdf_graph -> triple -> rdf_graph =
-    fun (acc : rdf_graph) (t : triple) ->
-      if is_typed_as t rdfs_Class
-      then
-        let new_t : triple =
-          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } in
-        add_triple_unchecked acc new_t
-      else acc in
+  let step : rdf_graph -> triple -> rdf_graph = rdfs8_step ig in
   introduce forall (acc : rdf_graph) (t : triple).
       (memP t g /\ inv acc) ==> inv (step acc t)
   with introduce (memP t g /\ inv acc) ==> inv (step acc t)
   with _ . begin
-    if is_typed_as t rdfs_Class then begin
+    if is_typed_as t rdfs_Class &&
+       not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Resource) then begin
       match t.o with
       | T_IRI i ->
         let new_t : triple =
@@ -878,19 +871,13 @@ let rdfs_rule_datatype_subclass_literal_licensed g ig =
   lemma_vocab_agree ();
   lemma_vocab_agree_rs2 ();
   let inv = licensed_by rdfs13_derives g in
-  let step : rdf_graph -> triple -> rdf_graph =
-    fun (acc : rdf_graph) (t : triple) ->
-      if is_typed_as t rdfs_Datatype
-      then
-        let new_t : triple =
-          { s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } in
-        add_triple_unchecked acc new_t
-      else acc in
+  let step : rdf_graph -> triple -> rdf_graph = rdfs13_step ig in
   introduce forall (acc : rdf_graph) (t : triple).
       (memP t g /\ inv acc) ==> inv (step acc t)
   with introduce (memP t g /\ inv acc) ==> inv (step acc t)
   with _ . begin
-    if is_typed_as t rdfs_Datatype then begin
+    if is_typed_as t rdfs_Datatype &&
+       not (snapshot_carries ig t.s rdfs_subClassOf rdfs_Literal) then begin
       match t.o with
       | T_IRI i ->
         let new_t : triple =
@@ -904,6 +891,349 @@ let rdfs_rule_datatype_subclass_literal_licensed g ig =
   end;
   fold_left_inv inv step g g;
   assert_norm (rdfs_rule_datatype_subclass_literal g ig == fold_left step g g)
+
+// ===================================================================
+// 6c. THE EMIT-ONCE GUARD IS SET-NEUTRAL (issue #340 item 4).
+//
+// Each of the five rows above consults `snapshot_carries ig` and SKIPS
+// its emission when the step's index snapshot already carries the
+// identical triple. Section 6b's `_licensed` theorems bound each row's
+// result from ABOVE and survive a skip for free (skipping only removes
+// triples). What has to be re-established is the bound from BELOW: the
+// row must still contain every conclusion its rule row licenses on `g`.
+//
+// Two lemmas per row:
+//   `_monotone` -- the fold's seed survives, so anything the guard
+//                  skipped (which is in the snapshot, hence in the
+//                  seed) is still in the result;
+//   `_complete` -- every conclusion the row draws on `g` is in the
+//                  result.
+// `_licensed` and `_complete` together pin the result's element set to
+// exactly (elements of `g`) union (conclusions of the row on `g`), and
+// that is also the element set of the UNGUARDED row. So the guard
+// cannot lose a derivation.
+//
+// `snapshot_subset ig g` -- every snapshot triple is in the fold's seed
+// -- is the hypothesis `rdfs_closure_step` supplies by construction: it
+// builds `ig` from the step's input and seeds every row's fold with an
+// accumulator that already contains that input.
+//
+// WHAT IS NOT PROVED HERE. Set equality of each row is proved; list
+// equality of `rdfs_closure_step`'s output is not. Closing that gap
+// needs "graph_dedup_sort maps equal element sets to equal lists",
+// which is a canonicity result about `List.Tot.sortWith triple_cmp`
+// plus `dedup_sorted_aux` that this tree does not have. `triple_to_key`
+// is injective on triples and `triple_cmp` is `String.compare` on it,
+// so the fact is true; it is stated as prose in section 10.5 of
+// docs/designissues/2026-07-30-rdf-rdfs-entailment-refinement.md and
+// backed by a byte-for-byte differential run of `factoidal entail` over
+// the suite corpora rather than by a theorem.
+// ===================================================================
+
+let snapshot_subset (ig : indexed_graph) (g : rdf_graph) : prop =
+  forall (u : triple). memP u ig.ig_triples ==> memP u g
+
+let rec lemma_existsb_elim (#a : Type) (f : a -> bool) (l : list a)
+  : Lemma (requires existsb f l)
+          (ensures  exists (x : a). memP x l /\ f x)
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | h :: t -> if f h then () else lemma_existsb_elim f t
+
+// A snapshot HIT is a real snapshot triple. This is the same ig_wf_sp
+// hypothesis the ig_sp-driven rules of section 5 carry, used in the
+// same direction.
+let lemma_snapshot_carries_elim (ig : indexed_graph) (sub : subject) (prd cls : wf_iri)
+  : Lemma (requires ig_wf_sp ig /\ snapshot_carries ig sub prd cls)
+          (ensures  memP ({ s = sub; p = prd; o = T_IRI cls } <: triple) ig.ig_triples) =
+  let f : rdf_term -> bool =
+    (fun (o : rdf_term) -> match o with | T_IRI i -> i = cls | _ -> false) in
+  lemma_existsb_elim f (find_objects_indexed ig sub prd);
+  eliminate exists (x : rdf_term). memP x (find_objects_indexed ig sub prd) /\ f x
+  returns memP ({ s = sub; p = prd; o = T_IRI cls } <: triple) ig.ig_triples
+  with _ . begin
+    assert (x == T_IRI cls);
+    lemma_find_objects_elim ig sub prd x;
+    eliminate exists (u : triple).
+      memP u ig.ig_triples /\ u.s == sub /\ u.p == prd /\ u.o == x
+    returns memP ({ s = sub; p = prd; o = T_IRI cls } <: triple) ig.ig_triples
+    with _ . assert (u == ({ s = sub; p = prd; o = T_IRI cls } <: triple))
+  end
+
+// `emit_once` never drops anything, and always yields its conclusion
+// when the accumulator already covers the snapshot.
+let lemma_emit_once (ig : indexed_graph) (acc : rdf_graph)
+                    (sub : subject) (prd cls : wf_iri)
+  : Lemma (requires ig_wf_sp ig /\ snapshot_subset ig acc)
+          (ensures (forall (t : triple).
+                      memP t acc ==> memP t (emit_once ig acc sub prd cls)) /\
+                   memP ({ s = sub; p = prd; o = T_IRI cls } <: triple)
+                        (emit_once ig acc sub prd cls)) =
+  if snapshot_carries ig sub prd cls
+  then lemma_snapshot_carries_elim ig sub prd cls
+  else ()
+
+// The two facts above in the quantified shape the fold lemmas need.
+let lemma_emit_once_grows_all (ig : indexed_graph)
+  : Lemma (forall (acc : rdf_graph) (sub : subject) (prd : wf_iri) (cls : wf_iri)
+                  (t : triple).
+             memP t acc ==> memP t (emit_once ig acc sub prd cls)) = ()
+
+let lemma_emit_once_all (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig)
+          (ensures forall (acc : rdf_graph) (sub : subject) (prd : wf_iri) (cls : wf_iri).
+             snapshot_subset ig acc ==>
+             memP ({ s = sub; p = prd; o = T_IRI cls } <: triple)
+                  (emit_once ig acc sub prd cls)) =
+  introduce forall (acc : rdf_graph) (sub : subject) (prd : wf_iri) (cls : wf_iri).
+      snapshot_subset ig acc ==>
+      memP ({ s = sub; p = prd; o = T_IRI cls } <: triple) (emit_once ig acc sub prd cls)
+  with introduce snapshot_subset ig acc ==>
+                 memP ({ s = sub; p = prd; o = T_IRI cls } <: triple)
+                      (emit_once ig acc sub prd cls)
+  with _ . lemma_emit_once ig acc sub prd cls
+
+// ---- the two generic fold lemmas ----
+
+let rec fold_left_grows (#b : Type) (f : rdf_graph -> b -> rdf_graph)
+                        (l : list b) (acc : rdf_graph)
+  : Lemma (requires forall (x : rdf_graph) (y : b) (t : triple).
+                      memP t x ==> memP t (f x y))
+          (ensures  forall (t : triple). memP t acc ==> memP t (fold_left f acc l))
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | hd :: tl -> fold_left_grows f tl (f acc hd)
+
+// Every element of `l` whose step yields a conclusion has that
+// conclusion in the fold. `keep` is the invariant that lets the step
+// obligation be discharged only for reachable accumulators.
+let rec fold_left_reaches (#b : Type) (f : rdf_graph -> b -> rdf_graph)
+                          (concl : b -> option triple)
+                          (keep : rdf_graph -> prop)
+                          (l : list b) (acc : rdf_graph)
+  : Lemma (requires keep acc /\
+                    (forall (x : rdf_graph) (y : b). keep x ==> keep (f x y)) /\
+                    (forall (x : rdf_graph) (y : b) (t : triple).
+                       memP t x ==> memP t (f x y)) /\
+                    (forall (x : rdf_graph) (y : b) (t : triple).
+                       (keep x /\ concl y == Some t) ==> memP t (f x y)))
+          (ensures  forall (y : b) (t : triple).
+                      (memP y l /\ concl y == Some t) ==> memP t (fold_left f acc l))
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | hd :: tl ->
+    fold_left_grows f tl (f acc hd);
+    fold_left_reaches f concl keep tl (f acc hd)
+
+// ---- the per-row instances ----
+
+// The conclusion each row draws from one input element, as a partial
+// function. `None` = the row does not fire on that element.
+let rdfs1_concl (d : wf_iri) : option triple =
+  Some ({ s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } <: triple)
+
+let rdfs4a_concl (t : triple) : option triple =
+  Some ({ s = t.s; p = rdf_type; o = T_IRI rdfs_Resource } <: triple)
+
+let rdfs4b_concl (t : triple) : option triple =
+  match term_to_subject t.o with
+  | Some y_subj -> Some ({ s = y_subj; p = rdf_type; o = T_IRI rdfs_Resource } <: triple)
+  | None -> None
+
+let rdfs8_concl (t : triple) : option triple =
+  if is_typed_as t rdfs_Class
+  then Some ({ s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } <: triple)
+  else None
+
+let rdfs13_concl (t : triple) : option triple =
+  if is_typed_as t rdfs_Datatype
+  then Some ({ s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } <: triple)
+  else None
+
+#push-options "--z3rlimit 60"
+
+// -- rdfs1 --
+val rdfs_rule_recognized_datatypes_monotone (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures forall (t : triple).
+             memP t g ==> memP t (rdfs_rule_recognized_datatypes g ig))
+
+let rdfs_rule_recognized_datatypes_monotone g ig =
+  lemma_emit_once_grows_all ig;
+  fold_left_grows (rdfs1_step ig) recognized_datatypes g
+
+val rdfs_rule_recognized_datatypes_complete (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ snapshot_subset ig g)
+          (ensures forall (d : wf_iri) (t : triple).
+             (memP d recognized_datatypes /\ rdfs1_concl d == Some t) ==>
+             memP t (rdfs_rule_recognized_datatypes g ig))
+
+let rdfs_rule_recognized_datatypes_complete g ig =
+  lemma_emit_once_grows_all ig;
+  lemma_emit_once_all ig;
+  fold_left_reaches (rdfs1_step ig) rdfs1_concl (fun x -> snapshot_subset ig x)
+                    recognized_datatypes g
+
+// -- rdfs4a --
+val rdfs_rule_resource_subject_monotone (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures forall (t : triple).
+             memP t g ==> memP t (rdfs_rule_resource_subject g ig))
+
+let rdfs_rule_resource_subject_monotone g ig =
+  lemma_emit_once_grows_all ig;
+  fold_left_grows (rdfs4a_step ig) g g
+
+val rdfs_rule_resource_subject_complete (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ snapshot_subset ig g)
+          (ensures forall (u : triple) (t : triple).
+             (memP u g /\ rdfs4a_concl u == Some t) ==>
+             memP t (rdfs_rule_resource_subject g ig))
+
+let rdfs_rule_resource_subject_complete g ig =
+  lemma_emit_once_grows_all ig;
+  lemma_emit_once_all ig;
+  fold_left_reaches (rdfs4a_step ig) rdfs4a_concl (fun x -> snapshot_subset ig x) g g
+
+// -- rdfs4b --
+val rdfs_rule_resource_object_monotone (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures forall (t : triple).
+             memP t g ==> memP t (rdfs_rule_resource_object g ig))
+
+let rdfs_rule_resource_object_monotone g ig =
+  lemma_emit_once_grows_all ig;
+  fold_left_grows (rdfs4b_step ig) g g
+
+val rdfs_rule_resource_object_complete (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ snapshot_subset ig g)
+          (ensures forall (u : triple) (t : triple).
+             (memP u g /\ rdfs4b_concl u == Some t) ==>
+             memP t (rdfs_rule_resource_object g ig))
+
+let rdfs_rule_resource_object_complete g ig =
+  lemma_emit_once_grows_all ig;
+  lemma_emit_once_all ig;
+  fold_left_reaches (rdfs4b_step ig) rdfs4b_concl (fun x -> snapshot_subset ig x) g g
+
+// -- rdfs8 --
+val rdfs_rule_class_subclass_resource_monotone (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures forall (t : triple).
+             memP t g ==> memP t (rdfs_rule_class_subclass_resource g ig))
+
+let rdfs_rule_class_subclass_resource_monotone g ig =
+  lemma_emit_once_grows_all ig;
+  fold_left_grows (rdfs8_step ig) g g
+
+val rdfs_rule_class_subclass_resource_complete (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ snapshot_subset ig g)
+          (ensures forall (u : triple) (t : triple).
+             (memP u g /\ rdfs8_concl u == Some t) ==>
+             memP t (rdfs_rule_class_subclass_resource g ig))
+
+let rdfs_rule_class_subclass_resource_complete g ig =
+  lemma_emit_once_grows_all ig;
+  lemma_emit_once_all ig;
+  fold_left_reaches (rdfs8_step ig) rdfs8_concl (fun x -> snapshot_subset ig x) g g
+
+// -- rdfs13 --
+val rdfs_rule_datatype_subclass_literal_monotone (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures forall (t : triple).
+             memP t g ==> memP t (rdfs_rule_datatype_subclass_literal g ig))
+
+let rdfs_rule_datatype_subclass_literal_monotone g ig =
+  lemma_emit_once_grows_all ig;
+  fold_left_grows (rdfs13_step ig) g g
+
+val rdfs_rule_datatype_subclass_literal_complete (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ snapshot_subset ig g)
+          (ensures forall (u : triple) (t : triple).
+             (memP u g /\ rdfs13_concl u == Some t) ==>
+             memP t (rdfs_rule_datatype_subclass_literal g ig))
+
+let rdfs_rule_datatype_subclass_literal_complete g ig =
+  lemma_emit_once_grows_all ig;
+  lemma_emit_once_all ig;
+  fold_left_reaches (rdfs13_step ig) rdfs13_concl (fun x -> snapshot_subset ig x) g g
+
+// -------------------------------------------------------------------
+// COROLLARY at the shape `rdfs_closure_step` actually uses.
+//
+// The step builds `ig` as `build_indexed g` and seeds every row's fold
+// with an accumulator that contains `g`, so `snapshot_subset` is
+// discharged outright and only `ig_wf_sp (build_indexed g)` remains --
+// the SAME hypothesis `rdfs_closure_step_sound` already carries. This
+// corollary is also the anti-vacuity check on the five lemmas above:
+// its hypothesis set is one the tree already treats as satisfiable
+// (see ModelTheory's `closure_chain_wf` banner), and its conclusion
+// names concrete conclusion triples.
+// -------------------------------------------------------------------
+val rs2_rows_complete_at_build_indexed (g : rdf_graph)
+  : Lemma (requires ig_wf_sp (build_indexed g))
+          (ensures
+            (forall (d : wf_iri). memP d recognized_datatypes ==>
+               memP ({ s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } <: triple)
+                    (rdfs_rule_recognized_datatypes g (build_indexed g))) /\
+            (forall (u : triple). memP u g ==>
+               memP ({ s = u.s; p = rdf_type; o = T_IRI rdfs_Resource } <: triple)
+                    (rdfs_rule_resource_subject g (build_indexed g))) /\
+            (forall (u : triple) (y : subject).
+               (memP u g /\ term_to_subject u.o == Some y) ==>
+               memP ({ s = y; p = rdf_type; o = T_IRI rdfs_Resource } <: triple)
+                    (rdfs_rule_resource_object g (build_indexed g))) /\
+            (forall (u : triple). (memP u g /\ is_typed_as u rdfs_Class) ==>
+               memP ({ s = u.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } <: triple)
+                    (rdfs_rule_class_subclass_resource g (build_indexed g))) /\
+            (forall (u : triple). (memP u g /\ is_typed_as u rdfs_Datatype) ==>
+               memP ({ s = u.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } <: triple)
+                    (rdfs_rule_datatype_subclass_literal g (build_indexed g))))
+
+let rs2_rows_complete_at_build_indexed g =
+  let ig = build_indexed g in
+  assert (ig.ig_triples == g);
+  assert (snapshot_subset ig g);
+  rdfs_rule_recognized_datatypes_complete g ig;
+  rdfs_rule_resource_subject_complete g ig;
+  rdfs_rule_resource_object_complete g ig;
+  rdfs_rule_class_subclass_resource_complete g ig;
+  rdfs_rule_datatype_subclass_literal_complete g ig;
+  // The five `_complete` lemmas are stated over the `_concl` partial
+  // functions; the corollary is stated over the rule-row premises the
+  // reader cares about. Bridge each one explicitly so the `option`
+  // matches do not have to be guessed under the default ifuel.
+  introduce forall (d : wf_iri). memP d recognized_datatypes ==>
+      memP ({ s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } <: triple)
+           (rdfs_rule_recognized_datatypes g ig)
+  with introduce _ ==> _
+  with _ . assert (rdfs1_concl d ==
+                   Some ({ s = S_IRI d; p = rdf_type; o = T_IRI rdfs_Datatype } <: triple));
+  introduce forall (u : triple). memP u g ==>
+      memP ({ s = u.s; p = rdf_type; o = T_IRI rdfs_Resource } <: triple)
+           (rdfs_rule_resource_subject g ig)
+  with introduce _ ==> _
+  with _ . assert (rdfs4a_concl u ==
+                   Some ({ s = u.s; p = rdf_type; o = T_IRI rdfs_Resource } <: triple));
+  introduce forall (u : triple) (y : subject).
+      (memP u g /\ term_to_subject u.o == Some y) ==>
+      memP ({ s = y; p = rdf_type; o = T_IRI rdfs_Resource } <: triple)
+           (rdfs_rule_resource_object g ig)
+  with introduce _ ==> _
+  with _ . assert (rdfs4b_concl u ==
+                   Some ({ s = y; p = rdf_type; o = T_IRI rdfs_Resource } <: triple));
+  introduce forall (u : triple). (memP u g /\ is_typed_as u rdfs_Class) ==>
+      memP ({ s = u.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } <: triple)
+           (rdfs_rule_class_subclass_resource g ig)
+  with introduce _ ==> _
+  with _ . assert (rdfs8_concl u ==
+                   Some ({ s = u.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } <: triple));
+  introduce forall (u : triple). (memP u g /\ is_typed_as u rdfs_Datatype) ==>
+      memP ({ s = u.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } <: triple)
+           (rdfs_rule_datatype_subclass_literal g ig)
+  with introduce _ ==> _
+  with _ . assert (rdfs13_concl u ==
+                   Some ({ s = u.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } <: triple))
+
+#pop-options
 
 // ===================================================================
 // 7. FINDING RS-1 -- FIXED 2026-07-31 (issue #335), and the witness

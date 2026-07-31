@@ -10,3 +10,6 @@ module RDFS.Closure
 // bumps the .fst content hash so the extractor re-emits RDFS_Closure.ml
 // with the new transparent let (the extractor keys skip decisions on the
 // .fst source, not the .fsti).
+// (2026-07-31) Same reason again: the emit-once guard `snapshot_carries`
+// and the five RS-2 rows that consult it changed in the .fsti (issue
+// #340 item 4). Bump the hash so RDFS_Closure.ml is re-emitted.
