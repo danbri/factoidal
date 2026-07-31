@@ -133,10 +133,14 @@ let reifies_prop_triples (t : RDF_Triple.triple) :
          }]
     | uu___ -> []
   else []
-let rdfs_closure (ts : RDF_Triple.triple Prims.list) :
+let rdf12_reifies_closure (ts : RDF_Triple.triple Prims.list) :
   RDF_Triple.triple Prims.list=
   FStar_List_Tot_Base.op_At ts
     (FStar_List_Tot_Base.collect reifies_prop_triples ts)
+let rdfs_regime_fuel : Prims.nat= (Prims.of_int (100))
+let rdfs_regime_closure (ts : RDF_Triple.triple Prims.list) :
+  RDF_Triple.triple Prims.list=
+  RDFS_Closure.rdfs_closure (rdf12_reifies_closure ts) rdfs_regime_fuel
 let subst_subj (x : RDF_Term.wf_iri) (y : RDF_Term.wf_iri)
   (s : RDF_Term.subject) : RDF_Term.subject=
   match s with
@@ -185,8 +189,9 @@ let entails_rdf (a : RDF_Triple.triple Prims.list)
   RDF_Entailment_Simple.entails_with dt_value_leq bnd_rdf a b
 let entails_rdfs (a : RDF_Triple.triple Prims.list)
   (b : RDF_Triple.triple Prims.list) : Prims.bool=
-  RDF_Entailment_Simple.entails_with dt_value_leq bnd_rdf (rdfs_closure a) b
+  RDF_Entailment_Simple.entails_with dt_value_leq bnd_rdf
+    (rdfs_regime_closure a) b
 let entails_rdfs_plus (a : RDF_Triple.triple Prims.list)
   (b : RDF_Triple.triple Prims.list) : Prims.bool=
   RDF_Entailment_Simple.entails_with dt_value_leq bnd_rdf
-    (owl_closure (rdfs_closure a)) b
+    (owl_closure (rdfs_regime_closure a)) b
