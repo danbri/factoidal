@@ -1,5 +1,5 @@
 === EECC VC/DID Interop Fixture Runner (Track B1) ===
-Fixture dir: /home/runner/work/factoidal/factoidal/third_party/testing/eecc
+Fixture dir: /home/user/factoidal/third_party/testing/eecc
 
 Totals: 51 vendored fixture files
 
@@ -12,4 +12,4 @@ Totals: 51 vendored fixture files
 TOTAL: 4 pass, 0 fail, 51 skip (out of 55 checks, over 51 fixture files)
 ========================================
 eecc-interop: 4 pass, 0 fail, 51 skip (out of 55)
-Wrote JSON result: /home/runner/work/factoidal/factoidal/formal/fstar/../../docs/test-results/by-suite/eecc-interop.json
+Wrote JSON result: /home/user/factoidal/formal/fstar/../../docs/test-results/by-suite/eecc-interop.json

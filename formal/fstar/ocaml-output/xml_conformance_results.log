@@ -12,61 +12,61 @@ Leaf manifests dogfood-parsed cleanly: 21; needed textual fallback: 0 (of 21).
 Total <TEST> entries discovered: 2585
 
 -- Per collection --
-  eduni        pass:134   fail:0     skip:431   (of 565)
-  ibm          pass:823   fail:0     skip:313   (of 1136)
-  japanese     pass:0     fail:0     skip:12    (of 12)
-  jclark       pass:267   fail:0     skip:98    (of 365)
+  eduni        pass:439   fail:0     skip:126   (of 565)
+  ibm          pass:544   fail:0     skip:592   (of 1136)
+  japanese     pass:1     fail:0     skip:11    (of 12)
+  jclark       pass:268   fail:0     skip:97    (of 365)
   oasis        pass:163   fail:0     skip:185   (of 348)
   sun          pass:41    fail:0     skip:118   (of 159)
 
 -- Per TYPE bucket --
   error        pass:0     fail:0     skip:33    (of 33)
   invalid      pass:0     fail:0     skip:242   (of 242)
-  not-wf       pass:1030  fail:0     skip:468   (of 1498)
-  valid        pass:398   fail:0     skip:414   (of 812)
+  not-wf       pass:729   fail:0     skip:769   (of 1498)
+  valid        pass:727   fail:0     skip:85    (of 812)
 
 -- FAIL cluster table (0 total FAILs) --
 
--- SKIP reason breakdown (1157 total SKIPs) --
-  386    valid doc rejected at a Stage-A DTD boundary (markup entity / external...
-  332    not-wf violation is in the DTD internal subset, parsed-but-not-validat...
+-- SKIP reason breakdown (1129 total SKIPs) --
+  331    not-wf violation is in the DTD internal subset, parsed-but-not-validat...
+  302    out-of-profile: not-wf holds only in XML 1.0 editions 1 2 3 4; parser ...
   275    no DTD validation (by design)
+  58     valid doc rejected at a Stage-A DTD boundary (markup entity / external...
   45     parser accepted, but test requires external parameter entities not rea...
   36     UTF-16LE (BOM detected)
   33     out-of-profile: not-wf holds only under XML 1.1 (declared version=1.1)...
-  27     declared encoding "iso-8859-1" not decoded
+  28     declared encoding "iso-8859-1" not decoded
   9      parser accepted, but test requires external both entities not read (ex...
   4      UTF-16BE (BOM detected)
   4      out-of-profile: not-wf holds only under Namespaces in XML; construct n...
   3      parser accepted, but test requires external general entities not read ...
-  2      UTF-8 byte-order-mark (parser doesn't skip a BOM prefix)
   1      declared encoding "UTF-16" not decoded
 
 ========================================
-TOTAL: 1428 pass, 0 fail, 1157 skip (of 2585)
+TOTAL: 1456 pass, 0 fail, 1129 skip (of 2585)
 
 -- HONEST BREAKDOWN (PART 1 integrity accounting) --
-  not-wf REAL passes (parser rejected for the tested construct): 1030
-  valid  wf-accept passes (DOCTYPE internal subset now parsed):  398
-  --> real pass total:                                           1428
+  not-wf REAL passes (parser rejected for the tested construct): 729
+  valid  wf-accept passes (DOCTYPE internal subset now parsed):  727
+  --> real pass total:                                           1456
   not-wf FAILs (parser wrongly ACCEPTED a wf-1.0 not-wf doc):     0
   valid  FAILs (parser wrongly REJECTED a valid doc):            0
   --> fail total:                                                0
   SKIP: not-wf DTD-internal (accepted; violation in the DTD
-        subset, parsed-but-not-validated — Stage-A scope limit): 332
+        subset, parsed-but-not-validated — Stage-A scope limit): 331
   SKIP: valid DTD-boundary (rejected; markup entity / external
-        subset / DTD construct beyond the WF slice):             386
+        subset / DTD construct beyond the WF slice):             58
   SKIP: out-of-profile (not-wf only under XML 1.1 / Namespaces,
-        parser is XML 1.0 non-namespace):                        37
+        parser is XML 1.0 non-namespace):                        339
   SKIP: vacuous (RETIRED by Stage-A DTD support; must be 0):      0
   SKIP: other (DOCTYPE-external-on-valid, encoding, invalid/error
-        by design, external-entity exemption, file-not-found):   402
-  --> skip total:                                                1157
+        by design, external-entity exemption, file-not-found):   401
+  --> skip total:                                                1129
   (side-check: PassVacuous counter = 0, must equal vacuous skip = 0)
 XML_Wellformedness.is_valid_ncname (informational only, see module comment):
-  checked 741 element tags across accepted documents; 8 would have been
+  checked 1458 element tags across accepted documents; 12 would have been
   rejected by the NCName production (expected — it excludes ':' from Name
   start/continue characters, which is an RDF/XML-domain rule, not generic
   XML conformance; plain XML 1.0 legally allows ':' in Names).
 ========================================
-xml-conformance: 1428 pass, 0 fail, 1157 skip (of 2585)
+xml-conformance: 1456 pass, 0 fail, 1129 skip (of 2585)
