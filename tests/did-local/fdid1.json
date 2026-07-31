@@ -32,7 +32,8 @@
         "use": "sig",
         "alg": "ES256"
       }
-    },
+    }
+  ],
 
   "name": "DID Document Example",
   "created": "2026-07-30T10:00:00Z",
