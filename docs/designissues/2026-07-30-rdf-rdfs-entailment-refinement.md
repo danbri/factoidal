@@ -520,9 +520,15 @@ proof-engineering reasons that are now written down.
   by regime (RS-1). See §10.
 * ✅ **DONE 2026-07-31** — Implement the buildable missing rows (RS-2):
   rdfs1, rdfs4a, rdfs4b, rdfs8, rdfs13. See §10.
-* 🧭 Rename `RDF.Entailment.Regime.rdfs_closure` (RS-4). Two functions
-  with that name, one of which is not an RDFS closure, is a trap for
-  the next reader.
+* 🔴 RS-4 is now BLOCKING TEST COVERAGE, not just naming hygiene. The
+  five rows added on 2026-07-31 moved no test (§10.4) because the
+  `rdf-semantics` manifests dispatch "RDFS" to
+  `RDF.Entailment.Regime.rdfs_closure`, which runs one `rdf:reifies`
+  rule and none of rdfs1..rdfs13. Point that dispatch at
+  `RDFS.Closure` — and rename the shadowing function while doing it.
+* Perf follow-up for rdfs4a / rdfs4b (§10.4): OWL profile-RL wall time
+  roughly quadrupled. Drive them off the index snapshot, or emit them
+  once after the fixed point.
 * Decide what the `"RDF"` regime should run (RS-5) — plausibly
   `rdf_property_axiom_closure` alone, with the RDFS rules removed.
 * `lemma_build_indexed_complete_pred` (§6 obligation 1) — the
@@ -735,5 +741,47 @@ scope boundary rather than a defect to burn down.
 
 ### 10.4 Measured effect
 
-See the branch's report for the before/after suite numbers.
+📊 Before → after, on the committed `linux-x86_64` binaries:
+
+| Suite | Before | After |
+|---|---|---|
+| `rdf-mt` (inside rdf11) | 39 pass, 0 fail (out of 39) | 39 pass, 0 fail (out of 39) |
+| rdf11 total | 1031 pass, 0 fail (out of 1031) | 1031 pass, 0 fail (out of 1031) |
+| `rdf-semantics` (rdf12entail) | 41 pass, 3 fail, 3 skip (of 47 discovered) | 41 pass, 3 fail, 3 skip (of 47 discovered) |
+| SPARQL `entailment` | 66 pass, 4 fail (out of 70 discovered) | 66 pass, 4 fail (out of 70 discovered) |
+| SPARQL total | 627 pass, 4 fail (out of 631) | 627 pass, 4 fail (out of 631) |
+| OWL 2 profile-RL PositiveEntailment | 30 pass, 0 fail (out of 30) | 30 pass, 0 fail (out of 30) |
+| OWL 2 profile-RL NegativeEntailment | 6 pass, 0 fail (out of 6) | 6 pass, 0 fail (out of 6) |
+| OWL 2 profile-RL Consistency | 76 pass, 0 fail (out of 76) | 76 pass, 0 fail (out of 76) |
+| OWL 2 profile-RL Inconsistency | 14 pass, 0 fail (out of 14) | 14 pass, 0 fail (out of 14) |
+| RDFC-1.0 | — | 86 pass, 0 fail (out of 86) |
+
+Nothing moved. Two readings of that, and both matter:
+
+* ✅ No regression. In particular the OWL-RL ConsistencyTests did not
+  repeat the `New-Feature-ObjectQCR-002` failure the reverted axiom
+  seeding caused, which is the concrete evidence for §10.1's claim that
+  these rows are a different shape from that seed.
+* ⚠️ **No suite exercises the new rows.** Five sound rule rows landed
+  and no test moved, so the suites in this tree do not test rdfs1 /
+  rdfs4a / rdfs4b / rdfs8 / rdfs13 through any path that reaches
+  `RDFS.Closure`. The `rdf-semantics` manifests would be the natural
+  home, and finding RS-4 explains why they do not reach it: their
+  "RDFS" regime dispatches to `RDF.Entailment.Regime.rdfs_closure`,
+  which runs one `rdf:reifies` rule and none of rdfs1..rdfs13. 🧭 Fixing
+  RS-4 is now also the way to get these rows under test.
+
+⚠️ **Measured cost.** OWL profile-RL ConsistencyTests wall time went
+1.51s → 6.07s and PositiveEntailmentTests 0.66s → 2.67s. rdfs4a and
+rdfs4b add one `rdf:type rdfs:Resource` triple per subject and per
+subject-eligible object of the ACCUMULATOR on every closure step, and
+`rdfs_closure_step` is the driver OWL-RL interleaves with. Correctness
+is unchanged; this is a throughput number and it belongs to a perf
+follow-up. Two obvious levers if it matters: drive rdfs4a/rdfs4b off the
+step's index SNAPSHOT rather than the growing accumulator, or emit them
+once after the fixed point instead of inside every iteration (they are
+single-premise rules, so a single post-pass is equivalent up to the
+triples the later rules would have derived FROM `rdf:type
+rdfs:Resource`, which is only rdfs9 through a `rdfs:Resource
+rdfs:subClassOf X` edge).
 
