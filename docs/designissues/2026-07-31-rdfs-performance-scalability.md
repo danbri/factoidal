@@ -283,6 +283,41 @@ on the POST-HOC check instead and keeps `schema_stable` as the stated
 hypothesis of the equivalence claim. Anyone reading Phase 1a as "close
 the schema first" should read this row of the table first.
 
+**Measured.** Chain benchmark, same machine, same tree, `factoidal
+entail --regime RDFS`. "before" is the committed binary at the branch
+point; "after" is the same binary rebuilt with the split. Output
+compared with `cmp`, not by triple count:
+
+| n | before | after | speedup | output triples | identical? |
+|---:|---:|---:|---:|---:|---|
+| 20 | 0.054 s | 0.021 s | 2.6× | 309 | byte-identical |
+| 40 | 0.203 s | 0.052 s | 3.9× | 979 | byte-identical |
+| 80 | 1.601 s | 0.195 s | 8.2× | 3519 | byte-identical |
+| 160 | 14.137 s | 0.918 s | 15.4× | 13399 | byte-identical |
+| 300 | 109.383 s | 3.953 s | 27.7× | 46089 | byte-identical |
+
+📊 Fitted exponent over n = 80…300: **3.20 before, 2.28 after**. The
+output itself is quadratic (46089 ≈ n²/2 at n = 300), so the after-curve
+is close to output-optimal. The residual above 2.0 is the reachability
+walk's visited-set membership test, which is a list scan; a
+logarithmic-time set would take it to n² log n.
+
+Real vocabularies: all eight produce **byte-identical** closures before
+and after, with wall time unchanged (they are wide and shallow, so
+there was never a deep transitive closure to save on — schema.org
+5.09 s → 4.81 s, the rest under 0.4 s either way). The win is specific
+to deep hierarchies, which is what the benchmark measures and what the
+Gene Ontology-shaped workloads in §0 care about.
+
+Gates, all unmoved: rdf-mt 39 pass, 0 fail (of 39) · rdf11 1031 pass,
+0 fail (of 1031) · rdf-semantics 41 pass, 3 fail, 3 skip (of 47) ·
+SPARQL 631 pass, 0 fail (of 631) · OWL profile-RL PE 30 of 30, NE 6 of
+6, Consistency 76 of 76, Inconsistency 14 of 14 ·
+`tools/negative-test-vacuity.py` 11 worked, 14 weak, 3 vacuous (of 42) ·
+`rdfs_emit_once_regressions.sh` 8 pass, 0 fail ·
+`rdfs_entailment_regime_regressions.sh` 16 pass, 0 fail ·
+`rdfs_schema_split_regressions.sh` 9 pass, 0 fail.
+
 **The follow-up this points at.** The post-hoc check turns out to be
 strictly more valuable than the a-priori condition, which suggests
 removing the condition from the design entirely: replace rdfs11 / rdfs5

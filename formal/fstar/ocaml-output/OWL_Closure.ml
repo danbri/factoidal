@@ -5067,6 +5067,6 @@ let entailment_closure (regime : Prims.string) (g : RDF_Graph.rdf_graph)
     then owl_rl_closure_with_reflexivity g fuel
     else
       if regime = regime_rdfs
-      then RDFS_Closure.rdfs_closure_with_reflexivity g fuel
+      then RDFS_SchemaSplit.rdfs_closure_with_reflexivity_dispatch g fuel
       else
         if regime = regime_rdf then RDFS_Closure.rdfs_closure g fuel else g
