@@ -89,8 +89,8 @@ module RDFS.SchemaSplit
 //       never one of the three. SAFE, no condition needed.
 //   R2f rdfs1 — conclusion object is rdfs:Datatype, but the SUBJECT
 //       ranges over the fixed recognized-datatype set D. CONSTANT, so
-//       input-determined; `schema_seed_edges` below emits its rdfs13
-//       consequence directly.
+//       input-determined; `schema_seed_base` below runs rdfs1 and then
+//       rdfs13 over its output, so the consequence is in the seed.
 //
 // And one more level: a new rdfs:domain / rdfs:range declaration would
 // re-enable R2a / R2b, and the only row that can mint one is
@@ -119,8 +119,8 @@ module RDFS.SchemaSplit
 // the reflexivity harvest; (iv) that second application is over a
 // strictly smaller set of rows, and the third (rdfs:domain / rdfs:range
 // minting) is smaller again and reaches only rdfs7, which is already
-// constrained — so the descent terminates. Each of the six clauses of
-// `schema_stable_triple` below names the route it blocks.
+// constrained — so the descent terminates. Each of the three clauses
+// of `schema_stable_triple` below names the routes it blocks.
 //
 // -------------------------------------------------------------------
 // WHAT IS PROVED AND WHAT IS NOT
@@ -128,14 +128,18 @@ module RDFS.SchemaSplit
 // Proved here, machine-checked:
 //   * `schema_stable_check_sound` / `_complete` — the runtime detector
 //     decides exactly the declarative `schema_stable` prop.
-//   * `sc_bfs_visited_grows` / `sc_bfs_sound` — the reachability walk
-//     only ever reports nodes it actually reached along `rel` edges,
-//     and the visited set only grows. This is the direction that would
-//     let a WRONG edge into the output.
-//   * `schema_seed_shape` — every seed edge carries one of the two
-//     schema predicates and one of the two fixed target classes, which
-//     is what makes the rdfs8 / rdfs13 / rdfs12 licence arguments in
-//     RDF.Entailment.RDFS.Refinement.fst apply to it unchanged.
+//   * `emit_edge_shape` / `emit_from_node_shape` — every triple the
+//     schema closure emits carries the WALKED predicate and the WALKED
+//     source. A wrong predicate would silently move data into the
+//     schema fragment; a wrong subject would fabricate an edge nothing
+//     licenses.
+//   * `sc_bfs_visited_grows` — the reachability walk never drops a node
+//     it has already justified.
+//   * the SEEDING needs no new theorem at all: `schema_seed_base`
+//     calls RDFS.Closure's own rdfs12 / rdfs1 / rdfs8 / rdfs13 rows
+//     rather than re-transcribing them, so every seed triple is one the
+//     general loop's first round produces and is covered by the per-row
+//     `_licensed` theorems already in RDF.Entailment.RDFS.Refinement.fst.
 //   * `witness_stable_holds` / `witness_reflective_violates` — the
 //     anti-vacuity pair (see RDF.Semantics.HypothesisWitness.fst for
 //     why a side condition nothing satisfies is worthless).
@@ -291,34 +295,28 @@ let rec schema_stable_check_complete g =
 //   rdfs1 then rdfs13, over the recognized datatype set D (constant)
 //   rdfs12 over rdf:_1 .. rdf:_5       (constant)
 //
-// Every one of these is emitted by the general loop too — this is not a
-// new derivation, it is the same derivation moved earlier so the
-// transitive closure sees it.
-let seed_rdfs8_step (acc : rdf_graph) (t : triple) : Tot rdf_graph =
-  if is_typed_as t rdfs_Class
-  then add_triple_unchecked acc
-         ({ s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Resource } <: triple)
-  else acc
-
-let seed_rdfs13_step (acc : rdf_graph) (t : triple) : Tot rdf_graph =
-  if is_typed_as t rdfs_Datatype
-  then add_triple_unchecked acc
-         ({ s = t.s; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } <: triple)
-  else acc
-
-let seed_datatype_step (acc : rdf_graph) (d : wf_iri) : Tot rdf_graph =
-  add_triple_unchecked acc
-    ({ s = S_IRI d; p = rdfs_subClassOf; o = T_IRI rdfs_Literal } <: triple)
-
-let seed_container_step (acc : rdf_graph) (c : wf_iri) : Tot rdf_graph =
-  add_triple_unchecked acc
-    ({ s = S_IRI c; p = rdfs_subPropertyOf; o = T_IRI rdfs_member } <: triple)
-
-let schema_seed_edges (g : rdf_graph) : Tot rdf_graph =
-  let a1 = List.Tot.fold_left seed_rdfs8_step  [] g in
-  let a2 = List.Tot.fold_left seed_rdfs13_step a1 g in
-  let a3 = List.Tot.fold_left seed_datatype_step a2 recognized_datatypes in
-  List.Tot.fold_left seed_container_step a3 container_membership_properties
+// NOTHING IS RE-IMPLEMENTED HERE. The seeding is literally a
+// sub-sequence of `RDFS.Closure.rdfs_closure_step`'s own rows, applied
+// once to the input against one index snapshot, in the order that step
+// uses. Writing a private copy of rdfs8 / rdfs13 / rdfs12 would have
+// been a second transcription of the W3C rule table that could drift
+// from the first, and it would have needed its own licence theorems.
+// Calling the shipping rows instead means every triple in `base` is one
+// the general loop's FIRST ROUND produces, licensed by the per-row
+// `_licensed` theorems already in RDF.Entailment.RDFS.Refinement.fst,
+// with no new proof obligation and nothing to keep in sync.
+//
+// Order matters and matches the step's: rdfs12's container axioms and
+// rdfs1's datatype typings first, so rdfs13 (which folds over the
+// ACCUMULATOR) sees the `rdf:type rdfs:Datatype` triples rdfs1 just
+// added and emits their `rdfs:subClassOf rdfs:Literal` consequence.
+let schema_seed_base (g : rdf_graph) : Tot rdf_graph =
+  let ig = build_indexed g in
+  let a1 = rdfs_rule_container_membership g ig in         (* rdfs12 *)
+  let a2 = rdfs_rule_recognized_datatypes a1 ig in        (* rdfs1  *)
+  let a3 = rdfs_rule_class_subclass_resource a2 ig in     (* rdfs8  *)
+  let a4 = rdfs_rule_datatype_subclass_literal a3 ig in   (* rdfs13 *)
+  graph_dedup_sort a4
 
 (** ==================================================================== *)
 (** 4. THE SCHEMA CLOSURE — ONE REACHABILITY WALK PER SOURCE             *)
@@ -568,7 +566,7 @@ let rdfs_closure_with_reflexivity_fast (base : rdf_graph) (extra : rdf_graph)
 
 let rdfs_closure_with_reflexivity_dispatch (g : rdf_graph) (fuel : nat)
   : Tot rdf_graph =
-  let base = graph_dedup_sort (List.Tot.append (schema_seed_edges g) g) in
+  let base = schema_seed_base g in
   if schema_dense base
   then rdfs_closure_with_reflexivity g fuel
   else
@@ -582,34 +580,6 @@ let rdfs_closure_with_reflexivity_dispatch (g : rdf_graph) (fuel : nat)
 (** ==================================================================== *)
 (** 7. PROOFS                                                            *)
 (** ==================================================================== *)
-
-// 7a. Seed shape. Every seed edge carries one of the two schema
-// predicates. This is what lets the rdfs8 / rdfs13 / rdfs12 licence
-// theorems of RDF.Entailment.RDFS.Refinement.fst apply to the seeds
-// unchanged: a seed is a triple those rows already emit.
-val seed_rdfs8_step_shape (acc : rdf_graph) (t : triple)
-  : Lemma (requires (forall (u : triple). memP u acc ==> is_schema_edge u == true))
-          (ensures  (forall (u : triple). memP u (seed_rdfs8_step acc t)
-                                          ==> is_schema_edge u == true))
-let seed_rdfs8_step_shape acc t = ()
-
-val seed_rdfs13_step_shape (acc : rdf_graph) (t : triple)
-  : Lemma (requires (forall (u : triple). memP u acc ==> is_schema_edge u == true))
-          (ensures  (forall (u : triple). memP u (seed_rdfs13_step acc t)
-                                          ==> is_schema_edge u == true))
-let seed_rdfs13_step_shape acc t = ()
-
-val seed_datatype_step_shape (acc : rdf_graph) (d : wf_iri)
-  : Lemma (requires (forall (u : triple). memP u acc ==> is_schema_edge u == true))
-          (ensures  (forall (u : triple). memP u (seed_datatype_step acc d)
-                                          ==> is_schema_edge u == true))
-let seed_datatype_step_shape acc d = ()
-
-val seed_container_step_shape (acc : rdf_graph) (c : wf_iri)
-  : Lemma (requires (forall (u : triple). memP u acc ==> is_schema_edge u == true))
-          (ensures  (forall (u : triple). memP u (seed_container_step acc c)
-                                          ==> is_schema_edge u == true))
-let seed_container_step_shape acc c = ()
 
 // 7b. The emitted closure edges carry the walked predicate and the
 // walked source. A wrong PREDICATE here would silently move data into
