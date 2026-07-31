@@ -2,7 +2,7 @@
   "spec": "https://github.com/european-epc-competence-center",
   "suite": "eecc-interop (vendored vc-verifier-rules + webuild-attestations fixtures)",
   "runner": "bin/eecc-runner/eecc_runner.ml",
-  "retrieved_at": "2026-07-31T08:04:33Z",
+  "retrieved_at": "2026-07-31T16:30:08Z",
   "pass": 4,
   "fail": 0,
   "skip": 51,

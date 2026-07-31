@@ -2,67 +2,67 @@ TAP version 13
 # Subtest: matrixDeterminant: 2x2 determinant is exact
 ok 1 - matrixDeterminant: 2x2 determinant is exact
   ---
-  duration_ms: 98.754209
+  duration_ms: 89.405958
   type: 'test'
   ...
 # Subtest: matrixDeterminant: non-square is undefined
 ok 2 - matrixDeterminant: non-square is undefined
   ---
-  duration_ms: 0.75269
+  duration_ms: 0.747617
   type: 'test'
   ...
 # Subtest: matrixScalarProduct: dot product of two 3-vectors
 ok 3 - matrixScalarProduct: dot product of two 3-vectors
   ---
-  duration_ms: 0.60999
+  duration_ms: 0.496138
   type: 'test'
   ...
 # Subtest: matrixVectorProduct: cross product of unit vectors
 ok 4 - matrixVectorProduct: cross product of unit vectors
   ---
-  duration_ms: 0.667106
+  duration_ms: 0.700887
   type: 'test'
   ...
 # Subtest: matrixOuterProduct: outer product yields a matrix
 ok 5 - matrixOuterProduct: outer product yields a matrix
   ---
-  duration_ms: 0.822997
+  duration_ms: 0.836411
   type: 'test'
   ...
 # Subtest: matrixDeterminant: exact rational entries
 ok 6 - matrixDeterminant: exact rational entries
   ---
-  duration_ms: 0.460539
+  duration_ms: 0.423648
   type: 'test'
   ...
 # Subtest: toanSummation: sum_{i=1}^{4} (x + i*y) = 4x + 10y
 ok 7 - toanSummation: sum_{i=1}^{4} (x + i*y) = 4x + 10y
   ---
-  duration_ms: 97.31557
+  duration_ms: 102.11537
   type: 'test'
   ...
 # Subtest: toanProduct: product_{i=1}^{3} i = 6
 ok 8 - toanProduct: product_{i=1}^{3} i = 6
   ---
-  duration_ms: 0.633163
+  duration_ms: 0.931551
   type: 'test'
   ...
 # Subtest: toanSimplify: 2 + 3 collapses to 5
 ok 9 - toanSimplify: 2 + 3 collapses to 5
   ---
-  duration_ms: 0.607109
+  duration_ms: 0.996597
   type: 'test'
   ...
 # Subtest: toanDiff: d/dx (x*x) mentions x
 ok 10 - toanDiff: d/dx (x*x) mentions x
   ---
-  duration_ms: 0.994096
+  duration_ms: 1.336054
   type: 'test'
   ...
 # Subtest: toanSubst: (x + 1)[x := 4] mentions 4
 ok 11 - toanSubst: (x + 1)[x := 4] mentions 4
   ---
-  duration_ms: 0.6783
+  duration_ms: 0.857404
   type: 'test'
   ...
 1..11
@@ -73,4 +73,4 @@ ok 11 - toanSubst: (x + 1)[x := 4] mentions 4
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 199.803668
+# duration_ms 204.830174
