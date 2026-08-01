@@ -77,6 +77,58 @@ and ideally a well-founded measure instead of fuel.
 
 ---
 
+## 0.5 🧭 Measured 2026-07-31 after Phase 1a — this reprioritises everything below
+
+The chain benchmark is a **pathological shape that real vocabularies do
+not have**. Measured on the actual artifacts:
+
+| workload | in | out | wall | note |
+|---|---:|---:|---:|---|
+| 300-class chain | 299 | 45485 | 109 s → **3.24 s** | Phase 1a: 33× |
+| **schema.org alone** | 17949 | 29275 | 5.00 s → **4.82 s** | Phase 1a: ~4%, i.e. nothing |
+| schema.org + 10k instance triples | 27949 | 54275 | 9.2 s | |
+| schema.org + 40k instance triples | 57949 | 129275 | 23.6 s | |
+
+Two conclusions, both uncomfortable for the plan as originally written.
+
+**1. Phase 1a bought almost nothing on real data.** schema.org is wide
+and shallow — 17949 triples with no deep `subClassOf` chain — so there is
+no deep transitive closure to skip. The 33× is real, and it applies to a
+shape our vocabularies do not exhibit. It remains worth having (it fixes
+a genuine pathology, and deep hierarchies do exist — SKOS thesauri, GO)
+but it is not the win the chain number suggests.
+
+**2. On the shape that actually matters we are already near-linear.**
+Doubling instance volume costs 2.57× — about **n¹·²⁹**, not n³. The
+problem on real data is **not asymptotic**. It is throughput:
+
+> **~2,500 input triples/second, ~5,500 output triples/second.**
+
+That is the number to beat, and it is a constant-factor number. Mature
+engines are one to three orders of magnitude above it.
+
+### What this does to the ordering
+
+* **Phase 2 (dictionary encoding) is promoted to the top of the
+  remaining work.** Every comparison currently materialises two fresh
+  strings (`triple_cmp` → `String.compare (triple_to_key t1) …`).
+  Integer term IDs attack exactly the constant that dominates the
+  near-linear regime.
+* **Phase 1 (semi-naive) is demoted.** It attacks recursive
+  re-derivation, which is the chain pathology — largely addressed by
+  Phase 1a. It remains correct and worth landing, but it is no longer
+  the biggest lever. The agent working it should not be stopped; the
+  result is still wanted, with expectations set accordingly.
+* **Phase 3 (persistent indexes) rises with Phase 2** — same target,
+  the per-round rebuild and the O(n) membership test.
+
+⚠️ This is the second time today measurement has overturned a confident
+ordering. The first was believing the round count was O(n). The
+discipline that caught both is the same: state the acceptance criterion
+as a number, then measure it, and let the number rewrite the plan.
+
+---
+
 ## 1. What the field already knows
 
 We are not short of ideas; we have been ignoring published ones.
