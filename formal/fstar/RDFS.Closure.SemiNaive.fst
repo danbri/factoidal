@@ -67,17 +67,34 @@ open RDFS.Closure
 // rather than a membership scan per triple. Both arguments MUST come
 // from `graph_dedup_sort`; on unsorted input this returns a subset of
 // the true difference, which the post-hoc check would then catch.
-let rec sorted_diff (newer older : list triple)
+// TAIL-RECURSIVE, and it has to be. The first version of this function
+// built its result as `n :: sorted_diff ns older`. That verified fine
+// and worked on every small graph, then died with
+//
+//     Fatal error: exception Stack overflow
+//     Called from RDFS_Closure_SemiNaive.sorted_diff
+//
+// on QUDT, whose closure is 508,139 triples -- one stack frame per
+// element. F* proves termination, not stack depth: a `Tot` function
+// that recurses on a list is only safe at scale when the recursive call
+// is in tail position after extraction.
+//
+// `rev_acc acc newer` is `rev acc @ newer`, so the "older exhausted"
+// case keeps the remaining `newer` without a non-tail `append`.
+let rec sorted_diff_aux (newer older acc : list triple)
   : Tot (list triple)
         (decreases (List.Tot.length newer + List.Tot.length older)) =
   match newer, older with
-  | [], _ -> []
-  | _, [] -> newer
+  | [], _ -> List.Tot.rev acc
+  | _, [] -> List.Tot.rev_acc acc newer
   | n :: ns, o :: os ->
     let c = triple_cmp n o in
-    if c < 0 then n :: sorted_diff ns older
-    else if c = 0 then sorted_diff ns older
-    else sorted_diff newer os
+    if c < 0 then sorted_diff_aux ns older (n :: acc)
+    else if c = 0 then sorted_diff_aux ns older acc
+    else sorted_diff_aux newer os acc
+
+let sorted_diff (newer older : list triple) : Tot (list triple) =
+  sorted_diff_aux newer older []
 
 (** ======================================================================== *)
 (** Form A — rows whose index argument is NOT a premise                      *)
