@@ -243,19 +243,37 @@ in CPU seconds. `--check` gates against a committed baseline;
 `--update-baseline` moves it. The dashboard fragment lands in the
 public report through `generate-report.sh`.
 
-📊 **First baseline** (commit `6e35d0e`, one run per case, `--regime
-RDFS`):
+📊 **Frozen baseline** — `docs/test-results/closure-bench-baseline.json`,
+median of 3 runs per case, `--regime RDFS`:
 
 | real vocabulary | in | out | ratio | wall | out-triples/s |
 |---|---:|---:|---:|---:|---:|
-| SKOS | 254 | 422 | 1.7× | 0.030 s | 14,067 |
-| FOAF | 635 | 863 | 1.4× | 0.049 s | 17,612 |
-| Dublin Core terms | 700 | 1272 | 1.8× | 0.082 s | 15,512 |
-| schema.org 30.0 | 17949 | 29275 | 1.6× | 4.762 s | 6,148 |
-| QUDT 3.4.0 | 130404 | 508139 | **3.9×** | **272.5 s** | **1,865** |
+| SKOS | 254 | 422 | 1.7× | 0.029 s | 14,552 |
+| FOAF | 635 | 863 | 1.4× | 0.051 s | 16,922 |
+| Dublin Core terms | 700 | 1272 | 1.8× | 0.085 s | 14,965 |
+| schema.org 30.0 | 17949 | 29275 | 1.6× | 4.686 s | 6,247 |
+| QUDT 3.4.0 | 130404 | 508139 | **3.9×** | **270.9 s** | **1,876** |
 
 Fitted exponents on the synthetic shapes (log-log least squares, wall):
-chain 1.29, tree 1.33, **diamond 2.22**, wide-flat 1.10, dense 1.35.
+
+| shape | n range | wall ~ n^k | output ~ n^k |
+|---|---|---:|---:|
+| chain | 20–160 | **1.96** | 1.82 |
+| tree | 128–1024 | 1.40 | 1.15 |
+| diamond | 32–192 | **2.26** | 2.01 |
+| wide-flat | 500–4000 | 1.06 | 0.99 |
+| dense | 250–2000 | 1.35 | 0.99 |
+
+Run-to-run spread over the 25 repeated cases: median 3.3% wall, max
+8.0%. That is what sets `--check`'s 20% default tolerance — a gate
+tighter than the noise fires on the noise.
+
+⚠️ **The chain exponent is 1.96, not the 1.29 first reported.** The
+first figure came from a three-point fit stopping at n=80; adding n=160
+nearly doubled it. Three points do not fit an exponent, and a fit is
+only as honest as its range — the range is now printed beside every
+exponent for exactly this reason. The n≤80 chain looks near-linear
+because it fits inside `fuel=100` comfortably; the curve is elsewhere.
 
 #### 🔴 QUDT — the number Phase 0 was built to find
 
@@ -280,12 +298,16 @@ was false (§0.5, and #341).
 
 **Throughput degrades with size, on real data:**
 
+Baseline medians (3 runs each; the 272.5 s quoted above was the separate
+single run under the 900 s cap, 0.6% off the median — inside the 3.3%
+run-to-run spread):
+
 | | schema.org | QUDT | ratio |
 |---|---:|---:|---:|
 | input triples | 17,949 | 130,404 | 7.3× |
 | output triples | 29,275 | 508,139 | 17.4× |
-| wall | 4.76 s | 272.5 s | **57×** |
-| out-triples/s | 6,148 | 1,865 | **0.30×** |
+| wall | 4.686 s | 270.9 s | **58×** |
+| out-triples/s | 6,247 | 1,876 | **0.30×** |
 
 ⚠️ Two vocabularies are two points, not a scaling curve — they differ in
 shape as well as size, and the expansion ratio differs (1.6× vs 3.9×), so
@@ -293,7 +315,7 @@ some of the 57× is simply that QUDT derives far more. Per *output*
 triple the engine is 3.3× slower on the larger graph. That per-triple
 degradation is the part not explained by output volume, and it is the
 part an optimisation can take back. At schema.org's own observed rate,
-508,139 triples would take 83 s rather than 272 s.
+508,139 triples would take 81 s rather than 271 s.
 
 ⚠️ **The 400 s cap is now sized to one vocabulary.** A vocabulary
 appreciably larger than QUDT would trip it, and that trip would be
@@ -301,9 +323,10 @@ correct behaviour, not a bug in the cap.
 
 #### ⚠️ The diamond shape, and what it does not license
 
-The diamond shape has the worst synthetic exponent at 2.22, well above
-chain (1.29): duplicate derivation routes, not depth, are where the
-super-linear cost sits *in the synthetic set*.
+The diamond shape has the worst synthetic exponent at 2.26 — but on the
+full sweep the chain is 1.96, not the 1.29 the three-point fit showed, so
+the gap between "duplicate derivation routes" and "depth" is much smaller
+than it first appeared. Both are super-linear *in the synthetic set*.
 
 This does **not** reorder the plan on its own. Rule 2 of
 `skills/measuring-inference` says a synthetic shape does not speak for
