@@ -165,9 +165,53 @@ let rec dedup_sorted_aux
 /// one linear pass collapses adjacent duplicates. Replaces the per-insert
 /// `mem_triple` scan when running RDFS / OWL-RL closure on a non-tiny
 /// graph (#259 followup).
+/// Comparator over PRE-COMPUTED `(key, triple)` pairs. Same ordering as
+/// `triple_cmp` — `String.compare` on `triple_to_key` — but it reads the
+/// already-built key instead of building it again. `triple_to_key` is
+/// `Tot`, so this decides every pair exactly as `triple_cmp` would and
+/// the sorted order is unchanged.
+let cmp_decorated_triple (p1 p2 : (string * triple)) : int =
+  String.compare (fst p1) (fst p2)
+
+/// `dedup_sorted_aux` over pre-decorated pairs. Same rule: drop each
+/// element whose key equals the previous one, keeping the first.
+let rec dedup_sorted_decorated_aux
+    (prev_key : option string)
+    (ts : list (string * triple)) (acc : list triple)
+  : Tot (list triple) (decreases ts) =
+  match ts with
+  | [] -> List.Tot.rev acc
+  | (k, t) :: rest ->
+    let dup = match prev_key with
+              | Some p -> p = k
+              | None   -> false in
+    if dup then dedup_sorted_decorated_aux prev_key rest acc
+    else dedup_sorted_decorated_aux (Some k) rest (t :: acc)
+
+/// O(N log N) dedup for the closure path, via decorate-sort-undecorate
+/// (the Schwartzian transform) — the same treatment `build_bucket` in
+/// RDF.Indexed.fsti already applies to its six index buckets.
+///
+/// WHY. `triple_cmp` calls `triple_to_key`, which is a `String.concat`
+/// over the subject, predicate and object IRIs in full. Handing that
+/// comparator to `sortWith` builds TWO such strings per comparison, so
+/// 2·N·log N key constructions where N would do. At N = 500,000 that is
+/// roughly 38 times more string building than necessary.
+///
+/// Measured, callgrind on a 16,000-triple QUDT prefix (151 G
+/// instructions retired): string construction — `unsafe_blits` 15.9%,
+/// `caml_blit_string` 8.8%, `memcpy` 8.8%, `sum_lengths` 8.2%,
+/// `caml_alloc_string` 4.2%, `String.concat` 3.3% — is ~49% of the
+/// program, with `triple_to_key` / `term_to_key_total` / `subject_to_key`
+/// another ~4% on top, and garbage collection ~17% mostly collecting
+/// those same keys.
+///
+/// The earlier profile taken on schema.org did NOT show this shape. It
+/// is a different vocabulary; see measuring-inference rule 2.
 let graph_dedup_sort (g : rdf_graph) : Tot rdf_graph =
-  let sorted = List.Tot.sortWith triple_cmp g in
-  dedup_sorted_aux None sorted []
+  let decorated = List.Tot.map (fun (t : triple) -> (triple_to_key t, t)) g in
+  let sorted = List.Tot.sortWith cmp_decorated_triple decorated in
+  dedup_sorted_decorated_aux None sorted []
 
 /// Add multiple triples, deduplicating.
 ///
