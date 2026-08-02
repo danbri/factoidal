@@ -190,6 +190,33 @@ let container_membership_properties : list wf_iri =
    triple set for any graph); just the opposite join order. When there
    are zero subPropertyOf declarations (the common case for data-only
    graphs), this whole rule now costs O(1) instead of O(N^2). *)
+// Same guard, for rows whose conclusion OBJECT is an arbitrary
+// `rdf_term` rather than an IRI (rdfs2 and rdfs3 carry the declared
+// class straight through, and it was never IRI-restricted).
+//
+// WHY THIS EXISTS (2026-08-02, measured). rdfs7, rdfs2, rdfs3 and rdfs9
+// emitted through `add_triple_unchecked` unconditionally, so they
+// re-emitted their ENTIRE conclusion set on every round and left
+// `graph_dedup_sort` to collapse the duplicates. Feeding QUDT's own
+// 508,139-triple closure back in -- a graph where every conclusion is
+// already present and nothing can be derived -- still cost 78.8 s,
+// which is 55% of the whole 143.87 s QUDT run. That is the cost of
+// emitting and re-sorting a set that was already there.
+//
+// The emitted SET is unchanged: `ig` is built from the step's input and
+// every row seeds its fold with an accumulator containing that input,
+// so skipping an emission the snapshot already carries removes a
+// duplicate and nothing else. Exactly the argument the five RS-2 rows
+// above already rely on.
+let emit_once_term (ig : indexed_graph) (acc : rdf_graph)
+                   (sub : subject) (prd : wf_iri) (obj : rdf_term)
+  : Tot rdf_graph =
+  if ig.ig_built.bn_sp &&
+     List.Tot.existsb (fun (o : rdf_term) -> rdf_term_eq o obj)
+                      (find_objects_indexed ig sub prd)
+  then acc
+  else add_triple_unchecked acc ({ s = sub; p = prd; o = obj } <: triple)
+
 let rdfs_rule_subPropertyOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let decls = bucket_lookup ig.ig_pred rdfs_subPropertyOf in
   List.Tot.fold_left
@@ -199,8 +226,7 @@ let rdfs_rule_subPropertyOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
         let matching = bucket_lookup ig.ig_pred p in
         List.Tot.fold_left
           (fun (acc2 : rdf_graph) (t : triple) ->
-            let new_t : triple = { s = t.s; p = q; o = t.o } in
-            add_triple_unchecked acc2 new_t)
+            emit_once_term ig acc2 t.s q t.o)
           acc
           matching
       | _, _ -> acc)
@@ -222,8 +248,7 @@ let rdfs_rule_domain (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
         let matching = bucket_lookup ig.ig_pred p in
         List.Tot.fold_left
           (fun (acc2 : rdf_graph) (t : triple) ->
-            let new_t : triple = { s = t.s; p = rdf_type; o = decl.o } in
-            add_triple_unchecked acc2 new_t)
+            emit_once_term ig acc2 t.s rdf_type decl.o)
           acc
           matching
       | _ -> acc)
@@ -243,9 +268,7 @@ let rdfs_rule_range (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
         List.Tot.fold_left
           (fun (acc2 : rdf_graph) (t : triple) ->
             match term_to_subject t.o with
-            | Some b_subj ->
-              let new_t : triple = { s = b_subj; p = rdf_type; o = decl.o } in
-              add_triple_unchecked acc2 new_t
+            | Some b_subj -> emit_once_term ig acc2 b_subj rdf_type decl.o
             | None -> acc2)
           acc
           matching
@@ -265,8 +288,7 @@ let rdfs_rule_subClassOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
           let super_classes = find_objects_indexed ig (S_IRI class_iri) rdfs_subClassOf in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (b_term : rdf_term) ->
-              let new_t : triple = { s = t.s; p = rdf_type; o = b_term } in
-              add_triple_unchecked acc2 new_t)
+              emit_once_term ig acc2 t.s rdf_type b_term)
             acc
             super_classes
         | _ -> acc

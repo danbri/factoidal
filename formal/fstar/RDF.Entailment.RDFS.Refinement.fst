@@ -263,8 +263,7 @@ let rdfs_rule_domain_licensed g ig =
         let matching = bucket_lookup ig.ig_pred p in
         fold_left
           (fun (acc2 : rdf_graph) (t : triple) ->
-            let new_t : triple = { s = t.s; p = rdf_type; o = decl.o } in
-            add_triple_unchecked acc2 new_t)
+            emit_once_term ig acc2 t.s rdf_type decl.o)
           acc matching
       | _ -> acc in
   introduce forall (acc : rdf_graph) (decl : triple).
@@ -277,8 +276,7 @@ let rdfs_rule_domain_licensed g ig =
       let matching = bucket_lookup ig.ig_pred p in
       let inner_step : rdf_graph -> triple -> rdf_graph =
         fun (acc2 : rdf_graph) (t : triple) ->
-          let new_t : triple = { s = t.s; p = rdf_type; o = decl.o } in
-          add_triple_unchecked acc2 new_t in
+          emit_once_term ig acc2 t.s rdf_type decl.o in
       introduce forall (acc2 : rdf_graph) (t : triple).
           (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
       with introduce (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
@@ -318,8 +316,7 @@ let rdfs_rule_range_licensed g ig =
           (fun (acc2 : rdf_graph) (t : triple) ->
             match term_to_subject t.o with
             | Some b_subj ->
-              let new_t : triple = { s = b_subj; p = rdf_type; o = decl.o } in
-              add_triple_unchecked acc2 new_t
+              emit_once_term ig acc2 b_subj rdf_type decl.o
             | None -> acc2)
           acc matching
       | _ -> acc in
@@ -335,8 +332,7 @@ let rdfs_rule_range_licensed g ig =
         fun (acc2 : rdf_graph) (t : triple) ->
           match term_to_subject t.o with
           | Some b_subj ->
-            let new_t : triple = { s = b_subj; p = rdf_type; o = decl.o } in
-            add_triple_unchecked acc2 new_t
+            emit_once_term ig acc2 b_subj rdf_type decl.o
           | None -> acc2 in
       introduce forall (acc2 : rdf_graph) (t : triple).
           (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
@@ -378,8 +374,7 @@ let rdfs_rule_subPropertyOf_licensed g ig =
         let matching = bucket_lookup ig.ig_pred p in
         fold_left
           (fun (acc2 : rdf_graph) (t : triple) ->
-            let new_t : triple = { s = t.s; p = q; o = t.o } in
-            add_triple_unchecked acc2 new_t)
+            emit_once_term ig acc2 t.s q t.o)
           acc matching
       | _, _ -> acc in
   introduce forall (acc : rdf_graph) (decl : triple).
@@ -401,8 +396,7 @@ let rdfs_rule_subPropertyOf_licensed g ig =
       let matching = bucket_lookup ig.ig_pred p in
       let inner_step : rdf_graph -> triple -> rdf_graph =
         fun (acc2 : rdf_graph) (t : triple) ->
-          let new_t : triple = { s = t.s; p = q; o = t.o } in
-          add_triple_unchecked acc2 new_t in
+          emit_once_term ig acc2 t.s q t.o in
       introduce forall (acc2 : rdf_graph) (t : triple).
           (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
       with introduce (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
@@ -477,8 +471,7 @@ let rdfs_rule_subClassOf_licensed g ig =
           let super_classes = find_objects_indexed ig (S_IRI class_iri) rdfs_subClassOf in
           fold_left
             (fun (acc2 : rdf_graph) (b_term : rdf_term) ->
-              let new_t : triple = { s = t.s; p = rdf_type; o = b_term } in
-              add_triple_unchecked acc2 new_t)
+              emit_once_term ig acc2 t.s rdf_type b_term)
             acc super_classes
         | _ -> acc
       else acc in
@@ -492,8 +485,7 @@ let rdfs_rule_subClassOf_licensed g ig =
         let super_classes = find_objects_indexed ig (S_IRI class_iri) rdfs_subClassOf in
         let inner_step : rdf_graph -> rdf_term -> rdf_graph =
           fun (acc2 : rdf_graph) (b_term : rdf_term) ->
-            let new_t : triple = { s = t.s; p = rdf_type; o = b_term } in
-            add_triple_unchecked acc2 new_t in
+            emit_once_term ig acc2 t.s rdf_type b_term in
         introduce forall (acc2 : rdf_graph) (b_term : rdf_term).
             (memP b_term super_classes /\ inv acc2) ==> inv (inner_step acc2 b_term)
         with introduce (memP b_term super_classes /\ inv acc2) ==>
@@ -748,7 +740,20 @@ let owl_class_refl_triple (c : wf_iri) : triple =
 // rlimit, so it was quantifier saturation, not budget. Splitting the
 // three conjuncts into three queries recovers it. A proof-splitting
 // flag, not an escape hatch: no --lax, no --admit_smt_queries.
-#push-options "--fuel 50 --ifuel 2 --z3rlimit 600 --split_queries always"
+// Budget raised 600 -> 1200 on 2026-08-02. Nothing in this lemma
+// changed; RDFS.Closure.fsti gained `emit_once_term` (the guard the
+// rdfs2/3/7/9 rows now use), and the extra definition in scope shifts
+// the SMT context enough to tip an already-borderline assert_norm
+// block. A resource bump, the same idiom this tree uses elsewhere --
+// no --admit_smt_queries, no --lax.
+// `emit_once_term` (added to RDFS.Closure.fsti 2026-08-02 for the
+// rdfs2/3/7/9 duplicate-emission fix) tips this block when its
+// definition equation sits in the SMT context: raising rlimit to 1200
+// and fuel to 100 did NOT recover it, so it is context noise, not a
+// resource shortage. Excluding that one symbol's facts restores the
+// original budget. The four rule-refinement proofs above do need the
+// definition and are unaffected by this per-block exclusion.
+#push-options "--fuel 50 --ifuel 2 --z3rlimit 600 --split_queries always --using_facts_from '*,-RDFS.Closure.emit_once_term'"
 val selfloop_not_axiomatic (c : wf_iri)
   : Lemma (~(rdf_axiomatic (owl_class_refl_triple c)) /\
            ~(rdfs_axiomatic (owl_class_refl_triple c)) /\
