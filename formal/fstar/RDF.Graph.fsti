@@ -170,7 +170,63 @@ let graph_dedup_sort (g : rdf_graph) : Tot rdf_graph =
   dedup_sorted_aux None sorted []
 
 /// Add multiple triples, deduplicating.
+///
+/// QUADRATIC, AND KEPT THAT WAY ON PURPOSE. Each step is
+/// `graph_add t g = if mem_triple t g then g else g @ [t]` -- a linear
+/// membership scan AND a linear append, per triple. Adding k triples to
+/// a graph of n costs O(n*k) comparisons and O(n*k) freshly allocated
+/// cons cells.
+///
+/// `RDF.Entailment.RDFS.Refinement.lemma_add_triples_if_new_memP` is
+/// proved about this exact definition, so it does not change. Callers
+/// with a LARGE `g` should use `add_triples_if_new_bulk` below instead.
 let rec add_triples_if_new (g : rdf_graph) (ts : list triple) : Tot rdf_graph (decreases ts) =
   match ts with
   | [] -> g
   | hd :: tl -> add_triples_if_new (add_triple_if_new g hd) tl
+
+/// Elements of `newer` whose key is not in `older`. Linear merge; BOTH
+/// arguments must be key-sorted and duplicate-free, i.e. straight out of
+/// `graph_dedup_sort`.
+///
+/// TAIL-RECURSIVE, and it has to be: written the obvious way as
+/// `n :: sorted_diff ns older` it wants one stack frame per element and
+/// dies with `Fatal error: exception Stack overflow` on a half-million
+/// triples. F* proves termination, not stack depth. `rev_acc acc newer`
+/// is `rev acc @ newer`, avoiding a non-tail `append` in the
+/// older-exhausted case. See trap 5 in skills/fstar-module-style.
+let rec sorted_diff_aux (newer older acc : list triple)
+  : Tot (list triple)
+        (decreases (List.Tot.length newer + List.Tot.length older)) =
+  match newer, older with
+  | [], _ -> List.Tot.rev acc
+  | _, [] -> List.Tot.rev_acc acc newer
+  | n :: ns, o :: os ->
+    let c = triple_cmp n o in
+    if c < 0 then sorted_diff_aux ns older (n :: acc)
+    else if c = 0 then sorted_diff_aux ns older acc
+    else sorted_diff_aux newer os acc
+
+let sorted_diff (newer older : list triple) : Tot (list triple) =
+  sorted_diff_aux newer older []
+
+/// Set-union of `g` with `ts`, for callers where `g` is large.
+///
+/// Same SET as `add_triples_if_new g ts`. The ORDER differs: the new
+/// triples arrive key-sorted rather than in `ts` order. Every caller
+/// switched to this either sorts downstream or is byte-verified against
+/// the previous output.
+///
+/// O(n log n + k log k) instead of O(n*k), and -- the part the profile
+/// actually showed -- it allocates one merged list rather than k
+/// successive copies of an n-element list. On schema.org, garbage
+/// collection was ~31% of all instructions retired and the
+/// `mem_triple` / `triple_eq` / `subject_eq` family another ~8%;
+/// `graph_add` is the sole caller of `mem_triple` and the sole source
+/// of those k copies.
+let add_triples_if_new_bulk (g : rdf_graph) (ts : list triple) : Tot rdf_graph =
+  match ts with
+  | [] -> g
+  | _ ->
+    let fresh = sorted_diff (graph_dedup_sort ts) (graph_dedup_sort g) in
+    List.Tot.append g fresh

@@ -561,7 +561,15 @@ let rdfs_closure_with_reflexivity_fast (base : rdf_graph) (extra : rdf_graph)
     // second pass needs no transitivity either. The second
     // `fast_pass` re-checks that anyway.
     let refl_axioms = rdfs_reflexivity_axioms closed in
-    let with_refl = add_triples_if_new closed refl_axioms in
+    // `_bulk`, not `add_triples_if_new`: `closed` is the whole closed
+    // graph (508,139 triples on QUDT) and the harvest is ~921 axioms.
+    // The per-triple version costs O(n*k) scans AND O(n*k) freshly
+    // allocated cons cells; the callgrind profile put garbage collection
+    // at ~31% of instructions retired and the mem_triple / triple_eq /
+    // subject_eq family at another ~8%, and `graph_add` is the sole
+    // caller of `mem_triple`. Same set, sorted rather than ts-order;
+    // byte-verified against the previous closure output.
+    let with_refl = add_triples_if_new_bulk closed refl_axioms in
     fast_pass with_refl fuel
 
 // GENERAL-PATH EVALUATION STRATEGY (Phase 1, 2026-08-02). The three

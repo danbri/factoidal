@@ -67,34 +67,14 @@ open RDFS.Closure
 // rather than a membership scan per triple. Both arguments MUST come
 // from `graph_dedup_sort`; on unsorted input this returns a subset of
 // the true difference, which the post-hoc check would then catch.
-// TAIL-RECURSIVE, and it has to be. The first version of this function
-// built its result as `n :: sorted_diff ns older`. That verified fine
-// and worked on every small graph, then died with
-//
-//     Fatal error: exception Stack overflow
-//     Called from RDFS_Closure_SemiNaive.sorted_diff
-//
-// on QUDT, whose closure is 508,139 triples -- one stack frame per
-// element. F* proves termination, not stack depth: a `Tot` function
-// that recurses on a list is only safe at scale when the recursive call
-// is in tail position after extraction.
-//
-// `rev_acc acc newer` is `rev acc @ newer`, so the "older exhausted"
-// case keeps the remaining `newer` without a non-tail `append`.
-let rec sorted_diff_aux (newer older acc : list triple)
-  : Tot (list triple)
-        (decreases (List.Tot.length newer + List.Tot.length older)) =
-  match newer, older with
-  | [], _ -> List.Tot.rev acc
-  | _, [] -> List.Tot.rev_acc acc newer
-  | n :: ns, o :: os ->
-    let c = triple_cmp n o in
-    if c < 0 then sorted_diff_aux ns older (n :: acc)
-    else if c = 0 then sorted_diff_aux ns older acc
-    else sorted_diff_aux newer os acc
-
-let sorted_diff (newer older : list triple) : Tot (list triple) =
-  sorted_diff_aux newer older []
+// `sorted_diff` now lives in RDF.Graph.fsti next to `graph_dedup_sort`,
+// whose output shape it requires, so `add_triples_if_new_bulk` can use
+// it too. It arrived here first, and it arrived non-tail-recursive:
+// written as `n :: sorted_diff ns older` it verified cleanly, passed
+// every W3C suite and every synthetic benchmark shape, and then died
+// with `Fatal error: exception Stack overflow` on QUDT's 508,139-triple
+// closure. F* proves termination, not stack depth. See trap 5 in
+// skills/fstar-module-style.
 
 (** ======================================================================== *)
 (** Form A — rows whose index argument is NOT a premise                      *)
@@ -437,5 +417,5 @@ let rdfs_closure_with_reflexivity_checked (g : rdf_graph) (fuel : nat)
   : Tot rdf_graph =
   let closed = rdfs_closure_checked g fuel in
   let refl_axioms = rdfs_reflexivity_axioms closed in
-  let with_refl = add_triples_if_new closed refl_axioms in
+  let with_refl = add_triples_if_new_bulk closed refl_axioms in
   rdfs_closure_checked with_refl fuel
