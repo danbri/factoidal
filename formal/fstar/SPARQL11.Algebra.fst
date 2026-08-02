@@ -3698,6 +3698,64 @@ let left_join (base : option wf_iri) (omega1 omega2 : solution_sequence) (filter
           if List.Tot.length joins > 0 then joins else [mu1])
         omega1
 
+// Does [e] contain an EXISTS / NOT EXISTS anywhere? Decides whether a
+// backend filter needs the materialise-and-substitute path
+// (`filter_solutions_with_graph` / `left_join_with_graph`) or can stay
+// on the graph-free fast path. Total over every constructor ON
+// PURPOSE -- no catch-all -- so adding an expr constructor forces a
+// decision here; a missed composite arm would silently send
+// existential filters back to eval_expr_ebv's ER_Error catch-all,
+// which is the every-row-dropped bug this predicate exists to close
+// (found from the npm build 2026-08-02; W3C exists01 reproduced it on
+// the native CLI, whose queries run through the backend path the W3C
+// runner never uses).
+let rec expr_has_existential (e : expr) : Tot bool (decreases e) =
+  match e with
+  | E_Exists _ | E_NotExists _ -> true
+  | E_Var _ | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
+  | E_DecimalLit _ | E_DoubleLit _ | E_Bound _ | E_Now -> false
+  | E_Arith _ e1 e2 | E_Compare _ e1 e2 | E_And e1 e2 | E_Or e1 e2
+  | E_StrDt e1 e2 | E_StrLang e1 e2
+  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
+  | E_StrBefore e1 e2 | E_StrAfter e1 e2
+  | E_SameTerm e1 e2 ->
+    expr_has_existential e1 || expr_has_existential e2
+  | E_UnaryMinus e1 | E_UnaryPlus e1 | E_Not e1
+  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1
+  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1
+  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1
+  | E_StrLen e1 | E_UCase e1 | E_LCase e1 | E_EncodeForUri e1
+  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1
+  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1
+  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
+  | E_Seconds e1 | E_Timezone e1 | E_Tz e1
+  | E_Aggregate _ _ e1
+  | E_TTSubject e1 | E_TTPredicate e1 | E_TTObject e1 | E_IsTriple e1 ->
+    expr_has_existential e1
+  | E_StrLangDir e1 e2 e3 | E_If e1 e2 e3 | E_TripleTerm e1 e2 e3 ->
+    expr_has_existential e1 || expr_has_existential e2 ||
+    expr_has_existential e3
+  | E_Coalesce es | E_Concat es | E_FunctionCall _ es ->
+    expr_list_has_existential es
+  | E_In e1 es | E_NotIn e1 es ->
+    expr_has_existential e1 || expr_list_has_existential es
+  | E_Substr e1 e2 e3o | E_Regex e1 e2 e3o ->
+    expr_has_existential e1 || expr_has_existential e2 ||
+    expr_opt_has_existential e3o
+  | E_Replace e1 e2 e3 e4o ->
+    expr_has_existential e1 || expr_has_existential e2 ||
+    expr_has_existential e3 || expr_opt_has_existential e4o
+
+and expr_list_has_existential (es : list expr) : Tot bool (decreases es) =
+  match es with
+  | [] -> false
+  | e :: rest -> expr_has_existential e || expr_list_has_existential rest
+
+and expr_opt_has_existential (eo : option expr) : Tot bool (decreases eo) =
+  match eo with
+  | None -> false
+  | Some e -> expr_has_existential e
+
 (* Filter: retain solutions where expression evaluates to true *)
 let filter_solutions_fwd (base : option wf_iri) (e : expr) (omega : solution_sequence) : solution_sequence =
   List.Tot.filter (eval_expr_ebv base e) omega

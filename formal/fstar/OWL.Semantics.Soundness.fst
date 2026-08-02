@@ -141,8 +141,7 @@ let rdfs_rule_domain_sound i a g ig =
         let matching = bucket_lookup ig.ig_pred p in
         List.Tot.fold_left
           (fun (acc2 : rdf_graph) (t : triple) ->
-            let new_t : triple = { s = t.s; p = rdf_type; o = decl.o } in
-            add_triple_unchecked acc2 new_t)
+            emit_once_term ig acc2 t.s rdf_type decl.o)
           acc matching
       | _ -> acc in
   introduce forall (acc : rdf_graph) (decl : triple).
@@ -160,8 +159,14 @@ let rdfs_rule_domain_sound i a g ig =
       let matching = bucket_lookup ig.ig_pred p in
       let inner_step : rdf_graph -> triple -> rdf_graph =
         fun (acc2 : rdf_graph) (t : triple) ->
-          let new_t : triple = { s = t.s; p = rdf_type; o = decl.o } in
-          add_triple_unchecked acc2 new_t in
+          // Guarded since 2026-08-02 (emit_once_term): either the
+          // snapshot already carries the conclusion and acc2 is
+          // returned unchanged -- truth-preservation is the hypothesis
+          // itself -- or the rule emits exactly the triple the
+          // pre-guard body emitted, and the cond_domain argument below
+          // covers it. Both branches are visible to SMT because
+          // emit_once_term stays transparent in this module.
+          emit_once_term ig acc2 t.s rdf_type decl.o in
       introduce forall (acc2 : rdf_graph) (t : triple).
           (List.Tot.memP t matching /\ holds_all i a acc2) ==>
           holds_all i a (inner_step acc2 t)
