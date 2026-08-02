@@ -931,6 +931,107 @@ came from the vocabulary being optimised rather than a cheaper stand-in.
 guard above is the identified mechanism. Everything else in this note is
 downstream of that measurement.
 
+---
+
+## The QLever comparison — what actually transfers (2026-08-02)
+
+Owner asked for a considered look at dictionary encoding in the light of
+QLever's results. QLever (University of Freiburg; the engine behind the
+dblp SPARQL endpoint, full-Wikidata and OSM instances) is the current
+public proof that SPARQL over 10⁹–10¹⁰ triples can be interactive on one
+machine. Worth being precise about *why*, because only some of it
+transfers to a closure engine.
+
+### What QLever actually does
+
+1. **Order-preserving dictionary encoding.** Every term is mapped to a
+   fixed-width integer ID at index-build time, and the assignment is by
+   **sorted order of the term strings** — so `id(a) < id(b) ⟺ a < b`
+   lexicographically. Every downstream comparison, sort, join and range
+   scan runs on integers; the strings are touched exactly twice, once at
+   encode and once at result-decode.
+2. **Sorted permutation indexes, maintained — never rebuilt.** The
+   triple set is stored as sorted permutations (SPO, POS, OSP, …).
+   Updates merge deltas into the sorted base. Nothing ever re-sorts the
+   whole dataset.
+3. **No materialised reasoning.** QLever's speed is query-time speed.
+   It does not run an RDFS closure at all. So there is no QLever
+   algorithm to copy for our rule loop — what transfers is the **data
+   layout**, not a reasoning method.
+
+### Mapping that onto our measured profile
+
+Post-decorated-sort profile on the 16k QUDT prefix (74.1 G
+instructions):
+
+| family | share | what QLever's layout does to it |
+|---|---:|---|
+| GC | ~32% | shrinks: no key strings, triples become int tuples; ⚠️ fraction attributable is an estimate, not a measurement |
+| comparisons — `string_compare` 4.6%, `do_compare_val` 3.7%, `caml_equal` 3.3%, `memcmp` 2.9%, `ml_z_compare` 2.9% | ~17% | becomes integer compare, ≈0 |
+| residual string building | ~7% | ≈0 (keys stop existing) |
+| `caml_apply2` (closure application in folds) | ~6% | unaffected by encoding |
+
+Two details in that table are findings in their own right:
+
+* `do_compare_val` + `caml_equal` + `memcmp` (~10%) is OCaml's
+  **polymorphic** structural equality. Extracted F\* `=` on `wf_iri`
+  strings (e.g. `t.p = rdf_type` in every rule body) goes through the
+  generic comparator, not a specialised string equality. Integer IDs
+  turn every one of these into a machine-word compare.
+* `ml_z_compare` (2.9%) is **zarith bignum** comparison — the
+  fixed-point test `graph_len g' = graph_len g` walks the whole list
+  twice per round and then compares two arbitrary-precision integers.
+  This one does not even need encoding to fix; the step function could
+  report whether it added anything.
+
+Sum the shares encoding can plausibly touch: ~17% + ~7% + some slice of
+the 32% GC. 📊 **Predicted band for order-preserving encoding alone:
+1.4–1.7× on QUDT.** That is consistent with the §0.5 calibration
+(1.3–2×, "a 10× should be disbelieved"), now backed by a profile instead
+of an IRI-length experiment. Encoding alone does not reach QLever
+performance — and the reason is the second half of QLever's design:
+
+### The half we were missing: stop re-sorting the base
+
+`rdfs_closure_step` ends with `graph_dedup_sort g12` — the **whole
+accumulated graph is re-sorted every round**, keys rebuilt each time
+(the decorated sort builds each key once *per call*, and there is one
+call per round). QLever's discipline is that the base is sorted **once**
+and stays sorted; only deltas are ever sorted, then merged.
+
+For the closure loop that means: keep the graph as a key-sorted
+structure across rounds; each round sorts only the *newly emitted*
+triples (small, and shrinking round over round) and does one linear
+merge. Per-round cost falls from `O(N log N)` re-sort to
+`O(N + Δ log Δ)` merge. `sorted_diff` — already in `RDF.Graph.fsti` —
+is half of this merge; the emit-once guard is what makes Δ small.
+
+### The revised architecture, in dependency order
+
+1. **Emit-once for rdfs7/2/3/9** (written, verifies, blocked on one
+   brittle proof — see above). Attacks the measured 55%. No
+   representation change.
+2. **Sorted-base + delta-merge rounds.** Needs 1 (else Δ is the whole
+   conclusion set every round). Kills the per-round re-sort. Also
+   replaces the `graph_len` bignum fixed-point test for free: the loop
+   stops when Δ = ∅.
+3. **Order-preserving integer encoding.** 1.4–1.7× on the profile
+   above, *and* it makes step 2's merges integer merges. We already
+   hold the ingredients in F\*: `HDT.Dictionary.fst` and the COTTAS
+   dictionary writers build sorted term dictionaries today — the
+   closure path just never uses IDs in memory. The F\* shape is
+   pleasant: assigning IDs by position in a sorted duplicate-free term
+   list gives injectivity and order-preservation **by construction**,
+   which is exactly what the refinement theorems need to transfer from
+   term-triples to ID-triples. Decode at serialization; byte-verify
+   end-to-end as always.
+
+None of these is a silver bullet; QLever's speed is the *composition*
+of its layout decisions, and ours will be too. The honest projection —
+55% from (1), the no-op floor from (2), 1.4–1.7× from (3) — puts full
+QUDT closure in the 15–40 s range from today's 139.6 s, to be believed
+only when measured, phase by phase, byte-identical at every step.
+
 ### Phase 2 — dictionary encoding
 
 Intern IRIs and literals to integers; compare and index on those. Kills
