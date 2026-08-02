@@ -1032,6 +1032,41 @@ of its layout decisions, and ours will be too. The honest projection —
 QUDT closure in the 15–40 s range from today's 139.6 s, to be believed
 only when measured, phase by phase, byte-identical at every step.
 
+### ✅ Step 1 measured (2026-08-02): emit-once landed at 2.16×
+
+The `--using_facts_from '*,-RDFS.Closure.emit_once_term'` exclusion
+unblocked the brittle `assert_norm` block **at its original budget**,
+confirming the diagnosis (context noise, not resources). One more
+downstream proof needed the same treatment as the Refinement ones:
+`OWL.Semantics.Soundness.rdfs_rule_domain_sound` reconstructs the rdfs2
+body literally, and its stale reconstruction drove z3 4.13.3 into an
+internal assertion violation (`lar_solver.cpp:1066`) that F\* surfaced
+as `Parse error: </labels> not found`. Updated to mirror the guarded
+body; verifies cleanly.
+
+📊 Criterion was: under 110 s acceptable, under 90 s good. **Result:**
+
+| | before | after emit-once | change |
+|---|---:|---:|---:|
+| QUDT full closure | 139.6 s | **64.7 s** | **2.16×** |
+| QUDT no-op re-closure | 78.8 s | **50.6 s** | 1.56× |
+| schema.org | 1.62 s | 1.83 s | ⚠️ 13% slower |
+
+Byte-identical output on both. The schema.org delta is small in absolute
+terms (0.2 s) but larger than the 3.3% spread; the guard's index probes
+cost more than they save on a graph with few duplicate derivations.
+Watch it in the closure bench; if it holds it is an acceptable trade
+against 75 s on the large graph.
+
+**Session cumulative: QUDT 270.9 → 64.7 s (4.19×), schema.org
+4.686 → 1.83 s (2.56×), output byte-identical throughout.**
+
+The no-op floor (50.6 s, now 78% of the whole run) is almost entirely
+the per-round `graph_dedup_sort` of the unchanged base plus index
+rebuilds — precisely what step 2 (sorted-base delta-merge) removes.
+Each architecture step so far has had its motivating number confirmed
+before the work started; keep that discipline for step 2.
+
 ### Phase 2 — dictionary encoding
 
 Intern IRIs and literals to integers; compare and index on those. Kills
