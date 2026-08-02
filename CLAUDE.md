@@ -314,6 +314,13 @@ session.
 - [`perf-benchmarking`](skills/perf-benchmarking/SKILL.md) — timing
   harnesses, baselines, observability, profiling policy. Speed is
   measured separately from correctness, always.
+- [`measuring-inference`](skills/measuring-inference/SKILL.md) — how to
+  measure what a reasoning engine actually does: which phase the time is
+  in, why synthetic shapes lie about real vocabularies, negative tests
+  that pass by deriving nothing, theorems with unsatisfiable
+  hypotheses, and silent caps. Read **before** optimising any closure
+  or entailment path, or before a plausible mechanism becomes a work
+  order. Every rule carries the wrong claim that paid for it.
 - [`site-and-dashboard`](skills/site-and-dashboard/SKILL.md) — the
   11ty site, test-results dashboard, demos, Fly.io endpoint, and the
   registry of progress tables + who updates each.

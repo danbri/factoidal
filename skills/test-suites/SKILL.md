@@ -395,3 +395,14 @@ refinements from 2026-07-04:
 - Timing/perf measurement — `perf-benchmarking` skill.
 - Publishing scores to the site/dashboard — `site-and-dashboard` skill.
 - Toolchain setup — `fstar-env` skill.
+
+## ⚠️ A green suite can measure nothing
+
+A negative test ("X must NOT be entailed") is passed for free by an
+engine that derives nothing. Measured 2026-07-31: **19 of 42** negative
+tests across rdf-mt, rdf12-semantics and sparql11-entailment were
+vacuous, while every W3C score stayed green. Run
+`python3 tools/negative-test-vacuity.py` after any change to a rule set
+or entailment regime, and read
+[`skills/measuring-inference/SKILL.md`](../measuring-inference/SKILL.md)
+for why a score alone cannot tell you whether the rules fired.

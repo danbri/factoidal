@@ -245,3 +245,14 @@ all started as noticed smells, not scheduled work.
 - Publishing metrics on the site — `site-and-dashboard` skill.
 - Background-job wall-clock discipline in depth —
   `autonomous-time-discipline` skill.
+
+## ⚠️ Inference paths need their own discipline
+
+Closure and entailment mislead measurement in ways parse/serialize does
+not: a synthetic chain can improve 33× while a real vocabulary moves 4%,
+and a suite can be green while the rules never fire. Before optimising
+any reasoning path read
+[`skills/measuring-inference/SKILL.md`](../measuring-inference/SKILL.md)
+— it carries the phase-attribution rule, the shape-sensitivity rule, and
+the vacuity checks, each with the wrong claim from 2026-07-30/31 that
+paid for it.
