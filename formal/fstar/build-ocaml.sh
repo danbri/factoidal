@@ -1201,6 +1201,9 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/mathml_runner"
     "$BINDIR/shex_runner"
     "$BINDIR/rif_runner"
+    # #330 (2026-07-30): xml_runner had no build path in this script at
+    # all — target AND source both missing. Both are added.
+    "$BINDIR/xml_runner"
   )
   NATIVE_SOURCES=(
     $COMMON_MODULES
@@ -1228,6 +1231,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/vc-runner/vc_runner.ml
     ../../../bin/did-runner/did_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
+    ../../../bin/xml-runner/xml_runner.ml
     ../experimental_ocaml_glue/parquet_zstd_stubs.c
     ../experimental_ocaml_glue/hacl_stubs.c
     fstar_hacl_crypto.ml
@@ -1946,6 +1950,39 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fi
     echo "  Built: bin/${PLATFORM}/rif_runner ($(wc -c < "$BINDIR/rif_runner") bytes)"
 
+    # xml_runner — W3C/OASIS XML conformance (xmlconf) runner for
+    # Parser.XML.fst + XML.Wellformedness.fst + XML.Namespaces.fst.
+    # Wired in 2026-07-30 for issue #330: this binary is committed under
+    # iron rule #9 but was produced ONLY by the hand-run mktemp-scratch
+    # recipe in bin/xml-runner/README.md, so nothing in the main build
+    # refreshed it and BUILD_STATUS=OK said nothing about whether it
+    # matched its source. Same shape as anti-pattern #27 / hazard #3, and
+    # the exact trap that let factoidal-dump-nq ship a pre-#325 parser.
+    # Its three modules are already in COMMON_MODULES, so no special
+    # module list is needed — the scratch recipe existed only to avoid
+    # poisoning ocaml-output/'s .cmi/.cmx from a SECONDARY script
+    # (hazard #8), which does not apply here: this IS the main compile.
+    XML_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt xml_runner" "_ocamlopt_xml_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/xml-runner/xml_runner.ml \
+      -o "$BINDIR/xml_runner" || XML_RUNNER_RC=$?
+    cat _ocamlopt_xml_runner.log
+    if [[ "$XML_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: xml_runner build failed (ocamlopt rc=$XML_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$XML_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/xml_runner" ]]; then
+      echo "  ERROR: xml_runner ocamlopt returned 0 but $BINDIR/xml_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/xml_runner ($(wc -c < "$BINDIR/xml_runner") bytes)"
+
     # factoidal_http_client — minimal HTTP/1.1 client I/O glue around
     # the F*-extracted SPARQL.HTTP.Client module. Has a module-init
     # smoke-test hook gated on FACTOIDAL_HTTP_CLIENT_SMOKE=1 in the
@@ -2022,6 +2059,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   ln -sf "../../../bin/${PLATFORM}/owl_runner" owl_runner
   ln -sf "../../../bin/${PLATFORM}/rdfc10_runner" rdfc10_runner
   ln -sf "../../../bin/${PLATFORM}/grddl_runner" grddl_runner
+  ln -sf "../../../bin/${PLATFORM}/xml_runner" xml_runner
   if [[ -x "$BINDIR/parquet_probe" ]]; then
     ln -sf "../../../bin/${PLATFORM}/parquet_probe" parquet_probe
   fi
