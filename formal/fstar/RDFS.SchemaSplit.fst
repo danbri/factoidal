@@ -564,18 +564,31 @@ let rdfs_closure_with_reflexivity_fast (base : rdf_graph) (extra : rdf_graph)
     let with_refl = add_triples_if_new closed refl_axioms in
     fast_pass with_refl fuel
 
+// GENERAL-PATH EVALUATION STRATEGY (Phase 1, 2026-08-02). The three
+// fallbacks below used to call `RDFS.Closure.rdfs_closure_with_reflexivity`
+// -- the naive loop, which re-applies all twelve rows to the whole graph
+// every round. They now call
+// `RDFS.Closure.SemiNaive.rdfs_closure_with_reflexivity_checked`, which
+// runs the delta loop and then VERIFIES its answer with one full naive
+// step, falling back to the naive loop if that step adds anything.
+//
+// So the result set is unchanged by construction and this is a strategy
+// swap, not a semantics change. The same discipline as this module's own
+// fast path: a hole in the delta reasoning costs speed, never
+// correctness.
 let rdfs_closure_with_reflexivity_dispatch (g : rdf_graph) (fuel : nat)
   : Tot rdf_graph =
   let base = schema_seed_base g in
   if schema_dense base
-  then rdfs_closure_with_reflexivity g fuel
+  then RDFS.Closure.SemiNaive.rdfs_closure_with_reflexivity_checked g fuel
   else
     let (extra, ok) = schema_closed_edges base in
     if not ok
-    then rdfs_closure_with_reflexivity g fuel
+    then RDFS.Closure.SemiNaive.rdfs_closure_with_reflexivity_checked g fuel
     else
       let (r, ok_fast) = rdfs_closure_with_reflexivity_fast base extra fuel in
-      if ok_fast then r else rdfs_closure_with_reflexivity g fuel
+      if ok_fast then r
+      else RDFS.Closure.SemiNaive.rdfs_closure_with_reflexivity_checked g fuel
 
 (** ==================================================================== *)
 (** 7. PROOFS                                                            *)

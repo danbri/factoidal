@@ -557,6 +557,66 @@ Acceptance: the chain benchmark drops from n³ toward n²; every W3C score
 unchanged; `tools/negative-test-vacuity.py` still reports 11 worked, 14
 weak, 3 vacuous (out of 42); the new closure pins still 8 of 8.
 
+#### 🟡 Landed 2026-08-02 — `RDFS.Closure.SemiNaive.fst`
+
+⚠️ The proof burden above was **not discharged, and deliberately so.**
+The design instead makes the delta loop *unable* to be wrong in a way
+that matters, which is a different and cheaper guarantee.
+
+**Soundness is free.** Every row in the module applies a rule body
+copied from `RDFS.Closure` to a *subset* of its inputs. It can therefore
+only derive triples the naive loop also derives. The only possible
+error is deriving too **few**.
+
+**Completeness is checked, not proved.** `rdfs_closure_checked` runs the
+delta loop, then applies one full naive `rdfs_closure_step` to the
+answer:
+
+* adds nothing → the answer is a fixed point of the naive step
+  containing the input. The naive closure is the *least* such fixed
+  point, so naive ⊆ ours; soundness gives ours ⊆ naive. Equal — return
+  the fast answer.
+* adds something → the delta loop missed a derivation on this graph.
+  Discard it and run the untouched `rdfs_closure`.
+
+A hole in the delta reasoning costs one wasted fast pass, never a lost
+derivation. Same discipline as Phase 1a's post-hoc check, and for the
+same reason recorded as rule 6 of `skills/measuring-inference`:
+confident reasoning about this rule set has been wrong repeatedly — #340
+item 4 proposed hoisting five rows out of the loop and all five turned
+out to be recursive.
+
+**The twelve rows split four ways**, and only the first three needed
+delta variants:
+
+| form | rows | why | delta treatment |
+|---|---|---|---|
+| A | rdfs4a, rdfs4b, rdfs8, rdfs13 | index is a duplicate filter, not a premise | drive off the delta; full index kept for `emit_once` |
+| B | rdfs1, container membership | premise list is a **constant** — no graph read | round 1 only |
+| C | rdfs9, rdfs11, rdfs5 | walk graph, probe index | two terms: (Δ driver × full index), (full driver × Δ index) |
+| D | rdfs7, rdfs2, rdfs3 | index on both sides | two terms: (Δ decls × full data), (full decls × Δ data) |
+
+Form B *is* a hoist, and is safe only because those two rows read no
+graph at all — unlike the five rows #340 targeted. The final check would
+catch it regardless.
+
+Both join terms are required for forms C and D; dropping either loses
+derivations. The cross term (Δ × Δ) is covered twice, harmlessly, since
+the full graph contains the delta.
+
+`sorted_diff` computes the round delta as one linear merge, relying on
+`graph_dedup_sort` leaving each round key-sorted and duplicate-free.
+
+**Zero diff to `RDFS.Closure.fsti`.** The naive loop remains the
+reference implementation and the fallback. `RDFS.SchemaSplit`'s dispatch
+— which already owns every call site — had its three general-path
+fallbacks redirected, so no consumer code changed.
+
+Verified under z3 4.13.3 with no `--lax`, no `admit`, no
+`--admit_smt_queries`. One `--z3rlimit 30` on the loop, matching the
+budget `RDFS.Closure.rdfs_closure` already carries for the same
+termination obligation.
+
 ### Phase 2 — dictionary encoding
 
 Intern IRIs and literals to integers; compare and index on those. Kills
