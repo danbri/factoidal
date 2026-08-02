@@ -231,6 +231,54 @@ wall time, with committed baselines and a regression gate.
 Acceptance: running it reproduces the n³ curve above, and a deliberate
 10% slowdown is caught.
 
+#### ✅ Landed 2026-08-02 — `tools/bench-closure.sh`
+
+`tools/bench_closure.py` (measurement) behind `tools/bench-closure.sh`
+(binary check, `.claude-runs/` logging). Five synthetic shapes and five
+real vocabularies, pinned in
+[`third_party/vocabularies/PROVENANCE.md`](../../third_party/vocabularies/PROVENANCE.md)
+with URL, retrieval date, SHA-256 and licence. Wall time and CPU time
+are reported separately, because the OWL cap-escape family is budgeted
+in CPU seconds. `--check` gates against a committed baseline;
+`--update-baseline` moves it. The dashboard fragment lands in the
+public report through `generate-report.sh`.
+
+📊 **First baseline** (commit `6e35d0e`, `--quick`, one run per case,
+120 s cap per run, `--regime RDFS`):
+
+| real vocabulary | in | out | ratio | wall |
+|---|---:|---:|---:|---:|
+| SKOS | 254 | 422 | 1.7× | 0.030 s |
+| FOAF | 635 | 863 | 1.4× | 0.049 s |
+| Dublin Core terms | 700 | 1272 | 1.8× | 0.082 s |
+| schema.org 30.0 | 17949 | 29275 | 1.6× | 4.762 s |
+| QUDT 3.4.0 | 130404 | — | — | 🔴 **did not complete in 120 s** |
+
+Fitted exponents on the synthetic shapes (log-log least squares, wall):
+chain 1.29, tree 1.33, **diamond 2.22**, wide-flat 1.10, dense 1.35.
+
+Two findings the benchmark produced on its first run:
+
+* 🔴 **QUDT does not finish.** 130,404 triples, capped at 120 s. This is
+  a real vendored vocabulary, not a synthetic shape, and it is the
+  largest input the benchmark has. The cap is *recorded as a result* in
+  the JSON (`"status": "timeout"`) and shown in the fragment — it does
+  not silently vanish from an average (measuring-inference rule 8). The
+  smallest input that fails is now the number to move.
+* ⚠️ **The diamond shape is the worst exponent at 2.22**, well above
+  chain (1.29). Duplicate derivation routes, not depth, are where the
+  super-linear cost sits *in the synthetic set*. This does **not**
+  reorder the plan on its own: rule 2 of `skills/measuring-inference`
+  says a synthetic shape does not speak for real vocabularies, and the
+  four real ones here expand only 1.4–1.8×, which is not the diamond's
+  32× expansion at n=128. What it does say is where to look next —
+  measure how much diamond structure QUDT actually contains before
+  concluding that semi-naive evaluation is what QUDT needs.
+
+⚠️ The `--check` regression gate is **not yet wired into
+`w3c-tests.sh`**; the baseline exists but nothing fails when it moves.
+That wiring is the remaining part of this phase's acceptance criterion.
+
 ### Phase 1a — separate the schema from the data. **Probably the biggest win.**
 
 Added 2026-07-31 after the owner asked what the field's baselines are.

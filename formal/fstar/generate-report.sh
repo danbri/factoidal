@@ -2096,6 +2096,17 @@ else
   PERF_SECTION_HTML=""
 fi
 
+# --- RDFS / OWL-RL closure benchmark (optional; fail-soft) ------------------
+# Produced by tools/bench-closure.sh. Same contract as the fragment
+# above: included verbatim if present, silently omitted if not, no JSON
+# parsing here.
+CLOSURE_FRAGMENT="$OUTPUT_DIR/closure-bench.fragment.html"
+if [ -f "$CLOSURE_FRAGMENT" ]; then
+  CLOSURE_SECTION_HTML=$(cat "$CLOSURE_FRAGMENT")
+else
+  CLOSURE_SECTION_HTML=""
+fi
+
 [ -n "$GIT_SUBJECT" ] && GIT_SUBJECT_LINE=" — &ldquo;${GIT_SUBJECT}&rdquo;" || GIT_SUBJECT_LINE=""
 
 # =============================================================================
@@ -3576,6 +3587,8 @@ ${GROUP3_HTML}
 ${GROUP4_HTML}
 
 ${PERF_SECTION_HTML}
+
+${CLOSURE_SECTION_HTML}
 
 <details>
   <summary>Machine-readable artifacts</summary>
