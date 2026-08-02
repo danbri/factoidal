@@ -614,9 +614,25 @@ let rdfs_closure_no_trans_checked (g : rdf_graph) (fuel : nat)
   then fast
   else rdfs_closure_no_trans g fuel
 
+// MEASURED SLOWER, SO NOT USED. `rdfs_closure_no_trans_checked` above
+// is correct and byte-exact, and it is kept for the record and for any
+// caller whose graph needs many rounds. It is not called here, because
+// on both real vocabularies it LOST:
+//
+//     QUDT        143.87 s -> 147.92 s   2.8% slower
+//     schema.org    1.622 s ->  2.127 s    31% slower
+//
+// The reason is that there is almost no redundant round work to
+// remove. Feeding QUDT's own 508,139-triple closure back in -- so the
+// rules can derive nothing at all -- still costs 78.8 s, which is 55%
+// of the entire 143.87 s run. The cost is a SINGLE PASS over a large
+// graph, not the number of passes, and semi-naive only ever attacks the
+// number of passes. Its overhead here (a second index per round, the
+// full-graph scan in the form-C second join term, and one extra
+// verification pass) exceeds a saving that was never large.
 let fast_pass (g : rdf_graph) (fuel : nat) : Tot (rdf_graph * bool) =
   let before = count_schema_edges g in
-  let r = rdfs_closure_no_trans_checked g fuel in
+  let r = rdfs_closure_no_trans g fuel in
   (r, count_schema_edges r = before)
 
 // The dispatcher. Every uncertainty falls back to the untouched general

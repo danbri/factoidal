@@ -823,6 +823,66 @@ failure costs one wasted pass rather than a derivation.
 Above 135 s means semi-naive does not buy much here either, and that
 gets reported as the result.
 
+#### 🔴 Result: semi-naive is SLOWER, and here is the number that says why
+
+| | naive | fast-path semi-naive | change |
+|---|---:|---:|---:|
+| QUDT | 143.87 s | **147.92 s** | **2.8% slower** |
+| schema.org | 1.622 s | **2.127 s** | **31% slower** |
+
+Output byte-identical, so it is correct — just slower. **Reverted:**
+`fast_pass` calls `rdfs_closure_no_trans` again.
+`rdfs_closure_no_trans_checked` stays in the tree, verified and
+byte-exact, for any caller whose graph needs many rounds.
+
+📊 **The decisive measurement.** Feed QUDT's own 508,139-triple closure
+back in — a graph where every conclusion is already present and the
+rules can derive *nothing* — and it still costs **78.8 s**, reproducing
+the identical 508,139 triples.
+
+That is **55% of the entire 143.87 s run, spent deriving nothing.**
+
+So the whole naive run is only ~1.8× a single pass over the final graph.
+There is almost no redundant *round* work for semi-naive to remove, and
+its overhead — a second index per round, the full-graph scan in the
+form-C second join term, one extra verification pass — exceeds a saving
+that was never large. On schema.org, which converges in very few rounds,
+the overhead is nearly all of the 31%.
+
+**This closes semi-naive as a line of work for this rule set.** The cost
+is a single pass over a large graph, not the number of passes, and
+semi-naive only ever attacks the number of passes. It is the textbook
+answer to a problem this engine does not have — which is worth knowing,
+and is only knowable by measuring.
+
+#### 🟡 The next lead, profile-backed and not yet landed
+
+The 78.8 s no-op run localises the cost precisely: rdfs7, rdfs2, rdfs3
+and rdfs9 emit through `add_triple_unchecked` **unconditionally**, so
+they re-emit their entire conclusion set every round and leave
+`graph_dedup_sort` to collapse the duplicates. The five RS-2 rows
+already have an `emit_once` guard that consults the index snapshot;
+these four do not.
+
+Giving them the same guard is written and **verifies** (`emit_once_term`,
+the `rdf_term`-valued sibling of `emit_once`, plus the four rule bodies
+and their four refinement proofs updated to match). It is **not landed**,
+for an honest reason:
+
+⚠️ It tips `selfloop_not_axiomatic` in
+`RDF.Entailment.RDFS.Refinement.fst` — a block of nine `assert_norm`
+vocabulary-disequality assertions already carrying
+`--fuel 50 --ifuel 2 --z3rlimit 600 --split_queries always`, and already
+documented in that file as brittle ("growing that lemma changed…").
+Raising the budget to 1200 and the fuel to 100 did **not** fix it, so it
+is not a resource shortage; the extra definition in scope shifts what
+the normaliser and SMT see. Confirmed by bisection: with the guard
+reverted the module verifies, with it applied it does not.
+
+That is proof-repair work of unknown size, and rushing it is how an
+`--admit_smt_queries` gets added. The measured prize — up to 55% of the
+run — justifies doing it properly rather than quickly.
+
 ### Phase 2 — dictionary encoding
 
 Intern IRIs and literals to integers; compare and index on those. Kills
