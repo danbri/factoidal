@@ -1055,10 +1055,39 @@ let rec eval_pattern_backend (base : option wf_iri) (p : group_graph_pattern) (g
     join (eval_pattern_backend base p1 gb dsb) (eval_pattern_backend base p2 gb dsb)
 
   | GP_LeftJoin p1 p2 filter_e ->
-    left_join base (eval_pattern_backend base p1 gb dsb) (eval_pattern_backend base p2 gb dsb) filter_e
+    let omega1 = eval_pattern_backend base p1 gb dsb in
+    let omega2 = eval_pattern_backend base p2 gb dsb in
+    if expr_has_existential filter_e then
+      // Same defect and same cure as GP_Filter below -- see that arm.
+      let ds0 = materialize_dataset_backend dsb in
+      let g_current = backend_search gb { bs = None; bp = None; bo = None } in
+      let ds = { ds0 with ds_default = g_current } in
+      left_join_with_graph base omega1 omega2 filter_e g_current ds
+    else
+      left_join base omega1 omega2 filter_e
 
   | GP_Filter e p' ->
-    filter_solutions_fwd base e (eval_pattern_backend base p' gb dsb)
+    let omega = eval_pattern_backend base p' gb dsb in
+    if expr_has_existential e then
+      // FILTER EXISTS / NOT EXISTS against a backend: the graph-free
+      // eval_expr_ebv maps E_Exists to ER_Error, whose effective
+      // boolean value is false, so the filter silently dropped EVERY
+      // row (#343). Found from the npm build 2026-08-02; reproduced on
+      // the native CLI with W3C exists01 itself. The 631-of-631 W3C
+      // score never caught it because the runner evaluates through
+      // eval_select_query (the pure path, which pre-substitutes
+      // existentials); the CLI, npm and HTTP entries evaluate through
+      // THIS backend path. Same materialise-and-delegate device as
+      // GP_Lateral / GP_PropertyPath (issue #268): correctness first,
+      // backend-native EXISTS is a follow-up. The materialisation is
+      // paid only when the expression actually contains an
+      // existential -- plain filters keep the graph-free fast path.
+      let ds0 = materialize_dataset_backend dsb in
+      let g_current = backend_search gb { bs = None; bp = None; bo = None } in
+      let ds = { ds0 with ds_default = g_current } in
+      filter_solutions_with_graph base e omega g_current ds
+    else
+      filter_solutions_fwd base e omega
 
   | GP_Union p1 p2 ->
     union (eval_pattern_backend base p1 gb dsb) (eval_pattern_backend base p2 gb dsb)
