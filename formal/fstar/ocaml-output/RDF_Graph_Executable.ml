@@ -3,6 +3,7 @@ include RDF_Triple
 include RDF_Graph
 include RDF_Indexed
 include RDFS_Closure
+include RDFS_Closure_SemiNaive
 include RDFS_SchemaSplit
 include OWL_Closure
 open Prims
