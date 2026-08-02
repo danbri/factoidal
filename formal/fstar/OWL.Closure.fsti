@@ -6968,6 +6968,48 @@ let regime_owl_direct : string = "OWL-Direct"
 
 // entailment_closure : dispatch on regime name, apply the appropriate
 // closure. Unknown / unsupported regimes return the graph unchanged.
+// ---- #346: comprehension-witness hygiene for QUERY consumers -------------
+//
+// Every witness individual this closure mints carries the reserved
+// bnode-label prefix "__rl_" (svf / minqc1 / maxqc1 / exactqc1 / compw /
+// chain / adf / hasself families -- twenty spellings, one prefix). They
+// are engine-internal scaffolding: real memberships of real restriction
+// classes, needed by later closure rounds and by the OWL.QueryRewrite
+// anchor machinery, but meaningless to a user query over the closed
+// graph -- and worse than meaningless in practice. Issue #346 records an
+// external reviewer reading `doc1 a _:__rl_svf_...__on__.../Person`,
+// label-shortened by their display code, as the unsound fact
+// `doc1 a :Person`, and filing it as a soundness bug (#345). Any
+// downstream code that abbreviates labels will make the same mistake
+// silently.
+//
+// So the CLI / npm / HTTP "--entail" QUERY paths strip witness triples
+// from the graph they hand the evaluator, via the wrapper below. The
+// `entail` DUMP subcommand and the W3C runner's regime machinery keep
+// the full materialisation -- the rewrite layer joins on these anchors
+// (see the Known sound-but-narrow rewrites note, issue #236), and a
+// dump is the honest record of what the closure derived.
+
+let is_witness_bnode_label (b : bnode_id) : Tot bool =
+  let lp = String.length "__rl_" in
+  String.length b >= lp && String.sub b 0 lp = "__rl_"
+
+let subject_is_witness (s : subject) : Tot bool =
+  match s with
+  | S_BNode b -> is_witness_bnode_label b
+  | S_IRI _ -> false
+
+let term_is_witness (o : rdf_term) : Tot bool =
+  match o with
+  | T_BNode b -> is_witness_bnode_label b
+  | _ -> false
+
+let triple_mentions_witness (t : triple) : Tot bool =
+  subject_is_witness t.s || term_is_witness t.o
+
+let strip_comprehension_witnesses (g : rdf_graph) : Tot rdf_graph =
+  List.Tot.filter (fun (t : triple) -> not (triple_mentions_witness t)) g
+
 let entailment_closure (regime : string) (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
   if regime = regime_owl_rl then owl_rl_closure_with_reflexivity g fuel
   else if regime = regime_owl_direct then
@@ -6983,4 +7025,13 @@ let entailment_closure (regime : string) (g : rdf_graph) (fuel : nat) : Tot rdf_
   else if regime = regime_rdfs then rdfs_closure_with_reflexivity_dispatch g fuel
   else if regime = regime_rdf then rdfs_closure g fuel
   else g
+
+// The QUERY-path variant: same dispatch, then witness hygiene. RDFS /
+// RDF regimes mint no "__rl_" bnodes, so the strip is the identity
+// there -- applied unconditionally anyway, so the property "query
+// results never expose engine-internal witness individuals" holds by
+// construction of this entry point rather than by a case analysis
+// that a future regime could silently fall outside.
+let entailment_closure_for_query (regime : string) (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+  strip_comprehension_witnesses (entailment_closure regime g fuel)
 

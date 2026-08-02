@@ -3189,12 +3189,15 @@ let () =
   (* Apply entailment regime closure if requested. The F*-extracted closure
      operates on rdf_graph (list of triples); apply it to the default graph
      and to each named graph in turn. "" is the no-op / "none" case. *)
+  (* QUERY path: entailment_closure_for_query, not the raw closure --
+     it strips the "__rl_" comprehension-witness scaffolding the OWL-RL
+     closure mints for its own rounds (issue #346: an external reviewer
+     read a label-shortened witness bnode as an unsound named-class
+     fact). The `entail` DUMP subcommand keeps the full materialisation
+     on purpose. Dispatch on regime lives in F-star; this is wiring. *)
   let apply_entail tr = match cfg.entail_regime with
-    | "OWL-RL" ->
-      (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity tr (Z.of_int 100)
-       with _ -> tr)
-    | "RDFS" ->
-      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch tr (Z.of_int 100)
+    | "OWL-RL" | "RDFS" ->
+      (try OWL_Closure.entailment_closure_for_query cfg.entail_regime tr (Z.of_int 100)
        with _ -> tr)
     | _ -> tr
   in
