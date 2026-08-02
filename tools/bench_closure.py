@@ -633,8 +633,10 @@ def main() -> int:
                     help="hard cap per single run; a trip is recorded as a "
                          "result (default 120)")
     ap.add_argument("--vocab-cap-seconds", type=float, default=None,
-                    help="separate cap for real vocabularies "
-                         "(default: same as --cap-seconds)")
+                    help="separate cap for real vocabularies; sized to "
+                         "measure the largest vendored vocabulary rather "
+                         "than cap it (default 400 for a full run, 120 "
+                         "under --quick)")
     ap.add_argument("--only", choices=["shapes", "vocabularies"], default=None,
                     help="restrict to one family")
     ap.add_argument("--shapes", default=None,
@@ -679,8 +681,25 @@ def main() -> int:
 
     runs = 1 if args.quick else args.runs
     sizes = QUICK_SIZES if args.quick else DEFAULT_SIZES
-    vocab_cap = args.vocab_cap_seconds if args.vocab_cap_seconds is not None \
-        else args.cap_seconds
+    # Vocabulary cap, in precedence order: explicit flag, then 400 s for a
+    # full run, then 120 s under --quick.
+    #
+    # 400 s because measurement said so. QUDT -- 130,404 triples, the
+    # largest real vocabulary vendored -- closes in 272.5 s (measured
+    # 2026-08-02). At the old 120 s cap it was recorded as a cap trip:
+    # honest, but a cap trip can only ever flip status, whereas a measured
+    # 272.5 s can regress or improve by a percentage that --check sees. A
+    # cap should be large enough to MEASURE the biggest real input we
+    # ship, and no larger.
+    #
+    # --quick keeps 120 s, because a mode whose whole point is speed must
+    # not sit for four and a half minutes on one vocabulary.
+    if args.vocab_cap_seconds is not None:
+        vocab_cap = args.vocab_cap_seconds
+    elif args.quick:
+        vocab_cap = args.cap_seconds
+    else:
+        vocab_cap = 400.0
 
     shape_names = list(GENERATORS)
     if args.shapes:

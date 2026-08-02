@@ -359,11 +359,14 @@ jobs:
   # ---------------------------------------------------------------------
   closure-bench:
     runs-on: ubuntu-latest
-    # The bench caps each run itself (120 s for vocabularies). QUDT is
-    # a known cap trip at the current baseline and is RECORDED as one,
-    # so the job must budget for several caps without the runner
-    # timeout firing first and hiding them.
-    timeout-minutes: 30
+    # The bench caps each run itself: 120 s for synthetic shapes, 400 s
+    # for real vocabularies. The vocabulary cap is the larger one so that
+    # QUDT -- 130,404 triples, 272.5 s measured -- is MEASURED rather than
+    # recorded as a cap trip, and three repeats of it are most of this
+    # budget. The runner timeout must stay well clear of the bench's own
+    # caps, or it fires first and hides the very trips the caps exist to
+    # record.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:

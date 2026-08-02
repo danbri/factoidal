@@ -243,37 +243,76 @@ in CPU seconds. `--check` gates against a committed baseline;
 `--update-baseline` moves it. The dashboard fragment lands in the
 public report through `generate-report.sh`.
 
-📊 **First baseline** (commit `6e35d0e`, `--quick`, one run per case,
-120 s cap per run, `--regime RDFS`):
+📊 **First baseline** (commit `6e35d0e`, one run per case, `--regime
+RDFS`):
 
-| real vocabulary | in | out | ratio | wall |
-|---|---:|---:|---:|---:|
-| SKOS | 254 | 422 | 1.7× | 0.030 s |
-| FOAF | 635 | 863 | 1.4× | 0.049 s |
-| Dublin Core terms | 700 | 1272 | 1.8× | 0.082 s |
-| schema.org 30.0 | 17949 | 29275 | 1.6× | 4.762 s |
-| QUDT 3.4.0 | 130404 | — | — | 🔴 **did not complete in 120 s** |
+| real vocabulary | in | out | ratio | wall | out-triples/s |
+|---|---:|---:|---:|---:|---:|
+| SKOS | 254 | 422 | 1.7× | 0.030 s | 14,067 |
+| FOAF | 635 | 863 | 1.4× | 0.049 s | 17,612 |
+| Dublin Core terms | 700 | 1272 | 1.8× | 0.082 s | 15,512 |
+| schema.org 30.0 | 17949 | 29275 | 1.6× | 4.762 s | 6,148 |
+| QUDT 3.4.0 | 130404 | 508139 | **3.9×** | **272.5 s** | **1,865** |
 
 Fitted exponents on the synthetic shapes (log-log least squares, wall):
 chain 1.29, tree 1.33, **diamond 2.22**, wide-flat 1.10, dense 1.35.
 
-Two findings the benchmark produced on its first run:
+#### 🔴 QUDT — the number Phase 0 was built to find
 
-* 🔴 **QUDT does not finish.** 130,404 triples, capped at 120 s. This is
-  a real vendored vocabulary, not a synthetic shape, and it is the
-  largest input the benchmark has. The cap is *recorded as a result* in
-  the JSON (`"status": "timeout"`) and shown in the fragment — it does
-  not silently vanish from an average (measuring-inference rule 8). The
-  smallest input that fails is now the number to move.
-* ⚠️ **The diamond shape is the worst exponent at 2.22**, well above
-  chain (1.29). Duplicate derivation routes, not depth, are where the
-  super-linear cost sits *in the synthetic set*. This does **not**
-  reorder the plan on its own: rule 2 of `skills/measuring-inference`
-  says a synthetic shape does not speak for real vocabularies, and the
-  four real ones here expand only 1.4–1.8×, which is not the diamond's
-  32× expansion at n=128. What it does say is where to look next —
-  measure how much diamond structure QUDT actually contains before
-  concluding that semi-naive evaluation is what QUDT needs.
+QUDT tripped the original 120 s cap. It is **not a hang**: measured
+separately with a 900 s cap it completes in **272.5 s**, producing
+**508,139 triples from 130,404** — a 3.9× expansion, more than twice
+schema.org's 1.6×. Peak resident memory was **1.1 GB**.
+
+The cap was therefore raised to 400 s for vocabularies (120 s stays for
+synthetic shapes, and under `--quick`). A cap trip can only ever flip a
+status; a measured 272.5 s can regress or improve by a percentage that
+`--check` can see. Size a cap to measure the largest real input shipped,
+and no larger.
+
+**The phase split, measured before naming a culprit** (rule 1). On the
+same file: `factoidal count` takes 2.20 s and `factoidal dump`
+(parse + serialize) takes 2.32 s. So parsing and serialization together
+are **under 1%** of the 272.5 s. The remaining 270 s is closure. This is
+the one case so far where the closure really is where the time is —
+worth stating explicitly, because the last two times that was assumed it
+was false (§0.5, and #341).
+
+**Throughput degrades with size, on real data:**
+
+| | schema.org | QUDT | ratio |
+|---|---:|---:|---:|
+| input triples | 17,949 | 130,404 | 7.3× |
+| output triples | 29,275 | 508,139 | 17.4× |
+| wall | 4.76 s | 272.5 s | **57×** |
+| out-triples/s | 6,148 | 1,865 | **0.30×** |
+
+⚠️ Two vocabularies are two points, not a scaling curve — they differ in
+shape as well as size, and the expansion ratio differs (1.6× vs 3.9×), so
+some of the 57× is simply that QUDT derives far more. Per *output*
+triple the engine is 3.3× slower on the larger graph. That per-triple
+degradation is the part not explained by output volume, and it is the
+part an optimisation can take back. At schema.org's own observed rate,
+508,139 triples would take 83 s rather than 272 s.
+
+⚠️ **The 400 s cap is now sized to one vocabulary.** A vocabulary
+appreciably larger than QUDT would trip it, and that trip would be
+correct behaviour, not a bug in the cap.
+
+#### ⚠️ The diamond shape, and what it does not license
+
+The diamond shape has the worst synthetic exponent at 2.22, well above
+chain (1.29): duplicate derivation routes, not depth, are where the
+super-linear cost sits *in the synthetic set*.
+
+This does **not** reorder the plan on its own. Rule 2 of
+`skills/measuring-inference` says a synthetic shape does not speak for
+real vocabularies, and the diamond's 32× expansion at n=128 is nothing
+like the 1.4–3.9× the real ones show. What it does say is where to look:
+**measure how much diamond structure QUDT actually contains** before
+concluding that semi-naive evaluation is what QUDT needs. QUDT is now
+the concrete target, and any Phase 1 or Phase 2 claim should be measured
+against its 272.5 s before it is believed.
 
 ⚠️ The `--check` regression gate is **not yet wired into
 `w3c-tests.sh`**; the baseline exists but nothing fails when it moves.
