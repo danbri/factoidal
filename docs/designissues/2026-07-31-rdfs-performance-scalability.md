@@ -617,6 +617,94 @@ Verified under z3 4.13.3 with no `--lax`, no `admit`, no
 budget `RDFS.Closure.rdfs_closure` already carries for the same
 termination obligation.
 
+#### 🔴 Measured: semi-naive gained exactly nothing, because it never runs
+
+| | baseline | semi-naive | change |
+|---|---:|---:|---:|
+| QUDT | 270.9 s | 270.839 s | none |
+| schema.org | 4.686 s | 4.6875 s | none |
+
+Output byte-for-byte identical, so the delta loop is correct. It simply
+is not reached.
+
+`RDFS.SchemaSplit`'s dispatch enters the general path only when
+`schema_dense base` holds, and that test is
+`edges > 8 * srcs + 64`. QUDT has **709 schema edges over 295 sources**,
+so it needs `709 > 2424` — false. QUDT takes the schema-split **fast**
+path, that path succeeds, and the three fallbacks Phase 1 redirected are
+never entered. The 270.9 s belongs to `rdfs_closure_no_trans` inside the
+fast path.
+
+⚠️ This is rule 1 of `skills/measuring-inference`, broken by the person
+who wrote rule 1: an acceptance criterion was set against a 270.9 s
+number **without first establishing which code path produced it.** The
+rule says measure the phase you intend to change. A dispatch branch is a
+phase.
+
+The module is kept: it is correct, verified, byte-exact, and it is the
+general-path evaluator whenever `schema_dense` does hold. It is not a
+measured win and is not presented as one.
+
+#### The profile, and what it bought
+
+`callgrind` on schema.org `entail`, 38.7 G instructions retired:
+
+| family | share |
+|---|---:|
+| garbage collection (marking, oldify, allocate, modify) | ~31% |
+| string build and compare (concat, blits, `string_equal`) | ~19% |
+| `mem_triple` / `triple_eq` / `subject_eq` | ~8% |
+
+`mem_triple` has exactly one caller: `graph_add`, which is
+`if mem_triple t g then g else g @ [t]` — a linear scan **and** a linear
+append, per triple. `add_triples_if_new` folds that, so adding k triples
+to a graph of n costs O(n·k) comparisons and O(n·k) freshly allocated
+cons cells. Those cells are why GC is the largest single family.
+
+`add_triples_if_new_bulk` replaces the k scans with one sorted merge, at
+the two reflexivity-harvest sites where `g` is the whole closed graph.
+`add_triples_if_new` itself is unchanged —
+`lemma_add_triples_if_new_memP` is proved about that exact definition.
+
+📊 **Criterion stated before the work: QUDT under 150 s. Result:**
+
+| | baseline | bulk union | change |
+|---|---:|---:|---:|
+| QUDT | 270.9 s | 264.3 s | 1.02× ❌ |
+| schema.org | 4.686 s | **2.558 s** | **1.83×** ✅ |
+
+❌ **The criterion is missed.** The hypothesis that this quadratic
+dominates QUDT is wrong. The fix is real and large on the graph that was
+*profiled*, and almost nothing on the graph it was aimed at — because
+callgrind on QUDT costs about four hours, so schema.org was profiled
+instead, and rule 2 duly applied.
+
+#### 📊 The scaling curve, on one vocabulary
+
+An earlier "n^2.03" in this note came from comparing schema.org with
+QUDT — two different vocabularies, so not a curve at all. On QUDT alone,
+by prefix:
+
+| input | output | wall | out-triples/s |
+|---:|---:|---:|---:|
+| 16,000 | 70,214 | 15.94 s | 4,405 |
+| 32,000 | 211,850 | 72.11 s | 2,938 |
+| 64,000 | 328,364 | 147.46 s | 2,227 |
+| 128,000 | 479,057 | 246.01 s | 1,947 |
+| 139,552 | 508,139 | 264.30 s | 1,922 |
+
+Against **output** this is **n^1.42**, not n². Throughput falls smoothly
+from 4,405 to 1,922 output triples per second.
+
+⚠️ Prefixes of an N-Triples dump are a biased sample — the subject order
+is whatever the serializer emitted, not a random draw. Good enough for a
+scaling exponent, not for absolute claims about a 16k-triple vocabulary.
+
+The 16k prefix costs 15.9 s, so callgrind on it is ~13 minutes rather
+than four hours: same vocabulary, same code path, tractable. That is the
+profile the next fix should come from — not another one taken on
+schema.org.
+
 ### Phase 2 — dictionary encoding
 
 Intern IRIs and literals to integers; compare and index on those. Kills
