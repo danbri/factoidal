@@ -19,6 +19,17 @@ let rdf_4 : RDF_Term.wf_iri= RDF_Vocabulary.rdf_4
 let rdf_5 : RDF_Term.wf_iri= RDF_Vocabulary.rdf_5
 let container_membership_properties : RDF_Term.wf_iri Prims.list=
   [rdf_1; rdf_2; rdf_3; rdf_4; rdf_5]
+let emit_once_term (ig : RDF_Indexed.indexed_graph)
+  (acc : RDF_Graph.rdf_graph) (sub : RDF_Term.subject)
+  (prd : RDF_Term.wf_iri) (obj : RDF_Term.rdf_term) : RDF_Graph.rdf_graph=
+  if
+    (ig.RDF_Indexed.ig_built).RDF_Indexed.bn_sp &&
+      (FStar_List_Tot_Base.existsb (fun o -> RDF_Term.rdf_term_eq o obj)
+         (RDF_Indexed.find_objects_indexed ig sub prd))
+  then acc
+  else
+    RDF_Graph.add_triple_unchecked acc
+      { RDF_Triple.s = sub; RDF_Triple.p = prd; RDF_Triple.o = obj }
 let rdfs_rule_subPropertyOf (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   let decls =
@@ -30,13 +41,8 @@ let rdfs_rule_subPropertyOf (g : RDF_Graph.rdf_graph)
            let matching = RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_pred p in
            FStar_List_Tot_Base.fold_left
              (fun acc2 t ->
-                let new_t =
-                  {
-                    RDF_Triple.s = (t.RDF_Triple.s);
-                    RDF_Triple.p = q;
-                    RDF_Triple.o = (t.RDF_Triple.o)
-                  } in
-                RDF_Graph.add_triple_unchecked acc2 new_t) acc matching
+                emit_once_term ig acc2 t.RDF_Triple.s q t.RDF_Triple.o) acc
+             matching
        | (uu___, uu___1) -> acc) g decls
 let rdfs_rule_domain (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
@@ -48,13 +54,8 @@ let rdfs_rule_domain (g : RDF_Graph.rdf_graph)
            let matching = RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_pred p in
            FStar_List_Tot_Base.fold_left
              (fun acc2 t ->
-                let new_t =
-                  {
-                    RDF_Triple.s = (t.RDF_Triple.s);
-                    RDF_Triple.p = rdf_type;
-                    RDF_Triple.o = (decl.RDF_Triple.o)
-                  } in
-                RDF_Graph.add_triple_unchecked acc2 new_t) acc matching
+                emit_once_term ig acc2 t.RDF_Triple.s rdf_type
+                  decl.RDF_Triple.o) acc matching
        | uu___ -> acc) g decls
 let rdfs_rule_range (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
@@ -68,13 +69,7 @@ let rdfs_rule_range (g : RDF_Graph.rdf_graph)
              (fun acc2 t ->
                 match RDF_Graph.term_to_subject t.RDF_Triple.o with
                 | FStar_Pervasives_Native.Some b_subj ->
-                    let new_t =
-                      {
-                        RDF_Triple.s = b_subj;
-                        RDF_Triple.p = rdf_type;
-                        RDF_Triple.o = (decl.RDF_Triple.o)
-                      } in
-                    RDF_Graph.add_triple_unchecked acc2 new_t
+                    emit_once_term ig acc2 b_subj rdf_type decl.RDF_Triple.o
                 | FStar_Pervasives_Native.None -> acc2) acc matching
        | uu___ -> acc) g decls
 let rdfs_rule_subClassOf (g : RDF_Graph.rdf_graph)
@@ -90,13 +85,7 @@ let rdfs_rule_subClassOf (g : RDF_Graph.rdf_graph)
                  rdfs_subClassOf in
              FStar_List_Tot_Base.fold_left
                (fun acc2 b_term ->
-                  let new_t =
-                    {
-                      RDF_Triple.s = (t.RDF_Triple.s);
-                      RDF_Triple.p = rdf_type;
-                      RDF_Triple.o = b_term
-                    } in
-                  RDF_Graph.add_triple_unchecked acc2 new_t) acc
+                  emit_once_term ig acc2 t.RDF_Triple.s rdf_type b_term) acc
                super_classes
          | uu___ -> acc
        else acc) g g

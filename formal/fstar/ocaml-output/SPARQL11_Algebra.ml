@@ -4704,6 +4704,116 @@ let left_join (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
               if (FStar_List_Tot_Base.length joins) > Prims.int_zero
               then joins
               else [mu1]) omega1)
+let rec expr_has_existential (e : expr) : Prims.bool=
+  match e with
+  | E_Exists uu___ -> true
+  | E_NotExists uu___ -> true
+  | E_Var uu___ -> false
+  | E_IRI uu___ -> false
+  | E_Literal uu___ -> false
+  | E_BoolLit uu___ -> false
+  | E_NumericLit uu___ -> false
+  | E_DecimalLit uu___ -> false
+  | E_DoubleLit uu___ -> false
+  | E_Bound uu___ -> false
+  | E_Now -> false
+  | E_Arith (uu___, e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_Compare (uu___, e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_And (e1, e2) -> (expr_has_existential e1) || (expr_has_existential e2)
+  | E_Or (e1, e2) -> (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrDt (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrLang (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrStarts (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrEnds (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_Contains (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrBefore (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrAfter (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_SameTerm (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_UnaryMinus e1 -> expr_has_existential e1
+  | E_UnaryPlus e1 -> expr_has_existential e1
+  | E_Not e1 -> expr_has_existential e1
+  | E_IsIRI e1 -> expr_has_existential e1
+  | E_IsBlank e1 -> expr_has_existential e1
+  | E_IsLiteral e1 -> expr_has_existential e1
+  | E_IsNumeric e1 -> expr_has_existential e1
+  | E_Str e1 -> expr_has_existential e1
+  | E_Lang e1 -> expr_has_existential e1
+  | E_Datatype e1 -> expr_has_existential e1
+  | E_IRI_fn e1 -> expr_has_existential e1
+  | E_HasLang e1 -> expr_has_existential e1
+  | E_HasLangDir e1 -> expr_has_existential e1
+  | E_LangDir e1 -> expr_has_existential e1
+  | E_StrLen e1 -> expr_has_existential e1
+  | E_UCase e1 -> expr_has_existential e1
+  | E_LCase e1 -> expr_has_existential e1
+  | E_EncodeForUri e1 -> expr_has_existential e1
+  | E_Abs e1 -> expr_has_existential e1
+  | E_Round e1 -> expr_has_existential e1
+  | E_Ceil e1 -> expr_has_existential e1
+  | E_Floor e1 -> expr_has_existential e1
+  | E_MD5 e1 -> expr_has_existential e1
+  | E_SHA1 e1 -> expr_has_existential e1
+  | E_SHA256 e1 -> expr_has_existential e1
+  | E_SHA384 e1 -> expr_has_existential e1
+  | E_SHA512 e1 -> expr_has_existential e1
+  | E_Year e1 -> expr_has_existential e1
+  | E_Month e1 -> expr_has_existential e1
+  | E_Day e1 -> expr_has_existential e1
+  | E_Hours e1 -> expr_has_existential e1
+  | E_Minutes e1 -> expr_has_existential e1
+  | E_Seconds e1 -> expr_has_existential e1
+  | E_Timezone e1 -> expr_has_existential e1
+  | E_Tz e1 -> expr_has_existential e1
+  | E_Aggregate (uu___, uu___1, e1) -> expr_has_existential e1
+  | E_TTSubject e1 -> expr_has_existential e1
+  | E_TTPredicate e1 -> expr_has_existential e1
+  | E_TTObject e1 -> expr_has_existential e1
+  | E_IsTriple e1 -> expr_has_existential e1
+  | E_StrLangDir (e1, e2, e3) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_has_existential e3)
+  | E_If (e1, e2, e3) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_has_existential e3)
+  | E_TripleTerm (e1, e2, e3) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_has_existential e3)
+  | E_Coalesce es -> expr_list_has_existential es
+  | E_Concat es -> expr_list_has_existential es
+  | E_FunctionCall (uu___, es) -> expr_list_has_existential es
+  | E_In (e1, es) ->
+      (expr_has_existential e1) || (expr_list_has_existential es)
+  | E_NotIn (e1, es) ->
+      (expr_has_existential e1) || (expr_list_has_existential es)
+  | E_Substr (e1, e2, e3o) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_opt_has_existential e3o)
+  | E_Regex (e1, e2, e3o) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_opt_has_existential e3o)
+  | E_Replace (e1, e2, e3, e4o) ->
+      (((expr_has_existential e1) || (expr_has_existential e2)) ||
+         (expr_has_existential e3))
+        || (expr_opt_has_existential e4o)
+and expr_list_has_existential (es : expr Prims.list) : Prims.bool=
+  match es with
+  | [] -> false
+  | e::rest -> (expr_has_existential e) || (expr_list_has_existential rest)
+and expr_opt_has_existential (eo : expr FStar_Pervasives_Native.option) :
+  Prims.bool=
+  match eo with
+  | FStar_Pervasives_Native.None -> false
+  | FStar_Pervasives_Native.Some e -> expr_has_existential e
 let filter_solutions_fwd
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
   (omega : solution_sequence) : solution_sequence=
