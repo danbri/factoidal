@@ -107,6 +107,57 @@ problem on real data is **not asymptotic**. It is throughput:
 That is the number to beat, and it is a constant-factor number. Mature
 engines are one to three orders of magnitude above it.
 
+### ⚠️ Calibration: how much can dictionary encoding actually buy?
+
+I promoted Phase 2 from **reading** `triple_cmp`, not from profiling —
+exactly the move `skills/measuring-inference` rule 1 forbids. Measured
+2026-08-01, holding graph shape and output constant (17737 triples) and
+varying only IRI length:
+
+| IRI length | wall | vs 20-char |
+|---:|---:|---:|
+| 20 chars | 4.55 s | 1.00× |
+| 100 chars | 4.98 s | **1.09×** |
+| 400 chars | 8.35 s | 1.84× |
+
+At **realistic** IRI lengths — schema.org's are ~30 chars — string
+*length* accounts for well under 10% of the time. At absurd lengths it
+reaches 84%.
+
+⚠️ **What this does and does not settle.** It measures the *marginal*
+cost of longer strings. It does **not** measure the cost of using
+strings at all: even a 20-char comparison costs a pointer chase, a
+length check and a byte loop where an integer compare is one
+instruction, and it says nothing about the allocation `triple_to_key`
+does on every comparison. So this is a **lower bound** on what Phase 2
+can recover, not an estimate of it.
+
+**Expectation setting, so the result is judged honestly when it lands:**
+a 1.3–2× improvement is a good outcome. A 10× would be surprising and
+should be re-measured before it is believed. If the measured gain is
+small, that is a finding about where the time really goes, not a failed
+phase — and it would promote Phase 3 (persistent indexes, killing the
+per-round rebuild and the O(n) membership test) above it.
+
+### 🔴 The blowup nobody had measured: hierarchy depth × instance count
+
+While calibrating the above, a probe with a 200-deep chain and 4000
+instances **exceeded a 10-minute cap** — on 4200 input triples, where
+schema.org's 17949 close in 4.8 s.
+
+The cause is the product, not either factor. Every instance of the
+chain's root acquires a `rdf:type` triple for **every** ancestor:
+4000 × 200 = 800,000 derived triples. Neither of our existing benchmarks
+sees this — a chain alone has no instances, and schema.org is too shallow
+for it to bite.
+
+This is the shape that real deployments hit: Gene Ontology annotations
+are exactly deep hierarchy × many instances. **Phase 0's benchmark must
+include it**, and it is a stronger argument for Phase 4 (specialised
+transitive closure / reachability labelling) than the chain ever was —
+with a reachability index, an instance's ancestor set is answered without
+materialising one triple per ancestor.
+
 ### What this does to the ordering
 
 * **Phase 2 (dictionary encoding) is promoted to the top of the
