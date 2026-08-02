@@ -98,9 +98,30 @@ let rec dedup_sorted_aux
       if dup
       then dedup_sorted_aux prev_key rest acc
       else dedup_sorted_aux (FStar_Pervasives_Native.Some k) rest (t :: acc)
+let cmp_decorated_triple (p1 : (Prims.string * RDF_Triple.triple))
+  (p2 : (Prims.string * RDF_Triple.triple)) : Prims.int=
+  FStar_String.compare (FStar_Pervasives_Native.fst p1)
+    (FStar_Pervasives_Native.fst p2)
+let rec dedup_sorted_decorated_aux
+  (prev_key : Prims.string FStar_Pervasives_Native.option)
+  (ts : (Prims.string * RDF_Triple.triple) Prims.list)
+  (acc : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
+  match ts with
+  | [] -> FStar_List_Tot_Base.rev acc
+  | (k, t)::rest ->
+      let dup =
+        match prev_key with
+        | FStar_Pervasives_Native.Some p -> p = k
+        | FStar_Pervasives_Native.None -> false in
+      if dup
+      then dedup_sorted_decorated_aux prev_key rest acc
+      else
+        dedup_sorted_decorated_aux (FStar_Pervasives_Native.Some k) rest (t
+          :: acc)
 let graph_dedup_sort (g : rdf_graph) : rdf_graph=
-  let sorted = FStar_List_Tot_Base.sortWith triple_cmp g in
-  dedup_sorted_aux FStar_Pervasives_Native.None sorted []
+  let decorated = FStar_List_Tot_Base.map (fun t -> ((triple_to_key t), t)) g in
+  let sorted = FStar_List_Tot_Base.sortWith cmp_decorated_triple decorated in
+  dedup_sorted_decorated_aux FStar_Pervasives_Native.None sorted []
 let rec add_triples_if_new (g : rdf_graph)
   (ts : RDF_Triple.triple Prims.list) : rdf_graph=
   match ts with
