@@ -314,6 +314,30 @@ suites never catch these until a consumer feeds them the right input.
    accumulator is unavoidable, unit-test exact output strings
    (`tests/unit/json_escape_unit.ml` pattern).
 
+5. **F-star proves TERMINATION, not STACK DEPTH.** A `Tot` function
+   that recurses down a list verifies with a clean `decreases` and
+   then dies on a large input, because the extracted OCaml still
+   grows one stack frame per element. Added 2026-08-02:
+   `RDFS.Closure.SemiNaive.sorted_diff` was written as
+   `n :: sorted_diff ns older`, passed every W3C suite and every
+   synthetic benchmark shape, and then produced
+
+       Fatal error: exception Stack overflow
+       Called from RDFS_Closure_SemiNaive.sorted_diff
+
+   on QUDT, whose closure is 508,139 triples. Nothing in the
+   verification says a word about stack.
+
+   Rule: in any function that can see a whole graph, the recursive
+   call must be in TAIL position after extraction. `List.Tot.fold_left`
+   and `rev_acc` are tail-recursive; **`List.Tot.append` is not**, so
+   `rev acc @ rest` reintroduces the same bug the accumulator removed —
+   write `List.Tot.rev_acc acc rest`.
+
+   Detection: the W3C suites and small synthetic shapes are all far
+   too small to trigger this. It takes a real six-figure-triple input,
+   which is why `tools/bench-closure.sh` carries one.
+
 Detection heuristic: any F-star module whose OUTPUT is consumed by a
 strict external parser (JSON.parse, a SPARQL client, a W3C fixture
 diff) deserves one exact-bytes unit test. Verified-total is not
