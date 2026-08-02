@@ -671,3 +671,51 @@ with `ps -o etimes=` that the elapsed time is plausible.
 while a gate battery runs is enough contention to kill the battery. The
 previous gate passed the same suite cleanly. Stagger heavy work, or
 expect to re-run the gate.
+
+## Hazard #18 — the container can be recycled mid-session, and an uncommitted edit can silently un-happen
+
+Observed 2026-08-02. A source edit (`SPARQL11.Store.fst`, applied by a
+python heredoc whose uniqueness assertion passed, then verified clean by
+F\*) was later found reverted on disk to the committed content, with a
+fresh mtime. The commit that was supposed to carry it listed the file in
+`git add`, succeeded, and silently contained everything EXCEPT that file
+— `git add` on a clean file is a no-op, so nothing failed. The stale
+binary then reproduced the very bug the edit fixed, which is the only
+reason anyone noticed.
+
+Forensics after the fact, on the machine itself:
+
+* `uptime -s` showed the CURRENT VM had **booted 183 seconds ago** —
+  the session had just been recycled again, invisibly, between two
+  turns. Recycles are routine, not exceptional.
+* The workspace survives recycles (untracked `.claude-runs/` logs from
+  hours earlier persisted; tracked files kept their original mtimes —
+  no wholesale re-clone).
+* The loss was SELECTIVE: another file edited five minutes earlier in
+  the same working session kept its uncommitted edit and made it into
+  the commit. The one file reverted carried a restore-time mtime.
+* In-flight background builds spanning the event completed with clean,
+  continuous logs — consistent with the harness restarting them on the
+  new VM.
+
+The exact restore mechanism is underdetermined by what survives a
+recycle (the process-level evidence dies with the old VM). The best
+supported story: session state is restored from a point-in-time
+snapshot, and an edit made after the last snapshot but before the
+recycle is the casualty. Do not spend hours on the forensics; the
+countermeasure is total regardless of mechanism:
+
+1. **Commit and push IMMEDIATELY after any material source edit** —
+   before verification, before builds, before anything long-running.
+   A pushed commit survives every recycle variant; an uncommitted edit
+   survives none of the bad ones. Amend later if needed.
+2. **Never trust "the commit succeeded" as proof the edit is in it.**
+   `git show --stat HEAD` after committing; a listed-but-clean file
+   vanishes from the commit without any error.
+3. **Bracket builds with a content check** on the files the build must
+   see: `sha256sum` the edited source before kicking the build and
+   verify it again from the build script's last line. A build that read
+   a reverted source produces a plausible, wrong artifact.
+4. **After any rebuild that carries a fix, re-run the reproducer**
+   against the fresh artifact. The revert above was caught exactly this
+   way, and no other check would have caught it.
