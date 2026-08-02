@@ -705,6 +705,74 @@ than four hours: same vocabulary, same code path, tractable. That is the
 profile the next fix should come from — not another one taken on
 schema.org.
 
+#### ✅ The profile taken on the right vocabulary, and the fix it bought
+
+`callgrind` on the 16,000-triple QUDT prefix, 151 G instructions
+retired — a completely different shape from schema.org's:
+
+| family | share |
+|---|---:|
+| **string construction** (`unsafe_blits` 15.9%, `blit_string` 8.8%, `memcpy` 8.8%, `sum_lengths` 8.2%, `alloc_string` 4.2%, `String.concat` 3.3%) | **~49%** |
+| garbage collection | ~17% |
+| string comparison | ~5% |
+| the key functions (`triple_to_key`, `term_to_key_total`, `subject_to_key`) | ~4% |
+
+About **half the program was building triple key strings.** `triple_cmp`
+calls `triple_to_key`, a `String.concat` over the subject, predicate and
+object IRIs in full, and `sortWith` calls that comparator O(N log N)
+times — two key builds per comparison. At N = 500,000 that is ~38× more
+string building than the job needs, and most of the GC share was
+collecting those same keys.
+
+**The fix:** `graph_dedup_sort` becomes decorate-sort-undecorate (the
+Schwartzian transform) — build each key once, sort `(key, triple)` pairs
+on the precomputed key, strip. `RDF.Indexed.build_bucket` already does
+exactly this for its six index buckets, so this follows an established
+pattern in the tree; it also already demonstrates `List.Tot.map` survives
+a half-million triples here.
+
+📊 **Criterion was QUDT under 150 s. Result: 143.87 s.** ✅
+
+| | before | after | change |
+|---|---:|---:|---:|
+| QUDT | 264.3 s | **143.87 s** | **1.84×** |
+| schema.org | 2.558 s | **1.622 s** | 1.58× |
+
+Byte-for-byte identical output on both (508,139 and 29,275 triples).
+
+**Cumulative over the session:**
+
+| | opening baseline | now | change |
+|---|---:|---:|---:|
+| QUDT | 270.9 s | 143.87 s | **1.88×** |
+| schema.org | 4.686 s | 1.622 s | **2.89×** |
+| QUDT out-triples/s | 1,876 | 3,532 | 1.88× |
+| schema.org out-triples/s | 6,247 | 18,048 | 2.89× |
+
+⚠️ **The proof cost is real and was paid.** The change broke
+`lemma_graph_dedup_sort_memP` — every triple the dedup returns came from
+the input — and the build caught it: layer 9 failed, later layers never
+started, the binary stayed at the previous commit. Re-established with a
+walk lemma for the decorated dedup plus a four-step chain
+(walk lemma → `memP_map_elim` → `lemma_sortWith_memP`, which was already
+generic over the element type → `memP_map_elim`). No `--lax`, no
+`admit`. The proof got longer because the data structure got one level
+deeper.
+
+#### What this says about the plan
+
+Phase 2 was "dictionary encoding", calibrated in §0.5 at 1.3–2× with
+"10× should be disbelieved". The measured 1.84× on QUDT lands inside that
+band — but it came from *not* encoding anything. Building each key once
+instead of 2·log N times is the cheap part of what dictionary encoding
+would buy, obtained without changing a single data type.
+
+Whether full dictionary encoding is still worth it is now an open
+question with a new baseline: string construction was ~49% of the
+program and this removes the bulk of it, so the remaining headroom is
+smaller than §0.5 assumed. Re-profile the 16k prefix before starting
+Phase 2.
+
 ### Phase 2 — dictionary encoding
 
 Intern IRIs and literals to integers; compare and index on those. Kills
