@@ -158,10 +158,49 @@ let rec lemma_dedup_sorted_memP (prev : option string)
     lemma_dedup_sorted_memP prev rest acc x;
     lemma_dedup_sorted_memP (Some (triple_to_key t)) rest (t :: acc) x
 
+// memP through the DECORATED dedup walk. Same shape as
+// `lemma_dedup_sorted_memP` above, reading each key out of the pair
+// instead of recomputing it. `graph_dedup_sort` became a
+// decorate-sort-undecorate pass on 2026-08-02 (about half of QUDT's
+// closure time was `triple_to_key` string building inside the sort
+// comparator), so the walk it performs is this one.
+let rec lemma_dedup_sorted_decorated_memP (prev : option string)
+    (ts : list (string * triple)) (acc : list triple) (x : triple)
+  : Lemma (ensures memP x (dedup_sorted_decorated_aux prev ts acc) ==>
+                   (memP x (map snd ts) \/ memP x acc))
+          (decreases ts) =
+  match ts with
+  | [] -> rev_memP acc x
+  | (k, t) :: rest ->
+    lemma_dedup_sorted_decorated_memP prev rest acc x;
+    lemma_dedup_sorted_decorated_memP (Some k) rest (t :: acc) x
+
+// Every triple `graph_dedup_sort` returns came from the input graph.
+//
+// The chain is one step longer than it used to be, because the sort now
+// runs over `(key, triple)` pairs: walk-lemma to get membership in
+// `map snd sorted`, `memP_map_elim` to name the pair, the sortWith
+// lemma to push that pair back into the decorated list, and
+// `memP_map_elim` once more to name the triple it decorated.
 let lemma_graph_dedup_sort_memP (g : list triple) (x : triple)
   : Lemma (ensures memP x (graph_dedup_sort g) ==> memP x g) =
-  lemma_dedup_sorted_memP None (sortWith triple_cmp g) [] x;
-  lemma_sortWith_memP triple_cmp g x
+  let f = (fun (t : triple) -> (triple_to_key t, t)) in
+  let dec : list (string * triple) = map f g in
+  let sorted = sortWith cmp_decorated_triple dec in
+  lemma_dedup_sorted_decorated_memP None sorted [] x;
+  introduce memP x (graph_dedup_sort g) ==> memP x g
+  with _. begin
+    memP_map_elim snd x sorted;
+    eliminate exists (p : (string * triple)). memP p sorted /\ snd p == x
+    returns memP x g
+    with _. begin
+      lemma_sortWith_memP cmp_decorated_triple dec p;
+      memP_map_elim f p g;
+      eliminate exists (t : triple). memP t g /\ f t == p
+      returns memP x g
+      with _. ()
+    end
+  end
 
 val rdf_property_axiom_closure_licensed (g : rdf_graph)
   : Lemma (ensures forall (t : triple).
