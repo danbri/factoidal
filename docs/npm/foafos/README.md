@@ -42,34 +42,47 @@ npm install @danbri/foafos
 
 ## Quickstart
 
+The API is **async throughout** — every engine call returns a Promise,
+so `await` each one (the engine bundle loads lazily on first use).
+
 ```js
 import { parse, query, serialize, canonicalize, dataFactory }
   from "@danbri/foafos";
 
 // Parse any supported syntax into an RDF/JS DatasetCore.
-const ds = parse(`
+// If your data contains RELATIVE IRIs, pass { baseIRI: ... } —
+// see the note below this example.
+const ds = await parse(`
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
   _:a foaf:name "Alice" ; foaf:knows _:b .
   _:b foaf:name "Bob" .
 `, { format: "turtle" });
 
 // SELECT — bindings are Map<variableName, RDF/JS Term>.
-const rows = query(ds, `
+const rows = await query(ds, `
   PREFIX foaf: <http://xmlns.com/foaf/0.1/>
   SELECT ?name WHERE { ?p foaf:name ?name } ORDER BY ?name
 `);
 for (const b of rows) console.log(b.get("name").value); // Alice, Bob
 
 // ASK — plain boolean.
-const yes = query(ds, "ASK { ?s ?p ?o }");   // true
+const yes = await query(ds, "ASK { ?s ?p ?o }");   // true
 
 // Canonical N-Quads (RDFC-1.0): identical output for isomorphic
 // inputs regardless of blank-node labels.
-const c14n = canonicalize(ds);
+const c14n = await canonicalize(ds);
 
 // Round-trip.
-const nq = serialize(ds, { format: "nquads" });
+const nq = await serialize(ds, { format: "nquads" });
 ```
+
+> ⚠️ **Pass `baseIRI` when your input uses relative IRIs.** In the
+> current build, statements whose relative IRIs cannot be resolved are
+> **dropped without an error**, so a document can parse to fewer
+> triples than it contains (`{ baseIRI: "https://example.org/doc" }`
+> fixes it). A count check after parsing is a cheap guard. Surfacing
+> these drops as a throw or a warnings channel is tracked in the
+> repository issues.
 
 CommonJS: `const foafos = require("@danbri/foafos")`.
 
