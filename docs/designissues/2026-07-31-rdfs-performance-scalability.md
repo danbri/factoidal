@@ -883,6 +883,54 @@ That is proof-repair work of unknown size, and rushing it is how an
 `--admit_smt_queries` gets added. The measured prize — up to 55% of the
 run — justifies doing it properly rather than quickly.
 
+---
+
+## Where this leaves the plan
+
+📊 **Measured, gated, landed:**
+
+| | opening baseline | now | change |
+|---|---:|---:|---:|
+| QUDT (130,404 → 508,139 triples) | 270.9 s | **139.6 s** | **1.94×** |
+| schema.org (17,949 → 29,275) | 4.686 s | **1.649 s** | **2.84×** |
+
+Output byte-for-byte identical throughout. All 53 suites green, 1662 of
+1662 runnable.
+
+**Every gain came from one change** — `graph_dedup_sort` building each
+triple key once instead of `2·N·log N` times. Nothing else that was
+tried moved the number.
+
+### The scorecard, including what failed
+
+| attempt | criterion | result |
+|---|---|---|
+| semi-naive, general path | QUDT under 150 s | **0%** — never ran; `schema_dense` sends QUDT to the fast path |
+| `add_triples_if_new_bulk` | QUDT under 150 s | **missed** (264 s), but **1.83×** on schema.org |
+| decorated sort | QUDT under 150 s | ✅ **143.9 s, 1.84×** |
+| semi-naive, fast path | QUDT under 110 s | **slower** (147.9 s), reverted |
+
+Three of four missed. The one that worked is the one where the profile
+came from the vocabulary being optimised rather than a cheaper stand-in.
+
+### What measurement removed from the plan
+
+* **Phase 1 (semi-naive) is closed, not deferred.** The cost is a single
+  pass over a large graph, not the number of passes. Feeding QUDT's own
+  closure back in costs 78.8 s — 55% of the run — to derive nothing.
+* **Phase 2 (dictionary encoding) needs re-justifying.** It was
+  calibrated at 1.3–2× against a profile where string handling was ~49%
+  of the program. It is now ~7%. The headroom it targeted is largely
+  gone.
+* **The n³ and n² claims in this note were both wrong.** On one
+  vocabulary the exponent against output is n^1.42.
+
+### The standing target
+
+**78.8 s to derive nothing** is the number to attack, and the emit-once
+guard above is the identified mechanism. Everything else in this note is
+downstream of that measurement.
+
 ### Phase 2 — dictionary encoding
 
 Intern IRIs and literals to integers; compare and index on those. Kills
