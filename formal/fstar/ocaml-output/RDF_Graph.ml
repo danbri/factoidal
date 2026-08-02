@@ -106,3 +106,27 @@ let rec add_triples_if_new (g : rdf_graph)
   match ts with
   | [] -> g
   | hd::tl -> add_triples_if_new (add_triple_if_new g hd) tl
+let rec sorted_diff_aux (newer : RDF_Triple.triple Prims.list)
+  (older : RDF_Triple.triple Prims.list) (acc : RDF_Triple.triple Prims.list)
+  : RDF_Triple.triple Prims.list=
+  match (newer, older) with
+  | ([], uu___) -> FStar_List_Tot_Base.rev acc
+  | (uu___, []) -> FStar_List_Tot_Base.rev_acc acc newer
+  | (n::ns, o::os) ->
+      let c = triple_cmp n o in
+      if c < Prims.int_zero
+      then sorted_diff_aux ns older (n :: acc)
+      else
+        if c = Prims.int_zero
+        then sorted_diff_aux ns older acc
+        else sorted_diff_aux newer os acc
+let sorted_diff (newer : RDF_Triple.triple Prims.list)
+  (older : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
+  sorted_diff_aux newer older []
+let add_triples_if_new_bulk (g : rdf_graph)
+  (ts : RDF_Triple.triple Prims.list) : rdf_graph=
+  match ts with
+  | [] -> g
+  | uu___ ->
+      let fresh = sorted_diff (graph_dedup_sort ts) (graph_dedup_sort g) in
+      FStar_List_Tot_Base.append g fresh
