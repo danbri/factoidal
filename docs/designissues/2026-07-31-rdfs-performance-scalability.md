@@ -773,6 +773,56 @@ program and this removes the bulk of it, so the remaining headroom is
 smaller than §0.5 assumed. Re-profile the 16k prefix before starting
 Phase 2.
 
+#### 📊 Re-profiled: the bottleneck moved to allocation
+
+Same 16k QUDT prefix, after the decorated sort. Total instructions
+retired fell **151 G → 74.1 G, a 2.04× reduction** — consistent with the
+1.84× wall clock, which is a useful cross-check that the profiler and
+the stopwatch agree about the same program.
+
+| family | before | after |
+|---|---:|---:|
+| string construction | ~49% | **~7%** |
+| garbage collection | ~17% | **~32%** |
+| comparisons (`string_compare`, `do_compare_val`, `caml_equal`, `memcmp`, `ml_z_compare`) | ~5% | ~17% |
+| closure application (`caml_apply2`) | — | ~6% |
+
+String building is no longer the problem. **Allocation is**, and the
+allocation comes from how many triples the rules emit per round before
+`graph_dedup_sort` collapses them: every row uses
+`add_triple_unchecked`, an O(1) prepend, and emits its whole conclusion
+set on every round whether or not the premises are new.
+
+⚠️ Two smaller items worth naming, since they are now visible above the
+noise floor:
+
+* `ml_z_compare` at 2.85% is **zarith bignum** comparison. `graph_len`
+  is `List.length`, an O(n) walk returning a `nat`, and the fixed-point
+  test `graph_len g' = graph_len g` runs it twice per round and then
+  compares two bignums. Tracking the length incrementally would remove
+  both the walk and the bignum.
+* `do_compare_val` + `caml_equal` at ~7% is OCaml's **polymorphic**
+  structural comparison — the generic one, not a specialised
+  string compare. Worth finding which comparison extracts to it.
+
+#### Phase 1, second attempt: semi-naive in the loop that actually runs
+
+The re-profile is what makes this the right next move rather than a
+guess: emissions-per-round drive the allocation that is now the single
+largest cost, and reducing emissions-per-round is precisely what
+semi-naive evaluation does.
+
+`RDFS.SchemaSplit.fast_pass` now calls `rdfs_closure_no_trans_checked`.
+Same row variants from `RDFS.Closure.SemiNaive` — one definition of each
+— composed over the ten rows the fast path runs (all twelve except
+rdfs11 and rdfs5). Same checked contract: subset-of-inputs gives
+soundness for free, one full naive step establishes completeness, and a
+failure costs one wasted pass rather than a derivation.
+
+📊 **Criterion, stated before measuring: QUDT 143.87 s → under 110 s.**
+Above 135 s means semi-naive does not buy much here either, and that
+gets reported as the result.
+
 ### Phase 2 — dictionary encoding
 
 Intern IRIs and literals to integers; compare and index on those. Kills
