@@ -188,6 +188,7 @@ open RDF.Graph
 open RDF.Indexed
 open RDF.Vocabulary
 open RDFS.Closure
+open RDFS.Closure.SemiNaive
 
 (** ==================================================================== *)
 (** 1. THE SIDE CONDITION                                                *)
@@ -526,9 +527,96 @@ let count_schema_edges (g : rdf_graph) : Tot nat =
 // One fast pass plus its verification. `false` means a schema edge
 // appeared during the loop, so the pass may have lost an rdfs11 / rdfs5
 // derivation and its result must be discarded.
+// ===================================================================
+// SEMI-NAIVE EVALUATION OF THE FAST PATH (2026-08-02)
+// ===================================================================
+// Phase 1 put a delta loop behind RDFS.Closure.SemiNaive and wired it
+// into this module's three general-path FALLBACKS. Measurement then
+// showed it gained exactly nothing on either real vocabulary -- because
+// neither vocabulary reaches those fallbacks. `schema_dense` decides
+// that, and QUDT has 709 schema edges over 295 sources against a
+// threshold of 8*295 + 64 = 2424, so QUDT takes the FAST path below and
+// the delta loop was never entered.
+//
+// This is the fast path's own delta loop. Same twelve rows as
+// `rdfs_closure_step_no_trans` -- which is to say all of them except
+// rdfs11 and rdfs5, the two the fast path deliberately drops -- driven
+// by the previous round's delta instead of by the whole graph.
+//
+// The row variants come from RDFS.Closure.SemiNaive, so there is one
+// definition of each, and the same four-way split applies: forms C and
+// D need BOTH join terms (dropping either loses derivations), form A
+// drives off the delta with the full index, form B is constant and runs
+// in round 1 only.
+
+let semi_naive_round_no_trans (full : rdf_graph) (delta : rdf_graph)
+                              (ig_full : indexed_graph)
+                              (ig_delta : indexed_graph) : rdf_graph =
+  // Form D rows, both join terms each.
+  let a1 = sn_rdfs7 full ig_delta ig_full in
+  let a2 = sn_rdfs7 a1   ig_full  ig_delta in
+  let a3 = sn_rdfs2 a2   ig_delta ig_full in
+  let a4 = sn_rdfs2 a3   ig_full  ig_delta in
+  let a5 = sn_rdfs3 a4   ig_delta ig_full in
+  let a6 = sn_rdfs3 a5   ig_full  ig_delta in
+  // Form C: rdfs9 only. rdfs11 and rdfs5 are absent from the fast path.
+  let a7 = sn_rdfs9 a6   ig_full  delta in
+  let a8 = sn_rdfs9 a7   ig_delta full in
+  // Form A rows.
+  let a9  = sn_rdfs8  a8  ig_full delta in
+  let a10 = sn_rdfs13 a9  ig_full delta in
+  let a11 = sn_rdfs4a a10 ig_full delta in
+  let a12 = sn_rdfs4b a11 ig_full delta in
+  graph_dedup_sort a12
+
+#push-options "--z3rlimit 30"
+let rec semi_naive_loop_no_trans (full : rdf_graph) (delta : rdf_graph)
+                                 (fuel : nat)
+  : Tot rdf_graph (decreases fuel) =
+  match fuel with
+  | 0 -> full
+  | n ->
+    if Nil? delta then full
+    else begin
+      let ig_full  = build_indexed full in
+      let ig_delta = build_indexed delta in
+      let next = semi_naive_round_no_trans full delta ig_full ig_delta in
+      if graph_len next = graph_len full
+      then full
+      else semi_naive_loop_no_trans next (sorted_diff next full) (n - 1)
+    end
+#pop-options
+
+let rdfs_closure_no_trans_semi_naive (g : rdf_graph) (fuel : nat)
+  : Tot rdf_graph =
+  match fuel with
+  | 0 -> g
+  | n ->
+    let remaining : nat = if n > 0 then n - 1 else 0 in
+    let first = rdfs_closure_step_no_trans g in
+    if graph_len first = graph_len g
+    then first
+    else semi_naive_loop_no_trans first (sorted_diff first (graph_dedup_sort g))
+                                  remaining
+
+// Delta loop, then ONE full naive step to check it. If that step adds
+// nothing the answer is a fixed point of the naive step containing the
+// input; the naive closure is the least such, and every row here is a
+// RDFS.Closure body applied to a subset of its inputs, so the two are
+// equal. If it adds something the delta loop was incomplete on this
+// graph and the untouched loop runs instead. A hole in the reasoning
+// costs one wasted pass, never a derivation.
+let rdfs_closure_no_trans_checked (g : rdf_graph) (fuel : nat)
+  : Tot rdf_graph =
+  let fast = rdfs_closure_no_trans_semi_naive g fuel in
+  let probe = rdfs_closure_step_no_trans fast in
+  if graph_len probe = graph_len fast
+  then fast
+  else rdfs_closure_no_trans g fuel
+
 let fast_pass (g : rdf_graph) (fuel : nat) : Tot (rdf_graph * bool) =
   let before = count_schema_edges g in
-  let r = rdfs_closure_no_trans g fuel in
+  let r = rdfs_closure_no_trans_checked g fuel in
   (r, count_schema_edges r = before)
 
 // The dispatcher. Every uncertainty falls back to the untouched general
