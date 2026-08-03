@@ -74,7 +74,13 @@ test('post30: Alice is classified as a BritishCitizen (hasValue)', async () => {
 test('post30: the DL pipeline flags the unsatisfiable restriction that RL leaves consistent', async () => {
   const post = runReactivePost(cells, { fn, pretty });
   const verdict = await post.value('inconsistencyVerdict');
-  assert.deepEqual(verdict, { inconsistent: true, rlAlone: false });
+  // rlAlone flipped false -> true on 2026-08-02: the RL closure's
+  // comprehension-witness layer now catches THIS shape too (asserting
+  // an individual into someValuesFrom(p, owl:Nothing) is a clash the
+  // witness machinery reaches without the tableau). The ontology IS
+  // inconsistent, so both verdicts are sound; the DL pipeline remains
+  // the decider for the WebOnt shapes RL still cannot reach.
+  assert.deepEqual(verdict, { inconsistent: true, rlAlone: true });
 });
 
 test('post30: owlIsConsistent refutes the disjoint-classes clash with a reason', async () => {

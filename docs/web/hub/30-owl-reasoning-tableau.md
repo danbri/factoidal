@@ -146,13 +146,15 @@ unsatisfiableOntology = `
 inconsistencyVerdict = await fn.tableauDlInconsistent(unsatisfiableOntology)
 ```
 
-`inconsistencyVerdict` reports `{ inconsistent: true, rlAlone: false }`:
+`inconsistencyVerdict` reports `{ inconsistent: true, rlAlone: true }`:
 the DL pipeline (RL closure → tableau materialisation → RL closure →
-inconsistency check) flags the contradiction, while `rlAlone` — the
-plain OWL-RL verdict on the same graph — does not, because the
-Datalog closure never introduces the witness that reaches `owl:Nothing`.
-This is the shape of the `WebOnt-Restriction` cases the DL regime
-decides that RL leaves consistent.
+inconsistency check) flags the contradiction — and, since the RL
+closure grew its comprehension-witness layer (2026-08), the plain
+OWL-RL verdict on this graph now flags it too: membership in a
+`someValuesFrom` restriction on `owl:Nothing` is a clash the witness
+machinery reaches without a tableau. Harder `WebOnt-Restriction`
+shapes still separate the two — the tableau constructs witnesses the
+Datalog closure cannot, and those cases are why the DL regime exists.
 
 ## Consistency by refutation: a verdict and its clash families
 
