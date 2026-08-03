@@ -123,7 +123,7 @@
 Closure regime: RL
 Closure semantics: DIRECT (default)
 OWL 2 test catalog: third_party/testing/owl/profile-EL.rdf
-  parsed 1809 triples in 0.38s
+  parsed 1809 triples in 0.14s
 Totals: 87 test cases
   PositiveEntailmentTest:    29
   NegativeEntailmentTest:    6

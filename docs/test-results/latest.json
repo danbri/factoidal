@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-08-02 21:25 UTC",
-  "commit": "375cfd19c756677f3950a27932c54a88e4cc0cf0",
+  "timestamp": "2026-08-03 00:16 UTC",
+  "commit": "0b03a71831628e866f6d7a2f3faa6c35f7b082f0",
   "branch": "claude/autoexec-scratchpad-assess-37oeok",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
@@ -54,8 +54,8 @@
     "jsonld_compact": {"pass":245,"fail":0,"skip":1,"total":246,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#compaction-algorithm"},
     "jsonld_flatten": {"pass":58,"fail":0,"skip":0,"total":58,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#flattening-algorithm"},
     "hdt_stage4_parity":{"pass":6,"fail":0,"skip":0,"total":6,"present":true,"spec":"internal (HDT backend parity vs in-memory)"},
-    "hub_browser_bundle":{"pass":249,"fail":5,"skip":0,"total":254,"present":true,"spec":"internal (node --test tests/hub)"},
-    "npm_package":    {"pass":162,"fail":0,"skip":1,"total":163,"present":true,"spec":"internal (node --test npm/factoidal/test)"}
+    "hub_browser_bundle":{"pass":242,"fail":12,"skip":0,"total":254,"present":true,"spec":"internal (node --test tests/hub)"},
+    "npm_package":    {"pass":166,"fail":0,"skip":1,"total":167,"present":true,"spec":"internal (node --test npm/factoidal/test)"}
   },
   "suites": {
     "sparql": [
@@ -143,8 +143,8 @@
     "jsonld_flatten": {"name":"jsonld_flatten","pass":58,"fail":0,"skip":0,"total":58},
     "grddl_stage1": {"name":"grddl_stage1","pass":18,"fail":50,"skip":0,"total":68},
     "hdt_stage4_parity": {"name":"hdt_stage4_parity","pass":6,"fail":0,"skip":0,"total":6},
-    "hub_browser_bundle": {"name":"hub_browser_bundle","pass":249,"fail":5,"skip":0,"total":254},
-    "npm_package": {"name":"npm_package","pass":162,"fail":0,"skip":1,"total":163},
+    "hub_browser_bundle": {"name":"hub_browser_bundle","pass":242,"fail":12,"skip":0,"total":254},
+    "npm_package": {"name":"npm_package","pass":166,"fail":0,"skip":1,"total":167},
     "rml_io": {"name":"rml_io","pass":17,"fail":1,"skip":55,"total":73},
     "toan_matrix": {"name":"toan_matrix","pass":11,"fail":0,"skip":0,"total":11},
     "xforms": {"name":"xforms","pass":2,"fail":0,"skip":0,"total":2}

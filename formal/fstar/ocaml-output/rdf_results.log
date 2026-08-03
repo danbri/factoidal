@@ -701,7 +701,7 @@
   [149/313] rdf-turtle/turtle-syntax-bnode-05 ok
   [150/313] rdf-turtle/turtle-syntax-bnode-06 ok
   [151/313] rdf-turtle/turtle-syntax-bnode-07 ok
-  [152/313] rdf-turtle/turtle-syntax-bnode-08 ok
+  [152/313] rdf-turtle/turtle-syntax-bnode-08 ok (14ms)
   [153/313] rdf-turtle/turtle-syntax-bnode-09 ok
   [154/313] rdf-turtle/turtle-syntax-bnode-10 ok
   [155/313] rdf-turtle/turtle-syntax-number-01 ok
@@ -877,7 +877,7 @@
   [12/166] rdf-xml/rdf-containers-syntax-vs-schema-test004 ok
   [13/166] rdf-xml/rdf-containers-syntax-vs-schema-test006 ok
   [14/166] rdf-xml/rdf-containers-syntax-vs-schema-test007 ok
-  [15/166] rdf-xml/rdf-containers-syntax-vs-schema-test008 ok
+  [15/166] rdf-xml/rdf-containers-syntax-vs-schema-test008 ok (46ms)
   [16/166] rdf-xml/rdf-element-not-mandatory-test001 ok
   [17/166] rdf-xml/rdf-node-element-test001 ok
   [18/166] rdf-xml/rdf-ns-prefix-confusion-test0001 ok
@@ -1073,7 +1073,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: xmlsch-02-whitespace-facet-1
   PASS: xmlsch-02-whitespace-facet-2
   PASS: xmlsch-02-whitespace-facet-4
-  [suite time: 0.0s]
+  [suite time: 0.2s]
 
 --- rdf-n-quads ---
   PASS: nq-syntax-uri-01
@@ -1595,7 +1595,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.2s]
+  [suite time: 0.3s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
@@ -1749,7 +1749,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: turtle-syntax-bnode-05
   PASS: turtle-syntax-bnode-06
   PASS: turtle-syntax-bnode-07
-  PASS: turtle-syntax-bnode-08
+  PASS: turtle-syntax-bnode-08 (14ms)
   PASS: turtle-syntax-bnode-09
   PASS: turtle-syntax-bnode-10
   PASS: turtle-syntax-number-01
@@ -1911,7 +1911,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.2s]
+  [suite time: 0.3s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001
@@ -1928,7 +1928,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: rdf-containers-syntax-vs-schema-test004
   PASS: rdf-containers-syntax-vs-schema-test006
   PASS: rdf-containers-syntax-vs-schema-test007
-  PASS: rdf-containers-syntax-vs-schema-test008
+  PASS: rdf-containers-syntax-vs-schema-test008 (46ms)
   PASS: rdf-element-not-mandatory-test001
   PASS: rdf-node-element-test001
   PASS: rdf-ns-prefix-confusion-test0001
@@ -2080,7 +2080,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: xmlbase-test011
   PASS: xmlbase-test013
   PASS: xmlbase-test014
-  [suite time: 0.1s]
+  [suite time: 0.2s]
 
 ========================================
 Suite Results:

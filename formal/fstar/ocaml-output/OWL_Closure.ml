@@ -5058,6 +5058,24 @@ let regime_rdf : Prims.string= "RDF"
 let regime_rdfs : Prims.string= "RDFS"
 let regime_owl_rl : Prims.string= "OWL-RL"
 let regime_owl_direct : Prims.string= "OWL-Direct"
+let is_witness_bnode_label (b : RDF_Term.bnode_id) : Prims.bool=
+  let lp = FStar_String.strlen "__rl_" in
+  ((FStar_String.strlen b) >= lp) &&
+    ((FStar_String.sub b Prims.int_zero lp) = "__rl_")
+let subject_is_witness (s : RDF_Term.subject) : Prims.bool=
+  match s with
+  | RDF_Term.S_BNode b -> is_witness_bnode_label b
+  | RDF_Term.S_IRI uu___ -> false
+let term_is_witness (o : RDF_Term.rdf_term) : Prims.bool=
+  match o with
+  | RDF_Term.T_BNode b -> is_witness_bnode_label b
+  | uu___ -> false
+let triple_mentions_witness (t : RDF_Triple.triple) : Prims.bool=
+  (subject_is_witness t.RDF_Triple.s) || (term_is_witness t.RDF_Triple.o)
+let strip_comprehension_witnesses (g : RDF_Graph.rdf_graph) :
+  RDF_Graph.rdf_graph=
+  FStar_List_Tot_Base.filter
+    (fun t -> Prims.op_Negation (triple_mentions_witness t)) g
 let entailment_closure (regime : Prims.string) (g : RDF_Graph.rdf_graph)
   (fuel : Prims.nat) : RDF_Graph.rdf_graph=
   if regime = regime_owl_rl
@@ -5070,3 +5088,6 @@ let entailment_closure (regime : Prims.string) (g : RDF_Graph.rdf_graph)
       then RDFS_SchemaSplit.rdfs_closure_with_reflexivity_dispatch g fuel
       else
         if regime = regime_rdf then RDFS_Closure.rdfs_closure g fuel else g
+let entailment_closure_for_query (regime : Prims.string)
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) : RDF_Graph.rdf_graph=
+  strip_comprehension_witnesses (entailment_closure regime g fuel)
