@@ -81,8 +81,15 @@ module OWL.RL.Spec
 //                    cls-maxqc3 cls-maxqc4 cls-oo)
 //   Table 6  cax-*   THIS FILE, landing 2 (cax-sco cax-eqc1 cax-eqc2
 //                    cax-dw cax-adc)
-//   Table 7  dt-*    later landing
-//   Table 8  scm-*   later landing
+//   Table 7  dt-*    THIS FILE, landing 3 (dt-type1 dt-type2 dt-eq;
+//                    CLASH rows dt-diff dt-not-type; all PARAMETRIC
+//                    over the datatype map -- see Table 7's banner)
+//   Table 8  scm-*   THIS FILE, landing 3 (scm-cls scm-sco scm-eqc1
+//                    scm-eqc2 scm-op scm-dp scm-spo scm-eqp1 scm-eqp2
+//                    scm-dom1 scm-dom2 scm-rng1 scm-rng2 scm-hv
+//                    scm-svf1 scm-svf2 scm-avf1 scm-avf2 scm-int
+//                    scm-uni)
+//   deferred rows    landed in landing 3: eq-diff2 eq-diff3 prp-adp
 //   engine extensions (comp-* witnesses, dt-rng-intersect,
 //                    chain<->transitive bridges, ...): final landing,
 //                    each stated WITH its sound-extension obligation
@@ -1065,3 +1072,487 @@ let table6_derives (g : list triple) (t : triple) : prop =
 
 let table6_clashes (g : list triple) : prop =
   cax_dw_clash g \/ cax_adc_clash g
+
+
+(** ================================================================= **)
+(** Landing 3 vocabulary                                              **)
+(** ================================================================= **)
+
+let o_owl_AllDifferent : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AllDifferent");
+  "http://www.w3.org/2002/07/owl#AllDifferent"
+let o_owl_AllDisjointProperties : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AllDisjointProperties");
+  "http://www.w3.org/2002/07/owl#AllDisjointProperties"
+let o_owl_distinctMembers : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#distinctMembers");
+  "http://www.w3.org/2002/07/owl#distinctMembers"
+let o_owl_ObjectProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#ObjectProperty");
+  "http://www.w3.org/2002/07/owl#ObjectProperty"
+let o_owl_DatatypeProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#DatatypeProperty");
+  "http://www.w3.org/2002/07/owl#DatatypeProperty"
+let o_rdfs_Datatype : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#Datatype");
+  "http://www.w3.org/2000/01/rdf-schema#Datatype"
+
+(** ================================================================= **)
+(** Landing 3a: the deferred AllDifferent / AllDisjointProperties     **)
+(** rows of Table 4 (see the ledger)                                  **)
+(** ================================================================= **)
+
+// -------------------------------------------------------------------
+// eq-diff2 / eq-diff3, Table 4, verbatim (CLASH rows):
+//   "eq-diff2 | T(?x, rdf:type, owl:AllDifferent)
+//               T(?x, owl:members, ?y)  LIST[?y, ?z1, ..., ?zn]
+//               T(?zi, owl:sameAs, ?zj)  (for any i != j) | false"
+//   "eq-diff3 | T(?x, rdf:type, owl:AllDifferent)
+//               T(?x, owl:distinctMembers, ?y)  LIST[?y, ?z1, ..., ?zn]
+//               T(?zi, owl:sameAs, ?zj)  (for any i != j) | false"
+// The two rows differ only in the membership predicate.
+// -------------------------------------------------------------------
+let eq_diff23_clash_via (members_pred : wf_iri) (g : list triple) : prop =
+  exists (ty mem sa : triple) (zs : list rdf_term)
+         (zi zj : rdf_term) (zis : subject).
+    memP ty g /\ ty.p == o_rdf_type /\ ty.o == T_IRI o_owl_AllDifferent /\
+    memP mem g /\ mem.p == members_pred /\ mem.s == ty.s /\
+    owl_list_denotes g mem.o zs /\
+    two_distinct_members zs zi zj /\
+    memP sa g /\ sa.p == o_owl_sameAs /\
+    subj_term zis == zi /\ sa.s == zis /\ sa.o == zj
+
+let eq_diff2_clash (g : list triple) : prop =
+  eq_diff23_clash_via o_owl_members g
+
+let eq_diff3_clash (g : list triple) : prop =
+  eq_diff23_clash_via o_owl_distinctMembers g
+
+// -------------------------------------------------------------------
+// prp-adp, Table 4, verbatim (a CLASH row):
+//   "prp-adp | T(?x, rdf:type, owl:AllDisjointProperties)
+//              T(?x, owl:members, ?y)  LIST[?y, ?p1, ..., ?pn]
+//              T(?u, ?pi, ?v)  T(?u, ?pj, ?v)  (for any i != j) |
+//              false"
+// Delta GP: the members occupy predicate position in the data
+// premises, so the two distinct list members must be IRIs.
+// -------------------------------------------------------------------
+let prp_adp_clash (g : list triple) : prop =
+  exists (ty mem u1 u2 : triple) (ps : list rdf_term) (pi pj : wf_iri).
+    memP ty g /\ ty.p == o_rdf_type /\
+    ty.o == T_IRI o_owl_AllDisjointProperties /\
+    memP mem g /\ mem.p == o_owl_members /\ mem.s == ty.s /\
+    owl_list_denotes g mem.o ps /\
+    two_distinct_members ps (T_IRI pi) (T_IRI pj) /\
+    memP u1 g /\ u1.p == pi /\
+    memP u2 g /\ u2.p == pj /\
+    u2.s == u1.s /\ u2.o == u1.o
+
+(** ================================================================= **)
+(** Table 7: The Semantics of Datatypes                               **)
+(**                                                                   **)
+(** The dt-* rows quantify over DATA VALUES: "for each literal lt1    **)
+(** and lt2 with the same data value" (dt-eq), "... with different    **)
+(** data values" (dt-diff), "for each literal lt in the value space   **)
+(** of datatype dt" (dt-type2). A value space is a property of the    **)
+(** DATATYPE MAP, not of the graph, so these rows are stated          **)
+(** PARAMETRICALLY: each takes the value-level relation it quantifies **)
+(** over as an argument. The module fixes no datatype map — that is   **)
+(** the refinement layer's obligation to discharge with the engine's  **)
+(** concrete one, and the parameter makes the dependency explicit     **)
+(** instead of baking one interpretation in as "the spec".            **)
+(** ================================================================= **)
+
+// -------------------------------------------------------------------
+// dt-type1, Table 7, verbatim:
+//   "dt-type1 |  | T(?dt, rdf:type, rdfs:Datatype)
+//    (for each datatype ?dt supported in the datatype map)"
+// Parameter: the supported-datatype set.
+// -------------------------------------------------------------------
+let dt_type1_derives (supported : wf_iri -> prop)
+                     (g : list triple) (t : triple) : prop =
+  exists (dt : wf_iri).
+    supported dt /\
+    t == ({ s = S_IRI dt; p = o_rdf_type; o = T_IRI o_rdfs_Datatype } <: triple)
+
+// -------------------------------------------------------------------
+// dt-type2, Table 7, verbatim:
+//   "dt-type2 |  | T(?lt, rdf:type, ?dt)
+//    (for each literal ?lt and each datatype ?dt supported in the
+//     datatype map such that the data value of ?lt is contained in
+//     the value space of ?dt)"
+// Delta GR: a literal cannot occupy subject position in this tree's
+// term algebra, so the row as transcribed can never fire — recorded
+// as a row with an explicit FALSE eligibility premise rather than
+// silently dropped. (Generalized-RDF engines materialise it; ours
+// cannot express its conclusion.)
+// -------------------------------------------------------------------
+let dt_type2_derives (in_value_space : wf_literal -> wf_iri -> prop)
+                     (g : list triple) (t : triple) : prop =
+  exists (lt : wf_literal) (dt : wf_iri) (ls : subject).
+    in_value_space lt dt /\
+    subj_term ls == T_Literal lt /\   // unsatisfiable here: delta GR
+    t == ({ s = ls; p = o_rdf_type; o = T_IRI dt } <: triple)
+
+// -------------------------------------------------------------------
+// dt-eq, Table 7, verbatim:
+//   "dt-eq | T(?s, ?p, ?lt1)  T(?s2, ?p2, ?lt2) |
+//            T(?lt1, owl:sameAs, ?lt2)
+//    (for all ?lt1 and ?lt2 with the same data value)"
+// Same delta GR as dt-type2 on the conclusion subject.
+// -------------------------------------------------------------------
+let dt_eq_derives (same_value : wf_literal -> wf_literal -> prop)
+                  (g : list triple) (t : triple) : prop =
+  exists (u1 u2 : triple) (l1 l2 : wf_literal) (ls : subject).
+    memP u1 g /\ u1.o == T_Literal l1 /\
+    memP u2 g /\ u2.o == T_Literal l2 /\
+    same_value l1 l2 /\
+    subj_term ls == T_Literal l1 /\   // unsatisfiable here: delta GR
+    t == ({ s = ls; p = o_owl_sameAs; o = T_Literal l2 } <: triple)
+
+// -------------------------------------------------------------------
+// dt-diff, Table 7, verbatim (a CLASH row):
+//   "dt-diff | T(?lt1, owl:sameAs, ?lt2) | false
+//    (for all ?lt1 and ?lt2 with different data values)"
+// A sameAs whose OBJECT is a literal is expressible; one whose subject
+// is a literal is not (delta GR). The expressible half is transcribed:
+// any sameAs edge REACHING a literal from a term whose own literal
+// reading differs. The refinement layer decides how much of this row
+// the engine can check.
+// -------------------------------------------------------------------
+let dt_diff_clash (different_value : wf_literal -> wf_literal -> prop)
+                  (g : list triple) : prop =
+  exists (sa : triple) (l1 l2 : wf_literal) (ls : subject).
+    memP sa g /\ sa.p == o_owl_sameAs /\
+    subj_term ls == T_Literal l1 /\   // unsatisfiable here: delta GR
+    sa.s == ls /\ sa.o == T_Literal l2 /\
+    different_value l1 l2
+
+// -------------------------------------------------------------------
+// dt-not-type, Table 7, verbatim (a CLASH row):
+//   "dt-not-type | T(?lt, rdf:type, ?dt) | false
+//    (for each literal ?lt and each datatype ?dt supported in the
+//     datatype map such that the data value of ?lt is not contained
+//     in the value space of ?dt)"
+// Same delta GR (literal subject).
+// -------------------------------------------------------------------
+let dt_not_type_clash (not_in_value_space : wf_literal -> wf_iri -> prop)
+                      (g : list triple) : prop =
+  exists (u : triple) (lt : wf_literal) (dt : wf_iri) (ls : subject).
+    memP u g /\ u.p == o_rdf_type /\ u.o == T_IRI dt /\
+    subj_term ls == T_Literal lt /\   // unsatisfiable here: delta GR
+    u.s == ls /\
+    not_in_value_space lt dt
+
+(** ================================================================= **)
+(** Table 8: The Semantics of Schema Vocabulary                       **)
+(** ================================================================= **)
+
+// -------------------------------------------------------------------
+// scm-cls, Table 8, verbatim:
+//   "scm-cls | T(?c, rdf:type, owl:Class) |
+//              T(?c, rdfs:subClassOf, ?c)
+//              T(?c, owl:equivalentClass, ?c)
+//              T(?c, rdfs:subClassOf, owl:Thing)
+//              T(owl:Nothing, rdfs:subClassOf, ?c)"
+// Four conclusion triples; `t` is any one (disjunction, as eq-ref).
+// -------------------------------------------------------------------
+let scm_cls_derives (g : list triple) (t : triple) : prop =
+  exists (u : triple).
+    memP u g /\ u.p == o_rdf_type /\ u.o == T_IRI o_owl_Class /\
+    (t == ({ s = u.s; p = o_rdfs_subClassOf; o = subj_term u.s } <: triple) \/
+     t == ({ s = u.s; p = o_owl_equivalentClass; o = subj_term u.s } <: triple) \/
+     t == ({ s = u.s; p = o_rdfs_subClassOf; o = T_IRI o_owl_Thing } <: triple) \/
+     t == ({ s = S_IRI o_owl_Nothing; p = o_rdfs_subClassOf; o = subj_term u.s } <: triple))
+
+// -------------------------------------------------------------------
+// scm-sco, Table 8, verbatim:
+//   "scm-sco | T(?c1, rdfs:subClassOf, ?c2)
+//              T(?c2, rdfs:subClassOf, ?c3) |
+//              T(?c1, rdfs:subClassOf, ?c3)"
+// -------------------------------------------------------------------
+let scm_sco_derives (g : list triple) (t : triple) : prop =
+  exists (u1 u2 : triple).
+    memP u1 g /\ u1.p == o_rdfs_subClassOf /\
+    memP u2 g /\ u2.p == o_rdfs_subClassOf /\
+    subj_term u2.s == u1.o /\
+    t == ({ s = u1.s; p = o_rdfs_subClassOf; o = u2.o } <: triple)
+
+// -------------------------------------------------------------------
+// scm-eqc1 / scm-eqc2, Table 8, verbatim:
+//   "scm-eqc1 | T(?c1, owl:equivalentClass, ?c2) |
+//               T(?c1, rdfs:subClassOf, ?c2)
+//               T(?c2, rdfs:subClassOf, ?c1)"
+//   "scm-eqc2 | T(?c1, rdfs:subClassOf, ?c2)
+//               T(?c2, rdfs:subClassOf, ?c1) |
+//               T(?c1, owl:equivalentClass, ?c2)"
+// -------------------------------------------------------------------
+let scm_eqc1_derives (g : list triple) (t : triple) : prop =
+  exists (u : triple) (c2s : subject).
+    memP u g /\ u.p == o_owl_equivalentClass /\
+    (t == ({ s = u.s; p = o_rdfs_subClassOf; o = u.o } <: triple) \/
+     (subj_term c2s == u.o /\
+      t == ({ s = c2s; p = o_rdfs_subClassOf; o = subj_term u.s } <: triple)))
+
+let scm_eqc2_derives (g : list triple) (t : triple) : prop =
+  exists (u1 u2 : triple).
+    memP u1 g /\ u1.p == o_rdfs_subClassOf /\
+    memP u2 g /\ u2.p == o_rdfs_subClassOf /\
+    subj_term u2.s == u1.o /\ u2.o == subj_term u1.s /\
+    t == ({ s = u1.s; p = o_owl_equivalentClass; o = u1.o } <: triple)
+
+// -------------------------------------------------------------------
+// scm-op / scm-dp, Table 8, verbatim:
+//   "scm-op | T(?p, rdf:type, owl:ObjectProperty) |
+//             T(?p, rdfs:subPropertyOf, ?p)
+//             T(?p, owl:equivalentProperty, ?p)"
+//   "scm-dp | T(?p, rdf:type, owl:DatatypeProperty) | (same two)"
+// -------------------------------------------------------------------
+let scm_op_dp_derives_via (prop_class : wf_iri)
+                          (g : list triple) (t : triple) : prop =
+  exists (u : triple).
+    memP u g /\ u.p == o_rdf_type /\ u.o == T_IRI prop_class /\
+    (t == ({ s = u.s; p = o_rdfs_subPropertyOf; o = subj_term u.s } <: triple) \/
+     t == ({ s = u.s; p = o_owl_equivalentProperty; o = subj_term u.s } <: triple))
+
+let scm_op_derives (g : list triple) (t : triple) : prop =
+  scm_op_dp_derives_via o_owl_ObjectProperty g t
+
+let scm_dp_derives (g : list triple) (t : triple) : prop =
+  scm_op_dp_derives_via o_owl_DatatypeProperty g t
+
+// -------------------------------------------------------------------
+// scm-spo, Table 8, verbatim:
+//   "scm-spo | T(?p1, rdfs:subPropertyOf, ?p2)
+//              T(?p2, rdfs:subPropertyOf, ?p3) |
+//              T(?p1, rdfs:subPropertyOf, ?p3)"
+// -------------------------------------------------------------------
+let scm_spo_derives (g : list triple) (t : triple) : prop =
+  exists (u1 u2 : triple).
+    memP u1 g /\ u1.p == o_rdfs_subPropertyOf /\
+    memP u2 g /\ u2.p == o_rdfs_subPropertyOf /\
+    subj_term u2.s == u1.o /\
+    t == ({ s = u1.s; p = o_rdfs_subPropertyOf; o = u2.o } <: triple)
+
+// -------------------------------------------------------------------
+// scm-eqp1 / scm-eqp2, Table 8, verbatim (property mirror of eqc1/2):
+//   "scm-eqp1 | T(?p1, owl:equivalentProperty, ?p2) |
+//               T(?p1, rdfs:subPropertyOf, ?p2)
+//               T(?p2, rdfs:subPropertyOf, ?p1)"
+//   "scm-eqp2 | T(?p1, rdfs:subPropertyOf, ?p2)
+//               T(?p2, rdfs:subPropertyOf, ?p1) |
+//               T(?p1, owl:equivalentProperty, ?p2)"
+// -------------------------------------------------------------------
+let scm_eqp1_derives (g : list triple) (t : triple) : prop =
+  exists (u : triple) (p2s : subject).
+    memP u g /\ u.p == o_owl_equivalentProperty /\
+    (t == ({ s = u.s; p = o_rdfs_subPropertyOf; o = u.o } <: triple) \/
+     (subj_term p2s == u.o /\
+      t == ({ s = p2s; p = o_rdfs_subPropertyOf; o = subj_term u.s } <: triple)))
+
+let scm_eqp2_derives (g : list triple) (t : triple) : prop =
+  exists (u1 u2 : triple).
+    memP u1 g /\ u1.p == o_rdfs_subPropertyOf /\
+    memP u2 g /\ u2.p == o_rdfs_subPropertyOf /\
+    subj_term u2.s == u1.o /\ u2.o == subj_term u1.s /\
+    t == ({ s = u1.s; p = o_owl_equivalentProperty; o = u1.o } <: triple)
+
+// -------------------------------------------------------------------
+// scm-dom1 / scm-dom2, Table 8, verbatim:
+//   "scm-dom1 | T(?p, rdfs:domain, ?c1)  T(?c1, rdfs:subClassOf, ?c2) |
+//               T(?p, rdfs:domain, ?c2)"
+//   "scm-dom2 | T(?p2, rdfs:domain, ?c)
+//               T(?p1, rdfs:subPropertyOf, ?p2) |
+//               T(?p1, rdfs:domain, ?c)"
+// -------------------------------------------------------------------
+let scm_dom1_derives (g : list triple) (t : triple) : prop =
+  exists (dom sub : triple).
+    memP dom g /\ dom.p == o_rdfs_domain /\
+    memP sub g /\ sub.p == o_rdfs_subClassOf /\
+    subj_term sub.s == dom.o /\
+    t == ({ s = dom.s; p = o_rdfs_domain; o = sub.o } <: triple)
+
+let scm_dom2_derives (g : list triple) (t : triple) : prop =
+  exists (dom sub : triple).
+    memP dom g /\ dom.p == o_rdfs_domain /\
+    memP sub g /\ sub.p == o_rdfs_subPropertyOf /\
+    sub.o == subj_term dom.s /\
+    t == ({ s = sub.s; p = o_rdfs_domain; o = dom.o } <: triple)
+
+// -------------------------------------------------------------------
+// scm-rng1 / scm-rng2, Table 8, verbatim (range mirrors):
+//   "scm-rng1 | T(?p, rdfs:range, ?c1)  T(?c1, rdfs:subClassOf, ?c2) |
+//               T(?p, rdfs:range, ?c2)"
+//   "scm-rng2 | T(?p2, rdfs:range, ?c)
+//               T(?p1, rdfs:subPropertyOf, ?p2) |
+//               T(?p1, rdfs:range, ?c)"
+// -------------------------------------------------------------------
+let scm_rng1_derives (g : list triple) (t : triple) : prop =
+  exists (rng sub : triple).
+    memP rng g /\ rng.p == o_rdfs_range /\
+    memP sub g /\ sub.p == o_rdfs_subClassOf /\
+    subj_term sub.s == rng.o /\
+    t == ({ s = rng.s; p = o_rdfs_range; o = sub.o } <: triple)
+
+let scm_rng2_derives (g : list triple) (t : triple) : prop =
+  exists (rng sub : triple).
+    memP rng g /\ rng.p == o_rdfs_range /\
+    memP sub g /\ sub.p == o_rdfs_subPropertyOf /\
+    sub.o == subj_term rng.s /\
+    t == ({ s = sub.s; p = o_rdfs_range; o = rng.o } <: triple)
+
+// -------------------------------------------------------------------
+// scm-hv, Table 8, verbatim:
+//   "scm-hv | T(?c1, owl:hasValue, ?i)  T(?c1, owl:onProperty, ?p1)
+//             T(?c2, owl:hasValue, ?i)  T(?c2, owl:onProperty, ?p2)
+//             T(?p1, rdfs:subPropertyOf, ?p2) |
+//             T(?c1, rdfs:subClassOf, ?c2)"
+// -------------------------------------------------------------------
+let scm_hv_derives (g : list triple) (t : triple) : prop =
+  exists (hv1 onp1 hv2 onp2 sub : triple) (p1 p2 : wf_iri).
+    memP hv1 g /\ hv1.p == o_owl_hasValue /\
+    memP onp1 g /\ onp1.p == o_owl_onProperty /\ onp1.s == hv1.s /\
+    onp1.o == T_IRI p1 /\
+    memP hv2 g /\ hv2.p == o_owl_hasValue /\ hv2.o == hv1.o /\
+    memP onp2 g /\ onp2.p == o_owl_onProperty /\ onp2.s == hv2.s /\
+    onp2.o == T_IRI p2 /\
+    memP sub g /\ sub.p == o_rdfs_subPropertyOf /\
+    sub.s == S_IRI p1 /\ sub.o == T_IRI p2 /\
+    t == ({ s = hv1.s; p = o_rdfs_subClassOf; o = subj_term hv2.s } <: triple)
+
+// -------------------------------------------------------------------
+// scm-svf1 / scm-svf2, Table 8, verbatim:
+//   "scm-svf1 | T(?c1, owl:someValuesFrom, ?y1)
+//               T(?c1, owl:onProperty, ?p)
+//               T(?c2, owl:someValuesFrom, ?y2)
+//               T(?c2, owl:onProperty, ?p)
+//               T(?y1, rdfs:subClassOf, ?y2) |
+//               T(?c1, rdfs:subClassOf, ?c2)"
+//   "scm-svf2 | T(?c1, owl:someValuesFrom, ?y)
+//               T(?c1, owl:onProperty, ?p1)
+//               T(?c2, owl:someValuesFrom, ?y)
+//               T(?c2, owl:onProperty, ?p2)
+//               T(?p1, rdfs:subPropertyOf, ?p2) |
+//               T(?c1, rdfs:subClassOf, ?c2)"
+// -------------------------------------------------------------------
+let scm_svf1_derives (g : list triple) (t : triple) : prop =
+  exists (svf1 onp1 svf2 onp2 sub : triple) (p : wf_iri).
+    memP svf1 g /\ svf1.p == o_owl_someValuesFrom /\
+    memP onp1 g /\ onp1.p == o_owl_onProperty /\ onp1.s == svf1.s /\
+    onp1.o == T_IRI p /\
+    memP svf2 g /\ svf2.p == o_owl_someValuesFrom /\
+    memP onp2 g /\ onp2.p == o_owl_onProperty /\ onp2.s == svf2.s /\
+    onp2.o == T_IRI p /\
+    memP sub g /\ sub.p == o_rdfs_subClassOf /\
+    subj_term sub.s == svf1.o /\ sub.o == svf2.o /\
+    t == ({ s = svf1.s; p = o_rdfs_subClassOf; o = subj_term svf2.s } <: triple)
+
+let scm_svf2_derives (g : list triple) (t : triple) : prop =
+  exists (svf1 onp1 svf2 onp2 sub : triple) (p1 p2 : wf_iri).
+    memP svf1 g /\ svf1.p == o_owl_someValuesFrom /\
+    memP onp1 g /\ onp1.p == o_owl_onProperty /\ onp1.s == svf1.s /\
+    onp1.o == T_IRI p1 /\
+    memP svf2 g /\ svf2.p == o_owl_someValuesFrom /\ svf2.o == svf1.o /\
+    memP onp2 g /\ onp2.p == o_owl_onProperty /\ onp2.s == svf2.s /\
+    onp2.o == T_IRI p2 /\
+    memP sub g /\ sub.p == o_rdfs_subPropertyOf /\
+    sub.s == S_IRI p1 /\ sub.o == T_IRI p2 /\
+    t == ({ s = svf1.s; p = o_rdfs_subClassOf; o = subj_term svf2.s } <: triple)
+
+// -------------------------------------------------------------------
+// scm-avf1 / scm-avf2, Table 8, verbatim:
+//   "scm-avf1 | T(?c1, owl:allValuesFrom, ?y1)
+//               T(?c1, owl:onProperty, ?p)
+//               T(?c2, owl:allValuesFrom, ?y2)
+//               T(?c2, owl:onProperty, ?p)
+//               T(?y1, rdfs:subClassOf, ?y2) |
+//               T(?c1, rdfs:subClassOf, ?c2)"
+//   "scm-avf2 | T(?c1, owl:allValuesFrom, ?y)
+//               T(?c1, owl:onProperty, ?p1)
+//               T(?c2, owl:allValuesFrom, ?y)
+//               T(?c2, owl:onProperty, ?p2)
+//               T(?p1, rdfs:subPropertyOf, ?p2) |
+//               T(?c2, rdfs:subClassOf, ?c1)"
+// NOTE the direction flip in scm-avf2's conclusion (c2 below c1):
+// widening the property NARROWS the universal restriction. The flip is
+// the Recommendation's own text, transcribed as printed.
+// -------------------------------------------------------------------
+let scm_avf1_derives (g : list triple) (t : triple) : prop =
+  exists (avf1 onp1 avf2 onp2 sub : triple) (p : wf_iri).
+    memP avf1 g /\ avf1.p == o_owl_allValuesFrom /\
+    memP onp1 g /\ onp1.p == o_owl_onProperty /\ onp1.s == avf1.s /\
+    onp1.o == T_IRI p /\
+    memP avf2 g /\ avf2.p == o_owl_allValuesFrom /\
+    memP onp2 g /\ onp2.p == o_owl_onProperty /\ onp2.s == avf2.s /\
+    onp2.o == T_IRI p /\
+    memP sub g /\ sub.p == o_rdfs_subClassOf /\
+    subj_term sub.s == avf1.o /\ sub.o == avf2.o /\
+    t == ({ s = avf1.s; p = o_rdfs_subClassOf; o = subj_term avf2.s } <: triple)
+
+let scm_avf2_derives (g : list triple) (t : triple) : prop =
+  exists (avf1 onp1 avf2 onp2 sub : triple) (p1 p2 : wf_iri).
+    memP avf1 g /\ avf1.p == o_owl_allValuesFrom /\
+    memP onp1 g /\ onp1.p == o_owl_onProperty /\ onp1.s == avf1.s /\
+    onp1.o == T_IRI p1 /\
+    memP avf2 g /\ avf2.p == o_owl_allValuesFrom /\ avf2.o == avf1.o /\
+    memP onp2 g /\ onp2.p == o_owl_onProperty /\ onp2.s == avf2.s /\
+    onp2.o == T_IRI p2 /\
+    memP sub g /\ sub.p == o_rdfs_subPropertyOf /\
+    sub.s == S_IRI p1 /\ sub.o == T_IRI p2 /\
+    t == ({ s = avf2.s; p = o_rdfs_subClassOf; o = subj_term avf1.s } <: triple)
+
+// -------------------------------------------------------------------
+// scm-int, Table 8, verbatim:
+//   "scm-int | T(?c, owl:intersectionOf, ?x)  LIST[?x, ?c1, ..., ?cn] |
+//              T(?c, rdfs:subClassOf, ?c1) ...
+//              T(?c, rdfs:subClassOf, ?cn)"
+// scm-uni, Table 8, verbatim:
+//   "scm-uni | T(?c, owl:unionOf, ?x)  LIST[?x, ?c1, ..., ?cn] |
+//              T(?c1, rdfs:subClassOf, ?c) ...
+//              T(?cn, rdfs:subClassOf, ?c)"
+// -------------------------------------------------------------------
+let scm_int_derives (g : list triple) (t : triple) : prop =
+  exists (decl : triple) (cs : list rdf_term) (ci : rdf_term).
+    memP decl g /\ decl.p == o_owl_intersectionOf /\
+    owl_list_denotes g decl.o cs /\ memP ci cs /\
+    t == ({ s = decl.s; p = o_rdfs_subClassOf; o = ci } <: triple)
+
+let scm_uni_derives (g : list triple) (t : triple) : prop =
+  exists (decl : triple) (cs : list rdf_term) (ci : rdf_term) (cis : subject).
+    memP decl g /\ decl.p == o_owl_unionOf /\
+    owl_list_denotes g decl.o cs /\ memP ci cs /\
+    subj_term cis == ci /\
+    t == ({ s = cis; p = o_rdfs_subClassOf; o = subj_term decl.s } <: triple)
+
+// -------------------------------------------------------------------
+// Whole-family rollups, landing 3. The dt-* rollups carry the same
+// parameters their rows do.
+// -------------------------------------------------------------------
+let table7_derives (supported : wf_iri -> prop)
+                   (in_value_space : wf_literal -> wf_iri -> prop)
+                   (same_value : wf_literal -> wf_literal -> prop)
+                   (g : list triple) (t : triple) : prop =
+  dt_type1_derives supported g t \/
+  dt_type2_derives in_value_space g t \/
+  dt_eq_derives same_value g t
+
+let table7_clashes (different_value : wf_literal -> wf_literal -> prop)
+                   (not_in_value_space : wf_literal -> wf_iri -> prop)
+                   (g : list triple) : prop =
+  dt_diff_clash different_value g \/
+  dt_not_type_clash not_in_value_space g
+
+let table8_derives (g : list triple) (t : triple) : prop =
+  scm_cls_derives g t \/ scm_sco_derives g t \/
+  scm_eqc1_derives g t \/ scm_eqc2_derives g t \/
+  scm_op_derives g t \/ scm_dp_derives g t \/
+  scm_spo_derives g t \/ scm_eqp1_derives g t \/ scm_eqp2_derives g t \/
+  scm_dom1_derives g t \/ scm_dom2_derives g t \/
+  scm_rng1_derives g t \/ scm_rng2_derives g t \/
+  scm_hv_derives g t \/ scm_svf1_derives g t \/ scm_svf2_derives g t \/
+  scm_avf1_derives g t \/ scm_avf2_derives g t \/
+  scm_int_derives g t \/ scm_uni_derives g t
+
+let table4_clashes_complete (g : list triple) : prop =
+  table4_clashes g \/ eq_diff2_clash g \/ eq_diff3_clash g \/
+  prp_adp_clash g
