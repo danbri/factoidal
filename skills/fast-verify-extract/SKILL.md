@@ -814,3 +814,48 @@ not `verify`.
 - Runtime performance of the extracted engine —
   [perf-benchmarking](../perf-benchmarking/SKILL.md).
 - Interactive proof workflows — [fstar-mcp](../fstar-mcp/SKILL.md).
+
+## ⚠️ An interface change must verify its reverse-dependency cone before committing
+
+Learned 2026-08-02, twice in one day, from the same change. Adding
+`emit_once_term` to `RDFS.Closure.fsti` (a pure ADDITION — no existing
+definition touched) broke verification in two places its author did not
+predict:
+
+1. `RDF.Entailment.RDFS.Refinement.fst` — its proofs **reconstruct the
+   rule bodies literally** (`assert_norm (rdfs_rule_domain g ig ==
+   fold_left outer_step g decls)`), so changing a rule body invalidates
+   the reconstruction; and a brittle `assert_norm` block
+   (`selfloop_not_axiomatic`) was tipped by the mere PRESENCE of the
+   new definition in its SMT context. Budget raises (rlimit 600→1200,
+   fuel 50→100) did NOT fix the latter — the cure was
+   `--using_facts_from '*,-RDFS.Closure.emit_once_term'`, excluding the
+   one symbol from the one block, at the ORIGINAL budget.
+2. `OWL.Semantics.Soundness.fst` — another literal-body reconstruction,
+   discovered only when the full build failed at layer 9, because the
+   module was not in the author's mental dependency list. Its stale
+   reconstruction drove z3 4.13.3 into an internal assertion violation
+   (`lar_solver.cpp:1066`) that F\* surfaced as the baffling
+   `Parse error: </labels> not found`.
+
+Rules:
+
+1. **Before committing a change to any `.fst`/`.fsti` that proof
+   modules reason about, grep for literal reconstructions of what you
+   changed** — `grep -rn "<rule or function name>" --include="*.fst"`
+   and look for `assert_norm`, `fold_left_inv`, and step-lambda copies.
+   Refinement/Soundness modules mirror implementation bodies by design;
+   every mirror is a dependency the build DAG knows about but your
+   editing session may not.
+2. **Verify the cone, not the file.** The build's layer failure is the
+   backstop, but it costs a 25-minute build per miss. A targeted
+   `fstar.exe` pass over the greps' hits is minutes.
+3. **Context noise is a real failure mode distinct from resources.**
+   If a previously-green brittle proof breaks after an unrelated
+   definition lands, and budget raises do not help, reach for
+   `--using_facts_from` exclusion of the new symbol at that proof
+   before considering `opaque_to_smt` (which forces `reveal_opaque` on
+   every legitimate user).
+4. **`Parse error: </labels> not found` from F\* means z3 itself
+   crashed** — check for a stale `assert_norm`/reconstruction feeding
+   it an impossible query before filing an F\* bug.

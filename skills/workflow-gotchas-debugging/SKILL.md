@@ -1,6 +1,6 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Fifteen hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, and missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh) — plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twenty hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, and missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh) — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
@@ -443,6 +443,20 @@ node --test tests/hub/postNN_test.mjs 2>&1 | grep -A3 'not ok'
   the `node --test tests/hub/postNN` gate green, or the cells ship
   broken. A hub page whose cell exercises a native-built feature can
   still fail in the browser; the bundle is the thing under test.
+- ⚠️ **The inverse direction bites harder, and it recurred 2026-08-03:
+  ENGINE landings invalidate the bundle.** The bundle went unrebuilt
+  from July 21 to August 2 while engine behaviour moved (rdfs4a/4b
+  rows, RL comprehension-witness maturation). Consequences arrived all
+  at once: an external reviewer's bug report against a month-stale
+  bundle (issue #345 — the engine had long been correct), a fixed
+  EXISTS bug that STAYED live on the npm surface until the bundle was
+  rebuilt, and seven hub cells failing in a single gate when the fresh
+  bundle finally met their July expectations. The rule: **rebuild the
+  js/npm bundle as part of landing any engine change that alters
+  query, parse, or entailment results.** A bundle older than the last
+  such landing is not "stale docs" — it is a live behavioural
+  divergence shipping to users, and its drift compounds silently until
+  someone pays for all of it at once.
 
 ## 13. Old-base agent branch OVERLAPS a file you just corrected (2026-07-08)
 
@@ -719,3 +733,54 @@ countermeasure is total regardless of mechanism:
 4. **After any rebuild that carries a fix, re-run the reproducer**
    against the fresh artifact. The revert above was caught exactly this
    way, and no other check would have caught it.
+
+## Hazard #19 — a cleanup step that can silently no-op is a lie (the five-week dead purge)
+
+Found 2026-08-03. `build-ocaml.sh`'s stale-artifact purge —
+`rm -f "$OUTDIR"/*.cmi ...` — had been a **silent no-op since a
+2026-07-29 refactor** moved it inside the rebuild branch, which sits
+below a `cd "$OUTDIR"`. From there the glob expanded to
+`ocaml-output/ocaml-output/*.cmi`, matched nothing, and `rm -f` said
+nothing. Every build for five weeks linked against whatever stale
+artifacts were lying around; the visible symptom was two
+`inconsistent assumptions over interface Factoidal_serve` link
+failures, each read at first as a one-off and cleaned by hand.
+
+Two lessons, distinct:
+
+1. **After moving code within a shell script, re-verify every relative
+   path against the cwd AT THE NEW LOCATION.** A `cd` anywhere above
+   the moved block changes what its globs mean, and `rm -f` converts
+   the mistake into silence. This is the same species as hazard #10
+   (cleanup traps eating diagnostics): cleanup code fails quieter than
+   any other code.
+2. **The mechanism had two halves, and cleaning the visible one did
+   not fix it.** Deleting the `ocaml-output` duplicates cured one
+   build; the next failed the same way, because ocamlopt also reuses
+   CONSUMER-dir `.cmx` files (`bin/factoidal-cli/`,
+   `bin/factoidal-serve/`, …) whose `.ml` did not change — and after
+   any extract that moves a shared interface those disagree with the
+   freshly compiled modules at link time. A recurring "one-off" is a
+   mechanism you have not fully found: the second occurrence is the
+   tell, and the fix is complete only when it covers the path that
+   produced BOTH failures. Fixed in the purge itself (bare globs +
+   consumer-dir sweep, failure reported not swallowed).
+
+## Hazard #20 — a suite score certifies only the path the runner exercises
+
+2026-08-02: 631 of 631 W3C SPARQL stayed green while `FILTER EXISTS`
+dropped **every row** on the CLI, npm, and HTTP entry points. The
+runner evaluates through `eval_select_query` (pure algebra path); the
+user-facing entries evaluate through `SPARQL11.Store`'s backend path,
+which had the bug. Two evaluation paths, one certificate, and the
+uncertified one is the one users run.
+
+The rule that follows: **every user-facing entry point carries its own
+regression pins** under `tests/local/cli_*.sh` — currently
+`cli_exists_regressions.sh`, `cli_owlrl_witness_strip.sh`,
+`cli_sr1_sr2_regressions.sh` — and any new divergence-class fix adds
+its case THROUGH THE CLI BINARY, not through the runner. When quoting
+a suite score, know which path it certifies; "631 of 631" was true and
+useless for the bug that mattered. Full statement of the discipline:
+`skills/test-suites/SKILL.md` § "A suite score certifies only the
+evaluated path".

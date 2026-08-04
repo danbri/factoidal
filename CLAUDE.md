@@ -114,6 +114,18 @@ The two that corrupt files silently:
     prose crediting Claude in commit messages — this repo policy
     overrides the harness default. Full rule:
     [`skills/github-coauthor-policy/SKILL.md`](skills/github-coauthor-policy/SKILL.md).
+14. **A repaired methodology error is not done until the docs that
+    prevent its repetition are updated.** After identifying and fixing
+    an error in our own working method — a wrong causal claim, a
+    silent-failure mechanism, a discipline that was skipped — revise
+    CLAUDE.md and/or the relevant `skills/<name>/SKILL.md` in the SAME
+    landing, so the next session inherits the correction instead of
+    rediscovering the mistake. Name the error concretely, with its
+    date and cost; a rule without its war story does not stick
+    (`skills/measuring-inference/SKILL.md` is the model — every rule
+    carries the wrong claim that paid for it). The repair commit and
+    the doc update belong together; "fixed it, will document later"
+    is how the same failure bills twice.
 
 ## Known sound-but-narrow rewrites
 

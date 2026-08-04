@@ -406,3 +406,37 @@ vacuous, while every W3C score stayed green. Run
 or entailment regime, and read
 [`skills/measuring-inference/SKILL.md`](../measuring-inference/SKILL.md)
 for why a score alone cannot tell you whether the rules fired.
+
+## ⚠️ A suite score certifies only the evaluated path
+
+Learned 2026-08-02, the hard way. The engine has more than one
+evaluation path for the same query: the W3C runner calls
+`eval_select_query` (the pure algebra path), while `factoidal query`,
+the npm bundle, and the HTTP server all route through
+`SPARQL11.Store.eval_pattern_backend`. `FILTER EXISTS` was completely
+broken on the backend path — every row dropped, both EXISTS and NOT
+EXISTS empty at once — while the suite read **631 of 631**, because the
+suite only ever exercises the runner's path. The score was true and
+certified nothing about what users run. An external reviewer found it
+in minutes of ordinary use.
+
+Consequences for practice:
+
+1. **When quoting a score, know which code path it certifies.** A
+   public claim shaped "631 of 631 W3C SPARQL" implicitly claims the
+   *product* conforms; if the runner path and the product path diverge,
+   the claim is false in effect even though the number is exact.
+2. **Every user-facing entry point carries its own pins** —
+   `tests/local/cli_*.sh` run the actual CLI binary on actual W3C
+   fixtures plus the reported repro shapes. The npm surface pins live
+   in `npm/factoidal/test/`. A fix for any runner/user divergence adds
+   its regression THROUGH THE USER PATH, so the next path split fails a
+   test instead of a user.
+3. **Path splits are load-bearing architecture, not plumbing detail.**
+   `eval_pattern_backend` vs `eval_pattern` vs streaming fast-paths:
+   when adding an arm to one, ask what the corresponding arm in the
+   others does, and which suite would notice if they disagreed. Usually
+   the answer is "none" — that is what the pins are for.
+
+War story in full: issue #343; hazard #20 in
+`skills/workflow-gotchas-debugging/SKILL.md`.
