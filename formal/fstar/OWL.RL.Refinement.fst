@@ -55,6 +55,7 @@ open RDF.Term
 open RDF.Triple
 open RDF.Graph
 open RDF.Indexed
+open RDFS.Closure
 open OWL.Closure
 open OWL.Semantics.MemLemmas
 open RDF.Entailment.Simple.Spec
@@ -315,3 +316,113 @@ val theorem_sameAs_reflexivity_licensed
 
 let theorem_sameAs_reflexivity_licensed g ig t =
   owl_rule_sameAs_reflexivity_licensed g ig
+
+// ===================================================================
+// 4. prp-symp: every `owl_rule_symmetric_property` emission licensed.
+//
+// OWL 2 RL/RDF rules table row prp-symp:
+//   T(?p, rdf:type, owl:SymmetricProperty), T(?x, ?p, ?y)
+//     =>  T(?y, ?p, ?x)
+// transcribed as OWL.RL.Spec.prp_symp_derives. Both of the rule's
+// folds read g; ig is unused. The statement is over g.
+// ===================================================================
+
+let lemma_vocab_symp_agree ()
+  : Lemma (RDFS.Closure.rdf_type == OWL.RL.Spec.o_rdf_type /\
+           OWL.Closure.owl_SymmetricProperty ==
+             OWL.RL.Spec.o_owl_SymmetricProperty) = ()
+
+// rdf_term_eq on two IRIs is IRI equality (one unfolding of the
+// recursion).
+let lemma_rdf_term_eq_iri (i1 i2 : wf_iri)
+  : Lemma (requires rdf_term_eq (T_IRI i1) (T_IRI i2) == true)
+          (ensures i1 == i2) = ()
+
+// Membership through cons_if_new_iri. (Restated from
+// RDF.Entailment.RDFS.Refinement, which verifies AFTER this module
+// in the build list.)
+let lemma_cons_if_new_iri_memP (i : wf_iri) (acc : list wf_iri) (x : wf_iri)
+  : Lemma (memP x (cons_if_new_iri i acc) ==> x == i \/ memP x acc) = ()
+
+// A property IRI declared symmetric in g.
+let symp_from_decl (g : list triple) (p : wf_iri) : prop =
+  exists (decl : triple).
+    memP decl g /\ decl.p == rdf_type /\
+    decl.s == S_IRI p /\ decl.o == T_IRI owl_SymmetricProperty
+
+let symps_licensed (g : list triple) (ps : list wf_iri) : prop =
+  forall (p : wf_iri). memP p ps ==> symp_from_decl g p
+
+let prp_symp_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ prp_symp_derives g t)
+
+val owl_rule_symmetric_property_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures prp_symp_licensed g (owl_rule_symmetric_property g ig))
+
+let owl_rule_symmetric_property_licensed g ig =
+  lemma_vocab_symp_agree ();
+  let collect_step : list wf_iri -> triple -> list wf_iri =
+    fun (acc : list wf_iri) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_SymmetricProperty) then
+        match t.s with
+        | S_IRI p_iri -> cons_if_new_iri p_iri acc
+        | _ -> acc
+      else acc in
+  let sym_props = List.Tot.fold_left collect_step [] g in
+  // Collect-step preservation: the consed IRI has t itself as decl.
+  introduce forall (acc : list wf_iri) (t : triple).
+      (memP t g /\ symps_licensed g acc) ==>
+      symps_licensed g (collect_step acc t)
+  with introduce (memP t g /\ symps_licensed g acc) ==>
+                 symps_licensed g (collect_step acc t)
+  with _ . begin
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_SymmetricProperty) then
+      match t.s, t.o with
+      | S_IRI p_iri, T_IRI j ->
+        lemma_rdf_term_eq_iri j owl_SymmetricProperty;
+        FStar.Classical.forall_intro (lemma_cons_if_new_iri_memP p_iri acc)
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (symps_licensed g) collect_step g [];
+  // Emission-step preservation: mem gives memP for the declared
+  // predicate; t itself is the (x P y) premise.
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if List.Tot.mem t.p sym_props then
+        match term_to_subject t.o with
+        | Some new_subj ->
+          let new_t : triple = { s = new_subj; p = t.p; o = subject_to_term t.s } in
+          add_triple_unchecked acc new_t
+        | None -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ prp_symp_licensed g acc) ==>
+      prp_symp_licensed g (emit_step acc t)
+  with introduce (memP t g /\ prp_symp_licensed g acc) ==>
+                 prp_symp_licensed g (emit_step acc t)
+  with _ . begin
+    if List.Tot.mem t.p sym_props then
+      match term_to_subject t.o with
+      | Some new_subj ->
+        List.Tot.Properties.mem_memP t.p sym_props;
+        lemma_term_to_subject_subj_term t.o new_subj;
+        lemma_subj_term_agree t.s;
+        assert (({ s = new_subj; p = t.p; o = subject_to_term t.s } <: triple) ==
+                ({ s = new_subj; p = t.p; o = subj_term t.s } <: triple))
+      | None -> ()
+    else ()
+  end;
+  fold_left_inv (prp_symp_licensed g) emit_step g g;
+  assert_norm (owl_rule_symmetric_property g ig ==
+               List.Tot.fold_left emit_step g g)
+
+// Per-triple corollary.
+val theorem_symmetric_property_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires memP t (owl_rule_symmetric_property g ig))
+    (ensures  memP t g \/ prp_symp_derives g t)
+
+let theorem_symmetric_property_licensed g ig t =
+  owl_rule_symmetric_property_licensed g ig
