@@ -215,3 +215,103 @@ val theorem_sameAs_symmetry_licensed
 
 let theorem_sameAs_symmetry_licensed g ig t =
   owl_rule_sameAs_symmetry_licensed g ig
+
+// ===================================================================
+// 3. eq-ref: every `owl_rule_sameAs_reflexivity` emission is licensed.
+//
+// OWL 2 RL/RDF rules table row eq-ref:
+//   T(?s, ?p, ?o)  =>  T(?s, owl:sameAs, ?s)  T(?p, owl:sameAs, ?p)
+//                      T(?o, owl:sameAs, ?o)
+// transcribed as OWL.RL.Spec.eq_ref_derives. The engine collects the
+// IRI/bnode nodes of g from subject and object positions only (its
+// "named individual" approximation never collects predicates), so
+// the licensing uses the first and third disjuncts of the row. The
+// rule reads g, not the snapshot: the statement is over g.
+// ===================================================================
+
+// A node occurs in g in subject or (subject-eligible) object position.
+let node_from_graph (g : list triple) (n : subject) : prop =
+  exists (u : triple).
+    memP u g /\ (u.s == n \/ subj_term n == u.o)
+
+let nodes_licensed (g : list triple) (ns : list subject) : prop =
+  forall (n : subject). memP n ns ==> node_from_graph g n
+
+let lemma_collect_nodes_provenance (g : rdf_graph)
+  : Lemma (ensures nodes_licensed g (collect_iri_or_bnode_terms g)) =
+  let collect_step : list subject -> triple -> list subject =
+    fun (acc : list subject) (t : triple) ->
+      let acc1 =
+        if List.Tot.existsb (fun x -> subject_eq x t.s) acc
+        then acc else t.s :: acc
+      in
+      match t.o with
+      | T_IRI i ->
+        let ox = S_IRI i in
+        if List.Tot.existsb (fun x -> subject_eq x ox) acc1 then acc1 else ox :: acc1
+      | T_BNode b ->
+        let ox = S_BNode b in
+        if List.Tot.existsb (fun x -> subject_eq x ox) acc1 then acc1 else ox :: acc1
+      | T_Literal _ -> acc1
+      | T_TripleTerm _ _ _ -> acc1 in
+  introduce forall (acc : list subject) (t : triple).
+      (memP t g /\ nodes_licensed g acc) ==>
+      nodes_licensed g (collect_step acc t)
+  with introduce (memP t g /\ nodes_licensed g acc) ==>
+                 nodes_licensed g (collect_step acc t)
+  with _ . ();
+  fold_left_inv (nodes_licensed g) collect_step g [];
+  assert_norm (collect_iri_or_bnode_terms g ==
+               List.Tot.fold_left collect_step [] g)
+
+// The licensing invariant for this rule.
+let eq_ref_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ eq_ref_derives g t)
+
+val owl_rule_sameAs_reflexivity_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures eq_ref_licensed g (owl_rule_sameAs_reflexivity g ig))
+
+let owl_rule_sameAs_reflexivity_licensed g ig =
+  lemma_collect_nodes_provenance g;
+  lemma_vocab_sameas_agree ();
+  let nodes = collect_iri_or_bnode_terms g in
+  let emit_step : rdf_graph -> subject -> rdf_graph =
+    fun (acc : rdf_graph) (n : subject) ->
+      let new_t : triple = { s = n; p = owl_sameAs; o = subject_to_term n } in
+      add_triple_unchecked acc new_t in
+  introduce forall (acc : rdf_graph) (n : subject).
+      (memP n nodes /\ eq_ref_licensed g acc) ==>
+      eq_ref_licensed g (emit_step acc n)
+  with introduce (memP n nodes /\ eq_ref_licensed g acc) ==>
+                 eq_ref_licensed g (emit_step acc n)
+  with _ . begin
+    let new_t : triple = { s = n; p = owl_sameAs; o = subject_to_term n } in
+    lemma_subj_term_agree n;
+    eliminate exists (u : triple). memP u g /\ (u.s == n \/ subj_term n == u.o)
+    returns eq_ref_derives g new_t
+    with _ . begin
+      eliminate u.s == n \/ subj_term n == u.o
+      returns eq_ref_derives g new_t
+      with _ . begin
+        lemma_subj_term_agree u.s;
+        assert (new_t == ({ s = u.s; p = o_owl_sameAs;
+                            o = subj_term u.s } <: triple))
+      end
+      and  _ . begin
+        assert (new_t == ({ s = n; p = o_owl_sameAs; o = u.o } <: triple))
+      end
+    end
+  end;
+  fold_left_inv (eq_ref_licensed g) emit_step nodes g;
+  assert_norm (owl_rule_sameAs_reflexivity g ig ==
+               List.Tot.fold_left emit_step g (collect_iri_or_bnode_terms g))
+
+// Per-triple corollary.
+val theorem_sameAs_reflexivity_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires memP t (owl_rule_sameAs_reflexivity g ig))
+    (ensures  memP t g \/ eq_ref_derives g t)
+
+let theorem_sameAs_reflexivity_licensed g ig t =
+  owl_rule_sameAs_reflexivity_licensed g ig
