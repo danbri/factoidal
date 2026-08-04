@@ -244,6 +244,24 @@ let cond_equivalent_class (i : interp) : prop =
     (i.iext (i.i_iri rdfs_subClassOf) c d /\
      i.iext (i.i_iri rdfs_subClassOf) d c)
 
+// owl:equivalentProperty -- OWL 2 RDF-Based Semantics Table 5.9
+// (equivalentProperty condition): IEXT(I(owl:equivalentProperty)) =
+// { <p,q> | IEXT(p) = IEXT(q) }. As with cond_equivalent_class, the
+// pilot needs only the implication the closure rule relies on --
+// extension equality implies both rdfs:subPropertyOf directions --
+// so this condition is stated as that implication rather than the
+// full extension equality (the weakest reading the table row
+// implies; see cond_equivalent_class's comment for the same
+// pattern). NOT added to owl_rl_pilot_conditions: same reasoning as
+// cond_equivalent_class -- growing that bundle perturbs the SMT
+// context for its existing consumers, so this rule's lemma takes
+// the condition explicitly.
+let cond_equivalent_property (i : interp) : prop =
+  forall (p q : i.idom).
+    i.iext (i.i_iri owl_equivalentProperty) p q ==>
+    (i.iext (i.i_iri rdfs_subPropertyOf) p q /\
+     i.iext (i.i_iri rdfs_subPropertyOf) q p)
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker

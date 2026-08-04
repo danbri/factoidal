@@ -568,6 +568,61 @@ let owl_rule_equivalent_class_sound i a g ig =
   assert_norm (owl_rule_equivalent_class g ig == List.Tot.fold_left emit_step g g)
 
 // ===================================================================
+// Rule 6: owl_rule_equivalent_property (scm-eqp1 -- Table 8).
+// OWL 2 RL/RDF rules table row scm-eqp1: T(?p, owl:equivalentProperty,
+// ?q) => T(?p, rdfs:subPropertyOf, ?q), T(?q, rdfs:subPropertyOf, ?p).
+// The prp-eqp1/prp-eqp2 data-triple effect (propagating ?p ?q edges
+// through the equivalence) arrives via prp-spo1 downstream once the
+// two subPropertyOf triples are in the graph -- same claim-drift
+// story as Rule 5's banner. The engine rule fires only on the
+// S_IRI/T_IRI shape (OWL.Closure.fsti's owl_rule_equivalent_property
+// has no bnode case split and no term_to_subject round trip), so this
+// proof needs neither the term_to_subject bridge lemmas nor a 4-way
+// match: the S_IRI/T_IRI denotations unfold directly.
+// ===================================================================
+
+val owl_rule_equivalent_property_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_equivalent_property i /\ holds_all i a g)
+    (ensures  holds_all i a (owl_rule_equivalent_property g ig))
+
+let owl_rule_equivalent_property_sound i a g ig =
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_equivalentProperty then
+        match t.s, t.o with
+        | S_IRI p_iri, T_IRI q_iri ->
+          let t1 : triple = { s = S_IRI p_iri; p = rdfs_subPropertyOf; o = T_IRI q_iri } in
+          let t2 : triple = { s = S_IRI q_iri; p = rdfs_subPropertyOf; o = T_IRI p_iri } in
+          add_triple_unchecked (add_triple_unchecked acc t1) t2
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (emit_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc t)
+  with _ . begin
+    if t.p = owl_equivalentProperty then
+      match t.s, t.o with
+      | S_IRI p_iri, T_IRI q_iri ->
+        assert (triple_holds i a t);
+        assert (i.iext (i.i_iri owl_equivalentProperty)
+                       (i.i_iri p_iri) (i.i_iri q_iri));
+        // cond_equivalent_property: both subPropertyOf directions
+        // follow from the single equivalentProperty edge just
+        // established.
+        assert (i.iext (i.i_iri rdfs_subPropertyOf)
+                       (i.i_iri p_iri) (i.i_iri q_iri));
+        assert (i.iext (i.i_iri rdfs_subPropertyOf)
+                       (i.i_iri q_iri) (i.i_iri p_iri))
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) emit_step g g;
+  assert_norm (owl_rule_equivalent_property g ig == List.Tot.fold_left emit_step g g)
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge
