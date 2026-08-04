@@ -271,28 +271,34 @@ in one day; each rule below cost at least one failed verify cycle.
    `list_of_string`, `^`, char literals like `'\x1f'`, and recursive
    functions over the resulting `list char`.
 
-3. **A nested fold whose OUTER lambda destructures a TUPLE defeats
-   `fold_left_inv`** — the outer step-obligation goal
-   `inv (outer_step acc x)` fails with "Expected squash (inv ...),
-   got unit" even at `--z3rlimit 1500 --fuel 4 --ifuel 4`, while the
-   inner `fold_left_inv` discharges fine. Three data points
-   (2026-08-04, sharpened same evening): `owl_rule_inverse_of`
-   (pair-MATCH on `(inv_t.s, inv_t.o)`, inner fold over `g`) fails;
-   `owl_rule_sameAs_transitivity` (`let (x, y) = xy` over the pair
-   list, inner fold over a `find_objects_indexed` bucket result)
-   fails IDENTICALLY — so the inner fold's source is NOT the
-   discriminator; while every discharging nested proof
-   (`rdfs_rule_domain_sound` and kin) matches a SINGLE scrutinee in
-   the outer lambda. Suspect the tuple binder in the outer closure.
-   Both parked in task #36 with WIP files in the session scratchpad.
-   When writing NEW engine rules, prefer the domain-sound shape
-   (single-scrutinee outer match); for the parked band (eq-trans,
-   prp-inv, prp-trp, eq-rep-s/o/p), diagnose with the F* MCP
-   (`fstar-mcp` skill) BEFORE burning batch cycles — the failing
-   query's context names which symbol stayed opaque — and consider
-   an outer lambda that takes the pair but immediately delegates to
-   a single-scrutinee helper, or restructuring the engine rule
-   itself (shipping change + re-extraction).
+3. **Two nested-fold licensing proofs fail undischargeably at the
+   outer step obligation — CAUSE STILL UNKNOWN; do not trust the
+   obvious hypotheses, both are refuted.** The failure: goal
+   `inv (outer_step acc x)` yields "Expected squash (inv ...), got
+   unit" even at `--z3rlimit 1500 --fuel 4 --ifuel 4`, inner
+   `fold_left_inv` fine. Real sites: `owl_rule_inverse_of` and
+   `owl_rule_sameAs_transitivity` (both parked, task #36, WIP in the
+   session scratchpad); meanwhile `rdfs_rule_domain_sound` and five
+   single-fold licensing proofs of the same skeleton discharge.
+   REFUTED hypotheses, each with its evidence (2026-08-04):
+   (a) "inner fold over g vs bucket list" — eq-trans's inner fold
+   reads a bucket result and fails anyway; (b) "tuple binder in the
+   outer lambda" — a 10-variant minimal-reproducer ladder
+   (formal/fstar/repro/TupRepro1-10 in the investigation worktree;
+   let-destructure, pair-match, tuple-in-parameter, sum-type partial
+   match, dependent pair, self-shadowing, no-capture, delegate,
+   SMT-hint variants) ALL PASS at the same options. The trigger is
+   some concrete property of the real sites the minimal `inv`/toy
+   types do not carry — candidates: refinement-typed components
+   (wf_iri coercions), the invariant's shape, statements between the
+   destructure and the inner discharge, file-level solver state.
+   NEXT STEP recorded in task #36: bisect the REAL failing file
+   (shrink until the error vanishes; last removed element is the
+   trigger) on a small substrate module that imports the checked
+   deps — not another bottom-up rebuild. Lesson for briefs: a
+   plausible mechanism with two data points is a HYPOTHESIS to
+   refute cheaply, not a documented cause — this entry itself
+   carried the wrong claim for an hour before the ladder killed it.
 
 4. **Spec-side predicate families can be WIDER than the engine's
    finite slice, making "licensed implies P" false even when every
