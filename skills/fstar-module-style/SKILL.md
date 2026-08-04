@@ -271,22 +271,28 @@ in one day; each rule below cost at least one failed verify cycle.
    `list_of_string`, `^`, char literals like `'\x1f'`, and recursive
    functions over the resulting `list char`.
 
-3. **A nested fold whose inner lambda is a closure over the outer
-   lambda's pattern binders can be UNDISCHARGEABLE through
+3. **A nested fold whose OUTER lambda destructures a TUPLE defeats
    `fold_left_inv`** — the outer step-obligation goal
-   `inv (outer_step acc x)` fails even at `--z3rlimit 1500 --fuel 4
-   --ifuel 4`, with the inner `fold_left_inv` fine. Hit on
-   `owl_rule_inverse_of` (pair-match outer, inner fold over `g`,
-   inner lambda capturing `p1_iri`/`p2_iri`); four structural
-   variants failed identically; parked in task #36 with WIP in the
-   session scratchpad. The SAME shape with a single-scrutinee outer
-   match and an inner fold over a bucket lookup DOES discharge
-   (OWL.Semantics.Soundness.rdfs_rule_domain_sound,
-   eq-trans in OWL.RL.Refinement) — so suspect the pair-match +
-   closure-capture combination, and prefer engine rules of the
-   domain-sound shape when writing new ones. Diagnose interactively
-   with the F* MCP (`fstar-mcp` skill) BEFORE burning batch cycles:
-   the failing query's context names which symbol stayed opaque.
+   `inv (outer_step acc x)` fails with "Expected squash (inv ...),
+   got unit" even at `--z3rlimit 1500 --fuel 4 --ifuel 4`, while the
+   inner `fold_left_inv` discharges fine. Three data points
+   (2026-08-04, sharpened same evening): `owl_rule_inverse_of`
+   (pair-MATCH on `(inv_t.s, inv_t.o)`, inner fold over `g`) fails;
+   `owl_rule_sameAs_transitivity` (`let (x, y) = xy` over the pair
+   list, inner fold over a `find_objects_indexed` bucket result)
+   fails IDENTICALLY — so the inner fold's source is NOT the
+   discriminator; while every discharging nested proof
+   (`rdfs_rule_domain_sound` and kin) matches a SINGLE scrutinee in
+   the outer lambda. Suspect the tuple binder in the outer closure.
+   Both parked in task #36 with WIP files in the session scratchpad.
+   When writing NEW engine rules, prefer the domain-sound shape
+   (single-scrutinee outer match); for the parked band (eq-trans,
+   prp-inv, prp-trp, eq-rep-s/o/p), diagnose with the F* MCP
+   (`fstar-mcp` skill) BEFORE burning batch cycles — the failing
+   query's context names which symbol stayed opaque — and consider
+   an outer lambda that takes the pair but immediately delegates to
+   a single-scrutinee helper, or restructuring the engine rule
+   itself (shipping change + re-extraction).
 
 4. **Spec-side predicate families can be WIDER than the engine's
    finite slice, making "licensed implies P" false even when every
