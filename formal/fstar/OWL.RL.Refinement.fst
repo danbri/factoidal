@@ -532,3 +532,88 @@ val theorem_equivalent_class_licensed
 
 let theorem_equivalent_class_licensed g ig t =
   owl_rule_equivalent_class_licensed g ig
+
+// ===================================================================
+// 6. scm-eqp1: every `owl_rule_equivalent_property` emission is licensed.
+//
+// The engine ledger labels `equivalent_property` as implementing
+// prp-eqp1 + prp-eqp2, but those rows conclude DATA triples ("if
+// P eqp Q and x P y then x Q y"), which this rule never emits -- its
+// emissions are the two rdfs:subPropertyOf conclusions of Table 8 row
+// scm-eqp1:
+//   T(?p1, owl:equivalentProperty, ?p2)
+//     => T(?p1, rdfs:subPropertyOf, ?p2), T(?p2, rdfs:subPropertyOf, ?p1)
+// transcribed as OWL.RL.Spec.scm_eqp1_derives. The prp-eqp data-triple
+// effect arrives downstream via prp-spo1 consuming the subPropertyOf
+// edges this rule emits, exactly as cax-eqc arrives downstream of
+// scm-eqc1 via cax-sco (see the section 5 banner above). This is the
+// row this module licenses against.
+//
+// Unlike owl_rule_equivalent_class, this rule's single match arm only
+// fires on S_IRI/T_IRI (property IRIs are never anonymous), so there
+// is no bnode-pollution case split here -- both conclusions are always
+// emitted together.
+// ===================================================================
+
+let lemma_vocab_eqp_agree ()
+  : Lemma (OWL.Closure.owl_equivalentProperty == OWL.RL.Spec.o_owl_equivalentProperty /\
+           RDFS.Closure.rdfs_subPropertyOf == OWL.RL.Spec.o_rdfs_subPropertyOf) = ()
+
+// The licensing invariant for this rule, against scm-eqp1's row.
+let scm_eqp1_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ scm_eqp1_derives g t)
+
+val owl_rule_equivalent_property_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures scm_eqp1_licensed g (owl_rule_equivalent_property g ig))
+
+let owl_rule_equivalent_property_licensed g ig =
+  lemma_vocab_eqp_agree ();
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_equivalentProperty then
+        match t.s, t.o with
+        | S_IRI p_iri, T_IRI q_iri ->
+          let t1 : triple = { s = S_IRI p_iri; p = rdfs_subPropertyOf; o = T_IRI q_iri } in
+          let t2 : triple = { s = S_IRI q_iri; p = rdfs_subPropertyOf; o = T_IRI p_iri } in
+          add_triple_unchecked (add_triple_unchecked acc t1) t2
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ scm_eqp1_licensed g acc) ==>
+      scm_eqp1_licensed g (emit_step acc t)
+  with introduce (memP t g /\ scm_eqp1_licensed g acc) ==>
+                 scm_eqp1_licensed g (emit_step acc t)
+  with _ . begin
+    if t.p = owl_equivalentProperty then
+      match t.s, t.o with
+      | S_IRI p_iri, T_IRI q_iri ->
+        let t1 : triple = { s = S_IRI p_iri; p = rdfs_subPropertyOf; o = T_IRI q_iri } in
+        let t2 : triple = { s = S_IRI q_iri; p = rdfs_subPropertyOf; o = T_IRI p_iri } in
+        // t1 is scm_eqp1_derives' first disjunct, witness u := t
+        // (so u.s == S_IRI p_iri and u.o == T_IRI q_iri literally).
+        assert (t1 == ({ s = t.s; p = o_rdfs_subPropertyOf; o = t.o } <: triple));
+        // t2 is the second disjunct, witness u := t, p2s := S_IRI q_iri:
+        // subj_term (S_IRI q_iri) == T_IRI q_iri == u.o by definition of
+        // subj_term, and subj_term u.s == subj_term (S_IRI p_iri) ==
+        // T_IRI p_iri likewise.
+        lemma_subj_term_agree (S_IRI q_iri);
+        lemma_subj_term_agree t.s;
+        assert (subj_term (S_IRI q_iri) == t.o);
+        assert (t2 == ({ s = S_IRI q_iri; p = o_rdfs_subPropertyOf;
+                         o = subj_term t.s } <: triple))
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (scm_eqp1_licensed g) emit_step g g;
+  assert_norm (owl_rule_equivalent_property g ig ==
+               List.Tot.fold_left emit_step g g)
+
+// Per-triple corollary.
+val theorem_equivalent_property_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires memP t (owl_rule_equivalent_property g ig))
+    (ensures  memP t g \/ scm_eqp1_derives g t)
+
+let theorem_equivalent_property_licensed g ig t =
+  owl_rule_equivalent_property_licensed g ig
