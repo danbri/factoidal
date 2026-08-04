@@ -426,3 +426,109 @@ val theorem_symmetric_property_licensed
 
 let theorem_symmetric_property_licensed g ig t =
   owl_rule_symmetric_property_licensed g ig
+
+// ===================================================================
+// 5. scm-eqc1: every `owl_rule_equivalent_class` emission is licensed.
+//
+// The engine ledger in OWL.RL.Spec.fst labels `equivalent_class` as
+// implementing cax-eqc1 + cax-eqc2, but that is a downstream-effect
+// label, not a transcription target: cax-eqc1/cax-eqc2 conclude class
+// MEMBERSHIP ("if C1 eqc C2 and x:C1 then x:C2"), which this rule
+// never touches -- it only ever writes rdfs:subClassOf triples. The
+// cax-eqc effect is reached two rules downstream, via cax-sco
+// consuming the subClassOf edges this rule emits. What this rule's
+// emissions actually ARE is the literal conclusion of Table 8 row
+// scm-eqc1:
+//   T(?c1, owl:equivalentClass, ?c2)
+//     => T(?c1, rdfs:subClassOf, ?c2), T(?c2, rdfs:subClassOf, ?c1)
+// transcribed as OWL.RL.Spec.scm_eqc1_derives. This is the row this
+// module licenses against; scm-eqc2 (the converse direction, sco+sco
+// => eqc) is a different rule, not implemented by this fold, and out
+// of scope here.
+//
+// The engine's BNODE-POLLUTION GUARD (parent9, 2026-04-23) makes the
+// rule emit FEWER conclusions than the row licenses whenever either
+// side is an anonymous class-expression bnode: S_IRI/S_BNode emits
+// only the first disjunct's triple, S_BNode/S_IRI only the second's,
+// and S_BNode/S_BNode emits neither. Emitting fewer conclusions than
+// a row licenses is still licensed -- the case split below carries no
+// extra proof burden, it just narrows which disjunct (or neither) is
+// asserted per case.
+// ===================================================================
+
+let lemma_vocab_eqc_agree ()
+  : Lemma (OWL.Closure.owl_equivalentClass == OWL.RL.Spec.o_owl_equivalentClass /\
+           RDFS.Closure.rdfs_subClassOf == OWL.RL.Spec.o_rdfs_subClassOf) = ()
+
+// The licensing invariant for this rule, against scm-eqc1's row.
+let scm_eqc1_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ scm_eqc1_derives g t)
+
+val owl_rule_equivalent_class_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures scm_eqc1_licensed g (owl_rule_equivalent_class g ig))
+
+let owl_rule_equivalent_class_licensed g ig =
+  lemma_vocab_eqc_agree ();
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_equivalentClass then
+        match term_to_subject t.o with
+        | Some d_subj ->
+          let t1 : triple = { s = t.s;    p = rdfs_subClassOf; o = subject_to_term d_subj } in
+          let t2 : triple = { s = d_subj; p = rdfs_subClassOf; o = subject_to_term t.s } in
+          (match t.s, d_subj with
+           | S_IRI _, S_IRI _ ->
+             add_triple_unchecked (add_triple_unchecked acc t1) t2
+           | S_IRI _, S_BNode _ ->
+             add_triple_unchecked acc t1
+           | S_BNode _, S_IRI _ ->
+             add_triple_unchecked acc t2
+           | S_BNode _, S_BNode _ ->
+             acc)
+        | None -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ scm_eqc1_licensed g acc) ==>
+      scm_eqc1_licensed g (emit_step acc t)
+  with introduce (memP t g /\ scm_eqc1_licensed g acc) ==>
+                 scm_eqc1_licensed g (emit_step acc t)
+  with _ . begin
+    if t.p = owl_equivalentClass then
+      match term_to_subject t.o with
+      | Some d_subj ->
+        let t1 : triple = { s = t.s;    p = rdfs_subClassOf; o = subject_to_term d_subj } in
+        let t2 : triple = { s = d_subj; p = rdfs_subClassOf; o = subject_to_term t.s } in
+        // Both t1 and t2 are witnessed by u := t. subject_to_term
+        // d_subj == t.o via the half-inverse plus the converter
+        // bridge; that equality carries both directions at once.
+        lemma_term_to_subject_subj_term t.o d_subj;
+        lemma_subj_term_agree d_subj;
+        lemma_subj_term_agree t.s;
+        // t1 is scm_eqc1_derives' first disjunct, witness u := t
+        // (so u.s == t.s and u.o == t.o literally).
+        assert (t1 == ({ s = t.s; p = o_rdfs_subClassOf; o = t.o } <: triple));
+        // t2 is the second disjunct, witness u := t, c2s := d_subj.
+        assert (subj_term d_subj == t.o);
+        assert (t2 == ({ s = d_subj; p = o_rdfs_subClassOf;
+                         o = subj_term t.s } <: triple));
+        (match t.s, d_subj with
+         | S_IRI _, S_IRI _ -> ()
+         | S_IRI _, S_BNode _ -> ()
+         | S_BNode _, S_IRI _ -> ()
+         | S_BNode _, S_BNode _ -> ())
+      | None -> ()
+    else ()
+  end;
+  fold_left_inv (scm_eqc1_licensed g) emit_step g g;
+  assert_norm (owl_rule_equivalent_class g ig ==
+               List.Tot.fold_left emit_step g g)
+
+// Per-triple corollary.
+val theorem_equivalent_class_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires memP t (owl_rule_equivalent_class g ig))
+    (ensures  memP t g \/ scm_eqc1_derives g t)
+
+let theorem_equivalent_class_licensed g ig t =
+  owl_rule_equivalent_class_licensed g ig
