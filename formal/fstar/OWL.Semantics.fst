@@ -226,6 +226,24 @@ let cond_oneof (i : interp) : prop =
     i.iext (i.i_iri owl_oneOf_iri) c l ==> seq_is i l elems ==>
     (forall (x : i.idom). List.Tot.memP x elems ==> icext i x c)
 
+// owl:equivalentClass — OWL 2 RDF-Based Semantics Table 5.8
+// (equivalentClass condition): IEXT(I(owl:equivalentClass)) =
+// { <x,y> | ICEXT(x) = ICEXT(y) }. The pilot needs only the
+// implication the closure rule relies on — extension equality
+// implies both rdfs:subClassOf directions — so this condition is
+// stated as that implication rather than the full class-extension
+// equality (the weakest reading the table row implies; see the
+// module banner and cond_oneof's comment for the same pattern).
+// NOT added to owl_rl_pilot_conditions: see the design note on
+// owl_rule_equivalent_class_sound in OWL.Semantics.Soundness.fst —
+// growing that bundle perturbs the SMT context for its existing
+// consumers, so this rule's lemma takes the condition explicitly.
+let cond_equivalent_class (i : interp) : prop =
+  forall (c d : i.idom).
+    i.iext (i.i_iri owl_equivalentClass) c d ==>
+    (i.iext (i.i_iri rdfs_subClassOf) c d /\
+     i.iext (i.i_iri rdfs_subClassOf) d c)
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker

@@ -499,6 +499,75 @@ let owl_rule_cls_oneof_sound i a g ig =
 #pop-options
 
 // ===================================================================
+// Rule 5: owl_rule_equivalent_class (scm-eqc1 -- the row label the
+// 2026-08-04 ledger correction fixed; the licensing sibling in
+// OWL.RL.Refinement.fst section 5 carries the full story).
+// OWL 2 RL/RDF rules table row scm-eqc1: T(?c, owl:equivalentClass, ?d) =>
+// T(?c, rdfs:subClassOf, ?d), T(?d, rdfs:subClassOf, ?c). The engine
+// rule's bnode-pollution guard (OWL.Closure.fsti ~line 201) narrows
+// WHICH of the two conclusions is emitted per (t.s, d_subj)
+// constructor pair -- it never emits a conclusion beyond the two
+// cond_equivalent_class licenses, so every case is a subset of an
+// already-sound pair; the 4-way match needs no extra argument.
+// ===================================================================
+
+val owl_rule_equivalent_class_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_equivalent_class i /\ holds_all i a g)
+    (ensures  holds_all i a (owl_rule_equivalent_class g ig))
+
+let owl_rule_equivalent_class_sound i a g ig =
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_equivalentClass then
+        match term_to_subject t.o with
+        | Some d_subj ->
+          let t1 : triple = { s = t.s;    p = rdfs_subClassOf; o = subject_to_term d_subj } in
+          let t2 : triple = { s = d_subj; p = rdfs_subClassOf; o = subject_to_term t.s } in
+          (match t.s, d_subj with
+           | S_IRI _, S_IRI _ ->
+             // both named: emit both directions (symmetric equivalence)
+             add_triple_unchecked (add_triple_unchecked acc t1) t2
+           | S_IRI _, S_BNode _ ->
+             // named -> anon CE: only emit the forward (named sco bnode).
+             add_triple_unchecked acc t1
+           | S_BNode _, S_IRI _ ->
+             // anon CE -> named: only emit the forward (named sco bnode).
+             add_triple_unchecked acc t2
+           | S_BNode _, S_BNode _ ->
+             // bnode-to-bnode equivalence: skip (no test needs it,
+             // and transitivity through such a pair would pollute).
+             acc)
+        | None -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (emit_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc t)
+  with _ . begin
+    if t.p = owl_equivalentClass then
+      match term_to_subject t.o with
+      | Some d_subj ->
+        lemma_denot_term_to_subject i a t.o d_subj;
+        lemma_denot_subject_to_term i a d_subj;
+        lemma_denot_subject_to_term i a t.s;
+        assert (triple_holds i a t);
+        assert (i.iext (i.i_iri owl_equivalentClass)
+                       (denot_subject i a t.s) (denot_subject i a d_subj));
+        // cond_equivalent_class: both subClassOf directions follow from
+        // the single equivalentClass edge just established.
+        assert (i.iext (i.i_iri rdfs_subClassOf)
+                       (denot_subject i a t.s) (denot_subject i a d_subj));
+        assert (i.iext (i.i_iri rdfs_subClassOf)
+                       (denot_subject i a d_subj) (denot_subject i a t.s))
+      | None -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) emit_step g g;
+  assert_norm (owl_rule_equivalent_class g ig == List.Tot.fold_left emit_step g g)
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge
