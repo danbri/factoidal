@@ -253,13 +253,36 @@ let lemma_build_indexed_wf_pred (g : rdf_graph)
                  (List.Tot.memP t ig.ig_triples /\ t.p == k)
   with _ . lemma_tree_ok_lookup bucket_key_pred g ig.ig_pred k t
 
+// The subject bucket: served triples are graph members whose own key
+// equals the queried key. Weak form only, like ig_sp's below; the
+// STRONG form (the subject recovered) lives in
+// RDF.Indexed.KeyInjectivity.lemma_build_indexed_wf_subj, where
+// subject_to_key injectivity needs no side condition at all.
+let lemma_build_indexed_wf_subj_weak (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed g in
+              forall (k : string) (t : triple).
+                List.Tot.memP t (bucket_lookup ig.ig_subj k) ==>
+                (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_subj t))) =
+  let ig = build_indexed g in
+  lemma_build_bucket_ok bucket_key_subj g;
+  assert (ig.ig_subj == build_bucket bucket_key_subj g);
+  introduce forall (k : string) (t : triple).
+      List.Tot.memP t (bucket_lookup ig.ig_subj k) ==>
+      (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_subj t)
+  with introduce List.Tot.memP t (bucket_lookup ig.ig_subj k) ==>
+                 (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_subj t)
+  with _ . lemma_tree_ok_lookup bucket_key_subj g ig.ig_subj k t
+
 // The subject-predicate bucket: served triples are graph members
 // whose OWN composite key equals the queried key. NOTE this is the
 // WEAK form: recovering the components (t.s == s /\ t.p == p from
 // sp_key t.s t.p == sp_key s p) needs sp_key injectivity, which in
 // turn needs "U+001F never occurs in a blank-node label" — a
 // representation invariant nothing in the tree currently enforces.
-// See the design doc, finding F1.
+// See the design doc, finding F1. [Since 2026-08-04 the injectivity
+// IS proved for separator-free keys and the strong form discharged:
+// RDF.Indexed.KeyInjectivity.lemma_build_indexed_wf_sp.]
 let lemma_build_indexed_wf_sp_weak (g : rdf_graph)
   : Lemma
     (ensures (let ig = build_indexed g in

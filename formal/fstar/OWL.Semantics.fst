@@ -309,3 +309,16 @@ let ig_wf_sp (ig : indexed_graph) : prop =
   forall (s : subject) (p : wf_iri) (t : triple).
     List.Tot.memP t (bucket_lookup ig.ig_sp (sp_key s p)) ==>
     List.Tot.memP t ig.ig_triples /\ t.s == s /\ t.p == p
+
+// Every triple the subject bucket serves up under subject_to_key s
+// is a real triple of the snapshot with exactly that subject.
+// Unlike ig_wf_sp there is NO separator side condition to carry:
+// subject_to_key is injective outright (its two-char tag separates
+// the constructors and the label is carried whole --
+// RDF.Indexed.KeyInjectivity.lemma_subject_to_key_injective), so
+// build_indexed discharges this for EVERY graph
+// (lemma_build_indexed_wf_subj in the same module).
+let ig_wf_subj (ig : indexed_graph) : prop =
+  forall (s : subject) (t : triple).
+    List.Tot.memP t (bucket_lookup ig.ig_subj (subject_to_key s)) ==>
+    List.Tot.memP t ig.ig_triples /\ t.s == s

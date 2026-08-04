@@ -261,3 +261,30 @@ let theorem_wf_sp_nonempty_instance ()
   assert_norm (graph_sp_sep_free_b ki_sample == true);
   lemma_graph_sp_sep_free_b_sound ki_sample;
   lemma_build_indexed_wf_sp ki_sample
+
+// ===================================================================
+// 6. The subject bucket needs no side condition at all.
+//
+// bucket_key_subj t = Some (subject_to_key t.s), and subject_to_key
+// is injective outright (section 2), so the weak membership form
+// upgrades to full ig_wf_subj for EVERY graph -- no separator
+// hypothesis. This is the discharge the eq-rep-* rule family's
+// licensing lemmas consume.
+// ===================================================================
+
+val lemma_build_indexed_wf_subj (g : rdf_graph)
+  : Lemma (ensures ig_wf_subj (build_indexed g))
+
+let lemma_build_indexed_wf_subj g =
+  lemma_build_indexed_wf_subj_weak g;
+  let ig = build_indexed g in
+  assert (ig.ig_triples == g);
+  introduce forall (s : subject) (t : triple).
+      memP t (bucket_lookup ig.ig_subj (subject_to_key s)) ==>
+      (memP t ig.ig_triples /\ t.s == s)
+  with introduce memP t (bucket_lookup ig.ig_subj (subject_to_key s)) ==>
+                 (memP t ig.ig_triples /\ t.s == s)
+  with _ . begin
+    assert (Some (subject_to_key s) == bucket_key_subj t);
+    lemma_subject_to_key_injective t.s s
+  end
