@@ -20,14 +20,14 @@ module SPARQL11.Algebra.Refinement
 // FINDINGS -- READ THESE BEFORE READING THE THEOREMS
 // -------------------------------------------------------------------
 //
-// SR-1. `distinct_solutions` DOES NOT IMPLEMENT SPARQL DISTINCT.
-//   `theorem_distinct_not_card_conformant` is a machine-checked
-//   refutation: there is a solution sequence on which
-//   `distinct_solutions` fails section 18.5's Card[Distinct] = 1
-//   clause. The cause is that `sm_equal` compares two solution
-//   mappings as ORDERED ASSOCIATION LISTS ("v1 = v2 && rdf_term_eq t1
-//   t2 && sm_equal r1 r2"), while a solution mapping is a PARTIAL
-//   FUNCTION (18.3) and two lists binding the same variables to the
+// SR-1 (FIXED 2026-08-03, issue #336): `distinct_solutions` failed
+//   section 18.5's Card[Distinct] = 1 clause because `sm_equal`
+//   compared two solution mappings as ORDERED ASSOCIATION LISTS,
+//   while a solution mapping is a PARTIAL FUNCTION (18.3). `sm_equal`
+//   is now a mutual-submap check; the refutation theorems this file
+//   carried are replaced by their positive forms on the same witness
+//   (`theorem_sr1_witness_now_card_conformant`), and two lists
+//   binding the same variables to the
 //   same terms in a different order denote the same mapping. This is
 //   not a corner case reachable only in F*: `tp_match` threads
 //   bindings subject -> predicate -> object and `sm_bind` PREPENDS, so
@@ -38,7 +38,9 @@ module SPARQL11.Algebra.Refinement
 // SR-2. THE HASH-JOIN KEY IS FINER THAN THE COMPATIBILITY TEST IT
 //   NARROWS, so `join` can DROP solutions that `join_nested_loop`
 //   (and therefore the specification) requires.
-//   `theorem_join_key_finer_than_compatibility` is the machine-checked
+//   (FIXED 2026-08-03, issue #337) `theorem_sr2_witness_keys_now_agree`
+//   and `theorem_join_key_no_finer_than_compatibility` are the positive
+//   forms of what was the machine-checked
 //   statement. `sm_join_key` keys on `RDF.NQuads.Serialize.nq_term_to_string`, which is
 //   injective up to BYTE identity; `sm_compatible` accepts on
 //   `rdf_term_eq`, which is COARSER -- it compares language tags
@@ -396,40 +398,68 @@ let sr1_mu2 : S.smap = [("b", sr1_term_b); ("a", sr1_term_a)]
 let lemma_sr1_same_mapping ()
   : Lemma (S.smap_eq sr1_mu1 sr1_mu2) = ()
 
-let lemma_sr1_sm_equal_says_different ()
-  : Lemma (sm_equal sr1_mu1 sr1_mu2 == false) = assert_norm (sm_equal sr1_mu1 sr1_mu2 == false)
+/// FIXED 2026-08-03. `sm_equal` is now a mutual-submap check --
+/// order-insensitive, per section 18.3 -- and the three lemmas below
+/// are the POSITIVE forms of the SR-1 refutation this file used to
+/// carry (the refutation's own witness, re-judged by the repaired
+/// function). History of the defect: issue #336 quotes the old
+/// theorems in full.
+let lemma_sr1_sm_equal_agrees ()
+  : Lemma (sm_equal sr1_mu1 sr1_mu2 == true) =
+  assert_norm (sm_equal sr1_mu1 sr1_mu2 == true)
 
-let lemma_sr1_distinct_keeps_both ()
-  : Lemma (distinct_solutions [sr1_mu1; sr1_mu2] == [sr1_mu1; sr1_mu2]) =
-  assert_norm (distinct_solutions [sr1_mu1; sr1_mu2] == [sr1_mu1; sr1_mu2])
+let lemma_sr1_distinct_dedups ()
+  : Lemma (distinct_solutions [sr1_mu1; sr1_mu2] == [sr1_mu2]) =
+  assert_norm (distinct_solutions [sr1_mu1; sr1_mu2] == [sr1_mu2])
 
-/// FINDING SR-1, as a theorem: the shipping DISTINCT does not satisfy
-/// section 18.5's Card[Distinct(Omega)][mu] = 1.
+/// Card[Distinct(Omega)][mu] = 1 (section 18.5) now HOLDS on the exact
+/// witness that refuted it: both input mappings denote one partial
+/// function, and DISTINCT keeps exactly one representative.
 ///
-/// The witness is stated with concrete blank nodes and concrete
-/// variable names -- no hypothesis, nothing left to inspection. Both
-/// mappings bind ?a to _:b1 and ?b to _:b2; they differ only in the
-/// order the evaluator happened to build the association list, which
-/// section 18.3 says carries no meaning.
-let theorem_distinct_not_card_conformant ()
-  : Lemma (exists (omega : list S.smap).
-             ~(S.distinct_card_spec omega (distinct_solutions omega))) =
+/// (`distinct_solutions` keeps the LAST positional occurrence of an
+/// equivalence class -- sm_mem checks the tail -- which is sr1_mu2
+/// here; any representative satisfies the cardinality clause, since
+/// mult counts through `smap_eqb`, which identifies the two.)
+let theorem_sr1_witness_now_card_conformant ()
+  : Lemma (S.distinct_card_spec [sr1_mu1; sr1_mu2]
+                                (distinct_solutions [sr1_mu1; sr1_mu2])) =
   lemma_sr1_same_mapping ();
-  S.lemma_smap_eqb_complete sr1_mu1 sr1_mu2;
-  lemma_sr1_distinct_keeps_both ();
-  assert (S.mult sr1_mu1 [sr1_mu1; sr1_mu2] == 2);
-  assert (S.mult sr1_mu1 (distinct_solutions [sr1_mu1; sr1_mu2]) == 2);
-  assert (~(S.distinct_card_spec [sr1_mu1; sr1_mu2]
-                                 (distinct_solutions [sr1_mu1; sr1_mu2])))
+  lemma_sr1_distinct_dedups ();
+  // The spec's forall ranges over ALL mappings, not just the members
+  // of the witness sequence, so the proof is a genuine case split on
+  // an arbitrary mu: whichever of the two witnesses mu matches by
+  // smap_eqb, transitivity through smap_eq sr1_mu1 sr1_mu2 makes it
+  // match the other, so the two multiplicities rise and fall together.
+  introduce forall (mu : S.smap).
+      S.mult mu [sr1_mu2] ==
+      (if S.mult mu [sr1_mu1; sr1_mu2] > 0 then 1 else 0)
+  with begin
+    (if S.smap_eqb mu sr1_mu1 then begin
+       S.lemma_smap_eqb_sound mu sr1_mu1;
+       S.lemma_smap_eq_trans mu sr1_mu1 sr1_mu2;
+       S.lemma_smap_eqb_complete mu sr1_mu2
+     end);
+    (if S.smap_eqb mu sr1_mu2 then begin
+       S.lemma_smap_eqb_sound mu sr1_mu2;
+       S.lemma_smap_eq_sym sr1_mu1 sr1_mu2;
+       S.lemma_smap_eq_trans mu sr1_mu2 sr1_mu1;
+       S.lemma_smap_eqb_complete mu sr1_mu1
+     end)
+  end;
+  assert (S.distinct_card_spec [sr1_mu1; sr1_mu2] [sr1_mu2])
 
-/// The same defect stated where a reader will meet it: `sm_equal`,
-/// which `distinct_solutions` uses as its notion of "same solution",
-/// is not the equality of solution mappings.
-let theorem_sm_equal_is_not_smap_eq ()
-  : Lemma (exists (mu1 mu2 : S.smap).
-             S.smap_eq mu1 mu2 /\ sm_equal mu1 mu2 == false) =
+/// The repaired `sm_equal` agrees with the specification's `smap_eq`
+/// on the witness pair. The GENERAL agreement (sm_equal decides
+/// smap_eq wherever the two term equalities coincide) is deliberately
+/// NOT stated here: `sm_equal` compares terms with `rdf_term_eq` and
+/// `smap_eq` with term identity, and which of those is RDF 1.1 term
+/// equality is the #324 dispute. DISTINCT does not get to settle #324
+/// as a side effect; when #324 retires one equality, the general
+/// theorem becomes stateable.
+let theorem_sm_equal_matches_smap_eq_on_witness ()
+  : Lemma (S.smap_eq sr1_mu1 sr1_mu2 /\ sm_equal sr1_mu1 sr1_mu2 == true) =
   lemma_sr1_same_mapping ();
-  lemma_sr1_sm_equal_says_different ()
+  lemma_sr1_sm_equal_agrees ()
 
 (** ====================================================================== **)
 (** Part 7: list-membership machinery for the evaluator's own combinators  **)
@@ -625,24 +655,20 @@ let lemma_sr2_nq_differs (tag1 tag2 : string)
   lemma_strcat_right_neq ("\"@" ^ (tag1 ^ "")) ("\"@" ^ (tag2 ^ "")) esc;
   lemma_strcat_right_neq (esc ^ ("\"@" ^ (tag1 ^ ""))) (esc ^ ("\"@" ^ (tag2 ^ ""))) "\""
 
-/// FINDING SR-2, machine-checked.
+/// FIXED 2026-08-03 (issue #337). `sm_join_key` now serialises
+/// `RDF.Term.join_canon_term` of each bound term -- the canonical form
+/// that folds exactly what `rdf_term_eq` folds -- so the two theorems
+/// below replace the finer-than refutation this file used to carry
+/// (issue #337 quotes it in full). `lemma_sr2_nq_differs` above is KEPT:
+/// it documents the raw serialiser's byte behaviour, which is unchanged
+/// and still true -- the fix moved the KEY off the raw serialisation,
+/// it did not change the serialiser.
 ///
-/// The tag pair is taken as a HYPOTHESIS rather than instantiated at
-/// string constants, for the reason recorded in section 7.7 of the
-/// simple-entailment design doc: `String.lowercase` is a primitive the
-/// normaliser will not evaluate, so `assert_norm` cannot decide
-/// `lowercase "en" = lowercase "EN"`. `"en"`/`"EN"` is the intended
-/// instance and it is confirmed to fire end-to-end against the shipping
-/// binary -- see the design doc for the exact query and output.
-///
-/// The conclusion is the contradiction itself: the two mappings ARE
-/// compatible by the very test `join`/`left_join` apply after
-/// narrowing (`sm_compatible`), and they are put in DIFFERENT hash
-/// buckets by the narrowing step (`sm_join_key`). A candidate set
-/// keyed this way is therefore NOT a superset of the compatible pairs,
-/// which is the property the hash-join optimisation needs to be
-/// semantics-preserving.
-let theorem_join_key_finer_than_compatibility (v : string) (tag1 tag2 : string)
+/// The witness, re-judged: same hypotheses as the refutation (two tags
+/// equal under lowercase, distinct as strings), and the keys are now
+/// EQUAL while the mappings remain compatible -- the narrowing step can
+/// no longer separate what the acceptance test identifies.
+let theorem_sr2_witness_keys_now_agree (v : string) (tag1 tag2 : string)
   : Lemma (requires String.lowercase tag1 == String.lowercase tag2 /\
                     tag1 =!= tag2)
           (ensures  (let t1 = T_Literal (sr2_lit tag1) in
@@ -651,12 +677,19 @@ let theorem_join_key_finer_than_compatibility (v : string) (tag1 tag2 : string)
                      let mu2 : S.smap = [(v, t2)] in
                      rdf_term_eq t1 t2 == true /\
                      sm_compatible mu1 mu2 == true /\
-                     sm_join_key [v] mu1 =!= sm_join_key [v] mu2)) =
-  lemma_sr2_nq_differs tag1 tag2;
-  lemma_strcat_left_neq
-    (RDF.NQuads.Serialize.nq_term_to_string (T_Literal (sr2_lit tag1)))
-    (RDF.NQuads.Serialize.nq_term_to_string (T_Literal (sr2_lit tag2)))
-    (RDF.Indexed.unit_sep ^ "")
+                     sm_join_key [v] mu1 == sm_join_key [v] mu2)) =
+  let t1 = T_Literal (sr2_lit tag1) in
+  let t2 = T_Literal (sr2_lit tag2) in
+  lemma_join_canon_term_eq t1 t2
+
+/// The GENERAL superset property, no witness needed: any two terms the
+/// acceptance test identifies produce the same single-variable key.
+/// This is the property the hash join needs to be semantics-preserving,
+/// now a theorem instead of a banner assertion.
+let theorem_join_key_no_finer_than_compatibility (v : string) (t1 t2 : rdf_term)
+  : Lemma (requires rdf_term_eq t1 t2 == true)
+          (ensures  sm_join_key [v] [(v, t1)] == sm_join_key [v] [(v, t2)]) =
+  lemma_join_canon_term_eq t1 t2
 
 (** ====================================================================== **)
 (** Part 10: Project (section 18.5)                                        **)

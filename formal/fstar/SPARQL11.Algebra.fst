@@ -2865,10 +2865,16 @@ let eval_bgp (patterns : bgp) (g : rdf_graph) : solution_sequence =
 (** to the original nested loop untouched — a hash key would not narrow    **)
 (** anything there anyway.                                                 **)
 (**                                                                         **)
-(** Correctness: the key (`sm_join_key`, canonical `nq_term_to_string`      **)
-(** serialization per bound variable, RDF.NQuads.Serialize — already        **)
-(** trusted for N-Quads output, so injective on well-formed terms) is used  **)
-(** ONLY to narrow candidates; `join_candidates` always returns a SUPERSET  **)
+(** Correctness: the key (`sm_join_key`) serialises the JOIN-CANONICAL     **)
+(** form of each bound term -- `RDF.Term.join_canon_term`, which folds     **)
+(** exactly what `rdf_term_eq` folds (language-tag case, XMLLiteral        **)
+(** exclusive-canonical form). `lemma_join_canon_term_eq` PROVES that      **)
+(** compatible terms serialise to identical keys; the previous key used    **)
+(** raw `nq_term_to_string` and this paragraph merely asserted the         **)
+(** superset property, which issue #337 refuted with a machine-checked     **)
+(** witness ("x"@en vs "x"@EN: compatible, different buckets, OPTIONAL     **)
+(** returned an UNBOUND row for a matching pattern). The key is used       **)
+(** ONLY to narrow candidates; `join_candidates` always returns a SUPERSET **)
 (** of the true matches (wildcard rows — missing one of the chosen key      **)
 (** variables — are always included; a probe row missing a key variable    **)
 (** conservatively pulls every keyed row too), so a hash-key collision or   **)
@@ -2903,7 +2909,9 @@ let rec sm_join_key (vars : list var_name) (mu : solution_mapping) : option stri
   | [] -> Some ""
   | v :: rest ->
     (match sm_lookup v mu, sm_join_key rest mu with
-     | Some t, Some rest_key -> Some (nq_term_to_string t ^ RDF.Indexed.unit_sep ^ rest_key)
+     | Some t, Some rest_key ->
+       // #337: serialise the join-canonical form, never the raw term.
+       Some (nq_term_to_string (join_canon_term t) ^ RDF.Indexed.unit_sep ^ rest_key)
      | _, _ -> None)
 
 (* One side of a hash join, indexed by [vars]: rows whose full key is
@@ -5668,11 +5676,32 @@ let sort_solutions (base : option wf_iri) (conds : list order_condition) (omega 
 (** 11.2 DISTINCT / REDUCED (§18.4) **)
 
 (* Solution mapping equality: compare bindings pairwise using rdf_term_eq *)
-let rec sm_equal (m1 m2 : solution_mapping) : bool =
-  match m1, m2 with
-  | [], [] -> true
-  | (v1, t1) :: r1, (v2, t2) :: r2 -> v1 = v2 && rdf_term_eq t1 t2 && sm_equal r1 r2
-  | _, _ -> false
+// #336 (SR-1): a solution mapping is a PARTIAL FUNCTION (section 18.3);
+// binding order carries no meaning. The original sm_equal compared the
+// association lists position by position, so the two arms of a UNION --
+// which build the same mapping in different variable order -- looked
+// like different rows to DISTINCT, and Card[Distinct(Omega)][mu] = 1
+// (section 18.5) failed on a machine-checked witness
+// (SPARQL11.Algebra.Refinement, finding SR-1). Now: mutual submap.
+//
+// The term comparator stays rdf_term_eq ON PURPOSE. The Spec module's
+// smap_eqb compares terms by IDENTITY (term_id_eqb); rdf_term_eq folds
+// language-tag case and XMLLiteral canonical form. Which of the two is
+// RDF 1.1 term equality is exactly the #324 dispute, and DISTINCT
+// should not settle it as a side effect: keeping rdf_term_eq means this
+// change strictly REMOVES duplicate rows relative to the shipping
+// behaviour and never adds one. When #324 retires one equality, this
+// comparator follows it.
+let rec sm_submap (m1 m2 : solution_mapping) : Tot bool (decreases m1) =
+  match m1 with
+  | [] -> true
+  | (v, t) :: r ->
+    (match sm_lookup v m2 with
+     | Some t2 -> rdf_term_eq t t2 && sm_submap r m2
+     | None -> false)
+
+let sm_equal (m1 m2 : solution_mapping) : bool =
+  sm_submap m1 m2 && sm_submap m2 m1
 
 (* Remove duplicate solution mappings using sm_equal *)
 let rec sm_mem (mu : solution_mapping) (l : list solution_mapping)
