@@ -416,6 +416,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     OWL.RL.Spec.fst
     OWL.RL.Refinement.fst
     RDF.Entailment.RDFS.Refinement.fst
+    RDF.Entailment.RDFS.SepFree.fst
     RDF.Entailment.RDFS.ModelTheory.fst
     RDF.List.Helpers.fst
     RDF.Bytes.fst
