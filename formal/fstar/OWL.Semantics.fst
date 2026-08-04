@@ -262,6 +262,18 @@ let cond_equivalent_property (i : interp) : prop =
     (i.iext (i.i_iri rdfs_subPropertyOf) p q /\
      i.iext (i.i_iri rdfs_subPropertyOf) q p)
 
+// owl:sameAs, reflexive half -- OWL 2 RDF-Based Semantics Table 5.11:
+// IEXT(I(owl:sameAs)) is the identity relation on IR, which contains
+// every reflexive pair <x,x>. cond_sameas_identity above states the
+// COLLAPSE direction (x = y follows from sameAs x y, needed by the
+// eq-rep-* congruence rules); this condition is the other half the
+// identity relation gives for free -- every element is sameAs itself
+// -- which cond_sameas_identity's iff does not by itself hand the
+// eq-ref soundness proof without redoing the identity-relation
+// argument, so it is stated directly.
+let cond_sameas_reflexive (i : interp) : prop =
+  forall (x : i.idom). i.iext (i.i_iri owl_sameAs) x x
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker

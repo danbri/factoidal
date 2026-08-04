@@ -623,6 +623,51 @@ let owl_rule_equivalent_property_sound i a g ig =
   assert_norm (owl_rule_equivalent_property g ig == List.Tot.fold_left emit_step g g)
 
 // ===================================================================
+// Rule 7: owl_rule_sameAs_reflexivity (eq-ref -- Table 4). OWL 2
+// RL/RDF rules table row eq-ref: T(?s, ?p, ?o) => T(?s, owl:sameAs,
+// ?s), T(?p, owl:sameAs, ?p), T(?o, owl:sameAs, ?o), restated by the
+// engine (OWL.Closure.fsti ~line 471) as: fold over
+// collect_iri_or_bnode_terms g and emit a reflexive owl:sameAs
+// triple per node. cond_sameas_identity above gives the COLLAPSE
+// direction (sameAs x y ==> x = y), which the eq-rep-* congruence
+// rules need; this rule needs the other half of the Table 5.11
+// identity relation -- every element is reflexively related -- which
+// is exactly cond_sameas_reflexive. The licensing sibling in
+// OWL.RL.Refinement.fst section 3 (owl_rule_sameAs_reflexivity_
+// licensed) shows the same fold shape over the same collect_iri_
+// or_bnode_terms list and additionally tracks node PROVENANCE (via
+// lemma_collect_nodes_provenance) to prove each emitted triple is
+// licensed by something already in g. This semantic proof needs none
+// of that: cond_sameas_reflexive holds for every domain element, so
+// the emission step's truth needs no fact about where n came from --
+// only the fold structure (over nodes, not g) is shared.
+// ===================================================================
+
+val owl_rule_sameAs_reflexivity_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_sameas_reflexive i /\ holds_all i a g)
+    (ensures  holds_all i a (owl_rule_sameAs_reflexivity g ig))
+
+let owl_rule_sameAs_reflexivity_sound i a g ig =
+  let nodes = collect_iri_or_bnode_terms g in
+  let emit_step : rdf_graph -> subject -> rdf_graph =
+    fun (acc : rdf_graph) (n : subject) ->
+      let new_t : triple = { s = n; p = owl_sameAs; o = subject_to_term n } in
+      add_triple_unchecked acc new_t in
+  introduce forall (acc : rdf_graph) (n : subject).
+      (List.Tot.memP n nodes /\ holds_all i a acc) ==> holds_all i a (emit_step acc n)
+  with introduce (List.Tot.memP n nodes /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc n)
+  with _ . begin
+    lemma_denot_subject_to_term i a n;
+    assert (i.iext (i.i_iri owl_sameAs) (denot_subject i a n) (denot_subject i a n))
+  end;
+  fold_left_inv (holds_all i a) emit_step nodes g;
+  assert_norm (owl_rule_sameAs_reflexivity g ig ==
+               List.Tot.fold_left emit_step g (collect_iri_or_bnode_terms g))
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge
