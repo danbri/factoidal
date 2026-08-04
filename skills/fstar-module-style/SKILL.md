@@ -242,6 +242,61 @@ inside one `.fsti` file):
   `minimal_regrettable_glue_code_each_with_an_open_issue/` named
   `<issue>_<description>.sh` + an open GitHub issue (Iron Rule #3).
 
+## Proof-shape traps for engine-vs-spec refinement proofs (2026-08-04)
+
+Learned building the licensing program (`OWL.RL.Refinement.fst`,
+`RDF.Indexed.KeyInjectivity.fst`, `RDF.Entailment.RDFS.ChainWf.fst`)
+in one day; each rule below cost at least one failed verify cycle.
+
+1. **`assert_norm (rule g ig == fold_left step ...)` only reduces
+   through zeta-unfoldable LOCAL step lambdas spelled VERBATIM from
+   the engine text.** A top-level step function — even one whose body
+   is a character-for-character copy — leaves the two sides in
+   different normal forms and the assertion fails (first draft of
+   OWL.RL.Refinement, 2026-08-04). Also verbatim means verbatim: a
+   pair match (`match a, b with`) in the engine does NOT normalize
+   equal to nested single matches in the proof copy — we measured
+   both directions failing.
+
+2. **`FStar.String.concat` (the list form) is an OPAQUE val with no
+   reasoning equations — nothing symbolic can ever be proved about a
+   string built with it.** The strcat operator `^` carries
+   `list_of_concat` / `concat_injective` / `concat_length`. If a
+   function's output needs injectivity or decomposition proofs, build
+   the string with `^` (see `sp_key` / `subject_to_key` in
+   RDF.Indexed.fsti and the do-not-simplify-back comment there). The
+   normalizer evaluates BOTH forms on concrete literals, which is why
+   the gap only bites the first time someone states a symbolic lemma.
+   Also confirmed available as normalizer primitives on literals:
+   `list_of_string`, `^`, char literals like `'\x1f'`, and recursive
+   functions over the resulting `list char`.
+
+3. **A nested fold whose inner lambda is a closure over the outer
+   lambda's pattern binders can be UNDISCHARGEABLE through
+   `fold_left_inv`** — the outer step-obligation goal
+   `inv (outer_step acc x)` fails even at `--z3rlimit 1500 --fuel 4
+   --ifuel 4`, with the inner `fold_left_inv` fine. Hit on
+   `owl_rule_inverse_of` (pair-match outer, inner fold over `g`,
+   inner lambda capturing `p1_iri`/`p2_iri`); four structural
+   variants failed identically; parked in task #36 with WIP in the
+   session scratchpad. The SAME shape with a single-scrutinee outer
+   match and an inner fold over a bucket lookup DOES discharge
+   (OWL.Semantics.Soundness.rdfs_rule_domain_sound,
+   eq-trans in OWL.RL.Refinement) — so suspect the pair-match +
+   closure-capture combination, and prefer engine rules of the
+   domain-sound shape when writing new ones. Diagnose interactively
+   with the F* MCP (`fstar-mcp` skill) BEFORE burning batch cycles:
+   the failing query's context names which symbol stayed opaque.
+
+4. **Spec-side predicate families can be WIDER than the engine's
+   finite slice, making "licensed implies P" false even when every
+   actual emission satisfies P.** `is_rdf_member_iri` admits
+   `rdf:_<any string>` — including separators — while the engine only
+   folds `rdf:_1..rdf:_5`. Property provenance for such rules must
+   argue from the ENGINE fold (verbatim-lambda + fold_left_inv over
+   the concrete list), not from the licensing predicate
+   (RDF.Entailment.RDFS.ChainWf's container-membership case).
+
 ## Syntax traps (memorize these)
 
 **Comment rule (hard, owner-ratified 2026-07-04): all NEW F\* comments

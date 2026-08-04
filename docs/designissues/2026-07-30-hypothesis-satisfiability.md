@@ -14,6 +14,20 @@ Predecessors: the three semantic-refinement verticals —
 
 ---
 
+> **✅ CLOSED 2026-08-04 (issue #338).** The gap section 0 describes is
+> repaired: `RDF.Indexed.KeyInjectivity.fst` proves `sp_key` injective
+> when either side of the key equation is U+001F-free (separator
+> counting), discharging `ig_wf_sp` for separator-free graphs;
+> `RDF.Entailment.RDFS.SepFree.fst` proves every premise-driven rule
+> row concludes cleanly; `RDF.Entailment.RDFS.ChainWf.fst` carries
+> cleanliness through all twelve rules of `rdfs_closure_step` and the
+> `closure_iter` induction, ending in
+> `theorem_closure_chain_wf_of_sep_free : graph_sep_free g ==>
+> closure_chain_wf g` with machine-checked instances (empty and a
+> non-empty graph). `rdfs_closure_entails` now applies to concrete
+> graphs. Sections 0 and 4 below are kept as the record of the gap;
+> read their present tense as of 2026-07-30.
+
 ## 0. 🔴 Read this first — the headline theorem of the RDFS vertical has no known instance
 
 `RDF.Entailment.RDFS.ModelTheory.rdfs_closure_entails` — "the shipping

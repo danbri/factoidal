@@ -846,6 +846,35 @@ Build and test harness:
 
 Inventory summary: 90 modules, 47517 lines total, 141 assume val declarations.
 
+## Rule-by-rule proof program (owner-approved 2026-08-04, live)
+
+Two lemma kinds per engine rule, tracked against the 84-function
+engine ledger at the foot of `OWL.RL.Spec.fst`:
+
+- **Licensing** (syntactic: every emission is input or one W3C-row
+  application) — `OWL.RL.Refinement.fst`. Proved: eq-sym, eq-ref,
+  prp-symp, scm-eqc1, scm-eqp1 — **5 of 34** row-implementing rules
+  (+6 rows covered via the RDFS family in
+  `RDF.Entailment.RDFS.Refinement.fst`). eq-trans in flight. prp-inv
+  parked (task #36, proof-shape trap #3 in `fstar-module-style`).
+  Two ledger claim-drift corrections came out of this: the
+  `equivalent_class` / `equivalent_property` entries claimed
+  cax-eqc/prp-eqp rows but implement scm-eqc1/scm-eqp1.
+- **Truth-preservation** (semantic: emissions true in every model of
+  the row's condition) — `OWL.Semantics.Soundness.fst`. Proved:
+  domain, range, sameAs-symmetry, oneOf, sameAs-reflexivity family —
+  **~5 of ~84**.
+- **Index-hypothesis discharge (#338, CLOSED 2026-08-04)** — three
+  modules make the wf hypotheses real: `RDF.Indexed.KeyInjectivity`
+  (`sp_key` injective one-sided on U+001F-free keys; `ig_wf_sp` for
+  separator-free graphs), `RDF.Entailment.RDFS.SepFree` (per-row
+  conclusion cleanliness), `RDF.Entailment.RDFS.ChainWf`
+  (`graph_sep_free g ==> closure_chain_wf g` with empty and
+  non-empty machine-checked instances) — so
+  `rdfs_closure_entails` now applies to concrete graphs, and the
+  index-reading OWL rules (eq-trans, prp-trp, scm-eqc2, scm-eqp2,
+  cls-hv*) are unblocked for licensing with `requires ig_wf_sp ig`.
+
 ## ⚠ Verification Gaps — Be Honest About These
 
 **SPARQL11.Parser.fst** — CLOSED 2026-07-10. The file formerly carried

@@ -597,6 +597,21 @@ let theorem_sp_key_not_injective () =
 // -------------------------------------------------------------------
 // 4d. closure_chain_wf: NO witness, not even the degenerate one.
 //
+// [CLOSED 2026-08-04 -- this finding did its job and is now HISTORY.
+//  The follow-up it demanded landed the same day, in three modules:
+//  RDF.Indexed.KeyInjectivity (sp_key injective when ONE side of the
+//  key equation is U+001F-free, by separator counting; ig_wf_sp
+//  discharged for separator-free graphs, with a non-empty instance),
+//  RDF.Entailment.RDFS.SepFree (per-row conclusion cleanliness), and
+//  RDF.Entailment.RDFS.ChainWf (every closure-step rule preserves
+//  cleanliness, so `theorem_closure_chain_wf_of_sep_free :
+//  graph_sep_free g ==> closure_chain_wf g`, with machine-checked
+//  instances `theorem_closure_chain_wf_empty` and a non-empty one).
+//  `rdfs_closure_sound` / `rdfs_closure_entails` now have concrete
+//  graphs satisfying their hypothesis end to end. The text below is
+//  kept verbatim as the record of what was missing and why; read
+//  "there is no graph" as "there was no graph before ChainWf".]
+//
 // `closure_chain_wf g = forall (n : nat). ig_wf_sp (build_indexed
 // (closure_iter g n))` is the hypothesis of
 // RDF.Entailment.RDFS.ModelTheory's `rdfs_closure_sound` and of its
