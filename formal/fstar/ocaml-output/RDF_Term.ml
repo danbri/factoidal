@@ -297,6 +297,26 @@ let literal_eq (l1 : literal) (l2 : literal) : Prims.bool=
      else l1.lexical_form = l2.lexical_form) && (l1.datatype = l2.datatype))
      && (lang_tag_option_eq l1.lang_tag l2.lang_tag))
     && (l1.direction = l2.direction)
+let join_canon_literal (l : literal) : literal=
+  {
+    lexical_form =
+      (if l.datatype = rdf_XMLLiteral
+       then FStar_String.string_of_list (xmlc_canonicalize l.lexical_form)
+       else l.lexical_form);
+    datatype = (l.datatype);
+    lang_tag =
+      (match l.lang_tag with
+       | FStar_Pervasives_Native.Some t ->
+           FStar_Pervasives_Native.Some (FStar_String.lowercase t)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None);
+    direction = (l.direction)
+  }
+let rec join_canon_term (t : rdf_term) : rdf_term=
+  match t with
+  | T_IRI uu___ -> t
+  | T_BNode uu___ -> t
+  | T_Literal l -> T_Literal (join_canon_literal l)
+  | T_TripleTerm (s, p, o) -> T_TripleTerm (s, p, (join_canon_term o))
 let rec rdf_term_eq (t1 : rdf_term) (t2 : rdf_term) : Prims.bool=
   match (t1, t2) with
   | (T_IRI i1, T_IRI i2) -> i1 = i2

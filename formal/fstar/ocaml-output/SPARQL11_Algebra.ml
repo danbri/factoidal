@@ -3827,7 +3827,9 @@ let rec sm_join_key (vars : var_name Prims.list)
        | (FStar_Pervasives_Native.Some t, FStar_Pervasives_Native.Some
           rest_key) ->
            FStar_Pervasives_Native.Some
-             (Prims.strcat (RDF_NQuads_Serialize.nq_term_to_string t)
+             (Prims.strcat
+                (RDF_NQuads_Serialize.nq_term_to_string
+                   (RDF_Term.join_canon_term t))
                 (Prims.strcat RDF_Indexed.unit_sep rest_key))
        | (uu___, uu___1) -> FStar_Pervasives_Native.None)
 type join_index =
@@ -6936,13 +6938,18 @@ let sort_solutions (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (conds : order_condition Prims.list) (omega : solution_sequence) :
   solution_sequence=
   FStar_List_Tot_Base.sortWith (compare_on_conditions base conds) omega
-let rec sm_equal (m1 : RDF_Graph_Executable.solution_mapping)
+let rec sm_submap (m1 : RDF_Graph_Executable.solution_mapping)
   (m2 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
-  match (m1, m2) with
-  | ([], []) -> true
-  | ((v1, t1)::r1, (v2, t2)::r2) ->
-      ((v1 = v2) && (RDF_Term.rdf_term_eq t1 t2)) && (sm_equal r1 r2)
-  | (uu___, uu___1) -> false
+  match m1 with
+  | [] -> true
+  | (v, t)::r ->
+      (match sm_lookup v m2 with
+       | FStar_Pervasives_Native.Some t2 ->
+           (RDF_Term.rdf_term_eq t t2) && (sm_submap r m2)
+       | FStar_Pervasives_Native.None -> false)
+let sm_equal (m1 : RDF_Graph_Executable.solution_mapping)
+  (m2 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
+  (sm_submap m1 m2) && (sm_submap m2 m1)
 let rec sm_mem (mu : RDF_Graph_Executable.solution_mapping)
   (l : RDF_Graph_Executable.solution_mapping Prims.list) : Prims.bool=
   match l with | [] -> false | hd::tl -> (sm_equal mu hd) || (sm_mem mu tl)
