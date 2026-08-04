@@ -733,6 +733,15 @@ countermeasure is total regardless of mechanism:
 4. **After any rebuild that carries a fix, re-run the reproducer**
    against the fresh artifact. The revert above was caught exactly this
    way, and no other check would have caught it.
+5. **Long-running jobs must stay harness-tracked, or a recycle kills
+   them silently and permanently.** 2026-08-04: a full gate launched
+   with shell `&` inside an already-completed background wrapper died
+   with a mid-run recycle and nothing restarted it -- the harness only
+   re-arms jobs it is tracking (`run_in_background: true` on the
+   command itself). Detection was hazard-#17 style (no runner process,
+   artifact mtime 20+ minutes old, boot time four minutes ago). Never
+   `&`-detach anything that matters; give the harness the whole
+   command.
 
 ## Hazard #19 — a cleanup step that can silently no-op is a lie (the five-week dead purge)
 

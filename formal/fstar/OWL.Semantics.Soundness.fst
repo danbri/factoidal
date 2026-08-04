@@ -188,6 +188,94 @@ let rdfs_rule_domain_sound i a g ig =
   assert_norm (rdfs_rule_domain g ig == List.Tot.fold_left outer_step g decls)
 
 // ===================================================================
+// ===================================================================
+// Rule 2b: rdfs_rule_range (rdfs3; OWL-RL prp-rng via the interleaved
+// fixpoint).
+//
+// First lemma of the rule-by-rule soundness program approved
+// 2026-08-04, and the semantic mirror of rdfs_rule_domain_sound. This
+// is the rule at the centre of the #345 unsoundness accusation
+// ("range types the SUBJECT") -- refuted then by an evening of
+// empirical forensics, refuted now by statement: under cond_range,
+// every triple this rule emits is TRUE in every model of its
+// premises, so no wrong reading of the rule can be among its
+// emissions. The syntactic half (every emission is rdfs3_derives-
+// licensed) lives in RDF.Entailment.RDFS.Refinement; this is the
+// truth-preservation half.
+// ===================================================================
+
+val rdfs_rule_range_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_range i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_pred ig)
+    (ensures  holds_all i a (rdfs_rule_range g ig))
+
+let rdfs_rule_range_sound i a g ig =
+  let decls = bucket_lookup ig.ig_pred rdfs_range in
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (decl : triple) ->
+      match decl.s with
+      | S_IRI p ->
+        let matching = bucket_lookup ig.ig_pred p in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (t : triple) ->
+            match term_to_subject t.o with
+            | Some b_subj -> emit_once_term ig acc2 b_subj rdf_type decl.o
+            | None -> acc2)
+          acc matching
+      | _ -> acc in
+  introduce forall (acc : rdf_graph) (decl : triple).
+      (List.Tot.memP decl decls /\ holds_all i a acc) ==>
+      holds_all i a (outer_step acc decl)
+  with introduce (List.Tot.memP decl decls /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc decl)
+  with _ . begin
+    // ig_wf_pred at key rdfs_range: decl is a real snapshot triple
+    // asserting (decl.s rdfs:range decl.o).
+    assert (List.Tot.memP decl ig.ig_triples /\ decl.p == rdfs_range);
+    assert (triple_holds i a decl);
+    match decl.s with
+    | S_IRI p ->
+      let matching = bucket_lookup ig.ig_pred p in
+      let inner_step : rdf_graph -> triple -> rdf_graph =
+        fun (acc2 : rdf_graph) (t : triple) ->
+          // Guarded emission (emit_once_term): either the snapshot
+          // already carries the conclusion and acc2 comes back
+          // unchanged -- truth-preservation is the hypothesis -- or
+          // the rule emits exactly the rdfs3 conclusion, covered by
+          // the cond_range argument below.
+          match term_to_subject t.o with
+          | Some b_subj -> emit_once_term ig acc2 b_subj rdf_type decl.o
+          | None -> acc2 in
+      introduce forall (acc2 : rdf_graph) (t : triple).
+          (List.Tot.memP t matching /\ holds_all i a acc2) ==>
+          holds_all i a (inner_step acc2 t)
+      with introduce (List.Tot.memP t matching /\ holds_all i a acc2) ==>
+                     holds_all i a (inner_step acc2 t)
+      with _ . begin
+        // ig_wf_pred at key p: t really is an (x P y) data triple.
+        assert (List.Tot.memP t ig.ig_triples /\ t.p == p);
+        assert (triple_holds i a t);
+        match term_to_subject t.o with
+        | Some b_subj ->
+          // The conclusion subject is the PREMISE'S OBJECT -- this
+          // alignment is the whole content of "range types the
+          // object", and the denotation lemma is what carries it.
+          lemma_denot_term_to_subject i a t.o b_subj;
+          // cond_range: <I(P), I(C)> in IEXT(I(rdfs:range)) and
+          // <x, y> in IEXT(I(P)) give y in ICEXT(I(C)).
+          assert (i.iext (i.i_iri rdfs_range) (i.i_iri p) (denot_term i a decl.o));
+          assert (icext i (denot_term i a t.o) (denot_term i a decl.o));
+          assert (icext i (denot_subject i a b_subj) (denot_term i a decl.o))
+        | None -> ()
+      end;
+      fold_left_inv (holds_all i a) inner_step matching acc
+    | _ -> ()
+  end;
+  fold_left_inv (holds_all i a) outer_step decls g;
+  assert_norm (rdfs_rule_range g ig == List.Tot.fold_left outer_step g decls)
+
 // Rule 3: owl_rule_sameAs_symmetry (eq-sym).
 // OWL 2 RL/RDF rules table: T(?x, owl:sameAs, ?y) => T(?y,
 // owl:sameAs, ?x). The rule folds over the deduped snapshot pair
@@ -458,6 +546,27 @@ let rdfs_rule_domain_entailed g =
       assert ((build_indexed g).ig_triples == g);
       rdfs_rule_domain_sound i a g (build_indexed g);
       assert (holds_all i a (rdfs_rule_domain g (build_indexed g)))
+    end
+  end
+
+val rdfs_rule_range_entailed (g : rdf_graph)
+  : Lemma (pilot_entails g (rdfs_rule_range g (build_indexed g)))
+
+let rdfs_rule_range_entailed g =
+  introduce forall (i : interp).
+      owl_rl_pilot_conditions i ==> satisfies i g ==>
+      satisfies i (rdfs_rule_range g (build_indexed g))
+  with introduce owl_rl_pilot_conditions i ==>
+                 (satisfies i g ==> satisfies i (rdfs_rule_range g (build_indexed g)))
+  with _ . introduce satisfies i g ==> satisfies i (rdfs_rule_range g (build_indexed g))
+  with _ . begin
+    eliminate exists (a : bnode_assignment i.idom). holds_all i a g
+    returns satisfies i (rdfs_rule_range g (build_indexed g))
+    with _ . begin
+      lemma_build_indexed_wf_pred g;
+      assert ((build_indexed g).ig_triples == g);
+      rdfs_rule_range_sound i a g (build_indexed g);
+      assert (holds_all i a (rdfs_rule_range g (build_indexed g)))
     end
   end
 
