@@ -1251,7 +1251,26 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
 
     # Clean stale compilation artifacts to avoid signature mismatches.
     # Deliberately inside this branch — see the note at the top of Step 2.
-    rm -f "$OUTDIR"/*.cmi "$OUTDIR"/*.cmx "$OUTDIR"/*.cmo "$OUTDIR"/*.o
+    #
+    # PATH BUG FIXED 2026-08-03: the 2026-07-29 refactor moved this line
+    # inside the rebuild branch, BELOW the `cd "$OUTDIR"` at the top of
+    # Step 2 — so `"$OUTDIR"/*.cmi` globbed ocaml-output/ocaml-output/*,
+    # matched nothing, and `rm -f` silently no-opped. The purge has been
+    # DEAD since that refactor; the "inconsistent assumptions over
+    # interface Factoidal_serve" link failures of 2026-08-02/03 were the
+    # symptom. cwd here is $OUTDIR itself, so the correct globs are bare.
+    rm -f ./*.cmi ./*.cmx ./*.cmo ./*.o
+    # CONSUMER-DIR artifacts too (bin/factoidal-cli, bin/factoidal-serve,
+    # ...): ocamlopt reuses an existing consumer .cmx when its .ml is
+    # unchanged, so after an extract that moved any shared interface the
+    # kept .cmx disagrees with the freshly compiled ones and the link
+    # dies. bin/<platform>/ holds finished binaries only, no .cm*, so
+    # the sweep is safe.
+    CONSUMER_CLEAN_RC=0
+    find ../../../bin -maxdepth 2 \( -name '*.cmi' -o -name '*.cmx' -o -name '*.cmo' -o -name '*.o' \) -delete 2>/dev/null || CONSUMER_CLEAN_RC=$?
+    if [ "$CONSUMER_CLEAN_RC" -ne 0 ]; then
+      echo "  WARNING: consumer-dir artifact sweep exited $CONSUMER_CLEAN_RC (continuing; a stale-interface link failure would surface it)"
+    fi
 
     # W3C test runner (reads real W3C manifests, calls F*-extracted code).
     # The Ballyhoo HDT/COTTAS runtime glue pulls in Unix (Unix.open_process_full,
