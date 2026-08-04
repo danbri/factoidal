@@ -412,6 +412,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Entailment.Simple.Boundary.fst
     RDF.Entailment.RDF.Spec.fst
     RDF.Entailment.RDFS.Spec.fst
+    OWL.RL.Spec.fst
     RDF.Entailment.RDFS.Refinement.fst
     RDF.Entailment.RDFS.ModelTheory.fst
     RDF.List.Helpers.fst
