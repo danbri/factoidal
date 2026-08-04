@@ -466,11 +466,17 @@ noeq type indexed_graph = {
   ig_built   : bucket_needs;
 }
 
-(* Canonical key for a subject. Total. *)
+(* Canonical key for a subject. Total.
+   Built with `^` (FStar.String.strcat), NOT `String.concat "" [...]`:
+   the two produce identical strings, but `concat` is an opaque val
+   with no reasoning equations while `^` carries `list_of_concat` /
+   `concat_injective`, which the #338 injectivity proof
+   (RDF.Indexed.KeyInjectivity.fst) needs. Same for `sp_key` below.
+   Do not "simplify" back to concat — it re-opens the proof gap. *)
 let subject_to_key (s : subject) : string =
   match s with
-  | S_IRI i   -> String.concat "" ["I_"; i]
-  | S_BNode b -> String.concat "" ["B_"; b]
+  | S_IRI i   -> "I_" ^ i
+  | S_BNode b -> "B_" ^ b
 
 (* Canonical key for an rdf_term, or None for literals. We do NOT index
    on literals because they would require datatype/lang-tag normalisation
@@ -494,7 +500,7 @@ let term_to_key_opt (o : rdf_term) : option string =
 let unit_sep : string = "\x1f"
 
 let sp_key (s : subject) (p : wf_iri) : string =
-  String.concat "" [subject_to_key s; unit_sep; p]
+  subject_to_key s ^ (unit_sep ^ p)
 
 let po_key_opt (p : wf_iri) (o : rdf_term) : option string =
   match term_to_key_opt o with

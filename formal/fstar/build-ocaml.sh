@@ -402,6 +402,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     OWL.Semantics.fst
     OWL.Semantics.MemLemmas.fst
     OWL.Semantics.Soundness.fst
+    RDF.Indexed.KeyInjectivity.fst
     RDF.Graph.Executable.fst Parquet.Footer.fst
     RDF.IRI.fst
     RDF.NQuads.Serialize.fst
