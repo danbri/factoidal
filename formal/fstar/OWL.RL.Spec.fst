@@ -74,8 +74,13 @@ module OWL.RL.Spec
 //                    prp-inv2 prp-key prp-npa1 prp-npa2; prp-adp
 //                    deferred alongside eq-diff2/3; prp-ap is an
 //                    axiomatic-triple table, not a rule)
-//   Table 5  cls-*   next landing
-//   Table 6  cax-*   next landing
+//   Table 5  cls-*   THIS FILE, landing 2 (cls-thing cls-nothing1
+//                    cls-nothing2 cls-int1 cls-int2 cls-uni cls-com
+//                    cls-svf1 cls-svf2 cls-avf cls-hv1 cls-hv2
+//                    cls-maxc1 cls-maxc2 cls-maxqc1 cls-maxqc2
+//                    cls-maxqc3 cls-maxqc4 cls-oo)
+//   Table 6  cax-*   THIS FILE, landing 2 (cax-sco cax-eqc1 cax-eqc2
+//                    cax-dw cax-adc)
 //   Table 7  dt-*    later landing
 //   Table 8  scm-*   later landing
 //   engine extensions (comp-* witnesses, dt-rng-intersect,
@@ -601,3 +606,462 @@ let table4_derives (g : list triple) (t : triple) : prop =
 let table4_clashes (g : list triple) : prop =
   eq_diff1_clash g \/ prp_irp_clash g \/ prp_asyp_clash g \/
   prp_pdw_clash g \/ prp_npa1_clash g \/ prp_npa2_clash g
+
+
+(** ================================================================= **)
+(** Landing 2 vocabulary                                              **)
+(** ================================================================= **)
+
+let o_owl_Class : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Class");
+  "http://www.w3.org/2002/07/owl#Class"
+let o_owl_Thing : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Thing");
+  "http://www.w3.org/2002/07/owl#Thing"
+let o_owl_Nothing : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Nothing");
+  "http://www.w3.org/2002/07/owl#Nothing"
+let o_owl_intersectionOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#intersectionOf");
+  "http://www.w3.org/2002/07/owl#intersectionOf"
+let o_owl_unionOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#unionOf");
+  "http://www.w3.org/2002/07/owl#unionOf"
+let o_owl_complementOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#complementOf");
+  "http://www.w3.org/2002/07/owl#complementOf"
+let o_owl_someValuesFrom : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#someValuesFrom");
+  "http://www.w3.org/2002/07/owl#someValuesFrom"
+let o_owl_allValuesFrom : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#allValuesFrom");
+  "http://www.w3.org/2002/07/owl#allValuesFrom"
+let o_owl_onProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onProperty");
+  "http://www.w3.org/2002/07/owl#onProperty"
+let o_owl_hasValue : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#hasValue");
+  "http://www.w3.org/2002/07/owl#hasValue"
+let o_owl_maxCardinality : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxCardinality");
+  "http://www.w3.org/2002/07/owl#maxCardinality"
+let o_owl_maxQualifiedCardinality : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxQualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#maxQualifiedCardinality"
+let o_owl_onClass : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onClass");
+  "http://www.w3.org/2002/07/owl#onClass"
+let o_owl_oneOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#oneOf");
+  "http://www.w3.org/2002/07/owl#oneOf"
+let o_rdfs_subClassOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#subClassOf");
+  "http://www.w3.org/2000/01/rdf-schema#subClassOf"
+let o_owl_equivalentClass : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#equivalentClass");
+  "http://www.w3.org/2002/07/owl#equivalentClass"
+let o_owl_disjointWith : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#disjointWith");
+  "http://www.w3.org/2002/07/owl#disjointWith"
+let o_owl_AllDisjointClasses : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AllDisjointClasses");
+  "http://www.w3.org/2002/07/owl#AllDisjointClasses"
+let o_owl_members : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#members");
+  "http://www.w3.org/2002/07/owl#members"
+let o_xsd_nonNegativeInteger : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#nonNegativeInteger");
+  "http://www.w3.org/2001/XMLSchema#nonNegativeInteger"
+
+// The literals the cardinality rows quote. The table writes
+// "0"^^xsd:nonNegativeInteger / "1"^^xsd:nonNegativeInteger literally;
+// this transcription matches the LEXICAL FORM the table shows.
+// ⚠ Delta LIT: a graph writing the same value as "00" or "+1" is not
+// matched by these rows as transcribed — the Recommendation's own
+// notation is lexical here, and the engine-side question of numeric
+// value-space matching belongs to the refinement layer, not the spec.
+let lit_nni_0 : literal =
+  { lexical_form = "0"; datatype = o_xsd_nonNegativeInteger;
+    lang_tag = None; direction = None }
+let lit_nni_1 : literal =
+  { lexical_form = "1"; datatype = o_xsd_nonNegativeInteger;
+    lang_tag = None; direction = None }
+
+// `types_all g y cs`: T(?y, rdf:type, ci) for every ci in cs
+// (cls-int1's batched premise).
+let rec types_all (g : list triple) (y : subject) (cs : list rdf_term)
+  : Tot prop (decreases cs) =
+  match cs with
+  | [] -> True
+  | c :: rest ->
+    (exists (u : triple).
+       memP u g /\ u == ({ s = y; p = o_rdf_type; o = c } <: triple)) /\
+    types_all g y rest
+
+// Two DISTINCT positions of a list (cax-adc / cls-int2's "some member"
+// pairs): ci and cj occur at different indices, in either order.
+let two_distinct_members (elems : list rdf_term) (ci cj : rdf_term) : prop =
+  exists (l1 l2 l3 : list rdf_term).
+    elems == l1 @ (ci :: (l2 @ (cj :: l3))) \/
+    elems == l1 @ (cj :: (l2 @ (ci :: l3)))
+
+(** ================================================================= **)
+(** Table 5: The Semantics of Classes                                 **)
+(** ================================================================= **)
+
+// -------------------------------------------------------------------
+// cls-thing / cls-nothing1, Table 5, verbatim (premise-free rows):
+//   "cls-thing    |  | T(owl:Thing, rdf:type, owl:Class)"
+//   "cls-nothing1 |  | T(owl:Nothing, rdf:type, owl:Class)"
+// -------------------------------------------------------------------
+let cls_thing_derives (g : list triple) (t : triple) : prop =
+  t == ({ s = S_IRI o_owl_Thing; p = o_rdf_type; o = T_IRI o_owl_Class } <: triple)
+
+let cls_nothing1_derives (g : list triple) (t : triple) : prop =
+  t == ({ s = S_IRI o_owl_Nothing; p = o_rdf_type; o = T_IRI o_owl_Class } <: triple)
+
+// -------------------------------------------------------------------
+// cls-nothing2, Table 5, verbatim (a CLASH row):
+//   "cls-nothing2 | T(?x, rdf:type, owl:Nothing) | false"
+// -------------------------------------------------------------------
+let cls_nothing2_clash (g : list triple) : prop =
+  exists (u : triple).
+    memP u g /\ u.p == o_rdf_type /\ u.o == T_IRI o_owl_Nothing
+
+// -------------------------------------------------------------------
+// cls-int1, Table 5, verbatim:
+//   "cls-int1 | T(?c, owl:intersectionOf, ?x)  LIST[?x, ?c1, ..., ?cn]
+//               T(?y, rdf:type, ?c1) ... T(?y, rdf:type, ?cn) |
+//               T(?y, rdf:type, ?c)"
+// -------------------------------------------------------------------
+let cls_int1_derives (g : list triple) (t : triple) : prop =
+  exists (decl : triple) (cs : list rdf_term) (y : subject).
+    memP decl g /\ decl.p == o_owl_intersectionOf /\
+    owl_list_denotes g decl.o cs /\ Cons? cs /\
+    types_all g y cs /\
+    t == ({ s = y; p = o_rdf_type; o = subj_term decl.s } <: triple)
+
+// -------------------------------------------------------------------
+// cls-int2, Table 5, verbatim:
+//   "cls-int2 | T(?c, owl:intersectionOf, ?x)  LIST[?x, ?c1, ..., ?cn]
+//               T(?y, rdf:type, ?c) |
+//               T(?y, rdf:type, ?c1) ... T(?y, rdf:type, ?cn)"
+// `t` is any one of the n conclusions: its class is SOME member.
+// -------------------------------------------------------------------
+let cls_int2_derives (g : list triple) (t : triple) : prop =
+  exists (decl u : triple) (cs : list rdf_term) (ci : rdf_term).
+    memP decl g /\ decl.p == o_owl_intersectionOf /\
+    owl_list_denotes g decl.o cs /\
+    memP u g /\ u.p == o_rdf_type /\ u.o == subj_term decl.s /\
+    memP ci cs /\
+    t == ({ s = u.s; p = o_rdf_type; o = ci } <: triple)
+
+// -------------------------------------------------------------------
+// cls-uni, Table 5, verbatim:
+//   "cls-uni | T(?c, owl:unionOf, ?x)  LIST[?x, ?c1, ..., ?cn]
+//              T(?y, rdf:type, ?ci)   (for any 1 <= i <= n) |
+//              T(?y, rdf:type, ?c)"
+// -------------------------------------------------------------------
+let cls_uni_derives (g : list triple) (t : triple) : prop =
+  exists (decl u : triple) (cs : list rdf_term) (ci : rdf_term).
+    memP decl g /\ decl.p == o_owl_unionOf /\
+    owl_list_denotes g decl.o cs /\
+    memP ci cs /\
+    memP u g /\ u.p == o_rdf_type /\ u.o == ci /\
+    t == ({ s = u.s; p = o_rdf_type; o = subj_term decl.s } <: triple)
+
+// -------------------------------------------------------------------
+// cls-com, Table 5, verbatim (a CLASH row):
+//   "cls-com | T(?c1, owl:complementOf, ?c2)
+//              T(?x, rdf:type, ?c1)  T(?x, rdf:type, ?c2) | false"
+// -------------------------------------------------------------------
+let cls_com_clash (g : list triple) : prop =
+  exists (decl u1 u2 : triple).
+    memP decl g /\ decl.p == o_owl_complementOf /\
+    memP u1 g /\ u1.p == o_rdf_type /\ u1.o == subj_term decl.s /\
+    memP u2 g /\ u2.p == o_rdf_type /\ u2.o == decl.o /\
+    u2.s == u1.s
+
+// -------------------------------------------------------------------
+// cls-svf1, Table 5, verbatim:
+//   "cls-svf1 | T(?x, owl:someValuesFrom, ?y)  T(?x, owl:onProperty, ?p)
+//               T(?u, ?p, ?v)  T(?v, rdf:type, ?y) |
+//               T(?u, rdf:type, ?x)"
+// The join between the data edge's object ?v and the typing premise's
+// subject goes through subj_term, as everywhere.
+// -------------------------------------------------------------------
+let cls_svf1_derives (g : list triple) (t : triple) : prop =
+  exists (svf onp u tv : triple) (p : wf_iri).
+    memP svf g /\ svf.p == o_owl_someValuesFrom /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == svf.s /\
+    onp.o == T_IRI p /\
+    memP u g /\ u.p == p /\
+    memP tv g /\ tv.p == o_rdf_type /\ subj_term tv.s == u.o /\
+    tv.o == svf.o /\
+    t == ({ s = u.s; p = o_rdf_type; o = subj_term svf.s } <: triple)
+
+// -------------------------------------------------------------------
+// cls-svf2, Table 5, verbatim:
+//   "cls-svf2 | T(?x, owl:someValuesFrom, owl:Thing)
+//               T(?x, owl:onProperty, ?p)  T(?u, ?p, ?v) |
+//               T(?u, rdf:type, ?x)"
+// -------------------------------------------------------------------
+let cls_svf2_derives (g : list triple) (t : triple) : prop =
+  exists (svf onp u : triple) (p : wf_iri).
+    memP svf g /\ svf.p == o_owl_someValuesFrom /\
+    svf.o == T_IRI o_owl_Thing /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == svf.s /\
+    onp.o == T_IRI p /\
+    memP u g /\ u.p == p /\
+    t == ({ s = u.s; p = o_rdf_type; o = subj_term svf.s } <: triple)
+
+// -------------------------------------------------------------------
+// cls-avf, Table 5, verbatim:
+//   "cls-avf | T(?x, owl:allValuesFrom, ?y)  T(?x, owl:onProperty, ?p)
+//              T(?u, rdf:type, ?x)  T(?u, ?p, ?v) |
+//              T(?v, rdf:type, ?y)"
+// Delta GR on ?v.
+// -------------------------------------------------------------------
+let cls_avf_derives (g : list triple) (t : triple) : prop =
+  exists (avf onp tu u : triple) (p : wf_iri) (vs : subject).
+    memP avf g /\ avf.p == o_owl_allValuesFrom /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == avf.s /\
+    onp.o == T_IRI p /\
+    memP tu g /\ tu.p == o_rdf_type /\ tu.o == subj_term avf.s /\
+    memP u g /\ u.p == p /\ u.s == tu.s /\
+    subj_term vs == u.o /\
+    t == ({ s = vs; p = o_rdf_type; o = avf.o } <: triple)
+
+// -------------------------------------------------------------------
+// cls-hv1 / cls-hv2, Table 5, verbatim:
+//   "cls-hv1 | T(?x, owl:hasValue, ?y)  T(?x, owl:onProperty, ?p)
+//              T(?u, rdf:type, ?x) | T(?u, ?p, ?y)"
+//   "cls-hv2 | T(?x, owl:hasValue, ?y)  T(?x, owl:onProperty, ?p)
+//              T(?u, ?p, ?y) | T(?u, rdf:type, ?x)"
+// -------------------------------------------------------------------
+let cls_hv1_derives (g : list triple) (t : triple) : prop =
+  exists (hv onp tu : triple) (p : wf_iri).
+    memP hv g /\ hv.p == o_owl_hasValue /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == hv.s /\
+    onp.o == T_IRI p /\
+    memP tu g /\ tu.p == o_rdf_type /\ tu.o == subj_term hv.s /\
+    t == ({ s = tu.s; p = p; o = hv.o } <: triple)
+
+let cls_hv2_derives (g : list triple) (t : triple) : prop =
+  exists (hv onp u : triple) (p : wf_iri).
+    memP hv g /\ hv.p == o_owl_hasValue /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == hv.s /\
+    onp.o == T_IRI p /\
+    memP u g /\ u.p == p /\ u.o == hv.o /\
+    t == ({ s = u.s; p = o_rdf_type; o = subj_term hv.s } <: triple)
+
+// -------------------------------------------------------------------
+// cls-maxc1, Table 5, verbatim (a CLASH row):
+//   "cls-maxc1 | T(?x, owl:maxCardinality, "0"^^xsd:nonNegativeInteger)
+//                T(?x, owl:onProperty, ?p)
+//                T(?u, rdf:type, ?x)  T(?u, ?p, ?y) | false"
+// ⚠ Delta LIT applies (see lit_nni_0's banner).
+// -------------------------------------------------------------------
+let cls_maxc1_clash (g : list triple) : prop =
+  exists (mc onp tu u : triple) (p : wf_iri).
+    memP mc g /\ mc.p == o_owl_maxCardinality /\
+    mc.o == T_Literal lit_nni_0 /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == mc.s /\
+    onp.o == T_IRI p /\
+    memP tu g /\ tu.p == o_rdf_type /\ tu.o == subj_term mc.s /\
+    memP u g /\ u.p == p /\ u.s == tu.s
+
+// -------------------------------------------------------------------
+// cls-maxc2, Table 5, verbatim:
+//   "cls-maxc2 | T(?x, owl:maxCardinality, "1"^^xsd:nonNegativeInteger)
+//                T(?x, owl:onProperty, ?p)  T(?u, rdf:type, ?x)
+//                T(?u, ?p, ?y1)  T(?u, ?p, ?y2) |
+//                T(?y1, owl:sameAs, ?y2)"
+// Delta GR on ?y1; ⚠ Delta LIT.
+// -------------------------------------------------------------------
+let cls_maxc2_derives (g : list triple) (t : triple) : prop =
+  exists (mc onp tu u1 u2 : triple) (p : wf_iri) (y1s : subject).
+    memP mc g /\ mc.p == o_owl_maxCardinality /\
+    mc.o == T_Literal lit_nni_1 /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == mc.s /\
+    onp.o == T_IRI p /\
+    memP tu g /\ tu.p == o_rdf_type /\ tu.o == subj_term mc.s /\
+    memP u1 g /\ u1.p == p /\ u1.s == tu.s /\
+    memP u2 g /\ u2.p == p /\ u2.s == tu.s /\
+    subj_term y1s == u1.o /\
+    t == ({ s = y1s; p = o_owl_sameAs; o = u2.o } <: triple)
+
+// -------------------------------------------------------------------
+// cls-maxqc1 / cls-maxqc2, Table 5, verbatim (CLASH rows):
+//   "cls-maxqc1 | T(?x, owl:maxQualifiedCardinality,
+//                    "0"^^xsd:nonNegativeInteger)
+//                 T(?x, owl:onProperty, ?p)  T(?x, owl:onClass, ?c)
+//                 T(?u, rdf:type, ?x)  T(?u, ?p, ?y)
+//                 T(?y, rdf:type, ?c) | false"
+//   "cls-maxqc2 | ... T(?x, owl:onClass, owl:Thing)
+//                 T(?u, rdf:type, ?x)  T(?u, ?p, ?y) | false"
+// -------------------------------------------------------------------
+let cls_maxqc1_clash (g : list triple) : prop =
+  exists (mqc onp onc tu u ty : triple) (p : wf_iri).
+    memP mqc g /\ mqc.p == o_owl_maxQualifiedCardinality /\
+    mqc.o == T_Literal lit_nni_0 /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == mqc.s /\
+    onp.o == T_IRI p /\
+    memP onc g /\ onc.p == o_owl_onClass /\ onc.s == mqc.s /\
+    memP tu g /\ tu.p == o_rdf_type /\ tu.o == subj_term mqc.s /\
+    memP u g /\ u.p == p /\ u.s == tu.s /\
+    memP ty g /\ ty.p == o_rdf_type /\ subj_term ty.s == u.o /\
+    ty.o == onc.o
+
+let cls_maxqc2_clash (g : list triple) : prop =
+  exists (mqc onp onc tu u : triple) (p : wf_iri).
+    memP mqc g /\ mqc.p == o_owl_maxQualifiedCardinality /\
+    mqc.o == T_Literal lit_nni_0 /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == mqc.s /\
+    onp.o == T_IRI p /\
+    memP onc g /\ onc.p == o_owl_onClass /\ onc.s == mqc.s /\
+    onc.o == T_IRI o_owl_Thing /\
+    memP tu g /\ tu.p == o_rdf_type /\ tu.o == subj_term mqc.s /\
+    memP u g /\ u.p == p /\ u.s == tu.s
+
+// -------------------------------------------------------------------
+// cls-maxqc3 / cls-maxqc4, Table 5, verbatim:
+//   "cls-maxqc3 | T(?x, owl:maxQualifiedCardinality,
+//                    "1"^^xsd:nonNegativeInteger)
+//                 T(?x, owl:onProperty, ?p)  T(?x, owl:onClass, ?c)
+//                 T(?u, rdf:type, ?x)
+//                 T(?u, ?p, ?y1)  T(?y1, rdf:type, ?c)
+//                 T(?u, ?p, ?y2)  T(?y2, rdf:type, ?c) |
+//                 T(?y1, owl:sameAs, ?y2)"
+//   "cls-maxqc4 | ... T(?x, owl:onClass, owl:Thing)
+//                 T(?u, ?p, ?y1)  T(?u, ?p, ?y2) |
+//                 T(?y1, owl:sameAs, ?y2)"
+// Delta GR on ?y1 in both.
+// -------------------------------------------------------------------
+let cls_maxqc3_derives (g : list triple) (t : triple) : prop =
+  exists (mqc onp onc tu u1 ty1 u2 ty2 : triple) (p : wf_iri) (y1s : subject).
+    memP mqc g /\ mqc.p == o_owl_maxQualifiedCardinality /\
+    mqc.o == T_Literal lit_nni_1 /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == mqc.s /\
+    onp.o == T_IRI p /\
+    memP onc g /\ onc.p == o_owl_onClass /\ onc.s == mqc.s /\
+    memP tu g /\ tu.p == o_rdf_type /\ tu.o == subj_term mqc.s /\
+    memP u1 g /\ u1.p == p /\ u1.s == tu.s /\
+    memP ty1 g /\ ty1.p == o_rdf_type /\ subj_term ty1.s == u1.o /\
+    ty1.o == onc.o /\
+    memP u2 g /\ u2.p == p /\ u2.s == tu.s /\
+    memP ty2 g /\ ty2.p == o_rdf_type /\ subj_term ty2.s == u2.o /\
+    ty2.o == onc.o /\
+    subj_term y1s == u1.o /\
+    t == ({ s = y1s; p = o_owl_sameAs; o = u2.o } <: triple)
+
+let cls_maxqc4_derives (g : list triple) (t : triple) : prop =
+  exists (mqc onp onc tu u1 u2 : triple) (p : wf_iri) (y1s : subject).
+    memP mqc g /\ mqc.p == o_owl_maxQualifiedCardinality /\
+    mqc.o == T_Literal lit_nni_1 /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == mqc.s /\
+    onp.o == T_IRI p /\
+    memP onc g /\ onc.p == o_owl_onClass /\ onc.s == mqc.s /\
+    onc.o == T_IRI o_owl_Thing /\
+    memP tu g /\ tu.p == o_rdf_type /\ tu.o == subj_term mqc.s /\
+    memP u1 g /\ u1.p == p /\ u1.s == tu.s /\
+    memP u2 g /\ u2.p == p /\ u2.s == tu.s /\
+    subj_term y1s == u1.o /\
+    t == ({ s = y1s; p = o_owl_sameAs; o = u2.o } <: triple)
+
+// -------------------------------------------------------------------
+// cls-oo, Table 5, verbatim:
+//   "cls-oo | T(?c, owl:oneOf, ?x)  LIST[?x, ?y1, ..., ?yn] |
+//             T(?y1, rdf:type, ?c) ... T(?yn, rdf:type, ?c)"
+// `t` is any one of the n conclusions; delta GR on the member.
+// -------------------------------------------------------------------
+let cls_oo_derives (g : list triple) (t : triple) : prop =
+  exists (decl : triple) (ys : list rdf_term) (yi : rdf_term) (yis : subject).
+    memP decl g /\ decl.p == o_owl_oneOf /\
+    owl_list_denotes g decl.o ys /\
+    memP yi ys /\ subj_term yis == yi /\
+    t == ({ s = yis; p = o_rdf_type; o = subj_term decl.s } <: triple)
+
+(** ================================================================= **)
+(** Table 6: The Semantics of Class Axioms                            **)
+(** ================================================================= **)
+
+// -------------------------------------------------------------------
+// cax-sco, Table 6, verbatim:
+//   "cax-sco | T(?c1, rdfs:subClassOf, ?c2)  T(?x, rdf:type, ?c1) |
+//              T(?x, rdf:type, ?c2)"
+// -------------------------------------------------------------------
+let cax_sco_derives (g : list triple) (t : triple) : prop =
+  exists (decl u : triple).
+    memP decl g /\ decl.p == o_rdfs_subClassOf /\
+    memP u g /\ u.p == o_rdf_type /\ u.o == subj_term decl.s /\
+    t == ({ s = u.s; p = o_rdf_type; o = decl.o } <: triple)
+
+// -------------------------------------------------------------------
+// cax-eqc1 / cax-eqc2, Table 6, verbatim:
+//   "cax-eqc1 | T(?c1, owl:equivalentClass, ?c2)  T(?x, rdf:type, ?c1) |
+//               T(?x, rdf:type, ?c2)"
+//   "cax-eqc2 | T(?c1, owl:equivalentClass, ?c2)  T(?x, rdf:type, ?c2) |
+//               T(?x, rdf:type, ?c1)"
+// -------------------------------------------------------------------
+let cax_eqc1_derives (g : list triple) (t : triple) : prop =
+  exists (decl u : triple).
+    memP decl g /\ decl.p == o_owl_equivalentClass /\
+    memP u g /\ u.p == o_rdf_type /\ u.o == subj_term decl.s /\
+    t == ({ s = u.s; p = o_rdf_type; o = decl.o } <: triple)
+
+let cax_eqc2_derives (g : list triple) (t : triple) : prop =
+  exists (decl u : triple).
+    memP decl g /\ decl.p == o_owl_equivalentClass /\
+    memP u g /\ u.p == o_rdf_type /\ u.o == decl.o /\
+    t == ({ s = u.s; p = o_rdf_type; o = subj_term decl.s } <: triple)
+
+// -------------------------------------------------------------------
+// cax-dw, Table 6, verbatim (a CLASH row):
+//   "cax-dw | T(?c1, owl:disjointWith, ?c2)
+//             T(?x, rdf:type, ?c1)  T(?x, rdf:type, ?c2) | false"
+// -------------------------------------------------------------------
+let cax_dw_clash (g : list triple) : prop =
+  exists (decl u1 u2 : triple).
+    memP decl g /\ decl.p == o_owl_disjointWith /\
+    memP u1 g /\ u1.p == o_rdf_type /\ u1.o == subj_term decl.s /\
+    memP u2 g /\ u2.p == o_rdf_type /\ u2.o == decl.o /\
+    u2.s == u1.s
+
+// -------------------------------------------------------------------
+// cax-adc, Table 6, verbatim (a CLASH row):
+//   "cax-adc | T(?y, rdf:type, owl:AllDisjointClasses)
+//              T(?y, owl:members, ?x)  LIST[?x, ?c1, ..., ?cn]
+//              T(?z, rdf:type, ?ci)  T(?z, rdf:type, ?cj)
+//              (for any i != j) | false"
+// -------------------------------------------------------------------
+let cax_adc_clash (g : list triple) : prop =
+  exists (ty mem u1 u2 : triple) (cs : list rdf_term) (ci cj : rdf_term).
+    memP ty g /\ ty.p == o_rdf_type /\ ty.o == T_IRI o_owl_AllDisjointClasses /\
+    memP mem g /\ mem.p == o_owl_members /\ mem.s == ty.s /\
+    owl_list_denotes g mem.o cs /\
+    two_distinct_members cs ci cj /\
+    memP u1 g /\ u1.p == o_rdf_type /\ u1.o == ci /\
+    memP u2 g /\ u2.p == o_rdf_type /\ u2.o == cj /\
+    u2.s == u1.s
+
+// -------------------------------------------------------------------
+// Whole-family rollups, landing 2.
+// -------------------------------------------------------------------
+let table5_derives (g : list triple) (t : triple) : prop =
+  cls_thing_derives g t \/ cls_nothing1_derives g t \/
+  cls_int1_derives g t \/ cls_int2_derives g t \/ cls_uni_derives g t \/
+  cls_svf1_derives g t \/ cls_svf2_derives g t \/ cls_avf_derives g t \/
+  cls_hv1_derives g t \/ cls_hv2_derives g t \/
+  cls_maxc2_derives g t \/ cls_maxqc3_derives g t \/
+  cls_maxqc4_derives g t \/ cls_oo_derives g t
+
+let table5_clashes (g : list triple) : prop =
+  cls_nothing2_clash g \/ cls_com_clash g \/ cls_maxc1_clash g \/
+  cls_maxqc1_clash g \/ cls_maxqc2_clash g
+
+let table6_derives (g : list triple) (t : triple) : prop =
+  cax_sco_derives g t \/ cax_eqc1_derives g t \/ cax_eqc2_derives g t
+
+let table6_clashes (g : list triple) : prop =
+  cax_dw_clash g \/ cax_adc_clash g
