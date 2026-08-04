@@ -418,6 +418,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Entailment.RDFS.Refinement.fst
     RDF.Entailment.RDFS.SepFree.fst
     RDF.Entailment.RDFS.ModelTheory.fst
+    RDF.Entailment.RDFS.ChainWf.fst
     RDF.List.Helpers.fst
     RDF.Bytes.fst
     RDF.Store.Loader.fst
