@@ -1485,6 +1485,249 @@ let owl_rule_scm_eqc2_sound i a g ig =
 #pop-options
 
 // ===================================================================
+// Rule 18: owl_rule_sameAs_replace_subject (eq-rep-s; OWL.Closure.fsti
+// ~line 620). OWL 2 RL/RDF rules table row eq-rep-s: T(?s, owl:sameAs,
+// ?s'), T(?s, ?p, ?o) => T(?s', ?p, ?o). #262's perf shape: an outer
+// fold over the deduped snapshot pair list sameas_pairs ig, and for
+// each pair (x, s'), an INNER fold over the ig_subj bucket keyed by
+// subject_to_key x (the named emitter sameas_rep_subj_emit s'), so the
+// proof shape mirrors Rule 2 (rdfs_rule_domain_sound): outer witness
+// chain via lemma_sameas_pairs_hold / cond_sameas_identity, inner
+// bucket-lookup truth via ig_wf_subj.
+//
+// Argument: for pair (x, s') the pair machinery gives IEXT(sameAs)(dx,
+// ds') (lemma_sameas_pairs_hold); cond_sameas_identity's iff collapses
+// dx == ds'. Each bucket triple t (ig_wf_subj pins t.s == x, t a real
+// snapshot triple) holds semantically: IEXT(t.p)(dx, denot(t.o)). The
+// emitted triple { s = s'; p = t.p; o = t.o } then holds because its
+// subject denotes the SAME domain element as t's (dx == ds').
+//
+// GUARD: sameas_rep_subj_emit's `if t.p <> owl_sameAs` only NARROWS
+// which bucket triples get replaced (skipping sameAs edges themselves
+// to avoid re-deriving eq-sym's own conclusions here) — the argument
+// above holds regardless of t.p, so the non-firing branch needs no
+// extra semantic step, only holds_all i a acc2 unchanged (the
+// hypothesis itself).
+// ===================================================================
+
+val owl_rule_sameAs_replace_subject_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_sameas_identity i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_subj ig)
+    (ensures  holds_all i a (owl_rule_sameAs_replace_subject g ig))
+
+let owl_rule_sameAs_replace_subject_sound i a g ig =
+  lemma_sameas_pairs_hold i a ig;
+  let outer_step : rdf_graph -> (subject * subject) -> rdf_graph =
+    fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, s_prime) = xy in
+      let srcs = bucket_lookup ig.ig_subj (subject_to_key x) in
+      List.Tot.fold_left (sameas_rep_subj_emit s_prime) acc srcs in
+  introduce forall (acc : rdf_graph) (xy : subject * subject).
+      (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+      holds_all i a (outer_step acc xy)
+  with introduce (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc xy)
+  with _ . begin
+    let (x, s_prime) = xy in
+    // sameas_pairs_hold gives IEXT(sameAs)(dx, ds'); cond_sameas_identity
+    // collapses dx == ds'.
+    assert (i.iext (i.i_iri owl_sameAs)
+                   (denot_subject i a x) (denot_subject i a s_prime));
+    assert (denot_subject i a x == denot_subject i a s_prime);
+    let srcs = bucket_lookup ig.ig_subj (subject_to_key x) in
+    let inner_step : rdf_graph -> triple -> rdf_graph = sameas_rep_subj_emit s_prime in
+    introduce forall (acc2 : rdf_graph) (t : triple).
+        (List.Tot.memP t srcs /\ holds_all i a acc2) ==>
+        holds_all i a (inner_step acc2 t)
+    with introduce (List.Tot.memP t srcs /\ holds_all i a acc2) ==>
+                   holds_all i a (inner_step acc2 t)
+    with _ . begin
+      // ig_wf_subj at key x: t really is a snapshot triple with
+      // subject x.
+      assert (List.Tot.memP t ig.ig_triples /\ t.s == x);
+      assert (triple_holds i a t);
+      if t.p <> owl_sameAs then
+        assert (i.iext (i.i_iri t.p)
+                       (denot_subject i a s_prime) (denot_term i a t.o))
+      else ()
+    end;
+    fold_left_inv (holds_all i a) inner_step srcs acc
+  end;
+  fold_left_inv (holds_all i a) outer_step (sameas_pairs ig) g;
+  assert_norm (owl_rule_sameAs_replace_subject g ig ==
+               List.Tot.fold_left outer_step g (sameas_pairs ig))
+
+// ===================================================================
+// Rule 19: owl_rule_sameAs_replace_object (eq-rep-o; OWL.Closure.fsti
+// ~line 644). OWL 2 RL/RDF rules table row eq-rep-o: T(?o, owl:sameAs,
+// ?o'), T(?s, ?p, ?o) => T(?s, ?p, ?o'). Same #262 outer/inner fold
+// shape as Rule 18, over the ig_obj bucket keyed by subject_to_key x
+// this time (the named emitter sameas_rep_obj_emit, taking the
+// partner's TERM y_term = subject_to_term y — the object position is
+// rdf_term, not subject, so the proof needs the term/subject bridge
+// lemmas lemma_denot_subject_to_term / lemma_denot_term_to_subject on
+// both t.o (via ig_wf_obj's t.o == subject_to_term x) and y_term.
+// ig_wf_obj is exactly the bucket shape this rule's engine code reads
+// (subject-shaped key, per OWL.Semantics.fst's comment on ig_wf_obj).
+//
+// Argument: for pair (x, y) the pair machinery gives IEXT(sameAs)(dx,
+// dy); cond_sameas_identity collapses dx == dy. Each bucket triple t
+// (ig_wf_obj pins t.o == subject_to_term x, t a real snapshot triple)
+// holds semantically: IEXT(t.p)(denot(t.s), dx) (denot_term i a t.o ==
+// dx via lemma_denot_subject_to_term). The emitted triple { s = t.s;
+// p = t.p; o = y_term } then holds because y_term denotes the SAME
+// domain element as x's partner y, which IS x's own denotation.
+//
+// GUARD: sameas_rep_obj_emit's `if t.p <> owl_sameAs` narrows the same
+// way Rule 18's does — no extra semantic argument for the non-firing
+// branch.
+// ===================================================================
+
+val owl_rule_sameAs_replace_object_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_sameas_identity i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_obj ig)
+    (ensures  holds_all i a (owl_rule_sameAs_replace_object g ig))
+
+let owl_rule_sameAs_replace_object_sound i a g ig =
+  lemma_sameas_pairs_hold i a ig;
+  let outer_step : rdf_graph -> (subject * subject) -> rdf_graph =
+    fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, y) = xy in
+      let y_term = subject_to_term y in
+      let srcs = bucket_lookup ig.ig_obj (subject_to_key x) in
+      List.Tot.fold_left (sameas_rep_obj_emit y_term) acc srcs in
+  introduce forall (acc : rdf_graph) (xy : subject * subject).
+      (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+      holds_all i a (outer_step acc xy)
+  with introduce (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc xy)
+  with _ . begin
+    let (x, y) = xy in
+    let y_term = subject_to_term y in
+    // sameas_pairs_hold gives IEXT(sameAs)(dx, dy); cond_sameas_identity
+    // collapses dx == dy.
+    assert (i.iext (i.i_iri owl_sameAs)
+                   (denot_subject i a x) (denot_subject i a y));
+    assert (denot_subject i a x == denot_subject i a y);
+    lemma_denot_subject_to_term i a y;
+    assert (denot_term i a y_term == denot_subject i a y);
+    let srcs = bucket_lookup ig.ig_obj (subject_to_key x) in
+    let inner_step : rdf_graph -> triple -> rdf_graph = sameas_rep_obj_emit y_term in
+    introduce forall (acc2 : rdf_graph) (t : triple).
+        (List.Tot.memP t srcs /\ holds_all i a acc2) ==>
+        holds_all i a (inner_step acc2 t)
+    with introduce (List.Tot.memP t srcs /\ holds_all i a acc2) ==>
+                   holds_all i a (inner_step acc2 t)
+    with _ . begin
+      // ig_wf_obj at key x: t really is a snapshot triple whose object
+      // denotes x.
+      assert (List.Tot.memP t ig.ig_triples /\ t.o == subject_to_term x);
+      assert (triple_holds i a t);
+      lemma_denot_subject_to_term i a x;
+      assert (denot_term i a t.o == denot_subject i a x);
+      if t.p <> owl_sameAs then
+        assert (i.iext (i.i_iri t.p)
+                       (denot_subject i a t.s) (denot_term i a y_term))
+      else ()
+    end;
+    fold_left_inv (holds_all i a) inner_step srcs acc
+  end;
+  fold_left_inv (holds_all i a) outer_step (sameas_pairs ig) g;
+  assert_norm (owl_rule_sameAs_replace_object g ig ==
+               List.Tot.fold_left outer_step g (sameas_pairs ig))
+
+// ===================================================================
+// Rule 20: owl_rule_sameAs_replace_predicate (eq-rep-p; OWL.Closure.
+// fsti ~line 665). OWL 2 RL/RDF rules table row eq-rep-p: T(?p,
+// owl:sameAs, ?p'), T(?s, ?p, ?o) => T(?s, ?p', ?o). Same #262
+// outer/inner fold shape again, this time over the ig_pred bucket
+// keyed by the RAW predicate IRI p_iri (the named emitter
+// sameas_rep_pred_emit p_prime_iri) — mirroring Rule 2's ig_pred
+// bucket-lookup idiom directly, since predicates are IRIs and need no
+// term/subject bridge. The engine rule reads the pair ONLY when both
+// sides are S_IRI (predicates cannot be blank nodes or literals); the
+// sameas_pairs machinery already guarantees the pair denotes via
+// denot_subject on S_IRI, which unfolds to i.i_iri directly.
+//
+// Argument: for pair (S_IRI p_iri, S_IRI p_prime_iri) the pair
+// machinery gives IEXT(sameAs)(I(p_iri), I(p_prime_iri));
+// cond_sameas_identity collapses I(p_iri) == I(p_prime_iri). Each
+// bucket triple t (ig_wf_pred pins t.p == p_iri, t a real snapshot
+// triple) holds semantically: IEXT(I(p_iri))(denot(t.s), denot(t.o)).
+// The emitted triple { s = t.s; p = p_prime_iri; o = t.o } then holds
+// because I(p_prime_iri) IS I(p_iri) at the domain-element level.
+//
+// GUARD: the engine's `if is_owl_metapredicate p_iri then acc` only
+// NARROWS which pairs are processed (skipping the six OWL vocabulary
+// predicates Group E(a) already handles via owl_rule_symmetric_
+// metapredicates, so eq-rep-p does not re-derive their sameAs-driven
+// replacements) — the argument above is unaffected by which p_iri
+// fires, so the non-firing branch needs no extra semantic step.
+// ===================================================================
+
+val owl_rule_sameAs_replace_predicate_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_sameas_identity i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_pred ig)
+    (ensures  holds_all i a (owl_rule_sameAs_replace_predicate g ig))
+
+let owl_rule_sameAs_replace_predicate_sound i a g ig =
+  lemma_sameas_pairs_hold i a ig;
+  let outer_step : rdf_graph -> (subject * subject) -> rdf_graph =
+    fun (acc : rdf_graph) (xy : subject * subject) ->
+      match xy with
+      | (S_IRI p_iri, S_IRI p_prime_iri) ->
+        if is_owl_metapredicate p_iri then acc
+        else
+          let srcs = bucket_lookup ig.ig_pred p_iri in
+          List.Tot.fold_left (sameas_rep_pred_emit p_prime_iri) acc srcs
+      | _ -> acc in
+  introduce forall (acc : rdf_graph) (xy : subject * subject).
+      (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+      holds_all i a (outer_step acc xy)
+  with introduce (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc xy)
+  with _ . begin
+    match xy with
+    | (S_IRI p_iri, S_IRI p_prime_iri) ->
+      if is_owl_metapredicate p_iri then ()
+      else begin
+        // sameas_pairs_hold gives IEXT(sameAs)(I(p_iri), I(p_prime_iri))
+        // (denot_subject on S_IRI unfolds to i_iri); cond_sameas_identity
+        // collapses the two denotations.
+        assert (i.iext (i.i_iri owl_sameAs)
+                       (i.i_iri p_iri) (i.i_iri p_prime_iri));
+        assert (i.i_iri p_iri == i.i_iri p_prime_iri);
+        let srcs = bucket_lookup ig.ig_pred p_iri in
+        let inner_step : rdf_graph -> triple -> rdf_graph =
+          sameas_rep_pred_emit p_prime_iri in
+        introduce forall (acc2 : rdf_graph) (t : triple).
+            (List.Tot.memP t srcs /\ holds_all i a acc2) ==>
+            holds_all i a (inner_step acc2 t)
+        with introduce (List.Tot.memP t srcs /\ holds_all i a acc2) ==>
+                       holds_all i a (inner_step acc2 t)
+        with _ . begin
+          // ig_wf_pred at key p_iri: t really is an (x p_iri y) data
+          // triple.
+          assert (List.Tot.memP t ig.ig_triples /\ t.p == p_iri);
+          assert (triple_holds i a t);
+          assert (i.iext (i.i_iri p_prime_iri)
+                         (denot_subject i a t.s) (denot_term i a t.o))
+        end;
+        fold_left_inv (holds_all i a) inner_step srcs acc
+      end
+    | _ -> ()
+  end;
+  fold_left_inv (holds_all i a) outer_step (sameas_pairs ig) g;
+  assert_norm (owl_rule_sameAs_replace_predicate g ig ==
+               List.Tot.fold_left outer_step g (sameas_pairs ig))
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge
