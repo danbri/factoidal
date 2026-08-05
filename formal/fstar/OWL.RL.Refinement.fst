@@ -1808,4 +1808,310 @@ val theorem_scm_eqp2_licensed
 
 let theorem_scm_eqp2_licensed g ig t =
   owl_rule_scm_eqp2_licensed g ig
+
+// ===================================================================
+// 15. scm-dom2 (dispatched row) / scm-dom1 (row the engine function
+// ACTUALLY realizes): every `owl_rule_scm_dom2` emission is licensed.
+//
+// ENGINE NAME VS ROW FINDING (recorded per the dispatch brief): the
+// W3C OWL 2 RL/RDF Table 8 rows are
+//   scm-dom1 | T(?p, rdfs:domain, ?c1)  T(?c1, rdfs:subClassOf, ?c2)
+//             | T(?p, rdfs:domain, ?c2)
+//   scm-dom2 | T(?p2, rdfs:domain, ?c)  T(?p1, rdfs:subPropertyOf, ?p2)
+//             | T(?p1, rdfs:domain, ?c)
+// -- transcribed VERBATIM as `scm_dom1_derives` / `scm_dom2_derives`,
+// OWL.RL.Spec.fst lines 1369-1381. The engine function this module was
+// asked to license, `OWL.Closure.fsti`'s `owl_rule_scm_dom2` (lines
+// 3612-3640), computes: for every domain triple (?p, rdfs:domain, ?c1)
+// in g, walk `find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf`
+// (?c1's NAMED superclasses) and emit (?p, rdfs:domain, ?c2) per
+// superclass. That is scm-dom1's premise pair (domain + subClassOf on
+// the DOMAIN CLASS), not scm-dom2's (domain + subPropertyOf on the
+// PROPERTY) -- the engine's own banner comment above the definition
+// ("Mirrors rdfs9 but for property-domain instead of subject-class")
+// independently confirms it is the subClassOf-lifting rule. Attempting
+// `scm_dom2_licensed` against this function is FALSE in general: take
+// g = [(p, rdfs:domain, c1); (c1, rdfs:subClassOf, c2)] with NO
+// rdfs:subPropertyOf triple anywhere -- the engine still emits
+// (p, rdfs:domain, c2), but `scm_dom2_derives g (p, rdfs:domain, c2)`
+// has no witness (no `sub` triple exists), so the emission is neither
+// already in g nor licensed by the scm-dom2 row. No lemma is stated
+// against `scm_dom2_derives` for this function; per Iron Rule #10
+// (no `--lax`/`--admit_smt_queries`) a false theorem cannot be forced
+// through, and per the eq-rep-o/eq-rep-p precedent (sections 12-13)
+// the honest move is to prove what the function ACTUALLY computes and
+// flag the naming mismatch in-file, not to silently rename the engine
+// function (out of scope for a licensing-lemma landing; a rename
+// ripples through the fixpoint pipeline call site at
+// OWL.Closure.fsti:5463 and every build-list consumer).
+//
+// The row `owl_rule_scm_dom2` DOES realize, scm-dom1, is licensed
+// below as `scm_dom1_licensed`, using section 9's (prp-trp) TWO-LEVEL
+// nested-fold recipe: the engine text is a genuine outer/inner fold
+// pair (outer over g on `t.p = rdfs_domain`, inner over
+// `find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf`), not a
+// single-fold-plus-existsb-guard shape like scm-eqc2/scm-eqp2
+// (sections 10/14) -- there is no reciprocal check here, every named
+// superclass found is emitted. `ig_wf_sp ig /\ ig.ig_triples == g`
+// places the inner fold's bucket witness (the `sub` premise triple)
+// back into g, exactly as section 9's `u2`.
+//
+// The engine's own BNODE-POLLUTION GUARD (banner above the
+// definition, OWL.Closure.fsti:3615-3620) restricts `c2_term` to
+// T_IRI -- only named superclasses propagate. This only NARROWS what
+// is emitted relative to the row (a superclass could in principle be
+// a bnode restriction the row does not exclude), so the case split
+// below carries no extra proof burden, same as sections 10/14's own
+// S_IRI/T_IRI restriction note.
+//
+// The true scm-dom2 row (subPropertyOf-based domain lifting) is
+// ALREADY realized in the engine, just under a different name:
+// `owl_rule_subprop_domain_range` (OWL.Closure.fsti:3684-3705, "Group
+// B: rdfsext domain/range through subPropertyOf"), which folds over
+// g on `t.p = rdfs_subPropertyOf` and, for the linked property p2,
+// emits both a domain and a range conclusion from p2's declared
+// domain/range set -- exactly scm-dom2's and scm-rng2's premise shape
+// in one combined function. It is not licensed by this landing (out
+// of scope: a different engine function from the two named in the
+// dispatch brief); flagging its existence here so a future session
+// does not re-derive this finding from scratch.
+// ===================================================================
+
+let lemma_vocab_dom_agree ()
+  : Lemma (RDFS.Closure.rdfs_domain == OWL.RL.Spec.o_rdfs_domain /\
+           RDFS.Closure.rdfs_subClassOf == OWL.RL.Spec.o_rdfs_subClassOf) = ()
+
+// The licensing invariant against scm-dom1's row -- the row
+// `owl_rule_scm_dom2` actually realizes; see the ENGINE NAME VS ROW
+// finding above.
+let scm_dom1_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ scm_dom1_derives g t)
+
+val owl_rule_scm_dom2_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig.ig_triples == g)
+          (ensures  scm_dom1_licensed g (owl_rule_scm_dom2 g ig))
+
+#push-options "--z3rlimit 150 --split_queries always"
+let owl_rule_scm_dom2_licensed g ig =
+  lemma_vocab_dom_agree ();
+  // Engine text verbatim (OWL.Closure.fsti:3621-3640).
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_domain then
+        match t.o with
+        | T_IRI c1_iri ->
+          let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+              match c2_term with
+              | T_IRI _ ->
+                let new_t : triple = { s = t.s; p = rdfs_domain; o = c2_term } in
+                add_triple_unchecked acc2 new_t
+              | _ -> acc2)
+            acc
+            supers
+        | _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ scm_dom1_licensed g acc) ==>
+      scm_dom1_licensed g (outer_step acc t)
+  with introduce (memP t g /\ scm_dom1_licensed g acc) ==>
+                 scm_dom1_licensed g (outer_step acc t)
+  with _ . begin
+    if t.p = rdfs_domain then
+      match t.o with
+      | T_IRI c1_iri ->
+        let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
+        let inner_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+            match c2_term with
+            | T_IRI _ ->
+              let new_t : triple = { s = t.s; p = rdfs_domain; o = c2_term } in
+              add_triple_unchecked acc2 new_t
+            | _ -> acc2 in
+        introduce forall (acc2 : rdf_graph) (c2_term : rdf_term).
+            (memP c2_term supers /\ scm_dom1_licensed g acc2) ==>
+            scm_dom1_licensed g (inner_step acc2 c2_term)
+        with introduce (memP c2_term supers /\ scm_dom1_licensed g acc2) ==>
+                       scm_dom1_licensed g (inner_step acc2 c2_term)
+        with _ . begin
+          match c2_term with
+          | T_IRI d_iri ->
+            let new_t : triple = { s = t.s; p = rdfs_domain; o = c2_term } in
+            // u2 comes from the sp-index bucket at (S_IRI c1_iri,
+            // rdfs_subClassOf): the served object c2_term names a real
+            // bucket triple (section 9/10's memP_map_elim recipe).
+            assert_norm (supers ==
+                         List.Tot.map (fun (u : triple) -> u.o)
+                           (bucket_lookup ig.ig_sp
+                              (sp_key (S_IRI c1_iri) rdfs_subClassOf)));
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) c2_term
+              (bucket_lookup ig.ig_sp (sp_key (S_IRI c1_iri) rdfs_subClassOf));
+            eliminate exists (u2 : triple).
+                memP u2 (bucket_lookup ig.ig_sp
+                           (sp_key (S_IRI c1_iri) rdfs_subClassOf)) /\
+                u2.o == c2_term
+            returns scm_dom1_derives g new_t
+            with _ . begin
+              // ig_wf_sp places u2 in the snapshot with u2.s ==
+              // S_IRI c1_iri, u2.p == rdfs_subClassOf; ig.ig_triples ==
+              // g places it in g itself (auto-instantiated by Z3
+              // e-matching, same as sections 9/10/14).
+              assert (memP u2 ig.ig_triples /\
+                      u2.s == S_IRI c1_iri /\ u2.p == rdfs_subClassOf);
+              lemma_subj_term_agree u2.s;
+              // Row equations: subj_term u2.s == dom.o (both
+              // T_IRI c1_iri, via the T_IRI match on t.o) and the
+              // conclusion's object is u2.o (== c2_term == d_iri).
+              assert (subj_term u2.s == t.o);
+              assert (new_t == ({ s = t.s; p = o_rdfs_domain;
+                                  o = u2.o } <: triple))
+            end
+          | _ -> ()
+        end;
+        fold_left_inv (scm_dom1_licensed g) inner_step supers acc
+      | _ -> ()
+    else ()
+  end;
+  fold_left_inv (scm_dom1_licensed g) outer_step g g;
+  assert_norm (owl_rule_scm_dom2 g ig ==
+               List.Tot.fold_left outer_step g g)
+#pop-options
+
+// Per-triple corollary.
+val theorem_scm_dom2_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_scm_dom2 g ig))
+    (ensures  memP t g \/ scm_dom1_derives g t)
+
+let theorem_scm_dom2_licensed g ig t =
+  owl_rule_scm_dom2_licensed g ig
+
+// ===================================================================
+// 16. scm-rng2 (dispatched row) / scm-rng1 (row the engine function
+// ACTUALLY realizes): every `owl_rule_scm_rng2` emission is licensed.
+// Range mirror of section 15 -- same ENGINE NAME VS ROW finding, same
+// two-level-fold recipe, rdfs:range/rdfs_range in place of
+// rdfs:domain/rdfs_domain throughout.
+//
+// W3C Table 8:
+//   scm-rng1 | T(?p, rdfs:range, ?c1)  T(?c1, rdfs:subClassOf, ?c2)
+//             | T(?p, rdfs:range, ?c2)
+//   scm-rng2 | T(?p2, rdfs:range, ?c)  T(?p1, rdfs:subPropertyOf, ?p2)
+//             | T(?p1, rdfs:range, ?c)
+// -- transcribed as `scm_rng1_derives` / `scm_rng2_derives`,
+// OWL.RL.Spec.fst lines 1391-1403. `owl_rule_scm_rng2` (OWL.Closure.
+// fsti:3645-3664) computes the SAME subClassOf-lifting shape as
+// section 15's function, on rdfs:range instead of rdfs:domain -- it
+// is scm-rng1, not scm-rng2, for exactly the reason section 15 gives
+// (same counterexample construction with rdfs:range substituted for
+// rdfs:domain). No lemma is stated against `scm_rng2_derives` for the
+// same false-in-general reason. The true scm-rng2 row is the range
+// half of `owl_rule_subprop_domain_range` (section 15's closing note).
+// ===================================================================
+
+let lemma_vocab_rng_agree ()
+  : Lemma (RDFS.Closure.rdfs_range == OWL.RL.Spec.o_rdfs_range /\
+           RDFS.Closure.rdfs_subClassOf == OWL.RL.Spec.o_rdfs_subClassOf) = ()
+
+// The licensing invariant against scm-rng1's row -- the row
+// `owl_rule_scm_rng2` actually realizes; see section 15's finding.
+let scm_rng1_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ scm_rng1_derives g t)
+
+val owl_rule_scm_rng2_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig.ig_triples == g)
+          (ensures  scm_rng1_licensed g (owl_rule_scm_rng2 g ig))
+
+#push-options "--z3rlimit 150 --split_queries always"
+let owl_rule_scm_rng2_licensed g ig =
+  lemma_vocab_rng_agree ();
+  // Engine text verbatim (OWL.Closure.fsti:3645-3664).
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_range then
+        match t.o with
+        | T_IRI c1_iri ->
+          let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+              match c2_term with
+              | T_IRI _ ->
+                let new_t : triple = { s = t.s; p = rdfs_range; o = c2_term } in
+                add_triple_unchecked acc2 new_t
+              | _ -> acc2)
+            acc
+            supers
+        | _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ scm_rng1_licensed g acc) ==>
+      scm_rng1_licensed g (outer_step acc t)
+  with introduce (memP t g /\ scm_rng1_licensed g acc) ==>
+                 scm_rng1_licensed g (outer_step acc t)
+  with _ . begin
+    if t.p = rdfs_range then
+      match t.o with
+      | T_IRI c1_iri ->
+        let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
+        let inner_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+            match c2_term with
+            | T_IRI _ ->
+              let new_t : triple = { s = t.s; p = rdfs_range; o = c2_term } in
+              add_triple_unchecked acc2 new_t
+            | _ -> acc2 in
+        introduce forall (acc2 : rdf_graph) (c2_term : rdf_term).
+            (memP c2_term supers /\ scm_rng1_licensed g acc2) ==>
+            scm_rng1_licensed g (inner_step acc2 c2_term)
+        with introduce (memP c2_term supers /\ scm_rng1_licensed g acc2) ==>
+                       scm_rng1_licensed g (inner_step acc2 c2_term)
+        with _ . begin
+          match c2_term with
+          | T_IRI d_iri ->
+            let new_t : triple = { s = t.s; p = rdfs_range; o = c2_term } in
+            assert_norm (supers ==
+                         List.Tot.map (fun (u : triple) -> u.o)
+                           (bucket_lookup ig.ig_sp
+                              (sp_key (S_IRI c1_iri) rdfs_subClassOf)));
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) c2_term
+              (bucket_lookup ig.ig_sp (sp_key (S_IRI c1_iri) rdfs_subClassOf));
+            eliminate exists (u2 : triple).
+                memP u2 (bucket_lookup ig.ig_sp
+                           (sp_key (S_IRI c1_iri) rdfs_subClassOf)) /\
+                u2.o == c2_term
+            returns scm_rng1_derives g new_t
+            with _ . begin
+              assert (memP u2 ig.ig_triples /\
+                      u2.s == S_IRI c1_iri /\ u2.p == rdfs_subClassOf);
+              lemma_subj_term_agree u2.s;
+              assert (subj_term u2.s == t.o);
+              assert (new_t == ({ s = t.s; p = o_rdfs_range;
+                                  o = u2.o } <: triple))
+            end
+          | _ -> ()
+        end;
+        fold_left_inv (scm_rng1_licensed g) inner_step supers acc
+      | _ -> ()
+    else ()
+  end;
+  fold_left_inv (scm_rng1_licensed g) outer_step g g;
+  assert_norm (owl_rule_scm_rng2 g ig ==
+               List.Tot.fold_left outer_step g g)
+#pop-options
+
+// Per-triple corollary.
+val theorem_scm_rng2_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_scm_rng2 g ig))
+    (ensures  memP t g \/ scm_rng1_derives g t)
+
+let theorem_scm_rng2_licensed g ig t =
+  owl_rule_scm_rng2_licensed g ig
 // ===================================================================
