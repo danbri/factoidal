@@ -404,6 +404,10 @@ session.
   slow-Turtle root causes).
 - [`docs/claude-rules/current-state.md`](docs/claude-rules/current-state.md)
   — F\* inventory, `assume val` table, W3C scores.
+- [`docs/theorem-registry.md`](docs/theorem-registry.md) — the G1
+  reviewable-core registry: every W3C rule id → spec predicate →
+  engine function → proof status, plus the trust-surface enumeration.
+  UPDATE WITH EVERY PROOF LANDING (hand-curated until generated).
 - [`docs/code-name-glossary.md`](docs/code-name-glossary.md) — Yod6 /
   Tet3 / Lamed3 / etc. decoder. **No new short-codes** — use
   descriptive names per the recovery plan.

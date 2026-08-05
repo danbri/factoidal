@@ -113,11 +113,14 @@ A W3C-domain expert must be able to review Factoidal's semantics
 without reading F\* proofs, and KNOW the reviewed definitions are not
 overridden by implementation detail. Deliverables:
 
-1. **Theorem registry** (first deliverable): one table — W3C rule id
-   → spec predicate → engine function → hypotheses / fragment
-   restrictions → proof status (licensing / truth / extension) →
-   linked tests. Seeded from the `OWL.RL.Spec.fst` foot ledger and
-   the landed lemma inventory.
+1. **Theorem registry** (first deliverable — LANDED 2026-08-05):
+   [`../theorem-registry.md`](../theorem-registry.md) — one table per
+   area: W3C rule id → spec predicate → engine function → hypotheses
+   / fragment restrictions → proof status → notes, plus the
+   trust-surface section (G1.3's seed). 84 OWL RL rows, 13 RDFS rows,
+   10 simple/RDF-rung theorems, 6 infrastructure lemmas. Carries its
+   own count-convention audit (the 23-of-34 vs 24 inverse_of
+   ambiguity, flagged for a ledger-comment settlement).
 2. **Review kernel**: the spec-layer definitions (`*_derives` rows,
    `cond_*` conditions, interpretation records) curated as a small,
    separated, table-notation-close surface; the proofs' job is the
