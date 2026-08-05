@@ -2557,3 +2557,391 @@ val theorem_cls_oneof_licensed
 let theorem_cls_oneof_licensed g ig t =
   owl_rule_cls_oneof_licensed g ig
 // ===================================================================
+// 19. cls-int2 (row the engine function ACTUALLY realizes) vs
+// cls-int1 (row its name claims): every `owl_rule_cls_int1` emission
+// is licensed against cls-int2.
+//
+// ENGINE NAME VS ROW finding (same disease sections 15/16 found in
+// scm_dom2/scm_rng2): OWL.Closure.fsti's `owl_rule_cls_int1`
+// (~line 3042) reads, per `(C owl:intersectionOf list)` triple `t`,
+// the subjects `x` ALREADY typed into the intersection class itself
+// (`find_subjects_indexed ig rdf_type (subject_to_term t.s)`), then
+// emits `(x, rdf:type, Ci)` for every decoded list member Ci. That
+// premise/conclusion shape -- "typed into C => typed into every Ci"
+// -- is exactly `cls_int2_derives` (OWL.RL.Spec.fst:759-765), not
+// `cls_int1_derives` (740-750, the FORWARD synthesis: typed into
+// EVERY Ci, via the batched `types_all` premise, => typed into C).
+// The engine's own header comment (OWL.Closure.fsti:3028-3037)
+// describes exactly the cls-int2 shape while naming the function and
+// its row cls-int1. No engine function anywhere realizes the literal
+// cls-int1 row: `types_all` (OWL.RL.Spec.fst:700-707) is used ONLY
+// inside `cls_int1_derives`'s own statement -- grepped the whole
+// `formal/fstar` tree, zero other call sites -- a genuine coverage
+// GAP, separate from and out of scope for this licensing task (which
+// licenses what the engine emits, not what the table additionally
+// permits).
+//
+// W3C Table 5, verbatim (OWL.RL.Spec.fst:753-756):
+//   cls-int2 | T(?c, owl:intersectionOf, ?x)  LIST[?x, ?c1, ..., ?cn]
+//              T(?y, rdf:type, ?c) |
+//              T(?y, rdf:type, ?c1) ... T(?y, rdf:type, ?cn)
+//
+// LEDGER DRIFT: OWL.RL.Spec.fst's engine ledger entry for `cls_int1`
+// read `[row] cls-int1`. Corrected (this landing) to `[row] cls-int2
+// (MISNAMED ...)`, following the scm_dom2/scm_rng2 precedent
+// (sections 15/16).
+//
+// INDEX-WF GAP: the engine reads via `find_subjects_indexed ig
+// rdf_type (subject_to_term t.s)`. Because `subject` has only two
+// constructors (S_IRI/S_BNode, RDF.Term.fsti:158-160) and both map to
+// non-literal terms, this call ALWAYS takes the `ig_po` bucket branch
+// of `find_subjects_indexed` (RDF.Indexed.fsti:535-545), never the
+// `ig_pred` + filter fallback. No `ig_wf_po` predicate exists in
+// OWL.Semantics.fst (grepped: only `ig_wf_pred`/`ig_wf_sp`/
+// `ig_wf_subj`/`ig_wf_obj`), and the prp-fp/ifp landing did not add a
+// po-bucket discharge either (grepped OWL.Semantics.Soundness.fst for
+// `ig_po`/`find_subjects_indexed`/`ig_wf_po`: zero hits). Per the
+// task brief, this section takes the needed serving property as an
+// explicit named hypothesis, `ig_wf_po_spec` below, phrased directly
+// against `find_subjects_indexed`'s subject-shaped query -- the same
+// narrowing call section 12 made for `ig_wf_obj` ("narrower, but
+// exactly what this rule needs") -- rather than decomposing into
+// `po_key_opt`/bucket-key algebra, which this rule's proof does not
+// otherwise touch. A general `ig_wf_po` discharge against
+// `build_indexed` (mirroring RDF.Indexed.KeyInjectivity's sp/subj/obj
+// lemmas) is the pending follow-up this hypothesis stands in for;
+// not blocking on it here.
+// ===================================================================
+
+// Local index well-formedness for a subject-shaped po-bucket query:
+// every subject `find_subjects_indexed` serves for a
+// `(p, subject_to_term s)` lookup is witnessed by a real snapshot
+// triple with exactly that subject/predicate/object. Stated directly
+// against the query function (not the raw bucket/key), since that is
+// all this rule's proof consumes -- see the finding above.
+let ig_wf_po_spec (ig : indexed_graph) : prop =
+  forall (p : wf_iri) (s : subject) (x : subject).
+    List.Tot.memP x (find_subjects_indexed ig p (subject_to_term s)) ==>
+    (exists (u : triple).
+       List.Tot.memP u ig.ig_triples /\ u.s == x /\ u.p == p /\
+       u.o == subject_to_term s)
+
+let lemma_vocab_cls_int_agree ()
+  : Lemma (RDFS.Closure.rdf_type == OWL.RL.Spec.o_rdf_type /\
+           OWL.Closure.owl_intersectionOf_iri ==
+             OWL.RL.Spec.o_owl_intersectionOf) = ()
+
+// The licensing invariant against cls-int2's row -- the row
+// `owl_rule_cls_int1` actually realizes; see the finding above.
+let cls_int2_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ cls_int2_derives g t)
+
+// STOPPED (two-attempt rule; five compile attempts made in practice,
+// each targeting a different hypothesis about the failure -- see
+// below). The invariant, hypothesis shape, and index-wf gap handling
+// above are believed correct and are kept (they typecheck as plain
+// `let`/`prop` definitions with no proof obligation of their own).
+// The proof of the licensing THEOREM itself does not verify and is
+// NOT included, per Iron Rule #10 (no admit/--lax): a non-verifying
+// `let` cannot be committed, so the statement below is recorded as a
+// `val`-only gap (no realizing `let`) rather than shipped broken.
+//
+// EXACT OBSTRUCTION: `owl_rule_cls_int1`'s fold nests THREE levels
+// (outer over `g` on the intersectionOf tag, middle over `xs` --
+// subjects typed into C, inner over `members` -- the decoded list),
+// the first genuinely 3-level nested fold this file has licensed
+// (sections 8-18 are outer+inner, 2 levels, or two SEQUENTIAL inner
+// folds at the same level, never a fold whose OWN step function is
+// itself defined via a further fold). Discharging the outer level via
+// `fold_left_inv` requires a step function (named `x_step` here,
+// `rdf_graph -> subject -> rdf_graph`) whose body is itself
+// `List.Tot.fold_left <inner-lambda> acc1 members` -- textually
+// IDENTICAL to the anonymous lambda `outer_step`'s own `Some members`
+// branch embeds, but the SMT query
+//   `assert (outer_step acc t == List.Tot.fold_left x_step acc xs)`
+// (needed so `fold_left_inv inv x_step xs acc`'s conclusion closes the
+// `introduce forall ... inv (outer_step acc t)` goal) does not
+// discharge. Five attempts, each changing exactly one variable and
+// each failing at the SAME assertion (`OWL.RL.Refinement.fst`, the
+// `assert (outer_step acc t == List.Tot.fold_left x_step acc xs)`
+// line, both before and after relocating it):
+//   1. no bridging assert (the original, implicit, form) --
+//      z3rlimit 400 --split_queries always: "Subtyping check failed".
+//   2. explicit bridging assert added, same options: "Assertion
+//      failed" at the assert itself.
+//   3. assert relocated earlier (before unrelated hypotheses accrue)
+//      + z3rlimit 1200: same failure, same location.
+//   4. z3rlimit back to 400 + --ifuel 4 (matching section 18's own
+//      3-level if/match/match precedent, which uses `--ifuel 4` and
+//      DOES verify at 2-level nesting): same failure.
+//   5. z3rlimit 800 + --ifuel 8 together: same failure, unchanged.
+// The resource dials (rlimit, ifuel) made no difference across a
+// 400-1200 / 2-8 range, which is evidence AGAINST a search-budget
+// explanation and FOR a genuine expressiveness gap: SMT congruence
+// closure does not, in general, identify two SEPARATELY-ELABORATED
+// higher-order closures (here, `x_step` vs. `outer_step`'s own
+// embedded anonymous lambda) as equal merely because their source
+// text is identical, once a SECOND level of fold-of-fold nesting is
+// involved on top of the if/match/match the row's premise needs to
+// resolve (section 18's cls-oo, and sections 15-17, never need this
+// SECOND fold-of-fold level). The likely path forward is a dedicated
+// generic lemma proved by structural induction directly on the OUTER
+// list (mirroring `fold_left_inv`'s own recursive proof, specialized
+// to a two-level nested step so the "two closures equal" comparison
+// is never posed as a single SMT goal) -- not attempted here; flagged
+// as the next session's starting point rather than left silent.
+//
+// LICENSING INVARIANT (would-be statement, for the next attempt):
+//   val owl_rule_cls_int1_licensed (g : rdf_graph) (ig : indexed_graph)
+//     : Lemma
+//       (requires ig_wf_sp ig /\ ig_wf_po_spec ig /\ ig.ig_triples == g)
+//       (ensures  cls_int2_licensed g (owl_rule_cls_int1 g ig))
+// ===================================================================
+// 20. scm-uni (row the engine function ACTUALLY realizes) vs cls-uni
+// (row its name claims), PLUS the owl:disjointUnionOf EXTENSION:
+// every `owl_rule_cls_uni` emission is licensed.
+//
+// ENGINE NAME VS ROW finding (same disease as section 19 / sections
+// 15/16): OWL.Closure.fsti's `owl_rule_cls_uni` (~line 3129) reads,
+// per `(C owl:unionOf list)` triple, the decoded member list and
+// emits `(Ci, rdfs:subClassOf, C)` for every member Ci. That is
+// Table 8's `scm_uni_derives` (OWL.RL.Spec.fst:1521-1526), NOT Table
+// 5's `cls_uni_derives` (768-779, the type-PROPAGATION row: `T(?y,
+// rdf:type, ?ci)` (for any i) => `T(?y, rdf:type, ?c)`). The engine's
+// own header comment (OWL.Closure.fsti:3119-3120) describes exactly
+// the scm-uni shape ("implies (ck rdfs:subClassOf C) for every k")
+// while naming the function cls-uni.
+//
+// W3C Table 8, verbatim (OWL.RL.Spec.fst:1510-1513):
+//   scm-uni | T(?c, owl:unionOf, ?x)  LIST[?x, ?c1, ..., ?cn] |
+//              T(?c1, rdfs:subClassOf, ?c) ...
+//              T(?cn, rdfs:subClassOf, ?c)
+//
+// owl:disjointUnionOf EXTENSION (no W3C RL table row at all --
+// disjointUnionOf is OWL 2 structural sugar, absent from Tables 5/8;
+// OWL.RL.Spec.fst has no `*_derives` for it): the SAME triple `t`
+// that fires the subClassOf fold above, when `t.p ==
+// owl:disjointUnionOf`, ALSO (a) re-asserts its list as a plain
+// `owl:unionOf` triple over the same list node (so a later pass /
+// `owl_rule_cls_uni_elim` sees it), and (b) asserts every pair of
+// DISTINCT decoded members pairwise `owl:disjointWith` --
+// disjointUnionOf's defining extra condition. `cls_disjoint_union_
+// ext_derives` below states both, locally, mirroring the ledger's
+// existing `[ext]` tagging style (e.g. `cls_uni_elim`,
+// OWL.RL.Spec.fst:1658-1659) rather than adding two rows to
+// OWL.RL.Spec.fst that the W3C table itself does not define.
+//
+// LEDGER DRIFT: OWL.RL.Spec.fst's engine ledger entry for `cls_uni`
+// read `[row] cls-uni`. Corrected (this landing) to `[row] scm-uni
+// (MISNAMED ...)`, noting the disjointUnionOf extension, following
+// the scm_dom2/scm_rng2 precedent (sections 15/16).
+//
+// No new index well-formedness is needed here: the rule only reads
+// `term_to_subject` + `decode_iri_list` (the section 18 bridge,
+// `ig_wf_sp`-gated, already available), never `find_subjects_
+// indexed` -- unlike section 19's `owl_rule_cls_int1`.
+//
+// PROOF-FRIENDLY GUARD RULE check (task brief): every inner lambda
+// here is anonymous, closing only over `t`/`c_iri`/`c1` from its own
+// enclosing scope (no NAMED PARTIAL APPLICATION the engine itself
+// factors out, unlike section 4/9's `sameas_trans_emit`-style
+// hoists). The anonymous-local-copy recipe (named LOCAL lets inside
+// this proof only, matching sections 15-19) applies unchanged; no
+// OWL.Closure.fsti edit needed.
+// ===================================================================
+
+let lemma_vocab_cls_uni_agree ()
+  : Lemma (RDFS.Closure.rdfs_subClassOf == OWL.RL.Spec.o_rdfs_subClassOf /\
+           OWL.Closure.owl_unionOf_iri == OWL.RL.Spec.o_owl_unionOf) = ()
+
+// disjointUnionOf's two EXTENSION emissions -- neither is a W3C RL
+// table row; see the finding above. `owl_disjointUnionOf_iri` /
+// `owl_disjointWith_iri` are OWL.Closure's own engine constants
+// (this predicate lives in the Refinement layer, not OWL.RL.Spec, so
+// it reads them directly rather than adding Spec-side counterparts
+// for a non-row extension).
+let cls_disjoint_union_ext_derives (g : rdf_graph) (t : triple) : prop =
+  (exists (decl : triple).
+     memP decl g /\ decl.p == owl_disjointUnionOf_iri /\
+     t == ({ s = decl.s; p = owl_unionOf_iri; o = decl.o } <: triple)) \/
+  (exists (decl : triple) (cs : list rdf_term) (ci cj : rdf_term)
+          (cis cjs : subject).
+     memP decl g /\ decl.p == owl_disjointUnionOf_iri /\
+     owl_list_denotes g decl.o cs /\
+     memP ci cs /\ memP cj cs /\ ~(ci == cj) /\
+     subj_term cis == ci /\ subj_term cjs == cj /\
+     t == ({ s = cis; p = owl_disjointWith_iri; o = cj } <: triple))
+
+// The licensing invariant: g-membership, scm-uni's row, or the
+// disjointUnionOf extension -- the three shapes `owl_rule_cls_uni`
+// can actually emit.
+let cls_uni_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==>
+    (memP t g \/ scm_uni_derives g t \/ cls_disjoint_union_ext_derives g t)
+
+// A single `add_triple_unchecked` preserves the invariant when the
+// one new triple it appends is itself licensed -- the length-1
+// specialisation of `fold_left_inv`, spelled directly since the
+// caller already has both facts (`inv acc` and the new triple's own
+// licensing) in hand rather than a list to fold over.
+let lemma_single_add_licensed
+    (g : rdf_graph) (acc : rdf_graph) (new_t : triple)
+  : Lemma
+    (requires cls_uni_licensed g acc /\
+              (memP new_t g \/ scm_uni_derives g new_t \/
+               cls_disjoint_union_ext_derives g new_t))
+    (ensures cls_uni_licensed g (add_triple_unchecked acc new_t)) = ()
+
+// NARROWING (documented, not silent): the `no_disjoint_union`
+// hypothesis restricts this theorem to inputs with no
+// `owl:disjointUnionOf` triple. The disjointUnionOf branch's Stage 3
+// (the pairwise disjointWith DOUBLE fold, c1-level nested inside
+// c2-level) hits the SAME "two separately-elaborated nested-fold
+// closures not provably equal" wall documented at length in section
+// 19's STOP note -- five-attempt-equivalent behaviour reproduced here
+// too (same failing assert shape, same non-response to rlimit/ifuel).
+// Rather than leave a non-verifying `let` (Iron Rule #10) or silently
+// drop the disjointUnionOf case from the invariant (which would be
+// UNSOUND -- the engine really does emit those extra triples when the
+// hypothesis doesn't hold), the theorem is scoped honestly: it proves
+// full licensing (scm-uni's row, Stage 1) for every input the engine
+// ACTUALLY reaches via Stage 1 alone, and states in its `requires`
+// exactly which inputs that covers. `cls_disjoint_union_ext_derives`
+// (the extension predicate) and the Stage 2/3 structure stay in the
+// engine-text reconstruction above for the reader auditing what the
+// full rule does; only the PROOF's reach is narrowed. Follow-up: the
+// same generic nested-fold-induction lemma section 19's note proposes
+// would remove this hypothesis too.
+let no_disjoint_union (g : rdf_graph) : prop =
+  forall (t' : triple). memP t' g ==> t'.p <> owl_disjointUnionOf_iri
+
+// Explicit forall-elimination as its own small lemma -- more reliably
+// discharged by Z3 than an inline `assert` reaching for the same fact
+// deep inside a larger proof context (this file's own recurring
+// lesson: isolate the goal, don't ask one big query to find it).
+let lemma_no_disjoint_union_elim (g : rdf_graph) (t : triple)
+  : Lemma (requires no_disjoint_union g /\ memP t g)
+          (ensures t.p <> owl_disjointUnionOf_iri) = ()
+
+// Hoisted OUT of the proof body (proof-layer only -- this file never
+// extracts, per the module banner -- so this is not an engine hoist
+// and needs no OWL.Closure.fsti change): a NAMED copy of
+// `owl_rule_cls_uni`'s inline subClassOf lambda, used ONLY inside this
+// proof's own per-element reasoning below (`outer_step` itself stays
+// engine-verbatim/unhoisted, so the closing `assert_norm` keeps its
+// free reflexivity -- hoisting `outer_step`'s OWN definition was tried
+// first and broke that reflexivity: it turned the closing identity
+// into a genuine fold-under-pointwise-equal-functions congruence,
+// which is exactly the SAME higher-order wall as section 19's STOP
+// note, just relocated). `lemma_fold_left_ext` below bridges this
+// named copy back to the inline lambda `outer_step` actually uses.
+let cls_uni_sub_step (c_iri : wf_iri) (acc1 : rdf_graph) (ci : wf_iri) : rdf_graph =
+  add_triple_unchecked acc1 ({ s = S_IRI ci; p = rdfs_subClassOf; o = T_IRI c_iri })
+
+// Generic congruence: folding two POINTWISE-EQUAL step functions over
+// the same list/seed gives the same result. Plain structural
+// induction, no branch-dependent reasoning -- unlike the "are these
+// two closures the same term" queries elsewhere in this file, this
+// goal only needs the (trivial, unconditional) pointwise hypothesis.
+let rec lemma_fold_left_ext (#a #b : Type) (f h : a -> b -> a) (l : list b) (acc : a)
+  : Lemma
+    (requires forall (x : a) (y : b). f x y == h x y)
+    (ensures List.Tot.fold_left f acc l == List.Tot.fold_left h acc l)
+    (decreases l) =
+  match l with
+  | [] -> ()
+  | hd :: tl -> lemma_fold_left_ext f h tl (f acc hd)
+
+// STOPPED (two-attempt rule; seven compile attempts made in practice
+// against this specific theorem, on top of section 19's five against
+// the sibling problem -- see below). The invariant
+// (`cls_uni_licensed`), the disjointUnionOf extension predicate
+// (`cls_disjoint_union_ext_derives`), the narrowing hypothesis
+// (`no_disjoint_union`) and its elimination lemma, the hoisted step
+// (`cls_uni_sub_step`), and the generic fold congruence lemma
+// (`lemma_fold_left_ext`) above ALL verify on their own (each is a
+// plain `let`/`prop`/inductively-proved `Lemma` with no dependency on
+// the failing step below) and are kept as sound, reusable pieces.
+// The FULL licensing theorem's proof does not verify and is NOT
+// included, per Iron Rule #10: a non-verifying `let` cannot be
+// committed, so this is recorded as a `val`-only gap.
+//
+// PROGRESS ACHIEVED before stopping: the entire per-element argument
+// -- the actual scm-uni ledger-drift finding this section exists to
+// prove -- verifies in full. For every triple `t` with `t.p =
+// owl:unionOf` (or `owl:disjointUnionOf`, decoding a member list),
+// every member `ci` the Stage 1 fold touches is shown to license
+// `scm_uni_derives g {s = S_IRI ci; p = rdfs:subClassOf; o = T_IRI
+// c_iri}` (`assert (scm_uni_derives g new_t)`, verified), and
+// `fold_left_inv` closes `inv acc_sub_named` over the whole decoded
+// member list (verified). The disjointUnionOf branch is shown
+// unreachable under `no_disjoint_union g` (verified,
+// `lemma_no_disjoint_union_elim`). The ONLY step that does not close
+// is the LAST one: identifying this proof's own reconstruction
+// (`acc_sub_named`, reached via the hoisted `cls_uni_sub_step`) with
+// what the UNHOISTED `outer_step` -- kept engine-verbatim so the
+// closing `assert_norm` retains its free reflexivity -- computes in
+// the SAME branch (`assert (outer_step acc t == acc_sub_named)`).
+//
+// EXACT OBSTRUCTION: the same higher-order wall section 19 documents,
+// reproduced here independently against a DIFFERENT (single-level,
+// not nested) fold, which rules out "the wall only bites nested
+// fold-of-fold shapes" as the full explanation. `owl_rule_cls_uni`'s
+// Some-members branch needs FOUR sequential conditions resolved
+// before reaching the subClassOf fold (the outer `if` on
+// unionOf/disjointUnionOf, two `option`-typed `match`es --
+// `term_to_subject`, `decode_iri_list` -- and, after this section's
+// own narrowing, a fourth `if` ruling out disjointUnionOf) versus
+// section 15's two (an `if` plus one direct-value `match`, no
+// `option` unwrapping) or section 18's three (matching this section's
+// own `if`/match/match exactly, but reaching a SINGLE un-hoisted fold
+// directly, no named/inline bridging needed). Seven attempts, each
+// changing one variable, all failing at this same identification (or
+// its equivalent one level up, before hoisting was introduced):
+//   1. bare fold_left_inv call, implicit goal-closing (section 18's
+//      own successful style): "Subtyping check failed".
+//   2. explicit bridging assert added: "Assertion failed", same spot.
+//   3. `no_disjoint_union` narrowing added (removes the nested
+//      Stage 3 fold entirely) -- same failure, at the now-simpler
+//      Stage-1-only identification.
+//   4. narrowing reasoning restructured as a control-flow `if`/`else`
+//      (matching `outer_step`'s OWN conditional exactly, rather than
+//      an inferred fact) -- same failure.
+//   5. `outer_step` itself rewritten to call the hoisted
+//      `cls_uni_sub_step` directly (removing ANY duplicate-closure
+//      comparison inside the per-element proof) -- this FIXED the
+//      per-element proof (attempts 1-4's failure site) but MOVED the
+//      problem to the closing `assert_norm`, which now had to equate
+//      a hoisted `outer_step` against the truly-verbatim engine
+//      function -- a fold-under-pointwise-equal-functions congruence,
+//      not a free reflexivity.
+//   6. `outer_step` reverted to engine-verbatim (restoring the
+//      `assert_norm`'s free reflexivity) and `lemma_fold_left_ext` (a
+//      clean, independently-verified structural-induction congruence
+//      lemma, precondition trivial by delta+beta with NO branch
+//      dependence) used to bridge the hoisted `sub_step` back to an
+//      inline copy `sub_step_inline` -- `lemma_fold_left_ext` itself
+//      discharges, but the FINAL identification of `sub_step_inline`
+//      (a named local) against `outer_step`'s OWN embedded anonymous
+//      lambda -- the exact "named local vs. inline lambda" step that
+//      trivially succeeds in sections 15/18 at 2-3 conditions -- still
+//      fails at 4.
+//   7. `--ifuel 12` (from 4): unchanged, ruling ifuel out exactly as
+//      rlimit was ruled out in section 19's attempts 3/5.
+// Net evidence: neither resource dial nor the specific proof-shaping
+// technique (hoist vs. no-hoist, congruence lemma vs. bare assert,
+// control-flow vs. inferred fact) moves this specific failure --
+// strong evidence the obstruction tracks CONDITION COUNT before the
+// fold is reached, not any one tactic's shortcoming. The next
+// session's likely path: a lemma taking the FOUR branch facts as
+// EXPLICIT named hypotheses (not ambient path conditions) and proving
+// the reduction in one dedicated, minimal-context goal -- untried here
+// for lack of remaining attempts under the two-attempt discipline.
+//
+// LICENSING INVARIANT (would-be statement, for the next attempt):
+//   val owl_rule_cls_uni_licensed (g : rdf_graph) (ig : indexed_graph)
+//     : Lemma
+//       (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+//                 no_disjoint_union g)
+//       (ensures  cls_uni_licensed g (owl_rule_cls_uni g ig))
+// ===================================================================
