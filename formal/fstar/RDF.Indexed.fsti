@@ -550,6 +550,17 @@ let find_objects_indexed (ig : indexed_graph) (subj : subject) (pred : wf_iri)
 (* Index-backed (?, p, o) lookup. Uses ig_po when o is non-literal
    (the common case in closure rules); falls back to ig_pred + filter
    when o is a literal (rare in OWL/RDFS schema axioms). *)
+(* PROOF-FRIENDLY GUARD RULE: the filter predicate and the projection
+   are named top-level so proofs about find_subjects_indexed's result
+   can reference the SAME symbols the engine applies (anonymous
+   lambdas are distinct SMT tokens per spelling site -- the
+   closure-identity law, skills/proof-factory). Behavior-identical
+   to the previous inline-lambda spelling. *)
+let triple_obj_matches (obj : rdf_term) (t : triple) : bool =
+  rdf_term_eq t.o obj
+
+let triple_subject_of (t : triple) : subject = t.s
+
 let find_subjects_indexed (ig : indexed_graph) (pred : wf_iri) (obj : rdf_term)
   : Tot (list subject) =
   let bucket =
@@ -557,10 +568,10 @@ let find_subjects_indexed (ig : indexed_graph) (pred : wf_iri) (obj : rdf_term)
     | Some k -> bucket_lookup ig.ig_po k
     | None ->
       List.Tot.filter
-        (fun (t : triple) -> rdf_term_eq t.o obj)
+        (triple_obj_matches obj)
         (bucket_lookup ig.ig_pred pred)
   in
-  List.Tot.map (fun (t : triple) -> t.s) bucket
+  List.Tot.map triple_subject_of bucket
 
 (* Single-step index update for one triple. *)
 let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph =

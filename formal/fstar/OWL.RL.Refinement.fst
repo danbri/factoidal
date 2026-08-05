@@ -55,6 +55,7 @@ open RDF.Term
 open RDF.Triple
 open RDF.Graph
 open RDF.Indexed
+open RDF.Indexed.KeyInjectivity
 open RDFS.Closure
 open OWL.Closure
 open OWL.Semantics
@@ -3711,3 +3712,445 @@ val theorem_prp_key_licensed
 let theorem_prp_key_licensed g ig t =
   owl_rule_prp_key_licensed g ig
 // ===================================================================
+// 24. prp-fp: every `owl_rule_functional` emission is licensed.
+//
+// OWL 2 RL/RDF rules table row prp-fp:
+//   T(?p, rdf:type, owl:FunctionalProperty), T(?x, ?p, ?y1), T(?x, ?p, ?y2)
+//     => T(?y1, owl:sameAs, ?y2)
+// transcribed as OWL.RL.Spec.prp_fp_derives. The collect fold
+// (functional-property IRIs) is prp-trp's (section 9) / prp-symp's
+// (section 4) cons_if_new_iri shape verbatim, with one extra guard:
+// `is_list_cell_functional_property p_iri` skips rdf:first/rdf:rest
+// (OWL.Closure.fsti's own perf-cost comment above `owl_rule_functional`
+// explains why); a skipped collect step leaves the accumulator
+// untouched, so it does not disturb the collect-fold licensing
+// invariant -- the proof below handles it as a third `if` arm that
+// falls through to the "acc unchanged" case, alongside the other two
+// arms' own no-op branches. The emission fold is the SAME two-level
+// nested shape prp-trp's is (section 9): the outer binder is a single
+// triple `t1` (this rule reads g directly, no separately-collected
+// outer list, exactly like prp-trp); the inner fold walks
+// `find_objects_indexed ig t1.s t1.p` -- the SAME sp-index bucket
+// prp-trp's inner fold reads (RDF.Indexed.fsti's `find_objects_indexed`
+// is unconditionally backed by ig_sp -- no literal/non-literal branch,
+// unlike `find_subjects_indexed` below, section 25), so this rule
+// needs no new well-formedness machinery: `ig_wf_sp ig /\
+// ig.ig_triples == g` is exactly section 9's hypothesis, reused
+// verbatim.
+//
+// LAMBDA-LIFT (task #36, mirrors the cls-int1/cls-uni/prp-key
+// precedent, 2026-08-05 landing): a first draft of this proof used
+// LOCAL step lambdas spelled verbatim from the (then-inline) engine
+// text, per the file-header skeleton -- and failed at the outer
+// `introduce forall`, "Expected type Prims.squash (inv (outer_step
+// acc t1)), got type Prims.unit", the SAME closure-identity symptom
+// section 19/20's STOP notes record. Fix: `owl_rule_functional`'s
+// three fold levels are now named top-level functions
+// (`owl_prp_fp_collect_step` / `owl_prp_fp_step` / `owl_prp_fp_emit`,
+// OWL.Closure.fsti), and this proof references those same symbols
+// directly -- no local re-spelling, no closing `assert_norm` (the
+// engine's `let`-bound definition unfolds through the shared symbols
+// the same way section 19 (continued)'s `owl_rule_cls_int1_licensed`
+// does).
+//
+// SPEC-ROW MISMATCH (engine narrower than the row, same shape as the
+// eq-rep family's findings, sections 11-13): the engine skips a
+// candidate `z` when `rdf_term_eq z t1.o` (i.e. z is the same object
+// as t1.o) -- avoiding a reflexive-looking `(y1 sameAs y1)` emission
+// this rule does not need to make (reflexivity is eq-ref's job,
+// section 3). `prp_fp_derives` places no such restriction (u1.o and
+// u2.o may coincide). Sound (a subset of a licensed set is still
+// licensed) but INCOMPLETE relative to the row alone; flagging per the
+// established pattern, not fixing.
+// ===================================================================
+
+let lemma_vocab_fp_agree ()
+  : Lemma (RDFS.Closure.rdf_type == OWL.RL.Spec.o_rdf_type /\
+           OWL.Closure.owl_FunctionalProperty ==
+             OWL.RL.Spec.o_owl_FunctionalProperty) = ()
+
+// A property IRI declared functional in g.
+let fp_from_decl (g : list triple) (p : wf_iri) : prop =
+  exists (decl : triple).
+    memP decl g /\ decl.p == rdf_type /\
+    decl.s == S_IRI p /\ decl.o == T_IRI owl_FunctionalProperty
+
+let fps_licensed (g : list triple) (ps : list wf_iri) : prop =
+  forall (p : wf_iri). memP p ps ==> fp_from_decl g p
+
+// The licensing invariant for this rule, against prp-fp's row. Same
+// 3-arg shape as prp_trp_licensed (section 9): snapshot is
+// instantiated at g via the `ig.ig_triples == g` hypothesis, even
+// though prp_fp_derives is stated against g directly.
+let prp_fp_licensed (g : rdf_graph) (snapshot : list triple) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ prp_fp_derives snapshot t)
+
+// Named existential-witness introduction for prp-fp's row: unlike
+// prp-trp's (section 9), `prp_fp_derives` binds a SEPARATE subject
+// existential `y1s` not equal to any of decl/u1/u2 outright (only
+// related to u1 via `subj_term y1s == u1.o`), so the SMT goal needs an
+// explicit witness rather than the "reuse u1.s directly" shape that
+// let section 9's inline `assert` close on its own. Isolating the
+// introduction here, parameterized directly by the witnesses (p, u1,
+// u2, y1s all supplied as this lemma's own arguments, so Z3 only has
+// to confirm they satisfy the row's conjuncts, not search for them),
+// is what makes `()` suffice.
+let lemma_prp_fp_derives_intro
+    (g : list triple) (p : wf_iri) (u1 u2 : triple) (y1s : subject)
+  : Lemma
+    (requires fp_from_decl g p /\
+              memP u1 g /\ u1.p == p /\
+              memP u2 g /\ u2.p == p /\ u2.s == u1.s /\
+              subj_term y1s == u1.o)
+    (ensures prp_fp_derives g ({ s = y1s; p = owl_sameAs; o = u2.o } <: triple)) =
+  lemma_vocab_fp_agree ();
+  lemma_vocab_sameas_agree ()
+
+val owl_rule_functional_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig.ig_triples == g)
+          (ensures prp_fp_licensed g g (owl_rule_functional g ig))
+
+#push-options "--z3rlimit 200 --split_queries always"
+let owl_rule_functional_licensed g ig =
+  lemma_vocab_fp_agree ();
+  // Collect-step preservation, against the named top-level
+  // `owl_prp_fp_collect_step`: the consed IRI has t itself as decl;
+  // the list-cell-skip arm leaves acc (hence the invariant) untouched.
+  introduce forall (acc : list wf_iri) (t : triple).
+      (memP t g /\ fps_licensed g acc) ==>
+      fps_licensed g (owl_prp_fp_collect_step acc t)
+  with introduce (memP t g /\ fps_licensed g acc) ==>
+                 fps_licensed g (owl_prp_fp_collect_step acc t)
+  with _ . begin
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
+      match t.s, t.o with
+      | S_IRI p_iri, T_IRI j ->
+        lemma_rdf_term_eq_iri j owl_FunctionalProperty;
+        if is_list_cell_functional_property p_iri then ()
+        else FStar.Classical.forall_intro (lemma_cons_if_new_iri_memP p_iri acc)
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (fps_licensed g) owl_prp_fp_collect_step g [];
+  let fp_props = List.Tot.fold_left owl_prp_fp_collect_step [] g in
+  // Emission fold: outer over g (single-triple binder t1); when t1.p
+  // is functional and t1.o converts to a subject y_subj, an inner fold
+  // over the sp-indexed objects zs (of t1.s, t1.p) emits
+  // (y_subj sameAs z) per surviving z. Both folds now reference the
+  // named top-level `owl_prp_fp_step` / `owl_prp_fp_emit`.
+  introduce forall (acc : rdf_graph) (t1 : triple).
+      (memP t1 g /\ prp_fp_licensed g g acc) ==>
+      prp_fp_licensed g g (owl_prp_fp_step ig fp_props acc t1)
+  with introduce (memP t1 g /\ prp_fp_licensed g g acc) ==>
+                 prp_fp_licensed g g (owl_prp_fp_step ig fp_props acc t1)
+  with _ . begin
+    if List.Tot.mem t1.p fp_props then begin
+      match term_to_subject t1.o with
+      | Some y_subj ->
+        let zs = find_objects_indexed ig t1.s t1.p in
+        introduce forall (acc2 : rdf_graph) (z : rdf_term).
+            (memP z zs /\ prp_fp_licensed g g acc2) ==>
+            prp_fp_licensed g g (owl_prp_fp_emit y_subj t1.o acc2 z)
+        with introduce (memP z zs /\ prp_fp_licensed g g acc2) ==>
+                       prp_fp_licensed g g (owl_prp_fp_emit y_subj t1.o acc2 z)
+        with _ . begin
+          if rdf_term_eq z t1.o then ()
+          else begin
+            let new_t : triple = { s = y_subj; p = owl_sameAs; o = z } in
+            // fp_props provenance: t1.p is declared functional in g
+            // (decl stays unnamed -- symps_licensed's own emission-fold
+            // proof, section 4, discharges the same shape of fact this
+            // way, no explicit `eliminate exists decl` needed).
+            List.Tot.Properties.mem_memP t1.p fp_props;
+            // u2 comes from the sp-index bucket at (t1.s, t1.p): the
+            // served object z names a real bucket triple.
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (tt : triple) -> tt.o) z
+              (bucket_lookup ig.ig_sp (sp_key t1.s t1.p));
+            eliminate exists (u2 : triple).
+                memP u2 (bucket_lookup ig.ig_sp (sp_key t1.s t1.p)) /\ u2.o == z
+            returns prp_fp_derives g new_t
+            with _ . begin
+              // ig_wf_sp places u2 in the snapshot with u2.s == t1.s,
+              // u2.p == t1.p; ig.ig_triples == g places it in g itself.
+              lemma_term_to_subject_subj_term t1.o y_subj;
+              assert (subj_term y_subj == t1.o);
+              List.Tot.Properties.mem_memP t1.p fp_props;
+              lemma_prp_fp_derives_intro g t1.p t1 u2 y_subj;
+              assert (new_t == ({ s = y_subj; p = owl_sameAs; o = u2.o } <: triple))
+            end
+          end
+        end;
+        fold_left_inv (prp_fp_licensed g g) (owl_prp_fp_emit y_subj t1.o) zs acc
+      | None -> ()
+    end else ()
+  end;
+  fold_left_inv (prp_fp_licensed g g) (owl_prp_fp_step ig fp_props) g g
+#pop-options
+
+// Per-triple corollary.
+val theorem_functional_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_functional g ig))
+    (ensures  memP t g \/ prp_fp_derives g t)
+
+let theorem_functional_licensed g ig t =
+  owl_rule_functional_licensed g ig
+
+// ===================================================================
+// 25. prp-ifp: every `owl_rule_inverse_functional` emission is
+// licensed.
+//
+// OWL 2 RL/RDF rules table row prp-ifp:
+//   T(?p, rdf:type, owl:InverseFunctionalProperty),
+//   T(?x1, ?p, ?y), T(?x2, ?p, ?y)  =>  T(?x1, owl:sameAs, ?x2)
+// transcribed as OWL.RL.Spec.prp_ifp_derives. Mirrors section 24's
+// collect fold exactly (no list-cell-skip guard here -- rdf:first/
+// rdf:rest are only ever declared FunctionalProperty, never
+// InverseFunctionalProperty, so `owl_rule_inverse_functional`'s collect
+// step has no analogous arm). The emission fold is the SAME
+// single-triple-outer-binder shape as section 24's, but the inner
+// lookup is `find_subjects_indexed ig t1.p t1.o` (RDF.Indexed.fsti) --
+// unlike `find_objects_indexed`, this is NOT unconditionally backed by
+// one bucket: it uses `ig_po` when t1.o is non-literal (via
+// `po_key_opt`) and falls back to `ig_pred` + an `rdf_term_eq` filter
+// when t1.o is a literal. Both branches need their own provenance
+// argument, packaged below as `lemma_find_subjects_indexed_wf`:
+//
+//   * po branch (t1.o non-literal): `po_key_opt` is a COMPOSITE key
+//     (predicate ^ separator ^ object-key) like `sp_key`, not a
+//     single-component key like `subject_to_key`/`term_to_key_opt`, so
+//     recovering the predicate and object from a shared key needs
+//     component-recovery machinery `ig_wf_sp`'s own discharge needed
+//     (a one-sided separator-freeness argument) -- NOT unconditional
+//     like `ig_wf_obj`'s single-component key. `ig_wf_po` (subject-
+//     shaped, mirroring `ig_wf_obj`'s precedent -- `po_key_opt` is
+//     only ever `Some` on a non-literal object, so restating it over a
+//     `subject` rather than a bare `rdf_term` costs nothing) and its
+//     discharge (`RDF.Indexed.KeyInjectivity.lemma_build_indexed_wf_po`,
+//     needing `graph_po_sep_free`, the po-bucket's own separator side
+//     condition, mirroring `graph_sp_sep_free`) already exist in
+//     OWL.Semantics.fst / RDF.Indexed.KeyInjectivity.fst -- this
+//     theorem takes `ig_wf_po ig` as a bare hypothesis, the same
+//     minimal-footprint choice section 9 made for `ig_wf_sp` (the
+//     theorem does not itself invoke the discharge lemma).
+//
+//   * literal fallback (t1.o a literal): `find_subjects_indexed`
+//     matches via `rdf_term_eq`, which is COARSER than structural `==`
+//     for literals -- language tags compare case-insensitively (RDF
+//     1.1 Concepts SS3.3, `RDF.Term.fsti`'s `lang_tag_eq`) and
+//     same-value `XMLLiteral` lexical forms compare via canonical form
+//     (`xml_canon_eq`). `prp_ifp_derives`'s `u2.o == u1.o` premise
+//     needs STRUCTURAL equality, so licensing an emission born from
+//     this branch needs the snapshot's rdf_term_eq-matching,
+//     same-predicate literal objects to already BE structurally
+//     identical -- true of any snapshot whose literals are already in
+//     canonical form (parser output is normalised at parse time), but
+//     NOT a fact this proof can derive from nothing, since `==` is
+//     genuinely finer than `rdf_term_eq` in general (two literals
+//     differing only by lang-tag case are `rdf_term_eq`-equal but not
+//     `==`-equal). Stated as an explicit side condition below,
+//     `graph_literal_match_exact` -- a genuine engine/row FINDING
+//     (rather than fixed, per the established "flag, don't fix"
+//     pattern of sections 11-13), NOT an "engine narrower than the
+//     row" case like section 24's: without this hypothesis the
+//     licensing statement is not just incomplete but FALSE for an
+//     adversarial graph containing two same-predicate, differently-
+//     cased-lang-tagged literal duplicates.
+//
+// LAMBDA-LIFT (task #36, same treatment as section 24): every fold
+// level of `owl_rule_inverse_functional` is now a named top-level
+// function (`owl_prp_ifp_collect_step` / `owl_prp_ifp_step` /
+// `owl_prp_ifp_emit`, OWL.Closure.fsti); this proof references those
+// symbols directly rather than local verbatim re-spellings.
+// ===================================================================
+
+let lemma_vocab_ifp_agree ()
+  : Lemma (RDFS.Closure.rdf_type == OWL.RL.Spec.o_rdf_type /\
+           OWL.Closure.owl_InverseFunctionalProperty ==
+             OWL.RL.Spec.o_owl_InverseFunctionalProperty) = ()
+
+// A property IRI declared inverse-functional in g.
+let ifp_from_decl (g : list triple) (p : wf_iri) : prop =
+  exists (decl : triple).
+    memP decl g /\ decl.p == rdf_type /\
+    decl.s == S_IRI p /\ decl.o == T_IRI owl_InverseFunctionalProperty
+
+let ifps_licensed (g : list triple) (ps : list wf_iri) : prop =
+  forall (p : wf_iri). memP p ps ==> ifp_from_decl g p
+
+// Row-instantiation packaging, mirroring lemma_prp_fp_derives_intro
+// (section 24): the witnesses arrive as arguments, so Z3 only
+// confirms the conjuncts instead of searching for `decl` inside a
+// nested eliminate -- without this the emission-fold step fails with
+// "expected squash (prp_ifp_derives g new_t), got unit".
+let lemma_prp_ifp_derives_intro
+    (g : list triple) (p : wf_iri) (u1 u2 : triple)
+  : Lemma
+    (requires ifp_from_decl g p /\
+              memP u1 g /\ u1.p == p /\
+              memP u2 g /\ u2.p == p /\ u2.o == u1.o)
+    (ensures prp_ifp_derives g
+               ({ s = u1.s; p = owl_sameAs; o = subj_term u2.s } <: triple)) =
+  lemma_vocab_ifp_agree ();
+  lemma_vocab_sameas_agree ()
+
+// The licensing invariant for this rule, against prp-ifp's row. Same
+// 3-arg shape as prp_fp_licensed (section 24).
+let prp_ifp_licensed (g : rdf_graph) (snapshot : list triple) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ prp_ifp_derives snapshot t)
+
+// The side condition the literal-fallback branch of
+// `find_subjects_indexed` needs (see the section banner above): any
+// two same-predicate triples of the snapshot whose objects
+// `rdf_term_eq`-match are already structurally `==`-equal. Trivially
+// true of IRI/BNode objects (rdf_term_eq on those IS `=` on plain
+// strings); the content is entirely about literals.
+let graph_literal_match_exact (g : list triple) : prop =
+  forall (ta tb : triple). memP ta g /\ memP tb g /\ ta.p == tb.p /\
+    rdf_term_eq ta.o tb.o == true ==> ta.o == tb.o
+
+// find_subjects_indexed's own well-formedness: every subject it serves
+// really is the subject of a real (p, o) edge of the snapshot. Splits
+// on the SAME two branches `find_subjects_indexed` itself splits on
+// (RDF.Indexed.fsti) -- see the section banner above for both. Takes
+// the ORIGIN triple t1 (not bare p/o) because the literal-fallback
+// branch's derivation needs a SECOND same-predicate triple to invoke
+// `graph_literal_match_exact` against; t1 itself (whose own object IS
+// t1.o, by construction, at every call site below) is that triple.
+val lemma_find_subjects_indexed_wf
+    (ig : indexed_graph) (g : list triple) (t1 : triple) (z : subject)
+  : Lemma
+    (requires ig_wf_po ig /\ ig_wf_pred ig /\ ig.ig_triples == g /\
+              memP t1 g /\ graph_literal_match_exact g /\
+              memP z (find_subjects_indexed ig t1.p t1.o))
+    (ensures exists (u2 : triple).
+               memP u2 g /\ u2.p == t1.p /\ u2.o == t1.o /\ u2.s == z)
+
+#push-options "--z3rlimit 200 --split_queries always"
+let lemma_find_subjects_indexed_wf ig g t1 z =
+  lemma_po_key_opt_some_iff_term_to_subject_some t1.p t1.o;
+  match term_to_subject t1.o with
+  | Some s_o ->
+    // po branch: t1.o is non-literal, so find_subjects_indexed reads
+    // ig_po under po_key_opt t1.p t1.o == Some (po_key t1.p s_o).
+    lemma_term_to_subject_subj_term t1.o s_o;
+    lemma_po_key_eq_po_key_opt t1.p s_o;
+    FStar.List.Tot.Properties.memP_map_elim
+      triple_subject_of z
+      (bucket_lookup ig.ig_po (po_key t1.p s_o));
+    eliminate exists (u2 : triple).
+        memP u2 (bucket_lookup ig.ig_po (po_key t1.p s_o)) /\ u2.s == z
+    returns exists (u2 : triple). memP u2 g /\ u2.p == t1.p /\ u2.o == t1.o /\ u2.s == z
+    with _ . begin
+      // ig_wf_po places u2 in the snapshot with u2.p == t1.p and
+      // u2.o == subject_to_term s_o == t1.o; ig.ig_triples == g places
+      // it in g itself.
+      assert (memP u2 g /\ u2.p == t1.p /\ u2.o == subject_to_term s_o);
+      assert (u2.o == t1.o)
+    end
+  | None ->
+    // Literal (or triple-term) fallback: find_subjects_indexed reads
+    // ig_pred, filtered by rdf_term_eq against t1.o.
+    FStar.List.Tot.Properties.memP_map_elim
+      triple_subject_of z
+      (List.Tot.filter (triple_obj_matches t1.o)
+         (bucket_lookup ig.ig_pred t1.p));
+    eliminate exists (u2 : triple).
+        memP u2 (List.Tot.filter (triple_obj_matches t1.o)
+                    (bucket_lookup ig.ig_pred t1.p)) /\
+        u2.s == z
+    returns exists (u2 : triple). memP u2 g /\ u2.p == t1.p /\ u2.o == t1.o /\ u2.s == z
+    with _ . begin
+      List.Tot.mem_filter (triple_obj_matches t1.o)
+        (bucket_lookup ig.ig_pred t1.p) u2;
+      // ig_wf_pred places u2 in the snapshot with u2.p == t1.p;
+      // graph_literal_match_exact (u2 against t1 itself, both in g,
+      // same predicate, rdf_term_eq-matching objects) upgrades the
+      // filter's rdf_term_eq match to structural equality.
+      assert (memP u2 g /\ u2.p == t1.p);
+      assert (u2.o == t1.o)
+    end
+#pop-options
+
+val owl_rule_inverse_functional_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_po ig /\ ig_wf_pred ig /\ ig.ig_triples == g /\
+                    graph_literal_match_exact g)
+          (ensures prp_ifp_licensed g g (owl_rule_inverse_functional g ig))
+
+#push-options "--z3rlimit 200 --split_queries always"
+let owl_rule_inverse_functional_licensed g ig =
+  lemma_vocab_ifp_agree ();
+  introduce forall (acc : list wf_iri) (t : triple).
+      (memP t g /\ ifps_licensed g acc) ==>
+      ifps_licensed g (owl_prp_ifp_collect_step acc t)
+  with introduce (memP t g /\ ifps_licensed g acc) ==>
+                 ifps_licensed g (owl_prp_ifp_collect_step acc t)
+  with _ . begin
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty) then
+      match t.s, t.o with
+      | S_IRI p_iri, T_IRI j ->
+        lemma_rdf_term_eq_iri j owl_InverseFunctionalProperty;
+        FStar.Classical.forall_intro (lemma_cons_if_new_iri_memP p_iri acc)
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (ifps_licensed g) owl_prp_ifp_collect_step g [];
+  let ifp_props = List.Tot.fold_left owl_prp_ifp_collect_step [] g in
+  // Emission fold: outer over g (single-triple binder t1); when t1.p
+  // is inverse-functional, an inner fold over the found subjects zs
+  // (of t1.p, t1.o) emits (t1.s sameAs z) per surviving z.
+  introduce forall (acc : rdf_graph) (t1 : triple).
+      (memP t1 g /\ prp_ifp_licensed g g acc) ==>
+      prp_ifp_licensed g g (owl_prp_ifp_step ig ifp_props acc t1)
+  with introduce (memP t1 g /\ prp_ifp_licensed g g acc) ==>
+                 prp_ifp_licensed g g (owl_prp_ifp_step ig ifp_props acc t1)
+  with _ . begin
+    if List.Tot.mem t1.p ifp_props then begin
+      let zs = find_subjects_indexed ig t1.p t1.o in
+      introduce forall (acc2 : rdf_graph) (z : subject).
+          (memP z zs /\ prp_ifp_licensed g g acc2) ==>
+          prp_ifp_licensed g g (owl_prp_ifp_emit t1.s acc2 z)
+      with introduce (memP z zs /\ prp_ifp_licensed g g acc2) ==>
+                     prp_ifp_licensed g g (owl_prp_ifp_emit t1.s acc2 z)
+      with _ . begin
+        if subject_eq z t1.s then ()
+        else begin
+          let new_t : triple = { s = t1.s; p = owl_sameAs; o = subject_to_term z } in
+          // ifp_props provenance: t1.p is declared inverse-functional
+          // in g (decl stays unnamed, same as section 24's own
+          // emission-fold proof).
+          List.Tot.Properties.mem_memP t1.p ifp_props;
+          lemma_find_subjects_indexed_wf ig g t1 z;
+          eliminate exists (u2 : triple).
+              memP u2 g /\ u2.p == t1.p /\ u2.o == t1.o /\ u2.s == z
+          returns prp_ifp_derives g new_t
+          with _ . begin
+            // u1 := t1 (memP t1 g, u1.p == t1.p); u2 as named above,
+            // u2.o == u1.o == t1.o; the conclusion's object is
+            // subj_term u2.s == subj_term z == subject_to_term z.
+            lemma_subj_term_agree z;
+            lemma_prp_ifp_derives_intro g t1.p t1 u2;
+            assert (new_t == ({ s = t1.s; p = owl_sameAs; o = subj_term u2.s } <: triple))
+          end
+        end
+      end;
+      fold_left_inv (prp_ifp_licensed g g) (owl_prp_ifp_emit t1.s) zs acc
+    end else ()
+  end;
+  fold_left_inv (prp_ifp_licensed g g) (owl_prp_ifp_step ig ifp_props) g g
+#pop-options
+
+// Per-triple corollary.
+val theorem_inverse_functional_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_po ig /\ ig_wf_pred ig /\ ig.ig_triples == g /\
+              graph_literal_match_exact g /\
+              memP t (owl_rule_inverse_functional g ig))
+    (ensures  memP t g \/ prp_ifp_derives g t)
+
+let theorem_inverse_functional_licensed g ig t =
+  owl_rule_inverse_functional_licensed g ig

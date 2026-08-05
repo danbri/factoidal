@@ -704,77 +704,73 @@ let is_list_cell_functional_property (p : wf_iri) : bool =
 // the same individual. Literal objects are skipped — owl:sameAs is
 // defined only on named individuals (IRI or blank node), and literal
 // equality is handled by literal_value_eq elsewhere.
+// LAMBDA-LIFT (task #36, mirrors the cls-int1/cls-uni/prp-key
+// precedent exactly): every level of this rule's fold-of-fold body
+// (collect fold, outer emission fold, inner emission fold) is a NAMED
+// top-level function instead of an inline closure, so the licensing
+// proof (OWL.RL.Refinement.fst section 21) references these SAME
+// symbols rather than a separately-elaborated mirror. Pure
+// lambda-lifting: no branch, no guard, no evaluation order changed.
+let owl_prp_fp_collect_step (acc : list wf_iri) (t : triple) : list wf_iri =
+  if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
+    match t.s with
+    | S_IRI p_iri ->
+      if is_list_cell_functional_property p_iri then acc
+      else cons_if_new_iri p_iri acc
+    | _ -> acc
+  else acc
+
+let owl_prp_fp_emit (y_subj : subject) (t1_o : rdf_term) (acc2 : rdf_graph) (z : rdf_term) : rdf_graph =
+  if rdf_term_eq z t1_o then acc2
+  else add_triple_unchecked acc2 ({ s = y_subj; p = owl_sameAs; o = z })
+
+let owl_prp_fp_step (ig : indexed_graph) (fp_props : list wf_iri)
+    (acc : rdf_graph) (t1 : triple) : rdf_graph =
+  if List.Tot.mem t1.p fp_props then
+    // Need (x t1.p y_subj) where y_subj is t1.o-as-subject.
+    match term_to_subject t1.o with
+    | None -> acc  // literal object: no sameAs emission
+    | Some y_subj ->
+      // Find all other objects z of (t1.s t1.p ?z) and emit
+      // (y_subj sameAs z). Skip self (z = y_subj) and skip literals.
+      let zs = find_objects_indexed ig t1.s t1.p in
+      List.Tot.fold_left (owl_prp_fp_emit y_subj t1.o) acc zs
+  else acc
+
 let owl_rule_functional (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  let fp_props : list wf_iri =
-    List.Tot.fold_left
-      (fun (acc : list wf_iri) (t : triple) ->
-        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
-          match t.s with
-          | S_IRI p_iri ->
-            if is_list_cell_functional_property p_iri then acc
-            else cons_if_new_iri p_iri acc
-          | _ -> acc
-        else acc)
-      []
-      g
-  in
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t1 : triple) ->
-      if List.Tot.mem t1.p fp_props then
-        // Need (x t1.p y_subj) where y_subj is t1.o-as-subject.
-        match term_to_subject t1.o with
-        | None -> acc  // literal object: no sameAs emission
-        | Some y_subj ->
-          // Find all other objects z of (t1.s t1.p ?z) and emit
-          // (y_subj sameAs z). Skip self (z = y_subj) and skip literals.
-          let zs = find_objects_indexed ig t1.s t1.p in
-          List.Tot.fold_left
-            (fun (acc2 : rdf_graph) (z : rdf_term) ->
-              if rdf_term_eq z t1.o then acc2
-              else
-                let new_t : triple =
-                  { s = y_subj; p = owl_sameAs; o = z } in
-                add_triple_unchecked acc2 new_t)
-            acc
-            zs
-      else acc)
-    g
-    g
+  let fp_props : list wf_iri = List.Tot.fold_left owl_prp_fp_collect_step [] g in
+  List.Tot.fold_left (owl_prp_fp_step ig fp_props) g g
 
 // prp-ifp: if (P rdf:type owl:InverseFunctionalProperty), (x P y), (z P y)
 // then (x owl:sameAs z). Produces additional owl:sameAs triples that will
 // feed into eq-* rules on the next fixpoint iteration.
+// LAMBDA-LIFT (task #36, same treatment as prp-fp above): every fold
+// level named top-level, mirroring the cls-int1/cls-uni/prp-key/prp-fp
+// precedent.
+let owl_prp_ifp_collect_step (acc : list wf_iri) (t : triple) : list wf_iri =
+  if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty) then
+    match t.s with
+    | S_IRI p_iri -> cons_if_new_iri p_iri acc
+    | _ -> acc
+  else acc
+
+let owl_prp_ifp_emit (t1_s : subject) (acc2 : rdf_graph) (z : subject) : rdf_graph =
+  // Avoid emitting (x sameAs x) twice and don't emit if z equals t1.s
+  // (reflexivity will add that anyway)
+  if subject_eq z t1_s then acc2
+  else add_triple_unchecked acc2 ({ s = t1_s; p = owl_sameAs; o = subject_to_term z })
+
+let owl_prp_ifp_step (ig : indexed_graph) (ifp_props : list wf_iri)
+    (acc : rdf_graph) (t1 : triple) : rdf_graph =
+  if List.Tot.mem t1.p ifp_props then
+    // Find all z with (z t1.p t1.o)
+    let zs = find_subjects_indexed ig t1.p t1.o in
+    List.Tot.fold_left (owl_prp_ifp_emit t1.s) acc zs
+  else acc
+
 let owl_rule_inverse_functional (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  let ifp_props : list wf_iri =
-    List.Tot.fold_left
-      (fun (acc : list wf_iri) (t : triple) ->
-        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty) then
-          match t.s with
-          | S_IRI p_iri -> cons_if_new_iri p_iri acc
-          | _ -> acc
-        else acc)
-      []
-      g
-  in
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t1 : triple) ->
-      if List.Tot.mem t1.p ifp_props then
-        // Find all z with (z t1.p t1.o)
-        let zs = find_subjects_indexed ig t1.p t1.o in
-        List.Tot.fold_left
-          (fun (acc2 : rdf_graph) (z : subject) ->
-            // Avoid emitting (x sameAs x) twice and don't emit if z equals t1.s
-            // (reflexivity will add that anyway)
-            if subject_eq z t1.s then acc2
-            else
-              let new_t : triple =
-                { s = t1.s; p = owl_sameAs; o = subject_to_term z } in
-              add_triple_unchecked acc2 new_t)
-          acc
-          zs
-      else acc)
-    g
-    g
+  let ifp_props : list wf_iri = List.Tot.fold_left owl_prp_ifp_collect_step [] g in
+  List.Tot.fold_left (owl_prp_ifp_step ig ifp_props) g g
 
 // Helper: check whether (a, owl:differentFrom, b) or (b, owl:differentFrom, a)
 // is in the graph. Used by the 3 contrapositive rules below. The
