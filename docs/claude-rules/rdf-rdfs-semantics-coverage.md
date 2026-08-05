@@ -67,5 +67,22 @@ and the ranked gap list driving the core-semantics push.
    `cond_langString_value`, making the SE-1/D3 divergence a provable
    rung-level entailment fact. Least existing infrastructure.
 
-Status tracking: gaps 2-3 dispatched 2026-08-05; gap 1 follows their
-landing; gaps 4-5 queued.
+Status tracking (updated 2026-08-05 late):
+
+- **Gap 2 BLOCKED on #347**: `FStar.String.compare` ships with no
+  ordering specification in ulib (interface-only native primitive),
+  so tree-lookup completeness cannot link positional splits to key
+  comparisons. The sortWith completeness companions landed (4a0e6dd);
+  the axiom-module decision is #347.
+- **Gap 3 LANDED with adjudication** (1aa4e71,
+  `RDF.Entailment.RDFS.FixedPoint.fst`): `step_saturated`, per-row
+  extensivity, `lemma_saturated_stable`, and the length-test theorem
+  under TWO explicit hypotheses — the unconditional form is FALSE
+  (no_dup_keys needed on the pre-dedup intermediate graph; no_repeats
+  blocked by noeq triple vs stdlib sortWith_sorted). Third finding:
+  `term_to_key_total` literal keys use plain `"^^"` not `unit_sep` —
+  #348, a wider dedup-collision surface than #338 described.
+- **Gap 1 (rho-df completeness)** now sits behind #347 and #348 —
+  both on the same dedup/lookup faithfulness path. Herbrand-side
+  machinery is unaffected; dispatch once either unblocks.
+- Gaps 4-5 queued.
