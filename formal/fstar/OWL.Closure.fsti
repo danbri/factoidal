@@ -3039,31 +3039,42 @@ let collect_haskey_axioms (g : rdf_graph) (ig : indexed_graph) : list (wf_iri & 
 // incoherency-via-disjoint-concept tests): once x is typed into both c and
 // its complement's disjoint partner d, the cls-com clash below (or the
 // existing disjointWith-share-instance check) fires.
+// LAMBDA-LIFT (task #36, mirrors the 2026-07-29 cls-oo hoist,
+// OWL.Closure.fsti's owl_cls_oneof_step/owl_cls_oneof_emit precedent
+// exactly): every level of this rule's fold-of-fold-of-fold body is a
+// NAMED top-level function instead of an inline closure. This is the
+// same fix cls-oo already had and cls-int1 (this rule) and cls-uni
+// (below) did not: OWL.RL.Refinement.fst section 19's STOP note
+// records that a licensing proof mirroring the ENGINE'S OWN inline
+// lambda cannot be unified with a separately-elaborated step function
+// of identical source text -- two syntactically-identical `fun`
+// closures are DISTINCT symbols to the SMT encoding. Naming every
+// level here means the licensing proof references these SAME
+// top-level symbols directly (no separate elaboration, no identity
+// gap to bridge). Pure lambda-lifting: no branch, no guard, no
+// evaluation order changed.
+let owl_cls_int1_emit (x : subject) (acc2 : rdf_graph) (ci : wf_iri) : rdf_graph =
+  add_triple_unchecked acc2 ({ s = x; p = rdf_type; o = T_IRI ci })
+
+let owl_cls_int1_x_step (members : list wf_iri) (acc1 : rdf_graph) (x : subject) : rdf_graph =
+  List.Tot.fold_left (owl_cls_int1_emit x) acc1 members
+
+let owl_cls_int1_step (g : rdf_graph) (ig : indexed_graph) (fuel : nat)
+    (acc : rdf_graph) (t : triple) : rdf_graph =
+  if t.p = owl_intersectionOf_iri then
+    match term_to_subject t.o with
+    | None -> acc
+    | Some list_subj ->
+      (match decode_iri_list g ig list_subj fuel with
+       | None -> acc
+       | Some members ->
+         let xs = find_subjects_indexed ig rdf_type (subject_to_term t.s) in
+         List.Tot.fold_left (owl_cls_int1_x_step members) acc xs)
+  else acc
+
 let owl_rule_cls_int1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let fuel : nat = List.Tot.length g in
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      if t.p = owl_intersectionOf_iri then
-        match term_to_subject t.o with
-        | None -> acc
-        | Some list_subj ->
-          (match decode_iri_list g ig list_subj fuel with
-           | None -> acc
-           | Some members ->
-             let xs = find_subjects_indexed ig rdf_type (subject_to_term t.s) in
-             List.Tot.fold_left
-               (fun (acc1 : rdf_graph) (x : subject) ->
-                 List.Tot.fold_left
-                   (fun (acc2 : rdf_graph) (ci : wf_iri) ->
-                     let new_t : triple = { s = x; p = rdf_type; o = T_IRI ci } in
-                     add_triple_unchecked acc2 new_t)
-                   acc1
-                   members)
-               acc
-               xs)
-      else acc)
-    g
-    g
+  List.Tot.fold_left (owl_cls_int1_step g ig fuel) g g
 
 // ---- Group C: oneOf / unionOf / disjointUnionOf comprehension -------------
 //
@@ -3126,46 +3137,61 @@ let owl_rule_cls_oneof (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
 // unionOf consumer see it, and (c) pairwise owl:disjointWith — the same
 // n-choose-2 emission shape as cax-adc-expand.
 // Targets WebOnt-unionOf-003/-004, New-Feature-DisjointUnion-001.
+// GUARD FLATTEN + LAMBDA-LIFT (task #36, same treatment as cls-int1
+// above; mirrors the cls-oo precedent). Before: FOUR sequential
+// decision points (if unionOf-or-disjointUnionOf; match t.s,
+// term_to_subject t.o; match decode_iri_list; if disjointUnionOf) --
+// one level deeper than the depth-3 ceiling Rule 17's guard-depth fix
+// establishes (OWL.Semantics.Soundness.fst). `owl_cls_uni_decode_axiom`
+// merges the middle two option-typed matches (t.s/term_to_subject,
+// then decode_iri_list) into ONE combined decoder returning a single
+// `option (wf_iri & list wf_iri)`, matched once at the call site --
+// the same "two sequential tests into one guard" collapse Rule 17
+// used for two sequential BOOLEANS, applied here to two sequential
+// OPTION-typed decisions. After: THREE decision points (if OR; match
+// combined-decode; if disjointUnionOf), at the same ceiling. Every
+// fold level below is also a named top-level function (no inline
+// closures survive), so the licensing proof references these exact
+// symbols rather than a separately-elaborated mirror. Semantics
+// unchanged on both counts (pure boolean/data-flow refactor, no
+// evaluation order or emission change).
+let owl_cls_uni_decode_axiom
+    (g : rdf_graph) (ig : indexed_graph) (fuel : nat) (t : triple)
+  : option (wf_iri & list wf_iri) =
+  match t.s, term_to_subject t.o with
+  | S_IRI c_iri, Some list_subj ->
+    (match decode_iri_list g ig list_subj fuel with
+     | Some members -> Some (c_iri, members)
+     | None -> None)
+  | _, _ -> None
+
+let owl_cls_uni_sub_emit (c_iri : wf_iri) (acc1 : rdf_graph) (ci : wf_iri) : rdf_graph =
+  add_triple_unchecked acc1 ({ s = S_IRI ci; p = rdfs_subClassOf; o = T_IRI c_iri })
+
+let owl_cls_uni_disjoint_inner (c1 : wf_iri) (acc3 : rdf_graph) (c2 : wf_iri) : rdf_graph =
+  if c1 = c2 then acc3
+  else add_triple_unchecked acc3 ({ s = S_IRI c1; p = owl_disjointWith_iri; o = T_IRI c2 })
+
+let owl_cls_uni_disjoint_outer (members : list wf_iri) (acc2 : rdf_graph) (c1 : wf_iri) : rdf_graph =
+  List.Tot.fold_left (owl_cls_uni_disjoint_inner c1) acc2 members
+
+let owl_cls_uni_step (g : rdf_graph) (ig : indexed_graph) (fuel : nat)
+    (acc : rdf_graph) (t : triple) : rdf_graph =
+  if t.p = owl_unionOf_iri || t.p = owl_disjointUnionOf_iri then
+    match owl_cls_uni_decode_axiom g ig fuel t with
+    | None -> acc
+    | Some (c_iri, members) ->
+      let acc_sub = List.Tot.fold_left (owl_cls_uni_sub_emit c_iri) acc members in
+      if t.p = owl_disjointUnionOf_iri then
+        let acc_u =
+          add_triple_unchecked acc_sub ({ s = t.s; p = owl_unionOf_iri; o = t.o }) in
+        List.Tot.fold_left (owl_cls_uni_disjoint_outer members) acc_u members
+      else acc_sub
+  else acc
+
 let owl_rule_cls_uni (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let fuel : nat = List.Tot.length g in
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      if t.p = owl_unionOf_iri || t.p = owl_disjointUnionOf_iri then
-        match t.s, term_to_subject t.o with
-        | S_IRI c_iri, Some list_subj ->
-          (match decode_iri_list g ig list_subj fuel with
-           | None -> acc
-           | Some members ->
-             let acc_sub =
-               List.Tot.fold_left
-                 (fun (acc1 : rdf_graph) (ci : wf_iri) ->
-                    add_triple_unchecked acc1
-                      ({ s = S_IRI ci; p = rdfs_subClassOf; o = T_IRI c_iri }))
-                 acc
-                 members
-             in
-             if t.p = owl_disjointUnionOf_iri then
-               let acc_u =
-                 add_triple_unchecked acc_sub
-                   ({ s = t.s; p = owl_unionOf_iri; o = t.o })
-               in
-               List.Tot.fold_left
-                 (fun (acc2 : rdf_graph) (c1 : wf_iri) ->
-                    List.Tot.fold_left
-                      (fun (acc3 : rdf_graph) (c2 : wf_iri) ->
-                         if c1 = c2 then acc3
-                         else add_triple_unchecked acc3
-                                ({ s = S_IRI c1; p = owl_disjointWith_iri;
-                                   o = T_IRI c2 }))
-                      acc2
-                      members)
-                 acc_u
-                 members
-             else acc_sub)
-        | _, _ -> acc
-      else acc)
-    g
-    g
+  List.Tot.fold_left (owl_cls_uni_step g ig fuel) g g
 
 // Does the step-input snapshot already witness that x is NOT a member of
 // class c? Two sound witnesses, both read off ig only:
@@ -3362,35 +3388,44 @@ let rec all_keys_match
 // Targets New-Feature-Keys-003 (positive entailment) without breaking
 // New-Feature-Keys-004 (StPeter is not typed GriffinFamilyMember, so the
 // rdf:type guard prevents merging Peter with StPeter).
+// GUARD FLATTEN + LAMBDA-LIFT (task #36, same treatment as cls-int1 /
+// cls-uni above). Before: the y-loop body nested TWO sequential ifs
+// (`if x = y then acc2 else if all_keys_match ... then ... else acc2`)
+// -- exactly Rule 17's scm-eqc2 shape (two sequential boolean tests) --
+// flattened here to ONE boolean guard `x <> y && all_keys_match ...`.
+// Every fold level (axiom-step, x-step, y-step) is also a named
+// top-level function, mirroring the cls-oo precedent, so the licensing
+// proof below references these exact symbols. Semantics unchanged:
+// same ordered-pair walk, same emissions, same order.
+let owl_prp_key_y_step
+    (g : rdf_graph) (ig : indexed_graph) (props : list wf_iri) (x : wf_iri)
+    (acc2 : rdf_graph) (y : wf_iri) : rdf_graph =
+  if x <> y && all_keys_match g ig x y props then
+    add_triple_unchecked acc2 ({ s = S_IRI x; p = owl_sameAs; o = T_IRI y })
+  else acc2
+
+let owl_prp_key_x_step
+    (g : rdf_graph) (ig : indexed_graph) (props : list wf_iri) (members : list wf_iri)
+    (acc1 : rdf_graph) (x : wf_iri) : rdf_graph =
+  List.Tot.fold_left (owl_prp_key_y_step g ig props x) acc1 members
+
+let owl_prp_key_axiom_step
+    (g : rdf_graph) (ig : indexed_graph)
+    (acc : rdf_graph) (axiom : (wf_iri & list wf_iri)) : rdf_graph =
+  let (c_iri, props) = axiom in
+  match props with
+  | [] -> acc  // empty key list — no entailment
+  | _ ->
+    let members = members_of_class g c_iri in
+    // For each ordered pair (x, y) with x <> y, check key agreement.
+    // We emit BOTH (x sameAs y) and (y sameAs x) implicitly by walking
+    // ordered pairs; sameAs symmetry would also derive the converse,
+    // but emitting directly avoids one fixpoint round-trip.
+    List.Tot.fold_left (owl_prp_key_x_step g ig props members) acc members
+
 let owl_rule_prp_key (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let axioms = collect_haskey_axioms g ig in
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (axiom : (wf_iri & list wf_iri)) ->
-      let (c_iri, props) = axiom in
-      match props with
-      | [] -> acc  // empty key list — no entailment
-      | _ ->
-        let members = members_of_class g c_iri in
-        // For each ordered pair (x, y) with x <> y, check key agreement.
-        // We emit BOTH (x sameAs y) and (y sameAs x) implicitly by walking
-        // ordered pairs; sameAs symmetry would also derive the converse,
-        // but emitting directly avoids one fixpoint round-trip.
-        List.Tot.fold_left
-          (fun (acc1 : rdf_graph) (x : wf_iri) ->
-            List.Tot.fold_left
-              (fun (acc2 : rdf_graph) (y : wf_iri) ->
-                if x = y then acc2
-                else if all_keys_match g ig x y props then
-                  let new_t : triple =
-                    { s = S_IRI x; p = owl_sameAs; o = T_IRI y } in
-                  add_triple_unchecked acc2 new_t
-                else acc2)
-              acc1
-              members)
-          acc
-          members)
-    g
-    axioms
+  List.Tot.fold_left (owl_prp_key_axiom_step g ig) g axioms
 
 // ---- Tier-3: XSD datatype hierarchy axioms ---------------------------------
 //

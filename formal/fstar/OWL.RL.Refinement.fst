@@ -2697,6 +2697,115 @@ let cls_int2_licensed (g : rdf_graph) (out : rdf_graph) : prop =
 //       (requires ig_wf_sp ig /\ ig_wf_po_spec ig /\ ig.ig_triples == g)
 //       (ensures  cls_int2_licensed g (owl_rule_cls_int1 g ig))
 // ===================================================================
+
+// -------------------------------------------------------------------
+// 19 (continued): PROVED, after the LAMBDA-LIFT treatment (2026-08-05,
+// task #36). The STOP note above records five attempts against the
+// INLINE engine text; none touched the true obstruction, which this
+// landing's engine edit (OWL.Closure.fsti) removes at the root:
+// `owl_rule_cls_int1`'s three fold levels (outer over `g`, middle over
+// `xs`, inner over `members`) are now named top-level functions
+// (`owl_cls_int1_step` / `owl_cls_int1_x_step` / `owl_cls_int1_emit`),
+// mirroring the ALREADY-WORKING cls-oo precedent (`owl_cls_oneof_step`
+// / `owl_cls_oneof_emit`, section 18) exactly. The STOP note's own
+// diagnosis was half right: it correctly located the failure at "two
+// separately-elaborated closures, textually identical, are distinct
+// SMT symbols" but read it as intrinsic to 3-level nesting; the actual
+// fix is that NEITHER side of the `fold_left_inv` comparison may be a
+// freshly-elaborated closure -- both the engine's fold step and the
+// proof's argument to `fold_left_inv` must be the SAME top-level
+// symbol. Once that holds, this proof discharges with the identical
+// witness construction the STOP note's own commentary anticipated
+// (list membership via `find_subjects_indexed`/`ig_wf_po_spec`,
+// decoded-list membership via `lemma_decode_iri_list_licensed` +
+// `memP_map_intro`) -- no generic nested-fold-induction lemma needed.
+//
+// GUARD-DEPTH DATA POINT: this rule's guard chain (if intersectionOf-
+// tag; match term_to_subject; match decode_iri_list) is already 3
+// decision points -- AT the Rule 17 ceiling, not above it -- so no
+// boolean flatten applies here: there is no sequential-if pair to fold
+// into one `&&`, since both matches carry option payloads the
+// following code needs, not discardable booleans. The guard-depth
+// diagnosis does NOT transfer to this rule's actual blocker: the
+// fold-of-fold identity problem is orthogonal to guard depth, and
+// LAMBDA-LIFTING -- not guard flattening -- is what closes it here.
+// Per the report brief: flatten-alone would NOT have fixed this rule.
+// -------------------------------------------------------------------
+
+val owl_rule_cls_int1_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig_wf_po_spec ig /\ ig.ig_triples == g)
+    (ensures  cls_int2_licensed g (owl_rule_cls_int1 g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_cls_int1_licensed g ig =
+  lemma_vocab_cls_int_agree ();
+  let fuel : nat = List.Tot.length g in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ cls_int2_licensed g acc) ==>
+      cls_int2_licensed g (owl_cls_int1_step g ig fuel acc t)
+  with introduce (List.Tot.memP t g /\ cls_int2_licensed g acc) ==>
+                 cls_int2_licensed g (owl_cls_int1_step g ig fuel acc t)
+  with _ . begin
+    if t.p = owl_intersectionOf_iri then begin
+      match term_to_subject t.o with
+      | None -> ()
+      | Some list_subj ->
+        (match decode_iri_list g ig list_subj fuel with
+         | None -> ()
+         | Some members ->
+           lemma_decode_iri_list_licensed g ig list_subj fuel;
+           lemma_term_to_subject_subj_term t.o list_subj;
+           let elems_d = List.Tot.map (fun (x : wf_iri) -> T_IRI x) members in
+           assert (owl_list_denotes g t.o elems_d);
+           let xs = find_subjects_indexed ig rdf_type (subject_to_term t.s) in
+           introduce forall (acc1 : rdf_graph) (x : subject).
+               (List.Tot.memP x xs /\ cls_int2_licensed g acc1) ==>
+               cls_int2_licensed g (owl_cls_int1_x_step members acc1 x)
+           with introduce (List.Tot.memP x xs /\ cls_int2_licensed g acc1) ==>
+                          cls_int2_licensed g (owl_cls_int1_x_step members acc1 x)
+           with _ . begin
+             assert (exists (u : triple).
+                       List.Tot.memP u ig.ig_triples /\ u.s == x /\ u.p == rdf_type /\
+                       u.o == subject_to_term t.s);
+             eliminate exists (u : triple).
+                 List.Tot.memP u ig.ig_triples /\ u.s == x /\ u.p == rdf_type /\
+                 u.o == subject_to_term t.s
+             returns cls_int2_licensed g (owl_cls_int1_x_step members acc1 x)
+             with _ . begin
+               lemma_subj_term_agree t.s;
+               introduce forall (acc2 : rdf_graph) (ci : wf_iri).
+                   (List.Tot.memP ci members /\ cls_int2_licensed g acc2) ==>
+                   cls_int2_licensed g (owl_cls_int1_emit x acc2 ci)
+               with introduce (List.Tot.memP ci members /\ cls_int2_licensed g acc2) ==>
+                              cls_int2_licensed g (owl_cls_int1_emit x acc2 ci)
+               with _ . begin
+                 List.Tot.Properties.memP_map_intro
+                   (fun (y : wf_iri) -> T_IRI y) ci members;
+                 let new_t : triple = { s = x; p = rdf_type; o = T_IRI ci } in
+                 assert (new_t == ({ s = u.s; p = o_rdf_type; o = T_IRI ci } <: triple));
+                 assert (cls_int2_derives g new_t)
+               end;
+               fold_left_inv (cls_int2_licensed g) (owl_cls_int1_emit x) members acc1
+             end
+           end;
+           fold_left_inv (cls_int2_licensed g) (owl_cls_int1_x_step members) xs acc)
+    end else ()
+  end;
+  fold_left_inv (cls_int2_licensed g) (owl_cls_int1_step g ig fuel) g g
+#pop-options
+
+// Per-triple corollary.
+val theorem_cls_int1_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig_wf_po_spec ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_cls_int1 g ig))
+    (ensures  memP t g \/ cls_int2_derives g t)
+
+let theorem_cls_int1_licensed g ig t =
+  owl_rule_cls_int1_licensed g ig
+// ===================================================================
 // 20. scm-uni (row the engine function ACTUALLY realizes) vs cls-uni
 // (row its name claims), PLUS the owl:disjointUnionOf EXTENSION:
 // every `owl_rule_cls_uni` emission is licensed.
@@ -2754,12 +2863,29 @@ let lemma_vocab_cls_uni_agree ()
   : Lemma (RDFS.Closure.rdfs_subClassOf == OWL.RL.Spec.o_rdfs_subClassOf /\
            OWL.Closure.owl_unionOf_iri == OWL.RL.Spec.o_owl_unionOf) = ()
 
-// disjointUnionOf's two EXTENSION emissions -- neither is a W3C RL
+// disjointUnionOf's THREE extension emissions -- none is a W3C RL
 // table row; see the finding above. `owl_disjointUnionOf_iri` /
 // `owl_disjointWith_iri` are OWL.Closure's own engine constants
 // (this predicate lives in the Refinement layer, not OWL.RL.Spec, so
 // it reads them directly rather than adding Spec-side counterparts
 // for a non-row extension).
+//
+// THIRD DISJUNCT (added 2026-08-05, task #36, found while proving
+// `owl_rule_cls_uni_licensed`): the engine's Stage-1 subClassOf fold
+// runs for EITHER an `owl:unionOf` OR an `owl:disjointUnionOf` triple
+// `t` (same fold body, shared by both tags). When `t.p ==
+// owl:unionOf`, the emission `(ci rdfs:subClassOf C)` is licensed by
+// `scm_uni_derives` directly (`decl := t` matches the row's own
+// `owl:unionOf` premise). When `t.p == owl:disjointUnionOf`,
+// `scm_uni_derives` does NOT apply to the same witness -- its premise
+// is literally `decl.p == owl:unionOf`, and `t.p` here is
+// `owl:disjointUnionOf`, a DIFFERENT predicate; the re-asserted plain
+// `owl:unionOf` triple (the first disjunct below) is emitted into the
+// OUTPUT, not into `g`, so it cannot serve as `scm_uni_derives`'s
+// `decl` for THIS pass. The subClassOf conclusion is still sound
+// (disjointUnionOf's defining condition IS a unionOf plus pairwise
+// disjointness), so it needs its own disjunct here rather than a
+// forced match against `scm_uni_derives`.
 let cls_disjoint_union_ext_derives (g : rdf_graph) (t : triple) : prop =
   (exists (decl : triple).
      memP decl g /\ decl.p == owl_disjointUnionOf_iri /\
@@ -2770,7 +2896,12 @@ let cls_disjoint_union_ext_derives (g : rdf_graph) (t : triple) : prop =
      owl_list_denotes g decl.o cs /\
      memP ci cs /\ memP cj cs /\ ~(ci == cj) /\
      subj_term cis == ci /\ subj_term cjs == cj /\
-     t == ({ s = cis; p = owl_disjointWith_iri; o = cj } <: triple))
+     t == ({ s = cis; p = owl_disjointWith_iri; o = cj } <: triple)) \/
+  (exists (decl : triple) (cs : list rdf_term) (ci : rdf_term) (cis : subject).
+     memP decl g /\ decl.p == owl_disjointUnionOf_iri /\
+     owl_list_denotes g decl.o cs /\ memP ci cs /\
+     subj_term cis == ci /\
+     t == ({ s = cis; p = rdfs_subClassOf; o = subj_term decl.s } <: triple))
 
 // The licensing invariant: g-membership, scm-uni's row, or the
 // disjointUnionOf extension -- the three shapes `owl_rule_cls_uni`
@@ -2944,4 +3075,145 @@ let rec lemma_fold_left_ext (#a #b : Type) (f h : a -> b -> a) (l : list b) (acc
 //       (requires ig_wf_sp ig /\ ig.ig_triples == g /\
 //                 no_disjoint_union g)
 //       (ensures  cls_uni_licensed g (owl_rule_cls_uni g ig))
+// ===================================================================
+
+// -------------------------------------------------------------------
+// 20 (continued): PROVED IN FULL, after the GUARD FLATTEN +
+// LAMBDA-LIFT treatment (2026-08-05, task #36) -- no `no_disjoint_
+// union` narrowing needed; both the scm-uni row (Stage 1) and the
+// disjointUnionOf extension (Stages 2/3, including the pairwise
+// disjointWith DOUBLE fold the STOP note above never got a working
+// attempt against) are licensed. `owl_cls_uni_decode_axiom` collapses
+// the engine's two option-typed matches into one (4 decision points ->
+// 3, at the Rule 17 ceiling); every fold level is a named top-level
+// function (`owl_cls_uni_sub_emit`, `owl_cls_uni_disjoint_inner`,
+// `owl_cls_uni_disjoint_outer`, `owl_cls_uni_step`), so this proof's
+// `fold_left_inv` arguments are the SAME symbols the engine's own
+// `owl_rule_cls_uni` calls -- the section 19 fix, applied at every
+// nesting level including Stage 3's double fold, which is exactly
+// where the STOP note's seven attempts (1-7) kept failing. The
+// now-superseded scaffolding above (`no_disjoint_union`,
+// `lemma_no_disjoint_union_elim`, `cls_uni_sub_step`,
+// `lemma_fold_left_ext`) is kept as the historical record of the
+// pre-lambda-lift attempts; this proof does not use it.
+//
+// GUARD-DEPTH DATA POINT: unlike section 19 (where flattening did not
+// apply and lambda-lifting alone closed the gap), THIS rule genuinely
+// needed both: the depth-4 guard (attempts 1-4's failure site, per the
+// STOP note) is real and distinct from the fold-of-fold identity
+// problem (attempts 5-7's failure site, after hoisting removed the
+// first issue). Flattening 4 -> 3 via `owl_cls_uni_decode_axiom`
+// addresses the first; lambda-lifting every fold level addresses the
+// second. Confirms the guard-depth diagnosis as ONE of two
+// independent obstructions in this rule, not the whole story.
+// -------------------------------------------------------------------
+
+val owl_rule_cls_uni_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g)
+    (ensures  cls_uni_licensed g (owl_rule_cls_uni g ig))
+
+#push-options "--z3rlimit 400 --split_queries always"
+let owl_rule_cls_uni_licensed g ig =
+  lemma_vocab_cls_uni_agree ();
+  let fuel : nat = List.Tot.length g in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ cls_uni_licensed g acc) ==>
+      cls_uni_licensed g (owl_cls_uni_step g ig fuel acc t)
+  with introduce (List.Tot.memP t g /\ cls_uni_licensed g acc) ==>
+                 cls_uni_licensed g (owl_cls_uni_step g ig fuel acc t)
+  with _ . begin
+    if t.p = owl_unionOf_iri || t.p = owl_disjointUnionOf_iri then begin
+      match t.s, term_to_subject t.o with
+      | S_IRI c_iri, Some list_subj ->
+        (match decode_iri_list g ig list_subj fuel with
+         | None -> ()
+         | Some members ->
+           assert (owl_cls_uni_decode_axiom g ig fuel t == Some (c_iri, members));
+           lemma_decode_iri_list_licensed g ig list_subj fuel;
+           lemma_term_to_subject_subj_term t.o list_subj;
+           lemma_subj_term_agree t.s;
+           let elems_d = List.Tot.map (fun (x : wf_iri) -> T_IRI x) members in
+           assert (owl_list_denotes g t.o elems_d);
+           // Stage 1: subClassOf fold -- scm-uni's row.
+           introduce forall (acc1 : rdf_graph) (ci : wf_iri).
+               (List.Tot.memP ci members /\ cls_uni_licensed g acc1) ==>
+               cls_uni_licensed g (owl_cls_uni_sub_emit c_iri acc1 ci)
+           with introduce (List.Tot.memP ci members /\ cls_uni_licensed g acc1) ==>
+                          cls_uni_licensed g (owl_cls_uni_sub_emit c_iri acc1 ci)
+           with _ . begin
+             List.Tot.Properties.memP_map_intro (fun (x : wf_iri) -> T_IRI x) ci members;
+             let new_t : triple = { s = S_IRI ci; p = rdfs_subClassOf; o = T_IRI c_iri } in
+             assert (new_t == ({ s = S_IRI ci; p = rdfs_subClassOf;
+                                 o = subj_term t.s } <: triple));
+             // t.p is either owl:unionOf (scm-uni's own row, decl := t)
+             // or owl:disjointUnionOf (the third extension disjunct --
+             // scm_uni_derives's `decl.p == o_owl_unionOf` premise does
+             // NOT hold for decl := t in that case; see the finding
+             // above `cls_disjoint_union_ext_derives`).
+             if t.p = owl_unionOf_iri then
+               assert (scm_uni_derives g new_t)
+             else
+               assert (cls_disjoint_union_ext_derives g new_t)
+           end;
+           let acc_sub = List.Tot.fold_left (owl_cls_uni_sub_emit c_iri) acc members in
+           fold_left_inv (cls_uni_licensed g) (owl_cls_uni_sub_emit c_iri) members acc;
+           assert (cls_uni_licensed g acc_sub);
+           if t.p = owl_disjointUnionOf_iri then begin
+             // Extension emission 1: re-assert the list as plain unionOf.
+             let reassert_t : triple = { s = t.s; p = owl_unionOf_iri; o = t.o } in
+             assert (cls_disjoint_union_ext_derives g reassert_t);
+             let acc_u = add_triple_unchecked acc_sub reassert_t in
+             lemma_single_add_licensed g acc_sub reassert_t;
+             assert (cls_uni_licensed g acc_u);
+             // Extension emission 2: pairwise disjointWith, n-choose-2.
+             introduce forall (acc2 : rdf_graph) (c1 : wf_iri).
+                 (List.Tot.memP c1 members /\ cls_uni_licensed g acc2) ==>
+                 cls_uni_licensed g (owl_cls_uni_disjoint_outer members acc2 c1)
+             with introduce (List.Tot.memP c1 members /\ cls_uni_licensed g acc2) ==>
+                            cls_uni_licensed g (owl_cls_uni_disjoint_outer members acc2 c1)
+             with _ . begin
+               introduce forall (acc3 : rdf_graph) (c2 : wf_iri).
+                   (List.Tot.memP c2 members /\ cls_uni_licensed g acc3) ==>
+                   cls_uni_licensed g (owl_cls_uni_disjoint_inner c1 acc3 c2)
+               with introduce (List.Tot.memP c2 members /\ cls_uni_licensed g acc3) ==>
+                              cls_uni_licensed g (owl_cls_uni_disjoint_inner c1 acc3 c2)
+               with _ . begin
+                 if c1 = c2 then ()
+                 else begin
+                   List.Tot.Properties.memP_map_intro
+                     (fun (x : wf_iri) -> T_IRI x) c1 members;
+                   List.Tot.Properties.memP_map_intro
+                     (fun (x : wf_iri) -> T_IRI x) c2 members;
+                   let disj_t : triple =
+                     { s = S_IRI c1; p = owl_disjointWith_iri; o = T_IRI c2 } in
+                   assert (List.Tot.memP (T_IRI c1) elems_d /\
+                           List.Tot.memP (T_IRI c2) elems_d);
+                   assert (~ (T_IRI c1 == T_IRI c2));
+                   assert (subj_term (S_IRI c1) == T_IRI c1 /\
+                           subj_term (S_IRI c2) == T_IRI c2);
+                   assert (cls_disjoint_union_ext_derives g disj_t)
+                 end
+               end;
+               fold_left_inv (cls_uni_licensed g) (owl_cls_uni_disjoint_inner c1) members acc2
+             end;
+             fold_left_inv (cls_uni_licensed g)
+               (owl_cls_uni_disjoint_outer members) members acc_u
+           end else ())
+      | _, _ -> ()
+    end else ()
+  end;
+  fold_left_inv (cls_uni_licensed g) (owl_cls_uni_step g ig fuel) g g
+#pop-options
+
+// Per-triple corollary.
+val theorem_cls_uni_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_cls_uni g ig))
+    (ensures  memP t g \/ scm_uni_derives g t \/ cls_disjoint_union_ext_derives g t)
+
+let theorem_cls_uni_licensed g ig t =
+  owl_rule_cls_uni_licensed g ig
 // ===================================================================
