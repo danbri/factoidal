@@ -2354,3 +2354,206 @@ val theorem_subprop_domain_range_licensed
 
 let theorem_subprop_domain_range_licensed g ig t =
   owl_rule_subprop_domain_range_licensed g ig
+// ===================================================================
+// 18. LIST-WALK licensing bridge (`decode_iri_list` vs
+// `owl_list_denotes`), and its first consumer: cls-oo.
+//
+// OWL.Closure.fsti's `decode_iri_list` is a FUELED recursion over
+// `ig_sp` bucket lookups (rdf:first / rdf:rest per node); OWL.RL.
+// Spec.fst's `owl_list_denotes` is the table's declarative LIST[...]
+// shape -- an exists-chain over `memP` in the plain graph. This is
+// the syntactic sibling of OWL.Semantics.Soundness's
+// `decode_iri_list_sound` (~line 385 there): same fuel induction,
+// same nil/fuel-zero base cases, same two-bucket-then-recurse cons
+// step: only the payload changes, TRUTH (`triple_holds` under an
+// interpretation) becomes PROVENANCE (`memP` in the syntactic
+// snapshot). `ig_wf_sp` (section 8/9's index-serving contract) pins
+// each served rdf:first/rdf:rest hop into `ig.ig_triples`, and
+// `ig.ig_triples == g` places it in the rule's own input graph --
+// same two hypotheses section 9's `prp-trp` licensing carries for
+// its own single-hop bucket read.
+//
+// Type alignment: `decode_iri_list` returns `option (list wf_iri)`
+// (IRI-only list elements, `hasKey`'s narrower contract); the Spec's
+// `owl_list_denotes` reads a `head : rdf_term` against `elems : list
+// rdf_term` (arbitrary terms, no IRI restriction). The bridge lifts
+// with the same `T_IRI` cast decode_iri_list_sound uses for `i.i_iri`,
+// and reads the list head off `subj_term s` (`s : subject`) rather
+// than a bare IRI, since `owl_list_denotes`'s head slot is a term,
+// not a subject.
+// ===================================================================
+
+let lemma_vocab_list_agree ()
+  : Lemma (OWL.Closure.rdf_first   == OWL.RL.Spec.o_rdf_first /\
+           OWL.Closure.rdf_rest    == OWL.RL.Spec.o_rdf_rest /\
+           OWL.Closure.rdf_nil_iri == OWL.RL.Spec.o_rdf_nil) = ()
+
+// The bridge. Mirrors `decode_iri_list_sound`'s induction on `fuel`
+// exactly: nil-head and fuel-exhaustion both hold vacuously (`None`
+// or the `[]` case of `owl_list_denotes`); the cons step reads the
+// same two ig_sp buckets (`rdf:first`, `rdf:rest`) at the same head
+// subject, pins both hop-triples into `g` via `ig_wf_sp` +
+// `ig.ig_triples == g` (the syntactic replacement for
+// `holds_all i a ig.ig_triples`), recurses on the tail subject, and
+// reassembles the `owl_list_denotes` cons case with witnesses
+// `node := s`, `tail := tail_term` -- the two existentials
+// `owl_list_denotes` carries that `seq_is` does not need (`seq_is`
+// threads its current node through the domain element `l` directly;
+// `owl_list_denotes` threads it through a `head : rdf_term`, so a
+// witness subject has to be supplied at every hop).
+#push-options "--z3rlimit 150 --split_queries always"
+let rec lemma_decode_iri_list_licensed
+    (g : rdf_graph) (ig : indexed_graph) (s : subject) (fuel : nat)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g)
+    (ensures (match decode_iri_list g ig s fuel with
+              | None -> True
+              | Some members ->
+                owl_list_denotes g (subj_term s)
+                  (List.Tot.map (fun (x : wf_iri) -> T_IRI x) members)))
+    (decreases fuel) =
+  lemma_vocab_list_agree ();
+  let is_nil_head =
+    match s with
+    | S_IRI x -> x = rdf_nil_iri
+    | _ -> false in
+  if is_nil_head then ()
+  else if fuel = 0 then ()
+  else begin
+    let fb = bucket_lookup ig.ig_sp (sp_key s rdf_first) in
+    let rb = bucket_lookup ig.ig_sp (sp_key s rdf_rest) in
+    let firsts = find_objects_indexed ig s rdf_first in
+    let rests  = find_objects_indexed ig s rdf_rest in
+    assert (firsts == List.Tot.map (fun (t : triple) -> t.o) fb);
+    assert (rests  == List.Tot.map (fun (t : triple) -> t.o) rb);
+    match firsts, rests with
+    | (T_IRI p_iri) :: _, tail_term :: _ ->
+      (match fb, rb with
+       | ft :: _, rt :: _ ->
+         assert (ft.o == T_IRI p_iri);
+         assert (rt.o == tail_term);
+         assert (List.Tot.memP ft (bucket_lookup ig.ig_sp (sp_key s rdf_first)));
+         assert (List.Tot.memP rt (bucket_lookup ig.ig_sp (sp_key s rdf_rest)));
+         // ig_wf_sp pins ft, rt into the snapshot at subject s
+         // (auto-instantiated by Z3 e-matching, same as sections 9/10's
+         // use of ig_wf_sp); ig.ig_triples == g places them in g.
+         assert (List.Tot.memP ft ig.ig_triples /\ ft.s == s /\ ft.p == rdf_first);
+         assert (List.Tot.memP rt ig.ig_triples /\ rt.s == s /\ rt.p == rdf_rest);
+         assert (List.Tot.memP ft g);
+         assert (List.Tot.memP rt g);
+         (match term_to_subject tail_term with
+          | None -> ()
+          | Some tail_subj ->
+            lemma_decode_iri_list_licensed g ig tail_subj (fuel - 1);
+            lemma_term_to_subject_subj_term tail_term tail_subj;
+            (match decode_iri_list g ig tail_subj (fuel - 1) with
+             | None -> ()
+             | Some rest_props ->
+               // The two list-hop triples, spelled as owl_list_denotes'
+               // cons-case rdf:first / rdf:rest literals at witness
+               // node := s.
+               assert (ft == ({ s = s; p = o_rdf_first; o = T_IRI p_iri } <: triple));
+               assert (rt == ({ s = s; p = o_rdf_rest;  o = tail_term } <: triple));
+               assert (List.Tot.memP
+                         ({ s = s; p = o_rdf_first; o = T_IRI p_iri } <: triple) g);
+               assert (List.Tot.memP
+                         ({ s = s; p = o_rdf_rest; o = tail_term } <: triple) g);
+               // IH result, rewritten from subj_term tail_subj to
+               // tail_term via the half-inverse -- the tail witness.
+               assert (owl_list_denotes g tail_term
+                         (List.Tot.map (fun (x : wf_iri) -> T_IRI x) rest_props))))
+       | _, _ -> ())
+    | _, _ -> ()
+  end
+#pop-options
+
+// -------------------------------------------------------------------
+// Consumer: cls-oo, Table 5 --
+//   T(?c, owl:oneOf, ?x)  LIST[?x, ?y1, ..., ?yn]
+//     => T(?y1, rdf:type, ?c), ..., T(?yn, rdf:type, ?c)
+// transcribed as OWL.RL.Spec.cls_oo_derives. `owl_cls_oneof_step` /
+// `owl_cls_oneof_emit` (OWL.Closure.fsti ~line 3099) are ALREADY
+// lambda-lifted named top-level functions (the 2026-07-29 RDF-Based-
+// semantics soundness pilot did this hoist for `owl_rule_cls_oneof_
+// sound`'s benefit) -- no anonymous-closure hoist is needed here, so
+// this section touches only this file.
+//
+// decl in cls_oo_derives is the fold-input triple `t` itself
+// (`memP t g` from the outer fold hypothesis, `t.p == o_owl_oneOf`
+// via the vocab bridge); `ys` is the bridge's decoded member list
+// cast to terms; `yi := T_IRI m`, `yis := S_IRI m` for the member `m`
+// the inner fold is emitting over -- `subj_term yis == yi` is the
+// same one-line fact section 4's symmetric-property emission proof
+// leans on for its own S_IRI/T_IRI round trip.
+// -------------------------------------------------------------------
+
+let lemma_vocab_cls_oo_agree ()
+  : Lemma (RDFS.Closure.rdf_type    == OWL.RL.Spec.o_rdf_type /\
+           OWL.Closure.owl_oneOf_iri == OWL.RL.Spec.o_owl_oneOf) = ()
+
+let cls_oo_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ cls_oo_derives g t)
+
+val owl_rule_cls_oneof_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g)
+    (ensures  cls_oo_licensed g (owl_rule_cls_oneof g ig))
+
+#push-options "--z3rlimit 200 --ifuel 4 --split_queries always"
+let owl_rule_cls_oneof_licensed g ig =
+  lemma_vocab_cls_oo_agree ();
+  let fuel : nat = List.Tot.length g in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ cls_oo_licensed g acc) ==>
+      cls_oo_licensed g (owl_cls_oneof_step g ig fuel acc t)
+  with introduce (List.Tot.memP t g /\ cls_oo_licensed g acc) ==>
+                 cls_oo_licensed g (owl_cls_oneof_step g ig fuel acc t)
+  with _ . begin
+    if t.p = owl_oneOf_iri then
+      match t.s, term_to_subject t.o with
+      | S_IRI c_iri, Some list_subj ->
+        (match decode_iri_list g ig list_subj fuel with
+         | None -> ()
+         | Some members ->
+           lemma_decode_iri_list_licensed g ig list_subj fuel;
+           lemma_term_to_subject_subj_term t.o list_subj;
+           // owl_list_denotes now reads off `subj_term list_subj`,
+           // which the half-inverse pins to `t.o` -- the oneOf
+           // declaration's own list-head object.
+           let elems_d = List.Tot.map (fun (x : wf_iri) -> T_IRI x) members in
+           assert (owl_list_denotes g t.o elems_d);
+           introduce forall (acc1 : rdf_graph) (m : wf_iri).
+               (List.Tot.memP m members /\ cls_oo_licensed g acc1) ==>
+               cls_oo_licensed g (owl_cls_oneof_emit c_iri acc1 m)
+           with introduce (List.Tot.memP m members /\ cls_oo_licensed g acc1) ==>
+                          cls_oo_licensed g (owl_cls_oneof_emit c_iri acc1 m)
+           with _ . begin
+             List.Tot.Properties.memP_map_intro (fun (x : wf_iri) -> T_IRI x) m members;
+             let new_t : triple = { s = S_IRI m; p = rdf_type; o = T_IRI c_iri } in
+             lemma_subj_term_agree (S_IRI m);
+             lemma_subj_term_agree t.s;
+             // cls_oo_derives' witnesses: decl := t, ys := elems_d,
+             // yi := T_IRI m, yis := S_IRI m.
+             assert (subj_term (S_IRI m) == T_IRI m);
+             assert (List.Tot.memP (T_IRI m) elems_d);
+             assert (new_t == ({ s = S_IRI m; p = o_rdf_type;
+                                 o = subj_term t.s } <: triple))
+           end;
+           fold_left_inv (cls_oo_licensed g) (owl_cls_oneof_emit c_iri) members acc)
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (cls_oo_licensed g) (owl_cls_oneof_step g ig fuel) g g
+#pop-options
+
+// Per-triple corollary.
+val theorem_cls_oneof_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_cls_oneof g ig))
+    (ensures  memP t g \/ cls_oo_derives g t)
+
+let theorem_cls_oneof_licensed g ig t =
+  owl_rule_cls_oneof_licensed g ig
+// ===================================================================
