@@ -603,19 +603,20 @@ let owl_rule_sameAs_transitivity (g : rdf_graph) (ig : indexed_graph) : rdf_grap
 // O(list) inner fold over the live graph — this inner fold was the
 // second half of the O(k^6) blow-up. Reflexive pairs are already
 // excluded by sameas_pairs.
+// Named inner-fold emitter (proof-friendly guard rule, task #36):
+// replace the subject of one bucket triple with the sameAs partner.
+let sameas_rep_subj_emit (y : subject) (acc2 : rdf_graph) (t : triple) : rdf_graph =
+  if t.p <> owl_sameAs then
+    let new_t : triple = { s = y; p = t.p; o = t.o } in
+    add_triple_unchecked acc2 new_t
+  else acc2
+
 let owl_rule_sameAs_replace_subject (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (xy : subject * subject) ->
       let (x, s_prime) = xy in
       let srcs = bucket_lookup ig.ig_subj (subject_to_key x) in
-      List.Tot.fold_left
-        (fun (acc2 : rdf_graph) (src : triple) ->
-          if src.p <> owl_sameAs then
-            let new_t : triple = { s = s_prime; p = src.p; o = src.o } in
-            add_triple_unchecked acc2 new_t
-          else acc2)
-        acc
-        srcs)
+      List.Tot.fold_left (sameas_rep_subj_emit s_prime) acc srcs)
     g
     (sameas_pairs ig)
 

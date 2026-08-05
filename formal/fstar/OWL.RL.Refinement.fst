@@ -1233,3 +1233,130 @@ val theorem_scm_eqc2_licensed
 
 let theorem_scm_eqc2_licensed g ig t =
   owl_rule_scm_eqc2_licensed g ig
+// ===================================================================
+// 11. eq-rep-s: every `owl_rule_sameAs_replace_subject` emission is
+// licensed. PATTERN-SETTER for the eq-rep family (replace_object and
+// replace_predicate follow the same recipe next).
+//
+// OWL 2 RL/RDF rules table row eq-rep-s:
+//   T(?s, owl:sameAs, ?s'), T(?s, ?p, ?o)  =>  T(?s', ?p, ?o)
+// transcribed as OWL.RL.Spec.eq_rep_s_derives. #262's outer fold walks
+// the deduped snapshot pair list (section 1's `sameas_pairs`); for
+// each pair (x, s_prime) the INNER fold walks
+// `bucket_lookup ig.ig_subj (subject_to_key x)` -- the ig_subj
+// bucket's serving of triples with subject x, keeping the rule off an
+// O(k^6) live-graph rescan (the #262 banner on both rules). Tracing a
+// served bucket triple back to a real (x P o) triple needs
+// `ig_wf_subj` (OWL.Semantics), which unlike `ig_wf_sp` (section 8/9)
+// is UNCONDITIONAL for build_indexed -- no separator side condition
+// (RDF.Indexed.KeyInjectivity.lemma_build_indexed_wf_subj) -- so the
+// theorem below takes `ig_wf_subj ig /\ ig.ig_triples == g` as its
+// hypothesis, mirroring section 9's (prp-trp) shape exactly, not
+// section 8's (eq-trans keeps the row snapshot-relative because it has
+// no `ig.ig_triples == g` premise available at its call sites; this
+// rule states the row against `g` directly, the same choice prp-trp
+// made once `ig.ig_triples == g` was in hand).
+//
+// PROOF-FRIENDLY GUARD RULE (task #36): the inner fold's emitter is
+// the NAMED partial application `sameas_rep_subj_emit s_prime`
+// (OWL.Closure.fsti), not an anonymous closure -- this proof mirrors
+// that named application on both sides (the local `outer_step` below
+// and the introduce-block's `inner_step`), exactly as section 8's
+// `sameas_trans_emit x` and section 7's `inverse_of_emit p1_iri
+// p2_iri`. This rule's inner fold ALSO carries a boolean guard inside
+// the named emitter (`t.p <> owl_sameAs`) -- per the guard-rule's own
+// closing note, a plain disequality guard does not itself need naming,
+// only the closure wrapping it; the proof mirrors the guard with an
+// ordinary `if`/`else` inside the introduce block, case-splitting the
+// SAME way `sameas_rep_subj_emit` does.
+//
+// SPEC-ROW MISMATCH (GR-delta-sensitive, as flagged in the dispatch
+// brief): eq_rep_s_derives does NOT exclude u.p == owl:sameAs -- the
+// row licenses replacing the subject of a sameAs edge itself, same as
+// any other data triple. The engine's guard `t.p <> owl_sameAs` makes
+// owl_rule_sameAs_replace_subject emit a STRICT SUBSET of what the row
+// licenses (it never re-derives a replaced sameAs edge under this
+// rule). That narrowing is sound -- a subset of a licensed set is
+// still licensed, which is all this theorem claims -- but it is
+// INCOMPLETE relative to the row taken alone; the missing conclusions
+// are still reached via eq-sym/eq-trans consuming the original sameAs
+// edges, so the closure's overall sameAs completeness is unaffected.
+// Flagging per the brief's request, not fixing: the guard's own
+// purpose (avoiding a redundant same-shape sameAs re-derivation this
+// rule doesn't need to make) is outside this licensing lemma's scope.
+// ===================================================================
+
+// The licensing invariant for this rule, against eq-rep-s's row. Same
+// 3-arg shape as prp_trp_licensed (section 9): snapshot is
+// instantiated at g via the `ig.ig_triples == g` hypothesis, even
+// though eq_rep_s_derives is stated against g directly.
+let eq_rep_s_licensed (g : rdf_graph) (snapshot : list triple) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ eq_rep_s_derives snapshot t)
+
+val owl_rule_sameAs_replace_subject_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_subj ig /\ ig.ig_triples == g)
+          (ensures  eq_rep_s_licensed g g (owl_rule_sameAs_replace_subject g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_sameAs_replace_subject_licensed g ig =
+  lemma_sameas_pairs_provenance ig;
+  lemma_vocab_sameas_agree ();
+  let inv = eq_rep_s_licensed g g in
+  // Engine text verbatim -- the inner fold is the shared named
+  // application `sameas_rep_subj_emit s_prime`, exactly as
+  // owl_rule_sameAs_replace_subject writes it after the closure-
+  // identity fix.
+  let outer_step : rdf_graph -> (subject * subject) -> rdf_graph =
+    fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, s_prime) = xy in
+      let srcs = bucket_lookup ig.ig_subj (subject_to_key x) in
+      List.Tot.fold_left (sameas_rep_subj_emit s_prime) acc srcs in
+  introduce forall (acc : rdf_graph) (xy : subject * subject).
+      (memP xy (sameas_pairs ig) /\ inv acc) ==> inv (outer_step acc xy)
+  with introduce (memP xy (sameas_pairs ig) /\ inv acc) ==>
+                 inv (outer_step acc xy)
+  with _ . begin
+    let (x, s_prime) = xy in
+    let srcs = bucket_lookup ig.ig_subj (subject_to_key x) in
+    let inner_step : rdf_graph -> triple -> rdf_graph =
+      sameas_rep_subj_emit s_prime in
+    introduce forall (acc2 : rdf_graph) (src : triple).
+        (memP src srcs /\ inv acc2) ==> inv (inner_step acc2 src)
+    with introduce (memP src srcs /\ inv acc2) ==>
+                   inv (inner_step acc2 src)
+    with _ . begin
+      // pairs_licensed names the edge eq_edge behind xy: the
+      // (x owl:sameAs s_prime) premise.
+      eliminate exists (eq_edge : triple).
+          memP eq_edge ig.ig_triples /\ eq_edge.p == owl_sameAs /\
+          eq_edge.s == fst xy /\ term_to_subject eq_edge.o == Some (snd xy)
+      returns inv (inner_step acc2 src)
+      with _ . begin
+        lemma_term_to_subject_subj_term eq_edge.o (snd xy);
+        // ig_wf_subj places src in the snapshot with src.s == x -- the
+        // (x P o) data-triple premise, u := src; ig.ig_triples == g
+        // places it in g itself.
+        if src.p <> owl_sameAs then begin
+          let new_t : triple = { s = s_prime; p = src.p; o = src.o } in
+          assert (new_t == ({ s = s_prime; p = src.p; o = src.o } <: triple));
+          assert (eq_rep_s_derives g new_t)
+        end else ()
+      end
+    end;
+    fold_left_inv inv inner_step srcs acc
+  end;
+  fold_left_inv inv outer_step (sameas_pairs ig) g;
+  assert_norm (owl_rule_sameAs_replace_subject g ig ==
+               List.Tot.fold_left outer_step g (sameas_pairs ig))
+#pop-options
+
+// Per-triple corollary, the form downstream compositions consume.
+val theorem_sameAs_replace_subject_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_subj ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_sameAs_replace_subject g ig))
+    (ensures  memP t g \/ eq_rep_s_derives g t)
+
+let theorem_sameAs_replace_subject_licensed g ig t =
+  owl_rule_sameAs_replace_subject_licensed g ig
