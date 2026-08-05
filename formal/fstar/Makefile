@@ -49,7 +49,7 @@ SMOKE_MODULES = RDF.Graph.Executable SPARQL.FullText SPARQL11.Algebra Tableau SP
 
 DEPEND_FILE = .depend
 
-.PHONY: verify verify-smoke verify-roaring verify-all verify-list clean extract-c depend
+.PHONY: verify verify-smoke verify-rdf-mt verify-roaring verify-all verify-list clean extract-c depend
 .DEFAULT_GOAL := verify
 
 # Whole-corpus verification. This is what README.md describes.
@@ -64,6 +64,28 @@ verify-smoke: $(addsuffix .fst.checked, $(SMOKE_MODULES))
 # Single module: make verify-RDF.Canonical
 verify-%: %.fst.checked
 	@echo "make verify-$*: verified."
+
+# The model-theoretic verification layer, gated by name (adopted from
+# docs/semantics_proposal.md — see the adoption assessment in
+# docs/designissues/2026-08-05-semantics-proposal-adoption.md).
+# Interpretations, satisfaction, entailment, rule soundness, licensing,
+# and the index lemmas they stand on.
+RDF_MT_MODULES = \
+  RDF.Entailment.Simple.Spec RDF.Entailment.Simple \
+  RDF.Entailment.Simple.ModelTheory RDF.Entailment.Simple.Refinement \
+  RDF.Entailment.Simple.Boundary \
+  RDF.Entailment.RDF.Spec \
+  RDF.Entailment.RDFS.Spec RDF.Entailment.RDFS.ModelTheory \
+  RDF.Entailment.RDFS.Refinement RDF.Entailment.RDFS.SepFree \
+  RDF.Entailment.RDFS.ChainWf \
+  RDF.Entailment.Regime \
+  RDF.Semantics.HypothesisWitness \
+  RDF.Indexed.KeyInjectivity \
+  OWL.Semantics OWL.Semantics.MemLemmas OWL.Semantics.Soundness \
+  OWL.RL.Refinement
+
+verify-rdf-mt: $(addsuffix .fst.checked, $(RDF_MT_MODULES))
+	@echo "make verify-rdf-mt: $(words $(RDF_MT_MODULES)) model-theoretic-layer modules type-checked under z3 4.13.3 (no --lax)."
 
 # What the corpus currently is, for anyone auditing coverage claims.
 verify-list:
