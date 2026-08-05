@@ -445,6 +445,29 @@ let cond_chain2_transitive (i : interp) : prop =
     seq_is i l [p; p] ==>
     icext i p (i.i_iri owl_TransitiveProperty)
 
+// owl:Restriction is a subclass of owl:Class -- OWL 2 RL/RDF "Table 5:
+// Axiomatic Triples" (the same table already cited by
+// OWL.Closure.fsti's Group E owl:Thing/owl:Nothing axioms, ~line 5534)
+// lists `owl:Restriction rdfs:subClassOf owl:Class` as an axiomatic
+// triple, true unconditionally in every OWL 2 RL/RDF interpretation.
+// Reading that fixed subClassOf fact through the RDFS class-extension
+// semantic condition (RDF 1.1 Semantics section 9: CEXT(c) is a subset
+// of CEXT(d) whenever c rdfs:subClassOf d holds) gives: every element
+// of ICEXT(owl:Restriction) is also in ICEXT(owl:Class). This is the
+// weakest reading OWL.Closure.fsti's owl_rule_scm_cls_restriction needs
+// -- its own banner already states the target directly ("scm-cls
+// [OWL 2 RL/RDF, partial]: every owl:Restriction is also an
+// owl:Class"); the general class-subsumption transfer for arbitrary
+// c/d is not needed, only this one fixed instance. This is the
+// OWL.RL.Spec.fst ledger's [ext] entry "scm-cls extended to
+// restriction nodes". NOT added to owl_rl_pilot_conditions: same
+// reasoning as the other [ext] conditions above -- growing that bundle
+// perturbs the SMT context for its existing consumers, so this rule's
+// lemma takes the condition explicitly.
+let cond_restriction_subclass_of_class (i : interp) : prop =
+  forall (x : i.idom).
+    icext i x (i.i_iri owl_Restriction_iri) ==> icext i x (i.i_iri owl_Class)
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker

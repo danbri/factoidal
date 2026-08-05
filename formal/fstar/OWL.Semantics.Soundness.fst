@@ -1137,6 +1137,183 @@ let owl_rule_chain_to_transitive_sound i a g ig =
 // ===================================================================
 
 // ===================================================================
+// Rule 13: owl_rule_scm_cls_restriction (OWL.Closure.fsti ~line 2466).
+// Engine banner: "scm-cls [OWL 2 RL/RDF, partial]: every
+// owl:Restriction is also an owl:Class." OWL.RL.Spec.fst ledger:
+// "[ext] scm-cls extended to restriction nodes".
+// cond_restriction_subclass_of_class (OWL.Semantics.fst) is that
+// justification made machine-checked: OWL 2 RL/RDF Table 5 (Axiomatic
+// Triples) fixes `owl:Restriction rdfs:subClassOf owl:Class`
+// unconditionally, read through the RDFS class-extension semantic
+// condition into the ICEXT-subset implication the rule needs.
+//
+// SHAPE: single fold over g, no list-walk, no fresh bnodes — new_t's
+// subject is t.s, an existing node already present in g via t. Same
+// "mints no fresh bnodes" shape as Rules 1-11; fits the module
+// banner's shared proof skeleton directly (fix one assignment; every
+// emitted triple is true under it).
+// ===================================================================
+
+val owl_rule_scm_cls_restriction_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_restriction_subclass_of_class i /\ holds_all i a g)
+    (ensures  holds_all i a (owl_rule_scm_cls_restriction g ig))
+
+#push-options "--z3rlimit 60 --split_queries always"
+let owl_rule_scm_cls_restriction_sound i a g ig =
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_Restriction_iri) then
+        let new_t : triple =
+          { s = t.s; p = rdf_type; o = T_IRI owl_Class } in
+        add_triple_unchecked acc new_t
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (emit_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc t)
+  with _ . begin
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_Restriction_iri) then begin
+      lemma_rdf_term_eq_iri t.o owl_Restriction_iri;
+      assert (triple_holds i a t);
+      assert (icext i (denot_subject i a t.s) (i.i_iri owl_Restriction_iri));
+      assert (icext i (denot_subject i a t.s) (i.i_iri owl_Class))
+    end else ()
+  end;
+  fold_left_inv (holds_all i a) emit_step g g;
+  assert_norm (owl_rule_scm_cls_restriction g ig ==
+               List.Tot.fold_left emit_step g g)
+#pop-options
+
+// ===================================================================
+// Rule 14: owl_rule_cls_svf_thing_materialize (OWL.Closure.fsti
+// ~line 1873) -- FINDING, not proven. STOP per the two-attempt rule,
+// same reasoning as Rule 12's finding above (cited and extended here,
+// not repeated from scratch).
+//
+// OWL.RL.Spec.fst ledger: "[ext] cls-svf2-adjacent comprehension
+// entry". owl-rule-shape-matrix.md's SINGLE-FOLD classification is
+// correct (one fold_left over g) -- the blocker is semantic, exactly
+// as Rule 12's was, not shape.
+//
+// MINTED TERM: for every non-schema, non-rdf:type edge `(x P y)` that
+// passes edge_subject_is_safe, the rule constructs
+//   rb = canonical_svf_thing_restriction_bnode p
+//      = String.concat "" ["__rl_svfthing_"; p]        (OWL.Closure.fsti
+//                                                         line 1870-1871)
+// and unconditionally emits, via add_triple_unchecked, four triples
+// keyed on rb: `rb rdf:type owl:Restriction`, `rb owl:onProperty P`,
+// `rb owl:someValuesFrom owl:Thing`, and the membership triple
+// `x rdf:type rb` (OWL.Closure.fsti lines 1885-1898). No table or
+// premise in g asserts that a resource denoted `rb` — with exactly
+// those three shape-triples true of it — already exists; `rb` is a
+// canonical LABEL the engine invents, not a node read out of g. (This
+// is the SAME kind of freshness Rule 12 found fatal for
+// canonical_chainl1_bnode / canonical_chainl2_bnode, though the
+// mechanism differs: Rule 12 needed rdf:first/rdf:rest LIST-CELL
+// witnesses; this rule needs a COMPREHENSION witness for the
+// anonymous class expression SomeValuesFrom(P, owl:Thing).)
+//
+// WHY NO HONEST CONDITION CLOSES IT: at the satisfies level (Hayes
+// section 5.2 / this file's `satisfies`), proving
+// `satisfies i (owl_rule_cls_svf_thing_materialize g ig)` from
+// `satisfies i g` lets us pick a FRESH assignment a' for the output
+// graph — a'(rb) can be any element of i.idom — but it cannot pick
+// which pairs lie in the FIXED interpretation i's IEXT relation. The
+// four emitted triples require ONE domain element d = a'(rb)
+// simultaneously satisfying: icext i d (i.i_iri owl_Restriction_iri),
+// i.iext (i.i_iri owl_onProperty_iri) d (i.i_iri p),
+// i.iext (i.i_iri owl_someValuesFrom_iri) d (i.i_iri owl_Thing), AND
+// icext i (denot_subject i a' x) d. That is a four-way EXISTENCE claim
+// about i's domain, not an implication from anything holds_all i a g
+// supplies (g need not mention owl:onProperty, owl:Restriction, or
+// owl:someValuesFrom at all — e.g. bnode2somevaluesfrom's premise is
+// bare instance data). A degenerate interpretation with
+// IEXT(owl:onProperty) = the empty relation trivially satisfies every
+// cond_* in this file (none of them constrain owl:onProperty without a
+// premise firing) while satisfying g, and it has NO witnessing d — so
+// satisfies i g' genuinely fails for that i. Adding the needed
+// existence fact as a hypothesis would type-check the lemma but
+// violate the module banner's "class of interpretations here is a
+// SUPERSET of the genuine OWL 2 RDF-Based interpretations" invariant,
+// exactly as Rule 12's finding describes.
+//
+// This is precisely the gap OWL.Closure.fsti's own "20b.
+// Comprehension-witness closure" section documents (~line 5832-5874):
+// the five owl_rule_comp_* / witness rules realise OWL 2 RDF-Based
+// Semantics section 8's comprehension conditions, which "were
+// NORMATIVE in OWL 1 Full and are informative-only in OWL 2 precisely
+// because, taken as iff-conditions, they force infinite structures
+// into every interpretation." The engine's own comment on this rule
+// family (OWL.Closure.fsti ~line 5800) claims soundness "under Direct
+// Semantics" — a DIFFERENT model-theoretic framework in which
+// SomeValuesFrom(P, owl:Thing) denotes a SET {x | exists y. (x,y) in
+// P}, not an extra domain element requiring a witness proof. That
+// Direct-Semantics argument is real but is not a same-model
+// truth-preservation claim in this file's per-assignment RDF-Based
+// semantics, so it cannot supply the lemma this file's skeleton needs.
+// Closing it properly needs the same two routes Rule 12's finding
+// names: (a) a Henkin/Skolem model-EXTENSION lemma, or (b) reframing
+// at the "licensed by g" (syntactic-provenance) level the way
+// OWL.RL.Refinement.fst's licensing proofs do for
+// svf2_existential_witness / cls_svf_thing_witness — a different
+// soundness notion than this file's model-theoretic one. Neither is a
+// same-shape extension of the Rule 1-11/13 skeleton, so per the brief
+// this is reported here rather than forced.
+// ===================================================================
+
+// ===================================================================
+// Rule 15: owl_rule_cls_hasself2_synth (OWL.Closure.fsti ~line 1806)
+// -- FINDING, not proven. Same STOP, same reasoning as Rule 14 above
+// (and Rule 12): a distinct rule, an identical comprehension-witness
+// gap.
+//
+// OWL.RL.Spec.fst ledger: "[ext] cls_hasself2_synth ... sibling of the
+// above" (of cls_hasself1). owl-rule-shape-matrix.md's SINGLE-FOLD
+// classification is correct; the blocker is semantic.
+//
+// MINTED TERM: for every self-loop edge `(x P x)` (edge.s and edge.o
+// denote the same resource) that is non-schema and
+// edge_subject_is_safe, the rule constructs
+//   rb = canonical_hasself_restriction_bnode p
+//      = String.concat "" ["__rl_hasself_"; p]          (OWL.Closure.fsti
+//                                                          line 1803-1804)
+// and unconditionally emits, via add_triple_unchecked, four triples
+// keyed on rb: `rb rdf:type owl:Restriction`, `rb owl:onProperty P`,
+// `rb owl:hasSelf "true"^^xsd:boolean`, and `x rdf:type rb`
+// (OWL.Closure.fsti lines 1818-1828). As with Rule 14's rb, no premise
+// in g asserts that such a resource already exists — `rb` is an
+// invented canonical label, not a node read out of g.
+//
+// WHY NO HONEST CONDITION CLOSES IT: identical argument to Rule 14's,
+// substituting the ObjectHasSelf(P) comprehension witness for
+// SomeValuesFrom(P, owl:Thing)'s. At the satisfies level, the four
+// emitted triples require ONE domain element d = a'(rb) with
+// icext i d (i.i_iri owl_Restriction_iri),
+// i.iext (i.i_iri owl_onProperty_iri) d (i.i_iri p),
+// i.iext (i.i_iri owl_hasSelf_iri) d (i.i_lit true_xsd_boolean_literal),
+// AND icext i (denot_subject i a' x) d, simultaneously, in a FIXED
+// interpretation i whose IEXT this proof does not get to choose. g's
+// only premise is the bare self-loop `(x P x)`
+// (New-Feature-SelfRestriction-002's premise: `Peter :likes Peter`,
+// no owl:Restriction anywhere) — nothing in it, nor in any cond_* this
+// file defines, forces IEXT(owl:hasSelf) or ICEXT(owl:Restriction) to
+// be nonempty, let alone to contain a witness related as required. A
+// degenerate interpretation with IEXT(owl:onProperty) empty satisfies
+// every cond_* here while satisfying g and has no such d, so
+// satisfies i g' fails for it — the same counterexample shape as Rule
+// 14 and Rule 12. Adding the existence fact as a hypothesis would
+// again violate the interpretations-superset invariant. This is the
+// same OWL.Closure.fsti "20b. Comprehension-witness closure" gap
+// (~line 5832-5874) and the same "sound under Direct Semantics, not
+// under this file's per-assignment RDF-Based semantics" distinction
+// Rule 14's finding details — closing it needs the same
+// model-extension or syntactic-licensing route, not a same-shape
+// extension of the Rule 1-11/13 skeleton.
+// ===================================================================
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge
