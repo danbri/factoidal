@@ -579,17 +579,22 @@ let owl_rule_differentFrom_symmetry (g : rdf_graph) (ig : indexed_graph) : rdf_g
 // eq-trans: if (x owl:sameAs y) and (y owl:sameAs z) then (x owl:sameAs z).
 // #262: outer loop over the deduped snapshot pair list (k^2, not
 // ~2k^3); successor lookup keeps the index.
+// Named inner-fold emitter (proof-friendly guard rule, task #36):
+// one eq-trans conclusion per successor object.
+let sameas_trans_emit (x : subject) (acc2 : rdf_graph) (z_term : rdf_term) : rdf_graph =
+  let new_t : triple = { s = x; p = owl_sameAs; o = z_term } in
+  add_triple_unchecked acc2 new_t
+
+// PROOF-FRIENDLY GUARD RULE (task #36): the inner fold's emitter is
+// the NAMED partial application `sameas_trans_emit x` -- not an
+// inline closure -- so the licensing/soundness proofs share its
+// symbol by first-order congruence. Semantics unchanged.
 let owl_rule_sameAs_transitivity (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (xy : subject * subject) ->
       let (x, y) = xy in
       let zs = find_objects_indexed ig y owl_sameAs in
-      List.Tot.fold_left
-        (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
-          let new_t : triple = { s = x; p = owl_sameAs; o = z_term } in
-          add_triple_unchecked acc2 new_t)
-        acc
-        zs)
+      List.Tot.fold_left (sameas_trans_emit x) acc zs)
     g
     (sameas_pairs ig)
 

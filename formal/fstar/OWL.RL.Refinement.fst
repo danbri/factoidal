@@ -57,6 +57,7 @@ open RDF.Graph
 open RDF.Indexed
 open RDFS.Closure
 open OWL.Closure
+open OWL.Semantics
 open OWL.Semantics.MemLemmas
 open RDF.Entailment.Simple.Spec
 open OWL.RL.Spec
@@ -759,3 +760,140 @@ val theorem_inverse_of_licensed
 
 let theorem_inverse_of_licensed g ig t =
   owl_rule_inverse_of_licensed g ig
+
+// ===================================================================
+// 8. eq-trans: every `owl_rule_sameAs_transitivity` emission licensed.
+//
+// OWL 2 RL/RDF rules table row eq-trans:
+//   T(?x, owl:sameAs, ?y), T(?y, owl:sameAs, ?z)  =>  T(?x, owl:sameAs, ?z)
+// transcribed as OWL.RL.Spec.eq_trans_derives. #262's outer fold walks
+// the deduped snapshot pair list (section 1's `sameas_pairs`, seeded
+// from g); for each pair (x, y) the INNER fold walks
+// `find_objects_indexed ig y owl_sameAs` -- the ig_sp bucket lookup
+// for y's sameAs-successors z, keeping the rule off an O(k^3)
+// live-graph rescan. This is the module's FIRST index-reading rule:
+// tracing a served z_term back to a real (y owl:sameAs z) triple
+// needs `ig_wf_sp` (RDF.Indexed.fsti's serving contract for the ig_sp
+// bucket, provable for real indexes via RDF.Indexed.KeyInjectivity),
+// so the theorem below takes it as a hypothesis -- the same shape
+// OWL.Semantics.Soundness's `rdfs_rule_domain_sound` takes
+// `ig_wf_pred`, and the direct syntactic-licensing sibling of
+// RDF.Entailment.RDFS.Refinement's `rdfs_rule_subClassOf_licensed` /
+// `..._trans_licensed`, which prove the same outer-fold / inner-
+// index-fold shape over `ig_wf_sp` for the RDFS layer. This module's
+// `open OWL.Semantics` (for `ig_wf_sp`) is new as of this section --
+// checked against every name already used here, no clashes.
+//
+// PROOF-FRIENDLY GUARD RULE (task #36): the engine's inner fold uses
+// the NAMED partial application `sameas_trans_emit x`
+// (OWL.Closure.fsti), not an anonymous closure -- this proof mirrors
+// that same named application on both sides (the local `outer_step`
+// below and the introduce-block's `inner_step`), so first-order
+// congruence carries guard/witness facts across the mirror the way
+// the scm-eqc2 pilot (`term_is_iri`) demonstrated. Before that fix
+// this rule's inner-fold obligation was undischargeable at any
+// solver budget (skills/fstar-module-style/SKILL.md trap 3).
+//
+// Proof follows the RDFS.Refinement precedent's shape exactly: outer
+// introduce over (acc, xy), inner introduce + fold_left_inv over the
+// looked-up `zs` as the LAST expression of the outer branch -- no
+// trailing assert about the outer step itself. (A sibling proof,
+// prp-inv's nested fold over g x g, could NOT be discharged this way
+// and is parked -- but that inner fold walks the live graph, not an
+// index-served list; this rule's inner fold, like RDFS.Refinement's,
+// is over a bucket lookup, and closes the same way theirs does.)
+// ===================================================================
+
+// Everything the ig_sp bucket serves at key (s, owl:sameAs) names a
+// real snapshot triple with exactly that subject and predicate.
+// Restated locally (rather than reusing RDF.Entailment.RDFS.
+// Refinement's `lemma_find_objects_elim`, which verifies AFTER this
+// module in the build list) so this module carries no forward
+// dependency.
+let lemma_find_objects_indexed_sp_elim
+    (ig : indexed_graph) (s : subject) (p : wf_iri) (x : rdf_term)
+  : Lemma (requires ig_wf_sp ig /\ memP x (find_objects_indexed ig s p))
+          (ensures exists (u : triple).
+                     memP u ig.ig_triples /\ u.s == s /\ u.p == p /\ u.o == x) =
+  let bucket = bucket_lookup ig.ig_sp (sp_key s p) in
+  List.Tot.Properties.memP_map_elim (fun (t : triple) -> t.o) x bucket
+
+// The licensing invariant for this rule, against eq-trans's row.
+// Snapshot-relative like eq-sym (section 2): the row's premises are
+// read off ig.ig_triples, not the step-input g.
+let eq_trans_licensed (g : rdf_graph) (snapshot : list triple) (out : rdf_graph)
+  : prop =
+  forall (t : triple). memP t out ==>
+    (memP t g \/ eq_trans_derives snapshot t)
+
+val owl_rule_sameAs_transitivity_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires ig_wf_sp ig)
+    (ensures  eq_trans_licensed g ig.ig_triples (owl_rule_sameAs_transitivity g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_sameAs_transitivity_licensed g ig =
+  lemma_sameas_pairs_provenance ig;
+  lemma_vocab_sameas_agree ();
+  let inv = eq_trans_licensed g ig.ig_triples in
+  let outer_step : rdf_graph -> (subject * subject) -> rdf_graph =
+    fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, y) = xy in
+      let zs = find_objects_indexed ig y owl_sameAs in
+      List.Tot.fold_left (sameas_trans_emit x) acc zs in
+  introduce forall (acc : rdf_graph) (xy : subject * subject).
+      (memP xy (sameas_pairs ig) /\ inv acc) ==> inv (outer_step acc xy)
+  with introduce (memP xy (sameas_pairs ig) /\ inv acc) ==>
+                 inv (outer_step acc xy)
+  with _ . begin
+    let (x, y) = xy in
+    let zs = find_objects_indexed ig y owl_sameAs in
+    let inner_step : rdf_graph -> rdf_term -> rdf_graph = sameas_trans_emit x in
+    introduce forall (acc2 : rdf_graph) (z_term : rdf_term).
+        (memP z_term zs /\ inv acc2) ==> inv (inner_step acc2 z_term)
+    with introduce (memP z_term zs /\ inv acc2) ==>
+                   inv (inner_step acc2 z_term)
+    with _ . begin
+      let new_t : triple = { s = x; p = owl_sameAs; o = z_term } in
+      // pairs_licensed names the edge u1 behind xy: the (x sameAs y)
+      // premise.
+      eliminate exists (u1 : triple).
+          memP u1 ig.ig_triples /\ u1.p == owl_sameAs /\
+          u1.s == fst xy /\ term_to_subject u1.o == Some (snd xy)
+      returns inv (inner_step acc2 z_term)
+      with _ . begin
+        lemma_term_to_subject_subj_term u1.o (snd xy);
+        // z_term is served from the sp-bucket at (y, owl_sameAs);
+        // ig_wf_sp names the bucket triple u2: the (y sameAs z)
+        // premise.
+        lemma_find_objects_indexed_sp_elim ig y owl_sameAs z_term;
+        eliminate exists (u2 : triple).
+            memP u2 ig.ig_triples /\ u2.s == y /\ u2.p == owl_sameAs /\
+            u2.o == z_term
+        returns inv (inner_step acc2 z_term)
+        with _ . begin
+          // subj_term u2.s == subj_term y == u1.o (the half-inverse
+          // above), which is eq_trans_derives' join condition; new_t
+          // is its conclusion after the vocabulary bridge.
+          assert (subj_term u2.s == u1.o);
+          assert (new_t == ({ s = u1.s; p = o_owl_sameAs;
+                              o = u2.o } <: triple))
+        end
+      end
+    end;
+    fold_left_inv inv inner_step zs acc
+  end;
+  fold_left_inv inv outer_step (sameas_pairs ig) g;
+  assert_norm (owl_rule_sameAs_transitivity g ig ==
+               List.Tot.fold_left outer_step g (sameas_pairs ig))
+#pop-options
+
+// Per-triple corollary, the form downstream compositions consume.
+val theorem_sameAs_transitivity_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ memP t (owl_rule_sameAs_transitivity g ig))
+    (ensures  memP t g \/ eq_trans_derives ig.ig_triples t)
+
+let theorem_sameAs_transitivity_licensed g ig t =
+  owl_rule_sameAs_transitivity_licensed g ig
