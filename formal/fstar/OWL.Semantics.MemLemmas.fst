@@ -21,6 +21,34 @@ module OWL.Semantics.MemLemmas
 //
 // Design doc: docs/designissues/2026-07-29-rdf-based-semantics-
 // formalization.md (section "Discharging the index hypotheses").
+//
+// 2026-08-05 (index-completeness push, docs/claude-rules/rdf-rdfs-
+// semantics-coverage.md gap #2): `lemma_sortWith_memP_rev` below lands
+// (the converse of `lemma_sortWith_memP` -- sortWith drops nothing
+// either). The FULL index-completeness lemma
+// (`lemma_build_indexed_complete_pred`: every triple with predicate p
+// IS filed in `bucket_lookup ig.ig_pred p`) is BLOCKED, not merely
+// hard: `bucket_tree`'s midpoint-bisection build (`sorted_list_to_tree`
+// in RDF.Indexed.fsti) places pairs by LIST POSITION, while
+// `bucket_lookup` navigates by KEY COMPARISON (`String.compare k k' <
+// 0`). These only agree if the input list is genuinely ordered by that
+// same comparison -- and `FStar.String.fsti`'s `compare` carries ZERO
+// stated axioms (no reflexivity/antisymmetry/transitivity/totality).
+// Confirmed empirically: `Lemma (requires cmp a b<0 /\ cmp b c<0)
+// (ensures cmp a c<0)` for `cmp = String.compare` fails with "Could not
+// prove post-condition" given nothing but the type `string -> string ->
+// Tot int` (no other hypotheses). The stdlib's own
+// `FStar.List.Tot.Properties.sortWith_sorted` hits the identical wall:
+// its signature REQUIRES `total_order (bool_of_compare f)` as an
+// explicit hypothesis, for exactly this reason -- it is not derivable,
+// only assumable. See the "ATTEMPT" comment block above
+// `lemma_build_bucket_ok` for the two recorded attempts (direct proof;
+// tree_ok-style reformulation) and why both reduce to this same missing
+// prerequisite. Landing the completeness lemma needs a NEW fact about
+// `FStar.String.compare` (true of real lexicographic string comparison,
+// just unstated in this F* distribution's ulib) added deliberately and
+// tracked, not slipped in as a side effect of this file. Not attempted
+// here without that decision.
 
 open FStar.List.Tot
 open RDF.Term
@@ -80,6 +108,34 @@ let lemma_sortWith_memP_forall (#a : Type) (f : a -> a -> Tot int) (l : list a)
   : Lemma
     (ensures forall (x : a). List.Tot.memP x (List.Tot.sortWith f l) ==> List.Tot.memP x l) =
   FStar.Classical.forall_intro (lemma_sortWith_memP f l)
+
+// Converse direction of lemma_sortWith_memP: sortWith is a PERMUTATION, so
+// nothing is dropped either. The stdlib's own permutation lemma
+// (`sortWith_permutation`) needs `#a:eqtype` (it goes through `count`);
+// `triple` (and the `(option string * triple)` decorated pairs `build_bucket`
+// sorts) are `noeq`, so we re-derive the converse memP fact by the same
+// partition/append induction `lemma_sortWith_memP` already uses, just read
+// the other way. Needed by `lemma_build_indexed_complete_pred`'s "membership
+// preservation INTO build_bucket's group-by" step (2026-08-05 index-
+// completeness push, docs/claude-rules/rdf-rdfs-semantics-coverage.md gap 2).
+let rec lemma_sortWith_memP_rev (#a : Type) (f : a -> a -> Tot int) (l : list a) (x : a)
+  : Lemma
+    (ensures List.Tot.memP x l ==> List.Tot.memP x (List.Tot.sortWith f l))
+    (decreases (List.Tot.length l)) =
+  match l with
+  | [] -> ()
+  | pivot :: tl ->
+    let hi, lo = List.Tot.partition (List.Tot.bool_of_compare f pivot) tl in
+    List.Tot.partition_length (List.Tot.bool_of_compare f pivot) tl;
+    lemma_sortWith_memP_rev f lo x;
+    lemma_sortWith_memP_rev f hi x;
+    lemma_partition_memP (List.Tot.bool_of_compare f pivot) tl x;
+    List.Tot.append_memP (List.Tot.sortWith f lo) (pivot :: List.Tot.sortWith f hi) x
+
+let lemma_sortWith_memP_rev_forall (#a : Type) (f : a -> a -> Tot int) (l : list a)
+  : Lemma
+    (ensures forall (x : a). List.Tot.memP x l ==> List.Tot.memP x (List.Tot.sortWith f l)) =
+  FStar.Classical.forall_intro (lemma_sortWith_memP_rev f l)
 
 let lemma_rev_memP_forall (#a : Type) (l : list a)
   : Lemma (ensures forall (x : a). List.Tot.memP x (List.Tot.rev l) <==> List.Tot.memP x l) =
@@ -212,6 +268,47 @@ let lemma_pairs_ok_rev (#a : Type) (key_of : a -> option string) (src : list a)
     (requires pairs_ok key_of src xs)
     (ensures pairs_ok key_of src (List.Tot.rev xs)) =
   lemma_rev_memP_forall xs
+
+// ATTEMPT (index-completeness push, gap #2): does the midpoint-bisection
+// tree-builder serve every (key,elements) pair it is handed, with ZERO
+// extra hypotheses? This is the "real work" step the task brief flagged.
+// Expect this NOT to go through: `sorted_list_to_tree_fuel` places pairs by
+// LIST POSITION (`take_prefix mid xs`, oblivious to key values), while
+// `bucket_lookup` navigates by KEY COMPARISON (`String.compare k k' < 0`).
+// The two only agree if `xs` is actually ordered by that same comparison
+// -- and FStar.String.fsti's `compare` carries ZERO stated axioms (no
+// reflexivity/antisymmetry/transitivity/totality; confirmed with a scratch
+// probe, not kept in-tree: `Lemma (requires cmp a b<0 /\ cmp b c<0)
+// (ensures cmp a c<0)` for `cmp = String.compare` FAILS with "Could not
+// prove post-condition" given nothing but the type `string -> string ->
+// Tot int`). Left in place (commented statement) as the recorded first
+// attempt for the two-attempt stop rule.
+//
+// let rec lemma_slt_lookup_complete (#a : Type) (xs : list (string * list a))
+//     (fuel : nat) (k : string) (v : list a) (t : a)
+//   : Lemma
+//     (requires List.Tot.memP (k, v) xs /\ List.Tot.memP t v /\
+//               fuel >= List.Tot.length xs)
+//     (ensures List.Tot.memP t (bucket_lookup (sorted_list_to_tree_fuel xs fuel) k))
+//     (decreases fuel) =
+//   match xs with
+//   | [] -> ()
+//   | _ ->
+//     if fuel = 0 then ()
+//     else
+//       let n = List.Tot.length xs in
+//       let mid = n / 2 in
+//       let (left_xs, rest) = take_prefix mid xs in
+//       lemma_take_prefix_memP_forall mid xs;   // gives memP (k,v) left_xs \/ memP (k,v) rest -- an OR, not knowing which
+//       match rest with
+//       | (k', v') :: right_xs ->
+//         if k = k' then ()                      // k=k' doesn't give v==v' without a no-duplicate-keys fact
+//         else if FStar.String.compare k k' < 0 then
+//           lemma_slt_lookup_complete left_xs (fuel - 1) k v t   // requires memP (k,v) left_xs -- UNPROVABLE: nothing ties the
+//                                                                 // comparison direction to which half take_prefix put (k,v) in
+//         else
+//           lemma_slt_lookup_complete right_xs (fuel - 1) k v t  // symmetric problem
+//       | [] -> ()
 
 // The headline build_bucket result: the tree is well-formed w.r.t.
 // its own source list and key function.
