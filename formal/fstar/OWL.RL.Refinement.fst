@@ -1049,3 +1049,187 @@ val theorem_transitive_property_licensed
 
 let theorem_transitive_property_licensed g ig t =
   owl_rule_transitive_property_licensed g ig
+
+// ===================================================================
+// 10. scm-eqc2: every `owl_rule_scm_eqc2` emission is licensed.
+//
+// OWL 2 RL/RDF rules table row scm-eqc2:
+//   T(?c1, rdfs:subClassOf, ?c2), T(?c2, rdfs:subClassOf, ?c1)
+//     => T(?c1, owl:equivalentClass, ?c2)
+// transcribed as OWL.RL.Spec.scm_eqc2_derives -- the converse
+// direction of scm-eqc1 (section 5), reached here by a SINGLE fold
+// over g whose step carries an index-reading GUARD
+// (`find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf`, then
+// `existsb` for C among the results) rather than a second inner
+// fold, so the parked nested-fold hazard does not apply.
+//
+// Both premise triples of the row land in g: u1 is the fold-input
+// triple t itself (memP t g from the fold hypothesis); u2 is the
+// snapshot triple the guard's bucket lookup names, recovered via
+// `FStar.List.Tot.Properties.memP_map_elim` over
+// `find_objects_indexed`'s own `map (fun t -> t.o)` definition and
+// licensed into g by `ig_wf_sp` together with the `ig.ig_triples ==
+// g` hypothesis that ties the index back to the fold's own input
+// graph -- the index-precedent shape `owl_rule_cls_oneof_sound` in
+// OWL.Semantics.Soundness.fst uses for the sibling `rdf:first`/
+// `rdf:rest` buckets.
+//
+// The rule restricts to S_IRI/T_IRI pairs and skips the degenerate
+// c_iri = d_iri case (see OWL.Closure.fsti's comment above the
+// definition) -- both restrictions only narrow which conclusions are
+// asserted, never emit anything the row doesn't license, so the case
+// split below carries no extra proof burden.
+//
+// PROOF-FRIENDLY GUARD RULE (task #36): the engine's guard tests
+// bucket membership with the NAMED partial application `term_is_iri
+// c_iri` (OWL.Closure.fsti), not an inline closure, and the guard is
+// flattened to ONE boolean (`c_iri <> d_iri && existsb ...`). This
+// proof mirrors both: the emit_step lambda below is the engine text
+// verbatim, and the emission lemma's existsb hypothesis is stated
+// over `term_is_iri c_iri` so the `memP_existsb`/`eliminate` chain
+// shares the same first-order symbol the engine's fold actually
+// calls. `term_is_iri c_iri x = true` unfolds definitionally to
+// `rdf_term_eq x (T_IRI c_iri) = true` (a plain, non-recursive `let`,
+// so the SMT encoding carries its body as an equation); from there
+// `lemma_rdf_term_eq_pins_iri` pins x, exactly as in the WIP draft
+// against the older two-`if` engine text.
+// ===================================================================
+
+// rdf_term_eq against a fixed T_IRI pins the LHS to that same IRI:
+// the T_IRI branch reuses section 4's `lemma_rdf_term_eq_iri`; every
+// other constructor makes rdf_term_eq's catch-all arm `false`,
+// contradicting the requires.
+let lemma_rdf_term_eq_pins_iri (x : rdf_term) (i : wf_iri)
+  : Lemma (requires rdf_term_eq x (T_IRI i) == true)
+          (ensures x == T_IRI i) =
+  match x with
+  | T_IRI j -> lemma_rdf_term_eq_iri j i
+  | T_BNode _ -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm _ _ _ -> ()
+
+// The licensing invariant for this rule, against scm-eqc2's row.
+let scm_eqc2_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ scm_eqc2_derives g t)
+
+// The single emission this rule's step can make, isolated into its own
+// lemma so the fold's invariant-preservation obligation (below) only
+// has to consume its conclusion, not re-derive it inline: u1 is t
+// itself (the hypotheses pin t.p/t.s/t.o exactly as the emit_step
+// match already narrowed them), u2 is the snapshot triple the guard's
+// bucket lookup names, recovered via `memP_map_elim` over
+// `find_objects_indexed`'s own `map (fun t -> t.o)` definition and
+// licensed into g by `ig_wf_sp` + `ig.ig_triples == g`.
+val lemma_scm_eqc2_emission_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple) (c_iri d_iri : wf_iri)
+  : Lemma
+    (requires
+       ig_wf_sp ig /\ ig.ig_triples == g /\ memP t g /\
+       t.p == rdfs_subClassOf /\ t.s == S_IRI c_iri /\ t.o == T_IRI d_iri /\
+       List.Tot.existsb (term_is_iri c_iri)
+         (find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf) == true)
+    (ensures
+       scm_eqc2_derives g
+         ({ s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } <: triple))
+
+#push-options "--z3rlimit 150 --split_queries always"
+let lemma_scm_eqc2_emission_licensed g ig t c_iri d_iri =
+  lemma_vocab_eqc_agree ();
+  let new_t : triple = { s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } in
+  let supers_of_d = find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf in
+  assert_norm (supers_of_d ==
+               List.Tot.map (fun (u : triple) -> u.o)
+                 (bucket_lookup ig.ig_sp (sp_key (S_IRI d_iri) rdfs_subClassOf)));
+  FStar.List.Tot.Properties.memP_existsb (term_is_iri c_iri) supers_of_d;
+  // u1 is t itself: memP t g, t.p == o_rdfs_subClassOf via the vocab
+  // bridge, and t.s/t.o are exactly S_IRI c_iri / T_IRI d_iri (hypotheses).
+  eliminate exists (x : rdf_term).
+      term_is_iri c_iri x = true /\ memP x supers_of_d
+  returns scm_eqc2_derives g new_t
+  with _ . begin
+    // term_is_iri unfolds definitionally: term_is_iri c_iri x ==
+    // rdf_term_eq x (T_IRI c_iri).
+    assert (rdf_term_eq x (T_IRI c_iri) = true);
+    FStar.List.Tot.Properties.memP_map_elim
+      (fun (u : triple) -> u.o) x
+      (bucket_lookup ig.ig_sp (sp_key (S_IRI d_iri) rdfs_subClassOf));
+    // u2 is the bucket triple memP_map_elim names: ig_wf_sp pins its
+    // subject/predicate/snapshot-membership off the syntactic memP
+    // fact against ig.ig_sp's own sp_key bucket (auto-instantiated by
+    // Z3 e-matching, same as owl_rule_cls_oneof_sound's use of
+    // ig_wf_sp in OWL.Semantics.Soundness.fst).
+    eliminate exists (u2 : triple).
+        memP u2 (bucket_lookup ig.ig_sp (sp_key (S_IRI d_iri) rdfs_subClassOf)) /\
+        u2.o == x
+    returns scm_eqc2_derives g new_t
+    with _ . begin
+      lemma_rdf_term_eq_pins_iri x c_iri;
+      assert (memP u2 ig.ig_triples /\
+              u2.s == S_IRI d_iri /\ u2.p == rdfs_subClassOf);
+      lemma_subj_term_agree u2.s;
+      lemma_subj_term_agree t.s;
+      // Row equations: subj_term u2.s == u1.o (both T_IRI d_iri) and
+      // u2.o == subj_term u1.s (both T_IRI c_iri, via the existsb hit
+      // pinned to x == T_IRI c_iri above).
+      assert (subj_term u2.s == t.o);
+      assert (u2.o == subj_term t.s);
+      assert (new_t == ({ s = t.s; p = o_owl_equivalentClass;
+                          o = t.o } <: triple))
+    end
+  end
+#pop-options
+
+val owl_rule_scm_eqc2_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig.ig_triples == g)
+          (ensures scm_eqc2_licensed g (owl_rule_scm_eqc2 g ig))
+
+#push-options "--z3rlimit 100 --split_queries always"
+let owl_rule_scm_eqc2_licensed g ig =
+  lemma_vocab_eqc_agree ();
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subClassOf then
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          if c_iri <> d_iri &&
+             List.Tot.existsb (term_is_iri c_iri)
+               (find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf)
+          then
+            let new_t : triple =
+              { s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } in
+            add_triple_unchecked acc new_t
+          else acc
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ scm_eqc2_licensed g acc) ==>
+      scm_eqc2_licensed g (emit_step acc t)
+  with introduce (memP t g /\ scm_eqc2_licensed g acc) ==>
+                 scm_eqc2_licensed g (emit_step acc t)
+  with _ . begin
+    if t.p = rdfs_subClassOf then
+      match t.s, t.o with
+      | S_IRI c_iri, T_IRI d_iri ->
+        if c_iri <> d_iri &&
+           List.Tot.existsb (term_is_iri c_iri)
+             (find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf)
+        then lemma_scm_eqc2_emission_licensed g ig t c_iri d_iri
+        else ()
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (scm_eqc2_licensed g) emit_step g g;
+  assert_norm (owl_rule_scm_eqc2 g ig ==
+               List.Tot.fold_left emit_step g g)
+#pop-options
+
+// Per-triple corollary.
+val theorem_scm_eqc2_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_scm_eqc2 g ig))
+    (ensures  memP t g \/ scm_eqc2_derives g t)
+
+let theorem_scm_eqc2_licensed g ig t =
+  owl_rule_scm_eqc2_licensed g ig
