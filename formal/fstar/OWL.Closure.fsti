@@ -254,6 +254,14 @@ let owl_rule_equivalent_property (g : rdf_graph) (ig : indexed_graph) : rdf_grap
     g
     g
 
+// Named guard predicate (proof-friendly guard rule, task #36): "this
+// served term is exactly the IRI i". Rules test bucket results with
+// the PARTIAL APPLICATION `term_is_iri c` instead of an inline
+// closure, so soundness/licensing proofs that mirror the branch share
+// the same first-order symbol.
+let term_is_iri (i : wf_iri) (x : rdf_term) : bool =
+  rdf_term_eq x (T_IRI i)
+
 // scm-eqc2: if (C rdfs:subClassOf D) and (D rdfs:subClassOf C) then
 //   (C owl:equivalentClass D).  Reverse of cls-eqc1/cls-eqc2.
 //
@@ -270,17 +278,27 @@ let owl_rule_scm_eqc2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
       if t.p = rdfs_subClassOf then
         match t.s, t.o with
         | S_IRI c_iri, T_IRI d_iri ->
-          if c_iri = d_iri then acc
-          else
-            // Look up (D rdfs:subClassOf ?) and check whether C is among
-            // the supers of D. If so, C and D are mutual subclasses.
-            let supers_of_d = find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf in
-            if List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI c_iri)) supers_of_d
-            then
-              let new_t : triple =
-                { s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } in
-              add_triple_unchecked acc new_t
-            else acc
+          // Look up (D rdfs:subClassOf ?) and check whether C is among
+          // the supers of D. If so, C and D are mutual subclasses.
+          // PROOF-FRIENDLY GUARD RULE (2026-08-05, task #36): step
+          // guards contain NO anonymous closures -- the super-of test
+          // is the NAMED partial application `term_is_iri c_iri` so a
+          // proof mirroring this branch shares the same first-order
+          // symbol (two syntactically identical `fun` closures are
+          // DISTINCT functions to the SMT encoding, and guard facts
+          // never transfer across them -- the root cause of the
+          // undischargeable no-output-branch obligations recorded in
+          // OWL.Semantics.Soundness's Rule 16 finding block). The
+          // guard is also flattened to one boolean (was two nested
+          // ifs + a let). Semantics unchanged on both counts.
+          if c_iri <> d_iri &&
+             List.Tot.existsb (term_is_iri c_iri)
+               (find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf)
+          then
+            let new_t : triple =
+              { s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } in
+            add_triple_unchecked acc new_t
+          else acc
         | _, _ -> acc
       else acc)
     g

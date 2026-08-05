@@ -1394,6 +1394,95 @@ let owl_rule_scm_cls_restriction_sound i a g ig =
 // ===================================================================
 
 // ===================================================================
+// Rule 17: owl_rule_scm_eqc2 -- PROVED, after the guard-depth
+// flattening (2026-08-05). Rule 16 above is the record of the depth-4
+// failure on this exact rule; OWL.Closure.fsti's step now combines
+// the self-loop test and the supers lookup into ONE boolean guard
+// (depth 3, see the GUARD-DEPTH RULE comment there), and the same
+// witness chain Rule 16 reported as "proves fine" now discharges the
+// whole obligation. This proof is the on-real-code CONFIRMATION of
+// the guard-depth diagnosis, and the template for unblocking the
+// rest of the failing band (task #36).
+// ===================================================================
+
+val owl_rule_scm_eqc2_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_mutual_subclass_equivalent i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_scm_eqc2 g ig))
+
+#push-options "--z3rlimit 100 --split_queries always"
+let owl_rule_scm_eqc2_sound i a g ig =
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subClassOf then
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          if c_iri <> d_iri &&
+             List.Tot.existsb (term_is_iri c_iri)
+               (find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf)
+          then
+            let new_t : triple =
+              { s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } in
+            add_triple_unchecked acc new_t
+          else acc
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (emit_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc t)
+  with _ . begin
+    if t.p = rdfs_subClassOf then
+      match t.s, t.o with
+      | S_IRI c_iri, T_IRI d_iri ->
+        let bucket = bucket_lookup ig.ig_sp (sp_key (S_IRI d_iri) rdfs_subClassOf) in
+        let supers = find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf in
+        if c_iri <> d_iri &&
+           List.Tot.existsb (term_is_iri c_iri) supers
+        then begin
+          // (C sco D) semantically, from t itself.
+          assert (triple_holds i a t);
+          // The existsb hit names a served object x == T_IRI c_iri...
+          FStar.List.Tot.Properties.memP_existsb (term_is_iri c_iri) supers;
+          eliminate exists (x : rdf_term).
+              term_is_iri c_iri x = true /\ List.Tot.memP x supers
+          returns triple_holds i a
+            ({ s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } <: triple)
+          with _ . begin
+            lemma_rdf_term_eq_iri x c_iri;
+            // ...whose bucket triple u2 the sp index serves:
+            // find_objects_indexed IS map (.o) over the sp bucket.
+            assert_norm (find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf ==
+                         List.Tot.map (fun (u : triple) -> u.o) bucket);
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) x bucket;
+            eliminate exists (u2 : triple).
+                List.Tot.memP u2 bucket /\ u2.o == x
+            returns triple_holds i a
+              ({ s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } <: triple)
+            with _ . begin
+              // ig_wf_sp pins u2 as a real snapshot triple
+              // (D sco C-term); the snapshot's truth makes it a
+              // semantic edge; the condition closes both directions.
+              assert (List.Tot.memP u2 ig.ig_triples /\
+                      u2.s == S_IRI d_iri /\ u2.p == rdfs_subClassOf);
+              assert (triple_holds i a u2);
+              assert (i.iext (i.i_iri rdfs_subClassOf)
+                             (i.i_iri d_iri) (i.i_iri c_iri));
+              assert (i.iext (i.i_iri rdfs_subClassOf)
+                             (i.i_iri c_iri) (i.i_iri d_iri))
+            end
+          end
+        end
+        else ()
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) emit_step g g;
+  assert_norm (owl_rule_scm_eqc2 g ig == List.Tot.fold_left emit_step g g)
+#pop-options
 
 // ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
