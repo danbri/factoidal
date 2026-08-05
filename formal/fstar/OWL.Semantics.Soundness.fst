@@ -668,6 +668,59 @@ let owl_rule_sameAs_reflexivity_sound i a g ig =
                List.Tot.fold_left emit_step g (collect_iri_or_bnode_terms g))
 
 // ===================================================================
+// Rule 8: owl_rule_differentFrom_symmetry (eq-diff-sym; OWL.Closure.fsti
+// ~line 546). OWL.RL.Spec.fst's engine ledger lists this rule
+// differentFrom_symmetry [ext] "Table 5.13's differentFrom condition is
+// symmetric in its arguments" -- the FIRST [ext] entry in the ledger to
+// get its promised proof: the rule implements no W3C RL table row, and
+// cond_differentfrom_symmetric plus this lemma IS that justification
+// made machine-checked. The engine rule is the emission-fold half of
+// Rule 1 (owl_rule_symmetric_property) with owl_sameAs's collection
+// pipeline dropped entirely: it reads g directly and flips
+// owl:differentFrom edges via term_to_subject / subject_to_term, so
+// this proof mirrors Rule 1's emission-fold half exactly, with
+// cond_differentfrom_symmetric standing in for cond_symmetric + the
+// sym_props side condition.
+// ===================================================================
+
+val owl_rule_differentFrom_symmetry_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_differentfrom_symmetric i /\ holds_all i a g)
+    (ensures  holds_all i a (owl_rule_differentFrom_symmetry g ig))
+
+let owl_rule_differentFrom_symmetry_sound i a g ig =
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_differentFrom then
+        match term_to_subject t.o with
+        | Some new_subj ->
+          let new_t : triple =
+            { s = new_subj; p = owl_differentFrom; o = subject_to_term t.s } in
+          add_triple_unchecked acc new_t
+        | None -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (emit_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc t)
+  with _ . begin
+    if t.p = owl_differentFrom then
+      match term_to_subject t.o with
+      | Some new_subj ->
+        lemma_denot_term_to_subject i a t.o new_subj;
+        lemma_denot_subject_to_term i a t.s;
+        assert (triple_holds i a t);
+        assert (i.iext (i.i_iri owl_differentFrom)
+                       (denot_subject i a t.s) (denot_term i a t.o))
+      | None -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) emit_step g g;
+  assert_norm (owl_rule_differentFrom_symmetry g ig ==
+               List.Tot.fold_left emit_step g g)
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge

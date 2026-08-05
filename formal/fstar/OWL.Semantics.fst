@@ -274,6 +274,25 @@ let cond_equivalent_property (i : interp) : prop =
 let cond_sameas_reflexive (i : interp) : prop =
   forall (x : i.idom). i.iext (i.i_iri owl_sameAs) x x
 
+// owl:differentFrom, symmetry -- OWL 2 RDF-Based Semantics Table 5.13
+// (differentFrom condition): <x,y> in IEXT(I(owl:differentFrom)) iff x
+// and y are distinct. Distinctness is symmetric in x and y, so the
+// relation the table defines is symmetric; this condition states just
+// that symmetry, the half owl_rule_differentFrom_symmetry needs. This
+// is the pilot's first [ext] condition: the OWL.RL.Spec.fst engine
+// ledger lists differentFrom_symmetry [ext] "Table 5.13's differentFrom
+// condition is symmetric in its arguments" -- the rule implements no
+// W3C RL table row, and this condition together with the lemma in
+// OWL.Semantics.Soundness.fst is that justification made
+// machine-checked. NOT added to owl_rl_pilot_conditions: same
+// reasoning as cond_equivalent_class / cond_equivalent_property --
+// growing that bundle perturbs the SMT context for its existing
+// consumers, so this rule's lemma takes the condition explicitly.
+let cond_differentfrom_symmetric (i : interp) : prop =
+  forall (x y : i.idom).
+    i.iext (i.i_iri owl_differentFrom) x y ==>
+    i.iext (i.i_iri owl_differentFrom) y x
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker
