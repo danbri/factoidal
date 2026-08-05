@@ -32,7 +32,20 @@ prose:
    inventory's last columns separate modules carrying an
    algorithm-correctness theorem from those carrying a refinement
    theorem against an independently-stated formalisation. The second
-   set is currently very small; growing it is the
+   set is growing under the rule-by-rule proof program: selected
+   OWL 2 RL/RDF and RDFS closure rules are **proved sound with
+   respect to an independent F\* formalisation of the corresponding
+   W3C semantic conditions, under stated fragment restrictions and
+   hypotheses** (23 of 34 dispatched OWL RL licensing rows and eleven
+   of thirteen RDFS rows carry both a licensing and a
+   truth-preservation theorem as of 2026-08-05; `make verify-rdf-mt`
+   gates the whole model-theoretic layer by name). This is NOT a
+   claim that Factoidal is a complete formally verified
+   implementation of RDF or RDFS semantics — completeness theorems,
+   where they exist, are per-rung and stated with their own
+   hypotheses. Registry + trust surface:
+   [semantics-proposal adoption](docs/designissues/2026-08-05-semantics-proposal-adoption.md),
+   which continues the
    [RDF-Based semantics programme](docs/designissues/2026-07-29-rdf-based-semantics-formalization.md).
 2. **Tested extracted implementation.** One carve-out: every
    `assume val` (I/O, host regex, crypto) is realised by audited
