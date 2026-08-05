@@ -2115,3 +2115,242 @@ val theorem_scm_rng2_licensed
 let theorem_scm_rng2_licensed g ig t =
   owl_rule_scm_rng2_licensed g ig
 // ===================================================================
+// 17. scm-dom2 / scm-rng2 (the rows this function ACTUALLY realizes):
+// every `owl_rule_subprop_domain_range` emission is licensed.
+//
+// Sections 15/16 found that the engine functions NAMED `owl_rule_
+// scm_dom2` / `owl_rule_scm_rng2` in fact realize scm-dom1/scm-rng1
+// (subClassOf-lifting), and flagged that the TRUE scm-dom2/scm-rng2
+// row (subPropertyOf-lifting) is realized elsewhere, under a THIRD
+// name: `owl_rule_subprop_domain_range` (OWL.Closure.fsti:3684-3715,
+// "Group B: rdfsext domain/range through subPropertyOf"). This
+// section licenses that function against the two rows it actually
+// computes.
+//
+// W3C Table 8, verbatim:
+//   scm-dom2 | T(?p2, rdfs:domain, ?c)  T(?p1, rdfs:subPropertyOf, ?p2)
+//             | T(?p1, rdfs:domain, ?c)
+//   scm-rng2 | T(?p2, rdfs:range, ?c)  T(?p1, rdfs:subPropertyOf, ?p2)
+//             | T(?p1, rdfs:range, ?c)
+// -- transcribed as `scm_dom2_derives` / `scm_rng2_derives`,
+// OWL.RL.Spec.fst lines 1376-1381 / 1398-1403.
+//
+// The engine text (verbatim, OWL.Closure.fsti:3684-3715) is a SINGLE
+// outer fold over g on `t.p = rdfs_subPropertyOf`, converting t.o to
+// a subject p2 via `term_to_subject`; for that p2 it runs TWO
+// SEQUENTIAL inner folds against the sp-index -- `find_objects_
+// indexed ig p2 rdfs_domain` first (building `acc_d` from `acc`),
+// then `find_objects_indexed ig p2 rdfs_range` (building the step's
+// result from `acc_d`) -- emitting a domain conclusion and a range
+// conclusion from the SAME subPropertyOf triple in one pass. This is
+// a new fold SHAPE for this module: sections 8/9/15/16's rules all
+// have outer-fold-plus-ONE-inner-fold; here one outer item drives TWO
+// inner folds back to back, so the invariant has to be threaded
+// through twice -- `fold_left_inv` applied to the domain fold to
+// reach `acc_d`, then applied again to the range fold starting from
+// `acc_d`. `fold_left_inv`'s step hypothesis is a `forall` over ANY
+// accumulator satisfying the invariant (not just the one reached from
+// `acc`), so the two applications compose without extra proof burden
+// -- the domain-fold's per-element argument and the range-fold's
+// per-element argument are each independent of which invariant-
+// satisfying accumulator they start from.
+//
+// Both inner folds read the SAME `ig_sp` bucket that sections 8/9/
+// 15/16 already use (`ig_wf_sp ig /\ ig.ig_triples == g` is again the
+// only hypothesis the lookups need): the domain fold's bucket key is
+// `sp_key p2 rdfs_domain`, the range fold's is `sp_key p2 rdfs_range`.
+// In each case the sub-property premise is `t` itself (the outer
+// fold's own item, named `sub` in the row) and the domain/range
+// declaration premise is the bucket-served triple (named `dom`/`rng`
+// in the row); `p2`'s round trip through `term_to_subject`/`subj_term`
+// (the half-inverse `lemma_term_to_subject_subj_term`, section 0) is
+// what ties the bucket's subject key back to `sub.o`, exactly as
+// sections 8/9's `y`/`y_subj` joins do.
+//
+// BNODE-POLLUTION GUARD (banner above the engine definition,
+// OWL.Closure.fsti:3678-3680): both inner folds restrict the emitted
+// object to `T_IRI` -- only NAMED domain/range classes propagate.
+// Same narrowing note as sections 15/16: this only NARROWS what is
+// emitted relative to the row (the row does not exclude a bnode-typed
+// domain/range declaration), so it costs the case-split below nothing
+// extra to discharge, never an unsound over-approximation.
+//
+// PROOF-FRIENDLY GUARD RULE check (task brief flagged this as a
+// possible OWL.Closure.fsti touch): the two inner-fold lambdas here
+// are anonymous, exactly like sections 15/16's single inner-fold
+// lambdas (which also close over `t.s` from the enclosing scope and
+// verify with no named-emitter hoist). The hoist sections 8's banner
+// describes was needed only where an inner closure is built as a
+// NAMED PARTIAL APPLICATION the engine itself already factors out
+// (`sameas_trans_emit x`) and the proof mirrors that factoring; this
+// rule's engine text factors nothing out, so the anonymous-local-copy
+// recipe applies unchanged and no OWL.Closure.fsti edit was needed --
+// recorded here so a future session does not re-check this for
+// nothing.
+// ===================================================================
+
+// The licensing invariant for this rule, against BOTH rows it
+// realizes: a two-disjunct row set, unlike every earlier section's
+// single row, because one engine pass emits under two different
+// table rows.
+let subprop_domain_range_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==>
+    (memP t g \/ scm_dom2_derives g t \/ scm_rng2_derives g t)
+
+val owl_rule_subprop_domain_range_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig.ig_triples == g)
+          (ensures  subprop_domain_range_licensed g
+                      (owl_rule_subprop_domain_range g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_subprop_domain_range_licensed g ig =
+  lemma_vocab_dom_agree ();
+  lemma_vocab_rng_agree ();
+  lemma_vocab_eqp_agree ();
+  let inv = subprop_domain_range_licensed g in
+  // Engine text verbatim (OWL.Closure.fsti:3684-3715).
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subPropertyOf then
+        match term_to_subject t.o with
+        | None -> acc
+        | Some p2 ->
+          let doms = find_objects_indexed ig p2 rdfs_domain in
+          let rngs = find_objects_indexed ig p2 rdfs_range in
+          let acc_d =
+            List.Tot.fold_left
+              (fun (acc1 : rdf_graph) (c : rdf_term) ->
+                 match c with
+                 | T_IRI _ ->
+                   add_triple_unchecked acc1
+                     ({ s = t.s; p = rdfs_domain; o = c })
+                 | _ -> acc1)
+              acc
+              doms
+          in
+          List.Tot.fold_left
+            (fun (acc1 : rdf_graph) (c : rdf_term) ->
+               match c with
+               | T_IRI _ ->
+                 add_triple_unchecked acc1
+                   ({ s = t.s; p = rdfs_range; o = c })
+               | _ -> acc1)
+            acc_d
+            rngs
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ inv acc) ==> inv (outer_step acc t)
+  with introduce (memP t g /\ inv acc) ==> inv (outer_step acc t)
+  with _ . begin
+    if t.p = rdfs_subPropertyOf then
+      match term_to_subject t.o with
+      | Some p2 ->
+        let doms = find_objects_indexed ig p2 rdfs_domain in
+        let rngs = find_objects_indexed ig p2 rdfs_range in
+        let dom_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc1 : rdf_graph) (c : rdf_term) ->
+            match c with
+            | T_IRI _ ->
+              add_triple_unchecked acc1
+                ({ s = t.s; p = rdfs_domain; o = c })
+            | _ -> acc1 in
+        let rng_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc1 : rdf_graph) (c : rdf_term) ->
+            match c with
+            | T_IRI _ ->
+              add_triple_unchecked acc1
+                ({ s = t.s; p = rdfs_range; o = c })
+            | _ -> acc1 in
+        // Domain-inner fold: every c served from the sp-index bucket
+        // at (p2, rdfs_domain) is a real domain declaration of p2 in
+        // g (ig_wf_sp + ig.ig_triples == g); t itself is the
+        // subPropertyOf premise (sub), and p2's round trip through
+        // term_to_subject/subj_term ties t.o to the bucket's subject
+        // key -- scm-dom2's exact premise pair.
+        introduce forall (acc1 : rdf_graph) (c : rdf_term).
+            (memP c doms /\ inv acc1) ==> inv (dom_step acc1 c)
+        with introduce (memP c doms /\ inv acc1) ==> inv (dom_step acc1 c)
+        with _ . begin
+          match c with
+          | T_IRI _ ->
+            let new_t : triple = { s = t.s; p = rdfs_domain; o = c } in
+            assert_norm (doms ==
+                         List.Tot.map (fun (u : triple) -> u.o)
+                           (bucket_lookup ig.ig_sp (sp_key p2 rdfs_domain)));
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) c
+              (bucket_lookup ig.ig_sp (sp_key p2 rdfs_domain));
+            eliminate exists (dom : triple).
+                memP dom (bucket_lookup ig.ig_sp (sp_key p2 rdfs_domain)) /\
+                dom.o == c
+            returns scm_dom2_derives g new_t
+            with _ . begin
+              // ig_wf_sp places dom in the snapshot with dom.s == p2,
+              // dom.p == rdfs_domain; ig.ig_triples == g places it in
+              // g itself. t.o's term_to_subject is p2 (this branch's
+              // match), so the half-inverse pins subj_term p2 == t.o,
+              // i.e. subj_term dom.s == t.o -- scm-dom2's join
+              // condition (`sub.o == subj_term dom.s`, sub := t).
+              assert (memP dom ig.ig_triples /\
+                      dom.s == p2 /\ dom.p == rdfs_domain);
+              lemma_term_to_subject_subj_term t.o p2;
+              assert (t.o == subj_term dom.s);
+              assert (new_t == ({ s = t.s; p = o_rdfs_domain;
+                                  o = dom.o } <: triple))
+            end
+          | _ -> ()
+        end;
+        fold_left_inv inv dom_step doms acc;
+        let acc_d = List.Tot.fold_left dom_step acc doms in
+        // Range-inner fold, applied starting from acc_d: the SAME
+        // argument, scm-rng2 / rdfs_range in place of scm-dom2 /
+        // rdfs_domain. fold_left_inv's per-element hypothesis is
+        // generic over any invariant-satisfying accumulator, so this
+        // second application composes with the first regardless of
+        // acc_d's specific identity.
+        introduce forall (acc1 : rdf_graph) (c : rdf_term).
+            (memP c rngs /\ inv acc1) ==> inv (rng_step acc1 c)
+        with introduce (memP c rngs /\ inv acc1) ==> inv (rng_step acc1 c)
+        with _ . begin
+          match c with
+          | T_IRI _ ->
+            let new_t : triple = { s = t.s; p = rdfs_range; o = c } in
+            assert_norm (rngs ==
+                         List.Tot.map (fun (u : triple) -> u.o)
+                           (bucket_lookup ig.ig_sp (sp_key p2 rdfs_range)));
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) c
+              (bucket_lookup ig.ig_sp (sp_key p2 rdfs_range));
+            eliminate exists (rng : triple).
+                memP rng (bucket_lookup ig.ig_sp (sp_key p2 rdfs_range)) /\
+                rng.o == c
+            returns scm_rng2_derives g new_t
+            with _ . begin
+              assert (memP rng ig.ig_triples /\
+                      rng.s == p2 /\ rng.p == rdfs_range);
+              lemma_term_to_subject_subj_term t.o p2;
+              assert (t.o == subj_term rng.s);
+              assert (new_t == ({ s = t.s; p = o_rdfs_range;
+                                  o = rng.o } <: triple))
+            end
+          | _ -> ()
+        end;
+        fold_left_inv inv rng_step rngs acc_d
+      | None -> ()
+    else ()
+  end;
+  fold_left_inv inv outer_step g g;
+  assert_norm (owl_rule_subprop_domain_range g ig ==
+               List.Tot.fold_left outer_step g g)
+#pop-options
+
+// Per-triple corollary.
+val theorem_subprop_domain_range_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_subprop_domain_range g ig))
+    (ensures  memP t g \/ scm_dom2_derives g t \/ scm_rng2_derives g t)
+
+let theorem_subprop_domain_range_licensed g ig t =
+  owl_rule_subprop_domain_range_licensed g ig
