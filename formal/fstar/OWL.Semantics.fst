@@ -558,3 +558,23 @@ let ig_wf_obj (ig : indexed_graph) : prop =
   forall (s : subject) (t : triple).
     List.Tot.memP t (bucket_lookup ig.ig_obj (subject_to_key s)) ==>
     List.Tot.memP t ig.ig_triples /\ t.o == subject_to_term s
+
+// Every triple the predicate-object bucket serves up under the
+// composite key `po_key p s` (RDF.Indexed.fsti's total companion to
+// `po_key_opt`) is a real triple of the snapshot with exactly that
+// predicate, and whose object is exactly the term `s` denotes.
+// Subject-shaped for the same reason `ig_wf_obj` is: po_key_opt is
+// only ever `Some` on a non-literal object, and prp-ifp's
+// `find_subjects_indexed` (RDF.Indexed.fsti) only reaches ig_po in
+// that case; the literal-object fallback reads ig_pred instead. Unlike
+// ig_wf_subj/ig_wf_obj, po_key is a COMPOSITE key (predicate ^
+// separator ^ object-key, mirroring sp_key's own subject-key ^
+// separator ^ predicate shape), so it needs a separator-freeness side
+// condition to discharge for a concrete `build_indexed` snapshot --
+// RDF.Indexed.KeyInjectivity.lemma_build_indexed_wf_po. This is the
+// discharge OWL.RL.Refinement's owl_rule_inverse_functional_licensed
+// consumes.
+let ig_wf_po (ig : indexed_graph) : prop =
+  forall (p : wf_iri) (s : subject) (t : triple).
+    List.Tot.memP t (bucket_lookup ig.ig_po (po_key p s)) ==>
+    List.Tot.memP t ig.ig_triples /\ t.p == p /\ t.o == subject_to_term s

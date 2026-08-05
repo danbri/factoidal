@@ -509,10 +509,28 @@ let unit_sep : string = "\x1f"
 let sp_key (s : subject) (p : wf_iri) : string =
   subject_to_key s ^ (unit_sep ^ p)
 
+(* Built with `^`, NOT `String.concat "" [...]` -- same reasoning as
+   subject_to_key / term_to_key_opt above: `^` carries the reasoning
+   equations (`list_of_concat`/`concat_injective`) the po_key
+   injectivity proof needs (RDF.Indexed.KeyInjectivity.
+   po_key_injective_one_sided). Same string value as the prior
+   `String.concat "" [p; unit_sep; k]` form. *)
 let po_key_opt (p : wf_iri) (o : rdf_term) : option string =
   match term_to_key_opt o with
-  | Some k -> Some (String.concat "" [p; unit_sep; k])
+  | Some k -> Some (p ^ (unit_sep ^ k))
   | None   -> None
+
+(* Total companion to po_key_opt, defined directly on a subject rather
+   than an rdf_term: po_key_opt is always `Some` on `subject_to_term s`
+   (RDF.Indexed.KeyInjectivity.lemma_po_key_eq_po_key_opt), which is
+   the only shape prp-ifp's `find_subjects_indexed` ever queries ig_po
+   with (that lookup only fires when the queried object is non-
+   literal). Placed here alongside po_key_opt/sp_key rather than in
+   KeyInjectivity so OWL.Semantics.fst's `ig_wf_po` (composite-key,
+   subject-shaped, mirroring `ig_wf_obj`) can reference it without a
+   dependency on the KeyInjectivity proof module. *)
+let po_key (p : wf_iri) (s : subject) : string =
+  p ^ (unit_sep ^ subject_to_key s)
 
 let so_key_opt (s : subject) (o : rdf_term) : option string =
   match term_to_key_opt o with

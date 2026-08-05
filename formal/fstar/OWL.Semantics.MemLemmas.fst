@@ -321,3 +321,26 @@ let lemma_build_indexed_wf_sp_weak (g : rdf_graph)
   with introduce List.Tot.memP t (bucket_lookup ig.ig_sp k) ==>
                  (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_sp t)
   with _ . lemma_tree_ok_lookup bucket_key_sp g ig.ig_sp k t
+
+// The predicate-object bucket: served triples are graph members whose
+// own composite key equals the queried key. Weak form only, same
+// shape as ig_sp's above; the STRONG form (predicate and object
+// recovered) lives in
+// RDF.Indexed.KeyInjectivity.lemma_build_indexed_wf_po, needing the
+// same one-sided separator-freeness side condition sp_key's discharge
+// does (po_key is a composite key too).
+let lemma_build_indexed_wf_po_weak (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed g in
+              forall (k : string) (t : triple).
+                List.Tot.memP t (bucket_lookup ig.ig_po k) ==>
+                (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_po t))) =
+  let ig = build_indexed g in
+  lemma_build_bucket_ok bucket_key_po g;
+  assert (ig.ig_po == build_bucket bucket_key_po g);
+  introduce forall (k : string) (t : triple).
+      List.Tot.memP t (bucket_lookup ig.ig_po k) ==>
+      (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_po t)
+  with introduce List.Tot.memP t (bucket_lookup ig.ig_po k) ==>
+                 (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_po t)
+  with _ . lemma_tree_ok_lookup bucket_key_po g ig.ig_po k t

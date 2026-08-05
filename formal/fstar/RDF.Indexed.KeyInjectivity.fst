@@ -365,3 +365,132 @@ let lemma_build_indexed_wf_obj g =
     lemma_subject_to_key_eq_term_to_key_opt s;
     lemma_term_to_key_opt_injective t.o (subject_to_term s) (subject_to_key s)
   end
+
+// ===================================================================
+// 8. The predicate-object bucket: po_key_opt is a COMPOSITE key
+// (predicate ^ separator ^ object-key) like sp_key (section 3), not a
+// single-component key like subject_to_key / term_to_key_opt (sections
+// 6/7) -- so it needs the SAME one-sided separator-free side condition
+// sp_key's discharge does, roles mirrored (prefix = predicate, suffix
+// = object-key, where sp_key's prefix/suffix were subject-key/
+// predicate). This is the discharge OWL.RL.Refinement's
+// owl_rule_inverse_functional_licensed consumes, via the subject-
+// shaped `ig_wf_po` (OWL.Semantics) it actually queries with -- the
+// same subject-shaped trick section 7 used for `ig_wf_obj` (po_key_opt
+// is only ever `Some` on a non-literal object, and prp-ifp's
+// `find_subjects_indexed` only reaches ig_po in that case).
+// ===================================================================
+
+// Bridge: po_key_opt agrees with po_key (RDF.Indexed.fsti) on the
+// subject-shaped object -- both reduce to the same "p ^ sep ^ I_/B_"
+// shape, purely definitional (mirroring
+// lemma_subject_to_key_eq_term_to_key_opt's own one-line proof).
+let lemma_po_key_eq_po_key_opt (p : wf_iri) (s : subject)
+  : Lemma (ensures po_key_opt p (subject_to_term s) == Some (po_key p s)) =
+  lemma_subject_to_key_eq_term_to_key_opt s
+
+// Half-inverse: recovering a subject from a term pins the term. Same
+// statement as OWL.RL.Refinement's own restatement of this fact
+// (`lemma_term_to_subject_subj_term`); restated here so this module
+// does not depend on the Refinement layer.
+let lemma_term_to_subject_roundtrip (t : rdf_term) (s : subject)
+  : Lemma (requires term_to_subject t == Some s)
+          (ensures subject_to_term s == t) =
+  match t with
+  | T_IRI _ -> ()
+  | T_BNode _ -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm _ _ _ -> ()
+
+// po_key_opt p o is `Some` on exactly the terms term_to_subject
+// recognises (T_IRI / T_BNode); both give None on T_Literal /
+// T_TripleTerm. Direct (no term_to_key_opt hop) so a proof that
+// matches on term_to_subject knows immediately which way po_key_opt
+// (and OWL.RL.Refinement's `find_subjects_indexed` callers) went --
+// used both to rule out the "object doesn't convert" case below and
+// by OWL.RL.Refinement's prp-ifp licensing proof (section 16).
+let lemma_po_key_opt_some_iff_term_to_subject_some (p : wf_iri) (o : rdf_term)
+  : Lemma (ensures Some? (po_key_opt p o) == Some? (term_to_subject o)) =
+  match o with
+  | T_IRI _ -> ()
+  | T_BNode _ -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm _ _ _ -> ()
+
+// po_key's character-list decomposition: predicate, one separator,
+// subject key -- the mirror image of sp_key_decomposes (section 3),
+// prefix and suffix roles swapped.
+let lemma_po_key_decomposes (p : wf_iri) (s : subject)
+  : Lemma (list_of_string (po_key p s) ==
+           list_of_string p @ (sep_char :: list_of_string (subject_to_key s))) =
+  list_of_concat p (unit_sep ^ subject_to_key s);
+  list_of_concat unit_sep (subject_to_key s);
+  assert_norm (list_of_string unit_sep == [sep_char])
+
+val po_key_injective_one_sided
+    (p1 : wf_iri) (s1 : subject) (p2 : wf_iri) (s2 : subject)
+  : Lemma
+    (requires str_sep_free p1 /\ subj_label_sep_free s1 /\
+              po_key p1 s1 == po_key p2 s2)
+    (ensures p1 == p2 /\ s1 == s2)
+
+let po_key_injective_one_sided p1 s1 p2 s2 =
+  lemma_po_key_decomposes p1 s1;
+  lemma_po_key_decomposes p2 s2;
+  lemma_subject_key_sep_free s1;
+  let a1 = list_of_string p1 in
+  let b1 = list_of_string (subject_to_key s1) in
+  let a2 = list_of_string p2 in
+  let b2 = list_of_string (subject_to_key s2) in
+  lemma_count_sep_append a1 (sep_char :: b1);
+  lemma_count_sep_append a2 (sep_char :: b2);
+  assert (count_sep a2 == 0 /\ count_sep b2 == 0);
+  lemma_sep_split_unique a1 b1 a2 b2;
+  string_of_list_of_string p1;
+  string_of_list_of_string p2;
+  string_of_list_of_string (subject_to_key s1);
+  string_of_list_of_string (subject_to_key s2);
+  lemma_subject_to_key_injective s1 s2
+
+// The side condition: every triple's predicate is separator-free, and
+// when its object converts to a subject (the only case ig_po files it
+// under), that subject's label is separator-free too. Mirrors
+// graph_sp_sep_free (section 4); a triple whose object does NOT
+// convert (literal/triple-term) imposes no condition since ig_po never
+// files it.
+let graph_po_sep_free (g : list triple) : prop =
+  forall (t : triple). memP t g ==>
+    str_sep_free t.p /\
+    (match term_to_subject t.o with
+     | Some s -> subj_label_sep_free s
+     | None -> True)
+
+val lemma_build_indexed_wf_po (g : rdf_graph)
+  : Lemma (requires graph_po_sep_free g)
+          (ensures ig_wf_po (build_indexed g))
+
+let lemma_build_indexed_wf_po g =
+  lemma_build_indexed_wf_po_weak g;
+  let ig = build_indexed g in
+  assert (ig.ig_triples == g);
+  introduce forall (p : wf_iri) (s : subject) (t : triple).
+      memP t (bucket_lookup ig.ig_po (po_key p s)) ==>
+      (memP t ig.ig_triples /\ t.p == p /\ t.o == subject_to_term s)
+  with introduce memP t (bucket_lookup ig.ig_po (po_key p s)) ==>
+                 (memP t ig.ig_triples /\ t.p == p /\ t.o == subject_to_term s)
+  with _ . begin
+    // The weak form places t in the graph with its own key equal to
+    // the queried key. t's own key is `bucket_key_po t == po_key_opt
+    // t.p t.o`, which is `Some` here, so t.o converts to a subject
+    // t_s; the queried side (p, s) is clean by the side condition, so
+    // injectivity recovers the components.
+    assert (Some (po_key p s) == bucket_key_po t);
+    assert (Some (po_key p s) == po_key_opt t.p t.o);
+    lemma_po_key_opt_some_iff_term_to_subject_some t.p t.o;
+    match term_to_subject t.o with
+    | Some t_s ->
+      lemma_term_to_subject_roundtrip t.o t_s;
+      lemma_po_key_eq_po_key_opt t.p t_s;
+      po_key_injective_one_sided t.p t_s p s
+    | None -> ()
+  end
