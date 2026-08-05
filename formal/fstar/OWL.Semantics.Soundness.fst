@@ -805,6 +805,126 @@ let owl_rule_disjoint_with_propagation_sound i a g ig =
                List.Tot.fold_left emit_step g g)
 
 // ===================================================================
+// Rule 10: owl_rule_symmetric_metapredicates (OWL.Closure.fsti
+// ~line 3749, "Group E(a): symmetric OWL metapredicates"). OWL.RL.
+// Spec.fst's engine ledger justifies this rule by argument-symmetry
+// of six OWL vocabulary predicates' RDF-Based semantic conditions --
+// the THIRD [ext] entry in the ledger to get its promised proof
+// (Rule 8's differentFrom_symmetry and Rule 9's
+// disjoint_with_propagation came first, both landed earlier the same
+// day): the rule implements no W3C RL table row, and the six
+// per-predicate symmetry conditions below plus this lemma IS that
+// justification made machine-checked. The engine rule fires a SINGLE
+// fold testing is_owl_symmetric_metapredicate t.p (List.Tot.mem
+// against the fixed 6-entry owl_symmetric_metapredicates table:
+// owl:complementOf, owl:disjointWith, owl:propertyDisjointWith,
+// owl:inverseOf, owl:equivalentClass, owl:equivalentProperty),
+// restricted to the S_IRI/T_IRI shape (no bnode case split, per the
+// BNODE-POLLUTION GUARD comment shared with every sibling rule in the
+// file) with a self-loop guard (a = b emits nothing, since a
+// predicate cannot be its own witness of an irreflexive-looking flip
+// -- the guard just avoids a no-op self-insert). cond_disjointwith_
+// symmetric already exists (Rule 9 above uses it for its symmetry
+// branch) and is REUSED here rather than duplicated; the other five
+// predicates each get a new direct predicate-level flip condition,
+// since cond_equivalent_class / cond_equivalent_property (existing)
+// state the WEAKER rdfs:subClassOf/subPropertyOf-both-directions
+// consequence cls-eqc1/2 / prp-eqp1/2 need, not the direct flip this
+// rule emits, and cond_complementof_disjoint (existing) states the
+// disjointWith consequence Rule 9 needs, not the complementOf flip
+// itself.
+//
+// Proof shape: the emit_step lambda below is copied VERBATIM from the
+// engine rule (assert_norm's final equation needs the syntactic
+// match). Inside the introduce-forall step-preservation block, the
+// six-way membership test unfolds by explicit case analysis on t.p
+// against each of the six table entries in the SAME order as
+// owl_symmetric_metapredicates; the trailing catch-all case is
+// unreachable (is_owl_symmetric_metapredicate t.p holds in that
+// branch, per the outer if, yet t.p matches none of the six literal
+// entries that predicate tests membership against) and is closed by
+// unfolding the list literal for Z3 to contradict.
+// ===================================================================
+
+val owl_rule_symmetric_metapredicates_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_complementof_symmetric i /\ cond_disjointwith_symmetric i /\
+              cond_propertydisjointwith_symmetric i /\ cond_inverseof_symmetric i /\
+              cond_equivalentclass_symmetric i /\ cond_equivalentproperty_symmetric i /\
+              holds_all i a g)
+    (ensures  holds_all i a (owl_rule_symmetric_metapredicates g ig))
+
+#push-options "--fuel 8 --ifuel 8 --z3rlimit 60"
+let owl_rule_symmetric_metapredicates_sound i a g ig =
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if is_owl_symmetric_metapredicate t.p then
+        match t.s, t.o with
+        | S_IRI a, T_IRI b ->
+          if a = b then acc
+          else
+            add_triple_unchecked acc
+              ({ s = S_IRI b; p = t.p; o = T_IRI a } <: triple)
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (emit_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc t)
+  with _ . begin
+    if is_owl_symmetric_metapredicate t.p then
+      match t.s, t.o with
+      | S_IRI c_iri, T_IRI d_iri ->
+        if c_iri = d_iri then ()
+        else begin
+          assert (triple_holds i a t);
+          assert (i.iext (i.i_iri t.p) (i.i_iri c_iri) (i.i_iri d_iri));
+          if t.p = owl_complementOf_iri then
+            // cond_complementof_symmetric.
+            assert (i.iext (i.i_iri owl_complementOf_iri)
+                           (i.i_iri d_iri) (i.i_iri c_iri))
+          else if t.p = owl_disjointWith_iri then
+            // cond_disjointwith_symmetric (Rule 9's condition, reused).
+            assert (i.iext (i.i_iri owl_disjointWith_iri)
+                           (i.i_iri d_iri) (i.i_iri c_iri))
+          else if t.p = owl_propertyDisjointWith then
+            // cond_propertydisjointwith_symmetric.
+            assert (i.iext (i.i_iri owl_propertyDisjointWith)
+                           (i.i_iri d_iri) (i.i_iri c_iri))
+          else if t.p = owl_inverseOf then
+            // cond_inverseof_symmetric.
+            assert (i.iext (i.i_iri owl_inverseOf)
+                           (i.i_iri d_iri) (i.i_iri c_iri))
+          else if t.p = owl_equivalentClass then
+            // cond_equivalentclass_symmetric.
+            assert (i.iext (i.i_iri owl_equivalentClass)
+                           (i.i_iri d_iri) (i.i_iri c_iri))
+          else if t.p = owl_equivalentProperty then
+            // cond_equivalentproperty_symmetric.
+            assert (i.iext (i.i_iri owl_equivalentProperty)
+                           (i.i_iri d_iri) (i.i_iri c_iri))
+          else
+            // Unreachable: is_owl_symmetric_metapredicate t.p holds
+            // (outer if) yet t.p matches none of the six literal
+            // entries owl_symmetric_metapredicates tests membership
+            // against -- contradiction. Unfold the concrete 6-entry
+            // list so Z3 can derive False from the six accumulated
+            // mismatches above plus the membership hypothesis.
+            assert_norm (owl_symmetric_metapredicates ==
+              [owl_complementOf_iri; owl_disjointWith_iri;
+               owl_propertyDisjointWith; owl_inverseOf;
+               owl_equivalentClass; owl_equivalentProperty])
+        end
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) emit_step g g;
+  assert_norm (owl_rule_symmetric_metapredicates g ig ==
+               List.Tot.fold_left emit_step g g)
+#pop-options
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge

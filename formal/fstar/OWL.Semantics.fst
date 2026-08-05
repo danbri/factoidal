@@ -331,6 +331,92 @@ let cond_complementof_disjoint (i : interp) : prop =
     (i.iext (i.i_iri owl_disjointWith_iri) x y /\
      i.iext (i.i_iri owl_disjointWith_iri) y x)
 
+// owl:complementOf, symmetry -- OWL 2 RDF-Based Semantics Table 5.15
+// (complementOf condition): <x,y> in IEXT(I(owl:complementOf)) iff
+// CEXT(x) = IOT \ CEXT(y) (both class extensions are subsets of IOT,
+// the domain of interpretation for classes). Relative complement
+// within IOT is an involution, so CEXT(x) = IOT \ CEXT(y) iff
+// CEXT(y) = IOT \ CEXT(x) -- the condition is symmetric in its two
+// arguments (WebOnt-complementOf-001 states exactly this:
+// "complementOf is a SymmetricProperty"). Distinct from
+// cond_complementof_disjoint above, which derives the WEAKER
+// owl:disjointWith consequence owl_rule_disjoint_with_propagation
+// needs; this condition states the direct predicate-level flip
+// owl_rule_symmetric_metapredicates needs -- one of the six [ext]
+// conditions the THIRD [ext] ledger entry (Group E(a), OWL.Closure.fsti
+// ~line 3684 "A binary OWL vocabulary predicate is SYMMETRIC exactly
+// when the semantic condition ... is invariant under swapping its two
+// arguments") needs machine-checked. NOT added to owl_rl_pilot_conditions:
+// same reasoning as the other [ext] conditions above -- growing that
+// bundle perturbs the SMT context for its existing consumers, so this
+// rule's lemma takes the condition explicitly.
+let cond_complementof_symmetric (i : interp) : prop =
+  forall (x y : i.idom).
+    i.iext (i.i_iri owl_complementOf_iri) x y ==>
+    i.iext (i.i_iri owl_complementOf_iri) y x
+
+// owl:propertyDisjointWith, symmetry -- OWL 2 RDF-Based Semantics,
+// the property-level counterpart of Table 5.14's disjointWith
+// condition: <x,y> in IEXT(I(owl:propertyDisjointWith)) iff EXT(x)
+// and EXT(y) are disjoint (empty intersection). Set intersection
+// commutes, so the condition is symmetric in its arguments -- same
+// argument as cond_disjointwith_symmetric above, one level down
+// (property extensions rather than class extensions). One of the six
+// [ext] conditions Group E(a) needs; see cond_complementof_symmetric's
+// comment for the shared ledger context. NOT added to
+// owl_rl_pilot_conditions: same reasoning as the other [ext]
+// conditions above.
+let cond_propertydisjointwith_symmetric (i : interp) : prop =
+  forall (x y : i.idom).
+    i.iext (i.i_iri owl_propertyDisjointWith) x y ==>
+    i.iext (i.i_iri owl_propertyDisjointWith) y x
+
+// owl:inverseOf, symmetry -- OWL 2 RDF-Based Semantics condition for
+// owl:inverseOf: <p,q> in IEXT(I(owl:inverseOf)) iff EXT(p) = converse
+// of EXT(q). Converse is an involution (the converse of the converse
+// of a relation R is R itself), so EXT(p) = converse EXT(q) iff
+// EXT(q) = converse EXT(p) -- the condition is symmetric in its two
+// arguments. One of the six [ext] conditions Group E(a) needs; see
+// cond_complementof_symmetric's comment for the shared ledger context.
+// NOT added to owl_rl_pilot_conditions: same reasoning as the other
+// [ext] conditions above.
+let cond_inverseof_symmetric (i : interp) : prop =
+  forall (p q : i.idom).
+    i.iext (i.i_iri owl_inverseOf) p q ==>
+    i.iext (i.i_iri owl_inverseOf) q p
+
+// owl:equivalentClass, symmetry -- OWL 2 RDF-Based Semantics Table 5.8
+// (equivalentClass condition): IEXT(I(owl:equivalentClass)) =
+// { <x,y> | CEXT(x) = CEXT(y) }; equality of class extensions is
+// symmetric, so the relation the table defines is symmetric. Distinct
+// from cond_equivalent_class above, which states the WEAKER
+// rdfs:subClassOf-both-directions consequence cls-eqc1/2 needs; this
+// condition states the direct predicate-level flip
+// owl_rule_symmetric_metapredicates needs. One of the six [ext]
+// conditions Group E(a) needs; see cond_complementof_symmetric's
+// comment for the shared ledger context. NOT added to
+// owl_rl_pilot_conditions: same reasoning as the other [ext]
+// conditions above.
+let cond_equivalentclass_symmetric (i : interp) : prop =
+  forall (x y : i.idom).
+    i.iext (i.i_iri owl_equivalentClass) x y ==>
+    i.iext (i.i_iri owl_equivalentClass) y x
+
+// owl:equivalentProperty, symmetry -- OWL 2 RDF-Based Semantics
+// Table 5.9 (equivalentProperty condition): IEXT(I(owl:equivalentProperty))
+// = { <p,q> | EXT(p) = EXT(q) }; equality of extensions is symmetric.
+// Distinct from cond_equivalent_property above, which states the
+// WEAKER rdfs:subPropertyOf-both-directions consequence prp-eqp1/2
+// needs; this condition states the direct predicate-level flip. One
+// of the six [ext] conditions Group E(a) needs; see
+// cond_complementof_symmetric's comment for the shared ledger
+// context. NOT added to owl_rl_pilot_conditions: same reasoning as
+// the other [ext] conditions above.
+let cond_equivalentproperty_symmetric (i : interp) : prop =
+  forall (p q : i.idom).
+    i.iext (i.i_iri owl_equivalentProperty) p q ==>
+    i.iext (i.i_iri owl_equivalentProperty) q p
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker
