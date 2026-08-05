@@ -271,34 +271,31 @@ in one day; each rule below cost at least one failed verify cycle.
    `list_of_string`, `^`, char literals like `'\x1f'`, and recursive
    functions over the resulting `list char`.
 
-3. **Two nested-fold licensing proofs fail undischargeably at the
-   outer step obligation — CAUSE STILL UNKNOWN; do not trust the
-   obvious hypotheses, both are refuted.** The failure: goal
-   `inv (outer_step acc x)` yields "Expected squash (inv ...), got
-   unit" even at `--z3rlimit 1500 --fuel 4 --ifuel 4`, inner
-   `fold_left_inv` fine. Real sites: `owl_rule_inverse_of` and
-   `owl_rule_sameAs_transitivity` (both parked, task #36, WIP in the
-   session scratchpad); meanwhile `rdfs_rule_domain_sound` and five
-   single-fold licensing proofs of the same skeleton discharge.
-   REFUTED hypotheses, each with its evidence (2026-08-04):
-   (a) "inner fold over g vs bucket list" — eq-trans's inner fold
-   reads a bucket result and fails anyway; (b) "tuple binder in the
-   outer lambda" — a 10-variant minimal-reproducer ladder
-   (formal/fstar/repro/TupRepro1-10 in the investigation worktree;
-   let-destructure, pair-match, tuple-in-parameter, sum-type partial
-   match, dependent pair, self-shadowing, no-capture, delegate,
-   SMT-hint variants) ALL PASS at the same options. The trigger is
-   some concrete property of the real sites the minimal `inv`/toy
-   types do not carry — candidates: refinement-typed components
-   (wf_iri coercions), the invariant's shape, statements between the
-   destructure and the inner discharge, file-level solver state.
-   NEXT STEP recorded in task #36: bisect the REAL failing file
-   (shrink until the error vanishes; last removed element is the
-   trigger) on a small substrate module that imports the checked
-   deps — not another bottom-up rebuild. Lesson for briefs: a
-   plausible mechanism with two data points is a HYPOTHESIS to
-   refute cheaply, not a documented cause — this entry itself
-   carried the wrong claim for an hour before the ladder killed it.
+3. **SOLVED (2026-08-05, commit fb8d98f): anonymous closures in a
+   rule-step lambda's guards or inner folds make the step obligation
+   undischargeable — NAME them as top-level engine functions.** The
+   failure signature: `inv (step acc x)` yields "Expected squash
+   (inv ...), got unit" at any solver budget, with the branch's
+   semantic content proving fine. Mechanism: each spelling of a
+   `fun`-closure is a DISTINCT function token in the SMT encoding,
+   so a proof that mirrors the rule's branch structure can never
+   transfer guard facts (or fold-function identity) between its copy
+   and the lambda's copy — first-order congruence only works through
+   a shared NAME. Confirmed by pilot: naming scm-eqc2's guard
+   predicate (`term_is_iri`, OWL.Closure.fsti) made the previously
+   impossible `owl_rule_scm_eqc2_sound` discharge with the identical
+   witness chain. Retro-explains all passes: `emit_once_term` (named)
+   in domain/range; `mem`/`=` guards elsewhere. The investigation's
+   false trails, kept as method lessons: toys pass in EVERY encoding
+   (closure identity only bites when proof-side mirroring is needed);
+   "nested folds", "tuple binders" (TupRepro1-10 ladder), "guard
+   depth 4" (flattening alone did not fix it) were all plausible
+   correlates refuted by controlled experiments. PROOF-FRIENDLY
+   GUARD RULE for new engine rules: no anonymous closures in step
+   guards or inner folds — define a named top-level (partially
+   applied) helper; proofs mirror the named application. Remaining
+   band to convert: prp-inv, eq-trans, eq-rep-s/o/p, scm-eqp2
+   (task #36).
 
 4. **Spec-side predicate families can be WIDER than the engine's
    finite slice, making "licensed implies P" false even when every
