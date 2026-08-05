@@ -104,6 +104,45 @@ now have answers from landed experience.
    part, a syntactic recognizer for `rdf:_n`. Completeness of a
    finite table against the infinite family is not claimed anywhere.
 
+## Adopted goals (owner approval 2026-08-05: "go for it")
+
+Two explicit goals now govern this work, refining the proposal's aims:
+
+**G1 — A reviewable core that provably governs the implementation.**
+A W3C-domain expert must be able to review Factoidal's semantics
+without reading F\* proofs, and KNOW the reviewed definitions are not
+overridden by implementation detail. Deliverables:
+
+1. **Theorem registry** (first deliverable): one table — W3C rule id
+   → spec predicate → engine function → hypotheses / fragment
+   restrictions → proof status (licensing / truth / extension) →
+   linked tests. Seeded from the `OWL.RL.Spec.fst` foot ledger and
+   the landed lemma inventory.
+2. **Review kernel**: the spec-layer definitions (`*_derives` rows,
+   `cond_*` conditions, interpretation records) curated as a small,
+   separated, table-notation-close surface; the proofs' job is the
+   "not overridden" guarantee, checked by `make verify-rdf-mt` — no
+   proof reading required.
+3. **Trust-surface manifest**: the complete enumeration of what is
+   trusted rather than proved — `assume val` realisations (rule #11),
+   interface axioms (#347's StringOrder module is the model: one
+   module, one banner, DO-NOT-WIDEN), the extraction step, and the
+   test gates that bound it.
+4. **Calibrated claims language** (A4): the guarantee holds up to the
+   stated hypotheses and the trust surface; the binding to the
+   running binary goes through extraction, mitigated by suites and
+   the hash-witness pattern. Stated plainly wherever the work is
+   presented.
+
+**G2 — A tighter, more usable core for developers, APIs, and AI
+users.** A different axis: G1 serves readers of definitions, G2
+serves callers of code. Maps to the module-stratification roadmap
+(`fstar-module-style`), the .fsti policy, a bounded public API
+surface per binding (native/JS/npm) with a quickstart each, and — for
+AI users — the `skills/` system as the machine-facing operating
+manual. Sequenced after G1's registry exists, since the registry
+also names the modules the stratification must keep public.
+
 ## What the proposal got right that we had to learn the hard way
 
 Written independently, the proposal converges on several rules this
