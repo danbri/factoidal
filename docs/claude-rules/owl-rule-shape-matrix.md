@@ -10,11 +10,12 @@ rule-by-rule proof program. Shapes drive dispatchability:
 - **NESTED-SINGLE** — outer fold binds a single triple/subject,
   inner fold inside. The `rdfs_rule_domain_sound` shape; expected
   provable (first test case: prp-trp licensing, in flight).
-- **NESTED-PAIR** — outer step binds/destructures a pair. BLOCKED:
-  two real proofs fail undischargeably at the outer step obligation;
-  cause unknown (tuple-binder hypothesis REFUTED by
-  `formal/fstar/repro/TupRepro1-10.fst`); bisection in progress.
-  Task #36.
+- **NESTED-PAIR** — outer step binds/destructures a pair. SOLVED
+  2026-08-05 (fb8d98f): the blocker was never the pair — anonymous
+  closures in step guards/inner folds are distinct SMT tokens, so
+  proof-side mirroring cannot transfer facts; naming the helper
+  top-level (PROOF-FRIENDLY GUARD RULE) fixes it. prp-inv, eq-trans,
+  prp-trp, scm-eqc2 all proved since. Task #36 has the full record.
 - **LIST-WALK** — `decode_iri_list`/`decode_chain_list` traversal.
   Needs the `decode_iri_list_sound` bridge (exists — used by
   cls-oo's truth-preservation); licensing analogues not yet
