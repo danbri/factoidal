@@ -897,3 +897,155 @@ val theorem_sameAs_transitivity_licensed
 
 let theorem_sameAs_transitivity_licensed g ig t =
   owl_rule_sameAs_transitivity_licensed g ig
+// ===================================================================
+// 9. prp-trp: every `owl_rule_transitive_property` emission is licensed.
+//
+// OWL 2 RL/RDF rules table row prp-trp:
+//   T(?p, rdf:type, owl:TransitiveProperty), T(?x, ?p, ?y), T(?y, ?p, ?z)
+//     => T(?x, ?p, ?z)
+// transcribed as OWL.RL.Spec.prp_trp_derives. The collect fold (trans
+// props) is prp-symp's collect-fold provenance verbatim with the
+// TransitiveProperty class IRI (section 4). The emission fold is a
+// TWO-LEVEL nested fold: the outer binder is a single triple `t`
+// (this rule's collect list is g itself, exactly as prp-symp's own
+// emission fold reads g -- no separately-collected outer list, unlike
+// rdfs_rule_domain_sound's `decls`); the inner fold walks
+// `find_objects_indexed ig y_subj t.p`, the sp-index's serving of the
+// (y_subj, t.p) bucket. Naming the inner premise u2 needs `ig_wf_sp
+// ig` (OWL.Semantics) to place a served triple in the snapshot with
+// the right subject/predicate, and `ig.ig_triples == g` to place that
+// snapshot triple in g itself, matching how the closure step actually
+// builds ig from the same g it folds over.
+// ===================================================================
+
+let lemma_vocab_trp_agree ()
+  : Lemma (RDFS.Closure.rdf_type == OWL.RL.Spec.o_rdf_type /\
+           OWL.Closure.owl_TransitiveProperty ==
+             OWL.RL.Spec.o_owl_TransitiveProperty) = ()
+
+// A property IRI declared transitive in g.
+let trp_from_decl (g : list triple) (p : wf_iri) : prop =
+  exists (decl : triple).
+    memP decl g /\ decl.p == rdf_type /\
+    decl.s == S_IRI p /\ decl.o == T_IRI owl_TransitiveProperty
+
+let trps_licensed (g : list triple) (ps : list wf_iri) : prop =
+  forall (p : wf_iri). memP p ps ==> trp_from_decl g p
+
+// The licensing invariant for this rule, against prp-trp's row. The
+// `snapshot` slot mirrors eq_sym_licensed's shape (this module's
+// established 3-arg pattern for a rule that reads an index bucket)
+// even though prp_trp_derives is stated against g directly, exactly
+// as the theorem below instantiates it (snapshot := g).
+let prp_trp_licensed (g : rdf_graph) (snapshot : list triple) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ prp_trp_derives g t)
+
+val owl_rule_transitive_property_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig.ig_triples == g)
+          (ensures prp_trp_licensed g g (owl_rule_transitive_property g ig))
+
+#push-options "--z3rlimit 100 --split_queries always"
+let owl_rule_transitive_property_licensed g ig =
+  lemma_vocab_trp_agree ();
+  let collect_step : list wf_iri -> triple -> list wf_iri =
+    fun (acc : list wf_iri) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_TransitiveProperty) then
+        match t.s with
+        | S_IRI p_iri -> cons_if_new_iri p_iri acc
+        | _ -> acc
+      else acc in
+  let trans_props = List.Tot.fold_left collect_step [] g in
+  // Collect-step preservation: the consed IRI has t itself as decl.
+  introduce forall (acc : list wf_iri) (t : triple).
+      (memP t g /\ trps_licensed g acc) ==>
+      trps_licensed g (collect_step acc t)
+  with introduce (memP t g /\ trps_licensed g acc) ==>
+                 trps_licensed g (collect_step acc t)
+  with _ . begin
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_TransitiveProperty) then
+      match t.s, t.o with
+      | S_IRI p_iri, T_IRI j ->
+        lemma_rdf_term_eq_iri j owl_TransitiveProperty;
+        FStar.Classical.forall_intro (lemma_cons_if_new_iri_memP p_iri acc)
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (trps_licensed g) collect_step g [];
+  // Emission fold: outer over g (single-triple binder t); when t.p is
+  // transitive and t.o converts to a subject y_subj, an inner fold
+  // over the sp-indexed objects zs emits (t.s, t.p, z) per z.
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if List.Tot.mem t.p trans_props then
+        match term_to_subject t.o with
+        | Some y_subj ->
+          let zs = find_objects_indexed ig y_subj t.p in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = t.p; o = z_term } in
+              add_triple_unchecked acc2 new_t)
+            acc
+            zs
+        | None -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ prp_trp_licensed g g acc) ==>
+      prp_trp_licensed g g (outer_step acc t)
+  with introduce (memP t g /\ prp_trp_licensed g g acc) ==>
+                 prp_trp_licensed g g (outer_step acc t)
+  with _ . begin
+    if List.Tot.mem t.p trans_props then begin
+      match term_to_subject t.o with
+      | Some y_subj ->
+        let zs = find_objects_indexed ig y_subj t.p in
+        let inner_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc2 : rdf_graph) (z_term : rdf_term) ->
+            let new_t : triple = { s = t.s; p = t.p; o = z_term } in
+            add_triple_unchecked acc2 new_t in
+        introduce forall (acc2 : rdf_graph) (z_term : rdf_term).
+            (memP z_term zs /\ prp_trp_licensed g g acc2) ==>
+            prp_trp_licensed g g (inner_step acc2 z_term)
+        with introduce (memP z_term zs /\ prp_trp_licensed g g acc2) ==>
+                       prp_trp_licensed g g (inner_step acc2 z_term)
+        with _ . begin
+          let new_t : triple = { s = t.s; p = t.p; o = z_term } in
+          // trans_props provenance: t.p is declared transitive in g
+          // (decl stays unnamed -- symps_licensed's own emission-fold
+          // proof, section 4, discharges the same shape of fact this
+          // way, no explicit `eliminate exists decl` needed).
+          List.Tot.Properties.mem_memP t.p trans_props;
+          // u2 comes from the sp-index bucket at (y_subj, t.p): the
+          // served object z_term names a real bucket triple.
+          FStar.List.Tot.Properties.memP_map_elim
+            (fun (tt : triple) -> tt.o) z_term
+            (bucket_lookup ig.ig_sp (sp_key y_subj t.p));
+          eliminate exists (u2 : triple).
+              memP u2 (bucket_lookup ig.ig_sp (sp_key y_subj t.p)) /\ u2.o == z_term
+          returns prp_trp_derives g new_t
+          with _ . begin
+            // ig_wf_sp places u2 in the snapshot with u2.s == y_subj,
+            // u2.p == t.p; ig.ig_triples == g places it in g itself.
+            lemma_term_to_subject_subj_term t.o y_subj;
+            assert (subj_term u2.s == t.o);
+            assert (new_t == ({ s = t.s; p = t.p; o = u2.o } <: triple))
+          end
+        end;
+        fold_left_inv (prp_trp_licensed g g) inner_step zs acc
+      | None -> ()
+    end else ()
+  end;
+  fold_left_inv (prp_trp_licensed g g) outer_step g g;
+  assert_norm (owl_rule_transitive_property g ig ==
+               List.Tot.fold_left outer_step g g)
+#pop-options
+
+// Per-triple corollary.
+val theorem_transitive_property_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_transitive_property g ig))
+    (ensures  memP t g \/ prp_trp_derives g t)
+
+let theorem_transitive_property_licensed g ig t =
+  owl_rule_transitive_property_licensed g ig
