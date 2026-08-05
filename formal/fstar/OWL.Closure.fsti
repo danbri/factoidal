@@ -430,6 +430,21 @@ let owl_rule_inverseOf_domain_range_flip (g : rdf_graph) (ig : indexed_graph) : 
     g
     g
 
+// Named inner-fold emitter (proof-friendly guard rule, task #36):
+// emit the inverse edge for a data triple matching either property.
+let inverse_of_emit (p1_iri p2_iri : wf_iri) (acc2 : rdf_graph) (t : triple) : rdf_graph =
+  let add_inverse (target_p : wf_iri) (acc3 : rdf_graph) : rdf_graph =
+    match term_to_subject t.o with
+    | Some new_subj ->
+      let new_t : triple =
+        { s = new_subj; p = target_p; o = subject_to_term t.s } in
+      add_triple_unchecked acc3 new_t
+    | None -> acc3
+  in
+  if t.p = p1_iri then add_inverse p2_iri acc2
+  else if t.p = p2_iri then add_inverse p1_iri acc2
+  else acc2
+
 // prp-inv1: if (P1 owl:inverseOf P2) and (x P1 y) then (y P2 x).
 // prp-inv2: if (P1 owl:inverseOf P2) and (x P2 y) then (y P1 x).
 // We handle both by iterating every owl:inverseOf declaration and producing
@@ -441,21 +456,7 @@ let owl_rule_inverse_of (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
         match inv_t.s, inv_t.o with
         | S_IRI p1_iri, T_IRI p2_iri ->
           // For every triple matching P1 or P2, emit the inverse.
-          List.Tot.fold_left
-            (fun (acc2 : rdf_graph) (t : triple) ->
-              let add_inverse (target_p : wf_iri) (acc3 : rdf_graph) : rdf_graph =
-                match term_to_subject t.o with
-                | Some new_subj ->
-                  let new_t : triple =
-                    { s = new_subj; p = target_p; o = subject_to_term t.s } in
-                  add_triple_unchecked acc3 new_t
-                | None -> acc3
-              in
-              if t.p = p1_iri then add_inverse p2_iri acc2
-              else if t.p = p2_iri then add_inverse p1_iri acc2
-              else acc2)
-            acc
-            g
+          List.Tot.fold_left (inverse_of_emit p1_iri p2_iri) acc g
         | _, _ -> acc
       else acc)
     g

@@ -617,3 +617,145 @@ val theorem_equivalent_property_licensed
 
 let theorem_equivalent_property_licensed g ig t =
   owl_rule_equivalent_property_licensed g ig
+
+// ===================================================================
+// 7. prp-inv1 + prp-inv2: every `owl_rule_inverse_of` emission is
+// licensed.
+//
+// OWL 2 RL/RDF rules table rows prp-inv1 / prp-inv2:
+//   T(?p1, owl:inverseOf, ?p2)  T(?x, ?p1, ?y)  =>  T(?y, ?p2, ?x)
+//   T(?p1, owl:inverseOf, ?p2)  T(?x, ?p2, ?y)  =>  T(?y, ?p1, ?x)
+// transcribed as OWL.RL.Spec.prp_inv1_derives / prp_inv2_derives. Both
+// of the rule's folds read g; ig is unused. The statement is over g
+// -- like prp-symp, this is a non-snapshot rule.
+//
+// This is the module's first NESTED-fold rule: the outer fold walks
+// the owl:inverseOf declarations of g, seeded at g; for each
+// declaration the INNER fold walks all of g again, seeded at the
+// outer accumulator, emitting the flipped triple for whichever side
+// of the pair the current triple's predicate matches. The proof
+// follows OWL.Semantics.Soundness.rdfs_rule_domain_sound's shape:
+// prove the inner step's invariant preservation FIRST (inside the
+// outer introduce body), close it with its own fold_left_inv, and
+// only then does the outer introduce's postcondition follow.
+//
+// PROOF-SHAPE NOTE, specific to nested folds (recorded for prp-trp /
+// prp-spo2, which reuse this skeleton): the inner step CANNOT be
+// spelled as a bare `fun acc2 t -> ...` re-typed inside the outer
+// introduce's body. outer_step's OWN pattern match binds its own
+// p1_iri/p2_iri (a DIFFERENT variable from the introduce body's
+// p1_iri/p2_iri, even though provably equal via `inv_t.s ==
+// S_IRI p1_iri`). Two closures that differ only in which
+// (propositionally-equal) variable they capture are NOT identified by
+// SMT congruence -- congruence needs the SAME function symbol, and
+// proving `fold_left F1 acc g == fold_left F2 acc g` for merely
+// pointwise-equal F1/F2 is functional EXTENSIONALITY, which F*'s SMT
+// encoding does not supply automatically (confirmed by direct probe:
+// even `--z3rlimit 2000` leaves it "incomplete quantifiers", not a
+// resource shortfall).
+//
+// RESOLVED (2026-08-05, commit fb8d98f / task #36): the fix is the
+// PROOF-FRIENDLY GUARD RULE, not a proof-side workaround. The inner
+// fold is now the top-level named `OWL.Closure.inverse_of_emit p1_iri
+// p2_iri` -- ONE function symbol, defined once in the engine and
+// referenced identically by outer_step's own branch and by this
+// proof's `inner_step`. Reconciling the two closures is now a single
+// application-congruence step (`f a b == f a' b'` given `a==a',
+// b==b'`) instead of extensionality -- and congruence IS automatic.
+// assert_norm's closing zeta-unfolds `inner_step` (a local alias for
+// the named application) the same as any other local, so the
+// top-level normal-form comparison against the engine's fold is
+// unaffected.
+// ===================================================================
+
+let lemma_vocab_inv_agree ()
+  : Lemma (OWL.Closure.owl_inverseOf == OWL.RL.Spec.o_owl_inverseOf) = ()
+
+let inv_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==>
+    (memP t g \/ prp_inv1_derives g t \/ prp_inv2_derives g t)
+
+#push-options "--z3rlimit 100 --split_queries always"
+
+val owl_rule_inverse_of_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures inv_licensed g (owl_rule_inverse_of g ig))
+
+let owl_rule_inverse_of_licensed g ig =
+  lemma_vocab_inv_agree ();
+  // Engine text verbatim -- the inner fold is the shared named
+  // application `inverse_of_emit p1_iri p2_iri`, exactly as
+  // owl_rule_inverse_of writes it after the closure-identity fix.
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (inv_t : triple) ->
+      if inv_t.p = owl_inverseOf then
+        match inv_t.s, inv_t.o with
+        | S_IRI p1_iri, T_IRI p2_iri ->
+          List.Tot.fold_left (inverse_of_emit p1_iri p2_iri) acc g
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (inv_t : triple).
+      (memP inv_t g /\ inv_licensed g acc) ==>
+      inv_licensed g (outer_step acc inv_t)
+  with introduce (memP inv_t g /\ inv_licensed g acc) ==>
+                 inv_licensed g (outer_step acc inv_t)
+  with _ . begin
+    if inv_t.p = owl_inverseOf then
+      match inv_t.s, inv_t.o with
+      | S_IRI p1_iri, T_IRI p2_iri ->
+        let inner_step : rdf_graph -> triple -> rdf_graph =
+          inverse_of_emit p1_iri p2_iri in
+        introduce forall (acc2 : rdf_graph) (t : triple).
+            (memP t g /\ inv_licensed g acc2) ==>
+            inv_licensed g (inner_step acc2 t)
+        with introduce (memP t g /\ inv_licensed g acc2) ==>
+                       inv_licensed g (inner_step acc2 t)
+        with _ . begin
+          // decl := inv_t, u := t, p1 := p1_iri, p2 := p2_iri --
+          // shared witnesses for both branches below.
+          if t.p = p1_iri then begin
+            match term_to_subject t.o with
+            | Some new_subj ->
+              let new_t : triple =
+                { s = new_subj; p = p2_iri; o = subject_to_term t.s } in
+              // prp-inv1: u.p == p1, ys := new_subj, conclusion
+              // predicate p2.
+              lemma_term_to_subject_subj_term t.o new_subj;
+              lemma_subj_term_agree t.s;
+              assert (new_t == ({ s = new_subj; p = p2_iri;
+                                  o = subj_term t.s } <: triple));
+              assert (prp_inv1_derives g new_t)
+            | None -> ()
+          end else if t.p = p2_iri then begin
+            match term_to_subject t.o with
+            | Some new_subj ->
+              let new_t : triple =
+                { s = new_subj; p = p1_iri; o = subject_to_term t.s } in
+              // prp-inv2: u.p == p2, ys := new_subj, conclusion
+              // predicate p1.
+              lemma_term_to_subject_subj_term t.o new_subj;
+              lemma_subj_term_agree t.s;
+              assert (new_t == ({ s = new_subj; p = p1_iri;
+                                  o = subj_term t.s } <: triple));
+              assert (prp_inv2_derives g new_t)
+            | None -> ()
+          end else ()
+        end;
+        fold_left_inv (inv_licensed g) inner_step g acc
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (inv_licensed g) outer_step g g;
+  assert_norm (owl_rule_inverse_of g ig ==
+               List.Tot.fold_left outer_step g g)
+
+#pop-options
+
+// Per-triple corollary.
+val theorem_inverse_of_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires memP t (owl_rule_inverse_of g ig))
+    (ensures  memP t g \/ prp_inv1_derives g t \/ prp_inv2_derives g t)
+
+let theorem_inverse_of_licensed g ig t =
+  owl_rule_inverse_of_licensed g ig
