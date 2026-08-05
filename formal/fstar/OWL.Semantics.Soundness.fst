@@ -925,6 +925,218 @@ let owl_rule_symmetric_metapredicates_sound i a g ig =
 #pop-options
 
 // ===================================================================
+// Rule 11: owl_rule_chain_to_transitive (scm-trans-from-chain;
+// OWL.Closure.fsti ~line 2704, "sound but not in OWL 2 RL/RDF Table 9").
+// The engine rule's own banner: "if (P owl:propertyChainAxiom (P P))
+// -- i.e. a chain of length 2 of P composed with itself -- then P is
+// transitive." cond_chain2_transitive (OWL.Semantics.fst) plus this
+// lemma IS that justification made machine-checked: OWL 2 RDF-Based
+// Semantics Table 5 (axiom mapping, SubObjectPropertyOf(ObjectProperty
+// Chain(P1..Pn), Q) row, specialized to n=2, Q=P1=P2=P) licenses the
+// composition-closure fact; Table 5.14's TransitiveProperty condition
+// (the converse half of the direction cond_symmetric uses for
+// SymmetricProperty) turns that closure fact into class membership.
+//
+// SHAPE: a single fold over g (owl-rule-shape-matrix.md classifies it
+// SINGLE-FOLD; verified against the actual OWL.Closure.fsti text while
+// writing this proof -- classification confirmed, not misclassified).
+// decode_chain_pair is NOT a fold/list-walk needing its own induction:
+// it is a fixed two-hop, non-recursive read (first cell, its
+// rest-pointer, second cell, nil check), the same shape as the
+// index-reading guards the other SINGLE-FOLD rules already use.
+// decode_chain_pair_sound below is the bridge lemma for that fixed
+// two-hop read, mirroring decode_iri_list_sound's per-hop assertions
+// (Rule 4 above) but WITHOUT the recursion -- decode_chain_pair never
+// recurses past depth 2, so no fuel / `decreases` clause is needed.
+//
+// No fresh bnodes: list_subj comes from chain_t.o (an object already
+// present in g via chain_t, itself drawn from g), and the two
+// list-cell triples decode_chain_pair reads are real members of g
+// found through the sp-bucket index (ig_wf_sp) -- the SAME assignment
+// a that makes g true already makes them true, so this rule fits the
+// module banner's "mints no fresh bnodes" proof shape (contrast Rule
+// 12's finding below, where the converse rule mints exactly such
+// bnodes and that shape breaks).
+// ===================================================================
+
+// Bridge lemma for decode_chain_pair (OWL.Closure.fsti ~line 2508):
+// when the two-hop read succeeds, the list head denotes a genuine
+// 2-element sequence over the two decoded IRIs' denotations. Fixed
+// depth 2, no recursion -- mirrors decode_iri_list_sound's per-hop
+// assertions (Rule 4) without needing its `fuel` machinery.
+#push-options "--z3rlimit 60 --split_queries always"
+let decode_chain_pair_sound
+    (i : interp) (a : bnode_assignment i.idom)
+    (g : rdf_graph) (ig : indexed_graph) (head_subj : subject)
+  : Lemma
+    (requires ig_wf_sp ig /\ holds_all i a ig.ig_triples)
+    (ensures (match decode_chain_pair g ig head_subj with
+              | None -> True
+              | Some (q1, q2) ->
+                seq_is i (denot_subject i a head_subj)
+                       [i.i_iri q1; i.i_iri q2])) =
+  let fb1 = bucket_lookup ig.ig_sp (sp_key head_subj rdf_first) in
+  let rb1 = bucket_lookup ig.ig_sp (sp_key head_subj rdf_rest) in
+  let firsts1 = find_objects_indexed ig head_subj rdf_first in
+  let rests1  = find_objects_indexed ig head_subj rdf_rest in
+  assert (firsts1 == List.Tot.map (fun (t : triple) -> t.o) fb1);
+  assert (rests1  == List.Tot.map (fun (t : triple) -> t.o) rb1);
+  match firsts1, rests1 with
+  | (T_IRI p1) :: _, tail_term :: _ ->
+    (match fb1, rb1 with
+     | ft1 :: _, rt1 :: _ ->
+       assert (ft1.o == T_IRI p1);
+       assert (rt1.o == tail_term);
+       assert (List.Tot.memP ft1 (bucket_lookup ig.ig_sp (sp_key head_subj rdf_first)));
+       assert (List.Tot.memP rt1 (bucket_lookup ig.ig_sp (sp_key head_subj rdf_rest)));
+       assert (triple_holds i a ft1);
+       assert (triple_holds i a rt1);
+       (match term_to_subject tail_term with
+        | None -> ()
+        | Some tail_subj ->
+          lemma_denot_term_to_subject i a tail_term tail_subj;
+          let fb2 = bucket_lookup ig.ig_sp (sp_key tail_subj rdf_first) in
+          let rb2 = bucket_lookup ig.ig_sp (sp_key tail_subj rdf_rest) in
+          let firsts2 = find_objects_indexed ig tail_subj rdf_first in
+          let rests2  = find_objects_indexed ig tail_subj rdf_rest in
+          assert (firsts2 == List.Tot.map (fun (t : triple) -> t.o) fb2);
+          assert (rests2  == List.Tot.map (fun (t : triple) -> t.o) rb2);
+          (match firsts2, rests2 with
+           | (T_IRI p2) :: _, (T_IRI nil_iri) :: _ ->
+             if nil_iri = rdf_nil_iri then
+               (match fb2, rb2 with
+                | ft2 :: _, rt2 :: _ ->
+                  assert (ft2.o == T_IRI p2);
+                  assert (rt2.o == T_IRI nil_iri);
+                  assert (List.Tot.memP ft2 (bucket_lookup ig.ig_sp (sp_key tail_subj rdf_first)));
+                  assert (List.Tot.memP rt2 (bucket_lookup ig.ig_sp (sp_key tail_subj rdf_rest)));
+                  assert (triple_holds i a ft2);
+                  assert (triple_holds i a rt2);
+                  assert (i.iext (i.i_iri rdf_first) (denot_subject i a head_subj) (i.i_iri p1));
+                  assert (i.iext (i.i_iri rdf_rest) (denot_subject i a head_subj) (denot_subject i a tail_subj));
+                  assert (i.iext (i.i_iri rdf_first) (denot_subject i a tail_subj) (i.i_iri p2));
+                  assert (i.iext (i.i_iri rdf_rest) (denot_subject i a tail_subj) (i.i_iri rdf_nil_iri));
+                  assert (seq_is i (i.i_iri rdf_nil_iri) []);
+                  assert (seq_is i (denot_subject i a tail_subj) [i.i_iri p2]);
+                  assert (seq_is i (denot_subject i a head_subj) [i.i_iri p1; i.i_iri p2])
+                | _, _ -> ())
+             else ()
+           | _, _ -> ()))
+     | _, _ -> ())
+  | _, _ -> ()
+#pop-options
+
+val owl_rule_chain_to_transitive_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_chain2_transitive i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_chain_to_transitive g ig))
+
+#push-options "--z3rlimit 90 --split_queries always"
+let owl_rule_chain_to_transitive_sound i a g ig =
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (chain_t : triple) ->
+      if chain_t.p = owl_propertyChainAxiom then
+        match chain_t.s, term_to_subject chain_t.o with
+        | S_IRI p_iri, Some list_subj ->
+          (match decode_chain_pair g ig list_subj with
+           | Some (q1, q2) ->
+             if q1 = p_iri && q2 = p_iri then
+               let new_t : triple =
+                 { s = S_IRI p_iri; p = rdf_type;
+                   o = T_IRI owl_TransitiveProperty } in
+               add_triple_unchecked acc new_t
+             else acc
+           | None -> acc)
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (chain_t : triple).
+      (List.Tot.memP chain_t g /\ holds_all i a acc) ==> holds_all i a (emit_step acc chain_t)
+  with introduce (List.Tot.memP chain_t g /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc chain_t)
+  with _ . begin
+    if chain_t.p = owl_propertyChainAxiom then
+      match chain_t.s, term_to_subject chain_t.o with
+      | S_IRI p_iri, Some list_subj ->
+        (match decode_chain_pair g ig list_subj with
+         | Some (q1, q2) ->
+           if q1 = p_iri && q2 = p_iri then begin
+             decode_chain_pair_sound i a g ig list_subj;
+             lemma_denot_term_to_subject i a chain_t.o list_subj;
+             assert (triple_holds i a chain_t);
+             assert (i.iext (i.i_iri owl_propertyChainAxiom)
+                            (i.i_iri p_iri) (denot_subject i a list_subj));
+             assert (seq_is i (denot_subject i a list_subj)
+                            [i.i_iri p_iri; i.i_iri p_iri]);
+             // cond_chain2_transitive fires on the chain edge plus the
+             // sequence reading just built.
+             assert (icext i (i.i_iri p_iri) (i.i_iri owl_TransitiveProperty))
+           end else ()
+         | None -> ())
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) emit_step g g;
+  assert_norm (owl_rule_chain_to_transitive g ig == List.Tot.fold_left emit_step g g)
+#pop-options
+
+// ===================================================================
+// Rule 12: owl_rule_transitive_to_chain (prp-trp-to-chain;
+// OWL.Closure.fsti ~line 2750) -- FINDING, not proven. STOP per the
+// two-attempt rule: the honest condition this rule needs is not
+// justifiable from the W3C tables, so no lemma is added here.
+//
+// owl-rule-shape-matrix.md's SINGLE-FOLD classification is correct (one
+// fold_left over g, no list-walk) -- the blocker is semantic, not
+// shape. Unlike every rule proven above (1 through 11), this rule
+// MINTS FRESH BLANK NODES: canonical_chainl1_bnode / _chainl2_bnode
+// are deterministic labels derived from p_iri that do NOT occur in g.
+// The module banner's shared proof shape ("fix ONE bnode assignment;
+// the pilot rules mint no fresh bnodes, so the assignment chosen for g
+// serves the conclusion graph too") does not extend to this rule: the
+// assignment `a` used to establish holds_all i a g is a TOTAL function
+// or bnode_id, but its value at these fresh labels is UNCONSTRAINED by
+// g, and satisfies-level reasoning (choosing a DIFFERENT/extended
+// assignment a') does not rescue it either -- it still requires the
+// interpretation's domain to already CONTAIN elements v1, v2 with
+// iext(propertyChainAxiom) (denot P) v1 /\ iext(first) v1 (denot P) /\
+// iext(rest) v1 v2 /\ iext(first) v2 (denot P) /\ iext(rest) v2
+// (i.i_iri rdf_nil_iri). That is an EXISTENCE condition on the
+// interpretation, not an implication -- and it is not implied by any
+// W3C RDF-Based Semantics table: a genuine OWL 2 RDF-Based
+// interpretation is free to leave IEXT(rdf:first) / IEXT(rdf:rest)
+// with no elements related to P at all while still satisfying "P is
+// transitive" (Table 5.14 says nothing about rdf:first/rdf:rest
+// witnesses). Adding such an existence condition as a lemma hypothesis
+// would make the F* theorem type-check, but it would NOT be sound
+// relative to genuine OWL 2 RDF-Based interpretations -- it would
+// violate the module banner's "class of interpretations here is a
+// SUPERSET of the genuine OWL 2 RDF-Based interpretations" invariant
+// the whole soundness architecture depends on (see OWL.Semantics.fst
+// header). That is a table-groundedness failure, not a proof-
+// engineering one, so per the brief ("if the honest condition would be
+// unjustifiable from the tables, STOP for that rule and report the gap
+// as a finding") this is reported here rather than forced.
+//
+// What WOULD close this: the rule's actual soundness argument (per its
+// own banner, "every model of P transitive is a model of chain(P,P)
+// subPropertyOf P and vice versa") is an axiom-equivalence claim under
+// OWL 2's ontology-level deduction, not a same-model truth-preservation
+// claim in this file's per-assignment RDF-Based semantics. Closing it
+// properly needs either (a) a Henkin/Skolem-style model-EXTENSION
+// lemma (construct a strictly larger interpretation i' >= i realizing
+// the needed witnesses, then argue entailment through the extension --
+// a different lemma shape than any rule 1-11 uses), or (b) reframing
+// the claim at the "licensed by g" (syntactic-provenance) level the way
+// OWL.RL.Refinement.fst's licensing proofs do for other existential-
+// witness rules (svf2_existential_witness, cls_svf_thing_witness,
+// singleton_nominal_functionality in the shape matrix), which is a
+// different soundness notion than this file's model-theoretic one.
+// Neither is a same-shape extension of the Rule 1-11 skeleton.
+// ===================================================================
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge

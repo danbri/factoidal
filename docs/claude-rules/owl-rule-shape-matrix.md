@@ -70,8 +70,8 @@ from partial reads — re-verify before relying on them (marked ✱).
 | scm_cls_restriction | SINGLE-FOLD | none | g |
 | property_chain_2 | NESTED-SINGLE | find_objects | g × g |
 | property_chain_n | LIST-WALK | ig_pred, find_objects | g + chain decode |
-| chain_to_transitive | SINGLE-FOLD | none | g |
-| transitive_to_chain | SINGLE-FOLD | none | g |
+| chain_to_transitive | SINGLE-FOLD² | none | g |
+| transitive_to_chain | SINGLE-FOLD³ | none | g |
 | named_sameAs_to_equivClass | SINGLE-FOLD | find_objects | g |
 | named_equivClass_to_sameAs_mode | SINGLE-FOLD | find_objects | g |
 | named_equivClass_to_sameAs | SINGLE-FOLD | find_objects | g (wrapper) |
@@ -111,6 +111,19 @@ from partial reads — re-verify before relying on them (marked ✱).
 | comp_range_avf ✱ | OTHER | both | base, nested |
 | comp_range_intersection ✱ | OTHER | find_objects | base, nested |
 | comp_pinned_domain_enum ✱ | OTHER | both | base, nested |
+
+² `decode_chain_pair` is a fixed two-hop read, not a recursive walk —
+SINGLE-FOLD confirmed; truth-preservation proved (Soundness Rule 11)
+with the `decode_chain_pair_sound` bridge.
+
+³ Shape confirmed, but truth-preservation is UNPROVABLE in the
+fixed-assignment pilot shape: the rule MINTS FRESH BNODES
+(canonical chain-cell labels), and no RDF-Based table asserts the
+existence condition their truth would need — a genuine model can
+declare P transitive with rdf:first/rdf:rest relating nothing.
+Needs a model-extension/Skolem lemma shape or the licensing-side
+treatment the comprehension-witness rules get. Finding recorded in
+Soundness's Rule 12 comment block (2026-08-05).
 
 ¹ The scout classified the sameAs-cluster rules NESTED-SINGLE, but
 their outer fold walks `sameas_pairs ig` — the step BINDS A PAIR

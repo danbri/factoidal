@@ -417,6 +417,34 @@ let cond_equivalentproperty_symmetric (i : interp) : prop =
     i.iext (i.i_iri owl_equivalentProperty) p q ==>
     i.iext (i.i_iri owl_equivalentProperty) q p
 
+// owl:propertyChainAxiom composed with itself implies owl:TransitiveProperty
+// -- OWL.Closure.fsti's owl_rule_chain_to_transitive banner names this
+// scm-trans-from-chain: "sound but not in OWL 2 RL/RDF Table 9: if (P
+// owl:propertyChainAxiom (P P)) ... then P is transitive." Two real table
+// rows combine to license it: (1) OWL 2 RDF-Based Semantics Table 5
+// (Additional Semantic Conditions for the Axiom Mapping), the
+// SubObjectPropertyOf(ObjectPropertyChain(P1..Pn), Q) row, specialized to
+// n=2, Q=P1=P2=P (self-composition) -- a propertyChainAxiom edge from P to
+// a sequence reading [P;P] forces IEXT(P) to be closed under
+// self-composition, i.e. IEXT(P) transitive; (2) Table 5.14's
+// owl:TransitiveProperty condition, the CONVERSE half of the direction
+// cond_symmetric above uses for owl:SymmetricProperty (that condition
+// reads "membership implies the extension is symmetric"; this one reads
+// the other way, "the extension being transitive implies membership" --
+// the full table row is the iff both directions come from). Stated as one
+// direct implication (premise -> conclusion, the weakest reading the rule
+// needs) rather than exposing the general n-ary chain-composition
+// condition or the TransitiveProperty iff's other half separately, same
+// pattern as cond_domain / cond_complementof_disjoint above. NOT added to
+// owl_rl_pilot_conditions: same reasoning as the other [ext] conditions
+// above -- growing that bundle perturbs the SMT context for its existing
+// consumers, so this rule's lemma takes the condition explicitly.
+let cond_chain2_transitive (i : interp) : prop =
+  forall (p l : i.idom).
+    i.iext (i.i_iri owl_propertyChainAxiom) p l ==>
+    seq_is i l [p; p] ==>
+    icext i p (i.i_iri owl_TransitiveProperty)
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker
