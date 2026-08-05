@@ -298,21 +298,19 @@ let __proj__Mkindexed_graph__item__ig_built (projectee : indexed_graph) :
       -> ig_built
 let subject_to_key (s : RDF_Term.subject) : Prims.string=
   match s with
-  | RDF_Term.S_IRI i -> FStar_String.concat "" ["I_"; i]
-  | RDF_Term.S_BNode b -> FStar_String.concat "" ["B_"; b]
+  | RDF_Term.S_IRI i -> Prims.strcat "I_" i
+  | RDF_Term.S_BNode b -> Prims.strcat "B_" b
 let term_to_key_opt (o : RDF_Term.rdf_term) :
   Prims.string FStar_Pervasives_Native.option=
   match o with
-  | RDF_Term.T_IRI i ->
-      FStar_Pervasives_Native.Some (FStar_String.concat "" ["I_"; i])
-  | RDF_Term.T_BNode b ->
-      FStar_Pervasives_Native.Some (FStar_String.concat "" ["B_"; b])
+  | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some (Prims.strcat "I_" i)
+  | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some (Prims.strcat "B_" b)
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
   | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
       FStar_Pervasives_Native.None
 let unit_sep : Prims.string= "\031"
 let sp_key (s : RDF_Term.subject) (p : RDF_Term.wf_iri) : Prims.string=
-  FStar_String.concat "" [subject_to_key s; unit_sep; p]
+  Prims.strcat (subject_to_key s) (Prims.strcat unit_sep p)
 let po_key_opt (p : RDF_Term.wf_iri) (o : RDF_Term.rdf_term) :
   Prims.string FStar_Pervasives_Native.option=
   match term_to_key_opt o with

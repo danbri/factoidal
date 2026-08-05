@@ -2,13 +2,13 @@ TAP version 13
 # Subtest: xformsRecalc: constant calculate writes the leaf
 ok 1 - xformsRecalc: constant calculate writes the leaf
   ---
-  duration_ms: 82.062225
+  duration_ms: 87.501537
   type: 'test'
   ...
 # Subtest: xformsRecalc: no binds leaves the instance well-formed
 ok 2 - xformsRecalc: no binds leaves the instance well-formed
   ---
-  duration_ms: 1.952171
+  duration_ms: 1.864938
   type: 'test'
   ...
 1..2
@@ -19,4 +19,4 @@ ok 2 - xformsRecalc: no binds leaves the instance well-formed
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 178.552988
+# duration_ms 180.829291
