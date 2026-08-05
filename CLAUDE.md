@@ -326,6 +326,14 @@ session.
 - [`perf-benchmarking`](skills/perf-benchmarking/SKILL.md) — timing
   harnesses, baselines, observability, profiling policy. Speed is
   measured separately from correctness, always.
+- [`proof-factory`](skills/proof-factory/SKILL.md) — run the
+  rule-by-rule F\* proof program at scale: the closure-identity law,
+  the guard-depth ≤3 rule, brief anatomy for first-attempt passes,
+  spray-and-verify economics per model tier, the harvest pattern for
+  stalled proof agents, and the findings discipline (six ledger
+  drifts + one engine completeness gap caught by proofs). Read
+  before dispatching any proof subagent or proving engine rules
+  against the W3C tables.
 - [`measuring-inference`](skills/measuring-inference/SKILL.md) — how to
   measure what a reasoning engine actually does: which phase the time is
   in, why synthetic shapes lie about real vocabularies, negative tests
