@@ -1313,6 +1313,88 @@ let owl_rule_scm_cls_restriction_sound i a g ig =
 // extension of the Rule 1-11/13 skeleton.
 // ===================================================================
 
+// Rule 16: owl_rule_scm_eqc2 (scm-eqc2; OWL.Closure.fsti ~line 267) --
+// FINDING, not proven. CONTROLLED EXPERIMENT result, per the brief:
+// try inline, then factored; if both hit the SAME undischargeable
+// step obligation, stop and report rather than force it.
+//
+// OWL 2 RDF-Based Semantics Table 5.8, the OTHER direction from Rule
+// 5's owl_rule_equivalent_class: T(?c, rdfs:subClassOf, ?d), T(?d,
+// rdfs:subClassOf, ?c) => T(?c, owl:equivalentClass, ?d) -- "Reverse
+// of cls-eqc1/cls-eqc2" per the engine rule's own banner comment. The
+// condition (cond_mutual_subclass_equivalent, OWL.Semantics.fst) is
+// added and verifies standalone; it is exactly the table-grounded
+// hypothesis the rule needs. What does NOT close is the step-
+// preservation obligation for the engine rule's NON-firing branch.
+//
+// BOTH attempts below reached IDENTICAL witness-chain success and
+// IDENTICAL final failure:
+//   * ATTEMPT 1 (INLINE): the C-sco-D / D-sco-C / cond_mutual_
+//     subclass_equivalent witness chain (t itself for C-sco-D;
+//     memP_existsb + find_objects_indexed's definitional map equation
+//     + memP_map_elim + ig_wf_sp + lemma_rdf_term_eq_iri for D-sco-C)
+//     written INLINE in the introduce-forall step-preservation block
+//     DISCHARGED CLEANLY -- every assert in the firing (existsb-true)
+//     branch passed, including the closing
+//     `i.iext (i.i_iri owl_equivalentClass) (i.i_iri c_iri) (i.i_iri d_iri)`.
+//     The failure is NOT in the witness chain. It is in the NON-firing
+//     (existsb-false, "no emission") branch: proving
+//     `holds_all i a (emit_step acc t)` there reduces to proving
+//     `emit_step acc t == acc`, and neither the direct squash-typed
+//     `()` nor an explicit `assert (emit_step acc t == acc)` (with
+//     every governing fact -- t.p, t.s/t.o, c_iri<>d_iri, existsb=false
+//     -- ALSO asserted explicitly right beforehand) discharges, even
+//     under `--z3rlimit 300 --fuel 8 --ifuel 8` (30x the rlimit and 2x
+//     the fuel of Rule 10's comparably-shaped proof). Exact error
+//     (reproduced verbatim across every rlimit/fuel variant tried):
+//       Error 19: Subtyping check failed
+//       - Expected type Prims.squash (OWL.Semantics.holds_all i a (emit_step acc t))
+//         got type Prims.unit
+//       - The SMT solver could not prove the query.
+//   * ATTEMPT 2 (FACTORED): the SAME witness chain moved into a
+//     separate `owl_scm_eqc2_emission_sound` val+let lemma (taking
+//     c_iri/d_iri/the firing facts as explicit parameters, called from
+//     the introduce body on the existsb-true branch) -- the shape the
+//     failed OWL.RL.Refinement.fst licensing attempt used. This ALSO
+//     discharged the witness chain cleanly and ALSO failed at the
+//     SAME non-firing branch, with the SAME error text (only the
+//     source line/column of the `()` moved, per the refactor).
+//
+// READING: the discriminator is neither "module context" (it fails
+// here in OWL.Semantics.Soundness.fst exactly as in OWL.RL.Refinement.
+// fst) nor "inline vs factored" (both forms fail identically) nor the
+// witness chain itself (it discharges in both forms). It is the
+// engine rule's STEP FUNCTION SHAPE: emit_step nests FOUR decision
+// points on the firing triple (if t.p = rdfs_subClassOf; match t.s,
+// t.o; if c_iri = d_iri; if existsb ...), one level DEEPER than every
+// other rule in this file (Rules 1-11 bottom out their "no-op" case at
+// THREE nested decisions at most -- e.g. Rule 10's `if c_iri = d_iri
+// then ()` inside `if is_owl_symmetric_metapredicate t.p then match
+// t.s, t.o with ...`, which DOES discharge). Proving the ascribed
+// `emit_step`'s no-op branch reduces to `acc` needs Z3 to chain
+// THROUGH all four levels to the SAME conclusion the surrounding
+// proof-side if/match already established at each level; that chain
+// discharges through three levels elsewhere in this file but not
+// through four here, and bumping --z3rlimit/--fuel does not move it
+// (ruling out a resource-starvation explanation; this reads as a
+// missing unfolding trigger, not a slow one).
+//
+// What would close it: restate the goal so the non-firing branch
+// never needs `emit_step acc t == acc` as a DERIVED equality -- e.g.
+// an unfold/rewrite lemma proven separately for exactly this
+// four-level shape (mirroring Rule 4's decode_iri_list_sound /
+// Rule 11's decode_chain_pair_sound bridge-lemma pattern, but bridging
+// the STEP FUNCTION's own reduction rather than a list/chain decode),
+// or restructuring emit_step's guard as a single computed `option`
+// value (matched once) rather than two sequential booleans, IF that
+// restructuring can still be shown equal to the engine's literal
+// definition for the closing assert_norm. Neither was attempted here
+// per the two-structural-attempt stop rule; that is the next step for
+// whoever picks this up.
+// ===================================================================
+
+// ===================================================================
+
 // ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses

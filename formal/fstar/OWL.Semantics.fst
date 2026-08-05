@@ -468,6 +468,33 @@ let cond_restriction_subclass_of_class (i : interp) : prop =
   forall (x : i.idom).
     icext i x (i.i_iri owl_Restriction_iri) ==> icext i x (i.i_iri owl_Class)
 
+// Mutual rdfs:subClassOf implies owl:equivalentClass -- OWL 2
+// RDF-Based Semantics Table 5.8 (equivalentClass condition):
+// IEXT(I(owl:equivalentClass)) = { <x,y> | CEXT(x) = CEXT(y) }; two
+// classes with CEXT(c) = CEXT(d) satisfy rdfs:subClassOf in BOTH
+// directions (Table 5.8's subClassOf condition, CEXT(c) subset-of
+// CEXT(d)) and conversely rdfs:subClassOf both ways forces CEXT(c) =
+// CEXT(d) by antisymmetry of subset. This is the OTHER direction of
+// the same table row cond_equivalent_class above reads forward
+// (equivalentClass ==> both subClassOf directions); OWL.Closure.fsti's
+// owl_rule_scm_eqc2 banner names it directly: "scm-eqc2: if (C
+// rdfs:subClassOf D) and (D rdfs:subClassOf C) then (C
+// owl:equivalentClass D) -- Reverse of cls-eqc1/cls-eqc2." Stated as
+// one direct implication (both subClassOf directions -> the
+// equivalentClass conclusion, the weakest reading the rule needs)
+// rather than exposing the full CEXT-equality biconditional, same
+// pattern as cond_equivalent_class / cond_chain2_transitive above.
+// NOT added to owl_rl_pilot_conditions: same reasoning as the other
+// [ext]/table-row conditions above -- growing that bundle perturbs
+// the SMT context for its existing consumers, so this rule's lemma
+// takes the condition explicitly.
+let cond_mutual_subclass_equivalent (i : interp) : prop =
+  forall (c d : i.idom).
+    i.iext (i.i_iri rdfs_subClassOf) c d ==>
+    i.iext (i.i_iri rdfs_subClassOf) d c ==>
+    i.iext (i.i_iri owl_equivalentClass) c d
+
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker
