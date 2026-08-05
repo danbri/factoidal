@@ -1360,3 +1360,452 @@ val theorem_sameAs_replace_subject_licensed
 
 let theorem_sameAs_replace_subject_licensed g ig t =
   owl_rule_sameAs_replace_subject_licensed g ig
+
+// ===================================================================
+// 12. eq-rep-o: every `owl_rule_sameAs_replace_object` emission is
+// licensed. Second of the eq-rep family, following section 11's
+// PATTERN-SETTER recipe.
+//
+// OWL 2 RL/RDF rules table row eq-rep-o:
+//   T(?o, owl:sameAs, ?o'), T(?s, ?p, ?o)  =>  T(?s, ?p, ?o')
+// transcribed as OWL.RL.Spec.eq_rep_o_derives. #262's outer fold walks
+// the same deduped snapshot pair list as section 11; for each pair
+// (x, y) the INNER fold walks `bucket_lookup ig.ig_obj (subject_to_key
+// x)` -- the ig_obj bucket's serving of triples whose OBJECT is the
+// term x denotes.
+//
+// ig_obj is keyed by `term_to_key_opt` (RDF.Indexed.fsti), a
+// DIFFERENT key function from `subject_to_key` (section 11's ig_subj),
+// so this rule needed its own well-formedness predicate: `ig_wf_obj`
+// did not exist before this landing. Added, following section 11's
+// own precedent exactly:
+//   * `term_to_key_opt` rebuilt with `^` instead of the opaque
+//     `String.concat "" [...]`, mirroring `subject_to_key`'s own
+//     rewrite -- purely a proof-friendliness change, same string
+//     values (RDF.Indexed.fsti);
+//   * `ig_wf_obj` stated in OWL.Semantics.fst next to `ig_wf_subj`, in
+//     the SUBJECT-SHAPED form the engine actually queries with
+//     (`bucket_lookup ig.ig_obj (subject_to_key s)`), not the fully
+//     generic term-keyed form -- narrower, but exactly what this rule
+//     needs, per the dispatch brief's "acceptable for this rule" call;
+//   * the weak membership lemma `lemma_build_indexed_wf_obj_weak`
+//     added to OWL.Semantics.MemLemmas.fst, mirroring
+//     `lemma_build_indexed_wf_subj_weak` verbatim (both key functions
+//     return `option string`, so `tree_ok`/`lemma_tree_ok_lookup`
+//     apply unchanged);
+//   * the strong discharge `lemma_build_indexed_wf_obj` added to
+//     RDF.Indexed.KeyInjectivity.fst, needing `term_to_key_opt`'s OWN
+//     injectivity lemma (`lemma_term_to_key_opt_injective` -- the same
+//     two-char-tag argument as `lemma_subject_to_key_injective`, now
+//     available because of the `^` rewrite) plus a one-line bridge
+//     lemma (`lemma_subject_to_key_eq_term_to_key_opt`) connecting the
+//     two key functions' shared I_/B_ shape. UNCONDITIONAL, like
+//     `ig_wf_subj` -- no separator side condition, for the same reason
+//     (the two-char tag alone separates the constructors).
+//
+// Both premise triples of the row land in g: eq is the sameAs edge
+// the pair names (`lemma_sameas_pairs_provenance`, section 1); u is
+// the bucket triple the inner fold consumes, licensed into g by
+// `ig_wf_obj` together with `ig.ig_triples == g` -- the SAME
+// e-matching-triggered shape section 11 uses for `ig_wf_subj`
+// (`memP src srcs` where `srcs` is syntactically the bucket-lookup
+// term `ig_wf_obj`'s forall quantifies over, so Z3 auto-instantiates
+// it without an explicit `assert`).
+//
+// PROOF-FRIENDLY GUARD RULE (task #36): the inner fold's emitter is
+// the NAMED partial application `sameas_rep_obj_emit y_term`
+// (OWL.Closure.fsti), not an anonymous closure -- mirrors section 11's
+// `sameas_rep_subj_emit s_prime` naming exactly. This rule's inner
+// fold also carries the same `t.p <> owl_sameAs` guard, named inside
+// `sameas_rep_obj_emit` the same way `sameas_rep_subj_emit` carries
+// it; the proof mirrors it with an ordinary `if`/`else`.
+//
+// SPEC-ROW MISMATCH (GR-delta-sensitive, same shape as section 11's
+// finding): eq_rep_o_derives does NOT exclude u.p == owl:sameAs -- the
+// row licenses replacing the object of a sameAs edge itself. The
+// engine's guard `src.p <> owl_sameAs` (inside `sameas_rep_obj_emit`)
+// makes owl_rule_sameAs_replace_object emit a STRICT SUBSET of what
+// the row licenses, for the same reason section 11 flags: sound (a
+// subset of a licensed set is still licensed) but INCOMPLETE relative
+// to the row alone, with the missing conclusions reached downstream
+// via eq-sym/eq-trans. Flagging per the brief's request, not fixing.
+// ===================================================================
+
+// The licensing invariant for this rule, against eq-rep-o's row. Same
+// 3-arg shape as eq_rep_s_licensed (section 11).
+let eq_rep_o_licensed (g : rdf_graph) (snapshot : list triple) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ eq_rep_o_derives snapshot t)
+
+val owl_rule_sameAs_replace_object_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_obj ig /\ ig.ig_triples == g)
+          (ensures  eq_rep_o_licensed g g (owl_rule_sameAs_replace_object g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_sameAs_replace_object_licensed g ig =
+  lemma_sameas_pairs_provenance ig;
+  lemma_vocab_sameas_agree ();
+  let inv = eq_rep_o_licensed g g in
+  // Engine text verbatim -- the inner fold is the shared named
+  // application `sameas_rep_obj_emit y_term`, exactly as
+  // owl_rule_sameAs_replace_object writes it after the closure-hoist.
+  let outer_step : rdf_graph -> (subject * subject) -> rdf_graph =
+    fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, y) = xy in
+      let y_term = subject_to_term y in
+      let srcs = bucket_lookup ig.ig_obj (subject_to_key x) in
+      List.Tot.fold_left (sameas_rep_obj_emit y_term) acc srcs in
+  introduce forall (acc : rdf_graph) (xy : subject * subject).
+      (memP xy (sameas_pairs ig) /\ inv acc) ==> inv (outer_step acc xy)
+  with introduce (memP xy (sameas_pairs ig) /\ inv acc) ==>
+                 inv (outer_step acc xy)
+  with _ . begin
+    let (x, y) = xy in
+    let y_term = subject_to_term y in
+    let srcs = bucket_lookup ig.ig_obj (subject_to_key x) in
+    let inner_step : rdf_graph -> triple -> rdf_graph =
+      sameas_rep_obj_emit y_term in
+    introduce forall (acc2 : rdf_graph) (src : triple).
+        (memP src srcs /\ inv acc2) ==> inv (inner_step acc2 src)
+    with introduce (memP src srcs /\ inv acc2) ==>
+                   inv (inner_step acc2 src)
+    with _ . begin
+      // pairs_licensed names the edge eq_edge behind xy: the
+      // (x owl:sameAs y) premise, x == eq_edge.s (the sameAs edge's
+      // subject -- the term being replaced, in OBJECT position for
+      // this rule), y the sameAs partner.
+      eliminate exists (eq_edge : triple).
+          memP eq_edge ig.ig_triples /\ eq_edge.p == owl_sameAs /\
+          eq_edge.s == fst xy /\ term_to_subject eq_edge.o == Some (snd xy)
+      returns inv (inner_step acc2 src)
+      with _ . begin
+        lemma_term_to_subject_subj_term eq_edge.o (snd xy);
+        // ig_wf_obj places src in the snapshot with src.o ==
+        // subject_to_term x -- the (s P o) data-triple premise with
+        // o == x, u := src; ig.ig_triples == g places it in g itself.
+        lemma_subj_term_agree eq_edge.s;
+        lemma_subj_term_agree y;
+        if src.p <> owl_sameAs then begin
+          let new_t : triple = { s = src.s; p = src.p; o = y_term } in
+          assert (new_t == ({ s = src.s; p = src.p; o = y_term } <: triple));
+          assert (eq_rep_o_derives g new_t)
+        end else ()
+      end
+    end;
+    fold_left_inv inv inner_step srcs acc
+  end;
+  fold_left_inv inv outer_step (sameas_pairs ig) g;
+  assert_norm (owl_rule_sameAs_replace_object g ig ==
+               List.Tot.fold_left outer_step g (sameas_pairs ig))
+#pop-options
+
+// Per-triple corollary, the form downstream compositions consume.
+val theorem_sameAs_replace_object_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_obj ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_sameAs_replace_object g ig))
+    (ensures  memP t g \/ eq_rep_o_derives g t)
+
+let theorem_sameAs_replace_object_licensed g ig t =
+  owl_rule_sameAs_replace_object_licensed g ig
+
+// ===================================================================
+// 13. eq-rep-p: every `owl_rule_sameAs_replace_predicate` emission is
+// licensed. Third of the eq-rep family, following section 11/12's
+// PATTERN-SETTER recipe.
+//
+// OWL 2 RL/RDF rules table row eq-rep-p:
+//   T(?p, owl:sameAs, ?p'), T(?s, ?p, ?o)  =>  T(?s, ?p', ?o)
+// transcribed as OWL.RL.Spec.eq_rep_p_derives. #262's outer fold walks
+// the same deduped snapshot pair list, restricted here to S_IRI/S_IRI
+// pairs (predicates are never blank-node or literal, so any other
+// pair shape is a no-op, same restriction the engine's
+// `is_owl_metapredicate` guard sits alongside); the inner fold walks
+// `bucket_lookup ig.ig_pred p_iri` -- the ig_pred bucket's serving of
+// triples with predicate p_iri. `ig_wf_pred` is ALREADY fully
+// discharged (OWL.Semantics.MemLemmas.lemma_build_indexed_wf_pred, no
+// side condition -- bucket_key_pred t = Some t.p, no composite-key
+// decomposition), so this rule needed no new well-formedness
+// machinery, unlike section 12's `ig_wf_obj`. The theorem below takes
+// `ig_wf_pred ig /\ ig.ig_triples == g` as its hypothesis -- the
+// simplest of the eq-rep family's three.
+//
+// Both premise triples of the row land in g: eq is the sameAs edge
+// the pair names; u is the bucket triple the inner fold consumes,
+// licensed into g by `ig_wf_pred` together with `ig.ig_triples == g`,
+// via the same e-matching-triggered shape sections 11/12 use.
+//
+// PROOF-FRIENDLY GUARD RULE (task #36): the inner fold's emitter is
+// the NAMED partial application `sameas_rep_pred_emit p_prime_iri`
+// (OWL.Closure.fsti), not an anonymous closure -- mirrors sections
+// 11/12's inner-fold naming exactly. Unlike those two, this emitter
+// carries NO boolean guard of its own (every bucket triple is
+// rewritten unconditionally) -- the only guard in this rule is the
+// OUTER `is_owl_metapredicate p_iri` check, which the proof mirrors
+// with the same `if`/`else` the engine's outer step uses.
+//
+// SPEC-ROW MISMATCH (GR-delta-sensitive, same shape as sections 11/
+// 12's findings): eq_rep_p_derives places NO restriction on p beyond
+// it being an IRI paired sameAs-with another IRI p' -- the row
+// licenses replacing ANY predicate this way, including
+// owl:sameAs/owl:inverseOf/owl:equivalentClass/owl:equivalentProperty
+// themselves. The engine's `is_owl_metapredicate p_iri` guard (used
+// to block re-emitting a no-op-shaped triple already present) makes
+// owl_rule_sameAs_replace_predicate emit a STRICT SUBSET of what the
+// row licenses for those four reserved predicates. Sound (a subset of
+// a licensed set is still licensed) but INCOMPLETE relative to the
+// row taken alone; flagging per the brief's request, not fixing --
+// the guard's own purpose (avoiding redundant re-derivation of an
+// already-present schema triple) is outside this licensing lemma's
+// scope, same as sections 11/12's guard notes.
+// ===================================================================
+
+// The licensing invariant for this rule, against eq-rep-p's row. Same
+// 3-arg shape as eq_rep_s_licensed / eq_rep_o_licensed.
+let eq_rep_p_licensed (g : rdf_graph) (snapshot : list triple) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ eq_rep_p_derives snapshot t)
+
+val owl_rule_sameAs_replace_predicate_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_pred ig /\ ig.ig_triples == g)
+          (ensures  eq_rep_p_licensed g g (owl_rule_sameAs_replace_predicate g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_sameAs_replace_predicate_licensed g ig =
+  lemma_sameas_pairs_provenance ig;
+  lemma_vocab_sameas_agree ();
+  let inv = eq_rep_p_licensed g g in
+  // Engine text verbatim -- the inner fold is the shared named
+  // application `sameas_rep_pred_emit p_prime_iri`, exactly as
+  // owl_rule_sameAs_replace_predicate writes it after the
+  // closure-hoist.
+  let outer_step : rdf_graph -> (subject * subject) -> rdf_graph =
+    fun (acc : rdf_graph) (xy : subject * subject) ->
+      match xy with
+      | (S_IRI p_iri, S_IRI p_prime_iri) ->
+        if is_owl_metapredicate p_iri then acc
+        else
+          let srcs = bucket_lookup ig.ig_pred p_iri in
+          List.Tot.fold_left (sameas_rep_pred_emit p_prime_iri) acc srcs
+      | _ -> acc in
+  introduce forall (acc : rdf_graph) (xy : subject * subject).
+      (memP xy (sameas_pairs ig) /\ inv acc) ==> inv (outer_step acc xy)
+  with introduce (memP xy (sameas_pairs ig) /\ inv acc) ==>
+                 inv (outer_step acc xy)
+  with _ . begin
+    match xy with
+    | (S_IRI p_iri, S_IRI p_prime_iri) ->
+      if is_owl_metapredicate p_iri then ()
+      else begin
+        let srcs = bucket_lookup ig.ig_pred p_iri in
+        let inner_step : rdf_graph -> triple -> rdf_graph =
+          sameas_rep_pred_emit p_prime_iri in
+        introduce forall (acc2 : rdf_graph) (src : triple).
+            (memP src srcs /\ inv acc2) ==> inv (inner_step acc2 src)
+        with introduce (memP src srcs /\ inv acc2) ==>
+                       inv (inner_step acc2 src)
+        with _ . begin
+          // pairs_licensed names the edge eq_edge behind xy: the
+          // (S_IRI p_iri owl:sameAs S_IRI p_prime_iri) premise.
+          eliminate exists (eq_edge : triple).
+              memP eq_edge ig.ig_triples /\ eq_edge.p == owl_sameAs /\
+              eq_edge.s == fst xy /\ term_to_subject eq_edge.o == Some (snd xy)
+          returns inv (inner_step acc2 src)
+          with _ . begin
+            lemma_term_to_subject_subj_term eq_edge.o (snd xy);
+            lemma_subj_term_agree (S_IRI p_prime_iri);
+            // ig_wf_pred places src in the snapshot with src.p ==
+            // p_iri -- the (s P o) data-triple premise, u := src;
+            // ig.ig_triples == g places it in g itself.
+            let new_t : triple = { s = src.s; p = p_prime_iri; o = src.o } in
+            assert (new_t == ({ s = src.s; p = p_prime_iri; o = src.o } <: triple));
+            assert (eq_rep_p_derives g new_t)
+          end
+        end;
+        fold_left_inv inv inner_step srcs acc
+      end
+    | _ -> ()
+  end;
+  fold_left_inv inv outer_step (sameas_pairs ig) g;
+  assert_norm (owl_rule_sameAs_replace_predicate g ig ==
+               List.Tot.fold_left outer_step g (sameas_pairs ig))
+#pop-options
+
+// Per-triple corollary, the form downstream compositions consume.
+val theorem_sameAs_replace_predicate_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_pred ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_sameAs_replace_predicate g ig))
+    (ensures  memP t g \/ eq_rep_p_derives g t)
+
+let theorem_sameAs_replace_predicate_licensed g ig t =
+  owl_rule_sameAs_replace_predicate_licensed g ig
+
+// ===================================================================
+// 14. scm-eqp2: every `owl_rule_scm_eqp2` emission is licensed.
+//
+// OWL 2 RL/RDF rules table row scm-eqp2:
+//   T(?p1, rdfs:subPropertyOf, ?p2), T(?p2, rdfs:subPropertyOf, ?p1)
+//     => T(?p1, owl:equivalentProperty, ?p2)
+// transcribed as OWL.RL.Spec.scm_eqp2_derives -- the property mirror
+// of scm-eqc2 (section 10), reached here by the SAME single-fold-
+// plus-index-guard shape: `find_objects_indexed ig (S_IRI q_iri)
+// rdfs_subPropertyOf`, then `existsb` for P among the results.
+//
+// Both premise triples of the row land in g: u1 is the fold-input
+// triple t itself (memP t g from the fold hypothesis); u2 is the
+// snapshot triple the guard's bucket lookup names, recovered via
+// `FStar.List.Tot.Properties.memP_map_elim` over
+// `find_objects_indexed`'s own `map (fun t -> t.o)` definition and
+// licensed into g by `ig_wf_sp` together with the `ig.ig_triples ==
+// g` hypothesis -- exactly section 10's chain, with
+// rdfs_subPropertyOf/owl_equivalentProperty in place of
+// rdfs_subClassOf/owl_equivalentClass.
+//
+// The rule restricts to S_IRI/T_IRI pairs and skips the degenerate
+// p_iri = q_iri case (property IRIs are never anonymous, unlike
+// classes) -- both restrictions only narrow which conclusions are
+// asserted, never emit anything the row doesn't license, so the case
+// split below carries no extra proof burden, same as section 10.
+//
+// PROOF-FRIENDLY GUARD RULE (task #36): the engine's guard, before
+// this landing, tested bucket membership with an INLINE closure
+// inside TWO nested conditionals (`if p_iri = q_iri then acc else let
+// supers = ... in if existsb (fun x -> rdf_term_eq x (T_IRI p_iri))
+// supers then ... else acc`) -- the exact shape scm-eqc2 carried
+// before its own 2026-08-05 flatten (section 10's banner). Applying
+// the SAME treatment here: the guard is now the NAMED partial
+// application `term_is_iri p_iri` (OWL.Closure.fsti), flattened to
+// ONE boolean (`p_iri <> q_iri && existsb ...`). Semantics unchanged
+// on both counts. This proof mirrors both: the emit_step lambda below
+// is the engine text verbatim, and the emission lemma's existsb
+// hypothesis is stated over `term_is_iri p_iri` so the
+// `memP_existsb`/`eliminate` chain shares the same first-order symbol
+// the engine's fold actually calls -- `lemma_rdf_term_eq_pins_iri`
+// (section 10, reused verbatim: it is stated generically over any
+// `wf_iri`, not scm-eqc2-specific) pins the existsb witness the same
+// way.
+// ===================================================================
+
+// The licensing invariant for this rule, against scm-eqp2's row.
+let scm_eqp2_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ scm_eqp2_derives g t)
+
+// The single emission this rule's step can make -- section 10's
+// lemma_scm_eqc2_emission_licensed, with rdfs_subPropertyOf /
+// owl_equivalentProperty in place of rdfs_subClassOf /
+// owl_equivalentClass.
+val lemma_scm_eqp2_emission_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple) (p_iri q_iri : wf_iri)
+  : Lemma
+    (requires
+       ig_wf_sp ig /\ ig.ig_triples == g /\ memP t g /\
+       t.p == rdfs_subPropertyOf /\ t.s == S_IRI p_iri /\ t.o == T_IRI q_iri /\
+       List.Tot.existsb (term_is_iri p_iri)
+         (find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf) == true)
+    (ensures
+       scm_eqp2_derives g
+         ({ s = S_IRI p_iri; p = owl_equivalentProperty; o = T_IRI q_iri } <: triple))
+
+#push-options "--z3rlimit 150 --split_queries always"
+let lemma_scm_eqp2_emission_licensed g ig t p_iri q_iri =
+  lemma_vocab_eqp_agree ();
+  let new_t : triple = { s = S_IRI p_iri; p = owl_equivalentProperty; o = T_IRI q_iri } in
+  let supers_of_q = find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf in
+  assert_norm (supers_of_q ==
+               List.Tot.map (fun (u : triple) -> u.o)
+                 (bucket_lookup ig.ig_sp (sp_key (S_IRI q_iri) rdfs_subPropertyOf)));
+  FStar.List.Tot.Properties.memP_existsb (term_is_iri p_iri) supers_of_q;
+  // u1 is t itself: memP t g, t.p == o_rdfs_subPropertyOf via the
+  // vocab bridge, and t.s/t.o are exactly S_IRI p_iri / T_IRI q_iri
+  // (hypotheses).
+  eliminate exists (x : rdf_term).
+      term_is_iri p_iri x = true /\ memP x supers_of_q
+  returns scm_eqp2_derives g new_t
+  with _ . begin
+    // term_is_iri unfolds definitionally: term_is_iri p_iri x ==
+    // rdf_term_eq x (T_IRI p_iri).
+    assert (rdf_term_eq x (T_IRI p_iri) = true);
+    FStar.List.Tot.Properties.memP_map_elim
+      (fun (u : triple) -> u.o) x
+      (bucket_lookup ig.ig_sp (sp_key (S_IRI q_iri) rdfs_subPropertyOf));
+    // u2 is the bucket triple memP_map_elim names: ig_wf_sp pins its
+    // subject/predicate/snapshot-membership off the syntactic memP
+    // fact against ig.ig_sp's own sp_key bucket (auto-instantiated by
+    // Z3 e-matching, same as section 10's use of ig_wf_sp).
+    eliminate exists (u2 : triple).
+        memP u2 (bucket_lookup ig.ig_sp (sp_key (S_IRI q_iri) rdfs_subPropertyOf)) /\
+        u2.o == x
+    returns scm_eqp2_derives g new_t
+    with _ . begin
+      lemma_rdf_term_eq_pins_iri x p_iri;
+      assert (memP u2 ig.ig_triples /\
+              u2.s == S_IRI q_iri /\ u2.p == rdfs_subPropertyOf);
+      lemma_subj_term_agree u2.s;
+      lemma_subj_term_agree t.s;
+      // Row equations: subj_term u2.s == u1.o (both T_IRI q_iri) and
+      // u2.o == subj_term u1.s (both T_IRI p_iri, via the existsb hit
+      // pinned to x == T_IRI p_iri above).
+      assert (subj_term u2.s == t.o);
+      assert (u2.o == subj_term t.s);
+      assert (new_t == ({ s = t.s; p = o_owl_equivalentProperty;
+                          o = t.o } <: triple))
+    end
+  end
+#pop-options
+
+val owl_rule_scm_eqp2_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig.ig_triples == g)
+          (ensures scm_eqp2_licensed g (owl_rule_scm_eqp2 g ig))
+
+#push-options "--z3rlimit 100 --split_queries always"
+let owl_rule_scm_eqp2_licensed g ig =
+  lemma_vocab_eqp_agree ();
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subPropertyOf then
+        match t.s, t.o with
+        | S_IRI p_iri, T_IRI q_iri ->
+          if p_iri <> q_iri &&
+             List.Tot.existsb (term_is_iri p_iri)
+               (find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf)
+          then
+            let new_t : triple =
+              { s = S_IRI p_iri; p = owl_equivalentProperty; o = T_IRI q_iri } in
+            add_triple_unchecked acc new_t
+          else acc
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (memP t g /\ scm_eqp2_licensed g acc) ==>
+      scm_eqp2_licensed g (emit_step acc t)
+  with introduce (memP t g /\ scm_eqp2_licensed g acc) ==>
+                 scm_eqp2_licensed g (emit_step acc t)
+  with _ . begin
+    if t.p = rdfs_subPropertyOf then
+      match t.s, t.o with
+      | S_IRI p_iri, T_IRI q_iri ->
+        if p_iri <> q_iri &&
+           List.Tot.existsb (term_is_iri p_iri)
+             (find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf)
+        then lemma_scm_eqp2_emission_licensed g ig t p_iri q_iri
+        else ()
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (scm_eqp2_licensed g) emit_step g g;
+  assert_norm (owl_rule_scm_eqp2 g ig ==
+               List.Tot.fold_left emit_step g g)
+#pop-options
+
+// Per-triple corollary.
+val theorem_scm_eqp2_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_scm_eqp2 g ig))
+    (ensures  memP t g \/ scm_eqp2_derives g t)
+
+let theorem_scm_eqp2_licensed g ig t =
+  owl_rule_scm_eqp2_licensed g ig
+// ===================================================================

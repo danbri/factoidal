@@ -288,3 +288,80 @@ let lemma_build_indexed_wf_subj g =
     assert (Some (subject_to_key s) == bucket_key_subj t);
     lemma_subject_to_key_injective t.s s
   end
+
+// ===================================================================
+// 7. The object bucket needs no side condition either.
+//
+// bucket_key_obj t = term_to_key_opt t.o, and term_to_key_opt is now
+// built with `^` (RDF.Indexed.fsti, matching subject_to_key's own
+// rewrite), so it is injective outright on its non-None range by the
+// same two-char-tag argument -- section 2's `lemma_subject_to_key_
+// injective` proof, replayed one constructor pair at a time with the
+// two extra all-None cases (T_Literal / T_TripleTerm) discharged by
+// contradiction against `Some k`. This is the discharge the eq-rep-o
+// rule's licensing lemma consumes, via the subject-shaped `ig_wf_obj`
+// (OWL.Semantics) the rule actually queries with.
+// ===================================================================
+
+// term_to_key_opt is injective on the rdf_terms it actually keys
+// (T_IRI / T_BNode); the literal/triple-term constructors always key
+// to None, so the requires' `Some k` on both sides already rules them
+// out (term_to_key_opt unfolds definitionally, so F* sees `None ==
+// Some k` is False in those branches without any extra lemma).
+val lemma_term_to_key_opt_injective (o1 o2 : rdf_term) (k : string)
+  : Lemma (requires term_to_key_opt o1 == Some k /\ term_to_key_opt o2 == Some k)
+          (ensures o1 == o2)
+
+let lemma_term_to_key_opt_injective o1 o2 k =
+  match o1, o2 with
+  | T_IRI i1, T_IRI i2 ->
+    concat_injective "I_" "I_" i1 i2
+  | T_BNode b1, T_BNode b2 ->
+    concat_injective "B_" "B_" b1 b2
+  | T_IRI i, T_BNode b ->
+    list_of_concat "I_" i;
+    list_of_concat "B_" b;
+    assert_norm (list_of_string "I_" == ['I'; '_']);
+    assert_norm (list_of_string "B_" == ['B'; '_']);
+    assert_norm (('I' = 'B') == false)
+  | T_BNode b, T_IRI i ->
+    list_of_concat "B_" b;
+    list_of_concat "I_" i;
+    assert_norm (list_of_string "B_" == ['B'; '_']);
+    assert_norm (list_of_string "I_" == ['I'; '_']);
+    assert_norm (('B' = 'I') == false)
+  | T_Literal _, _ -> ()
+  | T_TripleTerm _ _ _, _ -> ()
+  | _, T_Literal _ -> ()
+  | _, T_TripleTerm _ _ _ -> ()
+
+// Bridge: a subject's key agrees with the term_to_key_opt of the term
+// it converts to -- both reduce to the same "I_"^i / "B_"^b shape.
+// Purely definitional (both sides are non-recursive `let`s), which is
+// why the proof is just case analysis with no lemma calls.
+let lemma_subject_to_key_eq_term_to_key_opt (s : subject)
+  : Lemma (ensures term_to_key_opt (subject_to_term s) == Some (subject_to_key s)) =
+  match s with
+  | S_IRI _ -> ()
+  | S_BNode _ -> ()
+
+// The eq-rep-o discharge: every triple the object bucket serves up
+// under a subject-shaped key is a real snapshot triple whose object
+// is exactly the term that subject denotes.
+val lemma_build_indexed_wf_obj (g : rdf_graph)
+  : Lemma (ensures ig_wf_obj (build_indexed g))
+
+let lemma_build_indexed_wf_obj g =
+  lemma_build_indexed_wf_obj_weak g;
+  let ig = build_indexed g in
+  assert (ig.ig_triples == g);
+  introduce forall (s : subject) (t : triple).
+      memP t (bucket_lookup ig.ig_obj (subject_to_key s)) ==>
+      (memP t ig.ig_triples /\ t.o == subject_to_term s)
+  with introduce memP t (bucket_lookup ig.ig_obj (subject_to_key s)) ==>
+                 (memP t ig.ig_triples /\ t.o == subject_to_term s)
+  with _ . begin
+    assert (Some (subject_to_key s) == bucket_key_obj t);
+    lemma_subject_to_key_eq_term_to_key_opt s;
+    lemma_term_to_key_opt_injective t.o (subject_to_term s) (subject_to_key s)
+  end

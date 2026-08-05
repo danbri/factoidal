@@ -274,6 +274,29 @@ let lemma_build_indexed_wf_subj_weak (g : rdf_graph)
                  (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_subj t)
   with _ . lemma_tree_ok_lookup bucket_key_subj g ig.ig_subj k t
 
+// The object bucket: served triples are graph members whose own key
+// equals the queried key. Weak form only; the STRONG form (the term
+// recovered) lives in
+// RDF.Indexed.KeyInjectivity.lemma_build_indexed_wf_obj, where
+// term_to_key_opt injectivity (mirroring subject_to_key's, once
+// term_to_key_opt is built with `^` -- RDF.Indexed.fsti) needs no
+// separator side condition either.
+let lemma_build_indexed_wf_obj_weak (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed g in
+              forall (k : string) (t : triple).
+                List.Tot.memP t (bucket_lookup ig.ig_obj k) ==>
+                (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_obj t))) =
+  let ig = build_indexed g in
+  lemma_build_bucket_ok bucket_key_obj g;
+  assert (ig.ig_obj == build_bucket bucket_key_obj g);
+  introduce forall (k : string) (t : triple).
+      List.Tot.memP t (bucket_lookup ig.ig_obj k) ==>
+      (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_obj t)
+  with introduce List.Tot.memP t (bucket_lookup ig.ig_obj k) ==>
+                 (List.Tot.memP t ig.ig_triples /\ Some k == bucket_key_obj t)
+  with _ . lemma_tree_ok_lookup bucket_key_obj g ig.ig_obj k t
+
 // The subject-predicate bucket: served triples are graph members
 // whose OWN composite key equals the queried key. NOTE this is the
 // WEAK form: recovering the components (t.s == s /\ t.p == p from

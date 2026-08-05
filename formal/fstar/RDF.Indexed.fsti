@@ -482,11 +482,18 @@ let subject_to_key (s : subject) : string =
    on literals because they would require datatype/lang-tag normalisation
    and rarely appear as a join axis in real BGPs. Object-literal patterns
    fall through to whichever bound component (predicate or subject) is
-   indexable, or to the full triple list if neither is. *)
+   indexable, or to the full triple list if neither is.
+   Built with `^` (FStar.String.strcat), NOT `String.concat "" [...]` —
+   same reasoning as `subject_to_key` above: the two produce identical
+   strings, but `concat` is an opaque val with no reasoning equations
+   while `^` carries `list_of_concat`/`concat_injective`, which the
+   #338-style injectivity proof for the object bucket needs
+   (RDF.Indexed.KeyInjectivity.lemma_term_to_key_opt_injective). Do not
+   "simplify" back to concat — it re-opens the proof gap. *)
 let term_to_key_opt (o : rdf_term) : option string =
   match o with
-  | T_IRI i     -> Some (String.concat "" ["I_"; i])
-  | T_BNode b   -> Some (String.concat "" ["B_"; b])
+  | T_IRI i     -> Some ("I_" ^ i)
+  | T_BNode b   -> Some ("B_" ^ b)
   | T_Literal _ -> None
   // RDF 1.2 triple terms are not indexed (same rationale as literals:
   // they would need structural normalisation and rarely serve as a join

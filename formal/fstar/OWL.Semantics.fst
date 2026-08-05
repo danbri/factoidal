@@ -543,3 +543,18 @@ let ig_wf_subj (ig : indexed_graph) : prop =
   forall (s : subject) (t : triple).
     List.Tot.memP t (bucket_lookup ig.ig_subj (subject_to_key s)) ==>
     List.Tot.memP t ig.ig_triples /\ t.s == s
+
+// Every triple the object bucket serves up under the subject-shaped
+// key `subject_to_key s` is a real triple of the snapshot whose
+// object is exactly the term `s` denotes. ig_obj is keyed by
+// term_to_key_opt (RDF.Indexed.fsti), which shares the I_/B_ key
+// space with subject_to_key and omits only literals/triple-terms; the
+// eq-rep-o rule only ever queries ig_obj via `subject_to_key` of a
+// sameAs partner (never a literal), so this subject-shaped form is
+// exactly what that rule's licensing proof needs -- no separator side
+// condition either, mirroring ig_wf_subj. Strong discharge:
+// RDF.Indexed.KeyInjectivity.lemma_build_indexed_wf_obj.
+let ig_wf_obj (ig : indexed_graph) : prop =
+  forall (s : subject) (t : triple).
+    List.Tot.memP t (bucket_lookup ig.ig_obj (subject_to_key s)) ==>
+    List.Tot.memP t ig.ig_triples /\ t.o == subject_to_term s

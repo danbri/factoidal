@@ -309,21 +309,27 @@ let owl_rule_scm_eqc2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
 //
 // As with scm-eqc2 we restrict to IRI-IRI pairs and skip the degenerate
 // P = Q case.
+// PROOF-FRIENDLY GUARD RULE (task #36, mirrors scm-eqc2's 2026-08-05
+// flatten exactly): step guards contain NO anonymous closures -- the
+// super-of test is the NAMED partial application `term_is_iri p_iri`
+// so a proof mirroring this branch shares the same first-order symbol
+// (two syntactically identical `fun` closures are DISTINCT functions
+// to the SMT encoding). The guard is also flattened to one boolean
+// (was two nested ifs + an inline closure). Semantics unchanged.
 let owl_rule_scm_eqp2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = rdfs_subPropertyOf then
         match t.s, t.o with
         | S_IRI p_iri, T_IRI q_iri ->
-          if p_iri = q_iri then acc
-          else
-            let supers_of_q = find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf in
-            if List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI p_iri)) supers_of_q
-            then
-              let new_t : triple =
-                { s = S_IRI p_iri; p = owl_equivalentProperty; o = T_IRI q_iri } in
-              add_triple_unchecked acc new_t
-            else acc
+          if p_iri <> q_iri &&
+             List.Tot.existsb (term_is_iri p_iri)
+               (find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf)
+          then
+            let new_t : triple =
+              { s = S_IRI p_iri; p = owl_equivalentProperty; o = T_IRI q_iri } in
+            add_triple_unchecked acc new_t
+          else acc
         | _, _ -> acc
       else acc)
     g
@@ -626,20 +632,22 @@ let owl_rule_sameAs_replace_subject (g : rdf_graph) (ig : indexed_graph) : rdf_g
 // term_to_key_opt, which uses the same I_/B_ key space as
 // subject_to_key and omits only literals — and sameAs subjects are
 // never literals, so the bucket is exact for this rule.
+// Named inner-fold emitter (proof-friendly guard rule, task #36):
+// replace the object of one bucket triple with the sameAs partner's
+// term.
+let sameas_rep_obj_emit (y_term : rdf_term) (acc2 : rdf_graph) (t : triple) : rdf_graph =
+  if t.p <> owl_sameAs then
+    let new_t : triple = { s = t.s; p = t.p; o = y_term } in
+    add_triple_unchecked acc2 new_t
+  else acc2
+
 let owl_rule_sameAs_replace_object (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (xy : subject * subject) ->
       let (x, y) = xy in
       let y_term = subject_to_term y in
       let srcs = bucket_lookup ig.ig_obj (subject_to_key x) in
-      List.Tot.fold_left
-        (fun (acc2 : rdf_graph) (src : triple) ->
-          if src.p <> owl_sameAs then
-            let new_t : triple = { s = src.s; p = src.p; o = y_term } in
-            add_triple_unchecked acc2 new_t
-          else acc2)
-        acc
-        srcs)
+      List.Tot.fold_left (sameas_rep_obj_emit y_term) acc srcs)
     g
     (sameas_pairs ig)
 
@@ -648,6 +656,12 @@ let owl_rule_sameAs_replace_object (g : rdf_graph) (ig : indexed_graph) : rdf_gr
 // predicates cannot be blank nodes or literals.
 // #262: per deduped IRI-IRI pair, an ig_pred bucket lookup (keyed by
 // the raw predicate IRI) replaces the O(list) inner fold.
+// Named inner-fold emitter (proof-friendly guard rule, task #36):
+// replace the predicate of one bucket triple with the sameAs partner.
+let sameas_rep_pred_emit (p_prime_iri : wf_iri) (acc2 : rdf_graph) (t : triple) : rdf_graph =
+  let new_t : triple = { s = t.s; p = p_prime_iri; o = t.o } in
+  add_triple_unchecked acc2 new_t
+
 let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (xy : subject * subject) ->
@@ -656,13 +670,7 @@ let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) : rdf
         if is_owl_metapredicate p_iri then acc
         else
           let srcs = bucket_lookup ig.ig_pred p_iri in
-          List.Tot.fold_left
-            (fun (acc2 : rdf_graph) (src : triple) ->
-              let new_t : triple =
-                { s = src.s; p = p_prime_iri; o = src.o } in
-              add_triple_unchecked acc2 new_t)
-            acc
-            srcs
+          List.Tot.fold_left (sameas_rep_pred_emit p_prime_iri) acc srcs
       | _ -> acc)
     g
     (sameas_pairs ig)
