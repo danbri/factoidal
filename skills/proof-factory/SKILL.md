@@ -58,6 +58,15 @@ invariant).
    into one `&&` guard (behavior-identical rewrites only). Depth ≤3
    discharges everywhere it has been tried.
 
+The two laws are INDEPENDENT obstructions, and a single rule can have
+both (measured 2026-08-05, the cls-int1/cls-uni wave): cls-int1 fell
+to lambda-lifting alone; cls-uni needed lambda-lifting at EVERY fold
+nesting level (including a pairwise double fold) AND a 4→3 guard
+flatten (two option matches collapsed into one decode helper) —
+seven prior attempts that fixed only one of the two kept failing at
+the other's signature site. When a proof still fails after one
+treatment, check for the other before raising budgets.
+
 Corollaries: `assert_norm (rule g ig == fold_left step ...)` reduces
 only through zeta-unfoldable LOCAL step lambdas spelled VERBATIM from
 the engine text (top-level proof-side copies fail; pair-match vs
