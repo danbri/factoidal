@@ -81,7 +81,7 @@ RDF_MT_MODULES = \
   RDF.Entailment.RDFS.FixedPoint \
   RDF.Entailment.Regime \
   RDF.Semantics.HypothesisWitness \
-  RDF.Indexed.KeyInjectivity \
+  RDF.Indexed.KeyInjectivity RDF.Indexed.Completeness \
   OWL.Semantics OWL.Semantics.MemLemmas OWL.Semantics.Soundness \
   OWL.RL.Refinement
 

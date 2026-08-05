@@ -25,30 +25,29 @@ module OWL.Semantics.MemLemmas
 // 2026-08-05 (index-completeness push, docs/claude-rules/rdf-rdfs-
 // semantics-coverage.md gap #2): `lemma_sortWith_memP_rev` below lands
 // (the converse of `lemma_sortWith_memP` -- sortWith drops nothing
-// either). The FULL index-completeness lemma
-// (`lemma_build_indexed_complete_pred`: every triple with predicate p
-// IS filed in `bucket_lookup ig.ig_pred p`) is BLOCKED, not merely
-// hard: `bucket_tree`'s midpoint-bisection build (`sorted_list_to_tree`
-// in RDF.Indexed.fsti) places pairs by LIST POSITION, while
-// `bucket_lookup` navigates by KEY COMPARISON (`String.compare k k' <
-// 0`). These only agree if the input list is genuinely ordered by that
-// same comparison -- and `FStar.String.fsti`'s `compare` carries ZERO
-// stated axioms (no reflexivity/antisymmetry/transitivity/totality).
-// Confirmed empirically: `Lemma (requires cmp a b<0 /\ cmp b c<0)
-// (ensures cmp a c<0)` for `cmp = String.compare` fails with "Could not
-// prove post-condition" given nothing but the type `string -> string ->
-// Tot int` (no other hypotheses). The stdlib's own
-// `FStar.List.Tot.Properties.sortWith_sorted` hits the identical wall:
-// its signature REQUIRES `total_order (bool_of_compare f)` as an
-// explicit hypothesis, for exactly this reason -- it is not derivable,
-// only assumable. See the "ATTEMPT" comment block above
-// `lemma_build_bucket_ok` for the two recorded attempts (direct proof;
-// tree_ok-style reformulation) and why both reduce to this same missing
-// prerequisite. Landing the completeness lemma needs a NEW fact about
-// `FStar.String.compare` (true of real lexicographic string comparison,
-// just unstated in this F* distribution's ulib) added deliberately and
-// tracked, not slipped in as a side effect of this file. Not attempted
-// here without that decision.
+// either). At the time this landed, the FULL index-completeness lemma
+// (every triple with predicate p IS filed in `bucket_lookup ig.ig_pred
+// p`) was BLOCKED, not merely hard: `bucket_tree`'s midpoint-bisection
+// build (`sorted_list_to_tree` in RDF.Indexed.fsti) places pairs by
+// LIST POSITION, while `bucket_lookup` navigates by KEY COMPARISON
+// (`String.compare k k' < 0`), and `FStar.String.fsti`'s `compare`
+// carried ZERO stated axioms (no reflexivity/antisymmetry/
+// transitivity/totality) -- confirmed empirically: a bare transitivity
+// lemma for `cmp = String.compare` failed with "Could not prove
+// post-condition" given nothing but the type `string -> string -> Tot
+// int`. The "ATTEMPT" comment block above `lemma_build_bucket_ok`
+// records the two attempts made under that wall (direct proof;
+// tree_ok-style reformulation).
+//
+// RESOLVED same day: RDF.Indexed.StringOrder.fsti added exactly three
+// interface axioms about `FStar.String.compare` (compare-zero-iff-eq,
+// antisymmetry, transitivity), tracked under issue #347. The full
+// completeness lemma is proved in RDF.Indexed.Completeness.fst
+// (`lemma_build_indexed_complete_pred`, generic underneath as
+// `lemma_build_bucket_complete` so sp/subj/obj/po/so can reuse the
+// same machinery) using those three axioms -- see that module's own
+// banner for the proof shape (sortedness of sortWith's output, carried
+// through grouping, then through the tree bisection).
 
 open FStar.List.Tot
 open RDF.Term
