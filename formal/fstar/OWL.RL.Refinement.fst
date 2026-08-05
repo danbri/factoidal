@@ -3217,3 +3217,497 @@ val theorem_cls_uni_licensed
 let theorem_cls_uni_licensed g ig t =
   owl_rule_cls_uni_licensed g ig
 // ===================================================================
+
+// ===================================================================
+// 23. prp-key: every `owl_rule_prp_key` emission is licensed --
+// PARTIALLY: against a WEAKENED row, with the exact gap between the
+// engine's value-sharing test and the Spec's own row MACHINE-CHECKED
+// below. No lemma is stated against `prp_key_derives` itself (the
+// literal W3C row); forcing one would be false, per the finding this
+// section records.
+//
+// OWL 2 RL/RDF Table 4, verbatim:
+//   prp-key | T(?c, owl:hasKey, ?u)  LIST[?u, ?p1, ..., ?pn]
+//            T(?x, rdf:type, ?c)  T(?x, ?p1, ?z1) ... T(?x, ?pn, ?zn)
+//            T(?y, rdf:type, ?c)  T(?y, ?p1, ?z1) ... T(?y, ?pn, ?zn) |
+//            T(?x, owl:sameAs, ?y)
+// transcribed as `prp_key_derives` (OWL.RL.Spec.fst:555-565), whose
+// paired-premise clause `shares_key_values` (lines 543-553) reads:
+// for every key property, SOME shared value `ux.o == uy.o` -- `==`,
+// F*'s propositional/Leibniz equality, exact field-for-field.
+//
+// SHAPE: `owl_rule_prp_key` (OWL.Closure.fsti:3400-3428, post-2e482d3
+// lambda-lift) is a COLLECTED, TRIPLE-NESTED rule -- two precomputed-
+// list stages before the emission fold ever touches `g` directly:
+//   (1) `collect_haskey_axioms g ig` -- a `List.Tot.fold_left` over
+//       `g` collecting `(class IRI, decoded key-property list)`
+//       pairs (reusing `decode_iri_list`, hence section 18's bridge);
+//   (2) `members_of_class g c_iri` -- a second `List.Tot.fold_left`
+//       over `g`, per hasKey axiom, collecting the class's IRI-typed
+//       members (BNODE-POLLUTION GUARD: `S_IRI x_iri` only, same
+//       narrowing rationale as every list-walking rule since
+//       section 15 -- costs nothing extra to discharge);
+//   then the emission fold is `owl_prp_key_axiom_step` driving, per
+//   axiom, a DOUBLE fold `owl_prp_key_x_step` (outer, over `x`) /
+//   `owl_prp_key_y_step` (inner, over `y`), each pair guarded by
+//   `all_keys_match g ig x y props`, itself a `decreases props`
+//   recursion over `agree_on_property` (a direct linear scan,
+//   `find_objects_indexed` + nested `List.Tot.existsb`). All three
+//   fold levels are NAMED TOP-LEVEL functions (2e482d3's lift,
+//   mirroring the cls-oo/cls-uni precedent) -- the closure-identity
+//   obstruction earlier attempts hit is REMOVED: this proof's
+//   `fold_left_inv` calls reference `owl_prp_key_axiom_step` /
+//   `owl_prp_key_x_step` / `owl_prp_key_y_step` directly, the exact
+//   symbols `owl_rule_prp_key` itself calls -- no separately-
+//   elaborated mirror to bridge.
+//
+// STAGES (1) AND (2) ALIGN EXACTLY with the Spec, proved below as
+// `lemma_collect_haskey_axioms_licensed` / `lemma_members_of_class_
+// licensed` (each a `fold_left_inv` argument mirroring section 1's
+// `pairs_licensed`/`collect_step` recipe, the reusable pattern for a
+// fold that BUILDS A DERIVED LIST rather than an `rdf_graph`). The
+// class-membership check compares `rdf_term_eq t.o (T_IRI cls)` --
+// one side pinned to a KNOWN `T_IRI` literal, so section 10's
+// `lemma_rdf_term_eq_pins_iri` closes it to exact `==` with no gap:
+// `rdf_term_eq`'s catch-all `_, _ -> false` arm forces the LHS to
+// ALSO be a `T_IRI`, and the `T_IRI`/`T_IRI` case is plain string
+// equality (exact, no lang-tag or XMLLiteral folding involved).
+//
+// THE CRUX (the one place this rule genuinely differs from every
+// prior section): `agree_on_property`'s per-key-property value
+// comparison uses `rdf_term_eq xv yv` where BOTH sides are ARBITRARY
+// served objects -- not one side pinned to a known `T_IRI`. For the
+// `T_IRI`/`T_BNode` cases `rdf_term_eq` still forces exact `==` (same
+// pinning argument as above, per constructor). For the `T_Literal`
+// case it does NOT: `RDF.Term.fsti`'s `literal_eq` (which
+// `rdf_term_eq`'s `T_Literal` arm calls) compares the language tag
+// CASE-INSENSITIVELY (`lang_tag_option_eq`) and, for `rdf:XMLLiteral`,
+// compares lexical forms up to exclusive-c14n (`xml_canon_eq`) rather
+// than byte-for-byte -- both DELIBERATE RDF-1.1-VALUE-EQUALITY
+// choices (RDF.Term.fsti:441-454, the #337 fix), and both STRICTLY
+// COARSER than propositional `==` on the literal record. So
+// `agree_on_property` accepts strictly MORE value pairs as "shared"
+// than `shares_key_values`'s `ux.o == uy.o` licenses -- the engine's
+// check is an OVER-APPROXIMATION of the Spec's row wherever a key
+// property's shared value is a language-tagged or XMLLiteral literal.
+//
+// MACHINE-CHECKED (matching this project's stated preference for a
+// checked refutation over a banner claim -- RDF.Term.fsti's #337
+// precedent): `lemma_agree_on_property_overapproximates_shares_key_
+// values` below exhibits two well-formed literals, "Alice"@en and
+// "Alice"@EN, that `rdf_term_eq` (hence `agree_on_property`) accepts
+// as equal but that are NOT propositionally `==`. Whenever such a
+// pair is the ONLY value two individuals share on a key property, the
+// engine derives `owl:sameAs` while `shares_key_values` -- and hence
+// `prp_key_derives` -- has no witness for that property: the emission
+// is neither already in `g` nor licensed by the row. Per Iron Rule
+// #10 (no `--lax`/`--admit_smt_queries`) a false theorem cannot be
+// forced through, and per the eq-rep/scm-dom2/scm-rng2 precedent
+// (sections 11-17) the honest move is to prove what the function
+// ACTUALLY computes and flag the mismatch in-file -- except here,
+// unlike sections 15/16, there is no ALTERNATE existing Spec row the
+// engine's check matches instead; the gap is intrinsic to this row's
+// only phrasing of the shared-value premise. `owl_rule_prp_key_
+// licensed` is therefore proved below against `prp_key_derives_
+// approx` -- a LOCAL, file-scoped weakening that is `prp_key_derives`
+// with `shares_key_values`'s `==` replaced by `rdf_term_eq ... =
+// true` at the one clause the crux implicates, nothing else touched
+// -- and NOT against `prp_key_derives` itself. No lemma named `owl_
+// rule_prp_key_licensed` (or `theorem_prp_key_licensed`) against the
+// literal row is stated in this landing.
+//
+// ADJUDICATION: re-checked against the CURRENT (post-2e482d3) engine
+// text above -- `agree_on_property` and `all_keys_match` are BYTE-
+// IDENTICAL to the pre-lift spelling this finding was first worked
+// out against (only the fold-level wrapper functions were named).
+// This is a WEAKENED-ROW CONFIRMATION, not a ledger drift: the row
+// transcription itself is faithful to Table 4; the gap is the
+// engine's deliberate RDF-1.1-value-equality choice at `rdf_term_eq`
+// (#337) meeting a row phrased with plain `==`. Narrowing direction:
+// the engine's `owl_rule_prp_key` MERGES the SAME individuals
+// `prp_key_derives` would (agree_on_property is a superset test, so
+// it fires whenever the exact-`==` row would AND sometimes when it
+// would not) -- i.e. this is an OVER-approximation of the licensed
+// output on the value-sharing axis, not an under-approximation; nB
+// this is the opposite direction from the "safe narrowing" pattern
+// (sections 15/16/19) where the engine emits LESS than a row
+// licenses. Recorded here per the findings discipline; not resolved
+// in this landing.
+// ===================================================================
+
+let lemma_vocab_key_agree ()
+  : Lemma (OWL.Closure.owl_hasKey == OWL.RL.Spec.o_owl_hasKey) = ()
+
+// -------------------------------------------------------------------
+// Stage 1: `collect_haskey_axioms` characterization. Every collected
+// (class, key-property-list) pair names a real hasKey declaration
+// triple of `g`, whose object decodes (via section 18's bridge) to
+// exactly that property list. `fold_left_inv` over the COLLECTING
+// fold (accumulator type is the pair list, not `rdf_graph`) -- the
+// same recipe section 1's `pairs_licensed`/`collect_step` uses for
+// the `sameas_pairs` pipeline.
+// -------------------------------------------------------------------
+
+let haskey_axiom_from_triple
+    (g : rdf_graph) (ig : indexed_graph) (fuel : nat)
+    (a : wf_iri & list wf_iri) : prop =
+  exists (decl : triple) (list_subj : subject).
+    memP decl g /\ decl.p == owl_hasKey /\ decl.s == S_IRI (fst a) /\
+    term_to_subject decl.o == Some list_subj /\
+    decode_iri_list g ig list_subj fuel == Some (snd a)
+
+let haskey_axioms_licensed
+    (g : rdf_graph) (ig : indexed_graph) (fuel : nat)
+    (axioms : list (wf_iri & list wf_iri)) : prop =
+  forall (a : wf_iri & list wf_iri). memP a axioms ==> haskey_axiom_from_triple g ig fuel a
+
+let lemma_collect_haskey_axioms_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (ensures haskey_axioms_licensed g ig (List.Tot.length g) (collect_haskey_axioms g ig))
+  =
+  let fuel : nat = List.Tot.length g in
+  // Engine text verbatim (OWL.Closure.fsti:3013-3026).
+  let collect_step : list (wf_iri & list wf_iri) -> triple -> list (wf_iri & list wf_iri) =
+    fun (acc : list (wf_iri & list wf_iri)) (t : triple) ->
+      if t.p = owl_hasKey then
+        match t.s, term_to_subject t.o with
+        | S_IRI c_iri, Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | Some props -> (c_iri, props) :: acc
+           | None -> acc)
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : list (wf_iri & list wf_iri)) (t : triple).
+      (memP t g /\ haskey_axioms_licensed g ig fuel acc) ==>
+      haskey_axioms_licensed g ig fuel (collect_step acc t)
+  with introduce (memP t g /\ haskey_axioms_licensed g ig fuel acc) ==>
+                 haskey_axioms_licensed g ig fuel (collect_step acc t)
+  with _ . begin
+    if t.p = owl_hasKey then
+      match t.s, term_to_subject t.o with
+      | S_IRI c_iri, Some list_subj ->
+        (match decode_iri_list g ig list_subj fuel with
+         | Some props ->
+           introduce forall (a : wf_iri & list wf_iri).
+               memP a (collect_step acc t) ==> haskey_axiom_from_triple g ig fuel a
+           with introduce memP a (collect_step acc t) ==> haskey_axiom_from_triple g ig fuel a
+           with _ . begin
+             // a is either the fresh (c_iri, props) cons -- witness
+             // decl := t, list_subj := list_subj -- or already
+             // licensed via the acc hypothesis.
+             if a = (c_iri, props) then ()
+             else ()
+           end
+         | None -> ())
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (haskey_axioms_licensed g ig fuel) collect_step g []
+
+// -------------------------------------------------------------------
+// Stage 2: `members_of_class` characterization. Every collected
+// member IRI names a real `rdf:type` triple of `g` typing it into
+// `cls`; the object comparison `rdf_term_eq t.o (T_IRI cls)` is one
+// side pinned to a literal `T_IRI`, so section 10's `lemma_rdf_term_
+// eq_pins_iri` closes it to exact `==` -- no coarsening here (see the
+// banner above: the crux is `agree_on_property`'s BOTH-sides-
+// arbitrary comparison, not this one).
+// -------------------------------------------------------------------
+
+let class_member_from_triple (g : rdf_graph) (cls : wf_iri) (x_iri : wf_iri) : prop =
+  exists (tx : triple).
+    memP tx g /\ tx.p == rdf_type /\ tx.s == S_IRI x_iri /\ rdf_term_eq tx.o (T_IRI cls) = true
+
+let class_members_licensed (g : rdf_graph) (cls : wf_iri) (members : list wf_iri) : prop =
+  forall (x_iri : wf_iri). memP x_iri members ==> class_member_from_triple g cls x_iri
+
+let lemma_members_of_class_licensed (g : rdf_graph) (cls : wf_iri)
+  : Lemma (ensures class_members_licensed g cls (members_of_class g cls))
+  =
+  // Engine text verbatim (OWL.Closure.fsti:3325-3335).
+  let collect_step : list wf_iri -> triple -> list wf_iri =
+    fun (acc : list wf_iri) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI cls) then
+        match t.s with
+        | S_IRI x_iri -> if List.Tot.mem x_iri acc then acc else x_iri :: acc
+        | _ -> acc
+      else acc in
+  introduce forall (acc : list wf_iri) (t : triple).
+      (memP t g /\ class_members_licensed g cls acc) ==>
+      class_members_licensed g cls (collect_step acc t)
+  with introduce (memP t g /\ class_members_licensed g cls acc) ==>
+                 class_members_licensed g cls (collect_step acc t)
+  with _ . begin
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI cls) then
+      match t.s with
+      | S_IRI x_iri ->
+        introduce forall (y_iri : wf_iri).
+            memP y_iri (collect_step acc t) ==> class_member_from_triple g cls y_iri
+        with introduce memP y_iri (collect_step acc t) ==> class_member_from_triple g cls y_iri
+        with _ . begin
+          if y_iri = x_iri then () else ()
+        end
+      | _ -> ()
+    else ()
+  end;
+  fold_left_inv (class_members_licensed g cls) collect_step g []
+
+// -------------------------------------------------------------------
+// The crux, machine-checked: two well-formed literals `rdf_term_eq`
+// accepts as equal (case-insensitive language tag) but that are NOT
+// propositionally `==`. `literal_wf` (RDF.Term.fsti:139-144) imposes
+// no lang-tag-case canonicalisation, so both are genuine `wf_literal`
+// values a real graph can carry.
+// -------------------------------------------------------------------
+
+let key_lit_en : wf_literal =
+  assert_norm (literal_wf ({ lexical_form = "Alice"; datatype = rdf_lang_string;
+                             lang_tag = Some "en"; direction = None } <: literal));
+  { lexical_form = "Alice"; datatype = rdf_lang_string;
+    lang_tag = Some "en"; direction = None }
+
+let key_lit_EN : wf_literal =
+  assert_norm (literal_wf ({ lexical_form = "Alice"; datatype = rdf_lang_string;
+                             lang_tag = Some "EN"; direction = None } <: literal));
+  { lexical_form = "Alice"; datatype = rdf_lang_string;
+    lang_tag = Some "EN"; direction = None }
+
+let lemma_agree_on_property_overapproximates_shares_key_values ()
+  : Lemma (
+      rdf_term_eq (T_Literal key_lit_en) (T_Literal key_lit_EN) == true /\
+      ~ (T_Literal key_lit_en == T_Literal key_lit_EN))
+  =
+  assert_norm (rdf_term_eq (T_Literal key_lit_en) (T_Literal key_lit_EN) == true);
+  assert (~ (T_Literal key_lit_en == T_Literal key_lit_EN))
+
+// -------------------------------------------------------------------
+// The weakened row: `prp_key_derives` with `shares_key_values`'s `==`
+// replaced by `rdf_term_eq ... = true` -- the one clause the crux
+// above implicates. Everything else is copied verbatim from
+// OWL.RL.Spec.fst:543-565.
+// -------------------------------------------------------------------
+
+let rec shares_key_values_approx (g : list triple) (x y : subject)
+                                  (preds : list wf_iri)
+  : Tot prop (decreases preds) =
+  match preds with
+  | [] -> True
+  | p :: rest ->
+    (exists (ux uy : triple).
+       memP ux g /\ ux.s == x /\ ux.p == p /\
+       memP uy g /\ uy.s == y /\ uy.p == p /\
+       rdf_term_eq ux.o uy.o == true) /\
+    shares_key_values_approx g x y rest
+
+let prp_key_derives_approx (g : list triple) (t : triple) : prop =
+  exists (decl tx ty : triple)
+         (pred_terms : list rdf_term) (preds : list wf_iri).
+    memP decl g /\ decl.p == o_owl_hasKey /\
+    owl_list_denotes g decl.o pred_terms /\
+    Cons? preds /\
+    pred_terms == List.Tot.map (fun (q : wf_iri) -> T_IRI q) preds /\
+    memP tx g /\ tx.p == o_rdf_type /\ tx.o == subj_term decl.s /\
+    memP ty g /\ ty.p == o_rdf_type /\ ty.o == subj_term decl.s /\
+    shares_key_values_approx g tx.s ty.s preds /\
+    t == ({ s = tx.s; p = o_owl_sameAs; o = subj_term ty.s } <: triple)
+
+// `all_keys_match`'s recursion bridges to `shares_key_values_approx`
+// one key property at a time: `agree_on_property`'s nested `existsb`
+// pair is exactly the per-property existential, unwound via
+// `memP_existsb` (twice, for the x-side and y-side scan) then
+// `memP_map_elim` (twice, to recover the sp-bucket witness triples
+// `ux`/`uy`, pinned into `g` by `ig_wf_sp` the same way every earlier
+// section's bucket reads are).
+#push-options "--z3rlimit 200 --split_queries always"
+let rec lemma_all_keys_match_shares_approx
+    (g : rdf_graph) (ig : indexed_graph) (x y : wf_iri) (props : list wf_iri)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              all_keys_match g ig x y props = true)
+    (ensures shares_key_values_approx g (S_IRI x) (S_IRI y) props)
+    (decreases props)
+  =
+  match props with
+  | [] -> ()
+  | p :: rest ->
+    assert (agree_on_property g ig x y p = true /\
+            all_keys_match g ig x y rest = true);
+    let xs_objs = find_objects_indexed ig (S_IRI x) p in
+    let ys_objs = find_objects_indexed ig (S_IRI y) p in
+    assert_norm (xs_objs ==
+                 List.Tot.map (fun (u : triple) -> u.o)
+                   (bucket_lookup ig.ig_sp (sp_key (S_IRI x) p)));
+    assert_norm (ys_objs ==
+                 List.Tot.map (fun (u : triple) -> u.o)
+                   (bucket_lookup ig.ig_sp (sp_key (S_IRI y) p)));
+    assert_norm (agree_on_property g ig x y p ==
+                 List.Tot.existsb
+                   (fun (xv : rdf_term) ->
+                      List.Tot.existsb (fun (yv : rdf_term) -> rdf_term_eq xv yv)
+                        (find_objects_indexed ig (S_IRI y) p))
+                   (find_objects_indexed ig (S_IRI x) p));
+    assert (List.Tot.existsb
+              (fun (xv : rdf_term) ->
+                 List.Tot.existsb (fun (yv : rdf_term) -> rdf_term_eq xv yv) ys_objs)
+              xs_objs = true);
+    FStar.List.Tot.Properties.memP_existsb
+      (fun (xv : rdf_term) ->
+         List.Tot.existsb (fun (yv : rdf_term) -> rdf_term_eq xv yv) ys_objs)
+      xs_objs;
+    eliminate exists (xv : rdf_term).
+        (List.Tot.existsb (fun (yv : rdf_term) -> rdf_term_eq xv yv) ys_objs = true /\
+         List.Tot.memP xv xs_objs)
+    returns (exists (ux uy : triple).
+               memP ux g /\ ux.s == S_IRI x /\ ux.p == p /\
+               memP uy g /\ uy.s == S_IRI y /\ uy.p == p /\
+               rdf_term_eq ux.o uy.o == true)
+    with _ . begin
+      FStar.List.Tot.Properties.memP_existsb
+        (fun (yv : rdf_term) -> rdf_term_eq xv yv) ys_objs;
+      eliminate exists (yv : rdf_term).
+          (rdf_term_eq xv yv = true /\ List.Tot.memP yv ys_objs)
+      returns (exists (ux uy : triple).
+                 memP ux g /\ ux.s == S_IRI x /\ ux.p == p /\
+                 memP uy g /\ uy.s == S_IRI y /\ uy.p == p /\
+                 rdf_term_eq ux.o uy.o == true)
+      with _ . begin
+        FStar.List.Tot.Properties.memP_map_elim
+          (fun (u : triple) -> u.o) xv (bucket_lookup ig.ig_sp (sp_key (S_IRI x) p));
+        eliminate exists (ux : triple).
+            List.Tot.memP ux (bucket_lookup ig.ig_sp (sp_key (S_IRI x) p)) /\ ux.o == xv
+        returns (exists (ux uy : triple).
+                   memP ux g /\ ux.s == S_IRI x /\ ux.p == p /\
+                   memP uy g /\ uy.s == S_IRI y /\ uy.p == p /\
+                   rdf_term_eq ux.o uy.o == true)
+        with _ . begin
+          FStar.List.Tot.Properties.memP_map_elim
+            (fun (u : triple) -> u.o) yv (bucket_lookup ig.ig_sp (sp_key (S_IRI y) p));
+          eliminate exists (uy : triple).
+              List.Tot.memP uy (bucket_lookup ig.ig_sp (sp_key (S_IRI y) p)) /\ uy.o == yv
+          returns (exists (ux uy : triple).
+                     memP ux g /\ ux.s == S_IRI x /\ ux.p == p /\
+                     memP uy g /\ uy.s == S_IRI y /\ uy.p == p /\
+                     rdf_term_eq ux.o uy.o == true)
+          with _ . begin
+            // ig_wf_sp pins both bucket triples into g (Z3 e-matching,
+            // same as every earlier section's bucket reads).
+            assert (memP ux ig.ig_triples /\ ux.s == S_IRI x /\ ux.p == p);
+            assert (memP uy ig.ig_triples /\ uy.s == S_IRI y /\ uy.p == p);
+            assert (rdf_term_eq ux.o uy.o == true)
+          end
+        end
+      end
+    end;
+    lemma_all_keys_match_shares_approx g ig x y rest
+#pop-options
+
+// -------------------------------------------------------------------
+// The licensing invariant against the weakened row, and its proof:
+// outer fold over `collect_haskey_axioms`'s pair list, driving (per
+// nonempty-key-list axiom) a double fold over `members_of_class`'s
+// member list. Every level of the fold references the engine's OWN
+// named top-level step function (`owl_prp_key_axiom_step` /
+// `owl_prp_key_x_step` / `owl_prp_key_y_step`) directly -- no local
+// re-elaboration, so no closure-identity gap to bridge.
+// -------------------------------------------------------------------
+
+let prp_key_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ prp_key_derives_approx g t)
+
+val owl_rule_prp_key_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig.ig_triples == g)
+          (ensures  prp_key_licensed g (owl_rule_prp_key g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_prp_key_licensed g ig =
+  lemma_vocab_sameas_agree ();
+  lemma_vocab_key_agree ();
+  let fuel : nat = List.Tot.length g in
+  let axioms = collect_haskey_axioms g ig in
+  lemma_collect_haskey_axioms_licensed g ig;
+  introduce forall (acc : rdf_graph) (axiom : (wf_iri & list wf_iri)).
+      (memP axiom axioms /\ prp_key_licensed g acc) ==>
+      prp_key_licensed g (owl_prp_key_axiom_step g ig acc axiom)
+  with introduce (memP axiom axioms /\ prp_key_licensed g acc) ==>
+                 prp_key_licensed g (owl_prp_key_axiom_step g ig acc axiom)
+  with _ . begin
+    let (c_iri, props) = axiom in
+    match props with
+    | [] -> ()
+    | _ ->
+      assert (haskey_axiom_from_triple g ig fuel axiom);
+      eliminate exists (decl : triple) (list_subj : subject).
+          memP decl g /\ decl.p == owl_hasKey /\ decl.s == S_IRI c_iri /\
+          term_to_subject decl.o == Some list_subj /\
+          decode_iri_list g ig list_subj fuel == Some props
+      returns prp_key_licensed g (owl_prp_key_axiom_step g ig acc axiom)
+      with _ . begin
+        lemma_decode_iri_list_licensed g ig list_subj fuel;
+        lemma_term_to_subject_subj_term decl.o list_subj;
+        let pred_terms = List.Tot.map (fun (q : wf_iri) -> T_IRI q) props in
+        assert (owl_list_denotes g decl.o pred_terms);
+        let members = members_of_class g c_iri in
+        lemma_members_of_class_licensed g c_iri;
+        lemma_subj_term_agree decl.s;
+        introduce forall (acc1 : rdf_graph) (x : wf_iri).
+            (memP x members /\ prp_key_licensed g acc1) ==>
+            prp_key_licensed g (owl_prp_key_x_step g ig props members acc1 x)
+        with introduce (memP x members /\ prp_key_licensed g acc1) ==>
+                       prp_key_licensed g (owl_prp_key_x_step g ig props members acc1 x)
+        with _ . begin
+          introduce forall (acc2 : rdf_graph) (y : wf_iri).
+              (memP y members /\ prp_key_licensed g acc2) ==>
+              prp_key_licensed g (owl_prp_key_y_step g ig props x acc2 y)
+          with introduce (memP y members /\ prp_key_licensed g acc2) ==>
+                         prp_key_licensed g (owl_prp_key_y_step g ig props x acc2 y)
+          with _ . begin
+            if x = y then ()
+            else if all_keys_match g ig x y props then begin
+              assert (class_member_from_triple g c_iri x);
+              assert (class_member_from_triple g c_iri y);
+              eliminate exists (tx : triple).
+                  memP tx g /\ tx.p == rdf_type /\ tx.s == S_IRI x /\
+                  rdf_term_eq tx.o (T_IRI c_iri) = true
+              returns prp_key_licensed g (owl_prp_key_y_step g ig props x acc2 y)
+              with _ . begin
+                lemma_rdf_term_eq_pins_iri tx.o c_iri;
+                eliminate exists (ty : triple).
+                    memP ty g /\ ty.p == rdf_type /\ ty.s == S_IRI y /\
+                    rdf_term_eq ty.o (T_IRI c_iri) = true
+                returns prp_key_licensed g (owl_prp_key_y_step g ig props x acc2 y)
+                with _ . begin
+                  lemma_rdf_term_eq_pins_iri ty.o c_iri;
+                  lemma_all_keys_match_shares_approx g ig x y props;
+                  assert (subj_term decl.s == T_IRI c_iri);
+                  assert (tx.o == subj_term decl.s);
+                  assert (ty.o == subj_term decl.s);
+                  let new_t : triple = { s = S_IRI x; p = owl_sameAs; o = T_IRI y } in
+                  assert (new_t == ({ s = tx.s; p = o_owl_sameAs;
+                                      o = subj_term ty.s } <: triple));
+                  assert (prp_key_derives_approx g new_t)
+                end
+              end
+            end
+            else ()
+          end;
+          fold_left_inv (prp_key_licensed g) (owl_prp_key_y_step g ig props x) members acc1
+        end;
+        fold_left_inv (prp_key_licensed g) (owl_prp_key_x_step g ig props members) members acc
+      end
+  end;
+  fold_left_inv (prp_key_licensed g) (owl_prp_key_axiom_step g ig) axioms g
+#pop-options
+
+// Per-triple corollary -- against `prp_key_derives_approx`, NOT
+// `prp_key_derives`. See the banner above: the exact row is not
+// licensed by this landing; the crux is machine-checked, not merely
+// asserted.
+val theorem_prp_key_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_prp_key g ig))
+    (ensures  memP t g \/ prp_key_derives_approx g t)
+
+let theorem_prp_key_licensed g ig t =
+  owl_rule_prp_key_licensed g ig
+// ===================================================================
