@@ -721,6 +721,90 @@ let owl_rule_differentFrom_symmetry_sound i a g ig =
                List.Tot.fold_left emit_step g g)
 
 // ===================================================================
+// Rule 9: owl_rule_disjoint_with_propagation (OWL.Closure.fsti
+// ~line 1237). OWL.RL.Spec.fst's engine ledger justifies this rule by
+// disjointness symmetry plus complementOf-implies-disjointness -- the
+// SECOND [ext] entry in the ledger to get its promised proof (Rule 8's
+// differentFrom_symmetry was the first, landed within the hour): the
+// rule implements no W3C RL table row, and cond_disjointwith_symmetric
+// plus cond_complementof_disjoint plus this lemma IS that
+// justification made machine-checked. The engine rule fires on two
+// branches over the SAME fold, both restricted to the S_IRI/T_IRI
+// shape (no bnode case split, per the BNODE-POLLUTION GUARD comment on
+// the engine rule): (1) t.p = owl:disjointWith emits the flipped
+// triple (symmetry, mirrors Rule 6's single-conclusion S_IRI/T_IRI
+// shape -- the denotations unfold directly, no term_to_subject bridge
+// needed); (2) t.p = owl:complementOf emits BOTH disjointWith
+// directions via nested add_triple_unchecked (mirrors Rule 5's
+// two-conclusion S_IRI,S_IRI case -- no extra lemma needed for the
+// two-cons step; SMT unfolds memP over the two prepends directly).
+// ===================================================================
+
+val owl_rule_disjoint_with_propagation_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_disjointwith_symmetric i /\ cond_complementof_disjoint i /\
+              holds_all i a g)
+    (ensures  holds_all i a (owl_rule_disjoint_with_propagation g ig))
+
+let owl_rule_disjoint_with_propagation_sound i a g ig =
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_disjointWith_iri then
+        // Symmetry: (C disjointWith D) -> (D disjointWith C).
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          let new_t : triple =
+            { s = S_IRI d_iri; p = owl_disjointWith_iri; o = T_IRI c_iri } in
+          add_triple_unchecked acc new_t
+        | _, _ -> acc
+      else if t.p = owl_complementOf_iri then
+        // complementOf -> disjointWith (both directions).
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          let t1 : triple =
+            { s = S_IRI c_iri; p = owl_disjointWith_iri; o = T_IRI d_iri } in
+          let t2 : triple =
+            { s = S_IRI d_iri; p = owl_disjointWith_iri; o = T_IRI c_iri } in
+          add_triple_unchecked (add_triple_unchecked acc t1) t2
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (emit_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc t)
+  with _ . begin
+    if t.p = owl_disjointWith_iri then
+      match t.s, t.o with
+      | S_IRI c_iri, T_IRI d_iri ->
+        assert (triple_holds i a t);
+        assert (i.iext (i.i_iri owl_disjointWith_iri)
+                       (i.i_iri c_iri) (i.i_iri d_iri));
+        // cond_disjointwith_symmetric: the flipped direction follows
+        // from the single disjointWith edge just established.
+        assert (i.iext (i.i_iri owl_disjointWith_iri)
+                       (i.i_iri d_iri) (i.i_iri c_iri))
+      | _, _ -> ()
+    else if t.p = owl_complementOf_iri then
+      match t.s, t.o with
+      | S_IRI c_iri, T_IRI d_iri ->
+        assert (triple_holds i a t);
+        assert (i.iext (i.i_iri owl_complementOf_iri)
+                       (i.i_iri c_iri) (i.i_iri d_iri));
+        // cond_complementof_disjoint: both disjointWith directions
+        // follow from the single complementOf edge just established.
+        assert (i.iext (i.i_iri owl_disjointWith_iri)
+                       (i.i_iri c_iri) (i.i_iri d_iri));
+        assert (i.iext (i.i_iri owl_disjointWith_iri)
+                       (i.i_iri d_iri) (i.i_iri c_iri))
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) emit_step g g;
+  assert_norm (owl_rule_disjoint_with_propagation g ig ==
+               List.Tot.fold_left emit_step g g)
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge

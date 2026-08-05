@@ -293,6 +293,44 @@ let cond_differentfrom_symmetric (i : interp) : prop =
     i.iext (i.i_iri owl_differentFrom) x y ==>
     i.iext (i.i_iri owl_differentFrom) y x
 
+// owl:disjointWith, symmetry -- OWL 2 RDF-Based Semantics Table 5.14
+// (disjointWith condition): <x,y> in IEXT(I(owl:disjointWith)) iff
+// CEXT(x) and CEXT(y) are disjoint (have empty intersection). Set
+// disjointness is symmetric in its arguments, so the relation the
+// table defines is symmetric; this condition states just that
+// symmetry, the half owl_rule_disjoint_with_propagation's first
+// branch needs. This is the pilot's second [ext] condition: the
+// OWL.RL.Spec.fst engine ledger justifies the rule by "disjointness
+// symmetry plus complementOf-implies-disjointness" -- this condition
+// together with cond_complementof_disjoint and the lemma in
+// OWL.Semantics.Soundness.fst is that justification made
+// machine-checked. NOT added to owl_rl_pilot_conditions: same
+// reasoning as cond_equivalent_class / cond_differentfrom_symmetric --
+// growing that bundle perturbs the SMT context for its existing
+// consumers, so this rule's lemma takes the condition explicitly.
+let cond_disjointwith_symmetric (i : interp) : prop =
+  forall (x y : i.idom).
+    i.iext (i.i_iri owl_disjointWith_iri) x y ==>
+    i.iext (i.i_iri owl_disjointWith_iri) y x
+
+// owl:complementOf implies disjointWith, both directions -- OWL 2
+// RDF-Based Semantics Table 5.15 (complementOf condition): <x,y> in
+// IEXT(I(owl:complementOf)) iff CEXT(x) is the complement of CEXT(y)
+// (relative to the domain of discourse). A class and its complement
+// have empty intersection by definition, so they are disjoint, and
+// disjointness does not care which side is named "the complement" --
+// hence both disjointWith directions. This is the weakest implication
+// owl_rule_disjoint_with_propagation's second branch uses (it does not
+// need the converse: disjointness does not imply complementation,
+// since that also requires the union to exhaust owl:Thing -- see the
+// engine rule's comment on why the reverse direction is deliberately
+// not emitted).
+let cond_complementof_disjoint (i : interp) : prop =
+  forall (x y : i.idom).
+    i.iext (i.i_iri owl_complementOf_iri) x y ==>
+    (i.iext (i.i_iri owl_disjointWith_iri) x y /\
+     i.iext (i.i_iri owl_disjointWith_iri) y x)
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker
