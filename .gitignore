@@ -84,3 +84,8 @@ formal/fstar/.depend
 
 # jsonld context cache: transient flock file, never content
 third_party/jsonld-context-cache/.index.lock
+
+# Transient proof-experiment probes (agent investigations; promoted
+# into formal/fstar/repro/ if informative, deleted otherwise)
+/EqTransExp*.fst
+/formal/fstar/EqTransExp*.fst
