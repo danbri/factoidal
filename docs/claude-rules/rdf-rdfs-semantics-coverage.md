@@ -19,7 +19,7 @@ and the ranked gap list driving the core-semantics push.
   Label-independence at the parser boundary is proved
   (`Boundary.entails_ntriples_boundary`).
 - **RDF entailment (§8)**: rdfD2 licensed + true at rule and closure
-  level; rdfD1 deliberately unimplemented (mints bnodes — Skolem
+  level; rdfD1 unimplemented (mints bnodes — Skolem
   family); axiomatic tables transcribed, `rdf:_n` as a schema
   predicate; `rdf_closed` defined; NO completeness theorem at this
   rung.
