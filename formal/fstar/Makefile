@@ -85,7 +85,9 @@ RDF_MT_MODULES = \
   RDF.Semantics.HypothesisWitness \
   RDF.Indexed.KeyInjectivity RDF.Indexed.Completeness \
   OWL.Semantics OWL.Semantics.MemLemmas OWL.Semantics.Soundness \
-  OWL.RL.Refinement
+  OWL.RL.Refinement \
+  SPARQL11.Algebra.Spec SPARQL11.Algebra.Refinement \
+  SPARQL11.Algebra.BGPRefinement
 
 verify-rdf-mt: $(addsuffix .fst.checked, $(RDF_MT_MODULES))
 	@echo "make verify-rdf-mt: $(words $(RDF_MT_MODULES)) model-theoretic-layer modules type-checked under z3 4.13.3 (no --lax)."

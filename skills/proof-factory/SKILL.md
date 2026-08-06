@@ -75,6 +75,23 @@ form) is an opaque val — strings needing injectivity/decomposition
 proofs must be built with `^` (see sp_key's do-not-simplify-back
 comment).
 
+Cross-module corollary (2026-08-06, the BGP-refinement landing, four
+dead attempts): an equation whose right-hand side is a bare lambda
+cannot cross a module boundary in the SMT encoding — a lambda in the
+engine module gets a different opaque symbol from a syntactically
+identical lambda written in the proof module, with no congruence
+between them. Fix: NAME the continuation in the proof module, state
+the defining equation with the engine's guard and match transcribed
+verbatim, and close it with `norm [delta_only ...; zeta; iota;
+primops; unascribe; unmeta]` + `trefl` (a TACTIC, not SMT). Related:
+the normalizer will not simplify symbolic `n + 1 - 1` to `n` — spell
+the fuel that way in the equation and let SMT finish at the use
+site. Closed-over-term variant (same day, RhoDFClosure): two lambdas
+closing over propositionally-equal RECORDS are still distinct
+tokens; work with the original binder directly (`decl`, whose field
+equations are in context) instead of a reconstructed record literal,
+or share one let-bound `inner_of q` symbol across every fold site.
+
 ## Foundations to reuse, never rebuild
 
 - **Index serving contracts**: all five buckets have discharged

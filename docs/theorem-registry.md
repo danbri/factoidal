@@ -272,6 +272,32 @@ lean on to make `ig_wf_*` hypotheses real rather than assumed.
 | Closure step extensivity + fixed-point | `RDF.Entailment.RDFS.FixedPoint.fst` | 🟡 LANDED WITH ADJUDICATION (commit `1aa4e71`) | Length-test fixed-point theorem holds under two explicit hypotheses (`no_dup_keys` on the pre-dedup intermediate graph), not unconditionally — the unconditional form is FALSE. Third finding from this landing: `term_to_key_total` literal keys use plain `"^^"` not `unit_sep`, a wider dedup-collision surface than #338 described (#348). |
 | String ordering axioms | `RDF.Indexed.StringOrder.fsti` | ⚠️ 3 TRUSTED AXIOMS (#347) | See Trust surface. |
 
+## 5. SPARQL algebra refinement (the query rung, G3 M3)
+
+The layer that will connect closure results to query answers. Layer 2
+landed 2026-08-06 (`SPARQL11.Algebra.BGPRefinement.fst`); layer 3
+(the algebra lift + composed regime theorem) is queued.
+
+| Theorem | Status | Fragment / hypotheses | Notes |
+|---|---|---|---|
+| `theorem_eval_bgp_subgraph` (shipping statement: every eval_bgp solution subset-matches) | ✅ PROVED | `bgp_frag` (tt-free, exact literals, not fulltext), `graph_frag` | Soundness direction of layer 2. |
+| `theorem_eval_bgp_instantiates_into_graph` (`mu(BGP) ⊆ g` form) | ✅ PROVED | same | The form layer 3 consumes at `rdfs_closure g`. |
+| `lemma_ig_search_sound` + 8 supporting lemmas (single-tp soundness, planner cover, fuel unfolds, extension-closed tp-match) | ✅ PROVED | per-lemma | Fills the gap `SPARQL11.Algebra.Refinement`'s banner recorded (index-probe soundness). |
+| BGP completeness (every subset-matcher is found) | BLOCKED — named | needs bucket completeness for subj/obj/sp/po/so (only pred is proved, 90e2801); expected FALSE outside `term_exact` (probe accepts on `rdf_term_eq`, buckets key byte-exact) | Finding BR-4. |
+| Domain clause `dom(mu) = var(BGP)` | UNATTEMPTED | — | Bookkeeping, no graph content; separate landing. |
+
+Findings BR-1..BR-3 (module banner, machine-relevant divergences):
+the fulltext triple-pattern path is NOT subset-matching (binds
+subject only, applies a limit — excluded by hypothesis, not hidden);
+query blank nodes match as CONSTANTS (identity renaming — exact for
+bnode-free BGPs, the regime suite's class); statements are
+set-membership, not multiset (§18.3.1 cardinality needs a
+no-duplicates hypothesis, deferred to layer 3's inputs).
+
+`SPARQL11.Algebra.Spec` / `SPARQL11.Algebra.Refinement` (landed
+2026-08-03, pre-registry) are now in the verify-rdf-mt roster with
+this layer; their per-lemma rows are a registry backfill task.
+
 ## Trust surface
 
 What this registry's PROVED cells rest on, beyond F\*/Z3 itself:
