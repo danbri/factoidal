@@ -31,6 +31,7 @@ open RDFS.Closure
 open OWL.Closure
 open OWL.Semantics
 open OWL.Semantics.MemLemmas
+open OWL.RL.Refinement
 
 // ===================================================================
 // Small bridging lemmas: boolean structural equality to propositional
@@ -1726,6 +1727,839 @@ let owl_rule_sameAs_replace_predicate_sound i a g ig =
   fold_left_inv (holds_all i a) outer_step (sameas_pairs ig) g;
   assert_norm (owl_rule_sameAs_replace_predicate g ig ==
                List.Tot.fold_left outer_step g (sameas_pairs ig))
+
+// ===================================================================
+// Rule 21: owl_rule_scm_eqp2 (scm-eqp2; OWL.Closure.fsti ~line 307) --
+// PROVED, mirroring Rule 17's guard-depth-flattened scm-eqc2 proof
+// exactly (Table 5.9's equivalentProperty condition instead of Table
+// 5.8's equivalentClass; rdfs:subPropertyOf instead of
+// rdfs:subClassOf). The engine rule already carries the PROOF-FRIENDLY
+// GUARD RULE flatten (one boolean guard, named partial application
+// `term_is_iri p_iri`), so this is a same-shape instance of the Rule
+// 17 skeleton, not a fresh diagnosis.
+// ===================================================================
+
+val owl_rule_scm_eqp2_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_mutual_subproperty_equivalent i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_scm_eqp2 g ig))
+
+#push-options "--z3rlimit 100 --split_queries always"
+let owl_rule_scm_eqp2_sound i a g ig =
+  let emit_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subPropertyOf then
+        match t.s, t.o with
+        | S_IRI p_iri, T_IRI q_iri ->
+          if p_iri <> q_iri &&
+             List.Tot.existsb (term_is_iri p_iri)
+               (find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf)
+          then
+            let new_t : triple =
+              { s = S_IRI p_iri; p = owl_equivalentProperty; o = T_IRI q_iri } in
+            add_triple_unchecked acc new_t
+          else acc
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (emit_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (emit_step acc t)
+  with _ . begin
+    if t.p = rdfs_subPropertyOf then
+      match t.s, t.o with
+      | S_IRI p_iri, T_IRI q_iri ->
+        let bucket = bucket_lookup ig.ig_sp (sp_key (S_IRI q_iri) rdfs_subPropertyOf) in
+        let supers = find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf in
+        if p_iri <> q_iri &&
+           List.Tot.existsb (term_is_iri p_iri) supers
+        then begin
+          // (P spo Q) semantically, from t itself.
+          assert (triple_holds i a t);
+          // The existsb hit names a served object x == T_IRI p_iri...
+          FStar.List.Tot.Properties.memP_existsb (term_is_iri p_iri) supers;
+          eliminate exists (x : rdf_term).
+              term_is_iri p_iri x = true /\ List.Tot.memP x supers
+          returns triple_holds i a
+            ({ s = S_IRI p_iri; p = owl_equivalentProperty; o = T_IRI q_iri } <: triple)
+          with _ . begin
+            lemma_rdf_term_eq_iri x p_iri;
+            // ...whose bucket triple u2 the sp index serves:
+            // find_objects_indexed IS map (.o) over the sp bucket.
+            assert_norm (find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf ==
+                         List.Tot.map (fun (u : triple) -> u.o) bucket);
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) x bucket;
+            eliminate exists (u2 : triple).
+                List.Tot.memP u2 bucket /\ u2.o == x
+            returns triple_holds i a
+              ({ s = S_IRI p_iri; p = owl_equivalentProperty; o = T_IRI q_iri } <: triple)
+            with _ . begin
+              // ig_wf_sp pins u2 as a real snapshot triple
+              // (Q spo P-term); the snapshot's truth makes it a
+              // semantic edge; the condition closes both directions.
+              assert (List.Tot.memP u2 ig.ig_triples /\
+                      u2.s == S_IRI q_iri /\ u2.p == rdfs_subPropertyOf);
+              assert (triple_holds i a u2);
+              assert (i.iext (i.i_iri rdfs_subPropertyOf)
+                             (i.i_iri q_iri) (i.i_iri p_iri));
+              assert (i.iext (i.i_iri rdfs_subPropertyOf)
+                             (i.i_iri p_iri) (i.i_iri q_iri))
+            end
+          end
+        end
+        else ()
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) emit_step g g;
+  assert_norm (owl_rule_scm_eqp2 g ig == List.Tot.fold_left emit_step g g)
+#pop-options
+
+// ===================================================================
+// Rule 22: owl_rule_sameAs_transitivity (eq-trans; OWL.Closure.fsti
+// ~line 598). OWL 2 RL/RDF rules table row eq-trans: T(?x, owl:sameAs,
+// ?y), T(?y, owl:sameAs, ?z) => T(?x, owl:sameAs, ?z). #262's outer
+// fold over the deduped snapshot pair list (sameas_pairs ig); for each
+// pair (x, y), an INNER fold over the ig_sp bucket at key (y,
+// owl:sameAs) via find_objects_indexed (the named emitter
+// sameas_trans_emit x), mirroring Rule 2's ig_pred bucket-lookup idiom
+// but through ig_sp / find_objects_indexed instead (same bridge shape
+// as decode_iri_list_sound's per-hop bucket reads).
+//
+// Argument: for pair (x, y) the pair machinery gives IEXT(sameAs)(dx,
+// dy) (lemma_sameas_pairs_hold); cond_sameas_identity's iff (both
+// directions used here, unlike Rules 18-20 which only need the
+// forward COLLAPSE half) turns that into dx == dy. Each bucket triple
+// t serving zs (ig_wf_sp pins t.s == y, t.p == owl_sameAs, a real
+// snapshot triple) holds semantically: IEXT(sameAs)(dy, denot(t.o));
+// cond_sameas_identity's forward half collapses dy == denot(t.o).
+// Chaining dx == dy == denot(t.o) and cond_sameas_identity's backward
+// half re-introduces the emitted edge IEXT(sameAs)(dx, denot(t.o)) --
+// exactly the transitivity chain the row states, carried entirely by
+// the identity condition rather than a dedicated cond_sameas_transitive
+// (the iff is strong enough on its own, unlike cond_transitive below
+// which needs its own dedicated condition since IEXT is not assumed to
+// be an equivalence relation in general).
+// ===================================================================
+
+val owl_rule_sameAs_transitivity_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_sameas_identity i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_sameAs_transitivity g ig))
+
+let owl_rule_sameAs_transitivity_sound i a g ig =
+  lemma_sameas_pairs_hold i a ig;
+  let outer_step : rdf_graph -> (subject * subject) -> rdf_graph =
+    fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, y) = xy in
+      let zs = find_objects_indexed ig y owl_sameAs in
+      List.Tot.fold_left (sameas_trans_emit x) acc zs in
+  introduce forall (acc : rdf_graph) (xy : subject * subject).
+      (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+      holds_all i a (outer_step acc xy)
+  with introduce (List.Tot.memP xy (sameas_pairs ig) /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc xy)
+  with _ . begin
+    let (x, y) = xy in
+    // sameas_pairs_hold gives IEXT(sameAs)(dx, dy); cond_sameas_identity
+    // collapses dx == dy.
+    assert (i.iext (i.i_iri owl_sameAs)
+                   (denot_subject i a x) (denot_subject i a y));
+    assert (denot_subject i a x == denot_subject i a y);
+    let bucket = bucket_lookup ig.ig_sp (sp_key y owl_sameAs) in
+    let zs = find_objects_indexed ig y owl_sameAs in
+    assert (zs == List.Tot.map (fun (u : triple) -> u.o) bucket);
+    let inner_step : rdf_graph -> rdf_term -> rdf_graph = sameas_trans_emit x in
+    introduce forall (acc2 : rdf_graph) (z_term : rdf_term).
+        (List.Tot.memP z_term zs /\ holds_all i a acc2) ==>
+        holds_all i a (inner_step acc2 z_term)
+    with introduce (List.Tot.memP z_term zs /\ holds_all i a acc2) ==>
+                   holds_all i a (inner_step acc2 z_term)
+    with _ . begin
+      FStar.List.Tot.Properties.memP_map_elim (fun (u : triple) -> u.o) z_term bucket;
+      eliminate exists (u : triple). List.Tot.memP u bucket /\ u.o == z_term
+      returns holds_all i a (inner_step acc2 z_term)
+      with _ . begin
+        // ig_wf_sp at key (y, owl_sameAs): u really is a real snapshot
+        // triple.
+        assert (List.Tot.memP u ig.ig_triples /\ u.s == y /\ u.p == owl_sameAs);
+        assert (triple_holds i a u);
+        assert (i.iext (i.i_iri owl_sameAs)
+                       (denot_subject i a y) (denot_term i a z_term));
+        // cond_sameas_identity forward, then chain, then backward:
+        // dy == denot(z_term); dx == dy; so dx == denot(z_term); the
+        // iff's backward half re-derives the emitted edge.
+        assert (denot_subject i a y == denot_term i a z_term);
+        assert (denot_subject i a x == denot_term i a z_term);
+        assert (i.iext (i.i_iri owl_sameAs)
+                       (denot_subject i a x) (denot_term i a z_term))
+      end
+    end;
+    fold_left_inv (holds_all i a) inner_step zs acc
+  end;
+  fold_left_inv (holds_all i a) outer_step (sameas_pairs ig) g;
+  assert_norm (owl_rule_sameAs_transitivity g ig ==
+               List.Tot.fold_left outer_step g (sameas_pairs ig))
+
+// ===================================================================
+// Rule 23: owl_rule_transitive_property (prp-trp; OWL.Closure.fsti
+// ~line 366). OWL 2 RL/RDF rules table row prp-trp: T(?p, rdf:type,
+// owl:TransitiveProperty), T(?x, ?p, ?y), T(?y, ?p, ?z) => T(?x, ?p,
+// ?z). Same collect-then-emit two-fold shape as Rule 1
+// (owl_rule_symmetric_property): a collection fold over g gathers
+// trans_props (trans_props_sound mirrors sym_props_sound exactly),
+// then a NESTED-SINGLE emission fold over g -- for every triple t
+// whose predicate is transitive, an inner fold over find_objects_indexed
+// ig y_subj t.p (the same ig_sp / bucket-map bridge Rule 22 and
+// decode_iri_list_sound use) emits (t.s, t.p, z) per successor z of
+// y_subj := term_to_subject t.o. Licensing sibling
+// (OWL.RL.Refinement.fst, prp-trp) is the FIRST NESTED-SINGLE
+// licensing proof and the proof-friendly-guard-rule precedent; this
+// truth proof is its semantic mirror, one indexed-lookup deeper than
+// Rule 1's flat collect-then-emit.
+// ===================================================================
+
+let trans_props_sound (i : interp) (a : bnode_assignment i.idom) (ps : list wf_iri) : prop =
+  forall (p : wf_iri). List.Tot.mem p ps ==>
+    icext i (i.i_iri p) (i.i_iri owl_TransitiveProperty)
+
+val owl_rule_transitive_property_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_transitive i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_transitive_property g ig))
+
+#push-options "--z3rlimit 100 --split_queries always"
+let owl_rule_transitive_property_sound i a g ig =
+  let collect_step : list wf_iri -> triple -> list wf_iri =
+    fun (acc : list wf_iri) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_TransitiveProperty) then
+        match t.s with
+        | S_IRI p_iri -> cons_if_new_iri p_iri acc
+        | _ -> acc
+      else acc in
+  let trans_props = List.Tot.fold_left collect_step [] g in
+  introduce forall (acc : list wf_iri) (t : triple).
+      (List.Tot.memP t g /\ trans_props_sound i a acc) ==>
+      trans_props_sound i a (collect_step acc t)
+  with introduce (List.Tot.memP t g /\ trans_props_sound i a acc) ==>
+                 trans_props_sound i a (collect_step acc t)
+  with _ . begin
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_TransitiveProperty) then begin
+      lemma_rdf_term_eq_iri t.o owl_TransitiveProperty;
+      assert (triple_holds i a t)
+    end else ()
+  end;
+  fold_left_inv (trans_props_sound i a) collect_step g [];
+  assert (trans_props_sound i a trans_props);
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if List.Tot.mem t.p trans_props then
+        match term_to_subject t.o with
+        | Some y_subj ->
+          let zs = find_objects_indexed ig y_subj t.p in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = t.p; o = z_term } in
+              add_triple_unchecked acc2 new_t)
+            acc
+            zs
+        | None -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (outer_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc t)
+  with _ . begin
+    if List.Tot.mem t.p trans_props then begin
+      assert (icext i (i.i_iri t.p) (i.i_iri owl_TransitiveProperty));
+      match term_to_subject t.o with
+      | Some y_subj ->
+        lemma_denot_term_to_subject i a t.o y_subj;
+        assert (triple_holds i a t);
+        assert (i.iext (i.i_iri t.p)
+                       (denot_subject i a t.s) (denot_subject i a y_subj));
+        let bucket = bucket_lookup ig.ig_sp (sp_key y_subj t.p) in
+        let zs = find_objects_indexed ig y_subj t.p in
+        assert (zs == List.Tot.map (fun (u : triple) -> u.o) bucket);
+        let inner_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc2 : rdf_graph) (z_term : rdf_term) ->
+            let new_t : triple = { s = t.s; p = t.p; o = z_term } in
+            add_triple_unchecked acc2 new_t in
+        introduce forall (acc2 : rdf_graph) (z_term : rdf_term).
+            (List.Tot.memP z_term zs /\ holds_all i a acc2) ==>
+            holds_all i a (inner_step acc2 z_term)
+        with introduce (List.Tot.memP z_term zs /\ holds_all i a acc2) ==>
+                       holds_all i a (inner_step acc2 z_term)
+        with _ . begin
+          FStar.List.Tot.Properties.memP_map_elim (fun (u : triple) -> u.o) z_term bucket;
+          eliminate exists (u : triple). List.Tot.memP u bucket /\ u.o == z_term
+          returns holds_all i a (inner_step acc2 z_term)
+          with _ . begin
+            // ig_wf_sp at key (y_subj, t.p): u really is a real
+            // snapshot triple.
+            assert (List.Tot.memP u ig.ig_triples /\ u.s == y_subj /\ u.p == t.p);
+            assert (triple_holds i a u);
+            assert (i.iext (i.i_iri t.p)
+                           (denot_subject i a y_subj) (denot_term i a z_term));
+            // cond_transitive closes the chain: t.s -P-> y_subj -P-> z.
+            assert (i.iext (i.i_iri t.p)
+                           (denot_subject i a t.s) (denot_term i a z_term))
+          end
+        end;
+        fold_left_inv (holds_all i a) inner_step zs acc
+      | None -> ()
+    end else ()
+  end;
+  fold_left_inv (holds_all i a) outer_step g g;
+  assert_norm (owl_rule_transitive_property g ig == List.Tot.fold_left outer_step g g)
+#pop-options
+
+// ===================================================================
+// Rule 24: owl_rule_functional (prp-fp; OWL.Closure.fsti ~line 740).
+// OWL 2 RL/RDF rules table row prp-fp: T(?p, rdf:type,
+// owl:FunctionalProperty), T(?x, ?p, ?y1), T(?x, ?p, ?y2) => T(?y1,
+// owl:sameAs, ?y2). Every fold level of the engine rule is already a
+// NAMED top-level function (task #36 lambda-lift, OWL.Closure.fsti's
+// own banner on this rule): owl_prp_fp_collect_step / owl_prp_fp_step
+// / owl_prp_fp_emit. This proof references those SAME symbols
+// directly (no local re-elaboration of the collect/step/emit
+// closures), so there is no closure-identity gap to bridge at any
+// level -- the cleanest of the seven target rules for exactly that
+// reason.
+//
+// Argument: fp_props_sound mirrors sym_props_sound / trans_props_sound
+// (the collect fold gathers only IRIs really typed
+// owl:FunctionalProperty in g). For the emission fold, fixing t1 with
+// t1.p in fp_props and y_subj := term_to_subject t1.o (t1's own
+// object, reused as the "first witness" throughout): cond_functional
+// (icext i (i.i_iri t1.p) FunctionalProperty; iext p (denot t1.s)
+// (denot y_subj); iext p (denot t1.s) (denot z), for z ranging over
+// find_objects_indexed ig t1.s t1.p) gives denot y_subj == denot z at
+// the DOMAIN-ELEMENT level (the row's actual semantic content); the
+// engine's guard `if rdf_term_eq z t1.o then acc2` only skips emitting
+// the self pair (already true trivially, no argument needed for the
+// no-op branch); the surviving branch's emission owl_prp_fp_emit's
+// { s = y_subj; p = owl_sameAs; o = z } then holds via
+// cond_sameas_identity's backward half applied to the domain-element
+// identity cond_functional just gave.
+// ===================================================================
+
+let fp_props_sound (i : interp) (a : bnode_assignment i.idom) (ps : list wf_iri) : prop =
+  forall (p : wf_iri). List.Tot.mem p ps ==>
+    icext i (i.i_iri p) (i.i_iri owl_FunctionalProperty)
+
+val owl_rule_functional_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_functional i /\ cond_sameas_identity i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_functional g ig))
+
+#push-options "--z3rlimit 100 --split_queries always"
+let owl_rule_functional_sound i a g ig =
+  let fp_props = List.Tot.fold_left owl_prp_fp_collect_step [] g in
+  introduce forall (acc : list wf_iri) (t : triple).
+      (List.Tot.memP t g /\ fp_props_sound i a acc) ==>
+      fp_props_sound i a (owl_prp_fp_collect_step acc t)
+  with introduce (List.Tot.memP t g /\ fp_props_sound i a acc) ==>
+                 fp_props_sound i a (owl_prp_fp_collect_step acc t)
+  with _ . begin
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then begin
+      lemma_rdf_term_eq_iri t.o owl_FunctionalProperty;
+      assert (triple_holds i a t)
+    end else ()
+  end;
+  fold_left_inv (fp_props_sound i a) owl_prp_fp_collect_step g [];
+  assert (fp_props_sound i a fp_props);
+  introduce forall (acc : rdf_graph) (t1 : triple).
+      (List.Tot.memP t1 g /\ holds_all i a acc) ==>
+      holds_all i a (owl_prp_fp_step ig fp_props acc t1)
+  with introduce (List.Tot.memP t1 g /\ holds_all i a acc) ==>
+                 holds_all i a (owl_prp_fp_step ig fp_props acc t1)
+  with _ . begin
+    if List.Tot.mem t1.p fp_props then begin
+      assert (icext i (i.i_iri t1.p) (i.i_iri owl_FunctionalProperty));
+      match term_to_subject t1.o with
+      | None -> ()
+      | Some y_subj ->
+        lemma_denot_term_to_subject i a t1.o y_subj;
+        assert (triple_holds i a t1);
+        assert (i.iext (i.i_iri t1.p)
+                       (denot_subject i a t1.s) (denot_subject i a y_subj));
+        let bucket = bucket_lookup ig.ig_sp (sp_key t1.s t1.p) in
+        let zs = find_objects_indexed ig t1.s t1.p in
+        assert (zs == List.Tot.map (fun (u : triple) -> u.o) bucket);
+        introduce forall (acc2 : rdf_graph) (z : rdf_term).
+            (List.Tot.memP z zs /\ holds_all i a acc2) ==>
+            holds_all i a (owl_prp_fp_emit y_subj t1.o acc2 z)
+        with introduce (List.Tot.memP z zs /\ holds_all i a acc2) ==>
+                       holds_all i a (owl_prp_fp_emit y_subj t1.o acc2 z)
+        with _ . begin
+          if rdf_term_eq z t1.o then ()
+          else begin
+            FStar.List.Tot.Properties.memP_map_elim (fun (u : triple) -> u.o) z bucket;
+            eliminate exists (u : triple). List.Tot.memP u bucket /\ u.o == z
+            returns holds_all i a (owl_prp_fp_emit y_subj t1.o acc2 z)
+            with _ . begin
+              assert (List.Tot.memP u ig.ig_triples /\ u.s == t1.s /\ u.p == t1.p);
+              assert (triple_holds i a u);
+              assert (i.iext (i.i_iri t1.p)
+                             (denot_subject i a t1.s) (denot_term i a z));
+              // cond_functional: two objects of the same functional-
+              // property edge from x denote the same domain element.
+              assert (denot_subject i a y_subj == denot_term i a z);
+              // cond_sameas_identity backward: equal denotations give
+              // the emitted sameAs edge.
+              assert (i.iext (i.i_iri owl_sameAs)
+                             (denot_subject i a y_subj) (denot_term i a z))
+            end
+          end
+        end;
+        fold_left_inv (holds_all i a) (owl_prp_fp_emit y_subj t1.o) zs acc
+    end else ()
+  end;
+  fold_left_inv (holds_all i a) (owl_prp_fp_step ig fp_props) g g;
+  assert_norm (owl_rule_functional g ig ==
+               List.Tot.fold_left (owl_prp_fp_step ig fp_props) g g)
+#pop-options
+
+// ===================================================================
+// Rule 25: owl_rule_inverse_functional (prp-ifp; OWL.Closure.fsti
+// ~line 771). OWL 2 RL/RDF rules table row prp-ifp: T(?p, rdf:type,
+// owl:InverseFunctionalProperty), T(?x1, ?p, ?y), T(?x2, ?p, ?y) =>
+// T(?x1, owl:sameAs, ?x2). Same named-top-level-function shape as
+// Rule 24 (owl_prp_ifp_collect_step / owl_prp_ifp_step /
+// owl_prp_ifp_emit, task #36 lambda-lift), but the inner lookup is
+// `find_subjects_indexed ig t1.p t1.o` -- the po/pred two-branch
+// index read OWL.RL.Refinement.fst's licensing proof (section 25)
+// already carries a full provenance lemma for
+// (`lemma_find_subjects_indexed_wf`, requiring `ig_wf_po`, `ig_wf_pred`,
+// and the literal-fallback side condition `graph_literal_match_exact`
+// the registry's hypothesis column names). REUSED HERE VERBATIM via
+// `open OWL.RL.Refinement` rather than re-derived: it already produces
+// exactly the witness triple u2 (memP u2 g /\ u2.p == t1.p /\ u2.o ==
+// t1.o /\ u2.s == z) this truth proof needs, so no separate po/literal
+// case split is written in this file.
+//
+// Argument: for firing t1 (t1.p in ifp_props) and z in
+// find_subjects_indexed ig t1.p t1.o with z <> t1.s,
+// lemma_find_subjects_indexed_wf gives a real snapshot triple u2 with
+// u2.p == t1.p, u2.o == t1.o, u2.s == z -- so u2 and t1 are TWO
+// DIFFERENT subjects (z, t1.s) related to the SAME object under the
+// SAME inverse-functional property. cond_inverse_functional (mirroring
+// cond_functional's shape, symmetric in the two edges instead of the
+// two objects) collapses denot z == denot t1.s at the domain-element
+// level; cond_sameas_identity's backward half turns that into the
+// emitted { s = t1.s; p = owl_sameAs; o = subject_to_term z } edge.
+// ===================================================================
+
+// owl:InverseFunctionalProperty -- OWL 2 RDF-Based Semantics Table
+// 5.14 (property characteristics), if-direction: membership in
+// ICEXT(I(owl:InverseFunctionalProperty)) makes the extension
+// injective -- two subjects related to the same object under an
+// inverse-functional property are the SAME domain element. Mirrors
+// cond_functional, symmetric in which side of the pair is held fixed
+// (object instead of subject).
+let cond_inverse_functional (i : interp) : prop =
+  forall (p x1 x2 y : i.idom).
+    icext i p (i.i_iri owl_InverseFunctionalProperty) ==>
+    i.iext p x1 y ==> i.iext p x2 y ==> x1 == x2
+
+let ifp_props_sound (i : interp) (a : bnode_assignment i.idom) (ps : list wf_iri) : prop =
+  forall (p : wf_iri). List.Tot.mem p ps ==>
+    icext i (i.i_iri p) (i.i_iri owl_InverseFunctionalProperty)
+
+val owl_rule_inverse_functional_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_inverse_functional i /\ cond_sameas_identity i /\ holds_all i a g /\
+              ig.ig_triples == g /\ ig_wf_po ig /\ ig_wf_pred ig /\
+              graph_literal_match_exact g)
+    (ensures  holds_all i a (owl_rule_inverse_functional g ig))
+
+#push-options "--z3rlimit 200 --split_queries always"
+let owl_rule_inverse_functional_sound i a g ig =
+  let ifp_props = List.Tot.fold_left owl_prp_ifp_collect_step [] g in
+  introduce forall (acc : list wf_iri) (t : triple).
+      (List.Tot.memP t g /\ ifp_props_sound i a acc) ==>
+      ifp_props_sound i a (owl_prp_ifp_collect_step acc t)
+  with introduce (List.Tot.memP t g /\ ifp_props_sound i a acc) ==>
+                 ifp_props_sound i a (owl_prp_ifp_collect_step acc t)
+  with _ . begin
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty) then begin
+      lemma_rdf_term_eq_iri t.o owl_InverseFunctionalProperty;
+      assert (triple_holds i a t)
+    end else ()
+  end;
+  fold_left_inv (ifp_props_sound i a) owl_prp_ifp_collect_step g [];
+  assert (ifp_props_sound i a ifp_props);
+  introduce forall (acc : rdf_graph) (t1 : triple).
+      (List.Tot.memP t1 g /\ holds_all i a acc) ==>
+      holds_all i a (owl_prp_ifp_step ig ifp_props acc t1)
+  with introduce (List.Tot.memP t1 g /\ holds_all i a acc) ==>
+                 holds_all i a (owl_prp_ifp_step ig ifp_props acc t1)
+  with _ . begin
+    if List.Tot.mem t1.p ifp_props then begin
+      assert (icext i (i.i_iri t1.p) (i.i_iri owl_InverseFunctionalProperty));
+      assert (triple_holds i a t1);
+      let zs = find_subjects_indexed ig t1.p t1.o in
+      introduce forall (acc2 : rdf_graph) (z : subject).
+          (List.Tot.memP z zs /\ holds_all i a acc2) ==>
+          holds_all i a (owl_prp_ifp_emit t1.s acc2 z)
+      with introduce (List.Tot.memP z zs /\ holds_all i a acc2) ==>
+                     holds_all i a (owl_prp_ifp_emit t1.s acc2 z)
+      with _ . begin
+        if subject_eq z t1.s then ()
+        else begin
+          lemma_find_subjects_indexed_wf ig g t1 z;
+          eliminate exists (u2 : triple).
+              List.Tot.memP u2 g /\ u2.p == t1.p /\ u2.o == t1.o /\ u2.s == z
+          returns holds_all i a (owl_prp_ifp_emit t1.s acc2 z)
+          with _ . begin
+            assert (triple_holds i a u2);
+            assert (i.iext (i.i_iri t1.p)
+                           (denot_subject i a z) (denot_term i a t1.o));
+            assert (i.iext (i.i_iri t1.p)
+                           (denot_subject i a t1.s) (denot_term i a t1.o));
+            // cond_inverse_functional: two subjects of the same
+            // inverse-functional edge to y denote the same domain
+            // element.
+            assert (denot_subject i a z == denot_subject i a t1.s);
+            // cond_sameas_identity backward: equal denotations give
+            // the emitted sameAs edge.
+            assert (i.iext (i.i_iri owl_sameAs)
+                           (denot_subject i a t1.s) (denot_subject i a z))
+          end
+        end
+      end;
+      fold_left_inv (holds_all i a) (owl_prp_ifp_emit t1.s) zs acc
+    end else ()
+  end;
+  fold_left_inv (holds_all i a) (owl_prp_ifp_step ig ifp_props) g g;
+  assert_norm (owl_rule_inverse_functional g ig ==
+               List.Tot.fold_left (owl_prp_ifp_step ig ifp_props) g g)
+#pop-options
+
+// ===================================================================
+// Rule 26: owl_rule_inverse_of (prp-inv1 + prp-inv2; OWL.Closure.fsti
+// ~line 458). OWL 2 RL/RDF rules table rows prp-inv1: T(?P1,
+// owl:inverseOf, ?P2), T(?x, ?P1, ?y) => T(?y, ?P2, ?x); prp-inv2:
+// same premise, T(?x, ?P2, ?y) => T(?y, ?P1, ?x). NESTED-PAIR shape,
+// the licensing sibling's own precedent for the closure-identity fix
+// (task #36, `OWL.Closure.inverse_of_emit`, the FIRST rule proved
+// after the nested-pair obstruction was diagnosed): an outer fold over
+// g finds owl:inverseOf declarations (P1, P2); for each, an INNER fold
+// over ALL of g applies the NAMED top-level emitter `inverse_of_emit
+// p1_iri p2_iri`, which itself tests t.p against p1_iri then p2_iri
+// and flips the matching edge -- both prp-inv1 and prp-inv2 come out
+// of the SAME inner fold, one per branch of inverse_of_emit's guard.
+// This truth proof references `inverse_of_emit` directly (the engine's
+// own named symbol), so the inner step obligation is exactly Rule 20's
+// nested-pair shape with the closure-identity risk already retired by
+// the engine's own lambda-lift.
+//
+// Argument: cond_inverse_of's iff (iext p x y <==> iext q y x) is
+// symmetric in which of P1/P2 fires -- instantiating it with (p, q) :=
+// (denot P1, denot P2) covers the forward branch (t.p = p1_iri) via
+// the iff's -> direction, and instantiating the SAME iff at (x, y) :=
+// (denot new_subj, denot t.s) covers the backward branch (t.p =
+// p2_iri) via the iff's <- direction read the other way -- no second
+// condition needed, unlike cond_functional/cond_inverse_functional
+// above which are genuinely one-directional per table row.
+// ===================================================================
+
+val owl_rule_inverse_of_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_inverse_of i /\ holds_all i a g)
+    (ensures  holds_all i a (owl_rule_inverse_of g ig))
+
+#push-options "--z3rlimit 100 --split_queries always"
+let owl_rule_inverse_of_sound i a g ig =
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (inv_t : triple) ->
+      if inv_t.p = owl_inverseOf then
+        match inv_t.s, inv_t.o with
+        | S_IRI p1_iri, T_IRI p2_iri ->
+          List.Tot.fold_left (inverse_of_emit p1_iri p2_iri) acc g
+        | _, _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (inv_t : triple).
+      (List.Tot.memP inv_t g /\ holds_all i a acc) ==>
+      holds_all i a (outer_step acc inv_t)
+  with introduce (List.Tot.memP inv_t g /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc inv_t)
+  with _ . begin
+    if inv_t.p = owl_inverseOf then
+      match inv_t.s, inv_t.o with
+      | S_IRI p1_iri, T_IRI p2_iri ->
+        assert (triple_holds i a inv_t);
+        assert (i.iext (i.i_iri owl_inverseOf) (i.i_iri p1_iri) (i.i_iri p2_iri));
+        let inner_step : rdf_graph -> triple -> rdf_graph =
+          inverse_of_emit p1_iri p2_iri in
+        introduce forall (acc2 : rdf_graph) (t : triple).
+            (List.Tot.memP t g /\ holds_all i a acc2) ==>
+            holds_all i a (inner_step acc2 t)
+        with introduce (List.Tot.memP t g /\ holds_all i a acc2) ==>
+                       holds_all i a (inner_step acc2 t)
+        with _ . begin
+          assert (triple_holds i a t);
+          if t.p = p1_iri then
+            match term_to_subject t.o with
+            | Some new_subj ->
+              lemma_denot_term_to_subject i a t.o new_subj;
+              lemma_denot_subject_to_term i a t.s;
+              assert (i.iext (i.i_iri p1_iri)
+                             (denot_subject i a t.s) (denot_subject i a new_subj));
+              // cond_inverse_of forward direction.
+              assert (i.iext (i.i_iri p2_iri)
+                             (denot_subject i a new_subj) (denot_subject i a t.s))
+            | None -> ()
+          else if t.p = p2_iri then
+            match term_to_subject t.o with
+            | Some new_subj ->
+              lemma_denot_term_to_subject i a t.o new_subj;
+              lemma_denot_subject_to_term i a t.s;
+              assert (i.iext (i.i_iri p2_iri)
+                             (denot_subject i a t.s) (denot_subject i a new_subj));
+              // cond_inverse_of backward direction (same iff, read the
+              // other way).
+              assert (i.iext (i.i_iri p1_iri)
+                             (denot_subject i a new_subj) (denot_subject i a t.s))
+            | None -> ()
+          else ()
+        end;
+        fold_left_inv (holds_all i a) inner_step g acc
+      | _, _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) outer_step g g;
+  assert_norm (owl_rule_inverse_of g ig == List.Tot.fold_left outer_step g g)
+#pop-options
+
+// ===================================================================
+// Rule 27: owl_rule_prp_key (prp-key; OWL.Closure.fsti ~line 3422).
+// OWL 2 RL/RDF rules table row prp-key: T(?c, owl:hasKey,
+// LIST(?p1..?pn)), T(?x, rdf:type, ?c), T(?y, rdf:type, ?c), and for
+// each ?pi, exists ?vi. T(?x, ?pi, ?vi), T(?y, ?pi, ?vi) => T(?x,
+// owl:sameAs, ?y). WEAKENED-ROW: as the licensing sibling
+// (OWL.RL.Refinement.fst section 23, `owl_rule_prp_key_licensed`)
+// found and the registry records (docs/theorem-registry.md, prp-key
+// row), the engine's `agree_on_property` tests key-value agreement via
+// `rdf_term_eq` (RDF 1.1 term equality: case-insensitive language
+// tags, XMLLiteral c14n) where the literal table row's `?vi` premise
+// reads as plain structural identity -- a machine-checked
+// counterexample (`lemma_agree_on_property_overapproximates_shares_
+// key_values`) shows two DISTINCT wf_literal values the engine accepts
+// as "the same value ?vi" the row's literal premise would not. This
+// truth proof closes that gap on the SEMANTIC side rather than
+// weakening the statement further: `cond_literal_term_eq_respecting`
+// (OWL.Semantics.fst) plus `lemma_rdf_term_eq_denot` establish that
+// rdf_term_eq-equal literals denote the SAME domain element under any
+// genuine interpretation (RDF 1.1 Concepts SS3.3 already treats
+// case-different-but-equal language tags as naming the SAME abstract
+// literal term, not two co-denoting ones) -- so the "extra" pairs the
+// engine's rdf_term_eq accepts are not spurious relative to the TRUE
+// semantic premise `exists v. T(x,pi,v), T(y,pi,v)`, they are ONE
+// value read through two syntactic spellings. Unlike prp-key's
+// LICENSING statement (which stays weakened against
+// `prp_key_derives_approx`, a syntactic notion `==` genuinely cannot
+// bridge without changing what "licensed by g" means), the TRUTH
+// statement below is proved against the UNWEAKENED cond_haskey
+// condition -- the bridging fact the registry asked for exists, so no
+// parking is needed here.
+//
+// SHAPE: outer fold over collect_haskey_axioms (haskey_axiom_from_
+// triple, OWL.RL.Refinement.fst section 22, gives the real hasKey
+// declaration triple + decode_iri_list witness -- REUSED via `open
+// OWL.RL.Refinement` rather than re-derived); per nonempty-key-list
+// axiom, an x/y double fold over members_of_class (class_member_from_
+// triple, section 22's sibling, gives the real rdf:type witnesses).
+// The double fold's y-step guard `x <> y && all_keys_match g ig x y
+// props` is tested via `lemma_all_keys_match_shares_approx` (section
+// 23, REUSED verbatim) into `shares_key_values_approx` -- the same
+// per-property rdf_term_eq-witness-pair existential the licensing
+// proof consumes -- then lifted to the DOMAIN-ELEMENT level by the two
+// new helper lemmas below (`lemma_shares_key_values_semantic`,
+// `lemma_pterms_agree`) so `cond_haskey`'s premise (a per-pterm
+// SHARED VALUE existential, seq_is-indexed like cond_oneof) can fire.
+// ===================================================================
+
+// Per-property semantic lifting of shares_key_values_approx: turn the
+// syntactic rdf_term_eq-witness-pair existential (two triples whose
+// objects rdf_term_eq-match) into a semantic shared-value existential
+// (one domain element both x and y relate to under the property) --
+// the exact premise shape cond_haskey needs. The literal case goes
+// through cond_literal_term_eq_respecting via lemma_rdf_term_eq_denot;
+// IRI/BNode witnesses need no condition (rdf_term_eq on those reduces
+// to structural `=`, closed inside lemma_rdf_term_eq_denot's own
+// T_IRI/T_BNode cases).
+#push-options "--z3rlimit 150 --split_queries always"
+let rec lemma_shares_key_values_semantic
+    (i : interp) (a : bnode_assignment i.idom)
+    (g : rdf_graph) (x y : subject) (props : list wf_iri)
+  : Lemma
+    (requires cond_literal_term_eq_respecting i /\ holds_all i a g /\
+              shares_key_values_approx g x y props)
+    (ensures forall (p : wf_iri). List.Tot.memP p props ==>
+               (exists (v : i.idom).
+                  i.iext (i.i_iri p) (denot_subject i a x) v /\
+                  i.iext (i.i_iri p) (denot_subject i a y) v))
+    (decreases props) =
+  match props with
+  | [] -> ()
+  | p0 :: rest ->
+    lemma_shares_key_values_semantic i a g x y rest;
+    introduce forall (p : wf_iri). List.Tot.memP p props ==>
+        (exists (v : i.idom).
+           i.iext (i.i_iri p) (denot_subject i a x) v /\
+           i.iext (i.i_iri p) (denot_subject i a y) v)
+    with introduce List.Tot.memP p props ==>
+                   (exists (v : i.idom).
+                      i.iext (i.i_iri p) (denot_subject i a x) v /\
+                      i.iext (i.i_iri p) (denot_subject i a y) v)
+    with _ . begin
+      if p = p0 then begin
+        eliminate exists (ux uy : triple).
+            List.Tot.memP ux g /\ ux.s == x /\ ux.p == p0 /\
+            List.Tot.memP uy g /\ uy.s == y /\ uy.p == p0 /\
+            rdf_term_eq ux.o uy.o == true
+        returns (exists (v : i.idom).
+                   i.iext (i.i_iri p) (denot_subject i a x) v /\
+                   i.iext (i.i_iri p) (denot_subject i a y) v)
+        with _ . begin
+          assert (triple_holds i a ux);
+          assert (triple_holds i a uy);
+          lemma_rdf_term_eq_denot i a ux.o uy.o;
+          assert (i.iext (i.i_iri p0) (denot_subject i a x) (denot_term i a ux.o));
+          assert (i.iext (i.i_iri p0) (denot_subject i a y) (denot_term i a uy.o))
+        end
+      end else ()
+    end
+#pop-options
+
+// Bridges the per-wf_iri semantic agreement lemma_shares_key_values_
+// semantic establishes into the per-domain-element form cond_haskey's
+// pterms quantifier needs (pterms == List.Tot.map i.i_iri props).
+let lemma_pterms_agree
+    (i : interp) (dx dy : i.idom) (props : list wf_iri)
+  : Lemma
+    (requires forall (q : wf_iri). List.Tot.memP q props ==>
+                (exists (v : i.idom). i.iext (i.i_iri q) dx v /\ i.iext (i.i_iri q) dy v))
+    (ensures forall (p : i.idom).
+               List.Tot.memP p (List.Tot.map (fun (q : wf_iri) -> i.i_iri q) props) ==>
+               (exists (v : i.idom). i.iext p dx v /\ i.iext p dy v)) =
+  introduce forall (p : i.idom).
+      List.Tot.memP p (List.Tot.map (fun (q : wf_iri) -> i.i_iri q) props) ==>
+      (exists (v : i.idom). i.iext p dx v /\ i.iext p dy v)
+  with introduce List.Tot.memP p (List.Tot.map (fun (q : wf_iri) -> i.i_iri q) props) ==>
+                 (exists (v : i.idom). i.iext p dx v /\ i.iext p dy v)
+  with _ . begin
+    FStar.List.Tot.Properties.memP_map_elim (fun (q : wf_iri) -> i.i_iri q) p props;
+    eliminate exists (q : wf_iri). List.Tot.memP q props /\ i.i_iri q == p
+    returns (exists (v : i.idom). i.iext p dx v /\ i.iext p dy v)
+    with _ . ()
+  end
+
+val owl_rule_prp_key_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_haskey i /\ cond_sameas_identity i /\ cond_literal_term_eq_respecting i /\
+              holds_all i a g /\ ig.ig_triples == g /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_prp_key g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_prp_key_sound i a g ig =
+  let fuel : nat = List.Tot.length g in
+  let axioms = collect_haskey_axioms g ig in
+  lemma_collect_haskey_axioms_licensed g ig;
+  introduce forall (acc : rdf_graph) (axiom : (wf_iri & list wf_iri)).
+      (List.Tot.memP axiom axioms /\ holds_all i a acc) ==>
+      holds_all i a (owl_prp_key_axiom_step g ig acc axiom)
+  with introduce (List.Tot.memP axiom axioms /\ holds_all i a acc) ==>
+                 holds_all i a (owl_prp_key_axiom_step g ig acc axiom)
+  with _ . begin
+    let (c_iri, props) = axiom in
+    match props with
+    | [] -> ()
+    | _ ->
+      assert (haskey_axiom_from_triple g ig fuel axiom);
+      eliminate exists (decl : triple) (list_subj : subject).
+          List.Tot.memP decl g /\ decl.p == owl_hasKey /\ decl.s == S_IRI c_iri /\
+          term_to_subject decl.o == Some list_subj /\
+          decode_iri_list g ig list_subj fuel == Some props
+      returns holds_all i a (owl_prp_key_axiom_step g ig acc axiom)
+      with _ . begin
+        decode_iri_list_sound i a g ig list_subj fuel;
+        lemma_denot_term_to_subject i a decl.o list_subj;
+        assert (triple_holds i a decl);
+        let pterms = List.Tot.map (fun (q : wf_iri) -> i.i_iri q) props in
+        assert (seq_is i (denot_subject i a list_subj) pterms);
+        assert (i.iext (i.i_iri owl_hasKey)
+                       (i.i_iri c_iri) (denot_subject i a list_subj));
+        let members = members_of_class g c_iri in
+        lemma_members_of_class_licensed g c_iri;
+        introduce forall (acc1 : rdf_graph) (x : wf_iri).
+            (List.Tot.memP x members /\ holds_all i a acc1) ==>
+            holds_all i a (owl_prp_key_x_step g ig props members acc1 x)
+        with introduce (List.Tot.memP x members /\ holds_all i a acc1) ==>
+                       holds_all i a (owl_prp_key_x_step g ig props members acc1 x)
+        with _ . begin
+          introduce forall (acc2 : rdf_graph) (y : wf_iri).
+              (List.Tot.memP y members /\ holds_all i a acc2) ==>
+              holds_all i a (owl_prp_key_y_step g ig props x acc2 y)
+          with introduce (List.Tot.memP y members /\ holds_all i a acc2) ==>
+                         holds_all i a (owl_prp_key_y_step g ig props x acc2 y)
+          with _ . begin
+            if x <> y && all_keys_match g ig x y props then begin
+              assert (class_member_from_triple g c_iri x);
+              assert (class_member_from_triple g c_iri y);
+              eliminate exists (tx : triple).
+                  List.Tot.memP tx g /\ tx.p == rdf_type /\ tx.s == S_IRI x /\
+                  rdf_term_eq tx.o (T_IRI c_iri) = true
+              returns holds_all i a (owl_prp_key_y_step g ig props x acc2 y)
+              with _ . begin
+                lemma_rdf_term_eq_iri tx.o c_iri;
+                assert (triple_holds i a tx);
+                assert (icext i (i.i_iri x) (i.i_iri c_iri));
+                eliminate exists (ty : triple).
+                    List.Tot.memP ty g /\ ty.p == rdf_type /\ ty.s == S_IRI y /\
+                    rdf_term_eq ty.o (T_IRI c_iri) = true
+                returns holds_all i a (owl_prp_key_y_step g ig props x acc2 y)
+                with _ . begin
+                  lemma_rdf_term_eq_iri ty.o c_iri;
+                  assert (triple_holds i a ty);
+                  assert (icext i (i.i_iri y) (i.i_iri c_iri));
+                  lemma_all_keys_match_shares_approx g ig x y props;
+                  lemma_shares_key_values_semantic i a g (S_IRI x) (S_IRI y) props;
+                  lemma_pterms_agree i (i.i_iri x) (i.i_iri y) props;
+                  // cond_haskey fires on: hasKey(c,l); seq_is l pterms;
+                  // icext x c; icext y c; every pterm agreed on a
+                  // shared value -- giving x == y at the domain level.
+                  assert (i.i_iri x == i.i_iri y);
+                  // cond_sameas_identity backward: equal denotations
+                  // give the emitted sameAs edge.
+                  assert (i.iext (i.i_iri owl_sameAs) (i.i_iri x) (i.i_iri y))
+                end
+              end
+            end else ()
+          end;
+          fold_left_inv (holds_all i a) (owl_prp_key_y_step g ig props x) members acc1
+        end;
+        fold_left_inv (holds_all i a) (owl_prp_key_x_step g ig props members) members acc
+      end
+  end;
+  fold_left_inv (holds_all i a) (owl_prp_key_axiom_step g ig) axioms g;
+  assert_norm (owl_rule_prp_key g ig ==
+               List.Tot.fold_left (owl_prp_key_axiom_step g ig) g axioms)
+#pop-options
 
 // ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to

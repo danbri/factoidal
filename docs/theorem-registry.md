@@ -75,32 +75,44 @@ literal table rows the same way `subprop_domain_range` does. Someone
 should either adjudicate this explicitly in the ledger comment or
 accept the count is 23-or-24 depending on convention.
 
-**Truth count: 17 of ~20 attempted rules proved** (`OWL.Semantics.Soundness.fst`
-"Rules 1-20" banner numbering; two banner slots, 2b and 16→17, are a
-sub-rule and a superseded first attempt, so 20 banner numbers cover 19
-distinct engine rules); **3 of those 19 are IMPOSSIBLE** with recorded
-evidence (fresh-bnode-minting rules); the remaining ~65 of 84 ledger
+**Truth count: 24 of ~27 attempted rules proved** (`OWL.Semantics.Soundness.fst`
+"Rules 1-27" banner numbering; two banner slots, 2b and 16→17, are a
+sub-rule and a superseded first attempt, so 27 banner numbers cover 26
+distinct engine rules); **3 of those 26 are IMPOSSIBLE** with recorded
+evidence (fresh-bnode-minting rules); the remaining ~58 of 84 ledger
 entries are UNATTEMPTED for truth (no `_sound` lemma exists yet).
+G3 M4 wave 1 (2026-08-06) landed Rules 21-27: `scm_eqp2`, `sameAs_
+transitivity`, `transitive_property`, `functional`, `inverse_functional`,
+`inverse_of`, and `prp_key` — all seven target rules PROVED, including
+prp-key against the UNWEAKENED `cond_haskey` condition (the bridging
+fact the registry asked for, `cond_literal_term_eq_respecting` +
+`lemma_rdf_term_eq_denot`, was proved rather than needed as a park).
+Six new semantic conditions landed in `OWL.Semantics.fst`:
+`cond_mutual_subproperty_equivalent`, `cond_transitive`,
+`cond_functional`, `cond_inverse_of`, `cond_literal_term_eq_respecting`,
+`cond_haskey`; a seventh, `cond_inverse_functional`, landed in
+`OWL.Semantics.Soundness.fst` next to Rule 25 (mirrors `cond_functional`,
+symmetric in which side of the pair is fixed).
 
 | W3C id / marker | Spec predicate | Engine function | Licensing | Truth | Hypotheses / fragment notes | Notes |
 |---|---|---|---|---|---|---|
 | scm-eqc1 | `scm_eqc1_derives` (OWL.RL.Spec.fst) | `equivalent_class` | ✅ PROVED | ✅ PROVED | none beyond `holds_all`/graph membership | Ledger-drift #1 (commit `7ba8bb1`): entry previously claimed cax-eqc1/eqc2; corrected to scm-eqc1 while writing the licensing lemma. |
 | scm-eqp1 | `scm_eqp1_derives` | `equivalent_property` | ✅ PROVED | ✅ PROVED | none | Ledger-drift #2 (commit `78e9c0c`): previously claimed prp-eqp1/eqp2; same disease as scm-eqc1. |
 | scm-eqc2 | `scm_eqc2_derives` | `scm_eqc2` | ✅ PROVED | ✅ PROVED | `ig_wf_sp`, `ig.ig_triples == g` | Truth proof needed a guard-depth flattening (2026-08-05) after a first attempt hit depth-4 SMT witness chains (Rule 16 in Soundness banner records the parked first attempt; Rule 17 is the pass). |
-| scm-eqp2 | `scm_eqp2_derives` | `scm_eqp2` | ✅ PROVED | UNATTEMPTED | `ig_wf_sp`, `ig.ig_triples == g` | — |
+| scm-eqp2 | `scm_eqp2_derives` | `scm_eqp2` | ✅ PROVED | ✅ PROVED | `ig_wf_sp`, `ig.ig_triples == g`, `cond_mutual_subproperty_equivalent` | Rule 21 (Soundness banner); mirrors Rule 17's guard-depth-flattened scm-eqc2 proof exactly, one level down (properties instead of classes). |
 | prp-symp | `prp_symp_derives` | `symmetric_property` | ✅ PROVED | ✅ PROVED | none | — |
-| prp-trp | `prp_trp_derives` | `transitive_property` | ✅ PROVED | UNATTEMPTED | `ig_wf_sp`, snapshot semantics | First NESTED-SINGLE proof (proof-friendly-guard-rule precedent). |
+| prp-trp | `prp_trp_derives` | `transitive_property` | ✅ PROVED | ✅ PROVED | `ig_wf_sp`, snapshot semantics, `cond_transitive` | Rule 23 (Soundness banner); NESTED-SINGLE, same collect-then-emit shape as Rule 1 (prp-symp) one indexed-lookup deeper. |
 | [ext] | n/a — no table row; banner in OWL.Closure.fsti | `inverseOf_domain_range_flip` | N/A | UNATTEMPTED | — | Domain/range of P become range/domain of P⁻¹. |
-| prp-inv1 + prp-inv2 | `prp_inv1_derives` / `prp_inv2_derives` | `inverse_of` | ✅ PROVED (both, one lemma) | UNATTEMPTED | NESTED-PAIR; solved via the closure-identity / PROOF-FRIENDLY GUARD RULE fix (`OWL.Closure.inverse_of_emit`, task #36, commit `fb8d98f`) | First rule proved after the nested-pair closure-identity obstruction was diagnosed. |
+| prp-inv1 + prp-inv2 | `prp_inv1_derives` / `prp_inv2_derives` | `inverse_of` | ✅ PROVED (both, one lemma) | ✅ PROVED (both, one lemma) | `cond_inverse_of` (iff, symmetric in which direction fires) | Licensing: solved via the closure-identity / PROOF-FRIENDLY GUARD RULE fix (`OWL.Closure.inverse_of_emit`, task #36, commit `fb8d98f`) — first rule proved after the nested-pair closure-identity obstruction was diagnosed. Truth: Rule 26 (Soundness banner), reuses the same named `inverse_of_emit` symbol so the nested-pair step obligation carries no fresh closure-identity risk. |
 | eq-ref | `eq_ref_derives` | `sameAs_reflexivity` | ✅ PROVED | ✅ PROVED | none | — |
 | eq-sym | `eq_sym_derives` | `sameAs_symmetry` | ✅ PROVED | ✅ PROVED | none | First licensing lemma landed in the program. |
 | [ext] | n/a | `differentFrom_symmetry` | N/A | ✅ PROVED | none | Table 5.13's differentFrom condition is symmetric in its arguments; first `[ext]` entry to get a truth proof. |
-| eq-trans | `eq_trans_derives` | `sameAs_transitivity` | ✅ PROVED | UNATTEMPTED | `ig_wf_sp` | — |
+| eq-trans | `eq_trans_derives` | `sameAs_transitivity` | ✅ PROVED | ✅ PROVED | `ig_wf_sp`, `cond_sameas_identity` | Rule 22 (Soundness banner); carried entirely by `cond_sameas_identity`'s iff (both directions), no dedicated transitivity condition needed. |
 | eq-rep-s | `eq_rep_s_derives` | `sameAs_replace_subject` | ✅ PROVED | ✅ PROVED | `ig_wf_subj` | — |
 | eq-rep-o | `eq_rep_o_derives` | `sameAs_replace_object` | ✅ PROVED | ✅ PROVED | `ig_wf_obj` | — |
 | eq-rep-p | `eq_rep_p_derives` | `sameAs_replace_predicate` | ✅ PROVED | ✅ PROVED | `ig_wf_pred` | — |
-| prp-fp | `prp_fp_derives` | `functional` | ✅ PROVED (today, commit `27c23d5`) | UNATTEMPTED | needs named top-level helpers (`owl_prp_fp_collect_step`/`emit`/`step`) — lambda-lift landed same commit | — |
-| prp-ifp | `prp_ifp_derives` | `inverse_functional` | ✅ PROVED (today, commit `27c23d5`) | UNATTEMPTED | `ig_wf_po`, `ig_wf_pred`, `graph_literal_match_exact`; needed `RDF.Indexed.fsti` helper naming (`triple_obj_matches`, `triple_subject_of`) | Closure-identity law applies one level down through `find_subjects_indexed`'s filter/map, not just the emit fold. |
+| prp-fp | `prp_fp_derives` | `functional` | ✅ PROVED (commit `27c23d5`) | ✅ PROVED | needs named top-level helpers (`owl_prp_fp_collect_step`/`emit`/`step`) — lambda-lift landed same commit; truth adds `cond_functional`, `cond_sameas_identity` | Rule 24 (Soundness banner); references the engine's own named helpers directly — cleanest of the G3 M4 wave 1 rules, no closure-identity risk at any fold level. |
+| prp-ifp | `prp_ifp_derives` | `inverse_functional` | ✅ PROVED (commit `27c23d5`) | ✅ PROVED | `ig_wf_po`, `ig_wf_pred`, `graph_literal_match_exact`; needed `RDF.Indexed.fsti` helper naming (`triple_obj_matches`, `triple_subject_of`); truth adds `cond_inverse_functional`, `cond_sameas_identity` | Closure-identity law applies one level down through `find_subjects_indexed`'s filter/map, not just the emit fold. Truth: Rule 25 (Soundness banner) reuses the licensing proof's `lemma_find_subjects_indexed_wf` verbatim via `open OWL.RL.Refinement` in `OWL.Semantics.Soundness.fst` (new cross-file dependency, no cycle). |
 | [ext] | n/a | `pdw_to_differentFrom` | N/A | UNATTEMPTED | — | Disjoint properties force distinct subjects on a shared object. |
 | [ext] | n/a | `pdw_shared_value_to_differentFrom` | N/A | UNATTEMPTED | — | Sibling of the above. |
 | [ext] | n/a | `fp_diff_to_diff` | N/A | UNATTEMPTED | — | Functional property + different objects force different subjects. |
@@ -137,7 +149,7 @@ entries are UNATTEMPTED for truth (no `_sound` lemma exists yet).
 | scm-uni (Table 8) | `scm_uni_derives` | `cls_uni` | ✅ PROVED (today's precursor, commit `2e482d3`) | UNATTEMPTED | list-walk bridge | **MISNAMED function**: emits `Cᵢ rdfs:subClassOf C` per member — Table 8's schema row, not Table 5's cls-uni type-propagation row. The `owl:disjointUnionOf` branch additionally emits an EXTENSION (plain-unionOf restatement + pairwise disjointWith), no W3C row of its own. Corrected 2026-08-05 (commit `72a965c`). |
 | [ext] | n/a | `cls_uni_elim` | N/A | UNATTEMPTED | — | Union-membership elimination under disjointness side conditions. |
 | [ext] | n/a | `oneof_set_equivalence` | N/A | UNATTEMPTED | — | oneOf lists with equal member sets name equivalent classes. |
-| prp-key | `prp_key_derives` (row) / `prp_key_derives_approx` (proved against) | `prp_key` | ✅ PROVED, **WEAKENED ROW** (commit `c600646`) | UNATTEMPTED | — | Engine's `agree_on_property` uses `rdf_term_eq` (RDF-1.1 value equality — case-insensitive lang tags, XMLLiteral c14n, #337) where the row's `shares_key_values` uses plain `==`. Machine-checked counterexample (`"Alice"@en` vs `"Alice"@EN`) shows the engine accepts strictly MORE value pairs as "shared" than the literal row licenses — an OVER-approximation on the value-sharing axis (opposite direction from the cls-int/scm-uni narrowing above). `owl_rule_prp_key_licensed` is proved against the local weakening, not `prp_key_derives` itself. WEAKENED-ROW CONFIRMATION, not a ledger drift — the row transcription is faithful to Table 4. |
+| prp-key | `prp_key_derives` (row) / `prp_key_derives_approx` (proved against) | `prp_key` | ✅ PROVED, **WEAKENED ROW** (commit `c600646`) | ✅ PROVED, **UNWEAKENED** | `ig_wf_sp`, `ig.ig_triples == g`, `cond_haskey`, `cond_sameas_identity`, `cond_literal_term_eq_respecting` | Engine's `agree_on_property` uses `rdf_term_eq` (RDF-1.1 value equality — case-insensitive lang tags, XMLLiteral c14n, #337) where the row's `shares_key_values` uses plain `==`. Machine-checked counterexample (`"Alice"@en` vs `"Alice"@EN`) shows the engine accepts strictly MORE value pairs as "shared" than the literal row licenses — an OVER-approximation on the value-sharing axis (opposite direction from the cls-int/scm-uni narrowing above). `owl_rule_prp_key_licensed` is proved against the local weakening, not `prp_key_derives` itself. WEAKENED-ROW CONFIRMATION, not a ledger drift — the row transcription is faithful to Table 4. **Truth closes the gap the licensing weakening left open** (G3 M4 wave 1, 2026-08-06): `cond_literal_term_eq_respecting` + `lemma_rdf_term_eq_denot` (`OWL.Semantics.fst`) establish that `rdf_term_eq`-equal literals denote the SAME domain element under any genuine interpretation — RDF 1.1 Concepts §3.3 already treats case-different-but-equal language tags as the SAME abstract literal term, not two co-denoting ones — so the engine's "extra" accepted pairs are one value read through two spellings, not a semantic overreach. Rule 27 (Soundness banner) is proved against the UNWEAKENED `cond_haskey` (no local weakening needed on the truth side). |
 | [axm] | n/a | `xsd_datatype_axioms` | N/A | N/A (axiomatic table, not a rule) | — | dt-type1 instantiated at supported XSD datatypes. |
 | [ext] | n/a | `dt_range_intersect` | N/A | UNATTEMPTED | — | Two ranges compose to their intersection (WebOnt-I5.24-002); explicitly NOT a minimality claim. |
 | scm-dom1 | `scm_dom1_derives` | `scm_dom2` | ✅ PROVED (commit `276ee77`) | UNATTEMPTED | — | **MISNAMED function**: lifts domain up subClassOf — scm-dom1's work, refuted-by-counterexample against scm-dom2 (whose subPropertyOf logic lives in `subprop_domain_range` below). Third ledger misclassification, caught by counterexample (commit `276ee77`). |

@@ -494,6 +494,150 @@ let cond_mutual_subclass_equivalent (i : interp) : prop =
     i.iext (i.i_iri rdfs_subClassOf) d c ==>
     i.iext (i.i_iri owl_equivalentClass) c d
 
+// Mutual rdfs:subPropertyOf implies owl:equivalentProperty -- OWL 2
+// RDF-Based Semantics Table 5.9 (equivalentProperty condition):
+// IEXT(I(owl:equivalentProperty)) = { <p,q> | EXT(p) = EXT(q) }; two
+// properties with EXT(p) = EXT(q) satisfy rdfs:subPropertyOf in BOTH
+// directions (Table 5.9's subPropertyOf condition, EXT(p) subset-of
+// EXT(q)) and conversely rdfs:subPropertyOf both ways forces EXT(p) =
+// EXT(q) by antisymmetry of subset. Exact mirror of
+// cond_mutual_subclass_equivalent above, one level down (properties
+// rather than classes); OWL.Closure.fsti's owl_rule_scm_eqp2 banner
+// names it directly: "scm-eqp2: if (P rdfs:subPropertyOf Q) and (Q
+// rdfs:subPropertyOf P) then (P owl:equivalentProperty Q) -- Reverse
+// of prp-eqp1/prp-eqp2." Stated as one direct implication (both
+// subPropertyOf directions -> the equivalentProperty conclusion, the
+// weakest reading the rule needs), same pattern as
+// cond_mutual_subclass_equivalent. NOT added to
+// owl_rl_pilot_conditions: same reasoning as the other [ext]/table-row
+// conditions above -- growing that bundle perturbs the SMT context for
+// its existing consumers, so this rule's lemma takes the condition
+// explicitly.
+let cond_mutual_subproperty_equivalent (i : interp) : prop =
+  forall (p q : i.idom).
+    i.iext (i.i_iri rdfs_subPropertyOf) p q ==>
+    i.iext (i.i_iri rdfs_subPropertyOf) q p ==>
+    i.iext (i.i_iri owl_equivalentProperty) p q
+
+// owl:TransitiveProperty -- OWL 2 RDF-Based Semantics Table 5.14
+// (property characteristics), if-direction: membership in
+// ICEXT(I(owl:TransitiveProperty)) makes the extension transitive.
+// Converse half of the direction cond_symmetric above uses for
+// owl:SymmetricProperty (same table row, "membership implies a
+// closure property of the extension" pattern); the rule this backs,
+// owl_rule_transitive_property (prp-trp), is the instance-level sibling
+// of owl_rule_chain_to_transitive's cond_chain2_transitive (the same
+// table condition read through a propertyChainAxiom witness instead of
+// a direct rdf:type owl:TransitiveProperty declaration).
+let cond_transitive (i : interp) : prop =
+  forall (p x y z : i.idom).
+    icext i p (i.i_iri owl_TransitiveProperty) ==>
+    i.iext p x y ==> i.iext p y z ==> i.iext p x z
+
+// owl:FunctionalProperty -- OWL 2 RDF-Based Semantics Table 5.14
+// (property characteristics), if-direction: membership in
+// ICEXT(I(owl:FunctionalProperty)) makes the extension a partial
+// function -- two objects related to the same subject under a
+// functional property are the SAME domain element (not merely
+// owl:sameAs-related; owl_rule_functional's emission is the sameAs
+// TRIPLE, but the semantic content Table 5.14 asserts is the stronger
+// domain-element identity, which cond_sameas_identity's backward
+// direction then turns into the emitted sameAs fact -- see
+// owl_rule_functional_sound in OWL.Semantics.Soundness.fst for that
+// composition). Mirrors cond_symmetric/cond_transitive's "membership
+// implies a closure property of the extension" pattern.
+let cond_functional (i : interp) : prop =
+  forall (p x y z : i.idom).
+    icext i p (i.i_iri owl_FunctionalProperty) ==>
+    i.iext p x y ==> i.iext p x z ==> y == z
+
+// owl:inverseOf -- OWL 2 RDF-Based Semantics Table 5.5 (property
+// mapping): <p,q> in IEXT(I(owl:inverseOf)) iff EXT(q) is the converse
+// of EXT(p): forall x y. iext p x y <==> iext q y x. prp-inv1/prp-inv2
+// (OWL 2 RL/RDF Table 4) are the two Horn-clause halves of this iff
+// read forward from one owl:inverseOf declaration; stated directly as
+// the iff here (the weakest reading that licenses BOTH directions
+// owl_rule_inverse_of emits from the single declaration inv_t, since
+// the rule's inner fold tests t.p against BOTH p1_iri and p2_iri in
+// one pass -- see owl_rule_inverse_of_sound).
+let cond_inverse_of (i : interp) : prop =
+  forall (p q x y : i.idom).
+    i.iext (i.i_iri owl_inverseOf) p q ==>
+    (i.iext p x y <==> i.iext q y x)
+
+// Literal RDF-term equality respects the interpretation -- RDF 1.1
+// Concepts SS3.3 / RDF 1.1 Semantics SS3.1 (Literals): two literals
+// whose lexical form, datatype IRI, and language tag agree UP TO CASE
+// (RDF.Term.fsti's rdf_term_eq / lang_tag_eq; same treatment for
+// rdf:XMLLiteral lexical forms via xml_canon_eq) are not merely
+// co-denoting distinct literals under RDF's abstract syntax -- they
+// ARE the same literal TERM (RDF 1.1 Concepts explicitly normalizes
+// language-tag case for term identity), so any genuine interpretation
+// (a function of RDF TERMS) denotes them identically. This is a
+// well-formedness fact about what counts as an interpretation AT ALL
+// -- the same status this file's i_iri/i_lit already carry by being
+// well-defined FUNCTIONS of their string argument -- not an extra OWL
+// semantic condition narrowing genuine models: every OWL 2 RDF-Based
+// interpretation satisfies it, because this record's i_lit : wf_literal
+// -> idom is typed over the RAW STRING encoding (case-sensitive
+// lang_tag field) rather than RDF's term-equality quotient, a gap this
+// file's own simplifications (module banner: "totalizing partial maps
+// ... all in the SOUND direction") introduce and this condition closes
+// back up. #337's value-equality semantics is the engine-side mirror
+// of the same fact (RDF.Term.fsti, join_canon_term). Needed by
+// owl_rule_prp_key_sound: agree_on_property's rdf_term_eq witness pairs
+// must denote identically for the hasKey semantic condition to fire.
+let cond_literal_term_eq_respecting (i : interp) : prop =
+  forall (l1 l2 : wf_literal). rdf_term_eq (T_Literal l1) (T_Literal l2) == true ==>
+    i.i_lit l1 == i.i_lit l2
+
+// Bridging lemma for prp-key's truth proof (and any future rule
+// reading agree_on_property / rdf_term_eq-matching object pairs):
+// rdf_term_eq-equal RDF terms denote the SAME domain element under any
+// interpretation satisfying cond_literal_term_eq_respecting. Recursion
+// mirrors rdf_term_eq's own structural recursion (RDF.Term.fsti):
+// T_IRI/T_BNode cases close via F*'s decidable string equality (i1 = i2
+// as booleans gives i1 == i2 as values for the eqtype `string`, hence
+// constructor congruence gives T_IRI i1 == T_IRI i2 -- no condition
+// needed, these are never literals); T_Literal needs
+// cond_literal_term_eq_respecting directly; T_TripleTerm recurses into
+// the object sub-term and reuses i_tt's plain-function structure
+// (equal component denotations give an equal i_tt result for free,
+// since i_tt is just an uninterpreted function of its three
+// arguments). Mismatched-constructor cases are unreachable under the
+// rdf_term_eq == true hypothesis (rdf_term_eq's own definition returns
+// false there) and close vacuously.
+// owl:hasKey -- OWL 2 RDF-Based Semantics Table 5 (HasKey mapping):
+// if <c,l> in IEXT(I(owl:hasKey)), l is a sequence of p1 ... pn over
+// IP, x and y are both in ICEXT(c), and for every pi there is a value
+// v with <x,v> and <y,v> both in IEXT(pi), then x = y. Same seq_is
+// premise shape as cond_oneof above (the key-property list is itself
+// an rdf:List, read the same way); the pilot's prp-key rule
+// (owl_rule_prp_key) needs exactly this forward implication -- the
+// weakest reading the table row implies -- to license its owl:sameAs
+// emission. NOT added to owl_rl_pilot_conditions: same reasoning as
+// the other explicitly-threaded conditions above.
+let cond_haskey (i : interp) : prop =
+  forall (c l x y : i.idom) (pterms : list i.idom).
+    i.iext (i.i_iri owl_hasKey) c l ==>
+    seq_is i l pterms ==>
+    icext i x c ==> icext i y c ==>
+    (forall (p : i.idom). List.Tot.memP p pterms ==>
+       (exists (v : i.idom). i.iext p x v /\ i.iext p y v)) ==>
+    x == y
+
+let rec lemma_rdf_term_eq_denot
+    (i : interp) (a : bnode_assignment i.idom) (t1 t2 : rdf_term)
+  : Lemma
+    (requires cond_literal_term_eq_respecting i /\ rdf_term_eq t1 t2 == true)
+    (ensures  denot_term i a t1 == denot_term i a t2)
+    (decreases t1) =
+  match t1, t2 with
+  | T_IRI _, T_IRI _ -> ()
+  | T_BNode _, T_BNode _ -> ()
+  | T_Literal l1, T_Literal l2 -> assert (i.i_lit l1 == i.i_lit l2)
+  | T_TripleTerm _ _ o1, T_TripleTerm _ _ o2 -> lemma_rdf_term_eq_denot i a o1 o2
+  | _, _ -> ()
 
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
