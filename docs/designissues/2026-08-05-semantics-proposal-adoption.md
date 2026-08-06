@@ -146,6 +146,39 @@ AI users — the `skills/` system as the machine-facing operating
 manual. Sequenced after G1's registry exists, since the registry
 also names the modules the stratification must keep public.
 
+## G3 — e2e deep proofs (owner-adopted 2026-08-06)
+
+For the rho-df fragment (type / subClassOf / subPropertyOf / domain /
+range — the working core of RDFS), the F\* theorems establish the
+FULL chain: model theory ⟷ entailment ⟷ closure ⟷ termination test ⟷
+index ⟷ query answers. Concretely: `rdfs_closure g` computes exactly
+the entailed fragment triples (soundness done; COMPLETENESS is the
+missing half), the shipping termination test is proved faithful (not
+hypothesized), and SPARQL ASK/SELECT under the RDFS regime provably
+returns the regime-defined answers on that fragment. Includes
+completing and integrating the in-progress OWL RL work.
+
+Milestones, dependency order:
+
+1. **M1 — rho-df completeness** (coverage gap 1): closure =
+   entailment on the fragment. Herbrand technique from the simple
+   rung (`interpolation_lemma` is the existing completeness-grade
+   precedent); prerequisite index completeness landed 90e2801.
+2. **M2 — faithful termination**: fix #348 (`term_to_key_total`
+   literal-arm separator), extend `RDF.Indexed.KeyInjectivity` to the
+   literal arm, discharge the two explicit hypotheses
+   `lemma_len_eq_saturated` carries — "saturation, full stop" for
+   separator-free graphs.
+3. **M3 — the query rung**: `evaluate(q, closure(g))` equals the
+   RDFS-regime answer set for ASK/SELECT on the fragment. Design doc
+   before dispatch — the genuinely new frontier.
+4. **M4 — OWL RL parity**: finish the licensing/truth sweep and the
+   closure-level composite. End-state is "implements the profile's
+   rule set exactly", NOT completeness — the RL profile is
+   deliberately incomplete for OWL semantics.
+5. **M5 — extraction bridge stays test-backed**: generated per-rule
+   tests + hash-witness pattern, in the calibrated claims language.
+
 ## What the proposal got right that we had to learn the hard way
 
 Written independently, the proposal converges on several rules this
