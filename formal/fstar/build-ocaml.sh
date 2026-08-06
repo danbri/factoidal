@@ -2101,7 +2101,18 @@ fi
 if [[ "$STEP" == "all" || "$STEP" == "test" ]]; then
   echo "--- Step 3: Run native OCaml tests ---"
   PHASE_START_TEST=$(date +%s)
-  W3C_RC=0; "$OUTDIR/w3c_runner" --all 2>&1 | tee "$OUTDIR/w3c_results.log" || W3C_RC=$?
+  # Run the suite from the REPO ROOT, not formal/fstar: the runner's
+  # RIF entailment dispatch resolves third_party/testing/rif/tc/ paths
+  # relative to its CWD (bin/w3c-runner/w3c_runner.ml,
+  # rif_rules_path_for), so running from here false-fails the four
+  # SPARQL RIF-regime tests on every full build (627 pass, 4 fail
+  # instead of 631 pass, 0 fail — cost a regression investigation on
+  # 2026-08-06). generate-report.sh already does this for the same
+  # reason.
+  W3C_RC=0
+  _RUNNER_ABS="$(pwd)/$OUTDIR/w3c_runner"
+  _W3C_LOG_ABS="$(pwd)/$OUTDIR/w3c_results.log"
+  ( cd ../.. && "$_RUNNER_ABS" --all ) 2>&1 | tee "$_W3C_LOG_ABS" || W3C_RC=$?
   echo "  Full results: $OUTDIR/w3c_results.log ($(wc -l < "$OUTDIR/w3c_results.log") lines)"
   # Refresh the human-readable test-results page (docs/test-results/index.html
   # + latest.{csv,json} + history snapshot). generate-report.sh used to be a

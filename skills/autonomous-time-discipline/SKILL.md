@@ -256,3 +256,43 @@ Monitor.
   polls; when a build phase reliably takes ~10 min, one 9-10 min
   timer beats three 3-min ones (less context burn, same latency).
 
+
+## Never end a turn with in-flight work and no armed wakeup (2026-08-06, the half-day stall)
+
+The night of 2026-08-05 ended with three things in flight: a full
+rebuild+suite gate batch (background bash), and two proof/test agents
+finishing in worktrees. The turn ended relying on task-notifications
+to continue the work. The session then idled; the harness suspended
+it; the background bash job was KILLED mid-run (its log truncates at
+22:46 with no final RC echo), and no notification ever re-woke the
+session. Work resumed only when the owner arrived the next morning —
+roughly twelve hours in which the remaining ~40 minutes of work
+(harvest two finished agents, re-run one gate, commit) sat untouched.
+The owner's read was correct: "you put down your tools."
+
+Rules, each paid for that night:
+
+1. **A pending task-notification is NOT a wakeup guarantee.** It
+   fires only into a live session. If the session suspends first, the
+   notification and the background job both die. Stop-hooks and goal
+   hooks are the same: they gate STOPPING, they cannot resurrect a
+   suspended session.
+2. **Before ending ANY turn with unfinished in-flight work, arm
+   `send_later`** (claude-code-remote MCP; survives container
+   restarts, granularity one minute). 30-60 minutes out, message
+   written to your future self with: what was running, where its
+   logs/worktrees are, what "done" looks like, and the instruction to
+   re-arm if anything is still open. Re-arm on every wake until the
+   queue is empty. Cost: one tool call. The alternative cost,
+   measured: half a working day.
+3. **Long background bash jobs are mortal in a way agents are not.**
+   Prefer: (a) finish long builds inside an active turn with Monitor
+   when feasible; (b) otherwise accept the job may die and make death
+   DETECTABLE — end every script with an unconditional RC echo
+   (hazard #21 rule 4: a log without its final RC line means "killed
+   mid-run", never "tail cut off") and make it RESUMABLE (staged
+   steps, committed checkpoints).
+4. **The last act of an autonomous evening is a handoff note to
+   yourself**, not a status message to the owner. The status message
+   is for the owner; the send_later payload is the machine-readable
+   version with paths and next actions.

@@ -793,3 +793,46 @@ a suite score, know which path it certifies; "631 of 631" was true and
 useless for the bug that mattered. Full statement of the discipline:
 `skills/test-suites/SKILL.md` § "A suite score certifies only the
 evaluated path".
+
+## Hazard #21 — a score line in a build log certifies the build's own CWD, not the suite (the phantom RIF regression)
+
+2026-08-06: an engine-restructure landing was followed by the full
+gate batch, whose log showed the SPARQL suite at 627 pass, 4 fail
+(out of 631) against a 631 pass, 0 fail baseline — all four failures
+RIF entailment-regime tests, "expected 1 row, got 0". A regression
+investigation followed: old-vs-new binary comparison, fixture
+archaeology, submodule history. The binary was innocent. The
+score line came from `build-ocaml.sh` Step 3, which ran
+`w3c_runner --all` from `formal/fstar/` — and the runner's RIF
+dispatch (`rif_rules_path_for`, `bin/w3c-runner/w3c_runner.ml`)
+resolves `third_party/testing/rif/tc/` relative to CWD. From
+`formal/fstar/` those four tests false-fail on EVERY full build;
+from the repo root everything passes. `generate-report.sh` had a
+comment saying exactly this ("Always run from repo root so the
+runner's relative third_party/ paths resolve") — the self-test
+step never got the same treatment. Fixed 2026-08-06: Step 3 now
+cds to the repo root (see the comment at the invocation).
+
+Costs and rules:
+
+1. **Before investigating any cross-build score delta, re-run the
+   suite by hand from the documented CWD** — one minute — before
+   binary archaeology — hours. A diff in scores between two runs is
+   only meaningful if the runs' environments match; CWD is part of
+   the environment for any runner with relative fixture paths.
+2. **A first comparison that reproduces the failure IDENTICALLY on
+   the old artifact is a hint the harness, not the artifact, is the
+   variable.** Here the old binary "failed" too — from the wrong
+   directory. That result was initially read as "environmental,
+   fixture missing" when it was really "my reproduction inherited
+   the same wrong CWD".
+3. **When a script warns about a path-resolution requirement, grep
+   for the OTHER invocations of the same binary** — the fix that
+   added the warning probably missed one. The warning and the bug
+   coexisted in sibling scripts for months.
+4. Background bash jobs die when the session suspends (hazard #18's
+   sibling): the batch's REAL suite run never executed, its log
+   truncated mid-self-test at the exact moment the container idled,
+   and the partial `latest.csv` it left behind had to be reverted.
+   Treat a background job's missing final RC echo as "the script
+   did not finish", never as "the tail got cut off".
