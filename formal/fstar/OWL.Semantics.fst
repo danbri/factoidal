@@ -639,6 +639,97 @@ let rec lemma_rdf_term_eq_denot
   | T_TripleTerm _ _ o1, T_TripleTerm _ _ o2 -> lemma_rdf_term_eq_denot i a o1 o2
   | _, _ -> ()
 
+// ===================================================================
+// G3 M4 wave 2 conditions (2026-08-06) — Table 8 schema-vocabulary
+// closure axioms plus the intersectionOf/unionOf comprehension
+// conditions. All four Table-8 conditions below are genuine RDF-Based
+// Semantics closure facts ON the vocabulary term's OWN IEXT (rdfs:
+// domain / rdfs:range), stated directly by the OWL 2 RDF-Based
+// Semantics "Semantic conditions" text for Table 8 — NOT something
+// derivable from cond_domain / cond_range above (those only relate a
+// domain/range assertion to ICEXT/subject-object membership, never to
+// another domain/range assertion). Each is the weakest one-directional
+// reading the cited row implies (no converse, no IP/IC membership side
+// conditions), matching every other cond_* in this module.
+// ===================================================================
+
+// scm-dom1, Table 8: T(?p, rdfs:domain, ?c1), T(?c1, rdfs:subClassOf,
+// ?c2) => T(?p, rdfs:domain, ?c2). Consumed by
+// owl_rule_scm_dom2_sound (OWL.Semantics.Soundness.fst Rule 28) — the
+// engine function OWL.Closure.fsti names `owl_rule_scm_dom2` in fact
+// realizes scm-dom1, per OWL.RL.Refinement.fst section 15's ENGINE
+// NAME VS ROW finding (its own licensing lemma is `scm_dom1_licensed`,
+// not `scm_dom2_licensed`).
+let cond_domain_subclass (i : interp) : prop =
+  forall (p c1 c2 : i.idom).
+    i.iext (i.i_iri rdfs_domain) p c1 ==>
+    i.iext (i.i_iri rdfs_subClassOf) c1 c2 ==>
+    i.iext (i.i_iri rdfs_domain) p c2
+
+// scm-rng1, Table 8: range mirror of cond_domain_subclass. Consumed by
+// owl_rule_scm_rng2_sound (Rule 29) — `owl_rule_scm_rng2` realizes
+// scm-rng1, same ENGINE NAME VS ROW finding (section 16).
+let cond_range_subclass (i : interp) : prop =
+  forall (p c1 c2 : i.idom).
+    i.iext (i.i_iri rdfs_range) p c1 ==>
+    i.iext (i.i_iri rdfs_subClassOf) c1 c2 ==>
+    i.iext (i.i_iri rdfs_range) p c2
+
+// scm-dom2, Table 8: T(?p2, rdfs:domain, ?c), T(?p1,
+// rdfs:subPropertyOf, ?p2) => T(?p1, rdfs:domain, ?c). Same closure
+// shape as cond_domain_subclass, over the OTHER axis (subPropertyOf on
+// the property, not subClassOf on the domain class). Consumed by
+// owl_rule_subprop_domain_range_sound (Rule 30), together with
+// cond_range_subprop below — `owl_rule_subprop_domain_range` is the
+// engine function that actually realizes BOTH scm-dom2 and scm-rng2
+// (section 17's finding).
+let cond_domain_subprop (i : interp) : prop =
+  forall (p1 p2 c : i.idom).
+    i.iext (i.i_iri rdfs_subPropertyOf) p1 p2 ==>
+    i.iext (i.i_iri rdfs_domain) p2 c ==>
+    i.iext (i.i_iri rdfs_domain) p1 c
+
+// scm-rng2, Table 8: range mirror of cond_domain_subprop.
+let cond_range_subprop (i : interp) : prop =
+  forall (p1 p2 c : i.idom).
+    i.iext (i.i_iri rdfs_subPropertyOf) p1 p2 ==>
+    i.iext (i.i_iri rdfs_range) p2 c ==>
+    i.iext (i.i_iri rdfs_range) p1 c
+
+// cls-int2, Table 5 (the row `owl_rule_cls_int1` actually realizes —
+// OWL.RL.Refinement.fst section 19's ENGINE NAME VS ROW finding):
+// T(?c, owl:intersectionOf, ?x), LIST[?x, ?c1 .. ?cn], T(?y, rdf:type,
+// ?c) => T(?y, rdf:type, ?c1) .. T(?y, rdf:type, ?cn). Semantically: C
+// denotes the intersection of the ci's, so ICEXT(C) is a subset of
+// ICEXT(ci) for every listed member — the icext-in-C-implies-icext-
+// in-every-ci direction the rule's premise/conclusion shape needs.
+// Same seq_is-indexed premise shape as cond_oneof; consumed by
+// owl_rule_cls_int1_sound (Rule 31).
+let cond_intersection_of (i : interp) : prop =
+  forall (c l : i.idom) (elems : list i.idom) (x : i.idom).
+    i.iext (i.i_iri owl_intersectionOf_iri) c l ==>
+    seq_is i l elems ==>
+    icext i x c ==>
+    (forall (ci : i.idom). List.Tot.memP ci elems ==> icext i x ci)
+
+// scm-uni, Table 8 (the row `owl_rule_cls_uni` actually realizes for
+// its owl:unionOf branch — OWL.RL.Refinement.fst section 20's ENGINE
+// NAME VS ROW finding): T(?c, owl:unionOf, ?x), LIST[?x, ?c1 .. ?cn]
+// => T(?c1, rdfs:subClassOf, ?c) .. T(?cn, rdfs:subClassOf, ?c).
+// Semantically: C denotes the union of the ci's, so every listed
+// member's extension is a subset of C's. Consumed by
+// owl_rule_cls_uni_sound (Rule 32), scoped to inputs with no
+// owl:disjointUnionOf triple (see that rule's banner — the
+// disjointUnionOf extension's own semantic condition is a separate,
+// unattempted, UNPROVEN piece of machinery, same narrowing the
+// pre-lambda-lift licensing scaffolding used before task #36).
+let cond_union_of (i : interp) : prop =
+  forall (c l : i.idom) (elems : list i.idom) (ci : i.idom).
+    i.iext (i.i_iri owl_unionOf_iri) c l ==>
+    seq_is i l elems ==>
+    List.Tot.memP ci elems ==>
+    i.iext (i.i_iri rdfs_subClassOf) ci c
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker

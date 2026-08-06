@@ -2562,6 +2562,533 @@ let owl_rule_prp_key_sound i a g ig =
 #pop-options
 
 // ===================================================================
+// G3 M4 wave 2 (2026-08-06): Rules 28-32, the Table 8 schema-vocabulary
+// closure quartet (scm-dom1/scm-rng1/scm-dom2/scm-rng2, dispatched
+// across two engine functions per OWL.RL.Refinement.fst sections
+// 15-17's ENGINE NAME VS ROW findings) plus the two list-walking
+// comprehension rules cls-int1/cls-uni (sections 19-20's findings).
+// Every new cond_* these five rules need lives in OWL.Semantics.fst,
+// right after cond_haskey. `ig_wf_po_spec` (cls-int1) and
+// `no_disjoint_union` / `lemma_no_disjoint_union_elim` (cls-uni) are
+// REUSED verbatim from OWL.RL.Refinement.fst (already `open`ed above)
+// rather than re-derived, per the dispatch brief.
+// ===================================================================
+
+// ===================================================================
+// Rule 28: owl_rule_scm_dom2 (dispatched row scm-dom2; the row the
+// engine function ACTUALLY realizes is scm-dom1 -- OWL.RL.Refinement.
+// fst section 15's ENGINE NAME VS ROW finding, `scm_dom1_licensed`,
+// not `scm_dom2_licensed`). OWL 2 RL/RDF Table 8 row scm-dom1: T(?p,
+// rdfs:domain, ?c1), T(?c1, rdfs:subClassOf, ?c2) => T(?p, rdfs:domain,
+// ?c2). Two-level nested fold (outer over g on the domain tag, inner
+// over find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf) -- same
+// NESTED-SINGLE shape as Rule 23's prp-trp, one bucket-lookup deep,
+// mirroring the licensing proof's own structure (section 15) exactly;
+// cond_domain_subclass carries the semantic closure the licensing side
+// gets for free from scm_dom1_derives's syntactic witness. The engine's
+// un-lambda-lifted `owl_rule_scm_dom2` (OWL.Closure.fsti:3652-3671) is
+// spelled verbatim below via named-but-ascribed local lets, the same
+// technique Rules 21/23 use for un-lifted engine rules (this module's
+// own "Proof-engineering note" at decode_iri_list_sound applies only to
+// the LIST-WALK recursion's alpha-identical-closure sharing, not to
+// this shape -- Rules 21/23 already confirm ascribed lets discharge
+// here).
+// ===================================================================
+
+val owl_rule_scm_dom2_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_domain_subclass i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_scm_dom2 g ig))
+
+#push-options "--z3rlimit 150 --split_queries always"
+let owl_rule_scm_dom2_sound i a g ig =
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_domain then
+        match t.o with
+        | T_IRI c1_iri ->
+          let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+              match c2_term with
+              | T_IRI _ ->
+                let new_t : triple = { s = t.s; p = rdfs_domain; o = c2_term } in
+                add_triple_unchecked acc2 new_t
+              | _ -> acc2)
+            acc
+            supers
+        | _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (outer_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc t)
+  with _ . begin
+    if t.p = rdfs_domain then
+      match t.o with
+      | T_IRI c1_iri ->
+        assert (triple_holds i a t);
+        assert (i.iext (i.i_iri rdfs_domain) (denot_subject i a t.s) (i.i_iri c1_iri));
+        let bucket = bucket_lookup ig.ig_sp (sp_key (S_IRI c1_iri) rdfs_subClassOf) in
+        let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
+        assert (supers == List.Tot.map (fun (u : triple) -> u.o) bucket);
+        let inner_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+            match c2_term with
+            | T_IRI _ ->
+              let new_t : triple = { s = t.s; p = rdfs_domain; o = c2_term } in
+              add_triple_unchecked acc2 new_t
+            | _ -> acc2 in
+        introduce forall (acc2 : rdf_graph) (c2_term : rdf_term).
+            (List.Tot.memP c2_term supers /\ holds_all i a acc2) ==>
+            holds_all i a (inner_step acc2 c2_term)
+        with introduce (List.Tot.memP c2_term supers /\ holds_all i a acc2) ==>
+                       holds_all i a (inner_step acc2 c2_term)
+        with _ . begin
+          match c2_term with
+          | T_IRI d_iri ->
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) c2_term bucket;
+            eliminate exists (u2 : triple).
+                List.Tot.memP u2 bucket /\ u2.o == c2_term
+            returns holds_all i a (inner_step acc2 c2_term)
+            with _ . begin
+              assert (List.Tot.memP u2 ig.ig_triples /\
+                      u2.s == S_IRI c1_iri /\ u2.p == rdfs_subClassOf);
+              assert (triple_holds i a u2);
+              assert (i.iext (i.i_iri rdfs_subClassOf)
+                             (i.i_iri c1_iri) (denot_term i a c2_term));
+              // cond_domain_subclass closes: domain(p,c1) + subClassOf
+              // (c1,c2) => domain(p,c2).
+              assert (i.iext (i.i_iri rdfs_domain)
+                             (denot_subject i a t.s) (denot_term i a c2_term));
+              let new_t : triple = { s = t.s; p = rdfs_domain; o = c2_term } in
+              assert (triple_holds i a new_t)
+            end
+          | _ -> ()
+        end;
+        fold_left_inv (holds_all i a) inner_step supers acc
+      | _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) outer_step g g;
+  assert_norm (owl_rule_scm_dom2 g ig == List.Tot.fold_left outer_step g g)
+#pop-options
+
+// ===================================================================
+// Rule 29: owl_rule_scm_rng2 (dispatched row scm-rng2; the row the
+// engine function ACTUALLY realizes is scm-rng1, section 16's finding)
+// -- range mirror of Rule 28. cond_range_subclass in place of
+// cond_domain_subclass, rdfs:range in place of rdfs:domain throughout.
+// ===================================================================
+
+val owl_rule_scm_rng2_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_range_subclass i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_scm_rng2 g ig))
+
+#push-options "--z3rlimit 150 --split_queries always"
+let owl_rule_scm_rng2_sound i a g ig =
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_range then
+        match t.o with
+        | T_IRI c1_iri ->
+          let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+              match c2_term with
+              | T_IRI _ ->
+                let new_t : triple = { s = t.s; p = rdfs_range; o = c2_term } in
+                add_triple_unchecked acc2 new_t
+              | _ -> acc2)
+            acc
+            supers
+        | _ -> acc
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (outer_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc t)
+  with _ . begin
+    if t.p = rdfs_range then
+      match t.o with
+      | T_IRI c1_iri ->
+        assert (triple_holds i a t);
+        assert (i.iext (i.i_iri rdfs_range) (denot_subject i a t.s) (i.i_iri c1_iri));
+        let bucket = bucket_lookup ig.ig_sp (sp_key (S_IRI c1_iri) rdfs_subClassOf) in
+        let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
+        assert (supers == List.Tot.map (fun (u : triple) -> u.o) bucket);
+        let inner_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+            match c2_term with
+            | T_IRI _ ->
+              let new_t : triple = { s = t.s; p = rdfs_range; o = c2_term } in
+              add_triple_unchecked acc2 new_t
+            | _ -> acc2 in
+        introduce forall (acc2 : rdf_graph) (c2_term : rdf_term).
+            (List.Tot.memP c2_term supers /\ holds_all i a acc2) ==>
+            holds_all i a (inner_step acc2 c2_term)
+        with introduce (List.Tot.memP c2_term supers /\ holds_all i a acc2) ==>
+                       holds_all i a (inner_step acc2 c2_term)
+        with _ . begin
+          match c2_term with
+          | T_IRI d_iri ->
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) c2_term bucket;
+            eliminate exists (u2 : triple).
+                List.Tot.memP u2 bucket /\ u2.o == c2_term
+            returns holds_all i a (inner_step acc2 c2_term)
+            with _ . begin
+              assert (List.Tot.memP u2 ig.ig_triples /\
+                      u2.s == S_IRI c1_iri /\ u2.p == rdfs_subClassOf);
+              assert (triple_holds i a u2);
+              assert (i.iext (i.i_iri rdfs_subClassOf)
+                             (i.i_iri c1_iri) (denot_term i a c2_term));
+              // cond_range_subclass closes: range(p,c1) + subClassOf
+              // (c1,c2) => range(p,c2).
+              assert (i.iext (i.i_iri rdfs_range)
+                             (denot_subject i a t.s) (denot_term i a c2_term));
+              let new_t : triple = { s = t.s; p = rdfs_range; o = c2_term } in
+              assert (triple_holds i a new_t)
+            end
+          | _ -> ()
+        end;
+        fold_left_inv (holds_all i a) inner_step supers acc
+      | _ -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) outer_step g g;
+  assert_norm (owl_rule_scm_rng2 g ig == List.Tot.fold_left outer_step g g)
+#pop-options
+
+// ===================================================================
+// Rule 30: owl_rule_subprop_domain_range (dispatched rows scm-dom2 +
+// scm-rng2; this engine function is the one that ACTUALLY realizes
+// BOTH literal rows, per section 17's ENGINE NAME VS ROW finding --
+// `owl_rule_scm_dom2`/`owl_rule_scm_rng2` above realize scm-dom1/
+// scm-rng1 instead). OWL 2 RL/RDF Table 8: scm-dom2 T(?p2, rdfs:domain,
+// ?c), T(?p1, rdfs:subPropertyOf, ?p2) => T(?p1, rdfs:domain, ?c);
+// scm-rng2 same premise shape for rdfs:range. TWO SEQUENTIAL INNER
+// FOLDS per outer item (domain-fold then range-fold, chained through
+// the intermediate acc_d), mirroring the licensing proof's own
+// structure (section 17) exactly: cond_domain_subprop / cond_range_
+// subprop replace scm_dom2_derives / scm_rng2_derives's syntactic
+// witnesses with the semantic closure.
+// ===================================================================
+
+val owl_rule_subprop_domain_range_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_domain_subprop i /\ cond_range_subprop i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_subprop_domain_range g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_subprop_domain_range_sound i a g ig =
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subPropertyOf then
+        match term_to_subject t.o with
+        | None -> acc
+        | Some p2 ->
+          let doms = find_objects_indexed ig p2 rdfs_domain in
+          let rngs = find_objects_indexed ig p2 rdfs_range in
+          let acc_d =
+            List.Tot.fold_left
+              (fun (acc1 : rdf_graph) (c : rdf_term) ->
+                 match c with
+                 | T_IRI _ ->
+                   add_triple_unchecked acc1
+                     ({ s = t.s; p = rdfs_domain; o = c })
+                 | _ -> acc1)
+              acc
+              doms
+          in
+          List.Tot.fold_left
+            (fun (acc1 : rdf_graph) (c : rdf_term) ->
+               match c with
+               | T_IRI _ ->
+                 add_triple_unchecked acc1
+                   ({ s = t.s; p = rdfs_range; o = c })
+               | _ -> acc1)
+            acc_d
+            rngs
+      else acc in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==> holds_all i a (outer_step acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (outer_step acc t)
+  with _ . begin
+    if t.p = rdfs_subPropertyOf then
+      match term_to_subject t.o with
+      | Some p2 ->
+        assert (triple_holds i a t);
+        lemma_denot_term_to_subject i a t.o p2;
+        assert (i.iext (i.i_iri rdfs_subPropertyOf)
+                       (denot_subject i a t.s) (denot_subject i a p2));
+        let doms = find_objects_indexed ig p2 rdfs_domain in
+        let rngs = find_objects_indexed ig p2 rdfs_range in
+        let dom_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc1 : rdf_graph) (c : rdf_term) ->
+            match c with
+            | T_IRI _ ->
+              add_triple_unchecked acc1
+                ({ s = t.s; p = rdfs_domain; o = c })
+            | _ -> acc1 in
+        let rng_step : rdf_graph -> rdf_term -> rdf_graph =
+          fun (acc1 : rdf_graph) (c : rdf_term) ->
+            match c with
+            | T_IRI _ ->
+              add_triple_unchecked acc1
+                ({ s = t.s; p = rdfs_range; o = c })
+            | _ -> acc1 in
+        introduce forall (acc1 : rdf_graph) (c : rdf_term).
+            (List.Tot.memP c doms /\ holds_all i a acc1) ==> holds_all i a (dom_step acc1 c)
+        with introduce (List.Tot.memP c doms /\ holds_all i a acc1) ==>
+                       holds_all i a (dom_step acc1 c)
+        with _ . begin
+          match c with
+          | T_IRI _ ->
+            let dom_bucket = bucket_lookup ig.ig_sp (sp_key p2 rdfs_domain) in
+            assert (doms == List.Tot.map (fun (u : triple) -> u.o) dom_bucket);
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) c dom_bucket;
+            eliminate exists (dom : triple).
+                List.Tot.memP dom dom_bucket /\ dom.o == c
+            returns holds_all i a (dom_step acc1 c)
+            with _ . begin
+              assert (List.Tot.memP dom ig.ig_triples /\
+                      dom.s == p2 /\ dom.p == rdfs_domain);
+              assert (triple_holds i a dom);
+              assert (i.iext (i.i_iri rdfs_domain)
+                             (denot_subject i a p2) (denot_term i a c));
+              // cond_domain_subprop: subPropertyOf(p1,p2) + domain(p2,c)
+              // => domain(p1,c).
+              assert (i.iext (i.i_iri rdfs_domain)
+                             (denot_subject i a t.s) (denot_term i a c));
+              let new_t : triple = { s = t.s; p = rdfs_domain; o = c } in
+              assert (triple_holds i a new_t)
+            end
+          | _ -> ()
+        end;
+        fold_left_inv (holds_all i a) dom_step doms acc;
+        let acc_d = List.Tot.fold_left dom_step acc doms in
+        introduce forall (acc1 : rdf_graph) (c : rdf_term).
+            (List.Tot.memP c rngs /\ holds_all i a acc1) ==> holds_all i a (rng_step acc1 c)
+        with introduce (List.Tot.memP c rngs /\ holds_all i a acc1) ==>
+                       holds_all i a (rng_step acc1 c)
+        with _ . begin
+          match c with
+          | T_IRI _ ->
+            let rng_bucket = bucket_lookup ig.ig_sp (sp_key p2 rdfs_range) in
+            assert (rngs == List.Tot.map (fun (u : triple) -> u.o) rng_bucket);
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) c rng_bucket;
+            eliminate exists (rng : triple).
+                List.Tot.memP rng rng_bucket /\ rng.o == c
+            returns holds_all i a (rng_step acc1 c)
+            with _ . begin
+              assert (List.Tot.memP rng ig.ig_triples /\
+                      rng.s == p2 /\ rng.p == rdfs_range);
+              assert (triple_holds i a rng);
+              assert (i.iext (i.i_iri rdfs_range)
+                             (denot_subject i a p2) (denot_term i a c));
+              // cond_range_subprop: subPropertyOf(p1,p2) + range(p2,c)
+              // => range(p1,c).
+              assert (i.iext (i.i_iri rdfs_range)
+                             (denot_subject i a t.s) (denot_term i a c));
+              let new_t : triple = { s = t.s; p = rdfs_range; o = c } in
+              assert (triple_holds i a new_t)
+            end
+          | _ -> ()
+        end;
+        fold_left_inv (holds_all i a) rng_step rngs acc_d
+      | None -> ()
+    else ()
+  end;
+  fold_left_inv (holds_all i a) outer_step g g;
+  assert_norm (owl_rule_subprop_domain_range g ig == List.Tot.fold_left outer_step g g)
+#pop-options
+
+// ===================================================================
+// Rule 31: owl_rule_cls_int1 (dispatched row cls-int1; the row the
+// engine function ACTUALLY realizes is cls-int2 -- OWL.RL.Refinement.
+// fst section 19's ENGINE NAME VS ROW finding, `cls_int2_licensed`).
+// OWL 2 RL/RDF Table 5 row cls-int2: T(?c, owl:intersectionOf, ?x),
+// LIST[?x, ?c1..?cn], T(?y, rdf:type, ?c) => T(?y, rdf:type, ?c1) ...
+// T(?y, rdf:type, ?cn). THREE-level nested fold (outer over g on the
+// intersectionOf tag, middle over xs -- subjects typed into C via
+// find_subjects_indexed, inner over the decoded member list) -- every
+// level is already a NAMED top-level function in OWL.Closure.fsti
+// (owl_cls_int1_step / owl_cls_int1_x_step / owl_cls_int1_emit, task
+// #36 lambda-lift), so this proof's fold_left_inv arguments are the
+// SAME symbols the engine calls, exactly the section-19 licensing
+// recipe. decode_iri_list_sound (Rule 4's bridge) turns the syntactic
+// list decode into the semantic seq_is reading cond_intersection_of
+// needs; ig_wf_po_spec (OWL.RL.Refinement.fst section 19, REUSED
+// verbatim) gives the real rdf:type witness `find_subjects_indexed`
+// serves for the middle fold's subject-shaped po-bucket query.
+// ===================================================================
+
+val owl_rule_cls_int1_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_intersection_of i /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig /\ ig_wf_po_spec ig)
+    (ensures  holds_all i a (owl_rule_cls_int1 g ig))
+
+#push-options "--z3rlimit 300 --ifuel 4 --split_queries always"
+let owl_rule_cls_int1_sound i a g ig =
+  let fuel : nat = List.Tot.length g in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==>
+      holds_all i a (owl_cls_int1_step g ig fuel acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (owl_cls_int1_step g ig fuel acc t)
+  with _ . begin
+    if t.p = owl_intersectionOf_iri then begin
+      match term_to_subject t.o with
+      | None -> ()
+      | Some list_subj ->
+        (match decode_iri_list g ig list_subj fuel with
+         | None -> ()
+         | Some members ->
+           decode_iri_list_sound i a g ig list_subj fuel;
+           lemma_denot_term_to_subject i a t.o list_subj;
+           assert (triple_holds i a t);
+           let elems_d = List.Tot.map (fun (x : wf_iri) -> i.i_iri x) members in
+           assert (seq_is i (denot_subject i a list_subj) elems_d);
+           assert (i.iext (i.i_iri owl_intersectionOf_iri)
+                          (denot_subject i a t.s) (denot_subject i a list_subj));
+           let xs = find_subjects_indexed ig rdf_type (subject_to_term t.s) in
+           introduce forall (acc1 : rdf_graph) (x : subject).
+               (List.Tot.memP x xs /\ holds_all i a acc1) ==>
+               holds_all i a (owl_cls_int1_x_step members acc1 x)
+           with introduce (List.Tot.memP x xs /\ holds_all i a acc1) ==>
+                          holds_all i a (owl_cls_int1_x_step members acc1 x)
+           with _ . begin
+             assert (exists (u : triple).
+                       List.Tot.memP u ig.ig_triples /\ u.s == x /\ u.p == rdf_type /\
+                       u.o == subject_to_term t.s);
+             eliminate exists (u : triple).
+                 List.Tot.memP u ig.ig_triples /\ u.s == x /\ u.p == rdf_type /\
+                 u.o == subject_to_term t.s
+             returns holds_all i a (owl_cls_int1_x_step members acc1 x)
+             with _ . begin
+               assert (triple_holds i a u);
+               lemma_denot_subject_to_term i a t.s;
+               assert (icext i (denot_subject i a x) (denot_subject i a t.s));
+               // cond_intersection_of fires on the sequence reading above:
+               // icext x C and C == intersectionOf elems_d gives icext x
+               // ci for every listed member ci.
+               assert (forall (ci : i.idom). List.Tot.memP ci elems_d ==>
+                         icext i (denot_subject i a x) ci);
+               introduce forall (acc2 : rdf_graph) (ci : wf_iri).
+                   (List.Tot.memP ci members /\ holds_all i a acc2) ==>
+                   holds_all i a (owl_cls_int1_emit x acc2 ci)
+               with introduce (List.Tot.memP ci members /\ holds_all i a acc2) ==>
+                              holds_all i a (owl_cls_int1_emit x acc2 ci)
+               with _ . begin
+                 List.Tot.Properties.memP_map_intro
+                   (fun (y : wf_iri) -> i.i_iri y) ci members;
+                 assert (icext i (denot_subject i a x) (i.i_iri ci));
+                 let new_t : triple = { s = x; p = rdf_type; o = T_IRI ci } in
+                 assert (triple_holds i a new_t)
+               end;
+               fold_left_inv (holds_all i a) (owl_cls_int1_emit x) members acc1
+             end
+           end;
+           fold_left_inv (holds_all i a) (owl_cls_int1_x_step members) xs acc)
+    end else ()
+  end;
+  fold_left_inv (holds_all i a) (owl_cls_int1_step g ig fuel) g g
+#pop-options
+
+// ===================================================================
+// Rule 32: owl_rule_cls_uni (dispatched row cls-uni; the row the
+// engine function ACTUALLY realizes, for its owl:unionOf branch, is
+// scm-uni -- OWL.RL.Refinement.fst section 20's ENGINE NAME VS ROW
+// finding). OWL 2 RL/RDF Table 8 row scm-uni: T(?c, owl:unionOf, ?x),
+// LIST[?x, ?c1..?cn] => T(?c1, rdfs:subClassOf, ?c) ... T(?cn,
+// rdfs:subClassOf, ?c). Every fold level is a NAMED top-level function
+// in OWL.Closure.fsti (owl_cls_uni_decode_axiom / owl_cls_uni_sub_emit
+// / owl_cls_uni_step, task #36 lambda-lift), mirroring the licensing
+// proof's structure (section 20) exactly for Stage 1 (the subClassOf
+// fold). SCOPED to `no_disjoint_union g` (REUSED verbatim from
+// OWL.RL.Refinement.fst, same narrowing the pre-lambda-lift licensing
+// scaffolding used): the owl:disjointUnionOf branch's own defining
+// semantic condition (plain-unionOf restatement + pairwise
+// disjointWith) has no cond_* yet and is out of this landing's scope
+// -- the disjointUnionOf EXTENSION triples stay UNATTEMPTED for truth,
+// same as their licensing predicate `cls_disjoint_union_ext_derives`
+// needed no narrowing lift here, only the scm-uni row itself does.
+// Under `no_disjoint_union g`, every t in g has t.p <> owl:
+// disjointUnionOf, so `lemma_no_disjoint_union_elim` rules out the
+// engine's disjointUnionOf-only Stage 2/3 branch for every t the outer
+// fold actually reaches; the guard disjunction collapses to
+// t.p == owl:unionOf.
+// ===================================================================
+
+val owl_rule_cls_uni_sound
+    (i : interp) (a : bnode_assignment i.idom) (g : rdf_graph) (ig : indexed_graph)
+  : Lemma
+    (requires cond_union_of i /\ no_disjoint_union g /\ holds_all i a g /\
+              holds_all i a ig.ig_triples /\ ig_wf_sp ig)
+    (ensures  holds_all i a (owl_rule_cls_uni g ig))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let owl_rule_cls_uni_sound i a g ig =
+  let fuel : nat = List.Tot.length g in
+  introduce forall (acc : rdf_graph) (t : triple).
+      (List.Tot.memP t g /\ holds_all i a acc) ==>
+      holds_all i a (owl_cls_uni_step g ig fuel acc t)
+  with introduce (List.Tot.memP t g /\ holds_all i a acc) ==>
+                 holds_all i a (owl_cls_uni_step g ig fuel acc t)
+  with _ . begin
+    lemma_no_disjoint_union_elim g t;
+    if t.p = owl_unionOf_iri || t.p = owl_disjointUnionOf_iri then begin
+      match t.s, term_to_subject t.o with
+      | S_IRI c_iri, Some list_subj ->
+        (match decode_iri_list g ig list_subj fuel with
+         | None -> ()
+         | Some members ->
+           assert (owl_cls_uni_decode_axiom g ig fuel t == Some (c_iri, members));
+           decode_iri_list_sound i a g ig list_subj fuel;
+           lemma_denot_term_to_subject i a t.o list_subj;
+           assert (t.p = owl_unionOf_iri);
+           assert (triple_holds i a t);
+           let elems_d = List.Tot.map (fun (x : wf_iri) -> i.i_iri x) members in
+           assert (seq_is i (denot_subject i a list_subj) elems_d);
+           assert (i.iext (i.i_iri owl_unionOf_iri)
+                          (i.i_iri c_iri) (denot_subject i a list_subj));
+           introduce forall (acc1 : rdf_graph) (ci : wf_iri).
+               (List.Tot.memP ci members /\ holds_all i a acc1) ==>
+               holds_all i a (owl_cls_uni_sub_emit c_iri acc1 ci)
+           with introduce (List.Tot.memP ci members /\ holds_all i a acc1) ==>
+                          holds_all i a (owl_cls_uni_sub_emit c_iri acc1 ci)
+           with _ . begin
+             List.Tot.Properties.memP_map_intro (fun (x : wf_iri) -> i.i_iri x) ci members;
+             assert (i.iext (i.i_iri rdfs_subClassOf) (i.i_iri ci) (i.i_iri c_iri));
+             let new_t : triple = { s = S_IRI ci; p = rdfs_subClassOf; o = T_IRI c_iri } in
+             assert (triple_holds i a new_t)
+           end;
+           let acc_sub = List.Tot.fold_left (owl_cls_uni_sub_emit c_iri) acc members in
+           fold_left_inv (holds_all i a) (owl_cls_uni_sub_emit c_iri) members acc;
+           assert (holds_all i a acc_sub);
+           if t.p = owl_disjointUnionOf_iri then ()
+           else ())
+      | _, _ -> ()
+    end else ()
+  end;
+  fold_left_inv (holds_all i a) (owl_cls_uni_step g ig fuel) g g
+#pop-options
+
+// ===================================================================
 // Entailment corollaries — from per-assignment truth preservation to
 // satisfaction and pilot_entails, with the index hypotheses
 // discharged against build_indexed where the pilot can discharge
