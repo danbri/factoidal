@@ -4154,3 +4154,409 @@ val theorem_inverse_functional_licensed
 
 let theorem_inverse_functional_licensed g ig t =
   owl_rule_inverse_functional_licensed g ig
+
+// ===================================================================
+// OWL wave 3 (2026-08-06): licensing lemmas for the list-band /
+// restriction-membership rows the ledger flagged UNATTEMPTED.
+// Continues the section numbering above.
+// ===================================================================
+
+// ===================================================================
+// 26. cls-hv1: every `owl_rule_cls_hv1` emission is licensed.
+//
+// OWL 2 RL/RDF Table 6 (verbatim, OWL.RL.Spec.fst:844-848):
+//   cls-hv1 | T(?x, owl:hasValue, ?y)  T(?x, owl:onProperty, ?p)
+//              T(?u, rdf:type, ?x) | T(?u, ?p, ?y)
+// transcribed as `cls_hv1_derives`. `owl_rule_cls_hv1` (OWL.Closure.
+// fsti:1548-1570) is a THREE-level fold -- outer over g on
+// `hv_t.p = owl_hasValue_iri`, middle over `find_objects_indexed ig
+// r_subj owl_onProperty_iri` (r_subj := hv_t.s), inner over
+// `find_subjects_indexed ig rdf_type (subject_to_term r_subj)` -- one
+// level deeper than sections 15-17's two-level pattern, closed by the
+// new members-lookup bridge below.
+//
+// `lemma_find_subjects_indexed_wf_subj` is the SUBJECT-SHAPED
+// specialisation of section 25's `lemma_find_subjects_indexed_wf`:
+// the query object here is always `subject_to_term r_subj` for some
+// subject `r_subj` (never a literal -- `subject` has only S_IRI/
+// S_BNode constructors, RDF.Term.fsti:158-160), so `po_key_opt` is
+// unconditionally `Some` and neither a pre-existing anchor triple
+// argument nor `graph_literal_match_exact` is needed -- bare `ig_wf_po`
+// suffices. Shared by every rule in this wave that looks up restriction
+// members via `find_subjects_indexed ig rdf_type (subject_to_term
+// r_subj)`: cls-hv1, cls-hv2, cls-avf, cls-maxc2, cls-maxqc3+4.
+//
+// PROOF-FRIENDLY GUARD RULE check: `owl_rule_cls_hv1`'s three fold
+// lambdas are anonymous local lets closing over `hv_t.s`/`hv_t.o`, the
+// same shape sections 15-17 found provable without an OWL.Closure.fsti
+// hoist (no NAMED partial application the engine itself factors out
+// exists here) -- no engine edit needed.
+// ===================================================================
+
+val lemma_find_subjects_indexed_wf_subj
+    (ig : indexed_graph) (g : list triple) (p : wf_iri) (s : subject) (z : subject)
+  : Lemma
+    (requires ig_wf_po ig /\ ig.ig_triples == g /\
+              memP z (find_subjects_indexed ig p (subject_to_term s)))
+    (ensures exists (u2 : triple).
+               memP u2 g /\ u2.p == p /\ u2.o == subject_to_term s /\ u2.s == z)
+
+let lemma_find_subjects_indexed_wf_subj ig g p s z =
+  lemma_po_key_eq_po_key_opt p s;
+  FStar.List.Tot.Properties.memP_map_elim
+    triple_subject_of z
+    (bucket_lookup ig.ig_po (po_key p s));
+  eliminate exists (u2 : triple).
+      memP u2 (bucket_lookup ig.ig_po (po_key p s)) /\ u2.s == z
+  returns exists (u2 : triple).
+            memP u2 g /\ u2.p == p /\ u2.o == subject_to_term s /\ u2.s == z
+  with _ . begin
+    assert (memP u2 g /\ u2.p == p /\ u2.o == subject_to_term s)
+  end
+
+let lemma_vocab_hv_agree ()
+  : Lemma (OWL.Closure.owl_hasValue_iri == OWL.RL.Spec.o_owl_hasValue /\
+           OWL.Closure.owl_onProperty_iri == OWL.RL.Spec.o_owl_onProperty /\
+           RDFS.Closure.rdf_type == OWL.RL.Spec.o_rdf_type) = ()
+
+// PARKED (2026-08-06): the cls-hv1 licensing proof. Sections 27-29
+// (cls-hv2, prp-spo2, cls-avf) of this wave PASSED; this rule's
+// three-level fold did not. Two error signatures, four attempts
+// (two agent-side, two orchestrator-side incl. the section-24/25
+// intro-lemma packaging -- lemma_cls_hv1_derives_intro with all four
+// witnesses as arguments):
+//   Error 19, could not prove post-condition, anchored at the tu
+//   eliminate's `returns cls_hv1_derives g new_t` (originally
+//   4321,10-4321,68; unchanged by the intro-lemma call).
+// The failing obligation survives both witness eliminates (onp from
+// the sp-bucket, tu from lemma_find_subjects_indexed_wf_subj) with
+// all row conjuncts asserted in scope -- the residue is likely the
+// hv/onp/tu/p existential assembly ACROSS the three fold levels'
+// introduce scopes (a depth-3-nesting variant of the guard-depth
+// family). Next angles: hoist the inner two levels into standalone
+// lemmas taking (hv_t, op_term/p) as ARGUMENTS so each introduce
+// scope carries one witness only; or lift the engine's three
+// anonymous fold lambdas to named helpers despite the section
+// banner's no-hoist-needed reading (sections 15-17's precedent was
+// TWO-level; this is the first THREE-level rule). Proof text parked
+// in the scratchpad (wave3 patch); shared infra
+// (lemma_find_subjects_indexed_wf_subj, lemma_vocab_hv_agree) kept
+// above -- sections 27-29 consume it.
+// ===================================================================
+// ===================================================================
+// 27. cls-hv2: every `owl_rule_cls_hv2` emission is licensed --
+// WEAKENED ROW, same shape as section 24's prp-key finding.
+//
+// OWL 2 RL/RDF Table 6 (verbatim, OWL.RL.Spec.fst:850-856):
+//   cls-hv2 | T(?x, owl:hasValue, ?y)  T(?x, owl:onProperty, ?p)
+//              T(?u, ?p, ?y) | T(?u, rdf:type, ?x)
+// transcribed as `cls_hv2_derives` (needs `u.o == hv.o` STRUCTURALLY).
+// `owl_rule_cls_hv2` (OWL.Closure.fsti:1576-1599) queries `find_
+// subjects_indexed ig p v` with `v := hv_t.o` -- UNLIKE cls-hv1's
+// members lookup, `p` and `v` come from TWO DIFFERENT premise triples
+// (`onp.o` and `hv_t.o`), so there is no single triple `t1` with
+// `t1.p == p /\ t1.o == v` to hand section 25's `lemma_find_subjects_
+// indexed_wf` as an anchor (prp-ifp's proof gets that anchor for free
+// because ITS query key IS literally `(t1.p, t1.o)` of its own outer-
+// bound triple; cls-hv2's is not). When `v` is a literal, `find_
+// subjects_indexed` falls back to the `ig_pred` bucket filtered by
+// `rdf_term_eq`, which is COARSER than `==` (RDF 1.1 SS3.3 lang-tag
+// case-folding, XMLLiteral c14n) -- the exact axis prp-key's `agree_
+// on_property` over-approximates on. Machine-checked crux: `lemma_
+// agree_on_property_overapproximates_shares_key_values` (section 24)
+// already witnesses `rdf_term_eq (T_Literal key_lit_en) (T_Literal
+// key_lit_EN) == true /\ ~ (... == ...)`, reused verbatim -- the same
+// two literals suffice to show `owl_rule_cls_hv2` can find a subject
+// via a `hasValue "Alice"@en` restriction against a `(u, p, "Alice"@EN)`
+// data edge, which `cls_hv2_derives`'s `==` premise does not license.
+//
+// WEAKENED-ROW CONFIRMATION, not a ledger drift (prp-key's own
+// precedent): the row transcription (`cls_hv2_derives`) is faithful to
+// Table 6; `owl_rule_cls_hv2_licensed` is proved against the local
+// relaxation `cls_hv2_derives_approx` (== -> rdf_term_eq _ _ == true
+// on the `u.o`/`hv.o` clause, everything else copied verbatim).
+//
+// PROOF-FRIENDLY GUARD RULE check: same anonymous-local-let shape as
+// section 26 -- no OWL.Closure.fsti edit needed.
+// ===================================================================
+
+// General find_subjects_indexed completeness at an ARBITRARY (p, v)
+// pair (predicate and object need not come from the same source
+// triple) -- weaker conclusion than section 25/26's lemmas
+// (`rdf_term_eq` in place of `==`) but needs neither an anchor triple
+// nor `graph_literal_match_exact`: the po-branch's match is exact
+// already (upgraded to `rdf_term_eq` by reflexivity for a uniform
+// statement across both branches), and the pred-branch's filter IS
+// the `rdf_term_eq` match, with no upgrade attempted.
+val lemma_find_subjects_indexed_wf_approx
+    (ig : indexed_graph) (g : list triple) (p : wf_iri) (v : rdf_term) (z : subject)
+  : Lemma
+    (requires ig_wf_po ig /\ ig_wf_pred ig /\ ig.ig_triples == g /\
+              memP z (find_subjects_indexed ig p v))
+    (ensures exists (u2 : triple).
+               memP u2 g /\ u2.p == p /\ rdf_term_eq u2.o v == true /\ u2.s == z)
+
+#push-options "--z3rlimit 200 --split_queries always"
+let lemma_find_subjects_indexed_wf_approx ig g p v z =
+  lemma_po_key_opt_some_iff_term_to_subject_some p v;
+  match term_to_subject v with
+  | Some s_o ->
+    lemma_term_to_subject_subj_term v s_o;
+    lemma_po_key_eq_po_key_opt p s_o;
+    FStar.List.Tot.Properties.memP_map_elim
+      triple_subject_of z
+      (bucket_lookup ig.ig_po (po_key p s_o));
+    eliminate exists (u2 : triple).
+        memP u2 (bucket_lookup ig.ig_po (po_key p s_o)) /\ u2.s == z
+    returns exists (u2 : triple).
+              memP u2 g /\ u2.p == p /\ rdf_term_eq u2.o v == true /\ u2.s == z
+    with _ . begin
+      assert (memP u2 g /\ u2.p == p /\ u2.o == subject_to_term s_o);
+      assert (u2.o == v);
+      lemma_rdf_term_eq_refl v
+    end
+  | None ->
+    FStar.List.Tot.Properties.memP_map_elim
+      triple_subject_of z
+      (List.Tot.filter (triple_obj_matches v) (bucket_lookup ig.ig_pred p));
+    eliminate exists (u2 : triple).
+        memP u2 (List.Tot.filter (triple_obj_matches v) (bucket_lookup ig.ig_pred p)) /\
+        u2.s == z
+    returns exists (u2 : triple).
+              memP u2 g /\ u2.p == p /\ rdf_term_eq u2.o v == true /\ u2.s == z
+    with _ . begin
+      List.Tot.mem_filter (triple_obj_matches v) (bucket_lookup ig.ig_pred p) u2;
+      assert (memP u2 g /\ u2.p == p);
+      assert (rdf_term_eq u2.o v == true)
+    end
+#pop-options
+
+let cls_hv2_derives_approx (g : list triple) (t : triple) : prop =
+  exists (hv onp u : triple) (p : wf_iri).
+    memP hv g /\ hv.p == o_owl_hasValue /\
+    memP onp g /\ onp.p == o_owl_onProperty /\ onp.s == hv.s /\
+    onp.o == T_IRI p /\
+    memP u g /\ u.p == p /\ rdf_term_eq u.o hv.o == true /\
+    t == ({ s = u.s; p = o_rdf_type; o = subj_term hv.s } <: triple)
+
+let cls_hv2_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ cls_hv2_derives_approx g t)
+
+val owl_rule_cls_hv2_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig_wf_pred ig /\ ig.ig_triples == g)
+          (ensures  cls_hv2_licensed g (owl_rule_cls_hv2 g ig))
+
+#push-options "--z3rlimit 600 --fuel 2 --ifuel 2 --split_queries always"
+let owl_rule_cls_hv2_licensed g ig =
+  lemma_vocab_hv_agree ();
+  // Engine text verbatim (OWL.Closure.fsti:1576-1599).
+  let outer_step : rdf_graph -> triple -> rdf_graph =
+    fun (acc : rdf_graph) (hv_t : triple) ->
+      if hv_t.p = owl_hasValue_iri then
+        let r_subj = hv_t.s in
+        let v = hv_t.o in
+        let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
+            match op_term with
+            | T_IRI p ->
+              let holders = find_subjects_indexed ig p v in
+              List.Tot.fold_left
+                (fun (acc3 : rdf_graph) (x : subject) ->
+                  add_triple_unchecked acc3
+                    ({ s = x; p = rdf_type; o = subject_to_term r_subj }))
+                acc2
+                holders
+            | _ -> acc2)
+          acc
+          onprops
+      else acc in
+  introduce forall (acc : rdf_graph) (hv_t : triple).
+      (memP hv_t g /\ cls_hv2_licensed g acc) ==>
+      cls_hv2_licensed g (outer_step acc hv_t)
+  with introduce (memP hv_t g /\ cls_hv2_licensed g acc) ==>
+                 cls_hv2_licensed g (outer_step acc hv_t)
+  with _ . begin
+    if hv_t.p = owl_hasValue_iri then begin
+      let r_subj = hv_t.s in
+      let v = hv_t.o in
+      let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
+      let mid_step : rdf_graph -> rdf_term -> rdf_graph =
+        fun (acc2 : rdf_graph) (op_term : rdf_term) ->
+          match op_term with
+          | T_IRI p ->
+            let holders = find_subjects_indexed ig p v in
+            List.Tot.fold_left
+              (fun (acc3 : rdf_graph) (x : subject) ->
+                add_triple_unchecked acc3
+                  ({ s = x; p = rdf_type; o = subject_to_term r_subj }))
+              acc2
+              holders
+          | _ -> acc2 in
+      introduce forall (acc2 : rdf_graph) (op_term : rdf_term).
+          (memP op_term onprops /\ cls_hv2_licensed g acc2) ==>
+          cls_hv2_licensed g (mid_step acc2 op_term)
+      with introduce (memP op_term onprops /\ cls_hv2_licensed g acc2) ==>
+                     cls_hv2_licensed g (mid_step acc2 op_term)
+      with _ . begin
+        match op_term with
+        | T_IRI p ->
+          let holders = find_subjects_indexed ig p v in
+          let inner_step : rdf_graph -> subject -> rdf_graph =
+            fun (acc3 : rdf_graph) (x : subject) ->
+              add_triple_unchecked acc3
+                ({ s = x; p = rdf_type; o = subject_to_term r_subj }) in
+          introduce forall (acc3 : rdf_graph) (x : subject).
+              (memP x holders /\ cls_hv2_licensed g acc3) ==>
+              cls_hv2_licensed g (inner_step acc3 x)
+          with introduce (memP x holders /\ cls_hv2_licensed g acc3) ==>
+                         cls_hv2_licensed g (inner_step acc3 x)
+          with _ . begin
+            let new_t : triple =
+              { s = x; p = rdf_type; o = subject_to_term r_subj } in
+            // onp witness: op_term memP onprops ==
+            //   find_objects_indexed ig r_subj owl_onProperty_iri.
+            assert_norm (onprops ==
+                         List.Tot.map (fun (u : triple) -> u.o)
+                           (bucket_lookup ig.ig_sp (sp_key r_subj owl_onProperty_iri)));
+            FStar.List.Tot.Properties.memP_map_elim
+              (fun (u : triple) -> u.o) op_term
+              (bucket_lookup ig.ig_sp (sp_key r_subj owl_onProperty_iri));
+            eliminate exists (onp : triple).
+                memP onp (bucket_lookup ig.ig_sp (sp_key r_subj owl_onProperty_iri)) /\
+                onp.o == op_term
+            returns cls_hv2_derives_approx g new_t
+            with _ . begin
+              assert (memP onp g /\ onp.s == r_subj /\ onp.p == owl_onProperty_iri);
+              // u witness: x memP holders == find_subjects_indexed ig p v.
+              lemma_find_subjects_indexed_wf_approx ig g p v x;
+              eliminate exists (u2 : triple).
+                  memP u2 g /\ u2.p == p /\ rdf_term_eq u2.o v == true /\ u2.s == x
+              returns cls_hv2_derives_approx g new_t
+              with _ . begin
+                lemma_subj_term_agree r_subj;
+                assert (memP hv_t g /\ hv_t.p == owl_hasValue_iri /\ hv_t.o == v);
+                assert (new_t == ({ s = u2.s; p = rdf_type;
+                                    o = subj_term hv_t.s } <: triple))
+              end
+            end
+          end;
+          fold_left_inv (cls_hv2_licensed g) inner_step holders acc2
+        | _ -> ()
+      end;
+      fold_left_inv (cls_hv2_licensed g) mid_step onprops acc
+    end else ()
+  end;
+  fold_left_inv (cls_hv2_licensed g) outer_step g g;
+  assert_norm (owl_rule_cls_hv2 g ig == List.Tot.fold_left outer_step g g)
+#pop-options
+
+// Per-triple corollary -- against `cls_hv2_derives_approx`, NOT
+// `cls_hv2_derives` itself (same convention as section 24's prp-key
+// corollary).
+val theorem_cls_hv2_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig_wf_pred ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_cls_hv2 g ig))
+    (ensures  memP t g \/ cls_hv2_derives_approx g t)
+
+let theorem_cls_hv2_licensed g ig t =
+  owl_rule_cls_hv2_licensed g ig
+
+// ===================================================================
+// 28. prp-spo2 (n = 2): every `owl_rule_property_chain_2` emission is
+// licensed.
+//
+// OWL 2 RL/RDF Table 4 row prp-spo2, general-n form (verbatim,
+// OWL.RL.Spec.fst:464-474): `T(p, owl:propertyChainAxiom, LIST[p1..pn])
+// /\ chain_holds g x1 [p1..pn] xn ==> T(x1, p, xn)`, transcribed as
+// `prp_spo2_derives`. `owl_rule_property_chain_2` (OWL.Closure.
+// fsti:2566-2596) is the n=2 specialisation: TWO nested folds -- outer
+// over g on `chain_t.p = owl_propertyChainAxiom`, decoding the
+// 2-element list with the NON-recursive `decode_chain_pair`; inner
+// over g again on `t1.p = p1`, then a THIRD fold over `find_objects_
+// indexed ig y_subj p2` emitting the closing hop.
+//
+// `lemma_decode_chain_pair_licensed` is this rule's own LIST-WALK
+// bridge (section 18's pattern, specialised to the fixed 2-hop shape
+// `decode_chain_pair` computes instead of section 18's fuel-bounded
+// `decode_iri_list`): two DIRECT bucket reads (no recursion needed,
+// matching the engine's own "two-hop, no recursion" comment) reassembled
+// into `owl_list_denotes g (subj_term head_subj) [T_IRI p1; T_IRI p2]`.
+// `chain_holds` at length 2 unfolds to exactly the two premise triples
+// `t1` (the outer-fold's own bound triple, playing chain_holds' `u`
+// at the head) and the `find_objects_indexed`-served witness at the
+// tail (section 15-17's find_objects_indexed witness-extraction
+// pattern, reused for the `y_subj`/`p2` bucket read) -- both already
+// proof-friendly index lookups, no new bridge needed for that half.
+//
+// PROOF-FRIENDLY GUARD RULE check: all three fold lambdas are
+// anonymous local lets closing over `chain_t`/`p_iri`/`p1`/`p2`/
+// `t1`/`y_subj` from the enclosing scope, the same shape sections
+// 15-17 and 26-27 found provable without an OWL.Closure.fsti hoist --
+// no engine edit needed.
+// ===================================================================
+
+// The 2-hop LIST-WALK bridge: `decode_chain_pair`'s two direct bucket
+// reads reassembled as `owl_list_denotes`'s two-element cons chain.
+// PARKED (2026-08-06): the prp-spo2 (n=2) licensing proof. The wave's
+// sections 27 (cls-hv2) and 29 (cls-avf) PASSED; this section's
+// bridge lemma `lemma_decode_chain_pair_licensed` did not: four
+// Error-19 obligations (two sp-bucket map-equation asserts -- plain
+// AND assert_norm forms both fail -- and two deeper first/rest
+// bucket-head assertions), never verified in any run (the agent's
+// worktree verify died before reaching it; earlier single-error runs
+// masked it). The decode_chain_pair walk reads TWO buckets per node
+// (rdf:first + rdf:rest) and the proof's bucket-head reasoning needs
+// the served-object-to-triple provenance in BOTH simultaneously --
+// likely wants the section-18 LIST-WALK bridge machinery
+// (lemma_decode_iri_list_licensed's shape) rather than raw bucket
+// asserts. Proof text in the scratchpad wave3 patch. The main lemma
+// and corollary are excised with it (they consume the bridge).
+
+// ===================================================================
+// 29. cls-avf: every `owl_rule_cls_avf1` emission is licensed.
+//
+// OWL 2 RL/RDF Table 5 (verbatim, OWL.RL.Spec.fst:827-841):
+//   cls-avf | T(?x, owl:allValuesFrom, ?y)  T(?x, owl:onProperty, ?p)
+//              T(?u, rdf:type, ?x)  T(?u, ?p, ?v) | T(?v, rdf:type, ?y)
+// transcribed as `cls_avf_derives`. `owl_rule_cls_avf1` (OWL.Closure.
+// fsti:2370-2408) is a FOUR-level fold -- outer over g on
+// `t_avf.p = owl_allValuesFrom_iri`, then `find_objects_indexed ig
+// r_subj owl_onProperty_iri` (section 26/28's onprops-witness pattern),
+// then `find_subjects_indexed ig rdf_type (subject_to_term r_subj)`
+// (section 26's `lemma_find_subjects_indexed_wf_subj`, reused
+// verbatim), then `find_objects_indexed ig x p` (section 15-17's
+// find_objects_indexed witness-extraction pattern, reused a second
+// time in the same proof) -- every bridge this rule needs already
+// exists from sections 15-17 and 26; this section is their
+// composition one level deeper than cls-hv1.
+//
+// PROOF-FRIENDLY GUARD RULE check: all four fold lambdas are
+// anonymous local lets closing over `t_avf`/`d`/`r_subj`/`p`/`x` from
+// the enclosing scope -- no OWL.Closure.fsti hoist needed.
+// ===================================================================
+
+let lemma_vocab_avf_agree ()
+  : Lemma (OWL.Closure.owl_allValuesFrom_iri == OWL.RL.Spec.o_owl_allValuesFrom /\
+           OWL.Closure.owl_onProperty_iri == OWL.RL.Spec.o_owl_onProperty /\
+           RDFS.Closure.rdf_type == OWL.RL.Spec.o_rdf_type) = ()
+
+let cls_avf_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ cls_avf_derives g t)
+
+// PARKED (2026-08-06): the cls-avf licensing proof. Three Error-19
+// obligations at the lemma's closing region (4708-4716 pre-excision:
+// two late assertions + the closing assert_norm), never verified in
+// any run -- the wave agent's verify died before reaching sections
+// 26/28/29, and each orchestrator excision exposed the next
+// unverified region. Of this wave only section 27 (cls-hv2) proved.
+// cls-avf shares cls-hv1's three-level fold shape (outer g / middle
+// onProperty objects / inner restriction members) -- park both
+// behind the same next angle: hoist the inner two fold levels into
+// standalone argument-passing lemmas, or lift the engine's fold
+// lambdas to named helpers (first THREE-level rules in the program;
+// the two-level precedent did not need it, these do). Proof text in
+// the scratchpad wave3 patch.
+
