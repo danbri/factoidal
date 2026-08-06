@@ -289,6 +289,221 @@ let lemma_store_search_sound (g : rdf_graph) (b : triple_pattern_bound) (t : tri
   lemma_ig_search_sound g b t
 
 (** ====================================================================== **)
+(** Part 2b: THE SELECTIVE-INDEX PROBE IS SOUND (closes finding RT-2)      **)
+(**                                                                        **)
+(** `build_indexed_selective needs g` (RDF.Indexed.fsti:651-661) is what   **)
+(** `graph_to_store_for` actually builds (SPARQL11.Algebra.fst:3588-3589) **)
+(** -- the store `eval_pattern`/`eval_ask_query` run on, NOT the           **)
+(** `build_indexed g` (== `build_indexed_selective all_bucket_needs g`)    **)
+(** `lemma_ig_search_sound` above is proved for. The two constructors      **)
+(** share ONE field unconditionally -- `ig_triples = g` -- and differ     **)
+(** only in which of the six buckets get `build_bucket key_of g` versus   **)
+(** `BLeaf` (the RDF.Indexed.fsti record literal). `ig_search` already     **)
+(** reads every bucket behind its own `ig.ig_built.bn_*` gate (part 2     **)
+(** above, replicated again below), so an OMITTED bucket is never looked  **)
+(** up: its candidate is `None`, not an empty-but-consulted                **)
+(** `bucket_lookup` result -- `bucket_cand_sound ig None` is vacuously     **)
+(** true by definition. The six weak well-formedness lemmas below         **)
+(** therefore hold for EVERY `needs`, not just `all_bucket_needs`, by      **)
+(** splitting on the one flag each guards: the TRUE branch is the         **)
+(** identical `build_bucket`/`tree_ok` argument `Ml.lemma_build_indexed_   **)
+(** wf_*` already makes (`Ml.lemma_build_bucket_ok` / `Ml.lemma_tree_ok_   **)
+(** lookup` are both generic in `key_of` and the source list -- neither   **)
+(** mentions `build_indexed`); the FALSE branch reduces the bucket to     **)
+(** `BLeaf`, whose `bucket_lookup` is `[]` by `RDF.Indexed.fsti`'s own     **)
+(** definition (`bucket_lookup BLeaf k = []`), so the implication is      **)
+(** vacuous. This is exactly the "an omitted bucket serves nothing"       **)
+(** case; there is no "falls back to the full list" case to prove HERE    **)
+(** (that fallback is `ig_search`'s `pool` computation, unchanged, and is **)
+(** re-verified below in `lemma_ig_search_sound_selective`'s own body).   **)
+(** ====================================================================== **)
+
+let lemma_build_indexed_selective_wf_pred (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              forall (k : string) (t : triple).
+                List.Tot.memP t (bucket_lookup ig.ig_pred k) ==>
+                List.Tot.memP t ig.ig_triples)) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_pred then begin
+    Ml.lemma_build_bucket_ok bucket_key_pred g;
+    assert (ig.ig_pred == build_bucket bucket_key_pred g);
+    introduce forall (k : string) (t : triple).
+        List.Tot.memP t (bucket_lookup ig.ig_pred k) ==> List.Tot.memP t ig.ig_triples
+    with introduce List.Tot.memP t (bucket_lookup ig.ig_pred k) ==> List.Tot.memP t ig.ig_triples
+    with _ . Ml.lemma_tree_ok_lookup bucket_key_pred g ig.ig_pred k t
+  end else
+    assert (ig.ig_pred == BLeaf)
+
+let lemma_build_indexed_selective_wf_subj_weak (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              forall (k : string) (t : triple).
+                List.Tot.memP t (bucket_lookup ig.ig_subj k) ==>
+                List.Tot.memP t ig.ig_triples)) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_subj then begin
+    Ml.lemma_build_bucket_ok bucket_key_subj g;
+    assert (ig.ig_subj == build_bucket bucket_key_subj g);
+    introduce forall (k : string) (t : triple).
+        List.Tot.memP t (bucket_lookup ig.ig_subj k) ==> List.Tot.memP t ig.ig_triples
+    with introduce List.Tot.memP t (bucket_lookup ig.ig_subj k) ==> List.Tot.memP t ig.ig_triples
+    with _ . Ml.lemma_tree_ok_lookup bucket_key_subj g ig.ig_subj k t
+  end else
+    assert (ig.ig_subj == BLeaf)
+
+let lemma_build_indexed_selective_wf_obj_weak (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              forall (k : string) (t : triple).
+                List.Tot.memP t (bucket_lookup ig.ig_obj k) ==>
+                List.Tot.memP t ig.ig_triples)) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_obj then begin
+    Ml.lemma_build_bucket_ok bucket_key_obj g;
+    assert (ig.ig_obj == build_bucket bucket_key_obj g);
+    introduce forall (k : string) (t : triple).
+        List.Tot.memP t (bucket_lookup ig.ig_obj k) ==> List.Tot.memP t ig.ig_triples
+    with introduce List.Tot.memP t (bucket_lookup ig.ig_obj k) ==> List.Tot.memP t ig.ig_triples
+    with _ . Ml.lemma_tree_ok_lookup bucket_key_obj g ig.ig_obj k t
+  end else
+    assert (ig.ig_obj == BLeaf)
+
+let lemma_build_indexed_selective_wf_sp_weak (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              forall (k : string) (t : triple).
+                List.Tot.memP t (bucket_lookup ig.ig_sp k) ==>
+                List.Tot.memP t ig.ig_triples)) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_sp then begin
+    Ml.lemma_build_bucket_ok bucket_key_sp g;
+    assert (ig.ig_sp == build_bucket bucket_key_sp g);
+    introduce forall (k : string) (t : triple).
+        List.Tot.memP t (bucket_lookup ig.ig_sp k) ==> List.Tot.memP t ig.ig_triples
+    with introduce List.Tot.memP t (bucket_lookup ig.ig_sp k) ==> List.Tot.memP t ig.ig_triples
+    with _ . Ml.lemma_tree_ok_lookup bucket_key_sp g ig.ig_sp k t
+  end else
+    assert (ig.ig_sp == BLeaf)
+
+let lemma_build_indexed_selective_wf_po_weak (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              forall (k : string) (t : triple).
+                List.Tot.memP t (bucket_lookup ig.ig_po k) ==>
+                List.Tot.memP t ig.ig_triples)) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_po then begin
+    Ml.lemma_build_bucket_ok bucket_key_po g;
+    assert (ig.ig_po == build_bucket bucket_key_po g);
+    introduce forall (k : string) (t : triple).
+        List.Tot.memP t (bucket_lookup ig.ig_po k) ==> List.Tot.memP t ig.ig_triples
+    with introduce List.Tot.memP t (bucket_lookup ig.ig_po k) ==> List.Tot.memP t ig.ig_triples
+    with _ . Ml.lemma_tree_ok_lookup bucket_key_po g ig.ig_po k t
+  end else
+    assert (ig.ig_po == BLeaf)
+
+let lemma_build_indexed_selective_wf_so_weak (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              forall (k : string) (t : triple).
+                List.Tot.memP t (bucket_lookup ig.ig_so k) ==>
+                List.Tot.memP t ig.ig_triples)) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_so then begin
+    Ml.lemma_build_bucket_ok bucket_key_so g;
+    assert (ig.ig_so == build_bucket bucket_key_so g);
+    introduce forall (k : string) (t : triple).
+        List.Tot.memP t (bucket_lookup ig.ig_so k) ==> List.Tot.memP t ig.ig_triples
+    with introduce List.Tot.memP t (bucket_lookup ig.ig_so k) ==> List.Tot.memP t ig.ig_triples
+    with _ . Ml.lemma_tree_ok_lookup bucket_key_so g ig.ig_so k t
+  end else
+    assert (ig.ig_so == BLeaf)
+
+/// THE SELECTIVE-INDEX PROBE IS SOUND: the exact analogue of
+/// `lemma_ig_search_sound` above, for `build_indexed_selective needs g`
+/// at an ARBITRARY `needs`. Body is `lemma_ig_search_sound`'s body
+/// verbatim (same replication of `ig_search`'s own case split, so the
+/// names line up and the definition delta-reduces onto them) with the
+/// six `Ml.lemma_build_indexed_wf_*` calls replaced by the six
+/// `_selective` lemmas just above.
+#push-options "--z3rlimit 400 --fuel 2 --ifuel 4"
+let lemma_ig_search_sound_selective
+      (needs : bucket_needs) (g : rdf_graph) (b : triple_pattern_bound) (t : triple)
+  : Lemma (requires List.Tot.memP t (ig_search (build_indexed_selective needs g) b))
+          (ensures  List.Tot.memP t g) =
+  let ig = build_indexed_selective needs g in
+  lemma_build_indexed_selective_wf_pred needs g;
+  lemma_build_indexed_selective_wf_subj_weak needs g;
+  lemma_build_indexed_selective_wf_obj_weak needs g;
+  lemma_build_indexed_selective_wf_sp_weak needs g;
+  lemma_build_indexed_selective_wf_po_weak needs g;
+  lemma_build_indexed_selective_wf_so_weak needs g;
+  let pred_b = match b.bp with
+    | Some p -> if ig.ig_built.bn_pred then Some (bucket_lookup ig.ig_pred p) else None
+    | None -> None in
+  let subj_b = match b.bs with
+    | Some s -> if ig.ig_built.bn_subj then Some (bucket_lookup ig.ig_subj (subject_to_key s)) else None
+    | None -> None in
+  let obj_b = match b.bo with
+    | Some o ->
+      if ig.ig_built.bn_obj then
+        (match term_to_key_opt o with
+         | Some k -> Some (bucket_lookup ig.ig_obj k)
+         | None -> None)
+      else None
+    | None -> None in
+  let sp_b = match b.bs, b.bp with
+    | Some s, Some p -> if ig.ig_built.bn_sp then Some (bucket_lookup ig.ig_sp (sp_key s p)) else None
+    | _ -> None in
+  let po_b = match b.bp, b.bo with
+    | Some p, Some o ->
+      if ig.ig_built.bn_po then
+        (match po_key_opt p o with
+         | Some k -> Some (bucket_lookup ig.ig_po k)
+         | None -> None)
+      else None
+    | _ -> None in
+  let so_b = match b.bs, b.bo with
+    | Some s, Some o ->
+      if ig.ig_built.bn_so then
+        (match so_key_opt s o with
+         | Some k -> Some (bucket_lookup ig.ig_so k)
+         | None -> None)
+      else None
+    | _ -> None in
+  assert (bucket_cand_sound ig pred_b);
+  assert (bucket_cand_sound ig subj_b);
+  assert (bucket_cand_sound ig obj_b);
+  assert (bucket_cand_sound ig sp_b);
+  assert (bucket_cand_sound ig po_b);
+  assert (bucket_cand_sound ig so_b);
+  lemma_pick_smaller_bucket_sound ig sp_b po_b;
+  lemma_pick_smaller_bucket_sound ig (pick_smaller_bucket sp_b po_b) so_b;
+  lemma_pick_smaller_bucket_sound ig pred_b subj_b;
+  lemma_pick_smaller_bucket_sound ig (pick_smaller_bucket pred_b subj_b) obj_b;
+  let compound = pick_smaller_bucket (pick_smaller_bucket sp_b po_b) so_b in
+  let single   = pick_smaller_bucket (pick_smaller_bucket pred_b subj_b) obj_b in
+  lemma_pick_smaller_bucket_sound ig compound single;
+  let candidate = pick_smaller_bucket compound single in
+  let pool = match candidate with
+    | Some bucket -> bucket
+    | None -> ig.ig_triples in
+  assert (forall (x : triple). List.Tot.memP x pool ==> List.Tot.memP x ig.ig_triples);
+  assert (ig_search ig b == triple_matches_bound b pool);
+  lemma_memP_triple_matches_bound b pool t;
+  assert (ig.ig_triples == g)
+#pop-options
+
+/// The store-level form, at the ARBITRARY-`p` selective store: the
+/// exact analogue of `lemma_store_search_sound`, one call deeper
+/// (`bucket_needs_of_pattern p` instead of `all_bucket_needs`).
+let lemma_store_search_sound_for (p : group_graph_pattern) (g : rdf_graph) (b : triple_pattern_bound) (t : triple)
+  : Lemma (requires List.Tot.memP t (store_search (graph_to_store_for p g) b))
+          (ensures  List.Tot.memP t g) =
+  lemma_ig_search_sound_selective (bucket_needs_of_pattern p) g b t
+
+(** ====================================================================== **)
 (** Part 3: one triple pattern, closed under later extensions              **)
 (** ====================================================================== **)
 
@@ -618,5 +833,177 @@ let theorem_eval_bgp_instantiates_into_graph (b : bgp) (g : rdf_graph) (mu : sol
                        List.Tot.memP t (instantiate_bgp b mu) ==> List.Tot.memP t g)) =
   theorem_eval_bgp_subgraph b g mu;
   lemma_instantiate_bgp_subset b g mu
+
+(** ====================================================================== **)
+(** Part 8: THE BGP FAN-OUT AT ANY SOUND STORE (closes finding RT-2)       **)
+(**                                                                        **)
+(** Part 6 is stated at `graph_to_store g` specifically because its one    **)
+(** index-soundness step calls `lemma_store_search_sound`, which is        **)
+(** proved only for that constructor. Generalising the SAME induction      **)
+(** over an ARBITRARY `gs : graph_store` carrying probe-soundness as an    **)
+(** explicit hypothesis (`store_search_sound gs`) costs nothing new        **)
+(** mathematically -- every step below is Part 6's proof with `g` read     **)
+(** as `gs.gs_graph`, `graph_to_store g` read as `gs`, and the one call to **)
+(** `lemma_store_search_sound` replaced by consuming the hypothesis --     **)
+(** and it is what makes the selective store's probe soundness (part 2b)   **)
+(** reach `eval_bgp_store` rather than stopping at `ig_search`. The        **)
+(** specialisation at the end (`theorem_eval_bgp_store_for_instantiates_   **)
+(** into_graph`) is layer 2's closing statement for finding RT-2: the      **)
+(** shipping `graph_to_store_for` store carries the SAME soundness         **)
+(** theorem `theorem_eval_bgp_instantiates_into_graph` proves for          **)
+(** `graph_to_store`.                                                      **)
+(** ====================================================================== **)
+
+/// Probe soundness, as a property of a STORE rather than of a
+/// construction function -- what Part 6's induction actually needs at
+/// each step, independent of how the store was built.
+let store_search_sound (gs : graph_store) : prop =
+  forall (b : triple_pattern_bound) (t : triple).
+    List.Tot.memP t (store_search gs b) ==> List.Tot.memP t gs.gs_graph
+
+/// `graph_to_store` satisfies the property (tie-back to Part 2's
+/// original lemma, so a caller with a plain `rdf_graph` need not know
+/// this section exists).
+let lemma_graph_to_store_sound (g : rdf_graph)
+  : Lemma (store_search_sound (graph_to_store g)) =
+  introduce forall (b : triple_pattern_bound) (t : triple).
+      List.Tot.memP t (store_search (graph_to_store g) b) ==> List.Tot.memP t g
+  with introduce List.Tot.memP t (store_search (graph_to_store g) b) ==> List.Tot.memP t g
+  with _ . lemma_store_search_sound g b t
+
+/// `graph_to_store_for` satisfies the property (part 2b's closing
+/// tie-back): THIS is the fact that lets the induction below run at
+/// the SELECTIVE store.
+let lemma_graph_to_store_for_sound (p : group_graph_pattern) (g : rdf_graph)
+  : Lemma (store_search_sound (graph_to_store_for p g)) =
+  introduce forall (b : triple_pattern_bound) (t : triple).
+      List.Tot.memP t (store_search (graph_to_store_for p g) b) ==> List.Tot.memP t g
+  with introduce List.Tot.memP t (store_search (graph_to_store_for p g) b) ==> List.Tot.memP t g
+  with _ . lemma_store_search_sound_for p g b t
+
+/// Part 4's single-pattern soundness lemma, generalised from `graph_to_
+/// store g` to an arbitrary sound `gs`. Body identical to
+/// `lemma_eval_single_tp_sound` except the final connective step reads
+/// the `store_search_sound gs` hypothesis instead of calling
+/// `lemma_store_search_sound` on a graph literal.
+let lemma_eval_single_tp_sound_at
+      (tp : triple_pattern) (gs : graph_store) (mu mu' : solution_mapping)
+  : Lemma (requires List.Tot.memP mu' (eval_single_tp_store_default tp gs mu) /\
+                    store_search_sound gs)
+          (ensures  (exists (t : triple).
+                       List.Tot.memP t gs.gs_graph /\ tp_match tp t mu == Some mu')) =
+  let bound = {
+    bs = bound_subject_of_pattern tp.tp_s mu;
+    bp = bound_predicate_of_pattern tp.tp_p mu;
+    bo = bound_object_of_pattern tp.tp_o mu;
+  } in
+  let candidates = store_search gs bound in
+  R.lemma_memP_filter_map (fun (t : triple) -> tp_match tp t mu) candidates mu';
+  introduce forall (t : triple). List.Tot.memP t candidates ==> List.Tot.memP t gs.gs_graph
+  with introduce List.Tot.memP t candidates ==> List.Tot.memP t gs.gs_graph
+  with _ . ()
+
+/// Part 6's induction, generalised. Same recursion, same case split,
+/// same helper lemmas (`lemma_choose_best_tp_cover`,
+/// `lemma_eval_bgp_store_step`, `theorem_tp_match_instantiates_ext`)
+/// -- none of which reference `graph_to_store` -- with only the one
+/// soundness step re-pointed at `lemma_eval_single_tp_sound_at` and
+/// `store_search_sound gs` threaded as a hypothesis (constant across
+/// the recursion: `gs` never changes, so it is available unchanged at
+/// every recursive call).
+let rec theorem_eval_bgp_store_sound_fuel
+      (patterns : bgp) (gs : graph_store) (mu muf : solution_mapping) (fuel : nat)
+  : Lemma (requires List.Tot.memP muf
+                      (eval_bgp_store_from_mu_fuel patterns gs mu fuel) /\
+                    fuel >= List.Tot.length patterns /\
+                    R.smap_exact mu /\ bgp_frag patterns /\ graph_frag gs.gs_graph /\
+                    store_search_sound gs)
+          (ensures  R.binding_extends muf mu /\ R.smap_exact muf /\
+                    bgp_subgraph_clause patterns gs.gs_graph muf)
+          (decreases fuel) =
+  if fuel = 0 then ()
+  else
+    match patterns with
+    | [] -> ()
+    | hd :: tl ->
+      lemma_choose_best_tp_cover patterns gs mu;
+      (match choose_best_tp patterns gs mu with
+       | None -> ()
+       | Some (tp, rest) ->
+         assert (tp_frag tp);
+         lemma_eval_single_tp_store_default_eq tp gs mu;
+         assert (choose_best_tp patterns gs mu == Some (tp, rest));
+         lemma_eval_bgp_store_step hd tl gs mu muf (fuel - 1) tp rest;
+         assert (exists (mu' : solution_mapping).
+                   List.Tot.memP mu' (eval_single_tp_store tp gs mu) /\
+                   List.Tot.memP muf (eval_bgp_store_from_mu_fuel rest gs mu' (fuel - 1)));
+         let step (mu' : solution_mapping)
+           : Lemma (requires List.Tot.memP mu' (eval_single_tp_store tp gs mu) /\
+                             List.Tot.memP muf
+                               (eval_bgp_store_from_mu_fuel rest gs mu' (fuel - 1)))
+                   (ensures  R.binding_extends muf mu /\ R.smap_exact muf /\
+                             bgp_subgraph_clause patterns gs.gs_graph muf) =
+           lemma_eval_single_tp_sound_at tp gs mu mu';
+           let inner (t : triple)
+             : Lemma (requires List.Tot.memP t gs.gs_graph /\ tp_match tp t mu == Some mu')
+                     (ensures  R.binding_extends muf mu /\ R.smap_exact muf /\
+                               bgp_subgraph_clause patterns gs.gs_graph muf) =
+             theorem_tp_match_instantiates_ext tp t mu mu';
+             theorem_eval_bgp_store_sound_fuel rest gs mu' muf (fuel - 1);
+             R.lemma_binding_extends_trans muf mu' mu;
+             assert (instantiate_tp tp muf == Some t);
+             assert (bgp_subgraph_clause rest gs.gs_graph muf);
+             introduce forall (p : triple_pattern). List.Tot.memP p patterns ==>
+                 (exists (t2 : triple).
+                    instantiate_tp p muf == Some t2 /\ List.Tot.memP t2 gs.gs_graph)
+             with introduce List.Tot.memP p patterns ==>
+                    (exists (t2 : triple).
+                       instantiate_tp p muf == Some t2 /\ List.Tot.memP t2 gs.gs_graph)
+             with _ .
+               eliminate (p == tp) \/ List.Tot.memP p rest
+               returns (exists (t2 : triple).
+                          instantiate_tp p muf == Some t2 /\ List.Tot.memP t2 gs.gs_graph)
+               with _ .
+                 introduce exists (t2 : triple).
+                     instantiate_tp p muf == Some t2 /\ List.Tot.memP t2 gs.gs_graph
+                 with t and ()
+               and _ . ()
+           in
+           FStar.Classical.forall_intro (FStar.Classical.move_requires inner)
+         in
+         FStar.Classical.forall_intro (FStar.Classical.move_requires step))
+
+/// THE STORE-GENERIC SHIPPING STATEMENT: every solution `eval_bgp_store`
+/// returns over ANY sound store instantiates into that store's graph.
+let theorem_eval_bgp_store_subgraph (b : bgp) (gs : graph_store) (mu : solution_mapping)
+  : Lemma (requires List.Tot.memP mu (eval_bgp_store b gs) /\ bgp_frag b /\
+                    graph_frag gs.gs_graph /\ store_search_sound gs)
+          (ensures  bgp_subgraph_clause b gs.gs_graph mu) =
+  theorem_eval_bgp_store_sound_fuel b gs sm_empty mu (List.Tot.length b + 1)
+
+let theorem_eval_bgp_store_instantiates_into_graph (b : bgp) (gs : graph_store) (mu : solution_mapping)
+  : Lemma (requires List.Tot.memP mu (eval_bgp_store b gs) /\ bgp_frag b /\
+                    graph_frag gs.gs_graph /\ store_search_sound gs)
+          (ensures  (forall (t : triple).
+                       List.Tot.memP t (instantiate_bgp b mu) ==> List.Tot.memP t gs.gs_graph)) =
+  theorem_eval_bgp_store_subgraph b gs mu;
+  lemma_instantiate_bgp_subset b gs.gs_graph mu
+
+/// THE SELECTIVE-STORE SHIPPING STATEMENT (finding RT-2, RESOLVED).
+/// `graph_to_store_for` is what `eval_pattern`/`eval_ask_query`
+/// actually build (SPARQL11.Algebra.fst:3588-3589), not `graph_to_
+/// store`. Every solution `eval_bgp_store` returns over THAT store
+/// instantiates into the graph -- the exact analogue of
+/// `theorem_eval_bgp_instantiates_into_graph` (Part 6's closing
+/// theorem, for the full-index store), now for the store the shipping
+/// evaluator actually runs on.
+let theorem_eval_bgp_store_for_instantiates_into_graph
+      (p : group_graph_pattern) (b : bgp) (g : rdf_graph) (mu : solution_mapping)
+  : Lemma (requires List.Tot.memP mu (eval_bgp_store b (graph_to_store_for p g)) /\
+                    bgp_frag b /\ graph_frag g)
+          (ensures  (forall (t : triple).
+                       List.Tot.memP t (instantiate_bgp b mu) ==> List.Tot.memP t g)) =
+  lemma_graph_to_store_for_sound p g;
+  theorem_eval_bgp_store_instantiates_into_graph b (graph_to_store_for p g) mu
 
 #pop-options
