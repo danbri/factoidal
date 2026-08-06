@@ -274,16 +274,19 @@ lean on to make `ig_wf_*` hypotheses real rather than assumed.
 
 ## 5. SPARQL algebra refinement (the query rung, G3 M3)
 
-The layer that will connect closure results to query answers. Layer 2
-landed 2026-08-06 (`SPARQL11.Algebra.BGPRefinement.fst`); layer 3
-(the algebra lift + composed regime theorem) is queued.
+The layer that connects closure results to query answers. Layer 2
+landed 2026-08-06 (`SPARQL11.Algebra.BGPRefinement.fst`); layer 3 —
+the composed regime theorem — landed 2026-08-06
+(`SPARQL11.EntailmentRegime.RDFS.fst`, 658 lines, 42 definitions).
+
+### Layer 2 — BGP refinement against a fixed graph
 
 | Theorem | Status | Fragment / hypotheses | Notes |
 |---|---|---|---|
 | `theorem_eval_bgp_subgraph` (shipping statement: every eval_bgp solution subset-matches) | ✅ PROVED | `bgp_frag` (tt-free, exact literals, not fulltext), `graph_frag` | Soundness direction of layer 2. |
-| `theorem_eval_bgp_instantiates_into_graph` (`mu(BGP) ⊆ g` form) | ✅ PROVED | same | The form layer 3 consumes at `rdfs_closure g`. |
+| `theorem_eval_bgp_instantiates_into_graph` (`mu(BGP) ⊆ g` form) | ✅ PROVED | same | The form layer 3 consumes at `rho_df_closure g fuel`. |
 | `lemma_ig_search_sound` + 8 supporting lemmas (single-tp soundness, planner cover, fuel unfolds, extension-closed tp-match) | ✅ PROVED | per-lemma | Fills the gap `SPARQL11.Algebra.Refinement`'s banner recorded (index-probe soundness). |
-| BGP completeness (every subset-matcher is found) | BLOCKED — named | needs bucket completeness for subj/obj/sp/po/so (only pred is proved, 90e2801); expected FALSE outside `term_exact` (probe accepts on `rdf_term_eq`, buckets key byte-exact) | Finding BR-4. |
+| BGP completeness (every subset-matcher is found) | BLOCKED — named | needs bucket completeness for subj/obj/sp/po/so (only pred is proved, 90e2801); expected FALSE outside `term_exact` (probe accepts on `rdf_term_eq`, buckets key byte-exact) | Finding BR-4. Layer 3 carries it as the explicitly named hypothesis `eval_bgp_complete_at`, never as an `assume`. |
 | Domain clause `dom(mu) = var(BGP)` | UNATTEMPTED | — | Bookkeeping, no graph content; separate landing. |
 
 Findings BR-1..BR-3 (module banner, machine-relevant divergences):
@@ -293,6 +296,59 @@ query blank nodes match as CONSTANTS (identity renaming — exact for
 bnode-free BGPs, the regime suite's class); statements are
 set-membership, not multiset (§18.3.1 cardinality needs a
 no-duplicates hypothesis, deferred to layer 3's inputs).
+
+### Layer 3 — the composed regime theorem (`SPARQL11.EntailmentRegime.RDFS.fst`)
+
+Throughout, `c := rho_df_closure g fuel`. Hypothesis provenance is
+labelled **L2** (layer 2), **D** (`rho_df_closure_decides`), or
+**NEW** (introduced by this module).
+
+| Theorem | Status | Hypotheses, with provenance | Notes |
+|---|---|---|---|
+| `theorem_rdfs_regime_bgp_sound` — `memP mu (eval_bgp q c) ==> rho_df_entails g (instantiate_bgp q mu)` | ✅ PROVED | **L2** `BR.bgp_frag q`, `BR.graph_frag c`; **D** the nine clauses of `rho_df_decides_hyps` (`rho_df_chain_canonical g`, `rho_df_chain_wf g`, `rho_df_frag_graph c`, `ig_wf_sp (build_indexed c)`, `rho_df_subclass_subjects_iri c`, `no_dup_keys (rho_df_closure_step_pre_dedup c)`, `no_repeats_p c`, `no_repeats_p (rho_df_closure_step c)`, `graph_len (rho_df_closure_step c) = graph_len c`) — transcribed verbatim, sufficiency machine-checked by `lemma_decides_hyps_suffices`; **NEW** none | The composed regime theorem's soundness half. Needs NO groundness condition (finding RT-1) and NO `graph_tt_free` (finding RT-3 — discharged from `graph_frag c` plus the layer-2 subset). |
+| `theorem_rdfs_regime_bgp_complete_conditional` | 🟡 PROVED CONDITIONALLY | **D** `rho_df_decides_hyps g fuel`; **NEW** `graph_ground (instantiate_bgp q mu)` (the scoping decision); **NEW** `eval_bgp_complete_at q c mu` (the named BR-4 gap) | The converse. `eval_bgp_complete_at` is exactly what layer 2 does not deliver and nothing more. |
+| `theorem_rdfs_regime_bgp_exact` — the iff | 🟡 PROVED CONDITIONALLY | union of the two rows above | M3's target shape: the evaluator's solution set over the rho-df closure IS the RDFS regime's answer set, on the fragment, for ground answers, modulo the one named gap. |
+| `theorem_rdfs_regime_ask_sound` — `ask_bgp q c = true ==> exists mu. rho_df_entails g (instantiate_bgp q mu)` | ✅ PROVED | same as the soundness row, plus `ask_bgp q c == true` | ASK corollary. The algebra above BGP is entailment-agnostic (Entailment Regimes §2), so this is non-emptiness of the same solution sequence — inherited, not reproved. |
+| `theorem_rdfs_regime_ask_complete_conditional` | 🟡 PROVED CONDITIONALLY | same as the completeness row | Mirror image, same named gap. |
+| GROUND-COLLAPSE BRIDGE, half one: `lemma_subgraph_implies_spec` — `is_subgraph e c ==> simple_entailment_spec c e` | ✅ PROVED — UNCONDITIONAL | none (holds for every `e`, RDF 1.2 triple terms included) | Via the identity substitution, named (`id_subst`) rather than a lambda — the closure-identity law. This is the half soundness consumes. |
+| GROUND-COLLAPSE BRIDGE, half two: `lemma_spec_ground_implies_subgraph` — `simple_entailment_spec c e ==> is_subgraph e c` | ✅ PROVED | **NEW** `graph_ground e` | A ground triple's only instance is itself (`lemma_triple_inst_ground`). RDF 1.1 Semantics §4/§5.3: the interpolation lemma degenerates when `e` has no blank node. |
+| `lemma_ground_entailment_collapse` — the iff at ground `e` | ✅ PROVED | **NEW** `graph_ground e` | The bridge as one statement. |
+| `lemma_instantiate_bgp_ground` — decidable discharge of `graph_ground` | ✅ PROVED | **NEW** `bgp_ground_positions q /\ smap_ground mu` | Both conjuncts are syntactic checks on the query and on the candidate solution — the C1-style route a caller uses instead of inspecting the instantiated graph. |
+| `lemma_decides_hyps_suffices` | ✅ PROVED | — | The machine check that the transcribed hypothesis bundle is SUFFICIENT for `rho_df_closure_decides` (catches weakening; verbatim transcription is what a reader checks for strengthening). |
+| `lemma_eval_pattern_bgp_is_selective_store` | ✅ PROVED | — | The machine-checked record of finding RT-2: `eval_pattern` on a bare BGP uses `graph_to_store_for` (selective index), not `eval_bgp`'s `graph_to_store`. |
+
+Findings RT-1..RT-4 (layer-3 module banner):
+
+- **RT-1.** The ground collapse holds one way unconditionally and the
+  other way only for ground `e`. This is why the soundness theorem
+  carries no groundness hypothesis at all — putting one there would
+  have been a silent strengthening of a theorem that does not need it.
+- **RT-2.** The shipping ASK entry point does not go through
+  `eval_bgp`. `eval_ask_query` calls `eval_pattern`, which builds its
+  store with `graph_to_store_for` = `build_indexed_selective`
+  (`SPARQL11.Algebra.fst:3588`), while layer 2's probe-soundness
+  lemma is proved for `build_indexed` only. The ASK corollary is
+  therefore stated at `eval_bgp`; closing the gap is a
+  selective-index soundness lemma, one commit, and no entailment
+  content changes.
+- **RT-3.** `graph_ground` subsumes `graph_tt_free`, so the
+  `graph_tt_free e` clause of `rho_df_closure_decides` never appears
+  as a hypothesis of a layer-3 theorem — it is discharged on both
+  routes.
+- **RT-4.** "No query blank node" is NOT sufficient for a ground
+  answer, and F\* refused the lemma until this was corrected. A
+  `PT_TripleTerm` pattern with no blank node anywhere yields
+  `Some (T_TripleTerm ...)` (`SPARQL11.Algebra.fst:397-409`), which
+  layer 3 classifies as non-ground on purpose. The corrected
+  predicates exclude both constructors. A STATEMENT bug caught by the
+  proof, not proof engineering: the wrong version would have let a
+  caller discharge `graph_ground` for an answer that is not ground.
+
+Layer-3 scoping decisions (settled in the module banner, part 1):
+fragment-scoped BGPs only; groundness restricts the COMPLETENESS
+direction only; RDF 1.2 triple terms are classified as non-ground
+rather than waved through, so RT-3's subsumption is real rather than
+definitional.
 
 `SPARQL11.Algebra.Spec` / `SPARQL11.Algebra.Refinement` (landed
 2026-08-03, pre-registry) are now in the verify-rdf-mt roster with
