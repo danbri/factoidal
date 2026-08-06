@@ -1954,4 +1954,281 @@ let theorem_eval_bgp_store_for_complete_from_subset
   theorem_eval_bgp_store_complete_from_subset b (graph_to_store_for p g) muf
 #pop-options
 
+(** ====================================================================== **)
+(** Part 13: THE DOMAIN CLAUSE -- dom(mu) = var(BGP)                       **)
+(**                                                                        **)
+(** The residual finding BR-5 and Part 6's `lemma_bgp_sol_spec_from_       **)
+(** subgraph_clause` both named as a separate commit: `S.bgp_sol_spec`'s   **)
+(** SECOND conjunct,                                                       **)
+(**                                                                        **)
+(**   forall v. Some? (sval v mu) <==>                                    **)
+(**     (exists p. memP p b /\ memP v (patvars p))                        **)
+(**                                                                        **)
+(** is about `sm_bind` bookkeeping, not graph content -- so the proof       **)
+(** below never reads a store, a probe, or a graph triple. It is the      **)
+(** SAME induction shape as Part 6/8's subgraph clause (an accumulator     **)
+(** search over `eval_bgp_store_from_mu_fuel`, threading `choose_best_tp`'s **)
+(** cover fact through `lemma_eval_bgp_store_step`), generalised over an   **)
+(** ARBITRARY starting mapping `mu` so the recursion composes: the         **)
+(** induction hypothesis needs "dom(muf) = dom(mu') UNION var(rest)" at    **)
+(** the recursive call, not "dom(muf) = var(rest)" alone, because the      **)
+(** search carries the ACCUMULATED mapping forward, not a fresh one, at    **)
+(** each step (mirrors `R.binding_extends` in Part 6/8). Specialising at   **)
+(** `mu := sm_empty` (whose domain is empty) turns the growth statement    **)
+(** into the exact residual clause.                                       **)
+(**                                                                        **)
+(** Two things the induction must get right, both flagged in the task     **)
+(** brief:                                                                 **)
+(**  - A bnode/constant pattern position (`PS_IRI`/`PS_BNode`/`PT_IRI`/    **)
+(**    `PT_BNode`/`PT_Literal`) binds NOTHING: `try_bind_subject` /        **)
+(**    `try_bind_term` return the mapping UNCHANGED on that branch, and    **)
+(**    `pattern_subject_var` / `pattern_term_var` return `[]` for it, so   **)
+(**    the growth equation holds with an empty contributed set -- not a    **)
+(**    special case, the same formula degenerates correctly.               **)
+(**  - Finding RT-5 (binding ORDER is evaluator-chosen, via `choose_best_  **)
+(**    tp`'s cost estimates, and NOT reproducible by a caller) is a        **)
+(**    statement about the association LIST's structure. The domain        **)
+(**    clause is a SET-level statement (`Some? (sval v mu)`, an existence   **)
+(**    check, never a position or an order), so RT-5 does not touch it:    **)
+(**    `lemma_bgp_vars_cover` below combines `choose_best_tp`'s cover fact  **)
+(**    (patterns = {tp} UNION rest, as sets, via `lemma_choose_best_tp_    **)
+(**    cover`) with no reference to list order at all.                    **)
+(** ====================================================================== **)
+
+#push-options "--z3rlimit 200 --fuel 2 --ifuel 2"
+
+/// A pattern position that binds nothing contributes no variable and no
+/// domain growth: `try_bind_subject` on a constant subject returns the
+/// mapping UNCHANGED (never `sm_bind`s), and `pattern_subject_var` of a
+/// constant is `[]`. `PS_TripleTerm` is excluded by `psub_tt_free` (as
+/// throughout this module); it always returns `None`, so the `Some mu'`
+/// hypothesis makes that branch vacuous.
+let lemma_try_bind_subject_domain
+      (ps : pattern_subject) (sj : subject) (mu mu' : solution_mapping)
+  : Lemma (requires try_bind_subject ps sj mu == Some mu' /\ R.psub_tt_free ps)
+          (ensures  forall (v : S.var_name).
+                       Some? (S.sval v mu') <==>
+                       (Some? (S.sval v mu) \/ List.Tot.memP v (pattern_subject_var ps))) =
+  match ps with
+  | PS_Var v0 ->
+    Lh.lemma_assoc_tr_eq v0 mu;
+    (match sm_lookup v0 mu with
+     | Some existing ->
+       assert (mu' == mu);
+       let aux (w : S.var_name)
+         : Lemma (Some? (S.sval w mu') <==>
+                    (Some? (S.sval w mu) \/ List.Tot.memP w (pattern_subject_var ps))) = ()
+       in FStar.Classical.forall_intro aux
+     | None ->
+       let aux (w : S.var_name)
+         : Lemma (Some? (S.sval w mu') <==>
+                    (Some? (S.sval w mu) \/ List.Tot.memP w (pattern_subject_var ps))) =
+         lemma_sm_bind_sval v0 w (subject_to_term sj) mu
+       in FStar.Classical.forall_intro aux)
+  | _ -> ()
+
+/// Same statement for `try_bind_term` / `pattern_term_var`. RDF 1.2
+/// triple-term patterns are excluded by `ptrm_tt_free`, as everywhere
+/// else in this module -- the recursive case is not needed on the
+/// fragment this module proves.
+let lemma_try_bind_term_domain
+      (pt : pattern_term) (t : rdf_term) (mu mu' : solution_mapping)
+  : Lemma (requires try_bind_term pt t mu == Some mu' /\ R.ptrm_tt_free pt)
+          (ensures  forall (v : S.var_name).
+                       Some? (S.sval v mu') <==>
+                       (Some? (S.sval v mu) \/ List.Tot.memP v (pattern_term_var pt))) =
+  match pt with
+  | PT_Var v0 ->
+    Lh.lemma_assoc_tr_eq v0 mu;
+    (match sm_lookup v0 mu with
+     | Some existing ->
+       assert (mu' == mu);
+       let aux (w : S.var_name)
+         : Lemma (Some? (S.sval w mu') <==>
+                    (Some? (S.sval w mu) \/ List.Tot.memP w (pattern_term_var pt))) = ()
+       in FStar.Classical.forall_intro aux
+     | None ->
+       let aux (w : S.var_name)
+         : Lemma (Some? (S.sval w mu') <==>
+                    (Some? (S.sval w mu) \/ List.Tot.memP w (pattern_term_var pt))) =
+         lemma_sm_bind_sval v0 w t mu
+       in FStar.Classical.forall_intro aux)
+  | _ -> ()
+
+/// One triple pattern: `tp_match` threads subject -> predicate ->
+/// object, so its domain growth is the UNION of the three positions'
+/// contributed variables, which is exactly `tp_vars`.
+let lemma_tp_match_domain
+      (tp : triple_pattern) (t : triple) (mu mu' : solution_mapping)
+  : Lemma (requires tp_match tp t mu == Some mu' /\
+                    R.psub_tt_free tp.tp_s /\
+                    R.ptrm_tt_free tp.tp_p /\ R.ptrm_tt_free tp.tp_o)
+          (ensures  forall (v : S.var_name).
+                       Some? (S.sval v mu') <==>
+                       (Some? (S.sval v mu) \/ List.Tot.memP v (tp_vars tp))) =
+  let mu1 = Some?.v (try_bind_subject tp.tp_s t.s mu) in
+  lemma_try_bind_subject_domain tp.tp_s t.s mu mu1;
+  let mu2 = Some?.v (try_bind_term tp.tp_p (T_IRI t.p) mu1) in
+  lemma_try_bind_term_domain tp.tp_p (T_IRI t.p) mu1 mu2;
+  lemma_try_bind_term_domain tp.tp_o t.o mu2 mu';
+  let aux (v : S.var_name)
+    : Lemma (Some? (S.sval v mu') <==>
+               (Some? (S.sval v mu) \/ List.Tot.memP v (tp_vars tp))) =
+    List.Tot.append_memP (pattern_term_var tp.tp_p) (pattern_term_var tp.tp_o) v;
+    List.Tot.append_memP (pattern_subject_var tp.tp_s)
+      (List.Tot.append (pattern_term_var tp.tp_p) (pattern_term_var tp.tp_o)) v
+  in FStar.Classical.forall_intro aux
+
+/// One fan-out step at the store: whatever `mu'` the single-pattern
+/// evaluator returns, its domain is `dom(mu) UNION tp_vars tp`. Routed
+/// through the same `list_filter_map` membership lemma Part 4 uses for
+/// soundness, and through the same fulltext-dispatch equality Part 6
+/// establishes for `choose_best_tp`'s chosen pattern (finding BR-1: the
+/// fragment's `tp_not_fulltext` makes the dispatcher the default path).
+let lemma_eval_single_tp_store_domain
+      (tp : triple_pattern) (gs : graph_store) (mu mu' : solution_mapping)
+  : Lemma (requires List.Tot.memP mu' (eval_single_tp_store tp gs mu) /\
+                    tp_frag tp)
+          (ensures  forall (v : S.var_name).
+                       Some? (S.sval v mu') <==>
+                       (Some? (S.sval v mu) \/ List.Tot.memP v (tp_vars tp))) =
+  lemma_eval_single_tp_store_default_eq tp gs mu;
+  let bound = {
+    bs = bound_subject_of_pattern tp.tp_s mu;
+    bp = bound_predicate_of_pattern tp.tp_p mu;
+    bo = bound_object_of_pattern tp.tp_o mu;
+  } in
+  let candidates = store_search gs bound in
+  R.lemma_memP_filter_map (fun (t : triple) -> tp_match tp t mu) candidates mu';
+  eliminate exists (t : triple).
+      List.Tot.memP t candidates /\ tp_match tp t mu == Some mu'
+  returns (forall (v : S.var_name).
+             Some? (S.sval v mu') <==>
+             (Some? (S.sval v mu) \/ List.Tot.memP v (tp_vars tp)))
+  with _ . lemma_tp_match_domain tp t mu mu'
+
+/// `choose_best_tp`'s cover fact (Part 5), read at the level of
+/// VARIABLE SETS rather than pattern lists: the variables reachable
+/// from the whole BGP are exactly the chosen pattern's variables union
+/// the remainder's -- independent of `rest`'s ORDER (finding RT-5 does
+/// not reach this statement; it is about the returned MAPPING's list
+/// structure, not about which patterns cover the BGP).
+let lemma_bgp_vars_cover
+      (patterns : bgp) (tp : triple_pattern) (rest : bgp)
+  : Lemma (requires Cons? patterns /\ List.Tot.memP tp patterns /\
+                    (forall (p : triple_pattern). List.Tot.memP p rest ==>
+                        List.Tot.memP p patterns) /\
+                    (forall (p : triple_pattern). List.Tot.memP p patterns ==>
+                        (p == tp \/ List.Tot.memP p rest)))
+          (ensures  forall (v : S.var_name).
+                       (exists (p : triple_pattern).
+                          List.Tot.memP p patterns /\ List.Tot.memP v (tp_vars p)) <==>
+                       (List.Tot.memP v (tp_vars tp) \/
+                        (exists (p : triple_pattern).
+                           List.Tot.memP p rest /\ List.Tot.memP v (tp_vars p)))) =
+  let aux (v : S.var_name)
+    : Lemma ((exists (p : triple_pattern).
+                 List.Tot.memP p patterns /\ List.Tot.memP v (tp_vars p)) <==>
+             (List.Tot.memP v (tp_vars tp) \/
+              (exists (p : triple_pattern).
+                 List.Tot.memP p rest /\ List.Tot.memP v (tp_vars p)))) = ()
+  in FStar.Classical.forall_intro aux
+
+/// THE DOMAIN-GROWTH CLAUSE, in the form the induction carries: `muf`'s
+/// domain is `mu`'s domain UNION the BGP's variables. Composes with
+/// `R.binding_extends` (Part 6/8's carried invariant) the same way:
+/// both are properties of the ACCUMULATED mapping at the end of the
+/// fuel-bounded search, not of any one step in isolation.
+let bgp_dom_grow_clause (patterns : bgp) (mu muf : solution_mapping) : prop =
+  forall (v : S.var_name).
+    Some? (S.sval v muf) <==>
+    (Some? (S.sval v mu) \/
+     (exists (p : triple_pattern). List.Tot.memP p patterns /\ List.Tot.memP v (tp_vars p)))
+
+/// THE INDUCTION. Same recursion, same case split, same two helper
+/// facts (`lemma_choose_best_tp_cover`, `lemma_eval_bgp_store_step`) as
+/// `theorem_eval_bgp_store_sound_fuel` (Part 8) -- this is that proof's
+/// SKELETON with the conclusion swapped from `bgp_subgraph_clause` (a
+/// graph-content fact) to `bgp_dom_grow_clause` (an `sm_bind`-bookkeeping
+/// fact), and correspondingly the one per-step lemma swapped from
+/// `lemma_eval_single_tp_sound_at` to `lemma_eval_single_tp_store_domain`.
+/// Store-generic exactly as Part 8 is, and for the same reason: nothing
+/// about which variables get bound depends on how the store was built.
+let rec theorem_eval_bgp_store_domain_fuel
+      (patterns : bgp) (gs : graph_store) (mu muf : solution_mapping) (fuel : nat)
+  : Lemma (requires List.Tot.memP muf
+                      (eval_bgp_store_from_mu_fuel patterns gs mu fuel) /\
+                    fuel >= List.Tot.length patterns /\ bgp_frag patterns)
+          (ensures  bgp_dom_grow_clause patterns mu muf)
+          (decreases fuel) =
+  if fuel = 0 then ()
+  else
+    match patterns with
+    | [] -> ()
+    | hd :: tl ->
+      lemma_choose_best_tp_cover patterns gs mu;
+      (match choose_best_tp patterns gs mu with
+       | None -> ()
+       | Some (tp, rest) ->
+         assert (tp_frag tp);
+         lemma_eval_single_tp_store_default_eq tp gs mu;
+         assert (choose_best_tp patterns gs mu == Some (tp, rest));
+         lemma_eval_bgp_store_step hd tl gs mu muf (fuel - 1) tp rest;
+         let step (mu' : solution_mapping)
+           : Lemma (requires List.Tot.memP mu' (eval_single_tp_store tp gs mu) /\
+                             List.Tot.memP muf
+                               (eval_bgp_store_from_mu_fuel rest gs mu' (fuel - 1)))
+                   (ensures  bgp_dom_grow_clause patterns mu muf) =
+           lemma_eval_single_tp_store_domain tp gs mu mu';
+           theorem_eval_bgp_store_domain_fuel rest gs mu' muf (fuel - 1);
+           lemma_bgp_vars_cover patterns tp rest;
+           let aux (v : S.var_name)
+             : Lemma (Some? (S.sval v muf) <==>
+                        (Some? (S.sval v mu) \/
+                         (exists (p : triple_pattern).
+                            List.Tot.memP p patterns /\ List.Tot.memP v (tp_vars p)))) = ()
+           in FStar.Classical.forall_intro aux
+         in
+         FStar.Classical.forall_intro (FStar.Classical.move_requires step))
+
+/// The `eval_bgp` specialisation, starting mapping `sm_empty`.
+let theorem_eval_bgp_domain (b : bgp) (g : rdf_graph) (mu : solution_mapping)
+  : Lemma (requires List.Tot.memP mu (eval_bgp b g) /\ bgp_frag b)
+          (ensures  bgp_dom_grow_clause b sm_empty mu) =
+  theorem_eval_bgp_store_domain_fuel b (graph_to_store g) sm_empty mu (List.Tot.length b + 1)
+
+/// THE RESIDUAL CLAUSE ITSELF -- `S.bgp_sol_spec`'s second conjunct,
+/// transcribed at `patvars := tp_vars`: `dom(mu) = var(BGP)`.
+/// `bgp_dom_grow_clause b sm_empty mu` degenerates to exactly this once
+/// `sm_empty`'s domain is recognised as empty (`sval` of `[]` is always
+/// `None`).
+let bgp_dom_clause (b : bgp) (mu : solution_mapping) : prop =
+  forall (v : S.var_name).
+    Some? (S.sval v mu) <==>
+    (exists (p : triple_pattern). List.Tot.memP p b /\ List.Tot.memP v (tp_vars p))
+
+let theorem_eval_bgp_dom_clause (b : bgp) (g : rdf_graph) (mu : solution_mapping)
+  : Lemma (requires List.Tot.memP mu (eval_bgp b g) /\ bgp_frag b)
+          (ensures  bgp_dom_clause b mu) =
+  theorem_eval_bgp_domain b g mu
+
+/// THE CAPSTONE -- BOTH CONJUNCTS OF `S.bgp_sol_spec`, at the shipping
+/// evaluator, closing the loop between `eval_bgp` and the declarative
+/// section-18.3.1 spec: every mapping `eval_bgp` returns is a solution
+/// of the BGP in the FULL sense the spec module states, `patvars :=
+/// tp_vars`. Composes `theorem_eval_bgp_subgraph` (conjunct 1, Part 6),
+/// `theorem_eval_bgp_dom_clause` (conjunct 2, above), and
+/// `lemma_bgp_sol_spec_from_subgraph_clause` (Part 6's machine-checked
+/// tie-back that the two conjuncts together ARE `S.bgp_sol_spec`).
+let theorem_eval_bgp_full_spec (b : bgp) (g : rdf_graph) (mu : solution_mapping)
+  : Lemma (requires List.Tot.memP mu (eval_bgp b g) /\ bgp_frag b /\ graph_frag g)
+          (ensures  S.bgp_sol_spec
+                      (fun (m : S.smap) (p : triple_pattern) -> instantiate_tp p m)
+                      tp_vars b g mu) =
+  theorem_eval_bgp_subgraph b g mu;
+  theorem_eval_bgp_dom_clause b g mu;
+  lemma_bgp_sol_spec_from_subgraph_clause b g mu tp_vars
+
+#pop-options
+
 #pop-options
