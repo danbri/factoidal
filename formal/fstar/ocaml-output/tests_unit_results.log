@@ -1,0 +1,1295 @@
+tests/unit runner: 47 file(s) under /home/user/factoidal/tests/unit
+                   ocaml-output at /home/user/factoidal/formal/fstar/ocaml-output
+
+--- cas_tests ---
+  PASS  simplify(2+3) = 5
+  PASS  simplify(2*3) = 6
+  PASS  simplify(2^3) = 8
+  PASS  simplify(6/2) = 3
+  PASS  simplify(x+0) = x  (additive identity)
+  PASS  simplify(0+x) = x
+  PASS  simplify(x*1) = x  (multiplicative identity)
+  PASS  simplify(x*0) = 0  (annihilation)
+  PASS  simplify(x-0) = x
+  PASS  simplify(x^1) = x
+  PASS  simplify(x/1) = x
+  PASS  simplify(x+x) = 2*x  (coefficient collection)
+  PASS  simplify(x+x+x) = 3*x
+  PASS  simplify(x*x) = x^2  (exponent combination)
+  PASS  simplify(x^2 * x^3) = x^5
+  PASS  simplify flattens nested plus  ((x+2)+3) = x+5
+  PASS  simplify constant-folds inside a symbolic sum  (2+x+3) = x+5
+  PASS  d/dx x^2 = 2x  (power rule)
+  PASS  d/dx x^3 = 3x^2
+  PASS  d/dx (x^2 + 3x + 5) = 2x + 3
+  PASS  d/dx c = 0  (constant)
+  PASS  d/dx y = 0  (independent symbol)
+  PASS  d/dx x = 1
+  PASS  d/dx sin x = cos x
+  PASS  d/dx cos x = -sin x
+  PASS  d/dx exp x = exp x
+  PASS  d/dx ln x = 1/x
+  PASS  d/dx sin(x^2) = 2*x*cos(x^2)  (chain rule)
+  PASS  d/dx (x * sin x) = sin x + x*cos x  (product rule)
+  PASS  d/dx exp(sin x) = cos x * exp(sin x)  (chain rule)
+  PASS  d/dx of an uncovered function (arcsin) yields an explicit marker, not a wrong value
+  PASS  d/dx x^2 at x=2/1 matches finite difference
+  PASS  d/dx x^2 at x=3/1 matches finite difference
+  PASS  d/dx x^2 at x=1/2 matches finite difference
+  PASS  d/dx x^2 at x=5/2 matches finite difference
+  PASS  d/dx x^2 at x=7/3 matches finite difference
+  PASS  d/dx x^3 at x=2/1 matches finite difference
+  PASS  d/dx x^3 at x=3/1 matches finite difference
+  PASS  d/dx x^3 at x=1/2 matches finite difference
+  PASS  d/dx x^3 at x=5/2 matches finite difference
+  PASS  d/dx x^3 at x=7/3 matches finite difference
+  PASS  d/dx x^4 at x=2/1 matches finite difference
+  PASS  d/dx x^4 at x=3/1 matches finite difference
+  PASS  d/dx x^4 at x=1/2 matches finite difference
+  PASS  d/dx x^4 at x=5/2 matches finite difference
+  PASS  d/dx x^4 at x=7/3 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=2/1 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=3/1 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=1/2 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=5/2 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=7/3 matches finite difference
+  PASS  d/dx x*x (product rule) at x=2/1 matches finite difference
+  PASS  d/dx x*x (product rule) at x=3/1 matches finite difference
+  PASS  d/dx x*x (product rule) at x=1/2 matches finite difference
+  PASS  d/dx x*x (product rule) at x=5/2 matches finite difference
+  PASS  d/dx x*x (product rule) at x=7/3 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=2/1 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=3/1 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=1/2 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=5/2 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=7/3 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=2/1 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=3/1 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=1/2 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=5/2 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=7/3 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=2/1 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=3/1 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=1/2 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=5/2 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=7/3 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=2/1 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=3/1 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=1/2 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=5/2 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=7/3 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=2/1 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=3/1 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=1/2 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=5/2 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=7/3 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=2/1 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=3/1 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=1/2 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=5/2 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=7/3 matches finite difference
+  PASS  subst x:=3 in x^2+1
+  PASS  subst x:=-4 in x^2+1
+  PASS  subst x:=5/2 in x^2+1
+  PASS  subst x:=0 in x^2+1
+  PASS  subst x:=3 in x^3 - 2x
+  PASS  subst x:=-4 in x^3 - 2x
+  PASS  subst x:=5/2 in x^3 - 2x
+  PASS  subst x:=0 in x^3 - 2x
+  PASS  subst x:=3 in (x+1)*(x-1)
+  PASS  subst x:=-4 in (x+1)*(x-1)
+  PASS  subst x:=5/2 in (x+1)*(x-1)
+  PASS  subst x:=0 in (x+1)*(x-1)
+  PASS  subst x:=3 in x/(x^2+1)
+  PASS  subst x:=-4 in x/(x^2+1)
+  PASS  subst x:=5/2 in x/(x^2+1)
+  PASS  subst x:=0 in x/(x^2+1)
+  PASS  idempotent: 2+3
+  PASS  idempotent: x+0
+  PASS  idempotent: x+x
+  PASS  idempotent: x*x
+  PASS  idempotent: nested plus
+  PASS  idempotent: nested times
+  PASS  idempotent: x^2 * x^3
+  PASS  idempotent: x^2 * x^-2
+  PASS  idempotent: sin(x)+sin(x)
+  PASS  idempotent: diff of x^5
+  PASS  idempotent: diff of x*sin x
+  PASS  idempotent: diff of sin(x^2)
+  PASS  idempotent: diff of x^x (general power rule)
+  PASS  idempotent: diff of arcsin (unsupported marker)
+  PASS  idempotent: big mixed
+  PASS  eval(simplify x+x) = eval(x+x) at x=2/1
+  PASS  eval(simplify x+x) = eval(x+x) at x=3/1
+  PASS  eval(simplify x+x) = eval(x+x) at x=5/2
+  PASS  eval(simplify x+x) = eval(x+x) at x=1/3
+  PASS  eval(simplify x*x) = eval(x*x) at x=2/1
+  PASS  eval(simplify x*x) = eval(x*x) at x=3/1
+  PASS  eval(simplify x*x) = eval(x*x) at x=5/2
+  PASS  eval(simplify x*x) = eval(x*x) at x=1/3
+  PASS  eval(simplify 2+x+3) = eval(2+x+3) at x=2/1
+  PASS  eval(simplify 2+x+3) = eval(2+x+3) at x=3/1
+  PASS  eval(simplify 2+x+3) = eval(2+x+3) at x=5/2
+  PASS  eval(simplify 2+x+3) = eval(2+x+3) at x=1/3
+  PASS  eval(simplify x^2 * x^3) = eval(x^2 * x^3) at x=2/1
+  PASS  eval(simplify x^2 * x^3) = eval(x^2 * x^3) at x=3/1
+  PASS  eval(simplify x^2 * x^3) = eval(x^2 * x^3) at x=5/2
+  PASS  eval(simplify x^2 * x^3) = eval(x^2 * x^3) at x=1/3
+  PASS  eval(simplify (x+1)+(x+2)) = eval((x+1)+(x+2)) at x=2/1
+  PASS  eval(simplify (x+1)+(x+2)) = eval((x+1)+(x+2)) at x=3/1
+  PASS  eval(simplify (x+1)+(x+2)) = eval((x+1)+(x+2)) at x=5/2
+  PASS  eval(simplify (x+1)+(x+2)) = eval((x+1)+(x+2)) at x=1/3
+  PASS  eval(simplify 3*x + x) = eval(3*x + x) at x=2/1
+  PASS  eval(simplify 3*x + x) = eval(3*x + x) at x=3/1
+  PASS  eval(simplify 3*x + x) = eval(3*x + x) at x=5/2
+  PASS  eval(simplify 3*x + x) = eval(3*x + x) at x=1/3
+  PASS  eval(simplify x*1 + 0) = eval(x*1 + 0) at x=2/1
+  PASS  eval(simplify x*1 + 0) = eval(x*1 + 0) at x=3/1
+  PASS  eval(simplify x*1 + 0) = eval(x*1 + 0) at x=5/2
+  PASS  eval(simplify x*1 + 0) = eval(x*1 + 0) at x=1/3
+  PASS  eval(simplify 6/2 * x) = eval(6/2 * x) at x=2/1
+  PASS  eval(simplify 6/2 * x) = eval(6/2 * x) at x=3/1
+  PASS  eval(simplify 6/2 * x) = eval(6/2 * x) at x=5/2
+  PASS  eval(simplify 6/2 * x) = eval(6/2 * x) at x=1/3
+  PASS  eval(simplify diff(x^3 - 2x)) = eval(diff(x^3 - 2x)) at x=2/1
+  PASS  eval(simplify diff(x^3 - 2x)) = eval(diff(x^3 - 2x)) at x=3/1
+  PASS  eval(simplify diff(x^3 - 2x)) = eval(diff(x^3 - 2x)) at x=5/2
+  PASS  eval(simplify diff(x^3 - 2x)) = eval(diff(x^3 - 2x)) at x=1/3
+
+CAS: 153 pass, 0 fail (out of 153)
+cas_tests: PASS
+
+--- compound_presence_writer_roundtrip ---
+== compound_presence_writer_roundtrip ==
+  HASH  empty sha256=42282876f447080fc15bceb20937c388bb61977d69c765fbdd82e02a2a6f086c len=28
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [rgs]
+  PASS  empty [pred]
+  PASS  empty [obj]
+  PASS  empty [offsets]
+  PASS  empty [pairs]
+  HASH  singleton sha256=a6c5b8fd4900cd372543f68b18a1b548931030354d7bebc9fc1ec8b1fa3fd527 len=44
+  PASS  singleton [hash]
+  PASS  singleton [parse]
+  PASS  singleton [rgs]
+  PASS  singleton [pred]
+  PASS  singleton [obj]
+  PASS  singleton [offsets]
+  PASS  singleton [pairs]
+  HASH  2x3x4-mixed sha256=7804392f35d9005ca228894d199cf610960d8f3270e841c1dba60184003c2e3a len=84
+  PASS  2x3x4-mixed [hash]
+  PASS  2x3x4-mixed [parse]
+  PASS  2x3x4-mixed [rgs]
+  PASS  2x3x4-mixed [pred]
+  PASS  2x3x4-mixed [obj]
+  PASS  2x3x4-mixed [offsets]
+  PASS  2x3x4-mixed [pairs]
+  HASH  4-sparse sha256=9c96f62ba26d77237b06eb22ba092a4a33a0bb96b252652904cd70fc8b839aa1 len=92
+  PASS  4-sparse [hash]
+  PASS  4-sparse [parse]
+  PASS  4-sparse [rgs]
+  PASS  4-sparse [pred]
+  PASS  4-sparse [obj]
+  PASS  4-sparse [offsets]
+  PASS  4-sparse [pairs]
+== summary: 28 pass, 0 fail (out of 28) ==
+compound_presence_writer_roundtrip: PASS
+
+--- cottas_base_writer_roundtrip ---
+cottas_base_writer_roundtrip:
+  HASH  sample sha256=bc87889359a8cf9f71626f208b9736055dbbb37c4759171f9f5e61dd8f6fb30a len=858
+  PASS  sample [byte hash pin]
+  PASS  footer magic PAR1
+  PASS  num_rows = 5
+  PASS  row_groups = 1
+  PASS  column 0 name = s
+  PASS  column 1 name = p
+  PASS  column 2 name = o
+  PASS  column 3 name = g
+  PASS  column 0 codec UNCOMPRESSED
+  PASS  column 0 encoding DLBA
+  PASS  column 1 codec UNCOMPRESSED
+  PASS  column 1 encoding DLBA
+  PASS  column 2 codec UNCOMPRESSED
+  PASS  column 2 encoding DLBA
+  PASS  column 3 codec UNCOMPRESSED
+  PASS  column 3 encoding DLBA
+  PASS  column 0 decode matches
+  PASS  column 1 decode matches
+  PASS  column 2 decode matches
+  PASS  column 3 decode matches
+  PASS  chunk_rows cap=2 -> 3 groups
+  PASS  chunk_rows flatten preserves rows
+  HASH  v2 sample sha256=e74e99dfe06c2a4b76b4fd1636f8ecf549252dd69f6ccfa4e81cfc4db32b04fa len=787 (v1 len=858)
+  PASS  v2 sample [byte hash pin]
+  PASS  v2 smaller than v1 on this fixture
+  PASS  v2 column 0 (s) codec UNCOMPRESSED
+  PASS  v2 column 0 (s) encoding RLE_DICTIONARY
+  PASS  v2 column 1 (p) codec UNCOMPRESSED
+  PASS  v2 column 1 (p) encoding RLE_DICTIONARY
+  PASS  v2 column 2 (o) codec UNCOMPRESSED
+  PASS  v2 column 2 (o) encoding DELTA_LENGTH_BYTE_ARRAY
+  PASS  v2 column 3 (g) codec UNCOMPRESSED
+  PASS  v2 column 3 (g) encoding RLE_DICTIONARY
+  PASS  v2 column 0 decode matches
+  PASS  v2 column 1 decode matches
+  PASS  v2 column 2 decode matches
+  PASS  v2 column 3 decode matches
+cottas_base_writer_roundtrip: 36 pass, 0 fail
+cottas_base_writer_roundtrip: PASS
+
+--- cottas_memory_buffer_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/cottas_memory_buffer_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+cottas_memory_buffer_unit: FAIL (build)
+
+--- delta_log_roundtrip ---
+== delta_log_roundtrip ==
+  PASS  add.iri-iri.no-graph [DE_Add, parse]
+  PASS  add.iri-iri.no-graph [DE_Add, value]
+  PASS  add.iri-iri.no-graph [DE_Add, remainder]
+  PASS  add.bnode-bnode.some-graph [DE_Add, parse]
+  PASS  add.bnode-bnode.some-graph [DE_Add, value]
+  PASS  add.bnode-bnode.some-graph [DE_Add, remainder]
+  PASS  add.plain-literal [DE_Add, parse]
+  PASS  add.plain-literal [DE_Add, value]
+  PASS  add.plain-literal [DE_Add, remainder]
+  PASS  add.lang-literal [DE_Add, parse]
+  PASS  add.lang-literal [DE_Add, value]
+  PASS  add.lang-literal [DE_Add, remainder]
+  PASS  remove.iri-iri.no-graph [DE_Remove, parse]
+  PASS  remove.iri-iri.no-graph [DE_Remove, value]
+  PASS  remove.iri-iri.no-graph [DE_Remove, remainder]
+  PASS  remove.lang-literal.some-graph [DE_Remove, parse]
+  PASS  remove.lang-literal.some-graph [DE_Remove, value]
+  PASS  remove.lang-literal.some-graph [DE_Remove, remainder]
+  PASS  clear.default-graph [DE_Clear, parse]
+  PASS  clear.default-graph [DE_Clear, value]
+  PASS  clear.default-graph [DE_Clear, remainder]
+  PASS  clear.named-graph [DE_Clear, parse]
+  PASS  clear.named-graph [DE_Clear, value]
+  PASS  clear.named-graph [DE_Clear, remainder]
+  PASS  drop.named-graph [DE_Drop, parse]
+  PASS  drop.named-graph [DE_Drop, value]
+  PASS  drop.named-graph [DE_Drop, remainder]
+  PASS  create.named-graph [DE_Create, parse]
+  PASS  create.named-graph [DE_Create, value]
+  PASS  create.named-graph [DE_Create, remainder]
+  PASS  empty.bnode-subject-and-object [DE_Add, parse]
+  PASS  empty.bnode-subject-and-object [DE_Add, value]
+  PASS  empty.bnode-subject-and-object [DE_Add, remainder]
+  PASS  empty.lexical-form [DE_Add, parse]
+  PASS  empty.lexical-form [DE_Add, value]
+  PASS  empty.lexical-form [DE_Add, remainder]
+  PASS  empty.lang-tag-value-nonempty-required [DE_Add, parse]
+  PASS  empty.lang-tag-value-nonempty-required [DE_Add, value]
+  PASS  empty.lang-tag-value-nonempty-required [DE_Add, remainder]
+  PASS  empty.graph-name-in-drop [DE_Drop, parse]
+  PASS  empty.graph-name-in-drop [DE_Drop, value]
+  PASS  empty.graph-name-in-drop [DE_Drop, remainder]
+  PASS  utf8.iri-object [DE_Add, parse]
+  PASS  utf8.iri-object [DE_Add, value]
+  PASS  utf8.iri-object [DE_Add, remainder]
+  PASS  utf8.bnode-label [DE_Add, parse]
+  PASS  utf8.bnode-label [DE_Add, value]
+  PASS  utf8.bnode-label [DE_Add, remainder]
+  PASS  utf8.literal-with-lang [DE_Add, parse]
+  PASS  utf8.literal-with-lang [DE_Add, value]
+  PASS  utf8.literal-with-lang [DE_Add, remainder]
+  PASS  utf8.astral-emoji [DE_Add, parse]
+  PASS  utf8.astral-emoji [DE_Add, value]
+  PASS  utf8.astral-emoji [DE_Add, remainder]
+  PASS  long-literal [DE_Add, parse]
+  PASS  long-literal [DE_Add, value]
+  PASS  long-literal [DE_Add, remainder]
+  PASS  lang-tag.region-subtag [DE_Add, parse]
+  PASS  lang-tag.region-subtag [DE_Add, value]
+  PASS  lang-tag.region-subtag [DE_Add, remainder]
+  PASS  streaming.tail-bytes-preserved [DE_Create, parse]
+  PASS  streaming.tail-bytes-preserved [DE_Create, value]
+  PASS  streaming.tail-bytes-preserved [DE_Create, remainder]
+  PASS  multi-entry-stream.decoded-matches
+  PASS  multi-entry-stream.leftover-empty
+  PASS  corrupt.empty-input
+  PASS  corrupt.truncated-header
+  PASS  corrupt.truncated-mid-payload
+  PASS  corrupt.truncated-last-byte
+  PASS  corrupt.bad-magic
+  PASS  corrupt.bad-version
+  PASS  corrupt.bad-checksum-field
+  PASS  corrupt.bad-payload-byte
+  PASS  corrupt.control-still-decodes
+  PASS  batch.empty-ops [parse]
+  PASS  batch.empty-ops [value]
+  PASS  batch.empty-ops [remainder-empty]
+  PASS  batch.single-op [parse]
+  PASS  batch.single-op [value]
+  PASS  batch.single-op [remainder-empty]
+  PASS  batch.multi-op [parse]
+  PASS  batch.multi-op [value]
+  PASS  batch.multi-op [remainder-empty]
+  PASS  batch.large-seq-epoch [parse]
+  PASS  batch.large-seq-epoch [value]
+  PASS  batch.large-seq-epoch [remainder-empty]
+  PASS  batch.streaming.value
+  PASS  batch.streaming.remainder
+  PASS  batch.corrupt.empty
+  PASS  batch.corrupt.truncated-header
+  PASS  batch.corrupt.truncated-tail
+  PASS  batch.corrupt.bad-magic
+  PASS  batch.corrupt.bad-version
+  PASS  batch.corrupt.bad-checksum
+  PASS  batch.corrupt.bad-body-byte
+  PASS  batch.corrupt.control-still-decodes
+  PASS  log.roundtrip.value
+  PASS  log.corrupt.bad-header
+  PASS  log.torn-tail.recovers-complete-prefix
+  PASS  log.torn-tail.leftover-is-undecoded-suffix
+  PASS  expected_digest_bytes.matches-serialize
+== summary: 101 pass, 0 fail (out of 101) ==
+delta_log_roundtrip: PASS
+
+--- dict_writer_roundtrip ---
+== dict_writer_roundtrip ==
+  HASH  empty sha256=486401ad3679ae7b4daf49a768ad655bb9d642287b1dfa0b41c54f4ca62eca87 len=40
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [round-trip]
+  HASH  singleton sha256=92ae5967933fd9d17749f04c7e519f5ddb4652e8ef0d188b988bb53885a2f919 len=57
+  PASS  singleton [hash]
+  PASS  singleton [parse]
+  PASS  singleton [round-trip]
+  HASH  three-tokens sha256=33eb82007018dc8c745ceea06e7ade30698c37497a05f29ae1dc02d90279ce40 len=90
+  PASS  three-tokens [hash]
+  PASS  three-tokens [parse]
+  PASS  three-tokens [round-trip]
+  HASH  ten-tokens sha256=8d6a7366e328729db17776a78f6701d3a2046874f9b4ad07bd226f8c4c36dd82 len=170
+  PASS  ten-tokens [hash]
+  PASS  ten-tokens [parse]
+  PASS  ten-tokens [round-trip]
+== summary: 12 pass, 0 fail (out of 12) ==
+dict_writer_roundtrip: PASS
+
+--- fulltext_slice1_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/fulltext_slice1_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+fulltext_slice1_unit: FAIL (build)
+
+--- geosparql_v0_unit ---
+
+=== A. WKT parser round-trip ===
+  PASS  POINT(1 2) parses to G_Point
+  PASS  POINT(1 2) round-trips through serialize
+  PASS  POINT(51.5074 -0.1278) x mantissa exact
+  PASS  POINT(51.5074 -0.1278) y mantissa exact
+  PASS  LINESTRING has 3 points
+  PASS  POLYGON exterior has 5 points
+  PASS  POLYGON has 1 hole
+  PASS  MULTIPOINT parenthesized form has 2 points
+  PASS  MULTIPOINT bare form has 2 points
+  PASS  POINT EMPTY
+  PASS  GEOMETRYCOLLECTION EMPTY
+  PASS  CRS prefix captured verbatim
+  PASS  CRS-prefixed coordinates unchanged (no transform)
+  PASS  POINT Z (3 numbers) is rejected, not silently truncated
+  PASS  GEOMETRYCOLLECTION has 2 members
+
+=== B. Simple Features predicates (hand-computed) ===
+  PASS  sfEquals(POINT(1 1), POINT(1 1)) = true
+  PASS  sfDisjoint(POINT(1 1), POINT(2 2)) = true
+  PASS  sfTouches(POINT(5 0), square) = true (exactly on edge)
+  PASS  sfWithin(POINT(5 0), square) = false (boundary, not interior)
+  PASS  sfWithin(POINT(5 5), square) = true (strictly interior)
+  PASS  sfDisjoint(POINT(20 20), square) = true
+  PASS  sfIntersects(POINT(5 0), square) = true (on boundary counts)
+  PASS  sfDisjoint(POINT(5 5), square-with-hole) = true (5,5 is in the hole)
+  PASS  sfWithin(POINT(1 1), square-with-hole) = true (outside the hole)
+  PASS  sfWithin(POINT(5 5), diagonal line) = true (interior of open line)
+  PASS  sfTouches(POINT(0 0), diagonal line) = true (open-line endpoint)
+  PASS  sfDisjoint(POINT(1 2), diagonal line) = true (off the line)
+  PASS  sfIntersects(diagonal /, diagonal \) = true (cross at (5,5))
+  PASS  sfDisjoint(diagonal /, parallel line far away) = true
+  PASS  sfIntersects(square A, overlapping square B) = true
+  PASS  sfDisjoint(square A, far-away square C) = true
+  PASS  sfWithin(inner square, square A) = true (strictly inside, no boundary contact)
+  PASS  sfContains(square A, inner square) = true (flip of within)
+  PASS  sfOverlaps(POINT, LINESTRING) = false (differing dims, SFA convention)
+
+=== C. geof:distance / geof:envelope ===
+  PASS  distance((0,0),(3,4)) ~= 5 (3-4-5 triangle, exact sqrt)
+  PASS  distance(point, linestring) is refused (None) in v0
+  PASS  envelope(square B) exterior ring has 5 points (closed rectangle)
+
+geosparql_v0_unit: 37 passed, 0 failed
+geosparql_v0_unit: PASS
+
+--- iri_resolve_unit ---
+  PASS  5.4.1 g:h
+  PASS  5.4.1 g
+  PASS  5.4.1 ./g
+  PASS  5.4.1 g/
+  PASS  5.4.1 /g
+  PASS  5.4.1 //g
+  PASS  5.4.1 ?y
+  PASS  5.4.1 g?y
+  PASS  5.4.1 #s
+  PASS  5.4.1 g#s
+  PASS  5.4.1 ;x
+  PASS  5.4.1 g;x
+  PASS  5.4.1 (empty)
+  PASS  5.4.1 .
+  PASS  5.4.1 ./
+  PASS  5.4.1 ..
+  PASS  5.4.1 ../
+  PASS  5.4.1 ../g
+  PASS  5.4.1 ../..
+  PASS  5.4.1 ../../
+  PASS  5.4.1 ../../g
+  PASS  5.4.2 ../../../g
+  PASS  5.4.2 ../../../../g
+  PASS  5.4.2 /./g
+  PASS  5.4.2 /../g
+  PASS  5.4.2 g.
+  PASS  5.4.2 .g
+  PASS  5.4.2 g..
+  PASS  5.4.2 ..g
+  PASS  5.4.2 ./../g
+  PASS  5.4.2 ./g/.
+  PASS  5.4.2 g/./h
+  PASS  5.4.2 g/../h
+  PASS  5.4.2 g;x=1/./y
+  PASS  5.4.2 g;x=1/../y
+  PASS  5.4.2 g?y/./x
+  PASS  5.4.2 g?y/../x
+  PASS  5.4.2 g#s/./x
+  PASS  5.4.2 g#s/../x
+  PASS  5.4.2 http:g
+  PASS  0122 ?y (dotted base, query-only ref)
+  PASS  0122 #s (dotted base, fragment-only ref)
+  PASS  0122 (empty) (dotted base, empty ref)
+  PASS  0122 g (dotted base, non-empty ref merges+normalizes)
+  PASS  0125 g (base path ends in .., merge truncates before it)
+  PASS  0125 ?y (empty-path ref keeps base's trailing .. verbatim)
+iri_resolve_unit: 46 pass, 0 fail (out of 46)
+iri_resolve_unit: PASS
+
+--- jld_jcs_and_list_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/jld_jcs_and_list_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+jld_jcs_and_list_unit: FAIL (build)
+
+--- json_escape_unit ---
+  PASS  plain passthrough
+  PASS  quote
+  PASS  backslash
+  PASS  newline
+  PASS  cr-tab
+  PASS  backspace-formfeed
+  PASS  u-escape 0x01
+  PASS  u-escape 0x1f
+  PASS  utf8 passthrough
+  PASS  mixed
+json_escape_unit: 10 pass, 0 fail (out of 10)
+json_escape_unit: PASS
+
+--- lateral_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/lateral_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+lateral_unit: FAIL (build)
+
+--- lifesci_closure_timing ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/lifesci_closure_timing.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+lifesci_closure_timing: FAIL (build)
+
+--- lifesci_owlrl_loop_timing ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/lifesci_owlrl_loop_timing.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+lifesci_owlrl_loop_timing: FAIL (build)
+
+--- lifesci_owlrl_rule_reorder_check ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/lifesci_owlrl_rule_reorder_check.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+lifesci_owlrl_rule_reorder_check: FAIL (build)
+
+--- lifesci_owlrl_rule_timing ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/lifesci_owlrl_rule_timing.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+lifesci_owlrl_rule_timing: FAIL (build)
+
+--- lifesci_rdfs_rule_reorder_check ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/lifesci_rdfs_rule_reorder_check.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+lifesci_rdfs_rule_reorder_check: FAIL (build)
+
+--- offsets_writer_roundtrip ---
+== offsets_writer_roundtrip ==
+  HASH  empty sha256=622d6bd71bb898ecfb1347b6ff254d670df048ca32fc575945980df8e843af99 len=24
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [rgs]
+  PASS  empty [preds]
+  PASS  empty [offsets]
+  PASS  empty [subjs]
+  HASH  singleton sha256=9ef8d841d0a988f29f3d013ce33454540f8d815b337b2b9d711b12596c599b3d len=36
+  PASS  singleton [hash]
+  PASS  singleton [parse]
+  PASS  singleton [rgs]
+  PASS  singleton [preds]
+  PASS  singleton [offsets]
+  PASS  singleton [subjs]
+  HASH  2x3-mixed sha256=4bed0db9a36b0f44ccbedf1a76b9bb7480c89256e5726ad049603e8b46f3c23e len=100
+  PASS  2x3-mixed [hash]
+  PASS  2x3-mixed [parse]
+  PASS  2x3-mixed [rgs]
+  PASS  2x3-mixed [preds]
+  PASS  2x3-mixed [offsets]
+  PASS  2x3-mixed [subjs]
+  HASH  3x2-sparse sha256=c094e6661688ef48f77efbfadfb2c4a2da42d2ce5fd656f69865f5fc04b5da49 len=84
+  PASS  3x2-sparse [hash]
+  PASS  3x2-sparse [parse]
+  PASS  3x2-sparse [rgs]
+  PASS  3x2-sparse [preds]
+  PASS  3x2-sparse [offsets]
+  PASS  3x2-sparse [subjs]
+== summary: 24 pass, 0 fail (out of 24) ==
+offsets_writer_roundtrip: PASS
+
+--- owl_direct_pipeline_timing ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/owl_direct_pipeline_timing.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+owl_direct_pipeline_timing: FAIL (build)
+
+--- owl_rl_bisect ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/owl_rl_bisect.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+owl_rl_bisect: FAIL (build)
+
+--- owl_rl_closure_diff ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/owl_rl_closure_diff.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+owl_rl_closure_diff: FAIL (build)
+
+--- owl_rl_sequenced ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/owl_rl_sequenced.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+owl_rl_sequenced: FAIL (build)
+
+--- parquet_rle_dictionary_multi_row_group ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/parquet_rle_dictionary_multi_row_group.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+parquet_rle_dictionary_multi_row_group: FAIL (build)
+
+--- parser_fast_string_byte_semantics ---
+== parser_fast_string_byte_semantics ==
+  PASS  fs_byte_length "ä" = 2 (UTF-8 byte length, not 1 codepoint)
+  PASS  fs_byte_at "ä" 0 = 0xC3 (UTF-8 leading byte)
+  PASS  fs_byte_at "ä" 1 = 0xA4 (UTF-8 continuation byte)
+  PASS  fs_byte_sub "äb" 0 1 = "\xC3" (invalid UTF-8, byte-level by design)
+  PASS  fs_find_byte "abc:def" 0x3A 0 = 3 (locate ':' as a byte)
+  PASS  fs_find_byte "abc:def" 0x21 0 = 7 (absent = length)
+  PASS  fs_find_byte over "Müller" for ':' = length (no false positive on 0xC3)
+summary: 7 pass, 0 expected-fail, 0 unexpected fail
+parser_fast_string_byte_semantics: PASS
+
+--- parser_fast_string_codepoint_semantics ---
+== parser_fast_string_codepoint_semantics ==
+  PASS  fs_cp_at "a" 0 = (0x61, 1)
+  PASS  fs_cp_at "ä" 0 = (0xE4, 2)
+  PASS  fs_cp_at "日" 0 = (0x65E5, 3)
+  PASS  fs_cp_at "🎵" 0 = (0x1F3B5, 4)
+  PASS  fs_cp_at "" 0 = (0xFFFD, 1) (empty input fallback)
+  PASS  fs_cp_at "\xC0" 0 = (0xFFFD, 1) (invalid leading byte)
+  PASS  fs_cp_at "\xC3" 0 = (0xFFFD, 1) (truncated two-byte)
+  PASS  fs_cp_at "\xED\xA0\x80" 0 = (0xFFFD, 1) (UTF-16 surrogate rejected)
+  PASS  fs_cp_len "ä" 0 = 2
+  PASS  fs_cp_len "🎵" 0 = 4
+  PASS  fs_cp_at "ä" 1 = (0xFFFD, 1) (starting on a continuation byte)
+summary: 11 pass, 0 expected-fail, 0 unexpected fail
+parser_fast_string_codepoint_semantics: PASS
+
+--- presence_writer_roundtrip ---
+== presence_writer_roundtrip ==
+  HASH  empty sha256=2a81f78f8dc918586126c51f2a3e0bb3095a221626502dffe247875c4a0c8514 len=16
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [round-trip rgs]
+  PASS  empty [round-trip toks]
+  PASS  empty [round-trip bitmap]
+  HASH  singleton-set sha256=1d3a0db8b65799b89fee3430734be4ea515ccc688d7a5c7414d831295dd56177 len=17
+  PASS  singleton-set [hash]
+  PASS  singleton-set [parse]
+  PASS  singleton-set [round-trip rgs]
+  PASS  singleton-set [round-trip toks]
+  PASS  singleton-set [round-trip bitmap]
+  HASH  singleton-clear sha256=c650a40f2d76fe880bc5dcfdf6864aca0456e4c5b051ae5cdeb8bb110f13396a len=17
+  PASS  singleton-clear [hash]
+  PASS  singleton-clear [parse]
+  PASS  singleton-clear [round-trip rgs]
+  PASS  singleton-clear [round-trip toks]
+  PASS  singleton-clear [round-trip bitmap]
+  HASH  4x8-diagonal sha256=5aeabfba78443fe86ce9baab139680ba0905d1fccbfd534e7404a8950655fbb8 len=20
+  PASS  4x8-diagonal [hash]
+  PASS  4x8-diagonal [parse]
+  PASS  4x8-diagonal [round-trip rgs]
+  PASS  4x8-diagonal [round-trip toks]
+  PASS  4x8-diagonal [round-trip bitmap]
+  HASH  3x17-alternating sha256=e68665d4649cd408822f8b0556c0e5d45b480e6cb7cb9bec9c4add08463e7e3c len=23
+  PASS  3x17-alternating [hash]
+  PASS  3x17-alternating [parse]
+  PASS  3x17-alternating [round-trip rgs]
+  PASS  3x17-alternating [round-trip toks]
+  PASS  3x17-alternating [round-trip bitmap]
+== summary: 25 pass, 0 fail (out of 25) ==
+presence_writer_roundtrip: PASS
+
+--- rdfxml_parser_perf ---
+Loaded third_party/testing/owl/profile-EL.rdf (244108 bytes)
+header: 376 bytes
+
+Per-size timing on profile-EL prefixes:
+  size=   926 bytes  ... PASS  0 triples (0.000s, 6012.3 bytes/ms)
+  size=  1434 bytes  ... PASS  0 triples (0.000s, 6889.6 bytes/ms)
+  size=  2413 bytes  ... PASS  0 triples (0.000s, 6417.8 bytes/ms)
+  size=  4403 bytes  ... PASS  0 triples (0.001s, 7242.2 bytes/ms)
+  size=  8433 bytes  ... PASS  0 triples (0.001s, 7075.5 bytes/ms)
+  size= 12443 bytes  ... PASS  0 triples (0.002s, 6434.4 bytes/ms)
+  size= 16588 bytes  ... PASS  0 triples (0.002s, 8356.4 bytes/ms)
+  size= 24430 bytes  ... PASS  0 triples (0.004s, 6748.3 bytes/ms)
+  size= 32535 bytes  ... PASS  0 triples (0.004s, 8433.5 bytes/ms)
+  size= 48439 bytes  ... PASS  0 triples (0.006s, 8165.9 bytes/ms)
+  size= 64411 bytes  ... PASS  0 triples (0.008s, 7898.5 bytes/ms)
+  size= 96477 bytes  ... PASS  0 triples (0.013s, 7227.8 bytes/ms)
+  size=128499 bytes  ... PASS  0 triples (0.017s, 7752.5 bytes/ms)
+
+summary: 13 pass, 0 expected-fail (perf cap exceeded)
+rdfxml_parser_perf: PASS
+
+--- rdfxml_profile_repro ---
+Loaded third_party/testing/owl/profile-RL.rdf (260221 bytes)
+
+Step A: strip DOCTYPE
+  stripped to 259976 bytes in 0.000s
+
+Step B: expand catalog entities (Str.global_replace x 5)
+  expanded to 298759 bytes in 0.003s
+
+Step C: Parser_XML.parse_xml_document on expanded
+  PASS  parsed (0.035s)
+
+Step D: Parser_RDFXML.parse_rdfxml_with_base on expanded
+  PASS  1896 triples (0.057s)
+
+summary: 2 pass, 0 expected-fail
+rdfxml_profile_repro: PASS
+
+--- rdfxml_stack_regression ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/rdfxml_stack_regression.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+rdfxml_stack_regression: FAIL (build)
+
+--- regex_engine_unit ---
+  PASS  literal exact match
+  PASS  literal rejects prefix
+  PASS  literal rejects extra
+  PASS  empty string vs Eps
+  PASS  nonempty vs Eps
+  PASS  class [a-z] matches 'm'
+  PASS  class [a-z] rejects 'M'
+  PASS  class [0-9]+ matches digits
+  PASS  a* matches empty
+  PASS  a* matches aaaa
+  PASS  a* rejects b
+  PASS  (ab)* matches abab
+  PASS  (ab)* rejects aba
+  PASS  cat|dog left
+  PASS  cat|dog right
+  PASS  cat|dog miss
+  PASS  a(b|c) matches ab
+  PASS  a(b|c) matches ac
+  PASS  a(b|c) rejects ad
+  PASS  a(b|c) rejects a
+  PASS  And: alnum & (exactly 3 chars) accepts 'a1z'
+  PASS  And: alnum & (exactly 3 chars) rejects 'ab' (len 2)
+  PASS  And: alnum & (exactly 3 chars) rejects 'a b' (space not alnum)
+  PASS  Not(ab) rejects 'ab'
+  PASS  Not(ab) accepts 'ac'
+  PASS  Not(ab) accepts empty
+  PASS  Not(Not(ab)) matches 'ab'
+  PASS  is_empty R_Empty
+  PASS  is_empty R_Eps is false
+  PASS  intersection_empty: a(b|c) & 'ad' is empty
+  PASS  intersection_empty: a(b|c) & 'ab' is NON-empty
+  PASS  intersection_empty: 'a' & 'b' is empty
+  PASS  subsumes: {ab,ac} covers a(b|c)
+  PASS  (a?)^25 a^25 matches a^25 (no blowup)
+  PASS  (a?)^25 a^25 rejects a^24
+  PASS  codepoint class [00E0-00FF] matches U+00E4
+  PASS  codepoint class [00E0-00FF] rejects U+0100
+  PASS  astral single codepoint U+1D4B8 matches its literal
+  PASS  astral literal rejects a different astral codepoint
+  PASS  range [FF00-10FFFF] matches U+1F600
+  PASS  search: 'cat' inside 'the cat sat'
+  PASS  search: 'dog' not in 'the cat sat'
+  PASS  proven==norm abc
+  PASS  proven==norm a(b|c) on ab
+  PASS  proven==norm a(b|c) on ax
+  PASS  proven==norm (ab)* on abab
+  PASS  proven==norm Not(ab) on ac
+  PASS  proven==norm [a-z]+ on m
+  PASS  parse OWL fixture pattern a(b|c)
+  PASS  parse OWL dp1-enumeration ab|ac
+  PASS  OWL e2e: parsed a(b|c) matches ab
+  PASS  OWL e2e: parsed a(b|c) matches ac
+  PASS  OWL e2e: parsed a(b|c) rejects ad
+  PASS  OWL e2e: parsed a(b|c) rejects a
+  PASS  OWL e2e: parsed ab|ac matches ab
+  PASS  OWL e2e: parsed ab|ac rejects abc
+  PASS  OWL e2e: is_empty(And pat (Not enum)) -- pattern subsumed
+  PASS  OWL e2e: intersection_empty(pat, enum) is false (ab,ac collide)
+  PASS  OWL e2e: subsumes(enum, pat)
+  PASS  OWL collision: pattern non-empty (witness exists)
+  PASS  OWL collision: {ab,ac} covers a(b|c) -> CLASH
+  PASS  OWL collision: {ab} alone does NOT cover a(b|c) -> no clash
+  PASS  OWL collision: {ab,ad} does NOT cover a(b|c) -> no clash
+  PASS  parse CSVW test194 duration format ^.$
+  PASS  ^.$ matches single char 'x'
+  PASS  ^.$ rejects empty
+  PASS  ^.$ rejects two chars
+  PASS  ^.$ dot excludes newline
+  PASS  CSVW194 ^.$ rejects duration 'PT130S'
+  PASS  CSVW194 ^.$ rejects duration 'P0Y20M'
+  PASS  CSVW193 ^-?P.*$ accepts 'PT130S'
+  PASS  CSVW193 ^-?P.*$ accepts '-P60D'
+  PASS  CSVW193 ^-?P.DT.*$ accepts 'P1DT2H'
+  PASS  CSVW193 ^-?P.Y20M$ accepts 'P0Y20M'
+  PASS  CSVW193 ^-?P.Y20M$ rejects 'P0Y21M'
+  PASS  a(b|c) via parser matches ab
+  PASS  a(b|c) via parser rejects ad
+  PASS  [0-9]+ matches 2026
+  PASS  [0-9]+ rejects 20a
+  PASS  [2-8][0-9]* matches 5001
+  PASS  [2-8][0-9]* rejects leading 9
+  PASS  [Aa]+ matches AaAa
+  PASS  [Aa]+ rejects b
+  PASS  SSN pattern matches 123-45-6789
+  PASS  SSN pattern rejects short group
+  PASS  \d{4} matches 2026
+  PASS  \d{4} rejects 3 digits
+  PASS  (ab)+ matches abab
+  PASS  (ab)+ rejects aba
+  PASS  (ab)+ rejects empty
+  PASS  https?:// matches http://
+  PASS  https?:// matches https://
+  PASS  https?:// rejects htt://
+  PASS  .*cd.* matches xxcdyy
+  PASS  .*cd.* matches bare cd
+  PASS  .*cd.* rejects xy
+  PASS  a{2,3} matches aa
+  PASS  a{2,3} matches aaa
+  PASS  a{2,3} rejects a
+  PASS  a{2,3} rejects aaaa
+  PASS  a{2,} matches aaaaa
+  PASS  a{2,} rejects a
+  PASS  .*?x matches yyx
+  PASS  .*?x rejects yy
+  PASS  \^bc\$ matches literal ^bc$
+  PASS  \. matches literal dot
+  PASS  \. rejects any-char use
+  PASS  \u0061 matches 'a'
+  PASS  \u0061 rejects 'b'
+  PASS  \U0001D4B8 matches astral 𝒸
+  PASS  \U0001D4B8 rejects nearby astral
+  PASS  [^b] matches 'a'
+  PASS  [^b] rejects 'b'
+  PASS  a[^b]c matches axc
+  PASS  a[^b]c rejects abc
+  PASS  [^0-9]+ matches letters
+  PASS  [^0-9]+ rejects a digit
+  PASS  (?:ab)+ matches abab
+  PASS  parse-None unterminated class [
+  PASS  parse-None bare quantifier +
+  PASS  parse-None unclosed group a(b
+  PASS  parse-None unbalanced close a)
+  PASS  parse-None category escape \p{L}
+  PASS  parse-None backreference \1
+  PASS  parse-None lookahead (?=x)
+  PASS  parse-None empty brace a{
+  PASS  parse-None non-numeric brace a{x}
+  PASS  proven==norm(parsed) a(b|c) on ab
+  PASS  proven==norm(parsed) [0-9]+ on 2026
+  PASS  proven==norm(parsed) (ab)+ on abab
+regex_engine_unit: 130 pass, 0 fail (out of 130)
+regex_engine_unit: PASS
+
+--- regex_match_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/regex_match_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+regex_match_unit: FAIL (build)
+
+--- regex_replace_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/regex_replace_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+regex_replace_unit: FAIL (build)
+
+--- selective_decode_differential_gate ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/selective_decode_differential_gate.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+selective_decode_differential_gate: FAIL (build)
+
+--- selective_decode_vars_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/selective_decode_vars_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+selective_decode_vars_unit: FAIL (build)
+
+--- shexc_parser_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/shexc_parser_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+shexc_parser_unit: FAIL (build)
+
+--- sparql_protocol_client_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/sparql_protocol_client_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             Parser_JSON referenced from /home/user/factoidal/formal/fstar/ocaml-output/Parser_JSONResults.cmx
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+sparql_protocol_client_unit: FAIL (build)
+
+--- sparql_service_wrap_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/sparql_service_wrap_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+sparql_service_wrap_unit: FAIL (build)
+
+--- store_capabilities_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/store_capabilities_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+store_capabilities_unit: FAIL (build)
+
+--- streamable_fastpath_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/streamable_fastpath_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+streamable_fastpath_unit: FAIL (build)
+
+--- subject_offsets_writer_roundtrip ---
+== subject_offsets_writer_roundtrip ==
+  HASH  empty sha256=184f8469b06228b26bbbd5a29868f5a2832b5444a9c6d31c34d5345e33aa3d06 len=16
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [num_subjects]
+  PASS  empty [num_rows_total]
+  PASS  empty [ranges]
+  HASH  singleton sha256=df022a3363424bc23bc38d644ce39f07629723b5e97d08bf21c1712e941a81df len=32
+  PASS  singleton [hash]
+  PASS  singleton [parse]
+  PASS  singleton [num_subjects]
+  PASS  singleton [num_rows_total]
+  PASS  singleton [ranges]
+  HASH  three-contiguous sha256=23684857221d55b3eccc895a8beb2c481d7cf9d271098353209eea03f9ebf576 len=64
+  PASS  three-contiguous [hash]
+  PASS  three-contiguous [parse]
+  PASS  three-contiguous [num_subjects]
+  PASS  three-contiguous [num_rows_total]
+  PASS  three-contiguous [ranges]
+  HASH  rg-boundary-straddle sha256=2d0cf97955489c1112f18cd50f8eb0e03fed75ac0c419b4164fda46db64af61f len=48
+  PASS  rg-boundary-straddle [hash]
+  PASS  rg-boundary-straddle [parse]
+  PASS  rg-boundary-straddle [num_subjects]
+  PASS  rg-boundary-straddle [num_rows_total]
+  PASS  rg-boundary-straddle [ranges]
+== summary: 20 pass, 0 fail (out of 20) ==
+subject_offsets_writer_roundtrip: PASS
+
+--- toan_tests ---
+  PASS  summation(x + i*y, i, 1, 4) = 4*x + 10*y
+  [info] summation(x + i*y, i, 1, 4) key = 4a:plus(4a:times(0i:10,3s:y,),4a:times(0i:4,3s:x,),)
+  PASS  product(x + i*y, i, 0, 5) = x*(x+y)*(x+2y)*(x+3y)*(x+4y)*(x+5y)
+  [info] product(x + i*y, i, 0, 5) key = 4a:times(3s:x,4a:plus(3s:x,3s:y,),4a:plus(3s:x,4a:times(0i:2,3s:y,),),4a:plus(3s:x,4a:times(0i:3,3s:y,),),4a:plus(3s:x,4a:times(0i:4,3s:y,),),4a:plus(3s:x,4a:times(0i:5,3s:y,),),)
+  PASS  summation over empty range (5..1) = 0
+  PASS  product over empty range (5..1) = 1
+  PASS  summation over single point (2..2) = x + 2*y
+  PASS  product over single point (3..3) = x + 3*y
+  PASS  simplify(2*y + 3*y) = 5*y
+  PASS  simplify(y + 2*y + 3*y + 4*y) = 10*y
+  PASS  simplify(3*x + x) = 4*x
+  PASS  simplify(x + 2*y + 3*y) = x + 5*y
+  PASS  simplify(2*x + 3*x + 4) = 5*x + 4
+  PASS  simplify((1/2)*y + (1/2)*y) = y
+  PASS  simplify(2*y + (-2)*y) = 0
+  PASS  simplify(2*x*y + 3*x*y) = 5*x*y
+  PASS  simplify(2*x + 3*y) keeps two distinct terms (no merge)
+  PASS  simplify(2*x + 3*x^2) keeps distinct cores x vs x^2
+  PASS  eval(simplify(2*x+3*y)) = eval(2*x+3*y) at x=5,y=7
+  PASS  idempotent: 2*y + 3*y
+  PASS  idempotent: y + 2y + 3y + 4y
+  PASS  idempotent: x + 2y + 3y
+  PASS  idempotent: 2*x*y + 3*x*y
+  PASS  idempotent: 2y + (-2)y
+  PASS  idempotent: summation(1..4)
+  PASS  idempotent: summation(0..6)
+  PASS  idempotent: product(0..5)
+  PASS  idempotent: product(1..4)
+  PASS  eval(simplify 2y + 3y) = eval(2y + 3y)
+  PASS  eval(simplify y + 2y + 3y + 4y) = eval(y + 2y + 3y + 4y)
+  PASS  eval(simplify x + 2y + 3y) = eval(x + 2y + 3y)
+  PASS  eval(simplify 2*x*y + 3*x*y) = eval(2*x*y + 3*x*y)
+  PASS  eval(simplify summation(1..4)) = eval(summation(1..4))
+  PASS  eval(simplify product(1..4)) = eval(product(1..4))
+  PASS  to_presentation_mathml(x) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(x)
+  PASS  to_presentation_mathml(4*x + 10*y) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(4*x + 10*y)
+  PASS  to_presentation_mathml((x+y)*z) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml((x+y)*z)
+  PASS  to_presentation_mathml(x^2 * y) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(x^2 * y)
+  PASS  to_presentation_mathml((x+y)^2) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml((x+y)^2)
+  PASS  to_presentation_mathml(1/2) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(1/2)
+  PASS  to_presentation_mathml(x/(x^2+1)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(x/(x^2+1))
+  PASS  to_presentation_mathml(sin(x^2)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(sin(x^2))
+  PASS  to_presentation_mathml(product(0..5)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(product(0..5))
+  PASS  (x+y)*z fences the sum
+  PASS  x^2 * y does NOT parenthesize the power
+  PASS  (x+y)^2 fences the base
+  PASS  x + y is not parenthesized
+  PASS  (x/y)*z does not fence the fraction
+  PASS  content round-trip: x^2 + 1
+  PASS  content round-trip: 2*x + 3*y
+  PASS  content round-trip: x*(x+y)
+  PASS  content round-trip: 5/2
+  PASS  content round-trip: x/(x^2+1)
+  PASS  content round-trip: 4*x + 10*y
+  PASS  content round-trip: summation(1..4)
+  PASS  content round-trip: product(0..5)
+  PASS  eq(x,y)
+  PASS  neq(x,y)
+  PASS  lt(x,y)
+  PASS  gt(x,y)
+  PASS  leq(x,y)
+  PASS  geq(x,y)
+  PASS  eq(x, plus(y,1))
+  PASS  geq(eq(x,y), z) fences the nested relation
+  PASS  lt(plus(x,y), z) does not fence the sum
+  PASS  abs(x)
+  PASS  abs(plus(x,y)) does not fence the sum inside the bars
+  PASS  abs(-3) carries the sign inside the bars unfenced
+  PASS  factorial(n)
+  PASS  factorial(plus(x,y)) fences the sum
+  PASS  factorial(abs(x)) does not re-fence an already-atomic operand
+  PASS  exp(x)
+  PASS  exp(plus(x,y)) puts the sum in the exponent unfenced
+  PASS  diff_unsupported(x) direct construction
+  PASS  diff x (coth x) has no rule -> diff_unsupported -> merror
+  PASS  plus(x, diff_unsupported(y)) embeds the error box atomically
+  PASS  to_presentation_mathml(eq(x,y)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(eq(x,y))
+  PASS  to_presentation_mathml(geq(eq(x,y), z)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(geq(eq(x,y), z))
+  PASS  to_presentation_mathml(abs(minus(x,y))) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(abs(minus(x,y)))
+  PASS  to_presentation_mathml(factorial(plus(x,1))) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(factorial(plus(x,1)))
+  PASS  to_presentation_mathml(exp(power(x,2))) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(exp(power(x,2)))
+  PASS  to_presentation_mathml(diff_unsupported(x)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(diff_unsupported(x))
+  PASS  to_presentation_mathml(eq(x, abs(y))) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(eq(x, abs(y)))
+  PASS  content round-trip: eq(x,y)
+  PASS  content round-trip: neq(x,y)
+  PASS  content round-trip: lt(x,y)
+  PASS  content round-trip: gt(x,y)
+  PASS  content round-trip: leq(x,y)
+  PASS  content round-trip: geq(x,y)
+  PASS  content round-trip: abs(x)
+  PASS  content round-trip: factorial(n)
+  PASS  content round-trip: exp(x)
+  PASS  to_content_mathml(exp(x)) uses <exp/> not <csymbol>
+  PASS  to_content_mathml(abs(x)) uses <abs/>
+  PASS  to_content_mathml(factorial(n)) uses <factorial/>
+  PASS  to_content_mathml(eq(x,y)) uses <eq/>
+
+TOAN: 110 pass, 0 fail (out of 110)
+toan_tests: PASS
+
+--- ucase_lcase_unicode ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/ucase_lcase_unicode.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+ucase_lcase_unicode: FAIL (build)
+
+--- utf8_roundtrip ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/utf8_roundtrip.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+utf8_roundtrip: FAIL (build)
+
+--- xforms_tests ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/xforms_tests.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+xforms_tests: FAIL (build)
+
+--- xpath_tests ---
+  PASS  §2.2 child axis count
+  PASS  §2.2 attribute value via '='
+  PASS  §2.3 child::* matches every element, any prefix
+  PASS  §2.3 attribute::* count
+  PASS  §2.3 prefix wildcard 'ns:*'
+  PASS  §2.3 full axis syntax child::child
+  PASS  §2.3 self axis via full syntax
+  PASS  §2.3 attribute axis via full syntax
+  PASS  §2.5 '//' abbreviation matches explicit desugaring
+  PASS  §2.5 '//child' count
+  PASS  §2.3 text() node test
+  PASS  §2.3 comment() node test (non-empty)
+  PASS  §2.3 node() matches text+comment siblings
+  PASS  §2.4 position()=2 predicate
+  PASS  §2.4 [2] numeric-predicate shorthand
+  PASS  §2.4 last() predicate
+  PASS  §2.4 count() built-in
+  PASS  §2.3 ancestor axis nearest-first [1]
+  PASS  §2.3 ancestor axis nearest-first [2]
+  PASS  §2.3 ancestor axis nearest-first [3]
+  PASS  §2.3 ancestor axis count
+  PASS  §2.3 ancestor-or-self axis count
+  PASS  §2.3 parent axis
+  PASS  §2.3 descendant axis depth
+  PASS  §2.3 descendant-or-self axis depth
+  PASS  §2.3 '.' self abbreviation in a predicate
+  PASS  §2.3 '..' parent abbreviation
+  PASS  §2.6 union of disjoint node-sets
+  PASS  §3.4 node-set = string
+  PASS  §3.4 number = node-set comparison
+  PASS  §3.4 node-set != number
+  PASS  §3.4 boolean(node-set) on empty set
+  PASS  §3.4 boolean(node-set) on non-empty set
+  PASS  §3.4 relational op coerces node-set to number
+  PASS  §4.4 sum() + string(number) integer formatting (no trailing .0)
+  PASS  §4.4 string(number) decimal formatting
+  PASS  §4.4 string(number) integer formatting
+  PASS  §3.4 'div' produces a decimal
+  PASS  §3.4 'mod'
+  PASS  §3.4 unary minus
+  PASS  §3.4 unary minus binds looser than union (per UnaryExpr ::= '-' UnaryExpr | UnionExpr)
+  PASS  §4.4 round(2.5) rounds toward +Infinity
+  PASS  §4.4 round(-2.5) rounds toward +Infinity (not away from zero)
+  PASS  §4.4 floor(2.7)
+  PASS  §4.4 ceiling(2.1)
+  PASS  §4.3 not()
+  PASS  §4.3 true() and false()
+  PASS  §4.2 boolean('') is false
+  PASS  §4.2 boolean(non-empty string) is true
+  PASS  §4.2 concat() with 3 args
+  PASS  §4.2 contains()
+  PASS  §4.2 starts-with()
+  PASS  §4.2 substring-before()
+  PASS  §4.2 substring-after()
+  PASS  §4.2 string-length()
+  PASS  §4.2 normalize-space()
+  PASS  §4.2 substring("12345",1.5,2.6) = "234"
+  PASS  §4.2 substring("12345",0,3) = "12"
+  PASS  §4.2 substring("12345", 0 div 0, 3) = "" (NaN start)
+  PASS  §4.2 substring("12345", 1, 0 div 0) = "" (NaN length)
+  PASS  §4.2 substring("12345", -42, 1 div 0) = "12345" (+Infinity length)
+  PASS  §4.2 substring("12345", -1 div 0, 1 div 0) = "" (-Inf + Inf = NaN)
+  PASS  §2.3 name() on a prefixed element (opaque QName string)
+  PASS  §2.3 local-name() strips the prefix
+  PASS  §2.3 local-name() with no prefix equals name()
+  PASS  §3.7 VariableReference in an arithmetic expression
+  PASS  §2.2 following-sibling axis count
+  PASS  §2.2 following-sibling::child[1] is c2
+  PASS  §2.2 preceding-sibling count of the last child
+  PASS  §2.2 preceding-sibling is a reverse axis (nearest first)
+  PASS  §2.2 following axis excludes descendants, counts later elements
+  PASS  §2.2 preceding axis excludes ancestors, counts earlier elements
+  PASS  §2.2 following-sibling of the last child is empty
+  PASS  §2.3 processing-instruction() counts both PIs
+  PASS  §2.3 processing-instruction('target') filters by target
+  PASS  §5 PI string-value is its data
+  PASS  §2.3 name() of a PI is its target
+  PASS  §2.3 node() sees PIs + element (2 PIs + 1 element = 3)
+  PASS  §2.3 '*' does NOT match PIs (principal node type)
+  PASS  §3.3 union of overlapping node-sets removes duplicates
+  PASS  §3.3 self-union removes all duplicates
+  PASS  §3.3 union result is in document order, not concatenation order
+  PASS  §3.4 string < string (lexicographic)
+  PASS  §3.4 string > string
+  PASS  §3.4 number < number
+  PASS  §3.4 number >= number (equal)
+  PASS  §3.4 node-set = node-set (some equal pair)
+  PASS  §3.4 node-set != node-set (distinct string values)
+  PASS  §3.4 relational node-set coercion (>=)
+  PASS  §2.2 namespace:: axis parses (no longer deferred)
+  PASS  §2.2 namespace axis: count of in-scope namespace nodes
+  PASS  §2.2 namespace axis: xml prefix is always in scope
+  PASS  §5.4 namespace node string-value is its URI
+  PASS  §5.4 namespace node name() is its prefix
+  PASS  our order: default namespace node sorts first (empty name)
+  PASS  our order: first prefixed node after default is 'a'
+  PASS  our order: xml sorts last here (after a, b)
+  PASS  §2.2 namespace axis: child inherits ancestor namespaces
+  PASS  §2.2 namespace::* wildcard matches all namespace nodes
+  PASS  'id("x")' (unknown function) does not crash the parser
+xpath_tests: 100 pass, 0 fail (out of 100)
+xpath_tests: PASS
+
+--- xsd_datatypes_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/tests/unit/_build/xsd_datatypes_unit.ml", line 1:
+    Error: No implementations provided for the following modules:
+             RDFS_Closure_SemiNaive referenced from /home/user/factoidal/formal/fstar/ocaml-output/RDFS_SchemaSplit.cmx,
+               /home/user/factoidal/formal/fstar/ocaml-output/RDF_Graph_Executable.cmx
+xsd_datatypes_unit: FAIL (build)
+
+--- xslt_fidelity_tests ---
+xslt_fidelity_tests: apply-templates/with-param + hcard2rdf routing
+
+  PASS  iso1:apply-templates delivers with-param
+  PASS  iso2:moded with-param + chained param default + AVT name
+  PASS  graph:single field (nickname) via moded apply-templates
+  PASS  graph:forwarded param through recursion (given-name)
+  PASS  real:grddl-card5n (hcard2rdf.xsl)
+
+xslt_fidelity_tests summary: 5 pass, 0 fail (out of 5)
+xslt_fidelity_tests: PASS
+
+============================================================
+tests/unit summary: 19 file(s) pass, 28 file(s) fail (out of 47)

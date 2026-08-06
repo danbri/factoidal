@@ -30,6 +30,10 @@ let emit_once_term (ig : RDF_Indexed.indexed_graph)
   else
     RDF_Graph.add_triple_unchecked acc
       { RDF_Triple.s = sub; RDF_Triple.p = prd; RDF_Triple.o = obj }
+let rdfs7_emit (ig : RDF_Indexed.indexed_graph) (q : RDF_Term.wf_iri)
+  (acc2 : RDF_Graph.rdf_graph) (tt : RDF_Triple.triple) :
+  RDF_Graph.rdf_graph=
+  emit_once_term ig acc2 tt.RDF_Triple.s q tt.RDF_Triple.o
 let rdfs_rule_subPropertyOf (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   let decls =
@@ -39,10 +43,7 @@ let rdfs_rule_subPropertyOf (g : RDF_Graph.rdf_graph)
        match ((decl.RDF_Triple.s), (decl.RDF_Triple.o)) with
        | (RDF_Term.S_IRI p, RDF_Term.T_IRI q) ->
            let matching = RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_pred p in
-           FStar_List_Tot_Base.fold_left
-             (fun acc2 t ->
-                emit_once_term ig acc2 t.RDF_Triple.s q t.RDF_Triple.o) acc
-             matching
+           FStar_List_Tot_Base.fold_left (rdfs7_emit ig q) acc matching
        | (uu___, uu___1) -> acc) g decls
 let rdfs_rule_domain (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=

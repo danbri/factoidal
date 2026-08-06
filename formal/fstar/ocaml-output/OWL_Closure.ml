@@ -1038,34 +1038,35 @@ let owl_rule_minc1_bridge (g : RDF_Graph.rdf_graph)
                   RDF_Graph.add_triple_unchecked acc2 new_t
               | uu___ -> acc2) acc onprops
        else acc) g g
+let owl_cls_hv1_emit (p : RDF_Term.wf_iri) (v : RDF_Term.rdf_term)
+  (acc3 : RDF_Graph.rdf_graph) (x : RDF_Term.subject) : RDF_Graph.rdf_graph=
+  RDF_Graph.add_triple_unchecked acc3
+    { RDF_Triple.s = x; RDF_Triple.p = p; RDF_Triple.o = v }
+let owl_cls_hv1_mid (ig : RDF_Indexed.indexed_graph)
+  (r_subj : RDF_Term.subject) (v : RDF_Term.rdf_term)
+  (acc2 : RDF_Graph.rdf_graph) (op_term : RDF_Term.rdf_term) :
+  RDF_Graph.rdf_graph=
+  match op_term with
+  | RDF_Term.T_IRI p ->
+      let members =
+        RDF_Indexed.find_subjects_indexed ig RDFS_Closure.rdf_type
+          (RDF_Graph.subject_to_term r_subj) in
+      FStar_List_Tot_Base.fold_left (owl_cls_hv1_emit p v) acc2 members
+  | uu___ -> acc2
+let owl_cls_hv1_outer (ig : RDF_Indexed.indexed_graph)
+  (acc : RDF_Graph.rdf_graph) (hv_t : RDF_Triple.triple) :
+  RDF_Graph.rdf_graph=
+  if hv_t.RDF_Triple.p = owl_hasValue_iri
+  then
+    let r_subj = hv_t.RDF_Triple.s in
+    let v = hv_t.RDF_Triple.o in
+    let onprops =
+      RDF_Indexed.find_objects_indexed ig r_subj owl_onProperty_iri in
+    FStar_List_Tot_Base.fold_left (owl_cls_hv1_mid ig r_subj v) acc onprops
+  else acc
 let owl_rule_cls_hv1 (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
-  FStar_List_Tot_Base.fold_left
-    (fun acc hv_t ->
-       if hv_t.RDF_Triple.p = owl_hasValue_iri
-       then
-         let r_subj = hv_t.RDF_Triple.s in
-         let v = hv_t.RDF_Triple.o in
-         let onprops =
-           RDF_Indexed.find_objects_indexed ig r_subj owl_onProperty_iri in
-         FStar_List_Tot_Base.fold_left
-           (fun acc2 op_term ->
-              match op_term with
-              | RDF_Term.T_IRI p ->
-                  let members =
-                    RDF_Indexed.find_subjects_indexed ig
-                      RDFS_Closure.rdf_type
-                      (RDF_Graph.subject_to_term r_subj) in
-                  FStar_List_Tot_Base.fold_left
-                    (fun acc3 x ->
-                       RDF_Graph.add_triple_unchecked acc3
-                         {
-                           RDF_Triple.s = x;
-                           RDF_Triple.p = p;
-                           RDF_Triple.o = v
-                         }) acc2 members
-              | uu___ -> acc2) acc onprops
-       else acc) g g
+  FStar_List_Tot_Base.fold_left (owl_cls_hv1_outer ig) g g
 let owl_rule_cls_hv2 (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   FStar_List_Tot_Base.fold_left
@@ -1796,44 +1797,50 @@ let owl_rule_cls_maxqc_comp (g : RDF_Graph.rdf_graph)
                        | uu___ -> acc3) acc2 classes
               | uu___ -> acc2) acc props
        else acc) g g
+let owl_cls_avf1_emit (d : RDF_Term.wf_iri) (acc4 : RDF_Graph.rdf_graph)
+  (y : RDF_Term.rdf_term) : RDF_Graph.rdf_graph=
+  match RDF_Graph.term_to_subject y with
+  | FStar_Pervasives_Native.None -> acc4
+  | FStar_Pervasives_Native.Some y_subj ->
+      let new_t =
+        {
+          RDF_Triple.s = y_subj;
+          RDF_Triple.p = RDFS_Closure.rdf_type;
+          RDF_Triple.o = (RDF_Term.T_IRI d)
+        } in
+      RDF_Graph.add_triple_unchecked acc4 new_t
+let owl_cls_avf1_member (ig : RDF_Indexed.indexed_graph)
+  (d : RDF_Term.wf_iri) (p : RDF_Term.wf_iri) (acc3 : RDF_Graph.rdf_graph)
+  (x : RDF_Term.subject) : RDF_Graph.rdf_graph=
+  let ys = RDF_Indexed.find_objects_indexed ig x p in
+  FStar_List_Tot_Base.fold_left (owl_cls_avf1_emit d) acc3 ys
+let owl_cls_avf1_prop (ig : RDF_Indexed.indexed_graph) (d : RDF_Term.wf_iri)
+  (r_subj : RDF_Term.subject) (acc2 : RDF_Graph.rdf_graph)
+  (p_term : RDF_Term.rdf_term) : RDF_Graph.rdf_graph=
+  match p_term with
+  | RDF_Term.T_IRI p ->
+      let members =
+        RDF_Indexed.find_subjects_indexed ig RDFS_Closure.rdf_type
+          (RDF_Graph.subject_to_term r_subj) in
+      FStar_List_Tot_Base.fold_left (owl_cls_avf1_member ig d p) acc2 members
+  | uu___ -> acc2
+let owl_cls_avf1_outer (ig : RDF_Indexed.indexed_graph)
+  (acc : RDF_Graph.rdf_graph) (t_avf : RDF_Triple.triple) :
+  RDF_Graph.rdf_graph=
+  if t_avf.RDF_Triple.p = owl_allValuesFrom_iri
+  then
+    match t_avf.RDF_Triple.o with
+    | RDF_Term.T_IRI d ->
+        let r_subj = t_avf.RDF_Triple.s in
+        let props =
+          RDF_Indexed.find_objects_indexed ig r_subj owl_onProperty_iri in
+        FStar_List_Tot_Base.fold_left (owl_cls_avf1_prop ig d r_subj) acc
+          props
+    | uu___ -> acc
+  else acc
 let owl_rule_cls_avf1 (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
-  FStar_List_Tot_Base.fold_left
-    (fun acc t_avf ->
-       if t_avf.RDF_Triple.p = owl_allValuesFrom_iri
-       then
-         match t_avf.RDF_Triple.o with
-         | RDF_Term.T_IRI d ->
-             let r_subj = t_avf.RDF_Triple.s in
-             let props =
-               RDF_Indexed.find_objects_indexed ig r_subj owl_onProperty_iri in
-             FStar_List_Tot_Base.fold_left
-               (fun acc2 p_term ->
-                  match p_term with
-                  | RDF_Term.T_IRI p ->
-                      let members =
-                        RDF_Indexed.find_subjects_indexed ig
-                          RDFS_Closure.rdf_type
-                          (RDF_Graph.subject_to_term r_subj) in
-                      FStar_List_Tot_Base.fold_left
-                        (fun acc3 x ->
-                           let ys = RDF_Indexed.find_objects_indexed ig x p in
-                           FStar_List_Tot_Base.fold_left
-                             (fun acc4 y ->
-                                match RDF_Graph.term_to_subject y with
-                                | FStar_Pervasives_Native.None -> acc4
-                                | FStar_Pervasives_Native.Some y_subj ->
-                                    let new_t =
-                                      {
-                                        RDF_Triple.s = y_subj;
-                                        RDF_Triple.p = RDFS_Closure.rdf_type;
-                                        RDF_Triple.o = (RDF_Term.T_IRI d)
-                                      } in
-                                    RDF_Graph.add_triple_unchecked acc4 new_t)
-                             acc3 ys) acc2 members
-                  | uu___ -> acc2) acc props
-         | uu___ -> acc
-       else acc) g g
+  FStar_List_Tot_Base.fold_left (owl_cls_avf1_outer ig) g g
 let owl_ReflexiveProperty : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#ReflexiveProperty"
 let prp_rfl_individuals (g : RDF_Graph.rdf_graph) :
@@ -1920,41 +1927,43 @@ let decode_chain_pair (g : RDF_Graph.rdf_graph)
             | (uu___2, uu___3) -> FStar_Pervasives_Native.None)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
   | (uu___, uu___1) -> FStar_Pervasives_Native.None
+let owl_chain2_emit (p_iri : RDF_Term.wf_iri) (x : RDF_Term.subject)
+  (acc3 : RDF_Graph.rdf_graph) (z_term : RDF_Term.rdf_term) :
+  RDF_Graph.rdf_graph=
+  let new_t =
+    { RDF_Triple.s = x; RDF_Triple.p = p_iri; RDF_Triple.o = z_term } in
+  RDF_Graph.add_triple_unchecked acc3 new_t
+let owl_chain2_mid (ig : RDF_Indexed.indexed_graph) (p_iri : RDF_Term.wf_iri)
+  (p1 : RDF_Term.wf_iri) (p2 : RDF_Term.wf_iri) (acc2 : RDF_Graph.rdf_graph)
+  (t1 : RDF_Triple.triple) : RDF_Graph.rdf_graph=
+  if t1.RDF_Triple.p = p1
+  then
+    match RDF_Graph.term_to_subject t1.RDF_Triple.o with
+    | FStar_Pervasives_Native.Some y_subj ->
+        let zs = RDF_Indexed.find_objects_indexed ig y_subj p2 in
+        FStar_List_Tot_Base.fold_left (owl_chain2_emit p_iri t1.RDF_Triple.s)
+          acc2 zs
+    | FStar_Pervasives_Native.None -> acc2
+  else acc2
+let owl_chain2_outer (g : RDF_Graph.rdf_graph)
+  (ig : RDF_Indexed.indexed_graph) (acc : RDF_Graph.rdf_graph)
+  (chain_t : RDF_Triple.triple) : RDF_Graph.rdf_graph=
+  if chain_t.RDF_Triple.p = owl_propertyChainAxiom
+  then
+    match ((chain_t.RDF_Triple.s),
+            (RDF_Graph.term_to_subject chain_t.RDF_Triple.o))
+    with
+    | (RDF_Term.S_IRI p_iri, FStar_Pervasives_Native.Some list_subj) ->
+        (match decode_chain_pair g ig list_subj with
+         | FStar_Pervasives_Native.Some (p1, p2) ->
+             FStar_List_Tot_Base.fold_left (owl_chain2_mid ig p_iri p1 p2)
+               acc g
+         | FStar_Pervasives_Native.None -> acc)
+    | (uu___, uu___1) -> acc
+  else acc
 let owl_rule_property_chain_2 (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
-  FStar_List_Tot_Base.fold_left
-    (fun acc chain_t ->
-       if chain_t.RDF_Triple.p = owl_propertyChainAxiom
-       then
-         match ((chain_t.RDF_Triple.s),
-                 (RDF_Graph.term_to_subject chain_t.RDF_Triple.o))
-         with
-         | (RDF_Term.S_IRI p_iri, FStar_Pervasives_Native.Some list_subj) ->
-             (match decode_chain_pair g ig list_subj with
-              | FStar_Pervasives_Native.Some (p1, p2) ->
-                  FStar_List_Tot_Base.fold_left
-                    (fun acc2 t1 ->
-                       if t1.RDF_Triple.p = p1
-                       then
-                         match RDF_Graph.term_to_subject t1.RDF_Triple.o with
-                         | FStar_Pervasives_Native.Some y_subj ->
-                             let zs =
-                               RDF_Indexed.find_objects_indexed ig y_subj p2 in
-                             FStar_List_Tot_Base.fold_left
-                               (fun acc3 z_term ->
-                                  let new_t =
-                                    {
-                                      RDF_Triple.s = (t1.RDF_Triple.s);
-                                      RDF_Triple.p = p_iri;
-                                      RDF_Triple.o = z_term
-                                    } in
-                                  RDF_Graph.add_triple_unchecked acc3 new_t)
-                               acc2 zs
-                         | FStar_Pervasives_Native.None -> acc2
-                       else acc2) acc g
-              | FStar_Pervasives_Native.None -> acc)
-         | (uu___, uu___1) -> acc
-       else acc) g g
+  FStar_List_Tot_Base.fold_left (owl_chain2_outer g ig) g g
 let rec decode_chain_list_fuel (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) (head_subj : RDF_Term.subject)
   (fuel : Prims.nat) :
