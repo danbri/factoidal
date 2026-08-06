@@ -38,20 +38,42 @@ module SPARQL11.EntailmentRegime.RDFS
 //   (`theorem_rdfs_regime_bgp_sound`). This is the direction an
 //   engine's answers have to satisfy for its output to be correct.
 //
-// NOT PROVED, and named rather than assumed:
-//   COMPLETENESS -- the converse. It composes `rho_df_closure_
-//   decides` LEFT-to-right with layer 2's completeness, and layer 2's
-//   completeness is BLOCKED (finding BR-4 of SPARQL11.Algebra.
-//   BGPRefinement: `ig_search` narrows to one of six index buckets and
-//   only the PREDICATE bucket has a completeness lemma; for the
-//   object-keyed buckets completeness is expected to be FALSE outside
-//   the `term_exact` fragment, because the probe accepts on
-//   `rdf_term_eq` while the bucket keys on `term_to_key_opt`).
-//   So the converse is stated CONDITIONALLY, on an explicitly named
-//   `eval_bgp_complete_at` hypothesis (part 6) that says exactly what
-//   is missing and nothing more. `theorem_rdfs_regime_bgp_exact` is
-//   the iff under that hypothesis; it is the shape M3 wants, with its
-//   one open obligation carried in plain sight rather than folded in.
+//   COMPLETENESS -- the converse, PROVED 2026-08-06 (part 9). It
+//   composes `rho_df_closure_decides` LEFT-to-right with layer 2's
+//   completeness, which is no longer blocked: finding BR-4 of
+//   SPARQL11.Algebra.BGPRefinement is discharged there (the five
+//   missing index-bucket lemmas are instantiations of
+//   RDF.Indexed.Completeness's generic `lemma_build_bucket_complete`,
+//   and the object-bucket falsity BR-4 predicted is excluded by the
+//   `term_exact` fragment the module already carries). Layer 2 proves
+//   it at an ARBITRARY store, so it lands at BOTH the `eval_bgp`
+//   store and the SELECTIVE store finding RT-2 named -- the
+//   unconditional theorems are `theorem_rdfs_regime_bgp_complete`,
+//   `theorem_rdfs_regime_bgp_exact_answer`,
+//   `theorem_rdfs_regime_ask_complete` (the `ask_bgp` proxy),
+//   `theorem_rdfs_regime_bgp_complete_selective` and
+//   `theorem_rdfs_regime_ask_query_complete` (the literal shipping
+//   entry point).
+//
+//   ONE STATEMENT CORRECTION came with the proof, recorded as finding
+//   RT-5 in part 9: the conclusion is `instantiate_bgp q muo ==
+//   instantiate_bgp q mu` for a solution `muo` the evaluator returns,
+//   NOT `memP mu (eval_bgp q c)`. The latter is false for a
+//   caller-supplied `mu` whose bindings sit in a different list order,
+//   because `sm_bind` conses. Everything in this module speaks
+//   `instantiate_bgp q mu`, so nothing here is weakened.
+//
+// SUPERSEDED but retained:
+//   `eval_bgp_complete_at` (part 6), `eval_bgp_store_complete_at`
+//   (part 8) and the four theorems that take them
+//   (`theorem_rdfs_regime_bgp_complete_conditional`,
+//   `theorem_rdfs_regime_ask_complete_conditional`, the iff
+//   `theorem_rdfs_regime_bgp_exact`,
+//   `theorem_rdfs_regime_bgp_complete_conditional_selective` and
+//   `theorem_rdfs_regime_ask_query_complete_conditional`). They
+//   remain TRUE and remain usable by a caller holding the evaluator's
+//   own list; they are no longer the strongest thing available. Read
+//   part 9 first.
 //
 // -------------------------------------------------------------------
 // FINDINGS
@@ -530,11 +552,13 @@ let theorem_rdfs_regime_bgp_sound g q mu fuel =
   // DECIDES, right-to-left.
   lemma_decides_hyps_suffices g e fuel
 
-/// The named gap. Finding BR-4 of SPARQL11.Algebra.BGPRefinement:
-/// `ig_search` narrows to ONE of six index buckets and completeness is
-/// proved for the predicate bucket only. This predicate says exactly
-/// what layer 2 would have to deliver, at the one graph layer 3 needs
-/// it at, and nothing more. It is a HYPOTHESIS, never an `assume`.
+/// SUPERSEDED 2026-08-06 by part 9 -- retained, still true, no longer
+/// the strongest thing available. It was the named BR-4 gap. Layer 2
+/// now proves completeness, but NOT in this shape: finding RT-5 (part
+/// 9) shows `memP mu (eval_bgp q h)` for a caller-supplied `mu` is
+/// FALSE, because `sm_bind` conses and the evaluator emits one binding
+/// ORDER. The unconditional theorem concludes
+/// `instantiate_bgp q muo == instantiate_bgp q mu` instead.
 let eval_bgp_complete_at (q : bgp) (h : rdf_graph) (mu : solution_mapping) : prop =
   SS.is_subgraph (instantiate_bgp q mu) h ==> memP mu (eval_bgp q h)
 
@@ -804,17 +828,17 @@ let theorem_rdfs_regime_ask_query_sound g q bgp_q ds fuel =
   lemma_eval_ask_query_bgp_shape q bgp_q c ds;
   theorem_rdfs_regime_ask_pattern_sound g q.q_base bgp_q ds fuel
 
-/// The named gap for the SELECTIVE store -- the shipping ASK entry
-/// point's analogue of `eval_bgp_complete_at` (finding BR-4), at the
-/// store `graph_to_store_for` actually builds. NOT proved: index
-/// completeness for a store some of whose buckets were never built
-/// carries at least the same open status as the full-index version
-/// (BR-4 is about `ig_search`'s bucket CHOICE, which is identical at
-/// both stores -- a bucket the selective store never built is simply
+/// SUPERSEDED 2026-08-06 by part 9 -- retained, still true. It was the
+/// named BR-4 gap for the SELECTIVE store. Its own reasoning is what
+/// closed it: "a bucket the selective store never built is simply
 /// never offered as a candidate, BGPRefinement part 2b -- so nothing
-/// about the selective store makes completeness EASIER; closing it is
-/// not this module's job, and RT-2 itself is a soundness finding, not
-/// a completeness one).
+/// about the selective store makes completeness EASIER". Nothing makes
+/// it HARDER either, so BGPRefinement part 2c proves the probe
+/// complete at an arbitrary `bucket_needs` by the same flag split, and
+/// parts 11-12 carry it through the fan-out at an arbitrary store.
+/// The shape correction of finding RT-5 applies here too: the
+/// unconditional selective theorem concludes answer equality, not
+/// `memP mu`.
 let eval_bgp_store_complete_at (q : bgp) (h : rdf_graph) (mu : solution_mapping) : prop =
   SS.is_subgraph (instantiate_bgp q mu) h ==>
   memP mu (eval_bgp_store q (graph_to_store_for (GP_BGP q) h))
@@ -865,5 +889,227 @@ let theorem_rdfs_regime_ask_query_complete_conditional g q bgp_q mu ds fuel =
   lemma_eval_pattern_bgp_is_selective_store q.q_base bgp_q c ds;
   assert (Cons? (eval_pattern q.q_base (GP_BGP bgp_q) c ds));
   lemma_eval_ask_query_bgp_shape q bgp_q c ds
+
+(** ====================================================================== **)
+(** Part 9: THE GAP CLOSED (finding BR-4, RESOLVED 2026-08-06)             **)
+(**                                                                        **)
+(** Layer 2 now proves completeness (SPARQL11.Algebra.BGPRefinement parts  **)
+(** 2c and 9-12), at an ARBITRARY store, so BOTH named gaps go: part 6's   **)
+(** `eval_bgp_complete_at` (the `eval_bgp` proxy) and part 8's             **)
+(** `eval_bgp_store_complete_at` (the SHIPPING selective store). Part 8's  **)
+(** own reasoning is what unlocked the second one -- "a bucket the         **)
+(** selective store never built is simply never offered as a candidate,    **)
+(** so nothing about the selective store makes completeness EASIER" is     **)
+(** correct, and nothing makes it HARDER either: `bucket_cand_complete t   **)
+(** None` is vacuously true, exactly as `bucket_cand_sound ig None` is.    **)
+(** So the flag split that carried part 2b's soundness carries part 2c's   **)
+(** completeness unchanged, and this part restates BOTH conditional        **)
+(** families unconditionally.                                              **)
+(**                                                                        **)
+(** TWO CORRECTIONS came with the proof. Both are STATEMENT bugs the       **)
+(** proof surfaced, in the same class as RT-4.                             **)
+(**                                                                        **)
+(** RT-5. `memP mu (eval_bgp q h)` IS THE WRONG CONCLUSION, AND IS FALSE.  **)
+(**   `solution_mapping` is an association LIST and `sm_bind` conses       **)
+(**   (SPARQL11.Algebra.fst:103), so the evaluator emits ONE permutation   **)
+(**   of the bindings -- the one `choose_best_tp`'s cost ordering over the **)
+(**   actual data dictates. A caller-supplied `mu` with the same bindings  **)
+(**   in another order is a different list and is genuinely not `memP` of  **)
+(**   the result, no matter how complete the index is. Two patterns and    **)
+(**   two variables suffice to exhibit it. Neither `eval_bgp_complete_at`  **)
+(**   nor `eval_bgp_store_complete_at` can be discharged as written, and   **)
+(**   the theorems that take them stay exactly as they were -- still       **)
+(**   true, still usable by a caller who can supply the engine's own list. **)
+(**                                                                        **)
+(**   What is true, and what every statement in this module actually       **)
+(**   consumes, is at the ANSWER level: the evaluator returns a solution   **)
+(**   `muo` with `instantiate_bgp q muo == instantiate_bgp q mu`. Nothing  **)
+(**   in parts 1-8 inspects a solution's list structure -- `rho_df_entails **)
+(**   g (instantiate_bgp q mu)`, `ask_bgp` and `eval_ask_query` are the    **)
+(**   only things asked of it -- so the answer-level form loses nothing    **)
+(**   here and the theorems below are UNCONDITIONAL. ASK in particular     **)
+(**   asks only for NON-EMPTINESS, so RT-5 costs it nothing at all.        **)
+(**                                                                        **)
+(**   The residual (`S.smap_eq muo mu`, not merely equal answers) is the   **)
+(**   DOMAIN clause `dom(mu) = var(BGP)` that layer 2's                    **)
+(**   `lemma_bgp_sol_spec_from_subgraph_clause` already names as a         **)
+(**   separate commit. It is `sm_bind` bookkeeping, not graph              **)
+(**   mathematics, and it is the ONLY thing standing between this module   **)
+(**   and a literal set equality.                                          **)
+(**                                                                        **)
+(** RT-6. `is_subgraph (instantiate_bgp q mu) c` IS WEAKER THAN THE        **)
+(**   SUBGRAPH CLAUSE. `instantiate_bgp` SILENTLY DROPS a pattern it       **)
+(**   cannot instantiate (SPARQL11.Algebra.fst:7557-7564), so a `mu` that  **)
+(**   binds nothing gives the EMPTY instantiated BGP, which is a subgraph  **)
+(**   of everything. The missing clause is `bgp_instantiable` below, and   **)
+(**   it is a hypothesis rather than a derived fact for that reason.       **)
+(** ====================================================================== **)
+
+/// Every pattern of `q` is fully determined by `mu` -- finding RT-6.
+/// Decidable, per query and per candidate solution, like
+/// `bgp_ground_positions` / `smap_ground` of part 2.
+let bgp_instantiable (q : bgp) (mu : solution_mapping) : prop =
+  forall (p : triple_pattern). memP p q ==> Some? (instantiate_tp p mu)
+
+/// The bridge parts 6 and 8 share, factored: from the regime-side
+/// entailment fact to the layer-2-side subset fact. Body is the
+/// conditional theorems' body up to (but not including) the point
+/// where they consumed their named gap.
+let lemma_regime_answer_is_subgraph
+      (g : rdf_graph) (q : bgp) (mu : solution_mapping) (fuel : nat)
+  : Lemma (requires CP.rho_df_entails g (instantiate_bgp q mu) /\
+                    graph_ground (instantiate_bgp q mu) /\
+                    rho_df_decides_hyps g fuel)
+          (ensures  (let c = RC.rho_df_closure g fuel in
+                     forall (t : triple).
+                       memP t (instantiate_bgp q mu) ==> memP t c)) =
+  let c = RC.rho_df_closure g fuel in
+  let e = instantiate_bgp q mu in
+  lemma_ground_implies_tt_free e;
+  // DECIDES, left-to-right.
+  lemma_decides_hyps_suffices g e fuel;
+  assert (SS.simple_entailment_spec c e);
+  // GROUND COLLAPSE, the half that needs groundness (part 3).
+  lemma_spec_ground_implies_subgraph c e
+
+/// THE COMPLETENESS HALF, UNCONDITIONAL, at the `eval_bgp` store. Same
+/// hypothesis list as `theorem_rdfs_regime_bgp_complete_conditional`
+/// with `eval_bgp_complete_at` REMOVED and replaced by the two layer-2
+/// fragment conditions (`BR.bgp_frag` / `BR.graph_frag`, already
+/// carried by the soundness theorem) plus `bgp_instantiable`
+/// (finding RT-6).
+val theorem_rdfs_regime_bgp_complete
+      (g : rdf_graph) (q : bgp) (mu : solution_mapping) (fuel : nat)
+  : Lemma
+    (requires (let c = RC.rho_df_closure g fuel in
+               CP.rho_df_entails g (instantiate_bgp q mu) /\
+               graph_ground (instantiate_bgp q mu) /\
+               rho_df_decides_hyps g fuel /\
+               BR.bgp_frag q /\ BR.graph_frag c /\
+               bgp_instantiable q mu))
+    (ensures  (let c = RC.rho_df_closure g fuel in
+               (exists (muo : solution_mapping).
+                  memP muo (eval_bgp q c) /\
+                  instantiate_bgp q muo == instantiate_bgp q mu)))
+
+let theorem_rdfs_regime_bgp_complete g q mu fuel =
+  let c = RC.rho_df_closure g fuel in
+  lemma_regime_answer_is_subgraph g q mu fuel;
+  // LAYER 2, completeness (finding BR-4, discharged 2026-08-06).
+  BR.theorem_eval_bgp_complete_from_subset q c mu
+
+/// THE IFF, UNCONDITIONAL, at the answer level. This is M3's target
+/// shape with its one open obligation now closed: the evaluator's
+/// answer set over the rho-df closure IS the RDFS regime's answer set,
+/// on the fragment, for ground answers.
+val theorem_rdfs_regime_bgp_exact_answer
+      (g : rdf_graph) (q : bgp) (mu : solution_mapping) (fuel : nat)
+  : Lemma
+    (requires (let c = RC.rho_df_closure g fuel in
+               BR.bgp_frag q /\ BR.graph_frag c /\
+               graph_ground (instantiate_bgp q mu) /\
+               rho_df_decides_hyps g fuel /\
+               bgp_instantiable q mu))
+    (ensures  (let c = RC.rho_df_closure g fuel in
+               (exists (muo : solution_mapping).
+                  memP muo (eval_bgp q c) /\
+                  instantiate_bgp q muo == instantiate_bgp q mu)
+               <==>
+               CP.rho_df_entails g (instantiate_bgp q mu)))
+
+let theorem_rdfs_regime_bgp_exact_answer g q mu fuel =
+  let c = RC.rho_df_closure g fuel in
+  FStar.Classical.move_requires
+    (theorem_rdfs_regime_bgp_complete g q mu) fuel;
+  let aux (muo : solution_mapping)
+    : Lemma (requires memP muo (eval_bgp q c) /\
+                      instantiate_bgp q muo == instantiate_bgp q mu)
+            (ensures  CP.rho_df_entails g (instantiate_bgp q mu)) =
+    theorem_rdfs_regime_bgp_sound g q muo fuel
+  in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+
+/// ASK COMPLETENESS, UNCONDITIONAL, at the `ask_bgp` proxy -- the
+/// mirror of `theorem_rdfs_regime_ask_sound` (part 7) with the named
+/// gap gone.
+val theorem_rdfs_regime_ask_complete
+      (g : rdf_graph) (q : bgp) (mu : solution_mapping) (fuel : nat)
+  : Lemma
+    (requires (let c = RC.rho_df_closure g fuel in
+               CP.rho_df_entails g (instantiate_bgp q mu) /\
+               graph_ground (instantiate_bgp q mu) /\
+               rho_df_decides_hyps g fuel /\
+               BR.bgp_frag q /\ BR.graph_frag c /\
+               bgp_instantiable q mu))
+    (ensures  ask_bgp q (RC.rho_df_closure g fuel) == true)
+
+let theorem_rdfs_regime_ask_complete g q mu fuel =
+  let c = RC.rho_df_closure g fuel in
+  theorem_rdfs_regime_bgp_complete g q mu fuel;
+  let aux (muo : solution_mapping)
+    : Lemma (requires memP muo (eval_bgp q c))
+            (ensures  ask_bgp q c == true) =
+    match eval_bgp q c with
+    | _ :: _ -> ()
+  in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+
+/// THE COMPLETENESS HALF, UNCONDITIONAL, at the SELECTIVE store --
+/// the exact analogue of
+/// `theorem_rdfs_regime_bgp_complete_conditional_selective` (part 8)
+/// with `eval_bgp_store_complete_at` REMOVED. Bridge (parts 3-5)
+/// unchanged, as with soundness: RT-2 is a store-selection finding,
+/// not an entailment one, and BR-4's closure is store-generic.
+val theorem_rdfs_regime_bgp_complete_selective
+      (g : rdf_graph) (q : bgp) (mu : solution_mapping) (fuel : nat)
+  : Lemma
+    (requires (let c = RC.rho_df_closure g fuel in
+               CP.rho_df_entails g (instantiate_bgp q mu) /\
+               graph_ground (instantiate_bgp q mu) /\
+               rho_df_decides_hyps g fuel /\
+               BR.bgp_frag q /\ BR.graph_frag c /\
+               bgp_instantiable q mu))
+    (ensures  (let c = RC.rho_df_closure g fuel in
+               (exists (muo : solution_mapping).
+                  memP muo (eval_bgp_store q (graph_to_store_for (GP_BGP q) c)) /\
+                  instantiate_bgp q muo == instantiate_bgp q mu)))
+
+let theorem_rdfs_regime_bgp_complete_selective g q mu fuel =
+  let c = RC.rho_df_closure g fuel in
+  lemma_regime_answer_is_subgraph g q mu fuel;
+  BR.theorem_eval_bgp_store_for_complete_from_subset (GP_BGP q) q c mu
+
+/// THE SHIPPING-PATH COMPLETENESS THEOREM, UNCONDITIONAL.
+/// `eval_ask_query` is the function SPARQL 1.1's ASK query form
+/// actually calls (SPARQL11.Algebra.fst:6158-6169). Findings RT-2 AND
+/// BR-4 are both closed at this one statement: the store is the
+/// selective one the shipping path builds, and the completeness fact
+/// about it is proved rather than assumed. Same syntactic shape
+/// restriction as the soundness version (no FROM/FROM NAMED, no
+/// post-query VALUES -- dataset and join bookkeeping the algebra
+/// layer above BGP matching owns).
+val theorem_rdfs_regime_ask_query_complete
+      (g : rdf_graph) (q : query) (bgp_q : bgp) (mu : solution_mapping)
+      (ds : rdf_dataset) (fuel : nat)
+  : Lemma
+    (requires (let c = RC.rho_df_closure g fuel in
+               q.q_form == QF_Ask /\ q.q_pattern == GP_BGP bgp_q /\
+               q.q_dataset == [] /\ q.q_values == None /\
+               CP.rho_df_entails g (instantiate_bgp bgp_q mu) /\
+               graph_ground (instantiate_bgp bgp_q mu) /\
+               rho_df_decides_hyps g fuel /\
+               BR.bgp_frag bgp_q /\ BR.graph_frag c /\
+               bgp_instantiable bgp_q mu))
+    (ensures  eval_ask_query q (RC.rho_df_closure g fuel) ds == true)
+
+let theorem_rdfs_regime_ask_query_complete g q bgp_q mu ds fuel =
+  let c = RC.rho_df_closure g fuel in
+  theorem_rdfs_regime_bgp_complete_selective g bgp_q mu fuel;
+  lemma_eval_pattern_bgp_is_selective_store q.q_base bgp_q c ds;
+  lemma_eval_ask_query_bgp_shape q bgp_q c ds;
+  let aux (muo : solution_mapping)
+    : Lemma (requires memP muo (eval_bgp_store bgp_q (graph_to_store_for (GP_BGP bgp_q) c)))
+            (ensures  eval_ask_query q c ds == true) =
+    match eval_bgp_store bgp_q (graph_to_store_for (GP_BGP bgp_q) c) with
+    | _ :: _ -> ()
+  in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
 
 #pop-options

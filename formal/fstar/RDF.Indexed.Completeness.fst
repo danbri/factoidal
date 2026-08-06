@@ -555,3 +555,97 @@ let lemma_build_indexed_complete_pred (g : rdf_graph)
     (ensures List.Tot.memP t (bucket_lookup ig.ig_pred t.p)) =
     lemma_build_bucket_complete bucket_key_pred g t.p t
   in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+
+// ===================================================================
+// Stage 6 (2026-08-06): the OTHER FIVE BUCKETS. Finding BR-4 of
+// SPARQL11.Algebra.BGPRefinement named the missing pieces by name --
+// "Completeness is proved today for the PREDICATE bucket only ...;
+// there is no analogue for ig_subj / ig_obj / ig_sp / ig_po / ig_so".
+// Stage 5's `lemma_build_bucket_complete` is generic over `key_of`, so
+// each of the five is that lemma at one more key extractor. They split
+// two ways:
+//
+//   TOTAL keys (`bucket_key_subj`, `bucket_key_sp`) -- always `Some`,
+//   so the statement quantifies over graph triples with no side
+//   condition, exactly like the predicate bucket.
+//
+//   OPTION keys (`bucket_key_obj`, `bucket_key_po`, `bucket_key_so`)
+//   -- `term_to_key_opt` returns `None` for a literal or an RDF 1.2
+//   triple term, and `build_bucket` files such a triple in NO bucket
+//   binding at all (RDF.Indexed.fsti: "Literals ... are not indexed").
+//   So the statement is necessarily CONDITIONAL ON THE KEY EXISTING:
+//   `memP t g /\ bucket_key_X t == Some k ==> memP t (lookup ... k)`.
+//   That is not a weakening of the proof, it is the true statement:
+//   an object-literal triple is genuinely absent from ig_obj, and any
+//   consumer must (as `ig_search` does) fall back to another bucket.
+// ===================================================================
+
+let lemma_build_indexed_complete_subj (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed g in
+              forall (t : triple).
+                List.Tot.memP t g ==>
+                List.Tot.memP t (bucket_lookup ig.ig_subj (subject_to_key t.s)))) =
+  let ig = build_indexed g in
+  assert (ig.ig_subj == build_bucket bucket_key_subj g);
+  let aux (t : triple) : Lemma
+    (requires List.Tot.memP t g)
+    (ensures List.Tot.memP t (bucket_lookup ig.ig_subj (subject_to_key t.s))) =
+    lemma_build_bucket_complete bucket_key_subj g (subject_to_key t.s) t
+  in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+
+let lemma_build_indexed_complete_sp (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed g in
+              forall (t : triple).
+                List.Tot.memP t g ==>
+                List.Tot.memP t (bucket_lookup ig.ig_sp (sp_key t.s t.p)))) =
+  let ig = build_indexed g in
+  assert (ig.ig_sp == build_bucket bucket_key_sp g);
+  let aux (t : triple) : Lemma
+    (requires List.Tot.memP t g)
+    (ensures List.Tot.memP t (bucket_lookup ig.ig_sp (sp_key t.s t.p))) =
+    lemma_build_bucket_complete bucket_key_sp g (sp_key t.s t.p) t
+  in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+
+let lemma_build_indexed_complete_obj (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed g in
+              forall (t : triple) (k : string).
+                List.Tot.memP t g /\ term_to_key_opt t.o == Some k ==>
+                List.Tot.memP t (bucket_lookup ig.ig_obj k))) =
+  let ig = build_indexed g in
+  assert (ig.ig_obj == build_bucket bucket_key_obj g);
+  let aux (t : triple) (k : string) : Lemma
+    (requires List.Tot.memP t g /\ term_to_key_opt t.o == Some k)
+    (ensures List.Tot.memP t (bucket_lookup ig.ig_obj k)) =
+    lemma_build_bucket_complete bucket_key_obj g k t
+  in FStar.Classical.forall_intro_2 (fun t -> FStar.Classical.move_requires (aux t))
+
+let lemma_build_indexed_complete_po (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed g in
+              forall (t : triple) (k : string).
+                List.Tot.memP t g /\ po_key_opt t.p t.o == Some k ==>
+                List.Tot.memP t (bucket_lookup ig.ig_po k))) =
+  let ig = build_indexed g in
+  assert (ig.ig_po == build_bucket bucket_key_po g);
+  let aux (t : triple) (k : string) : Lemma
+    (requires List.Tot.memP t g /\ po_key_opt t.p t.o == Some k)
+    (ensures List.Tot.memP t (bucket_lookup ig.ig_po k)) =
+    lemma_build_bucket_complete bucket_key_po g k t
+  in FStar.Classical.forall_intro_2 (fun t -> FStar.Classical.move_requires (aux t))
+
+let lemma_build_indexed_complete_so (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed g in
+              forall (t : triple) (k : string).
+                List.Tot.memP t g /\ so_key_opt t.s t.o == Some k ==>
+                List.Tot.memP t (bucket_lookup ig.ig_so k))) =
+  let ig = build_indexed g in
+  assert (ig.ig_so == build_bucket bucket_key_so g);
+  let aux (t : triple) (k : string) : Lemma
+    (requires List.Tot.memP t g /\ so_key_opt t.s t.o == Some k)
+    (ensures List.Tot.memP t (bucket_lookup ig.ig_so k)) =
+    lemma_build_bucket_complete bucket_key_so g k t
+  in FStar.Classical.forall_intro_2 (fun t -> FStar.Classical.move_requires (aux t))

@@ -9,9 +9,17 @@ module SPARQL11.Algebra.BGPRefinement
 //    evaluator's solution set over `rdfs_closure g` equals
 //    { mu | mu(BGP) subset-of rdfs_closure g, mu minimal-scoped }"
 //
-// This module proves the SOUNDNESS half of that set equality against
-// the SHIPPING evaluator -- `SPARQL11.Algebra.eval_bgp`, the function
-// the engine actually calls -- for an ARBITRARY fixed graph. Nothing
+// This module proves BOTH HALVES of that set equality against the
+// SHIPPING evaluator -- `SPARQL11.Algebra.eval_bgp`, the function the
+// engine actually calls -- for an ARBITRARY fixed graph, and (finding
+// RT-2's generalisation) at an ARBITRARY store carrying the relevant
+// probe property, which is what reaches the selective-index store the
+// shipping ASK path builds. Parts 1-6 and 8 are SOUNDNESS; Parts 2c
+// and 9-12 are COMPLETENESS (2026-08-06), which discharges finding
+// BR-4 below. Read BR-4 and BR-5 before the completeness theorems:
+// BR-5 in particular corrects the SHAPE of the completeness
+// statement, and that correction is a statement fix, not a
+// proof-engineering compromise. Nothing
 // here mentions entailment: per SPARQL 1.1 Entailment Regimes section
 // 2, a regime redefines BGP matching only, so layer 2 is
 // entailment-agnostic and layer 3 instantiates it at the closure
@@ -74,25 +82,74 @@ module SPARQL11.Algebra.BGPRefinement
 //   are membership statements (`memP mu (eval_bgp b g) ==> ...`),
 //   which is the direction layer 3 consumes and which is unaffected.
 //
-// BR-4. COMPLETENESS IS BLOCKED ON INDEX COMPLETENESS, AND THE BLOCK
-//   IS NARROW AND NAMED. The converse ("every subset-matching mu is
-//   in `eval_bgp b g`") needs: every graph triple satisfying the
-//   probe's bound positions is returned by `ig_search`. `ig_search`
-//   (SPARQL11.Algebra.fst:236) narrows to ONE bucket chosen by
-//   `pick_smaller_bucket` over six candidates. Completeness is proved
-//   today for the PREDICATE bucket only
-//   (RDF.Indexed.Completeness.lemma_build_indexed_complete_pred,
-//   2026-08-05); there is no analogue for ig_subj / ig_obj / ig_sp /
-//   ig_po / ig_so. Worse for the object-keyed buckets: the probe
-//   accepts a candidate on `rdf_term_eq` (coarse -- see finding SR-2
-//   of SPARQL11.Algebra.Refinement) while the bucket keys on
-//   `term_to_key_opt` (byte-exact), so `"x"@en` and `"x"@EN` are
-//   probe-equal and land in different buckets. Completeness of
-//   `ig_search` in the object-bound case is thus not merely unproved,
-//   it is expected to be FALSE outside the `term_exact` fragment.
-//   Stated, not attempted. Soundness -- this module -- needs none of
-//   that, because `triple_matches_bound` re-checks every candidate
-//   against the ACTUAL bound before returning it.
+// BR-4. COMPLETENESS WAS BLOCKED ON INDEX COMPLETENESS.
+//   DISCHARGED 2026-08-06 (Parts 2c, 9, 10, 11, 12 below). The
+//   original text, kept because both of its claims turned out to be
+//   right and both shaped the fix:
+//
+//     "The converse ('every subset-matching mu is in `eval_bgp b g`')
+//      needs: every graph triple satisfying the probe's bound
+//      positions is returned by `ig_search`. `ig_search`
+//      (SPARQL11.Algebra.fst:236) narrows to ONE bucket chosen by
+//      `pick_smaller_bucket` over six candidates. Completeness is
+//      proved today for the PREDICATE bucket only
+//      (RDF.Indexed.Completeness.lemma_build_indexed_complete_pred,
+//      2026-08-05); there is no analogue for ig_subj / ig_obj / ig_sp
+//      / ig_po / ig_so. Worse for the object-keyed buckets: the probe
+//      accepts a candidate on `rdf_term_eq` (coarse -- see finding
+//      SR-2 of SPARQL11.Algebra.Refinement) while the bucket keys on
+//      `term_to_key_opt` (byte-exact), so "x"@en and "x"@EN are
+//      probe-equal and land in different buckets. Completeness of
+//      `ig_search` in the object-bound case is thus not merely
+//      unproved, it is expected to be FALSE outside the `term_exact`
+//      fragment."
+//
+//   HOW EACH WAS CLOSED.
+//   (a) The five missing bucket lemmas are one line each at
+//       `RDF.Indexed.Completeness.lemma_build_bucket_complete`, which
+//       was already GENERIC over `key_of`; see that module's stage 6.
+//       The three option-keyed buckets (obj / po / so) get a
+//       conditional statement -- "for triples whose key exists" --
+//       because `build_bucket` genuinely files a literal-object
+//       triple in no binding at all.
+//   (b) The falsity claim is correct and is handled by the FRAGMENT,
+//       not by weakening: `R.term_exact o` says `rdf_term_eq` is
+//       identity AT `o`, so inside it probe-match implies key-match
+//       and the "x"@en / "x"@EN split cannot happen. It appears as
+//       the explicit precondition `bound_obj_exact` on
+//       `lemma_ig_search_complete`, and it is the same `term_exact`
+//       layer 2 already carries in `bgp_frag` / `graph_frag` -- not a
+//       new hypothesis class.
+//
+//   Part 2c proves completeness at `build_indexed_selective` for an
+//   ARBITRARY `needs`, exactly as Part 2b does for soundness, and for
+//   the same reason: `ig_search` reads every bucket behind its own
+//   `ig_built.bn_*` gate, so an OMITTED bucket is never offered as a
+//   candidate and `bucket_cand_complete t None` is vacuously true.
+//   Finding RT-2's "nothing about the selective store makes
+//   completeness easier" is right -- and nothing makes it harder
+//   either.
+//
+//   Soundness -- Parts 1-6 and 8 -- still needs none of it, because
+//   `triple_matches_bound` re-checks every candidate against the
+//   ACTUAL bound before returning it.
+//
+// BR-5. THE COMPLETE STATEMENT IS AN ANSWER EQUALITY, NOT A LIST
+//   MEMBERSHIP. `memP muf (eval_bgp b g)` for a CALLER-SUPPLIED `muf`
+//   is false, and no index lemma can rescue it: `solution_mapping` is
+//   an association LIST and `sm_bind` conses
+//   (SPARQL11.Algebra.fst:103), so the evaluator emits exactly one
+//   permutation of the bindings -- the one `choose_best_tp`'s cost
+//   ordering over the actual data dictates. Two patterns and two
+//   variables suffice to exhibit a `muf` with the same bindings in the
+//   other order. What IS proved is `theorem_eval_bgp_store_complete`
+//   (the engine returns a `muo` that `muf` extends) and
+//   `theorem_eval_bgp_store_complete_answer` (that `muo` instantiates
+//   the BGP to the SAME triples). Everything downstream --
+//   SPARQL11.EntailmentRegime.RDFS in full -- speaks
+//   `instantiate_bgp q mu`, so this is the form the composition
+//   needs. The residual is the DOMAIN clause `dom(mu) = var(BGP)`
+//   that Part 6 already names as a separate commit.
 //
 // No admit, no --lax, no --admit_smt_queries, no assume. z3 4.13.3.
 // Zero change to any shipping module: this file only reads them.
@@ -105,6 +162,7 @@ open SPARQL11.Algebra
 module S  = SPARQL11.Algebra.Spec
 module R  = SPARQL11.Algebra.Refinement
 module Ml = OWL.Semantics.MemLemmas
+module IC = RDF.Indexed.Completeness
 module Lh = RDF.List.Helpers
 module T  = FStar.Tactics
 
@@ -502,6 +560,298 @@ let lemma_store_search_sound_for (p : group_graph_pattern) (g : rdf_graph) (b : 
   : Lemma (requires List.Tot.memP t (store_search (graph_to_store_for p g) b))
           (ensures  List.Tot.memP t g) =
   lemma_ig_search_sound_selective (bucket_needs_of_pattern p) g b t
+
+(** ====================================================================== **)
+(** Part 2c: THE INDEX PROBE IS COMPLETE (closes finding BR-4)             **)
+(**                                                                        **)
+(** The mirror of parts 2 and 2b: every graph triple that SATISFIES the    **)
+(** bound is served by `ig_search`, at `build_indexed_selective needs g`   **)
+(** for an ARBITRARY `needs` (hence at both `graph_to_store` and the       **)
+(** shipping `graph_to_store_for`). Two things make it go through, and     **)
+(** both are recorded as findings rather than assumed:                     **)
+(**                                                                        **)
+(**  (a) The five missing bucket-completeness lemmas are instantiations    **)
+(**      of `RDF.Indexed.Completeness.lemma_build_bucket_complete`, which  **)
+(**      is generic in `key_of`. Each is gated on its own `needs.bn_*`     **)
+(**      flag, because a bucket that was never built is `BLeaf` and        **)
+(**      serves nothing -- but `ig_search` never offers it either, so      **)
+(**      `bucket_cand_complete t None` (vacuously true) covers exactly     **)
+(**      that case. This is part 2b's argument with the polarity flipped.  **)
+(**                                                                        **)
+(**  (b) The probe accepts an object candidate on `rdf_term_eq` while the  **)
+(**      bucket keys on `term_to_key_opt`, so completeness IS false in     **)
+(**      general -- BR-4 predicted this correctly. `bound_obj_exact`       **)
+(**      names the fragment where `rdf_term_eq` collapses to identity at   **)
+(**      the bound object, and there probe-match implies key-match. It is  **)
+(**      the same `R.term_exact` the module already carries in `bgp_frag`  **)
+(**      and `graph_frag`, not a new hypothesis class.                     **)
+(** ====================================================================== **)
+
+/// `triple_matches_bound`'s acceptance test, transcribed from
+/// SPARQL11.Algebra.fst:194-206's inline conjunction (the same
+/// transcription discipline `lemma_ig_search_sound` uses for
+/// `ig_search`'s six candidates).
+let bound_holds (b : triple_pattern_bound) (t : triple) : bool =
+  (match b.bs with | None -> true | Some s -> subject_eq s t.s) &&
+  (match b.bp with | None -> true | Some p -> p = t.p) &&
+  (match b.bo with | None -> true | Some o -> rdf_term_eq o t.o)
+
+/// `subject_eq` IS subject identity -- no fragment condition needed
+/// (both constructors carry a plain `string`, an `eqtype`). Proved
+/// locally rather than imported from
+/// RDF.Entailment.Simple.Refinement so this module keeps its
+/// dependency set to the algebra side.
+let lemma_subject_eq_ident (s1 s2 : subject)
+  : Lemma (requires subject_eq s1 s2 == true) (ensures s1 == s2) =
+  match s1, s2 with
+  | S_IRI _, S_IRI _ -> ()
+  | S_BNode _, S_BNode _ -> ()
+  | _, _ -> ()
+
+/// The filter keeps every input element that passes the bound.
+let rec lemma_tmb_acc_complete (b : triple_pattern_bound) (ts acc : list triple) (t : triple)
+  : Lemma (requires (List.Tot.memP t ts /\ bound_holds b t == true) \/ List.Tot.memP t acc)
+          (ensures  List.Tot.memP t (triple_matches_bound_acc b ts acc))
+          (decreases ts) =
+  match ts with
+  | [] -> ()
+  | x :: rest ->
+    let subj_ok = match b.bs with | None -> true | Some s -> subject_eq s x.s in
+    let pred_ok = match b.bp with | None -> true | Some p -> p = x.p in
+    let obj_ok  = match b.bo with | None -> true | Some o -> rdf_term_eq o x.o in
+    if subj_ok && pred_ok && obj_ok
+    then lemma_tmb_acc_complete b rest (x :: acc) t
+    else lemma_tmb_acc_complete b rest acc t
+
+let lemma_triple_matches_bound_complete (b : triple_pattern_bound) (ts : list triple) (t : triple)
+  : Lemma (requires List.Tot.memP t ts /\ bound_holds b t == true)
+          (ensures  List.Tot.memP t (triple_matches_bound b ts)) =
+  lemma_tmb_acc_complete b ts [] t;
+  FStar.List.Tot.Properties.rev_memP (triple_matches_bound_acc b ts []) t
+
+/// A narrowing candidate is COMPLETE FOR `t` when, if it is offered at
+/// all, it contains `t`. The mirror of `bucket_cand_sound`; a `None`
+/// candidate is vacuously complete, which is exactly right -- an
+/// unoffered bucket cannot lose a triple, and `ig_search` falls back
+/// to the full list when every candidate is `None`.
+let bucket_cand_complete (t : triple) (o : option (list triple)) : prop =
+  Some? o ==> List.Tot.memP t (Some?.v o)
+
+let lemma_pick_smaller_bucket_complete (t : triple) (a b : option (list triple))
+  : Lemma (requires bucket_cand_complete t a /\ bucket_cand_complete t b)
+          (ensures  bucket_cand_complete t (pick_smaller_bucket a b)) = ()
+
+/// The fragment condition on the PROBE side: a bound object term whose
+/// `rdf_term_eq` class is a singleton. See the Part 2c banner, (b).
+let bound_obj_exact (b : triple_pattern_bound) : prop =
+  forall (o : rdf_term). b.bo == Some o ==> R.term_exact o
+
+/// The six per-bucket completeness facts at the SELECTIVE constructor,
+/// each gated on its own flag (banner (a)). Bodies are one call to the
+/// generic `IC.lemma_build_bucket_complete` per graph triple.
+let lemma_build_indexed_selective_complete_pred (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              needs.bn_pred ==>
+              (forall (t : triple).
+                 List.Tot.memP t g ==>
+                 List.Tot.memP t (bucket_lookup ig.ig_pred t.p)))) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_pred then begin
+    assert (ig.ig_pred == build_bucket bucket_key_pred g);
+    let aux (t : triple) : Lemma
+      (requires List.Tot.memP t g)
+      (ensures List.Tot.memP t (bucket_lookup ig.ig_pred t.p)) =
+      IC.lemma_build_bucket_complete bucket_key_pred g t.p t
+    in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+  end else ()
+
+let lemma_build_indexed_selective_complete_subj (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              needs.bn_subj ==>
+              (forall (t : triple).
+                 List.Tot.memP t g ==>
+                 List.Tot.memP t (bucket_lookup ig.ig_subj (subject_to_key t.s))))) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_subj then begin
+    assert (ig.ig_subj == build_bucket bucket_key_subj g);
+    let aux (t : triple) : Lemma
+      (requires List.Tot.memP t g)
+      (ensures List.Tot.memP t (bucket_lookup ig.ig_subj (subject_to_key t.s))) =
+      IC.lemma_build_bucket_complete bucket_key_subj g (subject_to_key t.s) t
+    in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+  end else ()
+
+let lemma_build_indexed_selective_complete_sp (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              needs.bn_sp ==>
+              (forall (t : triple).
+                 List.Tot.memP t g ==>
+                 List.Tot.memP t (bucket_lookup ig.ig_sp (sp_key t.s t.p))))) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_sp then begin
+    assert (ig.ig_sp == build_bucket bucket_key_sp g);
+    let aux (t : triple) : Lemma
+      (requires List.Tot.memP t g)
+      (ensures List.Tot.memP t (bucket_lookup ig.ig_sp (sp_key t.s t.p))) =
+      IC.lemma_build_bucket_complete bucket_key_sp g (sp_key t.s t.p) t
+    in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+  end else ()
+
+let lemma_build_indexed_selective_complete_obj (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              needs.bn_obj ==>
+              (forall (t : triple) (k : string).
+                 List.Tot.memP t g /\ term_to_key_opt t.o == Some k ==>
+                 List.Tot.memP t (bucket_lookup ig.ig_obj k)))) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_obj then begin
+    assert (ig.ig_obj == build_bucket bucket_key_obj g);
+    let aux (t : triple) (k : string) : Lemma
+      (requires List.Tot.memP t g /\ term_to_key_opt t.o == Some k)
+      (ensures List.Tot.memP t (bucket_lookup ig.ig_obj k)) =
+      IC.lemma_build_bucket_complete bucket_key_obj g k t
+    in FStar.Classical.forall_intro_2 (fun t -> FStar.Classical.move_requires (aux t))
+  end else ()
+
+let lemma_build_indexed_selective_complete_po (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              needs.bn_po ==>
+              (forall (t : triple) (k : string).
+                 List.Tot.memP t g /\ po_key_opt t.p t.o == Some k ==>
+                 List.Tot.memP t (bucket_lookup ig.ig_po k)))) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_po then begin
+    assert (ig.ig_po == build_bucket bucket_key_po g);
+    let aux (t : triple) (k : string) : Lemma
+      (requires List.Tot.memP t g /\ po_key_opt t.p t.o == Some k)
+      (ensures List.Tot.memP t (bucket_lookup ig.ig_po k)) =
+      IC.lemma_build_bucket_complete bucket_key_po g k t
+    in FStar.Classical.forall_intro_2 (fun t -> FStar.Classical.move_requires (aux t))
+  end else ()
+
+let lemma_build_indexed_selective_complete_so (needs : bucket_needs) (g : rdf_graph)
+  : Lemma
+    (ensures (let ig = build_indexed_selective needs g in
+              needs.bn_so ==>
+              (forall (t : triple) (k : string).
+                 List.Tot.memP t g /\ so_key_opt t.s t.o == Some k ==>
+                 List.Tot.memP t (bucket_lookup ig.ig_so k)))) =
+  let ig = build_indexed_selective needs g in
+  if needs.bn_so then begin
+    assert (ig.ig_so == build_bucket bucket_key_so g);
+    let aux (t : triple) (k : string) : Lemma
+      (requires List.Tot.memP t g /\ so_key_opt t.s t.o == Some k)
+      (ensures List.Tot.memP t (bucket_lookup ig.ig_so k)) =
+      IC.lemma_build_bucket_complete bucket_key_so g k t
+    in FStar.Classical.forall_intro_2 (fun t -> FStar.Classical.move_requires (aux t))
+  end else ()
+
+#push-options "--z3rlimit 600 --fuel 2 --ifuel 4"
+/// THE INDEX PROBE IS COMPLETE, at an ARBITRARY `needs`. Structure
+/// mirrors `lemma_ig_search_sound_selective` branch for branch, with
+/// `bucket_cand_sound` replaced by `bucket_cand_complete` throughout.
+let lemma_ig_search_complete_selective
+      (needs : bucket_needs) (g : rdf_graph) (b : triple_pattern_bound) (t : triple)
+  : Lemma (requires List.Tot.memP t g /\ bound_holds b t == true /\ bound_obj_exact b)
+          (ensures  List.Tot.memP t (ig_search (build_indexed_selective needs g) b)) =
+  let ig = build_indexed_selective needs g in
+  lemma_build_indexed_selective_complete_pred needs g;
+  lemma_build_indexed_selective_complete_subj needs g;
+  lemma_build_indexed_selective_complete_obj  needs g;
+  lemma_build_indexed_selective_complete_sp   needs g;
+  lemma_build_indexed_selective_complete_po   needs g;
+  lemma_build_indexed_selective_complete_so   needs g;
+  // Probe-match implies key-match, one position at a time. The subject
+  // and predicate positions are identity already; the object position
+  // is where `bound_obj_exact` earns its place.
+  (match b.bs with
+   | Some s -> lemma_subject_eq_ident s t.s
+   | None -> ());
+  assert (match b.bs with | Some s -> s == t.s | None -> True);
+  assert (match b.bp with | Some p -> p == t.p | None -> True);
+  assert (match b.bo with | Some o -> o == t.o | None -> True);
+  // Replicated exactly from `ig_search`, as in the soundness proofs.
+  let pred_b = match b.bp with
+    | Some p -> if ig.ig_built.bn_pred then Some (bucket_lookup ig.ig_pred p) else None
+    | None -> None in
+  let subj_b = match b.bs with
+    | Some s -> if ig.ig_built.bn_subj then Some (bucket_lookup ig.ig_subj (subject_to_key s)) else None
+    | None -> None in
+  let obj_b = match b.bo with
+    | Some o ->
+      if ig.ig_built.bn_obj then
+        (match term_to_key_opt o with
+         | Some k -> Some (bucket_lookup ig.ig_obj k)
+         | None -> None)
+      else None
+    | None -> None in
+  let sp_b = match b.bs, b.bp with
+    | Some s, Some p -> if ig.ig_built.bn_sp then Some (bucket_lookup ig.ig_sp (sp_key s p)) else None
+    | _ -> None in
+  let po_b = match b.bp, b.bo with
+    | Some p, Some o ->
+      if ig.ig_built.bn_po then
+        (match po_key_opt p o with
+         | Some k -> Some (bucket_lookup ig.ig_po k)
+         | None -> None)
+      else None
+    | _ -> None in
+  let so_b = match b.bs, b.bo with
+    | Some s, Some o ->
+      if ig.ig_built.bn_so then
+        (match so_key_opt s o with
+         | Some k -> Some (bucket_lookup ig.ig_so k)
+         | None -> None)
+      else None
+    | _ -> None in
+  assert (ig.ig_built == needs);
+  assert (bucket_cand_complete t pred_b);
+  assert (bucket_cand_complete t subj_b);
+  assert (bucket_cand_complete t obj_b);
+  assert (bucket_cand_complete t sp_b);
+  assert (bucket_cand_complete t po_b);
+  assert (bucket_cand_complete t so_b);
+  lemma_pick_smaller_bucket_complete t sp_b po_b;
+  lemma_pick_smaller_bucket_complete t (pick_smaller_bucket sp_b po_b) so_b;
+  lemma_pick_smaller_bucket_complete t pred_b subj_b;
+  lemma_pick_smaller_bucket_complete t (pick_smaller_bucket pred_b subj_b) obj_b;
+  let compound = pick_smaller_bucket (pick_smaller_bucket sp_b po_b) so_b in
+  let single   = pick_smaller_bucket (pick_smaller_bucket pred_b subj_b) obj_b in
+  lemma_pick_smaller_bucket_complete t compound single;
+  let candidate = pick_smaller_bucket compound single in
+  let pool = match candidate with
+    | Some bucket -> bucket
+    | None -> ig.ig_triples in
+  assert (ig.ig_triples == g);
+  assert (List.Tot.memP t pool);
+  assert (ig_search ig b == triple_matches_bound b pool);
+  lemma_triple_matches_bound_complete b pool t
+#pop-options
+
+/// The full-index specialisation (`build_indexed` IS
+/// `build_indexed_selective all_bucket_needs`, RDF.Indexed.fsti).
+let lemma_ig_search_complete (g : rdf_graph) (b : triple_pattern_bound) (t : triple)
+  : Lemma (requires List.Tot.memP t g /\ bound_holds b t == true /\ bound_obj_exact b)
+          (ensures  List.Tot.memP t (ig_search (build_indexed g) b)) =
+  lemma_ig_search_complete_selective all_bucket_needs g b t
+
+let lemma_store_search_complete (g : rdf_graph) (b : triple_pattern_bound) (t : triple)
+  : Lemma (requires List.Tot.memP t g /\ bound_holds b t == true /\ bound_obj_exact b)
+          (ensures  List.Tot.memP t (store_search (graph_to_store g) b)) =
+  lemma_ig_search_complete g b t
+
+/// The SHIPPING-store form: the selective store `graph_to_store_for`
+/// builds serves every matching triple too.
+let lemma_store_search_complete_for
+      (p : group_graph_pattern) (g : rdf_graph) (b : triple_pattern_bound) (t : triple)
+  : Lemma (requires List.Tot.memP t g /\ bound_holds b t == true /\ bound_obj_exact b)
+          (ensures  List.Tot.memP t (store_search (graph_to_store_for p g) b)) =
+  lemma_ig_search_complete_selective (bucket_needs_of_pattern p) g b t
 
 (** ====================================================================== **)
 (** Part 3: one triple pattern, closed under later extensions              **)
@@ -1005,5 +1355,603 @@ let theorem_eval_bgp_store_for_instantiates_into_graph
                        List.Tot.memP t (instantiate_bgp b mu) ==> List.Tot.memP t g)) =
   lemma_graph_to_store_for_sound p g;
   theorem_eval_bgp_store_instantiates_into_graph b (graph_to_store_for p g) mu
+
+(** ====================================================================== **)
+(** Part 9: the CONVERSE of Part 3 -- an instantiation IS a match          **)
+(**                                                                        **)
+(** Part 3 goes match-to-instantiation; completeness needs the other       **)
+(** direction, and it is not a mirror image: there the mapping already     **)
+(** exists and the pattern is read off it, here the mapping has to be      **)
+(** BUILT and each `try_bind_*` has to be shown to SUCCEED.                **)
+(** ====================================================================== **)
+
+/// `subject_to_term` lands on the two constructors where `rdf_term_eq`
+/// is already identity (both carry a plain `string`, an `eqtype`), so
+/// every subject term is `term_exact`. Handed to SMT as an instantiated
+/// `forall` because `R.term_exact` is a quantified proposition, not a
+/// pattern match.
+let lemma_term_exact_subject (sj : subject) : Lemma (R.term_exact (subject_to_term sj)) =
+  let aux (t' : rdf_term)
+    : Lemma (requires rdf_term_eq (subject_to_term sj) t' == true)
+            (ensures  subject_to_term sj == t') =
+    match sj, t' with
+    | S_IRI _, T_IRI _ -> ()
+    | S_BNode _, T_BNode _ -> ()
+    | _, _ -> ()
+  in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+
+let lemma_term_exact_iri (i : wf_iri) : Lemma (R.term_exact (T_IRI i)) =
+  lemma_term_exact_subject (S_IRI i)
+
+let lemma_term_exact_bnode (b : bnode_id) : Lemma (R.term_exact (T_BNode b)) =
+  lemma_term_exact_subject (S_BNode b)
+
+/// MONOTONICITY of the three `bound_*_of_pattern` readers under
+/// `binding_extends`. A position that is already determined by the
+/// partial mapping keeps the same value in every later extension --
+/// which is what makes the index probe computed at step k still
+/// correct about the mapping finished at step n.
+#push-options "--z3rlimit 300 --fuel 2 --ifuel 4"
+let lemma_bound_subject_mono
+      (ps : pattern_subject) (mu muf : solution_mapping) (sj : subject)
+  : Lemma (requires R.binding_extends muf mu /\ bound_subject_of_pattern ps mu == Some sj)
+          (ensures  bound_subject_of_pattern ps muf == Some sj) =
+  match ps with
+  | PS_Var v ->
+    Lh.lemma_assoc_tr_eq v mu;
+    Lh.lemma_assoc_tr_eq v muf;
+    // Spelled out because the reader REBUILDS the subject
+    // (`Some (T_IRI i)` becomes `Some (S_IRI i)`) rather than passing
+    // the looked-up value through, so SMT needs the two lookups
+    // identified before it can identify the two rebuilds.
+    (match sm_lookup v mu with
+     | Some x ->
+       assert (S.sval v mu == Some x);
+       assert (S.sval v muf == Some x);
+       assert (sm_lookup v muf == Some x)
+     | None -> ())
+  | _ -> ()
+
+let lemma_bound_predicate_mono
+      (pt : pattern_term) (mu muf : solution_mapping) (p : wf_iri)
+  : Lemma (requires R.binding_extends muf mu /\ bound_predicate_of_pattern pt mu == Some p)
+          (ensures  bound_predicate_of_pattern pt muf == Some p) =
+  match pt with
+  | PT_Var v ->
+    Lh.lemma_assoc_tr_eq v mu;
+    Lh.lemma_assoc_tr_eq v muf;
+    (match sm_lookup v mu with
+     | Some x ->
+       assert (S.sval v mu == Some x);
+       assert (S.sval v muf == Some x);
+       assert (sm_lookup v muf == Some x)
+     | None -> ())
+  | _ -> ()
+
+let lemma_bound_object_mono
+      (pt : pattern_term) (mu muf : solution_mapping) (o : rdf_term)
+  : Lemma (requires R.binding_extends muf mu /\ bound_object_of_pattern pt mu == Some o /\
+                    R.ptrm_tt_free pt)
+          (ensures  bound_object_of_pattern pt muf == Some o) =
+  match pt with
+  | PT_Var v ->
+    Lh.lemma_assoc_tr_eq v mu;
+    Lh.lemma_assoc_tr_eq v muf;
+    (match sm_lookup v mu with
+     | Some x ->
+       assert (S.sval v mu == Some x);
+       assert (S.sval v muf == Some x);
+       assert (sm_lookup v muf == Some x)
+     | None -> ())
+  | _ -> ()
+#pop-options
+
+/// The converse of `lemma_bound_pred_from_obj` (Part 3): a determined
+/// predicate position is also determined as an OBJECT term, which is
+/// the form `try_bind_term` speaks.
+let lemma_bound_obj_from_pred (pt : pattern_term) (mu : solution_mapping) (p : wf_iri)
+  : Lemma (requires bound_predicate_of_pattern pt mu == Some p)
+          (ensures  bound_object_of_pattern pt mu == Some (T_IRI p)) =
+  match pt with
+  | PT_Var v -> ()
+  | _ -> ()
+
+/// A determined object position inside the fragment is `term_exact`:
+/// constants by their constructor, literals by `R.ptrm_exact`, and
+/// variables by the mapping's own exactness.
+let lemma_bound_object_exact (pt : pattern_term) (mu : solution_mapping) (o : rdf_term)
+  : Lemma (requires bound_object_of_pattern pt mu == Some o /\ R.smap_exact mu /\
+                    R.ptrm_exact pt /\ R.ptrm_tt_free pt)
+          (ensures  R.term_exact o) =
+  match pt with
+  | PT_IRI i -> lemma_term_exact_iri i
+  | PT_BNode b -> lemma_term_exact_bnode b
+  | PT_Literal l -> ()
+  | PT_Var v -> Lh.lemma_assoc_tr_eq v mu; R.lemma_smap_exact_sval mu v o
+  | PT_TripleTerm _ _ _ -> ()
+
+#push-options "--z3rlimit 300 --fuel 2 --ifuel 4"
+/// `sm_bind` is a cons, so its `sval` is the one-key update. Stated
+/// once here rather than re-derived at each of the four sites that
+/// need it (two `try_bind_*` completeness lemmas, two branches each).
+let lemma_sm_bind_sval (v w : string) (t : rdf_term) (mu : solution_mapping)
+  : Lemma (ensures S.sval w (sm_bind v t mu) ==
+                   (if w = v then Some t else S.sval w mu)) = ()
+
+let lemma_sm_bind_extends (v : string) (t : rdf_term) (mu : solution_mapping)
+  : Lemma (requires S.sval v mu == None)
+          (ensures  R.binding_extends (sm_bind v t mu) mu) =
+  FStar.Classical.forall_intro (fun (w : string) -> lemma_sm_bind_sval v w t mu)
+
+let lemma_sm_bind_under (v : string) (t : rdf_term) (mu muf : solution_mapping)
+  : Lemma (requires R.binding_extends muf mu /\ S.sval v muf == Some t)
+          (ensures  R.binding_extends muf (sm_bind v t mu)) =
+  FStar.Classical.forall_intro (fun (w : string) -> lemma_sm_bind_sval v w t mu)
+
+/// `try_bind_subject` SUCCEEDS whenever the final mapping already
+/// determines the position, and its output sits between `mu` and
+/// `muf`. The `Some existing` branch closes by reflexivity of
+/// `rdf_term_eq` (the existing binding IS the incoming term, since
+/// `muf` extends `mu` and both determine the same position); the
+/// `None` branch by the two `sm_bind` facts above.
+let lemma_try_bind_subject_complete
+      (ps : pattern_subject) (sj : subject) (mu muf : solution_mapping)
+  : Lemma (requires R.binding_extends muf mu /\
+                    bound_subject_of_pattern ps muf == Some sj /\ R.smap_exact mu)
+          (ensures  Some? (try_bind_subject ps sj mu) /\
+                    (let mu' = Some?.v (try_bind_subject ps sj mu) in
+                     R.binding_extends muf mu' /\ R.binding_extends mu' mu /\
+                     R.smap_exact mu')) =
+  match ps with
+  | PS_Var v ->
+    Lh.lemma_assoc_tr_eq v mu;
+    Lh.lemma_assoc_tr_eq v muf;
+    lemma_term_exact_subject sj;
+    let tm = subject_to_term sj in
+    lemma_rdf_term_eq_refl tm;
+    // Force the split that identifies `muf`'s binding with the
+    // subject's TERM form -- the reader rebuilds a subject from it.
+    (match sm_lookup v muf with
+     | Some (T_IRI _) -> ()
+     | Some (T_BNode _) -> ()
+     | _ -> ());
+    assert (S.sval v muf == Some tm);
+    (match sm_lookup v mu with
+     | Some existing ->
+       assert (S.sval v mu == Some existing);
+       assert (existing == tm);
+       R.lemma_binding_extends_refl mu
+     | None ->
+       lemma_sm_bind_extends v tm mu;
+       lemma_sm_bind_under v tm mu muf)
+  | _ -> R.lemma_binding_extends_refl mu
+
+let lemma_try_bind_term_complete
+      (pt : pattern_term) (tm : rdf_term) (mu muf : solution_mapping)
+  : Lemma (requires R.binding_extends muf mu /\
+                    bound_object_of_pattern pt muf == Some tm /\
+                    R.smap_exact mu /\ R.ptrm_tt_free pt /\ R.term_exact tm)
+          (ensures  Some? (try_bind_term pt tm mu) /\
+                    (let mu' = Some?.v (try_bind_term pt tm mu) in
+                     R.binding_extends muf mu' /\ R.binding_extends mu' mu /\
+                     R.smap_exact mu')) =
+  match pt with
+  | PT_Var v ->
+    Lh.lemma_assoc_tr_eq v mu;
+    Lh.lemma_assoc_tr_eq v muf;
+    lemma_rdf_term_eq_refl tm;
+    assert (S.sval v muf == Some tm);
+    (match sm_lookup v mu with
+     | Some existing ->
+       assert (S.sval v mu == Some existing);
+       assert (existing == tm);
+       R.lemma_binding_extends_refl mu
+     | None ->
+       lemma_sm_bind_extends v tm mu;
+       lemma_sm_bind_under v tm mu muf)
+  | PT_Literal l -> lemma_literal_eq_refl l; R.lemma_binding_extends_refl mu
+  | _ -> R.lemma_binding_extends_refl mu
+
+/// ONE PATTERN, converse form: if the final mapping instantiates `tp`
+/// to a triple `t`, then `tp_match` accepts `t` against the partial
+/// mapping, and the accepted result still sits under `muf`.
+let lemma_tp_match_complete
+      (tp : triple_pattern) (t : triple) (mu muf : solution_mapping)
+  : Lemma (requires R.binding_extends muf mu /\ instantiate_tp tp muf == Some t /\
+                    R.smap_exact mu /\
+                    R.ptrm_tt_free tp.tp_p /\ R.ptrm_tt_free tp.tp_o /\
+                    R.term_exact t.o)
+          (ensures  Some? (tp_match tp t mu) /\
+                    (let mu' = Some?.v (tp_match tp t mu) in
+                     R.binding_extends muf mu' /\ R.binding_extends mu' mu /\
+                     R.smap_exact mu')) =
+  assert (bound_subject_of_pattern tp.tp_s muf == Some t.s);
+  assert (bound_predicate_of_pattern tp.tp_p muf == Some t.p);
+  assert (bound_object_of_pattern tp.tp_o muf == Some t.o);
+  lemma_try_bind_subject_complete tp.tp_s t.s mu muf;
+  let mu1 = Some?.v (try_bind_subject tp.tp_s t.s mu) in
+  lemma_bound_obj_from_pred tp.tp_p muf t.p;
+  lemma_term_exact_iri t.p;
+  lemma_try_bind_term_complete tp.tp_p (T_IRI t.p) mu1 muf;
+  let mu2 = Some?.v (try_bind_term tp.tp_p (T_IRI t.p) mu1) in
+  lemma_try_bind_term_complete tp.tp_o t.o mu2 muf;
+  let mu3 = Some?.v (try_bind_term tp.tp_o t.o mu2) in
+  R.lemma_binding_extends_trans mu3 mu2 mu1;
+  R.lemma_binding_extends_trans mu3 mu1 mu
+#pop-options
+
+(** ====================================================================== **)
+(** Part 10: the index probe, driven from the pattern                      **)
+(** ====================================================================== **)
+
+/// The bound `eval_single_tp_store_default` computes, given a NAME
+/// (SPARQL11.Algebra.fst:2762-2766 spells it as an inline record).
+let tp_bound (tp : triple_pattern) (mu : solution_mapping) : triple_pattern_bound =
+  { bs = bound_subject_of_pattern tp.tp_s mu;
+    bp = bound_predicate_of_pattern tp.tp_p mu;
+    bo = bound_object_of_pattern tp.tp_o mu }
+
+/// The probe computed at the PARTIAL mapping accepts the triple the
+/// FINAL mapping picks out. Each position is either unbound (accepted
+/// unconditionally) or bound, and then monotonicity forces it equal to
+/// the triple's own component, so the acceptance test is a reflexivity.
+let lemma_bound_holds_of_instantiate
+      (tp : triple_pattern) (t : triple) (mu muf : solution_mapping)
+  : Lemma (requires R.binding_extends muf mu /\ instantiate_tp tp muf == Some t /\
+                    R.ptrm_tt_free tp.tp_o)
+          (ensures  bound_holds (tp_bound tp mu) t == true) =
+  (match bound_subject_of_pattern tp.tp_s mu with
+   | Some s -> lemma_bound_subject_mono tp.tp_s mu muf s; lemma_subject_eq_refl s
+   | None -> ());
+  (match bound_predicate_of_pattern tp.tp_p mu with
+   | Some p -> lemma_bound_predicate_mono tp.tp_p mu muf p
+   | None -> ());
+  (match bound_object_of_pattern tp.tp_o mu with
+   | Some o -> lemma_bound_object_mono tp.tp_o mu muf o; lemma_rdf_term_eq_refl o
+   | None -> ())
+
+let lemma_tp_bound_obj_exact (tp : triple_pattern) (mu : solution_mapping)
+  : Lemma (requires R.smap_exact mu /\ R.ptrm_exact tp.tp_o /\ R.ptrm_tt_free tp.tp_o)
+          (ensures  bound_obj_exact (tp_bound tp mu)) =
+  match bound_object_of_pattern tp.tp_o mu with
+  | Some o -> lemma_bound_object_exact tp.tp_o mu o
+  | None -> ()
+
+/// Probe COMPLETENESS as a property of a STORE, the mirror of Part 8's
+/// `store_search_sound` and for the same reason: it is what the
+/// induction needs at each step, independent of how the store was
+/// built, which is what lets one induction serve both
+/// `graph_to_store` and the shipping `graph_to_store_for`.
+let store_search_complete (gs : graph_store) : prop =
+  forall (b : triple_pattern_bound) (t : triple).
+    List.Tot.memP t gs.gs_graph /\ bound_holds b t == true /\ bound_obj_exact b ==>
+    List.Tot.memP t (store_search gs b)
+
+let lemma_graph_to_store_complete (g : rdf_graph)
+  : Lemma (store_search_complete (graph_to_store g)) =
+  introduce forall (b : triple_pattern_bound) (t : triple).
+      List.Tot.memP t g /\ bound_holds b t == true /\ bound_obj_exact b ==>
+      List.Tot.memP t (store_search (graph_to_store g) b)
+  with introduce List.Tot.memP t g /\ bound_holds b t == true /\ bound_obj_exact b ==>
+                 List.Tot.memP t (store_search (graph_to_store g) b)
+  with _ . lemma_store_search_complete g b t
+
+let lemma_graph_to_store_for_complete (p : group_graph_pattern) (g : rdf_graph)
+  : Lemma (store_search_complete (graph_to_store_for p g)) =
+  introduce forall (b : triple_pattern_bound) (t : triple).
+      List.Tot.memP t g /\ bound_holds b t == true /\ bound_obj_exact b ==>
+      List.Tot.memP t (store_search (graph_to_store_for p g) b)
+  with introduce List.Tot.memP t g /\ bound_holds b t == true /\ bound_obj_exact b ==>
+                 List.Tot.memP t (store_search (graph_to_store_for p g) b)
+  with _ . lemma_store_search_complete_for p g b t
+
+/// The completeness goal for one pattern, named so the `move_requires`
+/// idiom below can carry it through an existential elimination.
+let single_tp_goal (tp : triple_pattern) (gs : graph_store) (mu muf : solution_mapping) : prop =
+  exists (mu' : solution_mapping).
+    List.Tot.memP mu' (eval_single_tp_store tp gs mu) /\
+    R.binding_extends muf mu' /\ R.binding_extends mu' mu /\ R.smap_exact mu'
+
+#push-options "--z3rlimit 400 --fuel 2 --ifuel 3"
+/// ONE PATTERN AGAINST THE STORE, completeness. This is where Part 2c
+/// (the probe serves the triple) and Part 9 (the match accepts it)
+/// meet: the index cannot hide the triple, and the filter cannot
+/// reject it.
+let lemma_eval_single_tp_complete_at
+      (tp : triple_pattern) (gs : graph_store) (mu muf : solution_mapping) (t : triple)
+  : Lemma (requires tp_frag tp /\ graph_frag gs.gs_graph /\ R.smap_exact mu /\
+                    store_search_complete gs /\
+                    R.binding_extends muf mu /\
+                    instantiate_tp tp muf == Some t /\ List.Tot.memP t gs.gs_graph)
+          (ensures  single_tp_goal tp gs mu muf) =
+  let bound = tp_bound tp mu in
+  lemma_eval_single_tp_store_default_eq tp gs mu;
+  lemma_bound_holds_of_instantiate tp t mu muf;
+  lemma_tp_bound_obj_exact tp mu;
+  assert (List.Tot.memP t (store_search gs bound));
+  lemma_tp_match_complete tp t mu muf;
+  let mu' = Some?.v (tp_match tp t mu) in
+  R.lemma_memP_filter_map (fun (x : triple) -> tp_match tp x mu) (store_search gs bound) mu';
+  introduce exists (mu2 : solution_mapping).
+      List.Tot.memP mu2 (eval_single_tp_store tp gs mu) /\
+      R.binding_extends muf mu2 /\ R.binding_extends mu2 mu /\ R.smap_exact mu2
+  with mu' and ()
+#pop-options
+
+(** ====================================================================== **)
+(** Part 11: the fan-out, completeness, at any complete store              **)
+(** ====================================================================== **)
+
+let lemma_memP_concatMap_tr_intro (#a #b : Type) (f : a -> list b) (xs : list a) (x : a) (y : b)
+  : Lemma (requires List.Tot.memP x xs /\ List.Tot.memP y (f x))
+          (ensures  List.Tot.memP y (Lh.concatMap_tr f xs)) =
+  Lh.lemma_concatMap_tr_eq f xs;
+  R.lemma_memP_concatMap f xs y
+
+/// The mirror of `lemma_eval_bgp_store_step` (Part 6), built on the
+/// SAME transcribed unfolding equation, so the named continuation
+/// `bgp_fanout_cont` does the lambda-avoidance work once for both
+/// directions.
+let lemma_eval_bgp_store_step_intro
+      (hd : triple_pattern) (tl : bgp) (gs : graph_store)
+      (mu mu' muf : solution_mapping) (n : nat)
+      (tp : triple_pattern) (rest : bgp)
+  : Lemma (requires choose_best_tp (hd :: tl) gs mu == Some (tp, rest) /\
+                    List.Tot.memP mu' (eval_single_tp_store tp gs mu) /\
+                    List.Tot.memP muf (eval_bgp_store_from_mu_fuel rest gs mu' n))
+          (ensures  List.Tot.memP muf
+                      (eval_bgp_store_from_mu_fuel (hd :: tl) gs mu (n + 1))) =
+  lemma_eval_bgp_store_unfold hd tl gs mu n;
+  lemma_memP_concatMap_tr_intro
+    (bgp_fanout_cont rest gs (n + 1 - 1))
+    (eval_single_tp_store tp gs mu) mu' muf
+
+let bgp_complete_goal
+      (patterns : bgp) (gs : graph_store) (mu muf : solution_mapping) (fuel : nat) : prop =
+  exists (muo : solution_mapping).
+    List.Tot.memP muo (eval_bgp_store_from_mu_fuel patterns gs mu fuel) /\
+    R.binding_extends muf muo /\ R.binding_extends muo mu /\ R.smap_exact muo
+
+#push-options "--z3rlimit 600 --fuel 2 --ifuel 2"
+/// THE LAYER-2 COMPLETENESS THEOREM, in the induction-carrying form --
+/// the exact counterpart of `theorem_eval_bgp_store_sound_fuel`, over
+/// the same fold, with the same fuel side condition, at any store
+/// carrying `store_search_complete`.
+///
+/// Reading: if SOME mapping `muf` explains every pattern of the BGP by
+/// a triple of the store's graph, then the fan-out DOES produce a
+/// solution `muo` that `muf` extends. `muo` is not claimed to be `muf`
+/// itself, and it cannot be: `sm_bind` conses
+/// (SPARQL11.Algebra.fst:103), so the engine's output is a LIST whose
+/// order is fixed by `choose_best_tp`'s cost ordering, while `muf` is
+/// an arbitrary list with the same lookup behaviour (finding BR-5).
+/// `binding_extends muf muo` is the strongest statement that survives
+/// that representation gap, and Part 12 shows it is enough: `muo` and
+/// `muf` instantiate the BGP to the SAME triples.
+let rec theorem_eval_bgp_store_complete_fuel
+      (patterns : bgp) (gs : graph_store) (mu muf : solution_mapping) (fuel : nat)
+  : Lemma (requires fuel >= List.Tot.length patterns /\
+                    R.smap_exact mu /\ bgp_frag patterns /\ graph_frag gs.gs_graph /\
+                    store_search_complete gs /\
+                    R.binding_extends muf mu /\
+                    bgp_subgraph_clause patterns gs.gs_graph muf)
+          (ensures  bgp_complete_goal patterns gs mu muf fuel)
+          (decreases fuel) =
+  if fuel = 0 then
+    (R.lemma_binding_extends_refl mu;
+     introduce exists (muo : solution_mapping).
+         List.Tot.memP muo (eval_bgp_store_from_mu_fuel patterns gs mu fuel) /\
+         R.binding_extends muf muo /\ R.binding_extends muo mu /\ R.smap_exact muo
+     with mu and ())
+  else
+    match patterns with
+    | [] ->
+      (R.lemma_binding_extends_refl mu;
+       introduce exists (muo : solution_mapping).
+           List.Tot.memP muo (eval_bgp_store_from_mu_fuel patterns gs mu fuel) /\
+           R.binding_extends muf muo /\ R.binding_extends muo mu /\ R.smap_exact muo
+       with mu and ())
+    | hd :: tl ->
+      lemma_choose_best_tp_cover patterns gs mu;
+      (match choose_best_tp patterns gs mu with
+       | None -> ()
+       | Some (tp, rest) ->
+         assert (tp_frag tp);
+         assert (choose_best_tp patterns gs mu == Some (tp, rest));
+         let finish (mu' : solution_mapping)
+           : Lemma (requires List.Tot.memP mu' (eval_single_tp_store tp gs mu) /\
+                             R.binding_extends muf mu' /\ R.binding_extends mu' mu /\
+                             R.smap_exact mu')
+                   (ensures  bgp_complete_goal patterns gs mu muf fuel) =
+           theorem_eval_bgp_store_complete_fuel rest gs mu' muf (fuel - 1);
+           let land (muo : solution_mapping)
+             : Lemma (requires List.Tot.memP muo
+                                 (eval_bgp_store_from_mu_fuel rest gs mu' (fuel - 1)) /\
+                               R.binding_extends muf muo /\ R.binding_extends muo mu' /\
+                               R.smap_exact muo)
+                     (ensures  bgp_complete_goal patterns gs mu muf fuel) =
+             lemma_eval_bgp_store_step_intro hd tl gs mu mu' muo (fuel - 1) tp rest;
+             R.lemma_binding_extends_trans muo mu' mu;
+             introduce exists (muo2 : solution_mapping).
+                 List.Tot.memP muo2 (eval_bgp_store_from_mu_fuel patterns gs mu fuel) /\
+                 R.binding_extends muf muo2 /\ R.binding_extends muo2 mu /\
+                 R.smap_exact muo2
+             with muo and ()
+           in
+           FStar.Classical.forall_intro (FStar.Classical.move_requires land)
+         in
+         let step (t : triple)
+           : Lemma (requires instantiate_tp tp muf == Some t /\ List.Tot.memP t gs.gs_graph)
+                   (ensures  bgp_complete_goal patterns gs mu muf fuel) =
+           lemma_eval_single_tp_complete_at tp gs mu muf t;
+           FStar.Classical.forall_intro (FStar.Classical.move_requires finish)
+         in
+         FStar.Classical.forall_intro (FStar.Classical.move_requires step))
+#pop-options
+
+/// THE STORE-GENERIC SHIPPING STATEMENT, completeness half.
+/// `List.Tot.length b + 1` is the fuel `eval_bgp_store` supplies, so
+/// the fuel side condition is discharged here exactly as it is for
+/// soundness.
+let theorem_eval_bgp_store_complete (b : bgp) (gs : graph_store) (muf : solution_mapping)
+  : Lemma (requires bgp_frag b /\ graph_frag gs.gs_graph /\ store_search_complete gs /\
+                    bgp_subgraph_clause b gs.gs_graph muf)
+          (ensures  (exists (muo : solution_mapping).
+                       List.Tot.memP muo (eval_bgp_store b gs) /\
+                       R.binding_extends muf muo /\ R.smap_exact muo)) =
+  theorem_eval_bgp_store_complete_fuel b gs sm_empty muf (List.Tot.length b + 1)
+
+let theorem_eval_bgp_complete (b : bgp) (g : rdf_graph) (muf : solution_mapping)
+  : Lemma (requires bgp_frag b /\ graph_frag g /\ bgp_subgraph_clause b g muf)
+          (ensures  (exists (muo : solution_mapping).
+                       List.Tot.memP muo (eval_bgp b g) /\
+                       R.binding_extends muf muo /\ R.smap_exact muo)) =
+  lemma_graph_to_store_complete g;
+  theorem_eval_bgp_store_complete b (graph_to_store g) muf
+
+(** ====================================================================== **)
+(** Part 12: from `binding_extends` to the SAME ANSWER                     **)
+(**                                                                        **)
+(** Finding BR-5 in force: `memP muf (eval_bgp b g)` is NOT provable and   **)
+(** not because of a missing lemma -- `solution_mapping` is an             **)
+(** association LIST and `sm_bind` conses, so the engine emits one         **)
+(** specific permutation, fixed by `choose_best_tp`'s cost ordering over   **)
+(** the actual data. The statement that IS true, and that every            **)
+(** downstream consumer actually uses, is at the ANSWER level: the engine  **)
+(** returns a solution that instantiates the BGP to exactly the same       **)
+(** triples. Everything in SPARQL11.EntailmentRegime.RDFS speaks           **)
+(** `instantiate_bgp q mu` and nothing there inspects the list, so this    **)
+(** loses nothing there. The residual -- upgrading to `S.smap_eq muo muf`  **)
+(** -- is the DOMAIN clause `dom(mu) = var(BGP)` that Part 6's             **)
+(** `lemma_bgp_sol_spec_from_subgraph_clause` already names as a separate  **)
+(** commit; it is `sm_bind` bookkeeping, not graph mathematics.            **)
+(** ====================================================================== **)
+
+let lemma_instantiate_tp_mono
+      (tp : triple_pattern) (mu muf : solution_mapping) (t : triple)
+  : Lemma (requires R.binding_extends muf mu /\ instantiate_tp tp mu == Some t /\
+                    R.ptrm_tt_free tp.tp_o)
+          (ensures  instantiate_tp tp muf == Some t) =
+  lemma_bound_subject_mono tp.tp_s mu muf t.s;
+  lemma_bound_predicate_mono tp.tp_p mu muf t.p;
+  lemma_bound_object_mono tp.tp_o mu muf t.o
+
+let rec lemma_instantiate_bgp_agree (b : bgp) (mu muf : solution_mapping)
+  : Lemma (requires R.binding_extends muf mu /\
+                    (forall (p : triple_pattern). List.Tot.memP p b ==>
+                       (R.ptrm_tt_free p.tp_o /\ Some? (instantiate_tp p mu))))
+          (ensures  instantiate_bgp b muf == instantiate_bgp b mu)
+          (decreases b) =
+  match b with
+  | [] -> ()
+  | p :: rest ->
+    lemma_instantiate_bgp_agree rest mu muf;
+    (match instantiate_tp p mu with
+     | Some t -> lemma_instantiate_tp_mono p mu muf t
+     | None -> ())
+
+/// The `bgp_subgraph_clause` form recovered from the two facts a
+/// caller actually has: the instantiated BGP is inside the graph, and
+/// every pattern instantiates. The second is not implied by the first
+/// -- `instantiate_bgp` SILENTLY DROPS a pattern it cannot instantiate
+/// (SPARQL11.Algebra.fst:7557-7564) -- so it is a hypothesis.
+let rec lemma_subgraph_clause_of_instantiated (b : bgp) (g : rdf_graph) (mu : solution_mapping)
+  : Lemma (requires (forall (t : triple).
+                       List.Tot.memP t (instantiate_bgp b mu) ==> List.Tot.memP t g) /\
+                    (forall (p : triple_pattern). List.Tot.memP p b ==>
+                       Some? (instantiate_tp p mu)))
+          (ensures  bgp_subgraph_clause b g mu)
+          (decreases b) =
+  match b with
+  | [] -> ()
+  | p :: rest ->
+    lemma_subgraph_clause_of_instantiated rest g mu;
+    (match instantiate_tp p mu with
+     | Some t -> ()
+     | None -> ())
+
+#push-options "--z3rlimit 400 --fuel 2 --ifuel 2"
+/// THE ANSWER-LEVEL COMPLETENESS THEOREM -- finding BR-4 discharged in
+/// the form layer 3 consumes, at any store that is BOTH sound and
+/// complete. If any mapping explains the BGP inside the store's graph,
+/// `eval_bgp_store` returns a solution with the SAME instantiated BGP.
+///
+/// The proof composes both halves of layer 2: completeness produces a
+/// `muo` under `muf`, and then SOUNDNESS applied to that very `muo`
+/// supplies the missing "every pattern instantiates under `muo`" fact
+/// which turns `binding_extends` into answer equality.
+let theorem_eval_bgp_store_complete_answer
+      (b : bgp) (gs : graph_store) (muf : solution_mapping)
+  : Lemma (requires bgp_frag b /\ graph_frag gs.gs_graph /\
+                    store_search_sound gs /\ store_search_complete gs /\
+                    bgp_subgraph_clause b gs.gs_graph muf)
+          (ensures  (exists (muo : solution_mapping).
+                       List.Tot.memP muo (eval_bgp_store b gs) /\
+                       instantiate_bgp b muo == instantiate_bgp b muf)) =
+  theorem_eval_bgp_store_complete b gs muf;
+  let aux (muo : solution_mapping)
+    : Lemma (requires List.Tot.memP muo (eval_bgp_store b gs) /\ R.binding_extends muf muo)
+            (ensures  (exists (mu2 : solution_mapping).
+                         List.Tot.memP mu2 (eval_bgp_store b gs) /\
+                         instantiate_bgp b mu2 == instantiate_bgp b muf)) =
+    theorem_eval_bgp_store_subgraph b gs muo;
+    lemma_instantiate_bgp_agree b muo muf;
+    introduce exists (mu2 : solution_mapping).
+        List.Tot.memP mu2 (eval_bgp_store b gs) /\
+        instantiate_bgp b mu2 == instantiate_bgp b muf
+    with muo and ()
+  in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+
+/// The same theorem from the hypotheses layer 3 actually has: the
+/// instantiated BGP is a subset of the graph, and every pattern
+/// instantiates (the second is finding RT-6 of layer 3).
+let theorem_eval_bgp_store_complete_from_subset
+      (b : bgp) (gs : graph_store) (muf : solution_mapping)
+  : Lemma (requires bgp_frag b /\ graph_frag gs.gs_graph /\
+                    store_search_sound gs /\ store_search_complete gs /\
+                    (forall (t : triple).
+                       List.Tot.memP t (instantiate_bgp b muf) ==>
+                       List.Tot.memP t gs.gs_graph) /\
+                    (forall (p : triple_pattern). List.Tot.memP p b ==>
+                       Some? (instantiate_tp p muf)))
+          (ensures  (exists (muo : solution_mapping).
+                       List.Tot.memP muo (eval_bgp_store b gs) /\
+                       instantiate_bgp b muo == instantiate_bgp b muf)) =
+  lemma_subgraph_clause_of_instantiated b gs.gs_graph muf;
+  theorem_eval_bgp_store_complete_answer b gs muf
+
+/// THE FULL-INDEX SPECIALISATION -- the `eval_bgp` form.
+let theorem_eval_bgp_complete_from_subset (b : bgp) (g : rdf_graph) (muf : solution_mapping)
+  : Lemma (requires bgp_frag b /\ graph_frag g /\
+                    (forall (t : triple).
+                       List.Tot.memP t (instantiate_bgp b muf) ==> List.Tot.memP t g) /\
+                    (forall (p : triple_pattern). List.Tot.memP p b ==>
+                       Some? (instantiate_tp p muf)))
+          (ensures  (exists (muo : solution_mapping).
+                       List.Tot.memP muo (eval_bgp b g) /\
+                       instantiate_bgp b muo == instantiate_bgp b muf)) =
+  lemma_graph_to_store_sound g;
+  lemma_graph_to_store_complete g;
+  theorem_eval_bgp_store_complete_from_subset b (graph_to_store g) muf
+
+/// THE SELECTIVE-STORE SPECIALISATION (finding RT-2's store, finding
+/// BR-4's direction). `graph_to_store_for` is what
+/// `eval_pattern`/`eval_ask_query` actually build, so this is the
+/// completeness counterpart of
+/// `theorem_eval_bgp_store_for_instantiates_into_graph`.
+let theorem_eval_bgp_store_for_complete_from_subset
+      (p : group_graph_pattern) (b : bgp) (g : rdf_graph) (muf : solution_mapping)
+  : Lemma (requires bgp_frag b /\ graph_frag g /\
+                    (forall (t : triple).
+                       List.Tot.memP t (instantiate_bgp b muf) ==> List.Tot.memP t g) /\
+                    (forall (q : triple_pattern). List.Tot.memP q b ==>
+                       Some? (instantiate_tp q muf)))
+          (ensures  (exists (muo : solution_mapping).
+                       List.Tot.memP muo (eval_bgp_store b (graph_to_store_for p g)) /\
+                       instantiate_bgp b muo == instantiate_bgp b muf)) =
+  lemma_graph_to_store_for_sound p g;
+  lemma_graph_to_store_for_complete p g;
+  theorem_eval_bgp_store_complete_from_subset b (graph_to_store_for p g) muf
+#pop-options
 
 #pop-options
