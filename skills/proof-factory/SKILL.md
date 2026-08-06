@@ -67,6 +67,49 @@ seven prior attempts that fixed only one of the two kept failing at
 the other's signature site. When a proof still fails after one
 treatment, check for the other before raising budgets.
 
+DEPTH COROLLARY (2026-08-06, the wave 3 relift — cls-hv1, cls-avf,
+prp-spo2 n=2). Do not read "sections 15-17 proved this shape with
+anonymous lambdas" as evidence that YOUR rule can. Those precedents
+were TWO-level folds. At three levels (cls-hv1, prp-spo2) and four
+(cls-avf) the anonymous-lambda proof stops discharging, and the
+failure does NOT point at the lambdas: all three parked with Error 19
+on the innermost `eliminate ... returns <row>_derives g new_t`, which
+reads as a missing witness, not as a closure-identity problem. Four
+attempts on cls-hv1 (two agent-side, two orchestrator-side, including
+an intro-lemma taking all four witnesses as arguments) were spent
+before the engine was touched. The treatment that worked, applied as
+ONE change, first attempt green on all three rules:
+
+  (a) lambda-lift EVERY fold level in the engine to a named
+      top-level helper parameterized by exactly what its lambda
+      closed over (`owl_cls_hv1_outer`/`_mid`/`_emit`,
+      `owl_cls_avf1_outer`/`_prop`/`_member`/`_emit`,
+      `owl_chain2_outer`/`_mid`/`_emit`) — behavior-identical, and it
+      also deletes the closing `assert_norm`, since the engine
+      function now unfolds to the fold by delta; and
+  (b) give each proof level its OWN standalone lemma taking the level
+      above's witnesses as ARGUMENTS, so the row's existential is
+      assembled in one flat context (`lemma_cls_hv1_row_intro`,
+      `lemma_cls_avf_row_intro`) instead of across N nested
+      `introduce` scopes.
+
+Rule of thumb: at ≥3 fold levels, do (a) and (b) FIRST. They are
+cheap, mechanical and behavior-preserving; the diagnosis they replace
+is not.
+
+BRIDGE-LEMMA COROLLARY, same landing: when a bridge reads TWO buckets
+at ONE node (rdf:first + rdf:rest), spell the provenance in FOUR
+steps per hop — served-object map equation, `memP` in the bucket,
+`ig_wf_sp`-pinned `memP _ ig.ig_triples /\ .s /\ .p`, then the
+record-literal `memP _ g` the spec's cons case wants verbatim. The
+parked `lemma_decode_chain_pair_licensed` collapsed those into one
+assert per triple and produced four Error-19s; the intermediate
+bucket-`memP` assert is what lets Z3 e-match `ig_wf_sp` for both
+buckets at once. `lemma_decode_iri_list_licensed` (Refinement section
+18) and `decode_chain_pair_sound` (Soundness Rule 11) both already
+carry the four-step spelling — copy one of them rather than
+compressing.
+
 Corollaries: `assert_norm (rule g ig == fold_left step ...)` reduces
 only through zeta-unfoldable LOCAL step lambdas spelled VERBATIM from
 the engine text (top-level proof-side copies fail; pair-match vs

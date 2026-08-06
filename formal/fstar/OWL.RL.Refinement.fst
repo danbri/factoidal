@@ -4219,29 +4219,168 @@ let lemma_vocab_hv_agree ()
            OWL.Closure.owl_onProperty_iri == OWL.RL.Spec.o_owl_onProperty /\
            RDFS.Closure.rdf_type == OWL.RL.Spec.o_rdf_type) = ()
 
-// PARKED (2026-08-06): the cls-hv1 licensing proof. Sections 27-29
-// (cls-hv2, prp-spo2, cls-avf) of this wave PASSED; this rule's
-// three-level fold did not. Two error signatures, four attempts
-// (two agent-side, two orchestrator-side incl. the section-24/25
-// intro-lemma packaging -- lemma_cls_hv1_derives_intro with all four
-// witnesses as arguments):
-//   Error 19, could not prove post-condition, anchored at the tu
-//   eliminate's `returns cls_hv1_derives g new_t` (originally
-//   4321,10-4321,68; unchanged by the intro-lemma call).
-// The failing obligation survives both witness eliminates (onp from
-// the sp-bucket, tu from lemma_find_subjects_indexed_wf_subj) with
-// all row conjuncts asserted in scope -- the residue is likely the
-// hv/onp/tu/p existential assembly ACROSS the three fold levels'
-// introduce scopes (a depth-3-nesting variant of the guard-depth
-// family). Next angles: hoist the inner two levels into standalone
-// lemmas taking (hv_t, op_term/p) as ARGUMENTS so each introduce
-// scope carries one witness only; or lift the engine's three
-// anonymous fold lambdas to named helpers despite the section
-// banner's no-hoist-needed reading (sections 15-17's precedent was
-// TWO-level; this is the first THREE-level rule). Proof text parked
-// in the scratchpad (wave3 patch); shared infra
-// (lemma_find_subjects_indexed_wf_subj, lemma_vocab_hv_agree) kept
-// above -- sections 27-29 consume it.
+// UNPARKED (2026-08-06, wave 3 relift). The four parked attempts all
+// failed the same way -- Error 19 on the tu eliminate's `returns
+// cls_hv1_derives g new_t` -- with the engine's THREE fold lambdas
+// still anonymous and the proof re-spelling them verbatim. Per the
+// closure-identity law (proof-factory skill), the re-spelling is a
+// distinct SMT token at every level, so nothing the inner introduce
+// scopes established could reach the engine's own instances. Two
+// changes, applied together:
+//   (a) ENGINE: `owl_rule_cls_hv1` now folds NAMED top-level helpers
+//       `owl_cls_hv1_outer` / `_mid` / `_emit`, each parameterized by
+//       exactly the variables its old lambda closed over
+//       (OWL.Closure.fsti, PROOF-FRIENDLY GUARD RULE banner there).
+//       Behavior identical -- pure lambda lifting.
+//   (b) PROOF: the inner two levels are STANDALONE lemmas taking the
+//       witnesses (hv_t, onp, p) as ARGUMENTS, so each `introduce`
+//       scope carries one witness only and the row's four-way
+//       existential is assembled in a single flat context
+//       (`lemma_cls_hv1_row_intro`) rather than across three nested
+//       introduce scopes.
+// ===================================================================
+
+// The row's existential, assembled flat: one `eliminate` for the tu
+// witness, every other conjunct already an argument. This is the
+// obligation the parked attempts could not discharge three introduce
+// scopes deep.
+val lemma_cls_hv1_row_intro
+    (g : rdf_graph) (ig : indexed_graph)
+    (hv_t : triple) (onp : triple) (p : wf_iri) (x : subject)
+  : Lemma
+    (requires ig_wf_po ig /\ ig.ig_triples == g /\
+              memP hv_t g /\ hv_t.p == owl_hasValue_iri /\
+              memP onp g /\ onp.s == hv_t.s /\ onp.p == owl_onProperty_iri /\
+              onp.o == T_IRI p /\
+              memP x (find_subjects_indexed ig rdf_type
+                        (subject_to_term hv_t.s)))
+    (ensures cls_hv1_derives g ({ s = x; p = p; o = hv_t.o } <: triple))
+
+#push-options "--z3rlimit 200 --split_queries always"
+let lemma_cls_hv1_row_intro g ig hv_t onp p x =
+  lemma_vocab_hv_agree ();
+  let r_subj = hv_t.s in
+  let new_t : triple = { s = x; p = p; o = hv_t.o } in
+  lemma_find_subjects_indexed_wf_subj ig g rdf_type r_subj x;
+  eliminate exists (tu : triple).
+      memP tu g /\ tu.p == rdf_type /\
+      tu.o == subject_to_term r_subj /\ tu.s == x
+  returns cls_hv1_derives g new_t
+  with _ . begin
+    lemma_subj_term_agree r_subj;
+    assert (tu.o == subj_term hv_t.s);
+    assert (new_t == ({ s = tu.s; p = p; o = hv_t.o } <: triple))
+  end
+#pop-options
+
+let cls_hv1_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ cls_hv1_derives g t)
+
+// Level 3 (innermost fold, over the restriction's members): the
+// engine's own `owl_cls_hv1_emit p hv_t.o` is the folded function --
+// same symbol, no re-spelling.
+val lemma_cls_hv1_members_fold
+    (g : rdf_graph) (ig : indexed_graph)
+    (hv_t : triple) (onp : triple) (p : wf_iri) (acc2 : rdf_graph)
+  : Lemma
+    (requires ig_wf_po ig /\ ig.ig_triples == g /\
+              memP hv_t g /\ hv_t.p == owl_hasValue_iri /\
+              memP onp g /\ onp.s == hv_t.s /\ onp.p == owl_onProperty_iri /\
+              onp.o == T_IRI p /\
+              cls_hv1_licensed g acc2)
+    (ensures cls_hv1_licensed g
+               (List.Tot.fold_left (owl_cls_hv1_emit p hv_t.o) acc2
+                  (find_subjects_indexed ig rdf_type
+                     (subject_to_term hv_t.s))))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let lemma_cls_hv1_members_fold g ig hv_t onp p acc2 =
+  let members = find_subjects_indexed ig rdf_type (subject_to_term hv_t.s) in
+  introduce forall (acc3 : rdf_graph) (x : subject).
+      (memP x members /\ cls_hv1_licensed g acc3) ==>
+      cls_hv1_licensed g (owl_cls_hv1_emit p hv_t.o acc3 x)
+  with introduce (memP x members /\ cls_hv1_licensed g acc3) ==>
+                 cls_hv1_licensed g (owl_cls_hv1_emit p hv_t.o acc3 x)
+  with _ . begin
+    lemma_cls_hv1_row_intro g ig hv_t onp p x
+  end;
+  fold_left_inv (cls_hv1_licensed g) (owl_cls_hv1_emit p hv_t.o) members acc2
+#pop-options
+
+// Level 2 (middle fold, over the restriction's onProperty objects):
+// extracts the `onp` witness from the sp bucket, then hands it to
+// level 3 as an ARGUMENT.
+val lemma_cls_hv1_mid_step
+    (g : rdf_graph) (ig : indexed_graph)
+    (hv_t : triple) (acc2 : rdf_graph) (op_term : rdf_term)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig.ig_triples == g /\
+              memP hv_t g /\ hv_t.p == owl_hasValue_iri /\
+              memP op_term (find_objects_indexed ig hv_t.s owl_onProperty_iri) /\
+              cls_hv1_licensed g acc2)
+    (ensures cls_hv1_licensed g
+               (owl_cls_hv1_mid ig hv_t.s hv_t.o acc2 op_term))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let lemma_cls_hv1_mid_step g ig hv_t acc2 op_term =
+  let r_subj = hv_t.s in
+  match op_term with
+  | T_IRI p ->
+    let ob = bucket_lookup ig.ig_sp (sp_key r_subj owl_onProperty_iri) in
+    assert (find_objects_indexed ig r_subj owl_onProperty_iri ==
+            List.Tot.map (fun (u : triple) -> u.o) ob);
+    FStar.List.Tot.Properties.memP_map_elim
+      (fun (u : triple) -> u.o) op_term ob;
+    eliminate exists (onp : triple).
+        memP onp ob /\ onp.o == op_term
+    returns cls_hv1_licensed g (owl_cls_hv1_mid ig r_subj hv_t.o acc2 op_term)
+    with _ . begin
+      assert (memP onp g /\ onp.s == r_subj /\ onp.p == owl_onProperty_iri);
+      lemma_cls_hv1_members_fold g ig hv_t onp p acc2
+    end
+  | _ -> ()
+#pop-options
+
+val owl_rule_cls_hv1_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig.ig_triples == g)
+          (ensures  cls_hv1_licensed g (owl_rule_cls_hv1 g ig))
+
+#push-options "--z3rlimit 400 --split_queries always"
+let owl_rule_cls_hv1_licensed g ig =
+  introduce forall (acc : rdf_graph) (hv_t : triple).
+      (memP hv_t g /\ cls_hv1_licensed g acc) ==>
+      cls_hv1_licensed g (owl_cls_hv1_outer ig acc hv_t)
+  with introduce (memP hv_t g /\ cls_hv1_licensed g acc) ==>
+                 cls_hv1_licensed g (owl_cls_hv1_outer ig acc hv_t)
+  with _ . begin
+    if hv_t.p = owl_hasValue_iri then begin
+      let r_subj = hv_t.s in
+      let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
+      introduce forall (acc2 : rdf_graph) (op_term : rdf_term).
+          (memP op_term onprops /\ cls_hv1_licensed g acc2) ==>
+          cls_hv1_licensed g (owl_cls_hv1_mid ig r_subj hv_t.o acc2 op_term)
+      with introduce (memP op_term onprops /\ cls_hv1_licensed g acc2) ==>
+                     cls_hv1_licensed g (owl_cls_hv1_mid ig r_subj hv_t.o acc2 op_term)
+      with _ . begin
+        lemma_cls_hv1_mid_step g ig hv_t acc2 op_term
+      end;
+      fold_left_inv (cls_hv1_licensed g)
+        (owl_cls_hv1_mid ig r_subj hv_t.o) onprops acc
+    end else ()
+  end;
+  fold_left_inv (cls_hv1_licensed g) (owl_cls_hv1_outer ig) g g
+#pop-options
+
+val theorem_cls_hv1_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_cls_hv1 g ig))
+    (ensures  memP t g \/ cls_hv1_derives g t)
+
+let theorem_cls_hv1_licensed g ig t =
+  owl_rule_cls_hv1_licensed g ig
+
 // ===================================================================
 // ===================================================================
 // 27. cls-hv2: every `owl_rule_cls_hv2` emission is licensed --
@@ -4500,20 +4639,251 @@ let theorem_cls_hv2_licensed g ig t =
 
 // The 2-hop LIST-WALK bridge: `decode_chain_pair`'s two direct bucket
 // reads reassembled as `owl_list_denotes`'s two-element cons chain.
-// PARKED (2026-08-06): the prp-spo2 (n=2) licensing proof. The wave's
-// sections 27 (cls-hv2) and 29 (cls-avf) PASSED; this section's
-// bridge lemma `lemma_decode_chain_pair_licensed` did not: four
-// Error-19 obligations (two sp-bucket map-equation asserts -- plain
-// AND assert_norm forms both fail -- and two deeper first/rest
-// bucket-head assertions), never verified in any run (the agent's
-// worktree verify died before reaching it; earlier single-error runs
-// masked it). The decode_chain_pair walk reads TWO buckets per node
-// (rdf:first + rdf:rest) and the proof's bucket-head reasoning needs
-// the served-object-to-triple provenance in BOTH simultaneously --
-// likely wants the section-18 LIST-WALK bridge machinery
-// (lemma_decode_iri_list_licensed's shape) rather than raw bucket
-// asserts. Proof text in the scratchpad wave3 patch. The main lemma
-// and corollary are excised with it (they consume the bridge).
+// UNPARKED (2026-08-06, wave 3 relift). Two changes against the
+// parked attempt:
+//   (a) BRIDGE: `lemma_decode_chain_pair_licensed` is rebuilt in
+//       section 18's LIST-WALK shape -- the parked version jumped
+//       straight from the bucket head to `memP ft1 g /\ ft1.s ==
+//       head_subj /\ ft1.p == rdf_first` in one assert. Section 18
+//       (and `decode_chain_pair_sound`, its semantic twin in
+//       OWL.Semantics.Soundness) instead spell THREE steps per hop:
+//       the served-object equation, then `memP` in the bucket, then
+//       the `ig_wf_sp`-pinned `memP _ ig.ig_triples /\ .s /\ .p`
+//       triple, then the record-literal `memP _ g` the
+//       `owl_list_denotes` cons case wants verbatim. The
+//       intermediate bucket-memP assert is what lets Z3 e-match
+//       `ig_wf_sp`; without it the provenance for the two buckets at
+//       one node cannot both be established.
+//   (b) ENGINE: `owl_rule_property_chain_2` now folds NAMED
+//       top-level helpers `owl_chain2_outer` / `_mid` / `_emit`
+//       (closure-identity law; OWL.Closure.fsti banner), and the
+//       proof references those symbols instead of re-spelling three
+//       anonymous lambdas.
+// `decode_chain_pair`'s own spelling is unchanged: it is not a fold
+// step (the guard-depth rule does not bite) and its semantic bridge
+// `decode_chain_pair_sound` already discharges against this exact
+// pair-match text.
+
+let lemma_vocab_chain_agree ()
+  : Lemma (OWL.Closure.owl_propertyChainAxiom ==
+             OWL.RL.Spec.o_owl_propertyChainAxiom) = ()
+
+val lemma_decode_chain_pair_licensed
+    (g : rdf_graph) (ig : indexed_graph) (head_subj : subject)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g)
+    (ensures (match decode_chain_pair g ig head_subj with
+              | None -> True
+              | Some (p1, p2) ->
+                owl_list_denotes g (subj_term head_subj)
+                  [T_IRI p1; T_IRI p2]))
+
+#push-options "--z3rlimit 300 --fuel 3 --ifuel 2 --split_queries always"
+let lemma_decode_chain_pair_licensed g ig head_subj =
+  lemma_vocab_list_agree ();
+  let fb1 = bucket_lookup ig.ig_sp (sp_key head_subj rdf_first) in
+  let rb1 = bucket_lookup ig.ig_sp (sp_key head_subj rdf_rest) in
+  let firsts1 = find_objects_indexed ig head_subj rdf_first in
+  let rests1  = find_objects_indexed ig head_subj rdf_rest in
+  assert (firsts1 == List.Tot.map (fun (t : triple) -> t.o) fb1);
+  assert (rests1  == List.Tot.map (fun (t : triple) -> t.o) rb1);
+  match firsts1, rests1 with
+  | (T_IRI p1) :: _, tail_term :: _ ->
+    (match fb1, rb1 with
+     | ft1 :: _, rt1 :: _ ->
+       assert (ft1.o == T_IRI p1);
+       assert (rt1.o == tail_term);
+       assert (List.Tot.memP ft1 (bucket_lookup ig.ig_sp (sp_key head_subj rdf_first)));
+       assert (List.Tot.memP rt1 (bucket_lookup ig.ig_sp (sp_key head_subj rdf_rest)));
+       // ig_wf_sp pins ft1, rt1 into the snapshot at head_subj
+       // (auto-instantiated by Z3 e-matching); ig.ig_triples == g
+       // places them in g. Section 18's three-step spelling.
+       assert (List.Tot.memP ft1 ig.ig_triples /\ ft1.s == head_subj /\
+               ft1.p == rdf_first);
+       assert (List.Tot.memP rt1 ig.ig_triples /\ rt1.s == head_subj /\
+               rt1.p == rdf_rest);
+       assert (ft1 == ({ s = head_subj; p = o_rdf_first; o = T_IRI p1 } <: triple));
+       assert (rt1 == ({ s = head_subj; p = o_rdf_rest;  o = tail_term } <: triple));
+       assert (List.Tot.memP
+                 ({ s = head_subj; p = o_rdf_first; o = T_IRI p1 } <: triple) g);
+       assert (List.Tot.memP
+                 ({ s = head_subj; p = o_rdf_rest; o = tail_term } <: triple) g);
+       (match term_to_subject tail_term with
+        | None -> ()
+        | Some tail_subj ->
+          lemma_term_to_subject_subj_term tail_term tail_subj;
+          let fb2 = bucket_lookup ig.ig_sp (sp_key tail_subj rdf_first) in
+          let rb2 = bucket_lookup ig.ig_sp (sp_key tail_subj rdf_rest) in
+          let firsts2 = find_objects_indexed ig tail_subj rdf_first in
+          let rests2  = find_objects_indexed ig tail_subj rdf_rest in
+          assert (firsts2 == List.Tot.map (fun (t : triple) -> t.o) fb2);
+          assert (rests2  == List.Tot.map (fun (t : triple) -> t.o) rb2);
+          (match firsts2, rests2 with
+           | (T_IRI p2) :: _, (T_IRI nil_iri) :: _ ->
+             if nil_iri = rdf_nil_iri then
+               (match fb2, rb2 with
+                | ft2 :: _, rt2 :: _ ->
+                  assert (ft2.o == T_IRI p2);
+                  assert (rt2.o == T_IRI nil_iri);
+                  assert (List.Tot.memP ft2
+                            (bucket_lookup ig.ig_sp (sp_key tail_subj rdf_first)));
+                  assert (List.Tot.memP rt2
+                            (bucket_lookup ig.ig_sp (sp_key tail_subj rdf_rest)));
+                  assert (List.Tot.memP ft2 ig.ig_triples /\ ft2.s == tail_subj /\
+                          ft2.p == rdf_first);
+                  assert (List.Tot.memP rt2 ig.ig_triples /\ rt2.s == tail_subj /\
+                          rt2.p == rdf_rest);
+                  assert (ft2 ==
+                          ({ s = tail_subj; p = o_rdf_first; o = T_IRI p2 } <: triple));
+                  assert (rt2 ==
+                          ({ s = tail_subj; p = o_rdf_rest;
+                             o = T_IRI o_rdf_nil } <: triple));
+                  assert (List.Tot.memP
+                            ({ s = tail_subj; p = o_rdf_first;
+                               o = T_IRI p2 } <: triple) g);
+                  assert (List.Tot.memP
+                            ({ s = tail_subj; p = o_rdf_rest;
+                               o = T_IRI o_rdf_nil } <: triple) g);
+                  // Tail of the cons chain: rdf:nil denotes [].
+                  assert (owl_list_denotes g (T_IRI o_rdf_nil) []);
+                  // One-element sub-chain rooted at tail_subj, then
+                  // lifted to tail_term through the half-inverse.
+                  assert (owl_list_denotes g (subj_term tail_subj) [T_IRI p2]);
+                  assert (owl_list_denotes g tail_term [T_IRI p2]);
+                  assert (owl_list_denotes g (subj_term head_subj)
+                            [T_IRI p1; T_IRI p2])
+                | _, _ -> ())
+             else ()
+           | _, _ -> ()))
+     | _, _ -> ())
+  | _, _ -> ()
+#pop-options
+
+let prp_spo2_licensed (g : rdf_graph) (out : rdf_graph) : prop =
+  forall (t : triple). memP t out ==> (memP t g \/ prp_spo2_derives g t)
+
+// The row's existential, assembled flat -- every witness the three
+// fold levels bound is an ARGUMENT here (cls-hv1's treatment).
+val lemma_prp_spo2_row_intro
+    (g : rdf_graph) (ig : indexed_graph)
+    (chain_t : triple) (p_iri : wf_iri) (p1 : wf_iri) (p2 : wf_iri)
+    (t1 : triple) (y_subj : subject) (z_term : rdf_term)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP chain_t g /\ chain_t.p == owl_propertyChainAxiom /\
+              chain_t.s == S_IRI p_iri /\
+              owl_list_denotes g chain_t.o [T_IRI p1; T_IRI p2] /\
+              memP t1 g /\ t1.p == p1 /\ subj_term y_subj == t1.o /\
+              memP z_term (find_objects_indexed ig y_subj p2))
+    (ensures prp_spo2_derives g ({ s = t1.s; p = p_iri; o = z_term } <: triple))
+
+#push-options "--z3rlimit 400 --fuel 3 --ifuel 2 --split_queries always"
+let lemma_prp_spo2_row_intro g ig chain_t p_iri p1 p2 t1 y_subj z_term =
+  lemma_vocab_chain_agree ();
+  let new_t : triple = { s = t1.s; p = p_iri; o = z_term } in
+  let zb = bucket_lookup ig.ig_sp (sp_key y_subj p2) in
+  assert (find_objects_indexed ig y_subj p2 ==
+          List.Tot.map (fun (u : triple) -> u.o) zb);
+  FStar.List.Tot.Properties.memP_map_elim
+    (fun (u : triple) -> u.o) z_term zb;
+  eliminate exists (u2 : triple).
+      memP u2 zb /\ u2.o == z_term
+  returns prp_spo2_derives g new_t
+  with _ . begin
+    assert (memP u2 ig.ig_triples /\ u2.s == y_subj /\ u2.p == p2);
+    assert (memP u2 g);
+    // chain_holds g t1.s [p1; p2] z_term: head link u := t1 (memP t1
+    // g, u.s == t1.s, u.p == p1), meeting node mid := y_subj
+    // (subj_term y_subj == t1.o), tail link u := u2 (u2.s == y_subj,
+    // u2.p == p2, u2.o == z_term).
+    assert (chain_holds g y_subj [p2] z_term);
+    assert (chain_holds g t1.s [p1; p2] z_term);
+    assert (([T_IRI p1; T_IRI p2] <: list rdf_term) ==
+            List.Tot.map (fun (q : wf_iri) -> T_IRI q) [p1; p2]);
+    assert (Cons? ([p1; p2] <: list wf_iri))
+  end
+#pop-options
+
+// Level 2 (middle fold, over g): the engine's own
+// `owl_chain2_mid ig p_iri p1 p2` is the folded function.
+val lemma_prp_spo2_mid_step
+    (g : rdf_graph) (ig : indexed_graph)
+    (chain_t : triple) (p_iri : wf_iri) (p1 : wf_iri) (p2 : wf_iri)
+    (acc2 : rdf_graph) (t1 : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP chain_t g /\ chain_t.p == owl_propertyChainAxiom /\
+              chain_t.s == S_IRI p_iri /\
+              owl_list_denotes g chain_t.o [T_IRI p1; T_IRI p2] /\
+              memP t1 g /\ prp_spo2_licensed g acc2)
+    (ensures prp_spo2_licensed g (owl_chain2_mid ig p_iri p1 p2 acc2 t1))
+
+#push-options "--z3rlimit 400 --split_queries always"
+let lemma_prp_spo2_mid_step g ig chain_t p_iri p1 p2 acc2 t1 =
+  if t1.p = p1 then
+    match term_to_subject t1.o with
+    | Some y_subj ->
+      lemma_term_to_subject_subj_term t1.o y_subj;
+      let zs = find_objects_indexed ig y_subj p2 in
+      introduce forall (acc3 : rdf_graph) (z_term : rdf_term).
+          (memP z_term zs /\ prp_spo2_licensed g acc3) ==>
+          prp_spo2_licensed g (owl_chain2_emit p_iri t1.s acc3 z_term)
+      with introduce (memP z_term zs /\ prp_spo2_licensed g acc3) ==>
+                     prp_spo2_licensed g (owl_chain2_emit p_iri t1.s acc3 z_term)
+      with _ . begin
+        lemma_prp_spo2_row_intro g ig chain_t p_iri p1 p2 t1 y_subj z_term
+      end;
+      fold_left_inv (prp_spo2_licensed g) (owl_chain2_emit p_iri t1.s) zs acc2
+    | None -> ()
+  else ()
+#pop-options
+
+val owl_rule_property_chain_2_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig.ig_triples == g)
+          (ensures  prp_spo2_licensed g (owl_rule_property_chain_2 g ig))
+
+#push-options "--z3rlimit 400 --split_queries always"
+let owl_rule_property_chain_2_licensed g ig =
+  introduce forall (acc : rdf_graph) (chain_t : triple).
+      (memP chain_t g /\ prp_spo2_licensed g acc) ==>
+      prp_spo2_licensed g (owl_chain2_outer g ig acc chain_t)
+  with introduce (memP chain_t g /\ prp_spo2_licensed g acc) ==>
+                 prp_spo2_licensed g (owl_chain2_outer g ig acc chain_t)
+  with _ . begin
+    if chain_t.p = owl_propertyChainAxiom then begin
+      match chain_t.s, term_to_subject chain_t.o with
+      | S_IRI p_iri, Some list_subj ->
+        lemma_term_to_subject_subj_term chain_t.o list_subj;
+        (match decode_chain_pair g ig list_subj with
+         | Some (p1, p2) ->
+           lemma_decode_chain_pair_licensed g ig list_subj;
+           assert (owl_list_denotes g chain_t.o [T_IRI p1; T_IRI p2]);
+           introduce forall (acc2 : rdf_graph) (t1 : triple).
+               (memP t1 g /\ prp_spo2_licensed g acc2) ==>
+               prp_spo2_licensed g (owl_chain2_mid ig p_iri p1 p2 acc2 t1)
+           with introduce (memP t1 g /\ prp_spo2_licensed g acc2) ==>
+                          prp_spo2_licensed g (owl_chain2_mid ig p_iri p1 p2 acc2 t1)
+           with _ . begin
+             lemma_prp_spo2_mid_step g ig chain_t p_iri p1 p2 acc2 t1
+           end;
+           fold_left_inv (prp_spo2_licensed g)
+             (owl_chain2_mid ig p_iri p1 p2) g acc
+         | None -> ())
+      | _, _ -> ()
+    end else ()
+  end;
+  fold_left_inv (prp_spo2_licensed g) (owl_chain2_outer g ig) g g
+#pop-options
+
+val theorem_property_chain_2_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_property_chain_2 g ig))
+    (ensures  memP t g \/ prp_spo2_derives g t)
+
+let theorem_property_chain_2_licensed g ig t =
+  owl_rule_property_chain_2_licensed g ig
 
 // ===================================================================
 // 29. cls-avf: every `owl_rule_cls_avf1` emission is licensed.
@@ -4546,17 +4916,180 @@ let lemma_vocab_avf_agree ()
 let cls_avf_licensed (g : rdf_graph) (out : rdf_graph) : prop =
   forall (t : triple). memP t out ==> (memP t g \/ cls_avf_derives g t)
 
-// PARKED (2026-08-06): the cls-avf licensing proof. Three Error-19
-// obligations at the lemma's closing region (4708-4716 pre-excision:
-// two late assertions + the closing assert_norm), never verified in
-// any run -- the wave agent's verify died before reaching sections
-// 26/28/29, and each orchestrator excision exposed the next
-// unverified region. Of this wave only section 27 (cls-hv2) proved.
-// cls-avf shares cls-hv1's three-level fold shape (outer g / middle
-// onProperty objects / inner restriction members) -- park both
-// behind the same next angle: hoist the inner two fold levels into
-// standalone argument-passing lemmas, or lift the engine's fold
-// lambdas to named helpers (first THREE-level rules in the program;
-// the two-level precedent did not need it, these do). Proof text in
-// the scratchpad wave3 patch.
+// UNPARKED (2026-08-06, wave 3 relift). cls-avf is the program's
+// deepest rule -- FOUR fold levels -- and it took the same two-part
+// treatment as cls-hv1 (section 26): the engine's four anonymous
+// fold lambdas are now the NAMED top-level helpers
+// `owl_cls_avf1_outer` / `_prop` / `_member` / `_emit` (closure-
+// identity law, OWL.Closure.fsti banner), and each proof level is a
+// STANDALONE lemma taking the level above's witnesses as ARGUMENTS,
+// so the row's six-way existential is assembled in one flat context
+// (`lemma_cls_avf_row_intro`) instead of across four nested
+// `introduce` scopes.
+
+// The row's existential, assembled flat.
+val lemma_cls_avf_row_intro
+    (g : rdf_graph) (ig : indexed_graph)
+    (t_avf : triple) (onp : triple) (d : wf_iri) (p : wf_iri)
+    (x : subject) (y : rdf_term) (y_subj : subject)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig.ig_triples == g /\
+              memP t_avf g /\ t_avf.p == owl_allValuesFrom_iri /\
+              t_avf.o == T_IRI d /\
+              memP onp g /\ onp.s == t_avf.s /\ onp.p == owl_onProperty_iri /\
+              onp.o == T_IRI p /\
+              memP x (find_subjects_indexed ig rdf_type
+                        (subject_to_term t_avf.s)) /\
+              memP y (find_objects_indexed ig x p) /\
+              subj_term y_subj == y)
+    (ensures cls_avf_derives g
+               ({ s = y_subj; p = rdf_type; o = T_IRI d } <: triple))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let lemma_cls_avf_row_intro g ig t_avf onp d p x y y_subj =
+  lemma_vocab_avf_agree ();
+  let r_subj = t_avf.s in
+  let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI d } in
+  let yb = bucket_lookup ig.ig_sp (sp_key x p) in
+  assert (find_objects_indexed ig x p ==
+          List.Tot.map (fun (u : triple) -> u.o) yb);
+  FStar.List.Tot.Properties.memP_map_elim
+    (fun (u : triple) -> u.o) y yb;
+  lemma_find_subjects_indexed_wf_subj ig g rdf_type r_subj x;
+  eliminate exists (tu : triple).
+      memP tu g /\ tu.p == rdf_type /\
+      tu.o == subject_to_term r_subj /\ tu.s == x
+  returns cls_avf_derives g new_t
+  with _ . begin
+    lemma_subj_term_agree r_subj;
+    assert (tu.o == subj_term t_avf.s);
+    eliminate exists (u2 : triple).
+        memP u2 yb /\ u2.o == y
+    returns cls_avf_derives g new_t
+    with _ . begin
+      assert (memP u2 ig.ig_triples /\ u2.s == x /\ u2.p == p);
+      assert (memP u2 g /\ u2.s == tu.s);
+      assert (new_t == ({ s = y_subj; p = rdf_type; o = t_avf.o } <: triple))
+    end
+  end
+#pop-options
+
+// Level 4 -> 3: the per-member fold over that member's P-edges. The
+// folded function is the engine's own `owl_cls_avf1_emit d`.
+val lemma_cls_avf_member_step
+    (g : rdf_graph) (ig : indexed_graph)
+    (t_avf : triple) (onp : triple) (d : wf_iri) (p : wf_iri)
+    (acc3 : rdf_graph) (x : subject)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig.ig_triples == g /\
+              memP t_avf g /\ t_avf.p == owl_allValuesFrom_iri /\
+              t_avf.o == T_IRI d /\
+              memP onp g /\ onp.s == t_avf.s /\ onp.p == owl_onProperty_iri /\
+              onp.o == T_IRI p /\
+              memP x (find_subjects_indexed ig rdf_type
+                        (subject_to_term t_avf.s)) /\
+              cls_avf_licensed g acc3)
+    (ensures cls_avf_licensed g (owl_cls_avf1_member ig d p acc3 x))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let lemma_cls_avf_member_step g ig t_avf onp d p acc3 x =
+  let ys = find_objects_indexed ig x p in
+  introduce forall (acc4 : rdf_graph) (y : rdf_term).
+      (memP y ys /\ cls_avf_licensed g acc4) ==>
+      cls_avf_licensed g (owl_cls_avf1_emit d acc4 y)
+  with introduce (memP y ys /\ cls_avf_licensed g acc4) ==>
+                 cls_avf_licensed g (owl_cls_avf1_emit d acc4 y)
+  with _ . begin
+    match term_to_subject y with
+    | Some y_subj ->
+      lemma_term_to_subject_subj_term y y_subj;
+      lemma_cls_avf_row_intro g ig t_avf onp d p x y y_subj
+    | None -> ()
+  end;
+  fold_left_inv (cls_avf_licensed g) (owl_cls_avf1_emit d) ys acc3
+#pop-options
+
+// Level 2: per onProperty object -- extracts the `onp` witness from
+// the sp bucket, then folds level 3 over the restriction's members.
+val lemma_cls_avf_prop_step
+    (g : rdf_graph) (ig : indexed_graph)
+    (t_avf : triple) (d : wf_iri) (acc2 : rdf_graph) (p_term : rdf_term)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig.ig_triples == g /\
+              memP t_avf g /\ t_avf.p == owl_allValuesFrom_iri /\
+              t_avf.o == T_IRI d /\
+              memP p_term (find_objects_indexed ig t_avf.s owl_onProperty_iri) /\
+              cls_avf_licensed g acc2)
+    (ensures cls_avf_licensed g (owl_cls_avf1_prop ig d t_avf.s acc2 p_term))
+
+#push-options "--z3rlimit 300 --split_queries always"
+let lemma_cls_avf_prop_step g ig t_avf d acc2 p_term =
+  let r_subj = t_avf.s in
+  match p_term with
+  | T_IRI p ->
+    let ob = bucket_lookup ig.ig_sp (sp_key r_subj owl_onProperty_iri) in
+    assert (find_objects_indexed ig r_subj owl_onProperty_iri ==
+            List.Tot.map (fun (u : triple) -> u.o) ob);
+    FStar.List.Tot.Properties.memP_map_elim
+      (fun (u : triple) -> u.o) p_term ob;
+    eliminate exists (onp : triple).
+        memP onp ob /\ onp.o == p_term
+    returns cls_avf_licensed g (owl_cls_avf1_prop ig d r_subj acc2 p_term)
+    with _ . begin
+      assert (memP onp g /\ onp.s == r_subj /\ onp.p == owl_onProperty_iri);
+      let members = find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
+      introduce forall (acc3 : rdf_graph) (x : subject).
+          (memP x members /\ cls_avf_licensed g acc3) ==>
+          cls_avf_licensed g (owl_cls_avf1_member ig d p acc3 x)
+      with introduce (memP x members /\ cls_avf_licensed g acc3) ==>
+                     cls_avf_licensed g (owl_cls_avf1_member ig d p acc3 x)
+      with _ . begin
+        lemma_cls_avf_member_step g ig t_avf onp d p acc3 x
+      end;
+      fold_left_inv (cls_avf_licensed g) (owl_cls_avf1_member ig d p) members acc2
+    end
+  | _ -> ()
+#pop-options
+
+val owl_rule_cls_avf1_licensed (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig.ig_triples == g)
+          (ensures  cls_avf_licensed g (owl_rule_cls_avf1 g ig))
+
+#push-options "--z3rlimit 400 --split_queries always"
+let owl_rule_cls_avf1_licensed g ig =
+  introduce forall (acc : rdf_graph) (t_avf : triple).
+      (memP t_avf g /\ cls_avf_licensed g acc) ==>
+      cls_avf_licensed g (owl_cls_avf1_outer ig acc t_avf)
+  with introduce (memP t_avf g /\ cls_avf_licensed g acc) ==>
+                 cls_avf_licensed g (owl_cls_avf1_outer ig acc t_avf)
+  with _ . begin
+    if t_avf.p = owl_allValuesFrom_iri then
+      match t_avf.o with
+      | T_IRI d ->
+        let r_subj = t_avf.s in
+        let props = find_objects_indexed ig r_subj owl_onProperty_iri in
+        introduce forall (acc2 : rdf_graph) (p_term : rdf_term).
+            (memP p_term props /\ cls_avf_licensed g acc2) ==>
+            cls_avf_licensed g (owl_cls_avf1_prop ig d r_subj acc2 p_term)
+        with introduce (memP p_term props /\ cls_avf_licensed g acc2) ==>
+                       cls_avf_licensed g (owl_cls_avf1_prop ig d r_subj acc2 p_term)
+        with _ . begin
+          lemma_cls_avf_prop_step g ig t_avf d acc2 p_term
+        end;
+        fold_left_inv (cls_avf_licensed g) (owl_cls_avf1_prop ig d r_subj) props acc
+      | _ -> ()
+    else ()
+  end;
+  fold_left_inv (cls_avf_licensed g) (owl_cls_avf1_outer ig) g g
+#pop-options
+
+val theorem_cls_avf1_licensed
+    (g : rdf_graph) (ig : indexed_graph) (t : triple)
+  : Lemma
+    (requires ig_wf_sp ig /\ ig_wf_po ig /\ ig.ig_triples == g /\
+              memP t (owl_rule_cls_avf1 g ig))
+    (ensures  memP t g \/ cls_avf_derives g t)
+
+let theorem_cls_avf1_licensed g ig t =
+  owl_rule_cls_avf1_licensed g ig
 

@@ -16,9 +16,13 @@ or a ledger-drift correction. A stale registry is worse than none: it
 is exactly the "reviewed definitions overridden by implementation
 detail" failure G1 exists to prevent.
 
-**Date**: 2026-08-05. **Tree state**: commit `27c23d5` (HEAD at time of
-writing) plus a read-only survey of the four proof files below; no
-`.fst`/`.fsti`/Makefile edits were made to produce this registry.
+**Date**: 2026-08-06 (status cells for cls-hv1, cls-hv2, cls-avf and
+prp-spo2 n=2 refreshed by the wave 3 relift landing). **Tree state**:
+commit `06f3f20` plus the wave 3 relift working tree. The original
+registry survey was made at commit `27c23d5` and was read-only; the
+relift landing does edit `OWL.Closure.fsti` (behavior-identical
+lambda lifting only — see the PROOF-FRIENDLY GUARD RULE banners
+there).
 
 **Scope, honestly stated**: this registry covers the OWL 2 RL/RDF
 rule-by-rule licensing + truth-preservation program
@@ -53,8 +57,15 @@ Status values: **PROVED**, **PARKED(reason)**, **IMPOSSIBLE(evidence)**,
 **UNATTEMPTED**, **N/A** (proof kind does not apply to this entry
 class).
 
-**Licensing count: 23 of 34 `[row]` table-row obligations proved**,
-using the ledger's own accounting (`subprop_domain_range` and
+**Licensing count: 26 of 34 `[row]` table-row obligations proved**
+(2026-08-06). The figure was 23 at commit `27c23d5`; wave 3 added
+cls-hv2 (commit `06f3f20`, against the weakened row
+`cls_hv2_derives_approx`), then cls-hv1 and cls-avf in the relift
+landing. **prp-spo2 is NOT counted**: its row is shared between
+`property_chain_2` and `property_chain_n`, and only the n=2 half is
+proved — the row becomes coverable when `property_chain_n` follows.
+The rest of this paragraph derives the 23 baseline, using the
+ledger's own accounting (`subprop_domain_range` and
 `cls_maxqc34` each count as covering TWO rows; `property_chain_2`/
 `property_chain_n` count as covering ONE row between them — the
 arithmetic the ledger's closing comment states). This matches the
@@ -121,8 +132,8 @@ symmetric in which side of the pair is fixed).
 | [ext] | n/a | `disjoint_to_complement` | N/A | UNATTEMPTED | — | `disjointWith` into `complementOf` scaffolding for the clash checker. |
 | [ext] | n/a | `svf2_existential_witness` | N/A | UNATTEMPTED | — | Comprehension-witness layer (four nested folds). |
 | [ext] | n/a | `minc1_bridge` | N/A | UNATTEMPTED | — | Comprehension-witness layer. |
-| cls-hv1 | `cls_hv1_derives` | `cls_hv1` | UNATTEMPTED | UNATTEMPTED | — | — |
-| cls-hv2 | `cls_hv2_derives` | `cls_hv2` | UNATTEMPTED | UNATTEMPTED | — | — |
+| cls-hv1 | `cls_hv1_derives` | `cls_hv1` | ✅ PROVED (2026-08-06, wave 3 relift) | UNATTEMPTED | `ig_wf_sp`, `ig_wf_po`, `ig.ig_triples == g`; needed named top-level helpers (`owl_cls_hv1_outer`/`_mid`/`_emit`) | First THREE-level fold rule proved. Four earlier attempts failed Error-19 on the `tu` eliminate with the engine's three lambdas still anonymous; the closure-identity law is what bit. Fix = lambda-lift ALL three engine levels + package each proof level as a standalone lemma taking the level above's witnesses as arguments (`lemma_cls_hv1_row_intro`), so the row's four-way existential is assembled in one flat context. Section 26. |
+| cls-hv2 | `cls_hv2_derives` | `cls_hv2` | ✅ PROVED against `cls_hv2_derives_approx` (commit `06f3f20`) | UNATTEMPTED | `ig_wf_sp`, `ig_wf_po`, `ig_wf_pred`, `ig.ig_triples == g` | WEAKENED ROW (same convention as prp-key): the engine's `find_subjects_indexed ig p v` falls back to an `rdf_term_eq` filter when `v` is a literal, which is coarser than the row's `==` (lang-tag case folding, XMLLiteral c14n). Machine-checked witness in section 27; row transcription itself is faithful, this is a confirmed engine-vs-row narrowing, not a ledger drift. |
 | [ext] | n/a | `cls_svf2_qualified` | N/A | UNATTEMPTED | — | Comprehension layer. |
 | [ext] | n/a | `cls_minc_qual1` | N/A | UNATTEMPTED | — | Comprehension layer. |
 | [ext] | n/a | `cls_hasself1` | N/A | UNATTEMPTED | — | ObjectHasSelf semantics (Table 5.x); `hasSelf` has no RL table row. |
@@ -134,10 +145,10 @@ symmetric in which side of the pair is fixed).
 | [ext] | n/a | `cls_exactqc1` | N/A | UNATTEMPTED | — | Exact qualified cardinality decomposes into min+max; no RL row of its own. |
 | cls-maxc2 | `cls_maxc2_derives` | `cls_maxc2` | UNATTEMPTED | UNATTEMPTED | — | — |
 | [ext] | n/a | `cls_maxqc_comp` | N/A | UNATTEMPTED | — | The #236 anchor machinery. **Known sound-but-narrow** (see CLAUDE.md "Known sound-but-narrow rewrites"): drops vacuous-truth individuals and OWL-Full punned class-individuals; the internal-variable LEAK the 2026-07-09 strict runner found is FIXED (task #100, `strip_rewrite_internal_vars`). |
-| cls-avf | `cls_avf_derives` | `cls_avf1` | UNATTEMPTED | UNATTEMPTED | — | — |
+| cls-avf | `cls_avf_derives` | `cls_avf1` | ✅ PROVED (2026-08-06, wave 3 relift) | UNATTEMPTED | `ig_wf_sp`, `ig_wf_po`, `ig.ig_triples == g`; needed named top-level helpers (`owl_cls_avf1_outer`/`_prop`/`_member`/`_emit`) | The program's deepest rule — FOUR fold levels. Same two-part treatment as cls-hv1: lambda-lift every engine level, then one standalone lemma per proof level with the level above's witnesses as arguments (`lemma_cls_avf_row_intro` assembles the six-way existential flat). Section 29. |
 | [ext] | n/a | `reflexive_property` | N/A | UNATTEMPTED | — | ReflexiveProperty semantics; RL profile has no prp-rfl row. |
 | [ext] | n/a | `scm_cls_restriction` | N/A | ✅ PROVED | none, single-fold, no fresh bnodes | `owl:Restriction rdfs:subClassOf owl:Class` (Table 5, Axiomatic Triples) read through the RDFS class-extension condition. |
-| prp-spo2 (n=2) | `prp_spo2_derives` | `property_chain_2` | UNATTEMPTED | UNATTEMPTED | — | Splits one row across two engine functions by chain arity. |
+| prp-spo2 (n=2) | `prp_spo2_derives` | `property_chain_2` | ✅ PROVED (2026-08-06, wave 3 relift) | UNATTEMPTED | `ig_wf_sp`, `ig.ig_triples == g`; needed named top-level helpers (`owl_chain2_outer`/`_mid`/`_emit`) | Splits one row across two engine functions by chain arity. The list bridge `lemma_decode_chain_pair_licensed` is the syntactic twin of `decode_chain_pair_sound`, rebuilt in section 18's LIST-WALK spelling (served-object equation → bucket `memP` → `ig_wf_sp`-pinned triple → record-literal `memP _ g`); the parked attempt collapsed those four steps into one assert and Z3 could not e-match `ig_wf_sp` for two buckets at one node. Section 28. |
 | prp-spo2 (n≥3) | `prp_spo2_derives` | `property_chain_n` | UNATTEMPTED | UNATTEMPTED | — | See above. |
 | [ext] | n/a | `chain_to_transitive` | N/A | ✅ PROVED | no recursion needed (unlike Rule 4's list-walk) | A chain p·p → p IS transitivity; bridge, banner proof. |
 | [ext] | n/a | `transitive_to_chain` | N/A | ❌ IMPOSSIBLE (mints two fresh bnodes; Rule 12) | — | Converse bridge. Needs `canonical_chainl1_bnode`/`_chainl2_bnode` witnesses (rdf:first/rdf:rest list cells) with no premise in g requiring their existence — an existence condition, not an implication, that no W3C RDF-Based table asserts. STOP per the two-attempt rule; would need a model-extension lemma or a licensed-by-g (syntactic-provenance) reframing instead. |

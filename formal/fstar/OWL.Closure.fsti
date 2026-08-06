@@ -1545,29 +1545,38 @@ let owl_rule_minc1_bridge (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
 // string-integer-clash (InconsistencyTest); see
 // docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md and the
 // 2026-07-05 functional-syntax-plan doc's follow-up note.
+// PROOF-FRIENDLY GUARD RULE (2026-08-06, wave 3 relift): cls-hv1 is
+// a THREE-level fold. Per the closure-identity law (proof-factory
+// skill), an anonymous lambda is a distinct SMT token per spelling
+// site, so a proof-side re-spelling can never transfer facts to the
+// engine's instance. Each of the three levels is therefore a NAMED
+// top-level helper parameterized by exactly the variables the old
+// lambda closed over (`owl_cls_uni_sub_emit` / `_disjoint_inner` /
+// `_disjoint_outer` are the precedent). Behavior identical: pure
+// lambda lifting, no guard, order or emission change.
+let owl_cls_hv1_emit (p : wf_iri) (v : rdf_term)
+    (acc3 : rdf_graph) (x : subject) : rdf_graph =
+  add_triple_unchecked acc3 ({ s = x; p = p; o = v })
+
+let owl_cls_hv1_mid (ig : indexed_graph) (r_subj : subject) (v : rdf_term)
+    (acc2 : rdf_graph) (op_term : rdf_term) : rdf_graph =
+  match op_term with
+  | T_IRI p ->
+    let members = find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
+    List.Tot.fold_left (owl_cls_hv1_emit p v) acc2 members
+  | _ -> acc2
+
+let owl_cls_hv1_outer (ig : indexed_graph)
+    (acc : rdf_graph) (hv_t : triple) : rdf_graph =
+  if hv_t.p = owl_hasValue_iri then
+    let r_subj = hv_t.s in
+    let v = hv_t.o in
+    let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
+    List.Tot.fold_left (owl_cls_hv1_mid ig r_subj v) acc onprops
+  else acc
+
 let owl_rule_cls_hv1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (hv_t : triple) ->
-      if hv_t.p = owl_hasValue_iri then
-        let r_subj = hv_t.s in
-        let v = hv_t.o in
-        let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
-        List.Tot.fold_left
-          (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
-            match op_term with
-            | T_IRI p ->
-              let members = find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
-              List.Tot.fold_left
-                (fun (acc3 : rdf_graph) (x : subject) ->
-                  add_triple_unchecked acc3 ({ s = x; p = p; o = v }))
-                acc2
-                members
-            | _ -> acc2)
-          acc
-          onprops
-      else acc)
-    g
-    g
+  List.Tot.fold_left (owl_cls_hv1_outer ig) g g
 
 // cls-hv2 (OWL 2 RL/RDF Table 6): converse of cls-hv1 — for the same
 // `(_:r owl:onProperty P)` / `(_:r owl:hasValue V)` restriction, every
@@ -2367,45 +2376,50 @@ let owl_rule_cls_maxqc_comp (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
 // (fold_left + accumulator; four nested folds, outer over _:R, then
 // over onProperty/allValuesFrom tuples, then over members, then over
 // P-edges from each member).
+// PROOF-FRIENDLY GUARD RULE (2026-08-06, wave 3 relift): cls-avf is
+// the program's deepest rule -- a FOUR-level fold. All four levels
+// are NAMED top-level helpers parameterized by their closed-over
+// variables (closure-identity law; same treatment as cls-hv1 above).
+// Behavior identical: pure lambda lifting.
+//
+// Innermost: for each y with (x P y), emit (y rdf:type D).
+let owl_cls_avf1_emit (d : wf_iri) (acc4 : rdf_graph) (y : rdf_term) : rdf_graph =
+  match term_to_subject y with
+  | None -> acc4
+  | Some y_subj ->
+    let new_t : triple = { s = y_subj; p = rdf_type; o = T_IRI d } in
+    add_triple_unchecked acc4 new_t
+
+// Per restriction member x: walk its P-edges.
+let owl_cls_avf1_member (ig : indexed_graph) (d : wf_iri) (p : wf_iri)
+    (acc3 : rdf_graph) (x : subject) : rdf_graph =
+  let ys = find_objects_indexed ig x p in
+  List.Tot.fold_left (owl_cls_avf1_emit d) acc3 ys
+
+// Per onProperty object: walk the restriction's members.
+let owl_cls_avf1_prop (ig : indexed_graph) (d : wf_iri) (r_subj : subject)
+    (acc2 : rdf_graph) (p_term : rdf_term) : rdf_graph =
+  match p_term with
+  | T_IRI p ->
+    let members = find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
+    List.Tot.fold_left (owl_cls_avf1_member ig d p) acc2 members
+  | _ -> acc2
+
+// Outer: find (_:R owl:allValuesFrom D) with D a named IRI, then walk
+// its onProperty objects (IRI only).
+let owl_cls_avf1_outer (ig : indexed_graph)
+    (acc : rdf_graph) (t_avf : triple) : rdf_graph =
+  if t_avf.p = owl_allValuesFrom_iri then
+    match t_avf.o with
+    | T_IRI d ->
+      let r_subj = t_avf.s in
+      let props = find_objects_indexed ig r_subj owl_onProperty_iri in
+      List.Tot.fold_left (owl_cls_avf1_prop ig d r_subj) acc props
+    | _ -> acc
+  else acc
+
 let owl_rule_cls_avf1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  // Outer fold: find (_:R owl:allValuesFrom D) with D a named IRI.
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t_avf : triple) ->
-      if t_avf.p = owl_allValuesFrom_iri then
-        match t_avf.o with
-        | T_IRI d ->
-          // _:R = t_avf.s. Find its onProperty (IRI only).
-          let r_subj = t_avf.s in
-          let props = find_objects_indexed ig r_subj owl_onProperty_iri in
-          List.Tot.fold_left
-            (fun (acc2 : rdf_graph) (p_term : rdf_term) ->
-              match p_term with
-              | T_IRI p ->
-                // For each x with (x rdf:type _:R):
-                let members = find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
-                List.Tot.fold_left
-                  (fun (acc3 : rdf_graph) (x : subject) ->
-                    // For each y with (x P y), emit (y rdf:type D).
-                    let ys = find_objects_indexed ig x p in
-                    List.Tot.fold_left
-                      (fun (acc4 : rdf_graph) (y : rdf_term) ->
-                        match term_to_subject y with
-                        | None -> acc4
-                        | Some y_subj ->
-                          let new_t : triple =
-                            { s = y_subj; p = rdf_type; o = T_IRI d } in
-                          add_triple_unchecked acc4 new_t)
-                      acc3
-                      ys)
-                  acc2
-                  members
-              | _ -> acc2)
-            acc
-            props
-        | _ -> acc
-      else acc)
-    g
-    g
+  List.Tot.fold_left (owl_cls_avf1_outer ig) g g
 
 // prp-rfl [OWL 2 RL/RDF]: reflexive-property propagation.
 //   (P rdf:type owl:ReflexiveProperty) AND x in named-individuals
@@ -2563,37 +2577,42 @@ let decode_chain_pair (g : rdf_graph) (ig : indexed_graph) (head_subj : subject)
 // Restricted to n=2 (the common case, covers chain2trans1,
 // New-Feature-ObjectPropertyChain-001, BJP-003). General-n requires a
 // fuel-bounded list walker — left for a follow-up commit.
+// PROOF-FRIENDLY GUARD RULE (2026-08-06, wave 3 relift): three fold
+// levels, all NAMED top-level helpers parameterized by their
+// closed-over variables (closure-identity law; same treatment as
+// cls-hv1 / cls-avf above). Behavior identical: pure lambda lifting.
+//
+// Innermost: close the 2-hop join -- emit (x p z) for one z.
+let owl_chain2_emit (p_iri : wf_iri) (x : subject)
+    (acc3 : rdf_graph) (z_term : rdf_term) : rdf_graph =
+  let new_t : triple = { s = x; p = p_iri; o = z_term } in
+  add_triple_unchecked acc3 new_t
+
+// Middle: for each (x p1 y) in g, find every (y p2 z).
+let owl_chain2_mid (ig : indexed_graph) (p_iri : wf_iri) (p1 : wf_iri) (p2 : wf_iri)
+    (acc2 : rdf_graph) (t1 : triple) : rdf_graph =
+  if t1.p = p1 then
+    match term_to_subject t1.o with
+    | Some y_subj ->
+      let zs = find_objects_indexed ig y_subj p2 in
+      List.Tot.fold_left (owl_chain2_emit p_iri t1.s) acc2 zs
+    | None -> acc2
+  else acc2
+
+let owl_chain2_outer (g : rdf_graph) (ig : indexed_graph)
+    (acc : rdf_graph) (chain_t : triple) : rdf_graph =
+  if chain_t.p = owl_propertyChainAxiom then
+    match chain_t.s, term_to_subject chain_t.o with
+    | S_IRI p_iri, Some list_subj ->
+      (match decode_chain_pair g ig list_subj with
+       | Some (p1, p2) ->
+         List.Tot.fold_left (owl_chain2_mid ig p_iri p1 p2) acc g
+       | None -> acc)
+    | _, _ -> acc
+  else acc
+
 let owl_rule_property_chain_2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (chain_t : triple) ->
-      if chain_t.p = owl_propertyChainAxiom then
-        match chain_t.s, term_to_subject chain_t.o with
-        | S_IRI p_iri, Some list_subj ->
-          (match decode_chain_pair g ig list_subj with
-           | Some (p1, p2) ->
-             // For each (x p1 y) in g, find every (y p2 z) and emit (x p z).
-             List.Tot.fold_left
-               (fun (acc2 : rdf_graph) (t1 : triple) ->
-                 if t1.p = p1 then
-                   match term_to_subject t1.o with
-                   | Some y_subj ->
-                     let zs = find_objects_indexed ig y_subj p2 in
-                     List.Tot.fold_left
-                       (fun (acc3 : rdf_graph) (z_term : rdf_term) ->
-                         let new_t : triple =
-                           { s = t1.s; p = p_iri; o = z_term } in
-                         add_triple_unchecked acc3 new_t)
-                       acc2
-                       zs
-                   | None -> acc2
-                 else acc2)
-               acc
-               g
-           | None -> acc)
-        | _, _ -> acc
-      else acc)
-    g
-    g
+  List.Tot.fold_left (owl_chain2_outer g ig) g g
 
 // Decode an arbitrary-length RDF Collection rooted at `head_subj`.
 // Walks rdf:first / rdf:rest links until rdf:nil (or runs out of fuel).
