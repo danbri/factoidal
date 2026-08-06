@@ -17,12 +17,17 @@ is exactly the "reviewed definitions overridden by implementation
 detail" failure G1 exists to prevent.
 
 **Date**: 2026-08-06 (status cells for cls-hv1, cls-hv2, cls-avf and
-prp-spo2 n=2 refreshed by the wave 3 relift landing). **Tree state**:
-commit `06f3f20` plus the wave 3 relift working tree. The original
+prp-spo2 n=2 refreshed twice today: first by the wave 3 relift
+licensing landing, then by the G3 M4 wave 4 truth-preservation
+landing covered here). **Tree state**: commit `f0e3510` plus the
+wave 4 truth-preservation working tree (uncommitted). The original
 registry survey was made at commit `27c23d5` and was read-only; the
-relift landing does edit `OWL.Closure.fsti` (behavior-identical
-lambda lifting only — see the PROOF-FRIENDLY GUARD RULE banners
-there).
+relift landing edited `OWL.Closure.fsti` (behavior-identical lambda
+lifting only — see the PROOF-FRIENDLY GUARD RULE banners there); the
+wave 4 landing adds three semantic conditions to `OWL.Semantics.fst`
+(`cond_hasvalue`, `cond_allvaluesfrom`, `cond_chain2_compose`) and
+four rules' worth of truth proofs (Rules 33-36) to
+`OWL.Semantics.Soundness.fst`, with no engine or licensing edits.
 
 **Scope, honestly stated**: this registry covers the OWL 2 RL/RDF
 rule-by-rule licensing + truth-preservation program
@@ -86,12 +91,14 @@ literal table rows the same way `subprop_domain_range` does. Someone
 should either adjudicate this explicitly in the ledger comment or
 accept the count is 23-or-24 depending on convention.
 
-**Truth count: 29 of ~32 attempted rules proved** (wave 2, Rules 28-32, landed 2026-08-06: scm-dom1/rng1 realizations, subprop_domain_range, cls-int1/cls-uni realizations) (`OWL.Semantics.Soundness.fst`
-"Rules 1-27" banner numbering; two banner slots, 2b and 16→17, are a
-sub-rule and a superseded first attempt, so 27 banner numbers cover 26
-distinct engine rules); **3 of those 26 are IMPOSSIBLE** with recorded
-evidence (fresh-bnode-minting rules); the remaining ~58 of 84 ledger
-entries are UNATTEMPTED for truth (no `_sound` lemma exists yet).
+**Truth count: 33 of ~36 attempted rules proved** (wave 4, Rules
+33-36, landed 2026-08-06: cls-hv1, cls-hv2, cls-avf, prp-spo2 n=2)
+(`OWL.Semantics.Soundness.fst` "Rules 1-36" banner numbering; two
+banner slots, 2b and 16→17, are a sub-rule and a superseded first
+attempt, so 31 banner numbers cover 30 distinct engine rules); **3 of
+those 30 are IMPOSSIBLE** with recorded evidence (fresh-bnode-minting
+rules); the remaining ~54 of 84 ledger entries are UNATTEMPTED for
+truth (no `_sound` lemma exists yet).
 G3 M4 wave 1 (2026-08-06) landed Rules 21-27: `scm_eqp2`, `sameAs_
 transitivity`, `transitive_property`, `functional`, `inverse_functional`,
 `inverse_of`, and `prp_key` — all seven target rules PROVED, including
@@ -104,6 +111,40 @@ Six new semantic conditions landed in `OWL.Semantics.fst`:
 `cond_haskey`; a seventh, `cond_inverse_functional`, landed in
 `OWL.Semantics.Soundness.fst` next to Rule 25 (mirrors `cond_functional`,
 symmetric in which side of the pair is fixed).
+G3 M4 wave 4 (2026-08-06) landed Rules 33-36 — the truth-preservation
+proofs for the four rules whose LICENSING landed earlier the same day
+in the wave 3 relift (cls-hv1, cls-hv2, cls-avf, prp-spo2 n=2), all
+four PROVED first attempt against the wave 3 relift's named
+top-level engine helpers. Three new semantic conditions landed in
+`OWL.Semantics.fst`: `cond_hasvalue` (Table 8 HasValue, stated as the
+full iff — cls-hv1 reads the forward direction, cls-hv2 the backward
+one, the same two-rule iff split `cond_inverse_of` already serves for
+prp-inv1/prp-inv2), `cond_allvaluesfrom` (Table 8 AllValuesFrom, one
+direction — the table's own condition is already one-directional, no
+converse row exists the way cls-hv2 converses cls-hv1), and
+`cond_chain2_compose` (Table 5's general 2-hop
+SubObjectPropertyOf(ObjectPropertyChain(P1,P2),Q) composition
+condition, distinct from Rule 11's `cond_chain2_transitive`, which
+specialises the SAME table row to the self-composition case
+Q=P1=P2=P). cls-hv1/cls-avf/prp-spo2 followed the DEPTH COROLLARY
+(proof-factory skill): one standalone witness-assembly lemma per fold
+level, referencing the wave 3 relift's named engine helpers directly
+(`owl_cls_hv1_outer`/`_mid`/`_emit`, `owl_cls_avf1_outer`/`_prop`/
+`_member`/`_emit`, `owl_chain2_outer`/`_mid`/`_emit`), no closure-
+identity risk at any level. cls-hv2's engine function was NOT
+lambda-lifted in the relift (its own licensing proof already
+discharges with anonymous local lambdas), so its truth proof mirrors
+that proof's local-verbatim-lambda skeleton instead, with only the
+deepest semantic-assembly step pulled into a standalone lemma. cls-hv2
+proves UNWEAKENED (no `_approx` predicate needed for truth, unlike its
+licensing statement): the same `cond_literal_term_eq_respecting` +
+`lemma_rdf_term_eq_denot` bridge that closed prp-key's engine-vs-row
+gap (wave 1) closes cls-hv2's `rdf_term_eq`-vs-`==` gap here too.
+prp-spo2 (n=2) reuses `decode_chain_pair_sound` (Rule 11) VERBATIM for
+the list-decode half, per the BRIDGE-LEMMA COROLLARY, rather than
+re-deriving a new list-walk bridge. `prp-spo2 (n≥3)` (`property_chain_
+n`) remains UNATTEMPTED for both licensing and truth — out of scope
+for this landing.
 
 | W3C id / marker | Spec predicate | Engine function | Licensing | Truth | Hypotheses / fragment notes | Notes |
 |---|---|---|---|---|---|---|
@@ -132,8 +173,8 @@ symmetric in which side of the pair is fixed).
 | [ext] | n/a | `disjoint_to_complement` | N/A | UNATTEMPTED | — | `disjointWith` into `complementOf` scaffolding for the clash checker. |
 | [ext] | n/a | `svf2_existential_witness` | N/A | UNATTEMPTED | — | Comprehension-witness layer (four nested folds). |
 | [ext] | n/a | `minc1_bridge` | N/A | UNATTEMPTED | — | Comprehension-witness layer. |
-| cls-hv1 | `cls_hv1_derives` | `cls_hv1` | ✅ PROVED (2026-08-06, wave 3 relift) | UNATTEMPTED | `ig_wf_sp`, `ig_wf_po`, `ig.ig_triples == g`; needed named top-level helpers (`owl_cls_hv1_outer`/`_mid`/`_emit`) | First THREE-level fold rule proved. Four earlier attempts failed Error-19 on the `tu` eliminate with the engine's three lambdas still anonymous; the closure-identity law is what bit. Fix = lambda-lift ALL three engine levels + package each proof level as a standalone lemma taking the level above's witnesses as arguments (`lemma_cls_hv1_row_intro`), so the row's four-way existential is assembled in one flat context. Section 26. |
-| cls-hv2 | `cls_hv2_derives` | `cls_hv2` | ✅ PROVED against `cls_hv2_derives_approx` (commit `06f3f20`) | UNATTEMPTED | `ig_wf_sp`, `ig_wf_po`, `ig_wf_pred`, `ig.ig_triples == g` | WEAKENED ROW (same convention as prp-key): the engine's `find_subjects_indexed ig p v` falls back to an `rdf_term_eq` filter when `v` is a literal, which is coarser than the row's `==` (lang-tag case folding, XMLLiteral c14n). Machine-checked witness in section 27; row transcription itself is faithful, this is a confirmed engine-vs-row narrowing, not a ledger drift. |
+| cls-hv1 | `cls_hv1_derives` | `cls_hv1` | ✅ PROVED (2026-08-06, wave 3 relift) | ✅ PROVED (2026-08-06, G3 M4 wave 4) | `ig_wf_sp`, `ig_wf_po`, `ig.ig_triples == g`; needed named top-level helpers (`owl_cls_hv1_outer`/`_mid`/`_emit`); truth adds `cond_hasvalue` (forward direction) | First THREE-level fold rule proved. Four earlier attempts failed Error-19 on the `tu` eliminate with the engine's three lambdas still anonymous; the closure-identity law is what bit. Fix = lambda-lift ALL three engine levels + package each proof level as a standalone lemma taking the level above's witnesses as arguments (`lemma_cls_hv1_row_intro`), so the row's four-way existential is assembled in one flat context. Section 26. Truth: Rule 33 (Soundness banner); same named-helper reuse + one standalone witness lemma per level (`lemma_cls_hv1_witness_holds`) as the licensing sibling, first-attempt green. |
+| cls-hv2 | `cls_hv2_derives` | `cls_hv2` | ✅ PROVED against `cls_hv2_derives_approx` (commit `06f3f20`) | ✅ PROVED, UNWEAKENED (2026-08-06, G3 M4 wave 4) | `ig_wf_sp`, `ig_wf_po`, `ig_wf_pred`, `ig.ig_triples == g`; truth adds `cond_hasvalue` (backward direction) + `cond_literal_term_eq_respecting` | WEAKENED ROW (same convention as prp-key): the engine's `find_subjects_indexed ig p v` falls back to an `rdf_term_eq` filter when `v` is a literal, which is coarser than the row's `==` (lang-tag case folding, XMLLiteral c14n). Machine-checked witness in section 27; row transcription itself is faithful, this is a confirmed engine-vs-row narrowing, not a ledger drift. Truth: Rule 34 (Soundness banner) closes the gap the SAME way prp-key's truth proof did — `cond_literal_term_eq_respecting` + `lemma_rdf_term_eq_denot` show rdf_term_eq-equal terms co-denote, so the proof goes through UNWEAKENED even though the licensing statement stays weakened. Engine not lambda-lifted (only cls-hv1/cls-avf/prp-spo2 were); truth proof mirrors the licensing proof's local-verbatim-lambda skeleton, with the deepest semantic-assembly step pulled into its own lemma (`lemma_cls_hv2_witness_holds`) per the depth corollary. |
 | [ext] | n/a | `cls_svf2_qualified` | N/A | UNATTEMPTED | — | Comprehension layer. |
 | [ext] | n/a | `cls_minc_qual1` | N/A | UNATTEMPTED | — | Comprehension layer. |
 | [ext] | n/a | `cls_hasself1` | N/A | UNATTEMPTED | — | ObjectHasSelf semantics (Table 5.x); `hasSelf` has no RL table row. |
@@ -145,10 +186,10 @@ symmetric in which side of the pair is fixed).
 | [ext] | n/a | `cls_exactqc1` | N/A | UNATTEMPTED | — | Exact qualified cardinality decomposes into min+max; no RL row of its own. |
 | cls-maxc2 | `cls_maxc2_derives` | `cls_maxc2` | UNATTEMPTED | UNATTEMPTED | — | — |
 | [ext] | n/a | `cls_maxqc_comp` | N/A | UNATTEMPTED | — | The #236 anchor machinery. **Known sound-but-narrow** (see CLAUDE.md "Known sound-but-narrow rewrites"): drops vacuous-truth individuals and OWL-Full punned class-individuals; the internal-variable LEAK the 2026-07-09 strict runner found is FIXED (task #100, `strip_rewrite_internal_vars`). |
-| cls-avf | `cls_avf_derives` | `cls_avf1` | ✅ PROVED (2026-08-06, wave 3 relift) | UNATTEMPTED | `ig_wf_sp`, `ig_wf_po`, `ig.ig_triples == g`; needed named top-level helpers (`owl_cls_avf1_outer`/`_prop`/`_member`/`_emit`) | The program's deepest rule — FOUR fold levels. Same two-part treatment as cls-hv1: lambda-lift every engine level, then one standalone lemma per proof level with the level above's witnesses as arguments (`lemma_cls_avf_row_intro` assembles the six-way existential flat). Section 29. |
+| cls-avf | `cls_avf_derives` | `cls_avf1` | ✅ PROVED (2026-08-06, wave 3 relift) | ✅ PROVED (2026-08-06, G3 M4 wave 4) | `ig_wf_sp`, `ig_wf_po`, `ig.ig_triples == g`; needed named top-level helpers (`owl_cls_avf1_outer`/`_prop`/`_member`/`_emit`); truth adds `cond_allvaluesfrom` | The program's deepest rule — FOUR fold levels. Same two-part treatment as cls-hv1: lambda-lift every engine level, then one standalone lemma per proof level with the level above's witnesses as arguments (`lemma_cls_avf_row_intro` assembles the six-way existential flat). Section 29. Truth: Rule 35 (Soundness banner); `lemma_cls_avf_witness_holds` assembles the row's six-way existential flat, reusing `lemma_find_subjects_indexed_wf_subj` a second time in the same proof; first-attempt green. |
 | [ext] | n/a | `reflexive_property` | N/A | UNATTEMPTED | — | ReflexiveProperty semantics; RL profile has no prp-rfl row. |
 | [ext] | n/a | `scm_cls_restriction` | N/A | ✅ PROVED | none, single-fold, no fresh bnodes | `owl:Restriction rdfs:subClassOf owl:Class` (Table 5, Axiomatic Triples) read through the RDFS class-extension condition. |
-| prp-spo2 (n=2) | `prp_spo2_derives` | `property_chain_2` | ✅ PROVED (2026-08-06, wave 3 relift) | UNATTEMPTED | `ig_wf_sp`, `ig.ig_triples == g`; needed named top-level helpers (`owl_chain2_outer`/`_mid`/`_emit`) | Splits one row across two engine functions by chain arity. The list bridge `lemma_decode_chain_pair_licensed` is the syntactic twin of `decode_chain_pair_sound`, rebuilt in section 18's LIST-WALK spelling (served-object equation → bucket `memP` → `ig_wf_sp`-pinned triple → record-literal `memP _ g`); the parked attempt collapsed those four steps into one assert and Z3 could not e-match `ig_wf_sp` for two buckets at one node. Section 28. |
+| prp-spo2 (n=2) | `prp_spo2_derives` | `property_chain_2` | ✅ PROVED (2026-08-06, wave 3 relift) | ✅ PROVED (2026-08-06, G3 M4 wave 4) | `ig_wf_sp`, `ig.ig_triples == g`; needed named top-level helpers (`owl_chain2_outer`/`_mid`/`_emit`); truth adds `cond_chain2_compose` | Splits one row across two engine functions by chain arity. The list bridge `lemma_decode_chain_pair_licensed` is the syntactic twin of `decode_chain_pair_sound`, rebuilt in section 18's LIST-WALK spelling (served-object equation → bucket `memP` → `ig_wf_sp`-pinned triple → record-literal `memP _ g`); the parked attempt collapsed those four steps into one assert and Z3 could not e-match `ig_wf_sp` for two buckets at one node. Section 28. Truth: Rule 36 (Soundness banner); reuses `decode_chain_pair_sound` (Rule 11) VERBATIM for the list-decode half per the bridge-lemma corollary, and `cond_chain2_compose` (the GENERAL 2-hop composition condition, distinct from Rule 11's self-composition-only `cond_chain2_transitive`) for the semantic half; first-attempt green. |
 | prp-spo2 (n≥3) | `prp_spo2_derives` | `property_chain_n` | UNATTEMPTED | UNATTEMPTED | — | See above. |
 | [ext] | n/a | `chain_to_transitive` | N/A | ✅ PROVED | no recursion needed (unlike Rule 4's list-walk) | A chain p·p → p IS transitivity; bridge, banner proof. |
 | [ext] | n/a | `transitive_to_chain` | N/A | ❌ IMPOSSIBLE (mints two fresh bnodes; Rule 12) | — | Converse bridge. Needs `canonical_chainl1_bnode`/`_chainl2_bnode` witnesses (rdf:first/rdf:rest list cells) with no premise in g requiring their existence — an existence condition, not an implication, that no W3C RDF-Based table asserts. STOP per the two-attempt rule; would need a model-extension lemma or a licensed-by-g (syntactic-provenance) reframing instead. |

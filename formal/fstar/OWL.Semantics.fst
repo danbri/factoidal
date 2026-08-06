@@ -730,6 +730,67 @@ let cond_union_of (i : interp) : prop =
     List.Tot.memP ci elems ==>
     i.iext (i.i_iri rdfs_subClassOf) ci c
 
+// ===================================================================
+// G3 M4 wave 4 conditions (2026-08-06) — cls-hv1/cls-hv2, cls-avf,
+// prp-spo2 (n=2). All three are OWL 2 RDF-Based Semantics Table 8
+// (Restrictions) / Table 5 (axiom mapping) conditions read at the
+// weakest strength the corresponding SHIPPING engine rule needs, same
+// pattern as every cond_* above (no converse, no IP/IC membership
+// side conditions unless the rule's own row is stated as an iff).
+// ===================================================================
+
+// owl:hasValue -- OWL 2 RDF-Based Semantics Table 8 (Restrictions,
+// HasValue mapping): if <x,p> in IEXT(I(owl:onProperty)) and <x,v> in
+// IEXT(I(owl:hasValue)) then ICEXT(x) = { u | <u,v> in IEXT(p) }.
+// Stated as the full iff -- Table 6's cls-hv1 row (T(?u, rdf:type,
+// ?x) => T(?u, ?p, ?y)) reads the forward direction (icext u x ==>
+// iext p u v) and the converse cls-hv2 row (T(?u, ?p, ?y) => T(?u,
+// rdf:type, ?x)) reads the backward direction, the SAME two-rule
+// split cond_inverse_of's iff serves for prp-inv1/prp-inv2 (Rule 26
+// above) -- one condition, both rules read a different half.
+let cond_hasvalue (i : interp) : prop =
+  forall (x p v u : i.idom).
+    i.iext (i.i_iri owl_onProperty_iri) x p ==>
+    i.iext (i.i_iri owl_hasValue_iri) x v ==>
+    (icext i u x <==> i.iext p u v)
+
+// owl:allValuesFrom -- OWL 2 RDF-Based Semantics Table 8 (Restrictions,
+// AllValuesFrom mapping): if <x,p> in IEXT(I(owl:onProperty)) and
+// <x,d> in IEXT(I(owl:allValuesFrom)) and u in ICEXT(x), then every v
+// with <u,v> in IEXT(p) is in ICEXT(d). This is the one-directional
+// reading cls-avf's row (T(?x,avF,?y) T(?x,onP,?p) T(?u,type,?x)
+// T(?u,?p,?v) => T(?v,type,?y)) needs -- the table's AllValuesFrom
+// condition is itself already stated one-directionally (it constrains
+// ICEXT(x) via a universal, not an iff), unlike HasValue above.
+let cond_allvaluesfrom (i : interp) : prop =
+  forall (x p d u v : i.idom).
+    i.iext (i.i_iri owl_onProperty_iri) x p ==>
+    i.iext (i.i_iri owl_allValuesFrom_iri) x d ==>
+    icext i u x ==>
+    i.iext p u v ==>
+    icext i v d
+
+// owl:propertyChainAxiom, 2-hop composition -- OWL 2 RDF-Based
+// Semantics Table 5 (axiom mapping), the SubObjectPropertyOf(Object
+// PropertyChain(P1,P2), Q) row: whenever <q,l> in IEXT(I(owl:property
+// ChainAxiom)) and l is a sequence of p1, p2 over IR, IEXT(q) contains
+// the 2-hop composition of IEXT(p1) and IEXT(p2). Distinct from
+// cond_chain2_transitive above (which specializes this same table row
+// to the self-composition case Q=P1=P2=P and reads its TransitiveProperty
+// consequence, [ext] owl_rule_chain_to_transitive); this condition is
+// the GENERAL n=2 instance owl_rule_property_chain_2 (prp-spo2's n=2
+// engine realization) needs, with p, p1, p2 unconstrained by each
+// other. Stated as one direct implication (the composition membership
+// the rule's conclusion needs), the weakest reading the table row
+// implies, same pattern as every other cond_* above.
+let cond_chain2_compose (i : interp) : prop =
+  forall (q l p1 p2 x y z : i.idom).
+    i.iext (i.i_iri owl_propertyChainAxiom) q l ==>
+    seq_is i l [p1; p2] ==>
+    i.iext p1 x y ==>
+    i.iext p2 y z ==>
+    i.iext q x z
+
 // The pilot bundle. Every OWL 2 RDF-Based interpretation (in the
 // W3C sense, with any datatype map) satisfies all five conditions,
 // so entails_under owl_rl_pilot_conditions is implied by (is weaker
