@@ -1013,7 +1013,7 @@
   [148/166] rdf-xml/rdfms-xmllang-test006 ok
   [149/166] rdf-xml/rdfs-domain-and-range-test001 ok
   [150/166] rdf-xml/rdfs-domain-and-range-test002 ok
-  [151/166] rdf-xml/unrecognised-xml-attributes-test001 ok (16ms)
+  [151/166] rdf-xml/unrecognised-xml-attributes-test001 ok
   [152/166] rdf-xml/unrecognised-xml-attributes-test002 ok
   [153/166] rdf-xml/xml-canon-test001 ok
   [154/166] rdf-xml/xml-canon-test002 ok
@@ -1073,7 +1073,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: xmlsch-02-whitespace-facet-1
   PASS: xmlsch-02-whitespace-facet-2
   PASS: xmlsch-02-whitespace-facet-4
-  [suite time: 0.1s]
+  [suite time: 0.0s]
 
 --- rdf-n-quads ---
   PASS: nq-syntax-uri-01
@@ -1595,7 +1595,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.3s]
+  [suite time: 0.2s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
@@ -1911,7 +1911,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.3s]
+  [suite time: 0.2s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001
@@ -2064,7 +2064,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: rdfms-xmllang-test006
   PASS: rdfs-domain-and-range-test001
   PASS: rdfs-domain-and-range-test002
-  PASS: unrecognised-xml-attributes-test001 (16ms)
+  PASS: unrecognised-xml-attributes-test001
   PASS: unrecognised-xml-attributes-test002
   PASS: xml-canon-test001
   PASS: xml-canon-test002
@@ -2080,7 +2080,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: xmlbase-test011
   PASS: xmlbase-test013
   PASS: xmlbase-test014
-  [suite time: 0.2s]
+  [suite time: 0.1s]
 
 ========================================
 Suite Results:

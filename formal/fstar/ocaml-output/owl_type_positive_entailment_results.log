@@ -424,7 +424,7 @@
 Closure regime: DL
 Closure semantics: DIRECT (default)
 OWL 2 test catalog: third_party/testing/owl/type-positive-entailment.rdf
-  parsed 5400 triples in 0.44s
+  parsed 5400 triples in 0.28s
 Totals: 206 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    0
@@ -642,7 +642,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 195 pass, 9 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 239.00s
+Profile-RL PositiveEntailmentTests: 195 pass, 9 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 227.87s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
@@ -860,7 +860,7 @@ Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 199 pass, 5 fail (out of 204), 2 skipped (functional-syntax-only); 5 unsupported (cap-escape, #326) in 576.07s
+Profile-RL ConsistencyTests: 199 pass, 5 fail (out of 204), 2 skipped (functional-syntax-only); 5 unsupported (cap-escape, #326) in 532.59s
 
 Harness Diagnostics (escape branches, #316 + #326):
 HARNESS-DIAG-OWL degraded_closure_marked:8 degraded_closure_silent:0 marker_scan_escapes:2 refuter_escapes:1 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:5 tests_unsupported_cap_escape:5 tests_unsupported_refuter_indeterminate:0
