@@ -296,3 +296,18 @@ Rules, each paid for that night:
    yourself**, not a status message to the owner. The status message
    is for the owner; the send_later payload is the machine-readable
    version with paths and next actions.
+
+### The cron heartbeat (owner-requested, 2026-08-06)
+
+One-shot `send_later` wakeups cover known waits; they do not cover
+the wakeup you forgot to arm. The floor under everything is a
+recurring cron trigger (`create_trigger`, self-bind, minimum interval
+hourly) whose prompt is a standing checklist: check processes, check
+worktrees, harvest finished agents, commit certified results,
+dispatch next unblocked work, push — and explicitly "do NOT invent
+work" when idle. Sessions fired by the trigger may lack the
+scheduling MCP tools; that is fine — the recurrence itself is the
+safety net, no re-arming needed from fired turns. Pause or delete
+the trigger when the program it serves completes (`list_triggers` /
+`update_trigger enabled:false`) — a heartbeat that outlives its work
+becomes noise the owner pays for.
