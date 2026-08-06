@@ -51,6 +51,8 @@ open RDF.Graph
 open RDF.Indexed
 open RDF.Indexed.StringOrder
 open RDFS.Closure
+open RDF.Entailment.RDF.Spec
+open RDF.Entailment.RDFS.Spec
 open OWL.Semantics.MemLemmas
 open RDF.Entailment.RDFS.Refinement
 open RDF.Entailment.RDFS.ModelTheory
@@ -514,6 +516,377 @@ let lemma_pre_dedup_extensive (g : rdf_graph) (x : triple)
     lemma_rdfs_rule_resource_object_extensive g11 ig x
   end
 #pop-options
+
+// ===================================================================
+// 4b. GAP A, STEPS 2-3: `graph_sep_free` AND "no triple-term objects"
+// (RDF.Entailment.RDFS.SepFree's `graph_obj_not_tt`, STEP 1) are BOTH
+// preserved by `rdfs_closure_step_pre_dedup`, given the ORIGINAL input
+// already satisfies both (`graph_clean`, SepFree). Mirrors section
+// 3/4's extensivity threading exactly -- same twelve-row chain -- but
+// the invariant carried is CLEANLINESS of every triple, not membership
+// of one witness triple.
+//
+// Object provenance (traced by hand, M2 landing): every row's NEW
+// triple's object is either a FIXED vocabulary constant, or copied
+// from a premise triple reached via `ig` -- and `ig = build_indexed g0`
+// is built ONCE from the ORIGINAL input and never rebuilt across the
+// twelve rows, so any `ig`-reached premise is a component of `g0`,
+// not of the growing accumulator. `RDF.Entailment.RDFS.Refinement`'s
+// `_licensed` lemmas already establish this precisely: every row's
+// output triple is either already in the accumulator it was seeded
+// with, or satisfies the row's declarative `_derives`/`_derives2`
+// predicate grounded in `ig.ig_triples` (== g0) for the object-bearing
+// premise. Composing that with SepFree's per-row `_sep_free`/
+// `_obj_not_tt` companions closes each row; six of the twelve rows
+// (subClassOf/subClassOf_trans/subPropertyOf_trans/class_subclass_
+// resource/datatype_subclass_literal/resource_subject/resource_object)
+// ALSO read a premise from the growing accumulator (for the conclusion
+// SUBJECT only) -- sep-free by this same induction one row earlier,
+// not by any fresh argument.
+// ===================================================================
+
+let lemma_d_minimal_sep_free ()
+  : Lemma (ensures datatype_set_sep_free d_minimal) =
+  assert_norm (str_sep_free rdf_lang_string);
+  assert_norm (str_sep_free xsd_string);
+  introduce forall (a : wf_iri). d_minimal a ==> str_sep_free a
+  with introduce d_minimal a ==> str_sep_free a
+  with _ . ()
+
+// rdfs7 (`rdfs_rule_subPropertyOf`): single-source, all premises via
+// `ig` (== g0).
+let lemma_rdfs_rule_subPropertyOf_clean (g0 g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig == build_indexed g0 /\ graph_clean g0 /\ graph_clean g)
+          (ensures graph_clean (rdfs_rule_subPropertyOf g ig)) =
+  lemma_build_indexed_wf_pred g0;
+  assert (ig.ig_triples == g0);
+  rdfs_rule_subPropertyOf_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_subPropertyOf g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_subPropertyOf g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs7_derives ig.ig_triples t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs7_sep_free ig.ig_triples t;
+      lemma_rdfs7_obj_not_tt ig.ig_triples t
+    end
+  end
+
+// rdfs2 (`rdfs_rule_domain`): single-source, all premises via `ig`.
+let lemma_rdfs_rule_domain_clean (g0 g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig == build_indexed g0 /\ graph_clean g0 /\ graph_clean g)
+          (ensures graph_clean (rdfs_rule_domain g ig)) =
+  lemma_build_indexed_wf_pred g0;
+  assert (ig.ig_triples == g0);
+  rdfs_rule_domain_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_domain g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_domain g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs2_derives ig.ig_triples t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs2_sep_free ig.ig_triples t;
+      lemma_rdfs2_obj_not_tt ig.ig_triples t
+    end
+  end
+
+// rdfs3 (`rdfs_rule_range`): single-source, all premises via `ig`.
+let lemma_rdfs_rule_range_clean (g0 g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig == build_indexed g0 /\ graph_clean g0 /\ graph_clean g)
+          (ensures graph_clean (rdfs_rule_range g ig)) =
+  lemma_build_indexed_wf_pred g0;
+  assert (ig.ig_triples == g0);
+  rdfs_rule_range_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_range g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_range g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs3_derives ig.ig_triples t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs3_sep_free ig.ig_triples t;
+      lemma_rdfs3_obj_not_tt ig.ig_triples t
+    end
+  end
+
+// rdfs9 (`rdfs_rule_subClassOf`): TWO-SOURCE -- the `rdf:type` premise
+// comes from the growing accumulator `g` (clean by induction from an
+// earlier row), the `rdfs:subClassOf` premise (which supplies the
+// conclusion's OBJECT) from `ig` (== g0).
+let lemma_rdfs_rule_subClassOf_clean (g0 g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig == build_indexed g0 /\ graph_clean g0 /\ graph_clean g)
+          (ensures graph_clean (rdfs_rule_subClassOf g ig)) =
+  lemma_graph_sep_free_sp g0;
+  lemma_build_indexed_wf_sp g0;
+  assert (ig.ig_triples == g0);
+  rdfs_rule_subClassOf_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_subClassOf g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_subClassOf g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs9_derives2 g ig.ig_triples t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs9_sep_free2 g ig.ig_triples t;
+      lemma_rdfs9_obj_not_tt2 g ig.ig_triples t
+    end
+  end
+
+// The container-membership row is a DIRECT axiom emitter over the
+// FIXED `container_membership_properties` list (rdf:_1..rdf:_5), not
+// premise-driven -- mirrors `lemma_rdfs_rule_container_membership_
+// extensive`'s own `fold_left_inv` structure exactly (section 3),
+// `inv` swapped from "memP x acc" to "graph_clean acc". Deliberately
+// NOT routed through `rdfs_rule_container_membership_licensed`: that
+// lemma's conclusion disjunct `rdfs_axiomatic t` also admits the
+// GENERAL `is_rdf_member_iri` family (SepFree's banner, section on
+// TRAP), which is NOT provably separator-free -- the shipping rule
+// only ever instantiates the FINITE table, a strictly stronger fact
+// this direct proof uses instead.
+#push-options "--z3rlimit 100"
+let lemma_rdfs_rule_container_membership_clean (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires graph_clean g)
+          (ensures graph_clean (rdfs_rule_container_membership g ig)) =
+  lemma_axiomatic_tables_sep_free ();
+  lemma_vocab_sep_free ();
+  let inv (acc : rdf_graph) : prop = graph_clean acc in
+  let step : rdf_graph -> wf_iri -> rdf_graph =
+    fun (acc : rdf_graph) (cmp : wf_iri) ->
+      let t1 : triple = { s = S_IRI cmp; p = rdfs_subPropertyOf; o = T_IRI rdfs_member } in
+      let t2 : triple = { s = S_IRI cmp; p = rdf_type; o = T_IRI rdfs_ContainerMembershipProperty } in
+      add_triple_unchecked (add_triple_unchecked acc t1) t2 in
+  introduce forall (acc : rdf_graph) (cmp : wf_iri).
+      (memP cmp container_membership_properties /\ inv acc) ==> inv (step acc cmp)
+  with introduce (memP cmp container_membership_properties /\ inv acc) ==> inv (step acc cmp)
+  with _ . begin
+    let t1 : triple = { s = S_IRI cmp; p = rdfs_subPropertyOf; o = T_IRI rdfs_member } in
+    let t2 : triple = { s = S_IRI cmp; p = rdf_type; o = T_IRI rdfs_ContainerMembershipProperty } in
+    assert (str_sep_free cmp);
+    assert (triple_sep_free t1 /\ triple_obj_not_tt t1);
+    assert (triple_sep_free t2 /\ triple_obj_not_tt t2);
+    introduce forall (x : triple). memP x (t1 :: acc) ==>
+        (triple_sep_free x /\ triple_obj_not_tt x)
+    with introduce memP x (t1 :: acc) ==> (triple_sep_free x /\ triple_obj_not_tt x)
+    with _ . ();
+    introduce forall (x : triple). memP x (t2 :: t1 :: acc) ==>
+        (triple_sep_free x /\ triple_obj_not_tt x)
+    with introduce memP x (t2 :: t1 :: acc) ==> (triple_sep_free x /\ triple_obj_not_tt x)
+    with _ . ();
+    assert (step acc cmp == t2 :: t1 :: acc)
+  end;
+  fold_left_inv inv step container_membership_properties g;
+  assert_norm (rdfs_rule_container_membership g ig == fold_left step g container_membership_properties)
+#pop-options
+
+// rdfs11 (`rdfs_rule_subClassOf_trans`): TWO-SOURCE, same split as
+// rdfs9 -- `t1` (subject-bearing) from the growing accumulator, `t2`
+// (object-bearing) from `ig`.
+let lemma_rdfs_rule_subClassOf_trans_clean (g0 g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig == build_indexed g0 /\ graph_clean g0 /\ graph_clean g)
+          (ensures graph_clean (rdfs_rule_subClassOf_trans g ig)) =
+  lemma_graph_sep_free_sp g0;
+  lemma_build_indexed_wf_sp g0;
+  assert (ig.ig_triples == g0);
+  rdfs_rule_subClassOf_trans_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_subClassOf_trans g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_subClassOf_trans g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs11_derives2 g ig.ig_triples t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs11_sep_free2 g ig.ig_triples t;
+      lemma_rdfs11_obj_not_tt2 g ig.ig_triples t
+    end
+  end
+
+// rdfs5 (`rdfs_rule_subPropertyOf_trans`): TWO-SOURCE, dual of rdfs11.
+let lemma_rdfs_rule_subPropertyOf_trans_clean (g0 g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires ig == build_indexed g0 /\ graph_clean g0 /\ graph_clean g)
+          (ensures graph_clean (rdfs_rule_subPropertyOf_trans g ig)) =
+  lemma_graph_sep_free_sp g0;
+  lemma_build_indexed_wf_sp g0;
+  assert (ig.ig_triples == g0);
+  rdfs_rule_subPropertyOf_trans_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_subPropertyOf_trans g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_subPropertyOf_trans g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs5_derives2 g ig.ig_triples t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs5_sep_free2 g ig.ig_triples t;
+      lemma_rdfs5_obj_not_tt2 g ig.ig_triples t
+    end
+  end
+
+// rdfs1 (`rdfs_rule_recognized_datatypes`): axiom emitter over
+// `recognized_datatypes` = `d_minimal`'s witnesses; object is always
+// the fixed `rdfs:Datatype` constant.
+let lemma_rdfs_rule_recognized_datatypes_clean (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires graph_clean g)
+          (ensures graph_clean (rdfs_rule_recognized_datatypes g ig)) =
+  rdfs_rule_recognized_datatypes_licensed g ig;
+  lemma_d_minimal_sep_free ();
+  introduce forall (t : triple). memP t (rdfs_rule_recognized_datatypes g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_recognized_datatypes g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs1_derives d_minimal t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs1_sep_free d_minimal t;
+      lemma_rdfs1_obj_not_tt d_minimal t
+    end
+  end
+
+// rdfs8 (`rdfs_rule_class_subclass_resource`): DIAGONAL (premises from
+// the growing accumulator itself); object is the fixed
+// `rdfs:Resource` constant.
+let lemma_rdfs_rule_class_subclass_resource_clean (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires graph_clean g)
+          (ensures graph_clean (rdfs_rule_class_subclass_resource g ig)) =
+  rdfs_rule_class_subclass_resource_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_class_subclass_resource g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_class_subclass_resource g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs8_derives g t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs8_sep_free g t;
+      lemma_rdfs8_obj_not_tt g t
+    end
+  end
+
+// rdfs13 (`rdfs_rule_datatype_subclass_literal`): DIAGONAL; object is
+// the fixed `rdfs:Literal` constant.
+let lemma_rdfs_rule_datatype_subclass_literal_clean (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires graph_clean g)
+          (ensures graph_clean (rdfs_rule_datatype_subclass_literal g ig)) =
+  rdfs_rule_datatype_subclass_literal_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_datatype_subclass_literal g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_datatype_subclass_literal g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs13_derives g t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs13_sep_free g t;
+      lemma_rdfs13_obj_not_tt g t
+    end
+  end
+
+// rdfs4a (`rdfs_rule_resource_subject`): DIAGONAL; object is the fixed
+// `rdfs:Resource` constant.
+let lemma_rdfs_rule_resource_subject_clean (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires graph_clean g)
+          (ensures graph_clean (rdfs_rule_resource_subject g ig)) =
+  rdfs_rule_resource_subject_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_resource_subject g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_resource_subject g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs4a_derives g t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs4a_sep_free g t;
+      lemma_rdfs4a_obj_not_tt g t
+    end
+  end
+
+// rdfs4b (`rdfs_rule_resource_object`): DIAGONAL; conclusion subject
+// is `term_to_subject t.o` (only succeeds for IRI/BNode objects, so
+// the None-on-literal/triple-term guard makes the object-not-a-
+// triple-term side condition automatic for the SUBJECT bridge); the
+// conclusion OBJECT itself is the fixed `rdfs:Resource` constant.
+let lemma_rdfs_rule_resource_object_clean (g : rdf_graph) (ig : indexed_graph)
+  : Lemma (requires graph_clean g)
+          (ensures graph_clean (rdfs_rule_resource_object g ig)) =
+  rdfs_rule_resource_object_licensed g ig;
+  introduce forall (t : triple). memP t (rdfs_rule_resource_object g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t (rdfs_rule_resource_object g ig) ==>
+      (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . begin
+    eliminate memP t g \/ rdfs4b_derives g t
+    returns triple_sep_free t /\ triple_obj_not_tt t
+    with _ . ()
+    and  _ . begin
+      lemma_rdfs4b_sep_free g t;
+      lemma_rdfs4b_obj_not_tt g t
+    end
+  end
+
+// ===================================================================
+// 4c. GAP A, STEPS 2-3 ASSEMBLED: the twelve-row chain, threaded
+// exactly like section 4's `lemma_pre_dedup_extensive`, delivers
+// `graph_clean` of the WHOLE pre-dedup accumulator; SepFree's
+// `lemma_graph_clean_full_sep_free` (the pointwise STEP 3 core bridge)
+// then upgrades that to `RDF.Indexed.KeyInjectivity.graph_full_
+// sep_free` -- exactly the side condition
+// `lemma_graph_full_sep_free_no_dup_keys` needs.
+// ===================================================================
+
+#push-options "--z3rlimit 150"
+let lemma_pre_dedup_clean (g0 : rdf_graph)
+  : Lemma (requires graph_clean g0)
+          (ensures graph_clean (rdfs_closure_step_pre_dedup g0)) =
+  let ig = build_indexed g0 in
+  lemma_rdfs_rule_subPropertyOf_clean g0 g0 ig;
+  let g1 = rdfs_rule_subPropertyOf g0 ig in
+  lemma_rdfs_rule_domain_clean g0 g1 ig;
+  let g2 = rdfs_rule_domain g1 ig in
+  lemma_rdfs_rule_range_clean g0 g2 ig;
+  let g3 = rdfs_rule_range g2 ig in
+  lemma_rdfs_rule_subClassOf_clean g0 g3 ig;
+  let g4 = rdfs_rule_subClassOf g3 ig in
+  lemma_rdfs_rule_container_membership_clean g4 ig;
+  let g5 = rdfs_rule_container_membership g4 ig in
+  lemma_rdfs_rule_subClassOf_trans_clean g0 g5 ig;
+  let g6 = rdfs_rule_subClassOf_trans g5 ig in
+  lemma_rdfs_rule_subPropertyOf_trans_clean g0 g6 ig;
+  let g7 = rdfs_rule_subPropertyOf_trans g6 ig in
+  lemma_rdfs_rule_recognized_datatypes_clean g7 ig;
+  let g8 = rdfs_rule_recognized_datatypes g7 ig in
+  lemma_rdfs_rule_class_subclass_resource_clean g8 ig;
+  let g9 = rdfs_rule_class_subclass_resource g8 ig in
+  lemma_rdfs_rule_datatype_subclass_literal_clean g9 ig;
+  let g10 = rdfs_rule_datatype_subclass_literal g9 ig in
+  lemma_rdfs_rule_resource_subject_clean g10 ig;
+  let g11 = rdfs_rule_resource_subject g10 ig in
+  lemma_rdfs_rule_resource_object_clean g11 ig
+#pop-options
+
+// STEP 3, specialized: the bridge from a clean INPUT to a
+// `graph_full_sep_free` OUTPUT accumulator.
+let lemma_pre_dedup_full_sep_free (g : rdf_graph)
+  : Lemma (requires graph_sep_free g /\ graph_obj_not_tt g)
+          (ensures graph_full_sep_free (rdfs_closure_step_pre_dedup g)) =
+  lemma_pre_dedup_clean g;
+  lemma_graph_clean_full_sep_free (rdfs_closure_step_pre_dedup g)
 
 // ===================================================================
 // 5. THE DEDUP-SORT COMPLETENESS DIRECTION.
@@ -1156,3 +1529,38 @@ val lemma_len_eq_saturated_gapB (g : rdf_graph)
 let lemma_len_eq_saturated_gapB g =
   lemma_rdfs_closure_step_no_repeats g;
   lemma_len_eq_saturated g
+
+// ===================================================================
+// 10. GAP A, STEP 4 (the conclusion): the last open hypothesis of the
+// length-test theorem, discharged. `no_dup_keys (rdfs_closure_step_
+// pre_dedup g)` follows from `graph_sep_free g /\ graph_obj_not_tt g`
+// via section 4b/4c's chain-preservation argument (STEPS 1-3) composed
+// with `RDF.Indexed.KeyInjectivity.lemma_graph_full_sep_free_no_dup_
+// keys` (that module's own banner: its `ensures` is definitionally
+// the SAME `forall` as `no_dup_keys`, so no bridge lemma is needed --
+// this call sites discharges it by unfolding, exactly as anticipated).
+//
+// Net result: TWO hypotheses where section 9d needed three --
+// `graph_sep_free g /\ graph_obj_not_tt g` (separator-free, no
+// triple-term object) replaces `no_dup_keys (rdfs_closure_step_
+// pre_dedup g)` outright, and `no_repeats_p g` (the input graph's own
+// list has no literal duplicate triples) is the only side condition
+// left. The length-equality test is therefore a FAITHFUL proxy for
+// semantic saturation on any separator-free, triple-term-object-free,
+// duplicate-free input graph -- precisely the class a freshly-parsed
+// RDF 1.1 document (no U+001F in any label, RDF 1.2 triple terms only
+// ever occurring as the entire quoted-graph payload elsewhere, not as
+// an RDFS-relevant object) already belongs to.
+// ===================================================================
+
+val lemma_len_eq_saturated_sep_free (g : rdf_graph)
+  : Lemma
+    (requires graph_sep_free g /\ graph_obj_not_tt g /\
+              no_repeats_p g /\
+              graph_len (rdfs_closure_step g) = graph_len g)
+    (ensures step_saturated g)
+
+let lemma_len_eq_saturated_sep_free g =
+  lemma_pre_dedup_full_sep_free g;
+  lemma_graph_full_sep_free_no_dup_keys (rdfs_closure_step_pre_dedup g);
+  lemma_len_eq_saturated_gapB g

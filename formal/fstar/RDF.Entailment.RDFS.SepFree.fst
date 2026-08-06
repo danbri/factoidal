@@ -485,3 +485,213 @@ let lemma_axiomatic_tables_sep_free ()
   lemma_graph_sep_free_b_sound rdfs_axiomatic_triples;
   assert_norm (iri_list_sep_free_b container_membership_properties == true);
   lemma_iri_list_sep_free_b_sound container_membership_properties
+
+// ===================================================================
+// 6. GAP A (RDF.Entailment.RDFS.FixedPoint's termination-test theorem,
+// `lemma_len_eq_saturated_sep_free`). STEP 1 of the M2-landing's traced
+// 4-step discharge path: the graph-level "no triple has a triple-term
+// object" predicate, placed beside `graph_sep_free` per that trace.
+//
+// `RDF.Indexed.KeyInjectivity.term_sep_free` agrees with this module's
+// `obj_label_sep_free` on every case EXCEPT `T_TripleTerm` (recursive
+// there, `True` here -- section 1's banner). So a triple that is BOTH
+// `triple_sep_free` (subject/predicate/object-label clean, this
+// module) AND has this predicate on its object upgrades for free to
+// `RDF.Indexed.KeyInjectivity.triple_full_sep_free` -- no new case
+// analysis on the IRI/BNode/Literal arms needed, `()` closes it.
+// ===================================================================
+
+let term_not_tt (o : rdf_term) : prop =
+  match o with
+  | T_TripleTerm _ _ _ -> False
+  | _ -> True
+
+let triple_obj_not_tt (t : triple) : prop = term_not_tt t.o
+
+let graph_obj_not_tt (g : list triple) : prop =
+  forall (t : triple). memP t g ==> triple_obj_not_tt t
+
+// The combined invariant Gap A's chain threads: separator-free AND no
+// triple-term object, at every triple of the graph.
+let graph_clean (g : list triple) : prop =
+  graph_sep_free g /\ graph_obj_not_tt g
+
+let lemma_triple_clean_full_sep_free (t : triple)
+  : Lemma (requires triple_sep_free t /\ triple_obj_not_tt t)
+          (ensures triple_full_sep_free t) = ()
+
+// STEP 3's CORE bridge (pointwise; the closure-specific instantiation
+// `graph_clean g ==> graph_full_sep_free (rdfs_closure_step_pre_dedup
+// g)` lives in RDF.Entailment.RDFS.FixedPoint, composing this with
+// STEP 2's chain-preservation argument).
+let lemma_graph_clean_full_sep_free (g : list triple)
+  : Lemma (requires graph_clean g)
+          (ensures graph_full_sep_free g) =
+  introduce forall (t : triple). memP t g ==> triple_full_sep_free t
+  with introduce memP t g ==> triple_full_sep_free t
+  with _ . lemma_triple_clean_full_sep_free t
+
+// ===================================================================
+// 7. STEP 2 companions: object-provenance ("not a triple term") facts
+// for the six premise-driven rows whose conclusion OBJECT is COPIED
+// from a premise triple rather than a fixed vocabulary constant
+// (rdfs2/rdfs3/rdfs7 read their single premise source `g`; rdfs9/
+// rdfs11/rdfs5's TWO-source `_derives2` forms need the OBJECT-bearing
+// side, `gs`, clean -- the SUBJECT-bearing side `gd` is unconstrained
+// here because subject cleanliness is not this predicate's concern).
+// Mirrors the `_sep_free` row lemmas' `eliminate exists` structure
+// exactly -- same existential, same premise triple supplies the
+// witness -- only the conclusion swaps `triple_sep_free` for
+// `triple_obj_not_tt`, and `graph_sep_free` for `graph_obj_not_tt`.
+// ===================================================================
+
+let lemma_rdfs2_obj_not_tt (g : list triple) (t : triple)
+  : Lemma (requires graph_obj_not_tt g /\ rdfs2_derives g t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (decl u : triple) (aa : wf_iri).
+      memP decl g /\ decl.p == i_rdfs_domain /\ decl.s == S_IRI aa /\
+      memP u g /\ u.p == aa /\
+      t == ({ s = u.s; p = i_rdf_type; o = decl.o } <: triple)
+  returns triple_obj_not_tt t
+  with _ . assert (triple_obj_not_tt decl)
+
+let lemma_rdfs3_obj_not_tt (g : list triple) (t : triple)
+  : Lemma (requires graph_obj_not_tt g /\ rdfs3_derives g t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (decl u : triple) (aa : wf_iri) (zs : subject).
+      memP decl g /\ decl.p == i_rdfs_range /\ decl.s == S_IRI aa /\
+      memP u g /\ u.p == aa /\
+      subj_term zs == u.o /\
+      t == ({ s = zs; p = i_rdf_type; o = decl.o } <: triple)
+  returns triple_obj_not_tt t
+  with _ . assert (triple_obj_not_tt decl)
+
+let lemma_rdfs7_obj_not_tt (g : list triple) (t : triple)
+  : Lemma (requires graph_obj_not_tt g /\ rdfs7_derives g t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (decl u : triple) (aa b : wf_iri).
+      memP decl g /\ decl.p == i_rdfs_subPropertyOf /\
+      decl.s == S_IRI aa /\ decl.o == T_IRI b /\
+      memP u g /\ u.p == aa /\
+      t == ({ s = u.s; p = b; o = u.o } <: triple)
+  returns triple_obj_not_tt t
+  with _ . assert (triple_obj_not_tt u)
+
+// rdfs9 TWO-SOURCE form (the shipping rule's actual shape: the
+// rdf:type premise `typ` comes from the growing accumulator `gd`, the
+// rdfs:subClassOf premise `sub` from the fixed index snapshot `gs`).
+let lemma_rdfs9_sep_free2 (gd gs : list triple) (t : triple)
+  : Lemma (requires graph_sep_free gd /\ graph_sep_free gs /\ rdfs9_derives2 gd gs t)
+          (ensures triple_sep_free t) =
+  lemma_vocab_sep_free ();
+  eliminate exists (sub typ : triple) (xs : subject).
+      memP sub gs /\ sub.p == i_rdfs_subClassOf /\ sub.s == xs /\
+      memP typ gd /\ typ.p == i_rdf_type /\ typ.o == subj_term xs /\
+      t == ({ s = typ.s; p = i_rdf_type; o = sub.o } <: triple)
+  returns triple_sep_free t
+  with _ . ()
+
+let lemma_rdfs9_obj_not_tt2 (gd gs : list triple) (t : triple)
+  : Lemma (requires graph_obj_not_tt gs /\ rdfs9_derives2 gd gs t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (sub typ : triple) (xs : subject).
+      memP sub gs /\ sub.p == i_rdfs_subClassOf /\ sub.s == xs /\
+      memP typ gd /\ typ.p == i_rdf_type /\ typ.o == subj_term xs /\
+      t == ({ s = typ.s; p = i_rdf_type; o = sub.o } <: triple)
+  returns triple_obj_not_tt t
+  with _ . assert (triple_obj_not_tt sub)
+
+// rdfs11 TWO-SOURCE form -- same split, subClassOf transitivity.
+let lemma_rdfs11_sep_free2 (gd gs : list triple) (t : triple)
+  : Lemma (requires graph_sep_free gd /\ graph_sep_free gs /\ rdfs11_derives2 gd gs t)
+          (ensures triple_sep_free t) =
+  lemma_vocab_sep_free ();
+  eliminate exists (t1 t2 : triple) (ys : subject).
+      memP t1 gd /\ t1.p == i_rdfs_subClassOf /\
+      memP t2 gs /\ t2.p == i_rdfs_subClassOf /\
+      subj_term ys == t1.o /\ t2.s == ys /\
+      t == ({ s = t1.s; p = i_rdfs_subClassOf; o = t2.o } <: triple)
+  returns triple_sep_free t
+  with _ . ()
+
+let lemma_rdfs11_obj_not_tt2 (gd gs : list triple) (t : triple)
+  : Lemma (requires graph_obj_not_tt gs /\ rdfs11_derives2 gd gs t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (t1 t2 : triple) (ys : subject).
+      memP t1 gd /\ t1.p == i_rdfs_subClassOf /\
+      memP t2 gs /\ t2.p == i_rdfs_subClassOf /\
+      subj_term ys == t1.o /\ t2.s == ys /\
+      t == ({ s = t1.s; p = i_rdfs_subClassOf; o = t2.o } <: triple)
+  returns triple_obj_not_tt t
+  with _ . assert (triple_obj_not_tt t2)
+
+// rdfs5 TWO-SOURCE form -- same split, subPropertyOf transitivity.
+let lemma_rdfs5_sep_free2 (gd gs : list triple) (t : triple)
+  : Lemma (requires graph_sep_free gd /\ graph_sep_free gs /\ rdfs5_derives2 gd gs t)
+          (ensures triple_sep_free t) =
+  lemma_vocab_sep_free ();
+  eliminate exists (t1 t2 : triple) (ys : subject).
+      memP t1 gd /\ t1.p == i_rdfs_subPropertyOf /\
+      memP t2 gs /\ t2.p == i_rdfs_subPropertyOf /\
+      subj_term ys == t1.o /\ t2.s == ys /\
+      t == ({ s = t1.s; p = i_rdfs_subPropertyOf; o = t2.o } <: triple)
+  returns triple_sep_free t
+  with _ . ()
+
+let lemma_rdfs5_obj_not_tt2 (gd gs : list triple) (t : triple)
+  : Lemma (requires graph_obj_not_tt gs /\ rdfs5_derives2 gd gs t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (t1 t2 : triple) (ys : subject).
+      memP t1 gd /\ t1.p == i_rdfs_subPropertyOf /\
+      memP t2 gs /\ t2.p == i_rdfs_subPropertyOf /\
+      subj_term ys == t1.o /\ t2.s == ys /\
+      t == ({ s = t1.s; p = i_rdfs_subPropertyOf; o = t2.o } <: triple)
+  returns triple_obj_not_tt t
+  with _ . assert (triple_obj_not_tt t2)
+
+// rdfs1 (RDF 1.1 reading): axiom emitter over a datatype set, no graph
+// premise -- object is always the fixed `rdfs:Datatype` constant, so
+// `triple_obj_not_tt` is immediate from the conclusion's own shape.
+let lemma_rdfs1_obj_not_tt (dd : datatype_set) (t : triple)
+  : Lemma (requires rdfs1_derives dd t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (a : wf_iri).
+      dd a /\ t == ({ s = S_IRI a; p = i_rdf_type; o = T_IRI i_rdfs_Datatype } <: triple)
+  returns triple_obj_not_tt t
+  with _ . ()
+
+// rdfs4a/rdfs4b/rdfs8/rdfs13: each conclusion's object is likewise a
+// fixed vocabulary constant (`rdfs:Resource`, `rdfs:Resource`,
+// `rdfs:Resource`, `rdfs:Literal` respectively) -- `triple_obj_not_tt`
+// needs no graph hypothesis at all.
+let lemma_rdfs4a_obj_not_tt (g : list triple) (t : triple)
+  : Lemma (requires rdfs4a_derives g t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (u : triple). memP u g /\
+      t == ({ s = u.s; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple)
+  returns triple_obj_not_tt t
+  with _ . ()
+
+let lemma_rdfs4b_obj_not_tt (g : list triple) (t : triple)
+  : Lemma (requires rdfs4b_derives g t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (u : triple) (ys : subject). memP u g /\ subj_term ys == u.o /\
+      t == ({ s = ys; p = i_rdf_type; o = T_IRI i_rdfs_Resource } <: triple)
+  returns triple_obj_not_tt t
+  with _ . ()
+
+let lemma_rdfs8_obj_not_tt (g : list triple) (t : triple)
+  : Lemma (requires rdfs8_derives g t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (u : triple). memP u g /\ u.p == i_rdf_type /\ u.o == T_IRI i_rdfs_Class /\
+      t == ({ s = u.s; p = i_rdfs_subClassOf; o = T_IRI i_rdfs_Resource } <: triple)
+  returns triple_obj_not_tt t
+  with _ . ()
+
+let lemma_rdfs13_obj_not_tt (g : list triple) (t : triple)
+  : Lemma (requires rdfs13_derives g t)
+          (ensures triple_obj_not_tt t) =
+  eliminate exists (u : triple). memP u g /\ u.p == i_rdf_type /\ u.o == T_IRI i_rdfs_Datatype /\
+      t == ({ s = u.s; p = i_rdfs_subClassOf; o = T_IRI i_rdfs_Literal } <: triple)
+  returns triple_obj_not_tt t
+  with _ . ()
