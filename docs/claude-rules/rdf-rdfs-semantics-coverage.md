@@ -50,10 +50,13 @@ and the ranked gap list driving the core-semantics push.
 
 ## Ranked gaps (the dispatch queue)
 
-1. **rho-df completeness** — `rdfs_entails d_minimal g e <==>`
-   closure-then-simple-entailment, for `rho_df_graph` g, e. The only
-   rung with zero completeness coverage; design doc scopes it behind
-   gaps 2-3; Herbrand technique from the simple rung reuses.
+1. **rho-df completeness** — ⚠️ the statement first written here,
+   "`rdfs_entails d_minimal g e <==>` closure-then-simple-entailment,
+   for `rho_df_graph` g, e", is **FALSE**; see the 2026-08-06 entry
+   below. The corrected, landed statement is over the SIX rho-df
+   semantic conditions (`RDF.Entailment.RDFS.Completeness.
+   rho_df_saturation_iff`); Herbrand technique from the simple rung
+   reuses, as predicted.
 2. **Index completeness** — `lemma_build_indexed_complete_pred`:
    every triple with predicate p IS in the pred bucket (converse of
    wf). Named prerequisite; design doc calls it "not hard".
@@ -86,3 +89,47 @@ Status tracking (updated 2026-08-05 late):
   both on the same dedup/lookup faithfulness path. Herbrand-side
   machinery is unaffected; dispatch once either unblocks.
 - Gaps 4-5 queued.
+
+Status update 2026-08-06 — **gap 1 PARTLY LANDED, and its statement
+corrected** (`formal/fstar/RDF.Entailment.RDFS.Completeness.fst`, 829
+lines, verifies under `make verify-rdf-mt`, now 21 modules):
+
+- ❌ **The gap-1 statement above was false.** Pairing
+  `rdfs_entails d_minimal` with closure-then-simple-entailment cannot
+  be an iff, and no fragment predicate on g and e repairs it. Two
+  witnesses, both inside `rho_df_graph`. **W1**: `[X sc Y]`
+  RDFS-entails `[X sc X]` (`cond_subClassOf_ic` +
+  `cond_subClassOf_refl`), which `rdfs_closure` never derives. Both
+  halves are now machine-checked —
+  `rho_df_entailment_strictly_stronger`. **W2**: `cond_resource` makes
+  `[Z rdf:type rdfs:Resource]` entailed by every graph, for EVERY IRI
+  Z, including IRIs absent from g; no finite closure can list that.
+  W2 is structural, not a missing rule.
+- ✅ **The corrected theorem is landed.** `rho_df_conditions` keeps
+  the six semantic conditions the six rho-df rows rest on and drops
+  the reflexivity / IC-IP / resource / datatype / axiomatic
+  conditions — the same reduction the published rho-df result makes.
+  `rho_df_closed_iff`: on a rho-df-closed fragment graph, rho-df
+  entailment IS simple entailment. `rho_df_saturation_iff`: any
+  extensive, rho-df-sound, rho-df-closed saturation of g decides
+  rho-df entailment of fragment graphs by simple entailment.
+- ⚠️ **The shipping closure gets the completeness half only**
+  (`rdfs_closure_rho_df_complete`) — the missing half, so this is the
+  gap's payload. The converse is NOT available and must not be
+  claimed: the twelve-rule step also runs rdfs1 / rdfs4a / rdfs4b /
+  rdfs8 / rdfs13 / container membership, whose conclusions are not
+  rho-df-entailed. A six-rule rho-df closure operator would close the
+  iff end to end; the tree does not expose one.
+- 🔴 **Hypotheses carried, not discharged** (M2's): `rho_df_closed
+  (rdfs_closure g fuel)` needs `_complete` lemmas for the six
+  index-driven rows (only the five RS-2 rows have them);
+  `is_subgraph g (rdfs_closure g fuel)` needs iterated extensivity;
+  `rho_df_frag_graph (rdfs_closure g fuel)` needs a per-row fragment-
+  preservation argument.
+- ⚠️ **Fragment restriction, stated**: the proof's fragment is
+  literal-free and triple-term-free in object position, and requires
+  IRI objects on `rdfs:subPropertyOf` triples. Literal-freeness is the
+  generalized-RDF delta D5 biting the canonical model — `p rdfs:range
+  c` plus `a p "lit"` demands ICEXT membership for a literal, and
+  `RDF.Term.subject` has no literal case. Real restriction, not a
+  formality.

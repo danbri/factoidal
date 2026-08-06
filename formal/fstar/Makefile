@@ -76,6 +76,7 @@ RDF_MT_MODULES = \
   RDF.Entailment.Simple.Boundary \
   RDF.Entailment.RDF.Spec \
   RDF.Entailment.RDFS.Spec RDF.Entailment.RDFS.ModelTheory \
+  RDF.Entailment.RDFS.Completeness \
   RDF.Entailment.RDFS.Refinement RDF.Entailment.RDFS.SepFree \
   RDF.Entailment.RDFS.ChainWf \
   RDF.Entailment.RDFS.FixedPoint \

@@ -164,6 +164,21 @@ Milestones, dependency order:
    entailment on the fragment. Herbrand technique from the simple
    rung (`interpolation_lemma` is the existing completeness-grade
    precedent); prerequisite index completeness landed 90e2801.
+   **AMENDED 2026-08-06 by finding C-1** (machine-checked,
+   `RDF.Entailment.RDFS.Completeness.fst`): the goal sentence
+   "`rdfs_closure g` computes exactly the entailed fragment triples"
+   is unattainable against FULL RDFS entailment — reflexivity
+   (`[X sc Y]` entails `[X sc X]`) and universality
+   (`cond_resource` entails `[Z type Resource]` for every IRI Z)
+   witnesses are both proved. The correct and landed form is the
+   published rho-df move: entailment over the SIX rho-df semantic
+   conditions. Under that class: `rho_df_saturation_iff` (full iff
+   for any rho-df-closed saturation) + `rdfs_closure_rho_df_complete`
+   (the shipping closure derives everything rho-df-entailed — the
+   half that was missing). **M1b**: a six-rule rho-df closure
+   operator in F\* closes the iff for an ENGINE (the theorem accepts
+   it with no new proof); the shipping twelve-rule closure
+   deliberately derives more than the rho-df class licenses.
 2. **M2 — faithful termination**: fix #348 (`term_to_key_total`
    literal-arm separator), extend `RDF.Indexed.KeyInjectivity` to the
    literal arm, discharge the two explicit hypotheses
