@@ -311,3 +311,21 @@ safety net, no re-arming needed from fired turns. Pause or delete
 the trigger when the program it serves completes (`list_triggers` /
 `update_trigger enabled:false`) — a heartbeat that outlives its work
 becomes noise the owner pays for.
+
+### Wakeups check liveness; dispatch judgment is a separate duty (2026-08-06 evening)
+
+The cron heartbeat prevented every recurrence of the overnight stall —
+but for five consecutive firings the session woke, found the running
+jobs healthy, classified all remaining proof work as "blocked behind
+the gate build", and went back to sleep with ONE task running. The
+classification was wrong: a build in the MAIN checkout never blocks
+proof dispatches in WORKTREES (separate repository copies; the only
+shared resource is CPU, and `nice` handles that). The owner caught it
+with "why only one running task".
+
+Rule: on every wakeup, "is anything dispatchable?" must be answered
+against the REAL blockers only — a red main tree, or a missing
+prerequisite theorem/file. "A build is running" and "a gate has not
+certified yet" are not blockers for worktree-isolated proof work.
+When the pipeline is at one task and the queue is non-empty, the
+burden of proof is on NOT dispatching.
