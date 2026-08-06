@@ -6675,6 +6675,74 @@ let owl_bottomDataProperty_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#bottomDataProperty");
   "http://www.w3.org/2002/07/owl#bottomDataProperty"
 
+// PROOF-FRIENDLY GUARD RULE (2026-08-06, clash-row licensing): the two
+// booleans below are hoisted VERBATIM out of `is_inconsistent`'s check
+// (3) and check (6) bodies (previously anonymous `let`-bindings local
+// to that function). Behavior identical -- same List.Tot.existsb
+// nesting, same order, same result for every `g` -- this is pure
+// extraction so OWL.RL.Refinement.fst's clash-row licensing lemmas
+// (cax-adc / prp-adp detection soundness) can NAME and reason about
+// EXACTLY the boolean `is_inconsistent` consults, per the
+// closure-identity law (an anonymous lambda/let is a distinct SMT
+// token per spelling site, so a proof-side re-spelling can never
+// transfer facts to the engine's own instance -- same rationale as the
+// `owl_cls_avf1_*` / `owl_cls_hv1_*` fold-lambda lifts above).
+//
+// owl_has_disjoint_class_clash: true iff some pair of rdf:type triples
+// on the SAME subject names two DISTINCT classes that are
+// owl:disjointWith each other (in either direction) per `g`. This one
+// boolean cannot distinguish WHY the disjointWith triple is in `g` --
+// asserted directly (Table 6 cax-dw) or materialised from an
+// owl:AllDisjointClasses membership list by
+// `owl_rule_all_disjoint_classes` (Table 6 cax-adc) -- so its detection-
+// soundness theorem licenses against `table6_clashes` (cax_dw_clash \/
+// cax_adc_clash), not either row alone. See
+// `theorem_cax_adc_cax_dw_detection_sound` in OWL.RL.Refinement.fst.
+let owl_has_disjoint_class_clash (g : rdf_graph) : Tot bool =
+  List.Tot.existsb
+    (fun (t1 : triple) ->
+      t1.p = rdf_type &&
+      List.Tot.existsb
+        (fun (t2 : triple) ->
+          t2.p = rdf_type &&
+          subject_eq t1.s t2.s &&
+          not (rdf_term_eq t1.o t2.o) &&
+          has_disjoint_with g t1.o t2.o)
+        g)
+    g
+
+// owl_is_pdw_pair / owl_has_pdw_direct_clash: true iff two disjoint
+// properties (per an owl:propertyDisjointWith triple present in `g`,
+// in either direction) both relate the SAME subject to the SAME
+// object. Same non-attribution note as owl_has_disjoint_class_clash
+// above: the propertyDisjointWith triple may be asserted directly
+// (Table 4 prp-pdw) or materialised from an owl:AllDisjointProperties
+// membership list by `owl_rule_all_disjoint_properties` (Table 4
+// prp-adp) -- the boolean cannot tell which, so detection-soundness
+// licenses against `prp_pdw_clash \/ prp_adp_clash` (both disjuncts of
+// `table4_clashes_complete`). See
+// `theorem_prp_adp_prp_pdw_detection_sound` in OWL.RL.Refinement.fst.
+let owl_is_pdw_pair (g : rdf_graph) (p1 : wf_iri) (p2 : wf_iri) : Tot bool =
+  List.Tot.existsb
+    (fun (pdw : triple) ->
+      pdw.p = owl_propertyDisjointWith &&
+      (match pdw.s, pdw.o with
+       | S_IRI ps, T_IRI po -> (ps = p1 && po = p2) || (ps = p2 && po = p1)
+       | _ -> false))
+    g
+
+let owl_has_pdw_direct_clash (g : rdf_graph) : Tot bool =
+  List.Tot.existsb
+    (fun (t1 : triple) ->
+      List.Tot.existsb
+        (fun (t2 : triple) ->
+          t1.p <> t2.p &&
+          subject_eq t1.s t2.s &&
+          rdf_term_eq t1.o t2.o &&
+          owl_is_pdw_pair g t1.p t2.p)
+        g)
+    g
+
 // rdf:type marker is `rdf_type` (defined elsewhere in this module).
 let is_inconsistent (g : rdf_graph) : Tot bool =
   // (1) Some `?x rdf:type owl:Nothing`.
@@ -6699,19 +6767,7 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
       // (3) Disjoint classes share an instance. We look for two
       // rdf:type triples on the same subject whose objects are
       // disjoint per owl:disjointWith.
-      let has_disjoint_class_clash =
-        List.Tot.existsb
-          (fun (t1 : triple) ->
-            t1.p = rdf_type &&
-            List.Tot.existsb
-              (fun (t2 : triple) ->
-                t2.p = rdf_type &&
-                subject_eq t1.s t2.s &&
-                not (rdf_term_eq t1.o t2.o) &&
-                has_disjoint_with g t1.o t2.o)
-              g)
-          g
-      in
+      let has_disjoint_class_clash = owl_has_disjoint_class_clash g in
       if has_disjoint_class_clash then true
       else
         // (4) Irreflexive property violation. P is declared
@@ -6774,27 +6830,7 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
             // undefined over literals — but here y is directly shared
             // (rdf_term_eq), so no differentFrom detour is needed at
             // all. Targets New-Feature-DisjointDataProperties-001.
-            let is_pdw_pair (p1 : wf_iri) (p2 : wf_iri) : bool =
-              List.Tot.existsb
-                (fun (pdw : triple) ->
-                  pdw.p = owl_propertyDisjointWith &&
-                  (match pdw.s, pdw.o with
-                   | S_IRI ps, T_IRI po -> (ps = p1 && po = p2) || (ps = p2 && po = p1)
-                   | _ -> false))
-                g
-            in
-            let has_pdw_direct_clash =
-              List.Tot.existsb
-                (fun (t1 : triple) ->
-                  List.Tot.existsb
-                    (fun (t2 : triple) ->
-                      t1.p <> t2.p &&
-                      subject_eq t1.s t2.s &&
-                      rdf_term_eq t1.o t2.o &&
-                      is_pdw_pair t1.p t2.p)
-                    g)
-                g
-            in
+            let has_pdw_direct_clash = owl_has_pdw_direct_clash g in
             if has_pdw_direct_clash then true
             else
               // (7) prp-fp literal clash: P is owl:FunctionalProperty

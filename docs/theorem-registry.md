@@ -17,17 +17,17 @@ is exactly the "reviewed definitions overridden by implementation
 detail" failure G1 exists to prevent.
 
 **Date**: 2026-08-06 (status cells for cls-hv1, cls-hv2, cls-avf and
-prp-spo2 n=2 refreshed twice today: first by the wave 3 relift
-licensing landing, then by the G3 M4 wave 4 truth-preservation
-landing covered here). **Tree state**: commit `f0e3510` plus the
-wave 4 truth-preservation working tree (uncommitted). The original
-registry survey was made at commit `27c23d5` and was read-only; the
-relift landing edited `OWL.Closure.fsti` (behavior-identical lambda
-lifting only — see the PROOF-FRIENDLY GUARD RULE banners there); the
-wave 4 landing adds three semantic conditions to `OWL.Semantics.fst`
-(`cond_hasvalue`, `cond_allvaluesfrom`, `cond_chain2_compose`) and
-four rules' worth of truth proofs (Rules 33-36) to
-`OWL.Semantics.Soundness.fst`, with no engine or licensing edits.
+prp-spo2 n=2 refreshed twice by the wave 3 relift and wave 4
+truth landings; cax-adc, prp-adp, eq-diff2, eq-diff3, cls-maxqc1
+clash rows adjudicated and cax-adc's detection-soundness lemma
+landed by the CLASH-ROW landing). **Tree state**: commit `f70ed89`
+plus the CLASH-ROW working tree (uncommitted at write time; the
+orchestrator gates — `OWL.Closure.fsti` is extraction-affecting).
+The original survey was read-only at `27c23d5`; since then the
+relift and CLASH-ROW landings edited `OWL.Closure.fsti`
+(behavior-identical lambda/boolean lifting only — PROOF-FRIENDLY
+GUARD RULE banners), and wave 4 added three semantic conditions +
+Rules 33-36 with no engine edits.
 
 **Scope, honestly stated**: this registry covers the OWL 2 RL/RDF
 rule-by-rule licensing + truth-preservation program
@@ -91,6 +91,38 @@ literal table rows the same way `subprop_domain_range` does. Someone
 should either adjudicate this explicitly in the ledger comment or
 accept the count is 23-or-24 depending on convention.
 
+**CLASH-ROW adjudication landed 2026-08-06** (does not change the
+counts above — clash rows are `[row]`-classed but their proof kind is
+DETECTION SOUNDNESS, not the derives-style "every emission is
+licensed" statement the 26-of-34 count above measures). The registry
+flagged five clash-predicate rows (`cax-adc`, `prp-adp`, `eq-diff2`,
+`eq-diff3`, `cls-maxqc1`) as "truth column N/A pending domain review"
+since creation. Adjudicated: the engine's only consumer of any
+`*_clash` predicate is `OWL.Closure.is_inconsistent`, called on the RL
+closure fixpoint (`bin/owl-runner/owl_runner.ml`'s
+`capped_is_inconsistent`, which is how every ConsistencyTest /
+InconsistencyTest is actually scored) — so "the engine reports a
+clash" concretely means one of `is_inconsistent`'s internal boolean
+checks evaluates `true`, and the natural licensing statement is
+DETECTION SOUNDNESS (`that boolean == true ==> the clash predicate(s)
+it corresponds to hold of g`); the converse (detection COMPLETENESS)
+is a separate, per-row-noted statement. Two checks (`is_inconsistent`
+3 and 6, now named `owl_has_disjoint_class_clash` /
+`owl_has_pdw_direct_clash` — hoisted out of anonymous `let`-bindings,
+behavior-identical, `OWL.Closure.fsti`) turn out to be shared with an
+EARLIER table's asserted-form sibling row (cax-dw, prp-pdw
+respectively) — the boolean cannot tell whether the clash-causing
+triple was asserted directly or materialised from an
+AllDisjointClasses/AllDisjointProperties list, so the only TRUE
+statement is the row UNION, not the single [row] alone. cax-adc's
+union statement is PROVED (`theorem_cax_adc_cax_dw_detection_sound`,
+`OWL.RL.Refinement.fst` section 30); prp-adp and eq-diff2/eq-diff3 are
+PARKED with a precise obstruction recorded per row (a literal
+value-vs-syntactic-equality gap, and a sameAs-direction/symmetry gap,
+respectively); cls-maxqc1 is a confirmed engine GAP — no detector
+exists for the row at all. Full reasoning in each row's Notes cell
+below.
+
 **Truth count: 33 of ~36 attempted rules proved** (wave 4, Rules
 33-36, landed 2026-08-06: cls-hv1, cls-hv2, cls-avf, prp-spo2 n=2)
 (`OWL.Semantics.Soundness.fst` "Rules 1-36" banner numbering; two
@@ -99,6 +131,7 @@ attempt, so 31 banner numbers cover 30 distinct engine rules); **3 of
 those 30 are IMPOSSIBLE** with recorded evidence (fresh-bnode-minting
 rules); the remaining ~54 of 84 ledger entries are UNATTEMPTED for
 truth (no `_sound` lemma exists yet).
+
 G3 M4 wave 1 (2026-08-06) landed Rules 21-27: `scm_eqp2`, `sameAs_
 transitivity`, `transitive_property`, `functional`, `inverse_functional`,
 `inverse_of`, and `prp_key` — all seven target rules PROVED, including
@@ -182,7 +215,7 @@ for this landing.
 | [ext] | n/a | `cls_svf_thing_materialize` | N/A | ❌ IMPOSSIBLE (mints a fresh bnode; Rule 14) | — | Mints `canonical_svf_thing_restriction_bnode`; no premise in g asserts that resource already exists. Closing it needs a model-EXTENSION lemma (Henkin/Skolem-style), a different lemma shape than Rules 1-11/13 use. |
 | [ext] | n/a | `cls_svf_thing_witness` | N/A | UNATTEMPTED | — | Comprehension layer. |
 | [ext] | n/a | `cax_dw_to_differentFrom` | N/A | UNATTEMPTED | — | Disjoint classes force `differentFrom` on their members. |
-| cls-maxqc1 (clash) | `cls_maxqc1_clash` | (clash checker; part of `table5_clashes`) | UNATTEMPTED | N/A (clash/inconsistency row, not derivation) | — | Ledger lists this as `[row] cls-maxqc1`; the row is actually an inconsistency-trigger, transcribed as a CLASH predicate, not a `_derives` triple-derivation predicate. |
+| cls-maxqc1 (clash) | `cls_maxqc1_clash` | **NONE** (no engine detector) | GAP — no detection event exists to license | N/A (clash/inconsistency row, not derivation) | — | CLASH-ROW ADJUDICATION (2026-08-06): grepping `cls_maxqc1_clash` outside `OWL.RL.Spec.fst` finds nothing — no `is_inconsistent` arm, no other engine function, checks the "`?x owl:maxQualifiedCardinality 0 ...` plus a witness satisfying the forbidden class" pattern. `OWL.Closure.owl_rule_cls_maxqc1` is a SAME-NAMED but UNRELATED rule: per its own header (OWL.Closure.fsti ~2011-2106) it materialises `owl:maxQualifiedCardinality "1"` canonicals for parent7/parent8 SPARQL-entailment query answering, not a "0"-cardinality clash check. This is a genuine engine GAP against the row, not a proof-scoping decision — not attempted, since there is no boolean to state a lemma about. Needs a NEW `is_inconsistent` arm before a licensing lemma is meaningful. |
 | [ext] | n/a | `cls_exactqc1` | N/A | UNATTEMPTED | — | Exact qualified cardinality decomposes into min+max; no RL row of its own. |
 | cls-maxc2 | `cls_maxc2_derives` | `cls_maxc2` | UNATTEMPTED | UNATTEMPTED | — | — |
 | [ext] | n/a | `cls_maxqc_comp` | N/A | UNATTEMPTED | — | The #236 anchor machinery. **Known sound-but-narrow** (see CLAUDE.md "Known sound-but-narrow rewrites"): drops vacuous-truth individuals and OWL-Full punned class-individuals; the internal-variable LEAK the 2026-07-09 strict runner found is FIXED (task #100, `strip_rewrite_internal_vars`). |
@@ -219,9 +252,9 @@ for this landing.
 | [ext] | n/a | `extensional_symmetry` | N/A | UNATTEMPTED | — | Group E(h): right-to-left half of Table 5.14; banner carries the pinned-extension argument. |
 | [axm] | n/a | `xsd_core_datatype_axioms` | N/A | N/A | — | dt-type1 core set. |
 | [axm] | n/a | `builtin_vocabulary_axioms` | N/A | N/A | — | Built-in vocabulary axioms. |
-| cax-adc | (`cax_adc_clash` — clash form) | `all_disjoint_classes` | UNATTEMPTED | N/A (clash row) | — | Table row is an inconsistency trigger, not a triple-derivation rule. |
-| prp-adp | (`prp_adp_clash` — clash form) | `all_disjoint_properties` | UNATTEMPTED | N/A (clash row) | — | Same shape as cax-adc. |
-| eq-diff2 / eq-diff3 | (`eq_diff2_clash`/`eq_diff3_clash` — clash form) | `allDifferent_to_differentFrom` | UNATTEMPTED | N/A (premise expansion feeding a clash row) | — | Materialises `owl:AllDifferent` membership lists into pairwise `owl:differentFrom` — the premise infrastructure eq-diff2/eq-diff3's clash check consumes, not the clash itself. |
+| cax-adc | `cax_adc_clash` (union target: `table6_clashes` = `cax_dw_clash \/ cax_adc_clash`) | `all_disjoint_classes` (premise expansion) + `is_inconsistent` check 3, hoisted as `owl_has_disjoint_class_clash` | ✅ PROVED — detection-soundness against `table6_clashes`, **not** `cax_adc_clash` alone (`theorem_cax_adc_cax_dw_detection_sound`, `OWL.RL.Refinement.fst` section 30) | N/A (clash row) | `rdf_type_objects_resource g` (rdf:type objects are IRI/bnode, never literal — see banner) | CLASH-ROW ADJUDICATION (2026-08-06): the engine detects this row in TWO STAGES — `owl_rule_all_disjoint_classes` materialises pairwise `owl:disjointWith` from an `owl:AllDisjointClasses` membership list (premise infra, not itself a clash check), then `is_inconsistent`'s check 3 (now the named top-level `owl_has_disjoint_class_clash`, hoisted out of the anonymous `let`, behavior-identical) looks for two `rdf:type` triples on one subject whose objects are `owl:disjointWith`. That boolean CANNOT tell whether the `disjointWith` triple was asserted directly (cax-dw) or materialised from a list (cax-adc) — a graph with only an asserted cax-dw pair and no AllDisjointClasses node also flips it — so the only TRUE statement it licenses is the row UNION `table6_clashes`, proved here. Completeness (the converse: `table6_clashes g ==> owl_has_disjoint_class_clash g == true`) is PLAUSIBLE for the cax-dw disjunct (single step) but ENGINE-NARROWED for cax-adc: `owl_rule_all_disjoint_classes` uses `decode_chain_list`, an IRI-only `rdf:first`/`rdf:rest` decoder that returns `None` (no-op) on a member list containing a bnode class expression — the same narrowing already documented for `owl_rule_property_chain_n`/prp-key's list machinery — so completeness is NOT claimed for AllDisjointClasses lists with non-IRI members. |
+| prp-adp | `prp_adp_clash` (union target: `prp_pdw_clash \/ prp_adp_clash`, both disjuncts of `table4_clashes_complete`) | `all_disjoint_properties` (premise expansion) + `is_inconsistent` check 6, hoisted as `owl_has_pdw_direct_clash` | PARKED — detection-soundness attempted, two-attempt-stop; see Notes | N/A (clash row) | — | CLASH-ROW ADJUDICATION (2026-08-06): SAME shape as cax-adc — `owl_rule_all_disjoint_properties` materialises pairwise `owl:propertyDisjointWith`, then `is_inconsistent` check 6 (hoisted as `owl_has_pdw_direct_clash`/`owl_is_pdw_pair`, `OWL.Closure.fsti`, behavior-identical) looks for two triples sharing subject AND object through a disjoint property pair — cannot attribute to prp-pdw (asserted) vs prp-adp (materialised), so the provable statement is the row union, same reasoning as cax-adc. PARKED, not proved: unlike cax-adc's `t1.o`/`t2.o` (rdf:type objects, provably IRI/bnode via `rdf_type_objects_resource`), check 6's shared object `t1.o == t2.o` (`rdf_term_eq t1.o t2.o`, required TRUE by the check) ranges over ARBITRARY property values, which legitimately include literals in real OWL RL data (`New-Feature-DisjointDataProperties-*`). `rdf_term_eq` on two literals is RDF-1.1 VALUE equality (case-insensitive lang tag, XMLLiteral c14n, #337) while `prp_pdw_clash`/`prp_adp_clash` need SYNTACTIC `==`; a graph with `t1.o = "V"@EN`, `t2.o = "V"@en` flips the check without giving a `==`-exact witness. Closing this needs either (a) a graph-level "literals `rdf_term_eq`-related implies `==`-equal" hypothesis (true for realistic non-adversarial data, mirrors prp-key's `cond_literal_term_eq_respecting` weakening pattern already accepted in this ledger), or (b) restating literal-value-aware `prp_pdw_clash`/`prp_adp_clash` variants in `OWL.RL.Spec.fst` using `rdf_term_eq`/`literal_value_eq` instead of `==` (the cls-hv2/prp-key WEAKENED-ROW precedent). Recipe otherwise identical to cax-adc's proved lemma; the hoisted `owl_has_pdw_direct_clash`/`owl_is_pdw_pair` are ready for whichever fix lands. Completeness note: same ENGINE-NARROWED `decode_chain_list` (IRI-only) caveat as cax-adc. |
+| eq-diff2 / eq-diff3 | `eq_diff2_clash`/`eq_diff3_clash` (union target would be `eq_diff1_clash \/ eq_diff2_clash \/ eq_diff3_clash`) | `allDifferent_to_differentFrom` (premise expansion) + `is_inconsistent` check 2 (`differentFrom_in_graph`) | PARKED — detection-soundness attempted, two-attempt-stop; see Notes | N/A (clash row) | — | CLASH-ROW ADJUDICATION (2026-08-06): `owl_rule_allDifferent_to_differentFrom` materialises pairwise `owl:differentFrom` from BOTH `owl:members` and `owl:distinctMembers` lists in ONE fold (unioned before decoding), so the engine cannot distinguish eq-diff2 (`owl:members`) from eq-diff3 (`owl:distinctMembers`) even in principle — any provable statement is already a `eq_diff2_clash \/ eq_diff3_clash` disjunction at best, same row-union pattern as cax-adc/prp-adp (also joined by `eq_diff1_clash`, the asserted-form sibling `is_inconsistent` check 2 also flags). PARKED, not proved, for a DIFFERENT reason than prp-adp's literal gap: check 2 (`t.p = owl:sameAs && differentFrom_in_graph g (subject_to_term t.s) t.o`) tests a candidate `differentFrom` triple against BOTH directions of one FIXED, directional `sameAs` triple `t`. When only the "swapped" direction differentFrom witness exists (`d` relates `t.o` to `t.s`, not `t.s` to `t.o`), closing `eq_diff1_clash`'s order-rigid `u1.s==u2.s /\ u1.o==u2.o` needs a REVERSE `sameAs` edge (`t.o sameAs t.s`) that isn't among the two extracted witnesses — it is a fact about `g` having reached the eq-sym fixpoint (a standard, always-run RL rule at the real call site — `is_inconsistent` runs on the closure fixpoint output — but not a fact `is_inconsistent`'s own definition carries as a local hypothesis). Recipe for next attempt: add a `sameAs_symmetric g` hypothesis (mirrors `rdf_type_objects_resource`/prp-adp's literal hypothesis in kind), or restate against `entailment_closure`'s actual output where eq-sym is known to have fired. |
 | [ext] | n/a | `differentFrom_to_allDifferent` | N/A | UNATTEMPTED | — | Converse packaging. |
 | [mode] | n/a | `rdf_based_full_meta_axioms_mode` | N/A | UNATTEMPTED | — | RDF-Based Semantics meta-axioms, catalog-gated. |
 | [ext] | n/a | `comp_singleton_union` | N/A | UNATTEMPTED | — | Comprehension layer. |

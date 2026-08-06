@@ -5093,3 +5093,218 @@ val theorem_cls_avf1_licensed
 let theorem_cls_avf1_licensed g ig t =
   owl_rule_cls_avf1_licensed g ig
 
+// ===================================================================
+// 30. Clash-row detection soundness: cax-adc / cax-dw share ONE
+//     engine boolean.
+//
+// -------------------------------------------------------------------
+// WHAT THIS SECTION PROVES, AND WHAT KIND OF STATEMENT A CLASH ROW
+// GETS (2026-08-06, CLASH-ROW adjudication)
+// -------------------------------------------------------------------
+// cax-adc, prp-adp, eq-diff2, eq-diff3 and cls-maxqc1 (OWL.RL.Spec.fst)
+// are Table 4/5/6 rows with conclusion `false` -- they DETECT an
+// inconsistency, they do not derive a triple. The engine's ONE
+// consumer of any `*_clash` predicate is `OWL.Closure.is_inconsistent`
+// (called on the RL closure fixpoint by bin/owl-runner/owl_runner.ml's
+// `capped_is_inconsistent`, which is how every ConsistencyTest /
+// InconsistencyTest is actually scored). So "the engine reports a
+// clash" concretely means "one of `is_inconsistent`'s twelve internal
+// boolean checks evaluates to `true`" -- and the natural licensing
+// statement, mirroring the "*_licensed" shape used for `_derives` rows
+// throughout this file, is DETECTION SOUNDNESS:
+//
+//     that boolean == true  ==>  the spec-level `*_clash` predicate(s)
+//                                 it corresponds to hold of the graph
+//
+// (the converse -- detection COMPLETENESS, "the spec clash predicate
+// holding implies the engine's boolean fires" -- is a SEPARATE
+// statement, noted per row below, not proved here).
+//
+// The subtlety this landing exists to record: `is_inconsistent`'s
+// checks are NOT one-to-one with the five clash rows named in the
+// registry's flagged entries. Two of the five (cax-adc, prp-adp) share
+// their detection ARM with an ASSERTED-form sibling row from an
+// earlier table (cax-dw, prp-pdw respectively) -- `is_inconsistent`
+// cannot tell whether the disjointWith/propertyDisjointWith triple it
+// is looking at was ASSERTED directly or MATERIALISED by
+// `owl_rule_all_disjoint_classes` / `owl_rule_all_disjoint_properties`
+// from an AllDisjointClasses/AllDisjointProperties membership list, so
+// the only TRUE statement that boolean licenses is the ROW UNION
+// (`table6_clashes` / `{prp_pdw_clash, prp_adp_clash}`), never the
+// single materialised-only row in isolation. This is why this section
+// proves `owl_has_disjoint_class_clash` sound against `table6_clashes`
+// (cax_dw_clash \/ cax_adc_clash), not against `cax_adc_clash` alone --
+// the narrower statement is not just harder, it is FALSE (a graph with
+// a directly-asserted cax-dw pair and no AllDisjointClasses node in
+// sight also flips this same boolean).
+//
+// The other three of the five:
+//   * prp-adp / prp-pdw (`owl_has_pdw_direct_clash`, hoisted next to
+//     `owl_has_disjoint_class_clash` above): SAME shape as cax-adc,
+//     attempted and PARKED here -- see the banner immediately below
+//     this section for the precise obstruction (a literal lang-tag-
+//     case counterexample that also blocks the cax-adc route unless
+//     objects are known non-literal, which classes are but arbitrary
+//     property values are not).
+//   * eq-diff2 / eq-diff3 (`is_inconsistent` check 2,
+//     `differentFrom_in_graph`): PARKED -- the check tests BOTH
+//     directions of a candidate differentFrom triple against a FIXED,
+//     directional sameAs triple; when only the "swapped" direction
+//     witness exists, closing `eq_diff1_clash`'s order-rigid
+//     `u1.s==u2.s /\ u1.o==u2.o` needs the REVERSE sameAs edge, which
+//     is a fact about the graph having reached the eq-sym fixpoint,
+//     not a fact `is_inconsistent`'s definition carries on its own.
+//   * cls-maxqc1 (`owl:maxQualifiedCardinality "0"`): NOT PARKED, NOT
+//     ATTEMPTED -- there is no detection event to license. Grepping
+//     `cls_maxqc1_clash` outside OWL.RL.Spec.fst turns up nothing: no
+//     `is_inconsistent` arm, no other engine function, checks this
+//     pattern. `OWL.Closure.owl_rule_cls_maxqc1` is a SAME-NAMED but
+//     UNRELATED rule -- per its own header comment (OWL.Closure.fsti
+//     ~2011-2106) it materialises `owl:maxQualifiedCardinality "1"`
+//     canonicals for parent7/parent8 SPARQL-entailment query answering,
+//     not a "0"-cardinality clash check. This is a genuine engine GAP
+//     against Table 5's cls-maxqc1 row, not a proof-scoping question.
+// ===================================================================
+
+let lemma_vocab_clash_agree ()
+  : Lemma (RDFS.Closure.rdf_type == OWL.RL.Spec.o_rdf_type /\
+           OWL.Closure.owl_disjointWith_iri == OWL.RL.Spec.o_owl_disjointWith /\
+           OWL.Closure.owl_propertyDisjointWith == OWL.RL.Spec.o_owl_propertyDisjointWith) = ()
+
+// `rdf_term_eq a b == true`, with `a` known IRI/BNode-shaped, pins
+// `a == b` exactly (the IRI/BNode arms of `rdf_term_eq` are plain
+// `eqtype` string comparison; only the T_Literal arm has the
+// case-insensitive-lang-tag / XML-canonical slack that would break
+// this for a literal). Two variants (safe side left / right) so
+// either position can be discharged without a general symmetry lemma
+// for `rdf_term_eq` (unneeded elsewhere in this file, and not free
+// for the T_Literal case).
+let lemma_rdf_term_eq_true_iri_or_bnode_l (a b : rdf_term)
+  : Lemma (requires rdf_term_eq a b == true /\ (T_IRI? a \/ T_BNode? a))
+          (ensures a == b) =
+  match a, b with
+  | T_IRI _, T_IRI _ -> ()
+  | T_BNode _, T_BNode _ -> ()
+  | _, _ -> ()
+
+let lemma_rdf_term_eq_true_iri_or_bnode_r (a b : rdf_term)
+  : Lemma (requires rdf_term_eq a b == true /\ (T_IRI? b \/ T_BNode? b))
+          (ensures a == b) =
+  match a, b with
+  | T_IRI _, T_IRI _ -> ()
+  | T_BNode _, T_BNode _ -> ()
+  | _, _ -> ()
+
+// `subject_eq s1 s2 == true` pins `s1 == s2` (same reasoning: both
+// `subject` constructors carry a plain `eqtype` string, compared with
+// `=`).
+let lemma_subject_eq_true (s1 s2 : subject)
+  : Lemma (requires subject_eq s1 s2 == true) (ensures s1 == s2) =
+  match s1, s2 with
+  | S_IRI _, S_IRI _ -> ()
+  | S_BNode _, S_BNode _ -> ()
+  | _, _ -> ()
+
+// Well-formedness hypothesis this theorem needs: every rdf:type
+// OBJECT in `g` denotes a class, hence is an IRI or a blank node
+// (RDFS: the range of rdf:type is rdfs:Class; a literal cannot be a
+// class). Without this, `owl_has_disjoint_class_clash g == true` does
+// NOT imply `table6_clashes g`: take `t1 = (x rdf:type C)`,
+// `t2 = (x rdf:type "V"@EN)`, `d = (C owl:disjointWith "V"@en)` --
+// `rdf_term_eq` treats `"V"@EN` and `"V"@en` as equal (case-insensitive
+// lang-tag compare, RDF 1.1 Concepts section 3.3) so the boolean check
+// fires, but `cax_dw_clash`/`cax_adc_clash` need the literal SYNTACTIC
+// match (`==`) that the differently-cased pair does not have. This is
+// nonsensical RDF (a literal-typed "class") but is not excluded by the
+// `triple` type, so the theorem states the assumption it actually
+// needs instead of silently relying on it.
+let rdf_type_objects_resource (g : rdf_graph) : prop =
+  forall (t : triple). (memP t g /\ t.p == rdf_type) ==> (T_IRI? t.o \/ T_BNode? t.o)
+
+// The row union this boolean can actually license -- see the section
+// banner above for why `cax_adc_clash` alone is not provable.
+#push-options "--z3rlimit 400 --split_queries always"
+val theorem_cax_adc_cax_dw_detection_sound (g : rdf_graph)
+  : Lemma (requires owl_has_disjoint_class_clash g == true /\
+                     rdf_type_objects_resource g)
+          (ensures  table6_clashes g)
+
+let theorem_cax_adc_cax_dw_detection_sound g =
+  lemma_vocab_clash_agree ();
+  FStar.List.Tot.Properties.memP_existsb
+    (fun (t1 : triple) ->
+      t1.p = rdf_type &&
+      List.Tot.existsb
+        (fun (t2 : triple) ->
+          t2.p = rdf_type &&
+          subject_eq t1.s t2.s &&
+          not (rdf_term_eq t1.o t2.o) &&
+          has_disjoint_with g t1.o t2.o)
+        g)
+    g;
+  eliminate exists (t1 : triple).
+      (t1.p = rdf_type &&
+       List.Tot.existsb
+         (fun (t2 : triple) ->
+           t2.p = rdf_type &&
+           subject_eq t1.s t2.s &&
+           not (rdf_term_eq t1.o t2.o) &&
+           has_disjoint_with g t1.o t2.o)
+         g) == true /\ memP t1 g
+  returns table6_clashes g
+  with _ . begin
+    FStar.List.Tot.Properties.memP_existsb
+      (fun (t2 : triple) ->
+        t2.p = rdf_type &&
+        subject_eq t1.s t2.s &&
+        not (rdf_term_eq t1.o t2.o) &&
+        has_disjoint_with g t1.o t2.o)
+      g;
+    eliminate exists (t2 : triple).
+        (t2.p = rdf_type &&
+         subject_eq t1.s t2.s &&
+         not (rdf_term_eq t1.o t2.o) &&
+         has_disjoint_with g t1.o t2.o) == true /\ memP t2 g
+    returns table6_clashes g
+    with _ . begin
+      lemma_subject_eq_true t1.s t2.s;
+      assert_norm (has_disjoint_with g t1.o t2.o ==
+        List.Tot.existsb
+          (fun (d : triple) ->
+            d.p = owl_disjointWith_iri &&
+            ((rdf_term_eq (subject_to_term d.s) t1.o && rdf_term_eq d.o t2.o) ||
+             (rdf_term_eq (subject_to_term d.s) t2.o && rdf_term_eq d.o t1.o)))
+          g);
+      FStar.List.Tot.Properties.memP_existsb
+        (fun (d : triple) ->
+          d.p = owl_disjointWith_iri &&
+          ((rdf_term_eq (subject_to_term d.s) t1.o && rdf_term_eq d.o t2.o) ||
+           (rdf_term_eq (subject_to_term d.s) t2.o && rdf_term_eq d.o t1.o)))
+        g;
+      eliminate exists (d : triple).
+          (d.p = owl_disjointWith_iri &&
+           ((rdf_term_eq (subject_to_term d.s) t1.o && rdf_term_eq d.o t2.o) ||
+            (rdf_term_eq (subject_to_term d.s) t2.o && rdf_term_eq d.o t1.o))) == true /\
+          memP d g
+      returns table6_clashes g
+      with _ . begin
+        assert (t1.p == rdf_type);
+        assert (t2.p == rdf_type);
+        if rdf_term_eq (subject_to_term d.s) t1.o && rdf_term_eq d.o t2.o then begin
+          lemma_rdf_term_eq_true_iri_or_bnode_l (subject_to_term d.s) t1.o;
+          assert (T_IRI? t2.o \/ T_BNode? t2.o);
+          lemma_rdf_term_eq_true_iri_or_bnode_r d.o t2.o;
+          lemma_subj_term_agree d.s;
+          assert (cax_dw_clash g)
+        end else begin
+          lemma_rdf_term_eq_true_iri_or_bnode_l (subject_to_term d.s) t2.o;
+          assert (T_IRI? t1.o \/ T_BNode? t1.o);
+          lemma_rdf_term_eq_true_iri_or_bnode_r d.o t1.o;
+          lemma_subj_term_agree d.s;
+          assert (cax_dw_clash g)
+        end
+      end
+    end
+  end
+#pop-options
+
