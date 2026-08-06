@@ -170,7 +170,7 @@ Test base: third_party/testing/w3c/rdf/rdf12
   PASS: C14N nq-syntax-str-esc-03
   PASS: C14N literal_needing_uchar_escaping-01
   PASS: C14N literal_needing_uchar_escaping-02
-  [suite time: 0.0s]
+  [suite time: 0.1s]
 
 ========================================
 Suite Results:

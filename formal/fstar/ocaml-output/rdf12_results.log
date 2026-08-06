@@ -185,7 +185,7 @@
   [33/35] rdf-trig/syntax/base direction ltr ok
   [34/35] rdf-trig/syntax/undefined base direction ok
   [35/35] rdf-trig/syntax/upper case LTR ok
-  [1/25] rdf-trig/eval/TriG 1.2 - subject reification ok
+  [1/25] rdf-trig/eval/TriG 1.2 - subject reification ok (11ms)
   [2/25] rdf-trig/eval/TriG 1.2 - object reification ok
   [3/25] rdf-trig/eval/TriG 1.2 - subject reification with identifier ok
   [4/25] rdf-trig/eval/TriG 1.2 - object reification with identifier ok
@@ -447,7 +447,7 @@ Test base: third_party/testing/w3c/rdf/rdf12
   [suite time: 0.0s]
 
 --- rdf-trig/eval ---
-  PASS: TriG 1.2 - subject reification
+  PASS: TriG 1.2 - subject reification (11ms)
   PASS: TriG 1.2 - object reification
   PASS: TriG 1.2 - subject reification with identifier
   PASS: TriG 1.2 - object reification with identifier
@@ -505,7 +505,7 @@ Test base: third_party/testing/w3c/rdf/rdf12
   PASS: rdf12-xml-an-14
   PASS: rdf12-xml-an-15
   PASS: rdf12-xml-an-16
-  [suite time: 0.0s]
+  [suite time: 0.1s]
 
 ========================================
 Suite Results:

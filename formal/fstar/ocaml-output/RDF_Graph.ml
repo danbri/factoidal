@@ -49,38 +49,37 @@ let add_triple_if_new (g : rdf_graph) (t : RDF_Triple.triple) : rdf_graph=
   graph_add t g
 let add_triple_unchecked (g : rdf_graph) (t : RDF_Triple.triple) : rdf_graph=
   t :: g
+let lit_key_lang_part (l : RDF_Term.literal) : Prims.string=
+  match l.RDF_Term.lang_tag with
+  | FStar_Pervasives_Native.Some t -> Prims.strcat "@" t
+  | FStar_Pervasives_Native.None -> ""
+let lit_key_dir_part (l : RDF_Term.literal) : Prims.string=
+  match l.RDF_Term.direction with
+  | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
+  | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
+  | FStar_Pervasives_Native.None -> ""
 let rec term_to_key_total (o : RDF_Term.rdf_term) : Prims.string=
   match o with
-  | RDF_Term.T_IRI i -> FStar_String.concat "" ["I_"; i]
-  | RDF_Term.T_BNode b -> FStar_String.concat "" ["B_"; b]
+  | RDF_Term.T_IRI i -> Prims.strcat "I_" i
+  | RDF_Term.T_BNode b -> Prims.strcat "B_" b
   | RDF_Term.T_Literal l ->
-      FStar_String.concat ""
-        ["L_";
-        l.RDF_Term.lexical_form;
-        "^^";
-        l.RDF_Term.datatype;
-        (match l.RDF_Term.lang_tag with
-         | FStar_Pervasives_Native.Some t -> FStar_String.concat "" ["@"; t]
-         | FStar_Pervasives_Native.None -> "");
-        (match l.RDF_Term.direction with
-         | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
-         | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
-         | FStar_Pervasives_Native.None -> "")]
+      Prims.strcat (Prims.strcat "L_" l.RDF_Term.lexical_form)
+        (Prims.strcat RDF_Indexed.unit_sep
+           (Prims.strcat l.RDF_Term.datatype
+              (Prims.strcat RDF_Indexed.unit_sep
+                 (Prims.strcat (lit_key_lang_part l)
+                    (Prims.strcat RDF_Indexed.unit_sep (lit_key_dir_part l))))))
   | RDF_Term.T_TripleTerm (s, p, obj) ->
-      FStar_String.concat ""
-        ["T_";
-        RDF_Indexed.subject_to_key s;
-        RDF_Indexed.unit_sep;
-        p;
-        RDF_Indexed.unit_sep;
-        term_to_key_total obj]
+      Prims.strcat (Prims.strcat "T_" (RDF_Indexed.subject_to_key s))
+        (Prims.strcat RDF_Indexed.unit_sep
+           (Prims.strcat p
+              (Prims.strcat RDF_Indexed.unit_sep (term_to_key_total obj))))
 let triple_to_key (t : RDF_Triple.triple) : Prims.string=
-  FStar_String.concat ""
-    [RDF_Indexed.subject_to_key t.RDF_Triple.s;
-    RDF_Indexed.unit_sep;
-    t.RDF_Triple.p;
-    RDF_Indexed.unit_sep;
-    term_to_key_total t.RDF_Triple.o]
+  Prims.strcat (RDF_Indexed.subject_to_key t.RDF_Triple.s)
+    (Prims.strcat RDF_Indexed.unit_sep
+       (Prims.strcat t.RDF_Triple.p
+          (Prims.strcat RDF_Indexed.unit_sep
+             (term_to_key_total t.RDF_Triple.o))))
 let triple_cmp (t1 : RDF_Triple.triple) (t2 : RDF_Triple.triple) : Prims.int=
   FStar_String.compare (triple_to_key t1) (triple_to_key t2)
 let rec dedup_sorted_aux

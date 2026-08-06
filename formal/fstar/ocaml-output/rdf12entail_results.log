@@ -96,7 +96,7 @@ Test base: third_party/testing/w3c/rdf/rdf12
   PASS: double-infinity
   FAIL: triple-terms-propositions — Should entail but doesn't (action 1, result 2 triples)
   PASS: reifies-range
-  [suite time: 0.0s]
+  [suite time: 0.1s]
 
 ========================================
 Suite Results:
