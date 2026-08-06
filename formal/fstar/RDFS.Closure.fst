@@ -13,3 +13,7 @@ module RDFS.Closure
 // (2026-07-31) Same reason again: the emit-once guard `snapshot_carries`
 // and the five RS-2 rows that consult it changed in the .fsti (issue
 // #340 item 4). Bump the hash so RDFS_Closure.ml is re-emitted.
+// (2026-08-06) Same reason again: `rdfs_rule_subPropertyOf`'s inner
+// fold emitter was lambda-lifted to the named top-level `rdfs7_emit`
+// (rdfs7_reaches_fact park resolution, behavior-identical). Bump the
+// hash so RDFS_Closure.ml is re-emitted.

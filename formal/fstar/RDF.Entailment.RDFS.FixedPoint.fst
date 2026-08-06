@@ -120,14 +120,18 @@ let lemma_rdfs_rule_subPropertyOf_extensive (g : rdf_graph) (ig : indexed_graph)
   : Lemma (memP x g ==> memP x (rdfs_rule_subPropertyOf g ig)) =
   let inv (acc : rdf_graph) : prop = memP x acc in
   let decls = bucket_lookup ig.ig_pred rdfs_subPropertyOf in
+  // Mirrors the engine's own `rdfs7_emit` lambda-lift (RDFS.Closure.
+  // fsti, rdfs7_reaches_fact park resolution, 2026-08-06): both folds
+  // below name the SAME top-level helper the engine calls
+  // (`rdfs7_emit ig q`), so the `assert_norm` bridge normalizes both
+  // sides to the identical term with no record-literal reconstruction
+  // needed.
   let outer_step : rdf_graph -> triple -> rdf_graph =
     fun (acc : rdf_graph) (decl : triple) ->
       match decl.s, decl.o with
       | S_IRI p, T_IRI q ->
         let matching = bucket_lookup ig.ig_pred p in
-        fold_left
-          (fun (acc2 : rdf_graph) (t : triple) -> emit_once_term ig acc2 t.s q t.o)
-          acc matching
+        fold_left (rdfs7_emit ig q) acc matching
       | _, _ -> acc in
   introduce forall (acc : rdf_graph) (decl : triple).
       (memP decl decls /\ inv acc) ==> inv (outer_step acc decl)
@@ -145,16 +149,12 @@ let lemma_rdfs_rule_subPropertyOf_extensive (g : rdf_graph) (ig : indexed_graph)
     | S_IRI _, T_TripleTerm _ _ _ -> ()
     | S_IRI p, T_IRI q ->
       let matching = bucket_lookup ig.ig_pred p in
-      let inner_step : rdf_graph -> triple -> rdf_graph =
-        fun (acc2 : rdf_graph) (t : triple) -> emit_once_term ig acc2 t.s q t.o in
+      let inner_step : rdf_graph -> triple -> rdf_graph = rdfs7_emit ig q in
       introduce forall (acc2 : rdf_graph) (t : triple).
           (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
       with introduce (memP t matching /\ inv acc2) ==> inv (inner_step acc2 t)
       with _ . lemma_emit_once_term_extensive ig acc2 t.s q t.o x;
       fold_left_inv inv inner_step matching acc;
-      // The rdfs7 special case (Refinement.fst section 4's own
-      // comment): `q` is pattern-bound, not a field projection, so
-      // bridge via a rebuilt record literal.
       let decl' : triple = { s = S_IRI p; p = decl.p; o = T_IRI q } in
       assert (decl == decl');
       assert_norm (outer_step acc decl' == fold_left inner_step acc

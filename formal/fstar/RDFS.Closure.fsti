@@ -217,6 +217,28 @@ let emit_once_term (ig : indexed_graph) (acc : rdf_graph)
   then acc
   else add_triple_unchecked acc ({ s = sub; p = prd; o = obj } <: triple)
 
+// PROOF-FRIENDLY GUARD RULE (2026-08-06, rdfs7_reaches_fact park
+// resolution): the inner fold's emitter is a NAMED top-level function
+// parameterized by the closed-over binder `q` -- `S_IRI p, T_IRI q` is
+// a two-binder pair match at the OUTER fold level, and `q` (not `p`)
+// is the one carried into the INNER fold's emission. An anonymous
+// `fun acc2 t -> emit_once_term ig acc2 t.s q t.o` here is a DISTINCT
+// SMT function token from any proof-side re-spelling of the same
+// lambda, at any budget (the closure-identity law, `skills/proof-
+// factory/SKILL.md`) -- five proof-side attempts documented in
+// `RDF.Entailment.RDFS.RhoDFClosure.fst`'s park banner for `rdfs7_
+// reaches_fact` all failed for exactly this reason, none of them
+// touching the engine. Naming the helper here (mirrors `OWL.Closure.
+// fsti`'s `owl_cls_uni_sub_emit c_iri` precedent, same curried-
+// closed-over-arg shape) gives the engine step and its reaches proof
+// the SAME first-order symbol, so first-order congruence carries
+// facts across instead of requiring re-derivation per spelling.
+// BEHAVIOR-IDENTICAL: `rdfs7_emit ig q` reduces to exactly the same
+// function as the anonymous lambda it replaces; the emitted triple
+// set for any graph is unchanged.
+let rdfs7_emit (ig : indexed_graph) (q : wf_iri) (acc2 : rdf_graph) (tt : triple) : rdf_graph =
+  emit_once_term ig acc2 tt.s q tt.o
+
 let rdfs_rule_subPropertyOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let decls = bucket_lookup ig.ig_pred rdfs_subPropertyOf in
   List.Tot.fold_left
@@ -224,11 +246,7 @@ let rdfs_rule_subPropertyOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
       match decl.s, decl.o with
       | S_IRI p, T_IRI q ->
         let matching = bucket_lookup ig.ig_pred p in
-        List.Tot.fold_left
-          (fun (acc2 : rdf_graph) (t : triple) ->
-            emit_once_term ig acc2 t.s q t.o)
-          acc
-          matching
+        List.Tot.fold_left (rdfs7_emit ig q) acc matching
       | _, _ -> acc)
     g
     decls

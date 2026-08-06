@@ -696,13 +696,50 @@ let rdfs_rule_range_reaches (g : rdf_graph) (t : triple)
   lemma_refl g;
   rdfs_rule_range_reaches2 g g t
 
-// -- rdfs7 (subPropertyOf) -- PARKED. Not proved within budget.
+// -- rdfs7 (subPropertyOf) -- RESOLVED 2026-08-06 (was PARKED; five
+// prior attempts recorded below for the record).
 //
-// STOPPED per the two-attempt rule. `rdfs_rule_subPropertyOf_reaches`
-// -- the completeness ("reaches") lemma for this ONE row, matching the
-// shape every other row's reaches lemma in this file already proves
-// -- could not be discharged by z3 4.13.3 in three attempts. Full
-// history, so the next attempt does not re-walk the same ground:
+// ROOT CAUSE (confirmed by the fix): every earlier attempt re-spelled
+// the inner emitter as an anonymous proof-local lambda closing over
+// `q`, the OUTER match's pattern-bound variable (`match declx.s,
+// declx.o with S_IRI p, T_IRI q -> ...`). The closure-identity law
+// (`skills/proof-factory/SKILL.md`) says two syntactically identical
+// anonymous lambdas are DISTINCT SMT function tokens -- no
+// record-literal reconstruction, nested-match respelling, or explicit
+// bridging assert closes that gap, at any budget (attempts 0-2 below,
+// all against the PROOF side). The treatment that already worked for
+// every OWL analogue (`OWL.Closure.fsti`'s `*_emit` family) but had
+// never been tried here: lift the lambda in the ENGINE instead.
+// `RDFS.Closure.fsti` now names `rdfs7_emit (ig : indexed_graph) (q :
+// wf_iri) (acc2 : rdf_graph) (tt : triple) : rdf_graph = emit_once_term
+// ig acc2 tt.s q tt.o`, and `rdfs_rule_subPropertyOf`'s inner fold
+// calls `fold_left (rdfs7_emit ig q) acc matching` -- behavior-
+// identical, byte-for-byte same emitted triple set. With the engine's
+// step and this proof's `outer_step`/`inner_step` both referencing the
+// literal top-level symbol `rdfs7_emit ig q`/`rdfs7_emit ig bb`
+// (rather than two independently-elaborated closures), first-order
+// congruence carries facts across and the reaches lemma below
+// discharges in ONE attempt -- no reconstruction trick needed at all
+// (contrast the licensing/extensivity proofs of this same row in
+// `RDF.Entailment.RDFS.Refinement.fst` / `...FixedPoint.fst`, which
+// kept their pre-existing record-literal bridge since it already
+// worked and touching it was not required).
+//
+// Ripple: `RDFS.Closure.fsti`'s `rdfs_rule_subPropertyOf` itself,
+// `RDF.Entailment.RDFS.Refinement.fst`'s `rdfs_rule_subPropertyOf_
+// licensed`, and `RDF.Entailment.RDFS.FixedPoint.fst`'s `lemma_rdfs_
+// rule_subPropertyOf_extensive` all had their local `outer_step`/
+// `inner_step` re-spelled to call the same named `rdfs7_emit`
+// (mechanical, both still verify). `rdfs7_reaches_fact` (the PARKED
+// hypothesis this section used to define) is no longer needed by
+// `lemma_rho_df_closed_row_subPropertyOf`, `rho_df_closure_closed`,
+// `rho_df_closure_decides`, or the finding F-1 witness call site
+// (section 6) -- each now calls `rdfs_rule_subPropertyOf_reaches`/
+// `rdfs_rule_subPropertyOf_reaches2` directly and has the hypothesis
+// dropped from its `requires` (statement strengthening).
+//
+// PRIOR ATTEMPT HISTORY (kept for the record; none of these touched
+// the engine, which is why none of them worked):
 //
 //   ATTEMPT 0 (first pass). `outer_step`/`outer_grows` built with a
 //   reconstructed `decl' : triple = { s = S_IRI aa; p = decl.p; o =
@@ -735,6 +772,8 @@ let rdfs_rule_range_reaches (g : rdf_graph) (t : triple)
 //   single-field matches domain/range/subClassOf-trans/subPropertyOf-
 //   trans all use -- exactly the asymmetry `rdfs_rule_subPropertyOf_
 //   licensed`'s own comment flags as this row's distinguishing trap.
+//   (Still a proof-side lambda, `inner_of q` -- named LOCALLY, not in
+//   the engine, which is why the closure-identity gap persisted.)
 //
 //   ATTEMPT 2 (this module's own repair pass, two sub-tries. Sub-try
 //   A: respelled `outer_step`/`outer_grows` with NESTED matches
@@ -765,14 +804,118 @@ let rdfs_rule_range_reaches (g : rdf_graph) (t : triple)
 //   left` extensionality lemma over pointwise-equal functions, never
 //   attempted) is real further work, not a small nudge.
 //
-// PARK, per the brief: the fact this row needs is carried as an
-// explicit, honestly-named HYPOTHESIS at every call site instead of
-// being derived -- never `admit ()`, never assumed silently. Anyone
-// discharging it later (the fold_left-extensionality route above, or
-// a from-scratch re-derivation) drops the hypothesis and the two call
-// sites go through unchanged.
+// Every attempt above respelled the lambda somewhere on the PROOF
+// side. None tried the engine-side lambda-lift, which is what
+// actually worked (see the resolution paragraph above).
 let rdfs7_reaches_fact (g : rdf_graph) : prop =
   forall (t : triple). rdfs7_derives g t ==> memP t (rdfs_rule_subPropertyOf g (build_indexed g))
+// ^ Superseded 2026-08-06 by the unconditional `rdfs_rule_
+// subPropertyOf_reaches`/`_reaches2` lemmas below -- kept, unused, as
+// the historical record of what was carried as a hypothesis and for
+// exactly how long (park: this section's original landing; resolution:
+// the RESOLVED banner above).
+
+// `fold_left_reaches_scoped`'s `safe`-restricted fourth hypothesis
+// (declared above, section "5" preamble) is what rdfs7 actually needs:
+// its conclusion object is `tt.o` itself, the matching data triple's
+// OWN object, not a constant captured from the declaration the way
+// domain/range's `decl.o` is -- so `rho_df_object_ok tt.o` must be
+// shown for every `tt` the inner fold visits, not proved once at a
+// fixed term.
+#push-options "--z3rlimit 200"
+let rdfs_rule_subPropertyOf_reaches2 (src seed : rdf_graph) (t : triple)
+  : Lemma (requires rho_df_frag_graph src /\ ig_wf_sp (build_indexed src) /\
+                    is_subgraph src seed /\ rdfs7_derives src t)
+          (ensures  memP t (rdfs_rule_subPropertyOf seed (build_indexed src))) =
+  lemma_vocab_agree ();
+  let ig = build_indexed src in
+  eliminate exists (decl u : triple) (aa bb : wf_iri).
+      memP decl src /\ decl.p == i_rdfs_subPropertyOf /\
+      decl.s == S_IRI aa /\ decl.o == T_IRI bb /\
+      memP u src /\ u.p == aa /\
+      t == ({ s = u.s; p = bb; o = u.o } <: triple)
+  returns memP t (rdfs_rule_subPropertyOf seed ig)
+  with _ . begin
+    assert (ig.ig_triples == src);
+    assert (rho_df_frag_triple decl);
+    let decls = bucket_lookup ig.ig_pred rdfs_subPropertyOf in
+    let outer_step : rdf_graph -> triple -> rdf_graph =
+      fun (accx : rdf_graph) (declx : triple) ->
+        match declx.s, declx.o with
+        | S_IRI p, T_IRI q ->
+          let matching = bucket_lookup ig.ig_pred p in
+          fold_left (rdfs7_emit ig q) accx matching
+        | _, _ -> accx in
+    assert_norm (rdfs_rule_subPropertyOf seed ig == fold_left outer_step seed decls);
+    lemma_build_indexed_complete_pred src;
+    assert (memP decl decls);
+    assert (memP u (bucket_lookup ig.ig_pred aa));
+    let outer_grows (accx : rdf_graph) (declx : triple) (tx : triple)
+      : Lemma (memP tx accx ==> memP tx (outer_step accx declx)) =
+      match declx.s, declx.o with
+      | S_IRI p, T_IRI q ->
+        fold_left_grows (rdfs7_emit ig q) (bucket_lookup ig.ig_pred p) accx
+      | _, _ -> () in
+    FStar.Classical.forall_intro_3 outer_grows;
+    let (l1, _) = split_using decls decl in
+    let acc_before = fold_left outer_step seed l1 in
+    fold_left_grows outer_step l1 seed;
+    assert (forall (tt : triple). memP tt seed ==> memP tt acc_before);
+    assert (forall (tt : triple). memP tt src ==> memP tt seed);
+    assert (snapshot_subset ig acc_before);
+    let matching = bucket_lookup ig.ig_pred aa in
+    let inner_step : rdf_graph -> triple -> rdf_graph = rdfs7_emit ig bb in
+    let concl_inner : triple -> option triple =
+      fun (tt : triple) -> Some ({ s = tt.s; p = bb; o = tt.o } <: triple) in
+    let keep : rdf_graph -> prop = fun (x : rdf_graph) -> snapshot_subset ig x in
+    let safe : triple -> prop = fun (tt : triple) -> rho_df_object_ok tt.o in
+    lemma_build_indexed_wf_pred src;
+    introduce forall (tt : triple). memP tt matching ==> safe tt
+    with introduce memP tt matching ==> safe tt
+    with _ . assert (rho_df_frag_triple tt);
+    let inner_grows (accx : rdf_graph) (tt : triple) (tx : triple)
+      : Lemma (memP tx accx ==> memP tx (inner_step accx tt)) =
+      lemma_emit_once_term_grows ig accx tt.s bb tt.o tx in
+    FStar.Classical.forall_intro_3 inner_grows;
+    let inner_reaches (accx : rdf_graph) (tt : triple)
+      : Lemma (requires keep accx)
+              (ensures  keep (inner_step accx tt)) =
+      let r = inner_step accx tt in
+      introduce forall (uu : triple). memP uu ig.ig_triples ==> memP uu r
+      with introduce memP uu ig.ig_triples ==> memP uu r
+      with _ . lemma_emit_once_term_grows ig accx tt.s bb tt.o uu in
+    FStar.Classical.forall_intro_2 (fun (accx : rdf_graph) (tt : triple) ->
+      FStar.Classical.move_requires (inner_reaches accx) tt);
+    let inner_produces (accx : rdf_graph) (tt : triple) (tx : triple)
+      : Lemma (requires safe tt /\ keep accx /\ concl_inner tt == Some tx)
+              (ensures  memP tx (inner_step accx tt)) =
+      lemma_emit_once_term_reaches ig accx tt.s bb tt.o in
+    FStar.Classical.forall_intro_3 (fun (accx : rdf_graph) (tt : triple) (tx : triple) ->
+      FStar.Classical.move_requires (inner_produces accx tt) tx);
+    fold_left_reaches_scoped inner_step concl_inner keep safe matching acc_before;
+    assert (memP u matching /\ concl_inner u == Some t);
+    assert (memP t (fold_left inner_step acc_before matching));
+    // Direct `decl` -- same closed-over-term identity as domain/range
+    // above, now for free: `outer_step`'s inner call and `inner_step`
+    // are the SAME symbol (`rdfs7_emit ig bb`), so no record-literal
+    // reconstruction is needed to bridge them.
+    assert (outer_step acc_before decl ==
+                 fold_left inner_step acc_before (bucket_lookup ig.ig_pred aa));
+    assert (memP t (outer_step acc_before decl));
+    lemma_fold_left_reaches_at outer_step decls decl seed t
+  end
+#pop-options
+
+// Diagonal corollary (`src == seed`) -- used directly by the F-1
+// witness call site (section 6) and by `lemma_rho_df_closed_row_
+// subPropertyOf` (theorem 3), both of which previously carried
+// `rdfs7_reaches_fact` as an explicit hypothesis instead.
+let rdfs_rule_subPropertyOf_reaches (g : rdf_graph) (t : triple)
+  : Lemma (requires rho_df_frag_graph g /\ ig_wf_sp (build_indexed g) /\ rdfs7_derives g t)
+          (ensures  memP t (rdfs_rule_subPropertyOf g (build_indexed g))) =
+  let lemma_refl (h : rdf_graph) : Lemma (is_subgraph h h) = () in
+  lemma_refl g;
+  rdfs_rule_subPropertyOf_reaches2 g g t
 
 // -- rdfs11 (subClassOf-trans) and rdfs5 (subPropertyOf-trans) --
 //
@@ -1141,14 +1284,15 @@ let lemma_f1_witness_frag (p a : wf_iri)
 let lemma_f1_bad_triple_not_frag (a : wf_iri)
   : Lemma (~(rho_df_frag_triple (f1_bad_triple a))) = ()
 
-// `rdfs7_reaches_fact` carried as an explicit hypothesis (PARKED
-// above) -- this witness graph is exactly the reach that lemma would
-// supply; still true, still needed, not re-derived from scratch here.
+// `rdfs7_reaches_fact` no longer carried as a hypothesis here (RESOLVED
+// 2026-08-06, section 5's rdfs7 banner) -- this witness graph's reach
+// is now derived directly from the unconditional `rdfs_rule_
+// subPropertyOf_reaches`, in the same shape `assert (rdfs7_derives g
+// (f1_bad_triple a))` below already established.
 #push-options "--z3rlimit 100"
 let lemma_f1_bad_triple_derived (p a : wf_iri)
   : Lemma (requires ~(p == i_rdfs_subPropertyOf) /\
-                    ig_wf_sp (build_indexed (f1_witness p a)) /\
-                    rdfs7_reaches_fact (f1_witness p a))
+                    ig_wf_sp (build_indexed (f1_witness p a)))
           (ensures  memP (f1_bad_triple a)
                          (rdfs_rule_subPropertyOf (f1_witness p a) (build_indexed (f1_witness p a)))) =
   lemma_vocab_agree ();
@@ -1163,18 +1307,19 @@ let lemma_f1_bad_triple_derived (p a : wf_iri)
       f1_bad_triple a == ({ s = ux.s; p = b; o = ux.o } <: triple)
   with decl u p i_rdfs_subPropertyOf
   and ();
-  assert (rdfs7_derives g (f1_bad_triple a))
+  assert (rdfs7_derives g (f1_bad_triple a));
+  rdfs_rule_subPropertyOf_reaches g (f1_bad_triple a)
 #pop-options
 
 // -------------------------------------------------------------------
-// THEOREM (finding F-1, separation -- CONDITIONAL on the carried
-// `rdfs7_reaches_fact`, per the park above; every other conjunct is
-// unconditionally machine-checked).
+// THEOREM (finding F-1, separation). Every conjunct is unconditionally
+// machine-checked (the `rdfs7_reaches_fact` hypothesis this used to
+// carry is DISCHARGED, not just dropped -- see section 5's rdfs7
+// RESOLVED banner and `rdfs_rule_subPropertyOf_reaches` above).
 // -------------------------------------------------------------------
 val rho_df_frag_preservation_fails (p a : wf_iri)
   : Lemma (requires ~(p == i_rdfs_subPropertyOf) /\
-                    ig_wf_sp (build_indexed (f1_witness p a)) /\
-                    rdfs7_reaches_fact (f1_witness p a))
+                    ig_wf_sp (build_indexed (f1_witness p a)))
           (ensures  rho_df_frag_graph (f1_witness p a) /\
                     memP (f1_bad_triple a)
                          (rdfs_rule_subPropertyOf (f1_witness p a) (build_indexed (f1_witness p a))) /\
@@ -1407,17 +1552,20 @@ let lemma_rho_df_closed_row_range (c : rdf_graph)
     lemma_pre_dedup_in_c c t
   end
 
-// `rdfs7_reaches_fact c` carried as an explicit hypothesis -- PARKED,
-// section 5's rdfs7 banner. Every other row's contribution to
-// `rho_df_closed` below is unconditional.
+// `rdfs7_reaches_fact c` no longer carried as a hypothesis (RESOLVED
+// 2026-08-06, section 5's rdfs7 banner) -- discharged directly by
+// `rdfs_rule_subPropertyOf_reaches`. Every row's contribution to
+// `rho_df_closed` below is now unconditional (row 9/subClassOf still
+// needs `rho_df_subclass_subjects_iri`, finding F-2, carried
+// separately at the theorem-3 val).
 let lemma_rho_df_closed_row_subPropertyOf (c : rdf_graph)
   : Lemma (requires rho_df_frag_graph c /\ ig_wf_sp (build_indexed c) /\
-                    rdfs7_reaches_fact c /\
                     no_dup_keys (rho_df_closure_step_pre_dedup c) /\ rho_df_step_saturated c)
           (ensures  forall (t : triple). rdfs7_derives c t ==> memP t c) =
   introduce forall (t : triple). rdfs7_derives c t ==> memP t c
   with introduce rdfs7_derives c t ==> memP t c
   with _ . begin
+    rdfs_rule_subPropertyOf_reaches c t;
     assert (memP t (rdfs_rule_subPropertyOf c (build_indexed c)));
     lemma_after_row1_pre_dedup c (build_indexed c) t;
     lemma_pre_dedup_in_c c t
@@ -1496,13 +1644,18 @@ let lemma_rho_df_closed_row_subClassOf (c : rdf_graph)
 #pop-options
 
 // -------------------------------------------------------------------
-// THEOREM 3.
+// THEOREM 3. `rdfs7_reaches_fact c` DROPPED from the hypothesis list
+// 2026-08-06 (statement strengthening) -- discharged by `rdfs_rule_
+// subPropertyOf_reaches` inside `lemma_rho_df_closed_row_
+// subPropertyOf` now, not carried. `rho_df_subclass_subjects_iri c`
+// (finding F-2, row 9/subClassOf) remains carried -- a different row,
+// not touched by this landing.
 // -------------------------------------------------------------------
 val rho_df_closure_closed (g : rdf_graph) (fuel : nat)
   : Lemma
     (requires (let c = rho_df_closure g fuel in
                rho_df_frag_graph c /\ ig_wf_sp (build_indexed c) /\
-               rho_df_subclass_subjects_iri c /\ rdfs7_reaches_fact c /\
+               rho_df_subclass_subjects_iri c /\
                no_dup_keys (rho_df_closure_step_pre_dedup c) /\
                no_repeats_p c /\ no_repeats_p (rho_df_closure_step c) /\
                graph_len (rho_df_closure_step c) = graph_len c))
@@ -1542,12 +1695,15 @@ let rho_df_closure_closed g fuel =
 // `rho_df_frag_graph c` hypothesis theorem 4's finding requires.
 // ===================================================================
 
+// `rdfs7_reaches_fact c` DROPPED from the hypothesis list 2026-08-06,
+// same reason as theorem 3's val above (it feeds `rho_df_closure_
+// closed`, which no longer needs it).
 val rho_df_closure_decides (g e : rdf_graph) (fuel : nat)
   : Lemma
     (requires (let c = rho_df_closure g fuel in
                rho_df_chain_canonical g /\ rho_df_chain_wf g /\
                rho_df_frag_graph c /\ ig_wf_sp (build_indexed c) /\
-               rho_df_subclass_subjects_iri c /\ rdfs7_reaches_fact c /\
+               rho_df_subclass_subjects_iri c /\
                no_dup_keys (rho_df_closure_step_pre_dedup c) /\
                no_repeats_p c /\ no_repeats_p (rho_df_closure_step c) /\
                graph_len (rho_df_closure_step c) = graph_len c /\
