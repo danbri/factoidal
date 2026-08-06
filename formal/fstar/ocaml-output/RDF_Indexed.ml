@@ -315,8 +315,10 @@ let po_key_opt (p : RDF_Term.wf_iri) (o : RDF_Term.rdf_term) :
   Prims.string FStar_Pervasives_Native.option=
   match term_to_key_opt o with
   | FStar_Pervasives_Native.Some k ->
-      FStar_Pervasives_Native.Some (FStar_String.concat "" [p; unit_sep; k])
+      FStar_Pervasives_Native.Some (Prims.strcat p (Prims.strcat unit_sep k))
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+let po_key (p : RDF_Term.wf_iri) (s : RDF_Term.subject) : Prims.string=
+  Prims.strcat p (Prims.strcat unit_sep (subject_to_key s))
 let so_key_opt (s : RDF_Term.subject) (o : RDF_Term.rdf_term) :
   Prims.string FStar_Pervasives_Native.option=
   match term_to_key_opt o with
@@ -328,16 +330,19 @@ let find_objects_indexed (ig : indexed_graph) (subj : RDF_Term.subject)
   (pred : RDF_Term.wf_iri) : RDF_Term.rdf_term Prims.list=
   let bucket = bucket_lookup ig.ig_sp (sp_key subj pred) in
   FStar_List_Tot_Base.map (fun t -> t.RDF_Triple.o) bucket
+let triple_obj_matches (obj : RDF_Term.rdf_term) (t : RDF_Triple.triple) :
+  Prims.bool= RDF_Term.rdf_term_eq t.RDF_Triple.o obj
+let triple_subject_of (t : RDF_Triple.triple) : RDF_Term.subject=
+  t.RDF_Triple.s
 let find_subjects_indexed (ig : indexed_graph) (pred : RDF_Term.wf_iri)
   (obj : RDF_Term.rdf_term) : RDF_Term.subject Prims.list=
   let bucket =
     match po_key_opt pred obj with
     | FStar_Pervasives_Native.Some k -> bucket_lookup ig.ig_po k
     | FStar_Pervasives_Native.None ->
-        FStar_List_Tot_Base.filter
-          (fun t -> RDF_Term.rdf_term_eq t.RDF_Triple.o obj)
+        FStar_List_Tot_Base.filter (triple_obj_matches obj)
           (bucket_lookup ig.ig_pred pred) in
-  FStar_List_Tot_Base.map (fun t -> t.RDF_Triple.s) bucket
+  FStar_List_Tot_Base.map triple_subject_of bucket
 let add_triple_to_indexes (ig : indexed_graph) (t : RDF_Triple.triple) :
   indexed_graph=
   let new_pred = bucket_push ig.ig_pred t.RDF_Triple.p t in
