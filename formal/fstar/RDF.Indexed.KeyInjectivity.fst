@@ -494,3 +494,470 @@ let lemma_build_indexed_wf_po g =
       po_key_injective_one_sided t.p t_s p s
     | None -> ()
   end
+
+// ===================================================================
+// 9. #348: literal-arm injectivity for `term_to_key_total`, and full
+// `triple_to_key` injectivity on separator-free triples.
+//
+// `term_to_key_total` (RDF.Graph.fsti) extends `term_to_key_opt` with a
+// literal branch and a triple-term branch built RECURSIVELY through it.
+// #348 found the literal branch folded lexical_form/datatype/lang tag/
+// direction with a plain "^^" TEXT join and NO separator at all between
+// datatype, lang tag, and direction -- a collision surface WIDER than
+// sp_key's (#338): e.g. a `datatype` IRI containing a literal `'@'`
+// (legal in an IRI's `ireg-name`/`iuserinfo`, RFC 3987) could collide
+// with a shorter datatype plus a language tag. RDF.Graph.fsti's fix
+// joins every part with `unit_sep`, built with `^` (not the opaque
+// `String.concat`), so this section's separator-counting toolkit
+// (sections 0/1 above) applies to it exactly as it does to sp_key/po_key.
+//
+// SIDE CONDITION. `term_sep_free` extends `str_sep_free` recursively
+// over an `rdf_term`: an IRI/bnode's label clean, a literal's lexical
+// form + datatype + (if present) language tag clean (`literal_sep_free`),
+// or a triple term's subject label + predicate clean AND its object
+// clean by the same recursive condition. `direction` needs NO side
+// condition -- its key contribution (`RDF.Graph.lit_key_dir_part`) is
+// one of three FIXED ASCII strings, distinguished by direct string
+// comparison, not separator counting.
+//
+// SHAPE OF THE PROOF, TWO-SIDED (not one-sided like sp_key/po_key
+// above): `no_dup_keys`'s two triples are both drawn from the SAME
+// separator-free graph, so both sides' cleanliness is available
+// directly from the caller's hypothesis -- no need for sp_key's
+// "derive the other side's count from the total" trick. Each level
+// peels one component with `lemma_sep_split_unique`, applied to BOTH
+// `a1` and `a2` (re-read section 1's signature: it needs `count_sep a1
+// == 0 /\ count_sep a2 == 0`, NO constraint on `b1`/`b2`, so the "rest"
+// may itself contain further separators -- exactly what lets this
+// compose through `triple_to_key`'s 3-part shape and the literal key's
+// 4-part shape without a generalised n-ary version of the lemma).
+// ===================================================================
+
+// The literal side condition. `direction` excluded (see banner).
+let literal_sep_free (l : literal) : prop =
+  str_sep_free l.lexical_form /\ str_sep_free l.datatype /\
+  (match l.lang_tag with | Some t -> str_sep_free t | None -> True)
+
+// Decidable companion, mirroring `count_sep_b`/`graph_sp_sep_free_b`'s
+// own soundness pattern (section 5) -- needed so
+// `RDF.Entailment.RDFS.SepFree`'s `obj_label_sep_free_b` (extended for
+// #348 in that module) has a literal-content checker to call.
+let literal_sep_free_b (l : literal) : bool =
+  count_sep_b (list_of_string l.lexical_form) = 0 &&
+  count_sep_b (list_of_string l.datatype) = 0 &&
+  (match l.lang_tag with | Some t -> count_sep_b (list_of_string t) = 0 | None -> true)
+
+let lemma_literal_sep_free_b_sound (l : literal)
+  : Lemma (requires literal_sep_free_b l == true)
+          (ensures literal_sep_free l) =
+  lemma_count_sep_b_eq (list_of_string l.lexical_form);
+  lemma_count_sep_b_eq (list_of_string l.datatype);
+  (match l.lang_tag with
+   | Some t -> lemma_count_sep_b_eq (list_of_string t)
+   | None -> ())
+
+// The full recursive rdf_term side condition `term_to_key_total`
+// injectivity needs.
+let rec term_sep_free (o : rdf_term) : Tot prop (decreases o) =
+  match o with
+  | T_IRI i -> str_sep_free i
+  | T_BNode b -> str_sep_free b
+  | T_Literal l -> literal_sep_free l
+  | T_TripleTerm s p obj -> subj_label_sep_free s /\ str_sep_free p /\ term_sep_free obj
+
+// ===================================================================
+// 9a. The literal key's list_of_string decomposition, one level at a
+// time -- three nested `a ^ (unit_sep ^ rest)` splits, mirroring
+// `lemma_sp_key_decomposes`/`lemma_po_key_decomposes` (sections 3/8)
+// but chained instead of single-shot, since the literal key has four
+// parts (three internal separators) where sp_key/po_key have two.
+// ===================================================================
+
+let lemma_literal_key_decomposes_1 (l : wf_literal)
+  : Lemma (list_of_string (term_to_key_total (T_Literal l)) ==
+           list_of_string ("L_" ^ l.lexical_form) @
+           (sep_char :: list_of_string
+             (l.datatype ^ (unit_sep ^
+               (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l)))))) =
+  list_of_concat ("L_" ^ l.lexical_form)
+    (unit_sep ^ (l.datatype ^ (unit_sep ^
+      (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l)))));
+  list_of_concat unit_sep (l.datatype ^ (unit_sep ^
+    (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l))));
+  assert_norm (list_of_string unit_sep == [sep_char])
+
+let lemma_literal_key_decomposes_2 (l : literal)
+  : Lemma (list_of_string
+             (l.datatype ^ (unit_sep ^ (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l)))) ==
+           list_of_string l.datatype @
+           (sep_char :: list_of_string (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l)))) =
+  list_of_concat l.datatype (unit_sep ^ (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l)));
+  list_of_concat unit_sep (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l));
+  assert_norm (list_of_string unit_sep == [sep_char])
+
+let lemma_literal_key_decomposes_3 (l : literal)
+  : Lemma (list_of_string (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l)) ==
+           list_of_string (lit_key_lang_part l) @ (sep_char :: list_of_string (lit_key_dir_part l))) =
+  list_of_concat (lit_key_lang_part l) (unit_sep ^ lit_key_dir_part l);
+  list_of_concat unit_sep (lit_key_dir_part l);
+  assert_norm (list_of_string unit_sep == [sep_char])
+
+// `"L_" ^ lexical_form` is separator-free exactly when `lexical_form`
+// is (the "L_" tag itself is two plain ASCII chars) -- mirrors
+// `lemma_subject_key_sep_free`'s "I_"/"B_" argument (section 2).
+let lemma_literal_prefix_sep_free (l : literal)
+  : Lemma (requires str_sep_free l.lexical_form)
+          (ensures str_sep_free ("L_" ^ l.lexical_form)) =
+  list_of_concat "L_" l.lexical_form;
+  lemma_count_sep_append (list_of_string "L_") (list_of_string l.lexical_form);
+  assert_norm (count_sep (list_of_string "L_") == 0)
+
+// `lit_key_lang_part` is separator-free whenever the underlying tag
+// (when present) is -- the "@" marker contributes zero separators.
+let lemma_lit_key_lang_part_sep_free (l : literal)
+  : Lemma (requires (match l.lang_tag with | Some t -> str_sep_free t | None -> True))
+          (ensures str_sep_free (lit_key_lang_part l)) =
+  match l.lang_tag with
+  | None ->
+    // `list_of_string` is opaque to Z3 outside the normalizer (it is a
+    // primitive `val`, no SMT equations) -- `assert_norm` on the WRAPPED
+    // `str_sep_free ""` (not the unwrapped `count_sep (list_of_string
+    // "") == 0`) is what actually forces the normalizer to close the
+    // literal case; the unwrapped form leaves nothing SMT can reuse to
+    // discharge the `str_sep_free (lit_key_lang_part l)` goal below.
+    assert (lit_key_lang_part l == "");
+    assert_norm (str_sep_free "")
+  | Some t ->
+    assert (lit_key_lang_part l == "@" ^ t);
+    list_of_concat "@" t;
+    lemma_count_sep_append (list_of_string "@") (list_of_string t);
+    assert_norm (count_sep (list_of_string "@") == 0)
+
+// `lit_key_dir_part l` uniquely determines `l.direction`: the three
+// possible values are FIXED, pairwise-distinct ASCII strings, so
+// equality of the strings decides equality of the `option
+// text_direction` by direct case split + `assert_norm`.
+let lemma_lit_key_dir_part_injective (l1 l2 : literal)
+  : Lemma (requires lit_key_dir_part l1 == lit_key_dir_part l2)
+          (ensures l1.direction == l2.direction) =
+  match l1.direction, l2.direction with
+  | None, None -> ()
+  | Some Dir_LTR, Some Dir_LTR -> ()
+  | Some Dir_RTL, Some Dir_RTL -> ()
+  | None, Some Dir_LTR -> assert_norm (("" = "--ltr") == false)
+  | None, Some Dir_RTL -> assert_norm (("" = "--rtl") == false)
+  | Some Dir_LTR, None -> assert_norm (("--ltr" = "") == false)
+  | Some Dir_RTL, None -> assert_norm (("--rtl" = "") == false)
+  | Some Dir_LTR, Some Dir_RTL -> assert_norm (("--ltr" = "--rtl") == false)
+  | Some Dir_RTL, Some Dir_LTR -> assert_norm (("--rtl" = "--ltr") == false)
+
+// `lit_key_lang_part` similarly determines `l.lang_tag` -- `""` has
+// length 0 (impossible for a "@"-prefixed string, length >= 1), and
+// for two "Some" tags `concat_injective` recovers the tag from the
+// fixed-length "@" prefix (same trick section 2 uses for "I_"/"B_").
+let lemma_lit_key_lang_part_injective (l1 l2 : literal)
+  : Lemma (requires lit_key_lang_part l1 == lit_key_lang_part l2)
+          (ensures l1.lang_tag == l2.lang_tag) =
+  match l1.lang_tag, l2.lang_tag with
+  | None, None -> ()
+  | Some t1, Some t2 ->
+    assert (lit_key_lang_part l1 == "@" ^ t1);
+    assert (lit_key_lang_part l2 == "@" ^ t2);
+    concat_injective "@" "@" t1 t2
+  | None, Some t2 ->
+    assert (lit_key_lang_part l1 == "");
+    assert (lit_key_lang_part l2 == "@" ^ t2);
+    assert_norm (FStar.String.length "" == 0);
+    assert_norm (FStar.String.length "@" == 1);
+    concat_length "@" t2
+  | Some t1, None ->
+    assert (lit_key_lang_part l1 == "@" ^ t1);
+    assert (lit_key_lang_part l2 == "");
+    assert_norm (FStar.String.length "" == 0);
+    assert_norm (FStar.String.length "@" == 1);
+    concat_length "@" t1
+
+// ===================================================================
+// 9b. The literal-arm injectivity theorem -- section 5's harvest ask,
+// scoped to #348: `term_to_key_total (T_Literal l1) ==
+// term_to_key_total (T_Literal l2)` under a separator-free side
+// condition on BOTH literals forces `l1 == l2`.
+// ===================================================================
+
+val lemma_literal_key_injective (l1 l2 : wf_literal)
+  : Lemma (requires literal_sep_free l1 /\ literal_sep_free l2 /\
+                     term_to_key_total (T_Literal l1) == term_to_key_total (T_Literal l2))
+          (ensures l1 == l2)
+
+let lemma_literal_key_injective l1 l2 =
+  lemma_literal_key_decomposes_1 l1;
+  lemma_literal_key_decomposes_1 l2;
+  lemma_literal_prefix_sep_free l1;
+  lemma_literal_prefix_sep_free l2;
+  let pfx1 = list_of_string ("L_" ^ l1.lexical_form) in
+  let rest1 = list_of_string (l1.datatype ^ (unit_sep ^
+    (lit_key_lang_part l1 ^ (unit_sep ^ lit_key_dir_part l1)))) in
+  let pfx2 = list_of_string ("L_" ^ l2.lexical_form) in
+  let rest2 = list_of_string (l2.datatype ^ (unit_sep ^
+    (lit_key_lang_part l2 ^ (unit_sep ^ lit_key_dir_part l2)))) in
+  lemma_sep_split_unique pfx1 rest1 pfx2 rest2;
+  string_of_list_of_string ("L_" ^ l1.lexical_form);
+  string_of_list_of_string ("L_" ^ l2.lexical_form);
+  concat_injective "L_" "L_" l1.lexical_form l2.lexical_form;
+  string_of_list_of_string
+    (l1.datatype ^ (unit_sep ^ (lit_key_lang_part l1 ^ (unit_sep ^ lit_key_dir_part l1))));
+  string_of_list_of_string
+    (l2.datatype ^ (unit_sep ^ (lit_key_lang_part l2 ^ (unit_sep ^ lit_key_dir_part l2))));
+  // Level 2: peel `datatype` off the shared remainder.
+  lemma_literal_key_decomposes_2 l1;
+  lemma_literal_key_decomposes_2 l2;
+  let dpfx1 = list_of_string l1.datatype in
+  let drest1 = list_of_string (lit_key_lang_part l1 ^ (unit_sep ^ lit_key_dir_part l1)) in
+  let dpfx2 = list_of_string l2.datatype in
+  let drest2 = list_of_string (lit_key_lang_part l2 ^ (unit_sep ^ lit_key_dir_part l2)) in
+  lemma_sep_split_unique dpfx1 drest1 dpfx2 drest2;
+  string_of_list_of_string l1.datatype;
+  string_of_list_of_string l2.datatype;
+  string_of_list_of_string (lit_key_lang_part l1 ^ (unit_sep ^ lit_key_dir_part l1));
+  string_of_list_of_string (lit_key_lang_part l2 ^ (unit_sep ^ lit_key_dir_part l2));
+  // Level 3: peel the language-tag suffix off the final remainder.
+  lemma_literal_key_decomposes_3 l1;
+  lemma_literal_key_decomposes_3 l2;
+  lemma_lit_key_lang_part_sep_free l1;
+  lemma_lit_key_lang_part_sep_free l2;
+  let lpfx1 = list_of_string (lit_key_lang_part l1) in
+  let lrest1 = list_of_string (lit_key_dir_part l1) in
+  let lpfx2 = list_of_string (lit_key_lang_part l2) in
+  let lrest2 = list_of_string (lit_key_dir_part l2) in
+  lemma_sep_split_unique lpfx1 lrest1 lpfx2 lrest2;
+  string_of_list_of_string (lit_key_lang_part l1);
+  string_of_list_of_string (lit_key_lang_part l2);
+  string_of_list_of_string (lit_key_dir_part l1);
+  string_of_list_of_string (lit_key_dir_part l2);
+  lemma_lit_key_lang_part_injective l1 l2;
+  lemma_lit_key_dir_part_injective l1 l2;
+  assert (l1.lexical_form == l2.lexical_form);
+  assert (l1.datatype == l2.datatype);
+  assert (l1.lang_tag == l2.lang_tag);
+  assert (l1.direction == l2.direction)
+
+// ===================================================================
+// 9c. Full `term_to_key_total` injectivity across all four `rdf_term`
+// constructors. Same-constructor pairs recurse into 9b (literal),
+// replay section 2/7's "I_"/"B_" tag argument (IRI/bnode), or a fresh
+// two-level split (triple term, mirroring sp_key/po_key). Different-
+// constructor pairs are ruled out by comparing the key's first TWO
+// characters -- each constructor's tag ("I_"/"B_"/"L_"/"T_") is
+// distinct, same technique as `lemma_subject_to_key_injective`'s own
+// cross-constructor cases (section 2), replayed here pairwise.
+// ===================================================================
+
+let lemma_triple_term_key_decomposes_1 (s : subject) (p : wf_iri) (obj : rdf_term)
+  : Lemma (list_of_string (term_to_key_total (T_TripleTerm s p obj)) ==
+           list_of_string ("T_" ^ subject_to_key s) @
+           (sep_char :: list_of_string (p ^ (unit_sep ^ term_to_key_total obj)))) =
+  list_of_concat ("T_" ^ subject_to_key s) (unit_sep ^ (p ^ (unit_sep ^ term_to_key_total obj)));
+  list_of_concat unit_sep (p ^ (unit_sep ^ term_to_key_total obj));
+  assert_norm (list_of_string unit_sep == [sep_char])
+
+let lemma_triple_term_key_decomposes_2 (p : wf_iri) (obj : rdf_term)
+  : Lemma (list_of_string (p ^ (unit_sep ^ term_to_key_total obj)) ==
+           list_of_string p @ (sep_char :: list_of_string (term_to_key_total obj))) =
+  list_of_concat p (unit_sep ^ term_to_key_total obj);
+  list_of_concat unit_sep (term_to_key_total obj);
+  assert_norm (list_of_string unit_sep == [sep_char])
+
+// `"T_" ^ subject_to_key s` is separator-free exactly when
+// `subject_to_key s` is -- mirrors `lemma_literal_prefix_sep_free`'s
+// "L_" argument above (itself mirroring section 2's "I_"/"B_" one).
+let lemma_triple_term_prefix_sep_free (s : subject)
+  : Lemma (requires str_sep_free (subject_to_key s))
+          (ensures str_sep_free ("T_" ^ subject_to_key s)) =
+  list_of_concat "T_" (subject_to_key s);
+  lemma_count_sep_append (list_of_string "T_") (list_of_string (subject_to_key s));
+  assert_norm (count_sep (list_of_string "T_") == 0)
+
+#push-options "--z3rlimit 120"
+let rec lemma_term_to_key_total_injective (o1 o2 : rdf_term)
+  : Lemma (requires term_sep_free o1 /\ term_sep_free o2 /\
+                     term_to_key_total o1 == term_to_key_total o2)
+          (ensures o1 == o2)
+    (decreases o1) =
+  match o1, o2 with
+  | T_IRI i1, T_IRI i2 -> concat_injective "I_" "I_" i1 i2
+  | T_BNode b1, T_BNode b2 -> concat_injective "B_" "B_" b1 b2
+  | T_Literal l1, T_Literal l2 -> lemma_literal_key_injective l1 l2
+  | T_TripleTerm s1 p1 obj1, T_TripleTerm s2 p2 obj2 ->
+    lemma_triple_term_key_decomposes_1 s1 p1 obj1;
+    lemma_triple_term_key_decomposes_1 s2 p2 obj2;
+    lemma_subject_key_sep_free s1;
+    lemma_subject_key_sep_free s2;
+    lemma_triple_term_prefix_sep_free s1;
+    lemma_triple_term_prefix_sep_free s2;
+    let a1 = list_of_string ("T_" ^ subject_to_key s1) in
+    let b1 = list_of_string (p1 ^ (unit_sep ^ term_to_key_total obj1)) in
+    let a2 = list_of_string ("T_" ^ subject_to_key s2) in
+    let b2 = list_of_string (p2 ^ (unit_sep ^ term_to_key_total obj2)) in
+    lemma_sep_split_unique a1 b1 a2 b2;
+    string_of_list_of_string ("T_" ^ subject_to_key s1);
+    string_of_list_of_string ("T_" ^ subject_to_key s2);
+    concat_injective "T_" "T_" (subject_to_key s1) (subject_to_key s2);
+    lemma_subject_to_key_injective s1 s2;
+    string_of_list_of_string (p1 ^ (unit_sep ^ term_to_key_total obj1));
+    string_of_list_of_string (p2 ^ (unit_sep ^ term_to_key_total obj2));
+    lemma_triple_term_key_decomposes_2 p1 obj1;
+    lemma_triple_term_key_decomposes_2 p2 obj2;
+    let c1 = list_of_string p1 in
+    let d1 = list_of_string (term_to_key_total obj1) in
+    let c2 = list_of_string p2 in
+    let d2 = list_of_string (term_to_key_total obj2) in
+    lemma_sep_split_unique c1 d1 c2 d2;
+    string_of_list_of_string p1;
+    string_of_list_of_string p2;
+    string_of_list_of_string (term_to_key_total obj1);
+    string_of_list_of_string (term_to_key_total obj2);
+    lemma_term_to_key_total_injective obj1 obj2
+  // Cross-constructor pairs: the key's first two characters differ
+  // ("I_"/"B_"/"L_"/"T_"), so the equal-key hypothesis is contradictory.
+  | T_IRI i1, T_BNode b2 ->
+    list_of_concat "I_" i1; list_of_concat "B_" b2;
+    assert_norm (list_of_string "I_" == ['I'; '_']);
+    assert_norm (list_of_string "B_" == ['B'; '_']);
+    assert_norm (('I' = 'B') == false)
+  | T_BNode b1, T_IRI i2 ->
+    list_of_concat "B_" b1; list_of_concat "I_" i2;
+    assert_norm (list_of_string "B_" == ['B'; '_']);
+    assert_norm (list_of_string "I_" == ['I'; '_']);
+    assert_norm (('B' = 'I') == false)
+  | T_IRI i1, T_Literal l2 ->
+    list_of_concat "I_" i1; lemma_literal_key_decomposes_1 l2; list_of_concat "L_" l2.lexical_form;
+    assert_norm (list_of_string "I_" == ['I'; '_']);
+    assert_norm (list_of_string "L_" == ['L'; '_']);
+    assert_norm (('I' = 'L') == false)
+  | T_Literal l1, T_IRI i2 ->
+    lemma_literal_key_decomposes_1 l1; list_of_concat "L_" l1.lexical_form; list_of_concat "I_" i2;
+    assert_norm (list_of_string "L_" == ['L'; '_']);
+    assert_norm (list_of_string "I_" == ['I'; '_']);
+    assert_norm (('L' = 'I') == false)
+  | T_IRI i1, T_TripleTerm s2 p2 obj2 ->
+    list_of_concat "I_" i1;
+    lemma_triple_term_key_decomposes_1 s2 p2 obj2; list_of_concat "T_" (subject_to_key s2);
+    assert_norm (list_of_string "I_" == ['I'; '_']);
+    assert_norm (list_of_string "T_" == ['T'; '_']);
+    assert_norm (('I' = 'T') == false)
+  | T_TripleTerm s1 p1 obj1, T_IRI i2 ->
+    lemma_triple_term_key_decomposes_1 s1 p1 obj1; list_of_concat "T_" (subject_to_key s1);
+    list_of_concat "I_" i2;
+    assert_norm (list_of_string "T_" == ['T'; '_']);
+    assert_norm (list_of_string "I_" == ['I'; '_']);
+    assert_norm (('T' = 'I') == false)
+  | T_BNode b1, T_Literal l2 ->
+    list_of_concat "B_" b1; lemma_literal_key_decomposes_1 l2; list_of_concat "L_" l2.lexical_form;
+    assert_norm (list_of_string "B_" == ['B'; '_']);
+    assert_norm (list_of_string "L_" == ['L'; '_']);
+    assert_norm (('B' = 'L') == false)
+  | T_Literal l1, T_BNode b2 ->
+    lemma_literal_key_decomposes_1 l1; list_of_concat "L_" l1.lexical_form; list_of_concat "B_" b2;
+    assert_norm (list_of_string "L_" == ['L'; '_']);
+    assert_norm (list_of_string "B_" == ['B'; '_']);
+    assert_norm (('L' = 'B') == false)
+  | T_BNode b1, T_TripleTerm s2 p2 obj2 ->
+    list_of_concat "B_" b1;
+    lemma_triple_term_key_decomposes_1 s2 p2 obj2; list_of_concat "T_" (subject_to_key s2);
+    assert_norm (list_of_string "B_" == ['B'; '_']);
+    assert_norm (list_of_string "T_" == ['T'; '_']);
+    assert_norm (('B' = 'T') == false)
+  | T_TripleTerm s1 p1 obj1, T_BNode b2 ->
+    lemma_triple_term_key_decomposes_1 s1 p1 obj1; list_of_concat "T_" (subject_to_key s1);
+    list_of_concat "B_" b2;
+    assert_norm (list_of_string "T_" == ['T'; '_']);
+    assert_norm (list_of_string "B_" == ['B'; '_']);
+    assert_norm (('T' = 'B') == false)
+  | T_Literal l1, T_TripleTerm s2 p2 obj2 ->
+    lemma_literal_key_decomposes_1 l1; list_of_concat "L_" l1.lexical_form;
+    lemma_triple_term_key_decomposes_1 s2 p2 obj2; list_of_concat "T_" (subject_to_key s2);
+    assert_norm (list_of_string "L_" == ['L'; '_']);
+    assert_norm (list_of_string "T_" == ['T'; '_']);
+    assert_norm (('L' = 'T') == false)
+  | T_TripleTerm s1 p1 obj1, T_Literal l2 ->
+    lemma_triple_term_key_decomposes_1 s1 p1 obj1; list_of_concat "T_" (subject_to_key s1);
+    lemma_literal_key_decomposes_1 l2; list_of_concat "L_" l2.lexical_form;
+    assert_norm (list_of_string "T_" == ['T'; '_']);
+    assert_norm (list_of_string "L_" == ['L'; '_']);
+    assert_norm (('T' = 'L') == false)
+#pop-options
+
+// ===================================================================
+// 9d. `triple_to_key` injectivity on separator-free triples, and the
+// `no_dup_keys`-shaped graph corollary
+// `RDF.Entailment.RDFS.FixedPoint.lemma_len_eq_saturated_sep_free`
+// (Gap A) instantiates against the pre-dedup intermediate graph.
+// ===================================================================
+
+let triple_full_sep_free (t : triple) : prop =
+  subj_label_sep_free t.s /\ str_sep_free t.p /\ term_sep_free t.o
+
+#push-options "--z3rlimit 100"
+val lemma_triple_to_key_injective (t1 t2 : triple)
+  : Lemma (requires triple_full_sep_free t1 /\ triple_full_sep_free t2 /\
+                     triple_to_key t1 == triple_to_key t2)
+          (ensures t1 == t2)
+
+let lemma_triple_to_key_injective t1 t2 =
+  lemma_subject_key_sep_free t1.s;
+  lemma_subject_key_sep_free t2.s;
+  list_of_concat (subject_to_key t1.s) (unit_sep ^ (t1.p ^ (unit_sep ^ term_to_key_total t1.o)));
+  list_of_concat unit_sep (t1.p ^ (unit_sep ^ term_to_key_total t1.o));
+  list_of_concat (subject_to_key t2.s) (unit_sep ^ (t2.p ^ (unit_sep ^ term_to_key_total t2.o)));
+  list_of_concat unit_sep (t2.p ^ (unit_sep ^ term_to_key_total t2.o));
+  assert_norm (list_of_string unit_sep == [sep_char]);
+  let a1 = list_of_string (subject_to_key t1.s) in
+  let b1 = list_of_string (t1.p ^ (unit_sep ^ term_to_key_total t1.o)) in
+  let a2 = list_of_string (subject_to_key t2.s) in
+  let b2 = list_of_string (t2.p ^ (unit_sep ^ term_to_key_total t2.o)) in
+  lemma_sep_split_unique a1 b1 a2 b2;
+  string_of_list_of_string (subject_to_key t1.s);
+  string_of_list_of_string (subject_to_key t2.s);
+  lemma_subject_to_key_injective t1.s t2.s;
+  string_of_list_of_string (t1.p ^ (unit_sep ^ term_to_key_total t1.o));
+  string_of_list_of_string (t2.p ^ (unit_sep ^ term_to_key_total t2.o));
+  // Second split: predicate off the shared remainder.
+  assert (str_sep_free t1.p);
+  assert (str_sep_free t2.p);
+  list_of_concat t1.p (unit_sep ^ term_to_key_total t1.o);
+  list_of_concat t2.p (unit_sep ^ term_to_key_total t2.o);
+  list_of_concat unit_sep (term_to_key_total t1.o);
+  list_of_concat unit_sep (term_to_key_total t2.o);
+  let c1 = list_of_string t1.p in
+  let d1 = list_of_string (term_to_key_total t1.o) in
+  let c2 = list_of_string t2.p in
+  let d2 = list_of_string (term_to_key_total t2.o) in
+  lemma_sep_split_unique c1 d1 c2 d2;
+  string_of_list_of_string t1.p;
+  string_of_list_of_string t2.p;
+  string_of_list_of_string (term_to_key_total t1.o);
+  string_of_list_of_string (term_to_key_total t2.o);
+  lemma_term_to_key_total_injective t1.o t2.o;
+  assert (t1.s == t2.s);
+  assert (t1.p == t2.p);
+  assert (t1.o == t2.o)
+#pop-options
+
+// The graph-level side condition and the `no_dup_keys`-shaped payoff.
+// Stated WITHOUT reference to `RDF.Entailment.RDFS.FixedPoint.no_dup_keys`
+// by name (this module sits below it in the dependency order) -- the
+// `ensures` below is definitionally the same `forall`, so a caller in
+// that module discharges its own `no_dup_keys h` by unfolding.
+let graph_full_sep_free (g : list triple) : prop =
+  forall (t : triple). memP t g ==> triple_full_sep_free t
+
+val lemma_graph_full_sep_free_no_dup_keys (g : list triple)
+  : Lemma (requires graph_full_sep_free g)
+          (ensures forall (t1 t2 : triple).
+             memP t1 g /\ memP t2 g /\ triple_to_key t1 == triple_to_key t2 ==> t1 == t2)
+
+let lemma_graph_full_sep_free_no_dup_keys g =
+  introduce forall (t1 t2 : triple).
+      memP t1 g /\ memP t2 g /\ triple_to_key t1 == triple_to_key t2 ==> t1 == t2
+  with introduce memP t1 g /\ memP t2 g /\ triple_to_key t1 == triple_to_key t2 ==> t1 == t2
+  with _ . lemma_triple_to_key_injective t1 t2

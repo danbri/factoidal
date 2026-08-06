@@ -113,34 +113,75 @@ let add_triple_if_new (g : rdf_graph) (t : triple) : rdf_graph =
 let add_triple_unchecked (g : rdf_graph) (t : triple) : rdf_graph =
   t :: g
 
+/// The optional-language-tag suffix contributed to a literal's total
+/// dedup key: `""` when absent, `"@" ^ tag` when present. Named (rather
+/// than inlined in `term_to_key_total`) so
+/// `RDF.Indexed.KeyInjectivity`'s literal-arm injectivity proof (#348)
+/// can refer to it directly instead of re-matching `l.lang_tag` itself.
+let lit_key_lang_part (l : literal) : string =
+  match l.lang_tag with
+  | Some t -> "@" ^ t
+  | None   -> ""
+
+/// The optional-direction suffix, mirroring `lit_key_lang_part` above.
+/// Always one of three FIXED ASCII strings — no side condition is ever
+/// needed on it for injectivity (RDF.Indexed.KeyInjectivity distinguishes
+/// the three by direct string comparison, not separator-counting).
+let lit_key_dir_part (l : literal) : string =
+  match l.direction with
+  | Some Dir_LTR -> "--ltr"
+  | Some Dir_RTL -> "--rtl"
+  | None         -> ""
+
 /// Total key for any rdf_term — extends `RDF.Indexed`'s `term_to_key_opt`
 /// with a literal branch. Used only for in-graph dedup comparisons; not
 /// stable across graph encodings.
+///
+/// #348 FIX (2026-08-06): the `T_Literal` arm used to join its parts with
+/// plain `"^^"` TEXT and no separator at all between the datatype, the
+/// language-tag suffix, and the direction suffix — not even a
+/// control-character separator like `unit_sep` (RDF.Indexed.fsti), and
+/// genuinely ambiguous: e.g. a `datatype` IRI containing a literal `'@'`
+/// (legal in an IRI's `ireg-name`/`iuserinfo`, RFC 3987) could collide
+/// with a shorter datatype plus a language tag. Every part below is now
+/// joined with `unit_sep`, mirroring `RDF.Indexed.sp_key`/`po_key`'s
+/// shape (`a ^ (unit_sep ^ rest)`, right-nested so the same one-sided
+/// separator-counting injectivity proof applies at each level) and
+/// built with `^` (FStar.String.strcat) rather than `String.concat "" [...]`
+/// for the SAME reason `RDF.Indexed.fsti`'s builders are: `^` carries the
+/// `list_of_concat`/`concat_injective` reasoning equations the
+/// injectivity proof needs, while `String.concat` is an opaque `val`
+/// with none. `subject_to_key`/`term_to_key_opt`'s "I_"/"B_" tags are
+/// unaffected in VALUE (`"I_" ^ i` and `String.concat "" ["I_"; i]`
+/// produce byte-identical output) but are also rewritten with `^` here
+/// so `T_TripleTerm`'s recursive key and `triple_to_key` below reason
+/// uniformly. Part ORDER is unchanged: lexical form, datatype, language
+/// tag, direction. Dedup-sort ORDER over an existing graph MAY change
+/// (different key strings sort differently) — the orchestrator gates
+/// extraction on landing.
 let rec term_to_key_total (o : rdf_term) : Tot string (decreases o) =
   match o with
-  | T_IRI i     -> String.concat "" ["I_"; i]
-  | T_BNode b   -> String.concat "" ["B_"; b]
-  | T_Literal l -> String.concat "" ["L_"; l.lexical_form; "^^"; l.datatype;
-                                       (match l.lang_tag with
-                                        | Some t -> String.concat "" ["@"; t]
-                                        | None   -> "");
-                                       (match l.direction with
-                                        | Some Dir_LTR -> "--ltr"
-                                        | Some Dir_RTL -> "--rtl"
-                                        | None         -> "")]
+  | T_IRI i     -> "I_" ^ i
+  | T_BNode b   -> "B_" ^ b
+  | T_Literal l ->
+    ("L_" ^ l.lexical_form) ^ (unit_sep ^
+      (l.datatype ^ (unit_sep ^
+        (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l)))))
   // RDF 1.2 triple term: a distinct, structural in-graph dedup key so two
   // different triple terms never collide. (Object-position, so it recurses
   // through the object slot.)
   | T_TripleTerm s p obj ->
-    String.concat "" ["T_"; subject_to_key s; unit_sep; p; unit_sep;
-                      term_to_key_total obj]
+    ("T_" ^ subject_to_key s) ^ (unit_sep ^ (p ^ (unit_sep ^ term_to_key_total obj)))
 
 /// Triple key: subject + predicate + object, separated by unit-sep so
 /// no two distinct triples collide on the string. Reuses
 /// `RDF.Indexed.subject_to_key`/`unit_sep` (the same subject-keying and
-/// separator the index buckets use) rather than a second copy.
+/// separator the index buckets use) rather than a second copy. Built
+/// with `^`, not `String.concat "" [...]` — same reasoning as
+/// `term_to_key_total` above (RDF.Indexed.KeyInjectivity's #348
+/// triple_to_key injectivity proof needs it).
 let triple_to_key (t : triple) : string =
-  String.concat "" [subject_to_key t.s; unit_sep; t.p; unit_sep; term_to_key_total t.o]
+  subject_to_key t.s ^ (unit_sep ^ (t.p ^ (unit_sep ^ term_to_key_total t.o)))
 
 let triple_cmp (t1 t2 : triple) : int =
   String.compare (triple_to_key t1) (triple_to_key t2)

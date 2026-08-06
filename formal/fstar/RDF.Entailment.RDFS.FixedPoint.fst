@@ -49,10 +49,13 @@ open RDF.Term
 open RDF.Triple
 open RDF.Graph
 open RDF.Indexed
+open RDF.Indexed.StringOrder
 open RDFS.Closure
 open OWL.Semantics.MemLemmas
 open RDF.Entailment.RDFS.Refinement
 open RDF.Entailment.RDFS.ModelTheory
+open RDF.Indexed.KeyInjectivity
+open RDF.Entailment.RDFS.SepFree
 
 // ===================================================================
 // 1. THE SEMANTIC FIXED POINT.
@@ -880,3 +883,276 @@ let lemma_len_eq_saturated g =
   with _ . lemma_step_extensive g;
   lemma_no_repeats_subset_same_length_eq g (rdfs_closure_step g)
 #pop-options
+
+// ===================================================================
+// 9. #348 STAGE 3 -- discharging section 8's two gaps.
+//
+// GAP B: `no_repeats_p (rdfs_closure_step g)`, UNCONDITIONALLY -- no
+// separator-freeness or any other side condition. `rdfs_closure_step g
+// = graph_dedup_sort g12` sorts its decorated `(string * triple)`
+// pairs by KEY (`RDF.Graph.cmp_decorated_triple`, `String.compare` on
+// `triple_to_key`) via `List.Tot.sortWith`. `RDF.Indexed.Completeness.
+// lemma_sortWith_sorted_pairs` already proves an ALL-PAIRS sortedness
+// fact for `sortWith` GENERICALLY (no `eqtype` -- exactly the
+// `sortWith_sorted` stdlib blocker section 8 names), but for
+// `(option string * a)` decorated pairs, the shape RDF.Indexed's index
+// buckets use. `graph_dedup_sort` decorates with a BARE `string`, so
+// this section replays the SAME two-stage proof (order facts from
+// `RDF.Indexed.StringOrder`'s three axioms, then all-pairs sortedness
+// for `sortWith`) specialised to bare-string keys -- simpler than the
+// `option`-wrapped original since there is no `None` case to carry.
+// ===================================================================
+
+let all_ge_dt (pivot : string * triple) (l : list (string * triple)) : prop =
+  forall (y : string * triple). memP y l ==> FStar.String.compare (fst pivot) (fst y) <= 0
+
+let rec sorted_pairs_dt (l : list (string * triple)) : prop =
+  match l with
+  | [] -> True
+  | x :: tl -> all_ge_dt x tl /\ sorted_pairs_dt tl
+
+// Non-strict transitivity from the two StringOrder axioms -- the same
+// zero-or-strict case split RDF.Indexed.Completeness's own
+// `lemma_key_order_cmp_trans_le` uses, replayed on bare strings.
+let lemma_str_compare_trans_le (k1 k2 k3 : string)
+  : Lemma (requires FStar.String.compare k1 k2 <= 0 /\ FStar.String.compare k2 k3 <= 0)
+          (ensures FStar.String.compare k1 k3 <= 0) =
+  string_compare_zero_iff_eq k1 k2;
+  string_compare_zero_iff_eq k2 k3;
+  if FStar.String.compare k1 k2 = 0 then ()
+  else if FStar.String.compare k2 k3 = 0 then ()
+  else string_compare_trans k1 k2 k3
+
+// Mixed non-strict/strict composition: a<=b, b<c ==> a<c. What Gap B's
+// dedup-ascending induction (below) needs at each KEEP step.
+let lemma_str_compare_le_lt_trans (a b c : string)
+  : Lemma (requires FStar.String.compare a b <= 0 /\ FStar.String.compare b c < 0)
+          (ensures FStar.String.compare a c < 0) =
+  string_compare_zero_iff_eq a b;
+  if FStar.String.compare a b = 0 then ()
+  else string_compare_trans a b c
+
+#push-options "--z3rlimit 60"
+let rec lemma_sorted_pairs_dt_append (pivot : string * triple) (lo hi : list (string * triple))
+  : Lemma
+    (requires
+       sorted_pairs_dt lo /\ sorted_pairs_dt hi /\
+       (forall y. memP y lo ==> FStar.String.compare (fst y) (fst pivot) <= 0) /\
+       (forall y. memP y hi ==> FStar.String.compare (fst pivot) (fst y) <= 0))
+    (ensures sorted_pairs_dt (List.Tot.append lo (pivot :: hi)))
+    (decreases lo) =
+  match lo with
+  | [] -> ()
+  | hd :: tl ->
+    lemma_sorted_pairs_dt_append pivot tl hi;
+    List.Tot.append_memP_forall tl (pivot :: hi);
+    let aux (y : string * triple) : Lemma
+      (requires memP y hi)
+      (ensures FStar.String.compare (fst hd) (fst y) <= 0) =
+      lemma_str_compare_trans_le (fst hd) (fst pivot) (fst y)
+    in FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+#pop-options
+
+#push-options "--z3rlimit 100"
+let rec lemma_sortWith_sorted_pairs_dt (l : list (string * triple))
+  : Lemma
+    (ensures sorted_pairs_dt (List.Tot.sortWith cmp_decorated_triple l))
+    (decreases (List.Tot.length l)) =
+  match l with
+  | [] -> ()
+  | pivot :: tl ->
+    let hi, lo = List.Tot.partition (List.Tot.bool_of_compare cmp_decorated_triple pivot) tl in
+    List.Tot.partition_length (List.Tot.bool_of_compare cmp_decorated_triple pivot) tl;
+    lemma_sortWith_sorted_pairs_dt lo;
+    lemma_sortWith_sorted_pairs_dt hi;
+    RDF.Indexed.Completeness.lemma_partition_pred_memP_forall
+      (List.Tot.bool_of_compare cmp_decorated_triple pivot) tl;
+    lemma_sortWith_memP_forall cmp_decorated_triple lo;
+    lemma_sortWith_memP_forall cmp_decorated_triple hi;
+    let aux_lo (y : string * triple) : Lemma
+      (requires memP y (List.Tot.sortWith cmp_decorated_triple lo))
+      (ensures FStar.String.compare (fst y) (fst pivot) <= 0) =
+      string_compare_antisym (fst pivot) (fst y)
+    in FStar.Classical.forall_intro (FStar.Classical.move_requires aux_lo);
+    let aux_hi (y : string * triple) : Lemma
+      (requires memP y (List.Tot.sortWith cmp_decorated_triple hi))
+      (ensures FStar.String.compare (fst pivot) (fst y) <= 0) = ()
+    in FStar.Classical.forall_intro (FStar.Classical.move_requires aux_hi);
+    lemma_sorted_pairs_dt_append pivot (List.Tot.sortWith cmp_decorated_triple lo)
+                                       (List.Tot.sortWith cmp_decorated_triple hi)
+#pop-options
+
+// ===================================================================
+// 9a. `no_repeats_p` is `rev`-invariant -- the small bridge
+// `dedup_sorted_decorated_aux`'s trailing `List.Tot.rev acc` needs
+// (the aux's own accumulator is built by CONS, reversed only once at
+// the very end).
+// ===================================================================
+
+#push-options "--z3rlimit 60"
+let rec lemma_no_repeats_p_rev (#a:Type) (l : list a)
+  : Lemma (ensures no_repeats_p (List.Tot.rev l) <==> no_repeats_p l)
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | hd :: tl ->
+    lemma_no_repeats_p_rev tl;
+    List.Tot.rev_append [hd] tl;
+    assert (List.Tot.rev (hd :: tl) == List.Tot.append (List.Tot.rev tl) (List.Tot.rev [hd]));
+    assert (List.Tot.rev [hd] == [hd]);
+    List.Tot.rev_memP tl hd;
+    no_repeats_p_append (List.Tot.rev tl) [hd]
+#pop-options
+
+// ===================================================================
+// 9b. The dedup-ascending induction: given the incoming decorated list
+// is ALL-PAIRS sorted by key and the accumulator invariant holds (its
+// elements' keys are all <= the tracked `prev` key, with a witness for
+// `prev` itself, mirroring section 5's OWN `lemma_dedup_sorted_
+// decorated_extensive` invariant shape), the output has no repeats.
+//
+// At each KEEP step (fresh key `k`), the entering pair's own
+// all-pairs-sortedness fact (`sorted_pairs_dt`'s head clause) gives
+// "every later key is >= k", carrying the `ts`-side invariant forward;
+// the OLD `prev`'s "<=" bound composed with `prev < k` (mixed le/lt
+// transitivity, since `prev <> k` in the KEEP branch by definition of
+// `dup`) gives every OLD acc element STRICTLY less than `k`, hence
+// (same triple ==> same key, contrapositive) distinct from the new
+// element `t` -- `no_repeats_p_cons` closes the extended accumulator.
+// ===================================================================
+
+let dedup_acc_inv (prev : option string) (acc : list triple) : prop =
+  no_repeats_p acc /\
+  (match prev with
+   | Some k -> (exists (u : triple). memP u acc /\ triple_to_key u == k) /\
+               (forall (t : triple). memP t acc ==> FStar.String.compare (triple_to_key t) k <= 0)
+   | None -> acc == [])
+
+#push-options "--z3rlimit 150 --fuel 2 --ifuel 1"
+let rec lemma_dedup_sorted_decorated_no_repeats
+    (prev : option string) (ts : list (string * triple)) (acc : list triple)
+  : Lemma
+    (requires
+      decoration_consistent ts /\
+      sorted_pairs_dt ts /\
+      dedup_acc_inv prev acc /\
+      (match prev with
+       | Some k -> forall (p : (string * triple)). memP p ts ==> FStar.String.compare k (fst p) <= 0
+       | None -> True))
+    (ensures no_repeats_p (dedup_sorted_decorated_aux prev ts acc))
+    (decreases ts) =
+  match ts with
+  | [] -> lemma_no_repeats_p_rev acc
+  | (k, t) :: rest ->
+    let dup = match prev with | Some p -> p = k | None -> false in
+    if dup then begin
+      // Same key as `prev` -- drop `t`, recurse unchanged on `rest`.
+      // `rest`'s own all-pairs bound against `prev` (= k here) comes
+      // straight from `sorted_pairs_dt ts`'s head clause.
+      (match prev with
+       | Some p ->
+         introduce forall (p' : (string * triple)). memP p' rest ==> FStar.String.compare p (fst p') <= 0
+         with introduce memP p' rest ==> FStar.String.compare p (fst p') <= 0
+         with _ . ()
+       | None -> ());
+      lemma_dedup_sorted_decorated_no_repeats prev rest acc
+    end else begin
+      // Fresh key -- keep `t`, recurse with `Some k` and `t :: acc`.
+      introduce forall (p' : (string * triple)). memP p' rest ==> FStar.String.compare k (fst p') <= 0
+      with introduce memP p' rest ==> FStar.String.compare k (fst p') <= 0
+      with _ . ();
+      assert (triple_to_key t == k);
+      // Every OLD acc element's key is STRICTLY below k -- vacuously
+      // (acc == []) when prev is None, or via "<= p, p < k" mixed
+      // transitivity (p <> k since dup is false) when prev is Some p.
+      let old_below_k : squash (forall (u : triple). memP u acc ==>
+                                   FStar.String.compare (triple_to_key u) k < 0) =
+        match prev with
+        | Some p ->
+          string_compare_zero_iff_eq p k;
+          assert (FStar.String.compare p k < 0);
+          introduce forall (u : triple). memP u acc ==>
+              FStar.String.compare (triple_to_key u) k < 0
+          with introduce memP u acc ==> FStar.String.compare (triple_to_key u) k < 0
+          with _ . lemma_str_compare_le_lt_trans (triple_to_key u) p k
+        | None -> assert (acc == []) in
+      introduce memP t acc ==> False
+      with _ . begin
+        assert (FStar.String.compare (triple_to_key t) k < 0);
+        string_compare_zero_iff_eq k k
+      end;
+      no_repeats_p_cons t acc;
+      introduce forall (t' : triple). memP t' (t :: acc) ==>
+          FStar.String.compare (triple_to_key t') k <= 0
+      with introduce memP t' (t :: acc) ==> FStar.String.compare (triple_to_key t') k <= 0
+      with _ . begin
+        eliminate t' == t \/ memP t' acc
+        returns FStar.String.compare (triple_to_key t') k <= 0
+        with _ . string_compare_zero_iff_eq k k
+        and  _ . assert (FStar.String.compare (triple_to_key t') k < 0)
+      end;
+      assert (exists (u : triple). memP u (t :: acc) /\ triple_to_key u == k);
+      lemma_dedup_sorted_decorated_no_repeats (Some k) rest (t :: acc)
+    end
+#pop-options
+
+// ===================================================================
+// 9c. Gap B, closed: `no_repeats_p (graph_dedup_sort h)` for ANY `h`
+// -- no side condition. Same decorate/sort setup section 5's
+// `lemma_graph_dedup_sort_extensive` already uses, composed with 9a/9b.
+// ===================================================================
+
+#push-options "--z3rlimit 100"
+val lemma_graph_dedup_sort_no_repeats (h : list triple)
+  : Lemma (no_repeats_p (graph_dedup_sort h))
+
+let lemma_graph_dedup_sort_no_repeats h =
+  let f = fun (t : triple) -> (triple_to_key t, t) in
+  let dec : list (string * triple) = List.Tot.map f h in
+  let sorted : list (string * triple) = List.Tot.sortWith cmp_decorated_triple dec in
+  lemma_sortWith_sorted_pairs_dt dec;
+  introduce forall (p : (string * triple)). memP p dec ==> fst p == triple_to_key (snd p)
+  with introduce memP p dec ==> fst p == triple_to_key (snd p)
+  with _ . begin
+    memP_map_elim f p h;
+    eliminate exists (t : triple). memP t h /\ f t == p
+    returns fst p == triple_to_key (snd p)
+    with _ . ()
+  end;
+  introduce forall (p : (string * triple)). memP p sorted ==> fst p == triple_to_key (snd p)
+  with introduce memP p sorted ==> fst p == triple_to_key (snd p)
+  with _ . lemma_sortWith_memP_iff cmp_decorated_triple dec p;
+  assert (decoration_consistent sorted);
+  assert (dedup_acc_inv None ([] <: list triple));
+  lemma_dedup_sorted_decorated_no_repeats None sorted [];
+  assert (graph_dedup_sort h == dedup_sorted_decorated_aux None sorted [])
+#pop-options
+
+val lemma_rdfs_closure_step_no_repeats (g : rdf_graph)
+  : Lemma (no_repeats_p (rdfs_closure_step g))
+
+let lemma_rdfs_closure_step_no_repeats g =
+  lemma_graph_dedup_sort_no_repeats (rdfs_closure_step_pre_dedup g);
+  lemma_step_is_dedup_of_pre_dedup g
+
+// ===================================================================
+// 9d. Gap B folded into the length-test theorem: `lemma_len_eq_
+// saturated`'s `no_repeats_p (rdfs_closure_step g)` hypothesis is now
+// DISCHARGED (9c), not merely assumed, so this corollary drops it --
+// down to THREE hypotheses where section 8 needed four. `no_dup_keys
+// (rdfs_closure_step_pre_dedup g)` (Gap A) and `no_repeats_p g` (the
+// INPUT graph's own list has no literal duplicate triples -- a
+// reasonable ask of a freshly-parsed graph, unlike the OUTPUT-side
+// hypothesis this corollary just eliminated) remain.
+// ===================================================================
+
+val lemma_len_eq_saturated_gapB (g : rdf_graph)
+  : Lemma
+    (requires no_dup_keys (rdfs_closure_step_pre_dedup g) /\
+              no_repeats_p g /\
+              graph_len (rdfs_closure_step g) = graph_len g)
+    (ensures step_saturated g)
+
+let lemma_len_eq_saturated_gapB g =
+  lemma_rdfs_closure_step_no_repeats g;
+  lemma_len_eq_saturated g

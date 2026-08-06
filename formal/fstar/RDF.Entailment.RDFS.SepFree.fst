@@ -70,11 +70,27 @@ open RDF.Indexed.KeyInjectivity
 // label), so they impose no constraint here -- `True`.
 // ===================================================================
 
+// #348 EXTENSION (2026-08-06): the `T_Literal` case used to impose no
+// constraint at all (`True`) -- correct for the sp_key/po_key discharges
+// section 4's rows feed (bucket keys never index literals, RDF.Indexed.
+// fsti's own banner), but too weak for `RDF.Indexed.KeyInjectivity`'s
+// #348 `term_to_key_total` (dedup key) injectivity, which DOES fold
+// literal content into the key. Extended to
+// `RDF.Indexed.KeyInjectivity.literal_sep_free` -- lexical form,
+// datatype, and (if present) language tag clean; `direction` needs no
+// side condition (RDF.Graph.fsti's `lit_key_dir_part` is one of three
+// FIXED strings). `T_TripleTerm` stays `True`: RDFS closure conclusions
+// never construct or carry a triple-term object (RDF 1.2 triple terms
+// are object-position-only syntax the thirteen RDFS rows do not touch),
+// so no row lemma below needs it -- extending it recursively (mirroring
+// `RDF.Indexed.KeyInjectivity.term_sep_free`) is future work if
+// OWL/RDFS-over-triple-terms ever needs this predicate.
 let obj_label_sep_free (o : rdf_term) : prop =
   match o with
   | T_IRI i -> str_sep_free i
   | T_BNode b -> str_sep_free b
-  | _ -> True
+  | T_Literal l -> literal_sep_free l
+  | T_TripleTerm _ _ _ -> True
 
 let triple_sep_free (t : triple) : prop =
   subj_label_sep_free t.s /\ str_sep_free t.p /\ obj_label_sep_free t.o
@@ -416,7 +432,8 @@ let obj_label_sep_free_b (o : rdf_term) : bool =
   match o with
   | T_IRI i -> count_sep_b (list_of_string i) = 0
   | T_BNode b -> count_sep_b (list_of_string b) = 0
-  | _ -> true
+  | T_Literal l -> literal_sep_free_b l
+  | T_TripleTerm _ _ _ -> true
 
 let triple_sep_free_b (t : triple) : bool =
   count_sep_b (list_of_string (subj_label t.s)) = 0 &&
@@ -439,7 +456,8 @@ let rec lemma_graph_sep_free_b_sound (g : list triple)
     (match t.o with
      | T_IRI i -> lemma_count_sep_b_eq (list_of_string i)
      | T_BNode b -> lemma_count_sep_b_eq (list_of_string b)
-     | _ -> ());
+     | T_Literal l -> lemma_literal_sep_free_b_sound l
+     | T_TripleTerm _ _ _ -> ());
     lemma_graph_sep_free_b_sound rest
 
 let rec iri_list_sep_free_b (l : list wf_iri) : bool =
