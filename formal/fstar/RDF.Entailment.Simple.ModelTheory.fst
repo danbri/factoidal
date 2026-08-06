@@ -361,3 +361,313 @@ let simple_entails_iff_model_theory (a b : list triple)
           (ensures  (simple_entails a b == true) <==> simple_entails_mt a b) =
   simple_entails_iff_spec a b;
   interpolation_lemma a b
+
+// ===================================================================
+// ADOPTION ITEM A5 (docs/designissues/2026-08-05-semantics-proposal-
+// adoption.md): two more small semantic-layer lemmas, built directly
+// on the `interp` / `bnode_assignment` / `satisfies` machinery reused
+// above.
+//   5a. `graph_bnodes_complete` -- satisfaction of a graph under a
+//       fixed assignment depends on that assignment only through its
+//       restriction to the graph's own blank-node labels.
+//   5b. the RDF 1.1 Semantics section 5.2 MERGING lemma -- the
+//       bnode-disjoint union form, plus the two-graph entailment
+//       corollary the REC states.
+// ===================================================================
+
+// -------------------------------------------------------------------
+// 5.0 Blank-node labels occurring in a term / triple / graph.
+//
+// A fresh, LOCAL enumeration -- not `RDF.Graph.Executable.graph_bnodes`,
+// which lives in the pragmatics/executable layer this file
+// deliberately does not open (that module `include`s `RDFS.Closure`
+// and `OWL.Closure`, dragging in the whole engine for one list
+// function). This one also differs in a way worth flagging: it
+// recurses into RDF 1.2 triple-term subjects, matching `denot_term`'s
+// own recursion (`OWL.Semantics.denot_term`), so the completeness
+// theorem below is not restricted to `graph_tt_free` graphs.
+// `RDF.Graph.Executable.graph_bnodes` inspects only a triple's
+// top-level `s` and `o` fields and therefore MISSES a blank node
+// nested inside a `T_TripleTerm` object -- a pre-existing gap in that
+// function, flagged here rather than fixed there (out of scope for
+// this lemma; every caller of that function today runs RDF 1.0/1.1
+// pipelines that never construct triple terms).
+// -------------------------------------------------------------------
+let subject_bnode (s : subject) : list bnode_id =
+  match s with
+  | S_IRI _   -> []
+  | S_BNode b -> [b]
+
+let rec term_bnodes (t : rdf_term) : Tot (list bnode_id) (decreases t) =
+  match t with
+  | T_IRI _            -> []
+  | T_BNode b          -> [b]
+  | T_Literal _        -> []
+  | T_TripleTerm s _ o -> subject_bnode s @ term_bnodes o
+
+let triple_bnodes (t : triple) : list bnode_id =
+  subject_bnode t.s @ term_bnodes t.o
+
+let rec graph_bnode_ids (g : list triple) : Tot (list bnode_id) (decreases g) =
+  match g with
+  | []       -> []
+  | hd :: tl -> triple_bnodes hd @ graph_bnode_ids tl
+
+// The occurrence predicate the enumeration above is checked against --
+// structurally independent of the list-building recursion above, so
+// the membership-correctness lemmas below are a genuine correspondence
+// proof and not a restatement of the same computation.
+let subject_has_bnode (s : subject) (b : bnode_id) : prop =
+  match s with
+  | S_IRI _    -> False
+  | S_BNode b' -> b' == b
+
+let rec term_has_bnode (t : rdf_term) (b : bnode_id) : Tot prop (decreases t) =
+  match t with
+  | T_IRI _            -> False
+  | T_BNode b'         -> b' == b
+  | T_Literal _        -> False
+  | T_TripleTerm s _ o -> subject_has_bnode s b \/ term_has_bnode o b
+
+let triple_has_bnode (t : triple) (b : bnode_id) : prop =
+  subject_has_bnode t.s b \/ term_has_bnode t.o b
+
+let rec graph_has_bnode (g : list triple) (b : bnode_id) : Tot prop (decreases g) =
+  match g with
+  | []       -> False
+  | hd :: tl -> triple_has_bnode hd b \/ graph_has_bnode tl b
+
+// Membership correctness: "b is in the enumeration" iff "b occurs in
+// the graph".
+let lemma_subject_bnode_mem (s : subject) (b : bnode_id)
+  : Lemma (memP b (subject_bnode s) <==> subject_has_bnode s b) =
+  match s with
+  | S_IRI _   -> ()
+  | S_BNode _ -> ()
+
+let rec lemma_term_bnodes_mem (t : rdf_term) (b : bnode_id)
+  : Lemma (ensures memP b (term_bnodes t) <==> term_has_bnode t b)
+          (decreases t) =
+  match t with
+  | T_IRI _     -> ()
+  | T_BNode _   -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm s _ o ->
+    lemma_subject_bnode_mem s b;
+    lemma_term_bnodes_mem o b;
+    append_memP (subject_bnode s) (term_bnodes o) b
+
+let lemma_triple_bnodes_mem (t : triple) (b : bnode_id)
+  : Lemma (memP b (triple_bnodes t) <==> triple_has_bnode t b) =
+  lemma_subject_bnode_mem t.s b;
+  lemma_term_bnodes_mem t.o b;
+  append_memP (subject_bnode t.s) (term_bnodes t.o) b
+
+let rec lemma_graph_bnode_ids_mem (g : list triple) (b : bnode_id)
+  : Lemma (ensures memP b (graph_bnode_ids g) <==> graph_has_bnode g b)
+          (decreases g) =
+  match g with
+  | []       -> ()
+  | hd :: tl ->
+    lemma_triple_bnodes_mem hd b;
+    lemma_graph_bnode_ids_mem tl b;
+    append_memP (triple_bnodes hd) (graph_bnode_ids tl) b
+
+// Monotonicity: every bnode of a member triple is a bnode of the
+// whole graph. The graph-level completeness theorem needs this to
+// transfer the graph-wide "assignments agree" hypothesis down to a
+// single triple.
+let rec lemma_mem_triple_bnodes_subset (g : list triple) (t : triple) (b : bnode_id)
+  : Lemma (requires memP t g /\ triple_has_bnode t b)
+          (ensures  graph_has_bnode g b)
+          (decreases g) =
+  match g with
+  | [] -> ()
+  | hd :: tl ->
+    eliminate (t == hd) \/ memP t tl
+    returns graph_has_bnode g b
+    with _ . ()
+    and  _ . lemma_mem_triple_bnodes_subset tl t b
+
+// -------------------------------------------------------------------
+// 5a. graph_bnodes_complete: two assignments agreeing on every bnode
+// label of a graph make that graph hold identically (same
+// interpretation, fixed assignments -- no existential over
+// assignments here; that is `satisfies`, one layer up).
+//
+// Proof shape: reduce to a per-triple denotation lemma
+// (`lemma_denot_agree`) via structural induction matching
+// `denot_subject`/`denot_term`, then lift from one triple to
+// `holds_all` via the monotonicity lemma above.
+// -------------------------------------------------------------------
+let assignments_agree_on (i : interp) (bs : list bnode_id)
+                         (a1 a2 : bnode_assignment i.idom) : prop =
+  forall (b : bnode_id). memP b bs ==> a1 b == a2 b
+
+let lemma_denot_subject_agree (i : interp) (a1 a2 : bnode_assignment i.idom) (s : subject)
+  : Lemma (requires forall (b : bnode_id). subject_has_bnode s b ==> a1 b == a2 b)
+          (ensures  denot_subject i a1 s == denot_subject i a2 s) =
+  match s with
+  | S_IRI _   -> ()
+  | S_BNode _ -> ()
+
+let rec lemma_denot_term_agree (i : interp) (a1 a2 : bnode_assignment i.idom) (t : rdf_term)
+  : Lemma (requires forall (b : bnode_id). term_has_bnode t b ==> a1 b == a2 b)
+          (ensures  denot_term i a1 t == denot_term i a2 t)
+          (decreases t) =
+  match t with
+  | T_IRI _     -> ()
+  | T_BNode _   -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm s _ o ->
+    lemma_denot_subject_agree i a1 a2 s;
+    lemma_denot_term_agree i a1 a2 o
+
+let lemma_triple_holds_agree (i : interp) (a1 a2 : bnode_assignment i.idom) (t : triple)
+  : Lemma (requires forall (b : bnode_id). triple_has_bnode t b ==> a1 b == a2 b)
+          (ensures  triple_holds i a1 t <==> triple_holds i a2 t) =
+  lemma_denot_subject_agree i a1 a2 t.s;
+  lemma_denot_term_agree i a1 a2 t.o
+
+let graph_bnodes_complete (i : interp) (a1 a2 : bnode_assignment i.idom) (g : list triple)
+  : Lemma (requires assignments_agree_on i (graph_bnode_ids g) a1 a2)
+          (ensures  holds_all i a1 g <==> holds_all i a2 g) =
+  let per_triple (t : triple)
+    : Lemma (requires memP t g) (ensures triple_holds i a1 t <==> triple_holds i a2 t) =
+    let agree_on_t (b : bnode_id)
+      : Lemma (requires triple_has_bnode t b) (ensures a1 b == a2 b) =
+      lemma_mem_triple_bnodes_subset g t b;
+      lemma_graph_bnode_ids_mem g b
+    in
+    FStar.Classical.forall_intro (FStar.Classical.move_requires agree_on_t);
+    lemma_triple_holds_agree i a1 a2 t
+  in
+  FStar.Classical.forall_intro (FStar.Classical.move_requires per_triple)
+
+// -------------------------------------------------------------------
+// 5b. The MERGING lemma, RDF 1.1 Semantics section 5.2 ("Merging
+// graphs"): the union of two bnode-disjoint graphs behaves, under a
+// fixed interpretation and assignment, exactly as the two graphs
+// separately -- and, given disjointness, at the level of `satisfies`
+// (existential over the assignment) too.
+//
+// The FIXED-ASSIGNMENT half needs no disjointness at all: `memP` over
+// `@` splits into the two `memP`s regardless of what the bnode labels
+// are, since both sides read the same assignment. Disjointness only
+// starts to matter once the assignment is allowed to vary independently
+// on each side, i.e. at the `satisfies` (existential) level -- which is
+// exactly where the REC's own entailment corollary lives.
+// -------------------------------------------------------------------
+let lemma_holds_all_append (i : interp) (a : bnode_assignment i.idom) (g1 g2 : list triple)
+  : Lemma (holds_all i a (g1 @ g2) <==> holds_all i a g1 /\ holds_all i a g2) =
+  let step (t : triple)
+    : Lemma (memP t (g1 @ g2) <==> memP t g1 \/ memP t g2) =
+    append_memP g1 g2 t
+  in
+  FStar.Classical.forall_intro step
+
+// Bnode-disjointness of two graphs, in the occurrence-predicate
+// vocabulary 5.0 introduced. Stated as a single symmetric conjunction
+// so neither direction needs a separate symmetry lemma.
+let bnode_disjoint (g1 g2 : list triple) : prop =
+  forall (b : bnode_id). ~(graph_has_bnode g1 b /\ graph_has_bnode g2 b)
+
+// The merged assignment: read off `a1` for a label that is one of
+// `g1`'s bnodes, `a2` otherwise. Well-defined regardless of
+// disjointness; disjointness is what makes it agree with `a2` on
+// `g2`'s own labels too (proved just below).
+let merge_assignment (i : interp) (g1 : list triple) (a1 a2 : bnode_assignment i.idom)
+  : bnode_assignment i.idom =
+  fun (b : bnode_id) -> if List.Tot.mem b (graph_bnode_ids g1) then a1 b else a2 b
+
+let lemma_merge_assignment_g1 (i : interp) (g1 : list triple) (a1 a2 : bnode_assignment i.idom)
+                              (b : bnode_id)
+  : Lemma (requires graph_has_bnode g1 b)
+          (ensures  merge_assignment i g1 a1 a2 b == a1 b) =
+  lemma_graph_bnode_ids_mem g1 b;
+  mem_memP b (graph_bnode_ids g1)
+
+let lemma_merge_assignment_g2 (i : interp) (g1 g2 : list triple) (a1 a2 : bnode_assignment i.idom)
+                              (b : bnode_id)
+  : Lemma (requires bnode_disjoint g1 g2 /\ graph_has_bnode g2 b)
+          (ensures  merge_assignment i g1 a1 a2 b == a2 b) =
+  lemma_graph_bnode_ids_mem g1 b;
+  mem_memP b (graph_bnode_ids g1)
+
+// The fixed-interpretation, fixed-assignment satisfaction of the
+// merge, from bnode-disjoint separate satisfaction of the components
+// under (possibly different) witness assignments a1, a2.
+let lemma_merge_satisfies (i : interp) (g1 g2 : list triple)
+                          (a1 a2 : bnode_assignment i.idom)
+  : Lemma (requires bnode_disjoint g1 g2 /\ holds_all i a1 g1 /\ holds_all i a2 g2)
+          (ensures  holds_all i (merge_assignment i g1 a1 a2) (g1 @ g2)) =
+  let am = merge_assignment i g1 a1 a2 in
+  let agrees_g1 (b : bnode_id)
+    : Lemma (requires memP b (graph_bnode_ids g1)) (ensures am b == a1 b) =
+    lemma_graph_bnode_ids_mem g1 b;
+    lemma_merge_assignment_g1 i g1 a1 a2 b
+  in
+  FStar.Classical.forall_intro (FStar.Classical.move_requires agrees_g1);
+  let agrees_g2 (b : bnode_id)
+    : Lemma (requires memP b (graph_bnode_ids g2)) (ensures am b == a2 b) =
+    lemma_graph_bnode_ids_mem g2 b;
+    lemma_merge_assignment_g2 i g1 g2 a1 a2 b
+  in
+  FStar.Classical.forall_intro (FStar.Classical.move_requires agrees_g2);
+  graph_bnodes_complete i a1 am g1;
+  graph_bnodes_complete i a2 am g2;
+  assert (holds_all i am g1);
+  assert (holds_all i am g2);
+  lemma_holds_all_append i am g1 g2
+
+// THEOREM (merging, satisfies level). The union of two bnode-disjoint
+// graphs is satisfied by an interpretation iff each graph is.
+let merge_satisfies_iff (i : interp) (g1 g2 : list triple)
+  : Lemma (requires bnode_disjoint g1 g2)
+          (ensures  satisfies i (g1 @ g2) <==> (satisfies i g1 /\ satisfies i g2)) =
+  let forward ()
+    : Lemma (requires satisfies i (g1 @ g2)) (ensures satisfies i g1 /\ satisfies i g2) =
+    eliminate exists (a : bnode_assignment i.idom). holds_all i a (g1 @ g2)
+    returns (satisfies i g1 /\ satisfies i g2)
+    with _pf.
+      (lemma_holds_all_append i a g1 g2;
+       assert (satisfies i g1);
+       assert (satisfies i g2))
+  in
+  let backward ()
+    : Lemma (requires satisfies i g1 /\ satisfies i g2) (ensures satisfies i (g1 @ g2)) =
+    eliminate exists (a1 : bnode_assignment i.idom). holds_all i a1 g1
+    returns (satisfies i (g1 @ g2))
+    with _p1.
+      (eliminate exists (a2 : bnode_assignment i.idom). holds_all i a2 g2
+       returns (satisfies i (g1 @ g2))
+       with _p2.
+         (lemma_merge_satisfies i g1 g2 a1 a2;
+          assert (satisfies i (g1 @ g2))))
+  in
+  FStar.Classical.move_requires forward ();
+  FStar.Classical.move_requires backward ()
+
+// THEOREM (the entailment corollary the REC states, two-graph form):
+// "the merge of a set of graphs entails each of the graphs in the
+// set, and a set of graphs entails a graph E if and only if the merge
+// of the set entails E" (RDF 1.1 Semantics section 5.2). Stated here
+// for two graphs (the set form is a straightforward induction on the
+// set were it needed; two graphs is what this vertical's callers use).
+//
+// Direction 1: the merge entails each component.
+let merge_entails_component (i : interp) (g1 g2 : list triple)
+  : Lemma (requires bnode_disjoint g1 g2 /\ satisfies i (g1 @ g2))
+          (ensures  satisfies i g1 /\ satisfies i g2) =
+  merge_satisfies_iff i g1 g2
+
+// Direction 2: {g1, g2} entails E iff the merge entails E -- the
+// "only if" needs no disjointness (an interpretation satisfying the
+// merge always satisfies both components, by `lemma_holds_all_append`
+// alone); the "if" needs it, to build one assignment for the merge out
+// of separate witnesses for g1 and g2.
+let merge_entails_iff (i : interp) (g1 g2 e : list triple)
+  : Lemma (requires bnode_disjoint g1 g2)
+          (ensures  (satisfies i g1 /\ satisfies i g2 ==> satisfies i e) <==>
+                    (satisfies i (g1 @ g2) ==> satisfies i e)) =
+  merge_satisfies_iff i g1 g2

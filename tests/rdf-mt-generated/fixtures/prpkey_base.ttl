@@ -1,0 +1,8 @@
+@prefix ex: <http://example.org/prpkey/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+ex:Person a owl:Class ;
+  owl:hasKey ( ex:name ) .
+ex:p1 a ex:Person ;
+  ex:name "Alice"@en .
+ex:p2 a ex:Person ;
+  ex:name "Alice"@EN .

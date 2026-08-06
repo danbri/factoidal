@@ -207,3 +207,43 @@ let rdf_closed (g : list triple) : prop =
 let rdf_step_licensed (g out : list triple) : prop =
   forall (t : triple). memP t out ==>
     (memP t g \/ rdf_axiomatic t \/ rdfD2_derives g t)
+
+// -------------------------------------------------------------------
+// finite_rdf_axioms_sound (adoption item A5, docs/designissues/2026-08-
+// 05-semantics-proposal-adoption.md): the bridge from the transcribed
+// finite table (`RDF.Vocabulary.Axioms.rdf_axiomatic_triples`, 8 rows)
+// to the semantic-side recognizer `rdf_axiomatic` above, made an
+// explicit checked lemma rather than left implicit.
+//
+// Today that bridge is IMPLICIT: it is exactly the left disjunct of
+// `rdf_axiomatic`'s own definition (line ~178), so any proof that
+// needs it re-derives the fact by unfolding the disjunction on the
+// spot (see e.g. `RDF.Semantics.HypothesisWitness.lemma_sep_rdf_axioms`,
+// which does this inline via `eliminate`). Naming it here means a
+// reader — or a future proof — can cite `finite_rdf_axioms_sound`
+// instead of re-noticing the disjunct.
+//
+// No existing predicate in this module (or elsewhere in the tree) is
+// separate from `rdf_axiomatic` and narrower than it; `rdf_axiomatic`
+// itself is the semantic-side predicate the adoption item means (it is
+// exactly "finite table OR rdf:_n family", the split the proposal's
+// question 7 asked for and the tree already answered). So this lemma
+// is stated against `rdf_axiomatic`, in this module, rather than
+// introducing a second predicate that would just restate it.
+//
+// SOUNDNESS DIRECTION ONLY, per the proposal's own rule: this does NOT
+// claim the finite table is a COMPLETE listing of every RDF axiomatic
+// triple (the `rdf:_n` family is infinite and handled by
+// `is_rdf_member_iri` above, not by enumeration) — see the module
+// banner ("no cobbling") and RDF.Vocabulary.Axioms's own banner.
+//
+// Proved by list enumeration over the finite table (8 rows): `memP t
+// rdf_axiomatic_triples` unfolds to the same disjunction of equalities
+// `rdf_axiomatic` itself checks in its left disjunct, so every one of
+// the 8 named triples (`rdf_axiom_type_type_property`, ...,
+// `rdf_axiom_nil_type_list`) discharges by \/-introduction alone; no
+// row needs a separate case split on its shape.
+// -------------------------------------------------------------------
+let finite_rdf_axioms_sound (t : triple)
+  : Lemma (requires memP t rdf_axiomatic_triples)
+          (ensures  rdf_axiomatic t) = ()
