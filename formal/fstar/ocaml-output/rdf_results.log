@@ -2080,7 +2080,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: xmlbase-test011
   PASS: xmlbase-test013
   PASS: xmlbase-test014
-  [suite time: 0.2s]
+  [suite time: 0.1s]
 
 ========================================
 Suite Results:

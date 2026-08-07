@@ -415,6 +415,7 @@
   [cons-running] WebOnt-description-logic-207
   [cons-running] WebOnt-description-logic-208
   [cons-running] WebOnt-description-logic-209
+  [owl_marker_escape] is_inconsistent scan abandoned (Owl_runner.Owl_closure_timeout); "no inconsistency marker" was never established
   [cons-running] WebOnt-description-logic-501
   [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [cons-running] WebOnt-description-logic-503
@@ -670,6 +671,7 @@
   [inc-running] WebOnt-description-logic-110
   [inc-running] WebOnt-description-logic-111
   [inc-running] WebOnt-description-logic-502
+  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [inc-running] WebOnt-description-logic-504
   [inc-running] WebOnt-description-logic-601
   [inc-running] WebOnt-description-logic-602
@@ -733,7 +735,7 @@
 Closure regime: DL
 Closure semantics: DIRECT (default)
 OWL 2 test catalog: third_party/testing/owl/semantics-direct.rdf
-  parsed 12070 triples in 0.75s
+  parsed 12070 triples in 0.74s
 Totals: 488 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -951,7 +953,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 195 pass, 9 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 288.92s
+Profile-RL PositiveEntailmentTests: 195 pass, 9 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 287.92s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -979,7 +981,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 13.95s
+Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 11.66s
 
 Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Consistent Datatype restrictions with Different Types
@@ -1166,7 +1168,8 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-description-logic-206
   PASS  WebOnt-description-logic-207
   PASS  WebOnt-description-logic-208
-  PASS  WebOnt-description-logic-209
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-209
+      reason: reasoning abandoned on a budget — inconsistency-marker scan abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
   UNSUPPORTED/cap-escape  WebOnt-description-logic-501
       reason: reasoning abandoned on a budget — clash-seeking tableau abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
   PASS  WebOnt-description-logic-503
@@ -1350,7 +1353,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 339 pass, 12 fail (out of 351), 2 skipped (functional-syntax-only); 12 unsupported (cap-escape, #326) in 1176.84s
+Profile-RL ConsistencyTests: 338 pass, 13 fail (out of 351), 2 skipped (functional-syntax-only); 13 unsupported (cap-escape, #326) in 1167.39s
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Contradicting datatype Restrictions
@@ -1422,7 +1425,7 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-description-logic-109
   PASS  WebOnt-description-logic-110
   PASS  WebOnt-description-logic-111
-  PASS  WebOnt-description-logic-502
+  FAIL/unexpected-consistency  WebOnt-description-logic-502
   PASS  WebOnt-description-logic-504
   PASS  WebOnt-description-logic-601
   PASS  WebOnt-description-logic-602
@@ -1483,12 +1486,14 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 126 pass, 1 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 115.93s
+Profile-RL InconsistencyTests: 125 pass, 2 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 114.84s
 
 Harness Diagnostics (escape branches, #316 + #326):
-HARNESS-DIAG-OWL degraded_closure_marked:14 degraded_closure_silent:0 marker_scan_escapes:2 refuter_escapes:6 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:13 tests_unsupported_cap_escape:12 tests_unsupported_refuter_indeterminate:0
+HARNESS-DIAG-OWL degraded_closure_marked:14 degraded_closure_silent:0 marker_scan_escapes:3 refuter_escapes:7 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:15 tests_unsupported_cap_escape:13 tests_unsupported_refuter_indeterminate:0
 HARNESS-DIAG-OWL-TEST WebOnt-Thing-004
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-209
 HARNESS-DIAG-OWL-TEST WebOnt-description-logic-501
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-502
 HARNESS-DIAG-OWL-TEST WebOnt-description-logic-661
 HARNESS-DIAG-OWL-TEST WebOnt-description-logic-662
 HARNESS-DIAG-OWL-TEST WebOnt-description-logic-663
@@ -1501,6 +1506,7 @@ HARNESS-DIAG-OWL-TEST WebOnt-miscellaneous-001
 HARNESS-DIAG-OWL-TEST WebOnt-miscellaneous-002
 HARNESS-DIAG-OWL-TEST WebOnt-miscellaneous-011
 HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-Thing-004 | closure stage abandoned (cap/exception)
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-209 | inconsistency-marker scan abandoned (cap/exception)
 HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-501 | clash-seeking tableau abandoned (cap/exception)
 HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-661 | closure stage abandoned (cap/exception)
 HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-662 | inconsistency-marker scan abandoned (cap/exception)
