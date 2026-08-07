@@ -4730,6 +4730,37 @@ let owl_bottomObjectProperty_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#bottomObjectProperty"
 let owl_bottomDataProperty_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#bottomDataProperty"
+let owl_has_disjoint_class_clash (g : RDF_Graph.rdf_graph) : Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun t1 ->
+       (t1.RDF_Triple.p = RDFS_Closure.rdf_type) &&
+         (FStar_List_Tot_Base.existsb
+            (fun t2 ->
+               (((t2.RDF_Triple.p = RDFS_Closure.rdf_type) &&
+                   (RDF_Term.subject_eq t1.RDF_Triple.s t2.RDF_Triple.s))
+                  &&
+                  (Prims.op_Negation
+                     (RDF_Term.rdf_term_eq t1.RDF_Triple.o t2.RDF_Triple.o)))
+                 && (has_disjoint_with g t1.RDF_Triple.o t2.RDF_Triple.o)) g))
+    g
+let owl_is_pdw_pair (g : RDF_Graph.rdf_graph) (p1 : RDF_Term.wf_iri)
+  (p2 : RDF_Term.wf_iri) : Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun pdw ->
+       (pdw.RDF_Triple.p = owl_propertyDisjointWith) &&
+         (match ((pdw.RDF_Triple.s), (pdw.RDF_Triple.o)) with
+          | (RDF_Term.S_IRI ps, RDF_Term.T_IRI po) ->
+              ((ps = p1) && (po = p2)) || ((ps = p2) && (po = p1))
+          | uu___ -> false)) g
+let owl_has_pdw_direct_clash (g : RDF_Graph.rdf_graph) : Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun t1 ->
+       FStar_List_Tot_Base.existsb
+         (fun t2 ->
+            (((t1.RDF_Triple.p <> t2.RDF_Triple.p) &&
+                (RDF_Term.subject_eq t1.RDF_Triple.s t2.RDF_Triple.s))
+               && (RDF_Term.rdf_term_eq t1.RDF_Triple.o t2.RDF_Triple.o))
+              && (owl_is_pdw_pair g t1.RDF_Triple.p t2.RDF_Triple.p)) g) g
 let is_inconsistent (g : RDF_Graph.rdf_graph) : Prims.bool=
   let has_nothing =
     FStar_List_Tot_Base.existsb
@@ -4750,22 +4781,7 @@ let is_inconsistent (g : RDF_Graph.rdf_graph) : Prims.bool=
      if has_sameAs_diff_clash
      then true
      else
-       (let has_disjoint_class_clash =
-          FStar_List_Tot_Base.existsb
-            (fun t1 ->
-               (t1.RDF_Triple.p = RDFS_Closure.rdf_type) &&
-                 (FStar_List_Tot_Base.existsb
-                    (fun t2 ->
-                       (((t2.RDF_Triple.p = RDFS_Closure.rdf_type) &&
-                           (RDF_Term.subject_eq t1.RDF_Triple.s
-                              t2.RDF_Triple.s))
-                          &&
-                          (Prims.op_Negation
-                             (RDF_Term.rdf_term_eq t1.RDF_Triple.o
-                                t2.RDF_Triple.o)))
-                         &&
-                         (has_disjoint_with g t1.RDF_Triple.o t2.RDF_Triple.o))
-                    g)) g in
+       (let has_disjoint_class_clash = owl_has_disjoint_class_clash g in
         if has_disjoint_class_clash
         then true
         else
@@ -4816,30 +4832,7 @@ let is_inconsistent (g : RDF_Graph.rdf_graph) : Prims.bool=
               if has_asymmetric_violation
               then true
               else
-                (let is_pdw_pair p1 p2 =
-                   FStar_List_Tot_Base.existsb
-                     (fun pdw ->
-                        (pdw.RDF_Triple.p = owl_propertyDisjointWith) &&
-                          (match ((pdw.RDF_Triple.s), (pdw.RDF_Triple.o))
-                           with
-                           | (RDF_Term.S_IRI ps, RDF_Term.T_IRI po) ->
-                               ((ps = p1) && (po = p2)) ||
-                                 ((ps = p2) && (po = p1))
-                           | uu___5 -> false)) g in
-                 let has_pdw_direct_clash =
-                   FStar_List_Tot_Base.existsb
-                     (fun t1 ->
-                        FStar_List_Tot_Base.existsb
-                          (fun t2 ->
-                             (((t1.RDF_Triple.p <> t2.RDF_Triple.p) &&
-                                 (RDF_Term.subject_eq t1.RDF_Triple.s
-                                    t2.RDF_Triple.s))
-                                &&
-                                (RDF_Term.rdf_term_eq t1.RDF_Triple.o
-                                   t2.RDF_Triple.o))
-                               &&
-                               (is_pdw_pair t1.RDF_Triple.p t2.RDF_Triple.p))
-                          g) g in
+                (let has_pdw_direct_clash = owl_has_pdw_direct_clash g in
                  if has_pdw_direct_clash
                  then true
                  else

@@ -719,19 +719,19 @@ Loaded third_party/testing/owl/profile-EL.rdf (244108 bytes)
 header: 376 bytes
 
 Per-size timing on profile-EL prefixes:
-  size=   926 bytes  ... PASS  0 triples (0.000s, 6012.3 bytes/ms)
-  size=  1434 bytes  ... PASS  0 triples (0.000s, 6889.6 bytes/ms)
-  size=  2413 bytes  ... PASS  0 triples (0.000s, 6417.8 bytes/ms)
-  size=  4403 bytes  ... PASS  0 triples (0.001s, 7242.2 bytes/ms)
-  size=  8433 bytes  ... PASS  0 triples (0.001s, 7075.5 bytes/ms)
-  size= 12443 bytes  ... PASS  0 triples (0.002s, 6434.4 bytes/ms)
-  size= 16588 bytes  ... PASS  0 triples (0.002s, 8356.4 bytes/ms)
-  size= 24430 bytes  ... PASS  0 triples (0.004s, 6748.3 bytes/ms)
-  size= 32535 bytes  ... PASS  0 triples (0.004s, 8433.5 bytes/ms)
-  size= 48439 bytes  ... PASS  0 triples (0.006s, 8165.9 bytes/ms)
-  size= 64411 bytes  ... PASS  0 triples (0.008s, 7898.5 bytes/ms)
-  size= 96477 bytes  ... PASS  0 triples (0.013s, 7227.8 bytes/ms)
-  size=128499 bytes  ... PASS  0 triples (0.017s, 7752.5 bytes/ms)
+  size=   926 bytes  ... PASS  0 triples (0.000s, 5349.8 bytes/ms)
+  size=  1434 bytes  ... PASS  0 triples (0.000s, 5777.7 bytes/ms)
+  size=  2413 bytes  ... PASS  0 triples (0.000s, 5545.7 bytes/ms)
+  size=  4403 bytes  ... PASS  0 triples (0.001s, 5455.7 bytes/ms)
+  size=  8433 bytes  ... PASS  0 triples (0.002s, 4220.8 bytes/ms)
+  size= 12443 bytes  ... PASS  0 triples (0.002s, 5116.1 bytes/ms)
+  size= 16588 bytes  ... PASS  0 triples (0.002s, 6920.1 bytes/ms)
+  size= 24430 bytes  ... PASS  0 triples (0.004s, 6428.7 bytes/ms)
+  size= 32535 bytes  ... PASS  0 triples (0.005s, 7037.7 bytes/ms)
+  size= 48439 bytes  ... PASS  0 triples (0.007s, 6849.4 bytes/ms)
+  size= 64411 bytes  ... PASS  0 triples (0.010s, 6641.7 bytes/ms)
+  size= 96477 bytes  ... PASS  0 triples (0.014s, 6837.0 bytes/ms)
+  size=128499 bytes  ... PASS  0 triples (0.019s, 6834.6 bytes/ms)
 
 summary: 13 pass, 0 expected-fail (perf cap exceeded)
 rdfxml_parser_perf: PASS
@@ -743,13 +743,13 @@ Step A: strip DOCTYPE
   stripped to 259976 bytes in 0.000s
 
 Step B: expand catalog entities (Str.global_replace x 5)
-  expanded to 298759 bytes in 0.003s
+  expanded to 298759 bytes in 0.004s
 
 Step C: Parser_XML.parse_xml_document on expanded
-  PASS  parsed (0.035s)
+  PASS  parsed (0.045s)
 
 Step D: Parser_RDFXML.parse_rdfxml_with_base on expanded
-  PASS  1896 triples (0.057s)
+  PASS  1896 triples (0.075s)
 
 summary: 2 pass, 0 expected-fail
 rdfxml_profile_repro: PASS
