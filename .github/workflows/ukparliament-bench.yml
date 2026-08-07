@@ -338,3 +338,110 @@ jobs:
             /tmp/parse-serialize-bench.log
           if-no-files-found: ignore
           retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # closure-bench — RDFS / OWL-RL entailment closure, against the
+  # committed binary. Phase 0 of
+  # docs/designissues/2026-07-31-rdfs-performance-scalability.md: until
+  # 2026-07-31 closure had no benchmark at all, which is why an O(n^3)
+  # closure was first noticed as a W3C OWL conformance failure rather
+  # than as a slowdown.
+  #
+  # Same "committed binary only, no toolchain" character as the
+  # parse-serialize job above, so it shares this workflow rather than
+  # the heavy w3c-tests.yml pipeline. `--check` compares against the
+  # committed baseline and fails the job on a regression; the baseline
+  # itself moves only through a deliberate `--update-baseline` commit,
+  # never automatically -- a gate that rewrites its own threshold is
+  # not a gate.
+  #
+  # Configuration only, no semantic logic (rule #15).
+  # ---------------------------------------------------------------------
+  closure-bench:
+    runs-on: ubuntu-latest
+    # The bench caps each run itself: 120 s for synthetic shapes, 400 s
+    # for real vocabularies. The vocabulary cap is the larger one so that
+    # QUDT -- 130,404 triples, 272.5 s measured -- is MEASURED rather than
+    # recorded as a cap trip, and three repeats of it are most of this
+    # budget. The runner timeout must stay well clear of the bench's own
+    # caps, or it fires first and hides the very trips the caps exist to
+    # record.
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify pre-built linux binary is committed
+        id: bin_check
+        run: |
+          set -euo pipefail
+          BIN=bin/linux-x86_64/factoidal
+          if [ ! -x "$BIN" ]; then
+            echo "::warning::$BIN not found or not executable; closure bench skipped."
+            echo "have_bin=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "have_bin=1" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the baseline is committed
+        id: baseline_check
+        if: steps.bin_check.outputs.have_bin == '1'
+        run: |
+          set -euo pipefail
+          BASE=docs/test-results/closure-bench-baseline.json
+          if [ ! -f "$BASE" ]; then
+            echo "::warning::$BASE not found; measuring without a gate."
+            echo "have_baseline=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "have_baseline=1" >> "$GITHUB_OUTPUT"
+
+      - name: Run closure bench against the baseline
+        if: >-
+          steps.bin_check.outputs.have_bin == '1' &&
+          steps.baseline_check.outputs.have_baseline == '1'
+        run: |
+          set -euo pipefail
+          # rc=1 means a measured regression -- that is the gate doing
+          # its job, so let it fail the step. Captured per rule #14
+          # rather than swallowed, and the log is teed whole (rule #16).
+          BENCH_RC=0
+          ./tools/bench-closure.sh --check 2>&1 \
+            | tee /tmp/closure-bench.log || BENCH_RC=$?
+          echo "closure bench rc=$BENCH_RC"
+          if [ "$BENCH_RC" -ne 0 ]; then
+            echo "::error::closure bench --check exited $BENCH_RC (see log above)"
+            exit "$BENCH_RC"
+          fi
+
+      - name: Measure only (no baseline committed yet)
+        if: >-
+          steps.bin_check.outputs.have_bin == '1' &&
+          steps.baseline_check.outputs.have_baseline == '0'
+        run: |
+          set -euo pipefail
+          BENCH_RC=0
+          ./tools/bench-closure.sh 2>&1 | tee /tmp/closure-bench.log || BENCH_RC=$?
+          echo "closure bench rc=$BENCH_RC"
+          if [ "$BENCH_RC" -ne 0 ]; then
+            echo "::error::closure bench exited $BENCH_RC"
+            exit "$BENCH_RC"
+          fi
+
+      - name: Upload closure bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: closure-bench-${{ github.run_id }}
+          path: |
+            docs/test-results/closure-bench.json
+            docs/test-results/closure-bench.fragment.html
+            /tmp/closure-bench.log
+          if-no-files-found: ignore
+          retention-days: 14

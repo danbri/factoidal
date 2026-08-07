@@ -49,38 +49,37 @@ let add_triple_if_new (g : rdf_graph) (t : RDF_Triple.triple) : rdf_graph=
   graph_add t g
 let add_triple_unchecked (g : rdf_graph) (t : RDF_Triple.triple) : rdf_graph=
   t :: g
+let lit_key_lang_part (l : RDF_Term.literal) : Prims.string=
+  match l.RDF_Term.lang_tag with
+  | FStar_Pervasives_Native.Some t -> Prims.strcat "@" t
+  | FStar_Pervasives_Native.None -> ""
+let lit_key_dir_part (l : RDF_Term.literal) : Prims.string=
+  match l.RDF_Term.direction with
+  | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
+  | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
+  | FStar_Pervasives_Native.None -> ""
 let rec term_to_key_total (o : RDF_Term.rdf_term) : Prims.string=
   match o with
-  | RDF_Term.T_IRI i -> FStar_String.concat "" ["I_"; i]
-  | RDF_Term.T_BNode b -> FStar_String.concat "" ["B_"; b]
+  | RDF_Term.T_IRI i -> Prims.strcat "I_" i
+  | RDF_Term.T_BNode b -> Prims.strcat "B_" b
   | RDF_Term.T_Literal l ->
-      FStar_String.concat ""
-        ["L_";
-        l.RDF_Term.lexical_form;
-        "^^";
-        l.RDF_Term.datatype;
-        (match l.RDF_Term.lang_tag with
-         | FStar_Pervasives_Native.Some t -> FStar_String.concat "" ["@"; t]
-         | FStar_Pervasives_Native.None -> "");
-        (match l.RDF_Term.direction with
-         | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
-         | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
-         | FStar_Pervasives_Native.None -> "")]
+      Prims.strcat (Prims.strcat "L_" l.RDF_Term.lexical_form)
+        (Prims.strcat RDF_Indexed.unit_sep
+           (Prims.strcat l.RDF_Term.datatype
+              (Prims.strcat RDF_Indexed.unit_sep
+                 (Prims.strcat (lit_key_lang_part l)
+                    (Prims.strcat RDF_Indexed.unit_sep (lit_key_dir_part l))))))
   | RDF_Term.T_TripleTerm (s, p, obj) ->
-      FStar_String.concat ""
-        ["T_";
-        RDF_Indexed.subject_to_key s;
-        RDF_Indexed.unit_sep;
-        p;
-        RDF_Indexed.unit_sep;
-        term_to_key_total obj]
+      Prims.strcat (Prims.strcat "T_" (RDF_Indexed.subject_to_key s))
+        (Prims.strcat RDF_Indexed.unit_sep
+           (Prims.strcat p
+              (Prims.strcat RDF_Indexed.unit_sep (term_to_key_total obj))))
 let triple_to_key (t : RDF_Triple.triple) : Prims.string=
-  FStar_String.concat ""
-    [RDF_Indexed.subject_to_key t.RDF_Triple.s;
-    RDF_Indexed.unit_sep;
-    t.RDF_Triple.p;
-    RDF_Indexed.unit_sep;
-    term_to_key_total t.RDF_Triple.o]
+  Prims.strcat (RDF_Indexed.subject_to_key t.RDF_Triple.s)
+    (Prims.strcat RDF_Indexed.unit_sep
+       (Prims.strcat t.RDF_Triple.p
+          (Prims.strcat RDF_Indexed.unit_sep
+             (term_to_key_total t.RDF_Triple.o))))
 let triple_cmp (t1 : RDF_Triple.triple) (t2 : RDF_Triple.triple) : Prims.int=
   FStar_String.compare (triple_to_key t1) (triple_to_key t2)
 let rec dedup_sorted_aux
@@ -98,11 +97,56 @@ let rec dedup_sorted_aux
       if dup
       then dedup_sorted_aux prev_key rest acc
       else dedup_sorted_aux (FStar_Pervasives_Native.Some k) rest (t :: acc)
+let cmp_decorated_triple (p1 : (Prims.string * RDF_Triple.triple))
+  (p2 : (Prims.string * RDF_Triple.triple)) : Prims.int=
+  FStar_String.compare (FStar_Pervasives_Native.fst p1)
+    (FStar_Pervasives_Native.fst p2)
+let rec dedup_sorted_decorated_aux
+  (prev_key : Prims.string FStar_Pervasives_Native.option)
+  (ts : (Prims.string * RDF_Triple.triple) Prims.list)
+  (acc : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
+  match ts with
+  | [] -> FStar_List_Tot_Base.rev acc
+  | (k, t)::rest ->
+      let dup =
+        match prev_key with
+        | FStar_Pervasives_Native.Some p -> p = k
+        | FStar_Pervasives_Native.None -> false in
+      if dup
+      then dedup_sorted_decorated_aux prev_key rest acc
+      else
+        dedup_sorted_decorated_aux (FStar_Pervasives_Native.Some k) rest (t
+          :: acc)
 let graph_dedup_sort (g : rdf_graph) : rdf_graph=
-  let sorted = FStar_List_Tot_Base.sortWith triple_cmp g in
-  dedup_sorted_aux FStar_Pervasives_Native.None sorted []
+  let decorated = FStar_List_Tot_Base.map (fun t -> ((triple_to_key t), t)) g in
+  let sorted = FStar_List_Tot_Base.sortWith cmp_decorated_triple decorated in
+  dedup_sorted_decorated_aux FStar_Pervasives_Native.None sorted []
 let rec add_triples_if_new (g : rdf_graph)
   (ts : RDF_Triple.triple Prims.list) : rdf_graph=
   match ts with
   | [] -> g
   | hd::tl -> add_triples_if_new (add_triple_if_new g hd) tl
+let rec sorted_diff_aux (newer : RDF_Triple.triple Prims.list)
+  (older : RDF_Triple.triple Prims.list) (acc : RDF_Triple.triple Prims.list)
+  : RDF_Triple.triple Prims.list=
+  match (newer, older) with
+  | ([], uu___) -> FStar_List_Tot_Base.rev acc
+  | (uu___, []) -> FStar_List_Tot_Base.rev_acc acc newer
+  | (n::ns, o::os) ->
+      let c = triple_cmp n o in
+      if c < Prims.int_zero
+      then sorted_diff_aux ns older (n :: acc)
+      else
+        if c = Prims.int_zero
+        then sorted_diff_aux ns older acc
+        else sorted_diff_aux newer os acc
+let sorted_diff (newer : RDF_Triple.triple Prims.list)
+  (older : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
+  sorted_diff_aux newer older []
+let add_triples_if_new_bulk (g : rdf_graph)
+  (ts : RDF_Triple.triple Prims.list) : rdf_graph=
+  match ts with
+  | [] -> g
+  | uu___ ->
+      let fresh = sorted_diff (graph_dedup_sort ts) (graph_dedup_sort g) in
+      FStar_List_Tot_Base.append g fresh

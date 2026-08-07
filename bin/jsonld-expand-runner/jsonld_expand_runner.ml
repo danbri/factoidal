@@ -234,7 +234,7 @@ let expand_document_tc tc content =
   opt_of_fs
     (Parser_JSONLD.expand_document content
        (FStar_Pervasives_Native.Some (test_base tc))
-       fs_expand_context fs_processing_mode)
+       fs_expand_context fs_processing_mode false)
 
 (* The specVersion=json-ld-1.0 tests that need GENUINE 1.0-mode
    semantics this 1.1-plus-ac_mode10 engine does not implement — measured

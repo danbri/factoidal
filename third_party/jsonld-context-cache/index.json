@@ -1,0 +1,64 @@
+{
+  "contexts": {
+    "https://w3id.org/security/multikey/v1": {
+      "domain": "w3id.org",
+      "url_sha256": "05a185dbdc5412767aaeecb5843e0de455d1f04e45a739d239c97891aa00ad6a",
+      "versions": [
+        {
+          "bytes": 1010,
+          "content_sha256": "ba2c182de2d92f7e47184bcca8fcf0beaee6d3986c527bf664c195bbc7c58597",
+          "content_type": "application/ld+json",
+          "final_url": "https://www.w3.org/2025/credentials/vcdi/multikey/context/v1.jsonld",
+          "path": "w3id.org/05a185dbdc5412767aaeecb5843e0de455d1f04e45a739d239c97891aa00ad6a/v1.jsonld",
+          "retrieved": "2026-07-31",
+          "version": 1
+        }
+      ]
+    },
+    "https://w3id.org/security/suites/ed25519-2020/v1": {
+      "domain": "w3id.org",
+      "url_sha256": "2b350f89520515ca2d736301fa561f681c2d32ed7362cc8e76201ee6b9a2c44f",
+      "versions": [
+        {
+          "bytes": 2976,
+          "content_sha256": "b9e1ab971fd8bf2c7553e0c4a9438e0b9450afde1ea1ca5b2492368b9f549588",
+          "content_type": "application/ld+json",
+          "final_url": "https://digitalbazaar.github.io/ed25519-signature-2020-context/contexts/ed25519-signature-2020-v1.jsonld",
+          "path": "w3id.org/2b350f89520515ca2d736301fa561f681c2d32ed7362cc8e76201ee6b9a2c44f/v1.jsonld",
+          "retrieved": "2026-07-31",
+          "version": 1
+        }
+      ]
+    },
+    "https://w3id.org/security/suites/jws-2020/v1": {
+      "domain": "w3id.org",
+      "url_sha256": "789db42d9211d4f59a2645c208c167e972b75ff43df0bc203454a27d8142d846",
+      "versions": [
+        {
+          "bytes": 2473,
+          "content_sha256": "d648e05ddc6577827ca2bfd5e931f53e9ebc6e52a57a8da81df4ec8c46ffcd1e",
+          "content_type": "application/json; charset=utf-8",
+          "final_url": "https://w3c.github.io/vc-jws-2020/contexts/v1/",
+          "path": "w3id.org/789db42d9211d4f59a2645c208c167e972b75ff43df0bc203454a27d8142d846/v1.jsonld",
+          "retrieved": "2026-07-31",
+          "version": 1
+        }
+      ]
+    },
+    "https://www.w3.org/ns/did/v1": {
+      "domain": "www.w3.org",
+      "url_sha256": "a6e5bae7721672996bc597d40685cb6405734cde907c291024956a4c72c0e2f2",
+      "versions": [
+        {
+          "bytes": 1474,
+          "content_sha256": "4f3eae5568c9c5f036a082088f9e192019ee06faa78973c87ff91d5421b88dad",
+          "content_type": "application/ld+json",
+          "final_url": "https://www.w3.org/ns/did/v1",
+          "path": "www.w3.org/a6e5bae7721672996bc597d40685cb6405734cde907c291024956a4c72c0e2f2/v1.jsonld",
+          "retrieved": "2026-07-31",
+          "version": 1
+        }
+      ]
+    }
+  }
+}

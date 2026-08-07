@@ -4,6 +4,84 @@ Last refreshed: 2026-07-14 (nine landings from a long autonomous
 shift, gated on the same regime — floors, named diffs, soundness
 where applicable — all measured on the current `claude/main` tree):
 
+**Update 2026-07-30 (OWL absence-verdict correction, #326 — some
+published OWL numbers move DOWN on purpose):**
+- 🔴 `bin/owl-runner/owl_runner.ml` scored a ConsistencyTest or
+  NegativeEntailmentTest as PASS when the reasoning that should have
+  found the counter-evidence was abandoned on a per-test budget. Both
+  kinds pass on the ABSENCE of a derived fact, and a truncated closure
+  satisfies absence trivially, so the pass was an artifact of giving up.
+  Forced-cap check on `profile-RL.rdf`, before: Consistency 76 pass and
+  NegativeEntailment 6 pass with EVERY closure abandoned. After:
+  Consistency 0 pass / 76 unsupported, NegativeEntailment 0 pass / 6
+  unsupported. Unforced runs are unchanged.
+- ✅ All nine OWL catalogs re-measured in ONE pass (2026-07-30, 2127s
+  wall, budgets as `generate-report.sh --run` sets them) so the nine
+  committed logs agree with each other and with the binary for the first
+  time. The stale ones were badly stale: `owl_profile_rl_results.log`
+  published 28 pass, 2 fail against the binary's 30 pass, 0 fail, and
+  three logs published PE 173 pass, 31 fail against the binary's 195
+  pass, 9 fail.
+- 📊 Corrected numbers: `type-consistency` Consistency **337 pass, 15
+  fail (out of 352)** — all 15 fails are `unsupported` (cap escape), was
+  352 pass, 0 fail in the same run before the gate. `semantics-direct`
+  Consistency **336 pass, 15 fail (out of 351)**, same cause.
+  `type-positive-entailment`'s Consistency section **197 pass, 7 fail
+  (out of 204)**. `type-negative-entailment`'s Consistency section **22
+  pass, 1 fail (out of 23)**. `profile-EL` aggregate **119 pass, 1 fail
+  (out of 120)**.
+- ✅ Unmoved, as designed: PE **195 pass, 9 fail (out of 204)** and
+  type-inconsistency **126 pass, 1 fail (out of 127)**, same FAIL names
+  — both kinds pass on the PRESENCE of a derived fact, so a truncated
+  closure already showed up as a FAIL. Zero NegativeEntailmentTests
+  escaped their budget in any catalog, so no NE verdict moved. `profile-RL`
+  30/6/76/14 and `profile-QL` 20/3/58/6 unchanged, `syntax-dl` species
+  319 pass, 2 fail unchanged.
+- 🧹 Escape audit: the nine formerly-silent closure fallback arms now log
+  their stage and exception; two witness-layer arms and eight outer
+  `try apply_closure* with _ ->` arms were counting nothing at all and now
+  do; the marker-scan and refuter cap-trips (which returned "nothing
+  found" for a search that never finished) are counted and gate the
+  absence verdict. `HARNESS-DIAG-OWL` carries the per-kind counts and
+  names every corrected test.
+- ⚠️ 15 distinct tests are affected, all Consistency; named on
+  `/web/conformance/owl2/`. They are a performance gap, not a wrong
+  answer: the assertions may well hold on a complete closure, and the
+  point of the change is that we could not tell.
+
+**Update 2026-07-28 (dashboard regen + WebOnt-imports-002 runner fix):**
+- 📊 `docs/test-results/latest.json` was under-reporting ~10 already-fixed
+  OWL profile tests (stale since an `OWL.Closure.fsti` edit earlier the
+  same day); regenerated via `formal/fstar/generate-report.sh` (no hand
+  edits): `owl2_profile_el` **118 pass, 2 fail (out of 120)** (was 108
+  pass, 12 fail), `owl2_profile_ql` **85 pass, 2 fail (out of 87)** (was
+  83 pass, 4 fail). The 4 remaining fails across both are
+  `WebOnt-I5.26-010` + `WebOnt-I5.5-005` (see `docs/claude-rules/
+  scope.md`'s OWL 1 Full comprehension-principle section — these are
+  the 2 permanent failures, cited once per profile catalog).
+  `owl_rl_positive_entailment` unchanged at 28 pass, 2 fail (out of 30).
+- 🧹 `bin/owl-runner/owl_runner.ml`'s `load_imports_into_premise` used
+  to merge every `test:importedOntology` catalog link into the premise
+  unconditionally, so `WebOnt-imports-002` (a NegativeEntailmentTest
+  checking that an unimported namespace's axioms must NOT be pulled in)
+  scored the wrong verdict. Fixed by gating the merge on a plain
+  triple-membership check (does the premise, as assembled so far,
+  actually assert `_ owl:imports <iri>`?), iterated to a fixpoint since
+  the corpus itself has a transitive-imports test
+  (`WebOnt-imports-003`). Also fixed: the catalog's
+  `test:importedOntology` link points at a synthetic wrapper node, not
+  the real ontology IRI asserted in the premise's `owl:imports` triple —
+  resolved via the wrapper's `test:importedOntologyIRI` sibling
+  property. Gated on all four DL catalogs: `type-positive-entailment`
+  **140 pass, 64 fail (out of 204)** (FAIL name list byte-identical to
+  the pre-fix baseline — no regression), `type-negative-entailment`
+  **23 pass, 0 fail (out of 23)** (standalone catalog, unaffected),
+  `type-consistency`'s NE section **23 pass, 0 fail (out of 23)**
+  (was 22/1 pre-fix — `WebOnt-imports-002` confirmed flipped, the exact
+  target), `type-inconsistency` **124 pass, 3 fail (out of 127)**
+  (unchanged, same 3 named fails), `type-consistency` **352 pass, 0
+  fail (out of 352)** (unchanged).
+
 **Update 2026-07-16 (the day-closure run, ~20 gated landings):**
 current headline numbers, all measured on the shipped tree:
 - 📊 OWL 2 DL type-inconsistency **123 pass, 5 fail (out of 128), zero
@@ -768,6 +846,35 @@ Build and test harness:
 
 Inventory summary: 90 modules, 47517 lines total, 141 assume val declarations.
 
+## Rule-by-rule proof program (owner-approved 2026-08-04, live)
+
+Two lemma kinds per engine rule, tracked against the 84-function
+engine ledger at the foot of `OWL.RL.Spec.fst`:
+
+- **Licensing** (syntactic: every emission is input or one W3C-row
+  application) — `OWL.RL.Refinement.fst`. Proved: eq-sym, eq-ref,
+  prp-symp, scm-eqc1, scm-eqp1 — **5 of 34** row-implementing rules
+  (+6 rows covered via the RDFS family in
+  `RDF.Entailment.RDFS.Refinement.fst`). eq-trans in flight. prp-inv
+  parked (task #36, proof-shape trap #3 in `fstar-module-style`).
+  Two ledger claim-drift corrections came out of this: the
+  `equivalent_class` / `equivalent_property` entries claimed
+  cax-eqc/prp-eqp rows but implement scm-eqc1/scm-eqp1.
+- **Truth-preservation** (semantic: emissions true in every model of
+  the row's condition) — `OWL.Semantics.Soundness.fst`. Proved:
+  domain, range, sameAs-symmetry, oneOf, sameAs-reflexivity family —
+  **~5 of ~84**.
+- **Index-hypothesis discharge (#338, CLOSED 2026-08-04)** — three
+  modules make the wf hypotheses real: `RDF.Indexed.KeyInjectivity`
+  (`sp_key` injective one-sided on U+001F-free keys; `ig_wf_sp` for
+  separator-free graphs), `RDF.Entailment.RDFS.SepFree` (per-row
+  conclusion cleanliness), `RDF.Entailment.RDFS.ChainWf`
+  (`graph_sep_free g ==> closure_chain_wf g` with empty and
+  non-empty machine-checked instances) — so
+  `rdfs_closure_entails` now applies to concrete graphs, and the
+  index-reading OWL rules (eq-trans, prp-trp, scm-eqc2, scm-eqp2,
+  cls-hv*) are unblocked for licensing with `requires ig_wf_sp ig`.
+
 ## ⚠ Verification Gaps — Be Honest About These
 
 **SPARQL11.Parser.fst** — CLOSED 2026-07-10. The file formerly carried
@@ -836,17 +943,22 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 
 141 assume val declarations across 20 modules. Summary by module (largest first):
 
-**SPARQL11.Algebra.fst** (13 assume vals — query evaluator core):
+**SPARQL11.Algebra.fst** (14 assume vals — query evaluator core; verified
+against the tree 2026-07-29 — `regex_match`/`regex_replace` are GONE from
+this list: both retired to pure, verified F\* over the
+Regex.Syntax/Exec/XSDPattern derivative engine, issue #304 phases 4-5):
 
 | assume val | Purpose | Stub |
 |-----------|---------|------|
-| `regex_match` | SPARQL REGEX | OCaml `Str` in ocaml-patches.sh |
-| `regex_replace` | SPARQL REPLACE | OCaml `Str` in ocaml-patches.sh (forward ref) |
-| `hash_md5` | MD5 hash | OCaml `Digest` in ocaml-patches.sh |
-| `hash_sha1` | SHA-1 hash | OCaml `Digest` in ocaml-patches.sh |
-| `hash_sha256` | SHA-256 hash | OCaml `Digest` in ocaml-patches.sh |
-| `hash_sha384` | SHA-384 hash | OCaml `Digest` in ocaml-patches.sh |
-| `hash_sha512` | SHA-512 hash | OCaml `Digest` in ocaml-patches.sh |
+| `hash_md5` | MD5 hash | OCaml `Digest` (issue #63 patch) |
+| `hash_sha1` | SHA-1 hash | OCaml `Digest` (issue #63 patch) |
+| `hash_sha256` | SHA-256 hash | OCaml `Digest` (issue #63 patch) |
+| `hash_sha384` | SHA-384 hash | OCaml `Digest` (issue #63 patch) |
+| `hash_sha512` | SHA-512 hash | OCaml `Digest` (issue #63 patch) |
+| `string_uppercase_unicode` | SPARQL UCASE | `250_unicode_case_mapping.sh` |
+| `string_lowercase_unicode` | SPARQL LCASE | `250_unicode_case_mapping.sh` |
+| `fx_current_datetime` | SPARQL NOW() | `287_fx_current_datetime.sh` |
+| `service_endpoint_lookup` | SPARQL SERVICE | `57_service_client_bind.sh` (host-defined per spec) |
 | `eval_expr_ebv` | forward decl (mutual recursion) | wired in ocaml-patches.sh |
 | `eval_expr_fwd` | forward decl (mutual recursion) | wired in ocaml-patches.sh |
 | `eval_exists_fwd` | forward decl (EXISTS) | wired in ocaml-patches.sh |
@@ -875,10 +987,9 @@ On the RDF parsing side, **all six RDF suites are at 100%**: rdf-turtle
 313/313, rdf-trig 356/356, rdf-n-triples 70/70, rdf-n-quads 87/87,
 rdf-xml 166/166, rdf-mt 39/39 (1031/1031 combined).
 
-**Caveats on test numbers (be honest):** ASK query comparison in w3c_runner.ml
-does not check the expected boolean value — ASK tests always pass. Blank node
-matching is simplified (any bnode matches any other) rather than proper graph
-isomorphism. These may inflate the pass count slightly.
+(ASK query comparison and blank-node graph isomorphism in the test
+runner: see "⚠ Verification Gaps" above — both were fixed 2026-07-19,
+not lenient.)
 
 ## W3C Test Results (as of 2026-05-07)
 
@@ -942,7 +1053,7 @@ blank node mapping.
 | Literal/datatype semantics | 20 | Value equivalence, plain↔xsd:string, lang tag case, ill-formedness | **PASS** |
 | RDF closure rules | 4 | Container membership (rdf:\_n), rdfs:member superProperty | **PASS** |
 | RDFS closure rules | 14 | subClassOf, subPropertyOf, domain, range, intensional semantics | **PASS** (via ocaml-patches.sh closure) |
-| Advanced model theory | 3 | Value space disjointness, completeness axioms | **PASS** (not tested — 9 skipped) |
+| Advanced model theory | 3 | Value space disjointness, completeness axioms | **PASS** |
 
 ## What Was Removed (junk/do_not_use/)
 
@@ -982,9 +1093,11 @@ is 630 pass, 1 fail (out of 631). See "W3C Test Results (as of
 2. **Plain literal ↔ xsd:string equivalence** — DONE (`literal_value_eq`)
 3. **Datatype value space equivalence** — DONE (`datatype_value_eq`, `normalize_integer_lexical`)
 4. **RDFS closure rules** — DONE (`rdfs_closure` with subPropertyOf, domain, range, subClassOf, container membership)
-5. **Simple entailment** (blank node as existential variable) — TODO
-
-Remaining: re-extract, wire into test runner, run rdf-mt tests.
+5. **Simple entailment** (blank node as existential variable) — DONE.
+   rdf-mt 39 pass, 0 fail (out of 39; docs/test-results/latest.json,
+   key "rdf-mt"). `RDF.Entailment.Simple.fst` implements the
+   blank-node homomorphism search used by the SPARQL entailment
+   regime (`RDF.Entailment.Regime.fst`).
 
 ### Phase 3 — F\* parsers (IN PROGRESS)
 

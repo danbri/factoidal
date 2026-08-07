@@ -1,0 +1,43 @@
+module TupRepro9
+
+// Extra variant: the tuple PARAMETER is itself named `x` (matching the
+// real error message "outer_step acc x"), and the destructure SHADOWS
+// that same name: `let (x, y) = x in ...`. Tests whether self-shadowing
+// the introduce-bound variable name is the trigger.
+
+open FStar.List.Tot
+
+#push-options "--z3rlimit 1500 --fuel 4 --ifuel 4"
+
+let inv (l : list int) : prop = forall (z:int). List.Tot.memP z l ==> z >= 0
+
+let rec fold_left_inv (#a #b : Type) (inv : a -> prop) (f : a -> b -> a) (l : list b) (acc : a)
+  : Lemma (requires inv acc /\ (forall (x : a) (y : b). (List.Tot.memP y l /\ inv x) ==> inv (f x y)))
+    (ensures inv (List.Tot.fold_left f acc l)) (decreases l) =
+  match l with [] -> () | hd :: tl -> fold_left_inv inv f tl (f acc hd)
+
+let items : list (nat * nat) = [(0,0); (1,1); (2,2)]
+
+val outer_sound (seed : list int) : Lemma
+  (requires inv seed)
+  (ensures inv (List.Tot.fold_left
+                  (fun (acc : list int) (x : nat * nat) ->
+                     let (x, y) = x in
+                     List.Tot.fold_left (fun a z -> (x + z) :: a) acc [1; 2])
+                  seed items))
+
+let outer_sound seed =
+  let outer_step : list int -> (nat * nat) -> list int =
+    fun (acc : list int) (x : nat * nat) ->
+      let (x, y) = x in
+      List.Tot.fold_left (fun a z -> (x + z) :: a) acc [1; 2] in
+  introduce forall (acc : list int) (x : nat * nat).
+      (List.Tot.memP x items /\ inv acc) ==> inv (outer_step acc x)
+  with introduce (List.Tot.memP x items /\ inv acc) ==> inv (outer_step acc x)
+  with _ . begin
+    let (x, y) = x in
+    fold_left_inv inv (fun a z -> (x + z) :: a) [1; 2] acc
+  end;
+  fold_left_inv inv outer_step items seed
+
+#pop-options

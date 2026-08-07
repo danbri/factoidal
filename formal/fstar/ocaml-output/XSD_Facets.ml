@@ -1,4 +1,10 @@
 open Prims
+let owl_real : RDF_Term.wf_iri= "http://www.w3.org/2002/07/owl#real"
+let owl_rational : RDF_Term.wf_iri= "http://www.w3.org/2002/07/owl#rational"
+let xsd_float : RDF_Term.wf_iri= "http://www.w3.org/2001/XMLSchema#float"
+let is_float_datatype (dt : RDF_Term.wf_iri) : Prims.bool= dt = xsd_float
+let is_dense_numeric_datatype (dt : RDF_Term.wf_iri) : Prims.bool=
+  ((dt = owl_real) || (dt = owl_rational)) || (dt = RDF_Term.xsd_decimal)
 let is_integer_family_datatype (dt : RDF_Term.wf_iri) : Prims.bool=
   ((((((((((((dt = RDF_Term.xsd_integer) || (dt = OWL_Closure.xsd_long)) ||
               (dt = OWL_Closure.xsd_int))
@@ -16,21 +22,29 @@ type xsd_family =
   | Fam_Numeric 
   | Fam_String 
   | Fam_Boolean 
+  | Fam_Float 
+  | Fam_Double 
 let uu___is_Fam_Numeric (projectee : xsd_family) : Prims.bool=
   match projectee with | Fam_Numeric -> true | uu___ -> false
 let uu___is_Fam_String (projectee : xsd_family) : Prims.bool=
   match projectee with | Fam_String -> true | uu___ -> false
 let uu___is_Fam_Boolean (projectee : xsd_family) : Prims.bool=
   match projectee with | Fam_Boolean -> true | uu___ -> false
+let uu___is_Fam_Float (projectee : xsd_family) : Prims.bool=
+  match projectee with | Fam_Float -> true | uu___ -> false
+let uu___is_Fam_Double (projectee : xsd_family) : Prims.bool=
+  match projectee with | Fam_Double -> true | uu___ -> false
 let xsd_family_eq (a : xsd_family) (b : xsd_family) : Prims.bool=
   match (a, b) with
   | (Fam_Numeric, Fam_Numeric) -> true
   | (Fam_String, Fam_String) -> true
   | (Fam_Boolean, Fam_Boolean) -> true
+  | (Fam_Float, Fam_Float) -> true
+  | (Fam_Double, Fam_Double) -> true
   | (uu___, uu___1) -> false
 let classify_family (dt : RDF_Term.wf_iri) :
   xsd_family FStar_Pervasives_Native.option=
-  if (is_integer_family_datatype dt) || (dt = RDF_Term.xsd_decimal)
+  if (is_integer_family_datatype dt) || (is_dense_numeric_datatype dt)
   then FStar_Pervasives_Native.Some Fam_Numeric
   else
     if dt = RDF_Term.xsd_string
@@ -38,7 +52,13 @@ let classify_family (dt : RDF_Term.wf_iri) :
     else
       if dt = RDF_Term.xsd_boolean
       then FStar_Pervasives_Native.Some Fam_Boolean
-      else FStar_Pervasives_Native.None
+      else
+        if dt = xsd_float
+        then FStar_Pervasives_Native.Some Fam_Float
+        else
+          if dt = RDF_Term.xsd_double
+          then FStar_Pervasives_Native.Some Fam_Double
+          else FStar_Pervasives_Native.None
 let is_ascii_digit (c : FStar_Char.char) : Prims.bool=
   let n = FStar_Char.int_of_char c in
   (n >= (Prims.of_int (48))) && (n <= (Prims.of_int (57)))
@@ -84,9 +104,6 @@ let xsd_dateTime : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#dateTime"
 let is_datetime_datatype (dt : RDF_Term.wf_iri) : Prims.bool=
   dt = xsd_dateTime
-let xsd_float : RDF_Term.wf_iri= "http://www.w3.org/2001/XMLSchema#float"
-let owl_rational : RDF_Term.wf_iri= "http://www.w3.org/2002/07/owl#rational"
-let is_float_datatype (dt : RDF_Term.wf_iri) : Prims.bool= dt = xsd_float
 let parse_digits_sub (s : Prims.string) (pos : Prims.nat) (n : Prims.nat) :
   Prims.int FStar_Pervasives_Native.option=
   if (pos + n) > (FStar_String.strlen s)
@@ -652,9 +669,176 @@ let float_restriction_provably_empty (dt : RDF_Term.wf_iri)
   (facets : (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list) : Prims.bool=
   (is_float_datatype dt) &&
     (interval_empty (float_facets_to_ordinal_interval facets full_interval))
+type float_special =
+  | FSpec_PosInf 
+  | FSpec_NegInf 
+  | FSpec_NaN 
+let uu___is_FSpec_PosInf (projectee : float_special) : Prims.bool=
+  match projectee with | FSpec_PosInf -> true | uu___ -> false
+let uu___is_FSpec_NegInf (projectee : float_special) : Prims.bool=
+  match projectee with | FSpec_NegInf -> true | uu___ -> false
+let uu___is_FSpec_NaN (projectee : float_special) : Prims.bool=
+  match projectee with | FSpec_NaN -> true | uu___ -> false
+let float_special_of_lexical (lex : Prims.string) :
+  float_special FStar_Pervasives_Native.option=
+  if (lex = "INF") || (lex = "+INF")
+  then FStar_Pervasives_Native.Some FSpec_PosInf
+  else
+    if lex = "-INF"
+    then FStar_Pervasives_Native.Some FSpec_NegInf
+    else
+      if lex = "NaN"
+      then FStar_Pervasives_Native.Some FSpec_NaN
+      else FStar_Pervasives_Native.None
+let is_floating_point_datatype (dt : RDF_Term.wf_iri) : Prims.bool=
+  (dt = xsd_float) || (dt = RDF_Term.xsd_double)
+let term_float_special (t : RDF_Term.rdf_term) :
+  float_special FStar_Pervasives_Native.option=
+  match t with
+  | RDF_Term.T_Literal l ->
+      if is_floating_point_datatype l.RDF_Term.datatype
+      then float_special_of_lexical l.RDF_Term.lexical_form
+      else FStar_Pervasives_Native.None
+  | uu___ -> FStar_Pervasives_Native.None
+let term_in_owl_real (t : RDF_Term.rdf_term) :
+  Prims.bool FStar_Pervasives_Native.option=
+  match t with
+  | RDF_Term.T_Literal l ->
+      (match classify_family l.RDF_Term.datatype with
+       | FStar_Pervasives_Native.Some (Fam_Numeric) ->
+           FStar_Pervasives_Native.Some true
+       | FStar_Pervasives_Native.Some uu___ ->
+           FStar_Pervasives_Native.Some false
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+  | uu___ -> FStar_Pervasives_Native.None
+let rational_le (a : rational) (b : rational) : Prims.bool=
+  (a.rn_num * b.rn_den) <= (b.rn_num * a.rn_den)
+let rational_lt (a : rational) (b : rational) : Prims.bool=
+  (a.rn_num * b.rn_den) < (b.rn_num * a.rn_den)
+type qbound =
+  | QB_Unbounded 
+  | QB_Incl of rational 
+  | QB_Excl of rational 
+let uu___is_QB_Unbounded (projectee : qbound) : Prims.bool=
+  match projectee with | QB_Unbounded -> true | uu___ -> false
+let uu___is_QB_Incl (projectee : qbound) : Prims.bool=
+  match projectee with | QB_Incl _0 -> true | uu___ -> false
+let __proj__QB_Incl__item___0 (projectee : qbound) : rational=
+  match projectee with | QB_Incl _0 -> _0
+let uu___is_QB_Excl (projectee : qbound) : Prims.bool=
+  match projectee with | QB_Excl _0 -> true | uu___ -> false
+let __proj__QB_Excl__item___0 (projectee : qbound) : rational=
+  match projectee with | QB_Excl _0 -> _0
+type qinterval = {
+  qv_lo: qbound ;
+  qv_hi: qbound }
+let __proj__Mkqinterval__item__qv_lo (projectee : qinterval) : qbound=
+  match projectee with | { qv_lo; qv_hi;_} -> qv_lo
+let __proj__Mkqinterval__item__qv_hi (projectee : qinterval) : qbound=
+  match projectee with | { qv_lo; qv_hi;_} -> qv_hi
+let full_qinterval : qinterval=
+  { qv_lo = QB_Unbounded; qv_hi = QB_Unbounded }
+let rational_in_qinterval (v : rational) (iv : qinterval) : Prims.bool=
+  (match iv.qv_lo with
+   | QB_Unbounded -> true
+   | QB_Incl lo -> rational_le lo v
+   | QB_Excl lo -> rational_lt lo v) &&
+    (match iv.qv_hi with
+     | QB_Unbounded -> true
+     | QB_Incl hi -> rational_le v hi
+     | QB_Excl hi -> rational_lt v hi)
+let qtighter_lo (a : qbound) (b : qbound) : qbound=
+  match (a, b) with
+  | (QB_Unbounded, uu___) -> b
+  | (uu___, QB_Unbounded) -> a
+  | (QB_Incl x, QB_Incl y) -> if rational_le y x then a else b
+  | (QB_Excl x, QB_Excl y) -> if rational_le y x then a else b
+  | (QB_Incl x, QB_Excl y) -> if rational_lt y x then a else b
+  | (QB_Excl x, QB_Incl y) -> if rational_le y x then a else b
+let qtighter_hi (a : qbound) (b : qbound) : qbound=
+  match (a, b) with
+  | (QB_Unbounded, uu___) -> b
+  | (uu___, QB_Unbounded) -> a
+  | (QB_Incl x, QB_Incl y) -> if rational_le x y then a else b
+  | (QB_Excl x, QB_Excl y) -> if rational_le x y then a else b
+  | (QB_Incl x, QB_Excl y) -> if rational_lt x y then a else b
+  | (QB_Excl x, QB_Incl y) -> if rational_le x y then a else b
+let qinterval_intersect (a : qinterval) (b : qinterval) : qinterval=
+  {
+    qv_lo = (qtighter_lo a.qv_lo b.qv_lo);
+    qv_hi = (qtighter_hi a.qv_hi b.qv_hi)
+  }
+let qinterval_empty (iv : qinterval) : Prims.bool=
+  match ((iv.qv_lo), (iv.qv_hi)) with
+  | (QB_Incl lo, QB_Incl hi) -> rational_lt hi lo
+  | (QB_Incl lo, QB_Excl hi) -> rational_le hi lo
+  | (QB_Excl lo, QB_Incl hi) -> rational_le hi lo
+  | (QB_Excl lo, QB_Excl hi) -> rational_le hi lo
+  | (uu___, uu___1) -> false
+let rational_floor (r : rational) : Prims.int=
+  let q = r.rn_num / r.rn_den in
+  if (q * r.rn_den) > r.rn_num then q - Prims.int_one else q
+let rational_ceil (r : rational) : Prims.int=
+  let q = r.rn_num / r.rn_den in
+  if (q * r.rn_den) < r.rn_num then q + Prims.int_one else q
+let rational_is_integer (r : rational) : Prims.bool=
+  ((rational_floor r) * r.rn_den) = r.rn_num
+let qbound_to_int_lo (b : qbound) : bound=
+  match b with
+  | QB_Unbounded -> B_Unbounded
+  | QB_Incl r -> B_Incl (rational_ceil r)
+  | QB_Excl r ->
+      B_Incl
+        (if rational_is_integer r
+         then (rational_floor r) + Prims.int_one
+         else rational_ceil r)
+let qbound_to_int_hi (b : qbound) : bound=
+  match b with
+  | QB_Unbounded -> B_Unbounded
+  | QB_Incl r -> B_Incl (rational_floor r)
+  | QB_Excl r ->
+      B_Incl
+        (if rational_is_integer r
+         then (rational_ceil r) - Prims.int_one
+         else rational_floor r)
+let qinterval_to_int_interval (iv : qinterval) : interval=
+  { iv_lo = (qbound_to_int_lo iv.qv_lo); iv_hi = (qbound_to_int_hi iv.qv_hi)
+  }
+let rec dense_facets_to_qinterval
+  (facets : (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list)
+  (acc : qinterval) : qinterval=
+  match facets with
+  | [] -> acc
+  | (firi, fval)::tl ->
+      let acc' =
+        match term_exact_rational fval with
+        | FStar_Pervasives_Native.None -> acc
+        | FStar_Pervasives_Native.Some v ->
+            if firi = facet_min_incl_iri
+            then
+              qinterval_intersect acc
+                { qv_lo = (QB_Incl v); qv_hi = QB_Unbounded }
+            else
+              if firi = facet_max_incl_iri
+              then
+                qinterval_intersect acc
+                  { qv_lo = QB_Unbounded; qv_hi = (QB_Incl v) }
+              else
+                if firi = facet_min_excl_iri
+                then
+                  qinterval_intersect acc
+                    { qv_lo = (QB_Excl v); qv_hi = QB_Unbounded }
+                else
+                  if firi = facet_max_excl_iri
+                  then
+                    qinterval_intersect acc
+                      { qv_lo = QB_Unbounded; qv_hi = (QB_Excl v) }
+                  else acc in
+      dense_facets_to_qinterval tl acc'
 type value_set =
   | VS_Unconstrained 
   | VS_Interval of interval 
+  | VS_Dense of qinterval 
   | VS_DateInterval of interval 
   | VS_Enum of RDF_Term.rdf_term Prims.list 
   | VS_Family of xsd_family 
@@ -665,6 +849,10 @@ let uu___is_VS_Interval (projectee : value_set) : Prims.bool=
   match projectee with | VS_Interval _0 -> true | uu___ -> false
 let __proj__VS_Interval__item___0 (projectee : value_set) : interval=
   match projectee with | VS_Interval _0 -> _0
+let uu___is_VS_Dense (projectee : value_set) : Prims.bool=
+  match projectee with | VS_Dense _0 -> true | uu___ -> false
+let __proj__VS_Dense__item___0 (projectee : value_set) : qinterval=
+  match projectee with | VS_Dense _0 -> _0
 let uu___is_VS_DateInterval (projectee : value_set) : Prims.bool=
   match projectee with | VS_DateInterval _0 -> true | uu___ -> false
 let __proj__VS_DateInterval__item___0 (projectee : value_set) : interval=
@@ -791,12 +979,47 @@ let provably_outside_date_interval (iv : interval) (t : RDF_Term.rdf_term) :
        Prims.op_Negation (value_in_interval v iv)
    | FStar_Pervasives_Native.None -> false) ||
     (FStar_Pervasives_Native.uu___is_Some (term_family t))
+let provably_outside_dense (iv : qinterval) (t : RDF_Term.rdf_term) :
+  Prims.bool=
+  (match term_exact_rational t with
+   | FStar_Pervasives_Native.Some q ->
+       Prims.op_Negation (rational_in_qinterval q iv)
+   | FStar_Pervasives_Native.None -> false) ||
+    (match term_family t with
+     | FStar_Pervasives_Native.Some f ->
+         Prims.op_Negation (xsd_family_eq f Fam_Numeric)
+     | FStar_Pervasives_Native.None -> false)
 let value_set_intersect (a : value_set) (b : value_set) : value_set=
   match (a, b) with
   | (VS_Empty, uu___) -> VS_Empty
   | (uu___, VS_Empty) -> VS_Empty
   | (VS_Unconstrained, x) -> x
   | (x, VS_Unconstrained) -> x
+  | (VS_Dense qa, VS_Dense qb) ->
+      let qi = qinterval_intersect qa qb in
+      if qinterval_empty qi then VS_Empty else VS_Dense qi
+  | (VS_Dense qa, VS_Interval ib) ->
+      let ii = interval_intersect (qinterval_to_int_interval qa) ib in
+      if interval_empty ii then VS_Empty else VS_Interval ii
+  | (VS_Interval ia, VS_Dense qb) ->
+      let ii = interval_intersect ia (qinterval_to_int_interval qb) in
+      if interval_empty ii then VS_Empty else VS_Interval ii
+  | (VS_Dense qa, VS_Enum xs) ->
+      let e =
+        filter_enum_by
+          (fun t -> Prims.op_Negation (provably_outside_dense qa t)) xs in
+      if Prims.uu___is_Nil e then VS_Empty else VS_Enum e
+  | (VS_Enum xs, VS_Dense qb) ->
+      let e =
+        filter_enum_by
+          (fun t -> Prims.op_Negation (provably_outside_dense qb t)) xs in
+      if Prims.uu___is_Nil e then VS_Empty else VS_Enum e
+  | (VS_Dense qa, VS_Family f) ->
+      if xsd_family_eq f Fam_Numeric then VS_Dense qa else VS_Empty
+  | (VS_Family f, VS_Dense qb) ->
+      if xsd_family_eq f Fam_Numeric then VS_Dense qb else VS_Empty
+  | (VS_Dense uu___, VS_DateInterval uu___1) -> VS_Empty
+  | (VS_DateInterval uu___, VS_Dense uu___1) -> VS_Empty
   | (VS_Interval ia, VS_Interval ib) ->
       let ii = interval_intersect ia ib in
       if interval_empty ii then VS_Empty else VS_Interval ii
@@ -853,6 +1076,7 @@ let value_set_is_empty (v : value_set) : Prims.bool=
   | VS_Empty -> true
   | VS_Enum [] -> true
   | VS_DateInterval iv -> interval_empty_dense iv
+  | VS_Dense qi -> qinterval_empty qi
   | uu___ -> false
 let bound_lo_incl (b : bound) : Prims.int FStar_Pervasives_Native.option=
   match b with
@@ -894,6 +1118,10 @@ let value_set_max_size (v : value_set) :
       if interval_empty_dense iv
       then FStar_Pervasives_Native.Some Prims.int_zero
       else FStar_Pervasives_Native.None
+  | VS_Dense qi ->
+      if qinterval_empty qi
+      then FStar_Pervasives_Native.Some Prims.int_zero
+      else FStar_Pervasives_Native.None
   | VS_Unconstrained -> FStar_Pervasives_Native.None
   | VS_Family uu___ -> FStar_Pervasives_Native.None
 let value_set_subtract (acc : value_set) (remove : value_set) : value_set=
@@ -906,3 +1134,81 @@ let value_set_subtract (acc : value_set) (remove : value_set) : value_set=
                (FStar_List_Tot_Base.existsb (term_provably_equal t) ys)) xs in
       if Prims.uu___is_Nil e then VS_Empty else VS_Enum e
   | (uu___, uu___1) -> acc
+let exact_enum_cap : Prims.nat= (Prims.of_int (4096))
+let int_literal_term (n : Prims.int) : RDF_Term.rdf_term=
+  let l =
+    {
+      RDF_Term.lexical_form = (Prims.string_of_int n);
+      RDF_Term.datatype = RDF_Term.xsd_integer;
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None
+    } in
+  RDF_Term.T_Literal l
+let rec int_range_literals (lo : Prims.int) (n : Prims.nat) :
+  RDF_Term.rdf_term Prims.list=
+  if n = Prims.int_zero
+  then []
+  else (int_literal_term lo) ::
+    (int_range_literals (lo + Prims.int_one) (n - Prims.int_one))
+let rec pairwise_provably_distinct (xs : RDF_Term.rdf_term Prims.list) :
+  Prims.bool=
+  match xs with
+  | [] -> true
+  | h::tl ->
+      (FStar_List_Tot_Base.for_all (term_provably_distinct h) tl) &&
+        (pairwise_provably_distinct tl)
+let value_set_exact_values (v : value_set) :
+  RDF_Term.rdf_term Prims.list FStar_Pervasives_Native.option=
+  match v with
+  | VS_Empty -> FStar_Pervasives_Native.Some []
+  | VS_Enum xs ->
+      if pairwise_provably_distinct xs
+      then FStar_Pervasives_Native.Some xs
+      else FStar_Pervasives_Native.None
+  | VS_Interval iv ->
+      (match interval_count iv with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some n ->
+           if n > exact_enum_cap
+           then FStar_Pervasives_Native.None
+           else
+             (match bound_lo_incl iv.iv_lo with
+              | FStar_Pervasives_Native.Some lo ->
+                  FStar_Pervasives_Native.Some (int_range_literals lo n)
+              | FStar_Pervasives_Native.None ->
+                  if n = Prims.int_zero
+                  then FStar_Pervasives_Native.Some []
+                  else FStar_Pervasives_Native.None))
+  | uu___ -> FStar_Pervasives_Native.None
+let remove_negated_values (negs : RDF_Term.rdf_term Prims.list)
+  (v : value_set) : value_set=
+  if Prims.uu___is_Nil negs
+  then v
+  else
+    (match v with
+     | VS_Enum xs ->
+         let e =
+           filter_enum_by
+             (fun t ->
+                Prims.op_Negation
+                  (FStar_List_Tot_Base.existsb (term_provably_equal t) negs))
+             xs in
+         if Prims.uu___is_Nil e then VS_Empty else VS_Enum e
+     | VS_Interval iv ->
+         (match interval_count iv with
+          | FStar_Pervasives_Native.Some n ->
+              if n <= (FStar_List_Tot_Base.length negs)
+              then
+                (match value_set_exact_values v with
+                 | FStar_Pervasives_Native.Some vs ->
+                     if
+                       FStar_List_Tot_Base.for_all
+                         (fun t ->
+                            FStar_List_Tot_Base.existsb
+                              (term_provably_equal t) negs) vs
+                     then VS_Empty
+                     else v
+                 | FStar_Pervasives_Native.None -> v)
+              else v
+          | FStar_Pervasives_Native.None -> v)
+     | uu___1 -> v)

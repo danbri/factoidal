@@ -1,6 +1,6 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Fifteen hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, and missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh) — plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twenty hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, and missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh) — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
@@ -443,6 +443,20 @@ node --test tests/hub/postNN_test.mjs 2>&1 | grep -A3 'not ok'
   the `node --test tests/hub/postNN` gate green, or the cells ship
   broken. A hub page whose cell exercises a native-built feature can
   still fail in the browser; the bundle is the thing under test.
+- ⚠️ **The inverse direction bites harder, and it recurred 2026-08-03:
+  ENGINE landings invalidate the bundle.** The bundle went unrebuilt
+  from July 21 to August 2 while engine behaviour moved (rdfs4a/4b
+  rows, RL comprehension-witness maturation). Consequences arrived all
+  at once: an external reviewer's bug report against a month-stale
+  bundle (issue #345 — the engine had long been correct), a fixed
+  EXISTS bug that STAYED live on the npm surface until the bundle was
+  rebuilt, and seven hub cells failing in a single gate when the fresh
+  bundle finally met their July expectations. The rule: **rebuild the
+  js/npm bundle as part of landing any engine change that alters
+  query, parse, or entailment results.** A bundle older than the last
+  such landing is not "stale docs" — it is a live behavioural
+  divergence shipping to users, and its drift compounds silently until
+  someone pays for all of it at once.
 
 ## 13. Old-base agent branch OVERLAPS a file you just corrected (2026-07-08)
 
@@ -502,6 +516,46 @@ shrinking metric fails on success and trains you to ignore red.
 - If a doc/test pins a specific number, prefer "on the order of N" prose
   + a self-serve command (`grep -c ...`) over a brittle exact figure —
   the number is a claim about one moment; the tree moves.
+
+## 16. mtime rebuild-skip serves a stale binary after any git touch (2026-07-29)
+
+### Symptom
+`./build-ocaml.sh compile` prints `Native binaries already up to date;
+skipping ocamlopt rebuild` and `BUILD_STATUS=OK`, and the suite you then
+run reports the numbers from BEFORE the change you just landed.
+
+### Cause
+`needs_rebuild_from_sources` compares mtimes (`[[ "$src" -nt "$target" ]]`,
+build-ocaml.sh:241). This repo COMMITS its binaries (iron rule #9), so any
+git operation that materialises one — `merge`, `checkout -- bin/`,
+`stash pop`, conflict resolution with `--ours` — stamps it with `now`,
+newer than every source. mtime answers "when did this file appear here",
+which for a committed artifact is unrelated to "what produced it".
+
+### Detection (do this before trusting ANY measurement after a landing)
+Compare source against binary, not source against clock:
+```bash
+grep -c <marker-from-the-new-source> bin/<consumer>/<consumer>.ml
+strings bin/<platform>/<binary> | grep -c <marker>
+```
+A non-zero count in the source and zero in the binary is the signature.
+
+### Recovery
+`touch` the consumer's `.ml`, re-run `./build-ocaml.sh compile`, and
+re-check the marker before measuring.
+
+### War stories, both 2026-07-29
+- Landing #326: `git checkout -- bin/` (restoring `.cmi` a no-op compile
+  had deleted) reverted the merged `owl_runner` with a fresh timestamp.
+  `type-consistency` measured 352 pass, 0 fail — the pre-fix number —
+  and the agent's correction to 337 pass, 15 fail looked wrong. It
+  wasn't; the binary was.
+- `factoidal-dump-nq` still emitted mojibake after the #325 parser fix
+  (#330). Same shape, different root cause: that binary is not in
+  build-ocaml.sh at all.
+
+Tracked as #331. Related: hazard #11 (old-base cherry-picks dropping
+build-list entries) — same family, different trigger.
 
 ## 15. Missing test submodules: worktrees + fresh containers silently lose fixtures (2026-07-09)
 
@@ -592,3 +646,193 @@ imported type (RDF.Term, RDF.Triple, core algebra types) MUST rebuild
 with `./build-ocaml.sh extract --force-full` (all modules re-verified,
 0 skipped) before compile. Targeted extracts remain fine for leaf-module
 edits.
+
+## Hazard #17 — `pgrep -f <script>` matches your OWN shell, so a dead job reads as RUNNING
+
+2026-07-31. A W3C gate battery died silently ~3.5 hours before anyone
+noticed, because every liveness check was
+
+```bash
+pgrep -f "w3c-tests.sh" >/dev/null && echo RUNNING || echo STOPPED
+```
+
+`pgrep -f` matches against the full command line of every process — and
+the checking shell's own command line **contains the string
+`w3c-tests.sh`**. So the check matches itself and can never report
+STOPPED. A `Monitor` armed with the same idiom in its death-branch
+inherits the bug and never fires.
+
+The tell, when it finally showed: `ps -o etimes=` on the "found" PID
+returned `0` — a process that has been running for zero seconds is the
+grep, not the job.
+
+**Detect liveness by the artifact advancing, not by process name.**
+
+```bash
+AGE=$(( $(date +%s) - $(date -r "$LOG" +%s) ))
+[ "$AGE" -gt 3000 ] && echo "STALLED OR DEAD after $(grep -c '^  done\.' "$LOG") suites"
+```
+
+A log that has not been written in N minutes is stalled or dead, and the
+answer is the same either way. This also catches the case a process check
+never can: a job still resident but wedged.
+
+If a process check is genuinely wanted, match the *binary* rather than
+the script name (`pgrep -f "bin/linux-x86_64/owl_runner"`), and confirm
+with `ps -o etimes=` that the elapsed time is plausible.
+
+⚠️ Related: the same run showed that launching three verification agents
+while a gate battery runs is enough contention to kill the battery. The
+previous gate passed the same suite cleanly. Stagger heavy work, or
+expect to re-run the gate.
+
+## Hazard #18 — the container can be recycled mid-session, and an uncommitted edit can silently un-happen
+
+Observed 2026-08-02. A source edit (`SPARQL11.Store.fst`, applied by a
+python heredoc whose uniqueness assertion passed, then verified clean by
+F\*) was later found reverted on disk to the committed content, with a
+fresh mtime. The commit that was supposed to carry it listed the file in
+`git add`, succeeded, and silently contained everything EXCEPT that file
+— `git add` on a clean file is a no-op, so nothing failed. The stale
+binary then reproduced the very bug the edit fixed, which is the only
+reason anyone noticed.
+
+Forensics after the fact, on the machine itself:
+
+* `uptime -s` showed the CURRENT VM had **booted 183 seconds ago** —
+  the session had just been recycled again, invisibly, between two
+  turns. Recycles are routine, not exceptional.
+* The workspace survives recycles (untracked `.claude-runs/` logs from
+  hours earlier persisted; tracked files kept their original mtimes —
+  no wholesale re-clone).
+* The loss was SELECTIVE: another file edited five minutes earlier in
+  the same working session kept its uncommitted edit and made it into
+  the commit. The one file reverted carried a restore-time mtime.
+* In-flight background builds spanning the event completed with clean,
+  continuous logs — consistent with the harness restarting them on the
+  new VM.
+
+The exact restore mechanism is underdetermined by what survives a
+recycle (the process-level evidence dies with the old VM). The best
+supported story: session state is restored from a point-in-time
+snapshot, and an edit made after the last snapshot but before the
+recycle is the casualty. Do not spend hours on the forensics; the
+countermeasure is total regardless of mechanism:
+
+1. **Commit and push IMMEDIATELY after any material source edit** —
+   before verification, before builds, before anything long-running.
+   A pushed commit survives every recycle variant; an uncommitted edit
+   survives none of the bad ones. Amend later if needed.
+2. **Never trust "the commit succeeded" as proof the edit is in it.**
+   `git show --stat HEAD` after committing; a listed-but-clean file
+   vanishes from the commit without any error.
+3. **Bracket builds with a content check** on the files the build must
+   see: `sha256sum` the edited source before kicking the build and
+   verify it again from the build script's last line. A build that read
+   a reverted source produces a plausible, wrong artifact.
+4. **After any rebuild that carries a fix, re-run the reproducer**
+   against the fresh artifact. The revert above was caught exactly this
+   way, and no other check would have caught it.
+5. **Long-running jobs must stay harness-tracked, or a recycle kills
+   them silently and permanently.** 2026-08-04: a full gate launched
+   with shell `&` inside an already-completed background wrapper died
+   with a mid-run recycle and nothing restarted it -- the harness only
+   re-arms jobs it is tracking (`run_in_background: true` on the
+   command itself). Detection was hazard-#17 style (no runner process,
+   artifact mtime 20+ minutes old, boot time four minutes ago). Never
+   `&`-detach anything that matters; give the harness the whole
+   command.
+
+## Hazard #19 — a cleanup step that can silently no-op is a lie (the five-week dead purge)
+
+Found 2026-08-03. `build-ocaml.sh`'s stale-artifact purge —
+`rm -f "$OUTDIR"/*.cmi ...` — had been a **silent no-op since a
+2026-07-29 refactor** moved it inside the rebuild branch, which sits
+below a `cd "$OUTDIR"`. From there the glob expanded to
+`ocaml-output/ocaml-output/*.cmi`, matched nothing, and `rm -f` said
+nothing. Every build for five weeks linked against whatever stale
+artifacts were lying around; the visible symptom was two
+`inconsistent assumptions over interface Factoidal_serve` link
+failures, each read at first as a one-off and cleaned by hand.
+
+Two lessons, distinct:
+
+1. **After moving code within a shell script, re-verify every relative
+   path against the cwd AT THE NEW LOCATION.** A `cd` anywhere above
+   the moved block changes what its globs mean, and `rm -f` converts
+   the mistake into silence. This is the same species as hazard #10
+   (cleanup traps eating diagnostics): cleanup code fails quieter than
+   any other code.
+2. **The mechanism had two halves, and cleaning the visible one did
+   not fix it.** Deleting the `ocaml-output` duplicates cured one
+   build; the next failed the same way, because ocamlopt also reuses
+   CONSUMER-dir `.cmx` files (`bin/factoidal-cli/`,
+   `bin/factoidal-serve/`, …) whose `.ml` did not change — and after
+   any extract that moves a shared interface those disagree with the
+   freshly compiled modules at link time. A recurring "one-off" is a
+   mechanism you have not fully found: the second occurrence is the
+   tell, and the fix is complete only when it covers the path that
+   produced BOTH failures. Fixed in the purge itself (bare globs +
+   consumer-dir sweep, failure reported not swallowed).
+
+## Hazard #20 — a suite score certifies only the path the runner exercises
+
+2026-08-02: 631 of 631 W3C SPARQL stayed green while `FILTER EXISTS`
+dropped **every row** on the CLI, npm, and HTTP entry points. The
+runner evaluates through `eval_select_query` (pure algebra path); the
+user-facing entries evaluate through `SPARQL11.Store`'s backend path,
+which had the bug. Two evaluation paths, one certificate, and the
+uncertified one is the one users run.
+
+The rule that follows: **every user-facing entry point carries its own
+regression pins** under `tests/local/cli_*.sh` — currently
+`cli_exists_regressions.sh`, `cli_owlrl_witness_strip.sh`,
+`cli_sr1_sr2_regressions.sh` — and any new divergence-class fix adds
+its case THROUGH THE CLI BINARY, not through the runner. When quoting
+a suite score, know which path it certifies; "631 of 631" was true and
+useless for the bug that mattered. Full statement of the discipline:
+`skills/test-suites/SKILL.md` § "A suite score certifies only the
+evaluated path".
+
+## Hazard #21 — a score line in a build log certifies the build's own CWD, not the suite (the phantom RIF regression)
+
+2026-08-06: an engine-restructure landing was followed by the full
+gate batch, whose log showed the SPARQL suite at 627 pass, 4 fail
+(out of 631) against a 631 pass, 0 fail baseline — all four failures
+RIF entailment-regime tests, "expected 1 row, got 0". A regression
+investigation followed: old-vs-new binary comparison, fixture
+archaeology, submodule history. The binary was innocent. The
+score line came from `build-ocaml.sh` Step 3, which ran
+`w3c_runner --all` from `formal/fstar/` — and the runner's RIF
+dispatch (`rif_rules_path_for`, `bin/w3c-runner/w3c_runner.ml`)
+resolves `third_party/testing/rif/tc/` relative to CWD. From
+`formal/fstar/` those four tests false-fail on EVERY full build;
+from the repo root everything passes. `generate-report.sh` had a
+comment saying exactly this ("Always run from repo root so the
+runner's relative third_party/ paths resolve") — the self-test
+step never got the same treatment. Fixed 2026-08-06: Step 3 now
+cds to the repo root (see the comment at the invocation).
+
+Costs and rules:
+
+1. **Before investigating any cross-build score delta, re-run the
+   suite by hand from the documented CWD** — one minute — before
+   binary archaeology — hours. A diff in scores between two runs is
+   only meaningful if the runs' environments match; CWD is part of
+   the environment for any runner with relative fixture paths.
+2. **A first comparison that reproduces the failure IDENTICALLY on
+   the old artifact is a hint the harness, not the artifact, is the
+   variable.** Here the old binary "failed" too — from the wrong
+   directory. That result was initially read as "environmental,
+   fixture missing" when it was really "my reproduction inherited
+   the same wrong CWD".
+3. **When a script warns about a path-resolution requirement, grep
+   for the OTHER invocations of the same binary** — the fix that
+   added the warning probably missed one. The warning and the bug
+   coexisted in sibling scripts for months.
+4. Background bash jobs die when the session suspends (hazard #18's
+   sibling): the batch's REAL suite run never executed, its log
+   truncated mid-self-test at the exact moment the container idled,
+   and the partial `latest.csv` it left behind had to be reverted.
+   Treat a background job's missing final RC echo as "the script
+   did not finish", never as "the tail got cut off".

@@ -118,8 +118,28 @@ let is_iri_body_char (c:FStar.Char.char) : bool =
   code > 0x20 && code <> 0x3E && code <> 0x5C &&
   not (is_iri_forbidden_codepoint code)
 
-// Slow path for IRIs containing escapes: accumulates chars
-let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
+// Slow path for IRIs containing escapes: accumulates already-encoded
+// string FRAGMENTS, one per step, and concatenates at the '>'.
+//
+// Issue #325 — this used to accumulate a `list char` and finish with
+// String.string_of_list, which re-encodes every element as a UTF-8
+// CODEPOINT. Raw bytes read with fs_byte_index therefore came back out
+// double-encoded, so an N-Triples IRI that mixed an escape with raw
+// UTF-8 — <http://e.org/日a本b語> — parsed to
+// <http://e.org/æ¥a本bèª>. Only the escape survived, because escapes
+// really are codepoints. The bug hid behind scan_iri_end: an IRI with
+// no backslash never reaches this function at all, so every plain
+// non-ASCII IRI (the common case, and the one the differential harness
+// happened to generate for Turtle) was correct and this path was not
+// exercised. N-Quads shares it.
+//
+// Raw bytes now leave via fs_byte_sub and escapes via
+// fs_utf8_of_codepoint; see the rule of thumb on that function. The
+// per-byte validity check is kept exactly as it was — this is a slow
+// path (escaped IRIs only), so a fragment per byte costs nothing worth
+// optimising, and preserving the byte-by-byte accept/reject behaviour
+// matters more.
+let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list string) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "IRI too long" pos
   else
@@ -129,7 +149,7 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
       let ch = fs_byte_index input pos in
       let code = FStar.Char.int_of_char ch in
       if code = 0x3E then
-        ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 1)
+        ParseOk (String.concat "" (List.Tot.rev acc)) (pos + 1)
       else if code = 0x5C then
         if pos + 1 >= len then ParseFail "backslash at end of IRI" pos
         else
@@ -147,8 +167,8 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
                 if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
                 else if is_iri_forbidden_codepoint cp then ParseFail "IRI-forbidden codepoint in \\u escape" pos
                 else
-                  let c = safe_char_of_int cp in
-                  parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
+                  parse_iri_body_acc input (pos + 6)
+                    (fs_utf8_of_codepoint cp :: acc) (fuel - 1)
               | _ -> ParseFail "invalid hex digit in \\u escape" pos
           else if ncode = 0x55 then
             if pos + 10 > len then ParseFail "incomplete \\U escape in IRI" pos
@@ -167,15 +187,17 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
                 if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
                 else if is_iri_forbidden_codepoint cp then ParseFail "IRI-forbidden codepoint in \\U escape" pos
                 else
-                  let c = safe_char_of_int cp in
-                  parse_iri_body_acc input (pos + 10) (c :: acc) (fuel - 1)
+                  parse_iri_body_acc input (pos + 10)
+                    (fs_utf8_of_codepoint cp :: acc) (fuel - 1)
               | _ -> ParseFail "invalid hex digit in \\U escape" pos
           else
             ParseFail "invalid escape in IRI" pos
       else if code <= 0x20 || is_iri_forbidden_codepoint code then
         ParseFail "invalid character in IRI" pos
       else
-        parse_iri_body_acc input (pos + 1) (ch :: acc) (fuel - 1)
+        // Raw byte: out through fs_byte_sub, never through a char list.
+        parse_iri_body_acc input (pos + 1)
+          (fs_byte_sub input pos 1 :: acc) (fuel - 1)
 
 // Fast-path IRI scanner: find position of '>' without building a char list.
 // Returns the position of '>' (not past it). Falls back on escape or error.

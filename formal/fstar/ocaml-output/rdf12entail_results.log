@@ -104,3 +104,7 @@ Suite Results:
 ========================================
 TOTAL: 41 pass, 3 fail, 3 skip, 0 unsupported
 ========================================
+
+Harness Diagnostics (escape branches, #316):
+HARNESS-DIAG rdf-semantics                  budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:3 unsupported:0
+HARNESS-DIAG-TOTAL budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:3 unsupported:0 discovered_tests:47

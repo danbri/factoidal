@@ -141,6 +141,41 @@ natively — they are not optional decoration.
    (`$SWITCH_PREFIX/bin/z3`), not just `/usr/local/bin`, so a
    PATH-shadowing newer z3 can't reach a bare `fstar.exe`.
 
+## Shallow clones break hub provenance tests — deepen by SHA, never unshallow (2026-08-04)
+
+Fresh containers clone SHALLOW. The hub posts 17/18 tests run
+`git cat-file -t <sha>` on cited commits (and one reads a cited
+commit's message), so on a fresh container they fail with
+"Not a valid object name" — an ENVIRONMENT failure that looks like a
+broken promise in the post. Cost on 2026-08-04: the only red suite
+(hub 249 pass, 5 fail, out of 254) in an otherwise-green 53-suite
+gate, plus ~40 minutes of diagnosis and two failed repair attempts.
+
+- **`git fetch --unshallow` does NOT fit.** Committed binaries (rule
+  #9) make full history enormous — `.git` was already 16 GB with
+  6.9 GB free; the fetch dies with `fetch-pack: invalid index-pack
+  output` (disk), and if you pipe it through `tail -1` the failure is
+  MASKED because the pipeline exits 0 (anti-pattern #14 — capture the
+  fetch's own exit code).
+- **The working repair costs bytes, not gigabytes.** The tests need
+  the commit OBJECTS only, never their trees:
+  1. resolve each short SHA to a full SHA with the GitHub API
+     (`get_commit` accepts short SHAs);
+  2. `git fetch --depth=1 --filter=tree:0 origin <full-sha>` per SHA
+     — the tree:0 filter passes through the git proxy and delivers
+     just the commit object;
+  3. verify with `git cat-file -t <short-sha>` == `commit`.
+- The SHAs currently cited live in `tests/hub/post17_test.mjs` and
+  `tests/hub/post18_test.mjs`; grep `cat-file` there when new posts
+  add more.
+- The other fresh-container hub failure of that day — the C
+  delta-log demo binary post18 runs — is fixed PERMANENTLY: the
+  binary is committed since 2026-08-04 (`formal/fstar/.gitignore`
+  carries the war story). If it regresses, the gcc recipe is the
+  tail of `tools/karamel-c-build.sh` with `KRML_HOME` pointing at a
+  depth-1 clone of FStarLang/karamel (headers only; opam karamel
+  does not install here — its depext wants python2.7).
+
 ## Manual restoration (non-hook harnesses, local dev)
 
 ```bash

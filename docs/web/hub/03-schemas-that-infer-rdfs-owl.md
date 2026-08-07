@@ -64,7 +64,11 @@ Plain SELECT sees exactly what's written: `ex:alice a schema:Person`.
 With `entail: 'RDFS'`, the closure applies `rdfs:subClassOf`
 transitively (`RDF.Graph.Executable.fst`'s `rdfs_closure`, the same
 rule set rdf-mt's 14 RDFS-closure tests exercise) and `schema:Thing`
-appears as a second type — derived, not asserted.
+appears as a second type — derived, not asserted. Since the 2026-07-31
+rule-completeness work the closure also derives `rdfs:Resource` for
+every subject (rules rdfs4a/rdfs4b — in RDFS, everything is a
+resource), so entailed type lists carry it alongside the
+vocabulary-specific types below.
 
 ## OWL 2 RL: equivalentClass
 

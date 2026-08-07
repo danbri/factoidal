@@ -1100,13 +1100,78 @@ let owl_closure_json (data_nquads : string) (mode : string) : string =
     match mode with
     | "RDFS" | "rdfs" ->
       ok_nquads_json (construct_triples_to_ntriples
-        (RDF_Graph_Executable.rdfs_closure_with_reflexivity graph fuel))
+        (RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch graph fuel))
     | "OWL-RL" | "owl-rl" | "owl_rl" ->
       ok_nquads_json (construct_triples_to_ntriples
         (RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel))
     | _ ->
       err_json (Printf.sprintf
         "owlClosure: unknown mode '%s' (expected 'RDFS' or 'OWL-RL')" mode))
+
+(* ---------------------------------------------------------------------
+   Certified rho-df closure + fragment checker (rule #11 consumer --
+   exports only). Both live in
+   formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst: `rho_df_closure`
+   runs exactly the six rho-df rows (rdfs7/2/3/9/11/5, RDFS.Closure's
+   own `rdfs_rule_*` functions -- no rule body reimplemented here) to a
+   fixed point or `fuel` steps, whichever comes first; `is_rho_df_frag`
+   is the decidable `bool` twin of
+   RDF.Entailment.RDFS.Completeness.rho_df_frag_graph (a `prop`, so it
+   cannot be called from extracted code), pinned to it by
+   `lemma_is_rho_df_frag_correct`. See that module's banner for the
+   fragment/closure theorems (extensive, sound, closed, decides).
+   --------------------------------------------------------------------- *)
+
+(* Telemetry only -- NOT part of the closure answer. Counts rounds to
+   fixpoint by re-driving `rho_df_closure_step` directly (the exact
+   verified step function `rho_df_closure` composes with its own
+   fuel/length-test loop -- see RhoDFClosure.fst section 1) and
+   comparing graph length round over round, the same fixed-point test
+   `rho_df_closure` itself uses. The graph this loop touches is
+   discarded once the round count is known; the answer returned to the
+   caller always comes from calling `rho_df_closure` itself, below.
+   `cap` bounds a pathological input from spinning forever counting
+   rounds (`rho_df_closure`'s own `fuel` is the real termination
+   guarantee for the answer; same split as `rif_rounds_to_fixpoint`
+   above). *)
+let rho_df_rounds_to_fixpoint (g : triple list) (cap : int) : int =
+  let rec go g n =
+    if n >= cap then n
+    else
+      let g' = RDF_Entailment_RDFS_RhoDFClosure.rho_df_closure_step g in
+      if List.length g' <> List.length g then go g' (n + 1) else n
+  in
+  go g 0
+
+(* dataNQuads is a dataset handle; only the default graph is closed
+   over (same scope cut as owlClosure above). fuel = the input graph's
+   own triple count: the six-rule step is extensive and monotone
+   (`rho_df_closure_extensive`/`_sound`), so each non-fixed-point round
+   adds at least one triple, and a closure that has not reached a fixed
+   point after that many rounds cannot exist over a finite vocabulary
+   drawn from the input -- a generous, honest bound for a browser demo
+   graph, not a tuned constant. *)
+let rho_df_closure_json (data_nquads : string) : string =
+  guarded (fun () ->
+    let graph = (dataset_of_nquads data_nquads).ds_default in
+    let fuel_int = List.length graph in
+    let fuel = Z.of_int fuel_int in
+    let closed = RDF_Entailment_RDFS_RhoDFClosure.rho_df_closure graph fuel in
+    let rounds = rho_df_rounds_to_fixpoint graph (fuel_int + 1) in
+    "{\"ok\":true,\"ntriples\":"
+    ^ jstr (construct_triples_to_ntriples closed)
+    ^ ",\"rounds\":" ^ string_of_int rounds ^ "}")
+
+(* dataNQuads is a dataset handle; only the default graph is checked
+   (same scope cut as owlClosure/rhoDfClosure above). `fragment` is
+   `is_rho_df_frag`'s verbatim answer -- true iff every triple's object
+   is an IRI or blank node, and any rdfs:subPropertyOf triple's object
+   is specifically an IRI (Completeness.fst's F1/F2). *)
+let rho_df_fragment_check_json (data_nquads : string) : string =
+  guarded (fun () ->
+    let graph = (dataset_of_nquads data_nquads).ds_default in
+    Printf.sprintf "{\"ok\":true,\"fragment\":%b}"
+      (RDF_Entailment_RDFS_RhoDFClosure.is_rho_df_frag graph))
 
 (* ---------------------------------------------------------------------
    OWL tableau reasoner (rule #11 consumer -- exports only). The
@@ -2326,6 +2391,8 @@ let () =
           ("shaclValidate", s2 shacl_validate_json);
           ("shexValidate", s4 shex_validate_json);
           ("owlClosure", s2 owl_closure_json);
+          ("rhoDfClosure", s1 rho_df_closure_json);
+          ("rhoDfFragmentCheck", s1 rho_df_fragment_check_json);
           ("tableauMaterialise", s1 tableau_materialise_json);
           ("tableauDlInconsistent", s1 tableau_dl_inconsistent_json);
           ("owlIsConsistent", s2 owl_is_consistent_json);

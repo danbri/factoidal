@@ -222,11 +222,18 @@ let ico_is_facet_pred (p : RDF_Term.wf_iri) : Prims.bool=
       || (p = ico_xsd_length))
      || (p = ico_xsd_minLength))
     || (p = ico_xsd_maxLength)
+let ico_pe_scaffold_prefix : Prims.string= "__factoidal_pe_"
+let bnode_is_pe_scaffold (b : RDF_Term.bnode_id) : Prims.bool=
+  let plen = FStar_String.strlen ico_pe_scaffold_prefix in
+  if (FStar_String.strlen b) < plen
+  then false
+  else (FStar_String.sub b Prims.int_zero plen) = ico_pe_scaffold_prefix
 let ico_authored_complement (t : RDF_Triple.triple) : Prims.bool=
   (t.RDF_Triple.p = ico_owl_complementOf) &&
     (match t.RDF_Triple.s with
      | RDF_Term.S_BNode b ->
-         Prims.op_Negation (OWL_Closure.bnode_is_rl_canonical b)
+         Prims.op_Negation
+           ((OWL_Closure.bnode_is_rl_canonical b) || (bnode_is_pe_scaffold b))
      | RDF_Term.S_IRI uu___ -> true)
 let ico_reject_triple (t : RDF_Triple.triple) : Prims.bool=
   ((((((t.RDF_Triple.p = ico_owl_onDatatype) ||
@@ -1001,6 +1008,202 @@ let rec lc_oneof_all (g : RDF_Graph.rdf_graph) (n : Prims.nat)
               lc_is_eq = false
             }]
          else []) (lc_oneof_all g n classes tl)
+let rec ico_list_members_all_oneof (g : RDF_Graph.rdf_graph)
+  (ms : RDF_Term.rdf_term Prims.list) : Prims.bool=
+  match ms with
+  | [] -> true
+  | m::tl ->
+      (match Tableau.term_as_subject m with
+       | FStar_Pervasives_Native.Some s ->
+           (match Tableau.find_first_object g s ico_owl_oneOf2 with
+            | FStar_Pervasives_Native.Some uu___ ->
+                ico_list_members_all_oneof g tl
+            | FStar_Pervasives_Native.None -> false)
+       | FStar_Pervasives_Native.None -> false)
+let ico_enum_bound_object (g : RDF_Graph.rdf_graph) (o : RDF_Term.rdf_term) :
+  Prims.bool=
+  match Tableau.term_as_subject o with
+  | FStar_Pervasives_Native.Some s ->
+      (match Tableau.find_first_object g s ico_owl_oneOf2 with
+       | FStar_Pervasives_Native.Some uu___ -> true
+       | FStar_Pervasives_Native.None ->
+           (match Tableau.find_first_object g s ico_owl_unionOf with
+            | FStar_Pervasives_Native.Some l ->
+                ico_list_members_all_oneof g
+                  (Tableau.walk_rdf_list g l (FStar_List_Tot_Base.length g))
+            | FStar_Pervasives_Native.None -> false))
+  | FStar_Pervasives_Native.None -> false
+let rec ico_has_enum_bound (g : RDF_Graph.rdf_graph)
+  (os : RDF_Term.rdf_term Prims.list) : Prims.bool=
+  match os with
+  | [] -> false
+  | o::tl -> (ico_enum_bound_object g o) || (ico_has_enum_bound g tl)
+let ico_directly_pinned (g : RDF_Graph.rdf_graph) (c : RDF_Term.wf_iri) :
+  Prims.bool=
+  (ico_class_has_oneof g c) || (ico_has_enum_bound g (ico_restr_of g c))
+let rec ico_fiber_edges (g : RDF_Graph.rdf_graph)
+  (ps : RDF_Term.wf_iri Prims.list) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match ps with
+  | [] -> []
+  | p::tl ->
+      FStar_List_Tot_Base.op_At
+        (match ((ico_find_dom g p), (ico_find_inv g p)) with
+         | (FStar_Pervasives_Native.Some d, FStar_Pervasives_Native.Some ip)
+             ->
+             (match ico_svf_via g (ico_restr_of g d) p with
+              | FStar_Pervasives_Native.Some x ->
+                  (match ico_exactcard_via g (ico_restr_of g x) ip with
+                   | FStar_Pervasives_Native.Some k ->
+                       if k >= Prims.int_one then [(d, x)] else []
+                   | FStar_Pervasives_Native.None -> [])
+              | FStar_Pervasives_Native.None -> [])
+         | (uu___, uu___1) -> []) (ico_fiber_edges g tl)
+let rec ico_bij_edges_for (g : RDF_Graph.rdf_graph) (p : RDF_Term.wf_iri)
+  (ip : RDF_Term.wf_iri) (cs : RDF_Term.wf_iri Prims.list) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match cs with
+  | [] -> []
+  | d::tl ->
+      FStar_List_Tot_Base.op_At
+        (match ico_svf_via g (ico_restr_of g d) p with
+         | FStar_Pervasives_Native.Some y ->
+             (match ico_svf_via g (ico_restr_of g y) ip with
+              | FStar_Pervasives_Native.Some dback ->
+                  if dback = d then [(d, y)] else []
+              | FStar_Pervasives_Native.None -> [])
+         | FStar_Pervasives_Native.None -> []) (ico_bij_edges_for g p ip tl)
+let rec ico_bij_edges (g : RDF_Graph.rdf_graph)
+  (classes : RDF_Term.wf_iri Prims.list) (ps : RDF_Term.wf_iri Prims.list) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match ps with
+  | [] -> []
+  | p::tl ->
+      FStar_List_Tot_Base.op_At
+        (match ico_find_inv g p with
+         | FStar_Pervasives_Native.Some ip ->
+             ico_bij_edges_for g p ip classes
+         | FStar_Pervasives_Native.None -> []) (ico_bij_edges g classes tl)
+let rec ico_union_edges (g : RDF_Graph.rdf_graph)
+  (ts : RDF_Triple.triple Prims.list) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      FStar_List_Tot_Base.op_At
+        (if t.RDF_Triple.p = ico_owl_equivalentClass
+         then
+           match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+           | (RDF_Term.S_IRI z, RDF_Term.T_BNode uu___) ->
+               (match Tableau.term_as_subject t.RDF_Triple.o with
+                | FStar_Pervasives_Native.Some bs ->
+                    (match Tableau.find_first_object g bs ico_owl_unionOf
+                     with
+                     | FStar_Pervasives_Native.Some lterm ->
+                         (match Tableau.walk_rdf_list g lterm
+                                  (FStar_List_Tot_Base.length g)
+                          with
+                          | (RDF_Term.T_IRI m1)::(RDF_Term.T_IRI m2)::[] ->
+                              if ico_disjoint g m1 m2
+                              then [(z, m1); (z, m2)]
+                              else []
+                          | uu___1 -> [])
+                     | FStar_Pervasives_Native.None -> [])
+                | FStar_Pervasives_Native.None -> [])
+           | (uu___, uu___1) -> []
+         else []) (ico_union_edges g tl)
+let rec ico_edge_step
+  (edges : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (c : RDF_Term.wf_iri) : RDF_Term.wf_iri Prims.list=
+  match edges with
+  | [] -> []
+  | (a, b)::tl ->
+      FStar_List_Tot_Base.op_At
+        (if a = c then [b] else if b = c then [a] else [])
+        (ico_edge_step tl c)
+let rec ico_step_all (edges : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (frontier : RDF_Term.wf_iri Prims.list) : RDF_Term.wf_iri Prims.list=
+  match frontier with
+  | [] -> []
+  | c::tl ->
+      FStar_List_Tot_Base.op_At (ico_edge_step edges c)
+        (ico_step_all edges tl)
+let rec ico_filter_new (visited : RDF_Term.wf_iri Prims.list)
+  (cands : RDF_Term.wf_iri Prims.list) : RDF_Term.wf_iri Prims.list=
+  match cands with
+  | [] -> []
+  | c::tl ->
+      let rest = ico_filter_new visited tl in
+      if (ico_mem_iri c visited) || (ico_mem_iri c rest)
+      then rest
+      else c :: rest
+let rec ico_finite_bfs
+  (edges : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (frontier : RDF_Term.wf_iri Prims.list)
+  (visited : RDF_Term.wf_iri Prims.list) (fuel : Prims.nat) :
+  RDF_Term.wf_iri Prims.list=
+  if fuel = Prims.int_zero
+  then visited
+  else
+    (match frontier with
+     | [] -> visited
+     | uu___1 ->
+         let fresh = ico_filter_new visited (ico_step_all edges frontier) in
+         (match fresh with
+          | [] -> visited
+          | uu___2 ->
+              ico_finite_bfs edges fresh
+                (FStar_List_Tot_Base.op_At visited fresh)
+                (fuel - Prims.int_one)))
+let rec ico_pinned_of (g : RDF_Graph.rdf_graph)
+  (cs : RDF_Term.wf_iri Prims.list) : RDF_Term.wf_iri Prims.list=
+  match cs with
+  | [] -> []
+  | c::tl ->
+      let rest = ico_pinned_of g tl in
+      if ico_directly_pinned g c then c :: rest else rest
+let ico_finite_classes (g : RDF_Graph.rdf_graph)
+  (classes : RDF_Term.wf_iri Prims.list)
+  (fprops : RDF_Term.wf_iri Prims.list) (bprops : RDF_Term.wf_iri Prims.list)
+  : RDF_Term.wf_iri Prims.list=
+  let pinned = ico_pinned_of g classes in
+  let edges =
+    FStar_List_Tot_Base.op_At (ico_fiber_edges g fprops)
+      (FStar_List_Tot_Base.op_At (ico_bij_edges g classes bprops)
+         (ico_union_edges g g)) in
+  ico_finite_bfs edges pinned pinned
+    ((FStar_List_Tot_Base.length edges) + Prims.int_one)
+let rec ico_class_has_member (ts : RDF_Triple.triple Prims.list)
+  (c : RDF_Term.wf_iri) : Prims.bool=
+  match ts with
+  | [] -> false
+  | t::tl ->
+      (((t.RDF_Triple.p = ico_rdf_type) &&
+          (match t.RDF_Triple.o with
+           | RDF_Term.T_IRI x -> x = c
+           | uu___ -> false))
+         &&
+         (match t.RDF_Triple.s with
+          | RDF_Term.S_IRI uu___ -> true
+          | RDF_Term.S_BNode uu___ -> true))
+        || (ico_class_has_member tl c)
+let rec lc_member_all (g : RDF_Graph.rdf_graph) (n : Prims.nat)
+  (classes : RDF_Term.wf_iri Prims.list)
+  (finite : RDF_Term.wf_iri Prims.list) (cs : RDF_Term.wf_iri Prims.list) :
+  lin_constraint Prims.list=
+  match cs with
+  | [] -> []
+  | c::tl ->
+      FStar_List_Tot_Base.op_At
+        (if (ico_mem_iri c finite) && (ico_class_has_member g c)
+         then
+           [{
+              lc_coeffs =
+                (mk_row n Prims.int_zero [((cidx classes c), Prims.int_one)]);
+              lc_rhs = Prims.int_one;
+              lc_is_eq = false
+            }]
+         else []) (lc_member_all g n classes finite tl)
 let build_lin_system (g : RDF_Graph.rdf_graph) :
   (Prims.nat * RDF_Term.wf_iri Prims.list * lin_constraint Prims.list *
     lin_constraint Prims.list)=
@@ -1013,7 +1216,11 @@ let build_lin_system (g : RDF_Graph.rdf_graph) :
     FStar_List_Tot_Base.op_At (lc_fiber_all g n classes fprops)
       (FStar_List_Tot_Base.op_At (lc_bij_all g n classes bprops)
          (lc_union_all g n classes g)) in
-  let bounds = lc_oneof_all g n classes classes in (n, classes, eqs, bounds)
+  let finite = ico_finite_classes g classes fprops bprops in
+  let bounds =
+    FStar_List_Tot_Base.op_At (lc_oneof_all g n classes classes)
+      (lc_member_all g n classes finite classes) in
+  (n, classes, eqs, bounds)
 type erow = {
   er_coeffs: Prims.int Prims.list ;
   er_cert: Prims.int Prims.list }

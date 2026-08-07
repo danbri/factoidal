@@ -972,11 +972,46 @@ let rec eval_pattern_backend
       SPARQL11_Algebra.join (eval_pattern_backend base p1 gb dsb)
         (eval_pattern_backend base p2 gb dsb)
   | SPARQL11_Algebra.GP_LeftJoin (p1, p2, filter_e) ->
-      SPARQL11_Algebra.left_join base (eval_pattern_backend base p1 gb dsb)
-        (eval_pattern_backend base p2 gb dsb) filter_e
+      let omega1 = eval_pattern_backend base p1 gb dsb in
+      let omega2 = eval_pattern_backend base p2 gb dsb in
+      if SPARQL11_Algebra.expr_has_existential filter_e
+      then
+        let ds0 = materialize_dataset_backend dsb in
+        let g_current =
+          backend_search gb
+            {
+              SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
+              SPARQL11_Algebra.bp = FStar_Pervasives_Native.None;
+              SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
+            } in
+        let ds =
+          {
+            RDF_Graph.ds_default = g_current;
+            RDF_Graph.ds_named = (ds0.RDF_Graph.ds_named)
+          } in
+        SPARQL11_Algebra.left_join_with_graph base omega1 omega2 filter_e
+          g_current ds
+      else SPARQL11_Algebra.left_join base omega1 omega2 filter_e
   | SPARQL11_Algebra.GP_Filter (e, p') ->
-      SPARQL11_Algebra.filter_solutions_fwd base e
-        (eval_pattern_backend base p' gb dsb)
+      let omega = eval_pattern_backend base p' gb dsb in
+      if SPARQL11_Algebra.expr_has_existential e
+      then
+        let ds0 = materialize_dataset_backend dsb in
+        let g_current =
+          backend_search gb
+            {
+              SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
+              SPARQL11_Algebra.bp = FStar_Pervasives_Native.None;
+              SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
+            } in
+        let ds =
+          {
+            RDF_Graph.ds_default = g_current;
+            RDF_Graph.ds_named = (ds0.RDF_Graph.ds_named)
+          } in
+        SPARQL11_Algebra.filter_solutions_with_graph base e omega g_current
+          ds
+      else SPARQL11_Algebra.filter_solutions_fwd base e omega
   | SPARQL11_Algebra.GP_Union (p1, p2) ->
       SPARQL11_Algebra.union (eval_pattern_backend base p1 gb dsb)
         (eval_pattern_backend base p2 gb dsb)

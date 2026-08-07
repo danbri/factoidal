@@ -3,6 +3,8 @@ include RDF_Triple
 include RDF_Graph
 include RDF_Indexed
 include RDFS_Closure
+include RDFS_Closure_SemiNaive
+include RDFS_SchemaSplit
 include OWL_Closure
 open Prims
 let rename_bnode_id (prefix : Prims.string) (id : RDF_Term.bnode_id) :

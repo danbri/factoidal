@@ -54,6 +54,10 @@ let prop_subframe (fv : Parser_JSON.json_val) : Parser_JSON.json_val=
       Parser_JSON.JObject o
   | Parser_JSON.JObject o -> Parser_JSON.JObject o
   | uu___ -> Parser_JSON.JObject []
+let frame_explicit (frame : Parser_JSON.json_val) : Prims.bool=
+  match obj_get frame "@explicit" with
+  | FStar_Pervasives_Native.Some (Parser_JSON.JBool b) -> b
+  | uu___ -> false
 let match_one (k : Prims.string) (fv : Parser_JSON.json_val)
   (node : Parser_JSON.json_val) : Prims.bool=
   if k = "@type"
@@ -105,28 +109,37 @@ let rec frame_node (map : (Prims.string * Parser_JSON.json_val) Prims.list)
        match obj_get node "@type" with
        | FStar_Pervasives_Native.Some v -> [("@type", v)]
        | FStar_Pervasives_Native.None -> [] in
-     let prop_entries = frame_props map (obj_fields frame) node visited fuel in
+     let prop_entries =
+       frame_props map frame (obj_fields node) node visited fuel in
      Parser_JSON.JObject
        (FStar_List_Tot_Base.op_At id_entry
           (FStar_List_Tot_Base.op_At type_entry prop_entries)))
 and frame_props (map : (Prims.string * Parser_JSON.json_val) Prims.list)
-  (frame_fields : (Prims.string * Parser_JSON.json_val) Prims.list)
+  (frame : Parser_JSON.json_val)
+  (node_fields : (Prims.string * Parser_JSON.json_val) Prims.list)
   (node : Parser_JSON.json_val) (visited : Prims.string Prims.list)
   (fuel : Prims.nat) : (Prims.string * Parser_JSON.json_val) Prims.list=
-  match frame_fields with
+  match node_fields with
   | [] -> []
-  | (k, fv)::tl ->
-      let rest = frame_props map tl node visited fuel in
+  | (k, uu___)::tl ->
+      let rest = frame_props map frame tl node visited fuel in
       if is_keyword k
       then rest
       else
-        (match obj_get node k with
-         | FStar_Pervasives_Native.None -> rest
-         | FStar_Pervasives_Native.Some uu___1 ->
+        (match obj_get frame k with
+         | FStar_Pervasives_Native.Some fv ->
              let vals = prop_values node k in
              let subframe = prop_subframe fv in
              let framed = frame_values map subframe vals visited fuel in
-             (k, (Parser_JSON.JArray framed)) :: rest)
+             (k, (Parser_JSON.JArray framed)) :: rest
+         | FStar_Pervasives_Native.None ->
+             if frame_explicit frame
+             then rest
+             else
+               (let vals = prop_values node k in
+                let framed =
+                  frame_values map (Parser_JSON.JObject []) vals visited fuel in
+                (k, (Parser_JSON.JArray framed)) :: rest))
 and frame_values (map : (Prims.string * Parser_JSON.json_val) Prims.list)
   (subframe : Parser_JSON.json_val) (vals : Parser_JSON.json_val Prims.list)
   (visited : Prims.string Prims.list) (fuel : Prims.nat) :
@@ -185,7 +198,7 @@ let frame_document (input_str : Prims.string) (frame_str : Prims.string)
   (processing_mode : Prims.string FStar_Pervasives_Native.option) :
   Parser_JSON.json_val FStar_Pervasives_Native.option=
   match Parser_JSONLD.expand_document input_str base
-          FStar_Pervasives_Native.None processing_mode
+          FStar_Pervasives_Native.None processing_mode false
   with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some expanded ->
@@ -194,7 +207,7 @@ let frame_document (input_str : Prims.string) (frame_str : Prims.string)
        | FStar_Pervasives_Native.Some nodes ->
            let map = build_node_map nodes in
            (match Parser_JSONLD.expand_document frame_str base
-                    FStar_Pervasives_Native.None processing_mode
+                    FStar_Pervasives_Native.None processing_mode true
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some frame_exp ->

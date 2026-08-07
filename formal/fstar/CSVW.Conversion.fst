@@ -578,8 +578,32 @@ let csvw_build_col_specs
   | None -> csvw_col_specs_from_header header_cells
 
 // ================================================================
-// Dialect-driven row skipping (skipRows + header-row-count only —
-// see the banner's scope note on commentPrefix/skipBlankRows).
+// Dialect-driven row skipping/classification — skipRows,
+// header-row-count, skipColumns, commentPrefix and skipBlankRows, per
+// the csv+ syntax REC "Parsing Tabular Data" algorithm (vendored at
+// third_party/testing/csvw/publishing-snapshots/REC-syntax/
+// Overview.html, "source row number"/"comment prefix" definitions +
+// the three loops quoted below verbatim):
+//
+//   Repeat [skip rows] times: read a row.
+//     If comment prefix set and row matches it, strip + add to
+//       M.rdfs:comment.
+//     Otherwise, if the row is non-empty, add the WHOLE row to
+//       M.rdfs:comment.
+//   Repeat [header row count] times: read a row.
+//     If comment prefix set and row matches it, strip + add to
+//       M.rdfs:comment (this header SLOT contributes no titles).
+//     Otherwise, parse the row as header cell values (after removing
+//       [skip columns] leading cells).
+//   While rows remain: read a row.
+//     If comment prefix set and row matches it, strip + add to
+//       M.rdfs:comment (no data row created).
+//     Otherwise, if every cell is empty and skip blank rows is set,
+//       drop the row (no data row, no comment).
+//     Otherwise, create a data row (rownum = count of data rows
+//       created so far + 1; the row's #row=N fragment uses the
+//       PHYSICAL source row number, which advances for every row
+//       read in every phase above, comment/blank-dropped or not).
 // ================================================================
 
 let csvw_header_row_count (dia_opt : option csvw_dialect) : nat =
@@ -595,6 +619,173 @@ let csvw_skip_rows_count (dia_opt : option csvw_dialect) : nat =
   | None -> 0
   | Some dia -> (match dia.dia_skip_rows with Some n -> (if n >= 0 then n else 0) | None -> 0)
 
+let csvw_skip_columns_count (dia_opt : option csvw_dialect) : nat =
+  match dia_opt with
+  | None -> 0
+  | Some dia -> (match dia.dia_skip_columns with Some n -> (if n >= 0 then n else 0) | None -> 0)
+
+let csvw_dialect_comment_prefix (dia_opt : option csvw_dialect) : option string =
+  match dia_opt with None -> None | Some dia -> dia.dia_comment_prefix
+
+let csvw_dialect_skip_blank (dia_opt : option csvw_dialect) : bool =
+  match dia_opt with
+  | None -> false
+  | Some dia -> (match dia.dia_skip_blank_rows with Some b -> b | None -> false)
+
+// The delimiter STRING (not just the tokenizer's codepoint) used to
+// rejoin a row's already-split cells back into "row content" for
+// comment-prefix testing/whole-line comment capture — the tokenizer
+// (RML.Sources.csv_parse_rows_dialect) already consumed the real
+// delimiter, so this is the same value the runner fed it, read back
+// off the dialect (default ",").
+let csvw_dialect_delim_str (dia_opt : option csvw_dialect) : string =
+  match dia_opt with
+  | Some dia ->
+    (match dia.dia_delimiter with
+     | Some d -> if String.length d > 0 then d else ","
+     | None -> ",")
+  | None -> ","
+
+let rec csvw_join_delim (delim : string) (cells : list string) : Tot string (decreases cells) =
+  match cells with
+  | [] -> ""
+  | [c] -> c
+  | c :: rest -> c ^ delim ^ csvw_join_delim delim rest
+
+let csvw_all_empty (cells : list string) : bool =
+  List.Tot.for_all (fun (c : string) -> c = "") cells
+
+// Strip a matched comment prefix, plus at most one following space
+// (the corpus's own comment fixtures: "# publisher ..." -> "publisher
+// ...", not " publisher ..." — test051/052/057/058).
+let csvw_strip_comment_prefix (prefix : string) (text : string) : string =
+  let plen = String.length prefix in
+  let tlen = String.length text in
+  if plen > tlen then text   // defensive only — callers only strip after a starts_with match
+  else
+    let stripped = String.sub text plen (tlen - plen) in
+    if String.length stripped > 0 && String.sub stripped 0 1 = " "
+    then String.sub stripped 1 (String.length stripped - 1)
+    else stripped
+
+// Does `text` match the dialect's comment prefix (absent prefix never
+// matches — csv+ syntax REC: "the default is null, which means no
+// rows are treated as comments")? Kept as a plain boolean predicate
+// (no `when` pattern guards — F* --verify mode rejects those, error
+// 236) so every call site below is a straight if/then/else.
+let csvw_row_is_comment (comment_prefix : option string) (text : string) : bool =
+  match comment_prefix with
+  | Some pfx -> csvw_str_starts_with pfx text
+  | None -> false
+
+// The `skip rows` zone: EVERY row in this zone becomes a comment
+// (prefix-stripped when it matches; the whole row content otherwise,
+// unless it's empty) — unlike the header/data zones below, there is
+// no "not a comment" outcome here.
+let rec csvw_skip_zone_comments
+    (comment_prefix : option string) (delim : string) (n : nat) (rows : list (list string))
+  : Tot (list string & list (list string)) (decreases n) =
+  if n = 0 then ([], rows)
+  else match rows with
+       | [] -> ([], [])
+       | r :: tl ->
+         let text = csvw_join_delim delim r in
+         let c_opt =
+           if csvw_row_is_comment comment_prefix text then
+             let pfx = (match comment_prefix with Some p -> p | None -> "") in
+             Some (csvw_strip_comment_prefix pfx text)
+           else if text <> "" then Some text else None in
+         let (rest_c, remaining) = csvw_skip_zone_comments comment_prefix delim (n - 1) tl in
+         ((match c_opt with Some c -> [c] | None -> []) @ rest_c, remaining)
+
+// The `header row count` zone: a comment-prefix match diverts that
+// slot to a comment (contributing no titles); the first non-comment
+// row in the zone supplies the raw header cells (skipColumns removal
+// + title assignment happens in the caller, matching the prior
+// single-header-row behaviour — no fixture in this corpus uses a
+// multi-row header where more than one row is a real title row).
+let rec csvw_header_zone
+    (comment_prefix : option string) (delim : string) (n : nat) (rows : list (list string))
+  : Tot (list string & option (list string) & list (list string)) (decreases n) =
+  if n = 0 then ([], None, rows)
+  else match rows with
+       | [] -> ([], None, [])
+       | r :: tl ->
+         let text = csvw_join_delim delim r in
+         if csvw_row_is_comment comment_prefix text then
+           let pfx = (match comment_prefix with Some p -> p | None -> "") in
+           let c = csvw_strip_comment_prefix pfx text in
+           let (rest_c, hdr_opt, remaining) = csvw_header_zone comment_prefix delim (n - 1) tl in
+           (c :: rest_c, hdr_opt, remaining)
+         else
+           let (rest_c, _, remaining) = csvw_header_zone comment_prefix delim (n - 1) tl in
+           (rest_c, Some r, remaining)
+
+// The data zone (every row after skip-rows + header-row-count): a
+// comment-prefix match diverts to a comment (no data row, `row_num`
+// unchanged); an all-empty row is silently dropped when `skip blank
+// rows` is set (no comment, no data row); otherwise a data row is
+// created carrying the current `row_num`/`source_row_num` pair. Both
+// counters are threaded explicitly rather than derived positionally
+// (`List.Tot.mapi`-style) since comment/blank rows advance
+// `source_row_num` without advancing `row_num`.
+let rec csvw_data_zone
+    (comment_prefix : option string) (delim : string) (skip_blank : bool)
+    (row_num : nat) (source_row_num : nat) (rows : list (list string))
+  : Tot (list string & list (nat & nat & list string)) (decreases rows) =
+  match rows with
+  | [] -> ([], [])
+  | r :: tl ->
+    let text = csvw_join_delim delim r in
+    if csvw_row_is_comment comment_prefix text then
+       let pfx = (match comment_prefix with Some p -> p | None -> "") in
+       let c = csvw_strip_comment_prefix pfx text in
+       let (rest_c, rest_d) = csvw_data_zone comment_prefix delim skip_blank row_num (source_row_num + 1) tl in
+       (c :: rest_c, rest_d)
+    else
+       if skip_blank && csvw_all_empty r
+       then csvw_data_zone comment_prefix delim skip_blank row_num (source_row_num + 1) tl
+       else
+         let (rest_c, rest_d) = csvw_data_zone comment_prefix delim skip_blank (row_num + 1) (source_row_num + 1) tl in
+         (rest_c, (row_num, source_row_num, r) :: rest_d)
+
+// Whole-table row classification: runs the three zones in sequence
+// and returns (all comments in source order, raw header cells if any,
+// data rows as (row_num, source_row_num, raw_cells) triples). `dia`
+// drives every zone's boundary/comment/blank behaviour; skipColumns
+// is intentionally NOT applied here (raw cells only) — it is applied
+// by the caller to header_cells and each data row's cells separately,
+// so a comment-matched or skip-rows-zone row's text reconstruction
+// (csvw_join_delim above) always sees the FULL row, never truncated
+// by a skipColumns that only makes sense for real header/data rows.
+let csvw_classify_table_rows (dia_opt : option csvw_dialect) (all_rows : list (list string))
+  : (list string & option (list string) & list (nat & nat & list string)) =
+  let delim = csvw_dialect_delim_str dia_opt in
+  let cprefix = csvw_dialect_comment_prefix dia_opt in
+  let skip_blank = csvw_dialect_skip_blank dia_opt in
+  let skip_n = csvw_skip_rows_count dia_opt in
+  let header_n = csvw_header_row_count dia_opt in
+  let (skip_comments, after_skip_rows) = csvw_skip_zone_comments cprefix delim skip_n all_rows in
+  let (header_comments, header_row_opt, after_header) = csvw_header_zone cprefix delim header_n after_skip_rows in
+  let (data_comments, data_entries) = csvw_data_zone cprefix delim skip_blank 1 (skip_n + header_n + 1) after_header in
+  (skip_comments @ header_comments @ data_comments, header_row_opt, data_entries)
+
+// Whole-file cell-count consistency (csv+ syntax REC, "each row MUST
+// contain the same number of cells, although some of these cells may
+// be empty" — quoted verbatim in test091's manifest comment). Checked
+// over the RAW rows (header included), before any skip/comment/blank
+// filtering: a NegativeValidationTest fixture relying on this MUST
+// fail regardless of which physical row is short.
+let rec csvw_row_widths_uniform (w : nat) (rows : list (list string)) : Tot bool (decreases rows) =
+  match rows with
+  | [] -> true
+  | r :: tl -> List.Tot.length r = w && csvw_row_widths_uniform w tl
+
+let csvw_rows_consistent_width (rows : list (list string)) : bool =
+  match rows with
+  | [] -> true
+  | r :: tl -> csvw_row_widths_uniform (List.Tot.length r) tl
+
 let rec csvw_drop (#a:Type) (n : nat) (l : list a) : Tot (list a) (decreases n) =
   if n = 0 then l
   else match l with
@@ -605,7 +796,9 @@ let rec csvw_drop (#a:Type) (n : nat) (l : list a) : Tot (list a) (decreases n) 
 // which doesn't match this module's `nat`-typed row_num/source_row_num
 // parameters without an unprovable int->nat cast. A direct structural
 // recursion starting the counter at a caller-supplied `nat` sidesteps
-// that entirely.
+// that entirely. (Still used where a plain 0-based index over an
+// already-filtered list is enough — csvw_classify_table_rows above
+// covers the general skip/comment/blank case.)
 let rec csvw_index_from (#a:Type) (n : nat) (l : list a) : Tot (list (nat & a)) (decreases l) =
   match l with
   | [] -> []
@@ -1099,24 +1292,27 @@ let csvw_convert_table_minimal
   : list triple =
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
   let dia = tbl.tbl_dialect in
-  let skip_n = csvw_skip_rows_count dia + csvw_header_row_count dia in
-  let after_skip_rows = csvw_drop (csvw_skip_rows_count dia) all_rows in
-  let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
+  let skip_cols_n = csvw_skip_columns_count dia in
+  let (_comments, header_row_opt, data_entries) = csvw_classify_table_rows dia all_rows in
   // See csvw_convert_table_standard: a header-less, schema-less table
   // gets positional `_col.N` names from an empty header of the data
-  // row's width (test023 minimal variant).
-  let header_cells =
-    if csvw_header_row_count dia > 0 then (match after_skip_rows with h :: _ -> h | [] -> [])
-    else (match tbl.tbl_table_schema with
-          | Some _ -> []
-          | None -> (match data_rows with r :: _ -> List.Tot.map (fun (_:string) -> "") r | [] -> [])) in
+  // row's width (test023 minimal variant). rdfs:comment has no
+  // minimal-mode home (no table node is emitted at all), so
+  // `_comments` is discarded here.
+  let header_cells_raw =
+    match header_row_opt with
+    | Some h -> h
+    | None ->
+      (match tbl.tbl_table_schema with
+       | Some _ -> []
+       | None -> (match data_entries with (_, _, r) :: _ -> List.Tot.map (fun (_:string) -> "") r | [] -> [])) in
+  let header_cells = csvw_drop skip_cols_n header_cells_raw in
   let col_specs = csvw_build_col_specs grp_inherited tbl.tbl_inherited tbl.tbl_table_schema header_cells in
-  let indexed = csvw_index_from 0 data_rows in
   List.Tot.concatMap
-    (fun (p : (nat & list string)) ->
-       let (i, cells) = p in
-       csvw_row_triples_minimal table_url_resolved col_specs (i + 1) (skip_n + i + 1) cells)
-    indexed
+    (fun (p : (nat & nat & list string)) ->
+       let (row_num, source_row_num, raw_cells) = p in
+       csvw_row_triples_minimal table_url_resolved col_specs row_num source_row_num (csvw_drop skip_cols_n raw_cells))
+    data_entries
 
 // ================================================================
 // Standard mode: csvw:TableGroup > csvw:table > csvw:row >
@@ -1186,29 +1382,34 @@ let csvw_convert_table_standard
   : (subject & list triple) =
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
   let dia = tbl.tbl_dialect in
-  let skip_n = csvw_skip_rows_count dia + csvw_header_row_count dia in
-  let after_skip_rows = csvw_drop (csvw_skip_rows_count dia) all_rows in
-  let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
+  let skip_cols_n = csvw_skip_columns_count dia in
+  // `_comments` (table-level rdfs:comment) has no standard-mode RDF
+  // triple form yet (csv2rdf's own annotation triples for it are out
+  // of this module's current scope — CSVW.Json emits it for csv2json);
+  // discarded here, kept for the JSON conversion layer.
+  let (_comments, header_row_opt, data_entries) = csvw_classify_table_rows dia all_rows in
   // With no header row (`header: false` / `headerRowCount: 0`, test023)
   // and no user schema, positional `_col.N` names still need a header of
   // the right WIDTH: an all-empty-cell header of the first data row's
   // width makes csvw_col_specs_from_header emit `_col.1.._col.N`. When a
   // header row IS present it supplies the names as before; a user schema
   // drives the specs regardless (empty header adds no surplus columns).
-  let header_cells =
-    if csvw_header_row_count dia > 0 then (match after_skip_rows with h :: _ -> h | [] -> [])
-    else (match tbl.tbl_table_schema with
-          | Some _ -> []
-          | None -> (match data_rows with r :: _ -> List.Tot.map (fun (_:string) -> "") r | [] -> [])) in
+  let header_cells_raw =
+    match header_row_opt with
+    | Some h -> h
+    | None ->
+      (match tbl.tbl_table_schema with
+       | Some _ -> []
+       | None -> (match data_entries with (_, _, r) :: _ -> List.Tot.map (fun (_:string) -> "") r | [] -> [])) in
+  let header_cells = csvw_drop skip_cols_n header_cells_raw in
   let col_specs = csvw_build_col_specs grp_inherited tbl.tbl_inherited tbl.tbl_table_schema header_cells in
   let row_titles = (match tbl.tbl_table_schema with Some ts -> ts.ts_row_titles | None -> []) in
-  let indexed = csvw_index_from 0 data_rows in
   let row_results =
     List.Tot.map
-      (fun (p : (nat & list string)) ->
-         let (i, cells) = p in
-         csvw_row_triples_standard table_url_resolved row_titles col_specs (i + 1) (skip_n + i + 1) cells)
-      indexed in
+      (fun (p : (nat & nat & list string)) ->
+         let (row_num, source_row_num, raw_cells) = p in
+         csvw_row_triples_standard table_url_resolved row_titles col_specs row_num source_row_num (csvw_drop skip_cols_n raw_cells))
+      data_entries in
   // Table node identity (csv2rdf "Generating RDF"): a valid string `@id`
   // (resolved against the metadata-document base) IS the table node; an
   // invalid `@id` (test102) degrades to the metadata-document URL; no
@@ -1315,5 +1516,16 @@ let csvw_no_metadata_table : csvw_table = {
   tbl_common = [];
   tbl_inherited = csvw_inherited_empty;
   tbl_schema_ref = None;
+  tbl_dialect_ref = None;
   tbl_suppress_output = None;
 }
+
+// A no-metadata table served over simulated HTTP with Content-Type
+// `text/csv;header=absent` (test019): the ONLY way that condition can
+// reach a table with no dialect object of its own is by forcing
+// `header: false` onto a fresh dialect record — CSVW.Metadata's
+// csvw_dialect_empty merged with `dia_header = Some false`, replacing
+// (not merging into) any dialect the table already carries, since the
+// only caller is the metadata-less synthetic table above.
+let csvw_table_force_header_absent (t : csvw_table) : csvw_table =
+  { t with tbl_dialect = Some ({ csvw_dialect_empty with dia_header = Some false }) }

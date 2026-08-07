@@ -116,6 +116,28 @@
    encodings this parser doesn't decode (UTF-16 with or without BOM,
    non-ASCII-compatible declared encodings).
 
+   NOT-APPLICABLE, before everything above (owner decision 2026-07-30,
+   option (a)): a fixture whose testcases.dtd EDITION attribute lists
+   only XML 1.0 editions that exclude the 5th is not applicable to a
+   5th-edition parser. It is not a gap and not a skip-shaped unknown:
+   the rule it asserts was RETIRED by the specification this parser
+   targets. Scored NotApplicable, labelled "not-applicable: EDITION
+   <list>, parser targets XML 1.0 5th ed", counted in its own column of
+   every bucket table and on its own line of the honest breakdown. Same
+   mechanism and same vocabulary as bin/owl-runner's
+   SKIP/semantics-rdf-based-only (catalog says the test is about a
+   semantics we do not claim) and the JSON-LD runners' specVersion
+   exclusions (fixture says it is about a spec version we do not claim).
+   See `edition_excludes_5` below for the edition-vs-Name-production
+   detail.
+
+   The counts stay INSIDE the skip total on the tally line, so the
+   suite's denominator, the dashboard totals and generate-report.sh's
+   score-line regexes are unchanged; the additive
+   "; N not-applicable (EDITION 1-4, ...)" clause on that line uses none
+   of the scraped keywords (pass / fail / skip / out of), exactly like
+   the owl runner's "; N unsupported (cap-escape, #326)" clause.
+
    XML_Wellformedness.fst's checks (NCName validation, RDF/XML
    forbidden-element-name lists, rdf:parseType/rdf:resource conflict
    rules) are RDF/XML-domain-specific, not generic XML conformance
@@ -314,6 +336,9 @@ type raw_test = {
   rt_description : string;
   rt_leaf : string;          (* leaf manifest's relative path *)
   rt_collection : string;
+  rt_edition : string;       (* testcases.dtd EDITION: space-separated list
+                                of the XML 1.0 editions a test applies to.
+                                Absent = applies to every edition. *)
 }
 
 let attr_or_default name default_val attrs =
@@ -334,6 +359,7 @@ let rec collect_tests leaf_rel node acc =
       rt_description = String.trim (Parser_XML.text_content node);
       rt_leaf = leaf_rel;
       rt_collection = collection_of_leaf leaf_rel;
+      rt_edition = attr_or_default "EDITION" "" attrs;
     } in
     t :: acc
   | Some "TESTCASES" ->
@@ -403,6 +429,7 @@ let fallback_scan_tests leaf_rel content =
         rt_entities = get "ENTITIES" "none"; rt_uri = get "URI" "";
         rt_sections = get "SECTIONS" ""; rt_description = desc;
         rt_leaf = leaf_rel; rt_collection = collection_of_leaf leaf_rel;
+        rt_edition = get "EDITION" "";
       } in
       scan (close + 1) (t :: acc)
   in
@@ -537,8 +564,56 @@ type outcome =
                                the vacuous counter is always 0. *)
   | Fail of string
   | Skip of string
+  | NotApplicable of string
+    (* The fixture itself declares it does not apply to the
+       specification this parser targets (today: testcases.dtd's
+       EDITION attribute). Distinct from Skip, which means "applicable,
+       but we cannot score it here" — a gap. Kept inside the skip TOTAL
+       so denominators and the dashboard rows do not move, reported
+       separately everywhere a reader could mistake correct scoping for
+       a gap. *)
 
-let classify (base_dir : string) (t : raw_test) : outcome =
+(* testcases.dtd's EDITION attribute lists the XML 1.0 editions a test
+   applies to, e.g. EDITION="1 2 3 4". Absent means "every edition".
+
+   Editions 1-4 and edition 5 differ on the Name productions: the 5th
+   edition (2008) replaced the enumerated Letter / CombiningChar /
+   Extender tables of Appendix B with the same NameStartChar / NameChar
+   ranges XML 1.1 uses. Parser.XML implements the 5th-edition / XML 1.1
+   production -- the same table XML.Wellformedness.fst already carries,
+   and the one current XML processors implement.
+
+   So a test that names only editions 1-4 asserts a rule this parser
+   deliberately does not impose. The fixture has told us it does not
+   apply. That is not a pass, not a fail, and not a gap either: it is
+   NOT-APPLICABLE, and it is reported under that name (owner decision
+   2026-07-30) rather than as a bare skip, which a reader scanning the
+   dashboard would take for missing capability.
+
+   Added 2026-07-30 with issue #325's Name-scanning fix. Before that fix
+   the byte-level Name scan truncated every non-ASCII name mid-codepoint,
+   so the parser rejected 4th-edition-illegal names -- and every
+   5th-edition-LEGAL non-ASCII name with them, which is the silent
+   data-loss bug #325 is about. Roughly 302 EDITION="1 2 3 4" not-wf
+   fixtures were getting the right verdict from that broken mechanism;
+   two more (rmt-016, U+1D032; rmt-019, U+EFFFF) likewise. Fixing #325
+   correctly turned them into accepts, and the applicability question
+   they had been masking became visible.
+
+   Applied to EVERY test TYPE, ahead of every other rule: an edition
+   attribute is a statement about which specification the fixture is
+   written against, so it settles applicability before any question of
+   what we can or cannot parse. *)
+let edition_excludes_5 (ed : string) : bool =
+  if String.trim ed = "" then false
+  else
+    let toks = String.split_on_char ' ' ed in
+    not (List.exists (fun t -> String.trim t = "5") toks)
+
+(* The engine-facing classification: everything that depends on what this
+   parser can and cannot do. Reached only for fixtures that apply to the
+   edition we target — see `classify` below. *)
+let classify_body (base_dir : string) (t : raw_test) : outcome =
   if t.rt_type = "invalid" || t.rt_type = "error" then
     Skip "no DTD validation (by design)"
   else begin
@@ -634,6 +709,38 @@ let classify (base_dir : string) (t : raw_test) : outcome =
           Skip (Printf.sprintf "unrecognized TYPE %S" t.rt_type)
   end
 
+(* Applicability first, capability second. The EDITION attribute is the
+   fixture's own statement about which specification it is written
+   against; it settles whether the test bears on this parser at all,
+   which is a question logically prior to anything the parser can or
+   cannot do. Hence the gate sits outside classify_body rather than in
+   one of its branches.
+
+   FACTOIDAL_XML_EDITION_CENSUS=1 additionally prints, per gated
+   fixture, the verdict classify_body WOULD have produced — the audit
+   trail for how the 313 not-applicable fixtures were scored before
+   this gate existed. Diagnostic stderr only; it changes no verdict. *)
+let edition_census = Sys.getenv_opt "FACTOIDAL_XML_EDITION_CENSUS" <> None
+
+let classify (base_dir : string) (t : raw_test) : outcome =
+  if edition_excludes_5 t.rt_edition then begin
+    if edition_census then begin
+      let legacy = match classify_body base_dir t with
+        | Pass m -> "PASS " ^ m
+        | PassVacuous m -> "PASSVACUOUS " ^ m
+        | Fail m -> "FAIL " ^ m
+        | Skip m -> "SKIP " ^ m
+        | NotApplicable m -> "N/A " ^ m in
+      Printf.eprintf "EDITION-CENSUS %s\t%s\tEDITION=%s\t%s\t%s\n"
+        t.rt_id t.rt_type (String.trim t.rt_edition) t.rt_leaf legacy
+    end;
+    NotApplicable
+      (Printf.sprintf
+         "not-applicable: EDITION %s, parser targets XML 1.0 5th ed (the 5th edition retired the 4th's Appendix B Name tables; the fixture declares it does not apply) — TYPE %s, SECTIONS %s"
+         (String.trim t.rt_edition) t.rt_type t.rt_sections)
+  end
+  else classify_body base_dir t
+
 (* ------------------------------------------------------------------ *)
 (* XML_Wellformedness — informational only. See module comment: its
    NCName check excludes ':' from name-start/name characters, so it is
@@ -677,7 +784,12 @@ let print_help () =
      DOCTYPE-unsupported gap is SKIP (vacuous), not a PASS. An accept\n\
      is SKIP when the test needs external entities (testcases.dtd\n\
      exemption) or is out-of-profile (not-wf only under XML 1.1 /\n\
-     Namespaces); otherwise an accept of a wf-1.0 not-wf doc is FAIL.\n"
+     Namespaces); otherwise an accept of a wf-1.0 not-wf doc is FAIL.\n\
+     Ahead of all of that: a fixture whose testcases.dtd EDITION list\n\
+     excludes edition 5 is NOT-APPLICABLE to this 5th-edition parser.\n\
+     It is reported under that name (its own column in every bucket\n\
+     table, its own honest-breakdown line, its own tally-line clause)\n\
+     and counted inside the skip total, so denominators do not move.\n"
 
 module SMap = Map.Make (String)
 
@@ -792,26 +904,32 @@ let () =
     List.fold_left
       (fun m (t, o) ->
          let key = key_fn t in
-         let (p, f, s) = try SMap.find key m with Not_found -> (0, 0, 0) in
+         let (p, f, s, na) = try SMap.find key m with Not_found -> (0, 0, 0, 0) in
          (* PART 1 (integrity): a not-wf test rejected ONLY because our
             parser can't parse any DOCTYPE (PassVacuous) is NOT a real
             pass — the tested construct was never exercised. It counts
-            as a SKIP here and everywhere below, never a pass. *)
-         let (p, f, s) = match o with
-           | Pass _ -> (p + 1, f, s)
-           | PassVacuous _ -> (p, f, s + 1)
-           | Fail _ -> (p, f + 1, s)
-           | Skip _ -> (p, f, s + 1)
+            as a SKIP here and everywhere below, never a pass.
+            NotApplicable rides in the skip column (so the row still
+            sums to its own total) AND gets its own n/a column, because
+            "the fixture says it does not apply" and "we cannot score
+            this" are different statements about the engine. *)
+         let (p, f, s, na) = match o with
+           | Pass _ -> (p + 1, f, s, na)
+           | PassVacuous _ -> (p, f, s + 1, na)
+           | Fail _ -> (p, f + 1, s, na)
+           | Skip _ -> (p, f, s + 1, na)
+           | NotApplicable _ -> (p, f, s + 1, na + 1)
          in
-         SMap.add key (p, f, s) m)
+         SMap.add key (p, f, s, na) m)
       SMap.empty results
   in
   let print_bucket_table title key_fn =
     let m = tally_bucket key_fn results in
     Printf.printf "-- %s --\n" title;
     SMap.iter
-      (fun key (p, f, s) ->
-         Printf.printf "  %-12s pass:%-5d fail:%-5d skip:%-5d (of %d)\n" key p f s (p + f + s))
+      (fun key (p, f, s, na) ->
+         Printf.printf "  %-12s pass:%-5d fail:%-5d skip:%-5d (of which n/a:%-5d) (of %d)\n"
+           key p f s na (p + f + s))
       m;
     Printf.printf "\n"
   in
@@ -872,13 +990,20 @@ let () =
           | None -> "declared encoding <unparsed> not decoded")
        | None -> "declared encoding <unparsed> not decoded")
     else if has_prefix msg "test input file not found" then "test input file not found"
+    else if has_prefix msg "not-applicable: EDITION " then
+      (* Group every not-applicable fixture by its EDITION list alone —
+         the per-test TYPE/SECTIONS tail would otherwise scatter one
+         scoping decision across dozens of near-identical buckets. *)
+      (match String.index_from_opt msg 23 ',' with
+       | Some i -> String.sub msg 0 i ^ ", parser targets XML 1.0 5th ed"
+       | None -> "not-applicable: EDITION <unparsed>")
     else if String.length msg > 70 then String.sub msg 0 70 ^ "..."
     else msg
   in
   (* SKIPs include PassVacuous (not-wf rejected only by the DOCTYPE gap):
      they are counted as skips per PART 1, so they must appear in the
      skip breakdown, not be silently dropped. *)
-  let skips = List.filter_map (fun (_t, o) -> match o with Skip msg -> Some msg | PassVacuous msg -> Some msg | _ -> None) results in
+  let skips = List.filter_map (fun (_t, o) -> match o with Skip msg -> Some msg | PassVacuous msg -> Some msg | NotApplicable msg -> Some msg | _ -> None) results in
   Printf.printf "-- SKIP reason breakdown (%d total SKIPs) --\n" (List.length skips);
   let skip_buckets =
     List.fold_left
@@ -921,7 +1046,13 @@ let () =
     | _ -> false in
   let dtd_internal_skip = count (fun (_, o) -> is_dtd_internal o) in
   let valid_boundary_skip = count (fun (_, o) -> is_valid_dtd_boundary o) in
-  let other_skip      = skip - vacuous_skip - oop_skip - dtd_internal_skip - valid_boundary_skip in
+  let is_not_applicable = function NotApplicable _ -> true | _ -> false in
+  let na_count        = count (fun (_, o) -> is_not_applicable o) in
+  let na_notwf        = count (fun (t, o) -> t.rt_type = "not-wf" && is_not_applicable o) in
+  let na_valid        = count (fun (t, o) -> t.rt_type = "valid"  && is_not_applicable o) in
+  let na_other        = na_count - na_notwf - na_valid in
+  let other_skip      = skip - vacuous_skip - oop_skip - dtd_internal_skip
+                        - valid_boundary_skip - na_count in
   Printf.printf "========================================\n";
   Printf.printf "TOTAL: %d pass, %d fail, %d skip (of %d)\n" pass fail skip total;
   Printf.printf "\n-- HONEST BREAKDOWN (PART 1 integrity accounting) --\n";
@@ -938,9 +1069,14 @@ let () =
   Printf.printf "  SKIP: out-of-profile (not-wf only under XML 1.1 / Namespaces,\n";
   Printf.printf "        parser is XML 1.0 non-namespace):                        %d\n" oop_skip;
   Printf.printf "  SKIP: vacuous (RETIRED by Stage-A DTD support; must be 0):      %d\n" vacuous_skip;
+  Printf.printf "  NOT-APPLICABLE: fixture's own EDITION attribute excludes the 5th\n";
+  Printf.printf "        edition, which this parser targets — the rule it asserts\n";
+  Printf.printf "        was retired by the spec we implement, so it is correct\n";
+  Printf.printf "        scoping, NOT a gap (not-wf %d, valid %d, other %d):        %d\n"
+    na_notwf na_valid na_other na_count;
   Printf.printf "  SKIP: other (DOCTYPE-external-on-valid, encoding, invalid/error\n";
   Printf.printf "        by design, external-entity exemption, file-not-found):   %d\n" other_skip;
-  Printf.printf "  --> skip total:                                                %d\n" skip;
+  Printf.printf "  --> skip total (INCLUDES the not-applicable count above):       %d\n" skip;
   Printf.printf "  (side-check: PassVacuous counter = %d, must equal vacuous skip = %d)\n" !vacuous_count vacuous_skip;
   Printf.printf
     "XML_Wellformedness.is_valid_ncname (informational only, see module comment):\n\
@@ -950,5 +1086,14 @@ let () =
     \  XML conformance; plain XML 1.0 legally allows ':' in Names).\n"
     !ncname_checked !ncname_would_reject;
   Printf.printf "========================================\n";
-  Printf.printf "xml-conformance: %d pass, %d fail, %d skip (of %d)\n" pass fail skip total;
+  (* The not-applicable clause is ADDITIVE and rides after the totals, so
+     generate-report.sh's scrapers see the same four fields they always
+     did (it contains none of "pass" / "fail" / "skip" / "out of").
+     Same shape as bin/owl-runner's "; N unsupported (cap-escape, #326)". *)
+  let na_suffix =
+    if na_count > 0 then
+      Printf.sprintf "; %d not-applicable (fixture EDITION excludes the 5th; parser targets XML 1.0 5th ed)" na_count
+    else "" in
+  Printf.printf "xml-conformance: %d pass, %d fail, %d skip (of %d)%s\n"
+    pass fail skip total na_suffix;
   if fail > 0 then exit 1

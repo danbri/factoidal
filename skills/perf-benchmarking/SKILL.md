@@ -245,3 +245,43 @@ all started as noticed smells, not scheduled work.
 - Publishing metrics on the site — `site-and-dashboard` skill.
 - Background-job wall-clock discipline in depth —
   `autonomous-time-discipline` skill.
+
+## ⚠️ Inference paths need their own discipline
+
+Closure and entailment mislead measurement in ways parse/serialize does
+not: a synthetic chain can improve 33× while a real vocabulary moves 4%,
+and a suite can be green while the rules never fire. Before optimising
+any reasoning path read
+[`skills/measuring-inference/SKILL.md`](../measuring-inference/SKILL.md)
+— it carries the phase-attribution rule, the shape-sensitivity rule, and
+the vacuity checks, each with the wrong claim from 2026-07-30/31 that
+paid for it.
+
+## ⚠️ Baselines are per-host: container recycles move the hardware
+
+Learned 2026-08-02/03 while freezing the closure-bench baseline. The
+sandbox container can be recycled mid-session (see hazard #18 in
+`skills/workflow-gotchas-debugging/SKILL.md`), and the replacement VM
+can be **measurably different hardware**: the same binary, same input,
+both machines quiet, gave QUDT closure 64.7 s on one host and 87.1 s on
+the next — a 35% gap with zero code change.
+
+Rules that follow:
+
+1. **Never freeze a baseline from a noisy run.** The first freeze
+   attempt ran one minute after a recycle: spread median 14.8%, max
+   193%. Discarded. A baseline's job is to make regressions visible;
+   frozen noise makes the gate blind (too loose) or a liar (too tight).
+   Check the spread line before committing a baseline; the quiet-host
+   norm here is median ~3–7%.
+2. **A `--check` failure right after a recycle is the HOST until proven
+   otherwise.** Re-run on the current machine, compare spreads, and
+   re-freeze if the hardware moved — do not chase a phantom regression.
+3. **Cross-host comparisons need a shared anchor.** Within-session
+   before/after pairs on one host are valid; a number from before a
+   recycle and one from after are not a pair at all.
+4. **The host-independent parts of a baseline are the strong gates:**
+   output triple counts and statuses are exact on any machine
+   (508,139 for QUDT, byte-stable across every closure change of
+   2026-08-02). Lean on those; treat wall-clock tolerances as
+   host-local.

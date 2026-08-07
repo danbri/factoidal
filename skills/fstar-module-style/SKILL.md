@@ -191,20 +191,120 @@ inside one `.fsti` file):
 
 - **No `--lax`, no `--admit_smt_queries`** (Iron Rule #10). The one
   legacy exception — `SPARQL11.Parser.fst`'s two admit regions — was
-  eliminated 2026-07-10; the whole tree verifies with zero admitted
-  obligations. Do not introduce new admit regions.
+  eliminated 2026-07-10; the tree now carries zero such pragma
+  regions. Do not introduce new ones. That count is machine-checked
+  rather than asserted: `tools/assurance-inventory.sh --check` derives
+  it from source and exits non-zero on any active admission. That check
+  reports **zero** active admissions as of 2026-07-30, when the last
+  three (`SPARQL11.Algebra.fst` solution-mapping lemmas, #323) were
+  discharged. Keep it that way: an `admit ()` makes its lemma vacuous
+  while leaving the build green, so it is invisible to every gate except
+  this one. Two of those three lemmas were FALSE as stated, which is the
+  more useful lesson — when a proof will not close, first ask whether the
+  statement is true, and if it is not, restate it and prove the
+  refutation too rather than admitting the original.
 - z3 must be exactly **4.13.3**; the Makefile and `build-ocaml.sh`
   pass `--z3version 4.13.3`.
-- `make verify` covers only the short `MODULES` list (5 core modules).
-  Full-tree checking happens as a side effect of
-  `./build-ocaml.sh extract` (every module through
-  `--cache_checked_modules`). Don't read "make verify passed" as
-  "whole tree verified".
+- `make verify` covers the **whole corpus** — every `.fst` in
+  `formal/fstar/`, derived from `$(wildcard *.fst)` so it cannot drift
+  from the directory (fixed 2026-07-29, issue #319; before that it
+  named six modules by hand while the README claimed all of them). It
+  now shares the `.checked` cache with `./build-ocaml.sh extract`, so
+  verify-then-extract no longer pays verification twice.
+  `make verify-smoke` is the old six-module fast check, under a name
+  that does not overclaim.
+- Still don't read "make verify passed" as "the W3C Recommendation is
+  proved". It means every module type-checked and every proof
+  obligation *the modules state* was discharged — for most modules that
+  is totality, termination and refinements plus local lemmas. Proof
+  DEPTH is a separate axis from proof COVERAGE; `make verify` fixes
+  coverage only.
+- **A refinement theorem with a `requires` needs a SATISFIABILITY
+  WITNESS for its hypothesis.** An unsatisfiable hypothesis makes the
+  theorem vacuous, and F\* verifies it green with no warning — it
+  happened here: `rdfs_closure_sound`'s first draft assumed `forall (h
+  : rdf_graph). ig_wf_sp (build_indexed h)`, which is false, and passed.
+  Witnesses live in `formal/fstar/RDF.Semantics.HypothesisWitness.fst`;
+  add one there whenever a vertical introduces a new hypothesis
+  predicate. Three rules: (1) the witness must be NON-DEGENERATE — not
+  the empty graph / empty binding / empty index, because "the theorem
+  holds of nothing" is the failure mode being guarded against; (2) if
+  only a degenerate witness is reachable, label it as such in the module
+  and open a follow-up rather than passing it off as a witness; (3) for
+  a bundle of interpretation conditions prove BOTH consistency (`exists
+  i. conds i`) and non-triviality (`exists i g. conds i /\ ~(satisfies i
+  g)`) — consistency alone is met by the all-true relation, which leaves
+  the entailment relation possibly equal to everything. Full write-up:
+  [`docs/designissues/2026-07-30-hypothesis-satisfiability.md`](../../docs/designissues/2026-07-30-hypothesis-satisfiability.md).
 - For interactive proof/diagnosis, use the F\* MCP server
   (`fstar-mcp` skill) instead of batch `fstar.exe` reruns.
 - Every `assume val` is an acknowledged gap: stub patch in
   `minimal_regrettable_glue_code_each_with_an_open_issue/` named
   `<issue>_<description>.sh` + an open GitHub issue (Iron Rule #3).
+
+## Proof-shape traps for engine-vs-spec refinement proofs (2026-08-04)
+
+Learned building the licensing program (`OWL.RL.Refinement.fst`,
+`RDF.Indexed.KeyInjectivity.fst`, `RDF.Entailment.RDFS.ChainWf.fst`)
+in one day; each rule below cost at least one failed verify cycle.
+
+1. **`assert_norm (rule g ig == fold_left step ...)` only reduces
+   through zeta-unfoldable LOCAL step lambdas spelled VERBATIM from
+   the engine text.** A top-level step function — even one whose body
+   is a character-for-character copy — leaves the two sides in
+   different normal forms and the assertion fails (first draft of
+   OWL.RL.Refinement, 2026-08-04). Also verbatim means verbatim: a
+   pair match (`match a, b with`) in the engine does NOT normalize
+   equal to nested single matches in the proof copy — we measured
+   both directions failing.
+
+2. **`FStar.String.concat` (the list form) is an OPAQUE val with no
+   reasoning equations — nothing symbolic can ever be proved about a
+   string built with it.** The strcat operator `^` carries
+   `list_of_concat` / `concat_injective` / `concat_length`. If a
+   function's output needs injectivity or decomposition proofs, build
+   the string with `^` (see `sp_key` / `subject_to_key` in
+   RDF.Indexed.fsti and the do-not-simplify-back comment there). The
+   normalizer evaluates BOTH forms on concrete literals, which is why
+   the gap only bites the first time someone states a symbolic lemma.
+   Also confirmed available as normalizer primitives on literals:
+   `list_of_string`, `^`, char literals like `'\x1f'`, and recursive
+   functions over the resulting `list char`.
+
+3. **SOLVED (2026-08-05, commit fb8d98f): anonymous closures in a
+   rule-step lambda's guards or inner folds make the step obligation
+   undischargeable — NAME them as top-level engine functions.** The
+   failure signature: `inv (step acc x)` yields "Expected squash
+   (inv ...), got unit" at any solver budget, with the branch's
+   semantic content proving fine. Mechanism: each spelling of a
+   `fun`-closure is a DISTINCT function token in the SMT encoding,
+   so a proof that mirrors the rule's branch structure can never
+   transfer guard facts (or fold-function identity) between its copy
+   and the lambda's copy — first-order congruence only works through
+   a shared NAME. Confirmed by pilot: naming scm-eqc2's guard
+   predicate (`term_is_iri`, OWL.Closure.fsti) made the previously
+   impossible `owl_rule_scm_eqc2_sound` discharge with the identical
+   witness chain. Retro-explains all passes: `emit_once_term` (named)
+   in domain/range; `mem`/`=` guards elsewhere. The investigation's
+   false trails, kept as method lessons: toys pass in EVERY encoding
+   (closure identity only bites when proof-side mirroring is needed);
+   "nested folds", "tuple binders" (TupRepro1-10 ladder), "guard
+   depth 4" (flattening alone did not fix it) were all plausible
+   correlates refuted by controlled experiments. PROOF-FRIENDLY
+   GUARD RULE for new engine rules: no anonymous closures in step
+   guards or inner folds — define a named top-level (partially
+   applied) helper; proofs mirror the named application. Remaining
+   band to convert: prp-inv, eq-trans, eq-rep-s/o/p, scm-eqp2
+   (task #36).
+
+4. **Spec-side predicate families can be WIDER than the engine's
+   finite slice, making "licensed implies P" false even when every
+   actual emission satisfies P.** `is_rdf_member_iri` admits
+   `rdf:_<any string>` — including separators — while the engine only
+   folds `rdf:_1..rdf:_5`. Property provenance for such rules must
+   argue from the ENGINE fold (verbatim-lambda + fold_left_inv over
+   the concrete list), not from the licensing predicate
+   (RDF.Entailment.RDFS.ChainWf's container-membership case).
 
 ## Syntax traps (memorize these)
 
@@ -277,6 +377,30 @@ suites never catch these until a consumer feeds them the right input.
    run-slicing over char-accumulators for string building; when an
    accumulator is unavoidable, unit-test exact output strings
    (`tests/unit/json_escape_unit.ml` pattern).
+
+5. **F-star proves TERMINATION, not STACK DEPTH.** A `Tot` function
+   that recurses down a list verifies with a clean `decreases` and
+   then dies on a large input, because the extracted OCaml still
+   grows one stack frame per element. Added 2026-08-02:
+   `RDFS.Closure.SemiNaive.sorted_diff` was written as
+   `n :: sorted_diff ns older`, passed every W3C suite and every
+   synthetic benchmark shape, and then produced
+
+       Fatal error: exception Stack overflow
+       Called from RDFS_Closure_SemiNaive.sorted_diff
+
+   on QUDT, whose closure is 508,139 triples. Nothing in the
+   verification says a word about stack.
+
+   Rule: in any function that can see a whole graph, the recursive
+   call must be in TAIL position after extraction. `List.Tot.fold_left`
+   and `rev_acc` are tail-recursive; **`List.Tot.append` is not**, so
+   `rev acc @ rest` reintroduces the same bug the accumulator removed —
+   write `List.Tot.rev_acc acc rest`.
+
+   Detection: the W3C suites and small synthetic shapes are all far
+   too small to trigger this. It takes a real six-figure-triple input,
+   which is why `tools/bench-closure.sh` carries one.
 
 Detection heuristic: any F-star module whose OUTPUT is consumed by a
 strict external parser (JSON.parse, a SPARQL client, a W3C fixture

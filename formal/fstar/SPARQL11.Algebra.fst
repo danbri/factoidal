@@ -2865,10 +2865,16 @@ let eval_bgp (patterns : bgp) (g : rdf_graph) : solution_sequence =
 (** to the original nested loop untouched — a hash key would not narrow    **)
 (** anything there anyway.                                                 **)
 (**                                                                         **)
-(** Correctness: the key (`sm_join_key`, canonical `nq_term_to_string`      **)
-(** serialization per bound variable, RDF.NQuads.Serialize — already        **)
-(** trusted for N-Quads output, so injective on well-formed terms) is used  **)
-(** ONLY to narrow candidates; `join_candidates` always returns a SUPERSET  **)
+(** Correctness: the key (`sm_join_key`) serialises the JOIN-CANONICAL     **)
+(** form of each bound term -- `RDF.Term.join_canon_term`, which folds     **)
+(** exactly what `rdf_term_eq` folds (language-tag case, XMLLiteral        **)
+(** exclusive-canonical form). `lemma_join_canon_term_eq` PROVES that      **)
+(** compatible terms serialise to identical keys; the previous key used    **)
+(** raw `nq_term_to_string` and this paragraph merely asserted the         **)
+(** superset property, which issue #337 refuted with a machine-checked     **)
+(** witness ("x"@en vs "x"@EN: compatible, different buckets, OPTIONAL     **)
+(** returned an UNBOUND row for a matching pattern). The key is used       **)
+(** ONLY to narrow candidates; `join_candidates` always returns a SUPERSET **)
 (** of the true matches (wildcard rows — missing one of the chosen key      **)
 (** variables — are always included; a probe row missing a key variable    **)
 (** conservatively pulls every keyed row too), so a hash-key collision or   **)
@@ -2903,7 +2909,9 @@ let rec sm_join_key (vars : list var_name) (mu : solution_mapping) : option stri
   | [] -> Some ""
   | v :: rest ->
     (match sm_lookup v mu, sm_join_key rest mu with
-     | Some t, Some rest_key -> Some (nq_term_to_string t ^ RDF.Indexed.unit_sep ^ rest_key)
+     | Some t, Some rest_key ->
+       // #337: serialise the join-canonical form, never the raw term.
+       Some (nq_term_to_string (join_canon_term t) ^ RDF.Indexed.unit_sep ^ rest_key)
      | _, _ -> None)
 
 (* One side of a hash join, indexed by [vars]: rows whose full key is
@@ -3697,6 +3705,64 @@ let left_join (base : option wf_iri) (omega1 omega2 : solution_sequence) (filter
             candidates in
           if List.Tot.length joins > 0 then joins else [mu1])
         omega1
+
+// Does [e] contain an EXISTS / NOT EXISTS anywhere? Decides whether a
+// backend filter needs the materialise-and-substitute path
+// (`filter_solutions_with_graph` / `left_join_with_graph`) or can stay
+// on the graph-free fast path. Total over every constructor ON
+// PURPOSE -- no catch-all -- so adding an expr constructor forces a
+// decision here; a missed composite arm would silently send
+// existential filters back to eval_expr_ebv's ER_Error catch-all,
+// which is the every-row-dropped bug this predicate exists to close
+// (found from the npm build 2026-08-02; W3C exists01 reproduced it on
+// the native CLI, whose queries run through the backend path the W3C
+// runner never uses).
+let rec expr_has_existential (e : expr) : Tot bool (decreases e) =
+  match e with
+  | E_Exists _ | E_NotExists _ -> true
+  | E_Var _ | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
+  | E_DecimalLit _ | E_DoubleLit _ | E_Bound _ | E_Now -> false
+  | E_Arith _ e1 e2 | E_Compare _ e1 e2 | E_And e1 e2 | E_Or e1 e2
+  | E_StrDt e1 e2 | E_StrLang e1 e2
+  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
+  | E_StrBefore e1 e2 | E_StrAfter e1 e2
+  | E_SameTerm e1 e2 ->
+    expr_has_existential e1 || expr_has_existential e2
+  | E_UnaryMinus e1 | E_UnaryPlus e1 | E_Not e1
+  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1
+  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1
+  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1
+  | E_StrLen e1 | E_UCase e1 | E_LCase e1 | E_EncodeForUri e1
+  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1
+  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1
+  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
+  | E_Seconds e1 | E_Timezone e1 | E_Tz e1
+  | E_Aggregate _ _ e1
+  | E_TTSubject e1 | E_TTPredicate e1 | E_TTObject e1 | E_IsTriple e1 ->
+    expr_has_existential e1
+  | E_StrLangDir e1 e2 e3 | E_If e1 e2 e3 | E_TripleTerm e1 e2 e3 ->
+    expr_has_existential e1 || expr_has_existential e2 ||
+    expr_has_existential e3
+  | E_Coalesce es | E_Concat es | E_FunctionCall _ es ->
+    expr_list_has_existential es
+  | E_In e1 es | E_NotIn e1 es ->
+    expr_has_existential e1 || expr_list_has_existential es
+  | E_Substr e1 e2 e3o | E_Regex e1 e2 e3o ->
+    expr_has_existential e1 || expr_has_existential e2 ||
+    expr_opt_has_existential e3o
+  | E_Replace e1 e2 e3 e4o ->
+    expr_has_existential e1 || expr_has_existential e2 ||
+    expr_has_existential e3 || expr_opt_has_existential e4o
+
+and expr_list_has_existential (es : list expr) : Tot bool (decreases es) =
+  match es with
+  | [] -> false
+  | e :: rest -> expr_has_existential e || expr_list_has_existential rest
+
+and expr_opt_has_existential (eo : option expr) : Tot bool (decreases eo) =
+  match eo with
+  | None -> false
+  | Some e -> expr_has_existential e
 
 (* Filter: retain solutions where expression evaluates to true *)
 let filter_solutions_fwd (base : option wf_iri) (e : expr) (omega : solution_sequence) : solution_sequence =
@@ -5610,11 +5676,32 @@ let sort_solutions (base : option wf_iri) (conds : list order_condition) (omega 
 (** 11.2 DISTINCT / REDUCED (§18.4) **)
 
 (* Solution mapping equality: compare bindings pairwise using rdf_term_eq *)
-let rec sm_equal (m1 m2 : solution_mapping) : bool =
-  match m1, m2 with
-  | [], [] -> true
-  | (v1, t1) :: r1, (v2, t2) :: r2 -> v1 = v2 && rdf_term_eq t1 t2 && sm_equal r1 r2
-  | _, _ -> false
+// #336 (SR-1): a solution mapping is a PARTIAL FUNCTION (section 18.3);
+// binding order carries no meaning. The original sm_equal compared the
+// association lists position by position, so the two arms of a UNION --
+// which build the same mapping in different variable order -- looked
+// like different rows to DISTINCT, and Card[Distinct(Omega)][mu] = 1
+// (section 18.5) failed on a machine-checked witness
+// (SPARQL11.Algebra.Refinement, finding SR-1). Now: mutual submap.
+//
+// The term comparator stays rdf_term_eq ON PURPOSE. The Spec module's
+// smap_eqb compares terms by IDENTITY (term_id_eqb); rdf_term_eq folds
+// language-tag case and XMLLiteral canonical form. Which of the two is
+// RDF 1.1 term equality is exactly the #324 dispute, and DISTINCT
+// should not settle it as a side effect: keeping rdf_term_eq means this
+// change strictly REMOVES duplicate rows relative to the shipping
+// behaviour and never adds one. When #324 retires one equality, this
+// comparator follows it.
+let rec sm_submap (m1 m2 : solution_mapping) : Tot bool (decreases m1) =
+  match m1 with
+  | [] -> true
+  | (v, t) :: r ->
+    (match sm_lookup v m2 with
+     | Some t2 -> rdf_term_eq t t2 && sm_submap r m2
+     | None -> false)
+
+let sm_equal (m1 m2 : solution_mapping) : bool =
+  sm_submap m1 m2 && sm_submap m2 m1
 
 (* Remove duplicate solution mappings using sm_equal *)
 let rec sm_mem (mu : solution_mapping) (l : list solution_mapping)
@@ -6949,18 +7036,112 @@ let rec lemma_filter_mem (#a:eqtype) (f : a -> bool) (x : a) (l : list a) :
 (** 19.8 BIND does not affect existing variables **)
 (* Proven in RDF.Graph.Executable as lemma_bind_preserves_existing *)
 
-(** 19.9 sm_compatible is reflexive — PROOF DEFERRED (noeq types) **)
-let lemma_sm_compatible_refl (mu : solution_mapping) :
-  Lemma (sm_compatible mu mu = true) =
-  admit ()
+(** 19.9 sm_compatible is reflexive on well-formed mappings — PROVED **)
+(* The former statement here was `sm_compatible mu mu = true` for EVERY
+   mu, admitted with the note "PROOF DEFERRED (noeq types)". Two
+   corrections, 2026-07-30 (#323):
+     1. noeq was never the obstacle. `rdf_term` is noeq, so `=` and
+        List.Tot.mem are unavailable on solution mappings, but
+        `rdf_term_eq` is the structural equality that replaces them and
+        RDF.Term.fsti proves it reflexive (lemma_rdf_term_eq_refl).
+     2. The unconditional statement is FALSE, not merely unproved — see
+        lemma_sm_compatible_not_refl_with_dup_keys below, which proves
+        the refutation. A solution mapping is a partial FUNCTION from
+        variable to term, but the association-list representation admits
+        a repeated key, and List.Tot.assoc resolves a repeat by taking
+        the FIRST binding. For mu = [("x",b1); ("x",b2)] the second entry
+        is compared against the first entry's term and fails.
+   The hypothesis below (no repeated variable in the domain) is the
+   well-formedness invariant the constructors maintain:
+   sm_bind_if_compatible never appends a second binding for a variable,
+   and sm_merge_aux inserts only keys absent from its accumulator. *)
 
-(** 19.10 sm_merge with empty — PROVED **)
+(* Absent from the domain implies no binding. *)
+let rec lemma_assoc_none_of_domain (v : string) (mu : solution_mapping) :
+  Lemma (requires (not (List.Tot.mem v (sm_domain mu))))
+        (ensures None? (List.Tot.assoc v mu)) =
+  match mu with
+  | [] -> ()
+  | (_, _) :: tl -> lemma_assoc_none_of_domain v tl
+
+(* A binding for a variable that mu1 does not mention is invisible to
+   sm_compatible: every lookup sm_compatible performs is keyed by a
+   variable of mu1, and none of those is `v`. *)
+let rec lemma_sm_compatible_extra_binding
+  (mu1 mu2 : solution_mapping) (v : string) (t : rdf_term) :
+  Lemma (requires None? (List.Tot.assoc v mu1))
+        (ensures sm_compatible mu1 ((v, t) :: mu2) == sm_compatible mu1 mu2) =
+  match mu1 with
+  | [] -> ()
+  | (_, _) :: tl -> lemma_sm_compatible_extra_binding tl mu2 v t
+
+let rec lemma_sm_compatible_refl (mu : solution_mapping) :
+  Lemma (requires List.Tot.noRepeats (sm_domain mu))
+        (ensures sm_compatible mu mu = true) =
+  match mu with
+  | [] -> ()
+  | (v, t) :: rest ->
+    lemma_rdf_term_eq_refl t;
+    lemma_assoc_none_of_domain v rest;
+    lemma_sm_compatible_extra_binding rest rest v t;
+    lemma_sm_compatible_refl rest
+
+(* The refutation of the unconditional statement, as a theorem rather
+   than a comment: with a repeated key, self-compatibility fails. *)
+let lemma_sm_compatible_not_refl_with_dup_keys ()
+  : Lemma (exists (mu : solution_mapping). sm_compatible mu mu == false) =
+  let mu : solution_mapping = [("x", T_BNode "b1"); ("x", T_BNode "b2")] in
+  assert_norm (sm_compatible mu mu == false)
+
+(** 19.10 sm_merge with empty — PROVED (both sides; _l restated, #323) **)
 let lemma_sm_merge_empty_r (mu : solution_mapping) :
   Lemma (sm_merge mu [] == mu) = ()
 
+(* sm_merge_aux recurses on its SECOND argument, prepending each accepted
+   binding to the accumulator, so `sm_merge [] mu` REVERSES mu (and drops
+   a repeated key). The former statement `sm_merge [] mu == mu` is
+   therefore FALSE for every mu holding two distinct variables — proved
+   below in lemma_sm_merge_empty_l_not_structural_identity. It was
+   admitted under a section header reading "PROVED".
+   The true law is the one the algebra actually needs: merging into the
+   empty mapping is the identity ON THE MAPPING — same domain, same term
+   for every variable. List order carries no meaning for a solution
+   mapping (§18.6 treats it as a partial function; only a
+   solution_SEQUENCE has order). Stated over sm_lookup, it holds
+   unconditionally — no no-duplicate-keys hypothesis needed, because
+   sm_merge_aux keeps the first binding for a key and assoc reads the
+   first binding for a key. *)
+let rec lemma_sm_merge_aux_lookup (acc mu : solution_mapping) (v : string) :
+  Lemma (ensures List.Tot.assoc v (sm_merge_aux acc mu) ==
+                 (match List.Tot.assoc v acc with
+                  | Some t -> Some t
+                  | None -> List.Tot.assoc v mu))
+        (decreases mu) =
+  match mu with
+  | [] -> ()
+  | (w, s) :: rest ->
+    if Some? (List.Tot.assoc w acc)
+    then lemma_sm_merge_aux_lookup acc rest v
+    else lemma_sm_merge_aux_lookup ((w, s) :: acc) rest v
+
 let lemma_sm_merge_empty_l (mu : solution_mapping) :
-  Lemma (sm_merge [] mu == mu) =
-  admit ()
+  Lemma (forall (v : string). sm_lookup v (sm_merge [] mu) == sm_lookup v mu) =
+  let aux (v : string)
+    : Lemma (sm_lookup v (sm_merge [] mu) == sm_lookup v mu) =
+    lemma_sm_merge_aux_lookup [] mu v;
+    Lh.lemma_assoc_tr_eq v (sm_merge [] mu);
+    Lh.lemma_assoc_tr_eq v mu
+  in
+  FStar.Classical.forall_intro aux
+
+(* The refutation of the former statement, as a theorem. *)
+let lemma_sm_merge_empty_l_not_structural_identity ()
+  : Lemma (exists (mu : solution_mapping). sm_merge [] mu =!= mu) =
+  let a : rdf_term = T_BNode "b1" in
+  let b : rdf_term = T_BNode "b2" in
+  let mu : solution_mapping = [("x", a); ("y", b)] in
+  assert_norm (sm_merge [] mu == [("y", b); ("x", a)]);
+  assert_norm (([("y", b); ("x", a)] <: solution_mapping) =!= mu)
 
 (** 19.11 domains_disjoint with empty — PROVED **)
 let lemma_domains_disjoint_empty_l (mu : solution_mapping) :
@@ -7006,10 +7187,19 @@ let lemma_join_empty_r (omega1 : solution_sequence) :
   ()
 
 (** 19.18 Minus with empty right operand is identity — PROVED **)
-let lemma_minus_empty_r (omega : solution_sequence) :
+(* Recovered 2026-07-30 (#323) after the = → == migration broke the
+   previous proof and it was patched with an admission. `minus omega []`
+   is `List.Tot.filter p omega` where p reduces to `not (existsb _ [])`
+   = true, so under `=` the whole thing decided by computation. Under
+   `==` the filter has to be walked: one induction step per element,
+   each discharging `filter p (hd :: tl) == hd :: filter p tl` by a
+   single unfold. 19.15's lemma_filter_true does not apply — it is fixed
+   to the literal predicate `fun _ -> true`, not to minus's lambda. *)
+let rec lemma_minus_empty_r (omega : solution_sequence) :
   Lemma (minus omega [] == omega) =
-  (* TODO: proof needs rework after = → == migration (was previously proved) *)
-  admit ()
+  match omega with
+  | [] -> ()
+  | _ :: tl -> lemma_minus_empty_r tl
 
 (** 19.19 Union length (commutativity as multisets) — PROVED **)
 let lemma_union_length (o1 o2 : solution_sequence) :

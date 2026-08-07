@@ -22,13 +22,22 @@ Commit messages in this repository must not contain:
 Commit messages describe the change: what it does, measured results,
 spec references, issue links. Nothing about who or what typed it.
 
-## What this does NOT change
+## Identity fields (updated 2026-07-29)
 
-- The git author/committer identity currently used for automated
-  commits (`Claude <noreply@anthropic.com>`) stays as-is — it is
-  repository metadata, not commit-message content, and changing it to
-  a human identity would misattribute authorship. If the owner wants
-  a different identity, that is a separate decision.
+Owner directive (2026-07-29, verbatim: "we don't gpg nor credit ai
+tools with code authorship" and, on the identity field specifically,
+"It is my repo"): the git author/committer identity for commits made
+by Claude sessions is the OWNER's identity, `Dan Brickley
+<danbri@danbri.org>` — the no-AI-credit rule covers the metadata
+fields, not just the message body. This supersedes this file's
+earlier "identity stays `Claude <noreply@anthropic.com>`" paragraph.
+Set it repo-local in every session/worktree that commits:
+`git config user.name "Dan Brickley" && git config user.email
+danbri@danbri.org`. Subagent briefs that authorize commits must
+include this alongside the message rule. Consequences accepted by
+the owner: no GPG/SSH signing (commits show unsigned), and
+harness stop-hooks that expect `noreply@anthropic.com` will nag —
+ignore that nag; this policy wins.
 - PR descriptions follow the same spirit: describe the diff, skip
   the attribution footer.
 - CHANGELOG/docs prose is unaffected; this policy is about commits.

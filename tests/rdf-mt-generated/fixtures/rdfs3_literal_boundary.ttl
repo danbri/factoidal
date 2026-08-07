@@ -1,0 +1,5 @@
+@prefix ex: <http://example.org/rdfs3/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:p rdfs:range ex:C .
+ex:x1 ex:p ex:y1 .
+ex:x2 ex:p "literal value" .

@@ -208,3 +208,48 @@ let rec fs_codepoints_of_string_aux (s : string) (slen : nat) (pos : nat)
 val fs_codepoints_of_string : string -> list char
 let fs_codepoints_of_string s =
   fs_codepoints_of_string_aux s (fs_byte_length s) 0 []
+
+// ---------------------------------------------------------------------------
+// UTF-8-encode ONE codepoint (#325).
+//
+// The counterpart to fs_byte_sub: use fs_byte_sub when you hold BYTES and
+// want them out unchanged, and this when you hold a CODEPOINT (from a
+// \uXXXX / \UXXXXXXXX escape, or a numeric character reference) and want
+// its UTF-8 encoding. Mixing the two up is the bug behind issue #325, and
+// it is worth stating the whole hazard in one place:
+//
+//   FStar.String.string_of_list extracts to
+//     BatUTF8.init (length l) (fun i -> BatUChar.chr (List.at l i))
+//   i.e. it RE-ENCODES every list element as a UTF-8 codepoint. Push a
+//   RAW BYTE 0xE6 into that list and two bytes 0xC3 0xA6 come back out.
+//   So a parser that walks bytes with fs_byte_index, accumulates them in
+//   a `list char`, and finishes with string_of_list silently rewrites all
+//   its non-ASCII input as UTF-8-read-as-Latin-1: <.../日本語> parsed to
+//   <.../æ¥æ¬èª>. On a ONE-element list, though, string_of_list is
+//   exactly "encode this codepoint", which is what escapes need.
+//
+//   FStar.String.string_of_char is the mirror-image trap: it extracts to
+//   BatString.of_char (Char.chr c), which is byte-oriented — correct for
+//   passing a byte through, and it RAISES for anything above U+00FF, so
+//   it must never be handed a codepoint.
+//
+// Rule of thumb for any parser in this tree: raw bytes leave through
+// fs_byte_sub, codepoints leave through fs_utf8_of_codepoint, and the two
+// never share an accumulator.
+//
+// The codepoint clamp mirrors Parser.NTriples.safe_char_of_int (invalid
+// values become U+FFFD) and routes U+D7FF through unsafe_char_of_d7ff to
+// dodge FStar.Char.char_of_int's off-by-one precondition, as documented
+// above. It is restated here rather than imported because this module sits
+// below Parser.NTriples in the dependency graph.
+// ---------------------------------------------------------------------------
+let fs_utf8_of_codepoint (cp: int) : string =
+  let c : FStar.Char.char =
+    if cp = 0xD7FF then unsafe_char_of_d7ff cp
+    else if cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF)) then
+      let n : nat = cp in
+      FStar.Char.char_of_int n
+    else
+      FStar.Char.char_of_int 0xFFFD
+  in
+  FStar.String.string_of_list [c]

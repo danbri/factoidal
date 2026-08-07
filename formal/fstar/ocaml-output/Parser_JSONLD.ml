@@ -1236,7 +1236,9 @@ let parse_jsonld (input : Prims.string)
             JSONLD_Context.ac_original_base =
               (JSONLD_Context.empty_active_context.JSONLD_Context.ac_original_base);
             JSONLD_Context.ac_suppress_pop =
-              (JSONLD_Context.empty_active_context.JSONLD_Context.ac_suppress_pop)
+              (JSONLD_Context.empty_active_context.JSONLD_Context.ac_suppress_pop);
+            JSONLD_Context.ac_frame_expansion =
+              (JSONLD_Context.empty_active_context.JSONLD_Context.ac_frame_expansion)
           } in
         let ac0_opt =
           match expand_context with
@@ -1257,7 +1259,8 @@ let parse_jsonld (input : Prims.string)
 let expand_document (input : Prims.string)
   (base : Prims.string FStar_Pervasives_Native.option)
   (expand_context : Prims.string FStar_Pervasives_Native.option)
-  (processing_mode : Prims.string FStar_Pervasives_Native.option) :
+  (processing_mode : Prims.string FStar_Pervasives_Native.option)
+  (frame_expansion : Prims.bool) :
   Parser_JSON.json_val FStar_Pervasives_Native.option=
   let mode10 =
     match processing_mode with
@@ -1285,7 +1288,8 @@ let expand_document (input : Prims.string)
           JSONLD_Context.ac_original_base =
             (JSONLD_Context.empty_active_context.JSONLD_Context.ac_original_base);
           JSONLD_Context.ac_suppress_pop =
-            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_suppress_pop)
+            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_suppress_pop);
+          JSONLD_Context.ac_frame_expansion = frame_expansion
         } in
       let ac0_opt =
         match expand_context with

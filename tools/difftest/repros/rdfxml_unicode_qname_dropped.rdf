@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Differential-testing finding (issue #317), FIXED in issue #325: an
+  RDF/XML property element whose local name is non-ASCII (here, Japanese)
+  caused Factoidal's RDF/XML parser to silently return ZERO triples and
+  exit code 0, printing no error. pyoxigraph and rdflib both parse this
+  file and produce the expected single triple. Repro:
+
+    bin/linux-x86_64/factoidal count tools/difftest/repros/rdfxml_unicode_qname_dropped.rdf
+    # before #325: "... : 0 triples", which is wrong; should be 1
+    # python3 -c "import pyoxigraph as ox; print(list(ox.parse(path='...', format=ox.RdfFormat.RDF_XML)))"
+    #   yields 1 quad, as expected
+
+  Root cause: Parser.XML.is_name_char is a BYTE test over a UTF-8 stream
+  and accepted only lead bytes (0xC0 and above), rejecting continuation
+  bytes (0x80 to 0xBF). The Name scan therefore stopped INSIDE the first
+  non-ASCII codepoint, the element failed to parse, and the failure
+  propagated to the document root.
+
+  This comment was rewritten on 2026-07-30. The original contained
+  double-hyphen sequences, which XML 1.0 section 2.5 forbids anywhere
+  inside a comment, so the fixture was not well-formed XML and Factoidal
+  correctly rejected it for that SECOND, independent reason. pyoxigraph
+  and rdflib are lenient about it and so did not surface the fixture
+  defect. Keep this file free of double hyphens.
+
+  See docs/designissues/2026-07-29-differential-testing-ledger.md,
+  finding 1, and its resolution section.
+-->
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:ex="http://example.org/onto#">
+  <rdf:Description rdf:about="http://example.org/s">
+    <ex:日本語 rdf:datatype="http://www.w3.org/2001/XMLSchema#double">1.0E-300</ex:日本語>
+  </rdf:Description>
+</rdf:RDF>

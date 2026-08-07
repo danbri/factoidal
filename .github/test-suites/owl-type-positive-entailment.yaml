@@ -47,3 +47,4 @@ triggers:
 remaining:
   - "functional-syntax-only premises outside Parser_OWLFunctional's narrow subset are skipped, not scored"
   - "the PE-via-refutation fallback (Tableau_Refute.negate_conclusion) only handles conclusion forms it can faithfully negate; every other miss stays a closure-miss FAIL"
+  - "13 residual fails (2026-07-29, 191 pass, 13 fail out of 204): 9 are OWL Full entailments the catalog itself denies are OWL DL, 4 are the range-iff / extensional-symmetric families. I5.8-004 and I5.8-010 were closed by the 2026-07-29 XSD value-space decision procedure (docs/designissues/2026-07-29-xsd-value-space-decision-procedure.md)"

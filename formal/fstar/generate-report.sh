@@ -1098,6 +1098,156 @@ emit_json_suites () {
   done <<<"$blob"
 }
 
+# --- Harness diagnostics (#316) ----------------------------------------------
+# w3c_runner prints, after each mode's score table, one machine-readable
+# line per suite plus a total:
+#
+#   HARNESS-DIAG <suite> budget_exceeded:N gsp_seed:N no_manifest:N \
+#                        zero_tests:N skip:N unsupported:N
+#   HARNESS-DIAG-TOTAL budget_exceeded:N ... discovered_tests:N
+#
+# These are the harness's escape branches — every place a test can leave
+# the plain "run it and compare it" path. Publishing them means a rising
+# escape rate shows on the dashboard instead of only in a stderr log.
+# `budget_exceeded` is the one that used to be able to produce a PASS on
+# the lenient bnode-collapsing comparator; since #316 it scores FAIL, so
+# a nonzero count here is a real defect signal, not a curiosity.
+#
+# An older runner binary prints no such lines; that mode then reports
+# `"measured": false` rather than a fabricated set of zeros.
+diag_field () {  # diag_field <line> <field>
+  echo "$1" | sed -nE "s/.*[[:space:]]$2:([0-9]+).*/\1/p"
+}
+
+emit_json_harness_one () {  # emit_json_harness_one <key> <log>
+  local key="$1" log="$2"
+  local total_line rows first=1
+  total_line=$(grep -h '^HARNESS-DIAG-TOTAL ' "$log" 2>/dev/null | tail -1 || true)
+  if [ -z "$total_line" ]; then
+    printf '    "%s": {"measured": false}' "$key"
+    return
+  fi
+  printf '    "%s": {"measured": true, "totals": {' "$key"
+  printf '"budget_exceeded":%s,"gsp_seed":%s,"no_manifest":%s,"zero_tests":%s,"skip":%s,"unsupported":%s,"discovered_tests":%s}' \
+    "$(diag_field "$total_line" budget_exceeded)" \
+    "$(diag_field "$total_line" gsp_seed)" \
+    "$(diag_field "$total_line" no_manifest)" \
+    "$(diag_field "$total_line" zero_tests)" \
+    "$(diag_field "$total_line" skip)" \
+    "$(diag_field "$total_line" unsupported)" \
+    "$(diag_field "$total_line" discovered_tests)"
+  printf ', "suites": ['
+  rows=$(grep -h '^HARNESS-DIAG ' "$log" 2>/dev/null || true)
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    local nm
+    nm=$(echo "$line" | awk '{print $2}')
+    [ "$first" -eq 0 ] && printf ','
+    first=0
+    printf '{"name":"%s","budget_exceeded":%s,"gsp_seed":%s,"no_manifest":%s,"zero_tests":%s,"skip":%s,"unsupported":%s}' \
+      "$nm" \
+      "$(diag_field "$line" budget_exceeded)" \
+      "$(diag_field "$line" gsp_seed)" \
+      "$(diag_field "$line" no_manifest)" \
+      "$(diag_field "$line" zero_tests)" \
+      "$(diag_field "$line" skip)" \
+      "$(diag_field "$line" unsupported)"
+  done <<<"$rows"
+  printf ']}'
+}
+
+# OWL catalogs report a different escape: the per-test SIGALRM closure cap.
+# A cap-trip abandons the closure and scores the test on a LESS-closed
+# graph. That direction is not uniformly safe — a ConsistencyTest on a
+# truncated closure finds no contradiction and therefore PASSES — so the
+# per-catalog count and the affected test names are published rather than
+# left in stderr. Scores are unchanged by this reporting.
+OWL_DIAG_LOGS=(
+  "profile_rl:$OWL_LOG"
+  "type_positive_entailment:$OWL_TPE_LOG"
+  "type_negative_entailment:$OWL_TNE_LOG"
+  "type_consistency:$OWL_TCON_LOG"
+  "type_inconsistency:$OWL_TINC_LOG"
+  "profile_el:$OWL_EL_LOG"
+  "profile_ql:$OWL_QL_LOG"
+  "semantics_direct:$OWL_SEMDL_LOG"
+)
+
+emit_json_harness_owl () {
+  local first=1 ent key log line
+  printf '    "owl_catalogs": {'
+  for ent in "${OWL_DIAG_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    line=$(grep -h '^HARNESS-DIAG-OWL ' "$log" 2>/dev/null | tail -1 || true)
+    [ "$first" -eq 0 ] && printf ','
+    first=0
+    if [ -z "$line" ]; then
+      printf '"%s":{"measured":false}' "$key"
+      continue
+    fi
+    local names unsup_names
+    names=$(grep -h '^HARNESS-DIAG-OWL-TEST ' "$log" 2>/dev/null \
+            | awk '{print "\""$2"\""}' | paste -sd, - || true)
+    # #326: the absence-shaped verdicts (Consistency / NegativeEntailment)
+    # that a budget escape moved OFF pass, named.
+    unsup_names=$(grep -h '^HARNESS-DIAG-OWL-UNSUPPORTED ' "$log" 2>/dev/null \
+            | awk '{print "\""$2"\""}' | paste -sd, - || true)
+    printf '"%s":{"measured":true,"degraded_closure_marked":%s,"degraded_closure_silent":%s,"marker_scan_escapes":%s,"refuter_escapes":%s,"pe_refuter_escapes":%s,"refuter_indeterminate":%s,"tests_on_degraded_closure":%s,"tests_unsupported_cap_escape":%s,"tests_unsupported_refuter_indeterminate":%s,"tests":[%s],"unsupported_tests":[%s]}' \
+      "$key" \
+      "$(diag_field "$line" degraded_closure_marked)" \
+      "$(diag_field "$line" degraded_closure_silent)" \
+      "$(diag_field "$line" marker_scan_escapes)" \
+      "$(diag_field "$line" refuter_escapes)" \
+      "$(diag_field "$line" pe_refuter_escapes)" \
+      "$(diag_field "$line" refuter_indeterminate)" \
+      "$(diag_field "$line" tests_on_degraded_closure)" \
+      "$(diag_field "$line" tests_unsupported_cap_escape)" \
+      "$(diag_field "$line" tests_unsupported_refuter_indeterminate)" \
+      "$names" \
+      "$unsup_names"
+  done
+  printf '}'
+}
+
+# Consumer-runner LOCAL OVERRIDES (#316). tests/local-overrides/ lets a
+# runner reclassify a carefully-disputed upstream fixture from MISMATCH
+# to its own bucket, with the dispute written up in the override file.
+# The runners count that bucket correctly; the dashboard used to fold it
+# into `skip`, so a reader saw "1 skip" and never learned an upstream
+# expectation had been overridden. Counted and named here instead.
+OVERRIDE_LOGS=(
+  "shex:$SHEX_LOG"
+  "rif_core:$RIFCORE_LOG"
+)
+
+override_count () {  # override_count <log>
+  grep -hoE '[0-9]+ local-override' "$1" 2>/dev/null | tail -1 | awk '{print $1}'
+}
+
+override_names () {  # override_names <log>  -> newline-separated test names
+  { grep -hoE '^OVERRIDE [^ ]+' "$1" 2>/dev/null | awk '{print $2}'
+    grep -hoE 'PASS \(local-override\): [^ ]+' "$1" 2>/dev/null | awk '{print $3}'
+  } | sort -u
+}
+
+emit_json_harness_overrides () {
+  local first=1 ent key log cnt names
+  printf '    "local_overrides": {'
+  for ent in "${OVERRIDE_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    [ "$first" -eq 0 ] && printf ','
+    first=0
+    if [ ! -f "$log" ]; then
+      printf '"%s":{"measured":false}' "$key"
+      continue
+    fi
+    cnt=$(override_count "$log"); cnt=${cnt:-0}
+    names=$(override_names "$log" | awk '{print "\""$0"\""}' | paste -sd, -)
+    printf '"%s":{"measured":true,"count":%s,"tests":[%s]}' "$key" "$cnt" "$names"
+  done
+  printf '}'
+}
+
 {
   printf '{\n'
   printf '  "timestamp": "%s",\n' "$TIMESTAMP_HUMAN"
@@ -1295,6 +1445,22 @@ emit_json_suites () {
   emit_json_suite_obj "rml_io"            RML_IO
   emit_json_suite_obj "toan_matrix"       TOAN_MATRIX
   emit_json_suite_obj "xforms"            XFORMS_NPM
+  printf '\n  },\n'
+  # Harness escape counts per w3c_runner mode (#316). Sits alongside
+  # `suites` rather than inside it: these are properties of the HARNESS,
+  # not scores of a specification.
+  printf '  "harness_diagnostics": {\n'
+  emit_json_harness_one "sparql" "$SPARQL_LOG"
+  printf ',\n'
+  emit_json_harness_one "rdf" "$RDF_LOG"
+  for _k in "${EXTRA_KEYS[@]}"; do
+    printf ',\n'
+    emit_json_harness_one "$_k" "${EXTRA_LOG[$_k]}"
+  done
+  printf ',\n'
+  emit_json_harness_owl
+  printf ',\n'
+  emit_json_harness_overrides
   printf '\n  }\n'
   printf '}\n'
 } > "$JSON"
@@ -1588,6 +1754,28 @@ HTML
 SPARQL_FAILURE_DETAIL_HTML=$(emit_failure_detail "$SPARQL_LOG" "sparql" "SPARQL 1.1")
 RDF_FAILURE_DETAIL_HTML=$(emit_failure_detail "$RDF_LOG" "rdf" "RDF 1.1")
 
+# Public conformance pages (one per area, same pattern as the OWL 2 link
+# inside OWL_HTML above). Each page carries the per-suite scores, the
+# regime definitions, EVERY residual with a disposition, and a
+# "proved versus measured" section. Appended to the family footnote so
+# the dashboard row and the narrative page are one click apart.
+# Deliberately carries NO numbers — the row above them is live-scraped,
+# and prose beside a scraped score must never hardcode a count.
+SPARQL_FAILURE_DETAIL_HTML="${SPARQL_FAILURE_DETAIL_HTML}
+<p style=\"margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;\">
+  Every residual in this family is named, explained, and dispositioned on the
+  <a href=\"../web/conformance/sparql/\">SPARQL conformance page</a>, which also
+  says what these suites do NOT test (&sect;18 algebra conformance is not the
+  same as query-result conformance) and separates proved from measured.
+</p>"
+RDF_FAILURE_DETAIL_HTML="${RDF_FAILURE_DETAIL_HTML}
+<p style=\"margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;\">
+  Every residual in this family is named, explained, and dispositioned on the
+  <a href=\"../web/conformance/rdf/\">RDF conformance page</a>, which also defines
+  the entailment regimes (simple / RDF / RDFS / D), says which one each runner
+  dispatches, and separates proved from measured.
+</p>"
+
 # Note: RDFC-1.0 (RDF Dataset Canonicalization) is a SEPARATE W3C
 # corpus (vendored at third_party/testing/rdf-canon/). Earlier
 # versions of this report stitched a synthetic "rdf-canon" row into
@@ -1825,6 +2013,8 @@ OWL_HTML=$(cat <<OWLEOF
   and <code>semantics-direct.rdf</code>. The ninth catalog
   (<code>syntax-dl.rdf</code>) scores through the F\*
   <code>OWL2.SyntaxDL</code> species checker (its row appears above).
+  Every remaining failure is named, explained, and dispositioned on the
+  <a href="../web/conformance/owl2/">OWL 2 conformance page</a>.
 </p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Tableau on the live codepath.</strong> The F\*
@@ -1904,6 +2094,17 @@ if [ -f "$PERF_FRAGMENT" ]; then
   PERF_SECTION_HTML=$(cat "$PERF_FRAGMENT")
 else
   PERF_SECTION_HTML=""
+fi
+
+# --- RDFS / OWL-RL closure benchmark (optional; fail-soft) ------------------
+# Produced by tools/bench-closure.sh. Same contract as the fragment
+# above: included verbatim if present, silently omitted if not, no JSON
+# parsing here.
+CLOSURE_FRAGMENT="$OUTPUT_DIR/closure-bench.fragment.html"
+if [ -f "$CLOSURE_FRAGMENT" ]; then
+  CLOSURE_SECTION_HTML=$(cat "$CLOSURE_FRAGMENT")
+else
+  CLOSURE_SECTION_HTML=""
 fi
 
 [ -n "$GIT_SUBJECT" ] && GIT_SUBJECT_LINE=" — &ldquo;${GIT_SUBJECT}&rdquo;" || GIT_SUBJECT_LINE=""
@@ -2056,6 +2257,79 @@ ${body}
 GRP
 }
 
+# =============================================================================
+# Known defects (XFAIL) — rendered ABOVE the conformance groups.
+#
+# Suite scores answer "does the engine do the right thing on the vendored
+# fixtures". They cannot answer "what do we KNOW is wrong", because a
+# defect no fixture exercises leaves every number green. SR-1 and SR-2
+# both sit under sparql11 at 631 pass, 0 fail. This card carries those
+# claims where a reader meets them first, instead of leaving them in
+# issue threads.
+#
+# Source: tests/known-defects/run.sh -> docs/test-results/by-suite/known-defects.json
+# XFAIL = the defect still reproduces (expected). XPASS = it no longer
+# does, which FAILS that suite on purpose so somebody looks.
+# =============================================================================
+KNOWN_DEFECTS_HTML=""
+KD_JSON="${SCRIPT_DIR}/../../docs/test-results/by-suite/known-defects.json"
+if [ -f "$KD_JSON" ]; then
+  KD_XFAIL=$(sed -n 's/.*"xfail": *\([0-9]*\).*/\1/p' "$KD_JSON" | head -1)
+  KD_XPASS=$(sed -n 's/.*"xpass": *\([0-9]*\).*/\1/p' "$KD_JSON" | head -1)
+  KD_ERR=$(sed -n 's/.*"errors": *\([0-9]*\).*/\1/p' "$KD_JSON" | head -1)
+  KD_TOTAL=$(sed -n 's/.*"total": *\([0-9]*\).*/\1/p' "$KD_JSON" | head -1)
+  KD_ROWS=$(python3 - "$KD_JSON" <<'KDPY'
+import html, json, sys
+data = json.load(open(sys.argv[1]))
+out = []
+for c in data["cases"]:
+    state = c["state"]
+    cls = {"XFAIL": "kd-xfail", "XPASS": "kd-xpass"}.get(state, "kd-error")
+    issue = html.escape(c["issue"])
+    out.append(
+        '<tr class="%s"><td><code>%s</code></td>'
+        '<td><a href="https://github.com/danbri/factoidal/issues/%s">#%s</a></td>'
+        '<td>%s</td><td><strong>%s</strong></td><td>%s</td></tr>'
+        % (cls, html.escape(c["id"]), issue, issue,
+           html.escape(c["title"]), html.escape(state), html.escape(c["detail"])))
+print("\n".join(out))
+KDPY
+)
+  # Page status vocabulary is green/amber/grey (status_for). Green here
+  # means "every known defect is in the state we expect", NOT "no defects"
+  # — the headline and the legend note both say so in words, because a
+  # green badge on a defects card is otherwise easy to misread.
+  KD_OFF=$(( ${KD_XPASS:-0} + ${KD_ERR:-0} ))
+  KD_STATUS=$(status_for "$KD_OFF" 1)
+  KNOWN_DEFECTS_BODY=$(cat <<KDBODY
+  <p>Defects we have found, reproduced and filed, and have <strong>not yet
+  fixed</strong>. Each row is an executable probe run on every build, not a
+  note in a tracker.</p>
+  <p><strong>${KD_XFAIL:-0} still reproduce</strong> (expected),
+  ${KD_XPASS:-0} unexpectedly gone, ${KD_ERR:-0} probe errors
+  (out of ${KD_TOTAL:-0}).</p>
+  <p class="legend-note">Every one of these lives underneath a suite that
+  is green. <code>SR-1</code> and <code>SR-2</code> sit inside SPARQL 1.1 at
+  631 pass, 0 fail — a conformance suite measures the fixtures it ships,
+  and these defects have no fixture. When a row flips to <strong>XPASS</strong>
+  the known-defects suite fails on purpose: either it was fixed and the row
+  should go, or the probe drifted and stopped measuring what it claims.</p>
+  <table class="kd-table">
+    <thead><tr><th>ID</th><th>Issue</th><th>Defect</th><th>State</th><th>Observed</th></tr></thead>
+    <tbody>
+${KD_ROWS}
+    </tbody>
+  </table>
+KDBODY
+)
+  # Meter mapping: XFAIL counts as "pass" because the probe reported the
+  # state we expect; XPASS and ERROR count as "fail" because both demand a
+  # human. That keeps the card's bar comparable with every other card.
+  KNOWN_DEFECTS_HTML=$(family_section "known-defects" "Known defects (found, filed, unfixed)" \
+    "$KD_STATUS" "${KD_XFAIL:-0} known defects reproduce on this build, as expected; ${KD_XPASS:-0} unexpectedly gone; ${KD_ERR:-0} probe errors (out of ${KD_TOTAL:-0})." \
+    "$KNOWN_DEFECTS_BODY" "" "${KD_XFAIL:-0}" "$KD_OFF" "0" "${KD_TOTAL:-0}")
+fi
+
 # --- RDF 1.1 core: syntaxes + semantics --------------------------------------
 # rdf-mt carries the RDFS entailment tests (RDF Schema 1.1 shares the RDF
 # 1.1 Semantics suite). RDFC-1.0 is a separate 2024 Recommendation and
@@ -2074,7 +2348,8 @@ RDFCORE_HTML=$(family_section "rdf-core" "RDF 1.1 core" "$RDFCORE_STATUS" "$RDFC
 # --- RDFC-1.0 (RDF Dataset Canonicalization, W3C Recommendation 2024) -------
 RDFC10FAM_STATUS=$(status_for "$RDFC10_FAIL" 1)
 RDFC10FAM_HEADLINE="${RDFC10_PASS} pass, ${RDFC10_FAIL} fail, ${RDFC10_SKIP} skip (of ${RDFC10_TOTAL}) on the W3C rdf-canon suite."
-RDFC10FAM_HTML=$(family_section "rdfc10" "RDF Dataset Canonicalization (RDFC-1.0)" "$RDFC10FAM_STATUS" "$RDFC10FAM_HEADLINE" "$RDFC10_HTML" "" \
+RDFC10FAM_CROSSREF='<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">Scored alongside the other RDF suites, with its assurance level stated, on the <a href="../web/conformance/rdf/">RDF conformance page</a>.</p>'
+RDFC10FAM_HTML=$(family_section "rdfc10" "RDF Dataset Canonicalization (RDFC-1.0)" "$RDFC10FAM_STATUS" "$RDFC10FAM_HEADLINE" "$RDFC10_HTML" "$RDFC10FAM_CROSSREF" \
   "$RDFC10_PASS" "$RDFC10_FAIL" "$RDFC10_SKIP" "$RDFC10_TOTAL")
 
 # --- SPARQL 1.1 ---------------------------------------------------------
@@ -2096,7 +2371,20 @@ for _k in "${EXTRA_KEYS[@]}"; do
     _rows=$(emit_rec_subsection "${EXTRA_TITLE[$_k]}" "${EXTRA_URL[$_k]}" "${EXTRA_BLOB[$_k]}")
     _st=$(status_for "${EXTRA_FAIL[$_k]}" 1)
     _hl="${EXTRA_PASS[$_k]} pass, ${EXTRA_FAIL[$_k]} fail, ${EXTRA_SKIP[$_k]} skip (of ${EXTRA_TOTAL[$_k]}) — W3C Working Draft, run via w3c_runner ${EXTRA_ARGS[$_k]}."
-    _fam=$(family_section "extra-${_k}" "${EXTRA_TITLE[$_k]}" "$_st" "$_hl" "$_rows" "" \
+    # Conformance-page cross-link, by area. rdf12* -> the RDF page,
+    # sparql12 -> the SPARQL page. Numbers deliberately absent (the row
+    # above is live-scraped; frozen prose beside a scraped score rots).
+    case "$_k" in
+      rdf12*)   _cpath="rdf";    _clabel="RDF" ;;
+      sparql12) _cpath="sparql"; _clabel="SPARQL" ;;
+      *)        _cpath="";       _clabel="" ;;
+    esac
+    if [ -n "$_cpath" ]; then
+      _cnote="<p style=\"margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;\">Residuals for this suite are named and dispositioned on the <a href=\"../web/conformance/${_cpath}/\">${_clabel} conformance page</a>.</p>"
+    else
+      _cnote=""
+    fi
+    _fam=$(family_section "extra-${_k}" "${EXTRA_TITLE[$_k]}" "$_st" "$_hl" "$_rows" "$_cnote" \
       "${EXTRA_PASS[$_k]}" "${EXTRA_FAIL[$_k]}" "${EXTRA_SKIP[$_k]}" "${EXTRA_TOTAL[$_k]}")
     WD_BODY=$(printf '%s\n%s' "$WD_BODY" "$_fam")
   fi
@@ -2391,7 +2679,7 @@ else
 fi
 XMLCONFFAM_BODY=$(
   family_suite_row "XML 1.0 conformance" "$XMLCONF_PASS" "$XMLCONF_FAIL" "$XMLCONF_SKIP" "$XMLCONF_TOTAL" "$XMLCONF_PRESENT" \
-    "Runner: <code>bin/xml-runner</code> (<code>bin/linux-x86_64/xml_runner</code>) &middot; Suite: <code>third_party/testing/xml/xmlconf</code> (OASIS/W3C XML conformance) &middot; skips are DTD-boundary / out-of-XML-1.0-profile fixtures, decomposed in the breakdown below"
+    "Runner: <code>bin/xml-runner</code> (<code>bin/linux-x86_64/xml_runner</code>) &middot; Suite: <code>third_party/testing/xml/xmlconf</code> (OASIS/W3C XML conformance) &middot; skips are DTD-boundary / out-of-XML-1.0-profile fixtures plus the NOT-APPLICABLE fixtures whose own EDITION attribute excludes the 5th edition this parser targets (correct scoping, not a gap) — all decomposed in the breakdown below"
   printf '%s' "$XMLCONF_BREAKDOWN_HTML"
 )
 XMLCONFFAM_HTML=$(family_section "xml10" "XML 1.0" "$XMLCONFFAM_STATUS" "$XMLCONFFAM_HEADLINE" "$XMLCONFFAM_BODY" "" \
@@ -2637,6 +2925,14 @@ GROUP1_BODY=$(printf '%s\n' \
   "$RULES_HTML" "$GRDDL_HTML" "$XSLTFAM_HTML" "$XMLCONFFAM_HTML" "$MATHMLFAM_HTML")
 GROUP1_HTML=$(group_section "group-w3c-rec" "W3C Recommendations" "$GROUP1_BODY")
 
+# Its own top-level group so it reads as a peer of the conformance groups,
+# not as a footnote inside one.
+KNOWN_DEFECTS_GROUP_HTML=""
+if [ -n "$KNOWN_DEFECTS_HTML" ]; then
+  KNOWN_DEFECTS_GROUP_HTML=$(group_section "group-known-defects" \
+    "Known defects — found, filed, not yet fixed" "$KNOWN_DEFECTS_HTML")
+fi
+
 # W3C Working Drafts (emerging next-revision specs) — RDF 1.2 / SPARQL 1.2.
 # Its own group so it is never mistaken for a Recommendation. Empty (and
 # therefore omitted) if the 1.2 runners produced no rows this run.
@@ -2654,6 +2950,143 @@ GROUP3_HTML=$(group_section "group-other-standards" "Other standards (OGC / ISO 
 
 GROUP4_BODY=$(printf '%s\n' "$RUNTIME_HTML" "$ENGINES_HTML")
 GROUP4_HTML=$(group_section "group-internal" "Factoidal internal suites (engine end-to-end, parity, regressions)" "$GROUP4_BODY")
+
+# --- Harness diagnostics card (#316) -----------------------------------------
+# Every escape branch in the W3C harness, per suite, on the page. Before
+# #316 these lived only in stderr, so a growing escape rate was invisible
+# to anyone reading the published numbers. `budget_exceeded` is the one
+# that used to be able to score a test PASS on a bnode-collapsing
+# comparator the runner itself called lenient; it now scores FAIL, so any
+# nonzero count is a defect to chase rather than a footnote.
+build_harness_card () {
+  local rows="" any_escape=0 measured=0
+  local keys=("sparql:$SPARQL_LOG" "rdf:$RDF_LOG")
+  local _k
+  for _k in "${EXTRA_KEYS[@]}"; do keys+=("$_k:${EXTRA_LOG[$_k]}"); done
+  local ent key log line
+  for ent in "${keys[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    line=$(grep -h '^HARNESS-DIAG-TOTAL ' "$log" 2>/dev/null | tail -1 || true)
+    if [ -z "$line" ]; then
+      rows+=$(printf '<tr><td><code>%s</code></td><td colspan="6" class="hd-nm">not measured this run (runner predates #316)</td></tr>' "$key")
+      continue
+    fi
+    measured=1
+    local be gs nm zt sk un dt cls
+    be=$(diag_field "$line" budget_exceeded); gs=$(diag_field "$line" gsp_seed)
+    nm=$(diag_field "$line" no_manifest);     zt=$(diag_field "$line" zero_tests)
+    sk=$(diag_field "$line" skip);            un=$(diag_field "$line" unsupported)
+    dt=$(diag_field "$line" discovered_tests)
+    if [ "${be:-0}" -gt 0 ] || [ "${nm:-0}" -gt 0 ] || [ "${zt:-0}" -gt 0 ]; then
+      any_escape=1; cls="hd-bad"
+    else
+      cls="hd-ok"
+    fi
+    rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
+      "$cls" "$key" "${dt:-0}" "${be:-0}" "${gs:-0}" "${nm:-0}" "${zt:-0}" "$((${sk:-0} + ${un:-0}))")
+  done
+  # OWL catalogs: the closure cap, reported in its own small table
+  # because the escape has a different shape (a degraded computation,
+  # not an undecidable comparison).
+  local owl_rows="" owl_any=0 owl_measured=0
+  for ent in "${OWL_DIAG_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    line=$(grep -h '^HARNESS-DIAG-OWL ' "$log" 2>/dev/null | tail -1 || true)
+    [ -z "$line" ] && continue
+    owl_measured=1
+    local dm ds me re dt un ind names cls2
+    dm=$(diag_field "$line" degraded_closure_marked)
+    ds=$(diag_field "$line" degraded_closure_silent)
+    me=$(diag_field "$line" marker_scan_escapes)
+    re=$(diag_field "$line" refuter_escapes)
+    dt=$(diag_field "$line" tests_on_degraded_closure)
+    # #326: how many absence-shaped verdicts the escapes moved off pass.
+    un=$(diag_field "$line" tests_unsupported_cap_escape)
+    # 2026-07-30: and how many the refuter's own don't-know moved off pass.
+    # Its own column: a budget escape and an undecidable input call for
+    # different work, so folding them into one number would lose that.
+    ind=$(diag_field "$line" tests_unsupported_refuter_indeterminate)
+    names=$(grep -h '^HARNESS-DIAG-OWL-TEST ' "$log" 2>/dev/null \
+            | awk '{print $2}' | paste -sd', ' - || true)
+    if [ "${dt:-0}" -gt 0 ]; then owl_any=1; cls2="hd-bad"; else cls2="hd-ok"; fi
+    owl_rows+=$(printf '<tr class="%s"><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>' \
+      "$cls2" "$key" "${dm:-0}" "${ds:-0}" "${me:-0}" "${re:-0}" "${dt:-0}" "${un:-0}" "${ind:-0}" "${names:-&mdash;}")
+  done
+  local owl_block=""
+  if [ "$owl_measured" -eq 1 ]; then
+    local owl_note
+    if [ "$owl_any" -eq 1 ]; then
+      owl_note='<p class="hd-note hd-bad">Listed tests were scored on reasoning the runner abandoned part-way. Since <a href="https://github.com/danbri/factoidal/issues/326">#326</a> the two kinds that pass on the ABSENCE of a derived fact (ConsistencyTest, NegativeEntailmentTest) score <code>unsupported</code> rather than PASS when that happens — a truncated closure satisfies them trivially, so their pass would have been an artifact of giving up. The other two kinds (PositiveEntailment, Inconsistency) are fail-safe under truncation: a missing derivation shows up as a FAIL.</p>'
+    else
+      owl_note='<p class="hd-note">No cap escapes: every OWL catalog test was scored on reasoning that ran to completion.</p>'
+    fi
+    owl_block=$(cat <<OWLHDEOF
+  <p class="legend-title" style="margin-top:1em">OWL 2 catalogs &mdash; closure cap escapes</p>
+  <p class="legend-note">The OWL runner puts a per-test CPU cap on the RL/DL closure, on the inconsistency-marker scan, and on the clash-seeking tableau, so one hard ontology cannot hang a catalog. On a cap-trip it falls back to a less-closed graph or to "nothing found". <strong>closure</strong> and <strong>silent</strong> count closure-stage escapes (the second column is the catch-all arms, which now log too); <strong>marker</strong> counts abandoned inconsistency-marker scans; <strong>refuter</strong> counts abandoned clash searches; <strong>unsupported (cap-escape)</strong> counts the Consistency / NegativeEntailment verdicts those escapes moved off PASS (<a href="https://github.com/danbri/factoidal/issues/326">#326</a>). <strong>unsupported (indeterminate)</strong> counts the same two kinds moved off PASS for a different reason: the clash-seeking tableau finished inside its budget and returned don't-know, because the calculus cannot decide that input. A cap escape means "ran out of time" and a bigger budget may resolve it; an indeterminate means "our calculus cannot decide this" and no budget will. Either way, "we did not find X" is not published as "X is not there".</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>catalog</th><th>closure</th><th>silent</th><th>marker</th><th>refuter</th><th>tests affected</th><th>unsupported<br>(cap-escape)</th><th>unsupported<br>(indeterminate)</th><th>which</th></tr></thead>
+    <tbody>${owl_rows}</tbody>
+  </table>
+  </div>
+  ${owl_note}
+OWLHDEOF
+)
+  fi
+  # Local overrides: a deliberate, documented disagreement with an
+  # upstream fixture. Legitimate, but it is not a "skip" and the reader
+  # is entitled to see it named.
+  local ov_rows="" ov_any=0
+  for ent in "${OVERRIDE_LOGS[@]}"; do
+    key="${ent%%:*}"; log="${ent#*:}"
+    [ -f "$log" ] || continue
+    local cnt names
+    cnt=$(override_count "$log"); cnt=${cnt:-0}
+    [ "$cnt" -eq 0 ] && continue
+    ov_any=1
+    names=$(override_names "$log" | paste -sd', ' -)
+    ov_rows+=$(printf '<tr class="hd-bad"><td><code>%s</code></td><td>%s</td><td>%s</td></tr>' \
+      "$key" "$cnt" "${names:-&mdash;}")
+  done
+  local ov_block=""
+  if [ "$ov_any" -eq 1 ]; then
+    ov_block=$(cat <<OVEOF
+  <p class="legend-title" style="margin-top:1em">Local overrides of upstream fixtures</p>
+  <p class="legend-note">A fixture whose upstream expectation we dispute in writing, under <code>tests/local-overrides/</code>. The runner scores it in its own bucket rather than as a pass or a fail. Listed here because folding it into &ldquo;skip&rdquo; hid a deliberate disagreement with the spec suite.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>suite</th><th>overrides</th><th>which</th></tr></thead>
+    <tbody>${ov_rows}</tbody>
+  </table>
+  </div>
+OVEOF
+)
+  fi
+  local verdict
+  if [ "$measured" -eq 0 ]; then
+    verdict='<p class="hd-note">No harness-diagnostic data in this run&rsquo;s logs.</p>'
+  elif [ "$any_escape" -eq 0 ]; then
+    verdict='<p class="hd-note">No comparator escapes, no discovery faults. Every score above came from the strict RDFC-1.0 comparator on a suite that discovered its tests.</p>'
+  else
+    verdict='<p class="hd-note hd-bad">One or more escapes fired &mdash; the scores above are NOT wholly strict-comparator results. See the per-suite counts.</p>'
+  fi
+  cat <<HDEOF
+<div class="legend">
+  <p class="legend-title">Harness diagnostics &mdash; escape branches (<a href="https://github.com/danbri/factoidal/issues/316">#316</a>)</p>
+  <p class="legend-note">A conformance number is only as strong as its weakest comparator. These are the branches where a test leaves the plain run-it-and-compare-it path. <strong>budget exceeded</strong> = the RDFC-1.0 canonicalizer hit its Hash-N-Degree-Quads work budget, so graph isomorphism could not be decided; that test is scored FAIL (before 2026-07-29 it fell back to a blank-node-collapsing multiset comparison that could score it PASS). <strong>GSP seed</strong> = the Graph Store Protocol pre-state seeding branch fired. <strong>no manifest</strong> / <strong>zero tests</strong> = a suite discovered nothing; either makes the run exit 2 rather than report green.</p>
+  <div style="overflow-x:auto">
+  <table class="hd-table">
+    <thead><tr><th>mode</th><th>tests discovered</th><th>budget exceeded</th><th>GSP seed</th><th>no manifest</th><th>zero tests</th><th>skip + unsupported</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  </div>
+  ${verdict}
+${owl_block}
+${ov_block}
+</div>
+HDEOF
+}
+HARNESS_CARD_HTML=$(build_harness_card)
 
 # --- Legend -----------------------------------------------------------------
 LEGEND_HTML=$(cat <<'LEGENDEOF'
@@ -2703,6 +3136,15 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
     }
   }
   * { box-sizing: border-box; }
+  /* Known-defects table (top-level XFAIL card). Colour is a secondary
+     cue only -- the State column carries the word, so the table still
+     reads correctly in monochrome or to a colour-blind reader. */
+  .kd-table { width: 100%; border-collapse: collapse; margin: 0.75em 0; font-size: 0.92em; }
+  .kd-table th, .kd-table td { border: 1px solid var(--border); padding: 0.35em 0.55em; text-align: left; vertical-align: top; }
+  .kd-table th { background: rgba(127,127,127,0.12); }
+  .kd-table tr.kd-xfail td:nth-child(4) { color: var(--brand-dark); }
+  .kd-table tr.kd-xpass td, .kd-table tr.kd-error td { background: rgba(200,80,60,0.12); font-weight: 600; }
+  @media (max-width: 640px) { .kd-table { display: block; overflow-x: auto; } }
   html, body { margin: 0; padding: 0; }
   html { font-size: 100%; } /* 1rem/1em = 16px equivalent, never shrunk below this in body copy */
   body {
@@ -2781,6 +3223,17 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
     margin: 0.35em 0; font-size: 0.92rem;
   }
   .legend-note { margin: 0; font-size: 0.85rem; color: var(--muted); }
+  /* Harness diagnostics table (#316) — escape-branch counts per suite. */
+  .hd-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.6em 0; }
+  .hd-table th, .hd-table td {
+    text-align: left; padding: 0.35em 0.5em; border-bottom: 1px solid #e3e3e3;
+    white-space: nowrap;
+  }
+  .hd-table th { color: var(--muted); font-weight: 600; }
+  .hd-table tr.hd-ok td { color: var(--fg); }
+  .hd-table tr.hd-bad td, .hd-bad { color: #a8410f; font-weight: 600; }
+  .hd-nm { color: var(--muted); font-style: italic; font-weight: 400; }
+  .hd-note { margin: 0.4em 0 0; font-size: 0.85rem; color: var(--muted); }
   .dot {
     flex: none; width: 0.85em; height: 0.85em; border-radius: 50%;
     margin-top: 0.25em;
@@ -3120,6 +3573,10 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
 
 ${LEGEND_HTML}
 
+${HARNESS_CARD_HTML}
+
+${KNOWN_DEFECTS_GROUP_HTML}
+
 ${GROUP1_HTML}
 ${GROUP_WD_HTML}
 
@@ -3130,6 +3587,8 @@ ${GROUP3_HTML}
 ${GROUP4_HTML}
 
 ${PERF_SECTION_HTML}
+
+${CLOSURE_SECTION_HTML}
 
 <details>
   <summary>Machine-readable artifacts</summary>

@@ -257,6 +257,41 @@ For tasks that must commit + push code, always use `isolation:
   keep the parent session's context small; this skill is the prompt
   template, not the fan-out policy.
 
+## Proof-agent briefs (the licensing fan-out pattern, 2026-08-04)
+
+Six licensing/preservation lemmas landed in one day via scoped
+worktree agents, one rule per agent; two more taught the failure
+modes. The brief shape that worked:
+
+- **Ship the full proof sketch, not the goal.** Every green agent got
+  the exact lemma statements, the witness chain spelled out, the
+  template section to mirror (file + construct names), and the known
+  soft spots ranked. Agents deviate from a sketch when verification
+  demands it and say so; they do not reliably invent the sketch.
+- **Name the verbatim-lambda constraint explicitly** (proof-shape
+  trap #1 in `fstar-module-style`) or the agent will "clean up" the
+  step function into a top-level definition and burn cycles on the
+  failing assert_norm.
+- **Include a two-attempt stop rule for anything near a known-hard
+  shape.** The prp-inv agent lacked one and spent 318k tokens / 125
+  tool calls circling an undischargeable goal (proof-shape trap #3).
+  After the rule was added to briefs, the eq-trans agent on the
+  neighbouring shape finished normally.
+- **Agents deliver SECTIONS; the orchestrator owns the file.** Agents
+  work on a stale branch point by construction — tell them not to
+  renumber or reconcile, and graft their section onto the live file
+  yourself (renumber the header, re-verify the combined module,
+  commit). Landing conflicts between two agents editing the same
+  file dissolve when neither agent commits.
+- **Verify-before-trust stays mandatory**: re-run the full module
+  verification in the MAIN tree before committing an agent section,
+  even when the agent reports PASS — its worktree deps and branch
+  point differ from yours.
+- **Agents may end their turn "waiting on a monitor" while their
+  verify still runs.** That final message is not a report; check
+  their worktree directly (file present? fstar.exe running?) before
+  resuming them — a resume costs tokens and may be unnecessary.
+
 ## The extract-without-compile stall (cost three cycles, 2026-07-13)
 
 Agents that run `./build-ocaml.sh extract` (or whose last background

@@ -113,34 +113,75 @@ let add_triple_if_new (g : rdf_graph) (t : triple) : rdf_graph =
 let add_triple_unchecked (g : rdf_graph) (t : triple) : rdf_graph =
   t :: g
 
+/// The optional-language-tag suffix contributed to a literal's total
+/// dedup key: `""` when absent, `"@" ^ tag` when present. Named (rather
+/// than inlined in `term_to_key_total`) so
+/// `RDF.Indexed.KeyInjectivity`'s literal-arm injectivity proof (#348)
+/// can refer to it directly instead of re-matching `l.lang_tag` itself.
+let lit_key_lang_part (l : literal) : string =
+  match l.lang_tag with
+  | Some t -> "@" ^ t
+  | None   -> ""
+
+/// The optional-direction suffix, mirroring `lit_key_lang_part` above.
+/// Always one of three FIXED ASCII strings — no side condition is ever
+/// needed on it for injectivity (RDF.Indexed.KeyInjectivity distinguishes
+/// the three by direct string comparison, not separator-counting).
+let lit_key_dir_part (l : literal) : string =
+  match l.direction with
+  | Some Dir_LTR -> "--ltr"
+  | Some Dir_RTL -> "--rtl"
+  | None         -> ""
+
 /// Total key for any rdf_term — extends `RDF.Indexed`'s `term_to_key_opt`
 /// with a literal branch. Used only for in-graph dedup comparisons; not
 /// stable across graph encodings.
+///
+/// #348 FIX (2026-08-06): the `T_Literal` arm used to join its parts with
+/// plain `"^^"` TEXT and no separator at all between the datatype, the
+/// language-tag suffix, and the direction suffix — not even a
+/// control-character separator like `unit_sep` (RDF.Indexed.fsti), and
+/// genuinely ambiguous: e.g. a `datatype` IRI containing a literal `'@'`
+/// (legal in an IRI's `ireg-name`/`iuserinfo`, RFC 3987) could collide
+/// with a shorter datatype plus a language tag. Every part below is now
+/// joined with `unit_sep`, mirroring `RDF.Indexed.sp_key`/`po_key`'s
+/// shape (`a ^ (unit_sep ^ rest)`, right-nested so the same one-sided
+/// separator-counting injectivity proof applies at each level) and
+/// built with `^` (FStar.String.strcat) rather than `String.concat "" [...]`
+/// for the SAME reason `RDF.Indexed.fsti`'s builders are: `^` carries the
+/// `list_of_concat`/`concat_injective` reasoning equations the
+/// injectivity proof needs, while `String.concat` is an opaque `val`
+/// with none. `subject_to_key`/`term_to_key_opt`'s "I_"/"B_" tags are
+/// unaffected in VALUE (`"I_" ^ i` and `String.concat "" ["I_"; i]`
+/// produce byte-identical output) but are also rewritten with `^` here
+/// so `T_TripleTerm`'s recursive key and `triple_to_key` below reason
+/// uniformly. Part ORDER is unchanged: lexical form, datatype, language
+/// tag, direction. Dedup-sort ORDER over an existing graph MAY change
+/// (different key strings sort differently) — the orchestrator gates
+/// extraction on landing.
 let rec term_to_key_total (o : rdf_term) : Tot string (decreases o) =
   match o with
-  | T_IRI i     -> String.concat "" ["I_"; i]
-  | T_BNode b   -> String.concat "" ["B_"; b]
-  | T_Literal l -> String.concat "" ["L_"; l.lexical_form; "^^"; l.datatype;
-                                       (match l.lang_tag with
-                                        | Some t -> String.concat "" ["@"; t]
-                                        | None   -> "");
-                                       (match l.direction with
-                                        | Some Dir_LTR -> "--ltr"
-                                        | Some Dir_RTL -> "--rtl"
-                                        | None         -> "")]
+  | T_IRI i     -> "I_" ^ i
+  | T_BNode b   -> "B_" ^ b
+  | T_Literal l ->
+    ("L_" ^ l.lexical_form) ^ (unit_sep ^
+      (l.datatype ^ (unit_sep ^
+        (lit_key_lang_part l ^ (unit_sep ^ lit_key_dir_part l)))))
   // RDF 1.2 triple term: a distinct, structural in-graph dedup key so two
   // different triple terms never collide. (Object-position, so it recurses
   // through the object slot.)
   | T_TripleTerm s p obj ->
-    String.concat "" ["T_"; subject_to_key s; unit_sep; p; unit_sep;
-                      term_to_key_total obj]
+    ("T_" ^ subject_to_key s) ^ (unit_sep ^ (p ^ (unit_sep ^ term_to_key_total obj)))
 
 /// Triple key: subject + predicate + object, separated by unit-sep so
 /// no two distinct triples collide on the string. Reuses
 /// `RDF.Indexed.subject_to_key`/`unit_sep` (the same subject-keying and
-/// separator the index buckets use) rather than a second copy.
+/// separator the index buckets use) rather than a second copy. Built
+/// with `^`, not `String.concat "" [...]` — same reasoning as
+/// `term_to_key_total` above (RDF.Indexed.KeyInjectivity's #348
+/// triple_to_key injectivity proof needs it).
 let triple_to_key (t : triple) : string =
-  String.concat "" [subject_to_key t.s; unit_sep; t.p; unit_sep; term_to_key_total t.o]
+  subject_to_key t.s ^ (unit_sep ^ (t.p ^ (unit_sep ^ term_to_key_total t.o)))
 
 let triple_cmp (t1 t2 : triple) : int =
   String.compare (triple_to_key t1) (triple_to_key t2)
@@ -165,12 +206,112 @@ let rec dedup_sorted_aux
 /// one linear pass collapses adjacent duplicates. Replaces the per-insert
 /// `mem_triple` scan when running RDFS / OWL-RL closure on a non-tiny
 /// graph (#259 followup).
+/// Comparator over PRE-COMPUTED `(key, triple)` pairs. Same ordering as
+/// `triple_cmp` — `String.compare` on `triple_to_key` — but it reads the
+/// already-built key instead of building it again. `triple_to_key` is
+/// `Tot`, so this decides every pair exactly as `triple_cmp` would and
+/// the sorted order is unchanged.
+let cmp_decorated_triple (p1 p2 : (string * triple)) : int =
+  String.compare (fst p1) (fst p2)
+
+/// `dedup_sorted_aux` over pre-decorated pairs. Same rule: drop each
+/// element whose key equals the previous one, keeping the first.
+let rec dedup_sorted_decorated_aux
+    (prev_key : option string)
+    (ts : list (string * triple)) (acc : list triple)
+  : Tot (list triple) (decreases ts) =
+  match ts with
+  | [] -> List.Tot.rev acc
+  | (k, t) :: rest ->
+    let dup = match prev_key with
+              | Some p -> p = k
+              | None   -> false in
+    if dup then dedup_sorted_decorated_aux prev_key rest acc
+    else dedup_sorted_decorated_aux (Some k) rest (t :: acc)
+
+/// O(N log N) dedup for the closure path, via decorate-sort-undecorate
+/// (the Schwartzian transform) — the same treatment `build_bucket` in
+/// RDF.Indexed.fsti already applies to its six index buckets.
+///
+/// WHY. `triple_cmp` calls `triple_to_key`, which is a `String.concat`
+/// over the subject, predicate and object IRIs in full. Handing that
+/// comparator to `sortWith` builds TWO such strings per comparison, so
+/// 2·N·log N key constructions where N would do. At N = 500,000 that is
+/// roughly 38 times more string building than necessary.
+///
+/// Measured, callgrind on a 16,000-triple QUDT prefix (151 G
+/// instructions retired): string construction — `unsafe_blits` 15.9%,
+/// `caml_blit_string` 8.8%, `memcpy` 8.8%, `sum_lengths` 8.2%,
+/// `caml_alloc_string` 4.2%, `String.concat` 3.3% — is ~49% of the
+/// program, with `triple_to_key` / `term_to_key_total` / `subject_to_key`
+/// another ~4% on top, and garbage collection ~17% mostly collecting
+/// those same keys.
+///
+/// The earlier profile taken on schema.org did NOT show this shape. It
+/// is a different vocabulary; see measuring-inference rule 2.
 let graph_dedup_sort (g : rdf_graph) : Tot rdf_graph =
-  let sorted = List.Tot.sortWith triple_cmp g in
-  dedup_sorted_aux None sorted []
+  let decorated = List.Tot.map (fun (t : triple) -> (triple_to_key t, t)) g in
+  let sorted = List.Tot.sortWith cmp_decorated_triple decorated in
+  dedup_sorted_decorated_aux None sorted []
 
 /// Add multiple triples, deduplicating.
+///
+/// QUADRATIC, AND KEPT THAT WAY ON PURPOSE. Each step is
+/// `graph_add t g = if mem_triple t g then g else g @ [t]` -- a linear
+/// membership scan AND a linear append, per triple. Adding k triples to
+/// a graph of n costs O(n*k) comparisons and O(n*k) freshly allocated
+/// cons cells.
+///
+/// `RDF.Entailment.RDFS.Refinement.lemma_add_triples_if_new_memP` is
+/// proved about this exact definition, so it does not change. Callers
+/// with a LARGE `g` should use `add_triples_if_new_bulk` below instead.
 let rec add_triples_if_new (g : rdf_graph) (ts : list triple) : Tot rdf_graph (decreases ts) =
   match ts with
   | [] -> g
   | hd :: tl -> add_triples_if_new (add_triple_if_new g hd) tl
+
+/// Elements of `newer` whose key is not in `older`. Linear merge; BOTH
+/// arguments must be key-sorted and duplicate-free, i.e. straight out of
+/// `graph_dedup_sort`.
+///
+/// TAIL-RECURSIVE, and it has to be: written the obvious way as
+/// `n :: sorted_diff ns older` it wants one stack frame per element and
+/// dies with `Fatal error: exception Stack overflow` on a half-million
+/// triples. F* proves termination, not stack depth. `rev_acc acc newer`
+/// is `rev acc @ newer`, avoiding a non-tail `append` in the
+/// older-exhausted case. See trap 5 in skills/fstar-module-style.
+let rec sorted_diff_aux (newer older acc : list triple)
+  : Tot (list triple)
+        (decreases (List.Tot.length newer + List.Tot.length older)) =
+  match newer, older with
+  | [], _ -> List.Tot.rev acc
+  | _, [] -> List.Tot.rev_acc acc newer
+  | n :: ns, o :: os ->
+    let c = triple_cmp n o in
+    if c < 0 then sorted_diff_aux ns older (n :: acc)
+    else if c = 0 then sorted_diff_aux ns older acc
+    else sorted_diff_aux newer os acc
+
+let sorted_diff (newer older : list triple) : Tot (list triple) =
+  sorted_diff_aux newer older []
+
+/// Set-union of `g` with `ts`, for callers where `g` is large.
+///
+/// Same SET as `add_triples_if_new g ts`. The ORDER differs: the new
+/// triples arrive key-sorted rather than in `ts` order. Every caller
+/// switched to this either sorts downstream or is byte-verified against
+/// the previous output.
+///
+/// O(n log n + k log k) instead of O(n*k), and -- the part the profile
+/// actually showed -- it allocates one merged list rather than k
+/// successive copies of an n-element list. On schema.org, garbage
+/// collection was ~31% of all instructions retired and the
+/// `mem_triple` / `triple_eq` / `subject_eq` family another ~8%;
+/// `graph_add` is the sole caller of `mem_triple` and the sole source
+/// of those k copies.
+let add_triples_if_new_bulk (g : rdf_graph) (ts : list triple) : Tot rdf_graph =
+  match ts with
+  | [] -> g
+  | _ ->
+    let fresh = sorted_diff (graph_dedup_sort ts) (graph_dedup_sort g) in
+    List.Tot.append g fresh

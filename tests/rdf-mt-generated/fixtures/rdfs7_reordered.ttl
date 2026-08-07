@@ -1,0 +1,4 @@
+@prefix ex: <http://example.org/rdfs7/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:x ex:p ex:y .
+ex:p rdfs:subPropertyOf ex:q .

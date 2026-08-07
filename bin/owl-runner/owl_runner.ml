@@ -130,6 +130,15 @@ let test_conclusion = test_ns ^ "rdfXmlConclusionOntology"
 let test_non_conclusion = test_ns ^ "rdfXmlNonConclusionOntology"
 let test_imported_ontology = test_ns ^ "importedOntology"
 let test_input_ontology   = test_ns ^ "rdfXmlInputOntology"
+(* The catalog's test:importedOntology link points at a synthetic
+   wrapper node (an owl:Thing sibling in the manifest, e.g.
+   "http://owl.semanticweb.org/id/WebOnt-2Dimports-2D001-2Dimport-2D...")
+   — NOT the real ontology IRI that appears in the premise's actual
+   owl:imports triple. That real IRI is a separate property on the same
+   wrapper node, test:importedOntologyIRI. Needed so the imports-gating
+   check (premise_declares_import, below) compares against the IRI that
+   is actually asserted, not the catalog's internal bookkeeping ID. *)
+let test_imported_ontology_iri = test_ns ^ "importedOntologyIRI"
 (* Some catalog entries carry only a functional-syntax premise
    (test:fsPremiseOntology / test:fsConclusionOntology) instead of an
    RDF/XML one. This runner reads only the rdfXml* literals; when
@@ -263,6 +272,11 @@ let empty_info iri = {
 let build_index (graph : triple list) : test_case_info list * (string, string) Hashtbl.t =
   let tbl : (string, test_case_info) Hashtbl.t = Hashtbl.create 1024 in
   let imports_lookup : (string, string) Hashtbl.t = Hashtbl.create 64 in
+  (* wrapper-node IRI -> real ontology IRI (test:importedOntologyIRI),
+     collected in the same pass; resolved into info.imports/imports_lookup
+     below once the whole graph has been walked (see test_imported_ontology_iri
+     comment above). *)
+  let imported_ontology_iri_lookup : (string, string) Hashtbl.t = Hashtbl.create 64 in
   let get subj =
     match Hashtbl.find_opt tbl subj with
     | Some info -> info
@@ -354,8 +368,31 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
            match object_literal_opt t.o with
            | Some lex -> Hashtbl.replace imports_lookup subj lex
            | None -> ()
+         end else if t.p = test_imported_ontology_iri then begin
+           match object_iri_opt t.o with
+           | Some obj -> Hashtbl.replace imported_ontology_iri_lookup subj obj
+           | None -> ()
          end)
     graph;
+  (* Resolve wrapper-node IRIs (test:importedOntology's object) to the
+     real ontology IRI (test:importedOntologyIRI) that actually appears
+     in the premise's owl:imports triple. Mirror imports_lookup's entry
+     under the resolved key too, so a lookup by the real IRI still finds
+     the imported document's literal content. A wrapper with no
+     importedOntologyIRI triple (shouldn't happen in the vendored
+     catalogs, but keep this total) resolves to itself, preserving the
+     old behaviour for that entry. *)
+  let resolve_import_iri w =
+    match Hashtbl.find_opt imported_ontology_iri_lookup w with
+    | Some real -> real
+    | None -> w
+  in
+  Hashtbl.iter
+    (fun wrapper real ->
+       match Hashtbl.find_opt imports_lookup wrapper with
+       | Some lex -> Hashtbl.replace imports_lookup real lex
+       | None -> ())
+    imported_ontology_iri_lookup;
   (* Keep only subjects that actually carry a test-type — or, for the
      species facet (2026-07-10), a test:species annotation: the four
      WebOnt-imports-005..008 cases in syntax-dl.rdf carry species +
@@ -364,7 +401,8 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
     Hashtbl.fold
       (fun _ info acc ->
          if StrSet.is_empty info.types && StrSet.is_empty info.species
-         then acc else info :: acc)
+         then acc
+         else { info with imports = StrSet.map resolve_import_iri info.imports } :: acc)
       tbl []
   in
   (cases, imports_lookup)
@@ -434,12 +472,28 @@ let subject_matches
   | RDF_Graph_Executable.S_BNode _ -> let _ = sub in true
   | _ -> RDF_Graph_Executable.subject_eq pat sub
 
+(* Object matching is by DATA VALUE, not by lexical form plus datatype
+   IRI. OWL 2 Direct Semantics interprets a literal as the value its
+   datatype's lexical-to-value map assigns, so `"0"^^xsd:int` and
+   `"0"^^xsd:integer` are the SAME data-property assertion, and a graph
+   entails one exactly when it entails the other; likewise `"01"` and
+   `"1"` as xsd:decimal, and `"0.5"^^xsd:decimal` and
+   `"1/2"^^owl:rational` (OWL 2 Syntax section 4.1 puts xsd:decimal
+   inside owl:rational with both maps exact).
+
+   The decision itself is NOT made here — `XSD_Facets.term_provably_equal`
+   is the F*-extracted, verified value-equality procedure, and it is
+   one-sided by construction: true only on a PROOF that two terms denote
+   one value, false (not "distinct") when it cannot tell. It subsumes
+   `rdf_term_eq`, which is its first disjunct. Rule #15 boundary: the
+   runner picks WHICH F* predicate to call, it does not decide anything
+   itself. *)
 let object_matches
       (pat : RDF_Graph_Executable.rdf_term)
       (obj : RDF_Graph_Executable.rdf_term) : bool =
   match pat with
   | RDF_Graph_Executable.T_BNode _ -> let _ = obj in true
-  | _ -> RDF_Graph_Executable.rdf_term_eq pat obj
+  | _ -> XSD_Facets.term_provably_equal pat obj
 
 let triple_matches
       (pat : RDF_Graph_Executable.triple)
@@ -448,13 +502,14 @@ let triple_matches
   && pat.p = t.p
   && object_matches pat.o t.o
 
+(* Both branches now go through `triple_matches`: for a bnode-free
+   pattern it is subject_eq + predicate equality + `object_matches`,
+   which is `triple_eq` widened by exactly the datatype-value equality
+   documented above. *)
 let conclusion_triple_in_closure
       (closure : RDF_Graph_Executable.rdf_graph)
       (pat : RDF_Graph_Executable.triple) : bool =
-  if triple_has_bnode pat then
-    List.exists (triple_matches pat) closure
-  else
-    List.exists (RDF_Graph_Executable.triple_eq pat) closure
+  List.exists (triple_matches pat) closure
 
 type outcome =
   | Pass
@@ -512,6 +567,28 @@ type outcome =
      docs/claude-rules/w3c-completeness-ledger.md (Thing-005
      disposition) and #299. *)
   | Skip_semantics_rdf_based_only
+  (* #326: a ConsistencyTest or NegativeEntailmentTest whose reasoning
+     hit a budget escape (closure cap, marker-scan cap, refuter cap, or
+     an exception in any of them) and would otherwise have PASSED. Both
+     kinds pass on the ABSENCE of a derived fact — no inconsistency
+     marker; a conclusion triple missing from the closure — and absence
+     is only evidence when the search for it finished. On a cap-trip the
+     engine "gave up before finding the clash", which is not the same
+     claim as "proved consistent", and scoring the two as one PASS is
+     the false-pass mechanism #326 documents (forced-cap experiment on
+     profile-RL.rdf: Consistency 76 -> 76 pass and NegativeEntailment
+     6 -> 6 pass with EVERY closure abandoned, while the fail-safe kinds
+     degraded visibly 30 -> 12 and 14 -> 11).
+
+     Counted INSIDE the scored denominator, on the non-pass side — this
+     is an engine/budget gap on a test we are attempting, not a
+     scope-exclusion like Skip_functional_syntax_only, so it must not
+     shrink the denominator. Surfaced additively on the score line as
+     "; K unsupported (cap-escape)" so the size of the correction stays
+     visible: pass + unsupported reproduces the pre-#326 pass count for
+     the same run. The string carries which stage escaped. *)
+  | Unsupported_degraded_closure of string
+  | Unsupported_refuter_indeterminate of string
 
 let outcome_tag = function
   | Pass -> "PASS"
@@ -526,6 +603,8 @@ let outcome_tag = function
   | Fail_no_conclusion -> "FAIL/no-conclusion"
   | Skip_functional_syntax_only -> "SKIP/functional-syntax-only"
   | Skip_semantics_rdf_based_only -> "SKIP/semantics-rdf-based-only"
+  | Unsupported_degraded_closure _ -> "UNSUPPORTED/cap-escape"
+  | Unsupported_refuter_indeterminate _ -> "UNSUPPORTED/refuter-indeterminate"
 
 let fuel_100 : Prims.nat = Z.of_int 100
 
@@ -565,15 +644,189 @@ let owl_closure_cap_seconds : float =
 
 exception Owl_closure_timeout
 
+(* ------------------------------------------------------------------ *)
+(* Harness diagnostics (#316) + absence-verdict soundness (#326)       *)
+(*                                                                     *)
+(* A cap-trip abandons the closure part-way and scores the test on a   *)
+(* LESS-closed graph. The direction of that error is not uniformly     *)
+(* safe: for a ConsistencyTest a truncated closure finds no            *)
+(* contradiction, so the test PASSES -- a cap-trip can manufacture a   *)
+(* pass. Measured on the committed logs (2026-07-29): ten PASSes       *)
+(* across type-consistency, semantics-direct and                       *)
+(* type-positive-entailment ran on a degraded closure.                 *)
+(*                                                                     *)
+(* #316 added the counters below. #326 adds the SCORING consequence:   *)
+(* the two test kinds whose PASS condition is the ABSENCE of a derived *)
+(* fact (ConsistencyTest -- no clash found; NegativeEntailmentTest --  *)
+(* a conclusion triple missing) are meaningful only over reasoning     *)
+(* that ran to completion, so on any budget escape they now score      *)
+(* Unsupported_degraded_closure instead of PASS. The two kinds whose   *)
+(* PASS condition is the PRESENCE of a derived fact (Positive-         *)
+(* Entailment, Inconsistency) are fail-safe under truncation and are   *)
+(* left exactly as they were.                                          *)
+(*                                                                     *)
+(* Escapes are recorded per test AND per kind, because only some kinds *)
+(* can manufacture an absence-pass:                                    *)
+(*   closure     -- a closure stage abandoned; the scored graph is     *)
+(*                  less closed than the fixpoint (11 marked + 9       *)
+(*                  formerly-silent arms in the apply_closure family). *)
+(*   marker      -- capped_is_inconsistent's scan abandoned, i.e. "no  *)
+(*                  inconsistency marker seen" was never established.  *)
+(*   refuter     -- the clash-seeking tableau / class-size check       *)
+(*                  abandoned (cap or exception), i.e. we stopped      *)
+(*                  looking for the clash rather than ruling it out.   *)
+(* Recorded but NOT gating (reported so the rate is visible):          *)
+(*   indeterminate -- the refuter reached its own conclusion, but that *)
+(*                  conclusion was None: the calculus could not decide *)
+(*                  this input. NOW GATING (2026-07-30, owner's        *)
+(*                  decision), separately from the budget escapes --    *)
+(*                  see owl_absence_indeterminate below.                *)
+(*   pe_refuter  -- pe_refute_entails escapes. PE-only and fail-safe   *)
+(*                  by direction (a lost proof scores FAIL), counted   *)
+(*                  for the audit only.                                *)
+let owl_degraded_marked = ref 0   (* closure cap-trips, marked         *)
+let owl_degraded_silent = ref 0   (* the formerly-unlogged "_ -> g"    *)
+let owl_escape_marker = ref 0
+let owl_escape_refuter = ref 0
+let owl_escape_indeterminate = ref 0
+let owl_escape_pe_refuter = ref 0
+let owl_degraded_tests : (string, unit) Hashtbl.t = Hashtbl.create 32
+let owl_unsupported_tests : (string, string) Hashtbl.t = Hashtbl.create 32
+(* 2026-07-30: kept SEPARATE from owl_unsupported_tests so
+   tests_unsupported_cap_escape keeps meaning exactly "cap escape". A
+   single table would silently inflate that field with a different
+   phenomenon — the reporting error this whole change is about. *)
+let owl_indeterminate_tests : (string, string) Hashtbl.t = Hashtbl.create 32
+let owl_current_test = ref ""
+
+(* Per-test escape flags. Reset by owl_begin_test for EVERY scored test
+   of every kind, so a flag can never leak from one test into the next. *)
+let esc_closure = ref false
+let esc_marker = ref false
+let esc_refuter = ref false
+let esc_indeterminate = ref false
+
+let owl_begin_test (id : string) =
+  owl_current_test := id;
+  esc_closure := false;
+  esc_marker := false;
+  esc_refuter := false;
+  esc_indeterminate := false
+
+let owl_mark_test () =
+  if !owl_current_test <> "" then
+    Hashtbl.replace owl_degraded_tests !owl_current_test ()
+
+let owl_note_degraded (silent : bool) =
+  esc_closure := true;
+  if silent then incr owl_degraded_silent else incr owl_degraded_marked;
+  owl_mark_test ()
+
+(* #326 task 2: the nine formerly-silent closure arms. They incremented
+   the silent counter (#316) but printed nothing, so the escape was
+   invisible in the log next to the test it degraded — which is how the
+   false passes hid. Each one now names its stage and the exception that
+   reached it, exactly like the eleven marked arms. *)
+let owl_note_degraded_silent (where : string) (e : exn) =
+  Printf.eprintf
+    "  [owl_closure_escape] %s: %s; falling back to a less-closed graph\n%!"
+    where (Printexc.to_string e);
+  owl_note_degraded true
+
+let owl_note_escape_marker (e : exn) =
+  Printf.eprintf
+    "  [owl_marker_escape] is_inconsistent scan abandoned (%s); \"no inconsistency marker\" was never established\n%!"
+    (Printexc.to_string e);
+  esc_marker := true;
+  incr owl_escape_marker;
+  owl_mark_test ()
+
+let owl_note_escape_refuter (where : string) (e : exn) =
+  Printf.eprintf
+    "  [owl_refuter_escape] %s abandoned (%s); the clash search did not finish\n%!"
+    where (Printexc.to_string e);
+  esc_refuter := true;
+  incr owl_escape_refuter;
+  owl_mark_test ()
+
+let owl_note_indeterminate () =
+  esc_indeterminate := true;
+  incr owl_escape_indeterminate
+
+let owl_note_escape_pe_refuter (e : exn) =
+  Printf.eprintf "  [owl_pe_refuter_escape] %s\n%!" (Printexc.to_string e);
+  incr owl_escape_pe_refuter
+
+(* #326: is an ABSENCE-of-derivation verdict trustworthy on this test?
+   Only if every reasoning step that looked for the fact ran to its own
+   conclusion. Consulted by ConsistencyTest and NegativeEntailmentTest
+   ONLY, and only on the pass side — a FAIL found despite an escape is
+   a positive finding and keeps its verdict. *)
+let owl_absence_trustworthy () =
+  not (!esc_closure || !esc_marker || !esc_refuter)
+
+let owl_absence_escape_reason () =
+  String.concat " + "
+    (List.filter_map (fun (b, s) -> if !b then Some s else None)
+       [ (esc_closure, "closure stage abandoned (cap/exception)");
+         (esc_marker, "inconsistency-marker scan abandoned (cap/exception)");
+         (esc_refuter, "clash-seeking tableau abandoned (cap/exception)") ])
+
+(* Second gate on the same absence verdicts, decided 2026-07-30.
+   Tableau_Refute.tableau_consistent can return None INSIDE its budget:
+   the calculus is incomplete, so on some inputs it simply cannot
+   decide. dl_refutes maps that None to `false`, which reads downstream
+   as "did not refute" — and for the two test kinds whose PASS
+   condition is the ABSENCE of a derivation, "did not refute" becomes a
+   PASS.
+
+   That is the same publishing error #326 fixed for budget escapes, with
+   a different cause. "We did not find X" must never be published as "X
+   is not there". A don't-know from an incomplete calculus is exactly
+   that shape: we looked, we finished looking, and we still do not know.
+   Scoring it as a pass would put an assertion about the world on the
+   board that our own reasoner never made.
+
+   It gets its own outcome rather than reusing the cap-escape one
+   because the two say different things to whoever reads the log. A cap
+   escape says "ran out of time" — raise FACTOIDAL_OWL_*_CAP_SEC and it
+   may resolve. An indeterminate says "our calculus cannot decide this"
+   — no budget will help; the tableau needs to get stronger. Collapsing
+   them would lose the distinction that tells you which of those two
+   pieces of work to do.
+
+   Denominator convention is #326's, unchanged: counted INSIDE the
+   scored denominator, on the non-pass side, and consulted on the pass
+   side only — a FAIL found despite an indeterminate is a positive
+   finding and keeps its verdict.
+
+   Costs nothing today: refuter_indeterminate is 0 across the current
+   type-consistency run, so this fires on zero tests. It is here so the
+   failure cannot appear silently later, when the tableau is pointed at
+   harder inputs. *)
+let owl_absence_indeterminate () = !esc_indeterminate
+
+let owl_absence_indeterminate_reason () =
+  "Tableau_Refute.tableau_consistent returned None within budget — the calculus could not decide this input"
+
+(* All caps below run on CPU time (ITIMER_VIRTUAL / SIGVTALRM), not
+   wall clock (2026-07-28). Wall-clock caps made verdicts
+   load-dependent: dl-502's refutation needs ~5.5 CPU-seconds and
+   passed on an idle container but blew the 10s WALL cap whenever
+   sibling builds shared the cores, flipping the catalog between
+   125 pass, 2 fail and 124 pass, 3 fail (measured both same day,
+   same binary). CPU-time budgets give the same verdict at any load.
+   The F* reasoning code is total (fuel-bounded), so a pure CPU cap
+   cannot mask a hang; cap values keep their idle-machine meaning. *)
 let with_owl_cap (f : unit -> 'a) : 'a =
   let prev =
-    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+    Sys.signal Sys.sigvtalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
   in
   let restore () =
-    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
-    Sys.set_signal Sys.sigalrm prev
+    let _ = Unix.setitimer Unix.ITIMER_VIRTUAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigvtalrm prev
   in
-  let _ = Unix.setitimer Unix.ITIMER_REAL
+  let _ = Unix.setitimer Unix.ITIMER_VIRTUAL
             { Unix.it_interval = 0.0; it_value = owl_closure_cap_seconds }
   in
   match f () with
@@ -619,15 +872,39 @@ let regime_label () = match !regime with
   | Regime_RL -> "RL"
   | Regime_DL -> "DL"
 
+(* --semantics rdf-based-full (2026-07-28, Group G): opt-in OWL Full
+   meta-modeling mode. Mode PLUMBING ONLY (iron rule #15): when the flag
+   is on, every closure call that previously passed the DIRECT semantics
+   mode passes RDF-BASED-FULL instead; the semantics itself is the
+   F*-extracted owl_rule_rdf_based_full_meta_axioms_mode rule inside
+   owl_rl_closure_step_mode (see OWL.Closure.fsti's banner for the
+   RDF-Based Semantics Table 5.2 citation). Default OFF — the default
+   engine keeps Direct-Semantics behaviour bit-for-bit. *)
+let full_meta_mode : bool ref = ref false
+
+let base_semantics_mode () : string =
+  if !full_meta_mode then RDF_Graph_Executable.owl_semantics_rdf_based_full
+  else RDF_Graph_Executable.owl_semantics_direct
+
+let semantics_label () =
+  if !full_meta_mode then "RDF-BASED-FULL (owl-full meta-modeling flag ON)"
+  else "DIRECT (default)"
+
 (* Tableau refutation fuel (threaded budget inside the F*-extracted
    Tableau_Refute.tableau_consistent — total work is linear in it).
    Override via FACTOIDAL_OWL_REFUTE_FUEL. Plumbing only: the fuel
    value bounds work, it never changes a verdict's soundness (fuel
    exhaustion returns None = indeterminate). *)
+(* Default raised 20000 -> 5_000_000 (2026-07-28, owl2-nominal wave):
+   fuel bounds WORK, the SIGALRM caps bound TIME, so on the native
+   runner a larger fuel only lets a within-cap search finish instead of
+   returning None at an arbitrary depth. dl-502's 3-SAT refutation
+   (nominal identify-branching) completes in ~5.5s wall but needs well
+   over 20000 budget units; measured passing at 5M fuel + 10s cap. *)
 let refute_fuel : Prims.nat =
   match Sys.getenv_opt "FACTOIDAL_OWL_REFUTE_FUEL" with
-  | Some s -> (try Z.of_int (int_of_string s) with _ -> Z.of_int 20000)
-  | None -> Z.of_int 20000
+  | Some s -> (try Z.of_int (int_of_string s) with _ -> Z.of_int 5_000_000)
+  | None -> Z.of_int 5_000_000
 
 (* Refuter-specific SIGALRM cap, SMALLER than the closure cap: measured
    on type-inconsistency.rdf, every refutation the tableau finds at a
@@ -636,21 +913,99 @@ let refute_fuel : Prims.nat =
    tests pay the full cap as pure overhead — 346 ConsistencyTests x
    20s nearly tripled the type-consistency catalog wall time. Override
    via FACTOIDAL_OWL_REFUTE_CAP_SEC. *)
+(* Default raised 5.0 -> 10.0 (2026-07-28, owl2-nominal wave): dl-502's
+   nominal-branching refutation lands at ~5.5s wall, just past the old
+   cap. Wall-time trade re-measured against the full type-consistency
+   catalog in the same session (gate logs in the branch's design
+   note). *)
+(* Raised 10.0 -> 60.0 (2026-07-29, issue #332). At 10 CPU-seconds
+   WebOnt-description-logic-203 sat ON the boundary: two runs of the
+   SAME binary on the SAME idle container gave 337 pass, 15 fail and
+   336 pass, 16 fail. CPU-time caps (2026-07-28) removed sensitivity to
+   machine LOAD, but CPU time itself varies run-to-run with cache and
+   memory pressure, and dl-203's work landed inside that margin — so
+   the published score moved without a code change, which makes it
+   useless as a regression gate.
+
+   At 60 CPU-seconds the catalog is REPRODUCIBLE and strictly more
+   honest, measured twice back-to-back on this container:
+     cap 10:  336 pass, 16 fail (out of 352)   613s   [and 337/15 on
+                                                       another run]
+     cap 60:  341 pass, 11 fail (out of 352)  1086s
+     cap 60:  341 pass, 11 fail (out of 352)  1091s   <- identical
+   Five tests stop being abandoned and complete as genuine passes:
+   description-logic-203/-206/-208/-209/-501. Cost is 1.8x wall on this
+   catalog.
+
+   This is a stabiliser, not the fix. The escapes that REMAIN at 60s are
+   dominated by is_inconsistent's marker scan being cubic in closure
+   size, with #262 (sameAs blowup) underneath; fixing that removes the
+   boundary rather than moving it. Do not lower this back for wall-clock
+   reasons without re-checking reproducibility — a faster number that
+   changes between runs is worth less than a slower one that does not. *)
 let refute_cap_seconds : float =
   match Sys.getenv_opt "FACTOIDAL_OWL_REFUTE_CAP_SEC" with
-  | Some s -> (try float_of_string s with _ -> 5.0)
-  | None -> 5.0
+  | Some s -> (try float_of_string s with _ -> 60.0)
+  | None -> 60.0
 
-let with_refute_cap (f : unit -> 'a) : 'a =
+(* Inconsistency-scoring refuter cap, LARGER than the consistency-side
+   default above. dl-502's nominal-branching refutation sits right at
+   the 10-CPU-second boundary (passed idle, failed under sibling-build
+   GC pressure — the 125-pass/124-pass flip measured 2026-07-28); at
+   30 CPU-seconds it passes at load average 3+ with the inconsistency
+   catalog at ~105s wall. Only the 127-test inconsistency path pays
+   this larger cap — the 352-test consistency path keeps the cheap
+   default, since there every indeterminate search grinds to the cap
+   as pure overhead. Override via FACTOIDAL_OWL_INC_REFUTE_CAP_SEC. *)
+let inc_refute_cap_seconds : float =
+  match Sys.getenv_opt "FACTOIDAL_OWL_INC_REFUTE_CAP_SEC" with
+  | Some s -> (try float_of_string s with _ -> 30.0)
+  | None -> 30.0
+
+let with_refute_cap_secs (secs : float) (f : unit -> 'a) : 'a =
   let prev =
-    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+    Sys.signal Sys.sigvtalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
   in
   let restore () =
-    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
-    Sys.set_signal Sys.sigalrm prev
+    let _ = Unix.setitimer Unix.ITIMER_VIRTUAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigvtalrm prev
   in
-  let _ = Unix.setitimer Unix.ITIMER_REAL
-            { Unix.it_interval = 0.0; it_value = refute_cap_seconds }
+  let _ = Unix.setitimer Unix.ITIMER_VIRTUAL
+            { Unix.it_interval = 0.0; it_value = secs }
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
+
+let with_refute_cap (f : unit -> 'a) : 'a =
+  with_refute_cap_secs refute_cap_seconds f
+
+(* PE-refutation wall cap, LARGER than the (5s) consistency-side refuter
+   cap above (tableau-classification design note, 2026-07-28). The 5s
+   cap exists because every CONSISTENCY test pays the refuter cap as
+   pure overhead; pe_refute_entails, by contrast, runs only for
+   PositiveEntailmentTests that already MISSED the closure check — a
+   population where the DL98 ABox refutations (WebOnt-description-
+   logic-201/661/662 measured this session) genuinely need 10-60s of
+   wall to close their goal conjunctions. Budget plumbing only: the cap
+   bounds work, never changes a verdict's soundness (a cap-trip keeps
+   the closure-miss verdict). Override via
+   FACTOIDAL_OWL_PE_REFUTE_CAP_SEC. *)
+let pe_refute_cap_seconds : float =
+  match Sys.getenv_opt "FACTOIDAL_OWL_PE_REFUTE_CAP_SEC" with
+  | Some s -> (try float_of_string s with _ -> 60.0)
+  | None -> 60.0
+
+let with_pe_refute_cap (f : unit -> 'a) : 'a =
+  let prev =
+    Sys.signal Sys.sigvtalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+  in
+  let restore () =
+    let _ = Unix.setitimer Unix.ITIMER_VIRTUAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigvtalrm prev
+  in
+  let _ = Unix.setitimer Unix.ITIMER_VIRTUAL
+            { Unix.it_interval = 0.0; it_value = pe_refute_cap_seconds }
   in
   match f () with
   | v -> restore (); v
@@ -666,15 +1021,24 @@ let with_refute_cap (f : unit -> 'a) : 'a =
    the RL baseline. RL regime: never consulted (RL scoring unchanged).
    Dispatch/fallback plumbing only — the satisfiability logic is
    F*-extracted (rule #15 boundary respected). *)
-let dl_refutes (closure : RDF_Graph_Executable.rdf_graph) : bool =
+(* #326: the fallback-to-false arm is recorded. A cap-trip here is the
+   literal "gave up before finding the clash" case — the search was
+   abandoned, so its `false` is not evidence of consistency and any
+   ConsistencyTest that then passes scores unsupported instead. A
+   `None`/`Some true` verdict is recorded separately as indeterminate
+   (the search finished within budget; whether an incomplete calculus's
+   non-refutation counts as a consistency proof is a completeness
+   question, not a budget escape — reported, not gating). *)
+let dl_refutes ?(cap = refute_cap_seconds) (closure : RDF_Graph_Executable.rdf_graph) : bool =
   match !regime with
   | Regime_RL -> false
   | Regime_DL ->
-    (try with_refute_cap (fun () ->
+    (try with_refute_cap_secs cap (fun () ->
        match Tableau_Refute.tableau_consistent closure refute_fuel with
        | Some false -> true
-       | _ -> false)
-     with _ -> false)
+       | None -> owl_note_indeterminate (); false
+       | Some true -> false)
+     with e -> owl_note_escape_refuter "tableau_consistent" e; false)
 
 (* ---- Z33kr Phase 2: VERIFIED class-size unsat check ----------------
    One rung OUTSIDE dl_refutes and one rung INSIDE the z3 oracle. This
@@ -690,13 +1054,13 @@ let dl_refutes (closure : RDF_Graph_Executable.rdf_graph) : bool =
    back to false (then the z3 oracle is consulted, exactly as before).
    RL regime: never consulted. Dispatch/fallback plumbing only -- all
    satisfiability logic is F*-extracted (rule #15 boundary respected). *)
-let class_size_refutes (closure_rl : RDF_Graph_Executable.rdf_graph) : bool =
+let class_size_refutes ?(cap = refute_cap_seconds) (closure_rl : RDF_Graph_Executable.rdf_graph) : bool =
   match !regime with
   | Regime_RL -> false
   | Regime_DL ->
-    (try with_refute_cap (fun () ->
+    (try with_refute_cap_secs cap (fun () ->
        Tableau_CountingOracle.class_size_unsat closure_rl)
-     with _ -> false)
+     with e -> owl_note_escape_refuter "class_size_unsat" e; false)
 
 (* ---- PE via refutation (issue #298, fail-family 6) -----------------
    A PositiveEntailment fallback rung, ONE RUNG OUTSIDE the closure
@@ -738,18 +1102,44 @@ let pe_refute_entails
        All splitting/negation logic is F*-extracted; this stays pure
        dispatch (rule #15). Any None / cap-trip / exception falls back to
        the pre-existing closure-miss verdict, so PE only ever GAINS. *)
+    (* Cap + input discipline (2026-07-28, tableau-classification design
+       note): runs under the LARGER PE-only cap (with_pe_refute_cap —
+       see its banner), and callers must pass the RL-BASE closure, never
+       the tableau-materialised or witness-augmented one: those layers
+       emit conclusion-matching triples that are NOT all model-
+       theoretically entailed (max-0 vacuous memberships, witness
+       edges — see apply_closure_stages' banner), and an over-asserted
+       input could manufacture a refutation of the negated conclusion,
+       i.e. a fabricated PE pass. Same soundness rationale that already
+       routes dl_refutes onto g_rl.
+       Per goal, after an indeterminate tableau verdict, the VERIFIED
+       class-size counting check (Tableau_CountingOracle.class_size_
+       unsat, Farkas-certificate validated in F-star) is consulted as a
+       second rung — same dispatch shape as class_size_refutes on the
+       inconsistency side; a `true` is a proven no-integer-assignment
+       verdict, a plain verified PASS. *)
     (match Tableau_Refute.negation_goals g_c with
      | None -> false
      | Some goals ->
-       (try with_refute_cap (fun () ->
+       (try with_pe_refute_cap (fun () ->
           List.for_all
             (fun neg ->
-               match Tableau_Refute.tableau_consistent
-                       (List.append closure neg) refute_fuel with
-               | Some false -> true
-               | _ -> false)
+               let goal_graph = List.append closure neg in
+               (* Counting check FIRST: it is milliseconds (build the
+                  linear system, search a Farkas certificate) while the
+                  tableau can grind a large share of the shared PE wall
+                  cap on one goal — running it second starved it of the
+                  cap entirely (measured: Consistent-but-all-unsat's
+                  first goal burned the whole budget in the tableau).
+                  Order is pure dispatch; both checks are verified. *)
+               (try Tableau_CountingOracle.class_size_unsat goal_graph
+                with _ -> false)
+               || (match Tableau_Refute.tableau_consistent
+                         goal_graph refute_fuel with
+                   | Some false -> true
+                   | _ -> false))
             goals)
-        with _ -> false))
+        with e -> owl_note_escape_pe_refuter e; false))
 
 (* ---- Z33kr Phase 1: native z3 counting-fragment oracle -------------
    ONE RUNG OUTSIDE the dl_refutes contract above. Consulted ONLY when
@@ -799,13 +1189,13 @@ let z3_dump_dir = Sys.getenv_opt "FACTOIDAL_OWL_Z3_DUMP"
 
 let with_z3_cap (f : unit -> 'a) : 'a =
   let prev =
-    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+    Sys.signal Sys.sigvtalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
   in
   let restore () =
-    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
-    Sys.set_signal Sys.sigalrm prev
+    let _ = Unix.setitimer Unix.ITIMER_VIRTUAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigvtalrm prev
   in
-  let _ = Unix.setitimer Unix.ITIMER_REAL
+  let _ = Unix.setitimer Unix.ITIMER_VIRTUAL
             { Unix.it_interval = 0.0; it_value = z3_cap_seconds }
   in
   match f () with
@@ -863,9 +1253,14 @@ let z3_oracle_refutes (id : string)
    blown-up closures that would not finish at 20s either — and the
    short cap keeps the heavy consistency premises from tripling the
    catalog wall time. Outcome plumbing only. *)
+(* #326: the cap-trip arm is recorded. Its own comment above already
+   admitted the hazard — "for a ConsistencyTest that is the expected
+   verdict" — which is exactly the false pass: the scan never ran to
+   completion, so "no marker" is not a finding. The InconsistencyTest
+   side keeps its honest FAIL (detection did not complete), unchanged. *)
 let capped_is_inconsistent (closure : RDF_Graph_Executable.rdf_graph) : bool =
   try with_refute_cap (fun () -> RDF_Graph_Executable.is_inconsistent closure)
-  with _ -> false
+  with e -> owl_note_escape_marker e; false
 
 (* apply_closure_stages returns BOTH the RL-base closure and the final
    (regime-dependent) closure. The split matters for SOUNDNESS of the
@@ -887,13 +1282,14 @@ let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
   | Regime_RL ->
     let c =
       (try with_owl_cap (fun () ->
-         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] RL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g
-       | _ -> g)
+       | e -> owl_note_degraded_silent "RL closure [apply_closure_stages]" e; g)
     in
     (c, c)
   | Regime_DL ->
@@ -902,30 +1298,135 @@ let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
        cap-trip never scores below RL (DL result >= RL result). *)
     let g_rl =
       (try with_owl_cap (fun () ->
-         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g
-       | _ -> g)
+       | e -> owl_note_degraded_silent "DL RL-base closure [apply_closure_stages]" e; g)
     in
     let g_dl =
       (try with_owl_cap (fun () ->
          let g2 = Tableau.tableau_materialise g_rl in
-         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100)
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g2 fuel_100 (base_semantics_mode ()))
        with
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g_rl
-       | _ -> g_rl)
+       | e -> owl_note_degraded_silent "DL tableau closure [apply_closure_stages]" e; g_rl)
     in
     (g_rl, g_dl)
 
 let apply_closure (g : RDF_Graph_Executable.rdf_graph)
   : RDF_Graph_Executable.rdf_graph =
   snd (apply_closure_stages g)
+
+(* PositiveEntailmentTest-only closure (2026-07-27): same g_rl/g_dl split
+   as apply_closure_stages, EXCEPT the final closure step uses
+   owl_rl_closure_with_reflexivity_and_witnesses instead of the plain
+   owl_rl_closure_with_reflexivity. That F* function's banner explains
+   why: it layers three sound-but-broad "comprehension witness" rules
+   (owl:hasSelf synthesis, someValuesFrom-owl:Thing materialise +
+   witness) on top of the ALREADY-STABLE base closure as one bounded
+   extra pass, rather than folding them into the shared fixpoint —
+   doing the latter fed the extra derivations into g_rl, which is also
+   the DL tableau's input, and starved Tableau.Refute's fuel budget on
+   dozens of type-inconsistency.rdf fixtures (124 pass/3 fail -> 63
+   pass/64 fail under --regime dl, measured 2026-07-27). g_rl itself is
+   left untouched here for exactly that reason — only the FINAL step
+   (which InconsistencyTest/ConsistencyTest never consult; PE-only)
+   gets the richer closure. Used by run_positive_entailment only. *)
+let apply_closure_with_witnesses (g : RDF_Graph_Executable.rdf_graph)
+  : RDF_Graph_Executable.rdf_graph =
+  match !regime with
+  | Regime_RL ->
+    (* Fall back to the PLAIN closure (base), not the raw un-closed
+       graph, if the witness layer alone trips the cap — the base
+       closure is cheap and already succeeded by construction below, so
+       a witness-stage timeout should only cost the witness triples,
+       not the entire closure's worth of conclusion-matching power. *)
+    let base =
+      (try with_owl_cap (fun () ->
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 (base_semantics_mode ()))
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] RL base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+           owl_closure_cap_seconds;
+         owl_note_degraded false;
+         g
+       | e -> owl_note_degraded_silent "RL base closure [apply_closure_with_witnesses]" e; g)
+    in
+    (try with_owl_cap (fun () ->
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses_mode g fuel_100 (base_semantics_mode ()))
+     with
+     | Owl_closure_timeout ->
+       Printf.eprintf "  [owl_closure_timeout] RL closure (with witnesses) exceeded %.0fs cap; falling back to base closure\n%!"
+         owl_closure_cap_seconds;
+       owl_note_degraded false;
+       base
+     | e -> owl_note_degraded_silent "RL witness layer [apply_closure_with_witnesses]" e; base)
+  | Regime_DL ->
+    let g_rl =
+      (try with_owl_cap (fun () ->
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 (base_semantics_mode ()))
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+           owl_closure_cap_seconds;
+         owl_note_degraded false;
+         g
+       | e -> owl_note_degraded_silent "DL RL-base closure [apply_closure_with_witnesses]" e; g)
+    in
+    (* Staged like the RL arm above: establish the tableau+plain-closure
+       result FIRST (the pre-witness DL behavior), then attempt the
+       witness layer as a separate capped step. A one-shot
+       tableau+witness closure under a single cap regressed
+       WebOnt-description-logic-205/-207 (measured 2026-07-28): the
+       witness pass pushed those tests past the 30s cap and the old
+       fallback discarded the tableau results too, scoring below the
+       pre-witness runner. *)
+    (* `dl_materialise` = `Tableau.tableau_materialise` plus the FORCED
+       DATATYPE FILLERS of Tableau.Refute section 5b'. It is used HERE
+       ONLY — this is the PositiveEntailmentTest-only closure — while the
+       consistency / inconsistency paths keep plain
+       `Tableau.tableau_materialise`, on the same principle as the
+       g_rl / g_dl split above.
+
+       The reason is measured, not precautionary. The forced fillers are
+       model-theoretic entailments (proof in the section 5b' banner), but
+       feeding a CONCRETE data-property assertion into the closure makes
+       rdfs3 range propagation type that literal, and the resulting
+       datatype-membership marker reported INCONSISTENT for three
+       consistent premises (WebOnt-I5.8-002 / -004 / -010: 352 pass,
+       0 fail -> 349 pass, 3 fail on type-consistency.rdf, measured
+       2026-07-29). The marker path is what is wrong there, not the
+       entailment; keeping the fillers on the PE closure banks the
+       entailment win without moving a consistency verdict. *)
+    let g_dl =
+      (try with_owl_cap (fun () ->
+         let g2 = Tableau_Refute.dl_materialise g_rl in
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g2 fuel_100 (base_semantics_mode ()))
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
+           owl_closure_cap_seconds;
+         owl_note_degraded false;
+         g_rl
+       | e -> owl_note_degraded_silent "DL tableau closure [apply_closure_with_witnesses]" e; g_rl)
+    in
+    (try with_owl_cap (fun () ->
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_and_witnesses_mode g_dl fuel_100 (base_semantics_mode ()))
+     with
+     | Owl_closure_timeout ->
+       Printf.eprintf "  [owl_closure_timeout] DL witness layer exceeded %.0fs cap; falling back to tableau closure\n%!"
+         owl_closure_cap_seconds;
+       owl_note_degraded false;
+       g_dl
+     | e -> owl_note_degraded_silent "DL witness layer [apply_closure_with_witnesses]" e; g_dl)
 
 (* test:semantics dispatch (2026-07-05) — see the constant definitions
    above and RDF.Graph.Executable.fst's owl_rule_named_equivClass_to_
@@ -942,7 +1443,29 @@ let owl_semantics_mode_for (info : test_case_info) : string =
   if StrSet.mem test_semantics_rdf_based_iri info.semantics
      && not (StrSet.mem test_semantics_direct_iri info.semantics)
   then RDF_Graph_Executable.owl_semantics_rdf_based
-  else RDF_Graph_Executable.owl_semantics_direct
+  else base_semantics_mode ()
+
+(* DIRECT-only test:semantics (mirrors owl_semantics_mode_for's RDF-Based-
+   only condition, negated + DIRECT-required): true iff the catalog entry
+   declares test:semantics DIRECT and does NOT also declare RDF-BASED.
+   Used by run_positive_entailment to gate OWL_DirectMapping_Filter's
+   annotation-triple exclusion (see that module's header) onto the
+   conclusion graph — OWL 2 Direct Semantics gives AnnotationAssertion
+   axioms no model-theoretic content, so a DIRECT-only PositiveEntailment
+   conclusion that is purely annotation-typed triples is vacuously
+   entailed regardless of the actual literal/IRI value asserted. Targets
+   WebOnt-miscellaneous-302-Direct (profile-QL.rdf): premise asserts
+   `#a first:prop "foo"`, conclusion asserts `#a first:prop "bar"` with
+   `first:prop` declared owl:AnnotationProperty in both documents — the
+   value mismatch is exactly the "annotation in the entailed ontology is
+   not considered" case the test's own description names. Gated
+   DIRECT-only (not applied to the ~127 catalog entries that declare BOTH
+   DIRECT and RDF-BASED) to keep the exemption from reaching any test
+   whose applicable semantics genuinely includes the RDF-Based reading,
+   where annotation triples carry ordinary RDF-graph content. *)
+let is_direct_semantics_only (info : test_case_info) : bool =
+  StrSet.mem test_semantics_direct_iri info.semantics
+  && not (StrSet.mem test_semantics_rdf_based_iri info.semantics)
 
 let apply_closure_with_semantics
       (g : RDF_Graph_Executable.rdf_graph) (mode : string)
@@ -955,8 +1478,9 @@ let apply_closure_with_semantics
      | Owl_closure_timeout ->
        Printf.eprintf "  [owl_closure_timeout] RL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
          owl_closure_cap_seconds;
+       owl_note_degraded false;
        g
-     | _ -> g)
+     | e -> owl_note_degraded_silent "RL closure [apply_closure_with_semantics]" e; g)
   | Regime_DL ->
     (* Mode-aware sibling of apply_closure's DL branch: RL-mode closure
        first (the timeout fallback), then Tableau + RL-mode re-closure. *)
@@ -967,8 +1491,9 @@ let apply_closure_with_semantics
        | Owl_closure_timeout ->
          Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
            owl_closure_cap_seconds;
+         owl_note_degraded false;
          g
-       | _ -> g)
+       | e -> owl_note_degraded_silent "DL RL-base closure [apply_closure_with_semantics]" e; g)
     in
     (try with_owl_cap (fun () ->
        let g2 = Tableau.tableau_materialise g_rl in
@@ -977,8 +1502,9 @@ let apply_closure_with_semantics
      | Owl_closure_timeout ->
        Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
          owl_closure_cap_seconds;
+       owl_note_degraded false;
        g_rl
-     | _ -> g_rl)
+     | e -> owl_note_degraded_silent "DL tableau closure [apply_closure_with_semantics]" e; g_rl)
 
 (* Parse and merge imported-ontology literals into the premise graph
    before closure. Each imports_lookup hit gives us an RDF/XML literal
@@ -1009,6 +1535,10 @@ let apply_closure_with_semantics
 let parsed_imports_cache : (string, triple list) Hashtbl.t = Hashtbl.create 64
 let parsed_imports_count = ref 0
 
+(* owl:imports IRI, needed here to gate load_imports_into_premise below;
+   also used later by resolve_species_imports (species-catalog path). *)
+let owl_imports_iri = "http://www.w3.org/2002/07/owl#imports"
+
 let parse_import_cached (import_iri : string) (lit : string) : triple list =
   match Hashtbl.find_opt parsed_imports_cache import_iri with
   | Some g -> g
@@ -1026,17 +1556,58 @@ let parse_import_cached (import_iri : string) (lit : string) : triple list =
     Hashtbl.replace parsed_imports_cache import_iri g;
     g
 
+(* Merge catalog-linked imports into the premise, gated on plain
+   triple-membership (no reasoning): an import is only merged once the
+   graph assembled SO FAR actually asserts `_ owl:imports <import_iri>`
+   for it. WebOnt-imports-002 is a NegativeEntailmentTest whose premise
+   never declares owl:imports at all -- a reasoner must not treat a term
+   from an unimported namespace as pulling in that namespace's axioms,
+   so an import must never be merged unless its owl:imports triple is
+   actually present.
+
+   Iterated to a fixpoint (cycle-safe via `seen`) because owl:imports
+   is transitive in the W3C corpus itself: WebOnt-imports-003's premise
+   only asserts `owl:imports support003-A`; support003-A's own document
+   asserts `owl:imports support003-B`. The catalog flatly links both A
+   and B to the TestCase's test:importedOntology (so both are in
+   info.imports), but B's assertion only becomes visible after A is
+   merged in — hence re-scanning the growing graph each round, exactly
+   mirroring resolve_species_imports below (same structural-closure
+   technique, applied to the PE/NE/Cons/Inc harness path instead of the
+   syntax-dl species path). Restricting candidates to info.imports (not
+   an open-ended registry) keeps this a closed, catalog-scoped merge,
+   never open-world import-chasing. *)
 let load_imports_into_premise
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t)
       (g_p : triple list) : triple list =
-  StrSet.fold
-    (fun import_iri acc ->
-       match Hashtbl.find_opt imports_lookup import_iri with
-       | None -> acc
-       | Some lit -> parse_import_cached import_iri lit @ acc)
-    info.imports
-    g_p
+  let rec go (g : triple list) (seen : StrSet.t) : triple list =
+    let targets =
+      List.filter_map
+        (fun (t : triple) ->
+           if t.p = owl_imports_iri then
+             (match t.o with
+              | T_IRI i when (not (StrSet.mem i seen)) && StrSet.mem i info.imports -> Some i
+              | _ -> None)
+           else None)
+        g
+      |> List.sort_uniq compare
+    in
+    match targets with
+    | [] -> g
+    | _ ->
+      let seen = List.fold_left (fun s i -> StrSet.add i s) seen targets in
+      let g =
+        List.fold_left
+          (fun acc import_iri ->
+             match Hashtbl.find_opt imports_lookup import_iri with
+             | None -> acc
+             | Some lit -> parse_import_cached import_iri lit @ acc)
+          g targets
+      in
+      go g seen
+  in
+  go g_p StrSet.empty
 
 (* OWL 2 Functional Syntax path for PositiveEntailmentTest (2026-07-05).
    See docs/designissues/2026-07-05-owl-functional-syntax-plan.md.
@@ -1057,7 +1628,9 @@ let run_positive_entailment_functional_syntax
     match (try Parser_OWLFunctional.parse_functional_syntax fs_c_lex with _ -> None) with
     | None -> None
     | Some g_c ->
-      let closure = try apply_closure g_p with _ -> g_p in
+      let (closure_rl, closure) =
+        try apply_closure_stages g_p
+        with e -> owl_note_degraded_silent "apply_closure_stages [outer]" e; (g_p, g_p) in
       let rec check = function
         | [] -> Pass
         | t :: rest ->
@@ -1068,14 +1641,20 @@ let run_positive_entailment_functional_syntax
       (match check g_c with
        | Pass -> Some Pass
        | miss ->
-         (* PE-via-refutation fallback (issue #298). *)
-         if pe_refute_entails closure g_c then Some Pass else Some miss)
+         (* PE-via-refutation fallback (issue #298) — over the RL-base
+            closure, per pe_refute_entails' input discipline. *)
+         if pe_refute_entails closure_rl g_c then Some Pass else Some miss)
 
 let run_positive_entailment
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
   Printf.eprintf "  [pe-running] %s\n%!"
     (match info.identifier with Some id -> id | None -> info.iri);
+  (* #316: name the test so a degraded-closure fallback below can be
+     attributed to it in the harness-diagnostics block. #326: the same
+     call clears the per-test escape flags, so an escape recorded on the
+     previous test can never gate this one's verdict. *)
+  owl_begin_test (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise, info.conclusion with
   | None, _ ->
     (match info.fs_premise, info.fs_conclusion with
@@ -1113,21 +1692,57 @@ let run_positive_entailment
       let g_p = load_imports_into_premise info imports_lookup g_p_authored in
       if g_c = [] then Fail_parse_conclusion
       else begin
-      let closure =
-        try apply_closure g_p
-        with _ -> g_p in
-      let rec check = function
+      (* Two-phase closure: the plain closure first (byte-for-byte the
+         pre-witness path, so no test that passed before can regress),
+         and ONLY on a miss the witness-augmented closure as a retry.
+         The one-phase witness-only version regressed 5 tests
+         (measured 2026-07-28): 2 via the DL cap-trip fixed in
+         apply_closure_with_witnesses, 3 via witness bnodes perturbing
+         conclusion matching on tests that passed under the plain
+         closure. The retry is sound — both closures under-approximate
+         entailment — and monotone by construction. *)
+      let (closure_rl, closure) =
+        try apply_closure_stages g_p
+        with e -> owl_note_degraded_silent "apply_closure_stages [outer]" e; (g_p, g_p) in
+      (* DIRECT-only tests: drop conclusion triples whose predicate is
+         declared owl:AnnotationProperty/OntologyProperty within the
+         conclusion graph itself before checking — see
+         is_direct_semantics_only and OWL.DirectMapping.Filter.fst. *)
+      let g_c_checked =
+        if is_direct_semantics_only info
+        then OWL_DirectMapping_Filter.exclude_annotation_triples g_c
+        else g_c in
+      let rec check clo = function
         | [] -> Pass
         | t :: rest ->
-          if conclusion_triple_in_closure closure t
-          then check rest
+          if conclusion_triple_in_closure clo t
+          then check clo rest
           else Fail_conclusion_miss t
       in
-      (match check g_c with
+      (match check closure g_c_checked with
        | Pass -> Pass
        | miss ->
-         (* PE-via-refutation fallback (issue #298). *)
-         if pe_refute_entails closure g_c then Pass else miss)
+         (* PE-via-refutation fallback (issue #298) — over the RL-BASE
+            closure only (2026-07-28): the tableau-materialised and
+            witness-augmented closures carry conclusion-matching triples
+            that are not all model-theoretically entailed, and feeding
+            them to the refuter could fabricate a PE pass — see
+            pe_refute_entails' input-discipline banner. The former
+            second refutation attempt over closure_w is dropped for the
+            same reason (it would also be redundant: closure_rl does not
+            change between the two rungs). The witness-augmented closure
+            is still consulted for plain conclusion CONTAINMENT below,
+            exactly as before. *)
+         if pe_refute_entails closure_rl g_c_checked then Pass
+         else
+           let closure_w =
+             try apply_closure_with_witnesses g_p
+             with e ->
+               owl_note_degraded_silent "apply_closure_with_witnesses [outer]" e;
+               closure in
+           (match check closure_w g_c_checked with
+            | Pass -> Pass
+            | _ -> miss))
       end)
 
 (* NegativeEntailmentTest: the conclusion is asserted to NOT be a
@@ -1151,6 +1766,15 @@ let run_positive_entailment
 let run_negative_entailment
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
+  Printf.eprintf "  [neg-running] %s\n%!"
+    (match info.identifier with Some id -> id | None -> info.iri);
+  (* #326: this runner was the ONE scoring path that never named its
+     current test, so a closure escape during a NegativeEntailmentTest
+     was attributed to whichever test last set the name — and the kind
+     whose PASS condition is "a conclusion triple is MISSING" is exactly
+     the kind a truncated closure flatters. Named and flag-reset here
+     like the other three. *)
+  owl_begin_test (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise, info.conclusion with
   | None, _ -> Fail_no_premise
   | _, None -> Fail_no_conclusion
@@ -1177,14 +1801,29 @@ let run_negative_entailment
       let sem_mode = owl_semantics_mode_for info in
       let closure =
         try apply_closure_with_semantics g_p sem_mode
-        with _ -> g_p in
+        with e ->
+          owl_note_degraded_silent "apply_closure_with_semantics [outer]" e; g_p in
       debug_dump_closure info closure;
       let any_missing =
         List.exists
           (fun t -> not (conclusion_triple_in_closure closure t))
           g_c
       in
-      if any_missing then Pass
+      (* #326: "missing from the closure" is evidence of non-entailment
+         only when the closure reached its fixpoint. On a budget escape
+         the missing triple may be missing because the derivation was
+         abandoned, so the verdict is unsupported rather than a pass.
+         The refuted direction (every conclusion triple present) is a
+         positive finding and keeps its FAIL under any escape. *)
+      if any_missing then
+        (if not (owl_absence_trustworthy ()) then
+           Unsupported_degraded_closure (owl_absence_escape_reason ())
+         (* 2026-07-30: same gate, second cause — an incomplete calculus
+            that returned don't-know cannot underwrite an absence verdict
+            any more than an abandoned search can. *)
+         else if owl_absence_indeterminate () then
+           Unsupported_refuter_indeterminate (owl_absence_indeterminate_reason ())
+         else Pass)
       else Fail_unexpected_entailment
       end)
 
@@ -1220,9 +1859,17 @@ let run_consistency_test_functional_syntax (fs_p_lex : string) : outcome option 
   match (try Parser_OWLFunctional.parse_functional_syntax fs_p_lex with _ -> None) with
   | None -> None
   | Some g_p ->
-    let (closure_rl, closure) = try apply_closure_stages g_p with _ -> (g_p, g_p) in
+    let (closure_rl, closure) =
+      try apply_closure_stages g_p
+      with e -> owl_note_degraded_silent "apply_closure_stages [outer]" e; (g_p, g_p) in
     if capped_is_inconsistent closure || dl_refutes closure_rl
     then Some Fail_unexpected_inconsistency
+    (* #326: same gate as the rdfXml path below, plus the 2026-07-30
+       refuter-indeterminate gate. *)
+    else if not (owl_absence_trustworthy ()) then
+      Some (Unsupported_degraded_closure (owl_absence_escape_reason ()))
+    else if owl_absence_indeterminate () then
+      Some (Unsupported_refuter_indeterminate (owl_absence_indeterminate_reason ()))
     else Some Pass
 
 let run_consistency_test
@@ -1233,6 +1880,11 @@ let run_consistency_test
      kill doesn't lose the whole phase's output. *)
   Printf.eprintf "  [cons-running] %s\n%!"
     (match info.identifier with Some id -> id | None -> info.iri);
+  (* #316: name the test so a degraded-closure fallback below can be
+     attributed to it in the harness-diagnostics block. #326: the same
+     call clears the per-test escape flags, so an escape recorded on the
+     previous test can never gate this one's verdict. *)
+  owl_begin_test (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise with
   | None ->
     (match info.fs_premise with
@@ -1268,7 +1920,7 @@ let run_consistency_test
       begin
       let (closure_rl, closure) =
         try apply_closure_stages g_p
-        with _ -> (g_p, g_p) in
+        with e -> owl_note_degraded_silent "apply_closure_stages [outer]" e; (g_p, g_p) in
       (* DL regime additionally consults the clash-detecting tableau —
          the soundness gate for the whole refutation feature: a
          `Some false` here on a test asserted CONSISTENT is a soundness
@@ -1278,6 +1930,22 @@ let run_consistency_test
          model-theoretically entailed and must not feed a refutation. *)
       if capped_is_inconsistent closure || dl_refutes closure_rl
       then Fail_unexpected_inconsistency
+      (* #326: a ConsistencyTest passes on the ABSENCE of a clash, so
+         the pass is only worth as much as the search that failed to
+         find one. If the closure, the marker scan or the clash-seeking
+         tableau abandoned work on a budget, we did not prove the
+         premise consistent — we stopped looking — and the honest
+         verdict is unsupported. The Fail_unexpected_inconsistency
+         direction above is a positive finding and keeps its verdict
+         under any escape. *)
+      (* 2026-07-30: and if the clash search finished but came back
+         don't-know (Tableau_Refute.tableau_consistent = None within
+         budget), we equally did not prove the premise consistent — the
+         calculus could not decide. Distinct label, same non-pass side. *)
+      else if not (owl_absence_trustworthy ()) then
+        Unsupported_degraded_closure (owl_absence_escape_reason ())
+      else if owl_absence_indeterminate () then
+        Unsupported_refuter_indeterminate (owl_absence_indeterminate_reason ())
       else Pass
       end)
 
@@ -1291,8 +1959,10 @@ let run_inconsistency_test_functional_syntax (fs_p_lex : string) : outcome optio
   match (try Parser_OWLFunctional.parse_functional_syntax fs_p_lex with _ -> None) with
   | None -> None
   | Some g_p ->
-    let (closure_rl, closure) = try apply_closure_stages g_p with _ -> (g_p, g_p) in
-    if capped_is_inconsistent closure || dl_refutes closure_rl
+    let (closure_rl, closure) =
+      try apply_closure_stages g_p
+      with e -> owl_note_degraded_silent "apply_closure_stages [outer]" e; (g_p, g_p) in
+    if capped_is_inconsistent closure || dl_refutes ~cap:inc_refute_cap_seconds closure_rl
     then Some Pass
     else Some Fail_unexpected_consistency
 
@@ -1310,6 +1980,11 @@ let run_inconsistency_test
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
   Printf.eprintf "  [inc-running] %s\n%!"
     (match info.identifier with Some id -> id | None -> info.iri);
+  (* #316: name the test so a degraded-closure fallback below can be
+     attributed to it in the harness-diagnostics block. #326: the same
+     call clears the per-test escape flags, so an escape recorded on the
+     previous test can never gate this one's verdict. *)
+  owl_begin_test (match info.identifier with Some id -> id | None -> info.iri);
   (* 2026-07-17 categorization fix: a test:semantics RDF-BASED-only
      catalog entry (see Skip_semantics_rdf_based_only's comment) is out
      of scope for this runner's Direct-Semantics closure/tableau in
@@ -1349,7 +2024,7 @@ let run_inconsistency_test
       begin
       let (closure_rl, closure) =
         try apply_closure_stages g_p
-        with _ -> (g_p, g_p) in
+        with e -> owl_note_degraded_silent "apply_closure_stages [outer]" e; (g_p, g_p) in
       debug_dump_closure info closure;
       let id = (match info.identifier with Some id -> id | None -> info.iri) in
       (if counting_sweep then
@@ -1365,14 +2040,14 @@ let run_inconsistency_test
          refuter reads the RL-BASE closure (apply_closure_stages'
          banner: materialise emissions are conclusion-matching-sound,
          not all entailment-sound, and must not feed a refutation). *)
-      if capped_is_inconsistent closure || dl_refutes closure_rl
+      if capped_is_inconsistent closure || dl_refutes ~cap:inc_refute_cap_seconds closure_rl
       then Pass
       (* Z33kr Phase 2: VERIFIED class-size unsat check, BEFORE the z3
          oracle. A `true` here is a proven-sound refutation of the
          class-size linear system, so it flips to a plain verified PASS
          (not oracle-assisted). Retires the z3 oracle for the fixtures it
          decides (dl-910, one=two). *)
-      else if class_size_refutes closure_rl
+      else if class_size_refutes ~cap:inc_refute_cap_seconds closure_rl
       then Pass
       (* Z33kr Phase 1: one rung outside dl_refutes — the native z3
          counting-fragment oracle. Only reached when neither the verified
@@ -1420,6 +2095,24 @@ let print_outcome verbose info outcome =
         anti-pattern #3 warns about. *)
      Printf.printf
        "      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 Functional Syntax) with test:normativeSyntax FUNCTIONAL, and either no fs premise/conclusion literal is present or it uses Functional-Syntax constructs beyond Parser_OWLFunctional's narrow subset (Prefix/Ontology/Declaration + ~6 axiom forms; see docs/designissues/2026-07-05-owl-functional-syntax-plan.md)\n"
+   | Unsupported_degraded_closure why ->
+     (* Printed unconditionally, like the SKIP reasons above: an outcome
+        that moved off PASS has to say why, in the log, next to the test
+        (#326; anti-pattern #3). Also recorded by name so the diagnostics
+        block at the end lists every corrected test. *)
+     Hashtbl.replace owl_unsupported_tests id why;
+     Printf.printf
+       "      reason: reasoning abandoned on a budget — %s. This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict\n"
+       why
+   | Unsupported_refuter_indeterminate why ->
+     (* Same unconditional printing as the cap-escape reason above, and
+        recorded in the same table so the end-of-run diagnostics list
+        every corrected test. The wording deliberately does NOT suggest
+        raising a cap: no budget resolves an indeterminate. *)
+     Hashtbl.replace owl_indeterminate_tests id why;
+     Printf.printf
+       "      reason: the refuter finished and returned don't-know — %s. This test's PASS condition is the ABSENCE of a derived fact, and an incomplete calculus that cannot decide the input has not established that absence; publishing it as a PASS would state \"X is not there\" on the strength of \"we did not find X\". Unlike a cap escape this is a completeness gap, not a budget one — raising FACTOIDAL_OWL_REFUTE_CAP_SEC will not convert it; the tableau has to get stronger (2026-07-30, building on issue #326)\n"
+       why
    | Skip_semantics_rdf_based_only ->
      Printf.printf
        "      reason: catalog test:semantics = RDF-BASED only (DIRECT not asserted; catalog also ships an owl:NegativePropertyAssertion explicitly denying test:semantics DIRECT for this TestCase) — Direct Semantics, which is what this runner's RL closure and DL tableau implement, does not apply; RDF-Based (OWL Full) domain-size/comprehension reasoning over owl:Thing's extension is out of scope (see docs/claude-rules/w3c-completeness-ledger.md, #299)\n"
@@ -1484,7 +2177,7 @@ let parse_doc_literal (base : string) (lex : string) : triple list option =
    imports013 have an xml:base but no header). owl:imports objects are
    resolved against these keys. *)
 let owl_ontology_iri = "http://www.w3.org/2002/07/owl#Ontology"
-let owl_imports_iri  = "http://www.w3.org/2002/07/owl#imports"
+(* owl_imports_iri is defined earlier, near load_imports_into_premise. *)
 
 let xml_base_of (lex : string) : string option =
   let re = Str.regexp "xml:base[ \t\r\n]*=[ \t\r\n]*[\"']\\([^\"']*\\)[\"']" in
@@ -1728,6 +2421,12 @@ let print_help () =
      \  ./owl_runner <catalog.rdf> --species\n\
      \                                Score the test:species facet (OWL 2 DL vs FULL)\n\
      \                                via the F*-extracted OWL2_SyntaxDL checker\n\
+     \  ./owl_runner --semantics direct|rdf-based-full\n\
+     \                                Closure semantics mode (default: direct).\n\
+     \                                rdf-based-full additionally enables the\n\
+     \                                F*-side OWL Full meta-modeling axiom\n\
+     \                                table (OWL 2 RDF-Based Semantics Table\n\
+     \                                5.2 meta-vocabulary class equalities)\n\
      \  ./owl_runner --help           Show this help\n\
      \n\
      Status: Phase 0 skeleton — reads manifest, prints per-test identifier\n\
@@ -1823,9 +2522,39 @@ let run_catalog ?(verbose=false) path =
         0 n_outcomes
     in
     let n_fails = nk - n_passes in
+    (* #326: unsupported (budget-escape) verdicts stay INSIDE the scored
+       denominator, on the non-pass side — they are attempted tests with
+       an engine/budget gap, not scope exclusions. Surfaced additively so
+       the size of the correction is visible: n_passes + n_unsupported is
+       the pre-#326 pass count for this same run. The suffix deliberately
+       avoids the words "pass", "fail" and "out of" so generate-report.sh's
+       score-line regexes keep matching the same fields. *)
+    let n_unsupported =
+      List.fold_left
+        (fun acc (_, o) ->
+           match o with Unsupported_degraded_closure _ -> acc + 1 | _ -> acc)
+        0 n_outcomes
+    in
+    (* 2026-07-30: the second unsupported kind rides in its own clause,
+       never folded into the cap-escape one — a budget escape and an
+       undecidable input call for different work. Absent when 0, so a
+       run with no indeterminates prints exactly what it printed before. *)
+    let n_indeterminate =
+      List.fold_left
+        (fun acc (_, o) ->
+           match o with Unsupported_refuter_indeterminate _ -> acc + 1 | _ -> acc)
+        0 n_outcomes
+    in
+    let n_unsup_suffix =
+      (if n_unsupported > 0 then
+         Printf.sprintf "; %d unsupported (cap-escape, #326)" n_unsupported
+       else "")
+      ^ (if n_indeterminate > 0 then
+           Printf.sprintf "; %d unsupported (refuter-indeterminate, #326)" n_indeterminate
+         else "") in
     Printf.printf "\n";
-    Printf.printf "Profile-RL NegativeEntailmentTests: %d pass, %d fail (out of %d) in %.2fs\n"
-      n_passes n_fails nk (t_neg1 -. t_neg0)
+    Printf.printf "Profile-RL NegativeEntailmentTests: %d pass, %d fail (out of %d)%s in %.2fs\n"
+      n_passes n_fails nk n_unsup_suffix (t_neg1 -. t_neg0)
   end;
 
   (* Phase 2.2: ConsistencyTest + InconsistencyTest. Both use the
@@ -1855,9 +2584,32 @@ let run_catalog ?(verbose=false) path =
     in
     let c_scored = ck - c_skips in
     let c_fails = c_scored - c_passes in
+    (* #326 — see the NegativeEntailmentTests suffix above for why the
+       unsupported count rides alongside instead of leaving the
+       denominator. *)
+    let c_unsupported =
+      List.fold_left
+        (fun acc (_, o) ->
+           match o with Unsupported_degraded_closure _ -> acc + 1 | _ -> acc)
+        0 c_outcomes
+    in
+    (* 2026-07-30 — see the NegativeEntailmentTests clause above. *)
+    let c_indeterminate =
+      List.fold_left
+        (fun acc (_, o) ->
+           match o with Unsupported_refuter_indeterminate _ -> acc + 1 | _ -> acc)
+        0 c_outcomes
+    in
+    let c_unsup_suffix =
+      (if c_unsupported > 0 then
+         Printf.sprintf "; %d unsupported (cap-escape, #326)" c_unsupported
+       else "")
+      ^ (if c_indeterminate > 0 then
+           Printf.sprintf "; %d unsupported (refuter-indeterminate, #326)" c_indeterminate
+         else "") in
     Printf.printf "\n";
-    Printf.printf "Profile-RL ConsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only) in %.2fs\n"
-      c_passes c_fails c_scored c_skips (t_cons1 -. t_cons0)
+    Printf.printf "Profile-RL ConsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only)%s in %.2fs\n"
+      c_passes c_fails c_scored c_skips c_unsup_suffix (t_cons1 -. t_cons0)
   end;
 
   let inc_tests =
@@ -1923,6 +2675,14 @@ let () =
     | ("--help" | "-h") :: _ -> print_help (); exit 0
     | "--list" :: _ -> list_catalogs (); exit 0
     | "--species" :: rest -> species_mode := true; loop rest
+    | "--semantics" :: s :: rest ->
+      (match String.lowercase_ascii s with
+       | "direct" -> full_meta_mode := false
+       | "rdf-based-full" -> full_meta_mode := true
+       | _ ->
+         Printf.eprintf "owl_runner: --semantics expects direct|rdf-based-full, got %S\n" s;
+         exit 2);
+      loop rest
     | "--regime" :: r :: rest ->
       (match String.lowercase_ascii r with
        | "rl" -> regime := Regime_RL
@@ -1938,8 +2698,47 @@ let () =
   in
   loop args;
   Printf.printf "Closure regime: %s\n" (regime_label ());
+  Printf.printf "Closure semantics: %s\n" (semantics_label ());
   let catalog = match !path with
     | Some p -> p
     | None -> default_catalog ()
   in
-  run_catalog ~verbose:!verbose catalog
+  run_catalog ~verbose:!verbose catalog;
+  (* #316 (c): publish the escape counts. A degraded closure scores the
+     test on a LESS-closed graph; for a ConsistencyTest that direction
+     manufactures a PASS, so these counts belong next to the scores, not
+     only in stderr. Fixed format, scraped by generate-report.sh. *)
+  (* #326 extends the block: every escape kind gets a count (the nine
+     formerly-silent closure arms now log too), and the absence-shaped
+     verdicts that were CORRECTED off PASS are listed by name. *)
+  let degraded_tests =
+    List.sort String.compare
+      (Hashtbl.fold (fun k () acc -> k :: acc) owl_degraded_tests []) in
+  let unsupported_tests =
+    List.sort (fun (a, _) (b, _) -> String.compare a b)
+      (Hashtbl.fold (fun k v acc -> (k, v) :: acc) owl_unsupported_tests []) in
+  (* 2026-07-30: the refuter-indeterminate corrections, named and counted
+     on their own. `refuter_indeterminate` above counts EVENTS (a dl_refutes
+     call that came back None); this counts the TESTS whose verdict that
+     moved off PASS. They are not the same number — an event on a test
+     that FAILs anyway changes no verdict. *)
+  let indeterminate_tests =
+    List.sort (fun (a, _) (b, _) -> String.compare a b)
+      (Hashtbl.fold (fun k v acc -> (k, v) :: acc) owl_indeterminate_tests []) in
+  Printf.printf "\nHarness Diagnostics (escape branches, #316 + #326):\n";
+  Printf.printf
+    "HARNESS-DIAG-OWL degraded_closure_marked:%d degraded_closure_silent:%d \
+     marker_scan_escapes:%d refuter_escapes:%d pe_refuter_escapes:%d \
+     refuter_indeterminate:%d tests_on_degraded_closure:%d \
+     tests_unsupported_cap_escape:%d tests_unsupported_refuter_indeterminate:%d\n"
+    !owl_degraded_marked !owl_degraded_silent !owl_escape_marker
+    !owl_escape_refuter !owl_escape_pe_refuter !owl_escape_indeterminate
+    (List.length degraded_tests) (List.length unsupported_tests)
+    (List.length indeterminate_tests);
+  List.iter (fun t -> Printf.printf "HARNESS-DIAG-OWL-TEST %s\n" t) degraded_tests;
+  List.iter
+    (fun (t, why) -> Printf.printf "HARNESS-DIAG-OWL-UNSUPPORTED %s | %s\n" t why)
+    unsupported_tests;
+  List.iter
+    (fun (t, why) -> Printf.printf "HARNESS-DIAG-OWL-INDETERMINATE %s | %s\n" t why)
+    indeterminate_tests

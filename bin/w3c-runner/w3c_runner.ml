@@ -711,6 +711,44 @@ let results_match expected_rows actual_rows =
     ) expected_rows
 
 (* ============================================================================
+   Harness diagnostics — every escape hatch is counted, per suite (#316)
+
+   A conformance number is only as strong as its weakest comparator, and
+   the escape branches used to be visible only as stderr chatter. Every
+   branch that can move a test off the ordinary "run it and compare it"
+   path now increments a per-suite counter, and `run_and_tally` prints a
+   machine-readable `HARNESS-DIAG` block that generate-report.sh scrapes
+   into docs/test-results/latest.json. A rising escape rate is therefore
+   visible on the dashboard instead of buried in a log.
+   ============================================================================ *)
+
+type harness_diag = {
+  mutable hd_budget_escape : int;  (* RDFC-1.0 HNDQ budget tripped -> FAIL   *)
+  mutable hd_gsp_seed      : int;  (* GSP pre-state seeding branch fired      *)
+  mutable hd_no_manifest   : int;  (* suite dir carries no manifest.ttl       *)
+  mutable hd_zero_tests    : int;  (* manifest read, zero tests discovered    *)
+}
+
+let diag_table : (string * harness_diag) list ref = ref []
+let diag_current_suite = ref "(no-suite)"
+
+(* Set when the run is structurally untrustworthy (zero suites, zero
+   tests, a suite with no manifest). Distinct from ordinary test failure:
+   `main` exits 2 for this, 1 for "tests failed", 0 for a clean run. *)
+let harness_fatal = ref false
+
+let diag_for (suite : string) : harness_diag =
+  match List.assoc_opt suite !diag_table with
+  | Some d -> d
+  | None ->
+    let d = { hd_budget_escape = 0; hd_gsp_seed = 0;
+              hd_no_manifest = 0; hd_zero_tests = 0 } in
+    diag_table := !diag_table @ [(suite, d)];
+    d
+
+let diag_now () = diag_for !diag_current_suite
+
+(* ============================================================================
    Strict graph / result-set comparison (I/O glue over F* semantics)
 
    The comparison SEMANTICS live in the F*-extracted RDF.GraphIsomorphism
@@ -719,41 +757,39 @@ let results_match expected_rows actual_rows =
    SELECT result equality with blank nodes is Jena-style row reification
    fed into the same canonicalizer. Everything below is glue: it dispatches
    to those functions, threads the ORDER-BY flag and bnode presence, and
-   handles the RDFC-1.0 work-budget escape by logging a countable marker
-   and falling back to the previous lenient bnode-collapsing comparison.
+   turns the RDFC-1.0 work-budget escape into a scored FAILURE.
    No comparison logic is decided here.
+
+   #316 (2026-07-29): the budget escape used to fall back to
+   `graph_lenient_multiset_eq`, a bnode-collapsing multiset comparison
+   the file itself documented as "the OLD lenient behaviour" and which
+   admits false positives — so a test that tripped the budget could be
+   scored PASS on a comparator we do not trust. That comparator is now
+   DELETED, not merely bypassed, so it cannot be reintroduced by an
+   accidental call. A budget escape yields `false` from the comparator
+   and `run_suite_generic` relabels the whole test as a FAIL naming the
+   cause. The countable marker line is kept (it was the one good part of
+   the old branch) but renamed from `[isomorphism_budget_fallback]` to
+   `[isomorphism_budget_exceeded]`, since there is no longer a fallback
+   behind it.
    ============================================================================ *)
 
-(* bnode-agnostic multiset equality — the OLD lenient behaviour, retained
-   ONLY as the fallback path when RDFC-1.0 aborts on a pathological
-   blank-node graph (Iso_BudgetExceeded). Expected to be unreached on the
-   W3C suites (their graphs are tiny). *)
-let graph_lenient_multiset_eq (expected : triple list) (actual : triple list) =
-  if List.length expected <> List.length actual then false
-  else
-    let key (t : triple) =
-      let s = match t.RDF_Graph_Executable.s with
-        | S_IRI i -> "I:" ^ i | S_BNode _ -> "B" in
-      let o = match t.RDF_Graph_Executable.o with
-        | T_IRI i -> "I:" ^ i
-        | T_BNode _ -> "B"
-        | T_Literal l ->
-          "L:" ^ l.RDF_Graph_Executable.lexical_form ^ "^^" ^
-          l.RDF_Graph_Executable.datatype ^
-          (match l.RDF_Graph_Executable.lang_tag with Some g -> "@" ^ g | None -> "")
-        | T_TripleTerm _ as tt -> "T:" ^ term_to_str tt in
-      Printf.sprintf "%s|%s|%s" s t.RDF_Graph_Executable.p o in
-    List.sort compare (List.map key expected) = List.sort compare (List.map key actual)
+let record_budget_escape (kind : string) (test_iri : string) =
+  Printf.eprintf
+    "[isomorphism_budget_exceeded] %s (%s) — RDFC-1.0 canonicalization \
+     budget tripped; strict comparison unavailable, scoring FAIL\n%!"
+    test_iri kind;
+  let d = diag_now () in
+  d.hd_budget_escape <- d.hd_budget_escape + 1
 
-(* Strict graph equality. `test_iri` is used only to label the budget
-   fallback marker so fallbacks are countable. *)
+(* Strict graph equality. `test_iri` labels the budget-escape marker so
+   escapes are countable per test and per suite. *)
 let graphs_equal_strict test_iri (expected : triple list) (actual : triple list) =
   match RDF_GraphIsomorphism.graphs_isomorphic_outcome expected actual with
   | RDF_GraphIsomorphism.Iso_Equal -> true
   | RDF_GraphIsomorphism.Iso_NotEqual -> false
   | RDF_GraphIsomorphism.Iso_BudgetExceeded ->
-    Printf.eprintf "[isomorphism_budget_fallback] %s\n" test_iri;
-    graph_lenient_multiset_eq expected actual
+    record_budget_escape "graph" test_iri; false
 
 (* Strict dataset equality (default + named graphs, quad granularity) via
    the same F* canonicalizer; used for TriG / N-Quads eval so named-graph
@@ -764,12 +800,7 @@ let datasets_equal_strict test_iri (expected : RDF_Graph_Executable.rdf_dataset)
   | RDF_GraphIsomorphism.Iso_Equal -> true
   | RDF_GraphIsomorphism.Iso_NotEqual -> false
   | RDF_GraphIsomorphism.Iso_BudgetExceeded ->
-    Printf.eprintf "[isomorphism_budget_fallback] %s\n" test_iri;
-    let flat (ds : RDF_Graph_Executable.rdf_dataset) =
-      ds.RDF_Graph_Executable.ds_default @
-      List.concat_map (fun ng -> ng.RDF_Graph_Executable.ng_graph)
-        ds.RDF_Graph_Executable.ds_named in
-    graph_lenient_multiset_eq (flat expected) (flat actual)
+    record_budget_escape "dataset" test_iri; false
 
 (* Does any solution row bind a variable to a blank node? Only then do we
    need the reification+canonicalization bijection; bnode-free result sets
@@ -789,8 +820,10 @@ let select_results_equal_strict test_iri ~ordered ~value_cmp expected_rows actua
     | RDF_GraphIsomorphism.Iso_Equal -> true
     | RDF_GraphIsomorphism.Iso_NotEqual -> false
     | RDF_GraphIsomorphism.Iso_BudgetExceeded ->
-      Printf.eprintf "[isomorphism_budget_fallback] %s\n" test_iri;
-      results_match_with value_cmp expected_rows actual_rows
+      (* #316: was a fallback to the value-aware comparator, which cannot
+         see the cross-row blank-node bijection and so admits false
+         positives here too. Scored FAIL instead. *)
+      record_budget_escape "solutions" test_iri; false
   else
     results_match_with value_cmp expected_rows actual_rows
 
@@ -1094,7 +1127,7 @@ let run_query_eval_test tc =
          RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 (Z.of_int 100)
        with _ -> graph)
     | "RDFS" ->
-      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100)
+      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch graph (Z.of_int 100)
        with _ -> graph)
     | "RDF" ->
       (* Pure RDF regime: RDFS closure PLUS the rdfD2 axiom (every
@@ -1104,7 +1137,7 @@ let run_query_eval_test tc =
          it is applied here only for ent:RDF (rdf01 "RDF inference
          test"). Regime dispatch, not semantic logic (rule #15). *)
       (try
-         let g1 = RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100) in
+         let g1 = RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch graph (Z.of_int 100) in
          RDF_Graph_Executable.rdf_property_axiom_closure g1
        with _ -> graph)
     | "RIF" ->
@@ -1174,109 +1207,20 @@ let run_query_eval_test tc =
     | Some content -> parse_sparql_query ~base_file:(Some tc.query_file) content
   in
 
-  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
-     existential variables — they match any term, not just blank nodes
-     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
+  (* Under RDF/RDFS/D/OWL-RL/OWL-Direct/RIF entailment, blank nodes in
+     query patterns act as existential variables — they match any term,
+     not just blank nodes with the same label. The rewrite is in F* at
+     SPARQL11.Algebra.rewrite_query_bnodes_pattern; the runner just
+     passes the query AST through it.
+     #200 Section E retirement (#53), 2026-05-09. Was previously an
+     inline OCaml fold; the F*-side function existed but wasn't wired.
+     #322 (2026-07-29): this block stood SEVEN times consecutively. The
+     F-star function rewrite_query_bnode_term maps a PT_BNode to a
+     PT_Var named "_bnode_" plus the label (PS_BNode likewise), so no
+     blank node survives the first pass and applications 2..7 were
+     structural no-ops. One application is the whole behaviour. *)
   let query = match tc.test_type_detail with
     | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
-      (* Under RDF/RDFS/D/OWL-RL/OWL-Direct/RIF entailment, blank nodes in
-         query patterns act as existential variables — they match any term,
-         not just blank nodes with the same label. The rewrite is in F* at
-         SPARQL11.Algebra.rewrite_query_bnodes_pattern; the runner just
-         passes the query AST through it.
-         #200 Section E retirement (#53), 2026-05-09. Was previously an
-         inline OCaml fold; the F*-side function existed but wasn't wired. *)
-      { query with q_pattern = SPARQL11_Algebra.rewrite_query_bnodes_pattern query.q_pattern }
-    | _ -> query in
-
-  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
-     existential variables — they match any term, not just blank nodes
-     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables.
-     NOTE: This logic should be elevated to F* — tracked in issue #61. *)
-  let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
-      (* Under RDF/RDFS/D/OWL-RL/OWL-Direct/RIF entailment, blank nodes in
-         query patterns act as existential variables — they match any term,
-         not just blank nodes with the same label. The rewrite is in F* at
-         SPARQL11.Algebra.rewrite_query_bnodes_pattern; the runner just
-         passes the query AST through it.
-         #200 Section E retirement (#53), 2026-05-09. Was previously an
-         inline OCaml fold; the F*-side function existed but wasn't wired. *)
-      { query with q_pattern = SPARQL11_Algebra.rewrite_query_bnodes_pattern query.q_pattern }
-    | _ -> query in
-
-  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
-     existential variables — they match any term, not just blank nodes
-     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
-  let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
-      (* Under RDF/RDFS/D/OWL-RL/OWL-Direct/RIF entailment, blank nodes in
-         query patterns act as existential variables — they match any term,
-         not just blank nodes with the same label. The rewrite is in F* at
-         SPARQL11.Algebra.rewrite_query_bnodes_pattern; the runner just
-         passes the query AST through it.
-         #200 Section E retirement (#53), 2026-05-09. Was previously an
-         inline OCaml fold; the F*-side function existed but wasn't wired. *)
-      { query with q_pattern = SPARQL11_Algebra.rewrite_query_bnodes_pattern query.q_pattern }
-    | _ -> query in
-
-  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
-     existential variables — they match any term, not just blank nodes
-     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
-  let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
-      (* Under RDF/RDFS/D/OWL-RL/OWL-Direct/RIF entailment, blank nodes in
-         query patterns act as existential variables — they match any term,
-         not just blank nodes with the same label. The rewrite is in F* at
-         SPARQL11.Algebra.rewrite_query_bnodes_pattern; the runner just
-         passes the query AST through it.
-         #200 Section E retirement (#53), 2026-05-09. Was previously an
-         inline OCaml fold; the F*-side function existed but wasn't wired. *)
-      { query with q_pattern = SPARQL11_Algebra.rewrite_query_bnodes_pattern query.q_pattern }
-    | _ -> query in
-
-  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
-     existential variables — they match any term, not just blank nodes
-     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
-  let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
-      (* Under RDF/RDFS/D/OWL-RL/OWL-Direct/RIF entailment, blank nodes in
-         query patterns act as existential variables — they match any term,
-         not just blank nodes with the same label. The rewrite is in F* at
-         SPARQL11.Algebra.rewrite_query_bnodes_pattern; the runner just
-         passes the query AST through it.
-         #200 Section E retirement (#53), 2026-05-09. Was previously an
-         inline OCaml fold; the F*-side function existed but wasn't wired. *)
-      { query with q_pattern = SPARQL11_Algebra.rewrite_query_bnodes_pattern query.q_pattern }
-    | _ -> query in
-
-  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
-     existential variables — they match any term, not just blank nodes
-     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
-  let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
-      (* Under RDF/RDFS/D/OWL-RL/OWL-Direct/RIF entailment, blank nodes in
-         query patterns act as existential variables — they match any term,
-         not just blank nodes with the same label. The rewrite is in F* at
-         SPARQL11.Algebra.rewrite_query_bnodes_pattern; the runner just
-         passes the query AST through it.
-         #200 Section E retirement (#53), 2026-05-09. Was previously an
-         inline OCaml fold; the F*-side function existed but wasn't wired. *)
-      { query with q_pattern = SPARQL11_Algebra.rewrite_query_bnodes_pattern query.q_pattern }
-    | _ -> query in
-
-  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
-     existential variables — they match any term, not just blank nodes
-     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
-  let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
-      (* Under RDF/RDFS/D/OWL-RL/OWL-Direct/RIF entailment, blank nodes in
-         query patterns act as existential variables — they match any term,
-         not just blank nodes with the same label. The rewrite is in F* at
-         SPARQL11.Algebra.rewrite_query_bnodes_pattern; the runner just
-         passes the query AST through it.
-         #200 Section E retirement (#53), 2026-05-09. Was previously an
-         inline OCaml fold; the F*-side function existed but wasn't wired. *)
       { query with q_pattern = SPARQL11_Algebra.rewrite_query_bnodes_pattern query.q_pattern }
     | _ -> query in
 
@@ -2091,6 +2035,11 @@ let run_gsp_test tc =
           if _gsp_should_seed tc.name
              && not (SPARQL_GraphStore.gsp_head target !store_ref)
           then begin
+            (* #316: this branch manufactures pre-state a manifest entry
+               expects, so it can turn a would-be FAIL into a PASS. Count
+               it as a harness escape so the rate is visible. *)
+            let d = diag_now () in
+            d.hd_gsp_seed <- d.hd_gsp_seed + 1;
             let seed = [{
               RDF_Graph_Executable.s = RDF_Graph_Executable.S_IRI "urn:gsp:seed:s";
               RDF_Graph_Executable.p = "urn:gsp:seed:p";
@@ -2930,13 +2879,26 @@ let discover_rdf_suites () =
 let run_suite_generic base_dir runner suite_name =
   let suite_dir = Filename.concat base_dir suite_name in
   let manifest = Filename.concat suite_dir "manifest.ttl" in
+  diag_current_suite := suite_name;
+  let diag = diag_for suite_name in
   if not (Sys.file_exists manifest) then begin
-    Printf.printf "  [skip] No manifest.ttl in %s\n" suite_name;
+    (* #316: a suite that discovers nothing must not read as green. This
+       used to print "[skip]" and return a clean (0,0,0,0), which is
+       hazard #15's lying-0/0 in another guise. Counted here, fatal in
+       `main`. *)
+    Printf.printf "  [NO-MANIFEST] no manifest.ttl in %s (%s)\n" suite_name manifest;
+    Printf.eprintf "  [NO-MANIFEST] no manifest.ttl in %s (%s)\n%!" suite_name manifest;
+    diag.hd_no_manifest <- diag.hd_no_manifest + 1;
     (0, 0, 0, 0)
   end else begin
     let (tests, assumed_base) = read_manifest manifest in
     let pass = ref 0 and fail = ref 0 and skip = ref 0 and unsup = ref 0 in
     let total = List.length tests in
+    if total = 0 then begin
+      Printf.printf "  [ZERO-TESTS] manifest %s discovered 0 tests\n" manifest;
+      Printf.eprintf "  [ZERO-TESTS] manifest %s discovered 0 tests\n%!" manifest;
+      diag.hd_zero_tests <- diag.hd_zero_tests + 1
+    end;
     let n = ref 0 in
     List.iter (fun tc ->
       incr n;
@@ -2944,8 +2906,22 @@ let run_suite_generic base_dir runner suite_name =
          (live tail-able when the runner is invoked from a TTY; doesn't
          pollute stdout's PASS/FAIL/skip table). *)
       Printf.eprintf "  [%d/%d] %s/%s%!" !n total suite_name tc.name;
+      let escapes_before = diag.hd_budget_escape in
       let t0 = Unix.gettimeofday () in
       let result = runner assumed_base tc in
+      (* #316: if the strict comparator gave up mid-test, the outcome is
+         untrustworthy in BOTH directions — the old code fell back to a
+         lenient comparator and could report PASS. Relabel centrally so
+         every call site inherits the rule and the FAIL message names the
+         real cause instead of "Triples mismatch". *)
+      let result =
+        let escaped = diag.hd_budget_escape - escapes_before in
+        if escaped > 0 then
+          Fail (Printf.sprintf
+                  "strict comparison unavailable: RDFC-1.0 canonicalization \
+                   budget exceeded (%d escape%s); no lenient fallback (#316)"
+                  escaped (if escaped = 1 then "" else "s"))
+        else result in
       let elapsed = Unix.gettimeofday () -. t0 in
       let time_str = if elapsed >= 1.0 then Printf.sprintf " (%.1fs)" elapsed
                      else if elapsed >= 0.01 then Printf.sprintf " (%.0fms)" (elapsed *. 1000.0)
@@ -3274,6 +3250,48 @@ let run_sparql12_test tc =
 let run_sparql12_suite suite_name =
   run_suite_generic sparql12_tests_base (fun _assumed_base tc -> run_sparql12_test tc) suite_name
 
+(* #316 (c): machine-readable per-suite escape counts, so the dashboard
+   can show a rising fallback / skip / special-case rate instead of it
+   living only in stderr. `skip` and `unsupported` are repeated here
+   deliberately — they are escapes too, and a reader of the diagnostics
+   block should not have to join it against the score table by hand.
+   Format is fixed; generate-report.sh scrapes it into latest.json:
+
+     HARNESS-DIAG <suite> budget_exceeded:N gsp_seed:N no_manifest:N \
+                          zero_tests:N skip:N unsupported:N
+     HARNESS-DIAG-TOTAL budget_exceeded:N ... discovered_tests:N       *)
+let print_harness_diag suite_results =
+  let g name =
+    match List.assoc_opt name !diag_table with
+    | Some d -> d
+    | None -> { hd_budget_escape = 0; hd_gsp_seed = 0;
+                hd_no_manifest = 0; hd_zero_tests = 0 } in
+  let t_budget = ref 0 and t_seed = ref 0 and t_nomf = ref 0
+  and t_zero = ref 0 and t_skip = ref 0 and t_unsup = ref 0
+  and t_disc = ref 0 in
+  Printf.printf "\nHarness Diagnostics (escape branches, #316):\n";
+  List.iter (fun (name, p, f, s, u) ->
+    let d = g name in
+    t_budget := !t_budget + d.hd_budget_escape;
+    t_seed   := !t_seed   + d.hd_gsp_seed;
+    t_nomf   := !t_nomf   + d.hd_no_manifest;
+    t_zero   := !t_zero   + d.hd_zero_tests;
+    t_skip   := !t_skip   + s;
+    t_unsup  := !t_unsup  + u;
+    t_disc   := !t_disc   + p + f + s + u;
+    Printf.printf
+      "HARNESS-DIAG %-30s budget_exceeded:%d gsp_seed:%d no_manifest:%d \
+       zero_tests:%d skip:%d unsupported:%d\n"
+      name d.hd_budget_escape d.hd_gsp_seed d.hd_no_manifest
+      d.hd_zero_tests s u
+  ) suite_results;
+  Printf.printf
+    "HARNESS-DIAG-TOTAL budget_exceeded:%d gsp_seed:%d no_manifest:%d \
+     zero_tests:%d skip:%d unsupported:%d discovered_tests:%d\n"
+    !t_budget !t_seed !t_nomf !t_zero !t_skip !t_unsup !t_disc;
+  (* Return the two conditions `main` treats as fatal. *)
+  (!t_disc, !t_nomf + !t_zero)
+
 let run_and_tally runner suites banner base_dir =
   Printf.printf "=== %s ===\n" banner;
   Printf.printf "Test base: %s\n\n" base_dir;
@@ -3302,6 +3320,32 @@ let run_and_tally runner suites banner base_dir =
   Printf.printf "TOTAL: %d pass, %d fail, %d skip, %d unsupported\n"
     !total_pass !total_fail !total_skip !total_unsup;
   Printf.printf "========================================\n";
+  let (discovered, discovery_faults) = print_harness_diag suite_results in
+  (* #316 (b): a run that discovers nothing must not exit green. Nor may
+     a named suite silently contribute zero. Recorded here; `main` turns
+     it into exit 2 so it is distinguishable from an ordinary test
+     failure (exit 1). *)
+  if List.length suites = 0 then begin
+    Printf.printf "FATAL: zero suites discovered under %s\n" base_dir;
+    Printf.eprintf "FATAL: zero suites discovered under %s\n%!" base_dir;
+    harness_fatal := true
+  end;
+  if discovered = 0 then begin
+    Printf.printf "FATAL: zero tests discovered across %d suite(s) under %s\n"
+      (List.length suites) base_dir;
+    Printf.eprintf "FATAL: zero tests discovered across %d suite(s) under %s\n%!"
+      (List.length suites) base_dir;
+    harness_fatal := true
+  end;
+  if discovery_faults > 0 then begin
+    Printf.printf
+      "FATAL: %d suite(s) discovered no tests (missing manifest.ttl or empty \
+       manifest) — refusing to report a green run\n" discovery_faults;
+    Printf.eprintf
+      "FATAL: %d suite(s) discovered no tests (missing manifest.ttl or empty \
+       manifest) — refusing to report a green run\n%!" discovery_faults;
+    harness_fatal := true
+  end;
   (!total_pass, !total_fail, !total_skip, !total_unsup)
 
 let () =
@@ -3405,4 +3449,9 @@ let () =
     if f > 0 then any_fail := true
   end;
 
-  if !any_fail then exit 1 else exit 0
+  (* #316 (b): exit 2 = the run itself is untrustworthy (nothing
+     discovered / a suite with no manifest); exit 1 = tests ran and some
+     failed; exit 0 = clean. The fatal case is checked FIRST so it cannot
+     be masked by a coincidentally-green tally. *)
+  if !harness_fatal then exit 2
+  else if !any_fail then exit 1 else exit 0

@@ -1,5 +1,5 @@
 === W3C JSON-LD 1.1 HTML Test Runner ===
-Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/html-manifest.jsonld
+Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/html-manifest.jsonld
 
   PASS: Expands embedded JSON-LD script element
   PASS: Expands embedded JSON-LD script element (xhtml)

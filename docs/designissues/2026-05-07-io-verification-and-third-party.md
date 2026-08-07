@@ -192,41 +192,23 @@ realises UUID via OCaml; this design replaces that patch with a
 verified F\* byte-format function plus a single `assume val
 random_bytes` realisation.
 
-## Regex — keep `assume val regex_match`
+## Regex — superseded: fully verified in F\* (issue #304)
 
-Regex matching is **explicitly host-defined** by the SPARQL 1.1
-spec. The pattern language and matching semantics are deferred
-to the implementation's regex engine, with a small subset
-mandated. Verifying the regex semantics ourselves is therefore
-not just hard but **wrong** — it would create a divergence from
-what every other SPARQL engine does.
-
-The right pattern:
-
-```fstar
-// SPARQL REGEX call-out. Pattern flags: "i" (case-insensitive),
-// "s" (dot matches newline), etc. Semantics defined by the host
-// regex engine; no F* proof obligations on the matcher itself.
-assume val regex_match
-  (pattern : string)
-  (input   : string)
-  (flags   : string)
-  : ML bool
-```
-
-The OCaml side calls `Str.regexp_string` / `Str.string_match` (or
-better, `Re` for PCRE compatibility). Other targets:
-- C extraction: link against POSIX `<regex.h>` or PCRE2.
-- WASM: ship a regex engine with the WASM bundle (or use the
-  host's via JS interop).
-
-This is rule #11(a) — an `assume val` realisation of pure I/O
-(in this case, "I/O" with the regex engine as the foreign service).
-It is correctly **not** in scope for migration into F\*.
-
-CLAUDE.md issue #63 covers this. Resolution for the issue: drop
-the migration goal; accept that regex semantics are externally
-defined.
+This section originally recommended keeping `assume val regex_match`
+as a permanent host-engine call-out, on the reasoning that SPARQL
+1.1 defers regex semantics to the implementation and verifying our
+own regex engine would diverge from other implementations. That
+reasoning was sound as a floor, but the project went further:
+issue #304 (phases 4-5) replaced both `regex_match` and
+`regex_replace` with pure, verified F\* over a Brzozowski-derivative
+engine (`Regex.Derivative.fst`, `Regex.Syntax`/`Exec`/`XSDPattern`,
+`SPARQL11.Algebra.fst`) — the same reference implementation this
+doc's "further reading" pointed to as an aspiration. Neither
+function is an `assume val` any more; `formal/fstar/
+experimental_ocaml_glue/minimal_regrettable_glue_code_each_with_an_open_issue/
+63_regex_hash_uuid_stubs.sh` no longer touches regex at all (its own
+header records the retirement). Issue #63 is closed for the regex
+half; the hash/UUID half remains open (see the boundary audit).
 
 ## Random — `assume val` per quality tier
 
@@ -328,7 +310,7 @@ the test is the proof the boundary holds.
 | SHA-256 | `hacl-star` opam package (Mode A) → vendored `.fst` (Mode B) | Trust HACL\* upstream proof; verify locally via Mode B if compliance demands |
 | Verified parsers (future) | EverParse | Trust upstream; vendor when used |
 | UUID format | Implement in F\* (RFC 4122 byte assembly) | Self-verified |
-| Regex matching | `assume val regex_match` realised by host (`Str` / PCRE2 / JS) | Host-engine-defined per SPARQL 1.1 |
+| Regex matching | `Regex.Derivative.fst` + `SPARQL11.Algebra.fst` — self-verified (issue #304); no longer an `assume val` | Self-verified |
 | Crypto random bytes | HACL\* `RandomBuffer` realisation of `assume val random_bytes_csprng` | HACL\* upstream |
 | Weak random bytes | OCaml `Random.bits` realisation of `assume val random_bytes_weak` | Non-crypto by design |
 
@@ -345,4 +327,5 @@ trust model documented, and the migration target known.
 - [Project Everest](https://project-everest.github.io/)
 - [RFC 4122 — UUID URN Namespace](https://datatracker.ietf.org/doc/html/rfc4122)
 - [Brzozowski-derivative regex — verified Idris implementation](https://github.com/MathiasVP/idris-regex)
-  (reference for if/when we want a fully F\*-verified regex)
+  (the reference this project's own derivative-based regex,
+  `Regex.Derivative.fst`, followed once #304 landed)

@@ -93,7 +93,7 @@ and drives three runners:
 | `rdfc10_runner` | RDF Dataset Canonicalization (RDFC-1.0; SHA-256 + SHA-384 per-test via rdfc:hashAlgorithm; Map tests compared structurally per the suite README; NegEval via HNDQ work budget). Baseline 2026-07-05 (wave 8): **86 pass, 0 fail (of 86) — suite complete** | `rdfc10_results.log` |
 | `shacl_runner` | W3C SHACL core suite (98 tests; full report-isomorphism compare by default, `--conforms-only` for the slice-1 floor). Baseline 2026-07-05 (wave 6): core 98 pass, 0 fail; sparql section (pass manifest path) 22 pass, 0 fail (of 22) — suite complete incl. custom constraint components | stdout |
 | `jsonld_runner` | W3C JSON-LD 1.1 toRdf manifest (467 tests; not yet folded into generate-report — run directly). Score 2026-07-05 (wave 9): 399 pass, 57 fail, 11 skip; remaining clusters: @graph containers (needs the graph-name-vs-reference-identity rule — a naive fix regresses 22 tests, see wave-9 agent diagnosis), @import-sourced protected terms, nested lists in @list, IRI-resolve edge cases, JCS float formatting | stdout |
-| `shex_runner` | ShEx validation suite (shexSpec/shexTest, 1182 entries; ShExJ-first with hand-translated twins in tests/shex-shexj-twins/ for ShExC-only fixtures; DEFERRED = construct beyond current stage, never guessed). Baseline 2026-07-05 (goal wave): 1181 pass, 1 mismatch, 0 deferred, 0 skipped — the mismatch is the upstream start2RefS2.json p1-vs-p2 fixture defect. Validation uses descendant-witness semantics (arXiv 2503.24299), differentially confirmed against @shexjs/validator. Two more modes: `--differential` (ShExC-vs-ShExJ parse oracle over schemas/, 433 of 433 structurally equal — the Parser.ShExC positive floor) and `--negative-syntax` (the 100-fixture ShExC grammar-reject suite; 2026-07-10 baseline 100 pass, 0 fail, log `shex_negative_syntax_results.log`). The vendored tree-sitter-shexc comparison probe (advisory, three-way vs expected verdicts) is `tests/shexc-treesitter/run.sh` — see §comparison probes | stdout |
+| `shex_runner` | ShEx validation suite (shexSpec/shexTest, 1182 entries; ShExJ-first with hand-translated twins in tests/shex-shexj-twins/ for ShExC-only fixtures; DEFERRED = construct beyond current stage, never guessed). Baseline 2026-07-29: 1182 pass, 0 mismatch, 0 local-override, 0 deferred, 0 skipped. (Until 2026-07-29 this read 1181 pass, 1 mismatch — the upstream start2RefS2.json p1-vs-p2 fixture defect, carried as a local override. Upstream commit 0f45c51 reconciled all three formats to p2 and added synchronization actions; the submodule was updated, the test now passes on its own merits, and the override file was deleted.) Validation uses descendant-witness semantics (arXiv 2503.24299), differentially confirmed against @shexjs/validator. Two more modes: `--differential` (ShExC-vs-ShExJ parse oracle over schemas/, 433 of 433 structurally equal — the Parser.ShExC positive floor) and `--negative-syntax` (the 100-fixture ShExC grammar-reject suite; 2026-07-10 baseline 100 pass, 0 fail, log `shex_negative_syntax_results.log`). The vendored tree-sitter-shexc comparison probe (advisory, three-way vs expected verdicts) is `tests/shexc-treesitter/run.sh` — see §comparison probes | stdout |
 | `rml_runner` | RML (kg-construct suites, third_party/testing/rml-modules/). Baseline 2026-07-05: rml-core 76 pass, 0 fail (of 76); rml-io 17 pass, 15 fail (documented stage-4+ gaps), 41 logical-target skips (of 73) | stdout |
 | `rif_runner` | W3C RIF Core: 4 vendored SPARQL-manifest cases (third_party/testing/rif/tc/) + the official Core_v1.22 corpus (46 tests, third_party/testing/rif-core-suite/). Baseline 2026-07-05 (goal wave): 34 pass, 4 labelled fails (1 KNOWN-DEFECT W3C-zip, 3 KNOWN-GAP), 12 precise skips naming the exact builtin/feature (of 50). DTB builtins in RIF.Core.Builtins.fst; safeness + import-rejection in RIF.Core.Conformance.fst; details in bin/rif-runner/README.md. NOTE: new extracted modules must be registered in FOUR places — build-ocaml.sh's three lists AND tests/unit/run-all.sh's array (missed the fourth on first landing; all 25 unit files fail with 'No implementations provided' when a linked module is absent) | stdout |
 | `xml_runner` (`bin/linux-x86_64/xml_runner`, no `build-ocaml.sh` args — standalone `mktemp`-scratch compile, see `bin/xml-runner/README.md`) | W3C XML Conformance Test Suite (`xmlconf`, third_party/testing/xml/xmlconf/, jclark/sun/ibm/oasis/eduni/japanese collections). Assesses `Parser.XML.fst` + `XML.Wellformedness.fst` (informational NCName check only — its NCName production excludes `:`, so it's RDF/XML-domain, not generic XML) + `XML.Namespaces.fst` (new 2026-07-05 wave 2 — Namespaces-in-XML layer, gated to the `eduni/namespaces/{1.0,1.1}` collections only). 2026-07-08 integrity accounting (vacuous DOCTYPE-forced rejections no longer counted as passes): **244 real pass, 0 fail, 2341 skip (of 2585)**. A `not-wf` test counts as a pass only when the parser rejects it for the tested construct. The earlier **1442** was inflated: 1166 of those "passes" were vacuous (rejected only because `Parser.XML.fst` has no DOCTYPE/DTD production, so the reject is forced by that gap, not the documented construct) — now counted as SKIP, not pass (anti-patterns #3 / #25). `valid` bucket (labelled "wf-accept" — no DTD validation implemented) is 0/0/812: every `valid` test carries a DOCTYPE, so it's 100% `Skip "DOCTYPE/DTD not parsed"` (DTD slice plan: `docs/designissues/2026-07-08-xml-dtd-support.md`). `invalid`/`error` (275 tests) are always skip by design. `not-wf` is 244 real pass/0 fail/skip-balance (of 1498); of the skips, 1166 are vacuous DOCTYPE-forced and 32 are out-of-profile (not-wf only under XML 1.1 / Namespaces — the ibm xml-1.1 restricted-C1 and eduni rmt-ns10-042 colon-in-PITarget clusters; the parser accepts them since they are well-formed under its XML 1.0 non-namespace profile). Prolog PIs are now consumed per XML 1.0 §2.8 (un-skips 8 XSLT stylesheets: `xslt_runner` 22→25 pass). The wave-1 84 fails (non-character codepoints, XML declaration grammar, namespace-spec violations, epilog/trailing-content, comment `--`, `]]>`-in-text, attribute value/uniqueness, PI/decl target-name casing, 3 singletons) are now all fixed — per-cluster fix summary in `bin/xml-runner/README.md`'s "Wave 1 → wave 2" section; downstream SPARQL (631 pass, 0 fail) and RIF (30 pass, 8 fail, 12 skip — identical to the pre-change committed binary, so unchanged by this work) floors reverified after the `Parser.XML.fst` prolog-PI change, since it's also consumed by `Parser.RDFXML`/`Parser.RIFXML`/`Parser.SRX`; raw logs `.claude-runs/xml-runner-2026-07-05.log` (wave 1) and `.claude-runs/xml-runner-2026-07-05-fixed.log` (wave 2) | stdout |
@@ -395,3 +395,48 @@ refinements from 2026-07-04:
 - Timing/perf measurement — `perf-benchmarking` skill.
 - Publishing scores to the site/dashboard — `site-and-dashboard` skill.
 - Toolchain setup — `fstar-env` skill.
+
+## ⚠️ A green suite can measure nothing
+
+A negative test ("X must NOT be entailed") is passed for free by an
+engine that derives nothing. Measured 2026-07-31: **19 of 42** negative
+tests across rdf-mt, rdf12-semantics and sparql11-entailment were
+vacuous, while every W3C score stayed green. Run
+`python3 tools/negative-test-vacuity.py` after any change to a rule set
+or entailment regime, and read
+[`skills/measuring-inference/SKILL.md`](../measuring-inference/SKILL.md)
+for why a score alone cannot tell you whether the rules fired.
+
+## ⚠️ A suite score certifies only the evaluated path
+
+Learned 2026-08-02, the hard way. The engine has more than one
+evaluation path for the same query: the W3C runner calls
+`eval_select_query` (the pure algebra path), while `factoidal query`,
+the npm bundle, and the HTTP server all route through
+`SPARQL11.Store.eval_pattern_backend`. `FILTER EXISTS` was completely
+broken on the backend path — every row dropped, both EXISTS and NOT
+EXISTS empty at once — while the suite read **631 of 631**, because the
+suite only ever exercises the runner's path. The score was true and
+certified nothing about what users run. An external reviewer found it
+in minutes of ordinary use.
+
+Consequences for practice:
+
+1. **When quoting a score, know which code path it certifies.** A
+   public claim shaped "631 of 631 W3C SPARQL" implicitly claims the
+   *product* conforms; if the runner path and the product path diverge,
+   the claim is false in effect even though the number is exact.
+2. **Every user-facing entry point carries its own pins** —
+   `tests/local/cli_*.sh` run the actual CLI binary on actual W3C
+   fixtures plus the reported repro shapes. The npm surface pins live
+   in `npm/factoidal/test/`. A fix for any runner/user divergence adds
+   its regression THROUGH THE USER PATH, so the next path split fails a
+   test instead of a user.
+3. **Path splits are load-bearing architecture, not plumbing detail.**
+   `eval_pattern_backend` vs `eval_pattern` vs streaming fast-paths:
+   when adding an arm to one, ask what the corresponding arm in the
+   others does, and which suite would notice if they disagreed. Usually
+   the answer is "none" — that is what the pins are for.
+
+War story in full: issue #343; hazard #20 in
+`skills/workflow-gotchas-debugging/SKILL.md`.

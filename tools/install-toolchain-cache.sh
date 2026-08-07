@@ -159,11 +159,21 @@ if ! { ocamlfind list 2>/dev/null | grep -q zarith \
   # required by `fstar.lib'". uucp is needed directly by build-ocaml.sh's
   # ocamlopt link line. Retry (a flaky sandbox network drops mid-install)
   # and touch the sentinel on success.
+  #
+  # ppx_deriving is PINNED to 6.1.2: the cached fstar.cmxa was compiled
+  # against 6.1.2's Ppx_deriving_runtime interface (digest 67b7b3ad...);
+  # an unpinned install resolves 6.1.3, whose changed interface digest
+  # makes every ocamlopt link die with "fstar.cmxa and
+  # ppx_deriving_runtime.cmxa make inconsistent assumptions over
+  # interface Ppx_deriving_runtime" (hit 2026-07-28). Bump this pin only
+  # together with a rebuilt toolchain-cache tarball. Verify a suspected
+  # mismatch with: ocamlobjinfo .../fstar.cmxa | grep Ppx_deriving_runtime
+  # vs the same grep on .../ppx_deriving/runtime/ppx_deriving_runtime.cmxa.
   nohup bash -c '
     deps_ok="$1"
     for attempt in 1 2 3; do
       if opam install -y zarith sha digestif js_of_ocaml js_of_ocaml-compiler zarith_stubs_js ocamlfind \
-           uucp batteries stdint pprint ppx_deriving ppx_deriving_yojson yojson; then
+           uucp batteries stdint pprint ppx_deriving.6.1.2 ppx_deriving_yojson yojson; then
         touch "$deps_ok"; echo "opam deps: complete"; exit 0
       fi
       echo "opam deps attempt $attempt failed; retrying in $((attempt*10))s" >&2

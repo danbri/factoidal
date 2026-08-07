@@ -73,3 +73,10 @@ Effect of this override
   change ever makes the test pass on its own, the runner will instead
   print it as a plain PASS and flag this file as a stale, removable
   override — the override never masks a success.
+
+RE-CHECK 2026-07-29 — still required. The authoritative source is the
+W3C RIF wiki, which is a READ-ONLY ARCHIVE (W3C rules WG closed), so the
+malformed fixture data cannot be corrected upstream by anyone. This
+override is permanent by construction. Contrast the ShEx
+start2RefS2 override, retired 2026-07-29 when its upstream corpus was
+actively maintained and reconciled the defect.

@@ -194,7 +194,7 @@ let apply_import_closure (mode : import_closure) (g : triple list) : triple list
   match mode with
   | No_Closure -> g
   | RDFS_Closure ->
-    (try RDF_Graph_Executable.rdfs_closure_with_reflexivity g (Z.of_int 100)
+    (try RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch g (Z.of_int 100)
      with _ -> g)
   | OWL_Direct_Closure ->
     (* OWL 2 Direct Semantics excludes ontology-annotation triples

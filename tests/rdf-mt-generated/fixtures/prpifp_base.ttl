@@ -1,0 +1,5 @@
+@prefix ex: <http://example.org/prpifp/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+ex:ssn a owl:InverseFunctionalProperty .
+ex:alice ex:ssn "123" .
+ex:bob ex:ssn "123" .

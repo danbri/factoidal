@@ -453,6 +453,35 @@ let literal_eq (l1 l2 : literal) : bool =
   lang_tag_option_eq l1.lang_tag l2.lang_tag &&
   l1.direction = l2.direction
 
+/// ---- #337 (SR-2): the canonical form the JOIN KEY serialises -------------
+///
+/// A hash join is semantics-preserving only when key equality is NO
+/// FINER than the acceptance test (`sm_compatible`, which accepts on
+/// `rdf_term_eq`). `rdf_term_eq` folds exactly two things a byte-level
+/// key does not: language-tag case (`lang_tag_eq`) and XMLLiteral
+/// exclusive-canonical form (`xml_canon_eq`). `join_canon_term` applies
+/// those same two foldings to the term itself, so serialising the
+/// canonical term gives a key with the required coarseness --
+/// established by `lemma_join_canon_term_eq` below, not by a banner
+/// comment (the previous banner ASSERTED the superset property and was
+/// wrong; issue #337 is the machine-checked refutation).
+let join_canon_literal (l : literal) : literal =
+  { l with
+    lexical_form =
+      (if l.datatype = rdf_XMLLiteral
+       then String.string_of_list (xmlc_canonicalize l.lexical_form)
+       else l.lexical_form);
+    lang_tag =
+      (match l.lang_tag with
+       | Some t -> Some (String.lowercase t)
+       | None -> None) }
+
+let rec join_canon_term (t : rdf_term) : Tot rdf_term (decreases t) =
+  match t with
+  | T_IRI _ | T_BNode _ -> t
+  | T_Literal l -> T_Literal (join_canon_literal l)
+  | T_TripleTerm s p o -> T_TripleTerm s p (join_canon_term o)
+
 /// Structural equality on RDF terms. Recursive: a triple term compares
 /// structurally in each of its three positions, recursing into the
 /// object sub-term (which strictly decreases). `decreases t1`.
@@ -464,6 +493,20 @@ let rec rdf_term_eq (t1 t2 : rdf_term) : Tot bool (decreases t1) =
   | T_TripleTerm s1 p1 o1, T_TripleTerm s2 p2 o2 ->
     subject_eq s1 s2 && p1 = p2 && rdf_term_eq o1 o2
   | _, _ -> false
+
+/// The coarseness guarantee: terms the acceptance test identifies get
+/// IDENTICAL canonical forms, hence identical keys under any
+/// deterministic serialiser. Structural recursion mirroring
+/// `rdf_term_eq`; every conjunct of `literal_eq` maps onto one field
+/// of the canonical literal.
+let rec lemma_join_canon_term_eq (t1 t2 : rdf_term)
+  : Lemma (requires rdf_term_eq t1 t2 == true)
+          (ensures  join_canon_term t1 == join_canon_term t2)
+          (decreases t1) =
+  match t1, t2 with
+  | T_Literal _, T_Literal _ -> ()
+  | T_TripleTerm _ _ o1, T_TripleTerm _ _ o2 -> lemma_join_canon_term_eq o1 o2
+  | _, _ -> ()
 
 /// RDF 1.1 *value* equality for literals (distinct from `literal_eq`'s
 /// structural equality): a plain literal `"foo"` and `"foo"^^xsd:string`

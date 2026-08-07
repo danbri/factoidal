@@ -1,0 +1,1677 @@
+{
+ "baselines": {
+  "OWL-RL": {
+   "axiom_triples": 319,
+   "regime": "OWL-RL"
+  },
+  "RDFS": {
+   "axiom_triples": 35,
+   "regime": "RDFS"
+  }
+ },
+ "census_manifests": [
+  {
+   "classes": {
+    "consistency": 125,
+    "entailment-negative": 23,
+    "entailment-positive": 206
+   },
+   "entries": 354,
+   "manifest": "third_party/testing/owl/type-consistency.rdf",
+   "nt_lines_skipped": 39175
+  },
+  {
+   "classes": {
+    "inconsistency": 128
+   },
+   "entries": 128,
+   "manifest": "third_party/testing/owl/type-inconsistency.rdf",
+   "nt_lines_skipped": 7836
+  },
+  {
+   "classes": {
+    "entailment-negative": 23
+   },
+   "entries": 23,
+   "manifest": "third_party/testing/owl/type-negative-entailment.rdf",
+   "nt_lines_skipped": 2466
+  },
+  {
+   "classes": {
+    "entailment-positive": 206
+   },
+   "entries": 206,
+   "manifest": "third_party/testing/owl/type-positive-entailment.rdf",
+   "nt_lines_skipped": 23894
+  },
+  {
+   "classes": {
+    "validation-negative": 15
+   },
+   "entries": 15,
+   "manifest": "third_party/testing/shex/negativeStructure/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 100
+   },
+   "entries": 100,
+   "manifest": "third_party/testing/shex/negativeSyntax/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "validation": 617
+   },
+   "entries": 617,
+   "manifest": "third_party/testing/shex/validation/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "entailment-positive": 10
+   },
+   "entries": 10,
+   "manifest": "third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest-az.ttl",
+   "nt_lines_skipped": 31
+  },
+  {
+   "classes": {
+    "entailment-negative": 19,
+    "entailment-positive": 23
+   },
+   "entries": 42,
+   "manifest": "third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl",
+   "nt_lines_skipped": 202
+  },
+  {
+   "classes": {
+    "syntax-negative": 34,
+    "syntax-positive": 53
+   },
+   "entries": 87,
+   "manifest": "third_party/testing/w3c/rdf/rdf11/rdf-n-quads/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 29,
+    "syntax-positive": 41
+   },
+   "entries": 70,
+   "manifest": "third_party/testing/w3c/rdf/rdf11/rdf-n-triples/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "eval-negative": 4,
+    "eval-positive": 143,
+    "syntax-negative": 111,
+    "syntax-positive": 98
+   },
+   "entries": 356,
+   "manifest": "third_party/testing/w3c/rdf/rdf11/rdf-trig/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "eval-negative": 4,
+    "eval-positive": 145,
+    "syntax-negative": 90,
+    "syntax-positive": 74
+   },
+   "entries": 313,
+   "manifest": "third_party/testing/w3c/rdf/rdf11/rdf-turtle/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "eval-positive": 126,
+    "syntax-negative": 40
+   },
+   "entries": 166,
+   "manifest": "third_party/testing/w3c/rdf/rdf11/rdf-xml/manifest.ttl",
+   "nt_lines_skipped": 594
+  },
+  {
+   "classes": {
+    "syntax-negative": 20,
+    "syntax-positive": 7
+   },
+   "entries": 27,
+   "manifest": "third_party/testing/w3c/rdf/rdf12/rdf-n-quads/syntax/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 22,
+    "syntax-positive": 7
+   },
+   "entries": 29,
+   "manifest": "third_party/testing/w3c/rdf/rdf12/rdf-n-triples/syntax/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "entailment-negative": 15,
+    "entailment-positive": 31
+   },
+   "entries": 46,
+   "manifest": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/manifest.ttl",
+   "nt_lines_skipped": 10
+  },
+  {
+   "classes": {
+    "eval-positive": 25
+   },
+   "entries": 25,
+   "manifest": "third_party/testing/w3c/rdf/rdf12/rdf-trig/eval/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 11,
+    "syntax-positive": 24
+   },
+   "entries": 35,
+   "manifest": "third_party/testing/w3c/rdf/rdf12/rdf-trig/syntax/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "eval-positive": 29
+   },
+   "entries": 29,
+   "manifest": "third_party/testing/w3c/rdf/rdf12/rdf-turtle/eval/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 26,
+    "syntax-positive": 41
+   },
+   "entries": 67,
+   "manifest": "third_party/testing/w3c/rdf/rdf12/rdf-turtle/syntax/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "eval-positive": 28,
+    "syntax-negative": 2
+   },
+   "entries": 30,
+   "manifest": "third_party/testing/w3c/rdf/rdf12/rdf-xml/eval/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 14
+   },
+   "entries": 14,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/algebra/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 4
+   },
+   "entries": 4,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/ask/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 27
+   },
+   "entries": 27,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/basic/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 1
+   },
+   "entries": 1,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/bnode-coreference/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 7
+   },
+   "entries": 7,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/boolean-effective-value/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 1
+   },
+   "entries": 1,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/bound/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 7
+   },
+   "entries": 7,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/cast/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 5
+   },
+   "entries": 5,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/construct/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 12
+   },
+   "entries": 12,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/dataset/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 11
+   },
+   "entries": 11,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/distinct/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 24
+   },
+   "entries": 24,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/expr-builtin/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 15
+   },
+   "entries": 15,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/expr-equals/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 18
+   },
+   "entries": 18,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/expr-ops/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 17
+   },
+   "entries": 17,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/graph/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 5
+   },
+   "entries": 5,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/i18n/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 18
+   },
+   "entries": 18,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/open-world/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 6
+   },
+   "entries": 6,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/optional-filter/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 7
+   },
+   "entries": 7,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/optional/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 2
+   },
+   "entries": 2,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/reduced/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 21
+   },
+   "entries": 21,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/regex/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 13
+   },
+   "entries": 13,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/solution-seq/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 14
+   },
+   "entries": 14,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/sort/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-positive": 81
+   },
+   "entries": 81,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/syntax-sparql1/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-positive": 53
+   },
+   "entries": 53,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/syntax-sparql2/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 42,
+    "syntax-positive": 9
+   },
+   "entries": 51,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/syntax-sparql3/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 8,
+    "syntax-positive": 4
+   },
+   "entries": 12,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/syntax-sparql4/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-positive": 2
+   },
+   "entries": 2,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/syntax-sparql5/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 4
+   },
+   "entries": 4,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/triple-match/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 30
+   },
+   "entries": 30,
+   "manifest": "third_party/testing/w3c/sparql/sparql10/type-promotion/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 42,
+    "syntax-negative": 5
+   },
+   "entries": 47,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/aggregates/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 10
+   },
+   "entries": 10,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/bind/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 11
+   },
+   "entries": 11,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/bindings/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 6
+   },
+   "entries": 6,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/cast/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 5,
+    "syntax-negative": 2
+   },
+   "entries": 7,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/construct/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 3
+   },
+   "entries": 3,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/csv-tsv-res/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 8
+   },
+   "entries": 8,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/delete-insert/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 70
+   },
+   "entries": 70,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/entailment/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 6
+   },
+   "entries": 6,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/exists/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 75
+   },
+   "entries": 75,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/functions/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 4,
+    "syntax-negative": 2
+   },
+   "entries": 6,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/grouping/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 4
+   },
+   "entries": 4,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/json-res/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 12
+   },
+   "entries": 12,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/negation/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 7
+   },
+   "entries": 7,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/project-expression/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 33
+   },
+   "entries": 33,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/property-path/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 7
+   },
+   "entries": 7,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/service/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 14
+   },
+   "entries": 14,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/subquery/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-positive": 3
+   },
+   "entries": 3,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/syntax-fed/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 31,
+    "syntax-positive": 63
+   },
+   "entries": 94,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/syntax-query/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 13,
+    "syntax-positive": 41
+   },
+   "entries": 54,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/syntax-update-1/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-positive": 1
+   },
+   "entries": 1,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/syntax-update-2/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 1,
+    "syntax-positive": 7
+   },
+   "entries": 8,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/codepoint-escapes/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 38
+   },
+   "entries": 38,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/eval-triple-terms/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 1
+   },
+   "entries": 1,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/expression/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 1
+   },
+   "entries": 1,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/grouping/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 10,
+    "syntax-negative": 1
+   },
+   "entries": 11,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/lang-basedir/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "query-evaluation": 3
+   },
+   "entries": 3,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/rdf11/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 63
+   },
+   "entries": 63,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/syntax-triple-terms-negative/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-positive": 95
+   },
+   "entries": 95,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/syntax-triple-terms-positive/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 2
+   },
+   "entries": 2,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/syntax/manifest.ttl",
+   "nt_lines_skipped": 0
+  },
+  {
+   "classes": {
+    "syntax-negative": 3,
+    "syntax-positive": 6
+   },
+   "entries": 9,
+   "manifest": "third_party/testing/w3c/sparql/sparql12/version/manifest.ttl",
+   "nt_lines_skipped": 0
+  }
+ ],
+ "census_summary": [
+  {
+   "class": "consistency",
+   "count": 125,
+   "denominator_all_classified_entries": 3966,
+   "reason": "OWL ConsistencyTest asserts an ontology IS consistent, so a reasoner that derives nothing passes it. The measured path is owl_runner's DL/Tableau regime, which `factoidal entail` does not expose (it offers RDFS and OWL-RL materialisation only), so this tool cannot observe the derivations that path makes.",
+   "scored": "not-scored"
+  },
+  {
+   "class": "entailment-negative",
+   "count": 80,
+   "denominator_all_classified_entries": 3966,
+   "reason": "The rdf-mt and rdf12 rdf-semantics manifests are scored with the closure criterion. The OWL 2 catalogs are NOT: their premise and non-conclusion ontologies are embedded as literals inside the catalog, and the engine's own N-Triples serializer emits those literals with raw newlines and unescaped quotes, so they cannot be recovered through `factoidal --dump` without a second parser. Recovering them some other way would mean this tool parsing RDF itself, which it does not do. Count of unrecoverable literal lines per catalog is in census_manifests[].nt_lines_skipped.",
+   "scored": "partly-scored"
+  },
+  {
+   "class": "entailment-positive",
+   "count": 476,
+   "denominator_all_classified_entries": 3966,
+   "reason": "A positive entailment test requires the engine to derive the conclusion. A derive-nothing engine fails it.",
+   "scored": "not-vacuity-prone"
+  },
+  {
+   "class": "eval-negative",
+   "count": 8,
+   "denominator_all_classified_entries": 3966,
+   "manifests_holding_this_class": 24,
+   "manifests_with_positive_siblings": 16,
+   "reason": "Same shape as syntax-negative: the parser must reject at a specific point. Same missing error-offset API.",
+   "scored": "not-scored"
+  },
+  {
+   "class": "eval-positive",
+   "count": 496,
+   "denominator_all_classified_entries": 3966,
+   "reason": "A reject-all parser fails these.",
+   "scored": "not-vacuity-prone"
+  },
+  {
+   "class": "inconsistency",
+   "count": 128,
+   "denominator_all_classified_entries": 3966,
+   "reason": "An InconsistencyTest requires the engine to PRODUCE a contradiction. A derive-nothing engine fails it. Recorded for contrast with the consistency row, not flagged.",
+   "scored": "not-vacuity-prone"
+  },
+  {
+   "class": "query-evaluation",
+   "count": 645,
+   "denominator_all_classified_entries": 3966,
+   "reason": "A SPARQL QueryEvaluationTest is negative-shaped exactly when its expected result set is empty -- then a return-nothing engine passes it. Those are identified here by counting <result> elements in the expected .srx and scored with the same closure criterion applied to the test's data graph, when the test declares an entailment regime. Tests with non-empty expected results are not vacuity-prone and are not flagged.",
+   "scored": "partly-scored"
+  },
+  {
+   "class": "syntax-negative",
+   "count": 666,
+   "denominator_all_classified_entries": 3966,
+   "manifests_holding_this_class": 24,
+   "manifests_with_positive_siblings": 16,
+   "reason": "A negative SYNTAX test is a different shape: 'did work' means the parser reached and rejected a specific construct, not that it derived triples, so the closure criterion does not apply. Scoring it properly needs the byte offset at which the parser gave up, which the F* parsers do not surface through any CLI today (they return None). The manifest-level anti-vacuity witness that IS computed here is `positive_siblings`: the count of positive syntax/eval tests in the same manifest. A parser that rejects everything fails all of those, so a manifest with passing positive siblings cannot be scored by a reject-all engine. That witness is per-manifest, not per-test: it does not show the rejection happened for the right reason.",
+   "scored": "not-scored"
+  },
+  {
+   "class": "syntax-positive",
+   "count": 710,
+   "denominator_all_classified_entries": 3966,
+   "reason": "A reject-all parser fails these.",
+   "scored": "not-vacuity-prone"
+  },
+  {
+   "class": "validation",
+   "count": 617,
+   "denominator_all_classified_entries": 3966,
+   "reason": "A SHACL/ShEx ValidationTest carries its polarity in the expected validation report (sh:conforms plus the sh:result list), not in its rdf:type, so it splits into both a vacuity-prone half (expected-conformant: passed for free by a validator that evaluates no constraint) and a non-vacuity-prone half. Splitting them needs the expected report read per test and, to score, a count of constraint components actually evaluated -- which no runner emits today.",
+   "scored": "not-scored"
+  },
+  {
+   "class": "validation-negative",
+   "count": 15,
+   "denominator_all_classified_entries": 3966,
+   "reason": "SHACL/ShEx/JSON-Schema expected-invalid tests are passed for free by a report-everything-invalid validator, not by a derive-nothing one. Their degenerate engine is the opposite of the entailment case, so the closure criterion does not transfer. Scoring needs the identity of the constraint component that fired, compared against the expected report -- that is a validator-report comparison, deliberately left to the SHACL/ShEx runners.",
+   "scored": "not-scored"
+  }
+ ],
+ "criterion": {
+  "false_negative_modes": [
+   "predicate overlap is coarse: a closure can derive many triples sharing a predicate with C without exercising the rule that could produce C",
+   "no check that C is reachable in principle under a complete implementation of R (that needs rule knowledge, which would put entailment logic in a runner)"
+  ],
+  "false_positive_modes": [
+   "a premise so small that a complete implementation of the regime would also derive nothing beyond axioms and reflexivity"
+  ],
+  "statuses": {
+   "error": "premise or closure could not be obtained",
+   "exempt": "closure-free regime, exempted on a stated data property",
+   "untrusted": "the engine's own output failed the tool's self-check",
+   "vacuous": "closure of the premise adds nothing beyond the regime axioms",
+   "weak": "derivations exist but are reflexive-only or off-target",
+   "worked": "premise-attributable, non-self-loop derivations exist AND at least one carries a predicate occurring in the conclusion. When the test has no conclusion graph at all (a query-evaluation test), the second half cannot be checked and the record carries relevance_checked: false"
+  },
+  "summary": "For a negative entailment test with premise G, conclusion C and regime R, the engine did premise-attributable work iff closure_R(G) minus (G union closure_R(empty)) is non-empty. Self-loop triples (subject == object) are excluded from that set. A derivation counts as on-target iff it carries a predicate that occurs in C."
+ },
+ "fail": 3,
+ "issue": "https://github.com/danbri/factoidal/issues/333",
+ "metric": "pass = negative tests on which the engine did premise-attributable, non-self-loop, on-target derivation; fail = negative tests that are VACUOUS (the engine derives nothing the test could catch, so the test cannot go red); skip = weak + exempt + unscored + untrusted + error, broken out in skip_breakdown. This tool measures; it changes no engine behaviour and no other suite's score.",
+ "pass": 11,
+ "present": true,
+ "run": {
+  "engine_invocations": 231,
+  "generated_utc": "2026-07-31 15:50 UTC",
+  "manifests_censused": 82
+ },
+ "runner": "tools/negative-test-vacuity.py",
+ "schema_version": 1,
+ "scored_suites": [
+  {
+   "error": 0,
+   "exempt": 4,
+   "manifest": "third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl",
+   "negative_total": 19,
+   "negatives_typed_but_not_in_mf_entries": 0,
+   "nt_lines_skipped": 202,
+   "suite": "rdf-mt",
+   "tests": [
+    {
+     "class": "entailment-negative",
+     "conclusion": null,
+     "evidence": "mf:result is the literal 'false' rather than a conclusion graph, so the test asserts the premise is consistent; the runner path for this shape only checks that the premise parses, so no engine behaviour can fail it",
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#datatypes-intensional-xsd-integer-decimal-compatible",
+     "mf_result_literal": "false",
+     "name": "datatypes-intensional-xsd-integer-decimal-compatible",
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/datatypes-intensional/test001.nt",
+     "reason": "no-conclusion-and-no-consistency-check",
+     "regime": "RDFS",
+     "status": "vacuous"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": null,
+     "evidence": "mf:result is the literal 'false' rather than a conclusion graph, so the test asserts the premise is consistent; the runner path for this shape only checks that the premise parses, so no engine behaviour can fail it",
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#datatypes-non-well-formed-literal-1",
+     "mf_result_literal": "false",
+     "name": "datatypes-non-well-formed-literal-1",
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/datatypes/test002.nt",
+     "reason": "no-conclusion-and-no-consistency-check",
+     "regime": "RDFS",
+     "status": "vacuous"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/datatypes/test009b.nt",
+     "conclusion_triples": 2,
+     "exempt_evidence": "the test declares mf:entailmentRegime \"simple\"; simple entailment has no derivation rules, so an empty derivation set is correct rather than a defect",
+     "exempt_reason": "regime-has-no-closure",
+     "homomorphism_reached": true,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#datatypes-test009",
+     "name": "datatypes-test009",
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/datatypes/test009a.nt",
+     "premise_triples": 2,
+     "regime": "simple",
+     "shared_predicates": 2,
+     "status": "exempt"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 60,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/horst-01/test002.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 23,
+     "derived_non_reflexive": 20,
+     "derived_on_target": 3,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#horst-01-subClassOf-intensional",
+     "name": "horst-01-subClassOf-intensional",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/horst-01/test001.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 2,
+     "regime": "RDFS",
+     "relevance_checked": true,
+     "status": "worked"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 45,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/horst-01/test004.ttl",
+     "conclusion_predicates": 2,
+     "conclusion_triples": 2,
+     "derived": 6,
+     "derived_non_reflexive": 4,
+     "derived_on_target": 6,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#horst-01-subPropertyOf-intensional",
+     "name": "horst-01-subPropertyOf-intensional",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/horst-01/test003.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 4,
+     "regime": "RDFS",
+     "relevance_checked": true,
+     "status": "worked"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdf-charmod-uris/test002.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#rdf-charmod-uris-test003",
+     "name": "rdf-charmod-uris-test003",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdf-charmod-uris/test001.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdf-charmod-uris/test001.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#rdf-charmod-uris-test004",
+     "name": "rdf-charmod-uris-test004",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdf-charmod-uris/test002.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfms-xmllang/test007b.nt",
+     "conclusion_triples": 1,
+     "exempt_evidence": "the test declares mf:entailmentRegime \"simple\"; simple entailment has no derivation rules, so an empty derivation set is correct rather than a defect",
+     "exempt_reason": "regime-has-no-closure",
+     "homomorphism_reached": true,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#rdfms-xmllang-test007a",
+     "name": "rdfms-xmllang-test007a",
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfms-xmllang/test007a.nt",
+     "premise_triples": 1,
+     "regime": "simple",
+     "shared_predicates": 1,
+     "status": "exempt"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfms-xmllang/test007c.nt",
+     "conclusion_triples": 1,
+     "exempt_evidence": "the test declares mf:entailmentRegime \"simple\"; simple entailment has no derivation rules, so an empty derivation set is correct rather than a defect",
+     "exempt_reason": "regime-has-no-closure",
+     "homomorphism_reached": true,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#rdfms-xmllang-test007b",
+     "name": "rdfms-xmllang-test007b",
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfms-xmllang/test007b.nt",
+     "premise_triples": 1,
+     "regime": "simple",
+     "shared_predicates": 1,
+     "status": "exempt"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfms-xmllang/test007a.nt",
+     "conclusion_triples": 1,
+     "exempt_evidence": "the test declares mf:entailmentRegime \"simple\"; simple entailment has no derivation rules, so an empty derivation set is correct rather than a defect",
+     "exempt_reason": "regime-has-no-closure",
+     "homomorphism_reached": true,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#rdfms-xmllang-test007c",
+     "name": "rdfms-xmllang-test007c",
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfms-xmllang/test007c.nt",
+     "premise_triples": 1,
+     "regime": "simple",
+     "shared_predicates": 1,
+     "status": "exempt"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 38,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfs-container-membership-superProperty/not1C.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 2,
+     "derived_non_reflexive": 2,
+     "derived_on_target": 0,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#rdfs-container-membership-superProperty-test001",
+     "name": "rdfs-container-membership-superProperty-test001",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfs-container-membership-superProperty/not1P.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDFS",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 50,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfs-domain-and-range/nonconclusions006.ttl",
+     "conclusion_predicates": 2,
+     "conclusion_triples": 3,
+     "derived": 10,
+     "derived_non_reflexive": 7,
+     "derived_on_target": 5,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#rdfs-domain-and-range-intensionality-domain",
+     "name": "rdfs-domain-and-range-intensionality-domain",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfs-domain-and-range/premises006.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 5,
+     "regime": "RDFS",
+     "relevance_checked": true,
+     "status": "worked"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 50,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfs-domain-and-range/nonconclusions005.ttl",
+     "conclusion_predicates": 2,
+     "conclusion_triples": 3,
+     "derived": 10,
+     "derived_non_reflexive": 7,
+     "derived_on_target": 5,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#rdfs-domain-and-range-intensionality-range",
+     "name": "rdfs-domain-and-range-intensionality-range",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfs-domain-and-range/premises005.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 5,
+     "regime": "RDFS",
+     "relevance_checked": true,
+     "status": "worked"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": null,
+     "evidence": "mf:result is the literal 'false' rather than a conclusion graph, so the test asserts the premise is consistent; the runner path for this shape only checks that the premise parses, so no engine behaviour can fail it",
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#rdfs-subClassOf-a-Property-test001",
+     "mf_result_literal": "false",
+     "name": "rdfs-subClassOf-a-Property-test001",
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/rdfs-subClassOf-a-Property/test001.nt",
+     "reason": "no-conclusion-and-no-consistency-check",
+     "regime": "RDFS",
+     "status": "vacuous"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 51,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/statement-entailment/test001b.nt",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 7,
+     "derived_non_reflexive": 7,
+     "derived_on_target": 0,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#statement-entailment-test001",
+     "name": "statement-entailment-test001",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/statement-entailment/test001a.nt",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 9,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 38,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/statement-entailment/test002b.nt",
+     "conclusion_predicates": 4,
+     "conclusion_triples": 4,
+     "derived": 2,
+     "derived_non_reflexive": 2,
+     "derived_on_target": 2,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#statement-entailment-test002",
+     "name": "statement-entailment-test002",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/statement-entailment/test002a.nt",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "worked"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 51,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/statement-entailment/test001b.nt",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 7,
+     "derived_non_reflexive": 7,
+     "derived_on_target": 0,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#statement-entailment-test003",
+     "name": "statement-entailment-test003",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/statement-entailment/test001a.nt",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 9,
+     "reason": "off-target",
+     "regime": "RDFS",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 38,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/statement-entailment/test002b.nt",
+     "conclusion_predicates": 4,
+     "conclusion_triples": 4,
+     "derived": 2,
+     "derived_non_reflexive": 2,
+     "derived_on_target": 2,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#statement-entailment-test004",
+     "name": "statement-entailment-test004",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/statement-entailment/test002a.nt",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "worked"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf11/rdf-mt/xmlsch-02/test002.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "file:///home/user/factoidal/third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl#xmlsch-02-whitespace-facet-1",
+     "name": "xmlsch-02-whitespace-facet-1",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf11/rdf-mt/xmlsch-02/test001.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDFS",
+     "relevance_checked": true,
+     "status": "weak"
+    }
+   ],
+   "unscored": 0,
+   "untrusted": 0,
+   "vacuous": 3,
+   "weak": 6,
+   "worked": 6
+  },
+  {
+   "error": 2,
+   "exempt": 5,
+   "manifest": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/manifest.ttl",
+   "negative_total": 15,
+   "negatives_typed_but_not_in_mf_entries": 0,
+   "nt_lines_skipped": 10,
+   "suite": "rdf12-semantics",
+   "tests": [
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/test002sbr.ttl",
+     "exempt_evidence": "the test declares mf:entailmentRegime \"simple\"; simple entailment has no derivation rules, so an empty derivation set is correct rather than a defect",
+     "exempt_reason": "regime-has-no-closure",
+     "homomorphism_reached": null,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#bnodes-in-triple-term-subject-and-object-fail",
+     "name": "bnodes-in-triple-term-subject-and-object-fail",
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/test002a.ttl",
+     "regime": "simple",
+     "status": "exempt"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/test004fr.ttl",
+     "conclusion_triples": 1,
+     "exempt_evidence": "the test declares mf:entailmentRegime \"simple\"; simple entailment has no derivation rules, so an empty derivation set is correct rather than a defect",
+     "exempt_reason": "regime-has-no-closure",
+     "homomorphism_reached": true,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#constrained-bnodes-in-triple-term-fail",
+     "name": "constrained-bnodes-in-triple-term-fail",
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/test004a.ttl",
+     "premise_triples": 2,
+     "regime": "simple",
+     "shared_predicates": 1,
+     "status": "exempt"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/double-9007199254740991-5.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#double-round-different",
+     "name": "double-round-different",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/double-9007199254740990-5.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/double-negative-zero.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#double-zero",
+     "name": "double-zero",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/double-positive-zero.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/float-16777207-5.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#float-round-different",
+     "name": "float-round-different",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/float-16777206-5.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/float-negative-zero.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#float-zero",
+     "name": "float-zero",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/float-positive-zero.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/json-array-2.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#json-array-ordered",
+     "name": "json-array-unordered",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/json-array-1.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/json-9007199254740991-5.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#json-round-different",
+     "name": "json-round-different",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/json-9007199254740990-5.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/json-negative-zero.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#json-zero",
+     "name": "json-zero",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/json-positive-zero.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "entailment-negative",
+     "closure_triples": 37,
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/json-negative-zero-array.ttl",
+     "conclusion_predicates": 1,
+     "conclusion_triples": 1,
+     "derived": 1,
+     "derived_non_reflexive": 1,
+     "derived_on_target": 0,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#json-zero-array",
+     "name": "json-zero-array",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/json-positive-zero-array.ttl",
+     "premise_has_bnodes": false,
+     "premise_subsumed": true,
+     "premise_triples": 1,
+     "reason": "off-target",
+     "regime": "RDF",
+     "relevance_checked": true,
+     "status": "weak"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/test002or.ttl",
+     "error": "`factoidal --dump` refused the premise, so no closure measurement is possible for this test. The suite runner uses its own lenient loader, so the runner still scores the test; the disagreement between the two loaders is itself worth a look. CLI said: Error: third_party/testing/w3c/rdf/rdf12/rdf-semantics/malformed-literal.ttl parsed to zero triples but is not an empty document \u2014 the parse failed and the result would have been silently empty.        Re-run with a strict validator, or file a bug: a non-empty document that yields no triples is a pa",
+     "error_kind": "premise-not-readable-through-the-cli",
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#malformed-literal-bnode-neg",
+     "name": "malformed-literal-bnode-neg",
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/malformed-literal.ttl",
+     "regime": "RDF",
+     "status": "error"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/malformed-literal-other.ttl",
+     "error": "`factoidal --dump` refused the premise, so no closure measurement is possible for this test. The suite runner uses its own lenient loader, so the runner still scores the test; the disagreement between the two loaders is itself worth a look. CLI said: Error: third_party/testing/w3c/rdf/rdf12/rdf-semantics/malformed-literal.ttl parsed to zero triples but is not an empty document \u2014 the parse failed and the result would have been silently empty.        Re-run with a strict validator, or file a bug: a non-empty document that yields no triples is a pa",
+     "error_kind": "premise-not-readable-through-the-cli",
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#malformed-literal-no-spurious",
+     "name": "malformed-literal-no-spurious",
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/malformed-literal.ttl",
+     "regime": "RDF",
+     "status": "error"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/uppercase-dir-language-string.ttl",
+     "exempt_evidence": "the test declares mf:entailmentRegime \"simple\"; simple entailment has no derivation rules, so an empty derivation set is correct rather than a defect",
+     "exempt_reason": "regime-has-no-closure",
+     "homomorphism_reached": null,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#opaque-dir-language-string",
+     "name": "opaque-dir-language-string",
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/lowercase-dir-language-string.ttl",
+     "regime": "simple",
+     "status": "exempt"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/test002pgr.ttl",
+     "exempt_evidence": "the test declares mf:entailmentRegime \"simple\"; simple entailment has no derivation rules, so an empty derivation set is correct rather than a defect",
+     "exempt_reason": "regime-has-no-closure",
+     "homomorphism_reached": null,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#triple-term-not-asserted",
+     "name": "triple-term-not-asserted",
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/test002a.ttl",
+     "regime": "simple",
+     "status": "exempt"
+    },
+    {
+     "class": "entailment-negative",
+     "conclusion": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/test005.ttl",
+     "exempt_evidence": "the test declares mf:entailmentRegime \"simple\"; simple entailment has no derivation rules, so an empty derivation set is correct rather than a defect",
+     "exempt_reason": "regime-has-no-closure",
+     "homomorphism_reached": null,
+     "id": "https://w3c.github.io/rdf-tests/rdf/rdf12/rdf-semantics#triple-terms-no-spurious",
+     "name": "triple-terms-no-spurious",
+     "premise": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/test002a.ttl",
+     "regime": "simple",
+     "status": "exempt"
+    }
+   ],
+   "unscored": 0,
+   "untrusted": 0,
+   "vacuous": 0,
+   "weak": 8,
+   "worked": 0
+  },
+  {
+   "error": 0,
+   "exempt": 0,
+   "manifest": "third_party/testing/w3c/sparql/sparql11/entailment/manifest.ttl",
+   "negative_total": 8,
+   "nt_lines_skipped": 0,
+   "query_evaluation_total": 70,
+   "suite": "sparql11-entailment",
+   "tests": [
+    {
+     "class": "query-evaluation-empty-expected",
+     "declared_regimes": [
+      "D"
+     ],
+     "evidence": "the engine does not implement this regime as a graph closure (D-entailment is handled by literal value equality, RIF by the RIF rule engine), so closure growth is the wrong measurement and no criterion for it is defined here",
+     "expected_solutions": 0,
+     "id": "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/entailment/manifest#d-ent-01",
+     "name": "D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers",
+     "premise": "third_party/testing/w3c/sparql/sparql11/entailment/d-ent-01.ttl",
+     "reason": "regime-not-a-graph-closure",
+     "regime": "D",
+     "status": "unscored"
+    },
+    {
+     "baseline_axioms": 319,
+     "class": "query-evaluation-empty-expected",
+     "closure_triples": 377,
+     "conclusion": null,
+     "conclusion_predicates": 0,
+     "declared_regimes": [
+      "D",
+      "OWL-Direct",
+      "OWL-RDF-Based",
+      "RDFS"
+     ],
+     "derived": 47,
+     "derived_non_reflexive": 33,
+     "expected_solutions": 0,
+     "id": "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/entailment/manifest#owlds01",
+     "name": "bnodes are not existentials",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/sparql/sparql11/entailment/owlds01.ttl",
+     "premise_has_bnodes": true,
+     "premise_subsumed": true,
+     "premise_triples": 11,
+     "regime": "OWL-Direct",
+     "relevance_checked": false,
+     "relevance_note": "no conclusion graph exists for this test, so the on-target refinement could not run; the verdict rests on the premise-attributable, non-self-loop derivation count alone",
+     "status": "worked"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "query-evaluation-empty-expected",
+     "closure_triples": 44,
+     "conclusion": null,
+     "conclusion_predicates": 0,
+     "declared_regimes": [
+      "RDF"
+     ],
+     "derived": 6,
+     "derived_non_reflexive": 6,
+     "expected_solutions": 0,
+     "id": "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/entailment/manifest#rdf01",
+     "name": "RDF inference test",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/sparql/sparql11/entailment/rdf01.ttl",
+     "premise_has_bnodes": true,
+     "premise_subsumed": true,
+     "premise_triples": 3,
+     "regime": "RDF",
+     "relevance_checked": false,
+     "relevance_note": "no conclusion graph exists for this test, so the on-target refinement could not run; the verdict rests on the premise-attributable, non-self-loop derivation count alone",
+     "status": "worked"
+    },
+    {
+     "baseline_axioms": 35,
+     "class": "query-evaluation-empty-expected",
+     "closure_triples": 43,
+     "conclusion": null,
+     "conclusion_predicates": 0,
+     "declared_regimes": [
+      "D",
+      "OWL-RDF-Based",
+      "RDFS"
+     ],
+     "derived": 5,
+     "derived_non_reflexive": 5,
+     "expected_solutions": 0,
+     "id": "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/entailment/manifest#rdfs13",
+     "name": "RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/sparql/sparql11/entailment/rdfs13.ttl",
+     "premise_has_bnodes": true,
+     "premise_subsumed": true,
+     "premise_triples": 3,
+     "regime": "RDFS",
+     "relevance_checked": false,
+     "relevance_note": "no conclusion graph exists for this test, so the on-target refinement could not run; the verdict rests on the premise-attributable, non-self-loop derivation count alone",
+     "status": "worked"
+    },
+    {
+     "class": "query-evaluation-empty-expected",
+     "declared_regimes": [
+      "RIF"
+     ],
+     "evidence": "the engine does not implement this regime as a graph closure (D-entailment is handled by literal value equality, RIF by the RIF rule engine), so closure growth is the wrong measurement and no criterion for it is defined here",
+     "expected_solutions": 0,
+     "id": "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/entailment/manifest#rif04",
+     "name": "RIF Core WG tests: Modeling Brain Anatomy",
+     "premise": "third_party/testing/w3c/sparql/sparql11/entailment/rif04.ttl",
+     "reason": "regime-not-a-graph-closure",
+     "regime": "RIF",
+     "status": "unscored"
+    },
+    {
+     "class": "query-evaluation-empty-expected",
+     "declared_regimes": [
+      "RIF"
+     ],
+     "evidence": "the engine does not implement this regime as a graph closure (D-entailment is handled by literal value equality, RIF by the RIF rule engine), so closure growth is the wrong measurement and no criterion for it is defined here",
+     "expected_solutions": 0,
+     "id": "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/entailment/manifest#rif06",
+     "name": "RIF Core WG tests: RDF Combination Blank Node",
+     "premise": "third_party/testing/w3c/sparql/sparql11/entailment/rif06.ttl",
+     "reason": "regime-not-a-graph-closure",
+     "regime": "RIF",
+     "status": "unscored"
+    },
+    {
+     "baseline_axioms": 319,
+     "class": "query-evaluation-empty-expected",
+     "closure_triples": 369,
+     "conclusion": null,
+     "conclusion_predicates": 0,
+     "declared_regimes": [
+      "D",
+      "OWL-Direct",
+      "OWL-RDF-Based",
+      "RDF",
+      "RDFS"
+     ],
+     "derived": 36,
+     "derived_non_reflexive": 24,
+     "expected_solutions": 0,
+     "id": "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/entailment/manifest#sparqldl-05",
+     "name": "sparqldl-05.rq: simple undistinguished variable test.",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/sparql/sparql11/entailment/data-03.ttl",
+     "premise_has_bnodes": true,
+     "premise_subsumed": true,
+     "premise_triples": 14,
+     "regime": "OWL-Direct",
+     "relevance_checked": false,
+     "relevance_note": "no conclusion graph exists for this test, so the on-target refinement could not run; the verdict rests on the premise-attributable, non-self-loop derivation count alone",
+     "status": "worked"
+    },
+    {
+     "baseline_axioms": 319,
+     "class": "query-evaluation-empty-expected",
+     "closure_triples": 677,
+     "conclusion": null,
+     "conclusion_predicates": 0,
+     "declared_regimes": [
+      "D",
+      "OWL-Direct",
+      "OWL-RDF-Based",
+      "RDF",
+      "RDFS"
+     ],
+     "derived": 342,
+     "derived_non_reflexive": 292,
+     "expected_solutions": 0,
+     "id": "http://www.w3.org/2009/sparql/docs/tests/data-sparql11/entailment/manifest#sparqldl-06",
+     "name": "sparqldl-06.rq: cycle of undistinguished variables",
+     "nt_lines_skipped": 0,
+     "premise": "third_party/testing/w3c/sparql/sparql11/entailment/data-06.ttl",
+     "premise_has_bnodes": true,
+     "premise_subsumed": true,
+     "premise_triples": 16,
+     "regime": "OWL-Direct",
+     "relevance_checked": false,
+     "relevance_note": "no conclusion graph exists for this test, so the on-target refinement could not run; the verdict rests on the premise-attributable, non-self-loop derivation count alone",
+     "status": "worked"
+    }
+   ],
+   "unscored": 3,
+   "untrusted": 0,
+   "vacuous": 0,
+   "weak": 0,
+   "worked": 5
+  }
+ ],
+ "side_findings": [
+  {
+   "id": "ntriples-serializer-does-not-escape-literals",
+   "impact_on_this_tool": "manifest lines carrying multi-line rdfs:comment or embedded-ontology literals cannot be split into triples and are counted in nt_lines_skipped. It is why the OWL 2 catalogs are censused but not scored. It does not affect any verdict here: every predicate this tool reads (rdf:type, mf:action, mf:result, mf:entailmentRegime, mf:entries, sd:entailmentRegime) has an IRI or a single-line literal object.",
+   "not_fixed_here": "fixing the serializer changes engine output, and this tool is not allowed to change engine behaviour or any suite's score",
+   "reproduce": "echo '<http://e/s> <http://e/p> \"a\\\\nb\" .' > t.nt && factoidal --dump t.nt",
+   "what": "`factoidal --dump` emits literals containing a newline or a double quote verbatim, instead of as the \\n and \\\" escapes the N-Triples grammar requires. The output is therefore not re-readable as N-Triples for any graph with such a literal."
+  },
+  {
+   "id": "cli-and-runner-loaders-disagree-on-malformed-literals",
+   "impact_on_this_tool": "those two tests are recorded `error`, not vacuous \u2014 the tool cannot measure what it cannot load.",
+   "what": "third_party/testing/w3c/rdf/rdf12/rdf-semantics/malformed-literal.ttl is rejected by `factoidal --dump` under the issue-325 zero-triples guard, while the suite runner's own loader accepts it and scores the two tests that use it as their premise."
+  }
+ ],
+ "skip": 28,
+ "skip_breakdown": {
+  "error": 2,
+  "exempt": 9,
+  "unscored": 3,
+  "untrusted": 0,
+  "weak": 14
+ },
+ "spec": "internal \u2014 vacuity audit of negative-style W3C tests",
+ "suite": "negative-test-vacuity",
+ "tool": "tools/negative-test-vacuity.py",
+ "total": 42
+}

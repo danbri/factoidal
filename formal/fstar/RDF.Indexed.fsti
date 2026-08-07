@@ -466,21 +466,34 @@ noeq type indexed_graph = {
   ig_built   : bucket_needs;
 }
 
-(* Canonical key for a subject. Total. *)
+(* Canonical key for a subject. Total.
+   Built with `^` (FStar.String.strcat), NOT `String.concat "" [...]`:
+   the two produce identical strings, but `concat` is an opaque val
+   with no reasoning equations while `^` carries `list_of_concat` /
+   `concat_injective`, which the #338 injectivity proof
+   (RDF.Indexed.KeyInjectivity.fst) needs. Same for `sp_key` below.
+   Do not "simplify" back to concat — it re-opens the proof gap. *)
 let subject_to_key (s : subject) : string =
   match s with
-  | S_IRI i   -> String.concat "" ["I_"; i]
-  | S_BNode b -> String.concat "" ["B_"; b]
+  | S_IRI i   -> "I_" ^ i
+  | S_BNode b -> "B_" ^ b
 
 (* Canonical key for an rdf_term, or None for literals. We do NOT index
    on literals because they would require datatype/lang-tag normalisation
    and rarely appear as a join axis in real BGPs. Object-literal patterns
    fall through to whichever bound component (predicate or subject) is
-   indexable, or to the full triple list if neither is. *)
+   indexable, or to the full triple list if neither is.
+   Built with `^` (FStar.String.strcat), NOT `String.concat "" [...]` —
+   same reasoning as `subject_to_key` above: the two produce identical
+   strings, but `concat` is an opaque val with no reasoning equations
+   while `^` carries `list_of_concat`/`concat_injective`, which the
+   #338-style injectivity proof for the object bucket needs
+   (RDF.Indexed.KeyInjectivity.lemma_term_to_key_opt_injective). Do not
+   "simplify" back to concat — it re-opens the proof gap. *)
 let term_to_key_opt (o : rdf_term) : option string =
   match o with
-  | T_IRI i     -> Some (String.concat "" ["I_"; i])
-  | T_BNode b   -> Some (String.concat "" ["B_"; b])
+  | T_IRI i     -> Some ("I_" ^ i)
+  | T_BNode b   -> Some ("B_" ^ b)
   | T_Literal _ -> None
   // RDF 1.2 triple terms are not indexed (same rationale as literals:
   // they would need structural normalisation and rarely serve as a join
@@ -494,12 +507,30 @@ let term_to_key_opt (o : rdf_term) : option string =
 let unit_sep : string = "\x1f"
 
 let sp_key (s : subject) (p : wf_iri) : string =
-  String.concat "" [subject_to_key s; unit_sep; p]
+  subject_to_key s ^ (unit_sep ^ p)
 
+(* Built with `^`, NOT `String.concat "" [...]` -- same reasoning as
+   subject_to_key / term_to_key_opt above: `^` carries the reasoning
+   equations (`list_of_concat`/`concat_injective`) the po_key
+   injectivity proof needs (RDF.Indexed.KeyInjectivity.
+   po_key_injective_one_sided). Same string value as the prior
+   `String.concat "" [p; unit_sep; k]` form. *)
 let po_key_opt (p : wf_iri) (o : rdf_term) : option string =
   match term_to_key_opt o with
-  | Some k -> Some (String.concat "" [p; unit_sep; k])
+  | Some k -> Some (p ^ (unit_sep ^ k))
   | None   -> None
+
+(* Total companion to po_key_opt, defined directly on a subject rather
+   than an rdf_term: po_key_opt is always `Some` on `subject_to_term s`
+   (RDF.Indexed.KeyInjectivity.lemma_po_key_eq_po_key_opt), which is
+   the only shape prp-ifp's `find_subjects_indexed` ever queries ig_po
+   with (that lookup only fires when the queried object is non-
+   literal). Placed here alongside po_key_opt/sp_key rather than in
+   KeyInjectivity so OWL.Semantics.fst's `ig_wf_po` (composite-key,
+   subject-shaped, mirroring `ig_wf_obj`) can reference it without a
+   dependency on the KeyInjectivity proof module. *)
+let po_key (p : wf_iri) (s : subject) : string =
+  p ^ (unit_sep ^ subject_to_key s)
 
 let so_key_opt (s : subject) (o : rdf_term) : option string =
   match term_to_key_opt o with
@@ -519,6 +550,17 @@ let find_objects_indexed (ig : indexed_graph) (subj : subject) (pred : wf_iri)
 (* Index-backed (?, p, o) lookup. Uses ig_po when o is non-literal
    (the common case in closure rules); falls back to ig_pred + filter
    when o is a literal (rare in OWL/RDFS schema axioms). *)
+(* PROOF-FRIENDLY GUARD RULE: the filter predicate and the projection
+   are named top-level so proofs about find_subjects_indexed's result
+   can reference the SAME symbols the engine applies (anonymous
+   lambdas are distinct SMT tokens per spelling site -- the
+   closure-identity law, skills/proof-factory). Behavior-identical
+   to the previous inline-lambda spelling. *)
+let triple_obj_matches (obj : rdf_term) (t : triple) : bool =
+  rdf_term_eq t.o obj
+
+let triple_subject_of (t : triple) : subject = t.s
+
 let find_subjects_indexed (ig : indexed_graph) (pred : wf_iri) (obj : rdf_term)
   : Tot (list subject) =
   let bucket =
@@ -526,10 +568,10 @@ let find_subjects_indexed (ig : indexed_graph) (pred : wf_iri) (obj : rdf_term)
     | Some k -> bucket_lookup ig.ig_po k
     | None ->
       List.Tot.filter
-        (fun (t : triple) -> rdf_term_eq t.o obj)
+        (triple_obj_matches obj)
         (bucket_lookup ig.ig_pred pred)
   in
-  List.Tot.map (fun (t : triple) -> t.s) bucket
+  List.Tot.map triple_subject_of bucket
 
 (* Single-step index update for one triple. *)
 let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph =

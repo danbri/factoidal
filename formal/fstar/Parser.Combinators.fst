@@ -274,6 +274,33 @@ let phex : parser char =
 (* String-building parsers                                           *)
 (* ================================================================ *)
 
+// ⚠️ ASCII-PREDICATES-ONLY (issue #325). ptake_while_acc / ptake_while /
+// ptake_while1 / pquoted_body below accumulate the raw BYTES they step
+// over into an F* `list char` and finish with String.string_of_list,
+// whose extracted realisation is
+//   BatUTF8.init (length l) (fun i -> BatUChar.chr (List.at l i))
+// i.e. it RE-ENCODES every element as a UTF-8 codepoint. Feed a byte
+// 0xE6 in and two bytes 0xC3 0xA6 come out: the input's non-ASCII text
+// silently becomes UTF-8-read-as-Latin-1. That is the exact defect
+// issue #325 fixed in Parser.Turtle, Parser.NTriples and Parser.XML.
+//
+// These four are safe TODAY only because every reachable caller passes
+// an ASCII-only predicate (whitespace in Parser.WKT.skip_ws,
+// Parser.NTriples.pws and pskip_whitespace; digits in pnatural), and
+// pquoted_string has no caller at all. If you add a caller whose
+// predicate can accept a byte >= 0x80, DO NOT use these — use
+// ptake_while_pos / ptake_while1_pos immediately below, which slice with
+// fs_byte_sub and are byte-transparent by construction.
+//
+// They were rewritten as byte-transparent wrappers during the #325 work
+// and the rewrite was REVERTED: exporting ptake_while_scan's refined
+// `r:nat{r >= pos}` return type through these functions puts enough extra
+// facts into every caller's SMT context to break an unrelated termination
+// proof in Parser.WKT (parse_ring_list_rest could no longer show
+// `fuel - 1 : nat`). Destabilising a green module to fix a defect no
+// caller can reach was the wrong trade. Redo it together with the
+// Parser.WKT proof, or after migrating the callers to the _pos variants
+// and deleting these outright.
 (** Take characters while predicate holds, return as string *)
 let rec ptake_while_acc (pred: char -> bool) (input:string) (pos:nat) (acc: list char) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =

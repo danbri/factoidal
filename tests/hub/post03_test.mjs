@@ -31,7 +31,11 @@ test('post03: RDFS entailment adds schema:Thing via subClassOf', async () => {
   const dataset = await factoidal.parse(RDFS_TTL);
   const rows = await factoidal.query(dataset, Q, { entail: 'RDFS' });
   const types = rows.map((r) => r.get('type').value).sort();
-  assert.deepEqual(types, ['https://schema.org/Person', 'https://schema.org/Thing']);
+  assert.deepEqual(types, [
+    'http://www.w3.org/2000/01/rdf-schema#Resource',
+    'https://schema.org/Person',
+    'https://schema.org/Thing',
+  ]);
 });
 
 const OWL_TTL = `
@@ -47,8 +51,14 @@ const OWL_TTL = `
 test('post03: RDFS entailment does not know owl:equivalentClass', async () => {
   const dataset2 = await factoidal.parse(OWL_TTL);
   const rows = await factoidal.query(dataset2, Q, { entail: 'RDFS' });
-  const types = rows.map((r) => r.get('type').value);
-  assert.deepEqual(types, ['https://schema.org/Person']);
+  const types = rows.map((r) => r.get('type').value).sort();
+  // rdfs:Resource is derived for every subject (rdfs4a/4b); the point
+  // of this test is that owl:equivalentClass does NOT fire under RDFS,
+  // i.e. no foaf:Person in the list.
+  assert.deepEqual(types, [
+    'http://www.w3.org/2000/01/rdf-schema#Resource',
+    'https://schema.org/Person',
+  ]);
 });
 
 test('post03: OWL-RL entailment derives foaf:Person and owl:Thing via equivalentClass', async () => {
@@ -56,6 +66,7 @@ test('post03: OWL-RL entailment derives foaf:Person and owl:Thing via equivalent
   const rows = await factoidal.query(dataset2, Q, { entail: 'OWL-RL' });
   const types = rows.map((r) => r.get('type').value).sort();
   assert.deepEqual(types, [
+    'http://www.w3.org/2000/01/rdf-schema#Resource',
     'http://www.w3.org/2002/07/owl#Thing',
     'http://xmlns.com/foaf/0.1/Person',
     'https://schema.org/Person',
@@ -89,7 +100,11 @@ test('post03 cell 2 (RDFS toggle): schema:Thing appears only with entailment', a
   const result = await post.value(post.names[1]);
   assert.deepEqual(result, {
     withoutEntailment: ['https://schema.org/Person'],
-    withRDFS: ['https://schema.org/Person', 'https://schema.org/Thing'],
+    withRDFS: [
+      'http://www.w3.org/2000/01/rdf-schema#Resource',
+      'https://schema.org/Person',
+      'https://schema.org/Thing',
+    ],
   });
 });
 
@@ -97,8 +112,15 @@ test('post03 cell 3 (OWL-RL toggle): equivalentClass only fires under OWL-RL', a
   const post = runReactivePost(cells, { fn: factoidal });
   const result = await post.value(post.names[2]);
   assert.deepEqual(result, {
-    withRDFS: ['https://schema.org/Person'],
+    // this cell's shipped code sorts withOWLRL but not withRDFS, so
+    // the RDFS list is in derivation order: asserted type first, then
+    // the rdfs4a/4b-derived rdfs:Resource.
+    withRDFS: [
+      'https://schema.org/Person',
+      'http://www.w3.org/2000/01/rdf-schema#Resource',
+    ],
     withOWLRL: [
+      'http://www.w3.org/2000/01/rdf-schema#Resource',
       'http://www.w3.org/2002/07/owl#Thing',
       'http://xmlns.com/foaf/0.1/Person',
       'https://schema.org/Person',
@@ -110,6 +132,7 @@ test('post03 cell 4 (mutual subClassOf): equivalence in pure RDFS', async () => 
   const post = runReactivePost(cells, { fn: factoidal });
   const result = await post.value(post.names[3]);
   assert.deepEqual(result, [
+    'http://www.w3.org/2000/01/rdf-schema#Resource',
     'http://xmlns.com/foaf/0.1/Person',
     'https://schema.org/Person',
   ]);

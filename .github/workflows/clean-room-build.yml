@@ -1,0 +1,140 @@
+# Clean-room reproducibility build (issue #314, external-review gate 1).
+#
+# WHY THIS EXISTS
+# ---------------
+# Every score this project publishes is produced by a tree that has
+# accumulated F* .checked files, committed extracted .ml, committed
+# bin/<platform>/ binaries (iron rule #9) and — until 2026-07-29 nobody
+# had noticed — a committed incremental-extract manifest. The review's
+# point stands: nobody had demonstrated end-to-end that a cold clone
+# reproduces the numbers, so "the suites pass" carried an unstated
+# dependency on our own build state.
+#
+# This job removes all four and rebuilds from F* source.
+#
+# SCHEDULED, NOT PER-PR. A cold full verify + extract + compile + every
+# conformance suite is far too expensive to gate a PR on. The push-time
+# signal stays with w3c-tests.yml (affected suites) and
+# conformance-rerun.yml (daily, off committed binaries). This job answers
+# a different question: does the tree still rebuild from nothing.
+#
+# WHAT A FAILURE MEANS
+# --------------------
+# The script's exit codes are the diagnosis, not noise:
+#   2   the corpus does not verify/extract from source
+#   3   extraction succeeded but the result does not compile
+#   4   it built, but the suites did not produce a report
+#   124 the wall-clock cap was hit
+# Any of these is a real finding. The first run of this script found two:
+# five modules referenced by build-ocaml.sh's COMMON_MODULES whose .ml is
+# not committed, and hand-written rule-#11 realisations sitting alongside
+# generated output in ocaml-output/.
+
+name: Clean-room reproducibility build
+
+on:
+  schedule:
+    # Weekly, Sunday 03:00 UTC. Off the daily conformance-rerun slot so
+    # the two never contend for the same runner minutes.
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or tag to rebuild from scratch'
+        required: false
+        default: 'claude/main'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clean-room-build
+  cancel-in-progress: false
+
+jobs:
+  cold-build:
+    runs-on: ubuntu-latest
+    # A cold whole-corpus verify measured 24.5 min on a 4-core box with
+    # BUILD_JOBS=4; GitHub's 2-core runners are slower, and the suites add
+    # to it. 330 leaves headroom under the 360-minute job ceiling.
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || 'claude/main' }}
+          submodules: recursive
+
+      # Fixtures are test INPUTS, not build outputs — the clean-room
+      # script restores them rather than rebuilding them, and copies them
+      # into the clone from here. A missing suite produces a lying 0/0
+      # score (hazard #15), so fail rather than warn.
+      - name: Verify test fixtures (fail loudly, never 0/0)
+        run: tools/ensure-test-env.sh --check
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev pkg-config zstd libzstd-dev
+
+      # DELIBERATELY NO .checked CACHE. Caching F*'s proof cache here
+      # would defeat the entire purpose of the job. The opam cache is
+      # fine — the toolchain is an input, not something we claim to
+      # reproduce.
+      - name: Cache opam (toolchain only — never the .checked cache)
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-fstar-${{ runner.os }}-v3
+          restore-keys: |
+            opam-fstar-${{ runner.os }}-
+
+      - name: Setup opam + F*
+        run: |
+          set -euo pipefail
+          if [ ! -d ~/.opam ]; then
+            opam init -y --disable-sandboxing
+            opam switch create fstar ocaml-base-compiler.4.14.1
+          fi
+          eval $(opam env --switch=fstar)
+          opam install -y fstar z3.4.13.3 zarith sha digestif uucp \
+            batteries pprint ppx_deriving ppx_deriving_yojson yojson stdint
+          echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
+
+      - name: Cold rebuild from a bare clone + run every suite
+        id: coldbuild
+        run: |
+          set -uo pipefail
+          eval $(opam env --switch=fstar)
+          mkdir -p .claude-runs
+          RC=0
+          tools/clean-room-build.sh \
+            --workdir "${RUNNER_TEMP}/cleanroom" \
+            --ref "${{ github.event.inputs.ref || 'claude/main' }}" \
+            --fixtures-from "$GITHUB_WORKSPACE" \
+            --cap-minutes 300 \
+            --artifact "$GITHUB_WORKSPACE/docs/clean-room/$(date -u +%Y-%m-%d).md" \
+            2>&1 | tee .claude-runs/clean-room-ci.log || RC=$?
+          # Rule #14: capture the exit code explicitly, never swallow it.
+          echo "rc=$RC" >> "$GITHUB_OUTPUT"
+          exit "$RC"
+
+      - name: Publish the run as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clean-room-${{ github.run_id }}
+          path: |
+            docs/clean-room/
+            .claude-runs/clean-room-ci.log
+          retention-days: 90
+
+      - name: Explain the failure mode
+        if: failure()
+        run: |
+          case "${{ steps.coldbuild.outputs.rc }}" in
+            2) echo "::error::The corpus does not verify/extract from source. A bare clone cannot rebuild this tree." ;;
+            3) echo "::error::Extraction succeeded but the result does not compile — generated or hand-written .ml is missing or inconsistent (anti-pattern #27 shape)." ;;
+            4) echo "::error::Built, but the conformance suites did not produce a report." ;;
+            124) echo "::error::Wall-clock cap hit. Either the build got slower or a step hung." ;;
+            *) echo "::error::clean-room-build.sh exited ${{ steps.coldbuild.outputs.rc }}; see the uploaded log." ;;
+          esac

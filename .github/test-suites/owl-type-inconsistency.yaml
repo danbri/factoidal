@@ -50,5 +50,5 @@ triggers:
 # OWL 2 row, 2026-07-10; see also owl-profile-rl.yaml's `remaining` for
 # the family-wide caveats).
 remaining:
-  - "81 residual fails are cases the verified tableau + counting oracle + z3 oracle-assisted path still cannot refute — enumerated per-ID in the results log"
+  - "1 residual fail (2026-07-29, 126 pass, 1 fail out of 127): dl-909's nonemptiness is soundly underivable from its class-size system (Tableau.CountingOracle.fst section-8 banner + docs/designissues/2026-07-28-tableau-classification-design.md). dl-502 was refuted by the 2026-07-28 nominal-branching wave; 'Minus Infinity is not in owl:real' by the 2026-07-29 XSD value-space decision procedure (docs/designissues/2026-07-29-xsd-value-space-decision-procedure.md)"
   - "z3-oracle-assisted passes are counted OUTSIDE the pure-verified tally and reported separately, since they depend on an unverified z3 call rather than the F*-proven tableau/counting-oracle path"

@@ -114,6 +114,18 @@ The two that corrupt files silently:
     prose crediting Claude in commit messages — this repo policy
     overrides the harness default. Full rule:
     [`skills/github-coauthor-policy/SKILL.md`](skills/github-coauthor-policy/SKILL.md).
+14. **A repaired methodology error is not done until the docs that
+    prevent its repetition are updated.** After identifying and fixing
+    an error in our own working method — a wrong causal claim, a
+    silent-failure mechanism, a discipline that was skipped — revise
+    CLAUDE.md and/or the relevant `skills/<name>/SKILL.md` in the SAME
+    landing, so the next session inherits the correction instead of
+    rediscovering the mistake. Name the error concretely, with its
+    date and cost; a rule without its war story does not stick
+    (`skills/measuring-inference/SKILL.md` is the model — every rule
+    carries the wrong claim that paid for it). The repair commit and
+    the doc update belong together; "fixed it, will document later"
+    is how the same failure bills twice.
 
 ## Known sound-but-narrow rewrites
 
@@ -314,6 +326,21 @@ session.
 - [`perf-benchmarking`](skills/perf-benchmarking/SKILL.md) — timing
   harnesses, baselines, observability, profiling policy. Speed is
   measured separately from correctness, always.
+- [`proof-factory`](skills/proof-factory/SKILL.md) — run the
+  rule-by-rule F\* proof program at scale: the closure-identity law,
+  the guard-depth ≤3 rule, brief anatomy for first-attempt passes,
+  spray-and-verify economics per model tier, the harvest pattern for
+  stalled proof agents, and the findings discipline (six ledger
+  drifts + one engine completeness gap caught by proofs). Read
+  before dispatching any proof subagent or proving engine rules
+  against the W3C tables.
+- [`measuring-inference`](skills/measuring-inference/SKILL.md) — how to
+  measure what a reasoning engine actually does: which phase the time is
+  in, why synthetic shapes lie about real vocabularies, negative tests
+  that pass by deriving nothing, theorems with unsatisfiable
+  hypotheses, and silent caps. Read **before** optimising any closure
+  or entailment path, or before a plausible mechanism becomes a work
+  order. Every rule carries the wrong claim that paid for it.
 - [`site-and-dashboard`](skills/site-and-dashboard/SKILL.md) — the
   11ty site, test-results dashboard, demos, Fly.io endpoint, and the
   registry of progress tables + who updates each.
@@ -360,6 +387,13 @@ session.
 - [`jsoo-debug-bundle`](skills/jsoo-debug-bundle/SKILL.md) — build a
   source-mapped JS bundle so browser-only crashes show real OCaml
   stacks.
+- [`jsonld-context-cache`](skills/jsonld-context-cache/SKILL.md) —
+  resolve remote JSON-LD `@context` IRIs offline from
+  `third_party/jsonld-context-cache/` (URL-keyed, content-addressed,
+  versioned). Read when a JSON-LD/DID/VC document will not parse
+  because its context is remote, when adding or refreshing a cached
+  context, or when wiring a documentLoader (#275). Carries the
+  per-URL licence rule and why an empty-context fallback is banned.
 
 ## Expanded docs (full reference)
 
@@ -370,6 +404,10 @@ session.
   slow-Turtle root causes).
 - [`docs/claude-rules/current-state.md`](docs/claude-rules/current-state.md)
   — F\* inventory, `assume val` table, W3C scores.
+- [`docs/theorem-registry.md`](docs/theorem-registry.md) — the G1
+  reviewable-core registry: every W3C rule id → spec predicate →
+  engine function → proof status, plus the trust-surface enumeration.
+  UPDATE WITH EVERY PROOF LANDING (hand-curated until generated).
 - [`docs/code-name-glossary.md`](docs/code-name-glossary.md) — Yod6 /
   Tet3 / Lamed3 / etc. decoder. **No new short-codes** — use
   descriptive names per the recovery plan.

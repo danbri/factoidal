@@ -1267,7 +1267,9 @@ and compact_map (ac0 : JSONLD_Context.active_context)
                     JSONLD_Context.ac_original_base =
                       (ac1.JSONLD_Context.ac_original_base);
                     JSONLD_Context.ac_suppress_pop =
-                      (ac1.JSONLD_Context.ac_suppress_pop)
+                      (ac1.JSONLD_Context.ac_suppress_pop);
+                    JSONLD_Context.ac_frame_expansion =
+                      (ac1.JSONLD_Context.ac_frame_expansion)
                   } scoped true true
             | FStar_Pervasives_Native.None ->
                 FStar_Pervasives_Native.Some ac1)
@@ -1346,7 +1348,9 @@ and compact_map_body (ac2 : JSONLD_Context.active_context)
                       JSONLD_Context.ac_original_base =
                         (ac3a.JSONLD_Context.ac_original_base);
                       JSONLD_Context.ac_suppress_pop =
-                        (ac3a.JSONLD_Context.ac_suppress_pop)
+                        (ac3a.JSONLD_Context.ac_suppress_pop);
+                      JSONLD_Context.ac_frame_expansion =
+                        (ac3a.JSONLD_Context.ac_frame_expansion)
                     }
                   else ac3a in
                 (match compact_fields ac3 tsc aprop inside_rev fields [] co
@@ -1966,7 +1970,7 @@ let compact_document (input : Prims.string) (ctx_doc : Prims.string)
   (processing_mode : Prims.string FStar_Pervasives_Native.option) :
   Parser_JSON.json_val FStar_Pervasives_Native.option=
   match Parser_JSONLD.expand_document input base FStar_Pervasives_Native.None
-          processing_mode
+          processing_mode false
   with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some expanded ->
@@ -2003,7 +2007,9 @@ let compact_document (input : Prims.string) (ctx_doc : Prims.string)
                   | FStar_Pervasives_Native.None -> base);
                JSONLD_Context.ac_original_base = base;
                JSONLD_Context.ac_suppress_pop =
-                 (JSONLD_Context.empty_active_context.JSONLD_Context.ac_suppress_pop)
+                 (JSONLD_Context.empty_active_context.JSONLD_Context.ac_suppress_pop);
+               JSONLD_Context.ac_frame_expansion =
+                 (JSONLD_Context.empty_active_context.JSONLD_Context.ac_frame_expansion)
              } in
            (match JSONLD_Context.context_process ac_seed ctx_val false
                     JSONLD_Context.jld_remote_context_fuel []

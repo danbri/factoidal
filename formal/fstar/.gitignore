@@ -14,13 +14,16 @@ z3-4.13.3
 
 # KaRaMeL pilot — see docs/designissues/2026-05-07-c-build-and-roaring-plan.md
 # .krml intermediates stay ignored; the generated pilot .c/.h under
-# c-output/ ARE committed (rule #9 spirit — a fresh clone can gcc them
-# without an F*/karamel toolchain). Logs, objects (*.o above), and the
-# demo binary stay out.
+# c-output/ ARE committed. Logs and objects (*.o above) stay out.
+# The deltalog demo BINARY is committed (2026-08-04): the hub post18
+# test runs it, and "a fresh clone can gcc the sources" turned out to
+# be false — the compile needs krmllib headers that are not vendored,
+# so on a fresh container the test failed until the binary was built
+# by hand. Rule #9 (commit binaries so tests run with no toolchain)
+# applies. format_demo stays ignored — no test runs it.
 krml-output/
 c-output/_*.log
 c-output/demo/format_demo
-c-output/deltalog/demo/delta_log_demo
 
 # build-ocaml.sh runtime state
 .build.lock

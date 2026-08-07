@@ -1407,14 +1407,33 @@ let parse_jsonld (input:string) (base:option string) (rdf_direction:option strin
 // documents (free-floating nodes, coercion-free literals) that must
 // still be run through the expansion algorithm to drop unmapped
 // properties, wrap values in arrays, etc.
+//
+// `frame_expansion` (root cause #2, 2026-07-27 framing diagnosis:
+// docs/designissues/2026-07-27-jsonld-framing-diagnosis.md): seeds
+// JSONLD.Context.active_context.ac_frame_expansion, which
+// JSONLD.Expand.fst's expand_one_field / jexp_expand_value_object_frame
+// read to keep the five JSON-LD Framing keywords and Framing's Value
+// Pattern shapes ({}/[]/array-of-candidates @value/@type/@language)
+// alive through expansion instead of being dropped/rejected as ordinary
+// Expansion requires. Default `false` for every caller except
+// JSONLD.Frame.frame_document's FRAME-document expand_document call (the
+// JSON-LD Framing algorithm only frame-expands the frame, never the
+// input document being framed — see that function) — every other caller
+// (JSONLD.Compact, JSONLD.Flatten, parse_jsonld's own inline `expand`
+// call, both OCaml runners that call this directly) passes `false`,
+// producing BYTE-IDENTICAL output to before this parameter existed,
+// since ac_frame_expansion only gates NEW branches in JSONLD.Expand.fst
+// that a `false` value never enters.
 let expand_document (input:string) (base:option string)
                     (expand_context:option string) (processing_mode:option string)
+                    (frame_expansion:bool)
   : option json_val =
   let mode10 = (match processing_mode with Some "json-ld-1.0" -> true | _ -> false) in
   match parse_json input with
   | None -> None
   | Some root ->
-    let ac_seed = { empty_active_context with ac_base = base; ac_mode10 = mode10 } in
+    let ac_seed = { empty_active_context with ac_base = base; ac_mode10 = mode10;
+                     ac_frame_expansion = frame_expansion } in
     let ac0_opt =
       (match expand_context with
        | None -> Some ac_seed

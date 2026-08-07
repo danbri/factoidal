@@ -17,13 +17,139 @@
 open RDF_Graph_Executable
 open SPARQL11_Algebra
 
-(* Issue #275 (rule #11 ASSUME-IO): explicitly realise the JSON-LD
-   documentLoader seam as an honest "no remote loading" for this CLI —
-   see JSONLD.Loader.fst's banner and jsonld_runner.ml (the ONE
-   consumer with a real fixture-file loader). Explicit rather than
-   relying on the ref cell's own default so the choice is auditable
-   here, not implicit. *)
-let () = JSONLD_Loader.jsonld_loader_register (fun _ -> FStar_Pervasives_Native.None)
+(* Issue #275 (rule #11 ASSUME-IO): realise the JSON-LD documentLoader
+   seam for this CLI against the offline context cache in
+   third_party/jsonld-context-cache/. See JSONLD.Loader.fst's banner,
+   skills/jsonld-context-cache/SKILL.md, and jsonld_runner.ml (the
+   fixture-file loader for the W3C suite).
+
+   Rule #11 boundary: this code performs I/O and a LOOKUP only. It does
+   NOT know the cache's naming convention — no sha256-of-URL, no
+   <domain>/<hash>.v<N> path assembly. It reads the generated index.json
+   and follows the "path" recorded there. The layout convention stays in
+   tools/jsonld_context_cache.py, which owns it; if that layout changes,
+   nothing here needs to. The only decision made here is WHICH bytes come
+   back for which IRI, which is exactly what the patch banner says is the
+   consumer's own business.
+
+   Resolution order:
+     1. the local cache (offline, default, always tried first)
+     2. GitHub raw of the SAME cached snapshot — opt-in via
+        FACTOIDAL_JSONLD_REMOTE=1, and it announces itself on stderr
+
+   The remote step is opt-in rather than automatic on purpose: a
+   conformance run that silently reaches the network is not reproducible,
+   and a context fetched mid-parse is a context nobody reviewed. Default
+   behaviour stays fully offline. *)
+
+let jsonld_cache_root () =
+  match Sys.getenv_opt "FACTOIDAL_JSONLD_CACHE" with
+  | Some d -> d
+  | None ->
+    (* Repo layout relative to the executable, then CWD, so the CLI works
+       from a checkout and from bin/<platform>/ alike. *)
+    let exe_dir = Filename.dirname Sys.executable_name in
+    let candidates = [
+      Filename.concat (Filename.concat exe_dir "../..") "third_party/jsonld-context-cache";
+      Filename.concat exe_dir "third_party/jsonld-context-cache";
+      "third_party/jsonld-context-cache";
+    ] in
+    (try List.find (fun d -> Sys.file_exists (Filename.concat d "index.json")) candidates
+     with Not_found -> "third_party/jsonld-context-cache")
+
+let jsonld_read_file_opt path =
+  if Sys.file_exists path then
+    (try
+       let ic = open_in_bin path in
+       let n = in_channel_length ic in
+       let s = really_input_string ic n in
+       close_in ic; Some s
+     with Sys_error _ -> None)
+  else None
+
+(* (relative path, expected content sha256) for [iri], read out of the
+   generated index. Uses the F*-extracted JSON parser rather than a
+   hand-rolled one (iron rule #4: no parallel parser in OCaml). *)
+let jsonld_cache_lookup (iri : string) : (string * string) option =
+  match jsonld_read_file_opt (Filename.concat (jsonld_cache_root ()) "index.json") with
+  | None -> None
+  | Some raw ->
+    (match Parser_JSON.parse_json raw with
+     | FStar_Pervasives_Native.None -> None
+     | FStar_Pervasives_Native.Some idx ->
+       let field k o = match Parser_JSON.json_get_field k o with
+         | FStar_Pervasives_Native.Some v -> Some v | FStar_Pervasives_Native.None -> None in
+       (match field "contexts" idx with
+        | None -> None
+        | Some contexts ->
+          (match field iri contexts with
+           | None -> None
+           | Some entry ->
+             (match Parser_JSON.json_get_array "versions" entry with
+              | FStar_Pervasives_Native.None -> None
+              | FStar_Pervasives_Native.Some vs ->
+                let vs = List.rev vs in            (* newest snapshot wins *)
+                (match vs with
+                 | [] -> None
+                 | newest :: _ ->
+                   (match Parser_JSON.json_get_string "path" newest,
+                          Parser_JSON.json_get_string "content_sha256" newest with
+                    | FStar_Pervasives_Native.Some p,
+                      FStar_Pervasives_Native.Some d -> Some (p, d)
+                    | _ -> None))))))
+
+(* Fail CLOSED on a digest mismatch. A cached context that does not match
+   its recorded hash is tampered or truncated; feeding it into expansion
+   would silently change what every document means. *)
+let jsonld_checked_body ~(what : string) (body : string) (expect : string) : string option =
+  let got = Fstar_pure_hashes.sha256 body in
+  if got = expect then Some body
+  else begin
+    Printf.eprintf
+      "factoidal: REFUSING cached JSON-LD context %s — sha256 %s does not match\n\
+      \           the recorded %s. Run tools/jsonld-context-cache.sh verify.\n"
+      what (String.sub got 0 16) (String.sub expect 0 16);
+    None
+  end
+
+let jsonld_remote_base =
+  "https://raw.githubusercontent.com/danbri/factoidal/claude/main/third_party/jsonld-context-cache/"
+
+let jsonld_fetch_remote (rel : string) : string option =
+  match Sys.getenv_opt "FACTOIDAL_JSONLD_REMOTE" with
+  | Some ("1" | "true" | "yes") ->
+    let url = jsonld_remote_base ^ rel in
+    Printf.eprintf "factoidal: fetching JSON-LD context from %s\n%!" url;
+    let tmp = Filename.temp_file "factoidal-ctx-" ".jsonld" in
+    let rc =
+      Sys.command (Printf.sprintf
+        "curl -sS -L --max-time 20 --proto '=https' --proto-redir '=https' -o %s %s"
+        (Filename.quote tmp) (Filename.quote url)) in
+    let body = if rc = 0 then jsonld_read_file_opt tmp else None in
+    (try Sys.remove tmp with Sys_error _ -> ());
+    if rc <> 0 then
+      Printf.eprintf "factoidal: remote context fetch failed (curl exit %d)\n" rc;
+    body
+  | _ -> None
+
+let jsonld_document_loader (iri : string) : string option =
+  match jsonld_cache_lookup iri with
+  | None -> None
+  | Some (rel, digest) ->
+    let local = Filename.concat (jsonld_cache_root ()) rel in
+    (match jsonld_read_file_opt local with
+     | Some body -> jsonld_checked_body ~what:rel body digest
+     | None ->
+       (match jsonld_fetch_remote rel with
+        | Some body -> jsonld_checked_body ~what:(rel ^ " (remote)") body digest
+        | None -> None))
+
+let () =
+  JSONLD_Loader.jsonld_loader_register
+    (fun iri ->
+       match jsonld_document_loader iri with
+       | Some s -> FStar_Pervasives_Native.Some s
+       | None -> FStar_Pervasives_Native.None)
 
 (* ============================================================================
    Remote SPARQL 1.1 Protocol client (`query --endpoint URL`)
@@ -226,11 +352,95 @@ let scope_dataset_bnodes ds =
   incr bnode_scope_counter;
   RDF_Dataset_Merge.rename_dataset_bnodes (Printf.sprintf "d%d_" n) ds
 
+(* Issue #325 — a non-empty document that yields ZERO triples must be
+   REPORTED, never returned as success.
+
+   The lenient entry points every subcommand loads through return a
+   plain triple list with no error channel, so a parse failure was
+   indistinguishable from "this file contains no triples". That is how
+   the RDF/XML Unicode-QName bug stayed invisible: `factoidal count`
+   printed "0 triples" and exited 0 on a well-formed document that both
+   pyoxigraph and rdflib parse. For anyone importing an ontology with a
+   non-ASCII vocabulary, silent data loss with a success exit code is
+   worse than a crash.
+
+   The JUDGEMENT of "did this document actually parse" stays in F*:
+   every format already ships a strict entry point that returns None on
+   a syntax error. This layer only ASKS one of them, and only when the
+   lenient parse came back empty — so a healthy parse never pays for a
+   second pass, and no parsing decision moves into the consumer
+   (anti-pattern #15). *)
+(* Each strict entry point returns a DIFFERENT payload type (triple list
+   for the graph formats, rdf_dataset for the dataset formats), so this
+   needs an explicit polymorphic annotation — an inferred one unifies with
+   whichever branch the type-checker reaches first. *)
+let fstar_option_is_some : 'a. 'a FStar_Pervasives_Native.option -> bool =
+  fun o ->
+    match o with
+    | FStar_Pervasives_Native.Some _ -> true
+    | FStar_Pervasives_Native.None -> false
+
+let strict_parse_accepts fmt content base_iri =
+  let b = match base_iri with Some b -> b | None -> "" in
+  let some_nt o = fstar_option_is_some o in
+  match fmt with
+  | NT ->
+    fstar_option_is_some (if !rdf12_mode then Parser_NTriples.parse_ntriples_strict_12 content
+             else Parser_NTriples.parse_ntriples_strict content)
+  | NQuads ->
+    fstar_option_is_some (if !rdf12_mode then Parser_NQuads.parse_nquads_strict_12 content
+             else Parser_NQuads.parse_nquads_strict content)
+  | Turtle ->
+    fstar_option_is_some (if !rdf12_mode then Parser_Turtle.parse_turtle_with_base_strict_12 content b
+             else Parser_Turtle.parse_turtle_with_base_strict content b)
+  | TriG ->
+    fstar_option_is_some (if !rdf12_mode then Parser_TriG.parse_trig_with_base_12 content b
+             else Parser_TriG.parse_trig_with_base content b)
+  | RDFXML ->
+    fstar_option_is_some (Parser_RDFXML.parse_rdfxml_with_base_strict b content)
+  | _ ->
+    (* No strict entry point wired for this format: say nothing rather
+       than guess. Better a missed diagnosis than a false one. *)
+    true
+
+(* Non-empty here means "has any content at all", deliberately crude:
+   the question of whether that content SHOULD have produced triples is
+   the strict parser's to answer, not ours. A file of only whitespace is
+   let through so `count` on an empty file stays a success. *)
+let has_any_content content =
+  let n = String.length content in
+  let rec scan i =
+    if i >= n then false
+    else match content.[i] with
+      | ' ' | '\t' | '\n' | '\r' -> scan (i + 1)
+      | _ -> true in
+  scan 0
+
+let diagnose_empty_parse fmt content base_iri path =
+  if has_any_content content && not (strict_parse_accepts fmt content base_iri) then begin
+    Printf.eprintf
+      "Error: %s parsed to zero triples but is not an empty document — \
+       the parse failed and the result would have been silently empty.\n"
+      path;
+    Printf.eprintf
+      "       Re-run with a strict validator, or file a bug: a non-empty \
+       document that yields no triples is a parser defect, not a valid \
+       empty graph (issue #325).\n";
+    exit 1
+  end
+
+let dataset_quad_count (ds : RDF_Graph_Executable.rdf_dataset) =
+  List.length ds.ds_default
+  + List.fold_left (fun acc ng -> acc + List.length ng.ng_graph) 0 ds.ds_named
+
 let load_dataset ?(format=None) ?(base=None) path =
   let content = read_file path in
   let fmt = match format with Some f -> f | None -> detect_format path in
   let base_iri = match base with Some b -> Some b | None -> file_base_iri path in
-  scope_dataset_bnodes @@ match fmt with
+  let diagnose ds =
+    if dataset_quad_count ds = 0 then diagnose_empty_parse fmt content base_iri path;
+    ds in
+  scope_dataset_bnodes @@ diagnose @@ match fmt with
   | NQuads ->
     if !rdf12_mode then Parser_NQuads.parse_nquads_12 content
     else Parser_NQuads.parse_nquads content
@@ -2149,7 +2359,7 @@ let run_entail (args : string list) : unit =
     let closure tr =
       if norm = "OWL-RL"
       then RDF_Graph_Executable.owl_rl_closure_with_reflexivity tr (Z.of_int 100)
-      else RDF_Graph_Executable.rdfs_closure_with_reflexivity tr (Z.of_int 100)
+      else RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch tr (Z.of_int 100)
     in
     let graph = closure (concat_map_preserve_order (fun ds -> ds.ds_default) datasets) in
     let named = concat_map_preserve_order (fun ds -> ds.ds_named) datasets in
@@ -2755,16 +2965,21 @@ let () =
           let n = match base_iri with
             | Some b -> Parser_Turtle.count_turtle_triples_with_base content b
             | None -> Parser_Turtle.count_turtle_triples content in
+          (* Issue #325: these three count fast paths bypass load_dataset,
+             so they need the same zero-triple diagnosis it applies. *)
+          if Z.equal n Z.zero then diagnose_empty_parse fmt content base_iri f;
           Printf.printf "%s: %s triples\n" label (Z.to_string n)
         | NT ->
           (* Issue #121: count-only avoids growing a 7M-element triple list. *)
           let content = read_file f in
           let n = Parser_NTriples.count_ntriples content in
+          if Z.equal n Z.zero then diagnose_empty_parse fmt content cfg.base_iri f;
           Printf.printf "%s: %s triples\n" label (Z.to_string n)
         | NQuads ->
           (* Issue #121: count-only avoids growing the rdf_dataset. *)
           let content = read_file f in
           let n = Parser_NQuads.count_nquads_quads content in
+          if Z.equal n Z.zero then diagnose_empty_parse fmt content cfg.base_iri f;
           Printf.printf "%s: %s triples\n" label (Z.to_string n)
         | _ ->
           let triples = load_triples ~format:cfg.input_format ~base:cfg.base_iri f in
@@ -2974,12 +3189,15 @@ let () =
   (* Apply entailment regime closure if requested. The F*-extracted closure
      operates on rdf_graph (list of triples); apply it to the default graph
      and to each named graph in turn. "" is the no-op / "none" case. *)
+  (* QUERY path: entailment_closure_for_query, not the raw closure --
+     it strips the "__rl_" comprehension-witness scaffolding the OWL-RL
+     closure mints for its own rounds (issue #346: an external reviewer
+     read a label-shortened witness bnode as an unsound named-class
+     fact). The `entail` DUMP subcommand keeps the full materialisation
+     on purpose. Dispatch on regime lives in F-star; this is wiring. *)
   let apply_entail tr = match cfg.entail_regime with
-    | "OWL-RL" ->
-      (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity tr (Z.of_int 100)
-       with _ -> tr)
-    | "RDFS" ->
-      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity tr (Z.of_int 100)
+    | "OWL-RL" | "RDFS" ->
+      (try OWL_Closure.entailment_closure_for_query cfg.entail_regime tr (Z.of_int 100)
        with _ -> tr)
     | _ -> tr
   in
