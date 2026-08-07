@@ -59,7 +59,10 @@ module RDF.Entailment.RDFS.RhoDFClosure
 //     lemma_len_eq_saturated` takes, taken here rather than proved,
 //     per the brief.
 //
-// Verify-only module; nothing here extracts.
+// `rho_df_closure` (section 1) and the decidable fragment checker
+// (section 10, added for the npm/js entry points) are the two
+// EXTRACTABLE definitions this module ships; everything else here is
+// verify-only (theorems 1-5 and their supporting lemmas).
 // ===================================================================
 
 open FStar.List.Tot
@@ -1719,3 +1722,74 @@ let rho_df_closure_decides g e fuel =
   rho_df_closure_closed g fuel;
   rho_df_saturation_iff g c e
 #pop-options
+
+// ===================================================================
+// 10. DECIDABLE FRAGMENT CHECKER -- `rho_df_frag_graph`
+// (RDF.Entailment.RDFS.Completeness, opened above) is a `prop`, so it
+// cannot be called from extracted code. `is_rho_df_frag` is its
+// `List.Tot.for_all`-shaped `bool` twin, EXTRACTABLE and the function
+// the npm/js `rhoDfFragmentCheck` entry point calls;
+// `lemma_is_rho_df_frag_correct` is the recipe-shaped correspondence
+// lemma pinning it to the prop (same shape as
+// `RDF.Semantics.HypothesisWitness.lemma_memP_obj_is_iri`'s
+// for_all/memP recursion).
+// ===================================================================
+
+// F1's per-object test, decidable: bool twin of `rho_df_object_ok`.
+let is_rho_df_object_ok (t : rdf_term) : bool =
+  match t with
+  | T_IRI _   -> true
+  | T_BNode _ -> true
+  | _         -> false
+
+let lemma_is_rho_df_object_ok_correct (t : rdf_term)
+  : Lemma (ensures (is_rho_df_object_ok t == true) <==> rho_df_object_ok t) =
+  match t with
+  | T_IRI _            -> ()
+  | T_BNode _          -> ()
+  | T_Literal _        -> ()
+  | T_TripleTerm _ _ _ -> ()
+
+// F1 /\ F2 per-triple, decidable: bool twin of `rho_df_frag_triple`.
+// `t.p = i_rdfs_subPropertyOf` is ordinary string equality on `wf_iri`
+// (`RDF.Term.wf_iri = s:iri{is_iri s}`, `iri = string`, an eqtype), so
+// it decides the same fact `t.p == i_rdfs_subPropertyOf` tests in the
+// prop version.
+let is_rho_df_frag_triple (t : triple) : bool =
+  is_rho_df_object_ok t.o &&
+  (if t.p = i_rdfs_subPropertyOf then T_IRI? t.o else true)
+
+let lemma_is_rho_df_frag_triple_correct (t : triple)
+  : Lemma (ensures (is_rho_df_frag_triple t == true) <==> rho_df_frag_triple t) =
+  lemma_is_rho_df_object_ok_correct t.o
+
+// The graph-level check, decidable: bool twin of `rho_df_frag_graph`.
+// Definitionally `List.Tot.for_all is_rho_df_frag_triple g` -- spelled
+// out as a recursion here so the correspondence proof below is a
+// direct structural induction, one step per cons, matching
+// `rho_df_frag_graph`'s own `memP`-over-cons unfolding.
+let rec is_rho_df_frag (g : rdf_graph) : Tot bool (decreases g) =
+  match g with
+  | []      -> true
+  | t :: tl -> is_rho_df_frag_triple t && is_rho_df_frag tl
+
+let lemma_is_rho_df_frag_is_for_all (g : rdf_graph)
+  : Lemma (ensures is_rho_df_frag g == List.Tot.for_all is_rho_df_frag_triple g)
+          (decreases g) =
+  let rec aux (g : rdf_graph)
+    : Lemma (ensures is_rho_df_frag g == List.Tot.for_all is_rho_df_frag_triple g)
+            (decreases g) =
+    match g with
+    | []      -> ()
+    | t :: tl -> aux tl
+  in
+  aux g
+
+let rec lemma_is_rho_df_frag_correct (g : rdf_graph)
+  : Lemma (ensures (is_rho_df_frag g == true) <==> rho_df_frag_graph g)
+          (decreases g) =
+  match g with
+  | []      -> ()
+  | t :: tl ->
+    lemma_is_rho_df_frag_triple_correct t;
+    lemma_is_rho_df_frag_correct tl
