@@ -4,7 +4,7 @@ description: "SPARQL answers over the six-rule rho-df closure are machine-checke
 layout: hub.njk
 series: docs-hub
 series_order: 32
-status: draft
+status: published
 tests: tests/hub/post32_test.mjs
 ---
 
@@ -69,7 +69,7 @@ theorems quantify over. This is the difference between fine print and
 an API: you can ask *before* trusting an answer.
 
 ```observable-js
-return pretty(fn.rhoDfFragmentCheck(ttl));
+return pretty(await fn.rhoDfFragmentCheck(ttl));
 // {ok: true, fragment: true} — the certified path applies to this data
 ```
 
@@ -80,14 +80,15 @@ check — which is itself proved to be a faithful proxy for semantic
 saturation on freshly-parsed data, not a heuristic.
 
 ```observable-js
-closed = fn.rhoDfClosure(ttl)
+closed = fn.rhoDfClosure(ttl) // a promise: dependent cells receive it awaited
 ```
 
 **Step 3 — query it.** Is Ada an `:Agent`? No triple says so; two
 subclass steps entail it.
 
 ```observable-js
-const rows = await fn.query(fn.parse(closed.ntriples, {format: "ntriples"}), `
+const dataset = await fn.parse(closed.ntriples, {format: "ntriples"});
+const rows = await fn.query(dataset, `
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   PREFIX : <http://example.org/org#>
   ASK { :ada rdf:type :Agent }
@@ -133,8 +134,9 @@ const escape = `
   :P rdfs:subPropertyOf rdfs:subPropertyOf .
   :a :P _:b1 .
 `;
-const before = fn.rhoDfFragmentCheck(escape);
-const after  = fn.rhoDfFragmentCheck(fn.rhoDfClosure(escape).ntriples);
+const before = await fn.rhoDfFragmentCheck(escape);
+const closedEsc = await fn.rhoDfClosure(escape);
+const after  = await fn.rhoDfFragmentCheck(closedEsc.ntriples);
 return pretty({fragmentBefore: before.fragment, fragmentAfter: after.fragment});
 // true, then false — one rdfs7 step derives ':a rdfs:subPropertyOf _:b1',
 // whose blank-node object leaves the fragment. Machine-checked as
@@ -194,9 +196,9 @@ for (let i = 0; i < 60; i++) chain += `:C${i} rdfs:subClassOf :C${i+1} .\n`;
 chain += ":x rdf:type :C0 .\n";
 
 const t0 = performance.now();
-const six = fn.rhoDfClosure(chain);
+const six = await fn.rhoDfClosure(chain);
 const t1 = performance.now();
-const full = fn.owlClosure(chain); // the full RDFS+OWL-RL rule set
+const full = await fn.owlClosure(chain, "RDFS"); // the full twelve-rule RDFS set
 const t2 = performance.now();
 
 return pretty({

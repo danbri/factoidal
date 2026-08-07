@@ -95,12 +95,16 @@ test('post32: the perf cell runs — both closures complete on the 60-class chai
   const six = await factoidal.rhoDfClosure(chain);
   assert.equal(six.ok, true);
   assert.match(six.ntriples, /c#x>\s+<http:\/\/www\.w3\.org\/1999\/02\/22-rdf-syntax-ns#type>\s+<http:\/\/example\.org\/c#C60>/);
-  const full = await factoidal.owlClosure(chain);
+  const full = await factoidal.owlClosure(chain, 'RDFS');
   assert.ok(full);
 });
 
 test('post32: every observable-js cell in the page parses and runs under the reactive harness', async () => {
   const cells = extractObservableCells(POST_FILE);
   assert.ok(cells.length >= 5, `expected at least 5 live cells, found ${cells.length}`);
-  await runReactivePost(POST_FILE, factoidal);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  for (const name of post.names) {
+    const v = await post.value(name);
+    assert.notEqual(v, undefined, `cell '${name}' evaluated to undefined`);
+  }
 });

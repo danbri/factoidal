@@ -175,6 +175,8 @@ module.exports = {
   shaclValidate: api.shaclValidate,
   shexValidate: api.shexValidate,
   owlClosure: api.owlClosure,
+  rhoDfClosure: api.rhoDfClosure,
+  rhoDfFragmentCheck: api.rhoDfFragmentCheck,
   tableauMaterialise: api.tableauMaterialise,
   tableauDlInconsistent: api.tableauDlInconsistent,
   owlIsConsistent: api.owlIsConsistent,
