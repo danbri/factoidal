@@ -283,6 +283,29 @@ export function owlClosure(
 ): Promise<Dataset>;
 
 /**
+ * The CERTIFIED six-rule rho-df closure
+ * (formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst's
+ * `rho_df_closure`): rdfs2/3/5/7/9/11 only, with the machine-checked
+ * decides-iff — on fragment inputs the result's simple query answers
+ * are exactly the rho-df-entailed consequences (see
+ * docs/theorem-registry.md). Returns N-Triples text plus status.
+ */
+export function rhoDfClosure(
+  data: DataInput,
+  options?: { format?: DataFormat }
+): Promise<{ ok: boolean; ntriples: string }>;
+
+/**
+ * Decidable fragment check (`is_rho_df_frag`, with its F* lemma tying
+ * it to the prop the regime theorems quantify over): does the
+ * certified path's guarantee apply to this data?
+ */
+export function rhoDfFragmentCheck(
+  data: DataInput,
+  options?: { format?: DataFormat }
+): Promise<{ ok: boolean; fragment: boolean }>;
+
+/**
  * OWL tableau materialisation (formal/fstar/Tableau.fst's
  * `tableau_materialise`): add `i rdf:type <ClassExpression>` for every
  * individual the model-construction reasoner proves is a member of an
