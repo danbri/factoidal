@@ -189,12 +189,14 @@ export function owlClosure(
 
 /** Certified six-rule rho-df closure (theorem-backed; see docs/theorem-registry.md). */
 export function rhoDfClosure(
-  data: string
+  data: string,
+  options?: { format?: string; baseIRI?: string }
 ): Promise<{ ok: true; ntriples: string }>;
 
 /** Decidable rho-df fragment check — the regime theorems' fragment hypothesis. */
 export function rhoDfFragmentCheck(
-  data: string
+  data: string,
+  options?: { format?: string; baseIRI?: string }
 ): Promise<{ ok: true; fragment: boolean }>;
 
 /** OWL tableau class-expression materialisation (default graph only). */

@@ -1,6 +1,6 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twenty hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, and missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh) — plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twenty-two hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh), and the node hub harness masking browser-only fn-surface gaps (missing hub.njk wrappers, Turtle-vs-N-Quads convention mismatches) — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
@@ -836,3 +836,57 @@ Costs and rules:
    and the partial `latest.csv` it left behind had to be reverted.
    Treat a background job's missing final RC echo as "the script
    did not finish", never as "the tail got cut off".
+
+## Hazard #22 — the node hub harness binds `fn` to the NODE package, so browser-only fn-surface gaps ship green (2026-08-07/08)
+
+### Symptom
+
+A hub post's `node --test tests/hub/postNN` suite is fully green, the
+merge gate passes, the post deploys — and the owner reports live cells
+broken on the deployed page. Two shapes, both shipped on post 32:
+
+1. **Loud**: `TypeError: fn.rhoDfFragmentCheck is not a function` — the
+   cell REJECTS in the browser (2026-08-07).
+2. **Silent, worse**: every cell resolves, no rejection anywhere, but
+   the theorem-backed ASK prints `false` where the prose promises
+   `true` (2026-08-08). The browser wrapper passed raw Turtle to an ABI
+   whose parser is N-Quads-only; the parse silently dropped every
+   prefixed statement, the certified closure closed the EMPTY graph
+   with `ok: true`, and the fragment checker answered `fragment: true`
+   VACUOUSLY on that empty graph. The same sweep found post 28's
+   `fn.sigmoidFormulaMathml` / `fn.sigmoidPoints` missing entirely.
+
+### Root cause
+
+The reactive node harness (`runReactivePost`) binds `fn` to the node
+npm package (`npm/factoidal/index.js`), whose api.js normalises every
+input to N-Quads before calling the ABI. The browser page binds `fn`
+to the hand-curated wrapper object in `docs/_includes/hub.njk`, backed
+by `npm/factoidal/browser.js` (served as `docs/npm/foafos/browser.js`).
+Those are two different surfaces: a name can exist on one and not the
+other, and a calling convention (input format) can differ between
+them. Node tests certify only the node surface.
+
+### Detection / prevention
+
+- `tests/hub/fn_surface_parity_test.mjs` — text-level pin, runs in the
+  normal hub suite: every `fn.<name>(` in every published post must
+  have an `async <name>(` wrapper in hub.njk, and same-name
+  `Factoidal.*` delegations must be browser.js exports. Catches shape
+  1 cheaply.
+- `tests/web-demos/hub_browser_all.sh` — headless-Chromium sweep of
+  every post; catches rejected cells (shape 1) in a real browser.
+  **Run it before publishing any new hub post.** Post 32 shipped
+  broken precisely because this existing harness was not run.
+- `tests/web-demos/hub_post32_value_check.sh` — VALUE-level browser
+  assertions (the ASK cell prints `true`, derivedTriples > 1000).
+  Only this class catches shape 2: a wrapper that exists but silently
+  computes over nothing. When a post's cells make a checkable claim
+  in prose ("// true — and that true is the theorem"), pin the VALUE
+  in a browser check, not just the absence of rejections.
+- When adding a NEW fn wrapper to hub.njk: check the browser adapter
+  function's input contract against what page cells actually pass
+  (`owlClosure` takes N-Quads; page cells hold Turtle — convert in
+  the wrapper). "ok: true with empty output" is the silent-drop
+  signature (#344's class) — treat empty engine output on non-empty
+  input as a bug until proven otherwise.

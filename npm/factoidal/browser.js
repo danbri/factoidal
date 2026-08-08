@@ -966,16 +966,21 @@ export async function owlClosure(dataNQuads, mode) {
  * @param {string} data Turtle or N-Triples text
  * @returns {Promise<{ok:true,ntriples:string}>}
  */
-export async function rhoDfClosure(data) {
+export async function rhoDfClosure(data, options) {
   if (typeof data !== 'string') {
     throw new TypeError('rhoDfClosure: data must be a string');
   }
+  const opts = options || {};
+  // The ABI parses N-Quads only (entry_jsoo.ml dataset_of_nquads);
+  // Turtle passed raw is silently dropped to an empty graph, so convert
+  // first -- same normalisation the node package's api.js does.
+  const nq = await toRdf(data, { format: opts.format || 'turtle', baseIRI: opts.baseIRI });
   const abi = await loadNpmEntry();
   if (typeof abi.rhoDfClosure !== 'function') {
     throw new Error(
       'rhoDfClosure: the loaded factoidal-npm-entry bundle predates the rhoDfClosure export');
   }
-  const parsed = JSON.parse(abi.rhoDfClosure(data));
+  const parsed = JSON.parse(abi.rhoDfClosure(nq));
   if (!parsed.ok) throw new Error(parsed.error || 'rhoDfClosure failed');
   return parsed;
 }
@@ -988,16 +993,20 @@ export async function rhoDfClosure(data) {
  * @param {string} data Turtle or N-Triples text
  * @returns {Promise<{ok:true,fragment:boolean}>}
  */
-export async function rhoDfFragmentCheck(data) {
+export async function rhoDfFragmentCheck(data, options) {
   if (typeof data !== 'string') {
     throw new TypeError('rhoDfFragmentCheck: data must be a string');
   }
+  const opts = options || {};
+  // Same N-Quads normalisation as rhoDfClosure above: raw Turtle would
+  // silently check the EMPTY graph and answer fragment:true vacuously.
+  const nq = await toRdf(data, { format: opts.format || 'turtle', baseIRI: opts.baseIRI });
   const abi = await loadNpmEntry();
   if (typeof abi.rhoDfFragmentCheck !== 'function') {
     throw new Error(
       'rhoDfFragmentCheck: the loaded factoidal-npm-entry bundle predates the rhoDfFragmentCheck export');
   }
-  const parsed = JSON.parse(abi.rhoDfFragmentCheck(data));
+  const parsed = JSON.parse(abi.rhoDfFragmentCheck(nq));
   if (!parsed.ok) throw new Error(parsed.error || 'rhoDfFragmentCheck failed');
   return parsed;
 }

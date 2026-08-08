@@ -270,7 +270,12 @@ rule #17").
     native binary. A docs landing that adds cells calling a new F\*
     feature is NOT docs-only — rebuild the bundle (the js build
     incrementally SKIPS npm-entry; force it) and gate on `node --test
-    tests/hub/postNN`. Full text: hazard #12 in the same skill.
+    tests/hub/postNN` AND the headless-browser sweep
+    `tests/web-demos/hub_browser_all.sh` — the node harness binds
+    `fn` to the node package, so it cannot see browser-surface gaps
+    (missing hub.njk wrappers, Turtle-vs-N-Quads calling-convention
+    mismatches: two owner-reported live breakages, 2026-08-07/08).
+    Full text: hazards #12 and #22 in the same skill.
 
 ## Skills (operational details, on-demand)
 
