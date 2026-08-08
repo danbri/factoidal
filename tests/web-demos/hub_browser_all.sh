@@ -308,7 +308,12 @@ for (const slug of POSTS) {
   const settle = await ownRace(
     page.waitForFunction(() => {
       const cells = [...document.querySelectorAll('.observable-cell')];
-      return cells.length === 0 || cells.every((c) => c.textContent && c.textContent.trim().length > 0);
+      // Settled = nonempty text OR rendered DOM children: a cell whose
+      // value is pure graphics (post 28's sigmoidPlotDisplay resolves
+      // to an SVG polyline) has empty textContent forever, and reading
+      // that as "still computing" is a false alarm (2026-08-08).
+      return cells.length === 0 || cells.every((c) =>
+        (c.textContent && c.textContent.trim().length > 0) || c.childElementCount > 0);
     }, { timeout: CELL_SETTLE_TIMEOUT_MS + 15000 }),
     CELL_SETTLE_TIMEOUT_MS
   );

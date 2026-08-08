@@ -26,6 +26,35 @@ The fragment is **rho-df**: `rdf:type`, `rdfs:subClassOf`,
 of RDFS schema reasoning. Everything below runs live in your browser
 against the same extracted engine the theorems are about.
 
+## What the two API calls do, in plain terms
+
+**`fn.rhoDfClosure(data)`** takes an RDF document (Turtle or
+N-Triples text) and returns `{ok, ntriples, rounds}`: the same graph
+with **every fact the five schema properties imply added as an
+explicit triple**. That is all "closure" means. If your data says
+`:Engineer rdfs:subClassOf :Employee` and `:ada rdf:type :Engineer`,
+the output also contains `:ada rdf:type :Employee` — and every other
+consequence, chained to any depth (`rounds` reports how many passes
+that took). You run it once, store or query the result, and from then
+on **plain SPARQL — no reasoner, no entailment setting — sees every
+schema-implied fact**, because the facts are physically there.
+
+**`fn.rhoDfFragmentCheck(data)`** answers one question before you
+rely on that: **does the proved guarantee apply to this data?** It
+returns `{ok, fragment}`. `fragment: true` means every triple in the
+document is inside the shape the theorems quantify over, so the
+closure's answers carry the machine-checked soundness *and*
+completeness guarantee — nothing false added, nothing implied
+missed. `fragment: false` means the data steps outside that shape
+(for example a literal where the theorems require an IRI); the
+closure still runs and is still sound, but the *completeness* theorem
+no longer vouches for it.
+
+Together they replace "trust the vendor's reasoner settings" with a
+two-call contract: check whether the guarantee applies, then
+materialise the consequences — with both steps' behaviour stated and
+proved in the [theorem registry](../../theorem-registry/).
+
 ## A schema, some facts, and a guarantee
 
 An ordinary org-chart ontology. Note one thing: object positions hold

@@ -620,7 +620,20 @@ const fn = {
    * post 32 called it — the node test harness masks fn-surface gaps,
    * so wrappers must be added HERE when a page first uses one).
    */
-  async owlClosure(data, mode) { return Factoidal.owlClosure(data, mode || 'RDFS'); },
+  async owlClosure(data, mode) {
+    // Factoidal.owlClosure takes N-Quads; page cells hand us Turtle.
+    // Convert first or the ABI silently closes the EMPTY graph.
+    const nq = await Factoidal.toRdf(data, { format: "turtle" });
+    return Factoidal.owlClosure(nq, mode || 'RDFS');
+  },
+  /**
+   * Verified sigmoid showcase (post 28): sampled points + the
+   * engine-serialized MathML formula. Thin delegations -- found
+   * missing by the 2026-08-08 hub_browser_all.sh sweep (same masked
+   * fn-surface class as the rhoDf* gaps above).
+   */
+  async sigmoidPoints(params) { return Factoidal.sigmoidPoints(params); },
+  async sigmoidFormulaMathml() { return Factoidal.sigmoidFormulaMathml(); },
   /**
    * Parse an RDF document into an FnDataset (mirrors
    * npm/factoidal/index.js's `parse(text, {format}) -> Dataset`).
