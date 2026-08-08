@@ -187,6 +187,16 @@ export function owlClosure(
   mode: 'RDFS' | 'OWL-RL'
 ): Promise<{ ok: true; nquads: string }>;
 
+/** Certified six-rule rho-df closure (theorem-backed; see docs/theorem-registry.md). */
+export function rhoDfClosure(
+  data: string
+): Promise<{ ok: true; ntriples: string }>;
+
+/** Decidable rho-df fragment check — the regime theorems' fragment hypothesis. */
+export function rhoDfFragmentCheck(
+  data: string
+): Promise<{ ok: true; fragment: boolean }>;
+
 /** OWL tableau class-expression materialisation (default graph only). */
 export function tableauMaterialise(
   dataNQuads: string
@@ -424,6 +434,8 @@ declare const _default: {
   shexValidate: typeof shexValidate;
   didKeyResolve: typeof didKeyResolve;
   owlClosure: typeof owlClosure;
+  rhoDfClosure: typeof rhoDfClosure;
+  rhoDfFragmentCheck: typeof rhoDfFragmentCheck;
   tableauMaterialise: typeof tableauMaterialise;
   tableauDlInconsistent: typeof tableauDlInconsistent;
   owlIsConsistent: typeof owlIsConsistent;

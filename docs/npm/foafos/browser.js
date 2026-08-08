@@ -959,6 +959,50 @@ export async function owlClosure(dataNQuads, mode) {
 }
 
 /**
+ * Certified rho-df closure (bin/npm-entry/entry_jsoo.ml's rhoDfClosure
+ * export -> RDF.Entailment.RDFS.RhoDFClosure.rho_df_closure, the
+ * six-rule operator with the decides-iff; see the theorem registry).
+ *
+ * @param {string} data Turtle or N-Triples text
+ * @returns {Promise<{ok:true,ntriples:string}>}
+ */
+export async function rhoDfClosure(data) {
+  if (typeof data !== 'string') {
+    throw new TypeError('rhoDfClosure: data must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.rhoDfClosure !== 'function') {
+    throw new Error(
+      'rhoDfClosure: the loaded factoidal-npm-entry bundle predates the rhoDfClosure export');
+  }
+  const parsed = JSON.parse(abi.rhoDfClosure(data));
+  if (!parsed.ok) throw new Error(parsed.error || 'rhoDfClosure failed');
+  return parsed;
+}
+
+/**
+ * Decidable rho-df fragment check (bin/npm-entry/entry_jsoo.ml's
+ * rhoDfFragmentCheck export -> is_rho_df_frag, lemma-tied to the
+ * fragment hypothesis the regime theorems quantify over).
+ *
+ * @param {string} data Turtle or N-Triples text
+ * @returns {Promise<{ok:true,fragment:boolean}>}
+ */
+export async function rhoDfFragmentCheck(data) {
+  if (typeof data !== 'string') {
+    throw new TypeError('rhoDfFragmentCheck: data must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.rhoDfFragmentCheck !== 'function') {
+    throw new Error(
+      'rhoDfFragmentCheck: the loaded factoidal-npm-entry bundle predates the rhoDfFragmentCheck export');
+  }
+  const parsed = JSON.parse(abi.rhoDfFragmentCheck(data));
+  if (!parsed.ok) throw new Error(parsed.error || 'rhoDfFragmentCheck failed');
+  return parsed;
+}
+
+/**
  * OWL tableau materialisation (bin/npm-entry/entry_jsoo.ml's
  * tableauMaterialise export -> formal/fstar/Tableau.fst's
  * tableau_materialise). Default graph only.

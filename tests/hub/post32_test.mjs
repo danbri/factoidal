@@ -99,6 +99,33 @@ test('post32: the perf cell runs — both closures complete on the 60-class chai
   assert.ok(full);
 });
 
+test('post32: BROWSER-SURFACE PARITY — every fn.* name the page calls exists in the browser adapter AND the hub fn wrapper', async () => {
+  // The reactive harness binds fn to the NODE package, which masked
+  // two live-page breakages (fn.rhoDfFragmentCheck, fn.owlClosure had
+  // no browser/hub wrappers — found by the owner on the deployed
+  // page, 2026-08-07). This text-level pin closes that class: every
+  // fn.<name>( reference in the page must appear as an export in
+  // npm/factoidal/browser.js and as a method in the hub.njk fn object.
+  const { readFileSync } = await import('node:fs');
+  const page = readFileSync(new URL('../../docs/web/hub/' + POST_FILE, import.meta.url), 'utf8');
+  const adapter = readFileSync(new URL('../../npm/factoidal/browser.js', import.meta.url), 'utf8');
+  const hub = readFileSync(new URL('../../docs/_includes/hub.njk', import.meta.url), 'utf8');
+  const names = [...new Set([...page.matchAll(/\bfn\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)].map(m => m[1]))];
+  assert.ok(names.length >= 4, `expected the page to call several fn.* functions, found ${names}`);
+  for (const name of names) {
+    // The hub fn object must define a wrapper method (async name( ... ).
+    const inHub = new RegExp(`async\\s+${name}\\s*\\(`).test(hub);
+    assert.ok(inHub, `fn.${name} used by the page has no wrapper in docs/_includes/hub.njk's fn object`);
+    // If that wrapper delegates to a same-named Factoidal.* function,
+    // the browser adapter must export it (fn.parse delegates to
+    // toRdf etc., so same-name delegation is the only case checked).
+    if (new RegExp(`Factoidal\\.${name}\\s*\\(`).test(hub)) {
+      const inAdapter = new RegExp(`export\\s+(async\\s+)?function\\s+${name}\\b`).test(adapter);
+      assert.ok(inAdapter, `hub fn.${name} delegates to Factoidal.${name}, which npm/factoidal/browser.js does not export`);
+    }
+  }
+});
+
 test('post32: every observable-js cell in the page parses and runs under the reactive harness', async () => {
   const cells = extractObservableCells(POST_FILE);
   assert.ok(cells.length >= 5, `expected at least 5 live cells, found ${cells.length}`);

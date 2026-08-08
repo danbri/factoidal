@@ -688,6 +688,40 @@ function buildApi(driver) {
   }
 
   /**
+   * The CERTIFIED six-rule rho-df closure (RDF.Entailment.RDFS.
+   * RhoDFClosure.fst's `rho_df_closure`): rdfs2/3/5/7/9/11 only, with
+   * the machine-checked decides-iff (docs/theorem-registry.md).
+   * Returns the raw certified result, not a Dataset: the N-Triples
+   * text is the object the theorems talk about.
+   * @param {Dataset|string|Array} data
+   * @param {{format?: string}} [options]
+   * @returns {Promise<{ok: boolean, ntriples: string}>}
+   */
+  async function rhoDfClosure(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('certified rho-df closure');
+    requireEntryFn(e, 'rhoDfClosure', 'certified rho-df closure');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'rhoDfClosure(data)');
+    return entryResult(e.rhoDfClosure(dataNq), 'rhoDfClosure');
+  }
+
+  /**
+   * Decidable fragment check (`is_rho_df_frag`, tied by an F* lemma to
+   * the prop the regime theorems quantify over): does the certified
+   * path's guarantee apply to this data?
+   * @param {Dataset|string|Array} data
+   * @param {{format?: string}} [options]
+   * @returns {Promise<{ok: boolean, fragment: boolean}>}
+   */
+  async function rhoDfFragmentCheck(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('rho-df fragment check');
+    requireEntryFn(e, 'rhoDfFragmentCheck', 'rho-df fragment check');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'rhoDfFragmentCheck(data)');
+    return entryResult(e.rhoDfFragmentCheck(dataNq), 'rhoDfFragmentCheck');
+  }
+
+  /**
    * OWL tableau materialisation (formal/fstar/Tableau.fst's
    * `tableau_materialise`): add `i rdf:type <ClassExpression>` for
    * every individual the model-construction reasoner can prove is a
@@ -1835,6 +1869,8 @@ function buildApi(driver) {
     shaclValidate,
     shexValidate,
     owlClosure,
+    rhoDfClosure,
+    rhoDfFragmentCheck,
     tableauMaterialise,
     tableauDlInconsistent,
     owlIsConsistent,

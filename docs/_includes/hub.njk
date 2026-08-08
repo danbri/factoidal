@@ -608,6 +608,20 @@ function srjTermToFn(t) {
 
 const fn = {
   /**
+   * Certified rho-df closure + its decidable fragment check (post 32:
+   * the six-rule operator with the decides-iff). Thin delegations to
+   * the browser adapter, same as the node package's lib/api.js.
+   */
+  async rhoDfClosure(data) { return Factoidal.rhoDfClosure(data); },
+  async rhoDfFragmentCheck(data) { return Factoidal.rhoDfFragmentCheck(data); },
+  /**
+   * Full RDFS / OWL-RL closure (post 32's perf-comparison cell; the
+   * caps table advertised this ABI but no fn wrapper existed until
+   * post 32 called it — the node test harness masks fn-surface gaps,
+   * so wrappers must be added HERE when a page first uses one).
+   */
+  async owlClosure(data, mode) { return Factoidal.owlClosure(data, mode || 'RDFS'); },
+  /**
    * Parse an RDF document into an FnDataset (mirrors
    * npm/factoidal/index.js's `parse(text, {format}) -> Dataset`).
    */
@@ -802,6 +816,7 @@ const fn = {
   async capabilities() {
     const FEATURE_ABI_FN = {
       shacl: "shaclValidate", shex: "shexValidate", owlClosure: "owlClosure",
+      rhoDfClosure: "rhoDfClosure", rhoDfFragmentCheck: "rhoDfFragmentCheck",
       rml: "rmlMap", csvw: "csvwToRdf", jsonld: "jsonldToRdf", rif: "rifEval",
       xslt: "xsltTransform", mathml: "mathmlEval", xforms: "xformsRecalc",
       jsonSchema: "jsonSchemaValidate", schematron: "schematronValidate",

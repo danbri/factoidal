@@ -242,4 +242,5 @@ machine-checked counterexamples rather than prose caveats.
 
 *Everything above ran against the extracted engine certified at
 commit `17eb2df`: combined 1662 pass, 0 fail (out of 1662) on the
-W3C suites, hub cells 254 pass, 0 fail (out of 254).*
+W3C suites, hub cells 253 pass, 0 fail (out of 253 — 262 after
+this post's own 9 pins landed).*
