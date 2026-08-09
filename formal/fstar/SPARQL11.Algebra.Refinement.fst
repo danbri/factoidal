@@ -80,6 +80,21 @@ module SPARQL11.Algebra.Refinement
 //     NOT proved here and is stated as an open obligation; it is a
 //     480-line mutual recursion over the whole expression language and
 //     is its own commit.
+//   * FILTER on the PRODUCTION path (`filter_solutions_with_graph`, the
+//     function `eval_pattern_store`'s GP_Filter arm actually calls) is
+//     now proved equal to the graph-free `filter_solutions` -- and
+//     therefore inherits `theorem_filter_sound`/`_complete` above --
+//     ON THE EXISTENTIAL-FREE FRAGMENT: `expr_has_existential e ==
+//     false` (g4-filter-devacuation, Part 5 addendum below). The proof
+//     is `substitute_existentials` being a syntactic no-op on such an
+//     `e` (structural induction mirroring `expr_has_existential`'s own
+//     match). EXISTS / NOT EXISTS, sub-SELECT, and property paths
+//     remain future work, named rather than silently out of scope: an
+//     `e` containing E_Exists/E_NotExists is exactly the case this
+//     addendum's hypothesis excludes, and substituting them for their
+//     boolean truth value under `mu`/`g`/`ds` before filtering is
+//     `filter_solutions_with_graph`'s entire reason to exist over the
+//     simpler `filter_solutions`.
 //   * `join`'s HASH path is not proved sound, only its no-shared-
 //     variable path (which is definitionally `join_nested_loop`).
 //     Soundness of the hash path additionally requires
@@ -100,6 +115,15 @@ module T = FStar.Tactics
 module Lh = RDF.List.Helpers
 module Mem = OWL.Semantics.MemLemmas
 module SO = RDF.Indexed.StringOrder
+// `open`, unlike `include`, does not re-export transitively: SPARQL11.Algebra
+// itself `open`s RDF.Graph.Executable, but that does not make `rdf_graph` /
+// `rdf_dataset` visible here just from `open SPARQL11.Algebra` above -- and
+// an unqualified `open RDF.Graph.Executable` collides with
+// SPARQL11.Algebra's OWN `pattern_term` (both modules define one; the later
+// `open` would silently shadow the type Part 15's existing code matches
+// against). Qualified alias instead, for the g4-filter-devacuation Part 5.1
+// addendum (`filter_solutions_with_graph`'s `g`/`ds` parameters) only.
+module GE = RDF.Graph.Executable
 
 #push-options "--z3rlimit 120 --fuel 3 --ifuel 2"
 
@@ -364,6 +388,106 @@ let rec theorem_filter_card (f : S.fexpr) (omega : list S.smap)
       if S.smap_eqb mu m then S.lemma_smap_eqb_sound mu m else ()
     in
     FStar.Classical.forall_intro aux
+
+(** 5.1 The PRODUCTION filter path (`filter_solutions_with_graph`) agrees
+    with the graph-free `filter_solutions` above, on the fragment where
+    `e` has no EXISTS/NOT EXISTS. g4-filter-devacuation addendum. **)
+
+/// `substitute_existentials` recurses into every sub-expression of `e`
+/// unconditionally; on an `e` with `expr_has_existential e == false` none
+/// of those sub-expressions is E_Exists/E_NotExists (each recursive
+/// case's hypothesis follows from unfolding the `||` in
+/// `expr_has_existential`'s matching case), so every case falls through
+/// to its `E_ctor (substitute_existentials ... e1) ...` shape with the
+/// IH giving `substitute_existentials ... e1 == e1`, reproducing `e`
+/// unchanged. Structural induction mirroring `expr_has_existential`'s
+/// match (Algebra.fst ~4587) against `substitute_existentials`'s match
+/// (Algebra.fst ~4646).
+let rec lemma_substitute_existentials_noop
+      (base : option wf_iri) (e : expr) (mu : S.smap)
+      (g : GE.rdf_graph) (ds : GE.rdf_dataset)
+  : Lemma (requires expr_has_existential e == false)
+          (ensures  substitute_existentials base e mu g ds == e)
+          (decreases e) =
+  match e with
+  | E_Exists _ | E_NotExists _ -> ()
+  | E_Var _ | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
+  | E_DecimalLit _ | E_DoubleLit _ | E_Bound _ | E_Now -> ()
+  | E_Arith _ e1 e2 | E_Compare _ e1 e2 | E_And e1 e2 | E_Or e1 e2
+  | E_StrDt e1 e2 | E_StrLang e1 e2
+  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
+  | E_StrBefore e1 e2 | E_StrAfter e1 e2
+  | E_SameTerm e1 e2 ->
+    lemma_substitute_existentials_noop base e1 mu g ds;
+    lemma_substitute_existentials_noop base e2 mu g ds
+  | E_UnaryMinus e1 | E_UnaryPlus e1 | E_Not e1
+  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1
+  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1
+  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1
+  | E_StrLen e1 | E_UCase e1 | E_LCase e1 | E_EncodeForUri e1
+  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1
+  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1
+  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
+  | E_Seconds e1 | E_Timezone e1 | E_Tz e1
+  | E_Aggregate _ _ e1
+  | E_TTSubject e1 | E_TTPredicate e1 | E_TTObject e1 | E_IsTriple e1 ->
+    lemma_substitute_existentials_noop base e1 mu g ds
+  | E_StrLangDir e1 e2 e3 | E_If e1 e2 e3 | E_TripleTerm e1 e2 e3 ->
+    lemma_substitute_existentials_noop base e1 mu g ds;
+    lemma_substitute_existentials_noop base e2 mu g ds;
+    lemma_substitute_existentials_noop base e3 mu g ds
+  | E_Coalesce es | E_Concat es | E_FunctionCall _ es ->
+    lemma_substitute_existentials_list_noop base es mu g ds
+  | E_In e1 es | E_NotIn e1 es ->
+    lemma_substitute_existentials_noop base e1 mu g ds;
+    lemma_substitute_existentials_list_noop base es mu g ds
+  | E_Substr e1 e2 e3o | E_Regex e1 e2 e3o ->
+    lemma_substitute_existentials_noop base e1 mu g ds;
+    lemma_substitute_existentials_noop base e2 mu g ds;
+    lemma_substitute_existentials_opt_noop base e3o mu g ds
+  | E_Replace e1 e2 e3 e4o ->
+    lemma_substitute_existentials_noop base e1 mu g ds;
+    lemma_substitute_existentials_noop base e2 mu g ds;
+    lemma_substitute_existentials_noop base e3 mu g ds;
+    lemma_substitute_existentials_opt_noop base e4o mu g ds
+
+and lemma_substitute_existentials_list_noop
+      (base : option wf_iri) (es : list expr) (mu : S.smap)
+      (g : GE.rdf_graph) (ds : GE.rdf_dataset)
+  : Lemma (requires expr_list_has_existential es == false)
+          (ensures  substitute_existentials_list base es mu g ds == es)
+          (decreases es) =
+  match es with
+  | [] -> ()
+  | hd :: tl ->
+    lemma_substitute_existentials_noop base hd mu g ds;
+    lemma_substitute_existentials_list_noop base tl mu g ds
+
+and lemma_substitute_existentials_opt_noop
+      (base : option wf_iri) (eo : option expr) (mu : S.smap)
+      (g : GE.rdf_graph) (ds : GE.rdf_dataset)
+  : Lemma (requires expr_opt_has_existential eo == false)
+          (ensures  substitute_existentials_opt base eo mu g ds == eo)
+          (decreases eo) =
+  match eo with
+  | None -> ()
+  | Some e1 -> lemma_substitute_existentials_noop base e1 mu g ds
+
+/// `filter_solutions_with_graph` is `filter_solutions` once
+/// `substitute_existentials` is a no-op: both reduce to
+/// `List.Tot.filter (eval_expr_ebv base e)` on the same `omega`.
+let rec theorem_filter_with_graph_is_filter_solutions
+      (base : option wf_iri) (e : expr) (omega : solution_sequence)
+      (g : GE.rdf_graph) (ds : GE.rdf_dataset)
+  : Lemma (requires expr_has_existential e == false)
+          (ensures  filter_solutions_with_graph base e omega g ds ==
+                    filter_solutions base e omega)
+          (decreases omega) =
+  match omega with
+  | [] -> ()
+  | mu :: rest ->
+    lemma_substitute_existentials_noop base e mu g ds;
+    theorem_filter_with_graph_is_filter_solutions base e rest g ds
 
 (** ====================================================================== **)
 (** Part 6: Distinct (section 18.5) -- FINDING SR-1                        **)
