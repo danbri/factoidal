@@ -927,3 +927,15 @@ tail`: if the last lines are `git> shallow <sha>` rows and a server
   fix proxy-killed streaming uploads, a different failure with the
   same surface symptom). Applying them first wasted a cycle; the
   packet trace distinguishes the two in under a minute.
+
+### Addendum (same day): the recurrence trigger is post-merge branch deletion
+
+GitHub auto-deletes the work branch on every PR merge, so the next
+push RE-CREATES it — full negotiation from zero against a shallow
+clone, and the hang returns even after a deepen. The reliable
+pre-push sequence after any merge: `git fetch origin <default-branch>`
+(the merged history gives the negotiation common ground), delete the
+stale remote-tracking ref (`git update-ref -d refs/remotes/origin/
+<branch>` — it breaks `--force-with-lease` and confuses status), then
+push. With that sequence the same push that hung for 570 seconds
+completes in under five.
