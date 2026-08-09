@@ -59,7 +59,7 @@ no longer vouches for it.
 Together they replace "trust the vendor's reasoner settings" with a
 two-call contract: check whether the guarantee applies, then
 materialise the consequences — with both steps' behaviour stated and
-proved in the [theorem registry](../../theorem-registry/).
+proved in the [theorem registry](../../../theorem-registry/).
 
 ## A schema, some facts, and a guarantee
 
@@ -140,7 +140,7 @@ checked by z3 for every graph in the fragment, under hypotheses that
 are themselves decidable checks or theorems (the fragment check you
 ran in step 1; saturation-class facts proved for freshly-parsed
 data). The full chain, theorem by theorem, lives in the
-[theorem registry](../../theorem-registry/).
+[theorem registry](../../../theorem-registry/).
 
 ## What the checker refused to let us claim
 
@@ -199,7 +199,7 @@ which regime you are in.
 
 **Developers.** Two new API calls (`fn.coreRdfsCheck`,
 `fn.coreRdfsClosure`) plus a contract that is unusual in this space: the
-[registry](../../theorem-registry/) names every theorem, every
+[registry](../../../theorem-registry/) names every theorem, every
 hypothesis, and every boundary, in one table. The planner lemma
 (`lemma_choose_best_tp_cover`) is a developer guarantee too: query
 reordering is proved answer-preserving, so optimizer changes cannot
@@ -272,7 +272,7 @@ classes are a recorded engine narrowing). Reflexivity rows
 (`rdfs6`/`rdfs10`) are outside rho-df by definition. Data can
 *contain* literals freely — labels and values simply ride along
 outside the entailment claim. Every boundary traces to a named
-finding in the [registry](../../theorem-registry/), most of them
+finding in the [registry](../../../theorem-registry/), most of them
 machine-checked counterexamples rather than prose caveats.
 
 *Everything above ran against the extracted engine certified at

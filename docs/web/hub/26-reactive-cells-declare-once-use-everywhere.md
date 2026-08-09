@@ -135,7 +135,7 @@ depended on it is consistent again.
 ## How the wiring works
 
 A fenced `observable-js` block still becomes a live cell, exactly as
-[the hub intro](./index.md) describes. What changed is how a cell's
+[the hub intro](../) describes. What changed is how a cell's
 free identifiers are resolved:
 
 - A leading `name =` makes the cell a **named runtime variable**. A

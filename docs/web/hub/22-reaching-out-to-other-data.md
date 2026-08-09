@@ -44,7 +44,7 @@ JavaScript. This one can't. All three features here need a capability a
 sandboxed browser cell does not have — an outbound socket to a remote
 endpoint, an HTTP fetch to a wrapped API, or (for some `wrap+` schemes)
 a spawned process. The
-[cell-authoring contract](./README/)'s first constraint is *"Same-origin
+[cell-authoring contract](../README/)'s first constraint is *"Same-origin
 only. Don't `fetch()` an external URL from inside a cell."* So faking a
 live network call here would be dishonest.
 

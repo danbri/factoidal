@@ -9,7 +9,7 @@ status: published
 tests: tests/hub/post27_test.mjs
 ---
 
-The [well-formedness/XPath post](./25-xml-wellformedness-and-xpath/) covers
+The [well-formedness/XPath post](../25-xml-wellformedness-and-xpath/) covers
 two questions the generic XML parser answers on its own: is a document
 well-formed, and what does an XPath expression select from it. Two more
 engines sit on the same parser: **XSLT 1.0**
