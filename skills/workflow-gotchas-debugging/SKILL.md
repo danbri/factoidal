@@ -1,6 +1,6 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twenty-two hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh), and the node hub harness masking browser-only fn-surface gaps (missing hub.njk wrappers, Turtle-vs-N-Quads convention mismatches) — plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twenty-three hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh), the node hub harness masking browser-only fn-surface gaps (missing hub.njk wrappers, Turtle-vs-N-Quads convention mismatches), and shallow-clone pushes hanging in boundary negotiation (fix: fetch --deepen, not retry loops) — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
@@ -890,3 +890,52 @@ them. Node tests certify only the node surface.
   the wrapper). "ok: true with empty output" is the silent-drop
   signature (#344's class) — treat empty engine output on non-empty
   input as a bug until proven otherwise.
+
+## Hazard #23 — a SHALLOW clone's push hangs in negotiation, mimicking network failure (2026-08-09)
+
+### Symptom
+
+`git push` hangs for minutes and dies at any timeout you give it, while
+`git ls-remote` answers instantly and small fetches work. Retry loops
+with backoff burn hours (this cost most of a working day across ~10
+attempts: two live-page fixes and the RDFS-Plus batch all queued behind
+it). Occasionally a push DOES get through (small pack, recent base),
+which makes it look like network flakiness. It is not the network.
+
+### Root cause
+
+The remote-execution container clones shallow (and treeless:
+`[tree:0]`). A push from a shallow clone advertises `shallow` boundary
+commits and the server must compute reachability across that boundary;
+with enough boundary commits (ours listed dozens) the negotiiation
+stalls indefinitely. Pack SIZE is irrelevant — a 2.7MB pack that
+builds locally in 3 seconds hung the same way a binary-laden one did.
+Diagnose with `GIT_TRACE_PACKET=1 timeout 45 git push ... 2>&1 |
+tail`: if the last lines are `git> shallow <sha>` rows and a server
+`shallow` response with no pack writing after, it is this hazard.
+
+### Fix / prevention
+
+- `git fetch --deepen=100 origin <default-branch>` (took ~1 minute),
+  then push — the same push that hung for 570s completed instantly.
+  Deepen more if it recurs as history grows past the boundary.
+- Diagnose BEFORE retrying: one `GIT_TRACE_PACKET` run beats ten
+  blind retries with exponential backoff. "Retry with backoff" is
+  for transient transport errors; a DETERMINISTIC hang retries
+  forever at full cost.
+- `http.version HTTP/1.1` + `http.postBuffer` did nothing here (they
+  fix proxy-killed streaming uploads, a different failure with the
+  same surface symptom). Applying them first wasted a cycle; the
+  packet trace distinguishes the two in under a minute.
+
+### Addendum (same day): the recurrence trigger is post-merge branch deletion
+
+GitHub auto-deletes the work branch on every PR merge, so the next
+push RE-CREATES it — full negotiation from zero against a shallow
+clone, and the hang returns even after a deepen. The reliable
+pre-push sequence after any merge: `git fetch origin <default-branch>`
+(the merged history gives the negotiation common ground), delete the
+stale remote-tracking ref (`git update-ref -d refs/remotes/origin/
+<branch>` — it breaks `--force-with-lease` and confuses status), then
+push. With that sequence the same push that hung for 570 seconds
+completes in under five.
