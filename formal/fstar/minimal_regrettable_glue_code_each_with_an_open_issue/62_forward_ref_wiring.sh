@@ -2,8 +2,15 @@
 # Issue #62: Forward-reference wiring for mutual recursion in SPARQL11_Algebra.ml
 # https://github.com/danbri/factoidal/issues/62
 #
-# F* assume vals for eval_expr_ebv, eval_expr_fwd, eval_exists_fwd,
-# eval_property_path_fwd, and eval_subselect_fwd are extracted as failwith stubs.
+# PARTIALLY RETIRED (g4-filter-devacuation, 2026-08-09): eval_expr_ebv and
+# eval_expr_fwd are no longer assume vals -- SPARQL11.Algebra.fst now defines
+# them as concrete `irreducible let`s directly after the (relocated,
+# self-contained) eval_expr_with_base mutual block, so F* extracts them as
+# real OCaml functions with no failwith stub to patch. This script's scope is
+# now the remaining 3 symbols only.
+#
+# F* assume vals for eval_exists_fwd, eval_property_path_fwd, and
+# eval_subselect_fwd are extracted as failwith stubs.
 # This script replaces them with mutable-ref dispatch and wires the refs to the
 # real implementations after they are defined.
 
@@ -75,7 +82,7 @@ with open(path, 'r', encoding='utf-8') as f:
 #     rather than assumed positionally, so this script never needs to
 #     know or guess the qualifier again.
 whole_block_re = re.compile(
-    r'let eval_expr_ebv.*?failwith "Not yet implemented: '
+    r'let eval_exists_fwd.*?failwith "Not yet implemented: '
     r'SPARQL11\.Algebra\.eval_property_path_fwd"',
     re.DOTALL
 )
@@ -83,10 +90,10 @@ m = whole_block_re.search(content)
 if m is None:
     sys.stderr.write(
         "  ERROR: patch 62 could not find the F*-extracted failwith stub "
-        f"block (eval_expr_ebv .. eval_property_path_fwd) in {path}.\n"
+        f"block (eval_exists_fwd .. eval_property_path_fwd) in {path}.\n"
         "         Has a stub's own failwith message text changed, or has "
         "a function been renamed/reordered? Inspect the "
-        "eval_expr_ebv/eval_expr_fwd/eval_exists_fwd/eval_subselect_fwd/"
+        "eval_exists_fwd/eval_subselect_fwd/"
         "eval_property_path_fwd stubs directly and update the anchors "
         "above -- do NOT let this fall through silently, the wiring-line "
         "inserts below assume the *_ref declarations this substitution "
@@ -109,7 +116,7 @@ def find_qualifier(type_name, label):
         sys.exit(1)
     return qm.group(1)
 
-q_wfiri = find_qualifier("wf_iri", "eval_expr_ebv/eval_expr_fwd/eval_exists_fwd base param")
+q_wfiri = find_qualifier("wf_iri", "eval_exists_fwd base param")
 q_sm = find_qualifier("solution_mapping", "eval_exists_fwd mu param")
 q_graph = find_qualifier("rdf_graph", "eval_exists_fwd/eval_subselect_fwd g param")
 q_ds = find_qualifier("rdf_dataset", "eval_exists_fwd/eval_subselect_fwd ds param")
@@ -117,18 +124,11 @@ q_term = find_qualifier("rdf_term", "path_result_fwd type alias")
 
 # #65 Step 2c (2026-05-10): the three eval_*_fwd assume vals now take
 # `(base : option wf_iri)` as their first parameter. The ref types and
-# realisations below are updated accordingly. eval_expr_ebv_ref dispatches
-# to eval_expr_with_base directly so BASE flows through FILTER / OPTIONAL
-# evaluation without consulting current_base_iri_ref.
-replacement_block = f'''let eval_expr_ebv_ref :
-  ({q_wfiri}.wf_iri FStar_Pervasives_Native.option ->
-    expr -> {q_sm}.solution_mapping -> Prims.bool) Stdlib.ref=
-  Stdlib.ref (fun _ _ _ -> failwith "eval_expr_ebv not yet wired")
-let eval_expr_fwd_ref :
-  ({q_wfiri}.wf_iri FStar_Pervasives_Native.option ->
-    expr -> {q_sm}.solution_mapping -> eval_result) Stdlib.ref=
-  Stdlib.ref (fun _ _ _ -> failwith "eval_expr_fwd not yet wired")
-let eval_exists_fwd_ref :
+# realisations below are updated accordingly.
+# eval_expr_ebv_ref/eval_expr_fwd_ref RETIRED (g4-filter-devacuation,
+# 2026-08-09): eval_expr_ebv/eval_expr_fwd are concrete F* definitions now
+# (see script header), extracted as real functions -- no ref/wiring needed.
+replacement_block = f'''let eval_exists_fwd_ref :
   ({q_wfiri}.wf_iri FStar_Pervasives_Native.option ->
     group_graph_pattern ->
     {q_sm}.solution_mapping ->
@@ -140,16 +140,6 @@ let eval_subselect_fwd_ref :
     {q_graph}.rdf_graph ->
     {q_ds}.rdf_dataset -> solution_sequence) Stdlib.ref=
   Stdlib.ref (fun _ _ _ -> [])
-let eval_expr_ebv
-  (base : {q_wfiri}.wf_iri FStar_Pervasives_Native.option)
-  (e : expr)
-  (mu : {q_sm}.solution_mapping) : Prims.bool=
-  !eval_expr_ebv_ref base e mu
-let eval_expr_fwd
-  (base : {q_wfiri}.wf_iri FStar_Pervasives_Native.option)
-  (e : expr)
-  (mu : {q_sm}.solution_mapping) : eval_result=
-  !eval_expr_fwd_ref base e mu
 let eval_exists_fwd
   (base : {q_wfiri}.wf_iri FStar_Pervasives_Native.option)
   (p : group_graph_pattern)
@@ -172,15 +162,6 @@ let eval_property_path_fwd (p : property_path)
   !eval_property_path_fwd_ref p g'''
 
 content = whole_block_re.sub(lambda _m: replacement_block, content, count=1)
-
-if 'let () = eval_expr_ebv_ref := (fun base e mu -> ebv (eval_expr_with_base base e mu))' not in content:
-    content = content.replace(
-        'type group = {',
-        'let () = eval_expr_ebv_ref := (fun base e mu -> ebv (eval_expr_with_base base e mu))\n'
-        'let () = eval_expr_fwd_ref := (fun base e mu -> eval_expr_with_base base e mu)\n'
-        'type group = {',
-        1
-    )
 
 if 'let () = eval_subselect_fwd_ref := eval_select_query' not in content:
     # eval_select_query goes near the end of the file, append outside any def.

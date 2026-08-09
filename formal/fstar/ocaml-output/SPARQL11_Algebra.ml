@@ -4537,722 +4537,6 @@ let dataset_to_store_for (p : group_graph_pattern)
               ngs_store = (graph_to_store_for p ng.RDF_Graph.ng_graph)
             }) ds.RDF_Graph.ds_named)
   }
-let eval_expr_ebv_ref :
-  (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
-    expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) Stdlib.ref=
-  Stdlib.ref (fun _ _ _ -> failwith "eval_expr_ebv not yet wired")
-let eval_expr_fwd_ref :
-  (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
-    expr -> RDF_Graph_Executable.solution_mapping -> eval_result) Stdlib.ref=
-  Stdlib.ref (fun _ _ _ -> failwith "eval_expr_fwd not yet wired")
-let eval_exists_fwd_ref :
-  (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
-    group_graph_pattern ->
-    RDF_Graph_Executable.solution_mapping ->
-    RDF_Graph.rdf_graph ->
-    RDF_Graph.rdf_dataset -> Prims.bool) Stdlib.ref=
-  Stdlib.ref (fun _ _ _ _ _ -> false)
-let eval_subselect_fwd_ref :
-  (query ->
-    RDF_Graph.rdf_graph ->
-    RDF_Graph.rdf_dataset -> solution_sequence) Stdlib.ref=
-  Stdlib.ref (fun _ _ _ -> [])
-let eval_expr_ebv
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (e : expr)
-  (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
-  !eval_expr_ebv_ref base e mu
-let eval_expr_fwd
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (e : expr)
-  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
-  !eval_expr_fwd_ref base e mu
-let eval_exists_fwd
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (p : group_graph_pattern)
-  (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph.rdf_graph)
-  (ds : RDF_Graph.rdf_dataset) : Prims.bool=
-  !eval_exists_fwd_ref base p mu g ds
-let eval_subselect_fwd (q : query)
-  (g : RDF_Graph.rdf_graph)
-  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
-  !eval_subselect_fwd_ref q g ds
-type path_result_fwd =
-  (RDF_Term.rdf_term * RDF_Term.rdf_term) Prims.list
-let eval_property_path_fwd_ref :
-  (property_path ->
-    RDF_Graph.rdf_graph -> path_result_fwd) Stdlib.ref=
-  Stdlib.ref (fun _ _ -> [])
-let eval_property_path_fwd (p : property_path)
-  (g : RDF_Graph.rdf_graph) : path_result_fwd=
-  !eval_property_path_fwd_ref p g
-(* SERVICE endpoint resolver -- issue #57.
-   Global table populated by the test runner from qt:serviceData
-   manifest declarations. Lookup is keyed on the absolute IRI string
-   of the endpoint. The value type is deliberately left unannotated:
-   `graph_to_store g` below pins it to whatever module currently
-   owns `rdf_graph` (RDF.Graph.Executable is being split into
-   RDF.Term/RDF.Triple/RDF.Graph; the qualifier has already moved
-   once) without this patch needing to track the split.
-
-   2026-07-06: a static-table MISS falls back to
-   `Service_wrap_hook.resolver` (virtual-sources design doc Stages 1-2,
-   issue #57 family) before returning None -- see that file's banner
-   and this patch's own header comment for why the fallback is a
-   forward-ref hook cell rather than a direct call into the wrap+
-   resolver module. *)
-let service_endpoint_table = Hashtbl.create 16
-let service_endpoint_register (iri : Prims.string) g : unit =
-  Hashtbl.replace service_endpoint_table iri g
-let service_endpoint_clear () : unit =
-  Hashtbl.clear service_endpoint_table
-let service_endpoint_lookup (iri : Prims.string) : graph_store FStar_Pervasives_Native.option=
-  match Hashtbl.find_opt service_endpoint_table iri with
-  | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
-  | None ->
-    (match !Service_wrap_hook.resolver iri with
-     | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
-     | None -> FStar_Pervasives_Native.None)
-let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
-  (pairs : path_result_fwd) : solution_sequence=
-  list_filter_map
-    (fun pair ->
-       let uu___ = pair in
-       match uu___ with
-       | (s, o) ->
-           let mu_s =
-             match ps with
-             | PS_Var v -> FStar_Pervasives_Native.Some [(v, s)]
-             | PS_IRI i ->
-                 if RDF_Term.rdf_term_eq (RDF_Term.T_IRI i) s
-                 then FStar_Pervasives_Native.Some []
-                 else FStar_Pervasives_Native.None
-             | PS_BNode b ->
-                 if RDF_Term.rdf_term_eq (RDF_Term.T_BNode b) s
-                 then FStar_Pervasives_Native.Some []
-                 else FStar_Pervasives_Native.None
-             | PS_TripleTerm (uu___1, uu___2, uu___3) ->
-                 FStar_Pervasives_Native.None in
-           (match mu_s with
-            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-            | FStar_Pervasives_Native.Some bindings_s ->
-                let mu_o =
-                  match pt with
-                  | PT_Var v ->
-                      (match FStar_List_Tot_Base.assoc v bindings_s with
-                       | FStar_Pervasives_Native.Some existing ->
-                           if RDF_Term.rdf_term_eq existing o
-                           then FStar_Pervasives_Native.Some bindings_s
-                           else FStar_Pervasives_Native.None
-                       | FStar_Pervasives_Native.None ->
-                           FStar_Pervasives_Native.Some ((v, o) ::
-                             bindings_s))
-                  | PT_IRI i ->
-                      if RDF_Term.rdf_term_eq (RDF_Term.T_IRI i) o
-                      then FStar_Pervasives_Native.Some bindings_s
-                      else FStar_Pervasives_Native.None
-                  | PT_BNode b ->
-                      if RDF_Term.rdf_term_eq (RDF_Term.T_BNode b) o
-                      then FStar_Pervasives_Native.Some bindings_s
-                      else FStar_Pervasives_Native.None
-                  | PT_Literal l ->
-                      if RDF_Term.rdf_term_eq (RDF_Term.T_Literal l) o
-                      then FStar_Pervasives_Native.Some bindings_s
-                      else FStar_Pervasives_Native.None
-                  | PT_TripleTerm (uu___1, uu___2, uu___3) ->
-                      FStar_Pervasives_Native.None in
-                mu_o)) pairs
-let left_join (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (omega1 : solution_sequence) (omega2 : solution_sequence)
-  (filter_expr : expr) : solution_sequence=
-  match (omega1, omega2) with
-  | ([], uu___) -> []
-  | (uu___, []) -> omega1
-  | (mu1_0::uu___, mu2_0::uu___1) ->
-      let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
-      if vars = []
-      then
-        RDF_List_Helpers.concatMap_tr
-          (fun mu1 ->
-             let joins =
-               list_filter_map
-                 (fun mu2 ->
-                    if sm_compatible mu1 mu2
-                    then
-                      let merged = sm_merge mu1 mu2 in
-                      (if eval_expr_ebv base filter_expr merged
-                       then FStar_Pervasives_Native.Some merged
-                       else FStar_Pervasives_Native.None)
-                    else FStar_Pervasives_Native.None) omega2 in
-             if (FStar_List_Tot_Base.length joins) > Prims.int_zero
-             then joins
-             else [mu1]) omega1
-      else
-        (let idx = build_join_index vars omega2 in
-         RDF_List_Helpers.concatMap_tr
-           (fun mu1 ->
-              let candidates = join_candidates idx vars mu1 in
-              let joins =
-                list_filter_map
-                  (fun mu2 ->
-                     if sm_compatible mu1 mu2
-                     then
-                       let merged = sm_merge mu1 mu2 in
-                       (if eval_expr_ebv base filter_expr merged
-                        then FStar_Pervasives_Native.Some merged
-                        else FStar_Pervasives_Native.None)
-                     else FStar_Pervasives_Native.None) candidates in
-              if (FStar_List_Tot_Base.length joins) > Prims.int_zero
-              then joins
-              else [mu1]) omega1)
-let rec expr_has_existential (e : expr) : Prims.bool=
-  match e with
-  | E_Exists uu___ -> true
-  | E_NotExists uu___ -> true
-  | E_Var uu___ -> false
-  | E_IRI uu___ -> false
-  | E_Literal uu___ -> false
-  | E_BoolLit uu___ -> false
-  | E_NumericLit uu___ -> false
-  | E_DecimalLit uu___ -> false
-  | E_DoubleLit uu___ -> false
-  | E_Bound uu___ -> false
-  | E_Now -> false
-  | E_Arith (uu___, e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_Compare (uu___, e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_And (e1, e2) -> (expr_has_existential e1) || (expr_has_existential e2)
-  | E_Or (e1, e2) -> (expr_has_existential e1) || (expr_has_existential e2)
-  | E_StrDt (e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_StrLang (e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_StrStarts (e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_StrEnds (e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_Contains (e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_StrBefore (e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_StrAfter (e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_SameTerm (e1, e2) ->
-      (expr_has_existential e1) || (expr_has_existential e2)
-  | E_UnaryMinus e1 -> expr_has_existential e1
-  | E_UnaryPlus e1 -> expr_has_existential e1
-  | E_Not e1 -> expr_has_existential e1
-  | E_IsIRI e1 -> expr_has_existential e1
-  | E_IsBlank e1 -> expr_has_existential e1
-  | E_IsLiteral e1 -> expr_has_existential e1
-  | E_IsNumeric e1 -> expr_has_existential e1
-  | E_Str e1 -> expr_has_existential e1
-  | E_Lang e1 -> expr_has_existential e1
-  | E_Datatype e1 -> expr_has_existential e1
-  | E_IRI_fn e1 -> expr_has_existential e1
-  | E_HasLang e1 -> expr_has_existential e1
-  | E_HasLangDir e1 -> expr_has_existential e1
-  | E_LangDir e1 -> expr_has_existential e1
-  | E_StrLen e1 -> expr_has_existential e1
-  | E_UCase e1 -> expr_has_existential e1
-  | E_LCase e1 -> expr_has_existential e1
-  | E_EncodeForUri e1 -> expr_has_existential e1
-  | E_Abs e1 -> expr_has_existential e1
-  | E_Round e1 -> expr_has_existential e1
-  | E_Ceil e1 -> expr_has_existential e1
-  | E_Floor e1 -> expr_has_existential e1
-  | E_MD5 e1 -> expr_has_existential e1
-  | E_SHA1 e1 -> expr_has_existential e1
-  | E_SHA256 e1 -> expr_has_existential e1
-  | E_SHA384 e1 -> expr_has_existential e1
-  | E_SHA512 e1 -> expr_has_existential e1
-  | E_Year e1 -> expr_has_existential e1
-  | E_Month e1 -> expr_has_existential e1
-  | E_Day e1 -> expr_has_existential e1
-  | E_Hours e1 -> expr_has_existential e1
-  | E_Minutes e1 -> expr_has_existential e1
-  | E_Seconds e1 -> expr_has_existential e1
-  | E_Timezone e1 -> expr_has_existential e1
-  | E_Tz e1 -> expr_has_existential e1
-  | E_Aggregate (uu___, uu___1, e1) -> expr_has_existential e1
-  | E_TTSubject e1 -> expr_has_existential e1
-  | E_TTPredicate e1 -> expr_has_existential e1
-  | E_TTObject e1 -> expr_has_existential e1
-  | E_IsTriple e1 -> expr_has_existential e1
-  | E_StrLangDir (e1, e2, e3) ->
-      ((expr_has_existential e1) || (expr_has_existential e2)) ||
-        (expr_has_existential e3)
-  | E_If (e1, e2, e3) ->
-      ((expr_has_existential e1) || (expr_has_existential e2)) ||
-        (expr_has_existential e3)
-  | E_TripleTerm (e1, e2, e3) ->
-      ((expr_has_existential e1) || (expr_has_existential e2)) ||
-        (expr_has_existential e3)
-  | E_Coalesce es -> expr_list_has_existential es
-  | E_Concat es -> expr_list_has_existential es
-  | E_FunctionCall (uu___, es) -> expr_list_has_existential es
-  | E_In (e1, es) ->
-      (expr_has_existential e1) || (expr_list_has_existential es)
-  | E_NotIn (e1, es) ->
-      (expr_has_existential e1) || (expr_list_has_existential es)
-  | E_Substr (e1, e2, e3o) ->
-      ((expr_has_existential e1) || (expr_has_existential e2)) ||
-        (expr_opt_has_existential e3o)
-  | E_Regex (e1, e2, e3o) ->
-      ((expr_has_existential e1) || (expr_has_existential e2)) ||
-        (expr_opt_has_existential e3o)
-  | E_Replace (e1, e2, e3, e4o) ->
-      (((expr_has_existential e1) || (expr_has_existential e2)) ||
-         (expr_has_existential e3))
-        || (expr_opt_has_existential e4o)
-and expr_list_has_existential (es : expr Prims.list) : Prims.bool=
-  match es with
-  | [] -> false
-  | e::rest -> (expr_has_existential e) || (expr_list_has_existential rest)
-and expr_opt_has_existential (eo : expr FStar_Pervasives_Native.option) :
-  Prims.bool=
-  match eo with
-  | FStar_Pervasives_Native.None -> false
-  | FStar_Pervasives_Native.Some e -> expr_has_existential e
-let filter_solutions_fwd
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
-  (omega : solution_sequence) : solution_sequence=
-  FStar_List_Tot_Base.filter (eval_expr_ebv base e) omega
-let rec substitute_existentials
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
-  (mu : RDF_Graph_Executable.solution_mapping) (g : RDF_Graph.rdf_graph)
-  (ds : RDF_Graph.rdf_dataset) : expr=
-  match e with
-  | E_Exists p -> E_BoolLit (eval_exists_fwd base p mu g ds)
-  | E_NotExists p ->
-      E_BoolLit (Prims.op_Negation (eval_exists_fwd base p mu g ds))
-  | E_Arith (op, e1, e2) ->
-      E_Arith
-        (op, (substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_UnaryMinus e1 -> E_UnaryMinus (substitute_existentials base e1 mu g ds)
-  | E_UnaryPlus e1 -> E_UnaryPlus (substitute_existentials base e1 mu g ds)
-  | E_Compare (op, e1, e2) ->
-      E_Compare
-        (op, (substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_And (e1, e2) ->
-      E_And
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_Or (e1, e2) ->
-      E_Or
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_Not e1 -> E_Not (substitute_existentials base e1 mu g ds)
-  | E_IsIRI e1 -> E_IsIRI (substitute_existentials base e1 mu g ds)
-  | E_IsBlank e1 -> E_IsBlank (substitute_existentials base e1 mu g ds)
-  | E_IsLiteral e1 -> E_IsLiteral (substitute_existentials base e1 mu g ds)
-  | E_IsNumeric e1 -> E_IsNumeric (substitute_existentials base e1 mu g ds)
-  | E_Str e1 -> E_Str (substitute_existentials base e1 mu g ds)
-  | E_Lang e1 -> E_Lang (substitute_existentials base e1 mu g ds)
-  | E_Datatype e1 -> E_Datatype (substitute_existentials base e1 mu g ds)
-  | E_IRI_fn e1 -> E_IRI_fn (substitute_existentials base e1 mu g ds)
-  | E_HasLang e1 -> E_HasLang (substitute_existentials base e1 mu g ds)
-  | E_HasLangDir e1 -> E_HasLangDir (substitute_existentials base e1 mu g ds)
-  | E_LangDir e1 -> E_LangDir (substitute_existentials base e1 mu g ds)
-  | E_StrDt (e1, e2) ->
-      E_StrDt
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_StrLang (e1, e2) ->
-      E_StrLang
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_StrLangDir (e1, e2, e3) ->
-      E_StrLangDir
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds),
-          (substitute_existentials base e3 mu g ds))
-  | E_If (c, t, f) ->
-      E_If
-        ((substitute_existentials base c mu g ds),
-          (substitute_existentials base t mu g ds),
-          (substitute_existentials base f mu g ds))
-  | E_Coalesce es ->
-      E_Coalesce (substitute_existentials_list base es mu g ds)
-  | E_In (ev, es) ->
-      E_In
-        ((substitute_existentials base ev mu g ds),
-          (substitute_existentials_list base es mu g ds))
-  | E_NotIn (ev, es) ->
-      E_NotIn
-        ((substitute_existentials base ev mu g ds),
-          (substitute_existentials_list base es mu g ds))
-  | E_StrLen e1 -> E_StrLen (substitute_existentials base e1 mu g ds)
-  | E_Substr (e1, e2, e3_opt) ->
-      E_Substr
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds),
-          (substitute_existentials_opt base e3_opt mu g ds))
-  | E_UCase e1 -> E_UCase (substitute_existentials base e1 mu g ds)
-  | E_LCase e1 -> E_LCase (substitute_existentials base e1 mu g ds)
-  | E_StrStarts (e1, e2) ->
-      E_StrStarts
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_StrEnds (e1, e2) ->
-      E_StrEnds
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_Contains (e1, e2) ->
-      E_Contains
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_StrBefore (e1, e2) ->
-      E_StrBefore
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_StrAfter (e1, e2) ->
-      E_StrAfter
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_Concat es -> E_Concat (substitute_existentials_list base es mu g ds)
-  | E_EncodeForUri e1 ->
-      E_EncodeForUri (substitute_existentials base e1 mu g ds)
-  | E_Replace (e1, e2, e3, e4_opt) ->
-      E_Replace
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds),
-          (substitute_existentials base e3 mu g ds),
-          (substitute_existentials_opt base e4_opt mu g ds))
-  | E_Regex (e1, e2, e3_opt) ->
-      E_Regex
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds),
-          (substitute_existentials_opt base e3_opt mu g ds))
-  | E_Abs e1 -> E_Abs (substitute_existentials base e1 mu g ds)
-  | E_Round e1 -> E_Round (substitute_existentials base e1 mu g ds)
-  | E_Ceil e1 -> E_Ceil (substitute_existentials base e1 mu g ds)
-  | E_Floor e1 -> E_Floor (substitute_existentials base e1 mu g ds)
-  | E_MD5 e1 -> E_MD5 (substitute_existentials base e1 mu g ds)
-  | E_SHA1 e1 -> E_SHA1 (substitute_existentials base e1 mu g ds)
-  | E_SHA256 e1 -> E_SHA256 (substitute_existentials base e1 mu g ds)
-  | E_SHA384 e1 -> E_SHA384 (substitute_existentials base e1 mu g ds)
-  | E_SHA512 e1 -> E_SHA512 (substitute_existentials base e1 mu g ds)
-  | E_Year e1 -> E_Year (substitute_existentials base e1 mu g ds)
-  | E_Month e1 -> E_Month (substitute_existentials base e1 mu g ds)
-  | E_Day e1 -> E_Day (substitute_existentials base e1 mu g ds)
-  | E_Hours e1 -> E_Hours (substitute_existentials base e1 mu g ds)
-  | E_Minutes e1 -> E_Minutes (substitute_existentials base e1 mu g ds)
-  | E_Seconds e1 -> E_Seconds (substitute_existentials base e1 mu g ds)
-  | E_Timezone e1 -> E_Timezone (substitute_existentials base e1 mu g ds)
-  | E_Tz e1 -> E_Tz (substitute_existentials base e1 mu g ds)
-  | E_SameTerm (e1, e2) ->
-      E_SameTerm
-        ((substitute_existentials base e1 mu g ds),
-          (substitute_existentials base e2 mu g ds))
-  | E_Aggregate (fn, dist, e1) ->
-      E_Aggregate (fn, dist, (substitute_existentials base e1 mu g ds))
-  | E_FunctionCall (iri, args) ->
-      E_FunctionCall (iri, (substitute_existentials_list base args mu g ds))
-  | E_TripleTerm (a, b, c) ->
-      E_TripleTerm
-        ((substitute_existentials base a mu g ds),
-          (substitute_existentials base b mu g ds),
-          (substitute_existentials base c mu g ds))
-  | E_TTSubject e1 -> E_TTSubject (substitute_existentials base e1 mu g ds)
-  | E_TTPredicate e1 ->
-      E_TTPredicate (substitute_existentials base e1 mu g ds)
-  | E_TTObject e1 -> E_TTObject (substitute_existentials base e1 mu g ds)
-  | E_IsTriple e1 -> E_IsTriple (substitute_existentials base e1 mu g ds)
-  | uu___ -> e
-and substitute_existentials_list
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph.rdf_graph) (ds : RDF_Graph.rdf_dataset) : expr Prims.list=
-  match es with
-  | [] -> []
-  | hd::tl -> (substitute_existentials base hd mu g ds) ::
-      (substitute_existentials_list base tl mu g ds)
-and substitute_existentials_opt
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (eo : expr FStar_Pervasives_Native.option)
-  (mu : RDF_Graph_Executable.solution_mapping) (g : RDF_Graph.rdf_graph)
-  (ds : RDF_Graph.rdf_dataset) : expr FStar_Pervasives_Native.option=
-  match eo with
-  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some e ->
-      FStar_Pervasives_Native.Some (substitute_existentials base e mu g ds)
-let filter_solutions_with_graph
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
-  (omega : solution_sequence) (g : RDF_Graph.rdf_graph)
-  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
-  FStar_List_Tot_Base.filter
-    (fun mu ->
-       let e' = substitute_existentials base e mu g ds in
-       eval_expr_ebv base e' mu) omega
-let left_join_with_graph
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (omega1 : solution_sequence) (omega2 : solution_sequence)
-  (filter_expr : expr) (g : RDF_Graph.rdf_graph) (ds : RDF_Graph.rdf_dataset)
-  : solution_sequence=
-  match (omega1, omega2) with
-  | ([], uu___) -> []
-  | (uu___, []) -> omega1
-  | (mu1_0::uu___, mu2_0::uu___1) ->
-      let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
-      if vars = []
-      then
-        RDF_List_Helpers.concatMap_tr
-          (fun mu1 ->
-             let joins =
-               list_filter_map
-                 (fun mu2 ->
-                    if sm_compatible mu1 mu2
-                    then
-                      let merged = sm_merge mu1 mu2 in
-                      let e' =
-                        substitute_existentials base filter_expr merged g ds in
-                      (if eval_expr_ebv base e' merged
-                       then FStar_Pervasives_Native.Some merged
-                       else FStar_Pervasives_Native.None)
-                    else FStar_Pervasives_Native.None) omega2 in
-             if (FStar_List_Tot_Base.length joins) > Prims.int_zero
-             then joins
-             else [mu1]) omega1
-      else
-        (let idx = build_join_index vars omega2 in
-         RDF_List_Helpers.concatMap_tr
-           (fun mu1 ->
-              let candidates = join_candidates idx vars mu1 in
-              let joins =
-                list_filter_map
-                  (fun mu2 ->
-                     if sm_compatible mu1 mu2
-                     then
-                       let merged = sm_merge mu1 mu2 in
-                       let e' =
-                         substitute_existentials base filter_expr merged g ds in
-                       (if eval_expr_ebv base e' merged
-                        then FStar_Pervasives_Native.Some merged
-                        else FStar_Pervasives_Native.None)
-                     else FStar_Pervasives_Native.None) candidates in
-              if (FStar_List_Tot_Base.length joins) > Prims.int_zero
-              then joins
-              else [mu1]) omega1)
-let union (omega1 : solution_sequence) (omega2 : solution_sequence) :
-  solution_sequence= RDF_List_Helpers.append_tr omega1 omega2
-let rec domains_disjoint (mu1 : RDF_Graph_Executable.solution_mapping)
-  (mu2 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
-  match mu1 with
-  | [] -> true
-  | (v, uu___)::rest ->
-      (Prims.op_Negation
-         (FStar_Pervasives_Native.uu___is_Some
-            (FStar_List_Tot_Base.assoc v mu2)))
-        && (domains_disjoint rest mu2)
-let minus (omega1 : solution_sequence) (omega2 : solution_sequence) :
-  solution_sequence=
-  FStar_List_Tot_Base.filter
-    (fun mu1 ->
-       Prims.op_Negation
-         (FStar_List_Tot_Base.existsb
-            (fun mu2 ->
-               (sm_compatible mu1 mu2) &&
-                 (Prims.op_Negation (domains_disjoint mu1 mu2))) omega2))
-    omega1
-let rec fx_bind_rows (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (e : expr) (v : var_name) (omega : solution_sequence) (i : Prims.nat) :
-  solution_sequence=
-  match omega with
-  | [] -> []
-  | mu::rest ->
-      let mu_ctx = fx_ctx_put (Prims.string_of_int i) v mu in
-      let row =
-        match er_to_term (eval_expr_fwd base e mu_ctx) with
-        | FStar_Pervasives_Native.Some t ->
-            (match sm_lookup v mu with
-             | FStar_Pervasives_Native.Some uu___ -> mu
-             | FStar_Pervasives_Native.None -> sm_bind v t mu)
-        | FStar_Pervasives_Native.None -> mu in
-      row :: (fx_bind_rows base e v rest (i + Prims.int_one))
-let rec eval_pattern_store
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store) :
-  solution_sequence=
-  match p with
-  | GP_BGP bgp1 -> eval_bgp_store bgp1 gs
-  | GP_Join (p1, GP_ServiceVar (v, inner, silent)) ->
-      let omega1 = eval_pattern_store base p1 gs dss in
-      RDF_List_Helpers.concatMap_tr
-        (fun mu ->
-           match sm_lookup v mu with
-           | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
-               if RDF_Term.is_iri iri
-               then
-                 (match service_endpoint_lookup iri with
-                  | FStar_Pervasives_Native.Some remote_gs ->
-                      let omega2 =
-                        eval_pattern_store base inner remote_gs dss in
-                      RDF_List_Helpers.concatMap_tr
-                        (fun mu2 ->
-                           if sm_compatible mu mu2
-                           then [sm_merge mu mu2]
-                           else []) omega2
-                  | FStar_Pervasives_Native.None ->
-                      if silent then [mu] else [])
-               else if silent then [mu] else []
-           | uu___ -> if silent then [mu] else []) omega1
-  | GP_Join (GP_ServiceVar (v, inner, silent), p2) ->
-      let omega2 = eval_pattern_store base p2 gs dss in
-      RDF_List_Helpers.concatMap_tr
-        (fun mu ->
-           match sm_lookup v mu with
-           | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
-               if RDF_Term.is_iri iri
-               then
-                 (match service_endpoint_lookup iri with
-                  | FStar_Pervasives_Native.Some remote_gs ->
-                      let omega1 =
-                        eval_pattern_store base inner remote_gs dss in
-                      RDF_List_Helpers.concatMap_tr
-                        (fun mu1 ->
-                           if sm_compatible mu mu1
-                           then [sm_merge mu mu1]
-                           else []) omega1
-                  | FStar_Pervasives_Native.None ->
-                      if silent then [mu] else [])
-               else if silent then [mu] else []
-           | uu___ -> if silent then [mu] else []) omega2
-  | GP_Join (p1, p2) ->
-      join (eval_pattern_store base p1 gs dss)
-        (eval_pattern_store base p2 gs dss)
-  | GP_LeftJoin (p1, p2, filter_e) ->
-      left_join_with_graph base (eval_pattern_store base p1 gs dss)
-        (eval_pattern_store base p2 gs dss) filter_e gs.gs_graph
-        (store_to_dataset dss)
-  | GP_Filter (e, p') ->
-      let omega = eval_pattern_store base p' gs dss in
-      filter_solutions_with_graph base e omega gs.gs_graph
-        (store_to_dataset dss)
-  | GP_Union (p1, p2) ->
-      union (eval_pattern_store base p1 gs dss)
-        (eval_pattern_store base p2 gs dss)
-  | GP_Minus (p1, p2) ->
-      minus (eval_pattern_store base p1 gs dss)
-        (eval_pattern_store base p2 gs dss)
-  | GP_Lateral (p1, p2) ->
-      let omega1 = eval_pattern_store base p1 gs dss in
-      RDF_List_Helpers.concatMap_tr
-        (fun mu1 ->
-           let p2' = lateral_substitute mu1 p2 in
-           let omega2 =
-             eval_subselect_fwd (lateral_wrap_as_query p2') gs.gs_graph
-               (store_to_dataset dss) in
-           list_filter_map
-             (fun mu2 ->
-                if sm_compatible mu1 mu2
-                then FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
-                else FStar_Pervasives_Native.None) omega2) omega1
-  | GP_Empty -> [sm_empty]
-  | GP_Bind (e, v, p') ->
-      let omega = eval_pattern_store base p' gs dss in
-      fx_bind_rows base e v omega Prims.int_zero
-  | GP_Values (vars, rows) -> eval_values vars rows
-  | GP_Graph (gt, p') ->
-      (match gt with
-       | PT_IRI name ->
-           (match lookup_named_store name dss.dss_named with
-            | FStar_Pervasives_Native.Some ngs ->
-                eval_pattern_store base p' ngs dss
-            | FStar_Pervasives_Native.None -> [])
-       | PT_Var v ->
-           RDF_List_Helpers.concatMap_tr
-             (fun ngs ->
-                let ng_results = eval_pattern_store base p' ngs.ngs_store dss in
-                if RDF_Term.is_iri ngs.ngs_name
-                then
-                  RDF_List_Helpers.concatMap_tr
-                    (fun mu ->
-                       match sm_bind_if_compatible v
-                               (RDF_Term.T_IRI (ngs.ngs_name)) mu
-                       with
-                       | FStar_Pervasives_Native.Some mu' -> [mu']
-                       | FStar_Pervasives_Native.None -> []) ng_results
-                else ng_results) dss.dss_named
-       | uu___ -> eval_pattern_store base p' gs dss)
-  | GP_Service (iri, p', silent) ->
-      (match service_endpoint_lookup iri with
-       | FStar_Pervasives_Native.Some remote_gs ->
-           eval_pattern_store base p' remote_gs dss
-       | FStar_Pervasives_Native.None -> if silent then [[]] else [])
-  | GP_ServiceVar (uu___, uu___1, silent) -> if silent then [[]] else []
-  | GP_SubSelect q -> eval_subselect_fwd q gs.gs_graph (store_to_dataset dss)
-  | GP_PropertyPath (ps, pp, pt) ->
-      let pairs = eval_property_path_fwd pp gs.gs_graph in
-      let pairs1 =
-        match pp with
-        | PP_ZeroOrMore uu___ ->
-            let constant_terms =
-              RDF_List_Helpers.append_tr
-                (match ps with
-                 | PS_IRI i -> [RDF_Term.T_IRI i]
-                 | PS_BNode b -> [RDF_Term.T_BNode b]
-                 | PS_Var uu___1 -> []
-                 | PS_TripleTerm (uu___1, uu___2, uu___3) -> [])
-                (match pt with
-                 | PT_IRI i -> [RDF_Term.T_IRI i]
-                 | PT_BNode b -> [RDF_Term.T_BNode b]
-                 | PT_Literal l -> [RDF_Term.T_Literal l]
-                 | PT_Var uu___1 -> []
-                 | PT_TripleTerm (uu___1, uu___2, uu___3) -> []) in
-            let has_reflexive t =
-              FStar_List_Tot_Base.existsb
-                (fun pair ->
-                   let uu___1 = pair in
-                   match uu___1 with
-                   | (s, o) ->
-                       (RDF_Term.rdf_term_eq s t) &&
-                         (RDF_Term.rdf_term_eq o t)) pairs in
-            let new_terms =
-              FStar_List_Tot_Base.filter
-                (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
-            let new_reflexive =
-              FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
-            RDF_List_Helpers.append_tr pairs new_reflexive
-        | PP_ZeroOrOne uu___ ->
-            let constant_terms =
-              RDF_List_Helpers.append_tr
-                (match ps with
-                 | PS_IRI i -> [RDF_Term.T_IRI i]
-                 | PS_BNode b -> [RDF_Term.T_BNode b]
-                 | PS_Var uu___1 -> []
-                 | PS_TripleTerm (uu___1, uu___2, uu___3) -> [])
-                (match pt with
-                 | PT_IRI i -> [RDF_Term.T_IRI i]
-                 | PT_BNode b -> [RDF_Term.T_BNode b]
-                 | PT_Literal l -> [RDF_Term.T_Literal l]
-                 | PT_Var uu___1 -> []
-                 | PT_TripleTerm (uu___1, uu___2, uu___3) -> []) in
-            let has_reflexive t =
-              FStar_List_Tot_Base.existsb
-                (fun pair ->
-                   let uu___1 = pair in
-                   match uu___1 with
-                   | (s, o) ->
-                       (RDF_Term.rdf_term_eq s t) &&
-                         (RDF_Term.rdf_term_eq o t)) pairs in
-            let new_terms =
-              FStar_List_Tot_Base.filter
-                (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
-            let new_reflexive =
-              FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
-            RDF_List_Helpers.append_tr pairs new_reflexive
-        | uu___ -> pairs in
-      path_result_to_solutions ps pt pairs1
-let eval_pattern (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (p : group_graph_pattern) (g : RDF_Graph.rdf_graph)
-  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
-  eval_pattern_store base p (graph_to_store_for p g)
-    (dataset_to_store_for p ds)
 let strip_leading_plus (s : Prims.string) : Prims.string=
   if (FStar_String.strlen s) > Prims.int_zero
   then
@@ -6404,8 +5688,710 @@ and eval_concat_with_base
             | ER_Error -> ER_Error
             | uu___ -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
-let () = eval_expr_ebv_ref := (fun base e mu -> ebv (eval_expr_with_base base e mu))
-let () = eval_expr_fwd_ref := (fun base e mu -> eval_expr_with_base base e mu)
+let eval_expr_ebv (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (e : expr) (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
+  ebv (eval_expr_with_base base e mu)
+let eval_expr_fwd (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (e : expr) (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  eval_expr_with_base base e mu
+let eval_exists_fwd_ref :
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
+    group_graph_pattern ->
+    RDF_Graph_Executable.solution_mapping ->
+    RDF_Graph.rdf_graph ->
+    RDF_Graph.rdf_dataset -> Prims.bool) Stdlib.ref=
+  Stdlib.ref (fun _ _ _ _ _ -> false)
+let eval_subselect_fwd_ref :
+  (query ->
+    RDF_Graph.rdf_graph ->
+    RDF_Graph.rdf_dataset -> solution_sequence) Stdlib.ref=
+  Stdlib.ref (fun _ _ _ -> [])
+let eval_exists_fwd
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (p : group_graph_pattern)
+  (mu : RDF_Graph_Executable.solution_mapping)
+  (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : Prims.bool=
+  !eval_exists_fwd_ref base p mu g ds
+let eval_subselect_fwd (q : query)
+  (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
+  !eval_subselect_fwd_ref q g ds
+type path_result_fwd =
+  (RDF_Term.rdf_term * RDF_Term.rdf_term) Prims.list
+let eval_property_path_fwd_ref :
+  (property_path ->
+    RDF_Graph.rdf_graph -> path_result_fwd) Stdlib.ref=
+  Stdlib.ref (fun _ _ -> [])
+let eval_property_path_fwd (p : property_path)
+  (g : RDF_Graph.rdf_graph) : path_result_fwd=
+  !eval_property_path_fwd_ref p g
+(* SERVICE endpoint resolver -- issue #57.
+   Global table populated by the test runner from qt:serviceData
+   manifest declarations. Lookup is keyed on the absolute IRI string
+   of the endpoint. The value type is deliberately left unannotated:
+   `graph_to_store g` below pins it to whatever module currently
+   owns `rdf_graph` (RDF.Graph.Executable is being split into
+   RDF.Term/RDF.Triple/RDF.Graph; the qualifier has already moved
+   once) without this patch needing to track the split.
+
+   2026-07-06: a static-table MISS falls back to
+   `Service_wrap_hook.resolver` (virtual-sources design doc Stages 1-2,
+   issue #57 family) before returning None -- see that file's banner
+   and this patch's own header comment for why the fallback is a
+   forward-ref hook cell rather than a direct call into the wrap+
+   resolver module. *)
+let service_endpoint_table = Hashtbl.create 16
+let service_endpoint_register (iri : Prims.string) g : unit =
+  Hashtbl.replace service_endpoint_table iri g
+let service_endpoint_clear () : unit =
+  Hashtbl.clear service_endpoint_table
+let service_endpoint_lookup (iri : Prims.string) : graph_store FStar_Pervasives_Native.option=
+  match Hashtbl.find_opt service_endpoint_table iri with
+  | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
+  | None ->
+    (match !Service_wrap_hook.resolver iri with
+     | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
+     | None -> FStar_Pervasives_Native.None)
+let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
+  (pairs : path_result_fwd) : solution_sequence=
+  list_filter_map
+    (fun pair ->
+       let uu___ = pair in
+       match uu___ with
+       | (s, o) ->
+           let mu_s =
+             match ps with
+             | PS_Var v -> FStar_Pervasives_Native.Some [(v, s)]
+             | PS_IRI i ->
+                 if RDF_Term.rdf_term_eq (RDF_Term.T_IRI i) s
+                 then FStar_Pervasives_Native.Some []
+                 else FStar_Pervasives_Native.None
+             | PS_BNode b ->
+                 if RDF_Term.rdf_term_eq (RDF_Term.T_BNode b) s
+                 then FStar_Pervasives_Native.Some []
+                 else FStar_Pervasives_Native.None
+             | PS_TripleTerm (uu___1, uu___2, uu___3) ->
+                 FStar_Pervasives_Native.None in
+           (match mu_s with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some bindings_s ->
+                let mu_o =
+                  match pt with
+                  | PT_Var v ->
+                      (match FStar_List_Tot_Base.assoc v bindings_s with
+                       | FStar_Pervasives_Native.Some existing ->
+                           if RDF_Term.rdf_term_eq existing o
+                           then FStar_Pervasives_Native.Some bindings_s
+                           else FStar_Pervasives_Native.None
+                       | FStar_Pervasives_Native.None ->
+                           FStar_Pervasives_Native.Some ((v, o) ::
+                             bindings_s))
+                  | PT_IRI i ->
+                      if RDF_Term.rdf_term_eq (RDF_Term.T_IRI i) o
+                      then FStar_Pervasives_Native.Some bindings_s
+                      else FStar_Pervasives_Native.None
+                  | PT_BNode b ->
+                      if RDF_Term.rdf_term_eq (RDF_Term.T_BNode b) o
+                      then FStar_Pervasives_Native.Some bindings_s
+                      else FStar_Pervasives_Native.None
+                  | PT_Literal l ->
+                      if RDF_Term.rdf_term_eq (RDF_Term.T_Literal l) o
+                      then FStar_Pervasives_Native.Some bindings_s
+                      else FStar_Pervasives_Native.None
+                  | PT_TripleTerm (uu___1, uu___2, uu___3) ->
+                      FStar_Pervasives_Native.None in
+                mu_o)) pairs
+let left_join (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (omega1 : solution_sequence) (omega2 : solution_sequence)
+  (filter_expr : expr) : solution_sequence=
+  match (omega1, omega2) with
+  | ([], uu___) -> []
+  | (uu___, []) -> omega1
+  | (mu1_0::uu___, mu2_0::uu___1) ->
+      let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+      if vars = []
+      then
+        RDF_List_Helpers.concatMap_tr
+          (fun mu1 ->
+             let joins =
+               list_filter_map
+                 (fun mu2 ->
+                    if sm_compatible mu1 mu2
+                    then
+                      let merged = sm_merge mu1 mu2 in
+                      (if eval_expr_ebv base filter_expr merged
+                       then FStar_Pervasives_Native.Some merged
+                       else FStar_Pervasives_Native.None)
+                    else FStar_Pervasives_Native.None) omega2 in
+             if (FStar_List_Tot_Base.length joins) > Prims.int_zero
+             then joins
+             else [mu1]) omega1
+      else
+        (let idx = build_join_index vars omega2 in
+         RDF_List_Helpers.concatMap_tr
+           (fun mu1 ->
+              let candidates = join_candidates idx vars mu1 in
+              let joins =
+                list_filter_map
+                  (fun mu2 ->
+                     if sm_compatible mu1 mu2
+                     then
+                       let merged = sm_merge mu1 mu2 in
+                       (if eval_expr_ebv base filter_expr merged
+                        then FStar_Pervasives_Native.Some merged
+                        else FStar_Pervasives_Native.None)
+                     else FStar_Pervasives_Native.None) candidates in
+              if (FStar_List_Tot_Base.length joins) > Prims.int_zero
+              then joins
+              else [mu1]) omega1)
+let rec expr_has_existential (e : expr) : Prims.bool=
+  match e with
+  | E_Exists uu___ -> true
+  | E_NotExists uu___ -> true
+  | E_Var uu___ -> false
+  | E_IRI uu___ -> false
+  | E_Literal uu___ -> false
+  | E_BoolLit uu___ -> false
+  | E_NumericLit uu___ -> false
+  | E_DecimalLit uu___ -> false
+  | E_DoubleLit uu___ -> false
+  | E_Bound uu___ -> false
+  | E_Now -> false
+  | E_Arith (uu___, e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_Compare (uu___, e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_And (e1, e2) -> (expr_has_existential e1) || (expr_has_existential e2)
+  | E_Or (e1, e2) -> (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrDt (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrLang (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrStarts (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrEnds (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_Contains (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrBefore (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_StrAfter (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_SameTerm (e1, e2) ->
+      (expr_has_existential e1) || (expr_has_existential e2)
+  | E_UnaryMinus e1 -> expr_has_existential e1
+  | E_UnaryPlus e1 -> expr_has_existential e1
+  | E_Not e1 -> expr_has_existential e1
+  | E_IsIRI e1 -> expr_has_existential e1
+  | E_IsBlank e1 -> expr_has_existential e1
+  | E_IsLiteral e1 -> expr_has_existential e1
+  | E_IsNumeric e1 -> expr_has_existential e1
+  | E_Str e1 -> expr_has_existential e1
+  | E_Lang e1 -> expr_has_existential e1
+  | E_Datatype e1 -> expr_has_existential e1
+  | E_IRI_fn e1 -> expr_has_existential e1
+  | E_HasLang e1 -> expr_has_existential e1
+  | E_HasLangDir e1 -> expr_has_existential e1
+  | E_LangDir e1 -> expr_has_existential e1
+  | E_StrLen e1 -> expr_has_existential e1
+  | E_UCase e1 -> expr_has_existential e1
+  | E_LCase e1 -> expr_has_existential e1
+  | E_EncodeForUri e1 -> expr_has_existential e1
+  | E_Abs e1 -> expr_has_existential e1
+  | E_Round e1 -> expr_has_existential e1
+  | E_Ceil e1 -> expr_has_existential e1
+  | E_Floor e1 -> expr_has_existential e1
+  | E_MD5 e1 -> expr_has_existential e1
+  | E_SHA1 e1 -> expr_has_existential e1
+  | E_SHA256 e1 -> expr_has_existential e1
+  | E_SHA384 e1 -> expr_has_existential e1
+  | E_SHA512 e1 -> expr_has_existential e1
+  | E_Year e1 -> expr_has_existential e1
+  | E_Month e1 -> expr_has_existential e1
+  | E_Day e1 -> expr_has_existential e1
+  | E_Hours e1 -> expr_has_existential e1
+  | E_Minutes e1 -> expr_has_existential e1
+  | E_Seconds e1 -> expr_has_existential e1
+  | E_Timezone e1 -> expr_has_existential e1
+  | E_Tz e1 -> expr_has_existential e1
+  | E_Aggregate (uu___, uu___1, e1) -> expr_has_existential e1
+  | E_TTSubject e1 -> expr_has_existential e1
+  | E_TTPredicate e1 -> expr_has_existential e1
+  | E_TTObject e1 -> expr_has_existential e1
+  | E_IsTriple e1 -> expr_has_existential e1
+  | E_StrLangDir (e1, e2, e3) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_has_existential e3)
+  | E_If (e1, e2, e3) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_has_existential e3)
+  | E_TripleTerm (e1, e2, e3) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_has_existential e3)
+  | E_Coalesce es -> expr_list_has_existential es
+  | E_Concat es -> expr_list_has_existential es
+  | E_FunctionCall (uu___, es) -> expr_list_has_existential es
+  | E_In (e1, es) ->
+      (expr_has_existential e1) || (expr_list_has_existential es)
+  | E_NotIn (e1, es) ->
+      (expr_has_existential e1) || (expr_list_has_existential es)
+  | E_Substr (e1, e2, e3o) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_opt_has_existential e3o)
+  | E_Regex (e1, e2, e3o) ->
+      ((expr_has_existential e1) || (expr_has_existential e2)) ||
+        (expr_opt_has_existential e3o)
+  | E_Replace (e1, e2, e3, e4o) ->
+      (((expr_has_existential e1) || (expr_has_existential e2)) ||
+         (expr_has_existential e3))
+        || (expr_opt_has_existential e4o)
+and expr_list_has_existential (es : expr Prims.list) : Prims.bool=
+  match es with
+  | [] -> false
+  | e::rest -> (expr_has_existential e) || (expr_list_has_existential rest)
+and expr_opt_has_existential (eo : expr FStar_Pervasives_Native.option) :
+  Prims.bool=
+  match eo with
+  | FStar_Pervasives_Native.None -> false
+  | FStar_Pervasives_Native.Some e -> expr_has_existential e
+let filter_solutions_fwd
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
+  (omega : solution_sequence) : solution_sequence=
+  FStar_List_Tot_Base.filter (eval_expr_ebv base e) omega
+let rec substitute_existentials
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : expr=
+  match e with
+  | E_Exists p -> E_BoolLit (eval_exists_fwd base p mu g ds)
+  | E_NotExists p ->
+      E_BoolLit (Prims.op_Negation (eval_exists_fwd base p mu g ds))
+  | E_Arith (op, e1, e2) ->
+      E_Arith
+        (op, (substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_UnaryMinus e1 -> E_UnaryMinus (substitute_existentials base e1 mu g ds)
+  | E_UnaryPlus e1 -> E_UnaryPlus (substitute_existentials base e1 mu g ds)
+  | E_Compare (op, e1, e2) ->
+      E_Compare
+        (op, (substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_And (e1, e2) ->
+      E_And
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_Or (e1, e2) ->
+      E_Or
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_Not e1 -> E_Not (substitute_existentials base e1 mu g ds)
+  | E_IsIRI e1 -> E_IsIRI (substitute_existentials base e1 mu g ds)
+  | E_IsBlank e1 -> E_IsBlank (substitute_existentials base e1 mu g ds)
+  | E_IsLiteral e1 -> E_IsLiteral (substitute_existentials base e1 mu g ds)
+  | E_IsNumeric e1 -> E_IsNumeric (substitute_existentials base e1 mu g ds)
+  | E_Str e1 -> E_Str (substitute_existentials base e1 mu g ds)
+  | E_Lang e1 -> E_Lang (substitute_existentials base e1 mu g ds)
+  | E_Datatype e1 -> E_Datatype (substitute_existentials base e1 mu g ds)
+  | E_IRI_fn e1 -> E_IRI_fn (substitute_existentials base e1 mu g ds)
+  | E_HasLang e1 -> E_HasLang (substitute_existentials base e1 mu g ds)
+  | E_HasLangDir e1 -> E_HasLangDir (substitute_existentials base e1 mu g ds)
+  | E_LangDir e1 -> E_LangDir (substitute_existentials base e1 mu g ds)
+  | E_StrDt (e1, e2) ->
+      E_StrDt
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_StrLang (e1, e2) ->
+      E_StrLang
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_StrLangDir (e1, e2, e3) ->
+      E_StrLangDir
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds),
+          (substitute_existentials base e3 mu g ds))
+  | E_If (c, t, f) ->
+      E_If
+        ((substitute_existentials base c mu g ds),
+          (substitute_existentials base t mu g ds),
+          (substitute_existentials base f mu g ds))
+  | E_Coalesce es ->
+      E_Coalesce (substitute_existentials_list base es mu g ds)
+  | E_In (ev, es) ->
+      E_In
+        ((substitute_existentials base ev mu g ds),
+          (substitute_existentials_list base es mu g ds))
+  | E_NotIn (ev, es) ->
+      E_NotIn
+        ((substitute_existentials base ev mu g ds),
+          (substitute_existentials_list base es mu g ds))
+  | E_StrLen e1 -> E_StrLen (substitute_existentials base e1 mu g ds)
+  | E_Substr (e1, e2, e3_opt) ->
+      E_Substr
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds),
+          (substitute_existentials_opt base e3_opt mu g ds))
+  | E_UCase e1 -> E_UCase (substitute_existentials base e1 mu g ds)
+  | E_LCase e1 -> E_LCase (substitute_existentials base e1 mu g ds)
+  | E_StrStarts (e1, e2) ->
+      E_StrStarts
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_StrEnds (e1, e2) ->
+      E_StrEnds
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_Contains (e1, e2) ->
+      E_Contains
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_StrBefore (e1, e2) ->
+      E_StrBefore
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_StrAfter (e1, e2) ->
+      E_StrAfter
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_Concat es -> E_Concat (substitute_existentials_list base es mu g ds)
+  | E_EncodeForUri e1 ->
+      E_EncodeForUri (substitute_existentials base e1 mu g ds)
+  | E_Replace (e1, e2, e3, e4_opt) ->
+      E_Replace
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds),
+          (substitute_existentials base e3 mu g ds),
+          (substitute_existentials_opt base e4_opt mu g ds))
+  | E_Regex (e1, e2, e3_opt) ->
+      E_Regex
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds),
+          (substitute_existentials_opt base e3_opt mu g ds))
+  | E_Abs e1 -> E_Abs (substitute_existentials base e1 mu g ds)
+  | E_Round e1 -> E_Round (substitute_existentials base e1 mu g ds)
+  | E_Ceil e1 -> E_Ceil (substitute_existentials base e1 mu g ds)
+  | E_Floor e1 -> E_Floor (substitute_existentials base e1 mu g ds)
+  | E_MD5 e1 -> E_MD5 (substitute_existentials base e1 mu g ds)
+  | E_SHA1 e1 -> E_SHA1 (substitute_existentials base e1 mu g ds)
+  | E_SHA256 e1 -> E_SHA256 (substitute_existentials base e1 mu g ds)
+  | E_SHA384 e1 -> E_SHA384 (substitute_existentials base e1 mu g ds)
+  | E_SHA512 e1 -> E_SHA512 (substitute_existentials base e1 mu g ds)
+  | E_Year e1 -> E_Year (substitute_existentials base e1 mu g ds)
+  | E_Month e1 -> E_Month (substitute_existentials base e1 mu g ds)
+  | E_Day e1 -> E_Day (substitute_existentials base e1 mu g ds)
+  | E_Hours e1 -> E_Hours (substitute_existentials base e1 mu g ds)
+  | E_Minutes e1 -> E_Minutes (substitute_existentials base e1 mu g ds)
+  | E_Seconds e1 -> E_Seconds (substitute_existentials base e1 mu g ds)
+  | E_Timezone e1 -> E_Timezone (substitute_existentials base e1 mu g ds)
+  | E_Tz e1 -> E_Tz (substitute_existentials base e1 mu g ds)
+  | E_SameTerm (e1, e2) ->
+      E_SameTerm
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds))
+  | E_Aggregate (fn, dist, e1) ->
+      E_Aggregate (fn, dist, (substitute_existentials base e1 mu g ds))
+  | E_FunctionCall (iri, args) ->
+      E_FunctionCall (iri, (substitute_existentials_list base args mu g ds))
+  | E_TripleTerm (a, b, c) ->
+      E_TripleTerm
+        ((substitute_existentials base a mu g ds),
+          (substitute_existentials base b mu g ds),
+          (substitute_existentials base c mu g ds))
+  | E_TTSubject e1 -> E_TTSubject (substitute_existentials base e1 mu g ds)
+  | E_TTPredicate e1 ->
+      E_TTPredicate (substitute_existentials base e1 mu g ds)
+  | E_TTObject e1 -> E_TTObject (substitute_existentials base e1 mu g ds)
+  | E_IsTriple e1 -> E_IsTriple (substitute_existentials base e1 mu g ds)
+  | uu___ -> e
+and substitute_existentials_list
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping)
+  (g : RDF_Graph.rdf_graph) (ds : RDF_Graph.rdf_dataset) : expr Prims.list=
+  match es with
+  | [] -> []
+  | hd::tl -> (substitute_existentials base hd mu g ds) ::
+      (substitute_existentials_list base tl mu g ds)
+and substitute_existentials_opt
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (eo : expr FStar_Pervasives_Native.option)
+  (mu : RDF_Graph_Executable.solution_mapping) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : expr FStar_Pervasives_Native.option=
+  match eo with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some e ->
+      FStar_Pervasives_Native.Some (substitute_existentials base e mu g ds)
+let filter_solutions_with_graph
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
+  (omega : solution_sequence) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
+  FStar_List_Tot_Base.filter
+    (fun mu ->
+       let e' = substitute_existentials base e mu g ds in
+       eval_expr_ebv base e' mu) omega
+let left_join_with_graph
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (omega1 : solution_sequence) (omega2 : solution_sequence)
+  (filter_expr : expr) (g : RDF_Graph.rdf_graph) (ds : RDF_Graph.rdf_dataset)
+  : solution_sequence=
+  match (omega1, omega2) with
+  | ([], uu___) -> []
+  | (uu___, []) -> omega1
+  | (mu1_0::uu___, mu2_0::uu___1) ->
+      let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+      if vars = []
+      then
+        RDF_List_Helpers.concatMap_tr
+          (fun mu1 ->
+             let joins =
+               list_filter_map
+                 (fun mu2 ->
+                    if sm_compatible mu1 mu2
+                    then
+                      let merged = sm_merge mu1 mu2 in
+                      let e' =
+                        substitute_existentials base filter_expr merged g ds in
+                      (if eval_expr_ebv base e' merged
+                       then FStar_Pervasives_Native.Some merged
+                       else FStar_Pervasives_Native.None)
+                    else FStar_Pervasives_Native.None) omega2 in
+             if (FStar_List_Tot_Base.length joins) > Prims.int_zero
+             then joins
+             else [mu1]) omega1
+      else
+        (let idx = build_join_index vars omega2 in
+         RDF_List_Helpers.concatMap_tr
+           (fun mu1 ->
+              let candidates = join_candidates idx vars mu1 in
+              let joins =
+                list_filter_map
+                  (fun mu2 ->
+                     if sm_compatible mu1 mu2
+                     then
+                       let merged = sm_merge mu1 mu2 in
+                       let e' =
+                         substitute_existentials base filter_expr merged g ds in
+                       (if eval_expr_ebv base e' merged
+                        then FStar_Pervasives_Native.Some merged
+                        else FStar_Pervasives_Native.None)
+                     else FStar_Pervasives_Native.None) candidates in
+              if (FStar_List_Tot_Base.length joins) > Prims.int_zero
+              then joins
+              else [mu1]) omega1)
+let union (omega1 : solution_sequence) (omega2 : solution_sequence) :
+  solution_sequence= RDF_List_Helpers.append_tr omega1 omega2
+let rec domains_disjoint (mu1 : RDF_Graph_Executable.solution_mapping)
+  (mu2 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
+  match mu1 with
+  | [] -> true
+  | (v, uu___)::rest ->
+      (Prims.op_Negation
+         (FStar_Pervasives_Native.uu___is_Some
+            (FStar_List_Tot_Base.assoc v mu2)))
+        && (domains_disjoint rest mu2)
+let minus (omega1 : solution_sequence) (omega2 : solution_sequence) :
+  solution_sequence=
+  FStar_List_Tot_Base.filter
+    (fun mu1 ->
+       Prims.op_Negation
+         (FStar_List_Tot_Base.existsb
+            (fun mu2 ->
+               (sm_compatible mu1 mu2) &&
+                 (Prims.op_Negation (domains_disjoint mu1 mu2))) omega2))
+    omega1
+let rec fx_bind_rows (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (e : expr) (v : var_name) (omega : solution_sequence) (i : Prims.nat) :
+  solution_sequence=
+  match omega with
+  | [] -> []
+  | mu::rest ->
+      let mu_ctx = fx_ctx_put (Prims.string_of_int i) v mu in
+      let row =
+        match er_to_term (eval_expr_fwd base e mu_ctx) with
+        | FStar_Pervasives_Native.Some t ->
+            (match sm_lookup v mu with
+             | FStar_Pervasives_Native.Some uu___ -> mu
+             | FStar_Pervasives_Native.None -> sm_bind v t mu)
+        | FStar_Pervasives_Native.None -> mu in
+      row :: (fx_bind_rows base e v rest (i + Prims.int_one))
+let rec eval_pattern_store
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store) :
+  solution_sequence=
+  match p with
+  | GP_BGP bgp1 -> eval_bgp_store bgp1 gs
+  | GP_Join (p1, GP_ServiceVar (v, inner, silent)) ->
+      let omega1 = eval_pattern_store base p1 gs dss in
+      RDF_List_Helpers.concatMap_tr
+        (fun mu ->
+           match sm_lookup v mu with
+           | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
+               if RDF_Term.is_iri iri
+               then
+                 (match service_endpoint_lookup iri with
+                  | FStar_Pervasives_Native.Some remote_gs ->
+                      let omega2 =
+                        eval_pattern_store base inner remote_gs dss in
+                      RDF_List_Helpers.concatMap_tr
+                        (fun mu2 ->
+                           if sm_compatible mu mu2
+                           then [sm_merge mu mu2]
+                           else []) omega2
+                  | FStar_Pervasives_Native.None ->
+                      if silent then [mu] else [])
+               else if silent then [mu] else []
+           | uu___ -> if silent then [mu] else []) omega1
+  | GP_Join (GP_ServiceVar (v, inner, silent), p2) ->
+      let omega2 = eval_pattern_store base p2 gs dss in
+      RDF_List_Helpers.concatMap_tr
+        (fun mu ->
+           match sm_lookup v mu with
+           | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
+               if RDF_Term.is_iri iri
+               then
+                 (match service_endpoint_lookup iri with
+                  | FStar_Pervasives_Native.Some remote_gs ->
+                      let omega1 =
+                        eval_pattern_store base inner remote_gs dss in
+                      RDF_List_Helpers.concatMap_tr
+                        (fun mu1 ->
+                           if sm_compatible mu mu1
+                           then [sm_merge mu mu1]
+                           else []) omega1
+                  | FStar_Pervasives_Native.None ->
+                      if silent then [mu] else [])
+               else if silent then [mu] else []
+           | uu___ -> if silent then [mu] else []) omega2
+  | GP_Join (p1, p2) ->
+      join (eval_pattern_store base p1 gs dss)
+        (eval_pattern_store base p2 gs dss)
+  | GP_LeftJoin (p1, p2, filter_e) ->
+      left_join_with_graph base (eval_pattern_store base p1 gs dss)
+        (eval_pattern_store base p2 gs dss) filter_e gs.gs_graph
+        (store_to_dataset dss)
+  | GP_Filter (e, p') ->
+      let omega = eval_pattern_store base p' gs dss in
+      filter_solutions_with_graph base e omega gs.gs_graph
+        (store_to_dataset dss)
+  | GP_Union (p1, p2) ->
+      union (eval_pattern_store base p1 gs dss)
+        (eval_pattern_store base p2 gs dss)
+  | GP_Minus (p1, p2) ->
+      minus (eval_pattern_store base p1 gs dss)
+        (eval_pattern_store base p2 gs dss)
+  | GP_Lateral (p1, p2) ->
+      let omega1 = eval_pattern_store base p1 gs dss in
+      RDF_List_Helpers.concatMap_tr
+        (fun mu1 ->
+           let p2' = lateral_substitute mu1 p2 in
+           let omega2 =
+             eval_subselect_fwd (lateral_wrap_as_query p2') gs.gs_graph
+               (store_to_dataset dss) in
+           list_filter_map
+             (fun mu2 ->
+                if sm_compatible mu1 mu2
+                then FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
+                else FStar_Pervasives_Native.None) omega2) omega1
+  | GP_Empty -> [sm_empty]
+  | GP_Bind (e, v, p') ->
+      let omega = eval_pattern_store base p' gs dss in
+      fx_bind_rows base e v omega Prims.int_zero
+  | GP_Values (vars, rows) -> eval_values vars rows
+  | GP_Graph (gt, p') ->
+      (match gt with
+       | PT_IRI name ->
+           (match lookup_named_store name dss.dss_named with
+            | FStar_Pervasives_Native.Some ngs ->
+                eval_pattern_store base p' ngs dss
+            | FStar_Pervasives_Native.None -> [])
+       | PT_Var v ->
+           RDF_List_Helpers.concatMap_tr
+             (fun ngs ->
+                let ng_results = eval_pattern_store base p' ngs.ngs_store dss in
+                if RDF_Term.is_iri ngs.ngs_name
+                then
+                  RDF_List_Helpers.concatMap_tr
+                    (fun mu ->
+                       match sm_bind_if_compatible v
+                               (RDF_Term.T_IRI (ngs.ngs_name)) mu
+                       with
+                       | FStar_Pervasives_Native.Some mu' -> [mu']
+                       | FStar_Pervasives_Native.None -> []) ng_results
+                else ng_results) dss.dss_named
+       | uu___ -> eval_pattern_store base p' gs dss)
+  | GP_Service (iri, p', silent) ->
+      (match service_endpoint_lookup iri with
+       | FStar_Pervasives_Native.Some remote_gs ->
+           eval_pattern_store base p' remote_gs dss
+       | FStar_Pervasives_Native.None -> if silent then [[]] else [])
+  | GP_ServiceVar (uu___, uu___1, silent) -> if silent then [[]] else []
+  | GP_SubSelect q -> eval_subselect_fwd q gs.gs_graph (store_to_dataset dss)
+  | GP_PropertyPath (ps, pp, pt) ->
+      let pairs = eval_property_path_fwd pp gs.gs_graph in
+      let pairs1 =
+        match pp with
+        | PP_ZeroOrMore uu___ ->
+            let constant_terms =
+              RDF_List_Helpers.append_tr
+                (match ps with
+                 | PS_IRI i -> [RDF_Term.T_IRI i]
+                 | PS_BNode b -> [RDF_Term.T_BNode b]
+                 | PS_Var uu___1 -> []
+                 | PS_TripleTerm (uu___1, uu___2, uu___3) -> [])
+                (match pt with
+                 | PT_IRI i -> [RDF_Term.T_IRI i]
+                 | PT_BNode b -> [RDF_Term.T_BNode b]
+                 | PT_Literal l -> [RDF_Term.T_Literal l]
+                 | PT_Var uu___1 -> []
+                 | PT_TripleTerm (uu___1, uu___2, uu___3) -> []) in
+            let has_reflexive t =
+              FStar_List_Tot_Base.existsb
+                (fun pair ->
+                   let uu___1 = pair in
+                   match uu___1 with
+                   | (s, o) ->
+                       (RDF_Term.rdf_term_eq s t) &&
+                         (RDF_Term.rdf_term_eq o t)) pairs in
+            let new_terms =
+              FStar_List_Tot_Base.filter
+                (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
+            let new_reflexive =
+              FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
+            RDF_List_Helpers.append_tr pairs new_reflexive
+        | PP_ZeroOrOne uu___ ->
+            let constant_terms =
+              RDF_List_Helpers.append_tr
+                (match ps with
+                 | PS_IRI i -> [RDF_Term.T_IRI i]
+                 | PS_BNode b -> [RDF_Term.T_BNode b]
+                 | PS_Var uu___1 -> []
+                 | PS_TripleTerm (uu___1, uu___2, uu___3) -> [])
+                (match pt with
+                 | PT_IRI i -> [RDF_Term.T_IRI i]
+                 | PT_BNode b -> [RDF_Term.T_BNode b]
+                 | PT_Literal l -> [RDF_Term.T_Literal l]
+                 | PT_Var uu___1 -> []
+                 | PT_TripleTerm (uu___1, uu___2, uu___3) -> []) in
+            let has_reflexive t =
+              FStar_List_Tot_Base.existsb
+                (fun pair ->
+                   let uu___1 = pair in
+                   match uu___1 with
+                   | (s, o) ->
+                       (RDF_Term.rdf_term_eq s t) &&
+                         (RDF_Term.rdf_term_eq o t)) pairs in
+            let new_terms =
+              FStar_List_Tot_Base.filter
+                (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
+            let new_reflexive =
+              FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
+            RDF_List_Helpers.append_tr pairs new_reflexive
+        | uu___ -> pairs in
+      path_result_to_solutions ps pt pairs1
+let eval_pattern (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (p : group_graph_pattern) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
+  eval_pattern_store base p (graph_to_store_for p g)
+    (dataset_to_store_for p ds)
 type group = {
   g_key: eval_result Prims.list ;
   g_solutions: solution_sequence }

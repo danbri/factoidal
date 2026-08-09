@@ -10,7 +10,7 @@ tracking when it can be eliminated.**
 | File | Issue | Category | Target |
 |------|-------|----------|--------|
 | `57_service_client_bind.sh` | [#57](https://github.com/danbri/factoidal/issues/57) | assume-val stubs | SPARQL11_Algebra.ml |
-| `62_forward_ref_wiring.sh` | [#62](https://github.com/danbri/factoidal/issues/62) | Forward-ref wiring | SPARQL11_Algebra.ml |
+| `62_forward_ref_wiring.sh` | [#62](https://github.com/danbri/factoidal/issues/62) | Forward-ref wiring | SPARQL11_Algebra.ml (partially retired 2026-08-09, g4-filter-devacuation: `eval_expr_ebv`/`eval_expr_fwd` are now concrete F\* definitions, no longer wired here; scope now 3 symbols -- `eval_exists_fwd`/`eval_subselect_fwd`/`eval_property_path_fwd`) |
 | `63_regex_hash_uuid_stubs.sh` | [#63](https://github.com/danbri/factoidal/issues/63) | assume-val stubs | SPARQL11_Algebra.ml |
 | `67_rdfxml_validation.sh` | [#67](https://github.com/danbri/factoidal/issues/67) | F\* semantic gap | Parser_RDFXML.ml |
 | `89_fast_string_primitives.sh` | [#89](https://github.com/danbri/factoidal/issues/89) | assume-val stubs (perf) | Parser_FastString.ml |
