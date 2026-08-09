@@ -1104,3 +1104,558 @@ let theorem_tp_match_instantiates
   lemma_binding_extends_refl mu'
 
 #pop-options
+
+#push-options "--z3rlimit 120 --fuel 3 --ifuel 2"
+
+
+(** ====================================================================== **)
+(** Part 15: ORDER BY / DISTINCT completeness / OFFSET-LIMIT (section 18.4) **)
+(** ====================================================================== **)
+
+// -------------------------------------------------------------------
+// 15.1 ORDER BY -- `sort_solutions` is a permutation of its input
+// (section 18.4: sorting reorders a solution sequence, it does not
+// add or drop rows).
+//
+// `sort_solutions base conds` is `List.Tot.sortWith
+// (compare_on_conditions base conds)`. The stdlib's own permutation
+// lemma, `FStar.List.Tot.Properties.sortWith_permutation`, needs
+// `#a:eqtype` -- it goes through `List.Tot.count`, which needs a
+// decidable `=` on the element type. `S.smap = list (var_name *
+// rdf_term)` and `rdf_term` is `noeq` (RDF.Term.fsti), so `S.smap`
+// does NOT satisfy `eqtype`: instantiating `sortWith_permutation` at
+// any noeq-carrying element type fails typechecking with "Expected
+// type Prims.eqtype got type Type0" (checked directly against a
+// minimal noeq reproducer before writing this section). So the
+// stdlib lemma is not directly applicable here, contrary to the
+// obvious reading of its signature.
+//
+// The permutation fact is re-derived at the MULT level instead --
+// counting occurrences via `S.smap_eqb`, the exact decision procedure
+// `S.mult` is built from (Spec.fst:708-709) -- by replaying
+// `sortWith`'s own partition/append recursion (FStar.List.Tot.Base.fst,
+// the `sortWith` definition) directly. This is the same technique
+// `OWL.Semantics.MemLemmas.lemma_sortWith_memP`/`_rev` already use, one
+// module over, for the strictly weaker memP-only fact (no cardinality)
+// about `sortWith` on `triple`, another noeq-carrying type; `S.mult`
+// asks for the stronger per-element COUNT, which the memP-only
+// technique does not give, so the partition/append induction is
+// redone here at the `List.Tot.filter`+`length` level.
+// `SPARQL11.Algebra.lemma_filter_append` (section 19.3 of that module)
+// supplies the append half.
+//
+// NOT attempted: a sortedness theorem. `compare_on_condition` returns
+// 0 -- "equal" -- for two solution mappings that are not `sm_equal`
+// (e.g. mappings binding disjoint variable sets, so every `OC_Asc`/
+// `OC_Desc` condition evaluates its expression to the same "unbound"
+// case on both sides; or two mappings `sparql_order`'s catch-all
+// branches do not distinguish), so `compare_on_conditions` is not
+// ANTISYMMETRIC: `f a b == 0 == f b a` for `a =!= b` is a
+// counterexample to the antisymmetry conjunct of
+// `FStar.List.Tot.Properties.total_order`
+// (FStar.List.Tot.Properties.fsti, `total_order`), which
+// `sortWith_sorted` requires unconditionally to conclude `sorted`. A
+// comparator that fails antisymmetry cannot supply a `total_order`
+// instance. That is a separate wave, not attempted here.
+// -------------------------------------------------------------------
+
+let rec lemma_filter_partition_count (#a:Type) (eqb : a -> a -> bool) (p : a -> bool) (l : list a) (x : a)
+  : Lemma (ensures
+      List.Tot.length (List.Tot.filter (eqb x) l) ==
+      List.Tot.length (List.Tot.filter (eqb x) (fst (List.Tot.partition p l))) +
+      List.Tot.length (List.Tot.filter (eqb x) (snd (List.Tot.partition p l))))
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | hd :: tl -> lemma_filter_partition_count eqb p tl x
+
+let rec lemma_sortWith_mult (#a:Type) (eqb : a -> a -> bool) (f : a -> a -> Tot int) (l : list a) (x : a)
+  : Lemma (ensures
+      List.Tot.length (List.Tot.filter (eqb x) (List.Tot.sortWith f l)) ==
+      List.Tot.length (List.Tot.filter (eqb x) l))
+          (decreases (List.Tot.length l)) =
+  match l with
+  | [] -> ()
+  | pivot :: tl ->
+    let hi, lo = List.Tot.partition (List.Tot.bool_of_compare f pivot) tl in
+    List.Tot.partition_length (List.Tot.bool_of_compare f pivot) tl;
+    lemma_sortWith_mult eqb f lo x;
+    lemma_sortWith_mult eqb f hi x;
+    lemma_filter_partition_count eqb (List.Tot.bool_of_compare f pivot) tl x;
+    assert (List.Tot.length (List.Tot.filter (eqb x) tl) ==
+            List.Tot.length (List.Tot.filter (eqb x) hi) +
+            List.Tot.length (List.Tot.filter (eqb x) lo));
+    assert (List.Tot.sortWith f l ==
+            List.Tot.append (List.Tot.sortWith f lo) (pivot :: List.Tot.sortWith f hi));
+    lemma_filter_append (eqb x) (List.Tot.sortWith f lo) (pivot :: List.Tot.sortWith f hi);
+    assert (List.Tot.filter (eqb x) (List.Tot.sortWith f l) ==
+            List.Tot.append (List.Tot.filter (eqb x) (List.Tot.sortWith f lo))
+                             (List.Tot.filter (eqb x) (pivot :: List.Tot.sortWith f hi)));
+    List.Tot.append_length (List.Tot.filter (eqb x) (List.Tot.sortWith f lo))
+                            (List.Tot.filter (eqb x) (pivot :: List.Tot.sortWith f hi))
+
+// The eqb PARAMETER form above is what makes `lemma_sortWith_mult`
+// itself go through (every use of `eqb x` is the same bound variable,
+// so no closure-identity issue between call sites). Connecting the
+// result to `S.mult` -- which hardcodes its OWN lambda, `fun m ->
+// smap_eqb mu m` (Spec.fst:708-709) -- needs a bridge: `S.smap_eqb mu`
+// (a bare partial application) and that lambda are extensionally the
+// same predicate but are NOT identified by a plain SMT `assert` here
+// (confirmed: instantiating `eqb := S.smap_eqb` and asserting the
+// `S.mult`-unfolded equality directly fails). `mult_pred` is `unfold`,
+// so `mult_pred mu` beta-reduces (no eta needed) to exactly `S.mult`'s
+// own lambda shape, and `trefl` -- definitional equality, not an SMT
+// query -- closes the resulting goal directly (the same class of fix
+// `lemma_join_nested_loop_unfold`/`lemma_minus_unfold` use for the
+// analogous inline-lambda-vs-named-copy gap, Part 8/11 above).
+unfold let mult_pred (mu m : S.smap) : bool = S.smap_eqb mu m
+
+let lemma_mult_is_filter_length (mu : S.smap) (l : list S.smap)
+  : Lemma (S.mult mu l == List.Tot.length (List.Tot.filter (mult_pred mu) l)) =
+  assert (S.mult mu l == List.Tot.length (List.Tot.filter (mult_pred mu) l))
+    by (FStar.Tactics.trefl ())
+
+/// The NORMATIVE (bag) statement: ORDER BY reorders without adding or
+/// dropping rows. Unconditional -- no fragment hypothesis of any kind.
+/// `S.mult` (not `List.Tot.count`, unavailable at this noeq-carrying
+/// type) is the same multiset-membership count `theorem_union_card`
+/// and `theorem_filter_card` already use.
+let lemma_sort_solutions_permutation_pointwise
+      (base : option wf_iri) (conds : list order_condition) (omega : list S.smap) (mu : S.smap)
+  : Lemma (S.mult mu (sort_solutions base conds omega) == S.mult mu omega) =
+  lemma_sortWith_mult mult_pred (compare_on_conditions base conds) omega mu;
+  lemma_mult_is_filter_length mu (sort_solutions base conds omega);
+  lemma_mult_is_filter_length mu omega
+
+let theorem_sort_solutions_permutation
+      (base : option wf_iri) (conds : list order_condition) (omega : list S.smap)
+  : Lemma (forall (mu : S.smap).
+             S.mult mu (sort_solutions base conds omega) == S.mult mu omega) =
+  FStar.Classical.forall_intro (lemma_sort_solutions_permutation_pointwise base conds omega)
+
+(** ------------------------------------------------------------------ **)
+(** 15.2 OFFSET / LIMIT -- `slice_solutions` is a contiguous window     **)
+(** ------------------------------------------------------------------ **)
+
+/// `list_drop`/`list_take` length -- how many rows survive.
+let rec lemma_list_drop_length (#a:Type) (n:nat) (l:list a)
+  : Lemma (ensures List.Tot.length (list_drop n l) ==
+                   (if n >= List.Tot.length l then 0 else List.Tot.length l - n))
+          (decreases l) =
+  if n = 0 then ()
+  else match l with
+  | [] -> ()
+  | _ :: tl -> lemma_list_drop_length #a (n - 1) tl
+
+let rec lemma_list_take_length (#a:Type) (n:nat) (l:list a)
+  : Lemma (ensures List.Tot.length (list_take n l) ==
+                   (if n <= List.Tot.length l then n else List.Tot.length l))
+          (decreases l) =
+  if n = 0 then ()
+  else match l with
+  | [] -> ()
+  | _ :: tl -> lemma_list_take_length #a (n - 1) tl
+
+/// `list_drop`/`list_take` index -- WHICH row survives at position `i`.
+let rec lemma_list_drop_index (#a:Type) (n:nat) (l:list a) (i:nat)
+  : Lemma (requires i < List.Tot.length (list_drop n l))
+          (ensures i + n < List.Tot.length l /\
+                   List.Tot.index (list_drop n l) i == List.Tot.index l (i + n))
+          (decreases l) =
+  if n = 0 then ()
+  else match l with
+  | [] -> ()
+  | _ :: tl -> lemma_list_drop_index #a (n - 1) tl i
+
+let rec lemma_list_take_index (#a:Type) (n:nat) (l:list a) (i:nat)
+  : Lemma (requires i < List.Tot.length (list_take n l))
+          (ensures i < n /\ i < List.Tot.length l /\
+                   List.Tot.index (list_take n l) i == List.Tot.index l i)
+          (decreases l) =
+  if n = 0 then ()
+  else match l with
+  | [] -> ()
+  | _ :: tl ->
+    if i = 0 then ()
+    else lemma_list_take_index #a (n - 1) tl (i - 1)
+
+/// The WINDOW statement: row `i` of `slice_solutions` is row `i +
+/// offset` of the input, unconditionally in both offset and limit
+/// (all four combinations of `None`/`Some`). `off_val` is the
+/// effective (zero-default) offset OFFSET/LIMIT §18.4 describes.
+let theorem_slice_solutions_window
+      (offset : option nat) (limit : option nat) (omega : list S.smap) (i : nat)
+  : Lemma (requires i < List.Tot.length (slice_solutions offset limit omega))
+          (ensures
+            (let off_val = (match offset with None -> 0 | Some n -> n) in
+             i + off_val < List.Tot.length omega /\
+             List.Tot.index (slice_solutions offset limit omega) i ==
+             List.Tot.index omega (i + off_val))) =
+  match offset, limit with
+  | None, None -> ()
+  | None, Some n -> lemma_list_take_index n omega i
+  | Some k, None -> lemma_list_drop_index k omega i
+  | Some k, Some n ->
+    let after_offset = list_drop k omega in
+    lemma_list_take_index n after_offset i;
+    lemma_list_drop_index k omega i
+
+/// The LENGTH statement: the guarded arithmetic OFFSET/LIMIT §18.4
+/// describes ("Result = a slice of the sequence, of length no greater
+/// than LIMIT, starting after OFFSET elements"), spelled out over
+/// `nat` (guarding the offset-past-end subtraction rather than
+/// truncating it).
+let theorem_slice_solutions_length
+      (offset : option nat) (limit : option nat) (omega : list S.smap)
+  : Lemma (ensures
+      (let off_val = (match offset with None -> 0 | Some n -> n) in
+       let after_len =
+         (if off_val >= List.Tot.length omega then 0 else List.Tot.length omega - off_val) in
+       List.Tot.length (slice_solutions offset limit omega) ==
+       (match limit with
+        | None -> after_len
+        | Some n -> (if n <= after_len then n else after_len)))) =
+  match offset, limit with
+  | None, None -> ()
+  | None, Some n -> lemma_list_take_length n omega
+  | Some k, None -> lemma_list_drop_length k omega
+  | Some k, Some n ->
+    lemma_list_drop_length k omega;
+    lemma_list_take_length n (list_drop k omega)
+
+(** ------------------------------------------------------------------ **)
+(** 15.3 DISTINCT completeness (section 18.5) -- REDUCED is identity    **)
+(** ------------------------------------------------------------------ **)
+
+// `reduced_solutions` is literally `let reduced_solutions omega = omega`
+// (SPARQL11.Algebra.fst, section 11.2). Section 18.4's REDUCED clause
+// ("the returned sequence... MAY eliminate some or all duplicates")
+// makes duplicate elimination OPTIONAL, so keeping every row is
+// trivially conformant by that clause's own wording -- no theorem is
+// stated about it because the identity function needs none: it is
+// conformant for every possible input by construction, not by proof.
+
+// `sm_equal`'s underlying `rdf_term_eq` is an equivalence relation on
+// `rdf_term` (reflexive: `RDF.Term.fsti`'s `lemma_rdf_term_eq_refl`;
+// symmetric and transitive: NOT proved anywhere in the tree except
+// `RDF.Store.Columnar.DeltaMerge.fst`'s local `lemma_rdf_term_eq_symm`/
+// `_trans`, whose own header comment says so explicitly -- grepped
+// before writing these). Re-derived here rather than imported, to keep
+// this module's dependency footprint to `RDF.Term`/`SPARQL11.Algebra`
+// (already open) plus `SPARQL11.Algebra.Spec` (already `module S`).
+let lemma_lang_tag_eq_symm (a b : string)
+  : Lemma (lang_tag_eq a b == lang_tag_eq b a) = ()
+
+let lemma_lang_tag_eq_trans (a b c : string)
+  : Lemma (requires lang_tag_eq a b /\ lang_tag_eq b c) (ensures lang_tag_eq a c) = ()
+
+let lemma_lang_tag_option_eq_symm (a b : option string)
+  : Lemma (lang_tag_option_eq a b == lang_tag_option_eq b a) =
+  match a, b with
+  | None, None -> ()
+  | Some x, Some y -> lemma_lang_tag_eq_symm x y
+  | _, _ -> ()
+
+let lemma_lang_tag_option_eq_trans (a b c : option string)
+  : Lemma (requires lang_tag_option_eq a b /\ lang_tag_option_eq b c)
+          (ensures lang_tag_option_eq a c) =
+  match a, b, c with
+  | None, None, None -> ()
+  | Some x, Some y, Some z -> lemma_lang_tag_eq_trans x y z
+  | _, _, _ -> ()
+
+let lemma_literal_eq_symm (l1 l2 : literal) : Lemma (literal_eq l1 l2 == literal_eq l2 l1) =
+  lemma_lang_tag_option_eq_symm l1.lang_tag l2.lang_tag
+
+let lemma_literal_eq_trans (l1 l2 l3 : literal)
+  : Lemma (requires literal_eq l1 l2 /\ literal_eq l2 l3) (ensures literal_eq l1 l3) =
+  lemma_lang_tag_option_eq_trans l1.lang_tag l2.lang_tag l3.lang_tag
+
+let lemma_subject_eq_symm (a b : subject) : Lemma (subject_eq a b == subject_eq b a) =
+  match a, b with
+  | S_IRI _, S_IRI _ -> ()
+  | S_BNode _, S_BNode _ -> ()
+  | _, _ -> ()
+
+let lemma_subject_eq_trans (a b c : subject)
+  : Lemma (requires subject_eq a b /\ subject_eq b c) (ensures subject_eq a c) =
+  match a, b, c with
+  | S_IRI _, S_IRI _, S_IRI _ -> ()
+  | S_BNode _, S_BNode _, S_BNode _ -> ()
+  | _, _, _ -> ()
+
+let rec lemma_rdf_term_eq_symm (a b : rdf_term)
+  : Lemma (ensures rdf_term_eq a b == rdf_term_eq b a) (decreases a) =
+  match a, b with
+  | T_Literal l1, T_Literal l2 -> lemma_literal_eq_symm l1 l2
+  | T_TripleTerm s1 _ o1, T_TripleTerm s2 _ o2 ->
+    lemma_subject_eq_symm s1 s2; lemma_rdf_term_eq_symm o1 o2
+  | _, _ -> ()
+
+let rec lemma_rdf_term_eq_trans (a b c : rdf_term)
+  : Lemma (requires rdf_term_eq a b /\ rdf_term_eq b c) (ensures rdf_term_eq a c) (decreases a) =
+  match a, b, c with
+  | T_Literal l1, T_Literal l2, T_Literal l3 -> lemma_literal_eq_trans l1 l2 l3
+  | T_TripleTerm s1 _ o1, T_TripleTerm s2 _ o2, T_TripleTerm s3 _ o3 ->
+    lemma_subject_eq_trans s1 s2 s3; lemma_rdf_term_eq_trans o1 o2 o3
+  | _, _, _ -> ()
+
+// `sm_equal` reflexivity, symmetry, transitivity -- the equivalence-
+// relation properties `list_deduplicate_sm_acc`'s correctness needs.
+// Symmetry is free (`sm_equal m1 m2 = sm_submap m1 m2 && sm_submap m2
+// m1`, so swapping is `&&` commutativity). Reflexivity needs
+// no-repeated-keys (RT-5-adjacent: an association list can carry a
+// repeated variable, `sm_lookup` resolves it to the FIRST binding, so
+// a LATER occurrence of the same key with the same or a different term
+// looks unequal to itself under `sm_submap`'s own list walk -- the
+// same hazard `lemma_sm_compatible_refl`, one module over in
+// SPARQL11.Algebra.fst section 19.9, already needed
+// `List.Tot.noRepeats (sm_domain mu)` for).
+let lemma_sm_equal_symm (m1 m2 : S.smap)
+  : Lemma (sm_equal m1 m2 == sm_equal m2 m1) = ()
+
+let rec lemma_sm_submap_extra_binding (m1 m2 : S.smap) (v : string) (t : rdf_term)
+  : Lemma (requires not (List.Tot.mem v (sm_domain m1)))
+          (ensures sm_submap m1 ((v, t) :: m2) == sm_submap m1 m2)
+          (decreases m1) =
+  match m1 with
+  | [] -> ()
+  | (v1, t1) :: rest -> lemma_sm_submap_extra_binding rest m2 v t
+
+let rec lemma_sm_submap_refl (mu : S.smap)
+  : Lemma (requires List.Tot.noRepeats (sm_domain mu))
+          (ensures sm_submap mu mu == true)
+          (decreases mu) =
+  match mu with
+  | [] -> ()
+  | (v, t) :: rest ->
+    lemma_rdf_term_eq_refl t;
+    lemma_sm_submap_extra_binding rest rest v t;
+    lemma_sm_submap_refl rest
+
+let lemma_sm_equal_refl (mu : S.smap)
+  : Lemma (requires List.Tot.noRepeats (sm_domain mu))
+          (ensures sm_equal mu mu == true) =
+  lemma_sm_submap_refl mu
+
+let rec lemma_sm_submap_lookup (m1 m2 : S.smap) (v : string)
+  : Lemma (requires sm_submap m1 m2 == true)
+          (ensures (match sm_lookup v m1 with
+                    | None -> True
+                    | Some t -> (exists t'. sm_lookup v m2 == Some t' /\ rdf_term_eq t t' == true)))
+          (decreases m1) =
+  match m1 with
+  | [] -> ()
+  | (v1, t1) :: rest -> if v = v1 then () else lemma_sm_submap_lookup rest m2 v
+
+let rec lemma_sm_submap_trans (m1 m2 m3 : S.smap)
+  : Lemma (requires sm_submap m1 m2 == true /\ sm_submap m2 m3 == true)
+          (ensures sm_submap m1 m3 == true)
+          (decreases m1) =
+  match m1 with
+  | [] -> ()
+  | (v, t) :: rest ->
+    lemma_sm_submap_trans rest m2 m3;
+    (match sm_lookup v m2 with
+     | Some t2 ->
+       lemma_sm_submap_lookup m2 m3 v;
+       eliminate exists (t3 : rdf_term). sm_lookup v m3 == Some t3 /\ rdf_term_eq t2 t3 == true
+       returns sm_submap m1 m3 == true
+       with _ . lemma_rdf_term_eq_trans t t2 t3
+     | None -> ())
+
+let lemma_sm_equal_trans (m1 m2 m3 : S.smap)
+  : Lemma (requires sm_equal m1 m2 == true /\ sm_equal m2 m3 == true)
+          (ensures sm_equal m1 m3 == true) =
+  lemma_sm_submap_trans m1 m2 m3;
+  lemma_sm_submap_trans m3 m2 m1
+
+/// `sm_mem mu l` gives a witness in `l` equal to `mu`.
+let rec lemma_sm_mem_witness (mu : S.smap) (l : list S.smap)
+  : Lemma (requires sm_mem mu l == true)
+          (ensures exists (y : S.smap). List.Tot.memP y l /\ sm_equal mu y == true)
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | hd :: tl -> if sm_equal mu hd then () else lemma_sm_mem_witness mu tl
+
+/// `list_deduplicate_sm_acc` is independent of its accumulator up to
+/// append: growing/shrinking `acc` never changes what the walk over
+/// `l` itself decides to keep, it only changes what that decision gets
+/// appended onto. This decouples the completeness induction below from
+/// having to track an evolving accumulator directly.
+let rec lemma_dedup_acc_append (l acc : list S.smap)
+  : Lemma (ensures list_deduplicate_sm_acc l acc ==
+                   List.Tot.append (list_deduplicate_sm_acc l []) acc)
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | x :: xs ->
+    if sm_mem x xs then
+      lemma_dedup_acc_append xs acc
+    else begin
+      lemma_dedup_acc_append xs (x :: acc);
+      lemma_dedup_acc_append xs [x];
+      List.Tot.append_assoc (list_deduplicate_sm_acc xs []) [x] acc
+    end
+
+/// COMPLETENESS: every solution mapping in the input has an `sm_equal`
+/// representative in `distinct_solutions`' output -- nothing is lost,
+/// only merged with its equivalence class (the SR-1-repaired
+/// `sm_equal`, order-insensitive per section 18.3). The
+/// no-repeated-keys hypothesis on every mapping in `omega` is the
+/// well-formedness invariant `sm_equal` reflexivity needs (see the
+/// comment above `lemma_sm_equal_symm`); it is the same invariant
+/// `theorem_sm_compatible_sound`'s neighbourhood already carries for
+/// this file's other engine-level equality reasoning.
+let rec lemma_dedup_core_complete (l : list S.smap) (mu : S.smap)
+  : Lemma (requires List.Tot.memP mu l /\
+                    (forall (m : S.smap).
+                       List.Tot.memP m l ==> List.Tot.noRepeats (sm_domain m)))
+          (ensures exists (mu' : S.smap).
+                     List.Tot.memP mu' (list_deduplicate_sm_acc l []) /\ sm_equal mu mu' == true)
+          (decreases l) =
+  match l with
+  | [] -> ()
+  | x :: xs ->
+    eliminate (mu == x) \/ (List.Tot.memP mu xs)
+    returns exists (mu' : S.smap).
+              List.Tot.memP mu' (list_deduplicate_sm_acc l []) /\ sm_equal mu mu' == true
+    with _ . begin
+      if sm_mem x xs then begin
+        lemma_sm_mem_witness x xs;
+        eliminate exists (y : S.smap). List.Tot.memP y xs /\ sm_equal x y == true
+        returns exists (mu' : S.smap).
+                  List.Tot.memP mu' (list_deduplicate_sm_acc l []) /\ sm_equal mu mu' == true
+        with _ . begin
+          lemma_dedup_core_complete xs y;
+          eliminate exists (mu' : S.smap).
+              List.Tot.memP mu' (list_deduplicate_sm_acc xs []) /\ sm_equal y mu' == true
+          returns exists (mu'' : S.smap).
+              List.Tot.memP mu'' (list_deduplicate_sm_acc l []) /\ sm_equal mu mu'' == true
+          with _ . lemma_sm_equal_trans x y mu'
+        end
+      end else begin
+        lemma_sm_equal_refl x;
+        lemma_dedup_acc_append xs [x];
+        List.Tot.append_memP (list_deduplicate_sm_acc xs []) [x] x
+      end
+    end
+    and _ . begin
+      lemma_dedup_core_complete xs mu;
+      eliminate exists (mu' : S.smap).
+          List.Tot.memP mu' (list_deduplicate_sm_acc xs []) /\ sm_equal mu mu' == true
+      returns exists (mu'' : S.smap).
+          List.Tot.memP mu'' (list_deduplicate_sm_acc l []) /\ sm_equal mu mu'' == true
+      with _ . begin
+        if sm_mem x xs then ()
+        else begin
+          lemma_dedup_acc_append xs [x];
+          List.Tot.append_memP (list_deduplicate_sm_acc xs []) [x] mu'
+        end
+      end
+    end
+
+let theorem_distinct_complete (omega : list S.smap) (mu : S.smap)
+  : Lemma (requires List.Tot.memP mu omega /\
+                    (forall (m : S.smap).
+                       List.Tot.memP m omega ==> List.Tot.noRepeats (sm_domain m)))
+          (ensures exists (mu' : S.smap).
+                     List.Tot.memP mu' (distinct_solutions omega) /\ sm_equal mu mu' == true) =
+  lemma_dedup_core_complete omega mu;
+  eliminate exists (mu' : S.smap).
+      List.Tot.memP mu' (list_deduplicate_sm_acc omega []) /\ sm_equal mu mu' == true
+  returns exists (mu'' : S.smap).
+      List.Tot.memP mu'' (distinct_solutions omega) /\ sm_equal mu mu'' == true
+  with _ . FStar.List.Tot.Properties.rev_memP (list_deduplicate_sm_acc omega []) mu'
+
+(** ------------------------------------------------------------------ **)
+(** 15.4 FINDING SR-3: distinct_card_spec does NOT hold of              **)
+(** distinct_solutions -- the same rdf_term_eq/term_id_eqb gap as SR-1/ **)
+(** SR-2, now on the CARDINALITY clause DISTINCT keeping its fix did    **)
+(** not touch                                                          **)
+(** ------------------------------------------------------------------ **)
+
+// `distinct_card_spec omega res` (Spec.fst:773) is `forall mu. mult mu
+// res == (if mult mu omega > 0 then 1 else 0)`, and `mult` is counted
+// via `S.smap_eqb`, i.e. `term_id_eqb` -- EXACT structural term
+// identity (Spec.fst's `lit_id_eqb`: lexical form, datatype, lang tag
+// AND CASE, direction, all compared verbatim). `distinct_solutions`
+// dedups via `sm_equal`, i.e. `rdf_term_eq` -- coarser: it folds
+// language-tag CASE (`lang_tag_eq`, RDF.Term.fsti) and XMLLiteral
+// canonical form. Two well-formed literals `rdf_term_eq` accepts as
+// equal but `term_id_eqb` does not (`"Alice"@en` vs `"Alice"@EN`) are
+// exactly `OWL.RL.Refinement.fst`'s `key_lit_en`/`key_lit_EN` crux,
+// reused here for the same reason it was built there: a genuine
+// `wf_literal` pair a real graph can carry, differing only in lang-tag
+// case.
+//
+// Consequence: `distinct_solutions [dc_mu1; dc_mu2]` (dc_mu1, dc_mu2
+// binding the same variable to those two literals) DEDUPS them into
+// one representative (`sm_equal dc_mu1 dc_mu2 == true`, SR-1's fixed
+// keep-the-last semantics keeps `dc_mu2`). But `S.mult dc_mu1 [dc_mu2]
+// == 0` -- `term_id_eqb`, unlike `rdf_term_eq`, does NOT identify
+// `"Alice"@en` with `"Alice"@EN`. `distinct_card_spec` requires
+// `mult dc_mu1 res == 1` whenever `mult dc_mu1 omega > 0` (true here:
+// `dc_mu1` matches itself), so the specification's forall instantiated
+// at `dc_mu1` demands `1`, and the engine delivers `0`. FALSE --
+// proved below with the explicit witness, not merely left unproved.
+// This is SR-1/SR-2's root cause (rdf_term_eq vs term identity, the
+// #324 dispute; see this file's Part 1) surfacing a THIRD time, on the
+// one clause of DISTINCT the SR-1 mutual-submap fix did not reach: the
+// fix corrected which rows survive relative to the SET semantics, not
+// which count formula the BAG semantics is being checked against.
+
+let dc_lit_en : wf_literal =
+  assert_norm (literal_wf ({ lexical_form = "Alice"; datatype = rdf_lang_string;
+                             lang_tag = Some "en"; direction = None } <: literal));
+  { lexical_form = "Alice"; datatype = rdf_lang_string;
+    lang_tag = Some "en"; direction = None }
+
+let dc_lit_EN : wf_literal =
+  assert_norm (literal_wf ({ lexical_form = "Alice"; datatype = rdf_lang_string;
+                             lang_tag = Some "EN"; direction = None } <: literal));
+  { lexical_form = "Alice"; datatype = rdf_lang_string;
+    lang_tag = Some "EN"; direction = None }
+
+let dc_mu1 : S.smap = [("name", T_Literal dc_lit_en)]
+let dc_mu2 : S.smap = [("name", T_Literal dc_lit_EN)]
+
+let lemma_dc_witness_rdf_term_eq ()
+  : Lemma (rdf_term_eq (T_Literal dc_lit_en) (T_Literal dc_lit_EN) == true) =
+  assert_norm (rdf_term_eq (T_Literal dc_lit_en) (T_Literal dc_lit_EN) == true)
+
+let lemma_dc_witness_term_id_eqb_false ()
+  : Lemma (S.term_id_eqb (T_Literal dc_lit_en) (T_Literal dc_lit_EN) == false) =
+  assert_norm (S.term_id_eqb (T_Literal dc_lit_en) (T_Literal dc_lit_EN) == false)
+
+let lemma_dc_distinct_dedups ()
+  : Lemma (distinct_solutions [dc_mu1; dc_mu2] == [dc_mu2]) =
+  lemma_dc_witness_rdf_term_eq ();
+  assert_norm (sm_equal dc_mu1 dc_mu2 == true);
+  assert_norm (distinct_solutions [dc_mu1; dc_mu2] == [dc_mu2])
+
+let lemma_dc_mult_witness_omega ()
+  : Lemma (S.mult dc_mu1 [dc_mu1; dc_mu2] == 1) =
+  lemma_dc_witness_term_id_eqb_false ();
+  assert_norm (S.mult dc_mu1 [dc_mu1; dc_mu2] == 1)
+
+let lemma_dc_mult_witness_res ()
+  : Lemma (S.mult dc_mu1 [dc_mu2] == 0) =
+  lemma_dc_witness_term_id_eqb_false ();
+  assert_norm (S.mult dc_mu1 [dc_mu2] == 0)
+
+/// FINDING SR-3, machine-checked: `distinct_card_spec` is FALSE of
+/// `distinct_solutions` on this witness. `theorem_distinct_card` (the
+/// unconditional statement the brief for this file's fourth theorem
+/// names) is therefore not stated -- this is its refutation, in the
+/// style Part 6/9 already use for SR-1/SR-2 (a positive theorem is not
+/// weakened to paper over a false claim; the false claim is proved
+/// false instead).
+let theorem_sr3_distinct_card_spec_false ()
+  : Lemma (~ (S.distinct_card_spec [dc_mu1; dc_mu2] (distinct_solutions [dc_mu1; dc_mu2]))) =
+  lemma_dc_distinct_dedups ();
+  lemma_dc_mult_witness_omega ();
+  lemma_dc_mult_witness_res ()
+
+#pop-options
