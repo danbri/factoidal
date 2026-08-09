@@ -45,3 +45,15 @@ depth ≤3, brief anatomy, spray-and-verify economics, harvest
 pattern). Registry updated with every landing. No --lax, no admits.
 Findings discipline: refuted statements become machine-checked
 counterexample rows, as in G3.
+
+## G1 fold-in (owner decision)
+
+Owner, 2026-08-09, on folding the G1 review-kernel remainder into M5:
+"Yes fold it in." M5 therefore delivers BOTH the composed
+response-level theorems AND the curated review kernel (the minimal
+set of spec predicates + theorem statements a W3C expert can read
+end-to-end, with the guarantee nothing outside it overrides what it
+states) — assembled at the same time because composition is when the
+kernel's contents become final. Task #38's kernel item transfers to
+task #46/M5; the G2 remainder (claims block, npm batch) stays in
+task #40.
