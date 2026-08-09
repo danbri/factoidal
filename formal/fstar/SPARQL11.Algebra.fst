@@ -3598,9 +3598,664 @@ let dataset_to_store_for (p : group_graph_pattern) (ds : rdf_dataset) : rdf_data
         ds.ds_named
   }
 
+(* Forward declarations — concrete definitions follow eval_pattern.
+   #65 Step 2c (2026-05-10): both forward refs take `option wf_iri` so
+   the FILTER / BIND paths in eval_pattern_store thread the BASE IRI
+   from eval_select_query through to eval_expr_with_base. Their OCaml
+   realisations in 62_forward_ref_wiring.sh wire them to the renamed
+   mutual block (eval_expr_with_base) directly. *)
+assume val eval_expr_ebv : option wf_iri -> expr -> solution_mapping -> bool
+assume val eval_expr_fwd : option wf_iri -> expr -> solution_mapping -> eval_result
+
+(* EXISTS/NOT EXISTS need graph + dataset context — forward ref to concrete eval_exists *)
+assume val eval_exists_fwd : option wf_iri -> group_graph_pattern -> solution_mapping -> rdf_graph -> rdf_dataset -> bool
+
+(* Sub-SELECT evaluation — concrete definition in Part 16, forward-declared
+   here so eval_pattern can use it for GP_SubSelect *)
+assume val eval_subselect_fwd : query -> rdf_graph -> rdf_dataset -> solution_sequence
+
+(* Property path evaluation — concrete definition in Part 13, forward-declared
+   here so eval_pattern can use it for GP_PropertyPath *)
+type path_result_fwd = list (rdf_term * rdf_term)
+assume val eval_property_path_fwd : property_path -> rdf_graph -> path_result_fwd
+
+(* SPARQL SERVICE endpoint resolver — issue #57.
+   Hook used by GP_Service evaluation. Given the absolute IRI of a
+   federation endpoint, return Some store if the runner has registered
+   an interceptor (W3C tests bind unreachable endpoints like
+   <http://example.org/sparql> to a local TTL graph via qt:serviceData),
+   else None. The OCaml side patches this to consult a global
+   hashtable populated by the test runner; live HTTP I/O is a later
+   phase (would require Dv-effecting evaluator).
+   Pure from F*'s perspective: each call sees the same snapshot
+   during one query evaluation. *)
+assume val service_endpoint_lookup : wf_iri -> option graph_store
+
+(* Convert property path results to solution mappings by matching against
+   subject/object pattern terms *)
+let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
+  (pairs : path_result_fwd) : solution_sequence =
+  list_filter_map
+    (fun (pair : rdf_term * rdf_term) ->
+      let (s, o) = pair in
+      (* Try to bind subject *)
+      let mu_s = match ps with
+        | PS_Var v -> Some [(v, s)]
+        | PS_IRI i -> if rdf_term_eq (T_IRI i) s then Some [] else None
+        | PS_BNode b -> if rdf_term_eq (T_BNode b) s then Some [] else None
+        // Property paths over triple-term endpoints are out of wave-1
+        // scope (#305): a triple-term subject never matches, drop the pair.
+        | PS_TripleTerm _ _ _ -> None in
+      match mu_s with
+      | None -> None
+      | Some bindings_s ->
+        (* Try to bind object *)
+        let mu_o = match pt with
+          | PT_Var v ->
+            (* Check if variable already bound to a different value *)
+            (match List.Tot.assoc v bindings_s with
+             | Some existing -> if rdf_term_eq existing o then Some bindings_s else None
+             | None -> Some ((v, o) :: bindings_s))
+          | PT_IRI i -> if rdf_term_eq (T_IRI i) o then Some bindings_s else None
+          | PT_BNode b -> if rdf_term_eq (T_BNode b) o then Some bindings_s else None
+          | PT_Literal l -> if rdf_term_eq (T_Literal l) o then Some bindings_s else None
+          | PT_TripleTerm _ _ _ -> None in
+        mu_o)
+    pairs
+
+(* LeftJoin (OPTIONAL): join + unmatched from left.
+   2026-07-06 hash-join fix (see the banner above `join`): unlike `join`,
+   LeftJoin is NOT commutative — omega1 (LEFT) must stay the outer
+   iteration, since an unmatched left row survives verbatim. That's
+   unaffected here: only the RIGHT side (omega2) gets indexed, once,
+   outside the loop, so each left row's candidate lookup narrows from
+   O(|omega2|) to O(log K + |candidates|) instead of scanning all of
+   omega2; omega1's row order (and hence the overall output order
+   across distinct left rows) is untouched. No shared variables (the
+   `vars = []` branch) keeps the exact original nested-loop behavior. *)
+let left_join (base : option wf_iri) (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
+  match omega1, omega2 with
+  | [], _ -> []
+  | _, [] -> omega1
+  | mu1_0 :: _, mu2_0 :: _ ->
+    let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+    if vars = [] then
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                if eval_expr_ebv base filter_expr merged then Some merged else None
+              else None)
+            omega2 in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
+    else
+      let idx = build_join_index vars omega2 in
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let candidates = join_candidates idx vars mu1 in
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                if eval_expr_ebv base filter_expr merged then Some merged else None
+              else None)
+            candidates in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
+
+// Does [e] contain an EXISTS / NOT EXISTS anywhere? Decides whether a
+// backend filter needs the materialise-and-substitute path
+// (`filter_solutions_with_graph` / `left_join_with_graph`) or can stay
+// on the graph-free fast path. Total over every constructor ON
+// PURPOSE -- no catch-all -- so adding an expr constructor forces a
+// decision here; a missed composite arm would silently send
+// existential filters back to eval_expr_ebv's ER_Error catch-all,
+// which is the every-row-dropped bug this predicate exists to close
+// (found from the npm build 2026-08-02; W3C exists01 reproduced it on
+// the native CLI, whose queries run through the backend path the W3C
+// runner never uses).
+let rec expr_has_existential (e : expr) : Tot bool (decreases e) =
+  match e with
+  | E_Exists _ | E_NotExists _ -> true
+  | E_Var _ | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
+  | E_DecimalLit _ | E_DoubleLit _ | E_Bound _ | E_Now -> false
+  | E_Arith _ e1 e2 | E_Compare _ e1 e2 | E_And e1 e2 | E_Or e1 e2
+  | E_StrDt e1 e2 | E_StrLang e1 e2
+  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
+  | E_StrBefore e1 e2 | E_StrAfter e1 e2
+  | E_SameTerm e1 e2 ->
+    expr_has_existential e1 || expr_has_existential e2
+  | E_UnaryMinus e1 | E_UnaryPlus e1 | E_Not e1
+  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1
+  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1
+  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1
+  | E_StrLen e1 | E_UCase e1 | E_LCase e1 | E_EncodeForUri e1
+  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1
+  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1
+  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
+  | E_Seconds e1 | E_Timezone e1 | E_Tz e1
+  | E_Aggregate _ _ e1
+  | E_TTSubject e1 | E_TTPredicate e1 | E_TTObject e1 | E_IsTriple e1 ->
+    expr_has_existential e1
+  | E_StrLangDir e1 e2 e3 | E_If e1 e2 e3 | E_TripleTerm e1 e2 e3 ->
+    expr_has_existential e1 || expr_has_existential e2 ||
+    expr_has_existential e3
+  | E_Coalesce es | E_Concat es | E_FunctionCall _ es ->
+    expr_list_has_existential es
+  | E_In e1 es | E_NotIn e1 es ->
+    expr_has_existential e1 || expr_list_has_existential es
+  | E_Substr e1 e2 e3o | E_Regex e1 e2 e3o ->
+    expr_has_existential e1 || expr_has_existential e2 ||
+    expr_opt_has_existential e3o
+  | E_Replace e1 e2 e3 e4o ->
+    expr_has_existential e1 || expr_has_existential e2 ||
+    expr_has_existential e3 || expr_opt_has_existential e4o
+
+and expr_list_has_existential (es : list expr) : Tot bool (decreases es) =
+  match es with
+  | [] -> false
+  | e :: rest -> expr_has_existential e || expr_list_has_existential rest
+
+and expr_opt_has_existential (eo : option expr) : Tot bool (decreases eo) =
+  match eo with
+  | None -> false
+  | Some e -> expr_has_existential e
+
+(* Filter: retain solutions where expression evaluates to true *)
+let filter_solutions_fwd (base : option wf_iri) (e : expr) (omega : solution_sequence) : solution_sequence =
+  List.Tot.filter (eval_expr_ebv base e) omega
+
+(* Pre-evaluate every E_Exists / E_NotExists sub-expression of [e] under
+   solution mapping [mu] against [g]/[ds], replacing each with E_BoolLit.
+   This lets the graph-free eval_expr_ebv handle filters where existentials
+   are nested inside E_And / E_Or / E_Not / E_If / etc.
+   Issue: w3c negation/subset-02. Fixes nested-NOT-EXISTS evaluation.
+   Structural recursion on [e]; sub-patterns inside E_Exists / E_NotExists
+   are evaluated by eval_exists_fwd (which uses substitute_pattern internally)
+   and are NOT recursed into here, so termination is by decreases on [e]. *)
+let rec substitute_existentials
+  (base : option wf_iri)
+  (e : expr) (mu : solution_mapping)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : Tot expr (decreases e) =
+  match e with
+  | E_Exists p ->
+    E_BoolLit (eval_exists_fwd base p mu g ds)
+  | E_NotExists p ->
+    E_BoolLit (not (eval_exists_fwd base p mu g ds))
+  // Recurse into sub-expressions
+  | E_Arith op e1 e2 ->
+    E_Arith op (substitute_existentials base e1 mu g ds)
+               (substitute_existentials base e2 mu g ds)
+  | E_UnaryMinus e1 -> E_UnaryMinus (substitute_existentials base e1 mu g ds)
+  | E_UnaryPlus e1 -> E_UnaryPlus (substitute_existentials base e1 mu g ds)
+  | E_Compare op e1 e2 ->
+    E_Compare op (substitute_existentials base e1 mu g ds)
+                 (substitute_existentials base e2 mu g ds)
+  | E_And e1 e2 ->
+    E_And (substitute_existentials base e1 mu g ds)
+          (substitute_existentials base e2 mu g ds)
+  | E_Or e1 e2 ->
+    E_Or (substitute_existentials base e1 mu g ds)
+         (substitute_existentials base e2 mu g ds)
+  | E_Not e1 -> E_Not (substitute_existentials base e1 mu g ds)
+  | E_IsIRI e1 -> E_IsIRI (substitute_existentials base e1 mu g ds)
+  | E_IsBlank e1 -> E_IsBlank (substitute_existentials base e1 mu g ds)
+  | E_IsLiteral e1 -> E_IsLiteral (substitute_existentials base e1 mu g ds)
+  | E_IsNumeric e1 -> E_IsNumeric (substitute_existentials base e1 mu g ds)
+  | E_Str e1 -> E_Str (substitute_existentials base e1 mu g ds)
+  | E_Lang e1 -> E_Lang (substitute_existentials base e1 mu g ds)
+  | E_Datatype e1 -> E_Datatype (substitute_existentials base e1 mu g ds)
+  | E_IRI_fn e1 -> E_IRI_fn (substitute_existentials base e1 mu g ds)
+  | E_HasLang e1 -> E_HasLang (substitute_existentials base e1 mu g ds)
+  | E_HasLangDir e1 -> E_HasLangDir (substitute_existentials base e1 mu g ds)
+  | E_LangDir e1 -> E_LangDir (substitute_existentials base e1 mu g ds)
+  | E_StrDt e1 e2 ->
+    E_StrDt (substitute_existentials base e1 mu g ds)
+            (substitute_existentials base e2 mu g ds)
+  | E_StrLang e1 e2 ->
+    E_StrLang (substitute_existentials base e1 mu g ds)
+              (substitute_existentials base e2 mu g ds)
+  | E_StrLangDir e1 e2 e3 ->
+    E_StrLangDir (substitute_existentials base e1 mu g ds)
+                 (substitute_existentials base e2 mu g ds)
+                 (substitute_existentials base e3 mu g ds)
+  | E_If c t f ->
+    E_If (substitute_existentials base c mu g ds)
+         (substitute_existentials base t mu g ds)
+         (substitute_existentials base f mu g ds)
+  | E_Coalesce es ->
+    E_Coalesce (substitute_existentials_list base es mu g ds)
+  | E_In ev es ->
+    E_In (substitute_existentials base ev mu g ds)
+         (substitute_existentials_list base es mu g ds)
+  | E_NotIn ev es ->
+    E_NotIn (substitute_existentials base ev mu g ds)
+            (substitute_existentials_list base es mu g ds)
+  | E_StrLen e1 -> E_StrLen (substitute_existentials base e1 mu g ds)
+  | E_Substr e1 e2 e3_opt ->
+    E_Substr (substitute_existentials base e1 mu g ds)
+             (substitute_existentials base e2 mu g ds)
+             (substitute_existentials_opt base e3_opt mu g ds)
+  | E_UCase e1 -> E_UCase (substitute_existentials base e1 mu g ds)
+  | E_LCase e1 -> E_LCase (substitute_existentials base e1 mu g ds)
+  | E_StrStarts e1 e2 ->
+    E_StrStarts (substitute_existentials base e1 mu g ds)
+                (substitute_existentials base e2 mu g ds)
+  | E_StrEnds e1 e2 ->
+    E_StrEnds (substitute_existentials base e1 mu g ds)
+              (substitute_existentials base e2 mu g ds)
+  | E_Contains e1 e2 ->
+    E_Contains (substitute_existentials base e1 mu g ds)
+               (substitute_existentials base e2 mu g ds)
+  | E_StrBefore e1 e2 ->
+    E_StrBefore (substitute_existentials base e1 mu g ds)
+                (substitute_existentials base e2 mu g ds)
+  | E_StrAfter e1 e2 ->
+    E_StrAfter (substitute_existentials base e1 mu g ds)
+               (substitute_existentials base e2 mu g ds)
+  | E_Concat es ->
+    E_Concat (substitute_existentials_list base es mu g ds)
+  | E_EncodeForUri e1 -> E_EncodeForUri (substitute_existentials base e1 mu g ds)
+  | E_Replace e1 e2 e3 e4_opt ->
+    E_Replace (substitute_existentials base e1 mu g ds)
+              (substitute_existentials base e2 mu g ds)
+              (substitute_existentials base e3 mu g ds)
+              (substitute_existentials_opt base e4_opt mu g ds)
+  | E_Regex e1 e2 e3_opt ->
+    E_Regex (substitute_existentials base e1 mu g ds)
+            (substitute_existentials base e2 mu g ds)
+            (substitute_existentials_opt base e3_opt mu g ds)
+  | E_Abs e1 -> E_Abs (substitute_existentials base e1 mu g ds)
+  | E_Round e1 -> E_Round (substitute_existentials base e1 mu g ds)
+  | E_Ceil e1 -> E_Ceil (substitute_existentials base e1 mu g ds)
+  | E_Floor e1 -> E_Floor (substitute_existentials base e1 mu g ds)
+  | E_MD5 e1 -> E_MD5 (substitute_existentials base e1 mu g ds)
+  | E_SHA1 e1 -> E_SHA1 (substitute_existentials base e1 mu g ds)
+  | E_SHA256 e1 -> E_SHA256 (substitute_existentials base e1 mu g ds)
+  | E_SHA384 e1 -> E_SHA384 (substitute_existentials base e1 mu g ds)
+  | E_SHA512 e1 -> E_SHA512 (substitute_existentials base e1 mu g ds)
+  | E_Year e1 -> E_Year (substitute_existentials base e1 mu g ds)
+  | E_Month e1 -> E_Month (substitute_existentials base e1 mu g ds)
+  | E_Day e1 -> E_Day (substitute_existentials base e1 mu g ds)
+  | E_Hours e1 -> E_Hours (substitute_existentials base e1 mu g ds)
+  | E_Minutes e1 -> E_Minutes (substitute_existentials base e1 mu g ds)
+  | E_Seconds e1 -> E_Seconds (substitute_existentials base e1 mu g ds)
+  | E_Timezone e1 -> E_Timezone (substitute_existentials base e1 mu g ds)
+  | E_Tz e1 -> E_Tz (substitute_existentials base e1 mu g ds)
+  | E_SameTerm e1 e2 ->
+    E_SameTerm (substitute_existentials base e1 mu g ds)
+               (substitute_existentials base e2 mu g ds)
+  | E_Aggregate fn dist e1 ->
+    E_Aggregate fn dist (substitute_existentials base e1 mu g ds)
+  | E_FunctionCall iri args ->
+    E_FunctionCall iri (substitute_existentials_list base args mu g ds)
+  | E_TripleTerm a b c ->
+    E_TripleTerm (substitute_existentials base a mu g ds)
+                 (substitute_existentials base b mu g ds)
+                 (substitute_existentials base c mu g ds)
+  | E_TTSubject e1 -> E_TTSubject (substitute_existentials base e1 mu g ds)
+  | E_TTPredicate e1 -> E_TTPredicate (substitute_existentials base e1 mu g ds)
+  | E_TTObject e1 -> E_TTObject (substitute_existentials base e1 mu g ds)
+  | E_IsTriple e1 -> E_IsTriple (substitute_existentials base e1 mu g ds)
+  // Leaf cases pass through unchanged
+  | _ -> e
+
+and substitute_existentials_list
+  (base : option wf_iri)
+  (es : list expr) (mu : solution_mapping)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : Tot (list expr) (decreases es) =
+  match es with
+  | [] -> []
+  | hd :: tl ->
+    substitute_existentials base hd mu g ds
+      :: substitute_existentials_list base tl mu g ds
+
+and substitute_existentials_opt
+  (base : option wf_iri)
+  (eo : option expr) (mu : solution_mapping)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : Tot (option expr) (decreases eo) =
+  match eo with
+  | None -> None
+  | Some e -> Some (substitute_existentials base e mu g ds)
+
+(* Filter with graph context: pre-substitute existentials, then filter. *)
+let filter_solutions_with_graph
+  (base : option wf_iri)
+  (e : expr) (omega : solution_sequence)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : solution_sequence =
+  List.Tot.filter
+    (fun mu ->
+      let e' = substitute_existentials base e mu g ds in
+      eval_expr_ebv base e' mu)
+    omega
+
+(* LeftJoin with graph context: same substitution applied per-mapping.
+   2026-07-06 hash-join fix: same shape as `left_join` above — omega1
+   stays the outer loop (LeftJoin is not commutative), omega2 gets
+   indexed once outside the loop when a shared variable exists. This is
+   also the path the on-disk/COTTAS backend dispatches OPTIONAL through
+   (SPARQL11.Store.fst's `GP_LeftJoin` arm calls `left_join`, and the
+   in-memory `eval_pattern_store`'s `GP_LeftJoin` arm calls this
+   function) — confirming/refuting the competitive-benchmark q6 hypothesis
+   ("OPTIONAL re-issues a bound backend search per outer row"): it does
+   NOT — both dispatch paths evaluate the RHS pattern exactly once
+   (`eval_pattern_store`/`eval_pattern_backend` called once before this
+   function runs), then this nested-loop-turned-hash-join runs over the
+   two already-materialized sequences. The q6 residual cost was this
+   O(|omega1|*|omega2|) nested loop plus genuine per-row decode work on
+   a 25,083-row result, not repeated backend queries. *)
+let left_join_with_graph
+  (base : option wf_iri)
+  (omega1 omega2 : solution_sequence) (filter_expr : expr)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : solution_sequence =
+  match omega1, omega2 with
+  | [], _ -> []
+  | _, [] -> omega1
+  | mu1_0 :: _, mu2_0 :: _ ->
+    let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+    if vars = [] then
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                let e' = substitute_existentials base filter_expr merged g ds in
+                if eval_expr_ebv base e' merged then Some merged else None
+              else None)
+            omega2 in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
+    else
+      let idx = build_join_index vars omega2 in
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let candidates = join_candidates idx vars mu1 in
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                let e' = substitute_existentials base filter_expr merged g ds in
+                if eval_expr_ebv base e' merged then Some merged else None
+              else None)
+            candidates in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
+
+(* Union: multiset union of solution mappings.
+   Tail-rec @ — issue #95. Stdlib `@` (List.Tot.append) is non-tail-rec
+   and overflows on million-row UNIONs. Lh.append_tr is provably equal
+   to append (lemma_append_tr_eq) so this is observationally identical. *)
+let union (omega1 omega2 : solution_sequence) : solution_sequence =
+  Lh.append_tr omega1 omega2
+
+(* Minus (§18.5) *)
+(* Ω1 Minus Ω2 = { μ1 | μ1 ∈ Ω1, ∀ μ2 ∈ Ω2:
+     ¬compatible(μ1, μ2) ∨ dom(μ1) ∩ dom(μ2) = ∅ } *)
+(* domains_disjoint: true if no variable appears in both mappings — CONCRETE *)
+let rec domains_disjoint (mu1 mu2 : solution_mapping) : bool =
+  match mu1 with
+  | [] -> true
+  | (v, _) :: rest ->
+    not (Some? (List.Tot.assoc v mu2)) && domains_disjoint rest mu2
+
+let minus (omega1 omega2 : solution_sequence) : solution_sequence =
+  List.Tot.filter
+    (fun mu1 ->
+      not (List.Tot.existsb
+        (fun mu2 -> sm_compatible mu1 mu2 && not (domains_disjoint mu1 mu2))
+        omega2))
+    omega1
+
+(** 7.4 Graph pattern evaluation (§18.6) — CONCRETE **)
+
+(* BIND row evaluator with per-row / per-call-site freshness context.
+   `i` indexes the row (=> cross-solution freshness for BNODE()/UUID());
+   the bound variable name is the call-site tag (=> two BINDs of UUID()
+   in one row differ). The context is used only for evaluation and is
+   never stored: the result binds into the PRISTINE mapping `mu`. *)
+let rec fx_bind_rows (base : option wf_iri) (e : expr) (v : var_name)
+  (omega : solution_sequence) (i : nat)
+  : Tot solution_sequence (decreases omega) =
+  match omega with
+  | [] -> []
+  | mu :: rest ->
+    let mu_ctx = fx_ctx_put (string_of_int i) v mu in
+    let row =
+      (match er_to_term (eval_expr_fwd base e mu_ctx) with
+       | Some t ->
+         (match sm_lookup v mu with
+          | Some _ -> mu
+          | None -> sm_bind v t mu)
+       | None -> mu) in
+    row :: fx_bind_rows base e v rest (i + 1)
+
+(* Evaluate a group graph pattern against a graph store and dataset store.
+   #65 Step 2c (2026-05-10): threads BASE IRI for IRI() resolution in
+   FILTER / BIND sub-expressions and through sub-SELECT evaluation. *)
+let rec eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store)
+  : Tot solution_sequence (decreases p) =
+  match p with
+  | GP_BGP bgp -> eval_bgp_store bgp gs
+
+  | GP_Join p1 (GP_ServiceVar v inner silent) ->
+    (* SERVICE ?var pattern in scope of a left-hand pattern: evaluate the
+       left pattern first, then for each solution look up [v] to obtain the
+       endpoint IRI and dispatch through [service_endpoint_lookup] per
+       solution. Issue #57 Phase 3. Termination: [inner] is structurally
+       smaller than the outer [GP_Join _ (GP_ServiceVar _ inner _)]. *)
+    let omega1 = eval_pattern_store base p1 gs dss in
+    Lh.concatMap_tr
+      (fun mu ->
+        match sm_lookup v mu with
+        | Some (T_IRI iri) ->
+          if is_iri iri then
+            (match service_endpoint_lookup iri with
+             | Some remote_gs ->
+               let omega2 = eval_pattern_store base inner remote_gs dss in
+               Lh.concatMap_tr
+                 (fun mu2 ->
+                   if sm_compatible mu mu2 then [sm_merge mu mu2] else [])
+                 omega2
+             | None -> if silent then [mu] else [])
+          else (if silent then [mu] else [])
+        | _ -> if silent then [mu] else [])
+      omega1
+
+  | GP_Join (GP_ServiceVar v inner silent) p2 ->
+    (* Symmetric: SERVICE ?var on the left side of a join. Evaluate the
+       right side first to obtain bindings for [v]. *)
+    let omega2 = eval_pattern_store base p2 gs dss in
+    Lh.concatMap_tr
+      (fun mu ->
+        match sm_lookup v mu with
+        | Some (T_IRI iri) ->
+          if is_iri iri then
+            (match service_endpoint_lookup iri with
+             | Some remote_gs ->
+               let omega1 = eval_pattern_store base inner remote_gs dss in
+               Lh.concatMap_tr
+                 (fun mu1 ->
+                   if sm_compatible mu mu1 then [sm_merge mu mu1] else [])
+                 omega1
+             | None -> if silent then [mu] else [])
+          else (if silent then [mu] else [])
+        | _ -> if silent then [mu] else [])
+      omega2
+
+  | GP_Join p1 p2 ->
+    join (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
+
+  | GP_LeftJoin p1 p2 filter_e ->
+    left_join_with_graph base
+      (eval_pattern_store base p1 gs dss)
+      (eval_pattern_store base p2 gs dss)
+      filter_e gs.gs_graph (store_to_dataset dss)
+
+  | GP_Filter e p' ->
+    let omega = eval_pattern_store base p' gs dss in
+    (* EXISTS / NOT EXISTS may appear at the top level of [e] OR nested
+       inside E_And / E_Or / E_Not / E_If etc. The pre-substitution pass
+       below replaces every existential sub-expression with E_BoolLit
+       evaluated against the current graph + dataset, so the graph-free
+       eval_expr_ebv can finish the job. Issue: w3c negation/subset-02. *)
+    filter_solutions_with_graph base e omega gs.gs_graph (store_to_dataset dss)
+
+  | GP_Union p1 p2 ->
+    union (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
+
+  | GP_Minus p1 p2 ->
+    minus (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
+
+  | GP_Lateral p1 p2 ->
+    (* P1 LATERAL { P2 }: foreach solution mu1 of P1, substitute mu1 into
+       P2 and evaluate once per row (correlated join), merging each mu2
+       from that per-row evaluation with mu1. Threads through the SAME
+       gs/dss store-capability seam as every other combinator here — no
+       backend-specific code. *)
+    let omega1 = eval_pattern_store base p1 gs dss in
+    Lh.concatMap_tr
+      (fun mu1 ->
+        let p2' = lateral_substitute mu1 p2 in
+        let omega2 = eval_subselect_fwd (lateral_wrap_as_query p2') gs.gs_graph (store_to_dataset dss) in
+        list_filter_map
+          (fun mu2 -> if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None)
+          omega2)
+      omega1
+
+  | GP_Empty -> [sm_empty]
+
+  | GP_Bind e v p' ->
+    let omega = eval_pattern_store base p' gs dss in
+    fx_bind_rows base e v omega 0
+
+  | GP_Values vars rows ->
+    eval_values vars rows
+
+  | GP_Graph gt p' ->
+    (* §18.6 GRAPH evaluation: evaluate p' against named graph(s) *)
+    (match gt with
+     | PT_IRI name ->
+       (* GRAPH <iri> { p } — evaluate p against the named graph identified by iri *)
+       (match lookup_named_store name dss.dss_named with
+        | Some ngs -> eval_pattern_store base p' ngs dss
+        | None -> [])  (* Named graph not in dataset → empty *)
+     | PT_Var v ->
+       (* GRAPH ?var { p } — iterate over all named graphs, binding ?var *)
+       Lh.concatMap_tr
+         (fun (ngs : named_graph_store) ->
+           let ng_results = eval_pattern_store base p' ngs.ngs_store dss in
+           if is_iri ngs.ngs_name then
+             Lh.concatMap_tr
+               (fun mu ->
+                 match sm_bind_if_compatible v (T_IRI ngs.ngs_name) mu with
+                 | Some mu' -> [mu']
+                 | None -> [])
+               ng_results
+           else ng_results)
+         dss.dss_named
+     | _ -> eval_pattern_store base p' gs dss)  (* Other pattern terms: fallback to current graph *)
+
+  | GP_Service iri p' silent ->
+    (* SPARQL 1.1 federated query — issue #57.
+       The runner registers (endpoint_iri, graph_store) pairs via the
+       service_endpoint_lookup hook; we evaluate the inner pattern
+       against the registered remote graph. Live HTTP federation is
+       deferred (would require Dv-effecting evaluator). For SILENT,
+       SPARQL spec says "produce a solution mapping with no bindings"
+       on error, which under our solution_sequence type is a list with
+       one empty mapping; for non-SILENT the spec says error, but our
+       Tot type cannot signal that, so we return [] (empty bindings)
+       in both cases as a sentinel. *)
+    (match service_endpoint_lookup iri with
+     | Some remote_gs -> eval_pattern_store base p' remote_gs dss
+     | None ->
+       if silent then [[]]  (* unbound but not erroring *)
+       else [])
+
+  | GP_ServiceVar _ _ silent ->
+    (* SPARQL 1.1 federated query with variable endpoint, issue #57 Phase 3.
+       Outside a join context we have no outer mu to look up the variable
+       binding, so we cannot dispatch. Per SPARQL spec a SERVICE pattern
+       whose endpoint is unbound is an error; for SILENT we yield the
+       empty mapping, otherwise we yield no bindings. The common path
+       (variable bound by an adjacent BGP / VALUES) is handled in the
+       GP_Join branch above. *)
+    if silent then [[]] else []
+
+  | GP_SubSelect q ->
+    (* Sub-SELECT: recursively evaluate the inner SELECT query *)
+    eval_subselect_fwd q gs.gs_graph (store_to_dataset dss)
+
+  | GP_PropertyPath ps pp pt ->
+    (* Evaluate property path and convert results to solution mappings.
+       Issue #66 fix (2026-05-08, Section E retirement): for
+       ZeroOrMore / ZeroOrOne paths, SPARQL 1.1 §18.2.2.5 requires
+       reflexive matches for any constant IRI/BNode in the pattern,
+       even when that node has zero edges of the path's predicate (or
+       isn't in the graph at all). eval_property_path_fwd's reflexive
+       set is built from graph_nodes, which only contains nodes that
+       actually appear in some triple — so a constant IRI from the
+       query that's mentioned nowhere in the data wouldn't be picked
+       up. Adds the missing reflexive pairs here, post-eval, only for
+       Zero* paths. *)
+    let pairs = eval_property_path_fwd pp gs.gs_graph in
+    let pairs =
+      match pp with
+      | PP_ZeroOrMore _ | PP_ZeroOrOne _ ->
+        let constant_terms : list rdf_term =
+          Lh.append_tr
+            (match ps with
+             | PS_IRI i   -> [T_IRI i]
+             | PS_BNode b -> [T_BNode b]
+             | PS_Var _   -> []
+             | PS_TripleTerm _ _ _ -> [])
+            (match pt with
+             | PT_IRI i     -> [T_IRI i]
+             | PT_BNode b   -> [T_BNode b]
+             | PT_Literal l -> [T_Literal l]
+             | PT_Var _     -> []
+             | PT_TripleTerm _ _ _ -> [])
+        in
+        let has_reflexive (t : rdf_term) : bool =
+          List.Tot.existsb
+            (fun (pair : rdf_term * rdf_term) ->
+              let (s, o) = pair in
+              rdf_term_eq s t && rdf_term_eq o t)
+            pairs
+        in
+        let new_terms = List.Tot.filter (fun t -> not (has_reflexive t)) constant_terms in
+        let new_reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) new_terms in
+        Lh.append_tr pairs new_reflexive
+      | _ -> pairs
+    in
+    path_result_to_solutions ps pt pairs
+
+(* Evaluate a group graph pattern against an RDF graph and dataset — CONCRETE.
+   The dataset carries named graphs for GP_Graph evaluation.
+   [S1] Property paths deferred.
+   Sub-SELECT deferred (requires eval_select_query).
+   #65 Step 2c (2026-05-10): threads BASE IRI through.
+   2026-07-06 (lazy per-bucket index construction): builds the stores
+   with `graph_to_store_for`/`dataset_to_store_for` — `p` is the WHOLE
+   pattern about to be evaluated (recursively, `eval_pattern_store`
+   threads the SAME `gs`/`dss` through every nested node), so the
+   query-shape pre-pass above sees everything it needs to. *)
+let eval_pattern (base : option wf_iri) (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset)
+  : solution_sequence =
+  eval_pattern_store base p (graph_to_store_for p g) (dataset_to_store_for p ds)
+
 (** ====================================================================== **)
 (** Part 8: SPARQL 1.1 Expression Evaluation (§17)                         **)
-(** eval_expr_with_base is self-contained: it does not call eval_pattern.  **)
+(** eval_expr is mutually recursive with eval_pattern above.               **)
 (** ====================================================================== **)
 
 // XSD type casting: xsd:integer(), xsd:decimal(), xsd:boolean(), etc.
@@ -4465,661 +5120,6 @@ and eval_concat_with_base (base : option wf_iri) (es : list expr) (mu : solution
    was retired upstream and the wrappers had no remaining callers.
    All call sites now use the `_with_base` mutual-block variants
    directly. *)
-
-irreducible
-let eval_expr_ebv (base : option wf_iri) (e : expr) (mu : solution_mapping) : bool =
-  ebv (eval_expr_with_base base e mu)
-
-irreducible
-let eval_expr_fwd (base : option wf_iri) (e : expr) (mu : solution_mapping) : eval_result =
-  eval_expr_with_base base e mu
-
-(* EXISTS/NOT EXISTS need graph + dataset context — forward ref to concrete eval_exists *)
-assume val eval_exists_fwd : option wf_iri -> group_graph_pattern -> solution_mapping -> rdf_graph -> rdf_dataset -> bool
-
-(* Sub-SELECT evaluation — concrete definition in Part 16, forward-declared
-   here so eval_pattern can use it for GP_SubSelect *)
-assume val eval_subselect_fwd : query -> rdf_graph -> rdf_dataset -> solution_sequence
-
-(* Property path evaluation — concrete definition in Part 13, forward-declared
-   here so eval_pattern can use it for GP_PropertyPath *)
-type path_result_fwd = list (rdf_term * rdf_term)
-assume val eval_property_path_fwd : property_path -> rdf_graph -> path_result_fwd
-
-(* SPARQL SERVICE endpoint resolver — issue #57.
-   Hook used by GP_Service evaluation. Given the absolute IRI of a
-   federation endpoint, return Some store if the runner has registered
-   an interceptor (W3C tests bind unreachable endpoints like
-   <http://example.org/sparql> to a local TTL graph via qt:serviceData),
-   else None. The OCaml side patches this to consult a global
-   hashtable populated by the test runner; live HTTP I/O is a later
-   phase (would require Dv-effecting evaluator).
-   Pure from F*'s perspective: each call sees the same snapshot
-   during one query evaluation. *)
-assume val service_endpoint_lookup : wf_iri -> option graph_store
-
-(* Convert property path results to solution mappings by matching against
-   subject/object pattern terms *)
-let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
-  (pairs : path_result_fwd) : solution_sequence =
-  list_filter_map
-    (fun (pair : rdf_term * rdf_term) ->
-      let (s, o) = pair in
-      (* Try to bind subject *)
-      let mu_s = match ps with
-        | PS_Var v -> Some [(v, s)]
-        | PS_IRI i -> if rdf_term_eq (T_IRI i) s then Some [] else None
-        | PS_BNode b -> if rdf_term_eq (T_BNode b) s then Some [] else None
-        // Property paths over triple-term endpoints are out of wave-1
-        // scope (#305): a triple-term subject never matches, drop the pair.
-        | PS_TripleTerm _ _ _ -> None in
-      match mu_s with
-      | None -> None
-      | Some bindings_s ->
-        (* Try to bind object *)
-        let mu_o = match pt with
-          | PT_Var v ->
-            (* Check if variable already bound to a different value *)
-            (match List.Tot.assoc v bindings_s with
-             | Some existing -> if rdf_term_eq existing o then Some bindings_s else None
-             | None -> Some ((v, o) :: bindings_s))
-          | PT_IRI i -> if rdf_term_eq (T_IRI i) o then Some bindings_s else None
-          | PT_BNode b -> if rdf_term_eq (T_BNode b) o then Some bindings_s else None
-          | PT_Literal l -> if rdf_term_eq (T_Literal l) o then Some bindings_s else None
-          | PT_TripleTerm _ _ _ -> None in
-        mu_o)
-    pairs
-
-(* LeftJoin (OPTIONAL): join + unmatched from left.
-   2026-07-06 hash-join fix (see the banner above `join`): unlike `join`,
-   LeftJoin is NOT commutative — omega1 (LEFT) must stay the outer
-   iteration, since an unmatched left row survives verbatim. That's
-   unaffected here: only the RIGHT side (omega2) gets indexed, once,
-   outside the loop, so each left row's candidate lookup narrows from
-   O(|omega2|) to O(log K + |candidates|) instead of scanning all of
-   omega2; omega1's row order (and hence the overall output order
-   across distinct left rows) is untouched. No shared variables (the
-   `vars = []` branch) keeps the exact original nested-loop behavior. *)
-let left_join (base : option wf_iri) (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
-  match omega1, omega2 with
-  | [], _ -> []
-  | _, [] -> omega1
-  | mu1_0 :: _, mu2_0 :: _ ->
-    let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
-    if vars = [] then
-      Lh.concatMap_tr
-        (fun mu1 ->
-          let joins = list_filter_map
-            (fun mu2 ->
-              if sm_compatible mu1 mu2 then
-                let merged = sm_merge mu1 mu2 in
-                if eval_expr_ebv base filter_expr merged then Some merged else None
-              else None)
-            omega2 in
-          if List.Tot.length joins > 0 then joins else [mu1])
-        omega1
-    else
-      let idx = build_join_index vars omega2 in
-      Lh.concatMap_tr
-        (fun mu1 ->
-          let candidates = join_candidates idx vars mu1 in
-          let joins = list_filter_map
-            (fun mu2 ->
-              if sm_compatible mu1 mu2 then
-                let merged = sm_merge mu1 mu2 in
-                if eval_expr_ebv base filter_expr merged then Some merged else None
-              else None)
-            candidates in
-          if List.Tot.length joins > 0 then joins else [mu1])
-        omega1
-
-// Does [e] contain an EXISTS / NOT EXISTS anywhere? Decides whether a
-// backend filter needs the materialise-and-substitute path
-// (`filter_solutions_with_graph` / `left_join_with_graph`) or can stay
-// on the graph-free fast path. Total over every constructor ON
-// PURPOSE -- no catch-all -- so adding an expr constructor forces a
-// decision here; a missed composite arm would silently send
-// existential filters back to eval_expr_ebv's ER_Error catch-all,
-// which is the every-row-dropped bug this predicate exists to close
-// (found from the npm build 2026-08-02; W3C exists01 reproduced it on
-// the native CLI, whose queries run through the backend path the W3C
-// runner never uses).
-let rec expr_has_existential (e : expr) : Tot bool (decreases e) =
-  match e with
-  | E_Exists _ | E_NotExists _ -> true
-  | E_Var _ | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
-  | E_DecimalLit _ | E_DoubleLit _ | E_Bound _ | E_Now -> false
-  | E_Arith _ e1 e2 | E_Compare _ e1 e2 | E_And e1 e2 | E_Or e1 e2
-  | E_StrDt e1 e2 | E_StrLang e1 e2
-  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
-  | E_StrBefore e1 e2 | E_StrAfter e1 e2
-  | E_SameTerm e1 e2 ->
-    expr_has_existential e1 || expr_has_existential e2
-  | E_UnaryMinus e1 | E_UnaryPlus e1 | E_Not e1
-  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1
-  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1
-  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1
-  | E_StrLen e1 | E_UCase e1 | E_LCase e1 | E_EncodeForUri e1
-  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1
-  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1
-  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
-  | E_Seconds e1 | E_Timezone e1 | E_Tz e1
-  | E_Aggregate _ _ e1
-  | E_TTSubject e1 | E_TTPredicate e1 | E_TTObject e1 | E_IsTriple e1 ->
-    expr_has_existential e1
-  | E_StrLangDir e1 e2 e3 | E_If e1 e2 e3 | E_TripleTerm e1 e2 e3 ->
-    expr_has_existential e1 || expr_has_existential e2 ||
-    expr_has_existential e3
-  | E_Coalesce es | E_Concat es | E_FunctionCall _ es ->
-    expr_list_has_existential es
-  | E_In e1 es | E_NotIn e1 es ->
-    expr_has_existential e1 || expr_list_has_existential es
-  | E_Substr e1 e2 e3o | E_Regex e1 e2 e3o ->
-    expr_has_existential e1 || expr_has_existential e2 ||
-    expr_opt_has_existential e3o
-  | E_Replace e1 e2 e3 e4o ->
-    expr_has_existential e1 || expr_has_existential e2 ||
-    expr_has_existential e3 || expr_opt_has_existential e4o
-
-and expr_list_has_existential (es : list expr) : Tot bool (decreases es) =
-  match es with
-  | [] -> false
-  | e :: rest -> expr_has_existential e || expr_list_has_existential rest
-
-and expr_opt_has_existential (eo : option expr) : Tot bool (decreases eo) =
-  match eo with
-  | None -> false
-  | Some e -> expr_has_existential e
-
-(* Filter: retain solutions where expression evaluates to true *)
-let filter_solutions_fwd (base : option wf_iri) (e : expr) (omega : solution_sequence) : solution_sequence =
-  List.Tot.filter (eval_expr_ebv base e) omega
-
-(* Pre-evaluate every E_Exists / E_NotExists sub-expression of [e] under
-   solution mapping [mu] against [g]/[ds], replacing each with E_BoolLit.
-   This lets the graph-free eval_expr_ebv handle filters where existentials
-   are nested inside E_And / E_Or / E_Not / E_If / etc.
-   Issue: w3c negation/subset-02. Fixes nested-NOT-EXISTS evaluation.
-   Structural recursion on [e]; sub-patterns inside E_Exists / E_NotExists
-   are evaluated by eval_exists_fwd (which uses substitute_pattern internally)
-   and are NOT recursed into here, so termination is by decreases on [e]. *)
-let rec substitute_existentials
-  (base : option wf_iri)
-  (e : expr) (mu : solution_mapping)
-  (g : rdf_graph) (ds : rdf_dataset)
-  : Tot expr (decreases e) =
-  match e with
-  | E_Exists p ->
-    E_BoolLit (eval_exists_fwd base p mu g ds)
-  | E_NotExists p ->
-    E_BoolLit (not (eval_exists_fwd base p mu g ds))
-  // Recurse into sub-expressions
-  | E_Arith op e1 e2 ->
-    E_Arith op (substitute_existentials base e1 mu g ds)
-               (substitute_existentials base e2 mu g ds)
-  | E_UnaryMinus e1 -> E_UnaryMinus (substitute_existentials base e1 mu g ds)
-  | E_UnaryPlus e1 -> E_UnaryPlus (substitute_existentials base e1 mu g ds)
-  | E_Compare op e1 e2 ->
-    E_Compare op (substitute_existentials base e1 mu g ds)
-                 (substitute_existentials base e2 mu g ds)
-  | E_And e1 e2 ->
-    E_And (substitute_existentials base e1 mu g ds)
-          (substitute_existentials base e2 mu g ds)
-  | E_Or e1 e2 ->
-    E_Or (substitute_existentials base e1 mu g ds)
-         (substitute_existentials base e2 mu g ds)
-  | E_Not e1 -> E_Not (substitute_existentials base e1 mu g ds)
-  | E_IsIRI e1 -> E_IsIRI (substitute_existentials base e1 mu g ds)
-  | E_IsBlank e1 -> E_IsBlank (substitute_existentials base e1 mu g ds)
-  | E_IsLiteral e1 -> E_IsLiteral (substitute_existentials base e1 mu g ds)
-  | E_IsNumeric e1 -> E_IsNumeric (substitute_existentials base e1 mu g ds)
-  | E_Str e1 -> E_Str (substitute_existentials base e1 mu g ds)
-  | E_Lang e1 -> E_Lang (substitute_existentials base e1 mu g ds)
-  | E_Datatype e1 -> E_Datatype (substitute_existentials base e1 mu g ds)
-  | E_IRI_fn e1 -> E_IRI_fn (substitute_existentials base e1 mu g ds)
-  | E_HasLang e1 -> E_HasLang (substitute_existentials base e1 mu g ds)
-  | E_HasLangDir e1 -> E_HasLangDir (substitute_existentials base e1 mu g ds)
-  | E_LangDir e1 -> E_LangDir (substitute_existentials base e1 mu g ds)
-  | E_StrDt e1 e2 ->
-    E_StrDt (substitute_existentials base e1 mu g ds)
-            (substitute_existentials base e2 mu g ds)
-  | E_StrLang e1 e2 ->
-    E_StrLang (substitute_existentials base e1 mu g ds)
-              (substitute_existentials base e2 mu g ds)
-  | E_StrLangDir e1 e2 e3 ->
-    E_StrLangDir (substitute_existentials base e1 mu g ds)
-                 (substitute_existentials base e2 mu g ds)
-                 (substitute_existentials base e3 mu g ds)
-  | E_If c t f ->
-    E_If (substitute_existentials base c mu g ds)
-         (substitute_existentials base t mu g ds)
-         (substitute_existentials base f mu g ds)
-  | E_Coalesce es ->
-    E_Coalesce (substitute_existentials_list base es mu g ds)
-  | E_In ev es ->
-    E_In (substitute_existentials base ev mu g ds)
-         (substitute_existentials_list base es mu g ds)
-  | E_NotIn ev es ->
-    E_NotIn (substitute_existentials base ev mu g ds)
-            (substitute_existentials_list base es mu g ds)
-  | E_StrLen e1 -> E_StrLen (substitute_existentials base e1 mu g ds)
-  | E_Substr e1 e2 e3_opt ->
-    E_Substr (substitute_existentials base e1 mu g ds)
-             (substitute_existentials base e2 mu g ds)
-             (substitute_existentials_opt base e3_opt mu g ds)
-  | E_UCase e1 -> E_UCase (substitute_existentials base e1 mu g ds)
-  | E_LCase e1 -> E_LCase (substitute_existentials base e1 mu g ds)
-  | E_StrStarts e1 e2 ->
-    E_StrStarts (substitute_existentials base e1 mu g ds)
-                (substitute_existentials base e2 mu g ds)
-  | E_StrEnds e1 e2 ->
-    E_StrEnds (substitute_existentials base e1 mu g ds)
-              (substitute_existentials base e2 mu g ds)
-  | E_Contains e1 e2 ->
-    E_Contains (substitute_existentials base e1 mu g ds)
-               (substitute_existentials base e2 mu g ds)
-  | E_StrBefore e1 e2 ->
-    E_StrBefore (substitute_existentials base e1 mu g ds)
-                (substitute_existentials base e2 mu g ds)
-  | E_StrAfter e1 e2 ->
-    E_StrAfter (substitute_existentials base e1 mu g ds)
-               (substitute_existentials base e2 mu g ds)
-  | E_Concat es ->
-    E_Concat (substitute_existentials_list base es mu g ds)
-  | E_EncodeForUri e1 -> E_EncodeForUri (substitute_existentials base e1 mu g ds)
-  | E_Replace e1 e2 e3 e4_opt ->
-    E_Replace (substitute_existentials base e1 mu g ds)
-              (substitute_existentials base e2 mu g ds)
-              (substitute_existentials base e3 mu g ds)
-              (substitute_existentials_opt base e4_opt mu g ds)
-  | E_Regex e1 e2 e3_opt ->
-    E_Regex (substitute_existentials base e1 mu g ds)
-            (substitute_existentials base e2 mu g ds)
-            (substitute_existentials_opt base e3_opt mu g ds)
-  | E_Abs e1 -> E_Abs (substitute_existentials base e1 mu g ds)
-  | E_Round e1 -> E_Round (substitute_existentials base e1 mu g ds)
-  | E_Ceil e1 -> E_Ceil (substitute_existentials base e1 mu g ds)
-  | E_Floor e1 -> E_Floor (substitute_existentials base e1 mu g ds)
-  | E_MD5 e1 -> E_MD5 (substitute_existentials base e1 mu g ds)
-  | E_SHA1 e1 -> E_SHA1 (substitute_existentials base e1 mu g ds)
-  | E_SHA256 e1 -> E_SHA256 (substitute_existentials base e1 mu g ds)
-  | E_SHA384 e1 -> E_SHA384 (substitute_existentials base e1 mu g ds)
-  | E_SHA512 e1 -> E_SHA512 (substitute_existentials base e1 mu g ds)
-  | E_Year e1 -> E_Year (substitute_existentials base e1 mu g ds)
-  | E_Month e1 -> E_Month (substitute_existentials base e1 mu g ds)
-  | E_Day e1 -> E_Day (substitute_existentials base e1 mu g ds)
-  | E_Hours e1 -> E_Hours (substitute_existentials base e1 mu g ds)
-  | E_Minutes e1 -> E_Minutes (substitute_existentials base e1 mu g ds)
-  | E_Seconds e1 -> E_Seconds (substitute_existentials base e1 mu g ds)
-  | E_Timezone e1 -> E_Timezone (substitute_existentials base e1 mu g ds)
-  | E_Tz e1 -> E_Tz (substitute_existentials base e1 mu g ds)
-  | E_SameTerm e1 e2 ->
-    E_SameTerm (substitute_existentials base e1 mu g ds)
-               (substitute_existentials base e2 mu g ds)
-  | E_Aggregate fn dist e1 ->
-    E_Aggregate fn dist (substitute_existentials base e1 mu g ds)
-  | E_FunctionCall iri args ->
-    E_FunctionCall iri (substitute_existentials_list base args mu g ds)
-  | E_TripleTerm a b c ->
-    E_TripleTerm (substitute_existentials base a mu g ds)
-                 (substitute_existentials base b mu g ds)
-                 (substitute_existentials base c mu g ds)
-  | E_TTSubject e1 -> E_TTSubject (substitute_existentials base e1 mu g ds)
-  | E_TTPredicate e1 -> E_TTPredicate (substitute_existentials base e1 mu g ds)
-  | E_TTObject e1 -> E_TTObject (substitute_existentials base e1 mu g ds)
-  | E_IsTriple e1 -> E_IsTriple (substitute_existentials base e1 mu g ds)
-  // Leaf cases pass through unchanged
-  | _ -> e
-
-and substitute_existentials_list
-  (base : option wf_iri)
-  (es : list expr) (mu : solution_mapping)
-  (g : rdf_graph) (ds : rdf_dataset)
-  : Tot (list expr) (decreases es) =
-  match es with
-  | [] -> []
-  | hd :: tl ->
-    substitute_existentials base hd mu g ds
-      :: substitute_existentials_list base tl mu g ds
-
-and substitute_existentials_opt
-  (base : option wf_iri)
-  (eo : option expr) (mu : solution_mapping)
-  (g : rdf_graph) (ds : rdf_dataset)
-  : Tot (option expr) (decreases eo) =
-  match eo with
-  | None -> None
-  | Some e -> Some (substitute_existentials base e mu g ds)
-
-(* Filter with graph context: pre-substitute existentials, then filter. *)
-let filter_solutions_with_graph
-  (base : option wf_iri)
-  (e : expr) (omega : solution_sequence)
-  (g : rdf_graph) (ds : rdf_dataset)
-  : solution_sequence =
-  List.Tot.filter
-    (fun mu ->
-      let e' = substitute_existentials base e mu g ds in
-      eval_expr_ebv base e' mu)
-    omega
-
-(* LeftJoin with graph context: same substitution applied per-mapping.
-   2026-07-06 hash-join fix: same shape as `left_join` above — omega1
-   stays the outer loop (LeftJoin is not commutative), omega2 gets
-   indexed once outside the loop when a shared variable exists. This is
-   also the path the on-disk/COTTAS backend dispatches OPTIONAL through
-   (SPARQL11.Store.fst's `GP_LeftJoin` arm calls `left_join`, and the
-   in-memory `eval_pattern_store`'s `GP_LeftJoin` arm calls this
-   function) — confirming/refuting the competitive-benchmark q6 hypothesis
-   ("OPTIONAL re-issues a bound backend search per outer row"): it does
-   NOT — both dispatch paths evaluate the RHS pattern exactly once
-   (`eval_pattern_store`/`eval_pattern_backend` called once before this
-   function runs), then this nested-loop-turned-hash-join runs over the
-   two already-materialized sequences. The q6 residual cost was this
-   O(|omega1|*|omega2|) nested loop plus genuine per-row decode work on
-   a 25,083-row result, not repeated backend queries. *)
-let left_join_with_graph
-  (base : option wf_iri)
-  (omega1 omega2 : solution_sequence) (filter_expr : expr)
-  (g : rdf_graph) (ds : rdf_dataset)
-  : solution_sequence =
-  match omega1, omega2 with
-  | [], _ -> []
-  | _, [] -> omega1
-  | mu1_0 :: _, mu2_0 :: _ ->
-    let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
-    if vars = [] then
-      Lh.concatMap_tr
-        (fun mu1 ->
-          let joins = list_filter_map
-            (fun mu2 ->
-              if sm_compatible mu1 mu2 then
-                let merged = sm_merge mu1 mu2 in
-                let e' = substitute_existentials base filter_expr merged g ds in
-                if eval_expr_ebv base e' merged then Some merged else None
-              else None)
-            omega2 in
-          if List.Tot.length joins > 0 then joins else [mu1])
-        omega1
-    else
-      let idx = build_join_index vars omega2 in
-      Lh.concatMap_tr
-        (fun mu1 ->
-          let candidates = join_candidates idx vars mu1 in
-          let joins = list_filter_map
-            (fun mu2 ->
-              if sm_compatible mu1 mu2 then
-                let merged = sm_merge mu1 mu2 in
-                let e' = substitute_existentials base filter_expr merged g ds in
-                if eval_expr_ebv base e' merged then Some merged else None
-              else None)
-            candidates in
-          if List.Tot.length joins > 0 then joins else [mu1])
-        omega1
-
-(* Union: multiset union of solution mappings.
-   Tail-rec @ — issue #95. Stdlib `@` (List.Tot.append) is non-tail-rec
-   and overflows on million-row UNIONs. Lh.append_tr is provably equal
-   to append (lemma_append_tr_eq) so this is observationally identical. *)
-let union (omega1 omega2 : solution_sequence) : solution_sequence =
-  Lh.append_tr omega1 omega2
-
-(* Minus (§18.5) *)
-(* Ω1 Minus Ω2 = { μ1 | μ1 ∈ Ω1, ∀ μ2 ∈ Ω2:
-     ¬compatible(μ1, μ2) ∨ dom(μ1) ∩ dom(μ2) = ∅ } *)
-(* domains_disjoint: true if no variable appears in both mappings — CONCRETE *)
-let rec domains_disjoint (mu1 mu2 : solution_mapping) : bool =
-  match mu1 with
-  | [] -> true
-  | (v, _) :: rest ->
-    not (Some? (List.Tot.assoc v mu2)) && domains_disjoint rest mu2
-
-let minus (omega1 omega2 : solution_sequence) : solution_sequence =
-  List.Tot.filter
-    (fun mu1 ->
-      not (List.Tot.existsb
-        (fun mu2 -> sm_compatible mu1 mu2 && not (domains_disjoint mu1 mu2))
-        omega2))
-    omega1
-
-(** 7.4 Graph pattern evaluation (§18.6) — CONCRETE **)
-
-(* BIND row evaluator with per-row / per-call-site freshness context.
-   `i` indexes the row (=> cross-solution freshness for BNODE()/UUID());
-   the bound variable name is the call-site tag (=> two BINDs of UUID()
-   in one row differ). The context is used only for evaluation and is
-   never stored: the result binds into the PRISTINE mapping `mu`. *)
-let rec fx_bind_rows (base : option wf_iri) (e : expr) (v : var_name)
-  (omega : solution_sequence) (i : nat)
-  : Tot solution_sequence (decreases omega) =
-  match omega with
-  | [] -> []
-  | mu :: rest ->
-    let mu_ctx = fx_ctx_put (string_of_int i) v mu in
-    let row =
-      (match er_to_term (eval_expr_fwd base e mu_ctx) with
-       | Some t ->
-         (match sm_lookup v mu with
-          | Some _ -> mu
-          | None -> sm_bind v t mu)
-       | None -> mu) in
-    row :: fx_bind_rows base e v rest (i + 1)
-
-(* Evaluate a group graph pattern against a graph store and dataset store.
-   #65 Step 2c (2026-05-10): threads BASE IRI for IRI() resolution in
-   FILTER / BIND sub-expressions and through sub-SELECT evaluation. *)
-let rec eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store)
-  : Tot solution_sequence (decreases p) =
-  match p with
-  | GP_BGP bgp -> eval_bgp_store bgp gs
-
-  | GP_Join p1 (GP_ServiceVar v inner silent) ->
-    (* SERVICE ?var pattern in scope of a left-hand pattern: evaluate the
-       left pattern first, then for each solution look up [v] to obtain the
-       endpoint IRI and dispatch through [service_endpoint_lookup] per
-       solution. Issue #57 Phase 3. Termination: [inner] is structurally
-       smaller than the outer [GP_Join _ (GP_ServiceVar _ inner _)]. *)
-    let omega1 = eval_pattern_store base p1 gs dss in
-    Lh.concatMap_tr
-      (fun mu ->
-        match sm_lookup v mu with
-        | Some (T_IRI iri) ->
-          if is_iri iri then
-            (match service_endpoint_lookup iri with
-             | Some remote_gs ->
-               let omega2 = eval_pattern_store base inner remote_gs dss in
-               Lh.concatMap_tr
-                 (fun mu2 ->
-                   if sm_compatible mu mu2 then [sm_merge mu mu2] else [])
-                 omega2
-             | None -> if silent then [mu] else [])
-          else (if silent then [mu] else [])
-        | _ -> if silent then [mu] else [])
-      omega1
-
-  | GP_Join (GP_ServiceVar v inner silent) p2 ->
-    (* Symmetric: SERVICE ?var on the left side of a join. Evaluate the
-       right side first to obtain bindings for [v]. *)
-    let omega2 = eval_pattern_store base p2 gs dss in
-    Lh.concatMap_tr
-      (fun mu ->
-        match sm_lookup v mu with
-        | Some (T_IRI iri) ->
-          if is_iri iri then
-            (match service_endpoint_lookup iri with
-             | Some remote_gs ->
-               let omega1 = eval_pattern_store base inner remote_gs dss in
-               Lh.concatMap_tr
-                 (fun mu1 ->
-                   if sm_compatible mu mu1 then [sm_merge mu mu1] else [])
-                 omega1
-             | None -> if silent then [mu] else [])
-          else (if silent then [mu] else [])
-        | _ -> if silent then [mu] else [])
-      omega2
-
-  | GP_Join p1 p2 ->
-    join (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
-
-  | GP_LeftJoin p1 p2 filter_e ->
-    left_join_with_graph base
-      (eval_pattern_store base p1 gs dss)
-      (eval_pattern_store base p2 gs dss)
-      filter_e gs.gs_graph (store_to_dataset dss)
-
-  | GP_Filter e p' ->
-    let omega = eval_pattern_store base p' gs dss in
-    (* EXISTS / NOT EXISTS may appear at the top level of [e] OR nested
-       inside E_And / E_Or / E_Not / E_If etc. The pre-substitution pass
-       below replaces every existential sub-expression with E_BoolLit
-       evaluated against the current graph + dataset, so the graph-free
-       eval_expr_ebv can finish the job. Issue: w3c negation/subset-02. *)
-    filter_solutions_with_graph base e omega gs.gs_graph (store_to_dataset dss)
-
-  | GP_Union p1 p2 ->
-    union (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
-
-  | GP_Minus p1 p2 ->
-    minus (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
-
-  | GP_Lateral p1 p2 ->
-    (* P1 LATERAL { P2 }: foreach solution mu1 of P1, substitute mu1 into
-       P2 and evaluate once per row (correlated join), merging each mu2
-       from that per-row evaluation with mu1. Threads through the SAME
-       gs/dss store-capability seam as every other combinator here — no
-       backend-specific code. *)
-    let omega1 = eval_pattern_store base p1 gs dss in
-    Lh.concatMap_tr
-      (fun mu1 ->
-        let p2' = lateral_substitute mu1 p2 in
-        let omega2 = eval_subselect_fwd (lateral_wrap_as_query p2') gs.gs_graph (store_to_dataset dss) in
-        list_filter_map
-          (fun mu2 -> if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None)
-          omega2)
-      omega1
-
-  | GP_Empty -> [sm_empty]
-
-  | GP_Bind e v p' ->
-    let omega = eval_pattern_store base p' gs dss in
-    fx_bind_rows base e v omega 0
-
-  | GP_Values vars rows ->
-    eval_values vars rows
-
-  | GP_Graph gt p' ->
-    (* §18.6 GRAPH evaluation: evaluate p' against named graph(s) *)
-    (match gt with
-     | PT_IRI name ->
-       (* GRAPH <iri> { p } — evaluate p against the named graph identified by iri *)
-       (match lookup_named_store name dss.dss_named with
-        | Some ngs -> eval_pattern_store base p' ngs dss
-        | None -> [])  (* Named graph not in dataset → empty *)
-     | PT_Var v ->
-       (* GRAPH ?var { p } — iterate over all named graphs, binding ?var *)
-       Lh.concatMap_tr
-         (fun (ngs : named_graph_store) ->
-           let ng_results = eval_pattern_store base p' ngs.ngs_store dss in
-           if is_iri ngs.ngs_name then
-             Lh.concatMap_tr
-               (fun mu ->
-                 match sm_bind_if_compatible v (T_IRI ngs.ngs_name) mu with
-                 | Some mu' -> [mu']
-                 | None -> [])
-               ng_results
-           else ng_results)
-         dss.dss_named
-     | _ -> eval_pattern_store base p' gs dss)  (* Other pattern terms: fallback to current graph *)
-
-  | GP_Service iri p' silent ->
-    (* SPARQL 1.1 federated query — issue #57.
-       The runner registers (endpoint_iri, graph_store) pairs via the
-       service_endpoint_lookup hook; we evaluate the inner pattern
-       against the registered remote graph. Live HTTP federation is
-       deferred (would require Dv-effecting evaluator). For SILENT,
-       SPARQL spec says "produce a solution mapping with no bindings"
-       on error, which under our solution_sequence type is a list with
-       one empty mapping; for non-SILENT the spec says error, but our
-       Tot type cannot signal that, so we return [] (empty bindings)
-       in both cases as a sentinel. *)
-    (match service_endpoint_lookup iri with
-     | Some remote_gs -> eval_pattern_store base p' remote_gs dss
-     | None ->
-       if silent then [[]]  (* unbound but not erroring *)
-       else [])
-
-  | GP_ServiceVar _ _ silent ->
-    (* SPARQL 1.1 federated query with variable endpoint, issue #57 Phase 3.
-       Outside a join context we have no outer mu to look up the variable
-       binding, so we cannot dispatch. Per SPARQL spec a SERVICE pattern
-       whose endpoint is unbound is an error; for SILENT we yield the
-       empty mapping, otherwise we yield no bindings. The common path
-       (variable bound by an adjacent BGP / VALUES) is handled in the
-       GP_Join branch above. *)
-    if silent then [[]] else []
-
-  | GP_SubSelect q ->
-    (* Sub-SELECT: recursively evaluate the inner SELECT query *)
-    eval_subselect_fwd q gs.gs_graph (store_to_dataset dss)
-
-  | GP_PropertyPath ps pp pt ->
-    (* Evaluate property path and convert results to solution mappings.
-       Issue #66 fix (2026-05-08, Section E retirement): for
-       ZeroOrMore / ZeroOrOne paths, SPARQL 1.1 §18.2.2.5 requires
-       reflexive matches for any constant IRI/BNode in the pattern,
-       even when that node has zero edges of the path's predicate (or
-       isn't in the graph at all). eval_property_path_fwd's reflexive
-       set is built from graph_nodes, which only contains nodes that
-       actually appear in some triple — so a constant IRI from the
-       query that's mentioned nowhere in the data wouldn't be picked
-       up. Adds the missing reflexive pairs here, post-eval, only for
-       Zero* paths. *)
-    let pairs = eval_property_path_fwd pp gs.gs_graph in
-    let pairs =
-      match pp with
-      | PP_ZeroOrMore _ | PP_ZeroOrOne _ ->
-        let constant_terms : list rdf_term =
-          Lh.append_tr
-            (match ps with
-             | PS_IRI i   -> [T_IRI i]
-             | PS_BNode b -> [T_BNode b]
-             | PS_Var _   -> []
-             | PS_TripleTerm _ _ _ -> [])
-            (match pt with
-             | PT_IRI i     -> [T_IRI i]
-             | PT_BNode b   -> [T_BNode b]
-             | PT_Literal l -> [T_Literal l]
-             | PT_Var _     -> []
-             | PT_TripleTerm _ _ _ -> [])
-        in
-        let has_reflexive (t : rdf_term) : bool =
-          List.Tot.existsb
-            (fun (pair : rdf_term * rdf_term) ->
-              let (s, o) = pair in
-              rdf_term_eq s t && rdf_term_eq o t)
-            pairs
-        in
-        let new_terms = List.Tot.filter (fun t -> not (has_reflexive t)) constant_terms in
-        let new_reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) new_terms in
-        Lh.append_tr pairs new_reflexive
-      | _ -> pairs
-    in
-    path_result_to_solutions ps pt pairs
-
-(* Evaluate a group graph pattern against an RDF graph and dataset — CONCRETE.
-   The dataset carries named graphs for GP_Graph evaluation.
-   [S1] Property paths deferred.
-   Sub-SELECT deferred (requires eval_select_query).
-   #65 Step 2c (2026-05-10): threads BASE IRI through.
-   2026-07-06 (lazy per-bucket index construction): builds the stores
-   with `graph_to_store_for`/`dataset_to_store_for` — `p` is the WHOLE
-   pattern about to be evaluated (recursively, `eval_pattern_store`
-   threads the SAME `gs`/`dss` through every nested node), so the
-   query-shape pre-pass above sees everything it needs to. *)
-let eval_pattern (base : option wf_iri) (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset)
-  : solution_sequence =
-  eval_pattern_store base p (graph_to_store_for p g) (dataset_to_store_for p ds)
-
 
 (* Parts 9.1–9.10: Built-in functions defined in utility section above.
    Remaining unique content continues in Part 10. *)
