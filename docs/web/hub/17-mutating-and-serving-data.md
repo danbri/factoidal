@@ -41,7 +41,7 @@ fail (out of 176)**, per
 exposes, built on the raw npm-entry ABI's `updateDataset` export
 underneath (the js_of_ocaml build this whole series' cells run
 against). This cell wraps it in a try/catch per the
-[cell contract](./README/)'s capability-check pattern (an older bundle
+[cell contract](../README/)'s capability-check pattern (an older bundle
 might predate the Update export), and actually runs an INSERT DATA:
 
 ```observable-js

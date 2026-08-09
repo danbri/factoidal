@@ -106,19 +106,19 @@ if [ "$BUILD_RC" -ne 0 ]; then
   fi
 fi
 
+# Page list is NOT hardcoded: every built post under _site/web/hub/
+# lands in this checker automatically (the original five-post list went
+# stale as posts 06-32 published unchecked; found 2026-08-09).
 PAGES=(
   "web/hub/"
   "web/hub/README/"
-  "web/hub/01-triples-rdf-from-first-principles/"
-  "web/hub/02-asking-questions-sparql/"
-  "web/hub/03-schemas-that-infer-rdfs-owl/"
-  "web/hub/04-concept-schemes-skos/"
-  "web/hub/05-shapes-that-validate-shacl/"
-  ""
 )
-for p in "web/hub/" "web/hub/01-triples-rdf-from-first-principles/" "web/hub/02-asking-questions-sparql/" \
-         "web/hub/03-schemas-that-infer-rdfs-owl/" "web/hub/04-concept-schemes-skos/" \
-         "web/hub/05-shapes-that-validate-shacl/"; do
+while IFS= read -r d; do
+  PAGES+=("web/hub/$(basename "$d")/")
+done < <(find "$SITE_DIR/web/hub" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9]-*' | sort)
+PAGES+=("")
+for p in "${PAGES[@]}"; do
+  [ -z "$p" ] && continue
   [ -f "$SITE_DIR/$p/index.html" ] || { echo "FAIL: $SITE_DIR/$p/index.html was not produced." >&2; exit 1; }
 done
 
@@ -175,17 +175,23 @@ data = json.load(open(result_path))
 site_root = os.path.abspath(site_root)
 path_prefix = "/factoidal/"
 
-page_dir_map = {
-    "web/hub/": "web/hub",
-    "web/hub/README/": "web/hub/README",
-    "web/hub/01-triples-rdf-from-first-principles/": "web/hub/01-triples-rdf-from-first-principles",
-    "web/hub/02-asking-questions-sparql/": "web/hub/02-asking-questions-sparql",
-    "web/hub/03-schemas-that-infer-rdfs-owl/": "web/hub/03-schemas-that-infer-rdfs-owl",
-    "web/hub/04-concept-schemes-skos/": "web/hub/04-concept-schemes-skos",
-    "web/hub/05-shapes-that-validate-shacl/": "web/hub/05-shapes-that-validate-shacl",
-    "(homepage)": "",
-}
+# Derived, not hardcoded: a page key "web/hub/NN-slug/" serves from
+# the same-named directory; the homepage serves from the site root.
+page_dir_map = {p: ("" if p == "(homepage)" else p.rstrip("/")) for p in data}
 skip_schemes = ("mailto:", "data:", "ftp:", "javascript:")
+
+import re
+_id_cache = {}
+def page_ids(html_path):
+    """All id= / name= anchors in a built page (cached per file)."""
+    if html_path not in _id_cache:
+        try:
+            with open(html_path, encoding="utf-8", errors="replace") as fh:
+                html = fh.read()
+            _id_cache[html_path] = set(re.findall(r'(?:id|name)="([^"]+)"', html))
+        except OSError:
+            _id_cache[html_path] = set()
+    return _id_cache[html_path]
 
 total = 0
 broken = []
@@ -206,12 +212,30 @@ for page, hrefs in data.items():
         if key in seen:
             continue
         seen.add(key)
-        if href.startswith(path_prefix):
-            target = os.path.join(site_root, href[len(path_prefix):])
-        elif href.startswith("/"):
-            target = os.path.join(site_root, href.lstrip("/"))
+        # Same-page anchors: '#frag' is not a path -- check the id/name
+        # exists in the CURRENT page's HTML. (The original resolver
+        # treated fragments as file paths and reported 46 false
+        # positives across the hub, 2026-08-09.)
+        if href == "#":
+            continue  # empty fragment = top of page, always valid
+            # (post 21's runtime-injected fullscreen control uses it)
+        if href.startswith("#"):
+            total += 1
+            own_html = os.path.join(page_dir, "index.html")
+            if page == "(homepage)":
+                own_html = os.path.join(site_root, "index.html")
+            if href[1:] not in page_ids(own_html):
+                broken.append((page, href, own_html, "NO_SUCH_ANCHOR"))
+            continue
+        # Path links may carry a fragment: resolve the path, then check
+        # the fragment against the target page's anchors.
+        path_part, _, frag = href.partition("#")
+        if path_part.startswith(path_prefix):
+            target = os.path.join(site_root, path_part[len(path_prefix):])
+        elif path_part.startswith("/"):
+            target = os.path.join(site_root, path_part.lstrip("/"))
         else:
-            target = os.path.join(page_dir, href)
+            target = os.path.join(page_dir, path_part)
         if target.endswith("/"):
             target = os.path.join(target, "index.html")
         target = os.path.normpath(target)
@@ -219,6 +243,10 @@ for page, hrefs in data.items():
         escapes = not (target + os.sep).startswith(site_root + os.sep) and target != site_root
         if escapes or not os.path.exists(target):
             broken.append((page, href, target, "ESCAPES_ROOT" if escapes else "MISSING"))
+        elif frag:
+            frag_target = os.path.join(target, "index.html") if os.path.isdir(target) else target
+            if frag_target.endswith(".html") and frag not in page_ids(frag_target):
+                broken.append((page, href, frag_target, "NO_SUCH_ANCHOR"))
 
 with open(github_out, "w") as fh:
     for link in sorted(github_links):

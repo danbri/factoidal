@@ -9,7 +9,7 @@ status: published
 tests: tests/hub/post25_test.mjs
 ---
 
-RDF/XML — one of the [five syntaxes](./11-one-graph-five-syntaxes/) — is
+RDF/XML — one of the [five syntaxes](../11-one-graph-five-syntaxes/) — is
 built on plain XML, so factoidal has a generic XML parser underneath it
 ([`Parser.XML.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/Parser.XML.fst)).
 That parser is useful on its own, for two XML questions that have
@@ -138,7 +138,7 @@ this XML-1.0, non-namespace parser claims. Driven by
 ## What's next
 
 The same parser drives RDF/XML in the
-[five-syntaxes post](./11-one-graph-five-syntaxes/); XPath is the
+[five-syntaxes post](../11-one-graph-five-syntaxes/); XPath is the
 selection half of the XForms/XSLT-style processing that the
 [program plan](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-xforms-model-program-plan.md)
 sketches on top of it.

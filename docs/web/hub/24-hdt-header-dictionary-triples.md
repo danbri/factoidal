@@ -53,7 +53,7 @@ return Number(rows[0].get("n").value);
 ```
 
 343 triples. `fn.queryHdt` hides the argv+files primitive the [COTTAS
-on-disk demo](../../fstar-extracted/demo-cottas.html) uses for
+on-disk demo](../../../fstar-extracted/demo-cottas.html) uses for
 `--data-cottas`: the fetched bytes are registered under a virtual path
 (js_of_ocaml's in-memory filesystem) inside `fn.queryHdt` itself, and
 the CLI's HDT reader opens that path exactly as the native binary opens
@@ -83,7 +83,7 @@ return pretty(rows);
 
 Every row is a class in the RML mapping vocabulary — `Triples Map`,
 `Subject Map`, `Object Map`, `Reference Formulation`, and the rest — the
-same terms the [RML post](./09-mapping-tables-to-triples-rml/) used to
+same terms the [RML post](../09-mapping-tables-to-triples-rml/) used to
 turn tables into triples, here read back out of their binary-packed
 definitions.
 
@@ -138,12 +138,12 @@ covers, driven from the browser instead of the shell.
 ## What's next
 
 HDT is one of several binary/columnar shapes RDF lands in; the
-[on-disk COTTAS format](../../skills/disk-storage-format/) — a
+[on-disk COTTAS format](https://github.com/danbri/factoidal/blob/claude/main/skills/disk-storage-format/SKILL.md) — a
 Parquet-based RDF store from the external `pycottas` project, which
 factoidal reads and now also writes natively — has the same "query the
 bytes, do not expand first" property. Neither format is ours; the
 verified part is the reader (and, for COTTAS, the writer). The
-[performance hub](../perf/) measures how the four extraction targets
+[performance hub](../../perf/) measures how the four extraction targets
 compare on these read paths.
 
 Every live cell above is pinned in

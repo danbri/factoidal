@@ -156,7 +156,7 @@ name nobody reads. Where two cells' data genuinely differs (even if
 structurally similar), leave them independent; forcing a shared name
 onto deliberately-different examples is the wrong direction.
 
-[Post 26](./26-reactive-cells-declare-once-use-everywhere/) is the
+[Post 26](../26-reactive-cells-declare-once-use-everywhere/) is the
 worked example of the whole chain: `ttl = \`…\`` names the source text,
 `graph = fn.parse(ttl)` names the parsed dataset (a promise-valued
 cell — the runtime awaits it before any dependent reads it), `results
@@ -166,7 +166,7 @@ names. Tap **Edit** on the `ttl` cell there and change the data: only
 the cells that actually depend on it re-run, not the whole page.
 
 The compiler that infers each cell's name and its cross-cell inputs is
-[`reactive-cells.mjs`](./reactive-cells.mjs) — shared, byte-for-byte,
+[`reactive-cells.mjs`](https://github.com/danbri/factoidal/blob/claude/main/docs/web/hub/reactive-cells.mjs) — shared, byte-for-byte,
 between `docs/_includes/hub.njk` (the browser) and
 `tests/hub/_helpers.mjs`'s `runReactivePost()` (the Node pinning
 harness), so a post's tests exercise the identical dependency inference

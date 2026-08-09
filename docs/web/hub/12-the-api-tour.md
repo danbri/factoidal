@@ -117,7 +117,7 @@ consumer), so the asset read threw deep inside wasm init and was
 silently swallowed, misreporting `entry: false` and every function
 built on it even when the bundle genuinely had the export. This whole
 series' live cells still run against the plain js engine per
-[`docs/web/hub/README.md`](./README/)'s "Constraints every cell must
+[`docs/web/hub/README.md`](../README/)'s "Constraints every cell must
 respect" — a separate, still-current constraint (the wasm CLI-bundle
 lags newer CLI surfaces like `--dump-nq` byte-for-byte parity), unrelated
 to the npm-entry ABI capability gap this section used to describe.

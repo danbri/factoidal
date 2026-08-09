@@ -672,8 +672,8 @@ above demonstrates.
 That closes the vocabulary tour the series set out to give. The full
 map of published posts, each with its central vocabulary and pinning
 test file, is in the
-[series plan](../../designissues/2026-07-05-docs-hub-plan/); the
-[performance hub](../perf/) covers the runtime-vs-runtime side of the
+[series plan](../../../designissues/2026-07-05-docs-hub-plan/); the
+[performance hub](../../perf/) covers the runtime-vs-runtime side of the
 same engine.
 
 Every live cell above is pinned in

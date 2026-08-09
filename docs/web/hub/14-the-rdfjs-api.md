@@ -53,7 +53,7 @@ CommonJS with `node:fs`/`node:crypto` dependencies elsewhere in
 context; `docs/_includes/hub.njk` instead defines a small
 browser-local adapter (`FnDataset`, plain `{termType, value, ...}`
 term objects) that mimics the same *shape* by hand — see
-[`README.md`](./README/)'s "Why `fn` is an adapter, not an import" for
+[`README.md`](../README/)'s "Why `fn` is an adapter, not an import" for
 the full reasoning. The practical difference: a term this page's `fn`
 hands back is duck-typed to look like a Term (same fields a real one
 has) but is **not** an instance of the classes above, and has no

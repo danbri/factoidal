@@ -31,7 +31,7 @@ code, running against real browser `IndexedDB`.
 ## Step 1 of 4: parse and update, in memory
 
 Same `fn.update` [post 17](./17-mutating-and-serving-data.md)
-introduced, capability-checked per the [cell contract](./README/)'s
+introduced, capability-checked per the [cell contract](../README/)'s
 try/catch pattern:
 
 ```observable-js
