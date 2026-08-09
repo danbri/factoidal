@@ -617,3 +617,14 @@ agent identifier sweep); glue patch 62 narrowed to 3 symbols.
 theorem_filter_sound/_complete now state semantics of the real
 evaluator (existential-free fragment; production-path bridging lemma
 = plan step 3, next commit).
+
+**G4 wave 3 (2026-08-09)**: M2 expression semantics begins —
+`SPARQL11.Expression.Refinement.fst` (proof-only module): `ebv_spec`
+(independent §17.2.2 transcription) + error-tolerant §17.3 truth
+tables + numeric/plain-string equality specs; 17 agreement lemmas on
+the conforming classes; FINDINGS EX-1 (langString EBV truthy vs
+spec Type Error) and EX-2 (And/Or/Not can never error — silent
+collapse), both stated as divergence lemmas with witnesses, #365.
+Text-bridge: BLOCKED pending owner decision on FastString candidate
+axioms 7-8 (value-level facts, documented in-file with OCaml
+justification); tree-level remains the proved boundary meanwhile.

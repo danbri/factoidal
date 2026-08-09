@@ -114,6 +114,53 @@ open Parser.FastString
 /// literal, byte position after consuming a known prefix) must be
 /// PROVED in a consumer module -- see `Parser.FastString.RoundTripLemmas.fst`
 /// for the two the round-trip work needs.
+///
+/// STILL MISSING (found continuing #358 toward the SRJ TEXT-level round
+/// trip, session 2026-08-09) -- NOT ADDED, flagged for owner review per
+/// DO-NOT-WIDEN above. `SPARQL.Protocol.RoundTrip.fst`'s literal-lexing
+/// step ("parse of a quoted escape-free string literal consumes exactly
+/// its bytes and yields the string") needs the recursive-descent scanner
+/// to know what `fs_byte_at`/`fs_byte_sub` actually RETURN for a given
+/// string -- and the six facts above are all *relational* (concat
+/// homomorphism, index/slice-into-concat, cp_at agreeing with an
+/// ALREADY-KNOWN byte_at value); none of them bottoms out at a base case
+/// tying a return value to string content. Confirmed empirically
+/// (probes run and discarded, not committed -- each failed Error 19,
+/// "Could not prove post-condition", exactly like the `fs_byte_length
+/// "ab" == 2` probe in the FINDING above):
+///   `let _ : Lemma (fs_byte_at "a" 0 == 97) = ()`                    -- FAILS
+///   `let _ (s:string) : Lemma (fs_byte_sub s 0 (fs_byte_length s) == s) = ()` -- FAILS
+/// Two candidate facts (unchecked against the OCaml realisation by this
+/// session -- that check is exactly what DO-NOT-WIDEN requires before
+/// either may be added):
+///   7. `fs_byte_at_ascii_singleton` -- the VALUE-level sibling of fact 3
+///      (which only gives LENGTH):
+///        val fs_byte_at_ascii_singleton (s : string) (c : FStar.Char.char)
+///          : Lemma (requires FStar.String.list_of_string s == [c] /\
+///                            FStar.Char.int_of_char c < 128)
+///                  (ensures  fs_byte_at s 0 == FStar.Char.int_of_char c)
+///      Candidate justification (same shape as fact 3's, NOT independently
+///      re-derived here): `fs_byte_at s 0 = Char.code (String.unsafe_get s 0)`;
+///      for a one-ASCII-codepoint literal the OCaml string IS the one-byte
+///      UTF-8 encoding, so that byte's code equals `int_of_char c`.
+///   8. `fs_byte_sub_self` -- self-recovery of a full-length slice:
+///        val fs_byte_sub_self (s : string)
+///          : Lemma (fs_byte_sub s 0 (fs_byte_length s) == s)
+///      Needed together with fact 5a to close the recovery chain
+///      `fs_byte_sub (a ^ b) 0 (fs_byte_length a) == a` that
+///      `json_string_segments`' terminal `fs_byte_sub input seg_start
+///      (pos - seg_start)` call relies on to hand back the scanned
+///      literal content. Candidate justification: `fs_byte_sub s 0
+///      (fs_byte_length s)` clamps to `String.sub s 0 (String.length s)`,
+///      an OCaml full-string copy, structurally equal to `s`.
+/// Without fact 7, no branch of `json_parse_value` / `json_parse_string`
+/// / `json_parse_object` / `json_parse_array` is provable at all -- every
+/// one of them dispatches on the concrete VALUE `fs_byte_at` returns
+/// (is this byte `"`? `{`? `:`? `,`? a control character?), and no axiom
+/// in this file supplies that value for ANY string, literal or variable.
+/// This blocks step 1 of the text-bridge chain outright, before framing
+/// (step 2) or composition (step 3) can even be attempted -- see
+/// `SPARQL.Protocol.RoundTrip.fst`'s banner for the full status.
 
 /// Fact 1: the empty string has zero bytes.
 val fs_byte_length_empty (_:unit)
