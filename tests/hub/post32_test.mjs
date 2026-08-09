@@ -2,8 +2,8 @@
 // docs/web/hub/32-this-answer-is-a-theorem.md.
 //
 // The page's cells call the certified rho-df API landed for G3:
-// fn.rhoDfFragmentCheck (the decidable fragment hypothesis of the
-// regime theorems) and fn.rhoDfClosure (the six-rule operator with
+// fn.coreRdfsCheck (the decidable fragment hypothesis of the
+// regime theorems) and fn.coreRdfsClosure (the six-rule operator with
 // the decides-iff). Here `fn === factoidal` (the node npm API); the
 // browser cells reach the same extracted functions.
 
@@ -31,13 +31,13 @@ const ORG_TTL = `
 `;
 
 test('post32: the org graph is IN the proved fragment', async () => {
-  const r = await factoidal.rhoDfFragmentCheck(ORG_TTL);
+  const r = await factoidal.coreRdfsCheck(ORG_TTL);
   assert.equal(r.ok, true);
   assert.equal(r.fragment, true);
 });
 
 test('post32: certified closure derives the two-step subclass fact (rdfs9 twice) and the domain fact (rdfs2)', async () => {
-  const closed = await factoidal.rhoDfClosure(ORG_TTL);
+  const closed = await factoidal.coreRdfsClosure(ORG_TTL);
   assert.equal(closed.ok, true);
   const nt = closed.ntriples;
   assert.match(nt, /org#ada>\s+<http:\/\/www\.w3\.org\/1999\/02\/22-rdf-syntax-ns#type>\s+<http:\/\/example\.org\/org#Agent>/);
@@ -47,14 +47,14 @@ test('post32: certified closure derives the two-step subclass fact (rdfs9 twice)
 });
 
 test('post32: the certified closure is idempotent (saturation is real, not one-round luck)', async () => {
-  const once = await factoidal.rhoDfClosure(ORG_TTL);
-  const twice = await factoidal.rhoDfClosure(once.ntriples);
+  const once = await factoidal.coreRdfsClosure(ORG_TTL);
+  const twice = await factoidal.coreRdfsClosure(once.ntriples);
   const setOf = (nt) => new Set(nt.split('\n').map(l => l.trim()).filter(Boolean));
   assert.deepEqual(setOf(twice.ntriples), setOf(once.ntriples));
 });
 
 test('post32: the ASK over the closure answers true — the theorem-backed answer of the page', async () => {
-  const closed = await factoidal.rhoDfClosure(ORG_TTL);
+  const closed = await factoidal.coreRdfsClosure(ORG_TTL);
   const dataset = await factoidal.parse(closed.ntriples, { format: 'ntriples' });
   const ask = await factoidal.query(dataset, `
     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -71,10 +71,10 @@ test('post32: the fragment-escape counterexample behaves exactly as finding F-1 
     :P rdfs:subPropertyOf rdfs:subPropertyOf .
     :a :P _:b1 .
   `;
-  const before = await factoidal.rhoDfFragmentCheck(escape);
+  const before = await factoidal.coreRdfsCheck(escape);
   assert.equal(before.fragment, true);
-  const closed = await factoidal.rhoDfClosure(escape);
-  const after = await factoidal.rhoDfFragmentCheck(closed.ntriples);
+  const closed = await factoidal.coreRdfsClosure(escape);
+  const after = await factoidal.coreRdfsCheck(closed.ntriples);
   assert.equal(after.fragment, false);
 });
 
@@ -84,7 +84,7 @@ test('post32: a literal-object subClassOf graph is OUT of the fragment — the c
     PREFIX : <http://example.org/x#>
     :A rdfs:subClassOf "not-a-class" .
   `;
-  const r = await factoidal.rhoDfFragmentCheck(bad);
+  const r = await factoidal.coreRdfsCheck(bad);
   assert.equal(r.fragment, false);
 });
 
@@ -92,7 +92,7 @@ test('post32: the perf cell runs — both closures complete on the 60-class chai
   let chain = 'PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\nPREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\nPREFIX : <http://example.org/c#>\n';
   for (let i = 0; i < 60; i++) chain += `:C${i} rdfs:subClassOf :C${i + 1} .\n`;
   chain += ':x rdf:type :C0 .\n';
-  const six = await factoidal.rhoDfClosure(chain);
+  const six = await factoidal.coreRdfsClosure(chain);
   assert.equal(six.ok, true);
   assert.match(six.ntriples, /c#x>\s+<http:\/\/www\.w3\.org\/1999\/02\/22-rdf-syntax-ns#type>\s+<http:\/\/example\.org\/c#C60>/);
   const full = await factoidal.owlClosure(chain, 'RDFS');
@@ -101,7 +101,7 @@ test('post32: the perf cell runs — both closures complete on the 60-class chai
 
 test('post32: BROWSER-SURFACE PARITY — every fn.* name the page calls exists in the browser adapter AND the hub fn wrapper', async () => {
   // The reactive harness binds fn to the NODE package, which masked
-  // two live-page breakages (fn.rhoDfFragmentCheck, fn.owlClosure had
+  // two live-page breakages (fn.coreRdfsCheck, fn.owlClosure had
   // no browser/hub wrappers — found by the owner on the deployed
   // page, 2026-08-07). This text-level pin closes that class: every
   // fn.<name>( reference in the page must appear as an export in
@@ -133,5 +133,22 @@ test('post32: every observable-js cell in the page parses and runs under the rea
   for (const name of post.names) {
     const v = await post.value(name);
     assert.notEqual(v, undefined, `cell '${name}' evaluated to undefined`);
+  }
+});
+
+test('post32: the rhoDf* literature-name aliases stay wired (node + browser adapter + hub fn)', async () => {
+  // Owner renamed the public API to coreRdfs* (2026-08-08); the ρdf
+  // literature names remain as aliases so registry greps keep working.
+  assert.equal(typeof factoidal.rhoDfClosure, 'function');
+  assert.equal(typeof factoidal.rhoDfFragmentCheck, 'function');
+  const viaAlias = await factoidal.rhoDfFragmentCheck(ORG_TTL);
+  const viaPrimary = await factoidal.coreRdfsCheck(ORG_TTL);
+  assert.deepEqual(viaAlias, viaPrimary);
+  const { readFileSync } = await import('node:fs');
+  const adapter = readFileSync(new URL('../../npm/factoidal/browser.js', import.meta.url), 'utf8');
+  const hub = readFileSync(new URL('../../docs/_includes/hub.njk', import.meta.url), 'utf8');
+  for (const name of ['rhoDfClosure', 'rhoDfFragmentCheck', 'coreRdfsClosure', 'coreRdfsCheck']) {
+    assert.ok(new RegExp(`export\\s+async\\s+function\\s+${name}\\b`).test(adapter), `browser.js lacks ${name}`);
+    assert.ok(new RegExp(`async\\s+${name}\\s*\\(`).test(hub), `hub.njk fn lacks ${name}`);
   }
 });

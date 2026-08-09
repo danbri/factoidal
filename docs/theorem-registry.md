@@ -315,6 +315,19 @@ step preserves truth), and `rdfs_rule_*_preserves` per-rule bridges
 (bnode-substituting form) is UNATTEMPTED/deliberately out of scope —
 same fresh-term shape as the OWL-RL IMPOSSIBLE rules above.
 
+**Naming note (2026-08-08, owner decision)**: the fragment the rows
+below call "rho-df" is the literature's **ρdf** — subPropertyOf /
+subClassOf / type / domain / range, introduced by Muñoz, Pérez &
+Gutierrez, "Simple and Efficient Minimal RDFS", J. Web Semantics
+7(3), 2009 (author copy:
+https://users.dcc.uchile.cl/~cgutierr/papers/jws09.pdf), whose
+minimal deductive system also drops the reflexivity rows exactly as
+these theorems do. The PUBLIC API name for this fragment is
+**corerdfs** (`coreRdfsClosure` / `coreRdfsCheck`, with `rhoDf*` kept
+as aliases); F\* module, function, and theorem names keep the
+literature transliteration `rho_df` so this registry greps against
+both the tree and the paper.
+
 ## 3. Simple / RDF entailment rungs
 
 | Rung | Theorem | Status | Fragment / hypotheses | Notes |

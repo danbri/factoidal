@@ -1,6 +1,6 @@
 ---
-title: "This answer is a theorem: the certified rho-df closure"
-description: "SPARQL answers over the six-rule rho-df closure are machine-checked equivalent to entailment — run the certified engine live, watch the checker refuse false claims, and measure why fewer rules with a theorem beats more rules without one."
+title: "This answer is a theorem: the certified core-RDFS closure"
+description: "SPARQL answers over the six-rule core-RDFS (ρdf) closure are machine-checked equivalent to entailment — run the certified engine live, watch the checker refuse false claims, and measure why fewer rules with a theorem beats more rules without one."
 layout: hub.njk
 series: docs-hub
 series_order: 32
@@ -21,14 +21,20 @@ The chain, each link an F\* theorem about the shipping code:
 > **model theory ⟷ entailment ⟷ closure ⟷ termination test ⟷ index ⟷
 > BGP matching ⟷ query answers**
 
-The fragment is **rho-df**: `rdf:type`, `rdfs:subClassOf`,
+The fragment is **corerdfs**: `rdf:type`, `rdfs:subClassOf`,
 `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range` — the working core
-of RDFS schema reasoning. Everything below runs live in your browser
-against the same extracted engine the theorems are about.
+of RDFS schema reasoning. That is this project's API name for the
+fragment the literature calls **ρdf** ("rho-df" in our code and
+theorem names), introduced by Muñoz, Pérez & Gutierrez in
+[*Simple and Efficient Minimal RDFS*](https://users.dcc.uchile.cl/~cgutierr/papers/jws09.pdf)
+(J. Web Semantics 7(3), 2009), who proved it captures exactly the
+inferential core of RDFS once the self-referential and infinite rows
+are set aside. Everything below runs live in your browser against the
+same extracted engine the theorems are about.
 
 ## What the two API calls do, in plain terms
 
-**`fn.rhoDfClosure(data)`** takes an RDF document (Turtle or
+**`fn.coreRdfsClosure(data)`** takes an RDF document (Turtle or
 N-Triples text) and returns `{ok, ntriples, rounds}`: the same graph
 with **every fact the five schema properties imply added as an
 explicit triple**. That is all "closure" means. If your data says
@@ -39,7 +45,7 @@ that took). You run it once, store or query the result, and from then
 on **plain SPARQL — no reasoner, no entailment setting — sees every
 schema-implied fact**, because the facts are physically there.
 
-**`fn.rhoDfFragmentCheck(data)`** answers one question before you
+**`fn.coreRdfsCheck(data)`** answers one question before you
 rely on that: **does the proved guarantee apply to this data?** It
 returns `{ok, fragment}`. `fragment: true` means every triple in the
 document is inside the shape the theorems quantify over, so the
@@ -98,7 +104,7 @@ theorems quantify over. This is the difference between fine print and
 an API: you can ask *before* trusting an answer.
 
 ```observable-js
-return pretty(await fn.rhoDfFragmentCheck(ttl));
+return pretty(await fn.coreRdfsCheck(ttl));
 // {ok: true, fragment: true} — the certified path applies to this data
 ```
 
@@ -109,7 +115,7 @@ check — which is itself proved to be a faithful proxy for semantic
 saturation on freshly-parsed data, not a heuristic.
 
 ```observable-js
-closed = fn.rhoDfClosure(ttl) // a promise: dependent cells receive it awaited
+closed = fn.coreRdfsClosure(ttl) // a promise: dependent cells receive it awaited
 ```
 
 **Step 3 — query it.** Is Ada an `:Agent`? No triple says so; two
@@ -163,9 +169,9 @@ const escape = `
   :P rdfs:subPropertyOf rdfs:subPropertyOf .
   :a :P _:b1 .
 `;
-const before = await fn.rhoDfFragmentCheck(escape);
-const closedEsc = await fn.rhoDfClosure(escape);
-const after  = await fn.rhoDfFragmentCheck(closedEsc.ntriples);
+const before = await fn.coreRdfsCheck(escape);
+const closedEsc = await fn.coreRdfsClosure(escape);
+const after  = await fn.coreRdfsCheck(closedEsc.ntriples);
 return pretty({fragmentBefore: before.fragment, fragmentAfter: after.fragment});
 // true, then false — one rdfs7 step derives ':a rdfs:subPropertyOf _:b1',
 // whose blank-node object leaves the fragment. Machine-checked as
@@ -191,8 +197,8 @@ never give you, because a test suite only checks the entailments its
 authors enumerated. And the fragment checker means you always know
 which regime you are in.
 
-**Developers.** Two new API calls (`fn.rhoDfFragmentCheck`,
-`fn.rhoDfClosure`) plus a contract that is unusual in this space: the
+**Developers.** Two new API calls (`fn.coreRdfsCheck`,
+`fn.coreRdfsClosure`) plus a contract that is unusual in this space: the
 [registry](../../theorem-registry/) names every theorem, every
 hypothesis, and every boundary, in one table. The planner lemma
 (`lemma_choose_best_tp_cover`) is a developer guarantee too: query
@@ -225,7 +231,7 @@ for (let i = 0; i < 60; i++) chain += `:C${i} rdfs:subClassOf :C${i+1} .\n`;
 chain += ":x rdf:type :C0 .\n";
 
 const t0 = performance.now();
-const six = await fn.rhoDfClosure(chain);
+const six = await fn.coreRdfsClosure(chain);
 const t1 = performance.now();
 const full = await fn.owlClosure(chain, "RDFS"); // the full twelve-rule RDFS set
 const t2 = performance.now();
