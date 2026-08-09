@@ -591,3 +591,14 @@ complete formally verified implementation of RDF semantics." The
 qualifier in CLAUDE.md iron rule #11 (parser and algebra spec verified
 in F\*; on-disk backend has unverified OCaml-side optimization layers)
 applies here unchanged.
+
+## 6. G4: response-path theorems (2026-08-09, wave 1)
+
+| Stage | Theorem | Status | Notes |
+|---|---|---|---|
+| ORDER BY | `theorem_sort_solutions_permutation` | ✅ PROVED | Multiset-level, hand-derived (stdlib `sortWith_permutation` needs `eqtype`; noeq `rdf_term` fails it — reusable finding). Sortedness NOT claimed: comparator ties break antisymmetry; wave 2. |
+| LIMIT/OFFSET | `theorem_slice_solutions_window` / `_length` | ✅ PROVED | Contiguous index-shifted window, all None/Some combinations. |
+| DISTINCT | `theorem_distinct_complete` | ✅ PROVED | Representative-level, needs `noRepeats` domains hypothesis. |
+| DISTINCT card | `theorem_sr3_distinct_card_spec_false` | ❌ SPEC FALSE | FINDING SR-3 (#359): dedup case-insensitive lang tags vs count exact — third strike of the SR-1/SR-2 equality gap. |
+| SRJ (tree layer) | `lemma_json_val_of_{term,row,vars,rows,response,bool}_roundtrip` | ✅ PROVED | Exact equality, IRI+literal fragment (no bnodes/triple terms/dir literals yet), SPARQL.Protocol.RoundTrip.fst. |
+| SRJ (text layer) | — | 🔴 BLOCKED | #358: Parser.FastString's four primitives are axiom-free assume vals; blocks text round-trips for ALL result formats. |
