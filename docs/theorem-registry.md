@@ -340,7 +340,19 @@ LEVEL: every OWL row runs under its proved licensing + truth lemmas
 (section 1 of this registry); chain-level completeness is NOT
 claimed — owl:sameAs equality breaks the Herbrand construction the
 corerdfs completeness proof uses (that gap is task #10's embedding
-problem, not an oversight). eq-ref (sameAs reflexivity) is excluded
+problem, not an oversight). DEFINITION — "chain-level completeness"
+(informal name, coined here; not a term of art): the completeness
+half of the corerdfs tier's composed theorem chain surviving to the
+query surface — concretely, the conjunction of
+`rho_df_saturation_iff` + `rdfs_closure_rho_df_complete`
+(Completeness.fst), `rho_df_closure_decides` (RhoDFClosure.fst), the
+six-bucket index completeness theorems, and
+`theorem_rdfs_regime_bgp_exact_answer` with its ASK corollaries
+(SPARQL11.EntailmentRegime.RDFS.fst): every entailed consequence is
+returned by the shipping query entry point, end-to-end, not
+per-rule. A tier "lacking chain-level completeness" runs only
+per-rule certificates (licensed + truth-preserving derivations, no
+exhaustiveness claim against a model theory). eq-ref (sameAs reflexivity) is excluded
 as a noise row, mirroring rho-df's exclusion of rdfs6/rdfs10.
 
 ## 3. Simple / RDF entailment rungs
