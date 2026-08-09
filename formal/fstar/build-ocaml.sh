@@ -1012,6 +1012,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml \
     RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml \
+    RDF_Entailment_RDFS_RhoDFClosure.ml RDF_Entailment_RDFSPlus.ml RDF_Entailment_RegimeDispatch.ml \
     Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml \
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml \
     Parser_OWLFunctional.ml \
