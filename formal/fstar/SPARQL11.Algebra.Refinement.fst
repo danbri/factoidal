@@ -98,6 +98,8 @@ open SPARQL11.Algebra
 module S = SPARQL11.Algebra.Spec
 module T = FStar.Tactics
 module Lh = RDF.List.Helpers
+module Mem = OWL.Semantics.MemLemmas
+module SO = RDF.Indexed.StringOrder
 
 #push-options "--z3rlimit 120 --fuel 3 --ifuel 2"
 
@@ -1156,7 +1158,9 @@ let theorem_tp_match_instantiates
 // (FStar.List.Tot.Properties.fsti, `total_order`), which
 // `sortWith_sorted` requires unconditionally to conclude `sorted`. A
 // comparator that fails antisymmetry cannot supply a `total_order`
-// instance. That is a separate wave, not attempted here.
+// instance. ATTEMPTED in section 15.1b below, against a bespoke
+// (non-stdlib) adjacent-pairs sortedness statement and a bespoke
+// (non-antisymmetric) total-preorder hypothesis on the comparator.
 // -------------------------------------------------------------------
 
 let rec lemma_filter_partition_count (#a:Type) (eqb : a -> a -> bool) (p : a -> bool) (l : list a) (x : a)
@@ -1232,6 +1236,296 @@ let theorem_sort_solutions_permutation
   : Lemma (forall (mu : S.smap).
              S.mult mu (sort_solutions base conds omega) == S.mult mu omega) =
   FStar.Classical.forall_intro (lemma_sort_solutions_permutation_pointwise base conds omega)
+
+(** ------------------------------------------------------------------ **)
+(** 15.1b ORDER BY -- sortedness (adjacent-pairs form), not via the     **)
+(** stdlib. This is the wave the "NOT attempted" note above 15.1       **)
+(** points at.                                                          **)
+(**                                                                     **)
+(** `FStar.List.Tot.Properties.sortWith_sorted` needs TWO things this   **)
+(** module cannot supply: `#a:eqtype` (`S.smap` is `noeq` -- the same   **)
+(** obstruction 15.1 already works around for the permutation fact),    **)
+(** and `total_order (bool_of_compare f)`, which expands to a           **)
+(** REFLEXIVITY conjunct `forall a. bool_of_compare f a a`, i.e.        **)
+(** `f a a < 0` for every `a` -- false for any comparator with `f a a   **)
+(** = 0` (every comparator in this file, `compare_on_conditions`        **)
+(** included, since `[]`-conditions and equal mappings both compare     **)
+(** to 0). So `sortWith_sorted` is not reachable here at all, not even  **)
+(** narrowly -- both its type-level and its prop-level preconditions    **)
+(** fail independently of the antisymmetry point the 15.1 comment       **)
+(** names. The lemmas below replay `sortWith`'s own partition/append    **)
+(** recursion directly (the same technique 15.1 uses for the            **)
+(** permutation fact), proving a WEAKER, ADJACENT-PAIRS-ONLY             **)
+(** sortedness statement (`sorted_by`) against a WEAKER, non-            **)
+(** antisymmetric hypothesis on `f` (`totality_on` / `transitivity_on`  **)
+(** -- a total PREORDER, not a total order).                            **)
+(**                                                                     **)
+(** FINDING (`totality_on`'s exact shape). The obvious transcription    **)
+(** of "total preorder" as the DISJUNCTIVE reading -- `forall x y.      **)
+(** f x y <= 0 \/ f y x <= 0` -- is NOT strong enough to carry this     **)
+(** proof; it is satisfiable by a comparator that still breaks          **)
+(** sortedness. Concrete 2-element counterexample: elements `a`, `b`    **)
+(** with `f a b = 0`, `f b a = 1`. The disjunctive check at (a,b) is    **)
+(** satisfied by its FIRST disjunct (`f a b <= 0`) alone, so it says    **)
+(** nothing about `f b a`; transitivity is vacuous with only 2          **)
+(** elements, so it cannot rescue this either. Yet `sortWith f [a;b] =  **)
+(** [b;a]` (pivot `a`; `bool_of_compare f a b = (f a b < 0) = false`,   **)
+(** so `b` partitions into `lo`, giving `append (sortWith f [b]) [a] =  **)
+(** [b;a]`), and `sorted_by` on that result needs `f b a <= 0`, which   **)
+(** is false. `totality_on` below is stated in the IMPLICATIONAL form   **)
+(** that actually closes this gap (`f x y >= 0 ==> f y x <= 0`); it     **)
+(** still implies the disjunctive reading (case on `f x y < 0` vs      **)
+(** `>= 0`), so nothing standard is lost, and it is still not           **)
+(** antisymmetry -- no tie ever forces an element equality.             **)
+(**                                                                     **)
+(** FINDING (`transitivity_on` is carried, not used). `sorted_by` is a  **)
+(** purely LOCAL (adjacent-pairs) property; the partition/append proof  **)
+(** below only ever relates a pivot to its immediate lo/hi neighbours,  **)
+(** never chains three list elements together, so `transitivity_on`    **)
+(** never actually fires inside `lemma_sortWith_sorted_by`'s proof      **)
+(** term. It is kept as a hypothesis on the public theorem              **)
+(** (`theorem_sort_solutions_sorted`, below) because (a) it is the      **)
+(** natural closing conjunct of "total preorder" and every concrete     **)
+(** comparator this project instantiates it with satisfies it, and (b)  **)
+(** a future ALL-PAIRS sortedness statement -- mirroring                **)
+(** `RDF.Indexed.Completeness.sorted_pairs`, whose own                  **)
+(** `lemma_sorted_pairs_append` DOES need transitivity, through the     **)
+(** pivot -- will need it.                                              **)
+(** ------------------------------------------------------------------ **)
+
+/// Adjacent-pairs sortedness for an arbitrary int comparator `f`, with
+/// NO decidable-equality requirement on the element type -- unlike
+/// stdlib's `sorted`/`sortWith_sorted`, which need `#a:eqtype`
+/// transitively (through `sortWith_sorted`'s own `#a:eqtype`, not just
+/// through `total_order`). Same recursion shape as
+/// `FStar.List.Tot.Properties.sorted`, just `prop`-valued (so it
+/// type-checks against `noeq` element types like `S.smap`) and stated
+/// directly on `f`'s own sign instead of `bool_of_compare f` -- no
+/// artificial strict/non-strict split at the specification level.
+let rec sorted_by (#a:Type) (f : a -> a -> Tot int) (l : list a) : prop =
+  match l with
+  | [] -> True
+  | [_] -> True
+  | x :: y :: tl -> f x y <= 0 /\ sorted_by f (y :: tl)
+
+/// Total-preorder totality, restricted to `l`'s members, in the
+/// IMPLICATIONAL form the proof below needs -- see the totality_on
+/// FINDING above the section banner; the disjunctive textbook reading
+/// is not strong enough. Still not antisymmetry: a tie (`f x y = 0`)
+/// is required to reflect (`f y x <= 0`), never to force `x == y`.
+let totality_on (#a:Type) (f : a -> a -> Tot int) (l : list a) : prop =
+  forall (x y : a). List.Tot.memP x l /\ List.Tot.memP y l ==>
+                     (f x y >= 0 ==> f y x <= 0)
+
+/// Total-preorder transitivity, restricted to `l`'s members. Carried
+/// per the brief; see the transitivity_on FINDING above the section
+/// banner -- unused by `lemma_sortWith_sorted_by`'s adjacent-pairs
+/// proof, needed by any future all-pairs sortedness statement.
+let transitivity_on (#a:Type) (f : a -> a -> Tot int) (l : list a) : prop =
+  forall (x y z : a). List.Tot.memP x l /\ List.Tot.memP y l /\ List.Tot.memP z l ==>
+                       (f x y <= 0 /\ f y z <= 0 ==> f x z <= 0)
+
+/// `totality_on` weakens along a member-subset -- lets the recursive
+/// calls into `lo`/`hi` (below) discharge their OWN `totality_on`
+/// obligation from the caller's, instead of needing a fresh hypothesis
+/// threaded by hand.
+let lemma_totality_on_weaken (#a:Type) (f : a -> a -> Tot int) (l l' : list a)
+  : Lemma (requires totality_on f l /\ (forall x. List.Tot.memP x l' ==> List.Tot.memP x l))
+          (ensures totality_on f l') = ()
+
+/// `partition`'s own characterization, memP-based (noeq-safe -- same
+/// technique `RDF.Indexed.Completeness.lemma_partition_pred_memP` uses
+/// one module over, here folding in the plain subset-membership half
+/// too): an element filed on a side of the partition is a member of
+/// the original list AND satisfies (or refutes) the predicate
+/// accordingly. Replays `partition`'s own recursion
+/// (FStar.List.Tot.Base.fst).
+let rec lemma_partition_bool_memP (#a:Type) (f : a -> Tot bool) (l : list a) (x : a)
+  : Lemma
+    (ensures
+       (List.Tot.memP x (fst (List.Tot.partition f l)) ==> List.Tot.memP x l /\ f x == true) /\
+       (List.Tot.memP x (snd (List.Tot.partition f l)) ==> List.Tot.memP x l /\ f x == false))
+    (decreases l) =
+  match l with
+  | [] -> ()
+  | hd :: tl -> lemma_partition_bool_memP f tl x
+
+let lemma_partition_bool_memP_forall (#a:Type) (f : a -> Tot bool) (l : list a)
+  : Lemma
+    (ensures
+       (forall x. List.Tot.memP x (fst (List.Tot.partition f l)) ==> List.Tot.memP x l /\ f x == true) /\
+       (forall x. List.Tot.memP x (snd (List.Tot.partition f l)) ==> List.Tot.memP x l /\ f x == false)) =
+  FStar.Classical.forall_intro (lemma_partition_bool_memP f l)
+
+/// One boundary step: `pivot :: hi` is sorted given `hi` is sorted and
+/// `pivot` relates to every member of `hi`. Split out of
+/// `lemma_sorted_by_append` below because both of ITS base cases
+/// reduce to exactly this.
+let lemma_sorted_by_cons_hi (#a:Type) (f : a -> a -> Tot int) (pivot : a) (hi : list a)
+  : Lemma
+    (requires sorted_by f hi /\ (forall y. List.Tot.memP y hi ==> f pivot y <= 0))
+    (ensures sorted_by f (pivot :: hi)) =
+  match hi with
+  | [] -> ()
+  | _ :: _ -> ()
+
+/// The append-merge step: an already-sorted `lo` followed by `pivot`
+/// followed by an already-sorted `hi` is `sorted_by`-sorted overall,
+/// given every element of `lo` relates to `pivot` and `pivot` relates
+/// to every element of `hi`. This is the only cross-list fact the
+/// induction needs -- `sorted_by` only asks about ADJACENT pairs, so a
+/// per-element (not merely per-adjacent-pair) hypothesis against the
+/// pivot covers whatever position ends up next to it, however the
+/// recursive sort inside `lo`/`hi` chose to order it; no transitivity
+/// chain through 3 elements is ever needed here (contrast
+/// `RDF.Indexed.Completeness.lemma_sorted_pairs_append`, whose ALL-
+/// PAIRS statement genuinely does need one, through the pivot).
+let rec lemma_sorted_by_append (#a:Type) (f : a -> a -> Tot int)
+      (lo : list a) (pivot : a) (hi : list a)
+  : Lemma
+    (requires
+       sorted_by f lo /\ sorted_by f hi /\
+       (forall y. List.Tot.memP y lo ==> f y pivot <= 0) /\
+       (forall y. List.Tot.memP y hi ==> f pivot y <= 0))
+    (ensures sorted_by f (List.Tot.append lo (pivot :: hi)))
+    (decreases lo) =
+  match lo with
+  | [] -> lemma_sorted_by_cons_hi f pivot hi
+  | [_] -> lemma_sorted_by_cons_hi f pivot hi
+  | x :: y :: tl -> lemma_sorted_by_append f (y :: tl) pivot hi
+
+/// The bespoke sortedness theorem: `List.Tot.sortWith f l` is
+/// `sorted_by f`, given only `totality_on f l` (see the
+/// transitivity_on FINDING above the section banner for why
+/// `transitivity_on` is not a hypothesis here). Replays `sortWith`'s
+/// own partition/append recursion (FStar.List.Tot.Base.fst, the
+/// `sortWith` definition), exactly as `lemma_sortWith_mult` (15.1,
+/// above) does for the permutation fact, reusing
+/// `OWL.Semantics.MemLemmas.lemma_sortWith_memP_forall` for the
+/// membership-preservation half (already generic in `#a:Type`, no
+/// eqtype needed -- proved one module over for the same `noeq`
+/// reason, per "Foundations to reuse, never rebuild").
+let rec lemma_sortWith_sorted_by (#a:Type) (f : a -> a -> Tot int) (l : list a)
+  : Lemma
+    (requires totality_on f l)
+    (ensures sorted_by f (List.Tot.sortWith f l))
+    (decreases (List.Tot.length l)) =
+  match l with
+  | [] -> ()
+  | [_] -> ()
+  | pivot :: tl ->
+    let hi, lo = List.Tot.partition (List.Tot.bool_of_compare f pivot) tl in
+    List.Tot.partition_length (List.Tot.bool_of_compare f pivot) tl;
+    lemma_partition_bool_memP_forall (List.Tot.bool_of_compare f pivot) tl;
+    lemma_totality_on_weaken f l lo;
+    lemma_totality_on_weaken f l hi;
+    lemma_sortWith_sorted_by f lo;
+    lemma_sortWith_sorted_by f hi;
+    Mem.lemma_sortWith_memP_forall f lo;
+    Mem.lemma_sortWith_memP_forall f hi;
+    let aux_lo (y : a) : Lemma
+      (requires List.Tot.memP y (List.Tot.sortWith f lo))
+      (ensures f y pivot <= 0) =
+      assert (List.Tot.memP y lo);
+      assert (List.Tot.memP y tl /\ List.Tot.bool_of_compare f pivot y == false);
+      assert (f pivot y >= 0);
+      assert (List.Tot.memP y l);
+      assert (List.Tot.memP pivot l)
+    in FStar.Classical.forall_intro (FStar.Classical.move_requires aux_lo);
+    let aux_hi (y : a) : Lemma
+      (requires List.Tot.memP y (List.Tot.sortWith f hi))
+      (ensures f pivot y <= 0) =
+      assert (List.Tot.memP y hi);
+      assert (List.Tot.bool_of_compare f pivot y == true);
+      assert (f pivot y < 0)
+    in FStar.Classical.forall_intro (FStar.Classical.move_requires aux_hi);
+    lemma_sorted_by_append f (List.Tot.sortWith f lo) pivot (List.Tot.sortWith f hi)
+
+/// `sort_solutions` is `sorted_by (compare_on_conditions base conds)`,
+/// given the comparator is a total preorder over `omega`'s own
+/// members -- the fragment hypothesis every ORDER BY clause needs
+/// carried explicitly (see the two FINDINGs above the 15.1b banner):
+/// the UNCONDITIONAL statement is FALSE, both abstractly
+/// (`compare_on_conditions` ties unrelated mappings at 0 with no
+/// promise the tie reflects) and concretely (the numeric-literal
+/// FRAGMENT finding below names a live counterexample reachable from
+/// `sparql_order` itself).
+let theorem_sort_solutions_sorted
+      (base : option wf_iri) (conds : list order_condition) (omega : list S.smap)
+  : Lemma
+    (requires totality_on (compare_on_conditions base conds) omega /\
+              transitivity_on (compare_on_conditions base conds) omega)
+    (ensures sorted_by (compare_on_conditions base conds) (sort_solutions base conds omega)) =
+  lemma_sortWith_sorted_by (compare_on_conditions base conds) omega
+
+// -------------------------------------------------------------------
+// 15.1c FRAGMENT -- same-kind IRI comparisons discharge totality_on /
+// transitivity_on cleanly (deliverable 3, first shape tried).
+// `sparql_order`'s IRI branch (Algebra.fst:5237-5238) computes exactly
+// `String.compare (iri_to_string _) (iri_to_string _)`, so
+// `RDF.Indexed.StringOrder`'s three axioms for `FStar.String.compare`
+// (issue #347) transcribe directly -- no new trust surface, same
+// reuse `RDF.Indexed.Completeness.lemma_key_order_cmp_trans_le`
+// already makes for the analogous `option string` key comparator one
+// module over.
+//
+// FRAGMENT FINDING -- numeric-with-unparseable-literal breaks
+// transitivity_on (deliverable 3, second shape tried, NOT discharged;
+// stop here per the brief's two-attempt-then-record-a-finding rule).
+// `sparql_order`'s numeric branch (Algebra.fst:5241-5244) falls to
+// `numeric_compare a b`'s own `| _, _ -> None` arm (Algebra.fst:2324)
+// whenever EITHER side's literal fails to parse
+// (`er_to_numeric`/`parse_to_scaled`/`parse_double_to_scaled`
+// returning `None`), and `sparql_order` reads that `None` as a tie
+// (`| None -> 0`, Algebra.fst:5244) regardless of WHICH side failed.
+// Concrete 3-element witness, all `ER_Num`/unparseable `ER_Dec`
+// sharing er_rank 4: `A = ER_Num 5`, `B = ER_Dec "not-a-number"`
+// (er_to_numeric B = None), `C = ER_Num 3`.
+//   sparql_order A B = 0   (numeric_compare A B = None, unparseable)
+//   sparql_order B C = 0   (numeric_compare B C = None, unparseable)
+//   sparql_order A C = 1   (numeric_compare A C = Some (int_compare 5 3), positive)
+// `transitivity_on`'s hypothesis instance at (A,B,C) -- `f A B <= 0 /\
+// f B C <= 0 ==> f A C <= 0` -- has both antecedents true (0 <= 0) and
+// the consequent FALSE (1 <= 0 is false): a genuine counterexample,
+// not a proof gap. `B` is a spurious "tie" bridge between two
+// genuinely-ordered numerics that are NOT tied with each other. No
+// fragment hypothesis short of "every compared literal parses" (which
+// would need to be threaded from `SELECT`/`ORDER BY` down through
+// `eval_expr_with_base`, out of scope for this landing) rescues
+// `transitivity_on` here; NOT attempted further under the two-attempt
+// stop rule. `totality_on` (this section's OWN hypothesis, the
+// implicational form) is unaffected by this witness -- both
+// directions read `None` symmetrically (`er_to_numeric` does not
+// depend on argument order), so this is purely a
+// `transitivity_on`-shaped gap, tracked here for whichever future
+// ALL-PAIRS sortedness wave (see the transitivity_on FINDING above)
+// needs a parses-cleanly fragment hypothesis for the numeric case.
+// -------------------------------------------------------------------
+
+/// FRAGMENT: same-kind IRI comparator totality (the implicational
+/// strength `totality_on` needs), reusing `RDF.Indexed.StringOrder`'s
+/// `string_compare_antisym` axiom directly.
+let lemma_sparql_order_iri_totality (i j : wf_iri)
+  : Lemma (ensures sparql_order (ER_Term (T_IRI i)) (ER_Term (T_IRI j)) >= 0 ==>
+                   sparql_order (ER_Term (T_IRI j)) (ER_Term (T_IRI i)) <= 0) =
+  SO.string_compare_antisym (iri_to_string i) (iri_to_string j)
+
+/// FRAGMENT: same-kind IRI comparator transitivity (non-strict), same
+/// zero/strict case split `RDF.Indexed.Completeness.
+/// lemma_key_order_cmp_trans_le` uses one module over for the
+/// analogous `option string` key comparator.
+let lemma_sparql_order_iri_trans (i j k : wf_iri)
+  : Lemma (requires sparql_order (ER_Term (T_IRI i)) (ER_Term (T_IRI j)) <= 0 /\
+                    sparql_order (ER_Term (T_IRI j)) (ER_Term (T_IRI k)) <= 0)
+          (ensures  sparql_order (ER_Term (T_IRI i)) (ER_Term (T_IRI k)) <= 0) =
+  let si = iri_to_string i in
+  let sj = iri_to_string j in
+  let sk = iri_to_string k in
+  SO.string_compare_zero_iff_eq si sj;
+  SO.string_compare_zero_iff_eq sj sk;
+  if FStar.String.compare si sj = 0 then ()
+  else if FStar.String.compare sj sk = 0 then ()
+  else SO.string_compare_trans si sj sk
 
 (** ------------------------------------------------------------------ **)
 (** 15.2 OFFSET / LIMIT -- `slice_solutions` is a contiguous window     **)
