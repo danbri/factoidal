@@ -187,13 +187,30 @@ export function owlClosure(
   mode: 'RDFS' | 'OWL-RL'
 ): Promise<{ ok: true; nquads: string }>;
 
-/** Certified six-rule rho-df closure (theorem-backed; see docs/theorem-registry.md). */
+/**
+ * Certified six-rule core-RDFS closure (theorem-backed; see
+ * docs/theorem-registry.md). "corerdfs" is this project's API name for
+ * the fragment the literature calls ρdf (Muñoz, Pérez & Gutierrez,
+ * "Simple and Efficient Minimal RDFS", J. Web Semantics 7(3), 2009).
+ */
+export function coreRdfsClosure(
+  data: string,
+  options?: { format?: string; baseIRI?: string }
+): Promise<{ ok: true; ntriples: string }>;
+
+/** Decidable core-RDFS fragment check — the regime theorems' fragment hypothesis. */
+export function coreRdfsCheck(
+  data: string,
+  options?: { format?: string; baseIRI?: string }
+): Promise<{ ok: true; fragment: boolean }>;
+
+/** Literature-name alias for coreRdfsClosure (ρdf). */
 export function rhoDfClosure(
   data: string,
   options?: { format?: string; baseIRI?: string }
 ): Promise<{ ok: true; ntriples: string }>;
 
-/** Decidable rho-df fragment check — the regime theorems' fragment hypothesis. */
+/** Literature-name alias for coreRdfsCheck (ρdf). */
 export function rhoDfFragmentCheck(
   data: string,
   options?: { format?: string; baseIRI?: string }
@@ -436,6 +453,8 @@ declare const _default: {
   shexValidate: typeof shexValidate;
   didKeyResolve: typeof didKeyResolve;
   owlClosure: typeof owlClosure;
+  coreRdfsClosure: typeof coreRdfsClosure;
+  coreRdfsCheck: typeof coreRdfsCheck;
   rhoDfClosure: typeof rhoDfClosure;
   rhoDfFragmentCheck: typeof rhoDfFragmentCheck;
   tableauMaterialise: typeof tableauMaterialise;

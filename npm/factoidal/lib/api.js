@@ -688,38 +688,48 @@ function buildApi(driver) {
   }
 
   /**
-   * The CERTIFIED six-rule rho-df closure (RDF.Entailment.RDFS.
+   * The CERTIFIED core-RDFS closure (RDF.Entailment.RDFS.
    * RhoDFClosure.fst's `rho_df_closure`): rdfs2/3/5/7/9/11 only, with
    * the machine-checked decides-iff (docs/theorem-registry.md).
+   * "corerdfs" is this project's API name for the fragment the
+   * literature calls ρdf — subPropertyOf/subClassOf/type/domain/range,
+   * per Muñoz, Pérez & Gutierrez, "Simple and Efficient Minimal
+   * RDFS", J. Web Semantics 7(3), 2009. `rhoDfClosure` remains as an
+   * alias so code can be grepped against the theorem registry.
    * Returns the raw certified result, not a Dataset: the N-Triples
    * text is the object the theorems talk about.
    * @param {Dataset|string|Array} data
    * @param {{format?: string}} [options]
    * @returns {Promise<{ok: boolean, ntriples: string}>}
    */
-  async function rhoDfClosure(data, options) {
+  async function coreRdfsClosure(data, options) {
     const e = await entry();
-    if (!e) throw pendingError('certified rho-df closure');
-    requireEntryFn(e, 'rhoDfClosure', 'certified rho-df closure');
-    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'rhoDfClosure(data)');
-    return entryResult(e.rhoDfClosure(dataNq), 'rhoDfClosure');
+    if (!e) throw pendingError('certified core-RDFS closure');
+    requireEntryFn(e, 'rhoDfClosure', 'certified core-RDFS closure');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'coreRdfsClosure(data)');
+    return entryResult(e.rhoDfClosure(dataNq), 'coreRdfsClosure');
   }
+  /** Literature-name alias for coreRdfsClosure (ρdf; see above). */
+  const rhoDfClosure = coreRdfsClosure;
 
   /**
-   * Decidable fragment check (`is_rho_df_frag`, tied by an F* lemma to
-   * the prop the regime theorems quantify over): does the certified
-   * path's guarantee apply to this data?
+   * Decidable core-RDFS fragment check (`is_rho_df_frag`, tied by an
+   * F* lemma to the prop the regime theorems quantify over): does the
+   * certified path's guarantee apply to this data? Naming: see
+   * coreRdfsClosure above. `rhoDfFragmentCheck` remains as an alias.
    * @param {Dataset|string|Array} data
    * @param {{format?: string}} [options]
    * @returns {Promise<{ok: boolean, fragment: boolean}>}
    */
-  async function rhoDfFragmentCheck(data, options) {
+  async function coreRdfsCheck(data, options) {
     const e = await entry();
-    if (!e) throw pendingError('rho-df fragment check');
-    requireEntryFn(e, 'rhoDfFragmentCheck', 'rho-df fragment check');
-    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'rhoDfFragmentCheck(data)');
-    return entryResult(e.rhoDfFragmentCheck(dataNq), 'rhoDfFragmentCheck');
+    if (!e) throw pendingError('core-RDFS fragment check');
+    requireEntryFn(e, 'rhoDfFragmentCheck', 'core-RDFS fragment check');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'coreRdfsCheck(data)');
+    return entryResult(e.rhoDfFragmentCheck(dataNq), 'coreRdfsCheck');
   }
+  /** Literature-name alias for coreRdfsCheck (ρdf; see above). */
+  const rhoDfFragmentCheck = coreRdfsCheck;
 
   /**
    * OWL tableau materialisation (formal/fstar/Tableau.fst's
@@ -1869,6 +1879,8 @@ function buildApi(driver) {
     shaclValidate,
     shexValidate,
     owlClosure,
+    coreRdfsClosure,
+    coreRdfsCheck,
     rhoDfClosure,
     rhoDfFragmentCheck,
     tableauMaterialise,

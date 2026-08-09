@@ -959,16 +959,21 @@ export async function owlClosure(dataNQuads, mode) {
 }
 
 /**
- * Certified rho-df closure (bin/npm-entry/entry_jsoo.ml's rhoDfClosure
- * export -> RDF.Entailment.RDFS.RhoDFClosure.rho_df_closure, the
- * six-rule operator with the decides-iff; see the theorem registry).
+ * Certified core-RDFS closure (bin/npm-entry/entry_jsoo.ml's
+ * rhoDfClosure export -> RDF.Entailment.RDFS.RhoDFClosure.
+ * rho_df_closure, the six-rule operator with the decides-iff; see the
+ * theorem registry). "corerdfs" is this project's API name for the
+ * fragment the literature calls ρdf (subPropertyOf/subClassOf/type/
+ * domain/range — Muñoz, Pérez & Gutierrez, "Simple and Efficient
+ * Minimal RDFS", J. Web Semantics 7(3), 2009); `rhoDfClosure` is the
+ * literature-name alias, kept greppable against the registry.
  *
  * @param {string} data Turtle or N-Triples text
  * @returns {Promise<{ok:true,ntriples:string}>}
  */
-export async function rhoDfClosure(data, options) {
+export async function coreRdfsClosure(data, options) {
   if (typeof data !== 'string') {
-    throw new TypeError('rhoDfClosure: data must be a string');
+    throw new TypeError('coreRdfsClosure: data must be a string');
   }
   const opts = options || {};
   // The ABI parses N-Quads only (entry_jsoo.ml dataset_of_nquads);
@@ -978,37 +983,50 @@ export async function rhoDfClosure(data, options) {
   const abi = await loadNpmEntry();
   if (typeof abi.rhoDfClosure !== 'function') {
     throw new Error(
-      'rhoDfClosure: the loaded factoidal-npm-entry bundle predates the rhoDfClosure export');
+      'coreRdfsClosure: the loaded factoidal-npm-entry bundle predates the rhoDfClosure export');
   }
   const parsed = JSON.parse(abi.rhoDfClosure(nq));
-  if (!parsed.ok) throw new Error(parsed.error || 'rhoDfClosure failed');
+  if (!parsed.ok) throw new Error(parsed.error || 'coreRdfsClosure failed');
   return parsed;
 }
 
+/** Literature-name alias for coreRdfsClosure (ρdf; see above). */
+export async function rhoDfClosure(data, options) {
+  return coreRdfsClosure(data, options);
+}
+
 /**
- * Decidable rho-df fragment check (bin/npm-entry/entry_jsoo.ml's
+ * Decidable core-RDFS fragment check (bin/npm-entry/entry_jsoo.ml's
  * rhoDfFragmentCheck export -> is_rho_df_frag, lemma-tied to the
- * fragment hypothesis the regime theorems quantify over).
+ * fragment hypothesis the regime theorems quantify over). Naming: see
+ * coreRdfsClosure above; `rhoDfFragmentCheck` is the literature-name
+ * alias.
  *
  * @param {string} data Turtle or N-Triples text
  * @returns {Promise<{ok:true,fragment:boolean}>}
  */
-export async function rhoDfFragmentCheck(data, options) {
+export async function coreRdfsCheck(data, options) {
   if (typeof data !== 'string') {
-    throw new TypeError('rhoDfFragmentCheck: data must be a string');
+    throw new TypeError('coreRdfsCheck: data must be a string');
   }
   const opts = options || {};
-  // Same N-Quads normalisation as rhoDfClosure above: raw Turtle would
-  // silently check the EMPTY graph and answer fragment:true vacuously.
+  // Same N-Quads normalisation as coreRdfsClosure above: raw Turtle
+  // would silently check the EMPTY graph and answer fragment:true
+  // vacuously.
   const nq = await toRdf(data, { format: opts.format || 'turtle', baseIRI: opts.baseIRI });
   const abi = await loadNpmEntry();
   if (typeof abi.rhoDfFragmentCheck !== 'function') {
     throw new Error(
-      'rhoDfFragmentCheck: the loaded factoidal-npm-entry bundle predates the rhoDfFragmentCheck export');
+      'coreRdfsCheck: the loaded factoidal-npm-entry bundle predates the rhoDfFragmentCheck export');
   }
   const parsed = JSON.parse(abi.rhoDfFragmentCheck(nq));
-  if (!parsed.ok) throw new Error(parsed.error || 'rhoDfFragmentCheck failed');
+  if (!parsed.ok) throw new Error(parsed.error || 'coreRdfsCheck failed');
   return parsed;
+}
+
+/** Literature-name alias for coreRdfsCheck (ρdf; see above). */
+export async function rhoDfFragmentCheck(data, options) {
+  return coreRdfsCheck(data, options);
 }
 
 /**
@@ -1995,6 +2013,7 @@ export default {
   encodeTextAsBundleBytes, queryDataset, version,
   loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
   shaclValidate, shexValidate, didKeyResolve, owlClosure,
+  coreRdfsClosure, coreRdfsCheck, rhoDfClosure, rhoDfFragmentCheck,
   tableauMaterialise, tableauDlInconsistent, owlIsConsistent, owlEntails, rmlMap, jsonldToRdf,
   jsonldFromRdf, xmlWellformed, xpathEval,
   deltaLogOpen, deltaLogAppend, deltaLogReadAllHex, deltaLogMerge,

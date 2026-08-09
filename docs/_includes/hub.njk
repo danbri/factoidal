@@ -608,12 +608,16 @@ function srjTermToFn(t) {
 
 const fn = {
   /**
-   * Certified rho-df closure + its decidable fragment check (post 32:
-   * the six-rule operator with the decides-iff). Thin delegations to
-   * the browser adapter, same as the node package's lib/api.js.
+   * Certified core-RDFS closure + its decidable fragment check (post
+   * 32: the six-rule operator with the decides-iff). "corerdfs" is the
+   * API name for the fragment the literature calls ρdf (Muñoz, Pérez &
+   * Gutierrez 2009); the rhoDf* names are literature-name aliases.
+   * Thin delegations to the browser adapter, same as lib/api.js.
    */
-  async rhoDfClosure(data) { return Factoidal.rhoDfClosure(data); },
-  async rhoDfFragmentCheck(data) { return Factoidal.rhoDfFragmentCheck(data); },
+  async coreRdfsClosure(data) { return Factoidal.coreRdfsClosure(data); },
+  async coreRdfsCheck(data) { return Factoidal.coreRdfsCheck(data); },
+  async rhoDfClosure(data) { return Factoidal.coreRdfsClosure(data); },
+  async rhoDfFragmentCheck(data) { return Factoidal.coreRdfsCheck(data); },
   /**
    * Full RDFS / OWL-RL closure (post 32's perf-comparison cell; the
    * caps table advertised this ABI but no fn wrapper existed until
@@ -829,6 +833,7 @@ const fn = {
   async capabilities() {
     const FEATURE_ABI_FN = {
       shacl: "shaclValidate", shex: "shexValidate", owlClosure: "owlClosure",
+      coreRdfsClosure: "rhoDfClosure", coreRdfsCheck: "rhoDfFragmentCheck",
       rhoDfClosure: "rhoDfClosure", rhoDfFragmentCheck: "rhoDfFragmentCheck",
       rml: "rmlMap", csvw: "csvwToRdf", jsonld: "jsonldToRdf", rif: "rifEval",
       xslt: "xsltTransform", mathml: "mathmlEval", xforms: "xformsRecalc",

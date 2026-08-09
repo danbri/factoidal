@@ -283,23 +283,39 @@ export function owlClosure(
 ): Promise<Dataset>;
 
 /**
- * The CERTIFIED six-rule rho-df closure
+ * The CERTIFIED six-rule core-RDFS closure
  * (formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst's
  * `rho_df_closure`): rdfs2/3/5/7/9/11 only, with the machine-checked
  * decides-iff — on fragment inputs the result's simple query answers
- * are exactly the rho-df-entailed consequences (see
+ * are exactly the entailed consequences (see
  * docs/theorem-registry.md). Returns N-Triples text plus status.
+ * "corerdfs" is this project's API name for the fragment the
+ * literature calls ρdf (subPropertyOf/subClassOf/type/domain/range —
+ * Muñoz, Pérez & Gutierrez, "Simple and Efficient Minimal RDFS",
+ * J. Web Semantics 7(3), 2009).
  */
-export function rhoDfClosure(
+export function coreRdfsClosure(
   data: DataInput,
   options?: { format?: DataFormat }
 ): Promise<{ ok: boolean; ntriples: string }>;
 
 /**
- * Decidable fragment check (`is_rho_df_frag`, with its F* lemma tying
- * it to the prop the regime theorems quantify over): does the
- * certified path's guarantee apply to this data?
+ * Decidable core-RDFS fragment check (`is_rho_df_frag`, with its F*
+ * lemma tying it to the prop the regime theorems quantify over): does
+ * the certified path's guarantee apply to this data?
  */
+export function coreRdfsCheck(
+  data: DataInput,
+  options?: { format?: DataFormat }
+): Promise<{ ok: boolean; fragment: boolean }>;
+
+/** Literature-name alias for coreRdfsClosure (ρdf). */
+export function rhoDfClosure(
+  data: DataInput,
+  options?: { format?: DataFormat }
+): Promise<{ ok: boolean; ntriples: string }>;
+
+/** Literature-name alias for coreRdfsCheck (ρdf). */
 export function rhoDfFragmentCheck(
   data: DataInput,
   options?: { format?: DataFormat }
