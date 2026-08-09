@@ -601,4 +601,4 @@ applies here unchanged.
 | DISTINCT | `theorem_distinct_complete` | ✅ PROVED | Representative-level, needs `noRepeats` domains hypothesis. |
 | DISTINCT card | `theorem_sr3_distinct_card_spec_false` | ❌ SPEC FALSE | FINDING SR-3 (#359): dedup case-insensitive lang tags vs count exact — third strike of the SR-1/SR-2 equality gap. |
 | SRJ (tree layer) | `lemma_json_val_of_{term,row,vars,rows,response,bool}_roundtrip` | ✅ PROVED | Exact equality, IRI+literal fragment (no bnodes/triple terms/dir literals yet), SPARQL.Protocol.RoundTrip.fst. |
-| SRJ (text layer) | — | 🔴 BLOCKED | #358: Parser.FastString's four primitives are axiom-free assume vals; blocks text round-trips for ALL result formats. |
+| SRJ (text layer) | `Parser.FastString.Axioms.fsti` (6 axioms, DO-NOT-WIDEN, justified line-by-line vs the OCaml realisation) + `lemma_byte_at_after_prefix` | 🟡 UNBLOCKED (#358 wave 2) | Axiom module on the StringOrder precedent; `fs_byte_length "ab" == 2` now provable. parse_json↔serialise text bridge still open. |
