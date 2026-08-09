@@ -6875,6 +6875,84 @@ let substitute_triple_pattern (mu : solution_mapping) (tp : triple_pattern) : tr
 let substitute_bgp (mu : solution_mapping) (b : bgp) : bgp =
   List.Tot.map (substitute_triple_pattern mu) b
 
+(* AST size metric over the mutually-inductive pattern/expr family
+   (issue #62 de-vacuation pilot, G4-exists-cycle, 2026-08-09). This
+   is the metric a merged eval_pattern_store/eval_exists recursion
+   needs: eval_pattern_store's GP_Filter/GP_LeftJoin arms reach
+   E_Exists/E_NotExists sub-patterns THROUGH an embedded [expr], not
+   through a direct structural child of [group_graph_pattern] — so a
+   plain `decreases p` cannot see that the EXISTS sub-pattern is
+   smaller. pattern_size/expr_size close that gap: expr_size counts
+   embedded pattern_size, and pattern_size counts embedded expr_size,
+   so `pattern_size (GP_Filter e p1) > expr_size e > pattern_size q`
+   for any `E_Exists q` nested in `e`.
+
+   expr_size mirrors expr_has_existential's traversal exactly (same
+   constructor list, same grouping) so it is exhaustive without a
+   catch-all — a new expr constructor forces a decision here too. *)
+let rec pattern_size (p : group_graph_pattern) : Tot nat (decreases p) =
+  match p with
+  | GP_BGP _ -> 1
+  | GP_Join p1 p2 -> 1 + pattern_size p1 + pattern_size p2
+  | GP_LeftJoin p1 p2 e -> 1 + pattern_size p1 + pattern_size p2 + expr_size e
+  | GP_Filter e p1 -> 1 + expr_size e + pattern_size p1
+  | GP_Union p1 p2 -> 1 + pattern_size p1 + pattern_size p2
+  | GP_Graph _ p1 -> 1 + pattern_size p1
+  | GP_Minus p1 p2 -> 1 + pattern_size p1 + pattern_size p2
+  | GP_Lateral p1 p2 -> 1 + pattern_size p1 + pattern_size p2
+  | GP_Bind e _ p1 -> 1 + expr_size e + pattern_size p1
+  | GP_Values _ _ -> 1
+  | GP_Service _ p1 _ -> 1 + pattern_size p1
+  | GP_ServiceVar _ p1 _ -> 1 + pattern_size p1
+  | GP_SubSelect _ -> 1
+  | GP_PropertyPath _ _ _ -> 1
+  | GP_Empty -> 1
+
+and expr_size (e : expr) : Tot nat (decreases e) =
+  match e with
+  | E_Var _ | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
+  | E_DecimalLit _ | E_DoubleLit _ | E_Bound _ | E_Now -> 1
+  | E_Arith _ e1 e2 | E_Compare _ e1 e2 | E_And e1 e2 | E_Or e1 e2
+  | E_StrDt e1 e2 | E_StrLang e1 e2
+  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
+  | E_StrBefore e1 e2 | E_StrAfter e1 e2
+  | E_SameTerm e1 e2 ->
+    1 + expr_size e1 + expr_size e2
+  | E_UnaryMinus e1 | E_UnaryPlus e1 | E_Not e1
+  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1
+  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1
+  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1
+  | E_StrLen e1 | E_UCase e1 | E_LCase e1 | E_EncodeForUri e1
+  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1
+  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1
+  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
+  | E_Seconds e1 | E_Timezone e1 | E_Tz e1
+  | E_Aggregate _ _ e1
+  | E_TTSubject e1 | E_TTPredicate e1 | E_TTObject e1 | E_IsTriple e1 ->
+    1 + expr_size e1
+  | E_StrLangDir e1 e2 e3 | E_If e1 e2 e3 | E_TripleTerm e1 e2 e3 ->
+    1 + expr_size e1 + expr_size e2 + expr_size e3
+  | E_Coalesce es | E_Concat es | E_FunctionCall _ es ->
+    1 + expr_list_size es
+  | E_In e1 es | E_NotIn e1 es ->
+    1 + expr_size e1 + expr_list_size es
+  | E_Substr e1 e2 e3o | E_Regex e1 e2 e3o ->
+    1 + expr_size e1 + expr_size e2 + expr_opt_size e3o
+  | E_Replace e1 e2 e3 e4o ->
+    1 + expr_size e1 + expr_size e2 + expr_size e3 + expr_opt_size e4o
+  | E_Exists p -> 1 + pattern_size p
+  | E_NotExists p -> 1 + pattern_size p
+
+and expr_list_size (es : list expr) : Tot nat (decreases es) =
+  match es with
+  | [] -> 0
+  | hd :: tl -> 1 + expr_size hd + expr_list_size tl
+
+and expr_opt_size (eo : option expr) : Tot nat (decreases eo) =
+  match eo with
+  | None -> 0
+  | Some e -> expr_size e
+
 let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
   : Tot group_graph_pattern (decreases p) =
   match p with
@@ -6901,6 +6979,57 @@ let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
   | GP_SubSelect q -> GP_SubSelect q
   | GP_PropertyPath ps pp pt -> GP_PropertyPath (substitute_pattern_subject mu ps) pp (substitute_pattern_term mu pt)
   | GP_Empty -> GP_Empty
+
+(* CRUX LEMMA (issue #62 de-vacuation pilot, G4-exists-cycle,
+   2026-08-09): substitute_pattern only rewrites the pattern-term/
+   pattern-subject LEAVES (PT_Var/PS_Var -> constant), never adding
+   or removing a group_graph_pattern/expr NODE, and it never touches
+   an embedded [expr] (GP_Filter/GP_Bind keep [e] verbatim; GP_LeftJoin
+   keeps [filter_e] verbatim) or an embedded [query] (GP_SubSelect).
+   So pattern_size is exactly preserved. This is what lets EXISTS's
+   substitute_pattern step be used inside a decreases-pattern_size
+   recursion: the substituted pattern is provably NOT larger, so
+   recursing on it after descending into an E_Exists/E_NotExists node
+   still decreases relative to the ENCLOSING pattern. *)
+let rec lemma_substitute_pattern_preserves_size (mu : solution_mapping) (p : group_graph_pattern)
+  : Lemma (ensures pattern_size (substitute_pattern mu p) == pattern_size p)
+          (decreases p) =
+  match p with
+  | GP_BGP _ -> ()
+  | GP_Join p1 p2 ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_LeftJoin p1 p2 _ ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_Filter _ p1 ->
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_Union p1 p2 ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_Graph _ p1 ->
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_Minus p1 p2 ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_Lateral p1 p2 ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_Bind _ _ p1 ->
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_Values _ _ -> ()
+  | GP_Service _ p1 _ ->
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_ServiceVar v p1 _ ->
+    // substitute_pattern branches to GP_Service or stays GP_ServiceVar
+    // depending on `sm_lookup v mu`, but pattern_size gives both
+    // constructors the identical "1 + pattern_size <inner>" weight, so
+    // both branches equal 1 + pattern_size p1 regardless of which one
+    // fires — no case split on sm_lookup needed beyond the recursive call.
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_SubSelect _ -> ()
+  | GP_PropertyPath _ _ _ -> ()
+  | GP_Empty -> ()
 
 // Check if a variable name appears in a triple pattern
 let tp_has_var (v : var_name) (tp : triple_pattern) : bool =
