@@ -422,6 +422,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Entailment.RDFS.RhoDFClosure.fst
     RDF.Entailment.RDFSPlus.fst
     RDF.Entailment.RegimeDispatch.fst
+    SPARQL.Protocol.RoundTrip.fst
     RDF.List.Helpers.fst
     RDF.Bytes.fst
     RDF.Store.Loader.fst
