@@ -616,6 +616,7 @@ const fn = {
    */
   async coreRdfsClosure(data) { return Factoidal.coreRdfsClosure(data); },
   async coreRdfsCheck(data) { return Factoidal.coreRdfsCheck(data); },
+  async rdfsPlusClosure(data) { return Factoidal.rdfsPlusClosure(data); },
   async rhoDfClosure(data) { return Factoidal.coreRdfsClosure(data); },
   async rhoDfFragmentCheck(data) { return Factoidal.coreRdfsCheck(data); },
   /**
@@ -834,6 +835,7 @@ const fn = {
     const FEATURE_ABI_FN = {
       shacl: "shaclValidate", shex: "shexValidate", owlClosure: "owlClosure",
       coreRdfsClosure: "rhoDfClosure", coreRdfsCheck: "rhoDfFragmentCheck",
+      rdfsPlusClosure: "rdfsPlusClosure",
       rhoDfClosure: "rhoDfClosure", rhoDfFragmentCheck: "rhoDfFragmentCheck",
       rml: "rmlMap", csvw: "csvwToRdf", jsonld: "jsonldToRdf", rif: "rifEval",
       xslt: "xsltTransform", mathml: "mathmlEval", xforms: "xformsRecalc",

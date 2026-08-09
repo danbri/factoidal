@@ -216,6 +216,17 @@ export function rhoDfFragmentCheck(
   options?: { format?: string; baseIRI?: string }
 ): Promise<{ ok: true; fragment: boolean }>;
 
+/**
+ * RDFS-Plus closure — RDFS plus the practical OWL subset (sameAs,
+ * inverseOf, Symmetric/Transitive/Functional/InverseFunctional,
+ * equivalentClass/Property). Per-rule proved certificates; no
+ * chain-level completeness claim (see the theorem registry).
+ */
+export function rdfsPlusClosure(
+  data: string,
+  options?: { format?: string; baseIRI?: string }
+): Promise<{ ok: true; ntriples: string; rounds: number }>;
+
 /** OWL tableau class-expression materialisation (default graph only). */
 export function tableauMaterialise(
   dataNQuads: string
@@ -455,6 +466,7 @@ declare const _default: {
   owlClosure: typeof owlClosure;
   coreRdfsClosure: typeof coreRdfsClosure;
   coreRdfsCheck: typeof coreRdfsCheck;
+  rdfsPlusClosure: typeof rdfsPlusClosure;
   rhoDfClosure: typeof rhoDfClosure;
   rhoDfFragmentCheck: typeof rhoDfFragmentCheck;
   tableauMaterialise: typeof tableauMaterialise;

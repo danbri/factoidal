@@ -1162,6 +1162,38 @@ let rho_df_closure_json (data_nquads : string) : string =
     ^ jstr (construct_triples_to_ntriples closed)
     ^ ",\"rounds\":" ^ string_of_int rounds ^ "}")
 
+(* RDFS-Plus closure (rule #11 consumer -- exports only). The operator
+   lives in formal/fstar/RDF.Entailment.RDFSPlus.fst: the shipping
+   rdfs_closure_step plus the 13 RDFS-Plus OWL rows (equivalence,
+   sameAs family minus eq-ref, inverseOf, Symmetric/Transitive/
+   Functional/InverseFunctional), each row carrying its proved
+   licensing + truth lemmas -- see that module's banner for the tier
+   definition (RDFS-Plus, Allemang & Hendler 2008; RDFS++,
+   AllegroGraph) and the claim level (per-rule certificates, no
+   chain-level completeness). fuel = 4n+32: the step is extensive, so
+   every non-fixed-point round adds at least one triple; a generous,
+   honest browser-demo bound (roomier than rho-df's because the RDFS
+   step also emits axiom rows), not a tuned constant. *)
+let rdfs_plus_rounds_to_fixpoint (g : triple list) (cap : int) : int =
+  let rec go g n =
+    if n >= cap then n
+    else
+      let g' = RDF_Entailment_RDFSPlus.rdfs_plus_step g in
+      if List.length g' <> List.length g then go g' (n + 1) else n
+  in
+  go g 0
+
+let rdfs_plus_closure_json (data_nquads : string) : string =
+  guarded (fun () ->
+    let graph = (dataset_of_nquads data_nquads).ds_default in
+    let fuel_int = 4 * List.length graph + 32 in
+    let fuel = Z.of_int fuel_int in
+    let closed = RDF_Entailment_RDFSPlus.rdfs_plus_closure graph fuel in
+    let rounds = rdfs_plus_rounds_to_fixpoint graph (fuel_int + 1) in
+    "{\"ok\":true,\"ntriples\":"
+    ^ jstr (construct_triples_to_ntriples closed)
+    ^ ",\"rounds\":" ^ string_of_int rounds ^ "}")
+
 (* dataNQuads is a dataset handle; only the default graph is checked
    (same scope cut as owlClosure/rhoDfClosure above). `fragment` is
    `is_rho_df_frag`'s verbatim answer -- true iff every triple's object
@@ -2393,6 +2425,7 @@ let () =
           ("owlClosure", s2 owl_closure_json);
           ("rhoDfClosure", s1 rho_df_closure_json);
           ("rhoDfFragmentCheck", s1 rho_df_fragment_check_json);
+          ("rdfsPlusClosure", s1 rdfs_plus_closure_json);
           ("tableauMaterialise", s1 tableau_materialise_json);
           ("tableauDlInconsistent", s1 tableau_dl_inconsistent_json);
           ("owlIsConsistent", s2 owl_is_consistent_json);

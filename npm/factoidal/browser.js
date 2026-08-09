@@ -1030,6 +1030,36 @@ export async function rhoDfFragmentCheck(data, options) {
 }
 
 /**
+ * RDFS-Plus closure (bin/npm-entry/entry_jsoo.ml's rdfsPlusClosure
+ * export -> RDF.Entailment.RDFSPlus.rdfs_plus_closure): the full RDFS
+ * step plus the practical OWL subset (owl:sameAs, owl:inverseOf,
+ * Symmetric/Transitive/Functional/InverseFunctionalProperty,
+ * equivalentClass/Property) -- the tier the literature calls
+ * RDFS-Plus (Allemang & Hendler 2008) or RDFS++ (AllegroGraph).
+ * Every OWL row runs under a proved licensing + truth lemma; no
+ * chain-level completeness is claimed (see the theorem registry).
+ *
+ * @param {string} data Turtle or N-Triples text
+ * @returns {Promise<{ok:true,ntriples:string,rounds:number}>}
+ */
+export async function rdfsPlusClosure(data, options) {
+  if (typeof data !== 'string') {
+    throw new TypeError('rdfsPlusClosure: data must be a string');
+  }
+  const opts = options || {};
+  // Same N-Quads normalisation as coreRdfsClosure above.
+  const nq = await toRdf(data, { format: opts.format || 'turtle', baseIRI: opts.baseIRI });
+  const abi = await loadNpmEntry();
+  if (typeof abi.rdfsPlusClosure !== 'function') {
+    throw new Error(
+      'rdfsPlusClosure: the loaded factoidal-npm-entry bundle predates the rdfsPlusClosure export');
+  }
+  const parsed = JSON.parse(abi.rdfsPlusClosure(nq));
+  if (!parsed.ok) throw new Error(parsed.error || 'rdfsPlusClosure failed');
+  return parsed;
+}
+
+/**
  * OWL tableau materialisation (bin/npm-entry/entry_jsoo.ml's
  * tableauMaterialise export -> formal/fstar/Tableau.fst's
  * tableau_materialise). Default graph only.
@@ -2013,7 +2043,7 @@ export default {
   encodeTextAsBundleBytes, queryDataset, version,
   loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
   shaclValidate, shexValidate, didKeyResolve, owlClosure,
-  coreRdfsClosure, coreRdfsCheck, rhoDfClosure, rhoDfFragmentCheck,
+  coreRdfsClosure, coreRdfsCheck, rdfsPlusClosure, rhoDfClosure, rhoDfFragmentCheck,
   tableauMaterialise, tableauDlInconsistent, owlIsConsistent, owlEntails, rmlMap, jsonldToRdf,
   jsonldFromRdf, xmlWellformed, xpathEval,
   deltaLogOpen, deltaLogAppend, deltaLogReadAllHex, deltaLogMerge,

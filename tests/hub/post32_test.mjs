@@ -152,3 +152,23 @@ test('post32: the rhoDf* literature-name aliases stay wired (node + browser adap
     assert.ok(new RegExp(`async\\s+${name}\\s*\\(`).test(hub), `hub.njk fn lacks ${name}`);
   }
 });
+
+test('post32 step 4: RDFS-Plus derives the symmetric worksWith row the corerdfs closure cannot', async () => {
+  const withSym = ORG_TTL + '\n  :worksWith <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#SymmetricProperty> .\n';
+  // corerdfs: symmetry is not expressible -- one direction only.
+  const core = await factoidal.coreRdfsClosure(withSym);
+  assert.doesNotMatch(core.ntriples, /org#ada>\s+<http:\/\/example\.org\/org#worksWith>\s+<http:\/\/example\.org\/org#grace>/);
+  // RDFS-Plus: prp-symp (proved licensing + truth) derives the reverse edge.
+  const plus = await factoidal.rdfsPlusClosure(withSym);
+  assert.equal(plus.ok, true);
+  assert.match(plus.ntriples, /org#grace>\s+<http:\/\/example\.org\/org#worksWith>\s+<http:\/\/example\.org\/org#ada>/);
+  assert.match(plus.ntriples, /org#ada>\s+<http:\/\/example\.org\/org#worksWith>\s+<http:\/\/example\.org\/org#grace>/);
+});
+
+test('post32 step 4: the SELECT over the RDFS-Plus closure returns both directions', async () => {
+  const withSym = ORG_TTL + '\n  :worksWith <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#SymmetricProperty> .\n';
+  const plus = await factoidal.rdfsPlusClosure(withSym);
+  const dataset = await factoidal.parse(plus.ntriples, { format: 'ntriples' });
+  const rows = await factoidal.query(dataset, 'PREFIX : <http://example.org/org#> SELECT * WHERE { ?x :worksWith ?y }');
+  assert.equal(rows.length, 2);
+});
