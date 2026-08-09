@@ -602,3 +602,18 @@ applies here unchanged.
 | DISTINCT card | `theorem_sr3_distinct_card_spec_false` | ❌ SPEC FALSE | FINDING SR-3 (#359): dedup case-insensitive lang tags vs count exact — third strike of the SR-1/SR-2 equality gap. |
 | SRJ (tree layer) | `lemma_json_val_of_{term,row,vars,rows,response,bool}_roundtrip` | ✅ PROVED | Exact equality, IRI+literal fragment (no bnodes/triple terms/dir literals yet), SPARQL.Protocol.RoundTrip.fst. |
 | SRJ (text layer) | `Parser.FastString.Axioms.fsti` (6 axioms, DO-NOT-WIDEN, justified line-by-line vs the OCaml realisation) + `lemma_byte_at_after_prefix` | 🟡 UNBLOCKED (#358 wave 2) | Axiom module on the StringOrder precedent; `fs_byte_length "ab" == 2` now provable. parse_json↔serialise text bridge still open. |
+
+**G4 wave 2b/2c (2026-08-09)**: ORDER BY sortedness —
+`lemma_sortWith_sorted_by` (sorted-under-preorder for stdlib
+quicksort; totality must be IF-form, OR-form refuted by 2-element
+counterexample, in-file) + `theorem_sort_solutions_sorted`
+(hypotheses carried; IRI fragment discharges via StringOrder axioms;
+numeric fragment REFUTED — FINDING SR-4 #362, unparseable literal
+ties everything, transitivity false). FILTER de-vacuation steps 1-2:
+`eval_expr_ebv`/`eval_expr_fwd` assume vals RETIRED — now real
+`[@@ irreducible]` definitions over `eval_expr_with_base` (Part 8
+block relocated; the "mutually recursive" banner was stale — Plan
+agent identifier sweep); glue patch 62 narrowed to 3 symbols.
+theorem_filter_sound/_complete now state semantics of the real
+evaluator (existential-free fragment; production-path bridging lemma
+= plan step 3, next commit).
