@@ -97,7 +97,7 @@
   [97/98] Test of sh:targetSubjectsOf 002 ok
   [98/98] Test of validation report for shape shared by property constraints ok
 === SHACL W3C Test Runner (full report comparison) ===
-Manifest: /home/user/factoidal/third_party/testing/shacl/data-shapes-test-suite/tests/core/manifest.ttl
+Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/shacl/data-shapes-test-suite/tests/core/manifest.ttl
 
 Totals: 98 test entries
 

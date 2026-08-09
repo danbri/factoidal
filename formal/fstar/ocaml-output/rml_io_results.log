@@ -1,6 +1,6 @@
 === RML Test Runner ===
 
-=== rml-core: /home/user/factoidal/third_party/testing/rml-modules/rml-core/test-cases (76 test rows) ===
+=== rml-core: /home/runner/work/factoidal/factoidal/third_party/testing/rml-modules/rml-core/test-cases (76 test rows) ===
 PASS RMLTC0000-JSON
 PASS RMLTC0001a-JSON
 PASS RMLTC0001b-JSON
@@ -79,7 +79,7 @@ PASS RMLTC0031b-JSON
 PASS RMLTC0031c-JSON
 rml-core: 76 pass, 0 fail, 0 skip (out of 76)
 
-=== rml-io: /home/user/factoidal/third_party/testing/rml-modules/rml-io/test-cases (73 test rows) ===
+=== rml-io: /home/runner/work/factoidal/factoidal/third_party/testing/rml-modules/rml-io/test-cases (73 test rows) ===
 PASS RMLSTC0011a
 PASS RMLSTC0004c
 PASS RMLSTC0010a
