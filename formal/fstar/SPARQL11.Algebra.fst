@@ -5022,6 +5022,97 @@ and substitute_existentials_opt
   match eo with
   | None -> None
   | Some e -> Some (substitute_existentials base e mu g ds)
+
+(* Filter with graph context: pre-substitute existentials, then filter.
+   PUBLIC API (issue #62 de-vacuation pilot, G4-exists-cycle, 2026-08-09):
+   NOT eval_pattern_store-private — SPARQL11.Store.fst's on-disk backend
+   GP_Filter arm calls this directly (COTTAS dispatch has its own
+   `omega`/`g_current`/`ds` plumbing, separate from the in-memory
+   graph_store/rdf_dataset_store this module builds), and
+   SPARQL11.Algebra.Refinement.fst's `theorem_filter_with_graph_is_filter_solutions`
+   is stated in terms of this exact name. It must join the clique (rather
+   than being inlined into eval_pattern_store's GP_Filter arm) so both
+   call sites keep working unchanged. Phase 2: its own call into
+   substitute_existentials passes the SAME [e] it received (a
+   same-argument pass-through, not a structural sub-term), so the
+   primary measure (expr_size e) ties — phase 2 > substitute_existentials's
+   phase 1 supplies the strict decrease at that specific edge. Every
+   OTHER edge into this function (from eval_pattern_store's GP_Filter arm)
+   already decreases strictly on the primary measure alone
+   (`expr_size e < pattern_size (GP_Filter e p')`), so its own phase only
+   has to satisfy the outgoing edge, not the incoming one. *)
+and filter_solutions_with_graph
+  (base : option wf_iri)
+  (e : expr) (omega : solution_sequence)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : Tot solution_sequence (decreases %[expr_size e; 2]) =
+  List.Tot.filter
+    (fun mu ->
+      let e' = substitute_existentials base e mu g ds in
+      eval_expr_ebv base e' mu)
+    omega
+
+(* LeftJoin with graph context: same substitution applied per-mapping.
+   PUBLIC API, same reasoning as filter_solutions_with_graph above:
+   SPARQL11.Store.fst's on-disk GP_LeftJoin arm calls this directly, so
+   it stays a real top-level name rather than an eval_pattern_store-local
+   inline. Phase 2 for the same reason: its internal
+   `substitute_existentials base filter_expr ...` calls pass the SAME
+   [filter_expr] unchanged, tying the primary measure, so the phase
+   component (2 > substitute_existentials's 1) supplies the decrease.
+   2026-07-06 hash-join fix: same shape as `left_join` above — omega1
+   stays the outer loop (LeftJoin is not commutative), omega2 gets
+   indexed once outside the loop when a shared variable exists. This is
+   also the path the on-disk/COTTAS backend dispatches OPTIONAL through
+   (SPARQL11.Store.fst's `GP_LeftJoin` arm calls `left_join`, and the
+   in-memory `eval_pattern_store`'s `GP_LeftJoin` arm calls this
+   function) — confirming/refuting the competitive-benchmark q6 hypothesis
+   ("OPTIONAL re-issues a bound backend search per outer row"): it does
+   NOT — both dispatch paths evaluate the RHS pattern exactly once
+   (`eval_pattern_store`/`eval_pattern_backend` called once before this
+   function runs), then this nested-loop-turned-hash-join runs over the
+   two already-materialized sequences. The q6 residual cost was this
+   O(|omega1|*|omega2|) nested loop plus genuine per-row decode work on
+   a 25,083-row result, not repeated backend queries. *)
+and left_join_with_graph
+  (base : option wf_iri)
+  (omega1 omega2 : solution_sequence) (filter_expr : expr)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : Tot solution_sequence (decreases %[expr_size filter_expr; 2]) =
+  match omega1, omega2 with
+  | [], _ -> []
+  | _, [] -> omega1
+  | mu1_0 :: _, mu2_0 :: _ ->
+    let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+    if vars = [] then
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                let e' = substitute_existentials base filter_expr merged g ds in
+                if eval_expr_ebv base e' merged then Some merged else None
+              else None)
+            omega2 in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
+    else
+      let idx = build_join_index vars omega2 in
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let candidates = join_candidates idx vars mu1 in
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                let e' = substitute_existentials base filter_expr merged g ds in
+                if eval_expr_ebv base e' merged then Some merged else None
+              else None)
+            candidates in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
+
 (* Evaluate a group graph pattern against a graph store and dataset store.
    #65 Step 2c (2026-05-10): threads BASE IRI for IRI() resolution in
    FILTER / BIND sub-expressions and through sub-SELECT evaluation. *)
@@ -5079,50 +5170,10 @@ and eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs : gr
     join (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
 
   | GP_LeftJoin p1 p2 filter_e ->
-    // PILOT INLINE (was `left_join_with_graph`, a standalone function with
-    // exactly this one call site): folded directly into this arm so its
-    // `substitute_existentials filter_e ...` call sits inside
-    // eval_pattern_store's own body, where the decreases obligation is
-    // `expr_size filter_e < pattern_size (GP_LeftJoin p1 p2 filter_e)` —
-    // true by construction (pattern_size counts `+ expr_size filter_e`
-    // for this constructor) regardless of clique phase.
-    let omega1 = eval_pattern_store base p1 gs dss in
-    let omega2 = eval_pattern_store base p2 gs dss in
-    let lj_g = gs.gs_graph in
-    let lj_ds = store_to_dataset dss in
-    (match omega1, omega2 with
-     | [], _ -> []
-     | _, [] -> omega1
-     | mu1_0 :: _, mu2_0 :: _ ->
-       let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
-       if vars = [] then
-         Lh.concatMap_tr
-           (fun mu1 ->
-             let joins = list_filter_map
-               (fun mu2 ->
-                 if sm_compatible mu1 mu2 then
-                   let merged = sm_merge mu1 mu2 in
-                   let e' = substitute_existentials base filter_e merged lj_g lj_ds in
-                   if eval_expr_ebv base e' merged then Some merged else None
-                 else None)
-               omega2 in
-             if List.Tot.length joins > 0 then joins else [mu1])
-           omega1
-       else
-         let idx = build_join_index vars omega2 in
-         Lh.concatMap_tr
-           (fun mu1 ->
-             let candidates = join_candidates idx vars mu1 in
-             let joins = list_filter_map
-               (fun mu2 ->
-                 if sm_compatible mu1 mu2 then
-                   let merged = sm_merge mu1 mu2 in
-                   let e' = substitute_existentials base filter_e merged lj_g lj_ds in
-                   if eval_expr_ebv base e' merged then Some merged else None
-                 else None)
-               candidates in
-             if List.Tot.length joins > 0 then joins else [mu1])
-           omega1)
+    left_join_with_graph base
+      (eval_pattern_store base p1 gs dss)
+      (eval_pattern_store base p2 gs dss)
+      filter_e gs.gs_graph (store_to_dataset dss)
 
   | GP_Filter e p' ->
     let omega = eval_pattern_store base p' gs dss in
@@ -5130,17 +5181,8 @@ and eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs : gr
        inside E_And / E_Or / E_Not / E_If etc. The pre-substitution pass
        below replaces every existential sub-expression with E_BoolLit
        evaluated against the current graph + dataset, so the graph-free
-       eval_expr_ebv can finish the job. Issue: w3c negation/subset-02.
-       PILOT INLINE (was `filter_solutions_with_graph`, one call site):
-       decreases obligation `expr_size e < pattern_size (GP_Filter e p')`
-       holds by construction. *)
-    let filt_g = gs.gs_graph in
-    let filt_ds = store_to_dataset dss in
-    List.Tot.filter
-      (fun mu ->
-        let e' = substitute_existentials base e mu filt_g filt_ds in
-        eval_expr_ebv base e' mu)
-      omega
+       eval_expr_ebv can finish the job. Issue: w3c negation/subset-02. *)
+    filter_solutions_with_graph base e omega gs.gs_graph (store_to_dataset dss)
 
   | GP_Union p1 p2 ->
     union (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)

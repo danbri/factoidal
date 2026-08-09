@@ -941,12 +941,23 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 
 ## assume val inventory
 
-141 assume val declarations across 20 modules. Summary by module (largest first):
+138 assume val declarations across 20 modules (CORRECTED 2026-08-09,
+g4-exists-cycle-pilot: this table was already stale by 2 before this
+landing — `eval_expr_ebv`/`eval_expr_fwd` were retired to concrete F\*
+definitions by g4-filter-devacuation but never removed from the row
+below; `eval_exists_fwd` is retired by this landing, -1 more). Summary
+by module (largest first):
 
-**SPARQL11.Algebra.fst** (14 assume vals — query evaluator core; verified
-against the tree 2026-07-29 — `regex_match`/`regex_replace` are GONE from
+**SPARQL11.Algebra.fst** (11 assume vals — query evaluator core; verified
+against the tree 2026-08-09 — `regex_match`/`regex_replace` are GONE from
 this list: both retired to pure, verified F\* over the
-Regex.Syntax/Exec/XSDPattern derivative engine, issue #304 phases 4-5):
+Regex.Syntax/Exec/XSDPattern derivative engine, issue #304 phases 4-5.
+`eval_expr_ebv`/`eval_expr_fwd`/`eval_exists_fwd` are GONE too: all three
+are now concrete recursive F\* definitions — the last one,
+`eval_exists_fwd`, retired by merging `eval_pattern_store`,
+`substitute_existentials`(+`_list`/`_opt`), and `eval_exists` into one
+`let rec ... and ...` clique, termination via `pattern_size`/`expr_size`
++ a lexicographic phase tiebreak):
 
 | assume val | Purpose | Stub |
 |-----------|---------|------|
@@ -959,13 +970,12 @@ Regex.Syntax/Exec/XSDPattern derivative engine, issue #304 phases 4-5):
 | `string_lowercase_unicode` | SPARQL LCASE | `250_unicode_case_mapping.sh` |
 | `fx_current_datetime` | SPARQL NOW() | `287_fx_current_datetime.sh` |
 | `service_endpoint_lookup` | SPARQL SERVICE | `57_service_client_bind.sh` (host-defined per spec) |
-| `eval_expr_ebv` | forward decl (mutual recursion) | wired in ocaml-patches.sh |
-| `eval_expr_fwd` | forward decl (mutual recursion) | wired in ocaml-patches.sh |
-| `eval_exists_fwd` | forward decl (EXISTS) | wired in ocaml-patches.sh |
-| `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
-| `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
+| `eval_subselect_fwd` | forward decl (subqueries) | wired in `62_forward_ref_wiring.sh` |
+| `eval_property_path_fwd` | forward decl (property paths) | wired in `62_forward_ref_wiring.sh` |
 
-**Other modules with assume vals** (128 total): Ballyhoo HDT parsers (47: Parser.BallyhooCOTTAS.fst 17, Parser.BallyhooHDTQ.fst 17, Parser.BallyhooHDT.fst 13), on-disk store/indexing (44: RDF.CottasStore.OnDiskRuntime.fst 15, RDF.CottasStore.fst 10, RDF.CottasStore.OnDiskIndex.fst 7, RDF.CottasStore.LazyDict.fst 9, RDF.CottasStore.LazyDictRegistry.fst 5), fast string parsing (7: Parser.FastString.fst), lazy term caching (10: RDF.Store.LazyTermCache.fst 6, RDF.Store.HDTTermCacheRegistry.fst 4), misc (11: Parquet.Footer.fst 3, RDF.CottasStore.ColumnSeq.fst 3, SHACL.Validation.fst 3, Util.Log.fst 5).
+**Other modules with assume vals** (128 total, not re-audited this
+landing — this figure predates the correction above and may itself
+carry unrelated drift): Ballyhoo HDT parsers (47: Parser.BallyhooCOTTAS.fst 17, Parser.BallyhooHDTQ.fst 17, Parser.BallyhooHDT.fst 13), on-disk store/indexing (44: RDF.CottasStore.OnDiskRuntime.fst 15, RDF.CottasStore.fst 10, RDF.CottasStore.OnDiskIndex.fst 7, RDF.CottasStore.LazyDict.fst 9, RDF.CottasStore.LazyDictRegistry.fst 5), fast string parsing (7: Parser.FastString.fst), lazy term caching (10: RDF.Store.LazyTermCache.fst 6, RDF.Store.HDTTermCacheRegistry.fst 4), misc (11: Parquet.Footer.fst 3, RDF.CottasStore.ColumnSeq.fst 3, SHACL.Validation.fst 3, Util.Log.fst 5).
 
 ## Plain-English Status Summary (as of 2026-05-07)
 
