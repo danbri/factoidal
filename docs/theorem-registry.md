@@ -355,6 +355,21 @@ per-rule certificates (licensed + truth-preserving derivations, no
 exhaustiveness claim against a model theory). eq-ref (sameAs reflexivity) is excluded
 as a noise row, mirroring rho-df's exclusion of rdfs6/rdfs10.
 
+**Experimental entailment regimes (2026-08-09, owner-approved)**:
+`x-rdfscore` and `x-rdfsplus` are selectable per query
+(`query(data, q, {entail: 'x-rdfscore'})`, CLI `--entail x-rdfscore`),
+dispatched in F\* by `RDF.Entailment.RegimeDispatch.fst` — consumers
+pass the string through verbatim. Both are materialisation-based
+(answers = simple entailment over the named closure), the standard
+construction for finite answer sets under SPARQL 1.1 Entailment
+Regimes' extension point; the `x-` prefix marks them experimental.
+`x-rdfscore` is the regime whose definition IS a theorem
+(`theorem_rdfs_regime_bgp_exact_answer` + ASK corollaries — see the
+chain-level completeness definition above); `x-rdfsplus` carries the
+RDFS-Plus tier's per-rule certificates. The SPARQL Protocol endpoint
+does not yet expose an entailment parameter — recorded follow-up, not
+an accidental gap.
+
 ## 3. Simple / RDF entailment rungs
 
 | Rung | Theorem | Status | Fragment / hypotheses | Notes |

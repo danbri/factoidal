@@ -152,7 +152,7 @@ const DATA_FORMAT_EXT = {
 };
 
 const OUTPUT_FORMATS = new Set(['json', 'csv', 'tsv', 'xml', 'table', 'ntriples']);
-const ENTAIL_VALUES  = new Set(['none', 'RDFS', 'OWL-RL']);
+const ENTAIL_VALUES  = new Set(['none', 'RDFS', 'OWL-RL', 'x-rdfscore', 'x-rdfsplus']);
 
 function extForFormat(fmt) {
   const key = String(fmt || 'turtle').toLowerCase();

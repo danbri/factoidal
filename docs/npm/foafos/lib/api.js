@@ -67,7 +67,7 @@ const DATA_FORMAT_TAG = {
   ttl12: 'turtle12', nt12: 'ntriples12', nq12: 'nquads12', trig12: 'trig12',
 };
 
-const ENTAIL_VALUES = new Set(['none', 'RDFS', 'OWL-RL']);
+const ENTAIL_VALUES = new Set(['none', 'RDFS', 'OWL-RL', 'x-rdfscore', 'x-rdfsplus']);
 
 function extForFormat(fmt) {
   const key = String(fmt || 'turtle').toLowerCase();
@@ -304,7 +304,7 @@ function buildApi(driver) {
    * Run a SPARQL 1.1 query.
    * @param {Dataset|string|Array} data
    * @param {string} sparql
-   * @param {{format?: string, entail?: 'none'|'RDFS'|'OWL-RL'}} [options]
+   * @param {{format?: string, entail?: 'none'|'RDFS'|'OWL-RL'|'x-rdfscore'|'x-rdfsplus'}} [options]
    * @returns {Promise<Array<Map<string, object>>|boolean|Dataset>}
    *   SELECT -> Bindings[] (Map of variable name -> RDF/JS Term),
    *   ASK -> boolean, CONSTRUCT -> Dataset.

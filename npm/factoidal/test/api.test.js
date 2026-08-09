@@ -598,3 +598,43 @@ test('jsonldFromRdf: N-Quads serialize to expanded JSON-LD (reverse of jsonldToR
 test('version matches package.json', () => {
   assert.equal(factoidal.version, require('../package.json').version);
 });
+
+// --- x-rdfscore / x-rdfsplus entailment regimes ----------------------
+// (RDF.Entailment.RegimeDispatch.fst; regime dispatch in F*, CLI/npm
+// pass the string through.)
+
+const REGIME_ORG_TTL = `
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX owl: <http://www.w3.org/2002/07/owl#>
+  PREFIX : <http://example.org/org#>
+  :Engineer rdfs:subClassOf :Employee .
+  :Employee rdfs:subClassOf :Agent .
+  :manages rdfs:subPropertyOf :worksWith .
+  :worksWith rdf:type owl:SymmetricProperty .
+  :ada rdf:type :Engineer .
+  :grace :manages :ada .
+`;
+
+test('entail x-rdfscore: ASK sees the two-step subclass entailment (the theorem-backed regime)', async () => {
+  const ask = await factoidal.query(REGIME_ORG_TTL, `
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    PREFIX : <http://example.org/org#>
+    ASK { :ada rdf:type :Agent }
+  `, { entail: 'x-rdfscore' });
+  assert.equal(ask, true);
+});
+
+test('entail x-rdfscore does NOT derive the symmetric edge; x-rdfsplus does (regime separation)', async () => {
+  const q = 'PREFIX : <http://example.org/org#> SELECT * WHERE { ?x :worksWith ?y }';
+  const core = await factoidal.query(REGIME_ORG_TTL, q, { entail: 'x-rdfscore' });
+  assert.equal(core.length, 1);
+  const plus = await factoidal.query(REGIME_ORG_TTL, q, { entail: 'x-rdfsplus' });
+  assert.equal(plus.length, 2);
+});
+
+test('entail none: baseline returns zero worksWith rows (both regimes really added something)', async () => {
+  const rows = await factoidal.query(REGIME_ORG_TTL,
+    'PREFIX : <http://example.org/org#> SELECT * WHERE { ?x :worksWith ?y }');
+  assert.equal(rows.length, 0);
+});
