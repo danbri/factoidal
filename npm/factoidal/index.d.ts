@@ -121,7 +121,15 @@ export type DataFormat =
   | 'jsonld' | 'json-ld';
 
 /** Entailment regime applied to the data before evaluation. */
-export type EntailRegime = 'none' | 'RDFS' | 'OWL-RL';
+/**
+ * Entailment regime for query(): the W3C-named regimes plus two
+ * experimental certified regimes (RDF.Entailment.RegimeDispatch.fst) —
+ * 'x-rdfscore': BGP answers over the theorem-backed corerdfs (ρdf)
+ * closure, sound and complete on fragment data;
+ * 'x-rdfsplus': RDFS plus the practical OWL subset, every rule under
+ * proved licensing + truth lemmas. See docs/theorem-registry.md.
+ */
+export type EntailRegime = 'none' | 'RDFS' | 'OWL-RL' | 'x-rdfscore' | 'x-rdfsplus';
 
 /**
  * One SELECT solution: a Map from variable name (no leading '?') to

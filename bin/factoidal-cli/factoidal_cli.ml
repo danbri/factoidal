@@ -987,6 +987,12 @@ let normalise_entail_regime s =
   | "" | "none" | "no" | "off" -> Some ""
   | "rdfs" -> Some "RDFS"
   | "owl-rl" | "owlrl" | "owl_rl" | "owl" -> Some "OWL-RL"
+  (* Experimental certified regimes (RDF.Entailment.RegimeDispatch.fst:
+     x-rdfscore = BGP answers over the theorem-backed rho-df closure;
+     x-rdfsplus = RDFS plus the practical OWL subset, per-rule
+     certificates). *)
+  | "x-rdfscore" | "rdfscore" | "corerdfs" -> Some "x-rdfscore"
+  | "x-rdfsplus" | "rdfsplus" | "rdfs-plus" | "rdfs++" -> Some "x-rdfsplus"
   | _ -> None
 
 let usage () =
@@ -1060,6 +1066,9 @@ let usage () =
   Printf.printf "                         jsonld (Phase 1: expanded form only)\n";
   Printf.printf "  -o, --output FMT       Output format: table (default), csv, ntriples, json\n";
   Printf.printf "  --entail REGIME        Apply entailment closure to loaded data before\n";
+  Printf.printf "                         REGIME: RDFS, OWL-RL, x-rdfscore (certified\n";
+  Printf.printf "                         rho-df, theorem-backed), x-rdfsplus (RDFS +\n";
+  Printf.printf "                         practical OWL subset, per-rule certificates)\n";
   Printf.printf "                         query evaluation. REGIME is one of:\n";
   Printf.printf "                           none    no closure (default)\n";
   Printf.printf "                           RDFS    RDFS closure + reflexivity axioms\n";
@@ -3196,10 +3205,13 @@ let () =
      fact). The `entail` DUMP subcommand keeps the full materialisation
      on purpose. Dispatch on regime lives in F-star; this is wiring. *)
   let apply_entail tr = match cfg.entail_regime with
-    | "OWL-RL" | "RDFS" ->
-      (try OWL_Closure.entailment_closure_for_query cfg.entail_regime tr (Z.of_int 100)
+    | "" -> tr
+    | regime ->
+      (* All regime dispatch (W3C names + x-rdfscore/x-rdfsplus) lives
+         in F-star's RDF.Entailment.RegimeDispatch; this is wiring. *)
+      (try RDF_Entailment_RegimeDispatch.entailment_closure_for_query_ext
+             regime tr (Z.of_int 100)
        with _ -> tr)
-    | _ -> tr
   in
   let graph = apply_entail graph in
   let all_named = file_named_graphs @ cli_named_graphs in

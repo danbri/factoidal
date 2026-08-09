@@ -304,7 +304,7 @@ function buildApi(driver) {
    * Run a SPARQL 1.1 query.
    * @param {Dataset|string|Array} data
    * @param {string} sparql
-   * @param {{format?: string, entail?: 'none'|'RDFS'|'OWL-RL'}} [options]
+   * @param {{format?: string, entail?: 'none'|'RDFS'|'OWL-RL'|'x-rdfscore'|'x-rdfsplus'}} [options]
    * @returns {Promise<Array<Map<string, object>>|boolean|Dataset>}
    *   SELECT -> Bindings[] (Map of variable name -> RDF/JS Term),
    *   ASK -> boolean, CONSTRUCT -> Dataset.
