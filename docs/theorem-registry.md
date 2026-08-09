@@ -328,6 +328,21 @@ as aliases); F\* module, function, and theorem names keep the
 literature transliteration `rho_df` so this registry greps against
 both the tree and the paper.
 
+**RDFS-Plus tier (2026-08-09, owner-approved)**: `rdfs_plus_closure`
+(RDF.Entailment.RDFSPlus.fst; public API `rdfsPlusClosure`) composes
+the shipping `rdfs_closure_step` with 13 RDFS-Plus OWL rows —
+eq-sym, eq-trans, eq-rep-s/o/p, prp-symp, prp-trp, prp-inv (both
+directions), prp-fp, prp-ifp, cax-eqc, prp-eqp — under the same
+dedup + fuel + length-test loop as `rho_df_closure`. Tier names:
+"RDFS-Plus" (Allemang & Hendler, *Semantic Web for the Working
+Ontologist*, 2008), "RDFS++" (Franz Inc., AllegroGraph). CLAIM
+LEVEL: every OWL row runs under its proved licensing + truth lemmas
+(section 1 of this registry); chain-level completeness is NOT
+claimed — owl:sameAs equality breaks the Herbrand construction the
+corerdfs completeness proof uses (that gap is task #10's embedding
+problem, not an oversight). eq-ref (sameAs reflexivity) is excluded
+as a noise row, mirroring rho-df's exclusion of rdfs6/rdfs10.
+
 ## 3. Simple / RDF entailment rungs
 
 | Rung | Theorem | Status | Fragment / hypotheses | Notes |

@@ -131,6 +131,41 @@ const rows = await fn.query(dataset, `
 return pretty(rows); // true — and that "true" is the theorem below
 ```
 
+**Step 4 — say more, get more (RDFS-Plus).** Ask the closure who
+works with whom, and it answers one row: `grace → ada` (derived by
+rdfs7 from `manages ⊑ worksWith`). But working-with is naturally
+mutual, and RDFS cannot even *say* that. One OWL triple can —
+`:worksWith rdf:type owl:SymmetricProperty` — and the **RDFS-Plus**
+tier (RDFS plus the practical OWL subset: `sameAs`, `inverseOf`,
+symmetric/transitive/functional/inverse-functional properties,
+class/property equivalence — "RDFS-Plus" in Allemang & Hendler's
+*Semantic Web for the Working Ontologist*, "RDFS++" in AllegroGraph)
+acts on it:
+
+```observable-js
+const withSym = ttl + `\n  :worksWith rdf:type <http://www.w3.org/2002/07/owl#SymmetricProperty> .\n`;
+const plus = await fn.rdfsPlusClosure(withSym);
+const dataset2 = await fn.parse(plus.ntriples, {format: "ntriples"});
+const rows = await fn.query(dataset2, `
+  PREFIX : <http://example.org/org#>
+  SELECT * WHERE { ?x :worksWith ?y } ORDER BY ?x
+`);
+return pretty(rows); // TWO rows now: grace→ada and ada→grace
+```
+
+The warrant changes with the vocabulary, and the page says so
+plainly: every rule `rdfsPlusClosure` runs carries a **proved
+licensing and truth-preservation lemma** (the symmetric step here is
+row prp-symp, `prp_symp_licensed`, in the
+[registry](../../../theorem-registry/)) — nothing invented, every
+derivation certified rule-by-rule. What this tier does *not* carry is
+corerdfs's chain-level completeness: `owl:sameAs` is equality, and
+the Herbrand construction behind the completeness theorem does not
+survive it. Three regimes, three precisely-stated warrants — corerdfs
+(sound **and** complete), RDFS-Plus (every step certified), OWL RL
+(the full engine, 1662 W3C tests) — each labelled with exactly what
+is proved.
+
 **What makes this `true` different**: the landed theorem
 `theorem_rdfs_regime_bgp_exact_answer` (with its ASK corollaries,
 stated on the literal `eval_ask_query` entry point) says the answers

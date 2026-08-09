@@ -322,6 +322,19 @@ export function rhoDfFragmentCheck(
 ): Promise<{ ok: boolean; fragment: boolean }>;
 
 /**
+ * RDFS-Plus closure (RDF.Entailment.RDFSPlus.fst's `rdfs_plus_closure`):
+ * RDFS plus the practical OWL subset — owl:sameAs, owl:inverseOf,
+ * Symmetric/Transitive/Functional/InverseFunctionalProperty,
+ * equivalentClass/Property ("RDFS-Plus", Allemang & Hendler 2008;
+ * "RDFS++", AllegroGraph). Every OWL row carries proved licensing +
+ * truth lemmas; no chain-level completeness claim (theorem registry).
+ */
+export function rdfsPlusClosure(
+  data: DataInput,
+  options?: { format?: DataFormat }
+): Promise<{ ok: boolean; ntriples: string; rounds: number }>;
+
+/**
  * OWL tableau materialisation (formal/fstar/Tableau.fst's
  * `tableau_materialise`): add `i rdf:type <ClassExpression>` for every
  * individual the model-construction reasoner proves is a member of an

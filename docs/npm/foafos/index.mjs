@@ -27,6 +27,7 @@ export const shaclValidate      = cjs.shaclValidate;
 export const shexValidate       = cjs.shexValidate;
 export const owlClosure         = cjs.owlClosure;
 export const coreRdfsClosure    = cjs.coreRdfsClosure;
+export const rdfsPlusClosure    = cjs.rdfsPlusClosure;
 export const coreRdfsCheck      = cjs.coreRdfsCheck;
 export const rhoDfClosure       = cjs.rhoDfClosure;
 export const rhoDfFragmentCheck = cjs.rhoDfFragmentCheck;

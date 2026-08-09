@@ -176,6 +176,7 @@ module.exports = {
   shexValidate: api.shexValidate,
   owlClosure: api.owlClosure,
   coreRdfsClosure: api.coreRdfsClosure,
+  rdfsPlusClosure: api.rdfsPlusClosure,
   coreRdfsCheck: api.coreRdfsCheck,
   rhoDfClosure: api.rhoDfClosure,
   rhoDfFragmentCheck: api.rhoDfFragmentCheck,

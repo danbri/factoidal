@@ -732,6 +732,31 @@ function buildApi(driver) {
   const rhoDfFragmentCheck = coreRdfsCheck;
 
   /**
+   * RDFS-Plus closure (RDF.Entailment.RDFSPlus.fst's
+   * `rdfs_plus_closure`): the full RDFS step plus the practical OWL
+   * subset -- owl:sameAs (symmetry/transitivity/substitution),
+   * owl:inverseOf, Symmetric/Transitive/Functional/
+   * InverseFunctionalProperty, equivalentClass/Property. The tier the
+   * literature calls RDFS-Plus (Allemang & Hendler, "Semantic Web for
+   * the Working Ontologist", 2008) or RDFS++ (AllegroGraph). Claim
+   * level, weaker than coreRdfsClosure's and stated exactly: every OWL
+   * row runs under a PROVED licensing + truth lemma (per-rule
+   * certificates in the theorem registry); no chain-level completeness
+   * is claimed -- owl:sameAs equality breaks the Herbrand argument the
+   * corerdfs completeness theorem uses.
+   * @param {Dataset|string|Array} data
+   * @param {{format?: string}} [options]
+   * @returns {Promise<{ok: boolean, ntriples: string, rounds: number}>}
+   */
+  async function rdfsPlusClosure(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('RDFS-Plus closure');
+    requireEntryFn(e, 'rdfsPlusClosure', 'RDFS-Plus closure');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'rdfsPlusClosure(data)');
+    return entryResult(e.rdfsPlusClosure(dataNq), 'rdfsPlusClosure');
+  }
+
+  /**
    * OWL tableau materialisation (formal/fstar/Tableau.fst's
    * `tableau_materialise`): add `i rdf:type <ClassExpression>` for
    * every individual the model-construction reasoner can prove is a
@@ -1881,6 +1906,7 @@ function buildApi(driver) {
     owlClosure,
     coreRdfsClosure,
     coreRdfsCheck,
+    rdfsPlusClosure,
     rhoDfClosure,
     rhoDfFragmentCheck,
     tableauMaterialise,
