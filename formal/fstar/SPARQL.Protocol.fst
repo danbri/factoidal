@@ -33,6 +33,7 @@ module SPARQL.Protocol
 
 open FStar.String
 open FStar.List.Tot
+open Parser.FastString.ConcatSpec
 open RDF.Graph.Executable
 
 #push-options "--z3rlimit 50 --fuel 2 --ifuel 2"
@@ -912,7 +913,7 @@ let serialise_response_json
   let body_pieces = List.Tot.rev (json_rows_body_acc rows true []) in
   "{\"head\":{\"vars\":[" ^ json_var_list vars ^ "]},"
     ^ "\"results\":{\"bindings\":["
-    ^ String.concat "" body_pieces
+    ^ concat_spec "" body_pieces
     ^ "]}}"
 
 // ASK: {"head":{},"boolean":true|false}
@@ -1012,7 +1013,7 @@ let serialise_response_xml
   "<?xml version=\"1.0\"?>\n"
     ^ "<sparql xmlns=\"http://www.w3.org/2005/sparql-results#\">"
     ^ "<head>" ^ xml_head_vars_body vars ^ "</head>"
-    ^ "<results>" ^ String.concat "" body_pieces ^ "</results>"
+    ^ "<results>" ^ concat_spec "" body_pieces ^ "</results>"
     ^ "</sparql>"
 
 let serialise_response_boolean_xml (b : bool) : string =
@@ -1098,7 +1099,7 @@ let serialise_response_csv
     (rows : list binding_row)
   : string =
   let body_pieces = List.Tot.rev (csv_rows_body_acc vars rows []) in
-  csv_header_body vars true ^ "\r\n" ^ String.concat "" body_pieces
+  csv_header_body vars true ^ "\r\n" ^ concat_spec "" body_pieces
 
 // TSV: header keeps the ? prefix; cells use N-Triples-style syntax.
 let rec tsv_term (t : rdf_term) : Tot string (decreases t) =
@@ -1183,7 +1184,7 @@ let serialise_response_tsv
     (rows : list binding_row)
   : string =
   let body_pieces = List.Tot.rev (tsv_rows_body_acc vars rows []) in
-  tsv_header_body vars true ^ "\n" ^ String.concat "" body_pieces
+  tsv_header_body vars true ^ "\n" ^ concat_spec "" body_pieces
 
 
 (** ====================================================================== **)
@@ -1461,7 +1462,7 @@ let extract_request (comment : string) : option proto_request =
             | (p, None)   -> (p, "")
             | (p, Some q) -> (p, q) in
           let (headers, body_lines) = proto_read_headers rest in
-          let body = trim_ws (String.concat "\n" body_lines) in
+          let body = trim_ws (concat_spec "\n" body_lines) in
           Some ({ pr_method = mthd; pr_path = path; pr_qs = qs;
                   pr_headers = headers; pr_body = body })
         | _ -> None))
@@ -1495,7 +1496,7 @@ let proto_str_contains (haystack : string) (needle : string) : bool =
 let extract_status_class (comment : string) : proto_status_class =
   let lines = split_all_on comment (FStar.Char.char_of_int 0x0A (* \n *)) in
   let body = proto_find_resp_lines lines in
-  let body_text = String.concat "\n" body in
+  let body_text = concat_spec "\n" body in
   if proto_str_contains body_text "4xx" || proto_str_contains body_text "4XX"
   then S_4xx
   else if proto_str_contains body_text "5xx" || proto_str_contains body_text "5XX"

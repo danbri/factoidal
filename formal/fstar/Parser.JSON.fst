@@ -45,6 +45,7 @@ module Parser.JSON
 open FStar.String
 open FStar.List.Tot
 open Parser.FastString
+open Parser.FastString.ConcatSpec
 open Parser.Combinators
 
 // ================================================================
@@ -189,7 +190,12 @@ let rec json_string_segments
       let b = fs_byte_at input pos in
       if b = 0x22 then
         let segs_done = fs_byte_sub input seg_start (pos - seg_start) :: segs in
-        ParseOk (String.concat "" (List.Tot.rev segs_done)) (pos + 1)
+        // Migrated from FStar.String.concat to concat_spec (FastString
+        // step 5, Task B) -- this is the terminal call the SRJ text
+        // round-trip induction needs equations for (see
+        // SPARQL.Protocol.RoundTrip.fst's banner: the missing
+        // `String.concat "" [x] == x` step).
+        ParseOk (Parser.FastString.ConcatSpec.concat_spec "" (List.Tot.rev segs_done)) (pos + 1)
       else if b = 0x5C then
         let raw = fs_byte_sub input seg_start (pos - seg_start) in
         (match json_escape_piece input pos with
