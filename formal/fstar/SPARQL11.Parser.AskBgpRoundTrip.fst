@@ -458,3 +458,64 @@ let rec lemma_parse_triples_block_bgp pm acc_b b tail fuel =
     assert ((acc_b @ [tp]) @ rest == acc_b @ (tp :: rest));
     assert (acc_b @ (tp :: rest) == acc_b @ b)
 #pop-options
+
+(* ============================================================ *)
+(* Stage (d): `{ ... }` wrapper, ASK-body wrapper, select-query    *)
+(* dispatch — token-level                                          *)
+(* ============================================================ *)
+
+// Split into two ISOLATED near-empty steps (TokenRoundTrip's
+// "context-heavy assertions through small isolated lemmas" pattern —
+// the combined single-lemma version of this proof (first attempt)
+// hung past 10 minutes of wall clock at rlimit 1500; splitting the two
+// `parse_ggp_body` unfolds into their own standalone lemmas, each
+// touching only what it needs, brought both back under a few hundred
+// milliseconds).
+#push-options "--z3rlimit 1000 --fuel 8 --ifuel 8"
+val lemma_ggp_body_step1
+    (pm : prefix_map) (b : bgp{bgp_in_fragment_1 b /\ List.Tot.length b >= 1})
+    (after_rbrace : token_stream) (fuel : nat)
+  : Lemma
+      (requires fuel >= 8 + List.Tot.length b)
+      (ensures parse_ggp_body pm fuel GP_Empty [] false (bgp_tokens_1 b @ (Tok_RBRACE :: after_rbrace))
+               == parse_ggp_body pm (fuel - 1) (GP_BGP b) [] false (Tok_RBRACE :: after_rbrace))
+let lemma_ggp_body_step1 pm b after_rbrace fuel =
+  let ts = bgp_tokens_1 b @ (Tok_RBRACE :: after_rbrace) in
+  let tp0 = List.Tot.hd b in
+  assert (List.Tot.hd (bgp_tokens_1 b) == tok_ps_1 tp0.tp_s);
+  assert (Tok_IRI? (tok_ps_1 tp0.tp_s) \/ Tok_VAR? (tok_ps_1 tp0.tp_s));
+  assert (parse_peek ts == tok_ps_1 tp0.tp_s);
+  lemma_parse_triples_block_bgp pm [] b (Tok_RBRACE :: after_rbrace) (fuel - 1);
+  List.Tot.append_l_nil b;
+  assert (parse_triples_block pm (fuel - 1) GP_Empty ts == ParseOk (GP_BGP b) (Tok_RBRACE :: after_rbrace));
+  assert (ggp_join GP_Empty (GP_BGP b) == GP_BGP b)
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+val lemma_ggp_body_step2 (pm : prefix_map) (b : bgp) (after_rbrace : token_stream) (fuel : nat)
+  : Lemma (ensures parse_ggp_body pm fuel (GP_BGP b) [] false (Tok_RBRACE :: after_rbrace)
+                    == ParseOk (GP_BGP b) (Tok_RBRACE :: after_rbrace))
+let lemma_ggp_body_step2 pm b after_rbrace fuel =
+  assert (List.Tot.fold_left (fun g e -> GP_Filter e g) (GP_BGP b) ([] <: list expr) == GP_BGP b)
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+val lemma_parse_group_graph_pattern_ask_bgp
+    (pm : prefix_map) (b : bgp{bgp_in_fragment_1 b /\ List.Tot.length b >= 1})
+    (after_rbrace : token_stream) (fuel : nat)
+  : Lemma
+      (requires fuel >= 9 + List.Tot.length b)
+      (ensures parse_group_graph_pattern pm fuel
+                 (Tok_LBRACE :: (bgp_tokens_1 b @ (Tok_RBRACE :: after_rbrace)))
+               == ParseOk (GP_BGP b) after_rbrace)
+let lemma_parse_group_graph_pattern_ask_bgp pm b after_rbrace fuel =
+  let inner = bgp_tokens_1 b @ (Tok_RBRACE :: after_rbrace) in
+  assert (parse_expect Tok_LBRACE (Tok_LBRACE :: inner) == ParseOk () inner);
+  let tp0 = List.Tot.hd b in
+  assert (Tok_IRI? (tok_ps_1 tp0.tp_s) \/ Tok_VAR? (tok_ps_1 tp0.tp_s));
+  assert (parse_peek inner == tok_ps_1 tp0.tp_s);
+  lemma_ggp_body_step1 pm b after_rbrace (fuel - 1);
+  lemma_ggp_body_step2 pm b after_rbrace (fuel - 2);
+  assert (parse_ggp_body pm (fuel - 1) GP_Empty [] false inner == ParseOk (GP_BGP b) (Tok_RBRACE :: after_rbrace));
+  assert (parse_expect Tok_RBRACE (Tok_RBRACE :: after_rbrace) == ParseOk () after_rbrace)
+#pop-options
