@@ -670,3 +670,12 @@ string-spec wall: `FStar.String.concat` has ZERO lemmas in ulib
 (checked; both parser and serializer sit on it). Candidate rule
 documented in-file, owner-gated. Three walls, one pattern — feeds the
 re-found-the-fast-path decision on #358.
+
+**FastString migration steps 0-1 (2026-08-10)**: baselines frozen
+(docs/designissues/2026-08-10-faststring-baselines.md — parse 1M:
+NT 71,304 tps, Turtle 80,143 tps, RDF/XML 27,669 tps; same-host
+discipline; bench-turtle-metrics.sh found broken, fallback used,
+repair noted). `Parser.FastString.Spec.fst` VERIFIED first-attempt:
+UTF-8 codec mirroring fs_cp_at_impl branch-for-branch + full lemma
+kit incl. `utf8_decode_encode_identity`. Steps 2+3 (the swap +
+Option-B realisation + equivalence harness, merged together) next.
