@@ -172,12 +172,20 @@ let check_byte_at ~tag ?(well_formed = true) s =
      realisation's added bounds check (patch 89's original body had no
      bounds check at all -- this is the ONE deliberate behaviour change
      from the pre-migration fast primitive; see the patch's own banner).
-     OOB agreement does not depend on well-formedness (both sides return
-     0 purely from the clamp, never from decoded byte content), so this
-     block stays ~expected_pass:true unconditionally. *)
+     REVISED (issue #374, second pass): "OOB agreement does not depend
+     on well-formedness" was WRONG for the adversarial corpus, caught by
+     actually running this after the Spec.fst fix rather than trusting
+     the original reasoning -- `len` here is the FAST realisation's byte
+     count, but `fs_byte_length_spec s` can be SMALLER for a malformed
+     string (the byte-swallowing divergence documented in
+     Parser.FastString.Spec.fst's SINGLE-DECODER FINDING banner), which
+     makes position `len` genuinely IN-BOUNDS on the spec side while
+     OUT-of-bounds (hence 0) on the fast side -- a real, forced
+     divergence, not merely at the clamp. well_formed threads through
+     here too now. *)
   List.iter (fun i ->
     check ~name:(Printf.sprintf "fs_byte_at == fs_byte_at_spec (OOB) [%s] i=%d" tag i)
-      ~expected_pass:true
+      ~expected_pass:well_formed
       (Z.equal (Parser_FastString.fs_byte_at s (z i)) (Parser_FastString.fs_byte_at_spec s (z i)))
   ) [len; len + 1; len + 1000]
 

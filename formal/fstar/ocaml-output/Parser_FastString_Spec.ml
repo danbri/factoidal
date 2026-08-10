@@ -4,27 +4,32 @@ let is_continuation (b : byte) : Prims.bool=
   (b >= (Prims.of_int (0x80))) && (b < (Prims.of_int (0xC0)))
 let utf8_enc_char (c : FStar_Char.char) : byte Prims.list=
   let cp = FStar_Char.int_of_char c in
-  if cp < (Prims.of_int (0x80))
-  then [cp]
+  if
+    ((cp < Prims.int_zero) || (cp > (Prims.parse_int "0x10FFFF"))) ||
+      ((cp >= (Prims.of_int (0xD800))) && (cp < (Prims.of_int (0xE000))))
+  then [(Prims.of_int (0xEF)); (Prims.of_int (0xBF)); (Prims.of_int (0xBD))]
   else
-    if cp < (Prims.of_int (0x800))
-    then
-      [(Prims.of_int (0xC0)) + (cp / (Prims.of_int (0x40)));
-      (Prims.of_int (0x80)) + ((mod) cp (Prims.of_int (0x40)))]
+    if cp < (Prims.of_int (0x80))
+    then [cp]
     else
-      if cp < (Prims.parse_int "0x10000")
+      if cp < (Prims.of_int (0x800))
       then
-        [(Prims.of_int (0xE0)) + (cp / (Prims.of_int (0x1000)));
-        (Prims.of_int (0x80)) +
-          ((mod) (cp / (Prims.of_int (0x40))) (Prims.of_int (0x40)));
+        [(Prims.of_int (0xC0)) + (cp / (Prims.of_int (0x40)));
         (Prims.of_int (0x80)) + ((mod) cp (Prims.of_int (0x40)))]
       else
-        [(Prims.of_int (0xF0)) + (cp / (Prims.parse_int "0x40000"));
-        (Prims.of_int (0x80)) +
-          ((mod) (cp / (Prims.of_int (0x1000))) (Prims.of_int (0x40)));
-        (Prims.of_int (0x80)) +
-          ((mod) (cp / (Prims.of_int (0x40))) (Prims.of_int (0x40)));
-        (Prims.of_int (0x80)) + ((mod) cp (Prims.of_int (0x40)))]
+        if cp < (Prims.parse_int "0x10000")
+        then
+          [(Prims.of_int (0xE0)) + (cp / (Prims.of_int (0x1000)));
+          (Prims.of_int (0x80)) +
+            ((mod) (cp / (Prims.of_int (0x40))) (Prims.of_int (0x40)));
+          (Prims.of_int (0x80)) + ((mod) cp (Prims.of_int (0x40)))]
+        else
+          [(Prims.of_int (0xF0)) + (cp / (Prims.parse_int "0x40000"));
+          (Prims.of_int (0x80)) +
+            ((mod) (cp / (Prims.of_int (0x1000))) (Prims.of_int (0x40)));
+          (Prims.of_int (0x80)) +
+            ((mod) (cp / (Prims.of_int (0x40))) (Prims.of_int (0x40)));
+          (Prims.of_int (0x80)) + ((mod) cp (Prims.of_int (0x40)))]
 let utf8_bytes (s : Prims.string) : byte Prims.list=
   FStar_List_Tot_Base.concatMap utf8_enc_char (FStar_String.list_of_string s)
 let rec nth_byte (bs : byte Prims.list) (i : Prims.nat) :
@@ -159,7 +164,7 @@ let rec utf8_decode_all_aux (bs : byte Prims.list) (blen : Prims.nat)
          then FStar_List_Tot_Base.rev acc
          else
            (let c =
-              if cp < (Prims.of_int (0xd7ff))
+              if (cp >= Prims.int_zero) && (cp < (Prims.of_int (0xd7ff)))
               then FStar_Char.char_of_int cp
               else
                 if
