@@ -717,3 +717,17 @@ utf8_bytes mixes two decoders that disagree on INVALID UTF-8 (665
 divergences + one crash path) — the deletability promise holds for
 valid input only until the Spec is re-founded on a single WHATWG
 decoder; repair scheduled before step 4's axiom discharge.
+
+**FastString #374 repair (2026-08-10)**: Spec re-founded — the "second
+decoder" was ulib's own list_of_string, which returns NEGATIVE
+codepoints on invalid UTF-8 (measured -1670; a genuine F* stdlib bug,
+upstream-reportable). Guards added in utf8_enc_char +
+utf8_decode_all_aux (verified first-try; two new lemmas). Equivalence
+corpus now COMPLETES CLEAN: 93,846 pass, 0 unexpected fail, 962
+documented expected-fail rows (the necessity-forced byte_sub boundary
+domain), no crash. Deletability contract now holds on ALL input. W3C
+regression: RDF 1031/0 exact; SPARQL 627/4 with the 4 = the known
+intermittent RIF quartet (#367's environmental pattern). Residual:
+decode-of-encode-vs-list_of_string theorem removed after 3 attempts
+(in-file note with exact error); run-all.sh module-list gap found
+(separate issue).
