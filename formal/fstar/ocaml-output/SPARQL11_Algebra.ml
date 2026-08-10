@@ -5694,25 +5694,11 @@ let eval_expr_ebv (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
 let eval_expr_fwd (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (e : expr) (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   eval_expr_with_base base e mu
-let eval_exists_fwd_ref :
-  (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
-    group_graph_pattern ->
-    RDF_Graph_Executable.solution_mapping ->
-    RDF_Graph.rdf_graph ->
-    RDF_Graph.rdf_dataset -> Prims.bool) Stdlib.ref=
-  Stdlib.ref (fun _ _ _ _ _ -> false)
 let eval_subselect_fwd_ref :
   (query ->
     RDF_Graph.rdf_graph ->
     RDF_Graph.rdf_dataset -> solution_sequence) Stdlib.ref=
   Stdlib.ref (fun _ _ _ -> [])
-let eval_exists_fwd
-  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (p : group_graph_pattern)
-  (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph.rdf_graph)
-  (ds : RDF_Graph.rdf_dataset) : Prims.bool=
-  !eval_exists_fwd_ref base p mu g ds
 let eval_subselect_fwd (q : query)
   (g : RDF_Graph.rdf_graph)
   (ds : RDF_Graph.rdf_dataset) : solution_sequence=
@@ -5959,14 +5945,236 @@ let filter_solutions_fwd
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
   (omega : solution_sequence) : solution_sequence=
   FStar_List_Tot_Base.filter (eval_expr_ebv base e) omega
+let union (omega1 : solution_sequence) (omega2 : solution_sequence) :
+  solution_sequence= RDF_List_Helpers.append_tr omega1 omega2
+let rec domains_disjoint (mu1 : RDF_Graph_Executable.solution_mapping)
+  (mu2 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
+  match mu1 with
+  | [] -> true
+  | (v, uu___)::rest ->
+      (Prims.op_Negation
+         (FStar_Pervasives_Native.uu___is_Some
+            (FStar_List_Tot_Base.assoc v mu2)))
+        && (domains_disjoint rest mu2)
+let minus (omega1 : solution_sequence) (omega2 : solution_sequence) :
+  solution_sequence=
+  FStar_List_Tot_Base.filter
+    (fun mu1 ->
+       Prims.op_Negation
+         (FStar_List_Tot_Base.existsb
+            (fun mu2 ->
+               (sm_compatible mu1 mu2) &&
+                 (Prims.op_Negation (domains_disjoint mu1 mu2))) omega2))
+    omega1
+let rec fx_bind_rows (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (e : expr) (v : var_name) (omega : solution_sequence) (i : Prims.nat) :
+  solution_sequence=
+  match omega with
+  | [] -> []
+  | mu::rest ->
+      let mu_ctx = fx_ctx_put (Prims.string_of_int i) v mu in
+      let row =
+        match er_to_term (eval_expr_fwd base e mu_ctx) with
+        | FStar_Pervasives_Native.Some t ->
+            (match sm_lookup v mu with
+             | FStar_Pervasives_Native.Some uu___ -> mu
+             | FStar_Pervasives_Native.None -> sm_bind v t mu)
+        | FStar_Pervasives_Native.None -> mu in
+      row :: (fx_bind_rows base e v rest (i + Prims.int_one))
+let substitute_pattern_term (mu : RDF_Graph_Executable.solution_mapping)
+  (pt : pattern_term) : pattern_term=
+  match pt with
+  | PT_Var v ->
+      (match sm_lookup v mu with
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PT_IRI i
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PT_BNode b
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) -> PT_Literal l
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> PT_Var v
+       | FStar_Pervasives_Native.None -> PT_Var v)
+  | uu___ -> pt
+let substitute_pattern_subject (mu : RDF_Graph_Executable.solution_mapping)
+  (ps : pattern_subject) : pattern_subject=
+  match ps with
+  | PS_Var v ->
+      (match sm_lookup v mu with
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PS_IRI i
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PS_BNode b
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) -> PS_Var v
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> PS_Var v
+       | FStar_Pervasives_Native.None -> PS_Var v)
+  | uu___ -> ps
+let substitute_triple_pattern (mu : RDF_Graph_Executable.solution_mapping)
+  (tp : triple_pattern) : triple_pattern=
+  {
+    tp_s = (substitute_pattern_subject mu tp.tp_s);
+    tp_p = (substitute_pattern_term mu tp.tp_p);
+    tp_o = (substitute_pattern_term mu tp.tp_o)
+  }
+let substitute_bgp (mu : RDF_Graph_Executable.solution_mapping) (b : bgp) :
+  bgp= FStar_List_Tot_Base.map (substitute_triple_pattern mu) b
+let rec pattern_size (p : group_graph_pattern) : Prims.nat=
+  match p with
+  | GP_BGP uu___ -> Prims.int_one
+  | GP_Join (p1, p2) ->
+      (Prims.int_one + (pattern_size p1)) + (pattern_size p2)
+  | GP_LeftJoin (p1, p2, e) ->
+      ((Prims.int_one + (pattern_size p1)) + (pattern_size p2)) +
+        (expr_size e)
+  | GP_Filter (e, p1) -> (Prims.int_one + (expr_size e)) + (pattern_size p1)
+  | GP_Union (p1, p2) ->
+      (Prims.int_one + (pattern_size p1)) + (pattern_size p2)
+  | GP_Graph (uu___, p1) -> Prims.int_one + (pattern_size p1)
+  | GP_Minus (p1, p2) ->
+      (Prims.int_one + (pattern_size p1)) + (pattern_size p2)
+  | GP_Lateral (p1, p2) ->
+      (Prims.int_one + (pattern_size p1)) + (pattern_size p2)
+  | GP_Bind (e, uu___, p1) ->
+      (Prims.int_one + (expr_size e)) + (pattern_size p1)
+  | GP_Values (uu___, uu___1) -> Prims.int_one
+  | GP_Service (uu___, p1, uu___1) -> Prims.int_one + (pattern_size p1)
+  | GP_ServiceVar (uu___, p1, uu___1) -> Prims.int_one + (pattern_size p1)
+  | GP_SubSelect uu___ -> Prims.int_one
+  | GP_PropertyPath (uu___, uu___1, uu___2) -> Prims.int_one
+  | GP_Empty -> Prims.int_one
+and expr_size (e : expr) : Prims.nat=
+  match e with
+  | E_Var uu___ -> Prims.int_one
+  | E_IRI uu___ -> Prims.int_one
+  | E_Literal uu___ -> Prims.int_one
+  | E_BoolLit uu___ -> Prims.int_one
+  | E_NumericLit uu___ -> Prims.int_one
+  | E_DecimalLit uu___ -> Prims.int_one
+  | E_DoubleLit uu___ -> Prims.int_one
+  | E_Bound uu___ -> Prims.int_one
+  | E_Now -> Prims.int_one
+  | E_Arith (uu___, e1, e2) ->
+      (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_Compare (uu___, e1, e2) ->
+      (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_And (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_Or (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_StrDt (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_StrLang (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_StrStarts (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_StrEnds (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_Contains (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_StrBefore (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_StrAfter (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_SameTerm (e1, e2) -> (Prims.int_one + (expr_size e1)) + (expr_size e2)
+  | E_UnaryMinus e1 -> Prims.int_one + (expr_size e1)
+  | E_UnaryPlus e1 -> Prims.int_one + (expr_size e1)
+  | E_Not e1 -> Prims.int_one + (expr_size e1)
+  | E_IsIRI e1 -> Prims.int_one + (expr_size e1)
+  | E_IsBlank e1 -> Prims.int_one + (expr_size e1)
+  | E_IsLiteral e1 -> Prims.int_one + (expr_size e1)
+  | E_IsNumeric e1 -> Prims.int_one + (expr_size e1)
+  | E_Str e1 -> Prims.int_one + (expr_size e1)
+  | E_Lang e1 -> Prims.int_one + (expr_size e1)
+  | E_Datatype e1 -> Prims.int_one + (expr_size e1)
+  | E_IRI_fn e1 -> Prims.int_one + (expr_size e1)
+  | E_HasLang e1 -> Prims.int_one + (expr_size e1)
+  | E_HasLangDir e1 -> Prims.int_one + (expr_size e1)
+  | E_LangDir e1 -> Prims.int_one + (expr_size e1)
+  | E_StrLen e1 -> Prims.int_one + (expr_size e1)
+  | E_UCase e1 -> Prims.int_one + (expr_size e1)
+  | E_LCase e1 -> Prims.int_one + (expr_size e1)
+  | E_EncodeForUri e1 -> Prims.int_one + (expr_size e1)
+  | E_Abs e1 -> Prims.int_one + (expr_size e1)
+  | E_Round e1 -> Prims.int_one + (expr_size e1)
+  | E_Ceil e1 -> Prims.int_one + (expr_size e1)
+  | E_Floor e1 -> Prims.int_one + (expr_size e1)
+  | E_MD5 e1 -> Prims.int_one + (expr_size e1)
+  | E_SHA1 e1 -> Prims.int_one + (expr_size e1)
+  | E_SHA256 e1 -> Prims.int_one + (expr_size e1)
+  | E_SHA384 e1 -> Prims.int_one + (expr_size e1)
+  | E_SHA512 e1 -> Prims.int_one + (expr_size e1)
+  | E_Year e1 -> Prims.int_one + (expr_size e1)
+  | E_Month e1 -> Prims.int_one + (expr_size e1)
+  | E_Day e1 -> Prims.int_one + (expr_size e1)
+  | E_Hours e1 -> Prims.int_one + (expr_size e1)
+  | E_Minutes e1 -> Prims.int_one + (expr_size e1)
+  | E_Seconds e1 -> Prims.int_one + (expr_size e1)
+  | E_Timezone e1 -> Prims.int_one + (expr_size e1)
+  | E_Tz e1 -> Prims.int_one + (expr_size e1)
+  | E_Aggregate (uu___, uu___1, e1) -> Prims.int_one + (expr_size e1)
+  | E_TTSubject e1 -> Prims.int_one + (expr_size e1)
+  | E_TTPredicate e1 -> Prims.int_one + (expr_size e1)
+  | E_TTObject e1 -> Prims.int_one + (expr_size e1)
+  | E_IsTriple e1 -> Prims.int_one + (expr_size e1)
+  | E_StrLangDir (e1, e2, e3) ->
+      ((Prims.int_one + (expr_size e1)) + (expr_size e2)) + (expr_size e3)
+  | E_If (e1, e2, e3) ->
+      ((Prims.int_one + (expr_size e1)) + (expr_size e2)) + (expr_size e3)
+  | E_TripleTerm (e1, e2, e3) ->
+      ((Prims.int_one + (expr_size e1)) + (expr_size e2)) + (expr_size e3)
+  | E_Coalesce es -> Prims.int_one + (expr_list_size es)
+  | E_Concat es -> Prims.int_one + (expr_list_size es)
+  | E_FunctionCall (uu___, es) -> Prims.int_one + (expr_list_size es)
+  | E_In (e1, es) -> (Prims.int_one + (expr_size e1)) + (expr_list_size es)
+  | E_NotIn (e1, es) ->
+      (Prims.int_one + (expr_size e1)) + (expr_list_size es)
+  | E_Substr (e1, e2, e3o) ->
+      ((Prims.int_one + (expr_size e1)) + (expr_size e2)) +
+        (expr_opt_size e3o)
+  | E_Regex (e1, e2, e3o) ->
+      ((Prims.int_one + (expr_size e1)) + (expr_size e2)) +
+        (expr_opt_size e3o)
+  | E_Replace (e1, e2, e3, e4o) ->
+      (((Prims.int_one + (expr_size e1)) + (expr_size e2)) + (expr_size e3))
+        + (expr_opt_size e4o)
+  | E_Exists p -> Prims.int_one + (pattern_size p)
+  | E_NotExists p -> Prims.int_one + (pattern_size p)
+and expr_list_size (es : expr Prims.list) : Prims.nat=
+  match es with
+  | [] -> Prims.int_zero
+  | hd::tl -> (Prims.int_one + (expr_size hd)) + (expr_list_size tl)
+and expr_opt_size (eo : expr FStar_Pervasives_Native.option) : Prims.nat=
+  match eo with
+  | FStar_Pervasives_Native.None -> Prims.int_zero
+  | FStar_Pervasives_Native.Some e -> Prims.int_one + (expr_size e)
+let rec substitute_pattern (mu : RDF_Graph_Executable.solution_mapping)
+  (p : group_graph_pattern) : group_graph_pattern=
+  match p with
+  | GP_BGP b -> GP_BGP (substitute_bgp mu b)
+  | GP_Join (p1, p2) ->
+      GP_Join ((substitute_pattern mu p1), (substitute_pattern mu p2))
+  | GP_LeftJoin (p1, p2, e) ->
+      GP_LeftJoin ((substitute_pattern mu p1), (substitute_pattern mu p2), e)
+  | GP_Filter (e, p1) -> GP_Filter (e, (substitute_pattern mu p1))
+  | GP_Union (p1, p2) ->
+      GP_Union ((substitute_pattern mu p1), (substitute_pattern mu p2))
+  | GP_Graph (gt, p1) ->
+      GP_Graph ((substitute_pattern_term mu gt), (substitute_pattern mu p1))
+  | GP_Minus (p1, p2) ->
+      GP_Minus ((substitute_pattern mu p1), (substitute_pattern mu p2))
+  | GP_Lateral (p1, p2) ->
+      GP_Lateral ((substitute_pattern mu p1), (substitute_pattern mu p2))
+  | GP_Bind (e, v, p1) -> GP_Bind (e, v, (substitute_pattern mu p1))
+  | GP_Values (vars, rows) -> GP_Values (vars, rows)
+  | GP_Service (iri, p1, silent) -> GP_Service (iri, p1, silent)
+  | GP_ServiceVar (v, p1, silent) ->
+      (match sm_lookup v mu with
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
+           if RDF_Term.is_iri iri
+           then GP_Service (iri, (substitute_pattern mu p1), silent)
+           else GP_ServiceVar (v, (substitute_pattern mu p1), silent)
+       | uu___ -> GP_ServiceVar (v, (substitute_pattern mu p1), silent))
+  | GP_SubSelect q -> GP_SubSelect q
+  | GP_PropertyPath (ps, pp, pt) ->
+      GP_PropertyPath
+        ((substitute_pattern_subject mu ps), pp,
+          (substitute_pattern_term mu pt))
+  | GP_Empty -> GP_Empty
 let rec substitute_existentials
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) (g : RDF_Graph.rdf_graph)
   (ds : RDF_Graph.rdf_dataset) : expr=
   match e with
-  | E_Exists p -> E_BoolLit (eval_exists_fwd base p mu g ds)
+  | E_Exists p -> E_BoolLit (eval_exists base p mu g ds)
   | E_NotExists p ->
-      E_BoolLit (Prims.op_Negation (eval_exists_fwd base p mu g ds))
+      E_BoolLit (Prims.op_Negation (eval_exists base p mu g ds))
   | E_Arith (op, e1, e2) ->
       E_Arith
         (op, (substitute_existentials base e1 mu g ds),
@@ -6120,7 +6328,7 @@ and substitute_existentials_opt
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some e ->
       FStar_Pervasives_Native.Some (substitute_existentials base e mu g ds)
-let filter_solutions_with_graph
+and filter_solutions_with_graph
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
   (omega : solution_sequence) (g : RDF_Graph.rdf_graph)
   (ds : RDF_Graph.rdf_dataset) : solution_sequence=
@@ -6128,7 +6336,7 @@ let filter_solutions_with_graph
     (fun mu ->
        let e' = substitute_existentials base e mu g ds in
        eval_expr_ebv base e' mu) omega
-let left_join_with_graph
+and left_join_with_graph
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) (g : RDF_Graph.rdf_graph) (ds : RDF_Graph.rdf_dataset)
@@ -6177,43 +6385,7 @@ let left_join_with_graph
               if (FStar_List_Tot_Base.length joins) > Prims.int_zero
               then joins
               else [mu1]) omega1)
-let union (omega1 : solution_sequence) (omega2 : solution_sequence) :
-  solution_sequence= RDF_List_Helpers.append_tr omega1 omega2
-let rec domains_disjoint (mu1 : RDF_Graph_Executable.solution_mapping)
-  (mu2 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
-  match mu1 with
-  | [] -> true
-  | (v, uu___)::rest ->
-      (Prims.op_Negation
-         (FStar_Pervasives_Native.uu___is_Some
-            (FStar_List_Tot_Base.assoc v mu2)))
-        && (domains_disjoint rest mu2)
-let minus (omega1 : solution_sequence) (omega2 : solution_sequence) :
-  solution_sequence=
-  FStar_List_Tot_Base.filter
-    (fun mu1 ->
-       Prims.op_Negation
-         (FStar_List_Tot_Base.existsb
-            (fun mu2 ->
-               (sm_compatible mu1 mu2) &&
-                 (Prims.op_Negation (domains_disjoint mu1 mu2))) omega2))
-    omega1
-let rec fx_bind_rows (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (e : expr) (v : var_name) (omega : solution_sequence) (i : Prims.nat) :
-  solution_sequence=
-  match omega with
-  | [] -> []
-  | mu::rest ->
-      let mu_ctx = fx_ctx_put (Prims.string_of_int i) v mu in
-      let row =
-        match er_to_term (eval_expr_fwd base e mu_ctx) with
-        | FStar_Pervasives_Native.Some t ->
-            (match sm_lookup v mu with
-             | FStar_Pervasives_Native.Some uu___ -> mu
-             | FStar_Pervasives_Native.None -> sm_bind v t mu)
-        | FStar_Pervasives_Native.None -> mu in
-      row :: (fx_bind_rows base e v rest (i + Prims.int_one))
-let rec eval_pattern_store
+and eval_pattern_store
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store) :
   solution_sequence=
@@ -6387,6 +6559,16 @@ let rec eval_pattern_store
             RDF_List_Helpers.append_tr pairs new_reflexive
         | uu___ -> pairs in
       path_result_to_solutions ps pt pairs1
+and eval_exists (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (pattern : group_graph_pattern)
+  (mu : RDF_Graph_Executable.solution_mapping) (graph : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : Prims.bool=
+  let substituted = substitute_pattern mu pattern in
+  (FStar_List_Tot_Base.length
+     (eval_pattern_store base substituted
+        (graph_to_store_for substituted graph)
+        (dataset_to_store_for substituted ds)))
+    > Prims.int_zero
 let eval_pattern (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (p : group_graph_pattern) (g : RDF_Graph.rdf_graph)
   (ds : RDF_Graph.rdf_dataset) : solution_sequence=
@@ -7934,72 +8116,6 @@ let xsd_cast (v : eval_result) (target : cast_target) :
                        }))
              else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
-let substitute_pattern_term (mu : RDF_Graph_Executable.solution_mapping)
-  (pt : pattern_term) : pattern_term=
-  match pt with
-  | PT_Var v ->
-      (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PT_IRI i
-       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PT_BNode b
-       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) -> PT_Literal l
-       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
-           (uu___, uu___1, uu___2)) -> PT_Var v
-       | FStar_Pervasives_Native.None -> PT_Var v)
-  | uu___ -> pt
-let substitute_pattern_subject (mu : RDF_Graph_Executable.solution_mapping)
-  (ps : pattern_subject) : pattern_subject=
-  match ps with
-  | PS_Var v ->
-      (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PS_IRI i
-       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PS_BNode b
-       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) -> PS_Var v
-       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
-           (uu___, uu___1, uu___2)) -> PS_Var v
-       | FStar_Pervasives_Native.None -> PS_Var v)
-  | uu___ -> ps
-let substitute_triple_pattern (mu : RDF_Graph_Executable.solution_mapping)
-  (tp : triple_pattern) : triple_pattern=
-  {
-    tp_s = (substitute_pattern_subject mu tp.tp_s);
-    tp_p = (substitute_pattern_term mu tp.tp_p);
-    tp_o = (substitute_pattern_term mu tp.tp_o)
-  }
-let substitute_bgp (mu : RDF_Graph_Executable.solution_mapping) (b : bgp) :
-  bgp= FStar_List_Tot_Base.map (substitute_triple_pattern mu) b
-let rec substitute_pattern (mu : RDF_Graph_Executable.solution_mapping)
-  (p : group_graph_pattern) : group_graph_pattern=
-  match p with
-  | GP_BGP b -> GP_BGP (substitute_bgp mu b)
-  | GP_Join (p1, p2) ->
-      GP_Join ((substitute_pattern mu p1), (substitute_pattern mu p2))
-  | GP_LeftJoin (p1, p2, e) ->
-      GP_LeftJoin ((substitute_pattern mu p1), (substitute_pattern mu p2), e)
-  | GP_Filter (e, p1) -> GP_Filter (e, (substitute_pattern mu p1))
-  | GP_Union (p1, p2) ->
-      GP_Union ((substitute_pattern mu p1), (substitute_pattern mu p2))
-  | GP_Graph (gt, p1) ->
-      GP_Graph ((substitute_pattern_term mu gt), (substitute_pattern mu p1))
-  | GP_Minus (p1, p2) ->
-      GP_Minus ((substitute_pattern mu p1), (substitute_pattern mu p2))
-  | GP_Lateral (p1, p2) ->
-      GP_Lateral ((substitute_pattern mu p1), (substitute_pattern mu p2))
-  | GP_Bind (e, v, p1) -> GP_Bind (e, v, (substitute_pattern mu p1))
-  | GP_Values (vars, rows) -> GP_Values (vars, rows)
-  | GP_Service (iri, p1, silent) -> GP_Service (iri, p1, silent)
-  | GP_ServiceVar (v, p1, silent) ->
-      (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
-           if RDF_Term.is_iri iri
-           then GP_Service (iri, (substitute_pattern mu p1), silent)
-           else GP_ServiceVar (v, (substitute_pattern mu p1), silent)
-       | uu___ -> GP_ServiceVar (v, (substitute_pattern mu p1), silent))
-  | GP_SubSelect q -> GP_SubSelect q
-  | GP_PropertyPath (ps, pp, pt) ->
-      GP_PropertyPath
-        ((substitute_pattern_subject mu ps), pp,
-          (substitute_pattern_term mu pt))
-  | GP_Empty -> GP_Empty
 let tp_has_var (v : var_name) (tp : triple_pattern) : Prims.bool=
   ((match tp.tp_s with | PS_Var sv -> sv = v | uu___ -> false) ||
      (match tp.tp_p with | PT_Var pv -> pv = v | uu___ -> false))
@@ -8037,14 +8153,6 @@ let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Prims.bool=
       (match ps with | PS_Var sv -> sv = v | uu___1 -> false) ||
         ((match pt with | PT_Var tv -> tv = v | uu___1 -> false))
   | GP_Empty -> false
-let eval_exists (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (pattern : group_graph_pattern)
-  (mu : RDF_Graph_Executable.solution_mapping) (graph : RDF_Graph.rdf_graph)
-  (ds : RDF_Graph.rdf_dataset) : Prims.bool=
-  let substituted = substitute_pattern mu pattern in
-  (FStar_List_Tot_Base.length (eval_pattern base substituted graph ds)) >
-    Prims.int_zero
-let () = eval_exists_fwd_ref := eval_exists
 let filter_solutions (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (e : expr) (omega : solution_sequence) : solution_sequence=
   FStar_List_Tot_Base.filter (eval_expr_ebv base e) omega
