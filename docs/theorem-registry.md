@@ -702,3 +702,18 @@ NOTHING about its characters; blocks every payload-carrying token
 (IRIs, vars, even keywords). Fix requires either a trusted ulib-level
 sub-content rule or lexer changes off `substring` — owner-gated,
 consolidated with the #358 string-foundation decision.
+
+**FastString migration steps 2+3 MERGED (2026-08-10)**: six primitives
+are REAL Spec-backed F* definitions (assume vals retired; sole
+survivor unsafe_char_of_d7ff in CharBoundary); patch 89 → 1 symbol;
+fast OCaml now an experimental_ocaml_glue SPEED patch (rule 11(b)).
+Gates: 233/234 verify (1 = pre-existing #327); extract/compile clean,
+29 binaries; W3C SPARQL 631 pass 0 fail (of 631) + RDF 1031 pass 0
+fail (of 1031), exact match (OWL DL suite not run, stated);
+benchmarks ALL within the 10% gate vs frozen baselines (1M parse rows
+FASTER: nt -8.0%, turtle -3.1%); equivalence 401/401 on valid UTF-8.
+WALL (documented in the plan doc's Step 2/3 results): Spec's
+utf8_bytes mixes two decoders that disagree on INVALID UTF-8 (665
+divergences + one crash path) — the deletability promise holds for
+valid input only until the Spec is re-founded on a single WHATWG
+decoder; repair scheduled before step 4's axiom discharge.
