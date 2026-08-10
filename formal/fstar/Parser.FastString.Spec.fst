@@ -157,6 +157,89 @@ let utf8_decode_at bs p =
     else (0xFFFD, 1)
 
 (* -------------------------------------------------------------------- *)
+(* drop_bytes / take_bytes / slice_bytes -- list-slicing helpers used by *)
+(* fs_byte_sub's re-founded (Step 2/3) definition in Parser.FastString.  *)
+(* Deliberately hand-written (not FStar.List.Tot.Base.splitAt) --        *)
+(* fstar-module-style flags fixed-fuel/extraction-semantics traps on     *)
+(* that combinator; these two are structurally trivial and match the    *)
+(* existing fs_codepoints_of_string_aux `decreases` idiom already        *)
+(* verified in this file's sibling module.                               *)
+(* -------------------------------------------------------------------- *)
+
+let rec drop_bytes (bs:list byte) (n:nat) : Tot (list byte) (decreases n) =
+  match bs with
+  | [] -> []
+  | hd :: tl -> if n = 0 then bs else drop_bytes tl (n - 1)
+
+let rec take_bytes (bs:list byte) (n:nat) : Tot (list byte) (decreases n) =
+  match bs with
+  | [] -> []
+  | hd :: tl -> if n = 0 then [] else hd :: take_bytes tl (n - 1)
+
+(* Byte-index slice, mirroring patch 89's fs_byte_sub clamp EXACTLY by
+ * construction rather than by an explicit branch: drop_bytes past the
+ * end of the list yields [], and take_bytes of [] yields [] regardless
+ * of `len` -- the same "start > slen -> empty" / "start+len > slen ->
+ * truncate to slen" clamps patch 89 computes explicitly with
+ * `if i > slen then "" else let m = if i+n>slen then slen-i else n ...`. *)
+val slice_bytes (bs:list byte) (start:nat) (len:nat) : Tot (list byte)
+let slice_bytes bs start len = take_bytes (drop_bytes bs start) len
+
+(* -------------------------------------------------------------------- *)
+(* find_byte : list byte -> nat (byte value) -> nat (start) -> nat.      *)
+(* Mirrors patch 89's fs_find_byte loop: scan every position from 0,     *)
+(* only ACCEPT a match at idx >= start, and if nothing matches, return   *)
+(* the full list length (== fs_byte_length s) -- same "not-found -> slen *)
+(* regardless of how far start overshoots slen" behaviour as the OCaml   *)
+(* `if i >= slen then slen else ...` loop, since idx always walks the    *)
+(* full list here too.                                                   *)
+(* -------------------------------------------------------------------- *)
+
+let rec find_byte_scan (bs:list byte) (b:nat) (idx:nat) (start:nat) : Tot nat (decreases bs) =
+  match bs with
+  | [] -> idx
+  | hd :: tl -> if idx >= start && hd = b then idx else find_byte_scan tl b (idx + 1) start
+
+val find_byte (bs:list byte) (b:nat) (start:nat) : Tot nat
+let find_byte bs b start = find_byte_scan bs b 0 start
+
+(* -------------------------------------------------------------------- *)
+(* utf8_decode_all : list byte -> list char.                             *)
+(* Decode a WHOLE byte list into codepoints by repeated utf8_decode_at,  *)
+(* exactly the loop shape already verified as                            *)
+(* `Parser.FastString.fs_codepoints_of_string_aux` (same decreases        *)
+(* idiom, same "invalid UTF-8 replaced by 0xFFFD" policy, same 0xD7FF    *)
+(* caveat: this module sits BELOW Parser.FastString and therefore has no *)
+(* access to `unsafe_char_of_d7ff`, so -- exactly like the existing,     *)
+(* already-shipped fs_codepoints_of_string_aux -- codepoint U+D7FF       *)
+(* decoded from raw bytes falls into the `else` branch and is replaced   *)
+(* by U+FFFD rather than round-tripped exactly. This is not a new bug:   *)
+(* it is the SAME pre-existing limitation this function's model already  *)
+(* has, restated here because Spec cannot depend on Parser.FastString's  *)
+(* assume val without a circular module dependency.                      *)
+(* -------------------------------------------------------------------- *)
+
+let rec utf8_decode_all_aux (bs:list byte) (blen:nat) (pos:nat) (acc:list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases (blen - pos))
+  =
+  if pos >= blen then FStar.List.Tot.rev acc
+  else
+    let (cp, adv) = utf8_decode_at bs pos in
+    let advn : nat = if adv = 0 then 1 else adv in
+    let next : nat = pos + advn in
+    if next > blen then FStar.List.Tot.rev acc
+    else
+      let c : FStar.Char.char =
+        if cp < 0xd7ff then FStar.Char.char_of_int cp
+        else if cp >= 0xe000 && cp <= 0x10ffff then FStar.Char.char_of_int cp
+        else FStar.Char.char_of_int 0xFFFD
+      in
+      utf8_decode_all_aux bs blen next (c :: acc)
+
+val utf8_decode_all (bs:list byte) : Tot (list FStar.Char.char)
+let utf8_decode_all bs = utf8_decode_all_aux bs (List.Tot.length bs) 0 []
+
+(* -------------------------------------------------------------------- *)
 (* is_cp_boundary : list byte -> nat -> bool                             *)
 (* Position 0, end of the list, or a non-continuation byte.              *)
 (* -------------------------------------------------------------------- *)

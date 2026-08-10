@@ -1,10 +1,7 @@
 open Prims
 
-(* fs_cp_at_impl: parser-shared codepoint decoder. Reads the same
- * 'byte view' as fs_byte_at (i.e. JS-string code units under jsoo+
- * use-js-string), so it stays consistent with the rest of
- * Parser.FastString. The byte-true codepoint walk used by
- * json_escape is a separate path below (_fs_byte_at_prim). *)
+(* fs_cp_at_impl: parser-shared codepoint decoder, verbatim from the
+ * pre-migration patch 89 (FastString re-founding Step 3, 2026-08-10). *)
 let fs_cp_at_impl (s : Prims.string) (pos : Prims.nat) : Stdlib.Int.t * Stdlib.Int.t =
   let open Stdlib in
   let p = Z.to_int pos in
@@ -54,16 +51,13 @@ let fs_cp_at_impl (s : Prims.string) (pos : Prims.nat) : Stdlib.Int.t * Stdlib.I
           else (cp, 4)
     end
     else (0xFFFD, 1)
-
-let _fs_safe_char_of_int (cp : Stdlib.Int.t) : FStar_Char.char =
-  let open Stdlib in
-  if cp >= 0 && (cp <= 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))
-  then FStar_Char.char_of_int (Z.of_int cp)
-  else FStar_Char.char_of_int (Z.of_int 0xFFFD)
 let fs_byte_length (s : Prims.string) : Prims.nat=
   Z.of_int (String.length s)
 let fs_byte_at (s : Prims.string) (i : Prims.nat) : Prims.nat=
-  Z.of_int (Char.code (String.unsafe_get s (Z.to_int i)))
+  let open Stdlib in
+  let ii = Z.to_int i in
+  if ii < 0 || ii >= String.length s then Prims.int_zero
+  else Z.of_int (Char.code (String.unsafe_get s ii))
 let fs_byte_sub (s : Prims.string) (start : Prims.nat) (len : Prims.nat) :
   Prims.string=
   let open Stdlib in
@@ -92,7 +86,35 @@ let fs_cp_at (s : Prims.string) (pos : Prims.nat) : (Prims.nat * Prims.nat)=
 let fs_cp_len (s : Prims.string) (pos : Prims.nat) : Prims.nat=
   let (_, adv) = fs_cp_at_impl s pos in
   Z.of_int adv
-let unsafe_char_of_d7ff (_ : Z.t) : FStar_Char.char = 0xD7FF
+let fs_byte_length_spec (s : Prims.string) : Prims.nat=
+  FStar_List_Tot_Base.length (Parser_FastString_Spec.utf8_bytes s)
+let fs_byte_at_spec (s : Prims.string) (i : Prims.nat) : Prims.nat=
+  match Parser_FastString_Spec.nth_byte (Parser_FastString_Spec.utf8_bytes s)
+          i
+  with
+  | FStar_Pervasives_Native.Some b -> b
+  | FStar_Pervasives_Native.None -> Prims.int_zero
+let fs_byte_sub_spec (s : Prims.string) (start : Prims.nat) (len : Prims.nat)
+  : Prims.string=
+  FStar_String.string_of_list
+    (Parser_FastString_Spec.utf8_decode_all
+       (Parser_FastString_Spec.slice_bytes
+          (Parser_FastString_Spec.utf8_bytes s) start len))
+let fs_find_byte_spec (s : Prims.string) (b : Prims.nat) (start : Prims.nat)
+  : Prims.nat=
+  Parser_FastString_Spec.find_byte (Parser_FastString_Spec.utf8_bytes s) b
+    start
+let fs_cp_at_spec (s : Prims.string) (pos : Prims.nat) :
+  (Prims.nat * Prims.nat)=
+  let uu___ =
+    Parser_FastString_Spec.utf8_decode_at
+      (Parser_FastString_Spec.utf8_bytes s) pos in
+  match uu___ with | (cp, adv) -> (cp, adv)
+let fs_cp_len_spec (s : Prims.string) (pos : Prims.nat) : Prims.nat=
+  let uu___ =
+    Parser_FastString_Spec.utf8_decode_at
+      (Parser_FastString_Spec.utf8_bytes s) pos in
+  match uu___ with | (uu___1, adv) -> adv
 let fs_byte_index (s : Prims.string) (i : Prims.nat) : FStar_Char.char=
   let b = fs_byte_at s i in
   if b < (Prims.of_int (0xD800))
@@ -103,23 +125,33 @@ let fs_char_at (s : Prims.string) (i : Prims.nat) : FStar_Char.char=
 let rec fs_codepoints_of_string_aux (s : Prims.string) (slen : Prims.nat)
   (pos : Prims.nat) (acc : FStar_Char.char Prims.list) :
   FStar_Char.char Prims.list=
-  let slen_i = Z.to_int slen in
-  let pos_i = Z.to_int pos in
-  if Stdlib.(>=) pos_i slen_i then FStar_List_Tot_Base.rev acc
+  if pos >= slen
+  then FStar_List_Tot_Base.rev acc
   else
-    let (cp, adv) = fs_cp_at_impl s pos in
-    let advn = if Stdlib.(<=) adv 0 then 1 else adv in
-    let next = Stdlib.(+) pos_i advn in
-    if Stdlib.(>) next slen_i then FStar_List_Tot_Base.rev acc
-    else
-      let c = _fs_safe_char_of_int cp in
-      fs_codepoints_of_string_aux s slen (Z.of_int next) (c :: acc)
+    (let uu___1 = fs_cp_at s pos in
+     match uu___1 with
+     | (cp, adv) ->
+         let advn = if adv = Prims.int_zero then Prims.int_one else adv in
+         let next = pos + advn in
+         if next > slen
+         then FStar_List_Tot_Base.rev acc
+         else
+           (let c =
+              if cp < (Prims.of_int (0xd7ff))
+              then FStar_Char.char_of_int cp
+              else
+                if
+                  (cp >= (Prims.of_int (0xe000))) &&
+                    (cp <= (Prims.parse_int "0x10ffff"))
+                then FStar_Char.char_of_int cp
+                else FStar_Char.char_of_int (Prims.of_int (0xFFFD)) in
+            fs_codepoints_of_string_aux s slen next (c :: acc)))
 let fs_codepoints_of_string (s : Prims.string) : FStar_Char.char Prims.list=
-  fs_codepoints_of_string_aux s (Z.of_int (Stdlib.String.length s)) Prims.int_zero []
+  fs_codepoints_of_string_aux s (fs_byte_length s) Prims.int_zero []
 let fs_utf8_of_codepoint (cp : Prims.int) : Prims.string=
   let c =
     if cp = (Prims.of_int (0xD7FF))
-    then unsafe_char_of_d7ff cp
+    then Parser_FastString_CharBoundary.unsafe_char_of_d7ff cp
     else
       if
         (cp >= Prims.int_zero) &&

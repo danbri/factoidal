@@ -33,7 +33,7 @@ let valid_codepoint (cp : Prims.int) : Prims.bool=
           (cp <= (Prims.parse_int "0x10FFFF"))))
 let safe_char_of_int (cp : Prims.int) : FStar_Char.char=
   if cp = (Prims.of_int (0xD7FF))
-  then Parser_FastString.unsafe_char_of_d7ff cp
+  then Parser_FastString_CharBoundary.unsafe_char_of_d7ff cp
   else
     if
       (cp >= Prims.int_zero) &&
