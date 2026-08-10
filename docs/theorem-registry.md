@@ -660,3 +660,13 @@ injectivity is FALSE without a content-safety restriction (IRI
 containing quote-gt-space forges line boundaries) — the
 `iri_print_safe` predicate family is the required guard, aligning with
 the M1 parser plan's same move.
+
+**G4 wave 5b (2026-08-10)**: FastString axioms 7-8 PROMOTED
+(owner-approved, #358) — set now 8, DO-NOT-WIDEN. New proved lexing
+lemmas: `build_string` length/byte facts (induction over facts 1-4+7)
+and `lemma_quoted_content_byte_sub` — the quoted-string read-back step
+of the SRJ text bridge. FULL text bridge still blocked by a THIRD
+string-spec wall: `FStar.String.concat` has ZERO lemmas in ulib
+(checked; both parser and serializer sit on it). Candidate rule
+documented in-file, owner-gated. Three walls, one pattern — feeds the
+re-found-the-fast-path decision on #358.
