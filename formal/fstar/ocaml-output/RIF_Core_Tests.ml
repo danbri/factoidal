@@ -17,17 +17,23 @@ let parse_rif_imports (rif_xml : Prims.string) :
 let ent_ns : Prims.string= "http://www.w3.org/ns/entailment/"
 let materialise_import_graph (profile : Prims.string)
   (imported : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
-  if
-    ((profile = (Prims.strcat ent_ns "OWL-Direct")) ||
-       (profile = (Prims.strcat ent_ns "OWL-RDF-Based")))
-      || (profile = (Prims.strcat ent_ns "OWL"))
-  then OWL_Closure.owl_rl_closure_with_reflexivity imported default_fuel
+  if profile = (Prims.strcat ent_ns "OWL-RDF-Based")
+  then
+    OWL_Closure.owl_rl_closure_with_reflexivity_mode imported default_fuel
+      OWL_Closure.owl_semantics_rdf_based
   else
     if
-      (profile = (Prims.strcat ent_ns "RDF")) ||
-        (profile = (Prims.strcat ent_ns "RDFS"))
-    then RDFS_Closure.rdfs_closure_with_reflexivity imported default_fuel
-    else imported
+      (profile = (Prims.strcat ent_ns "OWL-Direct")) ||
+        (profile = (Prims.strcat ent_ns "OWL"))
+    then
+      OWL_Closure.owl_rl_closure_with_reflexivity_mode imported default_fuel
+        OWL_Closure.owl_semantics_direct
+    else
+      if
+        (profile = (Prims.strcat ent_ns "RDF")) ||
+          (profile = (Prims.strcat ent_ns "RDFS"))
+      then RDFS_Closure.rdfs_closure_with_reflexivity imported default_fuel
+      else imported
 let parse_rif_import_profiles (rif_xml : Prims.string) :
   (Prims.string * Prims.string) Prims.list FStar_Pervasives_Native.option=
   match Parser_RIFXML.parse_rif_program_with_import_profiles rif_xml with
