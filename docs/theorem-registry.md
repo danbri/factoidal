@@ -731,3 +731,16 @@ intermittent RIF quartet (#367's environmental pattern). Residual:
 decode-of-encode-vs-list_of_string theorem removed after 3 attempts
 (in-file note with exact error); run-all.sh module-list gap found
 (separate issue).
+
+**G4 step 7 (2026-08-10)**: `eval_select_query` folded into the real
+recursion — `eval_subselect_fwd` assume val RETIRED (patch 62 now ONE
+symbol: eval_property_path_fwd). Metric extended: `query_size`,
+GP_SubSelect counts its query, `pattern_size >= 1` refinement covers
+the LATERAL edge free; two preservation lemmas
+(`lemma_lateral_substitute_preserves_size` with a closure-identity
+lambda-lift, and the unforecast
+`lemma_rewrite_query_bnodes_pattern_preserves_size` — the bnode
+rewrite walks into sub-queries, the one real gap found). No fuel
+fallback needed anywhere. All four dependent proof modules re-verify
+unchanged. W3C clean: SPARQL 631 pass 0 fail (of 631), RDF 1031 pass
+0 fail (of 1031).
