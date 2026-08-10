@@ -679,3 +679,11 @@ repair noted). `Parser.FastString.Spec.fst` VERIFIED first-attempt:
 UTF-8 codec mirroring fs_cp_at_impl branch-for-branch + full lemma
 kit incl. `utf8_decode_encode_identity`. Steps 2+3 (the swap +
 Option-B realisation + equivalence harness, merged together) next.
+
+## 7. G4/M1: parser round-trip theorems
+
+| Stage | Artifact | Status | Notes |
+|---|---|---|---|
+| Tokenizer, single-token | `SPARQL11.Parser.TokenRoundTrip.fst`: `tokenize_single_fragment_token` + 25 per-token `next_token_*_pre` lemmas | ✅ PROVED (9387b830e6) | Fragment: all single/two-char delimiter+operator tokens + bare `?`. Keywords/IRIs/vars/literals not yet. Canonical-token claim (case-folding bars text-level identity, banner-documented). |
+| Tokenizer, multi-token list | `tokenize (print_tokens ts) == ts` | 🟡 OBSTRUCTED, FIX KNOWN | Five attempts; root cause isolated by scratch experiment: F* needs explicit literal-reveal (`print_token t == "{"` + its length) at the position bridge; fix proven inside `next_token_head_pre`, remains to apply in `combine_step`. One more attempt, not a new search. |
+| ASK+BGP print round-trip | commit 2 (AskBgpRoundTrip) | queued | Spec in task tracker; fuel-cost lemma per RDF.Indexed.Completeness style. |
