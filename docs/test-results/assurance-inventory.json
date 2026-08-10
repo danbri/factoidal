@@ -5319,17 +5319,6 @@
      ]
     },
     {
-     "name": "fs_ascii_singleton_facts",
-     "proved_in": "Parser.FastString.BaseCases",
-     "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-     "line": 45,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_at",
-      "fs_byte_length"
-     ]
-    },
-    {
      "name": "lemma_byte_at_after_prefix",
      "proved_in": "Parser.FastString.RoundTripLemmas",
      "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
@@ -5776,69 +5765,6 @@
    "suites": []
   },
   {
-   "module": "Parser.FastString.BaseCases",
-   "files": [
-    "formal/fstar/Parser.FastString.BaseCases.fst"
-   ],
-   "loc": 297,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "not-in-build-list",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
-   "in_build_module_list": false,
-   "foundational_path": false,
-   "shipping_function_count": 0,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 36,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": false,
-   "local_refinement_lemma_count": 31,
-   "local_refinement_lemma_names": [
-    "fs_byte_at_quote",
-    "fs_byte_length_quote",
-    "fs_byte_at_lbrace",
-    "fs_byte_length_lbrace",
-    "fs_byte_at_rbrace",
-    "fs_byte_length_rbrace",
-    "fs_byte_at_lbracket",
-    "fs_byte_length_lbracket",
-    "fs_byte_at_rbracket",
-    "fs_byte_length_rbracket",
-    "fs_byte_at_colon",
-    "fs_byte_length_colon",
-    "fs_byte_at_comma",
-    "fs_byte_length_comma",
-    "fs_byte_at_lt",
-    "fs_byte_length_lt",
-    "fs_byte_at_gt",
-    "fs_byte_length_gt",
-    "fs_byte_at_space",
-    "fs_byte_length_space",
-    "fs_byte_at_newline",
-    "fs_byte_length_newline",
-    "fs_byte_at_backslash",
-    "fs_byte_length_backslash",
-    "lemma_one_char_list_of_string",
-    "lemma_codes_of_length",
-    "lemma_all_ascii_index",
-    "lemma_nth_byte_codes_of",
-    "lemma_build_string_utf8_bytes",
-    "lemma_build_string_byte_length",
-    "lemma_build_string_byte_at"
-   ],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
-   "suites": []
-  },
-  {
    "module": "Parser.FastString.CharBoundary",
    "files": [
     "formal/fstar/Parser.FastString.CharBoundary.fst"
@@ -5869,41 +5795,6 @@
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
    "assurance_tier": "merely-tot",
-   "suites": []
-  },
-  {
-   "module": "Parser.FastString.ConcatSpec",
-   "files": [
-    "formal/fstar/Parser.FastString.ConcatSpec.fst"
-   ],
-   "loc": 80,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/Parser_FastString_ConcatSpec.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 2,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": false,
-   "local_refinement_lemma_count": 3,
-   "local_refinement_lemma_names": [
-    "concat_spec_nil",
-    "concat_spec_singleton",
-    "concat_spec_cons"
-   ],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "local-lemmas-only",
    "suites": []
   },
   {
@@ -6437,7 +6328,7 @@
    "files": [
     "formal/fstar/Parser.JSON.fst"
    ],
-   "loc": 423,
+   "loc": 417,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -14507,7 +14398,7 @@
      "name": "lemma_sm_submap_lookup",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2183,
+     "line": 2120,
      "unconditional": false,
      "names_shipping_functions": [
       "rdf_term_eq",
@@ -19707,7 +19598,7 @@
    "files": [
     "formal/fstar/SPARQL.Protocol.fst"
    ],
-   "loc": 1524,
+   "loc": 1523,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -20356,7 +20247,7 @@
      "name": "theorem_fx_bind_rows_rowwise",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1382,
+     "line": 1319,
      "unconditional": true,
      "names_shipping_functions": [
       "er_to_term",
@@ -20370,7 +20261,7 @@
      "name": "lemma_sort_solutions_permutation_pointwise",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1675,
+     "line": 1612,
      "unconditional": true,
      "names_shipping_functions": [
       "order_condition",
@@ -20381,7 +20272,7 @@
      "name": "theorem_sort_solutions_permutation",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1682,
+     "line": 1619,
      "unconditional": true,
      "names_shipping_functions": [
       "order_condition",
@@ -20392,7 +20283,7 @@
      "name": "lemma_sm_submap_extra_binding",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2159,
+     "line": 2096,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_domain",
@@ -20403,7 +20294,7 @@
      "name": "lemma_sm_submap_refl",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2167,
+     "line": 2104,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_domain",
@@ -20414,7 +20305,7 @@
      "name": "lemma_sm_equal_refl",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2178,
+     "line": 2115,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_domain",
@@ -20425,7 +20316,7 @@
      "name": "lemma_sm_submap_lookup",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2183,
+     "line": 2120,
      "unconditional": false,
      "names_shipping_functions": [
       "rdf_term_eq",
@@ -20437,7 +20328,7 @@
      "name": "lemma_sm_mem_witness",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2216,
+     "line": 2153,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_equal",
@@ -20448,7 +20339,7 @@
      "name": "lemma_dedup_core_complete",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2253,
+     "line": 2190,
      "unconditional": false,
      "names_shipping_functions": [
       "list_deduplicate_sm_acc",
@@ -20460,7 +20351,7 @@
      "name": "theorem_distinct_complete",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2301,
+     "line": 2238,
      "unconditional": false,
      "names_shipping_functions": [
       "distinct_solutions",
@@ -21135,7 +21026,7 @@
      "name": "lemma_try_bind_term_instantiates",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1471,
+     "line": 1408,
      "unconditional": false,
      "names_shipping_functions": [
       "bound_object_of_pattern",
@@ -21155,7 +21046,7 @@
      "name": "lemma_try_bind_subject_instantiates",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1508,
+     "line": 1445,
      "unconditional": false,
      "names_shipping_functions": [
       "bound_subject_of_pattern",
@@ -21173,7 +21064,7 @@
      "name": "theorem_tp_match_instantiates",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1538,
+     "line": 1475,
      "unconditional": false,
      "names_shipping_functions": [
       "instantiate_tp",
@@ -21193,7 +21084,7 @@
      "name": "theorem_sort_solutions_sorted",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1901,
+     "line": 1838,
      "unconditional": false,
      "names_shipping_functions": [
       "compare_on_conditions",
@@ -22251,23 +22142,10 @@
      ]
     },
     {
-     "name": "theorem_project_card",
-     "proved_in": "SPARQL11.Algebra.Refinement",
-     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1177,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "project_solutions"
-     ],
-     "names_declarative_relations": [
-      "project_card_spec"
-     ]
-    },
-    {
      "name": "lemma_not_compatible_of_engine",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1240,
+     "line": 1177,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_compatible"
@@ -22280,7 +22158,7 @@
      "name": "theorem_minus_sound",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1249,
+     "line": 1186,
      "unconditional": false,
      "names_shipping_functions": [
       "minus"
@@ -22293,7 +22171,7 @@
      "name": "theorem_minus_complete",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1266,
+     "line": 1203,
      "unconditional": false,
      "names_shipping_functions": [
       "minus"
@@ -22308,7 +22186,7 @@
      "name": "theorem_left_join_empty_right",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1338,
+     "line": 1275,
      "unconditional": false,
      "names_shipping_functions": [
       "eval_expr_ebv",
@@ -22322,7 +22200,7 @@
      "name": "theorem_sm_bind_is_extend",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 1404,
+     "line": 1341,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_bind"
@@ -22335,7 +22213,7 @@
      "name": "theorem_sr3_distinct_card_spec_false",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2397,
+     "line": 2334,
      "unconditional": true,
      "names_shipping_functions": [
       "distinct_solutions"
@@ -22475,7 +22353,7 @@
    "files": [
     "formal/fstar/SPARQL11.Algebra.Refinement.fst"
    ],
-   "loc": 2404,
+   "loc": 2341,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "fully-erased",
@@ -22493,7 +22371,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 74,
+   "local_refinement_lemma_count": 72,
    "local_refinement_lemma_names": [
     "lemma_assoc_some_mem",
     "lemma_mult_append",
@@ -22522,8 +22400,6 @@
     "lemma_project_lookup",
     "lemma_project_solutions_acc_length",
     "theorem_project_solutions_length",
-    "lemma_is_proj_unique",
-    "lemma_is_proj_congr_target",
     "lemma_minus_unfold",
     "lemma_existsb_memP",
     "lemma_memP_filter",
@@ -28868,625 +28744,6 @@
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "algorithm_correctness"
-  },
-  {
-   "name": "fs_ascii_singleton_facts",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 45,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "fs_byte_at",
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "fs_byte_at_quote",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 62,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_quote",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 65,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_lbrace",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 69,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_lbrace",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 72,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_rbrace",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 76,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_rbrace",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 79,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_lbracket",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 83,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_lbracket",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 86,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_rbracket",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 90,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_rbracket",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 93,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_colon",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 97,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_colon",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 100,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_comma",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 104,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_comma",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 107,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_lt",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 111,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_lt",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 114,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_gt",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 118,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_gt",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 121,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_space",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 125,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_space",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 128,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_newline",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 132,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_newline",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 135,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_at_backslash",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 139,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "fs_byte_length_backslash",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 142,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_one_char_list_of_string",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 163,
-   "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_codes_of_length",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 198,
-   "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_all_ascii_index",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 218,
-   "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_nth_byte_codes_of",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 229,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "nth_byte"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_build_string_utf8_bytes",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 249,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "utf8_bytes"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_build_string_byte_length",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 272,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_build_string_byte_at",
-   "host_module": "Parser.FastString.BaseCases",
-   "file": "formal/fstar/Parser.FastString.BaseCases.fst",
-   "line": 283,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "fs_byte_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "concat_spec_nil",
-   "host_module": "Parser.FastString.ConcatSpec",
-   "file": "formal/fstar/Parser.FastString.ConcatSpec.fst",
-   "line": 69,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "concat_spec"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.ConcatSpec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "concat_spec_singleton",
-   "host_module": "Parser.FastString.ConcatSpec",
-   "file": "formal/fstar/Parser.FastString.ConcatSpec.fst",
-   "line": 73,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "concat_spec"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.ConcatSpec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "concat_spec_cons",
-   "host_module": "Parser.FastString.ConcatSpec",
-   "file": "formal/fstar/Parser.FastString.ConcatSpec.fst",
-   "line": 77,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "concat_spec"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.ConcatSpec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
   },
   {
    "name": "demo_fs_byte_length_ab",
@@ -48856,76 +48113,10 @@
    "class": "w3c_refinement"
   },
   {
-   "name": "lemma_is_proj_unique",
-   "host_module": "SPARQL11.Algebra.Refinement",
-   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1160,
-   "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "is_proj",
-    "smap_eq"
-   ],
-   "declarative_modules": [
-    "SPARQL11.Algebra.Spec"
-   ],
-   "independent_formalisation_modules": [
-    "SPARQL11.Algebra.Spec"
-   ],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_is_proj_congr_target",
-   "host_module": "SPARQL11.Algebra.Refinement",
-   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1168,
-   "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "is_proj",
-    "smap_eq"
-   ],
-   "declarative_modules": [
-    "SPARQL11.Algebra.Spec"
-   ],
-   "independent_formalisation_modules": [
-    "SPARQL11.Algebra.Spec"
-   ],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "theorem_project_card",
-   "host_module": "SPARQL11.Algebra.Refinement",
-   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1177,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "project_solutions"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Algebra"
-   ],
-   "declarative_relations_named": [
-    "project_card_spec"
-   ],
-   "declarative_modules": [
-    "SPARQL11.Algebra.Spec"
-   ],
-   "independent_formalisation_modules": [
-    "SPARQL11.Algebra.Spec"
-   ],
-   "ambiguous_identifiers": [],
-   "class": "w3c_refinement"
-  },
-  {
    "name": "lemma_minus_unfold",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1216,
+   "line": 1153,
    "unconditional": true,
    "shipping_functions_named": [
     "minus"
@@ -48943,7 +48134,7 @@
    "name": "lemma_existsb_memP",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1221,
+   "line": 1158,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -48957,7 +48148,7 @@
    "name": "lemma_memP_filter",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1229,
+   "line": 1166,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -48971,7 +48162,7 @@
    "name": "lemma_not_compatible_of_engine",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1240,
+   "line": 1177,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_compatible"
@@ -48995,7 +48186,7 @@
    "name": "theorem_minus_sound",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1249,
+   "line": 1186,
    "unconditional": false,
    "shipping_functions_named": [
     "minus"
@@ -49019,7 +48210,7 @@
    "name": "theorem_minus_complete",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1266,
+   "line": 1203,
    "unconditional": false,
    "shipping_functions_named": [
     "minus"
@@ -49046,7 +48237,7 @@
    "name": "lemma_filter_map_nil_all_none",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1289,
+   "line": 1226,
    "unconditional": false,
    "shipping_functions_named": [
     "list_filter_map"
@@ -49064,7 +48255,7 @@
    "name": "theorem_left_join_empty_right",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1338,
+   "line": 1275,
    "unconditional": false,
    "shipping_functions_named": [
     "eval_expr_ebv",
@@ -49089,7 +48280,7 @@
    "name": "theorem_left_join_empty_left",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1344,
+   "line": 1281,
    "unconditional": true,
    "shipping_functions_named": [
     "left_join"
@@ -49107,7 +48298,7 @@
    "name": "theorem_fx_bind_rows_length",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1354,
+   "line": 1291,
    "unconditional": true,
    "shipping_functions_named": [
     "fx_bind_rows"
@@ -49125,7 +48316,7 @@
    "name": "theorem_fx_bind_rows_rowwise",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1382,
+   "line": 1319,
    "unconditional": true,
    "shipping_functions_named": [
     "er_to_term",
@@ -49147,7 +48338,7 @@
    "name": "theorem_sm_bind_is_extend",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1404,
+   "line": 1341,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_bind"
@@ -49171,7 +48362,7 @@
    "name": "lemma_binding_extends_refl",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1418,
+   "line": 1355,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49189,7 +48380,7 @@
    "name": "lemma_binding_extends_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1420,
+   "line": 1357,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49207,7 +48398,7 @@
    "name": "lemma_smap_exact_sval",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1456,
+   "line": 1393,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49226,7 +48417,7 @@
    "name": "lemma_try_bind_term_instantiates",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1471,
+   "line": 1408,
    "unconditional": false,
    "shipping_functions_named": [
     "bound_object_of_pattern",
@@ -49252,7 +48443,7 @@
    "name": "lemma_try_bind_subject_instantiates",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1508,
+   "line": 1445,
    "unconditional": false,
    "shipping_functions_named": [
     "bound_subject_of_pattern",
@@ -49276,7 +48467,7 @@
    "name": "theorem_tp_match_instantiates",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1538,
+   "line": 1475,
    "unconditional": false,
    "shipping_functions_named": [
     "instantiate_tp",
@@ -49302,7 +48493,7 @@
    "name": "lemma_filter_partition_count",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1614,
+   "line": 1551,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49316,7 +48507,7 @@
    "name": "lemma_sortWith_mult",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1624,
+   "line": 1561,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49330,7 +48521,7 @@
    "name": "lemma_mult_is_filter_length",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1665,
+   "line": 1602,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49344,7 +48535,7 @@
    "name": "lemma_sort_solutions_permutation_pointwise",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1675,
+   "line": 1612,
    "unconditional": true,
    "shipping_functions_named": [
     "order_condition",
@@ -49363,7 +48554,7 @@
    "name": "theorem_sort_solutions_permutation",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1682,
+   "line": 1619,
    "unconditional": true,
    "shipping_functions_named": [
     "order_condition",
@@ -49382,7 +48573,7 @@
    "name": "lemma_totality_on_weaken",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1780,
+   "line": 1717,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49400,7 +48591,7 @@
    "name": "lemma_partition_bool_memP",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1791,
+   "line": 1728,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49414,7 +48605,7 @@
    "name": "lemma_partition_bool_memP_forall",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1801,
+   "line": 1738,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49428,7 +48619,7 @@
    "name": "lemma_sorted_by_cons_hi",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1812,
+   "line": 1749,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49446,7 +48637,7 @@
    "name": "lemma_sorted_by_append",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1831,
+   "line": 1768,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49464,7 +48655,7 @@
    "name": "lemma_sortWith_sorted_by",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1856,
+   "line": 1793,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -49483,7 +48674,7 @@
    "name": "theorem_sort_solutions_sorted",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1901,
+   "line": 1838,
    "unconditional": false,
    "shipping_functions_named": [
     "compare_on_conditions",
@@ -49509,7 +48700,7 @@
    "name": "lemma_sparql_order_iri_totality",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1956,
+   "line": 1893,
    "unconditional": true,
    "shipping_functions_named": [
     "sparql_order"
@@ -49527,7 +48718,7 @@
    "name": "lemma_sparql_order_iri_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1965,
+   "line": 1902,
    "unconditional": false,
    "shipping_functions_named": [
     "sparql_order"
@@ -49545,7 +48736,7 @@
    "name": "lemma_list_drop_length",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1983,
+   "line": 1920,
    "unconditional": true,
    "shipping_functions_named": [
     "list_drop"
@@ -49563,7 +48754,7 @@
    "name": "lemma_list_take_length",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1992,
+   "line": 1929,
    "unconditional": true,
    "shipping_functions_named": [
     "list_take"
@@ -49581,7 +48772,7 @@
    "name": "lemma_list_drop_index",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2002,
+   "line": 1939,
    "unconditional": false,
    "shipping_functions_named": [
     "list_drop"
@@ -49599,7 +48790,7 @@
    "name": "lemma_list_take_index",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2012,
+   "line": 1949,
    "unconditional": false,
    "shipping_functions_named": [
     "list_take"
@@ -49617,7 +48808,7 @@
    "name": "theorem_slice_solutions_window",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2028,
+   "line": 1965,
    "unconditional": false,
    "shipping_functions_named": [
     "slice_solutions"
@@ -49635,7 +48826,7 @@
    "name": "theorem_slice_solutions_length",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2050,
+   "line": 1987,
    "unconditional": true,
    "shipping_functions_named": [
     "slice_solutions"
@@ -49653,7 +48844,7 @@
    "name": "lemma_lang_tag_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2088,
+   "line": 2025,
    "unconditional": true,
    "shipping_functions_named": [
     "lang_tag_eq"
@@ -49671,7 +48862,7 @@
    "name": "lemma_lang_tag_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2091,
+   "line": 2028,
    "unconditional": false,
    "shipping_functions_named": [
     "lang_tag_eq"
@@ -49689,7 +48880,7 @@
    "name": "lemma_lang_tag_option_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2094,
+   "line": 2031,
    "unconditional": true,
    "shipping_functions_named": [
     "lang_tag_option_eq"
@@ -49707,7 +48898,7 @@
    "name": "lemma_lang_tag_option_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2101,
+   "line": 2038,
    "unconditional": false,
    "shipping_functions_named": [
     "lang_tag_option_eq"
@@ -49725,7 +48916,7 @@
    "name": "lemma_literal_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2109,
+   "line": 2046,
    "unconditional": true,
    "shipping_functions_named": [
     "literal_eq"
@@ -49743,7 +48934,7 @@
    "name": "lemma_literal_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2112,
+   "line": 2049,
    "unconditional": false,
    "shipping_functions_named": [
     "literal_eq"
@@ -49761,7 +48952,7 @@
    "name": "lemma_subject_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2116,
+   "line": 2053,
    "unconditional": true,
    "shipping_functions_named": [
     "subject_eq"
@@ -49779,7 +48970,7 @@
    "name": "lemma_subject_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2122,
+   "line": 2059,
    "unconditional": false,
    "shipping_functions_named": [
     "subject_eq"
@@ -49797,7 +48988,7 @@
    "name": "lemma_rdf_term_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2129,
+   "line": 2066,
    "unconditional": true,
    "shipping_functions_named": [
     "rdf_term_eq"
@@ -49815,7 +49006,7 @@
    "name": "lemma_rdf_term_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2137,
+   "line": 2074,
    "unconditional": false,
    "shipping_functions_named": [
     "rdf_term_eq"
@@ -49833,7 +49024,7 @@
    "name": "lemma_sm_equal_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2156,
+   "line": 2093,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_equal"
@@ -49851,7 +49042,7 @@
    "name": "lemma_sm_submap_extra_binding",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2159,
+   "line": 2096,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_domain",
@@ -49870,7 +49061,7 @@
    "name": "lemma_sm_submap_refl",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2167,
+   "line": 2104,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_domain",
@@ -49889,7 +49080,7 @@
    "name": "lemma_sm_equal_refl",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2178,
+   "line": 2115,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_domain",
@@ -49908,7 +49099,7 @@
    "name": "lemma_sm_submap_lookup",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2183,
+   "line": 2120,
    "unconditional": false,
    "shipping_functions_named": [
     "rdf_term_eq",
@@ -49929,7 +49120,7 @@
    "name": "lemma_sm_submap_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2193,
+   "line": 2130,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_submap"
@@ -49947,7 +49138,7 @@
    "name": "lemma_sm_equal_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2209,
+   "line": 2146,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_equal"
@@ -49965,7 +49156,7 @@
    "name": "lemma_sm_mem_witness",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2216,
+   "line": 2153,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_equal",
@@ -49984,7 +49175,7 @@
    "name": "lemma_dedup_acc_append",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2229,
+   "line": 2166,
    "unconditional": true,
    "shipping_functions_named": [
     "list_deduplicate_sm_acc"
@@ -50002,7 +49193,7 @@
    "name": "lemma_dedup_core_complete",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2253,
+   "line": 2190,
    "unconditional": false,
    "shipping_functions_named": [
     "list_deduplicate_sm_acc",
@@ -50022,7 +49213,7 @@
    "name": "theorem_distinct_complete",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2301,
+   "line": 2238,
    "unconditional": false,
    "shipping_functions_named": [
     "distinct_solutions",
@@ -50042,7 +49233,7 @@
    "name": "lemma_dc_witness_rdf_term_eq",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2366,
+   "line": 2303,
    "unconditional": true,
    "shipping_functions_named": [
     "rdf_term_eq"
@@ -50060,7 +49251,7 @@
    "name": "lemma_dc_witness_term_id_eqb_false",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2370,
+   "line": 2307,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -50074,7 +49265,7 @@
    "name": "lemma_dc_distinct_dedups",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2374,
+   "line": 2311,
    "unconditional": true,
    "shipping_functions_named": [
     "distinct_solutions"
@@ -50092,7 +49283,7 @@
    "name": "lemma_dc_mult_witness_omega",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2380,
+   "line": 2317,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -50106,7 +49297,7 @@
    "name": "lemma_dc_mult_witness_res",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2385,
+   "line": 2322,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -50120,7 +49311,7 @@
    "name": "theorem_sr3_distinct_card_spec_false",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2397,
+   "line": 2334,
    "unconditional": true,
    "shipping_functions_named": [
     "distinct_solutions"
@@ -54252,8 +53443,8 @@
   }
  ],
  "totals": {
-  "modules": 229,
-  "files": 238,
+  "modules": 227,
+  "files": 236,
   "assume_val_active": 133,
   "assume_other_active": 5,
   "admissions_active": 0,
@@ -54262,9 +53453,9 @@
   "modules_with_algorithm_correctness_theorem": 35,
   "modules_with_internal_refinement_theorem": 15,
   "modules_merely_tot": 133,
-  "w3c_refinement_theorem_count": 308,
+  "w3c_refinement_theorem_count": 307,
   "internal_refinement_theorem_count": 114,
-  "algorithm_correctness_theorem_count": 251,
+  "algorithm_correctness_theorem_count": 250,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [
    "OWL.RL.Refinement",
@@ -54285,16 +53476,16 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1442,
+  "lemma_count": 1404,
   "tiers": {
    "algorithm-correctness": 24,
    "internal-refinement": 7,
-   "local-lemmas-only": 13,
+   "local-lemmas-only": 12,
    "merely-tot": 133,
    "specification-and-proof": 17,
-   "unclassified": 25,
+   "unclassified": 24,
    "w3c-refinement": 10
   }
  },
- "commit": "6a0da4f2a"
+ "commit": "ea68245e8"
 }
