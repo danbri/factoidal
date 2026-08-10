@@ -646,3 +646,17 @@ forced by intra-round order-dependence). FINDING F-1 (#367 candidate
 cause): RIF import materialisation hard-codes OWL-Direct closure mode
 for BOTH regime profiles (RIF.Core.Tests ~150-160 vs OWL.Closure.fsti
 5747 mode split) — plausible, unconfirmed.
+
+**G4 wave 5a (2026-08-10)**: N-Triples enters — `RDF.NTriples.RoundTrip.fst`
+(proof-only): serializer-side INJECTIVITY family on the IRI/bnode
+fragment (`lemma_nq_term_to_string_*` same-shape/cross-shape/injective +
+pointwise graph level), on real FStar.String primitives. ROUND-TRIP
+BLOCKED — two findings: the N-Triples PARSER is wholly FastString-based
+(no tree stage to salvage; even the serializer's escape scan is
+FastString-gated, blocking ALL literals), so text-level proofs need
+value-content axioms beyond the approved 8 (extends #358) OR a
+specified reimplementation of the fast path; and triple-line
+injectivity is FALSE without a content-safety restriction (IRI
+containing quote-gt-space forges line boundaries) — the
+`iri_print_safe` predicate family is the required guard, aligning with
+the M1 parser plan's same move.
