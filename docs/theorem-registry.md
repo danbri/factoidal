@@ -687,3 +687,18 @@ Option-B realisation + equivalence harness, merged together) next.
 | Tokenizer, single-token | `SPARQL11.Parser.TokenRoundTrip.fst`: `tokenize_single_fragment_token` + 25 per-token `next_token_*_pre` lemmas | ✅ PROVED (9387b830e6) | Fragment: all single/two-char delimiter+operator tokens + bare `?`. Keywords/IRIs/vars/literals not yet. Canonical-token claim (case-folding bars text-level identity, banner-documented). |
 | Tokenizer, multi-token list | `tokenize_fragment_roundtrip` (+ `combine_step`, `tokenize_loop_step_bridge`, `tokenize_loop_fragment`, six congruence-isolation lemmas) | ✅ PROVED (6c3b6f48d1) | Literal-reveal fix transferred as predicted; second obstruction (Z3 context blowup on inline concat asserts) solved by isolating steps into near-empty lemmas — pattern banner-documented for the keyword/VAR/IRI widening. |
 | ASK+BGP print round-trip | commit 2 (AskBgpRoundTrip) | queued | Spec in task tracker; fuel-cost lemma per RDF.Indexed.Completeness style. |
+
+**G4/M1 commit 2 (2026-08-10)**: `SPARQL11.Parser.AskBgpRoundTrip.fst`
+— the ASK+flat-BGP parser chain proved correct at the TOKEN level:
+`parse_select_query_token_level(_query)` (given print_query_1's token
+list, the real parser reconstructs exactly q), via ~35 lemmas through
+verb/object/subject/triples-block/ggp/ask-body dispatch, with the
+fuel-cost formula ask_bgp_fuel_cost(n) = n + 11 derived from the real
+call chain (n=5 → 16 ≪ the 10000 entry fuel; lemmas hold for ANY n).
+FINDING (fourth string wall, corrects TokenRoundTrip's earlier
+diagnosis): the TEXT-level theorem is PROVED IMPOSSIBLE with current
+ulib — `FStar.String.sub`'s type gives the result LENGTH but says
+NOTHING about its characters; blocks every payload-carrying token
+(IRIs, vars, even keywords). Fix requires either a trusted ulib-level
+sub-content rule or lexer changes off `substring` — owner-gated,
+consolidated with the #358 string-foundation decision.
