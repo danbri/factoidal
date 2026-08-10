@@ -670,3 +670,20 @@ string-spec wall: `FStar.String.concat` has ZERO lemmas in ulib
 (checked; both parser and serializer sit on it). Candidate rule
 documented in-file, owner-gated. Three walls, one pattern — feeds the
 re-found-the-fast-path decision on #358.
+
+**FastString migration steps 0-1 (2026-08-10)**: baselines frozen
+(docs/designissues/2026-08-10-faststring-baselines.md — parse 1M:
+NT 71,304 tps, Turtle 80,143 tps, RDF/XML 27,669 tps; same-host
+discipline; bench-turtle-metrics.sh found broken, fallback used,
+repair noted). `Parser.FastString.Spec.fst` VERIFIED first-attempt:
+UTF-8 codec mirroring fs_cp_at_impl branch-for-branch + full lemma
+kit incl. `utf8_decode_encode_identity`. Steps 2+3 (the swap +
+Option-B realisation + equivalence harness, merged together) next.
+
+## 7. G4/M1: parser round-trip theorems
+
+| Stage | Artifact | Status | Notes |
+|---|---|---|---|
+| Tokenizer, single-token | `SPARQL11.Parser.TokenRoundTrip.fst`: `tokenize_single_fragment_token` + 25 per-token `next_token_*_pre` lemmas | ✅ PROVED (9387b830e6) | Fragment: all single/two-char delimiter+operator tokens + bare `?`. Keywords/IRIs/vars/literals not yet. Canonical-token claim (case-folding bars text-level identity, banner-documented). |
+| Tokenizer, multi-token list | `tokenize (print_tokens ts) == ts` | 🟡 OBSTRUCTED, FIX KNOWN | Five attempts; root cause isolated by scratch experiment: F* needs explicit literal-reveal (`print_token t == "{"` + its length) at the position bridge; fix proven inside `next_token_head_pre`, remains to apply in `combine_step`. One more attempt, not a new search. |
+| ASK+BGP print round-trip | commit 2 (AskBgpRoundTrip) | queued | Spec in task tracker; fuel-cost lemma per RDF.Indexed.Completeness style. |
