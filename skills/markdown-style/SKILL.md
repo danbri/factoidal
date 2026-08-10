@@ -274,3 +274,13 @@ that function as status streams, where 📊/✅ on score lines helps.
 - Headings hierarchy (use what fits the doc).
 - Doc-of-truth selection (CLAUDE.md vs design docs vs skills) —
   see CLAUDE.md.
+
+## No startup/consultant jargon (owner correction, 2026-08-10)
+
+Owner: "Jargon ugh! Spike. You sound like a teenager trying to
+impress." Banned alongside the sycophantic adjectives: "spike" (say
+"bounded evaluation" or "trial"), "big-bang", "north star",
+"gauntlet", "wheelhouse", "punchline", "battle-tested", "industrial-
+strength", "game-changer", and similar startup/consultant register.
+Say what the work is in ordinary technical words. Same rule as
+anti-pattern #26: the sentence either carries weight or it doesn't.

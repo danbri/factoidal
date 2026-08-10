@@ -1141,6 +1141,69 @@ let theorem_project_solutions_sound
   returns S.in_project_spec pv omega mu'
   with _. theorem_project_is_proj pv mu
 
+(** ------------------------------------------------------------------ **)
+(** 10.1 `project_card_spec` (the Project bag-layer clause, section     **)
+(** 18.5) holds of `project_solutions` UNCONDITIONALLY. Unlike         **)
+(** SR-1/SR-2/SR-3 (Parts 1/9/15.4), Project's transform never         **)
+(** compares two solution mappings against EACH OTHER with             **)
+(** `rdf_term_eq` or any other notion of literal identity -- it is a   **)
+(** per-row, per-variable LOOKUP (`project`/`is_proj`), so the         **)
+(** rdf_term_eq-vs-term_id_eqb gap those three findings turn on cannot **)
+(** arise here. `project_card_spec` itself is also already stated at   **)
+(** the right level (`occurs`/length, not raw list equality) -- it     **)
+(** does not fall into the RT-5 assoc-list-order trap either.          **)
+(** ------------------------------------------------------------------ **)
+
+/// `is_proj`'s TARGET argument is well-defined up to `smap_eq`: any two
+/// mappings `is_proj pv mu` names for the same source `mu` are
+/// extensionally the same mapping (18.3's notion of equality).
+let lemma_is_proj_unique (pv : list var_name) (mu mu1 mu2 : S.smap)
+  : Lemma (requires S.is_proj pv mu mu1 /\ S.is_proj pv mu mu2)
+          (ensures  S.smap_eq mu1 mu2) = ()
+
+/// `is_proj`'s TARGET argument may be replaced by anything `smap_eq` to
+/// it -- Proj(mu,PV) is stated against the partial-function reading of
+/// a solution mapping, not against one specific association-list
+/// representative.
+let lemma_is_proj_congr_target (pv : list var_name) (mu mu1 mu2 : S.smap)
+  : Lemma (requires S.is_proj pv mu mu1 /\ S.smap_eq mu1 mu2)
+          (ensures  S.is_proj pv mu mu2) = ()
+
+/// The NORMATIVE (bag) statement: section 18.5's "Card[Project(Omega,
+/// PV)][mu] = sum over mu' in Omega with Proj(mu',PV) = mu of
+/// Card[Omega][mu']" -- transcribed in Spec.fst (`project_card_spec`)
+/// as (length preserved) /\ (occurs-iff-in_project_spec). Unconditional
+/// -- no fragment hypothesis of any kind, matching `theorem_union_card`.
+let theorem_project_card (pv : list var_name) (omega : list S.smap)
+  : Lemma (S.project_card_spec pv omega (project_solutions pv omega)) =
+  let res = project_solutions pv omega in
+  theorem_project_solutions_length pv omega;
+  let fwd (mu : S.smap)
+    : Lemma (requires S.occurs mu res) (ensures S.in_project_spec pv omega mu) =
+    eliminate exists (mu_res : S.smap). List.Tot.memP mu_res res /\ S.smap_eq mu mu_res
+    returns S.in_project_spec pv omega mu
+    with _.
+      (theorem_project_solutions_spec pv omega mu_res;
+       eliminate exists (mu0 : S.smap). List.Tot.memP mu0 omega /\ mu_res == project pv mu0
+       returns S.in_project_spec pv omega mu
+       with _.
+         (theorem_project_is_proj pv mu0;
+          lemma_is_proj_congr_target pv mu0 mu_res mu))
+  in
+  let bwd (mu : S.smap)
+    : Lemma (requires S.in_project_spec pv omega mu) (ensures S.occurs mu res) =
+    eliminate exists (mu0 : S.smap). List.Tot.memP mu0 omega /\ S.is_proj pv mu0 mu
+    returns S.occurs mu res
+    with _.
+      (theorem_project_is_proj pv mu0;
+       (let mu_res = project pv mu0 in
+        theorem_project_solutions_spec pv omega mu_res;
+        assert (List.Tot.memP mu0 omega /\ mu_res == project pv mu0);
+        lemma_is_proj_unique pv mu0 mu mu_res))
+  in
+  FStar.Classical.forall_intro (FStar.Classical.move_requires fwd);
+  FStar.Classical.forall_intro (FStar.Classical.move_requires bwd)
+
 (** ====================================================================== **)
 (** Part 11: Minus (section 18.5)                                          **)
 (** ====================================================================== **)
