@@ -534,6 +534,33 @@ definitional.
 2026-08-03, pre-registry) are now in the verify-rdf-mt roster with
 this layer; their per-lemma rows are a registry backfill task.
 
+**`fexpr_congr` (g4-fexpr-congr, 2026-08-10).** `theorem_filter_card`'s
+`fexpr_congr` hypothesis (18.5's bag-level Filter statement needs the
+expression evaluator to respect `smap_eq`) is now DISCHARGED by
+`lemma_eval_expr_congr` — structural induction over
+`eval_expr_with_base`'s whole ~74-constructor `expr` language (plus
+sibling lemmas for its four `and`-clique mates and one new helper for
+`option expr` fields), ~230 lines. Every `mu`-read funnels through
+`Lh.assoc_tr` (`sm_lookup`/`fx_ctx_get`), the same primitive
+`S.sval`/`S.smap_eq` uses, so agreement at every key transfers
+uniformly. **FINDING FC-1**: this does NOT reach the literal shipping
+`eval_expr_ebv` — it and `eval_expr_fwd` are `irreducible`
+(`SPARQL11.Algebra.fst` ~4487/4491), and the definitional equation
+needed to cross back out to the wrapper (`eval_expr_ebv base e mu ==
+ebv (eval_expr_with_base base e mu)`) is unreachable by every F*
+technique tried (`assert_norm`, `norm [delta_only [...]]` in both
+string and quoted-name form, blanket `delta`, `nbe`, `unfold_def`; same-
+module and cross-module) — not a semantic falsity, a proof-engineering
+wall the qualifier erects on purpose to keep the ~600-line evaluator
+body out of unrelated callers' SMT context. `theorem_filter_card_eval_
+expr_with_base` restates the card-spec UNCONDITIONALLY at
+`eval_expr_ebv_transparent` (the wrapper's own body, copied verbatim
+without `irreducible`); `theorem_filter_card` on the literal
+`eval_expr_ebv` / shipping `filter_solutions` stays hypothesis-carrying
+pending a dedicated commit auditing removal of `irreducible` across its
+~13+ call sites (`SPARQL11.Algebra.Refinement.fst`, `SPARQL11.Expression.
+Refinement.fst`, `SPARQL11.Store.fst`, `SPARQL.Service.Wrap.fst`).
+
 ## Trust surface
 
 What this registry's PROVED cells rest on, beyond F\*/Z3 itself:

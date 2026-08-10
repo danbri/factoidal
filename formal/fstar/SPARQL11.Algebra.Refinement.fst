@@ -55,6 +55,29 @@ module SPARQL11.Algebra.Refinement
 //   simple-entailment vertical (2026-07-29): the same over-coarse
 //   `rdf_term_eq`, reached from the other end of the tree.
 //
+// FC-1 (g4-fexpr-congr, 2026-08-10): `fexpr_congr` IS proved of the
+//   real evaluator -- `lemma_eval_expr_congr`, structural induction
+//   over `eval_expr_with_base`'s whole `expr` language (Part 5.0a,
+//   below `theorem_filter_card`) -- but does NOT reach the literal
+//   shipping `eval_expr_ebv` wrapper. `eval_expr_ebv`/`eval_expr_fwd`
+//   are `irreducible` (SPARQL11.Algebra.fst ~4487/4491), and the
+//   definitional equation needed to carry the induction's result back
+//   out through the wrapper (`eval_expr_ebv base e mu == ebv
+//   (eval_expr_with_base base e mu)`) is unreachable by every F*
+//   technique tried against 2025.12.15/z3 4.13.3 (`assert_norm`,
+//   `norm [delta_only [...]]`, blanket `delta`, `nbe`, `unfold_def`;
+//   same-module and cross-module) -- not a semantic falsity (the
+//   induction proves the function genuinely IS congruent) but a
+//   proof-engineering wall the qualifier erects on purpose, to keep
+//   the ~600-line evaluator body out of the SMT context of every OTHER
+//   proof that calls `eval_expr_ebv` without needing its body.
+//   `theorem_filter_card_eval_expr_with_base` restates the card-spec
+//   UNCONDITIONALLY at `eval_expr_ebv_transparent` (the wrapper's own
+//   body, re-declared without `irreducible`); `theorem_filter_card` on
+//   the literal `eval_expr_ebv` / shipping `filter_solutions` stays
+//   hypothesis-carrying pending a dedicated commit auditing removal of
+//   `irreducible` across its call sites.
+//
 // Neither finding is papered over below and neither specification was
 // weakened to accommodate it.
 //
@@ -76,10 +99,17 @@ module SPARQL11.Algebra.Refinement
 //     what it computes. Where a bag-level (cardinality) statement is
 //     made, it needs `fexpr_congr` -- that the evaluator gives the
 //     same answer to two association lists denoting the same solution
-//     mapping. Whether `eval_expr_ebv` satisfies `fexpr_congr` is
-//     NOT proved here and is stated as an open obligation; it is a
-//     480-line mutual recursion over the whole expression language and
-//     is its own commit.
+//     mapping. `fexpr_congr` IS now proved (g4-fexpr-congr,
+//     `lemma_eval_expr_congr`, Part 5.0a) of the real evaluator
+//     `eval_expr_with_base` -- a structural induction over the whole
+//     expression language, per FC-1 above. It reaches the literal
+//     `eval_expr_ebv` wrapper only up to the `irreducible`-qualifier
+//     wall FC-1 documents: `theorem_filter_card_eval_expr_with_base`
+//     is the unconditional card-spec at the transparent twin
+//     `eval_expr_ebv_transparent`; `theorem_filter_card` on the
+//     literal shipping `eval_expr_ebv` stays an open obligation,
+//     narrowed from "whole proof missing" to "one qualifier-crossing
+//     lemma missing, blocked pending a call-site audit."
 //   * FILTER on the PRODUCTION path (`filter_solutions_with_graph`, the
 //     function `eval_pattern_store`'s GP_Filter arm actually calls) is
 //     now proved equal to the graph-free `filter_solutions` -- and
@@ -388,6 +418,237 @@ let rec theorem_filter_card (f : S.fexpr) (omega : list S.smap)
       if S.smap_eqb mu m then S.lemma_smap_eqb_sound mu m else ()
     in
     FStar.Classical.forall_intro aux
+
+(** ------------------------------------------------------------------ **)
+(** 5.0a `fexpr_congr` DISCHARGED for the real evaluator (g4-fexpr-congr). **)
+(**                                                                       **)
+(** `theorem_filter_card`'s hypothesis is discharged by structural        **)
+(** induction over `eval_expr_with_base` (SPARQL11.Algebra.fst Part 8,    **)
+(** the ~90-arm mutual-recursion clique): `mu` is consulted ONLY through  **)
+(** `sm_lookup`/`fx_ctx_get`, and BOTH bottom out in `Lh.assoc_tr`, the    **)
+(** same primitive `S.sval` uses (`Lh.lemma_assoc_tr_eq` identifies       **)
+(** `assoc_tr` with `List.Tot.assoc`, and `S.sval v mu =                  **)
+(** List.Tot.assoc v mu` by definition) -- so `S.smap_eq` (agreement of   **)
+(** `sval` at every key) already forces agreement of every read the       **)
+(** evaluator can make, ordinary variables (`E_Var`/`E_Bound`) and the    **)
+(** two reserved `fx_key_row`/`fx_key_occ` freshness-context keys         **)
+(** (RAND/UUID/STRUUID/BNODE, `SPARQL11.Algebra.fst` ~4342-4373) alike.   **)
+(** Every other one of the ~74 `expr` constructors is congruence          **)
+(** plumbing: recurse into sub-expressions, let first-order SMT           **)
+(** congruence carry the equality through the surrounding pure function   **)
+(** (`value_compare`, `fn_isIRI`, `ebv`, string/date/hash helpers, ...).   **)
+(**                                                                       **)
+(** FINDING FC-1. The induction below is unconditional and true of the    **)
+(** SHIPPING `eval_expr_with_base`. It does NOT, however, transfer to     **)
+(** the literal shipping wrapper `eval_expr_ebv` (nor `eval_expr_fwd`):   **)
+(** both are `irreducible` (SPARQL11.Algebra.fst ~4487/4491), and the     **)
+(** definitional equation `eval_expr_ebv base e mu == ebv                 **)
+(** (eval_expr_with_base base e mu)` this proof needs to CROSS from       **)
+(** `eval_expr_with_base` back out to the wrapper is unreachable by every **)
+(** technique tried against F* 2025.12.15 / z3 4.13.3: `assert_norm`,     **)
+(** `norm [delta_only [...]]` (both string and `` `%name `` quotation),   **)
+(** blanket `norm [delta; zeta; iota; primops]`, `norm [nbe; delta_only]`,**)
+(** and `FStar.Tactics.Derived.unfold_def` all fail identically ("cannot  **)
+(** unify (eval_expr_ebv base e mu) and (ebv (eval_expr_with_base base e  **)
+(** mu))") -- tried BOTH from this module and from a same-module          **)
+(** minimal reproduction sitting next to `eval_expr_ebv`'s own            **)
+(** definition. This is not a semantic falsity (the function plainly IS   **)
+(** congruent -- that is exactly what the induction below proves of its   **)
+(** body) but a proof-engineering wall the `irreducible` qualifier        **)
+(** erects ON PURPOSE: it exists so that every OTHER proof calling        **)
+(** `eval_expr_ebv` (this file has ~13 call sites; `SPARQL11.Expression.  **)
+(** Refinement.fst`, `SPARQL11.Store.fst`, `SPARQL.Service.Wrap.fst` add   **)
+(** more) is protected from an implicit unfold of the ~600-line evaluator **)
+(** body blowing up its SMT context -- removing it to unblock this one    **)
+(** theorem would widen the blast radius to every one of those call       **)
+(** sites and needs its own dedicated re-verification commit, not a       **)
+(** silent side effect of this one. So: `eval_expr_ebv_transparent`       **)
+(** below is `eval_expr_ebv`'s own body (`ebv (eval_expr_with_base base e **)
+(** mu)`), copied verbatim but WITHOUT `irreducible`, so this induction    **)
+(** (and any future proof) can reach it; `theorem_filter_card`'s          **)
+(** hypothesis remains open on the literal `eval_expr_ebv` / shipping     **)
+(** `filter_solutions`.                                                   **)
+(** ------------------------------------------------------------------ **)
+
+#push-options "--z3rlimit 300 --fuel 4 --ifuel 4"
+
+/// Every `mu`-read in `eval_expr_with_base` bottoms out in `Lh.assoc_tr`
+/// (via `sm_lookup`/`fx_ctx_get`), the same primitive `S.sval` uses --
+/// so `S.smap_eq` at a given key already gives assoc_tr-agreement at
+/// that key, for ANY key (ordinary variable name or reserved fx_key_*).
+let lemma_assoc_tr_congr (key : string) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  Lh.assoc_tr key mu == Lh.assoc_tr key mu') =
+  Lh.lemma_assoc_tr_eq key mu;
+  Lh.lemma_assoc_tr_eq key mu'
+
+let lemma_sm_lookup_congr (v : string) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  sm_lookup v mu == sm_lookup v mu') =
+  lemma_assoc_tr_congr v mu mu'
+
+let lemma_fx_ctx_get_congr (key : string) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  fx_ctx_get key mu == fx_ctx_get key mu') =
+  lemma_assoc_tr_congr key mu mu'
+
+/// The induction. Structure mirrors `eval_expr_with_base`'s own match
+/// (SPARQL11.Algebra.fst Part 8) constructor-family by constructor-
+/// family, and the `and`-clique mirrors its four sibling functions
+/// (`eval_coalesce_with_base` / `eval_geof_args_with_base` /
+/// `eval_in_with_base` / `eval_concat_with_base`) plus one new helper
+/// (`lemma_eval_expr_opt_congr`) for the `option expr` fields
+/// (`E_Substr`/`E_Replace`/`E_Regex`'s optional 3rd/4th argument) that
+/// the evaluator handles inline rather than through a named sibling.
+/// The grouping below (which constructors share a proof) follows the
+/// SAME arity classification `lemma_substitute_existentials_noop`
+/// above already uses for the identical reason (uniform recursion into
+/// every sub-expression) -- copied and re-purposed, not reinvented.
+let rec lemma_eval_expr_congr (base : option wf_iri) (e : expr) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  eval_expr_with_base base e mu == eval_expr_with_base base e mu')
+          (decreases e) =
+  match e with
+  | E_Var v | E_Bound v ->
+    lemma_sm_lookup_congr v mu mu'
+  | E_Exists _ | E_NotExists _ | E_Aggregate _ _ _
+  | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
+  | E_DecimalLit _ | E_DoubleLit _ | E_Now -> ()
+  | E_Arith _ e1 e2 | E_Compare _ e1 e2 | E_And e1 e2 | E_Or e1 e2
+  | E_StrDt e1 e2 | E_StrLang e1 e2
+  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
+  | E_StrBefore e1 e2 | E_StrAfter e1 e2
+  | E_SameTerm e1 e2 ->
+    lemma_eval_expr_congr base e1 mu mu';
+    lemma_eval_expr_congr base e2 mu mu'
+  | E_UnaryMinus e1 | E_UnaryPlus e1 | E_Not e1
+  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1
+  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1
+  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1
+  | E_StrLen e1 | E_UCase e1 | E_LCase e1 | E_EncodeForUri e1
+  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1
+  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1
+  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
+  | E_Seconds e1 | E_Timezone e1 | E_Tz e1
+  | E_TTSubject e1 | E_TTPredicate e1 | E_TTObject e1 | E_IsTriple e1 ->
+    lemma_eval_expr_congr base e1 mu mu'
+  | E_StrLangDir e1 e2 e3 | E_If e1 e2 e3 | E_TripleTerm e1 e2 e3 ->
+    lemma_eval_expr_congr base e1 mu mu';
+    lemma_eval_expr_congr base e2 mu mu';
+    lemma_eval_expr_congr base e3 mu mu'
+  | E_Coalesce es -> lemma_eval_coalesce_congr base es mu mu'
+  | E_Concat es -> lemma_eval_concat_congr base es mu mu'
+  | E_In ev es | E_NotIn ev es ->
+    lemma_eval_expr_congr base ev mu mu';
+    lemma_eval_in_congr base (eval_expr_with_base base ev mu) es mu mu'
+  | E_Substr e1 e2 e3o | E_Regex e1 e2 e3o ->
+    lemma_eval_expr_congr base e1 mu mu';
+    lemma_eval_expr_congr base e2 mu mu';
+    lemma_eval_expr_opt_congr base e3o mu mu'
+  | E_Replace e1 e2 e3 e4o ->
+    lemma_eval_expr_congr base e1 mu mu';
+    lemma_eval_expr_congr base e2 mu mu';
+    lemma_eval_expr_congr base e3 mu mu';
+    lemma_eval_expr_opt_congr base e4o mu mu'
+  | E_FunctionCall _ argsx ->
+    // langMatches/xsd-cast/BNODE(str) read at most the first two
+    // elements directly; geof reads the WHOLE list via
+    // eval_geof_args_with_base; RAND/UUID/STRUUID/BNODE() read only
+    // the fx_key_row/fx_key_occ context keys. All four covered.
+    lemma_eval_geof_args_congr base argsx mu mu';
+    (match argsx with
+     | [] -> ()
+     | [e1] -> lemma_eval_expr_congr base e1 mu mu'
+     | e1 :: e2 :: _ ->
+       lemma_eval_expr_congr base e1 mu mu';
+       lemma_eval_expr_congr base e2 mu mu');
+    lemma_fx_ctx_get_congr fx_key_row mu mu';
+    lemma_fx_ctx_get_congr fx_key_occ mu mu'
+
+and lemma_eval_coalesce_congr (base : option wf_iri) (es : list expr) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  eval_coalesce_with_base base es mu == eval_coalesce_with_base base es mu')
+          (decreases es) =
+  match es with
+  | [] -> ()
+  | e :: rest ->
+    lemma_eval_expr_congr base e mu mu';
+    lemma_eval_coalesce_congr base rest mu mu'
+
+and lemma_eval_geof_args_congr (base : option wf_iri) (es : list expr) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  eval_geof_args_with_base base es mu == eval_geof_args_with_base base es mu')
+          (decreases es) =
+  match es with
+  | [] -> ()
+  | e :: rest ->
+    lemma_eval_expr_congr base e mu mu';
+    lemma_eval_geof_args_congr base rest mu mu'
+
+and lemma_eval_in_congr (base : option wf_iri) (v : eval_result) (es : list expr) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  eval_in_with_base base v es mu == eval_in_with_base base v es mu')
+          (decreases es) =
+  match es with
+  | [] -> ()
+  | e :: rest ->
+    lemma_eval_expr_congr base e mu mu';
+    lemma_eval_in_congr base v rest mu mu'
+
+and lemma_eval_concat_congr (base : option wf_iri) (es : list expr) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  eval_concat_with_base base es mu == eval_concat_with_base base es mu')
+          (decreases es) =
+  match es with
+  | [] -> ()
+  | [e] -> lemma_eval_expr_congr base e mu mu'
+  | e :: rest ->
+    lemma_eval_expr_congr base e mu mu';
+    lemma_eval_concat_congr base rest mu mu'
+
+and lemma_eval_expr_opt_congr (base : option wf_iri) (eo : option expr) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  (match eo with
+                     | None -> True
+                     | Some e1 -> eval_expr_with_base base e1 mu == eval_expr_with_base base e1 mu'))
+          (decreases eo) =
+  match eo with
+  | None -> ()
+  | Some e1 -> lemma_eval_expr_congr base e1 mu mu'
+
+/// `eval_expr_ebv`'s own body (SPARQL11.Algebra.fst ~4487-4489),
+/// restated WITHOUT `irreducible` so the induction above can reach it.
+/// See FINDING FC-1: this is NOT the shipping `eval_expr_ebv` (that
+/// symbol stays exactly as shipped, unmodified, per this file's SCOPE
+/// promise) -- it is the same expression, transparently declared.
+let eval_expr_ebv_transparent (base : option wf_iri) (e : expr) (mu : S.smap) : bool =
+  ebv (eval_expr_with_base base e mu)
+
+let lemma_eval_expr_ebv_transparent_congr (base : option wf_iri) (e : expr) (mu mu' : S.smap)
+  : Lemma (requires S.smap_eq mu mu')
+          (ensures  eval_expr_ebv_transparent base e mu == eval_expr_ebv_transparent base e mu') =
+  lemma_eval_expr_congr base e mu mu'
+
+/// `fexpr_congr`, discharged -- unconditionally, for every `base`/`e` --
+/// of the transparent twin of the shipping evaluator's EBV wrapper.
+let theorem_eval_expr_ebv_transparent_congr (base : option wf_iri) (e : expr)
+  : Lemma (fexpr_congr (eval_expr_ebv_transparent base e)) =
+  FStar.Classical.forall_intro_2
+    (FStar.Classical.move_requires_2 (lemma_eval_expr_ebv_transparent_congr base e))
+
+/// `theorem_filter_card`, restated UNCONDITIONALLY at the transparent
+/// twin -- the "restate `theorem_filter_card` without the hypothesis"
+/// deliverable, at the fragment FC-1 leaves reachable. `theorem_filter_card`
+/// itself is UNCHANGED above: general infrastructure for an arbitrary
+/// `f` a caller has independently shown `fexpr_congr` of.
+let theorem_filter_card_eval_expr_with_base
+      (base : option wf_iri) (e : expr) (omega : list S.smap)
+  : Lemma (ensures S.filter_card_spec (eval_expr_ebv_transparent base e) omega
+                     (List.Tot.filter (eval_expr_ebv_transparent base e) omega)) =
+  theorem_eval_expr_ebv_transparent_congr base e;
+  theorem_filter_card (eval_expr_ebv_transparent base e) omega
+
+#pop-options
 
 (** 5.1 The PRODUCTION filter path (`filter_solutions_with_graph`) agrees
     with the graph-free `filter_solutions` above, on the fragment where
