@@ -145,7 +145,11 @@ open Parser.FastString
 /// supply that value for no string whatsoever. This blocked step 1 of the
 /// text-bridge chain outright, before framing (step 2) or composition
 /// (step 3) could even be attempted -- see `SPARQL.Protocol.RoundTrip.fst`'s
-/// banner for how the promoted facts are used.
+/// banner for how the promoted facts are used, and for a NEW finding from
+/// the SAME session: a separate wall, past the JSON string body, in
+/// `FStar.String.concat` (a different module's primitive, out of scope for
+/// this file's eight-fact trust surface) that still blocks the literal
+/// `json_parse_string` theorem even with all eight facts landed.
 
 /// Fact 1: the empty string has zero bytes.
 val fs_byte_length_empty (_:unit)
