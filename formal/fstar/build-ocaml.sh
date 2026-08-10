@@ -448,7 +448,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SHACL.NodeExpr.fst
     SHACL.Rules.fst
     RDF.Geo.Types.fst RDF.Geo.BBox.fst RDF.Geo.Topology.fst RDF.Geo.Functions.fst
-    Parser.FastString.Spec.fst Parser.FastString.CharBoundary.fst Parser.FastString.fst Parser.IRI.fst
+    Parser.FastString.Spec.fst Parser.FastString.CharBoundary.fst Parser.FastString.fst Parser.FastString.ConcatSpec.fst Parser.IRI.fst
     Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst Parser.WKT.fst
     Parser.NTriples.fst Parser.Turtle.fst HDT.Container.fst HDT.Dictionary.fst HDT.Triples.fst
     Parser.OWLFunctional.fst
@@ -1010,7 +1010,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
   COMMON_MODULES="Util_Log.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_Closure_SemiNaive.ml RDFS_SchemaSplit.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
-    Parser_FastString_Spec.ml Parser_FastString_CharBoundary.ml Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
+    Parser_FastString_Spec.ml Parser_FastString_CharBoundary.ml Parser_FastString.ml Parser_FastString_ConcatSpec.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml \
     RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml \
     RDF_Entailment_RDFS_RhoDFClosure.ml RDF_Entailment_RDFSPlus.ml RDF_Entailment_RegimeDispatch.ml \
@@ -2160,7 +2160,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Indexed.ml RDF_Graph.ml
     RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_Closure_SemiNaive.ml RDFS_SchemaSplit.ml OWL_Closure.ml
     RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml
-    Parser_FastString_Spec.ml Parser_FastString_CharBoundary.ml Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
+    Parser_FastString_Spec.ml Parser_FastString_CharBoundary.ml Parser_FastString.ml Parser_FastString_ConcatSpec.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml
     RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml
     Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml

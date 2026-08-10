@@ -86,6 +86,7 @@ COMMON_MODULES=(
   Parser_FastString_Spec
   Parser_FastString_CharBoundary
   Parser_FastString
+  Parser_FastString_ConcatSpec
   RDF_IRI
   SPARQL11_IRI_Resolve
   Parser_IRI
