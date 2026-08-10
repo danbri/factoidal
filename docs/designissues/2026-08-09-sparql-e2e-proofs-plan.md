@@ -57,3 +57,27 @@ states) — assembled at the same time because composition is when the
 kernel's contents become final. Task #38's kernel item transfers to
 task #46/M5; the G2 remainder (claims block, npm batch) stays in
 task #40.
+
+## Fast-path re-founding constraints (owner steer, 2026-08-10, verbatim)
+
+> "Refound migration - the mention of ocaml scares me as earlier
+> Claudes slipped into writing everything in ocaml, and it took weeks
+> to recover. This cannot be that again.
+> Also, we need practical performant parsers (memory, speed,
+> streaming; error recovery from realworld data flaws"
+
+Binding constraints on the FastString migration and all parser work:
+1. ACCEPTANCE CRITERION: every semantic decision has an extracted F*
+   definition as its source; anything OCaml is substitutable,
+   equivalence-gated (rule 11(b) Option-B), and deletable. The
+   migration REMOVES hand-written OCaml semantics (patch 89's realised
+   assume vals); optimized OCaml returns only if benchmarks demand it.
+2. Benchmark-gated at every step (parser throughput harness,
+   perf-benchmarking discipline) — no perf regressions on faith.
+3. Streaming: N-Quads chunk-fold with bounded carry; streaming==batch
+   as a theorem; line-based formats first.
+4. Error recovery as proof targets: strict mode = position-carrying
+   errors; lenient mode = resync-point skip with recovery-soundness
+   theorems (every emitted triple grammatical, every skip reported
+   with position, silent drops impossible — retires the #334/#344
+   bug class by construction).
