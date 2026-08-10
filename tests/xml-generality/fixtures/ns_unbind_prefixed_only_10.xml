@@ -1,0 +1,5 @@
+<root xmlns:p="http://example.org/p">
+  <child xmlns:p="">
+    <grandchild/>
+  </child>
+</root>
