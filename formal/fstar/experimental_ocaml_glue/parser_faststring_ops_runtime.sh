@@ -124,6 +124,7 @@ old = (
 )
 new = (
     'let fs_byte_at (s : Prims.string) (i : Prims.nat) : Prims.nat=\n'
+    '  let open Stdlib in\n'
     '  let ii = Z.to_int i in\n'
     '  if ii < 0 || ii >= String.length s then Prims.int_zero\n'
     '  else Z.of_int (Char.code (String.unsafe_get s ii))\n'
