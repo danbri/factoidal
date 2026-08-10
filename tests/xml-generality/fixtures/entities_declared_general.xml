@@ -1,0 +1,4 @@
+<!DOCTYPE root [
+  <!ENTITY greeting "Hello, world!">
+]>
+<root>&greeting;</root>

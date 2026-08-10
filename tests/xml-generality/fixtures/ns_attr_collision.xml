@@ -1,0 +1,3 @@
+<root xmlns:a="http://example.org/same" xmlns:b="http://example.org/same">
+  <child a:id="1" b:id="2"/>
+</root>

@@ -1,0 +1,4 @@
+<!DOCTYPE root [
+  <!ENTITY bad "<injected/>">
+]>
+<root>&bad;</root>

@@ -1,0 +1,3 @@
+<ex:root xmlns:ex="http://example.org/ex">
+  <ex:child>text</ex:child>
+</ex:root>

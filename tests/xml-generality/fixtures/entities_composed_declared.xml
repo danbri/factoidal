@@ -1,0 +1,5 @@
+<!DOCTYPE root [
+  <!ENTITY a "Hello">
+  <!ENTITY b "&a;, World!">
+]>
+<root>&b;</root>

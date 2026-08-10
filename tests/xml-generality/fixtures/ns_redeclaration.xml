@@ -1,0 +1,5 @@
+<ex:root xmlns:ex="http://example.org/one">
+  <ex:child xmlns:ex="http://example.org/two">
+    <ex:grandchild/>
+  </ex:child>
+</ex:root>
