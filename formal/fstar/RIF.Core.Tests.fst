@@ -131,9 +131,21 @@ let parse_rif_imports (rif_xml : string)
 // ship (rule #1 — one spec, many callers), keyed on the entailment-
 // namespace profile IRI (http://www.w3.org/ns/entailment/<Name>):
 //
-//   Simple / "" (none)         -> no closure (plain imported triples)
-//   RDF / RDFS                 -> rdfs_closure_with_reflexivity
-//   OWL-Direct / OWL-RDF-Based -> owl_rl_closure_with_reflexivity
+//   Simple / "" (none)  -> no closure (plain imported triples)
+//   RDF / RDFS          -> rdfs_closure_with_reflexivity
+//   OWL-Direct / OWL    -> owl_rl_closure_with_reflexivity_mode ... owl_semantics_direct
+//   OWL-RDF-Based       -> owl_rl_closure_with_reflexivity_mode ... owl_semantics_rdf_based
+//
+// OWL-Direct and OWL-RDF-Based are two different entailment regimes
+// (OWL 2's Direct Semantics vs. its RDF-Based Semantics) that provably
+// take different branches inside the closure rules (OWL.Closure.fsti,
+// see the `mode = owl_semantics_rdf_based` guards from around line 2947
+// onward) -- routing both through the DIRECT-mode wrapper silently
+// applies Direct-semantics rules to an RDF-Based import. This dispatch
+// selects `owl_semantics_rdf_based` for the RDF-Based profile IRI and
+// `owl_semantics_direct` for OWL-Direct / the bare "OWL" profile IRI
+// (whose default is Direct Semantics per the OWL 2 mapping to the
+// entailment-regime namespace).
 //
 // OWL-RL subsumes the RDFS subClassOf (cax-sco) and domain (prp-dom)
 // rules the entailment-regime suite exercises, so the OWL profiles start
@@ -150,10 +162,11 @@ let ent_ns : string = "http://www.w3.org/ns/entailment/"
 let materialise_import_graph (profile : string) (imported : rdf_graph)
   : rdf_graph
   =
-  if profile = ent_ns ^ "OWL-Direct"
-     || profile = ent_ns ^ "OWL-RDF-Based"
-     || profile = ent_ns ^ "OWL"
-  then owl_rl_closure_with_reflexivity imported default_fuel
+  if profile = ent_ns ^ "OWL-RDF-Based"
+  then owl_rl_closure_with_reflexivity_mode imported default_fuel owl_semantics_rdf_based
+  else if profile = ent_ns ^ "OWL-Direct"
+          || profile = ent_ns ^ "OWL"
+  then owl_rl_closure_with_reflexivity_mode imported default_fuel owl_semantics_direct
   else if profile = ent_ns ^ "RDF"
           || profile = ent_ns ^ "RDFS"
   then rdfs_closure_with_reflexivity imported default_fuel
