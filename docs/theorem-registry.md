@@ -794,3 +794,22 @@ rewrite walks into sub-queries, the one real gap found). No fuel
 fallback needed anywhere. All four dependent proof modules re-verify
 unchanged. W3C clean: SPARQL 631 pass 0 fail (of 631), RDF 1031 pass
 0 fail (of 1031).
+
+**FastString migration step 5 MERGED (2026-08-10)**: two new proof
+assets. (a) `Parser.FastString.BaseCases.fst` (proof-only): 12
+delimiter-character byte facts (quote/braces/brackets/colon/comma/
+angle-brackets/space/newline/backslash — `fs_byte_at_*` +
+`fs_byte_length_*` pairs) proved through the `.fsti` bridging lemmas +
+`Spec.utf8_bytes_ascii_singleton`, deliberately independent of the
+Axioms module; plus a Spec-direct ASCII-content family
+(`lemma_build_string_utf8_bytes`/`_byte_length`/`_byte_at`). (b)
+`Parser.FastString.ConcatSpec.fst` (wired, extracted): `concat_spec`
+with proved equations `concat_spec_nil`/`_singleton`/`_cons` — closes
+string wall (2) (ulib `FStar.String.concat` has zero equations);
+proof-critical call sites migrated (`Parser.JSON.fst` 1 use,
+`SPARQL.Protocol.fst` 6 uses). Gates: verify clean, extract/compile
+clean, W3C SPARQL 627 pass 4 fail (of 631; the intermittent RIF
+quartet #367) + RDF 1031 pass 0 fail (of 1031), benchmark every row
+inside the 10% gate vs frozen baselines (all faster; attributed to a
+quieter host, not the diff — stated in the plan doc). Unblocks the
+SRJ text bridge (M4) and N-Triples parser-side proofs.
