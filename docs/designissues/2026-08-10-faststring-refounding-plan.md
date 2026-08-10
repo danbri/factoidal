@@ -284,3 +284,113 @@ and treat "byte-level primitive called on a non-UTF-8 buffer" as
 requiring the FAST realisation UNCONDITIONALLY (never delete the patch
 for that call class). Either framing is a real, scoped follow-up; this
 session does not attempt it.
+
+## Step 2/3 revisit — the crash is fixed (2026-08-10, branch `faststring-spec-refound`, issue #374)
+
+Follow-up session, same day. Task: eliminate the crash and (if
+achievable) the 665 divergences by making `Spec.utf8_bytes` the single
+decoder. Commits `2fd461c761` (Spec.fst fix, verified) and `d58a80ddc0`
+(extract/compile + test-harness fix) on branch `faststring-spec-refound`,
+forked from the WALL commit `c5fa0f2b49` above.
+
+**Root cause, precisely (confirmed by a standalone probe linking
+`fstar.lib` directly, not inferred from the test's crash message
+alone).** `FStar.Char.char` (ulib, `FStar.Char.fsti`) is a `new val
+char:eqtype` — a genuinely ABSTRACT type. The only way F* Tot code
+can observe a `string`'s content at all, valid or not, is
+`FStar.String.list_of_string` (every other string primitive —
+`length`, `index`, `get`, `sub` — is defined in terms of it; checked
+directly against `FStar.String.fsti`, not assumed). Its OCaml
+realisation (`FStar_String.ml`: `BatList.init (BatUTF8.length s) (fun
+i -> BatUChar.code (BatUTF8.get s i))`) is **not actually total**
+w.r.t. the `list char` type it is declared to return, on a string that
+is not valid UTF-8: decoding `"abc:\xE6\x80\x97\xA5:xyz"` through it
+returns `[97;98;99;58;24599;-1670;120;121;122]` — a **negative**
+"codepoint" (`-1670`) that violates `int_of_char : char -> nat`'s own
+postcondition. This is a genuine extraction-soundness gap in ulib's
+OCaml backend on this domain, not a bug this project introduced.
+`Parser.FastString.Spec.utf8_bytes` (`concatMap utf8_enc_char
+(list_of_string s)`) propagated that poisoned value UNCLAMPED into a
+`byte = n:nat{n<256}`, and from there into `Parser.FastString.fst`'s
+`fs_byte_sub` → `FStar.String.string_of_list`, whose `BatUChar.chr`
+call **throws** `BatUChar.Out_of_range` — the exact mechanism behind
+the equivalence test's rc=2 abort (previously attributed only vaguely
+to "other adversarial inputs").
+
+**What is fixed.** A defensive clamp in `utf8_enc_char` (provably dead
+code for any genuine `FStar.Char.char`, per `char_code`'s own
+refinement — existing lemma proofs unaffected, verify first-attempt)
+plus a matching lower-bound fix in `utf8_decode_all_aux`'s own clamp
+(`cp < 0xd7ff` had no `cp >= 0`, defense in depth). Both stop the
+poison before it reaches `string_of_list`.
+
+**What is NOT fixed, and cannot be without a new `assume val`.** Full
+elimination of `list_of_string` from `utf8_bytes` — making Spec.fst
+decode literally ALL input, including non-UTF8-valid byte buffers,
+through `utf8_decode_at` alone — is impossible: there is no OTHER F*
+Tot primitive that observes a string's content, full stop (see the
+argument above). Documented as the SINGLE-DECODER FINDING banner in
+`Parser.FastString.Spec.fst` directly above `utf8_bytes`.
+
+**Attempted and parked**: a round-trip theorem
+(`utf8_decode_all (utf8_bytes s) == list_of_string s`, for every `s`)
+proving Spec's own encode/decode pair are genuine inverses — the
+closest unconditional statement of "single decoder" achievable inside
+F*. Three attempts stalled at Error 19 ("Could not prove
+post-condition") on the same step every time: getting
+`utf8_decode_all_aux`'s recursive definition to unfold one step at a
+fully symbolic call site, even with every supporting fact
+(`utf8_decode_at_shift`, `utf8_decode_encode_identity`,
+`char_of_int_of_char`, `char_code`'s range) asserted into context
+immediately beforehand. This is the closure-identity/cross-boundary-
+unfold obstruction class documented in
+`skills/proof-factory/SKILL.md`, one level down (a recursive `let`'s
+own defining equation not firing at a symbolic call, rather than a
+lambda). Parked per the skill's stop-rule discipline; the concrete
+next step (a `norm [delta_only [...]; zeta; iota]` tactic step) is
+recorded in-file. Two small, general, reusable lemmas survive from the
+attempt and verify standalone: `nth_byte_append`, `utf8_decode_at_shift`.
+
+**Equivalence test — before/after, same corpus:**
+
+| | before (WALL, `4a00d17246`) | after (`d58a80ddc0`) |
+|---|---:|---:|
+| crash | yes — `BatUChar.Out_of_range`, rc=2, run aborted partway | none — rc=0 |
+| corpus exercised | partial (aborted mid adversarial-embedded#19) | full |
+| unexpected FAIL | 665 (floor, undercounted — run never finished) | 0 |
+| documented XFAIL | 20 (fs_byte_sub off-domain rows only) | 962 (fs_byte_sub off-domain + all five ops' adversarial-corpus rows, reclassified) |
+| pass | — (run never finished) | 93846 |
+
+The reclassification (five ops, not just `fs_byte_sub`, on the
+adversarial corpus) is itself a finding: the original brief expected
+`fs_byte_length`/`fs_byte_at`/`fs_find_byte`/`fs_cp_at`/`fs_cp_len` to
+agree even on malformed input ("the FAST realisations are pure
+byte-level operations with no UTF-8 assumption at all, so agreement on
+garbage bytes was the expected, achievable bar") — that expectation
+was never achievable given the `list_of_string` argument above; it
+was simply never exercised to completion before this session to
+notice. A second bug in the test harness itself (OOB `fs_byte_at`
+probes assumed well-formedness-independent agreement, which is false
+because `fs_byte_length_spec` can be shorter than the fast
+`fs_byte_length` for malformed input) was caught by actually running
+the suite after the Spec.fst fix, not by re-reasoning from the desk —
+fixed in the same landing (commit `d58a80ddc0`).
+
+**Regression check.** W3C RDF 1031 pass, 0 fail (exact match to the
+Step 2/3 numbers above). W3C SPARQL 627 pass, 4 fail (out of 631) —
+the 4 are pre-existing RIF entailment test failures (rule-evaluation
+logic; zero overlap with this diff's two touched files, `Parser.
+FastString.Spec.fst` and the equivalence test — not introduced by this
+landing, not investigated further here, out of scope for issue #374).
+`tests/unit/run-all.sh` (full, no target) also run: 30 of 48 files
+fail, all on the SAME pre-existing cause — `RDFS_Closure_SemiNaive` is
+in `build-ocaml.sh`'s `COMMON_MODULES` but missing from `run-all.sh`'s
+own copy of that list (drift, not caused by this landing). Not fixed
+here; worth its own issue.
+
+**Verified**: `Parser.FastString.Spec.fst`, `Parser.FastString.fsti`,
+`Parser.FastString.fst`, `Parser.FastString.Axioms.fsti`,
+`Parser.FastString.RoundTripLemmas.fst`, `SPARQL.Protocol.RoundTrip.fst`,
+`RDF.NTriples.RoundTrip.fst` — all re-verify (the latter four
+unchanged, since `Parser.FastString.fsti`'s public interface never
+moved). No admit, no `--lax`, no new `assume val`.
