@@ -628,3 +628,21 @@ collapse), both stated as divergence lemmas with witnesses, #365.
 Text-bridge: BLOCKED pending owner decision on FastString candidate
 axioms 7-8 (value-level facts, documented in-file with OCaml
 justification); tree-level remains the proved boundary meanwhile.
+
+**G4 wave 4 (2026-08-09/10)**: EXISTS-cycle RESOLVED — `eval_exists_fwd`
+assume val RETIRED via real mutual recursion (`pattern_size`/`expr_size`
+metric + `lemma_substitute_pattern_preserves_size`, phase+size decreases
+per the MathML.Present precedent; z3 cost 1.4-1.6x baseline, under the
+3x gate; glue patch 62 down to 2 symbols). Full W3C on the branch:
+SPARQL 631 pass, 0 fail (out of 631); RDF 1031 pass, 0 fail (out of
+1031) — the 4 RIF failures of #367 do NOT reproduce (stale-binary
+measurement artifact suspected; see issue). RIF enters the theorems
+zone — `RIF.Core.Refinement.fst`: `rif_fixpoint_extensive`/
+`rif_one_round_extensive`/`rif_fire_rule_extensive` (UNCONDITIONAL —
+finding E-1: no dedup-pass hypothesis needed, unlike rho-df),
+`rif_derives` declarative spec + `fire_rule_licensed`/
+`one_round_licensed`/`fixpoint_licensed` (two-graph snapshot idiom
+forced by intra-round order-dependence). FINDING F-1 (#367 candidate
+cause): RIF import materialisation hard-codes OWL-Direct closure mode
+for BOTH regime profiles (RIF.Core.Tests ~150-160 vs OWL.Closure.fsti
+5747 mode split) — plausible, unconfirmed.
