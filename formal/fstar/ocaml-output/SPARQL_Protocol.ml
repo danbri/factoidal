@@ -734,7 +734,9 @@ let serialise_response_json (vars : Prims.string Prims.list)
     (Prims.strcat (json_var_list vars)
        (Prims.strcat "]},"
           (Prims.strcat "\"results\":{\"bindings\":["
-             (Prims.strcat (FStar_String.concat "" body_pieces) "]}}"))))
+             (Prims.strcat
+                (Parser_FastString_ConcatSpec.concat_spec "" body_pieces)
+                "]}}"))))
 let serialise_response_boolean_json (b : Prims.bool) : Prims.string=
   if b
   then "{\"head\":{},\"boolean\":true}"
@@ -824,8 +826,9 @@ let serialise_response_xml (vars : Prims.string Prims.list)
           (Prims.strcat (xml_head_vars_body vars)
              (Prims.strcat "</head>"
                 (Prims.strcat "<results>"
-                   (Prims.strcat (FStar_String.concat "" body_pieces)
-                      "</results></sparql>"))))))
+                   (Prims.strcat
+                      (Parser_FastString_ConcatSpec.concat_spec ""
+                         body_pieces) "</results></sparql>"))))))
 let serialise_response_boolean_xml (b : Prims.bool) : Prims.string=
   let value = if b then "true" else "false" in
   Prims.strcat "<?xml version=\"1.0\"?>\n"
@@ -891,7 +894,8 @@ let serialise_response_csv (vars : Prims.string Prims.list)
   (rows : binding_row Prims.list) : Prims.string=
   let body_pieces = FStar_List_Tot_Base.rev (csv_rows_body_acc vars rows []) in
   Prims.strcat (csv_header_body vars true)
-    (Prims.strcat "\r\n" (FStar_String.concat "" body_pieces))
+    (Prims.strcat "\r\n"
+       (Parser_FastString_ConcatSpec.concat_spec "" body_pieces))
 let rec tsv_term (t : RDF_Term.rdf_term) : Prims.string=
   match t with
   | RDF_Term.T_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
@@ -969,7 +973,8 @@ let serialise_response_tsv (vars : Prims.string Prims.list)
   (rows : binding_row Prims.list) : Prims.string=
   let body_pieces = FStar_List_Tot_Base.rev (tsv_rows_body_acc vars rows []) in
   Prims.strcat (tsv_header_body vars true)
-    (Prims.strcat "\n" (FStar_String.concat "" body_pieces))
+    (Prims.strcat "\n"
+       (Parser_FastString_ConcatSpec.concat_spec "" body_pieces))
 let content_type_for (f : response_format) : Prims.string=
   match f with
   | RF_Json -> "application/sparql-results+json"
@@ -1158,7 +1163,8 @@ let extract_request (comment : Prims.string) :
                            | (headers, body_lines) ->
                                let body =
                                  trim_ws
-                                   (FStar_String.concat "\n" body_lines) in
+                                   (Parser_FastString_ConcatSpec.concat_spec
+                                      "\n" body_lines) in
                                FStar_Pervasives_Native.Some
                                  {
                                    pr_method = mthd;
@@ -1192,7 +1198,7 @@ let extract_status_class (comment : Prims.string) : proto_status_class=
   let lines =
     split_all_on comment (FStar_Char.char_of_int (Prims.of_int (0x0A))) in
   let body = proto_find_resp_lines lines in
-  let body_text = FStar_String.concat "\n" body in
+  let body_text = Parser_FastString_ConcatSpec.concat_spec "\n" body in
   if
     (proto_str_contains body_text "4xx") ||
       (proto_str_contains body_text "4XX")

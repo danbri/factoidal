@@ -394,3 +394,54 @@ here; worth its own issue.
 `RDF.NTriples.RoundTrip.fst` — all re-verify (the latter four
 unchanged, since `Parser.FastString.fsti`'s public interface never
 moved). No admit, no `--lax`, no new `assume val`.
+
+## Step 5 results (2026-08-10, branch `faststring-step5`)
+
+Commits: Task A `612f84664c` (BaseCases pack), Task B `613235b34b`
+(concat_spec + call-site migration), rebuild `a14cca7fa8`.
+
+### Task A — `Parser.FastString.BaseCases.fst` (proof-only)
+
+Concrete-literal byte facts for the JSON/N-Triples delimiter set
+(quote, braces, brackets, colon, comma, angle brackets, space,
+newline, backslash — 12 chars), each PROVED through the `.fsti`
+bridging lemmas (`fs_byte_length_eq`, `fs_byte_at_eq`) +
+`Spec.utf8_bytes_ascii_singleton`/`nth_byte_zero` — deliberately
+independent of `Parser.FastString.Axioms` (step 4b in flight). Plus a
+general ASCII-content family (`lemma_build_string_utf8_bytes` /
+`_byte_length` / `_byte_at`) going straight through
+`Spec.utf8_bytes_concat`, the Spec-direct sibling of
+`RoundTripLemmas.fst`'s scaffolding.
+
+### Task B — `Parser.FastString.ConcatSpec.fst` + migration
+
+`concat_spec` — a local, transparent, proved replacement for
+`FStar.String.concat` (fold over `^`, with `concat_spec_nil` /
+`_singleton` / `_cons` equations). Closes string wall (2):
+`FStar.String.concat` has ZERO stated equations in ulib, so even
+`concat sep [x] == x` is unprovable for symbolic `x`. Migrated the
+proof-critical call sites: `Parser.JSON.fst` (1 use,
+`json_string_segments` terminal join) and `SPARQL.Protocol.fst`
+(6 real call sites — the brief said 7; the 7th grep hit is a comment).
+This changes EXTRACTED code, hence the rebuild commit.
+
+### Gates (all labelled)
+
+- ✅ W3C SPARQL: 627 pass, 4 fail (out of 631) — the 4 are the
+  pre-existing intermittent RIF quartet (#367). W3C RDF: 1031 pass,
+  0 fail (out of 1031).
+- 📊 Benchmark vs the frozen step-0 baselines (gate: within 10%),
+  same host — every row FASTER than baseline: parse nt 1M 99,387 vs
+  71,304 triples/s; turtle 1M 95,848 vs 80,143; rdfxml 1M 35,297 vs
+  27,669; serialize_nq 10k 57,504 vs 46,773; canonicalize 100k
+  32,588 vs 26,275.
+- ⚠️ The speedup is NOT attributed to this diff: `concat_spec` sits
+  on the SPARQL-results/JSON paths, while the bench measures
+  `factoidal count` / `factoidal-dump-nq` (`RDF.NQuads.Serialize`) —
+  paths this diff cannot touch. All rows improved together, which
+  points to a quieter host than the "moderately loaded" step-0
+  baseline run. The gate passes; no speed claim beyond that.
+
+Unblocked by this step: the SRJ text bridge (M4) and N-Triples
+parser-side proofs (M1-adjacent) can now state their concat facts
+against `concat_spec` equations instead of the ulib wall.

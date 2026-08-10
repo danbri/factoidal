@@ -224,8 +224,8 @@ let rec json_string_segments (input : Prims.string) (seg_start : Prims.nat)
             (Parser_FastString.fs_byte_sub input seg_start (pos - seg_start))
             :: segs in
           Parser_Combinators.ParseOk
-            ((FStar_String.concat "" (FStar_List_Tot_Base.rev segs_done)),
-              (pos + Prims.int_one))
+            ((Parser_FastString_ConcatSpec.concat_spec ""
+                (FStar_List_Tot_Base.rev segs_done)), (pos + Prims.int_one))
         else
           if b = (Prims.of_int (0x5C))
           then
