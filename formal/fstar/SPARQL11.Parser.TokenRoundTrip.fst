@@ -699,7 +699,38 @@ let string_concat_assoc a b c =
    (`%[length rest; 1]` / `%[length ts; 0]`) is still accepted once
    that branch's proof term grows. This is a concrete, mechanical next
    attempt, not a re-opened question — budget it as attempt 6, not a
-   fresh search. *)
+   fresh search.
+
+   RESOLVED (attempt 6, same session's follow-up landing). The extra
+   ingredient was not a THIRD reveal — it was packaging the reveal
+   into a lemma whose CONCLUSION is already a `tokenize_loop` equation
+   (`combine_step`, below), not just a `next_token` equation
+   (`next_token_head_pre`). Calling `next_token_head_pre` alone from
+   inside the induction left the caller to re-derive the
+   `tokenize_loop` one-step unfold itself via a generic `assert` — and
+   THAT assert is where Error 19 kept recurring, one level up from
+   where attempts 1-5 diagnosed it. `combine_step` does the SAME
+   per-constructor match + reveal as `next_token_head_pre` (mirroring
+   its shape exactly, one branch per fragment constructor) but its
+   `ensures` states the `tokenize_loop` step directly:
+   `tokenize_loop full p0 acc fuel == tokenize_loop full p1 (t::acc)
+   (fuel-1)`. The induction (`tokenize_loop_fragment`) then only ever
+   INSTANTIATES that already-proven equation (pure unification, no
+   fresh delta-unfold-plus-congruence at the call site) instead of
+   re-deriving it. The second piece — the `p1` (space) to `p1+1`
+   (start of the next print) gap that `next_token_skip_space` alone
+   doesn't bridge at the `tokenize_loop` level, per the OBSTRUCTION
+   note above — is `tokenize_loop_step_bridge`: given `next_token`
+   agrees at both positions AND the returned position clears the
+   further one (or the token is EOF), both sides' progress guards
+   evaluate to the same boolean and the two `tokenize_loop` calls are
+   the literal same term. No mutual recursion needed in the end: a
+   single lemma inducting on `ts`, using `combine_step` once for the
+   head token and `next_token_head_pre` + `peek_at_offset` once more
+   (only for the NUMERIC fact `tokenize_loop_step_bridge` needs about
+   what comes after the gap, not for a second `tokenize_loop` unfold)
+   closes each step. See `combine_step`, `tokenize_loop_step_bridge`,
+   `tokenize_loop_fragment`, `tokenize_fragment_roundtrip` below. *)
 
 (* ============================================================ *)
 (* Top-level wrapper *)
@@ -786,4 +817,371 @@ let tokenize_single_fragment_token t =
   assert (List.Tot.rev (Tok_EOF :: [t]) == [t; Tok_EOF]);
   assert (widen_token t == t);
   assert (tokenize full == tokenize_loop false full 0 [] fuel)
+#pop-options
+
+(* ============================================================ *)
+(* Multi-token round-trip (attempt 6 — see RESOLVED note above) *)
+(* ============================================================ *)
+
+(* `combine_step`: same per-constructor match + literal reveal as
+   `next_token_head_pre`, but its `ensures` states the ONE-STEP
+   `tokenize_loop` unfold directly, not just the `next_token` fact —
+   this is the piece that was missing from attempts 1-5 (see RESOLVED
+   note in the FINDING section above). Packaging it this way lets the
+   induction below INSTANTIATE the equation by unification instead of
+   re-deriving it via a fresh `assert` at the call site, which is
+   where the congruence broke previously. *)
+#push-options "--z3rlimit 4000 --fuel 4 --ifuel 4"
+val combine_step (pre tail : string) (t : token{token_in_fragment t}) (acc : list token) (fuel : nat{fuel > 0})
+  : Lemma (ensures
+      next_token false (pre ^ (print_token t ^ (" " ^ tail))) (String.length pre)
+        == (t, String.length pre + String.length (print_token t)) /\
+      tokenize_loop false (pre ^ (print_token t ^ (" " ^ tail))) (String.length pre) acc fuel
+        == tokenize_loop false (pre ^ (print_token t ^ (" " ^ tail)))
+                          (String.length pre + String.length (print_token t)) (t :: acc) (fuel - 1))
+let combine_step pre tail t acc fuel =
+  let full = pre ^ (print_token t ^ (" " ^ tail)) in
+  let p0 = String.length pre in
+  FStar.String.concat_length pre (print_token t ^ (" " ^ tail));
+  assert (String.length full == p0 + String.length (print_token t ^ (" " ^ tail)));
+  assert (p0 <= String.length full);
+  match t with
+  | Tok_LBRACE ->
+    assert (print_token t == "{");  assert_norm (String.length "{" == 1);  next_token_lbrace_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_RBRACE ->
+    assert (print_token t == "}");  assert_norm (String.length "}" == 1);  next_token_rbrace_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_LPAREN ->
+    assert (print_token t == "(");  assert_norm (String.length "(" == 1);  next_token_lparen_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_RPAREN ->
+    assert (print_token t == ")");  assert_norm (String.length ")" == 1);  next_token_rparen_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_LBRACKET ->
+    assert (print_token t == "[");  assert_norm (String.length "[" == 1);  next_token_lbracket_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_RBRACKET ->
+    assert (print_token t == "]");  assert_norm (String.length "]" == 1);  next_token_rbracket_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_DOT ->
+    assert (print_token t == ".");  assert_norm (String.length "." == 1);  next_token_dot_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_SEMI ->
+    assert (print_token t == ";");  assert_norm (String.length ";" == 1);  next_token_semi_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_COMMA ->
+    assert (print_token t == ",");  assert_norm (String.length "," == 1);  next_token_comma_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_STAR ->
+    assert (print_token t == "*");  assert_norm (String.length "*" == 1);  next_token_star_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_SLASH ->
+    assert (print_token t == "/");  assert_norm (String.length "/" == 1);  next_token_slash_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_PIPE ->
+    assert (print_token t == "|");  assert_norm (String.length "|" == 1);  next_token_pipe_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_CARET ->
+    assert (print_token t == "^");  assert_norm (String.length "^" == 1);  next_token_caret_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_BANG ->
+    assert (print_token t == "!");  assert_norm (String.length "!" == 1);  next_token_bang_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_QMARK ->
+    assert (print_token t == "?");  assert_norm (String.length "?" == 1);  next_token_qmark_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_PLUS ->
+    assert (print_token t == "+");  assert_norm (String.length "+" == 1);  next_token_plus_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_MINUS_OP ->
+    assert (print_token t == "-");  assert_norm (String.length "-" == 1);  next_token_minus_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_EQ ->
+    assert (print_token t == "=");  assert_norm (String.length "=" == 1);  next_token_eq_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_NE ->
+    assert (print_token t == "!="); assert_norm (String.length "!=" == 2); next_token_ne_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 2));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 2) (t :: acc) (fuel - 1))
+  | Tok_LT ->
+    assert (print_token t == "<");  assert_norm (String.length "<" == 1);  next_token_lt_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_LE ->
+    assert (print_token t == "<="); assert_norm (String.length "<=" == 2); next_token_le_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 2));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 2) (t :: acc) (fuel - 1))
+  | Tok_GT ->
+    assert (print_token t == ">");  assert_norm (String.length ">" == 1);  next_token_gt_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 1));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 1) (t :: acc) (fuel - 1))
+  | Tok_GE ->
+    assert (print_token t == ">="); assert_norm (String.length ">=" == 2); next_token_ge_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 2));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 2) (t :: acc) (fuel - 1))
+  | Tok_AND ->
+    assert (print_token t == "&&"); assert_norm (String.length "&&" == 2); next_token_and_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 2));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 2) (t :: acc) (fuel - 1))
+  | Tok_OR ->
+    assert (print_token t == "||"); assert_norm (String.length "||" == 2); next_token_or_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 2));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 2) (t :: acc) (fuel - 1))
+  | Tok_HATHAT ->
+    assert (print_token t == "^^"); assert_norm (String.length "^^" == 2); next_token_hathat_pre pre tail;
+    assert (next_token false full p0 == (t, p0 + 2));
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full (p0 + 2) (t :: acc) (fuel - 1))
+#pop-options
+
+(* Position bridge: relate `tokenize_loop` across the one-char gap
+   between the separating space (position `p`) and whatever comes
+   right after it (position `q = p+1`) — the piece `next_token_
+   skip_space` alone does not supply, because it only equates
+   `next_token`'s OWN return value at `p` vs `q`; `tokenize_loop`'s
+   progress guard `p' <= p` compares the returned position against
+   ITS OWN call argument, which differs (`p` vs `q`) between the two
+   sides. Handing in the concrete `next_token` value up front (so the
+   caller has already reconciled it via `next_token_skip_space`), plus
+   a bound ensuring the guard evaluates the SAME way on both sides,
+   lets the two `tokenize_loop` calls reduce to the literal same term
+   without needing to know whether the token is EOF or a real one. *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val tokenize_loop_step_bridge (input : string) (p q : pos) (acc : list token) (fuel : nat{fuel > 0})
+  : Lemma
+      (requires
+        p <= String.length input /\ q <= String.length input /\ q > p /\
+        next_token false input p == next_token false input q /\
+        (fst (next_token false input p) == Tok_EOF \/ snd (next_token false input p) > q))
+      (ensures tokenize_loop false input p acc fuel == tokenize_loop false input q acc fuel)
+let tokenize_loop_step_bridge input p q acc fuel = ()
+#pop-options
+
+(* Congruence-isolation lemmas. Plain `a == b |- f a == f b` is a
+   logically trivial congruence step, but proving it INLINE as an
+   `assert` deep in a large accumulated proof context (many prior
+   lets/asserts in scope) intermittently fails with Error 19 in this
+   codebase's Z3 setup — apparently a search/resource issue, not a
+   logical gap, since the SAME fact discharges instantly once isolated
+   into its own near-empty lemma context (this file's own established
+   idiom: every nontrivial string fact already goes through a small
+   dedicated lemma — `index_concat_at`, `peek_at_offset`, `string_
+   concat_assoc`, etc. — never a raw inline substitution). These give
+   the induction below a small, reusable toolkit for that pattern so
+   it never needs to re-derive a compound congruence inline. *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val concat_right_of_eq (pre a b : string) : Lemma (requires a == b) (ensures pre ^ a == pre ^ b)
+let concat_right_of_eq pre a b = ()
+
+val length_of_eq (a b : string) : Lemma (requires a == b) (ensures String.length a == String.length b)
+let length_of_eq a b = ()
+
+val next_token_input_of_eq (a b : string) (p : pos)
+  : Lemma (requires a == b) (ensures next_token false a p == next_token false b p)
+let next_token_input_of_eq a b p = ()
+
+val tokenize_loop_input_of_eq (a b : string) (p : pos) (acc : list token) (fuel : nat)
+  : Lemma (requires a == b) (ensures tokenize_loop false a p acc fuel == tokenize_loop false b p acc fuel)
+let tokenize_loop_input_of_eq a b p acc fuel = ()
+
+(* `(pre ^ (txt ^ " ")) ^ rest_str == pre ^ (txt ^ (" " ^ rest_str))` —
+   the exact regrouping needed to show the "already printed head token
+   plus its separating space" prefix, reapplied as a fresh `pre` for
+   the tail, reconstitutes the original full string. *)
+val concat_regroup3 (pre txt rest_str : string)
+  : Lemma (ensures (pre ^ (txt ^ " ")) ^ rest_str == pre ^ (txt ^ (" " ^ rest_str)))
+let concat_regroup3 pre txt rest_str =
+  string_concat_assoc pre (txt ^ " ") rest_str;
+  string_concat_assoc txt " " rest_str
+
+(* Length of `txt ^ (" " ^ tail)` when `tail` is (provably) empty. Each
+   congruence hop (space-plus-tail collapsing to a bare space, then
+   that substituted inside `txt ^ (...)`) is its own lemma call with
+   an explicit transitivity `assert` in between — the SAME "isolate,
+   don't chain implicitly" discipline as the rest of this toolkit. *)
+val space_tail_empty_length (txt tail : string)
+  : Lemma (requires tail == "")
+          (ensures String.length (txt ^ (" " ^ tail)) == String.length txt + 1)
+let space_tail_empty_length txt tail =
+  concat_right_of_eq " " tail "";
+  assert (" " ^ tail == " " ^ "");
+  concat_empty_right " ";
+  assert (" " ^ "" == " ");
+  assert (" " ^ tail == " ");
+  concat_right_of_eq txt (" " ^ tail) " ";
+  assert (txt ^ (" " ^ tail) == txt ^ " ");
+  FStar.String.concat_length txt " ";
+  assert_norm (String.length " " == 1);
+  assert (String.length (txt ^ " ") == String.length txt + 1);
+  length_of_eq (txt ^ (" " ^ tail)) (txt ^ " ");
+  assert (String.length (txt ^ (" " ^ tail)) == String.length (txt ^ " "))
+#pop-options
+
+(* Main induction: `tokenize_loop`, walking the string printed from an
+   arbitrary fragment token list, recovers that list (reversed onto
+   `acc`, with the tokenizer's own trailing `Tok_EOF`). `fuel > length
+   ts` is exactly the invariant `print_tokens_length_bound` supplies
+   at the top-level call (`tokenize` itself uses `length input + 1`
+   fuel, which always exceeds token count) and it is what keeps this
+   induction from ever hitting the `fuel = 0` bail-out early. *)
+#push-options "--z3rlimit 6000 --fuel 4 --ifuel 4"
+val tokenize_loop_fragment (pre : string) (ts : list (t:token{token_in_fragment t}))
+                            (acc : list token) (fuel : nat{fuel > List.Tot.length ts})
+  : Lemma (ensures
+      tokenize_loop false (pre ^ print_tokens ts) (String.length pre) acc fuel
+        == List.Tot.rev acc @ List.Tot.map widen_token ts @ [Tok_EOF])
+    (decreases ts)
+let rec tokenize_loop_fragment pre ts acc fuel =
+  match ts with
+  | [] ->
+    let full = pre ^ print_tokens ts in
+    assert (print_tokens ts == "");
+    concat_empty_right pre;
+    assert (full == pre);
+    let p0 = String.length pre in
+    assert (String.length full == p0);
+    assert (at_end full p0);
+    next_token_at_end full p0;
+    assert (next_token false full p0 == (Tok_EOF, p0));
+    assert (tokenize_loop false full p0 acc fuel == List.Tot.rev (Tok_EOF :: acc));
+    List.Tot.rev_append [Tok_EOF] acc;
+    assert (List.Tot.rev ([Tok_EOF] @ acc) == List.Tot.rev acc @ List.Tot.rev [Tok_EOF]);
+    assert ([Tok_EOF] @ acc == Tok_EOF :: acc);
+    assert (List.Tot.rev [Tok_EOF] == [Tok_EOF]);
+    assert (List.Tot.rev (Tok_EOF :: acc) == List.Tot.rev acc @ [Tok_EOF]);
+    assert (List.Tot.map widen_token ts == [])
+  | t :: rest ->
+    let full = pre ^ print_tokens ts in
+    let ntail = print_tokens rest in
+    assert (print_tokens ts == print_token t ^ (" " ^ ntail));
+    assert (full == pre ^ (print_token t ^ (" " ^ ntail)));
+    let p0 = String.length pre in
+    let p1 = p0 + String.length (print_token t) in
+    combine_step pre ntail t acc fuel;
+    assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full p1 (t :: acc) (fuel - 1));
+    peek_at_space pre (print_token t) ntail;
+    assert (not (at_end full p1));
+    assert (peek_char full p1 == FStar.Char.char_of_int 0x20);
+    (match rest with
+     | [] ->
+       assert (ntail == "");
+       space_tail_empty_length (print_token t) ntail;
+       assert (String.length (print_token t ^ (" " ^ ntail)) == String.length (print_token t) + 1);
+       FStar.String.concat_length pre (print_token t ^ (" " ^ ntail));
+       assert (String.length full == p1 + 1);
+       assert (at_end full (p1 + 1));
+       next_token_skip_space full p1;
+       next_token_at_end full (p1 + 1);
+       assert (next_token false full p1 == (Tok_EOF, p1 + 1));
+       assert (tokenize_loop false full p1 (t :: acc) (fuel - 1)
+               == List.Tot.rev (Tok_EOF :: (t :: acc)));
+       List.Tot.rev_append [Tok_EOF] (t :: acc);
+       assert (List.Tot.rev (Tok_EOF :: (t :: acc)) == List.Tot.rev (t :: acc) @ [Tok_EOF]);
+       List.Tot.rev_append [t] acc;
+       assert ([t] @ acc == t :: acc);
+       assert (List.Tot.rev (t :: acc) == List.Tot.rev acc @ [t]);
+       List.Tot.append_assoc (List.Tot.rev acc) [t] [Tok_EOF];
+       assert ((List.Tot.rev acc @ [t]) @ [Tok_EOF] == List.Tot.rev acc @ ([t] @ [Tok_EOF]));
+       assert (List.Tot.map widen_token ts == [t]);
+       assert (tokenize_loop false full p0 acc fuel == List.Tot.rev acc @ List.Tot.map widen_token ts @ [Tok_EOF])
+     | t2 :: rest2 ->
+       let pre2 = pre ^ (print_token t ^ " ") in
+       FStar.String.concat_length (print_token t) " ";
+       assert_norm (String.length " " == 1);
+       FStar.String.concat_length pre (print_token t ^ " ");
+       assert (String.length pre2 == p1 + 1);
+       concat_regroup3 pre (print_token t) ntail;
+       assert (pre2 ^ ntail == full);
+       assert (print_token t2 ^ (" " ^ print_tokens rest2) == ntail);
+       concat_right_of_eq pre2 (print_token t2 ^ (" " ^ print_tokens rest2)) ntail;
+       assert (pre2 ^ (print_token t2 ^ (" " ^ print_tokens rest2)) == pre2 ^ ntail);
+       assert (pre2 ^ (print_token t2 ^ (" " ^ print_tokens rest2)) == full);
+       next_token_head_pre pre2 (print_tokens rest2) t2;
+       assert (next_token false (pre2 ^ (print_token t2 ^ (" " ^ print_tokens rest2))) (String.length pre2)
+               == (t2, String.length pre2 + String.length (print_token t2)));
+       next_token_input_of_eq (pre2 ^ (print_token t2 ^ (" " ^ print_tokens rest2))) full (String.length pre2);
+       assert (next_token false full (String.length pre2) == (t2, String.length pre2 + String.length (print_token t2)));
+       assert (next_token false full (p1 + 1) == (t2, p1 + 1 + String.length (print_token t2)));
+       peek_at_offset pre2 (print_token t2) (print_tokens rest2) 0;
+       assert (peek_char (pre2 ^ (print_token t2 ^ (" " ^ print_tokens rest2))) (String.length pre2 + 0)
+               == String.index (print_token t2) 0);
+       assert (peek_char full (p1 + 1) == String.index (print_token t2) 0);
+       assert (not (is_ws (String.index (print_token t2) 0)));
+       assert (char_code (String.index (print_token t2) 0) <> 0x23);
+       assert (not (is_ws (peek_char full (p1 + 1))) /\ char_code (peek_char full (p1 + 1)) <> 0x23);
+       next_token_skip_space full p1;
+       assert (next_token false full p1 == next_token false full (p1 + 1));
+       assert (next_token false full p1 == (t2, p1 + 1 + String.length (print_token t2)));
+       assert (String.length (print_token t2) > 0);
+       assert (snd (next_token false full p1) > p1 + 1);
+       assert (p1 <= String.length full);
+       assert (p1 + 1 <= String.length full);
+       tokenize_loop_step_bridge full p1 (p1 + 1) (t :: acc) (fuel - 1);
+       assert (tokenize_loop false full p1 (t :: acc) (fuel - 1)
+               == tokenize_loop false full (p1 + 1) (t :: acc) (fuel - 1));
+       tokenize_loop_fragment pre2 rest (t :: acc) (fuel - 1);
+       assert (tokenize_loop false (pre2 ^ print_tokens rest) (String.length pre2) (t :: acc) (fuel - 1)
+               == List.Tot.rev (t :: acc) @ List.Tot.map widen_token rest @ [Tok_EOF]);
+       assert (pre2 ^ print_tokens rest == full);
+       tokenize_loop_input_of_eq (pre2 ^ print_tokens rest) full (String.length pre2) (t :: acc) (fuel - 1);
+       assert (tokenize_loop false full (String.length pre2) (t :: acc) (fuel - 1)
+               == List.Tot.rev (t :: acc) @ List.Tot.map widen_token rest @ [Tok_EOF]);
+       assert (tokenize_loop false full (p1 + 1) (t :: acc) (fuel - 1)
+               == List.Tot.rev (t :: acc) @ List.Tot.map widen_token rest @ [Tok_EOF]);
+       assert (tokenize_loop false full p0 acc fuel
+               == List.Tot.rev (t :: acc) @ List.Tot.map widen_token rest @ [Tok_EOF]);
+       List.Tot.rev_append [t] acc;
+       assert ([t] @ acc == t :: acc);
+       assert (List.Tot.rev (t :: acc) == List.Tot.rev acc @ [t]);
+       List.Tot.append_assoc (List.Tot.rev acc) [t] (List.Tot.map widen_token rest @ [Tok_EOF]);
+       assert ((List.Tot.rev acc @ [t]) @ (List.Tot.map widen_token rest @ [Tok_EOF])
+               == List.Tot.rev acc @ ([t] @ (List.Tot.map widen_token rest @ [Tok_EOF])));
+       assert ([t] @ (List.Tot.map widen_token rest @ [Tok_EOF])
+               == t :: (List.Tot.map widen_token rest @ [Tok_EOF]));
+       assert (List.Tot.map widen_token ts == t :: List.Tot.map widen_token rest);
+       assert (List.Tot.map widen_token ts @ [Tok_EOF]
+               == t :: (List.Tot.map widen_token rest @ [Tok_EOF]));
+       assert (tokenize_loop false full p0 acc fuel == List.Tot.rev acc @ List.Tot.map widen_token ts @ [Tok_EOF]))
+#pop-options
+
+(* Top-level corollary: fold `tokenize_loop_fragment` under `tokenize`
+   itself (`pre = ""`, `acc = []`, the same `length input + 1` fuel
+   `tokenize` supplies), producing the list-level round-trip theorem
+   this module set out to prove. *)
+#push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
+val tokenize_fragment_roundtrip (ts : list (t:token{token_in_fragment t}))
+  : Lemma (ensures tokenize (print_tokens ts) == List.Tot.map widen_token ts @ [Tok_EOF])
+let tokenize_fragment_roundtrip ts =
+  let s = print_tokens ts in
+  let fuel = String.length s + 1 in
+  print_tokens_length_bound ts;
+  assert (fuel > List.Tot.length ts);
+  tokenize_loop_fragment "" ts [] fuel;
+  assert_norm (String.length "" == 0);
+  assert (tokenize_loop false ("" ^ print_tokens ts) (String.length "") [] fuel
+          == List.Tot.rev [] @ List.Tot.map widen_token ts @ [Tok_EOF]);
+  empty_concat_identity (print_tokens ts);
+  assert ("" ^ print_tokens ts == print_tokens ts);
+  assert (List.Tot.rev ([] <: list token) == []);
+  assert (tokenize_loop false s 0 [] fuel == List.Tot.map widen_token ts @ [Tok_EOF]);
+  assert (tokenize s == tokenize_loop false s 0 [] (String.length s + 1));
+  assert (tokenize s == List.Tot.map widen_token ts @ [Tok_EOF])
 #pop-options
