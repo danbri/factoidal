@@ -519,3 +519,256 @@ let lemma_parse_group_graph_pattern_ask_bgp pm b after_rbrace fuel =
   assert (parse_ggp_body pm (fuel - 1) GP_Empty [] false inner == ParseOk (GP_BGP b) (Tok_RBRACE :: after_rbrace));
   assert (parse_expect Tok_RBRACE (Tok_RBRACE :: after_rbrace) == ParseOk () after_rbrace)
 #pop-options
+
+(* ---- ASK-body wrapper (consume Tok_ASK, no FROM/WHERE, build the
+   query record) ---- *)
+#push-options "--z3rlimit 800 --fuel 8 --ifuel 8"
+val lemma_parse_ask_body_1
+    (pm : prefix_map) (base : option wf_iri)
+    (b : bgp{bgp_in_fragment_1 b /\ List.Tot.length b >= 1})
+    (after_eof : token_stream) (fuel : nat)
+  : Lemma
+      (requires fuel >= 10 + List.Tot.length b)
+      (ensures parse_ask_body pm fuel base
+                 (Tok_ASK :: (Tok_LBRACE :: (bgp_tokens_1 b @ (Tok_RBRACE :: after_eof))))
+               == ParseOk ({ q_base = base; q_prefixes = pm; q_form = QF_Ask;
+                             q_dataset = []; q_pattern = GP_BGP b;
+                             q_group_by = None; q_having = None;
+                             q_modifier = default_modifier; q_values = None })
+                          after_eof)
+let lemma_parse_ask_body_1 pm base b after_eof fuel =
+  let inner = Tok_LBRACE :: (bgp_tokens_1 b @ (Tok_RBRACE :: after_eof)) in
+  assert (parse_peek inner == Tok_LBRACE);
+  lemma_parse_group_graph_pattern_ask_bgp pm b after_eof (fuel - 1)
+#pop-options
+
+(* ---- resolve_relative_iri_tokens identity on the fragment's tokens:
+   every Tok_IRI payload is a wf_iri (`is_iri` already true from its
+   own type), so `resolve_relative_iri_token` never rewrites it; non-
+   IRI tokens are untouched by its `_ -> tok` branch. ---- *)
+#push-options "--z3rlimit 800 --fuel 8 --ifuel 8"
+val lemma_resolve_bgp_tokens_fixed
+    (base : option wf_iri) (b : bgp{bgp_in_fragment_1 b}) (tail : token_stream)
+  : Lemma
+      (requires resolve_relative_iri_tokens base tail == tail)
+      (ensures resolve_relative_iri_tokens base (bgp_tokens_1 b @ tail) == bgp_tokens_1 b @ tail)
+      (decreases b)
+let rec lemma_resolve_bgp_tokens_fixed base b tail =
+  match b with
+  | [] -> ()
+  | tp :: rest ->
+    lemma_resolve_bgp_tokens_fixed base rest tail;
+    assert (PS_IRI? tp.tp_s \/ PS_Var? tp.tp_s);
+    assert (PT_IRI? tp.tp_p \/ PT_Var? tp.tp_p);
+    assert (PT_IRI? tp.tp_o \/ PT_Var? tp.tp_o);
+    (match tp.tp_s with PS_IRI i -> assert (is_iri i) | _ -> ());
+    (match tp.tp_p with PT_IRI i -> assert (is_iri i) | _ -> ());
+    (match tp.tp_o with PT_IRI i -> assert (is_iri i) | _ -> ());
+    List.Tot.append_assoc (triple_tokens_1 tp) (bgp_tokens_1 rest) tail;
+    assert (bgp_tokens_1 b @ tail == triple_tokens_1 tp @ (bgp_tokens_1 rest @ tail))
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+val lemma_resolve_expected_tokens_fixed
+    (base : option wf_iri) (b : bgp{bgp_in_fragment_1 b}) (after_eof : token_stream)
+  : Lemma
+      (requires resolve_relative_iri_tokens base after_eof == after_eof)
+      (ensures resolve_relative_iri_tokens base
+                 (Tok_ASK :: (Tok_LBRACE :: (bgp_tokens_1 b @ (Tok_RBRACE :: after_eof))))
+               == Tok_ASK :: (Tok_LBRACE :: (bgp_tokens_1 b @ (Tok_RBRACE :: after_eof))))
+let lemma_resolve_expected_tokens_fixed base b after_eof =
+  assert (resolve_relative_iri_tokens base (Tok_RBRACE :: after_eof) == Tok_RBRACE :: after_eof);
+  lemma_resolve_bgp_tokens_fixed base b (Tok_RBRACE :: after_eof)
+#pop-options
+
+(* ---- select-query dispatch: prologue no-op (Tok_ASK matches neither
+   PREFIX/BASE/VERSION), resolve identity, Tok_ASK -> parse_ask_body ---- *)
+#push-options "--z3rlimit 800 --fuel 8 --ifuel 8"
+val lemma_parse_select_query_ask_bgp
+    (b : bgp{bgp_in_fragment_1 b /\ List.Tot.length b >= 1}) (after_eof : token_stream) (fuel : nat)
+  : Lemma
+      (requires fuel >= ask_bgp_fuel_cost (List.Tot.length b) /\
+                resolve_relative_iri_tokens None after_eof == after_eof)
+      (ensures parse_select_query [] None fuel
+                 (Tok_ASK :: (Tok_LBRACE :: (bgp_tokens_1 b @ (Tok_RBRACE :: after_eof))))
+               == ParseOk ({ q_base = None; q_prefixes = []; q_form = QF_Ask;
+                             q_dataset = []; q_pattern = GP_BGP b;
+                             q_group_by = None; q_having = None;
+                             q_modifier = default_modifier; q_values = None })
+                          after_eof)
+let lemma_parse_select_query_ask_bgp b after_eof fuel =
+  let ts = Tok_ASK :: (Tok_LBRACE :: (bgp_tokens_1 b @ (Tok_RBRACE :: after_eof))) in
+  assert (parse_peek ts == Tok_ASK);
+  lemma_resolve_expected_tokens_fixed None b after_eof;
+  lemma_parse_ask_body_1 [] None b after_eof (fuel - 1)
+#pop-options
+
+(* ============================================================ *)
+(* Stage (e), TOKEN LEVEL: the main theorem restricted to an        *)
+(* already-tokenized input — the piece that DOES verify. Composing  *)
+(* this with `tokenize (print_query_1 q) == expected_tokens_1 q`     *)
+(* would give the brief's full string-level main theorem; that       *)
+(* composition step is IMPOSSIBLE under the current ulib — see the   *)
+(* "STAGE (a) / IMPOSSIBILITY" section at the end of this file.      *)
+(* ============================================================ *)
+
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+val parse_select_query_token_level
+    (b : bgp{bgp_in_fragment_1 b /\ List.Tot.length b >= 1}) (fuel : nat)
+  : Lemma
+      (requires fuel >= ask_bgp_fuel_cost (List.Tot.length b))
+      (ensures parse_select_query [] None fuel
+                 (Tok_ASK :: (Tok_LBRACE :: (bgp_tokens_1 b @ [Tok_RBRACE; Tok_EOF])))
+               == ParseOk ({ q_base = None; q_prefixes = []; q_form = QF_Ask;
+                             q_dataset = []; q_pattern = GP_BGP b;
+                             q_group_by = None; q_having = None;
+                             q_modifier = default_modifier; q_values = None })
+                          [Tok_EOF])
+let parse_select_query_token_level b fuel =
+  lemma_parse_select_query_ask_bgp b [Tok_EOF] fuel
+#pop-options
+
+// Corollary phrased directly over a query in the fragment. `query_in_
+// fragment_1` (stage 1) does not itself pin q_group_by/q_having/
+// q_modifier — those three are forced to None/None/default_modifier
+// by parse_ask_body's own record construction (SPARQL11.Parser.fst:
+// 3701-3706; ASK carries no GROUP BY/HAVING/solution-modifier syntax
+// at all), so they are additional hypotheses here rather than baked
+// into the already-landed fragment predicate.
+#push-options "--z3rlimit 400 --fuel 8 --ifuel 8"
+val parse_select_query_token_level_query
+    (q : query{query_in_fragment_1 q}) (fuel : nat)
+  : Lemma
+      (requires fuel >= ask_bgp_fuel_cost (List.Tot.length (bgp_of_1 q)) /\
+                q.q_group_by == None /\ q.q_having == None /\ q.q_modifier == default_modifier)
+      (ensures parse_select_query [] None fuel (expected_tokens_1 q) == ParseOk (q <: query) [Tok_EOF])
+let parse_select_query_token_level_query q fuel =
+  let b = bgp_of_1 q in
+  parse_select_query_token_level b fuel;
+  assert (expected_tokens_1 q == Tok_ASK :: (Tok_LBRACE :: (bgp_tokens_1 b @ [Tok_RBRACE; Tok_EOF])));
+  assert (q == { q_base = None; q_prefixes = []; q_form = QF_Ask;
+                 q_dataset = []; q_pattern = GP_BGP b;
+                 q_group_by = None; q_having = None;
+                 q_modifier = default_modifier; q_values = None })
+#pop-options
+(* ============================================================ *)
+(* STAGE (a) / IMPOSSIBILITY: the string-level tokenization lemma  *)
+(* (and hence stage (e), the brief's full string-to-AST main        *)
+(* theorem) cannot be proved under this ulib snapshot.               *)
+(* ============================================================ *)
+
+(* This section is prose only -- no F* declarations -- documenting a
+   PROVED IMPOSSIBILITY, not an unattempted stretch goal, per the
+   proof-factory skill's findings discipline ("an IMPOSSIBILITY with
+   named evidence is a first-class outcome").
+
+   CLAIM that would be needed to close stage (a): a lemma of the shape
+
+     tokenize (print_query_1 q) == expected_tokens_1 q
+
+   for an ARBITRARY q : query{query_in_fragment_1 q} -- i.e. for a
+   SYMBOLIC (universally quantified) IRI string / variable name, not a
+   literal. Chasing the lexer call chain: next_token's Tok_IRI branch
+   calls scan_iri (SPARQL11.Parser.fst:507-513), whose payload is
+   `process_iri_escapes (substring input p len)`; the Tok_VAR branch
+   (nonempty case) calls scan_var_name (:828-832), payload
+   `substring input p len`; and EVERY keyword token (including
+   Tok_ASK itself, needed even though it carries no payload) goes
+   through scan_pname_or_keyword (:748-764), which matches on
+   `string_upper (substring input p len)` -- so even the keyword-token
+   widening TokenRoundTrip's own FINDING flagged as future work shares
+   this exact obstruction. All three go through this project's
+   `substring` wrapper (:164), which for the in-bounds case reduces to
+   `FStar.String.sub`.
+
+   ROOT CAUSE (confirmed by an isolated minimal probe, `Scratch.
+   SubProbe.fst`, throwaway, not committed -- same "isolate in a
+   near-empty lemma" idiom TokenRoundTrip's own module uses). F*'s
+   ulib `FStar.String.fsti` (as vendored at F* 2025.12.15, this repo's
+   pinned toolchain version) declares:
+
+     val sub: s:string -> i:nat -> l:nat{i + l <= length s}
+             -> Tot (r: string {length r = l})
+
+   and grep of the WHOLE interface file for "sub" shows this is its
+   ONLY specification -- a LENGTH refinement, nothing else. No lemma
+   anywhere in FStar.String.fsti relates `sub`'s output CHARACTERS to
+   the input string's content (contrast with `index_string_of_list`,
+   `index_list_of_string`, `concat_length`, `list_of_concat`, all of
+   which DO expose content-level facts for the operations they cover).
+   Two probe lemmas, both stated in the most favourable possible
+   form -- a single `String.sub` application on a literal
+   concatenation, with `concat_length` already in scope, isolated with
+   no surrounding proof context to blame for resource exhaustion:
+
+     val sub_of_concat (a b : string)
+       : Lemma (ensures
+           (FStar.String.concat_length a b;
+            String.sub (a ^ b) (String.length a) (String.length b) == b))
+
+     val sub_of_concat_literal (rest : string)
+       : Lemma (ensures
+           (FStar.String.concat_length "ASK" rest;
+            String.sub ("ASK" ^ rest) 0 (String.length "ASK") == "ASK"))
+
+   BOTH fail identically: "Could not prove post-condition ... The SMT
+   solver could not prove the query" (Error 19), even at z3rlimit 200.
+   The FIRST version (before `concat_length` is called at all) fails
+   even earlier, with a SUBTYPING error -- Z3 cannot even establish the
+   `i + l <= length s` precondition `String.sub` demands without help,
+   confirming there is no ambient fact connecting `sub`'s domain,
+   let alone its result, to `^`. This is not a resource/fuel/rlimit
+   problem (the TokenRoundTrip banner's "different combinator lemma
+   pattern" hypothesis for the keyword-token gap): it is a missing
+   AXIOM. No F* proof text, however constructed, can close a lemma
+   whose truth depends on a fact the trusted interface never asserts
+   -- this is a SOUNDNESS boundary, not a search-budget one.
+
+   SCOPE of the blocker. It is not specific to this fragment's IRI/VAR
+   payloads: it blocks EVERY payload-carrying or keyword token the
+   1.1 lexer produces via `substring`/`scan_iri`/`scan_var_name`/
+   `scan_pname_or_keyword`/`scan_string`/`scan_number`/`scan_bnode_
+   label`/`scan_langtag` -- i.e. essentially the entire lexer beyond
+   the single/double-character delimiter and operator tokens
+   TokenRoundTrip's own fragment already covers (which use ONLY
+   `peek_char`/`String.index`, never `substring`). Concretely: no
+   string-level round-trip theorem for ANY SPARQL construct that
+   requires the parser to recover an IRI, a variable name, a string
+   literal, a number, a blank node label, a language tag, OR a
+   keyword (ASK/SELECT/WHERE/...) from printed text can be proved
+   against this ulib snapshot, without first either (i) extending
+   `FStar.String.fsti` itself with a trusted content-preserving axiom
+   for `sub` (a foundational, project-wide change well outside a
+   proof-only module's scope -- and outside this task's remit to
+   decide unilaterally), or (ii) restructuring the LEXER to avoid
+   `substring`'s opaque path (an engine-level change, likewise out of
+   scope here per the "proof-only module, not build-wired" brief).
+
+   CONSEQUENCE for this module. Stage (b)/(c)/(d) above -- the TOKEN-
+   LEVEL parser-combinator correctness chain, culminating in
+   `parse_select_query_token_level_query` -- are UNAFFECTED: they
+   operate on an already-tokenized `token_stream`, never call
+   `substring`, and are fully proved. Stage (a) (`tokenize
+   (print_query_1 q) == expected_tokens_1 q`) and hence stage (e) (the
+   brief's `parse_sparql_with_base None (print_query_1 q) == ParseOk q
+   [...]`, which composes stage (a) with the token-level theorem via
+   `parse_sparql_with_base`'s own `tokenize` call, `tokens_only_eof`
+   check, and `validate_bnode_scope_top` check) are NOT reachable from
+   this landing, and are not reachable by ANY amount of additional
+   proof effort within the current ulib -- this is the "landed prefix
+   ... a real deliverable if (c)-(e) resist" outcome the task brief
+   explicitly anticipated, precisely delineated rather than merely
+   asserted.
+
+   validate_bnode_scope_top, separately, WOULD have been free: for any
+   q with `q.q_pattern = GP_BGP b`, `validate_bnode_scope_query q =
+   validate_bnode_scope_pattern (GP_BGP b) = (true, bnodes_in_bgp b)`
+   (SPARQL11.Parser.fst:4248) unconditionally -- the GP_BGP case never
+   inspects `b`'s bnode content for its own validity, only for what it
+   reports upward -- so `fst (validate_bnode_scope_query q) == true`
+   always, regardless of whether `b` is bnode-free. This part of the
+   brief's stage (e) was a non-obstruction; recorded here since it
+   never got its own lemma once (a) blocked composing the full
+   theorem, but it is a one-line `assert_norm`-free fact for whoever
+   revisits this after `FStar.String.fsti` gains a `sub`
+   content lemma. *)
