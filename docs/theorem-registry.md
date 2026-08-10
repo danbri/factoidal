@@ -561,6 +561,29 @@ pending a dedicated commit auditing removal of `irreducible` across its
 ~13+ call sites (`SPARQL11.Algebra.Refinement.fst`, `SPARQL11.Expression.
 Refinement.fst`, `SPARQL11.Store.fst`, `SPARQL.Service.Wrap.fst`).
 
+**`theorem_project_card` (g4-project-card, 2026-08-10).** Project's bag-
+layer clause (`project_card_spec`, Spec.fst:780 — length preserved plus
+`occurs`-iff-`in_project_spec`) is now PROVED UNCONDITIONALLY of the
+shipping `project_solutions` (`SPARQL11.Algebra.fst:5781`, `project`
+:5761). No fragment hypothesis, matching `theorem_union_card`'s shape.
+Unlike SR-1/SR-2/SR-3, `project` never compares two solution mappings
+against EACH OTHER with `rdf_term_eq` — it is a per-row, per-variable
+lookup — so the `rdf_term_eq`/`term_id_eqb` gap those three findings
+turn on cannot arise here; `project_card_spec` itself is also already
+stated at the right level (`occurs`/length, not raw list equality), so
+it does not fall into the RT-5 assoc-list-order trap either. Built on
+the existing `theorem_project_is_proj`, `theorem_project_solutions_
+length`, `theorem_project_solutions_spec` assets plus two new
+congruence lemmas on `is_proj`'s target argument
+(`lemma_is_proj_unique`, `lemma_is_proj_congr_target`).
+`theorem_distinct_card` on a smap_eqb-uniform (case-normalized lang
+tag) fragment was attempted and judged NOT cheap: unlike Project,
+`distinct_solutions`'s dedup (`sm_equal`, `rdf_term_eq`-based) would
+need its whole mutual-submap structural correctness re-derived under
+`term_id_eqb` to connect to `mult` — a second SR-1-scale proof, not a
+~1-attempt lemma — so it was skipped per the task's stop rule rather
+than forced.
+
 ## Trust surface
 
 What this registry's PROVED cells rest on, beyond F\*/Z3 itself:
