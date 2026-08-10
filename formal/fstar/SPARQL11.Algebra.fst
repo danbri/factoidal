@@ -4474,8 +4474,6 @@ irreducible
 let eval_expr_fwd (base : option wf_iri) (e : expr) (mu : solution_mapping) : eval_result =
   eval_expr_with_base base e mu
 
-(* EXISTS/NOT EXISTS need graph + dataset context — forward ref to concrete eval_exists *)
-assume val eval_exists_fwd : option wf_iri -> group_graph_pattern -> solution_mapping -> rdf_graph -> rdf_dataset -> bool
 
 (* Sub-SELECT evaluation — concrete definition in Part 16, forward-declared
    here so eval_pattern can use it for GP_SubSelect *)
@@ -4643,16 +4641,250 @@ let filter_solutions_fwd (base : option wf_iri) (e : expr) (omega : solution_seq
    Structural recursion on [e]; sub-patterns inside E_Exists / E_NotExists
    are evaluated by eval_exists_fwd (which uses substitute_pattern internally)
    and are NOT recursed into here, so termination is by decreases on [e]. *)
+(* Union: multiset union of solution mappings.
+   Tail-rec @ — issue #95. Stdlib `@` (List.Tot.append) is non-tail-rec
+   and overflows on million-row UNIONs. Lh.append_tr is provably equal
+   to append (lemma_append_tr_eq) so this is observationally identical. *)
+let union (omega1 omega2 : solution_sequence) : solution_sequence =
+  Lh.append_tr omega1 omega2
+
+(* Minus (§18.5) *)
+(* Ω1 Minus Ω2 = { μ1 | μ1 ∈ Ω1, ∀ μ2 ∈ Ω2:
+     ¬compatible(μ1, μ2) ∨ dom(μ1) ∩ dom(μ2) = ∅ } *)
+(* domains_disjoint: true if no variable appears in both mappings — CONCRETE *)
+let rec domains_disjoint (mu1 mu2 : solution_mapping) : bool =
+  match mu1 with
+  | [] -> true
+  | (v, _) :: rest ->
+    not (Some? (List.Tot.assoc v mu2)) && domains_disjoint rest mu2
+
+let minus (omega1 omega2 : solution_sequence) : solution_sequence =
+  List.Tot.filter
+    (fun mu1 ->
+      not (List.Tot.existsb
+        (fun mu2 -> sm_compatible mu1 mu2 && not (domains_disjoint mu1 mu2))
+        omega2))
+    omega1
+
+(** 7.4 Graph pattern evaluation (§18.6) — CONCRETE **)
+
+(* BIND row evaluator with per-row / per-call-site freshness context.
+   `i` indexes the row (=> cross-solution freshness for BNODE()/UUID());
+   the bound variable name is the call-site tag (=> two BINDs of UUID()
+   in one row differ). The context is used only for evaluation and is
+   never stored: the result binds into the PRISTINE mapping `mu`. *)
+let rec fx_bind_rows (base : option wf_iri) (e : expr) (v : var_name)
+  (omega : solution_sequence) (i : nat)
+  : Tot solution_sequence (decreases omega) =
+  match omega with
+  | [] -> []
+  | mu :: rest ->
+    let mu_ctx = fx_ctx_put (string_of_int i) v mu in
+    let row =
+      (match er_to_term (eval_expr_fwd base e mu_ctx) with
+       | Some t ->
+         (match sm_lookup v mu with
+          | Some _ -> mu
+          | None -> sm_bind v t mu)
+       | None -> mu) in
+    row :: fx_bind_rows base e v rest (i + 1)
+
+let substitute_pattern_term (mu : solution_mapping) (pt : pattern_term) : pattern_term =
+  match pt with
+  | PT_Var v ->
+    (match sm_lookup v mu with
+     | Some (T_IRI i) -> PT_IRI i
+     | Some (T_BNode b) -> PT_BNode b
+     | Some (T_Literal l) -> PT_Literal l
+     | Some (T_TripleTerm _ _ _) -> PT_Var v   // no triple-term pattern_term yet (#305 P6)
+     | None -> PT_Var v)
+  | _ -> pt
+
+let substitute_pattern_subject (mu : solution_mapping) (ps : pattern_subject) : pattern_subject =
+  match ps with
+  | PS_Var v ->
+    (match sm_lookup v mu with
+     | Some (T_IRI i) -> PS_IRI i
+     | Some (T_BNode b) -> PS_BNode b
+     | Some (T_Literal _) -> PS_Var v  (* literals cannot be subjects *)
+     | Some (T_TripleTerm _ _ _) -> PS_Var v  (* triple terms cannot be subjects *)
+     | None -> PS_Var v)
+  | _ -> ps
+
+let substitute_triple_pattern (mu : solution_mapping) (tp : triple_pattern) : triple_pattern =
+  { tp_s = substitute_pattern_subject mu tp.tp_s;
+    tp_p = substitute_pattern_term mu tp.tp_p;
+    tp_o = substitute_pattern_term mu tp.tp_o }
+
+let substitute_bgp (mu : solution_mapping) (b : bgp) : bgp =
+  List.Tot.map (substitute_triple_pattern mu) b
+
+(* AST size metric over the mutually-inductive pattern/expr family
+   (issue #62 de-vacuation pilot, G4-exists-cycle, 2026-08-09). This
+   is the metric a merged eval_pattern_store/eval_exists recursion
+   needs: eval_pattern_store's GP_Filter/GP_LeftJoin arms reach
+   E_Exists/E_NotExists sub-patterns THROUGH an embedded [expr], not
+   through a direct structural child of [group_graph_pattern] — so a
+   plain `decreases p` cannot see that the EXISTS sub-pattern is
+   smaller. pattern_size/expr_size close that gap: expr_size counts
+   embedded pattern_size, and pattern_size counts embedded expr_size,
+   so `pattern_size (GP_Filter e p1) > expr_size e > pattern_size q`
+   for any `E_Exists q` nested in `e`.
+
+   expr_size mirrors expr_has_existential's traversal exactly (same
+   constructor list, same grouping) so it is exhaustive without a
+   catch-all — a new expr constructor forces a decision here too. *)
+let rec pattern_size (p : group_graph_pattern) : Tot nat (decreases p) =
+  match p with
+  | GP_BGP _ -> 1
+  | GP_Join p1 p2 -> 1 + pattern_size p1 + pattern_size p2
+  | GP_LeftJoin p1 p2 e -> 1 + pattern_size p1 + pattern_size p2 + expr_size e
+  | GP_Filter e p1 -> 1 + expr_size e + pattern_size p1
+  | GP_Union p1 p2 -> 1 + pattern_size p1 + pattern_size p2
+  | GP_Graph _ p1 -> 1 + pattern_size p1
+  | GP_Minus p1 p2 -> 1 + pattern_size p1 + pattern_size p2
+  | GP_Lateral p1 p2 -> 1 + pattern_size p1 + pattern_size p2
+  | GP_Bind e _ p1 -> 1 + expr_size e + pattern_size p1
+  | GP_Values _ _ -> 1
+  | GP_Service _ p1 _ -> 1 + pattern_size p1
+  | GP_ServiceVar _ p1 _ -> 1 + pattern_size p1
+  | GP_SubSelect _ -> 1
+  | GP_PropertyPath _ _ _ -> 1
+  | GP_Empty -> 1
+
+and expr_size (e : expr) : Tot nat (decreases e) =
+  match e with
+  | E_Var _ | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
+  | E_DecimalLit _ | E_DoubleLit _ | E_Bound _ | E_Now -> 1
+  | E_Arith _ e1 e2 | E_Compare _ e1 e2 | E_And e1 e2 | E_Or e1 e2
+  | E_StrDt e1 e2 | E_StrLang e1 e2
+  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
+  | E_StrBefore e1 e2 | E_StrAfter e1 e2
+  | E_SameTerm e1 e2 ->
+    1 + expr_size e1 + expr_size e2
+  | E_UnaryMinus e1 | E_UnaryPlus e1 | E_Not e1
+  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1
+  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1
+  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1
+  | E_StrLen e1 | E_UCase e1 | E_LCase e1 | E_EncodeForUri e1
+  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1
+  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1
+  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
+  | E_Seconds e1 | E_Timezone e1 | E_Tz e1
+  | E_Aggregate _ _ e1
+  | E_TTSubject e1 | E_TTPredicate e1 | E_TTObject e1 | E_IsTriple e1 ->
+    1 + expr_size e1
+  | E_StrLangDir e1 e2 e3 | E_If e1 e2 e3 | E_TripleTerm e1 e2 e3 ->
+    1 + expr_size e1 + expr_size e2 + expr_size e3
+  | E_Coalesce es | E_Concat es | E_FunctionCall _ es ->
+    1 + expr_list_size es
+  | E_In e1 es | E_NotIn e1 es ->
+    1 + expr_size e1 + expr_list_size es
+  | E_Substr e1 e2 e3o | E_Regex e1 e2 e3o ->
+    1 + expr_size e1 + expr_size e2 + expr_opt_size e3o
+  | E_Replace e1 e2 e3 e4o ->
+    1 + expr_size e1 + expr_size e2 + expr_size e3 + expr_opt_size e4o
+  | E_Exists p -> 1 + pattern_size p
+  | E_NotExists p -> 1 + pattern_size p
+
+and expr_list_size (es : list expr) : Tot nat (decreases es) =
+  match es with
+  | [] -> 0
+  | hd :: tl -> 1 + expr_size hd + expr_list_size tl
+
+and expr_opt_size (eo : option expr) : Tot nat (decreases eo) =
+  match eo with
+  | None -> 0
+  | Some e -> 1 + expr_size e
+
+let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
+  : Tot group_graph_pattern (decreases p) =
+  match p with
+  | GP_BGP b -> GP_BGP (substitute_bgp mu b)
+  | GP_Join p1 p2 -> GP_Join (substitute_pattern mu p1) (substitute_pattern mu p2)
+  | GP_LeftJoin p1 p2 e -> GP_LeftJoin (substitute_pattern mu p1) (substitute_pattern mu p2) e
+  | GP_Filter e p1 -> GP_Filter e (substitute_pattern mu p1)
+  | GP_Union p1 p2 -> GP_Union (substitute_pattern mu p1) (substitute_pattern mu p2)
+  | GP_Graph gt p1 -> GP_Graph (substitute_pattern_term mu gt) (substitute_pattern mu p1)
+  | GP_Minus p1 p2 -> GP_Minus (substitute_pattern mu p1) (substitute_pattern mu p2)
+  | GP_Lateral p1 p2 -> GP_Lateral (substitute_pattern mu p1) (substitute_pattern mu p2)
+  | GP_Bind e v p1 -> GP_Bind e v (substitute_pattern mu p1)
+  | GP_Values vars rows -> GP_Values vars rows
+  | GP_Service iri p1 silent -> GP_Service iri p1 silent
+  | GP_ServiceVar v p1 silent ->
+    (* If [mu] binds the endpoint variable to an IRI, lower to a fixed-IRI
+       GP_Service so downstream eval can dispatch directly. Otherwise keep
+       as a GP_ServiceVar (the inner pattern itself still gets substituted). *)
+    (match sm_lookup v mu with
+     | Some (T_IRI iri) ->
+       if is_iri iri then GP_Service iri (substitute_pattern mu p1) silent
+       else GP_ServiceVar v (substitute_pattern mu p1) silent
+     | _ -> GP_ServiceVar v (substitute_pattern mu p1) silent)
+  | GP_SubSelect q -> GP_SubSelect q
+  | GP_PropertyPath ps pp pt -> GP_PropertyPath (substitute_pattern_subject mu ps) pp (substitute_pattern_term mu pt)
+  | GP_Empty -> GP_Empty
+
+(* CRUX LEMMA (issue #62 de-vacuation pilot, G4-exists-cycle,
+   2026-08-09): substitute_pattern only rewrites the pattern-term/
+   pattern-subject LEAVES (PT_Var/PS_Var -> constant), never adding
+   or removing a group_graph_pattern/expr NODE, and it never touches
+   an embedded [expr] (GP_Filter/GP_Bind keep [e] verbatim; GP_LeftJoin
+   keeps [filter_e] verbatim) or an embedded [query] (GP_SubSelect).
+   So pattern_size is exactly preserved. This is what lets EXISTS's
+   substitute_pattern step be used inside a decreases-pattern_size
+   recursion: the substituted pattern is provably NOT larger, so
+   recursing on it after descending into an E_Exists/E_NotExists node
+   still decreases relative to the ENCLOSING pattern. *)
+let rec lemma_substitute_pattern_preserves_size (mu : solution_mapping) (p : group_graph_pattern)
+  : Lemma (ensures pattern_size (substitute_pattern mu p) == pattern_size p)
+          (decreases p) =
+  match p with
+  | GP_BGP _ -> ()
+  | GP_Join p1 p2 ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_LeftJoin p1 p2 _ ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_Filter _ p1 ->
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_Union p1 p2 ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_Graph _ p1 ->
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_Minus p1 p2 ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_Lateral p1 p2 ->
+    lemma_substitute_pattern_preserves_size mu p1;
+    lemma_substitute_pattern_preserves_size mu p2
+  | GP_Bind _ _ p1 ->
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_Values _ _ -> ()
+  | GP_Service _ p1 _ ->
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_ServiceVar v p1 _ ->
+    // substitute_pattern branches to GP_Service or stays GP_ServiceVar
+    // depending on `sm_lookup v mu`, but pattern_size gives both
+    // constructors the identical "1 + pattern_size <inner>" weight, so
+    // both branches equal 1 + pattern_size p1 regardless of which one
+    // fires — no case split on sm_lookup needed beyond the recursive call.
+    lemma_substitute_pattern_preserves_size mu p1
+  | GP_SubSelect _ -> ()
+  | GP_PropertyPath _ _ _ -> ()
+  | GP_Empty -> ()
+
 let rec substitute_existentials
   (base : option wf_iri)
   (e : expr) (mu : solution_mapping)
   (g : rdf_graph) (ds : rdf_dataset)
-  : Tot expr (decreases e) =
+  : Tot expr (decreases %[expr_size e; 1]) =
   match e with
   | E_Exists p ->
-    E_BoolLit (eval_exists_fwd base p mu g ds)
+    E_BoolLit (eval_exists base p mu g ds)
   | E_NotExists p ->
-    E_BoolLit (not (eval_exists_fwd base p mu g ds))
+    E_BoolLit (not (eval_exists base p mu g ds))
   // Recurse into sub-expressions
   | E_Arith op e1 e2 ->
     E_Arith op (substitute_existentials base e1 mu g ds)
@@ -4775,7 +5007,7 @@ and substitute_existentials_list
   (base : option wf_iri)
   (es : list expr) (mu : solution_mapping)
   (g : rdf_graph) (ds : rdf_dataset)
-  : Tot (list expr) (decreases es) =
+  : Tot (list expr) (decreases %[expr_list_size es; 1]) =
   match es with
   | [] -> []
   | hd :: tl ->
@@ -4786,17 +5018,34 @@ and substitute_existentials_opt
   (base : option wf_iri)
   (eo : option expr) (mu : solution_mapping)
   (g : rdf_graph) (ds : rdf_dataset)
-  : Tot (option expr) (decreases eo) =
+  : Tot (option expr) (decreases %[expr_opt_size eo; 1]) =
   match eo with
   | None -> None
   | Some e -> Some (substitute_existentials base e mu g ds)
 
-(* Filter with graph context: pre-substitute existentials, then filter. *)
-let filter_solutions_with_graph
+(* Filter with graph context: pre-substitute existentials, then filter.
+   PUBLIC API (issue #62 de-vacuation pilot, G4-exists-cycle, 2026-08-09):
+   NOT eval_pattern_store-private — SPARQL11.Store.fst's on-disk backend
+   GP_Filter arm calls this directly (COTTAS dispatch has its own
+   `omega`/`g_current`/`ds` plumbing, separate from the in-memory
+   graph_store/rdf_dataset_store this module builds), and
+   SPARQL11.Algebra.Refinement.fst's `theorem_filter_with_graph_is_filter_solutions`
+   is stated in terms of this exact name. It must join the clique (rather
+   than being inlined into eval_pattern_store's GP_Filter arm) so both
+   call sites keep working unchanged. Phase 2: its own call into
+   substitute_existentials passes the SAME [e] it received (a
+   same-argument pass-through, not a structural sub-term), so the
+   primary measure (expr_size e) ties — phase 2 > substitute_existentials's
+   phase 1 supplies the strict decrease at that specific edge. Every
+   OTHER edge into this function (from eval_pattern_store's GP_Filter arm)
+   already decreases strictly on the primary measure alone
+   (`expr_size e < pattern_size (GP_Filter e p')`), so its own phase only
+   has to satisfy the outgoing edge, not the incoming one. *)
+and filter_solutions_with_graph
   (base : option wf_iri)
   (e : expr) (omega : solution_sequence)
   (g : rdf_graph) (ds : rdf_dataset)
-  : solution_sequence =
+  : Tot solution_sequence (decreases %[expr_size e; 2]) =
   List.Tot.filter
     (fun mu ->
       let e' = substitute_existentials base e mu g ds in
@@ -4804,6 +5053,13 @@ let filter_solutions_with_graph
     omega
 
 (* LeftJoin with graph context: same substitution applied per-mapping.
+   PUBLIC API, same reasoning as filter_solutions_with_graph above:
+   SPARQL11.Store.fst's on-disk GP_LeftJoin arm calls this directly, so
+   it stays a real top-level name rather than an eval_pattern_store-local
+   inline. Phase 2 for the same reason: its internal
+   `substitute_existentials base filter_expr ...` calls pass the SAME
+   [filter_expr] unchanged, tying the primary measure, so the phase
+   component (2 > substitute_existentials's 1) supplies the decrease.
    2026-07-06 hash-join fix: same shape as `left_join` above — omega1
    stays the outer loop (LeftJoin is not commutative), omega2 gets
    indexed once outside the loop when a shared variable exists. This is
@@ -4818,11 +5074,11 @@ let filter_solutions_with_graph
    two already-materialized sequences. The q6 residual cost was this
    O(|omega1|*|omega2|) nested loop plus genuine per-row decode work on
    a 25,083-row result, not repeated backend queries. *)
-let left_join_with_graph
+and left_join_with_graph
   (base : option wf_iri)
   (omega1 omega2 : solution_sequence) (filter_expr : expr)
   (g : rdf_graph) (ds : rdf_dataset)
-  : solution_sequence =
+  : Tot solution_sequence (decreases %[expr_size filter_expr; 2]) =
   match omega1, omega2 with
   | [], _ -> []
   | _, [] -> omega1
@@ -4857,59 +5113,11 @@ let left_join_with_graph
           if List.Tot.length joins > 0 then joins else [mu1])
         omega1
 
-(* Union: multiset union of solution mappings.
-   Tail-rec @ — issue #95. Stdlib `@` (List.Tot.append) is non-tail-rec
-   and overflows on million-row UNIONs. Lh.append_tr is provably equal
-   to append (lemma_append_tr_eq) so this is observationally identical. *)
-let union (omega1 omega2 : solution_sequence) : solution_sequence =
-  Lh.append_tr omega1 omega2
-
-(* Minus (§18.5) *)
-(* Ω1 Minus Ω2 = { μ1 | μ1 ∈ Ω1, ∀ μ2 ∈ Ω2:
-     ¬compatible(μ1, μ2) ∨ dom(μ1) ∩ dom(μ2) = ∅ } *)
-(* domains_disjoint: true if no variable appears in both mappings — CONCRETE *)
-let rec domains_disjoint (mu1 mu2 : solution_mapping) : bool =
-  match mu1 with
-  | [] -> true
-  | (v, _) :: rest ->
-    not (Some? (List.Tot.assoc v mu2)) && domains_disjoint rest mu2
-
-let minus (omega1 omega2 : solution_sequence) : solution_sequence =
-  List.Tot.filter
-    (fun mu1 ->
-      not (List.Tot.existsb
-        (fun mu2 -> sm_compatible mu1 mu2 && not (domains_disjoint mu1 mu2))
-        omega2))
-    omega1
-
-(** 7.4 Graph pattern evaluation (§18.6) — CONCRETE **)
-
-(* BIND row evaluator with per-row / per-call-site freshness context.
-   `i` indexes the row (=> cross-solution freshness for BNODE()/UUID());
-   the bound variable name is the call-site tag (=> two BINDs of UUID()
-   in one row differ). The context is used only for evaluation and is
-   never stored: the result binds into the PRISTINE mapping `mu`. *)
-let rec fx_bind_rows (base : option wf_iri) (e : expr) (v : var_name)
-  (omega : solution_sequence) (i : nat)
-  : Tot solution_sequence (decreases omega) =
-  match omega with
-  | [] -> []
-  | mu :: rest ->
-    let mu_ctx = fx_ctx_put (string_of_int i) v mu in
-    let row =
-      (match er_to_term (eval_expr_fwd base e mu_ctx) with
-       | Some t ->
-         (match sm_lookup v mu with
-          | Some _ -> mu
-          | None -> sm_bind v t mu)
-       | None -> mu) in
-    row :: fx_bind_rows base e v rest (i + 1)
-
 (* Evaluate a group graph pattern against a graph store and dataset store.
    #65 Step 2c (2026-05-10): threads BASE IRI for IRI() resolution in
    FILTER / BIND sub-expressions and through sub-SELECT evaluation. *)
-let rec eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store)
-  : Tot solution_sequence (decreases p) =
+and eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store)
+  : Tot solution_sequence (decreases %[pattern_size p; 0]) =
   match p with
   | GP_BGP bgp -> eval_bgp_store bgp gs
 
@@ -5105,6 +5313,23 @@ let rec eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs 
       | _ -> pairs
     in
     path_result_to_solutions ps pt pairs
+
+and eval_exists (base : option wf_iri) (pattern : group_graph_pattern) (mu : solution_mapping)
+  (graph : rdf_graph) (ds : rdf_dataset)
+  : Tot bool (decreases %[pattern_size pattern; 1]) =
+  let substituted = substitute_pattern mu pattern in
+  // CRUX STEP: substitute_pattern does not change AST shape (only
+  // PT_Var/PS_Var leaves -> constants), so `substituted` has the SAME
+  // pattern_size as `pattern` — the lemma makes that fact available to
+  // the decreases check below. The eval_pattern_store call therefore
+  // ties on the primary (pattern_size) component of the lex measure;
+  // the phase component (1 here vs 0 for eval_pattern_store) is what
+  // supplies the strict decrease at THIS specific edge.
+  lemma_substitute_pattern_preserves_size mu pattern;
+  List.Tot.length
+    (eval_pattern_store base substituted
+      (graph_to_store_for substituted graph)
+      (dataset_to_store_for substituted ds)) > 0
 
 (* Evaluate a group graph pattern against an RDF graph and dataset — CONCRETE.
    The dataset carries named graphs for GP_Graph evaluation.
@@ -6845,63 +7070,6 @@ let xsd_cast (v : eval_result) (target : cast_target) : option eval_result =
    The pattern is evaluated in the context of the current solution mapping μ:
    variables already bound in μ are substituted into the pattern before evaluation. *)
 
-let substitute_pattern_term (mu : solution_mapping) (pt : pattern_term) : pattern_term =
-  match pt with
-  | PT_Var v ->
-    (match sm_lookup v mu with
-     | Some (T_IRI i) -> PT_IRI i
-     | Some (T_BNode b) -> PT_BNode b
-     | Some (T_Literal l) -> PT_Literal l
-     | Some (T_TripleTerm _ _ _) -> PT_Var v   // no triple-term pattern_term yet (#305 P6)
-     | None -> PT_Var v)
-  | _ -> pt
-
-let substitute_pattern_subject (mu : solution_mapping) (ps : pattern_subject) : pattern_subject =
-  match ps with
-  | PS_Var v ->
-    (match sm_lookup v mu with
-     | Some (T_IRI i) -> PS_IRI i
-     | Some (T_BNode b) -> PS_BNode b
-     | Some (T_Literal _) -> PS_Var v  (* literals cannot be subjects *)
-     | Some (T_TripleTerm _ _ _) -> PS_Var v  (* triple terms cannot be subjects *)
-     | None -> PS_Var v)
-  | _ -> ps
-
-let substitute_triple_pattern (mu : solution_mapping) (tp : triple_pattern) : triple_pattern =
-  { tp_s = substitute_pattern_subject mu tp.tp_s;
-    tp_p = substitute_pattern_term mu tp.tp_p;
-    tp_o = substitute_pattern_term mu tp.tp_o }
-
-let substitute_bgp (mu : solution_mapping) (b : bgp) : bgp =
-  List.Tot.map (substitute_triple_pattern mu) b
-
-let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
-  : Tot group_graph_pattern (decreases p) =
-  match p with
-  | GP_BGP b -> GP_BGP (substitute_bgp mu b)
-  | GP_Join p1 p2 -> GP_Join (substitute_pattern mu p1) (substitute_pattern mu p2)
-  | GP_LeftJoin p1 p2 e -> GP_LeftJoin (substitute_pattern mu p1) (substitute_pattern mu p2) e
-  | GP_Filter e p1 -> GP_Filter e (substitute_pattern mu p1)
-  | GP_Union p1 p2 -> GP_Union (substitute_pattern mu p1) (substitute_pattern mu p2)
-  | GP_Graph gt p1 -> GP_Graph (substitute_pattern_term mu gt) (substitute_pattern mu p1)
-  | GP_Minus p1 p2 -> GP_Minus (substitute_pattern mu p1) (substitute_pattern mu p2)
-  | GP_Lateral p1 p2 -> GP_Lateral (substitute_pattern mu p1) (substitute_pattern mu p2)
-  | GP_Bind e v p1 -> GP_Bind e v (substitute_pattern mu p1)
-  | GP_Values vars rows -> GP_Values vars rows
-  | GP_Service iri p1 silent -> GP_Service iri p1 silent
-  | GP_ServiceVar v p1 silent ->
-    (* If [mu] binds the endpoint variable to an IRI, lower to a fixed-IRI
-       GP_Service so downstream eval can dispatch directly. Otherwise keep
-       as a GP_ServiceVar (the inner pattern itself still gets substituted). *)
-    (match sm_lookup v mu with
-     | Some (T_IRI iri) ->
-       if is_iri iri then GP_Service iri (substitute_pattern mu p1) silent
-       else GP_ServiceVar v (substitute_pattern mu p1) silent
-     | _ -> GP_ServiceVar v (substitute_pattern mu p1) silent)
-  | GP_SubSelect q -> GP_SubSelect q
-  | GP_PropertyPath ps pp pt -> GP_PropertyPath (substitute_pattern_subject mu ps) pp (substitute_pattern_term mu pt)
-  | GP_Empty -> GP_Empty
-
 // Check if a variable name appears in a triple pattern
 let tp_has_var (v : var_name) (tp : triple_pattern) : bool =
   (match tp.tp_s with PS_Var sv -> sv = v | _ -> false) ||
@@ -6944,10 +7112,7 @@ let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Tot bool (decreas
     (match pt with PT_Var tv -> tv = v | _ -> false)
   | GP_Empty -> false
 
-let eval_exists (base : option wf_iri) (pattern : group_graph_pattern) (mu : solution_mapping)
-  (graph : rdf_graph) (ds : rdf_dataset) : bool =
-  let substituted = substitute_pattern mu pattern in
-  List.Tot.length (eval_pattern base substituted graph ds) > 0
+
 
 (** ====================================================================== **)
 (** Part 18: SPARQL 1.1 Sub-SELECT (§12)                                  **)

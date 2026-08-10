@@ -6,13 +6,21 @@
 # eval_expr_fwd are no longer assume vals -- SPARQL11.Algebra.fst now defines
 # them as concrete `irreducible let`s directly after the (relocated,
 # self-contained) eval_expr_with_base mutual block, so F* extracts them as
-# real OCaml functions with no failwith stub to patch. This script's scope is
-# now the remaining 3 symbols only.
+# real OCaml functions with no failwith stub to patch.
 #
-# F* assume vals for eval_exists_fwd, eval_property_path_fwd, and
-# eval_subselect_fwd are extracted as failwith stubs.
-# This script replaces them with mutable-ref dispatch and wires the refs to the
-# real implementations after they are defined.
+# FURTHER RETIRED (g4-exists-cycle-pilot, 2026-08-09): eval_exists_fwd is
+# also no longer an assume val. eval_pattern_store, substitute_existentials
+# (+_list/_opt), and eval_exists were merged into one `let rec ... and ...`
+# clique in SPARQL11.Algebra.fst (termination via pattern_size/expr_size +
+# a lexicographic phase tiebreak -- see the metric/lemma and merge commits),
+# so eval_exists is now a real recursive OCaml function with no failwith
+# stub and no ref/wiring needed. This script's scope is now the remaining
+# 2 symbols only.
+#
+# F* assume vals for eval_property_path_fwd and eval_subselect_fwd are
+# extracted as failwith stubs. This script replaces them with mutable-ref
+# dispatch and wires the refs to the real implementations after they are
+# defined.
 
 set -euo pipefail
 
@@ -82,7 +90,7 @@ with open(path, 'r', encoding='utf-8') as f:
 #     rather than assumed positionally, so this script never needs to
 #     know or guess the qualifier again.
 whole_block_re = re.compile(
-    r'let eval_exists_fwd.*?failwith "Not yet implemented: '
+    r'let eval_subselect_fwd.*?failwith "Not yet implemented: '
     r'SPARQL11\.Algebra\.eval_property_path_fwd"',
     re.DOTALL
 )
@@ -90,14 +98,13 @@ m = whole_block_re.search(content)
 if m is None:
     sys.stderr.write(
         "  ERROR: patch 62 could not find the F*-extracted failwith stub "
-        f"block (eval_exists_fwd .. eval_property_path_fwd) in {path}.\n"
+        f"block (eval_subselect_fwd .. eval_property_path_fwd) in {path}.\n"
         "         Has a stub's own failwith message text changed, or has "
         "a function been renamed/reordered? Inspect the "
-        "eval_exists_fwd/eval_subselect_fwd/"
-        "eval_property_path_fwd stubs directly and update the anchors "
-        "above -- do NOT let this fall through silently, the wiring-line "
-        "inserts below assume the *_ref declarations this substitution "
-        "produces.\n"
+        "eval_subselect_fwd/eval_property_path_fwd stubs directly and "
+        "update the anchors above -- do NOT let this fall through "
+        "silently, the wiring-line inserts below assume the *_ref "
+        "declarations this substitution produces.\n"
     )
     sys.exit(1)
 stub_text = m.group(0)
@@ -116,37 +123,25 @@ def find_qualifier(type_name, label):
         sys.exit(1)
     return qm.group(1)
 
-q_wfiri = find_qualifier("wf_iri", "eval_exists_fwd base param")
-q_sm = find_qualifier("solution_mapping", "eval_exists_fwd mu param")
-q_graph = find_qualifier("rdf_graph", "eval_exists_fwd/eval_subselect_fwd g param")
-q_ds = find_qualifier("rdf_dataset", "eval_exists_fwd/eval_subselect_fwd ds param")
+q_graph = find_qualifier("rdf_graph", "eval_subselect_fwd g param")
+q_ds = find_qualifier("rdf_dataset", "eval_subselect_fwd ds param")
 q_term = find_qualifier("rdf_term", "path_result_fwd type alias")
 
-# #65 Step 2c (2026-05-10): the three eval_*_fwd assume vals now take
-# `(base : option wf_iri)` as their first parameter. The ref types and
-# realisations below are updated accordingly.
+# #65 Step 2c (2026-05-10): the eval_*_fwd assume vals take
+# `(base : option wf_iri)` as their first parameter (where applicable).
+# The ref types and realisations below are updated accordingly.
 # eval_expr_ebv_ref/eval_expr_fwd_ref RETIRED (g4-filter-devacuation,
 # 2026-08-09): eval_expr_ebv/eval_expr_fwd are concrete F* definitions now
 # (see script header), extracted as real functions -- no ref/wiring needed.
-replacement_block = f'''let eval_exists_fwd_ref :
-  ({q_wfiri}.wf_iri FStar_Pervasives_Native.option ->
-    group_graph_pattern ->
-    {q_sm}.solution_mapping ->
-    {q_graph}.rdf_graph ->
-    {q_ds}.rdf_dataset -> Prims.bool) Stdlib.ref=
-  Stdlib.ref (fun _ _ _ _ _ -> false)
-let eval_subselect_fwd_ref :
+# eval_exists_fwd_ref RETIRED (g4-exists-cycle-pilot, 2026-08-09): same
+# story -- eval_exists is a real recursive OCaml function now (part of
+# the eval_pattern_store/substitute_existentials/eval_exists clique), no
+# ref/wiring needed.
+replacement_block = f'''let eval_subselect_fwd_ref :
   (query ->
     {q_graph}.rdf_graph ->
     {q_ds}.rdf_dataset -> solution_sequence) Stdlib.ref=
   Stdlib.ref (fun _ _ _ -> [])
-let eval_exists_fwd
-  (base : {q_wfiri}.wf_iri FStar_Pervasives_Native.option)
-  (p : group_graph_pattern)
-  (mu : {q_sm}.solution_mapping)
-  (g : {q_graph}.rdf_graph)
-  (ds : {q_ds}.rdf_dataset) : Prims.bool=
-  !eval_exists_fwd_ref base p mu g ds
 let eval_subselect_fwd (q : query)
   (g : {q_graph}.rdf_graph)
   (ds : {q_ds}.rdf_dataset) : solution_sequence=
@@ -175,39 +170,10 @@ if 'let () = eval_property_path_fwd_ref := eval_property_path' not in content:
         1
     )
 
-if 'let () = eval_exists_fwd_ref := eval_exists' not in content:
-    # #65 Step 2c (2026-05-10): eval_exists's def header changed shape after
-    # threading `(base : option wf_iri)` as the first parameter. The original
-    # anchor 'let filter_solutions (e : expr) (omega ...)' no longer matches
-    # the multi-line emission that F* now produces. Anchor on the new
-    # filter_solutions head — the wiring goes immediately above it.
-    # Same qualifier-drift hazard as the main stub block above: `wf_iri`'s
-    # live qualifier may differ from the hardcoded `RDF_Graph_Executable`
-    # this anchor used to assume. Also same line-wrapping hazard: whether
-    # `(base` sits on the same line as `let filter_solutions` or its own
-    # line varies between extractions, so match on whitespace generically
-    # (`\s+`) rather than assuming a literal newline+indent. The negative
-    # lookahead excludes `filter_solutions_fwd` / `filter_solutions_with_graph`,
-    # which share the `filter_solutions` prefix but are different functions.
-    filter_solutions_anchor_re = re.compile(
-        r'let filter_solutions(?![A-Za-z_])\s+\(base : ' + QUAL + r'\.wf_iri'
-    )
-    fm = filter_solutions_anchor_re.search(content)
-    if fm is None:
-        sys.stderr.write(
-            "  ERROR: patch 62 could not find the 'let filter_solutions' "
-            f"anchor in {path} to wire eval_exists_fwd_ref.\n"
-            "         eval_exists_fwd_ref would stay wired to `false` for "
-            "every FILTER EXISTS/NOT EXISTS query -- a silent wrong-answer "
-            "bug, not a compile failure. Inspect filter_solutions' current "
-            "signature and update the anchor above.\n"
-        )
-        sys.exit(1)
-    content = (
-        content[:fm.start()]
-        + 'let () = eval_exists_fwd_ref := eval_exists\n'
-        + content[fm.start():]
-    )
+# eval_exists_fwd_ref wiring block RETIRED (g4-exists-cycle-pilot,
+# 2026-08-09) along with the ref/stub above -- eval_exists needs no
+# post-hoc wiring, it is defined directly in the eval_pattern_store
+# clique and called there like any other OCaml function.
 
 with open(path, 'w', encoding='utf-8') as f:
     f.write(content)
