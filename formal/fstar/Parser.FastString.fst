@@ -5,8 +5,30 @@ open FStar.Char
 // ============================================================================
 // Byte-indexed string primitives for the parser hot path.
 //
-// WHY THIS MODULE EXISTS
-// ----------------------
+// STEP 2/3 RE-FOUNDING (2026-08-10; docs/designissues/
+// 2026-08-10-faststring-refounding-plan.md). Before this landing, the six
+// primitives below (fs_byte_length, fs_byte_at, fs_byte_sub, fs_find_byte,
+// fs_cp_at, fs_cp_len) were `assume val`s -- acknowledged GAPs under iron
+// rule #3(a), realised directly in OCaml
+// (minimal_regrettable_glue_code_each_with_an_open_issue/
+// 89_fast_string_primitives.sh) with ZERO F*-checked relationship to what
+// they compute. They are now real DEFINITIONS over Parser.FastString.Spec's
+// pure UTF-8 codec (`Parser.FastString.Spec.fst`, migration Step 1) --
+// Parser.FastString is a genuine spec, not an acknowledged hole, and the
+// six former GAPs have moved to a rule-11(b) Option-B PERFORMANCE
+// realisation instead (Step 3's experimental_ocaml_glue patch overrides
+// each `fs_*` with the fast OCaml body from the old patch 89; deleting
+// that patch falls back to the definitions below -- slower, never wrong).
+//
+// Parser.FastString.fsti (new, this same landing) keeps these definitions
+// OPAQUE to the 31 consumer modules exactly the way the old `assume val`s
+// were -- see that file's banner for why, and for the bridging lemmas
+// (`fs_*_eq`) that give proof modules controlled access to the underlying
+// Parser.FastString.Spec formula without a full `friend` unfold.
+//
+// ORIGINAL RATIONALE (unchanged, still the reason this module exists at
+// all -- restated verbatim from the pre-migration banner):
+// ----------------------------------------------------------------------
 // The F* OCaml runtime's FStar.String maps length/index/sub onto BatUTF8,
 // which walks the UTF-8 byte sequence on every call to count codepoints.
 // Profiled cost on a 1000-triple full-IRI Turtle file: 99.9 percent of leaf
@@ -14,13 +36,6 @@ open FStar.Char
 // Every inner-loop call to String.length or String.index in the Turtle
 // scanner therefore costs O(n) in the input byte count, turning the
 // whole parse into O(n^2).
-//
-// The fix is this narrow assume-val boundary: four primitives that speak
-// bytes, not codepoints, and are wired in OCaml directly to String.length,
-// String.unsafe_get, and String.sub. See
-// minimal_regrettable_glue_code_each_with_an_open_issue/70_fast_string_primitives.sh
-// for the OCaml glue, and the profile at
-// docs/designissues/2026-04-20-turtle-parser-profile.md for the measurement.
 //
 // SAFETY
 // ------
@@ -37,104 +52,172 @@ open FStar.Char
 // delimiter set), these primitives are the wrong tool. Stay on
 // FStar.String for that use.
 //
-// COST MODEL (in the extracted OCaml)
+// COST MODEL (Step 3's fast OCaml realisation; the plain definitions below
+// are O(n)/O(n^2) list-walking -- correct, not fast, until Step 3's patch
+// is applied)
 // -----------------------------------
 // fs_byte_length : O(1)          -- reads the OCaml string's byte length
-// fs_byte_at     : O(1)          -- one String.unsafe_get
+// fs_byte_at     : O(1)          -- one String.unsafe_get, bounds-checked
 // fs_byte_sub    : O(len)        -- a single String.sub allocation
 // fs_find_byte   : O(end - start)-- scans bytes for one specific code
 // ============================================================================
 
-// Byte length of the UTF-8 encoding of s. Differs from
-// FStar.String.length (codepoint count) by being O(1).
-assume val fs_byte_length : string -> nat
+module Spec = Parser.FastString.Spec
 
-// Byte at index i (0 <= i < fs_byte_length s), as a nat in [0, 255].
-// NOT a codepoint -- a raw byte. Callers must UTF-8-decode if they
-// need codepoint semantics.
-assume val fs_byte_at : s:string -> i:nat -> n:nat{n < 256}
+// ----------------------------------------------------------------------
+// The six re-founded primitives, in Parser.FastString.fsti's val order
+// (F* requires an interfaced module's `.fst` definitions to appear in the
+// SAME order as the `.fsti`'s `val`s -- Error 233 if not, confirmed while
+// landing this file). Spec twins and bridging lemmas therefore follow in
+// their OWN two blocks below, mirroring the .fsti's own three-block
+// layout, rather than interleaved per-primitive.
+// ----------------------------------------------------------------------
 
-// Substring by BYTE indices. start + len must be <= fs_byte_length s;
-// we don't encode that as a refinement because the OCaml glue is
-// permissive (String.sub clamps via its own bounds check).
-assume val fs_byte_sub : s:string -> start:nat -> len:nat -> string
+// fs_byte_length. Byte length of the UTF-8 encoding of s. Differs from
+// FStar.String.length (codepoint count) by being O(1) once Step 3's OCaml
+// realisation is applied; the plain definition below is O(n).
+let fs_byte_length (s:string) : nat =
+  FStar.List.Tot.length (Spec.utf8_bytes s)
 
-// Find the first occurrence of byte b at or after position start.
-// Returns fs_byte_length s if not found.
-assume val fs_find_byte : s:string -> b:nat -> start:nat -> nat
+// fs_byte_at. Byte at index i (0 <= i < fs_byte_length s), as a nat in
+// [0, 255]. NOT a codepoint -- a raw byte. Out-of-range i returns 0 (a
+// total function, matching Step 3's fast OCaml realisation which now
+// carries its own bounds check for the same reason -- see that patch's
+// banner).
+let fs_byte_at (s:string) (i:nat) : n:nat{n < 256} =
+  match Spec.nth_byte (Spec.utf8_bytes s) i with
+  | Some b -> b
+  | None -> 0
+
+// fs_byte_sub. Substring by BYTE indices, mirroring patch 89's clamp
+// EXACTLY -- but structurally rather than via an explicit branch:
+// Parser.FastString.Spec.slice_bytes (drop_bytes then take_bytes) already
+// yields [] once `start` runs past the end of the byte list, and
+// truncates `len` once it would run past the end, which is precisely
+// patch 89's `if i > slen then "" else let m = if i+n>slen then slen-i
+// else n in String.sub s i m` clamp. The slice is then DECODED back into
+// codepoints (Spec.utf8_decode_all) and re-encoded via
+// FStar.String.string_of_list.
+//
+// This is a genuine BEHAVIOUR CHANGE from patch 89's raw byte-copy
+// fs_byte_sub for any slice that does not land on a UTF-8 codepoint
+// boundary: an F* `string` cannot represent a byte sequence that is not
+// valid UTF-8 (there is no way to build a string containing "half a
+// multi-byte character"), so a boundary-crossing slice necessarily
+// decodes-and-reencodes into something DIFFERENT from a literal byte
+// copy of that range -- see Parser.FastString.fsti's fs_byte_sub_eq
+// banner for the exact scope of what is (and is not) proved about this.
+// tests/unit/parser_fast_string_equivalence.ml's byte_sub coverage is
+// restricted to boundary-aligned, in-bounds slices for exactly this
+// reason, with off-domain rows recorded as documented XFAIL.
+let fs_byte_sub (s:string) (start:nat) (len:nat) : string =
+  FStar.String.string_of_list
+    (Spec.utf8_decode_all (Spec.slice_bytes (Spec.utf8_bytes s) start len))
+
+// fs_find_byte. Find the first occurrence of byte b at or after position
+// start. Returns fs_byte_length s if not found -- Spec.find_byte scans
+// the WHOLE byte list from index 0 regardless of `start` (only ACCEPTING
+// a match once idx >= start), so a not-found result is always exactly
+// the list length, matching patch 89's `if i>=slen then slen else ...`
+// loop even when `start` overshoots `slen`.
+let fs_find_byte (s:string) (b:nat) (start:nat) : nat =
+  Spec.find_byte (Spec.utf8_bytes s) b start
+
+// fs_cp_at / fs_cp_len. Decode the UTF-8 codepoint that begins at byte
+// position `pos`. Returns (codepoint, byte_length_consumed); on invalid
+// UTF-8 returns (0xFFFD, 1) so a caller that repeatedly decodes-and-
+// advances always makes forward progress (Spec.utf8_decode_at's own
+// termination guarantee, restated in Parser.FastString.Spec's banner).
+let fs_cp_at (s:string) (pos:nat) : nat & nat =
+  let (cp, adv) = Spec.utf8_decode_at (Spec.utf8_bytes s) pos in
+  (cp, (adv <: nat))
+
+let fs_cp_len (s:string) (pos:nat) : nat =
+  let (_, adv) = Spec.utf8_decode_at (Spec.utf8_bytes s) pos in
+  (adv <: nat)
+
+// ----------------------------------------------------------------------
+// Spec twins -- see Parser.FastString.fsti's banner for why each is a
+// SEPARATE, independently-computed function rather than a call to its
+// `fs_*` sibling by name (a plain forwarding call would be silently
+// redirected to Step 3's fast OCaml override once that patch is applied,
+// since a forwarding reference resolves to whatever the named binding IS
+// at the OCaml compilation point, not to "the definition as originally
+// written" -- confirmed by a standalone probe before choosing this
+// shape).
+// ----------------------------------------------------------------------
+
+let fs_byte_length_spec (s:string) : nat =
+  FStar.List.Tot.length (Spec.utf8_bytes s)
+
+let fs_byte_at_spec (s:string) (i:nat) : n:nat{n < 256} =
+  match Spec.nth_byte (Spec.utf8_bytes s) i with
+  | Some b -> b
+  | None -> 0
+
+let fs_byte_sub_spec (s:string) (start:nat) (len:nat) : string =
+  FStar.String.string_of_list
+    (Spec.utf8_decode_all (Spec.slice_bytes (Spec.utf8_bytes s) start len))
+
+let fs_find_byte_spec (s:string) (b:nat) (start:nat) : nat =
+  Spec.find_byte (Spec.utf8_bytes s) b start
+
+let fs_cp_at_spec (s:string) (pos:nat) : nat & nat =
+  let (cp, adv) = Spec.utf8_decode_at (Spec.utf8_bytes s) pos in
+  (cp, (adv <: nat))
+
+let fs_cp_len_spec (s:string) (pos:nat) : nat =
+  let (_, adv) = Spec.utf8_decode_at (Spec.utf8_bytes s) pos in
+  (adv <: nat)
+
+// ----------------------------------------------------------------------
+// Bridging lemmas -- see Parser.FastString.fsti for the full rationale.
+// Each is a trivial unfolding proof: the `fs_*` definition above IS the
+// RHS stated here.
+// ----------------------------------------------------------------------
+
+let fs_byte_length_eq (s:string)
+  : Lemma (fs_byte_length s == FStar.List.Tot.length (Spec.utf8_bytes s))
+  = ()
+
+let fs_byte_at_eq (s:string) (i:nat)
+  : Lemma (fs_byte_at s i ==
+           (match Spec.nth_byte (Spec.utf8_bytes s) i with
+            | Some b -> b
+            | None -> 0))
+  = ()
+
+let fs_byte_sub_eq (s:string) (start:nat) (len:nat)
+  : Lemma (fs_byte_sub s start len ==
+           FStar.String.string_of_list
+             (Spec.utf8_decode_all (Spec.slice_bytes (Spec.utf8_bytes s) start len)))
+  = ()
+
+let fs_find_byte_eq (s:string) (b:nat) (start:nat)
+  : Lemma (fs_find_byte s b start == Spec.find_byte (Spec.utf8_bytes s) b start)
+  = ()
+
+let fs_cp_at_eq (s:string) (pos:nat)
+  : Lemma (fs_cp_at s pos ==
+           (let (cp, adv) = Spec.utf8_decode_at (Spec.utf8_bytes s) pos in
+            (cp, (adv <: nat))))
+  = ()
+
+let fs_cp_len_eq (s:string) (pos:nat)
+  : Lemma (fs_cp_len s pos ==
+           (let (_, adv) = Spec.utf8_decode_at (Spec.utf8_bytes s) pos in
+            (adv <: nat)))
+  = ()
 
 // ---------------------------------------------------------------------------
-// Codepoint-aware primitives (Pass 2 — issue #89).
-//
-// Some grammars (notably Turtle PN_CHARS validation) must interpret a run of
-// bytes as Unicode codepoints: a multi-byte UTF-8 letter like U+00E4 ("ä" =
-// 0xC3 0xA4) is a single valid PN_CHARS_BASE codepoint, but tested byte-by-
-// byte it fails (0xC3 falls into the PN_CHARS_BASE Unicode range table by
-// accident, 0xA4 does not — any byte-only test is wrong).
-//
-// These two primitives decode UTF-8 one codepoint at a time. They sit
-// alongside the byte primitives; callers choose which layer they want.
-// The byte path remains the fast path for ASCII delimiter scans; the
-// codepoint path is for identifier-class validation.
-//
-// COST MODEL
-// ----------
-// fs_cp_at  : O(1) amortised -- at most 4 byte fetches plus a couple of
-//             arithmetic ops. A few × slower than fs_byte_at, but still
-//             constant time per codepoint.
-// fs_cp_len : O(1) -- same decode path, returns only the advance.
-//
-// SAFETY / ERROR HANDLING
-// -----------------------
-// Invalid UTF-8 at `pos` is mapped to (0xFFFD, 1) -- emit the Unicode
-// replacement character and advance exactly one byte, so callers can still
-// make forward progress without undefined behaviour. This matches WHATWG's
-// recommended decoder policy for broken input and guarantees that a loop
-// of `let (cp, adv) = fs_cp_at s p in ... p + adv` terminates.
-//
-// Callers must ensure `pos < fs_byte_length s` before calling. Passing an
-// out-of-range `pos` returns (0xFFFD, 1) defensively, but the scanner
-// should still do its own bounds check so a `+ adv` walk doesn't run
-// off the end.
+// unsafe_char_of_d7ff is NOT declared here any more -- it lives in
+// Parser.FastString.CharBoundary.fst (a plain `.fst`-only assume val, the
+// same shape it always was) and is re-exported into this module's
+// namespace via `include Parser.FastString.CharBoundary` in
+// Parser.FastString.fsti. See that module's banner for the full "why a
+// separate file" explanation. `Parser.FastString.unsafe_char_of_d7ff`
+// still resolves from any consumer exactly as before.
 // ---------------------------------------------------------------------------
-
-// Decode the UTF-8 codepoint that begins at byte position `pos`.
-// Returns (codepoint, byte_length_consumed). On invalid UTF-8 returns
-// (0xFFFD, 1) -- emit replacement char and advance one byte.
-// Caller is responsible for staying within fs_byte_length.
-assume val fs_cp_at : s:string -> pos:nat -> nat & nat
-
-// Number of bytes the UTF-8 codepoint at `pos` occupies. Equivalent to
-// the second tuple element of fs_cp_at; broken out so callers that only
-// need the advance don't pay for the codepoint value.
-assume val fs_cp_len : s:string -> pos:nat -> nat
-
-// ---------------------------------------------------------------------------
-// U+D7FF boundary escape hatch — #68 retirement (2026-05-11).
-//
-// `FStar.Char.char_code` is `n: U32.t{U32.v n < 0xd7ff \/ ...}` and
-// `FStar.Char.char_of_int (i: nat{i < 0xd7ff \/ ...})` — the strict `<`
-// excludes U+D7FF, which IS a valid Unicode scalar (the surrogate gap is
-// U+D800..U+DFFF inclusive). This forced `Parser.NTriples`'
-// `valid_codepoint` / `safe_char_of_int` to use the same off-by-one
-// bound, then a post-extraction `sed` (formerly the entire body of
-// `68_unicode_boundary_workarounds.sh`) flipped the OCaml-extracted
-// `(cp < (Prims.of_int (0xD7FF)))` back to `(cp < (Prims.of_int (0xD800)))`
-// so the runtime check matched the spec.
-//
-// This `assume val` lets us skip the sed entirely. In the OCaml runtime
-// `FStar_Char.char` is just `int` and `char_of_int = Z.to_int` — no
-// runtime check at all (`/root/.opam/fstar/lib/fstar/ulib/ml/app/FStar_Char.ml`).
-// So a 1-line realisation in `89_fast_string_primitives.sh` returns the
-// integer 0xD7FF; the spec-correct boundary lives in F* refinement
-// types only, and the off-by-one in `FStar.Char.char_of_int`'s
-// precondition is bypassed.
-//
-// Tracking: `docs/designissues/2026-05-10-issue-68-options.md` (subagent
-// report). Optional upstream-track suggestion: file an F* issue against
-// `ulib/FStar.Char.fsti` lines 38 and 57 — both should read `<= 0xd7ff`.
-// We don't block on it.
-assume val unsafe_char_of_d7ff : i:int{i = 0xD7FF} -> Tot FStar.Char.char
 
 // ---------------------------------------------------------------------------
 // Convenience: return the byte at position i as an FStar.Char.char, so
@@ -154,7 +237,9 @@ let fs_byte_index (s: string) (i: nat) : char =
   if b < 0xD800 then char_of_int b else char_of_int 0
 
 // Convenience: char-returning version for call sites that don't want to
-// deal with nat. Matches the String.index surface.
+// deal with nat. Matches the String.index surface. NOT in Parser.FastString
+// .fsti -- zero external consumers (grepped before this migration), so it
+// stays private the same way it was effectively unreferenced before.
 let fs_char_at (s: string) (i: nat) : char = fs_byte_index s i
 
 // ---------------------------------------------------------------------------
@@ -168,13 +253,16 @@ let fs_char_at (s: string) (i: nat) : char = fs_byte_index s i
 // codepoints (BatUChar.Out_of_range, codepoints > 0x10FFFF). Visible
 // in the public demo as "Müller" → 0x36DB65 → BatUChar.chr crash.
 //
-// This is the same UTF-8 walk but goes through fs_cp_at, which we
-// realise via byte-true externals (parser_fastring_utf8_stubs.{c,js}).
-// Drop-in replacement for `FStar.String.list_of_string` whenever the
-// caller will round-trip the chars back into a string (e.g.
-// json_escape, xml_escape, n3_escape) — those re-encode each char via
-// FStar.String.string_of_list, which feeds BatUChar.chr and trips on
-// any value above 0x10FFFF.
+// This is the same UTF-8 walk but goes through fs_cp_at, which is now a
+// real Parser.FastString.Spec-backed definition (Step 2) instead of an
+// assume val, and Step 3's OCaml patch overrides fs_cp_at IN PLACE (same
+// binding site, not appended at file end) specifically so this function
+// -- defined below fs_cp_at and therefore binding to whatever fs_cp_at
+// resolves to at ITS OWN compile point -- automatically becomes fast too
+// once that patch lands, with no separate override of its own. (Patch 89
+// carried a dedicated fs_codepoints_of_string_aux/fs_codepoints_of_string
+// override before this migration; Step 3 evaluates it deletable for
+// exactly this reason -- see that patch's updated header.)
 //
 // Termination: each step advances by `adv >= 1` bytes (fs_cp_at_impl
 // returns (0xFFFD, 1) on invalid input, never (_, 0)), so the
@@ -205,8 +293,7 @@ let rec fs_codepoints_of_string_aux (s : string) (slen : nat) (pos : nat)
       in
       fs_codepoints_of_string_aux s slen next (c :: acc)
 
-val fs_codepoints_of_string : string -> list char
-let fs_codepoints_of_string s =
+let fs_codepoints_of_string (s:string) : list char =
   fs_codepoints_of_string_aux s (fs_byte_length s) 0 []
 
 // ---------------------------------------------------------------------------

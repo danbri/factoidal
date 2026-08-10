@@ -83,6 +83,7 @@ COMMON_MODULES=(
   OWL_DirectMapping_Filter
   Tableau
   Tableau_Refute
+  Parser_FastString_CharBoundary
   Parser_FastString
   RDF_IRI
   SPARQL11_IRI_Resolve
