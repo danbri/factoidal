@@ -5239,10 +5239,9 @@
   {
    "module": "Parser.FastString",
    "files": [
-    "formal/fstar/Parser.FastString.fst",
-    "formal/fstar/Parser.FastString.fsti"
+    "formal/fstar/Parser.FastString.fst"
    ],
-   "loc": 521,
+   "loc": 256,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -5250,11 +5249,19 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_FastString.ml",
    "in_build_module_list": true,
    "foundational_path": true,
-   "shipping_function_count": 32,
+   "shipping_function_count": 13,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
+   "assume_val_active": 7,
+   "assume_val_names": [
+    "fs_byte_length",
+    "fs_byte_at",
+    "fs_byte_sub",
+    "fs_find_byte",
+    "fs_cp_at",
+    "fs_cp_len",
+    "unsafe_char_of_d7ff"
+   ],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
@@ -5327,78 +5334,6 @@
      "names_shipping_functions": [
       "fs_byte_at",
       "fs_byte_length"
-     ]
-    },
-    {
-     "name": "fs_byte_length_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 117,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "utf8_bytes"
-     ]
-    },
-    {
-     "name": "fs_byte_at_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 120,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_at",
-      "nth_byte",
-      "utf8_bytes"
-     ]
-    },
-    {
-     "name": "fs_byte_sub_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 144,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_sub",
-      "slice_bytes",
-      "utf8_bytes",
-      "utf8_decode_all"
-     ]
-    },
-    {
-     "name": "fs_find_byte_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 150,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "find_byte",
-      "fs_find_byte",
-      "utf8_bytes"
-     ]
-    },
-    {
-     "name": "fs_cp_at_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 154,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_cp_at",
-      "utf8_bytes",
-      "utf8_decode_at"
-     ]
-    },
-    {
-     "name": "fs_cp_len_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 159,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_cp_len",
-      "utf8_bytes",
-      "utf8_decode_at"
      ]
     }
    ],
@@ -5765,39 +5700,6 @@
    "suites": []
   },
   {
-   "module": "Parser.FastString.CharBoundary",
-   "files": [
-    "formal/fstar/Parser.FastString.CharBoundary.fst"
-   ],
-   "loc": 58,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/Parser_FastString_CharBoundary.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 1,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 1,
-   "assume_val_names": [
-    "unsafe_char_of_d7ff"
-   ],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": []
-  },
-  {
    "module": "Parser.FastString.RoundTripLemmas",
    "files": [
     "formal/fstar/Parser.FastString.RoundTripLemmas.fst"
@@ -5841,17 +5743,17 @@
    "files": [
     "formal/fstar/Parser.FastString.Spec.fst"
    ],
-   "loc": 519,
+   "loc": 269,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/Parser_FastString_Spec.ml",
-   "in_build_module_list": true,
+   "extraction": "not-in-build-list",
+   "extraction_oracle_available": false,
+   "extracted_ml": null,
+   "in_build_module_list": false,
    "foundational_path": false,
-   "shipping_function_count": 20,
+   "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
+   "unclassified_definition_count": 18,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -5863,112 +5765,17 @@
    "local_refinement_lemma_names": [
     "nth_byte_zero",
     "nth_byte_succ",
-    "nth_byte_append",
-    "utf8_decode_at_shift",
     "utf8_enc_char_len_bounds",
     "lemma_concatMap_append",
     "utf8_bytes_concat",
-    "utf8_bytes_ascii_singleton"
+    "utf8_bytes_ascii_singleton",
+    "utf8_decode_at_ascii",
+    "utf8_decode_encode_identity"
    ],
-   "algorithm_correctness_theorems": [
-    {
-     "name": "utf8_decode_at_ascii",
-     "proved_in": "Parser.FastString.Spec",
-     "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 422,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "nth_byte",
-      "utf8_decode_at"
-     ]
-    },
-    {
-     "name": "utf8_decode_encode_identity",
-     "proved_in": "Parser.FastString.Spec",
-     "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 432,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "utf8_decode_at",
-      "utf8_enc_char"
-     ]
-    },
-    {
-     "name": "fs_byte_length_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 117,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "utf8_bytes"
-     ]
-    },
-    {
-     "name": "fs_byte_at_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 120,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_at",
-      "nth_byte",
-      "utf8_bytes"
-     ]
-    },
-    {
-     "name": "fs_byte_sub_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 144,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_sub",
-      "slice_bytes",
-      "utf8_bytes",
-      "utf8_decode_all"
-     ]
-    },
-    {
-     "name": "fs_find_byte_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 150,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "find_byte",
-      "fs_find_byte",
-      "utf8_bytes"
-     ]
-    },
-    {
-     "name": "fs_cp_at_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 154,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_cp_at",
-      "utf8_bytes",
-      "utf8_decode_at"
-     ]
-    },
-    {
-     "name": "fs_cp_len_eq",
-     "proved_in": "Parser.FastString",
-     "file": "formal/fstar/Parser.FastString.fst",
-     "line": 159,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_cp_len",
-      "utf8_bytes",
-      "utf8_decode_at"
-     ]
-    }
-   ],
+   "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "algorithm-correctness",
+   "assurance_tier": "unclassified",
    "suites": []
   },
   {
@@ -18822,40 +18629,13 @@
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [
-    {
-     "name": "lemma_parse_object_list_simple_1",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 307,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fulltext_query_pred",
-      "ggp_add_triple",
-      "group_graph_pattern",
-      "parse_object_list_simple"
-     ]
-    },
-    {
-     "name": "lemma_parse_pred_obj_list_1",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 322,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fulltext_query_pred",
-      "ggp_add_triple",
-      "group_graph_pattern",
-      "parse_pred_obj_list"
-     ]
-    }
-   ],
+   "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "algorithm-correctness",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -20467,44 +20247,6 @@
      "names_shipping_functions": [
       "ebv",
       "rdf_lang_string"
-     ]
-    },
-    {
-     "name": "lemma_parse_object_list_simple_1",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 307,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fulltext_query_pred",
-      "ggp_add_triple",
-      "group_graph_pattern",
-      "parse_object_list_simple"
-     ]
-    },
-    {
-     "name": "lemma_parse_pred_obj_list_1",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 322,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fulltext_query_pred",
-      "ggp_add_triple",
-      "group_graph_pattern",
-      "parse_pred_obj_list"
-     ]
-    },
-    {
-     "name": "parse_select_query_token_level_query",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 639,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "default_modifier",
-      "parse_select_query",
-      "query"
      ]
     }
    ],
@@ -22529,155 +22271,6 @@
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [
     {
-     "name": "lemma_path_elt_iri",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 223,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "parse_path_elt",
-      "parse_peek"
-     ]
-    },
-    {
-     "name": "lemma_path_elt_or_inverse_iri",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 231,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "parse_path_elt_or_inverse",
-      "parse_peek"
-     ]
-    },
-    {
-     "name": "lemma_path_sequence_iri",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 239,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "parse_path_sequence",
-      "parse_peek"
-     ]
-    },
-    {
-     "name": "lemma_path_alternative_iri",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 248,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "parse_path_alternative",
-      "parse_peek"
-     ]
-    },
-    {
-     "name": "lemma_parse_verb_iri",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 259,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "parse_peek",
-      "parse_verb"
-     ]
-    },
-    {
-     "name": "lemma_parse_verb_1",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 275,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "parse_peek",
-      "parse_verb"
-     ]
-    },
-    {
-     "name": "lemma_parse_object_list_simple_1",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 307,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fulltext_query_pred",
-      "ggp_add_triple",
-      "group_graph_pattern",
-      "parse_object_list_simple"
-     ]
-    },
-    {
-     "name": "lemma_parse_pred_obj_list_1",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 322,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fulltext_query_pred",
-      "ggp_add_triple",
-      "group_graph_pattern",
-      "parse_pred_obj_list"
-     ]
-    },
-    {
-     "name": "lemma_triples_block_unfold_one_triple",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 389,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "parse_peek",
-      "parse_triples_block"
-     ]
-    },
-    {
-     "name": "lemma_parse_ask_body_1",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 526,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "default_modifier",
-      "parse_ask_body"
-     ]
-    },
-    {
-     "name": "lemma_parse_select_query_ask_bgp",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 587,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "default_modifier",
-      "parse_select_query",
-      "resolve_relative_iri_tokens"
-     ]
-    },
-    {
-     "name": "parse_select_query_token_level",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 616,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "default_modifier",
-      "parse_select_query"
-     ]
-    },
-    {
-     "name": "parse_select_query_token_level_query",
-     "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
-     "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-     "line": 639,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "default_modifier",
-      "parse_select_query",
-      "query"
-     ]
-    },
-    {
      "name": "peek_at_offset",
      "proved_in": "SPARQL11.Parser.TokenRoundTrip",
      "file": "formal/fstar/SPARQL11.Parser.TokenRoundTrip.fst",
@@ -22815,52 +22408,6 @@
      "how": "direct-trigger"
     }
    ]
-  },
-  {
-   "module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "files": [
-    "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst"
-   ],
-   "loc": 775,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "not-in-build-list",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
-   "in_build_module_list": false,
-   "foundational_path": false,
-   "shipping_function_count": 0,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 44,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": false,
-   "local_refinement_lemma_count": 14,
-   "local_refinement_lemma_names": [
-    "lemma_ask_bgp_fuel_cost_n5_fits_entry_fuel",
-    "lemma_path_primary_iri",
-    "lemma_parse_verb_var",
-    "lemma_parse_object_with_extras_1",
-    "lemma_parse_annotations_dot",
-    "lemma_parse_subject_with_extras_1",
-    "lemma_ggp_add_triple_acc",
-    "lemma_ggp_join_acc_empty",
-    "lemma_parse_triples_block_bgp",
-    "lemma_ggp_body_step1",
-    "lemma_ggp_body_step2",
-    "lemma_parse_group_graph_pattern_ask_bgp",
-    "lemma_resolve_bgp_tokens_fixed",
-    "lemma_resolve_expected_tokens_fixed"
-   ],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
-   "suites": []
   },
   {
    "module": "SPARQL11.Parser.TokenRoundTrip",
@@ -28746,14 +28293,10 @@
    "name": "nth_byte_zero",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 188,
+   "line": 102,
    "unconditional": true,
-   "shipping_functions_named": [
-    "nth_byte"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
+   "shipping_functions_named": [],
+   "shipping_modules": [],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -28764,50 +28307,10 @@
    "name": "nth_byte_succ",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 192,
+   "line": 106,
    "unconditional": true,
-   "shipping_functions_named": [
-    "nth_byte"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "nth_byte_append",
-   "host_module": "Parser.FastString.Spec",
-   "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 203,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "nth_byte"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "utf8_decode_at_shift",
-   "host_module": "Parser.FastString.Spec",
-   "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 270,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "utf8_decode_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
+   "shipping_functions_named": [],
+   "shipping_modules": [],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -28818,14 +28321,10 @@
    "name": "utf8_enc_char_len_bounds",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 388,
+   "line": 176,
    "unconditional": true,
-   "shipping_functions_named": [
-    "utf8_enc_char"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
+   "shipping_functions_named": [],
+   "shipping_modules": [],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -28836,7 +28335,7 @@
    "name": "lemma_concatMap_append",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 393,
+   "line": 181,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -28850,14 +28349,10 @@
    "name": "utf8_bytes_concat",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 402,
+   "line": 190,
    "unconditional": true,
-   "shipping_functions_named": [
-    "utf8_bytes"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
+   "shipping_functions_named": [],
+   "shipping_modules": [],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -28868,14 +28363,10 @@
    "name": "utf8_bytes_ascii_singleton",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 414,
+   "line": 202,
    "unconditional": false,
-   "shipping_functions_named": [
-    "utf8_bytes"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
+   "shipping_functions_named": [],
+   "shipping_modules": [],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -28886,165 +28377,29 @@
    "name": "utf8_decode_at_ascii",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 422,
+   "line": 210,
    "unconditional": false,
-   "shipping_functions_named": [
-    "nth_byte",
-    "utf8_decode_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
+   "shipping_functions_named": [],
+   "shipping_modules": [],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
+   "class": "local_refinement"
   },
   {
    "name": "utf8_decode_encode_identity",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 432,
+   "line": 220,
    "unconditional": true,
-   "shipping_functions_named": [
-    "utf8_decode_at",
-    "utf8_enc_char"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
+   "shipping_functions_named": [],
+   "shipping_modules": [],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "fs_byte_length_eq",
-   "host_module": "Parser.FastString",
-   "file": "formal/fstar/Parser.FastString.fst",
-   "line": 117,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length",
-    "utf8_bytes"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "fs_byte_at_eq",
-   "host_module": "Parser.FastString",
-   "file": "formal/fstar/Parser.FastString.fst",
-   "line": 120,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_at",
-    "nth_byte",
-    "utf8_bytes"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "fs_byte_sub_eq",
-   "host_module": "Parser.FastString",
-   "file": "formal/fstar/Parser.FastString.fst",
-   "line": 144,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_sub",
-    "slice_bytes",
-    "utf8_bytes",
-    "utf8_decode_all"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "fs_find_byte_eq",
-   "host_module": "Parser.FastString",
-   "file": "formal/fstar/Parser.FastString.fst",
-   "line": 150,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "find_byte",
-    "fs_find_byte",
-    "utf8_bytes"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "fs_cp_at_eq",
-   "host_module": "Parser.FastString",
-   "file": "formal/fstar/Parser.FastString.fst",
-   "line": 154,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_cp_at",
-    "utf8_bytes",
-    "utf8_decode_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "fs_cp_len_eq",
-   "host_module": "Parser.FastString",
-   "file": "formal/fstar/Parser.FastString.fst",
-   "line": 159,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_cp_len",
-    "utf8_bytes",
-    "utf8_decode_at"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
+   "class": "local_refinement"
   },
   {
    "name": "lemma_int_of_byte_of_int",
@@ -51331,512 +50686,6 @@
    "class": "local_refinement"
   },
   {
-   "name": "lemma_ask_bgp_fuel_cost_n5_fits_entry_fuel",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 179,
-   "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_path_primary_iri",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 217,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "parse_path_primary"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_path_elt_iri",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 223,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_path_elt",
-    "parse_peek"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_path_elt_or_inverse_iri",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 231,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_path_elt_or_inverse",
-    "parse_peek"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_path_sequence_iri",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 239,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_path_sequence",
-    "parse_peek"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_path_alternative_iri",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 248,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_path_alternative",
-    "parse_peek"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_parse_verb_iri",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 259,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_peek",
-    "parse_verb"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_parse_verb_var",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 267,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "parse_verb"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_parse_verb_1",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 275,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_peek",
-    "parse_verb"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_parse_object_with_extras_1",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 287,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "parse_object_with_extras"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_parse_annotations_dot",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 299,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "parse_annotations"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_parse_object_list_simple_1",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 307,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "fulltext_query_pred",
-    "ggp_add_triple",
-    "group_graph_pattern",
-    "parse_object_list_simple"
-   ],
-   "shipping_modules": [
-    "SPARQL.FullText",
-    "SPARQL11.Algebra",
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_parse_pred_obj_list_1",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 322,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "fulltext_query_pred",
-    "ggp_add_triple",
-    "group_graph_pattern",
-    "parse_pred_obj_list"
-   ],
-   "shipping_modules": [
-    "SPARQL.FullText",
-    "SPARQL11.Algebra",
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_parse_subject_with_extras_1",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 335,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "parse_subject_with_extras"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_ggp_add_triple_acc",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 356,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "ggp_add_triple"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_ggp_join_acc_empty",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 365,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "ggp_join"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_triples_block_unfold_one_triple",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 389,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_peek",
-    "parse_triples_block"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_parse_triples_block_bgp",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 424,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_triples_block"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_ggp_body_step1",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 475,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_ggp_body"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_ggp_body_step2",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 495,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "parse_ggp_body"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_parse_group_graph_pattern_ask_bgp",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 503,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "parse_group_graph_pattern"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_parse_ask_body_1",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 526,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "default_modifier",
-    "parse_ask_body"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_resolve_bgp_tokens_fixed",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 550,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "resolve_relative_iri_tokens"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_resolve_expected_tokens_fixed",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 572,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "resolve_relative_iri_tokens"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_parse_select_query_ask_bgp",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 587,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "default_modifier",
-    "parse_select_query",
-    "resolve_relative_iri_tokens"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "parse_select_query_token_level",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 616,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "default_modifier",
-    "parse_select_query"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "parse_select_query_token_level_query",
-   "host_module": "SPARQL11.Parser.AskBgpRoundTrip",
-   "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
-   "line": 639,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "default_modifier",
-    "parse_select_query",
-    "query"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Algebra",
-    "SPARQL11.Parser"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
    "name": "index_append",
    "host_module": "SPARQL11.Parser.TokenRoundTrip",
    "file": "formal/fstar/SPARQL11.Parser.TokenRoundTrip.fst",
@@ -52985,19 +51834,19 @@
   }
  ],
  "totals": {
-  "modules": 227,
-  "files": 236,
-  "assume_val_active": 134,
+  "modules": 225,
+  "files": 233,
+  "assume_val_active": 140,
   "assume_other_active": 5,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
   "modules_with_w3c_refinement_theorem": 9,
-  "modules_with_algorithm_correctness_theorem": 35,
+  "modules_with_algorithm_correctness_theorem": 33,
   "modules_with_internal_refinement_theorem": 15,
   "modules_merely_tot": 133,
   "w3c_refinement_theorem_count": 298,
   "internal_refinement_theorem_count": 114,
-  "algorithm_correctness_theorem_count": 248,
+  "algorithm_correctness_theorem_count": 227,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [
    "OWL.RL.Refinement",
@@ -53018,9 +51867,9 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1390,
+  "lemma_count": 1355,
   "tiers": {
-   "algorithm-correctness": 25,
+   "algorithm-correctness": 23,
    "internal-refinement": 7,
    "local-lemmas-only": 12,
    "merely-tot": 133,
@@ -53029,5 +51878,5 @@
    "w3c-refinement": 9
   }
  },
- "commit": "689877ba9"
+ "commit": "b7f5cc802"
 }
