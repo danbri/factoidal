@@ -1316,3 +1316,18 @@ forward-pointer (rule #14). Streaming program end state: parser
 theorem + dataset consumer + generic consumer all proved; sole
 residue = the ^^datatype literal-branch shift lemma (does not gate
 any landed theorem). No admits, no --lax, no new assume vals.
+
+**#402 residue CLOSED: datatype literal branch (2026-08-11, branch
+`dt-branch`)**: `lemma_parse_literal_datatype_shift` verifies. ROOT
+CAUSE of the 3 prior failures (findings discipline vindicated again,
+same class as Axioms fact 6): the statement was FALSE as written —
+`dt` free over wf_iri includes rdf_lang_string/rdf_dir_lang_string,
+where literal_wf fails and parse_literal returns ParseFail on BOTH
+sides; the ensures only covered ParseOk/ParseOk. Z3 was correctly
+refusing a false goal for three sessions; the old FINDING blamed
+string-equality trigger behavior — WRONG, now corrected in the banner
+(rule #14). With `dt <> rdf_lang_string /\ dt <> rdf_dir_lang_string`
+added to requires, the proof is 3 lines, same shape and budget as the
+plain-literal sibling. Witness-record hypotheses per the streaming
+pattern. #402's residue list is now EMPTY — every named theorem and
+lemma of the streaming program is proved.
