@@ -857,3 +857,26 @@ identity/associativity equations (same wall shape as
 `string_of_list_of_string`), and which statement failed shifted with
 unrelated earlier declarations (Z3 context sensitivity). Next step:
 interactive diagnosis via fstar-mcp, not batch retries.
+
+**Task #48 streaming N-Quads, phase 1 (2026-08-11, branch
+`streaming-nquads`)**: new `RDF.NQuads.Streaming.fst` (537 lines,
+proof-only, verified clean, zero assume vals). Strategy B (common
+line-splitter) on `FStar.String.list_of_string`/`string_of_list`
+(their ulib round-trip lemmas are unconditional — avoids the parked
+byte-level single-decoder round-trip, #374). PROVED: the split
+machinery end-to-end — `split_complete_lines_reconstruct`
+(`complete ^ carry == s`, nothing dropped or duplicated),
+carry-never-contains-newline, "a chunk with no newline extends carry",
+"a chunk ending in newline empties carry"; the streaming API
+(`stream_state`/`feed_chunk`/`finish`/`stream_parse`) defined on the
+UNMODIFIED `Parser.NQuads.parse_nquads_acc`;
+`stream_parse_single_chunk_shape`; `cong_string_of_list` (finding:
+`string_of_list` gets no SMT congruence from a variable equal to a
+literal — helper proved by typing substitution, not Z3). Fuel: every
+parse call runs a fresh string at position 0 with its own
+`fs_byte_length + 1` fuel, so the batch entry point's sufficiency
+argument applies verbatim. NOT PROVED (in-file FINDING, exact missing
+lemmas named): `theorem_stream_eq_batch` — needs
+`parse_nquads_acc_concat_line` via (1) a mechanical `fs_byte_index_eq`
+bridging lemma and (2) a locality proof across `Parser.NTriples.fst`'s
+recursive-descent stack, scoped as its own landing.
