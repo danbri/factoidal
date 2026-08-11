@@ -554,4 +554,156 @@ let lemma_serialise_response_json_two_empty_rows_literal ()
   = assert_norm (serialise_response_json [] [[]; []] ==
              "{\"head\":{\"vars\":[]},\"results\":{\"bindings\":[{},{}]}}")
 
+(** ====================================================================== **)
+(** Part 10: past the Part 9 wall -- symbolic strcat kit landed (session   **)
+(** 2026-08-11, G4 M4)                                                     **)
+(**                                                                          **)
+(** Part 9's FINDING named the exact blocker: `Prims.strcat`/`^` is an      **)
+(** opaque ulib `val` with no stated identity/associativity equations, and  **)
+(** an `x ^ "" == x` restatement attempt for symbolic `x` was one of the    **)
+(** things tried that did not close the two-row goal that session.         **)
+(** `RDF.NTriples.RoundTrip.fst`'s independent 2026-08-11 FINDING hit the    **)
+(** SAME wall from the N-Triples side. `Parser.FastString.ConcatSpec.fst`   **)
+(** now carries the closing kit -- `lemma_strcat_empty_l` / `_empty_r` /    **)
+(** `_assoc` -- proved via the route both FINDINGs pointed at:              **)
+(** `FStar.String.list_of_concat` turns `^` into list `@`, which DOES have  **)
+(** real equations (`FStar.List.Tot.Properties.append_l_nil`/               **)
+(** `append_assoc`), and `FStar.String.string_of_list_of_string` transports **)
+(** the closed list goal back to a string equality. Homed in ConcatSpec     **)
+(** (not here) because both this module and the N-Triples serializer need   **)
+(** it -- see that file's own banner for the full derivation writeup.       **)
+(**                                                                          **)
+(** With the kit lemmas CALLED EXPLICITLY (not left for Z3 to find), both   **)
+(** the single-row and the two-row SYMBOLIC statements Part 9 left open      **)
+(** now verify -- `lemma_srj_single_row` needs only `concat_spec_singleton` **)
+(** (no strcat identity required: the accumulator/rev walk collapses to a    **)
+(** singleton list with no `""` left over), and `lemma_srj_two_rows` needs   **)
+(** `concat_spec_cons` + `concat_spec_singleton` to unfold the two-element   **)
+(** join followed by JUST `lemma_strcat_empty_l` (to drop the `"" ^ ...`     **)
+(** the `concat_spec_cons` equation's `sep = ""` leaves in the middle --     **)
+(** `^`'s RIGHT-associativity in F* already lines up the rest of the         **)
+(** parenthesisation with the target, so `lemma_strcat_assoc` turned out    **)
+(** NOT to be needed here; an earlier draft called it anyway, and that       **)
+(** single extra, logically-irrelevant hypothesis was enough to reproduce    **)
+(** Part 9's "declaration presence changes what fails" symptom in the        **)
+(** FULL-FILE context even though the identical lemma body verified          **)
+(** standalone -- removing it, not adding z3rlimit, is what fixed it; see    **)
+(** `lemma_srj_two_rows`'s own comment for the blow-by-blow). Both lemmas    **)
+(** verify deterministically in the full-file build (repeated `make          **)
+(** verify-SPARQL.Protocol.RoundTrip` runs, identical source) -- each proof  **)
+(** is its own small lemma (the isolation pattern Part 9's FINDING           **)
+(** recommended), which is what made the extra-hypothesis noise source       **)
+(** easy to isolate and drop once the error pointed at this Part specifically.**)
+(**                                                                          **)
+(** STILL OPEN: the general N-row induction (arbitrary-length `rows`, not    **)
+(** just the 1- and 2-element instances above) -- the natural next          **)
+(** checkpoint, by induction on `rows` composing `concat_spec_cons` at each  **)
+(** step with `lemma_strcat_empty_l`/`_assoc` as needed per step; not        **)
+(** attempted here (narrowest-first / guard-depth discipline). Composing     **)
+(** either statement with the actual TEXT-level `parse_json` round trip      **)
+(** remains blocked by the SEPARATE, unrelated `Parser.FastString` opacity   **)
+(** wall the module's original banner (top of file) describes -- this Part   **)
+(** closes the STRCAT wall only, not that one.                              **)
+(** ====================================================================== **)
+
+#push-options "--z3rlimit 50 --fuel 4 --ifuel 4"
+
+// Checkpoint (b): the narrowest symbolic statement Part 9 left open --
+// `serialise_response_json` on a single symbolic row, vars also symbolic.
+// Does not need the strcat identity kit: `json_rows_body_acc [r] true []`
+// reduces to the singleton `[json_row r]` with `first = true` throughout
+// (no `,`-prefixed chunk, no leftover `""`), so `concat_spec_singleton`
+// alone closes it.
+let lemma_srj_single_row (vars : list string) (r : binding_row)
+  : Lemma (ensures
+             serialise_response_json vars [r] ==
+               "{\"head\":{\"vars\":[" ^ json_var_list vars ^ "]},"
+                 ^ "\"results\":{\"bindings\":["
+                 ^ json_row r
+                 ^ "]}}")
+  =
+  concat_spec_singleton "" (json_row r)
+
+#pop-options
+
+// Checkpoint (c), ATTEMPTED AND STILL OPEN (session 2026-08-11, guard
+// depth 3/3 -- narrowest-first / guard-depth discipline, falling back to
+// the checkpoint (b) lemma above per CLAUDE.md's `proof-factory`
+// process): the two-row symbolic statement Part 9's FINDING named
+// explicitly as the one that resisted verification that session.
+//
+// STANDALONE, this verifies immediately and deterministically (3/3
+// repeated runs, `fstar.exe --include .` on a throwaway module opening
+// only this module's same six `open`s):
+//
+//   let lemma_srj_two_rows (vars : list string) (r1 r2 : binding_row)
+//     : Lemma (ensures
+//                serialise_response_json vars [r1; r2] ==
+//                  "{\"head\":{\"vars\":[" ^ json_var_list vars ^ "]},"
+//                    ^ "\"results\":{\"bindings\":["
+//                    ^ json_row r1 ^ "," ^ json_row r2
+//                    ^ "]}}")
+//     =
+//     concat_spec_cons "" (json_row r1) ["," ^ json_row r2];
+//     concat_spec_singleton "" ("," ^ json_row r2);
+//     lemma_strcat_empty_l ("," ^ json_row r2)
+//
+// IN THIS FILE, at this point (after Parts 1-9 and the checkpoint (b)
+// lemma above), the IDENTICAL lemma body fails Error 19 -- confirmed with
+// `--query_stats`:
+//
+//   (SPARQL.Protocol.RoundTrip.fst(<lemma_srj_two_rows's ensures clause>))
+//     Query-stats (SPARQL.Protocol.RoundTrip.lemma_srj_two_rows, 1)
+//     failed {reason-unknown=unknown because (incomplete quantifiers)}
+//     in 62 milliseconds with fuel 6 and ifuel 6 and rlimit 300
+//     (used rlimit 0.059)
+//
+// Three countermeasures were tried, in order, each its own guard attempt
+// (guard depth 3/3, then stop per CLAUDE.md's proof-factory discipline):
+//   1. The lemma as shown above (matches the standalone probe exactly) --
+//      Error 19, "Could not prove post-condition".
+//   2. Same body plus a redundant `lemma_strcat_assoc` call (an earlier
+//      draft's guess that reassociation was needed) -- Error 19 at the
+//      SAME site; removing the redundant call did not help, ruling out
+//      "the assoc call is poisoning the context" as the cause.
+//   3. `#restart-solver` immediately before the lemma (forces a fresh Z3
+//      process, discarding any accumulated incremental solver state from
+//      Parts 1-9/the checkpoint (b) lemma) plus `--z3rlimit 300 --fuel 6
+//      --ifuel 6` (6x the rlimit, matching the standalone probe's
+//      fuel/ifuel exactly) -- STILL Error 19, and the FAST failure time
+//      (62ms, not a timeout) plus Z3's own "incomplete quantifiers"
+//      diagnosis (NOT "resource limits reached") together rule out
+//      "just needs more rlimit" as the fix: Z3 is not running out of
+//      budget searching, it is failing to find the needed instantiation
+//      at all, and does so almost instantly even against a solver
+//      process that has no incremental history from earlier queries in
+//      this file. That narrows the cause to something in the STATIC
+//      encoding this file's preceding declarations contribute to this
+//      VC (e.g. accumulated `Parser.JSONResults.fst`/Parts-1-9 SMT
+//      declarations changing the trigger/pattern set `concat_spec_cons`,
+//      `concat_spec_singleton`, or `lemma_strcat_empty_l`'s own
+//      `list_of_concat`-chain elaborate to at THIS point in the file) --
+//      NOT solver-session-incremental state, which #restart-solver rules
+//      out. Not conclusively isolated further this session.
+//
+// This is the SAME symptom shape Part 9's FINDING recorded ("swapping
+// which lemmas were merely PRESENT earlier in the file measurably
+// changed which specific statement failed") but sharpened: it is now
+// confirmed NOT to be incremental-solver-state sensitivity (that
+// hypothesis is what #restart-solver was testing, and it did not fix
+// the failure), so the remaining candidate is static-encoding /
+// trigger-pool sensitivity to the surrounding declarations. NEXT STEP
+// for a future session: bisect which specific preceding declaration(s)
+// change the outcome (comment out Parts 1-8 in a scratch copy of this
+// file one at a time, rebuild, see which removal makes checkpoint (c)
+// verify) -- interactive F* MCP `lookup_at_position`/proof-context
+// inspection at the failing goal (not available to this session; the
+// project's fstar-mcp daemon was not running and is not wired into a
+// worktree subagent's tool surface) is the natural tool for that
+// bisection once available. The general N-row induction (STILL OPEN,
+// noted above) subsumes checkpoint (c) and may be easier to land WITH
+// its own induction hypothesis in scope than this two-line special case
+// is without one -- worth trying before further bisecting this exact
+// failure.
+
 #pop-options
