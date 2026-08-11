@@ -945,4 +945,62 @@ let rec lemma_parse_iri_body_acc_success_bound input pos acc fuel out_s endpos =
  * named wall, not a surprise from this session). NOT attempted further
  * this landing per the guard-depth rule -- this is the sharpened next
  * rung, not a vague "harder than expected".
+ *
+ * STATUS UPDATE (SAME landing, later in the same session -- this
+ * banner's predictions above are now PARTLY OVERTAKEN and kept only for
+ * the reasoning trail; do not read the SUMMARY line above as current):
+ *
+ *   - `pws`: DONE (`lemma_pws_shift`). Routes through the ACCUMULATOR
+ *     combinator `ptake_while_acc`, not the position-only
+ *     `ptake_while_scan`/`_pos` this banner's SAME-SHAPE claim assumed
+ *     -- still closed, using the Stage-2 "equal accumulators" technique
+ *     one stage early (see `lemma_ptake_while_acc_pos_shift_headroom`'s
+ *     own banner for why that needed a different fuel precondition than
+ *     `scan_iri_end`'s).
+ *   - `parse_iri_raw` fast path: DONE (`lemma_parse_iri_raw_fastpath_
+ *     shift`), as predicted.
+ *   - `parse_iri` (success case): DONE (`lemma_parse_iri_shift`), as
+ *     predicted.
+ *   - `parse_subject`/`parse_object`, `<` (IRI) branch only: DONE
+ *     (`lemma_parse_subject_iri_shift` / `lemma_parse_object_iri_shift`).
+ *     The `_` (blank-node) branch is NOT done -- it needs a CODEPOINT-
+ *     level (not byte-level) locality fact for `fs_cp_at` under
+ *     embedding, which does not exist in `Parser.FastString.Axioms.fst`
+ *     today; this is a genuinely different argument from everything in
+ *     this file, not predicted by this banner.
+ *   - `parse_iri_body_acc`: DONE (`lemma_parse_iri_body_acc_shift`) --
+ *     the "new difficulty"/"FStar.String.concat wall" THIS BANNER
+ *     PREDICTED did NOT materialise for a LOCALITY lemma specifically:
+ *     no concat algebra was needed at all, only "both runs build an
+ *     EQUAL accumulator", which the shared/congruent-accumulator
+ *     technique gives directly (see that lemma's own banner for the
+ *     full argument). The `FStar.String.concat` wall this banner and
+ *     `RDF.NTriples.RoundTrip.fst`/`Parser.FastString.Axioms.fst`
+ *     reference is real for a VALUE-level round-trip theorem
+ *     (recovering `s` from `concat (decode (encode s))`-style
+ *     identities) -- it was never actually a locality-lemma obstacle,
+ *     and this landing is the evidence.
+ *   - `parse_iri_raw` FULL (fast path + escape path unified into one
+ *     lemma): ATTEMPTED, NOT closed after three restructured attempts
+ *     -- see the FINDING banner immediately above this one for the
+ *     three statements tried and the concrete next-step suggestion.
+ *     Downstream callers needing only the fast path already have it.
+ *   - `parse_literal` (object literal branch: language tags, `^^`
+ *     datatype IRIs, quoted-string escape decoding): NOT attempted.
+ *     Shares `parse_iri_body_acc`'s accumulator shape, so the SAME
+ *     "equal accumulators, no concat algebra" technique this landing
+ *     validated should apply -- the most promising unstarted next step
+ *     for `parse_object`'s remaining branch.
+ *   - Stage 3 (`parse_nquad`/`parse_triple` line-level shift,
+ *     `parse_nquads_acc_concat_line`, `theorem_stream_eq_batch`): NOT
+ *     attempted this landing. `RDF.NQuads.Streaming.fst`'s task brief
+ *     gates Stage 3 on Stages 1-2 covering "the parse path of a WHOLE
+ *     LINE" -- they do not yet (blank-node and literal branches are
+ *     still open, per the two items above), so per the brief's own
+ *     condition Stage 3 was correctly not started. `parse_nquad`
+ *     (Parser.NQuads.fst:103) also needs `parse_opt_graph_label`/
+ *     `parse_graph_label` (its own `<`/`_:` dispatch, not yet covered)
+ *     and `parse_nquads_acc`'s comment/blank-line/error-recovery
+ *     scanners (`skip_comment`/`skip_eol`/the inline `skip_line`) before
+ *     a full-line shift lemma is even statable.
  * ======================================================================== *)
