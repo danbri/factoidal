@@ -2125,3 +2125,464 @@ let theorem_stream_eq_batch chunks ws_list =
   stream_fold_eq_batch "" chunks ws_list RDF.Graph.Executable.empty_dataset;
   empty_string_concat_left (concat_all chunks)
 #pop-options
+
+(* ============================================================================
+ * `chain_append` (task #48, FIFTH landing, 2026-08-11): the chain-
+ * concatenation lemma the THIRD landing's FINDING named ("if `ws_a` covers
+ * `mid_a` and `ws_b` covers `mid_b`, an appropriately shifted `ws_a @ ws_b`
+ * covers `mid_a ^ mid_b`") -- NOT needed to close `theorem_stream_eq_batch`
+ * above (that theorem takes its whole-tail chain as a caller-supplied
+ * parameter instead, see that section's own banner), but landed here as
+ * the reusable, general piece a future session can use to make that
+ * parameter DERIVABLE from smaller per-chunk pieces instead of separately
+ * supplied. Built exactly as the FOURTH landing's banner said it could be:
+ * every ingredient below is an ALREADY-PROVED shift lemma
+ * (`lemma_pws_shift`, `lemma_byte_index_at_middle`, `lemma_skip_eol_shift`,
+ * `lemma_skip_comment_shift`, `lemma_nq_skip_line_shift_exact`, `Parser.
+ * NTriples.Locality.lemma_parse_nquad_shift_generic`) applied at
+ * `prefix=""` (reproving a witness's WF against a BIGGER `mid_a^mid_b`, at
+ * its OWN unshifted position, since it is a prefix of the bigger string)
+ * or at `suffix=""` (reproving a witness's WF against `mid_a^mid_b` at a
+ * position SHIFTED by `fs_byte_length mid_a`, since it starts right after
+ * `mid_a`) -- no new proof technique, only new compositions.
+ * ============================================================================ *)
+
+(* Position-shift of a single witness: every position field advances by
+   `off`; any parsed VALUE payload (subject/predicate/object/graph, quad-
+   success kind only) is UNCHANGED -- same parsed value, reached at a
+   shifted position. *)
+let shift_line_witness (off : nat) (w : line_witness) : line_witness =
+  match w with
+  | LW_Blank b ->
+    LW_Blank ({ lw_pos = off + b.lw_pos; lw_wsend = off + b.lw_wsend; lw_eolend = off + b.lw_eolend })
+  | LW_Comment c ->
+    LW_Comment ({ cw_pos = off + c.cw_pos; cw_wsend = off + c.cw_wsend;
+                  cw_commentend = off + c.cw_commentend; cw_eolend = off + c.cw_eolend })
+  | LW_QuadFail f ->
+    LW_QuadFail ({ qfw_pos = off + f.qfw_pos; qfw_wsend = off + f.qfw_wsend; qfw_stopeol = off + f.qfw_stopeol })
+  | LW_QuadOk q ->
+    LW_QuadOk ({ q with
+      qow_entry = off + q.qow_entry; qow_pos2 = off + q.qow_pos2; qow_pos3 = off + q.qow_pos3;
+      qow_pos4 = off + q.qow_pos4; qow_pos5 = off + q.qow_pos5; qow_pos6 = off + q.qow_pos6;
+      qow_pos7 = off + q.qow_pos7; qow_pos8 = off + q.qow_pos8;
+      qow_wsend2 = off + q.qow_wsend2; qow_eolend2 = off + q.qow_eolend2 })
+
+val lw_pos_shift (off : nat) (w : line_witness)
+  : Lemma (lw_pos (shift_line_witness off w) == off + lw_pos w)
+let lw_pos_shift off w =
+  match w with
+  | LW_Blank _ -> () | LW_Comment _ -> () | LW_QuadFail _ -> () | LW_QuadOk _ -> ()
+
+val lw_end_shift (off : nat) (w : line_witness)
+  : Lemma (lw_end (shift_line_witness off w) == off + lw_end w)
+let lw_end_shift off w =
+  match w with
+  | LW_Blank _ -> () | LW_Comment _ -> () | LW_QuadFail _ -> () | LW_QuadOk _ -> ()
+
+(* `lw_wf "" mid_a mid_b w` (a witness already known well-formed EMBEDDED
+   ahead of `mid_b`) implies `lw_wf "" (mid_a^mid_b) "" w` (well-formed
+   FLAT against the concatenation, no embedding) -- growing `mid` to the
+   RIGHT does not move `w`'s own positions (they are all `< fs_byte_length
+   mid_a`, a prefix of the bigger string), so no shift, only re-proving each
+   core fact at `prefix=""`. For the blank/comment kinds `lw_wf` does not
+   even mention `mid_b` (`blank_line_wf`/`comment_line_wf` take only `mid`),
+   so the derivation is purely "same fact, bigger string". For quad-fail/
+   quad-ok, the disclosed embedded premise in `lw_wf`'s OWN definition
+   (`ParseFail?`/success facts against `""^(mid_a^mid_b)`, already required
+   by the hypothesis) supplies exactly the one fact that cannot be derived
+   (the forward-dispatch obstruction this file's earlier FINDINGs name) --
+   everything else is shift-lemma reuse. *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_wf_extend_right_blank (mid_a mid_b : string) (b : blank_line_witness)
+  : Lemma (requires lw_wf "" mid_a mid_b (LW_Blank b))
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" (LW_Blank b))
+let lw_wf_extend_right_blank mid_a mid_b b =
+  Parser.FastString.Axioms.fs_byte_length_concat mid_a mid_b;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_left (mid_a ^ mid_b);
+  Parser.NTriples.Locality.lemma_pws_shift "" mid_a mid_b b.lw_pos b.lw_wsend;
+  assert (Parser.NTriples.pws (mid_a ^ mid_b) b.lw_pos == Parser.Combinators.ParseOk () b.lw_wsend);
+  lemma_byte_index_at_middle "" mid_a mid_b b.lw_wsend;
+  assert (Parser.FastString.fs_byte_index (mid_a ^ mid_b) b.lw_wsend == Parser.FastString.fs_byte_index mid_a b.lw_wsend);
+  Parser.NTriples.Locality.lemma_skip_eol_shift "" mid_a mid_b b.lw_wsend;
+  assert (Parser.NTriples.skip_eol (mid_a ^ mid_b) b.lw_wsend == b.lw_eolend)
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_wf_extend_right_comment (mid_a mid_b : string) (c : comment_line_witness)
+  : Lemma (requires lw_wf "" mid_a mid_b (LW_Comment c))
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" (LW_Comment c))
+let lw_wf_extend_right_comment mid_a mid_b c =
+  Parser.FastString.Axioms.fs_byte_length_concat mid_a mid_b;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_left (mid_a ^ mid_b);
+  empty_string_concat_right (mid_a ^ mid_b);
+  Parser.NTriples.Locality.lemma_pws_shift "" mid_a mid_b c.cw_pos c.cw_wsend;
+  lemma_byte_index_at_middle "" mid_a mid_b c.cw_wsend;
+  lemma_skip_comment_shift "" mid_a mid_b c.cw_wsend c.cw_commentend;
+  Parser.NTriples.Locality.lemma_skip_eol_shift "" mid_a mid_b c.cw_commentend
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_wf_extend_right_quadfail (mid_a mid_b : string) (f : quad_fail_witness)
+  : Lemma (requires lw_wf "" mid_a mid_b (LW_QuadFail f))
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" (LW_QuadFail f))
+let lw_wf_extend_right_quadfail mid_a mid_b f =
+  Parser.FastString.Axioms.fs_byte_length_concat mid_a mid_b;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_left (mid_a ^ mid_b);
+  empty_string_concat_right (mid_a ^ mid_b);
+  Parser.NTriples.Locality.lemma_pws_shift "" mid_a mid_b f.qfw_pos f.qfw_wsend;
+  lemma_byte_index_at_middle "" mid_a mid_b f.qfw_wsend;
+  lemma_nq_skip_line_shift_exact "" mid_a mid_b f.qfw_wsend f.qfw_stopeol
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_wf_extend_right_quadok (mid_a mid_b : string) (q : quad_ok_witness)
+  : Lemma (requires lw_wf "" mid_a mid_b (LW_QuadOk q))
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" (LW_QuadOk q))
+let lw_wf_extend_right_quadok mid_a mid_b q =
+  Parser.FastString.Axioms.fs_byte_length_concat mid_a mid_b;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_left (mid_a ^ mid_b);
+  empty_string_concat_right (mid_a ^ mid_b);
+  assert ("" ^ ((mid_a ^ mid_b) ^ "") == mid_a ^ mid_b);
+  Parser.NTriples.Locality.lemma_pws_shift "" mid_a mid_b q.qow_entry q.qow_entry;
+  assert (Parser.NTriples.pws (mid_a ^ mid_b) q.qow_entry == Parser.Combinators.ParseOk () q.qow_entry);
+  assert (Parser.NTriples.parse_subject (mid_a ^ mid_b) q.qow_entry
+          == Parser.Combinators.ParseOk q.qow_subj q.qow_pos2);
+  Parser.NTriples.Locality.lemma_pws_shift "" mid_a mid_b q.qow_pos2 q.qow_pos3;
+  assert (Parser.NTriples.parse_iri (mid_a ^ mid_b) q.qow_pos3
+          == Parser.Combinators.ParseOk q.qow_pred q.qow_pos4);
+  Parser.NTriples.Locality.lemma_pws_shift "" mid_a mid_b q.qow_pos4 q.qow_pos5;
+  assert (Parser.NTriples.parse_object (mid_a ^ mid_b) q.qow_pos5
+          == Parser.Combinators.ParseOk q.qow_obj q.qow_pos6);
+  assert (Parser.NQuads.parse_opt_graph_label (mid_a ^ mid_b) q.qow_pos6
+          == Parser.Combinators.ParseOk q.qow_graph q.qow_pos7);
+  Parser.NTriples.Locality.lemma_pws_shift "" mid_a mid_b q.qow_pos7 q.qow_pos8;
+  assert (Parser.NTriples.pws (mid_a ^ mid_b) q.qow_pos7 == Parser.Combinators.ParseOk () q.qow_pos8);
+  lemma_byte_index_at_middle "" mid_a mid_b q.qow_pos8;
+  assert (Parser.FastString.fs_byte_index (mid_a ^ mid_b) q.qow_pos8 == Parser.FastString.fs_byte_index mid_a q.qow_pos8);
+  Parser.NTriples.Locality.lemma_pws_shift "" mid_a mid_b (q.qow_pos8 + 1) q.qow_wsend2;
+  assert (Parser.NTriples.pws (mid_a ^ mid_b) (q.qow_pos8 + 1) == Parser.Combinators.ParseOk () q.qow_wsend2);
+  lemma_byte_index_at_middle "" mid_a mid_b q.qow_wsend2;
+  assert (Parser.FastString.fs_byte_index (mid_a ^ mid_b) q.qow_wsend2 == Parser.FastString.fs_byte_index mid_a q.qow_wsend2);
+  Parser.NTriples.Locality.lemma_skip_eol_shift "" mid_a mid_b q.qow_wsend2;
+  assert (Parser.NTriples.skip_eol (mid_a ^ mid_b) q.qow_wsend2 == q.qow_eolend2);
+  assert (quad_ok_line_wf (mid_a ^ mid_b) q)
+#pop-options
+
+val lw_wf_extend_right (mid_a mid_b : string) (w : line_witness)
+  : Lemma (requires lw_wf "" mid_a mid_b w)
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" w)
+let lw_wf_extend_right mid_a mid_b w =
+  match w with
+  | LW_Blank b -> lw_wf_extend_right_blank mid_a mid_b b
+  | LW_Comment c -> lw_wf_extend_right_comment mid_a mid_b c
+  | LW_QuadFail f -> lw_wf_extend_right_quadfail mid_a mid_b f
+  | LW_QuadOk q -> lw_wf_extend_right_quadok mid_a mid_b q
+
+(* Symmetric derivation: `lw_wf mid_a mid_b "" w` (a witness already known
+   well-formed EMBEDDED right after `mid_a`) implies `lw_wf "" (mid_a^mid_b)
+   "" (shift_line_witness (fs_byte_length mid_a) w)` -- growing `mid` to the
+   LEFT DOES move `w`'s own positions, by exactly `fs_byte_length mid_a`
+   (the byte count of what is now prepended), so every core fact is
+   re-derived via the shift lemmas at `prefix=mid_a, suffix=""` this time. *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_wf_shift_left_blank (mid_a mid_b : string) (b : blank_line_witness)
+  : Lemma (requires lw_wf mid_a mid_b "" (LW_Blank b))
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" (shift_line_witness (Parser.FastString.fs_byte_length mid_a) (LW_Blank b)))
+let lw_wf_shift_left_blank mid_a mid_b b =
+  Parser.FastString.Axioms.fs_byte_length_concat mid_a mid_b;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_right mid_b;
+  empty_string_concat_left (mid_a ^ mid_b);
+  Parser.NTriples.Locality.lemma_pws_shift mid_a mid_b "" b.lw_pos b.lw_wsend;
+  lemma_byte_index_at_middle mid_a mid_b "" b.lw_wsend;
+  Parser.NTriples.Locality.lemma_skip_eol_shift mid_a mid_b "" b.lw_wsend
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_wf_shift_left_comment (mid_a mid_b : string) (c : comment_line_witness)
+  : Lemma (requires lw_wf mid_a mid_b "" (LW_Comment c))
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" (shift_line_witness (Parser.FastString.fs_byte_length mid_a) (LW_Comment c)))
+let lw_wf_shift_left_comment mid_a mid_b c =
+  Parser.FastString.Axioms.fs_byte_length_concat mid_a mid_b;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_right mid_b;
+  empty_string_concat_left (mid_a ^ mid_b);
+  Parser.NTriples.Locality.lemma_pws_shift mid_a mid_b "" c.cw_pos c.cw_wsend;
+  lemma_byte_index_at_middle mid_a mid_b "" c.cw_wsend;
+  lemma_skip_comment_shift mid_a mid_b "" c.cw_wsend c.cw_commentend;
+  Parser.NTriples.Locality.lemma_skip_eol_shift mid_a mid_b "" c.cw_commentend
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_wf_shift_left_quadfail (mid_a mid_b : string) (f : quad_fail_witness)
+  : Lemma (requires lw_wf mid_a mid_b "" (LW_QuadFail f))
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" (shift_line_witness (Parser.FastString.fs_byte_length mid_a) (LW_QuadFail f)))
+let lw_wf_shift_left_quadfail mid_a mid_b f =
+  let off = Parser.FastString.fs_byte_length mid_a in
+  Parser.FastString.Axioms.fs_byte_length_concat mid_a mid_b;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_right mid_b;
+  empty_string_concat_left (mid_a ^ mid_b);
+  empty_string_concat_right (mid_a ^ mid_b);
+  assert ("" ^ ((mid_a ^ mid_b) ^ "") == mid_a ^ mid_b);
+  assert (Parser.Combinators.ParseFail? (Parser.NQuads.parse_nquad (mid_a ^ mid_b) (off + f.qfw_wsend)));
+  Parser.NTriples.Locality.lemma_pws_shift mid_a mid_b "" f.qfw_pos f.qfw_wsend;
+  assert (Parser.NTriples.pws (mid_a ^ mid_b) (off + f.qfw_pos) == Parser.Combinators.ParseOk () (off + f.qfw_wsend));
+  lemma_byte_index_at_middle mid_a mid_b "" f.qfw_wsend;
+  lemma_nq_skip_line_shift_exact mid_a mid_b "" f.qfw_wsend f.qfw_stopeol;
+  assert (Parser.NQuads.nq_skip_line (mid_a ^ mid_b)
+            (Parser.FastString.fs_byte_length (mid_a ^ mid_b)) (off + f.qfw_wsend)
+            (Parser.FastString.fs_byte_length mid_b - f.qfw_wsend)
+          == off + f.qfw_stopeol)
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_wf_shift_left_quadok (mid_a mid_b : string) (q : quad_ok_witness)
+  : Lemma (requires lw_wf mid_a mid_b "" (LW_QuadOk q))
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" (shift_line_witness (Parser.FastString.fs_byte_length mid_a) (LW_QuadOk q)))
+let lw_wf_shift_left_quadok mid_a mid_b q =
+  let off = Parser.FastString.fs_byte_length mid_a in
+  Parser.FastString.Axioms.fs_byte_length_concat mid_a mid_b;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_right mid_b;
+  empty_string_concat_left (mid_a ^ mid_b);
+  empty_string_concat_right (mid_a ^ mid_b);
+  assert ("" ^ ((mid_a ^ mid_b) ^ "") == mid_a ^ mid_b);
+  Parser.NTriples.Locality.lemma_pws_shift mid_a mid_b "" q.qow_entry q.qow_entry;
+  assert (Parser.NTriples.pws (mid_a ^ mid_b) (off + q.qow_entry) == Parser.Combinators.ParseOk () (off + q.qow_entry));
+  assert (Parser.NTriples.parse_subject (mid_a ^ mid_b) (off + q.qow_entry)
+          == Parser.Combinators.ParseOk q.qow_subj (off + q.qow_pos2));
+  Parser.NTriples.Locality.lemma_pws_shift mid_a mid_b "" q.qow_pos2 q.qow_pos3;
+  assert (Parser.NTriples.pws (mid_a ^ mid_b) (off + q.qow_pos2) == Parser.Combinators.ParseOk () (off + q.qow_pos3));
+  assert (Parser.NTriples.parse_iri (mid_a ^ mid_b) (off + q.qow_pos3)
+          == Parser.Combinators.ParseOk q.qow_pred (off + q.qow_pos4));
+  Parser.NTriples.Locality.lemma_pws_shift mid_a mid_b "" q.qow_pos4 q.qow_pos5;
+  assert (Parser.NTriples.pws (mid_a ^ mid_b) (off + q.qow_pos4) == Parser.Combinators.ParseOk () (off + q.qow_pos5));
+  assert (Parser.NTriples.parse_object (mid_a ^ mid_b) (off + q.qow_pos5)
+          == Parser.Combinators.ParseOk q.qow_obj (off + q.qow_pos6));
+  assert (Parser.NQuads.parse_opt_graph_label (mid_a ^ mid_b) (off + q.qow_pos6)
+          == Parser.Combinators.ParseOk q.qow_graph (off + q.qow_pos7));
+  lemma_byte_index_at_middle mid_a mid_b "" q.qow_pos8;
+  Parser.NTriples.Locality.lemma_pws_shift mid_a mid_b "" q.qow_pos7 q.qow_pos8;
+  Parser.NTriples.Locality.lemma_pws_shift mid_a mid_b "" (q.qow_pos8 + 1) q.qow_wsend2;
+  lemma_byte_index_at_middle mid_a mid_b "" q.qow_wsend2;
+  Parser.NTriples.Locality.lemma_skip_eol_shift mid_a mid_b "" q.qow_wsend2;
+  let q' = { q with
+    qow_entry = off + q.qow_entry; qow_pos2 = off + q.qow_pos2; qow_pos3 = off + q.qow_pos3;
+    qow_pos4 = off + q.qow_pos4; qow_pos5 = off + q.qow_pos5; qow_pos6 = off + q.qow_pos6;
+    qow_pos7 = off + q.qow_pos7; qow_pos8 = off + q.qow_pos8;
+    qow_wsend2 = off + q.qow_wsend2; qow_eolend2 = off + q.qow_eolend2 } in
+  assert (quad_ok_line_wf (mid_a ^ mid_b) q')
+#pop-options
+
+val lw_wf_shift_left (mid_a mid_b : string) (w : line_witness)
+  : Lemma (requires lw_wf mid_a mid_b "" w)
+          (ensures  lw_wf "" (mid_a ^ mid_b) "" (shift_line_witness (Parser.FastString.fs_byte_length mid_a) w))
+let lw_wf_shift_left mid_a mid_b w =
+  match w with
+  | LW_Blank b -> lw_wf_shift_left_blank mid_a mid_b b
+  | LW_Comment c -> lw_wf_shift_left_comment mid_a mid_b c
+  | LW_QuadFail f -> lw_wf_shift_left_quadfail mid_a mid_b f
+  | LW_QuadOk q -> lw_wf_shift_left_quadok mid_a mid_b q
+
+(* The dataset step a shifted quad-success witness performs on `mid_a^
+   mid_b` matches what the ORIGINAL witness performs on `mid_b` alone --
+   `Locality.lemma_parse_nquad_shift_generic` gives `parse_nquad`'s parsed
+   VALUE agreement directly (the blank/comment/quad-fail kinds never touch
+   the dataset at all, so their cases are trivial). *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_ds_step_shift (mid_a mid_b : string) (w : line_witness) (ds : RDF.Graph.Executable.rdf_dataset)
+  : Lemma (requires lw_wf mid_a mid_b "" w)
+          (ensures
+            lw_ds_step (mid_a ^ mid_b) (shift_line_witness (Parser.FastString.fs_byte_length mid_a) w) ds
+            == lw_ds_step mid_b w ds)
+let lw_ds_step_shift mid_a mid_b w ds =
+  match w with
+  | LW_Blank _ -> () | LW_Comment _ -> () | LW_QuadFail _ -> ()
+  | LW_QuadOk q ->
+    empty_string_concat_right mid_b;
+    Parser.NTriples.Locality.lemma_parse_nquad_shift_generic mid_a mid_b "" q.qow_entry q.qow_entry
+      q.qow_subj q.qow_pos2 q.qow_pos3 q.qow_pred q.qow_pos4 q.qow_pos5 q.qow_obj q.qow_pos6
+      q.qow_graph q.qow_pos7 q.qow_pos8
+#pop-options
+
+(* Chain-level lifts of the three per-witness facts above, by ordinary
+   structural induction on `ws` -- `chain_wf`/`chain_end`'s own recursion
+   threads `lw_end w` (or its shifted counterpart) forward automatically,
+   so each step is exactly one per-witness lemma call plus the recursive
+   call on the tail. *)
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val chain_wf_extend_right (mid_a mid_b : string) (start_pos : nat) (ws : list line_witness)
+  : Lemma (requires chain_wf "" mid_a mid_b start_pos ws)
+          (ensures chain_wf "" (mid_a ^ mid_b) "" start_pos ws)
+          (decreases ws)
+let rec chain_wf_extend_right mid_a mid_b start_pos ws =
+  match ws with
+  | [] -> ()
+  | w :: rest ->
+    lw_wf_extend_right mid_a mid_b w;
+    chain_wf_extend_right mid_a mid_b (lw_end w) rest
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val chain_end_shift (off start_pos : nat) (ws : list line_witness)
+  : Lemma (ensures chain_end (off + start_pos) (List.Tot.map (shift_line_witness off) ws)
+                    == off + chain_end start_pos ws)
+          (decreases ws)
+let rec chain_end_shift off start_pos ws =
+  match ws with
+  | [] -> ()
+  | w :: rest ->
+    lw_end_shift off w;
+    chain_end_shift off (lw_end w) rest
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val chain_wf_shift_left (mid_a mid_b : string) (start_pos : nat) (ws : list line_witness)
+  : Lemma (requires chain_wf mid_a mid_b "" start_pos ws)
+          (ensures chain_wf "" (mid_a ^ mid_b) ""
+                     (Parser.FastString.fs_byte_length mid_a + start_pos)
+                     (List.Tot.map (shift_line_witness (Parser.FastString.fs_byte_length mid_a)) ws))
+          (decreases ws)
+let rec chain_wf_shift_left mid_a mid_b start_pos ws =
+  match ws with
+  | [] -> ()
+  | w :: rest ->
+    lw_wf_shift_left mid_a mid_b w;
+    lw_pos_shift (Parser.FastString.fs_byte_length mid_a) w;
+    lw_end_shift (Parser.FastString.fs_byte_length mid_a) w;
+    chain_wf_shift_left mid_a mid_b (lw_end w) rest
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val chain_ds_fold_shift
+    (mid_a mid_b : string) (start_pos : nat) (ws : list line_witness) (ds : RDF.Graph.Executable.rdf_dataset)
+  : Lemma (requires chain_wf mid_a mid_b "" start_pos ws)
+          (ensures
+            chain_ds_fold (mid_a ^ mid_b) (List.Tot.map (shift_line_witness (Parser.FastString.fs_byte_length mid_a)) ws) ds
+            == chain_ds_fold mid_b ws ds)
+          (decreases ws)
+let rec chain_ds_fold_shift mid_a mid_b start_pos ws ds =
+  match ws with
+  | [] -> ()
+  | w :: rest ->
+    lw_ds_step_shift mid_a mid_b w ds;
+    chain_ds_fold_shift mid_a mid_b (lw_end w) rest (lw_ds_step mid_b w ds)
+#pop-options
+
+(* Pure list-append fact for `chain_wf`/`chain_end`/`chain_ds_fold` -- no
+   shift/embedding reasoning at all, mirrors `List.Tot.append_assoc`-style
+   structural induction over `chain_wf`'s own recursive definition (the
+   FINDING's own "estimated mechanical" piece, in its purest form). *)
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val chain_wf_append (prefix mid suffix : string) (start_pos : nat) (ws1 ws2 : list line_witness)
+  : Lemma
+      (requires chain_wf prefix mid suffix start_pos ws1 /\
+                chain_wf prefix mid suffix (chain_end start_pos ws1) ws2)
+      (ensures chain_wf prefix mid suffix start_pos (ws1 @ ws2) /\
+               chain_end start_pos (ws1 @ ws2) == chain_end (chain_end start_pos ws1) ws2)
+      (decreases ws1)
+let rec chain_wf_append prefix mid suffix start_pos ws1 ws2 =
+  match ws1 with
+  | [] -> ()
+  | w :: rest -> chain_wf_append prefix mid suffix (lw_end w) rest ws2
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val chain_ds_fold_append (mid : string) (ws1 ws2 : list line_witness) (ds : RDF.Graph.Executable.rdf_dataset)
+  : Lemma (ensures chain_ds_fold mid (ws1 @ ws2) ds == chain_ds_fold mid ws2 (chain_ds_fold mid ws1 ds))
+          (decreases ws1)
+let rec chain_ds_fold_append mid ws1 ws2 ds =
+  match ws1 with
+  | [] -> ()
+  | w :: rest -> chain_ds_fold_append mid rest ws2 (lw_ds_step mid w ds)
+#pop-options
+
+(* THE chain-concatenation lemma: `ws_a @ (shift ws_b)` covers `mid_a ^
+   mid_b`, standalone, given `ws_a` covers `mid_a` (embedded ahead of
+   `mid_b`) and `ws_b` covers `mid_b` (embedded right after `mid_a`) --
+   exactly the shape the THIRD landing's FINDING asked for. Composes the
+   six lemmas immediately above; no new induction here. *)
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val chain_append (mid_a mid_b : string) (ws_a ws_b : list line_witness)
+  : Lemma
+      (requires
+        chain_wf "" mid_a mid_b 0 ws_a /\
+        chain_end 0 ws_a == Parser.FastString.fs_byte_length mid_a /\
+        chain_wf mid_a mid_b "" 0 ws_b /\
+        chain_end 0 ws_b == Parser.FastString.fs_byte_length mid_b)
+      (ensures
+        (let off = Parser.FastString.fs_byte_length mid_a in
+         let ws_ab = ws_a @ List.Tot.map (shift_line_witness off) ws_b in
+         chain_wf "" (mid_a ^ mid_b) "" 0 ws_ab /\
+         chain_end 0 ws_ab == off + Parser.FastString.fs_byte_length mid_b))
+let chain_append mid_a mid_b ws_a ws_b =
+  let off = Parser.FastString.fs_byte_length mid_a in
+  chain_wf_extend_right mid_a mid_b 0 ws_a;
+  chain_wf_shift_left mid_a mid_b 0 ws_b;
+  chain_end_shift off 0 ws_b;
+  chain_wf_append "" (mid_a ^ mid_b) "" 0 ws_a (List.Tot.map (shift_line_witness off) ws_b)
+#pop-options
+
+(* ============================================================================
+ * FINDING (guard-depth-3 stop, SIXTH landing, 2026-08-11): the dataset-fold
+ * companion to `chain_append` -- "folding the appended chain from any `ds`
+ * matches folding `ws_a` on `mid_a` then `ws_b` on `mid_b`" -- is NOT
+ * closed. It needs one more per-witness fact beyond everything above:
+ * `lw_ds_step (mid_a^mid_b) w ds == lw_ds_step mid_a w ds` for a quad-
+ * success witness `w` already known well-formed EMBEDDED ahead of `mid_b`
+ * (growing `mid` to the RIGHT does not move `w`'s position, so this needs
+ * no position bookkeeping -- ONLY `Locality.lemma_parse_nquad_shift_
+ * generic`'s parsed-VALUE agreement, already available as a hypothesis-
+ * satisfying call). Three attempts, each confirmed a genuine multi-minute
+ * z3 search (not a quick rejection) via `ps` on the live `z3-4.13.3`
+ * child, all still running past 3m20s when killed:
+ *   1. Plain composition (`lemma_parse_nquad_shift_generic` call, no
+ *      further help) -- "Could not prove post-condition", generic span.
+ *   2. Same, plus an explicit `assert` restating the match-shaped
+ *      conclusion inline -- still running past 3m20s, killed.
+ *   3. Same content, restructured as a PROOF-LEVEL match on `(parse_nquad
+ *      mid_a q.qow_entry, parse_nquad (mid_a^mid_b) q.qow_entry)` (letting
+ *      F*'s tactic engine case-split instead of asking Z3 to case-split
+ *      inside one assert) -- still running past 3m20s, killed.
+ *
+ * DIAGNOSIS: `lw_ds_step`'s OWN body already contains a `match parse_nquad
+ * mid q.qow_entry with ParseOk (t,g) _ -> ... | _ -> ds`, and `parse_nquad`
+ * is a large recursive-descent function (`Parser.NQuads.fst`) with no
+ * `unfold` annotation -- asking Z3 to unfold `lw_ds_step` TWICE (once per
+ * side of the goal equality, at TWO different `mid` arguments) and connect
+ * each unfolding to `lemma_parse_nquad_shift_generic`'s own match-shaped
+ * conclusion appears to multiply the case-split cost far beyond what
+ * `chain_wf_extend_right`'s analogous (but WF-predicate-only, no
+ * `parse_nquad` re-matching) proof needed. Every OTHER `lw_wf_*`/`chain_*`
+ * lemma in this section stays under 5s per the same `--admit_except`
+ * isolation test that caught this one running long -- this is the FIRST
+ * (and, per this landing's testing, ONLY) piece in the whole `chain_
+ * append` cluster to hit the guard.
+ *
+ * THE FIX A FUTURE SESSION SHOULD TRY FIRST: state `lw_ds_step`'s
+ * `parse_nquad`-match OUTCOME as an explicit lemma of its own
+ * (`lw_ds_step_via_parse_nquad : Lemma (lw_ds_step mid (LW_QuadOk q) ds ==
+ * (match parse_nquad mid q.qow_entry with ParseOk (t,g) _ ->
+ * dataset_add_quad ds t g | _ -> ds))`, trivial by `()` since it is
+ * `lw_ds_step`'s own definition) and apply it EXPLICITLY on both sides
+ * BEFORE calling `lemma_parse_nquad_shift_generic`, so Z3 is asked to
+ * connect two ALREADY-UNFOLDED match expressions rather than unfold
+ * `lw_ds_step` itself under the weight of the rest of the query -- this
+ * mirrors the fix that closed `lw_wf_extend_right_quadok`/`lw_wf_shift_
+ * left_quadok` above (explicit intermediate `assert`s per field, rather
+ * than one large composed goal).
+ *
+ * WHAT REMAINS VERIFIED (this landing): `chain_append` (position/WF
+ * conclusion only) is COMPLETE and verifies clean -- a caller who already
+ * has a witness chain covering `mid_a` (embedded ahead of `mid_b`) and one
+ * covering `mid_b` (embedded after `mid_a`) can combine them into one
+ * chain covering `mid_a ^ mid_b`, matching the THIRD landing's FINDING
+ * exactly. Only the DATASET-EQUALITY companion fact (useful for actually
+ * eliminating `stream_fold_wf`'s separately-supplied `ws_t` parameter, see
+ * that section's own banner) is what stops here.
+ * ============================================================================ *)
