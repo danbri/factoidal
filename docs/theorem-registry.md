@@ -1218,3 +1218,23 @@ order is the correct target. FINDING: the both-fully-generic theorem
 (any consumer x any chunks) is mechanical over the witness-chain kit
 but a ~670-line pass — separate landing. Verify clean, no admits, no
 --lax, no new assume vals.
+
+**Spec codec: slice law + parked identity RESOLVED (2026-08-11,
+branch `slice-decode`)**: `Parser.FastString.Spec.fst` Section 7 —
+`utf8_decode_all_concatMap_identity` (single-decoder round trip at
+the codepoint-list level, NO string conversions in the induction —
+sidesteps the recursion wall by construction) and its string-level
+corollary `utf8_decode_all_utf8_bytes_identity`, which RESOLVES the
+file's own item-6 "ATTEMPTED, PARKED" banner (banner kept with an
+UPDATE paragraph, rule #14). THE SLICE LAW
+(`utf8_decode_all_slice_by_charcount`): decoding a char-count-aligned
+byte slice yields exactly the char segment. Stated in char-count form
+(byte offsets = byte-lengths of encoded prefixes) — the
+is_cp_boundary converse (arbitrary boundary position == some
+char-count prefix length) is documented as the next rung, not
+attempted, not needed for the targets. In RoundTripLemmas:
+`fs_byte_sub_by_charcount` DISCHARGES fs_byte_sub_eq's pending
+off-domain note by direct composition. Every lemma first-attempt
+(technique pre-confirmed by Axioms.fst's private Fact-8 proof). All
+six consumer modules re-verified clean. No admits, no --lax, no new
+assume vals.
