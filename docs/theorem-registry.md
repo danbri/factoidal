@@ -1342,3 +1342,22 @@ bare-IRI + subject-wrapped IRI round-trip lemmas
 (subject-predicate-object chaining to parse_triple) was NOT reached —
 remainder queued for a narrower re-dispatch. No admits, no --lax, no
 new assume vals.
+
+**#381 FIXED: XML normalization (2026-08-11, branch `xml-norm`)**:
+both XML 1.0 spec divergences closed in Parser.XML.fst as pre-passes —
+`normalize_line_endings` (§2.11, byte-level scan, safe because CR/LF
+are single-byte ASCII never appearing in UTF-8 continuations) at all
+three document entry points, and `normalize_attr_literal_ws` (§3.3.3)
+applied ONLY to raw literal runs, never to decoded char-ref output —
+the literal-vs-reference distinction (&#9; stays a tab; a literal tab
+becomes a space) holds by construction, confirmed by the control
+fixture staying byte-identical. Parser.XML + 11 dependents verify
+clean. Gates: both DIVERGES fixtures flipped to WORKS; xmlconf 1447
+pass, 0 fail, 1138 skip (of 2585) — identical to baseline; SPARQL
+631/0; RDF 1031/0 incl. rdf-xml 166/0. The RDF/XML proof program's
+normalization precondition is now MET. SIDE FINDING (likely the #367
+root cause): w3c_runner's rif_rules_path_for uses a hardcoded
+relative path with no repo-root fallback — running from
+ocaml-output/ instead of repo root produces EXACTLY 4 spurious
+RIF-entailment failures; from repo root, 631/0 and 70/0. Follow-up
+issue filed for the runner path resolution.
