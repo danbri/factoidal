@@ -181,3 +181,20 @@ let is_cp_boundary (bs : byte Prims.list) (p : Prims.nat) : Prims.bool=
      | FStar_Pervasives_Native.Some b ->
          Prims.op_Negation (is_continuation b)
      | FStar_Pervasives_Native.None -> true)
+let rec take_chars (cs : FStar_Char.char Prims.list) (n : Prims.nat) :
+  FStar_Char.char Prims.list=
+  match cs with
+  | [] -> []
+  | hd::tl ->
+      if n = Prims.int_zero
+      then []
+      else hd :: (take_chars tl (n - Prims.int_one))
+let rec drop_chars (cs : FStar_Char.char Prims.list) (n : Prims.nat) :
+  FStar_Char.char Prims.list=
+  match cs with
+  | [] -> []
+  | hd::tl ->
+      if n = Prims.int_zero then cs else drop_chars tl (n - Prims.int_one)
+let slice_chars (cs : FStar_Char.char Prims.list) (start : Prims.nat)
+  (len : Prims.nat) : FStar_Char.char Prims.list=
+  take_chars (drop_chars cs start) len

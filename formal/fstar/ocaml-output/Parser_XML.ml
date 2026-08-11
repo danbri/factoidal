@@ -607,6 +607,41 @@ let parse_reference (ents : dtd_entity_table) (input : Prims.string)
                            Parser_Combinators.ParseFail (msg, fpos)
                        | Parser_Combinators.ParseOk (decoded, uu___4) ->
                            Parser_Combinators.ParseOk (decoded, pos'))))))
+let rec normalize_attr_literal_ws_acc (input : Prims.string)
+  (pos : Prims.nat) (acc : Prims.string Prims.list) (fuel : Prims.nat) :
+  Prims.string=
+  if fuel = Prims.int_zero
+  then FStar_String.concat "" (FStar_List_Tot_Base.rev acc)
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if pos >= len
+     then FStar_String.concat "" (FStar_List_Tot_Base.rev acc)
+     else
+       (let ch = Parser_FastString.fs_byte_index input pos in
+        if ((ch = 9) || (ch = 10)) || (ch = 13)
+        then
+          normalize_attr_literal_ws_acc input (pos + Prims.int_one) (" " ::
+            acc) (fuel - Prims.int_one)
+        else
+          (match Parser_Combinators.ptake_while_pos
+                   (fun c -> ((c <> 9) && (c <> 10)) && (c <> 13)) input pos
+           with
+           | Parser_Combinators.ParseOk (s, pos') ->
+               if (Parser_FastString.fs_byte_length s) > Prims.int_zero
+               then
+                 normalize_attr_literal_ws_acc input pos' (s :: acc)
+                   (fuel - Prims.int_one)
+               else
+                 normalize_attr_literal_ws_acc input (pos + Prims.int_one)
+                   ((FStar_String.string_of_char ch) :: acc)
+                   (fuel - Prims.int_one)
+           | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+               normalize_attr_literal_ws_acc input (pos + Prims.int_one)
+                 ((FStar_String.string_of_char ch) :: acc)
+                 (fuel - Prims.int_one))))
+let normalize_attr_literal_ws (s : Prims.string) : Prims.string=
+  let len = Parser_FastString.fs_byte_length s in
+  normalize_attr_literal_ws_acc s Prims.int_zero [] (len + Prims.int_one)
 let rec parse_attr_value_body (ents : dtd_entity_table)
   (qch : FStar_Char.char) (input : Prims.string) (pos : Prims.nat)
   (acc : Prims.string Prims.list) (fuel : Prims.nat) :
@@ -653,12 +688,14 @@ let rec parse_attr_value_body (ents : dtd_entity_table)
                         Parser_Combinators.ParseFail
                           ("invalid character in attribute value", pos)
                       else
-                        parse_attr_value_body ents qch input pos' (s :: acc)
+                        parse_attr_value_body ents qch input pos'
+                          ((normalize_attr_literal_ws s) :: acc)
                           (fuel - Prims.int_one))
                    else
                      parse_attr_value_body ents qch input
                        (pos + Prims.int_one)
-                       ((FStar_String.string_of_char ch) :: acc)
+                       ((normalize_attr_literal_ws
+                           (FStar_String.string_of_char ch)) :: acc)
                        (fuel - Prims.int_one)
                | Parser_Combinators.ParseFail (msg, fpos) ->
                    Parser_Combinators.ParseFail (msg, fpos))))
@@ -1949,8 +1986,51 @@ let skip_utf8_bom (input : Prims.string) : Prims.nat=
          (Prims.of_int (0xBF)))
   then (Prims.of_int (3))
   else Prims.int_zero
-let parse_xml_document (input : Prims.string) :
+let rec normalize_line_endings_acc (input : Prims.string) (pos : Prims.nat)
+  (acc : Prims.string Prims.list) (fuel : Prims.nat) : Prims.string=
+  if fuel = Prims.int_zero
+  then FStar_String.concat "" (FStar_List_Tot_Base.rev acc)
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if pos >= len
+     then FStar_String.concat "" (FStar_List_Tot_Base.rev acc)
+     else
+       (let ch = Parser_FastString.fs_byte_index input pos in
+        if ch = 13
+        then
+          (if
+             ((pos + Prims.int_one) < len) &&
+               ((Parser_FastString.fs_byte_index input (pos + Prims.int_one))
+                  = 10)
+           then
+             normalize_line_endings_acc input (pos + (Prims.of_int (2)))
+               ("\n" :: acc) (fuel - Prims.int_one)
+           else
+             normalize_line_endings_acc input (pos + Prims.int_one) ("\n" ::
+               acc) (fuel - Prims.int_one))
+        else
+          (match Parser_Combinators.ptake_while_pos (fun c -> c <> 13) input
+                   pos
+           with
+           | Parser_Combinators.ParseOk (s, pos') ->
+               if (Parser_FastString.fs_byte_length s) > Prims.int_zero
+               then
+                 normalize_line_endings_acc input pos' (s :: acc)
+                   (fuel - Prims.int_one)
+               else
+                 normalize_line_endings_acc input (pos + Prims.int_one)
+                   ((FStar_String.string_of_char ch) :: acc)
+                   (fuel - Prims.int_one)
+           | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+               normalize_line_endings_acc input (pos + Prims.int_one)
+                 ((FStar_String.string_of_char ch) :: acc)
+                 (fuel - Prims.int_one))))
+let normalize_line_endings (input : Prims.string) : Prims.string=
+  let len = Parser_FastString.fs_byte_length input in
+  normalize_line_endings_acc input Prims.int_zero [] (len + Prims.int_one)
+let parse_xml_document (input0 : Prims.string) :
   xml_node FStar_Pervasives_Native.option=
+  let input = normalize_line_endings input0 in
   let len = Parser_FastString.fs_byte_length input in
   let fuel = len + Prims.int_one in
   let bom_pos = skip_utf8_bom input in
@@ -1983,8 +2063,9 @@ let parse_xml_document (input : Prims.string) :
                 FStar_Pervasives_Native.None))
   | Parser_Combinators.ParseFail (uu___, uu___1) ->
       FStar_Pervasives_Native.None
-let parse_xml_document_children (input : Prims.string) :
+let parse_xml_document_children (input0 : Prims.string) :
   xml_node Prims.list FStar_Pervasives_Native.option=
+  let input = normalize_line_endings input0 in
   let len = Parser_FastString.fs_byte_length input in
   let fuel = len + Prims.int_one in
   let bom_pos = skip_utf8_bom input in
@@ -2021,9 +2102,10 @@ let parse_xml_document_children (input : Prims.string) :
                 FStar_Pervasives_Native.None))
   | Parser_Combinators.ParseFail (uu___, uu___1) ->
       FStar_Pervasives_Native.None
-let parse_xml_document_children_with_ids (input : Prims.string) :
+let parse_xml_document_children_with_ids (input0 : Prims.string) :
   (xml_node Prims.list * (Prims.string * Prims.string) Prims.list)
     FStar_Pervasives_Native.option=
+  let input = normalize_line_endings input0 in
   let len = Parser_FastString.fs_byte_length input in
   let fuel = len + Prims.int_one in
   let bom_pos = skip_utf8_bom input in
