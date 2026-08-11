@@ -1859,3 +1859,89 @@ let theorem_stream_eq_batch_single_chunk_general c ws_complete ws_carry =
     ws_complete ws_carry;
   split_complete_lines_reconstruct c
 #pop-options
+
+(* ============================================================================
+ * FINDING (guard-depth-3 stop, THIRD landing, 2026-08-11): `theorem_
+ * stream_eq_batch`, the FULL multi-chunk statement (`stream_parse chunks
+ * == batch_parse (concat_all chunks)` for an ARBITRARY `list string`), is
+ * NOT proved in this landing. Not attempted directly -- diagnosed up
+ * front, per the guard-depth discipline, as needing one further concrete
+ * piece beyond everything landed above, not a re-run of any wall already
+ * hit.
+ *
+ * WHAT THIS LANDING DID CLOSE, so the next session does not re-derive it:
+ * every piece the FULL theorem's own induction would consume is now
+ * proved and available --
+ *   - `lemma_parse_nquads_acc_restart` (mixed-kind witness chain,
+ *     CONDITIONED form of the FINDING's original named target);
+ *   - `lemma_parse_nquads_acc_concat_line_general` (the split/monoid law,
+ *     for an ARBITRARY interior split, conditioned on witness chains for
+ *     BOTH halves, in BOTH standalone and embedded form);
+ *   - `theorem_stream_eq_batch_single_chunk_general` (`stream_parse [c]
+ *     == batch_parse c` for ANY `c`, not just the two boundary shapes).
+ *
+ * WHAT THE FULL THEOREM STILL NEEDS, named precisely (not "harder
+ * induction" -- the SPECIFIC missing piece): an induction over `stream_
+ * parse_acc`'s own fold (`chunks : list string`), carrying the INVARIANT
+ * "the batch parse of every chunk consumed so far equals the streaming
+ * state reached so far" --
+ *
+ *   parse_nquads_acc (concat_all chunks_so_far) 0 empty_dataset
+ *     (fs_byte_length (concat_all chunks_so_far) + 1)
+ *   == parse_nquads_acc st.carry 0 ds (fs_byte_length st.carry + 1)
+ *
+ * The INDUCTIVE STEP (folding in one more chunk `c`) needs `lemma_parse_
+ * nquads_acc_concat_line_general (concat_all chunks_so_far) c ds ws1 ws2`
+ * -- ALREADY PROVED, callable as-is -- but callable only GIVEN witness
+ * chains `ws1`/`ws2` for THAT split. `concat_all chunks_so_far` grows with
+ * every step and is NOT, in general, `split_complete_lines`-aligned (it is
+ * "every complete line processed so far" PLUS the still-pending `st.
+ * carry`, per the streaming invariant `split_complete_lines_extend_carry`/
+ * `_ends_in_newline` already establish) -- so the missing piece is NOT a
+ * new scanning/embedding argument (everything the induction's BODY needs
+ * already exists), it is CHAIN BOOKKEEPING across the fold: the induction
+ * must carry witness chains AS PART OF ITS OWN INVARIANT (extending it
+ * from a bare dataset-equality to "... AND a witness chain covering
+ * `concat_all chunks_so_far` exists, in both standalone and embedded-
+ * ahead-of-the-next-chunk form"), plus ONE new lemma neither this landing
+ * nor any prior one needed: CHAIN CONCATENATION -- "if `ws1` covers `A`
+ * (`chain_end 0 ws1 == fs_byte_length A`) and `ws2` covers `B`, then `ws1
+ * @ ws2` covers `A ^ B`" (a short structural-induction lemma on `ws1`
+ * alone, mirroring `List.Tot.append_assoc`-style reasoning over
+ * `chain_wf`/`chain_end`'s own recursive definitions -- estimated
+ * mechanical, NOT diagnosed as hitting any prior wall, simply not built
+ * in THIS landing's time budget).
+ *
+ * WHY NOT ATTEMPTED HERE, honestly: the induction, once the chain-
+ * concatenation lemma exists, still needs EACH step's witness chains for
+ * `c` (the newly-arriving chunk's `complete`/`carry` split) to be SUPPLIED
+ * by the caller -- meaning the FULL theorem's honest final form is
+ * conditioned on "a witness-chain LIST, one entry per chunk, each
+ * covering that chunk's own `split_complete_lines` output" -- a THIRD
+ * list-of-lists structure threaded through the fold (chunks x their own
+ * witness chains), on top of the chain-concatenation lemma. This is a
+ * real, estimably-short next increment (no new wall diagnosed), but is a
+ * distinct scoped piece from everything landed in this session and was
+ * not started here -- assessed as its own guard-depth-3 unit, not a
+ * same-session extension, per the discipline that produced every OTHER
+ * clean landing in this file today.
+ *
+ * NARROWEST VERIFIED CHECKPOINT, this (third) landing: `lemma_parse_
+ * nquads_acc_blank_step_shift` / `_comment_step_shift` / `_quad_fail_
+ * step_shift` / `_quad_ok_step_shift` (Kinds 1-4), `lemma_parse_nquads_
+ * acc_restart` (mixed-kind chain), `lemma_parse_nquads_acc_full_via_
+ * chain`, `lemma_parse_nquads_acc_concat_line_general`, `theorem_stream_
+ * eq_batch_single_chunk_general` -- all verify clean under `make verify-
+ * RDF.NQuads.Streaming` (whole module, dependencies included), no admits,
+ * no `--lax`, no new `assume val`, every individual `fstar.exe` run under
+ * 25 seconds wall-clock (well inside the "kill any query over 3 minutes"
+ * discipline this task set -- z3's own per-query time was never the
+ * bottleneck once the hypothesis shape was witness-parameterised, exactly
+ * as the module's SECOND-landing FINDING predicted it would be).
+ *
+ * NEXT NARROWEST UNPROVED STATEMENT: the chain-concatenation lemma above,
+ * then the multi-chunk fold induction carrying it plus a per-chunk
+ * witness-chain-list invariant. Not started here; no wall diagnosed
+ * against it -- purely a scoping decision under the guard-depth-3 /
+ * session-budget discipline.
+ * ============================================================================ *)
