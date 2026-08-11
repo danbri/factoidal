@@ -979,3 +979,29 @@ blank-node locality (needs a new fs_cp_at fact, character level),
 scanners, whole-line `parse_nquad` shift,
 `parse_nquads_acc_concat_line`, `theorem_stream_eq_batch` single-chunk
 then general.
+
+**Parser locality stage 3, items 1-5 (2026-08-11, branch
+`locality-stage3`)**: `Parser.NTriples.Locality.fst` grown to ~2100
+lines, all verified. Item 1 blank-node: `utf8_decode_at_join` +
+`lemma_cp_at_at_middle` — `fs_cp_at` agrees under embedding given only
+that the suffix's first byte is not a UTF-8 continuation byte (weaker
+and more useful than byte-headroom; automatically true at every real
+line-streaming call site), composed into
+`lemma_scan_bnode_body_cp_shift_headroom`. Item 2 literal:
+`lemma_parse_string_body_shift` (equal-accumulator),
+fastpath/escapepath split lemmas, lang-tag + datatype shifts; FINDING —
+the top-level `parse_literal` wrapper has a genuine non-local edge
+case (mid ending exactly at the literal's end changes branch dispatch
+under embedding). Item 3 graph labels: IRI branch done. Item 4:
+`lemma_skip_eol_shift` done; NEW OBSTACLE CLASS —
+`skip_comment`/`skip_line` wrap their scan loops in local unexported
+`let rec`s, which no external lemma can name (confirmed against F*
+name resolution, not inferred from failures); fix is the repo's
+established source-level lift (task #36 pattern: name inner recursions
+top-level), an extracted-code change out of scope for a proof-only
+landing. Item 5: `lemma_parse_nquad_iri_nograph_shift` — whole-line
+shift for all-IRI, no-graph-label, success case, first attempt. Items
+6-8 (`parse_nquads_acc_concat_line`, `theorem_stream_eq_batch`)
+correctly gated on: the skip_comment/skip_line lift + the
+parse_bnode/parse_literal wrapper chaining — five NAMED remaining
+pieces, third independent confirmation this is separate-landing work.
