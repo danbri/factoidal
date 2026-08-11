@@ -939,3 +939,29 @@ stale remote-tracking ref (`git update-ref -d refs/remotes/origin/
 <branch>` — it breaks `--force-with-lease` and confuses status), then
 push. With that sequence the same push that hung for 570 seconds
 completes in under five.
+
+## Hazard #24: subagent transcript mtime is not a liveness signal (2026-08-11)
+
+The orchestrator watched three freshly dispatched subagents for ~4
+hours because their transcript files' mtimes kept updating to "now"
+every check. All three had in fact died during setup at 09:01 — the
+LAST ENTRY inside each transcript was 4 hours old while the file
+mtime stayed current (the harness touches the files). Cost: ~4 hours
+of wall clock with an empty pipeline, across three heartbeat cycles
+that each "confirmed" liveness from mtime.
+
+Rules:
+1. NEVER conclude a subagent is alive from its transcript file's
+   mtime. Parse the transcript and read the LAST ENTRY's `timestamp`
+   field (`tail -1 ... | python3 -c 'json.loads(...)["timestamp"]'`).
+2. A dispatched proof/build agent that has pushed NOTHING to its
+   branch after ~60-90 minutes deserves a last-entry-timestamp check
+   even if a coarser signal says it is active.
+3. Dispatch briefs must order agents to push a first commit EARLY
+   (setup done, or first sub-result) — a dead agent with zero commits
+   is indistinguishable from a slow one until you parse its
+   transcript.
+4. Cap cache-restore/setup time in briefs (~10 min) — all three
+   deaths happened during .checked-cache copying; a cold verify of
+   one target module beats an expensive copy that a container event
+   can kill.
