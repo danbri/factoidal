@@ -236,6 +236,15 @@ let fs_byte_index (s: string) (i: nat) : char =
   // b is a byte, so 0 <= b <= 255 < 0xD800; safe for char_of_int.
   if b < 0xD800 then char_of_int b else char_of_int 0
 
+// Bridging lemma for fs_byte_index -- see Parser.FastString.fsti for the
+// full rationale. `fs_byte_at s i`'s own refinement type (`n:nat{n < 256}`)
+// makes the `b < 0xD800` branch above always-taken, so the `else` arm is
+// dead and this is a trivial unfolding proof, same shape as the six
+// `fs_*_eq` lemmas just above.
+let fs_byte_index_eq (s:string) (i:nat)
+  : Lemma (fs_byte_index s i == char_of_int (fs_byte_at s i))
+  = ()
+
 // Convenience: char-returning version for call sites that don't want to
 // deal with nat. Matches the String.index surface. NOT in Parser.FastString
 // .fsti -- zero external consumers (grepped before this migration), so it
