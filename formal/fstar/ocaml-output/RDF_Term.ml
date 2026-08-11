@@ -297,6 +297,10 @@ let literal_eq (l1 : literal) (l2 : literal) : Prims.bool=
      else l1.lexical_form = l2.lexical_form) && (l1.datatype = l2.datatype))
      && (lang_tag_option_eq l1.lang_tag l2.lang_tag))
     && (l1.direction = l2.direction)
+let literal_term_eq (l1 : literal) (l2 : literal) : Prims.bool=
+  (((l1.lexical_form = l2.lexical_form) && (l1.datatype = l2.datatype)) &&
+     (l1.lang_tag = l2.lang_tag))
+    && (l1.direction = l2.direction)
 let join_canon_literal (l : literal) : literal=
   {
     lexical_form =

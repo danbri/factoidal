@@ -453,6 +453,39 @@ let literal_eq (l1 l2 : literal) : bool =
   lang_tag_option_eq l1.lang_tag l2.lang_tag &&
   l1.direction = l2.direction
 
+/// STRICT literal TERM equality — RDF 1.1 Concepts §3.3 / RDF 1.2
+/// Concepts §3.3: "Two literals are term-equal (the same RDF literal)
+/// if and only if the two lexical forms, the two datatype IRIs, and
+/// the two language tags (if any) compare equal, character by
+/// character." Every field compares exactly: no language-tag case
+/// folding (that is RDF 1.1's PERMITTED lowercasing of the value
+/// space, not a term-equality rule) and no rdf:XMLLiteral
+/// exclusive-canonical-XML comparison (an RDF-interpretation /
+/// D-entailment value condition — RDF 2004 §3.1 places it on
+/// *rdf*-interpretations, and RDF 1.1 Concepts §5.3 marks
+/// rdf:XMLLiteral non-normative). `literal_eq` above is deliberately
+/// COARSER than this for that reason; do not substitute one for the
+/// other. Issue #324 (SE-1): simple entailment (RDF 1.1 Semantics §5)
+/// matches literals by TERM equality, so the simple-entailment engine
+/// must use this predicate, not `literal_eq`. Reflexive by
+/// construction (every conjunct is `f x = f x`).
+let literal_term_eq (l1 l2 : literal) : bool =
+  l1.lexical_form = l2.lexical_form &&
+  l1.datatype = l2.datatype &&
+  l1.lang_tag = l2.lang_tag &&
+  l1.direction = l2.direction
+
+let lemma_literal_term_eq_refl (l : literal) : Lemma (literal_term_eq l l == true) = ()
+
+/// The strict test decides literal term IDENTITY unconditionally — no
+/// `lit_exact` side condition needed, unlike `literal_eq`.
+let lemma_literal_term_eq_identity (l1 l2 : literal)
+  : Lemma (requires literal_term_eq l1 l2 == true) (ensures l1 == l2) =
+  assert (l1.lexical_form == l2.lexical_form);
+  assert (l1.datatype == l2.datatype);
+  assert (l1.lang_tag == l2.lang_tag);
+  assert (l1.direction == l2.direction)
+
 /// ---- #337 (SR-2): the canonical form the JOIN KEY serialises -------------
 ///
 /// A hash join is semantics-preserving only when key equality is NO

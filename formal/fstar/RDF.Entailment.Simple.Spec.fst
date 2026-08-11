@@ -233,6 +233,34 @@ let graph_exact (g : list triple) : prop =
   forall (t : triple). memP t g ==> triple_exact t
 
 // ===================================================================
+// Ground fragment -- no blank node anywhere (subject, object, or any
+// depth of a nested triple term). Used by
+// RDF.Entailment.Simple.Refinement's UNCONDITIONAL ground-soundness
+// corollary (issue #324 / SE-1): a bnode-free pattern triple never
+// drives the shipping search's blank-node REBIND check (the one place
+// `rdf_term_eq` -- not the `leq` parameter -- still routes literal
+// comparison through the coarser `literal_eq`, see that module's
+// banner), so soundness for a ground `b` needs no side condition on
+// literal content in either graph, only on `leq` itself.
+// ===================================================================
+let subj_ground (s : subject) : bool =
+  match s with
+  | S_IRI _   -> true
+  | S_BNode _ -> false
+
+let rec term_ground (t : rdf_term) : Tot bool (decreases t) =
+  match t with
+  | T_IRI _     -> true
+  | T_BNode _   -> false
+  | T_Literal _ -> true
+  | T_TripleTerm s _ o -> subj_ground s && term_ground o
+
+let triple_ground (t : triple) : bool = subj_ground t.s && term_ground t.o
+
+let graph_ground (g : list triple) : prop =
+  forall (t : triple). memP t g ==> triple_ground t == true
+
+// ===================================================================
 // Triple-term freedom -- the RDF 1.2 quarantine predicate. Used by
 // the model-theory module (RDF 1.2 triple terms have no denotation in
 // either baseline's model theory), never by the syntactic spec above.
