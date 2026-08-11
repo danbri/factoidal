@@ -937,3 +937,23 @@ declarations, not resources (#restart-solver + 6x rlimit ruled out);
 exact query-stats + bisection plan recorded in-file. Next: the N-row
 induction (may be easier than fixed two-row — the induction hypothesis
 adds structure), with fstar-mcp for the bisection.
+
+**Parser locality pilot PROVED (2026-08-11, branch `parser-locality`)**:
+new proof-only `Parser.NTriples.Locality.fst`. `lemma_scan_iri_end_shift`
+— the pilot of the locality induction both `theorem_stream_eq_batch`
+(task #48) and the symbolic N-Triples round-trip need: if
+`scan_iri_end` finds `>` inside a line, the same scan on the line
+embedded in `prefix ^ (line ^ suffix)` finds it at the shifted
+position. Proved first-attempt by a rec lemma mirroring the
+combinator's own recursion branch-for-branch, entirely in
+byte-index/position terms (never symbolic string equality — the one
+register that avoids the strcat wall). Plus
+`lemma_byte_index_at_middle` (self-contained restatement) and the
+`i=0` corollary `lemma_scan_iri_end_shift_from_start` (the shape
+`parse_iri_raw` calls). Template assessment (file-end banner):
+`parse_iri_raw`/`parse_iri`/`pws` and the position-only skeleton of
+`parse_subject`/`parse_object` are mechanical repetitions;
+`parse_iri_body_acc` + `parse_literal` escape decoding are NEW
+difficulty (accumulator finished with `FStar.String.concat` — the
+separately-named wall; note the strcat kit in ConcatSpec may now
+apply). No admits, no --lax, no new assume vals.
