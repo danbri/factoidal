@@ -897,3 +897,113 @@ let theorem_stream_eq_batch_single_chunk c =
  * (`RDF.NTriples.RoundTrip.fst`'s Part 6 banner) to where a future
  * session should pick this up.
  * ============================================================================ *)
+
+(* ============================================================================
+ * ITEM 6 CONTINUED (task #48, 2026-08-11 SECOND landing, general multi-
+ * chunk `theorem_stream_eq_batch`): two new self-contained primitives, then
+ * the CONDITIONED general restart theorem the FAILURE-BRANCH of this task's
+ * own brief sanctions ("premise: every complete line parses successfully;
+ * boolean/witness-supplied premise" is an ACCEPTABLE landing) -- NOT the
+ * unconditional `lemma_parse_nquads_acc_restart` named in the FINDING
+ * above, which still needs the full per-combinator forward-dispatch
+ * capstone that FINDING (and `Parser.NTriples.Locality.fst`'s own
+ * abandoned `parse_iri_raw` capstone) diagnoses as not fitting a
+ * guard-depth-3 budget. This landing does not re-attempt that wall.
+ *
+ * TWO NEW PRIMITIVES, why they are new (not already in `Parser.NTriples.
+ * Locality.fst`):
+ *
+ * `lemma_skip_comment_shift` -- fills EXACTLY the gap that file's own
+ * Stage 3 Item 4 banner named ("comment/blank-line/error-recovery
+ * scanners... `skip_comment`/`skip_line`'s local-`let rec` obstacle") and
+ * then partially closed (lifting `nt_skip_to_eol`/`nq_skip_line` to
+ * top-level, proving THEIR shift lemmas) without composing the FINAL
+ * one-line wrapper for `skip_comment` itself. `skip_comment`'s own body
+ * (`Parser.NTriples.fst`) is `if pos>=len then pos else if byte=='#' then
+ * nt_skip_to_eol input len (pos+1) (len-pos) else pos` -- a direct
+ * corollary of the already-proved `Parser.NTriples.Locality.
+ * lemma_nt_skip_to_eol_shift`, taking the scan's own termination witness
+ * (`stop_pos`) as an explicit parameter (this file's own established
+ * style, matching `lemma_scan_iri_end_shift`'s `gt_pos` parameter)
+ * rather than trying to derive it internally. `skip_comment`'s internal
+ * call always has ONE UNIT of fuel headroom BY CONSTRUCTION (`p+fuel =
+ * (pos+1)+(len-pos) = len+1 > len`, unconditionally, no monotonicity
+ * argument needed) -- `lemma_nt_skip_to_eol_shift`'s own `p+fuel >
+ * fs_byte_length mid` hypothesis is satisfied for free.
+ *
+ * `lemma_nq_skip_line_shift_exact` -- `Parser.NTriples.Locality.
+ * lemma_nq_skip_line_shift` (the fail-branch scanner shift, already
+ * proved there) takes a FREE fuel parameter `f` and requires `p + f >
+ * fs_byte_length mid` STRICTLY. `parse_nquads_acc`'s REAL call site
+ * (`nq_skip_line input len pos1 (len - pos1)`, `Parser.NQuads.fst`'s
+ * fail branch) gives `p + f = pos1 + (len - pos1) = len` EXACTLY -- one
+ * short of that lemma's own precondition, so it cannot be invoked
+ * directly at the real call site. Rather than a separate fuel-
+ * monotonicity bridging lemma (extra fuel is harmless once a stop is
+ * reached with positive fuel to spare -- itself provable, but an extra
+ * moving part), this landing proves a SELF-CONTAINED variant with the
+ * fuel PINNED to `fs_byte_length mid - p` throughout (matching the real
+ * call site exactly, both on `mid` and on the embedding, so the
+ * `p + f > len` inequality is never needed: the `decreases` metric is
+ * `fs_byte_length mid - p` itself, and the `p >= fs_byte_length mid`
+ * vacuous case is handled by the SAME contradiction argument
+ * `lemma_nq_skip_line_shift`'s own proof uses, just derived from the
+ * metric hitting 0 rather than from a separate `f = 0` guard). Same
+ * proof technique as the borrowed lemma (byte-agreement via
+ * `lemma_byte_index_at_middle`, composing the already-proved `Parser.
+ * NTriples.Locality.lemma_skip_eol_shift` at the newline-found leaf), no
+ * new axiom, no new difficulty class -- a fuel-bookkeeping variant of an
+ * already-proved lemma, not a fresh induction.
+ * ============================================================================ *)
+
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_skip_comment_shift (prefix mid suffix : string) (pos stop_pos : nat)
+  : Lemma
+      (requires
+        pos < Parser.FastString.fs_byte_length mid /\
+        FStar.Char.int_of_char (Parser.FastString.fs_byte_index mid pos) = 0x23 /\
+        Parser.NTriples.nt_skip_to_eol mid (Parser.FastString.fs_byte_length mid) (pos + 1)
+          (Parser.FastString.fs_byte_length mid - pos) == stop_pos /\
+        stop_pos < Parser.FastString.fs_byte_length mid)
+      (ensures
+        Parser.NTriples.skip_comment (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + pos)
+        == Parser.FastString.fs_byte_length prefix + stop_pos)
+let lemma_skip_comment_shift prefix mid suffix pos stop_pos =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  Parser.NTriples.Locality.lemma_nt_skip_to_eol_shift prefix mid suffix (pos + 1)
+    (Parser.FastString.fs_byte_length mid - pos) (Parser.FastString.fs_byte_length suffix) stop_pos
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_nq_skip_line_shift_exact (prefix mid suffix : string) (p stop_pos : nat)
+  : Lemma
+      (requires
+        p <= Parser.FastString.fs_byte_length mid /\
+        Parser.NQuads.nq_skip_line mid (Parser.FastString.fs_byte_length mid) p
+          (Parser.FastString.fs_byte_length mid - p) == stop_pos /\
+        stop_pos < Parser.FastString.fs_byte_length mid /\
+        (Parser.FastString.fs_byte_length suffix = 0 \/ Parser.FastString.fs_byte_at suffix 0 <> 0x0A))
+      (ensures
+        Parser.NQuads.nq_skip_line (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length (prefix ^ (mid ^ suffix)))
+          (Parser.FastString.fs_byte_length prefix + p)
+          ((Parser.FastString.fs_byte_length mid - p) + Parser.FastString.fs_byte_length suffix)
+        == Parser.FastString.fs_byte_length prefix + stop_pos)
+      (decreases (Parser.FastString.fs_byte_length mid - p))
+let rec lemma_nq_skip_line_shift_exact prefix mid suffix p stop_pos =
+  let len_mid = Parser.FastString.fs_byte_length mid in
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  if p >= len_mid then ()
+  else begin
+    lemma_byte_index_at_middle prefix mid suffix p;
+    let c = Parser.FastString.fs_byte_index mid p in
+    let cc = FStar.Char.int_of_char c in
+    if cc = 0x0A || cc = 0x0D then
+      Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix p
+    else
+      lemma_nq_skip_line_shift_exact prefix mid suffix (p + 1) stop_pos
+  end
+#pop-options
