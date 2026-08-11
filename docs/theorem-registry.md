@@ -2,6 +2,10 @@
 
 Deliverable 1 of goal G1 in
 [`designissues/2026-08-05-semantics-proposal-adoption.md`](designissues/2026-08-05-semantics-proposal-adoption.md).
+Deliverable 2 (issue #403, the curated review kernel — the minimal
+subset a W3C-domain expert can read end to end, with the guarantee
+nothing outside it overrides what it states) is
+[`review-kernel.md`](review-kernel.md).
 G1's aim: a W3C-domain expert can review Factoidal's semantics — the
 table rows, the spec predicates that transcribe them, and this
 registry's status column — and know the reviewed definitions are not
