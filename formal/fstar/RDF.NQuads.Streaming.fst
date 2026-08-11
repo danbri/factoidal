@@ -2529,6 +2529,47 @@ let chain_append mid_a mid_b ws_a ws_b =
 #pop-options
 
 (* ============================================================================
+ * `lw_ds_step_extend_right` (SIXTH-landing FINDING's own named target,
+ * closed here): the dataset-fold companion to `chain_append`'s WF/position
+ * conclusion -- "growing `mid` to the RIGHT does not change what a quad-
+ * success witness embedded ahead of it does to the dataset." Per that
+ * FINDING's own recorded fix path: state `lw_ds_step`'s match result as
+ * its own trivial lemma (`lw_ds_step_via_parse_nquad`) and unfold it
+ * EXPLICITLY on both sides before calling `lemma_parse_nquad_shift_
+ * generic`, rather than asking Z3 to unfold `lw_ds_step` itself (twice, at
+ * two different `mid` arguments) under the weight of the rest of the
+ * query -- the SAME fix that already closed `lw_wf_extend_right_quadok`/
+ * `lw_wf_shift_left_quadok` above (explicit intermediate `assert`s per
+ * field, not one large composed goal).
+ * ============================================================================ *)
+
+(* `lw_ds_step`'s own definition, restated as a standalone lemma so it can
+   be invoked (and hence unfolded) EXPLICITLY at each of the two `mid`
+   arguments the goal needs, instead of leaving Z3 to unfold `lw_ds_step`
+   itself inline. Trivial by `()` -- this IS `lw_ds_step`'s defining
+   equation for the `LW_QuadOk` case, nothing new is being proved. *)
+val lw_ds_step_via_parse_nquad (mid : string) (q : quad_ok_witness) (ds : RDF.Graph.Executable.rdf_dataset)
+  : Lemma (lw_ds_step mid (LW_QuadOk q) ds ==
+           (match Parser.NQuads.parse_nquad mid q.qow_entry with
+            | Parser.Combinators.ParseOk (t, g) _ -> Parser.NQuads.dataset_add_quad ds t g
+            | _ -> ds))
+let lw_ds_step_via_parse_nquad mid q ds = ()
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lw_ds_step_extend_right (mid_a mid_b : string) (q : quad_ok_witness) (ds : RDF.Graph.Executable.rdf_dataset)
+  : Lemma (requires lw_wf "" mid_a mid_b (LW_QuadOk q))
+          (ensures lw_ds_step (mid_a ^ mid_b) (LW_QuadOk q) ds == lw_ds_step mid_a (LW_QuadOk q) ds)
+let lw_ds_step_extend_right mid_a mid_b q ds =
+  lw_ds_step_via_parse_nquad (mid_a ^ mid_b) q ds;
+  lw_ds_step_via_parse_nquad mid_a q ds;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_left (mid_a ^ mid_b);
+  Parser.NTriples.Locality.lemma_parse_nquad_shift_generic "" mid_a mid_b q.qow_entry q.qow_entry
+    q.qow_subj q.qow_pos2 q.qow_pos3 q.qow_pred q.qow_pos4 q.qow_pos5 q.qow_obj q.qow_pos6
+    q.qow_graph q.qow_pos7 q.qow_pos8
+#pop-options
+
+(* ============================================================================
  * FINDING (guard-depth-3 stop, SIXTH landing, 2026-08-11): the dataset-fold
  * companion to `chain_append` -- "folding the appended chain from any `ds`
  * matches folding `ws_a` on `mid_a` then `ws_b` on `mid_b`" -- is NOT
@@ -2958,6 +2999,19 @@ let theorem_stream_consume_dataset_eq_batch chunks ws_list =
   stream_consume_dataset_eq_batch_raw chunks ws_list
 
 (* ============================================================================
+ * CLOSED, EIGHTH landing (2026-08-11): the FINDING immediately below is
+ * SUPERSEDED -- `theorem_stream_consume_eq_batch`, at the end of this file
+ * (GENERIC CONSUMER WITNESS APPARATUS section), closes exactly the product
+ * this FINDING names as open (generic `a` AND full multi-chunk generality,
+ * no boundary restriction), via the genericised witness-chain apparatus
+ * this FINDING's own text sketches (`lw_generic_step`/`chain_generic_fold`
+ * plus generic per-kind step-shift/restart/full-via-chain/concat-line-
+ * general lemmas). Kept verbatim below as the original diagnosis trail --
+ * every claim in it about what was NOT YET done is now closed by that
+ * later section, not by anything in this one.
+ * ============================================================================ *)
+
+(* ============================================================================
  * FINDING (SEVENTH landing, 2026-08-11): what remains open for a TRULY
  * GENERIC consumer (arbitrary `a`, arbitrary `consume`) at FULL multi-
  * chunk generality (no boundary restriction). `theorem_stream_consume_
@@ -3006,3 +3060,379 @@ let theorem_stream_consume_dataset_eq_batch chunks ws_list =
  * position/outcome facts) needed to close the general case is dataset-
  * agnostic and already proved -- only the mechanical duplication remains.
  * ============================================================================ *)
+
+(* ============================================================================
+ * GENERIC CONSUMER WITNESS APPARATUS (issue #402 residue, EIGHTH landing,
+ * 2026-08-11): genericizes the witness-chain apparatus above (`lw_ds_step` /
+ * `chain_ds_fold` / the four per-kind step-shift lemmas / `lemma_parse_
+ * nquads_acc_restart` / `_full_via_chain` / `_concat_line_general`) over an
+ * ARBITRARY consumer type `a` and `consume : a -> qquad -> a`, per the
+ * SEVENTH landing's own FINDING (immediately above) naming this exact plan
+ * as "mechanical, not a new wall" -- every position/outcome fact this
+ * apparatus depends on (`lemma_pws_shift`, `lemma_byte_index_at_middle`,
+ * `lemma_skip_eol_shift`, `lemma_skip_comment_shift`, `lemma_nq_skip_line_
+ * shift_exact`, `Locality.lemma_parse_nquad_shift_generic`) talks only
+ * about POSITIONS and PARSER outcomes, never `ds`/`rdf_dataset` -- reused
+ * here UNCHANGED, no new call added anywhere in this section.
+ *
+ * PARAMETRIZE VS DUPLICATE, THE CHOICE MADE HERE: `line_witness`/`lw_pos`/
+ * `lw_end`/`lw_wf`/`chain_wf`/`chain_end` above are REUSED AS-IS, UNCHANGED
+ * -- none of them mention `ds`/`rdf_dataset` at all (`lw_wf`'s embedding
+ * premises are `Type0` facts about `parse_nquad`'s SUCCESS/FAILURE outcome,
+ * independent of any accumulator), so genericizing THOSE would be a no-op
+ * edit for no benefit. What genuinely differs per consumer is only the
+ * PER-STEP TRANSFORM (`lw_ds_step` hard-codes `dataset_add_quad`), so this
+ * section adds a new transform (`lw_generic_step`) and its own chain fold
+ * (`chain_generic_fold`), then re-derives the shift/restart/concat-line
+ * lemmas that CONSUME that transform -- parametrized ONCE, over `#a` and
+ * `consume`, rather than duplicated per future consumer type. The EXISTING
+ * `parse_nquads_acc`/`lw_ds_step`/`chain_ds_fold` apparatus above is left
+ * UNTOUCHED (ADDITIVE landing): it is walked by `fold_nquads_acc_eq_parse_
+ * nquads_acc` into a DIFFERENT function (`parse_nquads_acc`) than this
+ * section's `fold_nquads_acc`-based one, so retrofitting the old apparatus
+ * to be "just an instance" of the new one would mean threading `fold_
+ * nquads_acc_eq_parse_nquads_acc` through ~1400 already-verified lines that
+ * took multiple guarded landings to close, for zero net line-count win (the
+ * two apparatuses are genuinely separate proof obligations, one per target
+ * function) and real risk of breaking proofs this task was told never to
+ * weaken.
+ * ============================================================================ *)
+
+(* Per-line transform into a GENERIC accumulator `a`, mirroring `lw_ds_step`
+   exactly: `quad_step consume` (== `consume acc (g, t)`) on a quad-success
+   line's OWN `parse_nquad mid` result, identity on the other three kinds. *)
+let lw_generic_step (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (mid : string) (w : line_witness) (acc : a) : a =
+  match w with
+  | LW_Blank _ -> acc
+  | LW_Comment _ -> acc
+  | LW_QuadFail _ -> acc
+  | LW_QuadOk q ->
+    (match Parser.NQuads.parse_nquad mid q.qow_entry with
+     | Parser.Combinators.ParseOk (t, g) _ -> quad_step consume t g acc
+     | _ -> acc)
+
+let rec chain_generic_fold (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (mid : string) (ws : list line_witness) (acc : a)
+  : Tot a (decreases ws) =
+  match ws with
+  | [] -> acc
+  | w :: rest -> chain_generic_fold consume mid rest (lw_generic_step consume mid w acc)
+
+(* Single-step shift, blank-line kind, generic over `a`/`consume` -- same
+   proof as `lemma_parse_nquads_acc_blank_step_shift` (this file, KIND 1),
+   just discharging a goal about `fold_nquads_acc` instead of `parse_nquads_
+   acc`: the blank-line branch never touches the accumulator on either
+   function (`fold_nquads_acc`'s definition, `Parser.NQuads.fst`, is
+   branch-for-branch identical to `parse_nquads_acc`'s per `fold_nquads_
+   acc_eq_parse_nquads_acc` above), so the SAME three position facts
+   (`lemma_pws_shift`, `lemma_byte_index_at_middle`, `lemma_skip_eol_shift`)
+   discharge the one-step unfold here too. *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_fold_nquads_acc_blank_step_shift
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (prefix mid suffix : string) (w : blank_line_witness)
+    (acc : a) (fuel : nat)
+  : Lemma
+      (requires blank_line_wf mid w /\ fuel > 0)
+      (ensures
+        Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+          (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + w.lw_pos) acc fuel
+        == Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+             (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + w.lw_eolend)
+             acc (fuel - 1))
+let lemma_fold_nquads_acc_blank_step_shift #a consume prefix mid suffix w acc fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix w.lw_pos w.lw_wsend;
+  lemma_byte_index_at_middle prefix mid suffix w.lw_wsend;
+  Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.lw_wsend
+#pop-options
+
+(* Comment-line kind, generic -- mirrors `lemma_parse_nquads_acc_comment_
+   step_shift` (KIND 2), same accumulator-untouched argument. *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_fold_nquads_acc_comment_step_shift
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (prefix mid suffix : string) (w : comment_line_witness)
+    (acc : a) (fuel : nat)
+  : Lemma
+      (requires comment_line_wf mid w /\ fuel > 0)
+      (ensures
+        Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+          (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + w.cw_pos) acc fuel
+        == Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+             (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + w.cw_eolend)
+             acc (fuel - 1))
+let lemma_fold_nquads_acc_comment_step_shift #a consume prefix mid suffix w acc fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix w.cw_pos w.cw_wsend;
+  lemma_byte_index_at_middle prefix mid suffix w.cw_wsend;
+  lemma_skip_comment_shift prefix mid suffix w.cw_wsend w.cw_commentend;
+  Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.cw_commentend
+#pop-options
+
+(* Quad-failure kind, generic -- mirrors `lemma_parse_nquads_acc_quad_fail_
+   step_shift` (KIND 3), same accumulator-untouched argument (a failed quad
+   never calls `step`/`consume` on either function). *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_fold_nquads_acc_quad_fail_step_shift
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (prefix mid suffix : string) (w : quad_fail_witness)
+    (acc : a) (fuel : nat)
+  : Lemma
+      (requires
+        quad_fail_line_wf mid w /\
+        fuel > 0 /\
+        (Parser.FastString.fs_byte_length suffix = 0 \/
+         Parser.FastString.fs_byte_at suffix 0 <> 0x0A) /\
+        Parser.Combinators.ParseFail?
+          (Parser.NQuads.parse_nquad (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.qfw_wsend)))
+      (ensures
+        Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+          (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + w.qfw_pos) acc fuel
+        == Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+             (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + w.qfw_stopeol)
+             acc (fuel - 1))
+let lemma_fold_nquads_acc_quad_fail_step_shift #a consume prefix mid suffix w acc fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix w.qfw_pos w.qfw_wsend;
+  lemma_byte_index_at_middle prefix mid suffix w.qfw_wsend;
+  lemma_nq_skip_line_shift_exact prefix mid suffix w.qfw_wsend w.qfw_stopeol
+#pop-options
+
+(* Quad-success kind, generic -- mirrors `lemma_parse_nquads_acc_quad_ok_
+   step_shift` (KIND 4), the one case that DOES touch the accumulator: the
+   dataset-specific `dataset_add_quad ds t g` is replaced by `quad_step
+   consume t g acc` (== `consume acc (g, t)`), the ONLY textual difference
+   from the original. *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lemma_fold_nquads_acc_quad_ok_step_shift
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (prefix mid suffix : string) (w : quad_ok_witness)
+    (acc : a) (fuel : nat)
+  : Lemma
+      (requires
+        quad_ok_line_wf mid w /\
+        fuel > 0 /\
+        Parser.NTriples.parse_subject (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_entry)
+          == Parser.Combinators.ParseOk w.qow_subj (Parser.FastString.fs_byte_length prefix + w.qow_pos2) /\
+        Parser.NTriples.parse_iri (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_pos3)
+          == Parser.Combinators.ParseOk w.qow_pred (Parser.FastString.fs_byte_length prefix + w.qow_pos4) /\
+        Parser.NTriples.parse_object (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_pos5)
+          == Parser.Combinators.ParseOk w.qow_obj (Parser.FastString.fs_byte_length prefix + w.qow_pos6) /\
+        Parser.NQuads.parse_opt_graph_label (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_pos6)
+          == Parser.Combinators.ParseOk w.qow_graph (Parser.FastString.fs_byte_length prefix + w.qow_pos7))
+      (ensures
+        (match Parser.NQuads.parse_nquad mid w.qow_entry with
+         | Parser.Combinators.ParseOk (t, g) _ ->
+           Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+             (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + w.qow_entry) acc fuel
+           == Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+                (prefix ^ (mid ^ suffix))
+                (Parser.FastString.fs_byte_length prefix +
+                  (if w.qow_eolend2 > w.qow_entry then w.qow_eolend2
+                   else if w.qow_wsend2 > w.qow_entry then w.qow_wsend2
+                   else w.qow_pos8 + 1))
+                (quad_step consume t g acc) (fuel - 1)
+         | _ -> False))
+let lemma_fold_nquads_acc_quad_ok_step_shift #a consume prefix mid suffix w acc fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_parse_nquad_shift_generic prefix mid suffix
+    w.qow_entry w.qow_entry w.qow_subj w.qow_pos2 w.qow_pos3 w.qow_pred w.qow_pos4
+    w.qow_pos5 w.qow_obj w.qow_pos6 w.qow_graph w.qow_pos7 w.qow_pos8;
+  lemma_byte_index_at_middle prefix mid suffix w.qow_pos8;
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix (w.qow_pos8 + 1) w.qow_wsend2;
+  lemma_byte_index_at_middle prefix mid suffix w.qow_wsend2;
+  Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.qow_wsend2
+#pop-options
+
+(* Single-step shift, ANY kind, generic -- mirrors `lemma_parse_nquads_acc_
+   line_step_shift`'s dispatch. *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lemma_fold_nquads_acc_line_step_shift
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (prefix mid suffix : string) (w : line_witness)
+    (acc : a) (fuel : nat)
+  : Lemma
+      (requires lw_wf prefix mid suffix w /\ fuel > 0)
+      (ensures
+        Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+          (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + lw_pos w) acc fuel
+        == Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+             (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + lw_end w)
+             (lw_generic_step consume mid w acc) (fuel - 1))
+let lemma_fold_nquads_acc_line_step_shift #a consume prefix mid suffix w acc fuel =
+  match w with
+  | LW_Blank b -> lemma_fold_nquads_acc_blank_step_shift consume prefix mid suffix b acc fuel
+  | LW_Comment c -> lemma_fold_nquads_acc_comment_step_shift consume prefix mid suffix c acc fuel
+  | LW_QuadFail f -> lemma_fold_nquads_acc_quad_fail_step_shift consume prefix mid suffix f acc fuel
+  | LW_QuadOk q -> lemma_fold_nquads_acc_quad_ok_step_shift consume prefix mid suffix q acc fuel
+#pop-options
+
+(* THE generic restart lemma -- mirrors `lemma_parse_nquads_acc_restart`,
+   folding `chain_generic_fold` instead of `chain_ds_fold`. Structural
+   induction on `ws`, ONE `line_witness` per step, exactly as the dataset-
+   specific original. *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lemma_fold_nquads_acc_restart
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (prefix mid suffix : string) (acc : a)
+    (start_pos : nat) (ws : list line_witness) (fuel : nat)
+  : Lemma
+      (requires chain_wf prefix mid suffix start_pos ws /\ fuel >= List.Tot.length ws)
+      (ensures
+        Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+          (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + start_pos) acc fuel
+        == Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+             (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + chain_end start_pos ws)
+             (chain_generic_fold consume mid ws acc) (fuel - List.Tot.length ws))
+      (decreases ws)
+let rec lemma_fold_nquads_acc_restart #a consume prefix mid suffix acc start_pos ws fuel =
+  match ws with
+  | [] -> ()
+  | w :: rest ->
+    lemma_fold_nquads_acc_line_step_shift consume prefix mid suffix w acc fuel;
+    lemma_fold_nquads_acc_restart consume prefix mid suffix
+      (lw_generic_step consume mid w acc) (lw_end w) rest (fuel - 1)
+#pop-options
+
+(* Generic standalone corollary -- mirrors `lemma_parse_nquads_acc_full_via_
+   chain`: `fold_nquads_acc` on `mid` alone, from its own canonical fuel,
+   equals `chain_generic_fold` whenever `ws` covers all of `mid`. *)
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_fold_nquads_acc_full_via_chain
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (mid : string) (acc : a) (ws : list line_witness)
+  : Lemma
+      (requires
+        chain_wf "" mid "" 0 ws /\
+        chain_end 0 ws == Parser.FastString.fs_byte_length mid /\
+        Parser.FastString.fs_byte_length mid + 1 >= List.Tot.length ws)
+      (ensures
+        Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a) mid 0 acc
+          (Parser.FastString.fs_byte_length mid + 1)
+        == chain_generic_fold consume mid ws acc)
+let lemma_fold_nquads_acc_full_via_chain #a consume mid acc ws =
+  empty_string_concat_left (mid ^ "");
+  empty_string_concat_right mid;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  lemma_fold_nquads_acc_restart consume "" mid "" acc 0 ws (Parser.FastString.fs_byte_length mid + 1)
+#pop-options
+
+(* THE generic split/monoid law -- mirrors `lemma_parse_nquads_acc_concat_
+   line_general` exactly (same double-hypothesis reasoning per witness
+   chain, same two-path transitivity argument), for `fold_nquads_acc`
+   instead of `parse_nquads_acc`. *)
+#push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
+val fold_nquads_acc_concat_line_general
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (complete carry : string) (acc : a)
+    (ws_complete ws_carry : list line_witness)
+  : Lemma
+      (requires
+        chain_wf "" complete "" 0 ws_complete /\
+        chain_wf "" complete carry 0 ws_complete /\
+        chain_end 0 ws_complete == Parser.FastString.fs_byte_length complete /\
+        chain_wf "" carry "" 0 ws_carry /\
+        chain_wf complete carry "" 0 ws_carry /\
+        chain_end 0 ws_carry == Parser.FastString.fs_byte_length carry /\
+        Parser.FastString.fs_byte_length complete + 1 >= List.Tot.length ws_complete /\
+        Parser.FastString.fs_byte_length carry + 1 >= List.Tot.length ws_carry /\
+        Parser.FastString.fs_byte_length complete + Parser.FastString.fs_byte_length carry + 1
+          >= List.Tot.length ws_complete + List.Tot.length ws_carry)
+      (ensures
+        Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a) carry 0
+          (Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a) complete 0 acc
+             (Parser.FastString.fs_byte_length complete + 1))
+          (Parser.FastString.fs_byte_length carry + 1)
+        == Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a) (complete ^ carry) 0 acc
+             (Parser.FastString.fs_byte_length (complete ^ carry) + 1))
+let fold_nquads_acc_concat_line_general #a consume complete carry acc ws_complete ws_carry =
+  Parser.FastString.Axioms.fs_byte_length_concat complete carry;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  let fuel3 = Parser.FastString.fs_byte_length complete + Parser.FastString.fs_byte_length carry + 1 in
+  lemma_fold_nquads_acc_full_via_chain consume complete acc ws_complete;
+  let acc1 = chain_generic_fold consume complete ws_complete acc in
+  lemma_fold_nquads_acc_full_via_chain consume carry acc1 ws_carry;
+  empty_string_concat_left (complete ^ carry);
+  lemma_fold_nquads_acc_restart consume "" complete carry acc 0 ws_complete fuel3;
+  empty_string_concat_right carry;
+  lemma_fold_nquads_acc_restart consume complete carry "" acc1 0 ws_carry
+    (fuel3 - List.Tot.length ws_complete)
+#pop-options
+
+(* Multi-chunk fold invariant, generic over `a`/`consume` -- mirrors
+   `stream_fold_eq_batch`/`stream_consume_dataset_fold_eq_batch` exactly
+   (same induction shape, same lemma calls), targeting `stream_consume_acc`
+   directly (no bridging lemma needed here -- unlike the `dataset_consume`
+   corollary above, this section's `fold_nquads_acc_concat_line_general` is
+   ALREADY stated over `fold_nquads_acc`, so there is nothing to bridge). *)
+#push-options "--z3rlimit 300 --fuel 4 --ifuel 4"
+val stream_consume_generic_fold_eq_batch
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (carry0 : string) (chunks : list string)
+    (ws_list : list (list line_witness & list line_witness))
+    (acc0 : a)
+  : Lemma
+      (requires stream_fold_wf carry0 chunks ws_list)
+      (ensures
+        stream_consume_acc consume chunks acc0 ({ carry = carry0 })
+        == Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+             (carry0 ^ concat_all chunks) 0 acc0
+             (Parser.FastString.fs_byte_length (carry0 ^ concat_all chunks) + 1))
+      (decreases chunks)
+let rec stream_consume_generic_fold_eq_batch #a consume carry0 chunks ws_list acc0 =
+  match chunks, ws_list with
+  | [], [] ->
+    empty_string_concat_right carry0
+  | c :: rest, (ws_c, ws_t) :: wss ->
+    let combined = carry0 ^ c in
+    let (complete, carry') = split_complete_lines combined in
+    let tail_str = carry' ^ concat_all rest in
+    let acc1 = Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a) complete 0 acc0
+                 (Parser.FastString.fs_byte_length complete + 1) in
+    // feed_chunk_consume consume {carry=carry0} acc0 c == (acc1, {carry=carry'}) -- definitional,
+    // `stream_consume_acc consume (c::rest) acc0 {carry=carry0} == stream_consume_acc consume rest acc1 {carry=carry'}`.
+    stream_consume_generic_fold_eq_batch consume carry' rest wss acc1;
+    fold_nquads_acc_concat_line_general consume complete tail_str acc0 ws_c ws_t;
+    split_complete_lines_reconstruct combined;
+    string_concat_assoc complete carry' (concat_all rest);
+    string_concat_assoc carry0 c (concat_all rest)
+#pop-options
+
+(* ============================================================================
+ * `theorem_stream_consume_eq_batch` -- THE fully generic consumer theorem
+ * (issue #402's own named target): `stream_consume` equals `batch_consume`
+ * for ANY consumer type `a`, ANY `consume : a -> qquad -> a`, and ANY chunk
+ * boundaries (no restriction on where a chunk splits a line), given a
+ * witness-chain list covering the chunk boundaries -- the SAME `stream_
+ * fold_wf` premise `theorem_stream_eq_batch` (dataset-specific, above)
+ * already uses, at the SAME generality (no boundary/no-newline
+ * restriction). Instantiate at `carry0 = ""`/`acc0 = init` (`initial_
+ * state`'s own field) and rewrite `"" ^ concat_all chunks == concat_all
+ * chunks` via `empty_string_concat_left`; the RHS then matches `batch_
+ * consume`'s own definition (`Parser.NQuads.fold_nquads`, which itself is
+ * `fold_nquads_acc step stop input 0 init (fs_byte_length input + 1)`, a
+ * DEFINITIONAL match, no `dataset_finalise`-style correction needed here --
+ * unlike `batch_parse`/`theorem_stream_eq_batch`, `fold_nquads`/`batch_
+ * consume` apply no post-processing step at all). *)
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val theorem_stream_consume_eq_batch
+    (#a:Type) (consume : a -> RDF.Canonical.qquad -> a) (init : a)
+    (chunks : list string) (ws_list : list (list line_witness & list line_witness))
+  : Lemma
+      (requires stream_fold_wf "" chunks ws_list)
+      (ensures stream_consume consume init chunks == batch_consume consume init (concat_all chunks))
+let theorem_stream_consume_eq_batch #a consume init chunks ws_list =
+  stream_consume_generic_fold_eq_batch consume "" chunks ws_list init;
+  empty_string_concat_left (concat_all chunks)
+#pop-options
