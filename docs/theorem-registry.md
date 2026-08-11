@@ -1297,3 +1297,22 @@ multi-byte scan_iri_end advance — separate rung); a generalized
 checkpoint_a (arbitrary whole triple) is a new composition chain, not
 mechanical. Full dependency chain re-verified clean. No admits, no
 --lax, no new assume vals.
+
+**#402 COMPLETE: fully-generic consumer theorem (2026-08-11, branch
+`generic-consumer`)**: `theorem_stream_consume_eq_batch` — for ANY
+consumer type, ANY consume function, ANY chunk split (same
+stream_fold_wf witness premise, same generality as the dataset
+theorem). Design: generic layer ADDED ALONGSIDE the proven
+dataset-specific layer, not a retrofit — the witness types and
+position predicates were already consumer-free and reused unchanged;
+only the per-step transform is parametrized (`lw_generic_step`,
+`chain_generic_fold` + generic per-kind/restart/concat-line lemmas
+targeting fold_nquads_acc). 430 new lines vs the ~670 estimate — the
+low-level shift lemmas needed zero duplication, as predicted. ALSO
+CLOSED first-attempt: `lw_ds_step_extend_right` via its FINDING's
+recorded fix (match result stated as its own trivial lemma). Nothing
+attempted was left unclosed; the superseded FINDING got a
+forward-pointer (rule #14). Streaming program end state: parser
+theorem + dataset consumer + generic consumer all proved; sole
+residue = the ^^datatype literal-branch shift lemma (does not gate
+any landed theorem). No admits, no --lax, no new assume vals.
