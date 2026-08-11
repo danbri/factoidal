@@ -375,6 +375,7 @@ initialised (auto on Node, explicit in the browser — see below);
 | `parse`, `query` (SELECT/ASK), `serialize` (nquads/ntriples), `canonicalize`, `graphs`, `canonicalHash`, `queryHdt`, `queryRaw` | ✓ | ✓\* | ✓ | CLI bundle |
 | `query` (CONSTRUCT), `update`, `serialize` (turtle) | ✓ | ✓\* | ✓ | entry |
 | `shaclValidate`, `shexValidate`, `owlClosure`, `rmlMap`, `csvwToRdf`, `jsonldToRdf`, `jsonldFromRdf`, `didKeyResolve`, `xmlWellformed`, `xpathEval`, `rifEval` | ✓ | ✓ | partial† | entry |
+| `coreRdfsClosure`/`rhoDfClosure`, `coreRdfsCheck`/`rhoDfFragmentCheck`, `rdfsPlusClosure`, `tableauMaterialise`, `tableauDlInconsistent`, `owlIsConsistent`, `owlEntails` | ✓ | ✓ | wrapper only‡ | entry |
 | `xsltTransform`, `mathmlEval`, `xformsRecalc`, `jsonSchemaValidate`, `schematronValidate`, `toan*`, `matrix*` | ✓ | ✓ | partial† | entry |
 | `openCottas`, `queryCottas`, `closeCottas`, `toCottas` | ✓ | ✓ | ✓ | entry |
 | `vcSha256Hex`, `vcEd25519SecretToPublic`, `vcEd25519Sign`, `vcEd25519Verify`, `vcEddsaCreateFromCanonical`, `vcEddsaVerifyFromCanonical` | ✓ | ✓ | ✓ | entry + HACL\* init |
@@ -395,6 +396,16 @@ validation/inference/COTTAS set (`parse`/`query`/`update`/`serialize`/
 typed-engine `#74` functions and the `vc*`/`did`/`xml`/`xpath` wrappers
 are exposed on the js and browser entries. The underlying wasm ABI
 carries them — the `/wasm` re-export surface is being brought to parity.
+‡ `coreRdfsClosure`/`rhoDfClosure`/`coreRdfsCheck`/`rhoDfFragmentCheck`/
+`rdfsPlusClosure`/`tableauMaterialise`/`tableauDlInconsistent`/
+`owlIsConsistent`/`owlEntails` are exported from `factoidal/wasm`
+(wrapper wiring — the same `buildApi()` `index.js` uses), but the
+committed `factoidal-npm-entry.wasm.js` ABI bundle predates these
+functions (built before they landed on the ABI) — calling them on the
+wasm engine throws the existing "pending npm-entry bundle" error until
+that bundle is rebuilt via a real `wasm_of_ocaml` build (not a copy).
+`capabilities()` on the wasm engine reports this honestly (`tableau:
+false` etc.) rather than guessing.
 
 ### VC crypto: the init story
 

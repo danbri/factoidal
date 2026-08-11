@@ -1256,3 +1256,21 @@ re-measured: zero pragma matches outside comments). Every file:line
 read at source while writing. Four drift findings reported to the
 hygiene tracker (#198), incl. a stale "admit()'d" banner over a
 clean `()` body in the COTTAS backend.
+
+**#403 npm batch (2026-08-11, branch `npm-batch`)**: closure API
+exposed on all three npm surfaces (index/wasm/fn):
+coreRdfsClosure/coreRdfsCheck/rhoDfClosure/rhoDfFragmentCheck/
+rdfsPlusClosure (+ owlIsConsistent/owlEntails already present).
+CLAIMS BLOCK added to npm/factoidal/version.json — 8 items each
+naming its theorem, file, and registry section (all verified to exist
+verbatim before writing), including the four new landmarks
+(multi-chunk streaming, N-row SRJ, symbolic IRI round-trip, completed
+FastString migration); build-ocaml.sh's npm step now preserves the
+block across rebuilds (verified byte-identical). Gates: npm units
+169 pass, 0 fail, 1 skip (of 170); hub node 266 pass, 0 fail (of
+266); headless browser 32 pass, 0 fail (of 32); smoke + dts-drift
+clean. Bundle-sync drift found+fixed (hazard #12: npm copies 2 days
+behind docs/fstar-extracted). DEFERRED with reasons: package rename
+to `factoidal` (owner-decided; ~20-file migration, own dispatch);
+#344 (F* parser strictness, not ABI); wasm-entry ABI rebuild (needs
+full extraction — pre-existing RDFS_Closure_SemiNaive.ml gap noted).
