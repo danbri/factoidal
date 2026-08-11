@@ -441,6 +441,72 @@ async function rif(ds, rules) {
 }
 
 /**
+ * The CERTIFIED core-RDFS closure
+ * (formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst's
+ * `rho_df_closure`): rdfs2/3/5/7/9/11 only, with the machine-checked
+ * decides-iff (docs/theorem-registry.md). "corerdfs" is this project's
+ * API name for the fragment the literature calls ρdf —
+ * subPropertyOf/subClassOf/type/domain/range (Muñoz, Pérez &
+ * Gutierrez, "Simple and Efficient Minimal RDFS", J. Web Semantics
+ * 7(3), 2009). Mirrors engineApi.coreRdfsClosure's `{ok, ntriples}`
+ * result, with `ntriples` parsed into an FnDataset via
+ * Dataset.fromNQuads — pure JS, no extra engine round-trip. Needs the
+ * npm-entry engine bundle. `rhoDfClosure` is kept below as a
+ * literature-name alias.
+ * @param {FnDataset} ds
+ * @param {{format?: string}} [options]
+ * @returns {Promise<{ok: boolean, dataset: FnDataset}>}
+ */
+async function coreRdfsClosure(ds, options) {
+  assertFnDataset(ds, 'coreRdfsClosure');
+  const r = await engineApi.coreRdfsClosure(toDataset(ds), options);
+  return { ok: r.ok, dataset: fromDataset(Dataset.fromNQuads(r.ntriples)) };
+}
+/** Literature-name alias for coreRdfsClosure (ρdf; see above). */
+const rhoDfClosure = coreRdfsClosure;
+
+/**
+ * Decidable core-RDFS fragment check (`is_rho_df_frag`, tied by an F*
+ * lemma to the prop the regime theorems quantify over): does the
+ * certified coreRdfsClosure guarantee apply to `ds`? Needs the
+ * npm-entry engine bundle. `rhoDfFragmentCheck` is kept below as a
+ * literature-name alias.
+ * @param {FnDataset} ds
+ * @param {{format?: string}} [options]
+ * @returns {Promise<{ok: boolean, fragment: boolean}>}
+ */
+async function coreRdfsCheck(ds, options) {
+  assertFnDataset(ds, 'coreRdfsCheck');
+  return engineApi.coreRdfsCheck(toDataset(ds), options);
+}
+/** Literature-name alias for coreRdfsCheck (ρdf; see above). */
+const rhoDfFragmentCheck = coreRdfsCheck;
+
+/**
+ * RDFS-Plus closure (RDF.Entailment.RDFSPlus.fst's
+ * `rdfs_plus_closure`): the full RDFS step plus the practical OWL
+ * subset — owl:sameAs, owl:inverseOf, Symmetric/Transitive/Functional/
+ * InverseFunctionalProperty, equivalentClass/Property ("RDFS-Plus",
+ * Allemang & Hendler 2008; "RDFS++", AllegroGraph). Every OWL row
+ * carries a proved licensing + truth lemma; no chain-level
+ * completeness claim (theorem registry) — weaker than
+ * coreRdfsClosure's decides-iff guarantee. Needs the npm-entry engine
+ * bundle.
+ * @param {FnDataset} ds
+ * @param {{format?: string}} [options]
+ * @returns {Promise<{ok: boolean, dataset: FnDataset, rounds: number}>}
+ */
+async function rdfsPlusClosure(ds, options) {
+  assertFnDataset(ds, 'rdfsPlusClosure');
+  const r = await engineApi.rdfsPlusClosure(toDataset(ds), options);
+  return {
+    ok: r.ok,
+    dataset: fromDataset(Dataset.fromNQuads(r.ntriples)),
+    rounds: r.rounds,
+  };
+}
+
+/**
  * OWL tableau materialisation (formal/fstar/Tableau.fst's
  * `tableau_materialise`): add `i rdf:type <ClassExpression>` for every
  * individual the model-construction reasoner proves is a member of an
@@ -804,6 +870,11 @@ module.exports = {
   fromMapping,
   fromCsvw,
   rif,
+  coreRdfsClosure,
+  coreRdfsCheck,
+  rhoDfClosure,
+  rhoDfFragmentCheck,
+  rdfsPlusClosure,
   tableauMaterialise,
   tableauDlInconsistent,
   owlIsConsistent,
