@@ -1146,3 +1146,20 @@ blank/comment/quad lines, any newline placement, given matching
 witness chains for the split. REMAINING (FINDING, no wall): the
 multi-chunk fold — one chain-concatenation lemma + a fold induction
 carrying a witness-chain list; scoping choice, not a failure.
+
+**Task #48 / #402: MULTI-CHUNK STREAMING THEOREM (2026-08-11, branch
+`stream-multichunk`)**: `theorem_stream_eq_batch` PROVED —
+`stream_parse chunks == batch_parse (concat_all chunks)` for ANY list
+of chunks, given a witness-chain pair per chunk (`stream_fold_wf`).
+The terabyte-file question now has its answer as a machine-checked
+theorem chain: split machinery → per-combinator locality → restart →
+general concat-line law → single-chunk general → MULTI-CHUNK. Design
+choice recorded: the fold asks the caller to supply remaining-tail
+witness chains directly (less proof work, more caller burden) instead
+of the FINDING's bottom-up chain-append route — and the reusable
+`chain_append` lemma was ALSO landed separately (shifted, joined
+chains cover `mid_a ^ mid_b`), with per-kind extend/shift sub-lemmas.
+`string_concat_assoc` proved (not automatic). One non-required piece
+open with a FINDING + exact fix path (`lw_ds_step_extend_right`, 3
+attempts past the 3-min z3 cap). Whole module verifies in 43 seconds.
+No admits, no --lax, no new assume vals.
