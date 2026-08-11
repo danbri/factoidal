@@ -77,6 +77,25 @@ module SPARQL11.Parser.TokenRoundTrip
 open FStar.String
 open FStar.List.Tot
 open SPARQL11.Parser
+open Parser.FastString
+open Parser.FastString.Axioms
+open Parser.FastString.RoundTripLemmas
+
+// Local shorthand matching `Parser.FastString.RoundTripLemmas.all_ascii`'s
+// shape but as a predicate directly on `string` (that module's `all_ascii`
+// is on `list FStar.Char.char`) -- task #52 migration (SPARQL 1.1 lexer's
+// `substring`/`peek_char`/`at_end` off `FStar.String.sub`/`index`/`length`
+// onto `Parser.FastString`'s byte primitives; docs/designissues/
+// 2026-08-10-string-foundation-decision.md gap 1, owner decision "1: A"
+// 2026-08-11). Every string this fragment's `print_token`/`print_tokens`
+// produces is ASCII (delimiter/operator lexemes plus the `" "` separator),
+// so the bridging facts below always apply to this module's own pre/txt/
+// tail pieces -- but `peek_char`/`at_end` are now byte-indexed, and
+// `FStar.String.index`/`length` stay codepoint-indexed, so every place this
+// file used to get `peek_char ... == String.index ...` "for free" (same
+// primitive, no bridge needed) now needs an explicit ASCII hypothesis and
+// an explicit call into `Parser.FastString.RoundTripLemmas`'s bridge.
+let ascii_string (s : string) : bool = all_ascii (FStar.String.list_of_string s)
 
 (* ============================================================ *)
 (* Generic string-indexing glue *)
@@ -112,9 +131,31 @@ let index_concat_at s1 s2 i =
   then FStar.String.index_list_of_string s1 i
   else FStar.String.index_list_of_string s2 (i - String.length s1)
 
+// Ascii-preservation under `@`/`^` -- task #52. Needed because `pre`/`mid`/
+// `tail`/`txt` are reasoned about jointly (`peek_char`/`at_end` see the
+// WHOLE concatenated string, not the individual piece), so every piece's
+// individual `ascii_string` hypothesis needs to combine into one covering
+// the concatenation before `lemma_ascii_string_byte_length`/`_byte_at` (on
+// the WHOLE string) can be invoked.
+val all_ascii_append (cs1 cs2 : list FStar.Char.char)
+  : Lemma (requires all_ascii cs1 /\ all_ascii cs2)
+          (ensures all_ascii (cs1 @ cs2))
+let rec all_ascii_append cs1 cs2 =
+  match cs1 with
+  | [] -> ()
+  | c :: rest -> all_ascii_append rest cs2
+
+val ascii_string_concat (s1 s2 : string)
+  : Lemma (requires ascii_string s1 /\ ascii_string s2)
+          (ensures ascii_string (s1 ^ s2))
+let ascii_string_concat s1 s2 =
+  FStar.String.list_of_concat s1 s2;
+  all_ascii_append (FStar.String.list_of_string s1) (FStar.String.list_of_string s2)
+
 (* Generic: character at offset k within txt, inside pre^(txt^(" "^tail)) *)
 val peek_at_offset (pre txt tail : string) (k : nat{k < String.length txt})
-  : Lemma (ensures
+  : Lemma (requires ascii_string pre /\ ascii_string txt /\ ascii_string tail)
+          (ensures
       (FStar.String.concat_length txt (" " ^ tail);
        FStar.String.concat_length pre (txt ^ (" " ^ tail));
        not (at_end (pre ^ (txt ^ (" " ^ tail))) (String.length pre + k)) /\
@@ -124,15 +165,42 @@ let peek_at_offset pre txt tail k =
   FStar.String.concat_length txt (" " ^ tail);
   FStar.String.concat_length pre mid;
   assert_norm (String.length " " == 1);
+  assert_norm (ascii_string " ");
   FStar.String.concat_length " " tail;
   assert (String.length mid >= String.length txt);
   assert (String.length pre + k < String.length (pre ^ mid));
   index_concat_at pre mid (String.length pre + k);
-  index_concat_at txt (" " ^ tail) k
+  index_concat_at txt (" " ^ tail) k;
+  // -- byte-level bridge (task #52): everything above is the ORIGINAL,
+  // still-valid FStar.String-level reasoning; the new part is relating
+  // `peek_char`/`at_end` (now fs_byte_*-backed) to it via `ascii_string`.
+  assert_norm (ascii_string " ");
+  ascii_string_concat " " tail;
+  ascii_string_concat txt (" " ^ tail);
+  ascii_string_concat pre mid;
+  lemma_ascii_string_byte_length (pre ^ mid);
+  assert (fs_byte_length (pre ^ mid) == String.length (pre ^ mid));
+  assert (not (at_end (pre ^ mid) (String.length pre + k)));
+  lemma_ascii_string_byte_length pre;
+  lemma_ascii_string_byte_length mid;
+  lemma_ascii_string_byte_length txt;
+  fs_byte_at_concat pre mid (String.length pre + k);
+  assert (fs_byte_at (pre ^ mid) (String.length pre + k) == fs_byte_at mid k);
+  fs_byte_at_concat txt (" " ^ tail) k;
+  assert (fs_byte_at mid k == fs_byte_at txt k);
+  lemma_ascii_string_byte_index txt k;
+  fs_byte_index_eq (pre ^ mid) (String.length pre + k);
+  fs_byte_index_eq txt k;
+  assert (peek_char (pre ^ mid) (String.length pre + k) == fs_byte_index (pre ^ mid) (String.length pre + k));
+  assert (fs_byte_index (pre ^ mid) (String.length pre + k) == FStar.Char.char_of_int (fs_byte_at (pre ^ mid) (String.length pre + k)));
+  assert (FStar.Char.char_of_int (fs_byte_at (pre ^ mid) (String.length pre + k)) == FStar.Char.char_of_int (fs_byte_at txt k));
+  assert (FStar.Char.char_of_int (fs_byte_at txt k) == fs_byte_index txt k);
+  assert (fs_byte_index txt k == String.index txt k)
 
 (* Generic: the separator space right after txt *)
 val peek_at_space (pre txt tail : string)
-  : Lemma (ensures
+  : Lemma (requires ascii_string pre /\ ascii_string txt /\ ascii_string tail)
+          (ensures
       (FStar.String.concat_length txt (" " ^ tail);
        FStar.String.concat_length pre (txt ^ (" " ^ tail));
        not (at_end (pre ^ (txt ^ (" " ^ tail))) (String.length pre + String.length txt)) /\
@@ -142,14 +210,43 @@ let peek_at_space pre txt tail =
   FStar.String.concat_length txt (" " ^ tail);
   FStar.String.concat_length pre mid;
   assert_norm (String.length " " == 1);
+  assert_norm (ascii_string " ");
   FStar.String.concat_length " " tail;
   assert (String.length mid == String.length txt + 1 + String.length tail);
   assert (String.length pre + String.length txt < String.length (pre ^ mid));
   index_concat_at pre mid (String.length pre + String.length txt);
   index_concat_at txt (" " ^ tail) (String.length txt);
   assert_norm (String.length " " == 1);
+  assert_norm (ascii_string " ");
   index_concat_at " " tail 0;
-  assert_norm (String.index " " 0 == FStar.Char.char_of_int 0x20)
+  assert_norm (String.index " " 0 == FStar.Char.char_of_int 0x20);
+  // -- byte-level bridge (task #52), same shape as peek_at_offset above --
+  assert_norm (ascii_string " ");
+  ascii_string_concat " " tail;
+  ascii_string_concat txt (" " ^ tail);
+  ascii_string_concat pre mid;
+  lemma_ascii_string_byte_length (pre ^ mid);
+  assert (not (at_end (pre ^ mid) (String.length pre + String.length txt)));
+  lemma_ascii_string_byte_length pre;
+  lemma_ascii_string_byte_length mid;
+  lemma_ascii_string_byte_length txt;
+  fs_byte_at_concat pre mid (String.length pre + String.length txt);
+  assert (fs_byte_at (pre ^ mid) (String.length pre + String.length txt) == fs_byte_at mid (String.length txt));
+  fs_byte_at_concat txt (" " ^ tail) (String.length txt);
+  assert (fs_byte_at mid (String.length txt) == fs_byte_at (" " ^ tail) 0);
+  lemma_ascii_string_byte_length (" " ^ tail);
+  lemma_ascii_string_byte_length " ";
+  fs_byte_at_concat " " tail 0;
+  assert (fs_byte_at (" " ^ tail) 0 == fs_byte_at " " 0);
+  lemma_ascii_string_byte_index " " 0;
+  fs_byte_index_eq (pre ^ mid) (String.length pre + String.length txt);
+  fs_byte_index_eq " " 0;
+  assert (peek_char (pre ^ mid) (String.length pre + String.length txt)
+          == fs_byte_index (pre ^ mid) (String.length pre + String.length txt));
+  assert (fs_byte_index (pre ^ mid) (String.length pre + String.length txt)
+          == FStar.Char.char_of_int (fs_byte_at " " 0));
+  assert (FStar.Char.char_of_int (fs_byte_at " " 0) == fs_byte_index " " 0);
+  assert (fs_byte_index " " 0 == String.index " " 0)
 
 (* ============================================================ *)
 (* Per-token `next_token` recognition lemmas, fragment members *)
@@ -158,9 +255,11 @@ let peek_at_space pre txt tail =
 (* --- LE : "<=" --- *)
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_le_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("<=" ^ (" " ^ tail))) (String.length pre) == (Tok_LE, String.length pre + 2))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("<=" ^ (" " ^ tail))) (String.length pre) == (Tok_LE, String.length pre + 2))
 let next_token_le_pre pre tail =
   assert_norm (String.length "<=" == 2);
+  assert_norm (ascii_string "<=");
   peek_at_offset pre "<=" tail 0;
   peek_at_offset pre "<=" tail 1;
   assert_norm (String.index "<=" 0 == FStar.Char.char_of_int 0x3C);
@@ -170,9 +269,11 @@ let next_token_le_pre pre tail =
 (* --- AND : "&&" (unconditional, doesn't inspect 2nd char's value) --- *)
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_and_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("&&" ^ (" " ^ tail))) (String.length pre) == (Tok_AND, String.length pre + 2))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("&&" ^ (" " ^ tail))) (String.length pre) == (Tok_AND, String.length pre + 2))
 let next_token_and_pre pre tail =
   assert_norm (String.length "&&" == 2);
+  assert_norm (ascii_string "&&");
   peek_at_offset pre "&&" tail 0;
   assert_norm (String.index "&&" 0 == FStar.Char.char_of_int 0x26)
 #pop-options
@@ -193,10 +294,12 @@ let var_name_empty input q = ()
 
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_qmark_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("?" ^ (" " ^ tail))) (String.length pre) == (Tok_QMARK, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("?" ^ (" " ^ tail))) (String.length pre) == (Tok_QMARK, String.length pre + 1))
 let next_token_qmark_pre pre tail =
   let full = pre ^ ("?" ^ (" " ^ tail)) in
   assert_norm (String.length "?" == 1);
+  assert_norm (ascii_string "?");
   peek_at_offset pre "?" tail 0;
   assert_norm (String.index "?" 0 == FStar.Char.char_of_int 0x3F);
   peek_at_space pre "?" tail;
@@ -207,6 +310,7 @@ let next_token_qmark_pre pre tail =
   assert (fst (scan_var_name full q) == "");
   assert (snd (scan_var_name full q) == q);
   assert_norm (String.length "" == 0);
+  assert_norm (ascii_string "");
   assert (String.length (fst (scan_var_name full q)) == 0)
 #pop-options
 
@@ -214,9 +318,11 @@ let next_token_qmark_pre pre tail =
    fail every IRI-start / LE test so next_token falls through to Tok_LT. --- *)
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_lt_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("<" ^ (" " ^ tail))) (String.length pre) == (Tok_LT, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("<" ^ (" " ^ tail))) (String.length pre) == (Tok_LT, String.length pre + 1))
 let next_token_lt_pre pre tail =
   assert_norm (String.length "<" == 1);
+  assert_norm (ascii_string "<");
   peek_at_offset pre "<" tail 0;
   assert_norm (String.index "<" 0 == FStar.Char.char_of_int 0x3C);
   peek_at_space pre "<" tail
@@ -225,134 +331,159 @@ let next_token_lt_pre pre tail =
 (* pre-generalized dot test *)
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_dot_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("." ^ (" " ^ tail))) (String.length pre) == (Tok_DOT, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("." ^ (" " ^ tail))) (String.length pre) == (Tok_DOT, String.length pre + 1))
 let next_token_dot_pre pre tail =
-  let mid = "." ^ (" " ^ tail) in
-  FStar.String.concat_length "." (" " ^ tail);
+  // Was direct `index_concat_at`-only (String-level, pre-task-#52) --
+  // now routed through `peek_at_offset` like every other single-char
+  // lemma, since `peek_char`/`at_end` need the fs_byte_* bridge that
+  // lives inside `peek_at_offset`'s own proof (see that lemma's body).
   assert_norm (String.length "." == 1);
-  assert (String.length mid == 1 + String.length (" " ^ tail));
-  FStar.String.concat_length pre mid;
-  assert (String.length (pre ^ mid) == String.length pre + String.length mid);
-  assert (String.length pre < String.length (pre ^ mid));
-  index_concat_at pre mid (String.length pre);
-  index_concat_at "." (" " ^ tail) 0;
+  assert_norm (ascii_string ".");
+  peek_at_offset pre "." tail 0;
   assert_norm (String.index "." 0 == FStar.Char.char_of_int 0x2E)
 #pop-options
 
 (* ==== Helper A: single char, no lookahead ==== *)
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_lbrace_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("{" ^ (" " ^ tail))) (String.length pre) == (Tok_LBRACE, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("{" ^ (" " ^ tail))) (String.length pre) == (Tok_LBRACE, String.length pre + 1))
 let next_token_lbrace_pre pre tail =
   assert_norm (String.length "{" == 1);
+  assert_norm (ascii_string "{");
   peek_at_offset pre "{" tail 0;
   assert_norm (String.index "{" 0 == FStar.Char.char_of_int 0x7B)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_rbrace_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("}" ^ (" " ^ tail))) (String.length pre) == (Tok_RBRACE, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("}" ^ (" " ^ tail))) (String.length pre) == (Tok_RBRACE, String.length pre + 1))
 let next_token_rbrace_pre pre tail =
   assert_norm (String.length "}" == 1);
+  assert_norm (ascii_string "}");
   peek_at_offset pre "}" tail 0;
   assert_norm (String.index "}" 0 == FStar.Char.char_of_int 0x7D)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_lparen_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("(" ^ (" " ^ tail))) (String.length pre) == (Tok_LPAREN, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("(" ^ (" " ^ tail))) (String.length pre) == (Tok_LPAREN, String.length pre + 1))
 let next_token_lparen_pre pre tail =
   assert_norm (String.length "(" == 1);
+  assert_norm (ascii_string "(");
   peek_at_offset pre "(" tail 0;
   assert_norm (String.index "(" 0 == FStar.Char.char_of_int 0x28)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_rparen_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ (")" ^ (" " ^ tail))) (String.length pre) == (Tok_RPAREN, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ (")" ^ (" " ^ tail))) (String.length pre) == (Tok_RPAREN, String.length pre + 1))
 let next_token_rparen_pre pre tail =
   assert_norm (String.length ")" == 1);
+  assert_norm (ascii_string ")");
   peek_at_offset pre ")" tail 0;
   assert_norm (String.index ")" 0 == FStar.Char.char_of_int 0x29)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_lbracket_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("[" ^ (" " ^ tail))) (String.length pre) == (Tok_LBRACKET, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("[" ^ (" " ^ tail))) (String.length pre) == (Tok_LBRACKET, String.length pre + 1))
 let next_token_lbracket_pre pre tail =
   assert_norm (String.length "[" == 1);
+  assert_norm (ascii_string "[");
   peek_at_offset pre "[" tail 0;
   assert_norm (String.index "[" 0 == FStar.Char.char_of_int 0x5B)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_rbracket_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("]" ^ (" " ^ tail))) (String.length pre) == (Tok_RBRACKET, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("]" ^ (" " ^ tail))) (String.length pre) == (Tok_RBRACKET, String.length pre + 1))
 let next_token_rbracket_pre pre tail =
   assert_norm (String.length "]" == 1);
+  assert_norm (ascii_string "]");
   peek_at_offset pre "]" tail 0;
   assert_norm (String.index "]" 0 == FStar.Char.char_of_int 0x5D)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_semi_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ (";" ^ (" " ^ tail))) (String.length pre) == (Tok_SEMI, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ (";" ^ (" " ^ tail))) (String.length pre) == (Tok_SEMI, String.length pre + 1))
 let next_token_semi_pre pre tail =
   assert_norm (String.length ";" == 1);
+  assert_norm (ascii_string ";");
   peek_at_offset pre ";" tail 0;
   assert_norm (String.index ";" 0 == FStar.Char.char_of_int 0x3B)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_comma_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("," ^ (" " ^ tail))) (String.length pre) == (Tok_COMMA, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("," ^ (" " ^ tail))) (String.length pre) == (Tok_COMMA, String.length pre + 1))
 let next_token_comma_pre pre tail =
   assert_norm (String.length "," == 1);
+  assert_norm (ascii_string ",");
   peek_at_offset pre "," tail 0;
   assert_norm (String.index "," 0 == FStar.Char.char_of_int 0x2C)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_star_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("*" ^ (" " ^ tail))) (String.length pre) == (Tok_STAR, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("*" ^ (" " ^ tail))) (String.length pre) == (Tok_STAR, String.length pre + 1))
 let next_token_star_pre pre tail =
   assert_norm (String.length "*" == 1);
+  assert_norm (ascii_string "*");
   peek_at_offset pre "*" tail 0;
   assert_norm (String.index "*" 0 == FStar.Char.char_of_int 0x2A)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_slash_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("/" ^ (" " ^ tail))) (String.length pre) == (Tok_SLASH, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("/" ^ (" " ^ tail))) (String.length pre) == (Tok_SLASH, String.length pre + 1))
 let next_token_slash_pre pre tail =
   assert_norm (String.length "/" == 1);
+  assert_norm (ascii_string "/");
   peek_at_offset pre "/" tail 0;
   assert_norm (String.index "/" 0 == FStar.Char.char_of_int 0x2F)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_eq_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("=" ^ (" " ^ tail))) (String.length pre) == (Tok_EQ, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("=" ^ (" " ^ tail))) (String.length pre) == (Tok_EQ, String.length pre + 1))
 let next_token_eq_pre pre tail =
   assert_norm (String.length "=" == 1);
+  assert_norm (ascii_string "=");
   peek_at_offset pre "=" tail 0;
   assert_norm (String.index "=" 0 == FStar.Char.char_of_int 0x3D)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_plus_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("+" ^ (" " ^ tail))) (String.length pre) == (Tok_PLUS, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("+" ^ (" " ^ tail))) (String.length pre) == (Tok_PLUS, String.length pre + 1))
 let next_token_plus_pre pre tail =
   assert_norm (String.length "+" == 1);
+  assert_norm (ascii_string "+");
   peek_at_offset pre "+" tail 0;
   assert_norm (String.index "+" 0 == FStar.Char.char_of_int 0x2B)
 #pop-options
 
 #push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
 val next_token_minus_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("-" ^ (" " ^ tail))) (String.length pre) == (Tok_MINUS_OP, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("-" ^ (" " ^ tail))) (String.length pre) == (Tok_MINUS_OP, String.length pre + 1))
 let next_token_minus_pre pre tail =
   assert_norm (String.length "-" == 1);
+  assert_norm (ascii_string "-");
   peek_at_offset pre "-" tail 0;
   assert_norm (String.index "-" 0 == FStar.Char.char_of_int 0x2D)
 #pop-options
@@ -360,9 +491,11 @@ let next_token_minus_pre pre tail =
 (* ==== Helper B: single char, lookahead rules out the 2-char form ==== *)
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_bang_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("!" ^ (" " ^ tail))) (String.length pre) == (Tok_BANG, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("!" ^ (" " ^ tail))) (String.length pre) == (Tok_BANG, String.length pre + 1))
 let next_token_bang_pre pre tail =
   assert_norm (String.length "!" == 1);
+  assert_norm (ascii_string "!");
   peek_at_offset pre "!" tail 0;
   assert_norm (String.index "!" 0 == FStar.Char.char_of_int 0x21);
   peek_at_space pre "!" tail
@@ -370,9 +503,11 @@ let next_token_bang_pre pre tail =
 
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_caret_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("^" ^ (" " ^ tail))) (String.length pre) == (Tok_CARET, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("^" ^ (" " ^ tail))) (String.length pre) == (Tok_CARET, String.length pre + 1))
 let next_token_caret_pre pre tail =
   assert_norm (String.length "^" == 1);
+  assert_norm (ascii_string "^");
   peek_at_offset pre "^" tail 0;
   assert_norm (String.index "^" 0 == FStar.Char.char_of_int 0x5E);
   peek_at_space pre "^" tail
@@ -380,9 +515,11 @@ let next_token_caret_pre pre tail =
 
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_pipe_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("|" ^ (" " ^ tail))) (String.length pre) == (Tok_PIPE, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("|" ^ (" " ^ tail))) (String.length pre) == (Tok_PIPE, String.length pre + 1))
 let next_token_pipe_pre pre tail =
   assert_norm (String.length "|" == 1);
+  assert_norm (ascii_string "|");
   peek_at_offset pre "|" tail 0;
   assert_norm (String.index "|" 0 == FStar.Char.char_of_int 0x7C);
   peek_at_space pre "|" tail
@@ -390,9 +527,11 @@ let next_token_pipe_pre pre tail =
 
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_gt_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ (">" ^ (" " ^ tail))) (String.length pre) == (Tok_GT, String.length pre + 1))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ (">" ^ (" " ^ tail))) (String.length pre) == (Tok_GT, String.length pre + 1))
 let next_token_gt_pre pre tail =
   assert_norm (String.length ">" == 1);
+  assert_norm (ascii_string ">");
   peek_at_offset pre ">" tail 0;
   assert_norm (String.index ">" 0 == FStar.Char.char_of_int 0x3E);
   peek_at_space pre ">" tail
@@ -401,9 +540,11 @@ let next_token_gt_pre pre tail =
 (* ==== Helper D: 2-char literal, 2nd char confirms the double form ==== *)
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_ge_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ (">=" ^ (" " ^ tail))) (String.length pre) == (Tok_GE, String.length pre + 2))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ (">=" ^ (" " ^ tail))) (String.length pre) == (Tok_GE, String.length pre + 2))
 let next_token_ge_pre pre tail =
   assert_norm (String.length ">=" == 2);
+  assert_norm (ascii_string ">=");
   peek_at_offset pre ">=" tail 0;
   peek_at_offset pre ">=" tail 1;
   assert_norm (String.index ">=" 0 == FStar.Char.char_of_int 0x3E);
@@ -412,9 +553,11 @@ let next_token_ge_pre pre tail =
 
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_hathat_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("^^" ^ (" " ^ tail))) (String.length pre) == (Tok_HATHAT, String.length pre + 2))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("^^" ^ (" " ^ tail))) (String.length pre) == (Tok_HATHAT, String.length pre + 2))
 let next_token_hathat_pre pre tail =
   assert_norm (String.length "^^" == 2);
+  assert_norm (ascii_string "^^");
   peek_at_offset pre "^^" tail 0;
   peek_at_offset pre "^^" tail 1;
   assert_norm (String.index "^^" 0 == FStar.Char.char_of_int 0x5E);
@@ -423,9 +566,11 @@ let next_token_hathat_pre pre tail =
 
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_ne_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("!=" ^ (" " ^ tail))) (String.length pre) == (Tok_NE, String.length pre + 2))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("!=" ^ (" " ^ tail))) (String.length pre) == (Tok_NE, String.length pre + 2))
 let next_token_ne_pre pre tail =
   assert_norm (String.length "!=" == 2);
+  assert_norm (ascii_string "!=");
   peek_at_offset pre "!=" tail 0;
   peek_at_offset pre "!=" tail 1;
   assert_norm (String.index "!=" 0 == FStar.Char.char_of_int 0x21);
@@ -434,9 +579,11 @@ let next_token_ne_pre pre tail =
 
 #push-options "--z3rlimit 800 --fuel 4 --ifuel 4"
 val next_token_or_pre (pre tail:string)
-  : Lemma (ensures next_token false (pre ^ ("||" ^ (" " ^ tail))) (String.length pre) == (Tok_OR, String.length pre + 2))
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ ("||" ^ (" " ^ tail))) (String.length pre) == (Tok_OR, String.length pre + 2))
 let next_token_or_pre pre tail =
   assert_norm (String.length "||" == 2);
+  assert_norm (ascii_string "||");
   peek_at_offset pre "||" tail 0;
   peek_at_offset pre "||" tail 1;
   assert_norm (String.index "||" 0 == FStar.Char.char_of_int 0x7C);
@@ -461,37 +608,42 @@ let token_in_fragment (t : token) : bool =
    without re-deriving it via a separate match-with-wildcard lemma
    (which, empirically, chokes Z3 at 26-way case-split scale: see
    FINDING in the module banner above). *)
+// `ascii_string s` added to the refinement (task #52): every literal this
+// fragment prints IS ascii, and threading that through the RETURN TYPE
+// (rather than a separate `print_token_is_ascii` lemma every caller must
+// remember to invoke) makes it available for free at every call site,
+// matching how `String.length s > 0`/etc. were already handled here.
 #push-options "--z3rlimit 2000 --fuel 4 --ifuel 4"
 let print_token (t : token{token_in_fragment t})
-  : (s:string{String.length s > 0 /\ not (is_ws (String.index s 0)) /\ char_code (String.index s 0) <> 0x23})
+  : (s:string{String.length s > 0 /\ not (is_ws (String.index s 0)) /\ char_code (String.index s 0) <> 0x23 /\ ascii_string s})
   =
   match t with
-  | Tok_LBRACE -> assert_norm (String.length "{" > 0 /\ not (is_ws (String.index "{" 0)) /\ char_code (String.index "{" 0) <> 0x23); "{"
-  | Tok_RBRACE -> assert_norm (String.length "}" > 0 /\ not (is_ws (String.index "}" 0)) /\ char_code (String.index "}" 0) <> 0x23); "}"
-  | Tok_LPAREN -> assert_norm (String.length "(" > 0 /\ not (is_ws (String.index "(" 0)) /\ char_code (String.index "(" 0) <> 0x23); "("
-  | Tok_RPAREN -> assert_norm (String.length ")" > 0 /\ not (is_ws (String.index ")" 0)) /\ char_code (String.index ")" 0) <> 0x23); ")"
-  | Tok_LBRACKET -> assert_norm (String.length "[" > 0 /\ not (is_ws (String.index "[" 0)) /\ char_code (String.index "[" 0) <> 0x23); "["
-  | Tok_RBRACKET -> assert_norm (String.length "]" > 0 /\ not (is_ws (String.index "]" 0)) /\ char_code (String.index "]" 0) <> 0x23); "]"
-  | Tok_DOT -> assert_norm (String.length "." > 0 /\ not (is_ws (String.index "." 0)) /\ char_code (String.index "." 0) <> 0x23); "."
-  | Tok_SEMI -> assert_norm (String.length ";" > 0 /\ not (is_ws (String.index ";" 0)) /\ char_code (String.index ";" 0) <> 0x23); ";"
-  | Tok_COMMA -> assert_norm (String.length "," > 0 /\ not (is_ws (String.index "," 0)) /\ char_code (String.index "," 0) <> 0x23); ","
-  | Tok_STAR -> assert_norm (String.length "*" > 0 /\ not (is_ws (String.index "*" 0)) /\ char_code (String.index "*" 0) <> 0x23); "*"
-  | Tok_SLASH -> assert_norm (String.length "/" > 0 /\ not (is_ws (String.index "/" 0)) /\ char_code (String.index "/" 0) <> 0x23); "/"
-  | Tok_PIPE -> assert_norm (String.length "|" > 0 /\ not (is_ws (String.index "|" 0)) /\ char_code (String.index "|" 0) <> 0x23); "|"
-  | Tok_CARET -> assert_norm (String.length "^" > 0 /\ not (is_ws (String.index "^" 0)) /\ char_code (String.index "^" 0) <> 0x23); "^"
-  | Tok_BANG -> assert_norm (String.length "!" > 0 /\ not (is_ws (String.index "!" 0)) /\ char_code (String.index "!" 0) <> 0x23); "!"
-  | Tok_QMARK -> assert_norm (String.length "?" > 0 /\ not (is_ws (String.index "?" 0)) /\ char_code (String.index "?" 0) <> 0x23); "?"
-  | Tok_PLUS -> assert_norm (String.length "+" > 0 /\ not (is_ws (String.index "+" 0)) /\ char_code (String.index "+" 0) <> 0x23); "+"
-  | Tok_MINUS_OP -> assert_norm (String.length "-" > 0 /\ not (is_ws (String.index "-" 0)) /\ char_code (String.index "-" 0) <> 0x23); "-"
-  | Tok_EQ -> assert_norm (String.length "=" > 0 /\ not (is_ws (String.index "=" 0)) /\ char_code (String.index "=" 0) <> 0x23); "="
-  | Tok_NE -> assert_norm (String.length "!=" > 0 /\ not (is_ws (String.index "!=" 0)) /\ char_code (String.index "!=" 0) <> 0x23); "!="
-  | Tok_LT -> assert_norm (String.length "<" > 0 /\ not (is_ws (String.index "<" 0)) /\ char_code (String.index "<" 0) <> 0x23); "<"
-  | Tok_LE -> assert_norm (String.length "<=" > 0 /\ not (is_ws (String.index "<=" 0)) /\ char_code (String.index "<=" 0) <> 0x23); "<="
-  | Tok_GT -> assert_norm (String.length ">" > 0 /\ not (is_ws (String.index ">" 0)) /\ char_code (String.index ">" 0) <> 0x23); ">"
-  | Tok_GE -> assert_norm (String.length ">=" > 0 /\ not (is_ws (String.index ">=" 0)) /\ char_code (String.index ">=" 0) <> 0x23); ">="
-  | Tok_AND -> assert_norm (String.length "&&" > 0 /\ not (is_ws (String.index "&&" 0)) /\ char_code (String.index "&&" 0) <> 0x23); "&&"
-  | Tok_OR -> assert_norm (String.length "||" > 0 /\ not (is_ws (String.index "||" 0)) /\ char_code (String.index "||" 0) <> 0x23); "||"
-  | Tok_HATHAT -> assert_norm (String.length "^^" > 0 /\ not (is_ws (String.index "^^" 0)) /\ char_code (String.index "^^" 0) <> 0x23); "^^"
+  | Tok_LBRACE -> assert_norm (String.length "{" > 0 /\ not (is_ws (String.index "{" 0)) /\ char_code (String.index "{" 0) <> 0x23 /\ ascii_string "{"); "{"
+  | Tok_RBRACE -> assert_norm (String.length "}" > 0 /\ not (is_ws (String.index "}" 0)) /\ char_code (String.index "}" 0) <> 0x23 /\ ascii_string "}"); "}"
+  | Tok_LPAREN -> assert_norm (String.length "(" > 0 /\ not (is_ws (String.index "(" 0)) /\ char_code (String.index "(" 0) <> 0x23 /\ ascii_string "("); "("
+  | Tok_RPAREN -> assert_norm (String.length ")" > 0 /\ not (is_ws (String.index ")" 0)) /\ char_code (String.index ")" 0) <> 0x23 /\ ascii_string ")"); ")"
+  | Tok_LBRACKET -> assert_norm (String.length "[" > 0 /\ not (is_ws (String.index "[" 0)) /\ char_code (String.index "[" 0) <> 0x23 /\ ascii_string "["); "["
+  | Tok_RBRACKET -> assert_norm (String.length "]" > 0 /\ not (is_ws (String.index "]" 0)) /\ char_code (String.index "]" 0) <> 0x23 /\ ascii_string "]"); "]"
+  | Tok_DOT -> assert_norm (String.length "." > 0 /\ not (is_ws (String.index "." 0)) /\ char_code (String.index "." 0) <> 0x23 /\ ascii_string "."); "."
+  | Tok_SEMI -> assert_norm (String.length ";" > 0 /\ not (is_ws (String.index ";" 0)) /\ char_code (String.index ";" 0) <> 0x23 /\ ascii_string ";"); ";"
+  | Tok_COMMA -> assert_norm (String.length "," > 0 /\ not (is_ws (String.index "," 0)) /\ char_code (String.index "," 0) <> 0x23 /\ ascii_string ","); ","
+  | Tok_STAR -> assert_norm (String.length "*" > 0 /\ not (is_ws (String.index "*" 0)) /\ char_code (String.index "*" 0) <> 0x23 /\ ascii_string "*"); "*"
+  | Tok_SLASH -> assert_norm (String.length "/" > 0 /\ not (is_ws (String.index "/" 0)) /\ char_code (String.index "/" 0) <> 0x23 /\ ascii_string "/"); "/"
+  | Tok_PIPE -> assert_norm (String.length "|" > 0 /\ not (is_ws (String.index "|" 0)) /\ char_code (String.index "|" 0) <> 0x23 /\ ascii_string "|"); "|"
+  | Tok_CARET -> assert_norm (String.length "^" > 0 /\ not (is_ws (String.index "^" 0)) /\ char_code (String.index "^" 0) <> 0x23 /\ ascii_string "^"); "^"
+  | Tok_BANG -> assert_norm (String.length "!" > 0 /\ not (is_ws (String.index "!" 0)) /\ char_code (String.index "!" 0) <> 0x23 /\ ascii_string "!"); "!"
+  | Tok_QMARK -> assert_norm (String.length "?" > 0 /\ not (is_ws (String.index "?" 0)) /\ char_code (String.index "?" 0) <> 0x23 /\ ascii_string "?"); "?"
+  | Tok_PLUS -> assert_norm (String.length "+" > 0 /\ not (is_ws (String.index "+" 0)) /\ char_code (String.index "+" 0) <> 0x23 /\ ascii_string "+"); "+"
+  | Tok_MINUS_OP -> assert_norm (String.length "-" > 0 /\ not (is_ws (String.index "-" 0)) /\ char_code (String.index "-" 0) <> 0x23 /\ ascii_string "-"); "-"
+  | Tok_EQ -> assert_norm (String.length "=" > 0 /\ not (is_ws (String.index "=" 0)) /\ char_code (String.index "=" 0) <> 0x23 /\ ascii_string "="); "="
+  | Tok_NE -> assert_norm (String.length "!=" > 0 /\ not (is_ws (String.index "!=" 0)) /\ char_code (String.index "!=" 0) <> 0x23 /\ ascii_string "!="); "!="
+  | Tok_LT -> assert_norm (String.length "<" > 0 /\ not (is_ws (String.index "<" 0)) /\ char_code (String.index "<" 0) <> 0x23 /\ ascii_string "<"); "<"
+  | Tok_LE -> assert_norm (String.length "<=" > 0 /\ not (is_ws (String.index "<=" 0)) /\ char_code (String.index "<=" 0) <> 0x23 /\ ascii_string "<="); "<="
+  | Tok_GT -> assert_norm (String.length ">" > 0 /\ not (is_ws (String.index ">" 0)) /\ char_code (String.index ">" 0) <> 0x23 /\ ascii_string ">"); ">"
+  | Tok_GE -> assert_norm (String.length ">=" > 0 /\ not (is_ws (String.index ">=" 0)) /\ char_code (String.index ">=" 0) <> 0x23 /\ ascii_string ">="); ">="
+  | Tok_AND -> assert_norm (String.length "&&" > 0 /\ not (is_ws (String.index "&&" 0)) /\ char_code (String.index "&&" 0) <> 0x23 /\ ascii_string "&&"); "&&"
+  | Tok_OR -> assert_norm (String.length "||" > 0 /\ not (is_ws (String.index "||" 0)) /\ char_code (String.index "||" 0) <> 0x23 /\ ascii_string "||"); "||"
+  | Tok_HATHAT -> assert_norm (String.length "^^" > 0 /\ not (is_ws (String.index "^^" 0)) /\ char_code (String.index "^^" 0) <> 0x23 /\ ascii_string "^^"); "^^"
 #pop-options
 
 #push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
@@ -501,19 +653,28 @@ let print_token (t : token{token_in_fragment t})
    via map with an element-level coercion, which IS free. *)
 let widen_token (t : token{token_in_fragment t}) : token = t
 
+// `ascii_string s` added to the refinement here too (task #52), by the
+// same reasoning as `print_token` above -- proved by induction, `[]`
+// case trivial (`assert_norm (ascii_string "")`), cons case via
+// `ascii_string_concat` composing the head's (now-refinement-carried)
+// ascii fact with the recursive call's own.
 let rec print_tokens (ts : list (t:token{token_in_fragment t}))
-  : Tot (s:string{s == "" \/
+  : Tot (s:string{(s == "" \/
                   (String.length s > 0 /\ not (is_ws (String.index s 0)) /\
-                   char_code (String.index s 0) <> 0x23)})
+                   char_code (String.index s 0) <> 0x23)) /\ ascii_string s})
         (decreases ts)
   =
   match ts with
-  | [] -> ""
+  | [] -> assert_norm (ascii_string ""); ""
   | t :: rest ->
-    let s = print_token t ^ (" " ^ print_tokens rest) in
-    FStar.String.concat_length (print_token t) (" " ^ print_tokens rest);
+    let ptail = print_tokens rest in
+    let s = print_token t ^ (" " ^ ptail) in
+    FStar.String.concat_length (print_token t) (" " ^ ptail);
     assert (String.length s > 0);
-    index_concat_at (print_token t) (" " ^ print_tokens rest) 0;
+    index_concat_at (print_token t) (" " ^ ptail) 0;
+    assert_norm (ascii_string " ");
+    ascii_string_concat " " ptail;
+    ascii_string_concat (print_token t) (" " ^ ptail);
     s
 #pop-options
 
@@ -522,12 +683,22 @@ let rec print_tokens (ts : list (t:token{token_in_fragment t}))
 (* ============================================================ *)
 
 val peek_char_concat_right (s1 s2 : string) (p : pos{p >= String.length s1 /\ p < String.length s1 + String.length s2})
-  : Lemma (ensures peek_char (s1 ^ s2) p == peek_char s2 (p - String.length s1))
+  : Lemma (requires ascii_string s1 /\ ascii_string s2)
+          (ensures peek_char (s1 ^ s2) p == peek_char s2 (p - String.length s1))
 let peek_char_concat_right s1 s2 p =
   FStar.String.concat_length s1 s2;
+  ascii_string_concat s1 s2;
+  lemma_ascii_string_byte_length s1;
+  lemma_ascii_string_byte_length s2;
+  lemma_ascii_string_byte_length (s1 ^ s2);
   assert (not (at_end (s1 ^ s2) p));
   assert (not (at_end s2 (p - String.length s1)));
-  index_concat_at s1 s2 p
+  fs_byte_at_concat s1 s2 p;
+  assert (fs_byte_at (s1 ^ s2) p == fs_byte_at s2 (p - String.length s1));
+  fs_byte_index_eq (s1 ^ s2) p;
+  fs_byte_index_eq s2 (p - String.length s1);
+  assert (peek_char (s1 ^ s2) p == fs_byte_index (s1 ^ s2) p);
+  assert (peek_char s2 (p - String.length s1) == fs_byte_index s2 (p - String.length s1))
 
 #push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
 val next_token_skip_space (input:string) (p:pos)
@@ -578,7 +749,8 @@ let next_token_at_end input p = ()
    explosion, was the root cause of the three prior Error 19s. *)
 #push-options "--z3rlimit 2000 --fuel 4 --ifuel 4"
 val next_token_head_pre (pre tail : string) (t : token{token_in_fragment t})
-  : Lemma (ensures next_token false (pre ^ (print_token t ^ (" " ^ tail))) (String.length pre)
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures next_token false (pre ^ (print_token t ^ (" " ^ tail))) (String.length pre)
                     == (t, String.length pre + String.length (print_token t)))
 let next_token_head_pre pre tail t =
   match t with
@@ -790,6 +962,7 @@ let tokenize_single_fragment_token t =
   let txt = print_token t in
   let full = txt ^ " " in
   assert (String.length txt >= 1);
+  assert_norm (ascii_string "");
   next_token_head_pre "" "" t;
   assert (next_token false ("" ^ (txt ^ (" " ^ ""))) (String.length "") == (t, String.length "" + String.length txt));
   empty_concat_identity (txt ^ (" " ^ ""));
@@ -799,11 +972,15 @@ let tokenize_single_fragment_token t =
   assert (txt ^ (" " ^ "") == txt ^ " ");
   assert (txt ^ (" " ^ "") == full);
   assert_norm (String.length "" == 0);
+  assert_norm (ascii_string "");
   assert (next_token false full 0 == (t, String.length txt));
   let p1 = String.length txt in
   FStar.String.concat_length txt " ";
   assert_norm (String.length " " == 1);
+  assert_norm (ascii_string " ");
   assert (String.length full == p1 + 1);
+  ascii_string_concat txt " ";
+  lemma_ascii_string_byte_length full;
   assert (not (at_end full p1));
   peek_at_space "" txt "";
   assert (peek_char full p1 == FStar.Char.char_of_int 0x20);
@@ -833,7 +1010,8 @@ let tokenize_single_fragment_token t =
    where the congruence broke previously. *)
 #push-options "--z3rlimit 4000 --fuel 4 --ifuel 4"
 val combine_step (pre tail : string) (t : token{token_in_fragment t}) (acc : list token) (fuel : nat{fuel > 0})
-  : Lemma (ensures
+  : Lemma (requires ascii_string pre /\ ascii_string tail)
+          (ensures
       next_token false (pre ^ (print_token t ^ (" " ^ tail))) (String.length pre)
         == (t, String.length pre + String.length (print_token t)) /\
       tokenize_loop false (pre ^ (print_token t ^ (" " ^ tail))) (String.length pre) acc fuel
@@ -1030,6 +1208,7 @@ let space_tail_empty_length txt tail =
   assert (txt ^ (" " ^ tail) == txt ^ " ");
   FStar.String.concat_length txt " ";
   assert_norm (String.length " " == 1);
+  assert_norm (ascii_string " ");
   assert (String.length (txt ^ " ") == String.length txt + 1);
   length_of_eq (txt ^ (" " ^ tail)) (txt ^ " ");
   assert (String.length (txt ^ (" " ^ tail)) == String.length (txt ^ " "))
@@ -1045,7 +1224,8 @@ let space_tail_empty_length txt tail =
 #push-options "--z3rlimit 6000 --fuel 4 --ifuel 4"
 val tokenize_loop_fragment (pre : string) (ts : list (t:token{token_in_fragment t}))
                             (acc : list token) (fuel : nat{fuel > List.Tot.length ts})
-  : Lemma (ensures
+  : Lemma (requires ascii_string pre)
+          (ensures
       tokenize_loop false (pre ^ print_tokens ts) (String.length pre) acc fuel
         == List.Tot.rev acc @ List.Tot.map widen_token ts @ [Tok_EOF])
     (decreases ts)
@@ -1058,6 +1238,7 @@ let rec tokenize_loop_fragment pre ts acc fuel =
     assert (full == pre);
     let p0 = String.length pre in
     assert (String.length full == p0);
+    lemma_ascii_string_byte_length full;
     assert (at_end full p0);
     next_token_at_end full p0;
     assert (next_token false full p0 == (Tok_EOF, p0));
@@ -1077,6 +1258,11 @@ let rec tokenize_loop_fragment pre ts acc fuel =
     let p1 = p0 + String.length (print_token t) in
     combine_step pre ntail t acc fuel;
     assert (tokenize_loop false full p0 acc fuel == tokenize_loop false full p1 (t :: acc) (fuel - 1));
+    assert_norm (ascii_string " ");
+    ascii_string_concat " " ntail;
+    ascii_string_concat (print_token t) (" " ^ ntail);
+    ascii_string_concat pre (print_token t ^ (" " ^ ntail));
+    lemma_ascii_string_byte_length full;
     peek_at_space pre (print_token t) ntail;
     assert (not (at_end full p1));
     assert (peek_char full p1 == FStar.Char.char_of_int 0x20);
@@ -1087,6 +1273,11 @@ let rec tokenize_loop_fragment pre ts acc fuel =
        assert (String.length (print_token t ^ (" " ^ ntail)) == String.length (print_token t) + 1);
        FStar.String.concat_length pre (print_token t ^ (" " ^ ntail));
        assert (String.length full == p1 + 1);
+       assert_norm (ascii_string " ");
+       ascii_string_concat " " ntail;
+       ascii_string_concat (print_token t) (" " ^ ntail);
+       ascii_string_concat pre (print_token t ^ (" " ^ ntail));
+       lemma_ascii_string_byte_length full;
        assert (at_end full (p1 + 1));
        next_token_skip_space full p1;
        next_token_at_end full (p1 + 1);
@@ -1106,6 +1297,9 @@ let rec tokenize_loop_fragment pre ts acc fuel =
        let pre2 = pre ^ (print_token t ^ " ") in
        FStar.String.concat_length (print_token t) " ";
        assert_norm (String.length " " == 1);
+       assert_norm (ascii_string " ");
+       ascii_string_concat (print_token t) " ";
+       ascii_string_concat pre (print_token t ^ " ");
        FStar.String.concat_length pre (print_token t ^ " ");
        assert (String.length pre2 == p1 + 1);
        concat_regroup3 pre (print_token t) ntail;
@@ -1174,6 +1368,7 @@ let tokenize_fragment_roundtrip ts =
   let fuel = String.length s + 1 in
   print_tokens_length_bound ts;
   assert (fuel > List.Tot.length ts);
+  assert_norm (ascii_string "");
   tokenize_loop_fragment "" ts [] fuel;
   assert_norm (String.length "" == 0);
   assert (tokenize_loop false ("" ^ print_tokens ts) (String.length "") [] fuel
@@ -1182,6 +1377,15 @@ let tokenize_fragment_roundtrip ts =
   assert ("" ^ print_tokens ts == print_tokens ts);
   assert (List.Tot.rev ([] <: list token) == []);
   assert (tokenize_loop false s 0 [] fuel == List.Tot.map widen_token ts @ [Tok_EOF]);
-  assert (tokenize s == tokenize_loop false s 0 [] (String.length s + 1));
+  // `tokenize`'s fuel is `fs_byte_length input + 1` (task #52 migration —
+  // was `String.length input + 1` before `tokenize_loop`'s own bound
+  // check and fuel became byte-indexed); `fuel` above was built from
+  // `String.length s + 1` to match `print_tokens_length_bound`'s own
+  // codepoint-length statement, so the two need reconciling via the
+  // ascii bridge (`s = print_tokens ts` carries `ascii_string s` in its
+  // own refinement already).
+  lemma_ascii_string_byte_length s;
+  assert (tokenize s == tokenize_loop false s 0 [] (fs_byte_length s + 1));
+  assert (fs_byte_length s + 1 == String.length s + 1);
   assert (tokenize s == List.Tot.map widen_token ts @ [Tok_EOF])
 #pop-options

@@ -16,6 +16,7 @@ open FStar.List.Tot
 open RDF.Graph.Executable
 open SPARQL.FullText
 open SPARQL11.Algebra
+open Parser.FastString
 
 #push-options "--z3rlimit 100 --fuel 2 --ifuel 2"
 
@@ -140,32 +141,99 @@ type token =
 (** ====================================================================== **)
 
 (* Lexer position: index into the input string.
-   Invariant: 0 <= pos <= String.length input *)
+   Invariant: 0 <= pos <= fs_byte_length input.
+
+   BYTE-indexed, not codepoint-indexed (task #52, docs/designissues/
+   2026-08-10-string-foundation-decision.md gap 1, owner decision "1: A"
+   2026-08-11). Before this migration `pos` counted UNICODE CODEPOINTS
+   via `FStar.String.length`/`index`/`sub` (whose OCaml realisation
+   walks the input through `BatUTF8`, O(n) per call, and whose `sub` has
+   NO content specification in ulib — see SPARQL11.Parser.
+   AskBgpRoundTrip.fst's "STAGE (a) / IMPOSSIBILITY" section for the
+   proof wall this caused). This migration switches every position this
+   lexer threads to a BYTE offset into the UTF-8 encoding and swaps the
+   four position-facing primitives below (char_at/at_end/peek_char/
+   substring) onto Parser.FastString's proved byte primitives
+   (fs_byte_length/fs_byte_index/fs_byte_sub).
+
+   WHY THIS IS BEHAVIOUR-PRESERVING (not merely "reinterpret the same
+   numbers", which would be wrong on non-ASCII input in general — see
+   Parser.FastString.fst's own SAFETY banner: "byte-level operations are
+   only safe for parsers whose grammar commits on ASCII bytes and treats
+   multi-byte UTF-8 as opaque"). Two facts about THIS lexer's own
+   grammar-classification code make it exactly such a parser:
+     1. Every "find a delimiter" scan (scan_iri_end, scan_short_string_
+        end, scan_long_string_end) hunts a SPECIFIC ASCII byte (`>`,
+        `"`, `'`, `\`) and treats everything else opaquely. UTF-8 is
+        self-synchronising: no continuation or lead byte of a multi-byte
+        sequence ever equals an ASCII byte value, so a byte-at-a-time
+        scan for an ASCII delimiter finds exactly the same boundary a
+        codepoint-at-a-time scan would.
+     2. Every "accept this character into an identifier" classification
+        that admits non-ASCII content (`is_pn_char`, and the `next_
+        token`/`scan_pname_or_keyword` dispatch guard) uses the COARSE
+        test `char_code c >= 0x80` — "any non-ASCII input is accepted",
+        never a precise per-codepoint PN_CHARS_BASE range check. Every
+        byte of a multi-byte UTF-8 sequence (lead AND continuation) is
+        itself >= 0x80, so a byte-at-a-time walk accepts/consumes the
+        exact same run of bytes a codepoint-at-a-time walk would accept
+        — the classification predicate cannot tell "one non-ASCII
+        codepoint" from "one non-ASCII byte" apart, by construction.
+     ASCII-only classifications (scan_var_chars_end, scan_langtag_
+     chars_end, scan_digits_end — all reject any byte/codepoint >= 0x80
+     already) are trivially unaffected: single-byte codepoints only.
+   Net effect: every scan_* boundary this lexer computes lands on the
+   same byte offset a codepoint offset would have named for the same
+   input character — the byte/codepoint distinction is invisible to
+   this specific grammar's own classification code. `substring` slices
+   therefore always land on UTF-8 codepoint boundaries, so fs_byte_sub's
+   decode-reencode round-trip recovers exactly the intended text.
+   `split_pname` (the one non-lexer-internal `substring` caller mixing
+   a byte position with a separately-computed length) is fixed to use
+   `fs_byte_length` instead of `String.length` for consistency — see
+   its own comment. *)
 type pos = nat
 
 (* Result of lexing one token: the token and the new position *)
 type lex_result = token & pos
 
-(* Character at position, or null if past end *)
+(* Character at position (as the raw UTF-8 BYTE, not a decoded
+   codepoint — see the `pos` comment above for why this is safe for
+   this lexer's own classification code), or null if past end. *)
 let char_at (s : string) (p : pos) : FStar.Char.char =
-  if p < String.length s then String.index s p
+  if p < fs_byte_length s then fs_byte_index s p
   else FStar.Char.char_of_int 0
 
-(* Check if position is at or past end of input *)
+(* Check if position is at or past end of input (byte length, see the
+   `pos` comment above). *)
 let at_end (input : string) (p : pos) : bool =
-  p >= String.length input
+  p >= fs_byte_length input
 
 (* Peek at character without advancing *)
 let peek_char (input : string) (p : pos) : FStar.Char.char =
   if at_end input p then FStar.Char.char_of_int 0
   else char_at input p
 
-(* Extract substring — safe: clamps to bounds *)
+(* Extract substring via Parser.FastString.fs_byte_sub — task #52
+   migration off `FStar.String.sub` (no content spec in ulib; see the
+   `pos` comment above). fs_byte_sub is itself already a total,
+   self-clamping function (Parser.FastString.fst's own banner: its
+   `Spec.slice_bytes` yields [] once `start` runs past the end and
+   truncates `len` once it would run past the end) — the manual bounds
+   clamping this function used to do around `String.sub` is therefore
+   redundant and has been dropped. The `len = 0` branch stays explicit
+   (not folded into a bare `fs_byte_sub s p len` call), though: it is
+   NOT needed for correctness (`fs_byte_sub _ _ 0 == ""` regardless),
+   but `fs_byte_sub` is OPAQUE outside `Parser.FastString` (`.fsti`-
+   restricted, task #52's own migration decision) — so a caller-side
+   proof that `substring _ _ 0 == ""` cannot unfold through it, and
+   several SPARQL11.Parser.TokenRoundTrip.fst lemmas rely on exactly
+   that reduction firing for free at `len = 0` the way it did before
+   this migration. Keeping the branch transparent in `substring`'s own
+   `let` (rather than inside the opaque `fs_byte_sub`) restores that
+   free reduction without touching Parser.FastString at all. *)
 let substring (s : string) (p : pos) (len : nat) : string =
-  if len = 0 then ""
-  else if p + len <= String.length s then String.sub s p len
-  else if p < String.length s then String.sub s p (String.length s - p)
-  else ""
+  if len = 0 then "" else fs_byte_sub s p len
 
 (* Convert character to its integer code *)
 let char_code (c : FStar.Char.char) : nat = FStar.Char.int_of_char c
@@ -445,7 +513,7 @@ let process_string_escapes_opt (strict : bool) (s : string) : Tot (option string
 
 (* Find position of a character in a string, starting from p *)
 let rec find_char_pos (input : string) (p : pos) (target : nat)
-  : Tot (option pos) (decreases (String.length input - p)) =
+  : Tot (option pos) (decreases (fs_byte_length input - p)) =
   if at_end input p then None
   else if char_code (peek_char input p) = target then Some p
   else find_char_pos input (p + 1) target
@@ -472,7 +540,7 @@ let rec trim_trailing_dots (input : string) (start : pos) (end_pos : pos)
 (** ====================================================================== **)
 
 (* Skip whitespace and comments. Returns new position >= p. *)
-let rec skip_ws (input : string) (p : pos) : Tot pos (decreases (String.length input - p)) =
+let rec skip_ws (input : string) (p : pos) : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else
     let c = peek_char input p in
@@ -481,7 +549,7 @@ let rec skip_ws (input : string) (p : pos) : Tot pos (decreases (String.length i
       skip_comment input (p + 1)
     else p
 
-and skip_comment (input : string) (p : pos) : Tot pos (decreases (String.length input - p)) =
+and skip_comment (input : string) (p : pos) : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else if char_code (peek_char input p) = 0x0A then skip_ws input (p + 1)
   else skip_comment input (p + 1)
@@ -490,7 +558,7 @@ and skip_comment (input : string) (p : pos) : Tot pos (decreases (String.length 
 
 (* Find position of unescaped > in IRI. Backslash skips next char. *)
 let rec scan_iri_end (input : string) (p : pos)
-  : Tot pos (decreases (String.length input - p)) =
+  : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else
     let c = peek_char input p in
@@ -516,7 +584,7 @@ let scan_iri (input : string) (p : pos) : (string & pos) =
 
 (* Find end of short string (single quote delimiter) *)
 let rec scan_short_string_end (input : string) (p : pos) (q_code : nat)
-  : Tot pos (decreases (String.length input - p)) =
+  : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else
     let c = peek_char input p in
@@ -528,7 +596,7 @@ let rec scan_short_string_end (input : string) (p : pos) (q_code : nat)
 
 (* Find end of long string (triple quote delimiter) *)
 let rec scan_long_string_end (input : string) (p : pos) (q_code : nat)
-  : Tot pos (decreases (String.length input - p)) =
+  : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else
     let c = peek_char input p in
@@ -571,14 +639,14 @@ let scan_string (sparql12 : bool) (input : string) (p : pos) : (option string & 
 
 (* Scan PN_CHAR* characters (for prefix part or keyword) *)
 let rec scan_pn_chars_end (input : string) (p : pos)
-  : Tot pos (decreases (String.length input - p)) =
+  : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else if is_pn_char (peek_char input p) then scan_pn_chars_end input (p + 1)
   else p
 
 (* Scan PN_LOCAL characters after the colon in a prefixed name *)
 let rec scan_pn_local_end (input : string) (p : pos)
-  : Tot pos (decreases (String.length input - p)) =
+  : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else
     let c = peek_char input p in
@@ -767,7 +835,7 @@ let scan_pname_or_keyword (sparql12 : bool) (input : string) (p : pos) : lex_res
 
 (* Scan consecutive digits *)
 let rec scan_digits_end (input : string) (p : pos)
-  : Tot pos (decreases (String.length input - p)) =
+  : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else if is_digit (peek_char input p) then scan_digits_end input (p + 1)
   else p
@@ -802,7 +870,7 @@ let scan_number (input : string) (p : pos) : lex_result =
 
 (* Scan PN_CHAR* for blank node label *)
 let rec scan_bnode_chars_end (input : string) (p : pos)
-  : Tot pos (decreases (String.length input - p)) =
+  : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else if is_pn_char (peek_char input p) then scan_bnode_chars_end input (p + 1)
   else p
@@ -818,7 +886,7 @@ let scan_bnode_label (input : string) (p : pos) : (string & pos) =
 
 (* Scan [a-zA-Z0-9_]* for variable names *)
 let rec scan_var_chars_end (input : string) (p : pos)
-  : Tot pos (decreases (String.length input - p)) =
+  : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else
     let c = peek_char input p in
@@ -835,7 +903,7 @@ let scan_var_name (input : string) (p : pos) : (string & pos) =
 
 (* Scan [a-zA-Z0-9-]* for language tags *)
 let rec scan_langtag_chars_end (input : string) (p : pos)
-  : Tot pos (decreases (String.length input - p)) =
+  : Tot pos (decreases (fs_byte_length input - p)) =
   if at_end input p then p
   else
     let c = peek_char input p in
@@ -883,7 +951,7 @@ let rec sparql_split_lang_dir (cs : list FStar.Char.char) (acc : list FStar.Char
   | [] -> (List.Tot.rev acc, None)
 
 let rec has_gt_before_terminator (input : string) (p : pos)
-  : Tot bool (decreases (String.length input - p)) =
+  : Tot bool (decreases (fs_byte_length input - p)) =
   if at_end input p then false
   else
     let code = char_code (peek_char input p) in
@@ -1084,7 +1152,7 @@ type modifier_result = solution_modifier & option (list group_condition) & optio
 let rec tokenize_loop (sparql12 : bool) (input : string) (p : pos) (acc : list token) (fuel : nat)
   : Tot (list token) (decreases fuel) =
   if fuel = 0 then List.Tot.rev (Tok_EOF :: acc)
-  else if p > String.length input then List.Tot.rev (Tok_EOF :: acc)
+  else if p > fs_byte_length input then List.Tot.rev (Tok_EOF :: acc)
   else
     let (tok, p') = next_token sparql12 input p in
     match tok with
@@ -1094,20 +1162,24 @@ let rec tokenize_loop (sparql12 : bool) (input : string) (p : pos) (acc : list t
       else tokenize_loop sparql12 input p' (tok :: acc) (fuel - 1)
 
 // SPARQL 1.1 tokenizer (default) — byte-identical to prior behavior.
+// Fuel bound is the BYTE length now (task #52 migration; was the
+// codepoint length before `pos` became byte-indexed) — still a valid,
+// generous upper bound on token count since each loop iteration
+// consumes at least one byte of progress (`p' <= p` short-circuits
+// otherwise).
 let tokenize (input : string) : list token =
-  tokenize_loop false input 0 [] (String.length input + 1)
+  tokenize_loop false input 0 [] (fs_byte_length input + 1)
 
 // SPARQL 1.2 tokenizer — additionally emits Tok_TT_OPEN / Tok_TT_CLOSE
 // and the triple-term builtin keywords. Also decodes SPARQL 1.2
 // codepoint escapes (\uXXXX / \UXXXXXXXX) as a preprocessing pass over
 // the raw query text before tokenizing — see `process_codepoint_escapes`.
-// Decoding strictly shortens or preserves the byte length (never
-// lengthens it: a 6-or-10-character escape always decodes to 1..4 UTF-8
-// bytes), so `String.length input + 1` remains a valid fuel bound for
-// tokenizing the decoded text.
+// The fuel bound is computed directly from the DECODED text's own byte
+// length (fs_byte_length decoded + 1), so it stays valid regardless of
+// how escape decoding changes byte length relative to `input`.
 let tokenize_12 (input : string) : list token =
   let decoded = process_codepoint_escapes input in
-  tokenize_loop true decoded 0 [] (String.length input + 1)
+  tokenize_loop true decoded 0 [] (fs_byte_length decoded + 1)
 
 (** ====================================================================== **)
 (** Part 5: Parser Combinators                                              **)
@@ -1169,10 +1241,21 @@ let rec find_colon (cs : list FStar.Char.char) (i : nat)
   | [] -> i
   | c :: rest -> if FStar.Char.int_of_char c = 0x3A then i else find_colon rest (i + 1)
 
-(* Split a prefixed name "prefix:local" into (prefix, local) *)
+(* Split a prefixed name "prefix:local" into (prefix, local).
+   `i` (from `find_char_pos`, itself built on the now-byte-indexed
+   `at_end`/`peek_char`) is a BYTE offset — task #52. The remaining-
+   length argument must therefore be `fs_byte_length pn`, not
+   `String.length pn` (codepoint count): using the codepoint count here
+   would under-count for any `pn` with non-ASCII local-part content,
+   truncating the extracted `local` string. This is the one call site
+   in this file where a byte position from the lexer's own machinery
+   meets a separately-computed length, rather than two positions from
+   the same threaded `pos` — flagged explicitly per the task brief's
+   "if any site mixes codepoint arithmetic, handle it explicitly and
+   document" instruction. *)
 let split_pname (pn : string) : (string & string) =
   match find_char_pos pn 0 0x3A (* : *) with
-  | Some i -> (substring pn 0 i, substring pn (i + 1) (safe_sub (String.length pn) (i + 1)))
+  | Some i -> (substring pn 0 i, substring pn (i + 1) (safe_sub (fs_byte_length pn) (i + 1)))
   | None -> (pn, "")
 
 (* Resolve a prefixed name to a full IRI string *)
@@ -1320,6 +1403,22 @@ let rdf_reifies_iri_str : wf_iri =
 
 // A bnode id is "local labeled" iff it is NOT parser-generated
 // (parser-generated ids come from fresh_bnode_id below: "_:bnode_<n>").
+//
+// `plen`/`blen` deliberately stay `String.length` (codepoint count),
+// not `fs_byte_length` — task #52 site review. `prefix` is a fixed
+// 8-character ASCII literal, so its codepoint and byte lengths coincide
+// (both 8); the `substring b 0 plen` slice below now takes `plen` as a
+// BYTE length via the migrated `substring`, but 8 is 8 either way for
+// an ASCII literal, so no value changes. The guard `blen < plen` uses
+// `b`'s CODEPOINT length, which is always <= its byte length — so
+// `blen < plen` (in codepoints) failing to hold implies `b`'s BYTE
+// length is also >= plen, and the guard's own correctness doesn't
+// depend on bytes vs codepoints at all: the 8-byte ASCII prefix
+// "_:bnode_" occupies exactly 8 codepoints if and only if it occupies
+// exactly 8 bytes (single-byte characters), so `b` can only start with
+// it if `b` has at least 8 codepoints in the first place. Position-0
+// fixed-ASCII-prefix checks are unaffected by the byte/codepoint
+// distinction in general — see `starts_with_string` below, same shape.
 let is_local_labeled_bnode_id (b : string) : bool =
   let prefix = "_:bnode_" in
   let plen = String.length prefix in
@@ -4183,9 +4282,15 @@ let rec tokens_only_eof (ts : token_stream) : Tot bool (decreases ts) =
   | Tok_EOF :: rest -> tokens_only_eof rest
   | _ -> false
 
+// Generic prefix test (not hardcoded to an ASCII literal like
+// `is_local_labeled_bnode_id` above) — uses `fs_byte_length` for BOTH
+// lengths, matching the migrated `substring`'s byte-position argument,
+// so this stays correct for an arbitrary (possibly non-ASCII) `prefix`,
+// not just the one ASCII call site (`is_labeled_bnode_id` below) it
+// happens to have today (task #52 site review).
 let starts_with_string (s : string) (prefix : string) : bool =
-  let ls = String.length s in
-  let lp = String.length prefix in
+  let ls = fs_byte_length s in
+  let lp = fs_byte_length prefix in
   lp <= ls && substring s 0 lp = prefix
 
 let is_labeled_bnode_id (b : string) : bool =
