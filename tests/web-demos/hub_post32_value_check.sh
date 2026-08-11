@@ -11,7 +11,7 @@
 # Why value-level: post 32 shipped with two browser-only breakages the
 # node suite (tests/hub/post32_test.mjs) could not see, because the
 # node harness binds `fn` to the node npm package while the page binds
-# it to docs/_includes/hub.njk's wrapper over docs/npm/foafos/
+# it to docs/_includes/hub.njk's wrapper over docs/npm/factoidal/
 # browser.js. Bug 1 (2026-08-07, owner-reported): fn.rhoDfFragmentCheck
 # had no browser wrapper at all -- cell REJECTED, which
 # hub_browser_all.sh would have caught had it been run before
@@ -74,7 +74,7 @@ else
   PLAYWRIGHT_IMPORT_SPEC="playwright"
 fi
 
-for f in third_party/eleventy/npm-cache third_party/observable/dist/runtime.esm.js docs/npm/foafos/browser.js docs/npm/foafos/factoidal-npm-entry.js; do
+for f in third_party/eleventy/npm-cache third_party/observable/dist/runtime.esm.js docs/npm/factoidal/browser.js docs/npm/factoidal/factoidal-npm-entry.js; do
   [ -e "$f" ] || { echo "Missing $f -- run the vendoring steps first." >&2; exit 2; }
 done
 

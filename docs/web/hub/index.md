@@ -33,7 +33,7 @@ name:
 
 | Name | What it is |
 |---|---|
-| `Factoidal` | the raw npm package entry (`../npm/foafos/browser.js`) — the primitives `fn` is built on, running the F\*-extracted engine in-browser. Cells call `fn`, not this, directly. |
+| `Factoidal` | the raw npm package entry (`../npm/factoidal/browser.js`) — the primitives `fn` is built on, running the F\*-extracted engine in-browser. Cells call `fn`, not this, directly. |
 | `fn` | the typed cell-facing API — `fn.parse()` returns a `Dataset` you can iterate and check `.size` on, `fn.query()` returns `Map<string, Term>[]` / `boolean` / another `Dataset` depending on the query form. Every post below calls a Factoidal capability through this. |
 | `d3` | vendored `d3` 7.9.0, for hand-rolled charts |
 | `Plot` | vendored `@observablehq/plot` 0.6.17, for declarative charts |

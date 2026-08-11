@@ -54,7 +54,7 @@ else
 fi
 
 ENTRY_CANDIDATES=(
-  "docs/npm/foafos/factoidal-npm-entry.js"
+  "docs/npm/factoidal/factoidal-npm-entry.js"
   "docs/fstar-extracted/factoidal-npm-entry.js"
   "npm/factoidal/factoidal-npm-entry.js"
 )

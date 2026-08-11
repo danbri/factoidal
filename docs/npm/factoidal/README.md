@@ -1,9 +1,11 @@
-# @danbri/foafos — DRAFT
+# factoidal — DRAFT
 
-> **DRAFT documentation.** `@danbri/foafos` is a placeholder name —
-> not registered, not published; real package setup follows as things
-> mature (`package.json` is marked `private` to prevent accidental
-> publishing). API surface is 0.1.0-alpha and may change. See
+> **DRAFT documentation.** `factoidal` is the package's name on npm —
+> not yet published (`package.json` is marked `private` to prevent
+> accidental publishing). API surface is 0.1.0-alpha and may change.
+> This package was previously developed under the placeholder name
+> `@danbri/foafos`; it was never published under that name, so there
+> is no compatibility alias to maintain. See
 > [CHANGELOG.md](CHANGELOG.md).
 
 A formally verified RDF/SPARQL engine for JavaScript and WebAssembly.
@@ -37,7 +39,7 @@ on-disk backend).
 ## Install (placeholder — not yet published)
 
 ```bash
-npm install @danbri/foafos
+npm install factoidal
 ```
 
 ## Quickstart
@@ -47,7 +49,7 @@ so `await` each one (the engine bundle loads lazily on first use).
 
 ```js
 import { parse, query, serialize, canonicalize, dataFactory }
-  from "@danbri/foafos";
+  from "factoidal";
 
 // Parse any supported syntax into an RDF/JS DatasetCore.
 // If your data contains RELATIVE IRIs, pass { baseIRI: ... } —
@@ -84,12 +86,12 @@ const nq = await serialize(ds, { format: "nquads" });
 > these drops as a throw or a warnings channel is tracked in the
 > repository issues.
 
-CommonJS: `const foafos = require("@danbri/foafos")`.
+CommonJS: `const factoidal = require("factoidal")`.
 
 ### WebAssembly entry
 
 ```js
-import { parse, query } from "@danbri/foafos/wasm";
+import { parse, query } from "factoidal/wasm";
 // Same API over the wasm_of_ocaml bundle; needs a Wasm-GC engine
 // (Chrome >= 119, Node >= 22). The unit suite asserts byte-parity
 // between the JS and Wasm entries on parse/SELECT/ASK.
@@ -101,13 +103,13 @@ You don't need `npm install` (or a bundler) to run this in a browser.
 Two options, in preference order:
 
 1. **This site's own mirror (recommended, same-origin, no build step
-   for you).** Every push regenerates `docs/npm/foafos/` from this
+   for you).** Every push regenerates `docs/npm/factoidal/` from this
    package (`formal/fstar/build-ocaml.sh npm`'s Pages-mirror step), so
    it's always in sync with what's published here:
 
    ```html
    <script type="module">
-     import { query } from 'https://danbri.github.io/factoidal/npm/foafos/browser.js';
+     import { query } from 'https://danbri.github.io/factoidal/npm/factoidal/browser.js';
      const r = await query(dataTtl, 'SELECT * WHERE { ?s ?p ?o }');
      console.log(r.results.bindings);
    </script>
@@ -115,7 +117,7 @@ Two options, in preference order:
 
    See [`demo-jsonld-playground.html`](../../docs/fstar-extracted/demo-jsonld-playground.html)
    for a working page built exactly this way (loads `browser.js` from
-   `../npm/foafos/browser.js`, a relative same-origin path).
+   `../npm/factoidal/browser.js`, a relative same-origin path).
 
 2. **jsDelivr's GitHub proxy** (serves the correct
    `text/javascript` MIME type; no Pages dependency, works from any
@@ -145,7 +147,7 @@ loaded into its own named graph or the default graph) and a choice of
 extraction target, use `queryDataset(files, queryString, options)`:
 
 ```js
-import { queryDataset } from 'https://danbri.github.io/factoidal/npm/foafos/browser.js';
+import { queryDataset } from 'https://danbri.github.io/factoidal/npm/factoidal/browser.js';
 
 const r = await queryDataset(
   [
@@ -180,7 +182,7 @@ modules the native on-disk delta log uses (`factoidal serve --rw
 
 ```js
 import { deltaLogOpen, deltaLogAppend, deltaLogMerge } from
-  'https://danbri.github.io/factoidal/npm/foafos/browser.js';
+  'https://danbri.github.io/factoidal/npm/factoidal/browser.js';
 
 const handle = await deltaLogOpen();               // opens/creates an IndexedDB database
 await deltaLogAppend(handle, 'INSERT DATA { <urn:x:a> <urn:x:p> "1" }');
@@ -205,7 +207,7 @@ not yet back a hub demo page — that is separate, follow-on work.
 ### RDF/JS interop
 
 ```js
-import { dataFactory } from "@danbri/foafos";
+import { dataFactory } from "factoidal";
 const { namedNode, literal, quad, blankNode } = dataFactory;
 const q = quad(blankNode("x"),
                namedNode("http://xmlns.com/foaf/0.1/name"),
@@ -228,7 +230,7 @@ design rationale (cost model, backend/streaming extension points):
 [`docs/designissues/2026-07-05-functional-dataset-api.md`](../../docs/designissues/2026-07-05-functional-dataset-api.md).
 
 ```js
-const { parse, filter, hash, cell, derive } = require('@danbri/foafos/fn');
+const { parse, filter, hash, cell, derive } = require('factoidal/fn');
 
 const ds = await parse(`
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
@@ -261,7 +263,7 @@ surface below the same way — FnDataset in, FnDataset (or a plain
 verdict) out:
 
 ```js
-const { parse, validate, shex, fromMapping, fromCsvw, rif } = require('@danbri/foafos/fn');
+const { parse, validate, shex, fromMapping, fromCsvw, rif } = require('factoidal/fn');
 
 const data = await parse(personTtl);
 const shapes = await parse(shapesTtl);
@@ -375,6 +377,7 @@ initialised (auto on Node, explicit in the browser — see below);
 | `parse`, `query` (SELECT/ASK), `serialize` (nquads/ntriples), `canonicalize`, `graphs`, `canonicalHash`, `queryHdt`, `queryRaw` | ✓ | ✓\* | ✓ | CLI bundle |
 | `query` (CONSTRUCT), `update`, `serialize` (turtle) | ✓ | ✓\* | ✓ | entry |
 | `shaclValidate`, `shexValidate`, `owlClosure`, `rmlMap`, `csvwToRdf`, `jsonldToRdf`, `jsonldFromRdf`, `didKeyResolve`, `xmlWellformed`, `xpathEval`, `rifEval` | ✓ | ✓ | partial† | entry |
+| `coreRdfsClosure`/`rhoDfClosure`, `coreRdfsCheck`/`rhoDfFragmentCheck`, `rdfsPlusClosure`, `tableauMaterialise`, `tableauDlInconsistent`, `owlIsConsistent`, `owlEntails` | ✓ | ✓ | wrapper only‡ | entry |
 | `xsltTransform`, `mathmlEval`, `xformsRecalc`, `jsonSchemaValidate`, `schematronValidate`, `toan*`, `matrix*` | ✓ | ✓ | partial† | entry |
 | `openCottas`, `queryCottas`, `closeCottas`, `toCottas` | ✓ | ✓ | ✓ | entry |
 | `vcSha256Hex`, `vcEd25519SecretToPublic`, `vcEd25519Sign`, `vcEd25519Verify`, `vcEddsaCreateFromCanonical`, `vcEddsaVerifyFromCanonical` | ✓ | ✓ | ✓ | entry + HACL\* init |
@@ -395,6 +398,16 @@ validation/inference/COTTAS set (`parse`/`query`/`update`/`serialize`/
 typed-engine `#74` functions and the `vc*`/`did`/`xml`/`xpath` wrappers
 are exposed on the js and browser entries. The underlying wasm ABI
 carries them — the `/wasm` re-export surface is being brought to parity.
+‡ `coreRdfsClosure`/`rhoDfClosure`/`coreRdfsCheck`/`rhoDfFragmentCheck`/
+`rdfsPlusClosure`/`tableauMaterialise`/`tableauDlInconsistent`/
+`owlIsConsistent`/`owlEntails` are exported from `factoidal/wasm`
+(wrapper wiring — the same `buildApi()` `index.js` uses), but the
+committed `factoidal-npm-entry.wasm.js` ABI bundle predates these
+functions (built before they landed on the ABI) — calling them on the
+wasm engine throws the existing "pending npm-entry bundle" error until
+that bundle is rebuilt via a real `wasm_of_ocaml` build (not a copy).
+`capabilities()` on the wasm engine reports this honestly (`tableau:
+false` etc.) rather than guessing.
 
 ### VC crypto: the init story
 

@@ -39,7 +39,7 @@ cd "$REPO_ROOT"
 
 CLIENT_MODULE="docs/fstar-extracted/rif-demo-client.mjs"
 ENTRY_CANDIDATES=(
-  "docs/npm/foafos/factoidal-npm-entry.js"
+  "docs/npm/factoidal/factoidal-npm-entry.js"
   "docs/fstar-extracted/factoidal-npm-entry.js"
   "npm/factoidal/factoidal-npm-entry.js"
 )
@@ -72,7 +72,7 @@ const require = createRequire(import.meta.url);
 
 const candidates = [
   process.env.FACTOIDAL_NPM_ENTRY,
-  '$REPO_ROOT/docs/npm/foafos/factoidal-npm-entry.js',
+  '$REPO_ROOT/docs/npm/factoidal/factoidal-npm-entry.js',
   '$REPO_ROOT/docs/fstar-extracted/factoidal-npm-entry.js',
   '$REPO_ROOT/npm/factoidal/factoidal-npm-entry.js',
 ].filter(Boolean);

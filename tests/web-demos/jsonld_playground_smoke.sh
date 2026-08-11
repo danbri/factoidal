@@ -5,7 +5,7 @@
 # the exact same toRdf()/canonicalize() calls the page makes on its
 # preloaded example, through the shared engine-call module
 # (docs/fstar-extracted/jsonld-playground-client.mjs) driven by the
-# js_of_ocaml bundle mirrored to docs/npm/foafos/ (the Pages tree) --
+# js_of_ocaml bundle mirrored to docs/npm/factoidal/ (the Pages tree) --
 # the same artifact the browser page loads, so a pass here is evidence
 # the Pages-mirrored package actually runs the JSON-LD pipeline, not
 # just that the SPARQL query path works.
@@ -31,7 +31,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-MIRROR_DIR="docs/npm/foafos"
+MIRROR_DIR="docs/npm/factoidal"
 CLIENT_MODULE="docs/fstar-extracted/jsonld-playground-client.mjs"
 
 for f in "$MIRROR_DIR/factoidal.js" "$MIRROR_DIR/lib/engine-js.js" "$CLIENT_MODULE"; do
