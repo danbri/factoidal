@@ -1366,28 +1366,6 @@ issue filed for the runner path resolution.
 `simple-entails`)**: the loose `literal_eq` (case-folded language
 tags; XML-canon-equated rdf:XMLLiterals) made simple_entails accept
 non-entailed pairs — machine-checked witness stood in-code. Fixed:
-new strict `literal_term_eq` (field-by-field: lexical form, datatype,
-language tag, direction; no folding, no canon), simple_entails
-switched to it. Regression pins BOTH directions:
-`simple_entails_se1_regression` (the old accepted pair now REJECTED)
-+ `simple_entails_se1_positive_regression` (real matches still
-accepted — a no-only test proves nothing, per the vacuity
-discipline). BONUS: `simple_entails_sound_ground` — soundness with
-NO literal-content side condition for bnode-free graphs, first
-attempt; the general theorem keeps its graph_exact condition because
-one smaller path (shared bnode binding twice across
-tag-case/XML-form-differing literals) still uses the loose check —
-documented in-code, no suite test reaches it. Gates: 26 rdf-mt-layer
-modules verify clean; RDF 1031/0 (rdf-mt subset 39/0 — unchanged
-because the RUNNER does not call this F* function for the simple
-regime, finding SE-3, wiring tracked on #324); SPARQL 631/0.
-Independent confirmation of the #418 CWD artifact (4 spurious RIF
-fails from the wrong folder, clean from repo root).
-
-**#324 SE-1 FIXED: simple_entails literal check (2026-08-11, branch
-`simple-entails`)**: the loose `literal_eq` (case-folded language
-tags; XML-canon-equated rdf:XMLLiterals) made simple_entails accept
-non-entailed pairs — machine-checked witness stood in-code. Fixed:
 new strict `literal_term_eq` (field-by-field; no folding, no canon),
 simple_entails switched to it. Regression pins BOTH directions
 (old accepted pair now REJECTED; real matches still accepted, per
