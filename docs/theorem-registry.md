@@ -1163,3 +1163,19 @@ chains cover `mid_a ^ mid_b`), with per-kind extend/shift sub-lemmas.
 open with a FINDING + exact fix path (`lw_ds_step_extend_right`, 3
 attempts past the 3-min z3 cap). Whole module verifies in 43 seconds.
 No admits, no --lax, no new assume vals.
+
+**G4 M4: N-ROW symbolic SRJ theorem (2026-08-11, branch `srj-nrow`)**:
+`lemma_srj_n_rows` in `SPARQL.Protocol.RoundTrip.fst` Part 11 —
+`serialise_response_json vars rows` equals the fixed SRJ shape
+(head/vars block ^ comma-joined row texts) for ANY variable list and
+ANY row list of ANY length. First-attempt via induction; the fixed
+two-row goal that kept failing in-file is now a definitional
+instantiation. Helpers: `chunks_of`, `json_rows_joined`,
+`lemma_json_rows_body_acc_is_rev_acc` (accumulator == rev_acc, list
+facts only), `lemma_body_pieces_eq`, `lemma_concat_chunks` (strcat
+kit inside the induction step, never one flat goal). Residual finding
+kept: a separate NAMED two-row corollary lemma still trips the file's
+trigger sensitivity (3 phrasings, same Error 19; one attempt flipped
+pass→fail by removing an unrelated nearby declaration) — covered by
+instantiation, not forced. Verified 3x alone + 3x in-file. No admits,
+no --lax, no new assume vals.
