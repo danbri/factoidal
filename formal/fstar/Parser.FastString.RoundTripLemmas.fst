@@ -482,3 +482,319 @@ let fs_byte_sub_by_charcount s start len =
   let blen = List.Tot.length (List.Tot.concatMap Spec.utf8_enc_char mid) in
   fs_byte_sub_eq s bstart blen;
   Spec.utf8_decode_all_slice_by_charcount cs start len
+
+(** ======================================================================== **)
+(** #401 M1: `s == build_string (codes_of s)` -- THE missing bridging step   **)
+(** the "SHARPENED FINDING" banner above named, now CLOSED. Session          **)
+(** 2026-08-11, continuing #401.                                             **)
+(**                                                                          **)
+(** ROUTE THAT WORKS: two resources landed since the finding above was       **)
+(** recorded make this provable WITHOUT ever touching                       **)
+(** `list_of_string`/`string_of_list` INSIDE a self-recursive Lemma body --  **)
+(** the exact thing the finding proved unprovable.                          **)
+(**   (1) `Spec.utf8_decode_all_utf8_bytes_identity` (Parser.FastString.     **)
+(**       Spec.fst Section 7, PR #409) -- `utf8_decode_all (utf8_bytes s)    **)
+(**       == FStar.String.list_of_string s`, proved NON-recursively (its own **)
+(**       proof is one call to the codepoint-list-level                     **)
+(**       `utf8_decode_all_concatMap_identity`, which sidesteps the wall by  **)
+(**       staying at the `list byte -> list char` level throughout).        **)
+(**   (2) The finding's own diagnosis: the wall is specifically the coercion **)
+(**       pair used INSIDE a self-recursive Lemma. A NON-recursive proof     **)
+(**       that only COMPOSES already-closed facts is safe -- confirmed by    **)
+(**       every successful use already in this file (`lemma_one_char_list_   **)
+(**       of_string`, `demo_fs_byte_length_ab`, etc).                        **)
+(**                                                                          **)
+(** THE ONE recursive step still needed (`lemma_utf8_bytes_build_string`     **)
+(** below) is SAFE because it recurses entirely at the `list byte`/         **)
+(** `List.Tot.concatMap` level (an ordinary transparent inductive ADT, not   **)
+(** the opaque `FString`-sorted coercion pair) -- the same "stay at the      **)
+(** codepoint-list level" route the SHARPENED FINDING banner's own           **)
+(** ROUTE THAT WORKS paragraph used for `lemma_ascii_utf8_bytes_length`/     **)
+(** `_at` above. `list_of_string`/`string_of_list` appear only via ONE       **)
+(** non-recursive call each: `lemma_one_char_list_of_string` at the cons     **)
+(** case's LEAF (`one_char_string c` is a concrete, non-recursive witness,   **)
+(** the same pattern `Spec.utf8_bytes_ascii_singleton`'s own hypothesis      **)
+(** already uses), and `Spec.utf8_decode_all_utf8_bytes_identity`/           **)
+(** `string_of_list_of_string` applied ONCE each, straight-line, in          **)
+(** `lemma_list_of_build_string` / `lemma_ascii_string_is_build_string`      **)
+(** below -- never chained through a recursive call's OWN postcondition.     **)
+(** ======================================================================== **)
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+
+/// FINDING, attempt 1 (recorded per CLAUDE.md rule #14): the first route
+/// tried here proved `Spec.utf8_bytes (build_string cs) == concatMap
+/// utf8_enc_char cs` BY INDUCTION on `cs` (cons case: IH + `Spec.
+/// utf8_bytes_concat` + `Spec.utf8_bytes_ascii_singleton`). It reproduces
+/// the SHARPENED FINDING's exact failure signature -- `fstar.exe --
+/// query_stats` shows Error 19 "incomplete quantifiers" in 109ms (NOT a
+/// timeout) at the recursive lemma's own goal, even though the recursive
+/// body never calls `list_of_string`/`string_of_list` directly. Diagnosis:
+/// `Spec.utf8_bytes` is ITSELF defined AS `concatMap utf8_enc_char
+/// (list_of_string s)` (Section on `utf8_bytes`, above) and carries NO
+/// restricting `.fsti` -- so merely MENTIONING `Spec.utf8_bytes (build_
+/// string cs)` as a goal term inside a `let rec ... : Lemma` gives Z3's
+/// fuel-instrumented unfolding axiom for that transparent definition an
+/// opening to try (and fail) to unfold `list_of_string (build_string
+/// cs)` on its own, independent of which lemmas the proof body supplies.
+/// This SHARPENS the SHARPENED FINDING once more: the wall is not just
+/// "`list_of_string`/`string_of_list` used inside a self-recursive
+/// lemma" but "a TRANSPARENT function whose OWN definition contains
+/// `list_of_string`/`string_of_list`, mentioned in a self-recursive
+/// lemma's goal, at a call site built from a self-recursively-defined
+/// string (`build_string`)" -- reproduces even via already-proven
+/// black-box lemmas about that function, not just direct calls to the
+/// coercion pair.
+///
+/// ROUTE THAT WORKS (below): never let `Spec.utf8_bytes`/`Spec.
+/// utf8_decode_all` applied to a `build_string`-shaped argument appear
+/// as a goal inside recursion. Instead: (1) get `fs_byte_length`/
+/// `fs_byte_at` facts about `build_string cs` via the ALREADY-PROVEN,
+/// non-recursive-at-this-call-site `lemma_build_string_byte_length`/
+/// `_byte_at` (Axioms-opaque, no `Spec.utf8_bytes` unfolding involved);
+/// (2) bridge those OPAQUE `fs_byte_*` facts to `Spec.utf8_bytes`'s
+/// `List.Tot.index`/`length` via `fs_byte_length_eq`/`fs_byte_at_eq`
+/// (single, non-recursive calls -- these hand Z3 an EQUALITY, not an
+/// invitation to unfold); (3) do the SAME for the `concatMap utf8_enc_
+/// char cs` side via the already-proven `lemma_ascii_utf8_bytes_length`/
+/// `_at`; (4) conclude LIST equality via ulib's `FStar.List.Tot.
+/// Properties.index_extensionality` (length + pointwise `index`), never
+/// touching `list_of_string`/`string_of_list`/`Spec.utf8_bytes`'s
+/// definition at all. The one recursive helper this route needs
+/// (`nth_byte_index`) stays entirely at the PLAIN `list byte` level
+/// (ordinary ADT, no opaque coercion pair, no strings) -- the same "list-
+/// level reasoning is fine" pattern `lemma_ascii_utf8_bytes_length`/`_at`
+/// above already rely on.
+#pop-options
+
+#push-options "--z3rlimit 100 --fuel 2 --ifuel 2"
+
+/// Plain-list helper (byte lists; no strings, no coercion pair): in
+/// bounds, `nth_byte` agrees with `List.Tot.index`. Structural induction
+/// on `bs` only -- safe (see banner above).
+val nth_byte_index (bs : list Spec.byte) (i : nat{i < List.Tot.length bs})
+  : Lemma (ensures Spec.nth_byte bs i == Some (List.Tot.index bs i))
+          (decreases bs)
+let rec nth_byte_index bs i =
+  match bs with
+  | hd :: tl -> if i = 0 then () else nth_byte_index tl (i - 1)
+
+/// `build_string cs`'s UTF-8 byte-list length equals `List.Tot.length
+/// cs` -- restated at the `Spec.utf8_bytes` level (rather than `fs_byte_
+/// length`) via ONE non-recursive bridging call, so the index-
+/// extensionality argument below can compare `Spec.utf8_bytes (build_
+/// string cs)` and `concatMap utf8_enc_char cs` as ordinary lists.
+val lemma_build_string_utf8_bytes_len (cs : list FStar.Char.char{all_ascii cs})
+  : Lemma (List.Tot.length (Spec.utf8_bytes (build_string cs)) == List.Tot.length cs)
+let lemma_build_string_utf8_bytes_len cs =
+  fs_byte_length_eq (build_string cs);
+  lemma_build_string_byte_length cs
+
+/// Pointwise: byte `i` of `build_string cs`'s UTF-8 encoding, read via
+/// the TOTAL `Spec.nth_byte`. TWO traps found and fixed getting here
+/// (both mundane elaboration issues, NOT the SHARPENED FINDING's wall --
+/// recorded so neither is re-hit):
+///   (1) an `ensures` typed via `List.Tot.index (Spec.utf8_bytes (build_
+///       string cs)) i` needs `i < length (Spec.utf8_bytes (build_string
+///       cs))` witnessed BEFORE the `val` elaborates -- the proof body's
+///       own `lemma_build_string_utf8_bytes_len` call is too late to
+///       supply it (Error 19 "Subtyping check failed" AT THE VAL, not
+///       the proof). Fixed by stating the result via the TOTAL `Spec.
+///       nth_byte` (unrestricted `i:nat`) instead of `List.Tot.index`.
+///   (2) `Some (FStar.Char.int_of_char ...)` needs the `int_of_char`
+///       result to already be witnessed `< 256` (the `Spec.byte`
+///       refinement) at the CONSTRUCTION site -- exactly the trap this
+///       file's own `lemma_ascii_utf8_bytes_at` banner (Section above)
+///       already named and fixed via the `match ... Some b -> (b <:
+///       nat) == ...` phrasing rather than `== Some (...)` directly;
+///       same fix applied here.
+/// Composes `nth_byte_index` (in-bounds via the length fact above),
+/// `fs_byte_at_eq` (opaque bridge, single call), and the already-proven
+/// `lemma_build_string_byte_at`.
+val lemma_build_string_utf8_bytes_nth
+    (cs : list FStar.Char.char{all_ascii cs}) (i : nat{i < List.Tot.length cs})
+  : Lemma (ensures
+      (match Spec.nth_byte (Spec.utf8_bytes (build_string cs)) i with
+       | Some b -> (b <: nat) == FStar.Char.int_of_char (List.Tot.index cs i)
+       | None -> False))
+let lemma_build_string_utf8_bytes_nth cs i =
+  lemma_build_string_utf8_bytes_len cs;
+  nth_byte_index (Spec.utf8_bytes (build_string cs)) i;
+  fs_byte_at_eq (build_string cs) i;
+  lemma_build_string_byte_at cs i
+
+/// The SAME pointwise fact for the `concatMap utf8_enc_char cs` side,
+/// via `nth_byte_index` + the already-proven `lemma_ascii_utf8_bytes_at`
+/// (Section above) -- same TOTAL-`nth_byte` / `match` shape, same
+/// reason.
+val lemma_concatMap_utf8_enc_char_nth
+    (cs : list FStar.Char.char{all_ascii cs}) (i : nat{i < List.Tot.length cs})
+  : Lemma (ensures
+      (match Spec.nth_byte (List.Tot.concatMap Spec.utf8_enc_char cs) i with
+       | Some b -> (b <: nat) == FStar.Char.int_of_char (List.Tot.index cs i)
+       | None -> False))
+let lemma_concatMap_utf8_enc_char_nth cs i =
+  lemma_ascii_utf8_bytes_length cs;
+  nth_byte_index (List.Tot.concatMap Spec.utf8_enc_char cs) i;
+  lemma_ascii_utf8_bytes_at cs i
+
+/// THE list-level bridge, closed: `build_string cs`'s UTF-8 encoding IS
+/// `concatMap utf8_enc_char cs`, via `FStar.List.Tot.Properties.index_
+/// extensionality` (length equality + pointwise `index` equality, both
+/// established above by NON-recursive composition of already-proven
+/// facts) -- no direct recursion over a `Spec.utf8_bytes`/`build_string`
+/// goal anywhere in this proof (see the FINDING above for why that route
+/// fails).
+val lemma_utf8_bytes_build_string (cs : list FStar.Char.char{all_ascii cs})
+  : Lemma (Spec.utf8_bytes (build_string cs) == List.Tot.concatMap Spec.utf8_enc_char cs)
+let lemma_utf8_bytes_build_string cs =
+  let l1 = Spec.utf8_bytes (build_string cs) in
+  let l2 = List.Tot.concatMap Spec.utf8_enc_char cs in
+  lemma_build_string_utf8_bytes_len cs;
+  lemma_ascii_utf8_bytes_length cs;
+  let aux (i:nat) : Lemma (i < List.Tot.length cs ==> List.Tot.index l1 i == List.Tot.index l2 i) =
+    if i < List.Tot.length cs then begin
+      lemma_build_string_utf8_bytes_nth cs i;
+      lemma_concatMap_utf8_enc_char_nth cs i;
+      nth_byte_index l1 i;
+      nth_byte_index l2 i
+    end
+  in
+  FStar.Classical.forall_intro aux;
+  FStar.List.Tot.Properties.index_extensionality l1 l2
+
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+
+/// `list_of_string (build_string cs) == cs`, for ANY all-ASCII `cs` --
+/// THE recursive-shaped fact the SHARPENED FINDING's minimal repro
+/// (`lemma_list_of_build_string`, same name, same statement) showed
+/// fails Error 19 when attempted BY INDUCTION on `cs`. Proved here
+/// instead as a STRAIGHT-LINE, non-recursive composition of three
+/// already-closed facts (the safe route): (1) the list-level bridge
+/// above, (2) `utf8_decode_all_utf8_bytes_identity` applied to `s =
+/// build_string cs` (decoding `build_string cs`'s own encoding gives
+/// back its `list_of_string`), (3) `utf8_decode_all_concatMap_identity`
+/// applied to `cs` directly (decoding `concatMap utf8_enc_char cs` gives
+/// back `cs`) -- (1) identifies the two decode inputs as the SAME byte
+/// list, so (2) and (3)'s conclusions chain by ordinary congruence.
+val lemma_list_of_build_string (cs : list FStar.Char.char{all_ascii cs})
+  : Lemma (FStar.String.list_of_string (build_string cs) == cs)
+let lemma_list_of_build_string cs =
+  lemma_utf8_bytes_build_string cs;
+  Spec.utf8_decode_all_utf8_bytes_identity (build_string cs);
+  Spec.utf8_decode_all_concatMap_identity cs
+
+/// THE missing bridging step itself: any string `s` whose own codepoint
+/// list is all-ASCII equals `build_string` of that codepoint list.
+/// Straight-line composition of `lemma_list_of_build_string` above with
+/// ulib's `string_of_list_of_string` coercion-pair lemma, called ONCE
+/// each on `s` and on `build_string (list_of_string s)` (never inside a
+/// recursive call) -- the safe, non-recursive use the SHARPENED FINDING
+/// banner identified as always working.
+val lemma_ascii_string_is_build_string (s : string)
+  : Lemma (requires all_ascii (FStar.String.list_of_string s))
+          (ensures  build_string (FStar.String.list_of_string s) == s)
+let lemma_ascii_string_is_build_string s =
+  let cs = FStar.String.list_of_string s in
+  lemma_list_of_build_string cs;
+  FStar.String.string_of_list_of_string s;
+  FStar.String.string_of_list_of_string (build_string cs)
+
+#pop-options
+
+(** ======================================================================== **)
+(** `Parser.FastString.BaseCases`-flavored sibling, for `RDF.NTriples.        **)
+(** RoundTrip.fst`'s consumer -- session 2026-08-11, continuing #401 M1.      **)
+(**                                                                          **)
+(** `RDF.NTriples.RoundTrip.fst`'s Part 7 (`lemma_scan_iri_end_build_        **)
+(** string`, `lemma_term_iri_round_trip_build_string`, etc.) `open`s          **)
+(** `Parser.FastString.BaseCases`, NOT this module -- so its `build_string`/  **)
+(** `all_ascii` are `Parser.FastString.BaseCases`'s OWN definitions, a        **)
+(** SEPARATE (structurally identical, nominally distinct) pair from THIS      **)
+(** module's `build_string`/`all_ascii` above. The bridging lemma the        **)
+(** consumer needs must be proven for THAT pair, via `module BC = ...`        **)
+(** qualification (not `open`, which would shadow this module's own          **)
+(** same-named definitions).                                                 **)
+(**                                                                          **)
+(** MUCH SHORTER ROUTE available here: `Parser.FastString.BaseCases.fst`     **)
+(** already carries `lemma_build_string_utf8_bytes (cs) : Spec.utf8_bytes    **)
+(** (BC.build_string cs) == BC.codes_of cs` -- ALREADY PROVEN, and (session   **)
+(** finding) it verifies DESPITE being the exact recursive induction shape    **)
+(** (`Spec.utf8_bytes_concat` + `Spec.utf8_bytes_ascii_singleton` + IH) that  **)
+(** failed Error 19 "incomplete quantifiers" for THIS module's `build_       **)
+(** string` when the RHS was `List.Tot.concatMap Spec.utf8_enc_char cs`.      **)
+(** The difference isolating the discrepancy: `BC.codes_of cs` is built by    **)
+(** plain CONS (`int_of_char c :: codes_of rest`), never touching             **)
+(** `List.Tot.concatMap`/`append` at all, and `Parser.FastString.BaseCases    **)
+(** .fst` uses NO `#push-options` (default fuel 2/ifuel 1) where this         **)
+(** module's failed attempt inherited `--fuel 4 --ifuel 4` from its own       **)
+(** outer block -- consistent with this project's existing "more fuel does    **)
+(** not always help, and can hurt" experience (`docs/claude-rules/` /         **)
+(** `fstar-module-style` skill). NOT fully isolated which factor is           **)
+(** load-bearing (out of scope for this landing); recorded as a candidate     **)
+(** explanation, not a re-litigated wall.                                     **)
+(**                                                                          **)
+(** Given `lemma_build_string_utf8_bytes`'s free ride, the missing piece is   **)
+(** just `Spec.utf8_decode_all (BC.codes_of cs) == cs` -- closed by a ONE-    **)
+(** LINE, purely LIST-level (no strings, safe) lemma showing `BC.codes_of cs  **)
+(** == List.Tot.concatMap Spec.utf8_enc_char cs` for all-ASCII `cs` (both     **)
+(** sides reduce to the same `int_of_char c :: ...`/`[int_of_char c] @ ...`   **)
+(** shape), then reusing `Spec.utf8_decode_all_concatMap_identity` (already   **)
+(** proven, general, no `all_ascii` hypothesis needed) as a black box.        **)
+(** ======================================================================== **)
+
+module BC = Parser.FastString.BaseCases
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+
+/// `codes_of cs` (BaseCases' plain-cons construction) and `concatMap
+/// utf8_enc_char cs` (this module's construction) carry the SAME byte
+/// list, for all-ASCII `cs` -- purely list-level induction (no strings
+/// anywhere in this proof), safe per the established pattern.
+val bc_codes_of_is_concatMap (cs : list FStar.Char.char{BC.all_ascii cs})
+  : Lemma (ensures BC.codes_of cs == List.Tot.concatMap Spec.utf8_enc_char cs)
+          (decreases cs)
+let rec bc_codes_of_is_concatMap cs =
+  match cs with
+  | [] -> ()
+  | c :: rest -> bc_codes_of_is_concatMap rest
+
+/// Decoding `codes_of cs` (any all-ASCII `cs`) recovers `cs` exactly --
+/// via the list-level identity above plus `Spec.utf8_decode_all_
+/// concatMap_identity` (already proven for ANY `cs`, no `all_ascii`
+/// hypothesis needed there).
+val bc_utf8_decode_all_codes_of_identity (cs : list FStar.Char.char{BC.all_ascii cs})
+  : Lemma (Spec.utf8_decode_all (BC.codes_of cs) == cs)
+let bc_utf8_decode_all_codes_of_identity cs =
+  bc_codes_of_is_concatMap cs;
+  Spec.utf8_decode_all_concatMap_identity cs
+
+/// `list_of_string (BC.build_string cs) == cs`, for BaseCases' `build_
+/// string`/`all_ascii` pair -- straight-line, non-recursive composition
+/// of `BC.lemma_build_string_utf8_bytes` (already proven, in BaseCases),
+/// `Spec.utf8_decode_all_utf8_bytes_identity` (already proven, Section 7
+/// of Spec.fst), and the list-level identity just above.
+val bc_lemma_list_of_build_string (cs : list FStar.Char.char{BC.all_ascii cs})
+  : Lemma (FStar.String.list_of_string (BC.build_string cs) == cs)
+let bc_lemma_list_of_build_string cs =
+  BC.lemma_build_string_utf8_bytes cs;
+  Spec.utf8_decode_all_utf8_bytes_identity (BC.build_string cs);
+  bc_utf8_decode_all_codes_of_identity cs
+
+/// THE missing bridging step, for `RDF.NTriples.RoundTrip.fst`'s
+/// consumer: any string `s` whose own codepoint list is all-ASCII
+/// (`BaseCases.all_ascii`) equals `BaseCases.build_string` of that
+/// codepoint list. Same straight-line shape as `lemma_ascii_string_is_
+/// build_string` above, one module over.
+val lemma_ascii_string_is_build_string_bc (s : string)
+  : Lemma (requires BC.all_ascii (FStar.String.list_of_string s))
+          (ensures  BC.build_string (FStar.String.list_of_string s) == s)
+let lemma_ascii_string_is_build_string_bc s =
+  let cs = FStar.String.list_of_string s in
+  bc_lemma_list_of_build_string cs;
+  FStar.String.string_of_list_of_string s;
+  FStar.String.string_of_list_of_string (BC.build_string cs)
+
+#pop-options
