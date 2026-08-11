@@ -692,3 +692,194 @@ let checkpoint_a_closed_triple_round_trip (_:unit)
   assert (parse_triple s 0 == ParseOk target_triple 16)
 
 #pop-options
+
+(** ====================================================================== **)
+(** Part 7: checkpoint (b) -- SYMBOLIC IRI-term round trip.                 **)
+(**                                                                          **)
+(** Closes WIDENING REMAINING #1's next-narrowest target from Part 6's own  **)
+(** banner, at the scope that banner named as the natural route: `i =       **)
+(** build_string cs` for an ASCII, `is_iri_body_char`-safe codepoint list    **)
+(** `cs`, rather than an arbitrary `wf_iri` string. The two walls Part 6     **)
+(** recorded are each closed by prior art landed independently THIS same    **)
+(** session, consumed here as-is (neither reproven):                        **)
+(**   - `"" ^ s == s` / `(a^b)^c == a^(b^c)` for SYMBOLIC strings --         **)
+(**     `Parser.FastString.ConcatSpec.lemma_strcat_empty_l/_r/_assoc`.       **)
+(**   - the "`scan_iri_end` commutes with prefixing" shift lemma Part 6      **)
+(**     named as the remaining multi-step induction --                      **)
+(**     `Parser.NTriples.Locality.lemma_scan_iri_end_shift_from_start`       **)
+(**     (PILOT case of the parser-locality induction program).              **)
+(**                                                                          **)
+(** (b1) `lemma_scan_iri_end_build_string`: `scan_iri_end` on `build_string  **)
+(** cs ^ (">" ^ rest)` finds `>` at position `length cs`, for ANY `cs`       **)
+(** satisfying `all_ascii`/`chars_all is_iri_body_char` and ANY continuation **)
+(** `rest`. Induction on `cs`: the base case unfolds via `lemma_strcat_      **)
+(** empty_l`; the cons case re-associates via `lemma_strcat_assoc`, reads    **)
+(** the ONE new byte (`fs_ascii_singleton_facts` + `fs_byte_at_concat`),     **)
+(** and hands the TAIL off to the IH shifted by one position via `lemma_     **)
+(** scan_iri_end_shift_from_start` -- so this induction contributes only     **)
+(** the single-step reasoning `Parser.NTriples.Locality` does not already    **)
+(** supply (it proves embedding preserves an ALREADY-SUCCESSFUL scan; it     **)
+(** does not, and structurally cannot, establish that the scan succeeds in   **)
+(** the first place for a content list built by consing one more char on).  **)
+(**                                                                          **)
+(** (b2) `lemma_parse_iri_raw_build_string`: `parse_iri_raw` on              **)
+(** `"<" ^ (build_string cs ^ ">")` recovers `build_string cs` at position   **)
+(** `length cs + 2` -- EXACTLY the "NEXT NARROWEST UNPROVED STATEMENT" Part  **)
+(** 6 named (with `i` narrowed to `build_string cs`). Composes (b1) at       **)
+(** `rest = ""` with one MORE application of `lemma_scan_iri_end_shift_      **)
+(** from_start` (prefix `"<"`) to place the terminator inside the FULL       **)
+(** bracketed string, then extracts the content via `lemma_extract_middle`   **)
+(** (Part 5, already proved, reused verbatim, no new fs_byte_sub reasoning). **)
+(**                                                                          **)
+(** (b3) `lemma_parse_iri_build_string` / `lemma_term_iri_round_trip_        **)
+(** build_string`: wraps (b2) through `parse_iri`'s `is_iri` check and       **)
+(** `parse_object`'s `<`-dispatch branch, and restates the input as the      **)
+(** ACTUAL SERIALIZER OUTPUT (`nq_term_to_string (T_IRI (build_string cs))`, **)
+(** not a hand-typed lookalike -- same discipline checkpoint (a) used) via   **)
+(** one MORE `lemma_strcat_assoc` re-association (`nq_term_to_string`'s      **)
+(** `"<" ^ i ^ ">"` is LEFT-associated per F*'s default `^` fixity; (b2)'s   **)
+(** statement is stated RIGHT-associated, matching `lemma_extract_middle`'s  **)
+(** own `prefix ^ (mid ^ suffix)` shape). `lemma_term_iri_round_trip_        **)
+(** build_string` IS checkpoint (b): the SYMBOLIC IRI-TERM round trip --     **)
+(** `parse_object (nq_term_to_string (T_IRI i)) 0 == ParseOk (T_IRI i) ...`  **)
+(** for an ARBITRARY well-formed `i = build_string cs` in the ASCII/         **)
+(** iri-body-safe fragment (narrower than a fully arbitrary `wf_iri` -- see  **)
+(** NEXT NARROWEST below for what that widening still needs).               **)
+(**                                                                          **)
+(** NEXT NARROWEST UNPROVED STATEMENT: dropping the `i = build_string cs`    **)
+(** witness form for a fully arbitrary `i : wf_iri{iri_print_safe i}` (Part  **)
+(** 1b's predicate, still otherwise unused) needs exactly one more bridging  **)
+(** step -- `i == build_string (Str.list_of_string i)` for `iri_print_safe   **)
+(** i` -- which `Parser.FastString.RoundTripLemmas.fst`'s own banner (its    **)
+(** "Arbitrary-ASCII-string bridging" section) already names as hitting the  **)
+(** SAME symbolic-chaining wall this module's Part 6 found, unresolved       **)
+(** there for the SAME reason (chaining an IH string equality through a      **)
+(** separate `list_of_string`/`string_of_list` congruence step) -- not       **)
+(** reattempted here per the guard-depth rule; recorded as the precise next  **)
+(** rung, not a vague "harder than expected".                                **)
+(** ====================================================================== **)
+
+open Parser.NTriples.Locality
+open Parser.FastString.ConcatSpec
+open Parser.FastString.BaseCases
+
+#push-options "--z3rlimit 300 --fuel 8 --ifuel 8"
+
+// (b1): the scanner finds the terminator immediately after any
+// all-ASCII, iri-body-safe codepoint list, for any continuation `rest`.
+val lemma_scan_iri_end_build_string
+    (cs : list FStar.Char.char{all_ascii cs /\ chars_all is_iri_body_char cs})
+    (rest : string) (fuel : nat)
+  : Lemma
+      (requires fuel > FStar.List.Tot.length cs)
+      (ensures
+        scan_iri_end (build_string cs ^ (">" ^ rest)) 0 fuel
+          == ParseOk (FStar.List.Tot.length cs) (FStar.List.Tot.length cs))
+      (decreases cs)
+let rec lemma_scan_iri_end_build_string cs rest fuel =
+  match cs with
+  | [] ->
+    lemma_strcat_empty_l (">" ^ rest);
+    fs_byte_length_gt ();
+    fs_byte_at_gt ();
+    fs_byte_length_concat ">" rest;
+    fs_byte_at_concat ">" rest 0;
+    fs_byte_index_eq (">" ^ rest) 0
+  | c :: rest_cs ->
+    let c_str = one_char_string c in
+    let mid = build_string rest_cs ^ (">" ^ rest) in
+    assert (FStar.Char.int_of_char c < 0x80);
+    assert (is_iri_body_char c);
+    assert (all_ascii rest_cs);
+    assert (chars_all is_iri_body_char rest_cs);
+    lemma_strcat_assoc c_str (build_string rest_cs) (">" ^ rest);
+    lemma_one_char_list_of_string c;
+    fs_ascii_singleton_facts c_str c;
+    fs_byte_length_concat c_str mid;
+    fs_byte_at_concat c_str mid 0;
+    fs_byte_index_eq (c_str ^ mid) 0;
+    let code = FStar.Char.int_of_char c in
+    if code = 0x3E then ()
+    else if code = 0x5C then ()
+    else if code <= 0x20 || is_iri_forbidden_codepoint code then ()
+    else begin
+      lemma_scan_iri_end_build_string rest_cs rest (fuel - 1);
+      lemma_build_string_byte_length rest_cs;
+      fs_byte_length_gt ();
+      fs_byte_length_concat ">" rest;
+      fs_byte_length_concat (build_string rest_cs) (">" ^ rest);
+      lemma_scan_iri_end_shift_from_start c_str mid "" (fuel - 1) (FStar.List.Tot.length rest_cs);
+      lemma_strcat_empty_r mid
+    end
+
+#pop-options
+
+#push-options "--z3rlimit 300 --fuel 8 --ifuel 8"
+
+// (b2): the NEXT NARROWEST target Part 6 named, at i = build_string cs.
+val lemma_parse_iri_raw_build_string
+    (cs : list FStar.Char.char{all_ascii cs /\ chars_all is_iri_body_char cs})
+  : Lemma
+      (ensures
+        parse_iri_raw ("<" ^ (build_string cs ^ ">")) 0
+          == ParseOk (build_string cs) (FStar.List.Tot.length cs + 2))
+let lemma_parse_iri_raw_build_string cs =
+  let content = build_string cs in
+  let n = FStar.List.Tot.length cs in
+  let s = "<" ^ (content ^ ">") in
+  lemma_build_string_byte_length cs;
+  fs_byte_length_lt ();
+  fs_byte_length_gt ();
+  fs_byte_length_concat content ">";
+  fs_byte_length_concat "<" (content ^ ">");
+  fs_byte_at_lt ();
+  fs_byte_at_concat "<" (content ^ ">") 0;
+  fs_byte_index_eq s 0;
+  lemma_strcat_empty_r ">";
+  lemma_scan_iri_end_build_string cs "" (n + 2);
+  fs_byte_length_concat ">" "";
+  fs_byte_length_empty ();
+  fs_byte_length_concat content (">" ^ "");
+  lemma_scan_iri_end_shift_from_start "<" (content ^ (">" ^ "")) "" (n + 2) n;
+  lemma_strcat_empty_r (content ^ (">" ^ ""));
+  lemma_extract_middle "<" content ">"
+
+#pop-options
+
+#push-options "--z3rlimit 300 --fuel 8 --ifuel 8"
+
+// (b3a): the `is_iri`-checked wrapper.
+val lemma_parse_iri_build_string
+    (cs : list FStar.Char.char{all_ascii cs /\ chars_all is_iri_body_char cs})
+  : Lemma
+      (requires is_iri (build_string cs))
+      (ensures
+        parse_iri ("<" ^ (build_string cs ^ ">")) 0
+          == ParseOk (build_string cs) (FStar.List.Tot.length cs + 2))
+let lemma_parse_iri_build_string cs =
+  lemma_parse_iri_raw_build_string cs
+
+// (b3): CHECKPOINT (b) -- the symbolic IRI-TERM round trip, against the
+// actual serializer output `nq_term_to_string (T_IRI _)`, not a hand-typed
+// lookalike (same discipline checkpoint (a) used).
+val lemma_term_iri_round_trip_build_string
+    (cs : list FStar.Char.char{all_ascii cs /\ chars_all is_iri_body_char cs})
+  : Lemma
+      (requires is_iri (build_string cs))
+      (ensures
+        parse_object (nq_term_to_string (T_IRI (build_string cs))) 0
+          == ParseOk (T_IRI (build_string cs)) (FStar.List.Tot.length cs + 2))
+let lemma_term_iri_round_trip_build_string cs =
+  let content = build_string cs in
+  let s = "<" ^ (content ^ ">") in
+  lemma_parse_iri_build_string cs;
+  assert (nq_term_to_string (T_IRI content) == "<" ^ content ^ ">");
+  lemma_strcat_assoc "<" content ">";
+  fs_byte_length_lt ();
+  fs_byte_length_concat content ">";
+  fs_byte_length_concat "<" (content ^ ">");
+  fs_byte_at_lt ();
+  fs_byte_at_concat "<" (content ^ ">") 0;
+  fs_byte_index_eq s 0
+
+#pop-options
