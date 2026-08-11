@@ -6003,10 +6003,26 @@
      ]
     },
     {
+     "name": "lemma_parse_literal_datatype_shift",
+     "proved_in": "Parser.NTriples.Locality",
+     "file": "formal/fstar/Parser.NTriples.Locality.fst",
+     "line": 2620,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_index",
+      "fs_byte_length",
+      "parse_datatype",
+      "parse_literal",
+      "parse_string_literal",
+      "rdf_dir_lang_string",
+      "rdf_lang_string"
+     ]
+    },
+    {
      "name": "lemma_parse_object_literal_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2616,
+     "line": 2667,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -6019,7 +6035,7 @@
      "name": "lemma_parse_graph_label_bnode_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2642,
+     "line": 2693,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_at",
@@ -6036,7 +6052,7 @@
      "name": "lemma_parse_opt_graph_label_bnode_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2678,
+     "line": 2729,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_at",
@@ -6054,7 +6070,7 @@
      "name": "lemma_parse_nquad_shift_generic",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2749,
+     "line": 2800,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -6153,7 +6169,7 @@
      "name": "stream_consume_single_chunk_shape",
      "proved_in": "RDF.NQuads.Streaming",
      "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-     "line": 2716,
+     "line": 2757,
      "unconditional": true,
      "names_shipping_functions": [
       "fold_nquads_acc",
@@ -6164,11 +6180,38 @@
      "name": "lemma_extract_middle",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 481,
+     "line": 482,
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_length",
       "fs_byte_sub"
+     ]
+    },
+    {
+     "name": "lemma_iri_bracket_shift_prereqs",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1127,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_index",
+      "fs_byte_length",
+      "is_iri_body_char",
+      "parse_iri_raw",
+      "scan_iri_end"
+     ]
+    },
+    {
+     "name": "lemma_pws_one_space",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1178,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_index",
+      "fs_byte_length",
+      "is_nt_ws",
+      "pws"
      ]
     },
     {
@@ -6538,7 +6581,7 @@
      "name": "stream_consume_dataset_fold_eq_batch",
      "proved_in": "RDF.NQuads.Streaming",
      "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-     "line": 2896,
+     "line": 2937,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -6555,11 +6598,171 @@
      "name": "stream_consume_dataset_eq_batch_raw",
      "proved_in": "RDF.NQuads.Streaming",
      "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-     "line": 2930,
+     "line": 2971,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
       "parse_nquads_acc"
+     ],
+     "names_declarative_relations": [
+      "stream_fold_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_blank_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3132,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "blank_line_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_comment_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3155,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "comment_line_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_quad_fail_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3180,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_at",
+      "fs_byte_length",
+      "parse_nquad"
+     ],
+     "names_declarative_relations": [
+      "quad_fail_line_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_quad_ok_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3213,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length",
+      "parse_iri",
+      "parse_nquad",
+      "parse_object",
+      "parse_opt_graph_label",
+      "parse_subject"
+     ],
+     "names_declarative_relations": [
+      "quad_ok_line_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_line_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3261,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "lw_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_restart",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3286,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "chain_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_full_via_chain",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3312,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "chain_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "fold_nquads_acc_concat_line_general",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3336,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "chain_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "stream_consume_generic_fold_eq_batch",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3380,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
      ],
      "names_declarative_relations": [
       "stream_fold_wf"
@@ -7078,7 +7281,7 @@
    "files": [
     "formal/fstar/Parser.FastString.RoundTripLemmas.fst"
    ],
-   "loc": 485,
+   "loc": 801,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "not-in-build-list",
@@ -7088,7 +7291,7 @@
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 4,
+   "unclassified_definition_count": 15,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -7096,7 +7299,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 12,
+   "local_refinement_lemma_count": 20,
    "local_refinement_lemma_names": [
     "demo_fs_byte_length_ab",
     "lemma_one_char_list_of_string",
@@ -7109,7 +7312,15 @@
     "lemma_ascii_string_byte_length",
     "lemma_all_ascii_index",
     "lemma_ascii_string_byte_at",
-    "lemma_ascii_string_byte_index"
+    "lemma_ascii_string_byte_index",
+    "nth_byte_index",
+    "lemma_build_string_utf8_bytes_len",
+    "lemma_list_of_build_string",
+    "lemma_ascii_string_is_build_string",
+    "bc_codes_of_is_concatMap",
+    "bc_utf8_decode_all_codes_of_identity",
+    "bc_lemma_list_of_build_string",
+    "lemma_ascii_string_is_build_string_bc"
    ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
@@ -7213,6 +7424,39 @@
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_sub",
+      "utf8_enc_char"
+     ]
+    },
+    {
+     "name": "lemma_build_string_utf8_bytes_nth",
+     "proved_in": "Parser.FastString.RoundTripLemmas",
+     "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+     "line": 614,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "nth_byte",
+      "utf8_bytes"
+     ]
+    },
+    {
+     "name": "lemma_concatMap_utf8_enc_char_nth",
+     "proved_in": "Parser.FastString.RoundTripLemmas",
+     "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+     "line": 630,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "nth_byte",
+      "utf8_enc_char"
+     ]
+    },
+    {
+     "name": "lemma_utf8_bytes_build_string",
+     "proved_in": "Parser.FastString.RoundTripLemmas",
+     "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+     "line": 648,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "utf8_bytes",
       "utf8_enc_char"
      ]
     },
@@ -7486,7 +7730,7 @@
      "name": "lemma_parse_graph_label_bnode_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2642,
+     "line": 2693,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_at",
@@ -7503,7 +7747,7 @@
      "name": "lemma_parse_opt_graph_label_bnode_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2678,
+     "line": 2729,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_at",
@@ -8216,7 +8460,7 @@
      "name": "lemma_parse_graph_label_bnode_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2642,
+     "line": 2693,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_at",
@@ -8233,7 +8477,7 @@
      "name": "lemma_parse_opt_graph_label_bnode_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2678,
+     "line": 2729,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_at",
@@ -8251,7 +8495,7 @@
      "name": "lemma_parse_nquad_shift_generic",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2749,
+     "line": 2800,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -8312,10 +8556,21 @@
      ]
     },
     {
+     "name": "lw_ds_step_via_parse_nquad",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 2551,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "dataset_add_quad",
+      "parse_nquad"
+     ]
+    },
+    {
      "name": "stream_consume_single_chunk_shape",
      "proved_in": "RDF.NQuads.Streaming",
      "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-     "line": 2716,
+     "line": 2757,
      "unconditional": true,
      "names_shipping_functions": [
       "fold_nquads_acc",
@@ -8326,7 +8581,7 @@
      "name": "fold_nquads_acc_eq_parse_nquads_acc",
      "proved_in": "RDF.NQuads.Streaming",
      "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-     "line": 2838,
+     "line": 2879,
      "unconditional": true,
      "names_shipping_functions": [
       "fold_nquads_acc",
@@ -8518,7 +8773,7 @@
      "name": "stream_consume_dataset_fold_eq_batch",
      "proved_in": "RDF.NQuads.Streaming",
      "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-     "line": 2896,
+     "line": 2937,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -8535,11 +8790,171 @@
      "name": "stream_consume_dataset_eq_batch_raw",
      "proved_in": "RDF.NQuads.Streaming",
      "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-     "line": 2930,
+     "line": 2971,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
       "parse_nquads_acc"
+     ],
+     "names_declarative_relations": [
+      "stream_fold_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_blank_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3132,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "blank_line_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_comment_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3155,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "comment_line_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_quad_fail_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3180,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_at",
+      "fs_byte_length",
+      "parse_nquad"
+     ],
+     "names_declarative_relations": [
+      "quad_fail_line_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_quad_ok_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3213,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length",
+      "parse_iri",
+      "parse_nquad",
+      "parse_object",
+      "parse_opt_graph_label",
+      "parse_subject"
+     ],
+     "names_declarative_relations": [
+      "quad_ok_line_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_line_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3261,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "lw_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_restart",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3286,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "chain_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_full_via_chain",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3312,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "chain_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "fold_nquads_acc_concat_line_general",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3336,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
+     ],
+     "names_declarative_relations": [
+      "chain_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "stream_consume_generic_fold_eq_batch",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3380,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length"
      ],
      "names_declarative_relations": [
       "stream_fold_wf"
@@ -9029,10 +9444,26 @@
      ]
     },
     {
+     "name": "lemma_parse_literal_datatype_shift",
+     "proved_in": "Parser.NTriples.Locality",
+     "file": "formal/fstar/Parser.NTriples.Locality.fst",
+     "line": 2620,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_index",
+      "fs_byte_length",
+      "parse_datatype",
+      "parse_literal",
+      "parse_string_literal",
+      "rdf_dir_lang_string",
+      "rdf_lang_string"
+     ]
+    },
+    {
      "name": "lemma_parse_object_literal_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2616,
+     "line": 2667,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -9045,7 +9476,7 @@
      "name": "lemma_parse_graph_label_bnode_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2642,
+     "line": 2693,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_at",
@@ -9062,7 +9493,7 @@
      "name": "lemma_parse_opt_graph_label_bnode_shift",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2678,
+     "line": 2729,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_at",
@@ -9080,7 +9511,7 @@
      "name": "lemma_parse_nquad_shift_generic",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2749,
+     "line": 2800,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -9111,7 +9542,7 @@
      "name": "checkpoint_a_closed_triple_round_trip",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 612,
+     "line": 613,
      "unconditional": true,
      "names_shipping_functions": [
       "nq_line_for_triple_default_graph",
@@ -9122,7 +9553,7 @@
      "name": "lemma_scan_iri_end_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 780,
+     "line": 781,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9133,7 +9564,7 @@
      "name": "lemma_parse_iri_raw_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 830,
+     "line": 831,
      "unconditional": true,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9144,7 +9575,7 @@
      "name": "lemma_parse_iri_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 862,
+     "line": 863,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9155,12 +9586,97 @@
      "name": "lemma_term_iri_round_trip_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 875,
+     "line": 876,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
       "nq_term_to_string",
       "parse_object"
+     ]
+    },
+    {
+     "name": "lemma_term_iri_round_trip",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 953,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "nq_term_to_string",
+      "parse_object"
+     ]
+    },
+    {
+     "name": "lemma_iri_round_trip",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1033,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "parse_iri"
+     ]
+    },
+    {
+     "name": "lemma_parse_subject_iri_round_trip_build_string",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1053,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "nq_subject_to_string",
+      "parse_subject"
+     ]
+    },
+    {
+     "name": "lemma_subject_iri_round_trip",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1073,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "nq_subject_to_string",
+      "parse_subject"
+     ]
+    },
+    {
+     "name": "lemma_scan_iri_end_bracket_witness",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1097,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "scan_iri_end"
+     ]
+    },
+    {
+     "name": "lemma_iri_bracket_shift_prereqs",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1127,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_index",
+      "fs_byte_length",
+      "is_iri_body_char",
+      "parse_iri_raw",
+      "scan_iri_end"
+     ]
+    },
+    {
+     "name": "lemma_pws_one_space",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1178,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_index",
+      "fs_byte_length",
+      "is_nt_ws",
+      "pws"
      ]
     }
    ],
@@ -9177,6 +9693,28 @@
       "parse_iri",
       "parse_nquad",
       "parse_nquads_acc",
+      "parse_object",
+      "parse_opt_graph_label",
+      "parse_subject"
+     ],
+     "names_declarative_relations": [
+      "quad_ok_line_wf"
+     ],
+     "declarative_relations_from": [
+      "RDF.NQuads.Streaming"
+     ]
+    },
+    {
+     "name": "lemma_fold_nquads_acc_quad_ok_step_shift",
+     "proved_in": "RDF.NQuads.Streaming",
+     "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+     "line": 3213,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fold_nquads_acc",
+      "fs_byte_length",
+      "parse_iri",
+      "parse_nquad",
       "parse_object",
       "parse_opt_graph_label",
       "parse_subject"
@@ -9250,7 +9788,7 @@
    "files": [
     "formal/fstar/Parser.NTriples.Locality.fst"
    ],
-   "loc": 2798,
+   "loc": 2849,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "not-in-build-list",
@@ -9260,7 +9798,7 @@
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 47,
+   "unclassified_definition_count": 48,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -13643,7 +14181,7 @@
      "name": "theorem_stream_consume_dataset_eq_batch",
      "proved_in": "RDF.NQuads.Streaming",
      "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-     "line": 2950,
+     "line": 2991,
      "unconditional": false,
      "names_shipping_functions": [
       "dataset_finalise"
@@ -16005,7 +16543,7 @@
      "name": "checkpoint_a_closed_triple_round_trip",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 612,
+     "line": 613,
      "unconditional": true,
      "names_shipping_functions": [
       "nq_line_for_triple_default_graph",
@@ -16016,12 +16554,48 @@
      "name": "lemma_term_iri_round_trip_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 875,
+     "line": 876,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
       "nq_term_to_string",
       "parse_object"
+     ]
+    },
+    {
+     "name": "lemma_term_iri_round_trip",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 953,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "nq_term_to_string",
+      "parse_object"
+     ]
+    },
+    {
+     "name": "lemma_parse_subject_iri_round_trip_build_string",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1053,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "nq_subject_to_string",
+      "parse_subject"
+     ]
+    },
+    {
+     "name": "lemma_subject_iri_round_trip",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1073,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "nq_subject_to_string",
+      "parse_subject"
      ]
     }
    ],
@@ -16048,7 +16622,7 @@
    "files": [
     "formal/fstar/RDF.NQuads.Streaming.fst"
    ],
-   "loc": 3009,
+   "loc": 3439,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "not-in-build-list",
@@ -16058,7 +16632,7 @@
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 8,
-   "unclassified_definition_count": 90,
+   "unclassified_definition_count": 104,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -16066,7 +16640,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 32,
+   "local_refinement_lemma_count": 34,
    "local_refinement_lemma_names": [
     "cong_string_of_list",
     "split_lines_acc_reconstruct",
@@ -16096,10 +16670,12 @@
     "chain_end_shift",
     "chain_wf_append",
     "chain_ds_fold_append",
+    "lw_ds_step_extend_right",
     "fold_nquads_acc_empty",
     "theorem_stream_consume_single_chunk_no_newline",
     "theorem_stream_consume_single_chunk_ends_in_newline",
-    "theorem_stream_consume_single_chunk"
+    "theorem_stream_consume_single_chunk",
+    "theorem_stream_consume_eq_batch"
    ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
@@ -16112,7 +16688,7 @@
    "files": [
     "formal/fstar/RDF.NTriples.RoundTrip.fst"
    ],
-   "loc": 896,
+   "loc": 1193,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "not-in-build-list",
@@ -16122,7 +16698,7 @@
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 11,
+   "unclassified_definition_count": 18,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -17186,10 +17762,26 @@
      ]
     },
     {
+     "name": "lemma_parse_literal_datatype_shift",
+     "proved_in": "Parser.NTriples.Locality",
+     "file": "formal/fstar/Parser.NTriples.Locality.fst",
+     "line": 2620,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_index",
+      "fs_byte_length",
+      "parse_datatype",
+      "parse_literal",
+      "parse_string_literal",
+      "rdf_dir_lang_string",
+      "rdf_lang_string"
+     ]
+    },
+    {
      "name": "lemma_parse_nquad_shift_generic",
      "proved_in": "Parser.NTriples.Locality",
      "file": "formal/fstar/Parser.NTriples.Locality.fst",
-     "line": 2749,
+     "line": 2800,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -32766,6 +33358,191 @@
    "class": "algorithm_correctness"
   },
   {
+   "name": "nth_byte_index",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 575,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "nth_byte"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_build_string_utf8_bytes_len",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 587,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "utf8_bytes"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_build_string_utf8_bytes_nth",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 614,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "nth_byte",
+    "utf8_bytes"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_concatMap_utf8_enc_char_nth",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 630,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "nth_byte",
+    "utf8_enc_char"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_utf8_bytes_build_string",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 648,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "utf8_bytes",
+    "utf8_enc_char"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_list_of_build_string",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 682,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_ascii_string_is_build_string",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 696,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "bc_codes_of_is_concatMap",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 756,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "utf8_enc_char"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "bc_utf8_decode_all_codes_of_identity",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 768,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "utf8_decode_all"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "bc_lemma_list_of_build_string",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 779,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_ascii_string_is_build_string_bc",
+   "host_module": "Parser.FastString.RoundTripLemmas",
+   "file": "formal/fstar/Parser.FastString.RoundTripLemmas.fst",
+   "line": 791,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "nth_byte_zero",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
@@ -34286,10 +35063,36 @@
    "class": "algorithm_correctness"
   },
   {
+   "name": "lemma_parse_literal_datatype_shift",
+   "host_module": "Parser.NTriples.Locality",
+   "file": "formal/fstar/Parser.NTriples.Locality.fst",
+   "line": 2620,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fs_byte_index",
+    "fs_byte_length",
+    "parse_datatype",
+    "parse_literal",
+    "parse_string_literal",
+    "rdf_dir_lang_string",
+    "rdf_lang_string"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NTriples",
+    "RDF.Term"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
    "name": "lemma_parse_object_literal_shift",
    "host_module": "Parser.NTriples.Locality",
    "file": "formal/fstar/Parser.NTriples.Locality.fst",
-   "line": 2616,
+   "line": 2667,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_index",
@@ -34311,7 +35114,7 @@
    "name": "lemma_parse_graph_label_bnode_shift",
    "host_module": "Parser.NTriples.Locality",
    "file": "formal/fstar/Parser.NTriples.Locality.fst",
-   "line": 2642,
+   "line": 2693,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_at",
@@ -34339,7 +35142,7 @@
    "name": "lemma_parse_opt_graph_label_bnode_shift",
    "host_module": "Parser.NTriples.Locality",
    "file": "formal/fstar/Parser.NTriples.Locality.fst",
-   "line": 2678,
+   "line": 2729,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_at",
@@ -34368,7 +35171,7 @@
    "name": "lemma_parse_nquad_shift_generic",
    "host_module": "Parser.NTriples.Locality",
    "file": "formal/fstar/Parser.NTriples.Locality.fst",
-   "line": 2749,
+   "line": 2800,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_index",
@@ -46893,10 +47696,47 @@
    "class": "internal_refinement"
   },
   {
+   "name": "lw_ds_step_via_parse_nquad",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 2551,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "dataset_add_quad",
+    "parse_nquad"
+   ],
+   "shipping_modules": [
+    "Parser.NQuads"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lw_ds_step_extend_right",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 2559,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "lw_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "stream_consume_single_chunk_shape",
    "host_module": "RDF.NQuads.Streaming",
    "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-   "line": 2716,
+   "line": 2757,
    "unconditional": true,
    "shipping_functions_named": [
     "fold_nquads_acc",
@@ -46916,7 +47756,7 @@
    "name": "fold_nquads_acc_empty",
    "host_module": "RDF.NQuads.Streaming",
    "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-   "line": 2733,
+   "line": 2774,
    "unconditional": true,
    "shipping_functions_named": [
     "fold_nquads_acc"
@@ -46934,7 +47774,7 @@
    "name": "theorem_stream_consume_single_chunk_no_newline",
    "host_module": "RDF.NQuads.Streaming",
    "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-   "line": 2752,
+   "line": 2793,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -46948,7 +47788,7 @@
    "name": "theorem_stream_consume_single_chunk_ends_in_newline",
    "host_module": "RDF.NQuads.Streaming",
    "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-   "line": 2765,
+   "line": 2806,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -46962,7 +47802,7 @@
    "name": "theorem_stream_consume_single_chunk",
    "host_module": "RDF.NQuads.Streaming",
    "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-   "line": 2782,
+   "line": 2823,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -46976,7 +47816,7 @@
    "name": "fold_nquads_acc_eq_parse_nquads_acc",
    "host_module": "RDF.NQuads.Streaming",
    "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-   "line": 2838,
+   "line": 2879,
    "unconditional": true,
    "shipping_functions_named": [
     "fold_nquads_acc",
@@ -46995,7 +47835,7 @@
    "name": "stream_consume_dataset_fold_eq_batch",
    "host_module": "RDF.NQuads.Streaming",
    "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-   "line": 2896,
+   "line": 2937,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -47019,7 +47859,7 @@
    "name": "stream_consume_dataset_eq_batch_raw",
    "host_module": "RDF.NQuads.Streaming",
    "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-   "line": 2930,
+   "line": 2971,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -47043,7 +47883,7 @@
    "name": "theorem_stream_consume_dataset_eq_batch",
    "host_module": "RDF.NQuads.Streaming",
    "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-   "line": 2950,
+   "line": 2991,
    "unconditional": false,
    "shipping_functions_named": [
     "dataset_finalise"
@@ -47062,10 +47902,252 @@
    "class": "internal_refinement"
   },
   {
+   "name": "lemma_fold_nquads_acc_blank_step_shift",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3132,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fold_nquads_acc",
+    "fs_byte_length"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NQuads"
+   ],
+   "declarative_relations_named": [
+    "blank_line_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_fold_nquads_acc_comment_step_shift",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3155,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fold_nquads_acc",
+    "fs_byte_length"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NQuads"
+   ],
+   "declarative_relations_named": [
+    "comment_line_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_fold_nquads_acc_quad_fail_step_shift",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3180,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fold_nquads_acc",
+    "fs_byte_at",
+    "fs_byte_length",
+    "parse_nquad"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NQuads"
+   ],
+   "declarative_relations_named": [
+    "quad_fail_line_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_fold_nquads_acc_quad_ok_step_shift",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3213,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fold_nquads_acc",
+    "fs_byte_length",
+    "parse_iri",
+    "parse_nquad",
+    "parse_object",
+    "parse_opt_graph_label",
+    "parse_subject"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NQuads",
+    "Parser.NTriples"
+   ],
+   "declarative_relations_named": [
+    "quad_ok_line_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_fold_nquads_acc_line_step_shift",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3261,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fold_nquads_acc",
+    "fs_byte_length"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NQuads"
+   ],
+   "declarative_relations_named": [
+    "lw_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_fold_nquads_acc_restart",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3286,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fold_nquads_acc",
+    "fs_byte_length"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NQuads"
+   ],
+   "declarative_relations_named": [
+    "chain_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_fold_nquads_acc_full_via_chain",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3312,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fold_nquads_acc",
+    "fs_byte_length"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NQuads"
+   ],
+   "declarative_relations_named": [
+    "chain_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "fold_nquads_acc_concat_line_general",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3336,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fold_nquads_acc",
+    "fs_byte_length"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NQuads"
+   ],
+   "declarative_relations_named": [
+    "chain_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "stream_consume_generic_fold_eq_batch",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3380,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fold_nquads_acc",
+    "fs_byte_length"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NQuads"
+   ],
+   "declarative_relations_named": [
+    "stream_fold_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "theorem_stream_consume_eq_batch",
+   "host_module": "RDF.NQuads.Streaming",
+   "file": "formal/fstar/RDF.NQuads.Streaming.fst",
+   "line": 3429,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "stream_fold_wf"
+   ],
+   "declarative_modules": [
+    "RDF.NQuads.Streaming"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "lemma_nq_subject_to_string_same_shape_iri",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 317,
+   "line": 318,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_subject_to_string"
@@ -47083,7 +48165,7 @@
    "name": "lemma_nq_subject_to_string_same_shape_bnode",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 326,
+   "line": 327,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_subject_to_string"
@@ -47101,7 +48183,7 @@
    "name": "lemma_nq_subject_to_string_cross_shape",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 339,
+   "line": 340,
    "unconditional": true,
    "shipping_functions_named": [
     "nq_subject_to_string"
@@ -47119,7 +48201,7 @@
    "name": "lemma_nq_subject_to_string_injective",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 348,
+   "line": 349,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_subject_to_string"
@@ -47137,7 +48219,7 @@
    "name": "lemma_nq_term_to_string_same_shape_iri",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 365,
+   "line": 366,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -47155,7 +48237,7 @@
    "name": "lemma_nq_term_to_string_same_shape_bnode",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 374,
+   "line": 375,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -47173,7 +48255,7 @@
    "name": "lemma_nq_term_to_string_cross_shape",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 382,
+   "line": 383,
    "unconditional": true,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -47191,7 +48273,7 @@
    "name": "lemma_nq_term_to_string_injective",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 393,
+   "line": 394,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -47209,7 +48291,7 @@
    "name": "lemma_nq_objects_injective_pointwise",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 417,
+   "line": 418,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -47227,7 +48309,7 @@
    "name": "lemma_extract_middle",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 481,
+   "line": 482,
    "unconditional": true,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -47246,7 +48328,7 @@
    "name": "checkpoint_a_closed_triple_round_trip",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 612,
+   "line": 613,
    "unconditional": true,
    "shipping_functions_named": [
     "nq_line_for_triple_default_graph",
@@ -47266,7 +48348,7 @@
    "name": "lemma_scan_iri_end_build_string",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 780,
+   "line": 781,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -47285,7 +48367,7 @@
    "name": "lemma_parse_iri_raw_build_string",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 830,
+   "line": 831,
    "unconditional": true,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -47304,7 +48386,7 @@
    "name": "lemma_parse_iri_build_string",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 862,
+   "line": 863,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -47323,7 +48405,7 @@
    "name": "lemma_term_iri_round_trip_build_string",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 875,
+   "line": 876,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -47333,6 +48415,152 @@
    "shipping_modules": [
     "Parser.NTriples",
     "RDF.NQuads.Serialize"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_term_iri_round_trip",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 953,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "is_iri_body_char",
+    "nq_term_to_string",
+    "parse_object"
+   ],
+   "shipping_modules": [
+    "Parser.NTriples",
+    "RDF.NQuads.Serialize"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_iri_round_trip",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1033,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "is_iri_body_char",
+    "parse_iri"
+   ],
+   "shipping_modules": [
+    "Parser.NTriples"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_parse_subject_iri_round_trip_build_string",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1053,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "is_iri_body_char",
+    "nq_subject_to_string",
+    "parse_subject"
+   ],
+   "shipping_modules": [
+    "Parser.NTriples",
+    "RDF.NQuads.Serialize"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_subject_iri_round_trip",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1073,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "is_iri_body_char",
+    "nq_subject_to_string",
+    "parse_subject"
+   ],
+   "shipping_modules": [
+    "Parser.NTriples",
+    "RDF.NQuads.Serialize"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_scan_iri_end_bracket_witness",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1097,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "is_iri_body_char",
+    "scan_iri_end"
+   ],
+   "shipping_modules": [
+    "Parser.NTriples"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_iri_bracket_shift_prereqs",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1127,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fs_byte_index",
+    "fs_byte_length",
+    "is_iri_body_char",
+    "parse_iri_raw",
+    "scan_iri_end"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NTriples"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_pws_one_space",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1178,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fs_byte_index",
+    "fs_byte_length",
+    "is_nt_ws",
+    "pws"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NTriples"
    ],
    "declarative_relations_named": [],
    "declarative_modules": [],
@@ -60278,8 +61506,8 @@
   "modules_with_internal_refinement_theorem": 19,
   "modules_merely_tot": 129,
   "w3c_refinement_theorem_count": 308,
-  "internal_refinement_theorem_count": 137,
-  "algorithm_correctness_theorem_count": 324,
+  "internal_refinement_theorem_count": 146,
+  "algorithm_correctness_theorem_count": 336,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [
    "OWL.RL.Refinement",
@@ -60300,7 +61528,7 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1608,
+  "lemma_count": 1639,
   "tiers": {
    "algorithm-correctness": 26,
    "internal-refinement": 10,
@@ -60311,5 +61539,5 @@
    "w3c-refinement": 10
   }
  },
- "commit": "89a1fdf92"
+ "commit": "fdc15c1e1"
 }
