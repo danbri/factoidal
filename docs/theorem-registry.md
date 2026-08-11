@@ -1026,3 +1026,26 @@ real caller. Items 6-8 (parse_nquads_acc_concat_line,
 theorem_stream_eq_batch) now have the scanner path open; they still
 need the parse_bnode/parse_literal WRAPPER chainings (items 1-2
 residue) first.
+
+**Task #48: SINGLE-CHUNK STREAMING THEOREM (2026-08-11, branch
+`stream-theorem`)**: `theorem_stream_eq_batch_single_chunk` PROVED in
+`RDF.NQuads.Streaming.fst` — `stream_parse [c] == batch_parse c` for
+any chunk that either contains no newline or ends in a newline, with
+NO hypothesis on the chunk's RDF content (well-formed or not, any
+shape, any escapes). Supporting landings in
+`Parser.NTriples.Locality.fst`: `lemma_parse_bnode_shift` (wrapper
+chain closed first-attempt, + subject/object/graph-label bnode
+corollaries); `lemma_parse_literal_plain_shift` +
+`lemma_parse_literal_lang_shift` (the `^^dt` datatype branch is a
+FINDING — 3 structurally different attempts, identical Error 19,
+same wall class as the abandoned parse_iri_raw capstone, third
+independent confirmation); `lemma_parse_nquad_shift_generic` — a
+more scalable design than 18 shape combinations: per-component
+success supplied as external hypotheses, covering every shape by
+composition. `parse_nquads_acc_concat_line`: BOTH boundary cases
+(complete="" / carry="") closed fully generally — neither needed the
+per-combinator induction the original FINDING predicted (STATUS
+UPDATE banner corrects it). Remaining for the general multi-chunk
+theorem: `lemma_parse_nquads_acc_restart` (named FINDING) — the
+mid-line-split restart argument. No admits, no --lax, no new
+assume vals.
