@@ -1073,3 +1073,21 @@ plus `ask_keyword_recovered_from_prefix` (ASK keyword recovered from
 a printed prefix with symbolic tail). Zero new assume vals, zero new
 axioms. Full string-to-AST theorem remains scoped future work
 (fragment widening at TokenRoundTrip scale).
+
+**G4 M1: SYMBOLIC IRI round-trip theorem (2026-08-11, branch
+`nt-symbolic2`)**: `RDF.NTriples.RoundTrip.fst` Part 7 (+191 lines).
+`lemma_term_iri_round_trip_build_string` — parse of
+(nq_term_to_string (T_IRI iri)) == the term, for a SYMBOLIC iri whose
+text is `build_string cs` with `cs` any ASCII codepoint list of
+IRI-safe characters (no escapes, no '>', no controls). The REAL
+serializer, not a transcription. Sub-checkpoints:
+`lemma_scan_iri_end_build_string` (b1 — the scan finds '>' right
+after any safe IRI text, any suffix) and
+`lemma_parse_iri_raw_build_string` (b2). Proof composes two prior
+landings read-only: the strcat kit (ConcatSpec) and the scan shift
+lemmas (Parser.NTriples.Locality) — first-attempt pass once composed;
+the walls the original checkpoint-(b) attempt recorded are both
+CLOSED by that prior work. Remaining narrowest gap: covering ANY
+well-formed IRI string requires "s == build_string (codes of s)", the
+known string-conversion mixing wall (already probed and blocked once,
+per RoundTripLemmas' notes). No admits, no --lax, no new assume vals.
