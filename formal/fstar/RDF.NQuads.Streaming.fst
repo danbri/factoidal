@@ -1333,3 +1333,73 @@ let lemma_parse_nquads_acc_comment_step_shift prefix mid suffix w ds fuel =
   lemma_skip_comment_shift prefix mid suffix w.cw_wsend w.cw_commentend;
   Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.cw_commentend
 #pop-options
+
+(* ============================================================================
+ * KIND 3 (task #48 ordered work list, "extend kind by kind"): QUAD-FAILURE
+ * lines -- a line that is neither blank nor a comment, but on which
+ * `Parser.NQuads.parse_nquad` fails (malformed subject/predicate/object/
+ * graph-label/terminator), so `parse_nquads_acc`'s error-recovery branch
+ * (`nq_skip_line`) fires. Reuses `lemma_nq_skip_line_shift_exact` (already
+ * proved, this file's Kind-1-adjacent primitives above).
+ *
+ * WHAT IS A PREMISE HERE, DELIBERATELY (matching the task brief's own
+ * "conditioned... premise" acceptable-landing form, stated plainly, not
+ * hidden): unlike the blank/comment kinds -- where EVERY fact the step-
+ * shift lemma needs is derivable purely from `mid`'s own bytes via already-
+ * proved scanner-shift lemmas -- showing that `parse_nquad`, having FAILED
+ * on `mid` alone, ALSO fails when `mid` is embedded inside a larger string
+ * is exactly the unresolved forward-dispatch obstruction the FINDING above
+ * (and `Parser.NTriples.Locality.fst`'s own abandoned `parse_iri_raw`
+ * capstone) diagnoses for the SUCCESS case, and failure is no easier: a
+ * recursive-descent parser can fail for reasons (running off the end of
+ * `mid`, an internal scan landing past `mid`'s boundary) that do NOT
+ * reproduce when more bytes follow. This kind's step-shift lemma therefore
+ * takes "`parse_nquad` also fails on the embedding, at the shifted
+ * position" as an EXPLICIT HYPOTHESIS (`ParseFail?` on both sides) rather
+ * than deriving it -- a witness fact the CALLER must already possess (e.g.
+ * from having run the concrete embedded parse), never invented internally,
+ * consistent with every other witness parameter in this file. *)
+noeq type quad_fail_witness = {
+  qfw_pos     : nat;
+  qfw_wsend   : nat;
+  qfw_stopeol : nat;
+}
+
+let quad_fail_line_wf (mid : string) (w : quad_fail_witness) : Type0 =
+  w.qfw_pos <= w.qfw_wsend /\
+  w.qfw_wsend < Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qfw_pos == Parser.Combinators.ParseOk () w.qfw_wsend /\
+  (let c = Parser.FastString.fs_byte_index mid w.qfw_wsend in
+   let cc = FStar.Char.int_of_char c in
+   cc <> 0x23 /\ cc <> 0x0A /\ cc <> 0x0D) /\
+  Parser.Combinators.ParseFail? (Parser.NQuads.parse_nquad mid w.qfw_wsend) /\
+  Parser.NQuads.nq_skip_line mid (Parser.FastString.fs_byte_length mid) w.qfw_wsend
+    (Parser.FastString.fs_byte_length mid - w.qfw_wsend) == w.qfw_stopeol /\
+  w.qfw_stopeol < Parser.FastString.fs_byte_length mid /\
+  w.qfw_stopeol > w.qfw_wsend
+
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_quad_fail_step_shift
+    (prefix mid suffix : string) (w : quad_fail_witness)
+    (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (requires
+        quad_fail_line_wf mid w /\
+        fuel > 0 /\
+        (Parser.FastString.fs_byte_length suffix = 0 \/
+         Parser.FastString.fs_byte_at suffix 0 <> 0x0A) /\
+        Parser.Combinators.ParseFail?
+          (Parser.NQuads.parse_nquad (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.qfw_wsend)))
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qfw_pos) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.qfw_stopeol) ds (fuel - 1))
+let lemma_parse_nquads_acc_quad_fail_step_shift prefix mid suffix w ds fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix w.qfw_pos w.qfw_wsend;
+  lemma_byte_index_at_middle prefix mid suffix w.qfw_wsend;
+  lemma_nq_skip_line_shift_exact prefix mid suffix w.qfw_wsend w.qfw_stopeol
+#pop-options
