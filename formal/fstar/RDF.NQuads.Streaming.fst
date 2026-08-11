@@ -897,3 +897,212 @@ let theorem_stream_eq_batch_single_chunk c =
  * (`RDF.NTriples.RoundTrip.fst`'s Part 6 banner) to where a future
  * session should pick this up.
  * ============================================================================ *)
+
+(* ============================================================================
+ * ITEM 6 CONTINUED (task #48, 2026-08-11 SECOND landing, general multi-
+ * chunk `theorem_stream_eq_batch`): two new self-contained primitives, then
+ * the CONDITIONED general restart theorem the FAILURE-BRANCH of this task's
+ * own brief sanctions ("premise: every complete line parses successfully;
+ * boolean/witness-supplied premise" is an ACCEPTABLE landing) -- NOT the
+ * unconditional `lemma_parse_nquads_acc_restart` named in the FINDING
+ * above, which still needs the full per-combinator forward-dispatch
+ * capstone that FINDING (and `Parser.NTriples.Locality.fst`'s own
+ * abandoned `parse_iri_raw` capstone) diagnoses as not fitting a
+ * guard-depth-3 budget. This landing does not re-attempt that wall.
+ *
+ * TWO NEW PRIMITIVES, why they are new (not already in `Parser.NTriples.
+ * Locality.fst`):
+ *
+ * `lemma_skip_comment_shift` -- fills EXACTLY the gap that file's own
+ * Stage 3 Item 4 banner named ("comment/blank-line/error-recovery
+ * scanners... `skip_comment`/`skip_line`'s local-`let rec` obstacle") and
+ * then partially closed (lifting `nt_skip_to_eol`/`nq_skip_line` to
+ * top-level, proving THEIR shift lemmas) without composing the FINAL
+ * one-line wrapper for `skip_comment` itself. `skip_comment`'s own body
+ * (`Parser.NTriples.fst`) is `if pos>=len then pos else if byte=='#' then
+ * nt_skip_to_eol input len (pos+1) (len-pos) else pos` -- a direct
+ * corollary of the already-proved `Parser.NTriples.Locality.
+ * lemma_nt_skip_to_eol_shift`, taking the scan's own termination witness
+ * (`stop_pos`) as an explicit parameter (this file's own established
+ * style, matching `lemma_scan_iri_end_shift`'s `gt_pos` parameter)
+ * rather than trying to derive it internally. `skip_comment`'s internal
+ * call always has ONE UNIT of fuel headroom BY CONSTRUCTION (`p+fuel =
+ * (pos+1)+(len-pos) = len+1 > len`, unconditionally, no monotonicity
+ * argument needed) -- `lemma_nt_skip_to_eol_shift`'s own `p+fuel >
+ * fs_byte_length mid` hypothesis is satisfied for free.
+ *
+ * `lemma_nq_skip_line_shift_exact` -- `Parser.NTriples.Locality.
+ * lemma_nq_skip_line_shift` (the fail-branch scanner shift, already
+ * proved there) takes a FREE fuel parameter `f` and requires `p + f >
+ * fs_byte_length mid` STRICTLY. `parse_nquads_acc`'s REAL call site
+ * (`nq_skip_line input len pos1 (len - pos1)`, `Parser.NQuads.fst`'s
+ * fail branch) gives `p + f = pos1 + (len - pos1) = len` EXACTLY -- one
+ * short of that lemma's own precondition, so it cannot be invoked
+ * directly at the real call site. Rather than a separate fuel-
+ * monotonicity bridging lemma (extra fuel is harmless once a stop is
+ * reached with positive fuel to spare -- itself provable, but an extra
+ * moving part), this landing proves a SELF-CONTAINED variant with the
+ * fuel PINNED to `fs_byte_length mid - p` throughout (matching the real
+ * call site exactly, both on `mid` and on the embedding, so the
+ * `p + f > len` inequality is never needed: the `decreases` metric is
+ * `fs_byte_length mid - p` itself, and the `p >= fs_byte_length mid`
+ * vacuous case is handled by the SAME contradiction argument
+ * `lemma_nq_skip_line_shift`'s own proof uses, just derived from the
+ * metric hitting 0 rather than from a separate `f = 0` guard). Same
+ * proof technique as the borrowed lemma (byte-agreement via
+ * `lemma_byte_index_at_middle`, composing the already-proved `Parser.
+ * NTriples.Locality.lemma_skip_eol_shift` at the newline-found leaf), no
+ * new axiom, no new difficulty class -- a fuel-bookkeeping variant of an
+ * already-proved lemma, not a fresh induction.
+ * ============================================================================ *)
+
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_skip_comment_shift (prefix mid suffix : string) (pos stop_pos : nat)
+  : Lemma
+      (requires
+        pos < Parser.FastString.fs_byte_length mid /\
+        FStar.Char.int_of_char (Parser.FastString.fs_byte_index mid pos) = 0x23 /\
+        Parser.NTriples.nt_skip_to_eol mid (Parser.FastString.fs_byte_length mid) (pos + 1)
+          (Parser.FastString.fs_byte_length mid - pos) == stop_pos /\
+        stop_pos < Parser.FastString.fs_byte_length mid)
+      (ensures
+        Parser.NTriples.skip_comment (prefix ^ (mid ^ suffix)) (Parser.FastString.fs_byte_length prefix + pos)
+        == Parser.FastString.fs_byte_length prefix + stop_pos)
+let lemma_skip_comment_shift prefix mid suffix pos stop_pos =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  Parser.NTriples.Locality.lemma_nt_skip_to_eol_shift prefix mid suffix (pos + 1)
+    (Parser.FastString.fs_byte_length mid - pos) (Parser.FastString.fs_byte_length suffix) stop_pos
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_nq_skip_line_shift_exact (prefix mid suffix : string) (p stop_pos : nat)
+  : Lemma
+      (requires
+        p <= Parser.FastString.fs_byte_length mid /\
+        Parser.NQuads.nq_skip_line mid (Parser.FastString.fs_byte_length mid) p
+          (Parser.FastString.fs_byte_length mid - p) == stop_pos /\
+        stop_pos < Parser.FastString.fs_byte_length mid /\
+        (Parser.FastString.fs_byte_length suffix = 0 \/ Parser.FastString.fs_byte_at suffix 0 <> 0x0A))
+      (ensures
+        Parser.NQuads.nq_skip_line (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length (prefix ^ (mid ^ suffix)))
+          (Parser.FastString.fs_byte_length prefix + p)
+          ((Parser.FastString.fs_byte_length mid - p) + Parser.FastString.fs_byte_length suffix)
+        == Parser.FastString.fs_byte_length prefix + stop_pos)
+      (decreases (Parser.FastString.fs_byte_length mid - p))
+let rec lemma_nq_skip_line_shift_exact prefix mid suffix p stop_pos =
+  let len_mid = Parser.FastString.fs_byte_length mid in
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  if p >= len_mid then ()
+  else begin
+    lemma_byte_index_at_middle prefix mid suffix p;
+    let c = Parser.FastString.fs_byte_index mid p in
+    let cc = FStar.Char.int_of_char c in
+    if cc = 0x0A || cc = 0x0D then
+      Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix p
+    else
+      lemma_nq_skip_line_shift_exact prefix mid suffix (p + 1) stop_pos
+  end
+#pop-options
+
+(* ============================================================================
+ * FINDING (guard-depth-3 stop, second landing, 2026-08-11): a
+ * `lemma_parse_nquads_acc_restart` instance for the NARROWEST possible
+ * multi-line scope ("mid" = blank lines only, no comments, no quads --
+ * `forall q < fs_byte_length mid, pws mid q lands strictly inside mid on
+ * a byte in {0x0A, 0x0D}`) was ATTEMPTED and NOT CLOSED after three
+ * restructured attempts, each verified NOT to be a quick rejection but a
+ * genuine multi-minute z3 search (10-16 minutes of 100% z3 CPU each,
+ * confirmed via `ps` on the live `z3-4.13.3` child process, not a
+ * trivially-false query):
+ *
+ *   1. Direct proof (induction on fuel, mirroring `parse_nquads_acc`'s
+ *      own branch order, composing `Parser.NTriples.Locality.
+ *      lemma_pws_shift` + `lemma_skip_eol_shift` with `suffix = ""`,
+ *      rewritten to `prefix ^ mid` via `empty_string_concat_right` +
+ *      ordinary congruence). Failed: "Assertion failed" pointing at
+ *      `Parser.NTriples.Locality.fst`'s OWN `lemma_skip_eol_shift`
+ *      `requires` span -- traced to a missing `fs_byte_length_empty ()`
+ *      call (needed so Z3 knows `fs_byte_length "" = 0` to discharge
+ *      that lemma's `suffix`-empty disjunct) -- a real bug, fixed.
+ *   2. Same, with the missing `fs_byte_length_empty ()` call added.
+ *      Failed differently: "Could not prove post-condition" against the
+ *      lemma's own `ensures`, generic span -- diagnosed as the
+ *      `prefix ^ (mid ^ "")` vs `prefix ^ mid` congruence rewrite not
+ *      reliably propagating through THREE further function layers
+ *      (`pws`, `fs_byte_index`, `skip_eol`, then `parse_nquads_acc`
+ *      itself) from one base `mid ^ "" == mid` fact alone.
+ *   3. Same, with EXPLICIT intermediate `assert`s restating each
+ *      Locality lemma's conclusion directly in `prefix ^ mid` form
+ *      (forcing the congruence rewrite at each layer by hand rather
+ *      than relying on it propagating unaided). Failed again: generic
+ *      "Assertion failed" pointing at the enclosing `Tot`/termination
+ *      machinery in `Prims.fst`, after ~16 minutes of continuous z3
+ *      search at `--z3rlimit 300` -- consistent with the query
+ *      exhausting the resource limit during search rather than being
+ *      quickly refuted, i.e. genuinely hard for the solver, not wrong
+ *      by a small fixable margin.
+ *
+ * DIAGNOSIS (why, not just that): the three attempts' escalating
+ * failure modes (missing-fact -> congruence-propagation -> resource-
+ * exhaustion) point at the HYPOTHESIS SHAPE itself, not any one
+ * `assert`. `forall (q:nat). q < fs_byte_length mid ==> (match pws mid q
+ * with ParseOk () q1 -> ... | ParseFail _ _ -> True)` has NO natural SMT
+ * trigger term for E-matching (the quantified body's head is a `match`
+ * on a function application, not a flat predicate over `q`) -- every
+ * lemma already verified in this file and in `Parser.NTriples.
+ * Locality.fst` states its per-position facts via EXPLICIT WITNESS
+ * PARAMETERS (`gt_pos`, `stop_pos`, `pos1`...`pos8`, etc.), never via a
+ * bare `forall` over an opaque parser's output. This landing's `forall`
+ * hypothesis is the FIRST use of that shape in either file, and the
+ * failure pattern (increasingly expensive, ultimately resource-
+ * exhausting z3 searches) is consistent with poor or absent
+ * quantifier instantiation forcing Z3 to fall back to expensive
+ * heuristics rather than a clean single ground substitution.
+ *
+ * THE FIX A FUTURE SESSION SHOULD TRY FIRST (not attempted here --
+ * guard-depth-3 exhausted on the `forall` formulation itself): restate
+ * `lemma_parse_nquads_acc_restart_blanks_only` WITHOUT a universally
+ * quantified hypothesis at all, following this file's and `Parser.
+ * NTriples.Locality.fst`'s own established style throughout -- thread
+ * an EXPLICIT WITNESS per recursive step instead. Concretely, parameterize
+ * the lemma by an explicit `stop_pos` witness for `pws`'s landing
+ * position AND for `skip_eol`'s landing position AT THE CALL SITE (the
+ * caller already knows these concretely, from having matched `mid`'s
+ * actual content one line at a time), rather than deriving them from a
+ * `forall` instantiated inside the proof. This exactly mirrors how
+ * `lemma_skip_comment_shift`/`lemma_nq_skip_line_shift_exact` above
+ * (THIS landing, verified clean) already take their termination
+ * positions as explicit parameters rather than discovering them --
+ * apply the SAME discipline one level up, at the `parse_nquads_acc`
+ * recursion itself, not just at the scanner level.
+ *
+ * WHAT IS VERIFIED FROM THIS SECOND LANDING (both self-contained, no
+ * admits, no `--lax`, no new `assume val`, both under `make verify-RDF.
+ * NQuads.Streaming`):
+ *   - `lemma_skip_comment_shift` -- closes the exact gap `Parser.
+ *     NTriples.Locality.fst`'s Stage 3 Item 4 banner named and left
+ *     unclosed after lifting `nt_skip_to_eol` to top level (the final
+ *     one-line composition into `skip_comment` itself).
+ *   - `lemma_nq_skip_line_shift_exact` -- resolves the fuel-tightness
+ *     gap between `Parser.NTriples.Locality.lemma_nq_skip_line_shift`'s
+ *     strict `p + f > fs_byte_length mid` precondition and
+ *     `parse_nquads_acc`'s real fail-branch call site (`p + f =
+ *     fs_byte_length mid` exactly).
+ *
+ * NEITHER PRIMITIVE ALONE CLOSES `lemma_parse_nquads_acc_restart` OR
+ * `theorem_stream_eq_batch` (general) -- they are INGREDIENTS for the
+ * per-line induction over `parse_nquads_acc`'s recursion (comment-line
+ * and fail-line legs respectively), which itself needs the `forall`-free
+ * restructuring above before any of the three legs (comment, blank,
+ * quad) can be assembled into that induction. The general
+ * `theorem_stream_eq_batch` remains NOT PROVED after this landing --
+ * narrower in scope than the original FINDING hoped to close, but with
+ * two more real, reusable, verified primitives and a sharper, tested
+ * (not speculated) diagnosis of why the natural next attempt (a `forall`
+ * over reachable positions) does not work, so the next session does not
+ * re-spend a guard-depth-3 budget re-discovering this.
+ * ============================================================================ *)
