@@ -1274,3 +1274,26 @@ behind docs/fstar-extracted). DEFERRED with reasons: package rename
 to `factoidal` (owner-decided; ~20-file migration, own dispatch);
 #344 (F* parser strictness, not ABI); wasm-entry ABI rebuild (needs
 full extraction — pre-existing RDFS_Closure_SemiNaive.ml gap noted).
+
+**#401 M1: IRI round-trip GENERALIZED to plain strings (2026-08-11,
+branch `iri-general`)**: `lemma_term_iri_round_trip`
+(RDF.NTriples.RoundTrip.fst Part 8) — parse_object of
+nq_term_to_string (T_IRI i) == ParseOk (T_IRI i) for ANY string i
+satisfying is_iri + all_ascii + iri-body-chars; no caller-built
+codepoint witness. Enabled by `lemma_ascii_string_is_build_string`
+(+ `_bc` variant for BaseCases' nominally distinct pair) in
+RoundTripLemmas — the ASCII instance of the build_string wall,
+CLOSED. Route: never let Spec.utf8_bytes-of-build_string appear as a
+goal inside recursion (that alone reopens the wall — measured, 109ms
+Error 19); instead byte facts through the Axioms-opaque
+lemma_build_string_byte_length/_byte_at + fs_byte_*_eq bridges, list
+equality by index_extensionality, one plain list-level recursive
+helper, composed with PR #409's decode identity +
+string_of_list_of_string. Also found: BaseCases'
+lemma_build_string_utf8_bytes verifies in the "failing" shape —
+candidate factors (cons-built RHS vs concatMap; default fuel vs 4/4)
+recorded, not fully isolated. NOT covered: non-ASCII IRIs (needs
+multi-byte scan_iri_end advance — separate rung); a generalized
+checkpoint_a (arbitrary whole triple) is a new composition chain, not
+mechanical. Full dependency chain re-verified clean. No admits, no
+--lax, no new assume vals.
