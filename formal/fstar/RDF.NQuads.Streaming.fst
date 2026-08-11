@@ -559,9 +559,253 @@ let lemma_byte_index_at_middle prefix mid suffix i =
   lemma_fs_byte_index_concat prefix (mid ^ suffix) (Parser.FastString.fs_byte_length prefix + i);
   lemma_fs_byte_index_concat mid suffix i
 
+(* Right identity of `^` for strings: `c ^ "" == c`. Symmetric derivation
+   to `empty_string_concat_left` above. *)
+val empty_string_concat_right (c : string)
+  : Lemma (c ^ "" == c)
+let empty_string_concat_right c =
+  FStar.String.list_of_concat c "";
+  assert_norm (FStar.String.list_of_string "" == []);
+  List.Tot.append_l_nil (FStar.String.list_of_string c);
+  cong_string_of_list (FStar.String.list_of_string c @ FStar.String.list_of_string "")
+                       (FStar.String.list_of_string c)
+                       ;
+  FStar.String.string_of_list_of_string (c ^ "");
+  FStar.String.string_of_list_of_string c
+
+(* ============================================================================
+ * ITEM 4 (task #48 ordered work list item 4): `parse_nquads_acc_concat_line`
+ * -- the two BOUNDARY cases, both FULLY GENERAL (no per-line/per-shape
+ * restriction on the OTHER argument), landed this session; the interior
+ * (both `complete` and `carry` non-empty) case is a FINDING below, not
+ * closed.
+ *
+ * WHY THESE TWO CASES NEED NO SHAPE RESTRICTION AT ALL (the pleasant
+ * surprise this landing found). Every OTHER lemma in this file/
+ * `Parser.NTriples.Locality.fst` needs an embedding argument (byte-read
+ * agreement propagated through a recursive-descent parse) BECAUSE one
+ * string is a PROPER, NON-EMPTY middle piece of a larger one, with real
+ * bytes on both sides that the recursion must be shown to treat
+ * identically. Both cases below instead have ONE OF THE TWO OPERANDS BE
+ * THE EMPTY STRING -- and `parse_nquads_acc s pos ds fuel`'s OWN
+ * definition (`Parser.NQuads.fst`) returns `ds` UNCHANGED, UNCONDITIONALLY
+ * on ANY content, the moment `pos >= fs_byte_length s` -- which is exactly
+ * `pos = 0 >= fs_byte_length "" = 0`. So `parse_nquads_acc "" 0 X (n+1) ==
+ * X` for ANY `X`/`n`, by ONE step of DEFINITIONAL unfolding, no embedding,
+ * no per-line reasoning, no scan witnesses. Combined with the `^`-identity
+ * laws (`""^c==c`, `c^""==c`), the two cases below are PURE ALGEBRA over
+ * that one fact plus string identity -- they hold for ANY `complete`/
+ * `carry` content whatsoever, well-formed or not, single-line or
+ * multi-line, any subject/object/graph shape, any escapes.
+ * ============================================================================ *)
+
+#push-options "--fuel 2 --ifuel 2"
+val parse_nquads_acc_concat_line_empty_complete (carry : string) (ds : RDF.Graph.Executable.rdf_dataset)
+  : Lemma
+      (ensures
+        Parser.NQuads.parse_nquads_acc carry 0
+          (Parser.NQuads.parse_nquads_acc "" 0 ds (Parser.FastString.fs_byte_length "" + 1))
+          (Parser.FastString.fs_byte_length carry + 1)
+        == Parser.NQuads.parse_nquads_acc ("" ^ carry) 0 ds
+             (Parser.FastString.fs_byte_length ("" ^ carry) + 1))
+let parse_nquads_acc_concat_line_empty_complete carry ds =
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_left carry
+#pop-options
+
+#push-options "--fuel 2 --ifuel 2"
+val parse_nquads_acc_concat_line_empty_carry (complete : string) (ds : RDF.Graph.Executable.rdf_dataset)
+  : Lemma
+      (ensures
+        Parser.NQuads.parse_nquads_acc "" 0
+          (Parser.NQuads.parse_nquads_acc complete 0 ds (Parser.FastString.fs_byte_length complete + 1))
+          (Parser.FastString.fs_byte_length "" + 1)
+        == Parser.NQuads.parse_nquads_acc (complete ^ "") 0 ds
+             (Parser.FastString.fs_byte_length (complete ^ "") + 1))
+let parse_nquads_acc_concat_line_empty_carry complete ds =
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  empty_string_concat_right complete
+#pop-options
+
+(* ============================================================================
+ * ITEM 5 (task #48 ordered work list item 5): `theorem_stream_eq_batch`,
+ * SINGLE CHUNK -- landed UNCONDITIONALLY (no per-line/shape restriction,
+ * inherited from item 4's two boundary cases being shape-free) for the
+ * scope every real single-chunk call satisfies whenever the chunk does
+ * not end mid-line: `c` has NO newline at all (`split_complete_lines`
+ * puts everything in `carry`, `complete = ""` -- item 4's first case), OR
+ * `c` ENDS in a newline (`complete = c`, `carry = ""` -- item 4's second
+ * case). This is `stream_parse [c] == batch_parse c` for exactly those
+ * `c` -- a real, if scope-limited, streaming/batch equivalence with NO
+ * hypothesis on `c`'s internal RDF content (well-formed or not, single-
+ * line or multi-line, any escapes) -- only on where the chunk boundary
+ * falls relative to `c`'s OWN newlines.
+ *
+ * WHAT REMAINS OPEN (the genuinely hard case, and the general multi-
+ * chunk theorem, item 6): `c` containing ONE OR MORE newlines WITHOUT
+ * ending in one -- i.e. `split_complete_lines c` yields a NON-EMPTY
+ * `complete` AND a NON-EMPTY `carry`. See the FINDING at the bottom of
+ * this file for the precise obstruction (now sharpened past the
+ * 2026-08-11 landing's own FINDING): it is not "harder embedding", it is
+ * a DIFFERENT, PROVABLY UNAVOIDABLE further primitive (`lemma_parse_
+ * nquads_acc_restart`, named and analysed in that FINDING) that
+ * `parse_nquads_acc_concat_line`'s INTERIOR case needs and item 4's two
+ * boundary cases structurally cannot supply (they work BECAUSE one side
+ * is empty, sidestepping exactly the primitive the interior case needs).
+ * ============================================================================ *)
+#push-options "--fuel 2 --ifuel 2"
+val theorem_stream_eq_batch_single_chunk_no_newline (c : string)
+  : Lemma
+      (requires (forall ch. List.Tot.memP ch (FStar.String.list_of_string c) ==> ~ (is_nl ch)))
+      (ensures stream_parse [c] == batch_parse c)
+let theorem_stream_eq_batch_single_chunk_no_newline c =
+  stream_parse_single_chunk_shape c;
+  split_complete_lines_no_newline c;
+  // split_complete_lines c == ("", c): fst == "", snd == c.
+  parse_nquads_acc_concat_line_empty_complete (snd (split_complete_lines c)) RDF.Graph.Executable.empty_dataset;
+  empty_string_concat_left (snd (split_complete_lines c))
+#pop-options
+
+#push-options "--fuel 2 --ifuel 2"
+val theorem_stream_eq_batch_single_chunk_ends_in_newline (c : string)
+  : Lemma
+      (requires FStar.String.length c > 0 /\ is_nl (List.Tot.last (FStar.String.list_of_string c)))
+      (ensures stream_parse [c] == batch_parse c)
+let theorem_stream_eq_batch_single_chunk_ends_in_newline c =
+  stream_parse_single_chunk_shape c;
+  split_complete_lines_ends_in_newline c;
+  // split_complete_lines c == (c, ""): fst == c, snd == "".
+  parse_nquads_acc_concat_line_empty_carry (fst (split_complete_lines c)) RDF.Graph.Executable.empty_dataset;
+  empty_string_concat_right (fst (split_complete_lines c))
+#pop-options
+
+(* Unified statement: either boundary condition suffices. `batch_parse`
+   already IS `Parser.NQuads.parse_nquads`, which itself applies
+   `dataset_finalise` (Parser.NQuads.fst's own `parse_nquads`) -- so the
+   clean top-level equation is `stream_parse [c] == batch_parse c`
+   directly (no extra `dataset_finalise` wrapper needed at this level;
+   the two lemmas above expose the intermediate un-wrapped form for
+   composability with item 4, this wrapper restates it against the named
+   `batch_parse` entry point the module banner promised). *)
+val theorem_stream_eq_batch_single_chunk (c : string)
+  : Lemma
+      (requires
+        (forall ch. List.Tot.memP ch (FStar.String.list_of_string c) ==> ~ (is_nl ch)) \/
+        (FStar.String.length c > 0 /\ is_nl (List.Tot.last (FStar.String.list_of_string c))))
+      (ensures stream_parse [c] == batch_parse c)
+let theorem_stream_eq_batch_single_chunk c =
+  if FStar.String.length c = 0 then begin
+    // c = "" has no newline (vacuously) -- take the no-newline branch;
+    // batch_parse "" == dataset_finalise (parse_nquads_acc "" 0 empty 1)
+    // == dataset_finalise empty_dataset by the same unfolding, matching
+    // stream_parse [""] via the no-newline case directly.
+    theorem_stream_eq_batch_single_chunk_no_newline c
+  end else if is_nl (List.Tot.last (FStar.String.list_of_string c)) then
+    theorem_stream_eq_batch_single_chunk_ends_in_newline c
+  else
+    theorem_stream_eq_batch_single_chunk_no_newline c
+
+(* ============================================================================
+ * ITEM 6 (task #48 ordered work list item 6): `theorem_stream_eq_batch`,
+ * GENERAL (arbitrary chunk list) -- NOT proved this landing. FINDING,
+ * sharpened past both the module banner's own FINDING and `Parser.
+ * NTriples.Locality.fst`'s "STATUS UPDATE" banner (now a THIRD
+ * independent confirmation, from a third entry point: item 4/5's
+ * boundary-case proof above, which shows PRECISELY where the "no
+ * restriction needed" argument stops working).
+ *
+ * WHAT WOULD BE NEEDED, NAMED PRECISELY. Item 4's two boundary cases
+ *(`complete=""` / `carry=""`) close because `parse_nquads_acc`'s `pos >=
+ * length` base case fires UNCONDITIONALLY on the empty side, needing no
+ * per-line reasoning about the OTHER (non-empty) side's content at all.
+ * The moment BOTH `complete` and `carry` are non-empty -- the case a real
+ * chunk boundary landing MID-DOCUMENT (not just mid-LINE) produces, and
+ * exactly the case the general multi-chunk fold needs at every internal
+ * boundary -- this shortcut is unavailable, and the proof needs a
+ * genuinely different primitive:
+ *
+ *   val lemma_parse_nquads_acc_restart (a b : string) (ds : rdf_dataset) (fuel : nat)
+ *     : Lemma (parse_nquads_acc (a ^ b) (fs_byte_length a) ds fuel
+ *              == parse_nquads_acc b 0 ds fuel)
+ *
+ * i.e. "`b` embedded at the offset right after `a` behaves like `b` run
+ * standalone from position 0" -- NOT a corollary of the two boundary
+ * cases (those degenerate exactly BECAUSE one operand is empty; this
+ * lemma is about TWO non-empty strings, `a` playing prefix, `b` playing
+ * the whole remainder with nothing after it). `parse_nquads_acc_concat_
+ * line`'s general (interior) case reduces to `lemma_parse_nquads_acc_
+ * restart` plus a fuel-monotonicity fact ("extra fuel is harmless once
+ * `pos >= length` is reached before fuel exhausts" -- itself a short,
+ * mechanical induction in the SAME style as this landing's `Parser.
+ * NTriples.Locality.fst` `_headroom` lemmas, NOT the blocking piece).
+ *
+ * THE ACTUAL BLOCKER, diagnosed precisely (not "harder embedding"):
+ * proving `lemma_parse_nquads_acc_restart` for `b` of UNRESTRICTED
+ * (arbitrary-shape, arbitrary-escape) N-Quads content requires, at every
+ * position inside `b` where `parse_nquads_acc`'s recursion attempts a
+ * quad (`parse_nquad`), a FORWARD lemma: "GIVEN `parse_nquad b p ==
+ * ParseOk (t,g) p'` (success, of WHATEVER shape it turns out to be),
+ * THEN the embedded call succeeds identically" -- with the shape
+ * discovered BY THE PROOF, not supplied by an external caller (unlike
+ * every lemma THIS session's items 1-3 added, which all take the
+ * relevant scan/branch witnesses as EXPLICIT PARAMETERS the caller
+ * already possesses from having matched on a CONCRETE line). Attempting
+ * such a forward lemma reduces, in the IRI-subject/predicate/object
+ * sub-case, to EXACTLY the abandoned `parse_iri_raw` FULL capstone in
+ * `Parser.NTriples.Locality.fst` (fast path vs. escape path unified
+ * behind one outer dispatch) -- the SAME "Could not prove post-
+ * condition" wall that capstone's three restructured attempts did not
+ * clear, for the SAME underlying reason (an internal `scan_iri_end`
+ * outcome, not a directly-observable byte, is what must be dispatched
+ * on to know which of two DIFFERENT already-proved lemmas applies).
+ * `parse_object`'s literal branch has the identical shape one level
+ * further in (`scan_string_fast` fast path vs. `parse_string_body`
+ * escape path). This is now confirmed from THREE independent entry
+ * points across two sessions: `RDF.NTriples.RoundTrip.fst`'s Part 6
+ * probe (one combinator), this file's ORIGINAL 2026-08-11 FINDING (the
+ * whole-line locality gate), and `Parser.NTriples.Locality.fst`'s own
+ * abandoned capstone (the closest anyone has gotten, with the exact
+ * three failed restatements on record) -- not a fresh guess.
+ *
+ * A TRACTABLE PATH, if a future session wants item 6 without clearing
+ * that wall: restrict `b` (and every non-boundary `complete`) to chunks
+ * whose EVERY quad line matches ONE fixed, WITNESSED shape (e.g. all-
+ * IRI-nograph, no escapes -- `Parser.NTriples.Locality.fst`'s `lemma_
+ * parse_nquad_iri_nograph_shift`/`lemma_parse_nquad_shift_generic`
+ * already cover this), with witnesses threaded through the chunk list
+ * as an explicit parallel witness list (structural induction on that
+ * list, not on the chunks' own byte content) -- sidesteps the forward-
+ * dispatch problem entirely because the shape is never "discovered", it
+ * is supplied. NOT attempted this landing: session budget was spent
+ * landing items 1-5 (real, verified, no-restriction-needed results) over
+ * a same-session attempt at this narrower-but-still-substantial
+ * generalisation.
+ * ============================================================================ *)
+
 (* ============================================================================
  * FINDING (guard-depth-3 stop, per CLAUDE.md/subagent-prompting discipline)
- * -- `theorem_stream_eq_batch` is NOT proved in this landing.
+ * -- `theorem_stream_eq_batch` is NOT proved in this landing, ORIGINALLY.
+ *
+ * STATUS UPDATE (same-session closing landing, later 2026-08-11): the
+ * DIAGNOSIS below (item 2, "a per-combinator induction across a 1300+
+ * line module ... does not fit a 3-attempt guard") is CONFIRMED, but NOT
+ * the whole story -- `Parser.NTriples.Locality.fst`'s SAME-session
+ * closing landing DID close item 2 for a SCOPED but real slice (all-IRI
+ * subject/predicate/object, no graph label, plus separately the bnode/
+ * plain-literal/@lang branches for `parse_subject`/`parse_object`), via
+ * `lemma_parse_nquad_shift_generic`. Building on that, THIS file's ITEM 4
+ * (`parse_nquads_acc_concat_line`, below the `PHASE 2 CHECKPOINT` banner)
+ * and ITEM 5 (`theorem_stream_eq_batch_single_chunk`) are now CLOSED --
+ * unconditionally (no shape restriction at all) for chunks that do not
+ * end mid-line, which turned out not to need item 2's per-combinator
+ * induction at all (the empty-string boundary case sidesteps it
+ * entirely; see item 4's own banner for why). ITEM 6 (general multi-
+ * chunk) remains open, now with a SHARPER named obstruction (`lemma_
+ * parse_nquads_acc_restart`) than this original FINDING's "per-
+ * combinator induction" framing -- see item 6's own banner. The
+ * remainder of THIS banner (items 1/2's own text) is KEPT VERBATIM below
+ * as the original diagnosis trail; read it alongside items 4-6 above,
+ * not in place of them.
  *
  * WHAT IT NEEDS. `stream_parse [c] == batch_parse c` (the single-chunk
  * case, the base case any general fold theorem inducts on) reduces, via
