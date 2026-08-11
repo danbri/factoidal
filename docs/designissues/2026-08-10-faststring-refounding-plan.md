@@ -574,3 +574,88 @@ covered by (a) the general js-node smoke suite passing and (b) jsoo's
 byte-op corpus." This session does not pick between (a)/(b) — that is
 an owner call given (b) has a real gap (no *adversarial* UTF-8 input
 has ever been pushed at `fs_*` through jsoo).
+
+### Task #47 step 6 — jsoo/node run (2026-08-11, worktree `js-equivalence`, branch `js-equivalence`)
+
+Picked option (a) from the recommendation above:
+`tests/unit/run-jsoo-equivalence.sh` compiles the SAME committed
+`tests/unit/parser_fast_string_equivalence.ml` against the SAME
+committed `Parser_FastString{,_Spec,_CharBoundary}.ml` extraction
+outputs to OCaml bytecode (`ocamlfind ocamlc`, same package set as
+`run-all.sh`'s native build), converts with `js_of_ocaml` using
+build-ocaml.sh Step 4's exact runtime-file set and no
+`--enable`/`--disable` overrides, and runs the resulting bundle under
+`node`. No JS reimplementation of the test or of the `fs_*` ops
+(CLAUDE.md rule #7) — same `.ml` files, different backend. Wired into
+`tests/unit/run-all.sh` behind `--jsoo` (or `WITH_JSOO=1` in the
+environment) so CI can opt in without slowing the default native run.
+
+**String-representation finding**: the Decisions section above named
+"bytes-as-JS-chars convention" as the stated domain. That is not what
+ships. Both the freshly-built `tests/unit/_build_jsoo/*.js` bundle and
+the already-committed production `docs/fstar-extracted/factoidal.js`
+(rebuilt today, 2026-08-11, by an unrelated session) carry the
+js_of_ocoml buildInfo header `use-js-string=true` — confirmed against
+this worktree's `js_of_ocaml --version` (6.4.1) by compiling a
+throwaway one-line probe with no flags and inspecting its header too.
+`use-js-string=true` is js_of_ocaml's CURRENT DEFAULT (no
+`--enable=use-js-string` was ever passed by `build-ocaml.sh`) — the
+plan's "bytes-as-JS-chars" phrasing describes js_of_ocaml's OTHER,
+array-backed representation, which is not what this project's build
+recipe produces. This is a documentation-vs-reality gap in the plan's
+own Decisions wording, not a code bug: `build-ocaml.sh` was never
+asked for the array-backed mode, so there was never a chance it would
+ship that way. Recorded here rather than silently corrected, per the
+instruction not to fix findings, only document them with witnesses.
+
+✅ **Result: exact match, 93,846 pass, 962 expected-fail (documented
+XFAIL), 0 unexpected fail (out of 94,808)** — identical to the native
+number recorded in the Step 6 results section above. Verified three
+ways in this session for redundancy against the missing-`.cmx`
+build-environment gap noted below: (1) `node
+tests/unit/_build_jsoo/fast_string_equiv.js` — the jsoo/Node path
+itself; (2) a from-source `ocamlfind ocamlopt` compile of the same
+three `.ml` files run natively in this worktree (bypassing the
+missing committed `.cmx` — see below) — same 93,846/962/0; (3) the
+plan doc's own 2026-08-11 `parity-run2` record above, from a
+different worktree with a full `./build-ocaml.sh compile`. All three
+agree. **No unexpected-fail rows in any run — no witness inputs to
+record, because there was no divergence.** The adversarial corpus (19
+snippets, standalone and embedded — truncated tails, bare
+continuations, overlongs, surrogate encodings, 0xF5+ leads) ran
+through `js_of_ocaml`'s `use-js-string=true` string representation and
+produced byte-identical PASS/XFAIL classification to native on every
+row.
+
+**Unrelated pre-existing gap surfaced, not fixed**: `tests/unit/run-all.sh
+parser_fast_string_equivalence` (the plain native path, no `--jsoo`)
+currently FAILS to build in a from-`origin/claude/main` worktree that
+has only run `tools/ensure-test-env.sh` (test-fixture submodules) —
+`ocaml-output/Parser_FastString.cmx` and 173 other canonical modules'
+`.cmx` are not present until `cd formal/fstar && ./build-ocaml.sh
+compile` is run; only 3 `Parser_FastString*.cmx` files happen to be
+committed to git in this tree. Point (2) above works around this by
+compiling from `.ml` source directly instead of linking committed
+`.cmx`, same trick `run-jsoo-equivalence.sh` already uses (it always
+compiles from source, since jsoo needs bytecode `.cmo` objects that
+are not committed at all). This is an environment/build-completeness
+gap in the worktree bootstrap, not introduced by this task and not
+fixed here — flagged so a future session doesn't mistake `run-all.sh`'s
+native BUILD FAILED for a jsoo-caused regression.
+
+**Task #47 / migration step 6: COMPLETE.** All five 🔴 items from the
+prior status list are now closed or explicitly superseded:
+- ✅ jsoo/Node FastString byte-op equivalence corpus: now exists, runs,
+  0 unexpected fail, wired into `run-all.sh --jsoo` for CI.
+- ✅ Native equivalence corpus: unchanged, still 0 unexpected fail
+  (confirmed again this session, independently, via from-source
+  compile).
+- ✅ General native/js-node demo-query parity: unchanged from the prior
+  record (4/4 cells pass).
+- ⚠️ No automated row-set/row-count comparison in `run-parity.py`
+  (issue #243) — still open, still explicitly out of this task's
+  scope (unchanged from the prior assessment; not a FastString-specific
+  gap).
+- ⚠️ Wasm-node (issue #244) — still unmeasured, still a stub; not part
+  of this migration's stated jsoo risk (the plan's Risks section names
+  "jsoo UTF-16 convention" specifically, not wasm).
