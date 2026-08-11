@@ -534,6 +534,142 @@ let lemma_parse_object_iri_shift prefix mid suffix pos gt_pos =
 #pop-options
 
 (** ========================================================================
+ * STAGE 2 (task #48 brief): `parse_iri_body_acc`, the escape/backslash
+ * slow path -- the file-end banner's "new difficulty" case, attempted
+ * here with the brief's own suggested resolution.
+ *
+ * THE ACCUMULATOR-CONCAT WALL, AND WHY IT DOES NOT APPLY TO A LOCALITY
+ * LEMMA. `parse_iri_body_acc` threads `acc : list string` and finishes
+ * with `String.concat "" (List.Tot.rev acc)` -- `RDF.NTriples.RoundTrip
+ * .fst`'s Part 6 and `Parser.FastString.Axioms.fst`'s banner both name
+ * `FStar.String.concat`/`strcat` ALGEBRA (`"" ^ s == s`, `(a^b)^c ==
+ * a^(b^c)`) as a wall Z3 cannot discharge for SYMBOLIC string operands.
+ * A shift/locality lemma never needs that algebra: it needs "the mid
+ * run and the full run compute the SAME accumulator", after which the
+ * SAME pure function (`String.concat "" (List.Tot.rev _)`) applied to
+ * EQUAL arguments gives an equal result by plain congruence -- zero
+ * concat equations invoked. Below, `acc_mid`/`acc_full` are threaded as
+ * SEPARATE parameters with an explicit `acc_mid == acc_full` hypothesis
+ * (not one shared variable, unlike sub-lemma 4's `list char` case)
+ * because two of this function's cons elements are NOT syntactically
+ * identical between the two runs even though they are VALUE-equal:
+ * `fs_byte_sub input pos 1` differs textually for `mid` vs `full` (only
+ * `fs_byte_sub_concat_left`/`_right`, Axioms facts 5a/5b, connect them,
+ * same composition as sub-lemma 6's IRI-content extraction). The
+ * `\u`/`\U` escape branches push `fs_utf8_of_codepoint cp` on both
+ * sides, where `cp` is computed identically from hex digits read via
+ * `lemma_byte_index_at_middle`-proved-equal chars -- so `cp_mid ==
+ * cp_full` as the SAME integer (no separate lemma), and the pushed
+ * fragment is syntactically the SAME expression, needing no
+ * `fs_byte_sub_concat_*` call at all in that branch.
+ *
+ * WHY THE FUEL SIDE IS SIMPLER THAN SUB-LEMMA 4 (`ptake_while_acc`).
+ * `parse_iri_body_acc`'s `fuel = 0` case FAILS (`ParseFail "IRI too
+ * long"`, same as `scan_iri_end`), unlike `ptake_while_acc`'s, which
+ * SUCCEEDS unconditionally at `fuel = 0`. A `ParseOk` hypothesis at
+ * `fuel = 0` is therefore already a direct contradiction (mid's own
+ * unfolded equation gives `ParseFail`) -- no `fuel + pos >= endpos + 1`
+ * side condition needed; plain fuel-headroom (`extra` added on the full
+ * side, unconditionally) suffices, exactly sub-lemma 3's pattern.
+ * ======================================================================== *)
+#push-options "--z3rlimit 300 --fuel 6 --ifuel 6"
+val lemma_parse_iri_body_acc_shift
+    (prefix mid suffix : string) (pos fuel extra : nat)
+    (acc_mid acc_full : list string) (endpos : nat) (out_s : string)
+  : Lemma
+      (requires
+        acc_mid == acc_full /\
+        parse_iri_body_acc mid pos acc_mid fuel == ParseOk out_s endpos /\
+        endpos <= fs_byte_length mid)
+      (ensures
+        parse_iri_body_acc (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) acc_full (fuel + extra)
+          == ParseOk out_s (fs_byte_length prefix + endpos))
+      (decreases fuel)
+let rec lemma_parse_iri_body_acc_shift prefix mid suffix pos fuel extra acc_mid acc_full endpos out_s =
+  let p = fs_byte_length prefix in
+  if fuel = 0 then ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if pos >= len_mid then ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_index_at_middle prefix mid suffix pos;
+      let ch = fs_byte_index mid pos in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x3E then ()
+      else if code = 0x5C then begin
+        if pos + 1 >= len_mid then ()
+        else begin
+          lemma_byte_index_at_middle prefix mid suffix (pos + 1);
+          let next = fs_byte_index mid (pos + 1) in
+          let ncode = FStar.Char.int_of_char next in
+          if ncode = 0x75 then begin
+            if pos + 6 > len_mid then ()
+            else begin
+              lemma_byte_index_at_middle prefix mid suffix (pos + 2);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 3);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 4);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 5);
+              match hex_val_opt (fs_byte_index mid (pos + 2)),
+                    hex_val_opt (fs_byte_index mid (pos + 3)),
+                    hex_val_opt (fs_byte_index mid (pos + 4)),
+                    hex_val_opt (fs_byte_index mid (pos + 5)) with
+              | Some h0, Some h1, Some h2, Some h3 ->
+                let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
+                if not (valid_codepoint cp) then ()
+                else if is_iri_forbidden_codepoint cp then ()
+                else
+                  lemma_parse_iri_body_acc_shift prefix mid suffix (pos + 6) (fuel - 1) extra
+                    (fs_utf8_of_codepoint cp :: acc_mid) (fs_utf8_of_codepoint cp :: acc_full) endpos out_s
+              | _ -> ()
+            end
+          end
+          else if ncode = 0x55 then begin
+            if pos + 10 > len_mid then ()
+            else begin
+              lemma_byte_index_at_middle prefix mid suffix (pos + 2);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 3);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 4);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 5);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 6);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 7);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 8);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 9);
+              match hex_val_opt (fs_byte_index mid (pos + 2)),
+                    hex_val_opt (fs_byte_index mid (pos + 3)),
+                    hex_val_opt (fs_byte_index mid (pos + 4)),
+                    hex_val_opt (fs_byte_index mid (pos + 5)),
+                    hex_val_opt (fs_byte_index mid (pos + 6)),
+                    hex_val_opt (fs_byte_index mid (pos + 7)),
+                    hex_val_opt (fs_byte_index mid (pos + 8)),
+                    hex_val_opt (fs_byte_index mid (pos + 9)) with
+              | Some h0, Some h1, Some h2, Some h3, Some h4, Some h5, Some h6, Some h7 ->
+                let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
+                       + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
+                if not (valid_codepoint cp) then ()
+                else if is_iri_forbidden_codepoint cp then ()
+                else
+                  lemma_parse_iri_body_acc_shift prefix mid suffix (pos + 10) (fuel - 1) extra
+                    (fs_utf8_of_codepoint cp :: acc_mid) (fs_utf8_of_codepoint cp :: acc_full) endpos out_s
+              | _ -> ()
+            end
+          end
+          else ()
+        end
+      end
+      else if code <= 0x20 || is_iri_forbidden_codepoint code then ()
+      else begin
+        fs_byte_sub_concat_right prefix (mid ^ suffix) (p + pos) 1;
+        fs_byte_sub_concat_left mid suffix pos 1;
+        lemma_parse_iri_body_acc_shift prefix mid suffix (pos + 1) (fuel - 1) extra
+          (fs_byte_sub mid pos 1 :: acc_mid) (fs_byte_sub mid pos 1 :: acc_full) endpos out_s
+      end
+    end
+  end
+#pop-options
+
+(** ========================================================================
  * WHAT THE TEMPLATE MEANS FOR THE REMAINING COMBINATORS.
  *
  * `scan_iri_end` was the SIMPLEST case on purpose (position-only return,
