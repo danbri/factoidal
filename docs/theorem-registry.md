@@ -902,3 +902,19 @@ strings via plain SMT (concrete literals fine) — the route forward is
 position/byte-value idioms (the `lemma_build_string_byte_at` family),
 never raw symbolic string equality. All verified clean, no admits, no
 new assume vals.
+
+**Task #48 streaming phase 2 (2026-08-11, branch `streaming-phase2`)**:
+two locality lemmas verified in `RDF.NQuads.Streaming.fst`:
+`lemma_fs_byte_index_concat` (byte i of `a ^ b` reads from `a` or `b`
+by position — closes the phase-1 FINDING's item 1 via the landed
+`fs_byte_index_eq`) and `lemma_byte_index_at_middle` (LINE-level
+locality: a line embedded at a position inside a larger string reads
+byte-for-byte the same as the line alone). FINDING updated: item 2
+(`parse_nquads_acc_concat_line`) deliberately NOT attempted — the
+same proof shape for ONE combinator (`scan_iri_end`) is already
+documented in `RDF.NTriples.RoundTrip.fst` Part 6 as needing a
+multi-step induction beyond the 3-attempt guard; the full
+`Parser.NTriples.fst` call graph is strictly larger. The remaining
+work for `theorem_stream_eq_batch` is one dedicated landing: the
+parser-locality induction over the recursive-descent stack, now
+reduced to named lemmas with the byte-level base facts in place.
