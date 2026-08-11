@@ -227,6 +227,7 @@ open RDF.Graph.Executable
 open Parser.JSON
 open Parser.JSONResults
 open SPARQL.Protocol
+open Parser.FastString.ConcatSpec
 
 #push-options "--z3rlimit 50 --fuel 2 --ifuel 2"
 
@@ -454,5 +455,103 @@ let lemma_json_val_of_response_roundtrip
 let lemma_json_val_of_bool_roundtrip (b : bool)
   : Lemma (ensures json_get_bool "boolean" (json_val_of_bool b) == Some b)
   = ()
+
+(** ====================================================================== **)
+(** Part 9: TEXT-LEVEL lemmas -- the concat_spec wall, closed (session      **)
+(** 2026-08-10, G4 M4)                                                      **)
+(**                                                                          **)
+(** `Parser.FastString.ConcatSpec.concat_spec` landed with three proved      **)
+(** equations (`concat_spec_nil`/`_singleton`/`_cons`) and                   **)
+(** `SPARQL.Protocol.serialise_response_json`'s terminal join (line ~916)    **)
+(** now CALLS `concat_spec`, not the opaque `FStar.String.concat` the        **)
+(** banner above names as the wall ("even the SINGLETON-list identity        **)
+(** ... is unprovable ... Error 19 on the FIRST step"). This closes that     **)
+(** specific wall for the call site. The lemma below exercises the          **)
+(** concat_spec_cons/singleton decomposition directly and generally          **)
+(** (`lemma_concat_spec_two`, symbolic in both string arguments -- in        **)
+(** particular any two `json_row`/`json_var_list` outputs, so it holds       **)
+(** for ANY row/var content, never unfolding `json_escape`, which still      **)
+(** bottoms out in the SEPARATE, still-open `fs_codepoints_of_string`        **)
+(** wall the original banner also names). The two lemmas after it are       **)
+(** CLOSED literal instances of the full `serialise_response_json`          **)
+(** wire-format text, proved via `assert_norm`. Composing the general       **)
+(** concat_spec fact into a general (symbolic vars AND rows) statement       **)
+(** about `serialise_response_json` itself did not verify reliably this     **)
+(** session -- see the FINDING below for what was tried and why it is       **)
+(** left open.                                                               **)
+(** ====================================================================== **)
+
+// The one-step structural equation the brief's step (b) asks for, at the
+// `concat_spec` level directly -- fully SYMBOLIC/general in `a`/`b` (any
+// two strings, in particular any two `json_row`/`json_var_list` outputs),
+// proved by direct application of `concat_spec_cons`/`_singleton` with no
+// further scaffolding needed. This is the two-element `Cons? rest` case
+// of `concat_spec`'s own match (the one-element case degenerates to the
+// `[x]` arm directly, `concat_spec_singleton` alone) -- the SAME
+// decomposition `SPARQL.Protocol.serialise_response_json`'s terminal
+// `concat_spec "" body_pieces` call goes through once `body_pieces` has
+// two or more elements (i.e. two or more SPARQL result rows).
+let lemma_concat_spec_two (a b : string)
+  : Lemma (concat_spec "" [a; b] == a ^ "" ^ b)
+  =
+  concat_spec_cons "" a [b];
+  concat_spec_singleton "" b
+
+// FINDING (session 2026-08-10): composing `lemma_concat_spec_two` (or
+// its `json_rows_body_acc`/`List.Tot.rev`-wrapped variants tried this
+// session) INTO the fully-unfolded `serialise_response_json vars [r1;
+// r2] == "...{vars}...{json_row r1},{json_row r2}..."` statement -- for
+// SYMBOLIC vars AND rows together, in one query -- resisted verification
+// this session across many attempted phrasings (explicit intermediate
+// `assert`s for the acc/rev unfolding, separate helper lemmas, an
+// `x ^ "" == x` identity restatement for `Prims.strcat` -- which is
+// ALSO an opaque `val`, `Prims.fst` line 611-613, with no stated
+// identity/associativity equations by default, the same failure SHAPE
+// as the `FStar.String.concat` wall this module's banner describes, but
+// a genuinely different primitive). Every attempt gave a DETERMINISTIC
+// Error 19 given fixed source (repeated 5-10x per attempt to rule out
+// this session's separately-observed run-to-run SMT flakiness on
+// smaller isolated sub-goals) -- yet swapping which lemmas were merely
+// PRESENT earlier in the file measurably changed which specific
+// statement failed, without changing the CONTENT of the failing proof
+// itself. That is: the failure is reproducible per file-state, but not
+// evidently a fixed defect in any one lemma -- symptomatic of Z3's
+// incremental-context sensitivity (declaration order affecting
+// E-matching/trigger search) rather than a missing mathematical fact,
+// though this was not conclusively isolated. This Part therefore proves
+// the row-JOIN step alone at the `concat_spec` level (`lemma_concat_
+// spec_two` above, which IS the concat_spec_cons/singleton application
+// the brief's step (b) describes, fully general in its two string
+// arguments) plus CLOSED literal instances of the full wrapped
+// statement (below, via `assert_norm` -- no free variables, no SMT
+// query at all, hence none of the above instability, confirmed
+// deterministic 5/5 runs) rather than the general symbolic-vars-AND-rows
+// wrapped lemma the brief's step (b) illustrates with a variable name.
+// Composing the two -- or diagnosing the incremental-context sensitivity
+// with F*'s `--query_stats`/the fstar-mcp interactive server rather than
+// batch retries -- is the narrowest still-open item this Part leaves.
+
+// LITERAL instance, per the brief's step (a): the fully closed empty-
+// response case. Proved via `assert_norm` directly -- both sides are
+// fully closed (no free variables), so this is pure normalization, no
+// SMT query at all (deterministic; confirmed across 5 repeated runs with
+// identical source this session).
+let lemma_serialise_response_json_empty_literal ()
+  : Lemma (serialise_response_json [] [] ==
+             "{\"head\":{\"vars\":[]},\"results\":{\"bindings\":[]}}")
+  = assert_norm (serialise_response_json [] [] ==
+             "{\"head\":{\"vars\":[]},\"results\":{\"bindings\":[]}}")
+
+// LITERAL instance exercising concat_spec_cons END TO END on a CONCRETE
+// list (also via assert_norm, same reasoning): two empty rows (each row
+// itself the empty binding list, so json_row [] reduces to "{}" with no
+// escaping) round out step (a)'s "equals a concrete string literal" with
+// the non-trivial Cons? case covered, not just the vacuous empty-list
+// one above.
+let lemma_serialise_response_json_two_empty_rows_literal ()
+  : Lemma (serialise_response_json [] [[]; []] ==
+             "{\"head\":{\"vars\":[]},\"results\":{\"bindings\":[{},{}]}}")
+  = assert_norm (serialise_response_json [] [[]; []] ==
+             "{\"head\":{\"vars\":[]},\"results\":{\"bindings\":[{},{}]}}")
 
 #pop-options
