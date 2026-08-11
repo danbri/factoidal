@@ -957,3 +957,25 @@ register that avoids the strcat wall). Plus
 difficulty (accumulator finished with `FStar.String.concat` — the
 separately-named wall; note the strcat kit in ConcatSpec may now
 apply). No admits, no --lax, no new assume vals.
+
+**Parser locality stages 1+2 (2026-08-11, branch `locality-fanout`)**:
+`Parser.NTriples.Locality.fst` extended (7 commits, all verified).
+STAGE 1 (mechanical fan-out of the pilot template): shift lemmas with
+fuel headroom for `scan_iri_end`, the whitespace scanner
+(`ptake_while_acc_pos`), `pws`, `parse_iri_raw` (fast path),
+`parse_iri` (success case), `parse_subject`/`parse_object` (IRI
+branches). STAGE 2: `lemma_parse_iri_body_acc_shift` — the
+escape-handling accumulator combinator, first-attempt: NO concat
+algebra needed; both runs build the SAME accumulator list, so the
+final strings are equal by congruence (the pilot banner's
+hard-prediction was wrong and has been corrected in-file — documented
+guess vs measured outcome). One non-required statement failed 3
+attempts (combined fast+escape `parse_iri_raw` lemma) — FINDING
+in-file with all 3 attempts. STAGE 3 NOT started, per the brief's own
+gate (stages 1+2 do not yet cover a whole line): remaining, in order —
+blank-node locality (needs a new fs_cp_at fact, character level),
+`parse_literal` (Stage-2 method expected to apply),
+`parse_opt_graph_label`/`parse_graph_label`, comment/blank-line
+scanners, whole-line `parse_nquad` shift,
+`parse_nquads_acc_concat_line`, `theorem_stream_eq_batch` single-chunk
+then general.
