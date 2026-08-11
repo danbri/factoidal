@@ -1686,3 +1686,41 @@ let rec lemma_parse_nquads_acc_restart prefix mid suffix ds start_pos ws fuel =
     lemma_parse_nquads_acc_line_step_shift prefix mid suffix w ds fuel;
     lemma_parse_nquads_acc_restart prefix mid suffix (lw_ds_step mid w ds) (lw_end w) rest (fuel - 1)
 #pop-options
+
+(* A STANDALONE (non-embedded) corollary: running `parse_nquads_acc` on
+   `mid` alone, from position 0 with `mid`'s own `fs_byte_length mid + 1`
+   fuel (exactly the fuel `Parser.NQuads.parse_nquads`/`batch_parse`/
+   `feed_chunk`/`finish` all use for a self-contained string -- the FUEL
+   NOTE in this module's own banner), equals `chain_ds_fold mid ws ds`
+   whenever `ws` is a chain that covers ALL of `mid` (`chain_end 0 ws ==
+   fs_byte_length mid`). Instantiates `lemma_parse_nquads_acc_restart` at
+   `prefix = suffix = ""` (so the embedding IS `mid` itself) and rewrites
+   `"" ^ (mid ^ "")` down to `mid` via the already-proved `empty_string_
+   concat_left`/`_right` -- a single TOP-LEVEL argument rewrite of `parse_
+   nquads_acc`'s own first parameter, the same shallow congruence pattern
+   `parse_nquads_acc_concat_line_empty_complete`/`_empty_carry` above
+   already use successfully (NOT the deep, three-function-layer congruence
+   propagation that stalled the FINDING's three earlier attempts -- those
+   needed `mid ^ ""` rewritten INSIDE `pws`/`skip_eol`'s own preconditions
+   several call-layers deep; this rewrite is one function argument, at the
+   top). Once landed at `pos = chain_end 0 ws = fs_byte_length mid`,
+   `parse_nquads_acc`'s own `pos >= len` base case returns the accumulated
+   dataset UNCHANGED regardless of remaining fuel -- so no fuel-
+   monotonicity argument is needed here either. *)
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_full_via_chain
+    (mid : string) (ds : RDF.Graph.Executable.rdf_dataset) (ws : list line_witness)
+  : Lemma
+      (requires
+        chain_wf "" mid "" 0 ws /\
+        chain_end 0 ws == Parser.FastString.fs_byte_length mid /\
+        Parser.FastString.fs_byte_length mid + 1 >= List.Tot.length ws)
+      (ensures
+        Parser.NQuads.parse_nquads_acc mid 0 ds (Parser.FastString.fs_byte_length mid + 1)
+        == chain_ds_fold mid ws ds)
+let lemma_parse_nquads_acc_full_via_chain mid ds ws =
+  empty_string_concat_left (mid ^ "");
+  empty_string_concat_right mid;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  lemma_parse_nquads_acc_restart "" mid "" ds 0 ws (Parser.FastString.fs_byte_length mid + 1)
+#pop-options
