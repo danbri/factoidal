@@ -669,6 +669,216 @@ let rec lemma_parse_iri_body_acc_shift prefix mid suffix pos fuel extra acc_mid 
   end
 #pop-options
 
+(** ------------------------------------------------------------------------
+ * Capstone: `lemma_parse_iri_raw_shift` -- unifies sub-lemma 6 (fast
+ * path) and the Stage-2 `lemma_parse_iri_body_acc_shift` (escape path)
+ * into a single shift lemma for `parse_iri_raw` covering BOTH paths, by
+ * casing on which branch `scan_iri_end` itself took (mirroring
+ * `parse_iri_raw`'s own `match`). This is the lemma a future Stage-3
+ * session composes into `parse_subject`/`parse_iri`/`parse_object`
+ * without an escape-path carve-out.
+ *
+ * `lemma_scan_iri_end_success_bound` is a small structural fact needed
+ * to supply the `gt_pos < fs_byte_length mid` witness the fast-path
+ * lemma requires: `scan_iri_end`'s ONLY `ParseOk` return
+ * (Parser.NTriples.fst:213, `code = 0x3E`) fires strictly inside the
+ * `pos < len` branch, so success always implies the bound -- proved
+ * once here rather than re-required of every caller.
+ * ------------------------------------------------------------------------ *)
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val lemma_scan_iri_end_success_bound (input : string) (pos fuel : nat) (gt_pos : nat)
+  : Lemma (requires scan_iri_end input pos fuel == ParseOk gt_pos gt_pos)
+          (ensures gt_pos < fs_byte_length input)
+      (decreases fuel)
+let rec lemma_scan_iri_end_success_bound input pos fuel gt_pos =
+  if fuel = 0 then ()
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ()
+    else
+      let ch = fs_byte_index input pos in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x3E then ()
+      else if code = 0x5C then ()
+      else if code <= 0x20 || is_iri_forbidden_codepoint code then ()
+      else lemma_scan_iri_end_success_bound input (pos + 1) (fuel - 1) gt_pos
+#pop-options
+
+(* `parse_result nat`'s `ParseOk` constructor carries two independent
+   `nat` fields at the TYPE level -- nothing there forces them equal.
+   `scan_iri_end` only ever CONSTRUCTS a `ParseOk` with equal fields
+   (`ParseOk pos pos`, Parser.NTriples.fst:213), but a caller that
+   pattern-matches abstractly (`match scan_iri_end ... with ParseOk a b
+   -> ...`, as `lemma_parse_iri_raw_shift` below does, mirroring
+   `parse_iri_raw`'s own match) gets two UNRELATED bound variables from
+   that match alone -- confirmed by a first attempt at this capstone
+   failing Error 19 exactly at the point of reusing `lemma_scan_iri_end_
+   success_bound`'s `ParseOk gt_pos gt_pos` precondition. This lemma
+   supplies the missing link once, by the same structural mirror as
+   every lemma above. *)
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val lemma_scan_iri_end_result_eq (input : string) (pos fuel : nat) (a b : nat)
+  : Lemma (requires scan_iri_end input pos fuel == ParseOk a b)
+          (ensures a == b)
+      (decreases fuel)
+let rec lemma_scan_iri_end_result_eq input pos fuel a b =
+  if fuel = 0 then ()
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ()
+    else
+      let ch = fs_byte_index input pos in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x3E then ()
+      else if code = 0x5C then ()
+      else if code <= 0x20 || is_iri_forbidden_codepoint code then ()
+      else lemma_scan_iri_end_result_eq input (pos + 1) (fuel - 1) a b
+#pop-options
+
+(* Symmetric success-bound fact for `parse_iri_body_acc`: its ONLY
+   `ParseOk` return (Parser.NTriples.fst:151-152, the `code = 0x3E`
+   branch) is `pos + 1`, with `pos < fs_byte_length input` already
+   established by the earlier `pos >= len` check having failed -- so a
+   successful escape-path parse always stops at or before the input's
+   own length, the exact bound `lemma_parse_iri_body_acc_shift`'s
+   `endpos <= fs_byte_length mid` precondition needs. *)
+#push-options "--z3rlimit 150 --fuel 6 --ifuel 6"
+val lemma_parse_iri_body_acc_success_bound (input : string) (pos : nat) (acc : list string) (fuel : nat) (out_s : string) (endpos : nat)
+  : Lemma (requires parse_iri_body_acc input pos acc fuel == ParseOk out_s endpos)
+          (ensures endpos <= fs_byte_length input)
+      (decreases fuel)
+let rec lemma_parse_iri_body_acc_success_bound input pos acc fuel out_s endpos =
+  if fuel = 0 then ()
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ()
+    else
+      let ch = fs_byte_index input pos in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x3E then ()
+      else if code = 0x5C then begin
+        if pos + 1 >= len then ()
+        else
+          let next = fs_byte_index input (pos + 1) in
+          let ncode = FStar.Char.int_of_char next in
+          if ncode = 0x75 then begin
+            if pos + 6 > len then ()
+            else
+              match hex_val_opt (fs_byte_index input (pos + 2)),
+                    hex_val_opt (fs_byte_index input (pos + 3)),
+                    hex_val_opt (fs_byte_index input (pos + 4)),
+                    hex_val_opt (fs_byte_index input (pos + 5)) with
+              | Some h0, Some h1, Some h2, Some h3 ->
+                let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
+                if not (valid_codepoint cp) then ()
+                else if is_iri_forbidden_codepoint cp then ()
+                else
+                  lemma_parse_iri_body_acc_success_bound input (pos + 6) (fs_utf8_of_codepoint cp :: acc) (fuel - 1) out_s endpos
+              | _ -> ()
+          end
+          else if ncode = 0x55 then begin
+            if pos + 10 > len then ()
+            else
+              match hex_val_opt (fs_byte_index input (pos + 2)),
+                    hex_val_opt (fs_byte_index input (pos + 3)),
+                    hex_val_opt (fs_byte_index input (pos + 4)),
+                    hex_val_opt (fs_byte_index input (pos + 5)),
+                    hex_val_opt (fs_byte_index input (pos + 6)),
+                    hex_val_opt (fs_byte_index input (pos + 7)),
+                    hex_val_opt (fs_byte_index input (pos + 8)),
+                    hex_val_opt (fs_byte_index input (pos + 9)) with
+              | Some h0, Some h1, Some h2, Some h3, Some h4, Some h5, Some h6, Some h7 ->
+                let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
+                       + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
+                if not (valid_codepoint cp) then ()
+                else if is_iri_forbidden_codepoint cp then ()
+                else
+                  lemma_parse_iri_body_acc_success_bound input (pos + 10) (fs_utf8_of_codepoint cp :: acc) (fuel - 1) out_s endpos
+              | _ -> ()
+          end
+          else ()
+      end
+      else if code <= 0x20 || is_iri_forbidden_codepoint code then ()
+      else
+        lemma_parse_iri_body_acc_success_bound input (pos + 1) (fs_byte_sub input pos 1 :: acc) (fuel - 1) out_s endpos
+#pop-options
+
+(** ------------------------------------------------------------------------
+ * FINDING (guard-depth-3 stop on THIS statement only -- everything above
+ * this banner, including the three support lemmas just above
+ * (`lemma_scan_iri_end_result_eq`, `lemma_scan_iri_end_success_bound`,
+ * `lemma_parse_iri_body_acc_success_bound`), is verified and kept; only
+ * the CAPSTONE composition below was abandoned).
+ *
+ * ATTEMPTED: a single `lemma_parse_iri_raw_shift` unifying sub-lemma 6
+ * (fast path) and `lemma_parse_iri_body_acc_shift` (escape path, Stage
+ * 2) into ONE shift lemma for `parse_iri_raw` covering both paths, by
+ * casing on `scan_iri_end mid (pos+1) (fs_byte_length mid - pos)` the
+ * same way `parse_iri_raw` itself does. This is NOT a requirement of
+ * the task brief's Stage 1/2 (sub-lemma 6 already covers the fast path,
+ * which is all Stage 1 asked for) -- it was an opportunistic capstone,
+ * abandoned per the 3-attempt guard rather than pursued further.
+ *
+ * THREE ATTEMPTS, each restructuring the statement, not just retrying:
+ *   1. `(requires ... /\ parse_iri_raw mid pos == ParseOk iri endpos /\
+ *      endpos <= fs_byte_length mid) (ensures parse_iri_raw full ... ==
+ *      ParseOk iri (p + endpos))`, with `iri`/`endpos` as EXTERNAL
+ *      parameters. Failed: Error 19, "Could not prove post-condition",
+ *      located at the `lemma_scan_iri_end_success_bound` call site --
+ *      root cause found: `match scan_iri_end mid start fuel with
+ *      ParseOk gt_pos _ -> ...` binds an UNCONSTRAINED second component
+ *      (F* patterns are linear; `ParseOk gt_pos gt_pos` is not valid
+ *      syntax for "both fields equal"), so the required `ParseOk gt_pos
+ *      gt_pos` precondition of the earlier lemmas has no witness that
+ *      the two fields agree. Fixed by adding
+ *      `lemma_scan_iri_end_result_eq` (kept, verified) to supply that
+ *      link explicitly.
+ *   2. Same statement, `lemma_scan_iri_end_result_eq` added, plus a
+ *      resource bump (`--z3rlimit 200` to `400`, `--fuel/--ifuel 4` to
+ *      `6`). Failed identically: Error 19 at the SAME overall
+ *      post-condition location (750,2-765,23 in that revision), no
+ *      narrower diagnostic -- ruling out "just needs more budget" as
+ *      the fix.
+ *   3. Restated the `ensures` as a nested match (`match parse_iri_raw
+ *      mid pos with ParseFail _ _ -> True | ParseOk iri_mid endpos_mid
+ *      -> match parse_iri_raw full ... with ...`) instead of sub-lemma
+ *      6/7's flat comma-match `match X, Y with ...`, reasoning that the
+ *      original flat-match `| _, _ -> False` catch-all over-claims
+ *      "mid fails implies full also fails" -- NOT proved true in
+ *      general here (unlike sub-lemma 6, this capstone's `requires`
+ *      does not pin down which `scan_iri_end` branch fires, so a
+ *      genuine `parse_iri_raw mid pos` failure -- e.g. "invalid
+ *      character in IRI" -- is a real, reachable case, and nothing
+ *      rules out the embedding succeeding past `mid`'s end into
+ *      `suffix` in that case). Also added
+ *      `lemma_parse_iri_body_acc_success_bound` (kept, verified) to
+ *      supply the escape-path bound the same way
+ *      `lemma_scan_iri_end_success_bound` does for the fast path.
+ *      Failed again: Error 19, "Could not prove post-condition", same
+ *      overall shape, no per-branch detail from batch `fstar.exe`
+ *      (F* MCP for a goal-level inspection was not reachable in this
+ *      subagent's environment -- would be the next diagnostic step, not
+ *      another blind restatement).
+ *
+ * WHAT THIS MEANS FOR A FUTURE ATTEMPT. The individual PIECES all
+ * verify (`lemma_parse_iri_raw_fastpath_shift`,
+ * `lemma_parse_iri_body_acc_shift`, `lemma_scan_iri_end_result_eq`,
+ * `lemma_scan_iri_end_success_bound`,
+ * `lemma_parse_iri_body_acc_success_bound`) -- what fails is composing
+ * them behind a SINGLE outer `match scan_iri_end ... with` whose three
+ * arms hand off to two DIFFERENT already-proved lemmas plus a vacuous
+ * case, packaged as one `ensures`. A worthwhile next step, not tried
+ * here: split into two separate lemmas (one per path, each with its OWN
+ * narrow `requires` pinning which `scan_iri_end` branch fired -- exactly
+ * sub-lemma 6's shape, extended to the escape path) rather than one
+ * lemma dispatching internally; a caller (e.g. `parse_subject`/
+ * `parse_object`'s eventual full-branch lemma) would then do the
+ * dispatch itself, matching how `parse_iri_raw`'s OWN callers already
+ * work. Downstream consumers needing "just the fast path" already have
+ * it (sub-lemma 6/7); this FINDING blocks only a caller that needs
+ * escape-path coverage too.
+ * ------------------------------------------------------------------------ *)
+
 (** ========================================================================
  * WHAT THE TEMPLATE MEANS FOR THE REMAINING COMBINATORS.
  *
