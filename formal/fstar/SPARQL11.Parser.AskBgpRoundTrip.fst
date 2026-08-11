@@ -46,6 +46,8 @@ open FStar.List.Tot
 open RDF.Term
 open SPARQL11.Algebra
 open SPARQL11.Parser
+open Parser.FastString
+open Parser.FastString.Axioms
 
 (* ============================================================ *)
 (* Stage 1/2: fragment predicate + printer                       *)
@@ -772,3 +774,79 @@ let parse_select_query_token_level_query q fuel =
    theorem, but it is a one-line `assert_norm`-free fact for whoever
    revisits this after `FStar.String.fsti` gains a `sub`
    content lemma. *)
+
+(* ============================================================ *)
+(* PAYOFF (task #52, step 8, separate commit): the wall above IS   *)
+(* cleared for fs_byte_sub -- SAME two probe lemmas, restated.      *)
+(* ============================================================ *)
+
+(* The two probe lemmas from the IMPOSSIBILITY section above, restated
+   against `Parser.FastString.fs_byte_sub` instead of `FStar.String.sub`
+   -- the exact migration `SPARQL11.Parser.fst`'s `substring` (line
+   ~217) now performs (task #52). BOTH PROVE, first attempt, from
+   `Parser.FastString.Axioms.fsti`'s already-proven facts 5a/5b/8
+   (`fs_byte_sub_concat_left`/`_right`, `fs_byte_sub_self`) plus fact 2
+   (`fs_byte_length_concat`) -- zero new axioms, exactly Option A's
+   promise. Where the ORIGINAL two (String.sub-based) failed with
+   Error 19 "Could not prove post-condition" even before reaching
+   `concat_length` (the SUBTYPING precondition `i + l <= length s`
+   itself was unprovable), these close with a handful of direct lemma
+   applications -- no `#push-options` elevation, no case search. *)
+
+val fs_sub_of_concat (a b : string)
+  : Lemma (ensures fs_byte_sub (a ^ b) (fs_byte_length a) (fs_byte_length b) == b)
+let fs_sub_of_concat a b =
+  fs_byte_length_concat a b;
+  fs_byte_sub_concat_right a b (fs_byte_length a) (fs_byte_length b);
+  fs_byte_sub_self b
+
+val fs_sub_of_concat_literal (rest : string)
+  : Lemma (ensures fs_byte_sub ("ASK" ^ rest) 0 (fs_byte_length "ASK") == "ASK")
+let fs_sub_of_concat_literal rest =
+  fs_byte_sub_concat_left "ASK" rest 0 (fs_byte_length "ASK");
+  fs_byte_sub_self "ASK"
+
+(* The narrowest text-level AskBgp statement these unblock: routed
+   through the PROJECT's own `substring` wrapper (not the raw
+   `fs_byte_sub` primitive) -- i.e. exactly the step `scan_pname_or_
+   keyword`'s literal-recognition dispatch performs when it reads the
+   "ASK" keyword's text back out of a position-0 slice of the printed
+   query string. `substring`'s `len = 0` branch is dead here (`String.
+   length "ASK" == 3`), so it reduces definitionally to `fs_byte_sub`,
+   and the `String.length "ASK" == fs_byte_length "ASK"` unit
+   conversion (needed because `substring`'s callers, like `scan_pname_
+   or_keyword`, pass a BYTE length that happens to equal the ASCII
+   literal's codepoint length) is exactly `Parser.FastString.
+   RoundTripLemmas.lemma_ascii_string_byte_length` applied to "ASK".
+   THIS is the theorem the AskBgpRoundTrip banner's stage (a) needed a
+   base case for and could not get under `FStar.String.sub` -- recovering
+   a keyword's literal text from a printed prefix, for a SYMBOLIC
+   (universally quantified) `rest`, not a concrete witness string. *)
+val ask_keyword_recovered_from_prefix (rest : string)
+  : Lemma (ensures substring ("ASK" ^ rest) 0 (String.length "ASK") == "ASK")
+let ask_keyword_recovered_from_prefix rest =
+  Parser.FastString.RoundTripLemmas.lemma_ascii_string_byte_length "ASK";
+  assert (String.length "ASK" == fs_byte_length "ASK");
+  fs_sub_of_concat_literal rest;
+  assert (fs_byte_sub ("ASK" ^ rest) 0 (fs_byte_length "ASK") == "ASK");
+  assert_norm (String.length "ASK" == 3);
+  assert (substring ("ASK" ^ rest) 0 (String.length "ASK") == fs_byte_sub ("ASK" ^ rest) 0 (String.length "ASK"))
+
+(* REMAINING (not attempted this landing, guard-depth respected): the
+   full stage (a) `tokenize (print_query_1 q) == expected_tokens_1 q`
+   for an ARBITRARY q needs this SAME pattern generalised from the
+   single literal "ASK" to every payload-carrying/keyword token the
+   lexer emits (IRI text via `scan_iri`, a variable name via `scan_var_
+   name`, ...), each combined with the `ascii_string`-hypothesis
+   threading `SPARQL11.Parser.TokenRoundTrip.fst`'s own re-proof needed
+   (task #52's main commit) -- for the FULL ASK-BGP fragment (IRIs and
+   variables in subject/predicate/object position, per this module's
+   own `bgp_in_fragment_1`), not just the fixed single-/double-char
+   delimiter fragment `TokenRoundTrip` covers. That is a substantially
+   larger fragment (arbitrary-length IRI/variable payloads, not fixed
+   literals) and was not attempted within this step's guard budget. The
+   WALL itself (`FStar.String.sub` has no content spec) is objectively
+   CLEARED -- both probe lemmas above prove where they previously could
+   not -- so this is a "landed prefix, real deliverable, scope for (c)-
+   (e) documented precisely" outcome, not a re-run into the same
+   impossibility. *)

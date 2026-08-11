@@ -2,6 +2,7 @@ module Parser.FastString.RoundTripLemmas
 
 open Parser.FastString
 open Parser.FastString.Axioms
+module Spec = Parser.FastString.Spec
 
 (** ======================================================================== **)
 (** Proved consequences of `Parser.FastString.Axioms` -- issue #358.         **)
@@ -167,3 +168,149 @@ let lemma_quoted_content_byte_sub (cs : list FStar.Char.char{all_ascii cs})
   fs_byte_sub_concat_right dq_str (content ^ dq_str) 1 len;
   fs_byte_sub_concat_left content dq_str 0 len;
   fs_byte_sub_self content
+
+(** ======================================================================== **)
+(** Arbitrary-ASCII-string bridging: `fs_byte_*` agrees with `FStar.String.*` **)
+(** on any string whose codepoints are all ASCII -- task #52                 **)
+(** (SPARQL 1.1 lexer's `substring` migration off `FStar.String.sub`,        **)
+(** docs/designissues/2026-08-10-string-foundation-decision.md gap 1, owner  **)
+(** decision "1: A" 2026-08-11). NEEDED BY: SPARQL11.Parser.TokenRoundTrip   **)
+(** .fst / SPARQL11.Parser.AskBgpRoundTrip.fst, whose bridging lemmas        **)
+(** (`peek_at_offset`/`peek_at_space`/`index_concat_at` and friends) reason  **)
+(** about `peek_char`/`at_end`/`substring` -- now `fs_byte_*`-backed -- via  **)
+(** `String.index`/`String.length` on OPAQUE string variables (a fragment's  **)
+(** printed token text: delimiters, operators, keywords -- always ASCII, but **)
+(** not a LITERAL the normalizer can reduce). The `build_string`/`all_ascii` **)
+(** machinery above only reaches strings constructed FORWARD from a known   **)
+(** codepoint list; these lemmas close the gap for an arbitrary string       **)
+(** variable by round-tripping it through `list_of_string`/`string_of_list`. **)
+(**                                                                          **)
+(** All ASCII test is on `FStar.String.list_of_string s`, not a separate     **)
+(** first-class predicate on `string` -- matches the shape `all_ascii`       **)
+(** already has (a `list FStar.Char.char -> bool`), no new type needed.      **)
+(** ======================================================================== **)
+
+/// FINDING (recorded per CLAUDE.md rule #14 / proof-factory findings
+/// discipline): the natural first route here was `build_string (list_of_
+/// string s) == s` (recover `s` by decomposing to a codepoint list, then
+/// reconstructing via the already-proven `build_string`/`all_ascii`
+/// machinery above), giving the byte-length/byte-at facts "for free" by
+/// reduction to `lemma_build_string_byte_length`/`_byte_at`. That route
+/// hits a wall this file's OWN earlier banner already named ("Building
+/// the target string FORWARD from a list... sidesteps the quirk
+/// entirely") but this specific instance sidesteps only ONE side of it:
+/// proving `build_string cs == FStar.String.string_of_list cs` needs
+/// CHAINING an equality hypothesis (the induction's own IH,
+/// `build_string rest == string_of_list rest`) through a SEPARATE
+/// `list_of_string` congruence step to conclude a STRING equality on
+/// SYMBOLIC pieces -- confirmed to fail (Error 19, "incomplete
+/// quantifiers", even at `--z3rlimit 1000 --fuel 4 --ifuel 4`, both as
+/// a single recursive lemma AND factored into a non-recursive cons-step
+/// helper called from the recursion) in an isolated throwaway probe
+/// (`Scratch.BuildStringProbe*.fst`, not committed). `RDF.NTriples.
+/// RoundTrip.fst`'s own "NEXT NARROWEST UNPROVED STATEMENT" section
+/// (line ~572) independently hit the SAME class of wall proving `"" ^ s
+/// == s` for a SYMBOLIC `s` -- this project's own prior art already
+/// flags SYMBOLIC string-algebra-via-`^`/`string_of_list` chaining as a
+/// genuine, not-yet-cleared obstruction, not merely under-attempted.
+///
+/// ROUTE THAT WORKS (below): skip `string`/`build_string` entirely and
+/// stay at the CODEPOINT-LIST level throughout, reasoning about
+/// `Parser.FastString.Spec.utf8_bytes`'s own definition (`List.Tot.
+/// concatMap utf8_enc_char (FStar.String.list_of_string s)`,
+/// unconditionally transparent -- `Parser.FastString.Spec` carries no
+/// restricting `.fsti`) directly against `FStar.List.Tot.concatMap`/
+/// `length`/`index`, all of which behave as ordinary structurally-
+/// inductive SMT-congruent functions (no quirk observed) -- confirmed
+/// by the same probe session, `Scratch.AsciiBridgeProbe.fst`. The
+/// price: `lemma_ascii_string_is_build_string`'s convenient "recover the
+/// original string" shape doesn't exist on this route; each fact below
+/// is proved separately, straight from `fs_byte_length_eq`/`fs_byte_at_
+/// eq` unfolded against `Spec.utf8_bytes`'s own concatMap definition.
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+
+/// Every ASCII codepoint UTF-8-encodes to exactly ONE byte, so `concatMap
+/// utf8_enc_char` over an all-ASCII codepoint list has the SAME length as
+/// the list itself. Induction on `cs`; `utf8_enc_char`'s own `cp < 0x80 ->
+/// [cp]` branch (Parser.FastString.Spec.fst) gives the length-1 base fact
+/// with no extra lemma call needed (transparent `let`, unfolds directly).
+let rec lemma_ascii_utf8_bytes_length (cs : list FStar.Char.char{all_ascii cs})
+  : Lemma (ensures FStar.List.Tot.length (FStar.List.Tot.concatMap Spec.utf8_enc_char cs)
+                    == FStar.List.Tot.length cs)
+          (decreases cs)
+  = match cs with
+    | [] -> ()
+    | c :: rest -> lemma_ascii_utf8_bytes_length rest
+
+/// Byte length of an all-ASCII string equals its codepoint length
+/// (`FStar.String.length`). This is the fact `SPARQL11.Parser.
+/// TokenRoundTrip.fst`'s generic `peek_at_offset`/`peek_at_space`
+/// lemmas need to relate a byte-indexed `at_end`/`peek_char` position
+/// back to `FStar.String.length`-computed offsets, for the ASCII-only
+/// content this lexer's own token fragments are always built from.
+let lemma_ascii_string_byte_length (s : string)
+  : Lemma (requires all_ascii (FStar.String.list_of_string s))
+          (ensures  fs_byte_length s == FStar.String.length s)
+  =
+  fs_byte_length_eq s;
+  lemma_ascii_utf8_bytes_length (FStar.String.list_of_string s)
+
+/// Every element of an all-ASCII codepoint list is itself ASCII (the
+/// per-INDEX unfolding of the list-level `all_ascii` predicate) --
+/// needed as a SEPARATE lemma, not just inline reasoning, because
+/// `Some (int_of_char (List.Tot.index cs i)) : option Spec.byte` below
+/// needs the `< 256` refinement witnessed BEFORE that term elaborates,
+/// which a same-expression inline fact cannot supply in time.
+let rec lemma_all_ascii_index (cs : list FStar.Char.char{all_ascii cs}) (i : nat{i < FStar.List.Tot.length cs})
+  : Lemma (ensures FStar.Char.int_of_char (FStar.List.Tot.index cs i) < 128)
+          (decreases cs)
+  = match cs with
+    | c :: rest -> if i = 0 then () else lemma_all_ascii_index rest (i - 1)
+
+/// Byte AT position `i` (`Spec.nth_byte`-level) of an all-ASCII
+/// codepoint list's UTF-8 encoding is exactly that codepoint's numeric
+/// value. The `match ... with Some b -> (b <: nat) == ... | None ->
+/// False` phrasing (rather than `== Some (int_of_char ...)` directly)
+/// sidesteps needing the `Spec.byte` refinement proved BEFORE the
+/// lemma body runs -- constructing `Some (int_of_char c)` at the type
+/// `option Spec.byte` needs `int_of_char c < 256` witnessed at
+/// elaboration time, which `lemma_all_ascii_index` (a lemma call, not a
+/// visible refinement) cannot supply there; pattern-matching the
+/// ALREADY-`Spec.byte`-typed `b` and comparing as a plain `nat` avoids
+/// the construction step entirely.
+let rec lemma_ascii_utf8_bytes_at (cs : list FStar.Char.char{all_ascii cs}) (i : nat{i < FStar.List.Tot.length cs})
+  : Lemma (ensures
+      (match Spec.nth_byte (FStar.List.Tot.concatMap Spec.utf8_enc_char cs) i with
+       | Some b -> (b <: nat) == FStar.Char.int_of_char (FStar.List.Tot.index cs i)
+       | None -> False))
+          (decreases cs)
+  = lemma_all_ascii_index cs i;
+    match cs with
+    | c :: rest -> if i = 0 then () else lemma_ascii_utf8_bytes_at rest (i - 1)
+
+/// Byte AT position `i` of an all-ASCII string, as a raw code, equals
+/// `FStar.Char.int_of_char` of the codepoint `FStar.String.index` would
+/// read at the same (byte == codepoint, for ASCII) position.
+let lemma_ascii_string_byte_at (s : string) (i : nat{i < FStar.String.length s})
+  : Lemma (requires all_ascii (FStar.String.list_of_string s))
+          (ensures  fs_byte_at s i == FStar.Char.int_of_char (FStar.String.index s i))
+  =
+  fs_byte_at_eq s i;
+  lemma_ascii_utf8_bytes_at (FStar.String.list_of_string s) i;
+  FStar.String.index_list_of_string s i
+
+/// The `fs_byte_index`-level (i.e. `char_at`/`peek_char`-level)
+/// restatement of the fact above: reading byte `i` of an all-ASCII
+/// string as a character (`fs_byte_index`, what `char_at`/`peek_char`
+/// now compute post-task-#52) gives back exactly `FStar.String.index s
+/// i` -- the SAME character the pre-migration codepoint-indexed
+/// `char_at`/`peek_char` returned. `char_of_u32_of_char`'s ulib `SMTPat`
+/// discharges the `char_of_int (int_of_char c) == c` step with no
+/// explicit lemma call.
+let lemma_ascii_string_byte_index (s : string) (i : nat{i < FStar.String.length s})
+  : Lemma (requires all_ascii (FStar.String.list_of_string s))
+          (ensures  fs_byte_index s i == FStar.String.index s i)
+  =
+  lemma_ascii_string_byte_at s i;
+  fs_byte_index_eq s i
+#pop-options

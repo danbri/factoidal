@@ -1049,3 +1049,27 @@ UPDATE banner corrects it). Remaining for the general multi-chunk
 theorem: `lemma_parse_nquads_acc_restart` (named FINDING) — the
 mid-line-split restart argument. No admits, no --lax, no new
 assume vals.
+
+**Gap 1 CLOSED — SPARQL lexer on fs_byte_sub (2026-08-11, branch
+`lexer-faststring`, task #52, owner decision "1: A")**: the lexer's
+single `substring` choke point (SPARQL11.Parser.fst:225, 13 call
+sites) migrated from `FStar.String.sub` (no content spec in ulib) to
+`Parser.FastString.fs_byte_sub` (fully proved). Byte-vs-codepoint:
+the lexer was codepoint-indexed; byte-walking is behavior-identical
+for THIS grammar because delimiter scans hunt single ASCII bytes
+(UTF-8 self-synchronizing) and every non-ASCII classification uses
+`code >= 0x80`, satisfied by every byte of a multi-byte sequence
+exactly as by the codepoint; one genuine mixed-unit site
+(`split_pname` length arg) found and fixed.
+`SPARQL11.Parser.TokenRoundTrip.fst` fully re-proved (ascii_string
+hypothesis threaded ~30 sites + a reusable ASCII↔fs_byte_* bridging
+kit in RoundTripLemmas). Gates: W3C SPARQL 631 pass, 0 fail (of 631);
+RDF 1031 pass, 0 fail (of 1031); bench within the 10% gate (RUNS=5,
+largest delta +6.3%; a first RUNS=3 pass showed two rows over gate,
+not reproduced). PAYOFF: `fs_sub_of_concat` +
+`fs_sub_of_concat_literal` — the two probe lemmas AskBgpRoundTrip.fst
+documented as IMPOSSIBLE against String.sub — now PROVE first-attempt,
+plus `ask_keyword_recovered_from_prefix` (ASK keyword recovered from
+a printed prefix with symbolic tail). Zero new assume vals, zero new
+axioms. Full string-to-AST theorem remains scoped future work
+(fragment widening at TokenRoundTrip scale).
