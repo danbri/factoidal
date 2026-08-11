@@ -994,6 +994,20 @@ let parse_triple : RDF_Triple.triple Parser_Combinators.parser=
              Parser_Combinators.ParseFail (msg, fpos))
     | Parser_Combinators.ParseFail (msg, fpos) ->
         Parser_Combinators.ParseFail (msg, fpos)
+let rec nt_skip_to_eol (input : Prims.string) (len : Prims.nat)
+  (p : Prims.nat) (fuel : Prims.nat) : Prims.nat=
+  if fuel = Prims.int_zero
+  then p
+  else
+    if p >= len
+    then p
+    else
+      (let c = Parser_FastString.fs_byte_index input p in
+       let cc = FStar_Char.int_of_char c in
+       if (cc = (Prims.of_int (0x0A))) || (cc = (Prims.of_int (0x0D)))
+       then p
+       else
+         nt_skip_to_eol input len (p + Prims.int_one) (fuel - Prims.int_one))
 let skip_comment (input : Prims.string) (pos : Prims.nat) : Prims.nat=
   let len = Parser_FastString.fs_byte_length input in
   if pos >= len
@@ -1001,20 +1015,7 @@ let skip_comment (input : Prims.string) (pos : Prims.nat) : Prims.nat=
   else
     (let ch = Parser_FastString.fs_byte_index input pos in
      if (FStar_Char.int_of_char ch) = (Prims.of_int (0x23))
-     then
-       let rec skip_to_eol p fuel =
-         if fuel = Prims.int_zero
-         then p
-         else
-           if p >= len
-           then p
-           else
-             (let c = Parser_FastString.fs_byte_index input p in
-              let cc = FStar_Char.int_of_char c in
-              if (cc = (Prims.of_int (0x0A))) || (cc = (Prims.of_int (0x0D)))
-              then p
-              else skip_to_eol (p + Prims.int_one) (fuel - Prims.int_one)) in
-       skip_to_eol (pos + Prims.int_one) (len - pos)
+     then nt_skip_to_eol input len (pos + Prims.int_one) (len - pos)
      else pos)
 let skip_eol (input : Prims.string) (pos : Prims.nat) : Prims.nat=
   let len = Parser_FastString.fs_byte_length input in

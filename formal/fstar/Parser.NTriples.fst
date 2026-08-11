@@ -685,6 +685,22 @@ let parse_triple : parser triple =
 (* Line-by-line document parser                                     *)
 (* ================================================================ *)
 
+(* Top-level scan loop for `skip_comment` below, lifted out of the local
+   `let rec` so an external locality lemma can name it (Parser.NTriples.
+   Locality.fst Stage 3 Item 4 FINDING: a local `let rec` has no qualified
+   name another module can state an intermediate-step equation about).
+   `input`/`len` are explicit parameters -- the closure previously
+   captured them from `skip_comment`'s enclosing scope. Behavior-identical
+   to the prior local definition. *)
+let rec nt_skip_to_eol (input:string) (len:nat) (p:nat) (fuel:nat) : Tot nat (decreases fuel) =
+  if fuel = 0 then p
+  else if p >= len then p
+  else
+    let c = fs_byte_index input p in
+    let cc = FStar.Char.int_of_char c in
+    if cc = 0x0A || cc = 0x0D then p
+    else nt_skip_to_eol input len (p + 1) (fuel - 1)
+
 (* Skip a comment: from '#' to end of line (or end of input) *)
 let skip_comment (input:string) (pos:nat) : nat =
   let len = fs_byte_length input in
@@ -693,16 +709,7 @@ let skip_comment (input:string) (pos:nat) : nat =
     let ch = fs_byte_index input pos in
     if FStar.Char.int_of_char ch = 0x23 then (* '#' *)
       (* Skip to end of line *)
-      let rec skip_to_eol (p:nat) (fuel:nat) : Tot nat (decreases fuel) =
-        if fuel = 0 then p
-        else if p >= len then p
-        else
-          let c = fs_byte_index input p in
-          let cc = FStar.Char.int_of_char c in
-          if cc = 0x0A || cc = 0x0D then p
-          else skip_to_eol (p + 1) (fuel - 1)
-      in
-      skip_to_eol (pos + 1) (len - pos)
+      nt_skip_to_eol input len (pos + 1) (len - pos)
     else pos
 
 (* Skip newline characters (LF, CRLF, CR) *)

@@ -200,11 +200,35 @@ let dataset_add_quad (ds : rdf_dataset) (t : triple) (graph_name : option iri) :
     - If end of line or end of input, skip
     - Otherwise, parse a quad *)
 
-// parse_nquads_acc nests an inner let-rec (skip_line) plus four
-// outer recursive calls; F*'s default --z3rlimit 5 isn't enough to
-// discharge the Tot postcondition. Bump locally. Verified at rlimit
-// 30; sibling Parser.Turtle.fst:1820 uses the same pragma for
-// similar reasons.
+(* Top-level error-recovery scan loop shared by every per-line walker
+   below (`parse_nquads_acc`, `fold_nquads_acc`, `count_nquads_acc`,
+   `parse_nquads_12_acc`, `parse_nquads_flat_acc`). Each of those
+   functions previously nested an IDENTICAL local `let rec skip_line`
+   in its `ParseFail` branch; lifted to a single top-level name so an
+   external locality lemma can name it (Parser.NTriples.Locality.fst
+   Stage 3 Item 4 FINDING: a local `let rec` has no qualified name
+   another module can state an intermediate-step equation about) and
+   so the five identical copies collapse to one definition.
+   `input`/`len` are explicit parameters -- the closures previously
+   captured them from each enclosing function's scope. Behavior-
+   identical to the prior local definitions (byte-for-byte identical
+   bodies at all five call sites). *)
+let rec nq_skip_line (input:string) (len:nat) (p:nat) (f:nat) : Tot nat (decreases f) =
+  if f = 0 then p
+  else if p >= len then p
+  else
+    let c = fs_byte_index input p in
+    let cc = FStar.Char.int_of_char c in
+    if cc = 0x0A || cc = 0x0D then skip_eol input p
+    else nq_skip_line input len (p + 1) (f - 1)
+
+// parse_nquads_acc nests four outer recursive calls; F*'s default
+// --z3rlimit 5 isn't enough to discharge the Tot postcondition. Bump
+// locally. Verified at rlimit 30; sibling Parser.Turtle.fst:1820 uses
+// the same pragma for similar reasons. (Prior comment also cited the
+// nested `skip_line` — that inner let-rec is now the top-level
+// `nq_skip_line` above, so the remaining rlimit pressure is from the
+// four outer recursive calls alone.)
 #push-options "--z3rlimit 30"
 
 let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
@@ -248,16 +272,7 @@ let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
             parse_nquads_acc input pos_next ds' (fuel - 1)
           | ParseFail _ _ ->
             (* Skip to next line on parse failure *)
-            let rec skip_line (p:nat) (f:nat) : Tot nat (decreases f) =
-              if f = 0 then p
-              else if p >= len then p
-              else
-                let c = fs_byte_index input p in
-                let cc = FStar.Char.int_of_char c in
-                if cc = 0x0A || cc = 0x0D then skip_eol input p
-                else skip_line (p + 1) (f - 1)
-            in
-            let pos2 = skip_line pos1 (len - pos1) in
+            let pos2 = nq_skip_line input len pos1 (len - pos1) in
             if pos2 = pos1 then ds  (* no progress *)
             else parse_nquads_acc input pos2 ds (fuel - 1)
 
@@ -333,16 +348,7 @@ let rec fold_nquads_acc (#a:Type) (step: triple -> option iri -> a -> a) (stop: 
             else fold_nquads_acc step stop input pos_next acc1 (fuel - 1)
           | ParseFail _ _ ->
             (* Skip to next line on parse failure *)
-            let rec skip_line (p:nat) (f:nat) : Tot nat (decreases f) =
-              if f = 0 then p
-              else if p >= len then p
-              else
-                let c = fs_byte_index input p in
-                let cc = FStar.Char.int_of_char c in
-                if cc = 0x0A || cc = 0x0D then skip_eol input p
-                else skip_line (p + 1) (f - 1)
-            in
-            let pos2 = skip_line pos1 (len - pos1) in
+            let pos2 = nq_skip_line input len pos1 (len - pos1) in
             if pos2 = pos1 then acc  (* no progress *)
             else fold_nquads_acc step stop input pos2 acc (fuel - 1)
 #pop-options
@@ -461,16 +467,7 @@ let rec count_nquads_acc (input:string) (pos:nat) (acc:nat) (fuel:nat)
                           else pos2 in
             count_nquads_acc input pos_next (acc + 1) (fuel - 1)
           | ParseFail _ _ ->
-            let rec skip_line (p:nat) (f:nat) : Tot nat (decreases f) =
-              if f = 0 then p
-              else if p >= len then p
-              else
-                let c = fs_byte_index input p in
-                let cc = FStar.Char.int_of_char c in
-                if cc = 0x0A || cc = 0x0D then skip_eol input p
-                else skip_line (p + 1) (f - 1)
-            in
-            let pos2 = skip_line pos1 (len - pos1) in
+            let pos2 = nq_skip_line input len pos1 (len - pos1) in
             if pos2 = pos1 then acc
             else count_nquads_acc input pos2 acc (fuel - 1)
 
@@ -626,16 +623,7 @@ let rec parse_nquads_12_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
                           else pos2 in
             parse_nquads_12_acc input pos_next ds' (fuel - 1)
           | ParseFail _ _ ->
-            let rec skip_line (p:nat) (f:nat) : Tot nat (decreases f) =
-              if f = 0 then p
-              else if p >= len then p
-              else
-                let c = fs_byte_index input p in
-                let cc = FStar.Char.int_of_char c in
-                if cc = 0x0A || cc = 0x0D then skip_eol input p
-                else skip_line (p + 1) (f - 1)
-            in
-            let pos2 = skip_line pos1 (len - pos1) in
+            let pos2 = nq_skip_line input len pos1 (len - pos1) in
             if pos2 = pos1 then ds
             else parse_nquads_12_acc input pos2 ds (fuel - 1)
 #pop-options
@@ -759,16 +747,7 @@ let rec parse_nquads_flat_acc (input:string) (pos:nat) (acc:list nquad) (fuel:na
                           else pos2 in
             parse_nquads_flat_acc input pos_next (q :: acc) (fuel - 1)
           | ParseFail _ _ ->
-            let rec skip_line (p:nat) (f:nat) : Tot nat (decreases f) =
-              if f = 0 then p
-              else if p >= len then p
-              else
-                let c = fs_byte_index input p in
-                let cc = FStar.Char.int_of_char c in
-                if cc = 0x0A || cc = 0x0D then skip_eol input p
-                else skip_line (p + 1) (f - 1)
-            in
-            let pos2 = skip_line pos1 (len - pos1) in
+            let pos2 = nq_skip_line input len pos1 (len - pos1) in
             if pos2 = pos1 then List.Tot.rev acc
             else parse_nquads_flat_acc input pos2 acc (fuel - 1)
 #pop-options
