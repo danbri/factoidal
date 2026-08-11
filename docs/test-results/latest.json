@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-08-11 16:09 UTC",
-  "commit": "7f08c519639e5187c13427cd5902251c43cba5ae",
+  "timestamp": "2026-08-11 17:05 UTC",
+  "commit": "cd95ee93d78a7adb92b6c5d4ee90cc50490c5994",
   "branch": "claude/main",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
