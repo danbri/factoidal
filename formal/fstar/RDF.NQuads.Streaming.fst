@@ -1266,3 +1266,70 @@ let rec lemma_parse_nquads_acc_skip_blanks prefix mid suffix ds start_pos ws fue
     lemma_parse_nquads_acc_blank_step_shift prefix mid suffix w ds fuel;
     lemma_parse_nquads_acc_skip_blanks prefix mid suffix ds w.lw_eolend rest (fuel - 1)
 #pop-options
+
+(* ============================================================================
+ * KIND 2 (task #48 ordered work list, "extend kind by kind"): COMMENT
+ * lines. Same witness-parameter idiom as the blank-line kind above, one
+ * layer deeper (`skip_comment` composes `nt_skip_to_eol` then `skip_eol`,
+ * matching `parse_nquads_acc`'s own comment branch: `pos2 = skip_comment
+ * input pos1; pos3 = skip_eol input pos2`). Reuses `lemma_skip_comment_
+ * shift` (already proved, this file's PHASE-2-adjacent primitives above)
+ * for the `nt_skip_to_eol` composition and `lemma_skip_eol_shift` (already
+ * proved, `Parser.NTriples.Locality.fst`) for the trailing EOL skip -- no
+ * new scanning argument, purely a `parse_nquads_acc`-level composition of
+ * two already-closed primitives, same shape as the blank-line kind's
+ * `lemma_parse_nquads_acc_blank_step_shift`.
+ * ============================================================================ *)
+
+(* A single COMMENT line's witness: `cw_pos` is `parse_nquads_acc`'s entry
+   position; `cw_wsend` is where `pws` lands (the `#` byte); `cw_commentend`
+   is where `skip_comment` lands (== `nt_skip_to_eol mid (fs_byte_length mid)
+   (cw_wsend + 1) (fs_byte_length mid - cw_wsend)`, matching `lemma_skip_
+   comment_shift`'s own `stop_pos` parameter); `cw_eolend` is where the
+   trailing `skip_eol` lands. Same SCOPE narrowing as the blank-line kind
+   (`cw_commentend + 1 < fs_byte_length mid`), for the same reason
+   (sidesteps `lemma_skip_eol_shift`'s CRLF-fusion side condition without a
+   `suffix`-dependent disjunct). *)
+noeq type comment_line_witness = {
+  cw_pos        : nat;
+  cw_wsend      : nat;
+  cw_commentend : nat;
+  cw_eolend     : nat;
+}
+
+let comment_line_wf (mid : string) (w : comment_line_witness) : Type0 =
+  w.cw_pos <= w.cw_wsend /\
+  w.cw_wsend < Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.cw_pos == Parser.Combinators.ParseOk () w.cw_wsend /\
+  FStar.Char.int_of_char (Parser.FastString.fs_byte_index mid w.cw_wsend) = 0x23 /\
+  Parser.NTriples.nt_skip_to_eol mid (Parser.FastString.fs_byte_length mid) (w.cw_wsend + 1)
+    (Parser.FastString.fs_byte_length mid - w.cw_wsend) == w.cw_commentend /\
+  w.cw_commentend < Parser.FastString.fs_byte_length mid /\
+  w.cw_commentend + 1 < Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.skip_eol mid w.cw_commentend == w.cw_eolend /\
+  w.cw_eolend > w.cw_wsend
+
+(* Single-step shift, comment-line kind: same shape as `lemma_parse_
+   nquads_acc_blank_step_shift`, composing `lemma_skip_comment_shift`
+   (this file) and `lemma_skip_eol_shift` (`Parser.NTriples.Locality.fst`)
+   instead of `lemma_pws_shift` + `lemma_skip_eol_shift` directly -- one
+   extra scanner layer, same one-step-unfold technique. *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_comment_step_shift
+    (prefix mid suffix : string) (w : comment_line_witness)
+    (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (requires comment_line_wf mid w /\ fuel > 0)
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.cw_pos) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.cw_eolend) ds (fuel - 1))
+let lemma_parse_nquads_acc_comment_step_shift prefix mid suffix w ds fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix w.cw_pos w.cw_wsend;
+  lemma_byte_index_at_middle prefix mid suffix w.cw_wsend;
+  lemma_skip_comment_shift prefix mid suffix w.cw_wsend w.cw_commentend;
+  Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.cw_commentend
+#pop-options
