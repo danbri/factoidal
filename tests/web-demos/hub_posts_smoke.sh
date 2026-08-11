@@ -57,7 +57,7 @@ else
   PLAYWRIGHT_IMPORT_SPEC="playwright"
 fi
 
-for f in third_party/eleventy/npm-cache third_party/observable/dist/runtime.esm.js docs/npm/foafos/browser.js; do
+for f in third_party/eleventy/npm-cache third_party/observable/dist/runtime.esm.js docs/npm/factoidal/browser.js; do
   [ -e "$f" ] || { echo "Missing $f -- run the vendoring steps first (see third_party/eleventy/README.md, third_party/observable/README.md)." >&2; exit 2; }
 done
 

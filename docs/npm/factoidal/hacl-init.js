@@ -16,7 +16,7 @@
 // drives HACL*'s own vendored `api.js` bindings.
 //
 // Usage (Node):
-//   const { initHacl } = require('@danbri/foafos/hacl-init.js');
+//   const { initHacl } = require('factoidal/hacl-init.js');
 //   await initHacl();
 //   require('./factoidal-npm-entry.js');           // sets globalThis.factoidalNpmEntry
 //   const r = JSON.parse(globalThis.factoidalNpmEntry.vcEd25519Verify(pk, msg, sig));

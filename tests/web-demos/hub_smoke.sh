@@ -9,7 +9,7 @@
 #
 #   1. The page loads the vendored Observable runtime + inspector +
 #      stdlib + Plot + d3 bundles (third_party/observable/) and the
-#      npm package mirror (docs/npm/foafos/) all same-origin, no CDN.
+#      npm package mirror (docs/npm/factoidal/) all same-origin, no CDN.
 #   2. The ` ```observable-js ` fenced-block convention actually
 #      mounts a live cell (docs/_includes/hub.njk's mountCell()).
 #   3. That cell calls fn.parse()/fn.query() (the npm module's typed
@@ -61,7 +61,7 @@ else
   PLAYWRIGHT_IMPORT_SPEC="playwright"
 fi
 
-for f in third_party/eleventy/npm-cache third_party/observable/dist/runtime.esm.js docs/npm/foafos/browser.js; do
+for f in third_party/eleventy/npm-cache third_party/observable/dist/runtime.esm.js docs/npm/factoidal/browser.js; do
   [ -e "$f" ] || { echo "Missing $f -- run the vendoring steps first (see third_party/eleventy/README.md, third_party/observable/README.md)." >&2; exit 2; }
 done
 

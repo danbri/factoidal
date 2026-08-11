@@ -2653,8 +2653,8 @@ if [[ "$STEP" == "npm" ]]; then
   # copy is the only same-origin path that works. This mirror is
   # regenerated on every `./build-ocaml.sh npm` run (this step), so it
   # never drifts from npm/factoidal/ — do not hand-edit anything under
-  # docs/npm/foafos/.
-  PAGESDIR="../../docs/npm/foafos"
+  # docs/npm/factoidal/.
+  PAGESDIR="../../docs/npm/factoidal"
   echo "  Mirroring $NPMDIR -> $PAGESDIR (Pages, no-npm-install browser load) ..."
   rm -rf "$PAGESDIR"
   mkdir -p "$PAGESDIR"

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Package renamed from the placeholder `@danbri/foafos` to `factoidal`
+  (issue #403). The package was never published under the old name, so
+  there is no npm-registry alias or deprecation notice to add -- this
+  is a rename of unpublished scaffolding, not a breaking change to a
+  released package.
 - `coreRdfsClosure`/`coreRdfsCheck`/`rhoDfClosure`/`rhoDfFragmentCheck`/
   `rdfsPlusClosure`/`owlIsConsistent`/`owlEntails` now exported from
   `factoidal/wasm` (previously js_of_ocaml-only); `coreRdfsClosure`/

@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Package renamed from the placeholder `@danbri/foafos` to `factoidal`
+  (issue #403). The package was never published under the old name, so
+  there is no npm-registry alias or deprecation notice to add -- this
+  is a rename of unpublished scaffolding, not a breaking change to a
+  released package.
+- `coreRdfsClosure`/`coreRdfsCheck`/`rhoDfClosure`/`rhoDfFragmentCheck`/
+  `rdfsPlusClosure`/`owlIsConsistent`/`owlEntails` now exported from
+  `factoidal/wasm` (previously js_of_ocaml-only); `coreRdfsClosure`/
+  `coreRdfsCheck`/`rhoDfClosure`/`rhoDfFragmentCheck`/`rdfsPlusClosure`
+  added to `factoidal/fn` (FnDataset-returning wrappers around the
+  certified ρdf closure family; `owlIsConsistent`/`owlEntails` were
+  already there). No new engine logic -- these functions were already
+  wired into the npm-entry ABI (`bin/npm-entry/entry_jsoo.ml`) and
+  `lib/api.js`'s `buildApi()`; this closes a wrapper-surface gap
+  between `index.js`/`browser.js` (which had them) and `wasm.js`/
+  `fn.js` (which didn't). See docs/theorem-registry.md for
+  `rho_df_closure`'s decides-iff guarantee.
+- `version.json` gains a machine-readable `claims` block (issue #403's
+  G2 item): a summary of theorem-backed guarantees, each entry naming
+  the exact F* theorem, its file, and the docs/theorem-registry.md
+  section to check it against -- never a bare assertion. `build-
+  ocaml.sh npm` now preserves this block across rebuilds.
 - Browser-side durable-UPDATE persistence (issue #282): `browser.js`
   gains `deltaLogOpen`/`deltaLogAppend`/`deltaLogReadAllHex`/
   `deltaLogMerge`/`deltaLogDestroy` (IndexedDB-backed, survives page

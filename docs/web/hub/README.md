@@ -201,7 +201,7 @@ post needs a new binding.
 
 | Name | What it is |
 |---|---|
-| `Factoidal` | the raw npm package entry (`npm/foafos/browser.js`) — `query(dataString, sparqlString, {dataFormat, entail, output})` returns a raw SPARQL-JSON results object (or a raw string for non-JSON `output`), `toRdf()`/`canonicalize()` dump N-Quads text, `queryDataset()` handles multi-named-graph/multi-engine queries. No `Dataset`, no typed bindings — this is the CLI's own shape, one call in, one string/JSON out. |
+| `Factoidal` | the raw npm package entry (`npm/factoidal/browser.js`) — `query(dataString, sparqlString, {dataFormat, entail, output})` returns a raw SPARQL-JSON results object (or a raw string for non-JSON `output`), `toRdf()`/`canonicalize()` dump N-Quads text, `queryDataset()` handles multi-named-graph/multi-engine queries. No `Dataset`, no typed bindings — this is the CLI's own shape, one call in, one string/JSON out. |
 | `fn` | the **typed** cell-facing API: `fn.parse(text, {format}) -> Promise<Dataset>`, `fn.query(dataset, sparql, {entail}) -> Promise<Bindings[] \| boolean \| Dataset>` — the same external contract `npm/factoidal/index.js`'s Node-side typed API exposes (`parse()`/`query()`/`Dataset.size`/iteration/`toNQuads()`), reshaped from `Factoidal`'s raw calls by a small adapter defined inline in `hub.njk` (see "Why `fn` is an adapter, not an import" below). Use this for any cell that parses a document or runs SELECT/ASK/CONSTRUCT and wants to work with terms/bindings rather than raw JSON. |
 | `d3` | vendored `d3` 7.9.0, for hand-rolled charts. |
 | `Plot` | vendored `@observablehq/plot` 0.6.17, for declarative charts. |
@@ -295,7 +295,7 @@ SHACL, canonicalize, update, capabilities) it delegates straight
 through to the matching browser-entry function, unwrapped. It does not
 import `npm/factoidal`/`lib/api.js` directly — the browser entry
 (`browser.js`/`fn.js`/`index.d.ts` under `npm/factoidal/`, mirrored to
-`docs/npm/foafos/`) is the only shared surface.
+`docs/npm/factoidal/`) is the only shared surface.
 
 ### The `pretty()` rendering option
 
@@ -416,12 +416,12 @@ toolbar/editor chrome added by this change.
   cell source runs on both pages. See post 21's map cell for the
   worked example.
 - **js engine only.** The wasm_of_ocaml build
-  (`docs/npm/foafos/browser-wasm.js`) is stale for newer CLI
+  (`docs/npm/factoidal/browser-wasm.js`) is stale for newer CLI
   surfaces cells rely on (`--dump-nq` byte-for-byte parity, etc.);
   cells use the default js_of_ocaml path (`Factoidal`/`fn`'s default
   engine), not `queryDataset(..., {engine: 'wasm'})`.
 - **No engine/npm/lib changes.** If a cell genuinely cannot be
   expressed against `Factoidal`/`fn` as they stand, don't extend
-  `npm/factoidal` or `docs/npm/foafos/` to make it work — write the
+  `npm/factoidal` or `docs/npm/factoidal/` to make it work — write the
   cell against the raw `Factoidal` API instead and note the gap in
   the post's prose.

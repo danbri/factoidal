@@ -164,7 +164,7 @@ SELECT ?s ?p ?o WHERE {
 </footer>
 
 <script type="module">
-import { runFactoidalCli, setFactoidalUrl, getFactoidalUrl } from '../npm/foafos/browser.js';
+import { runFactoidalCli, setFactoidalUrl, getFactoidalUrl } from '../npm/factoidal/browser.js';
 
 (function () {
   'use strict';
@@ -178,7 +178,7 @@ import { runFactoidalCli, setFactoidalUrl, getFactoidalUrl } from '../npm/foafos
 
   // -------------------------------------------------------------------
   // Engine loading goes through the npm package's browser entry
-  // (npm/factoidal/browser.js, mirrored to ../npm/foafos/ for GitHub
+  // (npm/factoidal/browser.js, mirrored to ../npm/factoidal/ for GitHub
   // Pages) via runFactoidalCli() -- the same primitive the JSON-LD
   // playground and RIF demos use. This page still owns the
   // COTTAS-specific plumbing (--data-cottas, Parquet byte-packing)

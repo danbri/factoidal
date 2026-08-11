@@ -1,5 +1,5 @@
 // The core deliverable this file exists to prove: a consumer who
-// `npm install`s @danbri/foafos gets the FULL db API (openCottas/
+// `npm install`s factoidal gets the FULL db API (openCottas/
 // queryCottas/closeCottas/toCottas) working on BOTH engines (js_of_ocaml
 // and wasm_of_ocaml) straight out of the packed tarball -- not the
 // source tree.

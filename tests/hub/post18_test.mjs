@@ -305,7 +305,7 @@ test('post18: RDF.CottasStore.BaseWriter.fst exists and is the module the zero-P
 
 test('post18: the wasm npm-entry bundle now contains the delta-log exports (grounds the "wasm now proven too" update)', () => {
   const wasmCandidates = [
-    path.join(REPO_ROOT, 'docs', 'npm', 'foafos', 'factoidal-npm-entry.wasm.js'),
+    path.join(REPO_ROOT, 'docs', 'npm', 'factoidal', 'factoidal-npm-entry.wasm.js'),
     path.join(REPO_ROOT, 'npm', 'factoidal', 'factoidal-npm-entry.wasm.js'),
   ];
   const wasmPath = wasmCandidates.find((p) => fs.existsSync(p));
@@ -317,7 +317,7 @@ test('post18: the wasm npm-entry bundle now contains the delta-log exports (grou
 
 test('post18: the js npm-entry bundle DOES contain the delta-log exports (the contrapositive of the wasm check above)', () => {
   const jsCandidates = [
-    path.join(REPO_ROOT, 'docs', 'npm', 'foafos', 'factoidal-npm-entry.js'),
+    path.join(REPO_ROOT, 'docs', 'npm', 'factoidal', 'factoidal-npm-entry.js'),
     path.join(REPO_ROOT, 'npm', 'factoidal', 'factoidal-npm-entry.js'),
   ];
   const jsPath = jsCandidates.find((p) => fs.existsSync(p));
