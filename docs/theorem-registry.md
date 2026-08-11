@@ -918,3 +918,22 @@ multi-step induction beyond the 3-attempt guard; the full
 work for `theorem_stream_eq_batch` is one dedicated landing: the
 parser-locality induction over the recursive-descent stack, now
 reduced to named lemmas with the byte-level base facts in place.
+
+**G4 M4 symbolic strcat kit + single-row SRJ theorem (2026-08-11,
+branch `srj-symbolic`)**: three strcat lemmas landed in
+`Parser.FastString.ConcatSpec.fst` (the shared home — SRJ and future
+N-Triples symbolic work both need them): `lemma_strcat_empty_l`
+(`"" ^ s == s`), `lemma_strcat_empty_r` (`s ^ "" == s`),
+`lemma_strcat_assoc` — proved via `FStar.String.list_of_concat` →
+list `@` equations (`append_l_nil`/`append_assoc`) →
+`string_of_list_of_string`, closing the symbolic-strcat wall both the
+SRJ and N-Triples FINDINGs named. Then `SPARQL.Protocol.RoundTrip.fst`
+Part 10: the SYMBOLIC single-row serializer theorem
+(`serialise_response_json vars [r]` for symbolic `vars` and `r`)
+verifies. FINDING: the two-row symbolic statement verifies STANDALONE
+(3 of 3 probe runs) but fails in-file with a fast
+`unknown (incomplete quantifiers)` — trigger sensitivity from earlier
+declarations, not resources (#restart-solver + 6x rlimit ruled out);
+exact query-stats + bisection plan recorded in-file. Next: the N-row
+induction (may be easier than fixed two-row — the induction hypothesis
+adds structure), with fstar-mcp for the bisection.
