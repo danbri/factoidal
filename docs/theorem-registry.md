@@ -1005,3 +1005,24 @@ shift for all-IRI, no-graph-label, success case, first attempt. Items
 correctly gated on: the skip_comment/skip_line lift + the
 parse_bnode/parse_literal wrapper chaining — five NAMED remaining
 pieces, third independent confirmation this is separate-landing work.
+
+**Scanner lift + shift lemmas (2026-08-11, branch `scanner-lift`)**:
+the stage-3 item-4 obstacle removed at the source level (task #36
+pattern: name inner recursions top-level). `nt_skip_to_eol` lifted
+from `skip_comment` (Parser.NTriples.fst); FIVE byte-identical local
+`skip_line` loops (parse_nquads_acc, fold_nquads_acc,
+count_nquads_acc, parse_nquads_12_acc, parse_nquads_flat_acc)
+deduplicated into ONE top-level `nq_skip_line` (Parser.NQuads.fst).
+Behavior-identical (same branches, arithmetic, fuel). Gates: verify
+clean across the five affected proof modules; extract+compile OK;
+W3C SPARQL 631 pass, 0 fail (out of 631) AND RDF 1031 pass, 0 fail
+(out of 1031) — fully clean run. Shift lemmas
+`lemma_nt_skip_to_eol_shift` + `lemma_nq_skip_line_shift` landed in
+`Parser.NTriples.Locality.fst` with a corrected hypothesis
+(`p + fuel > fs_byte_length mid`): these scanners RETURN the current
+position on fuel exhaustion instead of failing (unlike scan_iri_end),
+so unconditional fuel headroom is false — the condition matches every
+real caller. Items 6-8 (parse_nquads_acc_concat_line,
+theorem_stream_eq_batch) now have the scanner path open; they still
+need the parse_bnode/parse_literal WRAPPER chainings (items 1-2
+residue) first.
