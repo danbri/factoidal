@@ -68,6 +68,7 @@ open Parser.FastString
 open Parser.FastString.Axioms
 open Parser.Combinators
 open RDF.Term
+open Parser.NQuads
 
 module Spec = Parser.FastString.Spec
 
@@ -1662,6 +1663,186 @@ let lemma_parse_datatype_shift prefix mid suffix pos gt_pos =
   lemma_byte_index_at_middle prefix mid suffix pos;
   lemma_byte_index_at_middle prefix mid suffix (pos + 1);
   lemma_parse_iri_shift prefix mid suffix (pos + 2) gt_pos
+#pop-options
+
+(** ========================================================================
+ * STAGE 3, ITEM 3 (task #48 ordered work list item 3): `parse_graph_
+ * label` / `parse_opt_graph_label` (`Parser.NQuads.fst`) -- template
+ * repetition over sub-lemma 6/sub-lemma 5 as the banner predicted.
+ * Scope: the IRI (`<...>`) branch only -- `parse_graph_label`'s `_:`
+ * branch calls `parse_bnode`, whose full wrapper Item 1 left as
+ * mechanical remaining work (its scan-level locality fact IS proved;
+ * only the outer byte-dispatch composition is not), so the bnode graph-
+ * label branch inherits that same gap rather than a new one.
+ *
+ * VERIFIED, first attempt except `lemma_skip_eol_shift` (below, one
+ * restatement -- an omitted empty-`suffix` case, not a proof-technique
+ * failure):
+ *   - `lemma_parse_graph_label_iri_shift` -- direct corollary of
+ *     sub-lemma 6 (`lemma_parse_iri_raw_fastpath_shift`), `<` branch
+ *     only, matching `parse_graph_label`'s own manual `is_iri` check.
+ *   - `lemma_parse_opt_graph_label_iri_shift` -- `pws` (reusing sub-
+ *     lemma 5, `lemma_pws_shift`, directly) then dispatch to the IRI
+ *     branch above.
+ *   - `lemma_parse_opt_graph_label_none_dot_shift` -- the "no graph
+ *     label" success case (next non-ws byte is `.`), `pws` plus one
+ *     byte-agreement check, no further recursion.
+ * ======================================================================== *)
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_parse_graph_label_iri_shift (prefix mid suffix : string) (pos gt_pos : nat)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos) = 0x3C /\
+        scan_iri_end mid (pos + 1) (fs_byte_length mid - pos) == ParseOk gt_pos gt_pos /\
+        gt_pos < fs_byte_length mid /\
+        (match parse_iri_raw mid pos with
+         | ParseOk iri_mid _ -> is_iri iri_mid
+         | ParseFail _ _ -> False))
+      (ensures
+        (match parse_graph_label mid pos,
+               parse_graph_label (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk g_mid endpos_mid, ParseOk g_full endpos_full ->
+           g_full == g_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_graph_label_iri_shift prefix mid suffix pos gt_pos =
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  lemma_parse_iri_raw_fastpath_shift prefix mid suffix pos gt_pos
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_parse_opt_graph_label_iri_shift
+    (prefix mid suffix : string) (pos pos1 gt_pos : nat)
+  : Lemma
+      (requires
+        pos <= fs_byte_length mid /\
+        pws mid pos == ParseOk () pos1 /\
+        pos1 < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos1) = 0x3C /\
+        scan_iri_end mid (pos1 + 1) (fs_byte_length mid - pos1) == ParseOk gt_pos gt_pos /\
+        gt_pos < fs_byte_length mid /\
+        (match parse_iri_raw mid pos1 with
+         | ParseOk iri_mid _ -> is_iri iri_mid
+         | ParseFail _ _ -> False))
+      (ensures
+        (match parse_opt_graph_label mid pos,
+               parse_opt_graph_label (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk g_mid endpos_mid, ParseOk g_full endpos_full ->
+           g_full == g_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_opt_graph_label_iri_shift prefix mid suffix pos pos1 gt_pos =
+  lemma_pws_shift prefix mid suffix pos pos1;
+  lemma_byte_index_at_middle prefix mid suffix pos1;
+  lemma_parse_graph_label_iri_shift prefix mid suffix pos1 gt_pos
+#pop-options
+
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_opt_graph_label_none_dot_shift
+    (prefix mid suffix : string) (pos pos1 : nat)
+  : Lemma
+      (requires
+        pos <= fs_byte_length mid /\
+        pws mid pos == ParseOk () pos1 /\
+        pos1 < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos1) = 0x2E)
+      (ensures
+        (match parse_opt_graph_label mid pos,
+               parse_opt_graph_label (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk g_mid endpos_mid, ParseOk g_full endpos_full ->
+           g_full == g_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_opt_graph_label_none_dot_shift prefix mid suffix pos pos1 =
+  lemma_pws_shift prefix mid suffix pos pos1;
+  lemma_byte_index_at_middle prefix mid suffix pos1
+#pop-options
+
+(** ========================================================================
+ * STAGE 3, ITEM 4 (task #48 ordered work list item 4): comment/blank-
+ * line/error-recovery scanners in `parse_nquads_acc` -- PARTIAL, with a
+ * sharp, specific FINDING for the part not done (this is NOT "template
+ * repetition" as the banner estimated; a genuinely new difficulty class
+ * was found).
+ *
+ * DONE: `lemma_skip_eol_shift` -- `skip_eol` (`Parser.NTriples.fst`) is
+ * straight-line (one or two conditional byte reads, no internal
+ * recursion), so a direct shift lemma is possible, with one non-local
+ * edge exactly like Item 2's `parse_literal` finding: if `mid` ends in
+ * a bare CR (`pos + 1 == fs_byte_length mid`) and `suffix` is non-empty
+ * with LF as its first byte, embedding would fuse a CRLF pair that does
+ * not exist in `mid` alone. Scoped out via the same style of extra
+ * hypothesis Item 1/2 used (`pos + 1 < fs_byte_length mid \/ suffix
+ * empty \/ suffix's first byte is not LF`).
+ *
+ * NOT DONE, WITH A NEW OBSTACLE CLASS: `skip_comment` and the inline
+ * `skip_line` (the local `let rec skip_line` inside `parse_nquads_acc`'s
+ * `ParseFail` branch) both wrap their ACTUAL scanning loop in a LOCAL,
+ * unexported `let rec` (`skip_to_eol` inside `skip_comment`; `skip_line`
+ * itself is local to `parse_nquads_acc`). This is a DIFFERENT difficulty
+ * class from anything Items 1-3 hit (not `fs_cp_at` continuation-byte
+ * risk, not an accumulator, not a non-local edge case): a local `let
+ * rec` bound inside another function's body has NO qualifiable name
+ * outside that function, so an EXTERNAL Locality.fst lemma cannot state
+ * "at the intermediate recursive step, the local scanner is at position
+ * X with fuel Y" -- there is nothing to write on the left of `==` for
+ * that intermediate state. `skip_comment`'s OWN top-level name only
+ * unfolds to ONE call into the (already fully-applied) local recursion;
+ * calling `skip_comment` again at a shifted position does not correspond
+ * to advancing that recursion by one step (it re-checks for a leading
+ * `#`, a different operation entirely). Z3's bounded fuel-driven
+ * unfolding can verify the property for any FIXED small number of
+ * recursion steps but not for an arbitrary (symbolic-length) comment or
+ * error line, which is exactly the unbounded case this whole file exists
+ * to handle by explicit external induction. CONFIRMED not just
+ * "harder than expected" -- checked against F*'s actual name-resolution
+ * rules (a `let rec` bound inside a `let ... in` body is not projectable
+ * via any qualified name from another module) before writing this
+ * FINDING, not inferred from a failed attempt.
+ *
+ * THE CLEAN FIX (source-level, out of scope for THIS proof-only,
+ * additive-only landing): lift `skip_to_eol` (inside `skip_comment`) and
+ * `skip_line` (inside `parse_nquads_acc`) to top-level named functions
+ * in `Parser.NTriples.fst` / `Parser.NQuads.fst` respectively (identical
+ * bodies, just given a `val`+top-level `let rec` instead of a local
+ * binding) -- behaviour-preserving, but a change to those files' surface
+ * (new exported names, however small) rather than an addition to this
+ * proof-only module, and those files have their own broader consumer
+ * set this worktree did not budget time to re-verify. A future session
+ * with that scope authorised can lift both, then apply EXACTLY this
+ * file's own `scan_iri_end`/`ptake_while_scan` template to the lifted
+ * functions (they are structurally identical to those two: `skip_to_
+ * eol` is `ptake_while_scan` with a negated/different stop predicate;
+ * `skip_line` is nearly identical again, needing one extra `skip_eol`
+ * call composed in via `lemma_skip_eol_shift` above at its stopping
+ * point).
+ * ======================================================================== *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_skip_eol_shift (prefix mid suffix : string) (pos : nat)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        (pos + 1 < fs_byte_length mid \/
+         fs_byte_length suffix = 0 \/
+         fs_byte_at suffix 0 <> 0x0A))
+      (ensures
+        skip_eol (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos)
+          == fs_byte_length prefix + skip_eol mid pos)
+let lemma_skip_eol_shift prefix mid suffix pos =
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  let ch = fs_byte_index mid pos in
+  let code = FStar.Char.int_of_char ch in
+  if code = 0x0D then begin
+    if pos + 1 < fs_byte_length mid then
+      lemma_byte_index_at_middle prefix mid suffix (pos + 1)
+    else if fs_byte_length suffix = 0 then ()
+    else begin
+      fs_byte_index_eq (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos + 1);
+      fs_byte_at_concat prefix (mid ^ suffix) (fs_byte_length prefix + pos + 1);
+      fs_byte_at_concat mid suffix (pos + 1);
+      fs_byte_index_eq suffix 0
+    end
+  end else ()
 #pop-options
 
 (** ========================================================================
