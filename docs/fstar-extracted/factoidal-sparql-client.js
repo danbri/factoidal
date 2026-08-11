@@ -28,20 +28,20 @@
 // ---------------------------------------------------------------------
 // Engine loading + invocation goes through the npm package's browser
 // entry (npm/factoidal/browser.js, mirrored read-only to
-// docs/npm/factoidal/ for GitHub Pages — see build-ocaml.sh's "npm" step
+// docs/npm/foafos/ for GitHub Pages — see build-ocaml.sh's "npm" step
 // and the site-and-dashboard skill's demo-inventory table). This
 // component used to hand-roll its own fetch/byte-packing/eval/argv
 // logic per engine (js and wasm); that is now the package's job — one
-// loader, not two divergent shims. `../npm/factoidal/browser.js` resolves
+// loader, not two divergent shims. `../npm/foafos/browser.js` resolves
 // correctly both from docs/fstar-extracted/ (repo layout) and from the
 // built Pages site, where fstar-extracted's contents are passed
-// through to the site root and npm/factoidal is passed through to
-// `/npm/factoidal/` (docs/.eleventy.js) — so `import.meta.url` for this
+// through to the site root and npm/foafos is passed through to
+// `/npm/foafos/` (docs/.eleventy.js) — so `import.meta.url` for this
 // script is always effectively site-root either way.
 // ---------------------------------------------------------------------
 import {
   queryDataset, setFactoidalUrl, getFactoidalUrl,
-} from '../npm/factoidal/browser.js';
+} from '../npm/foafos/browser.js';
 
 // ---------------------------------------------------------------------
 // <factoidal-query> — light-DOM child used to declare queries inline.
@@ -1551,7 +1551,7 @@ class FactoidalSparqlClient extends HTMLElement {
 
       // ----------------------------------------------------------------
       // Engine invocation — via the npm package's queryDataset()
-      // (npm/factoidal/browser.js, mirrored to ../npm/factoidal/). It owns
+      // (npm/factoidal/browser.js, mirrored to ../npm/foafos/). It owns
       // byte-packing (#240), multi-named-graph argv building (js) /
       // TriG merge (wasm), and the eval itself; this component only
       // resolves which bundle URL to point it at (respecting this

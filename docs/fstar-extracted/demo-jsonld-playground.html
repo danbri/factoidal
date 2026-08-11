@@ -98,7 +98,7 @@
   <div class="tag">
     Paste JSON-LD, hit <strong>Run</strong>. Parsing (<code>toRdf</code>) and
     RDFC-1.0 canonicalization run in your browser, F*-extracted, loaded from
-    this site's own <code>npm/factoidal</code> package mirror — no npm install,
+    this site's own <code>npm/foafos</code> package mirror — no npm install,
     no server round-trip.
     <a href="./">&larr; back to the main demo</a>
   </div>
@@ -152,8 +152,8 @@
 
 <footer>
   Built from <a href="https://github.com/danbri/factoidal">github.com/danbri/factoidal</a>.
-  Engine loaded from <code>../npm/factoidal/browser.js</code> (this site's mirror of the
-  <code>factoidal</code> npm package — see its
+  Engine loaded from <code>../npm/foafos/browser.js</code> (this site's mirror of the
+  <code>@danbri/foafos</code> npm package — see its
   <a href="https://github.com/danbri/factoidal/blob/claude/main/npm/factoidal/README.md">README</a>
   for the jsDelivr CDN alternative). JSON-LD deserialization:
   <code>formal/fstar/Parser.JSONLD.fst</code>,
@@ -162,7 +162,7 @@
 </footer>
 
 <script type="module">
-import { runFactoidalCli } from '../npm/factoidal/browser.js';
+import { runFactoidalCli } from '../npm/foafos/browser.js';
 import {
   buildJsonLdPlayground, parseNQuadsToRows,
   SAMPLE_JSONLD, SAMPLE_JSONLD_REMOTE_CONTEXT,
