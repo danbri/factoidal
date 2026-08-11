@@ -2548,56 +2548,107 @@ let lemma_parse_literal_lang_shift prefix mid suffix pos lex pos' lang_endpos =
 #pop-options
 
 (** ------------------------------------------------------------------------
- * FINDING (guard-depth-3 stop): `lemma_parse_literal_datatype_shift` --
- * the `^^dt` branch of `parse_literal` -- is NOT closed. THREE ATTEMPTS,
- * each restructuring the proof, not just retrying:
- *   1. Minimal proof mirroring `lemma_parse_literal_lang_shift`'s
- *      (verified) shape exactly: `fs_byte_length_concat` x2, `lemma_
- *      byte_index_at_middle` at `pos'`, delegate to (already-verified)
- *      `lemma_parse_datatype_shift`. Failed: Error 19, "Could not prove
- *      post-condition", spanning the whole proof body.
- *   2. Same, plus `lemma_byte_index_at_middle` at `pos'+1` and an
- *      explicit `assert` restating `lemma_parse_datatype_shift`'s
- *      conclusion as a flat match (in case the bare lemma CALL wasn't
- *      surfacing it for the outer `ensures`), plus `z3rlimit 300->600`,
- *      `fuel/ifuel 6->8`. Failed identically, same overall span (now
- *      widened to include the new assert).
- *   3. Restructured to `match parse_datatype mid pos' with ParseOk dt
- *      endpos -> assert (parse_datatype full posf' == ParseOk dt
- *      (shifted endpos)) | ParseFail _ _ -> ()` -- naming ONE `dt`
- *      binder shared by both sides (bound from `mid`'s own evaluation)
- *      rather than two separately-named values linked by a `d2==d1`
- *      equation, on the hypothesis that the earlier attempts' failure
- *      was `literal_wf`'s STRING INEQUALITY checks (`dt <> rdf_lang_
- *      string`, `dt <> rdf_dir_lang_string`) not receiving ordinary SMT
- *      congruence from a `d2==d1` fact -- the SAME class of gap this
- *      file's sibling `RDF.NQuads.Streaming.fst` documents for `FStar.
- *      String.string_of_list` (its own landed FINDING: variable-argument
- *      equality does not propagate through that primitive via plain
- *      congruence, needing an explicit `cong_string_of_list` workaround).
- *      Failed again, same location, ruling out "just needs the d1==d2
- *      link stated differently" as the fix -- if string (in)equality's
- *      congruence gap were the cause, sharing one binder should have
- *      closed it; it did not, so the obstruction is elsewhere (not
- *      diagnosed further within this guard-depth-3 budget; a future
- *      session should try `--query_stats` or F* MCP goal inspection --
- *      neither was reachable in this subagent's environment -- to
- *      localise WHICH sub-goal inside `parse_literal`'s `^^dt` unfold is
- *      actually failing, rather than a fourth blind restructuring).
+ * `lemma_parse_literal_datatype_shift` -- the `^^dt` branch of
+ * `parse_literal` -- CLOSED. Three prior attempts (all in this same
+ * subagent lineage, recorded in git history) failed at Error 19 "Could
+ * not prove post-condition" spanning the whole proof body, each
+ * restructuring how the `parse_datatype` outcome was DERIVED inside the
+ * lemma (bare delegation to `lemma_parse_datatype_shift`; the same plus
+ * an explicit restating `assert`; a single shared `dt` binder instead of
+ * a `d2==d1` equation). All three re-derived the `parse_datatype mid
+ * pos'` / `parse_datatype full posf'` outcome INSIDE the lemma via
+ * internal computation over `lemma_parse_datatype_shift`'s own
+ * hypotheses (the `^^<iri>` scan witnesses `gt_pos` etc.) -- the same
+ * "wrapper dispatches forward to a sub-parser behind an outer match,
+ * re-derived internally" shape that also blocked the abandoned `parse_
+ * iri_raw` capstone.
  *
- * WHAT THIS MEANS. `lemma_parse_literal_plain_shift` and `lemma_parse_
- * literal_lang_shift` (immediately above) ARE verified and cover
- * `parse_literal`'s other two branches end to end, including the
- * `parse_object`'s literal-branch wrapper immediately below (which takes
- * ANY resolved `parse_literal` outcome as an external hypothesis, so it
- * composes with EITHER of those two branch lemmas without needing this
- * one). The `^^dt` (datatype-tagged literal) case specifically is open.
- * This does not block `theorem_stream_eq_batch`'s all-IRI-nograph scope
- * (RDF.NQuads.Streaming.fst, items 4/5 below) -- that scope never
- * reaches an object literal at all, let alone a datatype-tagged one --
- * but it DOES mean `parse_object`'s literal branch as a WHOLE is only
- * "plain / `@lang` literal" complete, not "any RDF 1.1 literal" complete.
+ * STEP 1 (witness-record restatement, per `RDF.NQuads.Streaming.fst`'s
+ * `lemma_parse_nquad_shift_generic`): take the `parse_datatype` RESULT
+ * on both `mid` and the full embedding (the datatype IRI `dt` and its
+ * endpos `pos''`) as EXTERNAL HYPOTHESES, exactly as `lex`/`pos'`
+ * already are for the string-literal body in `_plain_shift`/
+ * `_lang_shift` above, rather than re-deriving them inside from `lemma_
+ * parse_datatype_shift`'s scan-level witnesses. THIS ALONE STILL FAILED
+ * -- Error 19, the SAME overall span -- which disproves the "just needs
+ * the witnesses stated externally" theory the earlier three attempts
+ * were implicitly testing.
+ *
+ * STEP 2 (the actual gap, found by asking what makes the statement
+ * FALSE rather than what makes Z3 struggle): `_plain_shift`'s
+ * constructed literal always has `datatype = xsd_string` and
+ * `_lang_shift`'s always has `datatype = rdf_lang_string` -- both fixed
+ * constants, so `literal_wf` (RDF.Term.fsti:139, the `None, None ->
+ * l.datatype <> rdf_lang_string && l.datatype <> rdf_dir_lang_string`
+ * arm) is UNCONDITIONALLY true for them and neither lemma needed to say
+ * so. The `^^dt` branch's `dt` is an ARBITRARY external witness with no
+ * such guarantee -- if a caller instantiates `dt = rdf_lang_string`,
+ * `literal_wf lit` is False on BOTH sides, `parse_literal` returns
+ * `ParseFail "invalid literal" pos` / `ParseFail "invalid literal"
+ * (prefix_len+pos)` on both sides (not `ParseOk`), and this lemma's
+ * `ensures` -- which only covers the `ParseOk lit_mid _, ParseOk lit_
+ * full _` case and hits `_, _ -> False` otherwise -- becomes an
+ * unconditional demand to prove False. THE LEMMA AS STATED IN STEP 1
+ * WAS SIMPLY NOT TRUE for that `dt`; no proof-body restructuring closes
+ * an unprovable statement, which is why all four attempts (the three
+ * pre-existing plus step 1) hit Error 19 at the whole-body span
+ * regardless of shape -- Z3 was correctly refusing a false goal, not
+ * failing to find a valid proof. The FINDING these attempts left behind
+ * ("literal_wf's STRING INEQUALITY checks not receiving ordinary SMT
+ * congruence") misdiagnosed this as a congruence gap; it was a missing
+ * hypothesis.
+ *
+ * FIX: add `dt <> rdf_lang_string /\ dt <> rdf_dir_lang_string` to the
+ * `requires` (the exact side condition `literal_wf`'s `None, None` arm
+ * imposes) alongside step 1's witness-record shape. With that in place
+ * the constructed `lit` record is LITERALLY the same value on both
+ * sides (all four fields equal, same `lex`, same `dt`), so `literal_wf
+ * lit` and `ParseOk lit posEnd` are equal by ordinary congruence and
+ * the proof body is the same 3-line `fs_byte_length_concat` x2 +
+ * `lemma_byte_index_at_middle` shape as `_plain_shift`. Verified at the
+ * SAME resource budget as the sibling `_lang_shift` lemma (`z3rlimit
+ * 300 --fuel 6 --ifuel 6`; no bump needed) once the missing hypothesis
+ * was added. A caller composes `lemma_parse_datatype_shift` (already
+ * verified above) for the `dt`/`pos''` witnesses, and separately shows
+ * its concrete `dt` is not one of the two langString datatype IRIs
+ * (a plain string-inequality fact about the parsed IRI text, decidable
+ * per call site), then gets `parse_literal`'s `^^dt` branch locality
+ * for free -- the same two-step composition `lemma_parse_object_
+ * literal_shift` below already uses for `parse_literal` as a whole.
  * ------------------------------------------------------------------------ *)
+#push-options "--z3rlimit 300 --fuel 6 --ifuel 6"
+val lemma_parse_literal_datatype_shift
+    (prefix mid suffix : string) (pos : nat)
+    (lex : string) (pos' : nat)
+    (dt : wf_iri) (pos'' : nat)
+  : Lemma
+      (requires
+        pos' < fs_byte_length mid /\
+        (match parse_string_literal mid pos with
+         | ParseOk l p -> l == lex /\ p == pos'
+         | ParseFail _ _ -> False) /\
+        (match parse_string_literal (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk l p -> l == lex /\ p == fs_byte_length prefix + pos'
+         | ParseFail _ _ -> False) /\
+        FStar.Char.int_of_char (fs_byte_index mid pos') = 0x5E /\
+        (match parse_datatype mid pos' with
+         | ParseOk d p -> d == dt /\ p == pos''
+         | ParseFail _ _ -> False) /\
+        (match parse_datatype (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos') with
+         | ParseOk d p -> d == dt /\ p == fs_byte_length prefix + pos''
+         | ParseFail _ _ -> False) /\
+        dt <> rdf_lang_string /\ dt <> rdf_dir_lang_string)
+      (ensures
+        (match parse_literal mid pos,
+               parse_literal (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk lit_mid endpos_mid, ParseOk lit_full endpos_full ->
+           lit_full == lit_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_literal_datatype_shift prefix mid suffix pos lex pos' dt pos'' =
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_byte_index_at_middle prefix mid suffix pos'
+#pop-options
 
 (** ------------------------------------------------------------------------
  * `parse_object`'s literal branch. Takes the `parse_literal` OUTCOME
