@@ -12,7 +12,7 @@
 // Two drivers exist:
 //   - browser: npm/factoidal/browser.js's rifSmoke() / rifEval() /
 //     loadNpmEntry() (fetch-based, used by demo-rif.html against the
-//     Pages-mirrored npm package at ../npm/foafos/browser.js);
+//     Pages-mirrored npm package at ../npm/factoidal/browser.js);
 //   - Node: tests/web-demos/rif_demo_smoke.sh's inline require()-based
 //     loader (mirrors npm/factoidal/index.js's loadEntry(), since
 //     Node's global fetch does not support file: URLs the way a
