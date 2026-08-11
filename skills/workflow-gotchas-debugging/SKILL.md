@@ -862,7 +862,7 @@ The reactive node harness (`runReactivePost`) binds `fn` to the node
 npm package (`npm/factoidal/index.js`), whose api.js normalises every
 input to N-Quads before calling the ABI. The browser page binds `fn`
 to the hand-curated wrapper object in `docs/_includes/hub.njk`, backed
-by `npm/factoidal/browser.js` (served as `docs/npm/foafos/browser.js`).
+by `npm/factoidal/browser.js` (served as `docs/npm/factoidal/browser.js`).
 Those are two different surfaces: a name can exist on one and not the
 other, and a calling convention (input format) can differ between
 them. Node tests certify only the node surface.

@@ -1,5 +1,5 @@
 {
-  "name": "@danbri/foafos",
+  "name": "factoidal",
   "version": "0.1.0-alpha.0",
   "description": "DRAFT \u2014 formally verified RDF/SPARQL engine (F*-extracted) for JS and Wasm. Placeholder name; real package setup to follow.",
   "keywords": [
