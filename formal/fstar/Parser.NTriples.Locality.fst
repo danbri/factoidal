@@ -221,6 +221,179 @@ val lemma_scan_iri_end_shift_from_start (prefix mid suffix : string) (fuel gt_po
 let lemma_scan_iri_end_shift_from_start prefix mid suffix fuel gt_pos =
   lemma_scan_iri_end_shift prefix mid suffix 0 fuel gt_pos
 
+(** ------------------------------------------------------------------------
+ * Sub-lemma 3: `lemma_scan_iri_end_shift_headroom` -- generalises
+ * sub-lemma 2 with an extra fuel-headroom parameter on the FULL side.
+ *
+ * WHY THIS IS NEEDED (not just a generalisation for its own sake).
+ * `parse_iri_raw`'s ACTUAL fuel is `fs_byte_length input - pos`, which is
+ * DIFFERENT for `mid` (`fs_byte_length mid - pos`) and for the SAME scan
+ * embedded in `full = prefix ^ (mid ^ suffix)` at the shifted position
+ * (`fs_byte_length full - (fs_byte_length prefix + pos)`). Expanding via
+ * `fs_byte_length_concat` twice: the full-side fuel equals the mid-side
+ * fuel PLUS `fs_byte_length suffix`, exactly. Sub-lemma 2 required the
+ * SAME numeric fuel on both sides, which is true only when `suffix = ""`
+ * -- too narrow for `parse_iri_raw`'s real call sites. This lemma adds
+ * an `extra:nat` parameter threaded unchanged through the recursion
+ * (both sides decrement their own fuel by 1 per step, so `extra` stays
+ * constant) so it can be instantiated with `extra = fs_byte_length
+ * suffix` at the composition site (`lemma_parse_iri_raw_fastpath_shift`
+ * below) with NO separate fuel-monotonicity lemma needed.
+ *
+ * WHY A GENERAL "fuel2 >= fuel1 implies same result" MONOTONICITY LEMMA
+ * WOULD NOT WORK HERE (recorded so a future session does not re-derive
+ * this and waste an attempt): `scan_iri_end`'s `fuel = 0` case ALWAYS
+ * fails (`ParseFail "IRI too long"`), so unlike `ptake_while_acc` below,
+ * there is no "coincidental success at fuel=0" case to guard against --
+ * extending the fuel value can only ever let the SAME successful scan
+ * run to completion, never change its outcome. That is exactly why the
+ * proof below is a direct copy of sub-lemma 2's structure with `extra`
+ * inserted, no new precondition needed.
+ * ------------------------------------------------------------------------ *)
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val lemma_scan_iri_end_shift_headroom
+    (prefix mid suffix : string) (i fuel extra : nat) (gt_pos : nat)
+  : Lemma
+      (requires
+        scan_iri_end mid i fuel == ParseOk gt_pos gt_pos /\
+        gt_pos < fs_byte_length mid)
+      (ensures
+        scan_iri_end (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + i) (fuel + extra)
+          == ParseOk (fs_byte_length prefix + gt_pos) (fs_byte_length prefix + gt_pos))
+      (decreases fuel)
+let rec lemma_scan_iri_end_shift_headroom prefix mid suffix i fuel extra gt_pos =
+  let p = fs_byte_length prefix in
+  if fuel = 0 then ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if i >= len_mid then ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_index_at_middle prefix mid suffix i;
+      let ch = fs_byte_index mid i in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x3E then ()
+      else if code = 0x5C then ()
+      else if code <= 0x20 || is_iri_forbidden_codepoint code then ()
+      else
+        lemma_scan_iri_end_shift_headroom prefix mid suffix (i + 1) (fuel - 1) extra gt_pos
+    end
+  end
+#pop-options
+
+(** ------------------------------------------------------------------------
+ * Sub-lemma 4: `lemma_ptake_while_acc_pos_shift_headroom` -- the
+ * position-AND-string shift lemma for `ptake_while_acc`, the accumulator
+ * combinator `pws` (via `ptake_while`, Parser.Combinators.fst) actually
+ * recurses through -- NOT `ptake_while_scan`/`ptake_while_pos`, which are
+ * position-only but have NO caller in the subject/object/whitespace path
+ * (confirmed by reading Parser.Combinators.fst: `pws` at
+ * Parser.NTriples.fst:94 calls `ptake_while`, which calls
+ * `ptake_while_acc`).
+ *
+ * WHY THIS NEEDS A DIFFERENT PRECONDITION THAN SUB-LEMMA 3.
+ * `ptake_while_acc`'s `fuel = 0` case SUCCEEDS (`ParseOk (str_of acc)
+ * pos`, unconditionally, regardless of whether the predicate would have
+ * continued matching) -- unlike `scan_iri_end`'s `fuel = 0`, which always
+ * FAILS. A plain "same/more fuel gives the same result" claim is
+ * therefore FALSE in general: if `fuel` happens to hit 0 exactly at a
+ * position whose predicate is still true, a LARGER `fuel` would keep
+ * scanning past it. The fix is the extra hypothesis `fuel + pos >=
+ * endpos + 1`, i.e. "fuel had not yet run out at the point the scan
+ * reports as its stop" -- this is exactly what rules out the
+ * fuel-exhaustion artifact and pins the stop down as a genuine
+ * predicate-false (or genuine `pos >= length` hit, already excluded by
+ * `endpos < fs_byte_length mid`) event, at which point extending the
+ * full side's fuel by a constant `extra` cannot change anything either
+ * (the recursion never reaches its own `fuel = 0` check before this
+ * point, so `extra` is inert until then, and after the stop it is never
+ * consulted again). `pws` (Parser.Combinators.fst:316-320, via
+ * `ptake_while pred input pos = ptake_while_acc pred input pos [] (len -
+ * pos + 1)`) always supplies `fuel = fs_byte_length input - pos + 1`,
+ * which makes `fuel + pos >= endpos + 1` hold automatically whenever
+ * `endpos <= fs_byte_length input` -- i.e. `ptake_while`'s own fuel
+ * formula is ALWAYS "sufficient" in this sense, so the composition at
+ * `lemma_pws_shift` below discharges this hypothesis for free.
+ *
+ * WHY THE STRING RESULT (`out_s`) IS THE SAME ON BOTH SIDES FOR FREE
+ * (the Stage-2 insight from the task brief, landing one stage early
+ * because `pws`'s recursion already goes through the accumulator
+ * combinator): `acc` is threaded as the SAME value into both the `mid`
+ * call and the `full` call at every step of this induction (never two
+ * independently-evolving accumulators) -- so when the recursion
+ * terminates, both sides compute `String.concat "" (List.Tot.rev acc)`
+ * (well, `String.string_of_list` here) over the LITERALLY SAME `acc`.
+ * No `FStar.String.concat`/`strcat` algebra is invoked anywhere in this
+ * proof; the string equality follows from applying the SAME pure
+ * function to the SAME argument, which is definitional congruence, not
+ * string-equational reasoning. (`pws` itself goes on to discard this
+ * string entirely -- `match ptake_while ... with ParseOk _ pos' -> ...`
+ * -- so `lemma_pws_shift` below does not even need this corollary, but
+ * it costs nothing extra to state and may serve a future caller that
+ * DOES need the extracted substring, e.g. `ptake_while1`.)
+ * ------------------------------------------------------------------------ *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_ptake_while_acc_pos_shift_headroom
+    (pred: FStar.Char.char -> bool) (prefix mid suffix : string)
+    (pos fuel extra : nat) (acc : list FStar.Char.char) (endpos : nat) (out_s : string)
+  : Lemma
+      (requires
+        ptake_while_acc pred mid pos acc fuel == ParseOk out_s endpos /\
+        endpos < fs_byte_length mid /\
+        fuel + pos >= endpos + 1)
+      (ensures
+        ptake_while_acc pred (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) acc (fuel + extra)
+          == ParseOk out_s (fs_byte_length prefix + endpos))
+      (decreases fuel)
+let rec lemma_ptake_while_acc_pos_shift_headroom pred prefix mid suffix pos fuel extra acc endpos out_s =
+  let p = fs_byte_length prefix in
+  if fuel = 0 then ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if pos >= len_mid then ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_index_at_middle prefix mid suffix pos;
+      let ch = fs_byte_index mid pos in
+      if pred ch then
+        lemma_ptake_while_acc_pos_shift_headroom pred prefix mid suffix (pos + 1) (fuel - 1) extra (ch :: acc) endpos out_s
+      else ()
+    end
+  end
+#pop-options
+
+(** ------------------------------------------------------------------------
+ * Sub-lemma 5 (the `pws` shift lemma): compose sub-lemma 4 with `pws`'s
+ * ACTUAL fuel formula (`ptake_while`'s `fs_byte_length input - pos + 1`)
+ * on both sides, discharging the `fuel + pos >= endpos + 1` side
+ * condition automatically (see sub-lemma 4's banner) and discarding the
+ * string result exactly as `pws` itself does.
+ * ------------------------------------------------------------------------ *)
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val lemma_pws_shift (prefix mid suffix : string) (pos : nat) (endpos : nat)
+  : Lemma
+      (requires
+        pos <= fs_byte_length mid /\
+        pws mid pos == ParseOk () endpos /\
+        endpos < fs_byte_length mid)
+      (ensures
+        pws (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos)
+          == ParseOk () (fs_byte_length prefix + endpos))
+let lemma_pws_shift prefix mid suffix pos endpos =
+  let p = fs_byte_length prefix in
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  // fuel_full == fuel_mid + fs_byte_length suffix, by the length facts above
+  // (plain nat/int arithmetic once the two fs_byte_length_concat equations
+  // are in context -- no separate helper).
+  let fuel_mid = fs_byte_length mid - pos + 1 in
+  match ptake_while_acc is_nt_ws mid pos [] fuel_mid with
+  | ParseOk out_s stop ->
+    lemma_ptake_while_acc_pos_shift_headroom is_nt_ws prefix mid suffix pos fuel_mid (fs_byte_length suffix) [] stop out_s
+  | ParseFail _ _ -> ()
+#pop-options
 #pop-options
 
 (** ========================================================================
