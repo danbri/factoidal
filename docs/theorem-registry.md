@@ -1110,3 +1110,19 @@ false and corrected); fast OCaml is a deletable rule-11(b) speed
 patch; equivalence proven on all input classes, native AND node;
 benchmarks inside the gate throughout; the String.sub and
 String.concat ulib walls closed with zero new axioms.
+
+**Task #48 general theorem, attempt round (2026-08-11, branch
+`stream-general2`)**: two new primitives PROVED in
+`RDF.NQuads.Streaming.fst`: `lemma_skip_comment_shift` (links
+skip_comment to the lifted nt_skip_to_eol shift — the one-line gap the
+file noted) and `lemma_nq_skip_line_shift_exact` (skip-line shift at
+the EXACT fuel the engine passes, no headroom hypothesis needed).
+General `theorem_stream_eq_batch`: NOT closed — 3 attempts on the
+narrowest sub-case (blank-lines-only mid) failed, each after 10-16 min
+of full z3 search (resource exhaustion, not quick rejection).
+DIAGNOSIS recorded as the FINDING: the hypothesis was a forall over
+positions with an inner match — no instantiation pattern for the
+solver; every PROVEN lemma in these files instead passes per-position
+facts as EXPLICIT witness parameters (stop_pos, gt_pos, ...). Fix
+path: restate with explicit witnesses at each step. Failed code
+removed; only proven code kept.
