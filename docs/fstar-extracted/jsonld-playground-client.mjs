@@ -17,7 +17,7 @@
 // plumbing on top. Two drivers exist in this repo already:
 //   - browser: npm/factoidal/browser.js's runFactoidalCli (fetch-based,
 //     used by demo-jsonld-playground.html against the Pages-mirrored
-//     npm package at ../npm/factoidal/browser.js);
+//     npm package at ../npm/foafos/browser.js);
 //   - Node: npm/factoidal/lib/engine-js.js's runCli (fs-based, used by
 //     the smoke test below).
 // Both drive the same factoidal.js CLI bundle, so a pass under Node is
