@@ -445,3 +445,132 @@ This changes EXTRACTED code, hence the rebuild commit.
 Unblocked by this step: the SRJ text bridge (M4) and N-Triples
 parser-side proofs (M1-adjacent) can now state their concat facts
 against `concat_spec` equations instead of the ulib wall.
+
+## Step 6 results (2026-08-11, worktree `parity-run2`, branch `parity-run2`)
+
+Host: `nproc` 4, CPU `Intel(R) Xeon(R) Processor @ 2.80GHz` — same host
+profile as the Step 0/2/3 baselines. Fresh worktree off
+`origin/claude/main` (`b6dcf73acd`); `.checked` cache restored from the
+`checked-cache` branch (116 modules), then a full
+`./build-ocaml.sh extract && ./build-ocaml.sh compile && ./build-ocaml.sh
+js` (cold on the 98 modules the cache missed) to get a clean,
+same-commit native + JS build before measuring. Rebuild reproduced
+byte-different-but-source-identical binaries (no `.fst`/`.ml` edited on
+this branch) — reverted with `git checkout` before pushing so this
+worktree carries doc-only changes.
+
+### FastString equivalence corpus (native, step 4 of this task's method)
+
+`tests/unit/run-all.sh parser_fast_string_equivalence`:
+
+✅ **93,846 pass, 962 expected-fail (documented XFAIL), 0 unexpected fail.**
+Exact match to the Step 2/3-revisit numbers recorded above
+(`d58a80ddc0`) — confirms current `origin/claude/main` HEAD carries no
+regression on this corpus.
+
+**No node-side (JS) equivalence runner exists for this corpus.** Per
+this task's own instruction, that gap is reported, not filled:
+`tests/unit/` is a native-OCaml-only harness (`run-all.sh` links
+committed `.cmx` against a hand-written `.ml` test file via
+`ocamlfind ocamlopt`); there is no js_of_ocaml-under-Node equivalent
+that exercises `fs_byte_length`/`fs_byte_at`/`fs_find_byte`/`fs_cp_at`/
+`fs_cp_len`/`fs_byte_sub` against the same 401-valid-UTF-8 +
+19-adversarial corpus in the JS runtime. The plan's own "Risks" section
+named "jsoo UTF-16 convention" and said "equivalence runs under node
+parity" — that intent is not yet built. What DOES run cross-runtime is
+the general `tests/beyond-w3c/` demo-query suite below, which touches
+FastString only incidentally (via the parser/serializer call sites,
+not via a dedicated byte-op probe).
+
+### Cross-runtime parity suite (native vs js-node)
+
+`tests/beyond-w3c/bin/run-parity.py --manifest
+tests/beyond-w3c/fixtures/index.json --runners native,js-node`:
+
+✅ **4/4 cells pass** (2 queries × 2 runners):
+
+| runner | query | status | ms |
+|---|---|---|---:|
+| native | bind-upper | pass | 24.5 |
+| js-node | bind-upper | pass | 344.9 |
+| native | ucase-unicode | pass | 20.6 |
+| js-node | ucase-unicode | pass | 188.8 |
+
+⚠️ **What "pass" means here, precisely — this is not a full parity
+assertion.** Reading `tests/beyond-w3c/bin/run-parity.py`'s `classify()`
+function directly: a cell is `pass` iff the runner's process exits 0.
+The docstring says so explicitly ("Phase 2a (#243) lands the row-set /
+row-count comparison logic here. For now, the scaffold just reports the
+runner exited 0.") — there is no row-set or row-count comparison
+between native and js-node output in the current code, despite the
+manifest schema documenting `expected.kind` = `row-count` /
+`row-set-csv` / `row-set-srx` / `boolean` fields. So this run proves
+"neither runtime crashed or errored on these 2 queries," not "native
+and JS agree on the result." Manually diffing the two runners' raw
+stdout for both queries (not part of the harness, done here to give
+the strongest honest statement available) shows byte-identical
+SPARQL-Results JSON for both `bind-upper` and `ucase-unicode`,
+including the non-ASCII `ucase-unicode` row values (`"EVE MÜLLER"`
+etc.) — so for these 2 queries, output agreement is confirmed by hand,
+not by the automated harness's own pass/fail signal.
+
+**Coverage is 2 demo queries, not a corpus.** `tests/beyond-w3c/
+fixtures/index.json` has exactly the seed manifest from the Phase 1
+scaffold (`bind-upper`, `ucase-unicode`) — the "40+ demo queries across
+6 demo pages" the suite's own README describes as its target (Phase 1,
+issue #242) has not landed. Neither query is a targeted FastString
+byte-op probe (adversarial/malformed UTF-8, boundary bytes); both are
+ordinary SPARQL string functions over well-formed UTF-8 data.
+
+### Wasm-node
+
+**Not covered.** `tests/beyond-w3c/runners/run-wasm-node.sh` is a stub
+(`echo '{"_runner_status":"unimplemented","sub_issue":244}'; exit 77`)
+— every wasm-node cell would classify as `skip`, not `pass`, so it was
+excluded from the `--runners` argument rather than run and skipped (CI's
+`beyond-w3c.yml` does the same, with the same comment: "Wasm-node
+intentionally omitted until #244's runner lands"). No wasm-side
+FastString measurement exists at all yet.
+
+### Divergences
+
+None found — 0 unexpected-fail rows in the FastString corpus, 0
+crash/error cells in the parity grid, byte-identical manual JSON diff
+on both parity queries. No witness inputs to record.
+
+### Task #47 step 6 — status
+
+**Not complete**, precisely: the cross-runtime PARITY run this step
+calls for is narrower than "prove by measurement that native and JS
+agree" on the FastString migration specifically —
+
+- ✅ Native equivalence corpus: current, 0 unexpected fail (93,846
+  pass / 962 expected-fail), confirming no regression since the
+  Step 2/3-revisit landing.
+- ✅ General native/js-node demo-query parity: 4/4 cells pass (rc=0
+  on both runtimes), plus a hand-verified byte-identical JSON diff for
+  both queries — not run by the harness itself.
+- 🔴 No automated row-set/row-count comparison exists in
+  `run-parity.py` yet (Phase 2a, issue #243, not this task's scope to
+  build — the task brief says use the existing harness, not extend it).
+- 🔴 No node-side FastString byte-op equivalence runner exists — the
+  jsoo-UTF-16-convention risk the plan named is still unmeasured at the
+  byte-op level, only indirectly touched through 2 ordinary demo
+  queries.
+- 🔴 Wasm-node: unmeasured (stub, `#244` open).
+
+Recommended next step (separate dispatch, not this task): either (a)
+port `tests/unit/parser_fast_string_equivalence.ml`'s corpus to a
+js_of_ocaml-under-Node harness calling the same `fs_*` functions
+through the JS bundle, closing the actual named risk, or (b) treat the
+byte-identical manual diff above plus the native corpus's 93,846-pass
+result as sufficient evidence for this specific migration (FastString
+correctness is a pure-OCaml-semantics question — js_of_ocaml compiles
+the same `.ml`, so a jsoo-specific divergence would come from
+js_of_ocaml's runtime string/bytes representation, not from
+`Parser.FastString.fst`'s logic) and close the risk as "accepted,
+covered by (a) the general js-node smoke suite passing and (b) jsoo's
+`Bytes`/`String` runtime being tested elsewhere, not by a dedicated
+byte-op corpus." This session does not pick between (a)/(b) — that is
+an owner call given (b) has a real gap (no *adversarial* UTF-8 input
+has ever been pushed at `fs_*` through jsoo).
