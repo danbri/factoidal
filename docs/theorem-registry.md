@@ -1179,3 +1179,21 @@ trigger sensitivity (3 phrasings, same Error 19; one attempt flipped
 pass→fail by removing an unrelated nearby declaration) — covered by
 instantiation, not forced. Verified 3x alone + 3x in-file. No admits,
 no --lax, no new assume vals.
+
+**build_string totality wall — sharpened (2026-08-11, branch
+`build-string-total`)**: `s == build_string (codes_of s)` NOT closed;
+the finding is now precise. ROOT CAUSE (new, replaces the old
+"chained equality" explanation): a SELF-RECURSIVE F* Lemma cannot use
+`FStar.String.list_of_string`/`string_of_list` inside its own
+recursive call — the failure is AT the recursive call, even when
+nothing uses its result. Control tests: fuel/rlimit don't help;
+reproduces with a plain `int` function; a helper lemma verifies alone
+but fails inside the recursion; calc blocks and #restart-solver don't
+help; ~20 probe files under `--split_queries always`. (Toolchain-shaped
+finding — stays internal per the owner's no-upstream-filing rule.)
+Route 2 (fs_byte_sub decomposition) needs a not-yet-proven
+`slice_bytes`/`utf8_decode_all` base fact — a different, smaller wall,
+noted at `fs_byte_sub_eq`. Findings recorded in
+`Parser.FastString.RoundTripLemmas.fst` ("SHARPENED FINDING" section)
++ pointer updated in `RDF.NTriples.RoundTrip.fst`. No proof logic
+changed; both files verify clean.
