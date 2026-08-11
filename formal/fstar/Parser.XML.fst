@@ -606,6 +606,56 @@ let parse_reference (ents:dtd_entity_table) (input:string) (pos:nat) : parse_res
 
 
 (* ================================================================ *)
+(* Attribute-value normalization (XML 1.0 SS3.3.3)                   *)
+(*                                                                    *)
+(* "Before the value of an attribute is passed to the application... *)
+(* an XML processor MUST... for a white space character (#x20, #xD,  *)
+(* #xA, #x9), append a space character (#x20)." This applies only to *)
+(* whitespace written LITERALLY in the attribute value's source text *)
+(* -- a character reference to one of these same codepoints (&#9;,   *)
+(* &#10;, &#13;) is explicitly carved out by the spec ("the           *)
+(* normalized value contains the referenced character itself") and   *)
+(* MUST NOT be touched. parse_attr_value_body below keeps that        *)
+(* distinction by construction: this function is applied only to the *)
+(* raw literal runs it slices straight out of `input` (the            *)
+(* `ptake_while_pos` branch), never to the `decoded` string that      *)
+(* parse_reference returns for `&...;` (char refs and entity refs).   *)
+(* By the time this runs, parse_xml_document's line-ending            *)
+(* normalization pre-pass has already turned every literal CR into    *)
+(* LF, so in practice only '\t' and '\n' remain reachable here -- the *)
+(* '\r' arm stays for spec-literal completeness and so this function  *)
+(* is correct standalone, independent of caller order.                *)
+(* ================================================================ *)
+
+let rec normalize_attr_literal_ws_acc (input:string) (pos:nat) (acc:list string) (fuel:nat)
+  : Tot string (decreases fuel) =
+  if fuel = 0 then String.concat "" (List.Tot.rev acc)
+  else
+    let len = fs_byte_length input in
+    if pos >= len then String.concat "" (List.Tot.rev acc)
+    else
+      let ch = fs_byte_index input pos in
+      if ch = '\t' || ch = '\n' || ch = '\r' then
+        normalize_attr_literal_ws_acc input (pos + 1) (" " :: acc) (fuel - 1)
+      else
+        match ptake_while_pos (fun c -> c <> '\t' && c <> '\n' && c <> '\r') input pos with
+        | ParseOk s pos' ->
+          if fs_byte_length s > 0 then
+            normalize_attr_literal_ws_acc input pos' (s :: acc) (fuel - 1)
+          else
+            normalize_attr_literal_ws_acc input (pos + 1) (String.string_of_char ch :: acc) (fuel - 1)
+        | ParseFail _ _ ->
+          normalize_attr_literal_ws_acc input (pos + 1) (String.string_of_char ch :: acc) (fuel - 1)
+
+// Replace every literal tab/CR/LF in `s` (a raw substring sliced directly
+// out of the source document) with a single space. `s` here is always a
+// literal run, never entity/char-ref-decoded text -- see the block
+// comment above.
+let normalize_attr_literal_ws (s:string) : string =
+  let len = fs_byte_length s in
+  normalize_attr_literal_ws_acc s 0 [] (len + 1)
+
+(* ================================================================ *)
 (* Attribute value parser (with entity decoding)                     *)
 (* ================================================================ *)
 
@@ -635,10 +685,15 @@ let rec parse_attr_value_body (ents:dtd_entity_table) (qch:char) (input:string) 
             if not (scan_chars_valid input pos pos' (pos' - pos)) then
               ParseFail "invalid character in attribute value" pos
             else
-              parse_attr_value_body ents qch input pos' (s :: acc) (fuel - 1)
+              // XML 1.0 SS3.3.3: literal tab/CR/LF in this raw slice
+              // becomes a single space. `s` is sliced straight from
+              // `input`, never entity/char-ref-decoded output, so this
+              // is exactly the "literal whitespace" case the spec
+              // distinguishes from a whitespace character reference.
+              parse_attr_value_body ents qch input pos' (normalize_attr_literal_ws s :: acc) (fuel - 1)
           else
             parse_attr_value_body ents qch input (pos + 1)
-              (String.string_of_char ch :: acc) (fuel - 1)
+              (normalize_attr_literal_ws (String.string_of_char ch) :: acc) (fuel - 1)
         | ParseFail msg fpos -> ParseFail msg fpos
 
 let parse_attr_value (ents:dtd_entity_table) (input:string) (pos:nat) : parse_result string =
@@ -1736,7 +1791,60 @@ let skip_utf8_bom (input:string) : nat =
   then 3
   else 0
 
-let parse_xml_document (input:string) : option xml_node =
+(* ================================================================ *)
+(* Line-ending normalization (XML 1.0 SS2.11)                        *)
+(*                                                                    *)
+(* "To simplify the tasks of applications, the XML processor MUST     *)
+(* behave as if it normalized all line breaks in external parsed      *)
+(* entities (including the document entity) on input, before parsing, *)
+(* by translating both the two-character sequence #xD #xA and any     *)
+(* #xD that is not followed by #xA to a single #xA character." This   *)
+(* is unconditional -- every processor, every input, not a validation *)
+(* or DTD-triggered behavior -- so it is applied once, up front, to    *)
+(* the whole input string, before the BOM/declaration/element parsers *)
+(* ever see a byte. \r and \n are single-byte ASCII (0x0D / 0x0A), so *)
+(* a byte-level scan is safe here -- it can never misidentify a UTF-8 *)
+(* continuation or lead byte (0x80+) as one of these (same reasoning  *)
+(* Parser.FastString's byte-indexed primitives rely on elsewhere in    *)
+(* this module).                                                      *)
+(* ================================================================ *)
+
+let rec normalize_line_endings_acc (input:string) (pos:nat) (acc:list string) (fuel:nat)
+  : Tot string (decreases fuel) =
+  if fuel = 0 then String.concat "" (List.Tot.rev acc)
+  else
+    let len = fs_byte_length input in
+    if pos >= len then String.concat "" (List.Tot.rev acc)
+    else
+      let ch = fs_byte_index input pos in
+      if ch = '\r' then
+        // #xD #xA -> single #xA (CRLF collapses, consuming both bytes);
+        // any other #xD (including at end of input) -> single #xA.
+        if pos + 1 < len && fs_byte_index input (pos + 1) = '\n' then
+          normalize_line_endings_acc input (pos + 2) ("\n" :: acc) (fuel - 1)
+        else
+          normalize_line_endings_acc input (pos + 1) ("\n" :: acc) (fuel - 1)
+      else
+        match ptake_while_pos (fun c -> c <> '\r') input pos with
+        | ParseOk s pos' ->
+          if fs_byte_length s > 0 then
+            normalize_line_endings_acc input pos' (s :: acc) (fuel - 1)
+          else
+            normalize_line_endings_acc input (pos + 1) (String.string_of_char ch :: acc) (fuel - 1)
+        | ParseFail _ _ ->
+          normalize_line_endings_acc input (pos + 1) (String.string_of_char ch :: acc) (fuel - 1)
+
+// Translate every #xD #xA pair and every standalone #xD to a single #xA,
+// per XML 1.0 SS2.11. Applied once, to the whole raw document, before any
+// other parsing step.
+let normalize_line_endings (input:string) : string =
+  let len = fs_byte_length input in
+  normalize_line_endings_acc input 0 [] (len + 1)
+
+let parse_xml_document (input0:string) : option xml_node =
+  // XML 1.0 SS2.11 line-ending normalization MUST happen before parsing,
+  // unconditionally, for every input -- see normalize_line_endings above.
+  let input = normalize_line_endings input0 in
   let len = fs_byte_length input in
   let fuel = len + 1 in
   // The XML declaration, if present, must be the very first thing in
@@ -1793,7 +1901,10 @@ let parse_xml_document (input:string) : option xml_node =
 // needs the document-node model (XPath's `/`, XSLT's `//comment()` over
 // prolog/epilog, the identity transform copying a leading comment) uses
 // this. `None` on exactly the same inputs parse_xml_document rejects.
-let parse_xml_document_children (input:string) : option (list xml_node) =
+let parse_xml_document_children (input0:string) : option (list xml_node) =
+  // See normalize_line_endings above parse_xml_document (XML 1.0 SS2.11):
+  // applied unconditionally, before any other parsing step.
+  let input = normalize_line_endings input0 in
   let len = fs_byte_length input in
   let fuel = len + 1 in
   // See skip_utf8_bom above parse_xml_document: consume a leading
@@ -1836,7 +1947,10 @@ let parse_xml_document_children (input:string) : option (list xml_node) =
 // Parses identically to parse_xml_document_children (same accept/reject
 // flow); the extra component is the id() index substrate. Empty pair list
 // when there is no DOCTYPE or no ID-typed attribute.
-let parse_xml_document_children_with_ids (input:string) : option (list xml_node & list (string & string)) =
+let parse_xml_document_children_with_ids (input0:string) : option (list xml_node & list (string & string)) =
+  // See normalize_line_endings above parse_xml_document (XML 1.0 SS2.11):
+  // applied unconditionally, before any other parsing step.
+  let input = normalize_line_endings input0 in
   let len = fs_byte_length input in
   let fuel = len + 1 in
   // See skip_utf8_bom above parse_xml_document: consume a leading
