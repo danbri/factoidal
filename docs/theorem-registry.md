@@ -651,7 +651,7 @@ applies here unchanged.
 | DISTINCT | `theorem_distinct_complete` | ✅ PROVED | Representative-level, needs `noRepeats` domains hypothesis. |
 | DISTINCT card | `theorem_sr3_distinct_card_spec_false` | ❌ SPEC FALSE | FINDING SR-3 (#359): dedup case-insensitive lang tags vs count exact — third strike of the SR-1/SR-2 equality gap. |
 | SRJ (tree layer) | `lemma_json_val_of_{term,row,vars,rows,response,bool}_roundtrip` | ✅ PROVED | Exact equality, IRI+literal fragment (no bnodes/triple terms/dir literals yet), SPARQL.Protocol.RoundTrip.fst. |
-| SRJ (text layer) | `Parser.FastString.Axioms.fsti` (6 axioms, DO-NOT-WIDEN, justified line-by-line vs the OCaml realisation) + `lemma_byte_at_after_prefix` | 🟡 UNBLOCKED (#358 wave 2) | Axiom module on the StringOrder precedent; `fs_byte_length "ab" == 2` now provable. parse_json↔serialise text bridge still open. |
+| SRJ (text layer) | `Parser.FastString.Axioms.fsti` (8 facts / 9 vals, DO-NOT-WIDEN, justified line-by-line vs the OCaml realisation) + `lemma_byte_at_after_prefix` | ✅ PROVED, off trust surface (Step 4, 2026-08-10 — see "FastString migration Step 4" below; was 🟡 UNBLOCKED-as-axioms as of wave 1/2, now real theorems in `Parser.FastString.Axioms.fst`) | `fs_byte_length "ab" == 2` provable; all 8 facts now machine-verified true of the real definitions, not merely assumed. parse_json↔serialise text bridge still separately blocked by `FStar.String.sub`/`concat` gaps — see `docs/designissues/2026-08-10-string-foundation-decision.md`. |
 
 **G4 wave 2b/2c (2026-08-09)**: ORDER BY sortedness —
 `lemma_sortWith_sorted_by` (sorted-under-preorder for stdlib
@@ -782,6 +782,31 @@ decode-of-encode-vs-list_of_string theorem removed after 3 attempts
 (in-file note with exact error); run-all.sh module-list gap found
 (separate issue).
 
+**FastString migration Step 4 (2026-08-10, branch `faststring-step4b`)**:
+`Parser.FastString.Axioms.fst` lands — companion `.fst` proving ALL 8
+facts (9 vals) `Parser.FastString.Axioms.fsti` states, from the real
+`Parser.FastString.Spec` definitions via `Parser.FastString.fsti`'s
+bridging lemmas. The axiom module is now off the trust surface
+(theorems, not axioms). Two findings: (1) fact 6 (`fs_cp_at_ascii`)
+was FALSE as originally stated — a machine-checked counterexample (`s
+= ""`, `pos = 5`) shows `fs_byte_at`'s and `fs_cp_at`'s independent
+out-of-range sentinels (`0` vs `0xFFFD`) disagree, so the unbounded
+hypothesis did not imply agreement; fixed by adding the missing
+`pos < fs_byte_length s` side condition (zero consumer churn, zero
+current callers). (2) Fact 8 (`fs_byte_sub_self`) needed exactly the
+"single-decoder round trip" theorem
+(`utf8_decode_all_utf8_bytes_identity`) this file's own #374-repair
+entry above records as "removed after 3 attempts" — proved this
+session via an explicit non-recursive unfold lemma for
+`utf8_decode_all_aux` plus a prefix-shift induction and a char-list
+induction; full account in `Parser.FastString.Axioms.fst`. Verified:
+`Parser.FastString.Axioms.fst`, `Parser.FastString.RoundTripLemmas
+.fst`, `SPARQL.Protocol.RoundTrip.fst`, `RDF.NTriples.RoundTrip.fst`
+(all `make <file>.checked`, rc=0). No admit, no `--lax`, no new
+`assume val`. Companion owner-decision doc for the remaining ulib
+string gaps (`FStar.String.sub`/`concat`, `list_of_string` on invalid
+UTF-8): `docs/designissues/2026-08-10-string-foundation-decision.md`.
+
 **G4 step 7 (2026-08-10)**: `eval_select_query` folded into the real
 recursion — `eval_subselect_fwd` assume val RETIRED (patch 62 now ONE
 symbol: eval_property_path_fwd). Metric extended: `query_size`,
@@ -813,3 +838,22 @@ quartet #367) + RDF 1031 pass 0 fail (of 1031), benchmark every row
 inside the 10% gate vs frozen baselines (all faster; attributed to a
 quieter host, not the diff — stated in the plan doc). Unblocks the
 SRJ text bridge (M4) and N-Triples parser-side proofs.
+
+**G4 M4 first SRJ text-level lemmas (2026-08-10, branch
+`srj-text-bridge`)**: `SPARQL.Protocol.RoundTrip.fst` +99 lines, three
+lemmas verified (10/10 repeated runs, deterministic):
+`lemma_concat_spec_two` (fully symbolic two-element decomposition of
+`concat_spec ""` — the shape `serialise_response_json`'s terminal join
+takes on 2+ result rows), `lemma_serialise_response_json_empty_literal`
+(closed literal: `serialise_response_json [] []` equals the exact SRJ
+empty-response string, by `assert_norm`), and
+`lemma_serialise_response_json_two_empty_rows_literal` (two empty rows,
+exercising `concat_spec_cons` end-to-end on a concrete list). FINDING
+recorded in-file: the fully symbolic serializer statement does not
+verify reliably — `Prims.strcat` is itself an opaque `val` with no
+identity/associativity equations (same wall shape as
+`FStar.String.concat`, different primitive; provable via
+`FStar.String.list_of_concat` + list append lemmas +
+`string_of_list_of_string`), and which statement failed shifted with
+unrelated earlier declarations (Z3 context sensitivity). Next step:
+interactive diagnosis via fstar-mcp, not batch retries.
