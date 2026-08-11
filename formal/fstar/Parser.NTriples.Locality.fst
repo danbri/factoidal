@@ -1846,6 +1846,182 @@ let lemma_skip_eol_shift prefix mid suffix pos =
 #pop-options
 
 (** ========================================================================
+ * ITEM 4 FOLLOW-UP (same task #48 ordered work list item 4): the source-
+ * level lift this banner's own "THE CLEAN FIX" paragraph called for has
+ * now landed (`nt_skip_to_eol` top-level in Parser.NTriples.fst,
+ * `nq_skip_line` top-level in Parser.NQuads.fst -- both lifted verbatim
+ * out of their local `let rec` bindings, `input`/`len` made explicit
+ * parameters in place of closure capture, five identical local
+ * `skip_line` copies in Parser.NQuads.fst's sibling per-line walkers
+ * deduplicated to the ONE `nq_skip_line`). The obstacle this banner
+ * diagnosed (a local `let rec` has no qualified name an external lemma
+ * can state an intermediate-step equation about) is gone for both
+ * scanners; the two shift lemmas below are the direct payoff, using
+ * EXACTLY sub-lemma 2/3's template (`lemma_scan_iri_end_shift`/
+ * `_headroom`): a `rec` lemma mirroring the scanner's own recursion
+ * branch-for-branch, `lemma_byte_index_at_middle` for the per-position
+ * byte-read agreement, an `extra:nat` fuel-headroom parameter threaded
+ * unchanged through the recursion (needed for the same reason sub-lemma
+ * 3 needed one: `skip_comment`/the per-line walkers call these scanners
+ * with fuel `len - pos`, which differs between `mid` and the embedded
+ * `full` by exactly `fs_byte_length suffix`).
+ *
+ * `lemma_nt_skip_to_eol_shift`: same shape as `lemma_scan_iri_end_shift_
+ * headroom` with one CORRECTED difference from the first attempt at this
+ * lemma (caught by the verifier, not by inspection -- recorded so a
+ * future session does not re-make it). `nt_skip_to_eol` returns the STOP
+ * POSITION directly (no `ParseOk`/`ParseFail` wrapper), so unlike `scan_
+ * iri_end` (whose `fuel = 0` case ALWAYS fails, making sub-lemma 3's
+ * `fuel = 0` case vacuous for free) this scanner returns `p`
+ * UNCONDITIONALLY at `fuel = 0` -- a value indistinguishable, by return
+ * value alone, from a genuine terminator find. The first attempt assumed
+ * `full`'s side hits an "identical unconditional unfolding" at `fuel =
+ * 0`, which is FALSE under headroom: `full` runs with `fuel + extra`, so
+ * when `mid`'s `fuel` reaches `0` with `extra > 0`, `full`'s own fuel is
+ * still `extra > 0` -- it does NOT stop, it keeps scanning, breaking the
+ * mirrored-step assumption outright (caught as "Could not prove post-
+ * condition" at the WHOLE function body, not a specific branch). FIX:
+ * add `p + fuel > fs_byte_length mid` to the `requires` -- exactly the
+ * one-unit-of-headroom relationship `skip_comment`'s own call site
+ * already has (`nt_skip_to_eol input len (pos+1) (len-pos)` gives `p +
+ * fuel = len + 1`), so no real caller is excluded. This makes the `fuel
+ * = 0` branch vacuous FOR THE RIGHT REASON: `p + 0 > fs_byte_length mid`
+ * forces `p > fs_byte_length mid`, and `mid`'s `fuel = 0` unfolding
+ * returns `p` unconditionally, forcing `stop_pos = p`, contradicting the
+ * `stop_pos < fs_byte_length mid` hypothesis -- vacuous, not assumed.
+ * The extra hypothesis is invariant under the recursive step for free
+ * (`(p+1) + (fuel-1) == p + fuel`, plain `nat` arithmetic), so it needs
+ * no separate threading beyond being stated once. `p >= len_mid` stays
+ * vacuous exactly as before (`stop_pos = p >= len_mid` contradicts `<`).
+ *
+ * `lemma_nq_skip_line_shift`: one layer past `nt_skip_to_eol`'s shape --
+ * `nq_skip_line`'s OWN terminating case calls `skip_eol input p` rather
+ * than returning `p` directly (matching the two-scanner composition
+ * `skip_comment`'s caller already does by hand: scan to the terminator,
+ * then skip over it). Composes DIRECTLY with the file's own already-DONE
+ * `lemma_skip_eol_shift` at the SAME position `p` the induction's base
+ * case lands on -- no new scanning argument, just one more lemma call at
+ * the leaf. Inherits `lemma_skip_eol_shift`'s own non-local CRLF-fusion
+ * edge case (a bare CR ending `mid` exactly, with `suffix` starting with
+ * LF, would fuse a CRLF pair that does not exist in `mid` alone); scoped
+ * out here with the SAME style of extra hypothesis Items 1/2/4's `skip_
+ * eol` sub-lemma used, but position-INDEPENDENT (`fs_byte_length suffix
+ * = 0 \/ fs_byte_at suffix 0 <> 0x0A`, without the `pos + 1 < fs_byte_
+ * length mid` disjunct) since the induction discovers WHERE the
+ * terminator is found rather than being told in advance -- a hypothesis
+ * that must hold for every possible landing position, not one specific
+ * one, so only the two suffix-only disjuncts are available. The
+ * `stop_pos < fs_byte_length mid` scoping additionally (as a byproduct,
+ * not a separate choice) excludes the terminator sitting at `mid`'s
+ * very last byte position mapping to `skip_eol` returning exactly `fs_
+ * byte_length mid` -- a known sound-but-narrow realisation, same
+ * category as the file's other scoped edge cases, not attempted further
+ * here (guard-depth rule). Carries the SAME `p + f > fs_byte_length mid`
+ * sufficient-fuel fix `lemma_nt_skip_to_eol_shift` needed, for the
+ * identical reason: `nq_skip_line`'s `f = 0` case also returns `p`
+ * unconditionally, not a wrapped failure, so it is not automatically
+ * vacuous under fuel headroom without it.
+ * ======================================================================== *)
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val lemma_nt_skip_to_eol_shift (prefix mid suffix : string) (p fuel extra : nat) (stop_pos : nat)
+  : Lemma
+      (requires
+        p + fuel > fs_byte_length mid /\
+        nt_skip_to_eol mid (fs_byte_length mid) p fuel == stop_pos /\
+        stop_pos < fs_byte_length mid)
+      (ensures
+        nt_skip_to_eol (prefix ^ (mid ^ suffix)) (fs_byte_length (prefix ^ (mid ^ suffix)))
+          (fs_byte_length prefix + p) (fuel + extra)
+          == fs_byte_length prefix + stop_pos)
+      (decreases fuel)
+let rec lemma_nt_skip_to_eol_shift prefix mid suffix p fuel extra stop_pos =
+  if fuel = 0 then
+    // p + 0 > fs_byte_length mid (from requires), so p > fs_byte_length
+    // mid. nt_skip_to_eol mid len_mid p 0 == p (definitional unfold on
+    // the concrete literal fuel=0), forcing stop_pos == p via the
+    // requires equation -- but stop_pos < fs_byte_length mid < p is a
+    // contradiction. Vacuous (NOT the "full's side unfolds identically"
+    // argument the first attempt at this lemma wrongly used -- that
+    // broke under headroom; see this lemma's own banner above).
+    ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if p >= len_mid then
+      // nt_skip_to_eol mid len_mid p fuel == p (the p>=len_mid base
+      // case), forcing stop_pos == p -- contradicts stop_pos < len_mid
+      // from the requires. Vacuous.
+      ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_index_at_middle prefix mid suffix p;
+      let c = fs_byte_index mid p in
+      let cc = FStar.Char.int_of_char c in
+      if cc = 0x0A || cc = 0x0D then
+        // Base case: nt_skip_to_eol mid len_mid p fuel == p, forcing
+        // stop_pos == p. Same byte agreement on full's side takes the
+        // SAME branch, so nt_skip_to_eol full len_full (plen+p)
+        // (fuel+extra) == plen+p -- matches the goal.
+        ()
+      else
+        // Recursive case: both sides advance (p+1, fuel-1); nat
+        // arithmetic gives plen + (p+1) == (plen+p) + 1. `extra` is
+        // threaded unchanged, same as sub-lemma 3.
+        lemma_nt_skip_to_eol_shift prefix mid suffix (p + 1) (fuel - 1) extra stop_pos
+    end
+  end
+#pop-options
+
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val lemma_nq_skip_line_shift (prefix mid suffix : string) (p f extra : nat) (stop_pos : nat)
+  : Lemma
+      (requires
+        p + f > fs_byte_length mid /\
+        nq_skip_line mid (fs_byte_length mid) p f == stop_pos /\
+        stop_pos < fs_byte_length mid /\
+        (fs_byte_length suffix = 0 \/ fs_byte_at suffix 0 <> 0x0A))
+      (ensures
+        nq_skip_line (prefix ^ (mid ^ suffix)) (fs_byte_length (prefix ^ (mid ^ suffix)))
+          (fs_byte_length prefix + p) (f + extra)
+          == fs_byte_length prefix + stop_pos)
+      (decreases f)
+let rec lemma_nq_skip_line_shift prefix mid suffix p f extra stop_pos =
+  if f = 0 then
+    // Same fix as lemma_nt_skip_to_eol_shift's fuel=0 case: p + 0 >
+    // fs_byte_length mid forces p > fs_byte_length mid, contradicting
+    // stop_pos = p < fs_byte_length mid. Vacuous.
+    ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if p >= len_mid then
+      // nq_skip_line mid len_mid p f == p, forcing stop_pos == p --
+      // contradicts stop_pos < len_mid. Vacuous.
+      ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_index_at_middle prefix mid suffix p;
+      let c = fs_byte_index mid p in
+      let cc = FStar.Char.int_of_char c in
+      if cc = 0x0A || cc = 0x0D then
+        // Base case: nq_skip_line mid len_mid p f == skip_eol mid p
+        // (mid's own definitional unfolding), forcing stop_pos ==
+        // skip_eol mid p via the requires equation. Compose with the
+        // already-DONE lemma_skip_eol_shift at this SAME position p --
+        // its own requires needs p < fs_byte_length mid (have it, this
+        // branch) and the suffix-only disjunct (have it, this lemma's
+        // own requires) regardless of p, so it applies unconditionally
+        // here.
+        lemma_skip_eol_shift prefix mid suffix p
+      else
+        // Recursive case, identical shape to lemma_nt_skip_to_eol_
+        // shift's.
+        lemma_nq_skip_line_shift prefix mid suffix (p + 1) (f - 1) extra stop_pos
+    end
+  end
+#pop-options
+
+(** ========================================================================
  * WHAT THE TEMPLATE MEANS FOR THE REMAINING COMBINATORS.
  *
  * `scan_iri_end` was the SIMPLEST case on purpose (position-only return,
