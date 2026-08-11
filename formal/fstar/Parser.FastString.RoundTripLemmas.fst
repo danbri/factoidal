@@ -703,3 +703,98 @@ let lemma_ascii_string_is_build_string s =
   FStar.String.string_of_list_of_string (build_string cs)
 
 #pop-options
+
+(** ======================================================================== **)
+(** `Parser.FastString.BaseCases`-flavored sibling, for `RDF.NTriples.        **)
+(** RoundTrip.fst`'s consumer -- session 2026-08-11, continuing #401 M1.      **)
+(**                                                                          **)
+(** `RDF.NTriples.RoundTrip.fst`'s Part 7 (`lemma_scan_iri_end_build_        **)
+(** string`, `lemma_term_iri_round_trip_build_string`, etc.) `open`s          **)
+(** `Parser.FastString.BaseCases`, NOT this module -- so its `build_string`/  **)
+(** `all_ascii` are `Parser.FastString.BaseCases`'s OWN definitions, a        **)
+(** SEPARATE (structurally identical, nominally distinct) pair from THIS      **)
+(** module's `build_string`/`all_ascii` above. The bridging lemma the        **)
+(** consumer needs must be proven for THAT pair, via `module BC = ...`        **)
+(** qualification (not `open`, which would shadow this module's own          **)
+(** same-named definitions).                                                 **)
+(**                                                                          **)
+(** MUCH SHORTER ROUTE available here: `Parser.FastString.BaseCases.fst`     **)
+(** already carries `lemma_build_string_utf8_bytes (cs) : Spec.utf8_bytes    **)
+(** (BC.build_string cs) == BC.codes_of cs` -- ALREADY PROVEN, and (session   **)
+(** finding) it verifies DESPITE being the exact recursive induction shape    **)
+(** (`Spec.utf8_bytes_concat` + `Spec.utf8_bytes_ascii_singleton` + IH) that  **)
+(** failed Error 19 "incomplete quantifiers" for THIS module's `build_       **)
+(** string` when the RHS was `List.Tot.concatMap Spec.utf8_enc_char cs`.      **)
+(** The difference isolating the discrepancy: `BC.codes_of cs` is built by    **)
+(** plain CONS (`int_of_char c :: codes_of rest`), never touching             **)
+(** `List.Tot.concatMap`/`append` at all, and `Parser.FastString.BaseCases    **)
+(** .fst` uses NO `#push-options` (default fuel 2/ifuel 1) where this         **)
+(** module's failed attempt inherited `--fuel 4 --ifuel 4` from its own       **)
+(** outer block -- consistent with this project's existing "more fuel does    **)
+(** not always help, and can hurt" experience (`docs/claude-rules/` /         **)
+(** `fstar-module-style` skill). NOT fully isolated which factor is           **)
+(** load-bearing (out of scope for this landing); recorded as a candidate     **)
+(** explanation, not a re-litigated wall.                                     **)
+(**                                                                          **)
+(** Given `lemma_build_string_utf8_bytes`'s free ride, the missing piece is   **)
+(** just `Spec.utf8_decode_all (BC.codes_of cs) == cs` -- closed by a ONE-    **)
+(** LINE, purely LIST-level (no strings, safe) lemma showing `BC.codes_of cs  **)
+(** == List.Tot.concatMap Spec.utf8_enc_char cs` for all-ASCII `cs` (both     **)
+(** sides reduce to the same `int_of_char c :: ...`/`[int_of_char c] @ ...`   **)
+(** shape), then reusing `Spec.utf8_decode_all_concatMap_identity` (already   **)
+(** proven, general, no `all_ascii` hypothesis needed) as a black box.        **)
+(** ======================================================================== **)
+
+module BC = Parser.FastString.BaseCases
+
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+
+/// `codes_of cs` (BaseCases' plain-cons construction) and `concatMap
+/// utf8_enc_char cs` (this module's construction) carry the SAME byte
+/// list, for all-ASCII `cs` -- purely list-level induction (no strings
+/// anywhere in this proof), safe per the established pattern.
+val bc_codes_of_is_concatMap (cs : list FStar.Char.char{BC.all_ascii cs})
+  : Lemma (ensures BC.codes_of cs == List.Tot.concatMap Spec.utf8_enc_char cs)
+          (decreases cs)
+let rec bc_codes_of_is_concatMap cs =
+  match cs with
+  | [] -> ()
+  | c :: rest -> bc_codes_of_is_concatMap rest
+
+/// Decoding `codes_of cs` (any all-ASCII `cs`) recovers `cs` exactly --
+/// via the list-level identity above plus `Spec.utf8_decode_all_
+/// concatMap_identity` (already proven for ANY `cs`, no `all_ascii`
+/// hypothesis needed there).
+val bc_utf8_decode_all_codes_of_identity (cs : list FStar.Char.char{BC.all_ascii cs})
+  : Lemma (Spec.utf8_decode_all (BC.codes_of cs) == cs)
+let bc_utf8_decode_all_codes_of_identity cs =
+  bc_codes_of_is_concatMap cs;
+  Spec.utf8_decode_all_concatMap_identity cs
+
+/// `list_of_string (BC.build_string cs) == cs`, for BaseCases' `build_
+/// string`/`all_ascii` pair -- straight-line, non-recursive composition
+/// of `BC.lemma_build_string_utf8_bytes` (already proven, in BaseCases),
+/// `Spec.utf8_decode_all_utf8_bytes_identity` (already proven, Section 7
+/// of Spec.fst), and the list-level identity just above.
+val bc_lemma_list_of_build_string (cs : list FStar.Char.char{BC.all_ascii cs})
+  : Lemma (FStar.String.list_of_string (BC.build_string cs) == cs)
+let bc_lemma_list_of_build_string cs =
+  BC.lemma_build_string_utf8_bytes cs;
+  Spec.utf8_decode_all_utf8_bytes_identity (BC.build_string cs);
+  bc_utf8_decode_all_codes_of_identity cs
+
+/// THE missing bridging step, for `RDF.NTriples.RoundTrip.fst`'s
+/// consumer: any string `s` whose own codepoint list is all-ASCII
+/// (`BaseCases.all_ascii`) equals `BaseCases.build_string` of that
+/// codepoint list. Same straight-line shape as `lemma_ascii_string_is_
+/// build_string` above, one module over.
+val lemma_ascii_string_is_build_string_bc (s : string)
+  : Lemma (requires BC.all_ascii (FStar.String.list_of_string s))
+          (ensures  BC.build_string (FStar.String.list_of_string s) == s)
+let lemma_ascii_string_is_build_string_bc s =
+  let cs = FStar.String.list_of_string s in
+  bc_lemma_list_of_build_string cs;
+  FStar.String.string_of_list_of_string s;
+  FStar.String.string_of_list_of_string (BC.build_string cs)
+
+#pop-options
