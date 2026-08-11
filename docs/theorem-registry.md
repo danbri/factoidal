@@ -2,6 +2,10 @@
 
 Deliverable 1 of goal G1 in
 [`designissues/2026-08-05-semantics-proposal-adoption.md`](designissues/2026-08-05-semantics-proposal-adoption.md).
+Deliverable 2 (issue #403, the curated review kernel — the minimal
+subset a W3C-domain expert can read end to end, with the guarantee
+nothing outside it overrides what it states) is
+[`review-kernel.md`](review-kernel.md).
 G1's aim: a W3C-domain expert can review Factoidal's semantics — the
 table rows, the spec predicates that transcribe them, and this
 registry's status column — and know the reviewed definitions are not
@@ -1238,3 +1242,17 @@ off-domain note by direct composition. Every lemma first-attempt
 (technique pre-confirmed by Axioms.fst's private Fact-8 proof). All
 six consumer modules re-verified clean. No admits, no --lax, no new
 assume vals.
+
+**G1 REVIEW KERNEL delivered (2026-08-11, branch `review-kernel`)**:
+`docs/review-kernel.md` — 256 lines, readable in one sitting. 21
+kernel statements: parser 4, expressions 2, filters 3, modifiers 4,
+results 2, streaming 3, entailment chain 3 — each with the verbatim
+F* statement + file:line, its spec predicates, its stated domain in
+one sentence, and its honest boundary. Plus §8 five named
+not-covered gaps, §9 trust-surface table (assume-val realisations,
+z3, F*, the two documented toolchain findings), §10 the override
+guarantee with exact re-verify commands (no-lax/no-admit claim
+re-measured: zero pragma matches outside comments). Every file:line
+read at source while writing. Four drift findings reported to the
+hygiene tracker (#198), incl. a stale "admit()'d" banner over a
+clean `()` body in the COTTAS backend.
