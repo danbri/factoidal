@@ -1091,3 +1091,22 @@ CLOSED by that prior work. Remaining narrowest gap: covering ANY
 well-formed IRI string requires "s == build_string (codes of s)", the
 known string-conversion mixing wall (already probed and blocked once,
 per RoundTripLemmas' notes). No admits, no --lax, no new assume vals.
+
+**FastString migration COMPLETE — steps 0-6 (2026-08-11, branch
+`js-equivalence`, task #47)**: the final step-6 item landed — the
+FastString equivalence corpus now runs UNDER NODE via js_of_ocaml
+(same OCaml harness, bytecode → jsoo, product build flags):
+93,846 pass, 962 expected-fail, 0 unexpected fail (out of 94,808) —
+IDENTICAL to native (verified three ways: fresh node run, fresh
+same-source native compile, prior recorded number). The plan's
+UTF-16/jsoo risk is closed by measurement. Wired into
+tests/unit/run-all.sh (--jsoo / WITH_JSOO=1) for CI. CORRECTION found:
+the plan doc's "bytes-as-JS-chars" domain claim was wrong — jsoo
+6.4.1 builds with use-js-string=true (checked in both the new test
+JS and the product factoidal.js); plan doc corrected. The migration
+end state: zero assume vals in the FastString family except the
+documented unsafe_char_of_d7ff; all 8 axiom facts proved (one was
+false and corrected); fast OCaml is a deletable rule-11(b) speed
+patch; equivalence proven on all input classes, native AND node;
+benchmarks inside the gate throughout; the String.sub and
+String.concat ulib walls closed with zero new axioms.

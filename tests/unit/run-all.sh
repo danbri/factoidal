@@ -336,8 +336,24 @@ for dir in /opt/homebrew/lib /opt/homebrew/opt/zstd/lib \
   fi
 done
 
-# Collect test files. Optional filter arg.
+# Collect test files. Optional filter arg, optional --jsoo flag.
+#
+# --jsoo (or WITH_JSOO=1 in the environment, for CI): after the native
+# run, additionally run tests/unit/run-jsoo-equivalence.sh — the
+# js_of_ocaml/Node build of parser_fast_string_equivalence.ml (task
+# #47 / migration step 6's jsoo-UTF-16-convention risk closure; see
+# docs/designissues/2026-08-10-faststring-refounding-plan.md). Only
+# that one corpus has a jsoo runner today — other tests/unit/*.ml
+# files are native-only (Unix I/O, C-stub-backed modules, etc.) and
+# are not expected to gain one by this flag existing.
+WITH_JSOO="${WITH_JSOO:-0}"
 FILTER="${1:-}"
+if [[ "$FILTER" == "--jsoo" ]]; then
+  WITH_JSOO=1
+  FILTER=""
+elif [[ "${2:-}" == "--jsoo" ]]; then
+  WITH_JSOO=1
+fi
 shopt -s nullglob
 ALL_TESTS=()
 for ml in "$SCRIPT_DIR"/*.ml; do
@@ -420,6 +436,21 @@ for name in "${ALL_TESTS[@]}"; do
   fi
   echo
 done
+
+if [[ "$WITH_JSOO" == "1" ]]; then
+  echo "--- parser_fast_string_equivalence (jsoo/node) ---"
+  TOTAL_FILES=$((TOTAL_FILES + 1))
+  JSOO_RC=0
+  "$SCRIPT_DIR/run-jsoo-equivalence.sh" || JSOO_RC=$?
+  if [[ $JSOO_RC -eq 0 ]]; then
+    PASS_FILES=$((PASS_FILES + 1))
+    echo "parser_fast_string_equivalence (jsoo): PASS"
+  else
+    FAIL_FILES=$((FAIL_FILES + 1))
+    echo "parser_fast_string_equivalence (jsoo): FAIL (rc=$JSOO_RC)"
+  fi
+  echo
+fi
 
 echo "============================================================"
 echo "tests/unit summary: ${PASS_FILES} file(s) pass, ${FAIL_FILES} file(s) fail (out of ${TOTAL_FILES})"
