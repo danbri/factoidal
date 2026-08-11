@@ -191,7 +191,16 @@ Rules that follow:
    ⚠️ risk/caveat · 🧹 cleanup/hygiene. Owner messages may use emoji
    as markers too — treat them as tagging, not tone. Full register
    rules: `skills/markdown-style/SKILL.md`.
-6. **Old steers decay — re-verify before acting on one.** "Protocols
+6. **Work tracking lives in GitHub issues, not session state** (owner
+   correction, 2026-08-11, verbatim: "This is unacceptably shit for
+   ios app users - you spew thousands of lines of blabber at us with
+   no tooling to organize it. Use github properly."). Session-local
+   task lists are invisible on mobile and die with the container.
+   Every workstream gets a real issue; the one-page index is
+   **#404 Active work tracker** (update it at every harvest cycle —
+   staleness there is a bug). Status reports LINK issues instead of
+   restating their content.
+7. **Old steers decay — re-verify before acting on one.** "Protocols
    deprioritized" predated SPARQL Protocol reaching 53 pass, 0 fail;
    citing a steer against a tree that has since moved is acting on
    stale data.
