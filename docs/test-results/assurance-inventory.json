@@ -5415,6 +5415,8 @@
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_sub",
+      "slice_chars",
+      "take_chars",
       "utf8_enc_char"
      ]
     },
@@ -7341,7 +7343,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_FastString_Spec.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 20,
+   "shipping_function_count": 24,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -7351,7 +7353,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 17,
+   "local_refinement_lemma_count": 15,
    "local_refinement_lemma_names": [
     "nth_byte_zero",
     "nth_byte_succ",
@@ -7362,9 +7364,7 @@
     "utf8_bytes_concat",
     "utf8_bytes_ascii_singleton",
     "utf8_decode_all_aux_shift",
-    "chars_take_drop_append",
     "drop_chars_add",
-    "chars_split3",
     "drop_bytes_append_left",
     "drop_bytes_self",
     "take_bytes_append_left",
@@ -7424,6 +7424,8 @@
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_sub",
+      "slice_chars",
+      "take_chars",
       "utf8_enc_char"
      ]
     },
@@ -7527,6 +7529,29 @@
      ]
     },
     {
+     "name": "chars_take_drop_append",
+     "proved_in": "Parser.FastString.Spec",
+     "file": "formal/fstar/Parser.FastString.Spec.fst",
+     "line": 724,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "drop_chars",
+      "take_chars"
+     ]
+    },
+    {
+     "name": "chars_split3",
+     "proved_in": "Parser.FastString.Spec",
+     "file": "formal/fstar/Parser.FastString.Spec.fst",
+     "line": 746,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "drop_chars",
+      "slice_chars",
+      "take_chars"
+     ]
+    },
+    {
      "name": "utf8_decode_all_slice_by_charcount",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
@@ -7534,6 +7559,8 @@
      "unconditional": true,
      "names_shipping_functions": [
       "slice_bytes",
+      "slice_chars",
+      "take_chars",
       "utf8_decode_all",
       "utf8_enc_char"
      ]
@@ -10328,7 +10355,7 @@
    "files": [
     "formal/fstar/Parser.XML.fst"
    ],
-   "loc": 1938,
+   "loc": 2052,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10336,7 +10363,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_XML.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 90,
+   "shipping_function_count": 94,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -12423,7 +12450,7 @@
    "files": [
     "formal/fstar/RDF.Entailment.Simple.fst"
    ],
-   "loc": 159,
+   "loc": 183,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -12448,7 +12475,7 @@
      "name": "lemma_simple_entails_unfold",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 303,
+     "line": 320,
      "unconditional": true,
      "names_shipping_functions": [
       "simple_entails",
@@ -12461,7 +12488,7 @@
      "name": "lemma_try_match_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 230,
+     "line": 239,
      "unconditional": false,
      "names_shipping_functions": [
       "try_match"
@@ -12471,6 +12498,38 @@
       "binding_compat",
       "bnd_total",
       "leq_reflexive"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.Simple.Refinement"
+     ]
+    },
+    {
+     "name": "lemma_match_term_ground_sound",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 753,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "match_term"
+     ],
+     "names_declarative_relations": [
+      "leq_always_identity"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.Simple.Refinement"
+     ]
+    },
+    {
+     "name": "lemma_match_triple_ground_sound",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 780,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "match_triple"
+     ],
+     "names_declarative_relations": [
+      "leq_always_identity"
      ],
      "declarative_relations_from": [
       "RDF.Entailment.Simple.Refinement"
@@ -12510,7 +12569,7 @@
      "name": "lemma_match_subj_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 168,
+     "line": 177,
      "unconditional": false,
      "names_shipping_functions": [
       "match_subj"
@@ -12524,7 +12583,7 @@
      "name": "lemma_match_term_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 182,
+     "line": 191,
      "unconditional": false,
      "names_shipping_functions": [
       "match_term"
@@ -12540,7 +12599,7 @@
      "name": "lemma_match_triple_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 211,
+     "line": 220,
      "unconditional": false,
      "names_shipping_functions": [
       "match_triple"
@@ -12556,7 +12615,7 @@
      "name": "lemma_try_alts_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 244,
+     "line": 253,
      "unconditional": false,
      "names_shipping_functions": [
       "try_alts"
@@ -12573,7 +12632,7 @@
      "name": "simple_entails_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 311,
+     "line": 328,
      "unconditional": false,
      "names_shipping_functions": [
       "simple_entails"
@@ -12586,7 +12645,7 @@
      "name": "lemma_match_subj_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 338,
+     "line": 355,
      "unconditional": false,
      "names_shipping_functions": [
       "match_subj"
@@ -12601,7 +12660,7 @@
      "name": "lemma_match_term_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 355,
+     "line": 372,
      "unconditional": false,
      "names_shipping_functions": [
       "match_term"
@@ -12618,7 +12677,7 @@
      "name": "lemma_match_triple_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 401,
+     "line": 418,
      "unconditional": false,
      "names_shipping_functions": [
       "match_triple"
@@ -12635,7 +12694,7 @@
      "name": "lemma_try_match_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 433,
+     "line": 450,
      "unconditional": false,
      "names_shipping_functions": [
       "try_match"
@@ -12651,7 +12710,7 @@
      "name": "lemma_try_alts_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 448,
+     "line": 465,
      "unconditional": false,
      "names_shipping_functions": [
       "try_alts"
@@ -12669,7 +12728,7 @@
      "name": "simple_entails_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 493,
+     "line": 510,
      "unconditional": false,
      "names_shipping_functions": [
       "simple_entails"
@@ -12683,7 +12742,7 @@
      "name": "entails_with_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 518,
+     "line": 535,
      "unconditional": false,
      "names_shipping_functions": [
       "entails_with"
@@ -12698,7 +12757,7 @@
      "name": "entails_with_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 531,
+     "line": 548,
      "unconditional": false,
      "names_shipping_functions": [
       "entails_with"
@@ -12713,7 +12772,7 @@
      "name": "simple_entails_iff_spec",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 547,
+     "line": 564,
      "unconditional": false,
      "names_shipping_functions": [
       "simple_entails"
@@ -12724,15 +12783,72 @@
      ]
     },
     {
-     "name": "simple_entails_not_sound_unconditionally",
+     "name": "simple_entails_se1_regression",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 599,
+     "line": 644,
      "unconditional": false,
      "names_shipping_functions": [
       "simple_entails"
      ],
      "names_declarative_relations": [
+      "simple_entailment_spec"
+     ]
+    },
+    {
+     "name": "simple_entails_se1_positive_regression",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 688,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "simple_entails"
+     ],
+     "names_declarative_relations": [
+      "simple_entailment_spec"
+     ]
+    },
+    {
+     "name": "lemma_try_match_ground_sound",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 794,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "try_match"
+     ],
+     "names_declarative_relations": [
+      "graph_ground",
+      "is_subgraph",
+      "leq_always_identity"
+     ]
+    },
+    {
+     "name": "lemma_try_alts_ground_sound",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 805,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "try_alts"
+     ],
+     "names_declarative_relations": [
+      "graph_ground",
+      "is_subgraph",
+      "leq_always_identity"
+     ]
+    },
+    {
+     "name": "simple_entails_sound_ground",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 867,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "simple_entails"
+     ],
+     "names_declarative_relations": [
+      "graph_ground",
       "simple_entailment_spec"
      ]
     }
@@ -12852,7 +12968,7 @@
    "files": [
     "formal/fstar/RDF.Entailment.Simple.Refinement.fst"
    ],
-   "loc": 654,
+   "loc": 883,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "fully-erased",
@@ -12861,7 +12977,7 @@
    "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 0,
-   "declarative_relation_count": 8,
+   "declarative_relation_count": 9,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
@@ -12870,7 +12986,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 9,
+   "local_refinement_lemma_count": 14,
    "local_refinement_lemma_names": [
     "lemma_subj_terms_agree",
     "lemma_subject_eq_identity",
@@ -12878,9 +12994,14 @@
     "lemma_binding_extends_trans",
     "lemma_simple_leq_reflexive",
     "lemma_simple_bnd_total",
+    "lemma_simple_leq_always_identity",
     "lemma_simple_leq_exact_identity",
     "lemma_se1_lit_wf",
-    "lemma_spec_is_instance_subgraph"
+    "lemma_spec_is_instance_subgraph",
+    "lemma_match_subj_ground_sound",
+    "lemma_subj_inst_ground_refl",
+    "lemma_term_inst_ground_refl",
+    "lemma_triple_inst_ground_refl"
    ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
@@ -12893,7 +13014,7 @@
    "files": [
     "formal/fstar/RDF.Entailment.Simple.Spec.fst"
    ],
-   "loc": 282,
+   "loc": 310,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "fully-erased",
@@ -12902,7 +13023,7 @@
    "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 0,
-   "declarative_relation_count": 13,
+   "declarative_relation_count": 14,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
@@ -17626,7 +17747,7 @@
     "formal/fstar/RDF.Term.fst",
     "formal/fstar/RDF.Term.fsti"
    ],
-   "loc": 604,
+   "loc": 637,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -17634,7 +17755,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_Term.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 36,
+   "shipping_function_count": 37,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -17644,8 +17765,10 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 3,
+   "local_refinement_lemma_count": 5,
    "local_refinement_lemma_names": [
+    "lemma_literal_term_eq_refl",
+    "lemma_literal_term_eq_identity",
     "lemma_subject_eq_refl",
     "lemma_literal_eq_refl",
     "lemma_rdf_term_eq_refl"
@@ -17799,7 +17922,7 @@
      "name": "lemma_join_canon_term_eq",
      "proved_in": "RDF.Term",
      "file": "formal/fstar/RDF.Term.fsti",
-     "line": 502,
+     "line": 535,
      "unconditional": false,
      "names_shipping_functions": [
       "join_canon_term",
@@ -24645,7 +24768,6 @@
      ],
      "names_declarative_relations": [
       "bgp_ground_positions",
-      "graph_ground",
       "smap_ground"
      ],
      "declarative_relations_from": [
@@ -24686,7 +24808,6 @@
      ],
      "names_declarative_relations": [
       "eval_bgp_complete_at",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24709,7 +24830,6 @@
       "bgp_frag",
       "eval_bgp_complete_at",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24751,7 +24871,6 @@
      ],
      "names_declarative_relations": [
       "eval_bgp_complete_at",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24840,7 +24959,6 @@
      ],
      "names_declarative_relations": [
       "eval_bgp_store_complete_at",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24862,7 +24980,6 @@
      ],
      "names_declarative_relations": [
       "eval_bgp_store_complete_at",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24881,7 +24998,6 @@
       "instantiate_bgp"
      ],
      "names_declarative_relations": [
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24904,7 +25020,6 @@
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24928,7 +25043,6 @@
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24951,7 +25065,6 @@
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24976,7 +25089,6 @@
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -25001,7 +25113,6 @@
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -33345,6 +33456,8 @@
    "unconditional": true,
    "shipping_functions_named": [
     "fs_byte_sub",
+    "slice_chars",
+    "take_chars",
     "utf8_enc_char"
    ],
    "shipping_modules": [
@@ -33820,13 +33933,18 @@
    "file": "formal/fstar/Parser.FastString.Spec.fst",
    "line": 724,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "drop_chars",
+    "take_chars"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "drop_chars_add",
@@ -33834,8 +33952,12 @@
    "file": "formal/fstar/Parser.FastString.Spec.fst",
    "line": 732,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "drop_chars"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -33848,13 +33970,19 @@
    "file": "formal/fstar/Parser.FastString.Spec.fst",
    "line": 746,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "drop_chars",
+    "slice_chars",
+    "take_chars"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "drop_bytes_append_left",
@@ -33954,6 +34082,8 @@
    "unconditional": true,
    "shipping_functions_named": [
     "slice_bytes",
+    "slice_chars",
+    "take_chars",
     "utf8_decode_all",
     "utf8_enc_char"
    ],
@@ -44706,7 +44836,7 @@
    "name": "lemma_match_subj_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 168,
+   "line": 177,
    "unconditional": false,
    "shipping_functions_named": [
     "match_subj"
@@ -44732,7 +44862,7 @@
    "name": "lemma_match_term_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 182,
+   "line": 191,
    "unconditional": false,
    "shipping_functions_named": [
     "match_term"
@@ -44760,7 +44890,7 @@
    "name": "lemma_match_triple_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 211,
+   "line": 220,
    "unconditional": false,
    "shipping_functions_named": [
     "match_triple"
@@ -44788,7 +44918,7 @@
    "name": "lemma_try_match_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 230,
+   "line": 239,
    "unconditional": false,
    "shipping_functions_named": [
     "try_match"
@@ -44813,7 +44943,7 @@
    "name": "lemma_try_alts_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 244,
+   "line": 253,
    "unconditional": false,
    "shipping_functions_named": [
     "try_alts"
@@ -44842,7 +44972,7 @@
    "name": "lemma_simple_leq_reflexive",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 286,
+   "line": 297,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -44860,7 +44990,7 @@
    "name": "lemma_simple_bnd_total",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 289,
+   "line": 300,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -44875,10 +45005,28 @@
    "class": "local_refinement"
   },
   {
+   "name": "lemma_simple_leq_always_identity",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 306,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "lemma_simple_leq_exact_identity",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 291,
+   "line": 314,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -44896,7 +45044,7 @@
    "name": "lemma_simple_entails_unfold",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 303,
+   "line": 320,
    "unconditional": true,
    "shipping_functions_named": [
     "simple_entails",
@@ -44915,7 +45063,7 @@
    "name": "simple_entails_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 311,
+   "line": 328,
    "unconditional": false,
    "shipping_functions_named": [
     "simple_entails"
@@ -44939,7 +45087,7 @@
    "name": "lemma_match_subj_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 338,
+   "line": 355,
    "unconditional": false,
    "shipping_functions_named": [
     "match_subj"
@@ -44966,7 +45114,7 @@
    "name": "lemma_match_term_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 355,
+   "line": 372,
    "unconditional": false,
    "shipping_functions_named": [
     "match_term"
@@ -44995,7 +45143,7 @@
    "name": "lemma_match_triple_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 401,
+   "line": 418,
    "unconditional": false,
    "shipping_functions_named": [
     "match_triple"
@@ -45024,7 +45172,7 @@
    "name": "lemma_try_match_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 433,
+   "line": 450,
    "unconditional": false,
    "shipping_functions_named": [
     "try_match"
@@ -45052,7 +45200,7 @@
    "name": "lemma_try_alts_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 448,
+   "line": 465,
    "unconditional": false,
    "shipping_functions_named": [
     "try_alts"
@@ -45082,7 +45230,7 @@
    "name": "simple_entails_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 493,
+   "line": 510,
    "unconditional": false,
    "shipping_functions_named": [
     "simple_entails"
@@ -45107,7 +45255,7 @@
    "name": "entails_with_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 518,
+   "line": 535,
    "unconditional": false,
    "shipping_functions_named": [
     "entails_with"
@@ -45134,7 +45282,7 @@
    "name": "entails_with_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 531,
+   "line": 548,
    "unconditional": false,
    "shipping_functions_named": [
     "entails_with"
@@ -45161,7 +45309,7 @@
    "name": "simple_entails_iff_spec",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 547,
+   "line": 564,
    "unconditional": false,
    "shipping_functions_named": [
     "simple_entails"
@@ -45186,7 +45334,7 @@
    "name": "lemma_se1_lit_wf",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 597,
+   "line": 628,
    "unconditional": true,
    "shipping_functions_named": [
     "literal_wf"
@@ -45201,11 +45349,35 @@
    "class": "local_refinement"
   },
   {
-   "name": "simple_entails_not_sound_unconditionally",
+   "name": "simple_entails_se1_regression",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 599,
+   "line": 644,
    "unconditional": false,
+   "shipping_functions_named": [
+    "simple_entails"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "simple_entailment_spec"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "simple_entails_se1_positive_regression",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 688,
+   "unconditional": true,
    "shipping_functions_named": [
     "simple_entails"
    ],
@@ -45228,7 +45400,7 @@
    "name": "lemma_spec_is_instance_subgraph",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 645,
+   "line": 719,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -45244,6 +45416,207 @@
    ],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
+  },
+  {
+   "name": "lemma_match_subj_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 746,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "match_subj"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_match_term_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 753,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "match_term"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_match_triple_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 780,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "match_triple"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_try_match_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 794,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "try_match"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "graph_ground",
+    "is_subgraph",
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement",
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_try_alts_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 805,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "try_alts"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "graph_ground",
+    "is_subgraph",
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement",
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_subj_inst_ground_refl",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 835,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "subj_inst"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_term_inst_ground_refl",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 841,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "term_inst"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_triple_inst_ground_refl",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 854,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "triple_inst"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "simple_entails_sound_ground",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 867,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "simple_entails"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "graph_ground",
+    "simple_entailment_spec"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
   },
   {
    "name": "lemma_mem_triple_append",
@@ -50538,10 +50911,46 @@
    "class": "local_refinement"
   },
   {
+   "name": "lemma_literal_term_eq_refl",
+   "host_module": "RDF.Term",
+   "file": "formal/fstar/RDF.Term.fsti",
+   "line": 478,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "literal_term_eq"
+   ],
+   "shipping_modules": [
+    "RDF.Term"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_literal_term_eq_identity",
+   "host_module": "RDF.Term",
+   "file": "formal/fstar/RDF.Term.fsti",
+   "line": 482,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "literal_term_eq"
+   ],
+   "shipping_modules": [
+    "RDF.Term"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "lemma_join_canon_term_eq",
    "host_module": "RDF.Term",
    "file": "formal/fstar/RDF.Term.fsti",
-   "line": 502,
+   "line": 535,
    "unconditional": false,
    "shipping_functions_named": [
     "join_canon_term",
@@ -50560,7 +50969,7 @@
    "name": "lemma_subject_eq_refl",
    "host_module": "RDF.Term",
    "file": "formal/fstar/RDF.Term.fsti",
-   "line": 525,
+   "line": 558,
    "unconditional": true,
    "shipping_functions_named": [
     "subject_eq"
@@ -50578,7 +50987,7 @@
    "name": "lemma_literal_eq_refl",
    "host_module": "RDF.Term",
    "file": "formal/fstar/RDF.Term.fsti",
-   "line": 531,
+   "line": 564,
    "unconditional": true,
    "shipping_functions_named": [
     "literal_eq"
@@ -50596,7 +51005,7 @@
    "name": "lemma_rdf_term_eq_refl",
    "host_module": "RDF.Term",
    "file": "formal/fstar/RDF.Term.fsti",
-   "line": 535,
+   "line": 568,
    "unconditional": true,
    "shipping_functions_named": [
     "rdf_term_eq"
@@ -58514,17 +58923,17 @@
    "shipping_functions_named": [],
    "shipping_modules": [],
    "declarative_relations_named": [
-    "graph_ground",
     "graph_tt_free"
    ],
    "declarative_modules": [
-    "RDF.Entailment.Simple.Spec",
-    "SPARQL11.EntailmentRegime.RDFS"
+    "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "local_refinement"
   },
   {
@@ -58634,14 +59043,15 @@
    ],
    "declarative_relations_named": [
     "bgp_ground_positions",
-    "graph_ground",
     "smap_ground"
    ],
    "declarative_modules": [
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -58756,18 +59166,18 @@
    "shipping_functions_named": [],
    "shipping_modules": [],
    "declarative_relations_named": [
-    "graph_ground",
     "is_subgraph",
     "simple_entailment_spec"
    ],
    "declarative_modules": [
-    "RDF.Entailment.Simple.Spec",
-    "SPARQL11.EntailmentRegime.RDFS"
+    "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "local_refinement"
   },
   {
@@ -58779,18 +59189,18 @@
    "shipping_functions_named": [],
    "shipping_modules": [],
    "declarative_relations_named": [
-    "graph_ground",
     "is_subgraph",
     "simple_entailment_spec"
    ],
    "declarative_modules": [
-    "RDF.Entailment.Simple.Spec",
-    "SPARQL11.EntailmentRegime.RDFS"
+    "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "local_refinement"
   },
   {
@@ -58924,7 +59334,6 @@
    ],
    "declarative_relations_named": [
     "eval_bgp_complete_at",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -58933,7 +59342,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -58953,7 +59364,6 @@
     "bgp_frag",
     "eval_bgp_complete_at",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -58963,7 +59373,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59045,7 +59457,6 @@
    ],
    "declarative_relations_named": [
     "eval_bgp_complete_at",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59054,7 +59465,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59196,7 +59609,6 @@
    ],
    "declarative_relations_named": [
     "eval_bgp_store_complete_at",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59205,7 +59617,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59224,7 +59638,6 @@
    ],
    "declarative_relations_named": [
     "eval_bgp_store_complete_at",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59233,7 +59646,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59249,7 +59664,6 @@
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59258,7 +59672,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59278,7 +59694,6 @@
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59288,7 +59703,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59308,7 +59725,6 @@
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59318,7 +59734,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59337,7 +59755,6 @@
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59347,7 +59764,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59368,7 +59787,6 @@
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59378,7 +59796,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59399,7 +59819,6 @@
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59409,7 +59828,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -61505,9 +61926,9 @@
   "modules_with_algorithm_correctness_theorem": 41,
   "modules_with_internal_refinement_theorem": 19,
   "modules_merely_tot": 129,
-  "w3c_refinement_theorem_count": 308,
-  "internal_refinement_theorem_count": 146,
-  "algorithm_correctness_theorem_count": 336,
+  "w3c_refinement_theorem_count": 312,
+  "internal_refinement_theorem_count": 148,
+  "algorithm_correctness_theorem_count": 338,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [
    "OWL.RL.Refinement",
@@ -61528,7 +61949,7 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1639,
+  "lemma_count": 1652,
   "tiers": {
    "algorithm-correctness": 26,
    "internal-refinement": 10,
@@ -61539,5 +61960,5 @@
    "w3c-refinement": 10
   }
  },
- "commit": "fdc15c1e1"
+ "commit": "7b27d06a5"
 }
