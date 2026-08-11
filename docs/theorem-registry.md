@@ -1197,3 +1197,24 @@ noted at `fs_byte_sub_eq`. Findings recorded in
 `Parser.FastString.RoundTripLemmas.fst` ("SHARPENED FINDING" section)
 + pointer updated in `RDF.NTriples.RoundTrip.fst`. No proof logic
 changed; both files verify clean.
+
+**#402: CONSUMER layer theorems (2026-08-11, branch `consumer-hom`)**:
+`RDF.NQuads.Streaming.fst` +~420 lines. API: `stream_consume` folds
+each parsed quad into consumer state in ARRIVAL order; per-chunk state
+is (consumer-state, stream_state) ONLY — no retained quads/dataset
+(constant-memory observation documented definitionally). Reuses the
+existing `Parser.NQuads.fold_nquads_acc` — no new parsing logic.
+PROVED: single-chunk generic theorems
+(`theorem_stream_consume_single_chunk{,_no_newline,_ends_in_newline}`,
+generic in consumer type, no witness chains) and
+`theorem_stream_consume_dataset_eq_batch` — fully general multi-chunk
+for the dataset-building consumer, routed through
+theorem_stream_eq_batch via the new witness-free bridge
+`fold_nquads_acc_eq_parse_nquads_acc` (the two folds are
+branch-identical under never_stop). DESIGN NOTE (argued, not just
+asserted): grouped-by-graph output order is impossible for ANY
+bounded-memory consumer when graphs interleave across chunks — arrival
+order is the correct target. FINDING: the both-fully-generic theorem
+(any consumer x any chunks) is mechanical over the witness-chain kit
+but a ~670-line pass — separate landing. Verify clean, no admits, no
+--lax, no new assume vals.
