@@ -15,10 +15,13 @@ module RDF.Entailment.Simple
 // That shared scope is exactly what the W3C `constrained-bnodes-*` and
 // `*-no-spurious` tests pin down.
 //
-// This is the "simple" regime only: literals are matched by STRUCTURAL
-// equality (`literal_eq`), no datatype value canonicalization and no
-// RDF/RDFS axiomatic closure. Those are the RDF / RDFS regimes, layered
-// on top of this engine separately. Per Iron Rule #1 this logic is
+// This is the "simple" regime only: literals are matched by literal TERM
+// equality (`literal_term_eq` -- RDF 1.1 Concepts §3.3, case-sensitive
+// language tags, no rdf:XMLLiteral canonicalization), no datatype value
+// canonicalization and no RDF/RDFS axiomatic closure. Those are the
+// RDF / RDFS regimes, layered on top of this engine separately, and they
+// pass the coarser `literal_eq` instead (issue #324 / SE-1). Per Iron
+// Rule #1 this logic is
 // F*-native (it previously lived, un-triple-term-aware, in the OCaml
 // w3c_runner — a rule #15 boundary violation this module retires for the
 // rdf12 suite).
@@ -60,13 +63,22 @@ let match_subj (b : binding) (ps : subject) (gs : subject) : option binding =
 // is on `po`, a strict sub-term of `T_TripleTerm ps pp po` (the subject
 // side goes through the non-recursive `match_subj`).
 // The engine is parameterized by a literal-equality predicate `leq`
-// (`literal -> literal -> bool`). Simple entailment passes structural
-// `literal_eq`; the RDF/RDFS (D-)entailment layer in RDF.Entailment.Regime
-// passes a value-aware predicate for recognized datatypes. `leq` is a
-// plain value argument — it is threaded through the matchers untouched and
-// does NOT participate in the termination measures, so the Phase A proof
-// is unchanged. Bnode-bound consistency still uses structural
-// `rdf_term_eq` (a bnode re-seen must denote the same ground term).
+// (`literal -> literal -> bool`). Simple entailment passes strict
+// `literal_term_eq` (issue #324 / SE-1); the RDF/RDFS (D-)entailment
+// layer in RDF.Entailment.Regime passes a value-aware predicate for
+// recognized datatypes. `leq` is a plain value argument — it is threaded
+// through the matchers untouched and does NOT participate in the
+// termination measures, so the Phase A proof is unchanged. Bnode-bound
+// consistency still uses structural `rdf_term_eq` (a bnode re-seen must
+// denote the same ground term) -- NOTE this is `rdf_term_eq`, not `leq`,
+// so it still routes literal comparison through the coarser
+// `literal_eq` even under the simple regime. Benign for every fixture
+// this engine runs today (no test reuses a blank node across two
+// literals that differ only by language-tag case or XMLLiteral
+// canonical form) but it is the same root cause as SE-1 reachable
+// through a second path; not closed by this fix. Tracked as a residual
+// note against issue #324, not a separate issue, until it has a
+// witness.
 // The engine is parameterized by TWO predicates:
 //   * `leq : inside_tt -> literal -> literal -> bool` — literal match,
 //     given whether the literals sit INSIDE a triple term (opaque
@@ -152,7 +164,19 @@ let entails_with (leq : bool -> literal -> literal -> bool) (bnd : rdf_term -> b
                  (a b : list triple) : bool =
   try_match leq bnd b [] a
 
-// Graph `a` simply-entails graph `b`: structural literal equality (position
-// ignored), and blank nodes may range over any ground term.
+// Graph `a` simply-entails graph `b`: literal TERM equality (RDF 1.1
+// Semantics §5 / RDF 1.1 Concepts §3.3 -- position ignored, case
+// SENSITIVE on language tags, no rdf:XMLLiteral value canonicalization),
+// and blank nodes may range over any ground term.
+//
+// Issue #324 (SE-1): this used to pass `literal_eq`, which is
+// deliberately COARSER than literal term equality (it folds language-tag
+// case and canonicalizes rdf:XMLLiteral pairs -- both D-entailment
+// behaviours, RDF.Entailment.Regime's job, not simple entailment's). That
+// let `simple_entails` accept pairs that do not stand in the simple
+// entailment relation -- see the machine-checked witness
+// `simple_entails_not_sound_unconditionally` in
+// RDF.Entailment.Simple.Refinement.fst. `literal_term_eq` is the strict
+// per-field test the spec actually calls for.
 let simple_entails (a b : list triple) : bool =
-  entails_with (fun _ l m -> literal_eq l m) (fun _ -> true) a b
+  entails_with (fun _ l m -> literal_term_eq l m) (fun _ -> true) a b
