@@ -829,7 +829,7 @@ Miscellaneous support:
   Parquet.Footer.fst              2591 lines,  3 assume val
   RDF.Canonical.fst               1142 lines,  1 assume val
   SHACL.Validation.fst            2546 lines,  1 assume val (phase 3: reports + sh:sparql)
-  Parser.FastString.fst            210 lines,  7 assume val
+  Parser.FastString.fst            342 lines,  0 assume val (re-founded on Parser.FastString.Spec.fst, G4/#358, 2026-08-10; sole surviving assume val for this family is unsafe_char_of_d7ff in the sibling Parser.FastString.CharBoundary.fst, 57 lines)
   Parser.BallyhooHDTQ.fst          174 lines, 17 assume val
   Parser.BallyhooHDT.fst           173 lines, 13 assume val
   Parser.BallyhooCOTTAS.fst        170 lines, 17 assume val
@@ -844,7 +844,7 @@ Build and test harness:
                                    <issue>_<description>.sh with GitHub issue
 ```
 
-Inventory summary: 90 modules, 47517 lines total, 141 assume val declarations.
+Inventory summary: 90 modules, 47517 lines total, 141 assume val declarations. (This total predates the FastString re-founding migration, 2026-08-10: `Parser.FastString.fst` went from 7 assume vals to 0, so the true current total is a handful lower. Flagged, not recomputed — a full-tree recount is a separate task from this obsolescence sweep, which is scoped to FastString claims only.)
 
 ## Rule-by-rule proof program (owner-approved 2026-08-04, live)
 
@@ -975,7 +975,7 @@ are now concrete recursive F\* definitions — the last one,
 
 **Other modules with assume vals** (128 total, not re-audited this
 landing — this figure predates the correction above and may itself
-carry unrelated drift): Ballyhoo HDT parsers (47: Parser.BallyhooCOTTAS.fst 17, Parser.BallyhooHDTQ.fst 17, Parser.BallyhooHDT.fst 13), on-disk store/indexing (44: RDF.CottasStore.OnDiskRuntime.fst 15, RDF.CottasStore.fst 10, RDF.CottasStore.OnDiskIndex.fst 7, RDF.CottasStore.LazyDict.fst 9, RDF.CottasStore.LazyDictRegistry.fst 5), fast string parsing (7: Parser.FastString.fst), lazy term caching (10: RDF.Store.LazyTermCache.fst 6, RDF.Store.HDTTermCacheRegistry.fst 4), misc (11: Parquet.Footer.fst 3, RDF.CottasStore.ColumnSeq.fst 3, SHACL.Validation.fst 3, Util.Log.fst 5).
+carry unrelated drift): Ballyhoo HDT parsers (47: Parser.BallyhooCOTTAS.fst 17, Parser.BallyhooHDTQ.fst 17, Parser.BallyhooHDT.fst 13), on-disk store/indexing (44: RDF.CottasStore.OnDiskRuntime.fst 15, RDF.CottasStore.fst 10, RDF.CottasStore.OnDiskIndex.fst 7, RDF.CottasStore.LazyDict.fst 9, RDF.CottasStore.LazyDictRegistry.fst 5), fast string parsing (STALE as of 2026-08-10 FastString re-founding — was 7: Parser.FastString.fst, now 0 there / 1 moved to the sibling Parser.FastString.CharBoundary.fst; the 7-figure below has NOT been subtracted out of the 128 total, since that would require re-auditing the whole breakdown, out of scope for this FastString-only sweep), lazy term caching (10: RDF.Store.LazyTermCache.fst 6, RDF.Store.HDTTermCacheRegistry.fst 4), misc (11: Parquet.Footer.fst 3, RDF.CottasStore.ColumnSeq.fst 3, SHACL.Validation.fst 3, Util.Log.fst 5).
 
 ## Plain-English Status Summary (as of 2026-05-07)
 
