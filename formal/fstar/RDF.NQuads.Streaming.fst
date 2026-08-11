@@ -2586,3 +2586,423 @@ let chain_append mid_a mid_b ws_a ws_b =
  * eliminating `stream_fold_wf`'s separately-supplied `ws_t` parameter, see
  * that section's own banner) is what stops here.
  * ============================================================================ *)
+
+(* ============================================================================
+ * CONSUMER HOMOMORPHISM (issue #402, this file's last theorem layer,
+ * SEVENTH landing, 2026-08-11): the "into a consumer" half of the owner's
+ * terabyte-streaming question. `theorem_stream_eq_batch` above answers the
+ * PARSER half (streaming dataset construction == batch dataset
+ * construction); this section answers the other half -- feeding quads to
+ * an arbitrary consumer FOLD, one chunk at a time, gives the same final
+ * consumer state as feeding the batch-parsed quads to that SAME fold.
+ *
+ * THE API. `stream_consume (#a) (consume : a -> qquad -> a) (init : a)
+ * (chunks : list string) : a` below is built ENTIRELY by REUSING existing
+ * parsing machinery -- `Parser.NQuads.fold_nquads_acc`, the generic-
+ * accumulator sibling of `parse_nquads_acc` this project's own `Parser.
+ * NQuads.fst` banner documents as built for exactly this purpose ("Generic
+ * streaming fold (CLI parse-stream query fast path...)"). NOT a new
+ * parser, not a reimplementation of the line-scanning logic: `feed_chunk_
+ * consume` below composes `split_complete_lines` (this file, already
+ * proved) with `fold_nquads_acc` (`Parser.NQuads.fst`, already proved as a
+ * parser -- its own correctness is not re-litigated here, only its
+ * chunk-boundary behaviour), the SAME two-piece composition `feed_chunk`
+ * uses for dataset construction, just folding into a caller-supplied `a`
+ * instead of an `rdf_dataset`.
+ *
+ * ORDER, STATED PRECISELY (per this task's own design note: "if order is
+ * not canonical, state the theorem for the dataset-derived quad list as-is
+ * and say so"). `RDF.Canonical.dataset_quads` (this project's existing
+ * "flatten a dataset to its quads" notion, used for canonicalisation) is
+ * GROUPED BY GRAPH: every default-graph quad first, then every quad of
+ * each named graph in that graph's FIRST-APPEARANCE order -- NOT the order
+ * quads appear in the source document whenever two different graphs'
+ * quads interleave (a document `default, graphA, default, graphA` yields
+ * `dataset_quads` order `default, default, graphA, graphA`, not arrival
+ * order). Reproducing THAT grouped order from a bounded-memory, one-chunk-
+ * at-a-time consumer is not possible in general: a later chunk can reopen
+ * a graph whose quads an earlier chunk already handed to the consumer, so
+ * "group by graph" requires buffering the WHOLE stream (exactly what
+ * `dataset_finalise`+`dataset_quads` do, after the fact, over a fully
+ * materialised dataset). Choosing `dataset_quads` order as this section's
+ * target would therefore either (a) force `stream_consume` to buffer
+ * everything (defeating the whole point of a streaming consumer), or (b)
+ * be FALSE for interleaved-graph documents. Neither is acceptable, so this
+ * section instead targets ARRIVAL order: `Parser.NQuads.fold_nquads`'s own
+ * order, i.e. exactly the sequence `parse_nquads_acc`'s single walk visits
+ * quads in, top of the document to the bottom, REGARDLESS of which graph
+ * each one targets -- the one order a truly bounded-memory streaming
+ * consumer CAN reproduce, and the order a real bulk-loading consumer
+ * (INSERT each quad as parsed) actually wants.
+ * ============================================================================ *)
+
+(* `consume`'s "receive one quad" shape (`a -> qquad -> a`) wrapped into
+   `fold_nquads_acc`'s own step shape (`triple -> option iri -> a -> a`,
+   the SAME shape `Parser.NQuads.fold_nquads`'s existing callers already
+   use) -- pure notation, no new logic. `qquad = (option iri * triple)`
+   (`RDF.Canonical.fst`), so `(g, t)` matches its constructor order. *)
+let quad_step (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (t : RDF.Graph.Executable.triple) (g : option RDF.Graph.Executable.iri) (acc : a) : a =
+  consume acc (g, t)
+
+(* This module never wants early stopping (unlike `SPARQL.Plan.
+   Streamable.fst`'s ASK fast path, `fold_nquads`'s other caller) -- a
+   full-ingest consumer always wants every quad. Named so every call site
+   below states its intent instead of repeating a `fun _ -> false` literal. *)
+let never_stop (#a:Type) (_ : a) : bool = false
+
+(* One chunk's worth of consumer folding: identical shape to `feed_chunk`
+   (same `carry ^ chunk` combine, same `split_complete_lines` call), except
+   the `complete` prefix is folded into the caller's accumulator `a` via
+   `fold_nquads_acc` instead of parsed into a fresh `rdf_dataset` slice via
+   `parse_nquads_acc`. State threaded out is `(a * stream_state)` -- see
+   the CONSTANT-MEMORY remark below. *)
+let feed_chunk_consume (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (st : stream_state) (acc : a) (chunk : string) : a * stream_state =
+  let combined = st.carry ^ chunk in
+  let (complete, carry') = split_complete_lines combined in
+  let acc' = Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+               complete 0 acc (Parser.FastString.fs_byte_length complete + 1) in
+  (acc', { carry = carry' })
+
+(* End of stream: fold whatever partial line remains in `carry` -- the
+   consumer analogue of `finish`. *)
+let finish_consume (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (st : stream_state) (acc : a) : a =
+  Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a)
+    st.carry 0 acc (Parser.FastString.fs_byte_length st.carry + 1)
+
+let rec stream_consume_acc (#a:Type) (consume : a -> RDF.Canonical.qquad -> a)
+    (chunks : list string) (acc : a) (st : stream_state)
+  : Tot a (decreases chunks) =
+  match chunks with
+  | [] -> finish_consume consume st acc
+  | c :: rest ->
+    let (acc', st') = feed_chunk_consume consume st acc c in
+    stream_consume_acc consume rest acc' st'
+
+(* THE consumer-facing entry point (task brief's `stream_consume`). *)
+let stream_consume (#a:Type) (consume : a -> RDF.Canonical.qquad -> a) (init : a) (chunks : list string) : a =
+  stream_consume_acc consume chunks init initial_state
+
+(* CONSTANT-MEMORY COROLLARY (design note item 4) -- definitional, not a
+   theorem: `stream_consume_acc`'s own signature above IS the observation.
+   The value threaded from one chunk to the next is exactly `(acc : a) *
+   stream_state`, i.e. `a`'s own footprint plus `carry` (at most one
+   line's worth of pending bytes, per `split_complete_lines_carry_no_nl`).
+   No `list qquad`, no `rdf_dataset`, no witness structure, no growing
+   accumulator OTHER than whatever `a`/`consume` itself chooses to retain,
+   is threaded anywhere in this recursion -- contrast `stream_parse_acc`
+   above, which threads a full, linearly-growing `rdf_dataset` as its
+   OTHER argument. This is a claim about `stream_consume`'s own recursion
+   SHAPE (true for every `a`), not a claim that every instantiation runs
+   in bounded memory -- `dataset_consume` below, whose `a = rdf_dataset`,
+   necessarily grows (any consumer that reconstructs the whole dataset
+   must), exactly as it would parsing in one shot; `stream_consume`
+   contributes no ADDITIONAL retention beyond what `a` itself needs. *)
+
+(* Batch reference point: fold `consume` over `s`'s quads in ONE call, no
+   chunking -- `Parser.NQuads.fold_nquads`, already existing, already the
+   project's own "generic consumer" entry point (`Parser.NQuads.fst`'s own
+   banner). Named here (like `batch_parse` above) so the homomorphism
+   theorems below have a fixed target to cite. *)
+let batch_consume (#a:Type) (consume : a -> RDF.Canonical.qquad -> a) (init : a) (s : string) : a =
+  Parser.NQuads.fold_nquads (quad_step consume) (never_stop #a) init s
+
+(* One concrete rewrite of `stream_consume consume init [c]` down to its
+   two constituent `fold_nquads_acc` calls -- the consumer analogue of
+   `stream_parse_single_chunk_shape`, same proof (`empty_string_concat_
+   left`, since `initial_state.carry = ""`). *)
+val stream_consume_single_chunk_shape (#a:Type) (consume : a -> RDF.Canonical.qquad -> a) (init : a) (c : string)
+  : Lemma (stream_consume consume init [c] ==
+           (let (complete, carry) = split_complete_lines c in
+            let acc1 = Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a) complete 0 init
+                          (Parser.FastString.fs_byte_length complete + 1) in
+            Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a) carry 0 acc1
+              (Parser.FastString.fs_byte_length carry + 1)))
+let stream_consume_single_chunk_shape #a consume init c =
+  empty_string_concat_left c
+
+(* `fold_nquads_acc` on the empty string is the identity, for ANY step/
+   stop/accumulator/fuel -- the generic-consumer analogue of `parse_nquads_
+   acc ""  0 X (n+1) == X` used throughout item 4/5 above (same one-step
+   unfold technique: `fs_byte_length "" == 0` makes `pos >= len` fire
+   immediately, or `fuel = 0` fires first -- either way every branch of
+   `fold_nquads_acc`'s definition returns `acc` unchanged). *)
+#push-options "--fuel 2 --ifuel 2"
+val fold_nquads_acc_empty (#a:Type)
+    (step : RDF.Graph.Executable.triple -> option RDF.Graph.Executable.iri -> a -> a)
+    (stop : a -> bool) (acc : a) (fuel : nat)
+  : Lemma (Parser.NQuads.fold_nquads_acc step stop "" 0 acc fuel == acc)
+let fold_nquads_acc_empty #a step stop acc fuel =
+  Parser.FastString.Axioms.fs_byte_length_empty ()
+#pop-options
+
+(* ============================================================================
+ * SINGLE-CHUNK CONSUMER HOMOMORPHISM, generic over `a`/`consume` -- the
+ * consumer analogue of `theorem_stream_eq_batch_single_chunk_{no_newline,
+ * ends_in_newline}`/`theorem_stream_eq_batch_single_chunk` above, same two
+ * boundary conditions (`c` has no newline at all, OR `c` ends in a
+ * newline), same PURE-ALGEBRA proof shape (one operand of the two-call
+ * pipeline is always `""`, so `fold_nquads_acc_empty` collapses it,
+ * no embedding/witness argument needed) -- holds for ANY consumer type
+ * `a` and ANY `consume`, not just the dataset-building one.
+ * ============================================================================ *)
+#push-options "--fuel 2 --ifuel 2"
+val theorem_stream_consume_single_chunk_no_newline (#a:Type)
+    (consume : a -> RDF.Canonical.qquad -> a) (init : a) (c : string)
+  : Lemma
+      (requires (forall ch. List.Tot.memP ch (FStar.String.list_of_string c) ==> ~ (is_nl ch)))
+      (ensures stream_consume consume init [c] == batch_consume consume init c)
+let theorem_stream_consume_single_chunk_no_newline #a consume init c =
+  stream_consume_single_chunk_shape consume init c;
+  split_complete_lines_no_newline c;
+  // split_complete_lines c == ("", c): fst == "", snd == c.
+  fold_nquads_acc_empty (quad_step consume) (never_stop #a) init (Parser.FastString.fs_byte_length "" + 1)
+#pop-options
+
+#push-options "--fuel 2 --ifuel 2"
+val theorem_stream_consume_single_chunk_ends_in_newline (#a:Type)
+    (consume : a -> RDF.Canonical.qquad -> a) (init : a) (c : string)
+  : Lemma
+      (requires FStar.String.length c > 0 /\ is_nl (List.Tot.last (FStar.String.list_of_string c)))
+      (ensures stream_consume consume init [c] == batch_consume consume init c)
+let theorem_stream_consume_single_chunk_ends_in_newline #a consume init c =
+  stream_consume_single_chunk_shape consume init c;
+  split_complete_lines_ends_in_newline c;
+  // split_complete_lines c == (c, ""): fst == c, snd == "".
+  let (complete, carry) = split_complete_lines c in
+  let acc1 = Parser.NQuads.fold_nquads_acc (quad_step consume) (never_stop #a) complete 0 init
+               (Parser.FastString.fs_byte_length complete + 1) in
+  fold_nquads_acc_empty (quad_step consume) (never_stop #a) acc1 (Parser.FastString.fs_byte_length carry + 1)
+#pop-options
+
+(* Unified statement, generic over `a`/`consume`: either boundary condition
+   suffices. *)
+val theorem_stream_consume_single_chunk (#a:Type) (consume : a -> RDF.Canonical.qquad -> a) (init : a) (c : string)
+  : Lemma
+      (requires
+        (forall ch. List.Tot.memP ch (FStar.String.list_of_string c) ==> ~ (is_nl ch)) \/
+        (FStar.String.length c > 0 /\ is_nl (List.Tot.last (FStar.String.list_of_string c))))
+      (ensures stream_consume consume init [c] == batch_consume consume init c)
+let theorem_stream_consume_single_chunk #a consume init c =
+  if FStar.String.length c = 0 then
+    theorem_stream_consume_single_chunk_no_newline consume init c
+  else if is_nl (List.Tot.last (FStar.String.list_of_string c)) then
+    theorem_stream_consume_single_chunk_ends_in_newline consume init c
+  else
+    theorem_stream_consume_single_chunk_no_newline consume init c
+
+(* ============================================================================
+ * FULLY GENERAL (multi-chunk, no boundary restriction) CONSUMER
+ * HOMOMORPHISM -- for the "build a dataset while streaming" consumer
+ * specifically. Routed THROUGH `theorem_stream_eq_batch`/`stream_fold_eq_
+ * batch` above, as the design brief asked: the only NEW proof burden is
+ * `fold_nquads_acc_eq_parse_nquads_acc` below, a cheap, witness-free
+ * structural induction (fold_nquads_acc's control flow is BRANCH-FOR-
+ * BRANCH identical to parse_nquads_acc's -- `stop = never_stop` never
+ * fires, so the only difference between the two function bodies is one
+ * expression, `step t g acc` vs `dataset_add_quad ds t g`, at the single
+ * quad-match branch; every OTHER branch's condition and recursive-call
+ * position is syntactically the same in both functions). Given that
+ * bridging fact, `dataset_consume`'s own `stream_consume` run is, step for
+ * step, `feed_chunk`'s own run -- so `theorem_stream_eq_batch`'s ALREADY-
+ * PROVED, UNCONDITIONED-ON-BOUNDARY multi-chunk result (under the SAME
+ * `stream_fold_wf` witness premise) transports over directly, no witness-
+ * chain re-derivation needed for THIS instantiation.
+ * ============================================================================ *)
+
+(* The canonical "reconstruct the dataset" consumer: `qquad`'s `(graph,
+   triple)` pair fed straight to `dataset_add_quad`. This is `consume`
+   instantiated so that `stream_consume dataset_consume` answers "what if
+   the consumer IS dataset construction" -- the natural sanity case, and
+   the one this section proves fully generally. *)
+let dataset_consume (ds : RDF.Graph.Executable.rdf_dataset) (q : RDF.Canonical.qquad) : RDF.Graph.Executable.rdf_dataset =
+  let (g, t) = q in Parser.NQuads.dataset_add_quad ds t g
+
+(* THE bridging lemma: `fold_nquads_acc`, instantiated at `dataset_consume`
+   (via `quad_step`) and `never_stop`, computes EXACTLY what `parse_nquads_
+   acc` computes, for every input/position/dataset/fuel. Proof: reconstruct
+   both functions' shared control-flow skeleton (same `let pos1 = match pws
+   ... `, same four dispatch branches on `pos1`'s byte, same `pos_next`/
+   `pos2` computations) inside the proof and recurse at each continuation
+   point -- `stop acc`/`stop acc1` (fold_nquads_acc's one extra check
+   beyond parse_nquads_acc) always evaluates to `false` (`never_stop`), so
+   it never diverts control flow; every base case returns the SAME
+   accumulator/dataset value (both `acc`/`ds` are literally the same
+   parameter in this specific call), so `()` closes each leaf. No shift
+   lemma, no witness chain -- this is ONE function's recursive equation
+   matched against ANOTHER's, not a claim about embedding a string inside
+   a larger one. *)
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val fold_nquads_acc_eq_parse_nquads_acc
+    (input : string) (pos : nat) (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (ensures
+        Parser.NQuads.fold_nquads_acc (quad_step dataset_consume) (never_stop #RDF.Graph.Executable.rdf_dataset)
+          input pos ds fuel
+        == Parser.NQuads.parse_nquads_acc input pos ds fuel)
+      (decreases fuel)
+let rec fold_nquads_acc_eq_parse_nquads_acc input pos ds fuel =
+  if fuel = 0 then ()
+  else
+    let len = Parser.FastString.fs_byte_length input in
+    if pos >= len then ()
+    else
+      let pos1 : nat = match Parser.NTriples.pws input pos with
+                       | Parser.Combinators.ParseOk () p -> p
+                       | _ -> pos in
+      if pos1 >= len then ()
+      else
+        let ch = Parser.FastString.fs_byte_index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then
+          let pos2 = Parser.NTriples.skip_comment input pos1 in
+          let pos3 = Parser.NTriples.skip_eol input pos2 in
+          if pos3 = pos1 then ()
+          else fold_nquads_acc_eq_parse_nquads_acc input pos3 ds (fuel - 1)
+        else if code = 0x0A || code = 0x0D then
+          let pos2 = Parser.NTriples.skip_eol input pos1 in
+          if pos2 = pos1 then ()
+          else fold_nquads_acc_eq_parse_nquads_acc input pos2 ds (fuel - 1)
+        else
+          match Parser.NQuads.parse_nquad input pos1 with
+          | Parser.Combinators.ParseOk (t, graph_opt) pos2 ->
+            let ds' = Parser.NQuads.dataset_add_quad ds t graph_opt in
+            let pos3 = match Parser.NTriples.pws input pos2 with
+                       | Parser.Combinators.ParseOk () p -> p
+                       | _ -> pos2 in
+            let pos4 = Parser.NTriples.skip_comment input pos3 in
+            let pos5 = Parser.NTriples.skip_eol input pos4 in
+            let pos_next = if pos5 > pos1 then pos5 else if pos4 > pos1 then pos4 else pos2 in
+            fold_nquads_acc_eq_parse_nquads_acc input pos_next ds' (fuel - 1)
+          | Parser.Combinators.ParseFail _ _ ->
+            let pos2 = Parser.NQuads.nq_skip_line input len pos1 (len - pos1) in
+            if pos2 = pos1 then ()
+            else fold_nquads_acc_eq_parse_nquads_acc input pos2 ds (fuel - 1)
+#pop-options
+
+(* Multi-chunk fold invariant for `dataset_consume`, RAW (no `dataset_
+   finalise` -- a generic consumer cannot apply it, so this states the
+   pre-finalise quantity directly, matching `parse_nquads_acc`'s own
+   un-finalised accumulation): near-verbatim copy of `stream_fold_eq_
+   batch`'s own proof (SAME induction shape, SAME lemma calls --
+   `lemma_parse_nquads_acc_concat_line_general`, `split_complete_lines_
+   reconstruct`, `string_concat_assoc` twice), with `fold_nquads_acc_eq_
+   parse_nquads_acc` inserted once per step to bridge `feed_chunk_
+   consume`'s `fold_nquads_acc` call to `feed_chunk`'s `parse_nquads_acc`
+   call -- the ONLY new ingredient beyond `stream_fold_eq_batch` itself. *)
+#push-options "--z3rlimit 300 --fuel 4 --ifuel 4"
+val stream_consume_dataset_fold_eq_batch
+    (carry0 : string) (chunks : list string)
+    (ws_list : list (list line_witness & list line_witness))
+    (ds0 : RDF.Graph.Executable.rdf_dataset)
+  : Lemma
+      (requires stream_fold_wf carry0 chunks ws_list)
+      (ensures
+        stream_consume_acc dataset_consume chunks ds0 ({ carry = carry0 })
+        == Parser.NQuads.parse_nquads_acc (carry0 ^ concat_all chunks) 0 ds0
+             (Parser.FastString.fs_byte_length (carry0 ^ concat_all chunks) + 1))
+      (decreases chunks)
+let rec stream_consume_dataset_fold_eq_batch carry0 chunks ws_list ds0 =
+  match chunks, ws_list with
+  | [], [] ->
+    empty_string_concat_right carry0;
+    fold_nquads_acc_eq_parse_nquads_acc carry0 0 ds0 (Parser.FastString.fs_byte_length carry0 + 1)
+  | c :: rest, (ws_c, ws_t) :: wss ->
+    let combined = carry0 ^ c in
+    let (complete, carry') = split_complete_lines combined in
+    let tail_str = carry' ^ concat_all rest in
+    let ds1 = Parser.NQuads.parse_nquads_acc complete 0 ds0 (Parser.FastString.fs_byte_length complete + 1) in
+    fold_nquads_acc_eq_parse_nquads_acc complete 0 ds0 (Parser.FastString.fs_byte_length complete + 1);
+    // feed_chunk_consume dataset_consume {carry=carry0} ds0 c == (ds1, {carry=carry'}), now
+    // definitional given the bridging fact just established.
+    stream_consume_dataset_fold_eq_batch carry' rest wss ds1;
+    lemma_parse_nquads_acc_concat_line_general complete tail_str ds0 ws_c ws_t;
+    split_complete_lines_reconstruct combined;
+    string_concat_assoc complete carry' (concat_all rest);
+    string_concat_assoc carry0 c (concat_all rest)
+#pop-options
+
+(* Top-level corollary, `carry0 = ""`/`ds0 = empty_dataset` -- RAW form
+   (pre-`dataset_finalise`), matching `stream_consume_dataset_fold_eq_
+   batch`'s own un-finalised statement. *)
+val stream_consume_dataset_eq_batch_raw
+    (chunks : list string) (ws_list : list (list line_witness & list line_witness))
+  : Lemma
+      (requires stream_fold_wf "" chunks ws_list)
+      (ensures
+        stream_consume dataset_consume RDF.Graph.Executable.empty_dataset chunks
+        == Parser.NQuads.parse_nquads_acc (concat_all chunks) 0 RDF.Graph.Executable.empty_dataset
+             (Parser.FastString.fs_byte_length (concat_all chunks) + 1))
+let stream_consume_dataset_eq_batch_raw chunks ws_list =
+  stream_consume_dataset_fold_eq_batch "" chunks ws_list RDF.Graph.Executable.empty_dataset;
+  empty_string_concat_left (concat_all chunks)
+
+(* THE fully general consumer homomorphism theorem for `dataset_consume`:
+   finalising `stream_consume`'s raw result (the one correction a generic
+   consumer cannot perform for itself -- see the CONSTANT-MEMORY remark
+   above) equals `batch_parse`'s own dataset. Matches `theorem_stream_eq_
+   batch`'s exact scope (same `stream_fold_wf` witness premise, no
+   boundary/no-newline restriction) -- this is the "does the generic
+   consumer API actually agree with the fully-proven parser-level theorem"
+   sanity case, answered YES, unconditionally on chunk boundaries. *)
+val theorem_stream_consume_dataset_eq_batch
+    (chunks : list string) (ws_list : list (list line_witness & list line_witness))
+  : Lemma
+      (requires stream_fold_wf "" chunks ws_list)
+      (ensures
+        RDF.Graph.Executable.dataset_finalise (stream_consume dataset_consume RDF.Graph.Executable.empty_dataset chunks)
+        == batch_parse (concat_all chunks))
+let theorem_stream_consume_dataset_eq_batch chunks ws_list =
+  stream_consume_dataset_eq_batch_raw chunks ws_list
+
+(* ============================================================================
+ * FINDING (SEVENTH landing, 2026-08-11): what remains open for a TRULY
+ * GENERIC consumer (arbitrary `a`, arbitrary `consume`) at FULL multi-
+ * chunk generality (no boundary restriction). `theorem_stream_consume_
+ * single_chunk` above is generic in `a` but SINGLE-chunk only (pure
+ * algebra, one collapsing-to-empty operand); `theorem_stream_consume_
+ * dataset_eq_batch` above is FULLY multi-chunk general but ONE fixed `a`
+ * (`rdf_dataset` via `dataset_consume`). Closing the product of both --
+ * generic `a` AND full multi-chunk generality -- needs the SAME per-line
+ * witness-chain apparatus this file built for `parse_nquads_acc`/`lw_ds_
+ * step`/`chain_ds_fold` (lines ~1150-1820 above), GENERICISED over `a`/
+ * `consume`:
+ *   1. `lw_generic_step (#a) (consume : a -> qquad -> a) (mid : string)
+ *      (w : line_witness) (acc : a) : a` -- mirrors `lw_ds_step` exactly,
+ *      substituting `consume acc (g, t)` for `dataset_add_quad ds t g` in
+ *      the `LW_QuadOk` case; identity in the other three cases, unchanged.
+ *   2. `chain_generic_fold (#a) consume (mid : string) (ws : list line_
+ *      witness) (acc : a) : Tot a` -- mirrors `chain_ds_fold`.
+ *   3. Generic analogues of the FOUR per-kind step-shift lemmas (`lemma_
+ *      parse_nquads_acc_{blank,comment,quad_fail,quad_ok}_step_shift`),
+ *      `_restart`, `_full_via_chain`, and `lemma_parse_nquads_acc_concat_
+ *      line_general` itself -- for `fold_nquads_acc`+`lw_generic_step`
+ *      instead of `parse_nquads_acc`+`lw_ds_step`.
+ * WHY THIS IS "ONLY" MECHANICAL, NOT A NEW WALL: every position/outcome
+ * fact these lemmas depend on (`lemma_pws_shift`, `lemma_byte_index_at_
+ * middle`, `lemma_skip_eol_shift`, `lemma_skip_comment_shift`, `lemma_nq_
+ * skip_line_shift_exact`, `Parser.NTriples.Locality.lemma_parse_nquad_
+ * shift_generic`, every `*_wf` predicate) talks ONLY about POSITIONS and
+ * PARSER outcomes (`pws`/`skip_eol`/`parse_nquad`/...) -- NONE of them
+ * mention `ds`/`rdf_dataset`/`dataset_add_quad` at all. The `#push-options`
+ * + one-step-unfold technique each step-shift lemma uses (see `lemma_
+ * parse_nquads_acc_blank_step_shift`'s own banner) applies identically to
+ * `fold_nquads_acc`'s definitional equation, since (per `fold_nquads_acc_
+ * eq_parse_nquads_acc` above) that equation is branch-for-branch identical
+ * to `parse_nquads_acc`'s. WHY IT WAS NOT ATTEMPTED THIS LANDING: it is
+ * roughly FOUR step-shift lemmas + a restart lemma + a full-via-chain
+ * lemma + the concat-line-general lemma, each a close copy of an already-
+ * proved original but each still needing its OWN z3 run at the SAME
+ * z3rlimit budget those originals needed (150-600) -- a second full pass
+ * through the same ~670-line apparatus, assessed (per this task's own
+ * guard-depth-3 discipline and the file's established precedent of
+ * scoping to what a session can actually clear -- see the MULTI-CHUNK
+ * `theorem_stream_eq_batch` banner above making the identical call re:
+ * `chain_append`'s dataset-fold companion) as a separate landing's worth
+ * of work, not a same-session extension. `dataset_consume`'s full-
+ * generality result above already demonstrates every ingredient (the
+ * position/outcome facts) needed to close the general case is dataset-
+ * agnostic and already proved -- only the mechanical duplication remains.
+ * ============================================================================ *)
