@@ -461,6 +461,105 @@ let stream_parse_single_chunk_shape c =
   empty_string_concat_left c
 
 (* ============================================================================
+ * PHASE 2 CHECKPOINT (task #48, 2026-08-11 landing): LINE-LEVEL LOCALITY
+ * over byte reads -- prerequisite (2) from the FINDING below, narrowed to
+ * exactly what the FINDING's own item 1 (`fs_byte_index_concat`, now
+ * derivable now that prerequisite (1) `fs_byte_index_eq` has landed in
+ * `Parser.FastString.fsti`) buys for free, PLUS the three-way "line
+ * embedded in a larger string" shape `parse_nquads_acc_concat_line`
+ * actually needs. This is checkpoint (a) from the task brief: the
+ * shift/locality lemma stated over BYTE READS, not over string identity
+ * -- exactly the register `RDF.NTriples.RoundTrip.fst`'s own FINDING
+ * (Part 6 banner, "THE WALL, precisely") says is the only one that works
+ * for a SYMBOLIC argument (`"" ^ s == s` / `(a^b)^c == a^(b^c)` both FAIL
+ * for symbolic strings via plain `()`; position/byte-value facts do not
+ * have that problem, since they bottom out in `nat`/`FStar.Char.char`
+ * equalities that Z3 chains by ordinary transitivity).
+ *
+ * `lemma_fs_byte_index_concat`: the FINDING's item 1, done. A direct
+ * corollary of the ALREADY-PROVED `Parser.FastString.Axioms.
+ * fs_byte_at_concat` (byte-VALUE agreement across a concat split) plus
+ * `Parser.FastString.fs_byte_index_eq` (the now-landed prerequisite (1)
+ * bridging lemma, applied three times: once to the concatenation, once
+ * to each operand) -- no new axiom, no Spec-level reasoning needed here,
+ * since `fs_byte_at_concat` already did that work.
+ *
+ * `lemma_byte_index_at_middle`: checkpoint (a) itself. For a THREE-way
+ * split `prefix ^ (mid ^ suffix)` (the shape `lemma_extract_middle` in
+ * `RDF.NTriples.RoundTrip.fst` uses for the analogous `fs_byte_sub`
+ * extraction), reading byte `i < length mid` at the SHIFTED position
+ * `length prefix + i` inside the combined string agrees with reading
+ * byte `i` of `mid` alone -- two applications of `lemma_fs_byte_index_
+ * concat` (first peeling `prefix` off the outside, landing in the
+ * "right operand, shifted" branch since `length prefix + i >= length
+ * prefix`; then peeling `suffix` off `mid ^ suffix`, landing in the
+ * "left operand" branch since `i < length mid`), chained by ordinary
+ * SMT transitivity on the `FStar.Char.char` equalities both calls
+ * produce. This is exactly "a chunk with a complete line embedded at
+ * position `length prefix` reads the same bytes, at every position
+ * inside that line, as the line read standalone" -- the LINE-level
+ * locality fact prerequisite (2) opens with, stated the way the FINDING
+ * requires: over byte reads, never over `^`/string identity.
+ *
+ * WHAT THIS DOES NOT CLOSE (still prerequisite (2)'s much larger
+ * remainder): byte-read agreement is necessary but not sufficient for
+ * `parse_nquads_acc_concat_line` -- the recursive-descent PARSER
+ * (`parse_subject`/`parse_iri`/`parse_object` and their full call graph
+ * through `Parser.Combinators.fst`) must be shown to take the SAME
+ * control-flow branches and produce the SAME extracted VALUES when run
+ * on `mid` embedded inside a larger string as it does on `mid` alone --
+ * a per-combinator induction across `Parser.NTriples.fst` (1300+ lines),
+ * not a corollary of the byte-read fact alone. `RDF.NTriples.RoundTrip
+ * .fst`'s own Part 6 banner ("NEXT NARROWEST UNPROVED STATEMENT") probed
+ * EXACTLY this shape one layer down (a "`scan_iri_end` commutes with
+ * prefixing" shift lemma for ONE combinator) in the SAME 2026-08-11
+ * session this checkpoint reuses `fs_byte_index_eq` from, and reports it
+ * as "a genuinely separate multi-step induction ... that a 3-attempt
+ * guard does not clear" even for a single combinator, let alone the full
+ * `parse_subject`/`parse_iri`/`parse_object` call graph this module's
+ * `parse_nquads_acc_concat_line` needs. Given that finding from the same
+ * landing this checkpoint builds on, re-attempting the full per-
+ * combinator induction here was assessed as certain to hit the identical
+ * wall inside a 3-attempt budget, so it was not attempted directly --
+ * per the task brief's own instruction ("do NOT burn the session on
+ * attempt 4+"), the honest deliverable is this narrower, fully verified
+ * checkpoint plus this sharpened pointer to the remaining work, not a
+ * partial/stalled attempt at the full induction.
+ * ============================================================================ *)
+
+val lemma_fs_byte_index_concat (a b : string) (i : nat)
+  : Lemma (requires i < Parser.FastString.fs_byte_length (a ^ b))
+          (ensures (if i < Parser.FastString.fs_byte_length a
+                    then Parser.FastString.fs_byte_index (a ^ b) i
+                         == Parser.FastString.fs_byte_index a i
+                    else Parser.FastString.fs_byte_index (a ^ b) i
+                         == Parser.FastString.fs_byte_index b (i - Parser.FastString.fs_byte_length a)))
+let lemma_fs_byte_index_concat a b i =
+  Parser.FastString.Axioms.fs_byte_at_concat a b i;
+  Parser.FastString.fs_byte_index_eq (a ^ b) i;
+  // The `else` branch's `i - fs_byte_length a` is only well-typed as `nat`
+  // once `i < fs_byte_length a` is refuted -- branching here (rather than
+  // calling both `fs_byte_index_eq` instances unconditionally, as an
+  // earlier draft of this proof did) lets F*'s refinement on `i` in the
+  // `else` arm carry that fact, matching `fs_byte_at_concat`'s own
+  // case split.
+  if i < Parser.FastString.fs_byte_length a then
+    Parser.FastString.fs_byte_index_eq a i
+  else
+    Parser.FastString.fs_byte_index_eq b (i - Parser.FastString.fs_byte_length a)
+
+val lemma_byte_index_at_middle (prefix mid suffix : string) (i : nat)
+  : Lemma (requires i < Parser.FastString.fs_byte_length mid)
+          (ensures Parser.FastString.fs_byte_index (prefix ^ (mid ^ suffix))
+                     (Parser.FastString.fs_byte_length prefix + i)
+                   == Parser.FastString.fs_byte_index mid i)
+let lemma_byte_index_at_middle prefix mid suffix i =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_fs_byte_index_concat prefix (mid ^ suffix) (Parser.FastString.fs_byte_length prefix + i);
+  lemma_fs_byte_index_concat mid suffix i
+
+(* ============================================================================
  * FINDING (guard-depth-3 stop, per CLAUDE.md/subagent-prompting discipline)
  * -- `theorem_stream_eq_batch` is NOT proved in this landing.
  *
@@ -496,19 +595,19 @@ let stream_parse_single_chunk_shape c =
  * / `fs_byte_at` / `fs_byte_sub` at MANY internal positions. Proving
  * `parse_nquads_acc_concat_line` requires, at minimum:
  *
- *   1. `fs_byte_index_concat` -- does NOT exist yet. `Parser.FastString.
- *      fsti` bridges `fs_byte_length`, `fs_byte_at`, `fs_byte_sub`,
- *      `fs_find_byte`, `fs_cp_at`, `fs_cp_len` to `Parser.FastString.Spec`
- *      via `_eq` lemmas (used by the ALREADY-PROVED `fs_byte_at_concat` /
- *      `fs_byte_sub_concat_left` / `fs_byte_sub_concat_right` in `Parser.
- *      FastString.Axioms.fst`) -- but `fs_byte_index` (the char-returning
- *      convenience wrapper `parse_nquads_acc` actually calls) has NO such
- *      bridging lemma exposed. One would need to be added (trivially
- *      provable, `fs_byte_index_eq`, mirroring the existing six) as a
- *      genuinely additive `val`+`let` pair in `Parser.FastString.fst`/
- *      `.fsti` -- not attempted here since it is a change to a module
- *      outside this task's stated scope (`Parser.NQuads.fst`), and
- *      touching it deserves its own reviewed, narrowly-scoped landing.
+ *   1. `fs_byte_index_concat` -- CLOSED this session (phase 2 landing,
+ *      below the FINDING). Prerequisite (1), `fs_byte_index_eq` in
+ *      `Parser.FastString.fsti`/`.fst`, landed in the SAME 2026-08-11
+ *      session as `RDF.NTriples.RoundTrip.fst`'s checkpoint (a) (see
+ *      that module's banner) -- it was NOT re-derived here, it was
+ *      already on `claude/main` when this worktree was cut. With it in
+ *      hand, `fs_byte_index_concat` is a three-line corollary of the
+ *      ALREADY-PROVED `fs_byte_at_concat` (`Parser.FastString.Axioms.
+ *      fst`) plus `fs_byte_index_eq` applied to both sides -- see
+ *      `lemma_fs_byte_index_concat` and its three-way-split corollary
+ *      `lemma_byte_index_at_middle` immediately above this FINDING
+ *      (PHASE 2 CHECKPOINT banner has the full derivation). Both verify
+ *      clean, no new axiom.
  *   2. A LOCALITY lemma for `parse_subject` / `parse_iri` / `parse_object`
  *      (and their full call graph through `Parser.Combinators.fst`'s
  *      `ptake_while` / `pquoted_string` / etc.): that each behaves
@@ -517,21 +616,40 @@ let stream_parse_single_chunk_shape c =
  *      (which branch is taken) AND extracted VALUES (every `fs_byte_sub`
  *      call inside a still-open line targets a range wholly inside
  *      `complete`, so `fs_byte_sub_concat_left` supplies the value
- *      equality, but ONLY once fact 1 supplies the byte-index agreement
- *      that lets the SAME branches even be reached). This is a
- *      per-combinator induction across a 1300+ line module, not a single
- *      lemma -- the honest size estimate is closer to the scope of a
- *      SEPARATE landing than a same-session extension of this one.
+ *      equality, and now item 1's `lemma_byte_index_at_middle` supplies
+ *      the byte-index agreement that lets the SAME branches even be
+ *      reached). STILL OPEN -- this is a per-combinator induction across
+ *      a 1300+ line module, not a single lemma, and it is now backed by
+ *      independent evidence that it does not fit a 3-attempt guard: the
+ *      SAME 2026-08-11 session that landed `fs_byte_index_eq` also
+ *      probed EXACTLY this shape one layer down, for a SINGLE combinator
+ *      (`scan_iri_end`), in `RDF.NTriples.RoundTrip.fst`'s Part 6 banner
+ *      ("NEXT NARROWEST UNPROVED STATEMENT" / "THE WALL, precisely") --
+ *      and reports it as requiring a "genuinely separate multi-step
+ *      induction ... that a 3-attempt guard does not clear," even before
+ *      reaching `parse_object`'s literal-with-escapes branch or
+ *      `parse_iri_raw`'s `%`-escape handling. The honest size estimate
+ *      is a SEPARATE landing, not a same-session extension of this one
+ *      -- confirmed twice now, by two different sessions approaching it
+ *      from two different entry points (round-trip vs. streaming).
  *
- * NARROWEST VERIFIED CHECKPOINT: `split_complete_lines` and its five
- * lemmas above (`split_complete_lines_reconstruct`, `_carry_no_nl`,
+ * NARROWEST VERIFIED CHECKPOINT (phase 1): `split_complete_lines` and its
+ * five lemmas above (`split_complete_lines_reconstruct`, `_carry_no_nl`,
  * `_no_newline`, `_extend_carry`, `_ends_in_newline`), plus `stream_parse_
- * single_chunk_shape`'s definitional rewrite -- all verify under `make
- * RDF.NQuads.Streaming.fst.checked` with no admits, no `--lax`, no new
- * `assume val`.
+ * single_chunk_shape`'s definitional rewrite.
  *
- * NEXT NARROWEST UNPROVED STATEMENT: `fs_byte_index_eq` in `Parser.
- * FastString.fst`/`.fsti` (item 1 above) -- small, mechanical, and the
- * gating step before item 2's much larger locality effort can even be
- * attempted meaningfully.
+ * NARROWEST VERIFIED CHECKPOINT (phase 2, this landing):
+ * `lemma_fs_byte_index_concat` and `lemma_byte_index_at_middle` (PHASE 2
+ * CHECKPOINT banner above) -- item 1 above, CLOSED.
+ *
+ * All of the above verify under `make RDF.NQuads.Streaming.fst.checked`
+ * with no admits, no `--lax`, no new `assume val`.
+ *
+ * NEXT NARROWEST UNPROVED STATEMENT: item 2 above -- the per-combinator
+ * locality induction over `Parser.NTriples.fst`'s recursive-descent call
+ * graph. Gating step before `parse_nquads_acc_concat_line` (and hence
+ * `theorem_stream_eq_batch`) can be attempted meaningfully; not started
+ * here, see item 2's text for why and for the concrete pointer
+ * (`RDF.NTriples.RoundTrip.fst`'s Part 6 banner) to where a future
+ * session should pick this up.
  * ============================================================================ *)
