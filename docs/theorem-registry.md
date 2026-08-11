@@ -1331,3 +1331,14 @@ added to requires, the proof is 3 lines, same shape and budget as the
 plain-literal sibling. Witness-record hypotheses per the streaming
 pattern. #402's residue list is now EMPTY — every named theorem and
 lemma of the streaming program is proved.
+
+**#401 M1 triple-composition checkpoints (2026-08-11, branch
+`triple-roundtrip`, agent died mid-run — branch harvested)**: two
+verified commits landed before the agent's death:
+bracket-embedding prerequisites + a single-space pws lemma, and
+bare-IRI + subject-wrapped IRI round-trip lemmas
+(RDF.NTriples.RoundTrip.fst). Re-verified clean on the merged tree
+(VERIFY_RC=0). The full arbitrary-triple composition
+(subject-predicate-object chaining to parse_triple) was NOT reached —
+remainder queued for a narrower re-dispatch. No admits, no --lax, no
+new assume vals.
