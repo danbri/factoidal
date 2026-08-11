@@ -1126,3 +1126,23 @@ solver; every PROVEN lemma in these files instead passes per-position
 facts as EXPLICIT witness parameters (stop_pos, gt_pos, ...). Fix
 path: restate with explicit witnesses at each step. Failed code
 removed; only proven code kept.
+
+**Task #48: GENERAL single-chunk theorem via witness chains
+(2026-08-11, branch `stream-witness`)**: the explicit-witness
+restructure WORKED — the diagnosis was right. `RDF.NQuads.Streaming.fst`
++839 lines, 9 commits, every z3 query under 25 SECONDS (the forall
+shape burned 10-16 minutes per failure). New witness types
+(`line_kind`, per-kind witness records, `line_witness`,
+recursive-chain predicates `chain_wf`/`chain_end`/`chain_ds_fold` —
+structural induction, never forall-over-positions). ALL FOUR line
+kinds proved first-try (blank, comment, quad-failure with stated
+embedded-failure premise, quad-success composing
+lemma_parse_nquad_shift_generic). LANDED:
+`lemma_parse_nquads_acc_restart` (the FINDING's named target),
+`lemma_parse_nquads_acc_concat_line_general` (the "genuinely hard
+case"), and `theorem_stream_eq_batch_single_chunk_general` —
+stream_parse [c] == batch_parse c for ANY chunk, any mix of
+blank/comment/quad lines, any newline placement, given matching
+witness chains for the split. REMAINING (FINDING, no wall): the
+multi-chunk fold — one chain-concatenation lemma + a fold induction
+carrying a witness-chain list; scoping choice, not a failure.

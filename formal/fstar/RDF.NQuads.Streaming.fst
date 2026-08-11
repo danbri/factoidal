@@ -1106,3 +1106,842 @@ let rec lemma_nq_skip_line_shift_exact prefix mid suffix p stop_pos =
  * over reachable positions) does not work, so the next session does not
  * re-spend a guard-depth-3 budget re-discovering this.
  * ============================================================================ *)
+
+(* ============================================================================
+ * WITNESS-STRUCTURE RESTART LEMMA (task #48, third landing, 2026-08-11):
+ * the blank-lines-only restart, restated WITHOUT the `forall` hypothesis the
+ * FINDING above diagnoses as the actual obstruction. Every fact about
+ * `mid`'s line structure is supplied by the CALLER as an explicit per-line
+ * witness record (three `nat` fields -- the same three positions
+ * `parse_nquads_acc`'s own blank-line branch computes internally, named
+ * `pos`/`pos1`/`pos2` there), chained into a `list blank_line_witness`. The
+ * induction below is STRUCTURAL on that list (pattern-matching `[]` /
+ * `w :: rest`, one cons cell per step) -- never a `forall` over positions.
+ * This is the FIX the FINDING's own diagnosis names: every OTHER lemma in
+ * this file and in `Parser.NTriples.Locality.fst` that verifies takes its
+ * per-position facts as explicit parameters (`stop_pos`, `gt_pos`, ...),
+ * never as a `forall`-quantified hypothesis with an opaque `match` in its
+ * body; this section applies that same idiom one level up, at the
+ * `parse_nquads_acc` recursion itself.
+ *
+ * SCOPE, one deliberate narrowing kept OUT of `blank_line_wf` for THIS
+ * landing (documented, not silent): each witness requires `lw_wsend + 1 <
+ * fs_byte_length mid`, i.e. the line's terminator byte is never the very
+ * last byte of `mid`. This sidesteps `lemma_skip_eol_shift`'s CRLF-fusion
+ * side condition (a bare CR ending `mid` exactly could fuse with an LF
+ * starting `suffix`, which is not a real CRLF pair in `mid` alone) without
+ * threading a `suffix`-dependent disjunction through every witness --
+ * exactly the same category of scoped exclusion `lemma_nq_skip_line_shift`
+ * itself already carries (`stop_pos < fs_byte_length mid`, excluding the
+ * terminator landing at `mid`'s very last position). A chain whose FINAL
+ * blank line's newline sits at `mid`'s last one or two bytes is outside
+ * this witness structure's coverage; extending it (an extra `suffix`-aware
+ * disjunct on the CHAIN's last entry only) is future work, not attempted
+ * here per the guard-depth rule.
+ * ============================================================================ *)
+
+(* One line's classification. Only `LK_Blank` is populated by a proof this
+   landing -- `LK_Comment` / `LK_QuadOk` / `LK_QuadFail` are declared so the
+   type is extensible per the task's "extend kind by kind" plan, but no
+   constructor here changes `blank_line_witness`'s shape; each kind gets its
+   OWN witness record as it lands (comment needs a `stop_pos` matching
+   `lemma_skip_comment_shift`'s own parameter; quad-failure needs `nq_skip_
+   line`'s `stop_pos`, matching `lemma_nq_skip_line_shift_exact`; quad-
+   success needs the parsed `(triple * option iri)` and end position). *)
+type line_kind =
+  | LK_Blank
+  | LK_Comment
+  | LK_QuadOk
+  | LK_QuadFail
+
+(* A single BLANK line's witness: `lw_pos` is the position `parse_nquads_acc`
+   enters its loop at (before whitespace-skipping); `lw_wsend` is where `pws`
+   lands (the byte `parse_nquads_acc` dispatches on); `lw_eolend` is where
+   `skip_eol` lands after consuming the line terminator -- exactly the three
+   positions `parse_nquads_acc`'s own blank-line branch computes internally.
+   All three are explicit `nat` fields the CALLER supplies, never derived
+   inside a proof from a `forall`. *)
+noeq type blank_line_witness = {
+  lw_pos    : nat;
+  lw_wsend  : nat;
+  lw_eolend : nat;
+}
+
+(* Well-formedness of ONE blank-line witness against a concrete string
+   `mid`: `pws` actually lands where the witness claims; the landing byte is
+   a line terminator (0x0A or 0x0D -- matching `parse_nquads_acc`'s OWN
+   dispatch test, not just `is_nl`'s narrower 0x0A-only check); `skip_eol`
+   actually lands where the witness claims; the line makes PROGRESS
+   (`lw_eolend > lw_wsend`, matching `parse_nquads_acc`'s own `if pos2 =
+   pos1 then ds` no-progress guard -- a witness for a no-progress "line"
+   cannot arise from a real call, so this predicate excludes it
+   structurally); and the SCOPE narrowing from this section's banner
+   (`lw_wsend + 1 < fs_byte_length mid`). *)
+let blank_line_wf (mid : string) (w : blank_line_witness) : Type0 =
+  w.lw_pos <= w.lw_wsend /\
+  w.lw_wsend + 1 < Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.lw_pos == Parser.Combinators.ParseOk () w.lw_wsend /\
+  (let c = Parser.FastString.fs_byte_index mid w.lw_wsend in
+   let cc = FStar.Char.int_of_char c in
+   cc = 0x0A \/ cc = 0x0D) /\
+  Parser.NTriples.skip_eol mid w.lw_wsend == w.lw_eolend /\
+  w.lw_eolend > w.lw_wsend
+
+(* Single-step shift: ONE blank line, embedded at `lw_pos` inside the
+   three-way-split `prefix ^ (mid ^ suffix)`, advances `parse_nquads_acc`'s
+   own recursion by exactly one step, landing at `lw_eolend` (shifted by
+   `fs_byte_length prefix`, same as every other lemma in this file) with
+   the SAME dataset and `fuel - 1`. Proof: apply `lemma_pws_shift` (already
+   proved, `Parser.NTriples.Locality.fst`) to get the shifted `pws` landing,
+   `lemma_byte_index_at_middle` (this file, PHASE 2 CHECKPOINT) for the
+   dispatch byte, `lemma_skip_eol_shift` (already proved) for the shifted
+   `skip_eol` landing -- then let Z3 chain those three flat `nat`/`char`
+   equalities through ONE unfolding of `parse_nquads_acc`'s own defining
+   equation, exactly the technique `parse_nquads_acc_concat_line_empty_
+   complete`/`_empty_carry` above already use for a one-step unfold. *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_blank_step_shift
+    (prefix mid suffix : string) (w : blank_line_witness)
+    (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (requires blank_line_wf mid w /\ fuel > 0)
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.lw_pos) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.lw_eolend) ds (fuel - 1))
+let lemma_parse_nquads_acc_blank_step_shift prefix mid suffix w ds fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix w.lw_pos w.lw_wsend;
+  lemma_byte_index_at_middle prefix mid suffix w.lw_wsend;
+  Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.lw_wsend
+#pop-options
+
+(* A CHAIN of blank-line witnesses: recursively defined (never a `forall`)
+   so both ADJACENCY (one line's landing position is exactly the next
+   line's starting position) and PER-ENTRY well-formedness unfold by
+   pattern match, one cons cell at a time -- the same shape the induction
+   below consumes. `blank_chain_end` computes where the chain leaves off
+   (the position right after its last line's terminator), by the same
+   structural recursion. *)
+let rec blank_chain_wf (mid : string) (start_pos : nat) (ws : list blank_line_witness)
+  : Tot Type0 (decreases ws) =
+  match ws with
+  | [] -> True
+  | w :: rest -> w.lw_pos == start_pos /\ blank_line_wf mid w /\ blank_chain_wf mid w.lw_eolend rest
+
+let rec blank_chain_end (start_pos : nat) (ws : list blank_line_witness)
+  : Tot nat (decreases ws) =
+  match ws with
+  | [] -> start_pos
+  | w :: rest -> blank_chain_end w.lw_eolend rest
+
+(* The restart lemma itself, blank-lines-only sub-case: a whole CHAIN of
+   blank lines, embedded inside `prefix ^ (mid ^ suffix)` starting at
+   `start_pos`, is skipped by `parse_nquads_acc` in exactly `length ws`
+   steps, dataset UNCHANGED, landing at `blank_chain_end start_pos ws`
+   (shifted by `fs_byte_length prefix`) with `fuel - length ws` fuel
+   remaining. Structural induction on `ws`, ONE `blank_line_witness` per
+   step -- `lemma_parse_nquads_acc_blank_step_shift` supplies the single
+   step, the recursive call supplies the rest, transitivity chains them.
+   No `forall` anywhere in this lemma or its dependencies. *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_skip_blanks
+    (prefix mid suffix : string) (ds : RDF.Graph.Executable.rdf_dataset)
+    (start_pos : nat) (ws : list blank_line_witness) (fuel : nat)
+  : Lemma
+      (requires blank_chain_wf mid start_pos ws /\ fuel >= List.Tot.length ws)
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + start_pos) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + blank_chain_end start_pos ws) ds
+             (fuel - List.Tot.length ws))
+      (decreases ws)
+let rec lemma_parse_nquads_acc_skip_blanks prefix mid suffix ds start_pos ws fuel =
+  match ws with
+  | [] -> ()
+  | w :: rest ->
+    lemma_parse_nquads_acc_blank_step_shift prefix mid suffix w ds fuel;
+    lemma_parse_nquads_acc_skip_blanks prefix mid suffix ds w.lw_eolend rest (fuel - 1)
+#pop-options
+
+(* ============================================================================
+ * KIND 2 (task #48 ordered work list, "extend kind by kind"): COMMENT
+ * lines. Same witness-parameter idiom as the blank-line kind above, one
+ * layer deeper (`skip_comment` composes `nt_skip_to_eol` then `skip_eol`,
+ * matching `parse_nquads_acc`'s own comment branch: `pos2 = skip_comment
+ * input pos1; pos3 = skip_eol input pos2`). Reuses `lemma_skip_comment_
+ * shift` (already proved, this file's PHASE-2-adjacent primitives above)
+ * for the `nt_skip_to_eol` composition and `lemma_skip_eol_shift` (already
+ * proved, `Parser.NTriples.Locality.fst`) for the trailing EOL skip -- no
+ * new scanning argument, purely a `parse_nquads_acc`-level composition of
+ * two already-closed primitives, same shape as the blank-line kind's
+ * `lemma_parse_nquads_acc_blank_step_shift`.
+ * ============================================================================ *)
+
+(* A single COMMENT line's witness: `cw_pos` is `parse_nquads_acc`'s entry
+   position; `cw_wsend` is where `pws` lands (the `#` byte); `cw_commentend`
+   is where `skip_comment` lands (== `nt_skip_to_eol mid (fs_byte_length mid)
+   (cw_wsend + 1) (fs_byte_length mid - cw_wsend)`, matching `lemma_skip_
+   comment_shift`'s own `stop_pos` parameter); `cw_eolend` is where the
+   trailing `skip_eol` lands. Same SCOPE narrowing as the blank-line kind
+   (`cw_commentend + 1 < fs_byte_length mid`), for the same reason
+   (sidesteps `lemma_skip_eol_shift`'s CRLF-fusion side condition without a
+   `suffix`-dependent disjunct). *)
+noeq type comment_line_witness = {
+  cw_pos        : nat;
+  cw_wsend      : nat;
+  cw_commentend : nat;
+  cw_eolend     : nat;
+}
+
+let comment_line_wf (mid : string) (w : comment_line_witness) : Type0 =
+  w.cw_pos <= w.cw_wsend /\
+  w.cw_wsend < Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.cw_pos == Parser.Combinators.ParseOk () w.cw_wsend /\
+  FStar.Char.int_of_char (Parser.FastString.fs_byte_index mid w.cw_wsend) = 0x23 /\
+  Parser.NTriples.nt_skip_to_eol mid (Parser.FastString.fs_byte_length mid) (w.cw_wsend + 1)
+    (Parser.FastString.fs_byte_length mid - w.cw_wsend) == w.cw_commentend /\
+  w.cw_commentend < Parser.FastString.fs_byte_length mid /\
+  w.cw_commentend + 1 < Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.skip_eol mid w.cw_commentend == w.cw_eolend /\
+  w.cw_eolend > w.cw_wsend
+
+(* Single-step shift, comment-line kind: same shape as `lemma_parse_
+   nquads_acc_blank_step_shift`, composing `lemma_skip_comment_shift`
+   (this file) and `lemma_skip_eol_shift` (`Parser.NTriples.Locality.fst`)
+   instead of `lemma_pws_shift` + `lemma_skip_eol_shift` directly -- one
+   extra scanner layer, same one-step-unfold technique. *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_comment_step_shift
+    (prefix mid suffix : string) (w : comment_line_witness)
+    (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (requires comment_line_wf mid w /\ fuel > 0)
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.cw_pos) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.cw_eolend) ds (fuel - 1))
+let lemma_parse_nquads_acc_comment_step_shift prefix mid suffix w ds fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix w.cw_pos w.cw_wsend;
+  lemma_byte_index_at_middle prefix mid suffix w.cw_wsend;
+  lemma_skip_comment_shift prefix mid suffix w.cw_wsend w.cw_commentend;
+  Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.cw_commentend
+#pop-options
+
+(* ============================================================================
+ * KIND 3 (task #48 ordered work list, "extend kind by kind"): QUAD-FAILURE
+ * lines -- a line that is neither blank nor a comment, but on which
+ * `Parser.NQuads.parse_nquad` fails (malformed subject/predicate/object/
+ * graph-label/terminator), so `parse_nquads_acc`'s error-recovery branch
+ * (`nq_skip_line`) fires. Reuses `lemma_nq_skip_line_shift_exact` (already
+ * proved, this file's Kind-1-adjacent primitives above).
+ *
+ * WHAT IS A PREMISE HERE, DELIBERATELY (matching the task brief's own
+ * "conditioned... premise" acceptable-landing form, stated plainly, not
+ * hidden): unlike the blank/comment kinds -- where EVERY fact the step-
+ * shift lemma needs is derivable purely from `mid`'s own bytes via already-
+ * proved scanner-shift lemmas -- showing that `parse_nquad`, having FAILED
+ * on `mid` alone, ALSO fails when `mid` is embedded inside a larger string
+ * is exactly the unresolved forward-dispatch obstruction the FINDING above
+ * (and `Parser.NTriples.Locality.fst`'s own abandoned `parse_iri_raw`
+ * capstone) diagnoses for the SUCCESS case, and failure is no easier: a
+ * recursive-descent parser can fail for reasons (running off the end of
+ * `mid`, an internal scan landing past `mid`'s boundary) that do NOT
+ * reproduce when more bytes follow. This kind's step-shift lemma therefore
+ * takes "`parse_nquad` also fails on the embedding, at the shifted
+ * position" as an EXPLICIT HYPOTHESIS (`ParseFail?` on both sides) rather
+ * than deriving it -- a witness fact the CALLER must already possess (e.g.
+ * from having run the concrete embedded parse), never invented internally,
+ * consistent with every other witness parameter in this file. *)
+noeq type quad_fail_witness = {
+  qfw_pos     : nat;
+  qfw_wsend   : nat;
+  qfw_stopeol : nat;
+}
+
+let quad_fail_line_wf (mid : string) (w : quad_fail_witness) : Type0 =
+  w.qfw_pos <= w.qfw_wsend /\
+  w.qfw_wsend < Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qfw_pos == Parser.Combinators.ParseOk () w.qfw_wsend /\
+  (let c = Parser.FastString.fs_byte_index mid w.qfw_wsend in
+   let cc = FStar.Char.int_of_char c in
+   cc <> 0x23 /\ cc <> 0x0A /\ cc <> 0x0D) /\
+  Parser.Combinators.ParseFail? (Parser.NQuads.parse_nquad mid w.qfw_wsend) /\
+  Parser.NQuads.nq_skip_line mid (Parser.FastString.fs_byte_length mid) w.qfw_wsend
+    (Parser.FastString.fs_byte_length mid - w.qfw_wsend) == w.qfw_stopeol /\
+  w.qfw_stopeol < Parser.FastString.fs_byte_length mid /\
+  w.qfw_stopeol > w.qfw_wsend
+
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_quad_fail_step_shift
+    (prefix mid suffix : string) (w : quad_fail_witness)
+    (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (requires
+        quad_fail_line_wf mid w /\
+        fuel > 0 /\
+        (Parser.FastString.fs_byte_length suffix = 0 \/
+         Parser.FastString.fs_byte_at suffix 0 <> 0x0A) /\
+        Parser.Combinators.ParseFail?
+          (Parser.NQuads.parse_nquad (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.qfw_wsend)))
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qfw_pos) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.qfw_stopeol) ds (fuel - 1))
+let lemma_parse_nquads_acc_quad_fail_step_shift prefix mid suffix w ds fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix w.qfw_pos w.qfw_wsend;
+  lemma_byte_index_at_middle prefix mid suffix w.qfw_wsend;
+  lemma_nq_skip_line_shift_exact prefix mid suffix w.qfw_wsend w.qfw_stopeol
+#pop-options
+
+(* ============================================================================
+ * KIND 4 (task #48 ordered work list, "extend kind by kind"): QUAD-SUCCESS
+ * lines -- a line on which `Parser.NQuads.parse_nquad` SUCCEEDS. Composes
+ * `lemma_parse_nquad_shift_generic` (already proved, `Parser.NTriples.
+ * Locality.fst`, Stage 3 Item 3) exactly as the task named it.
+ *
+ * WHAT IS A PREMISE HERE, DELIBERATELY (same disclosure as Kind 3): `lemma_
+ * parse_nquad_shift_generic` ITSELF takes the embedded (full-string)
+ * success facts for `parse_subject`/`parse_iri`/`parse_object`/`parse_opt_
+ * graph_label` as EXTERNAL hypotheses, not derived internally -- it
+ * composes per-shape sub-lemmas (IRI/bnode/literal shift lemmas) that live
+ * in `Parser.NTriples.Locality.fst`, chosen by the CALLER based on the
+ * line's concrete subject/object shape (exactly the "witness/premise-
+ * supplied" acceptable-landing form, one layer down). This step-shift
+ * lemma inherits that same shape: the four embedded sub-parse equalities
+ * are its own explicit `requires`, supplied by whichever caller already
+ * discharged them via the appropriate per-shape lemma for THIS concrete
+ * line -- never re-derived here.
+ *
+ * SCOPE narrowing for the TRAILING (post-quad) segment, kept deliberately
+ * simple for this landing: no comment immediately follows the quad's `.`
+ * (`fs_byte_index mid qow_wsend2 <> 0x23`) -- `skip_comment`'s `else pos`
+ * branch then fires UNCONDITIONALLY (no `lemma_skip_comment_shift` call
+ * needed, unlike the comment kind above), so only the trailing `skip_eol`
+ * needs a shift lemma. A witness whose quad line IS followed by a trailing
+ * `# ...` comment is outside this lemma's coverage; extending it is a
+ * direct composition with `lemma_skip_comment_shift` (Kind 2's own
+ * primitive), not attempted here per the guard-depth rule. *)
+noeq type quad_ok_witness = {
+  qow_entry   : nat;
+  qow_subj    : RDF.Term.subject;
+  qow_pos2    : nat;
+  qow_pos3    : nat;
+  qow_pred    : RDF.Term.wf_iri;
+  qow_pos4    : nat;
+  qow_pos5    : nat;
+  qow_obj     : RDF.Term.rdf_term;
+  qow_pos6    : nat;
+  qow_graph   : option RDF.Term.iri;
+  qow_pos7    : nat;
+  qow_pos8    : nat;
+  qow_wsend2  : nat;
+  qow_eolend2 : nat;
+}
+
+let quad_ok_line_wf (mid : string) (w : quad_ok_witness) : Type0 =
+  w.qow_entry <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qow_entry == Parser.Combinators.ParseOk () w.qow_entry /\
+  Parser.NTriples.parse_subject mid w.qow_entry == Parser.Combinators.ParseOk w.qow_subj w.qow_pos2 /\
+  w.qow_pos2 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qow_pos2 == Parser.Combinators.ParseOk () w.qow_pos3 /\
+  Parser.NTriples.parse_iri mid w.qow_pos3 == Parser.Combinators.ParseOk w.qow_pred w.qow_pos4 /\
+  w.qow_pos4 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qow_pos4 == Parser.Combinators.ParseOk () w.qow_pos5 /\
+  Parser.NTriples.parse_object mid w.qow_pos5 == Parser.Combinators.ParseOk w.qow_obj w.qow_pos6 /\
+  w.qow_pos6 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NQuads.parse_opt_graph_label mid w.qow_pos6 == Parser.Combinators.ParseOk w.qow_graph w.qow_pos7 /\
+  w.qow_pos7 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qow_pos7 == Parser.Combinators.ParseOk () w.qow_pos8 /\
+  w.qow_pos8 < Parser.FastString.fs_byte_length mid /\
+  FStar.Char.int_of_char (Parser.FastString.fs_byte_index mid w.qow_pos8) = 0x2E /\
+  RDF.Term.is_iri w.qow_pred /\
+  w.qow_pos8 + 1 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid (w.qow_pos8 + 1) == Parser.Combinators.ParseOk () w.qow_wsend2 /\
+  w.qow_wsend2 < Parser.FastString.fs_byte_length mid /\
+  w.qow_wsend2 + 1 < Parser.FastString.fs_byte_length mid /\
+  FStar.Char.int_of_char (Parser.FastString.fs_byte_index mid w.qow_wsend2) <> 0x23 /\
+  Parser.NTriples.skip_eol mid w.qow_wsend2 == w.qow_eolend2
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_quad_ok_step_shift
+    (prefix mid suffix : string) (w : quad_ok_witness)
+    (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (requires
+        quad_ok_line_wf mid w /\
+        fuel > 0 /\
+        Parser.NTriples.parse_subject (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_entry)
+          == Parser.Combinators.ParseOk w.qow_subj (Parser.FastString.fs_byte_length prefix + w.qow_pos2) /\
+        Parser.NTriples.parse_iri (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_pos3)
+          == Parser.Combinators.ParseOk w.qow_pred (Parser.FastString.fs_byte_length prefix + w.qow_pos4) /\
+        Parser.NTriples.parse_object (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_pos5)
+          == Parser.Combinators.ParseOk w.qow_obj (Parser.FastString.fs_byte_length prefix + w.qow_pos6) /\
+        Parser.NQuads.parse_opt_graph_label (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_pos6)
+          == Parser.Combinators.ParseOk w.qow_graph (Parser.FastString.fs_byte_length prefix + w.qow_pos7))
+      (ensures
+        (match Parser.NQuads.parse_nquad mid w.qow_entry with
+         | Parser.Combinators.ParseOk (t, g) _ ->
+           Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.qow_entry) ds fuel
+           == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+                (Parser.FastString.fs_byte_length prefix +
+                  (if w.qow_eolend2 > w.qow_entry then w.qow_eolend2
+                   else if w.qow_wsend2 > w.qow_entry then w.qow_wsend2
+                   else w.qow_pos8 + 1))
+                (Parser.NQuads.dataset_add_quad ds t g) (fuel - 1)
+         | _ -> False))
+let lemma_parse_nquads_acc_quad_ok_step_shift prefix mid suffix w ds fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_parse_nquad_shift_generic prefix mid suffix
+    w.qow_entry w.qow_entry w.qow_subj w.qow_pos2 w.qow_pos3 w.qow_pred w.qow_pos4
+    w.qow_pos5 w.qow_obj w.qow_pos6 w.qow_graph w.qow_pos7 w.qow_pos8;
+  lemma_byte_index_at_middle prefix mid suffix w.qow_pos8;
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix (w.qow_pos8 + 1) w.qow_wsend2;
+  lemma_byte_index_at_middle prefix mid suffix w.qow_wsend2;
+  Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.qow_wsend2
+#pop-options
+
+(* ============================================================================
+ * `lemma_parse_nquads_acc_restart` (task #48 ordered work list item 5/6,
+ * the FINDING's own named target) -- the CONDITIONED realisation the task
+ * brief's own failure branch sanctions ("premise: every complete line
+ * parses successfully / boolean/witness-supplied premise is an ACCEPTABLE
+ * landing"). Generalises the blank-only chain (`lemma_parse_nquads_acc_
+ * skip_blanks` above) to a MIXED-KIND chain: `line_witness` is a sum of
+ * all four per-line witness types (Kinds 1-4 above), one constructor per
+ * kind, so a single `list line_witness` can describe an ARBITRARY
+ * multi-line region -- blank lines, comments, failing lines, and
+ * successful quads in any order -- with the SAME structural-induction
+ * discipline (never a `forall`) as every lemma in this file. The `ds`
+ * transform per line (`lw_ds_step`) is `dataset_add_quad` for a quad-
+ * success line, identity for the other three kinds -- matching `parse_
+ * nquads_acc`'s own four branches exactly.
+ * ============================================================================ *)
+
+noeq type line_witness =
+  | LW_Blank    : blank_line_witness -> line_witness
+  | LW_Comment  : comment_line_witness -> line_witness
+  | LW_QuadFail : quad_fail_witness -> line_witness
+  | LW_QuadOk   : quad_ok_witness -> line_witness
+
+(* Entry position: where `parse_nquads_acc` must be called for this line to
+   be the NEXT line processed. *)
+let lw_pos (w : line_witness) : nat =
+  match w with
+  | LW_Blank b -> b.lw_pos
+  | LW_Comment c -> c.cw_pos
+  | LW_QuadFail f -> f.qfw_pos
+  | LW_QuadOk q -> q.qow_entry
+
+(* Landing position after this ONE line is fully processed -- exactly what
+   each kind's own step-shift lemma proves `parse_nquads_acc` advances to. *)
+let lw_end (w : line_witness) : nat =
+  match w with
+  | LW_Blank b -> b.lw_eolend
+  | LW_Comment c -> c.cw_eolend
+  | LW_QuadFail f -> f.qfw_stopeol
+  | LW_QuadOk q ->
+    (if q.qow_eolend2 > q.qow_entry then q.qow_eolend2
+     else if q.qow_wsend2 > q.qow_entry then q.qow_wsend2
+     else q.qow_pos8 + 1)
+
+(* Per-line well-formedness against the FIXED three-way split `prefix ^
+   (mid ^ suffix)` -- the blank/comment kinds only need `mid`-local facts
+   (their own `_line_wf` predicates); the quad-fail/quad-ok kinds ALSO need
+   their disclosed embedding premises (Kind 3/4's own banners), stated here
+   at THIS line's own local position within the SHARED `mid` (no separate
+   prefix per chain entry is needed -- every line in the chain embeds into
+   the SAME fixed `prefix`/`suffix`, only its own position within `mid`
+   differs, exactly as `lemma_parse_nquads_acc_skip_blanks` already
+   established for the blank-only case). *)
+let lw_wf (prefix mid suffix : string) (w : line_witness) : Type0 =
+  match w with
+  | LW_Blank b -> blank_line_wf mid b
+  | LW_Comment c -> comment_line_wf mid c
+  | LW_QuadFail f ->
+    quad_fail_line_wf mid f /\
+    (Parser.FastString.fs_byte_length suffix = 0 \/
+     Parser.FastString.fs_byte_at suffix 0 <> 0x0A) /\
+    Parser.Combinators.ParseFail?
+      (Parser.NQuads.parse_nquad (prefix ^ (mid ^ suffix))
+         (Parser.FastString.fs_byte_length prefix + f.qfw_wsend))
+  | LW_QuadOk q ->
+    quad_ok_line_wf mid q /\
+    Parser.NTriples.parse_subject (prefix ^ (mid ^ suffix))
+      (Parser.FastString.fs_byte_length prefix + q.qow_entry)
+      == Parser.Combinators.ParseOk q.qow_subj (Parser.FastString.fs_byte_length prefix + q.qow_pos2) /\
+    Parser.NTriples.parse_iri (prefix ^ (mid ^ suffix))
+      (Parser.FastString.fs_byte_length prefix + q.qow_pos3)
+      == Parser.Combinators.ParseOk q.qow_pred (Parser.FastString.fs_byte_length prefix + q.qow_pos4) /\
+    Parser.NTriples.parse_object (prefix ^ (mid ^ suffix))
+      (Parser.FastString.fs_byte_length prefix + q.qow_pos5)
+      == Parser.Combinators.ParseOk q.qow_obj (Parser.FastString.fs_byte_length prefix + q.qow_pos6) /\
+    Parser.NQuads.parse_opt_graph_label (prefix ^ (mid ^ suffix))
+      (Parser.FastString.fs_byte_length prefix + q.qow_pos6)
+      == Parser.Combinators.ParseOk q.qow_graph (Parser.FastString.fs_byte_length prefix + q.qow_pos7)
+
+(* What this ONE line does to the dataset: `dataset_add_quad` for a
+   quad-success line (using `mid`'s OWN `parse_nquad` result, matching
+   `lemma_parse_nquads_acc_quad_ok_step_shift`'s ensures exactly), identity
+   for the other three kinds -- matching `parse_nquads_acc`'s own four
+   branches (only the `ParseOk (t,graph_opt) pos2` branch calls `dataset_
+   add_quad`). *)
+let lw_ds_step (mid : string) (w : line_witness) (ds : RDF.Graph.Executable.rdf_dataset)
+  : RDF.Graph.Executable.rdf_dataset =
+  match w with
+  | LW_Blank _ -> ds
+  | LW_Comment _ -> ds
+  | LW_QuadFail _ -> ds
+  | LW_QuadOk q ->
+    (match Parser.NQuads.parse_nquad mid q.qow_entry with
+     | Parser.Combinators.ParseOk (t, g) _ -> Parser.NQuads.dataset_add_quad ds t g
+     | _ -> ds)
+
+(* Single-step shift, ANY kind: dispatches to the matching per-kind lemma
+   proved above. *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_line_step_shift
+    (prefix mid suffix : string) (w : line_witness)
+    (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (requires lw_wf prefix mid suffix w /\ fuel > 0)
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + lw_pos w) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + lw_end w) (lw_ds_step mid w ds) (fuel - 1))
+let lemma_parse_nquads_acc_line_step_shift prefix mid suffix w ds fuel =
+  match w with
+  | LW_Blank b -> lemma_parse_nquads_acc_blank_step_shift prefix mid suffix b ds fuel
+  | LW_Comment c -> lemma_parse_nquads_acc_comment_step_shift prefix mid suffix c ds fuel
+  | LW_QuadFail f -> lemma_parse_nquads_acc_quad_fail_step_shift prefix mid suffix f ds fuel
+  | LW_QuadOk q -> lemma_parse_nquads_acc_quad_ok_step_shift prefix mid suffix q ds fuel
+#pop-options
+
+(* A CHAIN of mixed-kind line witnesses -- same recursive (never `forall`)
+   shape as `blank_chain_wf`/`blank_chain_end` above, generalised to
+   `line_witness`. *)
+let rec chain_wf (prefix mid suffix : string) (start_pos : nat) (ws : list line_witness)
+  : Tot Type0 (decreases ws) =
+  match ws with
+  | [] -> True
+  | w :: rest -> lw_pos w == start_pos /\ lw_wf prefix mid suffix w /\ chain_wf prefix mid suffix (lw_end w) rest
+
+let rec chain_end (start_pos : nat) (ws : list line_witness) : Tot nat (decreases ws) =
+  match ws with
+  | [] -> start_pos
+  | w :: rest -> chain_end (lw_end w) rest
+
+let rec chain_ds_fold (mid : string) (ws : list line_witness) (ds : RDF.Graph.Executable.rdf_dataset)
+  : Tot RDF.Graph.Executable.rdf_dataset (decreases ws) =
+  match ws with
+  | [] -> ds
+  | w :: rest -> chain_ds_fold mid rest (lw_ds_step mid w ds)
+
+(* THE restart lemma: a whole mixed-kind CHAIN, embedded inside `prefix ^
+   (mid ^ suffix)` starting at `start_pos`, is processed by `parse_nquads_
+   acc` in exactly `length ws` steps, landing at `chain_end start_pos ws`
+   (shifted) with dataset `chain_ds_fold mid ws ds` and `fuel - length ws`
+   remaining. Structural induction on `ws`, ONE `line_witness` per step,
+   composing `lemma_parse_nquads_acc_line_step_shift`. This is the
+   FINDING's own named target, `lemma_parse_nquads_acc_restart`, in the
+   CONDITIONED (witness-supplied) form the task brief's own failure branch
+   accepts as a legitimate final landing -- not the FINDING's originally-
+   envisioned UNCONDITIONAL two-string signature, which still needs the
+   full per-combinator forward-dispatch capstone diagnosed as not fitting
+   a guard-depth-3 budget. *)
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_restart
+    (prefix mid suffix : string) (ds : RDF.Graph.Executable.rdf_dataset)
+    (start_pos : nat) (ws : list line_witness) (fuel : nat)
+  : Lemma
+      (requires chain_wf prefix mid suffix start_pos ws /\ fuel >= List.Tot.length ws)
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + start_pos) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + chain_end start_pos ws)
+             (chain_ds_fold mid ws ds) (fuel - List.Tot.length ws))
+      (decreases ws)
+let rec lemma_parse_nquads_acc_restart prefix mid suffix ds start_pos ws fuel =
+  match ws with
+  | [] -> ()
+  | w :: rest ->
+    lemma_parse_nquads_acc_line_step_shift prefix mid suffix w ds fuel;
+    lemma_parse_nquads_acc_restart prefix mid suffix (lw_ds_step mid w ds) (lw_end w) rest (fuel - 1)
+#pop-options
+
+(* A STANDALONE (non-embedded) corollary: running `parse_nquads_acc` on
+   `mid` alone, from position 0 with `mid`'s own `fs_byte_length mid + 1`
+   fuel (exactly the fuel `Parser.NQuads.parse_nquads`/`batch_parse`/
+   `feed_chunk`/`finish` all use for a self-contained string -- the FUEL
+   NOTE in this module's own banner), equals `chain_ds_fold mid ws ds`
+   whenever `ws` is a chain that covers ALL of `mid` (`chain_end 0 ws ==
+   fs_byte_length mid`). Instantiates `lemma_parse_nquads_acc_restart` at
+   `prefix = suffix = ""` (so the embedding IS `mid` itself) and rewrites
+   `"" ^ (mid ^ "")` down to `mid` via the already-proved `empty_string_
+   concat_left`/`_right` -- a single TOP-LEVEL argument rewrite of `parse_
+   nquads_acc`'s own first parameter, the same shallow congruence pattern
+   `parse_nquads_acc_concat_line_empty_complete`/`_empty_carry` above
+   already use successfully (NOT the deep, three-function-layer congruence
+   propagation that stalled the FINDING's three earlier attempts -- those
+   needed `mid ^ ""` rewritten INSIDE `pws`/`skip_eol`'s own preconditions
+   several call-layers deep; this rewrite is one function argument, at the
+   top). Once landed at `pos = chain_end 0 ws = fs_byte_length mid`,
+   `parse_nquads_acc`'s own `pos >= len` base case returns the accumulated
+   dataset UNCHANGED regardless of remaining fuel -- so no fuel-
+   monotonicity argument is needed here either. *)
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_full_via_chain
+    (mid : string) (ds : RDF.Graph.Executable.rdf_dataset) (ws : list line_witness)
+  : Lemma
+      (requires
+        chain_wf "" mid "" 0 ws /\
+        chain_end 0 ws == Parser.FastString.fs_byte_length mid /\
+        Parser.FastString.fs_byte_length mid + 1 >= List.Tot.length ws)
+      (ensures
+        Parser.NQuads.parse_nquads_acc mid 0 ds (Parser.FastString.fs_byte_length mid + 1)
+        == chain_ds_fold mid ws ds)
+let lemma_parse_nquads_acc_full_via_chain mid ds ws =
+  empty_string_concat_left (mid ^ "");
+  empty_string_concat_right mid;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  lemma_parse_nquads_acc_restart "" mid "" ds 0 ws (Parser.FastString.fs_byte_length mid + 1)
+#pop-options
+
+(* ============================================================================
+ * `parse_nquads_acc_concat_line`, GENERAL (INTERIOR) CASE -- the piece the
+ * ORIGINAL FINDING (module banner, "WHAT IT NEEDS") named as the whole
+ * streaming design's fundamental split/monoid law, and diagnosed as
+ * needing a per-combinator forward-dispatch capstone. It does NOT, once
+ * both halves are each covered by a witness chain: it is FOUR applications
+ * of machinery already proved above (`lemma_parse_nquads_acc_full_via_
+ * chain` twice, `lemma_parse_nquads_acc_restart` twice), chained by
+ * ORDINARY transitivity -- no new induction, no new scanning argument.
+ *
+ * THE KEY REALISATION that makes this land without a fuel-monotonicity
+ * lemma (which the ORIGINAL FINDING flagged as a separate, if "short
+ * mechanical," piece still needed): `lemma_parse_nquads_acc_restart`'s own
+ * `requires` only demands fuel be SUFFICIENT (`fuel >= List.Tot.length
+ * ws`), and once its landing position reaches `>= fs_byte_length mid`,
+ * `parse_nquads_acc`'s `pos >= len` base case returns the accumulated
+ * dataset UNCHANGED regardless of exactly how much fuel is left over.  So
+ * running `carry`'s chain with WHATEVER fuel remains after `complete`'s
+ * chain finishes (generally MORE than `carry`'s own canonical `fs_byte_
+ * length carry + 1`, since a chain step consumes far fewer FUEL units
+ * than the BYTES its line spans) lands on the exact SAME dataset value
+ * as running `carry`'s chain with its own canonical fuel -- both are
+ * "sufficient fuel," and sufficiency is all either call needs. No separate
+ * monotonicity induction is required; the two calls just need their own
+ * independent sufficiency facts checked, then their RESULTS (not their
+ * fuel bookkeeping) are equated via ordinary transitivity.
+ * ============================================================================ *)
+#push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_concat_line_general
+    (complete carry : string) (ds : RDF.Graph.Executable.rdf_dataset)
+    (ws_complete ws_carry : list line_witness)
+  : Lemma
+      (requires
+        (* `ws_complete` must be well-formed BOTH standalone (needed to
+           relate the goal's LHS, a bare `parse_nquads_acc complete 0 ds
+           ...` call, to the chain -- `lemma_parse_nquads_acc_full_via_
+           chain`'s own `chain_wf "" complete "" 0 ws` requires exactly the
+           EMPTY-suffix form) AND embedded ahead of `carry` (needed for
+           `lemma_parse_nquads_acc_restart`'s `chain_wf "" complete carry 0
+           ws` on the goal's RHS). These are GENUINELY two different facts
+           whenever `ws_complete` contains a quad-fail/quad-ok entry (their
+           `ParseFail?`/embedded-success premises are about a DIFFERENT
+           string, `complete` alone vs. `complete ^ carry` -- a quad that
+           runs out of bytes mid-parse with nothing following could well
+           behave differently once more bytes follow), so both are
+           required explicitly rather than assumed interchangeable -- for
+           an `ws_complete` built entirely from blank/comment entries
+           (`lw_wf` for those two kinds never mentions `suffix`) the two
+           hypotheses coincide and this is no extra burden. *)
+        chain_wf "" complete "" 0 ws_complete /\
+        chain_wf "" complete carry 0 ws_complete /\
+        chain_end 0 ws_complete == Parser.FastString.fs_byte_length complete /\
+        (* Same double-hypothesis reasoning for `ws_carry`: standalone
+           (`lemma_parse_nquads_acc_full_via_chain`'s own requires) AND
+           embedded after `complete` (`lemma_parse_nquads_acc_restart`'s
+           requires on the goal's RHS second half) are two different facts
+           whenever `ws_carry` contains a quad-fail/quad-ok entry. *)
+        chain_wf "" carry "" 0 ws_carry /\
+        chain_wf complete carry "" 0 ws_carry /\
+        chain_end 0 ws_carry == Parser.FastString.fs_byte_length carry /\
+        Parser.FastString.fs_byte_length complete + 1 >= List.Tot.length ws_complete /\
+        Parser.FastString.fs_byte_length carry + 1 >= List.Tot.length ws_carry /\
+        Parser.FastString.fs_byte_length complete + Parser.FastString.fs_byte_length carry + 1
+          >= List.Tot.length ws_complete + List.Tot.length ws_carry)
+      (ensures
+        Parser.NQuads.parse_nquads_acc carry 0
+          (Parser.NQuads.parse_nquads_acc complete 0 ds (Parser.FastString.fs_byte_length complete + 1))
+          (Parser.FastString.fs_byte_length carry + 1)
+        == Parser.NQuads.parse_nquads_acc (complete ^ carry) 0 ds
+             (Parser.FastString.fs_byte_length (complete ^ carry) + 1))
+let lemma_parse_nquads_acc_concat_line_general complete carry ds ws_complete ws_carry =
+  Parser.FastString.Axioms.fs_byte_length_concat complete carry;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  let fuel3 = Parser.FastString.fs_byte_length complete + Parser.FastString.fs_byte_length carry + 1 in
+  (* Path 1: standalone `complete` then standalone `carry` -- LHS of goal. *)
+  lemma_parse_nquads_acc_full_via_chain complete ds ws_complete;
+  let ds1 = chain_ds_fold complete ws_complete ds in
+  lemma_parse_nquads_acc_full_via_chain carry ds1 ws_carry;
+  (* Path 2: `complete ^ carry` processed in one call -- RHS of goal, split
+     via two embedded `lemma_parse_nquads_acc_restart` calls (`complete`'s
+     own chain first, landing exactly at `fs_byte_length complete` with
+     `ds1` and `fuel3 - length ws_complete` fuel remaining -- sufficient
+     for `carry`'s own chain by this lemma's third hypothesis -- then
+     `carry`'s chain from there, landing at `fs_byte_length (complete ^
+     carry)` with `chain_ds_fold carry ws_carry ds1`, i.e. the SAME dataset
+     Path 1 reached). *)
+  empty_string_concat_left (complete ^ carry);
+  lemma_parse_nquads_acc_restart "" complete carry ds 0 ws_complete fuel3;
+  empty_string_concat_right carry;
+  lemma_parse_nquads_acc_restart complete carry "" ds1 0 ws_carry
+    (fuel3 - List.Tot.length ws_complete)
+#pop-options
+
+(* ============================================================================
+ * `theorem_stream_eq_batch`, SINGLE CHUNK, GENERAL (task #48 item 5,
+ * beyond the two boundary cases proved earlier in this file): `stream_
+ * parse [c] == batch_parse c` for ANY `c`, given witness chains covering
+ * `split_complete_lines c`'s two halves. Direct composition of `stream_
+ * parse_single_chunk_shape` (definitional rewrite, proved earlier),
+ * `lemma_parse_nquads_acc_concat_line_general` (this landing -- already
+ * subsumes the two boundary cases for free: passing `ws_complete = []` or
+ * `ws_carry = []` makes `chain_wf`/`chain_end` hold vacuously for an empty
+ * string, so this ONE lemma covers "no newline"/"ends in newline"/
+ * "interior" uniformly, no case split needed here), and `split_complete_
+ * lines_reconstruct` (`complete ^ carry == c`, proved in this file's
+ * FIRST landing) -- three already-proved facts chained by transitivity,
+ * plus the same shallow top-level `^`-argument rewrite technique used
+ * throughout this section (`complete ^ carry` down to `c`, ordinary `^`
+ * congruence -- not the `string_of_list`-specific non-congruence the
+ * module banner's FINDING documents). *)
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val theorem_stream_eq_batch_single_chunk_general
+    (c : string) (ws_complete ws_carry : list line_witness)
+  : Lemma
+      (requires
+        (let (complete, carry) = split_complete_lines c in
+         chain_wf "" complete "" 0 ws_complete /\
+         chain_wf "" complete carry 0 ws_complete /\
+         chain_end 0 ws_complete == Parser.FastString.fs_byte_length complete /\
+         chain_wf "" carry "" 0 ws_carry /\
+         chain_wf complete carry "" 0 ws_carry /\
+         chain_end 0 ws_carry == Parser.FastString.fs_byte_length carry /\
+         Parser.FastString.fs_byte_length complete + 1 >= List.Tot.length ws_complete /\
+         Parser.FastString.fs_byte_length carry + 1 >= List.Tot.length ws_carry /\
+         Parser.FastString.fs_byte_length complete + Parser.FastString.fs_byte_length carry + 1
+           >= List.Tot.length ws_complete + List.Tot.length ws_carry))
+      (ensures stream_parse [c] == batch_parse c)
+let theorem_stream_eq_batch_single_chunk_general c ws_complete ws_carry =
+  stream_parse_single_chunk_shape c;
+  let (complete, carry) = split_complete_lines c in
+  lemma_parse_nquads_acc_concat_line_general complete carry RDF.Graph.Executable.empty_dataset
+    ws_complete ws_carry;
+  split_complete_lines_reconstruct c
+#pop-options
+
+(* ============================================================================
+ * FINDING (guard-depth-3 stop, THIRD landing, 2026-08-11): `theorem_
+ * stream_eq_batch`, the FULL multi-chunk statement (`stream_parse chunks
+ * == batch_parse (concat_all chunks)` for an ARBITRARY `list string`), is
+ * NOT proved in this landing. Not attempted directly -- diagnosed up
+ * front, per the guard-depth discipline, as needing one further concrete
+ * piece beyond everything landed above, not a re-run of any wall already
+ * hit.
+ *
+ * WHAT THIS LANDING DID CLOSE, so the next session does not re-derive it:
+ * every piece the FULL theorem's own induction would consume is now
+ * proved and available --
+ *   - `lemma_parse_nquads_acc_restart` (mixed-kind witness chain,
+ *     CONDITIONED form of the FINDING's original named target);
+ *   - `lemma_parse_nquads_acc_concat_line_general` (the split/monoid law,
+ *     for an ARBITRARY interior split, conditioned on witness chains for
+ *     BOTH halves, in BOTH standalone and embedded form);
+ *   - `theorem_stream_eq_batch_single_chunk_general` (`stream_parse [c]
+ *     == batch_parse c` for ANY `c`, not just the two boundary shapes).
+ *
+ * WHAT THE FULL THEOREM STILL NEEDS, named precisely (not "harder
+ * induction" -- the SPECIFIC missing piece): an induction over `stream_
+ * parse_acc`'s own fold (`chunks : list string`), carrying the INVARIANT
+ * "the batch parse of every chunk consumed so far equals the streaming
+ * state reached so far" --
+ *
+ *   parse_nquads_acc (concat_all chunks_so_far) 0 empty_dataset
+ *     (fs_byte_length (concat_all chunks_so_far) + 1)
+ *   == parse_nquads_acc st.carry 0 ds (fs_byte_length st.carry + 1)
+ *
+ * The INDUCTIVE STEP (folding in one more chunk `c`) needs `lemma_parse_
+ * nquads_acc_concat_line_general (concat_all chunks_so_far) c ds ws1 ws2`
+ * -- ALREADY PROVED, callable as-is -- but callable only GIVEN witness
+ * chains `ws1`/`ws2` for THAT split. `concat_all chunks_so_far` grows with
+ * every step and is NOT, in general, `split_complete_lines`-aligned (it is
+ * "every complete line processed so far" PLUS the still-pending `st.
+ * carry`, per the streaming invariant `split_complete_lines_extend_carry`/
+ * `_ends_in_newline` already establish) -- so the missing piece is NOT a
+ * new scanning/embedding argument (everything the induction's BODY needs
+ * already exists), it is CHAIN BOOKKEEPING across the fold: the induction
+ * must carry witness chains AS PART OF ITS OWN INVARIANT (extending it
+ * from a bare dataset-equality to "... AND a witness chain covering
+ * `concat_all chunks_so_far` exists, in both standalone and embedded-
+ * ahead-of-the-next-chunk form"), plus ONE new lemma neither this landing
+ * nor any prior one needed: CHAIN CONCATENATION -- "if `ws1` covers `A`
+ * (`chain_end 0 ws1 == fs_byte_length A`) and `ws2` covers `B`, then `ws1
+ * @ ws2` covers `A ^ B`" (a short structural-induction lemma on `ws1`
+ * alone, mirroring `List.Tot.append_assoc`-style reasoning over
+ * `chain_wf`/`chain_end`'s own recursive definitions -- estimated
+ * mechanical, NOT diagnosed as hitting any prior wall, simply not built
+ * in THIS landing's time budget).
+ *
+ * WHY NOT ATTEMPTED HERE, honestly: the induction, once the chain-
+ * concatenation lemma exists, still needs EACH step's witness chains for
+ * `c` (the newly-arriving chunk's `complete`/`carry` split) to be SUPPLIED
+ * by the caller -- meaning the FULL theorem's honest final form is
+ * conditioned on "a witness-chain LIST, one entry per chunk, each
+ * covering that chunk's own `split_complete_lines` output" -- a THIRD
+ * list-of-lists structure threaded through the fold (chunks x their own
+ * witness chains), on top of the chain-concatenation lemma. This is a
+ * real, estimably-short next increment (no new wall diagnosed), but is a
+ * distinct scoped piece from everything landed in this session and was
+ * not started here -- assessed as its own guard-depth-3 unit, not a
+ * same-session extension, per the discipline that produced every OTHER
+ * clean landing in this file today.
+ *
+ * NARROWEST VERIFIED CHECKPOINT, this (third) landing: `lemma_parse_
+ * nquads_acc_blank_step_shift` / `_comment_step_shift` / `_quad_fail_
+ * step_shift` / `_quad_ok_step_shift` (Kinds 1-4), `lemma_parse_nquads_
+ * acc_restart` (mixed-kind chain), `lemma_parse_nquads_acc_full_via_
+ * chain`, `lemma_parse_nquads_acc_concat_line_general`, `theorem_stream_
+ * eq_batch_single_chunk_general` -- all verify clean under `make verify-
+ * RDF.NQuads.Streaming` (whole module, dependencies included), no admits,
+ * no `--lax`, no new `assume val`, every individual `fstar.exe` run under
+ * 25 seconds wall-clock (well inside the "kill any query over 3 minutes"
+ * discipline this task set -- z3's own per-query time was never the
+ * bottleneck once the hypothesis shape was witness-parameterised, exactly
+ * as the module's SECOND-landing FINDING predicted it would be).
+ *
+ * NEXT NARROWEST UNPROVED STATEMENT: the chain-concatenation lemma above,
+ * then the multi-chunk fold induction carrying it plus a per-chunk
+ * witness-chain-list invariant. Not started here; no wall diagnosed
+ * against it -- purely a scoping decision under the guard-depth-3 /
+ * session-budget discipline.
+ * ============================================================================ *)
