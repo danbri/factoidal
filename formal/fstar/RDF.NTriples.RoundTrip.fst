@@ -199,12 +199,57 @@ module RDF.NTriples.RoundTrip
 (**      this is provable in principle, just more proof engineering than     **)
 (**      this session's per-term scope covers).                             **)
 (** ======================================================================== **)
+(** UPDATE 2026-08-11 (G4 M1-adjacent, ntriples-parser-lemmas session):      **)
+(** FINDING 1's WALL IS PARTIALLY CROSSED. The FastString re-founding        **)
+(** (2026-08-10, `Parser.FastString.fsti`'s bridging lemmas + `Parser.       **)
+(** FastString.Axioms.fst`'s eight PROVED facts + `Parser.FastString.        **)
+(** BaseCases.fst`) gave `fs_byte_length`/`fs_byte_at`/`fs_byte_sub` real,    **)
+(** Spec-backed definitions with F*-visible equations — the "no base-VALUE   **)
+(** fact ties a return value to string content" gap Finding 1 named is       **)
+(** CLOSED for concrete inputs (Axioms facts 3/7 + BaseCases' per-delimiter  **)
+(** lemmas). One gap remained even after that: `fs_byte_index` (the wrapper  **)
+(** EVERY parser byte-dispatch site in this tree actually calls, not         **)
+(** `fs_byte_at` directly) had no bridging lemma of its own — confirmed by   **)
+(** probe, `fs_byte_at_eq` alone does not discharge `fs_byte_index "a" 0 ==  **)
+(** FStar.Char.char_of_int 0x61` (Error 19). Added `fs_byte_index_eq` to     **)
+(** `Parser.FastString.fsti`/`.fst` (trivial unfolding proof — the `b <      **)
+(** 0xD800` guard in `fs_byte_index`'s definition is always taken since      **)
+(** `fs_byte_at` returns `n:nat{n < 256}`).                                  **)
+(**                                                                          **)
+(** With that lemma, `parse_iri_raw "<a>" 0 == ParseOk "a" 3` — the EXACT    **)
+(** probe Finding 1 named as failing (Error 19) — now VERIFIES. Part 5/6     **)
+(** below build on this: a reusable `fs_byte_sub`-extraction helper (which   **)
+(** deliberately avoids `FStar.String.string_of_list`/`list_of_string`       **)
+(** entirely — chaining a separately-established `list_of_string s == [c]`   **)
+(** fact through `string_of_list` to identify a result with a literal FAILS  **)
+(** even with every fact in one SMT context, confirmed empirically this      **)
+(** session, exactly the quirk `Parser.FastString.RoundTripLemmas.fst`'s     **)
+(** banner already documents for a different pair of primitives — so this    **)
+(** module's helper composes ONLY Axioms facts 2/4/5a/5b/8, landing on a     **)
+(** concat operand that is ALREADY the target literal, never asking          **)
+(** `string_of_list` to reproduce one) and a CLOSED triple-level round-trip  **)
+(** theorem (checkpoint (a)): `parse_triple (nq_line_for_triple_default_     **)
+(** graph t) 0 == ParseOk t <finalpos>` for a concrete `t` with `S_IRI`/     **)
+(** `T_IRI` subject/predicate/object. This is the first PARSER-side round-   **)
+(** trip statement this module proves — WIDENING REMAINING #1's "actual      **)
+(** round-trip theorem" goal, at the narrowest (closed, concrete) grain.     **)
+(** Still open: the SYMBOLIC term-level statement (arbitrary `wf_iri`, not   **)
+(** one literal) and the general triple-level statement (WIDENING           **)
+(** REMAINING #1/#2, now with the base-value wall gone but the proof-        **)
+(** engineering scope still ahead) — see Part 6's own banner for the exact   **)
+(** next-narrowest unproved statement.                                      **)
+(** ======================================================================== **)
 
 open FStar.List.Tot
 open RDF.Graph.Executable
 open RDF.NQuads.Serialize
+open Parser.NTriples
+open Parser.FastString
+open Parser.FastString.Axioms
+open Parser.Combinators
 
 module Str = FStar.String
+module Spec = Parser.FastString.Spec
 
 #push-options "--z3rlimit 50 --fuel 4 --ifuel 4"
 
@@ -385,5 +430,230 @@ let rec lemma_nq_objects_injective_pointwise
   | t1 :: rest1, t2 :: rest2 ->
     lemma_nq_term_to_string_injective t1.o t2.o;
     lemma_nq_objects_injective_pointwise rest1 rest2
+
+#pop-options
+
+(** ====================================================================== **)
+(** Part 5: `fs_byte_sub`-extraction helper — the PARSER-side counterpart   **)
+(** to Parts 2-4's serializer-side injectivity. See the module banner's     **)
+(** 2026-08-11 UPDATE for the full context.                                 **)
+(**                                                                          **)
+(** `lemma_extract_middle prefix mid suffix` says: slicing the MIDDLE       **)
+(** piece back out of a right-associated three-way concatenation recovers    **)
+(** it exactly. This is `Parser.FastString.RoundTripLemmas.                  **)
+(** lemma_quoted_content_byte_sub` generalised from a FIXED one-quote-char   **)
+(** `suffix` to an ARBITRARY `suffix` — the shape every IRI-content          **)
+(** extraction in `Parser.NTriples.parse_iri_raw`'s fast path needs (the     **)
+(** N-Triples grammar's closing delimiter is one byte, `>`, but what FOLLOWS **)
+(** it in a full triple line is not fixed the way JSON's closing quote is).  **)
+(**                                                                          **)
+(** WHY NOT `FStar.String.string_of_list`/`list_of_string`: the tempting     **)
+(** alternative route — reduce `fs_byte_sub`'s definition (`string_of_list   **)
+(** (utf8_decode_all (slice_bytes ...))`) all the way to a literal via the    **)
+(** SAME `list_of_string s == [c]` / `string_of_list_of_string s` pair       **)
+(** `Parser.FastString.BaseCases.fst` uses for single characters — was       **)
+(** tried FIRST this session and FAILS even with every fact available in     **)
+(** ONE SMT context (not just across separately-scoped `assert`s): given     **)
+(** `list_of_string "a" == [c]` and `string_of_list (list_of_string "a") ==  **)
+(** "a"` (from `string_of_list_of_string`) as two SEPARATE hypotheses, Z3     **)
+(** does not combine them via congruence to conclude `string_of_list [c] ==  **)
+(** "a"` — reproduced standalone against a fresh `assume val myf : list int  **)
+(** -> int` (WORKS) vs the identical pattern against `FStar.String.          **)
+(** string_of_list`/`list_of_string` (FAILS), matching the EXACT quirk       **)
+(** `Parser.FastString.RoundTripLemmas.fst`'s own banner already documents   **)
+(** for a different derivation. `lemma_extract_middle` below sidesteps it    **)
+(** entirely: it never asks `string_of_list` to REPRODUCE a literal — Axiom  **)
+(** fact 8 (`fs_byte_sub_self`) concludes `fs_byte_sub mid 0 (fs_byte_length **)
+(** mid) == mid`, where `mid` is ALREADY the term on both sides (reflexivity **)
+(** under the hood, not a re-identification), so the wall never applies.     **)
+(** ====================================================================== **)
+
+#push-options "--z3rlimit 400 --fuel 24 --ifuel 24"
+
+// Extracts the middle piece of a right-associated 3-way string
+// concatenation via its own byte length — the general shape every
+// N-Triples-parser content-extraction call (`fs_byte_sub` after a
+// `scan_..._end`-style scanner has found the closing delimiter) needs.
+// Composes Axioms facts 2 (`fs_byte_length_concat`, twice: to compute the
+// combined length AND to shift the right split), 5a/5b (`fs_byte_sub_
+// concat_left`/`_right`: peel `prefix`, then peel `suffix`), and 8
+// (`fs_byte_sub_self`: what remains IS `mid`).
+let lemma_extract_middle (prefix mid suffix : string)
+  : Lemma (fs_byte_sub (prefix ^ (mid ^ suffix)) (fs_byte_length prefix) (fs_byte_length mid) == mid)
+  =
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  fs_byte_sub_concat_right prefix (mid ^ suffix) (fs_byte_length prefix) (fs_byte_length mid);
+  fs_byte_sub_concat_left mid suffix 0 (fs_byte_length mid);
+  fs_byte_sub_self mid
+
+#pop-options
+
+(** ====================================================================== **)
+(** Part 6: checkpoint (a) — closed-literal PARSER round-trip.              **)
+(**                                                                          **)
+(** `checkpoint_a_closed_triple_round_trip`: for ONE concrete triple whose   **)
+(** subject/predicate/object are all short IRIs (`"x:"`, `"y:"`, `"z:"` —    **)
+(** the minimal `wf_iri` witnesses: `is_iri` only demands non-empty +        **)
+(** colon-containing, so a bare `":"`-suffixed single letter is the          **)
+(** shortest concrete witness that also keeps the three positions            **)
+(** visually distinguishable in the proof), `parse_triple` applied to the    **)
+(** ACTUAL SERIALIZER OUTPUT (`nq_line_for_triple_default_graph`, not a      **)
+(** hand-typed lookalike string) recovers the exact original triple, at the  **)
+(** exact byte position immediately after the trailing `.` (position 16;    **)
+(** the line's own `\n` is left unconsumed, matching `parse_triple`'s        **)
+(** contract — it does not consume trailing newline, that is `parse_        **)
+(** ntriples_acc`'s job at the document level).                              **)
+(**                                                                          **)
+(** METHOD, in order (mirrors how `parse_triple` itself dispatches,          **)
+(** `pws`/`parse_subject`/`pws`/`parse_iri`/`pws`/`parse_object`/`pws`/`.`   **)
+(** — see that function in `Parser.NTriples.fst`):                          **)
+(**   1. Pin the serializer output down to the flat 17-byte literal via      **)
+(**      `assert_norm` (pure definitional unfolding — `nq_line_for_triple_   **)
+(**      default_graph`/`nq_subject_to_string`/`nq_term_to_string` are all   **)
+(**      transparent, and `target_triple`'s constructor fields are literal   **)
+(**      `S_IRI`/`T_IRI` values, so this needs no fs_* reasoning at all).    **)
+(**   2. Get `fs_byte_length`/`fs_byte_at`/`fs_byte_index` at every position  **)
+(**      the parser actually reads (0..15) via the bridging lemmas +         **)
+(**      `assert_norm` on `Parser.FastString.Spec.utf8_bytes`/`nth_byte`     **)
+(**      (which DO reduce on concrete literals — confirmed for a 17-byte     **)
+(**      literal this session, no chunking needed). `--fuel 24 --ifuel 24`   **)
+(**      above `Parts 5`/`6` (vs. the file's usual `--fuel 4 --ifuel 4`) is   **)
+(**      load-bearing: `FStar.List.Tot.length`/`Spec.nth_byte` need enough    **)
+(**      fuel to unfold across a 17-element list; `--fuel 8` (the file's     **)
+(**      other elevated setting, tried first) was NOT enough and failed      **)
+(**      Error 19 at exactly the length assertion — recorded here since a    **)
+(**      future narrower/wider variant will hit the same wall at whatever    **)
+(**      fuel it tries first.                                                **)
+(**   3. Get the three IRI-content `fs_byte_sub` results via `lemma_extract_ **)
+(**      middle`, re-associating the flat literal into the needed            **)
+(**      `prefix ^ (mid ^ suffix)` shape via `assert_norm` each time (works   **)
+(**      for CONCRETE literal pieces — confirmed separately; plain           **)
+(**      symbolic-variable associativity `(a^b)^c == a^(b^c)` does NOT hold   **)
+(**      via `()`/`assert_norm` with no further help, a DIFFERENT, narrower   **)
+(**      finding than the string_of_list wall above, not attempted further   **)
+(**      since concrete reassociation is all this checkpoint needs).         **)
+(**   4. `is_iri "x:"`/`"y:"`/`"z:"` via `assert_norm` (same reduction as     **)
+(**      `RDF.Term.fsti`'s `xsd_string`-family constants use).                **)
+(**   5. The final `assert (parse_triple s 0 == ParseOk target_triple 16)`   **)
+(**      then goes through directly — every opaque atom `parse_triple`'s     **)
+(**      definition touches (`fs_byte_length`/`fs_byte_at`/`fs_byte_index`/  **)
+(**      `fs_byte_sub`, transitively through `pws`/`parse_subject`/          **)
+(**      `parse_iri`/`parse_iri_raw`/`scan_iri_end`/`parse_object`) has a     **)
+(**      known value in context, so Z3 walks the (fuel-unfolded) recursive    **)
+(**      structure and checks equality of a fully-determined chain of        **)
+(**      branches — no further lemma calls needed for this step itself.      **)
+(**                                                                          **)
+(** NEXT NARROWEST UNPROVED STATEMENT (WIDENING REMAINING #1, continued):     **)
+(** the SYMBOLIC term-level lemma — `parse_iri_raw ("<" ^ i ^ ">") 0 ==       **)
+(** ParseOk i (fs_byte_length i + 2)` for an ARBITRARY `i : wf_iri` under a   **)
+(** stated `iri_print_safe i` hypothesis (Part 1b's predicate, defined but    **)
+(** unused until now) — needs an INDUCTIVE argument over `i`'s bytes (this    **)
+(** checkpoint's `scan_iri_end` reasoning was for a FIXED 2-byte content;     **)
+(** a symbolic `i` needs `scan_iri_end` shown to terminate at exactly         **)
+(** `fs_byte_length i` for ANY `iri_print_safe`-satisfying `i`, by induction   **)
+(** on `i`'s byte content — likely via `Parser.FastString.BaseCases.          **)
+(** build_string`/`all_ascii`-style structural induction, generalising this   **)
+(** checkpoint's flat-literal approach the way `BaseCases.lemma_build_       **)
+(** string_byte_at` generalises `BaseCases.fs_ascii_singleton_facts`). Not    **)
+(** attempted in this landing — the concrete checkpoint above is the         **)
+(** narrowest verified rung on that ladder.                                  **)
+(** ====================================================================== **)
+
+#push-options "--z3rlimit 400 --fuel 24 --ifuel 24"
+
+// The witness triple: minimal `wf_iri` content ("x:"/"y:"/"z:" — a bare
+// colon-suffixed letter is the shortest string satisfying `is_iri`, per
+// RDF.Term.fsti's `is_iri s = length s > 0 && string_contains_colon s`).
+let target_triple : triple =
+  assert_norm (is_iri "x:" == true);
+  assert_norm (is_iri "y:" == true);
+  assert_norm (is_iri "z:" == true);
+  { s = S_IRI "x:"; p = "y:"; o = T_IRI "z:" }
+
+// Checkpoint (a): parsing the ACTUAL SERIALIZER OUTPUT for `target_triple`
+// recovers it exactly, at the byte position right after the trailing `.`
+// (the `\n` is left for the document-level parser to consume).
+let checkpoint_a_closed_triple_round_trip (_:unit)
+  : Lemma (parse_triple (nq_line_for_triple_default_graph target_triple) 0
+           == ParseOk target_triple 16)
+  =
+  let s : string = nq_line_for_triple_default_graph target_triple in
+  assert_norm (s == "<x:> <y:> <z:> .\n");
+  // -- fs_byte_length / fs_byte_at / fs_byte_index at every position the
+  // -- parser actually reads (0..15) --
+  let bytes17 : list Spec.byte =
+    [0x3C;0x78;0x3A;0x3E;0x20;0x3C;0x79;0x3A;0x3E;0x20;0x3C;0x7A;0x3A;0x3E;0x20;0x2E;0x0A] in
+  assert_norm (Spec.utf8_bytes s == bytes17);
+  fs_byte_length_eq s;
+  assert_norm (FStar.List.Tot.length bytes17 == 17);
+  assert (fs_byte_length s == 17);
+  let get_byte (i:nat) (v:Spec.byte) : Lemma (requires Spec.nth_byte bytes17 i == Some v)
+                                              (ensures fs_byte_at s i == v /\
+                                                       fs_byte_index s i == FStar.Char.char_of_int v)
+    = fs_byte_at_eq s i; fs_byte_index_eq s i
+  in
+  get_byte 0  0x3C; get_byte 1  0x78; get_byte 2  0x3A; get_byte 3  0x3E; get_byte 4  0x20;
+  get_byte 5  0x3C; get_byte 6  0x79; get_byte 7  0x3A; get_byte 8  0x3E; get_byte 9  0x20;
+  get_byte 10 0x3C; get_byte 11 0x7A; get_byte 12 0x3A; get_byte 13 0x3E; get_byte 14 0x20;
+  get_byte 15 0x2E;
+  assert (fs_byte_at s 0 == 0x3C);  assert (fs_byte_at s 1 == 0x78);
+  assert (fs_byte_at s 2 == 0x3A);  assert (fs_byte_at s 3 == 0x3E);
+  assert (fs_byte_at s 4 == 0x20);  assert (fs_byte_at s 5 == 0x3C);
+  assert (fs_byte_at s 6 == 0x79);  assert (fs_byte_at s 7 == 0x3A);
+  assert (fs_byte_at s 8 == 0x3E);  assert (fs_byte_at s 9 == 0x20);
+  assert (fs_byte_at s 10 == 0x3C); assert (fs_byte_at s 11 == 0x7A);
+  assert (fs_byte_at s 12 == 0x3A); assert (fs_byte_at s 13 == 0x3E);
+  assert (fs_byte_at s 14 == 0x20); assert (fs_byte_at s 15 == 0x2E);
+  assert (fs_byte_index s 0 == FStar.Char.char_of_int 0x3C);
+  assert (fs_byte_index s 1 == FStar.Char.char_of_int 0x78);
+  assert (fs_byte_index s 2 == FStar.Char.char_of_int 0x3A);
+  assert (fs_byte_index s 3 == FStar.Char.char_of_int 0x3E);
+  assert (fs_byte_index s 4 == FStar.Char.char_of_int 0x20);
+  assert (fs_byte_index s 5 == FStar.Char.char_of_int 0x3C);
+  assert (fs_byte_index s 6 == FStar.Char.char_of_int 0x79);
+  assert (fs_byte_index s 7 == FStar.Char.char_of_int 0x3A);
+  assert (fs_byte_index s 8 == FStar.Char.char_of_int 0x3E);
+  assert (fs_byte_index s 9 == FStar.Char.char_of_int 0x20);
+  assert (fs_byte_index s 10 == FStar.Char.char_of_int 0x3C);
+  assert (fs_byte_index s 11 == FStar.Char.char_of_int 0x7A);
+  assert (fs_byte_index s 12 == FStar.Char.char_of_int 0x3A);
+  assert (fs_byte_index s 13 == FStar.Char.char_of_int 0x3E);
+  assert (fs_byte_index s 14 == FStar.Char.char_of_int 0x20);
+  assert (fs_byte_index s 15 == FStar.Char.char_of_int 0x2E);
+  // -- fs_byte_sub for the three IRI contents, via lemma_extract_middle --
+  assert_norm (s == "<" ^ ("x:" ^ "> <y:> <z:> .\n"));
+  lemma_extract_middle "<" "x:" "> <y:> <z:> .\n";
+  assert_norm (Spec.utf8_bytes "<" == [0x3C]);
+  fs_byte_length_eq "<";
+  assert (fs_byte_length "<" == 1);
+  assert_norm (Spec.utf8_bytes "x:" == [0x78; 0x3A]);
+  fs_byte_length_eq "x:";
+  assert (fs_byte_length "x:" == 2);
+  assert (fs_byte_sub s 1 2 == "x:");
+  assert_norm (s == "<x:> <" ^ ("y:" ^ "> <z:> .\n"));
+  lemma_extract_middle "<x:> <" "y:" "> <z:> .\n";
+  assert_norm (Spec.utf8_bytes "<x:> <" == [0x3C;0x78;0x3A;0x3E;0x20;0x3C]);
+  fs_byte_length_eq "<x:> <";
+  assert (fs_byte_length "<x:> <" == 6);
+  assert_norm (Spec.utf8_bytes "y:" == [0x79; 0x3A]);
+  fs_byte_length_eq "y:";
+  assert (fs_byte_length "y:" == 2);
+  assert (fs_byte_sub s 6 2 == "y:");
+  assert_norm (s == "<x:> <y:> <" ^ ("z:" ^ "> .\n"));
+  lemma_extract_middle "<x:> <y:> <" "z:" "> .\n";
+  assert_norm (Spec.utf8_bytes "<x:> <y:> <" == [0x3C;0x78;0x3A;0x3E;0x20;0x3C;0x79;0x3A;0x3E;0x20;0x3C]);
+  fs_byte_length_eq "<x:> <y:> <";
+  assert (fs_byte_length "<x:> <y:> <" == 11);
+  assert_norm (Spec.utf8_bytes "z:" == [0x7A; 0x3A]);
+  fs_byte_length_eq "z:";
+  assert (fs_byte_length "z:" == 2);
+  assert (fs_byte_sub s 11 2 == "z:");
+  // -- well-formedness of the three IRI contents --
+  assert_norm (is_iri "x:" == true);
+  assert_norm (is_iri "y:" == true);
+  assert_norm (is_iri "z:" == true);
+  // -- the parse itself --
+  assert (parse_triple s 0 == ParseOk target_triple 16)
 
 #pop-options
