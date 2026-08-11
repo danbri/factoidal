@@ -101,5 +101,5 @@ let entails_with
   (b : RDF_Triple.triple Prims.list) : Prims.bool= try_match leq bnd b [] a
 let simple_entails (a : RDF_Triple.triple Prims.list)
   (b : RDF_Triple.triple Prims.list) : Prims.bool=
-  entails_with (fun uu___ l m -> RDF_Term.literal_eq l m) (fun uu___ -> true)
-    a b
+  entails_with (fun uu___ l m -> RDF_Term.literal_term_eq l m)
+    (fun uu___ -> true) a b

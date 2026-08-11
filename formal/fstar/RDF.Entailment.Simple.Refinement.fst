@@ -151,6 +151,15 @@ let leq_exact_identity (leq : bool -> literal -> literal -> bool) : prop =
   forall (ins : bool) (l1 l2 : literal).
     lit_exact l1 ==> lit_exact l2 ==> leq ins l1 l2 == true ==> l1 == l2
 
+// Strictly stronger than `leq_exact_identity`: decides literal identity
+// with NO side condition on literal content at all (drops the
+// `lit_exact` antecedents). `literal_term_eq` (issue #324 / SE-1)
+// satisfies this; `literal_eq` does not (that gap is exactly the SE-1
+// defect). Used below for the ground-fragment soundness corollary,
+// which needs no `graph_exact` hypothesis at all.
+let leq_always_identity (leq : bool -> literal -> literal -> bool) : prop =
+  forall (ins : bool) (l1 l2 : literal). leq ins l1 l2 == true ==> l1 == l2
+
 let bnd_total (bnd : rdf_term -> bool) : prop =
   forall (t : rdf_term). bnd t == true
 
@@ -270,7 +279,9 @@ and lemma_try_alts_complete (leq : bool -> literal -> literal -> bool)
 
 // -------------------------------------------------------------------
 // The shipping instantiation: `simple_entails` passes
-// `fun _ l m -> literal_eq l m` and `fun _ -> true`.
+// `fun _ l m -> literal_term_eq l m` and `fun _ -> true` (issue #324 /
+// SE-1 -- was `literal_eq`, the D-entailment-flavoured coarsening;
+// see RDF.Entailment.Simple.fst's banner).
 // -------------------------------------------------------------------
 
 // `unfold` (not a plain `let`): the theorems below must be about the
@@ -279,23 +290,29 @@ and lemma_try_alts_complete (leq : bool -> literal -> literal -> bool)
 // encoding cannot relate to the shipping lambdas (design-doc finding
 // F3 in the OWL pilot, same trap).
 unfold let simple_leq : bool -> literal -> literal -> bool =
-  fun _ l m -> literal_eq l m
+  fun _ l m -> literal_term_eq l m
 
 unfold let simple_bnd : rdf_term -> bool = fun _ -> true
 
 let lemma_simple_leq_reflexive (_ : unit) : Lemma (leq_reflexive simple_leq) =
-  FStar.Classical.forall_intro lemma_literal_eq_refl
+  FStar.Classical.forall_intro lemma_literal_term_eq_refl
 
 let lemma_simple_bnd_total (_ : unit) : Lemma (bnd_total simple_bnd) = ()
 
-let lemma_simple_leq_exact_identity (_ : unit) : Lemma (leq_exact_identity simple_leq) =
-  let aux (l1 l2 : literal)
-    : Lemma (lit_exact l1 ==> lit_exact l2 ==> literal_eq l1 l2 == true ==> l1 == l2) =
-    FStar.Classical.move_requires_3
-      (fun (x : literal) (y : literal) (_ : unit) -> lemma_literal_eq_exact x y)
-      l1 l2 ()
+// `literal_term_eq` decides literal term identity UNCONDITIONALLY, so
+// `simple_leq` satisfies the stronger `leq_always_identity` (below) and
+// hence the weaker `leq_exact_identity` the shared refinement lemmas
+// ask for -- no `lit_exact` hypotheses needed on either side.
+let lemma_simple_leq_always_identity (_ : unit) : Lemma (leq_always_identity simple_leq) =
+  let aux (l1 l2 : literal) : Lemma (literal_term_eq l1 l2 == true ==> l1 == l2) =
+    FStar.Classical.move_requires_2
+      (fun (x : literal) (y : literal) -> lemma_literal_term_eq_identity x y)
+      l1 l2
   in
   FStar.Classical.forall_intro_2 aux
+
+let lemma_simple_leq_exact_identity (_ : unit) : Lemma (leq_exact_identity simple_leq) =
+  lemma_simple_leq_always_identity ()
 
 // `simple_entails` unfolds to the parameterized engine at these two
 // arguments. Pinned by `assert_norm` so the theorems below are about
@@ -553,41 +570,55 @@ let simple_entails_iff_spec (a b : list triple)
     (fun (x : list triple) (y : list triple) -> simple_entails_complete x y) a b
 
 // ===================================================================
-// 6. FINDING SE-1: soundness is NOT unconditional.
+// 6. FINDING SE-1 -- FIXED (issue #324).
 //
-// `literal_eq` compares language tags case-insensitively
-// (`lang_tag_eq t1 t2 = lowercase t1 = lowercase t2`). RDF 1.1
-// Concepts section 3.3 makes literal term equality character-by-
+// HISTORY. `simple_entails` used to instantiate `entails_with`'s `leq`
+// parameter with `literal_eq`, which compares language tags
+// case-insensitively (`lang_tag_eq t1 t2 = lowercase t1 = lowercase
+// t2`) and canonicalizes rdf:XMLLiteral pairs via exclusive c14n. RDF
+// 1.1 Concepts section 3.3 makes literal TERM equality character-by-
 // character, so `"x"@en` and `"x"@EN` are DIFFERENT literal terms with
-// the same value. Simple interpretations (RDF 1.1 Semantics section 5)
+// the same value; simple interpretations (RDF 1.1 Semantics section 5)
 // place no constraint tying the two denotations together -- value
 // equality of language-tagged strings is an RDF-interpretation
-// condition, not a simple one. So a graph asserting `"x"@en` does NOT
-// simply entail the same graph with `"x"@EN`; the shipping engine says
-// it does.
+// (D-entailment) condition, not a simple one. So a graph asserting
+// `"x"@en` does NOT simply entail the same graph with `"x"@EN`, but the
+// old shipping engine said it did -- a soundness bug, machine-checked
+// below at `simple_entails_se1_regression`, which used to prove the
+// ACCEPTING direction (`simple_entails ga gb == true`) alongside the
+// spec-side refutation; it now proves the REJECTING direction, because
+// `simple_entails` passes strict `literal_term_eq` (RDF 1.1 Concepts
+// section 3.3 literal term equality -- lexical form, datatype,
+// language tag, and direction all compare exactly) instead.
 //
-// The lemma below proves exactly that, for any two language tags that
-// differ but lowercase alike (e.g. "EN" and "en"). It is stated with
-// the tag pair as a hypothesis rather than with literal strings
-// because F* does not reduce `FStar.String.lowercase` on string
-// constants; the hypothesis is trivially satisfiable and the reader
-// can instantiate it mentally at ("EN","en").
+// The same divergence existed for rdf:XMLLiteral (`literal_eq` routes
+// two XMLLiteral-typed literals through `xmlc_canonicalize`); not
+// separately witnessed here (same shape, same fix), and closed by the
+// same swap since `literal_term_eq` does not canonicalize XMLLiteral
+// either.
 //
-// The same divergence exists for rdf:XMLLiteral (`literal_eq` routes
-// two XMLLiteral-typed literals through `xmlc_canonicalize`): in RDF
-// 2004 the XMLLiteral value space is a condition on RDF-
-// interpretations (section 3.1), not simple ones, and in RDF 1.1
-// rdf:XMLLiteral is not even a normative datatype (Concepts section
-// 5.3 is non-normative). Not separately witnessed here; same shape.
-//
-// PRACTICAL IMPACT: the divergence is in the "accepts more" direction
-// only, so no test that expects entailment can fail because of it, and
-// the RDF 1.2 entailment suite (which is where `simple_entails` is
-// exercised) contains no language-tag-case or XMLLiteral negative
-// case. The fix, if wanted, is to give `entails_with` a THIRD
-// parameter for the simple-regime literal test (strict term identity)
-// and keep `literal_eq` for the D-entailment regime -- the engine is
-// already parameterized in exactly that shape.
+// RESIDUAL (documented, not closed by this fix -- see
+// RDF.Entailment.Simple.fst's banner): blank-node REBIND consistency
+// (a pattern blank node seen twice must denote the SAME ground term)
+// is checked by `match_term`'s hardcoded `rdf_term_eq`, which still
+// routes literal comparison through the coarser `literal_eq` -- that
+// call site is not parameterized by `leq` at all. So a pattern that
+// reuses one blank node across two literal ground terms differing only
+// by language-tag case or XMLLiteral canonical form could still be
+// accepted wrongly. No fixture in the tree exercises this (rdf-mt/
+// W3C suites do not reuse a blank node across differently-cased
+// literals), and fixing it would mean threading a THIRD predicate
+// through `match_term`/`match_subj`/`try_match`/`try_alts` (shared
+// with `RDF.Entailment.Regime`'s D-entailment instantiation, which
+// deliberately wants the coarser test) -- out of scope for this
+// change; tracked as a residual note against #324, not a separate
+// issue, until it has a witness. `simple_entails_sound` below keeps
+// its `graph_exact` side condition for exactly this reason: it is
+// the ONLY reason left, now that the literal-ACCEPTANCE test
+// (`leq`) is unconditionally exact -- see the ground-fragment
+// corollary (section 8) for the class of graphs (`graph_ground b`,
+// which never exercises the bnode-rebind path at all) where the
+// side condition is now provably unnecessary.
 // ===================================================================
 
 let se1_lit (lex : string) (tag : string) : literal =
@@ -596,7 +627,21 @@ let se1_lit (lex : string) (tag : string) : literal =
 
 let lemma_se1_lit_wf (lex tag : string) : Lemma (literal_wf (se1_lit lex tag)) = ()
 
-let simple_entails_not_sound_unconditionally
+// REGRESSION PIN (issue #324 / SE-1). Same graphs as the original
+// witness (a language tag differing only by case -- "EN" vs "en" is
+// the reader-facing instance the `lowercase` hypothesis lets us keep
+// stating without F* reducing string constants); the outcome is now
+// the CORRECT one on both sides, and they AGREE:
+//   - `simple_entails ga gb == false`: the shipping engine now
+//     rejects the pair it used to wrongly accept.
+//   - `~(simple_entailment_spec ga gb)`: the declarative spec always
+//     said this pair does not entail (unchanged by this fix -- the
+//     spec was never the buggy side).
+// `tag1 =!= tag2` alone already makes the two literals distinct terms
+// (case-insensitivity is not needed for the disproof); the `lowercase`
+// hypothesis is kept only to pin the exact historical counterexample
+// shape on record.
+let simple_entails_se1_regression
       (s : wf_iri) (p : wf_iri) (tag1 tag2 : string)
   : Lemma (requires FStar.String.lowercase tag1 == FStar.String.lowercase tag2 /\
                     tag1 =!= tag2)
@@ -605,17 +650,20 @@ let simple_entails_not_sound_unconditionally
             let l2 = se1_lit "x" tag2 in
             let ga = [ { s = S_IRI s; p = p; o = T_Literal l1 } ] in
             let gb = [ { s = S_IRI s; p = p; o = T_Literal l2 } ] in
-            simple_entails ga gb == true /\ ~(simple_entailment_spec ga gb))) =
+            simple_entails ga gb == false /\ ~(simple_entailment_spec ga gb))) =
   let l1 = se1_lit "x" tag1 in
   let l2 = se1_lit "x" tag2 in
   let ga = [ { s = S_IRI s; p = p; o = T_Literal l1 } ] in
   let gb = [ { s = S_IRI s; p = p; o = T_Literal l2 } ] in
   lemma_simple_entails_unfold ga gb;
-  assert (literal_eq l2 l1 == true);
-  assert (simple_entails ga gb == true);
+  assert (l1.lang_tag =!= l2.lang_tag);
+  assert (l1 =!= l2);
+  assert (literal_term_eq l2 l1 == false);
+  assert (simple_entails ga gb == false);
   // The spec side: gb's only triple is ground, so no substitution can
   // help; `term_inst m (T_Literal l2) (T_Literal l1)` demands
-  // T_Literal l1 == T_Literal l2, i.e. l1 == l2, i.e. tag1 == tag2.
+  // T_Literal l1 == T_Literal l2, i.e. l1 == l2, i.e. tag1 == tag2 --
+  // still false, exactly as before this fix.
   let no_spec (m : bnode_subst)
     : Lemma (requires (forall (tbx : triple). memP tbx gb ==>
                          (exists (ta : triple). memP ta ga /\ triple_inst m tbx ta)))
@@ -631,6 +679,32 @@ let simple_entails_not_sound_unconditionally
        assert (l1 == l2))
   in
   FStar.Classical.forall_intro (FStar.Classical.move_requires no_spec)
+
+// POSITIVE REGRESSION (measuring-inference discipline: a green
+// negative test alone proves nothing was exercised -- confirm the
+// fixed literal-match branch actually FIRES and accepts on a genuine
+// match). Same-case tags, same literal in both graphs: `literal_term_eq`
+// must still say yes, and the search must still find it.
+let simple_entails_se1_positive_regression (s : wf_iri) (p : wf_iri) (tag : string)
+  : Lemma (ensures (
+             let l = se1_lit "x" tag in
+             let ga = [ { s = S_IRI s; p = p; o = T_Literal l } ] in
+             let gb = [ { s = S_IRI s; p = p; o = T_Literal l } ] in
+             simple_entails ga gb == true /\ simple_entailment_spec ga gb)) =
+  let l = se1_lit "x" tag in
+  let ga = [ { s = S_IRI s; p = p; o = T_Literal l } ] in
+  let gb = [ { s = S_IRI s; p = p; o = T_Literal l } ] in
+  lemma_simple_entails_unfold ga gb;
+  assert (literal_term_eq l l == true);
+  assert (simple_entails ga gb == true);
+  let m : bnode_subst = fun lbl -> T_BNode lbl in
+  let aux (tb : triple)
+    : Lemma (requires memP tb gb)
+            (ensures (exists (ta : triple). memP ta ga /\ triple_inst m tb ta)) =
+    assert (tb == { s = S_IRI s; p = p; o = T_Literal l });
+    assert (memP tb ga)
+  in
+  FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
 
 // ===================================================================
 // 7. The spec's own shape: "a subgraph of A is an instance of B".
@@ -651,3 +725,158 @@ let lemma_spec_is_instance_subgraph (a b : list triple)
   with _pf.
     assert (forall (tb : triple). memP tb b ==>
               (exists (ta : triple). memP ta a /\ triple_inst m tb ta))
+
+// ===================================================================
+// 8. GROUND-FRAGMENT SOUNDNESS (issue #324 follow-up). UNCONDITIONAL:
+// no `graph_exact` hypothesis on EITHER graph, only `graph_ground b`.
+//
+// Why this is available now and was not before: a bnode-free pattern
+// triple never drives `match_term`/`match_subj`'s T_BNode branches --
+// the ONLY place the shipping engine's literal comparison still routes
+// through `rdf_term_eq` (hence `literal_eq`) rather than the caller's
+// `leq` (see section 6's residual note). So for `graph_ground b`,
+// soundness needs nothing from `graph_exact` at all -- only that `leq`
+// itself decides literal identity (`leq_always_identity`), which
+// `simple_leq` now does. This is exactly the shape of the SE-1 witness
+// (ground graphs, no blank nodes) generalized to a full soundness
+// corollary: for THIS fragment, `graph_exact`'s remaining role (the
+// bnode-rebind residual) provably does not apply.
+// ===================================================================
+
+let lemma_match_subj_ground_sound (b : binding) (ps gs : subject)
+  : Lemma (requires subj_ground ps == true /\ Some? (match_subj b ps gs))
+          (ensures Some?.v (match_subj b ps gs) == b /\ ps == gs) =
+  match ps with
+  | S_IRI _   -> ()
+  | S_BNode _ -> ()
+
+let rec lemma_match_term_ground_sound (leq : bool -> literal -> literal -> bool)
+                                      (bnd : rdf_term -> bool)
+                                      (inside : bool) (b : binding)
+                                      (pat g : rdf_term)
+  : Lemma (requires leq_always_identity leq /\ term_ground pat == true /\
+                    Some? (match_term leq bnd inside b pat g))
+          (ensures Some?.v (match_term leq bnd inside b pat g) == b /\ pat == g)
+          (decreases pat) =
+  match pat with
+  | T_IRI _   -> ()
+  | T_BNode _ -> ()
+  | T_Literal l ->
+    (match g with
+     | T_Literal m -> ()
+     | _ -> ())
+  | T_TripleTerm ps pp po ->
+    (match g with
+     | T_TripleTerm gs gp go ->
+       if pp = gp then
+         (match match_subj b ps gs with
+          | Some b1 ->
+            lemma_match_subj_ground_sound b ps gs;
+            lemma_match_term_ground_sound leq bnd true b1 po go
+          | None -> ())
+       else ()
+     | _ -> ())
+
+let lemma_match_triple_ground_sound (leq : bool -> literal -> literal -> bool)
+                                    (bnd : rdf_term -> bool)
+                                    (b : binding) (tb ta : triple)
+  : Lemma (requires leq_always_identity leq /\ triple_ground tb == true /\
+                    Some? (match_triple leq bnd b tb ta))
+          (ensures Some?.v (match_triple leq bnd b tb ta) == b /\ tb == ta) =
+  assert (tb.p == ta.p);
+  lemma_match_subj_ground_sound b tb.s ta.s;
+  (match match_subj b tb.s ta.s with
+   | Some b1 -> lemma_match_term_ground_sound leq bnd false b1 tb.o ta.o
+   | None    -> ());
+  assert (tb.s == ta.s);
+  assert (tb.o == ta.o)
+
+let rec lemma_try_match_ground_sound (leq : bool -> literal -> literal -> bool)
+                                     (bnd : rdf_term -> bool)
+                                     (bs : list triple) (b : binding) (a : list triple)
+  : Lemma (requires leq_always_identity leq /\ graph_ground bs /\
+                    try_match leq bnd bs b a == true)
+          (ensures is_subgraph bs a)
+          (decreases %[length bs; 1 + length a]) =
+  match bs with
+  | []        -> ()
+  | tb :: rest -> lemma_try_alts_ground_sound leq bnd bs tb rest b a a
+
+and lemma_try_alts_ground_sound (leq : bool -> literal -> literal -> bool)
+                                (bnd : rdf_term -> bool)
+                                (bs : list triple) (tb : triple)
+                                (rest : list triple { length rest < length bs })
+                                (b : binding) (a : list triple) (cand : list triple)
+  : Lemma (requires leq_always_identity leq /\ triple_ground tb == true /\
+                    graph_ground rest /\ is_subgraph cand a /\
+                    try_alts leq bnd bs tb rest b a cand == true)
+          (ensures is_subgraph (tb :: rest) a)
+          (decreases %[length bs; length cand]) =
+  match cand with
+  | [] -> ()
+  | ta0 :: more ->
+    assert (memP ta0 cand);
+    assert (memP ta0 a);
+    (match match_triple leq bnd b tb ta0 with
+     | Some b1 ->
+       if try_match leq bnd rest b1 a then begin
+         lemma_match_triple_ground_sound leq bnd b tb ta0;
+         assert (tb == ta0);
+         assert (memP tb a);
+         lemma_try_match_ground_sound leq bnd rest b1 a;
+         assert (is_subgraph rest a)
+       end
+       else lemma_try_alts_ground_sound leq bnd bs tb rest b a more
+     | None -> lemma_try_alts_ground_sound leq bnd bs tb rest b a more)
+
+// Ground terms match themselves under any instance mapping M -- there
+// is nothing for M to substitute, so `term_inst`/`subj_inst`/
+// `triple_inst` hold reflexively for any total M.
+let lemma_subj_inst_ground_refl (m : bnode_subst) (s : subject)
+  : Lemma (requires subj_ground s == true) (ensures subj_inst m s s) =
+  match s with
+  | S_IRI _   -> ()
+  | S_BNode _ -> ()
+
+let rec lemma_term_inst_ground_refl (m : bnode_subst) (t : rdf_term)
+  : Lemma (requires term_ground t == true) (ensures term_inst m t t) (decreases t) =
+  match t with
+  | T_IRI _     -> ()
+  | T_BNode _   -> ()
+  | T_Literal _ -> ()
+  | T_TripleTerm ps pp po ->
+    lemma_subj_inst_ground_refl m ps;
+    lemma_term_inst_ground_refl m po;
+    assert (subj_inst m ps ps);
+    assert (term_inst m po po);
+    assert (t == T_TripleTerm ps pp po)
+
+let lemma_triple_inst_ground_refl (m : bnode_subst) (t : triple)
+  : Lemma (requires triple_ground t == true) (ensures triple_inst m t t) =
+  lemma_subj_inst_ground_refl m t.s;
+  lemma_term_inst_ground_refl m t.o
+
+// ===================================================================
+// THEOREM (ground-fragment soundness, UNCONDITIONAL). If the shipping
+// search returns true and B has no blank node anywhere, then A simply
+// entails B in the declarative sense -- with NO side condition on
+// literal content in either graph. This is strictly stronger, on this
+// fragment, than `simple_entails_sound` above, and it is exactly the
+// fragment the SE-1 witness lived in.
+// ===================================================================
+let simple_entails_sound_ground (a b : list triple)
+  : Lemma (requires simple_entails a b == true /\ graph_ground b)
+          (ensures  simple_entailment_spec a b) =
+  lemma_simple_leq_always_identity ();
+  lemma_simple_entails_unfold a b;
+  lemma_try_match_ground_sound simple_leq simple_bnd b [] a;
+  let m : bnode_subst = fun l -> T_BNode l in
+  let aux (tb : triple)
+    : Lemma (requires memP tb b)
+            (ensures (exists (ta : triple). memP ta a /\ triple_inst m tb ta)) =
+    assert (memP tb a);
+    assert (triple_ground tb == true);
+    lemma_triple_inst_ground_refl m tb;
+    assert (triple_inst m tb tb)
+  in
+  FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
