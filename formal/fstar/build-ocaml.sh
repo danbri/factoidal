@@ -2623,17 +2623,27 @@ if [[ "$STEP" == "npm" ]]; then
     cp -R "$JSDIR/factoidal-npm-entry.wasm.assets" "$NPMDIR/factoidal-npm-entry.wasm.assets"
   fi
 
-  # Provenance stamp.
+  # Provenance stamp + claims block. The "claims" key (machine-readable
+  # theorem-backed-claims summary citing docs/theorem-registry.md
+  # sections, issue #403's G2 item) is hand-authored/audited content,
+  # not generated here -- this step PRESERVES whatever "claims" object
+  # is already in the on-disk version.json (if any) while refreshing
+  # version/gitSha/builtAt. To update the claims content itself, edit
+  # npm/factoidal/version.json's "claims" key directly (source of
+  # truth), then this step carries it forward on every future build.
   GITSHA=$(git -C ../.. rev-parse HEAD 2>/dev/null || echo "unknown")
   BUILDTIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  cat > "$NPMDIR/version.json" <<EOF
-{
-  "version": "0.1.0-alpha.0",
-  "gitSha": "$GITSHA",
-  "builtAt": "$BUILDTIME"
-}
-EOF
-  echo "  Wrote:  $NPMDIR/version.json (git=$GITSHA)"
+  node -e '
+    const fs = require("fs");
+    const path = process.argv[3];
+    let claims;
+    try { claims = JSON.parse(fs.readFileSync(path, "utf8")).claims; }
+    catch (_) { claims = undefined; }
+    const out = { version: "0.1.0-alpha.0", gitSha: process.argv[1], builtAt: process.argv[2] };
+    if (claims !== undefined) out.claims = claims;
+    fs.writeFileSync(path, JSON.stringify(out, null, 2) + "\n");
+  ' "$GITSHA" "$BUILDTIME" "$NPMDIR/version.json"
+  echo "  Wrote:  $NPMDIR/version.json (git=$GITSHA, claims preserved if present)"
   echo ""
 
   # Mirror the package into the GitHub Pages tree so it is loadable
