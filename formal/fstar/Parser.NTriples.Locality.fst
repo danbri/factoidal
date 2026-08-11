@@ -2274,3 +2274,87 @@ let lemma_parse_nquad_iri_nograph_shift
   lemma_pws_shift prefix mid suffix pos7 pos7;
   lemma_byte_index_at_middle prefix mid suffix pos7
 #pop-options
+
+(** ========================================================================
+ * STAGE 3, ITEM 1 CLOSED (task #48 ordered work list item 1, deferred at
+ * this file's line-2148-ish "STATUS UPDATE" banner as "mechanical
+ * repetition of sub-lemma 6/8/9's own template", confirmed here):
+ * `lemma_parse_bnode_shift` -- the `parse_bnode` wrapper (the `_:` prefix
+ * check, the start-char ASCII-vs-codepoint dispatch, the body scan via
+ * Item 1's own `lemma_scan_bnode_body_cp_shift_headroom`, the trailing
+ * `.` trim, and the final `fs_byte_sub` label extraction), chained
+ * exactly as the banner predicted -- no new proof idea, only composing
+ * already-verified pieces.
+ *
+ * STYLE NOTE (why this is one flat lemma, not several, unlike the
+ * fast-path/escape-path SPLIT this file used for `parse_string_literal`
+ * and the DEFERRED capstone for `parse_iri_raw`): `parse_bnode`'s body is
+ * STRAIGHT-LINE code (`if`/`let`/`match` in sequence) with exactly ONE
+ * embedded recursive call (`scan_bnode_body_cp`, already fully closed by
+ * `lemma_scan_bnode_body_cp_shift_headroom`) -- there is no OUTER match
+ * over TWO SEPARATE recursive functions' results the way the abandoned
+ * `parse_iri_raw` capstone needed (that capstone failed composing a
+ * fast-path lemma and an escape-path lemma BEHIND one dispatch; here
+ * there is only one scan to dispatch on, already covered end to end).
+ * All witnesses (`start_cp`/`start_adv`/`after_first`/`end_pos`/
+ * `final_end`) are EXPLICIT PARAMETERS, not derived inside the proof via
+ * pattern-matching an abstract `ParseOk`/`ParseFail` -- exactly
+ * `lemma_parse_nquad_iri_nograph_shift`'s own style immediately above,
+ * which verified first attempt for the same reason (explicit witnesses
+ * sidestep the "unconstrained second field of an abstractly-matched
+ * constructor" trap the `lemma_scan_iri_end_result_eq` FINDING records).
+ *
+ * SCOPE. Success case only; the trailing-`.`-trim branch is included
+ * (both the "trim" and "no trim" sub-cases, via the `final_end`
+ * parameter's own disjunctive `requires`), matching `parse_bnode`'s own
+ * full success surface, not a narrowed slice of it.
+ * ------------------------------------------------------------------------ *)
+#push-options "--z3rlimit 400 --fuel 6 --ifuel 6"
+val lemma_parse_bnode_shift
+    (prefix mid suffix : string) (pos : nat)
+    (start_cp start_adv after_first end_pos final_end : nat)
+  : Lemma
+      (requires
+        pos + 2 <= fs_byte_length mid /\
+        fs_byte_at mid pos = 0x5F /\
+        fs_byte_at mid (pos + 1) = 0x3A /\
+        pos + 2 < fs_byte_length mid /\
+        (fs_byte_length suffix = 0 \/ not (Spec.is_continuation (fs_byte_at suffix 0))) /\
+        (let start_pos = pos + 2 in
+         let b0 = fs_byte_at mid start_pos in
+         ((b0 < 0x80 /\ start_cp == b0 /\ start_adv == 1) \/
+          (b0 >= 0x80 /\ fs_cp_at mid start_pos == (start_cp, start_adv)))) /\
+        is_bnode_start_cp start_cp /\
+        after_first == pos + 2 + start_adv /\
+        fs_byte_length mid > after_first /\
+        scan_bnode_body_cp mid after_first (fs_byte_length mid - after_first + 1) == end_pos /\
+        end_pos < fs_byte_length mid /\
+        (let start_pos = pos + 2 in
+         ((end_pos > start_pos /\ fs_byte_at mid (end_pos - 1) = 0x2E /\ final_end == end_pos - 1) \/
+          ((end_pos <= start_pos \/ fs_byte_at mid (end_pos - 1) <> 0x2E) /\ final_end == end_pos))) /\
+        final_end > pos + 2 /\ final_end <= fs_byte_length mid)
+      (ensures
+        (match parse_bnode mid pos,
+               parse_bnode (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk b_mid endpos_mid, ParseOk b_full endpos_full ->
+           b_full == b_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_bnode_shift prefix mid suffix pos start_cp start_adv after_first end_pos final_end =
+  let p = fs_byte_length prefix in
+  let start_pos = pos + 2 in
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_byte_at_at_middle prefix mid suffix pos;
+  lemma_byte_at_at_middle prefix mid suffix (pos + 1);
+  lemma_byte_at_at_middle prefix mid suffix start_pos;
+  let b0 = fs_byte_at mid start_pos in
+  if b0 >= 0x80 then lemma_cp_at_at_middle prefix mid suffix start_pos else ();
+  let fuel_mid = fs_byte_length mid - after_first + 1 in
+  lemma_scan_bnode_body_cp_shift_headroom prefix mid suffix after_first fuel_mid (fs_byte_length suffix) end_pos;
+  lemma_byte_at_at_middle prefix mid suffix (end_pos - 1);
+  if final_end > start_pos && final_end <= fs_byte_length mid then begin
+    fs_byte_sub_concat_right prefix (mid ^ suffix) (p + start_pos) (final_end - start_pos);
+    fs_byte_sub_concat_left mid suffix start_pos (final_end - start_pos)
+  end else ()
+#pop-options
+
