@@ -211,6 +211,55 @@ export function fromCsvw(
 export function rif(ds: FnDataset, rules: string): Promise<FnDataset>;
 
 /**
+ * The CERTIFIED core-RDFS closure
+ * (RDF.Entailment.RDFS.RhoDFClosure.fst's `rho_df_closure`):
+ * rdfs2/3/5/7/9/11 only, with the machine-checked decides-iff
+ * (docs/theorem-registry.md). "corerdfs" is this project's API name
+ * for the fragment the literature calls ρdf (subPropertyOf/
+ * subClassOf/type/domain/range). Needs the npm-entry engine bundle.
+ */
+export function coreRdfsClosure(
+  ds: FnDataset,
+  options?: { format?: string }
+): Promise<{ ok: boolean; dataset: FnDataset }>;
+
+/** Literature-name alias for coreRdfsClosure (ρdf). */
+export function rhoDfClosure(
+  ds: FnDataset,
+  options?: { format?: string }
+): Promise<{ ok: boolean; dataset: FnDataset }>;
+
+/**
+ * Decidable core-RDFS fragment check (`is_rho_df_frag`): does the
+ * certified coreRdfsClosure guarantee apply to `ds`? Needs the
+ * npm-entry engine bundle.
+ */
+export function coreRdfsCheck(
+  ds: FnDataset,
+  options?: { format?: string }
+): Promise<{ ok: boolean; fragment: boolean }>;
+
+/** Literature-name alias for coreRdfsCheck (ρdf). */
+export function rhoDfFragmentCheck(
+  ds: FnDataset,
+  options?: { format?: string }
+): Promise<{ ok: boolean; fragment: boolean }>;
+
+/**
+ * RDFS-Plus closure (RDF.Entailment.RDFSPlus.fst's
+ * `rdfs_plus_closure`): RDFS plus the practical OWL subset —
+ * owl:sameAs, owl:inverseOf, Symmetric/Transitive/Functional/
+ * InverseFunctionalProperty, equivalentClass/Property. Every OWL row
+ * carries a proved licensing + truth lemma; no chain-level
+ * completeness claim (theorem registry). Needs the npm-entry engine
+ * bundle.
+ */
+export function rdfsPlusClosure(
+  ds: FnDataset,
+  options?: { format?: string }
+): Promise<{ ok: boolean; dataset: FnDataset; rounds: number }>;
+
+/**
  * OWL tableau materialisation (formal/fstar/Tableau.fst's
  * `tableau_materialise`): add `i rdf:type <ClassExpression>` for every
  * individual the model-construction reasoner proves is a member of an
