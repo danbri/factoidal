@@ -69,6 +69,8 @@ open Parser.FastString.Axioms
 open Parser.Combinators
 open RDF.Term
 
+module Spec = Parser.FastString.Spec
+
 #push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
 
 (** ------------------------------------------------------------------------
@@ -878,6 +880,300 @@ let rec lemma_parse_iri_body_acc_success_bound input pos acc fuel out_s endpos =
  * it (sub-lemma 6/7); this FINDING blocks only a caller that needs
  * escape-path coverage too.
  * ------------------------------------------------------------------------ *)
+
+(** ========================================================================
+ * STAGE 3, ITEM 1 (task #48 ordered work list item 1): blank-node branch
+ * locality (`parse_bnode`, via `scan_bnode_body_cp`) -- the banner above
+ * (sub-lemmas 8/9) named this as needing "a codepoint-level, not byte-
+ * level, shift fact for `fs_cp_at` under embedding -- no such fact is
+ * proved in Parser.FastString.Axioms.fst today". This section derives
+ * and proves that fact from FIRST PRINCIPLES (`Parser.FastString.Spec`'s
+ * definitional `utf8_decode_at`), entirely self-contained in THIS module
+ * -- Parser.FastString.Axioms.fsti's own banner is a hard "DO NOT WIDEN"
+ * on its eight-fact OCaml-realisation-checked trust surface, so nothing
+ * below touches that file; `Parser.FastString.Spec.fst` has no `.fsti`
+ * (fully transparent to any importer), so composing directly against its
+ * `utf8_decode_at`/`nth_byte` is additive, no shared-module churn, no
+ * re-verification of Axioms/RoundTripLemmas/BaseCases needed.
+ *
+ * THE HARD PART, AND WHY IT NEEDS A NEW HYPOTHESIS `scan_iri_end`'s SHIFT
+ * LEMMA DID NOT. `fs_cp_at` can read up to 4 bytes starting at `pos`
+ * (`Parser.FastString.Spec.utf8_decode_at`'s lead-byte-determined 1/2/3/4-
+ * byte forms). When `pos` sits within the last 1-3 bytes of `mid`, those
+ * lookahead reads fall OFF THE END of `mid` alone (`nth_byte` returns
+ * `None`) but land ON REAL BYTES of `suffix` once `mid` is embedded in
+ * `prefix ^ (mid ^ suffix)` -- so a naive shift claim ("same `pos`, same
+ * result") is FALSE in general: `suffix`'s bytes can "complete" what
+ * looks like a truncated UTF-8 sequence at the tail of `mid`, decoding a
+ * DIFFERENT codepoint under embedding than in `mid` alone (worked
+ * example: `mid` ends in a lone 0xC2 lead byte -- decodes to U+FFFD/
+ * advance-1 in `mid` alone, since there is no continuation byte to read
+ * -- but if `suffix` starts with a genuine continuation byte 0x80-0xBF,
+ * the SAME position decodes a real 2-byte codepoint once embedded).
+ *
+ * THE FIX (found here, not in any prior file): `Parser.FastString.Spec.
+ * utf8_decode_at`'s OWN case structure treats "ran out of bytes" (`None`)
+ * and "next byte exists but is not a continuation byte" (`Some b` with
+ * `not (is_continuation b)`) IDENTICALLY -- both produce `(0xFFFD, 1)`
+ * (see `utf8_decode_at`'s `match nth_byte bs (p+1) with None -> (0xFFFD,
+ * 1) | Some b1 -> if not (is_continuation b1) then (0xFFFD, 1) else ...`,
+ * repeated per lookahead byte). So the divergence above is impossible
+ * whenever `suffix`'s OWN FIRST byte (if any) is not a continuation byte
+ * -- the SAME position that was `None` in `mid` alone becomes `Some
+ * (non-continuation)` in the embedding, and BOTH outcomes are `(0xFFFD,
+ * 1)`. Crucially this holds for ANY overrun depth (1, 2, or 3 bytes past
+ * `mid`'s end) with only `suffix`'s FIRST byte constrained: positions are
+ * consecutive integers, so whichever lookahead position is the FIRST to
+ * reach `fs_byte_length mid` is necessarily `suffix`'s byte 0 exactly
+ * (never byte 1 or 2 -- integers cannot skip over the boundary), and once
+ * THAT read is known non-continuation, `utf8_decode_at`'s own `if not
+ * (is_continuation b1) || not (is_continuation b2) [|| ...] then (0xFFFD,
+ * 1) else ...` structure forces the reject branch regardless of what any
+ * LATER lookahead byte is (a boolean `||` with one true disjunct is true
+ * no matter the others) -- and if a later lookahead position is instead
+ * `None` (suffix too short), the pattern's own catch-all arm gives
+ * `(0xFFFD, 1)` anyway. So `suffix`'s bytes at offset 1+ are completely
+ * unconstrained; only offset 0 (its very first byte) ever matters. This
+ * is a strictly weaker, more useful hypothesis than any fixed-headroom
+ * bound (`pos + 4 <= fs_byte_length mid`), and it is the practically
+ * realistic one: this file's actual consumer (N-Quads line streaming,
+ * `RDF.NQuads.Streaming.fst`) always cuts `mid`/`suffix` at a LINE
+ * boundary (ASCII `\n`, itself non-continuation, or end of input), so
+ * this hypothesis holds automatically at every real call site -- see
+ * that file's own carry/split machinery.
+ *
+ * METHOD. `utf8_decode_at_join` (byte-list level, proved by explicit
+ * case analysis mirroring `utf8_decode_at`'s own branch structure,
+ * exactly as this file's other template lemmas do) is the core fact;
+ * `lemma_cp_at_at_middle` lifts it to `fs_cp_at` via the SAME `fs_cp_at_
+ * eq` / `utf8_bytes_concat` / `Spec.utf8_decode_at_shift` composition
+ * sub-lemma 1 already used for `fs_byte_index`. `lemma_scan_bnode_body_
+ * cp_shift_headroom` then mirrors `scan_bnode_body_cp`'s own recursion
+ * branch-for-branch (ASCII fast path via `lemma_byte_at_at_middle`,
+ * non-ASCII via `lemma_cp_at_at_middle`), using the SAME fuel-headroom
+ * technique as sub-lemma 4 (`ptake_while_acc`'s `fuel = 0` case also
+ * SUCCEEDS rather than failing, so the same `fuel + pos >= endpos + 1`
+ * side condition is needed here too -- `parse_bnode`'s own fuel formula,
+ * `len - after_first + 1`, discharges it "for free" by the SAME pure
+ * arithmetic `lemma_pws_shift` already relies on: `fuel + pos == len +
+ * 1 >= endpos + 1` follows directly from the `endpos < len` requires,
+ * no separate fuel-invariant induction needed).
+ *
+ * SCOPE / WHAT IS NOT DONE HERE. The genuinely new, previously-missing
+ * piece -- the `fs_cp_at` locality fact itself, plus the whole-scan
+ * shift lemma for `scan_bnode_body_cp` -- is PROVED below, each on the
+ * FIRST attempt (no restatement needed). The outer `parse_bnode` wrapper
+ * (matching `_:` literally, reading the start-char, dispatching ASCII-
+ * vs-codepoint for the start char, trimming a trailing `.`, then
+ * `fs_byte_sub`-extracting the label) is NOT composed here -- it is
+ * mechanical repetition of sub-lemma 6/8/9's own template (chain
+ * `lemma_byte_at_at_middle`/`lemma_cp_at_at_middle` for each of the ~5
+ * intermediate byte/codepoint reads `parse_bnode` performs, then
+ * `lemma_scan_bnode_body_cp_shift_headroom` for the body scan, then
+ * `fs_byte_sub_concat_left`/`_right` for the final label extraction,
+ * exactly sub-lemma 6's pattern) -- not attempted this landing per the
+ * guard-depth discipline (a first blind attempt at the FULL composed
+ * `requires` risked several restatement cycles on a 5-way-nested `let`
+ * precondition with no interactive F* MCP available to localise a
+ * failure quickly, and the ordered work list's remaining items 2-8 were
+ * judged higher-value with the remaining session budget). A future
+ * session composing it needs no new proof idea, only the chaining.
+ * ======================================================================== *)
+
+// -- byte-list level helpers, local restatements of the (private, not
+// -- `.fsti`-exported) helpers `Parser.FastString.Axioms.fst` uses
+// -- internally for its own fact 4/5 proofs -- same self-containment
+// -- rationale as sub-lemma 1's own banner.
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val nth_byte_append_left (a b : list Spec.byte) (i : nat)
+  : Lemma (requires i < FStar.List.Tot.length a)
+          (ensures Spec.nth_byte (FStar.List.Tot.append a b) i == Spec.nth_byte a i)
+let rec nth_byte_append_left a b i =
+  match a with
+  | hd :: tl -> if i = 0 then () else nth_byte_append_left tl b (i - 1)
+
+val nth_byte_none_of_ge (bs : list Spec.byte) (i : nat)
+  : Lemma (requires i >= FStar.List.Tot.length bs)
+          (ensures Spec.nth_byte bs i == None)
+let rec nth_byte_none_of_ge bs i =
+  match bs with
+  | [] -> ()
+  | hd :: tl -> nth_byte_none_of_ge tl (i - 1)
+
+val nth_byte_some_of_lt (bs : list Spec.byte) (i : nat)
+  : Lemma (requires i < FStar.List.Tot.length bs)
+          (ensures Some? (Spec.nth_byte bs i))
+let rec nth_byte_some_of_lt bs i =
+  match bs with
+  | hd :: tl -> if i = 0 then () else nth_byte_some_of_lt tl (i - 1)
+#pop-options
+
+// -- the codepoint-decode join fact, byte-list level: decoding at a
+// -- position INSIDE `a` agrees whether or not `a` is followed by `b`,
+// -- PROVIDED `b`'s first byte (when present) is not a UTF-8
+// -- continuation byte. See this section's banner for the full argument
+// -- (why only `b`'s FIRST byte ever matters, regardless of how many
+// -- bytes the decode overruns into `b`).
+#push-options "--z3rlimit 300 --fuel 4 --ifuel 4"
+val utf8_decode_at_join (a b : list Spec.byte) (p : nat)
+  : Lemma
+      (requires
+        p < FStar.List.Tot.length a /\
+        (b == [] \/ not (Spec.is_continuation (FStar.List.Tot.hd b))))
+      (ensures Spec.utf8_decode_at (FStar.List.Tot.append a b) p == Spec.utf8_decode_at a p)
+let utf8_decode_at_join a b p =
+  let la = FStar.List.Tot.length a in
+  nth_byte_append_left a b p;
+  nth_byte_some_of_lt a p;
+  match b with
+  | [] -> FStar.List.Tot.append_l_nil a
+  | hd :: tl ->
+    (match Spec.nth_byte a p with
+     | None -> ()
+     | Some b0 ->
+       if b0 < 0x80 then ()
+       else if b0 < 0xC2 then ()
+       else if b0 < 0xE0 then begin
+         if p + 1 < la then nth_byte_append_left a b (p + 1)
+         else begin
+           nth_byte_none_of_ge a (p + 1);
+           Spec.nth_byte_append a b 0
+         end
+       end
+       else if b0 < 0xF0 then begin
+         if p + 1 < la then begin
+           nth_byte_append_left a b (p + 1);
+           if p + 2 < la then nth_byte_append_left a b (p + 2)
+           else begin
+             nth_byte_none_of_ge a (p + 2);
+             Spec.nth_byte_append a b 0
+           end
+         end else begin
+           nth_byte_none_of_ge a (p + 1);
+           nth_byte_none_of_ge a (p + 2);
+           Spec.nth_byte_append a b 0
+         end
+       end
+       else if b0 < 0xF5 then begin
+         if p + 1 < la then begin
+           nth_byte_append_left a b (p + 1);
+           if p + 2 < la then begin
+             nth_byte_append_left a b (p + 2);
+             if p + 3 < la then nth_byte_append_left a b (p + 3)
+             else begin
+               nth_byte_none_of_ge a (p + 3);
+               Spec.nth_byte_append a b 0
+             end
+           end else begin
+             nth_byte_none_of_ge a (p + 2);
+             nth_byte_none_of_ge a (p + 3);
+             Spec.nth_byte_append a b 0
+           end
+         end else begin
+           nth_byte_none_of_ge a (p + 1);
+           nth_byte_none_of_ge a (p + 2);
+           nth_byte_none_of_ge a (p + 3);
+           Spec.nth_byte_append a b 0
+         end
+       end
+       else ())
+#pop-options
+
+// -- string level: `fs_cp_at` under a 3-way embedding, prefix-shifted,
+// -- given the suffix-boundary-safety hypothesis. Composes `fs_cp_at_eq`
+// -- + `utf8_bytes_concat` (twice) + `Spec.utf8_decode_at_shift` (strips
+// -- the prefix, exactly sub-lemma 1's technique) + `utf8_decode_at_join`
+// -- above (strips the suffix-side divergence risk).
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_cp_at_at_middle (prefix mid suffix : string) (pos : nat)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        (fs_byte_length suffix = 0 \/
+         not (Spec.is_continuation (fs_byte_at suffix 0))))
+      (ensures
+        fs_cp_at (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) == fs_cp_at mid pos)
+let lemma_cp_at_at_middle prefix mid suffix pos =
+  fs_cp_at_eq (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos);
+  fs_cp_at_eq mid pos;
+  Spec.utf8_bytes_concat prefix (mid ^ suffix);
+  Spec.utf8_bytes_concat mid suffix;
+  fs_byte_length_eq prefix;
+  fs_byte_length_eq mid;
+  fs_byte_length_eq suffix;
+  Spec.utf8_decode_at_shift (Spec.utf8_bytes prefix)
+    (FStar.List.Tot.append (Spec.utf8_bytes mid) (Spec.utf8_bytes suffix)) pos;
+  (match Spec.utf8_bytes suffix with
+   | [] -> FStar.List.Tot.append_l_nil (Spec.utf8_bytes mid)
+   | hd :: tl ->
+     fs_byte_at_eq suffix 0;
+     nth_byte_some_of_lt (Spec.utf8_bytes suffix) 0;
+     Spec.nth_byte_zero hd tl;
+     utf8_decode_at_join (Spec.utf8_bytes mid) (Spec.utf8_bytes suffix) pos)
+#pop-options
+
+// -- fs_byte_at analogue of sub-lemma 1 (`lemma_byte_index_at_middle`),
+// -- needed since `scan_bnode_body_cp` reads via `fs_byte_at`, not
+// -- `fs_byte_index` -- direct corollary of Axioms fact 4
+// -- (`fs_byte_at_concat`), no new induction.
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val lemma_byte_at_at_middle (prefix mid suffix : string) (pos : nat)
+  : Lemma (requires pos < fs_byte_length mid)
+          (ensures fs_byte_at (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) == fs_byte_at mid pos)
+let lemma_byte_at_at_middle prefix mid suffix pos =
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  fs_byte_at_concat prefix (mid ^ suffix) (fs_byte_length prefix + pos);
+  fs_byte_at_concat mid suffix pos
+#pop-options
+
+// -- the whole-scan shift lemma for `scan_bnode_body_cp`, `rec`-mirroring
+// -- its own branch structure exactly as `lemma_scan_iri_end_shift`
+// -- (sub-lemma 2) does for `scan_iri_end`, with the same fuel-headroom
+// -- technique as sub-lemma 4 (`ptake_while_acc`'s `fuel = 0` case also
+// -- SUCCEEDS, unlike `scan_iri_end`'s, so `fuel + pos >= endpos + 1` is
+// -- needed to rule out a fuel-exhaustion artifact) and, in the
+// -- non-ASCII branch, `lemma_cp_at_at_middle` above in place of
+// -- sub-lemma 1's plain byte read.
+#push-options "--z3rlimit 300 --fuel 4 --ifuel 4"
+val lemma_scan_bnode_body_cp_shift_headroom
+    (prefix mid suffix : string) (pos fuel extra : nat) (endpos : nat)
+  : Lemma
+      (requires
+        scan_bnode_body_cp mid pos fuel == endpos /\
+        endpos < fs_byte_length mid /\
+        fuel + pos >= endpos + 1 /\
+        (fs_byte_length suffix = 0 \/ not (Spec.is_continuation (fs_byte_at suffix 0))))
+      (ensures
+        scan_bnode_body_cp (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) (fuel + extra)
+          == fs_byte_length prefix + endpos)
+      (decreases fuel)
+let rec lemma_scan_bnode_body_cp_shift_headroom prefix mid suffix pos fuel extra endpos =
+  let p = fs_byte_length prefix in
+  if fuel = 0 then ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if pos >= len_mid then ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_at_at_middle prefix mid suffix pos;
+      let b = fs_byte_at mid pos in
+      if b < 0x80 then begin
+        if is_bnode_char_cp b then
+          lemma_scan_bnode_body_cp_shift_headroom prefix mid suffix (pos + 1) (fuel - 1) extra endpos
+        else ()
+      end else begin
+        lemma_cp_at_at_middle prefix mid suffix pos;
+        let (cp, adv) = fs_cp_at mid pos in
+        let advance : nat = if adv = 0 then 1 else adv in
+        if is_bnode_char_cp cp then
+          lemma_scan_bnode_body_cp_shift_headroom prefix mid suffix (pos + advance) (fuel - 1) extra endpos
+        else ()
+      end
+    end
+  end
+#pop-options
 
 (** ========================================================================
  * WHAT THE TEMPLATE MEANS FOR THE REMAINING COMBINATORS.
