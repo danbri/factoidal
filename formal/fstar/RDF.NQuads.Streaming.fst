@@ -1106,3 +1106,163 @@ let rec lemma_nq_skip_line_shift_exact prefix mid suffix p stop_pos =
  * over reachable positions) does not work, so the next session does not
  * re-spend a guard-depth-3 budget re-discovering this.
  * ============================================================================ *)
+
+(* ============================================================================
+ * WITNESS-STRUCTURE RESTART LEMMA (task #48, third landing, 2026-08-11):
+ * the blank-lines-only restart, restated WITHOUT the `forall` hypothesis the
+ * FINDING above diagnoses as the actual obstruction. Every fact about
+ * `mid`'s line structure is supplied by the CALLER as an explicit per-line
+ * witness record (three `nat` fields -- the same three positions
+ * `parse_nquads_acc`'s own blank-line branch computes internally, named
+ * `pos`/`pos1`/`pos2` there), chained into a `list blank_line_witness`. The
+ * induction below is STRUCTURAL on that list (pattern-matching `[]` /
+ * `w :: rest`, one cons cell per step) -- never a `forall` over positions.
+ * This is the FIX the FINDING's own diagnosis names: every OTHER lemma in
+ * this file and in `Parser.NTriples.Locality.fst` that verifies takes its
+ * per-position facts as explicit parameters (`stop_pos`, `gt_pos`, ...),
+ * never as a `forall`-quantified hypothesis with an opaque `match` in its
+ * body; this section applies that same idiom one level up, at the
+ * `parse_nquads_acc` recursion itself.
+ *
+ * SCOPE, one deliberate narrowing kept OUT of `blank_line_wf` for THIS
+ * landing (documented, not silent): each witness requires `lw_wsend + 1 <
+ * fs_byte_length mid`, i.e. the line's terminator byte is never the very
+ * last byte of `mid`. This sidesteps `lemma_skip_eol_shift`'s CRLF-fusion
+ * side condition (a bare CR ending `mid` exactly could fuse with an LF
+ * starting `suffix`, which is not a real CRLF pair in `mid` alone) without
+ * threading a `suffix`-dependent disjunction through every witness --
+ * exactly the same category of scoped exclusion `lemma_nq_skip_line_shift`
+ * itself already carries (`stop_pos < fs_byte_length mid`, excluding the
+ * terminator landing at `mid`'s very last position). A chain whose FINAL
+ * blank line's newline sits at `mid`'s last one or two bytes is outside
+ * this witness structure's coverage; extending it (an extra `suffix`-aware
+ * disjunct on the CHAIN's last entry only) is future work, not attempted
+ * here per the guard-depth rule.
+ * ============================================================================ *)
+
+(* One line's classification. Only `LK_Blank` is populated by a proof this
+   landing -- `LK_Comment` / `LK_QuadOk` / `LK_QuadFail` are declared so the
+   type is extensible per the task's "extend kind by kind" plan, but no
+   constructor here changes `blank_line_witness`'s shape; each kind gets its
+   OWN witness record as it lands (comment needs a `stop_pos` matching
+   `lemma_skip_comment_shift`'s own parameter; quad-failure needs `nq_skip_
+   line`'s `stop_pos`, matching `lemma_nq_skip_line_shift_exact`; quad-
+   success needs the parsed `(triple * option iri)` and end position). *)
+type line_kind =
+  | LK_Blank
+  | LK_Comment
+  | LK_QuadOk
+  | LK_QuadFail
+
+(* A single BLANK line's witness: `lw_pos` is the position `parse_nquads_acc`
+   enters its loop at (before whitespace-skipping); `lw_wsend` is where `pws`
+   lands (the byte `parse_nquads_acc` dispatches on); `lw_eolend` is where
+   `skip_eol` lands after consuming the line terminator -- exactly the three
+   positions `parse_nquads_acc`'s own blank-line branch computes internally.
+   All three are explicit `nat` fields the CALLER supplies, never derived
+   inside a proof from a `forall`. *)
+noeq type blank_line_witness = {
+  lw_pos    : nat;
+  lw_wsend  : nat;
+  lw_eolend : nat;
+}
+
+(* Well-formedness of ONE blank-line witness against a concrete string
+   `mid`: `pws` actually lands where the witness claims; the landing byte is
+   a line terminator (0x0A or 0x0D -- matching `parse_nquads_acc`'s OWN
+   dispatch test, not just `is_nl`'s narrower 0x0A-only check); `skip_eol`
+   actually lands where the witness claims; the line makes PROGRESS
+   (`lw_eolend > lw_wsend`, matching `parse_nquads_acc`'s own `if pos2 =
+   pos1 then ds` no-progress guard -- a witness for a no-progress "line"
+   cannot arise from a real call, so this predicate excludes it
+   structurally); and the SCOPE narrowing from this section's banner
+   (`lw_wsend + 1 < fs_byte_length mid`). *)
+let blank_line_wf (mid : string) (w : blank_line_witness) : Type0 =
+  w.lw_pos <= w.lw_wsend /\
+  w.lw_wsend + 1 < Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.lw_pos == Parser.Combinators.ParseOk () w.lw_wsend /\
+  (let c = Parser.FastString.fs_byte_index mid w.lw_wsend in
+   let cc = FStar.Char.int_of_char c in
+   cc = 0x0A \/ cc = 0x0D) /\
+  Parser.NTriples.skip_eol mid w.lw_wsend == w.lw_eolend /\
+  w.lw_eolend > w.lw_wsend
+
+(* Single-step shift: ONE blank line, embedded at `lw_pos` inside the
+   three-way-split `prefix ^ (mid ^ suffix)`, advances `parse_nquads_acc`'s
+   own recursion by exactly one step, landing at `lw_eolend` (shifted by
+   `fs_byte_length prefix`, same as every other lemma in this file) with
+   the SAME dataset and `fuel - 1`. Proof: apply `lemma_pws_shift` (already
+   proved, `Parser.NTriples.Locality.fst`) to get the shifted `pws` landing,
+   `lemma_byte_index_at_middle` (this file, PHASE 2 CHECKPOINT) for the
+   dispatch byte, `lemma_skip_eol_shift` (already proved) for the shifted
+   `skip_eol` landing -- then let Z3 chain those three flat `nat`/`char`
+   equalities through ONE unfolding of `parse_nquads_acc`'s own defining
+   equation, exactly the technique `parse_nquads_acc_concat_line_empty_
+   complete`/`_empty_carry` above already use for a one-step unfold. *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_blank_step_shift
+    (prefix mid suffix : string) (w : blank_line_witness)
+    (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (requires blank_line_wf mid w /\ fuel > 0)
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.lw_pos) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.lw_eolend) ds (fuel - 1))
+let lemma_parse_nquads_acc_blank_step_shift prefix mid suffix w ds fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix w.lw_pos w.lw_wsend;
+  lemma_byte_index_at_middle prefix mid suffix w.lw_wsend;
+  Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.lw_wsend
+#pop-options
+
+(* A CHAIN of blank-line witnesses: recursively defined (never a `forall`)
+   so both ADJACENCY (one line's landing position is exactly the next
+   line's starting position) and PER-ENTRY well-formedness unfold by
+   pattern match, one cons cell at a time -- the same shape the induction
+   below consumes. `blank_chain_end` computes where the chain leaves off
+   (the position right after its last line's terminator), by the same
+   structural recursion. *)
+let rec blank_chain_wf (mid : string) (start_pos : nat) (ws : list blank_line_witness)
+  : Tot Type0 (decreases ws) =
+  match ws with
+  | [] -> True
+  | w :: rest -> w.lw_pos == start_pos /\ blank_line_wf mid w /\ blank_chain_wf mid w.lw_eolend rest
+
+let rec blank_chain_end (start_pos : nat) (ws : list blank_line_witness)
+  : Tot nat (decreases ws) =
+  match ws with
+  | [] -> start_pos
+  | w :: rest -> blank_chain_end w.lw_eolend rest
+
+(* The restart lemma itself, blank-lines-only sub-case: a whole CHAIN of
+   blank lines, embedded inside `prefix ^ (mid ^ suffix)` starting at
+   `start_pos`, is skipped by `parse_nquads_acc` in exactly `length ws`
+   steps, dataset UNCHANGED, landing at `blank_chain_end start_pos ws`
+   (shifted by `fs_byte_length prefix`) with `fuel - length ws` fuel
+   remaining. Structural induction on `ws`, ONE `blank_line_witness` per
+   step -- `lemma_parse_nquads_acc_blank_step_shift` supplies the single
+   step, the recursive call supplies the rest, transitivity chains them.
+   No `forall` anywhere in this lemma or its dependencies. *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_skip_blanks
+    (prefix mid suffix : string) (ds : RDF.Graph.Executable.rdf_dataset)
+    (start_pos : nat) (ws : list blank_line_witness) (fuel : nat)
+  : Lemma
+      (requires blank_chain_wf mid start_pos ws /\ fuel >= List.Tot.length ws)
+      (ensures
+        Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + start_pos) ds fuel
+        == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + blank_chain_end start_pos ws) ds
+             (fuel - List.Tot.length ws))
+      (decreases ws)
+let rec lemma_parse_nquads_acc_skip_blanks prefix mid suffix ds start_pos ws fuel =
+  match ws with
+  | [] -> ()
+  | w :: rest ->
+    lemma_parse_nquads_acc_blank_step_shift prefix mid suffix w ds fuel;
+    lemma_parse_nquads_acc_skip_blanks prefix mid suffix ds w.lw_eolend rest (fuel - 1)
+#pop-options
