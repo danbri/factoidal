@@ -188,6 +188,19 @@ let dataset_add_quad (ds : RDF_Graph.rdf_dataset) (t : RDF_Triple.triple)
              RDF_Graph.ds_named =
                (FStar_List_Tot_Base.op_At ds.RDF_Graph.ds_named [new_ng])
            })
+let rec nq_skip_line (input : Prims.string) (len : Prims.nat) (p : Prims.nat)
+  (f : Prims.nat) : Prims.nat=
+  if f = Prims.int_zero
+  then p
+  else
+    if p >= len
+    then p
+    else
+      (let c = Parser_FastString.fs_byte_index input p in
+       let cc = FStar_Char.int_of_char c in
+       if (cc = (Prims.of_int (0x0A))) || (cc = (Prims.of_int (0x0D)))
+       then Parser_NTriples.skip_eol input p
+       else nq_skip_line input len (p + Prims.int_one) (f - Prims.int_one))
 let rec parse_nquads_acc (input : Prims.string) (pos : Prims.nat)
   (ds : RDF_Graph.rdf_dataset) (fuel : Prims.nat) : RDF_Graph.rdf_dataset=
   if fuel = Prims.int_zero
@@ -239,23 +252,7 @@ let rec parse_nquads_acc (input : Prims.string) (pos : Prims.nat)
                     parse_nquads_acc input pos_next ds'
                       (fuel - Prims.int_one)
                 | Parser_Combinators.ParseFail (uu___5, uu___6) ->
-                    let rec skip_line p f =
-                      if f = Prims.int_zero
-                      then p
-                      else
-                        if p >= len
-                        then p
-                        else
-                          (let c = Parser_FastString.fs_byte_index input p in
-                           let cc = FStar_Char.int_of_char c in
-                           if
-                             (cc = (Prims.of_int (0x0A))) ||
-                               (cc = (Prims.of_int (0x0D)))
-                           then Parser_NTriples.skip_eol input p
-                           else
-                             skip_line (p + Prims.int_one)
-                               (f - Prims.int_one)) in
-                    let pos2 = skip_line pos1 (len - pos1) in
+                    let pos2 = nq_skip_line input len pos1 (len - pos1) in
                     if pos2 = pos1
                     then ds
                     else
@@ -333,24 +330,7 @@ let rec fold_nquads_acc :
                           fold_nquads_acc step stop input pos_next acc1
                             (fuel - Prims.int_one)
                     | Parser_Combinators.ParseFail (uu___6, uu___7) ->
-                        let rec skip_line p f =
-                          if f = Prims.int_zero
-                          then p
-                          else
-                            if p >= len
-                            then p
-                            else
-                              (let c =
-                                 Parser_FastString.fs_byte_index input p in
-                               let cc = FStar_Char.int_of_char c in
-                               if
-                                 (cc = (Prims.of_int (0x0A))) ||
-                                   (cc = (Prims.of_int (0x0D)))
-                               then Parser_NTriples.skip_eol input p
-                               else
-                                 skip_line (p + Prims.int_one)
-                                   (f - Prims.int_one)) in
-                        let pos2 = skip_line pos1 (len - pos1) in
+                        let pos2 = nq_skip_line input len pos1 (len - pos1) in
                         if pos2 = pos1
                         then acc
                         else
@@ -515,23 +495,7 @@ let rec count_nquads_acc (input : Prims.string) (pos : Prims.nat)
                     count_nquads_acc input pos_next (acc + Prims.int_one)
                       (fuel - Prims.int_one)
                 | Parser_Combinators.ParseFail (uu___5, uu___6) ->
-                    let rec skip_line p f =
-                      if f = Prims.int_zero
-                      then p
-                      else
-                        if p >= len
-                        then p
-                        else
-                          (let c = Parser_FastString.fs_byte_index input p in
-                           let cc = FStar_Char.int_of_char c in
-                           if
-                             (cc = (Prims.of_int (0x0A))) ||
-                               (cc = (Prims.of_int (0x0D)))
-                           then Parser_NTriples.skip_eol input p
-                           else
-                             skip_line (p + Prims.int_one)
-                               (f - Prims.int_one)) in
-                    let pos2 = skip_line pos1 (len - pos1) in
+                    let pos2 = nq_skip_line input len pos1 (len - pos1) in
                     if pos2 = pos1
                     then acc
                     else
@@ -740,23 +704,7 @@ let rec parse_nquads_12_acc (input : Prims.string) (pos : Prims.nat)
                     parse_nquads_12_acc input pos_next ds'
                       (fuel - Prims.int_one)
                 | Parser_Combinators.ParseFail (uu___5, uu___6) ->
-                    let rec skip_line p f =
-                      if f = Prims.int_zero
-                      then p
-                      else
-                        if p >= len
-                        then p
-                        else
-                          (let c = Parser_FastString.fs_byte_index input p in
-                           let cc = FStar_Char.int_of_char c in
-                           if
-                             (cc = (Prims.of_int (0x0A))) ||
-                               (cc = (Prims.of_int (0x0D)))
-                           then Parser_NTriples.skip_eol input p
-                           else
-                             skip_line (p + Prims.int_one)
-                               (f - Prims.int_one)) in
-                    let pos2 = skip_line pos1 (len - pos1) in
+                    let pos2 = nq_skip_line input len pos1 (len - pos1) in
                     if pos2 = pos1
                     then ds
                     else
@@ -910,23 +858,7 @@ let rec parse_nquads_flat_acc (input : Prims.string) (pos : Prims.nat)
                     parse_nquads_flat_acc input pos_next (q :: acc)
                       (fuel - Prims.int_one)
                 | Parser_Combinators.ParseFail (uu___5, uu___6) ->
-                    let rec skip_line p f =
-                      if f = Prims.int_zero
-                      then p
-                      else
-                        if p >= len
-                        then p
-                        else
-                          (let c = Parser_FastString.fs_byte_index input p in
-                           let cc = FStar_Char.int_of_char c in
-                           if
-                             (cc = (Prims.of_int (0x0A))) ||
-                               (cc = (Prims.of_int (0x0D)))
-                           then Parser_NTriples.skip_eol input p
-                           else
-                             skip_line (p + Prims.int_one)
-                               (f - Prims.int_one)) in
-                    let pos2 = skip_line pos1 (len - pos1) in
+                    let pos2 = nq_skip_line input len pos1 (len - pos1) in
                     if pos2 = pos1
                     then FStar_List_Tot_Base.rev acc
                     else
