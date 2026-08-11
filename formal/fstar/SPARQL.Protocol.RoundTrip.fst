@@ -626,84 +626,194 @@ let lemma_srj_single_row (vars : list string) (r : binding_row)
 
 #pop-options
 
-// Checkpoint (c), ATTEMPTED AND STILL OPEN (session 2026-08-11, guard
-// depth 3/3 -- narrowest-first / guard-depth discipline, falling back to
-// the checkpoint (b) lemma above per CLAUDE.md's `proof-factory`
-// process): the two-row symbolic statement Part 9's FINDING named
-// explicitly as the one that resisted verification that session.
-//
-// STANDALONE, this verifies immediately and deterministically (3/3
-// repeated runs, `fstar.exe --include .` on a throwaway module opening
-// only this module's same six `open`s):
-//
-//   let lemma_srj_two_rows (vars : list string) (r1 r2 : binding_row)
-//     : Lemma (ensures
-//                serialise_response_json vars [r1; r2] ==
-//                  "{\"head\":{\"vars\":[" ^ json_var_list vars ^ "]},"
-//                    ^ "\"results\":{\"bindings\":["
-//                    ^ json_row r1 ^ "," ^ json_row r2
-//                    ^ "]}}")
-//     =
-//     concat_spec_cons "" (json_row r1) ["," ^ json_row r2];
-//     concat_spec_singleton "" ("," ^ json_row r2);
-//     lemma_strcat_empty_l ("," ^ json_row r2)
-//
-// IN THIS FILE, at this point (after Parts 1-9 and the checkpoint (b)
-// lemma above), the IDENTICAL lemma body fails Error 19 -- confirmed with
-// `--query_stats`:
-//
-//   (SPARQL.Protocol.RoundTrip.fst(<lemma_srj_two_rows's ensures clause>))
-//     Query-stats (SPARQL.Protocol.RoundTrip.lemma_srj_two_rows, 1)
-//     failed {reason-unknown=unknown because (incomplete quantifiers)}
-//     in 62 milliseconds with fuel 6 and ifuel 6 and rlimit 300
-//     (used rlimit 0.059)
-//
-// Three countermeasures were tried, in order, each its own guard attempt
-// (guard depth 3/3, then stop per CLAUDE.md's proof-factory discipline):
-//   1. The lemma as shown above (matches the standalone probe exactly) --
-//      Error 19, "Could not prove post-condition".
-//   2. Same body plus a redundant `lemma_strcat_assoc` call (an earlier
-//      draft's guess that reassociation was needed) -- Error 19 at the
-//      SAME site; removing the redundant call did not help, ruling out
-//      "the assoc call is poisoning the context" as the cause.
-//   3. `#restart-solver` immediately before the lemma (forces a fresh Z3
-//      process, discarding any accumulated incremental solver state from
-//      Parts 1-9/the checkpoint (b) lemma) plus `--z3rlimit 300 --fuel 6
-//      --ifuel 6` (6x the rlimit, matching the standalone probe's
-//      fuel/ifuel exactly) -- STILL Error 19, and the FAST failure time
-//      (62ms, not a timeout) plus Z3's own "incomplete quantifiers"
-//      diagnosis (NOT "resource limits reached") together rule out
-//      "just needs more rlimit" as the fix: Z3 is not running out of
-//      budget searching, it is failing to find the needed instantiation
-//      at all, and does so almost instantly even against a solver
-//      process that has no incremental history from earlier queries in
-//      this file. That narrows the cause to something in the STATIC
-//      encoding this file's preceding declarations contribute to this
-//      VC (e.g. accumulated `Parser.JSONResults.fst`/Parts-1-9 SMT
-//      declarations changing the trigger/pattern set `concat_spec_cons`,
-//      `concat_spec_singleton`, or `lemma_strcat_empty_l`'s own
-//      `list_of_concat`-chain elaborate to at THIS point in the file) --
-//      NOT solver-session-incremental state, which #restart-solver rules
-//      out. Not conclusively isolated further this session.
-//
-// This is the SAME symptom shape Part 9's FINDING recorded ("swapping
-// which lemmas were merely PRESENT earlier in the file measurably
-// changed which specific statement failed") but sharpened: it is now
-// confirmed NOT to be incremental-solver-state sensitivity (that
-// hypothesis is what #restart-solver was testing, and it did not fix
-// the failure), so the remaining candidate is static-encoding /
-// trigger-pool sensitivity to the surrounding declarations. NEXT STEP
-// for a future session: bisect which specific preceding declaration(s)
-// change the outcome (comment out Parts 1-8 in a scratch copy of this
-// file one at a time, rebuild, see which removal makes checkpoint (c)
-// verify) -- interactive F* MCP `lookup_at_position`/proof-context
-// inspection at the failing goal (not available to this session; the
-// project's fstar-mcp daemon was not running and is not wired into a
-// worktree subagent's tool surface) is the natural tool for that
-// bisection once available. The general N-row induction (STILL OPEN,
-// noted above) subsumes checkpoint (c) and may be easier to land WITH
-// its own induction hypothesis in scope than this two-line special case
-// is without one -- worth trying before further bisecting this exact
-// failure.
+// Checkpoint (c) history (session 2026-08-11): the two-row symbolic
+// lemma attempted directly, standalone-only, is preserved in git history
+// (this comment previously carried its full text + a 3-countermeasure
+// bisection log) -- superseded below by the general N-row induction,
+// which subsumes it. See Part 11.
 
+#pop-options
+
+(** ====================================================================== **)
+(** Part 11: the N-row induction (session 2026-08-11 continuation) --      **)
+(** LANDED, and checkpoint (c) is now moot (predicted in the brief: "if    **)
+(** the induction lands, the two-row case is a corollary").                **)
+(** ---------------------------------------------------------------------- **)
+(**                                                                        **)
+(** Checkpoint (c)'s FIXED two-row lemma resisted verification IN THIS     **)
+(** FILE (3 countermeasures tried, all Error 19 "incomplete quantifiers",  **)
+(** even though the identical body verified standalone 3/3) -- the         **)
+(** induction below was attempted next per the brief's own prediction      **)
+(** ("the induction hypothesis adds structure") and lands cleanly, 3/3      **)
+(** deterministic runs, first attempt, no bisection needed.                **)
+(**                                                                        **)
+(** THE ROUTE. `json_rows_body_acc` (the tail-recursive accumulator        **)
+(** `serialise_response_json` actually calls -- see SPARQL.Protocol.fst    **)
+(** line ~897) is, at each step, `List.Tot.rev_acc`-shaped: it pushes one  **)
+(** `chunk` string per row onto `acc` and recurses. `chunks_of` below       **)
+(** reconstructs the SAME chunk sequence as an ordinary (non-accumulator)   **)
+(** list-producing function, so `FStar.List.Tot.Properties`'s REAL,        **)
+(** already-proved list lemmas (`rev_involutive`, and `rev_acc`'s own      **)
+(** one-step unfold) directly relate the two -- this half is pure          **)
+(** list-level reasoning, none of the opaque-string-primitive walls this   **)
+(** module's banner describes apply to it (the exact precedent is          **)
+(** `RDF.List.Helpers.fst`'s `concatMap_aux`/`lemma_concatMap_aux_eq`,      **)
+(** the same accumulator-generalization shape, already proved and landed   **)
+(** in this repo). The string-level half (`lemma_concat_chunks`) is the    **)
+(** SAME `concat_spec_cons`/`_singleton` + `lemma_strcat_empty_l`/`_assoc` **)
+(** kit Part 10 used, but now applied INSIDE an induction on `rows`, which  **)
+(** gives Z3 the induction hypothesis as an explicit, already-in-scope      **)
+(** fact at each step rather than asking it to synthesize the whole         **)
+(** two-element instance in one query -- this appears to be exactly what    **)
+(** dissolves the trigger-pool sensitivity checkpoint (c) hit: an           **)
+(** induction step's proof obligation is smaller and its hypotheses more    **)
+(** narrowly scoped than a single flat two-row goal sitting after Parts     **)
+(** 1-10's accumulated declarations.                                        **)
+(**                                                                        **)
+(** RESIDUAL FINDING: checkpoint (c)'s ORIGINAL statement (`rows = [r1;     **)
+(** r2]` literally, output written as `json_row r1 ^ "," ^ json_row r2`     **)
+(** with no `json_rows_joined` in sight) is a one-line corollary of         **)
+(** `lemma_srj_n_rows` MATHEMATICALLY (`json_rows_joined [r1; r2]`          **)
+(** unfolds, by `json_rows_joined`'s own defining match, to exactly         **)
+(** `json_row r1 ^ "," ^ json_row r2` -- confirmed via a standalone         **)
+(** `Lemma (json_rows_joined [r1; r2] == json_row r1 ^ "," ^ json_row r2)   **)
+(** = ()` probe, which typechecks with NO SMT query at all, pure            **)
+(** definitional unfolding). Stating that corollary as ITS OWN top-level    **)
+(** lemma in this file, however, reproduced the SAME declaration-order      **)
+(** sensitivity checkpoint (c) hit -- THREE phrasings tried (guard depth    **)
+(** 3/3): `lemma_srj_n_rows vars [r1;r2]` plus two `assert`s restating the  **)
+(** unfold; the same body re-specialized via `lemma_body_pieces_eq`/        **)
+(** `lemma_concat_chunks` directly at `[r1;r2]`; and the checkpoint (c)     **)
+(** ORIGINAL direct proof (`concat_spec_cons`+`concat_spec_singleton`+      **)
+(** `lemma_strcat_empty_l`, which verifies standalone and verified in a     **)
+(** throwaway probe placed immediately after this Part) placed AFTER        **)
+(** `lemma_srj_n_rows` in-file -- all three Error 19, and (surprisingly)    **)
+(** the third one flipped from PASS to FAIL purely by REMOVING an unrelated **)
+(** failed attempt that had been sitting between it and `lemma_srj_n_rows`, **)
+(** the same "presence of a declaration, not its correctness, changes the   **)
+(** outcome" symptom Part 9/checkpoint (c) both recorded. Per the brief's    **)
+(** own framing ("if the induction lands ... the bisection becomes moot"),  **)
+(** `lemma_srj_n_rows` alone is left as the landed theorem -- it already     **)
+(** covers `rows = [r1; r2]` (and every other length) by instantiation,      **)
+(** so no separate two-row lemma is needed for the round-trip goal to be     **)
+(** covered; a future session wanting the LITERAL checkpoint-(c) statement   **)
+(** as its own named lemma should bisect Parts 1-10 (comment out one Part    **)
+(** at a time in a scratch copy, rebuild) with the F* MCP interactive        **)
+(** server once available in a worktree subagent's tool surface, per         **)
+(** checkpoint (c)'s own NEXT STEP note -- not attempted again here.         **)
+(** ====================================================================== **)
+
+#push-options "--z3rlimit 50 --fuel 2 --ifuel 2"
+
+// Direct (non-accumulator) reconstruction of the chunk list
+// json_rows_body_acc builds -- same recursive shape, but as an ordinary
+// list-producing function so FStar.List.Tot.Properties's real
+// rev_acc/rev_involutive lemmas apply to it directly (the precedent is
+// RDF.List.Helpers.fst's concatMap_aux/lemma_concatMap_aux_eq).
+let rec chunks_of (rows : list binding_row) (first : bool)
+  : Tot (list string) (decreases rows) =
+  match rows with
+  | [] -> []
+  | r :: rest ->
+    let chunk = (if first then json_row r else "," ^ json_row r) in
+    chunk :: chunks_of rest false
+
+// The comma-joined text the response body should read as, once the
+// leading `first`-flag comma offset json_rows_body_acc encodes via the
+// bool is folded away -- this is the "obvious" spec `concat_spec ","`
+// would give directly if json_row's pieces did not each need their OWN
+// leading comma suppressed only on the very first row.
+let rec json_rows_joined (rows : list binding_row)
+  : Tot string (decreases rows) =
+  match rows with
+  | [] -> ""
+  | [r] -> json_row r
+  | r :: rest -> json_row r ^ "," ^ json_rows_joined rest
+
+// json_rows_body_acc is exactly List.Tot.rev_acc applied to chunks_of --
+// both recurse identically on rows/first, pushing the same chunk onto the
+// same accumulator at each step. Pure list-level unfolding, no string
+// reasoning (none of this module's opaque-primitive walls apply).
+let rec lemma_json_rows_body_acc_is_rev_acc
+    (rows : list binding_row) (first : bool) (acc : list string)
+  : Lemma (ensures json_rows_body_acc rows first acc ==
+                      List.Tot.rev_acc (chunks_of rows first) acc)
+          (decreases rows)
+  =
+  match rows with
+  | [] -> ()
+  | r :: rest ->
+    lemma_json_rows_body_acc_is_rev_acc rest false
+      ((if first then json_row r else "," ^ json_row r) :: acc)
+
+// Hence the rev'd body_pieces list serialise_response_json builds is
+// exactly chunks_of rows true (rev_acc l [] == rev l, and rev . rev == id).
+let lemma_body_pieces_eq (rows : list binding_row)
+  : Lemma (ensures List.Tot.rev (json_rows_body_acc rows true []) ==
+                      chunks_of rows true)
+  =
+  lemma_json_rows_body_acc_is_rev_acc rows true [];
+  FStar.List.Tot.Properties.rev_involutive (chunks_of rows true)
+
+// concat_spec over chunks_of rows first, expressed as the comma-joined
+// text (with the first-flag comma offset folded in). The only
+// string-level facts needed are the same three Part 10 used --
+// concat_spec's two defining equations plus lemma_strcat_empty_l/_assoc
+// from the ConcatSpec kit -- invoked explicitly at each induction step
+// (not left for Z3 to find), per Part 10's isolation lesson.
+let rec lemma_concat_chunks (rows : list binding_row) (first : bool)
+  : Lemma (ensures
+             concat_spec "" (chunks_of rows first) ==
+               (match rows with
+                | [] -> ""
+                | _ -> if first then json_rows_joined rows
+                       else "," ^ json_rows_joined rows))
+          (decreases rows)
+  =
+  match rows with
+  | [] -> ()
+  | [r] ->
+    concat_spec_singleton "" (if first then json_row r else "," ^ json_row r)
+  | r :: r2 :: rest' ->
+    let rest = r2 :: rest' in
+    let chunk = (if first then json_row r else "," ^ json_row r) in
+    concat_spec_cons "" chunk (chunks_of rest false);
+    lemma_concat_chunks rest false;
+    // IH: concat_spec "" (chunks_of rest false) == "," ^ json_rows_joined rest
+    if first then
+      // chunk ^ "" ^ ("," ^ json_rows_joined rest)
+      //   == chunk ^ ("," ^ json_rows_joined rest)                  [empty_l]
+      //   == json_row r ^ "," ^ json_rows_joined rest                [chunk = json_row r; right-assoc, defeq]
+      //   == json_rows_joined (r :: rest)                            [target, rest is Cons]
+      lemma_strcat_empty_l ("," ^ json_rows_joined rest)
+    else begin
+      // chunk ^ "" ^ ("," ^ json_rows_joined rest)
+      //   == ("," ^ json_row r) ^ ("," ^ json_rows_joined rest)      [empty_l, chunk = "," ^ json_row r]
+      //   == "," ^ (json_row r ^ ("," ^ json_rows_joined rest))      [strcat_assoc a="," b=json_row r c=...]
+      //   == "," ^ json_rows_joined (r :: rest)                      [defn, right-assoc, defeq]
+      lemma_strcat_empty_l ("," ^ json_rows_joined rest);
+      lemma_strcat_assoc "," (json_row r) ("," ^ json_rows_joined rest)
+    end
+
+#pop-options
+
+// THE N-ROW THEOREM: serialise_response_json vars rows, for a fully
+// SYMBOLIC vars list and rows list of ANY length, equals the wire-format
+// text with the row bodies comma-joined via json_rows_joined. Subsumes
+// checkpoint (b) (lemma_srj_single_row, rows = [r]) and checkpoint (c)
+// (rows = [r1; r2], by instantiation + unfolding json_rows_joined -- see
+// the RESIDUAL FINDING above for why that instantiation is not ALSO
+// landed as its own named lemma this session) and every other length,
+// including [] (matching Part 9's assert_norm literal instance).
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+let lemma_srj_n_rows (vars : list string) (rows : list binding_row)
+  : Lemma (ensures
+             serialise_response_json vars rows ==
+               "{\"head\":{\"vars\":[" ^ json_var_list vars ^ "]},"
+                 ^ "\"results\":{\"bindings\":["
+                 ^ json_rows_joined rows
+                 ^ "]}}")
+  =
+  lemma_body_pieces_eq rows;
+  lemma_concat_chunks rows true
 #pop-options
