@@ -531,25 +531,17 @@ let uu___is_Tok_EOF (projectee : token) : Prims.bool=
 type pos = Prims.nat
 type lex_result = (token * pos)
 let char_at (s : Prims.string) (p : pos) : FStar_Char.char=
-  if p < (FStar_String.strlen s)
-  then FStar_String.index s p
+  if p < (Parser_FastString.fs_byte_length s)
+  then Parser_FastString.fs_byte_index s p
   else FStar_Char.char_of_int Prims.int_zero
 let at_end (input : Prims.string) (p : pos) : Prims.bool=
-  p >= (FStar_String.strlen input)
+  p >= (Parser_FastString.fs_byte_length input)
 let peek_char (input : Prims.string) (p : pos) : FStar_Char.char=
   if at_end input p
   then FStar_Char.char_of_int Prims.int_zero
   else char_at input p
 let substring (s : Prims.string) (p : pos) (len : Prims.nat) : Prims.string=
-  if len = Prims.int_zero
-  then ""
-  else
-    if (p + len) <= (FStar_String.strlen s)
-    then FStar_String.sub s p len
-    else
-      if p < (FStar_String.strlen s)
-      then FStar_String.sub s p ((FStar_String.strlen s) - p)
-      else ""
+  if len = Prims.int_zero then "" else Parser_FastString.fs_byte_sub s p len
 let char_code (c : FStar_Char.char) : Prims.nat= FStar_Char.int_of_char c
 let is_alpha (c : FStar_Char.char) : Prims.bool=
   let code = char_code c in
@@ -2291,7 +2283,7 @@ let rec tokenize_loop (sparql12 : Prims.bool) (input : Prims.string)
   if fuel = Prims.int_zero
   then FStar_List_Tot_Base.rev (Tok_EOF :: acc)
   else
-    if p > (FStar_String.strlen input)
+    if p > (Parser_FastString.fs_byte_length input)
     then FStar_List_Tot_Base.rev (Tok_EOF :: acc)
     else
       (let uu___2 = next_token sparql12 input p in
@@ -2307,11 +2299,11 @@ let rec tokenize_loop (sparql12 : Prims.bool) (input : Prims.string)
                     (fuel - Prims.int_one)))
 let tokenize (input : Prims.string) : token Prims.list=
   tokenize_loop false input Prims.int_zero []
-    ((FStar_String.strlen input) + Prims.int_one)
+    ((Parser_FastString.fs_byte_length input) + Prims.int_one)
 let tokenize_12 (input : Prims.string) : token Prims.list=
   let decoded = process_codepoint_escapes input in
   tokenize_loop true decoded Prims.int_zero []
-    ((FStar_String.strlen input) + Prims.int_one)
+    ((Parser_FastString.fs_byte_length decoded) + Prims.int_one)
 let parse_ok (v : 'a) (ts : token_stream) : 'a parse_result= ParseOk (v, ts)
 let parse_err (msg : Prims.string) : 'a parse_result= ParseErr msg
 let parse_bind (p : 'a parse_result)
@@ -2351,7 +2343,8 @@ let split_pname (pn : Prims.string) : (Prims.string * Prims.string)=
   | FStar_Pervasives_Native.Some i ->
       ((substring pn Prims.int_zero i),
         (substring pn (i + Prims.int_one)
-           (safe_sub (FStar_String.strlen pn) (i + Prims.int_one))))
+           (safe_sub (Parser_FastString.fs_byte_length pn)
+              (i + Prims.int_one))))
   | FStar_Pervasives_Native.None -> (pn, "")
 let resolve_pname (pn : Prims.string) (pm : prefix_map) :
   Prims.string FStar_Pervasives_Native.option=
@@ -7204,8 +7197,8 @@ let rec tokens_only_eof (ts : token_stream) : Prims.bool=
   | uu___ -> false
 let starts_with_string (s : Prims.string) (prefix : Prims.string) :
   Prims.bool=
-  let ls = FStar_String.strlen s in
-  let lp = FStar_String.strlen prefix in
+  let ls = Parser_FastString.fs_byte_length s in
+  let lp = Parser_FastString.fs_byte_length prefix in
   (lp <= ls) && ((substring s Prims.int_zero lp) = prefix)
 let is_labeled_bnode_id (b : Prims.string) : Prims.bool=
   Prims.op_Negation (starts_with_string b "_:bnode_")
