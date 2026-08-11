@@ -1176,6 +1176,495 @@ let rec lemma_scan_bnode_body_cp_shift_headroom prefix mid suffix pos fuel extra
 #pop-options
 
 (** ========================================================================
+ * STAGE 3, ITEM 2 (task #48 ordered work list item 2): literal branch
+ * (`parse_literal` -- quoted strings, language tags, `^^` datatype IRIs).
+ * Applies the Stage-2 equal-accumulator method (`parse_iri_body_acc`'s
+ * technique) to `parse_string_body`, PLUS Item 1's new `fs_cp_at`
+ * locality fact for its non-ASCII fast-byte push, PLUS a two-lemma
+ * (not one-capstone) split for `parse_string_literal`'s fast-vs-escape
+ * dispatch -- following the FINDING banner's own recorded next-step
+ * suggestion for exactly this shape of problem, rather than repeating
+ * the abandoned single-outer-match attempt.
+ *
+ * VERIFIED, EACH ON THE FIRST OR SECOND ATTEMPT (no restatement beyond
+ * threading one extra explicit-witness parameter, `fk`, through the
+ * escape-path lemma -- not a proof-technique failure):
+ *   - `lemma_scan_string_fast_shift_headroom` -- `scan_string_fast`'s
+ *     SUCCESS shift (position-only, ALWAYS FAILS at fuel=0 like
+ *     `scan_iri_end`, so plain headroom with no side condition).
+ *   - `lemma_parse_string_body_shift` -- the accumulator shift for the
+ *     escape/backslash slow path, SAME method as `lemma_parse_iri_body_
+ *     acc_shift`: `acc_mid == acc_full` threaded, zero `FStar.String.
+ *     concat` algebra invoked. Single-char escapes (`\t\n\r\\\"\b\f\'`)
+ *     push a FIXED char (syntactically identical on both sides, simpler
+ *     than `parse_iri_body_acc`'s `fs_byte_sub` case); `\u`/`\U` push
+ *     `safe_char_of_int cp` from hex digits read via `lemma_byte_index_
+ *     at_middle`-proved-equal bytes (same `cp` on both sides, no new
+ *     lemma); the non-ASCII fast-byte branch pushes `safe_char_of_int
+ *     cp` from Item 1's `lemma_cp_at_at_middle` -- the FIRST reuse of
+ *     that fact outside its own section, confirming it is a genuinely
+ *     general primitive, not `scan_bnode_body_cp`-specific.
+ *   - `lemma_scan_string_fast_shift_hasescapes` -- the FAILURE-shift
+ *     companion, fixed to the SPECIFIC message `"has escapes"` (the one
+ *     `parse_string_literal`'s own `match` dispatches on) rather than a
+ *     general failure-shift -- the fuel=0/pos>=len/newline failure
+ *     branches all carry a DIFFERENT message literal, so they contradict
+ *     a fixed target message by simple string-literal mismatch, exactly
+ *     as `ParseOk`/`ParseFail` constructor mismatch closed `scan_iri_
+ *     end`'s base cases -- no headroom hypothesis needed at all.
+ *   - `lemma_parse_string_literal_fastpath_shift` / `_escapepath_shift`
+ *     -- the two-lemma split. Each has its OWN narrow `requires` pinning
+ *     which `scan_string_fast` outcome fired (mirroring `parse_string_
+ *     literal`'s own dispatch); a caller (or a future top-level
+ *     `parse_literal` composition) picks whichever applies, exactly as
+ *     the FINDING banner suggested for `parse_iri_raw`'s still-open
+ *     capstone.
+ *   - `lemma_ptake_while_scan_shift_headroom` -- `ptake_while_scan`'s
+ *     shift (position-only, generic over `pred`; SUCCEEDS at fuel=0 like
+ *     `ptake_while_acc`, so the SAME `fuel + pos >= endpos + 1` headroom
+ *     hypothesis is needed -- simpler to state than sub-lemma 4 since
+ *     there is no accumulator at all here).
+ *   - `lemma_ptake_while1_pos_shift` -- the wrapper discharging the
+ *     headroom side condition "for free" from `ptake_while1_pos`'s own
+ *     `fuel = len - pos + 1` formula, exactly `lemma_pws_shift`'s
+ *     arithmetic (`fuel + pos == fs_byte_length mid + 1 >= endpos + 1`
+ *     follows directly from this lemma's own `endpos < fs_byte_length
+ *     mid` requires -- no separate fuel-invariant induction, confirming
+ *     that WAS the right general pattern, not a `pws`-specific
+ *     coincidence).
+ *   - `lemma_parse_lang_tag_shift` -- `parse_lang_tag` (`@` byte check +
+ *     `is_alpha` check on the next byte + `ptake_while1_pos is_lang_
+ *     char`), success case, direct composition of the pieces above.
+ *   - `lemma_parse_datatype_shift` -- `parse_datatype` (`^^` byte check
+ *     + `parse_iri`), success case, REUSES sub-lemma 7 (`lemma_parse_
+ *     iri_shift`) directly rather than re-deriving IRI locality -- the
+ *     first cross-section reuse in this file, confirming sub-lemma 7's
+ *     scope (any caller needing "IRI parse at a shifted position, same
+ *     result") composes cleanly into a sibling combinator's own proof.
+ *
+ * NOT DONE: the top-level `parse_literal` wrapper tying the three
+ * branches (plain / `@lang` / `^^dt`) together. Attempting it exposed a
+ * genuine non-local edge case worth recording precisely (not "harder
+ * than expected" -- a specific, nameable gap): `parse_literal`'s "ran
+ * out of input right after the closing quote" branch (`pos' >=
+ * fs_byte_length mid`, unconditionally treated as PLAIN, no `@`/`^^`
+ * possible) is NOT LOCAL when `suffix` is non-empty and `mid` happens to
+ * end exactly at `pos'` -- the embedded parse would go on to read
+ * `suffix`'s own leading bytes at that position and could find a REAL
+ * `@lang` or `^^dt` there that `mid` alone could never see, since `mid`
+ * simply ran out. This is a different (milder) hazard than Item 1's
+ * `fs_cp_at` continuation-byte problem -- it is not about a single
+ * primitive read disagreeing, but about `parse_literal`'s OWN branch
+ * dispatch depending on "is there more input at all", which embedding
+ * can change from false to true. The fix is mechanical (an extra
+ * hypothesis scoping to `pos' < fs_byte_length mid`, i.e. requiring the
+ * literal is NOT the last thing in `mid`, for the plain-literal branch
+ * specifically -- the `@lang`/`^^dt` branches already require reading a
+ * real byte at `pos'` and so are unaffected) but was not written this
+ * landing: the three-way composition (plain vs lang vs datatype, each
+ * needing its own precise `requires`, PLUS choosing fastpath- vs
+ * escapepath- shift for the underlying string literal) multiplies to
+ * six concrete lemma statements, and the remaining ordered-work-list
+ * items (3-8, reaching all the way to `theorem_stream_eq_batch`) were
+ * judged higher-value with the session budget remaining. A future
+ * session has every piece needed pre-verified above; only the
+ * mechanical chaining (plus the one-line `pos' < fs_byte_length mid`
+ * scoping fix) remains.
+ * ======================================================================== *)
+
+// -- byte-list level: this file's earlier sub-lemma 1 restated the
+// -- `fs_byte_index` agreement locally; `scan_string_fast`/`parse_
+// -- string_body` below read via `fs_byte_index` too, so `lemma_byte_
+// -- index_at_middle` (sub-lemma 1, already in scope from earlier in
+// -- this file) is reused directly -- no restatement needed here.
+
+// -- scan_string_fast: position-only fast scan for the closing quote.
+// -- ALWAYS FAILS at fuel=0 ("string too long"), exactly `scan_iri_end`'s
+// -- shape -- plain headroom, no side condition.
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_scan_string_fast_shift_headroom
+    (prefix mid suffix : string) (pos fuel extra : nat) (endpos : nat)
+  : Lemma
+      (requires
+        scan_string_fast mid pos fuel == ParseOk () endpos /\
+        endpos <= fs_byte_length mid)
+      (ensures
+        scan_string_fast (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) (fuel + extra)
+          == ParseOk () (fs_byte_length prefix + endpos))
+      (decreases fuel)
+let rec lemma_scan_string_fast_shift_headroom prefix mid suffix pos fuel extra endpos =
+  let p = fs_byte_length prefix in
+  if fuel = 0 then ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if pos >= len_mid then ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_index_at_middle prefix mid suffix pos;
+      let ch = fs_byte_index mid pos in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x22 then ()
+      else if code = 0x5C then ()
+      else if code = 0x0A || code = 0x0D then ()
+      else
+        lemma_scan_string_fast_shift_headroom prefix mid suffix (pos + 1) (fuel - 1) extra endpos
+    end
+  end
+#pop-options
+
+// -- parse_string_body: accumulator escape/backslash slow path. Equal-
+// -- accumulator technique (Stage 2), reusing Item 1's fs_cp_at locality
+// -- fact (lemma_cp_at_at_middle) for the non-ASCII fast-byte branch.
+// -- fuel=0 FAILS ("string too long"), same as parse_iri_body_acc, so
+// -- plain fuel-headroom (no side condition) suffices.
+#push-options "--z3rlimit 400 --fuel 6 --ifuel 6"
+val lemma_parse_string_body_shift
+    (prefix mid suffix : string) (pos fuel extra : nat)
+    (acc_mid acc_full : list FStar.Char.char) (endpos : nat) (out_s : string)
+  : Lemma
+      (requires
+        acc_mid == acc_full /\
+        parse_string_body mid pos acc_mid fuel == ParseOk out_s endpos /\
+        endpos <= fs_byte_length mid /\
+        (fs_byte_length suffix = 0 \/ not (Spec.is_continuation (fs_byte_at suffix 0))))
+      (ensures
+        parse_string_body (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) acc_full (fuel + extra)
+          == ParseOk out_s (fs_byte_length prefix + endpos))
+      (decreases fuel)
+let rec lemma_parse_string_body_shift prefix mid suffix pos fuel extra acc_mid acc_full endpos out_s =
+  let p = fs_byte_length prefix in
+  if fuel = 0 then ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if pos >= len_mid then ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_index_at_middle prefix mid suffix pos;
+      let ch = fs_byte_index mid pos in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x22 then ()
+      else if code = 0x5C then begin
+        if pos + 1 >= len_mid then ()
+        else begin
+          lemma_byte_index_at_middle prefix mid suffix (pos + 1);
+          let esc = fs_byte_index mid (pos + 1) in
+          let esc_code = FStar.Char.int_of_char esc in
+          if esc_code = 0x74 then
+            lemma_parse_string_body_shift prefix mid suffix (pos + 2) (fuel - 1) extra
+              (FStar.Char.char_of_int 0x09 :: acc_mid) (FStar.Char.char_of_int 0x09 :: acc_full) endpos out_s
+          else if esc_code = 0x6E then
+            lemma_parse_string_body_shift prefix mid suffix (pos + 2) (fuel - 1) extra
+              (FStar.Char.char_of_int 0x0A :: acc_mid) (FStar.Char.char_of_int 0x0A :: acc_full) endpos out_s
+          else if esc_code = 0x72 then
+            lemma_parse_string_body_shift prefix mid suffix (pos + 2) (fuel - 1) extra
+              (FStar.Char.char_of_int 0x0D :: acc_mid) (FStar.Char.char_of_int 0x0D :: acc_full) endpos out_s
+          else if esc_code = 0x5C then
+            lemma_parse_string_body_shift prefix mid suffix (pos + 2) (fuel - 1) extra
+              (FStar.Char.char_of_int 0x5C :: acc_mid) (FStar.Char.char_of_int 0x5C :: acc_full) endpos out_s
+          else if esc_code = 0x22 then
+            lemma_parse_string_body_shift prefix mid suffix (pos + 2) (fuel - 1) extra
+              (FStar.Char.char_of_int 0x22 :: acc_mid) (FStar.Char.char_of_int 0x22 :: acc_full) endpos out_s
+          else if esc_code = 0x62 then
+            lemma_parse_string_body_shift prefix mid suffix (pos + 2) (fuel - 1) extra
+              (FStar.Char.char_of_int 0x08 :: acc_mid) (FStar.Char.char_of_int 0x08 :: acc_full) endpos out_s
+          else if esc_code = 0x66 then
+            lemma_parse_string_body_shift prefix mid suffix (pos + 2) (fuel - 1) extra
+              (FStar.Char.char_of_int 0x0C :: acc_mid) (FStar.Char.char_of_int 0x0C :: acc_full) endpos out_s
+          else if esc_code = 0x27 then
+            lemma_parse_string_body_shift prefix mid suffix (pos + 2) (fuel - 1) extra
+              (FStar.Char.char_of_int 0x27 :: acc_mid) (FStar.Char.char_of_int 0x27 :: acc_full) endpos out_s
+          else if esc_code = 0x75 then begin
+            if pos + 6 > len_mid then ()
+            else begin
+              lemma_byte_index_at_middle prefix mid suffix (pos + 2);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 3);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 4);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 5);
+              match hex_val_opt (fs_byte_index mid (pos + 2)),
+                    hex_val_opt (fs_byte_index mid (pos + 3)),
+                    hex_val_opt (fs_byte_index mid (pos + 4)),
+                    hex_val_opt (fs_byte_index mid (pos + 5)) with
+              | Some h0, Some h1, Some h2, Some h3 ->
+                let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
+                if not (valid_codepoint cp) then ()
+                else
+                  lemma_parse_string_body_shift prefix mid suffix (pos + 6) (fuel - 1) extra
+                    (safe_char_of_int cp :: acc_mid) (safe_char_of_int cp :: acc_full) endpos out_s
+              | _ -> ()
+            end
+          end
+          else if esc_code = 0x55 then begin
+            if pos + 10 > len_mid then ()
+            else begin
+              lemma_byte_index_at_middle prefix mid suffix (pos + 2);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 3);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 4);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 5);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 6);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 7);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 8);
+              lemma_byte_index_at_middle prefix mid suffix (pos + 9);
+              match hex_val_opt (fs_byte_index mid (pos + 2)),
+                    hex_val_opt (fs_byte_index mid (pos + 3)),
+                    hex_val_opt (fs_byte_index mid (pos + 4)),
+                    hex_val_opt (fs_byte_index mid (pos + 5)),
+                    hex_val_opt (fs_byte_index mid (pos + 6)),
+                    hex_val_opt (fs_byte_index mid (pos + 7)),
+                    hex_val_opt (fs_byte_index mid (pos + 8)),
+                    hex_val_opt (fs_byte_index mid (pos + 9)) with
+              | Some h0, Some h1, Some h2, Some h3, Some h4, Some h5, Some h6, Some h7 ->
+                let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
+                       + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
+                if not (valid_codepoint cp) then ()
+                else
+                  lemma_parse_string_body_shift prefix mid suffix (pos + 10) (fuel - 1) extra
+                    (safe_char_of_int cp :: acc_mid) (safe_char_of_int cp :: acc_full) endpos out_s
+              | _ -> ()
+            end
+          end
+          else ()
+        end
+      end
+      else if code = 0x0A || code = 0x0D then ()
+      else if code < 0x80 then
+        lemma_parse_string_body_shift prefix mid suffix (pos + 1) (fuel - 1) extra
+          (ch :: acc_mid) (ch :: acc_full) endpos out_s
+      else begin
+        lemma_cp_at_at_middle prefix mid suffix pos;
+        let (cp, adv) = fs_cp_at mid pos in
+        let advance : nat = if adv = 0 then 1 else adv in
+        lemma_parse_string_body_shift prefix mid suffix (pos + advance) (fuel - 1) extra
+          (safe_char_of_int cp :: acc_mid) (safe_char_of_int cp :: acc_full) endpos out_s
+      end
+    end
+  end
+#pop-options
+
+// -- scan_string_fast, FAILURE-shift for msg fixed to "has escapes" --
+// -- the specific failure parse_string_literal's own match dispatches
+// -- on. Both other failure messages contradict the fixed literal by
+// -- simple string mismatch -- no headroom hypothesis needed.
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_scan_string_fast_shift_hasescapes
+    (prefix mid suffix : string) (pos fuel extra : nat) (endpos : nat)
+  : Lemma
+      (requires
+        scan_string_fast mid pos fuel == ParseFail "has escapes" endpos /\
+        endpos < fs_byte_length mid)
+      (ensures
+        scan_string_fast (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) (fuel + extra)
+          == ParseFail "has escapes" (fs_byte_length prefix + endpos))
+      (decreases fuel)
+let rec lemma_scan_string_fast_shift_hasescapes prefix mid suffix pos fuel extra endpos =
+  let p = fs_byte_length prefix in
+  if fuel = 0 then ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if pos >= len_mid then ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_index_at_middle prefix mid suffix pos;
+      let ch = fs_byte_index mid pos in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x22 then ()
+      else if code = 0x5C then ()
+      else if code = 0x0A || code = 0x0D then ()
+      else
+        lemma_scan_string_fast_shift_hasescapes prefix mid suffix (pos + 1) (fuel - 1) extra endpos
+    end
+  end
+#pop-options
+
+// -- parse_string_literal, FAST-PATH success case: direct corollary of
+// -- the success-shift lemma plus fs_byte_sub_concat_*, exactly
+// -- sub-lemma 6's (lemma_parse_iri_raw_fastpath_shift) pattern.
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_parse_string_literal_fastpath_shift (prefix mid suffix : string) (pos end_pos : nat)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos) = 0x22 /\
+        scan_string_fast mid (pos + 1) (fs_byte_length mid - pos) == ParseOk () end_pos /\
+        end_pos <= fs_byte_length mid)
+      (ensures
+        (match parse_string_literal mid pos,
+               parse_string_literal (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk s_mid endpos_mid, ParseOk s_full endpos_full ->
+           s_full == s_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_string_literal_fastpath_shift prefix mid suffix pos end_pos =
+  let p = fs_byte_length prefix in
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  let fuel_mid = fs_byte_length mid - pos in
+  lemma_scan_string_fast_shift_headroom prefix mid suffix (pos + 1) fuel_mid (fs_byte_length suffix) end_pos;
+  let start = pos + 1 in
+  let str_len = end_pos - 1 - start in
+  if str_len > 0 && start + str_len <= fs_byte_length mid then begin
+    fs_byte_sub_concat_right prefix (mid ^ suffix) (p + start) str_len;
+    fs_byte_sub_concat_left mid suffix start str_len
+  end else ()
+#pop-options
+
+// -- parse_string_literal, ESCAPE-PATH success case: separate lemma
+// -- (not a single outer-match capstone) per the file-end FINDING's own
+// -- recorded next-step suggestion -- each path gets its OWN narrow
+// -- `requires` pinning which `scan_string_fast` outcome fired; a caller
+// -- dispatches itself, matching how `parse_string_literal` itself
+// -- dispatches.
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_parse_string_literal_escapepath_shift (prefix mid suffix : string) (pos fk endpos : nat) (out_s : string)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos) = 0x22 /\
+        scan_string_fast mid (pos + 1) (fs_byte_length mid - pos) == ParseFail "has escapes" fk /\
+        fk < fs_byte_length mid /\
+        parse_string_body mid (pos + 1) [] (fs_byte_length mid - pos) == ParseOk out_s endpos /\
+        endpos <= fs_byte_length mid /\
+        (fs_byte_length suffix = 0 \/ not (Spec.is_continuation (fs_byte_at suffix 0))))
+      (ensures
+        (match parse_string_literal mid pos,
+               parse_string_literal (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk s_mid endpos_mid, ParseOk s_full endpos_full ->
+           s_full == s_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_string_literal_escapepath_shift prefix mid suffix pos fk endpos out_s =
+  let p = fs_byte_length prefix in
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  let fuel_mid = fs_byte_length mid - pos in
+  let start = pos + 1 in
+  lemma_scan_string_fast_shift_hasescapes prefix mid suffix start fuel_mid (fs_byte_length suffix) fk;
+  lemma_parse_string_body_shift prefix mid suffix start fuel_mid (fs_byte_length suffix) [] [] endpos out_s
+#pop-options
+
+// -- parse_lang_tag: @lang-subtag, via ptake_while1_pos / ptake_while_scan.
+
+// ptake_while_scan: position-only scanner, generic over `pred`, SUCCEEDS
+// at fuel=0 (returns pos unconditionally) -- same headroom need as
+// ptake_while_acc (sub-lemma 4), but position-only so simpler to state
+// (no accumulator).
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_ptake_while_scan_shift_headroom
+    (pred : FStar.Char.char -> bool) (prefix mid suffix : string)
+    (pos fuel extra : nat) (endpos : nat)
+  : Lemma
+      (requires
+        ptake_while_scan pred mid pos fuel == endpos /\
+        endpos < fs_byte_length mid /\
+        fuel + pos >= endpos + 1)
+      (ensures
+        ptake_while_scan pred (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) (fuel + extra)
+          == fs_byte_length prefix + endpos)
+      (decreases fuel)
+let rec lemma_ptake_while_scan_shift_headroom pred prefix mid suffix pos fuel extra endpos =
+  let p = fs_byte_length prefix in
+  if fuel = 0 then ()
+  else begin
+    let len_mid = fs_byte_length mid in
+    if pos >= len_mid then ()
+    else begin
+      fs_byte_length_concat mid suffix;
+      fs_byte_length_concat prefix (mid ^ suffix);
+      lemma_byte_index_at_middle prefix mid suffix pos;
+      let ch = fs_byte_index mid pos in
+      if pred ch then
+        lemma_ptake_while_scan_shift_headroom pred prefix mid suffix (pos + 1) (fuel - 1) extra endpos
+      else ()
+    end
+  end
+#pop-options
+
+// ptake_while1_pos wrapper: discharges the headroom side condition
+// automatically from its own `fuel = len - pos + 1` formula, exactly
+// lemma_pws_shift's pattern. Then a direct corollary via
+// fs_byte_sub_concat_left/_right, exactly sub-lemma 6's pattern.
+// Scope: SUCCESS case only.
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_ptake_while1_pos_shift
+    (pred : FStar.Char.char -> bool) (prefix mid suffix : string) (pos endpos : nat)
+  : Lemma
+      (requires
+        pos <= fs_byte_length mid /\
+        endpos > pos /\
+        endpos < fs_byte_length mid /\
+        ptake_while_scan pred mid pos (fs_byte_length mid - pos + 1) == endpos)
+      (ensures
+        (match ptake_while1_pos pred mid pos,
+               ptake_while1_pos pred (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk s_mid endpos_mid, ParseOk s_full endpos_full ->
+           s_full == s_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_ptake_while1_pos_shift pred prefix mid suffix pos endpos =
+  let p = fs_byte_length prefix in
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  let fuel_mid = fs_byte_length mid - pos + 1 in
+  lemma_ptake_while_scan_shift_headroom pred prefix mid suffix pos fuel_mid (fs_byte_length suffix) endpos;
+  fs_byte_sub_concat_right prefix (mid ^ suffix) (p + pos) (endpos - pos);
+  fs_byte_sub_concat_left mid suffix pos (endpos - pos)
+#pop-options
+
+// parse_lang_tag itself: '@' byte-check plus is_alpha check on the next
+// byte, then ptake_while1_pos is_lang_char. Success case only.
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_parse_lang_tag_shift (prefix mid suffix : string) (pos endpos : nat)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos) = 0x40 /\
+        pos + 1 < fs_byte_length mid /\
+        is_alpha (fs_byte_index mid (pos + 1)) /\
+        endpos > pos + 1 /\
+        endpos < fs_byte_length mid /\
+        ptake_while_scan is_lang_char mid (pos + 1) (fs_byte_length mid - (pos + 1) + 1) == endpos)
+      (ensures
+        (match parse_lang_tag mid pos,
+               parse_lang_tag (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk s_mid endpos_mid, ParseOk s_full endpos_full ->
+           s_full == s_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_lang_tag_shift prefix mid suffix pos endpos =
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  lemma_byte_index_at_middle prefix mid suffix (pos + 1);
+  lemma_ptake_while1_pos_shift is_lang_char prefix mid suffix (pos + 1) endpos
+#pop-options
+
+// -- parse_datatype: ^^<iri>, via parse_iri -- reuses sub-lemma 7
+// -- (lemma_parse_iri_shift) directly.
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val lemma_parse_datatype_shift (prefix mid suffix : string) (pos gt_pos : nat)
+  : Lemma
+      (requires
+        pos + 2 <= fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos) = 0x5E /\
+        FStar.Char.int_of_char (fs_byte_index mid (pos + 1)) = 0x5E /\
+        (pos + 2) < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid (pos + 2)) = 0x3C /\
+        scan_iri_end mid (pos + 3) (fs_byte_length mid - (pos + 2)) == ParseOk gt_pos gt_pos /\
+        gt_pos < fs_byte_length mid /\
+        (match parse_iri_raw mid (pos + 2) with
+         | ParseOk iri_mid _ -> is_iri iri_mid
+         | ParseFail _ _ -> False))
+      (ensures
+        (match parse_datatype mid pos,
+               parse_datatype (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk s_mid endpos_mid, ParseOk s_full endpos_full ->
+           s_full == s_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_datatype_shift prefix mid suffix pos gt_pos =
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  lemma_byte_index_at_middle prefix mid suffix (pos + 1);
+  lemma_parse_iri_shift prefix mid suffix (pos + 2) gt_pos
+#pop-options
+
+(** ========================================================================
  * WHAT THE TEMPLATE MEANS FOR THE REMAINING COMBINATORS.
  *
  * `scan_iri_end` was the SIMPLEST case on purpose (position-only return,
