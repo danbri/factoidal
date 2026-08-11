@@ -1945,3 +1945,183 @@ let theorem_stream_eq_batch_single_chunk_general c ws_complete ws_carry =
  * against it -- purely a scoping decision under the guard-depth-3 /
  * session-budget discipline.
  * ============================================================================ *)
+
+(* ============================================================================
+ * MULTI-CHUNK `theorem_stream_eq_batch` (task #48, FOURTH landing,
+ * 2026-08-11): closes item 6. Not built the way the THIRD landing's FINDING
+ * sketched ("chain-concatenation lemma `ws1 @ ws2` covers `A^B`" as a
+ * free-standing piece assembled bottom-up) -- that sketch, worked through
+ * fully, turns out to need EVERY per-kind witness POSITION-SHIFTED and its
+ * WF-predicate re-derived against a BIGGER `mid` (since `blank_line_wf`/
+ * `quad_fail_line_wf`/etc. all state their core facts -- `pws mid ...`,
+ * `nq_skip_line mid ...` -- directly against a FIXED `mid`, so growing `mid`
+ * means re-deriving every core fact via the shift lemmas, not just
+ * relabelling positions) -- buildable in principle (every ingredient is an
+ * already-proved shift lemma at `prefix=""` or `suffix=""`), but adds a
+ * second full pass through all four kinds beyond what closing the theorem
+ * itself needs.
+ *
+ * THE SHORTER PATH ACTUALLY TAKEN: `lemma_parse_nquads_acc_concat_line_
+ * general` (already proved, THIRD landing) takes its SECOND witness chain
+ * (`ws_carry`, covering the "carry" argument) as a caller-supplied
+ * parameter -- it does not care HOW that chain was built. So instead of
+ * constructively ASSEMBLING a chain for the whole remaining tail
+ * `carry_k ^ concat_all rest` from smaller per-chunk pieces (which is what
+ * needed the shift-heavy reconstruction above), `stream_fold_wf` below asks
+ * the CALLER to supply that whole-tail chain directly, once per fold step,
+ * ALONGSIDE the per-chunk `complete`-piece chain `wss` already threads
+ * through the recursion -- exactly the "witness/premise-supplied" form the
+ * task brief's own failure branch sanctions, and no different in KIND from
+ * every other witness parameter already in this file (`ws_complete`/
+ * `ws_carry` in `theorem_stream_eq_batch_single_chunk_general` are the same
+ * shape, just not threaded through a fold). The per-step algebra that
+ * CONSUMES both chains (`lemma_parse_nquads_acc_concat_line_general`) is
+ * 100% reused, unmodified, from the THIRD landing -- the only genuinely NEW
+ * pieces below are `string_concat_assoc` (a `^`-associativity lemma this
+ * file had not previously needed, proved the SAME `list_of_string`/
+ * `string_of_list` round-trip way as `split_complete_lines_reconstruct`)
+ * and the fold induction itself, which is ordinary structural induction on
+ * `chunks` composing already-proved facts by transitivity -- no `forall`,
+ * no new scanning argument, no new wall.
+ * ============================================================================ *)
+
+(* `^` associativity for strings: NOT automatic (plain `()` fails for
+   symbolic arguments, per this module's own established pattern -- see the
+   module banner and `split_complete_lines_reconstruct`'s own comment) --
+   proved via the SAME `list_of_string`/`string_of_list` round-trip
+   technique, mirroring `List.Tot.append_assoc` at the list level through
+   `list_of_concat`'s two homomorphism facts. *)
+val string_concat_assoc (a b c : string)
+  : Lemma ((a ^ b) ^ c == a ^ (b ^ c))
+let string_concat_assoc a b c =
+  FStar.String.list_of_concat a b;
+  FStar.String.list_of_concat (a ^ b) c;
+  FStar.String.list_of_concat b c;
+  FStar.String.list_of_concat a (b ^ c);
+  List.Tot.append_assoc (FStar.String.list_of_string a) (FStar.String.list_of_string b) (FStar.String.list_of_string c);
+  cong_string_of_list
+    ((FStar.String.list_of_string a @ FStar.String.list_of_string b) @ FStar.String.list_of_string c)
+    (FStar.String.list_of_string a @ (FStar.String.list_of_string b @ FStar.String.list_of_string c));
+  FStar.String.string_of_list_of_string ((a ^ b) ^ c);
+  FStar.String.string_of_list_of_string (a ^ (b ^ c))
+
+(* The TOTAL string a chunk list denotes, right-fold order -- matching
+   `stream_parse_acc`'s own left-to-right consumption (`c :: rest` processes
+   `c` FIRST, then recurses on `rest`), so `concat_all (c :: rest) == c ^
+   concat_all rest` unfolds in lock-step with the recursion below. *)
+let rec concat_all (chunks : list string) : Tot string (decreases chunks) =
+  match chunks with
+  | [] -> ""
+  | c :: rest -> c ^ concat_all rest
+
+(* Per-fold-step witness data: `ws_c` covers THIS step's own `complete`
+   piece (standalone, and embedded ahead of the WHOLE remaining tail --
+   `carry' ^ concat_all rest`, not just the next chunk's own carry, since
+   that is exactly what `lemma_parse_nquads_acc_concat_line_general` below
+   needs for ITS `ws_complete` argument); `ws_t` covers that SAME remaining
+   tail (standalone, and embedded right after `complete`) -- the second
+   witness chain `concat_line_general` needs as its `ws_carry` argument. Both
+   are CALLER-SUPPLIED per step (matching this file's established witness-
+   parameter idiom throughout) -- `stream_fold_wf` does not attempt to
+   DERIVE `ws_t` from smaller pieces (that is the shift-heavy reconstruction
+   the module banner above explains was assessed as a second full pass, not
+   attempted this landing); it only checks that whatever the caller supplies
+   is well-formed and sufficient, then recurses. *)
+let rec stream_fold_wf
+    (carry0 : string) (chunks : list string)
+    (ws_list : list (list line_witness & list line_witness))
+  : Tot Type0 (decreases chunks) =
+  match chunks, ws_list with
+  | [], [] -> True
+  | c :: rest, (ws_c, ws_t) :: wss ->
+    (let combined = carry0 ^ c in
+     let (complete, carry') = split_complete_lines combined in
+     let tail_str = carry' ^ concat_all rest in
+     chain_wf "" complete "" 0 ws_c /\
+     chain_wf "" complete tail_str 0 ws_c /\
+     chain_end 0 ws_c == Parser.FastString.fs_byte_length complete /\
+     chain_wf "" tail_str "" 0 ws_t /\
+     chain_wf complete tail_str "" 0 ws_t /\
+     chain_end 0 ws_t == Parser.FastString.fs_byte_length tail_str /\
+     Parser.FastString.fs_byte_length complete + 1 >= List.Tot.length ws_c /\
+     Parser.FastString.fs_byte_length tail_str + 1 >= List.Tot.length ws_t /\
+     Parser.FastString.fs_byte_length complete + Parser.FastString.fs_byte_length tail_str + 1
+       >= List.Tot.length ws_c + List.Tot.length ws_t /\
+     stream_fold_wf carry' rest wss)
+  | _, _ -> False
+
+(* THE fold invariant: for ANY starting dataset `ds0` and ANY pending
+   `carry0`, feeding the remaining `chunks` through `stream_parse_acc`
+   lands on exactly the (finalised) result of batch-parsing `carry0 ^
+   concat_all chunks` from `ds0` -- structural induction on `chunks`,
+   mirroring `stream_parse_acc`'s own recursion one constructor at a time.
+   Base case: `feed`'s definition IS `finish`, a one-step unfold plus
+   `empty_string_concat_right`. Inductive case: `feed_chunk`'s own
+   definition peels off `complete`/`carry'` (no lemma needed, definitional),
+   the INDUCTION HYPOTHESIS (applied to `rest`/`carry'`/the post-`complete`
+   dataset) handles everything from there on, `lemma_parse_nquads_acc_
+   concat_line_general` (THIRD landing, reused verbatim) merges the ONE
+   local step back into the big picture, and `string_concat_assoc` +
+   `split_complete_lines_reconstruct` + `concat_all`'s own unfolding
+   rewrite the two sides' argument strings down to the same thing. *)
+#push-options "--z3rlimit 300 --fuel 4 --ifuel 4"
+val stream_fold_eq_batch
+    (carry0 : string) (chunks : list string)
+    (ws_list : list (list line_witness & list line_witness))
+    (ds0 : RDF.Graph.Executable.rdf_dataset)
+  : Lemma
+      (requires stream_fold_wf carry0 chunks ws_list)
+      (ensures
+        stream_parse_acc chunks ds0 ({ carry = carry0 })
+        == RDF.Graph.Executable.dataset_finalise
+             (Parser.NQuads.parse_nquads_acc (carry0 ^ concat_all chunks) 0 ds0
+                (Parser.FastString.fs_byte_length (carry0 ^ concat_all chunks) + 1)))
+      (decreases chunks)
+let rec stream_fold_eq_batch carry0 chunks ws_list ds0 =
+  match chunks, ws_list with
+  | [], [] ->
+    empty_string_concat_right carry0
+  | c :: rest, (ws_c, ws_t) :: wss ->
+    let combined = carry0 ^ c in
+    let (complete, carry') = split_complete_lines combined in
+    let tail_str = carry' ^ concat_all rest in
+    let ds1 = Parser.NQuads.parse_nquads_acc complete 0 ds0 (Parser.FastString.fs_byte_length complete + 1) in
+    // feed_chunk {carry=carry0} c ds0 == (ds1, {carry=carry'}) -- definitional,
+    // `stream_parse_acc (c::rest) ds0 {carry=carry0} == stream_parse_acc rest ds1 {carry=carry'}`.
+    stream_fold_eq_batch carry' rest wss ds1;
+    // IH: stream_parse_acc rest ds1 {carry=carry'} ==
+    //     dataset_finalise (parse_nquads_acc (carry'^concat_all rest) 0 ds1 (..+1))
+    //                    == dataset_finalise (parse_nquads_acc tail_str 0 ds1 (..+1))
+    lemma_parse_nquads_acc_concat_line_general complete tail_str ds0 ws_c ws_t;
+    // == parse_nquads_acc tail_str 0 (parse_nquads_acc complete 0 ds0 (..+1)) (..+1)
+    //    == parse_nquads_acc (complete ^ tail_str) 0 ds0 (fs_byte_length (complete^tail_str)+1)
+    split_complete_lines_reconstruct combined;
+    // complete ^ carry' == combined == carry0 ^ c
+    string_concat_assoc complete carry' (concat_all rest);
+    // complete ^ (carry' ^ concat_all rest) == (complete ^ carry') ^ concat_all rest
+    string_concat_assoc carry0 c (concat_all rest)
+    // carry0 ^ (c ^ concat_all rest) == (carry0 ^ c) ^ concat_all rest
+    // Both rewrite (complete ^ tail_str) and (carry0 ^ concat_all (c::rest)) down to
+    // the SAME string (carry0 ^ c) ^ concat_all rest -- ordinary `^` congruence
+    // (not the `string_of_list`-specific non-congruence this module's FINDING
+    // documents) closes the goal from here.
+#pop-options
+
+(* Top-level corollary, matching `batch_parse`'s own name: `stream_parse
+   chunks == batch_parse (concat_all chunks)` -- instantiate the fold
+   invariant at `carry0 = ""`, `ds0 = empty_dataset` (`initial_state`'s own
+   fields), and rewrite `"" ^ concat_all chunks == concat_all chunks` via
+   `empty_string_concat_left`. This is `theorem_stream_eq_batch`, the task
+   #48 FINDING's own named target, in the witness-chain-list CONDITIONED
+   form the task brief's failure branch sanctions as an acceptable final
+   landing. *)
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val theorem_stream_eq_batch
+    (chunks : list string) (ws_list : list (list line_witness & list line_witness))
+  : Lemma
+      (requires stream_fold_wf "" chunks ws_list)
+      (ensures stream_parse chunks == batch_parse (concat_all chunks))
+let theorem_stream_eq_batch chunks ws_list =
+  stream_fold_eq_batch "" chunks ws_list RDF.Graph.Executable.empty_dataset;
+  empty_string_concat_left (concat_all chunks)
+#pop-options
