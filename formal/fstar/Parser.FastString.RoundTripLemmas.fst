@@ -433,4 +433,52 @@ let lemma_ascii_string_byte_index (s : string) (i : nat{i < FStar.String.length 
 (** per the guard-depth rule; recorded as the precise next rung for whoever   **)
 (** picks candidate 2 back up, distinct from the coercion-pair-in-recursion  **)
 (** wall this finding's main body characterises.                             **)
+(**                                                                          **)
+(** UPDATE (session 2026-08-11, slice-decode task): candidate 2's own        **)
+(** missing piece -- "the `Spec.slice_bytes`/`utf8_decode_all` round trip"   **)
+(** -- is landed below (`Parser.FastString.Spec.utf8_decode_all_slice_by_    **)
+(** charcount`, Spec.fst Section 7), so `fs_byte_sub_eq`'s "OFF-DOMAIN        **)
+(** DIVERGENCE FROM THE PLAN" note now has a discharging lemma               **)
+(** (`fs_byte_sub_by_charcount`, below) -- CHAR-COUNT-indexed, per that      **)
+(** Spec.fst section's own banner on why `is_cp_boundary` itself was not     **)
+(** used as the hypothesis (a separate, harder, not-attempted converse       **)
+(** theorem). Candidate 2's ORIGINAL "self-split at a single byte" shape     **)
+(** (`fs_byte_sub s 0 1 ^ fs_byte_sub s 1 (...) == s`) is NOT re-attempted   **)
+(** here -- it would need EXACTLY this same slice law plus the `is_cp_       **)
+(** boundary`-to-charcount converse this session left as the next rung, to   **)
+(** know that byte offset 1 actually IS a 1-character boundary for an        **)
+(** arbitrary symbolic `s`. The char-count form sidesteps that entirely by   **)
+(** taking the character count as the GIVEN, not something to recover from   **)
+(** a byte position -- see `fs_byte_sub_by_charcount`'s own comment.         **)
 (** ======================================================================== **)
+
+/// `fs_byte_sub_eq`'s "OFF-DOMAIN DIVERGENCE FROM THE PLAN" note
+/// (`Parser.FastString.fsti`, on `fs_byte_sub_eq` itself) named the
+/// STRONGER theorem it did not attempt: that slicing on a codepoint
+/// boundary recovers exactly the corresponding piece of the original
+/// string's own codepoint structure, not merely "whatever
+/// `slice_bytes`+`utf8_decode_all` compute". This is that theorem, in
+/// CHAR-COUNT form (the byte offsets are the byte-lengths of encoded
+/// char-count prefixes of `s`'s own codepoint list -- the caller
+/// supplies `start`/`len` as a CHARACTER range, which is how every real
+/// scanner in this codebase already tracks its own position, rather
+/// than an already-computed byte offset it would need to independently
+/// prove satisfies `Spec.is_cp_boundary`). Direct composition of
+/// `fs_byte_sub_eq` (rewrites `fs_byte_sub` to its Spec formula) with
+/// `Spec.utf8_decode_all_slice_by_charcount` (the slice law itself,
+/// Parser.FastString.Spec.fst Section 7) -- no new induction needed.
+val fs_byte_sub_by_charcount (s:string) (start len:nat)
+  : Lemma (
+      fs_byte_sub s
+        (List.Tot.length (List.Tot.concatMap Spec.utf8_enc_char
+                            (Spec.take_chars (FStar.String.list_of_string s) start)))
+        (List.Tot.length (List.Tot.concatMap Spec.utf8_enc_char
+                            (Spec.slice_chars (FStar.String.list_of_string s) start len)))
+      == FStar.String.string_of_list (Spec.slice_chars (FStar.String.list_of_string s) start len))
+let fs_byte_sub_by_charcount s start len =
+  let cs = FStar.String.list_of_string s in
+  let mid = Spec.slice_chars cs start len in
+  let bstart = List.Tot.length (List.Tot.concatMap Spec.utf8_enc_char (Spec.take_chars cs start)) in
+  let blen = List.Tot.length (List.Tot.concatMap Spec.utf8_enc_char mid) in
+  fs_byte_sub_eq s bstart blen;
+  Spec.utf8_decode_all_slice_by_charcount cs start len
