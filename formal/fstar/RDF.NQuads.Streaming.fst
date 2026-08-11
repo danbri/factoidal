@@ -1403,3 +1403,116 @@ let lemma_parse_nquads_acc_quad_fail_step_shift prefix mid suffix w ds fuel =
   lemma_byte_index_at_middle prefix mid suffix w.qfw_wsend;
   lemma_nq_skip_line_shift_exact prefix mid suffix w.qfw_wsend w.qfw_stopeol
 #pop-options
+
+(* ============================================================================
+ * KIND 4 (task #48 ordered work list, "extend kind by kind"): QUAD-SUCCESS
+ * lines -- a line on which `Parser.NQuads.parse_nquad` SUCCEEDS. Composes
+ * `lemma_parse_nquad_shift_generic` (already proved, `Parser.NTriples.
+ * Locality.fst`, Stage 3 Item 3) exactly as the task named it.
+ *
+ * WHAT IS A PREMISE HERE, DELIBERATELY (same disclosure as Kind 3): `lemma_
+ * parse_nquad_shift_generic` ITSELF takes the embedded (full-string)
+ * success facts for `parse_subject`/`parse_iri`/`parse_object`/`parse_opt_
+ * graph_label` as EXTERNAL hypotheses, not derived internally -- it
+ * composes per-shape sub-lemmas (IRI/bnode/literal shift lemmas) that live
+ * in `Parser.NTriples.Locality.fst`, chosen by the CALLER based on the
+ * line's concrete subject/object shape (exactly the "witness/premise-
+ * supplied" acceptable-landing form, one layer down). This step-shift
+ * lemma inherits that same shape: the four embedded sub-parse equalities
+ * are its own explicit `requires`, supplied by whichever caller already
+ * discharged them via the appropriate per-shape lemma for THIS concrete
+ * line -- never re-derived here.
+ *
+ * SCOPE narrowing for the TRAILING (post-quad) segment, kept deliberately
+ * simple for this landing: no comment immediately follows the quad's `.`
+ * (`fs_byte_index mid qow_wsend2 <> 0x23`) -- `skip_comment`'s `else pos`
+ * branch then fires UNCONDITIONALLY (no `lemma_skip_comment_shift` call
+ * needed, unlike the comment kind above), so only the trailing `skip_eol`
+ * needs a shift lemma. A witness whose quad line IS followed by a trailing
+ * `# ...` comment is outside this lemma's coverage; extending it is a
+ * direct composition with `lemma_skip_comment_shift` (Kind 2's own
+ * primitive), not attempted here per the guard-depth rule. *)
+noeq type quad_ok_witness = {
+  qow_entry   : nat;
+  qow_subj    : RDF.Term.subject;
+  qow_pos2    : nat;
+  qow_pos3    : nat;
+  qow_pred    : RDF.Term.wf_iri;
+  qow_pos4    : nat;
+  qow_pos5    : nat;
+  qow_obj     : RDF.Term.rdf_term;
+  qow_pos6    : nat;
+  qow_graph   : option RDF.Term.iri;
+  qow_pos7    : nat;
+  qow_pos8    : nat;
+  qow_wsend2  : nat;
+  qow_eolend2 : nat;
+}
+
+let quad_ok_line_wf (mid : string) (w : quad_ok_witness) : Type0 =
+  w.qow_entry <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qow_entry == Parser.Combinators.ParseOk () w.qow_entry /\
+  Parser.NTriples.parse_subject mid w.qow_entry == Parser.Combinators.ParseOk w.qow_subj w.qow_pos2 /\
+  w.qow_pos2 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qow_pos2 == Parser.Combinators.ParseOk () w.qow_pos3 /\
+  Parser.NTriples.parse_iri mid w.qow_pos3 == Parser.Combinators.ParseOk w.qow_pred w.qow_pos4 /\
+  w.qow_pos4 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qow_pos4 == Parser.Combinators.ParseOk () w.qow_pos5 /\
+  Parser.NTriples.parse_object mid w.qow_pos5 == Parser.Combinators.ParseOk w.qow_obj w.qow_pos6 /\
+  w.qow_pos6 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NQuads.parse_opt_graph_label mid w.qow_pos6 == Parser.Combinators.ParseOk w.qow_graph w.qow_pos7 /\
+  w.qow_pos7 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid w.qow_pos7 == Parser.Combinators.ParseOk () w.qow_pos8 /\
+  w.qow_pos8 < Parser.FastString.fs_byte_length mid /\
+  FStar.Char.int_of_char (Parser.FastString.fs_byte_index mid w.qow_pos8) = 0x2E /\
+  RDF.Term.is_iri w.qow_pred /\
+  w.qow_pos8 + 1 <= Parser.FastString.fs_byte_length mid /\
+  Parser.NTriples.pws mid (w.qow_pos8 + 1) == Parser.Combinators.ParseOk () w.qow_wsend2 /\
+  w.qow_wsend2 < Parser.FastString.fs_byte_length mid /\
+  w.qow_wsend2 + 1 < Parser.FastString.fs_byte_length mid /\
+  FStar.Char.int_of_char (Parser.FastString.fs_byte_index mid w.qow_wsend2) <> 0x23 /\
+  Parser.NTriples.skip_eol mid w.qow_wsend2 == w.qow_eolend2
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_quad_ok_step_shift
+    (prefix mid suffix : string) (w : quad_ok_witness)
+    (ds : RDF.Graph.Executable.rdf_dataset) (fuel : nat)
+  : Lemma
+      (requires
+        quad_ok_line_wf mid w /\
+        fuel > 0 /\
+        Parser.NTriples.parse_subject (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_entry)
+          == Parser.Combinators.ParseOk w.qow_subj (Parser.FastString.fs_byte_length prefix + w.qow_pos2) /\
+        Parser.NTriples.parse_iri (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_pos3)
+          == Parser.Combinators.ParseOk w.qow_pred (Parser.FastString.fs_byte_length prefix + w.qow_pos4) /\
+        Parser.NTriples.parse_object (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_pos5)
+          == Parser.Combinators.ParseOk w.qow_obj (Parser.FastString.fs_byte_length prefix + w.qow_pos6) /\
+        Parser.NQuads.parse_opt_graph_label (prefix ^ (mid ^ suffix))
+          (Parser.FastString.fs_byte_length prefix + w.qow_pos6)
+          == Parser.Combinators.ParseOk w.qow_graph (Parser.FastString.fs_byte_length prefix + w.qow_pos7))
+      (ensures
+        (match Parser.NQuads.parse_nquad mid w.qow_entry with
+         | Parser.Combinators.ParseOk (t, g) _ ->
+           Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+             (Parser.FastString.fs_byte_length prefix + w.qow_entry) ds fuel
+           == Parser.NQuads.parse_nquads_acc (prefix ^ (mid ^ suffix))
+                (Parser.FastString.fs_byte_length prefix +
+                  (if w.qow_eolend2 > w.qow_entry then w.qow_eolend2
+                   else if w.qow_wsend2 > w.qow_entry then w.qow_wsend2
+                   else w.qow_pos8 + 1))
+                (Parser.NQuads.dataset_add_quad ds t g) (fuel - 1)
+         | _ -> False))
+let lemma_parse_nquads_acc_quad_ok_step_shift prefix mid suffix w ds fuel =
+  Parser.FastString.Axioms.fs_byte_length_concat mid suffix;
+  Parser.FastString.Axioms.fs_byte_length_concat prefix (mid ^ suffix);
+  Parser.NTriples.Locality.lemma_parse_nquad_shift_generic prefix mid suffix
+    w.qow_entry w.qow_entry w.qow_subj w.qow_pos2 w.qow_pos3 w.qow_pred w.qow_pos4
+    w.qow_pos5 w.qow_obj w.qow_pos6 w.qow_graph w.qow_pos7 w.qow_pos8;
+  lemma_byte_index_at_middle prefix mid suffix w.qow_pos8;
+  Parser.NTriples.Locality.lemma_pws_shift prefix mid suffix (w.qow_pos8 + 1) w.qow_wsend2;
+  lemma_byte_index_at_middle prefix mid suffix w.qow_wsend2;
+  Parser.NTriples.Locality.lemma_skip_eol_shift prefix mid suffix w.qow_wsend2
+#pop-options
