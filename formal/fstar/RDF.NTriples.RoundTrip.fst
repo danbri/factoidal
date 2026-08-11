@@ -974,3 +974,114 @@ let lemma_term_iri_round_trip i =
   // conclusion over to this lemma's own statement by substitution.
 
 #pop-options
+
+(** ====================================================================== **)
+(** Part 9: checkpoint (c) -- issue #401 M1's WHOLE-TRIPLE round trip.      **)
+(**                                                                          **)
+(** Generalises checkpoint (a) (Part 6, ONE hardcoded concrete triple,      **)
+(** `S_IRI "x:"`/`"y:"`/`T_IRI "z:"`) to an ARBITRARY all-IRI triple whose   **)
+(** three IRIs each satisfy the Part-8 well-formedness fragment (`is_iri`   **)
+(** plus ASCII/iri-body-char safety -- the same domain Part 8's             **)
+(** `lemma_term_iri_round_trip` already covers for one term).               **)
+(**                                                                          **)
+(** BUILDING BLOCKS composed below:                                         **)
+(**   - `lemma_iri_round_trip` (9a): the bare `parse_iri` analogue of Part   **)
+(**     8's `lemma_term_iri_round_trip` -- needed because `parse_triple`     **)
+(**     parses the PREDICATE via `parse_iri` directly, with no S_IRI/T_IRI   **)
+(**     wrapper (Parser.NTriples.fst `parse_triple`, the `parse_iri input    **)
+(**     pos3` call).                                                        **)
+(**   - `lemma_subject_iri_round_trip` (9b): the `parse_subject`/`S_IRI`     **)
+(**     analogue of Part 8's `lemma_term_iri_round_trip` (which is           **)
+(**     `parse_object`/`T_IRI`) -- textually parallel, same proof shape.    **)
+(**   - `lemma_iri_bracket_shift_prereqs` (9c): exposes the `scan_iri_end`   **)
+(**     witness (position of `>`) and the `parse_iri_raw`+`is_iri` witness   **)
+(**     for an ARBITRARY safe `i`'s bracket `"<" ^ (i ^ ">")`, in exactly    **)
+(**     the shape `Parser.NTriples.Locality.fst`'s `lemma_parse_subject_     **)
+(**     iri_shift` / `lemma_parse_iri_shift` / `lemma_parse_object_iri_      **)
+(**     shift` need as their own `requires` -- so ANY of those three         **)
+(**     embedding lemmas can be fed straight from one call to this.         **)
+(**   - `lemma_pws_one_space` (9d): the ONE new locality fact this Part      **)
+(**     needs that Locality.fst does not already supply -- `pws`'s          **)
+(**     behaviour on a SINGLE literal space followed by an arbitrary        **)
+(**     non-whitespace-led `rest`, reused at each of the three ws gaps      **)
+(**     `nq_line_for_triple_default_graph`'s format actually has            **)
+(**     (`" <"`, `"> "`'s trailing space is absorbed into the object-side   **)
+(**     gap, `" .\n"`'s leading space before the dot).                      **)
+(**                                                                          **)
+(** COMPOSITION METHOD (`lemma_parse_triple_round_trip`, 9e): mirrors        **)
+(** `Parser.NTriples.Locality.fst`'s `lemma_parse_nquad_iri_nograph_shift`   **)
+(** own per-step chaining style (`pws`-shift, then subject-shift, then      **)
+(** `pws`-shift, then predicate-shift, ... ), but SYMBOLIC (arbitrary        **)
+(** `iri_s`/`iri_p`/`iri_o`, not concrete literals like checkpoint (a), and  **)
+(** not requiring pre-known witness positions as external hypotheses like    **)
+(** that lemma's sibling `lemma_parse_nquad_shift_generic` does -- every      **)
+(** witness here is DERIVED, from 9a-9d plus `Parser.FastString.ConcatSpec`'s **)
+(** `lemma_strcat_assoc` re-associating the LEFT-associated serializer        **)
+(** output (`nq_subject_to_string t.s ^ " <" ^ t.p ^ "> " ^                  **)
+(** nq_term_to_string t.o ^ " .\n"`, F*'s default `^` fixity) into the        **)
+(** RIGHT-associated `prefix ^ (mid ^ suffix)` shape each embedding step      **)
+(** needs -- the same re-association discipline Part 6/7's own banners        **)
+(** document (concrete pieces via `assert_norm`, symbolic pieces via          **)
+(** `lemma_strcat_assoc`, never bare `()`).                                   **)
+(** ====================================================================== **)
+
+#push-options "--z3rlimit 200 --fuel 8 --ifuel 8"
+
+// (9a) bare `parse_iri` round trip, generalized off any build_string
+// witness -- the predicate's own shape (`parse_triple` calls `parse_iri`
+// directly at the predicate position, no S_IRI/T_IRI wrapper).
+val lemma_iri_round_trip (i : string)
+  : Lemma
+      (requires
+        is_iri i /\
+        all_ascii (Str.list_of_string i) /\
+        chars_all is_iri_body_char (Str.list_of_string i))
+      (ensures
+        parse_iri ("<" ^ (i ^ ">")) 0 == ParseOk i (Str.length i + 2))
+let lemma_iri_round_trip i =
+  let cs = Str.list_of_string i in
+  RTL.lemma_ascii_string_is_build_string_bc i;
+  lemma_parse_iri_build_string cs
+
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 8 --ifuel 8"
+
+// (9b) `parse_subject`/`S_IRI` analogue of Part 8's `lemma_term_iri_
+// round_trip` (`parse_object`/`T_IRI`) -- same proof shape, restated
+// against the ACTUAL serializer output `nq_subject_to_string (S_IRI i)`.
+val lemma_parse_subject_iri_round_trip_build_string
+    (cs : list FStar.Char.char{all_ascii cs /\ chars_all is_iri_body_char cs})
+  : Lemma
+      (requires is_iri (build_string cs))
+      (ensures
+        parse_subject (nq_subject_to_string (S_IRI (build_string cs))) 0
+          == ParseOk (S_IRI (build_string cs)) (FStar.List.Tot.length cs + 2))
+let lemma_parse_subject_iri_round_trip_build_string cs =
+  let content = build_string cs in
+  let s = "<" ^ (content ^ ">") in
+  lemma_parse_iri_build_string cs;
+  assert (nq_subject_to_string (S_IRI content) == "<" ^ content ^ ">");
+  lemma_strcat_assoc "<" content ">";
+  fs_byte_length_lt ();
+  fs_byte_length_concat content ">";
+  fs_byte_length_concat "<" (content ^ ">");
+  fs_byte_at_lt ();
+  fs_byte_at_concat "<" (content ^ ">") 0;
+  fs_byte_index_eq s 0
+
+val lemma_subject_iri_round_trip (i : string)
+  : Lemma
+      (requires
+        is_iri i /\
+        all_ascii (Str.list_of_string i) /\
+        chars_all is_iri_body_char (Str.list_of_string i))
+      (ensures
+        parse_subject (nq_subject_to_string (S_IRI i)) 0
+          == ParseOk (S_IRI i) (Str.length i + 2))
+let lemma_subject_iri_round_trip i =
+  let cs = Str.list_of_string i in
+  RTL.lemma_ascii_string_is_build_string_bc i;
+  lemma_parse_subject_iri_round_trip_build_string cs
+
+#pop-options
