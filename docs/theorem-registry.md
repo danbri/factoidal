@@ -880,3 +880,25 @@ lemmas named): `theorem_stream_eq_batch` — needs
 `parse_nquads_acc_concat_line` via (1) a mechanical `fs_byte_index_eq`
 bridging lemma and (2) a locality proof across `Parser.NTriples.fst`'s
 recursive-descent stack, scoped as its own landing.
+
+**G4 M1-adjacent: first N-Triples PARSER round-trip theorem
+(2026-08-11, branch `ntriples-parser-lemmas`)**: three landings.
+(1) `fs_byte_index_eq` added to `Parser.FastString.fst`/`.fsti` — the
+one bridging lemma missing after the re-founding: parser byte-dispatch
+reads through `fs_byte_index`, not `fs_byte_at`, and had no spec
+bridge (probe-confirmed unprovable before). Also prerequisite (1) of
+`theorem_stream_eq_batch` (task #48 finding). (2)
+`checkpoint_a_closed_triple_round_trip` in `RDF.NTriples.RoundTrip.fst`:
+`parse_triple` on the SERIALIZER'S OWN OUTPUT for a concrete all-IRI
+triple returns exactly that triple — the statement the module banner's
+FINDING 1 had recorded as unprovable for any concrete input. Plus
+`lemma_extract_middle`, a reusable `fs_byte_sub` extraction helper
+(Axioms facts only, deliberately avoiding the
+`string_of_list`/`list_of_string` chain that fails even with every
+fact in context). (3) FINDING (checkpoint (b) not landed): symbolic
+term-level round-trip needs a `scan_iri_end` shift lemma, and one
+layer below it, `"" ^ s == s` and `^`-associativity FAIL for SYMBOLIC
+strings via plain SMT (concrete literals fine) — the route forward is
+position/byte-value idioms (the `lemma_build_string_byte_at` family),
+never raw symbolic string equality. All verified clean, no admits, no
+new assume vals.
