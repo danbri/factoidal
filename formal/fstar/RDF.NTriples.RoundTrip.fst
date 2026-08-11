@@ -1085,3 +1085,108 @@ let lemma_subject_iri_round_trip i =
   lemma_parse_subject_iri_round_trip_build_string cs
 
 #pop-options
+
+#push-options "--z3rlimit 300 --fuel 8 --ifuel 8"
+
+// (9c-i) `scan_iri_end` witness for an arbitrary safe bracket, exposed
+// at the SAME grain `Parser.NTriples.Locality.fst`'s shift lemmas need
+// (position of `>`, relative to the bracket alone). Composes exactly
+// the two calls Part 7's `lemma_parse_iri_raw_build_string` (b2) makes
+// internally (`lemma_scan_iri_end_build_string` + `lemma_scan_iri_end_
+// shift_from_start`), generalized off `build_string` via RTL.
+val lemma_scan_iri_end_bracket_witness (i : string)
+  : Lemma
+      (requires
+        all_ascii (Str.list_of_string i) /\
+        chars_all is_iri_body_char (Str.list_of_string i))
+      (ensures
+        scan_iri_end ("<" ^ (i ^ ">")) 1 (Str.length i + 2)
+          == ParseOk (Str.length i + 1) (Str.length i + 1))
+let lemma_scan_iri_end_bracket_witness i =
+  let cs = Str.list_of_string i in
+  RTL.lemma_ascii_string_is_build_string_bc i;
+  let n = FStar.List.Tot.length cs in
+  lemma_scan_iri_end_build_string cs "" (n + 2);
+  lemma_strcat_empty_r ">";
+  assert (build_string cs ^ (">" ^ "") == build_string cs ^ ">");
+  assert (scan_iri_end (build_string cs ^ ">") 0 (n + 2) == ParseOk n n);
+  lemma_build_string_byte_length cs;
+  fs_byte_length_gt ();
+  fs_byte_length_lt ();
+  fs_byte_length_concat (build_string cs) ">";
+  assert (fs_byte_length (build_string cs ^ ">") == n + 1);
+  lemma_scan_iri_end_shift_from_start "<" (build_string cs ^ ">") "" (n + 2) n;
+  lemma_strcat_empty_r (build_string cs ^ ">")
+
+// (9c-ii) bundles the `scan_iri_end` witness above with the `parse_iri_
+// raw`+`is_iri` witness, in EXACTLY the shape `lemma_parse_subject_iri_
+// shift` / `lemma_parse_iri_shift` / `lemma_parse_object_iri_shift`
+// (Parser.NTriples.Locality.fst) need as their own `requires` -- so any
+// of those three embedding lemmas can be fed straight from one call to
+// this, for `mid = "<" ^ (i ^ ">")`, `pos = 0`, `gt_pos = length i + 1`.
+val lemma_iri_bracket_shift_prereqs (i : string)
+  : Lemma
+      (requires
+        is_iri i /\
+        all_ascii (Str.list_of_string i) /\
+        chars_all is_iri_body_char (Str.list_of_string i))
+      (ensures
+        (let bracket = "<" ^ (i ^ ">") in
+         let n = Str.length i in
+         0 < fs_byte_length bracket /\
+         FStar.Char.int_of_char (fs_byte_index bracket 0) = 0x3C /\
+         scan_iri_end bracket (0 + 1) (fs_byte_length bracket - 0) == ParseOk (n + 1) (n + 1) /\
+         (n + 1) < fs_byte_length bracket /\
+         (match parse_iri_raw bracket 0 with
+          | ParseOk iri_b _ -> is_iri iri_b
+          | ParseFail _ _ -> False)))
+let lemma_iri_bracket_shift_prereqs i =
+  let n = Str.length i in
+  let bracket = "<" ^ (i ^ ">") in
+  let cs = Str.list_of_string i in
+  RTL.lemma_ascii_string_is_build_string_bc i;
+  lemma_build_string_byte_length cs;
+  assert (fs_byte_length i == n);
+  lemma_scan_iri_end_bracket_witness i;
+  fs_byte_length_lt ();
+  fs_byte_length_gt ();
+  fs_byte_length_concat i ">";
+  fs_byte_length_concat "<" (i ^ ">");
+  fs_byte_at_lt ();
+  fs_byte_at_concat "<" (i ^ ">") 0;
+  fs_byte_index_eq bracket 0;
+  lemma_parse_iri_raw_build_string cs;
+  assert ("<" ^ (build_string cs ^ ">") == bracket);
+  assert (parse_iri_raw bracket 0 == ParseOk i (n + 2));
+  assert (0 < fs_byte_length bracket);
+  assert (FStar.Char.int_of_char (fs_byte_index bracket 0) = 0x3C);
+  assert (scan_iri_end bracket (0 + 1) (fs_byte_length bracket - 0) == ParseOk (n + 1) (n + 1));
+  assert ((n + 1) < fs_byte_length bracket);
+  assert (match parse_iri_raw bracket 0 with
+          | ParseOk iri_b _ -> is_iri iri_b
+          | ParseFail _ _ -> False)
+
+#pop-options
+
+#push-options "--z3rlimit 200 --fuel 8 --ifuel 8"
+
+// (9d) the ONE new locality fact this Part needs that Locality.fst does
+// not already supply: `pws`'s behaviour on a single literal space
+// followed by an arbitrary non-whitespace-led `rest` -- reused at each
+// of the three whitespace gaps `nq_line_for_triple_default_graph`'s
+// format actually has.
+val lemma_pws_one_space (rest : string)
+  : Lemma
+      (requires fs_byte_length rest > 0 /\ not (is_nt_ws (fs_byte_index rest 0)))
+      (ensures pws (" " ^ rest) 0 == ParseOk () 1)
+let lemma_pws_one_space rest =
+  fs_byte_length_space ();
+  fs_byte_length_concat " " rest;
+  fs_byte_at_space ();
+  fs_byte_at_concat " " rest 0;
+  fs_byte_at_concat " " rest 1;
+  fs_byte_index_eq (" " ^ rest) 0;
+  fs_byte_index_eq (" " ^ rest) 1;
+  fs_byte_index_eq rest 0
+
+#pop-options
