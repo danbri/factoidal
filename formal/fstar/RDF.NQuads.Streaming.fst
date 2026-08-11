@@ -1724,3 +1724,96 @@ let lemma_parse_nquads_acc_full_via_chain mid ds ws =
   Parser.FastString.Axioms.fs_byte_length_empty ();
   lemma_parse_nquads_acc_restart "" mid "" ds 0 ws (Parser.FastString.fs_byte_length mid + 1)
 #pop-options
+
+(* ============================================================================
+ * `parse_nquads_acc_concat_line`, GENERAL (INTERIOR) CASE -- the piece the
+ * ORIGINAL FINDING (module banner, "WHAT IT NEEDS") named as the whole
+ * streaming design's fundamental split/monoid law, and diagnosed as
+ * needing a per-combinator forward-dispatch capstone. It does NOT, once
+ * both halves are each covered by a witness chain: it is FOUR applications
+ * of machinery already proved above (`lemma_parse_nquads_acc_full_via_
+ * chain` twice, `lemma_parse_nquads_acc_restart` twice), chained by
+ * ORDINARY transitivity -- no new induction, no new scanning argument.
+ *
+ * THE KEY REALISATION that makes this land without a fuel-monotonicity
+ * lemma (which the ORIGINAL FINDING flagged as a separate, if "short
+ * mechanical," piece still needed): `lemma_parse_nquads_acc_restart`'s own
+ * `requires` only demands fuel be SUFFICIENT (`fuel >= List.Tot.length
+ * ws`), and once its landing position reaches `>= fs_byte_length mid`,
+ * `parse_nquads_acc`'s `pos >= len` base case returns the accumulated
+ * dataset UNCHANGED regardless of exactly how much fuel is left over.  So
+ * running `carry`'s chain with WHATEVER fuel remains after `complete`'s
+ * chain finishes (generally MORE than `carry`'s own canonical `fs_byte_
+ * length carry + 1`, since a chain step consumes far fewer FUEL units
+ * than the BYTES its line spans) lands on the exact SAME dataset value
+ * as running `carry`'s chain with its own canonical fuel -- both are
+ * "sufficient fuel," and sufficiency is all either call needs. No separate
+ * monotonicity induction is required; the two calls just need their own
+ * independent sufficiency facts checked, then their RESULTS (not their
+ * fuel bookkeeping) are equated via ordinary transitivity.
+ * ============================================================================ *)
+#push-options "--z3rlimit 600 --fuel 4 --ifuel 4"
+val lemma_parse_nquads_acc_concat_line_general
+    (complete carry : string) (ds : RDF.Graph.Executable.rdf_dataset)
+    (ws_complete ws_carry : list line_witness)
+  : Lemma
+      (requires
+        (* `ws_complete` must be well-formed BOTH standalone (needed to
+           relate the goal's LHS, a bare `parse_nquads_acc complete 0 ds
+           ...` call, to the chain -- `lemma_parse_nquads_acc_full_via_
+           chain`'s own `chain_wf "" complete "" 0 ws` requires exactly the
+           EMPTY-suffix form) AND embedded ahead of `carry` (needed for
+           `lemma_parse_nquads_acc_restart`'s `chain_wf "" complete carry 0
+           ws` on the goal's RHS). These are GENUINELY two different facts
+           whenever `ws_complete` contains a quad-fail/quad-ok entry (their
+           `ParseFail?`/embedded-success premises are about a DIFFERENT
+           string, `complete` alone vs. `complete ^ carry` -- a quad that
+           runs out of bytes mid-parse with nothing following could well
+           behave differently once more bytes follow), so both are
+           required explicitly rather than assumed interchangeable -- for
+           an `ws_complete` built entirely from blank/comment entries
+           (`lw_wf` for those two kinds never mentions `suffix`) the two
+           hypotheses coincide and this is no extra burden. *)
+        chain_wf "" complete "" 0 ws_complete /\
+        chain_wf "" complete carry 0 ws_complete /\
+        chain_end 0 ws_complete == Parser.FastString.fs_byte_length complete /\
+        (* Same double-hypothesis reasoning for `ws_carry`: standalone
+           (`lemma_parse_nquads_acc_full_via_chain`'s own requires) AND
+           embedded after `complete` (`lemma_parse_nquads_acc_restart`'s
+           requires on the goal's RHS second half) are two different facts
+           whenever `ws_carry` contains a quad-fail/quad-ok entry. *)
+        chain_wf "" carry "" 0 ws_carry /\
+        chain_wf complete carry "" 0 ws_carry /\
+        chain_end 0 ws_carry == Parser.FastString.fs_byte_length carry /\
+        Parser.FastString.fs_byte_length complete + 1 >= List.Tot.length ws_complete /\
+        Parser.FastString.fs_byte_length carry + 1 >= List.Tot.length ws_carry /\
+        Parser.FastString.fs_byte_length complete + Parser.FastString.fs_byte_length carry + 1
+          >= List.Tot.length ws_complete + List.Tot.length ws_carry)
+      (ensures
+        Parser.NQuads.parse_nquads_acc carry 0
+          (Parser.NQuads.parse_nquads_acc complete 0 ds (Parser.FastString.fs_byte_length complete + 1))
+          (Parser.FastString.fs_byte_length carry + 1)
+        == Parser.NQuads.parse_nquads_acc (complete ^ carry) 0 ds
+             (Parser.FastString.fs_byte_length (complete ^ carry) + 1))
+let lemma_parse_nquads_acc_concat_line_general complete carry ds ws_complete ws_carry =
+  Parser.FastString.Axioms.fs_byte_length_concat complete carry;
+  Parser.FastString.Axioms.fs_byte_length_empty ();
+  let fuel3 = Parser.FastString.fs_byte_length complete + Parser.FastString.fs_byte_length carry + 1 in
+  (* Path 1: standalone `complete` then standalone `carry` -- LHS of goal. *)
+  lemma_parse_nquads_acc_full_via_chain complete ds ws_complete;
+  let ds1 = chain_ds_fold complete ws_complete ds in
+  lemma_parse_nquads_acc_full_via_chain carry ds1 ws_carry;
+  (* Path 2: `complete ^ carry` processed in one call -- RHS of goal, split
+     via two embedded `lemma_parse_nquads_acc_restart` calls (`complete`'s
+     own chain first, landing exactly at `fs_byte_length complete` with
+     `ds1` and `fuel3 - length ws_complete` fuel remaining -- sufficient
+     for `carry`'s own chain by this lemma's third hypothesis -- then
+     `carry`'s chain from there, landing at `fs_byte_length (complete ^
+     carry)` with `chain_ds_fold carry ws_carry ds1`, i.e. the SAME dataset
+     Path 1 reached). *)
+  empty_string_concat_left (complete ^ carry);
+  lemma_parse_nquads_acc_restart "" complete carry ds 0 ws_complete fuel3;
+  empty_string_concat_right carry;
+  lemma_parse_nquads_acc_restart complete carry "" ds1 0 ws_carry
+    (fuel3 - List.Tot.length ws_complete)
+#pop-options
