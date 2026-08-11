@@ -250,6 +250,7 @@ open Parser.Combinators
 
 module Str = FStar.String
 module Spec = Parser.FastString.Spec
+module RTL = Parser.FastString.RoundTripLemmas
 
 #push-options "--z3rlimit 50 --fuel 4 --ifuel 4"
 
@@ -891,5 +892,85 @@ let lemma_term_iri_round_trip_build_string cs =
   fs_byte_at_lt ();
   fs_byte_at_concat "<" (content ^ ">") 0;
   fs_byte_index_eq s 0
+
+#pop-options
+
+(** ====================================================================== **)
+(** Part 8: checkpoint (b), GENERALISED off the `i = build_string cs`       **)
+(** witness form -- issue #401 M1. Closes the "NEXT NARROWEST UNPROVED      **)
+(** STATEMENT" Part 7's own banner named: dropping the constructive `i =    **)
+(** build_string cs` requirement for an ORDINARY string `i` satisfying      **)
+(** `is_iri` plus the two content-safety predicates directly (no witness    **)
+(** list the caller has to construct or already have in hand).             **)
+(**                                                                          **)
+(** THE missing step named there -- `i == build_string (Str.list_of_string  **)
+(** i)` -- is `Parser.FastString.RoundTripLemmas.lemma_ascii_string_is_     **)
+(** build_string_bc`, landed this session (#401 M1, same session as this    **)
+(** Part). See that lemma's own banner for the route (composing PR #409's   **)
+(** `utf8_decode_all_utf8_bytes_identity`, `Parser.FastString.BaseCases`'s   **)
+(** already-proven `lemma_build_string_utf8_bytes`, and ulib's `string_of_  **)
+(** list_of_string` -- no direct recursion over a `Spec.utf8_bytes`/        **)
+(** `build_string` goal, which is what the SHARPENED FINDING banner in that **)
+(** file records as unprovable).                                            **)
+(**                                                                          **)
+(** DOMAIN, precisely: `i : wf_iri` (any non-empty colon-containing string,  **)
+(** `RDF.Term.fsti`'s `is_iri`) whose own codepoint list is (a) all-ASCII    **)
+(** (`all_ascii (Str.list_of_string i)`, `Parser.FastString.BaseCases`'s     **)
+(** predicate) and (b) `is_iri_body_char`-safe throughout (`chars_all        **)
+(** is_iri_body_char (Str.list_of_string i)` -- Part 1b's `iri_print_safe`   **)
+(** predicate IS exactly this second conjunct, restated pointwise rather     **)
+(** than via that named predicate so this `val` matches (b1)-(b3)'s own      **)
+(** hypothesis shape with no extra unfolding needed at a call site). This    **)
+(** is NARROWER than a fully arbitrary `wf_iri` (Part 6/7's ultimate named    **)
+(** target) by the ASCII conjunct alone -- a non-ASCII well-formed IRI       **)
+(** (Unicode content is legal RFC 3987 IRI body per `is_iri_body_char`'s     **)
+(** own definition, Parser.NTriples.fst) is NOT covered here; widening       **)
+(** past ASCII needs `scan_iri_end`/`parse_iri_raw` shown to advance by      **)
+(** BYTE count for a multi-byte-encoded codepoint, a different, harder,      **)
+(** not-attempted next rung (the `all_ascii cs` hypothesis is baked into     **)
+(** (b1)'s single-byte-per-step induction, `lemma_scan_iri_end_build_        **)
+(** string`, Part 7 above -- widening THAT is out of scope for this          **)
+(** landing's M1 target, which was specifically the `build_string`-witness   **)
+(** dependency, not the ASCII restriction).                                  **)
+(**                                                                          **)
+(** WIDENING FROM checkpoint (b): callers no longer need to CONSTRUCT a      **)
+(** `cs` witness and reason about `build_string cs` at all -- any ordinary   **)
+(** string value (a concrete literal, an opaque variable already known to    **)
+(** satisfy the three hypotheses, a substring extracted elsewhere) round-    **)
+(** trips directly. This is what `lemma_term_iri_round_trip_build_string`    **)
+(** could not offer: THAT lemma's caller had to already be holding a `cs`    **)
+(** and know `i = build_string cs` syntactically, not just semantically.     **)
+(** ====================================================================== **)
+
+#push-options "--z3rlimit 300 --fuel 8 --ifuel 8"
+
+// CHECKPOINT (b), generalised: the symbolic IRI-TERM round trip for ANY
+// well-formed, ASCII, iri-body-safe string `i` -- not just a `build_
+// string cs` witness. Derives the `build_string` form via `RTL.lemma_
+// ascii_string_is_build_string_bc` (`i == build_string (Str.list_of_
+// string i)`) and re-plays `lemma_term_iri_round_trip_build_string`
+// through that substitution.
+val lemma_term_iri_round_trip
+    (i : string)
+  : Lemma
+      (requires
+        is_iri i /\
+        all_ascii (Str.list_of_string i) /\
+        chars_all is_iri_body_char (Str.list_of_string i))
+      (ensures
+        parse_object (nq_term_to_string (T_IRI i)) 0
+          == ParseOk (T_IRI i) (Str.length i + 2))
+let lemma_term_iri_round_trip i =
+  let cs = Str.list_of_string i in
+  RTL.lemma_ascii_string_is_build_string_bc i;
+  // now `build_string cs == i` is in context.
+  lemma_term_iri_round_trip_build_string cs
+  // `lemma_term_iri_round_trip_build_string cs`'s `ensures` is stated at
+  // `build_string cs`/`FStar.List.Tot.length cs`; `build_string cs == i`
+  // (just established) and `FStar.List.Tot.length cs == Str.length i`
+  // (`Str.length`/`Str.strlen` are `unfold let`s over `List.length
+  // (list_of_string i)` in FStar.String.fsti, i.e. DEFINITIONALLY
+  // `List.Tot.length cs` -- no extra lemma call needed) carry the
+  // conclusion over to this lemma's own statement by substitution.
 
 #pop-options
