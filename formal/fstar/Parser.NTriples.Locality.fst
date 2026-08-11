@@ -67,6 +67,7 @@ open Parser.NTriples
 open Parser.FastString
 open Parser.FastString.Axioms
 open Parser.Combinators
+open RDF.Term
 
 #push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
 
@@ -433,6 +434,38 @@ let lemma_parse_iri_raw_fastpath_shift prefix mid suffix pos gt_pos =
     fs_byte_sub_concat_right prefix (mid ^ suffix) (p + start) iri_len;
     fs_byte_sub_concat_left mid suffix start iri_len
   end else ()
+#pop-options
+
+(** ------------------------------------------------------------------------
+ * Sub-lemma 7: `lemma_parse_iri_shift` -- `parse_iri` wraps
+ * `parse_iri_raw` with an `is_iri` well-formedness check purely on the
+ * extracted string (Parser.NTriples.fst:244). Sub-lemma 6 already gives
+ * the identical extracted string on both sides, so `is_iri`'s result
+ * (a pure function of that string) is unchanged for free -- direct
+ * corollary, no new induction, as the file-end banner estimated.
+ * Scope: the SUCCESS case only (`is_iri` holds) -- matches what
+ * `parse_subject`/`parse_object`'s position-only skeleton (sub-lemmas 8
+ * and 9 below) actually need.
+ * ------------------------------------------------------------------------ *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_iri_shift (prefix mid suffix : string) (pos gt_pos : nat)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos) = 0x3C /\
+        scan_iri_end mid (pos + 1) (fs_byte_length mid - pos) == ParseOk gt_pos gt_pos /\
+        gt_pos < fs_byte_length mid /\
+        (match parse_iri_raw mid pos with
+         | ParseOk iri_mid _ -> is_iri iri_mid
+         | ParseFail _ _ -> False))
+      (ensures
+        (match parse_iri mid pos,
+               parse_iri (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk i_mid endpos_mid, ParseOk i_full endpos_full ->
+           i_full == i_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_iri_shift prefix mid suffix pos gt_pos =
+  lemma_parse_iri_raw_fastpath_shift prefix mid suffix pos gt_pos
 #pop-options
 
 (** ========================================================================
