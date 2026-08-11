@@ -468,6 +468,71 @@ let lemma_parse_iri_shift prefix mid suffix pos gt_pos =
   lemma_parse_iri_raw_fastpath_shift prefix mid suffix pos gt_pos
 #pop-options
 
+(** ------------------------------------------------------------------------
+ * Sub-lemmas 8/9: `lemma_parse_subject_iri_shift` /
+ * `lemma_parse_object_iri_shift` -- the "position-only skeleton" the
+ * file-end banner calls for: `parse_subject`/`parse_object`
+ * (Parser.NTriples.fst:591,615) dispatch on the lead byte, and for `<`
+ * (0x3C) call `parse_iri`, wrapping its result in `S_IRI`/`T_IRI`. Given
+ * the lead byte is `<` (transferred via the same byte-agreement lemma
+ * used throughout this file) and sub-lemma 7's identical extraction,
+ * both sides take the SAME branch and wrap the SAME extracted IRI in
+ * the SAME constructor -- congruence, no new induction.
+ *
+ * SCOPE (matches the banner precisely): the `<` (IRI) branch only. The
+ * `_` (blank-node, via `parse_bnode`) branch is NOT covered -- it scans
+ * via `fs_cp_at`/codepoint-length advances (Parser.NTriples.fst:309-326,
+ * `scan_bnode_body_cp`), a genuinely different locality argument (needs
+ * a codepoint-level, not byte-level, shift fact for `fs_cp_at` under
+ * embedding -- no such fact is proved in Parser.FastString.Axioms.fst
+ * today). `parse_object`'s `"` (literal, via `parse_literal`) branch is
+ * likewise not covered -- it shares `parse_iri_body_acc`'s
+ * accumulator-plus-escape shape, the Stage-2 "new difficulty" class.
+ * ------------------------------------------------------------------------ *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_subject_iri_shift (prefix mid suffix : string) (pos gt_pos : nat)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos) = 0x3C /\
+        scan_iri_end mid (pos + 1) (fs_byte_length mid - pos) == ParseOk gt_pos gt_pos /\
+        gt_pos < fs_byte_length mid /\
+        (match parse_iri_raw mid pos with
+         | ParseOk iri_mid _ -> is_iri iri_mid
+         | ParseFail _ _ -> False))
+      (ensures
+        (match parse_subject mid pos,
+               parse_subject (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk s_mid endpos_mid, ParseOk s_full endpos_full ->
+           s_full == s_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_subject_iri_shift prefix mid suffix pos gt_pos =
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  lemma_parse_iri_shift prefix mid suffix pos gt_pos
+#pop-options
+
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_object_iri_shift (prefix mid suffix : string) (pos gt_pos : nat)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos) = 0x3C /\
+        scan_iri_end mid (pos + 1) (fs_byte_length mid - pos) == ParseOk gt_pos gt_pos /\
+        gt_pos < fs_byte_length mid /\
+        (match parse_iri_raw mid pos with
+         | ParseOk iri_mid _ -> is_iri iri_mid
+         | ParseFail _ _ -> False))
+      (ensures
+        (match parse_object mid pos,
+               parse_object (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk t_mid endpos_mid, ParseOk t_full endpos_full ->
+           t_full == t_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_object_iri_shift prefix mid suffix pos gt_pos =
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  lemma_parse_iri_shift prefix mid suffix pos gt_pos
+#pop-options
+
 (** ========================================================================
  * WHAT THE TEMPLATE MEANS FOR THE REMAINING COMBINATORS.
  *
