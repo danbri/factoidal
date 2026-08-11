@@ -1970,3 +1970,131 @@ let lemma_skip_eol_shift prefix mid suffix pos =
  *     scanners (`skip_comment`/`skip_eol`/the inline `skip_line`) before
  *     a full-line shift lemma is even statable.
  * ======================================================================== *)
+
+(** ========================================================================
+ * STAGE 3, ITEM 5 (task #48 ordered work list item 5): whole-line shift
+ * lemma for `parse_nquad`, composing the branch lemmas above.
+ *
+ * SCOPE. All-IRI (subject/predicate/object), NO graph label, SUCCESS
+ * case -- the slice of `parse_nquad` that Items 1-4's currently-covered
+ * branches actually support end to end. `lemma_pws_noop` is one small
+ * new fact this composition needed (`pws` is a no-op at a position whose
+ * byte already fails `is_nt_ws` -- a single-step unfold, not an
+ * induction) to bridge `parse_opt_graph_label`'s own trailing `pws`
+ * result into `parse_nquad`'s SECOND `pws` call immediately after it
+ * (which re-skips whitespace that is already gone, so must itself be a
+ * no-op on both `mid` and the embedding).
+ *
+ * VERIFIED ON THE FIRST ATTEMPT: `lemma_parse_nquad_iri_nograph_shift`
+ * -- nine intermediate byte positions and three `scan_iri_end` witnesses
+ * (subject/predicate/object), all explicit parameters, composing
+ * `lemma_pws_shift` (sub-lemma 5) + `lemma_parse_subject_iri_shift`
+ * (sub-lemma 8) + `lemma_parse_iri_shift` (sub-lemma 7) +
+ * `lemma_parse_object_iri_shift` (sub-lemma 9) +
+ * `lemma_parse_opt_graph_label_none_dot_shift` (Item 3) +
+ * `lemma_pws_noop` -- IN SEQUENCE, no new induction. This is a genuine
+ * "whole N-Quads line" locality theorem for the scoped shape, not a
+ * further sub-piece: `parse_nquad mid pos` and `parse_nquad (prefix ^
+ * (mid ^ suffix)) (fs_byte_length prefix + pos)` produce the identical
+ * triple and graph option, at the correctly shifted end position.
+ *
+ * WHAT THIS DOES NOT YET GIVE (Item 6, `parse_nquads_acc_concat_line`,
+ * `RDF.NQuads.Streaming.fst`'s own stated target). That theorem is
+ * about `parse_nquads_acc` -- the MULTI-LINE loop, which also has to
+ * handle comment lines, blank lines, parse failures (the `skip_line`
+ * error-recovery path), and non-IRI subject/object/graph shapes (bnode,
+ * literal) for EVERY line in `complete`, not just one line of one
+ * specific shape. Item 4's FINDING already identifies `skip_comment`/
+ * `skip_line`'s local-`let rec` obstacle as blocking the comment-line
+ * and error-recovery cases outright (a source-level fix, not a proof
+ * technique); Items 1-2's remaining wrapper gaps (`parse_bnode`,
+ * `parse_literal`) block the non-IRI subject/object cases. So Item 6 is
+ * gated on genuinely more work than this session's remaining budget,
+ * exactly as `RDF.NQuads.Streaming.fst`'s own FINDING independently
+ * concluded from a different entry point ("per-combinator locality
+ * induction over Parser.NTriples.fst's recursive-descent call graph...
+ * confirmed twice now, by two different sessions"). This landing adds a
+ * THIRD independent confirmation, now with five concrete named
+ * remaining pieces (bnode wrapper, literal wrapper, skip_comment lift,
+ * skip_line lift, non-IRI graph-label branch) rather than one vague
+ * "per-combinator induction" -- each individually tractable by the
+ * templates this file has now validated seven times over (Items 1-5),
+ * but the FULL composition remains a separate landing's work, not a
+ * same-session extension. Items 6 (`parse_nquads_acc_concat_line`), 7
+ * (`theorem_stream_eq_batch` single-chunk), and 8 (`theorem_stream_eq_
+ * batch` general induction) are NOT attempted this landing -- correctly
+ * not started, per the same gating logic the banner above already
+ * established, now updated to reflect Item 5's real (if scoped)
+ * completion rather than treating "whole line" as entirely unstarted.
+ * ======================================================================== *)
+#push-options "--z3rlimit 100 --fuel 4 --ifuel 4"
+val lemma_pws_noop (mid : string) (pos : nat)
+  : Lemma (requires pos < fs_byte_length mid /\ not (is_nt_ws (fs_byte_index mid pos)))
+          (ensures pws mid pos == ParseOk () pos)
+let lemma_pws_noop mid pos = ()
+#pop-options
+
+#push-options "--z3rlimit 400 --fuel 4 --ifuel 4"
+val lemma_parse_nquad_iri_nograph_shift
+    (prefix mid suffix : string) (pos : nat)
+    (pos1 gt_subj pos2 pos3 gt_pred pos4 pos5 gt_obj pos6 pos7 : nat)
+  : Lemma
+      (requires
+        pos <= fs_byte_length mid /\
+        pws mid pos == ParseOk () pos1 /\
+        (* subject: IRI branch *)
+        pos1 < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos1) = 0x3C /\
+        scan_iri_end mid (pos1 + 1) (fs_byte_length mid - pos1) == ParseOk gt_subj gt_subj /\
+        gt_subj < fs_byte_length mid /\
+        (match parse_iri_raw mid pos1 with ParseOk iri_mid _ -> is_iri iri_mid | ParseFail _ _ -> False) /\
+        (match parse_subject mid pos1 with ParseOk _ p -> pos2 = p | ParseFail _ _ -> False) /\
+        pos2 <= fs_byte_length mid /\
+        pws mid pos2 == ParseOk () pos3 /\
+        (* predicate: IRI *)
+        pos3 < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos3) = 0x3C /\
+        scan_iri_end mid (pos3 + 1) (fs_byte_length mid - pos3) == ParseOk gt_pred gt_pred /\
+        gt_pred < fs_byte_length mid /\
+        (match parse_iri_raw mid pos3 with ParseOk iri_mid _ -> is_iri iri_mid | ParseFail _ _ -> False) /\
+        (match parse_iri mid pos3 with ParseOk _ p -> pos4 = p | ParseFail _ _ -> False) /\
+        pos4 <= fs_byte_length mid /\
+        pws mid pos4 == ParseOk () pos5 /\
+        (* object: IRI *)
+        pos5 < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos5) = 0x3C /\
+        scan_iri_end mid (pos5 + 1) (fs_byte_length mid - pos5) == ParseOk gt_obj gt_obj /\
+        gt_obj < fs_byte_length mid /\
+        (match parse_iri_raw mid pos5 with ParseOk iri_mid _ -> is_iri iri_mid | ParseFail _ _ -> False) /\
+        (match parse_object mid pos5 with ParseOk _ p -> pos6 = p | ParseFail _ _ -> False) /\
+        (* opt graph label: none, dot found directly after ws *)
+        pos6 <= fs_byte_length mid /\
+        pws mid pos6 == ParseOk () pos7 /\
+        pos7 < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos7) = 0x2E /\
+        (match parse_iri mid pos3 with ParseOk pred _ -> is_iri pred | ParseFail _ _ -> False))
+      (ensures
+        (match parse_nquad mid pos,
+               parse_nquad (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk (t_mid, g_mid) endpos_mid, ParseOk (t_full, g_full) endpos_full ->
+           t_full == t_mid /\ g_full == g_mid /\
+           endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_nquad_iri_nograph_shift
+    prefix mid suffix pos pos1 gt_subj pos2 pos3 gt_pred pos4 pos5 gt_obj pos6 pos7 =
+  lemma_pws_shift prefix mid suffix pos pos1;
+  lemma_byte_index_at_middle prefix mid suffix pos1;
+  lemma_parse_subject_iri_shift prefix mid suffix pos1 gt_subj;
+  lemma_pws_shift prefix mid suffix pos2 pos3;
+  lemma_byte_index_at_middle prefix mid suffix pos3;
+  lemma_parse_iri_shift prefix mid suffix pos3 gt_pred;
+  lemma_pws_shift prefix mid suffix pos4 pos5;
+  lemma_byte_index_at_middle prefix mid suffix pos5;
+  lemma_parse_object_iri_shift prefix mid suffix pos5 gt_obj;
+  lemma_parse_opt_graph_label_none_dot_shift prefix mid suffix pos6 pos7;
+  lemma_pws_noop mid pos7;
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_pws_shift prefix mid suffix pos7 pos7;
+  lemma_byte_index_at_middle prefix mid suffix pos7
+#pop-options
