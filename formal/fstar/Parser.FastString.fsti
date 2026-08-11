@@ -172,6 +172,27 @@ val fs_cp_len_eq (s:string) (pos:nat)
 
 val fs_byte_index : s:string -> i:nat -> FStar.Char.char
 
+// Bridging lemma for fs_byte_index (added G4/#358 N-Triples parser-lemmas
+// session, 2026-08-11 -- same rationale as the six `fs_*_eq` lemmas above:
+// `fs_byte_index` is exported via this `.fsti` as a bare `val`, so its
+// `Parser.FastString.fst` body (`let b = fs_byte_at s i in if b < 0xD800
+// then char_of_int b else char_of_int 0`) is opaque to every consumer --
+// confirmed empirically: `fs_byte_at_eq` alone does not discharge
+// `fs_byte_index "a" 0 == FStar.Char.char_of_int 0x61` (Error 19, "Could
+// not prove post-condition"; probe in RDF.NTriples.RoundTrip.fst's own
+// commissioning session). Every N-Triples/N-Quads/Turtle/TriG parser
+// dispatch reads its next byte through `fs_byte_index`, not `fs_byte_at`
+// directly (see Parser.NTriples.fst's `parse_iri_raw`/`scan_iri_end`/
+// `parse_triple` and siblings), so a parser-side round-trip proof needs
+// this equation to turn a concrete `fs_byte_at` value (from `fs_byte_at_eq`
+// + the BaseCases/Axioms facts) into the `FStar.Char.char` a `match ch with
+// | ...` branch actually dispatches on. The `b < 0xD800` guard is always
+// taken because `fs_byte_at` returns `n:nat{n < 256}` (its own refinement
+// type, `< 256 < 0xD800` unconditionally), so this holds for every `s`/`i`
+// with no side condition.
+val fs_byte_index_eq (s:string) (i:nat)
+  : Lemma (fs_byte_index s i == FStar.Char.char_of_int (fs_byte_at s i))
+
 val fs_codepoints_of_string : string -> list FStar.Char.char
 
 val fs_utf8_of_codepoint : int -> string
