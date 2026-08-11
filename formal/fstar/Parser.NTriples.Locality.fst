@@ -396,6 +396,45 @@ let lemma_pws_shift prefix mid suffix pos endpos =
 #pop-options
 #pop-options
 
+(** ------------------------------------------------------------------------
+ * Sub-lemma 6: `lemma_parse_iri_raw_fastpath_shift` -- the shift lemma
+ * for `parse_iri_raw`'s FAST path (banner's estimate: "a direct
+ * corollary of `lemma_scan_iri_end_shift_from_start` plus one
+ * `fs_byte_sub_concat_*` call, not a new induction" -- confirmed here).
+ * Scope: only the case where `mid`'s scan finds its terminator strictly
+ * inside `mid` on the no-escape fast path (the same `gt_pos <
+ * fs_byte_length mid` discipline as every lemma above); the escape path
+ * (`parse_iri_body_acc`) is Stage 2, not covered by this lemma.
+ * ------------------------------------------------------------------------ *)
+#push-options "--z3rlimit 150 --fuel 4 --ifuel 4"
+val lemma_parse_iri_raw_fastpath_shift (prefix mid suffix : string) (pos gt_pos : nat)
+  : Lemma
+      (requires
+        pos < fs_byte_length mid /\
+        FStar.Char.int_of_char (fs_byte_index mid pos) = 0x3C /\
+        scan_iri_end mid (pos + 1) (fs_byte_length mid - pos) == ParseOk gt_pos gt_pos /\
+        gt_pos < fs_byte_length mid)
+      (ensures
+        (match parse_iri_raw mid pos,
+               parse_iri_raw (prefix ^ (mid ^ suffix)) (fs_byte_length prefix + pos) with
+         | ParseOk iri_mid endpos_mid, ParseOk iri_full endpos_full ->
+           iri_full == iri_mid /\ endpos_full == fs_byte_length prefix + endpos_mid
+         | _, _ -> False))
+let lemma_parse_iri_raw_fastpath_shift prefix mid suffix pos gt_pos =
+  let p = fs_byte_length prefix in
+  fs_byte_length_concat mid suffix;
+  fs_byte_length_concat prefix (mid ^ suffix);
+  lemma_byte_index_at_middle prefix mid suffix pos;
+  let fuel_mid = fs_byte_length mid - pos in
+  lemma_scan_iri_end_shift_headroom prefix mid suffix (pos + 1) fuel_mid (fs_byte_length suffix) gt_pos;
+  let start = pos + 1 in
+  let iri_len = gt_pos - start in
+  if iri_len > 0 && start + iri_len <= fs_byte_length mid then begin
+    fs_byte_sub_concat_right prefix (mid ^ suffix) (p + start) iri_len;
+    fs_byte_sub_concat_left mid suffix start iri_len
+  end else ()
+#pop-options
+
 (** ========================================================================
  * WHAT THE TEMPLATE MEANS FOR THE REMAINING COMBINATORS.
  *
