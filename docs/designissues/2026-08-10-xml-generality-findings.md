@@ -63,9 +63,9 @@ scope, with the error shape it produces.
 | 26 | Comments | `--` inside a comment body | WORKS | `comment_double_dash_bad.xml` rejected |
 | 27 | Content | bare `]]>` in ordinary text | WORKS | `text_bare_cdata_close_bad.xml` rejected |
 | 28 | Attributes | duplicate attribute name on one element | WORKS | `attr_duplicate_bad.xml` rejected |
-| 29 | Attributes | **literal** tab/LF whitespace inside an attribute value | **DIVERGES** | `attr_whitespace_forms.xml`: literal `\t`/`\n` preserved as-is (hex `09`/`0A`). XML 1.0 §3.3.3 attribute-value normalization is a MUST for every processor (validating or not): literal whitespace chars (tab/CR/LF) in an attribute value must be replaced by a single space `0x20`. Not implemented. |
-| 30 | Attributes | char-ref whitespace (`&#9;`, `&#10;`, `&#13;`) inside an attribute value | WORKS, but see #29 | `attr_charref_whitespace.xml`: correctly preserved as the literal control byte (spec requires this). Because #29 is unimplemented, right now literal and char-ref whitespace in attributes are **indistinguishable in the output** — both come out as the raw control byte — when the spec requires them to differ (literal → space, char-ref → preserved). |
-| 31 | Content | CR / CRLF / LF line-ending normalization (XML 1.0 §2.11) | **DIVERGES** | `line_endings_crlf_cr_lf.xml`: text content came back as `line1\r\nline2\rline3\nline4` (hex shows raw `0D 0A`, `0D`, `0A` all preserved). Spec requires the processor to normalize `\r\n` and bare `\r` to `\n` **before** parsing, for every processor unconditionally. Not implemented anywhere in `Parser.XML.fst` (confirmed by source grep — no line-ending-normalization pass exists). This affects text content, comments, CDATA, and (compounding #29) attribute values, and would produce non-compliant literal content for any RDF/XML document containing raw CR or CRLF in its source. |
+| 29 | Attributes | **literal** tab/LF whitespace inside an attribute value | **FIXED 2026-08-11** (issue #381) | `attr_whitespace_forms.xml`: literal `\t`/`\n` are now normalized to a single space `0x20`, matching XML 1.0 §3.3.3. `Parser.XML.fst`'s `normalize_attr_literal_ws` normalizes only the raw literal runs `parse_attr_value_body` slices out of the source text; `parse_reference`'s char-ref/entity-ref decoded output is untouched, so #30's distinction still holds. |
+| 30 | Attributes | char-ref whitespace (`&#9;`, `&#10;`, `&#13;`) inside an attribute value | WORKS | `attr_charref_whitespace.xml`: correctly preserved as the literal control byte (spec requires this). Now that #29 is fixed, literal and char-ref whitespace in attributes are correctly **distinguishable** in the output (literal → space, char-ref → preserved), as the spec requires. |
+| 31 | Content | CR / CRLF / LF line-ending normalization (XML 1.0 §2.11) | **FIXED 2026-08-11** (issue #381) | `line_endings_crlf_cr_lf.xml`: text content now comes back as `line1\nline2\nline3\nline4` — every `\r\n` and bare `\r` normalized to `\n`. `Parser.XML.fst`'s `normalize_line_endings` runs once, unconditionally, at the top of all three document entry points (`parse_xml_document`, `parse_xml_document_children`, `parse_xml_document_children_with_ids`), before the BOM/declaration/element parsers see a byte. Verified against the W3C xmlconf corpus (1447 pass, 0 fail, 1138 skip of 2585 — unchanged from baseline) and the full W3C SPARQL 1.1 (631 pass, 0 fail) and RDF 1.1 (1031 pass, 0 fail, including rdf-xml 166 pass, 0 fail) suites. |
 | 32 | Encoding | UTF-8 BOM at byte 0 | WORKS | `utf8_bom.xml`: BOM consumed, not treated as content |
 | 33 | Encoding | `encoding="ISO-8859-1"` declared, document is plain ASCII | WORKS (vacuously) | `encoding_decl_iso8859.xml` parses — but doesn't exercise the divergence below since the bytes happen to already be valid UTF-8 |
 | 34 | Encoding | `encoding="ISO-8859-1"` declared, document's bytes are **actually** ISO-8859-1 (non-UTF-8, e.g. `é` = `0xE9`) | **DIVERGES** (documented) | `encoding_decl_iso8859_raw.xml` rejected outright — a genuinely well-formed ISO-8859-1 document is refused. `parse_xml_declaration` parses and **syntax-validates** the `encoding=` pseudo-attribute (`is_enc_name`), but the caller (`parse_xml_document`) discards the parsed attributes (`ParseOk _attrs pos' -> pos'`) and every downstream byte read (`fs_cp_at`, `fs_byte_index`) unconditionally assumes UTF-8. The encoding declaration is recognized syntactically and then ignored. Matches the already-documented xmlconf skip category "declared encoding X not decoded" (27 iso-8859-1 + 1 UTF-16 cases in the corpus, `bin/xml-runner/README.md`). |
@@ -156,18 +156,18 @@ avoid, without changing what the concrete `xml_node` instance does today.
 
 ## Summary for the RDF/XML proof program
 
-Two findings are load-bearing for anyone about to prove the RDF/XML
+One finding remains load-bearing for anyone about to prove the RDF/XML
 mapping algorithm against this parser's output:
 
-1. **Line-ending and attribute-value-whitespace normalization (#29, #31)
-   are both missing**, unconditionally (not a DTD/validation gap — XML
-   1.0 requires both for every processor). Any theorem about literal
+1. ~~Line-ending and attribute-value-whitespace normalization (#29, #31)
+   are both missing~~ — **FIXED 2026-08-11, issue #381.**
+   `Parser.XML.fst` now runs `normalize_line_endings` (XML 1.0 §2.11)
+   once, unconditionally, on the whole input before any other parsing
+   step, and `normalize_attr_literal_ws` (XML 1.0 §3.3.3) on every raw
+   literal run inside a quoted attribute value, leaving char-ref/
+   entity-ref decoded output untouched. A theorem about literal
    equality between an RDF/XML document's source text and its produced
-   RDF literals should either (a) state this as an explicit assumption/
-   caveat, or (b) get these two normalization passes landed in
-   `Parser.XML.fst` first — they are small, well-founded, and squarely
-   inside the existing module's style (a codepoint/byte walk, same shape
-   as `scan_chars_valid`).
+   RDF literals no longer needs the caveat this item used to require.
 2. **Declared-encoding is parsed and validated but never honored (#34)**
    — the parser is UTF-8-only by construction. This is already scored
    honestly as a `skip` bucket in `bin/xml-runner`, so it is not a
