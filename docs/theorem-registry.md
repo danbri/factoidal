@@ -838,3 +838,22 @@ quartet #367) + RDF 1031 pass 0 fail (of 1031), benchmark every row
 inside the 10% gate vs frozen baselines (all faster; attributed to a
 quieter host, not the diff — stated in the plan doc). Unblocks the
 SRJ text bridge (M4) and N-Triples parser-side proofs.
+
+**G4 M4 first SRJ text-level lemmas (2026-08-10, branch
+`srj-text-bridge`)**: `SPARQL.Protocol.RoundTrip.fst` +99 lines, three
+lemmas verified (10/10 repeated runs, deterministic):
+`lemma_concat_spec_two` (fully symbolic two-element decomposition of
+`concat_spec ""` — the shape `serialise_response_json`'s terminal join
+takes on 2+ result rows), `lemma_serialise_response_json_empty_literal`
+(closed literal: `serialise_response_json [] []` equals the exact SRJ
+empty-response string, by `assert_norm`), and
+`lemma_serialise_response_json_two_empty_rows_literal` (two empty rows,
+exercising `concat_spec_cons` end-to-end on a concrete list). FINDING
+recorded in-file: the fully symbolic serializer statement does not
+verify reliably — `Prims.strcat` is itself an opaque `val` with no
+identity/associativity equations (same wall shape as
+`FStar.String.concat`, different primitive; provable via
+`FStar.String.list_of_concat` + list append lemmas +
+`string_of_list_of_string`), and which statement failed shifted with
+unrelated earlier declarations (Z3 context sensitivity). Next step:
+interactive diagnosis via fstar-mcp, not batch retries.
