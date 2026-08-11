@@ -1817,3 +1817,45 @@ let lemma_parse_nquads_acc_concat_line_general complete carry ds ws_complete ws_
   lemma_parse_nquads_acc_restart complete carry "" ds1 0 ws_carry
     (fuel3 - List.Tot.length ws_complete)
 #pop-options
+
+(* ============================================================================
+ * `theorem_stream_eq_batch`, SINGLE CHUNK, GENERAL (task #48 item 5,
+ * beyond the two boundary cases proved earlier in this file): `stream_
+ * parse [c] == batch_parse c` for ANY `c`, given witness chains covering
+ * `split_complete_lines c`'s two halves. Direct composition of `stream_
+ * parse_single_chunk_shape` (definitional rewrite, proved earlier),
+ * `lemma_parse_nquads_acc_concat_line_general` (this landing -- already
+ * subsumes the two boundary cases for free: passing `ws_complete = []` or
+ * `ws_carry = []` makes `chain_wf`/`chain_end` hold vacuously for an empty
+ * string, so this ONE lemma covers "no newline"/"ends in newline"/
+ * "interior" uniformly, no case split needed here), and `split_complete_
+ * lines_reconstruct` (`complete ^ carry == c`, proved in this file's
+ * FIRST landing) -- three already-proved facts chained by transitivity,
+ * plus the same shallow top-level `^`-argument rewrite technique used
+ * throughout this section (`complete ^ carry` down to `c`, ordinary `^`
+ * congruence -- not the `string_of_list`-specific non-congruence the
+ * module banner's FINDING documents). *)
+#push-options "--z3rlimit 200 --fuel 4 --ifuel 4"
+val theorem_stream_eq_batch_single_chunk_general
+    (c : string) (ws_complete ws_carry : list line_witness)
+  : Lemma
+      (requires
+        (let (complete, carry) = split_complete_lines c in
+         chain_wf "" complete "" 0 ws_complete /\
+         chain_wf "" complete carry 0 ws_complete /\
+         chain_end 0 ws_complete == Parser.FastString.fs_byte_length complete /\
+         chain_wf "" carry "" 0 ws_carry /\
+         chain_wf complete carry "" 0 ws_carry /\
+         chain_end 0 ws_carry == Parser.FastString.fs_byte_length carry /\
+         Parser.FastString.fs_byte_length complete + 1 >= List.Tot.length ws_complete /\
+         Parser.FastString.fs_byte_length carry + 1 >= List.Tot.length ws_carry /\
+         Parser.FastString.fs_byte_length complete + Parser.FastString.fs_byte_length carry + 1
+           >= List.Tot.length ws_complete + List.Tot.length ws_carry))
+      (ensures stream_parse [c] == batch_parse c)
+let theorem_stream_eq_batch_single_chunk_general c ws_complete ws_carry =
+  stream_parse_single_chunk_shape c;
+  let (complete, carry) = split_complete_lines c in
+  lemma_parse_nquads_acc_concat_line_general complete carry RDF.Graph.Executable.empty_dataset
+    ws_complete ws_carry;
+  split_complete_lines_reconstruct c
+#pop-options
