@@ -257,7 +257,13 @@ they are questions it did not ask.
 ## What is proved versus what is measured
 
 The rest of this page is measurement. This section is the part that is
-not.
+not. For the strongest proved statements read end to end in one
+sitting — parser, N-Triples/N-Quads round-trip, streaming, and the
+RDFS entailment/closure chain, each with its exact domain and honest
+boundary — see the
+[review kernel](https://github.com/danbri/factoidal/blob/claude/main/docs/review-kernel.md);
+the [full theorem registry](https://github.com/danbri/factoidal/blob/claude/main/docs/theorem-registry.md)
+carries every proved statement (~140 rows).
 
 Three claims are easy to blur together, and the project keeps them apart
 deliberately (issue
