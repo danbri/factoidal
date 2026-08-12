@@ -82,6 +82,17 @@ which supersedes the older `fstar-purity-unwind.md` inventory. This post
 doesn't soften that qualifier — it's the boundary of what "verified"
 claims.
 
+For the actual theorem statements behind that word — not the
+qualifier around them, the proofs themselves — read the
+[review kernel](https://github.com/danbri/factoidal/blob/claude/main/docs/review-kernel.md):
+the strongest 1-4 machine-checked statements per pipeline stage
+(parser, expressions, filters, modifiers, results, streaming) plus the
+RDFS entailment/closure chain, each quoted with its exact domain and
+honest boundary, readable end to end in one sitting. It draws from the
+[full theorem registry](https://github.com/danbri/factoidal/blob/claude/main/docs/theorem-registry.md),
+which carries every proved statement (~140 rows) mapped to its W3C
+rule.
+
 ## The skimmable core
 
 Most of this tree is written for F\* tooling first and a human reader
