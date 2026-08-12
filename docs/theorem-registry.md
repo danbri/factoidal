@@ -1381,3 +1381,22 @@ this F* function for the simple regime, SE-3 wiring tracked on
 mix two branch builds (one .cmi conflict resolved arbitrarily) — a
 reconciling extract+compile on the merged tree follows the Turtle
 (#334) harvest.
+
+**Runner truthfulness batch (2026-08-11, branch `runner-truth`)**:
+(1) #418 FIXED — rif_tc_base now uses the runner's standard
+search-list; identity verified: SPARQL 631 pass, 0 fail (of 631) and
+RDF 1031 pass, 0 fail (of 1031) from BOTH repo root and
+ocaml-output/, all four RIF tests passing from both. The #367
+intermittency mechanism is retired. (2) SE-3 DONE — the runner's
+"simple" regime now dispatches to the F*-extracted
+RDF_Entailment_Simple.simple_entails (rule-#15 violation removed);
+verified by a true before/after binary diff: rdf-mt 39/0 → 39/0,
+RDF 1031/0 → 1031/0, zero flips — the score now comes from the
+VERIFIED function. (3) #333 sharpened: all 10 vacuous passes
+confirmed; they return Pass before any entailment function runs
+(result_file None), and the real fix is datatype-clash/ill-formed-
+literal detection under D-entailment in the F* engine (iron rule #1),
+not runner wiring — scoped as #333's follow-up. BONUS: nine modules
+listed in build-ocaml.sh but never extracted/committed (incl.
+RDFS.Closure.SemiNaive — the known full-js-rebuild blocker) are now
+in ocaml-output/, all F*-verified clean, no patches needed.
