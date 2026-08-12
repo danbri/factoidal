@@ -1160,27 +1160,27 @@
    "loc": 653,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/CSVW_Json.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 49,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 49,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": [
     {
      "suite": "csvw-csv2json",
@@ -1262,27 +1262,27 @@
    "loc": 635,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/CSVW_Validate.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 50,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 50,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": [
     {
      "suite": "csvw-validation",
@@ -12202,14 +12202,14 @@
    "loc": 1796,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDF_Entailment_RDFS_RhoDFClosure.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
-   "declarative_relation_count": 5,
-   "unclassified_definition_count": 19,
+   "shipping_function_count": 11,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -12217,33 +12217,891 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 20,
+   "local_refinement_lemma_count": 7,
    "local_refinement_lemma_names": [
-    "lemma_rho_df_step_is_dedup_of_pre_dedup",
-    "lemma_rho_df_closure_iter_shift",
     "lemma_rho_df_chain_canonical_shift",
     "lemma_rho_df_pre_dedup_extensive",
-    "lemma_rho_df_step_extensive",
-    "lemma_rho_df_closure_extensive_aux",
-    "rho_df_closure_extensive",
     "lemma_rho_df_chain_wf_shift",
-    "lemma_rho_df_closure_sound_aux",
-    "rho_df_closure_sound",
     "lemma_fold_left_reaches_at",
     "fold_left_reaches_scoped",
     "lemma_emit_once_term_grows",
-    "lemma_subj_term_to_subject",
-    "lemma_f1_bad_triple_not_frag",
-    "lemma_pre_dedup_in_c",
-    "lemma_is_rho_df_object_ok_correct",
-    "lemma_is_rho_df_frag_triple_correct",
-    "lemma_is_rho_df_frag_is_for_all",
-    "lemma_is_rho_df_frag_correct"
+    "lemma_subj_term_to_subject"
    ],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "algorithm_correctness_theorems": [
+    {
+     "name": "lemma_rho_df_step_is_dedup_of_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 110,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "graph_dedup_sort",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closure_iter_shift",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 140,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "rho_df_closure_iter",
+      "rho_df_closure_step"
+     ]
+    },
+    {
+     "name": "lemma_after_row1_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1379,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_after_row2_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1393,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_domain",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_after_row3_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1406,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_domain",
+      "rdfs_rule_range",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_after_row4_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1417,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_domain",
+      "rdfs_rule_range",
+      "rdfs_rule_subClassOf",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_after_row5_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1428,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_domain",
+      "rdfs_rule_range",
+      "rdfs_rule_subClassOf",
+      "rdfs_rule_subClassOf_trans",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_is_rho_df_frag_is_for_all",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1776,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "is_rho_df_frag",
+      "is_rho_df_frag_triple"
+     ]
+    }
+   ],
+   "internal_refinement_theorems": [
+    {
+     "name": "lemma_rho_df_step_extensive",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 172,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "no_dup_keys"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.FixedPoint"
+     ]
+    },
+    {
+     "name": "rho_df_closure_sound",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 291,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "lemma_f1_witness_frag",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1283,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "f1_witness",
+      "i_rdfs_subPropertyOf"
+     ],
+     "names_declarative_relations": [
+      "rho_df_frag_graph"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "lemma_f1_bad_triple_not_frag",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1287,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "f1_bad_triple"
+     ],
+     "names_declarative_relations": [
+      "rho_df_frag_triple"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "rho_df_len_eq_saturated",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1360,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "graph_len",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "no_dup_keys"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.FixedPoint"
+     ]
+    },
+    {
+     "name": "lemma_pre_dedup_in_c",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1446,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "no_dup_keys"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.FixedPoint"
+     ]
+    },
+    {
+     "name": "lemma_is_rho_df_object_ok_correct",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1745,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "is_rho_df_object_ok"
+     ],
+     "names_declarative_relations": [
+      "rho_df_object_ok"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "lemma_is_rho_df_frag_triple_correct",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1762,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "is_rho_df_frag_triple"
+     ],
+     "names_declarative_relations": [
+      "rho_df_frag_triple"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "lemma_is_rho_df_frag_correct",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1788,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "is_rho_df_frag"
+     ],
+     "names_declarative_relations": [
+      "rho_df_frag_graph"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_sound",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 532,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_complete_conditional",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 583,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "eval_bgp_complete_at",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_exact",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 606,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "eval_bgp_complete_at",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_sound",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 662,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_complete_conditional",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 684,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "eval_bgp_complete_at",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_sound_selective",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 747,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp_store",
+      "graph_to_store_for",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_pattern_sound",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 768,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_query_sound",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 814,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_ask_query",
+      "instantiate_bgp",
+      "query",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_complete_conditional_selective",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 854,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp_store",
+      "graph_to_store_for",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "eval_bgp_store_complete_at",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_query_complete_conditional",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 873,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_ask_query",
+      "instantiate_bgp",
+      "query",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "eval_bgp_store_complete_at",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "lemma_regime_answer_is_subgraph",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 958,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_complete",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 981,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_exact_answer",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 1005,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_complete",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 1034,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_complete_selective",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 1061,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp_store",
+      "graph_to_store_for",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_query_complete",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 1089,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_ask_query",
+      "instantiate_bgp",
+      "query",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    }
+   ],
+   "w3c_refinement_theorems": [
+    {
+     "name": "lemma_rho_df_closure_extensive_aux",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 186,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "is_subgraph"
+     ]
+    },
+    {
+     "name": "rho_df_closure_extensive",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 204,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "is_subgraph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_step_sound",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 244,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step"
+     ],
+     "names_declarative_relations": [
+      "holds_all",
+      "ig_wf_sp",
+      "rho_df_conditions"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closure_sound_aux",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 271,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "holds_all",
+      "rho_df_conditions"
+     ]
+    },
+    {
+     "name": "lemma_f1_bad_triple_derived",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1296,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
+      "i_rdfs_subPropertyOf",
+      "rdfs_rule_subPropertyOf"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp"
+     ]
+    },
+    {
+     "name": "rho_df_frag_preservation_fails",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1323,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
+      "i_rdfs_subPropertyOf",
+      "rdfs_rule_subPropertyOf"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "rho_df_frag_graph",
+      "rho_df_frag_triple"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_domain",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1528,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs2_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_range",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1543,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs3_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_subPropertyOf",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1564,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs7_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_subClassOf_trans",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1577,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs11_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_subPropertyOf_trans",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1593,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs5_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_subClassOf",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1612,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs9_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "rho_df_closure_closed",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1657,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rho_df_closed",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "rho_df_closure_decides",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1704,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "graph_tt_free",
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rho_df_entails",
+      "rho_df_frag_graph",
+      "simple_entailment_spec"
+     ]
+    },
+    {
+     "name": "lemma_decides_hyps_suffices",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 500,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "graph_tt_free",
+      "rho_df_decides_hyps",
+      "rho_df_entails",
+      "simple_entailment_spec"
+     ]
+    }
+   ],
+   "assurance_tier": "w3c-refinement",
    "suites": []
   },
   {
@@ -12355,27 +13213,27 @@
    "loc": 94,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDF_Entailment_RDFSPlus.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 3,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 3,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -12422,27 +13280,27 @@
    "loc": 54,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDF_Entailment_RegimeDispatch.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 3,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 3,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -13575,6 +14433,18 @@
      ]
     },
     {
+     "name": "lemma_rho_df_step_is_dedup_of_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 110,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "graph_dedup_sort",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
      "name": "lemma_subject_to_key_eq_term_to_key_opt",
      "proved_in": "RDF.Indexed.KeyInjectivity",
      "file": "formal/fstar/RDF.Indexed.KeyInjectivity.fst",
@@ -13793,15 +14663,15 @@
      "line": 1360,
      "unconditional": false,
      "names_shipping_functions": [
-      "graph_len"
+      "graph_len",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
-      "no_dup_keys",
-      "rho_df_step_saturated"
+      "no_dup_keys"
      ],
      "declarative_relations_from": [
-      "RDF.Entailment.RDFS.FixedPoint",
-      "RDF.Entailment.RDFS.RhoDFClosure"
+      "RDF.Entailment.RDFS.FixedPoint"
      ]
     },
     {
@@ -14200,14 +15070,16 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "graph_len"
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rho_df_closed",
-      "rho_df_frag_graph",
-      "rho_df_subclass_subjects_iri"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -14218,17 +15090,17 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "graph_len"
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "graph_tt_free",
       "ig_wf_sp",
       "no_dup_keys",
-      "rho_df_chain_canonical",
-      "rho_df_chain_wf",
       "rho_df_entails",
       "rho_df_frag_graph",
-      "rho_df_subclass_subjects_iri",
       "simple_entailment_spec"
      ]
     }
@@ -14808,7 +15680,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -14820,7 +15693,8 @@
      "names_shipping_functions": [
       "build_indexed",
       "rdfs_rule_domain",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -14833,7 +15707,8 @@
       "build_indexed",
       "rdfs_rule_domain",
       "rdfs_rule_range",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -14847,7 +15722,8 @@
       "rdfs_rule_domain",
       "rdfs_rule_range",
       "rdfs_rule_subClassOf",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -14862,7 +15738,8 @@
       "rdfs_rule_range",
       "rdfs_rule_subClassOf",
       "rdfs_rule_subClassOf_trans",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -15853,7 +16730,8 @@
      "line": 244,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step"
      ],
      "names_declarative_relations": [
       "holds_all",
@@ -16065,6 +16943,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -16080,6 +16960,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -16176,14 +17058,14 @@
      "line": 1528,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs2_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16193,14 +17075,14 @@
      "line": 1543,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs3_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16210,14 +17092,14 @@
      "line": 1564,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs7_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16227,14 +17109,14 @@
      "line": 1577,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs11_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16244,14 +17126,14 @@
      "line": 1593,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs5_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16261,15 +17143,14 @@
      "line": 1612,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs9_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated",
-      "rho_df_subclass_subjects_iri"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16280,14 +17161,16 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "graph_len"
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rho_df_closed",
-      "rho_df_frag_graph",
-      "rho_df_subclass_subjects_iri"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16298,17 +17181,17 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "graph_len"
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "graph_tt_free",
       "ig_wf_sp",
       "no_dup_keys",
-      "rho_df_chain_canonical",
-      "rho_df_chain_wf",
       "rho_df_entails",
       "rho_df_frag_graph",
-      "rho_df_subclass_subjects_iri",
       "simple_entailment_spec"
      ]
     },
@@ -18265,6 +19148,7 @@
      "line": 1283,
      "unconditional": false,
      "names_shipping_functions": [
+      "f1_witness",
       "i_rdfs_subPropertyOf"
      ],
      "names_declarative_relations": [
@@ -18332,6 +19216,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -18347,6 +19233,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -18667,7 +19555,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -18679,7 +19568,8 @@
      "names_shipping_functions": [
       "build_indexed",
       "rdfs_rule_domain",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -18692,7 +19582,8 @@
       "build_indexed",
       "rdfs_rule_domain",
       "rdfs_rule_range",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -18706,7 +19597,8 @@
       "rdfs_rule_domain",
       "rdfs_rule_range",
       "rdfs_rule_subClassOf",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -18721,7 +19613,8 @@
       "rdfs_rule_range",
       "rdfs_rule_subClassOf",
       "rdfs_rule_subClassOf_trans",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     }
    ],
@@ -20466,6 +21359,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -20481,6 +21376,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -20603,27 +21500,27 @@
    "loc": 422,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDFS_Closure_SemiNaive.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 16,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 16,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -20634,14 +21531,14 @@
    "loc": 809,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDFS_SchemaSplit.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
-   "declarative_relation_count": 1,
-   "unclassified_definition_count": 47,
+   "shipping_function_count": 40,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -20649,20 +21546,41 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 7,
+   "local_refinement_lemma_count": 5,
    "local_refinement_lemma_names": [
     "schema_stable_check_sound",
     "schema_stable_check_complete",
     "emit_edge_shape",
     "emit_from_node_shape",
-    "sc_bfs_visited_grows",
-    "witness_stable_holds",
-    "witness_reflective_violates"
+    "sc_bfs_visited_grows"
    ],
-   "algorithm_correctness_theorems": [],
+   "algorithm_correctness_theorems": [
+    {
+     "name": "witness_stable_holds",
+     "proved_in": "RDFS.SchemaSplit",
+     "file": "formal/fstar/RDFS.SchemaSplit.fst",
+     "line": 795,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "schema_stable_check",
+      "witness_stable"
+     ]
+    },
+    {
+     "name": "witness_reflective_violates",
+     "proved_in": "RDFS.SchemaSplit",
+     "file": "formal/fstar/RDFS.SchemaSplit.fst",
+     "line": 798,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "schema_stable_check",
+      "witness_reflective"
+     ]
+    }
+   ],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "algorithm-correctness",
    "suites": []
   },
   {
@@ -22036,27 +22954,27 @@
    "loc": 714,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/SHACL_NodeExpr.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 77,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 77,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -22067,27 +22985,27 @@
    "loc": 439,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/SHACL_Rules.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 49,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 49,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -24782,7 +25700,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24804,7 +25723,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "eval_bgp_complete_at",
@@ -24824,7 +25744,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24846,7 +25767,8 @@
      "line": 662,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24867,7 +25789,8 @@
      "line": 684,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "eval_bgp_complete_at",
@@ -24888,7 +25811,8 @@
      "names_shipping_functions": [
       "eval_bgp_store",
       "graph_to_store_for",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24909,7 +25833,8 @@
      "line": 768,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24932,7 +25857,8 @@
      "names_shipping_functions": [
       "eval_ask_query",
       "instantiate_bgp",
-      "query"
+      "query",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24955,7 +25881,8 @@
      "names_shipping_functions": [
       "eval_bgp_store",
       "graph_to_store_for",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "eval_bgp_store_complete_at",
@@ -24976,7 +25903,8 @@
      "names_shipping_functions": [
       "eval_ask_query",
       "instantiate_bgp",
-      "query"
+      "query",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "eval_bgp_store_complete_at",
@@ -24995,7 +25923,8 @@
      "line": 958,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "rho_df_decides_hyps",
@@ -25014,7 +25943,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -25037,7 +25967,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -25059,7 +25990,8 @@
      "line": 1034,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -25083,7 +26015,8 @@
      "names_shipping_functions": [
       "eval_bgp_store",
       "graph_to_store_for",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -25107,7 +26040,8 @@
      "names_shipping_functions": [
       "eval_ask_query",
       "instantiate_bgp",
-      "query"
+      "query",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -26134,7 +27068,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 13,
+   "local_refinement_lemma_count": 12,
    "local_refinement_lemma_names": [
     "lemma_ground_implies_tt_free",
     "lemma_subj_inst_id",
@@ -26147,7 +27081,6 @@
     "lemma_term_tt_free_bridge",
     "lemma_graph_frag_tt_free",
     "lemma_tt_free_subset",
-    "lemma_decides_hyps_suffices",
     "lemma_ask_bgp_gives_solution"
    ],
    "algorithm_correctness_theorems": [],
@@ -41415,16 +42348,19 @@
    "line": 110,
    "unconditional": true,
    "shipping_functions_named": [
-    "graph_dedup_sort"
+    "graph_dedup_sort",
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Graph"
    ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_rho_df_closure_iter_shift",
@@ -41432,13 +42368,18 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 140,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure_iter",
+    "rho_df_closure_step"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_rho_df_chain_canonical_shift",
@@ -41446,14 +42387,14 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 143,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "rho_df_chain_canonical"
+   "shipping_functions_named": [
+    "rho_df_closure_step"
    ],
-   "declarative_modules": [
+   "shipping_modules": [
     "RDF.Entailment.RDFS.RhoDFClosure"
    ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
@@ -41464,8 +42405,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 153,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure_step_pre_dedup"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -41478,8 +42423,13 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 172,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "no_dup_keys"
    ],
@@ -41488,7 +42438,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_rho_df_closure_extensive_aux",
@@ -41496,21 +42446,23 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 186,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
-    "is_subgraph",
-    "rho_df_chain_canonical"
+    "is_subgraph"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "w3c_refinement"
   },
   {
    "name": "rho_df_closure_extensive",
@@ -41518,21 +42470,23 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 204,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
-    "is_subgraph",
-    "rho_df_chain_canonical"
+    "is_subgraph"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "w3c_refinement"
   },
   {
    "name": "lemma_rho_df_chain_wf_shift",
@@ -41540,14 +42494,14 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 238,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "rho_df_chain_wf"
+   "shipping_functions_named": [
+    "rho_df_closure_step"
    ],
-   "declarative_modules": [
+   "shipping_modules": [
     "RDF.Entailment.RDFS.RhoDFClosure"
    ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
@@ -41559,9 +42513,11 @@
    "line": 244,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
@@ -41585,23 +42541,25 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 271,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "holds_all",
-    "rho_df_chain_wf",
     "rho_df_conditions"
    ],
    "declarative_modules": [
     "OWL.Semantics",
-    "RDF.Entailment.RDFS.Completeness",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.Completeness"
    ],
    "independent_formalisation_modules": [
     "OWL.Semantics"
    ],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "w3c_refinement"
   },
   {
    "name": "rho_df_closure_sound",
@@ -41609,19 +42567,21 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 291,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
-    "rho_df_chain_wf",
     "rho_df_entails"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.Completeness",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.Completeness"
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_rdf_term_eq_sound",
@@ -42147,9 +43107,11 @@
    "line": 1283,
    "unconditional": false,
    "shipping_functions_named": [
+    "f1_witness",
     "i_rdfs_subPropertyOf"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Vocabulary.Axioms"
    ],
    "declarative_relations_named": [
@@ -42168,8 +43130,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1287,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "f1_bad_triple"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "rho_df_frag_triple"
    ],
@@ -42178,7 +43144,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_f1_bad_triple_derived",
@@ -42188,10 +43154,13 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
+    "f1_bad_triple",
+    "f1_witness",
     "i_rdfs_subPropertyOf",
     "rdfs_rule_subPropertyOf"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDF.Vocabulary.Axioms",
     "RDFS.Closure"
@@ -42216,10 +43185,13 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
+    "f1_bad_triple",
+    "f1_witness",
     "i_rdfs_subPropertyOf",
     "rdfs_rule_subPropertyOf"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDF.Vocabulary.Axioms",
     "RDFS.Closure"
@@ -42246,18 +43218,19 @@
    "line": 1360,
    "unconditional": false,
    "shipping_functions_named": [
-    "graph_len"
+    "graph_len",
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Graph"
    ],
    "declarative_relations_named": [
-    "no_dup_keys",
-    "rho_df_step_saturated"
+    "no_dup_keys"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.FixedPoint"
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
@@ -42271,9 +43244,11 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42292,9 +43267,11 @@
    "shipping_functions_named": [
     "build_indexed",
     "rdfs_rule_domain",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42314,9 +43291,11 @@
     "build_indexed",
     "rdfs_rule_domain",
     "rdfs_rule_range",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42337,9 +43316,11 @@
     "rdfs_rule_domain",
     "rdfs_rule_range",
     "rdfs_rule_subClassOf",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42361,9 +43342,11 @@
     "rdfs_rule_range",
     "rdfs_rule_subClassOf",
     "rdfs_rule_subClassOf_trans",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42379,19 +43362,21 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1446,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure_step_pre_dedup"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
-    "no_dup_keys",
-    "rho_df_step_saturated"
+    "no_dup_keys"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.FixedPoint"
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_c_in_g1",
@@ -42540,23 +43525,23 @@
    "line": 1528,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs2_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42573,23 +43558,23 @@
    "line": 1543,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs3_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42606,23 +43591,23 @@
    "line": 1564,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs7_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42639,23 +43624,23 @@
    "line": 1577,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs11_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42672,23 +43657,23 @@
    "line": 1593,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs5_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42705,24 +43690,23 @@
    "line": 1612,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs9_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated",
-    "rho_df_subclass_subjects_iri"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42740,9 +43724,13 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
-    "graph_len"
+    "graph_len",
+    "rho_df_closure",
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Graph",
     "RDF.Indexed"
    ],
@@ -42750,14 +43738,12 @@
     "ig_wf_sp",
     "no_dup_keys",
     "rho_df_closed",
-    "rho_df_frag_graph",
-    "rho_df_subclass_subjects_iri"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
-    "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.FixedPoint"
    ],
    "independent_formalisation_modules": [
     "OWL.Semantics"
@@ -42773,9 +43759,13 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
-    "graph_len"
+    "graph_len",
+    "rho_df_closure",
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Graph",
     "RDF.Indexed"
    ],
@@ -42783,18 +43773,14 @@
     "graph_tt_free",
     "ig_wf_sp",
     "no_dup_keys",
-    "rho_df_chain_canonical",
-    "rho_df_chain_wf",
     "rho_df_entails",
     "rho_df_frag_graph",
-    "rho_df_subclass_subjects_iri",
     "simple_entailment_spec"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42810,8 +43796,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1745,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "is_rho_df_object_ok"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "rho_df_object_ok"
    ],
@@ -42820,7 +43810,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_is_rho_df_frag_triple_correct",
@@ -42828,8 +43818,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1762,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "is_rho_df_frag_triple"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "rho_df_frag_triple"
    ],
@@ -42838,7 +43832,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_is_rho_df_frag_is_for_all",
@@ -42846,13 +43840,18 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1776,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "is_rho_df_frag",
+    "is_rho_df_frag_triple"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_is_rho_df_frag_correct",
@@ -42860,8 +43859,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1788,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "is_rho_df_frag"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "rho_df_frag_graph"
    ],
@@ -42870,7 +43873,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_graph_sep_free_sp",
@@ -51043,14 +52046,14 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 263,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "schema_stable"
+   "shipping_functions_named": [
+    "schema_stable_check"
    ],
-   "declarative_modules": [
+   "shipping_modules": [
     "RDFS.SchemaSplit"
    ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
@@ -51061,14 +52064,14 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 271,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "schema_stable"
+   "shipping_functions_named": [
+    "schema_stable_check"
    ],
-   "declarative_modules": [
+   "shipping_modules": [
     "RDFS.SchemaSplit"
    ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
@@ -51079,8 +52082,12 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 713,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "emit_edge"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -51093,8 +52100,12 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 719,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "emit_from_node"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -51107,8 +52118,12 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 742,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "sc_bfs"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -51121,13 +52136,18 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 795,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "schema_stable_check",
+    "witness_stable"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "witness_reflective_violates",
@@ -51135,13 +52155,18 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 798,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "schema_stable_check",
+    "witness_reflective"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_mem_triple_append_left",
@@ -59272,8 +60297,12 @@
    "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
    "line": 500,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "graph_tt_free",
     "rho_df_decides_hyps",
@@ -59289,7 +60318,7 @@
     "RDF.Entailment.Simple.Spec"
    ],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "w3c_refinement"
   },
   {
    "name": "theorem_rdfs_regime_bgp_sound",
@@ -59299,9 +60328,11 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59327,9 +60358,11 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59355,9 +60388,11 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59423,9 +60458,11 @@
    "line": 662,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59450,9 +60487,11 @@
    "line": 684,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59498,9 +60537,11 @@
    "shipping_functions_named": [
     "eval_bgp_store",
     "graph_to_store_for",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59525,9 +60566,11 @@
    "line": 768,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59573,9 +60616,11 @@
    "shipping_functions_named": [
     "eval_ask_query",
     "instantiate_bgp",
-    "query"
+    "query",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59602,9 +60647,11 @@
    "shipping_functions_named": [
     "eval_bgp_store",
     "graph_to_store_for",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59631,9 +60678,11 @@
    "shipping_functions_named": [
     "eval_ask_query",
     "instantiate_bgp",
-    "query"
+    "query",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59658,9 +60707,11 @@
    "line": 958,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59685,9 +60736,11 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59716,9 +60769,11 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59746,9 +60801,11 @@
    "line": 1034,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59778,9 +60835,11 @@
    "shipping_functions_named": [
     "eval_bgp_store",
     "graph_to_store_for",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59810,9 +60869,11 @@
    "shipping_functions_named": [
     "eval_ask_query",
     "instantiate_bgp",
-    "query"
+    "query",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -61922,13 +62983,13 @@
   "assume_other_active": 5,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
-  "modules_with_w3c_refinement_theorem": 10,
-  "modules_with_algorithm_correctness_theorem": 41,
-  "modules_with_internal_refinement_theorem": 19,
-  "modules_merely_tot": 129,
-  "w3c_refinement_theorem_count": 312,
-  "internal_refinement_theorem_count": 148,
-  "algorithm_correctness_theorem_count": 338,
+  "modules_with_w3c_refinement_theorem": 11,
+  "modules_with_algorithm_correctness_theorem": 43,
+  "modules_with_internal_refinement_theorem": 20,
+  "modules_merely_tot": 136,
+  "w3c_refinement_theorem_count": 316,
+  "internal_refinement_theorem_count": 155,
+  "algorithm_correctness_theorem_count": 343,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [
    "OWL.RL.Refinement",
@@ -61951,14 +63012,14 @@
   ],
   "lemma_count": 1652,
   "tiers": {
-   "algorithm-correctness": 26,
+   "algorithm-correctness": 27,
    "internal-refinement": 10,
    "local-lemmas-only": 12,
-   "merely-tot": 129,
+   "merely-tot": 136,
    "specification-and-proof": 17,
-   "unclassified": 27,
-   "w3c-refinement": 10
+   "unclassified": 18,
+   "w3c-refinement": 11
   }
  },
- "commit": "f8d21a64a"
+ "commit": "768fd4920"
 }
