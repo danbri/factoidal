@@ -967,9 +967,30 @@ let rif_xml_preprocess s =
    vendored copies under third_party/testing/rif/tc/ are the
    authoritative source. We resolve by mf:name; the four-entry
    table is exhaustive for the SPARQL 1.1 entailment manifest as
-   of the 2026-05-07 mirror. *)
+   of the 2026-05-07 mirror.
+
+   #418: this base used to be a bare relative literal with no
+   repo-root search-list fallback, unlike every other fixture path
+   in this file (tests_base, rdf_tests_base, etc. below all try a
+   small ladder of relative depths). That meant `w3c_runner --all`
+   run from formal/fstar/ocaml-output/ (a real, supported working
+   directory — see the ocaml-output/ symlink convention in iron
+   rule #9) could not find the RIF premises: the four entailment
+   tests would report Fail instead of the true Pass, giving a
+   directory-dependent score. rif_tc_base below mirrors the
+   candidate-ladder shape of tests_base so both bases resolve the
+   same way. *)
+let rif_tc_base =
+  let candidates = [
+    "third_party/testing/rif/tc";
+    "../../third_party/testing/rif/tc";
+    "../../../third_party/testing/rif/tc";
+  ] in
+  try List.find Sys.file_exists candidates
+  with Not_found -> "third_party/testing/rif/tc"
+
 let rif_rules_path_for tc =
-  let base = "third_party/testing/rif/tc" in
+  let base = rif_tc_base in
   match tc.name with
   | "RIF Logical Entailment (referencing RIF XML)" ->
     Filename.concat base "Logical_entailment_referencing_RIF_XML/rif01-premise.rif"
@@ -1010,7 +1031,7 @@ let rif_rules_path_for tc =
    the local-path mapping and file existence check are not part
    of the verified library. *)
 let rif_resolve_import_local_path tc url =
-  let base = "third_party/testing/rif/tc" in
+  let base = rif_tc_base in
   let testdir =
     match tc.name with
     | "RIF Logical Entailment (referencing RIF XML)" ->
