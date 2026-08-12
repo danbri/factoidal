@@ -116,7 +116,7 @@ We do have the three pieces GRDDL composes, verified in-repo:
   Zero `assume val` in the file (grepped, confirmed) — pure F*, no
   host XSLT library. Extracted and reachable from JS as
   `fn.xsltTransform` (`npm/factoidal/fn.js`, `npm/factoidal/index.js`,
-  `npm/factoidal/index.mjs`, plus the mirrored `docs/npm/foafos/`
+  `npm/factoidal/index.mjs`, plus the mirrored `docs/npm/factoidal/`
   copies); demoed live in
   `docs/web/hub/27-transforming-and-checking-xml.md` against
   `tests/hub/post27_test.mjs`, calling

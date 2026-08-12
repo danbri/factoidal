@@ -43,7 +43,11 @@ prose:
    claim that Factoidal is a complete formally verified
    implementation of RDF or RDFS semantics — completeness theorems,
    where they exist, are per-rung and stated with their own
-   hypotheses. Registry + trust surface:
+   hypotheses. Full registry (every proved statement, ~140 rows):
+   [`docs/theorem-registry.md`](docs/theorem-registry.md); its curated
+   [review kernel](docs/review-kernel.md) states the strongest 1-4
+   theorem per pipeline stage, each with its exact domain and honest
+   boundary, readable end to end in one sitting. Adoption context:
    [semantics-proposal adoption](docs/designissues/2026-08-05-semantics-proposal-adoption.md),
    which continues the
    [RDF-Based semantics programme](docs/designissues/2026-07-29-rdf-based-semantics-formalization.md).

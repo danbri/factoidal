@@ -1,8 +1,60 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-14 (nine landings from a long autonomous
-shift, gated on the same regime — floors, named diffs, soundness
-where applicable — all measured on the current `claude/main` tree):
+Last refreshed: 2026-08-12 (prose sync only — see the 2026-08-12 entry
+below; the file's own log entries below it were last appended
+2026-07-30 and are unchanged history, not stale claims).
+
+**Update 2026-08-12 (site/docs prose sync against `docs/theorem-registry.md`
+and the 2026-08-11 landings, #380-#419):**
+- ✅ W3C current, from `docs/test-results/latest.json` (2026-08-12
+  07:05 UTC, commit `84ded26`): SPARQL 631 pass, 0 fail (of 631); RDF
+  1031 pass, 0 fail (of 1031); combined 1662 pass, 0 fail (of 1662,
+  100% of runnable). xmlconf 1447 pass, 0 fail, 1138 skip (of 2585).
+  The old "627 pass + 4 known RIF" framing that appears in older log
+  entries below was a runner-CWD artifact (#418): `w3c_runner`'s
+  `rif_rules_path_for` used a hardcoded relative path, so running from
+  `ocaml-output/` instead of the repo root produced exactly 4 spurious
+  RIF-entailment failures. From the repo root: 631 pass, 0 fail.
+- ✅ FastString migration COMPLETE, steps 0-6 (branch `js-equivalence`,
+  task #47): equivalence corpus 93,846 pass, 962 expected-fail, 0
+  unexpected fail (of 94,808), identical under native OCaml and under
+  Node via js_of_ocaml. Zero `assume val`s left in the FastString
+  family except the documented `unsafe_char_of_d7ff`; the
+  `FStar.String.sub`/`concat` ulib walls are closed with zero new
+  axioms.
+- ✅ Streaming theorem program COMPLETE (#402 closed): the fully-generic
+  consumer theorem (`theorem_stream_consume_eq_batch`, any consumer
+  type/function/chunk split) plus the dataset-specific theorem and the
+  parser theorem are all proved; #402's residue list is empty.
+- ✅ New symbolic theorems: IRI round-trip on plain well-formed ASCII
+  strings, N-row SRJ serializer shape, and token round-trip re-proved
+  on the new `Parser.FastString.fs_byte_sub`-based lexer foundation
+  (task #52 migrated the lexer's 13 `String.sub` call sites).
+- ✅ XML normalization spec bugs fixed (#381, branch `xml-norm`):
+  `normalize_line_endings` and `normalize_attr_literal_ws` land as
+  pre-passes in `Parser.XML.fst`; xmlconf and SPARQL/RDF totals
+  unchanged (same numbers as above).
+- ✅ `simple_entails` SE-1 fixed (#324, branch `simple-entails`): the
+  loose `literal_eq` (case-folded language tags, XML-canon-equated
+  `rdf:XMLLiteral`) is replaced by a strict field-by-field
+  `literal_term_eq`; regression pins both directions.
+- ✅ npm package renamed to `factoidal` (#403, landed via PR #412),
+  never published under the old placeholder name (`@danbri/foafos`).
+  This sweep found and fixed six site files PR #412 missed — live
+  `../npm/foafos/browser.js` import paths in three demo pages
+  (RIF, JSON-LD Playground, COTTAS) that would 404 in the browser,
+  since `docs/npm/foafos/` no longer exists.
+- ✅ The review kernel (`docs/review-kernel.md`, #403 G1, landed
+  2026-08-11) is now linked from the front page (`docs/index.md`),
+  hub post 16, and the RDF/SPARQL conformance pages — it was not
+  linked from any public surface before this sweep.
+- ⚠️ NOT independently re-verified this sweep (left unchanged, flagged
+  for a future measurement-bearing session): the per-suite score
+  tables and "measured on 2026-07-30" dates on
+  `docs/web/conformance/{rdf,sparql,owl2}.md`. The registry confirms
+  the RDF/SPARQL totals are unchanged since that run, but those pages'
+  own rule is "fresh measurement or nothing" and re-running all three
+  binaries end to end was out of scope for a docs-only sweep.
 
 **Update 2026-07-30 (OWL absence-verdict correction, #326 — some
 published OWL numbers move DOWN on purpose):**
