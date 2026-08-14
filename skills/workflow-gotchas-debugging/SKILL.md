@@ -1,6 +1,6 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twenty-three hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh), the node hub harness masking browser-only fn-surface gaps (missing hub.njk wrappers, Turtle-vs-N-Quads convention mismatches), and shallow-clone pushes hanging in boundary negotiation (fix: fetch --deepen, not retry loops) — plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twenty-three hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh), the node hub harness masking browser-only fn-surface gaps (missing hub.njk wrappers, Turtle-vs-N-Quads convention mismatches), shallow-clone pushes hanging in boundary negotiation (fix: fetch --deepen, not retry loops), and a serializer labelled "display, not wire" whose every consumer was a wire path (silent store data loss, #339/#443) — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
@@ -686,6 +686,33 @@ while a gate battery runs is enough contention to kill the battery. The
 previous gate passed the same suite cleanly. Stagger heavy work, or
 expect to re-run the gate.
 
+### Hazard #17 addendum — the same self-match DEADLOCKS a wait loop (2026-08-14)
+
+Hazard #17 was written about a check that reads RUNNING forever. The
+same bug in a *wait* loop is worse: it never returns at all.
+
+```bash
+# Waits forever. The loop's own shell command line contains
+# "build-ocaml.sh", so pgrep always finds it and the negation is
+# never true.
+until ! pgrep -f "build-ocaml.sh" > /dev/null; do sleep 20; done
+```
+
+Two such waiters were armed on 2026-08-14 during the #443 fix. Both hung,
+and the second one carried the follow-on `extract compile` in its `&&`
+chain, so the next build never started either — a silent stall, not an
+error. It surfaced only when `pgrep -af` was run with the full command
+lines visible and the waiters appeared in their own results.
+
+**Wait on a PID, not on a name.** `kill -0 <pid>` cannot match itself:
+
+```bash
+while kill -0 "$BUILD_PID" 2>/dev/null; do sleep 20; done
+```
+
+Better still for a long build: launch it with `run_in_background: true`
+so the harness reports its exit code, and do not write a waiter at all.
+
 ## Hazard #18 — the container can be recycled mid-session, and an uncommitted edit can silently un-happen
 
 Observed 2026-08-02. A source edit (`SPARQL11.Store.fst`, applied by a
@@ -985,3 +1012,49 @@ not the narration (that check is hazard #24's first rule).
 Corollary for the orchestrator: when a long-running agent's first push has
 not appeared, SendMessage it a direct "push what you have now" before its
 next build cycle, rather than waiting for its report.
+
+## Hazard #25 — a serializer labelled "display, not wire" whose every consumer is a wire path (2026-08-14)
+
+`RDF.Pretty.term_to_ntriples` rendered an N-Triples term without escaping
+the literal's lexical form. That was deliberate, documented in two module
+banners, and defended as a division of labour: RDF.NQuads.Serialize is the
+byte-correct wire serializer, RDF.Pretty is display.
+
+Nobody checked who was calling it. All three consumers were wire paths:
+
+| consumer | what it produces | consequence |
+|---|---|---|
+| `factoidal --dump` | N-Triples that tools re-read | our own parser rejected our own output (#339) |
+| COTTAS store object column | a cell re-parsed on read | `import` -> `query` DESTROYED every literal containing `"`, LF or `\` (#443) |
+| npm-entry jsoo store writer | same cell | same, in the browser build |
+
+The `--dump` half was found in July, filed as #339, pinned as an XFAIL,
+and read for two weeks as a cosmetic defect — "dump-nq and dump-turtle are
+correct; this is one function carrying a second, weaker notion". Correct
+as far as it went, and it stopped one call site short of the store. Three
+of six literal classes were being silently destroyed on the way to disk the
+whole time.
+
+Rules:
+
+1. **A "display-only" claim is a claim about consumers, so enumerate
+   them.** `grep` for every call site before accepting the label. In this
+   repo the ratio was three wire consumers to zero display consumers.
+2. **Two functions rendering the same syntax will diverge.** The fix was
+   to DELETE the second one, not to make it escape — making it escape
+   would have produced a byte-identical copy under a second name, which is
+   how the two drifted in the first place. One notion of how a literal is
+   written, in the module that holds the round-trip proofs.
+3. **A term-level round-trip theorem says nothing about which term
+   function a consumer picked.** `RDF.NTriples.RoundTrip.fst` was sound
+   throughout; it just did not cover the function the CLI called. Proof
+   coverage is a property of the wiring, not only of the statement — this
+   is the same trust-surface shape as the vacuity findings (#333, #429).
+4. **When triaging a known defect, ask what else calls the broken
+   function** before classifying it as cosmetic. #339's scope table listed
+   the other *serializers* and concluded "one function, not a systemic
+   gap". The missing column was the other *callers*.
+
+Standing pin: `tests/local/cli_literal_escape_roundtrip.sh` — six literal
+classes across the `--dump` and store paths, with an anti-vacuity arm that
+corrupts the dump the exact way the bug did and requires the pin to go red.

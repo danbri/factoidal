@@ -743,6 +743,24 @@ let rec mem_attr_name (name:string) (attrs:list xml_attribute) : Tot bool (decre
   | [] -> false
   | a :: rest -> if a.attr_name = name then true else mem_attr_name name rest
 
+// `parse_attributes` is a MARGINAL proof at the default rlimit. The
+// obligation that tipped over is trivial on paper -- the recursive call
+// passes `fuel - 1` under an `if fuel = 0 then ... else` guard, so
+// `fuel >= 1` and `fuel - 1 : nat{fuel - 1 << fuel}` -- but the query
+// carries this function's whole body (four nested `match`es over
+// parse_result, the attribute-uniqueness scan, entity expansion), and
+// at the default limit z3 gave up on it with
+//
+//   Error 19 at Parser.XML.fst(760,59-760,69):
+//     Subtyping check failed
+//     Expected type fuel: Prims.nat{fuel << fuel} got type Prims.int
+//
+// It verifies at 60. Found 2026-08-14 when a full `extract` went red on
+// this module with no change to it -- the proof had been sitting just
+// under the line and some upstream context growth tipped it. That is a
+// latent CI flake, not a real regression, and the scoped bump is the
+// fix rule #10 permits (no --lax, no --admit_smt_queries).
+#push-options "--z3rlimit 60"
 let rec parse_attributes (ents:dtd_entity_table) (input:string) (pos:nat) (fuel:nat)
   : Tot (parse_result (list xml_attribute)) (decreases fuel) =
   if fuel = 0 then ParseOk [] pos
@@ -775,6 +793,7 @@ let rec parse_attributes (ents:dtd_entity_table) (input:string) (pos:nat) (fuel:
         else ParseOk [] pos1
       | ParseFail _ _ ->
         ParseOk [] pos
+#pop-options
 
 
 (* ================================================================ *)

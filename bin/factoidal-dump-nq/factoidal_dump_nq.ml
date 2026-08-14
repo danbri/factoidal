@@ -72,22 +72,47 @@ let file_base_iri path =
    return `option` and actually signal failure. --strict routes
    through those same *_strict entry points so this tool's
    accept/reject verdict matches what the W3C conformance suite
-   actually grades. Only NT and Turtle have *_strict extracted today;
-   --strict on another format is a clear error, not a silent
-   lenient-mode fallback. *)
+   actually grades.
+
+   TriG/N-Quads/RDF-XML (2026-08-14, issue #317 harness extension):
+   Parser.TriG.fst's plain `parse_trig` / `parse_trig_with_base` were
+   ALREADY option-returning (fail on any parse error) — unlike
+   N-Triples/Turtle, TriG never grew a separate "_strict" name because
+   its lenient variant is the one with the "_lenient" suffix
+   (`parse_trig_lenient` / `parse_trig_with_base_lenient`). So --strict
+   for TriG below calls the un-suffixed entry point, not a "_strict"
+   one — same option-returning contract, different naming history.
+   N-Quads and RDF/XML DO have "_strict"-suffixed entry points
+   (`parse_nquads_strict`, `parse_rdfxml_strict` /
+   `parse_rdfxml_with_base_strict`), extracted and used exactly like
+   the NT/Turtle ones. All of these were already extracted from F* —
+   this file only adds the OCaml dispatch to call them (rule #11:
+   bin/ is a consumer tool, not inside the verified-library boundary,
+   so wiring already-extracted entry points here is not a spec gap). *)
 let load_dataset ?(format=None) ?(base=None) ?(strict=false) path =
   let content = read_file path in
   let fmt = match format with Some f -> f | None -> detect_format path in
   let base_iri = match base with Some b -> Some b | None -> file_base_iri path in
   match fmt with
   | NQuads ->
-    if strict then failwith "--strict is not implemented for N-Quads (only nt/turtle have extracted *_strict parsers)";
-    Parser_NQuads.parse_nquads content
+    if strict then
+      (match Parser_NQuads.parse_nquads_strict content with
+       | FStar_Pervasives_Native.Some ds -> ds
+       | FStar_Pervasives_Native.None -> failwith "strict N-Quads parse rejected this input")
+    else Parser_NQuads.parse_nquads content
   | TriG ->
-    if strict then failwith "--strict is not implemented for TriG (only nt/turtle have extracted *_strict parsers)";
-    (match base_iri with
-     | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
-     | None -> Parser_TriG.parse_trig_lenient content)
+    if strict then
+      (match
+         (match base_iri with
+          | Some b -> Parser_TriG.parse_trig_with_base content b
+          | None -> Parser_TriG.parse_trig content)
+       with
+       | FStar_Pervasives_Native.Some ds -> ds
+       | FStar_Pervasives_Native.None -> failwith "strict TriG parse rejected this input")
+    else
+      (match base_iri with
+       | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
+       | None -> Parser_TriG.parse_trig_lenient content)
   | JSONLD ->
     (* Context processing + document base threading per issue #275 —
        see formal/fstar/Parser.JSONLD.fst module banner. Remote
@@ -124,23 +149,129 @@ let load_dataset ?(format=None) ?(base=None) ?(strict=false) path =
            | Some b -> Parser_Turtle.parse_turtle_with_base content b
            | None -> Parser_Turtle.parse_turtle content)
       | RDFXML ->
-        if strict then failwith "--strict is not implemented for RDF/XML (only nt/turtle have extracted *_strict parsers)";
+        if strict then
+          (match
+             (match base_iri with
+              | Some b -> Parser_RDFXML.parse_rdfxml_with_base_strict b content
+              | None -> Parser_RDFXML.parse_rdfxml_strict content)
+           with
+           | FStar_Pervasives_Native.Some ts -> ts
+           | FStar_Pervasives_Native.None -> failwith "strict RDF/XML parse rejected this input")
+        else
         (match base_iri with
          | Some b -> Parser_RDFXML.parse_rdfxml_with_base b content
          | None -> Parser_RDFXML.parse_rdfxml content)
       | _ -> [] in
     RDF_Graph_Executable.({ ds_default = triples; ds_named = [] })
 
+(* --list-graph-keys / --extract-graph (2026-08-14, issue #317 harness
+   TriG/N-Quads extension): dataset-wise comparison helpers for
+   tests/unit/run-jena-diff.sh. Jena's rdfcompare only does graph
+   ISOMORPHISM, and only for single-graph formats (RDF/XML, N-TRIPLE,
+   TURTLE, JSON-LD) — it does not accept N-Quads/datasets (confirmed:
+   `rdfcompare --help` lists no NQUADS/TRIG). So a dataset comparison
+   is done PER GRAPH: split each side's N-Quads output into per-graph
+   N-Triples, then hand each matched pair to Jena's rdfcompare exactly
+   as the Turtle/N-Triples path already does. This keeps the same
+   independent-instrument property the original harness has — the
+   isomorphism JUDGMENT still comes from Jena's own tool, not ours.
+
+   Both subcommands below ALWAYS read the file as N-Quads (the common
+   interchange format both engines can emit), via the already-extracted
+   Parser_NQuads.parse_nquads_strict — no new parsing logic. Splitting
+   a parsed dataset by graph name is a plain field/list selection over
+   RDF_Graph.rdf_dataset's ds_default/ds_named (using the already-
+   extracted RDF_Graph.lookup_named_graph and
+   RDF_Canonical.is_bnode_graph_label), not RDF semantics — no
+   entailment, no equality judgment; the isomorphism judgment stays
+   with rdfcompare.
+
+   Graph-name KEYS:
+     "DEFAULT"    the default graph.
+     "<...>"      an IRI-named graph, keyed by its exact IRI text —
+                  IRIs are not blank-node-renamed, so this string
+                  matches across engines directly.
+     "ANON_POOL"  KNOWN LIMITATION: TriG allows a BLANK NODE as a
+                  graph name (`_:g { ... }` or `[] { ... }`), and each
+                  engine assigns that graph's blank-node label
+                  independently — so, unlike triple-level blank nodes
+                  (handled correctly by rdfcompare's isomorphism
+                  check), two blank-node-named GRAPHS cannot be
+                  string-matched across engines. This tool pools ALL
+                  blank-node-named graphs' triples into one bucket per
+                  side and compares the pooled bag. That can miss a
+                  disagreement where content is swapped between two
+                  distinct anonymous graphs while the pooled union
+                  stays isomorphic. Only 3 of 357 vendored rdf-trig
+                  files use a blank-node graph name
+                  (alternating_bnode_graphs.trig,
+                  labeled_blank_node_graph.trig,
+                  trig-syntax-minimal-whitespace-01.trig) — documented
+                  here and in run-jena-diff.sh rather than silently
+                  assumed away. *)
+let load_nquads_dataset path =
+  let content = read_file path in
+  match Parser_NQuads.parse_nquads_strict content with
+  | FStar_Pervasives_Native.Some ds -> ds
+  | FStar_Pervasives_Native.None ->
+    failwith ("--list-graph-keys/--extract-graph: strict N-Quads parse rejected " ^ path)
+
+let is_anon_graph (ng : RDF_Graph_Executable.named_graph) =
+  RDF_Canonical.is_bnode_graph_label ng.RDF_Graph_Executable.ng_name
+
+let list_graph_keys path =
+  let ds = load_nquads_dataset path in
+  let keys = ref [] in
+  if ds.RDF_Graph_Executable.ds_default <> [] then keys := "DEFAULT" :: !keys;
+  let has_anon = List.exists is_anon_graph ds.RDF_Graph_Executable.ds_named in
+  if has_anon then keys := "ANON_POOL" :: !keys;
+  List.iter (fun ng ->
+    if not (is_anon_graph ng) then
+      keys := ("<" ^ ng.RDF_Graph_Executable.ng_name ^ ">") :: !keys)
+    ds.RDF_Graph_Executable.ds_named;
+  List.iter print_endline (List.sort_uniq compare !keys)
+
+let strip_angle_brackets s =
+  let n = String.length s in
+  if n >= 2 && s.[0] = '<' && s.[n-1] = '>' then String.sub s 1 (n - 2) else s
+
+let extract_graph key path =
+  let ds = load_nquads_dataset path in
+  let triples =
+    if key = "DEFAULT" then ds.RDF_Graph_Executable.ds_default
+    else if key = "ANON_POOL" then
+      List.concat_map (fun ng -> ng.RDF_Graph_Executable.ng_graph)
+        (List.filter is_anon_graph ds.RDF_Graph_Executable.ds_named)
+    else
+      let iri = strip_angle_brackets key in
+      (match RDF_Graph_Executable.lookup_named_graph iri ds.RDF_Graph_Executable.ds_named with
+       | FStar_Pervasives_Native.Some g -> g
+       | FStar_Pervasives_Native.None -> failwith ("--extract-graph: no such graph key " ^ key ^ " in " ^ path))
+  in
+  print_string (RDF_Canonical.canonical_nquads
+    RDF_Graph_Executable.({ ds_default = triples; ds_named = [] }))
+
 let usage () =
   Printf.eprintf
-    "Usage: factoidal-dump-nq [--format nt|turtle|nq|trig|rdfxml|jsonld] [--strict] FILE\n\n\
+    "Usage: factoidal-dump-nq [--format nt|turtle|nq|trig|rdfxml|jsonld] [--strict] FILE\n\
+    \       factoidal-dump-nq --list-graph-keys FILE\n\
+    \       factoidal-dump-nq --extract-graph KEY FILE\n\n\
      Parse RDF with Factoidal's extracted parser stack and emit canonical N-Quads.\n\
-     --strict uses the *_strict parser entry points (nt/turtle only) so a\n\
-     spec-invalid input FAILS instead of silently parsing to zero triples —\n\
-     use this when comparing accept/reject verdicts against another engine.\n";
+     --strict uses the option-returning parser entry points (nt, turtle, nq,\n\
+     trig, rdfxml) so a spec-invalid input FAILS instead of silently parsing\n\
+     to zero triples — use this when comparing accept/reject verdicts against\n\
+     another engine. jsonld has no strict/lenient split (parse_jsonld already\n\
+     fails on invalid input), so --strict is a no-op there.\n\n\
+     --list-graph-keys / --extract-graph read FILE as N-Quads (always) and\n\
+     support tests/unit/run-jena-diff.sh's dataset-wise TriG/N-Quads\n\
+     comparison — see the comment above load_nquads_dataset in this file.\n";
   exit 2
 
 let () =
+  (match Array.to_list Sys.argv with
+   | _ :: "--list-graph-keys" :: [path] -> list_graph_keys path; exit 0
+   | _ :: "--extract-graph" :: [key; path] -> extract_graph key path; exit 0
+   | _ -> ());
   let format = ref None in
   let input = ref None in
   let strict = ref false in

@@ -8,12 +8,20 @@ module RDF.NQuads.Serialize
 // N-Quads serialization rules from the W3C spec; per Iron Rule #1
 // they belong in F*.
 //
-// This is the *byte-correct* serializer (escapes \" and control
-// characters in literals). The Turtle-style abbreviated rendering
-// for human-facing output lives in RDF.Pretty.fst; that file has
-// `term_to_ntriples` which is intentionally lossy on literal
-// escaping (it's for display, not wire). Both functions exist
-// because the call sites have different correctness requirements.
+// This is the ONLY N-Triples / N-Quads term renderer in the tree,
+// and it is byte-correct (it escapes \" and control characters in
+// literals). The Turtle-style ABBREVIATED rendering for human-facing
+// output lives in RDF.Pretty.fst, but that file no longer carries an
+// N-Triples renderer of its own.
+//
+// It used to. `RDF.Pretty.term_to_ntriples` wrote lexical forms
+// verbatim and was justified as "display, not wire" -- while every
+// consumer of it was a wire path. That cost issues #339 (our own
+// parser could not read our own `--dump` output) and #443 (an
+// import -> query round trip DESTROYED any literal containing a
+// quote, a newline or a backslash, because the COTTAS object cell
+// no longer re-parsed). Deleted 2026-08-14; a serializer whose
+// output is re-parsed belongs here, next to the round-trip proofs.
 
 open RDF.Graph.Executable
 open Parser.FastString

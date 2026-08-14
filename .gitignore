@@ -95,3 +95,8 @@ third_party/jsonld-context-cache/.index.lock
 # tools/install-jena-for-diff-testing.sh; not committed (24MB+ third-
 # party binary, versioned independently of this repo).
 /.jena-cache/
+
+# Jena differential harness (issue #317) downloads its reference engine
+# here. It is a 22MB third-party distribution fetched by
+# tools/install-jena-for-diff-testing.sh, not repo content.
+.jena-cache/

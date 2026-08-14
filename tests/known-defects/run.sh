@@ -225,28 +225,66 @@ else
 fi
 
 # ---------------------------------------------------------------------
-# NT-ESC (#339) -- RDF.Pretty.term_to_ntriples escapes NOTHING, so the
-# `dump` verb emits invalid N-Triples for any literal containing a quote,
-# backslash, newline, CR or tab. Decisive form: our own parser cannot read
-# our own output back. dump-nq and dump-turtle are correct; this is one
-# function carrying a second, weaker notion of how a literal is written.
+# NT-ESC (#339) is RETIRED, not removed silently.
+#
+# It recorded that `RDF.Pretty.term_to_ntriples` escaped nothing, so the
+# `dump` verb emitted N-Triples our own parser rejected. Fixed 2026-08-14
+# together with issue #443, which found the same function feeding the
+# COTTAS store's object column -- so the defect was not display-only: an
+# import -> query round trip destroyed every literal containing a quote,
+# a newline or a backslash.
+#
+# The function was deleted rather than patched (a second name for the
+# same rendering is what let the two drift), and the standing pin moved
+# to tests/local/cli_literal_escape_roundtrip.sh, which covers six
+# literal classes on both the `--dump` and the store paths and carries
+# an anti-vacuity arm. This file is for defects that still reproduce;
+# a fixed one belongs in a regression pin, not here.
 # ---------------------------------------------------------------------
-cat > "${WORKDIR}/nt.ttl" <<'EOF'
-@prefix : <http://ex.org/> .
-:s :p "q\"z\nw" .
+
+# ---------------------------------------------------------------------
+# UTF8-STORE (#445) -- the COTTAS store encodes tokens as Latin-1 with
+# codepoints >= 256 clamped to NUL (RDF.Bytes.bytes_of_string uses
+# String.list_of_string, which yields CODEPOINTS, and int_of_byte zeroes
+# anything above 255). So `import` -> `query` corrupts every non-ASCII
+# literal: "café" comes back mojibake, CJK and emoji come back destroyed.
+# Parsing and the in-memory path are both correct -- --dump and --dump-nq
+# emit proper UTF-8 -- so this is the storage byte layer alone.
+#
+# Decisive form: import a CJK literal and require the SAME string back.
+# Read through -o json, never the result table: the table is a
+# human-facing rendering and says nothing about what was stored.
+# ---------------------------------------------------------------------
+cat > "${WORKDIR}/utf8.nq" <<'EOF'
+<http://e/cjk> <http://e/p> "日本語" .
 EOF
-"$BIN" dump "${WORKDIR}/nt.ttl" > "${WORKDIR}/nt.out" 2>/dev/null
-NT_LINES=$(grep -c . "${WORKDIR}/nt.out" 2>/dev/null || echo 0)
-NT_RT=$("$BIN" count "${WORKDIR}/nt.out" 2>&1)
-if [ "${NT_LINES:-0}" -gt 1 ] || echo "$NT_RT" | grep -q "zero triples"; then
-  record NT-ESC 339 "dump emits unescaped literals (invalid N-Triples)" XFAIL \
-    "one triple written as ${NT_LINES} lines; own parser rejects the output"
-elif [ "${NT_LINES:-0}" = "1" ]; then
-  record NT-ESC 339 "dump emits unescaped literals (invalid N-Triples)" XPASS \
-    "one line and it round-trips -- defect appears FIXED"
+"$BIN" import --nq "${WORKDIR}/utf8.nq" --out "${WORKDIR}/utf8store" >/dev/null 2>&1
+U8_RC=$?
+if [ "${U8_RC}" -ne 0 ]; then
+  record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" ERROR \
+    "import exited ${U8_RC}"
 else
-  record NT-ESC 339 "dump emits unescaped literals (invalid N-Triples)" ERROR \
-    "dump produced no output"
+  "$BIN" query --data-cottas "${WORKDIR}/utf8store/data.cottas" -o json \
+    -e 'SELECT ?o WHERE { <http://e/cjk> <http://e/p> ?o }' \
+    > "${WORKDIR}/utf8.json" 2>/dev/null
+  U8_GOT=$(python3 -c "
+import json,sys
+try:
+    rows = json.load(open('${WORKDIR}/utf8.json'))['results']['bindings']
+    print(rows[0]['o']['value'] if rows else '')
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [ "${U8_GOT}" = "日本語" ]; then
+    record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" XPASS \
+      "CJK literal round-trips intact -- defect appears FIXED"
+  elif [ -z "${U8_GOT}" ]; then
+    record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" ERROR \
+      "query returned no binding for the CJK literal"
+  else
+    record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" XFAIL \
+      "stored 3-char CJK literal came back as $(printf '%q' "${U8_GOT}")"
+  fi
 fi
 
 # ---------------------------------------------------------------------

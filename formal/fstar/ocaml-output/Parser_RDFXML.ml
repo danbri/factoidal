@@ -550,7 +550,10 @@ let render_ns_decls (ns : (Prims.string * Prims.string) Prims.list) :
       (fun pu ->
          let uu___ = pu in
          match uu___ with
-         | (p, u) -> FStar_String.concat "" [" xmlns:"; p; "=\""; u; "\""])
+         | (p, u) ->
+             if p = ""
+             then FStar_String.concat "" [" xmlns=\""; u; "\""]
+             else FStar_String.concat "" [" xmlns:"; p; "=\""; u; "\""])
       in_source_order in
   FStar_String.concat "" parts
 let rec serialize_xml_node_c14n (node : Parser_XML.xml_node)

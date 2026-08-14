@@ -230,7 +230,11 @@ let parse_endpoint_url (url : string) : string * int * string =
    RDF_Pretty.ml). The aliases below preserve the legacy names so
    the rest of this file (output formatters, dump-nq, etc.) compiles
    unchanged. *)
-let term_to_ntriples t = RDF_Pretty.term_to_ntriples t
+(* No `term_to_ntriples` alias here any more (issue #443). Every call
+   site in this file was a WIRE format -- `--dump` output and the COTTAS
+   object column -- and both now use RDF_NQuads_Serialize, which escapes
+   literals. Keeping the alias invited the next wire-format call site to
+   pick the display serializer again. *)
 let term_to_turtle   t = RDF_Pretty.term_to_turtle   t
 let subject_to_string s = RDF_Pretty.subject_to_turtle s
 
@@ -885,14 +889,22 @@ let print_results_json vars rows =
   Printf.printf "  }\n";
   Printf.printf "}\n"
 
+(* `--dump` output is a WIRE format: downstream tools (including our own
+   parsers and tools/negative-test-vacuity.py) re-read it as N-Triples.
+   So it must use RDF.NQuads.Serialize -- the byte-correct serializer that
+   escapes \\, ", \n, \r, \t in a literal's lexical form -- and NOT
+   RDF.Pretty.term_to_ntriples, which is the DISPLAY serializer and is
+   documented as intentionally lossy on literal escaping
+   (RDF.NQuads.Serialize.fst:11-16).
+
+   Issue #443: this call site used the display serializer, so a literal
+   containing a quote came out as `"has " quote"` and one containing a
+   newline was split across two lines -- output no N-Triples parser can
+   read back. Escaping is a no-op on literals with no special byte, so
+   output for every other graph is byte-identical to before. *)
 let print_results_ntriples triples =
   List.iter (fun t ->
-    let s = match t.s with
-      | S_IRI i -> Printf.sprintf "<%s>" i
-      | S_BNode b -> Printf.sprintf "_:%s" b in
-    let p = Printf.sprintf "<%s>" t.p in
-    let o = term_to_ntriples t.o in
-    Printf.printf "%s %s %s .\n" s p o
+    print_string (RDF_NQuads_Serialize.nq_line_for_triple_default_graph t)
   ) triples
 
 (* ============================================================================
@@ -1532,16 +1544,24 @@ let rm_rf path =
    ---------------------------------------------------------------------- *)
 
 let subject_to_cottas_string (s : RDF_Graph_Executable.subject) : string =
-  match s with
-  | S_IRI i -> Printf.sprintf "<%s>" i
-  | S_BNode b -> Printf.sprintf "_:%s" b
+  RDF_NQuads_Serialize.nq_subject_to_string s
 
+(* The COTTAS object column holds an N-Triples TERM, re-parsed on read.
+   It is therefore a wire format and needs the byte-correct serializer,
+   not RDF.Pretty.term_to_ntriples (display; lossy on escaping).
+
+   Issue #443: with the display serializer, `import` stored a literal
+   containing a quote, a newline or a backslash raw, and `query` then
+   decoded it as `_:cottas_decode_oor` -- the literal was destroyed by
+   an import -> query round trip. Escaping is a no-op on literals with
+   no special byte, so every store without such a literal is written
+   byte-identically to before. *)
 let cottas_quad_of_triple_graph
     (t : RDF_Graph_Executable.triple) (g : string option)
     : RDF_CottasStore_BaseWriter.cottas_quad =
   { RDF_CottasStore_BaseWriter.cq_s = subject_to_cottas_string t.s;
     RDF_CottasStore_BaseWriter.cq_p = Printf.sprintf "<%s>" t.p;
-    RDF_CottasStore_BaseWriter.cq_o = term_to_ntriples t.o;
+    RDF_CottasStore_BaseWriter.cq_o = RDF_NQuads_Serialize.nq_term_to_string t.o;
     RDF_CottasStore_BaseWriter.cq_g =
       (match g with Some iri -> Printf.sprintf "<%s>" iri | None -> "DEFAULT") }
 
@@ -1818,9 +1838,12 @@ let run_compact (args : string list) : unit =
      - Parsing: Parser_NQuads.fold_nquads (an EXTRACTED F* parser --
        Iron Rule #4). No hand-written tokenizer.
      - Term -> COTTAS-column-string rendering (subject_to_cottas_string /
-       RDF_Pretty.term_to_ntriples): reuses the SAME N-Triples token
-       rendering `print_results_ntriples` already uses elsewhere in this
-       file, not a new serializer. The default graph gets the literal
+       RDF_NQuads_Serialize.nq_term_to_string): reuses the SAME extracted
+       F* N-Triples serializer `print_results_ntriples` uses elsewhere in
+       this file, not a new one. (Both used RDF_Pretty.term_to_ntriples
+       until issue #443 -- that is the DISPLAY serializer and does not
+       escape literals, so it corrupted the store.) The default graph
+       gets the literal
        sentinel "DEFAULT", matching cottas_ondisk_runtime.sh's
        collect_distinct_graph convention (never NULL, never "").
      - Sort order: (s,p,o,g) lexicographic via OCaml's polymorphic

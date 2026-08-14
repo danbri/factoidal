@@ -22,7 +22,7 @@
   [22/39] rdf-mt/rdfs-container-membership-superProperty-test001 ok
   [23/39] rdf-mt/rdfs-domain-and-range-intensionality-range ok
   [24/39] rdf-mt/rdfs-domain-and-range-intensionality-domain ok
-  [25/39] rdf-mt/rdfs-entailment-test001 ok
+  [25/39] rdf-mt/rdfs-entailment-test001 unsup
   [26/39] rdf-mt/rdfs-entailment-test002 ok
   [27/39] rdf-mt/rdfs-no-cycles-in-subClassOf-test001 ok
   [28/39] rdf-mt/rdfs-no-cycles-in-subPropertyOf-test001 ok
@@ -1058,7 +1058,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: rdfs-container-membership-superProperty-test001
   PASS: rdfs-domain-and-range-intensionality-range
   PASS: rdfs-domain-and-range-intensionality-domain
-  PASS: rdfs-entailment-test001
+  unsup: rdfs-entailment-test001 — rdf:XMLLiteral well-formedness detection not implemented (RDF 1.1 sec 5.1: XMLLiteral support is optional)
   PASS: rdfs-entailment-test002
   PASS: rdfs-no-cycles-in-subClassOf-test001
   PASS: rdfs-no-cycles-in-subPropertyOf-test001
@@ -1911,7 +1911,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.2s]
+  [suite time: 0.3s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001
@@ -2084,21 +2084,21 @@ Test base: third_party/testing/w3c/rdf/rdf11
 
 ========================================
 Suite Results:
-  rdf-mt                              pass:39 fail:0 skip:0 unsupported:0
+  rdf-mt                              pass:38 fail:0 skip:0 unsupported:1
   rdf-n-quads                         pass:87 fail:0 skip:0 unsupported:0
   rdf-n-triples                       pass:70 fail:0 skip:0 unsupported:0
   rdf-trig                            pass:356 fail:0 skip:0 unsupported:0
   rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
   rdf-xml                             pass:166 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 1031 pass, 0 fail, 0 skip, 0 unsupported
+TOTAL: 1030 pass, 0 fail, 0 skip, 1 unsupported
 ========================================
 
 Harness Diagnostics (escape branches, #316):
-HARNESS-DIAG rdf-mt                         budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
+HARNESS-DIAG rdf-mt                         budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:1
 HARNESS-DIAG rdf-n-quads                    budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
 HARNESS-DIAG rdf-n-triples                  budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
 HARNESS-DIAG rdf-trig                       budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
 HARNESS-DIAG rdf-turtle                     budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
 HARNESS-DIAG rdf-xml                        budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0
-HARNESS-DIAG-TOTAL budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:0 discovered_tests:1031
+HARNESS-DIAG-TOTAL budget_exceeded:0 gsp_seed:0 no_manifest:0 zero_tests:0 skip:0 unsupported:1 discovered_tests:1031
