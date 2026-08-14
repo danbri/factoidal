@@ -1565,29 +1565,68 @@ let __proj__ER_Dbl__item___0 (projectee : eval_result) : Prims.string=
   match projectee with | ER_Dbl _0 -> _0
 let uu___is_ER_Error (projectee : eval_result) : Prims.bool=
   match projectee with | ER_Error -> true | uu___ -> false
-let ebv (v : eval_result) : Prims.bool=
+let ebv_checked (v : eval_result) :
+  Prims.bool FStar_Pervasives_Native.option=
   match v with
-  | ER_Bool b -> b
-  | ER_Num n -> n <> Prims.int_zero
-  | ER_Dec s -> ((s <> "0") && (s <> "0.0")) && (s <> "")
-  | ER_Dbl s -> (((s <> "0") && (s <> "0.0")) && (s <> "NaN")) && (s <> "")
+  | ER_Bool b -> FStar_Pervasives_Native.Some b
+  | ER_Num n -> FStar_Pervasives_Native.Some (n <> Prims.int_zero)
+  | ER_Dec s ->
+      FStar_Pervasives_Native.Some
+        (((s <> "0") && (s <> "0.0")) && (s <> ""))
+  | ER_Dbl s ->
+      FStar_Pervasives_Native.Some
+        ((((s <> "0") && (s <> "0.0")) && (s <> "NaN")) && (s <> ""))
   | ER_Term (RDF_Term.T_Literal l) ->
       if (lit_datatype l) = RDF_Term.xsd_boolean
-      then ((lit_lexical l) = "true") || ((lit_lexical l) = "1")
+      then
+        FStar_Pervasives_Native.Some
+          (((lit_lexical l) = "true") || ((lit_lexical l) = "1"))
       else
         if (lit_datatype l) = RDF_Term.xsd_string
-        then (FStar_String.strlen (lit_lexical l)) > Prims.int_zero
+        then
+          FStar_Pervasives_Native.Some
+            ((FStar_String.strlen (lit_lexical l)) > Prims.int_zero)
         else
-          if (lit_datatype l) = rdf_langString
-          then (FStar_String.strlen (lit_lexical l)) > Prims.int_zero
-          else
-            if is_numeric_datatype (lit_datatype l)
-            then
-              (((lit_lexical l) <> "0") && ((lit_lexical l) <> "0.0")) &&
-                ((lit_lexical l) <> "")
-            else false
-  | ER_Term uu___ -> false
-  | ER_Error -> false
+          if is_numeric_datatype (lit_datatype l)
+          then
+            FStar_Pervasives_Native.Some
+              ((((lit_lexical l) <> "0") && ((lit_lexical l) <> "0.0")) &&
+                 ((lit_lexical l) <> ""))
+          else FStar_Pervasives_Native.None
+  | ER_Term uu___ -> FStar_Pervasives_Native.None
+  | ER_Error -> FStar_Pervasives_Native.None
+let ebv (v : eval_result) : Prims.bool=
+  match ebv_checked v with
+  | FStar_Pervasives_Native.Some b -> b
+  | FStar_Pervasives_Native.None -> false
+let bool_and_checked (a : Prims.bool FStar_Pervasives_Native.option)
+  (b : Prims.bool FStar_Pervasives_Native.option) :
+  Prims.bool FStar_Pervasives_Native.option=
+  match (a, b) with
+  | (FStar_Pervasives_Native.Some false, uu___) ->
+      FStar_Pervasives_Native.Some false
+  | (uu___, FStar_Pervasives_Native.Some false) ->
+      FStar_Pervasives_Native.Some false
+  | (FStar_Pervasives_Native.Some true, FStar_Pervasives_Native.Some true) ->
+      FStar_Pervasives_Native.Some true
+  | (uu___, uu___1) -> FStar_Pervasives_Native.None
+let bool_or_checked (a : Prims.bool FStar_Pervasives_Native.option)
+  (b : Prims.bool FStar_Pervasives_Native.option) :
+  Prims.bool FStar_Pervasives_Native.option=
+  match (a, b) with
+  | (FStar_Pervasives_Native.Some true, uu___) ->
+      FStar_Pervasives_Native.Some true
+  | (uu___, FStar_Pervasives_Native.Some true) ->
+      FStar_Pervasives_Native.Some true
+  | (FStar_Pervasives_Native.Some false, FStar_Pervasives_Native.Some false)
+      -> FStar_Pervasives_Native.Some false
+  | (uu___, uu___1) -> FStar_Pervasives_Native.None
+let bool_not_checked (a : Prims.bool FStar_Pervasives_Native.option) :
+  Prims.bool FStar_Pervasives_Native.option=
+  match a with
+  | FStar_Pervasives_Native.Some b ->
+      FStar_Pervasives_Native.Some (Prims.op_Negation b)
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
 let er_to_term (v : eval_result) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match v with
@@ -5028,15 +5067,22 @@ let rec eval_expr_with_base
        | FStar_Pervasives_Native.Some b -> ER_Bool b
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_And (e1, e2) ->
-      ER_Bool
-        ((ebv (eval_expr_with_base base e1 mu)) &&
-           (ebv (eval_expr_with_base base e2 mu)))
+      (match bool_and_checked (ebv_checked (eval_expr_with_base base e1 mu))
+               (ebv_checked (eval_expr_with_base base e2 mu))
+       with
+       | FStar_Pervasives_Native.Some b -> ER_Bool b
+       | FStar_Pervasives_Native.None -> ER_Error)
   | E_Or (e1, e2) ->
-      ER_Bool
-        ((ebv (eval_expr_with_base base e1 mu)) ||
-           (ebv (eval_expr_with_base base e2 mu)))
+      (match bool_or_checked (ebv_checked (eval_expr_with_base base e1 mu))
+               (ebv_checked (eval_expr_with_base base e2 mu))
+       with
+       | FStar_Pervasives_Native.Some b -> ER_Bool b
+       | FStar_Pervasives_Native.None -> ER_Error)
   | E_Not e1 ->
-      ER_Bool (Prims.op_Negation (ebv (eval_expr_with_base base e1 mu)))
+      (match bool_not_checked (ebv_checked (eval_expr_with_base base e1 mu))
+       with
+       | FStar_Pervasives_Native.Some b -> ER_Bool b
+       | FStar_Pervasives_Native.None -> ER_Error)
   | E_IsIRI e1 -> fn_isIRI (eval_expr_with_base base e1 mu)
   | E_IsBlank e1 -> fn_isBlank (eval_expr_with_base base e1 mu)
   | E_IsLiteral e1 -> fn_isLiteral (eval_expr_with_base base e1 mu)
