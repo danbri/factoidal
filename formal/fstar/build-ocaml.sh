@@ -506,6 +506,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.Plan.Loader.fst
     SPARQL.Plan.AccessPath.fst
     RDF.CottasStore.fst
+    RDF.CottasStore.PageCache.Bounds.fst
     RDF.CottasStore.OnDiskRuntime.fst
     RDF.Store.Columnar.DeltaMerge.fst
     RDF.Store.Capabilities.fst RDF.Store.Capabilities.Cottas.fst RDF.Store.Capabilities.Delta.fst
