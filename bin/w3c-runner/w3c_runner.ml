@@ -277,6 +277,12 @@ type test_case = {
      Protocol/GSP dispatchers can parse it. None for non-protocol
      tests. *)
   protocol_comment : string option;
+  (* rdf-mt PositiveEntailmentTest/NegativeEntailmentTest only:
+     mf:recognizedDatatypes, the list of datatype IRIs the test
+     configures the implementation to recognize (issue #333). Empty
+     list for every other test type, and for rdf-mt entries that omit
+     the triple or spell it "( )". *)
+  recognized_datatypes : string list;
 }
 
 let mf_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#"
@@ -296,6 +302,37 @@ let find_objects graph subj pred =
       | _ -> false in
     if s_match && t.p = pred then Some t.o else None
   ) graph
+
+(* Walk an rdf:List of IRIs (rdf:first/rdf:rest) rooted at `node`,
+   returning the IRIs in list order. `node` may also directly be
+   rdf:nil (the empty-list encoding "( )" that mf:recognizedDatatypes
+   / mf:unrecognizedDatatypes use for "no datatypes"). Glue only (rule
+   #15) -- mirrors the inline sd:entailmentRegime list-walk above;
+   factored out so mf:recognizedDatatypes can reuse it. *)
+let rec walk_iri_rdf_list graph (node : subject) acc =
+  let firsts = find_objects graph node rdf_first in
+  let rests = find_objects graph node rdf_rest in
+  let acc = match firsts with
+    | T_IRI i :: _ -> i :: acc
+    | _ -> acc in
+  match rests with
+  | T_IRI i :: _ when i = rdf_nil -> List.rev acc
+  | (T_BNode _ as next) :: _ ->
+    let next_subj = match next with T_BNode b -> S_BNode b | T_IRI i -> S_IRI i | _ -> S_IRI "" in
+    walk_iri_rdf_list graph next_subj acc
+  | _ -> List.rev acc
+
+(* mf:recognizedDatatypes ( xsd:integer xsd:string ) -- the object is
+   either the IRI rdf:nil directly ("( )", empty list) or a blank node
+   heading an rdf:List. Returns []  for both "no recognizedDatatypes
+   triple at all" and "recognizedDatatypes ( )". *)
+let extract_iri_list graph subj pred =
+  match find_objects graph subj pred with
+  | T_IRI i :: _ when i = rdf_nil -> []
+  | (T_BNode _ as node) :: _ ->
+    let node_subj = match node with T_BNode b -> S_BNode b | _ -> S_IRI "" in
+    walk_iri_rdf_list graph node_subj []
+  | _ -> []
 
 let rec term_to_str = function
   | T_IRI i -> i
@@ -543,10 +580,12 @@ let extract_test_cases manifest_dir graph =
       | T_Literal l :: _ when l.lexical_form <> "" -> Some l.lexical_form
       | _ -> None in
 
+    let recognized_datatypes = extract_iri_list graph entry_subj (mf_ns ^ "recognizedDatatypes") in
+
     Some { name; test_type; test_type_detail; query_file;
            data_files; named_data_files; result_file; manifest_dir;
            update_result_default_files; update_result_named_files;
-           service_data; protocol_comment }
+           service_data; protocol_comment; recognized_datatypes }
   ) entry_nodes
 
 (* Extract mf:assumedTestBase from manifest graph, if present *)
@@ -2772,9 +2811,31 @@ let run_rdf_test assumed_base tc =
     (match read_file tc.query_file, tc.result_file with
      | None, _ -> Skip "Action file missing"
      | _, None ->
-       (* Some positive entailment tests have mf:result false — meaning
-          the action does NOT lead to inconsistency *)
-       Pass
+       (* mf:result false on a PositiveEntailmentTest (issue #333): per
+          the rdf-mt README, the implementation must show the action
+          graph entails an inconsistent graph, or is inconsistent
+          outright — evaluated via the F*-extracted D-inconsistency
+          detector (RDF.Entailment.RDFS.DatatypeClash.fst) rather than
+          returned as a Pass no entailment function ever ran. *)
+       (match read_file tc.query_file with
+        | None -> Skip "Action file missing"
+        | Some action_content ->
+          (try
+             let action_triples = load_triples_from_content tc.query_file action_content in
+             let regime = tc.test_type_detail in
+             let closed_action = apply_entailment_regime regime action_triples in
+             let recognized = tc.recognized_datatypes in
+             if RDF_Entailment_RDFS_DatatypeClash.rdfs_d_inconsistent closed_action recognized
+             then Pass
+             else if List.mem "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral" recognized
+             then Unsupported_feature
+                    "rdf:XMLLiteral well-formedness detection not implemented \
+                     (RDF 1.1 sec 5.1: XMLLiteral support is optional)"
+             else Fail (Printf.sprintf
+                          "Expected inconsistency (mf:result false) but the D-inconsistency \
+                           detector found none (recognizedDatatypes: %s)"
+                          (String.concat ", " recognized))
+           with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e))))
      | Some action_content, Some rf ->
        (try
           let action_triples = load_triples_from_content tc.query_file action_content in
@@ -2795,12 +2856,22 @@ let run_rdf_test assumed_base tc =
   | "NegativeEntailmentTest" ->
     (match tc.result_file with
      | None ->
-       (* mf:result false — the action should not lead to inconsistency.
-          For now, just check action parses. *)
+       (* mf:result false on a NegativeEntailmentTest (issue #333): the
+          action graph must be shown CONSISTENT — evaluated via the
+          same D-inconsistency detector as the Positive case above,
+          not a parse-and-shrug. *)
        (match read_file tc.query_file with
         | None -> Skip "Action file missing"
         | Some content ->
-          (try ignore (load_triples_from_content tc.query_file content); Pass
+          (try
+             let action_triples = load_triples_from_content tc.query_file content in
+             let regime = tc.test_type_detail in
+             let closed_action = apply_entailment_regime regime action_triples in
+             let recognized = tc.recognized_datatypes in
+             if RDF_Entailment_RDFS_DatatypeClash.rdfs_d_inconsistent closed_action recognized
+             then Fail "Detector found a D-inconsistency but the test expects the action graph \
+                        to be consistent (mf:result false on a NegativeEntailmentTest)"
+             else Pass
            with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e))))
      | Some rf ->
        (match read_file tc.query_file with
