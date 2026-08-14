@@ -539,9 +539,26 @@ let render_ns_decls (ns : list (string * string)) : string =
      to tail (outermost). extract_namespaces prepends, so source order is
      REVERSED within each scope. To emit source order, reverse the result. *)
   let in_source_order = reverse_list filtered in
+  (* Issue #446: the DEFAULT namespace has the empty prefix, and it is
+     written `xmlns="..."` with NO colon. Emitting the prefixed form
+     unconditionally produced `xmlns:="..."`, which is not a legal XML
+     attribute name -- so any XML Literal under an unprefixed namespace
+     declaration serialized to XML that no parser can read.
+
+     Found by the Jena differential harness (#317) once it covered
+     RDF/XML: our output and Jena's disagreed on
+     rdfms-xml-literal-namespaces/test001+002. Those two files are
+     commented out of the vendored manifest (upstream withdrew them as
+     "implementation dependent"), so the graded RDF/XML suite never
+     reached this and never will -- the defect is real for any
+     real-world input with a default namespace in scope of an
+     rdf:parseType="Literal", regardless of that policy question.
+     dedup_ns / filter_c14n_ns keep treating "" as an ordinary prefix
+     key; only this render step needs the case split. *)
   let parts = List.Tot.map (fun (pu : string * string) ->
     let (p, u) = pu in
-    String.concat "" [" xmlns:"; p; "=\""; u; "\""]) in_source_order in
+    if p = "" then String.concat "" [" xmlns=\""; u; "\""]
+    else String.concat "" [" xmlns:"; p; "=\""; u; "\""]) in_source_order in
   String.concat "" parts
 
 let rec serialize_xml_node_c14n (node : xml_node) (ns_decls : string)
