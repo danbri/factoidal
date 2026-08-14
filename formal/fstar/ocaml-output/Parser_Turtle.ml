@@ -1097,6 +1097,30 @@ let parse_base_directive (st : turtle_state) (input : Prims.string)
 let is_digit_char (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
+let is_valid_exponent_at (input : Prims.string) (p : Prims.nat)
+  (len : Prims.nat) : Prims.bool=
+  if p >= len
+  then false
+  else
+    (let c = Parser_FastString.fs_byte_index input p in
+     let cd = FStar_Char.int_of_char c in
+     if
+       Prims.op_Negation
+         ((cd = (Prims.of_int (0x65))) || (cd = (Prims.of_int (0x45))))
+     then false
+     else
+       if (p + Prims.int_one) >= len
+       then false
+       else
+         (let c1 = Parser_FastString.fs_byte_index input (p + Prims.int_one) in
+          let cd1 = FStar_Char.int_of_char c1 in
+          if (cd1 = (Prims.of_int (0x2B))) || (cd1 = (Prims.of_int (0x2D)))
+          then
+            ((p + (Prims.of_int (2))) < len) &&
+              (is_digit_char
+                 (Parser_FastString.fs_byte_index input
+                    (p + (Prims.of_int (2)))))
+          else is_digit_char c1))
 let parse_numeric_literal (input : Prims.string) (pos : Prims.nat) :
   (Prims.string * RDF_Term.wf_iri) Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
@@ -1142,7 +1166,12 @@ let parse_numeric_literal (input : Prims.string) (pos : Prims.nat) :
                       collect_num (p + Prims.int_one) (ch :: acc) true has_e
                         (fuel - Prims.int_one)
                     else
-                      Parser_Combinators.ParseOk ((acc, has_dot, has_e), p))
+                      if is_valid_exponent_at input (p + Prims.int_one) len
+                      then
+                        collect_num (p + Prims.int_one) (ch :: acc) true
+                          has_e (fuel - Prims.int_one)
+                      else
+                        Parser_Combinators.ParseOk ((acc, has_dot, has_e), p))
                  else Parser_Combinators.ParseOk ((acc, has_dot, has_e), p))
               else
                 if
@@ -1185,7 +1214,7 @@ let parse_numeric_literal (input : Prims.string) (pos : Prims.nat) :
         then
           let fuel = len - dpos in
           match collect_num (dpos + Prims.int_one)
-                  [Parser_FastString.fs_byte_index input dpos] false true
+                  [Parser_FastString.fs_byte_index input dpos] true false
                   fuel
           with
           | Parser_Combinators.ParseOk ((acc, uu___1, has_e), pos') ->
