@@ -489,6 +489,54 @@ blank-node matching, the SPARQL-parser admitted regions above) are
 catalogued in
 [`docs/claude-rules/current-state.md`](docs/claude-rules/current-state.md).
 
+## Jena differential-testing harness
+
+Our W3C suite scores above are graded against expectation files we
+also wrote. Differential testing against an independent engine closes
+that gap: it catches a spec misreading that is wrong in the same way
+in both the implementation and the test's expected answer, which the
+W3C suite alone cannot catch.
+
+`tests/unit/run-jena-diff.sh` runs the same Turtle and N-Triples files
+from the vendored W3C `rdf-tests` corpus through Factoidal's strict
+parser (`factoidal-dump-nq --strict`) and through Apache Jena
+(`riot` + `rdfcompare`), and classifies each file as agree-parse /
+agree-reject / disagree / either-side-error. See the script's header
+comment for the full method, including the one normalization it
+applies (graph isomorphism via Jena's `rdfcompare`, so blank-node
+relabelling never counts as a disagreement) and why nothing else is
+normalized.
+
+Opt-in and skips cleanly when Jena isn't installed:
+
+```bash
+tools/install-jena-for-diff-testing.sh   # fetches Jena to .jena-cache/ (gitignored)
+tests/unit/run-jena-diff.sh              # compares; SKIPs with a clear reason if Jena is absent
+tests/unit/run-jena-diff.sh --strict     # same, but exit 1 if any disagreement/either-side-error is found (for CI gating)
+```
+
+Last run (2026-08-14, Apache Jena 6.2.0, 389 files — the vendored
+`rdf-turtle` + `rdf-n-triples` corpora): 261 agree-parse, 120
+agree-reject, 2 disagree, 6 either-side-error. The 2 disagreements are
+confirmed Factoidal parser bugs, filed as
+[#425](https://github.com/danbri/factoidal/issues/425) (Turtle
+DECIMAL/DOUBLE literal misclassification). 4 of the 6
+either-side-errors are a documented strictness-posture difference,
+not a bug: Factoidal rejects Turtle IRIs containing illegal characters
+(space, `<`, `>`, `{`, `}`) after escape-processing, per the W3C
+`turtle-eval-bad-*` negative tests, while Jena's `riot` — even with
+`--check` — only warns and still emits the triple. The other 2
+either-side-errors are the same DOUBLE-literal bug as the
+disagreements (Factoidal rejects syntax Jena and the grammar accept).
+
+**Extending this harness** (v1 is Turtle + N-Triples only): N-Quads
+and TriG need a named-graph-aware comparison (`rdfcompare` only
+accepts RDF/XML, N-TRIPLE, TURTLE, JSON-LD — not N-Quads), RDF/XML
+needs its own base-IRI handling check, and JSON-LD would need Jena's
+JSON-LD support enabled. A second reference engine (RDF4J or
+Oxigraph) would also close the risk that a Factoidal/Jena agreement is
+itself a shared misreading.
+
 ## Browser / Node builds
 
 The same F\* source is extracted once and compiled for three runtimes:

@@ -89,3 +89,9 @@ third_party/jsonld-context-cache/.index.lock
 # into formal/fstar/repro/ if informative, deleted otherwise)
 /EqTransExp*.fst
 /formal/fstar/EqTransExp*.fst
+
+# Apache Jena binary distribution cache for tests/unit/run-jena-diff.sh
+# (issue #317 differential testing harness). Fetched on demand by
+# tools/install-jena-for-diff-testing.sh; not committed (24MB+ third-
+# party binary, versioned independently of this repo).
+/.jena-cache/
