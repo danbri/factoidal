@@ -1538,3 +1538,29 @@ files — so the manifest expectations may ALSO be wrong; that check is
 open on #425. Adjudicated NOT a bug: 4 turtle-eval-bad cases where we
 reject illegal raw IRI characters and Jena only warns — we are the
 more conformant side.
+
+**#425 FIXED: Turtle number-literal classifier + the false-100%
+mechanism (2026-08-11, branch `ttl-numbers`)**: both bugs the Jena
+differential harness found are repaired in
+`Parser.Turtle.fst:parse_numeric_literal`. Bug A — a leading-dot
+number set the has-exponent flag TRUE before scanning any character,
+so `.1`/`+.7` came out xsd:double instead of DECIMAL (flag
+initialisation swapped). Bug B — after `123.`, the scanner only
+continued past the dot for a DIGIT, so `E+1` was left unread and the
+parse failed; fixed with an `is_valid_exponent_at` lookahead.
+WHY OUR SUITE SCORED 100% ON THESE FILES (the finding that matters
+more than the bugs): W3C positive-syntax tests are graded by
+`ignore (parse_turtle_fstar content (Some base)); Pass` — the runner
+throws the result away and asks only "did it parse", never "is the
+produced RDF right", and it uses the LENIENT entry point while
+`factoidal dump` uses the strict one. So 1031 pass, 0 fail was
+truthful about "does not crash" and blind to datatype correctness.
+The manifests are CORRECT — the gap is in the runner's grading logic;
+filed separately. Gates: regression 20 pass, 0 fail (of 20) — 14
+pass, 6 fail before; RDF 1031/0; SPARQL 631/0; JENA HARNESS 265
+agree-parse, 120 agree-reject, 0 DISAGREE, 4 either-side-error (of
+389) — the 2 disagreements are gone, the 4 remaining are the
+already-adjudicated turtle-eval-bad cases where we are stricter than
+Jena. Trap re-confirmed: `factoidal-dump-nq` is not rebuilt by the
+main build script and needed its own rebuild for the harness to see
+the fix.
