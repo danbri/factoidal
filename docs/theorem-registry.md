@@ -1470,3 +1470,46 @@ first half of the silent-drop class named in the streaming plan's
 constraint 4. SCOPE (follow-ups on #334): Turtle Mode 1.2 (--rdf12),
 TriG, and the manifest loader may carry the same defect — untouched
 here.
+
+**#334 FOLLOW-UPS FIXED: Turtle Mode 1.2, TriG, manifest loader
+(2026-08-14, branch `silent-drops2`)**: all three follow-ups named
+above confirmed present and fixed, same mechanism as the RDF 1.1
+Turtle fix.
+- *Turtle Mode 1.2*: `parse_turtle_doc` already threaded `tdr_error`
+  through Mode_12 parsing (shared code with Mode_11), but no Mode_12
+  entry point surfaced it — the `--rdf12` CLI path called the
+  always-succeeds `parse_turtle_with_base_12`. New
+  `parse_turtle_diagnostic_12` / `parse_turtle_with_base_diagnostic_12`
+  mirror the Mode_11 pair. Regression 6 pass, 0 fail (of 6) — was 2
+  pass, 4 fail.
+- *TriG*: `trig_parse_state` carried only `has_error: bool`, same gap
+  as Turtle pre-fix. Added `terr: option (string \& nat)`, threaded
+  through `parse_graph_body` and `parse_trig_doc`, and three new
+  diagnostic entry points covering RDF 1.1 and `--rdf12`. Regression
+  (both modes) 12 pass, 0 fail (of 12) — was 4 pass, 8 fail.
+- *Manifest loader* (`bin/w3c-runner/w3c_runner.ml`'s `read_manifest`,
+  consumer-side per iron rule #11): confirmed live —
+  `third_party/testing/w3c/rdf/rdf12/rdf-semantics/manifest.ttl` line
+  247 has an undeclared `test:` prefix (a typo for `rdft:`), silently
+  dropping one metadata triple and holding `rdf12entail`'s
+  `rdf-semantics` suite at 47 discovered tests instead of 48 — this is
+  the exact mechanism #334's body predicted for the `literal-type`
+  disposition. POLICY CHOICE: lenient-with-report, not
+  strict-with-report — going strict would zero out that whole
+  manifest's ~48 test cases over one upstream typo we do not control,
+  which is a worse failure mode for a test harness than a silently
+  short denominator. Fix prints the error (message + byte offset,
+  unconditional stderr) but keeps parsing the well-formed subset via
+  the same lenient parse as before. Regression 6 pass, 0 fail (of 6)
+  — was 3 pass, 3 fail. Verified this is diagnostic-only: rdf-semantics
+  suite result is byte-for-byte unchanged (41 pass, 3 fail, 3 skip,
+  discovered_tests: 47) before and after, only the stderr warning is
+  new.
+
+Gates (all three, from repo root, native binaries): W3C RDF 1031
+pass, 0 fail (of 1031); SPARQL 631 pass, 0 fail (of 631) — both
+unchanged from baseline, nothing flipped. This retires the #334
+follow-up scope in full. SPARQL and JSON-LD context paths (also named
+in #334's task list as "check whether … share the lenient-drop
+shape") are NOT covered by this landing — out of scope for the
+branch that did this work.
