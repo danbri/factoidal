@@ -1709,3 +1709,29 @@ cannot fail is the same trap in another costume. Honest gap: a fully
 cold run is estimated 45-60+ min and was not measured; it happens on
 first run and after F* version changes. Coverage was NOT narrowed to
 make the job fast.
+
+**#430 FIXED + two coverage findings (2026-08-14, branch
+`vacuity-tool`)**: `tools/negative-test-vacuity.py` crashed with
+`TypeError: int + str` — a KEY CLASH: the per-suite dict uses
+`"error"` for a COUNT, while the whole-manifest-load-failure early
+return used the same key for a MESSAGE. Renamed to
+`manifest_error`; added a "suites that could not be loaded" table
+and a stderr warning, because before this a failed load reported 0
+across every count, indistinguishable from "this suite has no
+negative tests". Tool now runs to completion. VALIDATED BOTH WAYS:
+emptying a premise to zero triples flips a real test's verdict to
+`vacuous/closure-adds-nothing`; the current run's 3-of-19 rdf-mt
+vacuous count matches the last known-good state recorded in
+`skills/measuring-inference`. 🔴 FINDING 1 — the tool is BLIND to
+the #429 class and its in-code justification is WRONG about why:
+it excludes positive-syntax tests reasoning that "a reject-all
+parser fails these", but #429's actual bug was IGNORE-AND-PASS, which
+that argument does not cover. FINDING 2 — its `vacuous` verdict for
+3 `mf:result false` tests is correct for the CLI path it measures
+but no longer describes the graded suite: #333's D-inconsistency
+detector lives in the runner's dispatch and is unreachable via
+`factoidal entail`/`--dump`. Also: `rdf12-semantics` cannot be
+audited at all because its vendored manifest fails to load on the
+SAME undeclared `test:` prefix typo the #334 work found at
+`rdf-semantics/manifest.ttl:247` — one upstream typo now blocks two
+tools.
