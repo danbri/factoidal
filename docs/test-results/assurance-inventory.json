@@ -10111,7 +10111,7 @@
    "files": [
     "formal/fstar/Parser.TriG.fst"
    ],
-   "loc": 629,
+   "loc": 567,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10119,7 +10119,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_TriG.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 25,
+   "shipping_function_count": 22,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -10159,7 +10159,7 @@
    "files": [
     "formal/fstar/Parser.Turtle.fst"
    ],
-   "loc": 2834,
+   "loc": 2759,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10167,7 +10167,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_Turtle.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 120,
+   "shipping_function_count": 116,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -63043,5 +63043,5 @@
    "w3c-refinement": 11
   }
  },
- "commit": "2692fe7af"
+ "commit": "ae65c2044"
 }
