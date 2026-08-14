@@ -72,22 +72,47 @@ let file_base_iri path =
    return `option` and actually signal failure. --strict routes
    through those same *_strict entry points so this tool's
    accept/reject verdict matches what the W3C conformance suite
-   actually grades. Only NT and Turtle have *_strict extracted today;
-   --strict on another format is a clear error, not a silent
-   lenient-mode fallback. *)
+   actually grades.
+
+   TriG/N-Quads/RDF-XML (2026-08-14, issue #317 harness extension):
+   Parser.TriG.fst's plain `parse_trig` / `parse_trig_with_base` were
+   ALREADY option-returning (fail on any parse error) — unlike
+   N-Triples/Turtle, TriG never grew a separate "_strict" name because
+   its lenient variant is the one with the "_lenient" suffix
+   (`parse_trig_lenient` / `parse_trig_with_base_lenient`). So --strict
+   for TriG below calls the un-suffixed entry point, not a "_strict"
+   one — same option-returning contract, different naming history.
+   N-Quads and RDF/XML DO have "_strict"-suffixed entry points
+   (`parse_nquads_strict`, `parse_rdfxml_strict` /
+   `parse_rdfxml_with_base_strict`), extracted and used exactly like
+   the NT/Turtle ones. All of these were already extracted from F* —
+   this file only adds the OCaml dispatch to call them (rule #11:
+   bin/ is a consumer tool, not inside the verified-library boundary,
+   so wiring already-extracted entry points here is not a spec gap). *)
 let load_dataset ?(format=None) ?(base=None) ?(strict=false) path =
   let content = read_file path in
   let fmt = match format with Some f -> f | None -> detect_format path in
   let base_iri = match base with Some b -> Some b | None -> file_base_iri path in
   match fmt with
   | NQuads ->
-    if strict then failwith "--strict is not implemented for N-Quads (only nt/turtle have extracted *_strict parsers)";
-    Parser_NQuads.parse_nquads content
+    if strict then
+      (match Parser_NQuads.parse_nquads_strict content with
+       | FStar_Pervasives_Native.Some ds -> ds
+       | FStar_Pervasives_Native.None -> failwith "strict N-Quads parse rejected this input")
+    else Parser_NQuads.parse_nquads content
   | TriG ->
-    if strict then failwith "--strict is not implemented for TriG (only nt/turtle have extracted *_strict parsers)";
-    (match base_iri with
-     | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
-     | None -> Parser_TriG.parse_trig_lenient content)
+    if strict then
+      (match
+         (match base_iri with
+          | Some b -> Parser_TriG.parse_trig_with_base content b
+          | None -> Parser_TriG.parse_trig content)
+       with
+       | FStar_Pervasives_Native.Some ds -> ds
+       | FStar_Pervasives_Native.None -> failwith "strict TriG parse rejected this input")
+    else
+      (match base_iri with
+       | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
+       | None -> Parser_TriG.parse_trig_lenient content)
   | JSONLD ->
     (* Context processing + document base threading per issue #275 —
        see formal/fstar/Parser.JSONLD.fst module banner. Remote
@@ -124,7 +149,15 @@ let load_dataset ?(format=None) ?(base=None) ?(strict=false) path =
            | Some b -> Parser_Turtle.parse_turtle_with_base content b
            | None -> Parser_Turtle.parse_turtle content)
       | RDFXML ->
-        if strict then failwith "--strict is not implemented for RDF/XML (only nt/turtle have extracted *_strict parsers)";
+        if strict then
+          (match
+             (match base_iri with
+              | Some b -> Parser_RDFXML.parse_rdfxml_with_base_strict b content
+              | None -> Parser_RDFXML.parse_rdfxml_strict content)
+           with
+           | FStar_Pervasives_Native.Some ts -> ts
+           | FStar_Pervasives_Native.None -> failwith "strict RDF/XML parse rejected this input")
+        else
         (match base_iri with
          | Some b -> Parser_RDFXML.parse_rdfxml_with_base b content
          | None -> Parser_RDFXML.parse_rdfxml content)
@@ -135,9 +168,11 @@ let usage () =
   Printf.eprintf
     "Usage: factoidal-dump-nq [--format nt|turtle|nq|trig|rdfxml|jsonld] [--strict] FILE\n\n\
      Parse RDF with Factoidal's extracted parser stack and emit canonical N-Quads.\n\
-     --strict uses the *_strict parser entry points (nt/turtle only) so a\n\
-     spec-invalid input FAILS instead of silently parsing to zero triples —\n\
-     use this when comparing accept/reject verdicts against another engine.\n";
+     --strict uses the option-returning parser entry points (nt, turtle, nq,\n\
+     trig, rdfxml) so a spec-invalid input FAILS instead of silently parsing\n\
+     to zero triples — use this when comparing accept/reject verdicts against\n\
+     another engine. jsonld has no strict/lenient split (parse_jsonld already\n\
+     fails on invalid input), so --strict is a no-op there.\n";
   exit 2
 
 let () =
