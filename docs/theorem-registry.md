@@ -1686,3 +1686,26 @@ unsupported (of 1031) — and that number is now EARNED under strict
 grading plus real rdf-mt checks, unlike the 1031/0 it replaced.
 SPARQL 631/0 unchanged. Both modules verify clean, no admits, no
 --lax, no new assume vals.
+
+**#436 FIXED: CI now VERIFIES the proofs (2026-08-14, branch
+`ci-verify`)**: the PR gate ran `build-ocaml.sh extract` + `compile`
+and never `make verify`, so a proof could break silently — the
+mechanism behind #422. Happy discovery: `formal/fstar/Makefile`'s
+`verify` target already globs `$(wildcard *.fst)` from DISK, so it
+covers all 231 files including the 15 absent from ALL_MODULES (216
+entries) — it was simply never connected to CI. New workflow
+`.github/workflows/verify-fstar.yml` runs `make -j verify` under z3
+4.13.3, no --lax, and FAILS the PR on any verification failure.
+Caching: its own GitHub Actions cache key for the `.checked` files,
+deliberately NOT shared with the other workflows (theirs cache only
+the 216-module list, which would leave the 15 cold every run) and
+deliberately NOT the `checked-cache` git branch (that is a local
+session-restore mechanism, not a gate input). BOTH DIRECTIONS
+VALIDATED — the point, given this session's vacuity findings: clean
+tree PASSES (exit 0, all 231 files, 22.7 min on 4 cores from a
+half-warm cache), and a deliberately falsified lemma in a scratch
+copy FAILS (exit 2, "Could not prove post-condition"). A gate that
+cannot fail is the same trap in another costume. Honest gap: a fully
+cold run is estimated 45-60+ min and was not measured; it happens on
+first run and after F* version changes. Coverage was NOT narrowed to
+make the job fast.
