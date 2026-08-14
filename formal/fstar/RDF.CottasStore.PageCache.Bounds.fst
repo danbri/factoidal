@@ -54,6 +54,7 @@ module RDF.CottasStore.PageCache.Bounds
 
 open RDF.CottasStore.PageCache
 open RDF.CottasStore
+open RDF.CottasStore.ColumnSeq
 open Parser.BallyhooCOTTAS
 open Parquet.Footer
 module L = FStar.List.Tot
@@ -207,7 +208,7 @@ let find_oldest_present entries =
 // one entry to bring it back to capacity.
 
 val pcache_put_capacity_bound :
-  cache:page_cache -> k:pcache_key -> v:list (option string) -> capacity:nat ->
+  cache:page_cache -> k:pcache_key -> v:cottas_column -> capacity:nat ->
   Lemma
     (requires L.length cache.pc_entries <= capacity \/ capacity = 0)
     (ensures
@@ -318,14 +319,14 @@ let pcache_decode_capacity_bound cache path rg_index col_index capacity =
     match pcache_get cache key with
     | (Some _, _) -> ()
     | (None, c1) ->
-      match probe_parquet_column_decode_in_row_group path rg_index col_index with
+      match probe_parquet_column_decode_in_row_group_seq path rg_index col_index with
       | None -> ()
       | Some v ->
         pcache_put_capacity_bound c1 key v capacity
   end
 
 // ------------------------------------------------------------
-// Lemma 4 (NEW): materialisation bound for Aleph6's
+// Lemma 4 (NEW): materialisation bound for the on-disk store's
 // walk_candidate_rgs_search_limited.
 // ------------------------------------------------------------
 //
@@ -334,13 +335,23 @@ let pcache_decode_capacity_bound cache path rg_index col_index capacity =
 //
 // The proof goes via an invariant that links the running count
 // (`acc_count`) to the running list length (`L.length acc_rev`). Both
-// are incremented in lockstep by `filter_zipped_rows_limited`, so the
-// invariant `acc_count = L.length acc_rev /\ acc_count <= limit`
+// are incremented in lockstep by `filter_zipped_rows_limited_seq`, so
+// the invariant `acc_count = L.length acc_rev /\ acc_count <= limit`
 // suffices to give a final `L.length acc_rev <= limit`.
 //
-// We need a helper lemma over `filter_zipped_rows_limited` first.
+// We need a helper lemma over `filter_zipped_rows_limited_seq` first.
+//
+// 2026-08-14 (issue #422): retargeted from the legacy list-shape
+// `filter_zipped_rows_limited` / index-free walk to the current
+// `cottas_column`-indexed `filter_zipped_rows_limited_seq` +
+// `walk_candidate_rgs_search_limited`, which is what the real code
+// calls post Phase 2.5c (issue #118). The old helper name/shape is
+// kept nowhere else in this module; `filter_zipped_rows_limited`
+// itself still exists in RDF.CottasStore.fst as a compat-only
+// function with no in-tree callers, so this module no longer proves
+// anything about it.
 
-// Helper 4a: filter_zipped_rows_limited preserves the
+// Helper 4a: filter_zipped_rows_limited_seq preserves the
 // "acc_count = length acc_rev /\ acc_count <= limit" invariant.
 //
 // On match: acc_rev grows by 1, acc_count grows by 1. Equality preserved.
@@ -348,33 +359,40 @@ let pcache_decode_capacity_bound cache path rg_index col_index capacity =
 // Short-circuit: returns immediately, both unchanged, invariant preserved.
 //
 // The result tuple is (list cottas_qp_row & nat & bool); we constrain
-// the first two components.
-val filter_zipped_rows_limited_bound :
+// the first two components. Decreases on `n - i`, mirroring the real
+// function's row-index walk (rather than list structure).
+val filter_zipped_rows_limited_seq_bound :
   h:cottas_ondisk_handle ->
   bound_s:option string -> bound_p:option string ->
   bound_o:option string -> bound_g:option string ->
-  s_col:list (option string) -> p_col:list (option string) ->
-  o_col:list (option string) -> g_col:list (option string) ->
+  s_col:cottas_column -> p_col:cottas_column ->
+  o_col:cottas_column -> g_col:cottas_column ->
+  n:nat -> i:nat{i <= n} ->
   acc_rev:list cottas_qp_row -> acc_count:nat -> limit:nat ->
   Lemma
     (requires acc_count = L.length acc_rev /\ acc_count <= limit)
     (ensures
       (let (acc_rev', acc_count', _) =
-         filter_zipped_rows_limited h bound_s bound_p bound_o bound_g
-           s_col p_col o_col g_col acc_rev acc_count limit in
+         filter_zipped_rows_limited_seq h bound_s bound_p bound_o bound_g
+           s_col p_col o_col g_col n i acc_rev acc_count limit in
        acc_count' = L.length acc_rev' /\ acc_count' <= limit))
-    (decreases s_col)
+    (decreases (n - i))
 #push-options "--fuel 2 --ifuel 2 --z3rlimit 60"
-let rec filter_zipped_rows_limited_bound
+let rec filter_zipped_rows_limited_seq_bound
   h bound_s bound_p bound_o bound_g
-  s_col p_col o_col g_col acc_rev acc_count limit
+  s_col p_col o_col g_col n i acc_rev acc_count limit
   =
   if acc_count >= limit then ()
-  else
-    match s_col, p_col, o_col, g_col with
-    | s_hd :: s_tl, p_hd :: p_tl, o_hd :: o_tl, g_hd :: g_tl ->
-      let (acc_rev', acc_count') =
-        match s_hd, p_hd, o_hd, g_hd with
+  else if i = n then ()
+  else begin
+    let (acc_rev', acc_count') =
+      if i < cottas_column_length s_col &&
+         i < cottas_column_length p_col &&
+         i < cottas_column_length o_col &&
+         i < cottas_column_length g_col
+      then
+        match cottas_column_get s_col i, cottas_column_get p_col i,
+              cottas_column_get o_col i, cottas_column_get g_col i with
         | Some s_tok, Some p_tok, Some o_tok, Some g_tok ->
           if cell_match bound_s s_tok &&
              cell_match bound_p p_tok &&
@@ -383,12 +401,13 @@ let rec filter_zipped_rows_limited_bound
           then (build_qp_row h s_tok p_tok o_tok g_tok :: acc_rev,
                 acc_count + 1)
           else (acc_rev, acc_count)
-        | _ -> (acc_rev, acc_count) in
-      // Invariant maintained: either both grew by 1 (match path) or
-      // both unchanged (no-match path).
-      filter_zipped_rows_limited_bound h bound_s bound_p bound_o bound_g
-        s_tl p_tl o_tl g_tl acc_rev' acc_count' limit
-    | _ -> ()
+        | _ -> (acc_rev, acc_count)
+      else (acc_rev, acc_count) in
+    // Invariant maintained: either both grew by 1 (match path) or
+    // both unchanged (no-match path).
+    filter_zipped_rows_limited_seq_bound h bound_s bound_p bound_o bound_g
+      s_col p_col o_col g_col n (i + 1) acc_rev' acc_count' limit
+  end
 #pop-options
 
 // Lemma 4: walk_candidate_rgs_search_limited preserves
@@ -425,14 +444,16 @@ let rec walk_candidate_rgs_search_limited_bound
       // Compute the filter result with the same shape as the walker.
       (match s_col, p_col, o_col, g_col with
        | Some sc, Some pc, Some oc, Some gc ->
-         filter_zipped_rows_limited_bound h bound_s bound_p bound_o bound_g
-           sc pc oc gc acc_rev acc_count limit
+         let n = row_group_row_count sc pc oc gc in
+         filter_zipped_rows_limited_seq_bound h bound_s bound_p bound_o bound_g
+           sc pc oc gc n 0 acc_rev acc_count limit
        | _ -> ());
       let (acc_rev', acc_count', hit) =
         match s_col, p_col, o_col, g_col with
         | Some sc, Some pc, Some oc, Some gc ->
-          filter_zipped_rows_limited h bound_s bound_p bound_o bound_g
-            sc pc oc gc acc_rev acc_count limit
+          let n = row_group_row_count sc pc oc gc in
+          filter_zipped_rows_limited_seq h bound_s bound_p bound_o bound_g
+            sc pc oc gc n 0 acc_rev acc_count limit
         | _ -> (acc_rev, acc_count, false) in
       // Either we hit (return acc_rev' which already satisfies bound)
       // or recurse with the invariant preserved.
