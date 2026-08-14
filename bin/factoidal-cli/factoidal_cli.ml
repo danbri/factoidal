@@ -478,13 +478,28 @@ let load_dataset ?(format=None) ?(base=None) path =
         else Parser_NTriples.parse_ntriples content
       | Turtle ->
         let b12 = match base_iri with Some b -> b | None -> "" in
-        (match base_iri with
-         | Some b ->
-           if !rdf12_mode then Parser_Turtle.parse_turtle_with_base_12 content b
-           else Parser_Turtle.parse_turtle_with_base content b
-         | None ->
-           if !rdf12_mode then Parser_Turtle.parse_turtle_with_base_12 content b12
-           else Parser_Turtle.parse_turtle content)
+        (* Issue #334: an undeclared prefix (or any other statement-
+           level error) must FAIL the parse with a position, not
+           silently drop the offending statement and report success.
+           parse_turtle_diagnostic / parse_turtle_with_base_diagnostic
+           return the parser's own ParseOk/ParseFail — this caller just
+           has to not swallow the ParseFail case, which the old
+           always-succeeds parse_turtle / parse_turtle_with_base made
+           impossible (no error channel at all). Mode_12 is untouched
+           (out of scope here; tracked separately per #334's "check
+           TriG/SPARQL/JSON-LD" follow-up task). *)
+         if !rdf12_mode then
+           (match base_iri with
+            | Some b -> Parser_Turtle.parse_turtle_with_base_12 content b
+            | None -> Parser_Turtle.parse_turtle_with_base_12 content b12)
+         else
+           let result = match base_iri with
+             | Some b -> Parser_Turtle.parse_turtle_with_base_diagnostic content b
+             | None -> Parser_Turtle.parse_turtle_diagnostic content in
+           (match result with
+            | Parser_Combinators.ParseOk (triples, _) -> triples
+            | Parser_Combinators.ParseFail (msg, epos) ->
+              failwith (Printf.sprintf "%s (byte offset %d)" msg (Z.to_int epos)))
       | RDFXML ->
         (match base_iri with
          | Some b -> Parser_RDFXML.parse_rdfxml_with_base b content
