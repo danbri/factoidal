@@ -578,6 +578,35 @@ let read_manifest manifest_path =
     else manifest_path in
     let base = "file://" ^ abs_path in
     try
+      (* Issue #334 (manifest-loader follow-up to #424): the loader used
+         to call ONLY the always-succeeds parse_turtle_fstar (lenient),
+         so a manifest.ttl with a statement-level parse error (e.g. an
+         undeclared prefix) had that statement silently dropped with no
+         diagnostic anywhere -- the manifest looked well-formed and the
+         test-case list was just quietly short a row.
+         Choice: LENIENT-WITH-REPORT, not strict-with-report. A real
+         vendored fixture already has this exact defect --
+         third_party/testing/w3c/rdf/rdf12/rdf-semantics/manifest.ttl
+         line 247 uses an undeclared `test:` prefix (a typo for `rdft:`,
+         visible by comparison with identical `rdft:approval
+         rdft:NotClassified` lines earlier in the same file). Going
+         strict would zero out that entire manifest's ~48 test cases
+         over one upstream typo we do not control -- the test harness's
+         job is to surface engine defects, not amplify a fixture typo
+         into "48 tests vanished". So: print the position + message to
+         stderr (always, not just in --verbose mode) and keep the
+         well-formed triples parse_turtle_with_base already recovers,
+         via the SAME lenient parse used before. The diagnostic entry
+         point is used only to detect + report the error; it is not the
+         data source, since it discards partial triples on ParseFail
+         (the strict convention: no ambiguity about "how much of this
+         is trustworthy"). *)
+      (match Parser_Turtle.parse_turtle_with_base_diagnostic input base with
+       | Parser_Combinators.ParseOk (_, _) -> ()
+       | Parser_Combinators.ParseFail (msg, epos) ->
+         Printf.eprintf
+           "Manifest parse warning in %s: %s (byte offset %d) -- continuing with the well-formed subset\n"
+           manifest_path msg (Z.to_int epos));
       let graph = parse_turtle_fstar input (Some base) in
       if !verbose_mode then
         Printf.eprintf "  DEBUG: manifest %s -> %d triples\n" manifest_path (List.length graph);
