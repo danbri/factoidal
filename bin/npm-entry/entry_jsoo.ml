@@ -1754,12 +1754,16 @@ let subject_to_cottas_string (s : RDF_Graph_Executable.subject) : string =
   | S_IRI i -> Printf.sprintf "<%s>" i
   | S_BNode b -> Printf.sprintf "_:%s" b
 
+(* Wire format, not display -- see the same function in factoidal_cli.ml
+   and issue #443. RDF.Pretty.term_to_ntriples does not escape a
+   literal's lexical form, so it destroyed any literal containing a
+   quote, a newline or a backslash on the way into the store. *)
 let cottas_quad_of_triple_graph
     (t : RDF_Graph_Executable.triple) (g : string option)
     : RDF_CottasStore_BaseWriter.cottas_quad =
   { RDF_CottasStore_BaseWriter.cq_s = subject_to_cottas_string t.s;
     RDF_CottasStore_BaseWriter.cq_p = Printf.sprintf "<%s>" t.p;
-    RDF_CottasStore_BaseWriter.cq_o = RDF_Pretty.term_to_ntriples t.o;
+    RDF_CottasStore_BaseWriter.cq_o = RDF_NQuads_Serialize.nq_term_to_string t.o;
     RDF_CottasStore_BaseWriter.cq_g =
       (match g with Some iri -> Printf.sprintf "<%s>" iri | None -> "DEFAULT") }
 

@@ -225,29 +225,22 @@ else
 fi
 
 # ---------------------------------------------------------------------
-# NT-ESC (#339) -- RDF.Pretty.term_to_ntriples escapes NOTHING, so the
-# `dump` verb emits invalid N-Triples for any literal containing a quote,
-# backslash, newline, CR or tab. Decisive form: our own parser cannot read
-# our own output back. dump-nq and dump-turtle are correct; this is one
-# function carrying a second, weaker notion of how a literal is written.
+# NT-ESC (#339) is RETIRED, not removed silently.
+#
+# It recorded that `RDF.Pretty.term_to_ntriples` escaped nothing, so the
+# `dump` verb emitted N-Triples our own parser rejected. Fixed 2026-08-14
+# together with issue #443, which found the same function feeding the
+# COTTAS store's object column -- so the defect was not display-only: an
+# import -> query round trip destroyed every literal containing a quote,
+# a newline or a backslash.
+#
+# The function was deleted rather than patched (a second name for the
+# same rendering is what let the two drift), and the standing pin moved
+# to tests/local/cli_literal_escape_roundtrip.sh, which covers six
+# literal classes on both the `--dump` and the store paths and carries
+# an anti-vacuity arm. This file is for defects that still reproduce;
+# a fixed one belongs in a regression pin, not here.
 # ---------------------------------------------------------------------
-cat > "${WORKDIR}/nt.ttl" <<'EOF'
-@prefix : <http://ex.org/> .
-:s :p "q\"z\nw" .
-EOF
-"$BIN" dump "${WORKDIR}/nt.ttl" > "${WORKDIR}/nt.out" 2>/dev/null
-NT_LINES=$(grep -c . "${WORKDIR}/nt.out" 2>/dev/null || echo 0)
-NT_RT=$("$BIN" count "${WORKDIR}/nt.out" 2>&1)
-if [ "${NT_LINES:-0}" -gt 1 ] || echo "$NT_RT" | grep -q "zero triples"; then
-  record NT-ESC 339 "dump emits unescaped literals (invalid N-Triples)" XFAIL \
-    "one triple written as ${NT_LINES} lines; own parser rejects the output"
-elif [ "${NT_LINES:-0}" = "1" ]; then
-  record NT-ESC 339 "dump emits unescaped literals (invalid N-Triples)" XPASS \
-    "one line and it round-trips -- defect appears FIXED"
-else
-  record NT-ESC 339 "dump emits unescaped literals (invalid N-Triples)" ERROR \
-    "dump produced no output"
-fi
 
 # ---------------------------------------------------------------------
 # Summary + JSON

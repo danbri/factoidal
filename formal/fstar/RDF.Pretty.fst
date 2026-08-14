@@ -28,38 +28,33 @@ open SPARQL11.Algebra
 module S = FStar.String
 
 // ---------------------------------------------------------------
-// 1. N-Triples-style rendering (no prefix abbreviation).
+// 1. N-Triples-style rendering: NOT HERE. See RDF.NQuads.Serialize.
 //
-// The minimal serialization. Used by factoidal_cli.ml when the
-// output isn't a Turtle/abbreviated context (e.g. JSON value field).
+// This module used to carry `term_to_ntriples`, a second N-Triples
+// term renderer that wrote a literal's lexical form VERBATIM. It was
+// described as "for display, not wire", but every consumer treated
+// its output as wire: `factoidal --dump` and the COTTAS store's object
+// column both went through it.
+//
+// The result was issue #339 (dump emitted output our own parser
+// rejected) and issue #443 (import -> query DESTROYED any literal
+// containing a quote, a newline or a backslash -- the store cell did
+// not re-parse, so the reader returned the sentinel
+// `_:cottas_decode_oor`).
+//
+// The function is deleted rather than fixed. Making it escape would
+// have made it a byte-identical copy of
+// `RDF.NQuads.Serialize.nq_term_to_string`, and a second name for the
+// same rendering is what let the two drift apart in the first place.
+// One notion of how a literal is written; it lives in
+// RDF.NQuads.Serialize with the round-trip proofs that reference it.
+//
+// Callers wanting an N-Triples term use
+// `RDF.NQuads.Serialize.nq_term_to_string`; callers wanting a whole
+// line use `nq_line_for_triple_default_graph` / `nq_line_for_triple`.
+// What remains below is the Turtle-style ABBREVIATED rendering, which
+// is genuinely display-only and has no wire consumer.
 // ---------------------------------------------------------------
-
-// RDF 1.2 base-direction suffix for a directional language string.
-// Empty for every RDF 1.1 literal (direction = None), so output stays
-// byte-identical for pre-1.2 data.
-let dir_suffix (d : option text_direction) : Tot string =
-  match d with
-  | Some Dir_LTR -> "--ltr"
-  | Some Dir_RTL -> "--rtl"
-  | None -> ""
-
-let rec term_to_ntriples (t : rdf_term) : Tot string (decreases t) =
-  match t with
-  | T_IRI i   -> "<" ^ i ^ ">"
-  | T_BNode b -> "_:" ^ b
-  | T_Literal l ->
-    (match l.lang_tag with
-     | Some tag -> "\"" ^ l.lexical_form ^ "\"@" ^ tag ^ dir_suffix l.direction
-     | None ->
-       if l.datatype = xsd_string then
-         "\"" ^ l.lexical_form ^ "\""
-       else
-         "\"" ^ l.lexical_form ^ "\"^^<" ^ l.datatype ^ ">")
-  | T_TripleTerm s p o ->
-    let subj_str = (match s with
-                    | S_IRI i   -> "<" ^ i ^ ">"
-                    | S_BNode b -> "_:" ^ b) in
-    "<<( " ^ subj_str ^ " <" ^ p ^ "> " ^ term_to_ntriples o ^ " )>>"
 
 // ---------------------------------------------------------------
 // 2. Prefix-table support.
@@ -109,7 +104,21 @@ let abbreviate_iri (table : prefix_table) (iri : string) : Tot string =
 // rendered the same as in N-Triples (literal datatypes are *not*
 // abbreviated — that's a Turtle 1.1 thing we deliberately don't do
 // in either OCaml caller, and we preserve the legacy behaviour).
+//
+// This rendering is display-only: `term_with_prefixes` output is read
+// by a human, never re-parsed, so it keeps the verbatim lexical form.
+// Anything whose output is re-parsed must use RDF.NQuads.Serialize --
+// see the banner in section 1 and issues #339 / #443.
 // ---------------------------------------------------------------
+
+// RDF 1.2 base-direction suffix for a directional language string.
+// Empty for every RDF 1.1 literal (direction = None), so output stays
+// byte-identical for pre-1.2 data.
+let dir_suffix (d : option text_direction) : Tot string =
+  match d with
+  | Some Dir_LTR -> "--ltr"
+  | Some Dir_RTL -> "--rtl"
+  | None -> ""
 
 let rec term_with_prefixes (table : prefix_table) (t : rdf_term) : Tot string (decreases t) =
   match t with
