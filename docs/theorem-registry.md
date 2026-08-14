@@ -1400,3 +1400,50 @@ not runner wiring — scoped as #333's follow-up. BONUS: nine modules
 listed in build-ocaml.sh but never extracted/committed (incl.
 RDFS.Closure.SemiNaive — the known full-js-rebuild blocker) are now
 in ocaml-output/, all F*-verified clean, no patches needed.
+
+**#365 EX-1/EX-2 ALIGNED (2026-08-14, branch `ex-align`, owner decision
+2026-08-11 verbatim "Align")**: the SPARQL expression evaluator's
+boolean layer is now error-aware, closing both divergences the G4/M2
+wave-1 agent found in `SPARQL11.Expression.Refinement.fst`. EX-1: EBV
+(§17.2.2) now signals a Type Error for any value outside the table
+(xsd:boolean, numerics, xsd:string/simple literals only) — a non-empty
+rdf:langString is no longer truthy. EX-2: `E_And`/`E_Or`/`E_Not`
+(§17.3) are now error-tolerant AND error-preserving — a determinate
+false/true operand still dominates an erroring co-operand, but every
+other combination now signals `ER_Error` instead of silently folding
+to a definite bool. New engine functions in `SPARQL11.Algebra.fst`:
+`ebv_checked : eval_result -> option bool` (the table, `None` = Type
+Error; `ebv` is now defined via it, folding `None` to `false` so every
+FILTER/HAVING/E_If call site keeps its "Type Error drops like false"
+contract unchanged) and `bool_and_checked`/`bool_or_checked`/
+`bool_not_checked : option bool -> option bool` (§17.3's tables,
+literal copies of `SPARQL11.Expression.Refinement.fst`'s independently-
+authored `spec_and`/`spec_or`/`spec_not`). The four pre-landing FINDING
+(divergence) lemmas RETIRE into AGREEMENT lemmas of the same root name:
+`lemma_ebv_langstring_finding` → `lemma_ebv_langstring_agrees`;
+`lemma_eval_and_true_error_diverges_finding` →
+`lemma_eval_and_true_error_agrees`;
+`lemma_eval_or_false_error_diverges_finding` →
+`lemma_eval_or_false_error_agrees`;
+`lemma_eval_not_error_diverges_finding` → `lemma_eval_not_error_agrees`
+— same witnesses, now provably matching the engine instead of
+diverging from it. The expr-level corollaries
+(`lemma_eval_and_matches_spec`/`_or_`/`_not_matches_spec`) are also
+strengthened from a `Some b`-hypothesis-carrying form to full
+unconditional agreement (every `eval_expr_with_base` outcome, error
+case included). `SPARQL11.Algebra.Refinement.fst`'s ~74-case
+congruence lemma (`lemma_eval_expr_congr`) needed no change: its
+`E_And`/`E_Or`/`E_Not` cases only recurse into sub-expressions and let
+SMT function-congruence carry the result through whatever pure
+combinator the arm uses, so the new error-aware combinators verify
+under the same proof shape.
+Gates: `SPARQL11.Algebra*`/`SPARQL11.Expression*` and the full corpus
+verify clean (z3 4.13.3, no admits, no `--lax`); SPARQL W3C and RDF
+W3C scores and the new BIND/SELECT-expression regression
+(`tests/local/cli_ex_align_regressions.sh`) are recorded in the
+landing commit/PR. FILTER/HAVING semantics are unchanged by
+construction (Type Error still drops a row/group exactly like `false`)
+except the one FILTER-visible flip EX-1 itself causes: a bare
+non-empty langString literal in FILTER position used to keep the row
+and now drops it, per the corrected EBV table — pinned in the same
+regression script.

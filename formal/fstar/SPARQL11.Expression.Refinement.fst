@@ -25,18 +25,49 @@ module SPARQL11.Expression.Refinement
 (** definitional equation (`eval_expr_ebv base e mu == ebv (eval_expr_with_  **)
 (** base base e mu)`), never by unfolding through them implicitly.           **)
 (**                                                                          **)
-(** WAVE 1 SCOPE (this commit) -- SPARQL 1.1 sections 17.2.2 (EBV), 17.3     **)
-(** (logical connectives, error-tolerant And/Or/Not), and the value-         **)
+(** WAVE 1 SCOPE (original commit) -- SPARQL 1.1 sections 17.2.2 (EBV),      **)
+(** 17.3 (logical connectives, error-tolerant And/Or/Not), and the value-    **)
 (** comparison path of 17.3's op:numeric-equal / op:equal for SAME-KIND      **)
 (** numeric and plain-string classes only:                                   **)
 (**   Part 1 -- `ebv_spec`, an independent transcription of the EBV operand- **)
-(**             mapping table (17.2.2), and its agreement/divergence         **)
-(**             lemmas against the engine's `ebv` (Algebra.fst:878).         **)
+(**             mapping table (17.2.2), and its agreement lemmas against     **)
+(**             the engine's `ebv`/`ebv_checked` (Algebra.fst ~878-935).     **)
 (**   Part 2 -- `spec_and`/`spec_or`/`spec_not`, the error-tolerant truth    **)
 (**             tables (17.3: And -- false dominates error; Or -- true       **)
 (**             dominates error; Not propagates error), and their            **)
-(**             agreement/divergence lemmas against the `E_And`/`E_Or`/      **)
-(**             `E_Not` arms of `eval_expr_with_base`.                       **)
+(**             agreement lemmas against the `E_And`/`E_Or`/`E_Not` arms     **)
+(**             of `eval_expr_with_base`.                                    **)
+(**                                                                          **)
+(** ISSUE #365 LANDING (owner decision 2026-08-11, verbatim "Align"; this    **)
+(** commit). Both divergences WAVE 1 found are now FIXED in the engine       **)
+(** itself (`SPARQL11.Algebra.fst`):                                        **)
+(**   - EX-1: `ebv` is now defined via a new `ebv_checked : eval_result ->   **)
+(**     option bool`, a literal copy of this module's `ebv_spec` (None =    **)
+(**     Type Error, covering rdf:langString / rdf:dirLangString / any       **)
+(**     other datatype exactly as the table says); `ebv` itself folds        **)
+(**     `None` to `false` so every existing FILTER/HAVING/E_If call site     **)
+(**     keeps its "Type Error drops like false" behaviour unchanged.         **)
+(**   - EX-2: `E_And`/`E_Or`/`E_Not` now go through new engine functions     **)
+(**     `bool_and_checked`/`bool_or_checked`/`bool_not_checked` -- literal   **)
+(**     copies of this module's `spec_and`/`spec_or`/`spec_not` -- and       **)
+(**     return `ER_Error` on the table's error rows instead of silently      **)
+(**     folding to a definite bool. `eval_expr_ebv` (the FILTER path)        **)
+(**     folds that `ER_Error` back to `false` via `ebv`, so FILTER/HAVING    **)
+(**     observable behaviour is unchanged on every fragment except the       **)
+(**     EX-1 langString case (a langString FILTER condition that was         **)
+(**     previously "truthy iff non-empty" now Type-Errors and therefore      **)
+(**     drops the row, exactly as a definite `false` would). BIND/SELECT-    **)
+(**     expression contexts now observe the real `ER_Error`, per the point   **)
+(**     of the change.                                                       **)
+(** The four FINDING (divergence) lemmas below RETIRE into their AGREEMENT   **)
+(** counterparts: `lemma_ebv_langstring_finding` -> `lemma_ebv_langstring_    **)
+(** agrees`; `lemma_eval_and_true_error_diverges_finding` -> `lemma_eval_    **)
+(** and_true_error_agrees`; `lemma_eval_or_false_error_diverges_finding` ->   **)
+(** `lemma_eval_or_false_error_agrees`; `lemma_eval_not_error_diverges_       **)
+(** finding` -> `lemma_eval_not_error_agrees`. Every lemma in Parts 1-2 is    **)
+(** now unconditional agreement -- `ebv_spec`/`spec_and`/`spec_or`/          **)
+(** `spec_not` describe the engine's real semantics, not merely an           **)
+(** aspiration for it.                                                       **)
 (**   Part 3 -- `eq_spec_num`/`eq_spec_plain_string`, independent value-      **)
 (**             equality specs for two ER_Num operands and two un-language-  **)
 (**             tagged xsd:string literals, and their agreement lemmas       **)
@@ -85,8 +116,10 @@ module SO = RDF.Indexed.StringOrder
 (** constants (not the engine's `ebv` match arms) -- and returns `option     **)
 (** bool`, `None` standing for the table's "Type Error" row. It intentionally**)
 (** does NOT special-case rdf:langString (the table's "String" row is        **)
-(** un-language-tagged only), which is exactly where it diverges from the    **)
-(** shipping `ebv` -- see the FINDING below.                                 **)
+(** un-language-tagged only). Pre-#365 this is where the shipping `ebv`      **)
+(** diverged (treating a non-empty langString as truthy); since the #365     **)
+(** landing the engine's `ebv_checked` matches this table exactly, so the    **)
+(** two agree everywhere -- see `lemma_ebv_checked_is_spec` below.           **)
 (** ======================================================================== **)
 
 let ebv_spec (v : eval_result) : option bool =
@@ -106,62 +139,59 @@ let ebv_spec (v : eval_result) : option bool =
   | ER_Term (T_TripleTerm _ _ _) -> None
   | ER_Error                  -> None
 
-/// AGREEMENT (the common case): wherever the transcribed table produces a
-/// determinate answer, the shipping `ebv` computes the same boolean.
-let lemma_ebv_matches_spec_some (v : eval_result) (b : bool)
-  : Lemma (requires ebv_spec v == Some b)
-          (ensures ebv v == b)
+/// AGREEMENT, full equivalence (issue #365 landing): the engine's
+/// `ebv_checked` (SPARQL11.Algebra.fst) and this module's independent
+/// §17.2.2 transcription `ebv_spec` compute literally the same `option
+/// bool` for every `eval_result`. Pre-landing this was true only on the
+/// non-rdf:langString fragment; `ebv_checked` is now defined to match
+/// this table exactly (langString included), so the two agree
+/// everywhere, by construction rather than by coincidence.
+let lemma_ebv_checked_is_spec (v : eval_result)
+  : Lemma (ebv_checked v == ebv_spec v)
   = match v with
     | ER_Bool _ | ER_Num _ | ER_Dec _ | ER_Dbl _ -> ()
     | ER_Term (T_Literal _) -> ()
     | _ -> ()
 
-/// Classifier mirroring `ebv_spec`'s None arms MINUS the rdf:langString case
-/// -- used only to state the "type errors fold to false" agreement below
-/// precisely (the langString slice is excluded because it is where the
-/// engine and the spec table actually disagree; see the FINDING).
-let is_type_error_nonlangstring (v : eval_result) : bool =
-  match v with
-  | ER_Term (T_IRI _) | ER_Term (T_BNode _) | ER_Term (T_TripleTerm _ _ _) -> true
-  | ER_Term (T_Literal l) ->
-    l.datatype <> xsd_boolean && l.datatype <> xsd_string &&
-    l.datatype <> rdf_lang_string && not (is_numeric_datatype l.datatype)
-  | ER_Error -> true
-  | _ -> false
+/// AGREEMENT (the common case): wherever the transcribed table produces a
+/// determinate answer, the shipping `ebv` computes the same boolean.
+let lemma_ebv_matches_spec_some (v : eval_result) (b : bool)
+  : Lemma (requires ebv_spec v == Some b)
+          (ensures ebv v == b)
+  = lemma_ebv_checked_is_spec v
 
-/// AGREEMENT (the "harmless divergence" case): outside rdf:langString, every
-/// Type-Error class the table identifies is a class the engine folds to
-/// `false` -- the engine never raises the error, but it also never claims
-/// `true`, so the FILTER-level observable behaviour coincides even though
-/// the error itself is silently dropped (see Part 2 for where dropping the
-/// error, rather than just its value, becomes observable).
+/// AGREEMENT (Type Error case, now UNRESTRICTED -- issue #365 EX-1
+/// landing retired the rdf:langString carve-out this lemma needed
+/// pre-fix). Every Type-Error class the table identifies -- rdf:
+/// langString and rdf:dirLangString included -- is a class `ebv` folds
+/// to `false`, so FILTER/HAVING's "drops the row/group like false"
+/// behaviour is uniform across every Type-Error class, with no
+/// exception left to name.
 let lemma_ebv_typeerror_folds_false (v : eval_result)
-  : Lemma (requires ebv_spec v == None /\ is_type_error_nonlangstring v)
+  : Lemma (requires ebv_spec v == None)
           (ensures ebv v == false)
-  = match v with
-    | ER_Term (T_IRI _) | ER_Term (T_BNode _) | ER_Term (T_TripleTerm _ _ _) -> ()
-    | ER_Term (T_Literal _) -> ()
-    | ER_Error -> ()
-    | _ -> ()
+  = lemma_ebv_checked_is_spec v
 
-/// FINDING (EBV-1). The shipping `ebv` treats non-empty rdf:langString
-/// literals as SPARQL "string" for EBV purposes (Algebra.fst:889-890),
-/// returning `true`/`false` by lexical length exactly as it does for
-/// xsd:string. SPARQL 1.1 section 17.2.2's operand-mapping table lists only
-/// xsd:boolean, the numeric types, and xsd:string -- a language-tagged
-/// literal is "any other argument", i.e. a Type Error, under the table's
-/// text. This is a genuine, deliberate extension beyond the strict table
-/// (every SPARQL implementation the project has checked treats plain
-/// language-tagged literals as truthy-by-length in practice, so this is not
-/// flagged as a bug -- but it IS a documented divergence from the letter of
-/// 17.2.2, witnessed concretely here rather than asserted).
-let lemma_ebv_langstring_finding (s : string) (lang : string)
+/// AGREEMENT (RETIRES the former FINDING EBV-1 / `lemma_ebv_langstring_
+/// finding`, issue #365 EX-1 landing). The shipping `ebv` now signals a
+/// Type Error for a non-empty rdf:langString literal exactly as SPARQL
+/// 1.1 §17.2.2's operand-mapping table specifies (the table's "String"
+/// row is the un-language-tagged case only): `ebv_checked` returns
+/// `None`, and the bool-collapsing `ebv` folds that to `false` -- so a
+/// FILTER/HAVING condition on such a literal now drops the row/group
+/// precisely as a definite `false` would (same observable "Type Error
+/// == false" FILTER contract as always), while a BIND/SELECT-expression
+/// context built on `E_And`/`E_Or`/`E_Not` (Part 2) or a direct
+/// `ebv_checked` read now observes the real `None`/Type-Error instead of
+/// the previous silent `true`.
+let lemma_ebv_langstring_agrees (s : string) (lang : string)
   : Lemma (requires String.length s > 0)
           (ensures (let l : wf_literal =
                       { lexical_form = s; datatype = rdf_lang_string;
                         lang_tag = Some lang; direction = None } in
-                    ebv_spec (ER_Term (T_Literal l)) == None /\      // spec: Type Error
-                    ebv (ER_Term (T_Literal l)) == true))            // engine: true (non-empty)
+                    ebv_spec (ER_Term (T_Literal l)) == None /\        // spec: Type Error
+                    ebv_checked (ER_Term (T_Literal l)) == None /\     // engine: Type Error (was `Some true` pre-#365)
+                    ebv (ER_Term (T_Literal l)) == false))              // engine EBV-bool: false (was `true` pre-#365)
   = ()
 
 (** ======================================================================== **)
@@ -232,67 +262,82 @@ let lemma_not_matches_spec_when_no_error (v1 : eval_result) (b : bool)
     | None -> ()
 
 /// Expr-level corollaries, tying the abstract-value lemmas above to the
-/// actual `E_And`/`E_Or`/`E_Not` arms of `eval_expr_with_base`
-/// (SPARQL11.Algebra.fst ~3983-3985). `eval_expr_with_base` is a plain
-/// `let rec` (not irreducible), so the equation for a concrete constructor
-/// (`E_And e1 e2`, etc.) unfolds under SMT normalization with no extra hint.
+/// actual `E_And`/`E_Or`/`E_Not` arms of `eval_expr_with_base`. Issue
+/// #365 landing: these are now FULL, UNCONDITIONAL correspondences --
+/// no `Some b` hypothesis needed -- because the engine arms (SPARQL11.
+/// Algebra.fst, "Logical connectives") now go through `bool_and_checked`/
+/// `bool_or_checked`/`bool_not_checked`, literal copies of `spec_and`/
+/// `spec_or`/`spec_not`, and return `ER_Error` on the table's error rows
+/// instead of silently collapsing to a bool. `eval_expr_with_base` is a
+/// plain `let rec` (not irreducible), so the equation for a concrete
+/// constructor (`E_And e1 e2`, etc.) unfolds under SMT normalization
+/// with no extra hint; `lemma_ebv_checked_is_spec` carries the operand-
+/// level `ebv_checked == ebv_spec` equality that both match arms need.
 let lemma_eval_and_matches_spec
-    (base : option wf_iri) (e1 e2 : expr) (mu : solution_mapping) (b : bool)
-  : Lemma (requires spec_and (ebv_spec (eval_expr_with_base base e1 mu))
-                             (ebv_spec (eval_expr_with_base base e2 mu)) == Some b)
-          (ensures eval_expr_with_base base (E_And e1 e2) mu == ER_Bool b)
-  = lemma_and_matches_spec_when_no_error
-      (eval_expr_with_base base e1 mu) (eval_expr_with_base base e2 mu) b
+    (base : option wf_iri) (e1 e2 : expr) (mu : solution_mapping)
+  : Lemma (ensures eval_expr_with_base base (E_And e1 e2) mu ==
+                    (match spec_and (ebv_spec (eval_expr_with_base base e1 mu))
+                                    (ebv_spec (eval_expr_with_base base e2 mu)) with
+                     | Some b -> ER_Bool b
+                     | None -> ER_Error))
+  = lemma_ebv_checked_is_spec (eval_expr_with_base base e1 mu);
+    lemma_ebv_checked_is_spec (eval_expr_with_base base e2 mu)
 
 let lemma_eval_or_matches_spec
-    (base : option wf_iri) (e1 e2 : expr) (mu : solution_mapping) (b : bool)
-  : Lemma (requires spec_or (ebv_spec (eval_expr_with_base base e1 mu))
-                            (ebv_spec (eval_expr_with_base base e2 mu)) == Some b)
-          (ensures eval_expr_with_base base (E_Or e1 e2) mu == ER_Bool b)
-  = lemma_or_matches_spec_when_no_error
-      (eval_expr_with_base base e1 mu) (eval_expr_with_base base e2 mu) b
+    (base : option wf_iri) (e1 e2 : expr) (mu : solution_mapping)
+  : Lemma (ensures eval_expr_with_base base (E_Or e1 e2) mu ==
+                    (match spec_or (ebv_spec (eval_expr_with_base base e1 mu))
+                                   (ebv_spec (eval_expr_with_base base e2 mu)) with
+                     | Some b -> ER_Bool b
+                     | None -> ER_Error))
+  = lemma_ebv_checked_is_spec (eval_expr_with_base base e1 mu);
+    lemma_ebv_checked_is_spec (eval_expr_with_base base e2 mu)
 
 let lemma_eval_not_matches_spec
-    (base : option wf_iri) (e1 : expr) (mu : solution_mapping) (b : bool)
-  : Lemma (requires spec_not (ebv_spec (eval_expr_with_base base e1 mu)) == Some b)
-          (ensures eval_expr_with_base base (E_Not e1) mu == ER_Bool b)
-  = lemma_not_matches_spec_when_no_error (eval_expr_with_base base e1 mu) b
+    (base : option wf_iri) (e1 : expr) (mu : solution_mapping)
+  : Lemma (ensures eval_expr_with_base base (E_Not e1) mu ==
+                    (match spec_not (ebv_spec (eval_expr_with_base base e1 mu)) with
+                     | Some b -> ER_Bool b
+                     | None -> ER_Error))
+  = lemma_ebv_checked_is_spec (eval_expr_with_base base e1 mu)
 
-/// FINDING (LOGIC-1, E_And). The table says True AND Error = Error (error
-/// propagates once the dominant "false" row is off the table). The shipping
-/// `E_And` arm can NEVER produce an error -- `ebv` always returns a plain
-/// `bool` (Part 1), so `ER_Bool (ebv v1 && ebv v2)` always returns a
-/// definite `ER_Bool`, silently turning "should be Error" into a concrete
-/// `false`. Witnessed concretely at the `eval_expr_with_base` level: for any
-/// base/mu, `E_And (E_BoolLit true) (E_IRI i)` -- whose second operand is a
-/// bare IRI, a Type-Error EBV class -- evaluates to `ER_Bool false`, not to
-/// any representation of an error.
-let lemma_eval_and_true_error_diverges_finding
+/// AGREEMENT (RETIRES the former FINDING LOGIC-1 / `lemma_eval_and_true_
+/// error_diverges_finding`, issue #365 EX-2 landing). The table says
+/// True AND Error = Error. The engine's `E_And` arm now signals that
+/// error instead of silently folding it to a definite bool: for any
+/// base/mu, `E_And (E_BoolLit true) (E_IRI i)` -- whose second operand
+/// is a bare IRI, a Type-Error EBV class -- now evaluates to `ER_Error`
+/// (was `ER_Bool false` pre-#365), the SAME witness the divergence
+/// finding used, now agreeing instead of diverging.
+let lemma_eval_and_true_error_agrees
     (base : option wf_iri) (i : wf_iri) (mu : solution_mapping)
   : Lemma (ebv_spec (eval_expr_with_base base (E_IRI i) mu) == None /\           // spec: Type Error
            spec_and (Some true) (ebv_spec (eval_expr_with_base base (E_IRI i) mu)) == None /\  // spec: True AND Error = Error
-           eval_expr_with_base base (E_And (E_BoolLit true) (E_IRI i)) mu == ER_Bool false)      // engine: a definite False
-  = ()
+           eval_expr_with_base base (E_And (E_BoolLit true) (E_IRI i)) mu == ER_Error)  // engine: Error (was `ER_Bool false` pre-#365)
+  = lemma_eval_and_matches_spec base (E_BoolLit true) (E_IRI i) mu
 
-/// FINDING (LOGIC-1, E_Or). Symmetric divergence: the table says False OR
-/// Error = Error, but `E_Or (E_BoolLit false) (E_IRI i)` evaluates to
-/// `ER_Bool false`, again a definite (wrong) answer rather than an error.
-let lemma_eval_or_false_error_diverges_finding
+/// AGREEMENT (RETIRES `lemma_eval_or_false_error_diverges_finding`,
+/// issue #365 EX-2 landing). Symmetric case: the table says False OR
+/// Error = Error, and `E_Or (E_BoolLit false) (E_IRI i)` now evaluates
+/// to `ER_Error` (was `ER_Bool false` pre-#365).
+let lemma_eval_or_false_error_agrees
     (base : option wf_iri) (i : wf_iri) (mu : solution_mapping)
   : Lemma (ebv_spec (eval_expr_with_base base (E_IRI i) mu) == None /\
            spec_or (Some false) (ebv_spec (eval_expr_with_base base (E_IRI i) mu)) == None /\   // spec: False OR Error = Error
-           eval_expr_with_base base (E_Or (E_BoolLit false) (E_IRI i)) mu == ER_Bool false)       // engine: a definite False
-  = ()
+           eval_expr_with_base base (E_Or (E_BoolLit false) (E_IRI i)) mu == ER_Error)  // engine: Error (was `ER_Bool false` pre-#365)
+  = lemma_eval_or_matches_spec base (E_BoolLit false) (E_IRI i) mu
 
-/// FINDING (LOGIC-1, E_Not). `fn:not` propagates a Type-Error argument as a
-/// Type-Error result. `E_Not (E_IRI i)` instead evaluates to `ER_Bool true`
-/// (`not false`, `ebv` having folded the IRI's error to `false` per Part 1).
-let lemma_eval_not_error_diverges_finding
+/// AGREEMENT (RETIRES `lemma_eval_not_error_diverges_finding`, issue
+/// #365 EX-2 landing). `fn:not` propagates a Type-Error argument as a
+/// Type-Error result, and `E_Not (E_IRI i)` now evaluates to `ER_Error`
+/// (was `ER_Bool true` pre-#365, `not false` after `ebv` folded the
+/// IRI's error to `false`).
+let lemma_eval_not_error_agrees
     (base : option wf_iri) (i : wf_iri) (mu : solution_mapping)
   : Lemma (ebv_spec (eval_expr_with_base base (E_IRI i) mu) == None /\
            spec_not (ebv_spec (eval_expr_with_base base (E_IRI i) mu)) == None /\   // spec: Not(Error) = Error
-           eval_expr_with_base base (E_Not (E_IRI i)) mu == ER_Bool true)            // engine: a definite True
-  = ()
+           eval_expr_with_base base (E_Not (E_IRI i)) mu == ER_Error)  // engine: Error (was `ER_Bool true` pre-#365)
+  = lemma_eval_not_matches_spec base (E_IRI i) mu
 
 (** ======================================================================== **)
 (** Part 3: E_Eq / E_Neq on the value-comparison path (`value_compare`,      **)
