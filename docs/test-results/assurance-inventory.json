@@ -11780,7 +11780,7 @@
      "name": "find_oldest_aux_returns_present",
      "proved_in": "RDF.CottasStore.PageCache.Bounds",
      "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-     "line": 153,
+     "line": 154,
      "unconditional": true,
      "names_shipping_functions": [
       "find_oldest_aux",
@@ -11791,7 +11791,7 @@
      "name": "entries_after_bound",
      "proved_in": "RDF.CottasStore.PageCache.Bounds",
      "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-     "line": 217,
+     "line": 218,
      "unconditional": false,
      "names_shipping_functions": [
       "lookup_entry",
@@ -11802,7 +11802,7 @@
      "name": "entries_capped_bound",
      "proved_in": "RDF.CottasStore.PageCache.Bounds",
      "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-     "line": 239,
+     "line": 240,
      "unconditional": false,
      "names_shipping_functions": [
       "drop_entry",
@@ -11829,17 +11829,17 @@
    "files": [
     "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst"
    ],
-   "loc": 443,
+   "loc": 464,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "not-in-build-list",
-   "extraction_oracle_available": false,
+   "extraction": "fully-erased",
+   "extraction_oracle_available": true,
    "extracted_ml": null,
-   "in_build_module_list": false,
+   "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 16,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -11859,13 +11859,13 @@
     "pcache_put_capacity_bound",
     "pcache_get_length",
     "pcache_decode_capacity_bound",
-    "filter_zipped_rows_limited_bound",
+    "filter_zipped_rows_limited_seq_bound",
     "walk_candidate_rgs_search_limited_bound"
    ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "local-lemmas-only",
    "suites": []
   },
   {
@@ -37461,7 +37461,7 @@
    "name": "replace_entry_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 67,
+   "line": 68,
    "unconditional": true,
    "shipping_functions_named": [
     "replace_entry"
@@ -37479,7 +37479,7 @@
    "name": "drop_entry_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 78,
+   "line": 79,
    "unconditional": true,
    "shipping_functions_named": [
     "drop_entry"
@@ -37497,7 +37497,7 @@
    "name": "drop_entry_length_present",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 96,
+   "line": 97,
    "unconditional": false,
    "shipping_functions_named": [
     "drop_entry"
@@ -37515,7 +37515,7 @@
    "name": "list_len_eq_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 111,
+   "line": 112,
    "unconditional": true,
    "shipping_functions_named": [
     "list_len"
@@ -37533,7 +37533,7 @@
    "name": "find_oldest_aux_found_some",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 120,
+   "line": 121,
    "unconditional": true,
    "shipping_functions_named": [
     "find_oldest_aux"
@@ -37551,7 +37551,7 @@
    "name": "find_oldest_nonempty",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 135,
+   "line": 136,
    "unconditional": false,
    "shipping_functions_named": [
     "find_oldest"
@@ -37569,7 +37569,7 @@
    "name": "find_oldest_aux_returns_present",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 153,
+   "line": 154,
    "unconditional": true,
    "shipping_functions_named": [
     "find_oldest_aux",
@@ -37588,7 +37588,7 @@
    "name": "find_oldest_present",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 179,
+   "line": 180,
    "unconditional": false,
    "shipping_functions_named": [
     "find_oldest"
@@ -37606,7 +37606,7 @@
    "name": "pcache_put_capacity_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 209,
+   "line": 210,
    "unconditional": false,
    "shipping_functions_named": [
     "pcache_put"
@@ -37624,7 +37624,7 @@
    "name": "entries_after_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 217,
+   "line": 218,
    "unconditional": false,
    "shipping_functions_named": [
     "lookup_entry",
@@ -37643,7 +37643,7 @@
    "name": "entries_capped_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 239,
+   "line": 240,
    "unconditional": false,
    "shipping_functions_named": [
     "drop_entry",
@@ -37662,7 +37662,7 @@
    "name": "pcache_get_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 283,
+   "line": 284,
    "unconditional": true,
    "shipping_functions_named": [
     "pcache_get"
@@ -37680,7 +37680,7 @@
    "name": "pcache_decode_capacity_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 304,
+   "line": 305,
    "unconditional": false,
    "shipping_functions_named": [
     "pcache_decode_in_row_group"
@@ -37695,13 +37695,13 @@
    "class": "local_refinement"
   },
   {
-   "name": "filter_zipped_rows_limited_bound",
+   "name": "filter_zipped_rows_limited_seq_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 352,
+   "line": 364,
    "unconditional": false,
    "shipping_functions_named": [
-    "filter_zipped_rows_limited"
+    "filter_zipped_rows_limited_seq"
    ],
    "shipping_modules": [
     "RDF.CottasStore"
@@ -37716,7 +37716,7 @@
    "name": "walk_candidate_rgs_search_limited_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 399,
+   "line": 418,
    "unconditional": false,
    "shipping_functions_named": [
     "walk_candidate_rgs_search_limited"
@@ -63567,12 +63567,12 @@
   "tiers": {
    "algorithm-correctness": 27,
    "internal-refinement": 10,
-   "local-lemmas-only": 12,
+   "local-lemmas-only": 13,
    "merely-tot": 137,
    "specification-and-proof": 17,
-   "unclassified": 18,
+   "unclassified": 17,
    "w3c-refinement": 11
   }
  },
- "commit": "d15d34899"
+ "commit": "c5a0c46b4"
 }
