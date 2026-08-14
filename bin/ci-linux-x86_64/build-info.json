@@ -1,8 +1,8 @@
 {
   "platform": "linux-x86_64",
   "runner_os": "Linux",
-  "timestamp_utc": "2026-08-12T06:25:52Z",
-  "source_sha": "84ded26fbc10f270c084cd3a1733116a0b2eaf26",
+  "timestamp_utc": "2026-08-14T06:27:30Z",
+  "source_sha": "5c2f992d5025650da22c4a37933f9285d471a48d",
   "fstar_version": "F* 2025.12.15",
   "ocaml_version": "The OCaml toplevel, version 4.14.1",
   "opam_switch": "fstar",
@@ -37,7 +37,7 @@
     "shacl_runner": { "sha256": "e1f13264753670d86d524207a108d829dc5c64c8872ac76c22ee4b9698152f9b", "size": 15494624 },
     "shex_runner": { "sha256": "ecb222d35c79b03add383e57f526d2108c6888f6c016c0b14c7d153ffc923b31", "size": 15507496 },
     "vc_runner": { "sha256": "f99d30937a1d80445c92bbc01a80f4149e2734358ce8121f44497399d04ced48", "size": 15471448 },
-    "w3c_runner": { "sha256": "c35789d821ca77545e495e1d0347fa5ba4cbd89a5d339402e91ba3e3a9e6e5cb", "size": 15647176 },
+    "w3c_runner": { "sha256": "946b9dd8cd639533b48929117771b89b419888a97a13d1bfe616b451ca235e46", "size": 15647784 },
     "xml_runner": { "sha256": "4644281f99fa1a7c152dbea03819ad5d4260867031bb6cc9b838795c3345cd8c", "size": 15512400 },
     "xslt_runner": { "sha256": "0bb8179548ce45aa4be9c1b980f493dc6fa0cf158410a1eba1347bc6f255bc06", "size": 15475232 }
   }
