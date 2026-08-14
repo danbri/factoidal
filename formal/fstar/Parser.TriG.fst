@@ -241,9 +241,24 @@ let rec graph_body_skip_line (input: string) (p: nat) (f: nat) : Tot nat (decrea
 
 // Parse result type that tracks whether errors were encountered.
 // has_error = true means at least one parse error was skipped.
+//
+// terr carries the FIRST error's (message, byte position) -- issue
+// #334's TriG follow-up to #424 (which added the equivalent tdr_error
+// field to Parser.Turtle's turtle_doc_result). Before this, TriG
+// error recovery recorded only a bare has_error: bool and threw away
+// the message + position that parse_graph_body / parse_trig_doc's own
+// ParseFail arms already computed, so an undeclared prefix (or any
+// other statement-level error) in a TriG document was reported with
+// zero information about WHERE or WHY -- and the CLI's lenient TriG
+// load path (parse_trig_with_base_lenient / _12) never even looked at
+// has_error, so the offending statement was silently dropped with
+// exit 0. has_error stays as a field (still set alongside terr) so
+// existing `if tps'.has_error then None else ...` callers (parse_trig,
+// parse_trig_with_base, parse_trig_with_base_12) are unaffected.
 noeq type trig_parse_state = {
   ts: turtle_state;
   has_error: bool;
+  terr: option (string & nat);
 }
 
 (** Parse the body of a graph block: Turtle statements until '}'.
@@ -278,9 +293,12 @@ let rec parse_graph_body (tps: trig_parse_state) (input: string) (pos: nat)
             else
               parse_graph_body tps' input pos2
                 (List.Tot.append (List.Tot.rev triples) acc) fuel'
-          | ParseFail _ _ ->
+          | ParseFail msg fpos ->
             // Error recovery: skip line, but mark that we saw an error
-            let tps' = { tps with has_error = true } in
+            // -- and, first-error-wins, record its message + position
+            // (issue #334).
+            let terr' = (match tps.terr with Some _ -> tps.terr | None -> Some (msg, fpos)) in
+            let tps' = { tps with has_error = true; terr = terr' } in
             let pos2 = graph_body_skip_line input pos1 (len - pos1) in
             if pos2 = pos1 then
               ParseOk (List.Tot.rev acc, tps') pos1
@@ -470,9 +488,14 @@ let rec parse_trig_doc (tps: trig_parse_state) (input: string) (pos: nat)
               ds deltas
             in
             parse_trig_doc tps' input pos2 ds' fuel'
-        | ParseFail _ _ ->
-          // Skip to next line on failure, mark error
-          let tps' = { tps with has_error = true } in
+        | ParseFail msg fpos ->
+          // Skip to next line on failure, keep walking (a lenient
+          // consumer like parse_trig_lenient still wants the
+          // remaining well-formed triples) but record the FIRST
+          // failure's message + position -- first-error-wins, same
+          // convention as Parser.Turtle's tdr_error (issue #334).
+          let terr' = (match tps.terr with Some _ -> tps.terr | None -> Some (msg, fpos)) in
+          let tps' = { tps with has_error = true; terr = terr' } in
           let pos2 = graph_body_skip_line input pos1 (len - pos1) in
           if pos2 = pos1 then (ds, tps')
           else parse_trig_doc tps' input pos2 ds fuel'
@@ -483,7 +506,7 @@ let rec parse_trig_doc (tps: trig_parse_state) (input: string) (pos: nat)
 (* ================================================================ *)
 
 let make_trig_parse_state (st: turtle_state) : trig_parse_state =
-  { ts = st; has_error = false }
+  { ts = st; has_error = false; terr = None }
 
 (** Parse a TriG document string into an rdf_dataset.
     Returns None if any parse errors were encountered.
@@ -524,6 +547,35 @@ let parse_trig_with_base_lenient (input: string) (base: string) : rdf_dataset =
   let (ds, _) = parse_trig_doc tps input 0 empty_dataset fuel in
   dataset_finalise ds
 
+// Diagnostic entry points: like parse_trig_with_base / parse_trig,
+// but surface WHERE and WHY the document was rejected via the
+// module's own parse_result convention (ParseOk / ParseFail) instead
+// of collapsing to a bare `option`. Fixes issue #334's TriG
+// follow-up: an undeclared prefix (or any other statement-level
+// error) must produce a parse ERROR carrying position information --
+// and a caller that needs to report the error (CLI) should not have
+// to re-derive the byte offset that trig_parse_state.terr already
+// carries. Mirrors Parser.Turtle.parse_turtle_diagnostic /
+// parse_turtle_with_base_diagnostic (#424).
+let parse_trig_diagnostic (input: string) : parse_result rdf_dataset =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 3 in
+  let tps = make_trig_parse_state empty_turtle_state in
+  let (ds, tps') = parse_trig_doc tps input 0 empty_dataset fuel in
+  match tps'.terr with
+  | Some (msg, epos) -> ParseFail msg epos
+  | None -> ParseOk (dataset_finalise ds) len
+
+let parse_trig_with_base_diagnostic (input: string) (base: string) : parse_result rdf_dataset =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 3 in
+  let st = { empty_turtle_state with base_iri = base } in
+  let tps = make_trig_parse_state st in
+  let (ds, tps') = parse_trig_doc tps input 0 empty_dataset fuel in
+  match tps'.terr with
+  | Some (msg, epos) -> ParseFail msg epos
+  | None -> ParseOk (dataset_finalise ds) len
+
 (* ================================================================ *)
 (* RDF 1.2 TriG entry points (epic #305, wave 2).                   *)
 (*                                                                   *)
@@ -551,6 +603,16 @@ let parse_trig_with_base_lenient_12 (input: string) (base: string) : rdf_dataset
   let tps = make_trig_parse_state st in
   let (ds, _) = parse_trig_doc tps input 0 empty_dataset fuel in
   dataset_finalise ds
+
+let parse_trig_with_base_diagnostic_12 (input: string) (base: string) : parse_result rdf_dataset =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 3 in
+  let st = { empty_turtle_state_12 with base_iri = base } in
+  let tps = make_trig_parse_state st in
+  let (ds, tps') = parse_trig_doc tps input 0 empty_dataset fuel in
+  match tps'.terr with
+  | Some (msg, epos) -> ParseFail msg epos
+  | None -> ParseOk (dataset_finalise ds) len
 
 // Mode-parametrised dispatchers.
 let parse_trig_with_base_mode (mode: rdf_syntax_mode) (input: string) (base: string)

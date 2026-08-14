@@ -266,12 +266,17 @@ let rec graph_body_skip_line (input : Prims.string) (p : Prims.nat)
 type trig_parse_state =
   {
   ts: Parser_Turtle.turtle_state ;
-  has_error: Prims.bool }
+  has_error: Prims.bool ;
+  terr: (Prims.string * Prims.nat) FStar_Pervasives_Native.option }
 let __proj__Mktrig_parse_state__item__ts (projectee : trig_parse_state) :
-  Parser_Turtle.turtle_state= match projectee with | { ts; has_error;_} -> ts
+  Parser_Turtle.turtle_state=
+  match projectee with | { ts; has_error; terr;_} -> ts
 let __proj__Mktrig_parse_state__item__has_error
   (projectee : trig_parse_state) : Prims.bool=
-  match projectee with | { ts; has_error;_} -> has_error
+  match projectee with | { ts; has_error; terr;_} -> has_error
+let __proj__Mktrig_parse_state__item__terr (projectee : trig_parse_state) :
+  (Prims.string * Prims.nat) FStar_Pervasives_Native.option=
+  match projectee with | { ts; has_error; terr;_} -> terr
 let rec parse_graph_body (tps : trig_parse_state) (input : Prims.string)
   (pos : Prims.nat) (acc : RDF_Triple.triple Prims.list) (fuel : Prims.nat) :
   (RDF_Triple.triple Prims.list * trig_parse_state)
@@ -310,7 +315,12 @@ let rec parse_graph_body (tps : trig_parse_state) (input : Prims.string)
                            pos1 fuel
                    with
                    | Parser_Combinators.ParseOk ((triples, st'), pos2) ->
-                       let tps' = { ts = st'; has_error = (tps.has_error) } in
+                       let tps' =
+                         {
+                           ts = st';
+                           has_error = (tps.has_error);
+                           terr = (tps.terr)
+                         } in
                        if pos2 = pos1
                        then
                          Parser_Combinators.ParseOk
@@ -322,8 +332,14 @@ let rec parse_graph_body (tps : trig_parse_state) (input : Prims.string)
                          parse_graph_body tps' input pos2
                            (FStar_List_Tot_Base.append
                               (FStar_List_Tot_Base.rev triples) acc) fuel'
-                   | Parser_Combinators.ParseFail (uu___5, uu___6) ->
-                       let tps' = { ts = (tps.ts); has_error = true } in
+                   | Parser_Combinators.ParseFail (msg, fpos) ->
+                       let terr' =
+                         match tps.terr with
+                         | FStar_Pervasives_Native.Some uu___5 -> tps.terr
+                         | FStar_Pervasives_Native.None ->
+                             FStar_Pervasives_Native.Some (msg, fpos) in
+                       let tps' =
+                         { ts = (tps.ts); has_error = true; terr = terr' } in
                        let pos2 =
                          graph_body_skip_line input pos1 (len - pos1) in
                        if pos2 = pos1
@@ -365,7 +381,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                              (st.Parser_Turtle.bnode_counter);
                            Parser_Turtle.ts_mode = (st.Parser_Turtle.ts_mode)
                          };
-                       has_error = (tps.has_error)
+                       has_error = (tps.has_error);
+                       terr = (tps.terr)
                      }), pos2)
             | Parser_Combinators.ParseFail (uu___2, uu___3) ->
                 (match Parser_Turtle.parse_base_directive st input pos1 with
@@ -383,7 +400,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                 Parser_Turtle.ts_mode =
                                   (st.Parser_Turtle.ts_mode)
                               };
-                            has_error = (tps.has_error)
+                            has_error = (tps.has_error);
+                            terr = (tps.terr)
                           }), pos2)
                  | Parser_Combinators.ParseFail (uu___4, uu___5) ->
                      if code = (Prims.of_int (0x7B))
@@ -434,7 +452,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                  {
                                                    ts = st2;
                                                    has_error =
-                                                     (tps.has_error)
+                                                     (tps.has_error);
+                                                   terr = (tps.terr)
                                                  } in
                                                match parse_graph_body tps2
                                                        input
@@ -481,7 +500,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                        let tps2 =
                                          {
                                            ts = st2;
-                                           has_error = (tps.has_error)
+                                           has_error = (tps.has_error);
+                                           terr = (tps.terr)
                                          } in
                                        (match parse_graph_body tps2 input
                                                 (pos3 + Prims.int_one) []
@@ -555,7 +575,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                           {
                                                             ts = st3;
                                                             has_error =
-                                                              (tps.has_error)
+                                                              (tps.has_error);
+                                                            terr = (tps.terr)
                                                           }),
                                                          (pos5 +
                                                             Prims.int_one))
@@ -574,7 +595,9 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                             {
                                                               ts = st3;
                                                               has_error =
-                                                                (tps.has_error)
+                                                                (tps.has_error);
+                                                              terr =
+                                                                (tps.terr)
                                                             }), pos5)
                                                      else
                                                        Parser_Combinators.ParseFail
@@ -614,7 +637,9 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                              {
                                                                ts = st3;
                                                                has_error =
-                                                                 (tps.has_error)
+                                                                 (tps.has_error);
+                                                               terr =
+                                                                 (tps.terr)
                                                              }),
                                                             (pos5 +
                                                                Prims.int_one))
@@ -633,7 +658,9 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                                {
                                                                  ts = st3;
                                                                  has_error =
-                                                                   (tps.has_error)
+                                                                   (tps.has_error);
+                                                                 terr =
+                                                                   (tps.terr)
                                                                }), pos5)
                                                         else
                                                           Parser_Combinators.ParseFail
@@ -659,7 +686,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                             triples)],
                                           {
                                             ts = st';
-                                            has_error = (tps.has_error)
+                                            has_error = (tps.has_error);
+                                            terr = (tps.terr)
                                           }), pos2)
                                  | Parser_Combinators.ParseFail (msg, fpos)
                                      ->
@@ -700,14 +728,20 @@ let rec parse_trig_doc (tps : trig_parse_state) (input : Prims.string)
                               trig_dataset_add_triples acc triples gname) ds
                        deltas in
                    parse_trig_doc tps' input pos2 ds' fuel')
-            | Parser_Combinators.ParseFail (uu___2, uu___3) ->
-                let tps' = { ts = (tps.ts); has_error = true } in
+            | Parser_Combinators.ParseFail (msg, fpos) ->
+                let terr' =
+                  match tps.terr with
+                  | FStar_Pervasives_Native.Some uu___2 -> tps.terr
+                  | FStar_Pervasives_Native.None ->
+                      FStar_Pervasives_Native.Some (msg, fpos) in
+                let tps' = { ts = (tps.ts); has_error = true; terr = terr' } in
                 let pos2 = graph_body_skip_line input pos1 (len - pos1) in
                 if pos2 = pos1
                 then (ds, tps')
                 else parse_trig_doc tps' input pos2 ds fuel'))
 let make_trig_parse_state (st : Parser_Turtle.turtle_state) :
-  trig_parse_state= { ts = st; has_error = false }
+  trig_parse_state=
+  { ts = st; has_error = false; terr = FStar_Pervasives_Native.None }
 let parse_trig (input : Prims.string) :
   RDF_Graph.rdf_dataset FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
@@ -771,6 +805,47 @@ let parse_trig_with_base_lenient (input : Prims.string) (base : Prims.string)
   let uu___ =
     parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
   match uu___ with | (ds, uu___1) -> RDF_Graph_Executable.dataset_finalise ds
+let parse_trig_diagnostic (input : Prims.string) :
+  RDF_Graph.rdf_dataset Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
+  let tps = make_trig_parse_state Parser_Turtle.empty_turtle_state in
+  let uu___ =
+    parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
+  match uu___ with
+  | (ds, tps') ->
+      (match tps'.terr with
+       | FStar_Pervasives_Native.Some (msg, epos) ->
+           Parser_Combinators.ParseFail (msg, epos)
+       | FStar_Pervasives_Native.None ->
+           Parser_Combinators.ParseOk
+             ((RDF_Graph_Executable.dataset_finalise ds), len))
+let parse_trig_with_base_diagnostic (input : Prims.string)
+  (base : Prims.string) :
+  RDF_Graph.rdf_dataset Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
+  let st =
+    {
+      Parser_Turtle.prefixes =
+        (Parser_Turtle.empty_turtle_state.Parser_Turtle.prefixes);
+      Parser_Turtle.base_iri = base;
+      Parser_Turtle.bnode_counter =
+        (Parser_Turtle.empty_turtle_state.Parser_Turtle.bnode_counter);
+      Parser_Turtle.ts_mode =
+        (Parser_Turtle.empty_turtle_state.Parser_Turtle.ts_mode)
+    } in
+  let tps = make_trig_parse_state st in
+  let uu___ =
+    parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
+  match uu___ with
+  | (ds, tps') ->
+      (match tps'.terr with
+       | FStar_Pervasives_Native.Some (msg, epos) ->
+           Parser_Combinators.ParseFail (msg, epos)
+       | FStar_Pervasives_Native.None ->
+           Parser_Combinators.ParseOk
+             ((RDF_Graph_Executable.dataset_finalise ds), len))
 let parse_trig_with_base_12 (input : Prims.string) (base : Prims.string) :
   RDF_Graph.rdf_dataset FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
@@ -813,6 +888,32 @@ let parse_trig_with_base_lenient_12 (input : Prims.string)
   let uu___ =
     parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
   match uu___ with | (ds, uu___1) -> RDF_Graph_Executable.dataset_finalise ds
+let parse_trig_with_base_diagnostic_12 (input : Prims.string)
+  (base : Prims.string) :
+  RDF_Graph.rdf_dataset Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
+  let st =
+    {
+      Parser_Turtle.prefixes =
+        (Parser_Turtle.empty_turtle_state_12.Parser_Turtle.prefixes);
+      Parser_Turtle.base_iri = base;
+      Parser_Turtle.bnode_counter =
+        (Parser_Turtle.empty_turtle_state_12.Parser_Turtle.bnode_counter);
+      Parser_Turtle.ts_mode =
+        (Parser_Turtle.empty_turtle_state_12.Parser_Turtle.ts_mode)
+    } in
+  let tps = make_trig_parse_state st in
+  let uu___ =
+    parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
+  match uu___ with
+  | (ds, tps') ->
+      (match tps'.terr with
+       | FStar_Pervasives_Native.Some (msg, epos) ->
+           Parser_Combinators.ParseFail (msg, epos)
+       | FStar_Pervasives_Native.None ->
+           Parser_Combinators.ParseOk
+             ((RDF_Graph_Executable.dataset_finalise ds), len))
 let parse_trig_with_base_mode (mode : Parser_NTriples.rdf_syntax_mode)
   (input : Prims.string) (base : Prims.string) :
   RDF_Graph.rdf_dataset FStar_Pervasives_Native.option=

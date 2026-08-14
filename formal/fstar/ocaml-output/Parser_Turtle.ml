@@ -4178,6 +4178,40 @@ let parse_turtle_with_base_strict_12 (input : Prims.string)
   then FStar_Pervasives_Native.None
   else
     FStar_Pervasives_Native.Some (RDF_Graph.graph_dedup_sort r.tdr_triples)
+let parse_turtle_diagnostic_12 (input : Prims.string) :
+  RDF_Triple.triple Prims.list Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
+  let r =
+    parse_turtle_doc empty_turtle_state_12 input Prims.int_zero []
+      FStar_Pervasives_Native.None fuel in
+  match r.tdr_error with
+  | FStar_Pervasives_Native.Some (msg, epos) ->
+      Parser_Combinators.ParseFail (msg, epos)
+  | FStar_Pervasives_Native.None ->
+      Parser_Combinators.ParseOk
+        ((RDF_Graph.graph_dedup_sort r.tdr_triples), len)
+let parse_turtle_with_base_diagnostic_12 (input : Prims.string)
+  (base : Prims.string) :
+  RDF_Triple.triple Prims.list Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
+  let st =
+    {
+      prefixes = (empty_turtle_state_12.prefixes);
+      base_iri = base;
+      bnode_counter = (empty_turtle_state_12.bnode_counter);
+      ts_mode = (empty_turtle_state_12.ts_mode)
+    } in
+  let r =
+    parse_turtle_doc st input Prims.int_zero [] FStar_Pervasives_Native.None
+      fuel in
+  match r.tdr_error with
+  | FStar_Pervasives_Native.Some (msg, epos) ->
+      Parser_Combinators.ParseFail (msg, epos)
+  | FStar_Pervasives_Native.None ->
+      Parser_Combinators.ParseOk
+        ((RDF_Graph.graph_dedup_sort r.tdr_triples), len)
 let parse_turtle_with_base_mode (mode : Parser_NTriples.rdf_syntax_mode)
   (input : Prims.string) (base : Prims.string) :
   RDF_Triple.triple Prims.list=

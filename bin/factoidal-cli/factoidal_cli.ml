@@ -445,14 +445,29 @@ let load_dataset ?(format=None) ?(base=None) path =
     if !rdf12_mode then Parser_NQuads.parse_nquads_12 content
     else Parser_NQuads.parse_nquads content
   | TriG ->
+    (* Issue #334 (TriG follow-up to #424): an undeclared prefix (or
+       any other statement-level error) must FAIL the parse with a
+       position, not silently drop the offending statement and report
+       success. The old parse_trig_with_base_lenient(_12) / parse_trig_lenient
+       always returned a dataset regardless of trig_parse_state.has_error --
+       so this branch never even LOOKED at whether the document was
+       well-formed. parse_trig_diagnostic / parse_trig_with_base_diagnostic(_12)
+       return the parser's own ParseOk/ParseFail; this caller just has to
+       not swallow the ParseFail case. *)
     let b12 = match base_iri with Some b -> b | None -> "" in
-    (match base_iri with
-     | Some b ->
-       if !rdf12_mode then Parser_TriG.parse_trig_with_base_lenient_12 content b
-       else Parser_TriG.parse_trig_with_base_lenient content b
-     | None ->
-       if !rdf12_mode then Parser_TriG.parse_trig_with_base_lenient_12 content b12
-       else Parser_TriG.parse_trig_lenient content)
+    let result =
+      if !rdf12_mode then
+        (match base_iri with
+         | Some b -> Parser_TriG.parse_trig_with_base_diagnostic_12 content b
+         | None -> Parser_TriG.parse_trig_with_base_diagnostic_12 content b12)
+      else
+        (match base_iri with
+         | Some b -> Parser_TriG.parse_trig_with_base_diagnostic content b
+         | None -> Parser_TriG.parse_trig_diagnostic content) in
+    (match result with
+     | Parser_Combinators.ParseOk (ds, _) -> ds
+     | Parser_Combinators.ParseFail (msg, epos) ->
+       failwith (Printf.sprintf "%s (byte offset %d)" msg (Z.to_int epos)))
   | JSONLD ->
     (* Context processing (JSONLD.Context/JSONLD.Expand) + document
        base threading per issue #275 — see
@@ -485,21 +500,24 @@ let load_dataset ?(format=None) ?(base=None) path =
            return the parser's own ParseOk/ParseFail — this caller just
            has to not swallow the ParseFail case, which the old
            always-succeeds parse_turtle / parse_turtle_with_base made
-           impossible (no error channel at all). Mode_12 is untouched
-           (out of scope here; tracked separately per #334's "check
-           TriG/SPARQL/JSON-LD" follow-up task). *)
-         if !rdf12_mode then
-           (match base_iri with
-            | Some b -> Parser_Turtle.parse_turtle_with_base_12 content b
-            | None -> Parser_Turtle.parse_turtle_with_base_12 content b12)
-         else
-           let result = match base_iri with
-             | Some b -> Parser_Turtle.parse_turtle_with_base_diagnostic content b
-             | None -> Parser_Turtle.parse_turtle_diagnostic content in
-           (match result with
-            | Parser_Combinators.ParseOk (triples, _) -> triples
-            | Parser_Combinators.ParseFail (msg, epos) ->
-              failwith (Printf.sprintf "%s (byte offset %d)" msg (Z.to_int epos)))
+           impossible (no error channel at all). The --rdf12 path had
+           the same gap (parse_turtle_with_base_12 / parse_turtle_12
+           are equally always-succeeds) -- fixed by routing through the
+           mirrored parse_turtle_diagnostic_12 / parse_turtle_with_base_diagnostic_12
+           entry points, #334's Turtle Mode 1.2 follow-up. *)
+         let result =
+           if !rdf12_mode then
+             (match base_iri with
+              | Some b -> Parser_Turtle.parse_turtle_with_base_diagnostic_12 content b
+              | None -> Parser_Turtle.parse_turtle_with_base_diagnostic_12 content b12)
+           else
+             (match base_iri with
+              | Some b -> Parser_Turtle.parse_turtle_with_base_diagnostic content b
+              | None -> Parser_Turtle.parse_turtle_diagnostic content) in
+         (match result with
+          | Parser_Combinators.ParseOk (triples, _) -> triples
+          | Parser_Combinators.ParseFail (msg, epos) ->
+            failwith (Printf.sprintf "%s (byte offset %d)" msg (Z.to_int epos)))
       | RDFXML ->
         (match base_iri with
          | Some b -> Parser_RDFXML.parse_rdfxml_with_base b content
