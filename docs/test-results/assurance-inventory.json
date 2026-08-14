@@ -6217,91 +6217,6 @@
      ]
     },
     {
-     "name": "lemma_build_string_byte_length_general",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1280,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "utf8_enc_char"
-     ]
-    },
-    {
-     "name": "lemma_scan_iri_end_one_char_walk",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1316,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "scan_iri_end"
-     ]
-    },
-    {
-     "name": "lemma_scan_iri_end_build_string_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1360,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "scan_iri_end"
-     ]
-    },
-    {
-     "name": "lemma_parse_iri_raw_build_string_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1421,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "parse_iri_raw"
-     ]
-    },
-    {
-     "name": "lemma_parse_iri_build_string_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1451,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "parse_iri"
-     ]
-    },
-    {
-     "name": "lemma_term_iri_round_trip_build_string_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1465,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "nq_term_to_string",
-      "parse_object"
-     ]
-    },
-    {
-     "name": "lemma_term_iri_round_trip_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1494,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "nq_term_to_string",
-      "parse_object"
-     ]
-    },
-    {
      "name": "fs_sub_of_concat",
      "proved_in": "SPARQL11.Parser.AskBgpRoundTrip",
      "file": "formal/fstar/SPARQL11.Parser.AskBgpRoundTrip.fst",
@@ -7420,7 +7335,7 @@
    "files": [
     "formal/fstar/Parser.FastString.Spec.fst"
    ],
-   "loc": 853,
+   "loc": 835,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -7548,21 +7463,10 @@
      ]
     },
     {
-     "name": "utf8_bytes_singleton",
-     "proved_in": "Parser.FastString.Spec",
-     "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 431,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "utf8_bytes",
-      "utf8_enc_char"
-     ]
-    },
-    {
      "name": "utf8_decode_at_ascii",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 440,
+     "line": 422,
      "unconditional": false,
      "names_shipping_functions": [
       "nth_byte",
@@ -7573,7 +7477,7 @@
      "name": "utf8_decode_encode_identity",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 450,
+     "line": 432,
      "unconditional": true,
      "names_shipping_functions": [
       "utf8_decode_at",
@@ -7584,7 +7488,7 @@
      "name": "utf8_decode_all_aux_unfold",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 620,
+     "line": 602,
      "unconditional": false,
      "names_shipping_functions": [
       "utf8_decode_all_aux",
@@ -7595,7 +7499,7 @@
      "name": "utf8_decode_all_aux_encode",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 676,
+     "line": 658,
      "unconditional": true,
      "names_shipping_functions": [
       "utf8_decode_all_aux",
@@ -7606,7 +7510,7 @@
      "name": "utf8_decode_all_concatMap_identity",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 704,
+     "line": 686,
      "unconditional": true,
      "names_shipping_functions": [
       "utf8_decode_all",
@@ -7617,7 +7521,7 @@
      "name": "utf8_decode_all_utf8_bytes_identity",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 716,
+     "line": 698,
      "unconditional": true,
      "names_shipping_functions": [
       "utf8_bytes",
@@ -7628,7 +7532,7 @@
      "name": "chars_take_drop_append",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 742,
+     "line": 724,
      "unconditional": true,
      "names_shipping_functions": [
       "drop_chars",
@@ -7639,7 +7543,7 @@
      "name": "chars_split3",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 764,
+     "line": 746,
      "unconditional": true,
      "names_shipping_functions": [
       "drop_chars",
@@ -7651,7 +7555,7 @@
      "name": "utf8_decode_all_slice_by_charcount",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 833,
+     "line": 815,
      "unconditional": true,
      "names_shipping_functions": [
       "slice_bytes",
@@ -7882,40 +7786,6 @@
       "parse_opt_graph_label",
       "pws",
       "scan_bnode_body_cp"
-     ]
-    },
-    {
-     "name": "lemma_build_string_utf8_bytes_general",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1267,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "utf8_bytes",
-      "utf8_enc_char"
-     ]
-    },
-    {
-     "name": "lemma_build_string_byte_length_general",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1280,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "utf8_enc_char"
-     ]
-    },
-    {
-     "name": "lemma_utf8_enc_char_iri_safe",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1293,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "is_iri_body_char",
-      "is_iri_forbidden_codepoint",
-      "utf8_enc_char"
      ]
     }
    ],
@@ -9835,92 +9705,6 @@
       "is_nt_ws",
       "pws"
      ]
-    },
-    {
-     "name": "lemma_utf8_enc_char_iri_safe",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1293,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "is_iri_body_char",
-      "is_iri_forbidden_codepoint",
-      "utf8_enc_char"
-     ]
-    },
-    {
-     "name": "lemma_scan_iri_end_one_char_walk",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1316,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "scan_iri_end"
-     ]
-    },
-    {
-     "name": "lemma_scan_iri_end_build_string_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1360,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "scan_iri_end"
-     ]
-    },
-    {
-     "name": "lemma_parse_iri_raw_build_string_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1421,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "parse_iri_raw"
-     ]
-    },
-    {
-     "name": "lemma_parse_iri_build_string_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1451,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "parse_iri"
-     ]
-    },
-    {
-     "name": "lemma_term_iri_round_trip_build_string_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1465,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "nq_term_to_string",
-      "parse_object"
-     ]
-    },
-    {
-     "name": "lemma_term_iri_round_trip_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1494,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "nq_term_to_string",
-      "parse_object"
-     ]
     }
    ],
    "internal_refinement_theorems": [
@@ -10327,7 +10111,7 @@
    "files": [
     "formal/fstar/Parser.TriG.fst"
    ],
-   "loc": 629,
+   "loc": 567,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10335,7 +10119,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_TriG.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 25,
+   "shipping_function_count": 22,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -10375,7 +10159,7 @@
    "files": [
     "formal/fstar/Parser.Turtle.fst"
    ],
-   "loc": 2872,
+   "loc": 2759,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10383,7 +10167,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_Turtle.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 121,
+   "shipping_function_count": 116,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -11780,7 +11564,7 @@
      "name": "find_oldest_aux_returns_present",
      "proved_in": "RDF.CottasStore.PageCache.Bounds",
      "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-     "line": 154,
+     "line": 153,
      "unconditional": true,
      "names_shipping_functions": [
       "find_oldest_aux",
@@ -11791,7 +11575,7 @@
      "name": "entries_after_bound",
      "proved_in": "RDF.CottasStore.PageCache.Bounds",
      "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-     "line": 218,
+     "line": 217,
      "unconditional": false,
      "names_shipping_functions": [
       "lookup_entry",
@@ -11802,7 +11586,7 @@
      "name": "entries_capped_bound",
      "proved_in": "RDF.CottasStore.PageCache.Bounds",
      "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-     "line": 240,
+     "line": 239,
      "unconditional": false,
      "names_shipping_functions": [
       "drop_entry",
@@ -11829,17 +11613,17 @@
    "files": [
     "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst"
    ],
-   "loc": 464,
+   "loc": 443,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "fully-erased",
-   "extraction_oracle_available": true,
+   "extraction": "not-in-build-list",
+   "extraction_oracle_available": false,
    "extracted_ml": null,
-   "in_build_module_list": true,
+   "in_build_module_list": false,
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
+   "unclassified_definition_count": 16,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -11859,13 +11643,13 @@
     "pcache_put_capacity_bound",
     "pcache_get_length",
     "pcache_decode_capacity_bound",
-    "filter_zipped_rows_limited_seq_bound",
+    "filter_zipped_rows_limited_bound",
     "walk_candidate_rgs_search_limited_bound"
    ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "local-lemmas-only",
+   "assurance_tier": "unclassified",
    "suites": []
   },
   {
@@ -12238,37 +12022,6 @@
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
    "assurance_tier": "unclassified",
-   "suites": []
-  },
-  {
-   "module": "RDF.Entailment.RDFS.DatatypeClash",
-   "files": [
-    "formal/fstar/RDF.Entailment.RDFS.DatatypeClash.fst"
-   ],
-   "loc": 281,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/RDF_Entailment_RDFS_DatatypeClash.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 17,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -17848,32 +17601,6 @@
       "nq_subject_to_string",
       "parse_subject"
      ]
-    },
-    {
-     "name": "lemma_term_iri_round_trip_build_string_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1465,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "nq_term_to_string",
-      "parse_object"
-     ]
-    },
-    {
-     "name": "lemma_term_iri_round_trip_utf8",
-     "proved_in": "RDF.NTriples.RoundTrip",
-     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1494,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "fs_byte_length",
-      "is_iri_body_char",
-      "nq_term_to_string",
-      "parse_object"
-     ]
     }
    ],
    "internal_refinement_theorems": [],
@@ -17965,7 +17692,7 @@
    "files": [
     "formal/fstar/RDF.NTriples.RoundTrip.fst"
    ],
-   "loc": 1506,
+   "loc": 1193,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "not-in-build-list",
@@ -17975,7 +17702,7 @@
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 30,
+   "unclassified_definition_count": 18,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -17983,7 +17710,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 12,
+   "local_refinement_lemma_count": 9,
    "local_refinement_lemma_names": [
     "lemma_nq_subject_to_string_same_shape_iri",
     "lemma_nq_subject_to_string_same_shape_bnode",
@@ -17993,10 +17720,7 @@
     "lemma_nq_term_to_string_same_shape_bnode",
     "lemma_nq_term_to_string_cross_shape",
     "lemma_nq_term_to_string_injective",
-    "lemma_nq_objects_injective_pointwise",
-    "nth_byte_index_iri",
-    "lemma_list_of_build_string_general",
-    "lemma_string_is_build_string_general"
+    "lemma_nq_objects_injective_pointwise"
    ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
@@ -35008,29 +34732,10 @@
    "class": "local_refinement"
   },
   {
-   "name": "utf8_bytes_singleton",
-   "host_module": "Parser.FastString.Spec",
-   "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 431,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "utf8_bytes",
-    "utf8_enc_char"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
    "name": "utf8_decode_at_ascii",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 440,
+   "line": 422,
    "unconditional": false,
    "shipping_functions_named": [
     "nth_byte",
@@ -35049,7 +34754,7 @@
    "name": "utf8_decode_encode_identity",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 450,
+   "line": 432,
    "unconditional": true,
    "shipping_functions_named": [
     "utf8_decode_at",
@@ -35068,7 +34773,7 @@
    "name": "utf8_decode_all_aux_unfold",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 620,
+   "line": 602,
    "unconditional": false,
    "shipping_functions_named": [
     "utf8_decode_all_aux",
@@ -35087,7 +34792,7 @@
    "name": "utf8_decode_all_aux_shift",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 641,
+   "line": 623,
    "unconditional": false,
    "shipping_functions_named": [
     "utf8_decode_all_aux"
@@ -35105,7 +34810,7 @@
    "name": "utf8_decode_all_aux_encode",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 676,
+   "line": 658,
    "unconditional": true,
    "shipping_functions_named": [
     "utf8_decode_all_aux",
@@ -35124,7 +34829,7 @@
    "name": "utf8_decode_all_concatMap_identity",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 704,
+   "line": 686,
    "unconditional": true,
    "shipping_functions_named": [
     "utf8_decode_all",
@@ -35143,7 +34848,7 @@
    "name": "utf8_decode_all_utf8_bytes_identity",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 716,
+   "line": 698,
    "unconditional": true,
    "shipping_functions_named": [
     "utf8_bytes",
@@ -35162,7 +34867,7 @@
    "name": "chars_take_drop_append",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 742,
+   "line": 724,
    "unconditional": true,
    "shipping_functions_named": [
     "drop_chars",
@@ -35181,7 +34886,7 @@
    "name": "drop_chars_add",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 750,
+   "line": 732,
    "unconditional": true,
    "shipping_functions_named": [
     "drop_chars"
@@ -35199,7 +34904,7 @@
    "name": "chars_split3",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 764,
+   "line": 746,
    "unconditional": true,
    "shipping_functions_named": [
     "drop_chars",
@@ -35219,7 +34924,7 @@
    "name": "drop_bytes_append_left",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 784,
+   "line": 766,
    "unconditional": false,
    "shipping_functions_named": [
     "drop_bytes"
@@ -35237,7 +34942,7 @@
    "name": "drop_bytes_self",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 792,
+   "line": 774,
    "unconditional": true,
    "shipping_functions_named": [
     "drop_bytes"
@@ -35255,7 +34960,7 @@
    "name": "take_bytes_append_left",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 799,
+   "line": 781,
    "unconditional": false,
    "shipping_functions_named": [
     "take_bytes"
@@ -35273,7 +34978,7 @@
    "name": "take_bytes_self",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 807,
+   "line": 789,
    "unconditional": true,
    "shipping_functions_named": [
     "take_bytes"
@@ -35291,7 +34996,7 @@
    "name": "bytes_split3_slice",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 814,
+   "line": 796,
    "unconditional": true,
    "shipping_functions_named": [
     "slice_bytes"
@@ -35309,7 +35014,7 @@
    "name": "utf8_decode_all_slice_by_charcount",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 833,
+   "line": 815,
    "unconditional": true,
    "shipping_functions_named": [
     "slice_bytes",
@@ -37461,7 +37166,7 @@
    "name": "replace_entry_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 68,
+   "line": 67,
    "unconditional": true,
    "shipping_functions_named": [
     "replace_entry"
@@ -37479,7 +37184,7 @@
    "name": "drop_entry_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 79,
+   "line": 78,
    "unconditional": true,
    "shipping_functions_named": [
     "drop_entry"
@@ -37497,7 +37202,7 @@
    "name": "drop_entry_length_present",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 97,
+   "line": 96,
    "unconditional": false,
    "shipping_functions_named": [
     "drop_entry"
@@ -37515,7 +37220,7 @@
    "name": "list_len_eq_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 112,
+   "line": 111,
    "unconditional": true,
    "shipping_functions_named": [
     "list_len"
@@ -37533,7 +37238,7 @@
    "name": "find_oldest_aux_found_some",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 121,
+   "line": 120,
    "unconditional": true,
    "shipping_functions_named": [
     "find_oldest_aux"
@@ -37551,7 +37256,7 @@
    "name": "find_oldest_nonempty",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 136,
+   "line": 135,
    "unconditional": false,
    "shipping_functions_named": [
     "find_oldest"
@@ -37569,7 +37274,7 @@
    "name": "find_oldest_aux_returns_present",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 154,
+   "line": 153,
    "unconditional": true,
    "shipping_functions_named": [
     "find_oldest_aux",
@@ -37588,7 +37293,7 @@
    "name": "find_oldest_present",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 180,
+   "line": 179,
    "unconditional": false,
    "shipping_functions_named": [
     "find_oldest"
@@ -37606,7 +37311,7 @@
    "name": "pcache_put_capacity_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 210,
+   "line": 209,
    "unconditional": false,
    "shipping_functions_named": [
     "pcache_put"
@@ -37624,7 +37329,7 @@
    "name": "entries_after_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 218,
+   "line": 217,
    "unconditional": false,
    "shipping_functions_named": [
     "lookup_entry",
@@ -37643,7 +37348,7 @@
    "name": "entries_capped_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 240,
+   "line": 239,
    "unconditional": false,
    "shipping_functions_named": [
     "drop_entry",
@@ -37662,7 +37367,7 @@
    "name": "pcache_get_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 284,
+   "line": 283,
    "unconditional": true,
    "shipping_functions_named": [
     "pcache_get"
@@ -37680,7 +37385,7 @@
    "name": "pcache_decode_capacity_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 305,
+   "line": 304,
    "unconditional": false,
    "shipping_functions_named": [
     "pcache_decode_in_row_group"
@@ -37695,13 +37400,13 @@
    "class": "local_refinement"
   },
   {
-   "name": "filter_zipped_rows_limited_seq_bound",
+   "name": "filter_zipped_rows_limited_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 364,
+   "line": 352,
    "unconditional": false,
    "shipping_functions_named": [
-    "filter_zipped_rows_limited_seq"
+    "filter_zipped_rows_limited"
    ],
    "shipping_modules": [
     "RDF.CottasStore"
@@ -37716,7 +37421,7 @@
    "name": "walk_candidate_rgs_search_limited_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 418,
+   "line": 399,
    "unconditional": false,
    "shipping_functions_named": [
     "walk_candidate_rgs_search_limited"
@@ -50235,242 +49940,6 @@
    "shipping_modules": [
     "Parser.FastString",
     "Parser.NTriples"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_build_string_utf8_bytes_general",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1267,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "utf8_bytes",
-    "utf8_enc_char"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_build_string_byte_length_general",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1280,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length",
-    "utf8_enc_char"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_utf8_enc_char_iri_safe",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1293,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "is_iri_body_char",
-    "is_iri_forbidden_codepoint",
-    "utf8_enc_char"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec",
-    "Parser.NTriples"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "nth_byte_index_iri",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1305,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "nth_byte"
-   ],
-   "shipping_modules": [
-    "Parser.FastString.Spec"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_scan_iri_end_one_char_walk",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1316,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "fs_byte_length",
-    "is_iri_body_char",
-    "scan_iri_end"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.NTriples"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_scan_iri_end_build_string_utf8",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1360,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "fs_byte_length",
-    "is_iri_body_char",
-    "scan_iri_end"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.NTriples"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_list_of_build_string_general",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1402,
-   "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_string_is_build_string_general",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1409,
-   "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_parse_iri_raw_build_string_utf8",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1421,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "fs_byte_length",
-    "is_iri_body_char",
-    "parse_iri_raw"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.NTriples"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_parse_iri_build_string_utf8",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1451,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "fs_byte_length",
-    "is_iri_body_char",
-    "parse_iri"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.NTriples"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_term_iri_round_trip_build_string_utf8",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1465,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "fs_byte_length",
-    "is_iri_body_char",
-    "nq_term_to_string",
-    "parse_object"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.NTriples",
-    "RDF.NQuads.Serialize"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "lemma_term_iri_round_trip_utf8",
-   "host_module": "RDF.NTriples.RoundTrip",
-   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1494,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "fs_byte_length",
-    "is_iri_body_char",
-    "nq_term_to_string",
-    "parse_object"
-   ],
-   "shipping_modules": [
-    "Parser.FastString",
-    "Parser.NTriples",
-    "RDF.NQuads.Serialize"
    ],
    "declarative_relations_named": [],
    "declarative_modules": [],
@@ -63530,8 +62999,8 @@
   }
  ],
  "totals": {
-  "modules": 232,
-  "files": 242,
+  "modules": 231,
+  "files": 241,
   "assume_val_active": 133,
   "assume_other_active": 5,
   "admissions_active": 0,
@@ -63539,10 +63008,10 @@
   "modules_with_w3c_refinement_theorem": 11,
   "modules_with_algorithm_correctness_theorem": 43,
   "modules_with_internal_refinement_theorem": 20,
-  "modules_merely_tot": 137,
+  "modules_merely_tot": 136,
   "w3c_refinement_theorem_count": 316,
   "internal_refinement_theorem_count": 155,
-  "algorithm_correctness_theorem_count": 353,
+  "algorithm_correctness_theorem_count": 343,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [
    "OWL.RL.Refinement",
@@ -63563,16 +63032,16 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1666,
+  "lemma_count": 1653,
   "tiers": {
    "algorithm-correctness": 27,
    "internal-refinement": 10,
-   "local-lemmas-only": 13,
-   "merely-tot": 137,
+   "local-lemmas-only": 12,
+   "merely-tot": 136,
    "specification-and-proof": 17,
-   "unclassified": 17,
+   "unclassified": 18,
    "w3c-refinement": 11
   }
  },
- "commit": "c5a0c46b4"
+ "commit": "ae65c2044"
 }
