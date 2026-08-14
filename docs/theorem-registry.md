@@ -1451,3 +1451,22 @@ like `false`) except the one FILTER-visible flip EX-1 itself causes: a
 bare non-empty langString literal in FILTER position used to keep the
 row and now drops it, per the corrected EBV table — pinned in the same
 regression script.
+
+**#334 FIXED: Turtle silent drops (2026-08-11, branch
+`turtle-strict2`)**: an undeclared prefix made `Parser.Turtle.fst`
+discard the statement and return SUCCESS — silent data loss (measured
+before the fix: `factoidal dump` on a 3-statement file exited 0 and
+printed 2 triples, no message). Fix: `turtle_doc_result` gains a
+`tdr_error` field carrying the message + byte position (the
+information was already computed, then thrown away); two new entry
+points `parse_turtle_diagnostic` / `parse_turtle_with_base_diagnostic`
+surface it through the parser's OWN existing ParseOk/ParseFail
+convention (no new error mechanism); the CLI's Turtle load path exits
+1 and prints message + position to stderr. Gates: regression 6 pass,
+0 fail (of 6) — was 2 pass, 4 fail before the fix; W3C RDF 1031 pass,
+0 fail (of 1031); SPARQL 631 pass, 0 fail (of 631); nothing flipped,
+so no W3C test had been passing BECAUSE of the drop. This retires the
+first half of the silent-drop class named in the streaming plan's
+constraint 4. SCOPE (follow-ups on #334): Turtle Mode 1.2 (--rdf12),
+TriG, and the manifest loader may carry the same defect — untouched
+here.
