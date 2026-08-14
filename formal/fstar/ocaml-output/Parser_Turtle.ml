@@ -3394,10 +3394,11 @@ and parse_predicate_object_list_rev (st : turtle_state)
                                       pos5 in
                                   let ncode = FStar_Char.int_of_char nc in
                                   if
-                                    (((ncode = (Prims.of_int (0x2E))) ||
-                                        (ncode = (Prims.of_int (0x5D))))
-                                       || (ncode = (Prims.of_int (0x3B))))
-                                      || (ncode = (Prims.of_int (0x7C)))
+                                    ((((ncode = (Prims.of_int (0x2E))) ||
+                                         (ncode = (Prims.of_int (0x5D))))
+                                        || (ncode = (Prims.of_int (0x3B))))
+                                       || (ncode = (Prims.of_int (0x7C))))
+                                      || (ncode = (Prims.of_int (0x7D)))
                                   then
                                     (if ncode = (Prims.of_int (0x3B))
                                      then
@@ -3457,10 +3458,11 @@ and parse_trailing_semicolons_rev (st : turtle_state)
                  (let nc = Parser_FastString.fs_byte_index input pos2 in
                   let ncode = FStar_Char.int_of_char nc in
                   if
-                    (((ncode = (Prims.of_int (0x2E))) ||
-                        (ncode = (Prims.of_int (0x5D))))
-                       || (ncode = (Prims.of_int (0x3B))))
-                      || (ncode = (Prims.of_int (0x7C)))
+                    ((((ncode = (Prims.of_int (0x2E))) ||
+                         (ncode = (Prims.of_int (0x5D))))
+                        || (ncode = (Prims.of_int (0x3B))))
+                       || (ncode = (Prims.of_int (0x7C))))
+                      || (ncode = (Prims.of_int (0x7D)))
                   then
                     parse_trailing_semicolons_rev st triples_rev subj input
                       pos2 (fuel - Prims.int_one)
