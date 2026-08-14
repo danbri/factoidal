@@ -377,9 +377,26 @@ let parse_trig_statement (tps: trig_parse_state) (input: string) (pos: nat) (fue
                   | ParseFail msg fpos -> ParseFail msg fpos
                   end
               end
-            // RC3: Reject '(' (collection) as graph name — not valid in TriG
-            else if code = 0x28 then
-              ParseFail "collection cannot be used as graph name or subject in TriG" pos1
+            // RC3 used to reject '(' (collection) unconditionally here,
+            // on the theory that a collection can never be a graph
+            // name. True, but wrong altitude: this branch runs for
+            // EVERY top-level statement, so it also blocked the legal
+            // "collection as ordinary triple subject" case (issue
+            // #433 -- trig-turtle-06.trig: `( 1 2 3 ) :p ( 4 5 6 ) .`).
+            //
+            // The TriG grammar already makes a collection-as-graph-name
+            // unreachable without a special case: `triples2` is
+            // `collection predicateObjectList '.'` -- a collection can
+            // ONLY be followed by a predicateObjectList, never by a
+            // wrappedGraph ('{'). So falling through here to Case 5
+            // (parse_trig_graph_name, which fails on '(' since it only
+            // accepts IRI/prefixed-name/blank-node) and then to Case 6
+            // (parse_turtle_statement) is enough: `( 1 2 3 ) :p ( 4 5 6
+            // ) .` parses as ordinary triples, and `( 1 2 3 ) { ... }`
+            // still fails -- parse_turtle_statement parses the
+            // collection as subject, then expects a predicate and
+            // finds '{' instead, so parse_turtle_predicate rejects it.
+            // See docs/designissues/2026-08-14-syntax-grading-audit.md.
             else
               // Case 5: Could be graphName { ... } or regular Turtle triples.
               begin match parse_trig_graph_name st input pos1 with

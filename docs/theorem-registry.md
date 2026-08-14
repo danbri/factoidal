@@ -1663,3 +1663,26 @@ SPARQL11.Expression.Refinement, SPARQL11.Parser.TokenRoundTrip,
 Parser.FastString.Axioms, ...), are guarded by NOTHING in CI. They
 are correct today; nothing stops a future edit from silently
 breaking one, exactly as PageCache.Bounds broke. Filed separately.
+
+**#433 + #434 FIXED: two TriG parser bugs (2026-08-14, branch
+`trig-bugs`)**: both exposed by the #429 strict-grading fix, both
+repaired in the PARSER — verified independently that
+`bin/w3c-runner/w3c_runner.ml` has a ZERO-line diff, so the score was
+not recovered by softening the gate. #433: `Parser.TriG.fst`'s "RC3"
+rule rejected `(` at the start of ANY top-level statement to stop a
+collection being used as a graph name, but fired before
+subject-position could be distinguished, so it also blocked the legal
+`( 1 2 3 ) :p ( 4 5 6 ) .`. RC3 removed entirely — TriG's grammar
+makes collection-as-graph-name unreachable anyway (a collection can
+only be followed by a predicateObjectList, never `{`), so the case is
+still rejected, now for the right reason. #434:
+`Parser.Turtle.fst`'s `parse_predicate_object_list_rev` /
+`parse_trailing_semicolons_rev` treated `.`/`]`/`;`/`|` as
+list-terminators but omitted `}`, so `...;}` tried to parse `}` as a
+predicate; `}` (0x7D) added to both checks. SCORES: regression 11
+pass, 0 fail (of 11) — was 5 pass, 6 fail; rdf-trig 356 pass, 0 fail
+— was 354 pass, 2 fail; RDF total back to 1030 pass, 0 fail, 1
+unsupported (of 1031) — and that number is now EARNED under strict
+grading plus real rdf-mt checks, unlike the 1031/0 it replaced.
+SPARQL 631/0 unchanged. Both modules verify clean, no admits, no
+--lax, no new assume vals.
