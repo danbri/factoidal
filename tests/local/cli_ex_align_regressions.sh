@@ -69,6 +69,21 @@ has_key() {
   printf '%s' "${json}" | grep -q "\"${var}\":"
 }
 
+# ran_ok JSON -- true (rc 0) iff the CLI actually ran the query and
+# emitted SPARQL JSON results (not a CLI usage/parse error). Guards
+# against a false PASS from has_key/row_count silently matching "0
+# results" against CLI stderr text instead of real query output --
+# exactly the failure mode a bad --output/--format flag produced
+# during this script's own development (query never ran, output was
+# "Error: unknown format 'json'", and has_key's absence-of-key check
+# on that string "passed" every unbound-variable assertion for the
+# wrong reason).
+ran_ok() {
+  local json="$1"
+  printf '%s' "${json}" | grep -q '"head"' && \
+    ! printf '%s' "${json}" | grep -qi '^Error:'
+}
+
 # row_count JSON -- number of binding rows in the SPARQL JSON results.
 # print_results_json (bin/factoidal-cli/factoidal_cli.ml) always emits
 # exactly 3 fixed '{' characters (the outer object, "head", "results")
@@ -87,20 +102,23 @@ row_count() {
 # engine's E_And arm could only ever return a definite ER_Bool, so
 # `true && ?i` bound ?z to `false`. Post-#365 it signals ER_Error, and
 # BIND leaves ?z unbound.
-OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --format json \
+OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --output json \
   -e 'PREFIX : <http://example.org/> SELECT ?z WHERE { :s :iri ?i . BIND( (true && ?i) AS ?z ) }' 2>&1)"
+ran_ok "${OUT}"; note $? "ex2-and-true-error-bind-ran" "${OUT}"
 if has_key "${OUT}" "z"; then R=1; else R=0; fi
 [ "${R}" -eq 0 ]; note $? "ex2-and-true-error-bind-unbound (?z should be UNBOUND, was bound false pre-#365)" "${OUT}"
 
 # ---- EX-2: E_Or, False OR Error = Error (BIND context) --------------------
-OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --format json \
+OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --output json \
   -e 'PREFIX : <http://example.org/> SELECT ?z WHERE { :s :iri ?i . BIND( (false || ?i) AS ?z ) }' 2>&1)"
+ran_ok "${OUT}"; note $? "ex2-or-false-error-bind-ran" "${OUT}"
 if has_key "${OUT}" "z"; then R=1; else R=0; fi
 [ "${R}" -eq 0 ]; note $? "ex2-or-false-error-bind-unbound (?z should be UNBOUND, was bound false pre-#365)" "${OUT}"
 
 # ---- EX-2: E_Not, Not(Error) = Error (BIND context) -----------------------
-OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --format json \
+OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --output json \
   -e 'PREFIX : <http://example.org/> SELECT ?z WHERE { :s :iri ?i . BIND( (!?i) AS ?z ) }' 2>&1)"
+ran_ok "${OUT}"; note $? "ex2-not-error-bind-ran" "${OUT}"
 if has_key "${OUT}" "z"; then R=1; else R=0; fi
 [ "${R}" -eq 0 ]; note $? "ex2-not-error-bind-unbound (?z should be UNBOUND, was bound true pre-#365)" "${OUT}"
 
@@ -109,21 +127,24 @@ if has_key "${OUT}" "z"; then R=1; else R=0; fi
 # EBV treated it as truthy ("hello"@en -> true), so `?l && true` bound
 # ?z2 to `true`. Post-#365 EBV signals Type Error for it (EX-1), so
 # `Type-Error && true` = Error (EX-2), and ?z2 is unbound.
-OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --format json \
+OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --output json \
   -e 'PREFIX : <http://example.org/> SELECT ?z2 WHERE { :s :lang ?l . BIND( (?l && true) AS ?z2 ) }' 2>&1)"
+ran_ok "${OUT}"; note $? "ex1-langstring-and-bind-ran" "${OUT}"
 if has_key "${OUT}" "z2"; then R=1; else R=0; fi
 [ "${R}" -eq 0 ]; note $? "ex1-langstring-and-bind-unbound (?z2 should be UNBOUND, was bound true pre-#365)" "${OUT}"
 
 # ---- Same case, SELECT-expression context (no BIND) -----------------------
-OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --format json \
+OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --output json \
   -e 'PREFIX : <http://example.org/> SELECT (?l && true AS ?z3) WHERE { :s :lang ?l }' 2>&1)"
+ran_ok "${OUT}"; note $? "ex1-langstring-and-select-expr-ran" "${OUT}"
 if has_key "${OUT}" "z3"; then R=1; else R=0; fi
 [ "${R}" -eq 0 ]; note $? "ex1-langstring-and-select-expr-unbound (?z3 should be UNBOUND, was bound true pre-#365)" "${OUT}"
 
 # ---- FILTER mechanism UNCHANGED: Type Error still drops the row like
 # false, both before and after #365 (E_And with an IRI operand) --------
-OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --format json \
+OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --output json \
   -e 'PREFIX : <http://example.org/> SELECT ?i WHERE { :s :iri ?i . FILTER(true && ?i) }' 2>&1)"
+ran_ok "${OUT}"; note $? "filter-and-iri-ran" "${OUT}"
 N="$(row_count "${OUT}")"
 [ "${N}" = "0" ]; note $? "filter-and-iri-still-drops-row (rows=${N:-?}, unchanged by #365)" "${OUT}"
 
@@ -131,8 +152,9 @@ N="$(row_count "${OUT}")"
 # literal used to keep the row (truthy-by-length); it now Type-Errors and
 # drops, exactly as a definite `false` would (same FILTER contract, new
 # EBV table). This IS the approved, intended behaviour post-#365. -------
-OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --format json \
+OUT="$("${BIN}" query --data "${WORKDIR}/data.ttl" --output json \
   -e 'PREFIX : <http://example.org/> SELECT ?l WHERE { :s :lang ?l . FILTER(?l) }' 2>&1)"
+ran_ok "${OUT}"; note $? "filter-langstring-ran" "${OUT}"
 N="$(row_count "${OUT}")"
 [ "${N}" = "0" ]; note $? "filter-langstring-now-drops-row (rows=${N:-?}, kept the row pre-#365 -- intended EX-1 flip)" "${OUT}"
 
