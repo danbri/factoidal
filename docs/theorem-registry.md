@@ -1735,3 +1735,96 @@ audited at all because its vendored manifest fails to load on the
 SAME undeclared `test:` prefix typo the #334 work found at
 `rdf-semantics/manifest.ttl:247` — one upstream typo now blocks two
 tools.
+
+**#443 + #339 FIXED, #445 + #446 FOUND (2026-08-14, branch
+`claude/autoexec-scratchpad-assess-37oeok`)**: three serialization
+defects, none of which any W3C suite could see, plus one build-gate
+failure found on the way.
+
+🔴 **#443 (with #339) — the store DESTROYED literals.** An RDF literal
+whose lexical form held `"`, LF or `\` did not survive `import` ->
+`query`: it returned as `_:cottas_decode_oor`. Three of six literal
+classes lost. Cause: `RDF.Pretty.term_to_ntriples` wrote lexical forms
+verbatim. Documented in two banners as "display, not wire" — while all
+THREE of its callers were wire paths (`--dump`, the COTTAS object
+column, the same column in the npm build). The `--dump` half was filed
+in July as #339 and pinned XFAIL; its scope table listed the other
+SERIALIZERS and concluded "one function, not a systemic gap" — correct
+about serializers, and the missing column was the other CALLERS.
+DELETED rather than fixed: an escaping version is byte-identical to
+`RDF.NQuads.Serialize.nq_term_to_string`, and a second name for one
+rendering is what let them drift. **Trust-surface finding for this
+registry: `RDF.NTriples.RoundTrip.fst` was SOUND throughout and simply
+did not cover the function the CLI called. Proof coverage is a property
+of the WIRING, not only of the statement** — the same shape as the
+vacuity findings (#333, #429). Recorded as hazard #25.
+
+🔴 **#445 — the store corrupts ALL non-ASCII, still open.** Found while
+validating #443, by reading the store bytes rather than the result
+table. `RDF.Bytes.bytes_of_string = String.list_of_string` yields
+CODEPOINTS; each is written as `codepoint land 0xFF`. Verified against
+the stored bytes in four scripts: `café`→`caf\xe9`, `λόγος`→
+`\xbb\xcc\xb3\xbf\xc2`, `日本語`→`\xe5,\x9e`, `🎉`→`\x89`. Note the
+middle one: U+672C truncates to `0x2C`, a literal COMMA inside a stored
+token — this can change how a token PARSES, not only what it says. A
+second defect on the same path: `BaseWriter.fst:177` writes the length
+prefix as `write_uvarint (String.length s)`, and F*'s `String.length`
+counts codepoints while the payload is bytes; the two coincide for ASCII,
+which is why nothing noticed. The property that would have caught all of
+it is `bytes_to_string (bytes_of_string s) == s` for arbitrary `s` —
+false today for every non-ASCII `s`. NOT fixed: `utf8_enc_char` already
+exists, but the on-disk format changes, so it needs an owner decision.
+XFAIL-pinned as UTF8-STORE.
+
+✅ **#446 — `xmlns:=` malformed default namespace.** Found by the Jena
+differential harness on its FIRST RDF/XML run. `render_ns_decls` emitted
+` xmlns:<p>="<u>"` for every declaration; the default namespace has an
+empty prefix, so it wrote `xmlns:="..."`, which is not a legal XML
+attribute name. Both witness files are commented OUT of the vendored
+manifest, so `w3c_runner --rdf rdf-xml` never discovers them and
+166 pass, 0 fail was accurate while this was live. **That is the
+argument for differential testing in one sentence: a second engine
+reached an input our own manifest excludes.** Fixed by a case split in
+the render step. Open follow-up recorded on the issue: we hoist a
+VISIBLY-USED default namespace to the root, Jena attaches it to the
+element that uses it; the manifest's "implementation dependent" carve-out
+covers only NOT-visibly-used namespaces, so placement is outside it and
+wants a read of exc-c14n §2.
+
+✅ **#444 — Parser.XML was a marginal proof.** A full extract went red
+on a module with no change to it: `parse_attributes`'s `fuel - 1` under
+an `if fuel = 0` guard failed the subtyping check. Four causes ruled out
+first, each of which would have been a real regression (the #443 change:
+outside its cone; CPU contention: reproduces alone; a stale
+`Parser.FastString.fsti.checked`: regenerated, still red; the
+`utf8_bytes_singleton` lemma landed the same day: reverted Spec.fst to
+its parent, still red). Verifies at 60. Scoped `#push-options` around
+that one function, no `--lax`, no `--admit_smt_queries`. A proof this
+close to the line is a latent CI flake that fails with text reading like
+a semantic regression; sweeping the corpus at a REDUCED rlimit would find
+the rest before they fire.
+
+**Jena differential harness extended to five formats** (from #317).
+Labelled counts: turtle 317 files — 222 agree-parse, 91 agree-reject,
+0 disagree, 4 either-side-error; ntriples 72 — 43/29/0/0; trig 357 —
+242/111/0/4; nquads 89 — 55/34/0/0; rdfxml 173 — 128/31/4/10.
+Combined 1008 files — 690 agree-parse, 296 agree-reject, 4 disagree,
+18 either-side-error. Every non-agreement adjudicated: 13 are inputs the
+W3C test says must fail and we correctly reject while Jena accepts;
+2 are files where OUR output matches the official expected `.nt` and
+Jena's does not; 2 are #446; 5 are manifest-disabled. The harness was
+PROVEN able to fail three ways (reinstated #434 bug -> either-side-error;
+one-value difference -> disagree; extra named graph -> caught). Its
+declared blind spot: blank-node GRAPH names are pooled per side, so
+content moving between two such graphs can hide (3 of 357 TriG files).
+
+**Suite state after all of the above, re-measured on the rebuilt
+binary**: SPARQL 1.1 631 pass, 0 fail (of 631); RDF 1.1 1030 pass,
+0 fail, 1 unsupported (of 1031), rdf-xml 166 pass, 0 fail; RDF 1.2
+242 pass, 0 fail (of 242); RDF 1.2 c14n 82 pass, 0 fail (of 82);
+RDF 1.2 Semantics 41 pass, 3 fail, 3 skip (of 47, pre-existing and
+already documented under #305 P9); SPARQL 1.2 254 pass, 0 fail (of 254).
+Every one byte-identical to its committed baseline — the serializer
+change moved no score. OWL catalogs NOT re-measured: the run was capped
+at 3000s and `semantics-direct` alone budgets 9000s, so the partial
+logs were reverted rather than committed as scores.
