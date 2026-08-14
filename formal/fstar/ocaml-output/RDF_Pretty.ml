@@ -1,40 +1,4 @@
 open Prims
-let dir_suffix (d : RDF_Term.text_direction FStar_Pervasives_Native.option) :
-  Prims.string=
-  match d with
-  | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
-  | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
-  | FStar_Pervasives_Native.None -> ""
-let rec term_to_ntriples (t : RDF_Term.rdf_term) : Prims.string=
-  match t with
-  | RDF_Term.T_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
-  | RDF_Term.T_BNode b -> Prims.strcat "_:" b
-  | RDF_Term.T_Literal l ->
-      (match l.RDF_Term.lang_tag with
-       | FStar_Pervasives_Native.Some tag ->
-           Prims.strcat "\""
-             (Prims.strcat l.RDF_Term.lexical_form
-                (Prims.strcat "\"@"
-                   (Prims.strcat tag (dir_suffix l.RDF_Term.direction))))
-       | FStar_Pervasives_Native.None ->
-           if l.RDF_Term.datatype = RDF_Term.xsd_string
-           then Prims.strcat "\"" (Prims.strcat l.RDF_Term.lexical_form "\"")
-           else
-             Prims.strcat "\""
-               (Prims.strcat l.RDF_Term.lexical_form
-                  (Prims.strcat "\"^^<"
-                     (Prims.strcat l.RDF_Term.datatype ">"))))
-  | RDF_Term.T_TripleTerm (s, p, o) ->
-      let subj_str =
-        match s with
-        | RDF_Term.S_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
-        | RDF_Term.S_BNode b -> Prims.strcat "_:" b in
-      Prims.strcat "<<( "
-        (Prims.strcat subj_str
-           (Prims.strcat " <"
-              (Prims.strcat p
-                 (Prims.strcat "> "
-                    (Prims.strcat (term_to_ntriples o) " )>>")))))
 type prefix_table = (Prims.string * Prims.string) Prims.list
 let starts_with_strict (s : Prims.string) (pfx : Prims.string) : Prims.bool=
   let pl = FStar_String.strlen pfx in
@@ -58,6 +22,12 @@ let abbreviate_iri (table : prefix_table) (iri : Prims.string) :
       then Prims.strcat abbr (FStar_String.sub iri nsl (il - nsl))
       else Prims.strcat "<" (Prims.strcat iri ">")
   | FStar_Pervasives_Native.None -> Prims.strcat "<" (Prims.strcat iri ">")
+let dir_suffix (d : RDF_Term.text_direction FStar_Pervasives_Native.option) :
+  Prims.string=
+  match d with
+  | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
+  | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
+  | FStar_Pervasives_Native.None -> ""
 let rec term_with_prefixes (table : prefix_table) (t : RDF_Term.rdf_term) :
   Prims.string=
   match t with
