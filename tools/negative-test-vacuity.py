@@ -663,7 +663,12 @@ def manifest_entry_set(po):
 def score_entailment_manifest(engine, suite, manifest, baselines):
     po, skipped, err = read_manifest(engine, manifest)
     if po is None:
-        return {"suite": suite, "manifest": manifest, "error": err, "tests": []}
+        return {
+            "suite": suite,
+            "manifest": manifest,
+            "manifest_error": err,
+            "tests": [],
+        }
 
     listed = manifest_entry_set(po)
     tests = []
@@ -755,7 +760,12 @@ def score_sparql_entailment(engine, suite, manifest, baselines):
     expected-results document, not a query run)."""
     po, skipped, err = read_manifest(engine, manifest)
     if po is None:
-        return {"suite": suite, "manifest": manifest, "error": err, "tests": []}
+        return {
+            "suite": suite,
+            "manifest": manifest,
+            "manifest_error": err,
+            "tests": [],
+        }
 
     QT = "http://www.w3.org/2001/sw/DataAccess/tests/test-query#"
     SD = "http://www.w3.org/ns/sparql-service-description#"
@@ -964,6 +974,27 @@ def markdown_report(doc):
         "nothing passes every one of them for free. This table says how "
         "many negative tests the engine actually did work on.\n"
     )
+    failed_suites = [s for s in doc["scored_suites"] if s.get("manifest_error")]
+    if failed_suites:
+        L.append("## Suites that could not be loaded at all\n")
+        L.append(
+            "These suites contribute ZERO to every count below, including "
+            "`negative_total` -- a whole-suite load failure is invisible in "
+            "the totals unless it is listed here.\n"
+        )
+        L.append("| suite | manifest | error |")
+        L.append("|---|---|---|")
+        for s in failed_suites:
+            L.append(
+                "| %s | %s | %s |"
+                % (
+                    s["suite"],
+                    s["manifest"],
+                    str(s["manifest_error"]).replace("|", "/").replace("\n", " ")[:300],
+                )
+            )
+        L.append("")
+
     L.append("## Scored: entailment-shaped negatives\n")
     cols = ["worked", "weak", "vacuous", "exempt", "unscored", "untrusted", "error"]
     L.append(
@@ -1282,7 +1313,12 @@ def main():
         for suite, man in SCORED_MANIFESTS:
             if not os.path.exists(os.path.join(REPO_ROOT, man)):
                 doc["scored_suites"].append(
-                    {"suite": suite, "manifest": man, "error": "manifest missing", "tests": []}
+                    {
+                        "suite": suite,
+                        "manifest": man,
+                        "manifest_error": "manifest missing",
+                        "tests": [],
+                    }
                 )
                 continue
             if suite == "sparql11-entailment":
@@ -1292,6 +1328,14 @@ def main():
             else:
                 doc["scored_suites"].append(
                     score_entailment_manifest(engine, suite, man, baselines)
+                )
+        for s in doc["scored_suites"]:
+            if s.get("manifest_error"):
+                print(
+                    "warning: suite %r manifest could not be loaded, "
+                    "contributes 0 to all counts: %s"
+                    % (s["suite"], str(s["manifest_error"])[:300]),
+                    file=sys.stderr,
                 )
 
     manifests = discover_manifests()
