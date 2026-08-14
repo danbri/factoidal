@@ -925,6 +925,28 @@ let is_digit_char (c: char) : bool =
   let code = int_of_char c in
   code >= 0x30 && code <= 0x39
 
+(* Lookahead: does a well-formed EXPONENT (Turtle grammar: [eE] [+-]? [0-9]+)
+   start at byte offset `p`? Used so the digit-dot-EXPONENT DOUBLE form
+   (e.g. "123.E+1" — zero fractional digits before the exponent, legal
+   per DOUBLE ::= [0-9]+ '.' [0-9]* EXPONENT | ...) is recognised without
+   ever committing to consume the '.' unless what follows genuinely is
+   an exponent — a bare "123." with no digits and no exponent must still
+   fall back to INTEGER "123" plus a separate end-of-triple '.'. *)
+let is_valid_exponent_at (input: string) (p: nat) (len: nat) : bool =
+  if p >= len then false
+  else
+    let c = fs_byte_index input p in
+    let cd = int_of_char c in
+    if not (cd = 0x65 || cd = 0x45) then false  (* 'e' or 'E' *)
+    else if p + 1 >= len then false
+    else
+      let c1 = fs_byte_index input (p + 1) in
+      let cd1 = int_of_char c1 in
+      if cd1 = 0x2B || cd1 = 0x2D then  (* '+' or '-' *)
+        p + 2 < len && is_digit_char (fs_byte_index input (p + 2))
+      else
+        is_digit_char c1
+
 (* Parse an integer literal: [+-]?[0-9]+ *)
 (* Parse a numeric literal: integer, decimal, or double.
    Returns (lexical_form, datatype_iri). *)
@@ -956,16 +978,22 @@ let parse_numeric_literal (input: string) (pos: nat) : parse_result (string & wf
         if is_digit_char ch then
           collect_num (p + 1) (ch :: acc) has_dot has_e (fuel - 1)
         else if cd = 0x2E && not has_dot && not has_e then
-          (* Check: dot followed by digit means decimal, otherwise it's the statement terminator *)
+          (* Check: dot followed by digit means decimal, dot followed by a
+             genuine EXPONENT means DOUBLE with zero fractional digits
+             (digit+ '.' digit* EXPONENT — the digit* may be empty, e.g.
+             "123.E+1"), otherwise it's the statement terminator. *)
           if p + 1 < len then
             let next = fs_byte_index input (p + 1) in
             if is_digit_char next then
               collect_num (p + 1) (ch :: acc) true has_e (fuel - 1)
+            else if is_valid_exponent_at input (p + 1) len then
+              (* Consume the dot only; the next loop iteration lands on
+                 the 'e'/'E' and the exponent branch below consumes it. *)
+              collect_num (p + 1) (ch :: acc) true has_e (fuel - 1)
             else
-              (* Dot but no digit after => might be "123." which in Turtle is integer + dot terminator,
-                 OR it could be a decimal like ".1" starting case. We include the dot as part of
-                 the number since we already have digits before it. Actually for Turtle "123." is
-                 ambiguous. Let's check: if we have digits accumulated, stop before the dot. *)
+              (* Dot but no digit and no exponent after => "123." is
+                 integer "123" plus a separate end-of-triple '.'.
+                 Stop before the dot. *)
               ParseOk (acc, has_dot, has_e) p
           else
             (* Dot at end of input — don't consume it *)
@@ -988,10 +1016,20 @@ let parse_numeric_literal (input: string) (pos: nat) : parse_result (string & wf
     in
     (* Handle case where number starts with '.' (like .5) *)
     if dpos < len && int_of_char (fs_byte_index input dpos) = 0x2E then
-      (* .DIGITS case => decimal *)
+      (* '.' DIGIT+ EXPONENT? case: we have already consumed the leading
+         dot (has_dot = true) and have NOT yet seen an exponent
+         (has_e = false) — collect_num decides DOUBLE vs DECIMAL from
+         whatever exponent it finds after the digits that follow. Bug
+         #425: these two accumulator arguments were previously swapped
+         (has_dot=false, has_e=true), which primed has_e to true before
+         any 'e'/'E' had been scanned, so every leading-dot number
+         (".1", "+.7", ...) came out xsd:double even with no exponent —
+         and simultaneously made the real exponent character in cases
+         like "-.2e3" invisible to the `not has_e` guard below, causing
+         a spurious parse failure on the dangling "e3". *)
       if dpos + 1 < len && is_digit_char (fs_byte_index input (dpos + 1)) then
         let fuel = len - dpos in
-        begin match collect_num (dpos + 1) [fs_byte_index input dpos] false true fuel with
+        begin match collect_num (dpos + 1) [fs_byte_index input dpos] true false fuel with
         | ParseOk (acc, _, has_e) pos' ->
           let num_str = String.string_of_list (List.Tot.rev acc) in
           let lexical = String.concat "" [sign_str; num_str] in
