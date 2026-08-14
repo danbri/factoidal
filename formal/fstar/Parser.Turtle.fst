@@ -2793,6 +2793,33 @@ let parse_turtle_with_base_strict_12 (input: string) (base: string) : option (li
   let r = parse_turtle_doc st input 0 [] None fuel in
   if r.tdr_has_error then None else Some (graph_dedup_sort r.tdr_triples)
 
+// Diagnostic entry points for Mode_12, mirroring parse_turtle_diagnostic /
+// parse_turtle_with_base_diagnostic above -- issue #334's Turtle Mode 1.2
+// follow-up. The Mode_11 diagnostic entry points landed in #424 but the
+// --rdf12 CLI path kept calling the always-succeeds parse_turtle_12 /
+// parse_turtle_with_base_12, which has no error channel at all: an
+// undeclared prefix (or any other statement-level error) silently
+// dropped the offending statement with exit 0 and zero diagnostics.
+// parse_turtle_doc (shared with Mode_11) already threads tdr_error
+// through Mode_12 parsing; these entry points just surface it via the
+// module's ParseOk/ParseFail convention, same as the 1.1 versions.
+let parse_turtle_diagnostic_12 (input: string) : parse_result (list triple) =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let r = parse_turtle_doc empty_turtle_state_12 input 0 [] None fuel in
+  match r.tdr_error with
+  | Some (msg, epos) -> ParseFail msg epos
+  | None -> ParseOk (graph_dedup_sort r.tdr_triples) len
+
+let parse_turtle_with_base_diagnostic_12 (input: string) (base: string) : parse_result (list triple) =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let st = { empty_turtle_state_12 with base_iri = base } in
+  let r = parse_turtle_doc st input 0 [] None fuel in
+  match r.tdr_error with
+  | Some (msg, epos) -> ParseFail msg epos
+  | None -> ParseOk (graph_dedup_sort r.tdr_triples) len
+
 // Mode-parametrised dispatchers.
 let parse_turtle_with_base_mode (mode: rdf_syntax_mode) (input: string) (base: string) : list triple =
   match mode with
