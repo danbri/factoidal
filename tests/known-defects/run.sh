@@ -243,6 +243,51 @@ fi
 # ---------------------------------------------------------------------
 
 # ---------------------------------------------------------------------
+# UTF8-STORE (#445) -- the COTTAS store encodes tokens as Latin-1 with
+# codepoints >= 256 clamped to NUL (RDF.Bytes.bytes_of_string uses
+# String.list_of_string, which yields CODEPOINTS, and int_of_byte zeroes
+# anything above 255). So `import` -> `query` corrupts every non-ASCII
+# literal: "café" comes back mojibake, CJK and emoji come back destroyed.
+# Parsing and the in-memory path are both correct -- --dump and --dump-nq
+# emit proper UTF-8 -- so this is the storage byte layer alone.
+#
+# Decisive form: import a CJK literal and require the SAME string back.
+# Read through -o json, never the result table: the table is a
+# human-facing rendering and says nothing about what was stored.
+# ---------------------------------------------------------------------
+cat > "${WORKDIR}/utf8.nq" <<'EOF'
+<http://e/cjk> <http://e/p> "日本語" .
+EOF
+"$BIN" import --nq "${WORKDIR}/utf8.nq" --out "${WORKDIR}/utf8store" >/dev/null 2>&1
+U8_RC=$?
+if [ "${U8_RC}" -ne 0 ]; then
+  record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" ERROR \
+    "import exited ${U8_RC}"
+else
+  "$BIN" query --data-cottas "${WORKDIR}/utf8store/data.cottas" -o json \
+    -e 'SELECT ?o WHERE { <http://e/cjk> <http://e/p> ?o }' \
+    > "${WORKDIR}/utf8.json" 2>/dev/null
+  U8_GOT=$(python3 -c "
+import json,sys
+try:
+    rows = json.load(open('${WORKDIR}/utf8.json'))['results']['bindings']
+    print(rows[0]['o']['value'] if rows else '')
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [ "${U8_GOT}" = "日本語" ]; then
+    record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" XPASS \
+      "CJK literal round-trips intact -- defect appears FIXED"
+  elif [ -z "${U8_GOT}" ]; then
+    record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" ERROR \
+      "query returned no binding for the CJK literal"
+  else
+    record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" XFAIL \
+      "stored 3-char CJK literal came back as $(printf '%q' "${U8_GOT}")"
+  fi
+fi
+
+# ---------------------------------------------------------------------
 # Summary + JSON
 # ---------------------------------------------------------------------
 TOTAL=$((XFAIL + XPASS + ERRORS))
