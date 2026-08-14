@@ -1637,3 +1637,29 @@ of 389) — that harness does not cover TriG yet, so it neither
 confirms nor denies the two new bugs. Unrelated pre-existing gap
 noted: `Math.Sigmoid.fst` has source but no committed extracted
 output on main (same class as the #422 sweep).
+
+**#422 FIXED + unlisted-module sweep (2026-08-14, branch
+`cottas-bounds`)**: `RDF.CottasStore.PageCache.Bounds.fst` had been
+broken since the Phase 2.5c API change (#118) turned the cache value
+type from `list (option string)` into the abstract `cottas_column` —
+three of its four lemmas used the old type, one called a
+pre-migration decoder, one bounded a function the engine no longer
+calls. Nothing noticed because the module is absent from
+build-ocaml.sh's list (#327). Re-synced to the current API, verifies
+clean, and ADDED to ALL_MODULES (proof-only: no compile-list entry
+needed). SWEEP RESULT: 26 files were unlisted; 9 are .fsti paired
+with a listed .fst, 2 are interface-only but covered through listed
+consumers, and 15 are real .fst content — **all 15 verify clean, 0
+fail (of 15)**. Measurement honesty note: a 300s-per-module cap first
+reported `SPARQL11.Algebra.BGPRefinement.fst` as FAILING; an
+unhurried retry verified it in 5m15s — slow, not broken, and the
+agent corrected its own number rather than publishing it.
+🔴 THE FINDING THAT MATTERS MORE: CI's `check-extraction.yml` (the
+PR gate) runs only `build-ocaml.sh extract` — it NEVER runs
+`make verify`. So those 15 modules, which include nearly every
+theorem landed this session (RDF.NQuads.Streaming,
+RDF.NTriples.RoundTrip, Parser.NTriples.Locality,
+SPARQL11.Expression.Refinement, SPARQL11.Parser.TokenRoundTrip,
+Parser.FastString.Axioms, ...), are guarded by NOTHING in CI. They
+are correct today; nothing stops a future edit from silently
+breaking one, exactly as PageCache.Bounds broke. Filed separately.
