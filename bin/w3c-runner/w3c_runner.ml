@@ -2643,12 +2643,18 @@ let make_turtle_base assumed_base filepath =
 
 let run_rdf_test assumed_base tc =
   match tc.test_type with
-  (* N-Triples positive syntax: should parse without error *)
+  (* N-Triples positive syntax: must parse on the STRICT entry point (the
+     one `factoidal dump`/`validate` actually run) — not the lenient one,
+     which silently skips bad lines and would "pass" on broken input
+     (issue #429). *)
   | "TestNTriplesPositiveSyntax" ->
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
-       (try ignore (parse_ntriples_fstar content); Pass
+       (try
+          match parse_ntriples_strict content with
+          | Some _ -> Pass
+          | None -> Fail "Strict parser rejected input that should parse"
         with _ -> Fail "Should parse but didn't"))
 
   (* N-Triples negative syntax: should fail to parse.
@@ -2664,14 +2670,18 @@ let run_rdf_test assumed_base tc =
           | Some _ -> Fail "Should reject but parsed OK"
         with _ -> Pass))
 
-  (* Turtle positive syntax: should parse without error *)
+  (* Turtle positive syntax: must parse on the STRICT entry point (issue
+     #429 — the lenient one this used to call never errors, so the test
+     "passed" whether the RDF produced was correct or not). *)
   | "TestTurtlePositiveSyntax" ->
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
        (try
           let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
-          ignore (parse_turtle_fstar content (Some base)); Pass
+          match parse_turtle_strict content (Some base) with
+          | Some _ -> Pass
+          | None -> Fail "Strict parser rejected input that should parse"
         with _ -> Fail "Should parse but didn't"))
 
   (* Turtle negative syntax: should fail to parse *)
@@ -2721,12 +2731,15 @@ let run_rdf_test assumed_base tc =
             else Fail "Should produce eval error but succeeded"
         with _ -> Pass))
 
-  (* N-Quads positive syntax *)
+  (* N-Quads positive syntax: STRICT entry point (issue #429). *)
   | "TestNQuadsPositiveSyntax" ->
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
-       (try ignore (parse_nquads_fstar content); Pass
+       (try
+          match parse_nquads_strict content with
+          | Some _ -> Pass
+          | None -> Fail "Strict parser rejected input that should parse"
         with _ -> Fail "Should parse but didn't"))
 
   (* N-Quads negative syntax. Same story as N-Triples: the lenient parser
@@ -2742,14 +2755,16 @@ let run_rdf_test assumed_base tc =
           | Some _ -> Fail "Should reject but parsed OK"
         with _ -> Pass))
 
-  (* TriG positive syntax *)
+  (* TriG positive syntax: STRICT entry point (issue #429). *)
   | "TestTrigPositiveSyntax" ->
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
        (try
           let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
-          ignore (parse_trig_fstar content (Some base)); Pass
+          match parse_trig_strict content (Some base) with
+          | Some _ -> Pass
+          | None -> Fail "Strict parser rejected input that should parse"
         with _ -> Fail "Should parse but didn't"))
 
   (* TriG negative syntax *)

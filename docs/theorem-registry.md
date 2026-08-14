@@ -1613,3 +1613,27 @@ Parser_FastString_Spec.ml contains ZERO lemmas (checked), so adding
 a Lemma cannot change the built program. Part 8's ASCII lemma stays
 for existing callers. Next: widen Part 9's triple-level lemmas the
 same way.
+
+**#429 FIXED: syntax tests graded on the STRICT parser (2026-08-14,
+branch `syntax-grading`)**: four RDF 1.1 positive-syntax test types
+(Turtle, TriG, N-Triples, N-Quads) were graded
+`ignore (parse ...); Pass` — result discarded, LENIENT parser used,
+so a test passed even when the produced RDF was wrong. Now they use
+the STRICT entry point, matching what `factoidal dump`/`validate`
+do. AUDIT (docs/designissues/2026-08-14-syntax-grading-audit.md)
+scoped the damage precisely: RDF 1.1 negative-syntax and eval tests
+were ALREADY real; RDF 1.2 positive-syntax was already fixed under
+epic #305; SPARQL query/update syntax tests were already real (one
+parser, no lenient/strict split); RDF/XML has no such test type. So
+the vacuity was confined to those four arms. SCORE DROPS ON PURPOSE:
+RDF 1.1 total 1028 pass, 2 fail, 1 unsupported (of 1031) — was 1030
+pass, 0 fail, 1 unsupported. TWO REAL TriG ENGINE BUGS EXPOSED, both
+reproduced independently against the CLI: #433 (a collection used as
+a normal SUBJECT is rejected — the graph-name guard over-applies)
+and #434 (a trailing `;` before `}` with no final `.` is rejected,
+though TriG permits it). Jena cross-check unchanged at 0
+disagreements (265 agree-parse, 120 agree-reject, 4 either-side-error
+of 389) — that harness does not cover TriG yet, so it neither
+confirms nor denies the two new bugs. Unrelated pre-existing gap
+noted: `Math.Sigmoid.fst` has source but no committed extracted
+output on main (same class as the #422 sweep).
