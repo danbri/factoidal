@@ -874,25 +874,73 @@ noeq type eval_result =
   | ER_Dbl   : string -> eval_result
   | ER_Error : eval_result
 
-(* Effective Boolean Value, §17.2.2 *)
-let ebv (v : eval_result) : bool =
+(* Effective Boolean Value, §17.2.2 -- error-aware core.
+   `ebv_checked` transcribes the operand-mapping table exactly: xsd:boolean,
+   the numeric ER_* constructors and datatypes, and xsd:string/simple
+   literals map to `Some b`; every other argument -- including a
+   non-empty rdf:langString (issue #365 EX-1: the table's "String" row is
+   the un-language-tagged case only, so a language-tagged literal is "any
+   other argument") -- is a Type Error, `None`. This is the same
+   transcription independently proved in SPARQL11.Expression.Refinement's
+   `ebv_spec`; landing it here retires that module's
+   `lemma_ebv_langstring_finding` divergence into an agreement lemma. *)
+let ebv_checked (v : eval_result) : option bool =
   match v with
-  | ER_Bool b   -> b
-  | ER_Num n    -> n <> 0
-  | ER_Dec s    -> s <> "0" && s <> "0.0" && s <> ""
-  | ER_Dbl s    -> s <> "0" && s <> "0.0" && s <> "NaN" && s <> ""
+  | ER_Bool b   -> Some b
+  | ER_Num n    -> Some (n <> 0)
+  | ER_Dec s    -> Some (s <> "0" && s <> "0.0" && s <> "")
+  | ER_Dbl s    -> Some (s <> "0" && s <> "0.0" && s <> "NaN" && s <> "")
   | ER_Term (T_Literal l) ->
     if lit_datatype l = xsd_boolean
-    then lit_lexical l = "true" || lit_lexical l = "1"
+    then Some (lit_lexical l = "true" || lit_lexical l = "1")
     else if lit_datatype l = xsd_string
-    then String.length (lit_lexical l) > 0
-    else if lit_datatype l = rdf_langString
-    then String.length (lit_lexical l) > 0
+    then Some (String.length (lit_lexical l) > 0)
     else if is_numeric_datatype (lit_datatype l)
-    then lit_lexical l <> "0" && lit_lexical l <> "0.0" && lit_lexical l <> ""
-    else false
-  | ER_Term _   -> false
-  | ER_Error    -> false
+    then Some (lit_lexical l <> "0" && lit_lexical l <> "0.0" && lit_lexical l <> "")
+    else None   // rdf:langString / rdf:dirLangString / any other datatype -> Type Error
+  | ER_Term _   -> None    // T_IRI / T_BNode / T_TripleTerm -> Type Error
+  | ER_Error    -> None
+
+(* Bool-collapsing EBV kept for every existing FILTER/HAVING/E_If call
+   site: a Type Error folds to `false`, exactly as SPARQL 1.1's FILTER
+   evaluation (§18.5, "has an effective boolean value of true") treats an
+   error and a false alike -- dropping the row/group either way. Callers
+   that must distinguish Type Error from a definite false (E_And/E_Or/
+   E_Not, §17.3) use `ebv_checked` directly instead. *)
+let ebv (v : eval_result) : bool =
+  match ebv_checked v with
+  | Some b -> b
+  | None   -> false
+
+(* Error-tolerant, error-preserving boolean connectives, §17.3's A-tabular
+   definition (issue #365 EX-2). Operates on `option bool` (`None` =
+   Type Error) so a determinate `false`/`true` operand can still dominate
+   an erroring co-operand (error-TOLERANT), while two determinate
+   operands that don't dominate, or any operand actually missing,
+   propagate the error (error-PRESERVING) instead of silently folding to
+   a bool the way the old bare-`bool` `ebv`-based arms did. Transcribed
+   from, and identical to, the independently-authored
+   `spec_and`/`spec_or`/`spec_not` in SPARQL11.Expression.Refinement.fst;
+   landing these retires that module's `lemma_eval_and_true_error_
+   diverges_finding` (+ Or/Not variants) into agreement lemmas. *)
+let bool_and_checked (a b : option bool) : option bool =
+  match a, b with
+  | Some false, _ -> Some false
+  | _, Some false -> Some false
+  | Some true, Some true -> Some true
+  | _, _ -> None
+
+let bool_or_checked (a b : option bool) : option bool =
+  match a, b with
+  | Some true, _ -> Some true
+  | _, Some true -> Some true
+  | Some false, Some false -> Some false
+  | _, _ -> None
+
+let bool_not_checked (a : option bool) : option bool =
+  match a with
+  | Some b -> Some (not b)
+  | None   -> None
 
 (* Helper: convert eval_result to rdf_term for BIND *)
 let er_to_term (v : eval_result) : option rdf_term =
@@ -3997,10 +4045,26 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
      | Some b -> ER_Bool b
      | None -> ER_Error)
 
-  (* Logical connectives *)
-  | E_And e1 e2 -> ER_Bool (ebv (eval_expr_with_base base e1 mu) && ebv (eval_expr_with_base base e2 mu))
-  | E_Or e1 e2 -> ER_Bool (ebv (eval_expr_with_base base e1 mu) || ebv (eval_expr_with_base base e2 mu))
-  | E_Not e1 -> ER_Bool (not (ebv (eval_expr_with_base base e1 mu)))
+  (* Logical connectives -- §17.3's error-tolerant, error-preserving
+     tables (issue #365 EX-2): `bool_and_checked`/`bool_or_checked`/
+     `bool_not_checked` let a dominant false/true operand still win over
+     an erroring co-operand, but propagate the error (ER_Error) rather
+     than silently collapsing it to a definite bool wherever the table
+     does not dominate. *)
+  | E_And e1 e2 ->
+    (match bool_and_checked (ebv_checked (eval_expr_with_base base e1 mu))
+                             (ebv_checked (eval_expr_with_base base e2 mu)) with
+     | Some b -> ER_Bool b
+     | None -> ER_Error)
+  | E_Or e1 e2 ->
+    (match bool_or_checked (ebv_checked (eval_expr_with_base base e1 mu))
+                            (ebv_checked (eval_expr_with_base base e2 mu)) with
+     | Some b -> ER_Bool b
+     | None -> ER_Error)
+  | E_Not e1 ->
+    (match bool_not_checked (ebv_checked (eval_expr_with_base base e1 mu)) with
+     | Some b -> ER_Bool b
+     | None -> ER_Error)
 
   (* Type tests *)
   | E_IsIRI e1 -> fn_isIRI (eval_expr_with_base base e1 mu)
