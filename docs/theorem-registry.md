@@ -1437,13 +1437,17 @@ congruence lemma (`lemma_eval_expr_congr`) needed no change: its
 SMT function-congruence carry the result through whatever pure
 combinator the arm uses, so the new error-aware combinators verify
 under the same proof shape.
-Gates: `SPARQL11.Algebra*`/`SPARQL11.Expression*` and the full corpus
-verify clean (z3 4.13.3, no admits, no `--lax`); SPARQL W3C and RDF
-W3C scores and the new BIND/SELECT-expression regression
-(`tests/local/cli_ex_align_regressions.sh`) are recorded in the
-landing commit/PR. FILTER/HAVING semantics are unchanged by
-construction (Type Error still drops a row/group exactly like `false`)
-except the one FILTER-visible flip EX-1 itself causes: a bare
-non-empty langString literal in FILTER position used to keep the row
-and now drops it, per the corrected EBV table — pinned in the same
+Gates (2026-08-14, branch `ex-align`): 229 of 230 F* modules verify
+clean (z3 4.13.3, no admits, no `--lax`) — the one exception,
+`RDF.CottasStore.PageCache.Bounds.fst`, is a pre-existing failure
+with zero dependency on this change (untouched by the diff, filed
+separately as #422); SPARQL W3C 631 pass, 0 fail (of 631); RDF W3C
+1031 pass, 0 fail (of 1031) — no test flipped. The new BIND/SELECT-
+expression regression (`tests/local/cli_ex_align_regressions.sh`,
+run through the real CLI backend path, not just the W3C runner's pure
+algebra path) is 14 pass, 0 fail (of 14). FILTER/HAVING semantics are
+unchanged by construction (Type Error still drops a row/group exactly
+like `false`) except the one FILTER-visible flip EX-1 itself causes: a
+bare non-empty langString literal in FILTER position used to keep the
+row and now drops it, per the corrected EBV table — pinned in the same
 regression script.
