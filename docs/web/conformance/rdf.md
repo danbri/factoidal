@@ -84,12 +84,20 @@ because it changes what a green `rdf-mt` row means; see
 | RDF 1.1 N-Quads | `w3c_runner --rdf rdf-n-quads` | 87 pass, 0 fail, 0 skip (out of 87) |
 | RDF 1.1 TriG | `w3c_runner --rdf rdf-trig` | 356 pass, 0 fail, 0 skip (out of 356) |
 | RDF 1.1 RDF/XML | `w3c_runner --rdf rdf-xml` | 166 pass, 0 fail, 0 skip (out of 166) |
-| RDF 1.1 Semantics (`rdf-mt`) | `w3c_runner --rdf rdf-mt` | 39 pass, 0 fail, 0 skip (out of 39) |
-| **RDF 1.1, all six** | `w3c_runner --rdf` | **1031 pass, 0 fail, 0 skip (out of 1031)** |
+| RDF 1.1 Semantics (`rdf-mt`) | `w3c_runner --rdf rdf-mt` | 38 pass, 0 fail, 1 unsupported (out of 39) |
+| **RDF 1.1, all six** | `w3c_runner --rdf` | **1030 pass, 0 fail, 1 unsupported (out of 1031)** |
 | RDF 1.2 syntax + eval (`rdf12`) | `w3c_runner --rdf12` | 242 pass, 0 fail, 0 skip (out of 242) |
 | RDF 1.2 canonicalization (`rdf12c14n`) | `w3c_runner --rdf12c14n` | 82 pass, 0 fail, 0 skip (out of 82) |
 | RDF 1.2 Semantics (`rdf12entail`) | `w3c_runner --rdf12entail` | 41 pass, 3 fail, 3 skip (out of 47) |
 | RDFC-1.0 (`rdfc10`) | `rdfc10_runner third_party/testing/rdf-canon/tests/manifest.ttl` | 86 pass, 0 fail, 0 stub (out of 86) |
+
+The one **unsupported** RDF 1.1 test is `rdfs-entailment-test001` in
+`rdf-mt`. It requires checking whether an `rdf:XMLLiteral` value is
+well-formed XML, which this engine does not do; RDF 1.1 makes
+XMLLiteral support optional. Until 2026-08-14 this test reported PASS
+without being checked at all — the runner returned Pass before any
+entailment function ran. It is now reported honestly, which is why
+the RDF 1.1 total reads 1030 rather than 1031.
 
 The RDF 1.2 rows break down per leaf manifest as: N-Triples syntax 29,
 N-Quads syntax 27, Turtle syntax 67, Turtle eval 29, TriG syntax 35,
