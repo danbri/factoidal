@@ -416,6 +416,24 @@ val utf8_bytes_ascii_singleton (s:string) (c:FStar.Char.char)
           (ensures utf8_bytes s == [ FStar.Char.int_of_char c ])
 let utf8_bytes_ascii_singleton s c = ()
 
+(* 3b. GENERAL (non-ASCII) singleton encode -- issue #401 M1, IRI
+ *    non-ASCII widening. Same shape as fact 3 above but with NO
+ *    `int_of_char c < 0x80` restriction: `utf8_bytes s == utf8_enc_char
+ *    c` for ANY char `c`, whenever `s`'s own codepoint list is the
+ *    singleton `[c]`. This is `List.Tot.concatMap utf8_enc_char [c] ==
+ *    utf8_enc_char c` (definition of `concatMap` on a one-element list,
+ *    `f c @ concatMap f [] == f c @ [] == f c`) -- needs one ulib
+ *    append-identity call (`append_l_nil`) that fact 3's ASCII case
+ *    apparently gets for free from the single-element-list normal form
+ *    but is spelled out here rather than relying on the same silent
+ *    reduction for a codepoint whose OWN encoding length (1..4 bytes,
+ *    `utf8_enc_char_len_bounds`) is not concrete. *)
+val utf8_bytes_singleton (s:string) (c:FStar.Char.char)
+  : Lemma (requires FStar.String.list_of_string s == [c])
+          (ensures utf8_bytes s == utf8_enc_char c)
+let utf8_bytes_singleton s c =
+  List.Tot.append_l_nil (utf8_enc_char c)
+
 (* 4. utf8_decode_at on an ASCII head: decoding at a position whose byte
  *    is < 0x80 always yields (that byte, 1), independent of what
  *    follows -- the ASCII fast case never looks past b0. *)
