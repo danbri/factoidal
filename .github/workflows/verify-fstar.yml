@@ -1,0 +1,110 @@
+name: Verify F* Proof Corpus
+
+# Issue #436: neither check-extraction.yml nor w3c-tests.yml ever runs
+# `make verify` — they only run `fstar.exe` indirectly via
+# `build-ocaml.sh extract`, which type-checks whatever is in
+# build-ocaml.sh's hand-maintained ALL_MODULES array. That array is
+# missing 15 modules that exist on disk (confirmed 2026-08-14 — see
+# docs/designissues/2026-08-14-ci-verify-fstar.md), which is exactly
+# how #422 happened: RDF.CottasStore.PageCache.Bounds.fst sat broken
+# through an API change with every other gate green.
+#
+# formal/fstar/Makefile's `verify` target does not have this gap —
+# its module list is `$(wildcard *.fst)`, derived from the directory,
+# so it cannot drift from the corpus. This workflow's only job is to
+# run that target in CI and fail the PR when any module fails to
+# verify under z3 4.13.3, no --lax (Iron Rule #10).
+
+on:
+  pull_request:
+    paths:
+      - 'formal/fstar/*.fst'
+      - 'formal/fstar/*.fsti'
+      - 'formal/fstar/Makefile'
+      - '.github/workflows/verify-fstar.yml'
+  schedule:
+    # Nightly full-corpus safety net, independent of which PRs
+    # happened to touch formal/fstar/ that day. Same rationale as
+    # w3c-tests.yml's schedule entries: a cache-poisoning or
+    # toolchain-drift issue should not hide silently between PRs
+    # that touch few modules.
+    - cron: '30 3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-fstar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Cache opam
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-fstar-${{ runner.os }}-v4
+          restore-keys: |
+            opam-fstar-${{ runner.os }}-
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev pkg-config libzstd-dev
+
+      - name: Setup opam + F*
+        run: |
+          if [ ! -d ~/.opam ]; then
+            opam init -y --disable-sandboxing
+          fi
+          if ! opam switch list 2>/dev/null | grep -q fstar; then
+            opam switch create fstar ocaml-base-compiler.4.14.1
+          fi
+          eval $(opam env --switch=fstar)
+          opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
+          opam install -y fstar z3.4.13.3 zarith sha digestif ocamlfind uucp
+          echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
+          fstar.exe --version
+          z3 --version
+
+      - name: Record toolchain versions for cache key
+        id: versions
+        run: |
+          eval $(opam env --switch=fstar)
+          # Single-token versions only — hashFiles-adjacent cache keys
+          # must not contain spaces/newlines.
+          echo "fstar=$(fstar.exe --version 2>/dev/null | tr -c 'A-Za-z0-9.' '-' | sed 's/-*$//')" >> "$GITHUB_OUTPUT"
+          echo "z3=$(z3 --version 2>/dev/null | tr -c 'A-Za-z0-9.' '-' | sed 's/-*$//')" >> "$GITHUB_OUTPUT"
+
+      # Separate cache namespace from check-extraction.yml / w3c-tests.yml:
+      # those two only ever write .checked for build-ocaml.sh's partial
+      # module list, so sharing their key would under-warm this job for
+      # the modules extraction never touches (the exact #422 gap).
+      # Toolchain version is IN the key (P4 in
+      # skills/fast-verify-extract/SKILL.md) so a .checked from a
+      # different F*/z3 build is never restored.
+      - name: Cache F* .checked files (full corpus)
+        uses: actions/cache@v4
+        with:
+          path: |
+            formal/fstar/*.fst.checked
+            formal/fstar/*.fsti.checked
+          key: fstar-checked-verify-${{ runner.os }}-${{ steps.versions.outputs.fstar }}-${{ steps.versions.outputs.z3 }}-${{ hashFiles('formal/fstar/*.fst', 'formal/fstar/*.fsti') }}
+          restore-keys: |
+            fstar-checked-verify-${{ runner.os }}-${{ steps.versions.outputs.fstar }}-${{ steps.versions.outputs.z3 }}-
+
+      - name: make verify (full corpus, no --lax)
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          echo "::group::Corpus size"
+          make verify-list
+          echo "::endgroup::"
+          make -j"$(nproc)" verify
