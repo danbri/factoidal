@@ -166,10 +166,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 STRICT=0
-for arg in "$@"; do
+ONLY="all"
+skip_next=0
+args=("$@")
+for i in "${!args[@]}"; do
+  if [[ $skip_next -eq 1 ]]; then skip_next=0; continue; fi
+  arg="${args[$i]}"
   case "$arg" in
     --jena) : ;;  # explicit opt-in flag, precedent from run-jsoo-equivalence.sh --jsoo; no-op here since this script IS the opt-in entry point
     --strict) STRICT=1 ;;
+    --only)
+      ONLY="${args[$((i+1))]:-}"
+      if [[ -z "$ONLY" ]]; then echo "run-jena-diff: --only needs an argument (turtle|ntriples|trig|nquads)" >&2; exit 2; fi
+      skip_next=1
+      ;;
     --help|-h)
       sed -n '2,140p' "$0"
       exit 0
@@ -180,6 +190,16 @@ for arg in "$@"; do
       ;;
   esac
 done
+# --only FMT (2026-08-14, TriG/N-Quads extension): run a single
+# format's corpus. Not for routine use -- the full run is the
+# reported number -- but each format is fully independent (no shared
+# state between compare_one/compare_dataset_one calls), so this lets
+# the four format corpora run as separate parallel background
+# processes when the full sequential run's wall-clock time (each
+# comparison spawns 1-3 fresh JVMs; TriG especially, at up to one
+# rdfcompare per named graph) is inconvenient, e.g. for interactive
+# investigation of one format's disagreements. Results are the same
+# either way; this is a wall-clock knob, not a semantic one.
 
 # ---------------------------------------------------------------------
 # Locate Jena. Skip (exit 0) with a clear reason if not found — this
@@ -406,24 +426,46 @@ compare_dataset_one() {
 }
 
 echo "run-jena-diff: Jena found at $JENA_HOME"
-echo "run-jena-diff: comparing corpus files (Turtle, N-Triples, TriG, N-Quads; positive+negative alike — classification decides the bucket)"
+echo "run-jena-diff: comparing corpus files (Turtle, N-Triples, TriG, N-Quads; positive+negative alike — classification decides the bucket); --only=$ONLY"
 echo
 
-while IFS= read -r -d '' f; do
-  compare_one "$f" "turtle" "TURTLE" "turtle"
-done < <(find "$CORPUS_TURTLE" -maxdepth 1 -type f -name '*.ttl' -print0 | sort -z)
+# print_fmt_summary FMT: emitted right after that format's loop
+# finishes, so a run that is later interrupted (or capped by an
+# external `timeout`) still leaves the already-completed formats'
+# labelled counts in the log instead of losing them to a summary that
+# only prints once at the very end.
+print_fmt_summary() {
+  local fmt="$1"
+  echo "run-jena-diff: [$fmt] done (of ${n_total[$fmt]} files): ${n_agree_parse[$fmt]} agree-parse, ${n_agree_reject[$fmt]} agree-reject, ${n_disagree[$fmt]} disagree, ${n_either_side_error[$fmt]} either-side-error"
+}
 
-while IFS= read -r -d '' f; do
-  compare_one "$f" "nt" "NTRIPLES" "ntriples"
-done < <(find "$CORPUS_NTRIPLES" -maxdepth 1 -type f -name '*.nt' -print0 | sort -z)
+if [[ "$ONLY" == "all" || "$ONLY" == "turtle" ]]; then
+  while IFS= read -r -d '' f; do
+    compare_one "$f" "turtle" "TURTLE" "turtle"
+  done < <(find "$CORPUS_TURTLE" -maxdepth 1 -type f -name '*.ttl' -print0 | sort -z)
+  print_fmt_summary turtle
+fi
 
-while IFS= read -r -d '' f; do
-  compare_dataset_one "$f" "trig" "TRIG" "trig"
-done < <(find "$CORPUS_TRIG" -maxdepth 1 -type f -name '*.trig' -print0 | sort -z)
+if [[ "$ONLY" == "all" || "$ONLY" == "ntriples" ]]; then
+  while IFS= read -r -d '' f; do
+    compare_one "$f" "nt" "NTRIPLES" "ntriples"
+  done < <(find "$CORPUS_NTRIPLES" -maxdepth 1 -type f -name '*.nt' -print0 | sort -z)
+  print_fmt_summary ntriples
+fi
 
-while IFS= read -r -d '' f; do
-  compare_dataset_one "$f" "nq" "NQUADS" "nquads"
-done < <(find "$CORPUS_NQUADS" -maxdepth 1 -type f -name '*.nq' -print0 | sort -z)
+if [[ "$ONLY" == "all" || "$ONLY" == "trig" ]]; then
+  while IFS= read -r -d '' f; do
+    compare_dataset_one "$f" "trig" "TRIG" "trig"
+  done < <(find "$CORPUS_TRIG" -maxdepth 1 -type f -name '*.trig' -print0 | sort -z)
+  print_fmt_summary trig
+fi
+
+if [[ "$ONLY" == "all" || "$ONLY" == "nquads" ]]; then
+  while IFS= read -r -d '' f; do
+    compare_dataset_one "$f" "nq" "NQUADS" "nquads"
+  done < <(find "$CORPUS_NQUADS" -maxdepth 1 -type f -name '*.nq' -print0 | sort -z)
+  print_fmt_summary nquads
+fi
 
 echo "============================================================"
 if [[ -s "$DISAGREE_LOG" ]]; then
