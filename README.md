@@ -478,7 +478,11 @@ Live, per-suite numbers: **[test-results dashboard](https://danbri.github.io/fac
 `docs/test-results/latest.json`).
 
 SPARQL 1.1 suites: 631 pass, 0 fail; RDF 1.1 parsing + model-theory
-suites: 1031 pass, 0 fail — 1662 of 1662 runnable tests. The dashboard
+suites: 1030 pass, 0 fail, 1 unsupported — 1661 pass, 0 fail, 1
+unsupported of 1662 runnable tests. The one unsupported test needs
+`rdf:XMLLiteral` validity checking this engine does not have
+(optional in RDF 1.1); it previously passed without being checked.
+The dashboard
 carries every scored suite (OWL, RDFC-1.0, SHACL, ShEx validation +
 ShEx negativeSyntax, JSON-LD, RML, RIF, VC, XSLT, XML conformance,
 MathML, JSON Schema, Schematron, CSVW, DID, HDT parity, and the
