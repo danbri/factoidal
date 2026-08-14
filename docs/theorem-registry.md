@@ -1513,3 +1513,28 @@ follow-up scope in full. SPARQL and JSON-LD context paths (also named
 in #334's task list as "check whether … share the lenient-drop
 shape") are NOT covered by this landing — out of scope for the
 branch that did this work.
+
+**#16 DIFFERENTIAL TESTING vs Apache Jena (2026-08-11, branch
+`diff-testing`)**: the missing independent cross-check now exists.
+`tests/unit/run-jena-diff.sh` (opt-in, skip-with-reason when Jena is
+absent) runs the vendored W3C Turtle + N-Triples corpus (389 files)
+through BOTH factoidal and Jena 6.2.0 riot/rdfcompare and compares.
+Only ONE normalization: blank-node labels compared by graph
+isomorphism (implementations may name them freely); literals,
+datatypes, language tags and IRI forms compared EXACTLY, so a
+"disagree" is a real disagreement. Result: 261 agree-parse, 120
+agree-reject, 2 disagree, 6 either-side-error (of 389). HARNESS BUG
+CAUGHT BEFORE TRUSTING ANY RESULT: the first comparison target
+(factoidal-dump-nq) silently drops bad input — a best-effort dump,
+not the strict parser the W3C suite grades; 120 files looked like
+disagreements that were not. Fixed by adding --strict routing through
+the conformance parser entry points (bin/ consumer change), plus a
+stale module list in build-ocaml-serializer.sh. TWO REAL PARSER BUGS
+FOUND (#425), both in the Turtle number-literal classifier: leading-
+dot numbers without exponent (.1, +.7) are tagged xsd:double but the
+grammar says DECIMAL; 123.E+1 and -.2e3 are REJECTED but are legal
+DOUBLE. Our own W3C Turtle suite reportedly scores 100% on these four
+files — so the manifest expectations may ALSO be wrong; that check is
+open on #425. Adjudicated NOT a bug: 4 turtle-eval-bad cases where we
+reject illegal raw IRI characters and Jena only warns — we are the
+more conformant side.
