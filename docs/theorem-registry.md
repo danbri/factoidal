@@ -1589,3 +1589,27 @@ unchecked; full RDF 1030 pass, 0 fail, 1 unsupported (of 1031) — was
 checking that this tree does not have (optional in RDF 1.1) — now
 reported honestly instead of passing falsely. Nine tests match the
 manifest exactly; no adjudication needed.
+
+**#401 M1: IRI round-trip WIDENED to non-ASCII (2026-08-11, branch
+`iri-nonascii`)**: `lemma_term_iri_round_trip_utf8`
+(RDF.NTriples.RoundTrip.fst Part 10) — parse_object of
+nq_term_to_string (T_IRI i) returns the term for ANY i satisfying
+`is_iri` + `chars_all is_iri_body_char`. The `all_ascii` hypothesis
+is GONE. The feared obstacle (multi-byte scan advance) dissolved on
+inspection: `scan_iri_end` already reads BYTE-wise, and every
+forbidden byte (space, angle brackets, quote, braces, pipe,
+backslash, caret, backtick) is below 0x80, while every byte of a
+multi-byte UTF-8 sequence is 0x80 or above — so a multi-byte
+character can never collide with a delimiter
+(`lemma_utf8_enc_char_iri_safe` proves by `()` alone). Remaining
+work was showing the scan walks a character's own 1-4 bytes: a
+general step-by-step attempt failed with incomplete-quantifiers; a
+BOUNDED case split on k=1..4 (UTF-8 is never longer) verified.
+Bridging: `utf8_bytes_singleton` added to Parser.FastString.Spec.fst
+— the ASCII-free twin of utf8_bytes_ascii_singleton — after which
+the existing general facts carried the build_string bridge through.
+No rebuild needed and VERIFIED as such: the extracted
+Parser_FastString_Spec.ml contains ZERO lemmas (checked), so adding
+a Lemma cannot change the built program. Part 8's ASCII lemma stays
+for existing callers. Next: widen Part 9's triple-level lemmas the
+same way.
