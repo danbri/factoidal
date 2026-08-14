@@ -1564,3 +1564,28 @@ already-adjudicated turtle-eval-bad cases where we are stricter than
 Jena. Trap re-confirmed: `factoidal-dump-nq` is not rebuilt by the
 main build script and needed its own rebuild for the harness to see
 the fix.
+
+**#333 FIXED: RDFS D-inconsistency detection (2026-08-11, branch
+`dtype-clash`)**: the ten vacuous rdf-mt passes now CHECK. New
+`RDF.Entailment.RDFS.DatatypeClash.fst` detects (a) ill-formed
+literals for recognized datatypes (reusing
+`XSD.Datatypes.literal_ill_formed`) and (b) rdfs:range vs value
+datatype clashes — both gated on the manifest's
+`mf:recognizedDatatypes`, matching the rdf-mt rules. Runner's two
+"no result file, so Pass" branches now DISPATCH to the extracted
+detector (rule #15 respected — no semantics in the runner).
+VACUITY EVIDENCE (the point of the exercise): six compile-time
+`assert_norm` witnesses — three graphs that MUST be flagged, three
+that must NOT — plus a live re-run of #333's own corruption trick:
+garbling the `datatypes-range-clash` input now flips PASS→FAIL,
+where before the fix the suite did not notice. A bug in the detector
+was itself caught this way: the first range-clash version searched
+only part of the graph, and a should-flag witness refused to verify.
+SCORES (labelled, and the total DROPS on purpose): rdf-mt 38 pass,
+0 fail, 1 unsupported (of 39) — was 39 pass, 0 fail with 10 of them
+unchecked; full RDF 1030 pass, 0 fail, 1 unsupported (of 1031) — was
+1031/0; SPARQL 631/0 unchanged. The 1 unsupported is
+`rdfs-entailment-test001`, which needs rdf:XMLLiteral validity
+checking that this tree does not have (optional in RDF 1.1) — now
+reported honestly instead of passing falsely. Nine tests match the
+manifest exactly; no adjudication needed.
