@@ -58,14 +58,33 @@ let file_base_iri path =
     in
     Some ("file://" ^ abs)
 
-let load_dataset ?(format=None) ?(base=None) path =
+(* --strict (issue #317 differential-testing harness, 2026-08-14):
+   the plain parse_ntriples / parse_turtle[_with_base] entry points
+   below are LENIENT — they silently drop malformed input rather than
+   failing, so a negative-syntax test (input the spec says MUST be
+   rejected) comes back as "parsed successfully, zero triples" instead
+   of an error. That is the right behaviour for a best-effort dump
+   tool, but it is the WRONG parser to compare against another
+   engine's accept/reject verdict: it makes every "-bad-" fixture look
+   like a false disagreement. w3c_runner.ml grades negative-syntax
+   tests against parse_turtle_strict / parse_ntriples_strict (see its
+   comments around parse_turtle_strict / parse_ntriples_strict), which
+   return `option` and actually signal failure. --strict routes
+   through those same *_strict entry points so this tool's
+   accept/reject verdict matches what the W3C conformance suite
+   actually grades. Only NT and Turtle have *_strict extracted today;
+   --strict on another format is a clear error, not a silent
+   lenient-mode fallback. *)
+let load_dataset ?(format=None) ?(base=None) ?(strict=false) path =
   let content = read_file path in
   let fmt = match format with Some f -> f | None -> detect_format path in
   let base_iri = match base with Some b -> Some b | None -> file_base_iri path in
   match fmt with
   | NQuads ->
+    if strict then failwith "--strict is not implemented for N-Quads (only nt/turtle have extracted *_strict parsers)";
     Parser_NQuads.parse_nquads content
   | TriG ->
+    if strict then failwith "--strict is not implemented for TriG (only nt/turtle have extracted *_strict parsers)";
     (match base_iri with
      | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
      | None -> Parser_TriG.parse_trig_lenient content)
@@ -83,12 +102,29 @@ let load_dataset ?(format=None) ?(base=None) path =
        failwith "invalid JSON-LD (parse or unsupported feature — remote contexts need a loader this tool does not have)")
   | _ ->
     let triples = match fmt with
-      | NT -> Parser_NTriples.parse_ntriples content
+      | NT ->
+        if strict then
+          (match Parser_NTriples.parse_ntriples_strict content with
+           | FStar_Pervasives_Native.Some ts -> ts
+           | FStar_Pervasives_Native.None -> failwith "strict N-Triples parse rejected this input")
+        else Parser_NTriples.parse_ntriples content
       | Turtle ->
-        (match base_iri with
-         | Some b -> Parser_Turtle.parse_turtle_with_base content b
-         | None -> Parser_Turtle.parse_turtle content)
+        if strict then
+          (match base_iri with
+           | Some b ->
+             (match Parser_Turtle.parse_turtle_with_base_strict content b with
+              | FStar_Pervasives_Native.Some ts -> ts
+              | FStar_Pervasives_Native.None -> failwith "strict Turtle parse rejected this input")
+           | None ->
+             (match Parser_Turtle.parse_turtle_strict content with
+              | FStar_Pervasives_Native.Some ts -> ts
+              | FStar_Pervasives_Native.None -> failwith "strict Turtle parse rejected this input"))
+        else
+          (match base_iri with
+           | Some b -> Parser_Turtle.parse_turtle_with_base content b
+           | None -> Parser_Turtle.parse_turtle content)
       | RDFXML ->
+        if strict then failwith "--strict is not implemented for RDF/XML (only nt/turtle have extracted *_strict parsers)";
         (match base_iri with
          | Some b -> Parser_RDFXML.parse_rdfxml_with_base b content
          | None -> Parser_RDFXML.parse_rdfxml content)
@@ -97,13 +133,17 @@ let load_dataset ?(format=None) ?(base=None) path =
 
 let usage () =
   Printf.eprintf
-    "Usage: factoidal-dump-nq [--format nt|turtle|nq|trig|rdfxml|jsonld] FILE\n\n\
-     Parse RDF with Factoidal's extracted parser stack and emit canonical N-Quads.\n";
+    "Usage: factoidal-dump-nq [--format nt|turtle|nq|trig|rdfxml|jsonld] [--strict] FILE\n\n\
+     Parse RDF with Factoidal's extracted parser stack and emit canonical N-Quads.\n\
+     --strict uses the *_strict parser entry points (nt/turtle only) so a\n\
+     spec-invalid input FAILS instead of silently parsing to zero triples —\n\
+     use this when comparing accept/reject verdicts against another engine.\n";
   exit 2
 
 let () =
   let format = ref None in
   let input = ref None in
+  let strict = ref false in
   let rec loop = function
     | [] -> ()
     | ["--help"] | ["-h"] -> usage ()
@@ -113,6 +153,7 @@ let () =
        | None ->
          Printf.eprintf "Error: unknown format '%s'\n" fmt;
          exit 2)
+    | "--strict" :: rest -> strict := true; loop rest
     | [path] -> input := Some path
     | arg :: _ when String.length arg > 0 && arg.[0] = '-' ->
       Printf.eprintf "Error: unknown option '%s'\n" arg;
@@ -125,7 +166,7 @@ let () =
     | None -> usage ()
   in
   let dataset =
-    try load_dataset ~format:!format path
+    try load_dataset ~format:!format ~strict:!strict path
     with e ->
       Printf.eprintf "Error parsing %s: %s\n" path (Printexc.to_string e);
       exit 1

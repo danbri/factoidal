@@ -24,6 +24,18 @@
 #   (#381, #334) changed behaviour, and it needs no query-planner or
 #   canonicalization-algorithm agreement between the two engines.
 #
+# PARSER MODE: this harness calls `factoidal-dump-nq --strict`, not
+# the tool's plain lenient mode. Plain mode is a best-effort dump tool
+# that silently drops malformed input instead of failing, so every
+# W3C negative-syntax fixture ("*-bad-*") would come back as "parsed
+# successfully, zero triples" — a false disagreement against Jena's
+# correct rejection. --strict (added for this harness, 2026-08-14)
+# routes through the same parse_turtle_strict / parse_ntriples_strict
+# entry points w3c_runner.ml already uses to GRADE negative-syntax
+# tests, so this harness's accept/reject verdict matches what the W3C
+# conformance suite actually measures. See bin/factoidal-dump-nq/
+# factoidal_dump_nq.ml's --strict comment for the full story.
+#
 # COMPARISON METHOD (read this before trusting the output):
 #   For each file, both engines are asked to parse it and every
 #   triple is compared. Because blank node LABELS are implementation-
@@ -184,7 +196,7 @@ compare_one() {
   local j_err="$WORK_DIR/j.err"
 
   local f_rc=0 j_rc=0
-  "$DUMP_NQ" --format "$fmt_factoidal" "$file" > "$f_out" 2> "$f_err" || f_rc=$?
+  "$DUMP_NQ" --format "$fmt_factoidal" --strict "$file" > "$f_out" 2> "$f_err" || f_rc=$?
   "$RIOT" --syntax="$fmt_jena" --output=NTRIPLES "$file" > "$j_out" 2> "$j_err" || j_rc=$?
   # riot exits 0 even on some parse warnings but non-zero on hard
   # parse errors; treat "produced zero bytes AND non-zero exit" and
