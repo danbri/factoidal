@@ -1190,3 +1190,316 @@ let lemma_pws_one_space rest =
   fs_byte_index_eq rest 0
 
 #pop-options
+
+(** ====================================================================== **)
+(** Part 10: non-ASCII widening -- issue #401 M1, next rung after Part 8.   **)
+(**                                                                          **)
+(** Closes THE KNOWN OBSTACLE Part 8's own banner named: `scan_iri_end`      **)
+(** shown to advance correctly over MULTI-BYTE codepoints, so `lemma_term_   **)
+(** iri_round_trip` no longer needs `all_ascii (Str.list_of_string i)`.      **)
+(**                                                                          **)
+(** THE PREDICATE, precisely: `i : wf_iri` (RDF.Term.fsti's `is_iri`) whose   **)
+(** own codepoint list satisfies `chars_all is_iri_body_char (Str.list_of_    **)
+(** string i)` -- Part 1b's `iri_print_safe` restated pointwise, EXACTLY     **)
+(** Part 8's own second conjunct, with the FIRST conjunct (`all_ascii ...`)  **)
+(** dropped entirely. `is_iri_body_char` (Parser.NTriples.fst) already       **)
+(** covers non-ASCII codepoints unconditionally (RFC 3987 IRI body is        **)
+(** legal Unicode content; the ONLY excluded codepoints are the ten RFC      **)
+(** 3987 section 2.2 forbidden ones -- space, `<`, `>`, `"`, `{`, `}`, `|`,   **)
+(** `\`, `^`, backtick -- all of them ASCII, all < 0x7F) -- so this Part      **)
+(** widens the WITNESS DOMAIN, not the character-class definition.           **)
+(**                                                                          **)
+(** WHY THE OBSTACLE TURNED OUT NARROWER THAN FEARED. `scan_iri_end`         **)
+(** (Parser.NTriples.fst) already operates at BYTE granularity, not          **)
+(** codepoint granularity -- it reads `fs_byte_index input pos` (a raw byte  **)
+(** reinterpreted as a char) and advances `pos` one BYTE at a time,          **)
+(** regardless of UTF-8 structure. Combined with the RFC 3987 forbidden set  **)
+(** being entirely ASCII (< 0x7F), EVERY byte of a multi-byte UTF-8          **)
+(** encoding (continuation bytes 0x80-0xBF, lead bytes 0xC2-0xF4) is          **)
+(** AUTOMATICALLY safe for the scanner -- `lemma_utf8_enc_char_iri_safe`      **)
+(** below is a `()` proof, no induction needed. The real work is walking     **)
+(** `scan_iri_end` across a MULTI-BYTE character's own 1-4 bytes inside the   **)
+(** existing char-list induction (Part 7's `lemma_scan_iri_end_build_        **)
+(** string`, which assumed exactly one byte per char) without hitting the    **)
+(** documented `list_of_string`/`string_of_list`-in-self-recursion wall      **)
+(** (Parser.FastString.RoundTripLemmas.fst's SHARPENED FINDING, Part 7's     **)
+(** own banner). `lemma_scan_iri_end_one_char_walk` sidesteps it by a         **)
+(** BOUNDED (1..4, `Spec.utf8_enc_char_len_bounds`) case split rather than a   **)
+(** generic forall-indexed induction (a `forall`-shifting recursive walk      **)
+(** lemma was tried first and failed "incomplete quantifiers" at the          **)
+(** recursive call's own requires -- probably an E-matching trigger           **)
+(** mismatch between `(pos+1)+j` and the hypothesis's `pos+j` shape, not       **)
+(** re-diagnosed further since the bounded case split cleared cleanly).       **)
+(**                                                                          **)
+(** THE BRIDGING STEP (`i == build_string (Str.list_of_string i)`, Part 7's   **)
+(** own "NEXT NARROWEST" banner, separately still-open there for the fully    **)
+(** general `wf_iri` case) turns out to be GENERAL FOR FREE once `Spec.       **)
+(** utf8_bytes_singleton` (this session's new general singleton fact,         **)
+(** Parser.FastString.Spec.fst) replaces `Spec.utf8_bytes_ascii_singleton`    **)
+(** in `RoundTripLemmas.fst`'s `lemma_ascii_string_is_build_string`-style      **)
+(** proof recipe -- `Spec.utf8_decode_all_utf8_bytes_identity` and `_         **)
+(** concatMap_identity` (Spec.fst Section 7) were ALREADY general (no          **)
+(** `all_ascii` hypothesis), so only the ONE per-char leaf fact needed          **)
+(** widening. `lemma_build_string_utf8_bytes_general` below reproduces the     **)
+(** SAME self-recursive shape `Parser.FastString.BaseCases.fst`'s ASCII        **)
+(** `lemma_build_string_utf8_bytes` already uses successfully (mentioning      **)
+(** `Spec.utf8_bytes (build_string cs)` inside its own recursion) -- that       **)
+(** shape is safe at BaseCases.fst's own default fuel/ifuel (its own banner    **)
+(** attributes the SHARPENED FINDING's failure to `RoundTripLemmas.fst`'s       **)
+(** DIFFERENT `build_string` under inherited `--fuel 4 --ifuel 4`, not to       **)
+(** the shape itself) -- confirmed here empirically, no push-options.          **)
+(**                                                                          **)
+(** SCOPE: everything below is ADDITIVE. Parts 1-9 are untouched byte-for-     **)
+(** byte. The only edit outside this file is one additive general singleton   **)
+(** lemma in `Parser.FastString.Spec.fst` (`utf8_bytes_singleton`, committed    **)
+(** separately) -- no edits to `BaseCases.fst`/`RoundTripLemmas.fst`/           **)
+(** `Locality.fst`, so this Part restates the small amount of BaseCases-style   **)
+(** machinery it needs locally rather than touching that file.                **)
+(** ====================================================================== **)
+
+// (10.1) `Spec.utf8_bytes (build_string cs) == concatMap utf8_enc_char cs`,
+// for ANY `cs` (no `all_ascii`) -- the general sibling of `Parser.
+// FastString.BaseCases.lemma_build_string_utf8_bytes`, swapping in `Spec.
+// utf8_bytes_singleton` (general) for `Spec.utf8_bytes_ascii_singleton`.
+// Deliberately NO #push-options -- BaseCases.fst's own working instance of
+// this exact self-recursive shape uses default fuel/ifuel; matching that
+// is what keeps this clear of the SHARPENED FINDING wall (see banner).
+val lemma_build_string_utf8_bytes_general (cs : list FStar.Char.char)
+  : Lemma (ensures Spec.utf8_bytes (build_string cs) == List.Tot.concatMap Spec.utf8_enc_char cs)
+          (decreases cs)
+let rec lemma_build_string_utf8_bytes_general cs =
+  match cs with
+  | [] -> assert_norm (Spec.utf8_bytes "" == [])
+  | c :: rest ->
+    lemma_one_char_list_of_string c;
+    Spec.utf8_bytes_singleton (one_char_string c) c;
+    lemma_build_string_utf8_bytes_general rest;
+    Spec.utf8_bytes_concat (one_char_string c) (build_string rest)
+
+// (10.2) byte-length corollary, general.
+val lemma_build_string_byte_length_general (cs : list FStar.Char.char)
+  : Lemma (fs_byte_length (build_string cs) == List.Tot.length (List.Tot.concatMap Spec.utf8_enc_char cs))
+let lemma_build_string_byte_length_general cs =
+  fs_byte_length_eq (build_string cs);
+  lemma_build_string_utf8_bytes_general cs
+
+// (10.3) THE byte-safety fact: every byte of an `is_iri_body_char`-safe
+// char's own UTF-8 encoding is itself scanner-safe. Trivial `()` -- RFC
+// 3987's forbidden codepoint set (`is_iri_forbidden_codepoint`) is entirely
+// ASCII (all values < 0x7F), and `Spec.utf8_enc_char`'s own case split
+// puts every byte of a MULTI-byte encoding at >= 0x80 (continuation bytes
+// 0x80-0xBF, lead bytes 0xC2-0xF4) -- disjoint from the forbidden set by
+// construction, no case analysis needed beyond what `()` already discharges.
+val lemma_utf8_enc_char_iri_safe (c : FStar.Char.char)
+  : Lemma
+      (requires is_iri_body_char c)
+      (ensures
+        (forall (j:nat{j < List.Tot.length (Spec.utf8_enc_char c)}).
+           (let b = List.Tot.index (Spec.utf8_enc_char c) j in
+            b > 0x20 /\ b <> 0x3E /\ b <> 0x5C /\ not (is_iri_forbidden_codepoint b))))
+let lemma_utf8_enc_char_iri_safe c = ()
+
+// Plain-list helper (byte lists only, no strings/coercion pair -- safe,
+// same shape as Parser.FastString.RoundTripLemmas.fst's own private
+// nth_byte_index).
+val nth_byte_index_iri (bs : list Spec.byte) (i : nat{i < List.Tot.length bs})
+  : Lemma (ensures Spec.nth_byte bs i == Some (List.Tot.index bs i))
+          (decreases bs)
+let rec nth_byte_index_iri bs i =
+  match bs with
+  | hd :: tl -> if i = 0 then () else nth_byte_index_iri tl (i - 1)
+
+// (10.4) THE multi-byte scan-advance lemma -- scanning past ONE char's own
+// UTF-8 encoding (ANY codepoint, 1-4 bytes) never stops early, landing
+// exactly at its own byte length. Bounded (1..4) case split rather than a
+// generic induction -- see banner above for why.
+val lemma_scan_iri_end_one_char_walk
+    (c : FStar.Char.char) (mid : string) (fuel : nat)
+  : Lemma
+      (requires
+        is_iri_body_char c /\
+        fuel >= fs_byte_length (one_char_string c))
+      (ensures
+        scan_iri_end (one_char_string c ^ mid) 0 fuel
+          == scan_iri_end (one_char_string c ^ mid)
+               (fs_byte_length (one_char_string c))
+               (fuel - fs_byte_length (one_char_string c)))
+#push-options "--z3rlimit 300 --fuel 12 --ifuel 12"
+let lemma_scan_iri_end_one_char_walk c mid fuel =
+  let cstr = one_char_string c in
+  let full = cstr ^ mid in
+  lemma_one_char_list_of_string c;
+  Spec.utf8_bytes_singleton cstr c;
+  fs_byte_length_eq cstr;
+  let k = fs_byte_length cstr in
+  fs_byte_length_concat cstr mid;
+  lemma_utf8_enc_char_iri_safe c;
+  Spec.utf8_enc_char_len_bounds c;
+  let read (j:nat{j < k}) : Lemma (fs_byte_at full j == List.Tot.index (Spec.utf8_enc_char c) j) =
+    fs_byte_at_eq cstr j;
+    nth_byte_index_iri (Spec.utf8_enc_char c) j;
+    fs_byte_at_concat cstr mid j
+  in
+  if k = 1 then begin
+    read 0; fs_byte_index_eq full 0
+  end else if k = 2 then begin
+    read 0; read 1; fs_byte_index_eq full 0; fs_byte_index_eq full 1
+  end else if k = 3 then begin
+    read 0; read 1; read 2;
+    fs_byte_index_eq full 0; fs_byte_index_eq full 1; fs_byte_index_eq full 2
+  end else begin
+    read 0; read 1; read 2; read 3;
+    fs_byte_index_eq full 0; fs_byte_index_eq full 1; fs_byte_index_eq full 2; fs_byte_index_eq full 3
+  end
+#pop-options
+
+// (10.5) THE generalised (b1) -- Part 7's `lemma_scan_iri_end_build_string`
+// with `all_ascii` dropped, `chars_all is_iri_body_char` only. Identical
+// structure to Part 7's cons case, replacing the single-byte read
+// (`fs_ascii_singleton_facts`) with the multi-byte walk (10.4).
+val lemma_scan_iri_end_build_string_utf8
+    (cs : list FStar.Char.char{chars_all is_iri_body_char cs})
+    (rest : string) (fuel : nat)
+  : Lemma
+      (requires fuel > fs_byte_length (build_string cs))
+      (ensures
+        scan_iri_end (build_string cs ^ (">" ^ rest)) 0 fuel
+          == ParseOk (fs_byte_length (build_string cs)) (fs_byte_length (build_string cs)))
+      (decreases cs)
+#push-options "--z3rlimit 300 --fuel 8 --ifuel 8"
+let rec lemma_scan_iri_end_build_string_utf8 cs rest fuel =
+  match cs with
+  | [] ->
+    fs_byte_length_empty ();
+    lemma_strcat_empty_l (">" ^ rest);
+    fs_byte_length_gt ();
+    fs_byte_at_gt ();
+    fs_byte_length_concat ">" rest;
+    fs_byte_at_concat ">" rest 0;
+    fs_byte_index_eq (">" ^ rest) 0
+  | c :: rest_cs ->
+    let c_str = one_char_string c in
+    let mid = build_string rest_cs ^ (">" ^ rest) in
+    assert (is_iri_body_char c);
+    assert (chars_all is_iri_body_char rest_cs);
+    lemma_strcat_assoc c_str (build_string rest_cs) (">" ^ rest);
+    fs_byte_length_concat c_str (build_string rest_cs);
+    let n = fs_byte_length (build_string rest_cs) in
+    let k = fs_byte_length c_str in
+    lemma_scan_iri_end_build_string_utf8 rest_cs rest (fuel - k);
+    lemma_scan_iri_end_one_char_walk c mid fuel;
+    fs_byte_length_concat (build_string rest_cs) (">" ^ rest);
+    fs_byte_length_gt ();
+    fs_byte_length_concat ">" rest;
+    lemma_scan_iri_end_shift_from_start c_str mid "" (fuel - k) n;
+    lemma_strcat_empty_r mid
+#pop-options
+
+// (10.6) THE bridging step, general (no `all_ascii`): `i == build_string
+// (Str.list_of_string i)`, for ANY string `i` -- Part 7's own "NEXT
+// NARROWEST" banner named this as separately still-open for the fully
+// general case; it turns out general for free (see file banner above).
+val lemma_list_of_build_string_general (cs : list FStar.Char.char)
+  : Lemma (FStar.String.list_of_string (build_string cs) == cs)
+let lemma_list_of_build_string_general cs =
+  lemma_build_string_utf8_bytes_general cs;
+  Spec.utf8_decode_all_utf8_bytes_identity (build_string cs);
+  Spec.utf8_decode_all_concatMap_identity cs
+
+val lemma_string_is_build_string_general (s : string)
+  : Lemma (build_string (FStar.String.list_of_string s) == s)
+let lemma_string_is_build_string_general s =
+  let cs = FStar.String.list_of_string s in
+  lemma_list_of_build_string_general cs;
+  FStar.String.string_of_list_of_string s;
+  FStar.String.string_of_list_of_string (build_string cs)
+
+// (10.7) (b2) generalised -- parse_iri_raw on the bracketed build_string,
+// byte-length-indexed instead of char-count-indexed. Textually parallel to
+// Part 7's `lemma_parse_iri_raw_build_string`.
+#push-options "--z3rlimit 300 --fuel 8 --ifuel 8"
+val lemma_parse_iri_raw_build_string_utf8
+    (cs : list FStar.Char.char{chars_all is_iri_body_char cs})
+  : Lemma
+      (ensures
+        (let n = fs_byte_length (build_string cs) in
+         parse_iri_raw ("<" ^ (build_string cs ^ ">")) 0
+           == ParseOk (build_string cs) (n + 2)))
+let lemma_parse_iri_raw_build_string_utf8 cs =
+  let content = build_string cs in
+  lemma_build_string_byte_length_general cs;
+  let n = fs_byte_length content in
+  let s = "<" ^ (content ^ ">") in
+  fs_byte_length_lt ();
+  fs_byte_length_gt ();
+  fs_byte_length_concat content ">";
+  fs_byte_length_concat "<" (content ^ ">");
+  fs_byte_at_lt ();
+  fs_byte_at_concat "<" (content ^ ">") 0;
+  fs_byte_index_eq s 0;
+  lemma_strcat_empty_r ">";
+  lemma_scan_iri_end_build_string_utf8 cs "" (n + 2);
+  fs_byte_length_concat ">" "";
+  fs_byte_length_empty ();
+  fs_byte_length_concat content (">" ^ "");
+  lemma_scan_iri_end_shift_from_start "<" (content ^ (">" ^ "")) "" (n + 2) n;
+  lemma_strcat_empty_r (content ^ (">" ^ ""));
+  lemma_extract_middle "<" content ">"
+#pop-options
+
+#push-options "--z3rlimit 300 --fuel 8 --ifuel 8"
+val lemma_parse_iri_build_string_utf8
+    (cs : list FStar.Char.char{chars_all is_iri_body_char cs})
+  : Lemma
+      (requires is_iri (build_string cs))
+      (ensures
+        (let n = fs_byte_length (build_string cs) in
+         parse_iri ("<" ^ (build_string cs ^ ">")) 0
+           == ParseOk (build_string cs) (n + 2)))
+let lemma_parse_iri_build_string_utf8 cs =
+  lemma_parse_iri_raw_build_string_utf8 cs
+#pop-options
+
+// (10.8) (b3) generalised -- checkpoint (b) itself, no `all_ascii`.
+#push-options "--z3rlimit 300 --fuel 8 --ifuel 8"
+val lemma_term_iri_round_trip_build_string_utf8
+    (cs : list FStar.Char.char{chars_all is_iri_body_char cs})
+  : Lemma
+      (requires is_iri (build_string cs))
+      (ensures
+        (let n = fs_byte_length (build_string cs) in
+         parse_object (nq_term_to_string (T_IRI (build_string cs))) 0
+           == ParseOk (T_IRI (build_string cs)) (n + 2)))
+let lemma_term_iri_round_trip_build_string_utf8 cs =
+  let content = build_string cs in
+  let n = fs_byte_length content in
+  let s = "<" ^ (content ^ ">") in
+  lemma_parse_iri_build_string_utf8 cs;
+  assert (nq_term_to_string (T_IRI content) == "<" ^ content ^ ">");
+  lemma_strcat_assoc "<" content ">";
+  fs_byte_length_lt ();
+  fs_byte_length_concat content ">";
+  fs_byte_length_concat "<" (content ^ ">");
+  fs_byte_at_lt ();
+  fs_byte_at_concat "<" (content ^ ">") 0;
+  fs_byte_index_eq s 0
+#pop-options
+
+// (10.9) CHECKPOINT (b), FULLY GENERALISED -- issue #401 M1, closed. The
+// symbolic IRI-TERM round trip for ANY well-formed IRI whose content is
+// `is_iri_body_char`-safe throughout -- NO `all_ascii` conjunct anywhere.
+// Compare Part 8's `lemma_term_iri_round_trip`, which this supersedes for
+// the non-ASCII case (that lemma is left in place, untouched, as the
+// ASCII-specific entry point existing callers already use).
+val lemma_term_iri_round_trip_utf8 (i : string)
+  : Lemma
+      (requires
+        is_iri i /\
+        chars_all is_iri_body_char (Str.list_of_string i))
+      (ensures
+        parse_object (nq_term_to_string (T_IRI i)) 0
+          == ParseOk (T_IRI i) (fs_byte_length i + 2))
+let lemma_term_iri_round_trip_utf8 i =
+  let cs = Str.list_of_string i in
+  lemma_string_is_build_string_general i;
+  lemma_term_iri_round_trip_build_string_utf8 cs
