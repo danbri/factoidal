@@ -2480,17 +2480,32 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
           end
         end
 
-// Parse result with error tracking
+// Parse result with error tracking.
+//
+// tdr_error carries the FIRST error's (message, byte position) using
+// the same (string & nat) shape a ParseFail already carries, rather
+// than collapsing straight to a bare bool -- issue #334: the document
+// walk below computes exactly this message+position (via
+// parse_turtle_statement's ParseFail) and used to discard it, keeping
+// only a `has_error: bool`. That discard is what made an undeclared
+// prefix an invisible event: even the strict entry points (which
+// correctly fail via tdr_has_error) had zero information about WHERE
+// or WHY. tdr_error is now the source of truth; tdr_has_error is kept
+// (= Some? tdr_error) so existing `if r.tdr_has_error then None else
+// ...` callers are unaffected.
 noeq type turtle_doc_result = {
   tdr_triples: list triple;
   tdr_state: turtle_state;
   tdr_has_error: bool;
+  tdr_error: option (string & nat);
 }
 
-let finish_turtle_doc (st: turtle_state) (acc: list triple) (has_error: bool) : turtle_doc_result = {
+let finish_turtle_doc (st: turtle_state) (acc: list triple) (err: option (string & nat))
+  : turtle_doc_result = {
   tdr_triples = List.Tot.rev acc;
   tdr_state = st;
-  tdr_has_error = has_error;
+  tdr_has_error = Some? err;
+  tdr_error = err;
 }
 
 let rec count_triples (ts: list triple) : Tot nat (decreases ts) =
@@ -2519,30 +2534,36 @@ let rec fold_step_triples (#a: Type) (step: triple -> a -> a)
 // the proof doesn't regress silently.
 #push-options "--z3rlimit 30"
 let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat)
-    (acc: list triple) (has_error: bool) (fuel: nat)
+    (acc: list triple) (err: option (string & nat)) (fuel: nat)
   : Tot turtle_doc_result (decreases fuel) =
-  if fuel = 0 then finish_turtle_doc st acc has_error
+  if fuel = 0 then finish_turtle_doc st acc err
   else
     let next_fuel : nat = if fuel >= 1 then fuel - 1 else 0 in
     let len = fs_byte_length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
-      if pos1 >= len then finish_turtle_doc st acc has_error
+      if pos1 >= len then finish_turtle_doc st acc err
       else
         begin match parse_turtle_statement st input pos1 fuel with
         | ParseOk (triples, st') pos2 ->
           if pos2 = pos1 then
             // No progress -- stop
-            finish_turtle_doc st' (rev_prepend triples acc) has_error
+            finish_turtle_doc st' (rev_prepend triples acc) err
           else
-            parse_turtle_doc st' input pos2 (rev_prepend triples acc) has_error next_fuel
-        | ParseFail _ _ ->
-          // Skip to next line on failure, mark error
+            parse_turtle_doc st' input pos2 (rev_prepend triples acc) err next_fuel
+        | ParseFail msg fpos ->
+          // Skip to next line on failure, keep walking (a lenient
+          // consumer like parse_turtle still wants the remaining
+          // well-formed triples) but record the FIRST failure's
+          // message + position -- first-error-wins, matching the
+          // module's existing single-error parse_result convention
+          // rather than inventing a multi-error mechanism.
+          let err' = (match err with Some _ -> err | None -> Some (msg, fpos)) in
           let pos2 = skip_to_eol input pos1 (len - pos1) in
           if pos2 = pos1 then
-            finish_turtle_doc st acc true
+            finish_turtle_doc st acc err'
           else
-            parse_turtle_doc st input pos2 acc true next_fuel
+            parse_turtle_doc st input pos2 acc err' next_fuel
         end
 
 let rec parse_turtle_count_doc (st: turtle_state) (input: string) (pos: nat)
@@ -2623,14 +2644,14 @@ let rec fold_turtle_triples_acc (#a: Type)
 let parse_turtle (input: string) : list triple =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
-  let r = parse_turtle_doc empty_turtle_state input 0 [] false fuel in
+  let r = parse_turtle_doc empty_turtle_state input 0 [] None fuel in
   r.tdr_triples
 
 let parse_turtle_with_base (input: string) (base: string) : list triple =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let st = { empty_turtle_state with base_iri = base } in
-  let r = parse_turtle_doc st input 0 [] false fuel in
+  let r = parse_turtle_doc st input 0 [] None fuel in
   r.tdr_triples
 
 let count_turtle_triples (input: string) : nat =
@@ -2671,15 +2692,42 @@ let fold_turtle_triples_with_base (#a: Type) (step: triple -> a -> a) (stop: a -
 let parse_turtle_strict (input: string) : option (list triple) =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
-  let r = parse_turtle_doc empty_turtle_state input 0 [] false fuel in
+  let r = parse_turtle_doc empty_turtle_state input 0 [] None fuel in
   if r.tdr_has_error then None else Some r.tdr_triples
 
 let parse_turtle_with_base_strict (input: string) (base: string) : option (list triple) =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let st = { empty_turtle_state with base_iri = base } in
-  let r = parse_turtle_doc st input 0 [] false fuel in
+  let r = parse_turtle_doc st input 0 [] None fuel in
   if r.tdr_has_error then None else Some r.tdr_triples
+
+// Strict + diagnostic: like parse_turtle_strict, but surfaces WHERE
+// and WHY the document was rejected using the module's own
+// parse_result convention (ParseOk / ParseFail, the same shape every
+// statement-level parser above already returns) instead of collapsing
+// to a bare `option`. Fixes issue #334: an undeclared prefix (or any
+// other statement-level error) must produce a parse ERROR carrying
+// position information, not a silently-dropped statement -- and a
+// caller that needs to report the error (CLI, protocol client) should
+// not have to re-derive the byte offset that parse_turtle_statement's
+// ParseFail already computed and parse_turtle_doc used to discard.
+let parse_turtle_diagnostic (input: string) : parse_result (list triple) =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let r = parse_turtle_doc empty_turtle_state input 0 [] None fuel in
+  match r.tdr_error with
+  | Some (msg, epos) -> ParseFail msg epos
+  | None -> ParseOk r.tdr_triples len
+
+let parse_turtle_with_base_diagnostic (input: string) (base: string) : parse_result (list triple) =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let st = { empty_turtle_state with base_iri = base } in
+  let r = parse_turtle_doc st input 0 [] None fuel in
+  match r.tdr_error with
+  | Some (msg, epos) -> ParseFail msg epos
+  | None -> ParseOk r.tdr_triples len
 
 (* ================================================================ *)
 (* RDF 1.2 Turtle entry points (epic #305, wave 2).                 *)
@@ -2722,27 +2770,27 @@ let parse_turtle_with_base_strict (input: string) (base: string) : option (list 
 let parse_turtle_12 (input: string) : list triple =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
-  let r = parse_turtle_doc empty_turtle_state_12 input 0 [] false fuel in
+  let r = parse_turtle_doc empty_turtle_state_12 input 0 [] None fuel in
   graph_dedup_sort r.tdr_triples
 
 let parse_turtle_with_base_12 (input: string) (base: string) : list triple =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let st = { empty_turtle_state_12 with base_iri = base } in
-  let r = parse_turtle_doc st input 0 [] false fuel in
+  let r = parse_turtle_doc st input 0 [] None fuel in
   graph_dedup_sort r.tdr_triples
 
 let parse_turtle_strict_12 (input: string) : option (list triple) =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
-  let r = parse_turtle_doc empty_turtle_state_12 input 0 [] false fuel in
+  let r = parse_turtle_doc empty_turtle_state_12 input 0 [] None fuel in
   if r.tdr_has_error then None else Some (graph_dedup_sort r.tdr_triples)
 
 let parse_turtle_with_base_strict_12 (input: string) (base: string) : option (list triple) =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let st = { empty_turtle_state_12 with base_iri = base } in
-  let r = parse_turtle_doc st input 0 [] false fuel in
+  let r = parse_turtle_doc st input 0 [] None fuel in
   if r.tdr_has_error then None else Some (graph_dedup_sort r.tdr_triples)
 
 // Mode-parametrised dispatchers.
