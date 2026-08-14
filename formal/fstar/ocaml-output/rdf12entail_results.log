@@ -1,3 +1,4 @@
+Manifest parse warning in third_party/testing/w3c/rdf/rdf12/rdf-semantics/manifest.ttl: undefined prefix: test (byte offset 9734) -- continuing with the well-formed subset
   [1/47] rdf-semantics/all-identical-triple-terms-are-the-same ok
   [2/47] rdf-semantics/triple-terms-no-spurious ok
   [3/47] rdf-semantics/bnodes-in-triple-term-subject ok
