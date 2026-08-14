@@ -2205,8 +2205,14 @@ and parse_predicate_object_list_rev (st: turtle_state) (subj: subject) (input: s
                 else
                   let nc = fs_byte_index input pos5 in
                   let ncode = int_of_char nc in
-                  if ncode = 0x2E || ncode = 0x5D || ncode = 0x3B || ncode = 0x7C then
-                    (* End of predicate-object list (dot, close bracket, or another semicolon) *)
+                  if ncode = 0x2E || ncode = 0x5D || ncode = 0x3B || ncode = 0x7C || ncode = 0x7D then
+                    (* End of predicate-object list (dot, close bracket,
+                       another semicolon, or -- issue #434 -- '}' closing
+                       a TriG graph block: `;}` with nothing between the
+                       trailing separator and the block terminator is
+                       legal per predicateObjectList's optional tail
+                       after ';', and TriG additionally allows the last
+                       statement in a block to omit the final '.'. *)
                     if ncode = 0x3B then
                       (* Skip additional trailing semicolons *)
                       parse_trailing_semicolons_rev st1 acc_rev1 subj input pos5 (fuel - 1)
@@ -2251,7 +2257,11 @@ and parse_trailing_semicolons_rev (st: turtle_state) (triples_rev: list triple) 
           else
             let nc = fs_byte_index input pos2 in
             let ncode = int_of_char nc in
-            if ncode = 0x2E || ncode = 0x5D || ncode = 0x3B || ncode = 0x7C then
+            (* issue #434: '}' (TriG graph-block terminator) is a
+               trailing-semicolon stop character too, same reasoning
+               as the sibling check in parse_predicate_object_list_rev
+               above. *)
+            if ncode = 0x2E || ncode = 0x5D || ncode = 0x3B || ncode = 0x7C || ncode = 0x7D then
               parse_trailing_semicolons_rev st triples_rev subj input pos2 (fuel - 1)
             else
               (* Another predicate-object pair after semicolons *)
