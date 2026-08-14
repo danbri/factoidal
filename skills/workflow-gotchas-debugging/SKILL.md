@@ -965,3 +965,23 @@ Rules:
    deaths happened during .checked-cache copying; a cold verify of
    one target module beats an expensive copy that a container event
    can kill.
+
+### Hazard #24 addendum — "COMMIT-FIRST" must mean a DEADLINE, not an ordering (2026-08-11)
+
+Second loss the same day, worse than the first. The #334 Turtle agent ran
+~7 hours (250k tokens, 167 tool calls), reported a working fix and repeated
+extract/compile/suite cycles — and committed NOTHING. When it died, its
+worktree was clean: the fix was gone, unrecoverable. Its brief did say
+"COMMIT-FIRST", but as an ORDERING ("commit before building"), which the
+agent satisfied vacuously by never reaching a build it considered final.
+
+Rule: every dispatch brief states a WALL-CLOCK deadline for the first
+commit — "commit and push whatever verifies within 15 minutes of starting,
+even a partial edit with the test still failing" — and repeats it for each
+subsequent milestone. An agent that has been running an hour with no branch
+on origin is failing regardless of what its narration says; check the branch,
+not the narration (that check is hazard #24's first rule).
+
+Corollary for the orchestrator: when a long-running agent's first push has
+not appeared, SendMessage it a direct "push what you have now" before its
+next build cycle, rather than waiting for its report.
