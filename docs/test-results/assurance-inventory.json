@@ -1160,27 +1160,27 @@
    "loc": 653,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/CSVW_Json.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 49,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 49,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": [
     {
      "suite": "csvw-csv2json",
@@ -1262,27 +1262,27 @@
    "loc": 635,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/CSVW_Validate.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 50,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 50,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": [
     {
      "suite": "csvw-validation",
@@ -5415,6 +5415,8 @@
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_sub",
+      "slice_chars",
+      "take_chars",
       "utf8_enc_char"
      ]
     },
@@ -6212,6 +6214,91 @@
       "fs_byte_length",
       "is_nt_ws",
       "pws"
+     ]
+    },
+    {
+     "name": "lemma_build_string_byte_length_general",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1280,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "utf8_enc_char"
+     ]
+    },
+    {
+     "name": "lemma_scan_iri_end_one_char_walk",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1316,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "scan_iri_end"
+     ]
+    },
+    {
+     "name": "lemma_scan_iri_end_build_string_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1360,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "scan_iri_end"
+     ]
+    },
+    {
+     "name": "lemma_parse_iri_raw_build_string_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1421,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "parse_iri_raw"
+     ]
+    },
+    {
+     "name": "lemma_parse_iri_build_string_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1451,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "parse_iri"
+     ]
+    },
+    {
+     "name": "lemma_term_iri_round_trip_build_string_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1465,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "nq_term_to_string",
+      "parse_object"
+     ]
+    },
+    {
+     "name": "lemma_term_iri_round_trip_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1494,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "nq_term_to_string",
+      "parse_object"
      ]
     },
     {
@@ -7333,7 +7420,7 @@
    "files": [
     "formal/fstar/Parser.FastString.Spec.fst"
    ],
-   "loc": 835,
+   "loc": 853,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -7341,7 +7428,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_FastString_Spec.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 20,
+   "shipping_function_count": 24,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -7351,7 +7438,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 17,
+   "local_refinement_lemma_count": 15,
    "local_refinement_lemma_names": [
     "nth_byte_zero",
     "nth_byte_succ",
@@ -7362,9 +7449,7 @@
     "utf8_bytes_concat",
     "utf8_bytes_ascii_singleton",
     "utf8_decode_all_aux_shift",
-    "chars_take_drop_append",
     "drop_chars_add",
-    "chars_split3",
     "drop_bytes_append_left",
     "drop_bytes_self",
     "take_bytes_append_left",
@@ -7424,6 +7509,8 @@
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_sub",
+      "slice_chars",
+      "take_chars",
       "utf8_enc_char"
      ]
     },
@@ -7461,10 +7548,21 @@
      ]
     },
     {
+     "name": "utf8_bytes_singleton",
+     "proved_in": "Parser.FastString.Spec",
+     "file": "formal/fstar/Parser.FastString.Spec.fst",
+     "line": 431,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "utf8_bytes",
+      "utf8_enc_char"
+     ]
+    },
+    {
      "name": "utf8_decode_at_ascii",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 422,
+     "line": 440,
      "unconditional": false,
      "names_shipping_functions": [
       "nth_byte",
@@ -7475,7 +7573,7 @@
      "name": "utf8_decode_encode_identity",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 432,
+     "line": 450,
      "unconditional": true,
      "names_shipping_functions": [
       "utf8_decode_at",
@@ -7486,7 +7584,7 @@
      "name": "utf8_decode_all_aux_unfold",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 602,
+     "line": 620,
      "unconditional": false,
      "names_shipping_functions": [
       "utf8_decode_all_aux",
@@ -7497,7 +7595,7 @@
      "name": "utf8_decode_all_aux_encode",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 658,
+     "line": 676,
      "unconditional": true,
      "names_shipping_functions": [
       "utf8_decode_all_aux",
@@ -7508,7 +7606,7 @@
      "name": "utf8_decode_all_concatMap_identity",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 686,
+     "line": 704,
      "unconditional": true,
      "names_shipping_functions": [
       "utf8_decode_all",
@@ -7519,7 +7617,7 @@
      "name": "utf8_decode_all_utf8_bytes_identity",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 698,
+     "line": 716,
      "unconditional": true,
      "names_shipping_functions": [
       "utf8_bytes",
@@ -7527,13 +7625,38 @@
      ]
     },
     {
+     "name": "chars_take_drop_append",
+     "proved_in": "Parser.FastString.Spec",
+     "file": "formal/fstar/Parser.FastString.Spec.fst",
+     "line": 742,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "drop_chars",
+      "take_chars"
+     ]
+    },
+    {
+     "name": "chars_split3",
+     "proved_in": "Parser.FastString.Spec",
+     "file": "formal/fstar/Parser.FastString.Spec.fst",
+     "line": 764,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "drop_chars",
+      "slice_chars",
+      "take_chars"
+     ]
+    },
+    {
      "name": "utf8_decode_all_slice_by_charcount",
      "proved_in": "Parser.FastString.Spec",
      "file": "formal/fstar/Parser.FastString.Spec.fst",
-     "line": 815,
+     "line": 833,
      "unconditional": true,
      "names_shipping_functions": [
       "slice_bytes",
+      "slice_chars",
+      "take_chars",
       "utf8_decode_all",
       "utf8_enc_char"
      ]
@@ -7759,6 +7882,40 @@
       "parse_opt_graph_label",
       "pws",
       "scan_bnode_body_cp"
+     ]
+    },
+    {
+     "name": "lemma_build_string_utf8_bytes_general",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1267,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "utf8_bytes",
+      "utf8_enc_char"
+     ]
+    },
+    {
+     "name": "lemma_build_string_byte_length_general",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1280,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "utf8_enc_char"
+     ]
+    },
+    {
+     "name": "lemma_utf8_enc_char_iri_safe",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1293,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "is_iri_forbidden_codepoint",
+      "utf8_enc_char"
      ]
     }
    ],
@@ -9678,6 +9835,92 @@
       "is_nt_ws",
       "pws"
      ]
+    },
+    {
+     "name": "lemma_utf8_enc_char_iri_safe",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1293,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "is_iri_body_char",
+      "is_iri_forbidden_codepoint",
+      "utf8_enc_char"
+     ]
+    },
+    {
+     "name": "lemma_scan_iri_end_one_char_walk",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1316,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "scan_iri_end"
+     ]
+    },
+    {
+     "name": "lemma_scan_iri_end_build_string_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1360,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "scan_iri_end"
+     ]
+    },
+    {
+     "name": "lemma_parse_iri_raw_build_string_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1421,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "parse_iri_raw"
+     ]
+    },
+    {
+     "name": "lemma_parse_iri_build_string_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1451,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "parse_iri"
+     ]
+    },
+    {
+     "name": "lemma_term_iri_round_trip_build_string_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1465,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "nq_term_to_string",
+      "parse_object"
+     ]
+    },
+    {
+     "name": "lemma_term_iri_round_trip_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1494,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "nq_term_to_string",
+      "parse_object"
+     ]
     }
    ],
    "internal_refinement_theorems": [
@@ -10084,7 +10327,7 @@
    "files": [
     "formal/fstar/Parser.TriG.fst"
    ],
-   "loc": 567,
+   "loc": 646,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10092,7 +10335,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_TriG.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 22,
+   "shipping_function_count": 25,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -10132,7 +10375,7 @@
    "files": [
     "formal/fstar/Parser.Turtle.fst"
    ],
-   "loc": 2759,
+   "loc": 2882,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10140,7 +10383,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_Turtle.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 116,
+   "shipping_function_count": 121,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -10328,7 +10571,7 @@
    "files": [
     "formal/fstar/Parser.XML.fst"
    ],
-   "loc": 1938,
+   "loc": 2052,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10336,7 +10579,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parser_XML.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 90,
+   "shipping_function_count": 94,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -11537,7 +11780,7 @@
      "name": "find_oldest_aux_returns_present",
      "proved_in": "RDF.CottasStore.PageCache.Bounds",
      "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-     "line": 153,
+     "line": 154,
      "unconditional": true,
      "names_shipping_functions": [
       "find_oldest_aux",
@@ -11548,7 +11791,7 @@
      "name": "entries_after_bound",
      "proved_in": "RDF.CottasStore.PageCache.Bounds",
      "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-     "line": 217,
+     "line": 218,
      "unconditional": false,
      "names_shipping_functions": [
       "lookup_entry",
@@ -11559,7 +11802,7 @@
      "name": "entries_capped_bound",
      "proved_in": "RDF.CottasStore.PageCache.Bounds",
      "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-     "line": 239,
+     "line": 240,
      "unconditional": false,
      "names_shipping_functions": [
       "drop_entry",
@@ -11586,17 +11829,17 @@
    "files": [
     "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst"
    ],
-   "loc": 443,
+   "loc": 464,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "not-in-build-list",
-   "extraction_oracle_available": false,
+   "extraction": "fully-erased",
+   "extraction_oracle_available": true,
    "extracted_ml": null,
-   "in_build_module_list": false,
+   "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 16,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -11616,13 +11859,13 @@
     "pcache_put_capacity_bound",
     "pcache_get_length",
     "pcache_decode_capacity_bound",
-    "filter_zipped_rows_limited_bound",
+    "filter_zipped_rows_limited_seq_bound",
     "walk_candidate_rgs_search_limited_bound"
    ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "local-lemmas-only",
    "suites": []
   },
   {
@@ -11998,6 +12241,37 @@
    "suites": []
   },
   {
+   "module": "RDF.Entailment.RDFS.DatatypeClash",
+   "files": [
+    "formal/fstar/RDF.Entailment.RDFS.DatatypeClash.fst"
+   ],
+   "loc": 281,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDF_Entailment_RDFS_DatatypeClash.ml",
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 17,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": true,
+   "local_refinement_lemma_count": 0,
+   "local_refinement_lemma_names": [],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "merely-tot",
+   "suites": []
+  },
+  {
    "module": "RDF.Entailment.RDFS.FixedPoint",
    "files": [
     "formal/fstar/RDF.Entailment.RDFS.FixedPoint.fst"
@@ -12175,14 +12449,14 @@
    "loc": 1796,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDF_Entailment_RDFS_RhoDFClosure.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
-   "declarative_relation_count": 5,
-   "unclassified_definition_count": 19,
+   "shipping_function_count": 11,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -12190,33 +12464,891 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 20,
+   "local_refinement_lemma_count": 7,
    "local_refinement_lemma_names": [
-    "lemma_rho_df_step_is_dedup_of_pre_dedup",
-    "lemma_rho_df_closure_iter_shift",
     "lemma_rho_df_chain_canonical_shift",
     "lemma_rho_df_pre_dedup_extensive",
-    "lemma_rho_df_step_extensive",
-    "lemma_rho_df_closure_extensive_aux",
-    "rho_df_closure_extensive",
     "lemma_rho_df_chain_wf_shift",
-    "lemma_rho_df_closure_sound_aux",
-    "rho_df_closure_sound",
     "lemma_fold_left_reaches_at",
     "fold_left_reaches_scoped",
     "lemma_emit_once_term_grows",
-    "lemma_subj_term_to_subject",
-    "lemma_f1_bad_triple_not_frag",
-    "lemma_pre_dedup_in_c",
-    "lemma_is_rho_df_object_ok_correct",
-    "lemma_is_rho_df_frag_triple_correct",
-    "lemma_is_rho_df_frag_is_for_all",
-    "lemma_is_rho_df_frag_correct"
+    "lemma_subj_term_to_subject"
    ],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "algorithm_correctness_theorems": [
+    {
+     "name": "lemma_rho_df_step_is_dedup_of_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 110,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "graph_dedup_sort",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closure_iter_shift",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 140,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "rho_df_closure_iter",
+      "rho_df_closure_step"
+     ]
+    },
+    {
+     "name": "lemma_after_row1_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1379,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_after_row2_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1393,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_domain",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_after_row3_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1406,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_domain",
+      "rdfs_rule_range",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_after_row4_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1417,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_domain",
+      "rdfs_rule_range",
+      "rdfs_rule_subClassOf",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_after_row5_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1428,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rdfs_rule_domain",
+      "rdfs_rule_range",
+      "rdfs_rule_subClassOf",
+      "rdfs_rule_subClassOf_trans",
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
+     "name": "lemma_is_rho_df_frag_is_for_all",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1776,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "is_rho_df_frag",
+      "is_rho_df_frag_triple"
+     ]
+    }
+   ],
+   "internal_refinement_theorems": [
+    {
+     "name": "lemma_rho_df_step_extensive",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 172,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "no_dup_keys"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.FixedPoint"
+     ]
+    },
+    {
+     "name": "rho_df_closure_sound",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 291,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "lemma_f1_witness_frag",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1283,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "f1_witness",
+      "i_rdfs_subPropertyOf"
+     ],
+     "names_declarative_relations": [
+      "rho_df_frag_graph"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "lemma_f1_bad_triple_not_frag",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1287,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "f1_bad_triple"
+     ],
+     "names_declarative_relations": [
+      "rho_df_frag_triple"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "rho_df_len_eq_saturated",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1360,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "graph_len",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "no_dup_keys"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.FixedPoint"
+     ]
+    },
+    {
+     "name": "lemma_pre_dedup_in_c",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1446,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "no_dup_keys"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.FixedPoint"
+     ]
+    },
+    {
+     "name": "lemma_is_rho_df_object_ok_correct",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1745,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "is_rho_df_object_ok"
+     ],
+     "names_declarative_relations": [
+      "rho_df_object_ok"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "lemma_is_rho_df_frag_triple_correct",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1762,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "is_rho_df_frag_triple"
+     ],
+     "names_declarative_relations": [
+      "rho_df_frag_triple"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "lemma_is_rho_df_frag_correct",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1788,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "is_rho_df_frag"
+     ],
+     "names_declarative_relations": [
+      "rho_df_frag_graph"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_sound",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 532,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_complete_conditional",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 583,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "eval_bgp_complete_at",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_exact",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 606,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "eval_bgp_complete_at",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_sound",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 662,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_complete_conditional",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 684,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "eval_bgp_complete_at",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_sound_selective",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 747,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp_store",
+      "graph_to_store_for",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_pattern_sound",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 768,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_query_sound",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 814,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_ask_query",
+      "instantiate_bgp",
+      "query",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_complete_conditional_selective",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 854,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp_store",
+      "graph_to_store_for",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "eval_bgp_store_complete_at",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_query_complete_conditional",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 873,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_ask_query",
+      "instantiate_bgp",
+      "query",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "eval_bgp_store_complete_at",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "lemma_regime_answer_is_subgraph",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 958,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_complete",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 981,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_exact_answer",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 1005,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_complete",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 1034,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_bgp_complete_selective",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 1061,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_bgp_store",
+      "graph_to_store_for",
+      "instantiate_bgp",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    },
+    {
+     "name": "theorem_rdfs_regime_ask_query_complete",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 1089,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "eval_ask_query",
+      "instantiate_bgp",
+      "query",
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "bgp_frag",
+      "bgp_instantiable",
+      "graph_frag",
+      "rho_df_decides_hyps",
+      "rho_df_entails"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.RDFS.Completeness",
+      "SPARQL11.Algebra.BGPRefinement",
+      "SPARQL11.EntailmentRegime.RDFS"
+     ]
+    }
+   ],
+   "w3c_refinement_theorems": [
+    {
+     "name": "lemma_rho_df_closure_extensive_aux",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 186,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "is_subgraph"
+     ]
+    },
+    {
+     "name": "rho_df_closure_extensive",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 204,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "is_subgraph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_step_sound",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 244,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step"
+     ],
+     "names_declarative_relations": [
+      "holds_all",
+      "ig_wf_sp",
+      "rho_df_conditions"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closure_sound_aux",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 271,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "holds_all",
+      "rho_df_conditions"
+     ]
+    },
+    {
+     "name": "lemma_f1_bad_triple_derived",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1296,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
+      "i_rdfs_subPropertyOf",
+      "rdfs_rule_subPropertyOf"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp"
+     ]
+    },
+    {
+     "name": "rho_df_frag_preservation_fails",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1323,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
+      "i_rdfs_subPropertyOf",
+      "rdfs_rule_subPropertyOf"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "rho_df_frag_graph",
+      "rho_df_frag_triple"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_domain",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1528,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs2_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_range",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1543,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs3_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_subPropertyOf",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1564,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs7_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_subClassOf_trans",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1577,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs11_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_subPropertyOf_trans",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1593,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs5_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closed_row_subClassOf",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1612,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rdfs9_derives",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "rho_df_closure_closed",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1657,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rho_df_closed",
+      "rho_df_frag_graph"
+     ]
+    },
+    {
+     "name": "rho_df_closure_decides",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 1704,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_indexed",
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "graph_tt_free",
+      "ig_wf_sp",
+      "no_dup_keys",
+      "rho_df_entails",
+      "rho_df_frag_graph",
+      "simple_entailment_spec"
+     ]
+    },
+    {
+     "name": "lemma_decides_hyps_suffices",
+     "proved_in": "SPARQL11.EntailmentRegime.RDFS",
+     "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
+     "line": 500,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "graph_tt_free",
+      "rho_df_decides_hyps",
+      "rho_df_entails",
+      "simple_entailment_spec"
+     ]
+    }
+   ],
+   "assurance_tier": "w3c-refinement",
    "suites": []
   },
   {
@@ -12328,27 +13460,27 @@
    "loc": 94,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDF_Entailment_RDFSPlus.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 3,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 3,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -12395,27 +13527,27 @@
    "loc": 54,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDF_Entailment_RegimeDispatch.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 3,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 3,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -12423,7 +13555,7 @@
    "files": [
     "formal/fstar/RDF.Entailment.Simple.fst"
    ],
-   "loc": 159,
+   "loc": 183,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -12448,7 +13580,7 @@
      "name": "lemma_simple_entails_unfold",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 303,
+     "line": 320,
      "unconditional": true,
      "names_shipping_functions": [
       "simple_entails",
@@ -12461,7 +13593,7 @@
      "name": "lemma_try_match_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 230,
+     "line": 239,
      "unconditional": false,
      "names_shipping_functions": [
       "try_match"
@@ -12471,6 +13603,38 @@
       "binding_compat",
       "bnd_total",
       "leq_reflexive"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.Simple.Refinement"
+     ]
+    },
+    {
+     "name": "lemma_match_term_ground_sound",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 753,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "match_term"
+     ],
+     "names_declarative_relations": [
+      "leq_always_identity"
+     ],
+     "declarative_relations_from": [
+      "RDF.Entailment.Simple.Refinement"
+     ]
+    },
+    {
+     "name": "lemma_match_triple_ground_sound",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 780,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "match_triple"
+     ],
+     "names_declarative_relations": [
+      "leq_always_identity"
      ],
      "declarative_relations_from": [
       "RDF.Entailment.Simple.Refinement"
@@ -12510,7 +13674,7 @@
      "name": "lemma_match_subj_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 168,
+     "line": 177,
      "unconditional": false,
      "names_shipping_functions": [
       "match_subj"
@@ -12524,7 +13688,7 @@
      "name": "lemma_match_term_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 182,
+     "line": 191,
      "unconditional": false,
      "names_shipping_functions": [
       "match_term"
@@ -12540,7 +13704,7 @@
      "name": "lemma_match_triple_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 211,
+     "line": 220,
      "unconditional": false,
      "names_shipping_functions": [
       "match_triple"
@@ -12556,7 +13720,7 @@
      "name": "lemma_try_alts_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 244,
+     "line": 253,
      "unconditional": false,
      "names_shipping_functions": [
       "try_alts"
@@ -12573,7 +13737,7 @@
      "name": "simple_entails_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 311,
+     "line": 328,
      "unconditional": false,
      "names_shipping_functions": [
       "simple_entails"
@@ -12586,7 +13750,7 @@
      "name": "lemma_match_subj_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 338,
+     "line": 355,
      "unconditional": false,
      "names_shipping_functions": [
       "match_subj"
@@ -12601,7 +13765,7 @@
      "name": "lemma_match_term_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 355,
+     "line": 372,
      "unconditional": false,
      "names_shipping_functions": [
       "match_term"
@@ -12618,7 +13782,7 @@
      "name": "lemma_match_triple_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 401,
+     "line": 418,
      "unconditional": false,
      "names_shipping_functions": [
       "match_triple"
@@ -12635,7 +13799,7 @@
      "name": "lemma_try_match_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 433,
+     "line": 450,
      "unconditional": false,
      "names_shipping_functions": [
       "try_match"
@@ -12651,7 +13815,7 @@
      "name": "lemma_try_alts_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 448,
+     "line": 465,
      "unconditional": false,
      "names_shipping_functions": [
       "try_alts"
@@ -12669,7 +13833,7 @@
      "name": "simple_entails_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 493,
+     "line": 510,
      "unconditional": false,
      "names_shipping_functions": [
       "simple_entails"
@@ -12683,7 +13847,7 @@
      "name": "entails_with_complete",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 518,
+     "line": 535,
      "unconditional": false,
      "names_shipping_functions": [
       "entails_with"
@@ -12698,7 +13862,7 @@
      "name": "entails_with_sound",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 531,
+     "line": 548,
      "unconditional": false,
      "names_shipping_functions": [
       "entails_with"
@@ -12713,7 +13877,7 @@
      "name": "simple_entails_iff_spec",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 547,
+     "line": 564,
      "unconditional": false,
      "names_shipping_functions": [
       "simple_entails"
@@ -12724,15 +13888,72 @@
      ]
     },
     {
-     "name": "simple_entails_not_sound_unconditionally",
+     "name": "simple_entails_se1_regression",
      "proved_in": "RDF.Entailment.Simple.Refinement",
      "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-     "line": 599,
+     "line": 644,
      "unconditional": false,
      "names_shipping_functions": [
       "simple_entails"
      ],
      "names_declarative_relations": [
+      "simple_entailment_spec"
+     ]
+    },
+    {
+     "name": "simple_entails_se1_positive_regression",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 688,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "simple_entails"
+     ],
+     "names_declarative_relations": [
+      "simple_entailment_spec"
+     ]
+    },
+    {
+     "name": "lemma_try_match_ground_sound",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 794,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "try_match"
+     ],
+     "names_declarative_relations": [
+      "graph_ground",
+      "is_subgraph",
+      "leq_always_identity"
+     ]
+    },
+    {
+     "name": "lemma_try_alts_ground_sound",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 805,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "try_alts"
+     ],
+     "names_declarative_relations": [
+      "graph_ground",
+      "is_subgraph",
+      "leq_always_identity"
+     ]
+    },
+    {
+     "name": "simple_entails_sound_ground",
+     "proved_in": "RDF.Entailment.Simple.Refinement",
+     "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+     "line": 867,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "simple_entails"
+     ],
+     "names_declarative_relations": [
+      "graph_ground",
       "simple_entailment_spec"
      ]
     }
@@ -12852,7 +14073,7 @@
    "files": [
     "formal/fstar/RDF.Entailment.Simple.Refinement.fst"
    ],
-   "loc": 654,
+   "loc": 883,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "fully-erased",
@@ -12861,7 +14082,7 @@
    "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 0,
-   "declarative_relation_count": 8,
+   "declarative_relation_count": 9,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
@@ -12870,7 +14091,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 9,
+   "local_refinement_lemma_count": 14,
    "local_refinement_lemma_names": [
     "lemma_subj_terms_agree",
     "lemma_subject_eq_identity",
@@ -12878,9 +14099,14 @@
     "lemma_binding_extends_trans",
     "lemma_simple_leq_reflexive",
     "lemma_simple_bnd_total",
+    "lemma_simple_leq_always_identity",
     "lemma_simple_leq_exact_identity",
     "lemma_se1_lit_wf",
-    "lemma_spec_is_instance_subgraph"
+    "lemma_spec_is_instance_subgraph",
+    "lemma_match_subj_ground_sound",
+    "lemma_subj_inst_ground_refl",
+    "lemma_term_inst_ground_refl",
+    "lemma_triple_inst_ground_refl"
    ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
@@ -12893,7 +14119,7 @@
    "files": [
     "formal/fstar/RDF.Entailment.Simple.Spec.fst"
    ],
-   "loc": 282,
+   "loc": 310,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "fully-erased",
@@ -12902,7 +14128,7 @@
    "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 0,
-   "declarative_relation_count": 13,
+   "declarative_relation_count": 14,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
@@ -13454,6 +14680,18 @@
      ]
     },
     {
+     "name": "lemma_rho_df_step_is_dedup_of_pre_dedup",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 110,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "graph_dedup_sort",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
+     ]
+    },
+    {
      "name": "lemma_subject_to_key_eq_term_to_key_opt",
      "proved_in": "RDF.Indexed.KeyInjectivity",
      "file": "formal/fstar/RDF.Indexed.KeyInjectivity.fst",
@@ -13672,15 +14910,15 @@
      "line": 1360,
      "unconditional": false,
      "names_shipping_functions": [
-      "graph_len"
+      "graph_len",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
-      "no_dup_keys",
-      "rho_df_step_saturated"
+      "no_dup_keys"
      ],
      "declarative_relations_from": [
-      "RDF.Entailment.RDFS.FixedPoint",
-      "RDF.Entailment.RDFS.RhoDFClosure"
+      "RDF.Entailment.RDFS.FixedPoint"
      ]
     },
     {
@@ -14079,14 +15317,16 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "graph_len"
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rho_df_closed",
-      "rho_df_frag_graph",
-      "rho_df_subclass_subjects_iri"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -14097,17 +15337,17 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "graph_len"
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "graph_tt_free",
       "ig_wf_sp",
       "no_dup_keys",
-      "rho_df_chain_canonical",
-      "rho_df_chain_wf",
       "rho_df_entails",
       "rho_df_frag_graph",
-      "rho_df_subclass_subjects_iri",
       "simple_entailment_spec"
      ]
     }
@@ -14687,7 +15927,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -14699,7 +15940,8 @@
      "names_shipping_functions": [
       "build_indexed",
       "rdfs_rule_domain",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -14712,7 +15954,8 @@
       "build_indexed",
       "rdfs_rule_domain",
       "rdfs_rule_range",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -14726,7 +15969,8 @@
       "rdfs_rule_domain",
       "rdfs_rule_range",
       "rdfs_rule_subClassOf",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -14741,7 +15985,8 @@
       "rdfs_rule_range",
       "rdfs_rule_subClassOf",
       "rdfs_rule_subClassOf_trans",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -15732,7 +16977,8 @@
      "line": 244,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step"
      ],
      "names_declarative_relations": [
       "holds_all",
@@ -15944,6 +17190,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -15959,6 +17207,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -16055,14 +17305,14 @@
      "line": 1528,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs2_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16072,14 +17322,14 @@
      "line": 1543,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs3_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16089,14 +17339,14 @@
      "line": 1564,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs7_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16106,14 +17356,14 @@
      "line": 1577,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs11_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16123,14 +17373,14 @@
      "line": 1593,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs5_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16140,15 +17390,14 @@
      "line": 1612,
      "unconditional": false,
      "names_shipping_functions": [
-      "build_indexed"
+      "build_indexed",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rdfs9_derives",
-      "rho_df_frag_graph",
-      "rho_df_step_saturated",
-      "rho_df_subclass_subjects_iri"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16159,14 +17408,16 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "graph_len"
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "ig_wf_sp",
       "no_dup_keys",
       "rho_df_closed",
-      "rho_df_frag_graph",
-      "rho_df_subclass_subjects_iri"
+      "rho_df_frag_graph"
      ]
     },
     {
@@ -16177,17 +17428,17 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "graph_len"
+      "graph_len",
+      "rho_df_closure",
+      "rho_df_closure_step",
+      "rho_df_closure_step_pre_dedup"
      ],
      "names_declarative_relations": [
       "graph_tt_free",
       "ig_wf_sp",
       "no_dup_keys",
-      "rho_df_chain_canonical",
-      "rho_df_chain_wf",
       "rho_df_entails",
       "rho_df_frag_graph",
-      "rho_df_subclass_subjects_iri",
       "simple_entailment_spec"
      ]
     },
@@ -16597,6 +17848,32 @@
       "nq_subject_to_string",
       "parse_subject"
      ]
+    },
+    {
+     "name": "lemma_term_iri_round_trip_build_string_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1465,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "nq_term_to_string",
+      "parse_object"
+     ]
+    },
+    {
+     "name": "lemma_term_iri_round_trip_utf8",
+     "proved_in": "RDF.NTriples.RoundTrip",
+     "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+     "line": 1494,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "fs_byte_length",
+      "is_iri_body_char",
+      "nq_term_to_string",
+      "parse_object"
+     ]
     }
    ],
    "internal_refinement_theorems": [],
@@ -16688,7 +17965,7 @@
    "files": [
     "formal/fstar/RDF.NTriples.RoundTrip.fst"
    ],
-   "loc": 1193,
+   "loc": 1506,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "not-in-build-list",
@@ -16698,7 +17975,7 @@
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 18,
+   "unclassified_definition_count": 30,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -16706,7 +17983,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 9,
+   "local_refinement_lemma_count": 12,
    "local_refinement_lemma_names": [
     "lemma_nq_subject_to_string_same_shape_iri",
     "lemma_nq_subject_to_string_same_shape_bnode",
@@ -16716,7 +17993,10 @@
     "lemma_nq_term_to_string_same_shape_bnode",
     "lemma_nq_term_to_string_cross_shape",
     "lemma_nq_term_to_string_injective",
-    "lemma_nq_objects_injective_pointwise"
+    "lemma_nq_objects_injective_pointwise",
+    "nth_byte_index_iri",
+    "lemma_list_of_build_string_general",
+    "lemma_string_is_build_string_general"
    ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
@@ -17626,7 +18906,7 @@
     "formal/fstar/RDF.Term.fst",
     "formal/fstar/RDF.Term.fsti"
    ],
-   "loc": 604,
+   "loc": 637,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -17634,7 +18914,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_Term.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 36,
+   "shipping_function_count": 37,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -17644,8 +18924,10 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 3,
+   "local_refinement_lemma_count": 5,
    "local_refinement_lemma_names": [
+    "lemma_literal_term_eq_refl",
+    "lemma_literal_term_eq_identity",
     "lemma_subject_eq_refl",
     "lemma_literal_eq_refl",
     "lemma_rdf_term_eq_refl"
@@ -17799,7 +19081,7 @@
      "name": "lemma_join_canon_term_eq",
      "proved_in": "RDF.Term",
      "file": "formal/fstar/RDF.Term.fsti",
-     "line": 502,
+     "line": 535,
      "unconditional": false,
      "names_shipping_functions": [
       "join_canon_term",
@@ -17842,13 +19124,14 @@
      ]
     },
     {
-     "name": "lemma_ebv_langstring_finding",
+     "name": "lemma_ebv_langstring_agrees",
      "proved_in": "SPARQL11.Expression.Refinement",
      "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-     "line": 158,
+     "line": 187,
      "unconditional": false,
      "names_shipping_functions": [
       "ebv",
+      "ebv_checked",
       "rdf_lang_string"
      ]
     }
@@ -18142,6 +19425,7 @@
      "line": 1283,
      "unconditional": false,
      "names_shipping_functions": [
+      "f1_witness",
       "i_rdfs_subPropertyOf"
      ],
      "names_declarative_relations": [
@@ -18209,6 +19493,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -18224,6 +19510,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -18544,7 +19832,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -18556,7 +19845,8 @@
      "names_shipping_functions": [
       "build_indexed",
       "rdfs_rule_domain",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -18569,7 +19859,8 @@
       "build_indexed",
       "rdfs_rule_domain",
       "rdfs_rule_range",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -18583,7 +19874,8 @@
       "rdfs_rule_domain",
       "rdfs_rule_range",
       "rdfs_rule_subClassOf",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     },
     {
@@ -18598,7 +19890,8 @@
       "rdfs_rule_range",
       "rdfs_rule_subClassOf",
       "rdfs_rule_subClassOf_trans",
-      "rdfs_rule_subPropertyOf"
+      "rdfs_rule_subPropertyOf",
+      "rho_df_closure_step_pre_dedup"
      ]
     }
    ],
@@ -20343,6 +21636,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -20358,6 +21653,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
+      "f1_bad_triple",
+      "f1_witness",
       "i_rdfs_subPropertyOf",
       "rdfs_rule_subPropertyOf"
      ],
@@ -20480,27 +21777,27 @@
    "loc": 422,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDFS_Closure_SemiNaive.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 16,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 16,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -20511,14 +21808,14 @@
    "loc": 809,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/RDFS_SchemaSplit.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
-   "declarative_relation_count": 1,
-   "unclassified_definition_count": 47,
+   "shipping_function_count": 40,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -20526,20 +21823,41 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 7,
+   "local_refinement_lemma_count": 5,
    "local_refinement_lemma_names": [
     "schema_stable_check_sound",
     "schema_stable_check_complete",
     "emit_edge_shape",
     "emit_from_node_shape",
-    "sc_bfs_visited_grows",
-    "witness_stable_holds",
-    "witness_reflective_violates"
+    "sc_bfs_visited_grows"
    ],
-   "algorithm_correctness_theorems": [],
+   "algorithm_correctness_theorems": [
+    {
+     "name": "witness_stable_holds",
+     "proved_in": "RDFS.SchemaSplit",
+     "file": "formal/fstar/RDFS.SchemaSplit.fst",
+     "line": 795,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "schema_stable_check",
+      "witness_stable"
+     ]
+    },
+    {
+     "name": "witness_reflective_violates",
+     "proved_in": "RDFS.SchemaSplit",
+     "file": "formal/fstar/RDFS.SchemaSplit.fst",
+     "line": 798,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "schema_stable_check",
+      "witness_reflective"
+     ]
+    }
+   ],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "algorithm-correctness",
    "suites": []
   },
   {
@@ -21913,27 +23231,27 @@
    "loc": 714,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/SHACL_NodeExpr.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 77,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 77,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -21944,27 +23262,27 @@
    "loc": 439,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted-ml-not-committed",
-   "extraction_oracle_available": false,
-   "extracted_ml": null,
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/SHACL_Rules.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 0,
+   "shipping_function_count": 49,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 49,
+   "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": false,
+   "merely_tot": true,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "unclassified",
+   "assurance_tier": "merely-tot",
    "suites": []
   },
   {
@@ -23341,7 +24659,7 @@
    "files": [
     "formal/fstar/SPARQL11.Algebra.fst"
    ],
-   "loc": 8664,
+   "loc": 8728,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -23349,7 +24667,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/SPARQL11_Algebra.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 509,
+   "shipping_function_count": 513,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 10,
@@ -23828,7 +25146,7 @@
      "name": "lemma_substitute_pattern_preserves_size",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 4875,
+     "line": 4939,
      "unconditional": true,
      "names_shipping_functions": [
       "group_graph_pattern",
@@ -23840,7 +25158,7 @@
      "name": "lemma_lateral_substitute_preserves_size",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 4930,
+     "line": 4994,
      "unconditional": true,
      "names_shipping_functions": [
       "group_graph_pattern",
@@ -23852,7 +25170,7 @@
      "name": "lemma_rewrite_query_bnodes_pattern_preserves_size",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 5760,
+     "line": 5824,
      "unconditional": true,
      "names_shipping_functions": [
       "group_graph_pattern",
@@ -23864,7 +25182,7 @@
      "name": "lemma_filter_union",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7339,
+     "line": 7403,
      "unconditional": true,
      "names_shipping_functions": [
       "filter_solutions",
@@ -23875,7 +25193,7 @@
      "name": "lemma_sm_compatible_refl",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7414,
+     "line": 7478,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_compatible",
@@ -23886,7 +25204,7 @@
      "name": "lemma_sm_merge_empty_l",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7463,
+     "line": 7527,
      "unconditional": true,
      "names_shipping_functions": [
       "sm_lookup",
@@ -23897,7 +25215,7 @@
      "name": "lemma_store_search_empty",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7568,
+     "line": 7632,
      "unconditional": true,
      "names_shipping_functions": [
       "graph_to_store",
@@ -23908,7 +25226,7 @@
      "name": "lemma_eval_single_tp_empty",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7572,
+     "line": 7636,
      "unconditional": true,
      "names_shipping_functions": [
       "eval_single_tp_store",
@@ -23919,7 +25237,7 @@
      "name": "lemma_eval_bgp_store_empty_fuel",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7586,
+     "line": 7650,
      "unconditional": true,
      "names_shipping_functions": [
       "eval_bgp_store_from_mu_fuel",
@@ -23961,13 +25279,14 @@
      ]
     },
     {
-     "name": "lemma_ebv_langstring_finding",
+     "name": "lemma_ebv_langstring_agrees",
      "proved_in": "SPARQL11.Expression.Refinement",
      "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-     "line": 158,
+     "line": 187,
      "unconditional": false,
      "names_shipping_functions": [
       "ebv",
+      "ebv_checked",
       "rdf_lang_string"
      ]
     },
@@ -24645,7 +25964,6 @@
      ],
      "names_declarative_relations": [
       "bgp_ground_positions",
-      "graph_ground",
       "smap_ground"
      ],
      "declarative_relations_from": [
@@ -24660,7 +25978,8 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24682,11 +26001,11 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "eval_bgp_complete_at",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24703,13 +26022,13 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
       "eval_bgp_complete_at",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24726,7 +26045,8 @@
      "line": 662,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24747,11 +26067,11 @@
      "line": 684,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "eval_bgp_complete_at",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24769,7 +26089,8 @@
      "names_shipping_functions": [
       "eval_bgp_store",
       "graph_to_store_for",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24790,7 +26111,8 @@
      "line": 768,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24813,7 +26135,8 @@
      "names_shipping_functions": [
       "eval_ask_query",
       "instantiate_bgp",
-      "query"
+      "query",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
@@ -24836,11 +26159,11 @@
      "names_shipping_functions": [
       "eval_bgp_store",
       "graph_to_store_for",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "eval_bgp_store_complete_at",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24858,11 +26181,11 @@
      "names_shipping_functions": [
       "eval_ask_query",
       "instantiate_bgp",
-      "query"
+      "query",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "eval_bgp_store_complete_at",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24878,10 +26201,10 @@
      "line": 958,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24898,13 +26221,13 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24922,13 +26245,13 @@
      "unconditional": false,
      "names_shipping_functions": [
       "eval_bgp",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24945,13 +26268,13 @@
      "line": 1034,
      "unconditional": false,
      "names_shipping_functions": [
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24970,13 +26293,13 @@
      "names_shipping_functions": [
       "eval_bgp_store",
       "graph_to_store_for",
-      "instantiate_bgp"
+      "instantiate_bgp",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -24995,13 +26318,13 @@
      "names_shipping_functions": [
       "eval_ask_query",
       "instantiate_bgp",
-      "query"
+      "query",
+      "rho_df_closure"
      ],
      "names_declarative_relations": [
       "bgp_frag",
       "bgp_instantiable",
       "graph_frag",
-      "graph_ground",
       "rho_df_decides_hyps",
       "rho_df_entails"
      ],
@@ -26023,7 +27346,7 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 13,
+   "local_refinement_lemma_count": 12,
    "local_refinement_lemma_names": [
     "lemma_ground_implies_tt_free",
     "lemma_subj_inst_id",
@@ -26036,7 +27359,6 @@
     "lemma_term_tt_free_bridge",
     "lemma_graph_frag_tt_free",
     "lemma_tt_free_subset",
-    "lemma_decides_hyps_suffices",
     "lemma_ask_bgp_gives_solution"
    ],
    "algorithm_correctness_theorems": [],
@@ -26050,7 +27372,7 @@
    "files": [
     "formal/fstar/SPARQL11.Expression.Refinement.fst"
    ],
-   "loc": 379,
+   "loc": 424,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "not-in-build-list",
@@ -26060,7 +27382,7 @@
    "foundational_path": false,
    "shipping_function_count": 0,
    "declarative_relation_count": 0,
-   "unclassified_definition_count": 7,
+   "unclassified_definition_count": 6,
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
@@ -26068,8 +27390,9 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 18,
+   "local_refinement_lemma_count": 19,
    "local_refinement_lemma_names": [
+    "lemma_ebv_checked_is_spec",
     "lemma_ebv_matches_spec_some",
     "lemma_ebv_typeerror_folds_false",
     "lemma_and_matches_spec_when_no_error",
@@ -26078,9 +27401,9 @@
     "lemma_eval_and_matches_spec",
     "lemma_eval_or_matches_spec",
     "lemma_eval_not_matches_spec",
-    "lemma_eval_and_true_error_diverges_finding",
-    "lemma_eval_or_false_error_diverges_finding",
-    "lemma_eval_not_error_diverges_finding",
+    "lemma_eval_and_true_error_agrees",
+    "lemma_eval_or_false_error_agrees",
+    "lemma_eval_not_error_agrees",
     "lemma_eq_num_matches_spec",
     "lemma_eq_plain_string_matches_spec",
     "lemma_eq_dec_reflexive",
@@ -33345,6 +34668,8 @@
    "unconditional": true,
    "shipping_functions_named": [
     "fs_byte_sub",
+    "slice_chars",
+    "take_chars",
     "utf8_enc_char"
    ],
    "shipping_modules": [
@@ -33683,10 +35008,29 @@
    "class": "local_refinement"
   },
   {
+   "name": "utf8_bytes_singleton",
+   "host_module": "Parser.FastString.Spec",
+   "file": "formal/fstar/Parser.FastString.Spec.fst",
+   "line": 431,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "utf8_bytes",
+    "utf8_enc_char"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
    "name": "utf8_decode_at_ascii",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 422,
+   "line": 440,
    "unconditional": false,
    "shipping_functions_named": [
     "nth_byte",
@@ -33705,7 +35049,7 @@
    "name": "utf8_decode_encode_identity",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 432,
+   "line": 450,
    "unconditional": true,
    "shipping_functions_named": [
     "utf8_decode_at",
@@ -33724,7 +35068,7 @@
    "name": "utf8_decode_all_aux_unfold",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 602,
+   "line": 620,
    "unconditional": false,
    "shipping_functions_named": [
     "utf8_decode_all_aux",
@@ -33743,7 +35087,7 @@
    "name": "utf8_decode_all_aux_shift",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 623,
+   "line": 641,
    "unconditional": false,
    "shipping_functions_named": [
     "utf8_decode_all_aux"
@@ -33761,7 +35105,7 @@
    "name": "utf8_decode_all_aux_encode",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 658,
+   "line": 676,
    "unconditional": true,
    "shipping_functions_named": [
     "utf8_decode_all_aux",
@@ -33780,7 +35124,7 @@
    "name": "utf8_decode_all_concatMap_identity",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 686,
+   "line": 704,
    "unconditional": true,
    "shipping_functions_named": [
     "utf8_decode_all",
@@ -33799,7 +35143,7 @@
    "name": "utf8_decode_all_utf8_bytes_identity",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 698,
+   "line": 716,
    "unconditional": true,
    "shipping_functions_named": [
     "utf8_bytes",
@@ -33818,24 +35162,33 @@
    "name": "chars_take_drop_append",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 724,
+   "line": 742,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "drop_chars",
+    "take_chars"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "drop_chars_add",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 732,
+   "line": 750,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "drop_chars"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -33846,21 +35199,27 @@
    "name": "chars_split3",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 746,
+   "line": 764,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "drop_chars",
+    "slice_chars",
+    "take_chars"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "drop_bytes_append_left",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 766,
+   "line": 784,
    "unconditional": false,
    "shipping_functions_named": [
     "drop_bytes"
@@ -33878,7 +35237,7 @@
    "name": "drop_bytes_self",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 774,
+   "line": 792,
    "unconditional": true,
    "shipping_functions_named": [
     "drop_bytes"
@@ -33896,7 +35255,7 @@
    "name": "take_bytes_append_left",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 781,
+   "line": 799,
    "unconditional": false,
    "shipping_functions_named": [
     "take_bytes"
@@ -33914,7 +35273,7 @@
    "name": "take_bytes_self",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 789,
+   "line": 807,
    "unconditional": true,
    "shipping_functions_named": [
     "take_bytes"
@@ -33932,7 +35291,7 @@
    "name": "bytes_split3_slice",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 796,
+   "line": 814,
    "unconditional": true,
    "shipping_functions_named": [
     "slice_bytes"
@@ -33950,10 +35309,12 @@
    "name": "utf8_decode_all_slice_by_charcount",
    "host_module": "Parser.FastString.Spec",
    "file": "formal/fstar/Parser.FastString.Spec.fst",
-   "line": 815,
+   "line": 833,
    "unconditional": true,
    "shipping_functions_named": [
     "slice_bytes",
+    "slice_chars",
+    "take_chars",
     "utf8_decode_all",
     "utf8_enc_char"
    ],
@@ -36100,7 +37461,7 @@
    "name": "replace_entry_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 67,
+   "line": 68,
    "unconditional": true,
    "shipping_functions_named": [
     "replace_entry"
@@ -36118,7 +37479,7 @@
    "name": "drop_entry_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 78,
+   "line": 79,
    "unconditional": true,
    "shipping_functions_named": [
     "drop_entry"
@@ -36136,7 +37497,7 @@
    "name": "drop_entry_length_present",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 96,
+   "line": 97,
    "unconditional": false,
    "shipping_functions_named": [
     "drop_entry"
@@ -36154,7 +37515,7 @@
    "name": "list_len_eq_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 111,
+   "line": 112,
    "unconditional": true,
    "shipping_functions_named": [
     "list_len"
@@ -36172,7 +37533,7 @@
    "name": "find_oldest_aux_found_some",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 120,
+   "line": 121,
    "unconditional": true,
    "shipping_functions_named": [
     "find_oldest_aux"
@@ -36190,7 +37551,7 @@
    "name": "find_oldest_nonempty",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 135,
+   "line": 136,
    "unconditional": false,
    "shipping_functions_named": [
     "find_oldest"
@@ -36208,7 +37569,7 @@
    "name": "find_oldest_aux_returns_present",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 153,
+   "line": 154,
    "unconditional": true,
    "shipping_functions_named": [
     "find_oldest_aux",
@@ -36227,7 +37588,7 @@
    "name": "find_oldest_present",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 179,
+   "line": 180,
    "unconditional": false,
    "shipping_functions_named": [
     "find_oldest"
@@ -36245,7 +37606,7 @@
    "name": "pcache_put_capacity_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 209,
+   "line": 210,
    "unconditional": false,
    "shipping_functions_named": [
     "pcache_put"
@@ -36263,7 +37624,7 @@
    "name": "entries_after_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 217,
+   "line": 218,
    "unconditional": false,
    "shipping_functions_named": [
     "lookup_entry",
@@ -36282,7 +37643,7 @@
    "name": "entries_capped_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 239,
+   "line": 240,
    "unconditional": false,
    "shipping_functions_named": [
     "drop_entry",
@@ -36301,7 +37662,7 @@
    "name": "pcache_get_length",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 283,
+   "line": 284,
    "unconditional": true,
    "shipping_functions_named": [
     "pcache_get"
@@ -36319,7 +37680,7 @@
    "name": "pcache_decode_capacity_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 304,
+   "line": 305,
    "unconditional": false,
    "shipping_functions_named": [
     "pcache_decode_in_row_group"
@@ -36334,13 +37695,13 @@
    "class": "local_refinement"
   },
   {
-   "name": "filter_zipped_rows_limited_bound",
+   "name": "filter_zipped_rows_limited_seq_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 352,
+   "line": 364,
    "unconditional": false,
    "shipping_functions_named": [
-    "filter_zipped_rows_limited"
+    "filter_zipped_rows_limited_seq"
    ],
    "shipping_modules": [
     "RDF.CottasStore"
@@ -36355,7 +37716,7 @@
    "name": "walk_candidate_rgs_search_limited_bound",
    "host_module": "RDF.CottasStore.PageCache.Bounds",
    "file": "formal/fstar/RDF.CottasStore.PageCache.Bounds.fst",
-   "line": 399,
+   "line": 418,
    "unconditional": false,
    "shipping_functions_named": [
     "walk_candidate_rgs_search_limited"
@@ -41285,16 +42646,19 @@
    "line": 110,
    "unconditional": true,
    "shipping_functions_named": [
-    "graph_dedup_sort"
+    "graph_dedup_sort",
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Graph"
    ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_rho_df_closure_iter_shift",
@@ -41302,13 +42666,18 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 140,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure_iter",
+    "rho_df_closure_step"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_rho_df_chain_canonical_shift",
@@ -41316,14 +42685,14 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 143,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "rho_df_chain_canonical"
+   "shipping_functions_named": [
+    "rho_df_closure_step"
    ],
-   "declarative_modules": [
+   "shipping_modules": [
     "RDF.Entailment.RDFS.RhoDFClosure"
    ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
@@ -41334,8 +42703,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 153,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure_step_pre_dedup"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -41348,8 +42721,13 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 172,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "no_dup_keys"
    ],
@@ -41358,7 +42736,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_rho_df_closure_extensive_aux",
@@ -41366,21 +42744,23 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 186,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
-    "is_subgraph",
-    "rho_df_chain_canonical"
+    "is_subgraph"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "w3c_refinement"
   },
   {
    "name": "rho_df_closure_extensive",
@@ -41388,21 +42768,23 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 204,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
-    "is_subgraph",
-    "rho_df_chain_canonical"
+    "is_subgraph"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "w3c_refinement"
   },
   {
    "name": "lemma_rho_df_chain_wf_shift",
@@ -41410,14 +42792,14 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 238,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "rho_df_chain_wf"
+   "shipping_functions_named": [
+    "rho_df_closure_step"
    ],
-   "declarative_modules": [
+   "shipping_modules": [
     "RDF.Entailment.RDFS.RhoDFClosure"
    ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
@@ -41429,9 +42811,11 @@
    "line": 244,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
@@ -41455,23 +42839,25 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 271,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "holds_all",
-    "rho_df_chain_wf",
     "rho_df_conditions"
    ],
    "declarative_modules": [
     "OWL.Semantics",
-    "RDF.Entailment.RDFS.Completeness",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.Completeness"
    ],
    "independent_formalisation_modules": [
     "OWL.Semantics"
    ],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "w3c_refinement"
   },
   {
    "name": "rho_df_closure_sound",
@@ -41479,19 +42865,21 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 291,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
-    "rho_df_chain_wf",
     "rho_df_entails"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.Completeness",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.Completeness"
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_rdf_term_eq_sound",
@@ -42017,9 +43405,11 @@
    "line": 1283,
    "unconditional": false,
    "shipping_functions_named": [
+    "f1_witness",
     "i_rdfs_subPropertyOf"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Vocabulary.Axioms"
    ],
    "declarative_relations_named": [
@@ -42038,8 +43428,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1287,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "f1_bad_triple"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "rho_df_frag_triple"
    ],
@@ -42048,7 +43442,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_f1_bad_triple_derived",
@@ -42058,10 +43452,13 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
+    "f1_bad_triple",
+    "f1_witness",
     "i_rdfs_subPropertyOf",
     "rdfs_rule_subPropertyOf"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDF.Vocabulary.Axioms",
     "RDFS.Closure"
@@ -42086,10 +43483,13 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
+    "f1_bad_triple",
+    "f1_witness",
     "i_rdfs_subPropertyOf",
     "rdfs_rule_subPropertyOf"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDF.Vocabulary.Axioms",
     "RDFS.Closure"
@@ -42116,18 +43516,19 @@
    "line": 1360,
    "unconditional": false,
    "shipping_functions_named": [
-    "graph_len"
+    "graph_len",
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Graph"
    ],
    "declarative_relations_named": [
-    "no_dup_keys",
-    "rho_df_step_saturated"
+    "no_dup_keys"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.FixedPoint"
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
@@ -42141,9 +43542,11 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42162,9 +43565,11 @@
    "shipping_functions_named": [
     "build_indexed",
     "rdfs_rule_domain",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42184,9 +43589,11 @@
     "build_indexed",
     "rdfs_rule_domain",
     "rdfs_rule_range",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42207,9 +43614,11 @@
     "rdfs_rule_domain",
     "rdfs_rule_range",
     "rdfs_rule_subClassOf",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42231,9 +43640,11 @@
     "rdfs_rule_range",
     "rdfs_rule_subClassOf",
     "rdfs_rule_subClassOf_trans",
-    "rdfs_rule_subPropertyOf"
+    "rdfs_rule_subPropertyOf",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed",
     "RDFS.Closure"
    ],
@@ -42249,19 +43660,21 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1446,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure_step_pre_dedup"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
-    "no_dup_keys",
-    "rho_df_step_saturated"
+    "no_dup_keys"
    ],
    "declarative_modules": [
-    "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.FixedPoint"
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_c_in_g1",
@@ -42410,23 +43823,23 @@
    "line": 1528,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs2_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42443,23 +43856,23 @@
    "line": 1543,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs3_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42476,23 +43889,23 @@
    "line": 1564,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs7_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42509,23 +43922,23 @@
    "line": 1577,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs11_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42542,23 +43955,23 @@
    "line": 1593,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs5_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42575,24 +43988,23 @@
    "line": 1612,
    "unconditional": false,
    "shipping_functions_named": [
-    "build_indexed"
+    "build_indexed",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Indexed"
    ],
    "declarative_relations_named": [
     "ig_wf_sp",
     "no_dup_keys",
     "rdfs9_derives",
-    "rho_df_frag_graph",
-    "rho_df_step_saturated",
-    "rho_df_subclass_subjects_iri"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.RDFS.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42610,9 +44022,13 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
-    "graph_len"
+    "graph_len",
+    "rho_df_closure",
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Graph",
     "RDF.Indexed"
    ],
@@ -42620,14 +44036,12 @@
     "ig_wf_sp",
     "no_dup_keys",
     "rho_df_closed",
-    "rho_df_frag_graph",
-    "rho_df_subclass_subjects_iri"
+    "rho_df_frag_graph"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
-    "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure"
+    "RDF.Entailment.RDFS.FixedPoint"
    ],
    "independent_formalisation_modules": [
     "OWL.Semantics"
@@ -42643,9 +44057,13 @@
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
-    "graph_len"
+    "graph_len",
+    "rho_df_closure",
+    "rho_df_closure_step",
+    "rho_df_closure_step_pre_dedup"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Graph",
     "RDF.Indexed"
    ],
@@ -42653,18 +44071,14 @@
     "graph_tt_free",
     "ig_wf_sp",
     "no_dup_keys",
-    "rho_df_chain_canonical",
-    "rho_df_chain_wf",
     "rho_df_entails",
     "rho_df_frag_graph",
-    "rho_df_subclass_subjects_iri",
     "simple_entailment_spec"
    ],
    "declarative_modules": [
     "OWL.Semantics",
     "RDF.Entailment.RDFS.Completeness",
     "RDF.Entailment.RDFS.FixedPoint",
-    "RDF.Entailment.RDFS.RhoDFClosure",
     "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
@@ -42680,8 +44094,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1745,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "is_rho_df_object_ok"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "rho_df_object_ok"
    ],
@@ -42690,7 +44108,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_is_rho_df_frag_triple_correct",
@@ -42698,8 +44116,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1762,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "is_rho_df_frag_triple"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "rho_df_frag_triple"
    ],
@@ -42708,7 +44130,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_is_rho_df_frag_is_for_all",
@@ -42716,13 +44138,18 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1776,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "is_rho_df_frag",
+    "is_rho_df_frag_triple"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_is_rho_df_frag_correct",
@@ -42730,8 +44157,12 @@
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
    "line": 1788,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "is_rho_df_frag"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "rho_df_frag_graph"
    ],
@@ -42740,7 +44171,7 @@
    ],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "internal_refinement"
   },
   {
    "name": "lemma_graph_sep_free_sp",
@@ -44706,7 +46137,7 @@
    "name": "lemma_match_subj_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 168,
+   "line": 177,
    "unconditional": false,
    "shipping_functions_named": [
     "match_subj"
@@ -44732,7 +46163,7 @@
    "name": "lemma_match_term_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 182,
+   "line": 191,
    "unconditional": false,
    "shipping_functions_named": [
     "match_term"
@@ -44760,7 +46191,7 @@
    "name": "lemma_match_triple_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 211,
+   "line": 220,
    "unconditional": false,
    "shipping_functions_named": [
     "match_triple"
@@ -44788,7 +46219,7 @@
    "name": "lemma_try_match_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 230,
+   "line": 239,
    "unconditional": false,
    "shipping_functions_named": [
     "try_match"
@@ -44813,7 +46244,7 @@
    "name": "lemma_try_alts_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 244,
+   "line": 253,
    "unconditional": false,
    "shipping_functions_named": [
     "try_alts"
@@ -44842,7 +46273,7 @@
    "name": "lemma_simple_leq_reflexive",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 286,
+   "line": 297,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -44860,7 +46291,7 @@
    "name": "lemma_simple_bnd_total",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 289,
+   "line": 300,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -44875,10 +46306,28 @@
    "class": "local_refinement"
   },
   {
+   "name": "lemma_simple_leq_always_identity",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 306,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "lemma_simple_leq_exact_identity",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 291,
+   "line": 314,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -44896,7 +46345,7 @@
    "name": "lemma_simple_entails_unfold",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 303,
+   "line": 320,
    "unconditional": true,
    "shipping_functions_named": [
     "simple_entails",
@@ -44915,7 +46364,7 @@
    "name": "simple_entails_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 311,
+   "line": 328,
    "unconditional": false,
    "shipping_functions_named": [
     "simple_entails"
@@ -44939,7 +46388,7 @@
    "name": "lemma_match_subj_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 338,
+   "line": 355,
    "unconditional": false,
    "shipping_functions_named": [
     "match_subj"
@@ -44966,7 +46415,7 @@
    "name": "lemma_match_term_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 355,
+   "line": 372,
    "unconditional": false,
    "shipping_functions_named": [
     "match_term"
@@ -44995,7 +46444,7 @@
    "name": "lemma_match_triple_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 401,
+   "line": 418,
    "unconditional": false,
    "shipping_functions_named": [
     "match_triple"
@@ -45024,7 +46473,7 @@
    "name": "lemma_try_match_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 433,
+   "line": 450,
    "unconditional": false,
    "shipping_functions_named": [
     "try_match"
@@ -45052,7 +46501,7 @@
    "name": "lemma_try_alts_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 448,
+   "line": 465,
    "unconditional": false,
    "shipping_functions_named": [
     "try_alts"
@@ -45082,7 +46531,7 @@
    "name": "simple_entails_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 493,
+   "line": 510,
    "unconditional": false,
    "shipping_functions_named": [
     "simple_entails"
@@ -45107,7 +46556,7 @@
    "name": "entails_with_complete",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 518,
+   "line": 535,
    "unconditional": false,
    "shipping_functions_named": [
     "entails_with"
@@ -45134,7 +46583,7 @@
    "name": "entails_with_sound",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 531,
+   "line": 548,
    "unconditional": false,
    "shipping_functions_named": [
     "entails_with"
@@ -45161,7 +46610,7 @@
    "name": "simple_entails_iff_spec",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 547,
+   "line": 564,
    "unconditional": false,
    "shipping_functions_named": [
     "simple_entails"
@@ -45186,7 +46635,7 @@
    "name": "lemma_se1_lit_wf",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 597,
+   "line": 628,
    "unconditional": true,
    "shipping_functions_named": [
     "literal_wf"
@@ -45201,11 +46650,35 @@
    "class": "local_refinement"
   },
   {
-   "name": "simple_entails_not_sound_unconditionally",
+   "name": "simple_entails_se1_regression",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 599,
+   "line": 644,
    "unconditional": false,
+   "shipping_functions_named": [
+    "simple_entails"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "simple_entailment_spec"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "simple_entails_se1_positive_regression",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 688,
+   "unconditional": true,
    "shipping_functions_named": [
     "simple_entails"
    ],
@@ -45228,7 +46701,7 @@
    "name": "lemma_spec_is_instance_subgraph",
    "host_module": "RDF.Entailment.Simple.Refinement",
    "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
-   "line": 645,
+   "line": 719,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -45244,6 +46717,207 @@
    ],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
+  },
+  {
+   "name": "lemma_match_subj_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 746,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "match_subj"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_match_term_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 753,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "match_term"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_match_triple_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 780,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "match_triple"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_try_match_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 794,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "try_match"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "graph_ground",
+    "is_subgraph",
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement",
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_try_alts_ground_sound",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 805,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "try_alts"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "graph_ground",
+    "is_subgraph",
+    "leq_always_identity"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Refinement",
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_subj_inst_ground_refl",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 835,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "subj_inst"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_term_inst_ground_refl",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 841,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "term_inst"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_triple_inst_ground_refl",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 854,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "triple_inst"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "simple_entails_sound_ground",
+   "host_module": "RDF.Entailment.Simple.Refinement",
+   "file": "formal/fstar/RDF.Entailment.Simple.Refinement.fst",
+   "line": 867,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "simple_entails"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.Simple"
+   ],
+   "declarative_relations_named": [
+    "graph_ground",
+    "simple_entailment_spec"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
   },
   {
    "name": "lemma_mem_triple_append",
@@ -48569,6 +50243,242 @@
    "class": "algorithm_correctness"
   },
   {
+   "name": "lemma_build_string_utf8_bytes_general",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1267,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "utf8_bytes",
+    "utf8_enc_char"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_build_string_byte_length_general",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1280,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "fs_byte_length",
+    "utf8_enc_char"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_utf8_enc_char_iri_safe",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1293,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "is_iri_body_char",
+    "is_iri_forbidden_codepoint",
+    "utf8_enc_char"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec",
+    "Parser.NTriples"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "nth_byte_index_iri",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1305,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "nth_byte"
+   ],
+   "shipping_modules": [
+    "Parser.FastString.Spec"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_scan_iri_end_one_char_walk",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1316,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fs_byte_length",
+    "is_iri_body_char",
+    "scan_iri_end"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NTriples"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_scan_iri_end_build_string_utf8",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1360,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fs_byte_length",
+    "is_iri_body_char",
+    "scan_iri_end"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NTriples"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_list_of_build_string_general",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1402,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_string_is_build_string_general",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1409,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_parse_iri_raw_build_string_utf8",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1421,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "fs_byte_length",
+    "is_iri_body_char",
+    "parse_iri_raw"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NTriples"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_parse_iri_build_string_utf8",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1451,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fs_byte_length",
+    "is_iri_body_char",
+    "parse_iri"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NTriples"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_term_iri_round_trip_build_string_utf8",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1465,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fs_byte_length",
+    "is_iri_body_char",
+    "nq_term_to_string",
+    "parse_object"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NTriples",
+    "RDF.NQuads.Serialize"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_term_iri_round_trip_utf8",
+   "host_module": "RDF.NTriples.RoundTrip",
+   "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
+   "line": 1494,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "fs_byte_length",
+    "is_iri_body_char",
+    "nq_term_to_string",
+    "parse_object"
+   ],
+   "shipping_modules": [
+    "Parser.FastString",
+    "Parser.NTriples",
+    "RDF.NQuads.Serialize"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
    "name": "lemma_trivial_rdf_conditions",
    "host_module": "RDF.Semantics.HypothesisWitness",
    "file": "formal/fstar/RDF.Semantics.HypothesisWitness.fst",
@@ -50538,10 +52448,46 @@
    "class": "local_refinement"
   },
   {
+   "name": "lemma_literal_term_eq_refl",
+   "host_module": "RDF.Term",
+   "file": "formal/fstar/RDF.Term.fsti",
+   "line": 478,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "literal_term_eq"
+   ],
+   "shipping_modules": [
+    "RDF.Term"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_literal_term_eq_identity",
+   "host_module": "RDF.Term",
+   "file": "formal/fstar/RDF.Term.fsti",
+   "line": 482,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "literal_term_eq"
+   ],
+   "shipping_modules": [
+    "RDF.Term"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "lemma_join_canon_term_eq",
    "host_module": "RDF.Term",
    "file": "formal/fstar/RDF.Term.fsti",
-   "line": 502,
+   "line": 535,
    "unconditional": false,
    "shipping_functions_named": [
     "join_canon_term",
@@ -50560,7 +52506,7 @@
    "name": "lemma_subject_eq_refl",
    "host_module": "RDF.Term",
    "file": "formal/fstar/RDF.Term.fsti",
-   "line": 525,
+   "line": 558,
    "unconditional": true,
    "shipping_functions_named": [
     "subject_eq"
@@ -50578,7 +52524,7 @@
    "name": "lemma_literal_eq_refl",
    "host_module": "RDF.Term",
    "file": "formal/fstar/RDF.Term.fsti",
-   "line": 531,
+   "line": 564,
    "unconditional": true,
    "shipping_functions_named": [
     "literal_eq"
@@ -50596,7 +52542,7 @@
    "name": "lemma_rdf_term_eq_refl",
    "host_module": "RDF.Term",
    "file": "formal/fstar/RDF.Term.fsti",
-   "line": 535,
+   "line": 568,
    "unconditional": true,
    "shipping_functions_named": [
     "rdf_term_eq"
@@ -50634,14 +52580,14 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 263,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "schema_stable"
+   "shipping_functions_named": [
+    "schema_stable_check"
    ],
-   "declarative_modules": [
+   "shipping_modules": [
     "RDFS.SchemaSplit"
    ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
@@ -50652,14 +52598,14 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 271,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
-   "declarative_relations_named": [
-    "schema_stable"
+   "shipping_functions_named": [
+    "schema_stable_check"
    ],
-   "declarative_modules": [
+   "shipping_modules": [
     "RDFS.SchemaSplit"
    ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "local_refinement"
@@ -50670,8 +52616,12 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 713,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "emit_edge"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -50684,8 +52634,12 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 719,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "emit_from_node"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -50698,8 +52652,12 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 742,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "sc_bfs"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
@@ -50712,13 +52670,18 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 795,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "schema_stable_check",
+    "witness_stable"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "witness_reflective_violates",
@@ -50726,13 +52689,18 @@
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
    "line": 798,
    "unconditional": true,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "schema_stable_check",
+    "witness_reflective"
+   ],
+   "shipping_modules": [
+    "RDFS.SchemaSplit"
+   ],
    "declarative_relations_named": [],
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_mem_triple_append_left",
@@ -57923,7 +59891,7 @@
    "name": "lemma_substitute_pattern_preserves_size",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 4875,
+   "line": 4939,
    "unconditional": true,
    "shipping_functions_named": [
     "group_graph_pattern",
@@ -57943,7 +59911,7 @@
    "name": "lemma_lateral_substitute_preserves_size",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 4930,
+   "line": 4994,
    "unconditional": true,
    "shipping_functions_named": [
     "group_graph_pattern",
@@ -57963,7 +59931,7 @@
    "name": "lemma_rewrite_query_bnodes_pattern_preserves_size",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 5760,
+   "line": 5824,
    "unconditional": true,
    "shipping_functions_named": [
     "group_graph_pattern",
@@ -57983,7 +59951,7 @@
    "name": "lemma_union_assoc",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7306,
+   "line": 7370,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -58001,7 +59969,7 @@
    "name": "lemma_union_nil_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7318,
+   "line": 7382,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -58019,7 +59987,7 @@
    "name": "lemma_union_nil_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7321,
+   "line": 7385,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -58037,7 +60005,7 @@
    "name": "lemma_filter_append",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7329,
+   "line": 7393,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -58051,7 +60019,7 @@
    "name": "lemma_filter_union",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7339,
+   "line": 7403,
    "unconditional": true,
    "shipping_functions_named": [
     "filter_solutions",
@@ -58070,7 +60038,7 @@
    "name": "lemma_offset_zero",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7349,
+   "line": 7413,
    "unconditional": true,
    "shipping_functions_named": [
     "slice_solutions"
@@ -58088,7 +60056,7 @@
    "name": "lemma_list_drop_zero",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7353,
+   "line": 7417,
    "unconditional": true,
    "shipping_functions_named": [
     "list_drop"
@@ -58106,7 +60074,7 @@
    "name": "lemma_list_take_nil",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7357,
+   "line": 7421,
    "unconditional": true,
    "shipping_functions_named": [
     "list_take"
@@ -58124,7 +60092,7 @@
    "name": "lemma_filter_mem",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7362,
+   "line": 7426,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -58138,7 +60106,7 @@
    "name": "lemma_assoc_none_of_domain",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7396,
+   "line": 7460,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_domain"
@@ -58156,7 +60124,7 @@
    "name": "lemma_sm_compatible_extra_binding",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7406,
+   "line": 7470,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_compatible"
@@ -58174,7 +60142,7 @@
    "name": "lemma_sm_compatible_refl",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7414,
+   "line": 7478,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_compatible",
@@ -58193,7 +60161,7 @@
    "name": "lemma_sm_compatible_not_refl_with_dup_keys",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7427,
+   "line": 7491,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_compatible"
@@ -58211,7 +60179,7 @@
    "name": "lemma_sm_merge_empty_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7433,
+   "line": 7497,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_merge"
@@ -58229,7 +60197,7 @@
    "name": "lemma_sm_merge_aux_lookup",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7450,
+   "line": 7514,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_merge_aux"
@@ -58247,7 +60215,7 @@
    "name": "lemma_sm_merge_empty_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7463,
+   "line": 7527,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_lookup",
@@ -58266,7 +60234,7 @@
    "name": "lemma_sm_merge_empty_l_not_structural_identity",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7474,
+   "line": 7538,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_merge"
@@ -58284,7 +60252,7 @@
    "name": "lemma_domains_disjoint_empty_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7483,
+   "line": 7547,
    "unconditional": true,
    "shipping_functions_named": [
     "domains_disjoint"
@@ -58302,7 +60270,7 @@
    "name": "lemma_filter_true",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7498,
+   "line": 7562,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -58316,7 +60284,7 @@
    "name": "lemma_join_empty_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7505,
+   "line": 7569,
    "unconditional": true,
    "shipping_functions_named": [
     "join"
@@ -58334,7 +60302,7 @@
    "name": "lemma_concatMap_nil",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7509,
+   "line": 7573,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -58348,7 +60316,7 @@
    "name": "lemma_join_empty_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7516,
+   "line": 7580,
    "unconditional": true,
    "shipping_functions_named": [
     "join"
@@ -58366,7 +60334,7 @@
    "name": "lemma_minus_empty_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7534,
+   "line": 7598,
    "unconditional": true,
    "shipping_functions_named": [
     "minus"
@@ -58384,7 +60352,7 @@
    "name": "lemma_union_length",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7541,
+   "line": 7605,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -58402,7 +60370,7 @@
    "name": "lemma_concatMap_all_nil",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7549,
+   "line": 7613,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -58416,7 +60384,7 @@
    "name": "lemma_ig_search_empty",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7560,
+   "line": 7624,
    "unconditional": true,
    "shipping_functions_named": [
     "ig_search"
@@ -58434,7 +60402,7 @@
    "name": "lemma_store_search_empty",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7568,
+   "line": 7632,
    "unconditional": true,
    "shipping_functions_named": [
     "graph_to_store",
@@ -58453,7 +60421,7 @@
    "name": "lemma_eval_single_tp_empty",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7572,
+   "line": 7636,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_single_tp_store",
@@ -58472,7 +60440,7 @@
    "name": "lemma_eval_bgp_store_empty_fuel",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7586,
+   "line": 7650,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_bgp_store_from_mu_fuel",
@@ -58491,7 +60459,7 @@
    "name": "lemma_bgp_empty_graph",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7601,
+   "line": 7665,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_bgp"
@@ -58514,17 +60482,17 @@
    "shipping_functions_named": [],
    "shipping_modules": [],
    "declarative_relations_named": [
-    "graph_ground",
     "graph_tt_free"
    ],
    "declarative_modules": [
-    "RDF.Entailment.Simple.Spec",
-    "SPARQL11.EntailmentRegime.RDFS"
+    "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "local_refinement"
   },
   {
@@ -58634,14 +60602,15 @@
    ],
    "declarative_relations_named": [
     "bgp_ground_positions",
-    "graph_ground",
     "smap_ground"
    ],
    "declarative_modules": [
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -58756,18 +60725,18 @@
    "shipping_functions_named": [],
    "shipping_modules": [],
    "declarative_relations_named": [
-    "graph_ground",
     "is_subgraph",
     "simple_entailment_spec"
    ],
    "declarative_modules": [
-    "RDF.Entailment.Simple.Spec",
-    "SPARQL11.EntailmentRegime.RDFS"
+    "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "local_refinement"
   },
   {
@@ -58779,18 +60748,18 @@
    "shipping_functions_named": [],
    "shipping_modules": [],
    "declarative_relations_named": [
-    "graph_ground",
     "is_subgraph",
     "simple_entailment_spec"
    ],
    "declarative_modules": [
-    "RDF.Entailment.Simple.Spec",
-    "SPARQL11.EntailmentRegime.RDFS"
+    "RDF.Entailment.Simple.Spec"
    ],
    "independent_formalisation_modules": [
     "RDF.Entailment.Simple.Spec"
    ],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "local_refinement"
   },
   {
@@ -58862,8 +60831,12 @@
    "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
    "line": 500,
    "unconditional": false,
-   "shipping_functions_named": [],
-   "shipping_modules": [],
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
    "declarative_relations_named": [
     "graph_tt_free",
     "rho_df_decides_hyps",
@@ -58879,7 +60852,7 @@
     "RDF.Entailment.Simple.Spec"
    ],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "w3c_refinement"
   },
   {
    "name": "theorem_rdfs_regime_bgp_sound",
@@ -58889,9 +60862,11 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -58917,14 +60892,15 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "eval_bgp_complete_at",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -58933,7 +60909,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -58944,16 +60922,17 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "bgp_frag",
     "eval_bgp_complete_at",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -58963,7 +60942,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59011,9 +60992,11 @@
    "line": 662,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59038,14 +61021,15 @@
    "line": 684,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "eval_bgp_complete_at",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59054,7 +61038,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59085,9 +61071,11 @@
    "shipping_functions_named": [
     "eval_bgp_store",
     "graph_to_store_for",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59112,9 +61100,11 @@
    "line": 768,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59160,9 +61150,11 @@
    "shipping_functions_named": [
     "eval_ask_query",
     "instantiate_bgp",
-    "query"
+    "query",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
@@ -59189,14 +61181,15 @@
    "shipping_functions_named": [
     "eval_bgp_store",
     "graph_to_store_for",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "eval_bgp_store_complete_at",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59205,7 +61198,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59217,14 +61212,15 @@
    "shipping_functions_named": [
     "eval_ask_query",
     "instantiate_bgp",
-    "query"
+    "query",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "eval_bgp_store_complete_at",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59233,7 +61229,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59243,13 +61241,14 @@
    "line": 958,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59258,7 +61257,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59269,16 +61270,17 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59288,7 +61290,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59299,16 +61303,17 @@
    "unconditional": false,
    "shipping_functions_named": [
     "eval_bgp",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59318,7 +61323,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59328,16 +61335,17 @@
    "line": 1034,
    "unconditional": false,
    "shipping_functions_named": [
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59347,7 +61355,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59359,16 +61369,17 @@
    "shipping_functions_named": [
     "eval_bgp_store",
     "graph_to_store_for",
-    "instantiate_bgp"
+    "instantiate_bgp",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59378,7 +61389,9 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
   },
   {
@@ -59390,16 +61403,17 @@
    "shipping_functions_named": [
     "eval_ask_query",
     "instantiate_bgp",
-    "query"
+    "query",
+    "rho_df_closure"
    ],
    "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure",
     "SPARQL11.Algebra"
    ],
    "declarative_relations_named": [
     "bgp_frag",
     "bgp_instantiable",
     "graph_frag",
-    "graph_ground",
     "rho_df_decides_hyps",
     "rho_df_entails"
    ],
@@ -59409,14 +61423,34 @@
     "SPARQL11.EntailmentRegime.RDFS"
    ],
    "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
+   "ambiguous_identifiers": [
+    "graph_ground"
+   ],
    "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_ebv_checked_is_spec",
+   "host_module": "SPARQL11.Expression.Refinement",
+   "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
+   "line": 149,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "ebv_checked"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
   },
   {
    "name": "lemma_ebv_matches_spec_some",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 111,
+   "line": 158,
    "unconditional": false,
    "shipping_functions_named": [
     "ebv"
@@ -59434,7 +61468,7 @@
    "name": "lemma_ebv_typeerror_folds_false",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 138,
+   "line": 170,
    "unconditional": false,
    "shipping_functions_named": [
     "ebv"
@@ -59449,13 +61483,14 @@
    "class": "local_refinement"
   },
   {
-   "name": "lemma_ebv_langstring_finding",
+   "name": "lemma_ebv_langstring_agrees",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 158,
+   "line": 187,
    "unconditional": false,
    "shipping_functions_named": [
     "ebv",
+    "ebv_checked",
     "rdf_lang_string"
    ],
    "shipping_modules": [
@@ -59472,7 +61507,7 @@
    "name": "lemma_and_matches_spec_when_no_error",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 207,
+   "line": 237,
    "unconditional": false,
    "shipping_functions_named": [
     "ebv"
@@ -59490,7 +61525,7 @@
    "name": "lemma_or_matches_spec_when_no_error",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 217,
+   "line": 247,
    "unconditional": false,
    "shipping_functions_named": [
     "ebv"
@@ -59508,7 +61543,7 @@
    "name": "lemma_not_matches_spec_when_no_error",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 227,
+   "line": 257,
    "unconditional": false,
    "shipping_functions_named": [
     "ebv"
@@ -59526,8 +61561,8 @@
    "name": "lemma_eval_and_matches_spec",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 239,
-   "unconditional": false,
+   "line": 276,
+   "unconditional": true,
    "shipping_functions_named": [
     "eval_expr_with_base"
    ],
@@ -59544,8 +61579,8 @@
    "name": "lemma_eval_or_matches_spec",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 247,
-   "unconditional": false,
+   "line": 286,
+   "unconditional": true,
    "shipping_functions_named": [
     "eval_expr_with_base"
    ],
@@ -59562,25 +61597,7 @@
    "name": "lemma_eval_not_matches_spec",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 255,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "eval_expr_with_base"
-   ],
-   "shipping_modules": [
-    "SPARQL11.Algebra"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "lemma_eval_and_true_error_diverges_finding",
-   "host_module": "SPARQL11.Expression.Refinement",
-   "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 270,
+   "line": 296,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_expr_with_base"
@@ -59595,10 +61612,10 @@
    "class": "local_refinement"
   },
   {
-   "name": "lemma_eval_or_false_error_diverges_finding",
+   "name": "lemma_eval_and_true_error_agrees",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 280,
+   "line": 312,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_expr_with_base"
@@ -59613,10 +61630,28 @@
    "class": "local_refinement"
   },
   {
-   "name": "lemma_eval_not_error_diverges_finding",
+   "name": "lemma_eval_or_false_error_agrees",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 290,
+   "line": 323,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "eval_expr_with_base"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_eval_not_error_agrees",
+   "host_module": "SPARQL11.Expression.Refinement",
+   "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
+   "line": 335,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_expr_with_base"
@@ -59634,7 +61669,7 @@
    "name": "lemma_eq_num_matches_spec",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 315,
+   "line": 360,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -59650,7 +61685,7 @@
    "name": "lemma_eq_plain_string_matches_spec",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 320,
+   "line": 365,
    "unconditional": false,
    "shipping_functions_named": [
     "xsd_string"
@@ -59670,7 +61705,7 @@
    "name": "lemma_eq_dec_reflexive",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 338,
+   "line": 383,
    "unconditional": false,
    "shipping_functions_named": [
     "parse_to_scaled"
@@ -59690,7 +61725,7 @@
    "name": "lemma_eq_dbl_reflexive",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 343,
+   "line": 388,
    "unconditional": false,
    "shipping_functions_named": [
     "parse_double_to_scaled"
@@ -59710,7 +61745,7 @@
    "name": "lemma_eq_literal_different_datatype_typeerror",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 355,
+   "line": 400,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -59726,7 +61761,7 @@
    "name": "lemma_eq_literal_same_datatype_diff_lang",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 364,
+   "line": 409,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -59742,7 +61777,7 @@
    "name": "lemma_eval_eq_num_matches_spec",
    "host_module": "SPARQL11.Expression.Refinement",
    "file": "formal/fstar/SPARQL11.Expression.Refinement.fst",
-   "line": 373,
+   "line": 418,
    "unconditional": false,
    "shipping_functions_named": [
     "eval_expr_with_base"
@@ -61495,19 +63530,19 @@
   }
  ],
  "totals": {
-  "modules": 231,
-  "files": 241,
+  "modules": 232,
+  "files": 242,
   "assume_val_active": 133,
   "assume_other_active": 5,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
-  "modules_with_w3c_refinement_theorem": 10,
-  "modules_with_algorithm_correctness_theorem": 41,
-  "modules_with_internal_refinement_theorem": 19,
-  "modules_merely_tot": 129,
-  "w3c_refinement_theorem_count": 308,
-  "internal_refinement_theorem_count": 146,
-  "algorithm_correctness_theorem_count": 336,
+  "modules_with_w3c_refinement_theorem": 11,
+  "modules_with_algorithm_correctness_theorem": 43,
+  "modules_with_internal_refinement_theorem": 20,
+  "modules_merely_tot": 137,
+  "w3c_refinement_theorem_count": 316,
+  "internal_refinement_theorem_count": 155,
+  "algorithm_correctness_theorem_count": 353,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [
    "OWL.RL.Refinement",
@@ -61528,16 +63563,16 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1639,
+  "lemma_count": 1666,
   "tiers": {
-   "algorithm-correctness": 26,
+   "algorithm-correctness": 27,
    "internal-refinement": 10,
-   "local-lemmas-only": 12,
-   "merely-tot": 129,
+   "local-lemmas-only": 13,
+   "merely-tot": 137,
    "specification-and-proof": 17,
-   "unclassified": 27,
-   "w3c-refinement": 10
+   "unclassified": 17,
+   "w3c-refinement": 11
   }
  },
- "commit": "fdc15c1e1"
+ "commit": "0ea6f9120"
 }
