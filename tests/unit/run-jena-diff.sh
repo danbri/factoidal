@@ -22,13 +22,33 @@
 #   #433 (collection as subject) and #434 (trailing ';' before '}')
 #   were BOTH TriG-only and neither was caught by v1, because TriG was
 #   outside its coverage. This version closes that gap.
-#   RDF/XML is still out of scope: it has no *_strict OCaml wiring
-#   issue (Parser.RDFXML.fst has parse_rdfxml_strict /
-#   parse_rdfxml_with_base_strict extracted and wired below in
-#   factoidal-dump-nq --format rdfxml --strict), but its W3C corpus is
-#   laid out in per-testcase subdirectories rather than one flat
-#   directory of files, which this harness's simple `find -maxdepth 1`
-#   corpus walk does not handle yet — left for a follow-up pass.
+#   RDF/XML is now covered too (priority 3, added same day): single-
+#   graph like Turtle/N-Triples, so it reuses compare_one directly; its
+#   corpus is one testcase per subdirectory
+#   (third_party/testing/w3c/rdf/rdf11/rdf-xml/<suite>/testNNN.rdf), so
+#   its find call is `-mindepth 2 -maxdepth 2` instead of `-maxdepth 1`.
+#   Real findings, both adjudicated (see run history / issue #446):
+#     - a genuine Factoidal bug: the XML-Literal c14n serializer
+#       renders a default (unprefixed) namespace as the malformed
+#       attribute `xmlns:="..."` instead of `xmlns="..."` — filed as
+#       issue #446.
+#     - two ACTIVE W3C xml-canon tests where Jena's `riot`, not
+#       Factoidal, diverges from the official vendored expected `.nt`
+#       output (Factoidal matches the W3C-approved result) — not a
+#       Factoidal bug.
+#     - 9 of 10 either-side-errors are `TestXMLNegativeSyntax` cases
+#       (`rdf:ID`/`rdf:nodeID` values that violate the XML Name
+#       production, e.g. leading digit, embedded ':' or '/', a
+#       duplicate `rdf:ID`) where Factoidal correctly rejects and
+#       Jena's `riot` accepts anyway — Factoidal is the more
+#       conformant side, same posture as the turtle-eval-bad /
+#       trig-eval-bad findings below.
+#     - 2 of the 4 "disagree" files and 1 of the either-side-errors
+#       are on W3C manifest entries that are COMMENTED OUT (withdrawn)
+#       in the vendored rdf-xml manifest.ttl, so they are not part of
+#       the currently-graded suite at all; one of those withdrawals is
+#       explicitly "implementation dependent" per the manifest's own
+#       comment.
 #
 # PARSER MODE: this harness calls `factoidal-dump-nq --strict`, not
 # the tool's plain lenient mode. Plain mode is a best-effort dump tool
@@ -255,7 +275,8 @@ CORPUS_TURTLE="$REPO_ROOT/third_party/testing/w3c/rdf/rdf11/rdf-turtle"
 CORPUS_NTRIPLES="$REPO_ROOT/third_party/testing/w3c/rdf/rdf11/rdf-n-triples"
 CORPUS_TRIG="$REPO_ROOT/third_party/testing/w3c/rdf/rdf11/rdf-trig"
 CORPUS_NQUADS="$REPO_ROOT/third_party/testing/w3c/rdf/rdf11/rdf-n-quads"
-for d in "$CORPUS_TURTLE" "$CORPUS_NTRIPLES" "$CORPUS_TRIG" "$CORPUS_NQUADS"; do
+CORPUS_RDFXML="$REPO_ROOT/third_party/testing/w3c/rdf/rdf11/rdf-xml"
+for d in "$CORPUS_TURTLE" "$CORPUS_NTRIPLES" "$CORPUS_TRIG" "$CORPUS_NQUADS" "$CORPUS_RDFXML"; do
   if [[ ! -d "$d" ]]; then
     echo "ERROR: corpus directory not found: $d" \
          "(run tools/ensure-test-env.sh to fetch W3C test submodules)" >&2
@@ -264,11 +285,11 @@ for d in "$CORPUS_TURTLE" "$CORPUS_NTRIPLES" "$CORPUS_TRIG" "$CORPUS_NQUADS"; do
 done
 
 # Per-format counters (CLAUDE.md rule #25: never one unlabelled number).
-declare -A n_agree_parse=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 )
-declare -A n_agree_reject=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 )
-declare -A n_disagree=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 )
-declare -A n_either_side_error=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 )
-declare -A n_total=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 )
+declare -A n_agree_parse=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 [rdfxml]=0 )
+declare -A n_agree_reject=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 [rdfxml]=0 )
+declare -A n_disagree=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 [rdfxml]=0 )
+declare -A n_either_side_error=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 [rdfxml]=0 )
+declare -A n_total=( [turtle]=0 [ntriples]=0 [trig]=0 [nquads]=0 [rdfxml]=0 )
 
 DISAGREE_LOG="$WORK_DIR/disagree.log"
 ESE_LOG="$WORK_DIR/either_side_error.log"
@@ -426,7 +447,7 @@ compare_dataset_one() {
 }
 
 echo "run-jena-diff: Jena found at $JENA_HOME"
-echo "run-jena-diff: comparing corpus files (Turtle, N-Triples, TriG, N-Quads; positive+negative alike — classification decides the bucket); --only=$ONLY"
+echo "run-jena-diff: comparing corpus files (Turtle, N-Triples, TriG, N-Quads, RDF/XML; positive+negative alike — classification decides the bucket); --only=$ONLY"
 echo
 
 # print_fmt_summary FMT: emitted right after that format's loop
@@ -467,6 +488,22 @@ if [[ "$ONLY" == "all" || "$ONLY" == "nquads" ]]; then
   print_fmt_summary nquads
 fi
 
+# RDF/XML (priority 3, added 2026-08-14): single-graph like Turtle/
+# N-Triples, so it reuses compare_one directly -- no dataset/graph-key
+# machinery needed. Its W3C corpus is laid out ONE TESTCASE PER
+# SUBDIRECTORY (third_party/testing/w3c/rdf/rdf11/rdf-xml/<suite>/
+# testNNN.rdf), unlike the other three formats' single flat directory,
+# so its find call is `-mindepth 2 -maxdepth 2` instead of `-maxdepth
+# 1` -- confirmed by exhaustive `find -mindepth 3` (0 hits) and
+# `find -maxdepth 1` (0 hits): the corpus is exactly one level deep,
+# nothing shallower or deeper.
+if [[ "$ONLY" == "all" || "$ONLY" == "rdfxml" ]]; then
+  while IFS= read -r -d '' f; do
+    compare_one "$f" "rdfxml" "RDFXML" "rdfxml"
+  done < <(find "$CORPUS_RDFXML" -mindepth 2 -maxdepth 2 -type f -name '*.rdf' -print0 | sort -z)
+  print_fmt_summary rdfxml
+fi
+
 echo "============================================================"
 if [[ -s "$DISAGREE_LOG" ]]; then
   echo "--- DISAGREEMENTS (both engines parsed, graphs not isomorphic) ---"
@@ -480,7 +517,7 @@ fi
 echo "============================================================"
 echo "run-jena-diff summary (labelled per format; CLAUDE.md rule #25):"
 grand_agree_parse=0 grand_agree_reject=0 grand_disagree=0 grand_ese=0 grand_total=0
-for fmt in turtle ntriples trig nquads; do
+for fmt in turtle ntriples trig nquads rdfxml; do
   echo "  [$fmt] (of ${n_total[$fmt]} files): ${n_agree_parse[$fmt]} agree-parse, ${n_agree_reject[$fmt]} agree-reject, ${n_disagree[$fmt]} disagree, ${n_either_side_error[$fmt]} either-side-error"
   grand_agree_parse=$((grand_agree_parse + n_agree_parse[$fmt]))
   grand_agree_reject=$((grand_agree_reject + n_agree_reject[$fmt]))
