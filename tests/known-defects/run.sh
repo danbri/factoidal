@@ -243,49 +243,43 @@ fi
 # ---------------------------------------------------------------------
 
 # ---------------------------------------------------------------------
-# UTF8-STORE (#445) -- the COTTAS store encodes tokens as Latin-1 with
-# codepoints >= 256 clamped to NUL (RDF.Bytes.bytes_of_string uses
-# String.list_of_string, which yields CODEPOINTS, and int_of_byte zeroes
-# anything above 255). So `import` -> `query` corrupts every non-ASCII
-# literal: "café" comes back mojibake, CJK and emoji come back destroyed.
-# Parsing and the in-memory path are both correct -- --dump and --dump-nq
-# emit proper UTF-8 -- so this is the storage byte layer alone.
+# UTF8-STORE (#445) is RETIRED, not removed silently.
 #
-# Decisive form: import a CJK literal and require the SAME string back.
-# Read through -o json, never the result table: the table is a
-# human-facing rendering and says nothing about what was stored.
+# It recorded that RDF.Bytes.bytes_of_string used String.list_of_string
+# (raw CODEPOINTS) as if it already returned bytes, so every codepoint
+# >= 256 was truncated (`codepoint land 0xFF`) on the way to the COTTAS
+# store: "café" came back mojibake, CJK/emoji literals came back
+# destroyed, and the sharpest case -- 日本語's U+672C truncating to byte
+# 0x2C, a literal COMMA -- could change how a token PARSED, not only
+# what it said. Fixed 2026-08-15: RDF.Bytes.bytes_of_string/
+# bytes_to_string reimplemented on Parser.FastString.Spec's proved
+# UTF-8 codec (no second hand-written encoder, per the #443 lesson),
+# with a proved round-trip lemma
+# (`lemma_bytes_to_string_of_bytes_of_string : s:string -> Lemma
+# (bytes_to_string (bytes_of_string s) == s)`, unconditional -- no
+# ASCII-only hypothesis). Four length-prefix sites in
+# RDF.CottasStore.BaseWriter.fst that used the same wrong codepoint
+# count as a byte length were fixed alongside it (one of the four,
+# write_dict_entry, plus the DLBA length-block computation in
+# string_lengths, were found during the fix, beyond the issue's
+# original 3-site list -- both are live in the current `import` write
+# path, not just the metadata sites the issue named). Two sibling
+# on-disk-format modules that share RDF.Bytes primitives
+# (RDF.Store.Columnar.DeltaLog.fst, the durable-UPDATE delta log, and
+# RDF.CottasStore.DictWriter.fst, an unused legacy .dict writer) had
+# the identical latent defect, surfaced as build failures by the type
+# fix rather than found by inspection; both fixed the same way. The
+# COTTAS base-file format version was bumped (owner decision,
+# 2026-08-15: no migration path) so a store written by the pre-fix
+# writer is rejected by the reader rather than silently misread.
+#
+# The standing pin moved to tests/local/cli_literal_escape_roundtrip.sh,
+# which now covers the four non-ASCII cases (café, λόγος, 日本語, an
+# emoji outside the BMP) alongside its existing six escape-class
+# literals, compared through -o json per the same anti-vacuity
+# discipline #443's pin established. This file is for defects that
+# still reproduce; a fixed one belongs in a regression pin, not here.
 # ---------------------------------------------------------------------
-cat > "${WORKDIR}/utf8.nq" <<'EOF'
-<http://e/cjk> <http://e/p> "日本語" .
-EOF
-"$BIN" import --nq "${WORKDIR}/utf8.nq" --out "${WORKDIR}/utf8store" >/dev/null 2>&1
-U8_RC=$?
-if [ "${U8_RC}" -ne 0 ]; then
-  record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" ERROR \
-    "import exited ${U8_RC}"
-else
-  "$BIN" query --data-cottas "${WORKDIR}/utf8store/data.cottas" -o json \
-    -e 'SELECT ?o WHERE { <http://e/cjk> <http://e/p> ?o }' \
-    > "${WORKDIR}/utf8.json" 2>/dev/null
-  U8_GOT=$(python3 -c "
-import json,sys
-try:
-    rows = json.load(open('${WORKDIR}/utf8.json'))['results']['bindings']
-    print(rows[0]['o']['value'] if rows else '')
-except Exception:
-    print('')
-" 2>/dev/null)
-  if [ "${U8_GOT}" = "日本語" ]; then
-    record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" XPASS \
-      "CJK literal round-trips intact -- defect appears FIXED"
-  elif [ -z "${U8_GOT}" ]; then
-    record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" ERROR \
-      "query returned no binding for the CJK literal"
-  else
-    record UTF8-STORE 445 "COTTAS store corrupts non-ASCII literals" XFAIL \
-      "stored 3-char CJK literal came back as $(printf '%q' "${U8_GOT}")"
-  fi
-fi
 
 # ---------------------------------------------------------------------
 # Summary + JSON
