@@ -2,6 +2,11 @@ open Prims
 type byte = FStar_Char.char
 type bytes = byte Prims.list
 let byte_of_int (n : Prims.int) : byte= FStar_Char.char_of_int n
+let int_of_byte (b : byte) : Prims.int=
+  let n = FStar_Char.int_of_char b in
+  if (n < Prims.int_zero) || (n >= (Prims.of_int (256)))
+  then Prims.int_zero
+  else n
 let write_u32_le (n : Prims.nat) : bytes=
   let b0 = (mod) n (Prims.of_int (256)) in
   let b1 = (mod) (n / (Prims.of_int (256))) (Prims.of_int (256)) in
@@ -27,9 +32,13 @@ let write_u64_le (n : Prims.nat) : bytes=
   byte_of_int b5;
   byte_of_int b6;
   byte_of_int b7]
-let bytes_of_string (s : Prims.string) : bytes= FStar_String.list_of_string s
+let bytes_of_string (s : Prims.string) : bytes=
+  FStar_List_Tot_Base.map byte_of_int (Parser_FastString_Spec.utf8_bytes s)
+let byte_to_spec_byte (b : byte) : Parser_FastString_Spec.byte= int_of_byte b
 let bytes_to_string (bs : bytes) : Prims.string=
-  FStar_String.string_of_list bs
+  FStar_String.string_of_list
+    (Parser_FastString_Spec.utf8_decode_all
+       (FStar_List_Tot_Base.map byte_to_spec_byte bs))
 let rec sum_lengths_acc (acc : Prims.nat) (xs : Prims.string Prims.list) :
   Prims.nat=
   match xs with
@@ -37,11 +46,6 @@ let rec sum_lengths_acc (acc : Prims.nat) (xs : Prims.string Prims.list) :
   | x::rest -> sum_lengths_acc (acc + (FStar_String.strlen x)) rest
 let sum_lengths (xs : Prims.string Prims.list) : Prims.nat=
   sum_lengths_acc Prims.int_zero xs
-let int_of_byte (b : byte) : Prims.int=
-  let n = FStar_Char.int_of_char b in
-  if (n < Prims.int_zero) || (n >= (Prims.of_int (256)))
-  then Prims.int_zero
-  else n
 let parse_u32_le (bs : bytes) :
   (Prims.nat * bytes) FStar_Pervasives_Native.option=
   match bs with

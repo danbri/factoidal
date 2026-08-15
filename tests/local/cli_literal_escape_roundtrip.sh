@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
-# tests/local/cli_literal_escape_roundtrip.sh — regression pin for issue
-# #443: an RDF literal whose lexical form contains a double quote, a
-# newline or a backslash was DESTROYED by an `import` -> `query` round
-# trip through the on-disk store, and `--dump` emitted output that no
-# N-Triples parser could read back.
+# tests/local/cli_literal_escape_roundtrip.sh — regression pin for issues
+# #443 and #445: an RDF literal whose lexical form contains a double
+# quote, a newline or a backslash was DESTROYED by an `import` -> `query`
+# round trip through the on-disk store, and `--dump` emitted output that
+# no N-Triples parser could read back (#443); separately, every
+# non-ASCII literal was corrupted the same way by a different defect one
+# layer down, in the on-disk BYTE encoding rather than the ESCAPING
+# (#445).
 #
-# Root cause: two wire-format call sites used RDF.Pretty.term_to_ntriples
-# (the DISPLAY serializer, documented as intentionally lossy on literal
-# escaping) instead of RDF.NQuads.Serialize.nq_term_to_string (the
-# byte-correct one). Parsing was always correct; only serialization was
-# wrong, so the defect was invisible to every test that stayed in memory.
+# #443 root cause: two wire-format call sites used
+# RDF.Pretty.term_to_ntriples (the DISPLAY serializer, documented as
+# intentionally lossy on literal escaping) instead of
+# RDF.NQuads.Serialize.nq_term_to_string (the byte-correct one). Parsing
+# was always correct; only serialization was wrong, so the defect was
+# invisible to every test that stayed in memory.
+#
+# #445 root cause: RDF.Bytes.bytes_of_string used String.list_of_string
+# (F* codepoints) as if it already returned bytes, so any codepoint >=
+# 256 got truncated (`codepoint land 0xFF`) on the way to disk. Fixed by
+# reimplementing on Parser.FastString.Spec's proved UTF-8 codec plus
+# four length-prefix sites in RDF.CottasStore.BaseWriter.fst that had
+# the same codepoint-vs-byte confusion. See tests/known-defects/run.sh's
+# retired UTF8-STORE entry for the fuller writeup.
 #
 # What this pin covers, and why each arm exists:
 #
@@ -56,19 +68,26 @@ trap 'rm -rf "${WORKDIR}"' EXIT
 PASS=0
 FAIL=0
 
-# The six literal classes. Each line is one N-Triples triple; the
-# subject encodes which escape class it carries. Every escape here is
-# legal N-Triples per the RDF 1.1 N-Triples grammar (ECHAR).
+# The six escape-class literals plus four non-ASCII literals. Each line
+# is one N-Triples triple; the subject encodes which class it carries.
+# Every escape here is legal N-Triples per the RDF 1.1 N-Triples grammar
+# (ECHAR).
 #
-# NON-ASCII IS DELIBERATELY ABSENT from this fixture. Not because it
-# works -- it does not: the COTTAS store encodes tokens as Latin-1 with
-# codepoints >= 256 clamped to NUL, so every non-ASCII literal is
-# corrupted by import -> query (issue #445, XFAIL in
-# tests/known-defects/run.sh). That is a separate defect in the storage
-# byte layer, with an on-disk format-compatibility decision attached,
-# and folding it in here would leave this pin permanently red and
-# therefore useless as a gate. This pin covers ESCAPING; #445 covers
-# ENCODING.
+# NON-ASCII WAS DELIBERATELY ABSENT from this fixture until 2026-08-15.
+# Before then it did not work: RDF.Bytes.bytes_of_string used
+# String.list_of_string (raw CODEPOINTS) as if they were bytes, so the
+# COTTAS store corrupted every non-ASCII literal on import -> query
+# (issue #445, was XFAIL in tests/known-defects/run.sh). Fixed by
+# reimplementing bytes_of_string/bytes_to_string on
+# Parser.FastString.Spec's proved UTF-8 codec, fixing four length-prefix
+# sites in RDF.CottasStore.BaseWriter.fst that used the same wrong
+# codepoint count as a byte length, and a COTTAS format-version bump so
+# a store written by the old (corrupting) writer is rejected rather than
+# silently misread. The four cases below are the exact ones from the
+# #445 investigation: café (Latin-1 accent), λόγος (2-byte Greek),
+# 日本語 (3-byte CJK -- the sharp case: U+672C used to truncate to
+# byte 0x2C, a literal COMMA, which could change how a token PARSED,
+# not only what it said), and an emoji outside the BMP (4-byte UTF-8).
 FIXTURE="${WORKDIR}/escapes.nq"
 cat > "${FIXTURE}" <<'EOF'
 <http://e/quote> <http://e/p> "has \" quote" .
@@ -77,8 +96,12 @@ cat > "${FIXTURE}" <<'EOF'
 <http://e/tab> <http://e/p> "has \t tab" .
 <http://e/plain> <http://e/p> "plain ascii" .
 <http://e/cr> <http://e/p> "has \r carriage return" .
+<http://e/cafe> <http://e/p> "café" .
+<http://e/greek> <http://e/p> "λόγος" .
+<http://e/cjk> <http://e/p> "日本語" .
+<http://e/emoji> <http://e/p> "hi 🎉 there" .
 EOF
-EXPECTED_TRIPLES=6
+EXPECTED_TRIPLES=10
 
 report_pass() { PASS=$((PASS + 1)); echo "PASS  $1"; }
 report_fail() { FAIL=$((FAIL + 1)); echo "FAIL  $1"; }
@@ -180,6 +203,10 @@ want = {
     "tab":        'has \t tab',
     "plain":      'plain ascii',
     "cr":         'has \r carriage return',
+    "cafe":       'café',
+    "greek":      'λόγος',
+    "cjk":        '日本語',
+    "emoji":      'hi 🎉 there',
 }
 rows = json.load(open(sys.argv[1]))["results"]["bindings"]
 got = {r["s"]["value"].rsplit("/", 1)[-1]: r["o"]["value"] for r in rows}
@@ -189,7 +216,7 @@ for k, w, g in bad:
 sys.exit(1 if bad else 0)
 PY
     then
-      report_pass "arm B: all 6 literals round-trip byte-exact through the store"
+      report_pass "arm B: all ${EXPECTED_TRIPLES} literals round-trip byte-exact through the store"
     else
       report_fail "arm B: at least one literal changed value in the store round trip (detail above)"
     fi

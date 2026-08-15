@@ -14,21 +14,59 @@ module RDF.Bytes
    `FStar.UInt8.t` is available but Char gives us cheaper string
    conversion via `String.string_of_list` for the final write step.
 
-   Verification scope: total, pure, no `assume val`, no `--lax`. *)
+   Verification scope: total, pure, no `assume val`, no `--lax`.
+
+   UTF-8 (issue #445, 2026-08-15): `bytes_of_string` / `bytes_to_string`
+   are NOT a Latin-1/codepoint identity — a string's bytes are its UTF-8
+   ENCODING, produced and consumed via `Parser.FastString.Spec`'s
+   already-proved codec (`utf8_bytes` / `utf8_decode_all`), never a
+   second hand-written encoder (that duplication is exactly what issue
+   #443 cost a day over — see `skills/workflow-gotchas-debugging`
+   hazard #25). See `lemma_bytes_to_string_of_bytes_of_string` below for
+   the round-trip proof. *)
 
 open FStar.List.Tot
 
+module Spec = Parser.FastString.Spec
+
 (* --------------------------------------------------------------------
-   byte = char restricted to 0..255 (the 256 byte values are a subset
-   of valid Unicode codepoints, so `char_of_int` accepts them). We
-   alias `char` for ergonomics + downstream string conversion.
+   byte = char restricted to 0..255, NOW ENFORCED by refinement (issue
+   #445). Before this fix `byte` was a bare `FStar.Char.char` alias with
+   no upper bound, so `bytes_of_string = String.list_of_string` (raw
+   CODEPOINTS, unbounded) typechecked silently — the type never caught
+   the very defect its own comment claimed to rule out. With the
+   refinement below, that definition no longer typechecks: THAT failure
+   is the point, not a regression to work around.
    -------------------------------------------------------------------- *)
 
-let byte = FStar.Char.char
+let byte = c:FStar.Char.char{FStar.Char.int_of_char c < 256}
 let bytes = list byte
 
 let byte_of_int (n : int{n >= 0 /\ n < 256}) : Tot byte =
   FStar.Char.char_of_int n
+
+(* --------------------------------------------------------------------
+   int_of_byte b
+     Inverse of byte_of_int. Moved ahead of bytes_of_string/
+     bytes_to_string (issue #445) because bytes_to_string now needs it
+     to bridge into Parser.FastString.Spec's byte type — F* has no
+     forward references within a module.
+   -------------------------------------------------------------------- *)
+
+let int_of_byte (b : byte) : Tot (n:int{n >= 0 /\ n < 256}) =
+  let n = FStar.Char.int_of_char b in
+  if n < 0 || n >= 256 then 0 else n
+
+(* int_of_byte (byte_of_int n) == n for n in [0, 256).
+
+   FStar.Char's `char_of_u32_of_char` / `u32_of_char_of_u32` SMTPats
+   discharge the round-trip; the U32 round-trip on values < 2^32 is
+   automatic. The conditional branch in [int_of_byte] is dead because
+   we only call it on bytes produced by [byte_of_int]. *)
+let lemma_int_of_byte_of_int (n : int{n >= 0 /\ n < 256})
+  : Lemma (ensures int_of_byte (byte_of_int n) == n)
+          [SMTPat (int_of_byte (byte_of_int n))]
+  = ()
 
 (* --------------------------------------------------------------------
    write_u32_le n
@@ -64,32 +102,97 @@ let write_u64_le (n : nat{n < 18446744073709551616}) : Tot bytes =
 
 (* --------------------------------------------------------------------
    bytes_of_string s
-     Each codepoint becomes one byte iff the string is pure ASCII
-     (all codepoints < 128). For the .dict writer, token strings can
-     contain any UTF-8, so we use the raw codepoint→char→string path.
-     The dict-format spec stores bytes, not codepoints, so this only
-     works correctly when the input strings are encoded as the bytes
-     the on-disk reader expects. Empirically that's UTF-8 for COTTAS
-     tokens, with the F\* string layer being byte-transparent.
+     The UTF-8 ENCODING of s (issue #445): every codepoint becomes its
+     1-4 byte UTF-8 form via `Parser.FastString.Spec.utf8_bytes`, the
+     same proved encoder `Parser.FastString.fst`'s fast path is
+     re-founded on. ASCII strings are unaffected (1 codepoint = 1 byte
+     there, same as before); non-ASCII strings now produce their real
+     multi-byte UTF-8 encoding instead of a truncated codepoint.
 
-     Returns the byte list whose string-of-list reproduces s.
+     Returns the byte list whose UTF-8 decoding reproduces s — see
+     `lemma_bytes_to_string_of_bytes_of_string`.
    -------------------------------------------------------------------- *)
 
 let bytes_of_string (s : string) : Tot bytes =
-  String.list_of_string s
+  List.Tot.map byte_of_int (Spec.utf8_bytes s)
+
+(* --------------------------------------------------------------------
+   byte_to_spec_byte
+     Bridges RDF.Bytes.byte (a refined FStar.Char.char) to
+     Parser.FastString.Spec.byte (a refined nat) so bytes can be handed
+     to the Spec decoder. Both refinements assert the identical fact
+     (0 <= n < 256) over the same underlying int, so this is a
+     same-value re-typing, not a conversion.
+   -------------------------------------------------------------------- *)
+
+let byte_to_spec_byte (b : byte) : Spec.byte =
+  int_of_byte b
 
 (* --------------------------------------------------------------------
    bytes_to_string bs
-     Inverse of String.list_of_string. The OCaml side uses this on
-     the assembled byte sequence as the final atomic write payload.
+     The UTF-8 DECODING of bs (issue #445): re-typed to Spec.byte via
+     byte_to_spec_byte, decoded codepoint-by-codepoint with
+     `Parser.FastString.Spec.utf8_decode_all`, then reassembled into a
+     string. Malformed input (bytes that did not come from
+     `bytes_of_string`) decodes permissively per Spec's own policy
+     (invalid sequences become U+FFFD) rather than failing — this
+     function has always been `Tot`, not `option`-returning, so it
+     keeps that contract; the round-trip lemma below is what guarantees
+     well-formed input never hits that branch.
    -------------------------------------------------------------------- *)
 
 let bytes_to_string (bs : bytes) : Tot string =
-  String.string_of_list bs
+  FStar.String.string_of_list (Spec.utf8_decode_all (List.Tot.map byte_to_spec_byte bs))
+
+(* --------------------------------------------------------------------
+   ROUND-TRIP PROOF (issue #445): bytes_to_string (bytes_of_string s)
+   == s, for an ARBITRARY string s — no ASCII-only hypothesis. Built
+   directly on Parser.FastString.Spec's own proved facts (per the task
+   brief: reuse, do not re-derive):
+     - lemma_int_of_byte_of_int (already above): int_of_byte re-inverts
+       byte_of_int, so the RDF.Bytes <-> Spec.byte re-typing round-trips.
+     - Spec.utf8_decode_all_utf8_bytes_identity: decoding a string's own
+       UTF-8 encoding recovers exactly FStar.String.list_of_string s
+       (proved UNCONDITIONALLY in Parser.FastString.Spec.fst, session
+       2026-08-11 — the "SINGLE-DECODER ROUND TRIP" that module's own
+       banner once listed as parked; it landed since).
+     - FStar.String.string_of_list_of_string: the stdlib's own
+       string<->codepoint-list inverse.
+   -------------------------------------------------------------------- *)
+
+(* map byte_to_spec_byte (map byte_of_int xs) == xs, for any xs already
+   typed as Spec.byte. Structural induction; each cons step collapses
+   via lemma_int_of_byte_of_int's SMTPat (byte_to_spec_byte (byte_of_int
+   hd) unfolds to int_of_byte (byte_of_int hd), which the pattern fires
+   on). *)
+let rec lemma_map_byte_roundtrip (xs : list Spec.byte)
+  : Lemma (ensures List.Tot.map byte_to_spec_byte (List.Tot.map byte_of_int xs) == xs)
+          (decreases xs)
+  = match xs with
+    | [] -> ()
+    | _ :: tl -> lemma_map_byte_roundtrip tl
+
+let lemma_bytes_to_string_of_bytes_of_string (s : string)
+  : Lemma (ensures bytes_to_string (bytes_of_string s) == s)
+  = let spec_bytes = Spec.utf8_bytes s in
+    lemma_map_byte_roundtrip spec_bytes;
+    Spec.utf8_decode_all_utf8_bytes_identity s;
+    FStar.String.string_of_list_of_string s
 
 (* --------------------------------------------------------------------
    sum_lengths_acc / sum_lengths
      Total byte length of a list of strings. Used to size buffers.
+
+     NOTE (issue #445 audit): this sums `String.length`, i.e.
+     CODEPOINTS, not UTF-8 bytes — an under-count for any non-ASCII
+     string. No live caller was found (grep across formal/fstar/*.fst
+     at the time of the #445 fix); if a future caller sizes a byte
+     buffer with this for non-ASCII data, use
+     `sum_lengths_acc`-over-`bytes_of_string`'s lengths instead, or a
+     dedicated UTF-8 byte-length summer. Left as-is rather than
+     changed blind, since this function is out of the #445 task's
+     scoped fix list and has no exercised call site to regression-test
+     against.
    -------------------------------------------------------------------- *)
 
 let rec sum_lengths_acc (acc : nat) (xs : list string)
@@ -112,10 +215,6 @@ let sum_lengths (xs : list string) : Tot nat =
    alongside the parsed value. Returning [None] means the input was
    shorter than the requested field.
    -------------------------------------------------------------------- *)
-
-let int_of_byte (b : byte) : Tot (n:int{n >= 0 /\ n < 256}) =
-  let n = FStar.Char.int_of_char b in
-  if n < 0 || n >= 256 then 0 else n
 
 let parse_u32_le (bs : bytes) : Tot (option (nat & bytes)) =
   match bs with
@@ -166,17 +265,6 @@ let parse_string_of_length (n : nat) (bs : bytes)
    `lemma_parse_serialize_*` round-trip lemmas in DictWriter /
    PresenceWriter / CompoundPresenceWriter / OffsetsWriter.
    -------------------------------------------------------------------- *)
-
-(* int_of_byte (byte_of_int n) == n for n in [0, 256).
-
-   FStar.Char's `char_of_u32_of_char` / `u32_of_char_of_u32` SMTPats
-   discharge the round-trip; the U32 round-trip on values < 2^32 is
-   automatic. The conditional branch in [int_of_byte] is dead because
-   we only call it on bytes produced by [byte_of_int]. *)
-let lemma_int_of_byte_of_int (n : int{n >= 0 /\ n < 256})
-  : Lemma (ensures int_of_byte (byte_of_int n) == n)
-          [SMTPat (int_of_byte (byte_of_int n))]
-  = ()
 
 (* parse_u32_le ((write_u32_le n) @ rest) == Some (n, rest)
    for n < 2^32 and any [rest].
@@ -335,16 +423,16 @@ let rec lemma_parse_n_bytes_inverse (bs : bytes) (rest : bytes)
     | [] -> ()
     | _ :: bs' -> lemma_parse_n_bytes_inverse bs' rest
 
-(* parse_string_of_length (String.length s) (bytes_of_string s @ rest)
-     == Some (s, rest)
+(* parse_string_of_length (List.Tot.length (bytes_of_string s))
+     (bytes_of_string s @ rest) == Some (s, rest)
    for any string [s] and any tail [rest].
 
-   Composes lemma_parse_n_bytes_inverse with the F\* stdlib lemma
-   FStar.String.string_of_list_of_string (the inverse round-trip on
-   the codepoint encoding). The latter requires `bytes_of_string`'s
-   output length to equal `String.length s`, which holds because
-   `String.list_of_string` produces a list of codepoints whose count
-   is the string's `length` per F\*'s string model. *)
+   Composes lemma_parse_n_bytes_inverse (peel exactly `length bs` bytes
+   back off) with lemma_bytes_to_string_of_bytes_of_string (issue #445:
+   the UTF-8 round trip, replacing the pre-fix proof's appeal to
+   FStar.String.string_of_list_of_string directly — bytes_of_string is
+   no longer `list_of_string`, so that lemma no longer applies here on
+   its own; the UTF-8 round-trip lemma composes it internally instead). *)
 let lemma_parse_string_of_length_inverse (s : string) (rest : bytes)
   : Lemma (ensures
             (let bs = bytes_of_string s in
@@ -353,4 +441,4 @@ let lemma_parse_string_of_length_inverse (s : string) (rest : bytes)
                == Some (s, rest)))
   = let bs = bytes_of_string s in
     lemma_parse_n_bytes_inverse bs rest;
-    FStar.String.string_of_list_of_string s
+    lemma_bytes_to_string_of_bytes_of_string s

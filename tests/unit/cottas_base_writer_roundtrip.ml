@@ -69,8 +69,14 @@ let sample_quads = [
 (* Pinned 2026-07-06 against the first landing of the writer (DLBA all
    four columns, UNCOMPRESSED codec, OPTIONAL schema with converted_type
    UTF8, single 122,880-row-group chunking). Regenerate deliberately --
-   never to make CI green -- when the format version changes. *)
-let expected_sha256 = "bc87889359a8cf9f71626f208b9736055dbbb37c4759171f9f5e61dd8f6fb30a"
+   never to make CI green -- when the format version changes.
+   RE-PINNED 2026-08-15 (issue #445): FileMetaData.version now stamps
+   PF.cottas_format_version (445) instead of the Parquet-conventional 1
+   (owner decision: version-bump so a pre-#445 store is rejected, not
+   silently misread) -- this changes the header bytes even for this
+   pure-ASCII fixture, though the fixture's own content encoding is
+   byte-identical (codepoint count == UTF-8 byte count for ASCII). *)
+let expected_sha256 = "b7d4263bc1bbbf799d51aab30f43694ab7ca651f54d9a917b67d6059e1f5a884"
 
 let () =
   Printf.printf "cottas_base_writer_roundtrip:\n";
@@ -187,8 +193,9 @@ let () =
   let actual_hash2 = sha256_hex serialized2 in
   Printf.printf "  HASH  v2 sample sha256=%s len=%d (v1 len=%d)\n"
     actual_hash2 (String.length serialized2) (String.length serialized);
+  (* Re-pinned 2026-08-15 (issue #445), same reason as expected_sha256 above. *)
   let expected_sha256_v2 =
-    "e74e99dfe06c2a4b76b4fd1636f8ecf549252dd69f6ccfa4e81cfc4db32b04fa" in
+    "0dd9c6023402d20be2a8fcfd8b2cd761813fea12c0a489a58560245f5a5756b8" in
   check ~name:"v2 sample [byte hash pin]" (actual_hash2 = expected_sha256_v2);
   check ~name:"v2 smaller than v1 on this fixture"
     (String.length serialized2 < String.length serialized);
@@ -224,6 +231,75 @@ let () =
       check ~name:(Printf.sprintf "v2 column %d decode matches" col) false)
     expect_col;
   Sys.remove tmp2;
+
+  (* 5. Non-ASCII literals (issue #445, 2026-08-15): the same four
+     cases from the #445 investigation -- café (Latin-1 accent),
+     λόγος (2-byte Greek), 日本語 (3-byte CJK -- the sharp case where
+     U+672C used to truncate to byte 0x2C, a literal COMMA), and an
+     emoji outside the BMP (4-byte UTF-8). Exercises both v1 (DLBA,
+     always) and v2 (DLBA-or-dictionary, whichever is smaller for the
+     `o` column) -- string_lengths/write_dict_entry/write_field_binary
+     are all reachable from real object literals through v2's
+     encode_column_choose_smaller, so this fixture is not redundant
+     with the metadata-only ASCII fixtures above. Decoded through the
+     SAME Parquet.Footer probes as the rest of this file, never a
+     result-table rendering (that trap already cost one debugging
+     round on this exact issue -- see tests/local/
+     cli_literal_escape_roundtrip.sh's banner). *)
+  let utf8_quads = [
+    mk_quad "<http://e/n1>" "<http://e/p>" "\"café\""
+            "<http://e/g>";
+    mk_quad "<http://e/n2>" "<http://e/p>" "\"\xce\xbb\xcf\x8c\xce\xb3\xce\xbf\xcf\x82\""
+            "<http://e/g>";
+    mk_quad "<http://e/n3>" "<http://e/p>" "\"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\""
+            "<http://e/g>";
+    mk_quad "<http://e/n4>" "<http://e/p>" "\"hi \xf0\x9f\x8e\x89 there\""
+            "<http://e/g>";
+  ] in
+  let expect_utf8_o = [
+    "\"café\"";
+    "\"\xce\xbb\xcf\x8c\xce\xb3\xce\xbf\xcf\x82\"";
+    "\"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\"";
+    "\"hi \xf0\x9f\x8e\x89 there\"";
+  ] in
+  let check_utf8_decode ~label tmp_path =
+    match Parquet_Footer.probe_parquet_column_decode_in_row_group
+            tmp_path Z.zero (Z.of_int 2 (* column 'o' *)) with
+    | FStar_Pervasives_Native.Some cells ->
+      let actual =
+        List.map (function
+          | FStar_Pervasives_Native.Some s -> s
+          | FStar_Pervasives_Native.None -> "<NULL>") cells in
+      check ~name:(Printf.sprintf "%s: non-ASCII object column decodes byte-exact" label)
+        (actual = expect_utf8_o);
+      if actual <> expect_utf8_o then begin
+        Printf.printf "    expected: %s\n" (String.concat " | " expect_utf8_o);
+        Printf.printf "    actual:   %s\n" (String.concat " | " actual)
+      end
+    | FStar_Pervasives_Native.None ->
+      check ~name:(Printf.sprintf "%s: non-ASCII object column decodes byte-exact" label) false
+  in
+  let bs_utf8_v1 = RDF_CottasStore_BaseWriter.serialize_cottas utf8_quads in
+  let serialized_utf8_v1 = bytes_to_string bs_utf8_v1 in
+  Printf.printf "  HASH  utf8 v1 sha256=%s len=%d\n"
+    (sha256_hex serialized_utf8_v1) (String.length serialized_utf8_v1);
+  let tmp_utf8_v1 = Filename.temp_file "cottas_base_writer_roundtrip_utf8_v1" ".cottas" in
+  let oc = open_out_bin tmp_utf8_v1 in
+  output_string oc serialized_utf8_v1;
+  close_out oc;
+  check_utf8_decode ~label:"v1" tmp_utf8_v1;
+  Sys.remove tmp_utf8_v1;
+
+  let bs_utf8_v2 = RDF_CottasStore_BaseWriter.serialize_cottas_v2 utf8_quads in
+  let serialized_utf8_v2 = bytes_to_string bs_utf8_v2 in
+  Printf.printf "  HASH  utf8 v2 sha256=%s len=%d\n"
+    (sha256_hex serialized_utf8_v2) (String.length serialized_utf8_v2);
+  let tmp_utf8_v2 = Filename.temp_file "cottas_base_writer_roundtrip_utf8_v2" ".cottas" in
+  let oc2u = open_out_bin tmp_utf8_v2 in
+  output_string oc2u serialized_utf8_v2;
+  close_out oc2u;
+  check_utf8_decode ~label:"v2" tmp_utf8_v2;
+  Sys.remove tmp_utf8_v2;
 
   Printf.printf "cottas_base_writer_roundtrip: %d pass, %d fail\n" !passed !failed;
   if !failed > 0 then exit 1

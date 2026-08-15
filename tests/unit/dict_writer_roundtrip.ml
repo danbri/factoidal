@@ -67,10 +67,15 @@ let run_case ~name ~expected_hash tokens =
 
 let () =
   Printf.printf "== dict_writer_roundtrip ==\n";
-  (* ASCII-only fixtures so F*'s codepoint-list matches the on-disk
-     byte sequence verbatim. UTF-8 fixtures are valuable but require
-     a tighter byte-vs-codepoint contract in RDF.Bytes; that's
-     follow-up work. *)
+  (* The first four fixtures are ASCII-only, so their pinned hashes are
+     unaffected by the issue #445 UTF-8 fix below (codepoint count ==
+     byte count for ASCII, same as before). The "tighter byte-vs-
+     codepoint contract in RDF.Bytes" this comment used to defer to
+     follow-up work landed 2026-08-15 (issue #445): RDF.Bytes.
+     bytes_of_string/bytes_to_string now round-trip real UTF-8, and
+     this module's own cumulative-offset arithmetic (build_offs_acc /
+     cum_offs / cum_final, via the tok_byte_len helper) was fixed
+     alongside it -- the "utf8" fixture below exercises exactly that. *)
   (* Hashes re-pinned 2026-07-05 against the F* serializer in
      RDF.CottasStore.DictWriter.fst after the dict_magic fix: the
      serializer's magic had drifted to 'COKD' (0x444b4f43) during the
@@ -95,6 +100,17 @@ let () =
   List.iter (fun (name, toks, hash) ->
     run_case ~name ~expected_hash:hash toks
   ) cases;
+  (* Non-ASCII fixture (issue #445): sorted so the "caller sorts"
+     contract (dict_magic's own docstring) holds, mixing 1/2/3/4-byte
+     UTF-8 tokens. `expected_hash = ""` (print-only) rather than a
+     pinned value -- committed deliberately unpinned so this landing
+     doesn't invent a hash it can't independently double-check; a
+     follow-up commit can pin the printed value once observed in CI. *)
+  run_case ~name:"utf8-mixed" ~expected_hash:""
+    ["caf\xc3\xa9";                                     (* café, 2-byte *)
+     "hi \xf0\x9f\x8e\x89 there";                        (* emoji, 4-byte *)
+     "\xce\xbb\xcf\x8c\xce\xb3\xce\xbf\xcf\x82";          (* λόγος, 2-byte *)
+     "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"];             (* 日本語, 3-byte *)
   Printf.printf
     "== summary: %d pass, %d fail (out of %d) ==\n"
     !passed !failed (!passed + !failed);

@@ -59,6 +59,22 @@ let header_size   : nat = 32
 let id_size       : nat = 4
 let offset_size   : nat = 8
 
+(* Issue #445, 2026-08-15: cumulative token offsets below MUST be UTF-8
+   BYTE lengths, not `String.length` (F*'s codepoint count) -- this
+   module has the exact same defect class RDF.CottasStore.BaseWriter.fst
+   was fixed for, exposed as a build failure the moment RDF.Bytes.fst
+   stopped agreeing with it by accident (RDF.Bytes.bytes_of_string used
+   to BE String.list_of_string, so `length (bytes_of_string t) ==
+   String.length t` held trivially; it only holds for ASCII t now).
+   This module has zero live callers today (the current `import` write
+   path uses RDF.CottasStore.BaseWriter.serialize_cottas_v2, not this
+   .dict format -- confirmed by grepping every experimental_ocaml_glue
+   caller), so this was a LATENT instance of #445 nobody had hit yet,
+   not a live corruption; fixed here rather than left broken because a
+   module that fails to verify blocks the whole build. *)
+let tok_byte_len (t : string) : Tot nat =
+  FStar.List.Tot.length (RDF.Bytes.bytes_of_string t)
+
 (* --- ids[] section --------------------------------------------------- *)
 
 (* For sorted tokens, ids[i] = i. Build a 4*n-byte sequence holding
@@ -76,9 +92,10 @@ let build_ids (n : nat{n < 4294967296}) : Tot (RDF.Bytes.bytes) =
 
 (* Walk the token list, emitting cumulative-offset u64s. The first
    offset is the byte offset where token_data starts (relative to
-   start of file); each subsequent offset adds String.length of the
-   prior token. The last entry is a sentinel = total token_data
-   length (added relative to the same base). *)
+   start of file); each subsequent offset adds tok_byte_len (the UTF-8
+   BYTE length -- issue #445) of the prior token. The last entry is a
+   sentinel = total token_data length (added relative to the same
+   base). *)
 let rec build_offs_acc
   (cur : nat) (tokens : list string)
   : Tot (cur:nat & RDF.Bytes.bytes) (decreases tokens) =
@@ -89,7 +106,7 @@ let rec build_offs_acc
   | t :: rest ->
     if cur >= 18446744073709551616 then (| cur, [] |)
     else
-      let cur' = cur + String.length t in
+      let cur' = cur + tok_byte_len t in
       let (| cur'', rest_bytes |) = build_offs_acc cur' rest in
       let head = RDF.Bytes.write_u64_le cur in
       (| cur'', Lh.append_tr head rest_bytes |)
@@ -273,9 +290,12 @@ let parse_dict (bs : RDF.Bytes.bytes) : Tot (option (list string)) =
            for n < 2^64 — byte-LE inverse on the offset entries.
        (c) parse_n_bytes (length bs) (bs @ rest) == Some (bs, rest)
            — frame-rule for the ids[] / token_data slice.
-       (d) parse_string_of_length (String.length s) (bytes_of_string s
-             @ rest) == Some (s, rest)
-           — relies on the F* stdlib lemma `string_of_list_of_string`.
+       (d) parse_string_of_length (List.Tot.length (bytes_of_string s))
+             (bytes_of_string s @ rest) == Some (s, rest)
+           — RDF.Bytes.lemma_parse_string_of_length_inverse, the UTF-8
+           round trip (issue #445; this used to be keyed on
+           String.length s / the stdlib `string_of_list_of_string`
+           lemma, back when bytes_of_string was still String.list_of_string).
 
      Lemmas (a)-(d) are the foundations; once they exist as proven
      facts in [RDF.Bytes], the [serialize_dict] round-trip composes
@@ -332,7 +352,7 @@ let rec cum_offs (cur : nat) (tokens : list string)
   | [] -> []
   | t :: rest ->
     if cur >= 18446744073709551616 then []
-    else cur :: cum_offs (cur + String.length t) rest
+    else cur :: cum_offs (cur + tok_byte_len t) rest
 
 let rec cum_final (cur : nat) (tokens : list string)
   : Tot nat (decreases tokens) =
@@ -340,7 +360,7 @@ let rec cum_final (cur : nat) (tokens : list string)
   | [] -> cur
   | t :: rest ->
     if cur >= 18446744073709551616 then cur
-    else cum_final (cur + String.length t) rest
+    else cum_final (cur + tok_byte_len t) rest
 
 let rec lemma_cum_final_mono (cur : nat) (tokens : list string)
   : Lemma (ensures cum_final cur tokens >= cur) (decreases tokens) =
@@ -348,7 +368,7 @@ let rec lemma_cum_final_mono (cur : nat) (tokens : list string)
   | [] -> ()
   | t :: rest ->
     if cur >= 18446744073709551616 then ()
-    else lemma_cum_final_mono (cur + String.length t) rest
+    else lemma_cum_final_mono (cur + tok_byte_len t) rest
 
 let rec lemma_build_offs_acc_final
   (cur : nat) (tokens : list string)
@@ -362,7 +382,7 @@ let rec lemma_build_offs_acc_final
   = match tokens with
     | [] -> ()
     | t :: rest ->
-      let cur' = cur + String.length t in
+      let cur' = cur + tok_byte_len t in
       lemma_cum_final_mono cur' rest;
       lemma_build_offs_acc_final cur' rest
 
@@ -379,7 +399,7 @@ let rec lemma_parse_n_offsets_build_offs_acc
   = match tokens with
     | [] -> ()
     | t :: rest_tokens ->
-      let cur' = cur + String.length t in
+      let cur' = cur + tok_byte_len t in
       lemma_cum_final_mono cur' rest_tokens;
       lemma_parse_n_offsets_build_offs_acc cur' rest_tokens rest;
       let (| _, rest_body |) = build_offs_acc cur' rest_tokens in
@@ -404,17 +424,22 @@ let rec lemma_parse_tokens_from_offsets_build_data
   = match tokens with
     | [] -> ()
     | t :: rest_tokens ->
-      let cur' = cur + String.length t in
+      let cur' = cur + tok_byte_len t in
       lemma_cum_final_mono cur' rest_tokens;
       lemma_parse_tokens_from_offsets_build_data cur' rest_tokens rest;
       let head_bytes = RDF.Bytes.bytes_of_string t in
       let tail_data = build_data rest_tokens in
       Lh.lemma_append_tr_eq head_bytes tail_data;
       FStar.List.Tot.Properties.append_assoc head_bytes tail_data rest;
+      // Issue #445: lemma_parse_string_of_length_inverse (above) already
+      // supplies the exact fact needed here -- the OLD proof's extra
+      // `FStar.String.list_of_string_of_list` call relied on
+      // bytes_of_string being literally String.list_of_string, which is
+      // no longer true (and no longer needed: lemma_parse_string_of_length_inverse
+      // is keyed on `List.Tot.length (bytes_of_string t)`, exactly what
+      // tok_byte_len computes).
       RDF.Bytes.lemma_parse_string_of_length_inverse t
-        (FStar.List.Tot.append tail_data rest);
-      FStar.String.list_of_string_of_list (RDF.Bytes.bytes_of_string t);
-      ()
+        (FStar.List.Tot.append tail_data rest)
 
 let rec lemma_cum_offs_length
   (cur : nat) (tokens : list string)
@@ -426,7 +451,7 @@ let rec lemma_cum_offs_length
   = match tokens with
     | [] -> ()
     | t :: rest ->
-      let cur' = cur + String.length t in
+      let cur' = cur + tok_byte_len t in
       lemma_cum_final_mono cur' rest;
       lemma_cum_offs_length cur' rest
 
@@ -482,10 +507,10 @@ let lemma_build_offs_cons
       (requires base < 18446744073709551616
                 /\ cum_final base (t :: rest_tokens) < 18446744073709551616)
       (ensures (
-        let cur' = base + String.length t in
+        let cur' = base + tok_byte_len t in
         build_offs base (t :: rest_tokens)
         == FStar.List.Tot.append (RDF.Bytes.write_u64_le base) (build_offs cur' rest_tokens)))
-  = let cur' = base + String.length t in
+  = let cur' = base + tok_byte_len t in
     lemma_cum_final_mono cur' rest_tokens;
     lemma_build_offs_acc_final base (t :: rest_tokens);
     lemma_build_offs_acc_final cur' rest_tokens;
@@ -505,7 +530,7 @@ let lemma_cum_offs_cons
   : Lemma
       (requires base < 18446744073709551616)
       (ensures (
-        let cur' = base + String.length t in
+        let cur' = base + tok_byte_len t in
         cum_offs base (t :: rest_tokens)
         == base :: cum_offs cur' rest_tokens))
   = ()
@@ -515,7 +540,7 @@ let lemma_cum_final_cons
   : Lemma
       (requires base < 18446744073709551616)
       (ensures (
-        let cur' = base + String.length t in
+        let cur' = base + tok_byte_len t in
         cum_final base (t :: rest_tokens) == cum_final cur' rest_tokens))
   = ()
 
@@ -540,7 +565,7 @@ let rec lemma_parse_n_offsets_build_offs
       FStar.List.Tot.Properties.append_l_nil (RDF.Bytes.write_u64_le base);
       RDF.Bytes.lemma_parse_write_u64_le_inverse base rest
     | t :: rest_tokens ->
-      let cur' = base + String.length t in
+      let cur' = base + tok_byte_len t in
       lemma_cum_final_mono cur' rest_tokens;
       lemma_parse_n_offsets_build_offs cur' rest_tokens rest;
       lemma_build_offs_cons base t rest_tokens;

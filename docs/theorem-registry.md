@@ -1736,10 +1736,11 @@ SAME undeclared `test:` prefix typo the #334 work found at
 `rdf-semantics/manifest.ttl:247` — one upstream typo now blocks two
 tools.
 
-**#443 + #339 FIXED, #445 + #446 FOUND (2026-08-14, branch
-`claude/autoexec-scratchpad-assess-37oeok`)**: three serialization
-defects, none of which any W3C suite could see, plus one build-gate
-failure found on the way.
+**#443 + #339 + #445 + #446 FIXED (2026-08-14/15)**: three serialization
+defects (plus two latent siblings of #445 found while fixing it), none
+of which any W3C suite could see, plus one build-gate failure found on
+the way. #445 landed 2026-08-15 on branch `utf8-store`; the other three
+landed 2026-08-14 on branch `claude/autoexec-scratchpad-assess-37oeok`.
 
 🔴 **#443 (with #339) — the store DESTROYED literals.** An RDF literal
 whose lexical form held `"`, LF or `\` did not survive `import` ->
@@ -1759,22 +1760,49 @@ did not cover the function the CLI called. Proof coverage is a property
 of the WIRING, not only of the statement** — the same shape as the
 vacuity findings (#333, #429). Recorded as hazard #25.
 
-🔴 **#445 — the store corrupts ALL non-ASCII, still open.** Found while
-validating #443, by reading the store bytes rather than the result
-table. `RDF.Bytes.bytes_of_string = String.list_of_string` yields
-CODEPOINTS; each is written as `codepoint land 0xFF`. Verified against
-the stored bytes in four scripts: `café`→`caf\xe9`, `λόγος`→
-`\xbb\xcc\xb3\xbf\xc2`, `日本語`→`\xe5,\x9e`, `🎉`→`\x89`. Note the
-middle one: U+672C truncates to `0x2C`, a literal COMMA inside a stored
-token — this can change how a token PARSES, not only what it says. A
-second defect on the same path: `BaseWriter.fst:177` writes the length
-prefix as `write_uvarint (String.length s)`, and F*'s `String.length`
-counts codepoints while the payload is bytes; the two coincide for ASCII,
-which is why nothing noticed. The property that would have caught all of
-it is `bytes_to_string (bytes_of_string s) == s` for arbitrary `s` —
-false today for every non-ASCII `s`. NOT fixed: `utf8_enc_char` already
-exists, but the on-disk format changes, so it needs an owner decision.
-XFAIL-pinned as UTF8-STORE.
+✅ **#445 — the store corrupted ALL non-ASCII, FIXED 2026-08-15 (branch
+`utf8-store`).** Found while validating #443, by reading the store bytes
+rather than the result table. `RDF.Bytes.bytes_of_string =
+String.list_of_string` yielded CODEPOINTS; each was written as
+`codepoint land 0xFF`. Verified against the stored bytes in four
+scripts: `café`→`caf\xe9`, `λόγος`→`\xbb\xcc\xb3\xbf\xc2`, `日本語`→
+`\xe5,\x9e`, `🎉`→`\x89`. Note the middle one: U+672C truncated to
+`0x2C`, a literal COMMA inside a stored token — this could change how a
+token PARSED, not only what it said. A second defect on the same path:
+`BaseWriter.fst:177` wrote the length prefix as `write_uvarint
+(String.length s)`, and F*'s `String.length` counts codepoints while the
+payload is bytes; the two coincide for ASCII, which is why nothing
+noticed. The property that would have caught all of it —
+`bytes_to_string (bytes_of_string s) == s` for arbitrary `s` — is now
+PROVEN, unconditionally (`RDF.Bytes.lemma_bytes_to_string_of_bytes_of_string`),
+built on `Parser.FastString.Spec.utf8_decode_all_utf8_bytes_identity`
+(landed 2026-08-11, itself once listed "parked" in that module's own
+banner — the fix this issue needed had already landed one layer down,
+just not wired up here yet). `RDF.Bytes.byte` is now a REFINED type
+(`c:FStar.Char.char{int_of_char c < 256}`), so the old
+`bytes_of_string = String.list_of_string` no longer typechecks — the
+type now enforces the invariant its comment always claimed. Beyond the
+three sites this issue named, the same audit found and fixed a fourth
+live site in `BaseWriter.fst` (`write_dict_entry`, the RLE_DICTIONARY
+path — live for real object literals, not just metadata) and a fifth,
+`string_lengths`, feeding the DLBA length block that is the PRIMARY
+value-storage path for all four columns in the v1 writer. Fixing
+`RDF.Bytes` also turned up the identical latent defect, self-consistent
+only under the old wrong `bytes_of_string`, in two sibling modules that
+share its primitives: `RDF.Store.Columnar.DeltaLog.fst` (the durable-
+UPDATE delta log — LIVE) and `RDF.CottasStore.DictWriter.fst` (a legacy
+`.dict` writer with zero current callers) — both surfaced as build
+failures, not by inspection, and both fixed the same way
+(`field_byte_len`/`tok_byte_len` helpers replacing every
+`String.length` used as a byte length or well-formedness bound).
+Owner decision (2026-08-15, verbatim: "Version-bump the COTTAS header -
+nobody is using our software yet except me... I can nuke and rebuild
+it"): the COTTAS base file's `FileMetaData.version` field is now
+stamped `445` by the writer and REJECTED by the reader if it doesn't
+match — no migration path, no silent misread of a pre-fix store. The
+XFAIL entry (`UTF8-STORE` in `tests/known-defects/run.sh`) is retired;
+the standing regression pin moved to
+`tests/local/cli_literal_escape_roundtrip.sh`.
 
 ✅ **#446 — `xmlns:=` malformed default namespace.** Found by the Jena
 differential harness on its FIRST RDF/XML run. `render_ns_decls` emitted

@@ -91,6 +91,10 @@ COMMON_MODULES=(
   OWL_Closure
   RDF_Graph_Executable
   RDF_List_Helpers
+  # Parser_FastString_Spec precedes RDF_Bytes (issue #445): RDF.Bytes.fst's
+  # bytes_of_string/bytes_to_string now call Parser.FastString.Spec's UTF-8
+  # codec directly. Keep in step with build-ocaml.sh's COMMON_MODULES order.
+  Parser_FastString_Spec
   RDF_Bytes
   RDF_Store_Loader
   Parquet_Footer
@@ -98,7 +102,6 @@ COMMON_MODULES=(
   OWL_DirectMapping_Filter
   Tableau
   Tableau_Refute
-  Parser_FastString_Spec
   Parser_FastString_CharBoundary
   Parser_FastString
   Parser_FastString_ConcatSpec
