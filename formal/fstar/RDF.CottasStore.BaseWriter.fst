@@ -172,9 +172,16 @@ let write_field_i64 (field_id : nat) (prev_id : nat) (v : nat) : Tot B.bytes =
 
 // Binary/string field: length as a PLAIN (non-zigzag) varint, matching
 // `decode_compact_binary_hex`'s direct (unzigzagged) varint-length read.
+//
+// Issue #445: the length prefix MUST be the UTF-8 BYTE length, not
+// `String.length s` (F*'s String.length counts codepoints -- the two
+// coincide for ASCII, which is why this went unnoticed). Fixed by
+// taking the length of the already-UTF-8-encoded byte list instead of
+// a separate (and wrong) codepoint count.
 let write_field_binary (field_id : nat) (prev_id : nat) (s : string) : Tot B.bytes =
+  let sbytes = B.bytes_of_string s in
   Lh.append_tr (write_field_header PF.compact_t_binary field_id prev_id)
-    (Lh.append_tr (write_uvarint (String.length s)) (B.bytes_of_string s))
+    (Lh.append_tr (write_uvarint (List.Tot.length sbytes)) sbytes)
 
 // List header: short form (count<<4 | etype) for count<15, else long
 // form with a plain varint count. Matches
@@ -226,11 +233,24 @@ let rec concat_bytes_list (xs : list B.bytes) : Tot B.bytes (decreases xs) =
   | [] -> []
   | hd :: tl -> Lh.append_tr hd (concat_bytes_list tl)
 
+// Issue #445 (found beyond the task's original 3-site list, auditing this
+// file for the same pattern): this feeds build_dlba_length_block's
+// DELTA_LENGTH_BYTE_ARRAY length block -- the declared per-entry BYTE
+// length the reader uses to slice value boundaries out of
+// concat_strings_bytes's already-correct UTF-8 payload
+// (Parquet.Footer.probe_parquet_column_delta_length_byte_array_values_offset).
+// `String.length v` (codepoints) under-counts for any non-ASCII value, so
+// even with the payload bytes now correct (RDF.Bytes fix), the boundaries
+// this block declares would desync on the first non-ASCII entry in a page
+// and corrupt every entry after it, in every DLBA-encoded column (the
+// v1 writer's default for s/p/o/g, and v2's s/o whenever DLBA wins the
+// size comparison) -- this is the length computation for the PRIMARY
+// value-storage path, not a secondary metadata field.
 let rec string_lengths_acc (vs : list string) (acc : list nat)
   : Tot (list nat) (decreases vs) =
   match vs with
   | [] -> List.Tot.rev acc
-  | v :: tl -> string_lengths_acc tl (String.length v :: acc)
+  | v :: tl -> string_lengths_acc tl (List.Tot.length (B.bytes_of_string v) :: acc)
 
 let string_lengths (vs : list string) : Tot (list nat) =
   string_lengths_acc vs []
@@ -503,7 +523,11 @@ let build_column_metadata (name : string) (num_values : nat) (page_len : nat) (d
   let f2 = write_field_list_header 2 1 1 PF.compact_t_i32 in
   let f2v = write_uvarint (zigzag_encode_nat parquet_encoding_dlba) in
   let f3 = write_field_list_header 3 2 1 PF.compact_t_binary in
-  let f3v = Lh.append_tr (write_uvarint (String.length name)) (B.bytes_of_string name) in
+  // Issue #445: UTF-8 byte length, not String.length's codepoint count
+  // (column names are ASCII today ("s"/"p"/"o"/"g") so this was latent,
+  // not observed -- fixed for the same reason as write_field_binary).
+  let name_bytes = B.bytes_of_string name in
+  let f3v = Lh.append_tr (write_uvarint (List.Tot.length name_bytes)) name_bytes in
   let f4 = write_field_i32 4 3 parquet_codec_uncompressed in
   let f5 = write_field_i64 5 4 num_values in
   let f6 = write_field_i64 6 5 page_len in
@@ -874,10 +898,19 @@ let build_rle_runs (body_nbytes : nat) (runs : list (nat & nat)) : Tot B.bytes =
 // varint (matches `decode_one_plain_dictionary_entry`'s `le_u32_at_hex`
 // read, NOT a varint-length read like DLBA's length block).
 
+// Issue #445 (found beyond the task's original 3-site list while auditing
+// this file for the same pattern): this writes RLE_DICTIONARY dictionary
+// entries for p/g (ALWAYS dictionary-encoded, see encode_column_forced_dict
+// below) and for s/o whenever dictionary encoding wins on size (see
+// encode_column_choose_smaller) -- i.e. this path is live for real object
+// literals, not just predicate/graph IRIs, so the codepoint-vs-byte bug
+// here was just as capable of corrupting non-ASCII literals as the three
+// sites named in the issue.
 let write_dict_entry (e : string) : Tot B.bytes =
-  let len = String.length e in
+  let ebytes = B.bytes_of_string e in
+  let len = List.Tot.length ebytes in
   if len >= 4294967296 then []  // unreachable for real corpora; keeps F* honest per DictWriter.fst's house style
-  else Lh.append_tr (B.write_u32_le len) (B.bytes_of_string e)
+  else Lh.append_tr (B.write_u32_le len) ebytes
 
 let rec build_dict_entries_acc (entries : list string) (racc : B.bytes)
   : Tot B.bytes (decreases entries) =
@@ -1018,7 +1051,9 @@ let build_column_metadata_v2 (name : string) (ce : col_encoded) (chunk_start_off
       Lh.append_tr (write_uvarint (zigzag_encode_nat parquet_encoding_plain))
         (write_uvarint (zigzag_encode_nat parquet_encoding_rle_dictionary)) in
     let f3 = write_field_list_header 3 2 1 PF.compact_t_binary in
-    let f3v = Lh.append_tr (write_uvarint (String.length name)) (B.bytes_of_string name) in
+    // Issue #445: UTF-8 byte length, same fix as build_column_metadata above.
+    let name_bytes = B.bytes_of_string name in
+    let f3v = Lh.append_tr (write_uvarint (List.Tot.length name_bytes)) name_bytes in
     let f4 = write_field_i32 4 3 parquet_codec_uncompressed in
     let f5 = write_field_i64 5 4 ce.ce_num_values in
     let f6 = write_field_i64 6 5 ce.ce_total_len in
