@@ -99,11 +99,30 @@ check() {
 # ---------------------------------------------------------------------
 # 1. The issue's own witness: three valid numerics (5, 3, 10), two
 #    ill-typed numeric literals ("abc"^^xsd:integer, "zzz"^^xsd:decimal),
-#    one plain string. Expected (owner decision / Jena 6.2.0 measured):
-#    valid numerics ascending (3, 5, 10), THEN the two unparseable
-#    numerics compared lexically on raw lexical form ("abc" < "zzz"),
-#    then the plain string (rank 7, after all numerics — unaffected by
-#    this fix, included so the pin also catches a rank regression).
+#    one plain string.
+#
+#    Expected order: 3, 5, 10, zzz, abc, plain. The valid numerics sort
+#    ascending first (the actual defect this issue is about — pins the
+#    non-transitivity fix). Both ill-typed literals sort after every
+#    valid numeric. `zzz` (rank 4: unparseable ER_Dec, `numeric_compare`
+#    returns None, this fix's `sparql_order_numeric` applies) sorts
+#    BEFORE `abc` here for a reason OUTSIDE this fix's scope: E_Var's
+#    OWN variable-lookup promotion (SPARQL11.Algebra.fst,
+#    `eval_expr_with_base`'s `E_Var` arm) is asymmetric between
+#    datatypes — an unparseable xsd:decimal/xsd:double ALWAYS promotes
+#    to ER_Dec/ER_Dbl (rank 4, deferred-parse, reaches
+#    `sparql_order_numeric`), but an unparseable xsd:integer falls back
+#    to `ER_Term (T_Literal l)` (rank 7, the plain-literal bucket,
+#    ordered by `literal_order` on datatype IRI then lexical form) —
+#    `parse_int_string` has no ER_Num equivalent that can carry a
+#    non-numeric payload the way ER_Dec/ER_Dbl carry a raw string. Rank
+#    4 sorts before rank 7 unconditionally, so `zzz` precedes `abc`
+#    regardless of either one's lexical content — this is NOT the
+#    lexical tiebreak this fix added; that is pinned separately below
+#    (case 2b). `plain` (rank 7, untyped) sorts last of all — unaffected
+#    by this fix, included so this pin also catches a rank regression.
+#    Reported to the issue as a related, pre-existing, OUT-OF-SCOPE
+#    asymmetry — not fixed here (single-commit discipline).
 # ---------------------------------------------------------------------
 cat > "${WORKDIR}/witness.ttl" <<'EOF'
 @prefix : <http://example.org/> .
@@ -121,9 +140,30 @@ check "orderby-illtyped-numerics-witness" \
   '"3"^^<http://www.w3.org/2001/XMLSchema#integer>' \
   '"5"^^<http://www.w3.org/2001/XMLSchema#integer>' \
   '"10"^^<http://www.w3.org/2001/XMLSchema#integer>' \
-  '"abc"^^<http://www.w3.org/2001/XMLSchema#integer>' \
   '"zzz"^^<http://www.w3.org/2001/XMLSchema#decimal>' \
+  '"abc"^^<http://www.w3.org/2001/XMLSchema#integer>' \
   '"plain"'
+
+# ---------------------------------------------------------------------
+# 2b. Isolate this fix's actual lexical tiebreak: two unparseable
+#     literals that BOTH reach `sparql_order_numeric` (xsd:decimal and
+#     xsd:double — neither has E_Var's xsd:integer fallback quirk from
+#     case 1 above), datatypes deliberately swapped against alphabetic
+#     lexical order to prove datatype plays NO role. Expected: "bbb"
+#     (double) before "mmm" (decimal) — pure lexical, matches Jena
+#     6.2.0 measured.
+# ---------------------------------------------------------------------
+cat > "${WORKDIR}/lexical_tiebreak.ttl" <<'EOF'
+@prefix : <http://example.org/> .
+:x :v "mmm"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+:y :v "bbb"^^<http://www.w3.org/2001/XMLSchema#double> .
+EOF
+
+check "orderby-illtyped-lexical-tiebreak" \
+  "${WORKDIR}/lexical_tiebreak.ttl" \
+  'SELECT ?s ?v WHERE { ?s <http://example.org/v> ?v } ORDER BY ?v' \
+  '"bbb"^^<http://www.w3.org/2001/XMLSchema#double>' \
+  '"mmm"^^<http://www.w3.org/2001/XMLSchema#decimal>'
 
 # ---------------------------------------------------------------------
 # 2. Remove the two ill-typed literals: the valid numerics alone must
