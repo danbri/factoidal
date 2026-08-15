@@ -53,13 +53,14 @@ let parse_u8 (bs : RDF_Bytes.bytes) :
   match bs with
   | b::rest -> FStar_Pervasives_Native.Some ((RDF_Bytes.int_of_byte b), rest)
   | [] -> FStar_Pervasives_Native.None
+let field_byte_len (s : Prims.string) : Prims.nat=
+  FStar_List_Tot_Base.length (RDF_Bytes.bytes_of_string s)
 let serialize_lstring (s : Prims.string) : RDF_Bytes.bytes=
-  let n = FStar_String.strlen s in
+  let sbytes = RDF_Bytes.bytes_of_string s in
+  let n = FStar_List_Tot_Base.length sbytes in
   if n >= (Prims.parse_int "4294967296")
   then []
-  else
-    FStar_List_Tot_Base.append (RDF_Bytes.write_u32_le n)
-      (RDF_Bytes.bytes_of_string s)
+  else FStar_List_Tot_Base.append (RDF_Bytes.write_u32_le n) sbytes
 let parse_lstring (bs : RDF_Bytes.bytes) :
   (Prims.string * RDF_Bytes.bytes) FStar_Pervasives_Native.option=
   match RDF_Bytes.parse_u32_le bs with
@@ -362,39 +363,38 @@ let parse_delta_entry (bs : RDF_Bytes.bytes) :
 let max_field_chars : Prims.nat= (Prims.parse_int "268435456")
 let term_ok (t : RDF_Term.rdf_term) : Prims.bool=
   match t with
-  | RDF_Term.T_IRI i -> (FStar_String.strlen i) < max_field_chars
-  | RDF_Term.T_BNode b -> (FStar_String.strlen b) < max_field_chars
+  | RDF_Term.T_IRI i -> (field_byte_len i) < max_field_chars
+  | RDF_Term.T_BNode b -> (field_byte_len b) < max_field_chars
   | RDF_Term.T_Literal l ->
-      ((((FStar_String.strlen l.RDF_Term.lexical_form) < max_field_chars) &&
-          ((FStar_String.strlen l.RDF_Term.datatype) < max_field_chars))
+      ((((field_byte_len l.RDF_Term.lexical_form) < max_field_chars) &&
+          ((field_byte_len l.RDF_Term.datatype) < max_field_chars))
          && (l.RDF_Term.direction = FStar_Pervasives_Native.None))
         &&
         ((match l.RDF_Term.lang_tag with
           | FStar_Pervasives_Native.None -> true
           | FStar_Pervasives_Native.Some tg ->
-              (FStar_String.strlen tg) < max_field_chars))
+              (field_byte_len tg) < max_field_chars))
   | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> false
 let subject_ok (s : RDF_Term.subject) : Prims.bool=
   match s with
-  | RDF_Term.S_IRI i -> (FStar_String.strlen i) < max_field_chars
-  | RDF_Term.S_BNode b -> (FStar_String.strlen b) < max_field_chars
+  | RDF_Term.S_IRI i -> (field_byte_len i) < max_field_chars
+  | RDF_Term.S_BNode b -> (field_byte_len b) < max_field_chars
 let triple_ok (tr : RDF_Triple.triple) : Prims.bool=
   ((subject_ok tr.RDF_Triple.s) &&
-     ((FStar_String.strlen tr.RDF_Triple.p) < max_field_chars))
+     ((field_byte_len tr.RDF_Triple.p) < max_field_chars))
     && (term_ok tr.RDF_Triple.o)
 let graph_opt_ok (g : RDF_Term.iri FStar_Pervasives_Native.option) :
   Prims.bool=
   match g with
   | FStar_Pervasives_Native.None -> true
-  | FStar_Pervasives_Native.Some i ->
-      (FStar_String.strlen i) < max_field_chars
+  | FStar_Pervasives_Native.Some i -> (field_byte_len i) < max_field_chars
 let delta_entry_ok (e : delta_entry) : Prims.bool=
   match e with
   | DE_Add (q, g) -> (triple_ok q) && (graph_opt_ok g)
   | DE_Remove (q, g) -> (triple_ok q) && (graph_opt_ok g)
   | DE_Clear g -> graph_opt_ok g
-  | DE_Drop g -> (FStar_String.strlen g) < max_field_chars
-  | DE_Create g -> (FStar_String.strlen g) < max_field_chars
+  | DE_Drop g -> (field_byte_len g) < max_field_chars
+  | DE_Create g -> (field_byte_len g) < max_field_chars
 let delta_entry_frame_ok (e : delta_entry) : Prims.bool=
   (FStar_List_Tot_Base.length (serialize_delta_entry_payload e)) <
     (Prims.parse_int "4294967296")
