@@ -141,6 +141,39 @@ pkill -f "build-ocaml.sh extract"
 invocations exit immediately with "another build in flight." See the
 `build-and-test` skill for the lock semantics.
 
+⚠️ **That lock does NOT protect you across worktrees** (2026-08-14). The
+lock file lives at `formal/fstar/.build.lock`, and every worktree has its
+own copy — so two agents in two worktrees each take *their own* lock,
+both proceed, and both write the *shared* `.checked` cache in the opam
+switch. The protection you think you have is per-worktree; the resource
+being raced is global.
+
+Seen while running a #445 agent and a #362 agent side by side:
+
+```
+$ for p in $(pgrep fstar.exe); do readlink /proc/$p/cwd; done
+.../worktrees/agent-ae7023ee6a5643cdd/formal/fstar
+.../worktrees/agent-ae7023ee6a5643cdd/formal/fstar
+.../worktrees/agent-a416c018c10ef24d0/formal/fstar
+```
+
+Two agents, three `fstar.exe`, one cache, no lock contention reported by
+either.
+
+**The danger is not the wasted cycles — it is the MISDIAGNOSIS.** The race
+surfaces as a module failing verification that nobody touched, which reads
+exactly like a semantic regression from whatever you just changed. That is
+the same presentation as hazard #16 and as issue #444 (a proof sitting
+marginally under its rlimit). Before believing such an error: run
+`pgrep fstar.exe`, wait for the other processes to clear, and re-verify
+that one module serially. Rule out the race before you rule in a
+regression.
+
+When dispatching two or more agents that will build, either stagger them,
+or say in both briefs that a concurrent agent shares the `.checked` cache
+and name the files each one owns — so a content race is caught as well as
+a cache race.
+
 ## 3. Source-without-build-wiring
 
 ### Symptom
