@@ -649,13 +649,32 @@ let cottas_ondisk_summary (ds : cottas_ondisk_store) :'''
 open_impl = r'''let cottas_ondisk_open (artifact_path : Prims.string) :
   cottas_ondisk_store FStar_Pervasives_Native.option=
   Printf.eprintf "[qof3-trace] cottas_ondisk_open path=%s\n%!" artifact_path;
-  let h = Cottas_ondisk_runtime.load_handle artifact_path in
-  Printf.eprintf "[qof3-trace] cottas_ondisk_open: handle ready\n%!";
-  FStar_Pervasives_Native.Some {
-    cods_artifact_path = artifact_path;
-    cods_summary = h.coh_summary;
-    cods_handle = h;
-  }
+  (* Issue #445, 2026-08-15: format-compatibility gate. cottas_ondisk_version_ok
+     is F*-defined logic (RDF.CottasStore.fst, extracted into this same file --
+     no qualifier needed), not new OCaml semantics; this call-out is exactly the
+     "if ... then None else ..." rule #11 allows the glue side to be. Owner
+     decision, verbatim: "Version-bump the COTTAS header - nobody is using our
+     software yet except me... I can nuke and rebuild it" -- no migration path,
+     no silent fallback to the pre-#445 (non-ASCII-corrupting) reader. *)
+  if not (cottas_ondisk_version_ok artifact_path) then begin
+    Printf.eprintf
+      "cottas_ondisk_open: %s was not written by this store's current writer \
+       (FileMetaData version mismatch) -- refusing to open. This is the \
+       issue #445 format-compatibility gate: stores written before the \
+       2026-08-15 UTF-8 fix had corrupted non-ASCII literals and are \
+       rejected rather than silently misread. Re-run `factoidal import` on \
+       the original source data to rebuild this store.\n%!"
+      artifact_path;
+    FStar_Pervasives_Native.None
+  end else begin
+    let h = Cottas_ondisk_runtime.load_handle artifact_path in
+    Printf.eprintf "[qof3-trace] cottas_ondisk_open: handle ready\n%!";
+    FStar_Pervasives_Native.Some {
+      cods_artifact_path = artifact_path;
+      cods_summary = h.coh_summary;
+      cods_handle = h;
+    }
+  end
 '''
 
 if runtime_anchor not in content:

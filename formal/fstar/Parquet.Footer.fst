@@ -429,6 +429,46 @@ let probe_parquet_num_rows (path:string) : option nat =
             | Some raw -> Some (zigzag_decode_nat raw)
       else None
 
+// -------------------------------------------------------------------------
+// FileMetaData field 1 ("version") -- issue #445, 2026-08-15. Overloaded as
+// our own format-compatibility gate: RDF.CottasStore.BaseWriter's writer
+// stamps `cottas_format_version` here on every base file it emits; the
+// on-disk reader (RDF.CottasStore.fst's cottas_ondisk_version_ok) rejects
+// anything else. Owner decision, verbatim: "Version-bump the COTTAS
+// header - nobody is using our software yet except me... There is
+// probably one installation outside our repo and i can nuke and rebuild
+// it" -- no migration path, no back-compat reader. A store written by
+// the pre-#445 writer (which stamped the Parquet-conventional value 1)
+// is exactly what this is meant to reject: its non-ASCII literals are
+// corrupted by the bugs #445 fixed.
+// -------------------------------------------------------------------------
+
+// Deliberately far from any value a real Parquet writer (pycottas,
+// DuckDB) would emit for this field (both write the Parquet-conventional
+// 1) so a mismatch reads unambiguously as "not one of OUR base files",
+// not merely "an old version of our format".
+let cottas_format_version : nat = 445
+
+let probe_parquet_file_metadata_version (path:string) : option nat =
+  match probe_parquet_footer path with
+  | None -> None
+  | Some footer ->
+    match parquet_read_tail_hex path footer.pf_footer_len with
+    | None -> None
+    | Some footer_hex ->
+      let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
+      if meta_hex_len <= String.length footer_hex then
+        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+        match nth_field_hex meta_hex 1 0 0 meta_hex_len with
+        | None -> None
+        | Some field ->
+          if field.cf_type <> compact_t_i32 then None
+          else
+            match decode_varint_value_hex meta_hex field.cf_value_start 0 0 meta_hex_len with
+            | None -> None
+            | Some raw -> Some (zigzag_decode_nat raw)
+      else None
+
 let probe_parquet_row_group_count (path:string) : option nat =
   match probe_parquet_footer path with
   | None -> None

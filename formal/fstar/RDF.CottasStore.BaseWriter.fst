@@ -620,8 +620,13 @@ let rec build_row_groups_acc (start_offset : nat) (groups : list (list cottas_qu
     let (off2, rest_pbytes, rest_rgmeta, rest_nrows) = build_row_groups_acc off1 rest in
     (off2, Lh.append_tr pbytes rest_pbytes, rgmeta :: rest_rgmeta, nrows + rest_nrows)
 
+// Issue #445, 2026-08-15 (owner decision, verbatim: "Version-bump the
+// COTTAS header - nobody is using our software yet except me"): field 1
+// stamps PF.cottas_format_version, not the Parquet-conventional 1, so
+// RDF.CottasStore.fst's reader can reject any store this fixed writer
+// did not itself produce -- no migration path, no back-compat reader.
 let build_file_metadata (num_rows : nat) (rg_metas : list B.bytes) : Tot B.bytes =
-  let f1 = write_field_i32 1 0 1 in
+  let f1 = write_field_i32 1 0 PF.cottas_format_version in
   let (schema_count, schema_elems) = build_schema_list ["s"; "p"; "o"; "g"] in
   let f2 =
     Lh.append_tr (write_field_header PF.compact_t_list 2 1)
