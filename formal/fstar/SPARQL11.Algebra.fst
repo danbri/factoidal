@@ -2371,6 +2371,19 @@ let numeric_compare (a b : eval_result) : option int =
     Some (int_compare nv1 nv2)
   | _, _ -> None
 
+// Raw lexical form behind a numeric eval_result -- used ONLY by
+// `sparql_order_numeric`'s "order last, then lexical" fallback below,
+// when an operand fails to parse as a number and there is nothing
+// else left to compare BY. `ER_Num` always parses (it wraps a native
+// int, never a raw lexical string), so this arm is unreachable from
+// that fallback; included for totality.
+let er_numeric_lexical (v : eval_result) : string =
+  match v with
+  | ER_Num n -> string_of_int n
+  | ER_Dec s -> s
+  | ER_Dbl s -> s
+  | _ -> ""
+
 // Promote a literal to the numeric eval_result kind it denotes, exactly
 // like E_Var's variable-lookup promotion above — needed so a triple
 // term's literal OBJECT component compares by VALUE, not lexical form
@@ -5133,6 +5146,38 @@ let er_rank (v : eval_result) : int =
   // terms as order-equal for now — full ordering is #305 P7).
   | ER_Term (T_TripleTerm _ _ _) -> 8
 
+// Ordering for the numeric branch of `sparql_order`, split out so it
+// can be named/reasoned about on its own (SPARQL11.Algebra.Refinement
+// FRAGMENT lemmas below reference it directly).
+//
+// Owner-approved 2026-08-14 (issue #362 / SR-4): SPARQL 1.1 §15.1
+// leaves the order of operands with no defined `<` undefined, only
+// requiring the implementation's ordering to be CONSISTENT -- it does
+// not mandate a specific rule. "Order last, then lexical" is
+// conformant and matches Apache Jena 6.2.0 (measured): a valid
+// numeric always sorts before an unparseable one, and two unparseable
+// numerics compare by their raw lexical form, with datatype playing
+// NO role.
+//
+// This replaces `numeric_compare`'s previous direct use here, whose
+// undifferentiated `None` (Algebra.fst, `numeric_compare`'s `| _, _ ->
+// None` arm) made the old `sparql_order` read "either side failed to
+// parse" as an unconditional TIE (`| None -> 0`) regardless of WHICH
+// side failed -- non-transitive: an unparseable value sat as a
+// spurious tie-bridge between two valid, genuinely-ordered numerics.
+// See SPARQL11.Algebra.Refinement.fst's 15.1c FRAGMENT FINDING for the
+// three-element witness this broke, and the FRAGMENT lemmas
+// immediately below it for the totality/transitivity proof this fix
+// now allows on the numeric fragment.
+let sparql_order_numeric (a b : eval_result) : int =
+  match numeric_compare a b with
+  | Some cmp -> cmp
+  | None ->
+    (match er_to_numeric a, er_to_numeric b with
+     | Some _, None -> (-1)  // a parses, b doesn't -> a sorts first
+     | None, Some _ -> 1     // b parses, a doesn't -> a sorts after
+     | _, _ -> String.compare (er_numeric_lexical a) (er_numeric_lexical b))
+
 (* SPARQL ordering (§15.1) — CONCRETE implementation.
    Returns -1 (less), 0 (equal), 1 (greater). *)
 let sparql_order (a b : eval_result) : int =
@@ -5148,10 +5193,7 @@ let sparql_order (a b : eval_result) : int =
       String.compare (iri_to_string x) (iri_to_string y)
     | ER_Bool x, ER_Bool y ->
       int_compare (if x then 1 else 0) (if y then 1 else 0)
-    | ER_Num _, _ | ER_Dec _, _ | ER_Dbl _, _ ->
-      (match numeric_compare a b with
-       | Some cmp -> cmp
-       | None -> 0)
+    | ER_Num _, _ | ER_Dec _, _ | ER_Dbl _, _ -> sparql_order_numeric a b
     | ER_Term (T_Literal l1), ER_Term (T_Literal l2) -> literal_order l1 l2
     | ER_Term (T_TripleTerm s1 p1 o1), ER_Term (T_TripleTerm s2 p2 o2) ->
       term_order (T_TripleTerm s1 p1 o1) (T_TripleTerm s2 p2 o2)
