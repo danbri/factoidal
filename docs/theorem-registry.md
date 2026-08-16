@@ -1883,3 +1883,31 @@ SPARQL 1.2 254 pass, 0 fail (of 254); escape pin 5 pass, 0 fail — the
 #445 fix survives the merge on the same binary. NOTE per #448: no W3C
 test exercises an ill-typed numeric, so the suites certify only
 no-regression; the pin is the evidence.
+
+**#448 wave 1, module 1: Parquet.Footer lifted merely-tot ->
+algorithm-correctness (2026-08-16, branch `assure-parquet-footer`)**:
+`lemma_version_field_roundtrip` (RDF.CottasStore.BaseWriter.fst:1272)
+proves the on-disk READER returns what the WRITER wrote for the
+FileMetaData version field: `parse_file_metadata_version_hex
+(bytes_to_hex (write_field_i32 1 0 cottas_format_version)) == Some
+cottas_format_version`. This is the fact the #445 format gate depends
+on — nothing previously forced writer and prober to agree, and a
+disagreement would have made the gate reject every store or accept
+every store, silently. Proved for the DEPLOYED value 445, not general
+`v` (needs induction over the varint writer's recursion — documented
+in-code as follow-on, and the narrow lemma is a true fact about the
+shipping format, not a weakened general one). The decode logic was
+refactored out of the probe function so the lemma names the EXACT
+function the reader calls, not a copy. No admits, no --lax. Twelve
+helper lemmas; F* needed three explicit congruence helpers to chain
+rewriting steps (recorded in the lemma's comment). CLI pin
+`parquet_footer_version_gate_roundtrip.sh` (3 pass, 0 fail of 3)
+covers the file-I/O step the lemma cannot reach: real store via the
+real CLI, then one byte flipped on disk must reject. Tier verified by
+running the actual classifier, not asserted. 🔴 FINDING (rule #11):
+`parquet_read_tail_hex`/`parquet_read_range_hex` realisations carry an
+OCaml hex-encode step (`__mim2_hex_encode`) with no F* spec twin and
+no hash-witness test — byte-layout logic in glue; follow-up owed.
+Gates: RDF 1030 pass, 0 fail, 1 unsupported (of 1031); escape pin 5
+pass, 0 fail; unit suite 20 pass, 28 fail (of 48) = baseline exactly.
+📊 #448 baseline moves 129 -> 128 merely-tot (of 231).

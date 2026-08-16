@@ -442,3 +442,37 @@ let lemma_parse_string_of_length_inverse (s : string) (rest : bytes)
   = let bs = bytes_of_string s in
     lemma_parse_n_bytes_inverse bs rest;
     lemma_bytes_to_string_of_bytes_of_string s
+
+(* --------------------------------------------------------------------
+   bytes_to_hex : the write-side counterpart of the hex-string decoders
+   Parquet.Footer.fst reads a COTTAS base file's footer through
+   (`hex_nibble` / `byte_at_hex`). Assurance-triage wave 1, #448,
+   module 1 of 5 (Parquet.Footer): the round-trip lemma tying
+   RDF.CottasStore.BaseWriter's `write_field_i32` to Parquet.Footer's
+   `nth_field_hex` / `decode_varint_value_hex` needs a way to turn a
+   `bytes` value into the same two-uppercase-hex-chars-per-byte string
+   the real I/O realisation (`experimental_ocaml_glue/
+   parquet_footer_runtime.sh`'s `__mim2_hex_encode`, `Printf.sprintf
+   "%02X"`) produces. Lives here (not in Parquet.Footer.fst) so the
+   build-module-list order (RDF_Bytes.ml precedes Parquet_Footer.ml)
+   does not need to change; the bridge lemma connecting this encoder to
+   Parquet.Footer's decoders lives in RDF.CottasStore.BaseWriter.fst,
+   which already depends on both.
+   -------------------------------------------------------------------- *)
+
+(* Digit 0-9 -> '0'-'9' (48-57), digit 10-15 -> 'A'-'F' (65-70) --
+   exactly the two branches `Parquet.Footer.hex_nibble` accepts (it
+   also accepts lowercase 'a'-'f', but the real OCaml encoder emits
+   uppercase, so this matches byte-for-byte, not just decodably). *)
+let hex_digit_char (n : nat{n < 16}) : Tot FStar.Char.char =
+  if n < 10 then FStar.Char.char_of_int (n + 48)
+  else FStar.Char.char_of_int (n - 10 + 65)
+
+let byte_to_hex (b : byte) : Tot string =
+  let n = int_of_byte b in
+  FStar.String.string_of_list [hex_digit_char (n / 16); hex_digit_char (n % 16)]
+
+let rec bytes_to_hex (bs : bytes) : Tot string (decreases bs) =
+  match bs with
+  | [] -> ""
+  | b :: tl -> Prims.op_Hat (byte_to_hex b) (bytes_to_hex tl)

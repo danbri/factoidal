@@ -1,0 +1,25 @@
+name: Local — Parquet footer version-gate round trip
+spec: internal
+runner: tests/local/parquet_footer_version_gate_roundtrip.sh
+runner_args: []
+domain: COTTAS
+foundational: false
+
+# End-to-end CLI pin for issue #445's on-disk format-version gate
+# (RDF.CottasStore.cottas_ondisk_version_ok), companion to the pure F*
+# proof RDF.CottasStore.BaseWriter.lemma_version_field_roundtrip
+# (issue #448, assurance-triage wave 1, module 1 of 5). Imports a
+# fixture through the real CLI, confirms the freshly written store
+# queries cleanly (arm A), then flips the on-disk version field's
+# second varint byte and requires the SAME query to be rejected with
+# the version-gate error (arm B, anti-vacuity).
+
+triggers:
+  paths:
+    - formal/fstar/Parquet.Footer.fst
+    - formal/fstar/RDF.Bytes.fst
+    - formal/fstar/RDF.CottasStore.BaseWriter.fst
+    - formal/fstar/RDF.CottasStore.fst
+    - tests/local/parquet_footer_version_gate_roundtrip.sh
+
+  excludes: []

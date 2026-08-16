@@ -1011,3 +1011,6 @@ let serialize_cottas_v2 (rows : cottas_quad Prims.list) : RDF_Bytes.bytes=
              (RDF_List_Helpers.append_tr metadata
                 (RDF_List_Helpers.append_tr
                    (RDF_Bytes.write_u32_le metadata_len) magic_header)))
+let version_field_bytes : RDF_Bytes.bytes=
+  write_field_i32 Prims.int_one Prims.int_zero
+    Parquet_Footer.cottas_format_version
