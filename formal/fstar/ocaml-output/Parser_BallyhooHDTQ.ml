@@ -132,10 +132,13 @@ let hdtq_dataset_summary (uu___ : hdtq_dataset_store) :
 let hdtq_named_graphs (uu___ : hdtq_dataset_store) :
   hdtq_named_graph_store Prims.list=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_named_graphs"
-let hdtq_lookup_named_graph (uu___ : hdtq_dataset_store)
-  (uu___1 : RDF_Term.iri) :
+let hdtq_lookup_named_graph (ds : hdtq_dataset_store) (name : RDF_Term.iri) :
   hdtq_named_graph_store FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_lookup_named_graph"
+  match FStar_List_Tot_Base.find (fun ng -> ng.hqng_name = name)
+          (hdtq_named_graphs ds)
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some ng -> FStar_Pervasives_Native.Some ng
 let hdtq_encode_subject (uu___ : hdtq_dataset_store)
   (uu___1 : RDF_Term.subject) :
   Parser_BallyhooHDT.hdt_term_ref FStar_Pervasives_Native.option=
@@ -166,17 +169,26 @@ let hdtq_decode_graph_name (uu___ : hdtq_dataset_store)
 let hdtq_search (uu___ : hdtq_dataset_store) (uu___1 : hdtq_bound_qp) :
   hdtq_qp_row Prims.list=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_search"
-let hdtq_estimate (uu___ : hdtq_dataset_store) (uu___1 : hdtq_bound_qp) :
-  Prims.nat=
-  failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_estimate"
-let hdtq_predicate_present_in_graph (uu___ : hdtq_named_graph_store)
-  (uu___1 : RDF_Term.wf_iri) : Prims.bool=
-  failwith
-    "Not yet implemented: Parser.BallyhooHDTQ.hdtq_predicate_present_in_graph"
-let hdtq_graph_candidates_for_predicate (uu___ : hdtq_dataset_store)
-  (uu___1 : RDF_Term.wf_iri) : hdtq_named_graph_store Prims.list=
-  failwith
-    "Not yet implemented: Parser.BallyhooHDTQ.hdtq_graph_candidates_for_predicate"
+let hdtq_estimate (ds : hdtq_dataset_store) (bound : hdtq_bound_qp) :
+  Prims.nat= FStar_List_Tot_Base.length (hdtq_search ds bound)
+let hdtq_predicate_present_in_graph (ng : hdtq_named_graph_store)
+  (pred : RDF_Term.wf_iri) : Prims.bool=
+  match hdtq_encode_predicate ng.hqng_dataset pred with
+  | FStar_Pervasives_Native.None -> false
+  | FStar_Pervasives_Native.Some pred_ref ->
+      (hdtq_estimate ng.hqng_dataset
+         {
+           hqbp_s = FStar_Pervasives_Native.None;
+           hqbp_p = (FStar_Pervasives_Native.Some pred_ref);
+           hqbp_o = FStar_Pervasives_Native.None;
+           hqbp_g = (FStar_Pervasives_Native.Some (ng.hqng_ref))
+         })
+        > Prims.int_zero
+let hdtq_graph_candidates_for_predicate (ds : hdtq_dataset_store)
+  (pred : RDF_Term.wf_iri) : hdtq_named_graph_store Prims.list=
+  FStar_List_Tot_Base.filter
+    (fun ng -> hdtq_predicate_present_in_graph ng pred)
+    (hdtq_named_graphs ds)
 let hdtq_build_bound_qp (ds : hdtq_dataset_store)
   (s : RDF_Term.subject FStar_Pervasives_Native.option)
   (p : RDF_Term.wf_iri FStar_Pervasives_Native.option)
