@@ -1949,3 +1949,23 @@ functions' extracted behaviour is byte-identical. Tier verified by
 running the actual classifier, not asserted. Gates: RDF 1030 pass,
 0 fail, 1 unsupported (of 1031); escape pin 5 pass, 0 fail (of 5);
 unit suite 20 pass, 28 fail (of 48) = baseline exactly.
+
+**#448 wave 1, module 3: RDF.Turtle.Serialize lifted merely-tot ->
+internal-refinement (2026-08-16, branch `assure-turtle-serialize`)**:
+new declarative relation `compacts_to_pname_safe` + lemma
+`lemma_ts_abbreviate_iri_pname_safe` — the IRI-abbreviation step either
+emits the full `<iri>` form or the compacted local name is PN_LOCAL-safe
+per the Turtle grammar. No admits. ESCAPING QUESTION ANSWERED: the
+module SHARES `RDF.NQuads.Serialize.nq_escape_literal` — no second
+escaper exists, so no #443-shape divergence risk (checked, not
+assumed). FINDING, verified by experiment: the term-level round-trip
+`nq_escape_literal "a" == "a"` is NOT provable by normalization —
+Error 19, the same computation wall RDF.NTriples.RoundTrip.fst hit,
+STILL present after the 2026-08-10 change intended to clear it;
+assert_norm witness batteries hit the same wall. What proof cannot
+reach, the pin covers: `turtle_pretty_serialize_roundtrip.sh` (4 pass,
+0 fail of 4) re-reads `--dump-turtle` output over the 10-literal
+fixture with an anti-vacuity arm. Zero assume vals. Tier from a fresh
+classifier run WITH --json. Gates: RDF 1030 pass, 0 fail, 1 unsupported
+(of 1031); escape pin 5 pass, 0 fail; turtle_pretty_regressions 17
+pass, 0 fail (of 17); unit suite at baseline.
