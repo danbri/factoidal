@@ -60,10 +60,11 @@ let write_field_i64 (field_id : Prims.nat) (prev_id : Prims.nat)
     (write_uvarint (zigzag_encode_nat v))
 let write_field_binary (field_id : Prims.nat) (prev_id : Prims.nat)
   (s : Prims.string) : RDF_Bytes.bytes=
+  let sbytes = RDF_Bytes.bytes_of_string s in
   RDF_List_Helpers.append_tr
     (write_field_header Parquet_Footer.compact_t_binary field_id prev_id)
-    (RDF_List_Helpers.append_tr (write_uvarint (FStar_String.strlen s))
-       (RDF_Bytes.bytes_of_string s))
+    (RDF_List_Helpers.append_tr
+       (write_uvarint (FStar_List_Tot_Base.length sbytes)) sbytes)
 let write_list_header (count : Prims.nat) (etype : Prims.nat) :
   RDF_Bytes.bytes=
   if count < (Prims.of_int (15))
@@ -96,7 +97,9 @@ let rec string_lengths_acc (vs : Prims.string Prims.list)
   (acc : Prims.nat Prims.list) : Prims.nat Prims.list=
   match vs with
   | [] -> FStar_List_Tot_Base.rev acc
-  | v::tl -> string_lengths_acc tl ((FStar_String.strlen v) :: acc)
+  | v::tl ->
+      string_lengths_acc tl
+        ((FStar_List_Tot_Base.length (RDF_Bytes.bytes_of_string v)) :: acc)
 let string_lengths (vs : Prims.string Prims.list) : Prims.nat Prims.list=
   string_lengths_acc vs []
 let rec consecutive_deltas_acc (lengths : Prims.nat Prims.list)
@@ -339,9 +342,10 @@ let build_column_metadata (name : Prims.string) (num_values : Prims.nat)
   let f3 =
     write_field_list_header (Prims.of_int (3)) (Prims.of_int (2))
       Prims.int_one Parquet_Footer.compact_t_binary in
+  let name_bytes = RDF_Bytes.bytes_of_string name in
   let f3v =
-    RDF_List_Helpers.append_tr (write_uvarint (FStar_String.strlen name))
-      (RDF_Bytes.bytes_of_string name) in
+    RDF_List_Helpers.append_tr
+      (write_uvarint (FStar_List_Tot_Base.length name_bytes)) name_bytes in
   let f4 =
     write_field_i32 (Prims.of_int (4)) (Prims.of_int (3))
       parquet_codec_uncompressed in
@@ -488,7 +492,9 @@ let rec build_row_groups_acc (start_offset : Prims.nat)
                   (rgmeta :: rest_rgmeta), (nrows + rest_nrows))))
 let build_file_metadata (num_rows : Prims.nat)
   (rg_metas : RDF_Bytes.bytes Prims.list) : RDF_Bytes.bytes=
-  let f1 = write_field_i32 Prims.int_one Prims.int_zero Prims.int_one in
+  let f1 =
+    write_field_i32 Prims.int_one Prims.int_zero
+      Parquet_Footer.cottas_format_version in
   let uu___ = build_schema_list ["s"; "p"; "o"; "g"] in
   match uu___ with
   | (schema_count, schema_elems) ->
@@ -710,12 +716,11 @@ let build_rle_runs (body_nbytes : Prims.nat)
   (runs : (Prims.nat * Prims.nat) Prims.list) : RDF_Bytes.bytes=
   build_rle_runs_acc body_nbytes runs []
 let write_dict_entry (e : Prims.string) : RDF_Bytes.bytes=
-  let len = FStar_String.strlen e in
+  let ebytes = RDF_Bytes.bytes_of_string e in
+  let len = FStar_List_Tot_Base.length ebytes in
   if len >= (Prims.parse_int "4294967296")
   then []
-  else
-    RDF_List_Helpers.append_tr (RDF_Bytes.write_u32_le len)
-      (RDF_Bytes.bytes_of_string e)
+  else RDF_List_Helpers.append_tr (RDF_Bytes.write_u32_le len) ebytes
 let rec build_dict_entries_acc (entries : Prims.string Prims.list)
   (racc : RDF_Bytes.bytes) : RDF_Bytes.bytes=
   match entries with
@@ -894,9 +899,10 @@ let build_column_metadata_v2 (name : Prims.string) (ce : col_encoded)
       let f3 =
         write_field_list_header (Prims.of_int (3)) (Prims.of_int (2))
           Prims.int_one Parquet_Footer.compact_t_binary in
+      let name_bytes = RDF_Bytes.bytes_of_string name in
       let f3v =
-        RDF_List_Helpers.append_tr (write_uvarint (FStar_String.strlen name))
-          (RDF_Bytes.bytes_of_string name) in
+        RDF_List_Helpers.append_tr
+          (write_uvarint (FStar_List_Tot_Base.length name_bytes)) name_bytes in
       let f4 =
         write_field_i32 (Prims.of_int (4)) (Prims.of_int (3))
           parquet_codec_uncompressed in

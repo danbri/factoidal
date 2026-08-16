@@ -127,16 +127,31 @@ let lemma_u8_roundtrip (n : nat{n < 256}) (rest : B.bytes)
 
 (* --- length-prefixed UTF-8 strings -------------------------------------
 
+   Issue #445, 2026-08-15: the length prefix here MUST be the UTF-8
+   BYTE length, not `String.length s` (F*'s codepoint count) -- this
+   module hit the same defect class RDF.CottasStore.BaseWriter.fst was
+   fixed for, exposed as a build failure the moment RDF.Bytes stopped
+   coincidentally agreeing with it (RDF.Bytes.bytes_of_string used to
+   BE String.list_of_string, so `length (bytes_of_string s) ==
+   String.length s` held trivially; now it only holds for ASCII s).
+   `field_byte_len` is the single place this module computes that byte
+   length, used everywhere `String.length` used to appear as either a
+   length-PREFIX value or a well-formedness BOUND check below.
+
    `serialize_lstring` guards the overflow precondition defensively
    (returns [] — an unparseable sentinel — rather than failing to
    typecheck) exactly like DictWriter's `serialize_dict`; the
    round-trip lemma below states the precondition under which the
    guard is not taken. *)
 
+let field_byte_len (s : string) : Tot nat =
+  List.Tot.length (B.bytes_of_string s)
+
 let serialize_lstring (s : string) : Tot B.bytes =
-  let n = String.length s in
+  let sbytes = B.bytes_of_string s in
+  let n = List.Tot.length sbytes in
   if n >= 4294967296 then []
-  else append (B.write_u32_le n) (B.bytes_of_string s)
+  else append (B.write_u32_le n) sbytes
 
 let parse_lstring (bs : B.bytes) : Tot (option (string & B.bytes)) =
   match B.parse_u32_le bs with
@@ -145,11 +160,11 @@ let parse_lstring (bs : B.bytes) : Tot (option (string & B.bytes)) =
 
 let lemma_lstring_roundtrip (s : string) (rest : B.bytes)
   : Lemma
-      (requires String.length s < 4294967296)
+      (requires field_byte_len s < 4294967296)
       (ensures parse_lstring (append (serialize_lstring s) rest) == Some (s, rest))
-  = let n = String.length s in
+  = let sb = B.bytes_of_string s in
+    let n = List.Tot.length sb in
     let u = B.write_u32_le n in
-    let sb = B.bytes_of_string s in
     FStar.List.Tot.Properties.append_assoc u sb rest;
     B.lemma_parse_write_u32_le_inverse n (append sb rest);
     B.lemma_parse_string_of_length_inverse s rest
@@ -388,13 +403,17 @@ let parse_delta_entry (bs : B.bytes) : Tot (option (delta_entry & B.bytes)) =
 
 let max_field_chars : nat = 268435456  (* 2^28 *)
 
+// Issue #445: every bound below checks `field_byte_len` (UTF-8 BYTE
+// length, matching what serialize_lstring actually prefixes and what
+// lemma_lstring_length's guard-avoidance argument needs), not
+// `String.length` (codepoints) — see field_byte_len's own comment.
 let term_ok (t : T.rdf_term) : bool =
   match t with
-  | T.T_IRI i -> String.length i < max_field_chars
-  | T.T_BNode b -> String.length b < max_field_chars
+  | T.T_IRI i -> field_byte_len i < max_field_chars
+  | T.T_BNode b -> field_byte_len b < max_field_chars
   | T.T_Literal l ->
-    String.length l.T.lexical_form < max_field_chars &&
-    String.length l.T.datatype < max_field_chars &&
+    field_byte_len l.T.lexical_form < max_field_chars &&
+    field_byte_len l.T.datatype < max_field_chars &&
     // RDF 1.2 base direction is NOT persisted by the length-prefixed term
     // encoding here (parse_term reconstructs direction = None), so a
     // directional literal would not round-trip byte-for-byte. Persistence
@@ -404,7 +423,7 @@ let term_ok (t : T.rdf_term) : bool =
     l.T.direction = None &&
     (match l.T.lang_tag with
      | None -> true
-     | Some tg -> String.length tg < max_field_chars)
+     | Some tg -> field_byte_len tg < max_field_chars)
   // RDF 1.2 triple terms are outside the phase-1 durable delta-log
   // contract (persistence is #305 P8), so they are never `term_ok`.
   | T.T_TripleTerm _ _ _ -> false
@@ -417,42 +436,40 @@ let lemma_term_ok_tripleterm (s : T.subject) (p : T.wf_iri) (o : T.rdf_term)
 
 let subject_ok (s : T.subject) : bool =
   match s with
-  | T.S_IRI i -> String.length i < max_field_chars
-  | T.S_BNode b -> String.length b < max_field_chars
+  | T.S_IRI i -> field_byte_len i < max_field_chars
+  | T.S_BNode b -> field_byte_len b < max_field_chars
 
 let triple_ok (tr : Tr.triple) : bool =
-  subject_ok tr.Tr.s && String.length tr.Tr.p < max_field_chars && term_ok tr.Tr.o
+  subject_ok tr.Tr.s && field_byte_len tr.Tr.p < max_field_chars && term_ok tr.Tr.o
 
 let graph_opt_ok (g : option T.iri) : bool =
   match g with
   | None -> true
-  | Some i -> String.length i < max_field_chars
+  | Some i -> field_byte_len i < max_field_chars
 
 let delta_entry_ok (e : delta_entry) : bool =
   match e with
   | DE_Add q g -> triple_ok q && graph_opt_ok g
   | DE_Remove q g -> triple_ok q && graph_opt_ok g
   | DE_Clear g -> graph_opt_ok g
-  | DE_Drop g -> String.length g < max_field_chars
-  | DE_Create g -> String.length g < max_field_chars
+  | DE_Drop g -> field_byte_len g < max_field_chars
+  | DE_Create g -> field_byte_len g < max_field_chars
 
 (* --- exact-length facts, bottom-up ------------------------------------- *)
 
-(* `String.length` unfolds to `List.Tot.length (String.list_of_string s)`
-   (FStar.String.fsti: `let strlen s = List.length (list_of_string s)`;
-   `let length s = strlen s`); `RDF.Bytes.bytes_of_string` is literally
-   `String.list_of_string`. Both sides normalize to the same term. *)
-let lemma_bytes_of_string_length (s : string)
-  : Lemma (length (B.bytes_of_string s) == String.length s)
-  = ()
-
-let lemma_lstring_length (s : string{String.length s < max_field_chars})
-  : Lemma (length (serialize_lstring s) == 4 + String.length s)
-  = let n = String.length s in
+// Issue #445: `lemma_bytes_of_string_length` used to claim
+// `length (B.bytes_of_string s) == String.length s` unconditionally,
+// true only back when RDF.Bytes.bytes_of_string WAS String.list_of_string
+// (i.e. was itself the bug this issue fixes). Deleted rather than
+// restated -- `field_byte_len` IS `List.Tot.length (B.bytes_of_string s)`
+// by definition, so lemma_lstring_length below needs no separate fact
+// relating it to anything else.
+let lemma_lstring_length (s : string{field_byte_len s < max_field_chars})
+  : Lemma (length (serialize_lstring s) == 4 + field_byte_len s)
+  = let n = field_byte_len s in
     let u = B.write_u32_le n in
     let sb = B.bytes_of_string s in
-    FStar.List.Tot.Properties.append_length u sb;
-    lemma_bytes_of_string_length s
+    FStar.List.Tot.Properties.append_length u sb
 
 let lemma_term_length (t : T.rdf_term{term_ok t})
   : Lemma (length (serialize_term t) <= 1 + 3 `op_Multiply` (4 + max_field_chars))
@@ -491,6 +508,15 @@ let lemma_term_length (t : T.rdf_term{term_ok t})
    unsound: a guarded-away oversized field also serializes to length
    0, which would otherwise "prove" an oversized field is small). --- *)
 
+// Issue #445: field_byte_len's definition (List.Tot.length composed with
+// Parser.FastString.Spec.utf8_bytes) is a heavier SMT term than the
+// String.length it replaced, and this function's T_Literal branch alone
+// makes 3 lemma_lstring_roundtrip calls each needing a field_byte_len
+// fact — measured with --query_stats: default rlimit 5 times out
+// (canceled) on 2 of ~12 split sub-queries; a scoped bump clears all of
+// them with room to spare (CLAUDE.md rule #10's permitted escape hatch:
+// a scoped #push-options around one function, not a global relaxation).
+#push-options "--z3rlimit 60"
 let lemma_term_roundtrip (t : T.rdf_term) (rest : B.bytes)
   : Lemma
       (requires term_ok t)
@@ -532,6 +558,7 @@ let lemma_term_roundtrip (t : T.rdf_term) (rest : B.bytes)
       T.lemma_literal_eq_refl l
     // Unreachable: `requires term_ok t` is false for a triple term.
     | T.T_TripleTerm s p obj -> lemma_term_ok_tripleterm s p obj
+#pop-options
 
 let lemma_subject_roundtrip (s : T.subject) (rest : B.bytes)
   : Lemma

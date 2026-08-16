@@ -853,6 +853,37 @@ let probe_parquet_num_rows (path : Prims.string) :
                      | FStar_Pervasives_Native.Some raw ->
                          FStar_Pervasives_Native.Some (zigzag_decode_nat raw)))
            else FStar_Pervasives_Native.None)
+let cottas_format_version : Prims.nat= (Prims.of_int (445))
+let probe_parquet_file_metadata_version (path : Prims.string) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match probe_parquet_footer path with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some footer ->
+      (match parquet_read_tail_hex path footer.pf_footer_len with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some footer_hex ->
+           let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
+           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           then
+             let meta_hex =
+               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+             (match nth_field_hex meta_hex Prims.int_one Prims.int_zero
+                      Prims.int_zero meta_hex_len
+              with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some field ->
+                  if field.cf_type <> compact_t_i32
+                  then FStar_Pervasives_Native.None
+                  else
+                    (match decode_varint_value_hex meta_hex
+                             field.cf_value_start Prims.int_zero
+                             Prims.int_zero meta_hex_len
+                     with
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.Some raw ->
+                         FStar_Pervasives_Native.Some (zigzag_decode_nat raw)))
+           else FStar_Pervasives_Native.None)
 let probe_parquet_row_group_count (path : Prims.string) :
   Prims.nat FStar_Pervasives_Native.option=
   match probe_parquet_footer path with

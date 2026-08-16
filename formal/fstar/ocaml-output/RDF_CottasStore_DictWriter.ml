@@ -4,6 +4,8 @@ let dict_version : Prims.nat= Prims.int_one
 let header_size : Prims.nat= (Prims.of_int (32))
 let id_size : Prims.nat= (Prims.of_int (4))
 let offset_size : Prims.nat= (Prims.of_int (8))
+let tok_byte_len (t : Prims.string) : Prims.nat=
+  FStar_List_Tot_Base.length (RDF_Bytes.bytes_of_string t)
 let rec build_ids_acc (i : Prims.nat) (n : Prims.nat) : RDF_Bytes.bytes=
   if i = n
   then []
@@ -20,7 +22,7 @@ let rec build_offs_acc (cur : Prims.nat) (tokens : Prims.string Prims.list) :
       if cur >= (Prims.parse_int "18446744073709551616")
       then Prims.Mkdtuple2 (cur, [])
       else
-        (let cur' = cur + (FStar_String.strlen t) in
+        (let cur' = cur + (tok_byte_len t) in
          let uu___1 = build_offs_acc cur' rest in
          match uu___1 with
          | Prims.Mkdtuple2 (cur'', rest_bytes) ->
@@ -159,7 +161,7 @@ let rec cum_offs (cur : Prims.nat) (tokens : Prims.string Prims.list) :
   | t::rest ->
       if cur >= (Prims.parse_int "18446744073709551616")
       then []
-      else cur :: (cum_offs (cur + (FStar_String.strlen t)) rest)
+      else cur :: (cum_offs (cur + (tok_byte_len t)) rest)
 let rec cum_final (cur : Prims.nat) (tokens : Prims.string Prims.list) :
   Prims.nat=
   match tokens with
@@ -167,4 +169,4 @@ let rec cum_final (cur : Prims.nat) (tokens : Prims.string Prims.list) :
   | t::rest ->
       if cur >= (Prims.parse_int "18446744073709551616")
       then cur
-      else cum_final (cur + (FStar_String.strlen t)) rest
+      else cum_final (cur + (tok_byte_len t)) rest

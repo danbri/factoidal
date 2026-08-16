@@ -227,9 +227,34 @@ let cottas_ondisk_named_graphs (ds : cottas_ondisk_store)
 // Only `cottas_ondisk_open` / `cottas_ondisk_close` remain I/O-glue.
 // ----------------------------------------------------------------------
 
+// ---- Format-compatibility gate (issue #445, 2026-08-15) --------------
+//
+// Owner decision, verbatim: "Version-bump the COTTAS header - nobody is
+// using our software yet except me. There is probably one installation
+// outside our repo and i can nuke and rebuild it." -- no migration path,
+// no back-compat reader. A store whose FileMetaData.version does not
+// match RDF.CottasStore.BaseWriter's current stamp was written by a
+// writer we no longer trust (in particular: the pre-#445 writer, which
+// corrupted every non-ASCII literal) and must be rejected outright, not
+// silently misread. Pure Tot logic over probe_parquet_file_metadata_version
+// -- the actual file read is the pre-existing `parquet_read_tail_hex`
+// assume val underneath it, not a new I/O realisation.
+let cottas_ondisk_version_ok (artifact_path : string) : Tot bool =
+  match probe_parquet_file_metadata_version artifact_path with
+  | Some v -> v = cottas_format_version
+  | None -> false
+
 // Open: I/O. Parses the Parquet file, walks every row group, builds the
 // 4 distinct-term dictionaries (typed lists + revmaps + raw-token
 // parallel lists). Phase C will refactor with mmap.
+//
+// The version gate above is enforced in the OCaml realisation
+// (experimental_ocaml_glue/cottas_ondisk_runtime.sh's open_impl calls
+// cottas_ondisk_version_ok, defined in THIS module, before load_handle)
+// rather than here, because this val stays a signature-only `assume val`
+// per the existing house style for this function (see its own comment);
+// the check itself is the F*-defined logic rule #11 requires, the OCaml
+// side is just the `if ... then None else ...` call-out.
 assume val cottas_ondisk_open :
   artifact_path:string -> Tot (option cottas_ondisk_store)
 

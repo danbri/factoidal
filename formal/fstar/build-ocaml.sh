@@ -65,6 +65,34 @@ cd "$(dirname "$0")"
 
 OUTDIR=ocaml-output
 JSDIR=../../docs/fstar-extracted
+
+# ---------------------------------------------------------------------------
+# Multi-step invocation. `./build-ocaml.sh extract compile` runs BOTH steps,
+# in order, each as its own locked sub-invocation.
+#
+# 2026-08-15: it used to run only `extract`. `STEP="${1:-all}"` read the first
+# argument and every later one was silently discarded -- so the caller got an
+# extraction, no compile, a zero exit code, and a stale binary that then
+# "measured" whatever the previous build left behind.
+#
+# That form is not an agent's invention: it is what the repo's OWN instructions
+# tell people to type. It appears in tests/unit/README.md, in run-all.sh's own
+# error message, and in ~10 tests/local/*.sh "run this first" hints. Every one
+# of them was asking for half a build.
+#
+# Fixing the script rather than the twelve call sites: the documented command
+# should do what it says, and silently ignoring an argument is the same
+# silent-failure class this repo keeps removing from its engine (anti-pattern
+# #14 -- never let a failure pass unnoticed).
+# ---------------------------------------------------------------------------
+if [ "$#" -gt 1 ]; then
+  for _step in "$@"; do
+    echo "=== build-ocaml.sh: step '${_step}' ==="
+    "$0" "$_step" || exit $?
+  done
+  exit 0
+fi
+
 STEP="${1:-all}"
 
 # ---------------------------------------------------------------------------
@@ -76,10 +104,23 @@ STEP="${1:-all}"
 # build-ocaml.sh refuse to run if another instance is already in flight in the
 # same worktree.
 #
-# The build-running marker (.build-running) is consumed by the stop hook to
-# silence "uncommitted changes" warnings while a build is rewriting .ml or
-# binary files. See .claude/skills/workflow-gotchas-debugging/SKILL.md
+# The build-running marker (.build-running) records that a build is rewriting
+# .ml and binary files. See skills/workflow-gotchas-debugging/SKILL.md
 # sections 2 and 5.
+#
+# ⚠️ 2026-08-15: this comment used to claim the marker "is consumed by the stop
+# hook to silence 'uncommitted changes' warnings". That is NOT true of the stop
+# hook in this environment. Checked directly: ~/.claude/stop-hook-git-check.sh
+# contains ZERO occurrences of "build", "marker" or "running" -- it runs a bare
+# `git diff --quiet`. So the marker is written by every build and read by
+# nobody, while the hook fires throughout a long compile.
+#
+# The hook is harness-global (~/.claude/), not repo-shipped -- .claude/ here
+# carries only session-start.sh -- so this repo cannot fix it, and the marker is
+# left in place because a repo-local or future hook may still want it. What is
+# fixed is the CLAIM: an unconsumed marker described as consumed is the same
+# shape as hazard #19 (a step that can silently no-op is a lie), and it costs
+# the next reader a debugging round to discover the mechanism was never wired.
 #
 # The lock is per-worktree: each worktree has its own .build.lock, so parallel
 # agent worktrees don't block each other. Only same-worktree concurrency is
@@ -1011,8 +1052,14 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_Closure_SemiNaive.ml RDFS_SchemaSplit.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
-    Parser_FastString_Spec.ml Parser_FastString_CharBoundary.ml Parser_FastString.ml Parser_FastString_ConcatSpec.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
+  # Parser_FastString_Spec.ml precedes RDF_Bytes.ml (issue #445): RDF.Bytes.fst
+  # now calls Parser.FastString.Spec's UTF-8 codec (utf8_bytes/utf8_decode_all)
+  # from bytes_of_string/bytes_to_string, so the extracted .ml must compile in
+  # that order. Parser.FastString.Spec has zero project-module dependencies
+  # (only opens FStar.Mul/FStar.List.Tot), so moving it here introduces no
+  # cycle -- confirmed by reading its `open`s directly, not assumed.
+  COMMON_MODULES="Util_Log.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_Closure_SemiNaive.ml RDFS_SchemaSplit.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml Parser_FastString_Spec.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
+    Parser_FastString_CharBoundary.ml Parser_FastString.ml Parser_FastString_ConcatSpec.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml \
     RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml \
     RDF_Entailment_RDFS_RhoDFClosure.ml RDF_Entailment_RDFSPlus.ml RDF_Entailment_RegimeDispatch.ml \
@@ -2161,8 +2208,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Term.ml RDF_Triple.ml
     RDF_Indexed.ml RDF_Graph.ml
     RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_Closure_SemiNaive.ml RDFS_SchemaSplit.ml OWL_Closure.ml
-    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml
-    Parser_FastString_Spec.ml Parser_FastString_CharBoundary.ml Parser_FastString.ml Parser_FastString_ConcatSpec.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
+    RDF_Graph_Executable.ml RDF_List_Helpers.ml Parser_FastString_Spec.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml
+    Parser_FastString_CharBoundary.ml Parser_FastString.ml Parser_FastString_ConcatSpec.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml
     RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml
     Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml

@@ -29,6 +29,21 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 OCAML_OUT="$REPO_ROOT/formal/fstar/ocaml-output"
+
+# Run from the repo root, ALWAYS, whatever directory the caller invoked us
+# from. Several test files open fixtures by a repo-root-relative path --
+# `rdfxml_parser_perf.ml:10` and `rdfxml_profile_repro.ml:5` both do
+# ("third_party/testing/owl/profile-{EL,RL}.rdf") -- so their result used
+# to depend on the caller's CWD rather than on the code under test.
+#
+# 2026-08-15 (issue #445 harvest): a subagent ran this script from inside
+# tests/unit/ and got 18 pass, 30 fail; the same tree run from the repo
+# root gives 20 pass, 28 fail. The two extra failures were pure Sys_error
+# on a path that did not resolve, and they were reported up as engine
+# failures folded into "pre-existing". That is hazard #21 -- a score line
+# certifies the run's own CWD, not the suite -- and the cheapest place to
+# kill it is here, once, rather than in each test file.
+cd "$REPO_ROOT"
 BUILD_DIR="$SCRIPT_DIR/_build"
 
 if [[ ! -d "$OCAML_OUT" ]]; then
@@ -76,6 +91,10 @@ COMMON_MODULES=(
   OWL_Closure
   RDF_Graph_Executable
   RDF_List_Helpers
+  # Parser_FastString_Spec precedes RDF_Bytes (issue #445): RDF.Bytes.fst's
+  # bytes_of_string/bytes_to_string now call Parser.FastString.Spec's UTF-8
+  # codec directly. Keep in step with build-ocaml.sh's COMMON_MODULES order.
+  Parser_FastString_Spec
   RDF_Bytes
   RDF_Store_Loader
   Parquet_Footer
@@ -83,7 +102,6 @@ COMMON_MODULES=(
   OWL_DirectMapping_Filter
   Tableau
   Tableau_Refute
-  Parser_FastString_Spec
   Parser_FastString_CharBoundary
   Parser_FastString
   Parser_FastString_ConcatSpec
