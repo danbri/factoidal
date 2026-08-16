@@ -71,8 +71,8 @@ open Parser.FastString
    this gap. Fixing it is issue #63's job (HACL* adoption), not this
    module's — out of scope for an assurance-triage landing, flagged
    here per the task brief's explicit ask to report the binding. *)
-assume val hash_sha256 (s : string) : (r:string{FStar.String.length r == 64})
-assume val hash_sha384 (s : string) : (r:string{FStar.String.length r == 96})
+assume val hash_sha256 : string -> (r:string{FStar.String.length r == 64})
+assume val hash_sha384 : string -> (r:string{FStar.String.length r == 96})
 
 // RDFC-1.0 §4.4 note 2 / test manifests: `rdfc:hashAlgorithm` selects
 // SHA-256 (the algorithm's default) or SHA-384 for a given test. Every
