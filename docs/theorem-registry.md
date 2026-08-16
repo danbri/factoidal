@@ -1969,3 +1969,57 @@ fixture with an anti-vacuity arm. Zero assume vals. Tier from a fresh
 classifier run WITH --json. Gates: RDF 1030 pass, 0 fail, 1 unsupported
 (of 1031); escape pin 5 pass, 0 fail; turtle_pretty_regressions 17
 pass, 0 fail (of 17); unit suite at baseline.
+
+**#448 wave 1, module 4 (last of wave 1): RDF.Canonical lifted
+merely-tot -> internal-refinement (2026-08-16, branch
+`assure-rdf-canonical`)**: new declarative relation `is_issuer_label`
+(existential: label == prefix ^ nat_to_string n) + `issuer_labels_wf`
++ five lemmas (`lemma_empty_issuer_wf`, `lemma_empty_temp_issuer_wf`,
+`lemma_issue_fresh_preserves_wf`, `lemma_issue_identifier_preserves_wf`,
+plus the two internal-refinement theorems the classifier counted:
+`lemma_issue_fresh_label_shape`, `lemma_issue_identifier_fresh_label_shape`)
+— proves every blank-node label `issue_identifier`/`issue_fresh` ever
+mint, from `empty_issuer`/`empty_temp_issuer` onward, matches the
+"_:c14nN" / "_:bN" shape the module banner already claimed in prose.
+Refines the module banner's comment-claimed label format into a
+checked type (#445 template), needing ZERO string-content computation
+(existential witness = the issuer's own counter) — sidesteps the
+SMT-unfolding wall, confirmed directly against THIS module's own
+`nat_to_string`/`digit_char` (Error 19 on both, even though neither
+touches FastString's opaque primitives — the wall found by module 3
+is broader than "FastString is opaque"; `assert_norm` succeeds only on
+GROUND terms, so it cannot discharge the universally-quantified
+injectivity goal a full no-duplicate-labels proof would need).
+DETERMINISM/SERIALIZER QUESTIONS ANSWERED: full bnode-relabelling
+determinism (candidate 1, the property VC signing depends on) and full
+re-parse well-formedness (candidate 2) were investigated and rejected
+as one-commit F* targets — determinism moved to
+`cli_rdfc10_relabel_determinism.sh` (5 pass, 0 fail of 5: same-input
+twice byte-identical, bnode-relabelled isomorphic variant
+byte-identical to the original, anti-vacuity arm requiring a
+non-isomorphic variant to differ). RDF.Canonical does NOT delegate to
+`RDF.NQuads.Serialize`'s canonical functions (`nq_canon_term` etc.) —
+it carries its OWN `canon_term`/`escape_lit` (the #443 two-
+implementations shape); investigated the divergence and found it real
+but each side targets a DIFFERENT W3C spec (RDFC-1.0 dataset
+canonicalization vs. the separate "RDF 1.2 canonical N-Quads" lexical
+form) — `nq_canon_term` lowercases language tags and escapes the
+U+FFFE/U+FFFF BMP noncharacters, `RDF.Canonical`'s does neither, yet
+the 86/86 rdfc10 suite passes either way, so this is duplicated logic
+that could drift, not a demonstrated bug. ASSUME-VAL AUDIT: also
+refined `hash_sha256`/`hash_sha384`'s comment-claimed digest lengths
+(64/96 hex chars) into a checked return-type refinement (erases at
+extraction). Neither hash is HACL*-bound — both wire to
+`Fstar_pure_hashes`, a hand-rolled pure-OCaml SHA-2 (issue #63,
+already tracked non-silently in `skills/crypto-policy/SKILL.md`
+as "HACL* is NOT yet in use", not newly introduced here). Tier from a
+fresh classifier run WITH --json:
+`"assurance_tier": "internal-refinement"`, `"merely_tot": false`,
+`assume_val_active: 2` (hash_sha256, hash_sha384), unchanged. Gates:
+rdfc10 86 pass, 0 fail (of 86); RDF 1030 pass, 0 fail, 1 unsupported
+(of 1031); escape pin 5 pass, 0 fail (of 5); relabel-determinism pin 5
+pass, 0 fail (of 5); unit suite 20 pass, 28 fail (of 48) = baseline
+exactly, no deltas. Wave 1 (#448) is now complete: Parquet.Footer
+(module 1), HDT.Container (module 2), RDF.Turtle.Serialize (module
+3), RDF.Canonical (module 4) all lifted merely-tot -> internal-
+refinement.
