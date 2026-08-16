@@ -1911,3 +1911,115 @@ no hash-witness test — byte-layout logic in glue; follow-up owed.
 Gates: RDF 1030 pass, 0 fail, 1 unsupported (of 1031); escape pin 5
 pass, 0 fail; unit suite 20 pass, 28 fail (of 48) = baseline exactly.
 📊 #448 baseline moves 129 -> 128 merely-tot (of 231).
+
+**#448 wave 1, module 2: HDT.Container lifted merely-tot ->
+algorithm-correctness (2026-08-16, branch `assure-hdt-container`)**:
+HDT.Container is a pure READER (container skeleton framing over the
+HDT v1 binary format -- cookie/format/props/CRC16 control-info blocks,
+PFC/log-array/bitmap section-boundary arithmetic), no writer side, so
+the writer/reader round-trip template (module 1's pattern) does not
+apply. Chose instead the "only reads" template: prove corruption is
+REFUSED, not silently decoded as noise. Two lemmas:
+`lemma_parse_control_info_rejects_bad_cookie` -- a mismatched 4-byte
+`$HDT` cookie makes `parse_control_info` return `None`, proved by
+direct unfolding (`()`), no induction, no congruence bridging needed
+(unlike module 1's version-field round trip, every hypothesis here is
+a bare `byte_get` equality feeding a `match` the SMT encoding resolves
+directly). `lemma_bad_global_cookie_rejects_container` is the
+corollary at the shipping entry point every consumer actually calls:
+a corrupted Global cookie at file offset 0 fails the WHOLE
+`hdt_parse_inventory_hex`, not just the Global control-info block, by
+forwarding `parse_control_info a 0`'s `None` verbatim. Both relate two
+named shipping functions (`parse_control_info` /
+`hdt_parse_inventory_hex`, plus `byte_get`) with no declarative
+relation, so the classifier reads algorithm-correctness. `pfc_type`
+refined from bare `nat` to `(t:nat{t = 2})` per the #445 template --
+was a comment-only invariant ("2 = Plain Front Coding"). Assume-val
+audit: HDT.Container itself carries ZERO `assume val`s -- all file
+bytes cross the boundary through Parquet.Footer's
+`parquet_read_range_hex`, already audited under module 1's finding
+above (nothing new here). CLI pin: `bin/hdt-probe/check.sh` gained a
+corrupted-global-cookie arm (flip byte 0 of a real vendored `.hdt`
+fixture, 0x24 -> 0x25, require the probe's loud `PARSE FAILED` and
+rc=1) alongside the pre-existing truncation arms; 75 pass, 0 fail (of
+75) end to end, plus `tests/local/hdt_stage4_parity.sh` (backend
+parity against the same fixture) at 6 pass, 0 fail (of 6), both
+unaffected by the refinement or the new lemmas since the shipping
+functions' extracted behaviour is byte-identical. Tier verified by
+running the actual classifier, not asserted. Gates: RDF 1030 pass,
+0 fail, 1 unsupported (of 1031); escape pin 5 pass, 0 fail (of 5);
+unit suite 20 pass, 28 fail (of 48) = baseline exactly.
+
+**#448 wave 1, module 3: RDF.Turtle.Serialize lifted merely-tot ->
+internal-refinement (2026-08-16, branch `assure-turtle-serialize`)**:
+new declarative relation `compacts_to_pname_safe` + lemma
+`lemma_ts_abbreviate_iri_pname_safe` — the IRI-abbreviation step either
+emits the full `<iri>` form or the compacted local name is PN_LOCAL-safe
+per the Turtle grammar. No admits. ESCAPING QUESTION ANSWERED: the
+module SHARES `RDF.NQuads.Serialize.nq_escape_literal` — no second
+escaper exists, so no #443-shape divergence risk (checked, not
+assumed). FINDING, verified by experiment: the term-level round-trip
+`nq_escape_literal "a" == "a"` is NOT provable by normalization —
+Error 19, the same computation wall RDF.NTriples.RoundTrip.fst hit,
+STILL present after the 2026-08-10 change intended to clear it;
+assert_norm witness batteries hit the same wall. What proof cannot
+reach, the pin covers: `turtle_pretty_serialize_roundtrip.sh` (4 pass,
+0 fail of 4) re-reads `--dump-turtle` output over the 10-literal
+fixture with an anti-vacuity arm. Zero assume vals. Tier from a fresh
+classifier run WITH --json. Gates: RDF 1030 pass, 0 fail, 1 unsupported
+(of 1031); escape pin 5 pass, 0 fail; turtle_pretty_regressions 17
+pass, 0 fail (of 17); unit suite at baseline.
+
+**#448 wave 1, module 4 (last of wave 1): RDF.Canonical lifted
+merely-tot -> internal-refinement (2026-08-16, branch
+`assure-rdf-canonical`)**: new declarative relation `is_issuer_label`
+(existential: label == prefix ^ nat_to_string n) + `issuer_labels_wf`
++ five lemmas (`lemma_empty_issuer_wf`, `lemma_empty_temp_issuer_wf`,
+`lemma_issue_fresh_preserves_wf`, `lemma_issue_identifier_preserves_wf`,
+plus the two internal-refinement theorems the classifier counted:
+`lemma_issue_fresh_label_shape`, `lemma_issue_identifier_fresh_label_shape`)
+— proves every blank-node label `issue_identifier`/`issue_fresh` ever
+mint, from `empty_issuer`/`empty_temp_issuer` onward, matches the
+"_:c14nN" / "_:bN" shape the module banner already claimed in prose.
+Refines the module banner's comment-claimed label format into a
+checked type (#445 template), needing ZERO string-content computation
+(existential witness = the issuer's own counter) — sidesteps the
+SMT-unfolding wall, confirmed directly against THIS module's own
+`nat_to_string`/`digit_char` (Error 19 on both, even though neither
+touches FastString's opaque primitives — the wall found by module 3
+is broader than "FastString is opaque"; `assert_norm` succeeds only on
+GROUND terms, so it cannot discharge the universally-quantified
+injectivity goal a full no-duplicate-labels proof would need).
+DETERMINISM/SERIALIZER QUESTIONS ANSWERED: full bnode-relabelling
+determinism (candidate 1, the property VC signing depends on) and full
+re-parse well-formedness (candidate 2) were investigated and rejected
+as one-commit F* targets — determinism moved to
+`cli_rdfc10_relabel_determinism.sh` (5 pass, 0 fail of 5: same-input
+twice byte-identical, bnode-relabelled isomorphic variant
+byte-identical to the original, anti-vacuity arm requiring a
+non-isomorphic variant to differ). RDF.Canonical does NOT delegate to
+`RDF.NQuads.Serialize`'s canonical functions (`nq_canon_term` etc.) —
+it carries its OWN `canon_term`/`escape_lit` (the #443 two-
+implementations shape); investigated the divergence and found it real
+but each side targets a DIFFERENT W3C spec (RDFC-1.0 dataset
+canonicalization vs. the separate "RDF 1.2 canonical N-Quads" lexical
+form) — `nq_canon_term` lowercases language tags and escapes the
+U+FFFE/U+FFFF BMP noncharacters, `RDF.Canonical`'s does neither, yet
+the 86/86 rdfc10 suite passes either way, so this is duplicated logic
+that could drift, not a demonstrated bug. ASSUME-VAL AUDIT: also
+refined `hash_sha256`/`hash_sha384`'s comment-claimed digest lengths
+(64/96 hex chars) into a checked return-type refinement (erases at
+extraction). Neither hash is HACL*-bound — both wire to
+`Fstar_pure_hashes`, a hand-rolled pure-OCaml SHA-2 (issue #63,
+already tracked non-silently in `skills/crypto-policy/SKILL.md`
+as "HACL* is NOT yet in use", not newly introduced here). Tier from a
+fresh classifier run WITH --json:
+`"assurance_tier": "internal-refinement"`, `"merely_tot": false`,
+`assume_val_active: 2` (hash_sha256, hash_sha384), unchanged. Gates:
+rdfc10 86 pass, 0 fail (of 86); RDF 1030 pass, 0 fail, 1 unsupported
+(of 1031); escape pin 5 pass, 0 fail (of 5); relabel-determinism pin 5
+pass, 0 fail (of 5); unit suite 20 pass, 28 fail (of 48) = baseline
+exactly, no deltas. Wave 1 (#448) is now complete: Parquet.Footer
+(module 1), HDT.Container (module 2), RDF.Turtle.Serialize (module
+3), RDF.Canonical (module 4) all lifted merely-tot -> internal-
+refinement.

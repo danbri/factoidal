@@ -170,6 +170,24 @@ else
   FAIL=$((FAIL + 1)); echo "  FAIL  truncated file did not fail loudly (rc=$RC)"
 fi
 
+echo "--- corrupted global cookie must fail loudly (#448 assurance pin) ---"
+# Flip one byte of the leading '$HDT' cookie (offset 0, 0x24 -> 0x25) and
+# require rejection -- the F* proof side is
+# lemma_bad_global_cookie_rejects_container in HDT.Container.fst
+# (corollary of lemma_parse_control_info_rejects_bad_cookie); this is
+# its end-to-end anti-vacuity pin over a real vendored fixture's bytes,
+# per rule #10/#448's "corrupt one byte, require rejection" template.
+COOKIE="$(mktemp --suffix=.hdt)"
+cp "$FIXTURES/rdf-mt-test002.hdt" "$COOKIE"
+printf '\x25' | dd of="$COOKIE" bs=1 seek=0 count=1 conv=notrunc status=none
+RC=0; timeout 120 "$PROBE" "$COOKIE" > "$TMPLOG" 2>&1 || RC=$?
+rm -f "$COOKIE"
+if [[ $RC -eq 1 ]] && grep -q "PARSE FAILED" "$TMPLOG"; then
+  PASS=$((PASS + 1)); echo "  ok    corrupted cookie -> loud parse failure (rc=1)"
+else
+  FAIL=$((FAIL + 1)); echo "  FAIL  corrupted cookie did not fail loudly (rc=$RC)"
+fi
+
 echo "--- triples-section truncation must fail loudly (stage 3) ---"
 # Cuts inside ArrayY's log-array payload (byte 8600, between the
 # section's data_start=8515 and data_end=8725) while leaving the

@@ -39,6 +39,7 @@ let ts_abbreviate_iri (table : prefix_table) (iri : Prims.string) :
          else Prims.strcat "<" (Prims.strcat iri ">"))
       else Prims.strcat "<" (Prims.strcat iri ">")
   | FStar_Pervasives_Native.None -> Prims.strcat "<" (Prims.strcat iri ">")
+type ('table, 'iri) compacts_to_pname_safe = Obj.t
 let rec ts_term_to_turtle (table : prefix_table) (t : RDF_Term.rdf_term) :
   Prims.string=
   match t with

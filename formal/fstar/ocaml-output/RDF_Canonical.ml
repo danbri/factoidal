@@ -608,6 +608,8 @@ let issue_fresh (st : issuer_state) (b : RDF_Term.bnode_id) : issuer_state=
     is_counter = (st.is_counter + Prims.int_one);
     is_issued = ((b, label) :: (st.is_issued))
   }
+type ('prefix, 'lbl) is_issuer_label = unit
+type 'st issuer_labels_wf = unit
 type bn_hfdq_pair = (RDF_Term.bnode_id * Prims.string)
 let compute_hfdq_from_quads (alg : hash_algorithm)
   (target : RDF_Term.bnode_id) (qs : qquad Prims.list) : Prims.string=

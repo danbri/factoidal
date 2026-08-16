@@ -38,9 +38,41 @@ open Parser.FastString
 
 (* ------------------------------------------------------------------ *)
 (* Hash primitives — assumed external; wired to Fstar_pure_hashes.sha256
-   / Fstar_pure_hashes.sha384 by ocaml-patches.sh (issue #63 patch). *)
-assume val hash_sha256 : string -> string
-assume val hash_sha384 : string -> string
+   / Fstar_pure_hashes.sha384 by ocaml-patches.sh (issue #63 patch).
+
+   ASSURANCE TRIAGE (#448 wave 1, module 4) — the return type below
+   refines the "SHA-256" / "SHA-384" comment-claim (hex digest length)
+   into a checked type per the #445 template: every caller of
+   `apply_hash` now gets a TYPE-LEVEL guarantee that the result is
+   exactly 64 (SHA-256) or 96 (SHA-384) hex characters — the length a
+   lowercase-hex digest of those algorithms always has — instead of a
+   bare `string` a caller could accidentally treat as arbitrary-length.
+   This is a refinement on an ASSUMED signature, not a proof: F* does
+   not (cannot) check it against the OCaml realisation, so it is a
+   documented CONTRACT the realisation must honour, same trust
+   boundary as before, just typed instead of prose-only. It does not
+   change the extracted OCaml type (refinements erase at extraction —
+   `r:string{...}` extracts as plain `Prims.string`), so
+   `63_regex_hash_uuid_stubs.sh`'s literal-text patch match is
+   unaffected (confirmed: extract + patch re-run clean, see #448
+   module-4 landing notes).
+
+   HACL* BINDING CHECK (task item 4): as of this landing, NEITHER hash
+   is bound to HACL*. `ocaml-patches.sh` wires both to
+   `Fstar_pure_hashes.sha256` / `.sha384` — a HAND-ROLLED pure-OCaml
+   SHA-2 implementation (`formal/fstar/ocaml-output/fstar_pure_hashes.ml`,
+   written for wasm portability after a C-backed digestif crashed under
+   wasm_of_ocaml). `skills/crypto-policy/SKILL.md` already documents
+   this as the tracked, non-silent state of issue #63 ("HACL* is NOT
+   yet in use") — not a violation invented here, but re-confirmed: this
+   assume val realises a crypto primitive OUTSIDE the "vendored crypto
+   primitive" form rule #11(b) requires, and the crypto-policy skill's
+   own rule ("never implement a primitive... ourselves") names exactly
+   this gap. Fixing it is issue #63's job (HACL* adoption), not this
+   module's — out of scope for an assurance-triage landing, flagged
+   here per the task brief's explicit ask to report the binding. *)
+assume val hash_sha256 : string -> (r:string{FStar.String.length r == 64})
+assume val hash_sha384 : string -> (r:string{FStar.String.length r == 96})
 
 // RDFC-1.0 §4.4 note 2 / test manifests: `rdfc:hashAlgorithm` selects
 // SHA-256 (the algorithm's default) or SHA-384 for a given test. Every
@@ -844,6 +876,137 @@ let issue_fresh (st : issuer_state) (b : bnode_id) : issuer_state =
   { is_prefix = st.is_prefix;
     is_counter = st.is_counter + 1;
     is_issued = (b, label) :: st.is_issued }
+
+(* ------------------------------------------------------------------ *)
+(* Section 5b. Issuer label well-formedness (assurance triage #448
+   wave 1, module 4 — the #445 template applied here).
+
+   PROPERTY STATED (task item 1): output well-formedness, scoped to
+   the piece of it that does not need string-CONTENT computation —
+   see the "WHY NOT determinism/re-parse" note below for the
+   investigation into the brief's preferred candidates.
+
+   The module banner (top of file) and `empty_issuer` / `empty_temp_
+   issuer`'s comments CLAIM every blank-node label this algorithm
+   emits has a specific shape: "_:c14n0", "_:c14n1", … for the real
+   (canonical) issuer, "b0", "b1", … for a candidate's temporary
+   issuer during HNDQ. That claim was prose only — nothing in the
+   types said a label could not, by some future edit, come out
+   malformed (wrong prefix, non-decimal suffix, garbage). This section
+   makes it a checked invariant: EVERY issuer_state reachable from
+   `empty_issuer` / `empty_temp_issuer` by any sequence of
+   `issue_identifier` / `issue_fresh` calls satisfies
+   `issuer_labels_wf` — every `(bnode, label)` pair it holds has
+   `label == prefix ^ <decimal digits>`, which is exactly the "_:c14nN"
+   / "_:bN" shape (the "_:" itself is prepended only at RENDER time —
+   `canon_subject`/`canon_term`/`relabel_*` — this invariant covers the
+   part `issue_identifier`/`issue_fresh` actually control). Consumers
+   that rely on this shape (relabel_dataset, canon_subject, the CLI, and
+   ultimately the VC Data-Integrity signer that SIGNS the canonical
+   form) now have a machine-checked guarantee that this module's own
+   issuance logic cannot hand them a differently-shaped label, for the
+   life of any issuer used anywhere in the algorithm (the real
+   canonical issuer AND every cloned HNDQ temporary issuer alike).
+
+   WHY NOT determinism (candidate 1, "the property signatures depend
+   on") OR re-parse well-formedness (candidate 2, full form): both
+   were tried and rejected this session, not assumed out of reach from
+   precedent alone.
+
+     - Determinism under bnode-label permutation (`canonicalize
+       (permute_bnode_labels g) == canonicalize g`) needs reasoning
+       through the whole HFDQ + HNDQ mutual recursion under an
+       arbitrary relabelling — out of one-commit reach on its own
+       merits, independent of the wall below. It is the property VC
+       signing actually depends on, so it is NOT dropped — it moves to
+       the CLI pin (task item 3) as tested, not proved, evidence.
+     - A term-level round-trip / `assert_norm` witness battery over
+       concrete literals (the brief's fallback for well-formedness) —
+       tried directly against this module's OWN helpers, not just
+       inherited from RDF.Turtle.Serialize's finding. Confirmed
+       empirically:
+         `let probe () : Lemma (nat_to_string 5 == "5") = ()`        -- Error 19
+         `let probe () : Lemma (digit_char 5 ^ "" == "5") = ()`      -- Error 19
+       even though NEITHER `nat_to_string` nor `digit_char` touches
+       Parser.FastString's opaque primitives (unlike the escape
+       functions RDF.Turtle.Serialize's finding was about) — so the
+       wall here is broader than "FastString is opaque": F*'s default
+       SMT encoding does not auto-unfold even a trivial non-recursive
+       if-chain function applied to a CONCRETE literal without
+       `assert_norm` (which DOES succeed on ground terms — confirmed
+       — but cannot discharge a UNIVERSALLY QUANTIFIED goal like
+       injectivity, since `assert_norm` needs a ground term to
+       reduce). A full re-parse-to-isomorphic-graph proof would need
+       exactly this kind of concrete-string reasoning through
+       `canon_term`/`escape_lit` and then through `Parser.NQuads`, so
+       it inherits the same wall. What follows instead needs ZERO
+       string-content computation: `is_issuer_label` is an EXISTENTIAL
+       ("some n exists such that..."), discharged by supplying the
+       counter itself as the witness — the SMT context never has to
+       know what `nat_to_string` computes, only that the label IS
+       `prefix ^ (nat_to_string of something)`, which is true by
+       `issue_identifier`/`issue_fresh`'s own definition. *)
+
+// The label-shape relation the module banner claims for every issued
+// canonical/temporary label: "<prefix><decimal digits>", the "_:"
+// itself added only at render time.
+val is_issuer_label (prefix : string) (lbl : string) : Type0
+let is_issuer_label prefix lbl =
+  exists (n:nat). lbl == prefix ^ nat_to_string n
+
+// Every (bnode, label) pair an issuer_state currently holds matches
+// the shape above under that state's own prefix.
+val issuer_labels_wf (st : issuer_state) : Type0
+let issuer_labels_wf st =
+  forall (b:bnode_id) (lbl:string).
+    List.Tot.mem (b, lbl) st.is_issued ==> is_issuer_label st.is_prefix lbl
+
+// Base case: both starting issuers hold no entries, so the invariant
+// is vacuously true.
+val lemma_empty_issuer_wf : unit -> Lemma (issuer_labels_wf empty_issuer)
+let lemma_empty_issuer_wf () = ()
+
+val lemma_empty_temp_issuer_wf : unit -> Lemma (issuer_labels_wf empty_temp_issuer)
+let lemma_empty_temp_issuer_wf () = ()
+
+// Inductive step 1: issue_fresh always CONSES a shape-correct pair
+// (witness: its own counter), so it preserves the invariant.
+val lemma_issue_fresh_preserves_wf (st : issuer_state) (b : bnode_id)
+  : Lemma (requires issuer_labels_wf st)
+          (ensures issuer_labels_wf (issue_fresh st b))
+let lemma_issue_fresh_preserves_wf st b = ()
+
+// The label issue_fresh just minted, directly (no wf precondition
+// needed — it is shape-correct by construction regardless of `st`).
+val lemma_issue_fresh_label_shape (st : issuer_state) (b : bnode_id)
+  : Lemma (ensures
+      (match (issue_fresh st b).is_issued with
+       | (b', lbl) :: _ -> b' == b /\ is_issuer_label st.is_prefix lbl
+       | [] -> False))
+let lemma_issue_fresh_label_shape st b = ()
+
+// Inductive step 2: issue_identifier's already-issued branch returns
+// `st` unchanged (trivially preserves wf); its fresh branch APPENDS a
+// shape-correct pair. Unlike issue_fresh's cons, `List.Tot.mem` over
+// an append needs the append/mem bridging fact from the stdlib
+// (`FStar.List.Tot.Properties.append_mem_forall`) to relate membership
+// in `is_issued @ [(b,label)]` back to membership in the two pieces —
+// SMT does not derive that on its own for a quantified goal.
+val lemma_issue_identifier_preserves_wf (st : issuer_state) (b : bnode_id)
+  : Lemma (requires issuer_labels_wf st)
+          (ensures (let (st', _) = issue_identifier st b in issuer_labels_wf st'))
+let lemma_issue_identifier_preserves_wf st b =
+  match lookup_issued b st.is_issued with
+  | Some _ -> ()
+  | None ->
+    let label = st.is_prefix ^ nat_to_string st.is_counter in
+    FStar.List.Tot.Properties.append_mem_forall st.is_issued [(b, label)]
+
+// The label issue_identifier's fresh branch mints, directly.
+val lemma_issue_identifier_fresh_label_shape (st : issuer_state) (b : bnode_id)
+  : Lemma (requires None? (lookup_issued b st.is_issued))
+          (ensures (let (_, lbl) = issue_identifier st b in is_issuer_label st.is_prefix lbl))
+let lemma_issue_identifier_fresh_label_shape st b = ()
 
 (* ------------------------------------------------------------------ *)
 (* Section 6. Phase-1 assignment driver.

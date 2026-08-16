@@ -101,6 +101,59 @@ let ts_abbreviate_iri (table : prefix_table) (iri : string) : Tot string =
     else "<" ^ iri ^ ">"
   | None -> "<" ^ iri ^ ">"
 
+// Refines the banner comment above (lines 65-69) — "checks the
+// remainder is PN_LOCAL-safe ... falling back to the full <iri> form
+// otherwise" — into a checked type instead of leaving it as prose
+// (the #445 template: a comment-claimed invariant becomes a `Type0`
+// a Lemma is checked against). `compacts_to_pname_safe` is a
+// DECLARATIVE RELATION (Type0-returning, not extracted): it names the
+// exact PNAME_LN shape `ts_abbreviate_iri` is allowed to produce —
+// the same namespace/abbr pair `ts_find_prefix` found, spliced with a
+// `local` remainder that `ts_local_ok` accepts. The relation lives
+// beside the code it constrains (an internal invariant of THIS
+// module's own abbreviator, not an independent formalisation of
+// Turtle's PNAME_LN grammar living in a separate pure-formalisation
+// module) — that is `tools/assurance_inventory.py`'s internal-
+// refinement class, one step short of a W3C-refinement theorem.
+val compacts_to_pname_safe (table : prefix_table) (iri : string) : Type0
+let compacts_to_pname_safe table iri =
+  match ts_find_prefix table iri with
+  | None -> False
+  | Some (ns, abbr) ->
+    let nsl = fs_byte_length ns in
+    let il = fs_byte_length iri in
+    nsl < il /\
+    (let local = fs_byte_sub iri nsl (il - nsl) in
+     ts_local_ok local == true /\
+     ts_abbreviate_iri table iri == abbr ^ local)
+
+// The actual theorem: for EVERY table and iri, `ts_abbreviate_iri`
+// either fell back to the unabbreviated "<iri>" form, or the compact
+// form it produced satisfies `compacts_to_pname_safe` — i.e. every
+// abbreviation this module ever emits is one `Parser.Turtle.
+// validate_pn_local` (via `ts_local_ok`) already certified as
+// PN_LOCAL-safe. Proved by following `ts_abbreviate_iri`'s own
+// case split — no FastString VALUE computation needed (unlike a
+// concrete round-trip witness, this is a universally-quantified
+// structural fact, so the SMT context never has to reduce
+// `fs_byte_sub`/`fs_byte_length` on a concrete string; see the
+// ROUND-TRIP SCOPE note before `render_triples` below for why the
+// concrete-witness route is blocked).
+val lemma_ts_abbreviate_iri_pname_safe (table : prefix_table) (iri : string)
+  : Lemma (ensures ts_abbreviate_iri table iri == "<" ^ iri ^ ">" \/
+                    compacts_to_pname_safe table iri)
+let lemma_ts_abbreviate_iri_pname_safe table iri =
+  match ts_find_prefix table iri with
+  | None -> ()
+  | Some (ns, abbr) ->
+    let nsl = fs_byte_length ns in
+    let il = fs_byte_length iri in
+    if nsl < il then
+      let local = fs_byte_sub iri nsl (il - nsl) in
+      if ts_local_ok local then ()
+      else ()
+    else ()
+
 // ---------------------------------------------------------------
 // 2. Term / subject / predicate rendering.
 //
@@ -147,6 +200,53 @@ let ts_subject_to_turtle (table : prefix_table) (s : subject) : Tot string =
 let ts_predicate_to_turtle (table : prefix_table) (p : wf_iri) : Tot string =
   if p = rdf_type then "a"
   else ts_abbreviate_iri table p
+
+// ---------------------------------------------------------------
+// ROUND-TRIP SCOPE (issue #448 assurance triage, module 3). The
+// natural correctness anchor for a wire serializer this module's
+// banner names is `parse_term (serialize_term t) == Some t`. That
+// full term-level theorem, and even a concrete `assert_norm` WITNESS
+// BATTERY over specific literals (the brief's own fallback), are
+// BOTH currently out of reach for this module — verified empirically
+// this session, not merely inherited from precedent:
+//
+//   `let probe () : Lemma (nq_escape_literal "a" == "a") = ()`
+//   -- Error 19, "Could not prove post-condition", even for the
+//      TRIVIAL escape-free single-ASCII-char case.
+//
+// Root cause (matches RDF.NTriples.RoundTrip.fst's FINDING 1/2,
+// confirmed still true post the 2026-08-10 FastString re-founding —
+// Parser.FastString.fsti's six hot primitives are Spec-BACKED now
+// but remain OPAQUE `val`s to every consumer; only an explicit
+// `fs_*_eq` bridging-lemma invocation (not the normalizer, and not
+// `assert_norm`, which never touches SMT) gives a caller computational
+// power over them): `ts_term_to_turtle`'s literal branch calls
+// `RDF.NQuads.Serialize.nq_escape_literal` (see banner above, "Reuse,
+// not reinvention"), which walks its input via `fs_byte_at`/
+// `fs_byte_length` unconditionally — so the SERIALIZER side already
+// fails to reduce on a concrete literal, before `Parser.Turtle.
+// parse_turtle_literal` (built on the same primitives) is even
+// reached. A full SMT-driven proof through the `fs_*_eq` bridging
+// lemmas is possible in principle (that is exactly what
+// `SPARQL11.Parser.TokenRoundTrip.fst` does for the SPARQL tokenizer)
+// but that module's own commissioning note records "4+ hours burned,
+// only the delimiter-token fragment landed" for a narrower, non-
+// escape-processing grammar — properly out of this module's scope
+// per the task brief's own escape valve ("if term-level proof is out
+// of reach in the time... report as a finding").
+//
+// What IS proved instead, honestly scoped to what does NOT need
+// concrete FastString reduction: `lemma_ts_abbreviate_iri_pname_safe`
+// above is a UNIVERSALLY QUANTIFIED structural fact about
+// `ts_abbreviate_iri` — it never needs the SMT context to know what
+// `fs_byte_sub`/`fs_byte_length` COMPUTE on a specific string, only
+// that `ts_abbreviate_iri`'s own case split matches its own
+// postcondition, which is closed by unfolding definitions, not by
+// primitive-VALUE reasoning. Wire correctness of the literal path is
+// instead pinned at the CLI level (re-parse through the compiled
+// binary, `tests/local/turtle_pretty_serialize_roundtrip.sh`) — a
+// real end-to-end check, just not a machine-checked F* proof.
+// ---------------------------------------------------------------
 
 // ---------------------------------------------------------------
 // 3. Subject-grouped body rendering.
