@@ -431,15 +431,11 @@ let cottas_named_graphs (ds : cottas_dataset_store) :
   let cache = Ballyhoo_cottas_runtime.cache_for_store ds in
   Ballyhoo_cottas_runtime.named_graphs_of_cache ds cache
 
-let cottas_lookup_named_graph (ds : cottas_dataset_store)
-  (name : RDF_Graph_Executable.iri) :
-  cottas_named_graph_store FStar_Pervasives_Native.option=
-  let rec loop = function
-    | [] -> FStar_Pervasives_Native.None
-    | ng :: rest ->
-      if ng.cngs_name = name then FStar_Pervasives_Native.Some ng else loop rest
-  in
-  loop (cottas_named_graphs ds)
+(* cottas_lookup_named_graph (#448 wave 2, module 1): lifted to a real F*
+   `let` in Parser.BallyhooCOTTAS.fst -- it was a pure linear scan over
+   cottas_named_graphs with no I/O of its own. The F*-extracted body now
+   provides it directly at its natural position further down this file;
+   defining it again here would just be a dead shadow. *)
 
 let cottas_encode_subject (ds : cottas_dataset_store)
   (s : RDF_Graph_Executable.subject) :
@@ -489,114 +485,107 @@ let cottas_search (ds : cottas_dataset_store) (bound : cottas_bound_qp) :
   cottas_qp_row Prims.list=
   Ballyhoo_cottas_runtime.search_rows ds bound
 
-let cottas_estimate (ds : cottas_dataset_store) (bound : cottas_bound_qp)
-  : Prims.nat=
-  FStar_List_Tot_Base.length (cottas_search ds bound)
+(* cottas_estimate (#448 wave 2, module 1): lifted to a real F* `let` in
+   Parser.BallyhooCOTTAS.fst as `length (cottas_search ds bound)` -- that
+   was exactly this glue's body, so the assumed signature was hiding an
+   exact-count invariant it never stated. The F*-extracted body now
+   provides it directly at its natural position further down this file;
+   defining it again here would just be a dead shadow.
 
-let cottas_predicate_present_in_graph (ng : cottas_named_graph_store)
-  (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
-  match cottas_encode_predicate ng.cngs_dataset pred with
-  | FStar_Pervasives_Native.None -> false
-  | FStar_Pervasives_Native.Some pred_ref ->
-    cottas_estimate ng.cngs_dataset {
-      cbqp_s = FStar_Pervasives_Native.None;
-      cbqp_p = FStar_Pervasives_Native.Some pred_ref;
-      cbqp_o = FStar_Pervasives_Native.None;
-      cbqp_g = CGB_Named ng.cngs_ref;
-    } > Prims.int_zero
-
-let cottas_graph_candidates_for_predicate (ds : cottas_dataset_store)
-  (pred : RDF_Graph_Executable.wf_iri) :
-  cottas_named_graph_store Prims.list=
-  FStar_List_Tot_Base.filter
-    (fun ng -> cottas_predicate_present_in_graph ng pred)
-    (cottas_named_graphs ds)
+   cottas_predicate_present_in_graph and cottas_graph_candidates_for_predicate
+   both (transitively) depend on cottas_estimate, and are now themselves
+   lifted to real F* `let`s too (#448 wave 2, module 1) -- none of the four
+   are stubs anymore, so none of them are defined in this block. All four
+   are provided directly by F* extraction at their natural post-extraction
+   position, in the order the .fst declares them (cottas_estimate first,
+   since the other two call it -- an unbound-value forward reference within
+   the same compilation unit otherwise). *)
 '''
 
-replacements = {
-    marker: runtime,
-    """let cottas_dataset_summary (uu___ : cottas_dataset_store) :
-  cottas_artifact_summary FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_dataset_summary"
-""": "",
-    """let cottas_named_graphs (uu___ : cottas_dataset_store) :
-  cottas_named_graph_store Prims.list=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_named_graphs"
-""": "",
-    """let cottas_lookup_named_graph (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Graph_Executable.iri) :
-  cottas_named_graph_store FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_lookup_named_graph"
-""": "",
-    """let cottas_encode_subject (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Graph_Executable.subject) :
-  cottas_term_ref FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_subject"
-""": "",
-    """let cottas_encode_predicate (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Graph_Executable.wf_iri) :
-  cottas_term_ref FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_predicate"
-""": "",
-    """let cottas_encode_object (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Graph_Executable.rdf_term) :
-  cottas_term_ref FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_object"
-""": "",
-    """let cottas_encode_graph_name (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Graph_Executable.iri) :
-  cottas_graph_ref FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_graph_name"
-""": "",
-    """let cottas_decode_subject (uu___ : cottas_dataset_store)
-  (uu___1 : cottas_term_ref) : RDF_Graph_Executable.subject=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_subject"
-""": "",
-    """let cottas_decode_predicate (uu___ : cottas_dataset_store)
-  (uu___1 : cottas_term_ref) : RDF_Graph_Executable.wf_iri=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_predicate"
-""": "",
-    """let cottas_decode_object (uu___ : cottas_dataset_store)
-  (uu___1 : cottas_term_ref) : RDF_Graph_Executable.rdf_term=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_object"
-""": "",
-    """let cottas_decode_graph_name (uu___ : cottas_dataset_store)
-  (uu___1 : cottas_graph_ref) : RDF_Graph_Executable.iri=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_graph_name"
-""": "",
-    """let cottas_search (uu___ : cottas_dataset_store) (uu___1 : cottas_bound_qp) :
-  cottas_qp_row Prims.list=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_search"
-""": "",
-    """let cottas_estimate (uu___ : cottas_dataset_store) (uu___1 : cottas_bound_qp)
-  : Prims.nat=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_estimate"
-""": "",
-    """let cottas_predicate_present_in_graph (uu___ : cottas_named_graph_store)
-  (uu___1 : RDF_Graph_Executable.wf_iri) : Prims.bool=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_predicate_present_in_graph"
-""": "",
-    """let cottas_graph_candidates_for_predicate (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Graph_Executable.wf_iri) :
-  cottas_named_graph_store Prims.list=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_graph_candidates_for_predicate"
-""": "",
-}
+if marker not in content:
+    raise SystemExit("cottas_open_dataset_store stub not found")
+content = content.replace(marker, runtime, 1)
 
-for old, new in replacements.items():
-    if old not in content:
-        if old == marker:
-            raise SystemExit("cottas_open_dataset_store stub not found")
-        continue
-    content = content.replace(old, new, 1)
+# The remaining assume vals' raw F*-extracted "Not yet implemented" stubs
+# get deleted below; their real bodies already live in `runtime` above.
+#
+# #448 wave 2 module 1: this used to match each stub via an exact literal
+# string keyed on its parameter types (e.g. "RDF_Graph_Executable.subject").
+# A fresh from-scratch extraction showed F* now printing those same types
+# qualified as "RDF_Term.subject" instead -- `subject`/`wf_iri`/`rdf_term`/
+# `iri` are declared in RDF.Term and reach this module via `include` chains
+# (RDF.Term -> RDF.Graph.Executable), and which qualifier F* prints for an
+# `include`-inherited type in a plain assume-val signature is not something
+# this glue script should have to track by hand. The literal-string keys
+# silently stopped matching, so the stale stubs survived deletion and
+# SHADOWED the real bodies above for any freshly re-extracted build -- an
+# always-"Not yet implemented" regression that a normal incremental build
+# never exercised because this module's .ml is rarely regenerated from
+# scratch. Matching on the stub's failwith message instead (unique per
+# function name, independent of argument-type qualifiers) survives that
+# kind of drift.
+#
+# Every name below also has a REAL definition already sitting earlier in
+# `content` (inserted by the `runtime` substitution above), with the same
+# "let <name>" opening text -- so the match must be anchored to a
+# *top-level* `let <name> ... = ...` block (bounded by the next top-level
+# `let`, i.e. one starting at column 0) and then filtered to the one block
+# among same-named occurrences that actually contains the failwith text.
+# Matching "let name .*? failwith ...name" directly (unanchored on the
+# following `let`) is wrong: for a name with both a real and a stub
+# definition, the non-greedy `.*?` would swallow everything from the real
+# definition's opening line through to the stub's failwith line, deleting
+# every function in between.
+import re
+
+def stub_blocks(name):
+    pat = re.compile(r"^let " + re.escape(name) + r"\b.*?(?=^let |\Z)",
+                      re.DOTALL | re.MULTILINE)
+    return list(pat.finditer(content))
+
+def find_stub_block(name):
+    marker_text = f'Not yet implemented: Parser.BallyhooCOTTAS.{name}"'
+    hits = [b for b in stub_blocks(name) if marker_text in b.group(0)]
+    if len(hits) != 1:
+        raise SystemExit(
+            f"cottas_runtime.sh: expected exactly 1 raw \"Not yet "
+            f"implemented\" stub block for {name} in {path}, found "
+            f"{len(hits)}. Either it was already lifted to a real F* "
+            f"`let` in Parser.BallyhooCOTTAS.fst (remove it from this "
+            f"list) or the stub's own text changed again -- do NOT let "
+            f"this fall through silently, a missed delete leaves the raw "
+            f"stub's failwith SHADOWING the real implementation above.")
+    return hits[0]
+
+def delete_stub(name):
+    global content
+    b = find_stub_block(name)
+    content = content[:b.start()] + content[b.end():]
+
+for name in [
+    "cottas_dataset_summary",
+    "cottas_named_graphs",
+    "cottas_encode_subject",
+    "cottas_encode_predicate",
+    "cottas_encode_object",
+    "cottas_encode_graph_name",
+    "cottas_decode_subject",
+    "cottas_decode_predicate",
+    "cottas_decode_object",
+    "cottas_decode_graph_name",
+    "cottas_search",
+]:
+    delete_stub(name)
+
+# cottas_predicate_present_in_graph and cottas_graph_candidates_for_predicate
+# (#448 wave 2, module 1): both lifted to real F* `let`s in
+# Parser.BallyhooCOTTAS.fst -- pure derivations of cottas_encode_predicate /
+# cottas_estimate / cottas_named_graphs with no I/O of their own. Neither is
+# a stub anymore, so there is nothing left for this script to delete or
+# replace; the F*-extracted body provides both directly at their natural
+# post-extraction position (see the comment on `runtime` above for why they
+# were moved out of that block in the first place -- unchanged, they still
+# need cottas_estimate's real definition to appear textually before them).
 
 path.write_text(content)
 PYEOF

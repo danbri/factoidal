@@ -309,6 +309,23 @@ let dict_encode_token (path : string) (h : dict_header) (query : string)
   else bsearch_loop path h query 0 (h.dh_num_tokens - 1) (h.dh_num_tokens + 1)
 
 // ------------------------------------------------------------------
+// Lift (#448 wave 2, module 4): the presence bit-index stays within
+// the declared (num_rgs * num_tokens) capacity whenever rg and tok
+// are within their declared bounds. Pure nat arithmetic — no
+// dependency on the assume-val disk reads. This is the invariant the
+// .presence writer relies on when it sizes its bitmap buffer to
+// `(num_rgs * num_tokens + 7) / 8` bytes (see
+// experimental_ocaml_glue/cottas_ondisk_zzzzz_ondisk_index.sh's
+// write_presence_file): every bit_index this reader can compute for
+// an in-bounds (rg, tok) pair fits inside that declared extent.
+// ------------------------------------------------------------------
+let presence_bit_index_bounded (num_rgs num_tokens rg tok : nat)
+  : Lemma
+    (requires rg < num_rgs /\ tok < num_tokens)
+    (ensures rg * num_tokens + tok < num_rgs * num_tokens)
+  = ()
+
+// ------------------------------------------------------------------
 // presence_test_bit: (rg, tok) -> bool.
 // One byte read + one bit test. The bitmap starts at offset 16
 // (presence_header_size).
@@ -321,6 +338,7 @@ let presence_test_bit
   else
     let nt : nat = h.ph_num_tokens in
     let bit_index : nat = rg * nt + tok in
+    presence_bit_index_bounded h.ph_num_rgs nt rg tok;
     let eight : nat = 8 in
     let byte_index : nat = bit_index / eight in
     let bit_in_byte : nat = bit_index % eight in

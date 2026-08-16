@@ -2023,3 +2023,288 @@ exactly, no deltas. Wave 1 (#448) is now complete: Parquet.Footer
 (module 1), HDT.Container (module 2), RDF.Turtle.Serialize (module
 3), RDF.Canonical (module 4) all lifted merely-tot -> internal-
 refinement.
+
+**#448 wave 2, module 1: Parser.BallyhooCOTTAS audited 17-of-17;
+4 assume vals LIFTED to F* (2026-08-16, branch
+`assure-ballyhoo-cottas`)**: `cottas_lookup_named_graph`,
+`cottas_estimate`, `cottas_predicate_present_in_graph`,
+`cottas_graph_candidates_for_predicate` are now real F* code — each
+was a pure derivation of other store operations with no I/O of its
+own. `cottas_estimate = length (cottas_search ds bound)` makes an
+invariant F*-visible that previously lived only in glue ("estimate is
+an exact count, never a heuristic"). Module assume-vals 17 -> 13; all
+13 remaining are rule-#11(b) delegation (file I/O + hashtable lookups
+over data resolved at open). Tier stays merely-tot and that verdict is
+HONEST — boundary glue with no theorem to state beyond totality.
+🔴 MAIN FINDING: `cottas_runtime.sh:93-184` hand-parses RDF term
+syntax in OCaml (find_unescaped_quote / unescape_literal /
+parse_literal_token / parse_subject...) — iron rule #4 violation, not
+commit-sized, needs an F*-side `parse_stored_term` + column-decode
+contract change. 🟡 minor: `cottas_search` re-implements the
+3-way graph-bound semantics its .fst doc specifies; `build_summary`
+hardcodes CE_Delta. FIXED IN PASSING (pre-existing): the glue's
+stub-deletion anchors matched type-qualified signatures that fresh
+extraction now prints differently (RDF_Graph_Executable.subject ->
+RDF_Term.subject), so 10 raw stubs survived and would have SHADOWED
+the real implementations on any from-scratch rebuild — re-anchored on
+stable failwith text. FIXTURE REGENERATED: store_capabilities_sample
+.cottas was pre-#445 format and the version gate now (correctly)
+rejects it; rebuilt from its documented source
+(tests/local/data/cottas_sample.nq) with the current writer; smoketest
+opens it (5 quads, 1 row group). Gates: RDF 1030 pass, 0 fail,
+1 unsupported (of 1031); escape pin 5 pass, 0 fail; footer pin 3 pass,
+0 fail; unit suite at baseline. Project assume-val total 133 -> 129.
+
+**#448 wave 2, module 2: Parser.BallyhooHDTQ audited 17-of-17;
+4 assume vals LIFTED to F* (2026-08-16, branch
+`assure-ballyhoo-hdtq`)**: `hdtq_lookup_named_graph`,
+`hdtq_estimate`, `hdtq_predicate_present_in_graph`,
+`hdtq_graph_candidates_for_predicate` are now real F* code — the same
+four names, same derivations, as module 1's COTTAS lift
+(`hdtq_estimate = length (hdtq_search ds bound)`, etc.). Module
+assume-vals 17 -> 13; all 13 remaining are rule-#11(b) delegation
+placeholders. 🔴 MAIN FINDING, different in kind from module 1's:
+this module is DEAD END TO END. `grep -rl "hdtq_"
+experimental_ocaml_glue/*.sh` returns nothing — there is no glue
+script at all (not hand-parsed terms like #454's COTTAS finding;
+simply absent), so every one of the 13 remaining assume vals extracts
+as a raw `failwith "Not yet implemented"` stub, and no other .fst
+file calls any hdtq_* function (only `open Parser.BallyhooHDT` for
+its TYPES, never its functions). Contrast COTTAS: RDF.CottasStore.fst
+and RDF.Store.Loader.fst call into it, so it is live. Per #448's own
+per-module deliverable ("state ONE correctness property the module's
+consumers rely on ... a module where no property can even be stated
+is a finding, not a skip") — this module's finding IS that sentence:
+it has no consumers to state a property about. 🟡 secondary finding:
+`hdtq_close_dataset_store` (assumed, `Tot unit`, unreferenced) has NO
+extracted OCaml symbol at all — F* elides an unused, unrealised,
+unit-returning assume val rather than stubbing it (same elision
+`Parser.BallyhooHDT.fst`'s *defined* `hdt_close_graph_store = ()`
+gets, for the same reason). A future caller would hit a link error,
+not a controlled runtime failwith. Sibling question answered:
+`Parser.BallyhooHDT` carries 0 assume vals as of its 2026-07-06 stage
+4 landing and needs no further wave-2 pass; `BallyhooHDTQ` does not
+call into its already-verified per-graph reader today, which is a
+design opportunity for whoever wires this module up, not an audit
+action. No stub-anchor staleness (recurrence check 2): N/A, there are
+no anchors to go stale. Forced `extract --force-full`; every hdtq_*
+symbol appears exactly once in the fresh .ml. Tier from a fresh
+classifier run WITH --json: `"assurance_tier": "merely-tot"`,
+`"merely_tot": true`, `"assume_val_active": 13`
+(`assume_other_active: 1` for the opaque `hdtq_handle` type) — HONEST,
+boundary glue that doesn't exist yet has no theorem to state. Gates:
+RDF 1030 pass, 0 fail, 1 unsupported (of 1031); hdt-probe 75 pass,
+0 fail (of 75); hdt-stage4-parity 6 pass, 0 fail (of 6); escape pin
+5 pass, 0 fail (of 5); unit suite 20 pass, 28 fail (of 48) = baseline
+exactly, no deltas. Project assume-val total (active, per classifier):
+125.
+
+**#448 wave 2, module 3: RDF.CottasStore.OnDiskRuntime audited
+15-of-15; 0 lifted, 0 fixed — module is DEAD END TO END despite a
+CLEAN realising glue (2026-08-16, branch `assure-ondisk-runtime`)**:
+🔴 MAIN FINDING, contradicts this module's own dispatch brief ("the
+LIVE on-disk query runtime... traversed by every `--data-cottas`
+query"): it is not live. `grep -rn "OnDiskRuntime\." formal/fstar/
+*.fst` outside the module's own file returns nothing — no other .fst
+calls any `ondisk_*_indexed` / `ondisk_*_via_registry` function, and
+the LazyDictRegistry it reads through (`RDF.CottasStore.
+LazyDictRegistry.fst`) has no consumer outside this module either.
+The production `--data-cottas` path (`RDF.Store.Capabilities.Cottas.
+fst`'s `caps_of_cottas`) runs entirely through the token-shaped
+`cottas_ondisk_search_tok` / `_estimate_tok` / `_count_exact_tok`
+family in `RDF.CottasStore.fst` — real `Tot` functions, no assume
+vals — per that module's own 2026-07-06 comment: the id-based
+dictionary path was retired from the hot path in favour of direct
+term<->token serialisation. The design doc this module cites
+(`docs/designissues/2026-05-13-issue-118-cottas-ondisk-runtime-
+retirement-plan.md`) already flagged this as "partially overtaken by
+events" and named three non-production consumers still on the
+id-based path (a tests/unit baseline, `cottas_ondisk_smoketest`,
+`factoidal-explain`) — re-checked here and ALL THREE have since
+migrated to `_tok` calls; none reference `OnDiskRuntime` or
+`ondisk_*_indexed`/`_via_registry` today, so even that residual
+consumer list is stale. The `.github/test-suites/local-cottas-
+corpus.yaml` "direct-trigger" association the classifier surfaces is
+a file-glob CI trigger-path listing (any `RDF.CottasStore*.fst`
+change re-runs the suite), not evidence of exercise — verified by
+reading the glob, not by suite content. 🧭 decision needed from
+owner/maintainer, not inferred here: retire (delete the 15 assume
+vals + `cottas_ondisk_runtime_indexed.sh` + the orphaned LazyDict/
+LazyDictRegistry chain, ~2 commit-sized module 4/5 follow-ups) vs.
+keep as scaffolding for the file's own noted "Future work (Phase
+2.5h) re-introduces ondisk_search_indexed... once a perf-fast variant
+lands again." Hazard 1 (hand-parsed RDF terms): CONFIRMED, same site
+as #454, reached only if this dead path is ever wired up —
+`parse_iri_token` / `parse_literal_token` / `parse_subject_str` /
+`parse_object_str` (`cottas_ondisk_runtime.sh:126-215`) populate the
+Hashtbl tables that `ondisk_*_indexed`'s realising glue
+(`cottas_ondisk_runtime_indexed.sh`) forwards to; per the brief, not
+fixed here — filed as the same finding, second reachability path, not
+a new site. Brief named `cottas_ondisk_runtime.sh` as this module's
+glue; the module's actual realiser is the separate, smaller
+`cottas_ondisk_runtime_indexed.sh` (161 lines) — a clean rule-#11(b)
+dispatch shim with no parsing/byte-layout logic of its own; it calls
+INTO `cottas_ondisk_runtime.sh`'s Hashtbl runtime for 8 of the 15,
+and into `RDF.CottasStore.LazyDict`/`LazyDictRegistry` (separate
+modules' own assume vals) for the other 7 — corrected here, not
+silently substituted. Hazard 2 (stale stub-deletion anchors): NOT
+FOUND — forced `rm` + fresh single-module extraction, 15/15 stubs
+present exactly once pre-patch, all 15 anchors matched (`subn` count
+1, zero WARN) post-patch, zero leftover `failwith "Not yet
+implemented"` text, 15 unique `let ondisk_*` bindings post-patch, and
+the freshly regenerated `.ml` is byte-identical to the committed one
+(`git diff` empty) — this glue's anchors are healthy, unlike module
+1's sibling. Lifts: NONE — the 8 indexed vals are asymmetric
+encode(token->id)/decode(id->token) pairs over two different Hashtbl
+directions built once at open time; there is no pure relationship
+between them expressible without the ML-effected Hashtbl read itself
+(unlike modules 1/2's `estimate = length(search)` shape), and the
+module has no `_estimate`/`_search` pair at all (comment confirms:
+those were retired to F* separately, before this module existed).
+Type refinements: NONE — no comment in the module claims an
+invariant its `option`/`nat` signatures don't already state (`id`
+range and path-registration are already `option`-typed absences, not
+stronger claims). Trace logging (`[qof3-trace]`/`[bet7-trace]`):
+purely additive `Printf.eprintf` diagnostics in both glue files; none
+gate control flow — confirmed by reading every call site. Tier from a
+fresh classifier run WITH --json: `"assurance_tier": "merely-tot"`,
+`"merely_tot": true`, `"assume_val_active": 15`,
+`"foundational_path": false` — HONEST for a module with 15 assume
+vals and 0 theorems, though the tier label alone does not surface the
+dead-code finding above; that required call-graph grep, not the
+classifier. No .fst changed, so no extract/compile/gate rerun was
+needed; targeted `make verify-RDF.CottasStore.OnDiskRuntime` reverified
+clean under z3 4.13.3, no `--lax`. Project assume-val total (active,
+per classifier): 125, unchanged (no lift landed).
+
+**#448 wave 2, module 4: RDF.CottasStore.OnDiskIndex audited 7-of-7;
+1 pure property landed (2026-08-16, branch `assure-ondisk-index`)**:
+LIVE, contrary to modules 2/3's dead-end findings — confirmed by
+`grep -rn "RDF_CottasStore_OnDiskIndex\." formal/fstar/ocaml-output/
+*.ml`: called from `RDF_CottasStore.ml` (dict_decode_token/
+dict_encode_token/read_dict_header/read_presence_header/Vav3_mmap —
+the on-disk query path), `RDF_CottasStore_PresenceBitmap.ml`,
+`RDF_CottasStore_CompoundPresenceBitmap.ml`,
+`RDF_Store_Columnar_OffsetIndex.ml`,
+`RDF_Store_Columnar_SubjectOffsetIndex.ml`. `RDF_CottasStore` is
+called from `bin/factoidal-cli/factoidal_cli.ml`,
+`bin/factoidal-http/factoidal_http.ml`, `bin/npm-entry/entry_jsoo.ml`.
+`factoidal_http.ml`'s `prewarm_cottas_columns` calls
+`Cottas_companion_boot.prewarm_via_companions` at boot (build-or-open
+the 8 companion files); every on-disk triple-pattern lookup
+thereafter goes through this module's dict encode/decode + presence
+bit-test. Both import (lazy companion build on first open) and query
+(every lookup) shipping paths reach it.
+
+| assume val | role | verdict |
+|---|---|---|
+| `mmap_companion_open` | open+mmap a companion file, return byte length | (a) pure I/O |
+| `mmap_companion_close` | release an mmap for a path | (d) DEAD — see finding below |
+| `read_companion_u32_le` | LE u32 read from the mmap | (a) pure I/O |
+| `read_companion_u64_le` | LE u64 read, with a native-int safety guard | (a) pure I/O — type gap, see below |
+| `read_companion_byte` | single-byte read | (a) pure I/O |
+| `read_companion_string` | byte-range slice to a string | (a) pure I/O |
+| `companion_file_size` | stat-based existence+size, no content read | (a) pure I/O |
+
+All 7 realise in one glue script,
+`experimental_ocaml_glue/cottas_ondisk_zzzzz_ondisk_index.sh`
+(`Vav3_mmap`, `Unix.openfile` + `Bigarray.Array1` mmap held per-path
+for the process lifetime) — rule-#11(a) conformant, no byte-layout or
+semantic logic in the glue for these 7. 🔴 FINDING:
+`mmap_companion_close` is declared and called from 4 sibling F*
+modules (`RDF.CottasStore.PresenceBitmap.close_bitmap`,
+`CompoundPresenceBitmap`, `RDF.Store.Columnar.OffsetIndex`,
+`SubjectOffsetIndex` — each a one-line `mmap_companion_close h.*_path`
+wrapper) but NONE of those 4 wrapper functions themselves have a live
+caller, so F* extraction drops the entire chain: `mmap_companion_close`
+has zero binding in the extracted `.ml` (confirmed: `grep close
+RDF_CottasStore_OnDiskIndex.ml` finds nothing but the *reader's* own
+`close_mmap`/`Unix.close` glue helper). Not a shipping gap — the glue's
+own comment says the design is "held for the lifetime of the process,"
+so the never-called close path is intentional, but the assume val is
+genuinely unreachable at runtime, not merely unrealised.
+
+Lift landed: `presence_bit_index_bounded` — pure nat-arithmetic lemma,
+`rg < num_rgs /\ tok < num_tokens ==> rg*num_tokens+tok <
+num_rgs*num_tokens` — wired load-bearing into `presence_test_bit`
+(called, not decorative), tying the reader's computed `bit_index` to
+the capacity the `.presence` writer sizes its buffer against
+(`write_presence_file`'s `bytes = (rg_count*n+7)/8`). Same wave-1
+HDT.Container "bounds respected" shape. Verified: `make
+verify-RDF.CottasStore.OnDiskIndex`, z3 4.13.3, no `--lax`, no
+`--admit_smt_queries`. Extraction confirms the lemma is proof-only —
+`git diff` on the extracted `.ml` and the rest of `formal/fstar/` is
+empty after a full rebuild; `presence_test_bit`'s extracted body is
+byte-identical to before the lift (F* erases `Lemma`-typed calls).
+🟡 type-gap finding, NOT landed this pass: `read_companion_u64_le`'s
+signature is `Tot (option nat)` (unbounded), but the realisation
+silently returns `None` whenever the top byte's high bit is set
+(`b7 >= 0x80`, i.e. the on-disk value is `>= 2^63`) to avoid
+truncating into OCaml's 63-bit native int — a real realisation
+constraint the signature doesn't state. Tightening to
+`Tot (option (n:nat{n < pow2 63}))` would make it F*-visible; deferred
+to keep this pass one-commit-sized (would need a second
+verify→extract→compile→gate cycle after the one already run here).
+
+🔴 SECONDARY FINDING (hazard 2, stale anchor, this module's OWN glue,
+Step C): the same glue script's later "Step C" block patches
+`decode_subject_fast`/`decode_object_fast` in `RDF_CottasStore.ml` to
+add a lazy-parse-on-cache-miss fallback; both anchors WARN "not found"
+on every build (`[vav3-ondisk-index] WARN: decode_subject_fast anchor
+not found`, same for `decode_object_fast`) because a *different*,
+later-running sibling patch (`cottas_ondisk_z_lazy_open.sh`,
+2026-07-19) already restructured both functions by removing the
+`ensure_subjects_loaded`/`ensure_objects_loaded` calls Step C's anchor
+expects — that same sibling patch's own comment documents WHY: the
+id-based `cottas_ondisk_encode_subject`/`decode_subject`/
+`encode_object`/`decode_object` F* functions these two OCaml functions
+served were deleted from `RDF.CottasStore.fst` in the same 2026-07-19
+commit (#254/#118), replaced by the token-shaped `_tok` family (same
+retirement wave-2 module 3 found for `OnDiskRuntime`). Confirmed:
+`decode_subject_fast`/`decode_object_fast` have zero callers anywhere
+in `RDF_CottasStore.ml` or `bin/` today (`grep -n
+"decode_subject_fast\b"` / `"decode_object_fast\b"` — only their own
+definitions and stale comments). Not a live-path correctness bug (the
+functions are dead), but the WARN is genuine drift: Step C has been a
+silent no-op against a target that no longer exists since 2026-07-19,
+never cleaned up. Not fixed here (glue cleanup is not this pass's
+2 assume-val-realisation scope; flagging for whoever next touches this
+glue file). Hazard 1 (hand-parsed RDF terms): CONFIRMED present via
+composition, same site as #454 — this module's own glue (bulk-load,
+lines ~669-684) calls `Cottas_ondisk_runtime.parse_iri_token`
+(defined in the separate `cottas_ondisk_runtime.sh`/`cottas_runtime.sh`
+glue) to eagerly parse predicate/graph tokens during companion
+bulk-load; per the brief, not fixed — third reachability path to the
+same #454 finding (module 1's COTTAS bulk path, module 3's dead
+OnDiskRuntime path, now this module's live bulk-load path).
+
+Stale-anchor check on the module's own 6 core stub replacements
+(recurrence check 1): CLEAN — `grep -c "^let (mmap_companion_open|
+read_companion_u32_le|read_companion_u64_le|read_companion_byte|
+read_companion_string|companion_file_size)"` on the fresh `.ml` finds
+exactly 6, each once, zero leftover `"Not yet implemented"` text.
+
+Tier from a fresh classifier run WITH --json, corrected after a
+misreading in an earlier draft of this entry (the classifier counts
+the local `Lemma` declaration itself, not just its erased extraction
+footprint): `"assurance_tier": "local-lemmas-only"` (moved from
+`"merely-tot"`), `"local_refinement_lemma_count": 1`,
+`"assume_val_active": 7` — HONEST for what landed: one local
+correctness fact about the module's own arithmetic, zero W3C-
+refinement or algorithm-correctness theorems (the lemma doesn't relate
+two named shipping functions the way module 1/2's round-trip theorems
+do, so it doesn't cross into `internal-refinement`/`algorithm-
+correctness`). The tier move is real and modest — one honest rung up
+from `merely-tot`, not the two-rung jump modules 1 and 3's own audits
+describe for a round-trip- or corruption-rejection-shaped theorem.
+Gates (full rebuild, no `.checked` cache in
+this fresh worktree): RDF 1030 pass, 0 fail, 1 unsupported (of 1031);
+`cli_literal_escape_roundtrip` 5 pass, 0 fail (of 5);
+`parquet_footer_version_gate_roundtrip` 3 pass, 0 fail (of 3);
+`cottas_ondisk_smoketest` opens `store_capabilities_sample.cottas`
+cleanly, 5 quads; `tests/unit/run-all.sh` 20 pass, 28 fail (of 48) =
+baseline exactly, no deltas. Project assume-val total (active, per
+classifier): 125, unchanged (the lift is proof-only, does not retire
+an assume val — `mmap_companion_close` stays counted as active despite
+being unreachable, since the classifier counts declarations, not
+reachability).

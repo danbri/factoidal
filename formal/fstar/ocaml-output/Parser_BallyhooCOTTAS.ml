@@ -597,15 +597,11 @@ let cottas_named_graphs (ds : cottas_dataset_store) :
   let cache = Ballyhoo_cottas_runtime.cache_for_store ds in
   Ballyhoo_cottas_runtime.named_graphs_of_cache ds cache
 
-let cottas_lookup_named_graph (ds : cottas_dataset_store)
-  (name : RDF_Graph_Executable.iri) :
-  cottas_named_graph_store FStar_Pervasives_Native.option=
-  let rec loop = function
-    | [] -> FStar_Pervasives_Native.None
-    | ng :: rest ->
-      if ng.cngs_name = name then FStar_Pervasives_Native.Some ng else loop rest
-  in
-  loop (cottas_named_graphs ds)
+(* cottas_lookup_named_graph (#448 wave 2, module 1): lifted to a real F*
+   `let` in Parser.BallyhooCOTTAS.fst -- it was a pure linear scan over
+   cottas_named_graphs with no I/O of its own. The F*-extracted body now
+   provides it directly at its natural position further down this file;
+   defining it again here would just be a dead shadow. *)
 
 let cottas_encode_subject (ds : cottas_dataset_store)
   (s : RDF_Graph_Executable.subject) :
@@ -655,72 +651,49 @@ let cottas_search (ds : cottas_dataset_store) (bound : cottas_bound_qp) :
   cottas_qp_row Prims.list=
   Ballyhoo_cottas_runtime.search_rows ds bound
 
-let cottas_estimate (ds : cottas_dataset_store) (bound : cottas_bound_qp)
-  : Prims.nat=
-  FStar_List_Tot_Base.length (cottas_search ds bound)
+(* cottas_estimate (#448 wave 2, module 1): lifted to a real F* `let` in
+   Parser.BallyhooCOTTAS.fst as `length (cottas_search ds bound)` -- that
+   was exactly this glue's body, so the assumed signature was hiding an
+   exact-count invariant it never stated. The F*-extracted body now
+   provides it directly at its natural position further down this file;
+   defining it again here would just be a dead shadow.
 
+   cottas_predicate_present_in_graph and cottas_graph_candidates_for_predicate
+   both (transitively) depend on cottas_estimate, and are now themselves
+   lifted to real F* `let`s too (#448 wave 2, module 1) -- none of the four
+   are stubs anymore, so none of them are defined in this block. All four
+   are provided directly by F* extraction at their natural post-extraction
+   position, in the order the .fst declares them (cottas_estimate first,
+   since the other two call it -- an unbound-value forward reference within
+   the same compilation unit otherwise). *)
+let cottas_lookup_named_graph (ds : cottas_dataset_store)
+  (name : RDF_Term.iri) :
+  cottas_named_graph_store FStar_Pervasives_Native.option=
+  match FStar_List_Tot_Base.find (fun ng -> ng.cngs_name = name)
+          (cottas_named_graphs ds)
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some ng -> FStar_Pervasives_Native.Some ng
+let cottas_estimate (ds : cottas_dataset_store) (bound : cottas_bound_qp) :
+  Prims.nat= FStar_List_Tot_Base.length (cottas_search ds bound)
 let cottas_predicate_present_in_graph (ng : cottas_named_graph_store)
-  (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
+  (pred : RDF_Term.wf_iri) : Prims.bool=
   match cottas_encode_predicate ng.cngs_dataset pred with
   | FStar_Pervasives_Native.None -> false
   | FStar_Pervasives_Native.Some pred_ref ->
-    cottas_estimate ng.cngs_dataset {
-      cbqp_s = FStar_Pervasives_Native.None;
-      cbqp_p = FStar_Pervasives_Native.Some pred_ref;
-      cbqp_o = FStar_Pervasives_Native.None;
-      cbqp_g = CGB_Named ng.cngs_ref;
-    } > Prims.int_zero
-
+      (cottas_estimate ng.cngs_dataset
+         {
+           cbqp_s = FStar_Pervasives_Native.None;
+           cbqp_p = (FStar_Pervasives_Native.Some pred_ref);
+           cbqp_o = FStar_Pervasives_Native.None;
+           cbqp_g = (CGB_Named (ng.cngs_ref))
+         })
+        > Prims.int_zero
 let cottas_graph_candidates_for_predicate (ds : cottas_dataset_store)
-  (pred : RDF_Graph_Executable.wf_iri) :
-  cottas_named_graph_store Prims.list=
+  (pred : RDF_Term.wf_iri) : cottas_named_graph_store Prims.list=
   FStar_List_Tot_Base.filter
     (fun ng -> cottas_predicate_present_in_graph ng pred)
     (cottas_named_graphs ds)
-let cottas_lookup_named_graph (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Term.iri) :
-  cottas_named_graph_store FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_lookup_named_graph"
-let cottas_encode_subject (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Term.subject) :
-  cottas_term_ref FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_subject"
-let cottas_encode_predicate (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Term.wf_iri) :
-  cottas_term_ref FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_predicate"
-let cottas_encode_object (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Term.rdf_term) :
-  cottas_term_ref FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_object"
-let cottas_encode_graph_name (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Term.iri) : cottas_graph_ref FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_graph_name"
-let cottas_decode_subject (uu___ : cottas_dataset_store)
-  (uu___1 : cottas_term_ref) : RDF_Term.subject=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_subject"
-let cottas_decode_predicate (uu___ : cottas_dataset_store)
-  (uu___1 : cottas_term_ref) : RDF_Term.wf_iri=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_predicate"
-let cottas_decode_object (uu___ : cottas_dataset_store)
-  (uu___1 : cottas_term_ref) : RDF_Term.rdf_term=
-  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_object"
-let cottas_decode_graph_name (uu___ : cottas_dataset_store)
-  (uu___1 : cottas_graph_ref) : RDF_Term.iri=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_graph_name"
-let cottas_predicate_present_in_graph (uu___ : cottas_named_graph_store)
-  (uu___1 : RDF_Term.wf_iri) : Prims.bool=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_predicate_present_in_graph"
-let cottas_graph_candidates_for_predicate (uu___ : cottas_dataset_store)
-  (uu___1 : RDF_Term.wf_iri) : cottas_named_graph_store Prims.list=
-  failwith
-    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_graph_candidates_for_predicate"
 let cottas_build_bound_qp (ds : cottas_dataset_store)
   (s : RDF_Term.subject FStar_Pervasives_Native.option)
   (p : RDF_Term.wf_iri FStar_Pervasives_Native.option)
