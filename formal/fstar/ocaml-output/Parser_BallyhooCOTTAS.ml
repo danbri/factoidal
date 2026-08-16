@@ -659,11 +659,13 @@ let cottas_search (ds : cottas_dataset_store) (bound : cottas_bound_qp) :
    defining it again here would just be a dead shadow.
 
    cottas_predicate_present_in_graph and cottas_graph_candidates_for_predicate
-   both call cottas_estimate, so their realisations moved out of this block
-   (see the `replacements` dict below) to their own natural post-extraction
-   position -- textually after cottas_estimate's lifted definition -- instead
-   of living up here before it, which would otherwise be an unbound-value
-   forward reference within the same compilation unit. *)
+   both (transitively) depend on cottas_estimate, and are now themselves
+   lifted to real F* `let`s too (#448 wave 2, module 1) -- none of the four
+   are stubs anymore, so none of them are defined in this block. All four
+   are provided directly by F* extraction at their natural post-extraction
+   position, in the order the .fst declares them (cottas_estimate first,
+   since the other two call it -- an unbound-value forward reference within
+   the same compilation unit otherwise). *)
 let cottas_lookup_named_graph (ds : cottas_dataset_store)
   (name : RDF_Term.iri) :
   cottas_named_graph_store FStar_Pervasives_Native.option=
@@ -675,19 +677,20 @@ let cottas_lookup_named_graph (ds : cottas_dataset_store)
 let cottas_estimate (ds : cottas_dataset_store) (bound : cottas_bound_qp) :
   Prims.nat= FStar_List_Tot_Base.length (cottas_search ds bound)
 let cottas_predicate_present_in_graph (ng : cottas_named_graph_store)
-  (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
+  (pred : RDF_Term.wf_iri) : Prims.bool=
   match cottas_encode_predicate ng.cngs_dataset pred with
   | FStar_Pervasives_Native.None -> false
   | FStar_Pervasives_Native.Some pred_ref ->
-    cottas_estimate ng.cngs_dataset {
-      cbqp_s = FStar_Pervasives_Native.None;
-      cbqp_p = FStar_Pervasives_Native.Some pred_ref;
-      cbqp_o = FStar_Pervasives_Native.None;
-      cbqp_g = CGB_Named ng.cngs_ref;
-    } > Prims.int_zero
+      (cottas_estimate ng.cngs_dataset
+         {
+           cbqp_s = FStar_Pervasives_Native.None;
+           cbqp_p = (FStar_Pervasives_Native.Some pred_ref);
+           cbqp_o = FStar_Pervasives_Native.None;
+           cbqp_g = (CGB_Named (ng.cngs_ref))
+         })
+        > Prims.int_zero
 let cottas_graph_candidates_for_predicate (ds : cottas_dataset_store)
-  (pred : RDF_Graph_Executable.wf_iri) :
-  cottas_named_graph_store Prims.list=
+  (pred : RDF_Term.wf_iri) : cottas_named_graph_store Prims.list=
   FStar_List_Tot_Base.filter
     (fun ng -> cottas_predicate_present_in_graph ng pred)
     (cottas_named_graphs ds)

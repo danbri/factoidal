@@ -5803,7 +5803,7 @@
    "files": [
     "formal/fstar/Parser.BallyhooCOTTAS.fst"
    ],
-   "loc": 220,
+   "loc": 242,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -5814,7 +5814,7 @@
    "shipping_function_count": 20,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
-   "assume_val_active": 15,
+   "assume_val_active": 13,
    "assume_val_names": [
     "cottas_open_dataset_store",
     "cottas_close_dataset_store",
@@ -5828,9 +5828,7 @@
     "cottas_decode_predicate",
     "cottas_decode_object",
     "cottas_decode_graph_name",
-    "cottas_search",
-    "cottas_predicate_present_in_graph",
-    "cottas_graph_candidates_for_predicate"
+    "cottas_search"
    ],
    "assume_other_active": 1,
    "admissions_active": 0,
@@ -66945,7 +66943,7 @@
  "totals": {
   "modules": 232,
   "files": 242,
-  "assume_val_active": 131,
+  "assume_val_active": 129,
   "assume_other_active": 5,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
@@ -66969,5 +66967,5 @@
    "unclassified": 16
   }
  },
- "commit": "87e1b5d26c4"
+ "commit": "d8948ff61b8"
 }

@@ -493,11 +493,13 @@ let cottas_search (ds : cottas_dataset_store) (bound : cottas_bound_qp) :
    defining it again here would just be a dead shadow.
 
    cottas_predicate_present_in_graph and cottas_graph_candidates_for_predicate
-   both call cottas_estimate, so their realisations moved out of this block
-   (see the `replacements` dict below) to their own natural post-extraction
-   position -- textually after cottas_estimate's lifted definition -- instead
-   of living up here before it, which would otherwise be an unbound-value
-   forward reference within the same compilation unit. *)
+   both (transitively) depend on cottas_estimate, and are now themselves
+   lifted to real F* `let`s too (#448 wave 2, module 1) -- none of the four
+   are stubs anymore, so none of them are defined in this block. All four
+   are provided directly by F* extraction at their natural post-extraction
+   position, in the order the .fst declares them (cottas_estimate first,
+   since the other two call it -- an unbound-value forward reference within
+   the same compilation unit otherwise). *)
 '''
 
 if marker not in content:
@@ -505,9 +507,7 @@ if marker not in content:
 content = content.replace(marker, runtime, 1)
 
 # The remaining assume vals' raw F*-extracted "Not yet implemented" stubs
-# get deleted (their real bodies already live in `runtime` above) or, for
-# the two that were moved out of `runtime` to avoid a forward reference
-# (see the comment at the end of `runtime`), replaced with a real body.
+# get deleted below; their real bodies already live in `runtime` above.
 #
 # #448 wave 2 module 1: this used to match each stub via an exact literal
 # string keyed on its parameter types (e.g. "RDF_Graph_Executable.subject").
@@ -562,11 +562,6 @@ def delete_stub(name):
     b = find_stub_block(name)
     content = content[:b.start()] + content[b.end():]
 
-def replace_stub(name, body):
-    global content
-    b = find_stub_block(name)
-    content = content[:b.start()] + body + content[b.end():]
-
 for name in [
     "cottas_dataset_summary",
     "cottas_named_graphs",
@@ -582,26 +577,15 @@ for name in [
 ]:
     delete_stub(name)
 
-replace_stub("cottas_predicate_present_in_graph", '''let cottas_predicate_present_in_graph (ng : cottas_named_graph_store)
-  (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
-  match cottas_encode_predicate ng.cngs_dataset pred with
-  | FStar_Pervasives_Native.None -> false
-  | FStar_Pervasives_Native.Some pred_ref ->
-    cottas_estimate ng.cngs_dataset {
-      cbqp_s = FStar_Pervasives_Native.None;
-      cbqp_p = FStar_Pervasives_Native.Some pred_ref;
-      cbqp_o = FStar_Pervasives_Native.None;
-      cbqp_g = CGB_Named ng.cngs_ref;
-    } > Prims.int_zero
-''')
-
-replace_stub("cottas_graph_candidates_for_predicate", '''let cottas_graph_candidates_for_predicate (ds : cottas_dataset_store)
-  (pred : RDF_Graph_Executable.wf_iri) :
-  cottas_named_graph_store Prims.list=
-  FStar_List_Tot_Base.filter
-    (fun ng -> cottas_predicate_present_in_graph ng pred)
-    (cottas_named_graphs ds)
-''')
+# cottas_predicate_present_in_graph and cottas_graph_candidates_for_predicate
+# (#448 wave 2, module 1): both lifted to real F* `let`s in
+# Parser.BallyhooCOTTAS.fst -- pure derivations of cottas_encode_predicate /
+# cottas_estimate / cottas_named_graphs with no I/O of their own. Neither is
+# a stub anymore, so there is nothing left for this script to delete or
+# replace; the F*-extracted body provides both directly at their natural
+# post-extraction position (see the comment on `runtime` above for why they
+# were moved out of that block in the first place -- unchanged, they still
+# need cottas_estimate's real definition to appear textually before them).
 
 path.write_text(content)
 PYEOF
