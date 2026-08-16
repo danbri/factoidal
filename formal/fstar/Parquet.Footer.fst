@@ -449,6 +449,24 @@ let probe_parquet_num_rows (path:string) : option nat =
 // not merely "an old version of our format".
 let cottas_format_version : nat = 445
 
+// Pure decode core for the "version" field (field id 1, compact type
+// i32), factored out of `probe_parquet_file_metadata_version` so the
+// round-trip lemma against RDF.CottasStore.BaseWriter's writer
+// (`write_field_i32 1 0 cottas_format_version`) states a fact about
+// the EXACT function the on-disk reader calls, not a hand-copied
+// duplicate of its logic (the #443 hazard: never write a second
+// prober -- see skills/workflow-gotchas-debugging hazard #25).
+// Assurance-triage wave 1, #448, module 1 of 5.
+let parse_file_metadata_version_hex (meta_hex:string) : option nat =
+  match nth_field_hex meta_hex 1 0 0 (String.length meta_hex) with
+  | None -> None
+  | Some field ->
+    if field.cf_type <> compact_t_i32 then None
+    else
+      match decode_varint_value_hex meta_hex field.cf_value_start 0 0 (String.length meta_hex) with
+      | None -> None
+      | Some raw -> Some (zigzag_decode_nat raw)
+
 let probe_parquet_file_metadata_version (path:string) : option nat =
   match probe_parquet_footer path with
   | None -> None
@@ -458,15 +476,7 @@ let probe_parquet_file_metadata_version (path:string) : option nat =
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
       if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
-        match nth_field_hex meta_hex 1 0 0 meta_hex_len with
-        | None -> None
-        | Some field ->
-          if field.cf_type <> compact_t_i32 then None
-          else
-            match decode_varint_value_hex meta_hex field.cf_value_start 0 0 meta_hex_len with
-            | None -> None
-            | Some raw -> Some (zigzag_decode_nat raw)
+        parse_file_metadata_version_hex (String.sub footer_hex 0 meta_hex_len)
       else None
 
 let probe_parquet_row_group_count (path:string) : option nat =

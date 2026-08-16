@@ -1130,3 +1130,151 @@ let serialize_cottas_v2 (rows : list cottas_quad) : Tot B.bytes =
       (Lh.append_tr page_bytes
         (Lh.append_tr metadata
           (Lh.append_tr (B.write_u32_le metadata_len) magic_header)))
+
+
+
+// ===========================================================================
+// Round-trip lemma: writer/reader agreement on the #445 format-version
+// field. Assurance-triage wave 1, #448, module 1 of 5 (Parquet.Footer).
+//
+// Property: PF.parse_file_metadata_version_hex, applied to the hex
+// encoding of the EXACT bytes `write_field_i32 1 0 PF.cottas_format_version`
+// emits (field 1 of build_file_metadata, always written first -- see
+// build_file_metadata above), returns Some PF.cottas_format_version.
+//
+// This is the fact issue #445's version gate (RDF.CottasStore.
+// cottas_ondisk_version_ok) depends on being true: if the writer and
+// the prober ever disagreed on the compact-protocol encoding of field
+// 1, the gate would either reject every store this writer produces or
+// (worse) silently accept a store from an untrusted writer. Nothing
+// in the type signatures of write_field_i32 / parse_file_metadata_version_hex
+// forced them to agree before this lemma; F* now checks it as a
+// theorem, not an assumption.
+//
+// Scope: this covers the PURE byte-assembly/parsing layer (both sides
+// of the F*/OCaml boundary's `write_bytes` reduction), which is
+// everything rule #11 asks F* to own. It deliberately does NOT cover
+// the disk write -> disk read -> hex-encode I/O round trip -- that is
+// the `parquet_read_tail_hex` assume val's realisation
+// (experimental_ocaml_glue/parquet_footer_runtime.sh), covered instead
+// by the end-to-end CLI pin in
+// tests/local/parquet_footer_version_gate_roundtrip.sh.
+//
+// Proved for the concrete deployed constant (`PF.cottas_format_version
+// == 445`, a 2-byte varint after zigzag-encoding: 890 = 0x7A + 0x06*128)
+// via `assert_norm` plus explicit congruence lemmas. F* 2025.12.15's
+// SMT encoding of `FStar.String.string_of_list` / string concatenation
+// (`^`) does not fire automatic congruence closure across an equality
+// hypothesis established by a SEPARATE assert_norm/lemma -- each
+// substitution step below needs a one-line `Lemma (requires a==a')
+// (ensures f a == f a')` helper proved by `()` to make the rewrite
+// explicit. Isolated by bisecting a chain of ~15 increasingly small
+// assert_norms; the technique (calc-style congruence bridging)
+// generalises to any future string-literal round trip that hits the
+// same wall.
+//
+// A fully general lemma (any v:nat, arbitrary varint length) needs
+// induction over write_uvarint_rev's accumulator-then-reverse
+// structure on top of this same congruence-bridging technique; left
+// for a follow-on since #445's gate only ever compares against this
+// one literal, not an arbitrary nat -- re-verifying this lemma is
+// exactly what would catch a future silent encoding divergence if
+// `cottas_format_version` is ever bumped again.
+// ===========================================================================
+
+#push-options "--z3rlimit 500 --fuel 8 --ifuel 8"
+
+// -- A single equality hypothesis does not, by itself, let Z3 rewrite
+//    inside an application of `f` -- these tiny helpers make that
+//    congruence step an explicit lemma instead of relying on automatic
+//    closure (which does not fire for FStar.String.string_of_list /
+//    op_Hat / Parquet.Footer.parse_file_metadata_version_hex in this
+//    F* version).
+let lemma_cong_string_of_list (l1 l2 : list FStar.Char.char)
+  : Lemma (requires l1 == l2)
+          (ensures FStar.String.string_of_list l1 == FStar.String.string_of_list l2)
+  = ()
+
+let lemma_cong_hat3 (a a' b b' c c' : string)
+  : Lemma (requires a == a' /\ b == b' /\ c == c')
+          (ensures Prims.op_Hat a (Prims.op_Hat b (Prims.op_Hat c ""))
+                 == Prims.op_Hat a' (Prims.op_Hat b' (Prims.op_Hat c' "")))
+  = ()
+
+let lemma_cong_parse_hex (s1 s2 : string)
+  : Lemma (requires s1 == s2)
+          (ensures PF.parse_file_metadata_version_hex s1 == PF.parse_file_metadata_version_hex s2)
+  = ()
+
+// -- byte 0x15 (field 1, compact type i32) hex-encodes to "15".
+let lemma_hex_pair_15 () : Lemma (ensures FStar.String.list_of_string "15" == [B.hex_digit_char 1; B.hex_digit_char 5])
+  = assert_norm (FStar.String.list_of_string "15" == [B.hex_digit_char 1; B.hex_digit_char 5])
+
+let lemma_byte_to_hex_21 () : Lemma (ensures B.byte_to_hex (B.byte_of_int 21) == "15")
+  = assert_norm (B.byte_to_hex (B.byte_of_int 21) == FStar.String.string_of_list [B.hex_digit_char 1; B.hex_digit_char 5]);
+    lemma_hex_pair_15 ();
+    lemma_cong_string_of_list [B.hex_digit_char 1; B.hex_digit_char 5] (FStar.String.list_of_string "15");
+    FStar.String.string_of_list_of_string "15"
+
+// -- varint byte 0xFA (low 7 bits of zigzag(445)=890, continuation set).
+let lemma_hex_pair_FA () : Lemma (ensures FStar.String.list_of_string "FA" == [B.hex_digit_char 15; B.hex_digit_char 10])
+  = assert_norm (FStar.String.list_of_string "FA" == [B.hex_digit_char 15; B.hex_digit_char 10])
+
+let lemma_byte_to_hex_250 () : Lemma (ensures B.byte_to_hex (B.byte_of_int 250) == "FA")
+  = assert_norm (B.byte_to_hex (B.byte_of_int 250) == FStar.String.string_of_list [B.hex_digit_char 15; B.hex_digit_char 10]);
+    lemma_hex_pair_FA ();
+    lemma_cong_string_of_list [B.hex_digit_char 15; B.hex_digit_char 10] (FStar.String.list_of_string "FA");
+    FStar.String.string_of_list_of_string "FA"
+
+// -- varint byte 0x06 (high 7 bits of zigzag(445)=890, no continuation).
+let lemma_hex_pair_06 () : Lemma (ensures FStar.String.list_of_string "06" == [B.hex_digit_char 0; B.hex_digit_char 6])
+  = assert_norm (FStar.String.list_of_string "06" == [B.hex_digit_char 0; B.hex_digit_char 6])
+
+let lemma_byte_to_hex_6 () : Lemma (ensures B.byte_to_hex (B.byte_of_int 6) == "06")
+  = assert_norm (B.byte_to_hex (B.byte_of_int 6) == FStar.String.string_of_list [B.hex_digit_char 0; B.hex_digit_char 6]);
+    lemma_hex_pair_06 ();
+    lemma_cong_string_of_list [B.hex_digit_char 0; B.hex_digit_char 6] (FStar.String.list_of_string "06");
+    FStar.String.string_of_list_of_string "06"
+
+// -- The version field: write_field_i32 1 0 445 == [0x15; 0xFA; 0x06].
+let version_field_bytes : B.bytes = write_field_i32 1 0 PF.cottas_format_version
+
+let lemma_version_field_bytes_eq () : Lemma (ensures version_field_bytes == [B.byte_of_int 21; B.byte_of_int 250; B.byte_of_int 6])
+  = assert_norm (version_field_bytes == [B.byte_of_int 21; B.byte_of_int 250; B.byte_of_int 6])
+
+let lemma_bytes_to_hex_unfold ()
+  : Lemma (ensures B.bytes_to_hex [B.byte_of_int 21; B.byte_of_int 250; B.byte_of_int 6]
+        == Prims.op_Hat (B.byte_to_hex (B.byte_of_int 21))
+             (Prims.op_Hat (B.byte_to_hex (B.byte_of_int 250))
+               (Prims.op_Hat (B.byte_to_hex (B.byte_of_int 6)) "")))
+  = assert_norm (B.bytes_to_hex [B.byte_of_int 21; B.byte_of_int 250; B.byte_of_int 6]
+        == Prims.op_Hat (B.byte_to_hex (B.byte_of_int 21))
+             (Prims.op_Hat (B.byte_to_hex (B.byte_of_int 250))
+               (Prims.op_Hat (B.byte_to_hex (B.byte_of_int 6)) "")))
+
+// -- Writer side, fully connected: hex-encoding the version field's
+//    bytes gives the literal "15FA06".
+let lemma_version_field_hex_eq () : Lemma (ensures B.bytes_to_hex version_field_bytes == "15FA06")
+  = lemma_version_field_bytes_eq (); lemma_byte_to_hex_21 (); lemma_byte_to_hex_250 (); lemma_byte_to_hex_6 ();
+    lemma_bytes_to_hex_unfold ();
+    lemma_cong_hat3 (B.byte_to_hex (B.byte_of_int 21)) "15"
+                    (B.byte_to_hex (B.byte_of_int 250)) "FA"
+                    (B.byte_to_hex (B.byte_of_int 6)) "06";
+    assert_norm (Prims.op_Hat "15" (Prims.op_Hat "FA" (Prims.op_Hat "06" "")) == "15FA06")
+
+// -- Reader side: parsing the literal "15FA06" (via the SAME function
+//    RDF.CottasStore.cottas_ondisk_version_ok's caller
+//    (probe_parquet_file_metadata_version) calls) returns Some 445.
+let lemma_parse_version_hex_literal () : Lemma (ensures PF.parse_file_metadata_version_hex "15FA06" == Some PF.cottas_format_version)
+  = assert_norm (PF.parse_file_metadata_version_hex "15FA06" == Some PF.cottas_format_version)
+
+// -- THE THEOREM: writer and reader agree on field 1's encoding.
+let lemma_version_field_roundtrip ()
+  : Lemma (ensures
+      PF.parse_file_metadata_version_hex (B.bytes_to_hex version_field_bytes)
+      == Some PF.cottas_format_version)
+  = lemma_version_field_hex_eq ();
+    lemma_cong_parse_hex (B.bytes_to_hex version_field_bytes) "15FA06";
+    lemma_parse_version_hex_literal ()
+
+#pop-options
