@@ -1,6 +1,7 @@
 module Parser.BallyhooCOTTAS
 
 open RDF.Graph.Executable
+open FStar.List.Tot
 
 // BallyhooCOTTAS is the native F* model for a COTTAS-style columnar quad
 // backend. The immediate goal is to represent the dataset/storage boundary in
@@ -112,8 +113,16 @@ assume val cottas_dataset_summary :
 assume val cottas_named_graphs :
   cottas_dataset_store -> Tot (list cottas_named_graph_store)
 
-assume val cottas_lookup_named_graph :
-  cottas_dataset_store -> iri -> Tot (option cottas_named_graph_store)
+// Lifted (#448 wave 2, module 1): the OCaml realisation in
+// experimental_ocaml_glue/cottas_runtime.sh was a plain linear scan over
+// cottas_named_graphs matching on cngs_name -- pure list search with no I/O
+// of its own. Expressed directly here so the F*-extracted body is what
+// actually runs (the glue's former duplicate copy was removed to match).
+let cottas_lookup_named_graph (ds : cottas_dataset_store) (name : iri)
+  : Tot (option cottas_named_graph_store) =
+  match find (fun ng -> ng.cngs_name = name) (cottas_named_graphs ds) with
+  | None -> None
+  | Some ng -> Some ng
 
 assume val cottas_encode_subject :
   cottas_dataset_store -> subject -> Tot (option cottas_term_ref)
@@ -142,8 +151,15 @@ assume val cottas_decode_graph_name :
 assume val cottas_search :
   cottas_dataset_store -> cottas_bound_qp -> Tot (list cottas_qp_row)
 
-assume val cottas_estimate :
-  cottas_dataset_store -> cottas_bound_qp -> Tot nat
+// Lifted (#448 wave 2, module 1): the OCaml realisation was exactly
+// `List.length (cottas_search ds bound)` -- i.e. "estimate" was already an
+// EXACT count, not a heuristic, but that invariant lived only in the glue
+// script's implementation, unstated in the assumed signature. Expressing it
+// here makes every F* caller of cottas_estimate prove against the real
+// relationship to cottas_search instead of an opaque nat.
+let cottas_estimate (ds : cottas_dataset_store) (bound : cottas_bound_qp)
+  : Tot nat =
+  length (cottas_search ds bound)
 
 assume val cottas_predicate_present_in_graph :
   cottas_named_graph_store -> wf_iri -> Tot bool
