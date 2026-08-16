@@ -11848,7 +11848,7 @@
    "files": [
     "formal/fstar/RDF.Canonical.fst"
    ],
-   "loc": 2111,
+   "loc": 2274,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -11857,7 +11857,7 @@
    "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 152,
-   "declarative_relation_count": 0,
+   "declarative_relation_count": 1,
    "unclassified_definition_count": 0,
    "assume_val_active": 2,
    "assume_val_names": [
@@ -11868,13 +11868,52 @@
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 4,
+   "local_refinement_lemma_names": [
+    "lemma_empty_issuer_wf",
+    "lemma_empty_temp_issuer_wf",
+    "lemma_issue_fresh_preserves_wf",
+    "lemma_issue_identifier_preserves_wf"
+   ],
    "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
+   "internal_refinement_theorems": [
+    {
+     "name": "lemma_issue_fresh_label_shape",
+     "proved_in": "RDF.Canonical",
+     "file": "formal/fstar/RDF.Canonical.fst",
+     "line": 981,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "issue_fresh"
+     ],
+     "names_declarative_relations": [
+      "is_issuer_label"
+     ],
+     "declarative_relations_from": [
+      "RDF.Canonical"
+     ]
+    },
+    {
+     "name": "lemma_issue_identifier_fresh_label_shape",
+     "proved_in": "RDF.Canonical",
+     "file": "formal/fstar/RDF.Canonical.fst",
+     "line": 1006,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "issue_identifier",
+      "lookup_issued"
+     ],
+     "names_declarative_relations": [
+      "is_issuer_label"
+     ],
+     "declarative_relations_from": [
+      "RDF.Canonical"
+     ]
+    }
+   ],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
+   "assurance_tier": "internal-refinement",
    "suites": [
     {
      "suite": "jsonld-html",
@@ -22117,7 +22156,7 @@
    "files": [
     "formal/fstar/RDF.Turtle.Serialize.fst"
    ],
-   "loc": 403,
+   "loc": 503,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -22126,7 +22165,7 @@
    "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 28,
-   "declarative_relation_count": 0,
+   "declarative_relation_count": 1,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
@@ -22134,13 +22173,30 @@
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": true,
+   "merely_tot": false,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
+   "internal_refinement_theorems": [
+    {
+     "name": "lemma_ts_abbreviate_iri_pname_safe",
+     "proved_in": "RDF.Turtle.Serialize",
+     "file": "formal/fstar/RDF.Turtle.Serialize.fst",
+     "line": 142,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "ts_abbreviate_iri"
+     ],
+     "names_declarative_relations": [
+      "compacts_to_pname_safe"
+     ],
+     "declarative_relations_from": [
+      "RDF.Turtle.Serialize"
+     ]
+    }
+   ],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
+   "assurance_tier": "internal-refinement",
    "suites": [
     {
      "suite": "local-turtle-pretty",
@@ -40645,6 +40701,123 @@
    "class": "algorithm_correctness"
   },
   {
+   "name": "lemma_empty_issuer_wf",
+   "host_module": "RDF.Canonical",
+   "file": "formal/fstar/RDF.Canonical.fst",
+   "line": 966,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "empty_issuer"
+   ],
+   "shipping_modules": [
+    "RDF.Canonical"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_empty_temp_issuer_wf",
+   "host_module": "RDF.Canonical",
+   "file": "formal/fstar/RDF.Canonical.fst",
+   "line": 969,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "empty_temp_issuer"
+   ],
+   "shipping_modules": [
+    "RDF.Canonical"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_issue_fresh_preserves_wf",
+   "host_module": "RDF.Canonical",
+   "file": "formal/fstar/RDF.Canonical.fst",
+   "line": 974,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "issue_fresh"
+   ],
+   "shipping_modules": [
+    "RDF.Canonical"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_issue_fresh_label_shape",
+   "host_module": "RDF.Canonical",
+   "file": "formal/fstar/RDF.Canonical.fst",
+   "line": 981,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "issue_fresh"
+   ],
+   "shipping_modules": [
+    "RDF.Canonical"
+   ],
+   "declarative_relations_named": [
+    "is_issuer_label"
+   ],
+   "declarative_modules": [
+    "RDF.Canonical"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_issue_identifier_preserves_wf",
+   "host_module": "RDF.Canonical",
+   "file": "formal/fstar/RDF.Canonical.fst",
+   "line": 995,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "issue_identifier"
+   ],
+   "shipping_modules": [
+    "RDF.Canonical"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lemma_issue_identifier_fresh_label_shape",
+   "host_module": "RDF.Canonical",
+   "file": "formal/fstar/RDF.Canonical.fst",
+   "line": 1006,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "issue_identifier",
+    "lookup_issued"
+   ],
+   "shipping_modules": [
+    "RDF.Canonical"
+   ],
+   "declarative_relations_named": [
+    "is_issuer_label"
+   ],
+   "declarative_modules": [
+    "RDF.Canonical"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
    "name": "lemma_cong_string_of_list",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
@@ -55706,6 +55879,28 @@
    "class": "local_refinement"
   },
   {
+   "name": "lemma_ts_abbreviate_iri_pname_safe",
+   "host_module": "RDF.Turtle.Serialize",
+   "file": "formal/fstar/RDF.Turtle.Serialize.fst",
+   "line": 142,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "ts_abbreviate_iri"
+   ],
+   "shipping_modules": [
+    "RDF.Turtle.Serialize"
+   ],
+   "declarative_relations_named": [
+    "compacts_to_pname_safe"
+   ],
+   "declarative_modules": [
+    "RDF.Turtle.Serialize"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
    "name": "schema_stable_check_sound",
    "host_module": "RDFS.SchemaSplit",
    "file": "formal/fstar/RDFS.SchemaSplit.fst",
@@ -66758,23 +66953,23 @@
   "lax_or_admit_pragmas": 0,
   "modules_with_w3c_refinement_theorem": 0,
   "modules_with_algorithm_correctness_theorem": 63,
-  "modules_with_internal_refinement_theorem": 31,
-  "modules_merely_tot": 135,
+  "modules_with_internal_refinement_theorem": 33,
+  "modules_merely_tot": 133,
   "w3c_refinement_theorem_count": 0,
-  "internal_refinement_theorem_count": 467,
+  "internal_refinement_theorem_count": 470,
   "algorithm_correctness_theorem_count": 447,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [],
-  "lemma_count": 1685,
+  "lemma_count": 1692,
   "tiers": {
    "algorithm-correctness": 37,
-   "internal-refinement": 31,
+   "internal-refinement": 33,
    "local-lemmas-only": 10,
-   "merely-tot": 135,
+   "merely-tot": 133,
    "specification-and-proof": 2,
    "specification-only": 1,
    "unclassified": 16
   }
  },
- "commit": "ac5d8cbb391"
+ "commit": "1e03337a88a"
 }
