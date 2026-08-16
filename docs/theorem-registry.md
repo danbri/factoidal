@@ -2098,3 +2098,81 @@ RDF 1030 pass, 0 fail, 1 unsupported (of 1031); hdt-probe 75 pass,
 5 pass, 0 fail (of 5); unit suite 20 pass, 28 fail (of 48) = baseline
 exactly, no deltas. Project assume-val total (active, per classifier):
 125.
+
+**#448 wave 2, module 3: RDF.CottasStore.OnDiskRuntime audited
+15-of-15; 0 lifted, 0 fixed — module is DEAD END TO END despite a
+CLEAN realising glue (2026-08-16, branch `assure-ondisk-runtime`)**:
+🔴 MAIN FINDING, contradicts this module's own dispatch brief ("the
+LIVE on-disk query runtime... traversed by every `--data-cottas`
+query"): it is not live. `grep -rn "OnDiskRuntime\." formal/fstar/
+*.fst` outside the module's own file returns nothing — no other .fst
+calls any `ondisk_*_indexed` / `ondisk_*_via_registry` function, and
+the LazyDictRegistry it reads through (`RDF.CottasStore.
+LazyDictRegistry.fst`) has no consumer outside this module either.
+The production `--data-cottas` path (`RDF.Store.Capabilities.Cottas.
+fst`'s `caps_of_cottas`) runs entirely through the token-shaped
+`cottas_ondisk_search_tok` / `_estimate_tok` / `_count_exact_tok`
+family in `RDF.CottasStore.fst` — real `Tot` functions, no assume
+vals — per that module's own 2026-07-06 comment: the id-based
+dictionary path was retired from the hot path in favour of direct
+term<->token serialisation. The design doc this module cites
+(`docs/designissues/2026-05-13-issue-118-cottas-ondisk-runtime-
+retirement-plan.md`) already flagged this as "partially overtaken by
+events" and named three non-production consumers still on the
+id-based path (a tests/unit baseline, `cottas_ondisk_smoketest`,
+`factoidal-explain`) — re-checked here and ALL THREE have since
+migrated to `_tok` calls; none reference `OnDiskRuntime` or
+`ondisk_*_indexed`/`_via_registry` today, so even that residual
+consumer list is stale. The `.github/test-suites/local-cottas-
+corpus.yaml` "direct-trigger" association the classifier surfaces is
+a file-glob CI trigger-path listing (any `RDF.CottasStore*.fst`
+change re-runs the suite), not evidence of exercise — verified by
+reading the glob, not by suite content. 🧭 decision needed from
+owner/maintainer, not inferred here: retire (delete the 15 assume
+vals + `cottas_ondisk_runtime_indexed.sh` + the orphaned LazyDict/
+LazyDictRegistry chain, ~2 commit-sized module 4/5 follow-ups) vs.
+keep as scaffolding for the file's own noted "Future work (Phase
+2.5h) re-introduces ondisk_search_indexed... once a perf-fast variant
+lands again." Hazard 1 (hand-parsed RDF terms): CONFIRMED, same site
+as #454, reached only if this dead path is ever wired up —
+`parse_iri_token` / `parse_literal_token` / `parse_subject_str` /
+`parse_object_str` (`cottas_ondisk_runtime.sh:126-215`) populate the
+Hashtbl tables that `ondisk_*_indexed`'s realising glue
+(`cottas_ondisk_runtime_indexed.sh`) forwards to; per the brief, not
+fixed here — filed as the same finding, second reachability path, not
+a new site. Brief named `cottas_ondisk_runtime.sh` as this module's
+glue; the module's actual realiser is the separate, smaller
+`cottas_ondisk_runtime_indexed.sh` (161 lines) — a clean rule-#11(b)
+dispatch shim with no parsing/byte-layout logic of its own; it calls
+INTO `cottas_ondisk_runtime.sh`'s Hashtbl runtime for 8 of the 15,
+and into `RDF.CottasStore.LazyDict`/`LazyDictRegistry` (separate
+modules' own assume vals) for the other 7 — corrected here, not
+silently substituted. Hazard 2 (stale stub-deletion anchors): NOT
+FOUND — forced `rm` + fresh single-module extraction, 15/15 stubs
+present exactly once pre-patch, all 15 anchors matched (`subn` count
+1, zero WARN) post-patch, zero leftover `failwith "Not yet
+implemented"` text, 15 unique `let ondisk_*` bindings post-patch, and
+the freshly regenerated `.ml` is byte-identical to the committed one
+(`git diff` empty) — this glue's anchors are healthy, unlike module
+1's sibling. Lifts: NONE — the 8 indexed vals are asymmetric
+encode(token->id)/decode(id->token) pairs over two different Hashtbl
+directions built once at open time; there is no pure relationship
+between them expressible without the ML-effected Hashtbl read itself
+(unlike modules 1/2's `estimate = length(search)` shape), and the
+module has no `_estimate`/`_search` pair at all (comment confirms:
+those were retired to F* separately, before this module existed).
+Type refinements: NONE — no comment in the module claims an
+invariant its `option`/`nat` signatures don't already state (`id`
+range and path-registration are already `option`-typed absences, not
+stronger claims). Trace logging (`[qof3-trace]`/`[bet7-trace]`):
+purely additive `Printf.eprintf` diagnostics in both glue files; none
+gate control flow — confirmed by reading every call site. Tier from a
+fresh classifier run WITH --json: `"assurance_tier": "merely-tot"`,
+`"merely_tot": true`, `"assume_val_active": 15`,
+`"foundational_path": false` — HONEST for a module with 15 assume
+vals and 0 theorems, though the tier label alone does not surface the
+dead-code finding above; that required call-graph grep, not the
+classifier. No .fst changed, so no extract/compile/gate rerun was
+needed; targeted `make verify-RDF.CottasStore.OnDiskRuntime` reverified
+clean under z3 4.13.3, no `--lax`. Project assume-val total (active,
+per classifier): 125, unchanged (no lift landed).
