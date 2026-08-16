@@ -1911,3 +1911,41 @@ no hash-witness test — byte-layout logic in glue; follow-up owed.
 Gates: RDF 1030 pass, 0 fail, 1 unsupported (of 1031); escape pin 5
 pass, 0 fail; unit suite 20 pass, 28 fail (of 48) = baseline exactly.
 📊 #448 baseline moves 129 -> 128 merely-tot (of 231).
+
+**#448 wave 1, module 2: HDT.Container lifted merely-tot ->
+algorithm-correctness (2026-08-16, branch `assure-hdt-container`)**:
+HDT.Container is a pure READER (container skeleton framing over the
+HDT v1 binary format -- cookie/format/props/CRC16 control-info blocks,
+PFC/log-array/bitmap section-boundary arithmetic), no writer side, so
+the writer/reader round-trip template (module 1's pattern) does not
+apply. Chose instead the "only reads" template: prove corruption is
+REFUSED, not silently decoded as noise. Two lemmas:
+`lemma_parse_control_info_rejects_bad_cookie` -- a mismatched 4-byte
+`$HDT` cookie makes `parse_control_info` return `None`, proved by
+direct unfolding (`()`), no induction, no congruence bridging needed
+(unlike module 1's version-field round trip, every hypothesis here is
+a bare `byte_get` equality feeding a `match` the SMT encoding resolves
+directly). `lemma_bad_global_cookie_rejects_container` is the
+corollary at the shipping entry point every consumer actually calls:
+a corrupted Global cookie at file offset 0 fails the WHOLE
+`hdt_parse_inventory_hex`, not just the Global control-info block, by
+forwarding `parse_control_info a 0`'s `None` verbatim. Both relate two
+named shipping functions (`parse_control_info` /
+`hdt_parse_inventory_hex`, plus `byte_get`) with no declarative
+relation, so the classifier reads algorithm-correctness. `pfc_type`
+refined from bare `nat` to `(t:nat{t = 2})` per the #445 template --
+was a comment-only invariant ("2 = Plain Front Coding"). Assume-val
+audit: HDT.Container itself carries ZERO `assume val`s -- all file
+bytes cross the boundary through Parquet.Footer's
+`parquet_read_range_hex`, already audited under module 1's finding
+above (nothing new here). CLI pin: `bin/hdt-probe/check.sh` gained a
+corrupted-global-cookie arm (flip byte 0 of a real vendored `.hdt`
+fixture, 0x24 -> 0x25, require the probe's loud `PARSE FAILED` and
+rc=1) alongside the pre-existing truncation arms; 75 pass, 0 fail (of
+75) end to end, plus `tests/local/hdt_stage4_parity.sh` (backend
+parity against the same fixture) at 6 pass, 0 fail (of 6), both
+unaffected by the refinement or the new lemmas since the shipping
+functions' extracted behaviour is byte-identical. Tier verified by
+running the actual classifier, not asserted. Gates: RDF 1030 pass,
+0 fail, 1 unsupported (of 1031); escape pin 5 pass, 0 fail (of 5);
+unit suite 20 pass, 28 fail (of 48) = baseline exactly.
