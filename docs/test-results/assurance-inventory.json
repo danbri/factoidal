@@ -611,10 +611,10 @@
    "log_path": "formal/fstar/ocaml-output/sparql_results.log",
    "domain": "RDF",
    "coverage": {
-    "pass": 39,
+    "pass": 38,
     "fail": 0,
     "skip": 0,
-    "total": 39,
+    "total": 38,
     "source": "suite-log:per-runner-arg:formal/fstar/ocaml-output/rdf_results.log",
     "manifest_log_path_mismatch": "formal/fstar/ocaml-output/sparql_results.log"
    }
@@ -4879,7 +4879,7 @@
    "files": [
     "formal/fstar/Parquet.Footer.fst"
    ],
-   "loc": 3300,
+   "loc": 3340,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -4887,7 +4887,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Parquet_Footer.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 188,
+   "shipping_function_count": 190,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 3,
@@ -6182,7 +6182,7 @@
      "name": "lemma_extract_middle",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 482,
+     "line": 481,
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -6193,7 +6193,7 @@
      "name": "lemma_iri_bracket_shift_prereqs",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1127,
+     "line": 1126,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -6207,7 +6207,7 @@
      "name": "lemma_pws_one_space",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1178,
+     "line": 1177,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -6220,7 +6220,7 @@
      "name": "lemma_build_string_byte_length_general",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1280,
+     "line": 1279,
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -6231,7 +6231,7 @@
      "name": "lemma_scan_iri_end_one_char_walk",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1316,
+     "line": 1315,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -6243,7 +6243,7 @@
      "name": "lemma_scan_iri_end_build_string_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1360,
+     "line": 1359,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -6255,7 +6255,7 @@
      "name": "lemma_parse_iri_raw_build_string_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1421,
+     "line": 1420,
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -6267,7 +6267,7 @@
      "name": "lemma_parse_iri_build_string_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1451,
+     "line": 1450,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -6279,7 +6279,7 @@
      "name": "lemma_term_iri_round_trip_build_string_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1465,
+     "line": 1464,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -6292,7 +6292,7 @@
      "name": "lemma_term_iri_round_trip_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1494,
+     "line": 1493,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -7888,7 +7888,7 @@
      "name": "lemma_build_string_utf8_bytes_general",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1267,
+     "line": 1266,
      "unconditional": true,
      "names_shipping_functions": [
       "utf8_bytes",
@@ -7899,7 +7899,7 @@
      "name": "lemma_build_string_byte_length_general",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1280,
+     "line": 1279,
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -7910,7 +7910,7 @@
      "name": "lemma_utf8_enc_char_iri_safe",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1293,
+     "line": 1292,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9699,7 +9699,7 @@
      "name": "checkpoint_a_closed_triple_round_trip",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 613,
+     "line": 612,
      "unconditional": true,
      "names_shipping_functions": [
       "nq_line_for_triple_default_graph",
@@ -9710,7 +9710,7 @@
      "name": "lemma_scan_iri_end_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 781,
+     "line": 780,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9721,7 +9721,7 @@
      "name": "lemma_parse_iri_raw_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 831,
+     "line": 830,
      "unconditional": true,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9732,7 +9732,7 @@
      "name": "lemma_parse_iri_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 863,
+     "line": 862,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9743,7 +9743,7 @@
      "name": "lemma_term_iri_round_trip_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 876,
+     "line": 875,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9755,7 +9755,7 @@
      "name": "lemma_term_iri_round_trip",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 953,
+     "line": 952,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9767,7 +9767,7 @@
      "name": "lemma_iri_round_trip",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1033,
+     "line": 1032,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9778,7 +9778,7 @@
      "name": "lemma_parse_subject_iri_round_trip_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1053,
+     "line": 1052,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9790,7 +9790,7 @@
      "name": "lemma_subject_iri_round_trip",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1073,
+     "line": 1072,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9802,7 +9802,7 @@
      "name": "lemma_scan_iri_end_bracket_witness",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1097,
+     "line": 1096,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9813,7 +9813,7 @@
      "name": "lemma_iri_bracket_shift_prereqs",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1127,
+     "line": 1126,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -9827,7 +9827,7 @@
      "name": "lemma_pws_one_space",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1178,
+     "line": 1177,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_index",
@@ -9840,7 +9840,7 @@
      "name": "lemma_utf8_enc_char_iri_safe",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1293,
+     "line": 1292,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -9852,7 +9852,7 @@
      "name": "lemma_scan_iri_end_one_char_walk",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1316,
+     "line": 1315,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -9864,7 +9864,7 @@
      "name": "lemma_scan_iri_end_build_string_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1360,
+     "line": 1359,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -9876,7 +9876,7 @@
      "name": "lemma_parse_iri_raw_build_string_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1421,
+     "line": 1420,
      "unconditional": true,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -9888,7 +9888,7 @@
      "name": "lemma_parse_iri_build_string_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1451,
+     "line": 1450,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -9900,7 +9900,7 @@
      "name": "lemma_term_iri_round_trip_build_string_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1465,
+     "line": 1464,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -9913,7 +9913,7 @@
      "name": "lemma_term_iri_round_trip_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1494,
+     "line": 1493,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -10123,7 +10123,7 @@
    "files": [
     "formal/fstar/Parser.RDFXML.fst"
    ],
-   "loc": 1386,
+   "loc": 1403,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10571,7 +10571,7 @@
    "files": [
     "formal/fstar/Parser.XML.fst"
    ],
-   "loc": 2052,
+   "loc": 2071,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10683,7 +10683,7 @@
    "files": [
     "formal/fstar/RDF.Bytes.fst"
    ],
-   "loc": 357,
+   "loc": 445,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -10691,7 +10691,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_Bytes.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 12,
+   "shipping_function_count": 13,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -10717,7 +10717,7 @@
      "name": "lemma_int_of_byte_of_int",
      "proved_in": "RDF.Bytes",
      "file": "formal/fstar/RDF.Bytes.fst",
-     "line": 176,
+     "line": 66,
      "unconditional": true,
      "names_shipping_functions": [
       "byte_of_int",
@@ -10725,10 +10725,32 @@
      ]
     },
     {
+     "name": "lemma_map_byte_roundtrip",
+     "proved_in": "RDF.Bytes",
+     "file": "formal/fstar/RDF.Bytes.fst",
+     "line": 168,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "byte_of_int",
+      "byte_to_spec_byte"
+     ]
+    },
+    {
+     "name": "lemma_bytes_to_string_of_bytes_of_string",
+     "proved_in": "RDF.Bytes",
+     "file": "formal/fstar/RDF.Bytes.fst",
+     "line": 175,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "bytes_of_string",
+      "bytes_to_string"
+     ]
+    },
+    {
      "name": "lemma_parse_write_u32_le_inverse",
      "proved_in": "RDF.Bytes",
      "file": "formal/fstar/RDF.Bytes.fst",
-     "line": 197,
+     "line": 285,
      "unconditional": true,
      "names_shipping_functions": [
       "parse_u32_le",
@@ -10739,7 +10761,7 @@
      "name": "lemma_write_u64_le_decompose",
      "proved_in": "RDF.Bytes",
      "file": "formal/fstar/RDF.Bytes.fst",
-     "line": 262,
+     "line": 350,
      "unconditional": false,
      "names_shipping_functions": [
       "write_u32_le",
@@ -10750,7 +10772,7 @@
      "name": "lemma_parse_u64_decompose",
      "proved_in": "RDF.Bytes",
      "file": "formal/fstar/RDF.Bytes.fst",
-     "line": 279,
+     "line": 367,
      "unconditional": true,
      "names_shipping_functions": [
       "parse_u32_le",
@@ -10761,7 +10783,7 @@
      "name": "lemma_parse_write_u64_le_inverse",
      "proved_in": "RDF.Bytes",
      "file": "formal/fstar/RDF.Bytes.fst",
-     "line": 294,
+     "line": 382,
      "unconditional": true,
      "names_shipping_functions": [
       "parse_u64_le",
@@ -10772,7 +10794,7 @@
      "name": "lemma_parse_string_of_length_inverse",
      "proved_in": "RDF.Bytes",
      "file": "formal/fstar/RDF.Bytes.fst",
-     "line": 348,
+     "line": 436,
      "unconditional": true,
      "names_shipping_functions": [
       "bytes_of_string",
@@ -10808,11 +10830,12 @@
      "name": "lemma_build_offs_cons",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 479,
+     "line": 504,
      "unconditional": false,
      "names_shipping_functions": [
       "build_offs",
       "cum_final",
+      "tok_byte_len",
       "write_u64_le"
      ]
     },
@@ -10993,7 +11016,7 @@
    "files": [
     "formal/fstar/RDF.CottasStore.fst"
    ],
-   "loc": 2801,
+   "loc": 2826,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -11001,7 +11024,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_CottasStore.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 116,
+   "shipping_function_count": 117,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 10,
@@ -11044,7 +11067,7 @@
    "files": [
     "formal/fstar/RDF.CottasStore.BaseWriter.fst"
    ],
-   "loc": 1093,
+   "loc": 1133,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -11272,7 +11295,7 @@
    "files": [
     "formal/fstar/RDF.CottasStore.DictWriter.fst"
    ],
-   "loc": 645,
+   "loc": 670,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -11280,7 +11303,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_CottasStore_DictWriter.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 17,
+   "shipping_function_count": 18,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -11290,23 +11313,21 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 8,
+   "local_refinement_lemma_count": 6,
    "local_refinement_lemma_names": [
     "lemma_build_ids_acc_length",
     "lemma_build_ids_length",
     "lemma_cum_final_mono",
     "lemma_parse_u64_le_append",
     "lemma_parse_u32_le_append",
-    "lemma_parse_n_offsets_append",
-    "lemma_cum_offs_cons",
-    "lemma_cum_final_cons"
+    "lemma_parse_n_offsets_append"
    ],
    "algorithm_correctness_theorems": [
     {
      "name": "lemma_parse_serialize_dict_empty_case",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 303,
+     "line": 323,
      "unconditional": true,
      "names_shipping_functions": [
       "parse_dict",
@@ -11317,7 +11338,7 @@
      "name": "lemma_build_offs_acc_final",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 353,
+     "line": 373,
      "unconditional": false,
      "names_shipping_functions": [
       "build_offs_acc",
@@ -11328,7 +11349,7 @@
      "name": "lemma_parse_n_offsets_build_offs_acc",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 369,
+     "line": 389,
      "unconditional": false,
      "names_shipping_functions": [
       "build_offs_acc",
@@ -11341,7 +11362,7 @@
      "name": "lemma_parse_tokens_from_offsets_build_data",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 391,
+     "line": 411,
      "unconditional": false,
      "names_shipping_functions": [
       "build_data",
@@ -11354,7 +11375,7 @@
      "name": "lemma_cum_offs_length",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 419,
+     "line": 444,
      "unconditional": false,
      "names_shipping_functions": [
       "cum_final",
@@ -11365,19 +11386,42 @@
      "name": "lemma_build_offs_cons",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 479,
+     "line": 504,
      "unconditional": false,
      "names_shipping_functions": [
       "build_offs",
       "cum_final",
+      "tok_byte_len",
       "write_u64_le"
+     ]
+    },
+    {
+     "name": "lemma_cum_offs_cons",
+     "proved_in": "RDF.CottasStore.DictWriter",
+     "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
+     "line": 528,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "cum_offs",
+      "tok_byte_len"
+     ]
+    },
+    {
+     "name": "lemma_cum_final_cons",
+     "proved_in": "RDF.CottasStore.DictWriter",
+     "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
+     "line": 538,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "cum_final",
+      "tok_byte_len"
      ]
     },
     {
      "name": "lemma_parse_n_offsets_build_offs",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 526,
+     "line": 551,
      "unconditional": false,
      "names_shipping_functions": [
       "build_offs",
@@ -11390,7 +11434,7 @@
      "name": "lemma_parse_serialize_dict_cons",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 562,
+     "line": 587,
      "unconditional": false,
      "names_shipping_functions": [
       "cum_final",
@@ -11405,7 +11449,7 @@
      "name": "lemma_parse_serialize_dict",
      "proved_in": "RDF.CottasStore.DictWriter",
      "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-     "line": 631,
+     "line": 656,
      "unconditional": false,
      "names_shipping_functions": [
       "cum_final",
@@ -17769,7 +17813,7 @@
    "files": [
     "formal/fstar/RDF.NQuads.Serialize.fst"
    ],
-   "loc": 307,
+   "loc": 315,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -17794,7 +17838,7 @@
      "name": "checkpoint_a_closed_triple_round_trip",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 613,
+     "line": 612,
      "unconditional": true,
      "names_shipping_functions": [
       "nq_line_for_triple_default_graph",
@@ -17805,7 +17849,7 @@
      "name": "lemma_term_iri_round_trip_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 876,
+     "line": 875,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -17817,7 +17861,7 @@
      "name": "lemma_term_iri_round_trip",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 953,
+     "line": 952,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -17829,7 +17873,7 @@
      "name": "lemma_parse_subject_iri_round_trip_build_string",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1053,
+     "line": 1052,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -17841,7 +17885,7 @@
      "name": "lemma_subject_iri_round_trip",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1073,
+     "line": 1072,
      "unconditional": false,
      "names_shipping_functions": [
       "is_iri_body_char",
@@ -17853,7 +17897,7 @@
      "name": "lemma_term_iri_round_trip_build_string_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1465,
+     "line": 1464,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -17866,7 +17910,7 @@
      "name": "lemma_term_iri_round_trip_utf8",
      "proved_in": "RDF.NTriples.RoundTrip",
      "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-     "line": 1494,
+     "line": 1493,
      "unconditional": false,
      "names_shipping_functions": [
       "fs_byte_length",
@@ -17965,7 +18009,7 @@
    "files": [
     "formal/fstar/RDF.NTriples.RoundTrip.fst"
    ],
-   "loc": 1506,
+   "loc": 1505,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "not-in-build-list",
@@ -18009,7 +18053,7 @@
    "files": [
     "formal/fstar/RDF.Pretty.fst"
    ],
-   "loc": 227,
+   "loc": 236,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -18017,7 +18061,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_Pretty.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 18,
+   "shipping_function_count": 17,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -18197,7 +18241,7 @@
    "files": [
     "formal/fstar/RDF.Store.Columnar.DeltaLog.fst"
    ],
-   "loc": 1313,
+   "loc": 1340,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -18205,7 +18249,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_Store_Columnar_DeltaLog.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 70,
+   "shipping_function_count": 71,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 5,
@@ -18221,10 +18265,9 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 6,
+   "local_refinement_lemma_count": 5,
    "local_refinement_lemma_names": [
     "lemma_term_ok_tripleterm",
-    "lemma_bytes_of_string_length",
     "lemma_write_u64_le_length",
     "lemma_parse_u32_le_length",
     "lemma_parse_n_bytes_length",
@@ -18246,9 +18289,10 @@
      "name": "lemma_lstring_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 146,
+     "line": 161,
      "unconditional": false,
      "names_shipping_functions": [
+      "field_byte_len",
       "parse_lstring",
       "serialize_lstring"
      ]
@@ -18257,9 +18301,10 @@
      "name": "lemma_lstring_length",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 449,
+     "line": 467,
      "unconditional": true,
      "names_shipping_functions": [
+      "field_byte_len",
       "max_field_chars",
       "serialize_lstring"
      ]
@@ -18268,7 +18313,7 @@
      "name": "lemma_term_length",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 457,
+     "line": 474,
      "unconditional": true,
      "names_shipping_functions": [
       "max_field_chars",
@@ -18280,7 +18325,7 @@
      "name": "lemma_term_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 494,
+     "line": 520,
      "unconditional": false,
      "names_shipping_functions": [
       "parse_term",
@@ -18292,7 +18337,7 @@
      "name": "lemma_subject_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 536,
+     "line": 563,
      "unconditional": false,
      "names_shipping_functions": [
       "parse_subject",
@@ -18304,7 +18349,7 @@
      "name": "lemma_triple_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 548,
+     "line": 575,
      "unconditional": false,
      "names_shipping_functions": [
       "parse_triple",
@@ -18316,7 +18361,7 @@
      "name": "lemma_graph_opt_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 562,
+     "line": 589,
      "unconditional": false,
      "names_shipping_functions": [
       "graph_opt_ok",
@@ -18328,7 +18373,7 @@
      "name": "lemma_delta_entry_payload_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 574,
+     "line": 601,
      "unconditional": false,
      "names_shipping_functions": [
       "delta_entry_ok",
@@ -18340,7 +18385,7 @@
      "name": "lemma_subject_length_bound",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 628,
+     "line": 655,
      "unconditional": true,
      "names_shipping_functions": [
       "max_field_chars",
@@ -18352,7 +18397,7 @@
      "name": "lemma_graph_opt_length_bound",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 638,
+     "line": 665,
      "unconditional": true,
      "names_shipping_functions": [
       "graph_opt_ok",
@@ -18364,7 +18409,7 @@
      "name": "lemma_triple_length_bound",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 647,
+     "line": 674,
      "unconditional": true,
      "names_shipping_functions": [
       "max_field_chars",
@@ -18376,7 +18421,7 @@
      "name": "lemma_delta_entry_payload_length",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 660,
+     "line": 687,
      "unconditional": true,
      "names_shipping_functions": [
       "delta_entry_ok",
@@ -18387,7 +18432,7 @@
      "name": "lemma_delta_entry_frame_ok",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 705,
+     "line": 732,
      "unconditional": true,
      "names_shipping_functions": [
       "delta_entry_frame_ok",
@@ -18398,7 +18443,7 @@
      "name": "lemma_delta_entry_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 715,
+     "line": 742,
      "unconditional": false,
      "names_shipping_functions": [
       "delta_entry_ok",
@@ -18410,7 +18455,7 @@
      "name": "lemma_ops_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 894,
+     "line": 921,
      "unconditional": false,
      "names_shipping_functions": [
       "delta_batch_ops_ok",
@@ -18422,7 +18467,7 @@
      "name": "lemma_batch_body_length",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 918,
+     "line": 945,
      "unconditional": true,
      "names_shipping_functions": [
       "delta_batch_ok",
@@ -18434,7 +18479,7 @@
      "name": "lemma_delta_batch_frame_ok",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 930,
+     "line": 957,
      "unconditional": true,
      "names_shipping_functions": [
       "delta_batch_ok",
@@ -18445,7 +18490,7 @@
      "name": "lemma_delta_batch_body_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 934,
+     "line": 961,
      "unconditional": false,
      "names_shipping_functions": [
       "delta_batch_ok",
@@ -18457,7 +18502,7 @@
      "name": "lemma_delta_batch_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 951,
+     "line": 978,
      "unconditional": false,
      "names_shipping_functions": [
       "delta_batch_ok",
@@ -18469,7 +18514,7 @@
      "name": "lemma_log_header_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 1015,
+     "line": 1042,
      "unconditional": true,
      "names_shipping_functions": [
       "parse_log_header",
@@ -18480,7 +18525,7 @@
      "name": "lemma_parse_log_batches_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 1115,
+     "line": 1142,
      "unconditional": false,
      "names_shipping_functions": [
       "delta_batches_ok",
@@ -18492,7 +18537,7 @@
      "name": "lemma_log_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 1127,
+     "line": 1154,
      "unconditional": false,
      "names_shipping_functions": [
       "delta_batches_ok",
@@ -18504,7 +18549,7 @@
      "name": "lemma_compacted_epoch_roundtrip",
      "proved_in": "RDF.Store.Columnar.DeltaLog",
      "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-     "line": 1265,
+     "line": 1292,
      "unconditional": true,
      "names_shipping_functions": [
       "parse_compacted_epoch",
@@ -19115,7 +19160,7 @@
      "name": "lemma_sm_submap_lookup",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2183,
+     "line": 2277,
      "unconditional": false,
      "names_shipping_functions": [
       "rdf_term_eq",
@@ -24659,7 +24704,7 @@
    "files": [
     "formal/fstar/SPARQL11.Algebra.fst"
    ],
-   "loc": 8728,
+   "loc": 8770,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -24667,7 +24712,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/SPARQL11_Algebra.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 513,
+   "shipping_function_count": 515,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 10,
@@ -25066,7 +25111,7 @@
      "name": "lemma_sm_submap_extra_binding",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2159,
+     "line": 2253,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_domain",
@@ -25077,7 +25122,7 @@
      "name": "lemma_sm_submap_refl",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2167,
+     "line": 2261,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_domain",
@@ -25088,7 +25133,7 @@
      "name": "lemma_sm_equal_refl",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2178,
+     "line": 2272,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_domain",
@@ -25099,7 +25144,7 @@
      "name": "lemma_sm_submap_lookup",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2183,
+     "line": 2277,
      "unconditional": false,
      "names_shipping_functions": [
       "rdf_term_eq",
@@ -25111,7 +25156,7 @@
      "name": "lemma_sm_mem_witness",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2216,
+     "line": 2310,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_equal",
@@ -25122,7 +25167,7 @@
      "name": "lemma_dedup_core_complete",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2253,
+     "line": 2347,
      "unconditional": false,
      "names_shipping_functions": [
       "list_deduplicate_sm_acc",
@@ -25134,7 +25179,7 @@
      "name": "theorem_distinct_complete",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2301,
+     "line": 2395,
      "unconditional": false,
      "names_shipping_functions": [
       "distinct_solutions",
@@ -25146,7 +25191,7 @@
      "name": "lemma_substitute_pattern_preserves_size",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 4939,
+     "line": 4952,
      "unconditional": true,
      "names_shipping_functions": [
       "group_graph_pattern",
@@ -25158,7 +25203,7 @@
      "name": "lemma_lateral_substitute_preserves_size",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 4994,
+     "line": 5007,
      "unconditional": true,
      "names_shipping_functions": [
       "group_graph_pattern",
@@ -25170,7 +25215,7 @@
      "name": "lemma_rewrite_query_bnodes_pattern_preserves_size",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 5824,
+     "line": 5866,
      "unconditional": true,
      "names_shipping_functions": [
       "group_graph_pattern",
@@ -25182,7 +25227,7 @@
      "name": "lemma_filter_union",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7403,
+     "line": 7445,
      "unconditional": true,
      "names_shipping_functions": [
       "filter_solutions",
@@ -25193,7 +25238,7 @@
      "name": "lemma_sm_compatible_refl",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7478,
+     "line": 7520,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_compatible",
@@ -25204,7 +25249,7 @@
      "name": "lemma_sm_merge_empty_l",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7527,
+     "line": 7569,
      "unconditional": true,
      "names_shipping_functions": [
       "sm_lookup",
@@ -25215,7 +25260,7 @@
      "name": "lemma_store_search_empty",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7632,
+     "line": 7674,
      "unconditional": true,
      "names_shipping_functions": [
       "graph_to_store",
@@ -25226,7 +25271,7 @@
      "name": "lemma_eval_single_tp_empty",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7636,
+     "line": 7678,
      "unconditional": true,
      "names_shipping_functions": [
       "eval_single_tp_store",
@@ -25237,7 +25282,7 @@
      "name": "lemma_eval_bgp_store_empty_fuel",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7650,
+     "line": 7692,
      "unconditional": true,
      "names_shipping_functions": [
       "eval_bgp_store_from_mu_fuel",
@@ -25879,6 +25924,38 @@
       "sorted_by",
       "totality_on",
       "transitivity_on"
+     ],
+     "declarative_relations_from": [
+      "SPARQL11.Algebra.Refinement"
+     ]
+    },
+    {
+     "name": "lemma_sparql_order_numeric_frag_totality",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 2015,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "sparql_order"
+     ],
+     "names_declarative_relations": [
+      "er_num_plain"
+     ],
+     "declarative_relations_from": [
+      "SPARQL11.Algebra.Refinement"
+     ]
+    },
+    {
+     "name": "lemma_sparql_order_numeric_frag_trans",
+     "proved_in": "SPARQL11.Algebra.Refinement",
+     "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+     "line": 2050,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "sparql_order"
+     ],
+     "names_declarative_relations": [
+      "er_num_plain"
      ],
      "declarative_relations_from": [
       "SPARQL11.Algebra.Refinement"
@@ -27014,7 +27091,7 @@
      "name": "theorem_sr3_distinct_card_spec_false",
      "proved_in": "SPARQL11.Algebra.Refinement",
      "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-     "line": 2397,
+     "line": 2491,
      "unconditional": true,
      "names_shipping_functions": [
       "distinct_solutions"
@@ -27154,7 +27231,7 @@
    "files": [
     "formal/fstar/SPARQL11.Algebra.Refinement.fst"
    ],
-   "loc": 2404,
+   "loc": 2498,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "fully-erased",
@@ -27163,7 +27240,7 @@
    "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 0,
-   "declarative_relation_count": 10,
+   "declarative_relation_count": 11,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
@@ -36561,7 +36638,7 @@
    "name": "lemma_int_of_byte_of_int",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 176,
+   "line": 66,
    "unconditional": true,
    "shipping_functions_named": [
     "byte_of_int",
@@ -36577,10 +36654,48 @@
    "class": "algorithm_correctness"
   },
   {
+   "name": "lemma_map_byte_roundtrip",
+   "host_module": "RDF.Bytes",
+   "file": "formal/fstar/RDF.Bytes.fst",
+   "line": 168,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "byte_of_int",
+    "byte_to_spec_byte"
+   ],
+   "shipping_modules": [
+    "RDF.Bytes"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
+   "name": "lemma_bytes_to_string_of_bytes_of_string",
+   "host_module": "RDF.Bytes",
+   "file": "formal/fstar/RDF.Bytes.fst",
+   "line": 175,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "bytes_of_string",
+    "bytes_to_string"
+   ],
+   "shipping_modules": [
+    "RDF.Bytes"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
    "name": "lemma_parse_write_u32_le_inverse",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 197,
+   "line": 285,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_u32_le",
@@ -36599,7 +36714,7 @@
    "name": "lemma_lo_byte0",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 226,
+   "line": 314,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -36613,7 +36728,7 @@
    "name": "lemma_lo_byte1",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 230,
+   "line": 318,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -36627,7 +36742,7 @@
    "name": "lemma_lo_byte2",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 235,
+   "line": 323,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -36641,7 +36756,7 @@
    "name": "lemma_lo_byte3",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 240,
+   "line": 328,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -36655,7 +36770,7 @@
    "name": "lemma_hi_byte1",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 247,
+   "line": 335,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -36669,7 +36784,7 @@
    "name": "lemma_hi_byte2",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 251,
+   "line": 339,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -36683,7 +36798,7 @@
    "name": "lemma_hi_byte3",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 255,
+   "line": 343,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -36697,7 +36812,7 @@
    "name": "lemma_write_u64_le_decompose",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 262,
+   "line": 350,
    "unconditional": false,
    "shipping_functions_named": [
     "write_u32_le",
@@ -36716,7 +36831,7 @@
    "name": "lemma_parse_u64_decompose",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 279,
+   "line": 367,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_u32_le",
@@ -36735,7 +36850,7 @@
    "name": "lemma_parse_write_u64_le_inverse",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 294,
+   "line": 382,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_u64_le",
@@ -36754,7 +36869,7 @@
    "name": "lemma_parse_n_bytes_inverse",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 329,
+   "line": 417,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_n_bytes"
@@ -36772,7 +36887,7 @@
    "name": "lemma_parse_string_of_length_inverse",
    "host_module": "RDF.Bytes",
    "file": "formal/fstar/RDF.Bytes.fst",
-   "line": 348,
+   "line": 436,
    "unconditional": true,
    "shipping_functions_named": [
     "bytes_of_string",
@@ -36971,7 +37086,7 @@
    "name": "lemma_parse_serialize_dict_empty_case",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 303,
+   "line": 323,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_dict",
@@ -36990,7 +37105,7 @@
    "name": "lemma_build_ids_acc_length",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 311,
+   "line": 331,
    "unconditional": true,
    "shipping_functions_named": [
     "build_ids_acc"
@@ -37008,7 +37123,7 @@
    "name": "lemma_build_ids_length",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 322,
+   "line": 342,
    "unconditional": true,
    "shipping_functions_named": [
     "build_ids"
@@ -37026,7 +37141,7 @@
    "name": "lemma_cum_final_mono",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 345,
+   "line": 365,
    "unconditional": true,
    "shipping_functions_named": [
     "cum_final"
@@ -37044,7 +37159,7 @@
    "name": "lemma_build_offs_acc_final",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 353,
+   "line": 373,
    "unconditional": false,
    "shipping_functions_named": [
     "build_offs_acc",
@@ -37063,7 +37178,7 @@
    "name": "lemma_parse_n_offsets_build_offs_acc",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 369,
+   "line": 389,
    "unconditional": false,
    "shipping_functions_named": [
     "build_offs_acc",
@@ -37084,7 +37199,7 @@
    "name": "lemma_parse_tokens_from_offsets_build_data",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 391,
+   "line": 411,
    "unconditional": false,
    "shipping_functions_named": [
     "build_data",
@@ -37105,7 +37220,7 @@
    "name": "lemma_cum_offs_length",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 419,
+   "line": 444,
    "unconditional": false,
    "shipping_functions_named": [
     "cum_final",
@@ -37124,7 +37239,7 @@
    "name": "lemma_parse_u64_le_append",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 435,
+   "line": 460,
    "unconditional": false,
    "shipping_functions_named": [
     "parse_u64_le"
@@ -37142,7 +37257,7 @@
    "name": "lemma_parse_u32_le_append",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 446,
+   "line": 471,
    "unconditional": false,
    "shipping_functions_named": [
     "parse_u32_le"
@@ -37160,7 +37275,7 @@
    "name": "lemma_parse_n_offsets_append",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 457,
+   "line": 482,
    "unconditional": false,
    "shipping_functions_named": [
     "parse_n_offsets"
@@ -37178,11 +37293,12 @@
    "name": "lemma_build_offs_cons",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 479,
+   "line": 504,
    "unconditional": false,
    "shipping_functions_named": [
     "build_offs",
     "cum_final",
+    "tok_byte_len",
     "write_u64_le"
    ],
    "shipping_modules": [
@@ -37199,10 +37315,11 @@
    "name": "lemma_cum_offs_cons",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 503,
+   "line": 528,
    "unconditional": false,
    "shipping_functions_named": [
-    "cum_offs"
+    "cum_offs",
+    "tok_byte_len"
    ],
    "shipping_modules": [
     "RDF.CottasStore.DictWriter"
@@ -37211,16 +37328,17 @@
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_cum_final_cons",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 513,
+   "line": 538,
    "unconditional": false,
    "shipping_functions_named": [
-    "cum_final"
+    "cum_final",
+    "tok_byte_len"
    ],
    "shipping_modules": [
     "RDF.CottasStore.DictWriter"
@@ -37229,13 +37347,13 @@
    "declarative_modules": [],
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
-   "class": "local_refinement"
+   "class": "algorithm_correctness"
   },
   {
    "name": "lemma_parse_n_offsets_build_offs",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 526,
+   "line": 551,
    "unconditional": false,
    "shipping_functions_named": [
     "build_offs",
@@ -37256,7 +37374,7 @@
    "name": "lemma_parse_serialize_dict_cons",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 562,
+   "line": 587,
    "unconditional": false,
    "shipping_functions_named": [
     "cum_final",
@@ -37279,7 +37397,7 @@
    "name": "lemma_parse_serialize_dict",
    "host_module": "RDF.CottasStore.DictWriter",
    "file": "formal/fstar/RDF.CottasStore.DictWriter.fst",
-   "line": 631,
+   "line": 656,
    "unconditional": false,
    "shipping_functions_named": [
     "cum_final",
@@ -49821,7 +49939,7 @@
    "name": "lemma_nq_subject_to_string_same_shape_iri",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 318,
+   "line": 317,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_subject_to_string"
@@ -49839,7 +49957,7 @@
    "name": "lemma_nq_subject_to_string_same_shape_bnode",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 327,
+   "line": 326,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_subject_to_string"
@@ -49857,7 +49975,7 @@
    "name": "lemma_nq_subject_to_string_cross_shape",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 340,
+   "line": 339,
    "unconditional": true,
    "shipping_functions_named": [
     "nq_subject_to_string"
@@ -49875,7 +49993,7 @@
    "name": "lemma_nq_subject_to_string_injective",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 349,
+   "line": 348,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_subject_to_string"
@@ -49893,7 +50011,7 @@
    "name": "lemma_nq_term_to_string_same_shape_iri",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 366,
+   "line": 365,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -49911,7 +50029,7 @@
    "name": "lemma_nq_term_to_string_same_shape_bnode",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 375,
+   "line": 374,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -49929,7 +50047,7 @@
    "name": "lemma_nq_term_to_string_cross_shape",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 383,
+   "line": 382,
    "unconditional": true,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -49947,7 +50065,7 @@
    "name": "lemma_nq_term_to_string_injective",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 394,
+   "line": 393,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -49965,7 +50083,7 @@
    "name": "lemma_nq_objects_injective_pointwise",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 418,
+   "line": 417,
    "unconditional": false,
    "shipping_functions_named": [
     "nq_term_to_string"
@@ -49983,7 +50101,7 @@
    "name": "lemma_extract_middle",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 482,
+   "line": 481,
    "unconditional": true,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -50002,7 +50120,7 @@
    "name": "checkpoint_a_closed_triple_round_trip",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 613,
+   "line": 612,
    "unconditional": true,
    "shipping_functions_named": [
     "nq_line_for_triple_default_graph",
@@ -50022,7 +50140,7 @@
    "name": "lemma_scan_iri_end_build_string",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 781,
+   "line": 780,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50041,7 +50159,7 @@
    "name": "lemma_parse_iri_raw_build_string",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 831,
+   "line": 830,
    "unconditional": true,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50060,7 +50178,7 @@
    "name": "lemma_parse_iri_build_string",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 863,
+   "line": 862,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50079,7 +50197,7 @@
    "name": "lemma_term_iri_round_trip_build_string",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 876,
+   "line": 875,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50100,7 +50218,7 @@
    "name": "lemma_term_iri_round_trip",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 953,
+   "line": 952,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50121,7 +50239,7 @@
    "name": "lemma_iri_round_trip",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1033,
+   "line": 1032,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50140,7 +50258,7 @@
    "name": "lemma_parse_subject_iri_round_trip_build_string",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1053,
+   "line": 1052,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50161,7 +50279,7 @@
    "name": "lemma_subject_iri_round_trip",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1073,
+   "line": 1072,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50182,7 +50300,7 @@
    "name": "lemma_scan_iri_end_bracket_witness",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1097,
+   "line": 1096,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50201,7 +50319,7 @@
    "name": "lemma_iri_bracket_shift_prereqs",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1127,
+   "line": 1126,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_index",
@@ -50224,7 +50342,7 @@
    "name": "lemma_pws_one_space",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1178,
+   "line": 1177,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_index",
@@ -50246,7 +50364,7 @@
    "name": "lemma_build_string_utf8_bytes_general",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1267,
+   "line": 1266,
    "unconditional": true,
    "shipping_functions_named": [
     "utf8_bytes",
@@ -50265,7 +50383,7 @@
    "name": "lemma_build_string_byte_length_general",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1280,
+   "line": 1279,
    "unconditional": true,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -50285,7 +50403,7 @@
    "name": "lemma_utf8_enc_char_iri_safe",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1293,
+   "line": 1292,
    "unconditional": false,
    "shipping_functions_named": [
     "is_iri_body_char",
@@ -50306,7 +50424,7 @@
    "name": "nth_byte_index_iri",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1305,
+   "line": 1304,
    "unconditional": true,
    "shipping_functions_named": [
     "nth_byte"
@@ -50324,7 +50442,7 @@
    "name": "lemma_scan_iri_end_one_char_walk",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1316,
+   "line": 1315,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -50345,7 +50463,7 @@
    "name": "lemma_scan_iri_end_build_string_utf8",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1360,
+   "line": 1359,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -50366,7 +50484,7 @@
    "name": "lemma_list_of_build_string_general",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1402,
+   "line": 1401,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -50380,7 +50498,7 @@
    "name": "lemma_string_is_build_string_general",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1409,
+   "line": 1408,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -50394,7 +50512,7 @@
    "name": "lemma_parse_iri_raw_build_string_utf8",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1421,
+   "line": 1420,
    "unconditional": true,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -50415,7 +50533,7 @@
    "name": "lemma_parse_iri_build_string_utf8",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1451,
+   "line": 1450,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -50436,7 +50554,7 @@
    "name": "lemma_term_iri_round_trip_build_string_utf8",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1465,
+   "line": 1464,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -50459,7 +50577,7 @@
    "name": "lemma_term_iri_round_trip_utf8",
    "host_module": "RDF.NTriples.RoundTrip",
    "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-   "line": 1494,
+   "line": 1493,
    "unconditional": false,
    "shipping_functions_named": [
     "fs_byte_length",
@@ -51242,9 +51360,10 @@
    "name": "lemma_lstring_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 146,
+   "line": 161,
    "unconditional": false,
    "shipping_functions_named": [
+    "field_byte_len",
     "parse_lstring",
     "serialize_lstring"
    ],
@@ -51261,7 +51380,7 @@
    "name": "lemma_term_ok_tripleterm",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 415,
+   "line": 434,
    "unconditional": true,
    "shipping_functions_named": [
     "term_ok"
@@ -51276,30 +51395,13 @@
    "class": "local_refinement"
   },
   {
-   "name": "lemma_bytes_of_string_length",
-   "host_module": "RDF.Store.Columnar.DeltaLog",
-   "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 445,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "bytes_of_string"
-   ],
-   "shipping_modules": [
-    "RDF.Bytes"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
    "name": "lemma_lstring_length",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 449,
+   "line": 467,
    "unconditional": true,
    "shipping_functions_named": [
+    "field_byte_len",
     "max_field_chars",
     "serialize_lstring"
    ],
@@ -51316,7 +51418,7 @@
    "name": "lemma_term_length",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 457,
+   "line": 474,
    "unconditional": true,
    "shipping_functions_named": [
     "max_field_chars",
@@ -51336,7 +51438,7 @@
    "name": "lemma_term_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 494,
+   "line": 520,
    "unconditional": false,
    "shipping_functions_named": [
     "parse_term",
@@ -51356,7 +51458,7 @@
    "name": "lemma_subject_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 536,
+   "line": 563,
    "unconditional": false,
    "shipping_functions_named": [
     "parse_subject",
@@ -51376,7 +51478,7 @@
    "name": "lemma_triple_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 548,
+   "line": 575,
    "unconditional": false,
    "shipping_functions_named": [
     "parse_triple",
@@ -51396,7 +51498,7 @@
    "name": "lemma_graph_opt_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 562,
+   "line": 589,
    "unconditional": false,
    "shipping_functions_named": [
     "graph_opt_ok",
@@ -51416,7 +51518,7 @@
    "name": "lemma_delta_entry_payload_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 574,
+   "line": 601,
    "unconditional": false,
    "shipping_functions_named": [
     "delta_entry_ok",
@@ -51436,7 +51538,7 @@
    "name": "lemma_subject_length_bound",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 628,
+   "line": 655,
    "unconditional": true,
    "shipping_functions_named": [
     "max_field_chars",
@@ -51456,7 +51558,7 @@
    "name": "lemma_graph_opt_length_bound",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 638,
+   "line": 665,
    "unconditional": true,
    "shipping_functions_named": [
     "graph_opt_ok",
@@ -51476,7 +51578,7 @@
    "name": "lemma_triple_length_bound",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 647,
+   "line": 674,
    "unconditional": true,
    "shipping_functions_named": [
     "max_field_chars",
@@ -51496,7 +51598,7 @@
    "name": "lemma_delta_entry_payload_length",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 660,
+   "line": 687,
    "unconditional": true,
    "shipping_functions_named": [
     "delta_entry_ok",
@@ -51515,7 +51617,7 @@
    "name": "lemma_delta_entry_frame_ok",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 705,
+   "line": 732,
    "unconditional": true,
    "shipping_functions_named": [
     "delta_entry_frame_ok",
@@ -51534,7 +51636,7 @@
    "name": "lemma_delta_entry_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 715,
+   "line": 742,
    "unconditional": false,
    "shipping_functions_named": [
     "delta_entry_ok",
@@ -51554,7 +51656,7 @@
    "name": "lemma_ops_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 894,
+   "line": 921,
    "unconditional": false,
    "shipping_functions_named": [
     "delta_batch_ops_ok",
@@ -51574,7 +51676,7 @@
    "name": "lemma_write_u64_le_length",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 912,
+   "line": 939,
    "unconditional": true,
    "shipping_functions_named": [
     "write_u64_le"
@@ -51592,7 +51694,7 @@
    "name": "lemma_batch_body_length",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 918,
+   "line": 945,
    "unconditional": true,
    "shipping_functions_named": [
     "delta_batch_ok",
@@ -51612,7 +51714,7 @@
    "name": "lemma_delta_batch_frame_ok",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 930,
+   "line": 957,
    "unconditional": true,
    "shipping_functions_named": [
     "delta_batch_ok",
@@ -51631,7 +51733,7 @@
    "name": "lemma_delta_batch_body_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 934,
+   "line": 961,
    "unconditional": false,
    "shipping_functions_named": [
     "delta_batch_ok",
@@ -51651,7 +51753,7 @@
    "name": "lemma_delta_batch_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 951,
+   "line": 978,
    "unconditional": false,
    "shipping_functions_named": [
     "delta_batch_ok",
@@ -51671,7 +51773,7 @@
    "name": "lemma_log_header_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 1015,
+   "line": 1042,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_log_header",
@@ -51690,7 +51792,7 @@
    "name": "lemma_parse_u32_le_length",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 1033,
+   "line": 1060,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_u32_le"
@@ -51708,7 +51810,7 @@
    "name": "lemma_parse_n_bytes_length",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 1041,
+   "line": 1068,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_n_bytes"
@@ -51726,7 +51828,7 @@
    "name": "lemma_parse_delta_batch_shrinks",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 1052,
+   "line": 1079,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_delta_batch"
@@ -51744,7 +51846,7 @@
    "name": "lemma_parse_log_batches_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 1115,
+   "line": 1142,
    "unconditional": false,
    "shipping_functions_named": [
     "delta_batches_ok",
@@ -51764,7 +51866,7 @@
    "name": "lemma_log_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 1127,
+   "line": 1154,
    "unconditional": false,
    "shipping_functions_named": [
     "delta_batches_ok",
@@ -51784,7 +51886,7 @@
    "name": "lemma_compacted_epoch_roundtrip",
    "host_module": "RDF.Store.Columnar.DeltaLog",
    "file": "formal/fstar/RDF.Store.Columnar.DeltaLog.fst",
-   "line": 1265,
+   "line": 1292,
    "unconditional": true,
    "shipping_functions_named": [
     "parse_compacted_epoch",
@@ -58636,7 +58738,7 @@
    "name": "lemma_sparql_order_iri_totality",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1956,
+   "line": 1974,
    "unconditional": true,
    "shipping_functions_named": [
     "sparql_order"
@@ -58654,7 +58756,7 @@
    "name": "lemma_sparql_order_iri_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1965,
+   "line": 1983,
    "unconditional": false,
    "shipping_functions_named": [
     "sparql_order"
@@ -58669,10 +58771,54 @@
    "class": "local_refinement"
   },
   {
+   "name": "lemma_sparql_order_numeric_frag_totality",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 2015,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "sparql_order"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "er_num_plain"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "lemma_sparql_order_numeric_frag_trans",
+   "host_module": "SPARQL11.Algebra.Refinement",
+   "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
+   "line": 2050,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "sparql_order"
+   ],
+   "shipping_modules": [
+    "SPARQL11.Algebra"
+   ],
+   "declarative_relations_named": [
+    "er_num_plain"
+   ],
+   "declarative_modules": [
+    "SPARQL11.Algebra.Refinement"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
    "name": "lemma_list_drop_length",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1983,
+   "line": 2077,
    "unconditional": true,
    "shipping_functions_named": [
     "list_drop"
@@ -58690,7 +58836,7 @@
    "name": "lemma_list_take_length",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 1992,
+   "line": 2086,
    "unconditional": true,
    "shipping_functions_named": [
     "list_take"
@@ -58708,7 +58854,7 @@
    "name": "lemma_list_drop_index",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2002,
+   "line": 2096,
    "unconditional": false,
    "shipping_functions_named": [
     "list_drop"
@@ -58726,7 +58872,7 @@
    "name": "lemma_list_take_index",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2012,
+   "line": 2106,
    "unconditional": false,
    "shipping_functions_named": [
     "list_take"
@@ -58744,7 +58890,7 @@
    "name": "theorem_slice_solutions_window",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2028,
+   "line": 2122,
    "unconditional": false,
    "shipping_functions_named": [
     "slice_solutions"
@@ -58762,7 +58908,7 @@
    "name": "theorem_slice_solutions_length",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2050,
+   "line": 2144,
    "unconditional": true,
    "shipping_functions_named": [
     "slice_solutions"
@@ -58780,7 +58926,7 @@
    "name": "lemma_lang_tag_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2088,
+   "line": 2182,
    "unconditional": true,
    "shipping_functions_named": [
     "lang_tag_eq"
@@ -58798,7 +58944,7 @@
    "name": "lemma_lang_tag_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2091,
+   "line": 2185,
    "unconditional": false,
    "shipping_functions_named": [
     "lang_tag_eq"
@@ -58816,7 +58962,7 @@
    "name": "lemma_lang_tag_option_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2094,
+   "line": 2188,
    "unconditional": true,
    "shipping_functions_named": [
     "lang_tag_option_eq"
@@ -58834,7 +58980,7 @@
    "name": "lemma_lang_tag_option_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2101,
+   "line": 2195,
    "unconditional": false,
    "shipping_functions_named": [
     "lang_tag_option_eq"
@@ -58852,7 +58998,7 @@
    "name": "lemma_literal_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2109,
+   "line": 2203,
    "unconditional": true,
    "shipping_functions_named": [
     "literal_eq"
@@ -58870,7 +59016,7 @@
    "name": "lemma_literal_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2112,
+   "line": 2206,
    "unconditional": false,
    "shipping_functions_named": [
     "literal_eq"
@@ -58888,7 +59034,7 @@
    "name": "lemma_subject_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2116,
+   "line": 2210,
    "unconditional": true,
    "shipping_functions_named": [
     "subject_eq"
@@ -58906,7 +59052,7 @@
    "name": "lemma_subject_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2122,
+   "line": 2216,
    "unconditional": false,
    "shipping_functions_named": [
     "subject_eq"
@@ -58924,7 +59070,7 @@
    "name": "lemma_rdf_term_eq_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2129,
+   "line": 2223,
    "unconditional": true,
    "shipping_functions_named": [
     "rdf_term_eq"
@@ -58942,7 +59088,7 @@
    "name": "lemma_rdf_term_eq_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2137,
+   "line": 2231,
    "unconditional": false,
    "shipping_functions_named": [
     "rdf_term_eq"
@@ -58960,7 +59106,7 @@
    "name": "lemma_sm_equal_symm",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2156,
+   "line": 2250,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_equal"
@@ -58978,7 +59124,7 @@
    "name": "lemma_sm_submap_extra_binding",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2159,
+   "line": 2253,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_domain",
@@ -58997,7 +59143,7 @@
    "name": "lemma_sm_submap_refl",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2167,
+   "line": 2261,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_domain",
@@ -59016,7 +59162,7 @@
    "name": "lemma_sm_equal_refl",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2178,
+   "line": 2272,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_domain",
@@ -59035,7 +59181,7 @@
    "name": "lemma_sm_submap_lookup",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2183,
+   "line": 2277,
    "unconditional": false,
    "shipping_functions_named": [
     "rdf_term_eq",
@@ -59056,7 +59202,7 @@
    "name": "lemma_sm_submap_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2193,
+   "line": 2287,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_submap"
@@ -59074,7 +59220,7 @@
    "name": "lemma_sm_equal_trans",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2209,
+   "line": 2303,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_equal"
@@ -59092,7 +59238,7 @@
    "name": "lemma_sm_mem_witness",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2216,
+   "line": 2310,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_equal",
@@ -59111,7 +59257,7 @@
    "name": "lemma_dedup_acc_append",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2229,
+   "line": 2323,
    "unconditional": true,
    "shipping_functions_named": [
     "list_deduplicate_sm_acc"
@@ -59129,7 +59275,7 @@
    "name": "lemma_dedup_core_complete",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2253,
+   "line": 2347,
    "unconditional": false,
    "shipping_functions_named": [
     "list_deduplicate_sm_acc",
@@ -59149,7 +59295,7 @@
    "name": "theorem_distinct_complete",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2301,
+   "line": 2395,
    "unconditional": false,
    "shipping_functions_named": [
     "distinct_solutions",
@@ -59169,7 +59315,7 @@
    "name": "lemma_dc_witness_rdf_term_eq",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2366,
+   "line": 2460,
    "unconditional": true,
    "shipping_functions_named": [
     "rdf_term_eq"
@@ -59187,7 +59333,7 @@
    "name": "lemma_dc_witness_term_id_eqb_false",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2370,
+   "line": 2464,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -59201,7 +59347,7 @@
    "name": "lemma_dc_distinct_dedups",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2374,
+   "line": 2468,
    "unconditional": true,
    "shipping_functions_named": [
     "distinct_solutions"
@@ -59219,7 +59365,7 @@
    "name": "lemma_dc_mult_witness_omega",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2380,
+   "line": 2474,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -59233,7 +59379,7 @@
    "name": "lemma_dc_mult_witness_res",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2385,
+   "line": 2479,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -59247,7 +59393,7 @@
    "name": "theorem_sr3_distinct_card_spec_false",
    "host_module": "SPARQL11.Algebra.Refinement",
    "file": "formal/fstar/SPARQL11.Algebra.Refinement.fst",
-   "line": 2397,
+   "line": 2491,
    "unconditional": true,
    "shipping_functions_named": [
     "distinct_solutions"
@@ -59891,7 +60037,7 @@
    "name": "lemma_substitute_pattern_preserves_size",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 4939,
+   "line": 4952,
    "unconditional": true,
    "shipping_functions_named": [
     "group_graph_pattern",
@@ -59911,7 +60057,7 @@
    "name": "lemma_lateral_substitute_preserves_size",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 4994,
+   "line": 5007,
    "unconditional": true,
    "shipping_functions_named": [
     "group_graph_pattern",
@@ -59931,7 +60077,7 @@
    "name": "lemma_rewrite_query_bnodes_pattern_preserves_size",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 5824,
+   "line": 5866,
    "unconditional": true,
    "shipping_functions_named": [
     "group_graph_pattern",
@@ -59951,7 +60097,7 @@
    "name": "lemma_union_assoc",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7370,
+   "line": 7412,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -59969,7 +60115,7 @@
    "name": "lemma_union_nil_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7382,
+   "line": 7424,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -59987,7 +60133,7 @@
    "name": "lemma_union_nil_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7385,
+   "line": 7427,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -60005,7 +60151,7 @@
    "name": "lemma_filter_append",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7393,
+   "line": 7435,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60019,7 +60165,7 @@
    "name": "lemma_filter_union",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7403,
+   "line": 7445,
    "unconditional": true,
    "shipping_functions_named": [
     "filter_solutions",
@@ -60038,7 +60184,7 @@
    "name": "lemma_offset_zero",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7413,
+   "line": 7455,
    "unconditional": true,
    "shipping_functions_named": [
     "slice_solutions"
@@ -60056,7 +60202,7 @@
    "name": "lemma_list_drop_zero",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7417,
+   "line": 7459,
    "unconditional": true,
    "shipping_functions_named": [
     "list_drop"
@@ -60074,7 +60220,7 @@
    "name": "lemma_list_take_nil",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7421,
+   "line": 7463,
    "unconditional": true,
    "shipping_functions_named": [
     "list_take"
@@ -60092,7 +60238,7 @@
    "name": "lemma_filter_mem",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7426,
+   "line": 7468,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60106,7 +60252,7 @@
    "name": "lemma_assoc_none_of_domain",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7460,
+   "line": 7502,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_domain"
@@ -60124,7 +60270,7 @@
    "name": "lemma_sm_compatible_extra_binding",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7470,
+   "line": 7512,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_compatible"
@@ -60142,7 +60288,7 @@
    "name": "lemma_sm_compatible_refl",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7478,
+   "line": 7520,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_compatible",
@@ -60161,7 +60307,7 @@
    "name": "lemma_sm_compatible_not_refl_with_dup_keys",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7491,
+   "line": 7533,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_compatible"
@@ -60179,7 +60325,7 @@
    "name": "lemma_sm_merge_empty_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7497,
+   "line": 7539,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_merge"
@@ -60197,7 +60343,7 @@
    "name": "lemma_sm_merge_aux_lookup",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7514,
+   "line": 7556,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_merge_aux"
@@ -60215,7 +60361,7 @@
    "name": "lemma_sm_merge_empty_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7527,
+   "line": 7569,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_lookup",
@@ -60234,7 +60380,7 @@
    "name": "lemma_sm_merge_empty_l_not_structural_identity",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7538,
+   "line": 7580,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_merge"
@@ -60252,7 +60398,7 @@
    "name": "lemma_domains_disjoint_empty_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7547,
+   "line": 7589,
    "unconditional": true,
    "shipping_functions_named": [
     "domains_disjoint"
@@ -60270,7 +60416,7 @@
    "name": "lemma_filter_true",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7562,
+   "line": 7604,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60284,7 +60430,7 @@
    "name": "lemma_join_empty_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7569,
+   "line": 7611,
    "unconditional": true,
    "shipping_functions_named": [
     "join"
@@ -60302,7 +60448,7 @@
    "name": "lemma_concatMap_nil",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7573,
+   "line": 7615,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60316,7 +60462,7 @@
    "name": "lemma_join_empty_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7580,
+   "line": 7622,
    "unconditional": true,
    "shipping_functions_named": [
     "join"
@@ -60334,7 +60480,7 @@
    "name": "lemma_minus_empty_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7598,
+   "line": 7640,
    "unconditional": true,
    "shipping_functions_named": [
     "minus"
@@ -60352,7 +60498,7 @@
    "name": "lemma_union_length",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7605,
+   "line": 7647,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -60370,7 +60516,7 @@
    "name": "lemma_concatMap_all_nil",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7613,
+   "line": 7655,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60384,7 +60530,7 @@
    "name": "lemma_ig_search_empty",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7624,
+   "line": 7666,
    "unconditional": true,
    "shipping_functions_named": [
     "ig_search"
@@ -60402,7 +60548,7 @@
    "name": "lemma_store_search_empty",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7632,
+   "line": 7674,
    "unconditional": true,
    "shipping_functions_named": [
     "graph_to_store",
@@ -60421,7 +60567,7 @@
    "name": "lemma_eval_single_tp_empty",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7636,
+   "line": 7678,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_single_tp_store",
@@ -60440,7 +60586,7 @@
    "name": "lemma_eval_bgp_store_empty_fuel",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7650,
+   "line": 7692,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_bgp_store_from_mu_fuel",
@@ -60459,7 +60605,7 @@
    "name": "lemma_bgp_empty_graph",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7665,
+   "line": 7707,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_bgp"
@@ -63541,8 +63687,8 @@
   "modules_with_internal_refinement_theorem": 20,
   "modules_merely_tot": 137,
   "w3c_refinement_theorem_count": 316,
-  "internal_refinement_theorem_count": 155,
-  "algorithm_correctness_theorem_count": 353,
+  "internal_refinement_theorem_count": 157,
+  "algorithm_correctness_theorem_count": 357,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [
    "OWL.RL.Refinement",
@@ -63563,7 +63709,7 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1666,
+  "lemma_count": 1669,
   "tiers": {
    "algorithm-correctness": 27,
    "internal-refinement": 10,
@@ -63574,5 +63720,5 @@
    "w3c-refinement": 11
   }
  },
- "commit": "0ea6f9120"
+ "commit": "086497991"
 }
