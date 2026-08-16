@@ -1917,37 +1917,55 @@ let theorem_sort_solutions_sorted
 // already makes for the analogous `option string` key comparator one
 // module over.
 //
-// FRAGMENT FINDING -- numeric-with-unparseable-literal breaks
-// transitivity_on (deliverable 3, second shape tried, NOT discharged;
-// stop here per the brief's two-attempt-then-record-a-finding rule).
-// `sparql_order`'s numeric branch (Algebra.fst:5241-5244) falls to
-// `numeric_compare a b`'s own `| _, _ -> None` arm (Algebra.fst:2324)
-// whenever EITHER side's literal fails to parse
+// FRAGMENT FINDING -- numeric-with-unparseable-literal broke
+// transitivity_on (deliverable 3, second shape tried). `sparql_order`'s
+// numeric branch used to fall to `numeric_compare a b`'s own `| _, _ ->
+// None` arm whenever EITHER side's literal failed to parse
 // (`er_to_numeric`/`parse_to_scaled`/`parse_double_to_scaled`
-// returning `None`), and `sparql_order` reads that `None` as a tie
-// (`| None -> 0`, Algebra.fst:5244) regardless of WHICH side failed.
-// Concrete 3-element witness, all `ER_Num`/unparseable `ER_Dec`
-// sharing er_rank 4: `A = ER_Num 5`, `B = ER_Dec "not-a-number"`
-// (er_to_numeric B = None), `C = ER_Num 3`.
+// returning `None`), and `sparql_order` read that `None` as a tie
+// (`| None -> 0`) regardless of WHICH side failed. Concrete 3-element
+// witness, all `ER_Num`/unparseable `ER_Dec` sharing er_rank 4:
+// `A = ER_Num 5`, `B = ER_Dec "not-a-number"` (er_to_numeric B =
+// None), `C = ER_Num 3`.
 //   sparql_order A B = 0   (numeric_compare A B = None, unparseable)
 //   sparql_order B C = 0   (numeric_compare B C = None, unparseable)
 //   sparql_order A C = 1   (numeric_compare A C = Some (int_compare 5 3), positive)
 // `transitivity_on`'s hypothesis instance at (A,B,C) -- `f A B <= 0 /\
-// f B C <= 0 ==> f A C <= 0` -- has both antecedents true (0 <= 0) and
+// f B C <= 0 ==> f A C <= 0` -- had both antecedents true (0 <= 0) and
 // the consequent FALSE (1 <= 0 is false): a genuine counterexample,
-// not a proof gap. `B` is a spurious "tie" bridge between two
-// genuinely-ordered numerics that are NOT tied with each other. No
-// fragment hypothesis short of "every compared literal parses" (which
-// would need to be threaded from `SELECT`/`ORDER BY` down through
-// `eval_expr_with_base`, out of scope for this landing) rescues
-// `transitivity_on` here; NOT attempted further under the two-attempt
-// stop rule. `totality_on` (this section's OWN hypothesis, the
-// implicational form) is unaffected by this witness -- both
-// directions read `None` symmetrically (`er_to_numeric` does not
-// depend on argument order), so this is purely a
-// `transitivity_on`-shaped gap, tracked here for whichever future
-// ALL-PAIRS sortedness wave (see the transitivity_on FINDING above)
-// needs a parses-cleanly fragment hypothesis for the numeric case.
+// not a proof gap. `B` was a spurious "tie" bridge between two
+// genuinely-ordered numerics that were NOT tied with each other.
+//
+// FIXED (issue #362 / SR-4, owner-approved 2026-08-14): `sparql_order`
+// now delegates its numeric branch to `sparql_order_numeric`
+// (Algebra.fst), which distinguishes WHICH side (if either) failed to
+// parse and applies "order last, then lexical" -- a valid numeric
+// always sorts before an unparseable one; two unparseable numerics
+// compare by their raw lexical form (datatype plays no role). This is
+// a conformant choice under SPARQL 1.1 SS15.1 (which requires only that
+// the ordering of undefined-`<` operands be CONSISTENT, not any
+// specific rule) and matches Apache Jena 6.2.0, measured.
+//
+// The two lemmas immediately below discharge `totality_on` and
+// `transitivity_on` on the RESTRICTED fragment the witness above
+// actually needs: `er_num_plain` -- `ER_Num` (always parses, scale 0,
+// no pow10 multiplication inside `numeric_compare`) freely mixed with
+// UNPARSEABLE `ER_Dec`/`ER_Dbl` (`er_to_numeric v = None`). This is
+// NOT full antisymmetry: two DIFFERENT-datatype unparseable literals
+// with the SAME lexical form (e.g. `"x"^^xsd:integer` vs
+// `"x"^^xsd:decimal`, both unparseable) legitimately TIE under
+// "compare by raw lexical form, datatype irrelevant" without being the
+// same `eval_result` -- intentional (matches the measured Jena
+// behaviour), not a gap. Cross-scale comparisons between two
+// DIFFERENT-scale VALID decimals/doubles (e.g. `"1.50"^^xsd:decimal`
+// vs `"1.5E0"^^xsd:double`) are also NOT covered by `er_num_plain` --
+// that would need a separate pow10-swap lemma for `numeric_compare`'s
+// scale-normalization branch, not attempted here (two-attempt stop
+// rule: a narrower TRUE lemma over exactly the witness's shape beats a
+// broader one weakened until vacuous). `totality_on` was already
+// unaffected by the ORIGINAL (unfixed) witness -- both directions read
+// `None` symmetrically (`er_to_numeric` does not depend on argument
+// order) -- and remains discharged below under the fix.
 // -------------------------------------------------------------------
 
 /// FRAGMENT: same-kind IRI comparator totality (the implicational
@@ -1974,6 +1992,82 @@ let lemma_sparql_order_iri_trans (i j k : wf_iri)
   if FStar.String.compare si sj = 0 then ()
   else if FStar.String.compare sj sk = 0 then ()
   else SO.string_compare_trans si sj sk
+
+/// FRAGMENT (issue #362 / SR-4): the restricted numeric fragment --
+/// `ER_Num` (always parses; scale 0) freely mixed with UNPARSEABLE
+/// `ER_Dec`/`ER_Dbl` (`er_to_numeric v = None`). See the FRAGMENT
+/// FINDING banner above for exactly what this does and does not cover.
+let er_num_plain (v : eval_result) : prop =
+  ER_Num? v \/ ((ER_Dec? v \/ ER_Dbl? v) /\ None? (er_to_numeric v))
+
+/// FRAGMENT: numeric-fragment comparator totality (the implicational
+/// strength `totality_on` needs). Case-split on which of `a`/`b` is
+/// `ER_Num` vs. an unparseable literal:
+///   both `ER_Num`     -- reduces to `int_compare`'s own antisymmetry.
+///   one `ER_Num`       -- the valid side always sorts strictly first,
+///                        so `sparql_order` is never `>= 0` in the
+///                        direction that would need the reverse `<= 0`
+///                        (the antecedent is vacuously false, or the
+///                        consequent is unconditionally true).
+///   neither `ER_Num`  -- both unparseable, falls to
+///                        `String.compare` on the raw lexical form;
+///                        `SO.string_compare_antisym` closes it.
+let lemma_sparql_order_numeric_frag_totality (a b : eval_result)
+  : Lemma (requires er_num_plain a /\ er_num_plain b)
+          (ensures sparql_order a b >= 0 ==> sparql_order b a <= 0) =
+  match a, b with
+  | ER_Num _, ER_Num _ -> ()
+  | ER_Num _, _        -> ()
+  | _, ER_Num _        -> ()
+  | _, _ -> SO.string_compare_antisym (er_numeric_lexical a) (er_numeric_lexical b)
+
+/// FRAGMENT: numeric-fragment comparator transitivity (non-strict).
+/// Hypothesis shape matches `lemma_sparql_order_iri_trans` above
+/// exactly (the two ordering facts in `requires`, not as an
+/// `ensures`-implication): `SO.string_compare_trans`'s own
+/// precondition (strict `<0` on both legs) has to be DERIVED from
+/// `sparql_order a b <= 0` combined with "not equal" inside the OOO
+/// arm's proof body, which needs that fact ASSUMED going in, not
+/// produced as the antecedent of an implication goal the SMT query
+/// would otherwise have to introduce on its own -- confirmed by trying
+/// the `ensures`-implication form first (matching `transitivity_on`'s
+/// own prop shape) and watching exactly this arm fail with "Assertion
+/// failed" at the `string_compare_trans` call, z3 unable to prove its
+/// precondition without `P` already in context.
+///
+/// Eight-way case split on which of `a`/`b`/`c` is `ER_Num`. In every
+/// case except "all three unparseable", at least one hypothesis
+/// (`sparql_order a b <= 0`, `sparql_order b c <= 0`) is either
+/// unconditionally satisfied (an `ER_Num` operand paired with an
+/// unparseable one always compares strictly, in the direction "valid
+/// sorts first") or CONTRADICTS what the concrete constructors force
+/// `sparql_order` to compute -- making the hypothesis set
+/// unsatisfiable, so `()` discharges seven of the eight arms
+/// vacuously. The eighth ("all unparseable") arm falls to
+/// `String.compare` on the raw lexical form for all three, same
+/// zero/strict case split `lemma_sparql_order_iri_trans` uses above
+/// for the analogous IRI fragment.
+let lemma_sparql_order_numeric_frag_trans (a b c : eval_result)
+  : Lemma (requires er_num_plain a /\ er_num_plain b /\ er_num_plain c /\
+                    sparql_order a b <= 0 /\ sparql_order b c <= 0)
+          (ensures sparql_order a c <= 0) =
+  match a, b, c with
+  | ER_Num _, ER_Num _, ER_Num _ -> ()
+  | ER_Num _, ER_Num _, _        -> ()
+  | ER_Num _, _, ER_Num _        -> ()
+  | ER_Num _, _, _               -> ()
+  | _, ER_Num _, ER_Num _        -> ()
+  | _, ER_Num _, _               -> ()
+  | _, _, ER_Num _               -> ()
+  | _, _, _ ->
+    let la = er_numeric_lexical a in
+    let lb = er_numeric_lexical b in
+    let lc = er_numeric_lexical c in
+    SO.string_compare_zero_iff_eq la lb;
+    SO.string_compare_zero_iff_eq lb lc;
+    if FStar.String.compare la lb = 0 then ()
+    else if FStar.String.compare lb lc = 0 then ()
+    else SO.string_compare_trans la lb lc
 
 (** ------------------------------------------------------------------ **)
 (** 15.2 OFFSET / LIMIT -- `slice_solutions` is a contiguous window     **)

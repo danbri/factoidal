@@ -3260,6 +3260,12 @@ let numeric_compare (a : eval_result) (b : eval_result) :
       (match uu___2 with
        | (nv1, nv2) -> FStar_Pervasives_Native.Some (int_compare nv1 nv2))
   | (uu___, uu___1) -> FStar_Pervasives_Native.None
+let er_numeric_lexical (v : eval_result) : Prims.string=
+  match v with
+  | ER_Num n -> Prims.string_of_int n
+  | ER_Dec s -> s
+  | ER_Dbl s -> s
+  | uu___ -> ""
 let literal_promote (l : RDF_Term.wf_literal) : eval_result=
   if (lit_datatype l) = RDF_Term.xsd_integer
   then
@@ -6303,6 +6309,17 @@ let er_rank (v : eval_result) : Prims.int=
   | ER_Term (RDF_Term.T_Literal uu___) -> (Prims.of_int (7))
   | ER_Term (RDF_Term.T_TripleTerm (uu___, uu___1, uu___2)) ->
       (Prims.of_int (8))
+let sparql_order_numeric (a : eval_result) (b : eval_result) : Prims.int=
+  match numeric_compare a b with
+  | FStar_Pervasives_Native.Some cmp -> cmp
+  | FStar_Pervasives_Native.None ->
+      (match ((er_to_numeric a), (er_to_numeric b)) with
+       | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.None)
+           -> (Prims.of_int (-1))
+       | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some uu___)
+           -> Prims.int_one
+       | (uu___, uu___1) ->
+           FStar_String.compare (er_numeric_lexical a) (er_numeric_lexical b))
 let sparql_order (a : eval_result) (b : eval_result) : Prims.int=
   let ra = er_rank a in
   let rb = er_rank b in
@@ -6321,18 +6338,9 @@ let sparql_order (a : eval_result) (b : eval_result) : Prims.int=
        | (ER_Bool x, ER_Bool y) ->
            int_compare (if x then Prims.int_one else Prims.int_zero)
              (if y then Prims.int_one else Prims.int_zero)
-       | (ER_Num uu___2, uu___3) ->
-           (match numeric_compare a b with
-            | FStar_Pervasives_Native.Some cmp -> cmp
-            | FStar_Pervasives_Native.None -> Prims.int_zero)
-       | (ER_Dec uu___2, uu___3) ->
-           (match numeric_compare a b with
-            | FStar_Pervasives_Native.Some cmp -> cmp
-            | FStar_Pervasives_Native.None -> Prims.int_zero)
-       | (ER_Dbl uu___2, uu___3) ->
-           (match numeric_compare a b with
-            | FStar_Pervasives_Native.Some cmp -> cmp
-            | FStar_Pervasives_Native.None -> Prims.int_zero)
+       | (ER_Num uu___2, uu___3) -> sparql_order_numeric a b
+       | (ER_Dec uu___2, uu___3) -> sparql_order_numeric a b
+       | (ER_Dbl uu___2, uu___3) -> sparql_order_numeric a b
        | (ER_Term (RDF_Term.T_Literal l1), ER_Term (RDF_Term.T_Literal l2))
            -> literal_order l1 l2
        | (ER_Term (RDF_Term.T_TripleTerm (s1, p1, o1)), ER_Term
