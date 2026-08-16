@@ -394,7 +394,19 @@ let parse_bitmap_info (a:hdt_bytes) (pos:nat) : option hdt_bitmap_info =
 
 type hdt_pfc_section = {
   pfc_start : nat;
-  pfc_type : nat;                        // 2 = Plain Front Coding
+  pfc_type : (t:nat{t = 2});             // 2 = Plain Front Coding --
+                                          // was a bare `nat` with only
+                                          // a comment enforcing the
+                                          // constant; refined into the
+                                          // type per the #445 template
+                                          // so a future PFC-type-byte
+                                          // widening (comment says
+                                          // "stage 2 will widen" on
+                                          // parse_pfc_section) cannot
+                                          // silently populate this
+                                          // field with anything else
+                                          // without every call site
+                                          // re-verifying.
   pfc_numstrings : nat;
   pfc_packed_bytes : nat;
   pfc_blocksize : nat;
@@ -570,3 +582,63 @@ let hdt_read_inventory (path:string) : option (hdt_bytes & hdt_inventory) =
     (match hdt_parse_inventory_hex a with
      | None -> None
      | Some inv -> Some (a, inv))
+
+// ---------------------------------------------------------------------------
+// Corruption-rejection (#448 assurance triage): this module is a
+// READER, not a writer, so the writer/reader round-trip property that
+// applies to companion-file modules (e.g. Parquet.Footer's
+// lemma_version_field_roundtrip) does not apply here. The property
+// every consumer of this reader actually leans on -- Parser.BallyhooHDT
+// on the `--data-hdt` shipping path, and bin/hdt-probe/hdt_probe.ml --
+// is that a corrupted container is REFUSED, not silently accepted as
+// some other structure: `parse_control_info` checks the 4-byte '$HDT'
+// cookie before touching anything else, and `hdt_parse_inventory_hex`
+// makes that check the very first thing it does. Both lemmas below
+// hold by direct unfolding -- no induction, no arithmetic, no
+// congruence bridging needed (contrast the version-field round trip's
+// three-helper chain, which exists only because that lemma compares
+// concrete string literals through operators without automatic
+// congruence closure; here every hypothesis is a bare `byte_get`
+// equality feeding a `match` the SMT encoding resolves directly).
+// ---------------------------------------------------------------------------
+
+// A control-information block whose leading 4 bytes are not exactly
+// '$', 'H', 'D', 'T' (0x24 0x48 0x44 0x54) is rejected outright --
+// `parse_control_info` never falls through to decode format/props/crc
+// from a mis-cookied block as if it were legitimate.
+val lemma_parse_control_info_rejects_bad_cookie
+  (a:hdt_bytes) (pos:nat)
+  (b0:(b:nat{b < 256})) (b1:(b:nat{b < 256}))
+  (b2:(b:nat{b < 256})) (b3:(b:nat{b < 256}))
+  : Lemma
+    (requires
+      byte_get a pos = Some b0 /\
+      byte_get a (pos + 1) = Some b1 /\
+      byte_get a (pos + 2) = Some b2 /\
+      byte_get a (pos + 3) = Some b3 /\
+      not (b0 = 0x24 && b1 = 0x48 && b2 = 0x44 && b3 = 0x54))
+    (ensures parse_control_info a pos = None)
+let lemma_parse_control_info_rejects_bad_cookie a pos b0 b1 b2 b3 = ()
+
+// Corollary at the shipping entry point every consumer actually calls
+// (via `hdt_read_inventory`): a corrupted Global cookie at file offset
+// 0 fails the WHOLE inventory parse, not just the Global
+// control-information block on its own -- `hdt_parse_inventory_hex`'s
+// first match arm forwards `parse_control_info a 0`'s `None` verbatim,
+// so it can never proceed to decode a header/dictionary/triples
+// section out of a file that does not even open with a valid HDT
+// container.
+val lemma_bad_global_cookie_rejects_container
+  (a:hdt_bytes)
+  (b0:(b:nat{b < 256})) (b1:(b:nat{b < 256}))
+  (b2:(b:nat{b < 256})) (b3:(b:nat{b < 256}))
+  : Lemma
+    (requires
+      byte_get a 0 = Some b0 /\
+      byte_get a 1 = Some b1 /\
+      byte_get a 2 = Some b2 /\
+      byte_get a 3 = Some b3 /\
+      not (b0 = 0x24 && b1 = 0x48 && b2 = 0x44 && b3 = 0x54))
+    (ensures hdt_parse_inventory_hex a = None)
+let lemma_bad_global_cookie_rejects_container a b0 b1 b2 b3 =
+  lemma_parse_control_info_rejects_bad_cookie a 0 b0 b1 b2 b3
