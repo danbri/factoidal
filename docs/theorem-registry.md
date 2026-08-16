@@ -2054,3 +2054,47 @@ rejects it; rebuilt from its documented source
 opens it (5 quads, 1 row group). Gates: RDF 1030 pass, 0 fail,
 1 unsupported (of 1031); escape pin 5 pass, 0 fail; footer pin 3 pass,
 0 fail; unit suite at baseline. Project assume-val total 133 -> 129.
+
+**#448 wave 2, module 2: Parser.BallyhooHDTQ audited 17-of-17;
+4 assume vals LIFTED to F* (2026-08-16, branch
+`assure-ballyhoo-hdtq`)**: `hdtq_lookup_named_graph`,
+`hdtq_estimate`, `hdtq_predicate_present_in_graph`,
+`hdtq_graph_candidates_for_predicate` are now real F* code — the same
+four names, same derivations, as module 1's COTTAS lift
+(`hdtq_estimate = length (hdtq_search ds bound)`, etc.). Module
+assume-vals 17 -> 13; all 13 remaining are rule-#11(b) delegation
+placeholders. 🔴 MAIN FINDING, different in kind from module 1's:
+this module is DEAD END TO END. `grep -rl "hdtq_"
+experimental_ocaml_glue/*.sh` returns nothing — there is no glue
+script at all (not hand-parsed terms like #454's COTTAS finding;
+simply absent), so every one of the 13 remaining assume vals extracts
+as a raw `failwith "Not yet implemented"` stub, and no other .fst
+file calls any hdtq_* function (only `open Parser.BallyhooHDT` for
+its TYPES, never its functions). Contrast COTTAS: RDF.CottasStore.fst
+and RDF.Store.Loader.fst call into it, so it is live. Per #448's own
+per-module deliverable ("state ONE correctness property the module's
+consumers rely on ... a module where no property can even be stated
+is a finding, not a skip") — this module's finding IS that sentence:
+it has no consumers to state a property about. 🟡 secondary finding:
+`hdtq_close_dataset_store` (assumed, `Tot unit`, unreferenced) has NO
+extracted OCaml symbol at all — F* elides an unused, unrealised,
+unit-returning assume val rather than stubbing it (same elision
+`Parser.BallyhooHDT.fst`'s *defined* `hdt_close_graph_store = ()`
+gets, for the same reason). A future caller would hit a link error,
+not a controlled runtime failwith. Sibling question answered:
+`Parser.BallyhooHDT` carries 0 assume vals as of its 2026-07-06 stage
+4 landing and needs no further wave-2 pass; `BallyhooHDTQ` does not
+call into its already-verified per-graph reader today, which is a
+design opportunity for whoever wires this module up, not an audit
+action. No stub-anchor staleness (recurrence check 2): N/A, there are
+no anchors to go stale. Forced `extract --force-full`; every hdtq_*
+symbol appears exactly once in the fresh .ml. Tier from a fresh
+classifier run WITH --json: `"assurance_tier": "merely-tot"`,
+`"merely_tot": true`, `"assume_val_active": 13`
+(`assume_other_active: 1` for the opaque `hdtq_handle` type) — HONEST,
+boundary glue that doesn't exist yet has no theorem to state. Gates:
+RDF 1030 pass, 0 fail, 1 unsupported (of 1031); hdt-probe 75 pass,
+0 fail (of 75); hdt-stage4-parity 6 pass, 0 fail (of 6); escape pin
+5 pass, 0 fail (of 5); unit suite 20 pass, 28 fail (of 48) = baseline
+exactly, no deltas. Project assume-val total (active, per classifier):
+125.
