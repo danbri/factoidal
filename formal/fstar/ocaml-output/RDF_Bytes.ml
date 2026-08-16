@@ -89,3 +89,17 @@ let parse_string_of_length (n : Prims.nat) (bs : bytes) :
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some (taken, remainder) ->
       FStar_Pervasives_Native.Some ((bytes_to_string taken), remainder)
+let hex_digit_char (n : Prims.nat) : FStar_Char.char=
+  if n < (Prims.of_int (10))
+  then FStar_Char.char_of_int (n + (Prims.of_int (48)))
+  else
+    FStar_Char.char_of_int ((n - (Prims.of_int (10))) + (Prims.of_int (65)))
+let byte_to_hex (b : byte) : Prims.string=
+  let n = int_of_byte b in
+  FStar_String.string_of_list
+    [hex_digit_char (n / (Prims.of_int (16)));
+    hex_digit_char ((mod) n (Prims.of_int (16)))]
+let rec bytes_to_hex (bs : bytes) : Prims.string=
+  match bs with
+  | [] -> ""
+  | b::tl -> Prims.strcat (byte_to_hex b) (bytes_to_hex tl)
