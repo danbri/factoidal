@@ -1856,3 +1856,30 @@ Every one byte-identical to its committed baseline — the serializer
 change moved no score. OWL catalogs NOT re-measured: the run was capped
 at 3000s and `semantics-direct` alone budgets 9000s, so the partial
 logs were reverted rather than committed as scores.
+
+**#362 SR-4 FIXED (2026-08-16, branch `sr4-order`)**: `sparql_order`
+read a numeric parse failure as a universal tie, breaking transitivity —
+one ill-typed literal silently misordered the VALID numerics around it
+(witness: 10, zzz, 3, 5, abc, plain). Owner-adjudicated rule, measured
+against Jena 6.2.0: valid numerics numeric, ill-typed AFTER them,
+lexical tie-break among ill-typed (datatype ignored). New
+`sparql_order_numeric` (SPARQL11.Algebra.fst:5172); `numeric_compare`
+unchanged for its other callers. Proofs in
+SPARQL11.Algebra.Refinement.fst: `lemma_sparql_order_numeric_frag_totality`
++ `_trans` discharge `theorem_sort_solutions_sorted`'s hypotheses on the
+`er_num_plain` fragment (ER_Num, or unparseable ER_Dec/ER_Dbl — the
+issue's witness shape). OPEN: valid decimal-vs-double scale
+normalization not covered; two same-text different-datatype unparseables
+tie BY DESIGN (matches Jena). Witness after fix: 3, 5, 10, zzz, abc,
+plain. Pin: cli_orderby_illtyped_numerics.sh, 4 pass, 0 fail (out of 4),
+anti-vacuity arm included. Agent's comparator sweep found NO other
+None-means-tie defect (dt_cmp, csvw_num_cmp, xn_compare, rat_cmp all
+safe — xn_compare's caller already does the side-aware fix pattern).
+Also surfaced: E_Var falls back to PLAIN LITERAL on failed integer
+parse but stays NUMERIC on failed decimal parse — separate asymmetry,
+follow-up issue owed. Gates on the merged binary: SPARQL 1.1 631 pass,
+0 fail (of 631); RDF 1.1 1030 pass, 0 fail, 1 unsupported (of 1031);
+SPARQL 1.2 254 pass, 0 fail (of 254); escape pin 5 pass, 0 fail — the
+#445 fix survives the merge on the same binary. NOTE per #448: no W3C
+test exercises an ill-typed numeric, so the suites certify only
+no-regression; the pin is the evidence.
