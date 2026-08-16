@@ -2023,3 +2023,34 @@ exactly, no deltas. Wave 1 (#448) is now complete: Parquet.Footer
 (module 1), HDT.Container (module 2), RDF.Turtle.Serialize (module
 3), RDF.Canonical (module 4) all lifted merely-tot -> internal-
 refinement.
+
+**#448 wave 2, module 1: Parser.BallyhooCOTTAS audited 17-of-17;
+4 assume vals LIFTED to F* (2026-08-16, branch
+`assure-ballyhoo-cottas`)**: `cottas_lookup_named_graph`,
+`cottas_estimate`, `cottas_predicate_present_in_graph`,
+`cottas_graph_candidates_for_predicate` are now real F* code — each
+was a pure derivation of other store operations with no I/O of its
+own. `cottas_estimate = length (cottas_search ds bound)` makes an
+invariant F*-visible that previously lived only in glue ("estimate is
+an exact count, never a heuristic"). Module assume-vals 17 -> 13; all
+13 remaining are rule-#11(b) delegation (file I/O + hashtable lookups
+over data resolved at open). Tier stays merely-tot and that verdict is
+HONEST — boundary glue with no theorem to state beyond totality.
+🔴 MAIN FINDING: `cottas_runtime.sh:93-184` hand-parses RDF term
+syntax in OCaml (find_unescaped_quote / unescape_literal /
+parse_literal_token / parse_subject...) — iron rule #4 violation, not
+commit-sized, needs an F*-side `parse_stored_term` + column-decode
+contract change. 🟡 minor: `cottas_search` re-implements the
+3-way graph-bound semantics its .fst doc specifies; `build_summary`
+hardcodes CE_Delta. FIXED IN PASSING (pre-existing): the glue's
+stub-deletion anchors matched type-qualified signatures that fresh
+extraction now prints differently (RDF_Graph_Executable.subject ->
+RDF_Term.subject), so 10 raw stubs survived and would have SHADOWED
+the real implementations on any from-scratch rebuild — re-anchored on
+stable failwith text. FIXTURE REGENERATED: store_capabilities_sample
+.cottas was pre-#445 format and the version gate now (correctly)
+rejects it; rebuilt from its documented source
+(tests/local/data/cottas_sample.nq) with the current writer; smoketest
+opens it (5 quads, 1 row group). Gates: RDF 1030 pass, 0 fail,
+1 unsupported (of 1031); escape pin 5 pass, 0 fail; footer pin 3 pass,
+0 fail; unit suite at baseline. Project assume-val total 133 -> 129.
