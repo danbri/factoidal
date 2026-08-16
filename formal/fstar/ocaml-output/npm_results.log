@@ -2,245 +2,263 @@ TAP version 13
 # Subtest: parse: turtle smoke
 ok 1 - parse: turtle smoke
   ---
-  duration_ms: 114.988498
+  duration_ms: 149.864585
   type: 'test'
   ...
 # Subtest: parse: ntriples smoke
 ok 2 - parse: ntriples smoke
   ---
-  duration_ms: 0.971965
+  duration_ms: 1.443009
   type: 'test'
   ...
 # Subtest: parse: nquads smoke (named graph preserved)
 ok 3 - parse: nquads smoke (named graph preserved)
   ---
-  duration_ms: 1.856398
+  duration_ms: 3.509596
   type: 'test'
   ...
 # Subtest: parse: trig smoke (named graph preserved)
 ok 4 - parse: trig smoke (named graph preserved)
   ---
-  duration_ms: 2.904108
+  duration_ms: 4.837723
   type: 'test'
   ...
 # Subtest: parse: rdfxml smoke
 ok 5 - parse: rdfxml smoke
   ---
-  duration_ms: 5.284856
+  duration_ms: 8.259053
   type: 'test'
   ...
 # Subtest: parse: baseIRI resolves relative IRIs
 ok 6 - parse: baseIRI resolves relative IRIs
   ---
-  duration_ms: 1.195713
+  duration_ms: 1.517567
   type: 'test'
   ...
 # Subtest: parse: blank-node labels from separate parses stay distinct
 ok 7 - parse: blank-node labels from separate parses stay distinct
   ---
-  duration_ms: 0.856471
+  duration_ms: 1.693713
   type: 'test'
   ...
 # Subtest: query: SELECT returns Bindings[] of RDF/JS terms
 ok 8 - query: SELECT returns Bindings[] of RDF/JS terms
   ---
-  duration_ms: 15.719113
+  duration_ms: 28.734484
   type: 'test'
   ...
 # Subtest: query: typed literal binding carries its datatype
 ok 9 - query: typed literal binding carries its datatype
   ---
-  duration_ms: 5.579409
+  duration_ms: 4.749297
   type: 'test'
   ...
 # Subtest: query: accepts a Dataset input
 ok 10 - query: accepts a Dataset input
   ---
-  duration_ms: 7.787638
+  duration_ms: 5.107252
   type: 'test'
   ...
 # Subtest: query: ASK returns a boolean
 ok 11 - query: ASK returns a boolean
   ---
-  duration_ms: 13.943376
+  duration_ms: 16.328592
   type: 'test'
   ...
 # Subtest: query: multiple documents load as separate graphs
 ok 12 - query: multiple documents load as separate graphs
   ---
-  duration_ms: 0.9486
+  duration_ms: 4.09369
   type: 'test'
   ...
 # Subtest: query: entail RDFS infers subclass instances
 ok 13 - query: entail RDFS infers subclass instances
   ---
-  duration_ms: 124.833217
+  duration_ms: 165.806977
   type: 'test'
   ...
 # Subtest: query: malformed query rejects with diagnostics
 ok 14 - query: malformed query rejects with diagnostics
   ---
-  duration_ms: 2.535462
+  duration_ms: 5.59234
   type: 'test'
   ...
 # Subtest: serialize: engine round-trip is stable (nquads)
 ok 15 - serialize: engine round-trip is stable (nquads)
   ---
-  duration_ms: 4.576337
+  duration_ms: 7.09501
   type: 'test'
   ...
 # Subtest: serialize: ntriples output
 ok 16 - serialize: ntriples output
   ---
-  duration_ms: 93.482061
+  duration_ms: 119.434503
   type: 'test'
   ...
 # Subtest: canonicalize: isomorphic datasets get identical canonical N-Quads
 ok 17 - canonicalize: isomorphic datasets get identical canonical N-Quads
   ---
-  duration_ms: 5.710868
+  duration_ms: 7.041893
   type: 'test'
   ...
 # Subtest: graphs: enumerates named graphs from a parsed TriG document
 ok 18 - graphs: enumerates named graphs from a parsed TriG document
   ---
-  duration_ms: 0.877973
+  duration_ms: 0.799233
   type: 'test'
   ...
 # Subtest: canonicalHash: isomorphic graphs get identical hash under bnode relabeling
 ok 19 - canonicalHash: isomorphic graphs get identical hash under bnode relabeling
   ---
-  duration_ms: 3.923303
+  duration_ms: 2.717184
   type: 'test'
   ...
 # Subtest: query: CONSTRUCT returns a Dataset
 ok 20 - query: CONSTRUCT returns a Dataset
   ---
-  duration_ms: 5.12886
+  duration_ms: 5.877392
   type: 'test'
   ...
 # Subtest: update: INSERT DATA adds quads
 ok 21 - update: INSERT DATA adds quads
   ---
-  duration_ms: 2.450934
+  duration_ms: 2.790236
   type: 'test'
   ...
 # Subtest: update: without npm-entry bundle rejects with pending message
 ok 22 - update: without npm-entry bundle rejects with pending message # SKIP npm-entry bundle present — pending-message path not reachable
   ---
-  duration_ms: 0.195495
+  duration_ms: 0.160715
   type: 'test'
   ...
 # Subtest: parse: jsonld (expanded/inline-context form) via the npm-entry ABI
 ok 23 - parse: jsonld (expanded/inline-context form) via the npm-entry ABI
   ---
-  duration_ms: 6.942244
+  duration_ms: 3.857015
   type: 'test'
   ...
 # Subtest: jsonldToRdf: parses JSON-LD with an explicit base option
 ok 24 - jsonldToRdf: parses JSON-LD with an explicit base option
   ---
-  duration_ms: 1.568855
+  duration_ms: 1.215595
   type: 'test'
   ...
 # Subtest: shaclValidate: SHACL Core validation returns conforms + a report Dataset
 ok 25 - shaclValidate: SHACL Core validation returns conforms + a report Dataset
   ---
-  duration_ms: 19.148311
+  duration_ms: 15.664702
   type: 'test'
   ...
 # Subtest: shexValidate: ShEx validation of one focus node against one shape
 ok 26 - shexValidate: ShEx validation of one focus node against one shape
   ---
-  duration_ms: 7.403218
+  duration_ms: 6.688087
   type: 'test'
   ...
 # Subtest: owlClosure: RDFS closure materializes rdfs:subClassOf inference
 ok 27 - owlClosure: RDFS closure materializes rdfs:subClassOf inference
   ---
-  duration_ms: 7.753456
+  duration_ms: 7.222548
   type: 'test'
   ...
 # Subtest: rmlMap: evaluates an RML mapping graph against JSON source data
 ok 28 - rmlMap: evaluates an RML mapping graph against JSON source data
   ---
-  duration_ms: 6.714811
+  duration_ms: 11.674383
   type: 'test'
   ...
 # Subtest: csvwToRdf: converts a vendored W3C CSVW fixture (minimal mode)
 ok 29 - csvwToRdf: converts a vendored W3C CSVW fixture (minimal mode)
   ---
-  duration_ms: 7.920979
+  duration_ms: 7.282162
   type: 'test'
   ...
 # Subtest: csvwToRdf: standard mode emits the csvw:TableGroup wrapper; no metadata infers from header
 ok 30 - csvwToRdf: standard mode emits the csvw:TableGroup wrapper; no metadata infers from header
   ---
-  duration_ms: 5.703636
+  duration_ms: 4.255423
   type: 'test'
   ...
 # Subtest: rifEval: RIF Core saturation materializes derived triples
 ok 31 - rifEval: RIF Core saturation materializes derived triples
   ---
-  duration_ms: 8.847236
+  duration_ms: 10.011968
   type: 'test'
   ...
 # Subtest: capabilities: shacl/shex/owlClosure/rml/jsonld/rif fields are present
 ok 32 - capabilities: shacl/shex/owlClosure/rml/jsonld/rif fields are present
   ---
-  duration_ms: 0.15197
+  duration_ms: 0.206967
   type: 'test'
   ...
 # Subtest: xmlWellformed: accepts well-formed, rejects malformed
 ok 33 - xmlWellformed: accepts well-formed, rejects malformed
   ---
-  duration_ms: 0.321104
+  duration_ms: 0.461832
   type: 'test'
   ...
 # Subtest: xpathEval: XPath 1.0 over an XML document
 ok 34 - xpathEval: XPath 1.0 over an XML document
   ---
-  duration_ms: 3.417661
+  duration_ms: 4.992079
   type: 'test'
   ...
 # Subtest: didKeyResolve: Ed25519 did:key resolves to a DID Document
 ok 35 - didKeyResolve: Ed25519 did:key resolves to a DID Document
   ---
-  duration_ms: 2.513589
+  duration_ms: 3.581114
   type: 'test'
   ...
 # Subtest: jsonldFromRdf: N-Quads serialize to expanded JSON-LD (reverse of jsonldToRdf)
 ok 36 - jsonldFromRdf: N-Quads serialize to expanded JSON-LD (reverse of jsonldToRdf)
   ---
-  duration_ms: 4.223185
+  duration_ms: 2.508567
   type: 'test'
   ...
 # Subtest: version matches package.json
 ok 37 - version matches package.json
   ---
-  duration_ms: 0.300533
+  duration_ms: 0.362444
   type: 'test'
   ...
-# (node:3585) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/factoidal/factoidal/npm/factoidal/browser-wasm.js is not specified and it doesn't parse as CommonJS.
+# Subtest: entail x-rdfscore: ASK sees the two-step subclass entailment (the theorem-backed regime)
+ok 38 - entail x-rdfscore: ASK sees the two-step subclass entailment (the theorem-backed regime)
+  ---
+  duration_ms: 37.075459
+  type: 'test'
+  ...
+# Subtest: entail x-rdfscore does NOT derive the symmetric edge; x-rdfsplus does (regime separation)
+ok 39 - entail x-rdfscore does NOT derive the symmetric edge; x-rdfsplus does (regime separation)
+  ---
+  duration_ms: 65.015685
+  type: 'test'
+  ...
+# Subtest: entail none: baseline returns zero worksWith rows (both regimes really added something)
+ok 40 - entail none: baseline returns zero worksWith rows (both regimes really added something)
+  ---
+  duration_ms: 11.726753
+  type: 'test'
+  ...
+# (node:3712) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/factoidal/factoidal/npm/factoidal/browser-wasm.js is not specified and it doesn't parse as CommonJS.
 # Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
 # To eliminate this warning, add "type": "module" to /home/runner/work/factoidal/factoidal/npm/factoidal/package.json.
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: browser-wasm: loadNpmEntryWasm resolves an ABI with queryDataset
-ok 38 - browser-wasm: loadNpmEntryWasm resolves an ABI with queryDataset
+ok 41 - browser-wasm: loadNpmEntryWasm resolves an ABI with queryDataset
   ---
-  duration_ms: 35.747351
+  duration_ms: 51.371871
   type: 'test'
   ...
 # Subtest: browser-wasm: toCottas + openCottas + queryCottas + closeCottas round-trip
-ok 39 - browser-wasm: toCottas + openCottas + queryCottas + closeCottas round-trip
+ok 42 - browser-wasm: toCottas + openCottas + queryCottas + closeCottas round-trip
   ---
-  duration_ms: 102.189366
+  duration_ms: 153.378825
   type: 'test'
   ...
 # Subtest: browser-wasm: openCottas accepts a hex string too
-ok 40 - browser-wasm: openCottas accepts a hex string too
+ok 43 - browser-wasm: openCottas accepts a hex string too
   ---
-  duration_ms: 46.473898
+  duration_ms: 66.720409
   type: 'test'
   ...
 # [qof3-trace] cottas_ondisk_open path=npmcottas:1
@@ -280,21 +298,21 @@ ok 40 - browser-wasm: openCottas accepts a hex string too
 # [qof3-trace] collect_distinct_graph col=3 named_graphs=2 rows=5
 # [bet7-trace] ensure_graphs_loaded: 2 distinct graphs
 # Subtest: wasm ABI: openCottas + queryCottas match the fixture's known content
-ok 41 - wasm ABI: openCottas + queryCottas match the fixture's known content
+ok 44 - wasm ABI: openCottas + queryCottas match the fixture's known content
   ---
-  duration_ms: 178.444323
+  duration_ms: 186.173061
   type: 'test'
   ...
 # Subtest: wasm ABI: toCottas + openCottas round-trip
-ok 42 - wasm ABI: toCottas + openCottas round-trip
+ok 45 - wasm ABI: toCottas + openCottas round-trip
   ---
-  duration_ms: 15.098067
+  duration_ms: 28.710081
   type: 'test'
   ...
 # Subtest: wasm/js parity: openCottas + queryCottas give byte-identical SELECT bindings
-ok 43 - wasm/js parity: openCottas + queryCottas give byte-identical SELECT bindings
+ok 46 - wasm/js parity: openCottas + queryCottas give byte-identical SELECT bindings
   ---
-  duration_ms: 232.384144
+  duration_ms: 333.84789
   type: 'test'
   ...
 # [qof3-trace] cottas_ondisk_open path=npmcottas:1
@@ -376,520 +394,520 @@ ok 43 - wasm/js parity: openCottas + queryCottas give byte-identical SELECT bind
 # [qof3-trace] build_handle: distinct s=0 p=0 o=0 g=0 total_rows=5
 # [qof3-trace] cottas_ondisk_open: handle ready
 # Subtest: openCottas + queryCottas (raw ABI): COUNT/ASK/SELECT match the fixture's known content
-ok 44 - openCottas + queryCottas (raw ABI): COUNT/ASK/SELECT match the fixture's known content
+ok 47 - openCottas + queryCottas (raw ABI): COUNT/ASK/SELECT match the fixture's known content
   ---
-  duration_ms: 147.090315
+  duration_ms: 199.833012
   type: 'test'
   ...
 # Subtest: openCottas (raw ABI): garbage bytes open lazily (Bet7); the honest failure surfaces at the first queryCottas() touch
-ok 45 - openCottas (raw ABI): garbage bytes open lazily (Bet7); the honest failure surfaces at the first queryCottas() touch
+ok 48 - openCottas (raw ABI): garbage bytes open lazily (Bet7); the honest failure surfaces at the first queryCottas() touch
   ---
-  duration_ms: 1.210214
+  duration_ms: 2.344183
   type: 'test'
   ...
 # Subtest: openCottas (raw ABI): odd-length hex is rejected honestly
-ok 46 - openCottas (raw ABI): odd-length hex is rejected honestly
+ok 49 - openCottas (raw ABI): odd-length hex is rejected honestly
   ---
-  duration_ms: 0.150046
+  duration_ms: 0.305937
   type: 'test'
   ...
 # Subtest: toCottas + openCottas (raw ABI): round-trip reproduces the same query answers
-ok 47 - toCottas + openCottas (raw ABI): round-trip reproduces the same query answers
+ok 50 - toCottas + openCottas (raw ABI): round-trip reproduces the same query answers
   ---
-  duration_ms: 28.335259
+  duration_ms: 58.382452
   type: 'test'
   ...
 # Subtest: queryCottas (raw ABI): CONSTRUCT materializes triples via the backend
-ok 48 - queryCottas (raw ABI): CONSTRUCT materializes triples via the backend
+ok 51 - queryCottas (raw ABI): CONSTRUCT materializes triples via the backend
   ---
-  duration_ms: 25.375778
+  duration_ms: 50.60238
   type: 'test'
   ...
 # Subtest: queryCottas (raw ABI): DESCRIBE is an honest ok:false, not a crash
-ok 49 - queryCottas (raw ABI): DESCRIBE is an honest ok:false, not a crash
+ok 52 - queryCottas (raw ABI): DESCRIBE is an honest ok:false, not a crash
   ---
-  duration_ms: 17.061706
+  duration_ms: 24.755727
   type: 'test'
   ...
 # Subtest: index.js openCottas/queryCottas: SELECT/ASK/COUNT match the heap-store answers for the same data
-ok 50 - index.js openCottas/queryCottas: SELECT/ASK/COUNT match the heap-store answers for the same data
+ok 53 - index.js openCottas/queryCottas: SELECT/ASK/COUNT match the heap-store answers for the same data
   ---
-  duration_ms: 29.963112
+  duration_ms: 56.833504
   type: 'test'
   ...
 # Subtest: index.js queryCottas: CONSTRUCT returns a Dataset equal (as a set) to the heap-store CONSTRUCT result
-ok 51 - index.js queryCottas: CONSTRUCT returns a Dataset equal (as a set) to the heap-store CONSTRUCT result
+ok 54 - index.js queryCottas: CONSTRUCT returns a Dataset equal (as a set) to the heap-store CONSTRUCT result
   ---
-  duration_ms: 22.751443
+  duration_ms: 34.420105
   type: 'test'
   ...
 # Subtest: index.js toCottas + openCottas: round-trip through the native writer preserves query answers
-ok 52 - index.js toCottas + openCottas: round-trip through the native writer preserves query answers
+ok 55 - index.js toCottas + openCottas: round-trip through the native writer preserves query answers
   ---
-  duration_ms: 18.681307
+  duration_ms: 25.562209
   type: 'test'
   ...
 # Subtest: index.js openCottas: rejects a handle after closeCottas()
-ok 53 - index.js openCottas: rejects a handle after closeCottas()
+ok 56 - index.js openCottas: rejects a handle after closeCottas()
   ---
-  duration_ms: 4.48497
+  duration_ms: 2.464519
   type: 'test'
   ...
 # Subtest: index.js capabilities(): reports cottasBytesStore
-ok 54 - index.js capabilities(): reports cottasBytesStore
+ok 57 - index.js capabilities(): reports cottasBytesStore
   ---
-  duration_ms: 0.526784
+  duration_ms: 0.346476
   type: 'test'
   ...
 # Subtest: deltaLogOpen returns a {dbName} handle (browser.d.ts DeltaLogHandle)
-ok 55 - deltaLogOpen returns a {dbName} handle (browser.d.ts DeltaLogHandle)
+ok 58 - deltaLogOpen returns a {dbName} handle (browser.d.ts DeltaLogHandle)
   ---
-  duration_ms: 1.335543
+  duration_ms: 1.295607
   type: 'test'
   ...
 # Subtest: deltaLogAppend returns {seq:number, opCount:number}; seq climbs
-ok 56 - deltaLogAppend returns {seq:number, opCount:number}; seq climbs
+ok 59 - deltaLogAppend returns {seq:number, opCount:number}; seq climbs
   ---
-  duration_ms: 9.63947
+  duration_ms: 11.535778
   type: 'test'
   ...
 # Subtest: deltaLogReadAllHex returns a string; deltaLogMerge returns merged N-Quads
-ok 57 - deltaLogReadAllHex returns a string; deltaLogMerge returns merged N-Quads
+ok 60 - deltaLogReadAllHex returns a string; deltaLogMerge returns merged N-Quads
   ---
-  duration_ms: 6.641861
+  duration_ms: 7.198322
   type: 'test'
   ...
 # Subtest: deltaLogAppend rejects a bad handle (contract shape check)
-ok 58 - deltaLogAppend rejects a bad handle (contract shape check)
+ok 61 - deltaLogAppend rejects a bad handle (contract shape check)
   ---
-  duration_ms: 0.430329
+  duration_ms: 0.799201
   type: 'test'
   ...
 # Subtest: browser.d.ts declares the deltaLog* surface + DeltaLogHandle
-ok 59 - browser.d.ts declares the deltaLog* surface + DeltaLogHandle
+ok 62 - browser.d.ts declares the deltaLog* surface + DeltaLogHandle
   ---
-  duration_ms: 0.372141
+  duration_ms: 0.629509
   type: 'test'
   ...
 # Subtest: browser.d.ts declares the VC crypto surface (browser init story)
-ok 60 - browser.d.ts declares the VC crypto surface (browser init story)
+ok 63 - browser.d.ts declares the VC crypto surface (browser init story)
   ---
-  duration_ms: 0.1991
+  duration_ms: 0.383187
   type: 'test'
   ...
 # Subtest: wasm entry: deltaBatchToHex + deltaMergeApplyBrowser single INSERT DATA round-trips
-ok 61 - wasm entry: deltaBatchToHex + deltaMergeApplyBrowser single INSERT DATA round-trips
+ok 64 - wasm entry: deltaBatchToHex + deltaMergeApplyBrowser single INSERT DATA round-trips
   ---
-  duration_ms: 54.366164
+  duration_ms: 62.586946
   type: 'test'
   ...
 # Subtest: wasm entry: deltaMergeApplyBrowser composes multiple batches order-independently
-ok 62 - wasm entry: deltaMergeApplyBrowser composes multiple batches order-independently
+ok 65 - wasm entry: deltaMergeApplyBrowser composes multiple batches order-independently
   ---
-  duration_ms: 10.091911
+  duration_ms: 12.833818
   type: 'test'
   ...
 # Subtest: wasm entry: deltaBatchToHex rejects an unsupported op (DELETE/INSERT WHERE)
-ok 63 - wasm entry: deltaBatchToHex rejects an unsupported op (DELETE/INSERT WHERE)
+ok 66 - wasm entry: deltaBatchToHex rejects an unsupported op (DELETE/INSERT WHERE)
   ---
-  duration_ms: 2.814622
+  duration_ms: 1.178273
   type: 'test'
   ...
 # Subtest: deltaBatchToHex + deltaMergeApplyBrowser: single INSERT DATA round-trips
-ok 64 - deltaBatchToHex + deltaMergeApplyBrowser: single INSERT DATA round-trips
+ok 67 - deltaBatchToHex + deltaMergeApplyBrowser: single INSERT DATA round-trips
   ---
-  duration_ms: 7.235476
+  duration_ms: 11.222169
   type: 'test'
   ...
 # Subtest: deltaMergeApplyBrowser: multiple batches compose (add, then remove+add), order-independent input
-ok 65 - deltaMergeApplyBrowser: multiple batches compose (add, then remove+add), order-independent input
+ok 68 - deltaMergeApplyBrowser: multiple batches compose (add, then remove+add), order-independent input
   ---
-  duration_ms: 9.166566
+  duration_ms: 18.034025
   type: 'test'
   ...
 # Subtest: deltaMergeApplyBrowser: CREATE + INSERT DATA into a brand-new named graph
-ok 66 - deltaMergeApplyBrowser: CREATE + INSERT DATA into a brand-new named graph
+ok 69 - deltaMergeApplyBrowser: CREATE + INSERT DATA into a brand-new named graph
   ---
-  duration_ms: 7.15233
+  duration_ms: 8.975512
   type: 'test'
   ...
 # Subtest: deltaBatchToHex: unsupported op (DELETE/INSERT WHERE) rejects with an error, not silently
-ok 67 - deltaBatchToHex: unsupported op (DELETE/INSERT WHERE) rejects with an error, not silently
+ok 70 - deltaBatchToHex: unsupported op (DELETE/INSERT WHERE) rejects with an error, not silently
   ---
-  duration_ms: 1.320581
+  duration_ms: 1.784583
   type: 'test'
   ...
 # Subtest: deltaMergeApplyBrowser: a corrupted (truncated) blob is skipped, never partially decoded
-ok 68 - deltaMergeApplyBrowser: a corrupted (truncated) blob is skipped, never partially decoded
+ok 71 - deltaMergeApplyBrowser: a corrupted (truncated) blob is skipped, never partially decoded
   ---
-  duration_ms: 3.673767
+  duration_ms: 4.701258
   type: 'test'
   ...
 # Subtest: deltaMergeApplyBrowser: an existing named graph in the base is preserved and composed with
-ok 69 - deltaMergeApplyBrowser: an existing named graph in the base is preserved and composed with
+ok 72 - deltaMergeApplyBrowser: an existing named graph in the base is preserved and composed with
   ---
-  duration_ms: 2.638297
+  duration_ms: 4.104006
   type: 'test'
   ...
 # Subtest: fn.d.ts declares nothing fn.js does not implement
-ok 70 - fn.d.ts declares nothing fn.js does not implement
+ok 73 - fn.d.ts declares nothing fn.js does not implement
   ---
-  duration_ms: 8.820155
+  duration_ms: 12.93527
   type: 'test'
   ...
 # Subtest: fn.js implements nothing that fn.d.ts leaves untyped
-ok 71 - fn.js implements nothing that fn.d.ts leaves untyped
+ok 74 - fn.js implements nothing that fn.d.ts leaves untyped
   ---
-  duration_ms: 0.459453
+  duration_ms: 1.719703
   type: 'test'
   ...
 # Subtest: index.d.ts declares nothing index.js does not implement
-ok 72 - index.d.ts declares nothing index.js does not implement
+ok 75 - index.d.ts declares nothing index.js does not implement
   ---
-  duration_ms: 1.214691
+  duration_ms: 0.757286
   type: 'test'
   ...
 # Subtest: index.js implements nothing that index.d.ts leaves untyped
-ok 73 - index.js implements nothing that index.d.ts leaves untyped
+ok 76 - index.js implements nothing that index.d.ts leaves untyped
   ---
-  duration_ms: 0.376107
+  duration_ms: 0.500714
   type: 'test'
   ...
 # Subtest: the VC crypto surface is typed on both index.d.ts and fn.d.ts
-ok 74 - the VC crypto surface is typed on both index.d.ts and fn.d.ts
+ok 77 - the VC crypto surface is typed on both index.d.ts and fn.d.ts
   ---
-  duration_ms: 0.516348
+  duration_ms: 0.773771
   type: 'test'
   ...
 # Subtest: FILTER EXISTS keeps exactly the rows whose inner pattern matches
-ok 75 - FILTER EXISTS keeps exactly the rows whose inner pattern matches
+ok 78 - FILTER EXISTS keeps exactly the rows whose inner pattern matches
   ---
-  duration_ms: 109.308677
+  duration_ms: 140.480699
   type: 'test'
   ...
 # Subtest: FILTER NOT EXISTS keeps exactly the complementary rows
-ok 76 - FILTER NOT EXISTS keeps exactly the complementary rows
+ok 79 - FILTER NOT EXISTS keeps exactly the complementary rows
   ---
-  duration_ms: 4.407022
+  duration_ms: 5.575368
   type: 'test'
   ...
 # Subtest: EXISTS and NOT EXISTS partition the rows (the impossible-both-empty check)
-ok 77 - EXISTS and NOT EXISTS partition the rows (the impossible-both-empty check)
+ok 80 - EXISTS and NOT EXISTS partition the rows (the impossible-both-empty check)
   ---
-  duration_ms: 8.944301
+  duration_ms: 9.720519
   type: 'test'
   ...
 # Subtest: EXISTS nested under ! (exercises the recursive substitution)
-ok 78 - EXISTS nested under ! (exercises the recursive substitution)
+ok 81 - EXISTS nested under ! (exercises the recursive substitution)
   ---
-  duration_ms: 3.53615
+  duration_ms: 6.750221
   type: 'test'
   ...
 # Subtest: purity: filter/mapQuads/union/difference do not alter their inputs
-ok 79 - purity: filter/mapQuads/union/difference do not alter their inputs
+ok 82 - purity: filter/mapQuads/union/difference do not alter their inputs
   ---
-  duration_ms: 106.058028
+  duration_ms: 135.536796
   type: 'test'
   ...
 # Subtest: purity: FnDataset is frozen and its quad array cannot be mutated
-ok 80 - purity: FnDataset is frozen and its quad array cannot be mutated
+ok 83 - purity: FnDataset is frozen and its quad array cannot be mutated
   ---
-  duration_ms: 4.327913
+  duration_ms: 2.629178
   type: 'test'
   ...
 # Subtest: purity: filter output is independent of the input array
-ok 81 - purity: filter output is independent of the input array
+ok 84 - purity: filter output is independent of the input array
   ---
-  duration_ms: 2.086625
+  duration_ms: 3.254175
   type: 'test'
   ...
 # Subtest: algebra: union with EMPTY is identity
-ok 82 - algebra: union with EMPTY is identity
+ok 85 - algebra: union with EMPTY is identity
   ---
-  duration_ms: 2.236842
+  duration_ms: 2.789491
   type: 'test'
   ...
 # Subtest: algebra: union is idempotent and deduplicates
-ok 83 - algebra: union is idempotent and deduplicates
+ok 86 - algebra: union is idempotent and deduplicates
   ---
-  duration_ms: 2.7397
+  duration_ms: 1.649612
   type: 'test'
   ...
 # Subtest: algebra: difference with EMPTY is identity, self-difference is EMPTY
-ok 84 - algebra: difference with EMPTY is identity, self-difference is EMPTY
+ok 87 - algebra: difference with EMPTY is identity, self-difference is EMPTY
   ---
-  duration_ms: 1.252058
+  duration_ms: 4.434326
   type: 'test'
   ...
 # Subtest: algebra: union/difference round-trip (a = (a-b) u (a intersect b))
-ok 85 - algebra: union/difference round-trip (a = (a-b) u (a intersect b))
+ok 88 - algebra: union/difference round-trip (a = (a-b) u (a intersect b))
   ---
-  duration_ms: 1.18081
+  duration_ms: 1.828338
   type: 'test'
   ...
 # Subtest: EMPTY is a genuinely empty, reusable constant
-ok 86 - EMPTY is a genuinely empty, reusable constant
+ok 89 - EMPTY is a genuinely empty, reusable constant
   ---
-  duration_ms: 0.202215
+  duration_ms: 0.270952
   type: 'test'
   ...
 # Subtest: hash: stable under blank-node relabeling; changes when content changes
-ok 87 - hash: stable under blank-node relabeling; changes when content changes
+ok 90 - hash: stable under blank-node relabeling; changes when content changes
   ---
-  duration_ms: 8.894096
+  duration_ms: 17.111324
   type: 'test'
   ...
 # Subtest: hash: memoized (repeated calls on the same FnDataset return the same value fast)
-ok 88 - hash: memoized (repeated calls on the same FnDataset return the same value fast)
+ok 91 - hash: memoized (repeated calls on the same FnDataset return the same value fast)
   ---
-  duration_ms: 7.379012
+  duration_ms: 6.662928
   type: 'test'
   ...
 # Subtest: equals: ground (blank-node-free) data uses cheap exact quad-set comparison
-ok 89 - equals: ground (blank-node-free) data uses cheap exact quad-set comparison
+ok 92 - equals: ground (blank-node-free) data uses cheap exact quad-set comparison
   ---
-  duration_ms: 0.813406
+  duration_ms: 0.987692
   type: 'test'
   ...
 # Subtest: equals: blank-node datasets fall back to canonical-hash equality
-ok 90 - equals: blank-node datasets fall back to canonical-hash equality
+ok 93 - equals: blank-node datasets fall back to canonical-hash equality
   ---
-  duration_ms: 1.254922
+  duration_ms: 1.474764
   type: 'test'
   ...
 # Subtest: derive: skips recompute when input hash is unchanged, recomputes when it changes
-ok 91 - derive: skips recompute when input hash is unchanged, recomputes when it changes
+ok 94 - derive: skips recompute when input hash is unchanged, recomputes when it changes
   ---
-  duration_ms: 2.426817
+  duration_ms: 2.479536
   type: 'test'
   ...
 # Subtest: derive: non-dataset inputs key by value identity
-ok 92 - derive: non-dataset inputs key by value identity
+ok 95 - derive: non-dataset inputs key by value identity
   ---
-  duration_ms: 0.210317
+  duration_ms: 0.31128
   type: 'test'
   ...
 # Subtest: builder: accumulates chunks and finish() returns a deduplicated, frozen FnDataset
-ok 93 - builder: accumulates chunks and finish() returns a deduplicated, frozen FnDataset
+ok 96 - builder: accumulates chunks and finish() returns a deduplicated, frozen FnDataset
   ---
-  duration_ms: 0.246381
+  duration_ms: 0.307387
   type: 'test'
   ...
 # Subtest: builder: addChunk()/finish() reject use after finish()
-ok 94 - builder: addChunk()/finish() reject use after finish()
+ok 97 - builder: addChunk()/finish() reject use after finish()
   ---
-  duration_ms: 0.268986
+  duration_ms: 0.44154
   type: 'test'
   ...
 # Subtest: fromChunks: consumes an async iterable of quad batches into one FnDataset
-ok 95 - fromChunks: consumes an async iterable of quad batches into one FnDataset
+ok 98 - fromChunks: consumes an async iterable of quad batches into one FnDataset
   ---
-  duration_ms: 0.315566
+  duration_ms: 0.3739
   type: 'test'
   ...
 # Subtest: interop: fromDataset/toDataset round-trips quad content
-ok 96 - interop: fromDataset/toDataset round-trips quad content
+ok 99 - interop: fromDataset/toDataset round-trips quad content
   ---
-  duration_ms: 0.171058
+  duration_ms: 0.220872
   type: 'test'
   ...
 # Subtest: interop: query() accepts an FnDataset and returns Bindings[]
-ok 97 - interop: query() accepts an FnDataset and returns Bindings[]
+ok 100 - interop: query() accepts an FnDataset and returns Bindings[]
   ---
-  duration_ms: 11.375116
+  duration_ms: 13.120157
   type: 'test'
   ...
 # Subtest: interop: query() CONSTRUCT returns an FnDataset
-ok 98 - interop: query() CONSTRUCT returns an FnDataset
+ok 101 - interop: query() CONSTRUCT returns an FnDataset
   ---
-  duration_ms: 8.030675
+  duration_ms: 6.283643
   type: 'test'
   ...
 # Subtest: interop: entail() materializes an RDFS closure as an FnDataset
-ok 99 - interop: entail() materializes an RDFS closure as an FnDataset
+ok 102 - interop: entail() materializes an RDFS closure as an FnDataset
   ---
-  duration_ms: 138.083337
+  duration_ms: 178.300895
   type: 'test'
   ...
 # Subtest: interop: entail() accepts lowercase regime aliases
-ok 100 - interop: entail() accepts lowercase regime aliases
+ok 103 - interop: entail() accepts lowercase regime aliases
   ---
-  duration_ms: 203.719569
+  duration_ms: 210.266334
   type: 'test'
   ...
 # Subtest: validate: SHACL Core validation returns conforms + a report FnDataset
-ok 101 - validate: SHACL Core validation returns conforms + a report FnDataset
+ok 104 - validate: SHACL Core validation returns conforms + a report FnDataset
   ---
-  duration_ms: 9.846451
+  duration_ms: 8.998138
   type: 'test'
   ...
 # Subtest: shex: ShEx validation of one focus node against one shape
-ok 102 - shex: ShEx validation of one focus node against one shape
+ok 105 - shex: ShEx validation of one focus node against one shape
   ---
-  duration_ms: 8.1007
+  duration_ms: 6.871977
   type: 'test'
   ...
 # Subtest: fromMapping: evaluates an RML mapping graph against JSON source data
-ok 103 - fromMapping: evaluates an RML mapping graph against JSON source data
+ok 106 - fromMapping: evaluates an RML mapping graph against JSON source data
   ---
-  duration_ms: 7.014763
+  duration_ms: 9.303582
   type: 'test'
   ...
 # Subtest: fromCsvw: converts a vendored W3C CSVW fixture into an FnDataset
-ok 104 - fromCsvw: converts a vendored W3C CSVW fixture into an FnDataset
+ok 107 - fromCsvw: converts a vendored W3C CSVW fixture into an FnDataset
   ---
-  duration_ms: 11.352521
+  duration_ms: 10.614527
   type: 'test'
   ...
 # Subtest: rif: RIF Core saturation materializes derived triples as an FnDataset
-ok 105 - rif: RIF Core saturation materializes derived triples as an FnDataset
+ok 108 - rif: RIF Core saturation materializes derived triples as an FnDataset
   ---
-  duration_ms: 10.465464
+  duration_ms: 8.928697
   type: 'test'
   ...
 # Subtest: interop: graphs() enumerates named graphs as FnDatasets
-ok 106 - interop: graphs() enumerates named graphs as FnDatasets
+ok 109 - interop: graphs() enumerates named graphs as FnDatasets
   ---
-  duration_ms: 1.581835
+  duration_ms: 1.296776
   type: 'test'
   ...
 # Subtest: canonicalize: two blank-node relabelings of the same graph canonicalize identically
-ok 107 - canonicalize: two blank-node relabelings of the same graph canonicalize identically
+ok 110 - canonicalize: two blank-node relabelings of the same graph canonicalize identically
   ---
-  duration_ms: 4.791172
+  duration_ms: 1.899509
   type: 'test'
   ...
 # Subtest: pipe: composes async and sync steps left-to-right
-ok 108 - pipe: composes async and sync steps left-to-right
+ok 111 - pipe: composes async and sync steps left-to-right
   ---
-  duration_ms: 0.251229
+  duration_ms: 0.201591
   type: 'test'
   ...
 # Subtest: pipe: with no functions is the identity
-ok 109 - pipe: with no functions is the identity
+ok 112 - pipe: with no functions is the identity
   ---
-  duration_ms: 0.110236
+  duration_ms: 0.07755
   type: 'test'
   ...
 # Subtest: pipe: rejects a non-function argument
-ok 110 - pipe: rejects a non-function argument
+ok 113 - pipe: rejects a non-function argument
   ---
-  duration_ms: 0.284809
+  duration_ms: 0.238999
   type: 'test'
   ...
 # Subtest: queryHdt: SELECT COUNT(*) over the RML-Core HDT fixture is 343
-ok 111 - queryHdt: SELECT COUNT(*) over the RML-Core HDT fixture is 343
+ok 114 - queryHdt: SELECT COUNT(*) over the RML-Core HDT fixture is 343
   ---
-  duration_ms: 399.593492
+  duration_ms: 569.954461
   type: 'test'
   ...
 # Subtest: queryHdt: ASK over the same fixture is true
-ok 112 - queryHdt: ASK over the same fixture is true
+ok 115 - queryHdt: ASK over the same fixture is true
   ---
-  duration_ms: 432.649737
+  duration_ms: 632.438845
   type: 'test'
   ...
 # Subtest: queryHdt: SELECT bindings carry real RDF/JS terms (owl:Class labels)
-ok 113 - queryHdt: SELECT bindings carry real RDF/JS terms (owl:Class labels)
+ok 116 - queryHdt: SELECT bindings carry real RDF/JS terms (owl:Class labels)
   ---
-  duration_ms: 726.968733
+  duration_ms: 1286.881897
   type: 'test'
   ...
 # Subtest: queryHdt: accepts an ArrayBuffer, not just a Buffer/Uint8Array
-ok 114 - queryHdt: accepts an ArrayBuffer, not just a Buffer/Uint8Array
+ok 117 - queryHdt: accepts an ArrayBuffer, not just a Buffer/Uint8Array
   ---
-  duration_ms: 446.733886
+  duration_ms: 652.450748
   type: 'test'
   ...
 # Subtest: queryHdt: CONSTRUCT rejects (SELECT/ASK only over --data-hdt)
-ok 115 - queryHdt: CONSTRUCT rejects (SELECT/ASK only over --data-hdt)
+ok 118 - queryHdt: CONSTRUCT rejects (SELECT/ASK only over --data-hdt)
   ---
-  duration_ms: 0.604161
+  duration_ms: 0.78533
   type: 'test'
   ...
 # Subtest: queryHdt: fn.js re-exports the same function
-ok 116 - queryHdt: fn.js re-exports the same function
+ok 119 - queryHdt: fn.js re-exports the same function
   ---
-  duration_ms: 284.258783
+  duration_ms: 380.539786
   type: 'test'
   ...
 # Subtest: jsonSchemaValidate: {type:"integer"} accepts an integer
-ok 117 - jsonSchemaValidate: {type:"integer"} accepts an integer
+ok 120 - jsonSchemaValidate: {type:"integer"} accepts an integer
   ---
-  duration_ms: 98.353755
+  duration_ms: 130.614305
   type: 'test'
   ...
 # Subtest: jsonSchemaValidate: {type:"integer"} rejects a string
-ok 118 - jsonSchemaValidate: {type:"integer"} rejects a string
+ok 121 - jsonSchemaValidate: {type:"integer"} rejects a string
   ---
-  duration_ms: 0.82232
+  duration_ms: 1.121607
   type: 'test'
   ...
 # Subtest: mathmlEval: 2 + 3 = 5/1 (exact rational)
-ok 119 - mathmlEval: 2 + 3 = 5/1 (exact rational)
+ok 122 - mathmlEval: 2 + 3 = 5/1 (exact rational)
   ---
-  duration_ms: 73.110777
+  duration_ms: 145.24404
   type: 'test'
   ...
 # Subtest: mathmlEval: division by zero is undef, not a bogus number
-ok 120 - mathmlEval: division by zero is undef, not a bogus number
+ok 123 - mathmlEval: division by zero is undef, not a bogus number
   ---
-  duration_ms: 1.750078
+  duration_ms: 2.529066
   type: 'test'
   ...
 # Subtest: matrixDeterminant: 2x2 determinant is exact
-ok 121 - matrixDeterminant: 2x2 determinant is exact
+ok 124 - matrixDeterminant: 2x2 determinant is exact
   ---
-  duration_ms: 105.712998
+  duration_ms: 141.909834
   type: 'test'
   ...
 # Subtest: matrixDeterminant: non-square is undefined
-ok 122 - matrixDeterminant: non-square is undefined
+ok 125 - matrixDeterminant: non-square is undefined
   ---
-  duration_ms: 0.620966
+  duration_ms: 0.781453
   type: 'test'
   ...
 # Subtest: matrixScalarProduct: dot product of two 3-vectors
-ok 123 - matrixScalarProduct: dot product of two 3-vectors
+ok 126 - matrixScalarProduct: dot product of two 3-vectors
   ---
-  duration_ms: 1.498899
+  duration_ms: 0.980793
   type: 'test'
   ...
 # Subtest: matrixVectorProduct: cross product of unit vectors
-ok 124 - matrixVectorProduct: cross product of unit vectors
+ok 127 - matrixVectorProduct: cross product of unit vectors
   ---
-  duration_ms: 0.655809
+  duration_ms: 0.947768
   type: 'test'
   ...
 # Subtest: matrixOuterProduct: outer product yields a matrix
-ok 125 - matrixOuterProduct: outer product yields a matrix
+ok 128 - matrixOuterProduct: outer product yields a matrix
   ---
-  duration_ms: 2.63364
+  duration_ms: 0.892402
   type: 'test'
   ...
 # Subtest: matrixDeterminant: exact rational entries
-ok 126 - matrixDeterminant: exact rational entries
+ok 129 - matrixDeterminant: exact rational entries
   ---
-  duration_ms: 0.541196
+  duration_ms: 1.458831
   type: 'test'
   ...
 # npm notice
-# npm notice 📦  @danbri/foafos@0.1.0-alpha.0
+# npm notice 📦  factoidal@0.1.0-alpha.0
 # npm notice Tarball Contents
-# npm notice 4.0kB CHANGELOG.md
+# npm notice 5.5kB CHANGELOG.md
 # npm notice 11.3kB LICENSE
-# npm notice 27.8kB README.md
+# npm notice 28.7kB README.md
 # npm notice 33.0kB browser-wasm.js
-# npm notice 17.4kB browser.d.ts
-# npm notice 84.6kB browser.js
-# npm notice 1.2MB factoidal-npm-entry.js
+# npm notice 18.6kB browser.d.ts
+# npm notice 86.8kB browser.js
+# npm notice 1.3MB factoidal-npm-entry.js
 # npm notice 907.2kB factoidal-npm-entry.wasm.assets/code-db70f40ffdc45e775888.wasm
 # npm notice 42.9kB factoidal-npm-entry.wasm.js
-# npm notice 1.1MB factoidal.js
+# npm notice 1.2MB factoidal.js
 # npm notice 1.1MB factoidal.wasm.assets/code-6c8eb6ef8493ad5db69f.wasm
 # npm notice 42.8kB factoidal.wasm.js
-# npm notice 16.0kB fn.d.ts
-# npm notice 32.0kB fn.js
+# npm notice 17.7kB fn.d.ts
+# npm notice 34.9kB fn.js
 # npm notice 4.0kB hacl-init.js
 # npm notice 30.0kB hacl-wasm/api.js
 # npm notice 105.7kB hacl-wasm/api.json
@@ -908,25 +926,25 @@ ok 126 - matrixDeterminant: exact rational entries
 # npm notice 474B hacl-wasm/LowStar_Endianness.wasm
 # npm notice 1.5kB hacl-wasm/shell.js
 # npm notice 1.1kB hacl-wasm/WasmSupport.wasm
-# npm notice 32.3kB index.d.ts
-# npm notice 9.5kB index.js
-# npm notice 3.7kB index.mjs
-# npm notice 84.1kB lib/api.js
+# npm notice 33.9kB index.d.ts
+# npm notice 9.6kB index.js
+# npm notice 3.9kB index.mjs
+# npm notice 86.2kB lib/api.js
 # npm notice 5.8kB lib/engine-js.js
 # npm notice 10.3kB lib/engine-wasm.js
 # npm notice 2.5kB package.json
 # npm notice 17.1kB rdfjs.js
-# npm notice 126B version.json
-# npm notice 1.6kB wasm.d.ts
-# npm notice 5.8kB wasm.js
+# npm notice 7.4kB version.json
+# npm notice 3.4kB wasm.d.ts
+# npm notice 6.0kB wasm.js
 # npm notice Tarball Details
-# npm notice name: @danbri/foafos
+# npm notice name: factoidal
 # npm notice version: 0.1.0-alpha.0
-# npm notice filename: danbri-foafos-0.1.0-alpha.0.tgz
-# npm notice package size: 1.4 MB
-# npm notice unpacked size: 5.2 MB
-# npm notice shasum: 65e28a6fff39861207f0997682b34f32587f65e1
-# npm notice integrity: sha512-OVQtN4+t29ICh[...]xxP7XR1gC9aDA==
+# npm notice filename: factoidal-0.1.0-alpha.0.tgz
+# npm notice package size: 1.6 MB
+# npm notice unpacked size: 5.4 MB
+# npm notice shasum: ea7099c6195271c79e03a2bd2496b511d5abc931
+# npm notice integrity: sha512-vvPO3LVHncYmC[...]iabwVEyFw30Tw==
 # npm notice total files: 43
 # npm notice
 # [qof3-trace] cottas_ondisk_open path=npmcottas:1
@@ -948,259 +966,259 @@ ok 126 - matrixDeterminant: exact rational entries
 # [qof3-trace] collect_distinct_graph col=3 named_graphs=1 rows=4
 # [bet7-trace] ensure_graphs_loaded: 1 distinct graphs
 # Subtest: pack integrity: npm pack + extract + db API on both engines
-ok 127 - pack integrity: npm pack + extract + db API on both engines
+ok 130 - pack integrity: npm pack + extract + db API on both engines
   ---
-  duration_ms: 1495.841127
+  duration_ms: 2308.864484
   type: 'test'
   ...
 # Subtest: DataFactory: namedNode identity and equals
-ok 128 - DataFactory: namedNode identity and equals
+ok 131 - DataFactory: namedNode identity and equals
   ---
-  duration_ms: 1.202613
+  duration_ms: 1.545374
   type: 'test'
   ...
 # Subtest: DataFactory: blankNode fresh labels and equals
-ok 129 - DataFactory: blankNode fresh labels and equals
+ok 132 - DataFactory: blankNode fresh labels and equals
   ---
-  duration_ms: 0.305661
+  duration_ms: 0.384134
   type: 'test'
   ...
 # Subtest: DataFactory: literal defaults, language, datatype
-ok 130 - DataFactory: literal defaults, language, datatype
+ok 133 - DataFactory: literal defaults, language, datatype
   ---
-  duration_ms: 0.266542
+  duration_ms: 0.333864
   type: 'test'
   ...
 # Subtest: DataFactory: defaultGraph and variable
-ok 131 - DataFactory: defaultGraph and variable
+ok 134 - DataFactory: defaultGraph and variable
   ---
-  duration_ms: 1.935086
+  duration_ms: 1.327488
   type: 'test'
   ...
 # Subtest: DataFactory: quad equals (incl. graph) and fromQuad
-ok 132 - DataFactory: quad equals (incl. graph) and fromQuad
+ok 135 - DataFactory: quad equals (incl. graph) and fromQuad
   ---
-  duration_ms: 0.311299
+  duration_ms: 0.458246
   type: 'test'
   ...
 # Subtest: termFromSrj covers uri/bnode/literal shapes
-ok 133 - termFromSrj covers uri/bnode/literal shapes
+ok 136 - termFromSrj covers uri/bnode/literal shapes
   ---
-  duration_ms: 0.250978
+  duration_ms: 0.277881
   type: 'test'
   ...
 # Subtest: termToNQuads tokens match the F* serializer rules
-ok 134 - termToNQuads tokens match the F* serializer rules
+ok 137 - termToNQuads tokens match the F* serializer rules
   ---
-  duration_ms: 0.297498
+  duration_ms: 0.329481
   type: 'test'
   ...
 # Subtest: N-Quads round-trip: quads -> text -> quads
-ok 135 - N-Quads round-trip: quads -> text -> quads
+ok 138 - N-Quads round-trip: quads -> text -> quads
   ---
-  duration_ms: 0.840647
+  duration_ms: 0.778284
   type: 'test'
   ...
 # Subtest: nquadsToQuads handles UCHAR escapes and comments
-ok 136 - nquadsToQuads handles UCHAR escapes and comments
+ok 139 - nquadsToQuads handles UCHAR escapes and comments
   ---
-  duration_ms: 0.53751
+  duration_ms: 0.35037
   type: 'test'
   ...
 # Subtest: nquadsToQuads blankNodePrefix keeps documents apart
-ok 137 - nquadsToQuads blankNodePrefix keeps documents apart
+ok 140 - nquadsToQuads blankNodePrefix keeps documents apart
   ---
-  duration_ms: 0.525272
+  duration_ms: 0.436486
   type: 'test'
   ...
 # Subtest: Dataset: DatasetCore contract (size/add/delete/has/match/iterate)
-ok 138 - Dataset: DatasetCore contract (size/add/delete/has/match/iterate)
+ok 141 - Dataset: DatasetCore contract (size/add/delete/has/match/iterate)
   ---
-  duration_ms: 0.407394
+  duration_ms: 0.385145
   type: 'test'
   ...
 # Subtest: Dataset: toNQuads / fromNQuads round-trip
-ok 139 - Dataset: toNQuads / fromNQuads round-trip
+ok 142 - Dataset: toNQuads / fromNQuads round-trip
   ---
-  duration_ms: 0.218039
+  duration_ms: 0.195227
   type: 'test'
   ...
 # Subtest: schematronValidate: failing assert produces a finding
-ok 140 - schematronValidate: failing assert produces a finding
+ok 143 - schematronValidate: failing assert produces a finding
   ---
-  duration_ms: 93.969507
+  duration_ms: 82.96765
   type: 'test'
   ...
 # Subtest: schematronValidate: satisfied assert produces no assert-fail
-ok 141 - schematronValidate: satisfied assert produces no assert-fail
+ok 144 - schematronValidate: satisfied assert produces no assert-fail
   ---
-  duration_ms: 1.599511
+  duration_ms: 1.627622
   type: 'test'
   ...
 # Subtest: serialize(..., {format:'turtle'}) emits prefix-compacted Turtle
-ok 142 - serialize(..., {format:'turtle'}) emits prefix-compacted Turtle
+ok 145 - serialize(..., {format:'turtle'}) emits prefix-compacted Turtle
   ---
-  duration_ms: 69.623671
+  duration_ms: 121.980598
   type: 'test'
   ...
 # Subtest: serialize rejects an unknown output format
-ok 143 - serialize rejects an unknown output format
+ok 146 - serialize rejects an unknown output format
   ---
-  duration_ms: 0.395537
+  duration_ms: 0.728325
   type: 'test'
   ...
 # Subtest: toanSummation: sum_{i=1}^{4} (x + i*y) = 4x + 10y
-ok 144 - toanSummation: sum_{i=1}^{4} (x + i*y) = 4x + 10y
+ok 147 - toanSummation: sum_{i=1}^{4} (x + i*y) = 4x + 10y
   ---
-  duration_ms: 75.760672
+  duration_ms: 126.040491
   type: 'test'
   ...
 # Subtest: toanProduct: product_{i=1}^{3} i = 6
-ok 145 - toanProduct: product_{i=1}^{3} i = 6
+ok 148 - toanProduct: product_{i=1}^{3} i = 6
   ---
-  duration_ms: 0.508746
+  duration_ms: 0.470659
   type: 'test'
   ...
 # Subtest: toanSimplify: 2 + 3 collapses to 5
-ok 146 - toanSimplify: 2 + 3 collapses to 5
+ok 149 - toanSimplify: 2 + 3 collapses to 5
   ---
-  duration_ms: 0.403689
+  duration_ms: 0.488036
   type: 'test'
   ...
 # Subtest: toanDiff: d/dx (x*x) mentions x
-ok 147 - toanDiff: d/dx (x*x) mentions x
+ok 150 - toanDiff: d/dx (x*x) mentions x
   ---
-  duration_ms: 0.618943
+  duration_ms: 0.791392
   type: 'test'
   ...
 # Subtest: toanSubst: (x + 1)[x := 4] mentions 4
-ok 148 - toanSubst: (x + 1)[x := 4] mentions 4
+ok 151 - toanSubst: (x + 1)[x := 4] mentions 4
   ---
-  duration_ms: 0.350829
+  duration_ms: 0.770848
   type: 'test'
   ...
 # Subtest: typed VC surface (index.js vc*): auto-init + round-trip + tamper
     # Subtest: vcSha256Hex returns the hex digest string (FIPS 180-4 abc)
     ok 1 - vcSha256Hex returns the hex digest string (FIPS 180-4 abc)
       ---
-      duration_ms: 22.740156
+      duration_ms: 35.194336
       type: 'test'
       ...
     # Subtest: Ed25519 derive/sign/verify round-trip (RFC 8032 vector), typed values
     ok 2 - Ed25519 derive/sign/verify round-trip (RFC 8032 vector), typed values
       ---
-      duration_ms: 19.937982
+      duration_ms: 38.876831
       type: 'test'
       ...
     # Subtest: Ed25519 verify rejects tamper / wrong key (security)
     ok 3 - Ed25519 verify rejects tamper / wrong key (security)
       ---
-      duration_ms: 9.801894
+      duration_ms: 12.299971
       type: 'test'
       ...
     # Subtest: eddsa-rdfc-2022 create + verify over canonical inputs, typed values
     ok 4 - eddsa-rdfc-2022 create + verify over canonical inputs, typed values
       ---
-      duration_ms: 41.336655
+      duration_ms: 56.02052
       type: 'test'
       ...
     1..4
-ok 149 - typed VC surface (index.js vc*): auto-init + round-trip + tamper
+ok 152 - typed VC surface (index.js vc*): auto-init + round-trip + tamper
   ---
-  duration_ms: 165.745802
+  duration_ms: 226.955731
   type: 'test'
   ...
 # Subtest: typed VC surface: input validation throws a TypeError before any engine call
-ok 150 - typed VC surface: input validation throws a TypeError before any engine call
+ok 153 - typed VC surface: input validation throws a TypeError before any engine call
   ---
-  duration_ms: 3.628158
+  duration_ms: 0.7963
   type: 'test'
   ...
 # Subtest: VC crypto over HACL* wasm (Node)
     # Subtest: SHA-256 matches FIPS 180-4 (abc)
     ok 1 - SHA-256 matches FIPS 180-4 (abc)
       ---
-      duration_ms: 2.087126
+      duration_ms: 5.198423
       type: 'test'
       ...
     # Subtest: Ed25519 reproduces RFC 8032 vectors (pubkey, sign, verify)
     ok 2 - Ed25519 reproduces RFC 8032 vectors (pubkey, sign, verify)
       ---
-      duration_ms: 26.148523
+      duration_ms: 46.278609
       type: 'test'
       ...
     # Subtest: Ed25519 verify rejects tamper / wrong key (security)
     ok 3 - Ed25519 verify rejects tamper / wrong key (security)
       ---
-      duration_ms: 9.776135
+      duration_ms: 11.85776
       type: 'test'
       ...
     # Subtest: eddsa-rdfc-2022 roundtrip over canonical inputs (mirrors vc_runner)
     ok 4 - eddsa-rdfc-2022 roundtrip over canonical inputs (mirrors vc_runner)
       ---
-      duration_ms: 32.434867
+      duration_ms: 57.946201
       type: 'test'
       ...
     1..4
-ok 151 - VC crypto over HACL* wasm (Node)
+ok 154 - VC crypto over HACL* wasm (Node)
   ---
-  duration_ms: 190.009995
+  duration_ms: 292.0457
   type: 'test'
   ...
 # Subtest: wasm parity: parse produces the same N-Quads
-ok 152 - wasm parity: parse produces the same N-Quads
+ok 155 - wasm parity: parse produces the same N-Quads
   ---
-  duration_ms: 172.744231
+  duration_ms: 191.806205
   type: 'test'
   ...
 # Subtest: wasm parity: SELECT bindings match
-ok 153 - wasm parity: SELECT bindings match
+ok 156 - wasm parity: SELECT bindings match
   ---
-  duration_ms: 18.68269
+  duration_ms: 27.603011
   type: 'test'
   ...
 # Subtest: wasm parity: ASK matches
-ok 154 - wasm parity: ASK matches
+ok 157 - wasm parity: ASK matches
   ---
-  duration_ms: 11.473583
+  duration_ms: 8.927875
   type: 'test'
   ...
 # Subtest: xformsRecalc: constant calculate writes the leaf
-ok 155 - xformsRecalc: constant calculate writes the leaf
+ok 158 - xformsRecalc: constant calculate writes the leaf
   ---
-  duration_ms: 109.248426
+  duration_ms: 141.123145
   type: 'test'
   ...
 # Subtest: xformsRecalc: no binds leaves the instance well-formed
-ok 156 - xformsRecalc: no binds leaves the instance well-formed
+ok 159 - xformsRecalc: no binds leaves the instance well-formed
   ---
-  duration_ms: 1.341572
+  duration_ms: 1.58799
   type: 'test'
   ...
 # Subtest: xsltTransform: value-of into a literal result element
-ok 157 - xsltTransform: value-of into a literal result element
+ok 160 - xsltTransform: value-of into a literal result element
   ---
-  duration_ms: 109.108906
+  duration_ms: 174.035076
   type: 'test'
   ...
 # Subtest: xsltTransform: identity-style xsl:copy-of
-ok 158 - xsltTransform: identity-style xsl:copy-of
+ok 161 - xsltTransform: identity-style xsl:copy-of
   ---
-  duration_ms: 1.879312
+  duration_ms: 6.463749
   type: 'test'
   ...
 # Subtest: xsltTransform: rejects malformed XML
-ok 159 - xsltTransform: rejects malformed XML
+ok 162 - xsltTransform: rejects malformed XML
   ---
-  duration_ms: 1.335213
+  duration_ms: 4.849404
   type: 'test'
   ...
-1..159
-# tests 167
+1..162
+# tests 170
 # suites 0
-# pass 166
+# pass 169
 # fail 0
 # cancelled 0
 # skipped 1
 # todo 0
-# duration_ms 3186.293533
+# duration_ms 4678.888231
