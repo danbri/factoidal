@@ -852,8 +852,10 @@ Core (RDF/SPARQL evaluation):
 Query planning (on-disk backend infrastructure):
   RDF.CottasStore.fst             1528 lines, 10 assume val
   RDF.CottasStore.OnDiskIndex.fst  407 lines,  7 assume val
-  RDF.CottasStore.OnDiskRuntime.fst 117 lines, 15 assume val
   SPARQL11.Store.fst               780 lines
+  (RDF.CottasStore.OnDiskRuntime.fst — 117 lines, 15 assume val — DELETED
+   #448 "Delete & dedupe", dead module, no caller anywhere in the tree;
+   history: commit on branch delete-dead-store-modules)
 
 RDF parsers (all F*-extracted):
   Parser.Turtle.fst               1918 lines
@@ -882,9 +884,14 @@ Miscellaneous support:
   RDF.Canonical.fst               1142 lines,  1 assume val
   SHACL.Validation.fst            2546 lines,  1 assume val (phase 3: reports + sh:sparql)
   Parser.FastString.fst            342 lines,  0 assume val (re-founded on Parser.FastString.Spec.fst, G4/#358, 2026-08-10; sole surviving assume val for this family is unsafe_char_of_d7ff in the sibling Parser.FastString.CharBoundary.fst, 57 lines)
-  Parser.BallyhooHDTQ.fst          270 lines, 13 assume val (#448 wave 2 module 2, 2026-08-16: 4 lifted; module is DEAD end-to-end, no caller anywhere in the tree)
   Parser.BallyhooHDT.fst           352 lines,  0 assume val (STALE row -- stage 4, 2026-07-06, retired every assume val; not re-audited here, flagged in passing)
   Parser.BallyhooCOTTAS.fst        241 lines, 13 assume val (STALE row -- #448 wave 2 module 1, 2026-08-16, lifted 4 of 17; not re-audited here, flagged in passing)
+  (Parser.BallyhooHDTQ.fst — 270 lines, 13 assume val — DELETED #448
+   "Delete & dedupe", dead module, no caller anywhere in the tree;
+   history: commit on branch delete-dead-store-modules)
+  (Parser.BallyhooBloom.fst — 0 assume val — DELETED #448 "Delete &
+   dedupe", zero callers anywhere; history: commit on branch
+   delete-dead-store-modules)
 
 Build and test harness:
   Makefile                         verify + extract-c targets

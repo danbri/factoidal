@@ -75,6 +75,7 @@ mkdir -p "$BUILD_DIR"
 # assumptions over interface" / "Cannot find file *.cmx" (#82).
 COMMON_MODULES=(
   Util_Log
+  Dep_Reachability
   Regex_Syntax
   Regex_Derivative
   Regex_Exec
@@ -162,9 +163,7 @@ COMMON_MODULES=(
   SPARQL_HTTP_Admin
   SPARQL_HTTP_Routes
   Parser_Ballyhoo
-  Parser_BallyhooBloom
   Parser_BallyhooHDT
-  Parser_BallyhooHDTQ
   Parser_BallyhooCOTTAS
   RDF_CottasStore_ColumnSeq
   RDF_CottasStore_PageCache
@@ -180,7 +179,6 @@ COMMON_MODULES=(
   RDF_CottasStore_LazyDict
   RDF_CottasStore_LazyDictRegistry
   RDF_Store_LazyTermCache
-  RDF_Store_HDTTermCacheRegistry
   RDF_Store_Columnar_OffsetIndex
   RDF_Store_Columnar_SubjectOffsetIndex
   RDF_Store_Columnar_DeltaLog
@@ -189,7 +187,6 @@ COMMON_MODULES=(
   SPARQL_Plan_Loader
   SPARQL_Plan_AccessPath
   RDF_CottasStore
-  RDF_CottasStore_OnDiskRuntime
   RDF_CottasInMem
   fstar_pure_hashes
   RDF_Dataset_Graphs

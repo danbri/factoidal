@@ -304,3 +304,27 @@ for any agent that builds then measures: "if your last build step was
 source edit." The orchestrator-side tell: BUILD_STATUS=OK from an
 extract log + a binary mtime older than the newest `.ml`.
 
+
+## Rule: agents must NEVER end a turn to "wait for a background build" (five occurrences, 2026-08-14..17)
+
+The single most repeated agent failure of the #443..#448 work week:
+an agent starts a long build with `run_in_background`, arms a Monitor
+or says "the notification will resume me", and ENDS ITS TURN. Nothing
+resumes it. Subagents are not woken by their own monitors or task
+notifications — those go to the ORCHESTRATOR. The agent is simply
+stopped, and the orchestrator pays a detection round + a resume prompt
+every time. Five agents did this in four days, several twice.
+
+MANDATORY brief inclusion for any agent that builds:
+
+> Never end your turn to wait for a build. Poll in the foreground and
+> continue in the SAME turn:
+>   while kill -0 <BUILD_PID> 2>/dev/null; do sleep 20; done
+> If you did not keep the PID, match the LAUNCHER string
+> (`pgrep -f "bash ./build-ocaml.sh"`), NEVER the bare script name —
+> `pgrep -f "build-ocaml.sh"` matches your own polling shell and
+> loops forever (workflow-gotchas hazard #17 + addendum).
+
+The orchestrator-side tell that an agent has done this anyway: its
+task-notification "result" is a sentence about waiting, not a report.
+Resume it immediately with the poll instruction; do not wait for it.

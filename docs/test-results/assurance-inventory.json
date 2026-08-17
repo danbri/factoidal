@@ -1336,6 +1336,52 @@
    "suites": []
   },
   {
+   "module": "Dep.Reachability",
+   "files": [
+    "formal/fstar/Dep.Reachability.fst"
+   ],
+   "loc": 171,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/Dep_Reachability.ml",
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 7,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 2,
+   "local_refinement_lemma_names": [
+    "reaches",
+    "closed_set_catches_all"
+   ],
+   "algorithm_correctness_theorems": [
+    {
+     "name": "no_root_reaches",
+     "proved_in": "Dep.Reachability",
+     "file": "formal/fstar/Dep.Reachability.fst",
+     "line": 155,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "all_mem",
+      "is_closed"
+     ]
+    }
+   ],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "algorithm-correctness",
+   "suites": []
+  },
+  {
    "module": "GRDDL.Discovery",
    "files": [
     "formal/fstar/GRDDL.Discovery.fst"
@@ -5693,7 +5739,7 @@
      "name": "lemma_parse_version_hex_literal",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1268,
+     "line": 1270,
      "unconditional": true,
      "names_shipping_functions": [
       "cottas_format_version",
@@ -5704,7 +5750,7 @@
      "name": "lemma_version_field_roundtrip",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1272,
+     "line": 1274,
      "unconditional": true,
      "names_shipping_functions": [
       "bytes_to_hex",
@@ -5750,37 +5796,6 @@
    "in_build_module_list": true,
    "foundational_path": false,
    "shipping_function_count": 21,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": []
-  },
-  {
-   "module": "Parser.BallyhooBloom",
-   "files": [
-    "formal/fstar/Parser.BallyhooBloom.fst"
-   ],
-   "loc": 115,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/Parser_BallyhooBloom.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 17,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -5871,55 +5886,6 @@
    "assume_val_active": 0,
    "assume_val_names": [],
    "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": []
-  },
-  {
-   "module": "Parser.BallyhooHDTQ",
-   "files": [
-    "formal/fstar/Parser.BallyhooHDTQ.fst"
-   ],
-   "loc": 175,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/Parser_BallyhooHDTQ.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 20,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 17,
-   "assume_val_names": [
-    "hdtq_open_dataset_store",
-    "hdtq_close_dataset_store",
-    "hdtq_dataset_summary",
-    "hdtq_named_graphs",
-    "hdtq_lookup_named_graph",
-    "hdtq_encode_subject",
-    "hdtq_encode_predicate",
-    "hdtq_encode_object",
-    "hdtq_encode_graph_name",
-    "hdtq_decode_subject",
-    "hdtq_decode_predicate",
-    "hdtq_decode_object",
-    "hdtq_decode_graph_name",
-    "hdtq_search",
-    "hdtq_estimate",
-    "hdtq_predicate_present_in_graph",
-    "hdtq_graph_candidates_for_predicate"
-   ],
-   "assume_other_active": 1,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
@@ -11689,7 +11655,7 @@
      "name": "lemma_byte_to_hex_21",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1213,
+     "line": 1215,
      "unconditional": true,
      "names_shipping_functions": [
       "byte_of_int",
@@ -11700,7 +11666,7 @@
      "name": "lemma_byte_to_hex_250",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1223,
+     "line": 1225,
      "unconditional": true,
      "names_shipping_functions": [
       "byte_of_int",
@@ -11711,7 +11677,7 @@
      "name": "lemma_byte_to_hex_6",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1233,
+     "line": 1235,
      "unconditional": true,
      "names_shipping_functions": [
       "byte_of_int",
@@ -11722,7 +11688,7 @@
      "name": "lemma_version_field_bytes_eq",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1242,
+     "line": 1244,
      "unconditional": true,
      "names_shipping_functions": [
       "byte_of_int",
@@ -11733,7 +11699,7 @@
      "name": "lemma_bytes_to_hex_unfold",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1245,
+     "line": 1247,
      "unconditional": true,
      "names_shipping_functions": [
       "byte_of_int",
@@ -11745,7 +11711,7 @@
      "name": "lemma_version_field_hex_eq",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1257,
+     "line": 1259,
      "unconditional": true,
      "names_shipping_functions": [
       "bytes_to_hex",
@@ -11756,7 +11722,7 @@
      "name": "lemma_version_field_roundtrip",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1272,
+     "line": 1274,
      "unconditional": true,
      "names_shipping_functions": [
       "bytes_to_hex",
@@ -12079,7 +12045,7 @@
    "files": [
     "formal/fstar/RDF.CottasStore.BaseWriter.fst"
    ],
-   "loc": 1281,
+   "loc": 1283,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -12111,7 +12077,7 @@
      "name": "lemma_version_field_bytes_eq",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1242,
+     "line": 1244,
      "unconditional": true,
      "names_shipping_functions": [
       "byte_of_int",
@@ -12122,7 +12088,7 @@
      "name": "lemma_version_field_hex_eq",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1257,
+     "line": 1259,
      "unconditional": true,
      "names_shipping_functions": [
       "bytes_to_hex",
@@ -12133,7 +12099,7 @@
      "name": "lemma_version_field_roundtrip",
      "proved_in": "RDF.CottasStore.BaseWriter",
      "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-     "line": 1272,
+     "line": 1274,
      "unconditional": true,
      "names_shipping_functions": [
       "bytes_to_hex",
@@ -12734,7 +12700,7 @@
    "files": [
     "formal/fstar/RDF.CottasStore.OnDiskIndex.fst"
    ],
-   "loc": 408,
+   "loc": 426,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -12759,92 +12725,18 @@
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 1,
+   "local_refinement_lemma_names": [
+    "presence_bit_index_bounded"
+   ],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
+   "assurance_tier": "local-lemmas-only",
    "suites": [
     {
      "suite": "local-cottas-row-order",
-     "how": "direct-trigger"
-    }
-   ]
-  },
-  {
-   "module": "RDF.CottasStore.OnDiskRuntime",
-   "files": [
-    "formal/fstar/RDF.CottasStore.OnDiskRuntime.fst"
-   ],
-   "loc": 118,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/RDF_CottasStore_OnDiskRuntime.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 15,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 15,
-   "assume_val_names": [
-    "ondisk_decode_subject_indexed",
-    "ondisk_decode_predicate_indexed",
-    "ondisk_decode_object_indexed",
-    "ondisk_decode_graph_indexed",
-    "ondisk_encode_subject_indexed",
-    "ondisk_encode_predicate_indexed",
-    "ondisk_encode_object_indexed",
-    "ondisk_encode_graph_indexed",
-    "ondisk_decode_subject_via_registry",
-    "ondisk_decode_predicate_via_registry",
-    "ondisk_decode_object_via_registry",
-    "ondisk_decode_graph_via_registry",
-    "ondisk_encode_subject_via_registry",
-    "ondisk_encode_predicate_via_registry",
-    "ondisk_encode_object_via_registry"
-   ],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": [
-    {
-     "suite": "local-backend-parity-full",
-     "how": "direct-trigger"
-    },
-    {
-     "suite": "local-backend-parity",
-     "how": "direct-trigger"
-    },
-    {
-     "suite": "local-cottas-ask-decode-failure",
-     "how": "direct-trigger"
-    },
-    {
-     "suite": "local-cottas-corpus",
-     "how": "direct-trigger"
-    },
-    {
-     "suite": "local-cottas-groupby-counts",
-     "how": "direct-trigger"
-    },
-    {
-     "suite": "local-cottas-row-order",
-     "how": "direct-trigger"
-    },
-    {
-     "suite": "local-graph-default-semantics",
      "how": "direct-trigger"
     }
    ]
@@ -21679,42 +21571,6 @@
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
    "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": []
-  },
-  {
-   "module": "RDF.Store.HDTTermCacheRegistry",
-   "files": [
-    "formal/fstar/RDF.Store.HDTTermCacheRegistry.fst"
-   ],
-   "loc": 46,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/RDF_Store_HDTTermCacheRegistry.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 4,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 4,
-   "assume_val_names": [
-    "get_subjects_cache",
-    "get_predicates_cache",
-    "get_objects_cache",
-    "is_registered"
-   ],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
@@ -33105,6 +32961,57 @@
  ],
  "theorems": [
   {
+   "name": "reaches",
+   "host_module": "Dep.Reachability",
+   "file": "formal/fstar/Dep.Reachability.fst",
+   "line": 106,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "closed_set_catches_all",
+   "host_module": "Dep.Reachability",
+   "file": "formal/fstar/Dep.Reachability.fst",
+   "line": 137,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "is_closed"
+   ],
+   "shipping_modules": [
+    "Dep.Reachability"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "no_root_reaches",
+   "host_module": "Dep.Reachability",
+   "file": "formal/fstar/Dep.Reachability.fst",
+   "line": 155,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "all_mem",
+    "is_closed"
+   ],
+   "shipping_modules": [
+    "Dep.Reachability"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
+  {
    "name": "lemma_parse_control_info_rejects_bad_cookie",
    "host_module": "HDT.Container",
    "file": "formal/fstar/HDT.Container.fst",
@@ -40817,7 +40724,7 @@
    "name": "lemma_cong_string_of_list",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1193,
+   "line": 1195,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -40831,7 +40738,7 @@
    "name": "lemma_cong_hat3",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1198,
+   "line": 1200,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -40845,7 +40752,7 @@
    "name": "lemma_cong_parse_hex",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1204,
+   "line": 1206,
    "unconditional": false,
    "shipping_functions_named": [
     "parse_file_metadata_version_hex"
@@ -40863,7 +40770,7 @@
    "name": "lemma_hex_pair_15",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1210,
+   "line": 1212,
    "unconditional": true,
    "shipping_functions_named": [
     "hex_digit_char"
@@ -40881,7 +40788,7 @@
    "name": "lemma_byte_to_hex_21",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1213,
+   "line": 1215,
    "unconditional": true,
    "shipping_functions_named": [
     "byte_of_int",
@@ -40900,7 +40807,7 @@
    "name": "lemma_hex_pair_FA",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1220,
+   "line": 1222,
    "unconditional": true,
    "shipping_functions_named": [
     "hex_digit_char"
@@ -40918,7 +40825,7 @@
    "name": "lemma_byte_to_hex_250",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1223,
+   "line": 1225,
    "unconditional": true,
    "shipping_functions_named": [
     "byte_of_int",
@@ -40937,7 +40844,7 @@
    "name": "lemma_hex_pair_06",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1230,
+   "line": 1232,
    "unconditional": true,
    "shipping_functions_named": [
     "hex_digit_char"
@@ -40955,7 +40862,7 @@
    "name": "lemma_byte_to_hex_6",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1233,
+   "line": 1235,
    "unconditional": true,
    "shipping_functions_named": [
     "byte_of_int",
@@ -40974,7 +40881,7 @@
    "name": "lemma_version_field_bytes_eq",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1242,
+   "line": 1244,
    "unconditional": true,
    "shipping_functions_named": [
     "byte_of_int",
@@ -40994,7 +40901,7 @@
    "name": "lemma_bytes_to_hex_unfold",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1245,
+   "line": 1247,
    "unconditional": true,
    "shipping_functions_named": [
     "byte_of_int",
@@ -41014,7 +40921,7 @@
    "name": "lemma_version_field_hex_eq",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1257,
+   "line": 1259,
    "unconditional": true,
    "shipping_functions_named": [
     "bytes_to_hex",
@@ -41034,7 +40941,7 @@
    "name": "lemma_parse_version_hex_literal",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1268,
+   "line": 1270,
    "unconditional": true,
    "shipping_functions_named": [
     "cottas_format_version",
@@ -41053,7 +40960,7 @@
    "name": "lemma_version_field_roundtrip",
    "host_module": "RDF.CottasStore.BaseWriter",
    "file": "formal/fstar/RDF.CottasStore.BaseWriter.fst",
-   "line": 1272,
+   "line": 1274,
    "unconditional": true,
    "shipping_functions_named": [
     "bytes_to_hex",
@@ -41744,6 +41651,20 @@
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "algorithm_correctness"
+  },
+  {
+   "name": "presence_bit_index_bounded",
+   "host_module": "RDF.CottasStore.OnDiskIndex",
+   "file": "formal/fstar/RDF.CottasStore.OnDiskIndex.fst",
+   "line": 322,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
   },
   {
    "name": "replace_entry_length",
@@ -66941,31 +66862,31 @@
   }
  ],
  "totals": {
-  "modules": 232,
-  "files": 242,
-  "assume_val_active": 129,
-  "assume_other_active": 5,
+  "modules": 229,
+  "files": 239,
+  "assume_val_active": 93,
+  "assume_other_active": 4,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
   "modules_with_w3c_refinement_theorem": 0,
-  "modules_with_algorithm_correctness_theorem": 63,
+  "modules_with_algorithm_correctness_theorem": 64,
   "modules_with_internal_refinement_theorem": 33,
-  "modules_merely_tot": 133,
+  "modules_merely_tot": 128,
   "w3c_refinement_theorem_count": 0,
   "internal_refinement_theorem_count": 470,
-  "algorithm_correctness_theorem_count": 447,
+  "algorithm_correctness_theorem_count": 448,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [],
-  "lemma_count": 1692,
+  "lemma_count": 1696,
   "tiers": {
-   "algorithm-correctness": 37,
+   "algorithm-correctness": 38,
    "internal-refinement": 33,
-   "local-lemmas-only": 10,
-   "merely-tot": 133,
+   "local-lemmas-only": 11,
+   "merely-tot": 128,
    "specification-and-proof": 2,
    "specification-only": 1,
    "unclassified": 16
   }
  },
- "commit": "d8948ff61b8"
+ "commit": "3f7068480be"
 }

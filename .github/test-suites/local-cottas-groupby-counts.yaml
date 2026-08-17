@@ -15,7 +15,6 @@ triggers:
     - formal/fstar/SPARQL.Plan.Estimate.fst
     - formal/fstar/SPARQL.Plan.Pruning.fst
     - formal/fstar/SPARQL.Plan.AccessPath.fst
-    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
     - formal/fstar/RDF.CottasStore.PageCache.fst
     - tools/corpus_pipeline.py
     - bin/factoidal-cli/**
