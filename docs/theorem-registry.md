@@ -2308,3 +2308,57 @@ classifier): 125, unchanged (the lift is proof-only, does not retire
 an assume val — `mmap_companion_close` stays counted as active despite
 being unreachable, since the classifier counts declarations, not
 reachability).
+
+**#448 "Delete & dedupe" — the DELETE half: three dead modules
+removed (2026-08-17, branch `delete-dead-store-modules`)**: 🧹 the
+owner decision on issue #448, verbatim "Delete & dedupe", applied to
+the three modules wave 2 audits above found dead end-to-end, each
+re-verified dead again immediately before deletion (`grep` for the
+OCaml module name and the F* qualified name found zero hits outside
+each module's own files):
+
+| module | assume val (before) | verdict |
+|---|---|---|
+| `Parser.BallyhooHDTQ.fst` | 13 | dead, no caller anywhere |
+| `RDF.CottasStore.OnDiskRuntime.fst` | 15 | dead, superseded 2026-07-06 (module 3 above) |
+| `Parser.BallyhooBloom.fst` | 0 | dead, zero callers anywhere |
+
+Also removed: their `ocaml-output/*.{ml,cmi}` extracted artifacts, and
+the OnDiskRuntime-exclusive glue script
+`experimental_ocaml_glue/cottas_ondisk_runtime_indexed.sh` (confirmed
+exclusive — its sibling `cottas_pagecache_indexed_runtime.sh` targets
+`RDF.CottasStore.PageCache`, which has live callers besides
+OnDiskRuntime, so that glue script stays). `RDF.Store.HDTTermCacheRegistry`
+was explicitly NOT touched — it is live (called by the live
+`Parser.BallyhooHDT.fst` reader); an earlier sweep had wrongly flagged
+it dead, corrected by hand-check before this pass began.
+
+Project assume-val total (active, per classifier): 125 -> 97 (-28,
+exactly the sum of the three modules' own declared `assume val`s
+above — no other module's count moved). `merely-tot` module count:
+-3 for this deletion specifically (all three deleted modules were
+classified `merely-tot`); the full inventory regeneration also shows
+one unrelated, pre-existing, independent change (`RDF.CottasStore.
+OnDiskIndex` moved `merely-tot` -> `local-lemmas-only`, a wave-2
+module-4 lift already landed and described above, only now reflected
+because the committed `assurance-inventory.json` had not been
+regenerated since) — noted here so a reader diffing the committed
+JSON against an older copy does not misattribute that unrelated
+change to this deletion.
+
+Rebuild: full `./build-ocaml.sh extract compile`, clean, no errors.
+Gates: SPARQL 631 pass, 0 fail (of 631); RDF 1030 pass, 0 fail, 1
+unsupported (of 1031); `hdt-probe` 75 pass, 0 fail (of 75);
+`hdt_stage4_parity` 6 pass, 0 fail (of 6) — proves the LIVE HDT path
+survived; `cli_literal_escape_roundtrip` 5 pass, 0 fail (of 5) —
+proves the LIVE COTTAS path survived; `parquet_footer_version_gate_
+roundtrip` 3 pass, 0 fail (of 3); `cottas_ondisk_smoketest` opens
+`store_capabilities_sample.cottas` cleanly, 5 quads; `tests/unit/
+run-all.sh` 20 pass, 28 fail (of 48) = baseline exactly, no deltas
+(the 28 pre-existing build failures are unrelated missing-module
+errors, e.g. `RDFS_Closure_SemiNaive`, not caused by this deletion).
+
+Recovery path: the three modules' full source, their extracted `.ml`,
+and the deleted glue script are all recoverable from git history —
+see commit `0fa08a6f53b` "Delete three dead store/parser modules
+(#448 delete half)" on branch `delete-dead-store-modules`.
