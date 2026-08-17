@@ -1,7 +1,9 @@
 module RDF.CottasStore.BaseWriter
 
 // Native F* writer for the COTTAS base Parquet file (the 4-column SPOG
-// schema RDF.CottasStore.OnDiskRuntime / Parquet.Footer read). Closes the
+// schema RDF.CottasStore / Parquet.Footer read; RDF.CottasStore.OnDiskRuntime,
+// the module that formerly shared this schema note, was deleted as dead code
+// under #448 "Delete & dedupe"). Closes the
 // "why is Python still needed to write it" gap (owner challenge,
 // 2026-07-06): until now, store creation and compaction always shelled
 // out to pycottas/DuckDB for the base file; only the delta log had a

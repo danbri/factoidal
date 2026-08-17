@@ -231,8 +231,8 @@ COMMON_MODULES=(
   SPARQL_HTTP_StaticFiles
   SPARQL_HTTP_Admin
   SPARQL_HTTP_Routes
-  Parser_Ballyhoo Parser_BallyhooBloom
-  Parser_BallyhooHDT Parser_BallyhooHDTQ Parser_BallyhooCOTTAS
+  Parser_Ballyhoo
+  Parser_BallyhooHDT Parser_BallyhooCOTTAS
   RDF_CottasStore_ColumnSeq
   RDF_CottasStore_PageCache
   RDF_CottasStore_OnDiskIndex
@@ -253,7 +253,6 @@ COMMON_MODULES=(
   SPARQL_Plan_Loader
   SPARQL_Plan_AccessPath
   RDF_CottasStore
-  RDF_CottasStore_OnDiskRuntime
   RDF_CottasInMem
   fstar_pure_hashes
   RDF_Dataset_Graphs

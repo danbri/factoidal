@@ -18,7 +18,6 @@ triggers:
     - tests/parity/queries.json
     - tests/parity/run_backend_parity.py
     - tests/parity/fixtures/**
-    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
     - formal/fstar/SPARQL11.Store.fst
     - formal/fstar/SPARQL11.Algebra.fst
     - tools/corpus_pipeline.py

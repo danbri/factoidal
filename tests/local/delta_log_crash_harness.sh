@@ -80,7 +80,7 @@ COMMON_MODULES=(
   JSONLD_Loader JSONLD_Context JSONLD_Expand Parser_JSONLD SPARQL_Eval_TimeBudget
   SPARQL_Eval_Limits SPARQL_HTTP_Response SPARQL_HTTP_Timing SPARQL_HTTP_BackendInfo
   SPARQL_HTTP_QueriesIndex SPARQL_HTTP_StaticFiles SPARQL_HTTP_Admin SPARQL_HTTP_Routes
-  Parser_Ballyhoo Parser_BallyhooBloom Parser_BallyhooHDT Parser_BallyhooHDTQ
+  Parser_Ballyhoo Parser_BallyhooHDT
   Parser_BallyhooCOTTAS RDF_CottasStore_ColumnSeq RDF_CottasStore_PageCache
   RDF_CottasStore_OnDiskIndex RDF_CottasStore_DictWriter RDF_CottasStore_PresenceBitmap
   RDF_CottasStore_PresenceWriter RDF_CottasStore_CompoundPresenceBitmap
