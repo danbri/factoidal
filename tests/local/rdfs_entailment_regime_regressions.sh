@@ -52,7 +52,7 @@ fi
 note "deriving link order from build-ocaml.sh COMMON_MODULES"
 # The `COMMON_MODULES="` opener sits flush against the first module
 # name, so strip it (and the closing quote) before tokenising -- else
-# the first token reads `COMMON_MODULES="Util_Log.ml`.
+# the first token reads `COMMON_MODULES=".ml`.
 MODULE_LINE="$(sed -n '/^  COMMON_MODULES="/,/[^\\]$/p' "${BUILD_SH}" \
   | tr -d '\\' | tr '\n' ' ' | sed -e 's/^ *COMMON_MODULES="//' -e 's/"//g')"
 CMX_LIST=()

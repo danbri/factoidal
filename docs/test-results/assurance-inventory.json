@@ -5783,37 +5783,6 @@
    ]
   },
   {
-   "module": "Parser.Ballyhoo",
-   "files": [
-    "formal/fstar/Parser.Ballyhoo.fst"
-   ],
-   "loc": 202,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/Parser_Ballyhoo.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 21,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": []
-  },
-  {
    "module": "Parser.BallyhooCOTTAS",
    "files": [
     "formal/fstar/Parser.BallyhooCOTTAS.fst"
@@ -11943,44 +11912,6 @@
    "suites": [
     {
      "suite": "rdfc10",
-     "how": "direct-trigger"
-    }
-   ]
-  },
-  {
-   "module": "RDF.CottasInMem",
-   "files": [
-    "formal/fstar/RDF.CottasInMem.fst"
-   ],
-   "loc": 53,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/RDF_CottasInMem.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 1,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 1,
-   "assume_val_names": [
-    "cottas_inmem_open"
-   ],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": [
-    {
-     "suite": "local-cottas-corpus",
      "how": "direct-trigger"
     }
    ]
@@ -26722,37 +26653,6 @@
    ]
   },
   {
-   "module": "SPARQL.HTTP.Timing",
-   "files": [
-    "formal/fstar/SPARQL.HTTP.Timing.fst"
-   ],
-   "loc": 53,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/SPARQL_HTTP_Timing.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 8,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": []
-  },
-  {
    "module": "SPARQL.JSON.Escape",
    "files": [
     "formal/fstar/SPARQL.JSON.Escape.fst"
@@ -26835,172 +26735,6 @@
      "suite": "local-cottas-groupby-counts",
      "how": "direct-trigger"
     },
-    {
-     "suite": "sparql11-query",
-     "how": "direct-trigger"
-    }
-   ]
-  },
-  {
-   "module": "SPARQL.Plan.Estimate",
-   "files": [
-    "formal/fstar/SPARQL.Plan.Estimate.fst"
-   ],
-   "loc": 195,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/SPARQL_Plan_Estimate.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 7,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": false,
-   "local_refinement_lemma_count": 3,
-   "local_refinement_lemma_names": [
-    "estimate_pattern_in_rgs_zero_when_no_candidates",
-    "estimate_pattern_in_rgs_zero_when_no_rgs",
-    "estimate_pattern_in_rgs_zero_when_no_rows"
-   ],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "local-lemmas-only",
-   "suites": [
-    {
-     "suite": "local-cottas-groupby-counts",
-     "how": "direct-trigger"
-    },
-    {
-     "suite": "sparql11-query",
-     "how": "direct-trigger"
-    }
-   ]
-  },
-  {
-   "module": "SPARQL.Plan.Explain",
-   "files": [
-    "formal/fstar/SPARQL.Plan.Explain.fst"
-   ],
-   "loc": 554,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/SPARQL_Plan_Explain.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 29,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": false,
-   "local_refinement_lemma_count": 2,
-   "local_refinement_lemma_names": [
-    "plan_node_well_formed_total",
-    "query_plan_well_formed_total"
-   ],
-   "algorithm_correctness_theorems": [
-    {
-     "name": "plan_node_renderers_total",
-     "proved_in": "SPARQL.Plan.Explain",
-     "file": "formal/fstar/SPARQL.Plan.Explain.fst",
-     "line": 539,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "plan_node_to_json",
-      "plan_node_to_text",
-      "plan_node_well_formed"
-     ]
-    },
-    {
-     "name": "query_plan_renderers_total",
-     "proved_in": "SPARQL.Plan.Explain",
-     "file": "formal/fstar/SPARQL.Plan.Explain.fst",
-     "line": 547,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "query_plan_to_json",
-      "query_plan_to_text",
-      "query_plan_well_formed"
-     ]
-    }
-   ],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "algorithm-correctness",
-   "suites": []
-  },
-  {
-   "module": "SPARQL.Plan.Loader",
-   "files": [
-    "formal/fstar/SPARQL.Plan.Loader.fst"
-   ],
-   "loc": 218,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/SPARQL_Plan_Loader.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 3,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": false,
-   "local_refinement_lemma_count": 3,
-   "local_refinement_lemma_names": [
-    "choose_load_strategy_present_is_mmap",
-    "choose_load_strategy_non_present_is_in_ram",
-    "choose_load_strategy_never_refuses"
-   ],
-   "algorithm_correctness_theorems": [
-    {
-     "name": "warm_xor_cold_for_non_refuse",
-     "proved_in": "SPARQL.Plan.Loader",
-     "file": "formal/fstar/SPARQL.Plan.Loader.fst",
-     "line": 207,
-     "unconditional": false,
-     "names_shipping_functions": [
-      "is_cold_path",
-      "is_warm_path"
-     ]
-    },
-    {
-     "name": "present_is_warm_path",
-     "proved_in": "SPARQL.Plan.Loader",
-     "file": "formal/fstar/SPARQL.Plan.Loader.fst",
-     "line": 215,
-     "unconditional": true,
-     "names_shipping_functions": [
-      "choose_load_strategy",
-      "is_warm_path"
-     ]
-    }
-   ],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "algorithm-correctness",
-   "suites": [
     {
      "suite": "sparql11-query",
      "how": "direct-trigger"
@@ -27378,37 +27112,6 @@
      "how": "direct-trigger"
     }
    ]
-  },
-  {
-   "module": "SPARQL.Service.Wrap",
-   "files": [
-    "formal/fstar/SPARQL.Service.Wrap.fst"
-   ],
-   "loc": 644,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/SPARQL_Service_Wrap.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 65,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 0,
-   "assume_val_names": [],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": []
   },
   {
    "module": "SPARQL.ServiceDescription",
@@ -32477,43 +32180,6 @@
      "how": "direct-trigger"
     }
    ]
-  },
-  {
-   "module": "Util.Log",
-   "files": [
-    "formal/fstar/Util.Log.fst"
-   ],
-   "loc": 56,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/Util_Log.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 5,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 5,
-   "assume_val_names": [
-    "error",
-    "warn",
-    "info",
-    "debug",
-    "trace"
-   ],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": []
   },
   {
    "module": "VC.Context",
@@ -57583,228 +57249,6 @@
    "class": "local_refinement"
   },
   {
-   "name": "estimate_pattern_in_rgs_zero_when_no_candidates",
-   "host_module": "SPARQL.Plan.Estimate",
-   "file": "formal/fstar/SPARQL.Plan.Estimate.fst",
-   "line": 158,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "estimate_pattern_in_rgs"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Estimate"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "estimate_pattern_in_rgs_zero_when_no_rgs",
-   "host_module": "SPARQL.Plan.Estimate",
-   "file": "formal/fstar/SPARQL.Plan.Estimate.fst",
-   "line": 167,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "estimate_pattern_in_rgs"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Estimate"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "estimate_pattern_in_rgs_zero_when_no_rows",
-   "host_module": "SPARQL.Plan.Estimate",
-   "file": "formal/fstar/SPARQL.Plan.Estimate.fst",
-   "line": 175,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "estimate_pattern_in_rgs"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Estimate"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "plan_node_well_formed_total",
-   "host_module": "SPARQL.Plan.Explain",
-   "file": "formal/fstar/SPARQL.Plan.Explain.fst",
-   "line": 524,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "plan_node_well_formed"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Explain"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "query_plan_well_formed_total",
-   "host_module": "SPARQL.Plan.Explain",
-   "file": "formal/fstar/SPARQL.Plan.Explain.fst",
-   "line": 530,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "query_plan_well_formed"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Explain"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "plan_node_renderers_total",
-   "host_module": "SPARQL.Plan.Explain",
-   "file": "formal/fstar/SPARQL.Plan.Explain.fst",
-   "line": 539,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "plan_node_to_json",
-    "plan_node_to_text",
-    "plan_node_well_formed"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Explain"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "query_plan_renderers_total",
-   "host_module": "SPARQL.Plan.Explain",
-   "file": "formal/fstar/SPARQL.Plan.Explain.fst",
-   "line": 547,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "query_plan_to_json",
-    "query_plan_to_text",
-    "query_plan_well_formed"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Explain"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "choose_load_strategy_present_is_mmap",
-   "host_module": "SPARQL.Plan.Loader",
-   "file": "formal/fstar/SPARQL.Plan.Loader.fst",
-   "line": 155,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "choose_load_strategy"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Loader"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "choose_load_strategy_non_present_is_in_ram",
-   "host_module": "SPARQL.Plan.Loader",
-   "file": "formal/fstar/SPARQL.Plan.Loader.fst",
-   "line": 163,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "choose_load_strategy"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Loader"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "choose_load_strategy_never_refuses",
-   "host_module": "SPARQL.Plan.Loader",
-   "file": "formal/fstar/SPARQL.Plan.Loader.fst",
-   "line": 178,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "choose_load_strategy"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Loader"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "local_refinement"
-  },
-  {
-   "name": "warm_xor_cold_for_non_refuse",
-   "host_module": "SPARQL.Plan.Loader",
-   "file": "formal/fstar/SPARQL.Plan.Loader.fst",
-   "line": 207,
-   "unconditional": false,
-   "shipping_functions_named": [
-    "is_cold_path",
-    "is_warm_path"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Loader"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
-   "name": "present_is_warm_path",
-   "host_module": "SPARQL.Plan.Loader",
-   "file": "formal/fstar/SPARQL.Plan.Loader.fst",
-   "line": 215,
-   "unconditional": true,
-   "shipping_functions_named": [
-    "choose_load_strategy",
-    "is_warm_path"
-   ],
-   "shipping_modules": [
-    "SPARQL.Plan.Loader"
-   ],
-   "declarative_relations_named": [],
-   "declarative_modules": [],
-   "independent_formalisation_modules": [],
-   "ambiguous_identifiers": [],
-   "class": "algorithm_correctness"
-  },
-  {
    "name": "rg_can_match_all_unbound_is_true",
    "host_module": "SPARQL.Plan.Pruning",
    "file": "formal/fstar/SPARQL.Plan.Pruning.fst",
@@ -66862,31 +66306,31 @@
   }
  ],
  "totals": {
-  "modules": 229,
-  "files": 239,
-  "assume_val_active": 93,
+  "modules": 221,
+  "files": 231,
+  "assume_val_active": 87,
   "assume_other_active": 4,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
   "modules_with_w3c_refinement_theorem": 0,
-  "modules_with_algorithm_correctness_theorem": 64,
+  "modules_with_algorithm_correctness_theorem": 62,
   "modules_with_internal_refinement_theorem": 33,
-  "modules_merely_tot": 128,
+  "modules_merely_tot": 123,
   "w3c_refinement_theorem_count": 0,
   "internal_refinement_theorem_count": 470,
-  "algorithm_correctness_theorem_count": 448,
+  "algorithm_correctness_theorem_count": 444,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [],
-  "lemma_count": 1696,
+  "lemma_count": 1684,
   "tiers": {
-   "algorithm-correctness": 38,
+   "algorithm-correctness": 36,
    "internal-refinement": 33,
-   "local-lemmas-only": 11,
-   "merely-tot": 128,
+   "local-lemmas-only": 10,
+   "merely-tot": 123,
    "specification-and-proof": 2,
    "specification-only": 1,
    "unclassified": 16
   }
  },
- "commit": "3f7068480be"
+ "commit": "5b6de42f91d"
 }

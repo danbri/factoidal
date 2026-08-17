@@ -63,7 +63,7 @@ mkdir -p "$BUILD_DIR"
 # formal/fstar/build-ocaml.sh's $COMMON_MODULES (its native-binary
 # compile step). Keep this list byte-for-byte in step with that one:
 # regenerate with
-#   sed -n '/^  COMMON_MODULES="/,/service_wrap_http.ml"/p' \
+#   sed -n '/^  COMMON_MODULES="/,/SPARQL_GraphStore.ml"/p' \
 #     ../../formal/fstar/build-ocaml.sh | grep -oE '[A-Za-z0-9_]+\.ml' \
 #     | sed 's/\.ml$//'
 # Link order is a valid topological order for the full module set; any
@@ -74,7 +74,6 @@ mkdir -p "$BUILD_DIR"
 # positions) is exactly what broke every link with "inconsistent
 # assumptions over interface" / "Cannot find file *.cmx" (#82).
 COMMON_MODULES=(
-  Util_Log
   Dep_Reachability
   Regex_Syntax
   Regex_Derivative
@@ -156,13 +155,11 @@ COMMON_MODULES=(
   SPARQL_Eval_TimeBudget
   SPARQL_Eval_Limits
   SPARQL_HTTP_Response
-  SPARQL_HTTP_Timing
   SPARQL_HTTP_BackendInfo
   SPARQL_HTTP_QueriesIndex
   SPARQL_HTTP_StaticFiles
   SPARQL_HTTP_Admin
   SPARQL_HTTP_Routes
-  Parser_Ballyhoo
   Parser_BallyhooHDT
   Parser_BallyhooCOTTAS
   RDF_CottasStore_ColumnSeq
@@ -183,11 +180,8 @@ COMMON_MODULES=(
   RDF_Store_Columnar_SubjectOffsetIndex
   RDF_Store_Columnar_DeltaLog
   SPARQL_Plan_Pruning
-  SPARQL_Plan_Estimate
-  SPARQL_Plan_Loader
   SPARQL_Plan_AccessPath
   RDF_CottasStore
-  RDF_CottasInMem
   fstar_pure_hashes
   RDF_Dataset_Graphs
   RDF_Canonical
@@ -243,14 +237,11 @@ COMMON_MODULES=(
   SPARQL_Diagnostics
   SPARQL_Explain
   SPARQL_Query_Analysis
-  SPARQL_Plan_Explain
   SPARQL_HTTP
   SPARQL_HTTP_Client
   SPARQL_Protocol_Client
   SPARQL_ServiceDescription
   SPARQL_GraphStore
-  SPARQL_Service_Wrap
-  service_wrap_http
 )
 
 # Per-test dependency-closure linking.

@@ -70,7 +70,7 @@ fi
 # run-all.sh's own header comment documents for its relationship to
 # build-ocaml.sh).
 COMMON_MODULES=(
-  Util_Log RDF_Format RDF_Vocabulary RDF_Term RDF_Triple RDF_Indexed RDF_Graph
+  RDF_Format RDF_Vocabulary RDF_Term RDF_Triple RDF_Indexed RDF_Graph
   RDF_Vocabulary_Axioms RDFS_Closure RDFS_SchemaSplit OWL_Closure RDF_Graph_Executable RDF_List_Helpers
   RDF_Bytes RDF_Store_Loader Parquet_Footer OWL_Vocabulary Tableau Parser_FastString
   RDF_IRI RDF_NQuads_Serialize Parser_IRI Parser_Combinators Parser_TurtleScanner
@@ -78,7 +78,7 @@ COMMON_MODULES=(
   Parser_XPath XPath_Eval XML_Wellformedness XML_Namespaces Parser_RDFXML Parser_SRX
   Parser_CSVResults Parser_JSONResults Parser_JSON SPARQL11_IRI_Resolve SPARQL_JSON_Escape
   JSONLD_Loader JSONLD_Context JSONLD_Expand Parser_JSONLD SPARQL_Eval_TimeBudget
-  SPARQL_Eval_Limits SPARQL_HTTP_Response SPARQL_HTTP_Timing SPARQL_HTTP_BackendInfo
+  SPARQL_Eval_Limits SPARQL_HTTP_Response SPARQL_HTTP_BackendInfo
   SPARQL_HTTP_QueriesIndex SPARQL_HTTP_StaticFiles SPARQL_HTTP_Admin SPARQL_HTTP_Routes
   Parser_Ballyhoo Parser_BallyhooHDT
   Parser_BallyhooCOTTAS RDF_CottasStore_ColumnSeq RDF_CottasStore_PageCache

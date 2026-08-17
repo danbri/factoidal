@@ -79,7 +79,7 @@ COMMON_MODULES="RDF_Graph_Executable.ml Parquet_Footer.ml Tableau.ml \
   Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
   Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
   Parser_JSON.ml Parser_JSONLD.ml \
-  Parser_Ballyhoo.ml \
+  \
   Parser_BallyhooHDT.ml Parser_BallyhooCOTTAS.ml \
   RDF_CottasStore_PageCache.ml \
   RDF_CottasStore_OnDiskIndex.ml \

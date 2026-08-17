@@ -209,7 +209,7 @@ if ! command -v ocamlfind >/dev/null 2>&1; then
   eval "$(opam env --switch=fstar 2>/dev/null)" || true
 fi
 COMMON_MODULES=(
-  Util_Log RDF_Format RDF_Vocabulary RDF_Term RDF_Triple RDF_Indexed RDF_Graph
+  RDF_Format RDF_Vocabulary RDF_Term RDF_Triple RDF_Indexed RDF_Graph
   RDF_Vocabulary_Axioms RDFS_Closure RDFS_SchemaSplit OWL_Closure RDF_Graph_Executable RDF_List_Helpers
   RDF_Bytes RDF_Store_Loader Parquet_Footer OWL_Vocabulary OWL_DirectMapping_Filter Tableau
   Parser_FastString RDF_IRI SPARQL11_IRI_Resolve Parser_IRI
@@ -225,7 +225,7 @@ COMMON_MODULES=(
   SPARQL_Eval_TimeBudget
   SPARQL_Eval_Limits
   SPARQL_HTTP_Response
-  SPARQL_HTTP_Timing
+  
   SPARQL_HTTP_BackendInfo
   SPARQL_HTTP_QueriesIndex
   SPARQL_HTTP_StaticFiles
@@ -248,11 +248,11 @@ COMMON_MODULES=(
   RDF_Store_LazyTermCache
   RDF_Store_Columnar_OffsetIndex RDF_Store_Columnar_DeltaLog
   SPARQL_Plan_Pruning
-  SPARQL_Plan_Estimate
-  SPARQL_Plan_Loader
+  
+  
   SPARQL_Plan_AccessPath
   RDF_CottasStore
-  RDF_CottasInMem
+  
   fstar_pure_hashes
   RDF_Dataset_Graphs
   RDF_Canonical
