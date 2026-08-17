@@ -40,7 +40,7 @@ OUT_JS="../../../docs/fstar-extracted/factoidal.debug.js"
 cd "$OUTDIR"
 
 FSTAR_MODULES=(
-  Util_Log.ml
+ 
   RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml
   Parser_FastString.ml Parser_IRI.ml
   Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
@@ -55,7 +55,7 @@ FSTAR_MODULES=(
   SPARQL_HTTP_QueriesIndex.ml
   SPARQL_HTTP_StaticFiles.ml
   SPARQL_HTTP_Admin.ml
-  Parser_Ballyhoo.ml
+ 
   Parser_BallyhooHDT.ml Parser_BallyhooCOTTAS.ml
   RDF_CottasStore_ColumnSeq.ml
   RDF_CottasStore_PageCache.ml
@@ -68,11 +68,11 @@ FSTAR_MODULES=(
   RDF_CottasStore_OffsetsWriter.ml
   RDF_Store_Columnar_OffsetIndex.ml
   SPARQL_Plan_Pruning.ml
-  SPARQL_Plan_Estimate.ml
-  SPARQL_Plan_Loader.ml
+ 
+ 
   SPARQL_Plan_AccessPath.ml
   RDF_CottasStore.ml
-  RDF_CottasInMem.ml
+ 
   fstar_pure_hashes.ml
   RDF_Canonical.ml
   RDF_Canonical_Manifest.ml
@@ -83,7 +83,7 @@ FSTAR_MODULES=(
   SPARQL_Diagnostics.ml
   SPARQL_Explain.ml
   SPARQL_Query_Analysis.ml
-  SPARQL_Plan_Explain.ml
+ 
   SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
 )
 

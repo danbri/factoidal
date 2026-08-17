@@ -427,7 +427,6 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   #   SPARQL.Protocol       -> SPARQL11.Algebra, Parser.CSVResults, Parser.JSONResults
   # ---------------------------------------------------------------------
   ALL_MODULES=(
-    Util.Log.fst
     Dep.Reachability.fst
     Regex.Syntax.fst Regex.Derivative.fst Regex.Exec.fst Regex.XSDPattern.fst
     RDF.Format.fst
@@ -517,13 +516,11 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.Eval.TimeBudget.fst
     SPARQL.Eval.Limits.fst
     SPARQL.HTTP.Response.fst
-    SPARQL.HTTP.Timing.fst
     SPARQL.HTTP.BackendInfo.fst
     SPARQL.HTTP.QueriesIndex.fst
     SPARQL.HTTP.StaticFiles.fst
     SPARQL.HTTP.Admin.fst
     SPARQL.HTTP.Routes.fst
-    Parser.Ballyhoo.fst
     Parser.BallyhooHDT.fst
     Parser.BallyhooCOTTAS.fst
     RDF.CottasStore.ColumnSeq.fst
@@ -544,14 +541,11 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Store.Columnar.SubjectOffsetIndex.fst
     RDF.Store.Columnar.DeltaLog.fst
     SPARQL.Plan.Pruning.fst
-    SPARQL.Plan.Estimate.fst
-    SPARQL.Plan.Loader.fst
     SPARQL.Plan.AccessPath.fst
     RDF.CottasStore.fst
     RDF.CottasStore.PageCache.Bounds.fst
     RDF.Store.Columnar.DeltaMerge.fst
     RDF.Store.Capabilities.fst RDF.Store.Capabilities.Cottas.fst RDF.Store.Capabilities.Delta.fst
-    RDF.CottasInMem.fst
     SPARQL.Plan.Streamable.fst
     RML.VirtualSource.fst
     SPARQL11.Store.fst
@@ -564,13 +558,11 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.Diagnostics.fst
     SPARQL.Explain.fst
     SPARQL.Query.Analysis.fst
-    SPARQL.Plan.Explain.fst
     SPARQL.HTTP.fst
     SPARQL.HTTP.Client.fst
     SPARQL.Protocol.Client.fst
     SPARQL.ServiceDescription.fst
     SPARQL.GraphStore.fst
-    SPARQL.Service.Wrap.fst
   )
 
   # Only modules actually present on disk are scheduled (mirrors the old
@@ -1057,7 +1049,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # that order. Parser.FastString.Spec has zero project-module dependencies
   # (only opens FStar.Mul/FStar.List.Tot), so moving it here introduces no
   # cycle -- confirmed by reading its `open`s directly, not assumed.
-  COMMON_MODULES="Util_Log.ml Dep_Reachability.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_Closure_SemiNaive.ml RDFS_SchemaSplit.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml Parser_FastString_Spec.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
+  COMMON_MODULES="Dep_Reachability.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_Closure_SemiNaive.ml RDFS_SchemaSplit.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml Parser_FastString_Spec.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
     Parser_FastString_CharBoundary.ml Parser_FastString.ml Parser_FastString_ConcatSpec.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml \
     RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml \
@@ -1073,13 +1065,13 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
     SPARQL_HTTP_Response.ml \
-    SPARQL_HTTP_Timing.ml \
+    \
     SPARQL_HTTP_BackendInfo.ml \
     SPARQL_HTTP_QueriesIndex.ml \
     SPARQL_HTTP_StaticFiles.ml \
     SPARQL_HTTP_Admin.ml \
     SPARQL_HTTP_Routes.ml \
-    Parser_Ballyhoo.ml \
+    \
     Parser_BallyhooHDT.ml Parser_BallyhooCOTTAS.ml \
     RDF_CottasStore_ColumnSeq.ml \
     RDF_CottasStore_PageCache.ml \
@@ -1097,11 +1089,11 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Store_LazyTermCache.ml \
     RDF_Store_Columnar_OffsetIndex.ml RDF_Store_Columnar_SubjectOffsetIndex.ml RDF_Store_Columnar_DeltaLog.ml \
     SPARQL_Plan_Pruning.ml \
-    SPARQL_Plan_Estimate.ml \
-    SPARQL_Plan_Loader.ml \
+    \
+    \
     SPARQL_Plan_AccessPath.ml \
     RDF_CottasStore.ml \
-    RDF_CottasInMem.ml \
+    \
     fstar_pure_hashes.ml \
     RDF_Dataset_Graphs.ml \
     RDF_Canonical.ml \
@@ -1128,10 +1120,10 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_Diagnostics.ml \
     SPARQL_Explain.ml \
     SPARQL_Query_Analysis.ml \
-    SPARQL_Plan_Explain.ml \
+    \
     SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_Protocol_Client.ml SPARQL_ServiceDescription.ml \
     SPARQL_GraphStore.ml \
-    SPARQL_Service_Wrap.ml service_wrap_http.ml"
+   "
 
   # Parquet/Zstd C stub — compiled and linked into native binaries when the
   # system libzstd is available. If libzstd is missing, FACTOIDAL_NO_ZSTD=1
@@ -2251,13 +2243,13 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL_Eval_TimeBudget.ml
     SPARQL_Eval_Limits.ml
     SPARQL_HTTP_Response.ml
-    SPARQL_HTTP_Timing.ml
+   
     SPARQL_HTTP_BackendInfo.ml
     SPARQL_HTTP_QueriesIndex.ml
     SPARQL_HTTP_StaticFiles.ml
     SPARQL_HTTP_Admin.ml
     SPARQL_HTTP_Routes.ml
-    Parser_Ballyhoo.ml
+   
     Parser_BallyhooHDT.ml
     Parser_BallyhooCOTTAS.ml
     RDF_CottasStore_ColumnSeq.ml
@@ -2278,11 +2270,11 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Store_Columnar_SubjectOffsetIndex.ml
     RDF_Store_Columnar_DeltaLog.ml
     SPARQL_Plan_Pruning.ml
-    SPARQL_Plan_Estimate.ml
-    SPARQL_Plan_Loader.ml
+   
+   
     SPARQL_Plan_AccessPath.ml
     RDF_CottasStore.ml
-    RDF_CottasInMem.ml
+   
     fstar_pure_hashes.ml
     RDF_Dataset_Graphs.ml
     RDF_Canonical.ml

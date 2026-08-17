@@ -107,7 +107,7 @@ pass "cottas-store-build"
 # DeltaLog-only prefix).
 # ------------------------------------------------------------------
 COMMON_MODULES=(
-  Util_Log RDF_Format RDF_Vocabulary RDF_Term RDF_Triple RDF_Indexed RDF_Graph
+  RDF_Format RDF_Vocabulary RDF_Term RDF_Triple RDF_Indexed RDF_Graph
   RDF_Vocabulary_Axioms RDFS_Closure RDFS_SchemaSplit OWL_Closure RDF_Graph_Executable RDF_List_Helpers
   RDF_Bytes RDF_Store_Loader Parquet_Footer OWL_Vocabulary Tableau Parser_FastString
   RDF_IRI RDF_NQuads_Serialize Parser_IRI Parser_Combinators Parser_TurtleScanner
@@ -116,15 +116,15 @@ COMMON_MODULES=(
   Parser_RDFXML Parser_SRX Parser_CSVResults Parser_JSONResults Parser_JSON
   SPARQL11_IRI_Resolve SPARQL_JSON_Escape JSONLD_Loader JSONLD_Context JSONLD_Expand
   Parser_JSONLD SPARQL_Eval_TimeBudget SPARQL_Eval_Limits SPARQL_HTTP_Response
-  SPARQL_HTTP_Timing SPARQL_HTTP_BackendInfo SPARQL_HTTP_QueriesIndex
+  SPARQL_HTTP_BackendInfo SPARQL_HTTP_QueriesIndex
   SPARQL_HTTP_StaticFiles SPARQL_HTTP_Admin SPARQL_HTTP_Routes Parser_Ballyhoo
   Parser_BallyhooHDT Parser_BallyhooCOTTAS
   RDF_CottasStore_ColumnSeq RDF_CottasStore_PageCache RDF_CottasStore_OnDiskIndex
   RDF_CottasStore_DictWriter RDF_CottasStore_PresenceBitmap RDF_CottasStore_PresenceWriter
   RDF_CottasStore_CompoundPresenceBitmap RDF_CottasStore_CompoundPresenceWriter
   RDF_CottasStore_OffsetsWriter RDF_CottasStore_LazyDict RDF_CottasStore_LazyDictRegistry
-  RDF_Store_Columnar_DeltaLog SPARQL_Plan_Pruning SPARQL_Plan_Estimate SPARQL_Plan_Loader
-  SPARQL_Plan_AccessPath RDF_CottasStore RDF_CottasInMem
+  RDF_Store_Columnar_DeltaLog SPARQL_Plan_Pruning 
+  SPARQL_Plan_AccessPath RDF_CottasStore 
   fstar_pure_hashes RDF_Canonical RDF_Canonical_Manifest RDF_Geo_Types RDF_Geo_BBox Parser_WKT RDF_Geo_Topology RDF_Geo_Functions service_wrap_hook SPARQL_FullText SPARQL11_Algebra XSD_Datatypes
   RDF_Pretty OWL_QueryRewrite OWL_QueryEval OWL_Tests_Manifest RIF_Core_Syntax
   Parser_RIFXML RIF_Core_Builtins RIF_Core_Translation RIF_Core_Eval RIF_Core_Tests

@@ -7,7 +7,7 @@
 # (default Facade-X-equivalent mapping, or an `rml=` override), and
 # joining it as an ordinary graph_store — SPARQL.Service.Wrap.fst,
 # wired through the SERVICE resolver hook (57_service_client_bind.sh
-# extension + ocaml-output/service_wrap_hook.ml + service_wrap_http.ml).
+# extension + ocaml-output/service_wrap_hook.ml + .ml).
 #
 # Starts a tiny purpose-built Python HTTP fixture server (full control
 # over Content-Type per path — python3 -m http.server's mimetypes
@@ -26,7 +26,7 @@
 # `eval_pattern`/`eval_pattern_store` path this feature actually hooks
 # into (§0.1 of the design doc). Discovered while writing this test —
 # verified directly against a standalone harness linking
-# service_wrap_http.cmx before concluding the resolver itself was fine
+# .cmx before concluding the resolver itself was fine
 # and the CLI's SELECT fast path was the gap. See the Report for the
 # full note; SELECT users should be aware `wrap+` SERVICE results are
 # silently dropped unless the query is CONSTRUCT-shaped or --entail is
