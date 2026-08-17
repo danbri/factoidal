@@ -4,6 +4,12 @@
 .claude-worklog.md
 .claude-runs/
 
+# tools/module-liveness.py's standalone depcheck bootstrap cache
+# (#448 Part 2) — rebuilt on demand from committed sources
+# (formal/fstar/ocaml-output/Dep_Reachability.ml + bin/depcheck/
+# depcheck.ml), never itself a committed artifact.
+tools/.depcheck-cache/
+
 # Claude Code runtime state — local settings and harness scratch.
 # settings.json (the shared project hooks) IS tracked; settings.local.json
 # and the scheduled_tasks lockfile are per-machine and are not.
