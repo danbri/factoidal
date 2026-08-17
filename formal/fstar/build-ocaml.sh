@@ -428,6 +428,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   # ---------------------------------------------------------------------
   ALL_MODULES=(
     Util.Log.fst
+    Dep.Reachability.fst
     Regex.Syntax.fst Regex.Derivative.fst Regex.Exec.fst Regex.XSDPattern.fst
     RDF.Format.fst
     RDF.Vocabulary.fst
@@ -1057,7 +1058,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # that order. Parser.FastString.Spec has zero project-module dependencies
   # (only opens FStar.Mul/FStar.List.Tot), so moving it here introduces no
   # cycle -- confirmed by reading its `open`s directly, not assumed.
-  COMMON_MODULES="Util_Log.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_Closure_SemiNaive.ml RDFS_SchemaSplit.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml Parser_FastString_Spec.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
+  COMMON_MODULES="Util_Log.ml Dep_Reachability.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml RDFS_Closure_SemiNaive.ml RDFS_SchemaSplit.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml Parser_FastString_Spec.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
     Parser_FastString_CharBoundary.ml Parser_FastString.ml Parser_FastString_ConcatSpec.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml \
     RDF_NQuads_Serialize.ml RDF_Entailment_Simple.ml \
@@ -2127,6 +2128,33 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     else
       echo "  Built: bin/${PLATFORM}/cottas_ondisk_smoketest ($(wc -c < "$BINDIR/cottas_ondisk_smoketest") bytes)"
     fi
+
+    # depcheck — #448 Part 2 consumer for the verified Dep.Reachability
+    # core. Reads an edge file + roots file, calls the EXTRACTED
+    # Dep_Reachability.reachable, then re-checks is_closed/all_mem on
+    # the actual output and refuses (exit 2) if either fails — see
+    # bin/depcheck/depcheck.ml. tools/module-liveness.py v3 shells out
+    # to this instead of trusting an unverified Python BFS.
+    DEPCHECK_RC=0
+    run_with_heartbeat "ocamlopt depcheck" "_ocamlopt_depcheck.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/depcheck/depcheck.ml \
+      -o "$BINDIR/depcheck" || DEPCHECK_RC=$?
+    cat _ocamlopt_depcheck.log 2>/dev/null || true
+    if [[ "$DEPCHECK_RC" -ne 0 ]]; then
+      echo "  ERROR: depcheck build failed (ocamlopt rc=$DEPCHECK_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$DEPCHECK_RC"
+    fi
+    if [[ ! -x "$BINDIR/depcheck" ]]; then
+      echo "  ERROR: depcheck ocamlopt returned 0 but $BINDIR/depcheck is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/depcheck ($(wc -c < "$BINDIR/depcheck") bytes)"
   fi
 
   # Symlink current platform binaries for convenience (relative from ocaml-output/)
@@ -2142,6 +2170,9 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   fi
   if [[ -x "$BINDIR/cottas_ondisk_smoketest" ]]; then
     ln -sf "../../../bin/${PLATFORM}/cottas_ondisk_smoketest" cottas_ondisk_smoketest
+  fi
+  if [[ -x "$BINDIR/depcheck" ]]; then
+    ln -sf "../../../bin/${PLATFORM}/depcheck" depcheck
   fi
 
   cd ..
@@ -2201,6 +2232,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # build. Phase 3 (wasm_of_ocaml) with Zstd is a follow-on commit.
   # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
   FSTAR_MODULES=(
+    Dep_Reachability.ml
     Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml
     RDF_Format.ml RDF_Vocabulary.ml
     RDF_Term.ml RDF_Triple.ml
