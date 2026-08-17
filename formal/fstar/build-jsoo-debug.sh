@@ -55,8 +55,8 @@ FSTAR_MODULES=(
   SPARQL_HTTP_QueriesIndex.ml
   SPARQL_HTTP_StaticFiles.ml
   SPARQL_HTTP_Admin.ml
-  Parser_Ballyhoo.ml Parser_BallyhooBloom.ml
-  Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml
+  Parser_Ballyhoo.ml
+  Parser_BallyhooHDT.ml Parser_BallyhooCOTTAS.ml
   RDF_CottasStore_ColumnSeq.ml
   RDF_CottasStore_PageCache.ml
   RDF_CottasStore_OnDiskIndex.ml

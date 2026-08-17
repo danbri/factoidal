@@ -522,8 +522,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.HTTP.StaticFiles.fst
     SPARQL.HTTP.Admin.fst
     SPARQL.HTTP.Routes.fst
-    Parser.Ballyhoo.fst Parser.BallyhooBloom.fst
-    Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst
+    Parser.Ballyhoo.fst
+    Parser.BallyhooHDT.fst
     Parser.BallyhooCOTTAS.fst
     RDF.CottasStore.ColumnSeq.fst
     RDF.CottasStore.PageCache.fst
@@ -549,7 +549,6 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.Plan.AccessPath.fst
     RDF.CottasStore.fst
     RDF.CottasStore.PageCache.Bounds.fst
-    RDF.CottasStore.OnDiskRuntime.fst
     RDF.Store.Columnar.DeltaMerge.fst
     RDF.Store.Capabilities.fst RDF.Store.Capabilities.Cottas.fst RDF.Store.Capabilities.Delta.fst
     RDF.CottasInMem.fst
@@ -1080,8 +1079,8 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_HTTP_StaticFiles.ml \
     SPARQL_HTTP_Admin.ml \
     SPARQL_HTTP_Routes.ml \
-    Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
-    Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
+    Parser_Ballyhoo.ml \
+    Parser_BallyhooHDT.ml Parser_BallyhooCOTTAS.ml \
     RDF_CottasStore_ColumnSeq.ml \
     RDF_CottasStore_PageCache.ml \
     RDF_CottasStore_OnDiskIndex.ml \
@@ -1103,7 +1102,6 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_Plan_Loader.ml \
     SPARQL_Plan_AccessPath.ml \
     RDF_CottasStore.ml \
-    RDF_CottasStore_OnDiskRuntime.ml \
     RDF_CottasInMem.ml \
     fstar_pure_hashes.ml \
     RDF_Dataset_Graphs.ml \
@@ -2229,8 +2227,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL_HTTP_StaticFiles.ml
     SPARQL_HTTP_Admin.ml
     SPARQL_HTTP_Routes.ml
-    Parser_Ballyhoo.ml Parser_BallyhooBloom.ml
-    Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml
+    Parser_Ballyhoo.ml
+    Parser_BallyhooHDT.ml
     Parser_BallyhooCOTTAS.ml
     RDF_CottasStore_ColumnSeq.ml
     RDF_CottasStore_PageCache.ml
@@ -2255,7 +2253,6 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL_Plan_Loader.ml
     SPARQL_Plan_AccessPath.ml
     RDF_CottasStore.ml
-    RDF_CottasStore_OnDiskRuntime.ml
     RDF_CottasInMem.ml
     fstar_pure_hashes.ml
     RDF_Dataset_Graphs.ml

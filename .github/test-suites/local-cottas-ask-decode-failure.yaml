@@ -12,7 +12,6 @@ foundational: false
 
 triggers:
   paths:
-    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
     - formal/fstar/RDF.CottasStore.ColumnSeq.fst
     - formal/fstar/RDF.CottasStore.LazyDict.fst
     - formal/fstar/RDF.CottasStore.PageCache.fst

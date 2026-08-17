@@ -13,7 +13,6 @@ foundational: false
 triggers:
   paths:
     - formal/fstar/RDF.CottasStore.fst
-    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
     - formal/fstar/RDF.CottasInMem.fst
     - formal/fstar/Parquet.Footer.fst
     - formal/fstar/Parser.BallyhooCOTTAS.fst

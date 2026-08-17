@@ -14,7 +14,6 @@ foundational: false
 triggers:
   paths:
     - tests/local/sparql/**
-    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
     - formal/fstar/SPARQL11.Store.fst
     - tools/corpus_pipeline.py
     - bin/factoidal-cli/**
