@@ -85,7 +85,6 @@ COMMON_MODULES=(
   RDF_CottasStore_OnDiskIndex RDF_CottasStore_DictWriter RDF_CottasStore_PresenceBitmap
   RDF_CottasStore_PresenceWriter RDF_CottasStore_CompoundPresenceBitmap
   RDF_CottasStore_CompoundPresenceWriter RDF_CottasStore_OffsetsWriter RDF_CottasStore_LazyDict
-  RDF_CottasStore_LazyDictRegistry RDF_Store_LazyTermCache RDF_Store_HDTTermCacheRegistry
   RDF_Store_Columnar_OffsetIndex RDF_Store_Columnar_DeltaLog fstar_pure_hashes
 )
 CMX_LIST=()

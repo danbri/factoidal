@@ -1336,6 +1336,52 @@
    "suites": []
   },
   {
+   "module": "Dep.Reachability",
+   "files": [
+    "formal/fstar/Dep.Reachability.fst"
+   ],
+   "loc": 171,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/Dep_Reachability.ml",
+   "in_build_module_list": true,
+   "foundational_path": false,
+   "shipping_function_count": 7,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 2,
+   "local_refinement_lemma_names": [
+    "reaches",
+    "closed_set_catches_all"
+   ],
+   "algorithm_correctness_theorems": [
+    {
+     "name": "no_root_reaches",
+     "proved_in": "Dep.Reachability",
+     "file": "formal/fstar/Dep.Reachability.fst",
+     "line": 155,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "all_mem",
+      "is_closed"
+     ]
+    }
+   ],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "algorithm-correctness",
+   "suites": []
+  },
+  {
    "module": "GRDDL.Discovery",
    "files": [
     "formal/fstar/GRDDL.Discovery.fst"
@@ -21539,42 +21585,6 @@
    "suites": []
   },
   {
-   "module": "RDF.Store.HDTTermCacheRegistry",
-   "files": [
-    "formal/fstar/RDF.Store.HDTTermCacheRegistry.fst"
-   ],
-   "loc": 46,
-   "provenance": "fstar-authored",
-   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
-   "extraction": "extracted",
-   "extraction_oracle_available": true,
-   "extracted_ml": "formal/fstar/ocaml-output/RDF_Store_HDTTermCacheRegistry.ml",
-   "in_build_module_list": true,
-   "foundational_path": false,
-   "shipping_function_count": 4,
-   "declarative_relation_count": 0,
-   "unclassified_definition_count": 0,
-   "assume_val_active": 4,
-   "assume_val_names": [
-    "get_subjects_cache",
-    "get_predicates_cache",
-    "get_objects_cache",
-    "is_registered"
-   ],
-   "assume_other_active": 0,
-   "admissions_active": 0,
-   "admission_sites": [],
-   "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
-   "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
-   "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
-   "suites": []
-  },
-  {
    "module": "RDF.Store.LazyTermCache",
    "files": [
     "formal/fstar/RDF.Store.LazyTermCache.fst"
@@ -32950,6 +32960,57 @@
   }
  ],
  "theorems": [
+  {
+   "name": "reaches",
+   "host_module": "Dep.Reachability",
+   "file": "formal/fstar/Dep.Reachability.fst",
+   "line": 106,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "closed_set_catches_all",
+   "host_module": "Dep.Reachability",
+   "file": "formal/fstar/Dep.Reachability.fst",
+   "line": 137,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "is_closed"
+   ],
+   "shipping_modules": [
+    "Dep.Reachability"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "no_root_reaches",
+   "host_module": "Dep.Reachability",
+   "file": "formal/fstar/Dep.Reachability.fst",
+   "line": 155,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "all_mem",
+    "is_closed"
+   ],
+   "shipping_modules": [
+    "Dep.Reachability"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "algorithm_correctness"
+  },
   {
    "name": "lemma_parse_control_info_rejects_bad_cookie",
    "host_module": "HDT.Container",
@@ -66803,29 +66864,29 @@
  "totals": {
   "modules": 229,
   "files": 239,
-  "assume_val_active": 97,
+  "assume_val_active": 93,
   "assume_other_active": 4,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
   "modules_with_w3c_refinement_theorem": 0,
-  "modules_with_algorithm_correctness_theorem": 63,
+  "modules_with_algorithm_correctness_theorem": 64,
   "modules_with_internal_refinement_theorem": 33,
-  "modules_merely_tot": 129,
+  "modules_merely_tot": 128,
   "w3c_refinement_theorem_count": 0,
   "internal_refinement_theorem_count": 470,
-  "algorithm_correctness_theorem_count": 447,
+  "algorithm_correctness_theorem_count": 448,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [],
-  "lemma_count": 1693,
+  "lemma_count": 1696,
   "tiers": {
-   "algorithm-correctness": 37,
+   "algorithm-correctness": 38,
    "internal-refinement": 33,
    "local-lemmas-only": 11,
-   "merely-tot": 129,
+   "merely-tot": 128,
    "specification-and-proof": 2,
    "specification-only": 1,
    "unclassified": 16
   }
  },
- "commit": "0fa08a6f53b"
+ "commit": "3f7068480be"
 }

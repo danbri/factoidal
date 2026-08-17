@@ -179,7 +179,6 @@ COMMON_MODULES=(
   RDF_CottasStore_LazyDict
   RDF_CottasStore_LazyDictRegistry
   RDF_Store_LazyTermCache
-  RDF_Store_HDTTermCacheRegistry
   RDF_Store_Columnar_OffsetIndex
   RDF_Store_Columnar_SubjectOffsetIndex
   RDF_Store_Columnar_DeltaLog
