@@ -2362,3 +2362,109 @@ Recovery path: the three modules' full source, their extracted `.ml`,
 and the deleted glue script are all recoverable from git history —
 see commit `0fa08a6f53b` "Delete three dead store/parser modules
 (#448 delete half)" on branch `delete-dead-store-modules`.
+
+## 8. Dep.Reachability — module-liveness deletion-safety (#448)
+
+Outside G1's RDF/SPARQL semantics scope (§ header above) — recorded
+here per the standing "no proof landing without a registry entry"
+rule, since it is a proved theorem with a real consumer
+(`bin/depcheck`, `tools/module-liveness.py` v3).
+
+| Stage | Artifact | Status | Notes |
+|---|---|---|---|
+| Reachability closure spec | `Dep.Reachability.fst`: `reaches` (inductive), `closure_fuel`/`reachable` (Tot, untrusted algorithm) | ✅ PROVED | `reaches` is the spec, independent of the algorithm; `closure_fuel`'s fuel-adequacy argument is stated but NOT relied on for soundness. |
+| Deletion-safety theorem | `closed_set_catches_all`: `is_closed edges acc /\ mem r acc /\ reaches edges r n ==> mem n acc` | ✅ PROVED | Induction on the `reaches` derivation (`decreases h`); `RRefl` trivial, `RStep` uses `FStar.List.Tot.for_all_mem` to bridge `is_closed`'s `for_all` to the per-edge fact. |
+| Contrapositive corollary | `no_root_reaches`: `is_closed edges acc /\ all_mem roots acc /\ not (mem n acc) ==> forall r. memP r roots ==> ~(reaches edges r n)` | ✅ PROVED | Built via `FStar.Classical.impl_intro` over a nested `Lemma False` helper (SMT closes the `mem n acc` / `not (mem n acc)` contradiction once both are literal ground facts in context). |
+
+Gates (2026-08-17, `verified-liveness` branch, fresh full rebuild —
+no `.checked` cache in this worktree before this landing):
+`make verify-Dep.Reachability` clean (no `--lax`, no
+`--admit_smt_queries`); `./build-ocaml.sh extract compile` green with
+`Dep.Reachability.fst` in all three module lists (`ALL_MODULES`,
+`COMMON_MODULES`, js `FSTAR_MODULES`) and `bin/depcheck` built as part
+of the main native compile step (not an orphan binary — same
+`$COMMON_MODULES` link line as `parquet_probe`/
+`cottas_ondisk_smoketest`); `w3c_runner --rdf` 1030 pass, 0 fail, 1
+unsupported (of 1031) — exact match, no regression; `tests/unit/
+run-all.sh` 21 pass, 28 fail (of 49) = the pre-existing 20 pass, 28
+fail (of 48) baseline plus `dep_reachability_unit` (10 pass, 0 fail)
+newly passing.
+
+**Design**: neither `closure_fuel`'s fuel bound nor its closure
+implementation is trusted for soundness. `bin/depcheck` calls the
+extracted `Dep_Reachability.reachable`, then RE-CHECKS
+`is_closed`/`all_mem` — both DECIDABLE — on the actual output at
+runtime, and refuses (exit 2) if either fails; `closed_set_catches_all`
+is a fact about every set satisfying those two decidable premises, not
+about this one algorithm. Confirmed working by feeding `depcheck` a
+hand-doctored non-closed candidate set (a genuine graph's true closure
+with one downstream node removed): `depcheck: REFUSED — reachable()
+output is not closed under edges ... Not trusting this result.`
+(exit 2), and separately a closed-but-root-missing set: `depcheck:
+REFUSED — reachable() output does not contain all roots.` (exit 2).
+The anti-vacuity arm of `tests/unit/dep_reachability_unit.ml` pins the
+same property at the extracted-function level: `is_closed` accepts a
+diamond graph's true closure and REJECTS a hand-built proper subset of
+it.
+
+**Tool replacement (#448 Part 2)**: `tools/module-liveness.py` v3
+drops the v2 `ocamlobjinfo <unit>.cmx` OCaml-layer oracle (required a
+full prior native+consumer build) for `ocamldep -modules` run directly
+over `bin/*/*.ml` and `formal/fstar/ocaml-output/*.ml` SOURCE, then
+shells out to `bin/depcheck` (built standalone from just
+`Dep_Reachability.ml` + `depcheck.ml`, not the full
+`$COMMON_MODULES` chain, if no build-produced binary is already
+present) as the reachability engine. `strace -e openat -f python3
+tools/module-liveness.py 2>&1 | grep -c '\.cmx'` = 0.
+
+v2-vs-v3 dead-set diff on the same fresh-rebuilt tree: v2 saw 200
+project units (only modules with a committed `.cmx`) and reported 22
+DEAD; v3 saw 221 project units (every extracted `.ml`, `.cmx` or not)
+and reported 35 DEAD. The two universes are not the same set, so raw
+counts do not compare directly — split by what each tool could see:
+- **8 modules DEAD under v2, reachable under v3** (`Math_Diff`,
+  `Math_Series`, `Math_Sigmoid`, `Math_Simplify`, `Math_Subst`,
+  `MathML_Present`, `XForms_Bind`, `SPARQL_Plan_Pruning`) — the safe
+  over-approximation direction the design predicts. Root cause
+  confirmed by direct grep, not assumed: six of the eight are used
+  only by `bin/npm-entry/entry_jsoo.ml`, a consumer v2 could never see
+  as a root (no committed `.cmx` for the jsoo/npm surface — the same
+  blind spot v2's own docstring names). `SPARQL_Plan_Pruning` is used
+  by `SPARQL_Plan_AccessPath.ml` at the OCaml level; v2's
+  `ocamlobjinfo` "Implementations imported" edge extraction missed
+  that reference (plausibly a types-only/`.cmi`-level use that leaves
+  no code-level implementation-import record) while `ocamldep`'s
+  syntax-level parsing sees the `open` regardless of whether the
+  reference is type-only or value-level — the documented v3 limit
+  ("cannot distinguish opened-and-unused from opened-and-called")
+  firing in the safe direction here.
+- **21 modules DEAD under v3 that v2 never evaluated at all**
+  (`OWL_Semantics*`, `OWL_RL_*`, `RDF_Entailment_*`,
+  `SPARQL11_Algebra_Spec`/`Refinement`, `RDF_Indexed_KeyInjectivity`,
+  `RDF_Semantics_HypothesisWitness`, `RDF_CottasStore_PageCache_Bounds`,
+  `SPARQL_Protocol_RoundTrip`) — verify-only F* modules extracted to
+  `.ml` (in `ALL_MODULES`) but never linked into any binary (absent
+  from `COMMON_MODULES`), so v2's `.cmx`-keyed `project_units()` never
+  counted them as project units in the first place — an uninspected
+  blind spot, not a disagreement. v3 correctly classifies most of
+  these `fstar-only referrers — proofs/types use it (erased)` (F*-side
+  lemma/type consumers exist even though no OCaml binary links them),
+  matching e.g. `RDF.Semantics.HypothesisWitness.fst`'s own header
+  ("VERIFY-ONLY... not in any .ml link list").
+- **14 modules DEAD under both** (`Parser_Ballyhoo`,
+  `Parser_BallyhooBloom`, `Parser_BallyhooHDTQ`, `RDF_CottasInMem`,
+  `RDF_CottasStore_OnDiskRuntime`, `RDF_Store_HDTTermCacheRegistry`,
+  `RDF_Store_LazyTermCache`, `SPARQL_HTTP_Timing`,
+  `SPARQL_Plan_Estimate`, `SPARQL_Plan_Explain`, `SPARQL_Plan_Loader`,
+  `SPARQL_Service_Wrap`, `Service_wrap_http`, `Util_Log`) — full
+  agreement. NOTE: this worktree forked before the coordinator's
+  branch landed the `Parser.BallyhooHDTQ` / `RDF.CottasStore.
+  OnDiskRuntime` / `Parser.BallyhooBloom` deletions, so those three
+  names are expected to still appear DEAD here; the coordinator
+  reconciles at merge, not this branch.
+- Zero modules flipped from v2-reachable to v3-DEAD in the shared
+  200-unit universe — the unsafe direction never fired.
+
+Project assume-val total: unchanged (this landing adds proof-only F*
++ a non-`assume val` OCaml consumer, `bin/depcheck`, per iron rule
+#11's "consumer tools ... belong in `bin/<consumer>/`").
