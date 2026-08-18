@@ -1,6 +1,6 @@
 ---
 name: issue-management
-description: How to report status, plan work, and manage issue state in this repository. Use WHENEVER reporting on project status, progress, work done, or work to do — status reports, "what's next" answers, harvest summaries, plan lists, TODO lists, backlog discussion, issue creation, issue closure, and any message that cites an issue or piece of tracked work. Three rules with teeth. (1) GitHub issues are the only durable work record — session-local task lists, code names, and numbered shorthands die with the conversation and are forbidden in anything a reader will see later. (2) Every issue reference is a full clickable GitHub URL — bare #NNN renders as dead text in every markdown file. (3) Reports are written in technical Simple English, with a named list of banned filler phrases that erode reader trust. Pairs with issue-hygiene (the periodic sweep mechanics) and markdown-style (links + the no-sycophancy list).
+description: How to report status, plan work, and manage issue state in this repository. Use WHENEVER reporting on project status, progress, work done, or work to do — status reports, "what's next" answers, harvest summaries, plan lists, TODO lists, backlog discussion, issue creation, issue closure, and any message that cites an issue or piece of tracked work. Three rules with teeth. (1) GitHub issues are the only durable work record — session-relative references are forbidden EVERYWHERE, chat messages to the owner included; these conversations run longer than some novels, so a label defined "earlier" is a pointer guaranteed to dangle — every mention of tracked work carries its full GitHub URL, every time. (2) Every issue reference is a full clickable GitHub URL — bare #NNN renders as dead text in every markdown file. (3) Reports are written in technical Simple English, with a named list of banned filler phrases that erode reader trust. Pairs with issue-hygiene (the periodic sweep mechanics) and markdown-style (links + the no-sycophancy list).
 ---
 
 # Issue management: status, references, and register
@@ -20,26 +20,45 @@ kept recurring, each found by audit:
   fixed but still open, because closing the issue was treated as a
   separate chore after the merge instead of part of it.
 
-## Rule 1 — GitHub is the only memory
+## Rule 1 — GitHub is the only memory. No exceptions, chat included.
 
 A work item exists when it has a GitHub issue with a human-readable
 title. Nothing else counts as tracking: not a session task list, not a
 plan in a chat message, not a checklist in a scratch file.
 
-**Forbidden in any message, document, commit, or issue a reader will
-see without this conversation open:**
+**Session-relative references are forbidden EVERYWHERE — including in
+messages to the owner inside the conversation itself.** These
+conversations run longer than some novels. A label defined "earlier"
+is unrecoverable the moment it scrolls; nobody, owner included, can
+find message 300 of 900 on a phone. Assume every message is read by
+someone with NOTHING else: no scrollback, no memory of yesterday, no
+this-session context. A session reference is a pointer that is
+guaranteed to dangle — if not today, then for whoever reads the issue,
+the commit, or the transcript next month.
+
+The forbidden forms, with no "but the reader was just told" defense:
 
 - Session-local labels: "task #53", "wave 2 module 3", "gap 1",
-  "SR-4", "G4", "arm B", "the delete half". These decode only inside
-  one conversation. If the work matters, it has an issue; cite the
-  issue. If a report needs a shorthand, define it in the issue body
-  first, then link the issue.
+  "SR-4", "G4", "arm B", "the delete half", "the agent's branch",
+  "the earlier fix". If the work matters, it has an issue; write the
+  issue's full URL. Every time. Repetition of URLs is a feature, not
+  clutter — a phone reader lands mid-scroll.
+- Shorthands defined earlier in the same conversation. "Earlier" does
+  not exist for the reader. If a report genuinely needs a shorthand,
+  define it in the ISSUE BODY, then link the issue at every use.
 - New project code names. The decoder for the old ones is
   [docs/code-name-glossary.md](../../docs/code-name-glossary.md);
   the standing rule there is "no new short-codes". Use descriptive
   names.
 - Referring to a finding, decision, or plan that exists only in chat.
-  Write it into the relevant issue first, then point at it.
+  Write it into the relevant issue first, then point at it. A decision
+  that lives only in a conversation was never made, as far as the
+  project record is concerned.
+
+**The test for every outgoing message:** could a person who has read
+NOTHING but this one message act on it — follow every reference, find
+every piece of work, verify every claim? If any noun in it requires
+scrollback to resolve, replace that noun with a full GitHub URL.
 
 **Issue state changes at landing time, not later.** When a merge fixes
 an issue: close it (or comment on it) in the same work cycle as the
@@ -58,9 +77,10 @@ Write
 
     [#448](https://github.com/danbri/factoidal/issues/448)
 
-everywhere: markdown files, issue bodies, reports, chat messages. Be
-generous — link on first mention in every section, not once per
-document. A phone reader scrolls into the middle.
+everywhere: markdown files, issue bodies, reports, and every chat
+message — status updates to the owner are not exempt. Be generous —
+link at every mention, not once per document or once per conversation.
+A phone reader scrolls into the middle; yesterday's link is gone.
 
 Why the full URL even where `#448` would auto-link: files get mirrored
 to the 11ty site, quoted in chat, and pasted between surfaces, and the
