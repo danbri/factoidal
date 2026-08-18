@@ -396,6 +396,13 @@ session.
   — wall-clock + Monitor + lock-cleanup pattern for long autonomous
   sessions. Read when kicking long background builds, when "the
   job has been silent for a while," or before a multi-hour solo run.
+- [`issue-management`](skills/issue-management/SKILL.md) — **read
+  before any status report, plan, or issue reference.** GitHub issues
+  are the only durable work record; every issue reference is a full
+  clickable URL (bare `#NNN` is dead text in rendered markdown);
+  session-local labels and code names are forbidden in anything a
+  reader sees later; technical Simple English with a banned-filler
+  table ("load-bearing", "smoke test", ...).
 - [`issue-hygiene`](skills/issue-hygiene/SKILL.md) — keep GitHub
   issues + checklists in sync as PRs land.
 - [`jsoo-debug-bundle`](skills/jsoo-debug-bundle/SKILL.md) — build a
