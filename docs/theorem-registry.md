@@ -2,7 +2,7 @@
 
 Deliverable 1 of goal G1 in
 [`designissues/2026-08-05-semantics-proposal-adoption.md`](designissues/2026-08-05-semantics-proposal-adoption.md).
-Deliverable 2 (issue #403, the curated review kernel — the minimal
+Deliverable 2 (issue [#403](https://github.com/danbri/factoidal/issues/403), the curated review kernel — the minimal
 subset a W3C-domain expert can read end to end, with the guarantee
 nothing outside it overrides what it states) is
 [`review-kernel.md`](review-kernel.md).
@@ -222,7 +222,7 @@ for this landing.
 | cls-maxqc1 (clash) | `cls_maxqc1_clash` | **NONE** (no engine detector) | GAP — no detection event exists to license | N/A (clash/inconsistency row, not derivation) | — | CLASH-ROW ADJUDICATION (2026-08-06): grepping `cls_maxqc1_clash` outside `OWL.RL.Spec.fst` finds nothing — no `is_inconsistent` arm, no other engine function, checks the "`?x owl:maxQualifiedCardinality 0 ...` plus a witness satisfying the forbidden class" pattern. `OWL.Closure.owl_rule_cls_maxqc1` is a SAME-NAMED but UNRELATED rule: per its own header (OWL.Closure.fsti ~2011-2106) it materialises `owl:maxQualifiedCardinality "1"` canonicals for parent7/parent8 SPARQL-entailment query answering, not a "0"-cardinality clash check. This is a genuine engine GAP against the row, not a proof-scoping decision — not attempted, since there is no boolean to state a lemma about. Needs a NEW `is_inconsistent` arm before a licensing lemma is meaningful. |
 | [ext] | n/a | `cls_exactqc1` | N/A | UNATTEMPTED | — | Exact qualified cardinality decomposes into min+max; no RL row of its own. |
 | cls-maxc2 | `cls_maxc2_derives` | `cls_maxc2` | UNATTEMPTED | UNATTEMPTED | — | — |
-| [ext] | n/a | `cls_maxqc_comp` | N/A | UNATTEMPTED | — | The #236 anchor machinery. **Known sound-but-narrow** (see CLAUDE.md "Known sound-but-narrow rewrites"): drops vacuous-truth individuals and OWL-Full punned class-individuals; the internal-variable LEAK the 2026-07-09 strict runner found is FIXED (task #100, `strip_rewrite_internal_vars`). |
+| [ext] | n/a | `cls_maxqc_comp` | N/A | UNATTEMPTED | — | The [#236](https://github.com/danbri/factoidal/issues/236) anchor machinery. **Known sound-but-narrow** (see CLAUDE.md "Known sound-but-narrow rewrites"): drops vacuous-truth individuals and OWL-Full punned class-individuals; the internal-variable LEAK the 2026-07-09 strict runner found is FIXED (task #100, `strip_rewrite_internal_vars`). |
 | cls-avf | `cls_avf_derives` | `cls_avf1` | ✅ PROVED (2026-08-06, wave 3 relift) | ✅ PROVED (2026-08-06, G3 M4 wave 4) | `ig_wf_sp`, `ig_wf_po`, `ig.ig_triples == g`; needed named top-level helpers (`owl_cls_avf1_outer`/`_prop`/`_member`/`_emit`); truth adds `cond_allvaluesfrom` | The program's deepest rule — FOUR fold levels. Same two-part treatment as cls-hv1: lambda-lift every engine level, then one standalone lemma per proof level with the level above's witnesses as arguments (`lemma_cls_avf_row_intro` assembles the six-way existential flat). Section 29. Truth: Rule 35 (Soundness banner); `lemma_cls_avf_witness_holds` assembles the row's six-way existential flat, reusing `lemma_find_subjects_indexed_wf_subj` a second time in the same proof; first-attempt green. |
 | [ext] | n/a | `reflexive_property` | N/A | UNATTEMPTED | — | ReflexiveProperty semantics; RL profile has no prp-rfl row. |
 | [ext] | n/a | `scm_cls_restriction` | N/A | ✅ PROVED | none, single-fold, no fresh bnodes | `owl:Restriction rdfs:subClassOf owl:Class` (Table 5, Axiomatic Triples) read through the RDFS class-extension condition. |
@@ -238,7 +238,7 @@ for this landing.
 | scm-uni (Table 8) | `scm_uni_derives` | `cls_uni` | ✅ PROVED (today's precursor, commit `2e482d3`) | ✅ PROVED (Rule 32) | list-walk bridge | **MISNAMED function**: emits `Cᵢ rdfs:subClassOf C` per member — Table 8's schema row, not Table 5's cls-uni type-propagation row. The `owl:disjointUnionOf` branch additionally emits an EXTENSION (plain-unionOf restatement + pairwise disjointWith), no W3C row of its own. Corrected 2026-08-05 (commit `72a965c`). |
 | [ext] | n/a | `cls_uni_elim` | N/A | UNATTEMPTED | — | Union-membership elimination under disjointness side conditions. |
 | [ext] | n/a | `oneof_set_equivalence` | N/A | UNATTEMPTED | — | oneOf lists with equal member sets name equivalent classes. |
-| prp-key | `prp_key_derives` (row) / `prp_key_derives_approx` (proved against) | `prp_key` | ✅ PROVED, **WEAKENED ROW** (commit `c600646`) | ✅ PROVED, **UNWEAKENED** | `ig_wf_sp`, `ig.ig_triples == g`, `cond_haskey`, `cond_sameas_identity`, `cond_literal_term_eq_respecting` | Engine's `agree_on_property` uses `rdf_term_eq` (RDF-1.1 value equality — case-insensitive lang tags, XMLLiteral c14n, #337) where the row's `shares_key_values` uses plain `==`. Machine-checked counterexample (`"Alice"@en` vs `"Alice"@EN`) shows the engine accepts strictly MORE value pairs as "shared" than the literal row licenses — an OVER-approximation on the value-sharing axis (opposite direction from the cls-int/scm-uni narrowing above). `owl_rule_prp_key_licensed` is proved against the local weakening, not `prp_key_derives` itself. WEAKENED-ROW CONFIRMATION, not a ledger drift — the row transcription is faithful to Table 4. **Truth closes the gap the licensing weakening left open** (G3 M4 wave 1, 2026-08-06): `cond_literal_term_eq_respecting` + `lemma_rdf_term_eq_denot` (`OWL.Semantics.fst`) establish that `rdf_term_eq`-equal literals denote the SAME domain element under any genuine interpretation — RDF 1.1 Concepts §3.3 already treats case-different-but-equal language tags as the SAME abstract literal term, not two co-denoting ones — so the engine's "extra" accepted pairs are one value read through two spellings, not a semantic overreach. Rule 27 (Soundness banner) is proved against the UNWEAKENED `cond_haskey` (no local weakening needed on the truth side). |
+| prp-key | `prp_key_derives` (row) / `prp_key_derives_approx` (proved against) | `prp_key` | ✅ PROVED, **WEAKENED ROW** (commit `c600646`) | ✅ PROVED, **UNWEAKENED** | `ig_wf_sp`, `ig.ig_triples == g`, `cond_haskey`, `cond_sameas_identity`, `cond_literal_term_eq_respecting` | Engine's `agree_on_property` uses `rdf_term_eq` (RDF-1.1 value equality — case-insensitive lang tags, XMLLiteral c14n, [#337](https://github.com/danbri/factoidal/issues/337)) where the row's `shares_key_values` uses plain `==`. Machine-checked counterexample (`"Alice"@en` vs `"Alice"@EN`) shows the engine accepts strictly MORE value pairs as "shared" than the literal row licenses — an OVER-approximation on the value-sharing axis (opposite direction from the cls-int/scm-uni narrowing above). `owl_rule_prp_key_licensed` is proved against the local weakening, not `prp_key_derives` itself. WEAKENED-ROW CONFIRMATION, not a ledger drift — the row transcription is faithful to Table 4. **Truth closes the gap the licensing weakening left open** (G3 M4 wave 1, 2026-08-06): `cond_literal_term_eq_respecting` + `lemma_rdf_term_eq_denot` (`OWL.Semantics.fst`) establish that `rdf_term_eq`-equal literals denote the SAME domain element under any genuine interpretation — RDF 1.1 Concepts §3.3 already treats case-different-but-equal language tags as the SAME abstract literal term, not two co-denoting ones — so the engine's "extra" accepted pairs are one value read through two spellings, not a semantic overreach. Rule 27 (Soundness banner) is proved against the UNWEAKENED `cond_haskey` (no local weakening needed on the truth side). |
 | [axm] | n/a | `xsd_datatype_axioms` | N/A | N/A (axiomatic table, not a rule) | — | dt-type1 instantiated at supported XSD datatypes. |
 | [ext] | n/a | `dt_range_intersect` | N/A | UNATTEMPTED | — | Two ranges compose to their intersection (WebOnt-I5.24-002); explicitly NOT a minimality claim. |
 | scm-dom1 | `scm_dom1_derives` | `scm_dom2` | ✅ PROVED (commit `276ee77`) | ✅ PROVED (Rule 28) | — | **MISNAMED function**: lifts domain up subClassOf — scm-dom1's work, refuted-by-counterexample against scm-dom2 (whose subPropertyOf logic lives in `subprop_domain_range` below). Third ledger misclassification, caught by counterexample (commit `276ee77`). |
@@ -257,7 +257,7 @@ for this landing.
 | [axm] | n/a | `xsd_core_datatype_axioms` | N/A | N/A | — | dt-type1 core set. |
 | [axm] | n/a | `builtin_vocabulary_axioms` | N/A | N/A | — | Built-in vocabulary axioms. |
 | cax-adc | `cax_adc_clash` (union target: `table6_clashes` = `cax_dw_clash \/ cax_adc_clash`) | `all_disjoint_classes` (premise expansion) + `is_inconsistent` check 3, hoisted as `owl_has_disjoint_class_clash` | ✅ PROVED — detection-soundness against `table6_clashes`, **not** `cax_adc_clash` alone (`theorem_cax_adc_cax_dw_detection_sound`, `OWL.RL.Refinement.fst` section 30) | N/A (clash row) | `rdf_type_objects_resource g` (rdf:type objects are IRI/bnode, never literal — see banner) | CLASH-ROW ADJUDICATION (2026-08-06): the engine detects this row in TWO STAGES — `owl_rule_all_disjoint_classes` materialises pairwise `owl:disjointWith` from an `owl:AllDisjointClasses` membership list (premise infra, not itself a clash check), then `is_inconsistent`'s check 3 (now the named top-level `owl_has_disjoint_class_clash`, hoisted out of the anonymous `let`, behavior-identical) looks for two `rdf:type` triples on one subject whose objects are `owl:disjointWith`. That boolean CANNOT tell whether the `disjointWith` triple was asserted directly (cax-dw) or materialised from a list (cax-adc) — a graph with only an asserted cax-dw pair and no AllDisjointClasses node also flips it — so the only TRUE statement it licenses is the row UNION `table6_clashes`, proved here. Completeness (the converse: `table6_clashes g ==> owl_has_disjoint_class_clash g == true`) is PLAUSIBLE for the cax-dw disjunct (single step) but ENGINE-NARROWED for cax-adc: `owl_rule_all_disjoint_classes` uses `decode_chain_list`, an IRI-only `rdf:first`/`rdf:rest` decoder that returns `None` (no-op) on a member list containing a bnode class expression — the same narrowing already documented for `owl_rule_property_chain_n`/prp-key's list machinery — so completeness is NOT claimed for AllDisjointClasses lists with non-IRI members. |
-| prp-adp | `prp_adp_clash` (union target: `prp_pdw_clash \/ prp_adp_clash`, both disjuncts of `table4_clashes_complete`) | `all_disjoint_properties` (premise expansion) + `is_inconsistent` check 6, hoisted as `owl_has_pdw_direct_clash` | PARKED — detection-soundness attempted, two-attempt-stop; see Notes | N/A (clash row) | — | CLASH-ROW ADJUDICATION (2026-08-06): SAME shape as cax-adc — `owl_rule_all_disjoint_properties` materialises pairwise `owl:propertyDisjointWith`, then `is_inconsistent` check 6 (hoisted as `owl_has_pdw_direct_clash`/`owl_is_pdw_pair`, `OWL.Closure.fsti`, behavior-identical) looks for two triples sharing subject AND object through a disjoint property pair — cannot attribute to prp-pdw (asserted) vs prp-adp (materialised), so the provable statement is the row union, same reasoning as cax-adc. PARKED, not proved: unlike cax-adc's `t1.o`/`t2.o` (rdf:type objects, provably IRI/bnode via `rdf_type_objects_resource`), check 6's shared object `t1.o == t2.o` (`rdf_term_eq t1.o t2.o`, required TRUE by the check) ranges over ARBITRARY property values, which legitimately include literals in real OWL RL data (`New-Feature-DisjointDataProperties-*`). `rdf_term_eq` on two literals is RDF-1.1 VALUE equality (case-insensitive lang tag, XMLLiteral c14n, #337) while `prp_pdw_clash`/`prp_adp_clash` need SYNTACTIC `==`; a graph with `t1.o = "V"@EN`, `t2.o = "V"@en` flips the check without giving a `==`-exact witness. Closing this needs either (a) a graph-level "literals `rdf_term_eq`-related implies `==`-equal" hypothesis (true for realistic non-adversarial data, mirrors prp-key's `cond_literal_term_eq_respecting` weakening pattern already accepted in this ledger), or (b) restating literal-value-aware `prp_pdw_clash`/`prp_adp_clash` variants in `OWL.RL.Spec.fst` using `rdf_term_eq`/`literal_value_eq` instead of `==` (the cls-hv2/prp-key WEAKENED-ROW precedent). Recipe otherwise identical to cax-adc's proved lemma; the hoisted `owl_has_pdw_direct_clash`/`owl_is_pdw_pair` are ready for whichever fix lands. Completeness note: same ENGINE-NARROWED `decode_chain_list` (IRI-only) caveat as cax-adc. |
+| prp-adp | `prp_adp_clash` (union target: `prp_pdw_clash \/ prp_adp_clash`, both disjuncts of `table4_clashes_complete`) | `all_disjoint_properties` (premise expansion) + `is_inconsistent` check 6, hoisted as `owl_has_pdw_direct_clash` | PARKED — detection-soundness attempted, two-attempt-stop; see Notes | N/A (clash row) | — | CLASH-ROW ADJUDICATION (2026-08-06): SAME shape as cax-adc — `owl_rule_all_disjoint_properties` materialises pairwise `owl:propertyDisjointWith`, then `is_inconsistent` check 6 (hoisted as `owl_has_pdw_direct_clash`/`owl_is_pdw_pair`, `OWL.Closure.fsti`, behavior-identical) looks for two triples sharing subject AND object through a disjoint property pair — cannot attribute to prp-pdw (asserted) vs prp-adp (materialised), so the provable statement is the row union, same reasoning as cax-adc. PARKED, not proved: unlike cax-adc's `t1.o`/`t2.o` (rdf:type objects, provably IRI/bnode via `rdf_type_objects_resource`), check 6's shared object `t1.o == t2.o` (`rdf_term_eq t1.o t2.o`, required TRUE by the check) ranges over ARBITRARY property values, which legitimately include literals in real OWL RL data (`New-Feature-DisjointDataProperties-*`). `rdf_term_eq` on two literals is RDF-1.1 VALUE equality (case-insensitive lang tag, XMLLiteral c14n, [#337](https://github.com/danbri/factoidal/issues/337)) while `prp_pdw_clash`/`prp_adp_clash` need SYNTACTIC `==`; a graph with `t1.o = "V"@EN`, `t2.o = "V"@en` flips the check without giving a `==`-exact witness. Closing this needs either (a) a graph-level "literals `rdf_term_eq`-related implies `==`-equal" hypothesis (true for realistic non-adversarial data, mirrors prp-key's `cond_literal_term_eq_respecting` weakening pattern already accepted in this ledger), or (b) restating literal-value-aware `prp_pdw_clash`/`prp_adp_clash` variants in `OWL.RL.Spec.fst` using `rdf_term_eq`/`literal_value_eq` instead of `==` (the cls-hv2/prp-key WEAKENED-ROW precedent). Recipe otherwise identical to cax-adc's proved lemma; the hoisted `owl_has_pdw_direct_clash`/`owl_is_pdw_pair` are ready for whichever fix lands. Completeness note: same ENGINE-NARROWED `decode_chain_list` (IRI-only) caveat as cax-adc. |
 | eq-diff2 / eq-diff3 | `eq_diff2_clash`/`eq_diff3_clash` (union target would be `eq_diff1_clash \/ eq_diff2_clash \/ eq_diff3_clash`) | `allDifferent_to_differentFrom` (premise expansion) + `is_inconsistent` check 2 (`differentFrom_in_graph`) | PARKED — detection-soundness attempted, two-attempt-stop; see Notes | N/A (clash row) | — | CLASH-ROW ADJUDICATION (2026-08-06): `owl_rule_allDifferent_to_differentFrom` materialises pairwise `owl:differentFrom` from BOTH `owl:members` and `owl:distinctMembers` lists in ONE fold (unioned before decoding), so the engine cannot distinguish eq-diff2 (`owl:members`) from eq-diff3 (`owl:distinctMembers`) even in principle — any provable statement is already a `eq_diff2_clash \/ eq_diff3_clash` disjunction at best, same row-union pattern as cax-adc/prp-adp (also joined by `eq_diff1_clash`, the asserted-form sibling `is_inconsistent` check 2 also flags). PARKED, not proved, for a DIFFERENT reason than prp-adp's literal gap: check 2 (`t.p = owl:sameAs && differentFrom_in_graph g (subject_to_term t.s) t.o`) tests a candidate `differentFrom` triple against BOTH directions of one FIXED, directional `sameAs` triple `t`. When only the "swapped" direction differentFrom witness exists (`d` relates `t.o` to `t.s`, not `t.s` to `t.o`), closing `eq_diff1_clash`'s order-rigid `u1.s==u2.s /\ u1.o==u2.o` needs a REVERSE `sameAs` edge (`t.o sameAs t.s`) that isn't among the two extracted witnesses — it is a fact about `g` having reached the eq-sym fixpoint (a standard, always-run RL rule at the real call site — `is_inconsistent` runs on the closure fixpoint output — but not a fact `is_inconsistent`'s own definition carries as a local hypothesis). Recipe for next attempt: add a `sameAs_symmetric g` hypothesis (mirrors `rdf_type_objects_resource`/prp-adp's literal hypothesis in kind), or restate against `entailment_closure`'s actual output where eq-sym is known to have fired. |
 | [ext] | n/a | `differentFrom_to_allDifferent` | N/A | UNATTEMPTED | — | Converse packaging. |
 | [mode] | n/a | `rdf_based_full_meta_axioms_mode` | N/A | UNATTEMPTED | — | RDF-Based Semantics meta-axioms, catalog-gated. |
@@ -389,7 +389,7 @@ an accidental gap.
 | RDF entailment (§ 8), rdfD2 | `rdfD2_derives` / `rdfD2_true` / `rdf_property_axiom_closure_licensed` | ✅ PROVED — licensed + true, at rule and closure level | — | — |
 | RDF entailment (§ 8), rdfD1 | `rdfD1_derives` | UNATTEMPTED — deliberately unimplemented | mints a fresh blank node (Skolem-family row) | Same fresh-term shape as the OWL-RL IMPOSSIBLE rules; excluded from `rdf_closed` on purpose, not by oversight. |
 | RDF entailment, completeness | — | N/A — no completeness theorem exists at this rung | — | Axiomatic tables + `rdf:_n` schema transcribed; no claim of completeness against the infinite family. |
-| RDFS entailment, rho-df completeness (fragment iff, abstract saturation) | `RDF.Entailment.RDFS.Completeness.rho_df_saturation_iff` | ✅ PROVED (G3 M1, landed) — `rho_df_entails g e <==> simple_entailment_spec c e` for any `c` extensive/sound/rho-df-closed over `g` | `rho_df_frag_graph c`, `graph_tt_free e` | Herbrand technique from the Simple rung, reused verbatim. Supersedes the "UNATTEMPTED" row this replaces (#347/#348 index-completeness landed 90e2801). Findings C-1 (the coverage doc's literal gap-1 statement — `rdfs_entails d_minimal g e <==>` closure-then-simple-entailment — is FALSE; machine-checked witness `rho_df_entailment_strictly_stronger`) and C-2 (the shipping 12-rule `rdfs_closure` cannot instantiate `c` in the SOUNDNESS direction) are recorded in the module banner. |
+| RDFS entailment, rho-df completeness (fragment iff, abstract saturation) | `RDF.Entailment.RDFS.Completeness.rho_df_saturation_iff` | ✅ PROVED (G3 M1, landed) — `rho_df_entails g e <==> simple_entailment_spec c e` for any `c` extensive/sound/rho-df-closed over `g` | `rho_df_frag_graph c`, `graph_tt_free e` | Herbrand technique from the Simple rung, reused verbatim. Supersedes the "UNATTEMPTED" row this replaces ([#347](https://github.com/danbri/factoidal/issues/347)/[#348](https://github.com/danbri/factoidal/issues/348) index-completeness landed 90e2801). Findings C-1 (the coverage doc's literal gap-1 statement — `rdfs_entails d_minimal g e <==>` closure-then-simple-entailment — is FALSE; machine-checked witness `rho_df_entailment_strictly_stronger`) and C-2 (the shipping 12-rule `rdfs_closure` cannot instantiate `c` in the SOUNDNESS direction) are recorded in the module banner. |
 | RDFS entailment, rho-df closure operator (G3 M1b) | `RDF.Entailment.RDFS.RhoDFClosure.rho_df_closure` (6 rows: rdfs2/3/5/7/9/11, reusing the shipping `rdfs_rule_*` functions, fuel/length-test loop) | see the 5 theorems below | — | Answers finding C-2: the six-rule operator `rdfs_closure` does not expose. |
 | — extensivity | `rho_df_closure_extensive` | ✅ PROVED — `is_subgraph g (rho_df_closure g fuel)` | `rho_df_chain_canonical g` (`no_dup_keys` at every fuel-visited graph) | Composes the six per-row extensivity lemmas `RDF.Entailment.RDFS.FixedPoint` already proves, reused (not re-derived). |
 | — soundness | `rho_df_closure_sound` | ✅ PROVED — `rho_df_entails g (rho_df_closure g fuel)` | `rho_df_chain_wf g` (`ig_wf_sp` at every fuel-visited graph) | Condition-usage audit (the task's explicit ask): each of the six `_true` lemmas (`ModelTheory.fst`) needs EXACTLY one `rho_df_conditions` conjunct and no other — no finding, the hypothesis-weakening replay the brief predicted. |
@@ -407,15 +407,15 @@ lean on to make `ig_wf_*` hypotheses real rather than assumed.
 
 | Lemma family | Module | Status | Notes |
 |---|---|---|---|
-| Index well-formedness (5 buckets) | `RDF.Indexed.KeyInjectivity.fst` | ✅ PROVED — `ig_wf_sp`, `ig_wf_subj`, `ig_wf_obj`, `ig_wf_po`, `ig_wf_pred` (#338, closed 2026-08-04) | `sp_key`/`po_key`/subject-key injectivity, one-sided, on U+001F-free keys. |
-| Bucket lookup completeness (converse direction) | `RDF.Indexed.Completeness.fst` | ✅ PROVED (90e2801) | Generic `lemma_build_bucket_complete` for any key_of + pred-bucket instantiation, no side condition; first consumer of the #347 StringOrder axioms. Its generic sortWith all-pairs-sortedness machinery also unblocked Gap B below. |
+| Index well-formedness (5 buckets) | `RDF.Indexed.KeyInjectivity.fst` | ✅ PROVED — `ig_wf_sp`, `ig_wf_subj`, `ig_wf_obj`, `ig_wf_po`, `ig_wf_pred` ([#338](https://github.com/danbri/factoidal/issues/338), closed 2026-08-04) | `sp_key`/`po_key`/subject-key injectivity, one-sided, on U+001F-free keys. |
+| Bucket lookup completeness (converse direction) | `RDF.Indexed.Completeness.fst` | ✅ PROVED (90e2801) | Generic `lemma_build_bucket_complete` for any key_of + pred-bucket instantiation, no side condition; first consumer of the [#347](https://github.com/danbri/factoidal/issues/347) StringOrder axioms. Its generic sortWith all-pairs-sortedness machinery also unblocked Gap B below. |
 | Bucket lookup completeness — the other FIVE buckets | `RDF.Indexed.Completeness.fst` stage 6 (2026-08-06) | ✅ PROVED | `lemma_build_indexed_complete_subj` / `_sp` (total keys, no side condition) and `_obj` / `_po` / `_so` (option keys — conditional on `bucket_key_X t == Some k`, because `build_bucket` files a literal-object or triple-term-object triple in NO binding). Each is the generic stage-5 lemma at one more `key_of`. Removes the first half of finding BR-4. |
-| Dedup-key injectivity (literal arm, #348 fix) | `RDF.Indexed.KeyInjectivity.fst` | ✅ PROVED (e137b5d) | `term_to_key_total`/`triple_to_key` full injectivity across all four term shapes under separator-free side conditions; `lemma_graph_full_sep_free_no_dup_keys`. Engine fix: literal keys now unit_sep-joined (extraction re-gate pending). |
+| Dedup-key injectivity (literal arm, [#348](https://github.com/danbri/factoidal/issues/348) fix) | `RDF.Indexed.KeyInjectivity.fst` | ✅ PROVED (e137b5d) | `term_to_key_total`/`triple_to_key` full injectivity across all four term shapes under separator-free side conditions; `lemma_graph_full_sep_free_no_dup_keys`. Engine fix: literal keys now unit_sep-joined (extraction re-gate pending). |
 | Closure-step no-repeats (Gap B) | `RDF.Entailment.RDFS.FixedPoint.fst` | ✅ PROVED (e137b5d) — UNCONDITIONAL | `lemma_rdfs_closure_step_no_repeats`; the noeq-vs-`sortWith_sorted` blocker fell to the Completeness module's eqtype-free sortedness proof. `lemma_len_eq_saturated_gapB` left only Gap A — CLOSED same day: `lemma_len_eq_saturated_sep_free` (Gap A landing) makes the termination test faithful for separator-free, tt-object-free, repeat-free inputs. NO open gaps on the termination path. |
 | Row-level separator-freedom | `RDF.Entailment.RDFS.SepFree.fst` | ✅ PROVED — per-row conclusion cleanliness for rdfD2 and rdfs1-13 (checked directly: `lemma_rdfsN_sep_free` per row) | Feeds `ChainWf`. |
 | Closure well-formedness chain | `RDF.Entailment.RDFS.ChainWf.fst` | ✅ PROVED — `graph_sep_free g ==> closure_chain_wf g`, empty + non-empty instances machine-checked | Makes `rdfs_closure_entails` apply to concrete graphs (hypothesis discharged non-vacuously). |
-| Closure step extensivity + fixed-point | `RDF.Entailment.RDFS.FixedPoint.fst` | 🟡 LANDED WITH ADJUDICATION (commit `1aa4e71`) | Length-test fixed-point theorem holds under two explicit hypotheses (`no_dup_keys` on the pre-dedup intermediate graph), not unconditionally — the unconditional form is FALSE. Third finding from this landing: `term_to_key_total` literal keys use plain `"^^"` not `unit_sep`, a wider dedup-collision surface than #338 described (#348). |
-| String ordering axioms | `RDF.Indexed.StringOrder.fsti` | ⚠️ 3 TRUSTED AXIOMS (#347) | See Trust surface. |
+| Closure step extensivity + fixed-point | `RDF.Entailment.RDFS.FixedPoint.fst` | 🟡 LANDED WITH ADJUDICATION (commit `1aa4e71`) | Length-test fixed-point theorem holds under two explicit hypotheses (`no_dup_keys` on the pre-dedup intermediate graph), not unconditionally — the unconditional form is FALSE. Third finding from this landing: `term_to_key_total` literal keys use plain `"^^"` not `unit_sep`, a wider dedup-collision surface than [#338](https://github.com/danbri/factoidal/issues/338) described ([#348](https://github.com/danbri/factoidal/issues/348)). |
+| String ordering axioms | `RDF.Indexed.StringOrder.fsti` | ⚠️ 3 TRUSTED AXIOMS ([#347](https://github.com/danbri/factoidal/issues/347)) | See Trust surface. |
 
 ## 5. SPARQL algebra refinement (the query rung, G3 M3)
 
@@ -592,7 +592,7 @@ than forced.
 
 What this registry's PROVED cells rest on, beyond F\*/Z3 itself:
 
-- **`RDF.Indexed.StringOrder.fsti` (#347) — 3 axioms.** `FStar.String.compare`
+- **`RDF.Indexed.StringOrder.fsti` ([#347](https://github.com/danbri/factoidal/issues/347)) — 3 axioms.** `FStar.String.compare`
   ships in ulib as an unspecified native primitive (extracts to OCaml
   `BatString.compare`, genuine byte-lexicographic order). Three facts
   are assumed here rather than proved: `compare a b = 0 <==> a == b`,
@@ -653,7 +653,7 @@ applies here unchanged.
 | ORDER BY | `theorem_sort_solutions_permutation` | ✅ PROVED | Multiset-level, hand-derived (stdlib `sortWith_permutation` needs `eqtype`; noeq `rdf_term` fails it — reusable finding). Sortedness NOT claimed: comparator ties break antisymmetry; wave 2. |
 | LIMIT/OFFSET | `theorem_slice_solutions_window` / `_length` | ✅ PROVED | Contiguous index-shifted window, all None/Some combinations. |
 | DISTINCT | `theorem_distinct_complete` | ✅ PROVED | Representative-level, needs `noRepeats` domains hypothesis. |
-| DISTINCT card | `theorem_sr3_distinct_card_spec_false` | ❌ SPEC FALSE | FINDING SR-3 (#359): dedup case-insensitive lang tags vs count exact — third strike of the SR-1/SR-2 equality gap. |
+| DISTINCT card | `theorem_sr3_distinct_card_spec_false` | ❌ SPEC FALSE | FINDING SR-3 ([#359](https://github.com/danbri/factoidal/issues/359)): dedup case-insensitive lang tags vs count exact — third strike of the SR-1/SR-2 equality gap. |
 | SRJ (tree layer) | `lemma_json_val_of_{term,row,vars,rows,response,bool}_roundtrip` | ✅ PROVED | Exact equality, IRI+literal fragment (no bnodes/triple terms/dir literals yet), SPARQL.Protocol.RoundTrip.fst. |
 | SRJ (text layer) | `Parser.FastString.Axioms.fsti` (8 facts / 9 vals, DO-NOT-WIDEN, justified line-by-line vs the OCaml realisation) + `lemma_byte_at_after_prefix` | ✅ PROVED, off trust surface (Step 4, 2026-08-10 — see "FastString migration Step 4" below; was 🟡 UNBLOCKED-as-axioms as of wave 1/2, now real theorems in `Parser.FastString.Axioms.fst`) | `fs_byte_length "ab" == 2` provable; all 8 facts now machine-verified true of the real definitions, not merely assumed. parse_json↔serialise text bridge still separately blocked by `FStar.String.sub`/`concat` gaps — see `docs/designissues/2026-08-10-string-foundation-decision.md`. |
 
@@ -662,7 +662,7 @@ applies here unchanged.
 quicksort; totality must be IF-form, OR-form refuted by 2-element
 counterexample, in-file) + `theorem_sort_solutions_sorted`
 (hypotheses carried; IRI fragment discharges via StringOrder axioms;
-numeric fragment REFUTED — FINDING SR-4 #362, unparseable literal
+numeric fragment REFUTED — FINDING SR-4 [#362](https://github.com/danbri/factoidal/issues/362), unparseable literal
 ties everything, transitivity false). FILTER de-vacuation steps 1-2:
 `eval_expr_ebv`/`eval_expr_fwd` assume vals RETIRED — now real
 `[@@ irreducible]` definitions over `eval_expr_with_base` (Part 8
@@ -678,7 +678,7 @@ evaluator (existential-free fragment; production-path bridging lemma
 tables + numeric/plain-string equality specs; 17 agreement lemmas on
 the conforming classes; FINDINGS EX-1 (langString EBV truthy vs
 spec Type Error) and EX-2 (And/Or/Not can never error — silent
-collapse), both stated as divergence lemmas with witnesses, #365.
+collapse), both stated as divergence lemmas with witnesses, [#365](https://github.com/danbri/factoidal/issues/365).
 Text-bridge: BLOCKED pending owner decision on FastString candidate
 axioms 7-8 (value-level facts, documented in-file with OCaml
 justification); tree-level remains the proved boundary meanwhile.
@@ -689,14 +689,14 @@ metric + `lemma_substitute_pattern_preserves_size`, phase+size decreases
 per the MathML.Present precedent; z3 cost 1.4-1.6x baseline, under the
 3x gate; glue patch 62 down to 2 symbols). Full W3C on the branch:
 SPARQL 631 pass, 0 fail (out of 631); RDF 1031 pass, 0 fail (out of
-1031) — the 4 RIF failures of #367 do NOT reproduce (stale-binary
+1031) — the 4 RIF failures of [#367](https://github.com/danbri/factoidal/issues/367) do NOT reproduce (stale-binary
 measurement artifact suspected; see issue). RIF enters the theorems
 zone — `RIF.Core.Refinement.fst`: `rif_fixpoint_extensive`/
 `rif_one_round_extensive`/`rif_fire_rule_extensive` (UNCONDITIONAL —
 finding E-1: no dedup-pass hypothesis needed, unlike rho-df),
 `rif_derives` declarative spec + `fire_rule_licensed`/
 `one_round_licensed`/`fixpoint_licensed` (two-graph snapshot idiom
-forced by intra-round order-dependence). FINDING F-1 (#367 candidate
+forced by intra-round order-dependence). FINDING F-1 ([#367](https://github.com/danbri/factoidal/issues/367) candidate
 cause): RIF import materialisation hard-codes OWL-Direct closure mode
 for BOTH regime profiles (RIF.Core.Tests ~150-160 vs OWL.Closure.fsti
 5747 mode split) — plausible, unconfirmed.
@@ -708,7 +708,7 @@ pointwise graph level), on real FStar.String primitives. ROUND-TRIP
 BLOCKED — two findings: the N-Triples PARSER is wholly FastString-based
 (no tree stage to salvage; even the serializer's escape scan is
 FastString-gated, blocking ALL literals), so text-level proofs need
-value-content axioms beyond the approved 8 (extends #358) OR a
+value-content axioms beyond the approved 8 (extends [#358](https://github.com/danbri/factoidal/issues/358)) OR a
 specified reimplementation of the fast path; and triple-line
 injectivity is FALSE without a content-safety restriction (IRI
 containing quote-gt-space forges line boundaries) — the
@@ -716,14 +716,14 @@ containing quote-gt-space forges line boundaries) — the
 the M1 parser plan's same move.
 
 **G4 wave 5b (2026-08-10)**: FastString axioms 7-8 PROMOTED
-(owner-approved, #358) — set now 8, DO-NOT-WIDEN. New proved lexing
+(owner-approved, [#358](https://github.com/danbri/factoidal/issues/358)) — set now 8, DO-NOT-WIDEN. New proved lexing
 lemmas: `build_string` length/byte facts (induction over facts 1-4+7)
 and `lemma_quoted_content_byte_sub` — the quoted-string read-back step
 of the SRJ text bridge. FULL text bridge still blocked by a THIRD
 string-spec wall: `FStar.String.concat` has ZERO lemmas in ulib
 (checked; both parser and serializer sit on it). Candidate rule
 documented in-file, owner-gated. Three walls, one pattern — feeds the
-re-found-the-fast-path decision on #358.
+re-found-the-fast-path decision on [#358](https://github.com/danbri/factoidal/issues/358).
 
 **FastString migration steps 0-1 (2026-08-10)**: baselines frozen
 (docs/designissues/2026-08-10-faststring-baselines.md — parse 1M:
@@ -755,13 +755,13 @@ ulib — `FStar.String.sub`'s type gives the result LENGTH but says
 NOTHING about its characters; blocks every payload-carrying token
 (IRIs, vars, even keywords). Fix requires either a trusted ulib-level
 sub-content rule or lexer changes off `substring` — owner-gated,
-consolidated with the #358 string-foundation decision.
+consolidated with the [#358](https://github.com/danbri/factoidal/issues/358) string-foundation decision.
 
 **FastString migration steps 2+3 MERGED (2026-08-10)**: six primitives
 are REAL Spec-backed F* definitions (assume vals retired; sole
 survivor unsafe_char_of_d7ff in CharBoundary); patch 89 → 1 symbol;
 fast OCaml now an experimental_ocaml_glue SPEED patch (rule 11(b)).
-Gates: 233/234 verify (1 = pre-existing #327); extract/compile clean,
+Gates: 233/234 verify (1 = pre-existing [#327](https://github.com/danbri/factoidal/issues/327)); extract/compile clean,
 29 binaries; W3C SPARQL 631 pass 0 fail (of 631) + RDF 1031 pass 0
 fail (of 1031), exact match (OWL DL suite not run, stated);
 benchmarks ALL within the 10% gate vs frozen baselines (1M parse rows
@@ -772,7 +772,7 @@ divergences + one crash path) — the deletability promise holds for
 valid input only until the Spec is re-founded on a single WHATWG
 decoder; repair scheduled before step 4's axiom discharge.
 
-**FastString #374 repair (2026-08-10)**: Spec re-founded — the "second
+**FastString [#374](https://github.com/danbri/factoidal/issues/374) repair (2026-08-10)**: Spec re-founded — the "second
 decoder" was ulib's own list_of_string, which returns NEGATIVE
 codepoints on invalid UTF-8 (measured -1670; a genuine F* stdlib bug,
 upstream-reportable). Guards added in utf8_enc_char +
@@ -781,7 +781,7 @@ corpus now COMPLETES CLEAN: 93,846 pass, 0 unexpected fail, 962
 documented expected-fail rows (the necessity-forced byte_sub boundary
 domain), no crash. Deletability contract now holds on ALL input. W3C
 regression: RDF 1031/0 exact; SPARQL 627/4 with the 4 = the known
-intermittent RIF quartet (#367's environmental pattern). Residual:
+intermittent RIF quartet ([#367](https://github.com/danbri/factoidal/issues/367)'s environmental pattern). Residual:
 decode-of-encode-vs-list_of_string theorem removed after 3 attempts
 (in-file note with exact error); run-all.sh module-list gap found
 (separate issue).
@@ -799,7 +799,7 @@ hypothesis did not imply agreement; fixed by adding the missing
 `pos < fs_byte_length s` side condition (zero consumer churn, zero
 current callers). (2) Fact 8 (`fs_byte_sub_self`) needed exactly the
 "single-decoder round trip" theorem
-(`utf8_decode_all_utf8_bytes_identity`) this file's own #374-repair
+(`utf8_decode_all_utf8_bytes_identity`) this file's own [#374](https://github.com/danbri/factoidal/issues/374)-repair
 entry above records as "removed after 3 attempts" — proved this
 session via an explicit non-recursive unfold lemma for
 `utf8_decode_all_aux` plus a prefix-shift induction and a char-list
@@ -838,7 +838,7 @@ string wall (2) (ulib `FStar.String.concat` has zero equations);
 proof-critical call sites migrated (`Parser.JSON.fst` 1 use,
 `SPARQL.Protocol.fst` 6 uses). Gates: verify clean, extract/compile
 clean, W3C SPARQL 627 pass 4 fail (of 631; the intermittent RIF
-quartet #367) + RDF 1031 pass 0 fail (of 1031), benchmark every row
+quartet [#367](https://github.com/danbri/factoidal/issues/367)) + RDF 1031 pass 0 fail (of 1031), benchmark every row
 inside the 10% gate vs frozen baselines (all faster; attributed to a
 quieter host, not the diff — stated in the plan doc). Unblocks the
 SRJ text bridge (M4) and N-Triples parser-side proofs.
@@ -867,7 +867,7 @@ interactive diagnosis via fstar-mcp, not batch retries.
 proof-only, verified clean, zero assume vals). Strategy B (common
 line-splitter) on `FStar.String.list_of_string`/`string_of_list`
 (their ulib round-trip lemmas are unconditional — avoids the parked
-byte-level single-decoder round-trip, #374). PROVED: the split
+byte-level single-decoder round-trip, [#374](https://github.com/danbri/factoidal/issues/374)). PROVED: the split
 machinery end-to-end — `split_complete_lines_reconstruct`
 (`complete ^ carry == s`, nothing dropped or duplicated),
 carry-never-contains-newline, "a chunk with no newline extends carry",
@@ -1151,7 +1151,7 @@ witness chains for the split. REMAINING (FINDING, no wall): the
 multi-chunk fold — one chain-concatenation lemma + a fold induction
 carrying a witness-chain list; scoping choice, not a failure.
 
-**Task #48 / #402: MULTI-CHUNK STREAMING THEOREM (2026-08-11, branch
+**Task #48 / [#402](https://github.com/danbri/factoidal/issues/402): MULTI-CHUNK STREAMING THEOREM (2026-08-11, branch
 `stream-multichunk`)**: `theorem_stream_eq_batch` PROVED —
 `stream_parse chunks == batch_parse (concat_all chunks)` for ANY list
 of chunks, given a witness-chain pair per chunk (`stream_fold_wf`).
@@ -1202,7 +1202,7 @@ noted at `fs_byte_sub_eq`. Findings recorded in
 + pointer updated in `RDF.NTriples.RoundTrip.fst`. No proof logic
 changed; both files verify clean.
 
-**#402: CONSUMER layer theorems (2026-08-11, branch `consumer-hom`)**:
+**[#402](https://github.com/danbri/factoidal/issues/402): CONSUMER layer theorems (2026-08-11, branch `consumer-hom`)**:
 `RDF.NQuads.Streaming.fst` +~420 lines. API: `stream_consume` folds
 each parsed quad into consumer state in ARRIVAL order; per-chunk state
 is (consumer-state, stream_state) ONLY — no retained quads/dataset
@@ -1254,10 +1254,10 @@ z3, F*, the two documented toolchain findings), §10 the override
 guarantee with exact re-verify commands (no-lax/no-admit claim
 re-measured: zero pragma matches outside comments). Every file:line
 read at source while writing. Four drift findings reported to the
-hygiene tracker (#198), incl. a stale "admit()'d" banner over a
+hygiene tracker ([#198](https://github.com/danbri/factoidal/issues/198)), incl. a stale "admit()'d" banner over a
 clean `()` body in the COTTAS backend.
 
-**#403 npm batch (2026-08-11, branch `npm-batch`)**: closure API
+**[#403](https://github.com/danbri/factoidal/issues/403) npm batch (2026-08-11, branch `npm-batch`)**: closure API
 exposed on all three npm surfaces (index/wasm/fn):
 coreRdfsClosure/coreRdfsCheck/rhoDfClosure/rhoDfFragmentCheck/
 rdfsPlusClosure (+ owlIsConsistent/owlEntails already present).
@@ -1272,10 +1272,10 @@ block across rebuilds (verified byte-identical). Gates: npm units
 clean. Bundle-sync drift found+fixed (hazard #12: npm copies 2 days
 behind docs/fstar-extracted). DEFERRED with reasons: package rename
 to `factoidal` (owner-decided; ~20-file migration, own dispatch);
-#344 (F* parser strictness, not ABI); wasm-entry ABI rebuild (needs
+[#344](https://github.com/danbri/factoidal/issues/344) (F* parser strictness, not ABI); wasm-entry ABI rebuild (needs
 full extraction — pre-existing RDFS_Closure_SemiNaive.ml gap noted).
 
-**#401 M1: IRI round-trip GENERALIZED to plain strings (2026-08-11,
+**[#401](https://github.com/danbri/factoidal/issues/401) M1: IRI round-trip GENERALIZED to plain strings (2026-08-11,
 branch `iri-general`)**: `lemma_term_iri_round_trip`
 (RDF.NTriples.RoundTrip.fst Part 8) — parse_object of
 nq_term_to_string (T_IRI i) == ParseOk (T_IRI i) for ANY string i
@@ -1288,7 +1288,7 @@ goal inside recursion (that alone reopens the wall — measured, 109ms
 Error 19); instead byte facts through the Axioms-opaque
 lemma_build_string_byte_length/_byte_at + fs_byte_*_eq bridges, list
 equality by index_extensionality, one plain list-level recursive
-helper, composed with PR #409's decode identity +
+helper, composed with PR [#409](https://github.com/danbri/factoidal/issues/409)'s decode identity +
 string_of_list_of_string. Also found: BaseCases'
 lemma_build_string_utf8_bytes verifies in the "failing" shape —
 candidate factors (cons-built RHS vs concatMap; default fuel vs 4/4)
@@ -1298,7 +1298,7 @@ checkpoint_a (arbitrary whole triple) is a new composition chain, not
 mechanical. Full dependency chain re-verified clean. No admits, no
 --lax, no new assume vals.
 
-**#402 COMPLETE: fully-generic consumer theorem (2026-08-11, branch
+**[#402](https://github.com/danbri/factoidal/issues/402) COMPLETE: fully-generic consumer theorem (2026-08-11, branch
 `generic-consumer`)**: `theorem_stream_consume_eq_batch` — for ANY
 consumer type, ANY consume function, ANY chunk split (same
 stream_fold_wf witness premise, same generality as the dataset
@@ -1317,7 +1317,7 @@ theorem + dataset consumer + generic consumer all proved; sole
 residue = the ^^datatype literal-branch shift lemma (does not gate
 any landed theorem). No admits, no --lax, no new assume vals.
 
-**#402 residue CLOSED: datatype literal branch (2026-08-11, branch
+**[#402](https://github.com/danbri/factoidal/issues/402) residue CLOSED: datatype literal branch (2026-08-11, branch
 `dt-branch`)**: `lemma_parse_literal_datatype_shift` verifies. ROOT
 CAUSE of the 3 prior failures (findings discipline vindicated again,
 same class as Axioms fact 6): the statement was FALSE as written —
@@ -1329,10 +1329,10 @@ string-equality trigger behavior — WRONG, now corrected in the banner
 (rule #14). With `dt <> rdf_lang_string /\ dt <> rdf_dir_lang_string`
 added to requires, the proof is 3 lines, same shape and budget as the
 plain-literal sibling. Witness-record hypotheses per the streaming
-pattern. #402's residue list is now EMPTY — every named theorem and
+pattern. [#402](https://github.com/danbri/factoidal/issues/402)'s residue list is now EMPTY — every named theorem and
 lemma of the streaming program is proved.
 
-**#401 M1 triple-composition checkpoints (2026-08-11, branch
+**[#401](https://github.com/danbri/factoidal/issues/401) M1 triple-composition checkpoints (2026-08-11, branch
 `triple-roundtrip`, agent died mid-run — branch harvested)**: two
 verified commits landed before the agent's death:
 bracket-embedding prerequisites + a single-space pws lemma, and
@@ -1343,7 +1343,7 @@ bare-IRI + subject-wrapped IRI round-trip lemmas
 remainder queued for a narrower re-dispatch. No admits, no --lax, no
 new assume vals.
 
-**#381 FIXED: XML normalization (2026-08-11, branch `xml-norm`)**:
+**[#381](https://github.com/danbri/factoidal/issues/381) FIXED: XML normalization (2026-08-11, branch `xml-norm`)**:
 both XML 1.0 spec divergences closed in Parser.XML.fst as pre-passes —
 `normalize_line_endings` (§2.11, byte-level scan, safe because CR/LF
 are single-byte ASCII never appearing in UTF-8 continuations) at all
@@ -1355,14 +1355,14 @@ fixture staying byte-identical. Parser.XML + 11 dependents verify
 clean. Gates: both DIVERGES fixtures flipped to WORKS; xmlconf 1447
 pass, 0 fail, 1138 skip (of 2585) — identical to baseline; SPARQL
 631/0; RDF 1031/0 incl. rdf-xml 166/0. The RDF/XML proof program's
-normalization precondition is now MET. SIDE FINDING (likely the #367
+normalization precondition is now MET. SIDE FINDING (likely the [#367](https://github.com/danbri/factoidal/issues/367)
 root cause): w3c_runner's rif_rules_path_for uses a hardcoded
 relative path with no repo-root fallback — running from
 ocaml-output/ instead of repo root produces EXACTLY 4 spurious
 RIF-entailment failures; from repo root, 631/0 and 70/0. Follow-up
 issue filed for the runner path resolution.
 
-**#324 SE-1 FIXED: simple_entails literal check (2026-08-11, branch
+**[#324](https://github.com/danbri/factoidal/issues/324) SE-1 FIXED: simple_entails literal check (2026-08-11, branch
 `simple-entails`)**: the loose `literal_eq` (case-folded language
 tags; XML-canon-equated rdf:XMLLiterals) made simple_entails accept
 non-entailed pairs — machine-checked witness stood in-code. Fixed:
@@ -1377,31 +1377,31 @@ tag-case/XML-form-differing literals) still uses the loose check —
 documented in-code. Gates: 26 rdf-mt-layer modules verify; RDF
 1031/0 (rdf-mt 39/0 — unchanged because the runner does not call
 this F* function for the simple regime, SE-3 wiring tracked on
-#324); SPARQL 631/0. NOTE: binary artifacts on the work branch now
+[#324](https://github.com/danbri/factoidal/issues/324)); SPARQL 631/0. NOTE: binary artifacts on the work branch now
 mix two branch builds (one .cmi conflict resolved arbitrarily) — a
 reconciling extract+compile on the merged tree follows the Turtle
-(#334) harvest.
+([#334](https://github.com/danbri/factoidal/issues/334)) harvest.
 
 **Runner truthfulness batch (2026-08-11, branch `runner-truth`)**:
-(1) #418 FIXED — rif_tc_base now uses the runner's standard
+(1) [#418](https://github.com/danbri/factoidal/issues/418) FIXED — rif_tc_base now uses the runner's standard
 search-list; identity verified: SPARQL 631 pass, 0 fail (of 631) and
 RDF 1031 pass, 0 fail (of 1031) from BOTH repo root and
-ocaml-output/, all four RIF tests passing from both. The #367
+ocaml-output/, all four RIF tests passing from both. The [#367](https://github.com/danbri/factoidal/issues/367)
 intermittency mechanism is retired. (2) SE-3 DONE — the runner's
 "simple" regime now dispatches to the F*-extracted
 RDF_Entailment_Simple.simple_entails (rule-#15 violation removed);
 verified by a true before/after binary diff: rdf-mt 39/0 → 39/0,
 RDF 1031/0 → 1031/0, zero flips — the score now comes from the
-VERIFIED function. (3) #333 sharpened: all 10 vacuous passes
+VERIFIED function. (3) [#333](https://github.com/danbri/factoidal/issues/333) sharpened: all 10 vacuous passes
 confirmed; they return Pass before any entailment function runs
 (result_file None), and the real fix is datatype-clash/ill-formed-
 literal detection under D-entailment in the F* engine (iron rule #1),
-not runner wiring — scoped as #333's follow-up. BONUS: nine modules
+not runner wiring — scoped as [#333](https://github.com/danbri/factoidal/issues/333)'s follow-up. BONUS: nine modules
 listed in build-ocaml.sh but never extracted/committed (incl.
 RDFS.Closure.SemiNaive — the known full-js-rebuild blocker) are now
 in ocaml-output/, all F*-verified clean, no patches needed.
 
-**#365 EX-1/EX-2 ALIGNED (2026-08-14, branch `ex-align`, owner decision
+**[#365](https://github.com/danbri/factoidal/issues/365) EX-1/EX-2 ALIGNED (2026-08-14, branch `ex-align`, owner decision
 2026-08-11 verbatim "Align")**: the SPARQL expression evaluator's
 boolean layer is now error-aware, closing both divergences the G4/M2
 wave-1 agent found in `SPARQL11.Expression.Refinement.fst`. EX-1: EBV
@@ -1441,7 +1441,7 @@ Gates (2026-08-14, branch `ex-align`): 229 of 230 F* modules verify
 clean (z3 4.13.3, no admits, no `--lax`) — the one exception,
 `RDF.CottasStore.PageCache.Bounds.fst`, is a pre-existing failure
 with zero dependency on this change (untouched by the diff, filed
-separately as #422); SPARQL W3C 631 pass, 0 fail (of 631); RDF W3C
+separately as [#422](https://github.com/danbri/factoidal/issues/422)); SPARQL W3C 631 pass, 0 fail (of 631); RDF W3C
 1031 pass, 0 fail (of 1031) — no test flipped. The new BIND/SELECT-
 expression regression (`tests/local/cli_ex_align_regressions.sh`,
 run through the real CLI backend path, not just the W3C runner's pure
@@ -1452,7 +1452,7 @@ bare non-empty langString literal in FILTER position used to keep the
 row and now drops it, per the corrected EBV table — pinned in the same
 regression script.
 
-**#334 FIXED: Turtle silent drops (2026-08-11, branch
+**[#334](https://github.com/danbri/factoidal/issues/334) FIXED: Turtle silent drops (2026-08-11, branch
 `turtle-strict2`)**: an undeclared prefix made `Parser.Turtle.fst`
 discard the statement and return SUCCESS — silent data loss (measured
 before the fix: `factoidal dump` on a 3-statement file exited 0 and
@@ -1467,11 +1467,11 @@ convention (no new error mechanism); the CLI's Turtle load path exits
 0 fail (of 1031); SPARQL 631 pass, 0 fail (of 631); nothing flipped,
 so no W3C test had been passing BECAUSE of the drop. This retires the
 first half of the silent-drop class named in the streaming plan's
-constraint 4. SCOPE (follow-ups on #334): Turtle Mode 1.2 (--rdf12),
+constraint 4. SCOPE (follow-ups on [#334](https://github.com/danbri/factoidal/issues/334)): Turtle Mode 1.2 (--rdf12),
 TriG, and the manifest loader may carry the same defect — untouched
 here.
 
-**#334 FOLLOW-UPS FIXED: Turtle Mode 1.2, TriG, manifest loader
+**[#334](https://github.com/danbri/factoidal/issues/334) FOLLOW-UPS FIXED: Turtle Mode 1.2, TriG, manifest loader
 (2026-08-14, branch `silent-drops2`)**: all three follow-ups named
 above confirmed present and fixed, same mechanism as the RDF 1.1
 Turtle fix.
@@ -1493,7 +1493,7 @@ Turtle fix.
   247 has an undeclared `test:` prefix (a typo for `rdft:`), silently
   dropping one metadata triple and holding `rdf12entail`'s
   `rdf-semantics` suite at 47 discovered tests instead of 48 — this is
-  the exact mechanism #334's body predicted for the `literal-type`
+  the exact mechanism [#334](https://github.com/danbri/factoidal/issues/334)'s body predicted for the `literal-type`
   disposition. POLICY CHOICE: lenient-with-report, not
   strict-with-report — going strict would zero out that whole
   manifest's ~48 test cases over one upstream typo we do not control,
@@ -1508,9 +1508,9 @@ Turtle fix.
 
 Gates (all three, from repo root, native binaries): W3C RDF 1031
 pass, 0 fail (of 1031); SPARQL 631 pass, 0 fail (of 631) — both
-unchanged from baseline, nothing flipped. This retires the #334
+unchanged from baseline, nothing flipped. This retires the [#334](https://github.com/danbri/factoidal/issues/334)
 follow-up scope in full. SPARQL and JSON-LD context paths (also named
-in #334's task list as "check whether … share the lenient-drop
+in [#334](https://github.com/danbri/factoidal/issues/334)'s task list as "check whether … share the lenient-drop
 shape") are NOT covered by this landing — out of scope for the
 branch that did this work.
 
@@ -1530,16 +1530,16 @@ not the strict parser the W3C suite grades; 120 files looked like
 disagreements that were not. Fixed by adding --strict routing through
 the conformance parser entry points (bin/ consumer change), plus a
 stale module list in build-ocaml-serializer.sh. TWO REAL PARSER BUGS
-FOUND (#425), both in the Turtle number-literal classifier: leading-
+FOUND ([#425](https://github.com/danbri/factoidal/issues/425)), both in the Turtle number-literal classifier: leading-
 dot numbers without exponent (.1, +.7) are tagged xsd:double but the
 grammar says DECIMAL; 123.E+1 and -.2e3 are REJECTED but are legal
 DOUBLE. Our own W3C Turtle suite reportedly scores 100% on these four
 files — so the manifest expectations may ALSO be wrong; that check is
-open on #425. Adjudicated NOT a bug: 4 turtle-eval-bad cases where we
+open on [#425](https://github.com/danbri/factoidal/issues/425). Adjudicated NOT a bug: 4 turtle-eval-bad cases where we
 reject illegal raw IRI characters and Jena only warns — we are the
 more conformant side.
 
-**#425 FIXED: Turtle number-literal classifier + the false-100%
+**[#425](https://github.com/danbri/factoidal/issues/425) FIXED: Turtle number-literal classifier + the false-100%
 mechanism (2026-08-11, branch `ttl-numbers`)**: both bugs the Jena
 differential harness found are repaired in
 `Parser.Turtle.fst:parse_numeric_literal`. Bug A — a leading-dot
@@ -1565,7 +1565,7 @@ Jena. Trap re-confirmed: `factoidal-dump-nq` is not rebuilt by the
 main build script and needed its own rebuild for the harness to see
 the fix.
 
-**#333 FIXED: RDFS D-inconsistency detection (2026-08-11, branch
+**[#333](https://github.com/danbri/factoidal/issues/333) FIXED: RDFS D-inconsistency detection (2026-08-11, branch
 `dtype-clash`)**: the ten vacuous rdf-mt passes now CHECK. New
 `RDF.Entailment.RDFS.DatatypeClash.fst` detects (a) ill-formed
 literals for recognized datatypes (reusing
@@ -1576,7 +1576,7 @@ datatype clashes — both gated on the manifest's
 detector (rule #15 respected — no semantics in the runner).
 VACUITY EVIDENCE (the point of the exercise): six compile-time
 `assert_norm` witnesses — three graphs that MUST be flagged, three
-that must NOT — plus a live re-run of #333's own corruption trick:
+that must NOT — plus a live re-run of [#333](https://github.com/danbri/factoidal/issues/333)'s own corruption trick:
 garbling the `datatypes-range-clash` input now flips PASS→FAIL,
 where before the fix the suite did not notice. A bug in the detector
 was itself caught this way: the first range-clash version searched
@@ -1590,7 +1590,7 @@ checking that this tree does not have (optional in RDF 1.1) — now
 reported honestly instead of passing falsely. Nine tests match the
 manifest exactly; no adjudication needed.
 
-**#401 M1: IRI round-trip WIDENED to non-ASCII (2026-08-11, branch
+**[#401](https://github.com/danbri/factoidal/issues/401) M1: IRI round-trip WIDENED to non-ASCII (2026-08-11, branch
 `iri-nonascii`)**: `lemma_term_iri_round_trip_utf8`
 (RDF.NTriples.RoundTrip.fst Part 10) — parse_object of
 nq_term_to_string (T_IRI i) returns the term for ANY i satisfying
@@ -1614,7 +1614,7 @@ a Lemma cannot change the built program. Part 8's ASCII lemma stays
 for existing callers. Next: widen Part 9's triple-level lemmas the
 same way.
 
-**#429 FIXED: syntax tests graded on the STRICT parser (2026-08-14,
+**[#429](https://github.com/danbri/factoidal/issues/429) FIXED: syntax tests graded on the STRICT parser (2026-08-14,
 branch `syntax-grading`)**: four RDF 1.1 positive-syntax test types
 (Turtle, TriG, N-Triples, N-Quads) were graded
 `ignore (parse ...); Pass` — result discarded, LENIENT parser used,
@@ -1623,29 +1623,29 @@ the STRICT entry point, matching what `factoidal dump`/`validate`
 do. AUDIT (docs/designissues/2026-08-14-syntax-grading-audit.md)
 scoped the damage precisely: RDF 1.1 negative-syntax and eval tests
 were ALREADY real; RDF 1.2 positive-syntax was already fixed under
-epic #305; SPARQL query/update syntax tests were already real (one
+epic [#305](https://github.com/danbri/factoidal/issues/305); SPARQL query/update syntax tests were already real (one
 parser, no lenient/strict split); RDF/XML has no such test type. So
 the vacuity was confined to those four arms. SCORE DROPS ON PURPOSE:
 RDF 1.1 total 1028 pass, 2 fail, 1 unsupported (of 1031) — was 1030
 pass, 0 fail, 1 unsupported. TWO REAL TriG ENGINE BUGS EXPOSED, both
-reproduced independently against the CLI: #433 (a collection used as
+reproduced independently against the CLI: [#433](https://github.com/danbri/factoidal/issues/433) (a collection used as
 a normal SUBJECT is rejected — the graph-name guard over-applies)
-and #434 (a trailing `;` before `}` with no final `.` is rejected,
+and [#434](https://github.com/danbri/factoidal/issues/434) (a trailing `;` before `}` with no final `.` is rejected,
 though TriG permits it). Jena cross-check unchanged at 0
 disagreements (265 agree-parse, 120 agree-reject, 4 either-side-error
 of 389) — that harness does not cover TriG yet, so it neither
 confirms nor denies the two new bugs. Unrelated pre-existing gap
 noted: `Math.Sigmoid.fst` has source but no committed extracted
-output on main (same class as the #422 sweep).
+output on main (same class as the [#422](https://github.com/danbri/factoidal/issues/422) sweep).
 
-**#422 FIXED + unlisted-module sweep (2026-08-14, branch
+**[#422](https://github.com/danbri/factoidal/issues/422) FIXED + unlisted-module sweep (2026-08-14, branch
 `cottas-bounds`)**: `RDF.CottasStore.PageCache.Bounds.fst` had been
-broken since the Phase 2.5c API change (#118) turned the cache value
+broken since the Phase 2.5c API change ([#118](https://github.com/danbri/factoidal/issues/118)) turned the cache value
 type from `list (option string)` into the abstract `cottas_column` —
 three of its four lemmas used the old type, one called a
 pre-migration decoder, one bounded a function the engine no longer
 calls. Nothing noticed because the module is absent from
-build-ocaml.sh's list (#327). Re-synced to the current API, verifies
+build-ocaml.sh's list ([#327](https://github.com/danbri/factoidal/issues/327)). Re-synced to the current API, verifies
 clean, and ADDED to ALL_MODULES (proof-only: no compile-list entry
 needed). SWEEP RESULT: 26 files were unlisted; 9 are .fsti paired
 with a listed .fst, 2 are interface-only but covered through listed
@@ -1664,18 +1664,18 @@ Parser.FastString.Axioms, ...), are guarded by NOTHING in CI. They
 are correct today; nothing stops a future edit from silently
 breaking one, exactly as PageCache.Bounds broke. Filed separately.
 
-**#433 + #434 FIXED: two TriG parser bugs (2026-08-14, branch
-`trig-bugs`)**: both exposed by the #429 strict-grading fix, both
+**[#433](https://github.com/danbri/factoidal/issues/433) + [#434](https://github.com/danbri/factoidal/issues/434) FIXED: two TriG parser bugs (2026-08-14, branch
+`trig-bugs`)**: both exposed by the [#429](https://github.com/danbri/factoidal/issues/429) strict-grading fix, both
 repaired in the PARSER — verified independently that
 `bin/w3c-runner/w3c_runner.ml` has a ZERO-line diff, so the score was
-not recovered by softening the gate. #433: `Parser.TriG.fst`'s "RC3"
+not recovered by softening the gate. [#433](https://github.com/danbri/factoidal/issues/433): `Parser.TriG.fst`'s "RC3"
 rule rejected `(` at the start of ANY top-level statement to stop a
 collection being used as a graph name, but fired before
 subject-position could be distinguished, so it also blocked the legal
 `( 1 2 3 ) :p ( 4 5 6 ) .`. RC3 removed entirely — TriG's grammar
 makes collection-as-graph-name unreachable anyway (a collection can
 only be followed by a predicateObjectList, never `{`), so the case is
-still rejected, now for the right reason. #434:
+still rejected, now for the right reason. [#434](https://github.com/danbri/factoidal/issues/434):
 `Parser.Turtle.fst`'s `parse_predicate_object_list_rev` /
 `parse_trailing_semicolons_rev` treated `.`/`]`/`;`/`|` as
 list-terminators but omitted `}`, so `...;}` tried to parse `}` as a
@@ -1687,10 +1687,10 @@ grading plus real rdf-mt checks, unlike the 1031/0 it replaced.
 SPARQL 631/0 unchanged. Both modules verify clean, no admits, no
 --lax, no new assume vals.
 
-**#436 FIXED: CI now VERIFIES the proofs (2026-08-14, branch
+**[#436](https://github.com/danbri/factoidal/issues/436) FIXED: CI now VERIFIES the proofs (2026-08-14, branch
 `ci-verify`)**: the PR gate ran `build-ocaml.sh extract` + `compile`
 and never `make verify`, so a proof could break silently — the
-mechanism behind #422. Happy discovery: `formal/fstar/Makefile`'s
+mechanism behind [#422](https://github.com/danbri/factoidal/issues/422). Happy discovery: `formal/fstar/Makefile`'s
 `verify` target already globs `$(wildcard *.fst)` from DISK, so it
 covers all 231 files including the 15 absent from ALL_MODULES (216
 entries) — it was simply never connected to CI. New workflow
@@ -1710,7 +1710,7 @@ cold run is estimated 45-60+ min and was not measured; it happens on
 first run and after F* version changes. Coverage was NOT narrowed to
 make the job fast.
 
-**#430 FIXED + two coverage findings (2026-08-14, branch
+**[#430](https://github.com/danbri/factoidal/issues/430) FIXED + two coverage findings (2026-08-14, branch
 `vacuity-tool`)**: `tools/negative-test-vacuity.py` crashed with
 `TypeError: int + str` — a KEY CLASH: the per-suite dict uses
 `"error"` for a COUNT, while the whole-manifest-load-failure early
@@ -1723,33 +1723,33 @@ emptying a premise to zero triples flips a real test's verdict to
 `vacuous/closure-adds-nothing`; the current run's 3-of-19 rdf-mt
 vacuous count matches the last known-good state recorded in
 `skills/measuring-inference`. 🔴 FINDING 1 — the tool is BLIND to
-the #429 class and its in-code justification is WRONG about why:
+the [#429](https://github.com/danbri/factoidal/issues/429) class and its in-code justification is WRONG about why:
 it excludes positive-syntax tests reasoning that "a reject-all
-parser fails these", but #429's actual bug was IGNORE-AND-PASS, which
+parser fails these", but [#429](https://github.com/danbri/factoidal/issues/429)'s actual bug was IGNORE-AND-PASS, which
 that argument does not cover. FINDING 2 — its `vacuous` verdict for
 3 `mf:result false` tests is correct for the CLI path it measures
-but no longer describes the graded suite: #333's D-inconsistency
+but no longer describes the graded suite: [#333](https://github.com/danbri/factoidal/issues/333)'s D-inconsistency
 detector lives in the runner's dispatch and is unreachable via
 `factoidal entail`/`--dump`. Also: `rdf12-semantics` cannot be
 audited at all because its vendored manifest fails to load on the
-SAME undeclared `test:` prefix typo the #334 work found at
+SAME undeclared `test:` prefix typo the [#334](https://github.com/danbri/factoidal/issues/334) work found at
 `rdf-semantics/manifest.ttl:247` — one upstream typo now blocks two
 tools.
 
-**#443 + #339 + #445 + #446 FIXED (2026-08-14/15)**: three serialization
-defects (plus two latent siblings of #445 found while fixing it), none
+**[#443](https://github.com/danbri/factoidal/issues/443) + [#339](https://github.com/danbri/factoidal/issues/339) + [#445](https://github.com/danbri/factoidal/issues/445) + [#446](https://github.com/danbri/factoidal/issues/446) FIXED (2026-08-14/15)**: three serialization
+defects (plus two latent siblings of [#445](https://github.com/danbri/factoidal/issues/445) found while fixing it), none
 of which any W3C suite could see, plus one build-gate failure found on
-the way. #445 landed 2026-08-15 on branch `utf8-store`; the other three
+the way. [#445](https://github.com/danbri/factoidal/issues/445) landed 2026-08-15 on branch `utf8-store`; the other three
 landed 2026-08-14 on branch `claude/autoexec-scratchpad-assess-37oeok`.
 
-🔴 **#443 (with #339) — the store DESTROYED literals.** An RDF literal
+🔴 **[#443](https://github.com/danbri/factoidal/issues/443) (with [#339](https://github.com/danbri/factoidal/issues/339)) — the store DESTROYED literals.** An RDF literal
 whose lexical form held `"`, LF or `\` did not survive `import` ->
 `query`: it returned as `_:cottas_decode_oor`. Three of six literal
 classes lost. Cause: `RDF.Pretty.term_to_ntriples` wrote lexical forms
 verbatim. Documented in two banners as "display, not wire" — while all
 THREE of its callers were wire paths (`--dump`, the COTTAS object
 column, the same column in the npm build). The `--dump` half was filed
-in July as #339 and pinned XFAIL; its scope table listed the other
+in July as [#339](https://github.com/danbri/factoidal/issues/339) and pinned XFAIL; its scope table listed the other
 SERIALIZERS and concluded "one function, not a systemic gap" — correct
 about serializers, and the missing column was the other CALLERS.
 DELETED rather than fixed: an escaping version is byte-identical to
@@ -1758,10 +1758,10 @@ rendering is what let them drift. **Trust-surface finding for this
 registry: `RDF.NTriples.RoundTrip.fst` was SOUND throughout and simply
 did not cover the function the CLI called. Proof coverage is a property
 of the WIRING, not only of the statement** — the same shape as the
-vacuity findings (#333, #429). Recorded as hazard #25.
+vacuity findings ([#333](https://github.com/danbri/factoidal/issues/333), [#429](https://github.com/danbri/factoidal/issues/429)). Recorded as hazard #25.
 
-✅ **#445 — the store corrupted ALL non-ASCII, FIXED 2026-08-15 (branch
-`utf8-store`).** Found while validating #443, by reading the store bytes
+✅ **[#445](https://github.com/danbri/factoidal/issues/445) — the store corrupted ALL non-ASCII, FIXED 2026-08-15 (branch
+`utf8-store`).** Found while validating [#443](https://github.com/danbri/factoidal/issues/443), by reading the store bytes
 rather than the result table. `RDF.Bytes.bytes_of_string =
 String.list_of_string` yielded CODEPOINTS; each was written as
 `codepoint land 0xFF`. Verified against the stored bytes in four
@@ -1804,7 +1804,7 @@ XFAIL entry (`UTF8-STORE` in `tests/known-defects/run.sh`) is retired;
 the standing regression pin moved to
 `tests/local/cli_literal_escape_roundtrip.sh`.
 
-✅ **#446 — `xmlns:=` malformed default namespace.** Found by the Jena
+✅ **[#446](https://github.com/danbri/factoidal/issues/446) — `xmlns:=` malformed default namespace.** Found by the Jena
 differential harness on its FIRST RDF/XML run. `render_ns_decls` emitted
 ` xmlns:<p>="<u>"` for every declaration; the default namespace has an
 empty prefix, so it wrote `xmlns:="..."`, which is not a legal XML
@@ -1819,10 +1819,10 @@ element that uses it; the manifest's "implementation dependent" carve-out
 covers only NOT-visibly-used namespaces, so placement is outside it and
 wants a read of exc-c14n §2.
 
-✅ **#444 — Parser.XML was a marginal proof.** A full extract went red
+✅ **[#444](https://github.com/danbri/factoidal/issues/444) — Parser.XML was a marginal proof.** A full extract went red
 on a module with no change to it: `parse_attributes`'s `fuel - 1` under
 an `if fuel = 0` guard failed the subtyping check. Four causes ruled out
-first, each of which would have been a real regression (the #443 change:
+first, each of which would have been a real regression (the [#443](https://github.com/danbri/factoidal/issues/443) change:
 outside its cone; CPU contention: reproduces alone; a stale
 `Parser.FastString.fsti.checked`: regenerated, still red; the
 `utf8_bytes_singleton` lemma landed the same day: reverted Spec.fst to
@@ -1832,7 +1832,7 @@ close to the line is a latent CI flake that fails with text reading like
 a semantic regression; sweeping the corpus at a REDUCED rlimit would find
 the rest before they fire.
 
-**Jena differential harness extended to five formats** (from #317).
+**Jena differential harness extended to five formats** (from [#317](https://github.com/danbri/factoidal/issues/317)).
 Labelled counts: turtle 317 files — 222 agree-parse, 91 agree-reject,
 0 disagree, 4 either-side-error; ntriples 72 — 43/29/0/0; trig 357 —
 242/111/0/4; nquads 89 — 55/34/0/0; rdfxml 173 — 128/31/4/10.
@@ -1840,8 +1840,8 @@ Combined 1008 files — 690 agree-parse, 296 agree-reject, 4 disagree,
 18 either-side-error. Every non-agreement adjudicated: 13 are inputs the
 W3C test says must fail and we correctly reject while Jena accepts;
 2 are files where OUR output matches the official expected `.nt` and
-Jena's does not; 2 are #446; 5 are manifest-disabled. The harness was
-PROVEN able to fail three ways (reinstated #434 bug -> either-side-error;
+Jena's does not; 2 are [#446](https://github.com/danbri/factoidal/issues/446); 5 are manifest-disabled. The harness was
+PROVEN able to fail three ways (reinstated [#434](https://github.com/danbri/factoidal/issues/434) bug -> either-side-error;
 one-value difference -> disagree; extra named graph -> caught). Its
 declared blind spot: blank-node GRAPH names are pooled per side, so
 content moving between two such graphs can hide (3 of 357 TriG files).
@@ -1851,13 +1851,13 @@ binary**: SPARQL 1.1 631 pass, 0 fail (of 631); RDF 1.1 1030 pass,
 0 fail, 1 unsupported (of 1031), rdf-xml 166 pass, 0 fail; RDF 1.2
 242 pass, 0 fail (of 242); RDF 1.2 c14n 82 pass, 0 fail (of 82);
 RDF 1.2 Semantics 41 pass, 3 fail, 3 skip (of 47, pre-existing and
-already documented under #305 P9); SPARQL 1.2 254 pass, 0 fail (of 254).
+already documented under [#305](https://github.com/danbri/factoidal/issues/305) P9); SPARQL 1.2 254 pass, 0 fail (of 254).
 Every one byte-identical to its committed baseline — the serializer
 change moved no score. OWL catalogs NOT re-measured: the run was capped
 at 3000s and `semantics-direct` alone budgets 9000s, so the partial
 logs were reverted rather than committed as scores.
 
-**#362 SR-4 FIXED (2026-08-16, branch `sr4-order`)**: `sparql_order`
+**[#362](https://github.com/danbri/factoidal/issues/362) SR-4 FIXED (2026-08-16, branch `sr4-order`)**: `sparql_order`
 read a numeric parse failure as a universal tie, breaking transitivity —
 one ill-typed literal silently misordered the VALID numerics around it
 (witness: 10, zzz, 3, 5, abc, plain). Owner-adjudicated rule, measured
@@ -1880,17 +1880,17 @@ parse but stays NUMERIC on failed decimal parse — separate asymmetry,
 follow-up issue owed. Gates on the merged binary: SPARQL 1.1 631 pass,
 0 fail (of 631); RDF 1.1 1030 pass, 0 fail, 1 unsupported (of 1031);
 SPARQL 1.2 254 pass, 0 fail (of 254); escape pin 5 pass, 0 fail — the
-#445 fix survives the merge on the same binary. NOTE per #448: no W3C
+[#445](https://github.com/danbri/factoidal/issues/445) fix survives the merge on the same binary. NOTE per [#448](https://github.com/danbri/factoidal/issues/448): no W3C
 test exercises an ill-typed numeric, so the suites certify only
 no-regression; the pin is the evidence.
 
-**#448 wave 1, module 1: Parquet.Footer lifted merely-tot ->
+**[#448](https://github.com/danbri/factoidal/issues/448) wave 1, module 1: Parquet.Footer lifted merely-tot ->
 algorithm-correctness (2026-08-16, branch `assure-parquet-footer`)**:
 `lemma_version_field_roundtrip` (RDF.CottasStore.BaseWriter.fst:1272)
 proves the on-disk READER returns what the WRITER wrote for the
 FileMetaData version field: `parse_file_metadata_version_hex
 (bytes_to_hex (write_field_i32 1 0 cottas_format_version)) == Some
-cottas_format_version`. This is the fact the #445 format gate depends
+cottas_format_version`. This is the fact the [#445](https://github.com/danbri/factoidal/issues/445) format gate depends
 on — nothing previously forced writer and prober to agree, and a
 disagreement would have made the gate reject every store or accept
 every store, silently. Proved for the DEPLOYED value 445, not general
@@ -1910,9 +1910,9 @@ OCaml hex-encode step (`__mim2_hex_encode`) with no F* spec twin and
 no hash-witness test — byte-layout logic in glue; follow-up owed.
 Gates: RDF 1030 pass, 0 fail, 1 unsupported (of 1031); escape pin 5
 pass, 0 fail; unit suite 20 pass, 28 fail (of 48) = baseline exactly.
-📊 #448 baseline moves 129 -> 128 merely-tot (of 231).
+📊 [#448](https://github.com/danbri/factoidal/issues/448) baseline moves 129 -> 128 merely-tot (of 231).
 
-**#448 wave 1, module 2: HDT.Container lifted merely-tot ->
+**[#448](https://github.com/danbri/factoidal/issues/448) wave 1, module 2: HDT.Container lifted merely-tot ->
 algorithm-correctness (2026-08-16, branch `assure-hdt-container`)**:
 HDT.Container is a pure READER (container skeleton framing over the
 HDT v1 binary format -- cookie/format/props/CRC16 control-info blocks,
@@ -1933,7 +1933,7 @@ forwarding `parse_control_info a 0`'s `None` verbatim. Both relate two
 named shipping functions (`parse_control_info` /
 `hdt_parse_inventory_hex`, plus `byte_get`) with no declarative
 relation, so the classifier reads algorithm-correctness. `pfc_type`
-refined from bare `nat` to `(t:nat{t = 2})` per the #445 template --
+refined from bare `nat` to `(t:nat{t = 2})` per the [#445](https://github.com/danbri/factoidal/issues/445) template --
 was a comment-only invariant ("2 = Plain Front Coding"). Assume-val
 audit: HDT.Container itself carries ZERO `assume val`s -- all file
 bytes cross the boundary through Parquet.Footer's
@@ -1950,14 +1950,14 @@ running the actual classifier, not asserted. Gates: RDF 1030 pass,
 0 fail, 1 unsupported (of 1031); escape pin 5 pass, 0 fail (of 5);
 unit suite 20 pass, 28 fail (of 48) = baseline exactly.
 
-**#448 wave 1, module 3: RDF.Turtle.Serialize lifted merely-tot ->
+**[#448](https://github.com/danbri/factoidal/issues/448) wave 1, module 3: RDF.Turtle.Serialize lifted merely-tot ->
 internal-refinement (2026-08-16, branch `assure-turtle-serialize`)**:
 new declarative relation `compacts_to_pname_safe` + lemma
 `lemma_ts_abbreviate_iri_pname_safe` — the IRI-abbreviation step either
 emits the full `<iri>` form or the compacted local name is PN_LOCAL-safe
 per the Turtle grammar. No admits. ESCAPING QUESTION ANSWERED: the
 module SHARES `RDF.NQuads.Serialize.nq_escape_literal` — no second
-escaper exists, so no #443-shape divergence risk (checked, not
+escaper exists, so no [#443](https://github.com/danbri/factoidal/issues/443)-shape divergence risk (checked, not
 assumed). FINDING, verified by experiment: the term-level round-trip
 `nq_escape_literal "a" == "a"` is NOT provable by normalization —
 Error 19, the same computation wall RDF.NTriples.RoundTrip.fst hit,
@@ -1970,7 +1970,7 @@ classifier run WITH --json. Gates: RDF 1030 pass, 0 fail, 1 unsupported
 (of 1031); escape pin 5 pass, 0 fail; turtle_pretty_regressions 17
 pass, 0 fail (of 17); unit suite at baseline.
 
-**#448 wave 1, module 4 (last of wave 1): RDF.Canonical lifted
+**[#448](https://github.com/danbri/factoidal/issues/448) wave 1, module 4 (last of wave 1): RDF.Canonical lifted
 merely-tot -> internal-refinement (2026-08-16, branch
 `assure-rdf-canonical`)**: new declarative relation `is_issuer_label`
 (existential: label == prefix ^ nat_to_string n) + `issuer_labels_wf`
@@ -1982,7 +1982,7 @@ plus the two internal-refinement theorems the classifier counted:
 mint, from `empty_issuer`/`empty_temp_issuer` onward, matches the
 "_:c14nN" / "_:bN" shape the module banner already claimed in prose.
 Refines the module banner's comment-claimed label format into a
-checked type (#445 template), needing ZERO string-content computation
+checked type ([#445](https://github.com/danbri/factoidal/issues/445) template), needing ZERO string-content computation
 (existential witness = the issuer's own counter) — sidesteps the
 SMT-unfolding wall, confirmed directly against THIS module's own
 `nat_to_string`/`digit_char` (Error 19 on both, even though neither
@@ -1999,7 +1999,7 @@ twice byte-identical, bnode-relabelled isomorphic variant
 byte-identical to the original, anti-vacuity arm requiring a
 non-isomorphic variant to differ). RDF.Canonical does NOT delegate to
 `RDF.NQuads.Serialize`'s canonical functions (`nq_canon_term` etc.) —
-it carries its OWN `canon_term`/`escape_lit` (the #443 two-
+it carries its OWN `canon_term`/`escape_lit` (the [#443](https://github.com/danbri/factoidal/issues/443) two-
 implementations shape); investigated the divergence and found it real
 but each side targets a DIFFERENT W3C spec (RDFC-1.0 dataset
 canonicalization vs. the separate "RDF 1.2 canonical N-Quads" lexical
@@ -2010,7 +2010,7 @@ that could drift, not a demonstrated bug. ASSUME-VAL AUDIT: also
 refined `hash_sha256`/`hash_sha384`'s comment-claimed digest lengths
 (64/96 hex chars) into a checked return-type refinement (erases at
 extraction). Neither hash is HACL*-bound — both wire to
-`Fstar_pure_hashes`, a hand-rolled pure-OCaml SHA-2 (issue #63,
+`Fstar_pure_hashes`, a hand-rolled pure-OCaml SHA-2 (issue [#63](https://github.com/danbri/factoidal/issues/63),
 already tracked non-silently in `skills/crypto-policy/SKILL.md`
 as "HACL* is NOT yet in use", not newly introduced here). Tier from a
 fresh classifier run WITH --json:
@@ -2019,12 +2019,12 @@ fresh classifier run WITH --json:
 rdfc10 86 pass, 0 fail (of 86); RDF 1030 pass, 0 fail, 1 unsupported
 (of 1031); escape pin 5 pass, 0 fail (of 5); relabel-determinism pin 5
 pass, 0 fail (of 5); unit suite 20 pass, 28 fail (of 48) = baseline
-exactly, no deltas. Wave 1 (#448) is now complete: Parquet.Footer
+exactly, no deltas. Wave 1 ([#448](https://github.com/danbri/factoidal/issues/448)) is now complete: Parquet.Footer
 (module 1), HDT.Container (module 2), RDF.Turtle.Serialize (module
 3), RDF.Canonical (module 4) all lifted merely-tot -> internal-
 refinement.
 
-**#448 wave 2, module 1: Parser.BallyhooCOTTAS audited 17-of-17;
+**[#448](https://github.com/danbri/factoidal/issues/448) wave 2, module 1: Parser.BallyhooCOTTAS audited 17-of-17;
 4 assume vals LIFTED to F* (2026-08-16, branch
 `assure-ballyhoo-cottas`)**: `cottas_lookup_named_graph`,
 `cottas_estimate`, `cottas_predicate_present_in_graph`,
@@ -2048,14 +2048,14 @@ extraction now prints differently (RDF_Graph_Executable.subject ->
 RDF_Term.subject), so 10 raw stubs survived and would have SHADOWED
 the real implementations on any from-scratch rebuild — re-anchored on
 stable failwith text. FIXTURE REGENERATED: store_capabilities_sample
-.cottas was pre-#445 format and the version gate now (correctly)
+.cottas was pre-[#445](https://github.com/danbri/factoidal/issues/445) format and the version gate now (correctly)
 rejects it; rebuilt from its documented source
 (tests/local/data/cottas_sample.nq) with the current writer; smoketest
 opens it (5 quads, 1 row group). Gates: RDF 1030 pass, 0 fail,
 1 unsupported (of 1031); escape pin 5 pass, 0 fail; footer pin 3 pass,
 0 fail; unit suite at baseline. Project assume-val total 133 -> 129.
 
-**#448 wave 2, module 2: Parser.BallyhooHDTQ audited 17-of-17;
+**[#448](https://github.com/danbri/factoidal/issues/448) wave 2, module 2: Parser.BallyhooHDTQ audited 17-of-17;
 4 assume vals LIFTED to F* (2026-08-16, branch
 `assure-ballyhoo-hdtq`)**: `hdtq_lookup_named_graph`,
 `hdtq_estimate`, `hdtq_predicate_present_in_graph`,
@@ -2066,12 +2066,12 @@ assume-vals 17 -> 13; all 13 remaining are rule-#11(b) delegation
 placeholders. 🔴 MAIN FINDING, different in kind from module 1's:
 this module is DEAD END TO END. `grep -rl "hdtq_"
 experimental_ocaml_glue/*.sh` returns nothing — there is no glue
-script at all (not hand-parsed terms like #454's COTTAS finding;
+script at all (not hand-parsed terms like [#454](https://github.com/danbri/factoidal/issues/454)'s COTTAS finding;
 simply absent), so every one of the 13 remaining assume vals extracts
 as a raw `failwith "Not yet implemented"` stub, and no other .fst
 file calls any hdtq_* function (only `open Parser.BallyhooHDT` for
 its TYPES, never its functions). Contrast COTTAS: RDF.CottasStore.fst
-and RDF.Store.Loader.fst call into it, so it is live. Per #448's own
+and RDF.Store.Loader.fst call into it, so it is live. Per [#448](https://github.com/danbri/factoidal/issues/448)'s own
 per-module deliverable ("state ONE correctness property the module's
 consumers rely on ... a module where no property can even be stated
 is a finding, not a skip") — this module's finding IS that sentence:
@@ -2099,7 +2099,7 @@ RDF 1030 pass, 0 fail, 1 unsupported (of 1031); hdt-probe 75 pass,
 exactly, no deltas. Project assume-val total (active, per classifier):
 125.
 
-**#448 wave 2, module 3: RDF.CottasStore.OnDiskRuntime audited
+**[#448](https://github.com/danbri/factoidal/issues/448) wave 2, module 3: RDF.CottasStore.OnDiskRuntime audited
 15-of-15; 0 lifted, 0 fixed — module is DEAD END TO END despite a
 CLEAN realising glue (2026-08-16, branch `assure-ondisk-runtime`)**:
 🔴 MAIN FINDING, contradicts this module's own dispatch brief ("the
@@ -2134,7 +2134,7 @@ LazyDictRegistry chain, ~2 commit-sized module 4/5 follow-ups) vs.
 keep as scaffolding for the file's own noted "Future work (Phase
 2.5h) re-introduces ondisk_search_indexed... once a perf-fast variant
 lands again." Hazard 1 (hand-parsed RDF terms): CONFIRMED, same site
-as #454, reached only if this dead path is ever wired up —
+as [#454](https://github.com/danbri/factoidal/issues/454), reached only if this dead path is ever wired up —
 `parse_iri_token` / `parse_literal_token` / `parse_subject_str` /
 `parse_object_str` (`cottas_ondisk_runtime.sh:126-215`) populate the
 Hashtbl tables that `ondisk_*_indexed`'s realising glue
@@ -2177,7 +2177,7 @@ needed; targeted `make verify-RDF.CottasStore.OnDiskRuntime` reverified
 clean under z3 4.13.3, no `--lax`. Project assume-val total (active,
 per classifier): 125, unchanged (no lift landed).
 
-**#448 wave 2, module 4: RDF.CottasStore.OnDiskIndex audited 7-of-7;
+**[#448](https://github.com/danbri/factoidal/issues/448) wave 2, module 4: RDF.CottasStore.OnDiskIndex audited 7-of-7;
 1 pure property landed (2026-08-16, branch `assure-ondisk-index`)**:
 LIVE, contrary to modules 2/3's dead-end findings — confirmed by
 `grep -rn "RDF_CottasStore_OnDiskIndex\." formal/fstar/ocaml-output/
@@ -2259,7 +2259,7 @@ expects — that same sibling patch's own comment documents WHY: the
 id-based `cottas_ondisk_encode_subject`/`decode_subject`/
 `encode_object`/`decode_object` F* functions these two OCaml functions
 served were deleted from `RDF.CottasStore.fst` in the same 2026-07-19
-commit (#254/#118), replaced by the token-shaped `_tok` family (same
+commit ([#254](https://github.com/danbri/factoidal/issues/254)/[#118](https://github.com/danbri/factoidal/issues/118)), replaced by the token-shaped `_tok` family (same
 retirement wave-2 module 3 found for `OnDiskRuntime`). Confirmed:
 `decode_subject_fast`/`decode_object_fast` have zero callers anywhere
 in `RDF_CottasStore.ml` or `bin/` today (`grep -n
@@ -2270,12 +2270,12 @@ silent no-op against a target that no longer exists since 2026-07-19,
 never cleaned up. Not fixed here (glue cleanup is not this pass's
 2 assume-val-realisation scope; flagging for whoever next touches this
 glue file). Hazard 1 (hand-parsed RDF terms): CONFIRMED present via
-composition, same site as #454 — this module's own glue (bulk-load,
+composition, same site as [#454](https://github.com/danbri/factoidal/issues/454) — this module's own glue (bulk-load,
 lines ~669-684) calls `Cottas_ondisk_runtime.parse_iri_token`
 (defined in the separate `cottas_ondisk_runtime.sh`/`cottas_runtime.sh`
 glue) to eagerly parse predicate/graph tokens during companion
 bulk-load; per the brief, not fixed — third reachability path to the
-same #454 finding (module 1's COTTAS bulk path, module 3's dead
+same [#454](https://github.com/danbri/factoidal/issues/454) finding (module 1's COTTAS bulk path, module 3's dead
 OnDiskRuntime path, now this module's live bulk-load path).
 
 Stale-anchor check on the module's own 6 core stub replacements
@@ -2309,9 +2309,9 @@ an assume val — `mmap_companion_close` stays counted as active despite
 being unreachable, since the classifier counts declarations, not
 reachability).
 
-**#448 "Delete & dedupe" — the DELETE half: three dead modules
+**[#448](https://github.com/danbri/factoidal/issues/448) "Delete & dedupe" — the DELETE half: three dead modules
 removed (2026-08-17, branch `delete-dead-store-modules`)**: 🧹 the
-owner decision on issue #448, verbatim "Delete & dedupe", applied to
+owner decision on issue [#448](https://github.com/danbri/factoidal/issues/448), verbatim "Delete & dedupe", applied to
 the three modules wave 2 audits above found dead end-to-end, each
 re-verified dead again immediately before deletion (`grep` for the
 OCaml module name and the F* qualified name found zero hits outside
@@ -2361,9 +2361,9 @@ errors, e.g. `RDFS_Closure_SemiNaive`, not caused by this deletion).
 Recovery path: the three modules' full source, their extracted `.ml`,
 and the deleted glue script are all recoverable from git history —
 see commit `0fa08a6f53b` "Delete three dead store/parser modules
-(#448 delete half)" on branch `delete-dead-store-modules`.
+([#448](https://github.com/danbri/factoidal/issues/448) delete half)" on branch `delete-dead-store-modules`.
 
-## 8. Dep.Reachability — module-liveness deletion-safety (#448)
+## 8. Dep.Reachability — module-liveness deletion-safety ([#448](https://github.com/danbri/factoidal/issues/448))
 
 Outside G1's RDF/SPARQL semantics scope (§ header above) — recorded
 here per the standing "no proof landing without a registry entry"
@@ -2407,7 +2407,7 @@ same property at the extracted-function level: `is_closed` accepts a
 diamond graph's true closure and REJECTS a hand-built proper subset of
 it.
 
-**Tool replacement (#448 Part 2)**: `tools/module-liveness.py` v3
+**Tool replacement ([#448](https://github.com/danbri/factoidal/issues/448) Part 2)**: `tools/module-liveness.py` v3
 drops the v2 `ocamlobjinfo <unit>.cmx` OCaml-layer oracle (required a
 full prior native+consumer build) for `ocamldep -modules` run directly
 over `bin/*/*.ml` and `formal/fstar/ocaml-output/*.ml` SOURCE, then
