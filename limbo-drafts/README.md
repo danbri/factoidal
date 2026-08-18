@@ -1,6 +1,6 @@
 # limbo-drafts — provably unreachable, deliberately not deleted
 
-Owner decision 2026-08-17 (issue #456, verbatim: "Mv them to a tld
+Owner decision 2026-08-17 (issue [#456](https://github.com/danbri/factoidal/issues/456), verbatim: "Mv them to a tld
 limbo-drafts/"): these modules are **unreachable from every shipping
 entry point**, established by the verified liveness chain — but the
 graph cannot distinguish *abandoned* from *not yet wired*, and several
@@ -22,14 +22,14 @@ the build, in plain sight, instead of deleted.
 
 Full tooling: `tools/module-liveness.py` (v3, source-only);
 `formal/fstar/Dep.Reachability.fst` (the theorem). History: issues
-#448, #456; the graph-vs-intent distinction is #456's whole subject.
+[#448](https://github.com/danbri/factoidal/issues/448), [#456](https://github.com/danbri/factoidal/issues/456); the graph-vs-intent distinction is [#456](https://github.com/danbri/factoidal/issues/456)'s whole subject.
 
 ## Contents, by cluster, with the open intent question
 
 | files | cluster | question |
 |---|---|---|
 | `SPARQL.Plan.Explain.fst`, `SPARQL.Plan.Loader.fst`, `SPARQL.Plan.Estimate.fst` | query-planner scaffolding | named in the 2026-05-07 query-planning recovery roadmap — future wiring, or superseded by `SPARQL.Plan.AccessPath`/`Streamable`? (`Plan.Pruning` stayed in-tree: type-used by the live AccessPath.) |
-| `SPARQL.Service.Wrap.fst`, `service_wrap_http.ml`, `sparql_service_wrap_unit.ml` | SERVICE wrapping | half-landed feature (#57 family)? `service_wrap_hook.ml` is live and stayed in-tree. |
+| `SPARQL.Service.Wrap.fst`, `service_wrap_http.ml`, `sparql_service_wrap_unit.ml` | SERVICE wrapping | half-landed feature ([#57](https://github.com/danbri/factoidal/issues/57) family)? `service_wrap_hook.ml` is live and stayed in-tree. |
 | `Parser.Ballyhoo.fst` | original Ballyhoo container parser | superseded by the HDT/COTTAS variants, which do not import it |
 | `RDF.CottasInMem.fst`, `cottas_inmem_encoder_runtime.sh` | in-memory COTTAS store | superseded: `--data-cottas-mem` loads via `Parquet_Footer.register_memory_buffer` (verified) |
 | `Util.Log.fst`, `util_log_runtime.sh` | logging infra | never wired; nothing imports it |
@@ -51,7 +51,7 @@ Full tooling: `tools/module-liveness.py` (v3, source-only);
 ## The bar for deleting from here
 
 A cluster leaves limbo for deletion only on an explicit owner call on
-its intent question (#456) — at which point its row moves to the
+its intent question ([#456](https://github.com/danbri/factoidal/issues/456)) — at which point its row moves to the
 theorem registry's deletion record like the four modules deleted
 before it (`Parser.BallyhooHDTQ`, `RDF.CottasStore.OnDiskRuntime`,
 `Parser.BallyhooBloom`, `RDF.Store.HDTTermCacheRegistry`).
