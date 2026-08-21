@@ -127,13 +127,29 @@ STEP="${1:-all}"
 # refused.
 # ---------------------------------------------------------------------------
 LOCK_FILE=".build.lock"
-exec 200>"$LOCK_FILE"
-if ! flock -n 200; then
-  echo "FATAL: another build-ocaml.sh is already running in this worktree." >&2
-  echo "       (lock file: $(pwd)/$LOCK_FILE)" >&2
-  echo "       Wait for it to finish, or kill it:" >&2
-  echo "         pkill -f 'build-ocaml.sh'" >&2
-  exit 75
+if command -v flock >/dev/null 2>&1; then
+  exec 200>"$LOCK_FILE"
+  if ! flock -n 200; then
+    echo "FATAL: another build-ocaml.sh is already running in this worktree." >&2
+    echo "       (lock file: $(pwd)/$LOCK_FILE)" >&2
+    echo "       Wait for it to finish, or kill it:" >&2
+    echo "         pkill -f 'build-ocaml.sh'" >&2
+    exit 75
+  fi
+else
+  # macOS ships no flock(1). Fall back to the .build-running marker
+  # (written below with our PID): refuse only when it names a PID that
+  # is still alive. 2026-08-22: without this, `flock` exited 127 and
+  # every macOS build aborted as "another build running" with no build
+  # running at all.
+  if [ -f ".build-running" ]; then
+    other_pid="$(cut -d: -f1 ".build-running" 2>/dev/null)"
+    if [ -n "$other_pid" ] && kill -0 "$other_pid" 2>/dev/null; then
+      echo "FATAL: another build-ocaml.sh is already running in this worktree (pid $other_pid)." >&2
+      echo "       Wait for it to finish, or kill it: pkill -f 'build-ocaml.sh'" >&2
+      exit 75
+    fi
+  fi
 fi
 
 # Build-running marker, removed on any exit (success, failure, signal).

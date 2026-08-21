@@ -224,10 +224,16 @@ the runner reports zero tests.
 | `FATAL: another build-ocaml.sh is already running in this worktree` | Stale or concurrent invocation holds the per-worktree flock | Wait for the running build, or `pkill -f 'build-ocaml.sh'` if stuck |
 | Fresh build fails with `Unbound module FooBar` | Source-without-build-wiring (workflow-gotchas-debugging §3) | Add the new module to all three lists in `build-ocaml.sh` (extract loop, `COMMON_MODULES`, `FSTAR_MODULES`) |
 | Modules being re-extracted that should be cached | Concurrent fstar.exe runs from parallel agents corrupting the .checked.lax cache | Lock should prevent same-worktree races; check `ps aux \| grep fstar.exe` for cross-worktree contention |
+| Every macOS build aborts `FATAL: another build-ocaml.sh is already running` with none running | macOS ships no `flock(1)`; the check exited 127 and was read as lock-held (hit 2026-08-22) | Fixed in build-ocaml.sh (marker-PID fallback when `flock` is absent); update the tree if the message persists with no live PID |
+| macOS link dies `ld: unknown file type in 'hacl-obj/hacl_stubs.o'` | `ocaml-output/hacl-obj/*.o` are cross-platform leftovers (ELF objects from a Linux build); the rebuild guard is mtime-only, so stale foreign objects survive | `rm ocaml-output/hacl-obj/*.o` and re-run `./build-ocaml.sh compile` |
+| macOS compile dies `I/O error: Foo.ml: No such file or directory` on a module that exists as `.fst` | The extracted `.ml` was never committed (CI extracted its own copy; hit 2026-08-22 with `Math_Sigmoid.ml`) | Verify + extract just that module (`fast-verify-extract` skill), commit the `.ml` |
 
 ## Single-runner lock and build-running marker
 
-`build-ocaml.sh` opens a `flock` on `.build.lock` at entry. Concurrent
+`build-ocaml.sh` opens a `flock` on `.build.lock` at entry (on
+platforms without `flock(1)` — macOS — it falls back to checking the
+`.build-running` marker for a live PID; added 2026-08-22 after the
+missing command made every macOS build refuse to start). Concurrent
 invocations in the same worktree exit immediately with exit code 75
 and a `FATAL: another build-ocaml.sh is already running` message.
 

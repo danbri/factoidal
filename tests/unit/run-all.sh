@@ -59,190 +59,32 @@ fi
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
-# COMMON_MODULES is the canonical link order taken verbatim from
+# COMMON_MODULES is the canonical link order, extracted at RUNTIME from
 # formal/fstar/build-ocaml.sh's $COMMON_MODULES (its native-binary
-# compile step). Keep this list byte-for-byte in step with that one:
-# regenerate with
-#   sed -n '/^  COMMON_MODULES="/,/SPARQL_GraphStore.ml"/p' \
-#     ../../formal/fstar/build-ocaml.sh | grep -oE '[A-Za-z0-9_]+\.ml' \
-#     | sed 's/\.ml$//'
+# compile step). It used to be a frozen copy with a "keep in step"
+# comment; by 2026-08-22 that copy had drifted 22 modules behind
+# (RDFS_Closure_SemiNaive, Math_Sigmoid, RDF_Entailment_*, ...), and
+# because closure.py silently drops any module absent from canon.txt,
+# every unit test failed to link with "No implementations provided".
+# Extracting from the build script itself makes that drift impossible.
 # Link order is a valid topological order for the full module set; any
 # subsequence of it (after the present-.cmx filter below) is therefore
-# still correctly ordered. Do NOT hand-curate a shorter list here — that
-# drift (missing Math_Matrix/OWL_DirectMapping_Filter/Parser_OWLFunctional/
-# RDF_Turtle_Serialize/... and wrong Parser_Turtle/SPARQL11_IRI_Resolve
-# positions) is exactly what broke every link with "inconsistent
-# assumptions over interface" / "Cannot find file *.cmx" (#82).
-COMMON_MODULES=(
-  Dep_Reachability
-  Regex_Syntax
-  Regex_Derivative
-  Regex_Exec
-  Regex_XSDPattern
-  RDF_Format
-  RDF_Vocabulary
-  RDF_Term
-  RDF_Triple
-  RDF_Indexed
-  RDF_Graph
-  RDF_Vocabulary_Axioms
-  RDFS_Closure
-  RDFS_SchemaSplit
-  OWL_Closure
-  RDF_Graph_Executable
-  RDF_List_Helpers
-  # Parser_FastString_Spec precedes RDF_Bytes (issue #445): RDF.Bytes.fst's
-  # bytes_of_string/bytes_to_string now call Parser.FastString.Spec's UTF-8
-  # codec directly. Keep in step with build-ocaml.sh's COMMON_MODULES order.
-  Parser_FastString_Spec
-  RDF_Bytes
-  RDF_Store_Loader
-  Parquet_Footer
-  OWL_Vocabulary
-  OWL_DirectMapping_Filter
-  Tableau
-  Tableau_Refute
-  Parser_FastString_CharBoundary
-  Parser_FastString
-  Parser_FastString_ConcatSpec
-  RDF_IRI
-  SPARQL11_IRI_Resolve
-  Parser_IRI
-  Parser_Combinators
-  Parser_TurtleScanner
-  Parser_NTriples
-  RDF_NQuads_Serialize
-  Parser_Turtle
-  HDT_Container
-  HDT_Dictionary
-  HDT_Triples
-  RDF_Geo_Types
-  RDF_Geo_BBox
-  Parser_WKT
-  RDF_Geo_Topology
-  RDF_Geo_Functions
-  Parser_OWLFunctional
-  RDF_Turtle_Serialize
-  Parser_NQuads
-  Parser_TriG
-  Parser_XML
-  XML_Wellformedness
-  XML_Namespaces
-  Parser_XPath
-  XPath_Eval
-  XSLT_Transform
-  Schematron_Validate
-  Parser_RDFXML
-  Math_Expr
-  Math_Subst
-  Math_Diff
-  Math_Simplify
-  Math_Matrix
-  MathML_Content
-  Math_Series
-  MathML_Present
-  Parser_SRX
-  Parser_CSVResults
-  Parser_JSONResults
-  SPARQL_JSON_Escape
-  Parser_JSON
-  JSONLD_Loader
-  JSONLD_Context
-  JSONLD_Expand
-  Parser_JSONLD
-  JSONLD_FromRdf
-  JSONSchema_Validate
-  SPARQL_Eval_TimeBudget
-  SPARQL_Eval_Limits
-  SPARQL_HTTP_Response
-  SPARQL_HTTP_BackendInfo
-  SPARQL_HTTP_QueriesIndex
-  SPARQL_HTTP_StaticFiles
-  SPARQL_HTTP_Admin
-  SPARQL_HTTP_Routes
-  Parser_BallyhooHDT
-  Parser_BallyhooCOTTAS
-  RDF_CottasStore_ColumnSeq
-  RDF_CottasStore_PageCache
-  RDF_CottasStore_OnDiskIndex
-  RDF_CottasStore_DictWriter
-  RDF_CottasStore_PresenceBitmap
-  RDF_CottasStore_PresenceWriter
-  RDF_CottasStore_CompoundPresenceBitmap
-  RDF_CottasStore_CompoundPresenceWriter
-  RDF_CottasStore_OffsetsWriter
-  RDF_CottasStore_SubjectOffsetsWriter
-  RDF_CottasStore_BaseWriter
-  RDF_CottasStore_LazyDict
-  RDF_CottasStore_LazyDictRegistry
-  RDF_Store_LazyTermCache
-  RDF_Store_Columnar_OffsetIndex
-  RDF_Store_Columnar_SubjectOffsetIndex
-  RDF_Store_Columnar_DeltaLog
-  SPARQL_Plan_Pruning
-  SPARQL_Plan_AccessPath
-  RDF_CottasStore
-  fstar_pure_hashes
-  RDF_Dataset_Graphs
-  RDF_Canonical
-  RDF_Canonical_Manifest
-  RDF_GraphIsomorphism
-  GRDDL_Discovery
-  service_wrap_hook
-  SPARQL_FullText
-  SPARQL11_Algebra
-  XSD_Datatypes
-  XForms_Bind
-  RDF_Pretty
-  OWL_QueryRewrite
-  OWL_QueryEval
-  OWL_Tests_Manifest
-  RIF_Core_Syntax
-  Parser_RIFXML
-  RIF_Core_Translation
-  RIF_Core_Builtins
-  RIF_Core_Conformance
-  RIF_Core_Eval
-  RIF_Core_Tests
-  SPARQL11_Parser
-  SHACL_Validation
-  ShEx_Schema
-  Parser_ShExC
-  ShEx_SchemaEq
-  ShEx_Validation
-  VC_Credential
-  VC_Multibase
-  DID_Key
-  fstar_hacl_crypto
-  VC_DataIntegrity
-  RML_Mapping
-  RML_Sources
-  RML_Eval
-  CSVW_Metadata
-  CSVW_URITemplate
-  CSVW_Conversion
-  RDF_Store_Columnar_DeltaMerge
-  SPARQL_Plan_Streamable
-  RDF_Store_Capabilities
-  RDF_Store_Capabilities_Cottas
-  RDF_Store_Capabilities_Delta
-  RML_VirtualSource
-  SPARQL11_Store
-  RDF_Store_Combine
-  RDF_Dataset_Merge
-  SPARQL_Protocol
-  SPARQL_HTTP_RunQuery
-  SPARQL_Update_Sandbox
-  SPARQL_Update_Analysis
-  SPARQL_Diagnostics
-  SPARQL_Explain
-  SPARQL_Query_Analysis
-  SPARQL_HTTP
-  SPARQL_HTTP_Client
-  SPARQL_Protocol_Client
-  SPARQL_ServiceDescription
-  SPARQL_GraphStore
+# still correctly ordered.
+BUILD_OCAML_SH="$OCAML_OUT/../build-ocaml.sh"
+if [[ ! -f "$BUILD_OCAML_SH" ]]; then
+  echo "ERROR: $BUILD_OCAML_SH not found — cannot derive COMMON_MODULES." >&2
+  exit 2
+fi
+COMMON_MODULES=()
+while IFS= read -r m; do COMMON_MODULES+=("$m"); done < <(
+  awk '/^  COMMON_MODULES="/,/"$/' "$BUILD_OCAML_SH" \
+    | tr ' ' '\n' | sed 's/\\$//; s/^COMMON_MODULES="//; s/"$//' \
+    | grep '\.ml$' | sed 's/\.ml$//'
 )
+if [[ ${#COMMON_MODULES[@]} -lt 100 ]]; then
+  echo "ERROR: extracted only ${#COMMON_MODULES[@]} modules from $BUILD_OCAML_SH — extraction pattern broken?" >&2
+  exit 2
+fi
 
 # Per-test dependency-closure linking.
 #
