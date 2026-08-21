@@ -2722,7 +2722,8 @@ if [[ "$STEP" == "npm" ]]; then
     let claims;
     try { claims = JSON.parse(fs.readFileSync(path, "utf8")).claims; }
     catch (_) { claims = undefined; }
-    const out = { version: "0.1.0-alpha.0", gitSha: process.argv[1], builtAt: process.argv[2] };
+    const pkg = JSON.parse(fs.readFileSync(require("path").join(require("path").dirname(path), "package.json"), "utf8"));
+    const out = { version: pkg.version, gitSha: process.argv[1], builtAt: process.argv[2] };
     if (claims !== undefined) out.claims = claims;
     fs.writeFileSync(path, JSON.stringify(out, null, 2) + "\n");
   ' "$GITSHA" "$BUILDTIME" "$NPMDIR/version.json"

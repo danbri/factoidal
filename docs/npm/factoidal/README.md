@@ -1,12 +1,9 @@
-# factoidal — DRAFT
+# @factoidal/core
 
-> **DRAFT documentation.** `factoidal` is the package's name on npm —
-> not yet published (`package.json` is marked `private` to prevent
-> accidental publishing). API surface is 0.1.0-alpha and may change.
-> This package was previously developed under the placeholder name
-> `@danbri/foafos`; it was never published under that name, so there
-> is no compatibility alias to maintain. See
-> [CHANGELOG.md](CHANGELOG.md).
+> First published cut (0.1.0). The API surface is early and may
+> change before 1.0. This package was previously developed in-tree
+> under the placeholder names `factoidal` and `@danbri/foafos`; it was
+> never published under those names. See [CHANGELOG.md](CHANGELOG.md).
 
 A formally verified RDF/SPARQL engine for JavaScript and WebAssembly.
 The semantics live in [F\*](https://www.fstar-lang.org/) and are
@@ -36,10 +33,10 @@ on-disk backend).
 - Provenance: every release corresponds to a gates-green commit of
   [danbri/factoidal](https://github.com/danbri/factoidal).
 
-## Install (placeholder — not yet published)
+## Install
 
 ```bash
-npm install factoidal
+npm install @factoidal/core
 ```
 
 ## Quickstart
@@ -49,7 +46,7 @@ so `await` each one (the engine bundle loads lazily on first use).
 
 ```js
 import { parse, query, serialize, canonicalize, dataFactory }
-  from "factoidal";
+  from "@factoidal/core";
 
 // Parse any supported syntax into an RDF/JS DatasetCore.
 // If your data contains RELATIVE IRIs, pass { baseIRI: ... } —
@@ -86,7 +83,7 @@ const nq = await serialize(ds, { format: "nquads" });
 > these drops as a throw or a warnings channel is tracked in the
 > repository issues.
 
-CommonJS: `const factoidal = require("factoidal")`.
+CommonJS: `const factoidal = require("@factoidal/core")`.
 
 ### WebAssembly entry
 
@@ -207,7 +204,7 @@ not yet back a hub demo page — that is separate, follow-on work.
 ### RDF/JS interop
 
 ```js
-import { dataFactory } from "factoidal";
+import { dataFactory } from "@factoidal/core";
 const { namedNode, literal, quad, blankNode } = dataFactory;
 const q = quad(blankNode("x"),
                namedNode("http://xmlns.com/foaf/0.1/name"),
@@ -219,7 +216,7 @@ const q = quad(blankNode("x"),
 
 ## Functional API (fn)
 
-`factoidal/fn` is a strictly functional variant of the API above:
+`@factoidal/core/fn` is a strictly functional variant of the API above:
 every extracted engine operation is already a value-to-value
 function — `FnDataset` makes the JS surface match that instead of
 papering over it with RDF/JS's mutable `add`/`delete`. Frozen
@@ -230,7 +227,7 @@ design rationale (cost model, backend/streaming extension points):
 [`docs/designissues/2026-07-05-functional-dataset-api.md`](../../docs/designissues/2026-07-05-functional-dataset-api.md).
 
 ```js
-const { parse, filter, hash, cell, derive } = require('factoidal/fn');
+const { parse, filter, hash, cell, derive } = require('@factoidal/core/fn');
 
 const ds = await parse(`
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
@@ -263,7 +260,7 @@ surface below the same way — FnDataset in, FnDataset (or a plain
 verdict) out:
 
 ```js
-const { parse, validate, shex, fromMapping, fromCsvw, rif } = require('factoidal/fn');
+const { parse, validate, shex, fromMapping, fromCsvw, rif } = require('@factoidal/core/fn');
 
 const data = await parse(personTtl);
 const shapes = await parse(shapesTtl);
@@ -342,7 +339,7 @@ JS enumeration and is always available.
 ### The db API (openCottas/queryCottas/closeCottas/toCottas)
 
 The in-memory COTTAS/Parquet bytes store works identically on both
-engines: `require('factoidal')` (js_of_ocaml) and
+engines: `require('@factoidal/core')` (js_of_ocaml) and
 `require('factoidal/wasm')` (wasm_of_ocaml, Node ≥ 22) expose the same
 `toCottas`/`openCottas`/`queryCottas`/`closeCottas` functions, backed
 by the same F\*-verified reader
@@ -363,7 +360,7 @@ against the wasm_of_ocaml npm-entry ABI (`factoidal-npm-entry.wasm.js`).
 ## Capability matrix
 
 Every public function, where it runs, and what it needs. "Node" is the
-`require('factoidal')` / `import 'factoidal'` entry (`index.js` /
+`require('@factoidal/core')` / `import '@factoidal/core'` entry (`index.js` /
 `index.mjs`); "Browser" is `import 'factoidal/browser'` (`browser.js`);
 "Wasm" is `require('factoidal/wasm')`. **Needs** legend: *CLI bundle* =
 the fresh-eval `factoidal.js` bundle (always present); *entry* = the

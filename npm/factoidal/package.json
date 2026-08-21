@@ -1,7 +1,7 @@
 {
-  "name": "factoidal",
-  "version": "0.1.0-alpha.0",
-  "description": "DRAFT \u2014 formally verified RDF/SPARQL engine (F*-extracted) for JS and Wasm. Placeholder name; real package setup to follow.",
+  "name": "@factoidal/core",
+  "version": "0.1.0",
+  "description": "Formally verified RDF/SPARQL engine, extracted from F* specifications, for Node and the browser (JS + Wasm). Parser and algebra spec verified in F*; on-disk backend has unverified OCaml-side optimization layers being migrated back to F*.",
   "keywords": [
     "sparql",
     "rdf",
@@ -93,10 +93,9 @@
     "build": "cd ../../formal/fstar && ./build-ocaml.sh npm",
     "test": "node --test 'test/*.test.js'",
     "test:smoke": "node test/smoke.js && node test/smoke-wasm.mjs",
-    "prepublishOnly": "echo 'Do not publish yet \u2014 0.1.0-alpha.0 is scaffolding only.' && exit 1"
+    "prepublishOnly": "npm test"
   },
   "publishConfig": {
     "access": "public"
-  },
-  "private": true
+  }
 }

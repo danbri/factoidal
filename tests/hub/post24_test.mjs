@@ -39,10 +39,17 @@ const HDT_FIXTURE = path.join(
 // Locate the committed native binary for this platform (same layout
 // bin/<platform>/ the CLAUDE.md rule-#9 committed binaries use).
 function nativeBinary() {
+  // This platform's committed binary first (2026-08-22: the previous
+  // linux-x86_64 hardcode made every cell fail on macOS with an empty
+  // exec error), then the historical fallbacks.
+  const plat = { darwin: 'darwin', linux: 'linux' }[process.platform];
+  const arch = { arm64: 'arm64', x64: 'x86_64' }[process.arch];
   const candidates = [
+    plat && arch ? path.join(REPO_ROOT, 'bin', `${plat}-${arch}`, 'factoidal') : null,
     path.join(REPO_ROOT, 'bin', 'linux-x86_64', 'factoidal'),
+    path.join(REPO_ROOT, 'formal', 'fstar', 'ocaml-output', 'factoidal'),
     path.join(REPO_ROOT, 'ocaml-output', 'factoidal'),
-  ];
+  ].filter(Boolean);
   for (const c of candidates) if (fs.existsSync(c)) return c;
   throw new Error('native factoidal binary not found (build it first)');
 }

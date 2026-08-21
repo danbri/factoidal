@@ -863,7 +863,7 @@ export async function toCottas(nQuads) {
   return out;
 }
 
-export const version = '0.1.0-alpha.0';
+export const version = '0.1.0';
 
 export default {
   query, version, setFactoidalWasmUrl, getFactoidalWasmUrl,

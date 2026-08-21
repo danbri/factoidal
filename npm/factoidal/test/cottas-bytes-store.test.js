@@ -109,19 +109,17 @@ test('openCottas + queryCottas (raw ABI): COUNT/ASK/SELECT match the fixture\'s 
   assert.match(afterClose.error, /unknown handle/i);
 });
 
-test('openCottas (raw ABI): garbage bytes open lazily (Bet7); the honest failure surfaces at the first queryCottas() touch', { skip }, () => {
-  // cottas_ondisk_open is a lazy, footer-only open (issue Bet7): it does
-  // not eagerly decode anything, so 4 junk bytes still open "successfully"
-  // here -- this pins that documented behavior rather than asserting the
-  // (incorrect) expectation that open itself validates the footer.
+test('openCottas (raw ABI): garbage bytes are rejected at open (footer validated up front)', { skip }, () => {
+  // History: under the original lazy footer-only open (issue Bet7) 4 junk
+  // bytes opened "successfully" and only the first queryCottas() failed;
+  // this test used to pin that. Since the issue #445 format-compatibility
+  // gate (2026-08-15, FileMetaData version check at open) the footer is
+  // validated up front, so garbage bytes now fail at open itself with a
+  // footer/truncation error -- the failure moved earlier, which is the
+  // more honest surface. This pins the CURRENT behavior.
   const opened = JSON.parse(abi.openCottas('deadbeef'));
-  assert.equal(opened.ok, true, JSON.stringify(opened));
-
-  const queried = JSON.parse(
-    abi.queryCottas(opened.handle, 'SELECT (COUNT(*) AS ?c) WHERE { ?s ?p ?o }'));
-  assert.equal(queried.ok, false);
-  assert.match(queried.error, /row-group|footer|Failure/i);
-  abi.closeCottas(opened.handle);
+  assert.equal(opened.ok, false, JSON.stringify(opened));
+  assert.match(opened.error, /footer|truncated/i);
 });
 
 test('openCottas (raw ABI): odd-length hex is rejected honestly', { skip }, () => {

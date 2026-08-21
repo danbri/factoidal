@@ -141,7 +141,10 @@ fi
 # here -- excluded explicitly by the ^[0-9]+- name filter, since it
 # has no series_order and isn't one of the "~30 posts" this harness
 # means to cover.
-mapfile -t POSTS < <(find "$SITE_DIR/web/hub" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep -E '^[0-9]+-' | sort)
+# basename-per-line via -exec (portable: BSD/macOS find has no -printf; the
+# GNU-only flag made every macOS run fail with "no post directories found",
+# 2026-08-22)
+mapfile -t POSTS < <(find "$SITE_DIR/web/hub" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | grep -E '^[0-9]+-' | sort)
 if [ "${#POSTS[@]}" -eq 0 ]; then
   echo "FAIL: no post directories found under $SITE_DIR/web/hub" >&2
   exit 1

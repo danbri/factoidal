@@ -2036,7 +2036,7 @@ export async function _deltaLogCorruptLastForTest(handle) {
 // Best-effort version export for the browser. Consumers that care
 // about the exact version should import from the package root (which
 // reads package.json).
-export const version = '0.1.0-alpha.0';
+export const version = '0.1.0';
 
 export default {
   query, toRdf, canonicalize, runFactoidalCli, setFactoidalUrl, getFactoidalUrl,

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0 — First published release (as `@factoidal/core`)
+
+- Final name: `@factoidal/core`, published under the `@factoidal` npm
+  org (owner decision, 2026-08-22). Everything under "Unreleased"
+  below ships in this first cut. The `private` flag and the
+  publish-blocking `prepublishOnly` guard are removed; `prepublishOnly`
+  now runs the package test suite instead.
+- The wasm bundle (`factoidal.wasm.js` + assets) is rebuilt in sync
+  with the js bundle. The previous in-tree wasm build predated the
+  2026-08-15 COTTAS UTF-8 writer fix (issue #445) and its
+  format-compatibility gate rejected stores written by the current js
+  bundle (caught by the wasm/js parity test in `test/`).
+
 ## Unreleased
 
 - Package renamed from the placeholder `@danbri/foafos` to `factoidal`

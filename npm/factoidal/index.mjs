@@ -2,7 +2,7 @@
 // source of truth for the Node-side driver. Browsers should import
 // `./browser.js` via the `"browser"` export condition instead.
 //
-// import { parse, query, canonicalize, dataFactory } from 'factoidal';
+// import { parse, query, canonicalize, dataFactory } from '@factoidal/core';
 // const ds = await parse('@prefix : <http://ex/> . :a :p :b .');
 // const rows = await query(ds, 'SELECT * WHERE { ?s ?p ?o }');
 

@@ -73,10 +73,10 @@ Add a new workflow, `verify-fstar.yml`:
 2. **Caching**: reuse the SAME `actions/cache` mechanism already used
    by `w3c-tests.yml`, not a new mechanism. Two layers:
    - `~/.opam` cache, same key pattern as the existing workflows.
-   - `.checked` cache, key = `fstar-checked-verify-${{ runner.os }}-
+   - `.checked` cache, key = {% raw %}`fstar-checked-verify-${{ runner.os }}-
      ${{ steps.versions.outputs.fstar }}-${{
      steps.versions.outputs.z3 }}-${{ hashFiles('formal/fstar/*.fst',
-     'formal/fstar/*.fsti') }}`, restore-keys prefixed to the
+     'formal/fstar/*.fsti') }}`{% endraw %}, restore-keys prefixed to the
      toolchain-version segment (P4's proposed key fix from
      `skills/fast-verify-extract/SKILL.md` — toolchain version is
      now IN the key, so a `.checked` from a different F*/z3 build is
