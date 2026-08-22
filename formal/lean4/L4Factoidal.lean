@@ -37,3 +37,7 @@ import L4Factoidal.XML.Namespaces
 import L4Factoidal.XML.Wellformedness
 import L4Factoidal.XML.Theorems
 import L4Factoidal.XML.Tests
+import L4Factoidal.SPARQL.Results
+import L4Factoidal.SPARQL.ResultsXml
+import L4Factoidal.SPARQL.ResultsJson
+import L4Factoidal.SPARQL.ResultsCsvTsv
