@@ -66,14 +66,47 @@ cls-maxqc2, cax-dw, cax-adc.
   ledger in `OWL.RL.Spec.fst` (landing 4) lists no `owl_rule_*`
   function for any of them either, so nothing is lost against the F*
   engine's own row coverage.
-* **Every `[ext]` rule of the F* engine ledger** — the comprehension-
-  witness layer (`svf2_existential_witness`, `minc1_bridge`,
-  `cls_hasself1/2`, `cls_svf_thing_*`), the differentFrom-synthesis
-  family (`pdw_to_differentFrom`, `fp_diff_to_diff`,
-  `cax_dw_to_differentFrom`), the chain/transitivity bridges, and the
-  `#236` `cls_maxqc_comp` anchor machinery. Those are sound EXTENSIONS
-  whose justification lives in each rule's own F* banner, not W3C
-  table rows. A port of the table is a port of the table.
+* **The comprehension-witness `[ext]` layer** —
+  `svf2_existential_witness`, `minc1_bridge`, `cls_hasself1/2`,
+  `cls_svf_thing_*`, and the `#236` `cls_maxqc_comp` anchor machinery.
+  Every one of them MINTS A BLANK NODE, so porting them means picking a
+  skolem-naming scheme and proving the fixpoint still terminates under
+  it. Not attempted here; named, not hidden.
+* **`[mode]` rules** — `named_equivClass_to_sameAs_mode` and the
+  RDF-Based full meta axioms fire only under a catalog semantics mode.
+  There are no semantics modes on the Lean side.
+
+## The `[ext]` rows that ARE here
+
+TEN rows in a section of their own at the end of `Derives`, each
+carrying the OWL 2 RDF-Based Semantics condition that makes it
+truth-preserving instead of a W3C table id, and each naming the F*
+rule it ports:
+
+* differentFrom synthesis — `eqDiffSym`, `pdwToDiff`, `caxDwToDiff`,
+  `fpDiffToDiff`, `ifpDiffToDiff`.
+* `chainToTrans` — a self-chain axiom is transitivity.
+* `prpRfl` — `owl:ReflexiveProperty` over the graph's IRIs.
+* `xsdAxioms`, `dtRangeIntersect`, `dtType1Builtin` — Table 7's
+  datatype rows over the XSD datatype map.
+
+Two of them carry an ASSUMPTION beyond the graph: `xsdAxioms` and
+`dtRangeIntersect` assume the interpretation's datatype map recognises
+the XSD datatypes with the XSD 1.1 §3.4 value spaces. That assumption
+is written out as `XsdValueSpaceSubset` and the tables list exactly
+which containments are relied on; `xsdIntegerDecimal_subset` and
+`xsdIntInteger_subset` discharge the two edges the Lean datatype map of
+`RDF/Datatypes.lean` actually models. The rest is assumed, and marked
+as assumed, rather than asserted silently.
+
+Table 7's dt-eq, dt-diff and dt-type2 rows are STRUCTURALLY
+UNREACHABLE in this tree and it is worth saying why: their conclusions
+put a LITERAL in subject position (`T(lt1, owl:sameAs, lt2)`), and
+`RDF/Core.lean`'s `Subject` is an IRI or a blank node with no literal
+case — RDF 1.1 Concepts §3.1, which the OWL 2 RL rule table steps
+outside of by writing generalised triples. Porting them means widening
+`Subject` across the whole tree. Not a gap in this module's coverage of
+the table; a consequence of the term algebra underneath it.
 
 ## Faithful-port notes
 
@@ -115,6 +148,7 @@ NOT ported — see the header of `RLTheorems.lean` for the statement
 shape and what is and is not claimed.
 -/
 import L4Factoidal.RDF.Graph
+import L4Factoidal.RDF.Datatypes
 import L4Factoidal.OWL.Vocabulary
 
 namespace L4Factoidal.OWL.RL
@@ -217,6 +251,244 @@ inductive SharesKeyValues (g : Graph) (x y : Subject) : List WfIri → Prop wher
       (hy : (⟨y, p, o⟩ : Triple) ∈ g)
       (hr : SharesKeyValues g x y rest) :
       SharesKeyValues g x y (p :: rest)
+
+/-! ## The `[ext]` layer — tables and guards
+
+Everything in this section serves a row of the `[ext]` block at the end
+of `Derives`. None of it transcribes a W3C table row; each item's
+justification is the OWL 2 RDF-Based Semantics condition quoted in the
+row that uses it.
+
+  OWL 2 Web Ontology Language RDF-Based Semantics (2nd ed.), §5
+  https://www.w3.org/TR/owl2-rdf-based-semantics/#Semantic_Conditions
+
+-/
+
+/-- The IRIs mentioned by a triple in an IRI POSITION — subject,
+predicate, or object. A literal's datatype IRI is NOT a mention: the
+datatype is part of the literal's value, not a term of the graph, which
+is the same reading the F* `triple_mentions_xsd` takes. -/
+def tripleIris (t : Triple) : List WfIri :=
+  (match t.s with | .iri i => [i] | _ => []) ++ [t.p] ++
+  (match t.o with | .iri i => [i] | _ => [])
+
+/-- Does this triple mention an IRI in the XSD namespace? Half of the
+guard on the `xsdAxioms` row: a graph that never names an XSD datatype
+gets no XSD tower, so the tower cannot pollute an unrelated closure. -/
+def mentionsXsd (t : Triple) : Bool := (tripleIris t).any iriInXsdNs
+
+/-- The XSD numeric subtype tower, as (subtype, supertype) pairs.
+
+**Justification.** Each edge asserts `sub rdfs:subClassOf sup`. Under
+RDF 1.1 Semantics §7 a recognised datatype IRI `d` denotes a datatype
+with `ICEXT(I(d))` its value space, so the triple is true in every
+D-interpretation whose `D` recognises both IRIs and whose value spaces
+satisfy `valueSpace(sub) ⊆ valueSpace(sup)`. XSD 1.1 §3.4 states each
+containment below ("the value space of byte is a subset of that of
+short", and so on up the tower). `XsdValueSpaceSubset` names that
+assumption; `xsdIntegerDecimal_subset` discharges the one edge the
+Lean datatype map of `RDF/Datatypes.lean` actually models. The rest is
+carried as an assumption, marked `[ext]`, not silently asserted. -/
+def xsdHierarchyEdges : List (WfIri × WfIri) :=
+  [ (xsdByte, xsdShort), (xsdShort, xsdIntIri), (xsdIntIri, xsdLong),
+    (xsdLong, xsdInteger),
+    (xsdPositiveInteger, xsdNonNegativeInteger),
+    (xsdUnsignedByte, xsdUnsignedShort),
+    (xsdUnsignedShort, xsdUnsignedInt),
+    (xsdUnsignedInt, xsdUnsignedLong),
+    (xsdUnsignedLong, xsdNonNegativeInteger),
+    (xsdNonNegativeInteger, xsdInteger),
+    (xsdNegativeInteger, xsdNonPositiveInteger),
+    (xsdNonPositiveInteger, xsdInteger),
+    (xsdInteger, xsdDecimal),
+    (xsdDecimal, xsdDouble) ]
+
+/-- Every XSD datatype of the tower, each of which is an
+`rdfs:Datatype` (RDF 1.1 Semantics §7: a recognised datatype IRI is of
+type `rdfs:Datatype` in every D-interpretation that recognises it). -/
+def xsdAllDatatypes : List WfIri :=
+  [ xsdString, xsdBoolean, xsdDouble, xsdDecimal, xsdInteger,
+    xsdLong, xsdIntIri, xsdShort, xsdByte,
+    xsdNonNegativeInteger, xsdPositiveInteger,
+    xsdUnsignedLong, xsdUnsignedInt, xsdUnsignedShort, xsdUnsignedByte,
+    xsdNonPositiveInteger, xsdNegativeInteger ]
+
+/-- The triples the `xsdAxioms` row emits: the tower as `rdfs:subClassOf`
+edges, plus an `rdf:type rdfs:Datatype` for every member of it. -/
+def xsdAxiomTriples : List Triple :=
+  xsdHierarchyEdges.map
+    (fun e => (⟨Subject.iri e.1, rdfsSubClassOf, Term.iri e.2⟩ : Triple)) ++
+  xsdAllDatatypes.map
+    (fun i => (⟨Subject.iri i, rdfType, Term.iri rdfsDatatype⟩ : Triple))
+
+/-- The datatype-range intersection table of the `dtRangeIntersect` row.
+
+**Justification.** `rdfs:range` is not exclusive: two range axioms on
+one property constrain its values to the INTERSECTION of the two value
+spaces (RDF 1.1 Semantics §9, rdfs3 applies for each range
+independently). Each entry `(d1, d2, outs)` names a `d3 ∈ outs` whose
+value space CONTAINS `valueSpace(d1) ∩ valueSpace(d2)`, so asserting
+`p rdfs:range d3` adds no constraint that was not already implied:
+
+* `short` caps at 32767 and `unsignedInt`/`unsignedLong` are
+  non-negative, so the intersection lies inside `unsignedShort`;
+* `byte` caps at 127 and `unsignedInt` is non-negative, so the
+  intersection lies inside `unsignedByte`;
+* `nonNegativeInteger ∩ nonPositiveInteger = {0}`, which lies inside
+  both `byte` and `unsignedByte`.
+
+Those are XSD 1.1 §3.4 facts about the value spaces, not graph facts;
+they are the assumption this `[ext]` row carries. The table is
+test-backed rather than the full datatype product, exactly as the F*
+`xsd_range_intersections` banner records. -/
+def xsdRangeIntersections : List (WfIri × WfIri × List WfIri) :=
+  [ (xsdShort, xsdUnsignedInt, [xsdUnsignedShort]),
+    (xsdShort, xsdUnsignedLong, [xsdUnsignedShort]),
+    (xsdByte, xsdUnsignedInt, [xsdUnsignedByte]),
+    (xsdNonNegativeInteger, xsdNonPositiveInteger, [xsdByte, xsdUnsignedByte]) ]
+
+/-- Does the table license `d3` as a range for a property already ranged
+over both `d1` and `d2`? Symmetric in `d1`/`d2`, as the two range
+axioms are. -/
+def rangeIntersectLicenses (d1 d2 d3 : WfIri) : Bool :=
+  xsdRangeIntersections.any (fun e =>
+    ((e.1 == d1 && e.2.1 == d2) || (e.1 == d2 && e.2.1 == d1)) &&
+    e.2.2.contains d3)
+
+/-- The two `rdfs:Datatype` typings every D-interpretation supports with
+no premise. RDF 1.1 Semantics §7 makes `xsd:string` recognised by every
+D-interpretation; OWL 2 Syntax §4.1 puts `xsd:integer` in the datatype
+map every OWL 2 ontology has. Table 7's dt-type1 then types each of
+them `rdfs:Datatype`. -/
+def builtinDatatypeAxioms : List Triple :=
+  [ ⟨Subject.iri xsdInteger, rdfType, Term.iri rdfsDatatype⟩,
+    ⟨Subject.iri xsdString, rdfType, Term.iri rdfsDatatype⟩ ]
+
+/-- The predicates under which an XSD IRI in the OBJECT slot is being
+used as a datatype rather than merely named. The `xsdAxioms` guard
+reads this list. -/
+def datatypePositionPredicates : List WfIri :=
+  [ rdfsRange, rdfsDomain, rdfType, rdfsSubClassOf,
+    owlEquivalentClass, owlDisjointWith, owlComplementOf,
+    owlOnClass, owlSomeValuesFrom, owlAllValuesFrom ]
+
+/-- The `xsdAxioms` guard: the driving triple USES an XSD IRI as a
+datatype — an XSD object under one of the class/datatype predicates
+above.
+
+This is NARROWER than the F* `graph_mentions_xsd_iri`, which fires on
+any XSD IRI in any position, and the narrowing is deliberate.
+`dtType1Builtin` puts `xsd:integer rdf:type rdfs:Datatype` into EVERY
+closure with no premise; eq-ref then derives `xsd:integer owl:sameAs
+xsd:integer` from it, and under the "mentions" guard THAT triple drives
+the whole XSD tower plus its `scm-sco` transitive closure into every
+closure this engine ever computes. Measured on the OWL corpus,
+2026-08-22: 116 triples and 6 rounds for a 3-triple `rdfs:subClassOf`
+fixture that has nothing to do with datatypes, `type-consistency` up
+from 6417 ms to 11622 ms, and the `RLTests` idempotence guards (which
+assert saturation at a fixed fuel) red. Restricting to a datatype
+POSITION cuts the feedback loop at its source: `owl:sameAs` is not a
+datatype position, so eq-ref cannot re-seed the row. The rows that
+motivate the tower — WebOnt-I5.8-006/008/009, premise `p rdfs:range
+xsd:byte` — are all `rdfs:range`, so nothing they need is lost. -/
+def drivesXsdAxioms (t : Triple) : Bool :=
+  datatypePositionPredicates.contains t.p &&
+  (match t.o with | .iri i => iriInXsdNs i | _ => false)
+
+/-- The shape of the assumption the XSD tables carry: the value space
+of `sub` is inside the value space of `sup`, as `RDF/Datatypes.lean`'s
+modelled datatype map decides it. Stated over the modelled map so it is
+a real, checkable claim rather than a placeholder; the tower edges over
+datatypes that map does not model are assumed, and named as assumed. -/
+def XsdValueSpaceSubset (sub sup : WfIri) : Prop :=
+  ∀ l : Literal, l.datatype = sub → RDF.valueInSpace l sup = true
+
+/-- The one tower edge the Lean datatype map models, discharged.
+`RDF/Datatypes.lean`'s `valueInSpace` knows `int ⊂ integer ⊂ decimal`
+and nothing else, so this is the whole of what can be proved here
+rather than assumed. -/
+theorem xsdIntegerDecimal_subset : XsdValueSpaceSubset xsdInteger xsdDecimal := by
+  intro l h
+  simp [RDF.valueInSpace, h]
+
+/-- The second modelled edge: `xsd:int ⊂ xsd:integer`. -/
+theorem xsdIntInteger_subset : XsdValueSpaceSubset RDF.xsdInt xsdInteger := by
+  intro l h
+  simp [RDF.valueInSpace, h]
+
+/-! ### Comprehension witnesses
+
+RDF-Based Semantics §5.14 ("Comprehension Conditions") asserts that
+certain class expressions EXIST for every argument: for every class `c`
+there is a class denoting its complement, and for every property `p`
+and cardinality `n` there is a `minCardinality` restriction on `p`. A
+rule engine states that existence by minting a blank node, which is
+what an existential IS in RDF (RDF 1.1 Semantics §1.5).
+
+The skolem name is a FUNCTION of the argument, not a counter. That is
+what makes the emission idempotent, so the fixpoint loop's "length did
+not change" stopping rule still fires: a second round over the same
+graph mints the same node and `addOne` drops it. A counter would make
+every round grow the graph and the loop would run to its fuel bound.
+The `__rl_` prefix is the same convention the F* engine's
+`canonical_*_bnode` functions use. -/
+
+/-- The blank node denoting the complement class of `c`. -/
+def complementWitness (c : WfIri) : Subject :=
+  Subject.bnode ("__rl_comp__" ++ c.val)
+
+/-- The comprehension pair for `c`'s complement: it is a class, and it
+is the complement of `c`. -/
+def complementWitnessPair (c : WfIri) : List Triple :=
+  [ ⟨complementWitness c, rdfType, Term.iri owlClass⟩,
+    ⟨complementWitness c, owlComplementOf, Term.iri c⟩ ]
+
+/-- What `caxDwToComplement` emits from `c1 owl:disjointWith c2`: the
+comprehension pair for each side, and the subclass edge that carries
+the disjointness — `c1` is inside the complement of `c2`, and
+symmetrically. -/
+def complementWitnessTriples (c1 c2 : WfIri) : List Triple :=
+  complementWitnessPair c2 ++ complementWitnessPair c1 ++
+  [ ⟨Subject.iri c1, rdfsSubClassOf, (complementWitness c2).toTerm⟩,
+    ⟨Subject.iri c2, rdfsSubClassOf, (complementWitness c1).toTerm⟩ ]
+
+/-- What the max-qualified-cardinality contrapositive emits: the
+comprehension pair for `c`, and the typing of `y` into it. -/
+def complementTypeTriples (y : Subject) (c : WfIri) : List Triple :=
+  complementWitnessPair c ++
+  [ ⟨y, rdfType, (complementWitness c).toTerm⟩ ]
+
+/-- The blank node denoting the `minCardinality 1` restriction on `p`. -/
+def minCard1Witness (p : WfIri) : Subject :=
+  Subject.bnode ("__rl_minc1__" ++ p.val)
+
+/-- What `minCard1Comprehension` emits for `p`.
+
+The cardinality is written TWICE, as `"1"^^xsd:nonNegativeInteger` and
+as `"1"^^xsd:int`. §5.14's comprehension condition quantifies over the
+VALUE `n`, not over a lexical form, and both literals denote the value
+1 (RDF 1.1 Semantics §7, with `xsd:int ⊂ xsd:integer ⊂ xsd:decimal`);
+the OWL 2 RDF mapping writes the first spelling and the OWL 1 mapping
+the WebOnt conclusion documents use writes the second. Emitting one
+spelling only would make the row's conclusion depend on which mapping
+generated the document it is compared against, which is a property of
+the comparison and not of the semantics. -/
+def minCard1WitnessTriples (p : WfIri) : List Triple :=
+  [ ⟨minCard1Witness p, rdfType, Term.iri owlRestriction⟩,
+    ⟨minCard1Witness p, owlOnProperty, Term.iri p⟩,
+    ⟨minCard1Witness p, owlMinCardinality, Term.literal litNni1⟩,
+    ⟨minCard1Witness p, owlMinCardinality, Term.literal litInt1⟩ ]
+
+/-- The IRIs occurring in `g` in a subject or object position — the
+"named individuals" the `prpRfl` row quantifies over. Blank nodes are
+excluded: under the OWL 2 RL reading a blank node is an existential,
+not a name, and the F* `prp_rfl_individuals` makes the same exclusion.
+The exclusion only makes the row FIRE LESS, so it costs nothing in
+soundness. -/
+def iriIndividuals (g : Graph) : List WfIri :=
+  g.flatMap (fun t =>
+    (match t.s with | .iri i => [i] | _ => []) ++
+    (match t.o with | .iri i => [i] | _ => []))
 
 /-! ## The derivation relation
 
@@ -608,6 +880,277 @@ inductive Derives (g : Graph) : Triple → Prop where
       (hmem : ListMember gc lst cis.toTerm) :
       Derives g ⟨cis, rdfsSubClassOf, c.toTerm⟩
 
+  -- ===================================================================
+  -- `[ext]` — sound extensions with no W3C table row
+  --
+  -- Each constructor below cites the OWL 2 RDF-Based Semantics
+  -- condition that makes it truth-preserving, in place of a table id.
+  -- The F* engine carries the same nine rules; the F* rule name is
+  -- given so the two ledgers line up.
+  -- ===================================================================
+
+  /-- **eq-diff-sym** `[ext]` (F* `owl_rule_differentFrom_symmetry`) —
+  `T(?x, owl:differentFrom, ?y) | T(?y, owl:differentFrom, ?x)`.
+
+  RDF-Based Semantics §5.8: `IEXT(I(owl:differentFrom)) = { <x,y> ∈
+  IR × IR : x ≠ y }`. Inequality is symmetric, so the conclusion holds
+  in every interpretation the premise holds in. -/
+  | eqDiffSym {x ys : Subject}
+      (h : Derives g ⟨x, owlDifferentFrom, ys.toTerm⟩) :
+      Derives g ⟨ys, owlDifferentFrom, x.toTerm⟩
+
+  /-- **prp-pdw-diff** `[ext]` (F* `owl_rule_pdw_to_differentFrom`) —
+  the Horn contrapositive of the prp-pdw clash row:
+  `T(?p1, owl:propertyDisjointWith, ?p2) T(?x,?p1,?o1) T(?x,?p2,?o2)
+  o1 ≠ o2 | T(?o1, owl:differentFrom, ?o2)`.
+
+  RDF-Based Semantics §5.9: `<p1,p2> ∈ IEXT(I(owl:propertyDisjointWith))`
+  iff `IEXT(p1) ∩ IEXT(p2) = ∅`. If `I(o1) = I(o2)` then the pair
+  `<I(x), I(o1)>` sits in both extensions, which the condition forbids;
+  hence `I(o1) ≠ I(o2)`, which is `owl:differentFrom`. The `o1 ≠ o2`
+  side condition is SYNTACTIC and only stops the row emitting a
+  self-inequality on an already-inconsistent graph — it makes the row
+  fire less, never more. -/
+  | pdwToDiff {p1 p2 : WfIri} {x o1s : Subject} {o2 : Term}
+      (hdecl : Derives g ⟨Subject.iri p1, owlPropertyDisjointWith,
+        Term.iri p2⟩)
+      (h1 : Derives g ⟨x, p1, o1s.toTerm⟩)
+      (h2 : Derives g ⟨x, p2, o2⟩)
+      (hne : o1s.toTerm ≠ o2) :
+      Derives g ⟨o1s, owlDifferentFrom, o2⟩
+
+  /-- **cax-dw-diff** `[ext]` (F* `owl_rule_cax_dw_to_differentFrom`) —
+  the class-side mirror of prp-pdw-diff:
+  `T(?c1, owl:disjointWith, ?c2) T(?x, rdf:type, ?c1)
+  T(?y, rdf:type, ?c2) x ≠ y | T(?x, owl:differentFrom, ?y)`.
+
+  RDF-Based Semantics §5.7: `<c1,c2> ∈ IEXT(I(owl:disjointWith))` iff
+  `ICEXT(c1) ∩ ICEXT(c2) = ∅`. If `I(x) = I(y)` that individual is in
+  both class extensions, which the condition forbids. -/
+  | caxDwToDiff {c1 c2 : WfIri} {x ys : Subject}
+      (hdecl : Derives g ⟨Subject.iri c1, owlDisjointWith, Term.iri c2⟩)
+      (h1 : Derives g ⟨x, rdfType, Term.iri c1⟩)
+      (h2 : Derives g ⟨ys, rdfType, Term.iri c2⟩)
+      (hne : x ≠ ys) :
+      Derives g ⟨x, owlDifferentFrom, ys.toTerm⟩
+
+  /-- **prp-fp-diff** `[ext]` (F* `owl_rule_fp_diff_to_diff`) — the
+  Horn contrapositive of prp-fp:
+  `T(?p, rdf:type, owl:FunctionalProperty) T(?y1,?p,?x1)
+  T(?y2,?p,?x2) T(?x1, owl:differentFrom, ?x2) y1 ≠ y2 |
+  T(?y1, owl:differentFrom, ?y2)`.
+
+  RDF-Based Semantics §5.9: a functional property has at most one value
+  per subject. If `I(y1) = I(y2)` then `I(x1) = I(x2)`, contradicting
+  the `owl:differentFrom` premise. -/
+  | fpDiffToDiff {p : WfIri} {y1 y2 x1s : Subject} {x2 : Term}
+      (hdecl : Derives g ⟨Subject.iri p, rdfType,
+        Term.iri owlFunctionalProperty⟩)
+      (h1 : Derives g ⟨y1, p, x1s.toTerm⟩)
+      (h2 : Derives g ⟨y2, p, x2⟩)
+      (hdiff : Derives g ⟨x1s, owlDifferentFrom, x2⟩)
+      (hne : y1 ≠ y2) :
+      Derives g ⟨y1, owlDifferentFrom, y2.toTerm⟩
+
+  /-- **prp-ifp-diff** `[ext]` (F* `owl_rule_ifp_diff_to_diff`) — the
+  Horn contrapositive of prp-ifp:
+  `T(?p, rdf:type, owl:InverseFunctionalProperty) T(?x1,?p,?y1)
+  T(?x2,?p,?y2) T(?x1, owl:differentFrom, ?x2) y1 ≠ y2 |
+  T(?y1, owl:differentFrom, ?y2)`.
+
+  RDF-Based Semantics §5.9: an inverse-functional property has at most
+  one subject per value. If `I(y1) = I(y2)` then `I(x1) = I(x2)`,
+  contradicting the `owl:differentFrom` premise. -/
+  | ifpDiffToDiff {p : WfIri} {x1 x2s y1s : Subject} {y2 : Term}
+      (hdecl : Derives g ⟨Subject.iri p, rdfType,
+        Term.iri owlInverseFunctionalProperty⟩)
+      (h1 : Derives g ⟨x1, p, y1s.toTerm⟩)
+      (h2 : Derives g ⟨x2s, p, y2⟩)
+      (hdiff : Derives g ⟨x1, owlDifferentFrom, x2s.toTerm⟩)
+      (hne : y1s.toTerm ≠ y2) :
+      Derives g ⟨y1s, owlDifferentFrom, y2⟩
+
+  /-- **scm-trans-from-chain** `[ext]` (F*
+  `owl_rule_chain_to_transitive`) —
+  `T(?p, owl:propertyChainAxiom, ?l) LIST[?l, ?p, ?p] |
+  T(?p, rdf:type, owl:TransitiveProperty)`.
+
+  RDF-Based Semantics §5.11 reads `<p, l> ∈
+  IEXT(I(owl:propertyChainAxiom))` with `l` the sequence `<q1,…,qn>` as
+  `IEXT(q1) ∘ … ∘ IEXT(qn) ⊆ IEXT(p)`. At `l = <p, p>` that is
+  `IEXT(p) ∘ IEXT(p) ⊆ IEXT(p)`, which is §5.9's condition for
+  `p ∈ ICEXT(I(owl:TransitiveProperty))` — the same statement, so the
+  row is an equivalence read in one direction. -/
+  | chainToTrans {p : WfIri} {lst : Term} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
+      (hdecl : Derives g ⟨Subject.iri p, owlPropertyChainAxiom, lst⟩)
+      (hlist : ListDenotes gc lst [Term.iri p, Term.iri p]) :
+      Derives g ⟨Subject.iri p, rdfType, Term.iri owlTransitiveProperty⟩
+
+  /-- **prp-rfl** `[ext]` (F* `owl_rule_reflexive_property`) —
+  `T(?p, rdf:type, owl:ReflexiveProperty) ?x an IRI of the graph |
+  T(?x, ?p, ?x)`.
+
+  RDF-Based Semantics §5.9: `ICEXT(I(owl:ReflexiveProperty)) = { p ∈ IP :
+  IEXT(p) ⊇ { <y,y> : y ∈ IR } }`. Every IRI has a denotation in `IR`,
+  so `<I(x), I(x)> ∈ IEXT(I(p))` for any IRI `x` whatever — the row
+  restricts to IRIs OCCURRING in `g` only because a rule engine has to
+  enumerate something finite, and restricting the quantifier makes the
+  row fire less. Blank nodes are left out for the reason the F* banner
+  gives: a blank node is an existential, and `_:b p _:b` would commit
+  to identifying the witness of the subject slot with the witness of
+  the object slot. -/
+  | prpRfl {p i : WfIri} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
+      (hdecl : Derives g ⟨Subject.iri p, rdfType,
+        Term.iri owlReflexiveProperty⟩)
+      (hind : i ∈ iriIndividuals gc) :
+      Derives g ⟨Subject.iri i, p, Term.iri i⟩
+
+  /-- **xsd-axioms** `[ext]` (F* `owl_rule_xsd_datatype_axioms`) — a
+  graph that names an XSD IRI gets the XSD numeric subtype tower and an
+  `rdf:type rdfs:Datatype` for every datatype in it.
+
+  ASSUMPTION CARRIED: the interpretation's datatype map recognises the
+  XSD datatypes, with the XSD 1.1 §3.4 value spaces. `xsdHierarchyEdges`
+  and `xsdAllDatatypes` state exactly which facts are assumed;
+  `XsdValueSpaceSubset` below names the shape of the assumption and
+  `xsdIntegerDecimal_subset` discharges the one edge the Lean datatype
+  map models. The driving premise is any triple mentioning an XSD IRI,
+  which is the F* `graph_mentions_xsd_iri` guard read per triple. -/
+  | xsdAxioms {d t : Triple}
+      (hd : Derives g d)
+      (hx : drivesXsdAxioms d = true)
+      (hax : t ∈ xsdAxiomTriples) :
+      Derives g t
+
+  /-- **dt-rng-intersect** `[ext]` (F* `owl_rule_dt_range_intersect`) —
+  `T(?p, rdfs:range, ?d1) T(?p, rdfs:range, ?d2) | T(?p, rdfs:range, ?d3)`
+  for every `d3` the `xsdRangeIntersections` table licenses from
+  `(d1, d2)`.
+
+  ASSUMPTION CARRIED: the XSD value-space containments the table's doc
+  comment lists. Given them, every value of `?p` is in
+  `valueSpace(d1) ∩ valueSpace(d2) ⊆ valueSpace(d3)`, so the new range
+  axiom is true wherever the two premises are. -/
+  | dtRangeIntersect {pd : Subject} {d1 d2 d3 : WfIri}
+      (h1 : Derives g ⟨pd, rdfsRange, Term.iri d1⟩)
+      (h2 : Derives g ⟨pd, rdfsRange, Term.iri d2⟩)
+      (hlic : rangeIntersectLicenses d1 d2 d3 = true) :
+      Derives g ⟨pd, rdfsRange, Term.iri d3⟩
+
+  /-- **dt-type1** `[ext]`, unconditional half (F*
+  `builtin_vocabulary_axioms`) — `T(xsd:integer, rdf:type,
+  rdfs:Datatype)` and `T(xsd:string, rdf:type, rdfs:Datatype)`, with no
+  premise at all.
+
+  RDF 1.1 Semantics §7: EVERY D-interpretation recognises `xsd:string`,
+  and Table 7's dt-type1 asserts `rdf:type rdfs:Datatype` for each
+  recognised datatype. `xsd:integer` is added on the same ground —
+  it is in the RDF-compatible XSD types of RDF 1.1 Concepts §5.1 that
+  every OWL 2 datatype map must recognise (OWL 2 Syntax §4.1). The
+  empty graph therefore entails both, which is what WebOnt-I5.8-011
+  asks. -/
+  | dtType1Builtin {t : Triple} (h : t ∈ builtinDatatypeAxioms) :
+      Derives g t
+
+  /-- **cax-dw-comp** `[ext]`, a COMPREHENSION row —
+  `T(?c1, owl:disjointWith, ?c2) |
+  T(_:comp(c2), rdf:type, owl:Class)
+  T(_:comp(c2), owl:complementOf, ?c2)
+  T(?c1, rdfs:subClassOf, _:comp(c2))`, and symmetrically.
+
+  Two separate claims, each with its own semantic condition.
+
+  1. The blank node EXISTS: RDF-Based Semantics §5.14's comprehension
+     condition for `owl:complementOf` says that for every `c ∈ ICEXT(
+     I(owl:Class))` there is a `z ∈ IR` with `<z, c> ∈
+     IEXT(I(owl:complementOf))`. Asserting that with a blank node is
+     asserting exactly the existential the condition supplies.
+  2. The subclass edge: §5.7 gives `<c1,c2> ∈ IEXT(I(owl:disjointWith))`
+     iff `ICEXT(c1) ∩ ICEXT(c2) = ∅`, and §5.5 gives `ICEXT(z) = IR \
+     ICEXT(c2)`. Disjointness therefore puts `ICEXT(c1)` inside
+     `ICEXT(z)`, which is `rdfs:subClassOf`. -/
+  | caxDwToComplement {c1 c2 : WfIri} {t : Triple}
+      (hdecl : Derives g ⟨Subject.iri c1, owlDisjointWith, Term.iri c2⟩)
+      (hax : t ∈ complementWitnessTriples c1 c2) :
+      Derives g t
+
+  /-- **cls-maxqc1-comp** `[ext]`, the Horn contrapositive of
+  cls-maxqc1 at cardinality 1, landing in a comprehension witness —
+  `T(?x, owl:maxQualifiedCardinality, "1"^^xsd:nnI)
+  T(?x, owl:onProperty, ?p) T(?x, owl:onClass, ?c)
+  T(?u, rdf:type, ?x) T(?u,?p,?y1) T(?u,?p,?y2)
+  T(?y1, rdf:type, ?c) T(?y1, owl:differentFrom, ?y2) |
+  T(?y2, rdf:type, _:comp(c))` plus the comprehension pair for `c`.
+
+  RDF-Based Semantics §5.10: `u ∈ ICEXT(x)` for a
+  `maxQualifiedCardinality 1` restriction on `p` with `onClass c` means
+  `u` has AT MOST ONE `p`-value in `ICEXT(c)`. Suppose `I(y2) ∈
+  ICEXT(c)`. Then `y1` and `y2` are two `p`-values of `u` in `ICEXT(c)`,
+  and the `owl:differentFrom` premise makes them distinct — two values
+  where at most one is allowed. So `I(y2) ∉ ICEXT(c)`, which is
+  membership of the complement class §5.14 supplies. -/
+  | clsMaxqc1ToComplement {x u y1s y2s : Subject} {p c : WfIri} {t : Triple}
+      (hmqc : Derives g ⟨x, owlMaxQualifiedCardinality,
+        Term.literal litNni1⟩)
+      (honp : Derives g ⟨x, owlOnProperty, Term.iri p⟩)
+      (honc : Derives g ⟨x, owlOnClass, Term.iri c⟩)
+      (hty : Derives g ⟨u, rdfType, x.toTerm⟩)
+      (h1 : Derives g ⟨u, p, y1s.toTerm⟩)
+      (h2 : Derives g ⟨u, p, y2s.toTerm⟩)
+      (hy1c : Derives g ⟨y1s, rdfType, Term.iri c⟩)
+      (hdiff : Derives g ⟨y1s, owlDifferentFrom, y2s.toTerm⟩)
+      (hax : t ∈ complementTypeTriples y2s c) :
+      Derives g t
+
+  /-- **minc1-comp** `[ext]`, a COMPREHENSION row —
+  `T(?p, rdf:type, owl:ObjectProperty) |
+  T(_:minc1(p), rdf:type, owl:Restriction)
+  T(_:minc1(p), owl:onProperty, ?p)
+  T(_:minc1(p), owl:minCardinality, "1")`.
+
+  RDF-Based Semantics §5.14's comprehension condition for
+  `owl:minCardinality`: for every `p ∈ IP` and every non-negative
+  integer `n` there is a `z ∈ ICEXT(I(owl:Restriction))` with
+  `<z,p> ∈ IEXT(I(owl:onProperty))` and `<z,n> ∈
+  IEXT(I(owl:minCardinality))`. The row instantiates it at `n = 1`.
+  The driving premise is the property declaration only because a rule
+  engine has to enumerate something; the condition itself needs no
+  premise at all. -/
+  | minCard1Comprehension {p : WfIri} {t : Triple}
+      (hdecl : Derives g ⟨Subject.iri p, rdfType,
+        Term.iri owlObjectProperty⟩)
+      (hax : t ∈ minCard1WitnessTriples p) :
+      Derives g t
+
+  /-- **cax-adc-dw** `[ext]` — an `owl:AllDisjointClasses` axiom is
+  pairwise `owl:disjointWith`:
+  `T(?y, rdf:type, owl:AllDisjointClasses) T(?y, owl:members, ?l)
+  LIST[?l, …, ?ci, …, ?cj, …] ci ≠ cj |
+  T(?ci, owl:disjointWith, ?cj)`.
+
+  RDF-Based Semantics §5.7 reads `y ∈
+  ICEXT(I(owl:AllDisjointClasses))` with members `<c1,…,cn>` as
+  `ICEXT(ci) ∩ ICEXT(cj) = ∅` for every `i ≠ j` — which is §5.7's
+  condition on `owl:disjointWith` for that pair. The row states the
+  pairwise form so that cax-dw, cax-dw-diff and cax-dw-comp all reach
+  an `owl:AllDisjointClasses` axiom without each of them growing a
+  second list-walking body.
+
+  Carries the SAME deviation `caxAdc` carries and for the same reason:
+  the members are required to be distinct TERMS, not to sit at
+  distinct POSITIONS, so a class listed twice does not make itself
+  disjoint from itself. That is strictly weaker than the F* reading. -/
+  | caxAdcToDw {y : Subject} {lst : Term} {ci cj : WfIri} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
+      (hty : Derives g ⟨y, rdfType, Term.iri owlAllDisjointClasses⟩)
+      (hmembers : Derives g ⟨y, owlMembers, lst⟩)
+      (h1 : ListMember gc lst (Term.iri ci))
+      (h2 : ListMember gc lst (Term.iri cj))
+      (hne : ci ≠ cj) :
+      Derives g ⟨Subject.iri ci, owlDisjointWith, Term.iri cj⟩
+
 /-! ## The no-consequent (clash) rows
 
 Rows whose conclusion is `false`: their premises being satisfiable in
@@ -816,6 +1359,27 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | scmRng2 _ _ ih1 ih2 => exact Derives.scmRng2 ih1 ih2
   | scmInt _ _ hm ihgc ih => exact Derives.scmInt ihgc ih hm
   | scmUni _ _ hm ihgc ih => exact Derives.scmUni ihgc ih hm
+  -- `[ext]` rows
+  | eqDiffSym _ ih => exact Derives.eqDiffSym ih
+  | pdwToDiff _ _ _ hne ih1 ih2 ih3 => exact Derives.pdwToDiff ih1 ih2 ih3 hne
+  | caxDwToDiff _ _ _ hne ih1 ih2 ih3 =>
+      exact Derives.caxDwToDiff ih1 ih2 ih3 hne
+  | fpDiffToDiff _ _ _ _ hne ih1 ih2 ih3 ih4 =>
+      exact Derives.fpDiffToDiff ih1 ih2 ih3 ih4 hne
+  | ifpDiffToDiff _ _ _ _ hne ih1 ih2 ih3 ih4 =>
+      exact Derives.ifpDiffToDiff ih1 ih2 ih3 ih4 hne
+  | chainToTrans _ _ hl ihgc ih => exact Derives.chainToTrans ihgc ih hl
+  | prpRfl _ _ hind ihgc ih => exact Derives.prpRfl ihgc ih hind
+  | xsdAxioms _ hx hax ih => exact Derives.xsdAxioms ih hx hax
+  | dtRangeIntersect _ _ hlic ih1 ih2 =>
+      exact Derives.dtRangeIntersect ih1 ih2 hlic
+  | dtType1Builtin hax => exact Derives.dtType1Builtin hax
+  | caxDwToComplement _ hax ih => exact Derives.caxDwToComplement ih hax
+  | clsMaxqc1ToComplement _ _ _ _ _ _ _ _ hax ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 =>
+      exact Derives.clsMaxqc1ToComplement ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 hax
+  | minCard1Comprehension _ hax ih => exact Derives.minCard1Comprehension ih hax
+  | caxAdcToDw _ _ _ h1 h2 hne ihgc ih1 ih2 =>
+      exact Derives.caxAdcToDw ihgc ih1 ih2 h1 h2 hne
 
 /-- Cut: if every triple of `g'` is derivable from `g`, then everything
 derivable from `g'` is derivable from `g`. This is what makes the
@@ -892,6 +1456,27 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | scmRng2 _ _ ih1 ih2 => exact Derives.scmRng2 ih1 ih2
   | scmInt _ _ hm ihgc ih => exact Derives.scmInt ihgc ih hm
   | scmUni _ _ hm ihgc ih => exact Derives.scmUni ihgc ih hm
+  -- `[ext]` rows
+  | eqDiffSym _ ih => exact Derives.eqDiffSym ih
+  | pdwToDiff _ _ _ hne ih1 ih2 ih3 => exact Derives.pdwToDiff ih1 ih2 ih3 hne
+  | caxDwToDiff _ _ _ hne ih1 ih2 ih3 =>
+      exact Derives.caxDwToDiff ih1 ih2 ih3 hne
+  | fpDiffToDiff _ _ _ _ hne ih1 ih2 ih3 ih4 =>
+      exact Derives.fpDiffToDiff ih1 ih2 ih3 ih4 hne
+  | ifpDiffToDiff _ _ _ _ hne ih1 ih2 ih3 ih4 =>
+      exact Derives.ifpDiffToDiff ih1 ih2 ih3 ih4 hne
+  | chainToTrans _ _ hl ihgc ih => exact Derives.chainToTrans ihgc ih hl
+  | prpRfl _ _ hind ihgc ih => exact Derives.prpRfl ihgc ih hind
+  | xsdAxioms _ hx hax ih => exact Derives.xsdAxioms ih hx hax
+  | dtRangeIntersect _ _ hlic ih1 ih2 =>
+      exact Derives.dtRangeIntersect ih1 ih2 hlic
+  | dtType1Builtin hax => exact Derives.dtType1Builtin hax
+  | caxDwToComplement _ hax ih => exact Derives.caxDwToComplement ih hax
+  | clsMaxqc1ToComplement _ _ _ _ _ _ _ _ hax ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 =>
+      exact Derives.clsMaxqc1ToComplement ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 hax
+  | minCard1Comprehension _ hax ih => exact Derives.minCard1Comprehension ih hax
+  | caxAdcToDw _ _ _ h1 h2 hne ihgc ih1 ih2 =>
+      exact Derives.caxAdcToDw ihgc ih1 ih2 h1 h2 hne
 
 /-- Clash detection is monotone too: a bigger graph clashes at least as
 often. -/

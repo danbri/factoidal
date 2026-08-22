@@ -26,12 +26,13 @@ https://github.com/danbri/factoidal/issues/466
 | XML | `XML/*.lean`, `xmlconf-probe` | XML 1.0 parser with 20 WFCs, namespaces; xmlconf probe cross-checked file-by-file against F\* |
 | JSON | `JSON/*.lean` | RFC 8259 parser/serialiser; escape + literal round-trips proved |
 | Crypto | `Crypto/SHA2*.lean`, `Crypto/Ed25519.lean` | SHA-256/384/512 + `HashAlgorithm` agility; size theorems; FIPS vectors (million-byte ones parked opt-in). Ed25519 = the ONE `@[extern]` (HACL\* C through `lakefile.lean` `extern_lib`) |
+| JSON-LD 1.1 | `JSONLD/{Context,Expand,ToRdf,Compact,Flatten,FromRdf,Html}.lean`, `Harness/{JsonLdProbe,JsonLdApiProbe}.lean` | context processing, expansion, toRdf, compaction (§6), flattening (§7), Serialize RDF as JSON-LD (§8.5-8.7), HTML script extraction; loader is a parameter, framing out of scope. `l4jsonld-probe` toRdf 467 pass, 0 fail, 0 skip (out of 467); `l4jsonld-api` expand+compact+flatten+fromRdf+html 791 pass, 0 fail, 2 local-override (out of 793) — matching the F\* runners manifest for manifest |
 | VC / DID | `VC/*.lean`, `Harness/VcProbe.lean` | Data Integrity `eddsa-rdfc-2022` create/verify (canonical forms, datasets, JSON-LD documents; primitives are parameters), base58/multibase with the decode-of-encode theorem, did:key both ways; `l4vc-probe` 58 pass, 0 fail (RFC 8032 22, did:key 8, vc_runner roundtrip 8, W3C vc-di-eddsa spec vectors 20) |
 | Wasm | `Wasm/`, `docs/web/hub/assets/l4/`, skill `lean4-wasm-export` | Lean→C→wasm via Emscripten (1.4 MB, ~40 ms load); hub post 36 runs Lean and F\* side by side |
 | Tests/demo | `Tests.lean`, `Demo.lean` | build-time guards + `#print axioms` audit; runnable tour |
 | Docs | `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence, decisions, assumption report |
 
-Measured 2026-08-22 after twelve rungs: 22721 lines, 1111 top-level definitions/types, 348 theorems, 966 build-time guards; zero `sorry`/`axiom`/`native_decide`/`partial` in the library (axiom audit: propext/Classical.choice/Quot.sound only). In flight: W3C manifest harness (lean4/w3c-harness), RDF/XML (lean4/syntax-rdfxml), JSON-LD (lean4/jsonld), SPARQL string parser (lean4/sparql-parser).
+Measured 2026-08-22, late: the library has zero `sorry`, zero user `axiom`, zero `native_decide`, and exactly ONE `@[extern]`/`opaque` family (HACL* Ed25519, `Crypto/Ed25519.lean`). ⚠️ `partial def` is NO LONGER zero: 18 occurrences across 10 files (CSVW, Geo, HTTP, JSONSchema, MathML, RIF, ShEx, Storage), all arriving with later non-core modules, none in the RDF/SPARQL/RDFS/OWL/SHACL/JSON-LD core. The proof policy below still calls `partial` debt; whether these are accepted debt or must be made total is an OPEN OWNER DECISION — do not quote a blanket 'zero partial' claim until it is settled. Re-measure before quoting: `grep -rc '^partial def' formal/lean4/L4Factoidal/`.
 
 ## Toolchain
 
@@ -96,7 +97,8 @@ Measured 2026-08-22 after twelve rungs: 22721 lines, 1111 top-level definitions/
 
 Lean's equivalents are `axiom`, `sorry`, `@[extern]`/`opaque` (host
 implementations), and `partial`. This project uses NONE of the first
-two and `partial` only in harness directory walks; `@[extern]`/`opaque`
+two. `partial` was harness-only by design, but has since entered
+non-core library modules (see the baseline note above — open decision); `@[extern]`/`opaque`
 exists in exactly ONE place — `Crypto/Ed25519.lean`, HACL\* Ed25519 via
 Lake's `extern_lib` (`lakefile.lean`, `ffi/hacl_ed25519.c`), the single
 permitted extern family under the crypto-policy skill's Lean 4
