@@ -129,6 +129,44 @@ example : Refuted .empty
      .inst "a" (.atMost 1 "hasChild")] :=
   .minQMaxClash (.hyp (.head _)) (.hyp (.tail _ (.head _)))
 
+/-- The ≤-rule: `a` has at most one `r`-successor but two named ones,
+    `b` and `c`, which are NOT asserted different. Merging them makes
+    `b` inherit `c`'s `¬C` while keeping its own `C` — so both merge
+    branches clash, and the ABox is refuted without any
+    differentFrom. -/
+example : Refuted .empty
+    [.inst "a" (.atMost 1 "r"), .rel "r" "a" "b", .rel "r" "a" "c",
+     .inst "b" (.atom "C"), .inst "c" (.neg (.atom "C"))] :=
+  .leqMerge ["b", "c"] (.hyp (.head _)) rfl (by decide)
+    (by intro x hx
+        cases hx with
+        | head => exact .hyp (.tail _ (.head _))
+        | tail _ h => cases h with
+          | head => exact .hyp (.tail _ (.tail _ (.head _)))
+          | tail _ h2 => cases h2)
+    (by intro x hx y hy _
+        -- Every merge of the two names collapses `C` and `¬C` onto one
+        -- individual; `decide` locates the clashing pair in the
+        -- rewritten ABox.
+        cases hx with
+        | head =>
+            cases hy with
+            | head => exact absurd rfl (by assumption)
+            | tail _ h =>
+                cases h with
+                | head => exact .clash (.hyp (.tail _ (.tail _ (.tail _ (.head _))))) (.hyp (.tail _ (.tail _ (.tail _ (.tail _ (.head _))))))
+                | tail _ h2 => cases h2
+        | tail _ hx' =>
+            cases hx' with
+            | head =>
+                cases hy with
+                | head => exact .clash (.hyp (.tail _ (.tail _ (.tail _ (.head _))))) (.hyp (.tail _ (.tail _ (.tail _ (.tail _ (.head _))))))
+                | tail _ h =>
+                    cases h with
+                    | head => exact absurd rfl (by assumption)
+                    | tail _ h2 => cases h2
+            | tail _ hx2 => cases hx2)
+
 -- Axiom audit. Expected base (proof policy in
 -- skills/factoidal-lean-basics): at most propext / Classical.choice /
 -- Quot.sound. Measured at landing (2026-08-22): derives_sound is

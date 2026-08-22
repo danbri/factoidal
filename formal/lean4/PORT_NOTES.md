@@ -3434,3 +3434,22 @@ unsupported W3C SPARQL entailment-regime tests use (`hasChild min 1
 Female`, `max 1 Female`, `exactly 1 Female`) — see the parity ledger
 in docs/designissues/2026-08-22-lean-fstar-parity-ledger.md. Axiom
 base unchanged.
+
+### OWL tableau: the SHIQ ≤-rule witness merge (2026-08-22, fifth rung)
+
+`leqMerge` closes the core SHIQ clash calculus. It is the first rule
+that REWRITES the ABox (`mergeInds` renames one individual to
+another) rather than extending it, and it branches over PAIRS of named
+successors the way `disjSplit` branches over disjuncts. Soundness is
+the pigeonhole argument, machine-checked: `n+1` distinctly-named
+`r`-successors cannot all denote different elements when `≤n r` holds,
+so some pair collides in every model, and the merged ABox that pair
+licenses is already refuted. Supporting lemmas, all new:
+`satisfies_subst` (a rename is invisible to a model that already
+identifies the two names), `satAll_mergeInds`, and
+`pairwise_map_ne_of_injOn` (the positive half of the pigeonhole; the
+existence half comes from a classical `by_cases` on whether any pair
+collides). Axiom base unchanged. The `by decide`-in-certificate trap
+from rung 3 recurred here and cost a build: use explicit `Mem` chains
+inside `Refuted` terms, including into a `mergeInds`-rewritten ABox
+where the list is a `List.map` rather than a literal.
