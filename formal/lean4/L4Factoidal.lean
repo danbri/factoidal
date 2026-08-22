@@ -40,3 +40,6 @@ import L4Factoidal.XML.Namespaces
 import L4Factoidal.XML.Wellformedness
 import L4Factoidal.XML.Theorems
 import L4Factoidal.XML.Tests
+import L4Factoidal.OWL.Tableau
+import L4Factoidal.OWL.TableauTheorems
+import L4Factoidal.OWL.TableauTests

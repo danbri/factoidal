@@ -1,6 +1,5 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal", "xmlconf-probe"]
-defaultTargets = ["L4Factoidal", "l4rdfc-probe"]
+defaultTargets = ["L4Factoidal", "xmlconf-probe", "l4rdfc-probe"]
 
 [[lean_lib]]
 name = "L4Factoidal"

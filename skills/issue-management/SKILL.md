@@ -60,6 +60,22 @@ NOTHING but this one message act on it — follow every reference, find
 every piece of work, verify every claim? If any noun in it requires
 scrollback to resolve, replace that noun with a full GitHub URL.
 
+**Before opening a workstream, search the ISSUES for it — the
+checkout is not the record, GitHub is.** A fresh clone, a worktree, or
+a container that has not fetched for an hour can be blind to work
+another session already landed; GitHub issue search is not. Before
+creating a tracking issue, a new top-level directory, or a "first
+deliverable" of anything, run an issue search on the topic's plain
+name (not just the word the request used). Named cost, 2026-08-22: a
+remote session resolved a garbled owner steer to "Lean 4", searched
+only for the garbled spelling, and built a complete parallel Lean
+package with its own tracking issue
+([#468](https://github.com/danbri/factoidal/issues/468)) while
+[#466](https://github.com/danbri/factoidal/issues/466) and
+`formal/lean4/` already existed — one search for "lean" would have
+found them. The duplicate cost a merge, a fold-in landing, and a
+corrective trail across two issues.
+
 **Issue state changes at landing time, not later.** When a merge fixes
 an issue: close it (or comment on it) in the same work cycle as the
 merge. "Fixed it, will close the issue later" produced the five
