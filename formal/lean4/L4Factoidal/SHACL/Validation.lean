@@ -311,17 +311,28 @@ def duplicatedLangTags (values : List Term) : List String :=
 
 /-! ## §1.4 SHACL instance -/
 
+/-- The direct rdfs:subClassOf superclasses of `c` (IRI objects only). -/
+def directSupers (g : Graph) (c : WfIri) : List WfIri :=
+  (objectsOf g (.iri c) rdfsSubClassOf).filterMap fun t =>
+    match t with
+    | .iri d => some d
+    | _ => none
+
+/-- Append the elements of `xs` not already in `acc`, in order. -/
+def addNew (acc : List WfIri) : List WfIri → List WfIri
+  | [] => acc
+  | d :: rest => addNew (if acc.contains d then acc else acc ++ [d]) rest
+
 /-- One step of the rdfs:subClassOf closure: add every direct
 superclass of every class in `cs`. -/
 def superClassesStep (g : Graph) (cs : List WfIri) : List WfIri :=
-  cs.foldl (fun acc c =>
-    (objectsOf g (.iri c) rdfsSubClassOf).foldl (fun acc2 t =>
-      match t with
-      | .iri d => if acc2.contains d then acc2 else acc2 ++ [d]
-      | _ => acc2) acc) cs
+  addNew cs (cs.flatMap (directSupers g))
 
 /-- The SHACL superclasses of `c` (reflexive, transitive), computed
-as a fixpoint; fuel = the graph size bounds the chain length. -/
+as a fixpoint: stop when a step adds nothing. The fuel bounds the
+number of steps; each productive step adds a class that is the object
+of some rdfs:subClassOf triple, so `g.length + 1` steps always reach
+the fixpoint (`ShaclTheorems.lean`, `superClasses_complete`). -/
 def superClassesFuel (g : Graph) : List WfIri → Nat → List WfIri
   | cs, 0 => cs
   | cs, fuel + 1 =>
@@ -591,7 +602,8 @@ mutual
       let values := valueNodes data node s
       let perValue := values.flatMap fun v =>
         s.constraints.flatMap fun cc => evalOneConstraint data sg node s v cc fuel
-      let agg := s.constraints.flatMap fun cc => evalAggregate data sg node s values cc fuel
+      let agg := s.constraints.flatMap fun cc => evalAggregateNonRec data sg node s values cc
+      let qualified := s.constraints.flatMap fun cc => evalAggregate data sg node s values cc fuel
       -- §2.2: the property shapes of a shape are validated against its
       -- VALUE nodes (for a node shape, the focus node itself).
       let nested := values.flatMap fun v =>
@@ -599,7 +611,7 @@ mutual
           match lookupShape r sg with
           | none => []
           | some ps => collectShapeViolations data sg v ps fuel
-      perValue ++ agg ++ nested
+      perValue ++ agg ++ qualified ++ nested
 
   /-- One component against one value node. -/
   def evalOneConstraint (data : Graph) (sg : List Shape) (focus : Term) (s : Shape)
@@ -642,8 +654,9 @@ mutual
         | some false => viol
         | none => []
 
-  /-- The aggregate components over the value nodes of one focus node;
-  §4.7.2 / §4.7.3 (qualified cardinality) need conformance counts. -/
+  /-- §4.7.2 / §4.7.3 qualified cardinality over the value nodes of one
+  focus node — the one aggregate that needs conformance counts (every
+  other aggregate is `evalAggregateNonRec`). -/
   def evalAggregate (data : Graph) (sg : List Shape) (focus : Term) (s : Shape)
       (values : List Term) (cc : Constraint) : Nat → List Violation
     | 0 => []
@@ -655,7 +668,7 @@ mutual
       | .qualifiedMaxCount qref qmax qdisjoint =>
         if qualifyingCount data sg s values qref qdisjoint fuel ≤ qmax then []
         else [focusViolation focus s cc]
-      | _ => evalAggregateNonRec data sg focus s values cc
+      | _ => []
 
   /-- §4.7.2: the number of value nodes conforming to the qualified
   value shape and — with sh:qualifiedValueShapesDisjoint — to no

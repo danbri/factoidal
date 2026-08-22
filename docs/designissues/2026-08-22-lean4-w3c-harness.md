@@ -651,3 +651,69 @@ green.
 `SimpleEntails.refl`. Axiom audit: propext, Classical.choice,
 Quot.sound. Completeness at saturation for the eight new rows is the
 named open obligation.
+
+## Status 2026-08-22 — SHACL Core runs (`l4shacl`, branch `lean4/shacl`)
+
+The W3C SHACL test suite (`third_party/testing/shacl/data-shapes-test-suite`)
+runs in the Lean tree through a standalone probe,
+`formal/lean4/Harness/ShaclProbe.lean` (`lake exe l4shacl <manifest.ttl>`),
+which leaves `Harness/Run.lean` and `Harness/Manifest.lean` untouched.
+Engine: `L4Factoidal/SHACL/{Vocabulary,Shapes,Validation,Report}.lean`.
+The probe mirrors `bin/shacl-runner/shacl_runner.ml`: manifests are
+walked through repeated `mf:include` triples, each `sht:Validate` entry's
+data and shapes graphs are resolved (`<>` or a sibling file), the full
+validation report is serialised and compared with the manifest's expected
+report by RDFC-1.0 canonical N-Quads (`RDF/Canonical.lean`), after the
+suite's sh:resultMessage carve-out. `--conforms-only` compares the
+boolean alone.
+
+### Measured score lines, verbatim
+
+```
+shacl-core core/complex: 2 pass, 0 fail, 0 skip, 0 unsupported (out of 2)
+shacl-core core/misc: 5 pass, 0 fail, 0 skip, 0 unsupported (out of 5)
+shacl-core core/node: 32 pass, 0 fail, 0 skip, 0 unsupported (out of 32)
+shacl-core core/path: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+shacl-core core/property: 38 pass, 0 fail, 0 skip, 0 unsupported (out of 38)
+shacl-core core/targets: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)
+shacl-core core/validation-reports: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)
+shacl-core TOTAL: 98 pass, 0 fail, 0 skip, 0 unsupported (out of 98)
+HARNESS-DIAG shacl-core: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0
+shacl-sparql TOTAL: 0 pass, 0 fail, 0 skip, 22 unsupported (out of 22)
+HARNESS-DIAG shacl-sparql: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0
+```
+
+F\* runner on the same manifests: shacl-core 98 pass, 0 fail (out of
+98); shacl-sparql 22 pass, 0 fail (out of 22). The 22 SPARQL entries are
+named `UNSUPPORTED` here (sh:sparql / sh:select / sh:ask / sh:validator /
+sh:parameter present in the shapes graph, or `mf:result sht:Failure`),
+counted in the denominator.
+
+### Sabotage
+
+`sh:maxCount` disabled: shacl-core 88 pass, 10 fail (out of 98), the
+failures being maxCount-001, maxCount-002, targetClass-001,
+targetNode-001, targetSubjectsOf-001, targetSubjectsOf-002, and-002,
+path-inverse-001, personexample and shacl-shacl. Restored, 98 pass, 0
+fail.
+
+### Theorems landed
+
+`validate_conforms_iff` (§3.1: the report conforms iff every focus node
+of every targeted shape satisfies `Spec.Conforms`), built from
+`collectShapeViolations_eq_nil_iff` (§3.4, induction on the fuel),
+`simpleValueCheck_iff` (twelve per-value components),
+`evalAggregateNonRec_eq_nil_iff` (nine per-focus-node components),
+`isShaclInstance_iff` (§1.4 SHACL instance, closure walk sound and
+complete), `notOf_flips`, `minCount_zero_no_result`,
+`validate_empty_conforms`, `validate_no_targets_conforms`. Axiom audit:
+propext, Classical.choice, Quot.sound. Details and the three places the
+specification names the engine (sh:xone's count, the qualified count,
+path evaluation) are in `PORT_NOTES.md`.
+
+### Next rungs
+
+SHACL-SPARQL (sh:sparql with `$this` pre-binding, custom constraint
+components) over the Lean SPARQL evaluator, which would move the 22
+unsupported entries; and folding the probe into `l4w3c` once
+`Harness/Run.lean` is free.

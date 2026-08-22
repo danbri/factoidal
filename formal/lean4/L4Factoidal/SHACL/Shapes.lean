@@ -73,6 +73,26 @@ inductive Path where
   | zeroOrOne (p : Path)
   deriving Repr, Inhabited
 
+mutual
+  /-- Structural equality on paths (written out because `Path` nests a
+  `List`; used by the build-time guards). -/
+  def Path.beq : Path → Path → Bool
+    | .pred a, .pred b => a == b
+    | .inverse a, .inverse b => Path.beq a b
+    | .seq as, .seq bs => Path.beqList as bs
+    | .alt as, .alt bs => Path.beqList as bs
+    | .zeroOrMore a, .zeroOrMore b => Path.beq a b
+    | .oneOrMore a, .oneOrMore b => Path.beq a b
+    | .zeroOrOne a, .zeroOrOne b => Path.beq a b
+    | _, _ => false
+  def Path.beqList : List Path → List Path → Bool
+    | [], [] => true
+    | a :: as, b :: bs => Path.beq a b && Path.beqList as bs
+    | _, _ => false
+end
+
+instance : BEq Path := ⟨Path.beq⟩
+
 /-! ## §2.1 targets -/
 
 /-- The target declarations of §2.1.1–§2.1.4, plus the implicit class

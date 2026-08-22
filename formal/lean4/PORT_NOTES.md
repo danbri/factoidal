@@ -2692,3 +2692,131 @@ explicit `UpdateError` instead of a silent success.
   table regressed an OWL consistency test (#236 interaction); this
   port has no OWL-RL closure on the RDFS path, so the seed is safe
   here and that interaction remains the F\* tree's.
+
+## Stage: SHACL Core on the W3C data-shapes suite (branch `lean4/shacl`, 2026-08-22)
+
+The SHACL Core validator (W3C Recommendation, 20 July 2017) is ported
+from `formal/fstar/SHACL.Validation.fst`, with the spec/engine split the
+owner asked for: `Spec.Conforms` is §3.4 conformance as a relation,
+`validate` is the engine, and `ShaclTheorems.lean` proves the two agree
+for every Core component. The real W3C manifests are read with the Lean
+Turtle parser by a standalone probe (`lake exe l4shacl`, which does not
+touch `Harness/Run.lean` / `Harness/Manifest.lean`).
+
+### Module correspondence (append)
+
+| F\* | Lean 4 | Notes |
+|---|---|---|
+| `SHACL.Validation.fst` §1, §11b (IRI constants) | `SHACL/Vocabulary.lean` | `assert_norm (is_iri …)` → `⟨"…", rfl⟩`; SHACL-SPARQL predicates kept only as `sparqlFeaturePredicates` for the `unsupported` report |
+| §2–§7 (`severity`, `node_kind`, `path`, `target`, `constraint_component`, `shape`) | `SHACL/Shapes.lean` (`Severity`, `NodeKind`, `Path`, `Target`, `Constraint`, `Shape`, `ShapesGraph`) | Core 1.1 constructors only; the SHACL 1.2 / SHACL-AF / SHACL-SPARQL constructors (`CC_DatatypeIn`, `CC_SingleLine`, `CC_MemberShape`, `CC_Sparql`, `CC_Custom`, `T_Sparql`, `values_query`, `target_where`, `constraint_meta`) are not ported |
+| §11a `rdf_list_terms`, §11c `parse_path`, §11f `build_targets` / `build_constraints` / `build_shape` / `parse_shape_from_graph_pure` | `rdfListTerms`, `decodePath`, `decodeTargets`, `decodeConstraints`, `decodeShape`, `decodeShapesGraph` | same fuel idiom (graph length bounds every data-driven walk); list-before-sh:*Path reading kept for path-strange-001/002 |
+| §11c `path_invert`, `eval_path_fuel` / `eval_seq_fuel` / `eval_alt_fuel` / `eval_plus_fuel` | `Path.invert`, `evalPathFuel` group, `evalPath` | structural recursion on the fuel; `dedupTerms` after every hop |
+| §11d `shacl_class_closure` / `is_shacl_instance` | `superClasses` (fixpoint over `addNew`), `isShaclInstance` | the F\* materialises the closure of the whole graph with the RDFS rules; the Lean walks rdfs:subClassOf from the node's rdf:type values — same §1.4 relation, proved both ways |
+| §11e `eval_target` | `evalTarget`, `shapeFocusNodes` | `T_Sparql`, `T_DataShape` not ported |
+| `XSD.Datatypes.fst` `literal_ill_formed`, `numeric_cmp_le/lt`, `dt_parse_ms` | `literalIllFormed`, `numericCmpLe/Lt`, `dtParseMs`, `literalToScaled` | `Scaled` / `parseToScaled` / `parseDoubleToScaled` reused from `SPARQL/Expr.lean` |
+| §11g `term_lt` / `term_le` | `termLt`, `termLe` | |
+| §11h–§11i `collect_shape_violations` / `eval_one_constraint` / `eval_aggregate_constraints` | `collectShapeViolations` / `evalOneConstraint` / `evalAggregate` / `qualifyingCount`, with `simpleValueCheck` and `evalAggregateNonRec` factored out | the non-recursive components are plain functions so each has its own theorem |
+| §11j `validate` | `validate` | fuel `4·|shapes| + 50` as the F\* |
+| §13 `validation_report_to_graph`, `result_to_triples`, `path_to_rdf` | `SHACL/Report.lean` (`reportToGraph`, `resultToTriples`, `pathToRdf`) | same predicate set, same single blank-node counter |
+| `bin/shacl-runner/shacl_runner.ml` | `Harness/ShaclProbe.lean` (exe `l4shacl`) | manifest walk through repeated `mf:include`, `expected_report_graph` closure, the sh:resultMessage carve-out, RDFC-1.0 canonical N-Quads comparison (`RDF/Canonical.lean`), `--conforms-only` |
+| `assume val eval_sparql_target_select` (the one SHACL `assume val`) | — | a forward reference for the unimplemented SPARQL-target form; no counterpart needed |
+
+### Measured (verbatim, 2026-08-22)
+
+```
+shacl-core core/complex: 2 pass, 0 fail, 0 skip, 0 unsupported (out of 2)
+shacl-core core/misc: 5 pass, 0 fail, 0 skip, 0 unsupported (out of 5)
+shacl-core core/node: 32 pass, 0 fail, 0 skip, 0 unsupported (out of 32)
+shacl-core core/path: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+shacl-core core/property: 38 pass, 0 fail, 0 skip, 0 unsupported (out of 38)
+shacl-core core/targets: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)
+shacl-core core/validation-reports: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)
+shacl-core TOTAL: 98 pass, 0 fail, 0 skip, 0 unsupported (out of 98)
+shacl-sparql sparql/component: 0 pass, 0 fail, 0 skip, 3 unsupported (out of 3)
+shacl-sparql sparql/node: 0 pass, 0 fail, 0 skip, 4 unsupported (out of 4)
+shacl-sparql sparql/property: 0 pass, 0 fail, 0 skip, 1 unsupported (out of 1)
+shacl-sparql sparql/pre-binding: 0 pass, 0 fail, 0 skip, 14 unsupported (out of 14)
+shacl-sparql TOTAL: 0 pass, 0 fail, 0 skip, 22 unsupported (out of 22)
+```
+
+F\* side, same denominators (`skills/test-suites/SKILL.md`, baseline
+2026-07-05): shacl-core 98 pass, 0 fail (out of 98); shacl-sparql 22
+pass, 0 fail (out of 22). The Lean tree matches on core and names the
+whole SPARQL suite unsupported. Full-report comparison (default), not
+conforms-only.
+
+### Sabotage record
+
+`sh:maxCount` disabled (`| .maxCount _ => []` in `evalAggregateNonRec`):
+shacl-core drops to 88 pass, 10 fail (out of 98) — maxCount-001,
+maxCount-002, targetClass-001, targetNode-001, targetSubjectsOf-001,
+targetSubjectsOf-002, and-002, path-inverse-001, personexample,
+shacl-shacl (the last reports 59 results against an expected conforming
+report). Restored; 98 pass, 0 fail again; `ShaclTests.lean` pins
+maxCount at the unit level too.
+
+### Theorems (`ShaclTheorems.lean`; axiom audit propext, Classical.choice, Quot.sound)
+
+- `validate_empty_conforms`, `validate_no_targets_conforms` (§3.1, §2.1).
+- `minCount_zero_no_result` (§4.2.1).
+- `notOf_flips` (§4.6.1): a node shape whose only component is `sh:not r`
+  has no result iff the referenced shape has one.
+- `isShaclInstance_iff` (§1.4): the closure walk is sound
+  (`superClassesFuel_sound`) and complete
+  (`superClasses_complete` — a non-closed run with fuel `|g| + 1` would
+  hold more distinct classes than rdfs:subClassOf objects plus one,
+  `Nodup.length_le_of_subset`).
+- `simpleValueCheck_iff`: sh:class, sh:datatype, sh:nodeKind, sh:in,
+  sh:pattern, sh:minLength, sh:maxLength, sh:languageIn, the four
+  sh:min/maxInclusive/Exclusive — each decides its `Spec.ValueSatisfies`
+  clause.
+- `evalAggregateNonRec_eq_nil_iff`: sh:minCount, sh:maxCount,
+  sh:hasValue, sh:uniqueLang, sh:closed, sh:equals, sh:disjoint,
+  sh:lessThan, sh:lessThanOrEquals — each decides its
+  `Spec.FocusSatisfies` clause.
+- `collectShapeViolations_eq_nil_iff` (§3.4) and `validate_conforms_iff`
+  / `validate_sound` (§3.1): the engine reports no result iff
+  `Spec.Conforms` / `Spec.GraphConforms`, by induction on the fuel
+  through the mutual group.
+
+Where the specification names the engine: `Spec.ValueConforms` for
+sh:xone counts matching shapes with the engine's filter, and
+`Spec.AggConforms` for sh:qualifiedMin/MaxCount uses `qualifyingCount`;
+path evaluation (`evalPath`) is the path semantics on both sides. Those
+three are the named open obligations for a fully independent spec.
+
+### Translation decisions
+
+- Deactivated shapes are dropped at decode time (as the F\*); a
+  deactivated shape is unreachable by reference and by target alike.
+- `sh:uniqueLang` / `sh:closed` / `sh:deactivated` / qualified-disjoint
+  flags are matched LEXICALLY against `"true"` (uniqueLang-002-shapes.ttl
+  documents the suite's intent).
+- The implicit class target (§2.1.3.1) requires `rdf:type sh:NodeShape`
+  together with `rdfs:Class` / `owl:Class`, as the F\*.
+- `Spec.Conforms 0` is `True`: the engine's fuel exhaustion is
+  sound-by-omission and the specification says so at the same budget.
+- `sh:minCount` / `sh:maxCount` / the other non-recursive aggregates run
+  at the shape's fuel level, not one below (the F\* evaluates them inside
+  the fuel-decrementing group); observable only at fuel 1, which
+  `validate` never uses.
+
+### Assumption report (append)
+
+None: no `axiom`, `sorry`, `native_decide`, `partial`, `opaque` or
+`@[extern]` in `L4Factoidal/SHACL/`. The probe uses one `partial def`
+(the manifest walk) outside the library. The F\* module carries one
+`assume val` (`eval_sparql_target_select`, SPARQL targets), not
+reachable from Core.
+
+### Findings against the F\* (not fixed here)
+
+- `formal/fstar/SHACL.Validation.fst:2464-2465` (`CC_MinLength` /
+  `CC_MaxLength`): `String.length` on the extracted OCaml string is a
+  BYTE count, while §4.4.1 counts characters ("the length of the string
+  representation"); a value such as `"ü"` has length 2 there. No suite
+  fixture exercises a non-ASCII length. The Lean counts codepoints.
+- `formal/fstar/XSD.Datatypes.fst:178-195` (`dt_parse_ms`): the date
+  separators are never checked — `"2002x10x10x12x00x00"^^xsd:dateTime`
+  parses as a valid dateTime. Ported unchanged so the two trees agree on
+  the suite; `ShaclTests.lean` does not pin the lenient reading.
