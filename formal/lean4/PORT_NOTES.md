@@ -1394,3 +1394,191 @@ stack is dissolved into the `Loader` parameter — see the assumption
 report above.
 
 The authoritative ladder is https://github.com/danbri/factoidal/issues/466 (every landing and open rung, with its branch). Landed 2026-08-22: `NamedGraph.name : Subject` (blank-node graph names — the two remaining rdf-trig fails are now green; see the decision section above). Queued as of 2026-08-22: RDF/XML, JSON-LD, the SPARQL string parser, OWL 2 RL (all in flight), then SPARQL Update, SHACL Core, the regex engine, xsd:dateTime, the model-theoretic halves of the RDFS/OWL theorems, and closing the stated-but-unproved round-trip goals.
+* **`COUNT(DISTINCT *)`.** The F\* source builds a string key per row
+  and deduplicates the keys; this port calls `distinctSolutions`,
+  which is the §18.3 row equality DISTINCT itself uses. The two agree
+  wherever the string key and the row equality agree, and the row
+  equality is the one the spec actually defines.
+* **`REDUCED` is the identity.** §18.4 permits removing some, all, or
+  none of the duplicates; keeping all is conformant, and is what the
+  F\* source specifies.
+* **ORDER BY is a stable insertion sort**, not `List.sortWith`. The
+  point is the proof: `sortSolutions_perm` is four lines against a
+  sort written here, and would otherwise depend on a library sort's
+  specification. §15.1 says nothing about ties, so stability is a free
+  choice; it is the least surprising one.
+* **`SELECT *` header order.** BGP matching CONSES each new binding
+  onto the front of the row (`Binding.bind`, as `sm_bind` does), so
+  `collectVarsInOrder` reports the object variable before the subject
+  variable for `?s :p ?o`. Pinned in `QueryTests.lean` so the order is
+  a decision on record rather than an accident.
+
+## The SPARQL query-syntax stage (2026-08-22)
+
+The last rung before the W3C `sparql11` query suites can run through
+a Lean harness: the tokenizer and grammar that turn query TEXT into
+the `SPARQL/Query.lean` AST, plus the reviewer-facing SSE printer.
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `L4Factoidal/SPARQL/Tokenizer.lean` | `SPARQL11.Parser.fst` Parts 2-3 (`is_*` character classes, `process_iri_escapes`, `decode_string_escape`, `scan_iri`/`scan_string`/`scan_pname_or_keyword`/`scan_number`/`scan_bnode_label`/`scan_var_name`/`scan_langtag`, `keyword_of_upper`, `next_token`, `tokenize`, `tokenize_12`) | the §19.8 TERMINAL layer: `Token` (one constructor per F\* `token` case, update keywords included), `PosToken` carrying a character offset, `tokenize` / `tokenize12` / `tokenizeAt`. The `sparql12` lexer flag becomes `SparqlVersion` |
+| `L4Factoidal/SPARQL/Parser.lean` | `SPARQL11.Parser.fst` Parts 4-7 (the combinators and the whole recursive descent) + Part 8 (`sse_*`) | the §19.8 PRODUCTION layer: `parseSparql : String → Option String → SparqlVersion → Except ParseError Query`, and `Query.toSse`. One mutual block, structural on `fuel`, seeded at the F\*'s own 10000 |
+| `L4Factoidal/SPARQL/ParserTests.lean` | (new) | 224 `#guard`s: the terminal layer, one per grammar production family, every well-formedness rejection with the F\*'s message text, and 20 `toSse` snapshots |
+| `L4Factoidal/SPARQL/ParserTheorems.lean` | (new) | `tokenize` always ends with `eof` (induction on the fuel), `expectTok` succeeds exactly on a matching head, and the two top-level contracts: an accepted query has valid blank-node scope and consumed its whole stream |
+| `Harness/SparqlSyntaxProbe.lean` (`lean_exe l4sparql-probe`) | `bin/w3c-runner` (the driver's job only) | runs the parser over the real `third_party/testing/w3c/sparql/sparql11/*.rq`, classifying by each suite's `manifest.ttl` read with the Lean Turtle parser |
+
+### Measured, 2026-08-22
+
+`lake exe l4sparql-probe third_party/testing/w3c/sparql/sparql11`:
+
+```
+syntax-query   63 positive pass, 0 fail (out of 63)
+               31 negative pass, 0 fail (out of 31)
+syntax-fed      3 positive pass, 0 fail (out of 3)
+query-eval     297 parsed of 297; 9 of 9 negative-syntax entries rejected
+TOTAL          403 pass, 0 fail (out of 403 manifest-listed query files)
+```
+
+Not scored, and reported as such by the probe rather than hidden: 12
+`.rq` files present on disk that no manifest names (`property-path/`'s
+`{n,m}` path quantifiers, dropped before SPARQL 1.1 became a
+Recommendation, plus two `entailment/rif*` leftovers), and 55 `.ru`
+UPDATE requests, which a QUERY parser does not read.
+
+This is a probe result, not a conformance claim. Iron rule #6 is met
+for the SPARQL side only when a Lean runner reads the same manifests
+`bin/w3c-runner` does, end to end, and compares RESULTS.
+
+### Why the probe reads manifests
+
+The Turtle stage's probe classifies by file NAME, because a manifest
+cannot be read until a Turtle parser exists. That reasoning does not
+carry over: the Turtle parser is landed, and the name convention is
+WRONG for this corpus. `syntax-BINDscope6.rq`, `syntax-BINDscope7.rq`,
+`syntax-BINDscope8.rq`, `syntax-SELECTscope2.rq`,
+`syntax-bindings-09.rq`, `aggregates/agg08.rq`,
+`aggregates/agg09.rq`, `aggregates/agg11.rq`, `aggregates/agg12.rq`,
+`grouping/group06.rq`, `grouping/group07.rq` and
+`construct/constructwhere05.rq` are all `mf:NegativeSyntaxTest11` and
+none of them contains `bad`. The first probe run scored every one of
+those CORRECT rejections as a failure. So `SparqlSyntaxProbe` parses
+each `manifest.ttl` with `L4Factoidal.Syntax.Turtle` and classifies by
+`rdf:type` and `mf:action` / `qt:query`, keeping the name convention
+only as the fallback for a directory with no manifest.
+
+### Assumption report
+
+`SPARQL11.Parser.fst` contains **zero `assume val`s** — measured, not
+assumed (`grep -c '^assume val' formal/fstar/SPARQL11.Parser.fst`
+returns `0`; the only two matches for the string `assume val` in that
+file are prose in its header comment). It is the largest F\* module
+ported so far with nothing to dissolve: no clock, no host regex, no
+extension registry. Everything it needs is a total function of its
+input string, and the Lean port is the same.
+
+Two F\* primitives have no Lean counterpart, for the reason the XML
+stage already recorded:
+
+* `utf8_of_codepoint` — a hand-written UTF-8 encoder. The F\* indexes
+  raw BYTES through `Parser.FastString`, so a resolved `\uXXXX` escape
+  has to be re-encoded. Lean's `Char` IS a Unicode scalar value, so a
+  resolved escape is one `Char.ofNatAux` and the encoder disappears.
+* `fs_byte_length` / `substring` / `char_at` — byte-position
+  arithmetic. The port threads `(pos, List Char)` instead.
+
+### Deviations, stated plainly
+
+* **`ParseError.pos` is a CHARACTER offset**, where the F\* reports a
+  byte offset. The F\* `token_stream` carries no positions at all;
+  `PosToken` adds them so a rejection can name WHERE.
+* **A `\uD800`-`\uDFFF` escape inside an IRIREF is DROPPED**, where
+  the F\* emits three bytes. No Lean `Char` holds a surrogate. The F\*
+  itself drops an out-of-Unicode-range escape (`utf8_of_codepoint`
+  returns `""`), so this extends an existing behaviour rather than
+  inventing one. Inside a STRING both reject outright.
+* **SPARQL 1.1 UPDATE is not ported.** The tokenizer emits the update
+  keywords (dropping them would make `INSERT` lex as a prefixed name
+  and silently change which QUERIES parse), but `parse_single_update_op`
+  and its clique are a separate rung. `parseSparql` is a query parser.
+* **The jena-text `text:query` object grammar is not ported** — a
+  vendor extension outside §19.8, whose encoding lives in
+  `SPARQL.FullText.fst` with no Lean counterpart to encode into.
+* **SPARQL 1.2 bare reified triples `<< s p o >>`, the `~` reifier and
+  `{| … |}` annotation blocks are not ported.** All four tokens are
+  lexed; `QueryPattern` has no reifier arm to build into. Triple-term
+  PATTERNS `<<( s p o )>>` and the `TRIPLE`/`SUBJECT`/`PREDICATE`/
+  `OBJECT`/`isTRIPLE` builtins ARE ported, because
+  `PatternTerm.tripleTerm` and the matching `Expr` constructors exist.
+* **`resolve_pname` does not undo `[173] PN_LOCAL_ESC` backslashes.**
+  The F\* concatenates the namespace and the raw local lexeme; the
+  port keeps that, because changing it would change which W3C fixtures
+  resolve to which IRI.
+
+### What the AST should gain
+
+Three findings the port could not fix from the parser side, because
+`Query.lean` / `Expr.lean` were out of scope for this rung:
+
+1. **`Expr.existsPat` / `Expr.notExistsPat` should carry a
+   `QueryPattern`, not a `GraphPattern`.** The grammar produces a
+   `QueryPattern`; the AST demands the lowered ALGEBRA type, whose
+   `filter`, `leftJoin`, `bind`, `serviceVar` and `modified` fields
+   are FUNCTIONS. Consequences the parser absorbs today: it lowers
+   with `QueryPattern.lower emptyEnv`, so (a) `Query.toSse` cannot
+   print inside an EXISTS with full fidelity — `sseGraphPattern`
+   writes `_` where a field is a function, and everything OUTSIDE an
+   EXISTS is byte-identical to `sse_ggp`; and (b) the F\*
+   `validate_bnode_scope_expr`'s walk into `E_Exists` is replaced by
+   running the same check on the operand AT CONSTRUCTION TIME, which
+   is equivalent (that F\* function returns `(ok, [])` for an EXISTS,
+   so an EXISTS operand's labels never escape its own scope) but is
+   not where a reader would look for it. The fix needs `Expr` and
+   `Query` in ONE mutual block.
+2. **`Query.exprHasAggregate` is NARROWER than the F\*
+   `expr_has_aggregate`.** The Lean version (`Query.lean` line 657)
+   handles `arith`/`compare`/`and`/`or`/`not`/`unaryMinus`/
+   `unaryPlus`/`cond` and answers `false` for everything else, so
+   `COUNT(CONCAT(SUM(?x)))` would not be caught as a nested
+   aggregate. The parser therefore carries its own
+   `exprHasAggregateFull`, which covers every constructor the way the
+   F\* does. `Query.exprHasAggregate` should be widened to match, and
+   the parser's copy then deleted.
+3. **`Expr` has no constructor for `RAND`, `UUID`, `STRUUID` or
+   `BNODE`.** The parser follows the F\* and models each as
+   `Expr.functionCall` on an `fn:` IRI, which is faithful — but it
+   means those four §17 builtins are indistinguishable from a
+   user-supplied extension function at the AST level.
+
+Also worth recording, though not an AST gap: `Expr` derives NOTHING
+(no `DecidableEq`, no `Repr`), because `existsPat` carries a
+`GraphPattern` with function fields. Every parser test therefore
+compares through `Query.toSse` strings rather than by structural
+equality. Fixing finding 1 would make `DecidableEq` derivable and the
+tests structural.
+
+### A Lean cost finding: `decide` does not scale over a parser
+
+Measured here, and recorded so the next session does not pay for it
+twice. `decide` discharges a goal by KERNEL evaluation, and the
+tokenizer is structurally recursive through `Nat`-fuel and
+`List Char`, so the kernel goes through `brecOn`:
+
+| goal | kernel cost |
+|---|---|
+| `tokensOf (tokenize "SELECT") = [.select, .eof]` | 0.3 s, 0.43 GB |
+| `tokensOf (tokenize "<http://a/b>") = [.iri …, .eof]` | 72 s, 10.0 GB |
+| ten such theorems in one file | out of memory, `lean` killed (signal 9) |
+
+Twelve characters cost ten gigabytes. `#guard` evaluates through the
+COMPILER instead and checks the same fact at build time for no cost,
+so concrete-input facts are `#guard`s and `ParserTheorems.lean` keeps
+exactly one `decide` PROOF (the cheapest goal) to show the technique
+exists. The general facts are structural inductions, which the kernel
+checks symbolically and cheaply.
+
+The same trap appears one level up: `split at h` on a hypothesis whose
+scrutinee mentions `pSelectQuery topFuel …` weak-head-normalises ten
+thousand fuel levels and exhausts memory. `parseSparql` was therefore
+split into `parseSparqlWith (fuel : Nat) …` plus a wrapper, so a proof
+can keep the fuel SYMBOLIC; and the proofs use `cases h : e`, which
+cases on the `Except` constructor without ever evaluating `e`.

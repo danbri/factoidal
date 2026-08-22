@@ -1,5 +1,5 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal", "Harness", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4wasm-cli", "l4w3c", "l4rdfxml-probe"]
+defaultTargets = ["L4Factoidal", "Harness", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4wasm-cli", "l4w3c", "l4rdfxml-probe", "l4sparql-probe"]
 
 [[lean_lib]]
 name = "L4Factoidal"
@@ -71,3 +71,9 @@ root = "Harness.Main"
 [[lean_exe]]
 name = "l4rdfxml-probe"
 root = "Harness.RdfXmlProbe"
+# Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
+# .rq files without a manifest, using the suites' naming convention.
+# See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.
+[[lean_exe]]
+name = "l4sparql-probe"
+root = "Harness.SparqlSyntaxProbe"

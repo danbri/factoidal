@@ -67,3 +67,7 @@ import L4Factoidal.JSONLD.Expand
 import L4Factoidal.JSONLD.ToRdf
 import L4Factoidal.JSONLD.Tests
 import L4Factoidal.JSONLD.Theorems
+import L4Factoidal.SPARQL.Tokenizer
+import L4Factoidal.SPARQL.Parser
+import L4Factoidal.SPARQL.ParserTests
+import L4Factoidal.SPARQL.ParserTheorems
