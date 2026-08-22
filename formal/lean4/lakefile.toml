@@ -1,5 +1,5 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal", "Harness", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4owl-probe", "l4wasm-cli", "l4w3c", "l4rdfxml-probe", "l4sparql-probe"]
+defaultTargets = ["L4Factoidal", "Harness", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4owl-probe", "l4wasm-cli", "l4w3c", "l4rdfxml-probe", "l4sparql-probe", "l4prop", "l4diff"]
 
 [[lean_lib]]
 name = "L4Factoidal"
@@ -85,3 +85,19 @@ root = "Harness.RdfXmlProbe"
 [[lean_exe]]
 name = "l4sparql-probe"
 root = "Harness.SparqlSyntaxProbe"
+
+# Property-based probe (Harness/PropProbe.lean): N seeded cases from
+# L4Factoidal/Testing/Gen.lean checked against the invariants in
+# L4Factoidal/Testing/Props.lean. Exit 1 on any failure; every failure
+# is printed as a repro (seed, graph, query).
+#   lake exe l4prop --cases 500 --seed 0
+[[lean_exe]]
+name = "l4prop"
+root = "Harness.PropProbe"
+# Differential harness (Harness/Differential.lean): the same (data,
+# query) pairs through bin/<platform>/factoidal and the Lean evaluator,
+# compared with Harness/Compare.lean. Run from the repository root.
+#   formal/lean4/.lake/build/bin/l4diff --gen 500 third_party/testing/w3c/sparql/sparql11/manifest-all.ttl
+[[lean_exe]]
+name = "l4diff"
+root = "Harness.Differential"

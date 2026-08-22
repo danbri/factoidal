@@ -111,3 +111,6 @@ import L4Factoidal.SPARQL.GraphStore
 import L4Factoidal.SPARQL.ServiceDescription
 import L4Factoidal.SPARQL.ProtocolTests
 import L4Factoidal.SPARQL.ProtocolTheorems
+import L4Factoidal.Testing.Gen
+import L4Factoidal.Testing.Props
+import L4Factoidal.Testing.GenTests
