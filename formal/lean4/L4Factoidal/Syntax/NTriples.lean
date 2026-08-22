@@ -349,7 +349,7 @@ identically regardless of `mode`). The F* source's separate CANONICAL
 form (`nq_canon_term`, uppercase `\u00XX` for every C0/DEL byte,
 lowercased language tags, U+FFFE/U+FFFF escaping) is a distinct rendering
 contract or the RDFC-1.0 c14n suite, not the general wire serialiser this
-module ports — not ported here. -/
+module ports — ported below, in its own section. -/
 
 /-- Escape a literal's lexical form for embedding in a quoted string:
 `\` → `\\`, `"` → `\"`, LF → `\n`, CR → `\r`, TAB → `\t`; every other
@@ -428,5 +428,102 @@ def Graph.toNTriples (g : Graph) (mode : Mode := .rdf11) : Except String String 
         | .error e => .error e
         | .ok line => .ok (s ++ line))
     (.ok "")
+
+/-! ## Canonical N-Triples (RDF 1.2 N-Triples §canonical form)
+
+https://www.w3.org/TR/rdf12-n-triples/#canonical-ntriples — the form the
+W3C `rdf12/rdf-n-triples/c14n` and `rdf12/rdf-n-quads/c14n` suites
+compare BYTE FOR BYTE. Port of `RDF.NQuads.Serialize.fst`'s
+`nq_canon_*` group (`canon_hex_upper`, `canon_byte_uchar`,
+`nq_canon_special_byte`, `nq_canon_escape_byte`, `nq_canon_walk`,
+`nq_canon_term`, `nq_canon_line_default`, `canonical_nt_document`).
+
+What canonical form fixes, and what it does NOT:
+
+  * one space between terms, one `" .\n"`-terminated line per triple;
+  * the shortest escape for `\b \t \n \f \r \" \\`, an uppercase
+    `\u00XX` for every other C0 control and for DEL (U+007F), and
+    `￾` / `￿` for the two BMP non-characters;
+  * language tags lowercased, the base direction kept as `--ltr` /
+    `--rtl`;
+  * `xsd:string` written with no datatype;
+  * blank-node labels and statement ORDER are preserved. This is
+    canonical SERIALISATION, not RDFC-1.0 canonicalisation (which
+    relabels blank nodes and sorts — see `RDF/Canonical.lean`).
+
+The F* source walks UTF-8 BYTES; this walks Unicode CHARACTERS. The two
+agree: every byte the F* escapes is below 0x80, so it can only be a
+one-byte UTF-8 sequence, and the U+FFFE / U+FFFF cases the F* matches as
+the byte triples `EF BF BE` / `EF BF BF` are exactly those codepoints. -/
+
+/-- Uppercase hexadecimal digit for a nibble. Port of `canon_hex_upper`. -/
+def canonHexUpper (n : Nat) : Char :=
+  if n < 10 then Char.ofNat (48 + n) else Char.ofNat (55 + n)
+
+/-- `\u00XX` (uppercase hex) for a codepoint below 0x100. Port of
+`canon_byte_uchar`. -/
+def canonUchar2 (n : Nat) : String :=
+  "\\u00" ++ String.ofList [canonHexUpper (n / 16), canonHexUpper (n % 16)]
+
+/-- The canonical escape for one character, `none` when the character
+passes through unchanged. Port of `nq_canon_special_byte` +
+`nq_canon_escape_byte`, plus the U+FFFE / U+FFFF non-character rule
+`nq_canon_walk` applies inline. -/
+def canonEscapeChar (c : Char) : Option String :=
+  let n := c.toNat
+  if n == 0x08 then some "\\b"
+  else if n == 0x09 then some "\\t"
+  else if n == 0x0A then some "\\n"
+  else if n == 0x0C then some "\\f"
+  else if n == 0x0D then some "\\r"
+  else if n == 0x22 then some "\\\""
+  else if n == 0x5C then some "\\\\"
+  else if n < 0x20 || n == 0x7F then some (canonUchar2 n)
+  else if n == 0xFFFE || n == 0xFFFF then some ("\\u" ++ String.ofList
+    [canonHexUpper (n / 4096 % 16), canonHexUpper (n / 256 % 16),
+     canonHexUpper (n / 16 % 16), canonHexUpper (n % 16)])
+  else none
+
+/-- A literal's lexical form, canonically escaped. Port of
+`nq_canon_escape_literal` / `nq_canon_walk`. -/
+def canonEscapeLiteral (s : String) : String :=
+  String.join (s.toList.map (fun c =>
+    match canonEscapeChar c with
+    | some e => e
+    | none   => String.singleton c))
+
+/-- Canonical form of a term in object position. Port of
+`nq_canon_term`. Total: canonical N-Triples IS RDF 1.2, so there is no
+mode parameter and no failure case. -/
+def Term.toCanonicalNTriples : Term → String
+  | .iri i   => "<" ++ i.val ++ ">"
+  | .bnode b => "_:" ++ b
+  | .literal wl =>
+      let l := wl.val
+      let esc := canonEscapeLiteral l.lexicalForm
+      match l.langTag with
+      | some tag =>
+          let dirSuffix := match l.direction with
+            | some .ltr => "--ltr"
+            | some .rtl => "--rtl"
+            | none      => ""
+          "\"" ++ esc ++ "\"@" ++ tag.map Char.toLower ++ dirSuffix
+      | none =>
+          if l.datatype = xsdString then "\"" ++ esc ++ "\""
+          else "\"" ++ esc ++ "\"^^<" ++ l.datatype.val ++ ">"
+  | .tripleTerm s p o =>
+      "<<( " ++ Subject.toNTriples s ++ " <" ++ p.val ++ "> " ++
+      Term.toCanonicalNTriples o ++ " )>>"
+
+/-- One canonical line, `" .\n"`-terminated. Port of
+`nq_canon_line_default`. -/
+def Triple.toCanonicalNTriples (t : Triple) : String :=
+  Subject.toNTriples t.s ++ " <" ++ t.p.val ++ "> " ++
+  Term.toCanonicalNTriples t.o ++ " .\n"
+
+/-- Canonical N-Triples document: one line per triple, input order.
+Port of `canonical_nt_document`. -/
+def Graph.toCanonicalNTriples (g : Graph) : String :=
+  String.join (g.map Triple.toCanonicalNTriples)
 
 end L4Factoidal.Syntax

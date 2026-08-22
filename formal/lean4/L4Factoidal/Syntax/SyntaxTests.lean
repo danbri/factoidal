@@ -286,4 +286,72 @@ def rtBnodeNamedDataset : Dataset :=
 #guard (Dataset.toNQuads rtBnodeNamedDataset).toOption
   == some "<http://example.org/s> <http://example.org/p> \"in-g\" _:g .\n"
 
+/-! ### Canonical N-Triples / N-Quads (RDF 1.2 §canonical form)
+
+https://www.w3.org/TR/rdf12-n-triples/#canonical-ntriples. One guard per
+rule the canonical form fixes, each named after the
+`rdf12/rdf-n-{triples,quads}/c14n` entry whose shape it reproduces. The
+fixtures are written by hand against the grammar (module header), so the
+guard checks the RULE, and the W3C files themselves are read off disk by
+`lake exe l4w3c` on the two c14n manifests. -/
+
+/-- Parse in RDF 1.2 mode, then render canonically. -/
+def canonOf (s : String) : Option String :=
+  (parseNTriples s .rdf12).toOption.map Graph.toCanonicalNTriples
+
+/-- Same, for a dataset. -/
+def canonDsOf (s : String) : Option String :=
+  (parseNQuads s .rdf12).toOption.map Dataset.toCanonicalNQuads
+
+-- `literal_with_BACKSPACE`: the SHORTEST escape wins over `\u0008`.
+#guard canonOf "<http://a.example/s> <http://a.example/p> \"\\u0008\" .\n"
+  == some "<http://a.example/s> <http://a.example/p> \"\\b\" .\n"
+
+-- `literal_with_FORM_FEED` / `_CARRIAGE_RETURN` / `_CHARACTER_TABULATION`.
+#guard canonOf "<http://a.example/s> <http://a.example/p> \"\\u000C\\u000D\\u0009\" .\n"
+  == some "<http://a.example/s> <http://a.example/p> \"\\f\\r\\t\" .\n"
+
+-- `literal_all_controls`: a control with no short escape becomes an
+-- UPPERCASE-hex `\u00XX`, and DEL (U+007F) is escaped too.
+#guard canonOf "<http://a.example/s> <http://a.example/p> \"\\u0001\\u000B\\u001F\\u007F\" .\n"
+  == some "<http://a.example/s> <http://a.example/p> \"\\u0001\\u000B\\u001F\\u007F\" .\n"
+
+-- `literal_with_dquote` / `_REVERSE_SOLIDUS`.
+#guard canonOf "<http://a.example/s> <http://a.example/p> \"a\\\"b\\\\c\" .\n"
+  == some "<http://a.example/s> <http://a.example/p> \"a\\\"b\\\\c\" .\n"
+
+-- `extra_whitespace-01` / `minimal_whitespace-01`: exactly one space
+-- between terms, whatever the input spacing was.
+#guard canonOf "  <http://a.example/s>\t<http://a.example/p>   <http://a.example/o>   .  \n"
+  == some "<http://a.example/s> <http://a.example/p> <http://a.example/o> .\n"
+
+-- `literal_with_string_dt`: an explicit `xsd:string` datatype is dropped.
+#guard canonOf ("<http://a.example/s> <http://a.example/p> " ++
+    "\"x\"^^<http://www.w3.org/2001/XMLSchema#string> .\n")
+  == some "<http://a.example/s> <http://a.example/p> \"x\" .\n"
+
+-- `langtagged_string`: the language tag is lowercased.
+#guard canonOf "<http://a.example/s> <http://a.example/p> \"chat\"@EN-UK .\n"
+  == some "<http://a.example/s> <http://a.example/p> \"chat\"@en-uk .\n"
+
+-- `dirlangtagged_string`: lowercased tag, base direction kept.
+#guard canonOf "<http://a.example/s> <http://a.example/p> \"chat\"@EN--ltr .\n"
+  == some "<http://a.example/s> <http://a.example/p> \"chat\"@en--ltr .\n"
+
+-- `triple-term-01`: `<<( s p o )>>` with one space inside each delimiter.
+#guard canonOf ("<http://a.example/s> <http://a.example/p> " ++
+    "<<(<http://a.example/s2> <http://a.example/p2> \"o2\")>> .\n")
+  == some ("<http://a.example/s> <http://a.example/p> " ++
+    "<<( <http://a.example/s2> <http://a.example/p2> \"o2\" )>> .\n")
+
+-- Blank-node labels and statement ORDER survive: canonical
+-- SERIALISATION, not RDFC-1.0 relabelling.
+#guard canonOf ("_:b1 <http://a.example/p> \"2\" .\n_:b0 <http://a.example/p> \"1\" .\n")
+  == some ("_:b1 <http://a.example/p> \"2\" .\n_:b0 <http://a.example/p> \"1\" .\n")
+
+-- N-Quads: the graph slot follows the object, same term rules.
+#guard canonDsOf ("<http://a.example/s>  <http://a.example/p>  \"chat\"@EN " ++
+    "<http://a.example/g> .\n")
+  == some "<http://a.example/s> <http://a.example/p> \"chat\"@en <http://a.example/g> .\n"
+
 end L4Factoidal.Syntax.SyntaxTests
