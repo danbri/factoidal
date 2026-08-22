@@ -29,12 +29,14 @@ Emscripten 6.0.8, Lean v4.33.1):
 
 | Quantity | Value |
 |---|---|
-| `l4factoidal.wasm` | 1,510,823 bytes (1.5 MB) |
-| Emscripten glue `l4factoidal.mjs` | 62,242 bytes |
-| Module instantiation, Node | ~41 ms |
-| Module instantiation, Deno | ~60 ms |
-| Lean module initialisers (`l4_init`) | ~36 ms, once |
-| One 2-pattern BGP over a 4-triple graph | 2.7 ms (Node), 4.0 ms (Deno) |
+| `l4factoidal.wasm` | 1,432,723 bytes (1.4 MB) |
+| Emscripten glue `l4factoidal.mjs` | 61,224 bytes |
+| Module instantiation + Lean init, Node | ~41 ms |
+| Module instantiation + Lean init, Deno | ~75 ms |
+| One 2-pattern BGP over a 4-triple graph | 2.7 ms (Node), 3.7 ms (Deno) |
+
+Gate on that build: `node --test tests/hub/post36_test.mjs
+tests/hub/fn_surface_parity_test.mjs` — 10 pass, 0 fail (out of 10).
 
 ## The problem, stated exactly
 
@@ -111,7 +113,8 @@ Prerequisites and how much they cost:
 | Thing | Size | Note |
 |---|---|---|
 | Emscripten | ~919 MB (`brew install emscripten`) | pulls its own node |
-| lean4 source, sparse+blobless | ~3.3 MB | only `src/runtime` + `src/include` |
+| lean4 source, sparse+blobless | ~3.6 MB | `src/runtime`, `src/include`, `src/util` |
+| mimalloc, shallow clone at `v2.2.7` | ~6.8 MB | `src/static.c` only is compiled |
 | generated core C | ~32 MB | in the work dir |
 | core wasm objects | ~17 MB | in the work dir |
 
@@ -119,20 +122,26 @@ Prerequisites and how much they cost:
 
 0. `lake build l4wasm` — also writes our modules' C into `.lake/build/ir/`.
 1. `git clone --filter=blob:none --sparse --depth 1 --branch <tag>` of
-   lean4, then `git sparse-checkout set src/runtime src/include`. Only
-   3.3 MB is ever downloaded. **Do not clone the full tree** — it is
-   large enough to matter on a constrained machine.
+   lean4, then
+   `git sparse-checkout set src/runtime src/include src/util`
+   (`src/util` because `runtime/interrupt.cpp` includes `util/io.h`).
+   Only ~3.6 MB is ever downloaded. **Do not clone the full tree** — it
+   is large enough to matter on a constrained machine.
 2. Write the CMake-generated headers by hand:
-   - `lean/config.h` — deliberately WITHOUT `LEAN_MIMALLOC` (no mimalloc
-     for wasm32) and WITHOUT `LEAN_USE_GMP`, so `runtime/mpz.cpp` falls
-     back to `runtime/mpn.cpp`. **This is what makes the artifact
-     GMP-free**, which was one of the owner's selection criteria.
+   - `lean/config.h` — WITHOUT `LEAN_USE_GMP`, so `runtime/mpz.cpp`
+     falls back to `runtime/mpn.cpp`; **this is what makes the artifact
+     GMP-free**, one of the owner's selection criteria. And WITH
+     `LEAN_MIMALLOC`, which is mandatory — see "the mimalloc bug".
+   - `lean/mimalloc.h` — copied from the mimalloc checkout (`lean.h`
+     includes it under that path).
    - `lean/version.h` — copied from the toolchain.
    - `githash.h` — `#define LEAN_GITHASH "$(lean --githash)"`.
 3. Regenerate the core library's C (~631 modules, `-P 8`).
 4. Compile that C to wasm objects.
-5. Compile Lean's runtime `.cpp` to wasm objects (24 of the 34 files).
-6. Compile our library's C, `l4_shim.c` and `l4_stubs.c`.
+5. Compile Lean's runtime `.cpp` to wasm objects (24 of the 34 files)
+   plus mimalloc's `static.c`.
+6. Compile our library's C (EXCEPT `Wasm/Main.c`), `l4_shim.c` and
+   `l4_stubs.c`.
 7. `em++` link.
 
 ## The flags, and why each one is load-bearing
@@ -141,19 +150,10 @@ Prerequisites and how much they cost:
 -O3 -DNDEBUG -DLEAN_EMSCRIPTEN -fwasm-exceptions
 ```
 
-- **`-DNDEBUG` is not an optimisation, it is a correctness requirement.**
-  Lake compiles Lean-generated C with `-O3 -DNDEBUG` natively, and Lean's
-  core C is only ever built that way upstream. Built WITHOUT it, the
-  wasm module aborted with
-  `LEAN ASSERTION VIOLATION … i < lean_ctor_num_objs(o)` (`lean.h:779`,
-  inside `lean_ctor_get`) on the **first decode-error path**, while the
-  happy path was perfectly fine. That asymmetry is what makes it
-  dangerous: a smoke test that only queries successfully ships a module
-  that dies the first time a user sends malformed input.
-  `tests/hub/post36_test.mjs` pins the error path for exactly this
-  reason. (Confirmed wasm-specific: rebuilding the native library with
-  `moreLeancArgs = ["-UNDEBUG"]` did *not* reproduce it, because the
-  native build still links the shipped, NDEBUG-built `libInit.a`.)
+- **`-O3 -DNDEBUG`** are the flags Lake passes `leanc` natively; match
+  them so the wasm build is the configuration Lean actually supports.
+  They are NOT, however, the fix for the allocator abort below — see
+  "the mimalloc bug", and see the misdiagnosis warning there.
 - **`-fwasm-exceptions`**: Lean's runtime throws. Native wasm exception
   handling needs Chrome 95+, Firefox 131+, Safari 18.4+, Node 18+. Same
   choice lean4's CMake makes. `-fexceptions` (JS-based) is the fallback
@@ -174,6 +174,85 @@ Runtime files deliberately NOT compiled: `libuv.cpp`, `uv/*.cpp`,
 `openssl.cpp`. `uv.h` is still needed on the include path because
 `runtime/io.cpp` includes it — **declarations only**; no libuv code is
 linked.
+
+### The mimalloc bug — the one that cost the most
+
+**`LEAN_MIMALLOC` must be defined and mimalloc must be linked.** It
+looks optional (it is a CMake `option(USE_MIMALLOC ... ON)`) and the
+obvious wasm instinct is to drop it. Dropping it produces a module that
+passes every happy-path test and then dies.
+
+The defect is in Lean's own non-mimalloc path, in `lean.h` and
+`runtime/object.cpp`:
+
+```c
+/* lean.h — allocate: returns a pointer 8 bytes INTO the block,
+   with the size stashed in the word in front. */
+void * mem = malloc(sizeof(size_t) + sz);
+*(size_t*)mem = sz;
+return (lean_object*)((size_t*)mem + 1);
+
+/* lean.h — lean_free_small_object: correctly backs up first. */
+size_t* ptr = (size_t*)o - 1;
+free_sized(ptr, *ptr + sizeof(size_t));
+
+/* object.cpp — lean_free_object (arrays, STRINGS, closures):
+   frees the UNADJUSTED pointer. */
+static inline void lean_dealloc(lean_object * o, size_t sz) { free_sized(o, sz); }
+```
+
+Under mimalloc both paths agree, so no shipped Lean build ever executes
+the broken one — which is why this is invisible upstream and why you
+will not find it in an issue tracker.
+
+How it presented here, and why it was nearly misdiagnosed:
+
+| Build | Symptom |
+|---|---|
+| no mimalloc, no `NDEBUG` | `LEAN ASSERTION VIOLATION … i < lean_ctor_num_objs(o)` at `lean.h:779` |
+| no mimalloc, `-DNDEBUG` | `RuntimeError: memory access out of bounds` |
+| mimalloc | correct |
+
+The first symptom points at `lean_ctor_get` and invites the conclusion
+"assertions are on, add `-DNDEBUG`". Adding `NDEBUG` changed the message
+and nothing else — **it silenced the reporter, not the bug**. Adding
+`-O0` did not help either, ruling out the optimiser. What actually
+located it was an `-O1 -g2 -sASSERTIONS=2` build, whose stack named the
+real path:
+
+```
+bgpQuery -> lean_dec_ref_cold -> lean_del_core_other -> free_sized -> abort
+```
+
+An abort inside `free_sized` is an allocator complaint, not a logic
+error; from there the `#ifdef LEAN_MIMALLOC` asymmetry is two greps
+away. **Method note worth keeping: when a wasm module traps, build a
+`-g2 -sASSERTIONS=2` variant and read the stack before changing any
+flag.** Guessing at flags cost two full rebuild cycles here.
+
+The bisect that made the trap tractable is also worth copying: run each
+input in a FRESH module instance (a separate process), because one trap
+poisons the instance and hides every later case. That is what showed
+*every* decode error working and *only* the JSON-parse failures
+trapping — which is what narrowed it to a string being freed.
+
+mimalloc is cloned at the version lean4 pins (`v2.2.7`) and
+`src/static.c` compiles for wasm32 with no patches:
+
+```bash
+emcc -O3 -DNDEBUG -DMI_SECURE=0 -Wno-unused-function \
+     -I mimalloc/include -c mimalloc/src/static.c -o mimalloc_static.o
+```
+
+Cost of adding it: ~50 KB of wasm.
+
+### Do not link `Wasm/Main.c`
+
+Step 6 globs `.lake/build/ir/**/*.c`, which includes `Wasm/Main.c` — the
+NATIVE CLI driver. It defines `main` and references `lean_setup_args`.
+The release link dead-strips it, so the mistake is invisible at `-O3`;
+the `-O1` debug link is what surfaced it as an undefined symbol. The
+build script skips it explicitly.
 
 ### The purity evidence
 
@@ -300,8 +379,8 @@ against the old core library.
 
 1. **`leanir` fails silently** — emits a near-empty module and exits 0.
    Do not use it. (Above.)
-2. **Building the core C without `-DNDEBUG`** aborts the module on error
-   paths only. (Above.)
+2. **Dropping mimalloc** aborts the module on error paths only, with a
+   message that points at the wrong place. (Above — the big one.)
 3. **`emcc` instead of `em++` at link time** — undefined libc++.
 4. **Renaming the glue or the wasm independently** — ENOENT everywhere.
 5. **Deriving the toolchain directory from the tag.** elan spells it

@@ -29,8 +29,9 @@
 #      nothing here needs to ELABORATE Lean inside the browser — only to
 #      RUN already-compiled Lean.
 #
-#   2. Lean's C++ runtime (src/runtime/*.cpp at the pinned tag),
-#      compiled with Emscripten, GMP-free and mimalloc-free.
+#   2. Lean's C++ runtime (src/runtime/*.cpp at the pinned tag) plus
+#      mimalloc, compiled with Emscripten. GMP-free; mimalloc is NOT
+#      optional (see the config.h comment in step 2).
 #
 # See skills/lean4-wasm-export/SKILL.md for the routes that were
 # evaluated and rejected, and for the traps (they are not obvious).
@@ -40,6 +41,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 LEAN_DIR="$REPO_ROOT/formal/lean4"
 ASSETS="$REPO_ROOT/docs/web/hub/assets/l4"
 WORK="${1:-${L4_WASM_WORK:-/tmp/l4wasm-build}}"
+MIMALLOC_TAG="v2.2.7"   # the version lean4 v4.33.x pins
 
 LEAN_TAG="$(tr -d ' \n' < "$LEAN_DIR/lean-toolchain" | sed 's|.*:||')"   # e.g. v4.33.1
 # `lean --print-prefix` is the authoritative answer and follows elan's
@@ -78,26 +80,50 @@ say "step 0 — build the Lean library natively (also emits its C)"
 # ---------------------------------------------------------------------
 say "step 1 — fetch Lean's C++ runtime sources at $LEAN_TAG"
 # Sparse + blobless: only src/runtime and src/include are ever downloaded
-# (~3 MB), not the multi-hundred-MB full tree.
+# (~4 MB), not the multi-hundred-MB full tree. src/util is needed too:
+# runtime/interrupt.cpp includes "util/io.h".
 if [ ! -d "$RT_SRC/runtime" ]; then
   rm -rf "$WORK/lean4-src"
   git clone --filter=blob:none --sparse --depth 1 --branch "$LEAN_TAG" \
       https://github.com/leanprover/lean4 "$WORK/lean4-src"
-  ( cd "$WORK/lean4-src" && git sparse-checkout set src/runtime src/include )
+  ( cd "$WORK/lean4-src" && git sparse-checkout set src/runtime src/include src/util )
 fi
 
 # ---------------------------------------------------------------------
 say "step 2 — wasm build configuration headers"
-# CMake normally generates these. Ours deliberately omits LEAN_MIMALLOC
-# (no mimalloc for wasm32) and LEAN_USE_GMP (the runtime falls back to
-# its own bignums in runtime/mpn.cpp — that is what keeps the artifact
-# GMP-free, which was one of the selection criteria).
+# CMake normally generates these.
+#
+# LEAN_USE_GMP is deliberately absent: the runtime falls back to its own
+# bignums in runtime/mpn.cpp, which is what keeps the artifact GMP-free
+# (one of the selection criteria).
+#
+# LEAN_MIMALLOC, by contrast, is REQUIRED, and finding that out cost a
+# day. Lean's non-mimalloc allocator path is inconsistent upstream:
+# `lean_alloc_small_object` returns `malloc(sizeof(size_t) + sz) + 1`
+# (a pointer 8 bytes INTO the block, with the size stashed in front),
+# and `lean_free_small_object` correctly backs up before freeing — but
+# `lean_free_object`, which handles arrays, strings and closures, calls
+# `lean_dealloc(o, ...)` -> `free_sized(o, ...)` on the UNADJUSTED
+# pointer. Under mimalloc both paths agree, so the bug is invisible in
+# every shipped Lean build. Without it the wasm module aborted inside
+# `free_sized` on the first path that frees a string — measured
+# 2026-08-22 via an -sASSERTIONS=2 build, stack
+# `bgpQuery -> lean_dec_ref_cold -> lean_del_core_other -> free_sized`.
 cat > "$INC/lean/config.h" <<'EOF'
 #pragma once
 #include <lean/version.h>
+#define LEAN_MIMALLOC
 #define LEAN_IS_STAGE0 0
 EOF
 cp "$TOOLCHAIN/include/lean/version.h" "$INC/lean/version.h"
+
+# mimalloc, at the version lean4 pins (see src/CMakeLists.txt's
+# LEAN_MI_SECURE comment). lean.h includes it as <lean/mimalloc.h>.
+if [ ! -d "$WORK/mimalloc" ]; then
+  git clone --depth 1 --branch "$MIMALLOC_TAG" \
+      https://github.com/microsoft/mimalloc "$WORK/mimalloc"
+fi
+cp "$WORK/mimalloc/include/mimalloc.h" "$INC/lean/mimalloc.h"
 printf '#pragma once\n#define LEAN_GITHASH "%s"\n' "$(lean --githash)" > "$INC/githash.h"
 
 # ---------------------------------------------------------------------
@@ -125,14 +151,15 @@ echo "  core C files: $(ls "$CORE_C"/*.c | wc -l | tr -d ' ')"
 #                      does not send. Nothing here spawns a Lean task
 #                      thread (we call lean_initialize_runtime_module,
 #                      not the full lean_initialize).
-#  -O3 -DNDEBUG      : NOT cosmetic. These are exactly the flags Lake
-#                      passes leanc for native builds, and Lean's core C
-#                      is only ever compiled with NDEBUG upstream. Built
-#                      WITHOUT it, `Init`'s compiled code trips
-#                      `assert(i < lean_ctor_num_objs(o))` in lean.h and
-#                      aborts the module on the first decode-error path
-#                      (measured 2026-08-22 — the happy path was fine,
-#                      which is what makes this one easy to ship broken).
+#  -O3 -DNDEBUG      : the flags Lake passes leanc for native builds.
+#                      Match them so the wasm build is the configuration
+#                      Lean actually supports. NOTE: NDEBUG changes how
+#                      the allocator bug described in step 2 PRESENTS
+#                      (`LEAN ASSERTION VIOLATION ... lean_ctor_num_objs`
+#                      with assertions on, `memory access out of bounds`
+#                      with them off) but does NOT fix it — mimalloc
+#                      does. Do not mistake the quieter symptom for a
+#                      cure; that misdiagnosis cost a rebuild cycle here.
 CFLAGS="-O3 -DNDEBUG -DLEAN_EMSCRIPTEN -fwasm-exceptions -I $INC -I $RT_SRC/include
         -Wno-unused-parameter -Wno-unused-command-line-argument -Wno-parentheses-equality"
 
@@ -168,13 +195,21 @@ for s in $RT_SRCS; do
   [ -s "$RT_OBJ/$s.o" ] && continue
   em++ -std=c++20 $CFLAGS -I "$RT_SRC" $UVINC -c "$RT_SRC/runtime/$s.cpp" -o "$RT_OBJ/$s.o"
 done
-echo "  runtime objects: $(ls "$RT_OBJ"/*.o | wc -l | tr -d ' ')"
+if [ ! -s "$RT_OBJ/mimalloc_static.o" ]; then
+  emcc -O3 -DNDEBUG -DMI_SECURE=0 -Wno-unused-function \
+       -I "$WORK/mimalloc/include" -c "$WORK/mimalloc/src/static.c" \
+       -o "$RT_OBJ/mimalloc_static.o"
+fi
+echo "  runtime objects: $(ls "$RT_OBJ"/*.o | wc -l | tr -d ' ') (incl. mimalloc)"
 
 # ---------------------------------------------------------------------
 say "step 6 — compile our library's C, the shim and the stub"
 rm -f "$LIB_OBJ"/*.o
+# Wasm/Main.c is the NATIVE CLI driver: it defines `main` and pulls in
+# lean_setup_args. It must never be linked into the wasm module.
 while IFS= read -r f; do
   b="$(echo "${f#$LEAN_DIR/.lake/build/ir/}" | sed 's|/|_|g; s|\.c$||')"
+  [ "$b" = "Wasm_Main" ] && continue
   emcc $CFLAGS -c "$f" -o "$LIB_OBJ/$b.o"
 done < <(find "$LEAN_DIR/.lake/build/ir" -name '*.c')
 emcc $CFLAGS -c "$LEAN_DIR/Wasm/l4_shim.c"  -o "$LIB_OBJ/l4_shim.o"

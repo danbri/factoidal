@@ -37,7 +37,7 @@ Getting there needed one piece nobody ships: Lean's runtime and its
 compiled core library exist as native binaries only, so both were
 rebuilt for wasm32 (the recipe is in
 [`skills/lean4-wasm-export`](https://github.com/danbri/factoidal/blob/claude/main/skills/lean4-wasm-export/SKILL.md)).
-The result is a single 1.5 MB `.wasm` that the browser, Node and Deno all
+The result is a single 1.4 MB `.wasm` that the browser, Node and Deno all
 load — no GMP, no threads, no server.
 
 ## Be clear about what this is not
