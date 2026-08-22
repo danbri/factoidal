@@ -17,7 +17,7 @@ a green test run.
 |---|---|---|
 | `L4Factoidal/RDF/Core.lean` | `RDF.Term.fsti`, `RDF.Triple.fsti` | terms, literals (incl. RDF 1.2 direction + triple terms), the three literal-equality relations, reflexivity/identity theorems |
 | `L4Factoidal/RDF/XmlCanon.lean` | `RDF.Term.fsti` `xmlc_*` family | rdf:XMLLiteral exclusive-c14n value equality (WebOnt-miscellaneous-202 fix) |
-| `L4Factoidal/RDF/Graph.lean` | `RDF.Graph.fsti` (+ `RDF.Dataset.Merge` renaming) | graphs as lists with set-semantics ops, datasets, blank-node renaming, membership theorems |
+| `L4Factoidal/RDF/Graph.lean` | `RDF.Graph.fsti` (+ `RDF.Dataset.Merge` renaming) | graphs as lists with set-semantics ops, datasets (`NamedGraph.name : Subject` — an IRI OR a blank node, RDF 1.1 Concepts §4; DIVERGES from the F\* `named_graph.ng_name : iri`, see below), graph- and dataset-wide blank-node renaming, membership theorems |
 | `L4Factoidal/SPARQL/Algebra.lean` | `SPARQL11.Algebra.fst` Parts 1–2, §7.2–7.3/§18.5, and the `eval_pattern_store` arms of §18.6 | bindings, patterns (incl. SPARQL 1.2 triple-term patterns), `tpMatch`, `evalBgp`, join/leftJoin/union/minus/filter, and the FULL `GraphPattern` constructor set — GRAPH, LATERAL, BIND, VALUES, SERVICE/SERVICE ?var, a post-processed sub-pattern (the sub-SELECT shape), property paths, the empty pattern. `GraphPattern.evalIn ds active` is the dataset-aware evaluator; `GraphPattern.eval g` is its no-named-graphs case, kept so every earlier theorem still applies |
 | `L4Factoidal/SPARQL/Invariants.lean` | (new; replaces the F\* SMT-`Lemma` style) | empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity — all kernel-checked, no solver |
 | `L4Factoidal/SPARQL/PropertyPath.lean` | `SPARQL11.Algebra.fst` Part 4 (`property_path`) + Part 13 (`eval_property_path`) | §9.1 path syntax and §18.4/§9.3 evaluation to (subject, object) pairs; the two closure forms iterate to a fixed point under a node-count fuel bound, with an early stop when a round adds nothing |
@@ -33,8 +33,8 @@ a green test run.
 | `L4Factoidal/SPARQL/ExprTheorems.lean` | (new; replaces the F\* SMT-`Lemma` style) | §17.2.2 EBV rows, §17.4.1.1 BOUND, the §17.3 truth tables at both the `Option Bool` and evaluator level, the scaled-decimal order (reflexivity, exchange/antisymmetry, cross-multiplied characterisation, transitivity), `=` reflexivity on IRI/literal/Boolean/numeric values and its non-reflexivity on blank nodes, and the §18.5 FILTER collapse |
 | `L4Factoidal/SPARQL/ExprTests.lean` | (new) | 152 `#guard` checks over the §17 semantics plus the FILTER/LeftJoin bridge on the `Tests.lean` fixture. NOT a conformance score: no parser, no manifest reader — iron rule #6 is met only when a Lean runner reads the W3C files |
 | `L4Factoidal/RDF/Isomorphism.lean` | `RDF.GraphIsomorphism.fst` (comparison role only — ALGORITHM DIFFERS, see below) | RDF 1.1 Concepts §3.6 specification (`Graph.Isomorphic`, `Dataset.Isomorphic`) + the executable decision procedure: ground pre-filter, blank-node signature pruning, bounded backtracking bijection search returning the WITNESS mapping, three-way `IsoOutcome` |
-| `L4Factoidal/RDF/IsomorphismTheorems.lean` | (new) | reflexivity (graphs; datasets under distinct graph names) and SOUNDNESS for both, plus the checker-correctness sub-lemmas `Graph.setEq_of_setEqB`, `bijectiveCert_inj`, `bijectiveCert_onto` |
-| `L4Factoidal/RDF/IsomorphismTests.lean` | (new) | 73 `#guard`s: relabelling, chain vs fork, ground-set comparison, order/duplicate insensitivity, the two-blank-node cycle vs two self-loops, RDF 1.2 nested blank nodes, dataset-wide blank-node scoping, named-graph matching by IRI, the budget refusal |
+| `L4Factoidal/RDF/IsomorphismTheorems.lean` | (new) | reflexivity (graphs; datasets under distinct graph names) and SOUNDNESS for both, plus the checker-correctness sub-lemmas `Graph.setEq_of_setEqB`, `bijectiveCert_inj`, `bijectiveCert_onto`, `uniq_of_nodup_name` |
+| `L4Factoidal/RDF/IsomorphismTests.lean` | (new) | 85 `#guard`s: relabelling, chain vs fork, ground-set comparison, order/duplicate insensitivity, the two-blank-node cycle vs two self-loops, RDF 1.2 nested blank nodes, dataset-wide blank-node scoping, named-graph matching (IRI names ground, blank-node names matched up to the same bijection), the budget refusal |
 | `L4Factoidal/XML/Document.lean` | `Parser.XML.fst` (AST + character classes) | XML 1.0 5th ed. `[2] Char`, `[3] S`, `[4] NameStartChar`, `[4a] NameChar`, `[5] Name`; the parse tree (`Attribute`, `Node`); the prolog model (`XmlDecl` `[23]`, `Doctype` `[28]`, `Document` `[1]`); the Namespaces §3 name model (`QNameSplit`, `ExpandedName`); the convenience accessors |
 | `L4Factoidal/XML/Parser.lean` | `Parser.XML.fst` (the parser) | `parseXML : String → Except XmlError Document`. In XML the parser IS the well-formedness decision; the module header lists all twenty constraints it enforces and every scope cut it inherits |
 | `L4Factoidal/XML/Namespaces.lean` | `XML.Namespaces.fst` | `[7] QName` splitting, prefix-scope resolution down the tree, the default namespace, the reserved `xml`/`xmlns` prefixes and their two reserved namespace names, 1.0-vs-1.1 undeclaring, §6.3 uniqueness after expansion, undeclared-prefix rejection |
@@ -149,7 +149,64 @@ a green test run.
   directions; a proof would need completeness first). Dataset
   reflexivity carries a `Dataset.namesNoDup` hypothesis, because
   `lookupNamed` returns the first graph under a name and the Lean type
-  does not enforce RDF 1.1 §4's uniqueness of graph names.
+  does not enforce RDF 1.1 §4's uniqueness of graph names. That
+  hypothesis is STILL needed after the `Subject` change below — the
+  reason is duplicate names, not their type.
+
+## Decision: a graph name is an IRI or a blank node (2026-08-22)
+
+`RDF 1.1 Concepts` §4 says a named graph's name "may be an IRI or a
+blank node". The F\* tree's `named_graph.ng_name` is a bare `iri`, so
+`RDF.NQuads` there packs a blank-node name into that string as
+`"_:label"` (see
+`docs/designissues/2026-04-25-nquads-bnode-graph-fix.md`). This port
+first copied that shape and then dropped it: **`NamedGraph.name` is a
+`Subject`** — the sum `iri WfIri | bnode BNodeId`, which is exactly the
+two cases §4 allows. This is a deliberate DIVERGENCE from the F\*
+source, and it is the first one in the data model.
+
+What forced it: the W3C harness (`lake exe l4w3c`) failed the two
+`rdf-trig` `TestTrigEval` entries `anonymous_blank_node_graph` and
+`labeled_blank_node_graph`. `Dataset.namesMatchB` compared graph names
+by raw STRING equality before any bijection search ran, so a dataset
+whose graph is named `_:g` was never isomorphic to one named `_:b1` —
+though under §4 plus §3.6 they are. A string sentinel cannot be
+compared up to a blank-node bijection; a sum type can.
+
+What the type change bought, beyond the two tests:
+
+- `Dataset.renameBnodes` renames graph NAMES (RDF 1.1 §3.4 scopes
+  labels to the document, and §4 puts names in that scope), so
+  dataset-wide renaming is now complete.
+- `Dataset.bnodes` counts a blank node that occurs ONLY as a graph
+  name, so the bijection search ranges over it.
+- `Dataset.namesMatchB` takes the candidate mapping; a separate
+  mapping-free `Dataset.namesPrune` (IRI names correspond, blank-node
+  name COUNTS agree — both invariant under renaming) does the
+  pre-filter that string equality used to do.
+- `RDF/Canonical.lean`'s `QQuad` carries `Option Subject`; every
+  `"_:"`-sentinel test (`isBnodeGraphLabel`, `bnodeOfGraphLabel`) is
+  gone, and the graph slot reuses `canonSubject`/`relabelSubject`.
+- The §4.5 relabelling lemmas in `RDF/CanonicalTheorems.lean` LOST
+  their `isBnodeGraphLabel gi = false` hypotheses:
+  `hashFirstDegreeQuads_rename` and its three sub-lemmas now hold for
+  every dataset. The old exclusion was never mathematical — it was the
+  string sentinel, whose `startsWith`/append reasoning Lean's
+  byte-backed `String` does not give up cheaply.
+- `NamedGraph` and `Dataset` derive `DecidableEq` (`Subject` has it),
+  so `Syntax/SyntaxTests.lean`'s local `namedGraphsEq` workaround is
+  deleted.
+- SPARQL: `GRAPH <iri>` and `FROM NAMED` use the new
+  `Dataset.lookupNamedIri`; `GRAPH ?g` binds `?g` to `name.toTerm`, so
+  it can bind a blank node — which is what §13.3 describes.
+
+Measured after the change: `lake exe l4w3c` over the four rdf11 syntax
+manifests plus rdf-canon prints `rdf-trig: 356 pass, 0 fail, 0 skip, 0
+unsupported (out of 356)` and `TOTAL: 912 pass, 0 fail, 0 skip, 0
+unsupported (out of 912)`; `l4rdfc-probe` 86 of 86; `l4turtle-probe`
+eval-iso 111 of 111 (Turtle) and 108 of 108 (TriG).
+`Dataset.isomorphic?_sound` and `Dataset.isomorphic?_refl` stayed
+proved on `[propext, Classical.choice, Quot.sound]`.
 ## The XML stage (2026-08-22)
 
 ### Bytes versus codepoints — the one structural difference
@@ -503,4 +560,4 @@ the F\* tree first (iron rule #1) rather than only in Lean.
 
 ## Next stages
 
-The authoritative ladder is https://github.com/danbri/factoidal/issues/466 (every landing and open rung, with its branch). Queued as of 2026-08-22: `NamedGraph.name : Subject` (blank-node graph names — the two remaining rdf-trig fails), RDF/XML, JSON-LD, the SPARQL string parser, OWL 2 RL (all in flight), then SPARQL Update, SHACL Core, the regex engine, xsd:dateTime, the model-theoretic halves of the RDFS/OWL theorems, and closing the stated-but-unproved round-trip goals.
+The authoritative ladder is https://github.com/danbri/factoidal/issues/466 (every landing and open rung, with its branch). Landed 2026-08-22: `NamedGraph.name : Subject` (blank-node graph names — the two remaining rdf-trig fails are now green; see the decision section above). Queued as of 2026-08-22: RDF/XML, JSON-LD, the SPARQL string parser, OWL 2 RL (all in flight), then SPARQL Update, SHACL Core, the regex engine, xsd:dateTime, the model-theoretic halves of the RDFS/OWL theorems, and closing the stated-but-unproved round-trip goals.

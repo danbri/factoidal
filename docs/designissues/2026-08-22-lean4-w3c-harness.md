@@ -103,14 +103,25 @@ rdf-n-triples: 70 pass, 0 fail, 0 skip, 0 unsupported (out of 70)
 HARNESS-DIAG rdf-n-triples: no_manifest=0 zero_tests=0 budget_exceeded=0
 rdf-n-quads: 87 pass, 0 fail, 0 skip, 0 unsupported (out of 87)
 HARNESS-DIAG rdf-n-quads: no_manifest=0 zero_tests=0 budget_exceeded=0
-FAIL anonymous_blank_node_graph: not isomorphic to the expected dataset (got 1 quads, expected 1)
-FAIL labeled_blank_node_graph: not isomorphic to the expected dataset (got 1 quads, expected 1)
-rdf-trig: 354 pass, 2 fail, 0 skip, 0 unsupported (out of 356)
+rdf-trig: 356 pass, 0 fail, 0 skip, 0 unsupported (out of 356)
 HARNESS-DIAG rdf-trig: no_manifest=0 zero_tests=0 budget_exceeded=0
 rdf-canon: 86 pass, 0 fail, 0 skip, 0 unsupported (out of 86)
 HARNESS-DIAG rdf-canon: no_manifest=0 zero_tests=0 budget_exceeded=0
-TOTAL: 910 pass, 2 fail, 0 skip, 0 unsupported (out of 912)
+TOTAL: 912 pass, 0 fail, 0 skip, 0 unsupported (out of 912)
 HARNESS-DIAG TOTAL: no_manifest=0 zero_tests=0 budget_exceeded=0
+```
+
+The two `rdf-trig` failures this document first recorded
+(`anonymous_blank_node_graph`, `labeled_blank_node_graph`) were fixed
+on 2026-08-22 by giving `RDF.NamedGraph.name` the type `Subject` — see
+"The two failures" below, which now records the repair. The lines this
+run first printed were:
+
+```
+FAIL anonymous_blank_node_graph: not isomorphic to the expected dataset (got 1 quads, expected 1)
+FAIL labeled_blank_node_graph: not isomorphic to the expected dataset (got 1 quads, expected 1)
+rdf-trig: 354 pass, 2 fail, 0 skip, 0 unsupported (out of 356)
+TOTAL: 910 pass, 2 fail, 0 skip, 0 unsupported (out of 912)
 ```
 
 Exit code 1 when a manifest with failures is run, 0 otherwise
@@ -126,7 +137,7 @@ commit `c3c0c37`, same five manifests:
 | rdf-turtle | 313 pass, 0 fail, 0 skip, 0 unsupported (out of 313) | 313 pass, 0 fail, 0 skip, 0 unsupported (out of 313) |
 | rdf-n-triples | 70 pass, 0 fail, 0 skip, 0 unsupported (out of 70) | 70 pass, 0 fail, 0 skip, 0 unsupported (out of 70) |
 | rdf-n-quads | 87 pass, 0 fail, 0 skip, 0 unsupported (out of 87) | 87 pass, 0 fail, 0 skip, 0 unsupported (out of 87) |
-| rdf-trig | 354 pass, **2 fail**, 0 skip, 0 unsupported (out of 356) | 356 pass, 0 fail, 0 skip, 0 unsupported (out of 356) |
+| rdf-trig | 356 pass, 0 fail, 0 skip, 0 unsupported (out of 356) | 356 pass, 0 fail, 0 skip, 0 unsupported (out of 356) |
 | rdf-canon | 86 pass, 0 fail, 0 skip, 0 unsupported (out of 86) | 86 pass, 0 fail, 0 skip, 0 unsupported (out of 86) |
 
 **Every denominator agrees.** That is the check that matters for a new
@@ -136,9 +147,17 @@ also cross-checked against the manifest files directly — the
 `rdft:Test*` type counts sum to 313 / 70 / 87 / 356, and the rdf-canon
 `mf:entries` collection has 86 members.
 
-### The two failures — engine, not harness
+### The two failures — engine, not harness — FIXED 2026-08-22
 
-Both are `TestTrigEval` entries with a blank-node GRAPH NAME
+**Both are green now** (`rdf-trig` 356 pass, 0 fail, out of 356;
+TOTAL 912 pass, 0 fail, out of 912). The fix is
+`RDF.NamedGraph.name : Subject` on branch
+`lean4/namedgraph-subject`, described at the end of this section. The
+diagnosis below is kept because it is what the harness was for: it
+found an engine gap, in the data model, that no test in the tree had
+reached.
+
+Both were `TestTrigEval` entries with a blank-node GRAPH NAME
 (`anonymous_blank_node_graph` writes `[] {...}`,
 `labeled_blank_node_graph` writes `_:g {...}`; both fixtures' `.nq`
 files write `_:b1`). The gap is in the DATASET MODEL, and it was
@@ -169,10 +188,46 @@ F\* runner's `datasets_equal_strict` calls
 otherwise; the code is the authority), so a canonicalization
 comparison would make the two trees' numbers incomparable and would
 hide a real gap. The fix belongs in `RDF/Graph.lean` +
-`RDF/Isomorphism.lean`, which other agents own: `NamedGraph.name`
-wants to be a `Subject` (or an `Iri`/`BNodeId` sum), and
-`Dataset.checkMapping` wants to apply the candidate blank-node mapping
-to graph names before comparing them.
+`RDF/Isomorphism.lean`: `NamedGraph.name` wants to be a `Subject` (or
+an `Iri`/`BNodeId` sum), and `Dataset.checkMapping` wants to apply the
+candidate blank-node mapping to graph names before comparing them.
+
+#### What the fix changed (2026-08-22)
+
+Exactly that, plus the sweep it forces:
+
+- `RDF/Graph.lean` — `NamedGraph.name : Subject`;
+  `Dataset.lookupNamed` keys on `Subject`; new
+  `Dataset.lookupNamedIri` for the `GRAPH <iri>` / `FROM NAMED` call
+  sites; `Dataset.renameBnodes` / `Dataset.prefixBnodes` moved here and
+  extended to rename blank-node graph NAMES (RDF 1.1 Concepts §3.4
+  scoping covers the name slot); `NamedGraph` and `Dataset` derive
+  `DecidableEq`.
+- `RDF/Isomorphism.lean` — `Dataset.bnodes` includes graph-name blank
+  nodes; `Dataset.namesMatchB` takes the candidate mapping and applies
+  it to a name before lookup; a new mapping-free `Dataset.namesPrune`
+  (IRI names must correspond; blank-node-named graph counts must agree
+  — both invariant under any renaming) replaces the raw-string
+  pre-filter in `Dataset.isoSearchStep`.
+- `RDF/Canonical.lean` — `QQuad` is `Option Subject × Triple`. Every
+  `"_:"` sentinel test (`isBnodeGraphLabel`, `bnodeOfGraphLabel`) is
+  gone; the graph slot reuses `canonSubject` and `relabelSubject`.
+- `RDF/CanonicalTheorems.lean` — the §4.5 relabelling lemmas
+  (`quadMentionsBnode_rename`, `renderForHfdq_rename`,
+  `hfdqRenders_rename`, `hashFirstDegreeQuads_rename`) LOST their
+  `isBnodeGraphLabel gi = false` hypotheses and now hold for every
+  dataset, blank-node graph names included.
+- `SPARQL/Algebra.lean` / `Query.lean` — `GRAPH <iri>` goes through
+  `lookupNamedIri`; `GRAPH ?g` binds `?g` to `name.toTerm`, so it can
+  now bind a blank node; `FROM NAMED` builds `Subject.iri`.
+
+`Dataset.isomorphic?_sound` and `Dataset.isomorphic?_refl` stayed
+proved with no `sorry`, on `[propext, Classical.choice, Quot.sound]`.
+`Dataset.isomorphic?_refl` keeps its `namesNoDup` hypothesis: it is
+still needed, and for the same reason — `lookupNamed` returns the FIRST
+graph carrying a name, so a `Dataset` value listing two graphs under
+one name is not equal to itself under name matching, whether the
+duplicated name is an IRI or a blank node.
 
 ### A counting correction this rung produced
 
