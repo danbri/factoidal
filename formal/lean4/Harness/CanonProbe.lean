@@ -39,7 +39,7 @@ a line starting with `:test` opens a block; `rdfc:hashAlgorithm
 def sha384Ids (manifest : String) : List String :=
   let step : (String × List String) → String → (String × List String) :=
     fun (cur, acc) line =>
-      let l := line.trim
+      let l := String.ofList (line.toList.dropWhile (fun c => c == ' '))
       if l.startsWith ":test" then
         -- `:test075c a rdfc:RDFC10EvalTest;` → base id `test075`
         ("test" ++ String.ofList ((l.toList.drop 5).takeWhile Char.isDigit), acc)

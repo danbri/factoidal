@@ -24,5 +24,8 @@ import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads
 import L4Factoidal.Syntax.SyntaxTests
 import L4Factoidal.Syntax.SyntaxTheorems
+import L4Factoidal.RDF.Canonical
+import L4Factoidal.RDF.CanonicalTheorems
+import L4Factoidal.RDF.CanonicalTests
 import L4Factoidal.Tests
 import L4Factoidal.SPARQL.ExprTests

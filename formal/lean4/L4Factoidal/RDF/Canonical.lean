@@ -346,10 +346,19 @@ temporary prefix is spec-visible, not cosmetic: those labels are
 embedded in the §4.7 path strings, so using `c14n` for them would
 change every N-degree hash. -/
 
+/-- One decimal digit. Written as an explicit ten-way match (rather
+than `Char.ofNat (0x30 + d)`) so `CanonicalTheorems` can invert it by
+`rfl` on each case — that inversion is what makes the issued labels
+provably distinct. Out-of-range maps to `'0'` to stay total. -/
+def digitChar : Nat → Char
+  | 0 => '0' | 1 => '1' | 2 => '2' | 3 => '3' | 4 => '4'
+  | 5 => '5' | 6 => '6' | 7 => '7' | 8 => '8' | 9 => '9'
+  | _ => '0'
+
 /-- Decimal digits of a natural number, most significant first. -/
 def natToDigits (n : Nat) : List Char :=
-  if h : n < 10 then [Char.ofNat (0x30 + n)]
-  else natToDigits (n / 10) ++ [Char.ofNat (0x30 + n % 10)]
+  if n < 10 then [digitChar n]
+  else natToDigits (n / 10) ++ [digitChar (n % 10)]
 decreasing_by omega
 
 /-- Decimal rendering of a natural number. -/

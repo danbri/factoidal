@@ -460,3 +460,145 @@ work). Adding `deriving DecidableEq` to `NamedGraph` and `Dataset` in
 matching the `instBEqOfDecidableEq` convention this project's own
 pitfall list (`skills/factoidal-lean-basics`) already recommends for
 every other structure in the tree.
+
+---
+
+## RDFC-1.0 canonicalization (`RDF/Canonical*.lean`, Harness/CanonProbe)
+
+Ported: `formal/fstar/RDF.Canonical.fst` (2273 lines) → three Lean
+modules plus one harness executable. Spec of record:
+RDF Dataset Canonicalization 1.0 (W3C Recommendation 2024),
+https://www.w3.org/TR/rdf-canon/ .
+
+### Module correspondence
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `L4Factoidal/RDF/Canonical.lean` | `RDF.Canonical.fst` Sections 1–8 | canonical N-Quads form (§3), Hash First Degree Quads (§4.5), Hash Related Blank Node (§4.6), Hash N-Degree Quads with the permutation loop (§4.7), the `c14n`/`b` identifier issuers (§4.8), and the two-pass §4.4 driver; `canonicalize`, `Dataset.canonicalNQuads`, `Dataset.canonicalHash`, `canonicalizeExceedsBudget` |
+| `L4Factoidal/RDF/CanonicalTheorems.lean` | (new; the F\* module's Section 5b label-shape lemmas, plus more) | 37 theorems: output sortedness, decimal-rendering round trip and injectivity, the issuer invariant + step lemma + injectivity preservation, and the §4.5 relabelling-invariance chain up to `hashFirstDegreeQuads_rename` |
+| `L4Factoidal/RDF/CanonicalTests.lean` | (new) | 62 `#guard`s incl. both RDFC-1.0 §4.2 worked examples verbatim |
+| `Harness/CanonProbe.lean` (`lake exe l4rdfc-probe`) | `rdfc10_runner.ml` | walks the vendored W3C corpus off disk |
+
+### Assumption report
+
+The F\* module has exactly TWO `assume val`s: `hash_sha256` and
+`hash_sha384`. Both are **replaced** here by the pure Lean SHA-2 of
+`L4Factoidal/Crypto/SHA2.lean`, reached only through the
+`HashAlgorithm` parameter (`Crypto.hashHex`) — no function in
+`Canonical.lean` names `sha256`/`sha384` directly, per the hash-agility
+rule in `skills/crypto-policy`. That closes the F\* module's whole
+trust surface: in the F\* tree those two are realised by hand-written
+OCaml (`fstar_pure_hashes.ml`), a rule-#11 gap tracked as issue #63.
+
+Nothing else in `RDF.Canonical.fst` was assumed, and nothing else is
+assumed here. No `sorry`, no user `axiom`, no `native_decide`, no
+`partial`. `#print axioms` on every headline theorem and entry point
+shows exactly `[propext, Classical.choice, Quot.sound]`.
+
+### Measured against the real corpus
+
+`lake exe l4rdfc-probe` over
+`third_party/testing/rdf-canon/tests/rdfc10/` (run 2026-08-22):
+
+- rdfc10 eval (SHA-256): **63 pass, 0 fail (out of 63)**
+- sha384 eval: **1 pass, 0 fail (out of 1)** — the suite marks exactly
+  one entry `rdfc:hashAlgorithm "SHA384"` (test075)
+- rdfc10 map eval (issued identifier maps): **21 pass, 0 fail (out of 21)**
+- negative eval (the §4.4 excessive-calls abort): **1 pass, 0 fail (out of 1)**
+- total **86 pass, 0 fail (out of 86)**, the same score the F\* tree
+  reports on the same corpus
+
+Sabotage-checked, per the skill's discipline: replacing §4.5's `_:z`
+placeholder with `_:y` drops the eval score to 35 pass, 28 fail (out of
+63); forcing SHA-256 where the manifest asks for SHA-384 fails test075;
+deleting the §3 sort from `canonicalLinesOf` makes
+`canonicalLines_sorted` fail to compile. None of the three is a test
+that passes by measuring nothing.
+
+### Deliberate differences from the F\* source
+
+1. **Termination without mutual recursion.** F\* bounds Hash N-Degree
+   Quads with a lexicographic `decreases %[fuel; phase; list]` across a
+   six-function mutual block. Here `hndqRun` is structurally recursive
+   on its fuel and passes a "recurse one level down" closure
+   (`HndqRec`) to the bucket/permutation walkers, each structurally
+   recursive on its own list — so Lean accepts all six with no
+   `termination_by` at all. Cost: one fuel unit per HNDQ level instead
+   of F\*'s two. Fuel is seeded at `bnodes + 1` in both and is a
+   totality device neither reaches on real input, so the Lean bound is
+   strictly more generous.
+2. **Permutation cap mirrored, and reported.** `permutationCap = 6`:
+   each §4.7 bucket is truncated to its first six related blank nodes
+   before permuting (720 permutations). This is the F\* source's
+   `take_n 6`. It is a RESULT VARIANT for any dataset with a symmetric
+   collision bucket wider than six — no such dataset exists in the W3C
+   corpus, so the corpus score is unaffected, but the general claim is
+   "the spec's answer for buckets up to width 6", not "the spec's
+   answer".
+3. **Work budget mirrored.** `hndqBudget` counts Hash-N-Degree-Quads
+   calls; `canonicalizeExceedsBudget` is the §4.4 "excessive calls"
+   abort, which is how the suite's negative test passes.
+4. **Insertion sort, not merge sort.** F\* uses a position-split merge
+   sort because its inputs reach 100k+ lines. Every rdf-canon fixture
+   is under 50 lines, so this port uses a stable insertion sort with
+   the same total preorder and the same first-wins tie-breaking — short
+   enough that `sortedB_sortBy` proves it actually sorts.
+5. **F\* dead code not ported.** `compute_all_nbr1`/`nbr2`/`nbr3`,
+   `bn_full_key`, `sort_full_keys`, `assign_full_in_order` — an earlier
+   phase's bounded approximation of HNDQ, unreachable from
+   `build_canonical_mapping_alg_budgeted` in the F\* tree (grep-checked
+   before omitting).
+6. **F\* performance machinery not ported**, per this tree's
+   spec/engine split: byte-level `fs_byte_at` scanning, the
+   `bn_lookup_tree` balanced BST used for relabelling, and the
+   accumulator/`rev` rewrites of every list build.
+
+### What is PROVED and what is only STATED
+
+Proved (kernel-checked, standard axioms only):
+
+- `canonicalLines_sorted` — the emitted canonical N-Quads lines are in
+  code point order (RDFC-1.0 §3), for every dataset and algorithm.
+- `mkLabel_inj`, via `digitsToNat_natToDigits` → `natToDigits_inj` —
+  the §4.8 label shape is injective in the counter.
+- `issueFresh_label_fresh` — the issuer step lemma: the next label
+  differs from every label already issued.
+- `issueFresh_injective` / `issueIdentifier_injective` — both issuing
+  operations preserve `IssuerLabelsInjective`, from either empty
+  issuer.
+- The §4.5 relabelling chain: `rewriteSubjectForHfdq_rename`,
+  `rewriteTermForHfdq_rename`, `rewriteTripleForHfdq_rename`,
+  `quadMentionsBnode_rename`, `renderForHfdq_rename`,
+  `hfdqRenders_rename`, `hashFirstDegreeQuads_rename` — Hash First
+  Degree Quads cannot see the input blank-node labels.
+  Non-vacuity: `prefixLabels_injective` exhibits a label-CHANGING
+  function meeting the hypotheses.
+
+Stated only, as `Prop`-valued definitions so that nothing claims a
+proof it does not have:
+
+- `RelabellingInvariance` — `Graph.Isomorphic g1 g2 →` equal canonical
+  N-Quads. The core theorem of RDFC-1.0.
+- `RenamingInvariance` — its syntactic form under an injective
+  relabelling.
+
+The remaining obligations are enumerated at those definitions: the
+§4.4 grouping needs sorting-is-a-permutation (the sort lemmas here
+prove sortedness only), §4.7 needs an induction on `hndqRun`'s fuel,
+§4.4 step 5.3's first-explored-wins tie-break needs an automorphism
+argument, and the §4.5 lemmas carry an `isBnodeGraphLabel gi = false`
+hypothesis.
+
+### Change to `RDF/Graph.lean` that would remove a hypothesis (not made)
+
+`NamedGraph.name` is an `Iri` (a `String`), so a blank-node graph label
+is carried as the `"_:label"` sentinel that
+`Syntax.NQuads.graphLabelToIri` writes — the same representation the F\*
+source uses. The relabelling lemmas above therefore exclude blank-node
+graph names, because proving them needs
+`("_:" ++ x).startsWith "_:"`-style facts about `String` append, which
+the byte-backed `String` of Lean 4.33 does not give up cheaply. Giving
+`NamedGraph.name` a sum type (`Iri | BNodeId`) would drop the
+hypothesis from four theorems and delete
+`isBnodeGraphLabel`/`bnodeOfGraphLabel` from this module entirely. That
+is an edit to `RDF/Graph.lean`, owned elsewhere.
