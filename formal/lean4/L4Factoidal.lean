@@ -150,3 +150,5 @@ import L4Factoidal.ShEx.Shapes
 import L4Factoidal.ShEx.ShapesTests
 import L4Factoidal.RML.Mapping
 import L4Factoidal.RML.Tests
+import L4Factoidal.RIF.Core
+import L4Factoidal.RIF.Tests
