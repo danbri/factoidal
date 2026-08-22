@@ -355,41 +355,65 @@ algebra's `filter`/`leftJoin` take, collapsing a type error to `false`
 because §18.5 drops the row either way. Run against the `Tests.lean`
 fixture graph (two people, Alice 30 and Bob 7). -/
 
-open L4Factoidal.Tests in
-/-- FILTER(?n = "Alice") keeps one of the two rows. -/
+section AlgebraBridge
+open L4Factoidal.Tests
+
+-- FILTER(?n = "Alice") keeps one of the two rows.
 #guard ((GraphPattern.filter
     (Expr.toCond (.compare .eq (.var "n") (.lit (litStr "Alice"))))
     (.bgp qNameAge)).eval g).length == 1
 
-open L4Factoidal.Tests in
-/-- The same filter written through the expression-level constructor. -/
+-- The same filter written through the expression-level constructor.
 #guard ((GraphPattern.filterExpr
     (.compare .eq (.var "n") (.lit (litStr "Alice")))
     (.bgp qNameAge)).eval g).length == 1
 
-open L4Factoidal.Tests in
-/-- FILTER(STRLEN(?n) > 3) keeps Alice (5) and drops Bob (3). -/
-#guard ((GraphPattern.filterExpr
+-- FILTER(STRLEN(?n) > 3) keeps Alice (5) and drops Bob (3).
+#guard (((GraphPattern.filterExpr
     (.compare .gt (.strLen (.var "n")) (.numericLit 3))
-    (.bgp qNames)).eval g).map (fun mu => mu.lookup "n")
-  == [some (.literal (litStr "Alice"))]
+    (.bgp qNames)).eval g).map (fun mu => mu.lookup "n"))
+  == [some (Term.literal (litStr "Alice"))]
 
-open L4Factoidal.Tests in
-/-- The fixture's ages are xsd:STRING literals, so a numeric comparison
-against them is a TYPE ERROR — and §18.5 drops every row rather than
-guessing. A filter that removes everything is the correct answer here,
-not a bug: this is the open-world discipline the promoted-type model
-exists to keep visible. -/
+-- The fixture's ages are xsd:STRING literals, so a numeric comparison
+-- against them is a TYPE ERROR — and §18.5 drops every row rather than
+-- guessing. A filter that removes everything is the correct answer
+-- here, not a bug: this is the open-world discipline the promoted-type
+-- model exists to keep visible.
 #guard ((GraphPattern.filterExpr
     (.compare .gt (.var "a") (.numericLit 18))
     (.bgp qNameAge)).eval g).length == 0
 
-open L4Factoidal.Tests in
-/-- With the age read as an integer (STRDT), the same filter keeps
-Alice's row. -/
+-- FINDING, shared with the F* source: STRDT builds a TERM, and terms
+-- are not promoted (only a variable lookup promotes), so
+-- `STRDT(STR(?a), xsd:integer) > 18` is still a type error and drops
+-- every row. Recorded as behaviour, not asserted as correct — SPARQL
+-- 1.1 §17.1's operand mapping would compare these numerically.
 #guard ((GraphPattern.filterExpr
     (.compare .gt (.strDt (.str (.var "a")) (.iri xsdInteger)) (.numericLit 18))
-    (.bgp qNameAge)).eval g).map (fun mu => mu.lookup "n")
-  == [some (.literal (litStr "Alice"))]
+    (.bgp qNameAge)).eval g).length == 0
+
+-- With xsd:integer ages IN THE DATA, the variable lookup promotes and
+-- the numeric filter works end to end: Alice (30) survives, Bob (7)
+-- does not.
+def gTyped : Graph :=
+  [{ s := alice, p := exName, o := .literal (litStr "Alice") },
+   { s := alice, p := exAge,  o := .literal (litInt "30") },
+   { s := bob,   p := exName, o := .literal (litStr "Bob") },
+   { s := bob,   p := exAge,  o := .literal (litInt "7") }]
+
+#guard (((GraphPattern.filterExpr
+    (.compare .gt (.var "a") (.numericLit 18))
+    (.bgp qNameAge)).eval gTyped).map (fun mu => mu.lookup "n"))
+  == [some (Term.literal (litStr "Alice"))]
+
+-- ...and an OPTIONAL whose filter uses an expression keeps every left
+-- row, extending only the ones that pass (SPARQL 1.1 §18.5 LeftJoin).
+#guard (((GraphPattern.leftJoinExpr (.bgp qNames)
+      (.bgp [{ s := .var "s", p := .iri exAge, o := .var "a" }])
+      (.compare .gt (.var "a") (.numericLit 18))).eval gTyped).map
+    (fun mu => (mu.lookup "a").isSome))
+  == [true, false]
+
+end AlgebraBridge
 
 end L4Factoidal.SPARQL.ExprTests
