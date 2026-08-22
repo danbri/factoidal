@@ -79,19 +79,27 @@ structure NumPattern where
   maxFrac        : Nat := 0
   primaryGroup   : Option Nat := none
   secondaryGroup : Option Nat := none
-  hasExp         : Bool := false
+  /-- The exponent marker the pattern uses, if any. `none` means the
+      value must NOT carry an exponent. -/
+  expChar        : Option Char := none
 deriving Repr, Inhabited
+
+/-- Does the pattern call for an exponent at all? -/
+def NumPattern.hasExp (p : NumPattern) : Bool := p.expChar.isSome
 
 /-- Read a number pattern. Only the digit-place characters are
     significant here; anything else is a prefix or suffix. -/
 def parseNumPattern (pat : String) (grp dec : Char) : NumPattern :=
   let cs := pat.toList.filter (fun c => c == '#' || c == '0' || c == grp || c == dec
                                         || c == 'E' || c == 'e')
-  let (mant, hasExp) := match splitFirst 'E' cs with
-    | some (m, _) => (m, true)
+  -- The exponent marker is LITERAL: a pattern written with `E`
+    -- requires an `E` in the value, and `10.10e10` does not match
+    -- `0.00E0` (test157).
+  let (mant, expChar) := match splitFirst 'E' cs with
+    | some (m, _) => (m, some 'E')
     | none => match splitFirst 'e' cs with
-      | some (m, _) => (m, true)
-      | none        => (cs, false)
+      | some (m, _) => (m, some 'e')
+      | none        => (cs, none)
   let (ip, fp) := match splitFirst dec mant with
     | some (a, b) => (a, b)
     | none        => (mant, [])
@@ -108,7 +116,7 @@ def parseNumPattern (pat : String) (grp dec : Char) : NumPattern :=
     maxFrac := fp.length
     primaryGroup := primary
     secondaryGroup := secondary
-    hasExp := hasExp }
+    expChar := expChar }
 
 /-- Chop a digit run from the RIGHT into `sec`-sized pieces. `fuel` is
     the run length, so the bound is exact. -/
@@ -139,11 +147,15 @@ def matchesNumPattern (p : NumPattern) (grp dec : Char) (v : String) : Bool :=
   let body := if v.startsWith "-" || v.startsWith "+"
               then String.ofList (v.toList.drop 1) else v
   let body := String.ofList (body.toList.filter (fun c => c != '%' && c != '‰'))
-  let (mant, expPart) := match splitFirst 'E' body.toList, splitFirst 'e' body.toList with
-    | some (m, e), _ => (String.ofList m, some (String.ofList e))
-    | _, some (m, e) => (String.ofList m, some (String.ofList e))
-    | _, _           => (body, none)
-  if p.hasExp != expPart.isSome then false
+  let (mant, expPart) := match p.expChar with
+    | some ec => match splitFirst ec body.toList with
+      | some (m, e) => (String.ofList m, some (String.ofList e))
+      | none        => (body, none)
+    | none => (body, none)
+  -- With no exponent in the pattern the value must carry none EITHER
+  -- marker; with one, it must carry that exact marker.
+  let valueHasExp := body.toList.contains 'E' || body.toList.contains 'e'
+  if p.hasExp != expPart.isSome || (!p.hasExp && valueHasExp) then false
   else
     let (ip, fp) := match splitFirst dec mant.toList with
       | some (a, b) => (String.ofList a, String.ofList b)
@@ -522,8 +534,15 @@ private def takeTz (allowZ : Bool) (width : Nat) (cs : List Char)
         | none => none
         | some (hh, r1) =>
             if width == 1 then
-              -- `X` with no minutes still canonicalises to HH:MM.
-              some (some (String.ofList [sign] ++ hh ++ ":00"), r1)
+              -- `X` is the ISO 8601 BASIC form: hours, with the
+              -- minutes field OPTIONAL. `+0800` and `+08` are both
+              -- `X`; reading only the hours left `+0800` with a
+              -- trailing `00` the pattern could not match (test190).
+              match takeDigits 2 r1 with
+              | some (mm, r2) =>
+                  some (some (String.ofList [sign] ++ hh ++ ":" ++ mm), r2)
+              | none =>
+                  some (some (String.ofList [sign] ++ hh ++ ":00"), r1)
             else
               let r1 := if width == 3 then
                   (match r1 with | ':' :: t => t | t => t)
@@ -699,10 +718,18 @@ def formatConvert (baseName : String) (formatStr pattern groupChar decimalChar :
     | none   => parseCanonicalDate baseName txt
   else if isDurationBase baseName then
     -- The `format` facet on a duration is an XSD REGEX, which needs an
-    -- engine this slice does not have; the LEXICAL SPACE is checkable
-    -- either way, and checking it is what stops `Foo` becoming an
-    -- `xsd:duration`.
-    if isDurationLexical txt then .valid txt else .invalid
+    -- engine this slice does not have. Two cases, and the difference
+    -- matters:
+    --   * NO format: the LEXICAL SPACE is still checkable, and
+    --     checking it is what stops `Foo` becoming an `xsd:duration`;
+    --   * a format: the value cannot be SHOWN to satisfy it, so no
+    --     datatype is asserted. The corpus agrees — test194 states
+    --     `"format": "^.$"`, which no duration can match, and expects
+    --     every cell plain. Asserting the datatype anyway would claim
+    --     a validity this code did not establish.
+    match formatStr with
+    | some _ => .invalid
+    | none   => if isDurationLexical txt then .valid txt else .invalid
   else .noFormat
 
 end L4Factoidal.CSVW
