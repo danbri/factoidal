@@ -131,9 +131,12 @@ def prepareLexical (dt : Option Datatype) (cell : String) : String × Bool :=
   | some d =>
       match formatConvert base (Datatype.formatOf d) (Datatype.patternOf d)
               (Datatype.groupCharOf d) (Datatype.decimalCharOf d) trimmed with
-      | .valid lex => (lex, true)
+      -- The VALUE CONSTRAINTS are checked after the format, on the
+      -- normalised form: `minimum: 5` against a cell of `4` makes the
+      -- cell invalid, so it keeps its text and loses the datatype.
+      | .valid lex => (lex, satisfiesFacets d.facets lex)
       | .invalid   => (trimmed, false)
-      | .noFormat  => (trimmed, true)
+      | .noFormat  => (trimmed, satisfiesFacets d.facets trimmed)
 
 /-- What one cell contributes, before RDF terms are built: the
     resolved property IRI reference, and the object values (several
@@ -186,6 +189,10 @@ def CellResult.lexicals (r : CellResult) : List String := r.literals.map (·.1)
 /-- The default property IRI for a column with no `propertyUrl`: the
     table URL with the column name as a fragment, per csv2rdf. -/
 def defaultPropertyRef (tableUrl colName : String) : String :=
-  tableUrl ++ "#" ++ UriTemplate.encodeFragment colName
+  -- SIMPLE expansion, not fragment expansion: the column name is a
+  -- template VARIABLE VALUE, so reserved characters are escaped. A
+  -- column titled `##0` must give `#%23%230`; passing `#` through
+  -- produces `###0`, which truncates the fragment (test286).
+  tableUrl ++ "#" ++ UriTemplate.encodeSimple colName
 
 end L4Factoidal.CSVW
