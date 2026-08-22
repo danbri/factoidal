@@ -95,6 +95,21 @@ inductive JsonLdError where
   | collidingKeywords
   | listOfLists
   | invalidJsonLiteral
+  /-- Compaction (API §6.1 step 12.8.9.2): a second list object landed in
+  an `@list`-container property. -/
+  | compactionToListOfLists
+  /-- IRI Compaction (API §6.3 step 9): the IRI's prefix part names a
+  prefix-capable term whose IRI mapping does not actually prefix it. -/
+  | iriConfusedWithPrefix
+  /-- Node Map Generation (API §7.1 step 6.8): one node id carries two
+  different `@index` values. -/
+  | conflictingIndexes
+  /-- HTML Content Algorithms: no element at the fragment target, or the
+  target is not an `application/ld+json` script element. -/
+  | loadingDocumentFailed
+  /-- HTML Content Algorithms: the script element's content is not the
+  JSON it must be. -/
+  | invalidScriptElement
   | notJsonLd
   deriving DecidableEq, Repr
 
@@ -146,6 +161,11 @@ def code : JsonLdError → String
   | collidingKeywords           => "colliding keywords"
   | listOfLists                 => "list of lists"
   | invalidJsonLiteral          => "invalid JSON literal"
+  | compactionToListOfLists     => "compaction to list of lists"
+  | iriConfusedWithPrefix       => "IRI confused with prefix"
+  | conflictingIndexes          => "conflicting indexes"
+  | loadingDocumentFailed       => "loading document failed"
+  | invalidScriptElement        => "invalid script element"
   | notJsonLd                   => "not JSON-LD"
 
 instance : ToString JsonLdError := ⟨code⟩

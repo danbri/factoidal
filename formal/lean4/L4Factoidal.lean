@@ -80,6 +80,10 @@ import L4Factoidal.JSONLD.Loader
 import L4Factoidal.JSONLD.Context
 import L4Factoidal.JSONLD.Expand
 import L4Factoidal.JSONLD.ToRdf
+import L4Factoidal.JSONLD.FromRdf
+import L4Factoidal.JSONLD.Compact
+import L4Factoidal.JSONLD.Flatten
+import L4Factoidal.JSONLD.Html
 import L4Factoidal.JSONLD.Tests
 import L4Factoidal.JSONLD.Theorems
 import L4Factoidal.SPARQL.Tokenizer

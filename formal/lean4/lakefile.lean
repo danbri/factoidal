@@ -100,6 +100,13 @@ extern_lib libl4hacl pkg := do
 -- the library.
 @[default_target] lean_exe «l4jsonld-probe» where root := `Harness.JsonLdProbe
 
+-- Real-corpus probe for the REST of the W3C json-ld-api suite: the
+-- expand, compact, flatten, fromRdf and html manifests (Harness/
+-- JsonLdApiProbe.lean). Same spec/pragmatics split as l4jsonld-probe,
+-- which keeps toRdf and is left alone. Run the built binary from the
+-- REPOSITORY ROOT: it resolves the corpus relative to the CWD.
+@[default_target] lean_exe «l4jsonld-api» where root := `Harness.JsonLdApiProbe
+
 -- Corpus census for the W3C OWL 2 test catalogs (Harness/OwlProbe.lean):
 -- reads the RDF/XML catalogs with the Lean XML parser and reports, with
 -- denominators, how many test cases carry a serialisation the Lean tree
