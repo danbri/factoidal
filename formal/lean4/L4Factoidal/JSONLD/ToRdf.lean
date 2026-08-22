@@ -46,6 +46,7 @@ import L4Factoidal.JSON.Value
 import L4Factoidal.JSON.Serialize
 import L4Factoidal.RDF.Core
 import L4Factoidal.RDF.Graph
+import L4Factoidal.RDF.Canonical
 import L4Factoidal.JSONLD.Expand
 
 namespace L4Factoidal.JSONLD
@@ -383,8 +384,12 @@ def rdfDirectionModeOf : Option String → RdfDirectionMode
 /-! ## Small helpers -/
 
 /-- A fresh blank node from a threaded counter (§8.2's "generate blank
-node identifier"). -/
-def freshBnode (ctr : Nat) : String × Nat := ("_jld_anon" ++ toString ctr, ctr + 1)
+node identifier"). The label is built by `RDF.Canonical.mkLabel`, whose
+`mkLabel_inj` already proves the shape injective in the counter — see
+`JSONLD/Theorems.lean`'s `freshBnode_injective`. The `_jld_anon` prefix
+keeps generated labels visually distinct from document-supplied `_:`
+labels. -/
+def freshBnode (ctr : Nat) : String × Nat := (Canonical.mkLabel "_jld_anon" ctr, ctr + 1)
 
 /-- Begins with `_:`. -/
 def isBnodeLabel (s : String) : Bool := charAtD s 0 == '_' && charAtD s 1 == ':'

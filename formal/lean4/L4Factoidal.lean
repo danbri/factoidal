@@ -48,3 +48,9 @@ import L4Factoidal.XML.Tests
 import L4Factoidal.OWL.Tableau
 import L4Factoidal.OWL.TableauTheorems
 import L4Factoidal.OWL.TableauTests
+import L4Factoidal.JSONLD.Loader
+import L4Factoidal.JSONLD.Context
+import L4Factoidal.JSONLD.Expand
+import L4Factoidal.JSONLD.ToRdf
+import L4Factoidal.JSONLD.Tests
+import L4Factoidal.JSONLD.Theorems

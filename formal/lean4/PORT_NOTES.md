@@ -42,6 +42,13 @@ a green test run.
 | `L4Factoidal/JSON/Parser.lean` | `Parser.JSON.fst` (the parser half) | `parseJson : String → Except JsonError Json`, total via fuel (mirrors the F\* fuel discipline); indexes a `List Char`, not raw bytes — see file header on why (Lean `Char` = full Unicode scalar value; sidesteps `Parser.FastString`'s byte-slicing machinery and this toolchain's `String.Pos` API) |
 | `L4Factoidal/JSON/Serialize.lean` | `SPARQL.JSON.Escape.fst` (`json_escape`) + the writer shape of `Parser.JSONLD.fst`'s `jcanon_serialize` (NOT its JCS canonicalisation/field-sorting) | `Json.toString` (compact) and `Json.toStringPretty` (new; no F\* counterpart) |
 | `L4Factoidal/JSON/Tests.lean` | (new) | 61 `#guard`s: RFC 8259 §13 example, every escape form, surrogate-pair decode, number-lexeme preservation, rejection cases, key-order/duplicate preservation, parse∘serialize round-trips |
+| `L4Factoidal/JSONLD/Loader.lean` | `JSONLD.Loader.fst` | the document-loader ABSTRACTION. The F\* module's whole content is one `assume val jsonld_load_document : string -> option string`; here it is `abbrev Loader := String → Option String`, a PARAMETER threaded through context processing. Plus `tableLoader` / `prefixLoader` / `cacheTableOfIndex` (the vendored `third_party/jsonld-context-cache/` index reader) for a probe to build one |
+| `L4Factoidal/JSONLD/Context.lean` | `JSONLD.Context.fst` | JSON-LD 1.1 API §4.1 Context Processing, §4.2 Create Term Definition, §5.2.2 IRI Expansion; `ContainerKind`, `TermDef`, `ActiveContext`; `@protected` / `@propagate` / `@version` / `@import`; remote-context fuel + cycle guard; property- and type-scoped context application. Failures are `Except JsonLdError`, and `JsonLdError.code` is the exact string a W3C manifest's `expectErrorCode` uses |
+| `L4Factoidal/JSONLD/Expand.lean` | `JSONLD.Expand.fst` | §5.1 Expansion + §5.2 Value Expansion: node objects, value objects, `@list`/`@set`, every `@container` mapping (`@index`, `@language`, `@id`, `@type`, `@graph`, `@graph`+`@id`, `@graph`+`@index`, property-valued `@index`), `@reverse` (term and inline block), `@nest`, `@included`, `@json`, the free-floating drop, duplicate-key merging, lexicographic member ordering. Frame expansion is NOT ported — see below |
+| `L4Factoidal/JSONLD/ToRdf.lean` | `Parser.JSONLD.fst` (the toRdf half) | §8.2 Deserialize JSON-LD to RDF, §8.3 Object to RDF Conversion, §8.4 List to RDF Conversion, §8.6 Data Round Tripping (`numberCanonicalize`) and the `rdfDirection` option, plus RFC 8785 JCS (`jcsDocument`) including the pure exact-integer shortest-round-trip binary64 formatter for `@json` numbers with more than 15 significant digits |
+| `L4Factoidal/JSONLD/Tests.lean` | (new) | 86 `#guard`s from the JSON-LD 1.1 spec's own examples: IRI expansion, compact IRIs, `@base`/`@vocab`, context processing, every §4.2 error condition, expansion shapes, list/language/type maps, `@reverse`, `@nest`, toRdf triples, §8.6 number decisions, RFC 8785 formatting, `rdfDirection` |
+| `L4Factoidal/JSONLD/Theorems.lean` | (new) | keyword identity and keyword-alias expansion under §5.2.2; absolute-IRI identity; the §4.2 protected-term rules; `findTerm_removeTerm` (what makes the `defined[term] = false` strip effective); the three pop-chain theorems that reconcile this port's explicit stack with the F\* `ac_previous` field; blank-node issuer injectivity (reusing `RDF.Canonical.mkLabel_inj`); and the banned-empty-context-fallback rule stated as a theorem |
+| `Harness/JsonLdProbe.lean` | `bin/jsonld-runner/jsonld_runner.ml` | the `l4jsonld-probe` executable: reads the real W3C `toRdf-manifest.jsonld`, runs every entry, compares datasets, prints labelled counts |
 | `L4Factoidal/JSON/Theorems.lean` | (new) | escape-table round-trip (exhaustive, `decide`); general literal round-trip; the STRING case general induction (`stringSegments_plain` — any length/content with no character needing escaping); a kernel-reduction finding (see file header); `RoundTripGoal` stated with the exact proof gap named (no `sorry`) |
 
 ## Translation decisions
@@ -302,6 +309,27 @@ the source modules.
   declaration in either ported module). Both modules are fully defined
   and total in F\*, and the Lean port is fully defined and total too —
   no realisation gap on either side.
+
+- `JSONLD.Loader.fst`: **one** `assume val`, and it is the only one in
+  the whole JSON-LD stack (`JSONLD.Context.fst`, `JSONLD.Expand.fst`,
+  and `Parser.JSONLD.fst` have zero between them, confirmed by grep).
+  It is `assume val jsonld_load_document : string -> option string`,
+  the remote-context fetch. In F\* it is AMBIENT: `context_process`
+  calls it directly, and each consumer binary installs a realisation
+  into a mutable ref cell at start-up
+  (`minimal_regrettable_glue_code_each_with_an_open_issue/275_jsonld_document_loader.sh`).
+  **DISSOLVED BY PARAMETERISATION** here: `abbrev Loader := String →
+  Option String`, passed explicitly to `contextProcess` and to every
+  entry point above it. There is no global state, no `opaque`, no
+  `@[extern]`, and no ambient effect — context processing is a total
+  function of its inputs, the loader among them. Real I/O lives in
+  `Harness/JsonLdProbe.lean`, which builds a `Loader` value after
+  reading files in `IO`. The `jsonld-context-cache` skill's rule that
+  an empty-context fallback is BANNED is not merely obeyed but proved:
+  `Theorems.lean`'s `fetchRemoteContext_none` and
+  `contextProcess_string_none_loader` show that a loader resolving
+  nothing yields `loading remote context failed`, never an empty active
+  context.
 
 ## A kernel-reduction finding from the JSON port (2026-08-22)
 
@@ -982,3 +1010,139 @@ That is one test today; it will be every `graph-*` entry of the
 rdf-canon suite later. The same file also still lacks
 `deriving DecidableEq` on `NamedGraph`/`Dataset`, as the previous stage
 recorded.
+
+## Stage: JSON-LD 1.1 context processing, expansion, and toRdf (2026-08-22)
+
+Six files under `L4Factoidal/JSONLD/` plus `Harness/JsonLdProbe.lean`
+(lake target `l4jsonld-probe`). Sources: `JSONLD.Context.fst` (1985
+lines), `JSONLD.Expand.fst` (2355), `Parser.JSONLD.fst` (1459, toRdf
+half), `JSONLD.Loader.fst` (67).
+
+### Measured
+
+`lake exe l4jsonld-probe` against the real W3C
+`third_party/testing/json-ld/tests/toRdf-manifest.jsonld`:
+
+**467 pass, 0 fail, 0 skip (out of 467)** — 345 of 345
+PositiveEvaluationTest, 16 of 16 PositiveSyntaxTest, 106 of 106
+NegativeEvaluationTest.
+
+Because a perfect score is exactly the shape a broken measurement
+takes, three checks back it up, all reported by the probe itself:
+
+1. **It measured something.** Across the 345 positive tests the engine
+   produced 1499 quads against 1492 expected (the difference is
+   duplicate triples, which RDF set semantics collapses). Only 11
+   positive tests compare an empty dataset to an empty dataset, and
+   those are the suite's own free-floating-node fixtures.
+2. **Sabotage testing.** Deleting the `@vocab` concatenation in
+   `expandFallback` took the score to 345 pass, 122 fail. Deleting the
+   `rdf:rest` triple in §8.4's list conversion took it to 442 pass, 25
+   fail. Both restored, both re-measured green.
+3. **The negative tests fail for the RIGHT reason.** 100 of the 106
+   produce exactly the error code the manifest's `expectErrorCode`
+   names. The six that differ are listed by the probe; each is a
+   genuine failure at a different (earlier or stricter) rule, not a
+   pass by accident. The F\* source cannot make this check at all — it
+   returns a bare `option`.
+
+### The F\* comparison is NOT a live side-by-side
+
+`skills/test-suites/SKILL.md`'s `jsonld_runner` row reads 399 pass, 57
+fail, 11 skip (out of 467), dated **2026-07-05**. That number is stale:
+`jsonld_runner.ml`'s own comments record three later fix waves
+(2026-07-16 skip audit, 2026-07-17 term-redefinition wave) that emptied
+its skip allowlist, so "11 skip" cannot still be current. No
+`darwin-arm64` `jsonld_runner` binary is committed and building F\* was
+out of scope for this stage, so **the F\* side was not re-measured**.
+Treat 399 as a stale lower bound. The probe prints this caveat with
+every run rather than presenting the two numbers as comparable.
+
+### Translation decisions
+
+- **The active context's pop chain.** F\* `active_context` carries
+  `ac_previous : option active_context`, a self-referential record
+  field. Lean structures are not recursive, so this port splits it:
+  `ActiveContext = { cur : ContextCore, prev : List ContextCore }`. The
+  F\* source performs exactly three operations on that field, and
+  `pop` / `setPrev` / `clearPrev` reproduce them; `Theorems.lean`
+  proves all three agree with the F\* semantics.
+- **Errors are values with codes.** F\* returns `option` everywhere, so
+  every failure is indistinguishable. Here every failure is
+  `Except JsonLdError`, with 45 constructors covering the JSON-LD 1.1
+  API §5 error conditions, and `JsonLdError.code` returning the exact
+  manifest string. The control flow is unchanged: each F\* `None` site
+  maps one-to-one onto an `.error` site.
+- **Fuel.** The F\* context-processing group uses a lexicographic
+  `%[fuel; ctx]` metric so an inline context never spends remote-fetch
+  depth. This port carries the two budgets as separate arguments
+  (`fuel` for termination, `rfuel` for remote depth) with
+  `termination_by fuel`, which is the same discipline with a simpler
+  proof obligation.
+- **Codepoints, not bytes.** As in every earlier stage, `fs_byte_length`
+  / `jbyte_at` / `fs_byte_sub` become code-point operations on
+  `String.toList`. Every character the algorithms test for is ASCII
+  (`:` `/` `@` `_` `#` `.`), and splitting UTF-8 at an ASCII position
+  gives the same substring either way.
+- **Blank-node labels come from `RDF.Canonical.mkLabel`.** Rather than
+  a parallel `"_jld_anon" ++ toString n`, the issuer reuses the label
+  function RDFC-1.0 canonicalization already has, so `mkLabel_inj`
+  gives issuer injectivity for free (`freshBnode_injective`).
+- **The shortest-round-trip binary64 formatter is pure.** RFC 8785
+  §3.2.2.3 needs, for a JSON-literal number with more than 15
+  significant digits, the shortest decimal of the NEAREST double. The
+  F\* source implements Steele & White by exact rational arithmetic on
+  unbounded `int`/`nat`; this port does the same on Lean `Nat`/`Int`.
+  No float type, no host call-out, no `@[extern]`.
+
+### Scoped out, and said so
+
+- **Frame expansion.** `ContextCore.frameExpansion` exists so the record
+  matches the F\* `active_context`, but the JSON-LD Framing relaxations
+  the F\* source gates on it (the five framing keywords passing through
+  expansion, Value Pattern `{}`/`[]`/array shapes surviving
+  value-object validation, array-shaped `@id`) are NOT ported. Framing
+  is a separate specification with a separate suite; this stage targets
+  §5.1/§5.2/§8 and the toRdf manifest. `JSONLD.Compact`,
+  `JSONLD.Flatten`, `JSONLD.Frame`, and `JSONLD.FromRdf` are likewise
+  not ported.
+- **Generalized RDF**, matching the F\* source: a blank-node PREDICATE
+  is dropped rather than emitted, because this codebase's N-Quads
+  grammar cannot express one either way.
+
+### Two comparison routes in the probe, both reported
+
+`Dataset.isomorphic?` is the primary comparison, per the brief. It has a
+hard 16-blank-node search budget and matches named graphs by NAME
+STRING, so it cannot decide a dataset with more blank nodes or with
+blank-node-named graphs — the exact `NamedGraph.name : Iri` limitation
+the Turtle/TriG stage recorded above, now hit again. Where it cannot
+decide, the probe falls back to RDFC-1.0 canonical N-Quads equality
+(`Dataset.canonicalNQuads`, which DOES relabel blank-node graph names),
+the same comparison `jsonld_runner.ml` uses. **31 of the 467 passes
+needed that second route**, and the probe prints that count rather than
+hiding it. Both routes are sound dataset-equality tests. This is a
+second, independent argument for the dataset-model change the earlier
+stage asked for: `NamedGraph.name` wants to be a `Subject`, and
+`Dataset.checkMapping` wants to apply the candidate blank-node mapping
+to graph names before comparing them.
+
+### One leniency, counted
+
+`Syntax.parseNQuads` is STRICT: any malformed line aborts the whole
+parse. The F\* `Parser.NQuads.parse_nquads` skips a malformed line and
+continues, and the suite depends on that — `0118-out.nq`'s blank-node-
+PREDICATE lines are unparseable under either grammar, and this engine
+likewise never emits them. So the probe parses expected files LINE BY
+LINE and drops what does not parse, reproducing the F\* runner's
+behaviour. **10 lines are dropped across the whole suite**, and the
+probe prints that total so the leniency is visible rather than silent.
+
+### Assumptions
+
+Zero `sorry`, zero user `axiom`, zero `native_decide`, zero `partial`
+across all six files. `#print axioms` on the ten audited theorems
+reports exactly `propext`, `Classical.choice`, `Quot.sound` (and
+`pop_setPrev` depends on none at all). The one F\* `assume val` in the
+stack is dissolved into the `Loader` parameter — see the assumption
+report above.
