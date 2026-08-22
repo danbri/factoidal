@@ -397,30 +397,39 @@ bijection must work for the default graph and for every named graph at
 once. So the search runs over the dataset's whole blank-node set,
 while the acceptance test is per-graph.
 
-Named graphs are matched BY NAME (IRI equality, via
-`Dataset.lookupNamed`) — never by isomorphism of the name. This port's
-`NamedGraph.name` is an `Iri`, so blank-node graph names, which
-RDF 1.1 §4 permits, cannot be expressed here at all; the F* source has
-the same shape (`ng_name` is an IRI), so nothing is lost relative to
-it. Should graph names ever become terms, the search would have to
-range over them too. -/
+An IRI-named graph is matched BY NAME: the name is ground, so it must
+appear verbatim on both sides. A BLANK-NODE-named graph (RDF 1.1 §4
+permits one) is matched up to the SAME bijection: `_:g` on the left may
+correspond to `_:b1` on the right exactly when the bijection maps the
+one label to the other. So the search ranges over blank nodes occurring
+in graph names as well as in quads, and the acceptance test applies the
+candidate mapping to a name before looking it up. -/
 
-/-- Every blank-node label of a dataset, default graph and named
-graphs together. -/
+/-- The blank-node label a graph NAME contributes, if it is a blank
+node (RDF 1.1 Concepts §4). -/
+def NamedGraph.nameBnodes (ng : NamedGraph) : List BNodeId :=
+  match ng.name with
+  | .bnode b => [b]
+  | .iri _   => []
+
+/-- Every blank-node label of a dataset: default graph, named graphs,
+and blank-node graph NAMES. -/
 def Dataset.bnodes (ds : Dataset) : List BNodeId :=
   dedupLabels
     (ds.default.flatMap Triple.bnodes ++
-     ds.named.flatMap (fun ng => ng.graph.flatMap Triple.bnodes))
+     ds.named.flatMap (fun ng => ng.nameBnodes ++ ng.graph.flatMap Triple.bnodes))
 
 /-- All triples of a dataset in one list — used ONLY for signature
 pruning, where graph boundaries do not matter. -/
 def Dataset.flatten (ds : Dataset) : Graph :=
   ds.default ++ ds.named.flatMap (fun ng => ng.graph)
 
-/-- Rename every blank node of a dataset. -/
-def Dataset.renameBnodes (f : BNodeId → BNodeId) (ds : Dataset) : Dataset :=
-  { default := ds.default.renameBnodes f,
-    named   := ds.named.map (fun ng => { ng with graph := ng.graph.renameBnodes f }) }
+/-- Duplicate-free graph names. Same shape as `noDupLabels`, on
+`Subject` rather than `String`; kept separate so neither definition's
+equation lemmas change under the other's uses. -/
+def noDupNames : List Subject → Bool
+  | []      => true
+  | n :: ns => !ns.contains n && noDupNames ns
 
 /-- Distinct graph names — the well-formedness condition of RDF 1.1
 Concepts §4 (a dataset holds at most one graph per name). The Lean
@@ -429,21 +438,48 @@ hypothesis rather than pretending: `Dataset.lookupNamed` returns the
 FIRST graph carrying a name, so a value listing two different graphs
 under one name is not even equal to itself under name matching. -/
 def Dataset.namesNoDup (ds : Dataset) : Bool :=
-  noDupLabels (ds.named.map (fun ng => ng.name))
+  noDupNames (ds.named.map (fun ng => ng.name))
 
-/-- The two datasets name the same graphs. -/
-def Dataset.namesMatchB (ds1 ds2 : Dataset) : Bool :=
-  ds1.named.all (fun ng => (ds2.lookupNamed ng.name).isSome) &&
-  ds2.named.all (fun ng => (ds1.lookupNamed ng.name).isSome)
+/-- The two datasets name the same graphs, MODULO the candidate
+blank-node mapping `m`: an IRI name must appear verbatim on both
+sides, while a blank-node name on the left matches the name its image
+under `m` is on the right. The second conjunct is the onto direction,
+stated as "every right-hand name is the image of a left-hand one" so
+that no inverse of `m` has to be constructed. -/
+def Dataset.namesMatchB (m : List (BNodeId × BNodeId)) (ds1 ds2 : Dataset) : Bool :=
+  ds1.named.all (fun ng =>
+    (ds2.lookupNamed (ng.name.renameBnodes (mapWith m))).isSome) &&
+  ds2.named.all (fun ng2 =>
+    ds1.named.any (fun ng1 => ng1.name.renameBnodes (mapWith m) == ng2.name))
 
-/-- Graph-by-graph triple-set equality after renaming `ds1` by `m`. -/
+/-- The mapping-FREE name prune used before the bijection search
+starts. Every condition here is invariant under any blank-node
+renaming — the IRI-named graphs are ground, and a renaming permutes
+blank-node names without changing how many there are — so rejecting on
+it cannot reject a genuine isomorphism. -/
+def Dataset.iriNames (ds : Dataset) : List Iri :=
+  ds.named.filterMap (fun ng =>
+    match ng.name with | .iri i => some i.val | .bnode _ => none)
+
+def Dataset.bnodeNamedCount (ds : Dataset) : Nat :=
+  (ds.named.filter (fun ng =>
+    match ng.name with | .bnode _ => true | .iri _ => false)).length
+
+def Dataset.namesPrune (ds1 ds2 : Dataset) : Bool :=
+  ds1.iriNames.all (fun i => ds2.iriNames.contains i) &&
+  ds2.iriNames.all (fun i => ds1.iriNames.contains i) &&
+  ds1.bnodeNamedCount == ds2.bnodeNamedCount
+
+/-- Graph-by-graph triple-set equality after renaming `ds1` by `m` —
+graph NAMES included, so a blank-node-named graph is looked up under
+its image. -/
 def Dataset.checkMapping (m : List (BNodeId × BNodeId)) (ds1 ds2 : Dataset) : Bool :=
   Graph.setEqB (ds1.default.renameBnodes (mapWith m)) ds2.default &&
   ds1.named.all (fun ng =>
-    match ds2.lookupNamed ng.name with
+    match ds2.lookupNamed (ng.name.renameBnodes (mapWith m)) with
     | some g2 => Graph.setEqB (ng.graph.renameBnodes (mapWith m)) g2
     | none    => false) &&
-  Dataset.namesMatchB ds1 ds2
+  Dataset.namesMatchB m ds1 ds2
 
 /-- The full certificate for datasets. -/
 def Dataset.isoCert (m : List (BNodeId × BNodeId)) (ds1 ds2 : Dataset)
@@ -480,7 +516,7 @@ def Dataset.idMapping (ds : Dataset) : List (BNodeId × BNodeId) :=
 def Dataset.isoSearchStep (ds1 ds2 : Dataset) :
     Option (List (BNodeId × BNodeId)) :=
   if ds1.bnodes.length != ds2.bnodes.length then none
-  else if !Dataset.namesMatchB ds1 ds2 then none
+  else if !Dataset.namesPrune ds1 ds2 then none
   else if ds1.bnodes.length > isoBnodeBudget then none
   else
     searchBijection

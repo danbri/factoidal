@@ -85,8 +85,8 @@ def dsChain : Dataset := { default := gChain, named := [] }
 hold one label each — the §18.6 GRAPH fixture. -/
 def dsNamed : Dataset :=
   { default := []
-    named := [ { name := gOne.val, graph := [tr iAlice pLabel (sLit "aaa")] },
-               { name := gTwo.val, graph := [tr iBob pLabel (sLit "bbb")] } ] }
+    named := [ { name := .iri gOne, graph := [tr iAlice pLabel (sLit "aaa")] },
+               { name := .iri gTwo, graph := [tr iBob pLabel (sLit "bbb")] } ] }
 
 /-- Two SERVICE endpoints, one holding the labels and one holding
 carol — `lateral_service_unit.ml`'s remote snapshots. -/

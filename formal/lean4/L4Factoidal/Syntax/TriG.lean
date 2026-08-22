@@ -53,8 +53,9 @@ open L4Factoidal.RDF
 /-- Add a statement's triples to the default graph or to a named graph,
 creating the named graph if it does not exist yet. Port of
 `trig_dataset_add_triples` / `trig_dataset_add`; the graph-name key is
-the same `Iri` string N-Quads uses, with blank-node names carrying the
-`"_:"` sentinel (`Syntax.NQuads.graphLabelToIri`). -/
+the `Subject` the `[7g] labelOrSubject` production yields — an IRI or a
+blank node, per RDF 1.1 Concepts §4 — stored as-is, the same key
+N-Quads uses. -/
 def addTriplesTo (ds : Dataset) (gname : Option Subject) (ts : List Triple) : Dataset :=
   ts.foldl (fun d t => addQuad d t gname) ds
 

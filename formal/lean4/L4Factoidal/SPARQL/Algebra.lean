@@ -489,17 +489,17 @@ def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
       -- GRAPH <iri>: evaluate against that named graph; an IRI the
       -- dataset does not name contributes nothing.
       | .iri i =>
-          match ds.lookupNamed i.val with
+          match ds.lookupNamedIri i.val with
           | some g => GraphPattern.evalIn ds g q
           | none   => []
       -- GRAPH ?g: evaluate against EVERY named graph, binding ?g to
-      -- that graph's name in each row it produces.
+      -- that graph's name in each row it produces. The name is an IRI
+      -- or a blank node (RDF 1.1 Concepts §4), and `?g` binds to
+      -- whichever it is.
       | .var v =>
           ds.named.flatMap (fun ng =>
-            let rows := GraphPattern.evalIn ds ng.graph q
-            if h : isIri ng.name = true then
-              rows.filterMap (fun mu => mu.bindIfCompatible v (.iri ⟨ng.name, h⟩))
-            else rows)
+            (GraphPattern.evalIn ds ng.graph q).filterMap (fun mu =>
+              mu.bindIfCompatible v ng.name.toTerm))
       -- Any other pattern term in the name position: the F* source
       -- falls back to the active graph.
       | _ => GraphPattern.evalIn ds active q

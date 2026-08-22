@@ -394,92 +394,112 @@ theorem contains_map_of_injective {f : BNodeId → BNodeId} (hf : InjectiveLabel
   | cons x xs ih =>
       simp only [List.map_cons, List.contains_cons, beq_map_of_injective hf, ih]
 
+/-- Renaming a whole quad: the graph name is renamed with everything
+else, because RDF 1.1 Concepts §4 puts a blank-node graph name in the
+same label scope as the triples. -/
+def QQuad.renameBnodes (f : BNodeId → BNodeId) (q : QQuad) : QQuad :=
+  (q.1.map (Subject.renameBnodes f), q.2.renameBnodes f)
+
 /-- Whether a quad mentions a blank node is invariant under an
-injective relabelling. Stated for quads whose graph slot is not a
-blank node — see `RelabellingInvariance` for why the blank-node graph
-label case is left open. -/
+injective relabelling — graph-name slot included. -/
 theorem quadMentionsBnode_rename {f : BNodeId → BNodeId} (hf : InjectiveLabels f)
-    (target : BNodeId) (g : Option Iri) (t : Triple)
-    (hg : ∀ gi, g = some gi → isBnodeGraphLabel gi = false) :
-    quadMentionsBnode (f target) (g, t.renameBnodes f) = quadMentionsBnode target (g, t) := by
+    (target : BNodeId) (g : Option Subject) (t : Triple) :
+    quadMentionsBnode (f target) (QQuad.renameBnodes f (g, t))
+      = quadMentionsBnode target (g, t) := by
   obtain ⟨sub, pred, obj⟩ := t
   cases g with
   | none =>
       cases sub with
       | iri i =>
-          simp only [quadMentionsBnode, Triple.renameBnodes, Subject.renameBnodes,
+          simp only [QQuad.renameBnodes, Option.map_none, quadMentionsBnode,
+                     Triple.renameBnodes, Subject.renameBnodes,
                      bnodesInTerm_rename, contains_map_of_injective hf]
       | bnode b =>
-          simp only [quadMentionsBnode, Triple.renameBnodes, Subject.renameBnodes,
+          simp only [QQuad.renameBnodes, Option.map_none, quadMentionsBnode,
+                     Triple.renameBnodes, Subject.renameBnodes,
                      bnodesInTerm_rename, contains_map_of_injective hf,
                      beq_map_of_injective hf]
-  | some gi =>
-      have hgi : isBnodeGraphLabel gi = false := hg gi rfl
-      cases sub with
-      | iri i =>
-          simp only [quadMentionsBnode, Triple.renameBnodes, Subject.renameBnodes,
-                     bnodesInTerm_rename, contains_map_of_injective hf, hgi,
-                     Bool.false_and]
-      | bnode b =>
-          simp only [quadMentionsBnode, Triple.renameBnodes, Subject.renameBnodes,
-                     bnodesInTerm_rename, contains_map_of_injective hf,
-                     beq_map_of_injective hf, hgi, Bool.false_and]
+  | some gs =>
+      cases gs with
+      | iri gi =>
+          cases sub with
+          | iri i =>
+              simp only [QQuad.renameBnodes, Option.map_some, quadMentionsBnode,
+                         Triple.renameBnodes, Subject.renameBnodes,
+                         bnodesInTerm_rename, contains_map_of_injective hf]
+          | bnode b =>
+              simp only [QQuad.renameBnodes, Option.map_some, quadMentionsBnode,
+                         Triple.renameBnodes, Subject.renameBnodes,
+                         bnodesInTerm_rename, contains_map_of_injective hf,
+                         beq_map_of_injective hf]
+      | bnode gb =>
+          cases sub with
+          | iri i =>
+              simp only [QQuad.renameBnodes, Option.map_some, quadMentionsBnode,
+                         Triple.renameBnodes, Subject.renameBnodes,
+                         bnodesInTerm_rename, contains_map_of_injective hf,
+                         beq_map_of_injective hf]
+          | bnode b =>
+              simp only [QQuad.renameBnodes, Option.map_some, quadMentionsBnode,
+                         Triple.renameBnodes, Subject.renameBnodes,
+                         bnodesInTerm_rename, contains_map_of_injective hf,
+                         beq_map_of_injective hf]
 
 /-- **The rendered first-degree form of a quad is blind to an
 injective relabelling** — RDFC-1.0 §4.5's `_:a`/`_:z` placeholders in
 action. Every later step of §4.5 (sort, concatenate, hash) is a
 function of exactly these strings. -/
 theorem renderForHfdq_rename {f : BNodeId → BNodeId} (hf : InjectiveLabels f)
-    (target : BNodeId) (g : Option Iri) (t : Triple)
-    (hg : ∀ gi, g = some gi → isBnodeGraphLabel gi = false) :
-    renderForHfdq (f target) (g, t.renameBnodes f) = renderForHfdq target (g, t) := by
-  have hgr : rewriteGraphForHfdq (f target) g = rewriteGraphForHfdq target g := by
+    (target : BNodeId) (g : Option Subject) (t : Triple) :
+    renderForHfdq (f target) (QQuad.renameBnodes f (g, t))
+      = renderForHfdq target (g, t) := by
+  have hgr : rewriteGraphForHfdq (f target) (g.map (Subject.renameBnodes f))
+           = rewriteGraphForHfdq target g := by
     cases g with
     | none => rfl
-    | some gi => simp [rewriteGraphForHfdq, hg gi rfl]
-  simp only [renderForHfdq, hgr, rewriteTripleForHfdq_rename hf]
+    | some gs =>
+        cases gs with
+        | iri gi => rfl
+        | bnode gb =>
+            simp [rewriteGraphForHfdq, Subject.renameBnodes,
+                  beq_map_of_injective hf]
+  simp only [renderForHfdq, QQuad.renameBnodes, hgr, rewriteTripleForHfdq_rename hf]
 
 /-- The §4.5 rendered-quad LIST of a blank node is unchanged by an
 injective relabelling. -/
 theorem hfdqRenders_rename {f : BNodeId → BNodeId} (hf : InjectiveLabels f)
     (target : BNodeId) :
     ∀ qs : List QQuad,
-      (∀ q ∈ qs, ∀ gi, q.1 = some gi → isBnodeGraphLabel gi = false) →
-      (quadsForBnode (f target) (qs.map (fun q => (q.1, q.2.renameBnodes f)))).map
+      (quadsForBnode (f target) (qs.map (QQuad.renameBnodes f))).map
           (renderForHfdq (f target))
         = (quadsForBnode target qs).map (renderForHfdq target) := by
   intro qs
   induction qs with
-  | nil => intro _; rfl
+  | nil => rfl
   | cons q rest ih =>
-      intro hqs
-      have hq : ∀ gi, q.1 = some gi → isBnodeGraphLabel gi = false := hqs q (by simp)
-      have hrest : ∀ q' ∈ rest, ∀ gi, q'.1 = some gi → isBnodeGraphLabel gi = false :=
-        fun q' hm => hqs q' (by simp [hm])
-      have hm : quadMentionsBnode (f target) (q.1, q.2.renameBnodes f)
+      have hm : quadMentionsBnode (f target) (QQuad.renameBnodes f q)
               = quadMentionsBnode target q :=
-        quadMentionsBnode_rename hf target q.1 q.2 hq
+        quadMentionsBnode_rename hf target q.1 q.2
       simp only [quadsForBnode, List.map_cons, List.filter_cons, hm]
       by_cases h : quadMentionsBnode target q = true
       · simp only [h, if_pos, List.map_cons]
-        rw [show renderForHfdq (f target) (q.1, q.2.renameBnodes f) = renderForHfdq target q from
-              renderForHfdq_rename hf target q.1 q.2 hq]
-        exact congrArg _ (ih hrest)
+        rw [show renderForHfdq (f target) (QQuad.renameBnodes f q) = renderForHfdq target q from
+              renderForHfdq_rename hf target q.1 q.2]
+        exact congrArg _ ih
       · simp only [Bool.not_eq_true] at h
         simp only [h, Bool.false_eq_true]
-        exact ih hrest
+        exact ih
 
 /-- **Hash First Degree Quads is invariant under injective
-relabelling** (RDFC-1.0 §4.5), for datasets with no blank-node graph
-labels. This is the load-bearing sub-result: it is why two isomorphic
-datasets produce the same §4.4 hash-to-blank-nodes map, which is where
-the canonical identifiers come from. -/
+relabelling** (RDFC-1.0 §4.5) — for EVERY dataset, blank-node graph
+names included. This is the sub-result the canonical identifiers rest
+on: it is why two isomorphic datasets produce the same §4.4
+hash-to-blank-nodes map. -/
 theorem hashFirstDegreeQuads_rename {f : BNodeId → BNodeId} (hf : InjectiveLabels f)
-    (alg : HashAlgorithm) (target : BNodeId) (qs : List QQuad)
-    (hqs : ∀ q ∈ qs, ∀ gi, q.1 = some gi → isBnodeGraphLabel gi = false) :
-    hashFirstDegreeQuads alg (f target) (qs.map (fun q => (q.1, q.2.renameBnodes f)))
+    (alg : HashAlgorithm) (target : BNodeId) (qs : List QQuad) :
+    hashFirstDegreeQuads alg (f target) (qs.map (QQuad.renameBnodes f))
       = hashFirstDegreeQuads alg target qs := by
-  simp only [hashFirstDegreeQuads, hfdqRenders_rename hf target qs hqs]
+  simp only [hashFirstDegreeQuads, hfdqRenders_rename hf target qs]
 
 /-- Non-vacuity check for every hypothesis above: `InjectiveLabels` is
 satisfied by a genuinely label-changing function, not only by the
@@ -518,15 +538,14 @@ What still stands between the lemmas above and this statement:
   * §4.4 step 5.3's tie-break is first-explored-wins, which is a
     choice the spec leaves open; a full invariance proof has to show
     the tie can only arise between genuine automorphisms.
-  * Blank-node GRAPH LABELS are excluded from the sub-lemmas above
-    (the `isBnodeGraphLabel gi = false` hypotheses). The obstacle is
-    not mathematical but representational: `NamedGraph.name` is an
-    `Iri` string carrying a `"_:"` sentinel, so the graph-slot lemmas
-    need `("_:" ++ x).startsWith "_:"`-style reasoning about `String`
-    append, which the byte-backed `String` of this toolchain does not
-    give up cheaply. Giving `NamedGraph.name` a sum type would remove
-    the hypothesis entirely; that is a change to `RDF/Graph.lean`,
-    owned elsewhere.
+  Blank-node GRAPH LABELS used to be excluded from the sub-lemmas
+  above by an `isBnodeGraphLabel gi = false` hypothesis on every one of
+  them. That exclusion is GONE (2026-08-22): `NamedGraph.name` is now a
+  `Subject`, so the graph slot renames like any other blank-node slot
+  and the lemmas hold for every dataset. The obstacle had never been
+  mathematical — it was the `"_:"` string sentinel the old `Iri`-typed
+  name forced, whose `startsWith`/append reasoning the byte-backed
+  `String` of this toolchain does not give up cheaply.
 
 The corpus probe (`lake exe l4rdfc-probe`, 86 of 86) and the
 `#guard`s in `RDF/CanonicalTests.lean` are the current EVIDENCE for

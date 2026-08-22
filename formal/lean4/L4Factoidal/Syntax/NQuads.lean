@@ -29,13 +29,11 @@ all CLI/performance pragmatics over the same grammar.
 The blank-node-as-graph-name sentinel encoding the F* source uses
 (`"_:label"` packed into the `iri` string slot, because `named_graph.ng_name`
 has no sum type — see `docs/designissues/2026-04-25-nquads-bnode-graph-fix.md`)
-is NOT needed here: `RDF.NamedGraph.name` is typed `Iri := String` too, but
-this port keeps the graph label as a genuine `Subject` end to end
-(`Iri ⊕ BNodeId`, realised via `Subject`) through parsing and only
-projects it to a bare `Iri` string at the `Dataset.lookupNamed`
-boundary the way `RDF.Graph` already expects it — see `graphLabelToIri`
-below, the one place this port's `Dataset` (from `RDF.Graph`) forces a
-choice the F* `rdf_dataset` type did not have to make.
+is NOT needed here and is NOT used: `RDF.NamedGraph.name` is a `Subject`,
+exactly the "IRI or blank node" RDF 1.1 Concepts §4 allows, so a parsed
+`[6] graphLabel` goes into the dataset unchanged and comes back out of
+`Dataset.toNQuads` unchanged. No string encoding stands between the
+grammar and the data model.
 -/
 
 import L4Factoidal.RDF.Graph
@@ -88,17 +86,6 @@ def readOptGraphLabel (pos : Nat) (cs : List Char) :
        | .ok (g, pos', rest') => .ok (some g, pos', rest'))
   | '"' :: _ => .error ⟨"literals are not allowed as graph names in N-Quads", pos1⟩
   | _ => .ok (none, pos1, cs1)
-
-/-- Project a graph-label `Subject` down to the `Iri` string
-`RDF.NamedGraph.name`/`Dataset.lookupNamed` key on. Blank-node graph
-labels are given the SAME `"_:label"` sentinel prefix the F* source's
-`parse_graph_label` doc comment describes (`ds_named`'s key really is
-just a `string`, in both the F* source and this port's `RDF.Graph`) —
-kept for exact behavioural parity with the F* dataset, even though this
-port could in principle carry `Subject` all the way into `NamedGraph`. -/
-def graphLabelToIri : Subject → Iri
-  | .iri i   => i.val
-  | .bnode b => "_:" ++ b
 
 /-! ## Statement — [2] statement:
 `statement ::= subject predicate object graphLabel? '.'`
@@ -170,8 +157,7 @@ representation. -/
 def addQuad (ds : Dataset) (t : Triple) (gopt : Option Subject) : Dataset :=
   match gopt with
   | none => { ds with default := ds.default.add t }
-  | some g =>
-      let name := graphLabelToIri g
+  | some name =>
       match ds.named.find? (fun ng => ng.name == name) with
       | some ng =>
           let updated : NamedGraph := { name := name, graph := ng.graph.add t }
@@ -230,14 +216,16 @@ lines) composed with `Syntax.NTriples`'s default-graph line
 "serialise a dataset" entry point at this layer either (see the note on
 `Graph.toNTriples`); this is the natural `Except`-threaded fold. -/
 
-/-- One line for a triple in a named graph: `s p o <graph> .\n`. Port of
+/-- One line for a triple in a named graph: `s p o g .\n`, where the
+graph label `g` is written `<iri>` or `_:label` — the `[6] graphLabel`
+production, back out the way it came in. Port of
 `nq_line_for_triple`. -/
-def namedLine (mode : Mode) (graphIri : Iri) (t : Triple) : Except String String :=
+def namedLine (mode : Mode) (graphName : Subject) (t : Triple) : Except String String :=
   match Term.toNTriples mode t.o with
   | .error e => .error e
   | .ok oStr =>
       .ok (Subject.toNTriples t.s ++ " <" ++ t.p.val ++ "> " ++ oStr ++
-           " <" ++ graphIri ++ "> .\n")
+           " " ++ Subject.toNTriples graphName ++ " .\n")
 
 /-- Serialise a whole `Dataset`: default-graph lines (N-Triples form),
 then named-graph lines, input order preserved within each graph. -/
