@@ -132,13 +132,15 @@ Two boundaries are deliberate and named in the runner:
 
 Against the vendored
 [W3C XML Conformance Test Suite](https://github.com/danbri/factoidal/tree/claude/main/third_party/testing/xml/xmlconf),
-the parser scores **244 real pass, 0 fail** out of 2585 — "real"
-meaning the parser rejected the construct actually under test. The
-rest are skipped rather than force-passed: 1166 documents this
-well-formedness-only parser can reject only because it does not
-implement DOCTYPE/DTD (the tested construct is never exercised), and 32
-that are not-well-formed only under XML 1.1 or Namespaces, outside what
-this XML-1.0, non-namespace parser claims. Driven by
+the parser scores **1447 pass, 0 fail, 1138 skip (out of 2585)**,
+re-measured 2026-08-22 with the committed `xml_runner` (313 of the
+skips are not-applicable: the fixture edition excludes XML 1.0 5th
+edition, which this parser targets; the rest are DTD-validation,
+external-subset, encoding, and XML 1.1 / Namespaces cases outside the
+well-formedness-only scope, reported as skipped rather than
+force-passed — the runner's own PassVacuous counter is 0). An earlier
+revision of this paragraph quoted 244 "real" passes from before the
+internal-subset parser landed. Driven by
 [`bin/xml-runner`](https://github.com/danbri/factoidal/blob/claude/main/bin/xml-runner/xml_runner.ml).
 
 ## What's next
