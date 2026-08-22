@@ -3679,3 +3679,31 @@ bug waiting to happen, not a style nit.
 order is easy to shorten by accident: explicit `name`, then a title
 tagged with the requested language, then an untagged title, then the
 positional `_col.N` the spec mandates.
+
+### CSVW: csv2rdf cell conversion (2026-08-22)
+
+`CSVW/Conversion.lean` ports the cell-level half of
+`CSVW.Conversion.fst`: the row-scoped variable lookup (`_row`,
+`_sourceRow`, column names), `null` and `default` handling, the
+`separator` list split, the §6.4.2 whitespace rule, and
+aboutUrl/propertyUrl/valueUrl template resolution.
+
+Three rules pinned because each is a silent-wrong-answer if flipped:
+
+1. **The whitespace rule is per-datatype-base.** Only the string
+   family and the structured literals (xml/html/json) preserve
+   surrounding whitespace; every other base strips it before lexical
+   parsing. That is what lets a `date` cell parse THROUGH its padding
+   (`" 10/18/2010 "` → `2010-10-18`) while a `string` cell keeps it.
+   An absent datatype defaults to string, so it preserves too.
+2. **An empty cell with a `separator` yields NO elements**, not one
+   empty element — the difference between zero triples and one triple
+   with an empty object.
+3. **A null cell still reports its property.** Standard-mode
+   `csvw:describes` bookkeeping needs the subject and predicate even
+   when no value triple is produced, so `convertCell` returns them
+   alongside an empty object list rather than returning nothing.
+
+Template resolution context carried from the F* module: aboutUrl /
+propertyUrl / valueUrl resolve against the CURRENT TABLE's own
+already-resolved URL, never against the document base a second time.
