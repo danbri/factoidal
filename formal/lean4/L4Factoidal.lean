@@ -162,3 +162,5 @@ import L4Factoidal.Schematron.Validate
 import L4Factoidal.Schematron.Tests
 import L4Factoidal.HTTP.Server
 import L4Factoidal.HTTP.Tests
+import L4Factoidal.Storage.Bytes
+import L4Factoidal.Storage.Tests
