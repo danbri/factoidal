@@ -152,3 +152,5 @@ import L4Factoidal.RML.Mapping
 import L4Factoidal.RML.Tests
 import L4Factoidal.RIF.Core
 import L4Factoidal.RIF.Tests
+import L4Factoidal.JSONSchema.Validate
+import L4Factoidal.JSONSchema.Tests
