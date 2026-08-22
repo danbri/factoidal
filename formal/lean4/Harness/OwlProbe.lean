@@ -397,27 +397,109 @@ def isDirectOnly (c : Case) : Bool :=
 def isRdfBasedOnly (c : Case) : Bool :=
   c.semantics.contains "RDF-BASED" && !c.semantics.contains "DIRECT"
 
+/-- Parse the premise and merge its imports: the graph the closure
+runs on. -/
+def premiseGraph (cat : Catalog) (c : Case) : Except Harness.Outcome Graph :=
+  match c.premise with
+  | none => .error (.fail "harness: no RDF/XML premise")
+  | some ptxt =>
+    match parseDoc "premise" c.iri ptxt with
+    | .error e => .error (.fail e)
+    | .ok gp0 =>
+      let allowed := c.imports.filterMap (fun w =>
+        (cat.imports.find? (fun d => d.wrapper == w)).map (·.ontIri))
+      match loadImports cat.imports allowed gp0 [] (allowed.length + 1) with
+      | .error e => .error (.fail e)
+      | .ok gp => .ok gp
+
 /-- Parse the premise, merge imports, run the closure. Shared by the
 four judges. Returns the closure result or a fail outcome, plus the
 measurement delta. -/
 def premiseClosure (cat : Catalog) (c : Case) (capMs : Nat)
     : IO (Except Harness.Outcome ClosureResult × Measure) := do
-  match c.premise with
-  | none => return (.error (.fail "harness: no RDF/XML premise"), {})
-  | some ptxt =>
-    match parseDoc "premise" c.iri ptxt with
-    | .error e => return (.error (.fail e), { parseFailures := 1 })
-    | .ok gp0 =>
-      let allowed := c.imports.filterMap (fun w =>
-        (cat.imports.find? (fun d => d.wrapper == w)).map (·.ontIri))
-      match loadImports cat.imports allowed gp0 [] (allowed.length + 1) with
-      | .error e => return (.error (.fail e), { parseFailures := 1 })
-      | .ok gp =>
+  match premiseGraph cat c with
+  | .error o => return (.error o, { parseFailures := 1 })
+  | .ok gp =>
+    let t0 ← IO.monoMsNow
+    let r ← closureIO gp closureFuel (t0 + capMs)
+    let m : Measure := { triplesParsed := gp.length, closureRounds := r.rounds,
+                         capHits := if r.capped then 1 else 0 }
+    return (.ok r, m)
+
+/-! ## Profiling — where does a round spend its time?
+
+`--profile --case <id> [--rounds N]` runs the LIST engine round by
+round on the named cases and prints, per round, the wall time and the
+emitted (pre-dedup) triple count of every row function, then the time
+the exact dedup (`addAll`) takes. This is the measurement the
+`measuring-inference` skill asks for BEFORE any engine change: which
+phase the time is in, per rule family, on the real corpus cases. -/
+
+/-- Every row function of `RLClosure.conclusionsList`, named, in that
+list's order. -/
+def namedRows : List (String × (Graph → Triple → List Triple)) :=
+  [ ("eq-ref-s", eqRefSFor), ("eq-ref-p", eqRefPFor), ("eq-ref-o", eqRefOFor),
+    ("eq-sym", eqSymFor), ("eq-trans", eqTransFor),
+    ("eq-rep-s", eqRepSFor), ("eq-rep-p", eqRepPFor), ("eq-rep-o", eqRepOFor),
+    ("prp-dom", prpDomFor), ("prp-rng", prpRngFor), ("prp-fp", prpFpFor),
+    ("prp-ifp", prpIfpFor), ("prp-symp", prpSympFor), ("prp-trp", prpTrpFor),
+    ("prp-spo1", prpSpo1For), ("prp-spo2", prpSpo2For),
+    ("prp-eqp1", prpEqp1For), ("prp-eqp2", prpEqp2For),
+    ("prp-inv1", prpInv1For), ("prp-inv2", prpInv2For), ("prp-key", prpKeyFor),
+    ("cls-int1", clsInt1For), ("cls-int2", clsInt2For), ("cls-uni", clsUniFor),
+    ("cls-svf1", clsSvf1For), ("cls-svf2", clsSvf2For), ("cls-avf", clsAvfFor),
+    ("cls-hv1", clsHv1For), ("cls-hv2", clsHv2For), ("cls-maxc2", clsMaxc2For),
+    ("cls-oo", clsOoFor),
+    ("cax-sco", caxScoFor), ("cax-eqc1", caxEqc1For), ("cax-eqc2", caxEqc2For),
+    ("scm-cls", scmClsFor), ("scm-sco", scmScoFor), ("scm-eqc1", scmEqc1For),
+    ("scm-eqc2", scmEqc2For), ("scm-spo", scmSpoFor), ("scm-eqp1", scmEqp1For),
+    ("scm-eqp2", scmEqp2For), ("scm-dom1", scmDom1For), ("scm-dom2", scmDom2For),
+    ("scm-rng1", scmRng1For), ("scm-rng2", scmRng2For),
+    ("scm-int", scmIntFor), ("scm-uni", scmUniFor) ]
+
+/-- Predicate histogram of a graph: the shape the joins run over. -/
+def predicateHistogram (g : Graph) : List (String × Nat) := Id.run do
+  let mut acc : List (String × Nat) := []
+  for t in g do
+    let k := t.p.val
+    match acc.find? (fun p => p.1 == k) with
+    | some _ => acc := acc.map (fun p => if p.1 == k then (p.1, p.2 + 1) else p)
+    | none   => acc := acc ++ [(k, 1)]
+  return acc.mergeSort (fun a b => a.2 ≥ b.2)
+
+def profileCase (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO Unit := do
+  IO.println s!"PROFILE {name} {c.id}"
+  match premiseGraph cat c with
+  | .error o => IO.println (o.line c.id)
+  | .ok gp =>
+    IO.println s!"  premise triples={gp.length}"
+    for (p, n) in (predicateHistogram gp).take 12 do
+      IO.println s!"    {n}  {p}"
+    let mut g := gp
+    for r in [0:rounds] do
+      IO.println s!"  round {r + 1}: input triples={g.length}"
+      let tr0 ← IO.monoMsNow
+      let mut all : Array Triple := #[]
+      let mut rowStats : List (String × Nat × Nat) := []
+      for (nm, f) in namedRows do
         let t0 ← IO.monoMsNow
-        let r ← closureIO gp closureFuel (t0 + capMs)
-        let m : Measure := { triplesParsed := gp.length, closureRounds := r.rounds,
-                             capHits := if r.capped then 1 else 0 }
-        return (.ok r, m)
+        let out := g.flatMap (f g)
+        let n := out.length
+        let t1 ← IO.monoMsNow
+        rowStats := rowStats ++ [(nm, n, t1 - t0)]
+        all := all ++ out.toArray
+      let t2 ← IO.monoMsNow
+      let g' := addAll g (axiomTriples ++ all.toList)
+      let t3 ← IO.monoMsNow
+      IO.println s!"    rows total: emitted={all.size} ms={t2 - tr0}"
+      IO.println s!"    dedup addAll: new={g'.length - g.length} ms={t3 - t2}"
+      let sorted := rowStats.mergeSort (fun a b => a.2.2 ≥ b.2.2)
+      for (nm, n, ms) in sorted do
+        if ms > 0 || n > 0 then IO.println s!"      {nm}: emitted={n} ms={ms}"
+      if g'.length = g.length then
+        IO.println s!"    saturated after {r + 1} rounds"
+        break
+      g := g'
 
 def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
   if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
@@ -599,15 +681,39 @@ structure Opts where
   only    : List String := []
   capMs   : Nat := 30000
   verbose : Bool := false
+  /-- `--profile`: per-row timing of the list engine on `--case` ids. -/
+  profile : Bool := false
+  cases   : List String := []
+  rounds  : Nat := 3
 
 def parseArgs : List String → Opts → Opts
   | [], o => o
   | "--cap-ms" :: n :: rest, o => parseArgs rest { o with capMs := n.toNat!.max 1 }
   | "-v" :: rest, o => parseArgs rest { o with verbose := true }
   | "--dir" :: d :: rest, o => parseArgs rest { o with dir := d }
+  | "--profile" :: rest, o => parseArgs rest { o with profile := true }
+  | "--case" :: c :: rest, o => parseArgs rest { o with cases := o.cases ++ [c] }
+  | "--rounds" :: n :: rest, o => parseArgs rest { o with rounds := n.toNat!.max 1 }
   | a :: rest, o =>
       if a.endsWith ".rdf" then parseArgs rest { o with only := o.only ++ [a] }
       else parseArgs rest { o with dir := a }
+
+/-- `--profile` entry: only the named cases, only the timing. -/
+def profileMain (o : Opts) : IO UInt32 := do
+  let dir : System.FilePath := o.dir
+  let names := if o.only.isEmpty then catalogs else o.only
+  for name in names do
+    let p := dir / name
+    if !(← p.pathExists) then
+      IO.println s!"  MISSING {name}"
+    else
+      match ← readCatalog p with
+      | none => pure ()
+      | some cat =>
+        for c in cat.cases do
+          if o.cases.contains c.id then
+            profileCase name cat c o.rounds
+  return 0
 
 def main (args : List String) : IO UInt32 := do
   let o := parseArgs args {}
@@ -617,6 +723,7 @@ def main (args : List String) : IO UInt32 := do
   let (scoOk, unrelatedAbsent) := engineSelfCheck
   IO.println s!"engine self-check: cax-sco fires = {scoOk}, \
 unrelated triple absent = {!unrelatedAbsent}"
+  if o.profile then return (← profileMain o)
   let names := if o.only.isEmpty then catalogs else o.only
   let mut total : Harness.Score := {}
   let mut totalM : Measure := {}
