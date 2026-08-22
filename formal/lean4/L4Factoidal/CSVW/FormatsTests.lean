@@ -127,6 +127,39 @@ private def euro : NumFmt := { groupChar := '.', decimalChar := ',' }
 #guard !isDurationLexical "P1DT"
 #guard !isDurationLexical "1D"
 
+-- Decimal PATTERNS constrain digit counts and grouping positions, not
+-- just the separator characters. Sixteen corpus tests supply a
+-- perfectly good number and expect it REJECTED for not matching its
+-- column's pattern.
+private def pat (p : String) : NumPattern := parseNumPattern p ',' '.'
+#guard (pat "#,#00").minInt == 2
+#guard (pat "#0.0#").minFrac == 1
+#guard (pat "#0.0#").maxFrac == 2
+#guard (pat "#,##,#00").primaryGroup == some 3
+#guard (pat "#,##,#00").secondaryGroup == some 2
+#guard (pat "0.0E0").hasExp
+
+#guard regroup "1234567" 3 2 ',' == "12,34,567"
+#guard regroup "1234567" 3 3 ',' == "1,234,567"
+#guard regroup "12" 3 3 ',' == "12"
+
+-- Too few integer digits for `#,#00`.
+#guard !matchesNumPattern (pat "#,#00") ',' '.' "1"
+-- Right digits, but the grouping the pattern demands is absent.
+#guard !matchesNumPattern (pat "#,#00") ',' '.' "1234"
+#guard matchesNumPattern (pat "#,#00") ',' '.' "1,234"
+-- Secondary group size 2, so `1,234,567` is the wrong shape.
+#guard !matchesNumPattern (pat "#,##,#00") ',' '.' "1,234,567"
+#guard matchesNumPattern (pat "#,##,#00") ',' '.' "12,34,567"
+-- Fraction-digit bounds.
+#guard !matchesNumPattern (pat "#0.#") ',' '.' "12.34"
+#guard matchesNumPattern (pat "#0.#") ',' '.' "12.3"
+#guard !matchesNumPattern (pat "#0.0") ',' '.' "1"
+#guard !matchesNumPattern (pat "#0.0#") ',' '.' "12.345"
+-- An exponent is required exactly when the pattern has one.
+#guard !matchesNumPattern (pat "0.0") ',' '.' "1.0E3"
+#guard matchesNumPattern (pat "0.0E0") ',' '.' "1.0E3"
+
 -- Value constraints (section 5.11.2), compared EXACTLY rather than
 -- through a float.
 #guard decimalCompare "4" "5" == some .lt

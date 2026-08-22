@@ -189,10 +189,11 @@ def CellResult.lexicals (r : CellResult) : List String := r.literals.map (·.1)
 /-- The default property IRI for a column with no `propertyUrl`: the
     table URL with the column name as a fragment, per csv2rdf. -/
 def defaultPropertyRef (tableUrl colName : String) : String :=
-  -- SIMPLE expansion, not fragment expansion: the column name is a
-  -- template VARIABLE VALUE, so reserved characters are escaped. A
-  -- column titled `##0` must give `#%23%230`; passing `#` through
-  -- produces `###0`, which truncates the fragment (test286).
-  tableUrl ++ "#" ++ UriTemplate.encodeSimple colName
+  -- The column name is a template VARIABLE VALUE, so reserved
+  -- characters are escaped: a column titled `##0` must give
+  -- `#%23%230`, and passing `#` through produces `###0`, which
+  -- truncates the fragment (test286). `encodeColumnName` also escapes
+  -- `-`, which the corpus expects and RFC 3986 does not (test246).
+  tableUrl ++ "#" ++ UriTemplate.encodeColumnName colName
 
 end L4Factoidal.CSVW

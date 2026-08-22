@@ -5123,3 +5123,33 @@ That is now FOUR guards in this file that pinned the absence of a
 check. A `noFormat` return is not a neutral answer: it means "emit
 this text under the column's datatype unchecked", and every one of
 those guards was recording a wrong triple as expected behaviour.
+
+### CSVW: integer ranges, column-name escaping, decimal patterns
+(2026-08-22)
+
+1. **An integer base's RANGE is part of its lexical space.** `1234` is
+   not an `xsd:byte` at all, and emitting it with that datatype
+   asserts a value the type does not contain. `integerBounds` carries
+   the twelve bounded bases (test172).
+2. **A column name in a default `propertyUrl` escapes `-` too.**
+   `test246` names its columns `yyyy-MM-ddTHH:mm:ss.S` and expects
+   `#yyyy%2DMM%2DddTHH%3Amm%3Ass.S` — the hyphen IS escaped while the
+   dot is not, which is neither RFC 3986's unreserved set nor simple
+   expansion. `encodeColumnName` records the set the corpus actually
+   uses, with the test that measured it.
+3. **A decimal PATTERN constrains digit counts and grouping
+   positions**, not just the separator character. Sixteen tests
+   (288–303 and 160) supply a perfectly good number and expect it
+   REJECTED for not matching its column's pattern: `1` against
+   `#,#00`, `12.34` against `#0.#`, `1,234,567` against `#,##,#00`
+   (whose secondary group is 2, so the right shape is `12,34,567`).
+   `parseNumPattern` / `regroup` / `matchesNumPattern` implement the
+   UAX #35 subset the corpus uses; prefixes, suffixes, quoting and the
+   negative subpattern are NOT read, and that is stated rather than
+   guessed at.
+
+📊 MEASURED, csv2rdf: **179 pass, 26 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 153.
+
+Running total for the day: 9 pass out of 9 attempted → 179 pass out of
+210 attempted, with the denominator itself growing from 9 to 210.

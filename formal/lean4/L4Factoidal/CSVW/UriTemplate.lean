@@ -70,6 +70,21 @@ def encodeFragment (s : String) : String :=
   s.toList.foldl (fun acc c =>
     acc ++ (if isUnreserved c || isReserved c then String.mk [c] else encodeChar c)) ""
 
+/-- The escaping the csv2rdf corpus expects for a COLUMN NAME in a
+    default `propertyUrl`: alphanumeric, `_`, `.` and `~` pass through
+    and everything else is percent-encoded — including `-`, which RFC
+    3986 counts as unreserved.
+
+    Measured rather than assumed: `test246` names its columns
+    `yyyy-MM-ddTHH:mm:ss.S` and expects
+    `#yyyy%2DMM%2DddTHH%3Amm%3Ass.S`, so the hyphen IS escaped while
+    the dot is not. -/
+def encodeColumnName (s : String) : String :=
+  s.toList.foldl (fun acc c =>
+    acc ++ (if (('A' ≤ c && c ≤ 'Z') || ('a' ≤ c && c ≤ 'z') ||
+                ('0' ≤ c && c ≤ '9') || c == '_' || c == '.' || c == '~')
+            then String.mk [c] else encodeChar c)) ""
+
 /-- Is this a `{#var}` reference? -/
 def varIsFragment (v : String) : Bool := v.startsWith "#"
 

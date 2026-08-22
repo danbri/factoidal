@@ -55,6 +55,108 @@ def parseBool (fmt : Option String) (v : String) : FmtOutcome :=
           else if v.toList == fv then .valid "false"
           else .invalid
 
+/-! ### Decimal PATTERNS (UAX #35 number patterns, §5.11.3)
+
+A `pattern` is not just a hint about grouping: it constrains how many
+digits the value may have on each side of the point, and where the
+grouping separators must fall. Sixteen tests in the csv2rdf corpus
+(288–303 plus 160) supply a value that is a perfectly good number and
+expect it REJECTED because it does not match its column's pattern —
+`1` against `#,#00`, `12.34` against `#0.#`, `1,234,567` against
+`#,##,#00`. Reading the pattern only for its grouping character let
+every one of them through with the column's datatype attached.
+
+Supported: `#` and `0` digit places, `,` grouping (primary and
+secondary group sizes), `.` with minimum and maximum fraction digits,
+and an `E` exponent. Prefixes, suffixes, quoting and the second
+(negative) subpattern are NOT read — none appears in the corpus, and
+guessing at them would reject values a real pattern accepts.
+-/
+
+structure NumPattern where
+  minInt         : Nat := 0
+  minFrac        : Nat := 0
+  maxFrac        : Nat := 0
+  primaryGroup   : Option Nat := none
+  secondaryGroup : Option Nat := none
+  hasExp         : Bool := false
+deriving Repr, Inhabited
+
+/-- Read a number pattern. Only the digit-place characters are
+    significant here; anything else is a prefix or suffix. -/
+def parseNumPattern (pat : String) (grp dec : Char) : NumPattern :=
+  let cs := pat.toList.filter (fun c => c == '#' || c == '0' || c == grp || c == dec
+                                        || c == 'E' || c == 'e')
+  let (mant, hasExp) := match splitFirst 'E' cs with
+    | some (m, _) => (m, true)
+    | none => match splitFirst 'e' cs with
+      | some (m, _) => (m, true)
+      | none        => (cs, false)
+  let (ip, fp) := match splitFirst dec mant with
+    | some (a, b) => (a, b)
+    | none        => (mant, [])
+  -- Group sizes are counted from the RIGHT: the primary group is the
+  -- run after the last separator, the secondary the run before it.
+  let groups := (String.ofList ip).splitOn (String.mk [grp])
+  let sizes := groups.map (·.length)
+  let (primary, secondary) := match sizes.reverse with
+    | last :: prev :: _ => (some last, some prev)
+    | [_]               => (none, none)
+    | []                => (none, none)
+  { minInt := (ip.filter (· == '0')).length
+    minFrac := (fp.filter (· == '0')).length
+    maxFrac := fp.length
+    primaryGroup := primary
+    secondaryGroup := secondary
+    hasExp := hasExp }
+
+/-- Chop a digit run from the RIGHT into `sec`-sized pieces. `fuel` is
+    the run length, so the bound is exact. -/
+def chopFromRight : Nat → Nat → List Char → List (List Char)
+  | 0,        _,   cs => [cs]
+  | _,        0,   cs => [cs]
+  | fuel + 1, sec, cs =>
+      if cs.length ≤ sec then [cs]
+      else chopFromRight fuel sec (cs.take (cs.length - sec)) ++ [cs.drop (cs.length - sec)]
+
+/-- Insert grouping separators into a digit string, primary group
+    first (from the right), then repeated secondary groups. -/
+def regroup (digits : String) (primary secondary : Nat) (grp : Char) : String :=
+  if primary == 0 then digits
+  else
+    let ds := digits.toList
+    let n := ds.length
+    if n ≤ primary then digits
+    else
+      let head := ds.take (n - primary)
+      let tail := ds.drop (n - primary)
+      let sec := if secondary == 0 then primary else secondary
+      let parts := chopFromRight (head.length + 1) sec head
+      String.intercalate (String.mk [grp]) ((parts.map String.ofList) ++ [String.ofList tail])
+
+/-- Does the value, AS WRITTEN, match the pattern? -/
+def matchesNumPattern (p : NumPattern) (grp dec : Char) (v : String) : Bool :=
+  let body := if v.startsWith "-" || v.startsWith "+"
+              then String.ofList (v.toList.drop 1) else v
+  let body := String.ofList (body.toList.filter (fun c => c != '%' && c != '‰'))
+  let (mant, expPart) := match splitFirst 'E' body.toList, splitFirst 'e' body.toList with
+    | some (m, e), _ => (String.ofList m, some (String.ofList e))
+    | _, some (m, e) => (String.ofList m, some (String.ofList e))
+    | _, _           => (body, none)
+  if p.hasExp != expPart.isSome then false
+  else
+    let (ip, fp) := match splitFirst dec mant.toList with
+      | some (a, b) => (String.ofList a, String.ofList b)
+      | none        => (mant, "")
+    let digits := String.ofList (ip.toList.filter (· != grp))
+    let fracLen := fp.length
+    if digits.length < p.minInt then false
+    else if fracLen < p.minFrac || fracLen > p.maxFrac then false
+    else
+      match p.primaryGroup with
+      | none   => !ip.toList.contains grp
+      | some g => ip == regroup digits g (p.secondaryGroup.getD g) grp
+
 /-- A numeric format: the grouping and decimal characters, and the
     scaling implied by a trailing `%` or `‰`. -/
 structure NumFmt where
@@ -62,6 +164,8 @@ structure NumFmt where
   decimalChar : Char := '.'
   percent     : Bool := false
   permille    : Bool := false
+  /-- The digit-place constraints, when a pattern was given. -/
+  pattern     : Option NumPattern := none
   /-- May the value carry grouping characters at all? A PATTERN that
       does not itself contain the grouping character forbids them:
       `##0` says "no grouping", so `1,234` is not a number in that
@@ -77,6 +181,7 @@ def parseNumFmt (pat : Option String) (grp dec : Char) : NumFmt :=
   | none   => { groupChar := grp, decimalChar := dec }
   | some p =>
       { groupChar := grp, decimalChar := dec,
+        pattern := some (parseNumPattern p grp dec),
         percent := p.endsWith "%" || p.startsWith "%",
         permille := p.endsWith "‰" || p.startsWith "‰",
         grouping := p.toList.contains grp }
@@ -115,86 +220,6 @@ def shiftLeft (s : String) (n : Nat) : String :=
   let ipOut := String.ofList (digits.take cut)
   let fpOut := String.ofList (digits.drop cut)
   (if neg then "-" else "") ++ ipOut ++ (if fpOut == "" then "" else "." ++ fpOut)
-
-/-! ### XSD lexical spaces for the numeric bases
-
-A numeric column validates its cells even with NO `format`: `3.2` is
-not an `xsd:integer` and `123.456E7` is not an `xsd:decimal`, whatever
-the metadata says about grouping. Before this the numeric path
-returned `noFormat` whenever no pattern, `groupChar` or `decimalChar`
-was stated, so nothing was checked and every such cell got its base's
-datatype — asserting that `NaN` is a decimal (measured 2026-08-22,
-tests 161 and 163–167). -/
-
-private def stripSign (s : String) : String :=
-  if s.startsWith "-" || s.startsWith "+" then String.ofList (s.toList.drop 1) else s
-
-def isIntegerLexical (s : String) : Bool :=
-  let core := stripSign s
-  core != "" && core.toList.all isDigit
-
-def isDecimalLexical (s : String) : Bool :=
-  let core := stripSign s
-  let parts := core.splitOn "."
-  core != "" && parts.length ≤ 2 &&
-  parts.all (fun p => p.toList.all isDigit) && parts.any (fun p => p != "")
-
-/-- `xsd:double` / `xsd:float`: a decimal mantissa with an optional
-    exponent, or one of the three special values. -/
-def isDoubleLexical (s : String) : Bool :=
-  if s == "NaN" || s == "INF" || s == "-INF" || s == "+INF" then true
-  else
-    match splitFirst 'e' s.toList, splitFirst 'E' s.toList with
-    | some (m, e), _ =>
-        isDecimalLexical (String.ofList m) && isIntegerLexical (String.ofList e)
-    | none, some (m, e) =>
-        isDecimalLexical (String.ofList m) && isIntegerLexical (String.ofList e)
-    | none, none => isDecimalLexical s
-
-/-- Which lexical space a numeric base uses. -/
-def isXsdNumericLexical (base : String) (s : String) : Bool :=
-  if base == "decimal" then isDecimalLexical s
-  else if base == "double" || base == "float" || base == "number" then
-    isDoubleLexical s
-  else isIntegerLexical s
-
-/-- Apply a numeric format: strip grouping characters, normalise the
-    decimal character to `.`, apply percent / per-mille scaling, and
-    check the result against the base's XSD lexical space.
-
-    Grouping characters must SEPARATE digits. Two in a row, or one at
-    either end, is a validation error the corpus states outright:
-    "Implementations MUST add a validation error … if the string being
-    parsed contains two consecutive groupChar strings." Filtering them
-    out unconditionally turned `123,,456.789` into a valid decimal. -/
-def groupingWellPlaced (grp : Char) (v : String) : Bool :=
-  let cs := v.toList
-  let adjacent := (cs.zip (cs.drop 1)).any (fun (a, b) => a == grp && b == grp)
-  let atEdge := (cs.head? == some grp) || (cs.reverse.head? == some grp)
-  !adjacent && !atEdge
-
-def parseNumber (base : String) (nf : NumFmt) (v : String) : FmtOutcome :=
-  let hasGroup := v.toList.contains nf.groupChar
-  if hasGroup && !nf.grouping then .invalid
-  else if !groupingWellPlaced nf.groupChar v then .invalid
-  else
-  -- The scaling suffix may be on the VALUE as well as on the pattern:
-  -- §6.4.2 lets a cell carry its own `%` / `‰`, and `123456.789%`
-  -- under a bare `{"groupChar": ","}` must still divide by a hundred
-  -- (test170). Reading the suffix only from the pattern left the
-  -- value a hundred times too large with the right datatype on it.
-  let percent := nf.percent || v.toList.contains '%'
-  let permille := nf.permille || v.toList.contains '‰'
-  let body := v.toList.filter (fun c => c != nf.groupChar && c != '%' && c != '‰')
-  let body := body.map (fun c => if c == nf.decimalChar then '.' else c)
-  let s := String.ofList body
-  if !isXsdNumericLexical base s then .invalid
-  else
-    let s := if s.startsWith "+" then String.ofList (s.toList.drop 1) else s
-    if percent then .valid (shiftLeft s 2)
-    else if permille then .valid (shiftLeft s 3)
-    else .valid s
-
 
 /-! ## Value constraints (§5.11.2) and the remaining lexical spaces
 
@@ -317,6 +342,115 @@ def isDurationLexical (s : String) : Bool :=
   match cs with
   | 'P' :: rest => durationWalk (rest.length + 1) rest false 0
   | _           => false
+
+/-! ### XSD lexical spaces for the numeric bases
+
+A numeric column validates its cells even with NO `format`: `3.2` is
+not an `xsd:integer` and `123.456E7` is not an `xsd:decimal`, whatever
+the metadata says about grouping. Before this the numeric path
+returned `noFormat` whenever no pattern, `groupChar` or `decimalChar`
+was stated, so nothing was checked and every such cell got its base's
+datatype — asserting that `NaN` is a decimal (measured 2026-08-22,
+tests 161 and 163–167). -/
+
+private def stripSign (s : String) : String :=
+  if s.startsWith "-" || s.startsWith "+" then String.ofList (s.toList.drop 1) else s
+
+def isIntegerLexical (s : String) : Bool :=
+  let core := stripSign s
+  core != "" && core.toList.all isDigit
+
+def isDecimalLexical (s : String) : Bool :=
+  let core := stripSign s
+  let parts := core.splitOn "."
+  core != "" && parts.length ≤ 2 &&
+  parts.all (fun p => p.toList.all isDigit) && parts.any (fun p => p != "")
+
+/-- `xsd:double` / `xsd:float`: a decimal mantissa with an optional
+    exponent, or one of the three special values. -/
+def isDoubleLexical (s : String) : Bool :=
+  if s == "NaN" || s == "INF" || s == "-INF" || s == "+INF" then true
+  else
+    match splitFirst 'e' s.toList, splitFirst 'E' s.toList with
+    | some (m, e), _ =>
+        isDecimalLexical (String.ofList m) && isIntegerLexical (String.ofList e)
+    | none, some (m, e) =>
+        isDecimalLexical (String.ofList m) && isIntegerLexical (String.ofList e)
+    | none, none => isDecimalLexical s
+
+/-- The inclusive range of an integer base, where XSD bounds one.
+    `none` means unbounded on that side.
+
+    A range is part of the LEXICAL SPACE decision here, not a separate
+    facet: `1234` is not an `xsd:byte` at all, and emitting it with
+    that datatype asserts a value the type does not contain
+    (test172). -/
+def integerBounds (base : String) : Option String × Option String :=
+  match base with
+  | "byte"               => (some "-128", some "127")
+  | "unsignedByte"       => (some "0", some "255")
+  | "short"              => (some "-32768", some "32767")
+  | "unsignedShort"      => (some "0", some "65535")
+  | "int"                => (some "-2147483648", some "2147483647")
+  | "unsignedInt"        => (some "0", some "4294967295")
+  | "long"               => (some "-9223372036854775808", some "9223372036854775807")
+  | "unsignedLong"       => (some "0", some "18446744073709551615")
+  | "nonNegativeInteger" => (some "0", none)
+  | "positiveInteger"    => (some "1", none)
+  | "nonPositiveInteger" => (none, some "0")
+  | "negativeInteger"    => (none, some "-1")
+  | _                    => (none, none)
+
+/-- Which lexical space a numeric base uses. -/
+def isXsdNumericLexical (base : String) (s : String) : Bool :=
+  if base == "decimal" then isDecimalLexical s
+  else if base == "double" || base == "float" || base == "number" then
+    isDoubleLexical s
+  else if !isIntegerLexical s then false
+  else
+    let (lo, hi) := integerBounds base
+    (lo.all (fun b => decimalCompare s b != some .lt)) &&
+    (hi.all (fun b => decimalCompare s b != some .gt))
+
+
+/-- Apply a numeric format: strip grouping characters, normalise the
+    decimal character to `.`, apply percent / per-mille scaling, and
+    check the result against the base's XSD lexical space.
+
+    Grouping characters must SEPARATE digits. Two in a row, or one at
+    either end, is a validation error the corpus states outright:
+    "Implementations MUST add a validation error … if the string being
+    parsed contains two consecutive groupChar strings." Filtering them
+    out unconditionally turned `123,,456.789` into a valid decimal. -/
+def groupingWellPlaced (grp : Char) (v : String) : Bool :=
+  let cs := v.toList
+  let adjacent := (cs.zip (cs.drop 1)).any (fun (a, b) => a == grp && b == grp)
+  let atEdge := (cs.head? == some grp) || (cs.reverse.head? == some grp)
+  !adjacent && !atEdge
+
+def parseNumber (base : String) (nf : NumFmt) (v : String) : FmtOutcome :=
+  let hasGroup := v.toList.contains nf.groupChar
+  if nf.pattern.any (fun p => !matchesNumPattern p nf.groupChar nf.decimalChar v) then .invalid
+  else if hasGroup && !nf.grouping then .invalid
+  else if !groupingWellPlaced nf.groupChar v then .invalid
+  else
+  -- The scaling suffix may be on the VALUE as well as on the pattern:
+  -- §6.4.2 lets a cell carry its own `%` / `‰`, and `123456.789%`
+  -- under a bare `{"groupChar": ","}` must still divide by a hundred
+  -- (test170). Reading the suffix only from the pattern left the
+  -- value a hundred times too large with the right datatype on it.
+  let percent := nf.percent || v.toList.contains '%'
+  let permille := nf.permille || v.toList.contains '‰'
+  let body := v.toList.filter (fun c => c != nf.groupChar && c != '%' && c != '‰')
+  let body := body.map (fun c => if c == nf.decimalChar then '.' else c)
+  let s := String.ofList body
+  if !isXsdNumericLexical base s then .invalid
+  else
+    let s := if s.startsWith "+" then String.ofList (s.toList.drop 1) else s
+    if percent then .valid (shiftLeft s 2)
+    else if permille then .valid (shiftLeft s 3)
+    else .valid s
+
 
 /-! ## Date and time formats (§5.11.3, tabular-data-model §6.4.2)
 
