@@ -2028,3 +2028,21 @@ reads the assignment only at an assertion's named individuals.
 turns ABox-freshness into the `x ≠ a` the edge case needs. Checked at
 build time: `∃r.⊥` and the textbook `(∃r.C) ⊓ (∀r.¬C)` refutations.
 Axiom base unchanged.
+
+### OWL tableau: the role box (2026-08-22, third rung)
+
+`RoleAxioms` (subrole pairs + transitive roles) joins `Tableau.lean`;
+`Derives` and `Refuted` take it as a parameter, and satisfaction-side
+`RespectsRBox` states what a model owes it. Three new forward rules —
+`subRoleE`, `transE`, and the SHIQ ∀⁺-push `allTransE` (a value
+restriction on a transitive role travels across each edge of that
+role) — each one line of soundness given `RespectsRBox`. The old
+calculus embeds at `RoleAxioms.empty` (`respects_empty` discharges the
+side condition). Checked at build time: a transitive-chain clash, a
+subrole clash, and the SHIQ showpiece `∃r.(∃r.C) ⊓ ∀r.¬C` with `r`
+transitive — two fresh witnesses deep, the ∀⁺-push carrying `¬C` to
+the second witness. Axiom base unchanged. Elaboration note: `by
+decide` membership proofs inside certificate terms postpone against
+metavariable-laden goals ("Expected type must not contain
+metavariables") — use explicit `.head _`/`.tail _` `Mem` chains in
+examples, keeping `decide` only for freshness side conditions.
