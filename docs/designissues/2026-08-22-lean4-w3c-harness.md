@@ -88,9 +88,23 @@ prints.
 
 What became runnable: the four rdf11 syntax suites and rdf-canon —
 items 1, 2 (the TriG half) and 4 of the "Order of unlocking" list
-above. RDF/XML (item 2's other half) and every SPARQL type (item 3)
-are reached, typed, counted and reported `unsupported <type>`; they
-are not silently dropped and they stay in their denominators.
+above. Every SPARQL type (item 3) is reached, typed, counted and
+reported `unsupported <type>`; it is not silently dropped and it stays
+in its denominator.
+
+**Update 2026-08-22, later the same day:** RDF/XML (item 2's other
+half) is wired: two `Run.lean` clauses (`TestXMLEval`,
+`TestXMLNegativeSyntax`) over `Syntax/RdfXml.lean`. Measured, verbatim:
+
+```
+rdf-xml: 166 pass, 0 fail, 0 skip, 0 unsupported (out of 166)
+```
+
+and the six-manifest total is now
+`TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of 1078)`
+(rdf-trig rose to 356 of 356 when graph names became
+`Subject`-typed — the two blank-node-graph-name fails below are
+closed). The rdf-xml denominator, 166, matches the F\* runner's.
 
 ### Measured score lines, verbatim
 
@@ -258,8 +272,7 @@ IRI-resolution entries.
 
 ### Next rungs, unchanged
 
-RDF/XML lands its ~180 entries as soon as the RDF/XML port does — no
-harness change needed beyond a `Run.lean` clause, because those
-entries already flow through as typed `unsupported`. SPARQL needs the
+RDF/XML landed (166 of 166, see the update above) with exactly the
+predicted change: two `Run.lean` clauses. SPARQL needs the
 query-string parser first; `TestCase` already carries `qt:query`,
 `qt:data` and `qt:graphData` for that day.

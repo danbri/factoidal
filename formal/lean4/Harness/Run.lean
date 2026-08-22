@@ -19,15 +19,16 @@ Three rules this module keeps:
   * a missing file is `skip`, with the path in the reason — the F*
     runner's `Skip "File missing"`;
   * a test type this tree cannot attempt is `unsupported <type>`, named.
-    RDF/XML (`TestXMLEval`, `TestXMLNegativeSyntax`) waits on the RDF/XML
-    port; every SPARQL type waits on a Lean SPARQL string parser, which
-    does not exist. Neither is silently passed, and neither leaves the
-    denominator.
+    Every SPARQL type waits on a Lean SPARQL string parser, which
+    does not exist yet. It is not silently passed, and it does not leave
+    the denominator. (RDF/XML — `TestXMLEval`, `TestXMLNegativeSyntax` —
+    runs through `parseRdfXml` since the RDF/XML port landed.)
 
 No `sorry`, no `axiom`, no `native_decide`, no `partial`.
 -/
 import Harness.Manifest
 import L4Factoidal.Syntax.TriG
+import L4Factoidal.Syntax.RdfXml
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads
 import L4Factoidal.RDF.Isomorphism
@@ -248,6 +249,30 @@ def runTest (assumedBase : Option String) (manifestDir : String) (tc : TestCase)
         return .ofOutcome (
           if canonicalizeExceedsBudget .sha256 negativeBudget ds then .pass
           else .fail "expected an excessive-calls abort, got a result")
+
+  /- ### RDF/XML (RDF 1.1 XML Syntax §7) — the F* runner's
+     `TestXMLEval` compares against the sibling N-Triples file by
+     isomorphism; `TestXMLNegativeSyntax` passes only on rejection. -/
+  | "TestXMLEval" =>
+    withActionAndResult fun path text expectedText => do
+      let base := fixtureBase assumedBase manifestDir path
+      match RdfXml.parseRdfXml text (some base) with
+      | .error e => return .ofOutcome (.fail s!"RDF/XML parse error: {e}")
+      | .ok g =>
+        match parseNTriples expectedText .rdf11 with
+        | .error e =>
+            return .ofOutcome (.fail s!"expected-result N-Triples parse error: {e.msg} (offset {e.pos})")
+        | .ok expected =>
+            return isoResult
+              s!"not isomorphic to the expected graph (got {g.length} triples, expected {expected.length})"
+              (Graph.isomorphicOutcome g expected)
+  | "TestXMLNegativeSyntax" =>
+    withAction fun path text => do
+      let base := fixtureBase assumedBase manifestDir path
+      return .ofOutcome (
+        match RdfXml.parseRdfXml text (some base) with
+        | .error _ => .pass
+        | .ok g    => .fail s!"should reject but parsed OK ({g.length} triples)")
 
   /- ### Not attemptable yet — named, counted, never passed. -/
   | other => return .ofOutcome (.unsupported other)
