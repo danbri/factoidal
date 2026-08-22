@@ -118,3 +118,6 @@ import L4Factoidal.VC.Context
 import L4Factoidal.VC.DataIntegrity
 import L4Factoidal.VC.Tests
 import L4Factoidal.VC.Theorems
+import L4Factoidal.Geo.Types
+import L4Factoidal.Geo.BBox
+import L4Factoidal.Geo.Tests

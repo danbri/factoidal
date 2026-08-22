@@ -3453,3 +3453,34 @@ collides). Axiom base unchanged. The `by decide`-in-certificate trap
 from rung 3 recurred here and cost a build: use explicit `Mem` chains
 inside `Refuted` terms, including into a `mergeInds`-rewritten ABox
 where the list is a `List.map` rather than a literal.
+
+### GeoSPARQL: geometry model and bounding boxes (2026-08-22)
+
+First rung of a spec family the Lean tree had never touched, chosen off
+the parity ledger: `formal/fstar/RDF.Geo.*` has 4 modules and 37 W3C
+tests, and is self-contained. `Geo/Types.lean` ports the geometry model
+and `Geo/BBox.lean` the bounding boxes.
+
+Coordinates are EXACT decimals (`Scaled` = mantissa + decimal scale),
+not floats — the same choice the F* side made, and for the same
+reason: topology predicates compare coordinates for equality, so float
+rounding would make `sfEquals` depend on how the literal was parsed.
+`#guard` pins `0.1 + 0.2 = 0.3` exactly.
+
+Two Lean-specific notes. (1) `BBox.ofGeometry` recurses through
+`geometryCollection`; a `foldl` over the sublist hides that recursion
+from the termination checker, so `ofGeometry`/`ofGeometries` are
+declared `mutual` with explicit list recursion. A doc comment may not
+precede `mutual` — it attaches to the first `def` inside. (2) A
+`#guard` caught a wrong arithmetic assertion in the test file itself
+(0.5 × 0.2 written as 1 rather than 0.1) at build time, which is the
+build-time-checking discipline paying for itself in the first hour of
+a new area.
+
+Deliberately NOT stated yet: `disjoint_bbox_no_shared_point`, the
+soundness of using the box test as a pre-filter before the topology
+predicates. It needs transitivity of `Scaled.le`, which needs a
+rescaling-invariance lemma because pairwise `align` calls in a
+three-way chain use different common scales. The obligation is written
+into `BBox.lean` and NO code takes the disjoint-box shortcut until it
+is discharged.
