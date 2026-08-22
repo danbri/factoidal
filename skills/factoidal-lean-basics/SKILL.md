@@ -213,10 +213,29 @@ executable edge only.
 
 - Every definition's doc comment cites the W3C document + section it
   implements; module headers state what is and is NOT ported and why.
-- Spec/engine split is absolute: `formal/lean4` holds the
-  SPECIFICATION evaluator (list scans, nested-loop join). The F\*
-  tree's planner / index seam / hash join / fuel bounds / `*_tr`
-  rewrites are performance machinery — never port them here.
+- Spec/engine split (WORKING ASSUMPTION, not an owner directive —
+  see the provenance note below): so far `formal/lean4` holds a plain
+  evaluator (list scans, nested-loop join) and the F\* tree's planner /
+  index seam / hash join / fuel bounds / `*_tr` rewrites have not been
+  ported. This is a description of where the port has got to, plus a
+  default that keeps proofs small — NOT a decided prohibition. Whether
+  the Lean tree should grow performance machinery (and prove it
+  refines the plain evaluator) is OPEN: raise it on
+  https://github.com/danbri/factoidal/issues/466 rather than citing
+  this bullet as a settled no.
+
+  PROVENANCE NOTE (2026-08-22, recorded after the owner rejected a
+  fabricated rationale): the sentence above previously read "the split
+  is absolute — never port them here", sat under the "owner priority"
+  heading, and was Claude-authored in the skill-consolidation commit
+  0d7219c75e4. No owner instruction said it. It then hardened into
+  "must stay that way" in a design doc and into "the owner said
+  porting hash-join machinery would destroy the tree's job" in chat.
+  The owner's reply: "BS, I never said this." Every commit in this
+  repo is authored as the owner's git identity (iron rule #13), so
+  `git blame` CANNOT tell owner-written text from Claude-written text
+  — provenance must be carried in the prose itself. Label
+  Claude-inferred defaults as such, at the moment of writing.
 - Naming: the certified six-rule RDFS fragment is **rdfs-core** /
   `RdfsCore` in identifiers and prose — never "ρdf" (owner,
   2026-08-22: the Greek letter reads as "pdf" on a phone). Cite the
