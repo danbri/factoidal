@@ -50,9 +50,51 @@ private def euro : NumFmt := { groupChar := '.', decimalChar := ',' }
 #guard formatConvert "integer" (some "#,##0") none none none "1,234" == .valid "1234"
 #guard formatConvert "integer" (some "#,##0") none none none "oops" == .invalid
 
--- Date and duration formats are not in this slice; they return
--- `noFormat` so the caller keeps the cell rather than rejecting it.
-#guard formatConvert "date" (some "yy-MM-dd") none none none "10-18-25" == .noFormat
+-- DATE formats are read through the pattern and rewritten in the XSD
+-- canonical lexical form. This is what stops a date column emitting
+-- its source text under an `xsd:date` datatype.
+#guard formatConvert "date" (some "M/d/yyyy") none none none "10/18/2010"
+       == .valid "2010-10-18"
+#guard formatConvert "date" (some "dd.MM.yyyy") none none none "02.06.2010"
+       == .valid "2010-06-02"
+#guard formatConvert "date" (some "yyyy-MM-dd") none none none "2010-06-02"
+       == .valid "2010-06-02"
+-- A cell that does not match its own pattern is INVALID, not
+-- `noFormat`: a format WAS applied and the cell failed it.
+#guard formatConvert "date" (some "M/d/yyyy") none none none "2010-10-18" == .invalid
+-- With no format the XSD lexical space applies as written.
+#guard formatConvert "date" none none none none "2010-10-18" == .noFormat
+
+-- Time, dateTime, and the timezone forms.
+#guard formatConvert "time" (some "HH:mm:ss") none none none "12:34:56"
+       == .valid "12:34:56"
+#guard formatConvert "time" (some "HH:mm") none none none "12:34" == .valid "12:34:00"
+#guard formatConvert "dateTime" (some "yyyy-MM-ddTHH:mm:ss") none none none
+         "2010-06-02T12:34:56" == .valid "2010-06-02T12:34:56"
+#guard formatConvert "dateTime" (some "yyyy-MM-ddTHH:mm:ssX") none none none
+         "2010-06-02T12:34:56Z" == .valid "2010-06-02T12:34:56Z"
+#guard formatConvert "dateTime" (some "yyyy-MM-ddTHH:mm:ssXXX") none none none
+         "2010-06-02T12:34:56+01:00" == .valid "2010-06-02T12:34:56+01:00"
+-- `x` does not accept the literal `Z`; `X` does. Getting this wrong
+-- silently widens the format.
+#guard formatConvert "dateTime" (some "yyyy-MM-ddTHH:mm:ssxxx") none none none
+         "2010-06-02T12:34:56Z" == .invalid
+-- The fractional-second run is OPTIONAL, so a pattern with `.S` also
+-- reads a value without one.
+#guard formatConvert "dateTime" (some "yyyy-MM-ddTHH:mm:ss.S") none none none
+         "2010-06-02T12:34:56.5" == .valid "2010-06-02T12:34:56.5"
+#guard formatConvert "dateTime" (some "yyyy-MM-ddTHH:mm:ss.S") none none none
+         "2010-06-02T12:34:56" == .valid "2010-06-02T12:34:56"
+-- The g* bases produce their own canonical forms.
+#guard formatConvert "gYear" (some "yyyy") none none none "1960" == .valid "1960"
+#guard formatConvert "gMonthDay" (some "M/d") none none none "6/2" == .valid "--06-02"
+#guard formatConvert "gDay" (some "d") none none none "2" == .valid "---02"
+-- A pattern that never fills a field the base needs FAILS rather than
+-- substituting a zero: a missing month is a mismatched pattern, not a
+-- January.
+#guard formatConvert "date" (some "yyyy") none none none "1960" == .invalid
+
+-- The duration `format` facet still needs the XSD regex engine.
 #guard formatConvert "duration" (some "^.$") none none none "P1D" == .noFormat
 
 -- Base classification.

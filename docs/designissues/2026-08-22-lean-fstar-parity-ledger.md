@@ -60,9 +60,24 @@ standard), `Formats` (boolean + numeric), `Json` (csv2json, minimal
 and standard) and `Validate` (with the error/warning split the W3C
 suite depends on). Scope honesty: date/time patterns and the
 regex-valued duration `format` facet are NOT ported (`noFormat` is
-returned, which keeps the cell rather than rejecting it), and the 270
-W3C tests are not yet run against the Lean side — that needs harness
-wiring.
+returned, which keeps the cell rather than rejecting it).
+
+**csv2rdf now has a real conformance runner** (`Harness/CsvwRdfRun`,
+`lake exe l4csvw-rdf`): the whole pipeline against the suite's own
+expected `.ttl`, compared by graph isomorphism, driven by
+`manifest-rdf.jsonld`.
+
+📊 **9 pass, 0 fail, 0 comparison-gave-up, 0 skip (out of 9)** — the
+no-metadata subset, both modes. 261 of the 270 manifest entries carry
+metadata (an `implicit` member) and are NOT attempted: they need
+`@context` resolution, `tableSchema` inheritance and metadata
+discovery. That is the next CSVW increment, and it is the whole
+remaining denominator.
+
+Landing that runner cost two real bugs, both recorded in
+`formal/lean4/PORT_NOTES.md`: standard-mode table and group assembly
+was missing from `Emit.lean`, and the isomorphism comparison refused
+above 16 blank nodes and reported the refusal as a difference.
 
 **Opened 2026-08-22, same day** (module set ported, W3C suites not yet
 run against the Lean side — that needs harness wiring):

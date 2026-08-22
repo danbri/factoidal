@@ -42,10 +42,11 @@ COMPLETENESS IS NOT PROVED, and is not claimed anywhere. The converse
 stated for two reasons, both deliberate and both recorded in
 `Isomorphism.lean`:
 
-  1. `isoBnodeBudget` refuses graphs with more than 16 blank nodes, so
-     the procedure answers `false` (reported as
-     `IsoOutcome.budgetExceeded`, never as a bare `false`) on large
-     isomorphic pairs it declines to search.
+  1. Two budgets refuse: `isoBnodeBudget` above 128 blank nodes, and
+     `isoWorkBudget` above 100000 candidate assignments tried. On a
+     trip the procedure answers `false` — reported as
+     `IsoOutcome.budgetExceeded`, never as a bare `false` — on
+     isomorphic pairs it declines to finish searching.
   2. Signature pruning writes literals out lexically, so two literals
      that `Literal.eqb` equates only through `rdf:XMLLiteral`
      canonicalisation can get different signature keys, and their

@@ -4617,6 +4617,97 @@ not — it is the expected JSON OUTPUT of the csv2json suite. Pairing
 must come from the manifest's own `action`/`result`, which is why the
 runner now parses `manifest-rdf.jsonld` instead of guessing from
 filenames.
+
+### CSVW standard mode, and the comparison bug it uncovered
+(2026-08-22)
+
+Two landings in one, because the second was only visible after the
+first.
+
+**1. Standard-mode table and group assembly.** `CSVW/Emit.lean` gained
+`rowNode`, `RowInput`, `tableTriplesStandard` and
+`tableGroupTriplesStandard`: the `csvw:TableGroup` → `csvw:table` →
+`csvw:Table` → `csvw:row` → `csvw:Row` scaffolding above the row
+descriptions, plus the `rdf:type` triples the previous
+`rowTriplesStandard` did not emit. The runner now picks the mode from
+the manifest entry's own `option.minimal` member instead of running
+everything one way.
+
+Two details that are easy to get wrong and were:
+
+- The `csvw:row` link and the row description must name the SAME blank
+  node. `rowNode` is a named, exported function for exactly that
+  reason; a table that minted its own label would produce orphan row
+  nodes, and no isomorphism check can repair that.
+- `csvw:rownum` reports the position within the table, the `#row=`
+  fragment reports the SOURCE line. With a header they differ by one,
+  so using either for both leaves the triple COUNT right and every row
+  URL off by a line. `RowInput` carries both and the `#guard`s pin
+  them apart.
+
+Also fixed: `runOne` derived the expected `.ttl` name from the `.csv`
+name. `test028` and `test029` both read `countries.csv` and expect
+`test028.ttl` and `test029.ttl`, so both were reported as skips — a
+silently narrowed denominator. The manifest's `action` and `result`
+are now used verbatim.
+
+**2. The comparison primitive was misreporting.** With standard mode
+landed, `test001` and `test005` still failed — with the triple counts
+EQUAL on both sides (60 vs 60, 106 vs 106). The graphs were correct.
+`RDF/Isomorphism.lean` refused to search above `isoBnodeBudget = 16`
+blank nodes, and csv2rdf standard mode mints two blank nodes per row
+plus two for the table and group, so an 8-row table has 18. The search
+refused, `Graph.isomorphic?` returned `false`, and the runner scored
+it `fail`.
+
+That is precisely the failure the module's own comment warns about —
+"a bare `false` a caller could mistake for definitely-different" — and
+it had been sitting in the test file as a recorded expectation:
+`#guard Graph.isomorphic? (manyBnodes "a") (manyBnodes "b") = false`
+on two graphs that ARE isomorphic (17 interchangeable blank nodes;
+every mapping works). A refusal was written down as a difference and
+then pinned.
+
+Three repairs:
+
+- **Node count was the wrong bound.** The cost is CANDIDATE
+  ASSIGNMENTS TRIED, not blank nodes. `searchBijectionFuel` now
+  carries an explicit work budget (`isoWorkBudget = 100000`) and
+  returns the unspent fuel, so a caller can tell "searched everything,
+  found nothing" from "gave up". Termination stays structural — a
+  lexicographic `(rem.length, phase, cands.length)` measure over the
+  mutual pair — because depth is already bounded by the blank-node
+  count and making fuel the measure would hide that.
+- `isoBnodeBudget` is now 128 and documented as a coarse guard on the
+  polynomial parts (the certificate re-check is quadratic), not the
+  bound on search breadth.
+- `Graph.isomorphicOutcome` / `Dataset.isomorphicOutcome` report a
+  WORK trip as `budgetExceeded` too, and `CsvwRdfRun` counts
+  `budgetExceeded` in its own bucket. Folding a give-up into `fail`
+  misreports the engine, which is what happened here.
+
+Soundness is untouched: the search returns a CANDIDATE and
+`Graph.isomorphismMap?` certifies it on the way out, so
+`Graph.isomorphic?_sound` and the reflexivity theorems build unchanged
+on the same axiom base (propext / Classical.choice / Quot.sound).
+
+📊 MEASURED AFTER, csv2rdf no-metadata subset: **9 pass, 0 fail, 0
+comparison-gave-up, 0 skip (out of 9)** — from 0 pass, 7 fail, 2 skip.
+261 of 270 manifest entries still carry metadata and are not attempted.
+
+📊 NO REGRESSION elsewhere, re-measured the same way: rdf manifest
+**1031 pass, 0 fail (out of 1031)**; SPARQL 1.1 **601 pass, 0 fail, 30
+unsupported (out of 631)**; OWL probe TOTAL 1060 pass, 354 fail (out
+of 1457) with `owl2_profile_ql` 87 pass, 0 fail; RDF/XML
+eval-isomorphic 130 pass, 2 fail (out of 132) — those two are
+`rdfms-xml-literal-namespaces` XMLLiteral canonicalisation
+differences, reported as `notEqual`, not budget trips.
+
+METHOD NOTE, for the next session: a test that pins the CURRENT
+behaviour of a give-up path pins the bug — the `= false` guard above
+read as a passing test for as long as it stood. When a procedure
+has a three-way outcome, the guards belong on the three-way outcome,
+not on the Bool that collapses two of them.
 ## Stage: fourteen sound `[ext]` rows in the OWL RL closure (2026-08-22)
 
 `RLRules.lean`'s header used to say the `[ext]` layer of the F\* engine
@@ -4817,3 +4908,77 @@ first. `#print axioms` on `closure_sound`, `closure_extensive`,
 `indexedClosure_eq`, `mem_indexedClosure_iff`, `detectClashI_closureI`,
 all fourteen new `_sound` lemmas and the two discharged value-space
 edges: `[propext, Classical.choice, Quot.sound]` and nothing else.
+
+### CSVW metadata: the parse, the pipeline, and four bugs the corpus
+found (2026-08-22)
+
+The csv2rdf runner could attempt 9 of 270 manifest entries. The other
+261 reference a metadata document, so the whole remaining denominator
+was behind a metadata parse. Three new modules and one wiring fix:
+
+- `CSVW/MetadataParse.lean` — a metadata DOCUMENT into the model
+  `Metadata.lean` already defined: `@context` (default language and
+  base), table groups and single-table documents, inline
+  `tableSchema`, columns with `titles` in all four shapes, every
+  inherited property but `textDirection`, `datatype` in both forms,
+  `dialect`, and common properties with prefix expansion. NOT parsed,
+  and each named rather than pretended: `foreignKeys`,
+  `transformations`, and a `tableSchema` given as a URL (metadata
+  DISCOVERY, which is I/O).
+- `CSVW/Common.lean` — common properties as RDF. A JSON-LD SUBSET
+  with the boundary stated: `@value`/`@type`/`@language`/`@id`,
+  arrays, nested nodes; not term definitions, `@vocab`, containers or
+  `@graph`. An unhandled shape emits NO triple rather than a guessed
+  one.
+- `CSVW/Pipeline.lean` — the join. Columns match fields BY POSITION
+  (tabular-data-model §8); `titles` derive a name, they never reorder.
+- `Formats.lean` gained DATE/TIME pattern parsing, and
+  `Conversion.prepareLexical` now actually CALLS `formatConvert`.
+
+📊 MEASURED, csv2rdf: **90 pass, 115 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)**, from 9 pass out of 9 attempted. The 58
+negative tests are NOT attempted and say so — they assert an error,
+not a graph, and need the validator's outcome.
+
+The four bugs the corpus found, all of which produce the RIGHT number
+of triples with the wrong content — the failure mode a count check
+cannot see:
+
+1. **The `action` is not always a CSV.** 236 of the 270 entries name a
+   METADATA document as their action; the CSV files come from its
+   `url`/`tables`. A runner that assumed otherwise attempted 30 of 270
+   and reported the rest as nothing at all.
+2. **The header row supplies column titles** when the metadata does
+   not (§8 step 4.6). Without that a table with no metadata gets
+   `_col.1`, `_col.2`, … as its predicates: structurally right,
+   semantically wrong. This REGRESSED tests 001–010 to failing the
+   moment the pipeline replaced the ad-hoc path, and the triple counts
+   stayed equal throughout.
+3. **`format` was never applied.** `prepareLexical` did the whitespace
+   rule and stopped, so a `date` column with `"format": "M/d/yyyy"`
+   emitted `"10/18/2010"^^xsd:date` where the value is
+   `"2010-06-02"`-shaped. Fixing it moved the score 46 → 78.
+4. **`{_name}` and the datatype aliases.** A `propertyUrl` of
+   `http://schema.org/{_name}` expanded to `http://schema.org/` for
+   every column — a whole table collapsed onto one predicate — and
+   `"datatype": "number"` minted `xsd:number`, which does not exist
+   (`number` is a CSVW alias for `xsd:double`). Fixing both moved the
+   score 78 → 90.
+
+Also fixed while here: the metadata document's own directory is the
+base for its table `url`s. `test011/tree-ops.csv-metadata.json` names
+`tree-ops.csv`, which is `test011/tree-ops.csv` on disk; resolving it
+against the tests root finds a DIFFERENT file of the same name at the
+top level.
+
+Named next steps, sized from the failure list rather than guessed:
+metadata MERGING (§5.1 — several tests supply file, link and user
+metadata and expect a defined precedence; `dc:label "file"` vs
+`"metadata"` is the visible symptom), virtual columns, and the
+`foreignKeys` reference tests whose second table the runner currently
+skips.
+
+METHOD NOTE: the `--dump=<manifest id>` switch on `l4csvw-rdf` prints
+both graphs as sorted N-Triples. Every one of the four bugs above was
+found by reading that diff, and none of them was visible in the
+score line, which said "produced 24, expected 24" throughout.
