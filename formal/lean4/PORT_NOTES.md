@@ -4421,3 +4421,31 @@ wrong under crash conditions:
 The four magic numbers are pinned as their documented ASCII bytes
 (`DLE1`, `DLB1`, `DLOG`, `CEP1`), little-endian — a silently
 byte-swapped magic would make every existing store unreadable.
+
+### VC: the credential data model (2026-08-22)
+
+`VC/Credential.lean` ports `VC.Credential.fst`, completing the Lean
+VC module set alongside the existing Context, DataIntegrity, DidKey
+and Multibase.
+
+THE RULE THAT CARRIES SECURITY WEIGHT, and the reason it gets its own
+guard: the base VC 2.0 context IRI must be the FIRST `@context` entry,
+not merely present. JSON-LD context processing is ORDER-DEPENDENT — a
+later entry can redefine terms an earlier one established — so
+accepting a base context in second position would let a crafted
+context silently redefine `issuer` or `credentialSubject`. The guard
+pins both orders.
+
+Verdicts carry a REASON string rather than being booleans: a
+credential-verification failure that says only "false" is
+unactionable, and the VC suite distinguishes failure modes. A
+conjunction keeps the FIRST failure's reason, so the message names
+the earliest problem rather than the last.
+
+An EMPTY `credentialSubject` fails — a credential asserting nothing
+about anyone is not a credential — and so does an empty array form.
+
+Validity dates are checked for SHAPE only. Their ordering against
+"now" belongs to a caller with a clock; this module stays a total
+function of its input rather than reading one, per the purity
+doctrine.
