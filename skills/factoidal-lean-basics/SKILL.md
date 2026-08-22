@@ -153,6 +153,14 @@ executable edge only.
    copy with a clone of the main checkout's file (`cmp -s` to verify
    identical, then `cp -c main/f wt/f.tmp && mv wt/f.tmp wt/f`) —
    blocks are shared, git sees no change, agents keep working.
+7. **Integrate agent branches with MERGES, then push; never
+   `git pull --rebase` afterwards.** A rebase replays the branch's
+   commits onto origin and re-hits the same additive conflicts
+   (`L4Factoidal.lean` imports, `PORT_NOTES.md` appends) the merge
+   already resolved (2026-08-22). Recipe: `git merge --no-edit
+   origin/lean4/<topic>` → resolve additive conflicts by keeping BOTH
+   sides (dedupe import lines) → `lake build` green → `git pull
+   --no-rebase` if origin moved → `git push`.
 
 ## Style contract (owner priority: W3C-expert readability)
 
