@@ -120,4 +120,77 @@ theorem Graph.mem_add_self (g : Graph) (t : Triple) :
   unfold Graph.add
   by_cases hm : g.mem t = true <;> simp [hm, Graph.mem_append, Graph.mem]
 
+/-! ## List membership vs engine membership; `add` and length
+
+Harvested 2026-08-22 from the rdfs-core closure proofs. -/
+
+/-- List membership implies engine membership (`Triple.eqb` is
+reflexive). -/
+theorem graphMem_of_mem {g : Graph} {t : Triple} (h : t ∈ g) :
+    Graph.mem t g = true := by
+  induction g with
+  | nil => cases h
+  | cons hd tl ih =>
+    rcases List.mem_cons.mp h with rfl | h'
+    · simp [Graph.mem]
+    · simp [Graph.mem, ih h']
+
+/-- Engine membership is witnessed by an eqb-equal list element. -/
+theorem exists_of_graphMem {g : Graph} {t : Triple}
+    (h : Graph.mem t g = true) : ∃ u, u ∈ g ∧ Triple.eqb u t = true := by
+  induction g with
+  | nil => simp [Graph.mem] at h
+  | cons hd tl ih =>
+    simp only [Graph.mem, Bool.or_eq_true] at h
+    rcases h with h | h
+    · exact ⟨hd, List.mem_cons_self .., h⟩
+    · obtain ⟨u, hu, he⟩ := ih h
+      exact ⟨u, List.mem_cons_of_mem _ hu, he⟩
+
+theorem mem_add_of_mem_list {g : Graph} {t u : Triple} (h : t ∈ g) :
+    t ∈ g.add u := by
+  unfold Graph.add
+  split
+  · exact h
+  · exact List.mem_append_left _ h
+
+theorem mem_add_cases {g : Graph} {t u : Triple} (h : t ∈ g.add u) :
+    t ∈ g ∨ t = u := by
+  unfold Graph.add at h
+  split at h
+  · exact Or.inl h
+  · rcases List.mem_append.mp h with h' | h'
+    · exact Or.inl h'
+    · exact Or.inr (List.mem_singleton.mp h')
+
+theorem length_le_add (g : Graph) (u : Triple) :
+    g.length ≤ (g.add u).length := by
+  unfold Graph.add
+  split
+  · exact Nat.le_refl _
+  · simp
+
+theorem add_eq_of_length_eq {g : Graph} {u : Triple}
+    (h : (g.add u).length = g.length) : g.add u = g := by
+  by_cases hm : g.mem u = true
+  · simp [Graph.add, hm]
+  · simp [Graph.add, hm] at h
+
+theorem graphMem_of_exists {g : Graph} {t : Triple}
+    (h : ∃ u, u ∈ g ∧ Triple.eqb u t = true) : Graph.mem t g = true := by
+  obtain ⟨u, hu, he⟩ := h
+  induction g with
+  | nil => cases hu
+  | cons hd tl ih =>
+    rcases List.mem_cons.mp hu with rfl | h'
+    · simp [Graph.mem, he]
+    · simp [Graph.mem, ih h']
+
+/-- Engine membership is closed under the engine equality. -/
+theorem graphMem_of_graphMem_eqb {g : Graph} {u t : Triple}
+    (h : Graph.mem u g = true) (he : Triple.eqb u t = true) :
+    Graph.mem t g = true := by
+  obtain ⟨v, hv, hve⟩ := exists_of_graphMem h
+  exact graphMem_of_exists ⟨v, hv, Triple.eqb_trans hve he⟩
+
 end L4Factoidal.RDF

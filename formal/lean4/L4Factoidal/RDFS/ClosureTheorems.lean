@@ -85,57 +85,10 @@ lost, nothing appears that was not added, length never decreases, and
 an unchanged length means an unchanged graph (which is what makes the
 F* length test an exact fixpoint test). -/
 
-/-- List membership implies engine membership (`Triple.eqb` is
-reflexive). -/
-theorem graphMem_of_mem {g : Graph} {t : Triple} (h : t ∈ g) :
-    Graph.mem t g = true := by
-  induction g with
-  | nil => cases h
-  | cons hd tl ih =>
-    rcases List.mem_cons.mp h with rfl | h'
-    · simp [Graph.mem]
-    · simp [Graph.mem, ih h']
+-- `graphMem_of_mem`, `exists_of_graphMem`, `mem_add_of_mem_list`,
+-- `mem_add_cases`, `length_le_add`, `add_eq_of_length_eq`: MOVED to
+-- `RDF/Graph.lean` (2026-08-22 harvest).
 
-/-- Engine membership is witnessed by an eqb-equal list element. -/
-theorem exists_of_graphMem {g : Graph} {t : Triple}
-    (h : Graph.mem t g = true) : ∃ u, u ∈ g ∧ Triple.eqb u t = true := by
-  induction g with
-  | nil => simp [Graph.mem] at h
-  | cons hd tl ih =>
-    simp only [Graph.mem, Bool.or_eq_true] at h
-    rcases h with h | h
-    · exact ⟨hd, List.mem_cons_self .., h⟩
-    · obtain ⟨u, hu, he⟩ := ih h
-      exact ⟨u, List.mem_cons_of_mem _ hu, he⟩
-
-theorem mem_add_of_mem_list {g : Graph} {t u : Triple} (h : t ∈ g) :
-    t ∈ g.add u := by
-  unfold Graph.add
-  split
-  · exact h
-  · exact List.mem_append_left _ h
-
-theorem mem_add_cases {g : Graph} {t u : Triple} (h : t ∈ g.add u) :
-    t ∈ g ∨ t = u := by
-  unfold Graph.add at h
-  split at h
-  · exact Or.inl h
-  · rcases List.mem_append.mp h with h' | h'
-    · exact Or.inl h'
-    · exact Or.inr (List.mem_singleton.mp h')
-
-theorem length_le_add (g : Graph) (u : Triple) :
-    g.length ≤ (g.add u).length := by
-  unfold Graph.add
-  split
-  · exact Nat.le_refl _
-  · simp
-
-theorem add_eq_of_length_eq {g : Graph} {u : Triple}
-    (h : (g.add u).length = g.length) : g.add u = g := by
-  by_cases hm : g.mem u = true
-  · simp [Graph.add, hm]
-  · simp [Graph.add, hm] at h
 
 theorem mem_addAll_of_mem (ts : List Triple) :
     ∀ (g : Graph) {t : Triple}, t ∈ g → t ∈ addAll g ts := by
@@ -450,135 +403,11 @@ theorem closure_sound (fuel : Nat) :
     · exact Derives.base h
     · exact Derives.cut (fun _ hu => step_sound hu) (ih (step g) h)
 
-/-! ## Section 6 — the engine equality is transitive
-
-T4 has to speak in `Graph.mem`, and chaining "the premise is present up
-to `Triple.eqb`" through a rule application needs `Triple.eqb` to be
-transitive. It is, but not for free: `Literal.eqb` compares
-`rdf:XMLLiteral` lexical forms through canonical XML and language tags
-case-insensitively, so transitivity is a real (if small) proof rather
-than a rewrite. None of these lemmas exists in `RDF/Core.lean`; they
-belong there — see PORT_NOTES.md.
-
-Note what is NOT claimed: `Term.eqb` is not equality. Only in the
-positions the rdfs-core rules MATCH on — subjects, predicates, and objects
-that must be usable as subjects — does eqb collapse to equality
-(`Subject.eqb_eq`, `Term.eqb_iri`, `Term.eqb_eq_of_toSubject`), which
-is what lets a rule be fired on an eqb-witness at all. -/
-
-theorem Subject.eqb_eq {a b : Subject} (h : Subject.eqb a b = true) : a = b := by
-  cases a <;> cases b <;> simp_all [Subject.eqb, Subtype.ext_iff]
-
-theorem langTagOptionEq_trans {a b c : Option String}
-    (h1 : langTagOptionEq a b = true) (h2 : langTagOptionEq b c = true) :
-    langTagOptionEq a c = true := by
-  cases a <;> cases b <;> cases c <;> simp_all [langTagOptionEq, langTagEq]
-
-theorem Literal.eqb_trans {a b c : Literal}
-    (h1 : Literal.eqb a b = true) (h2 : Literal.eqb b c = true) :
-    Literal.eqb a c = true := by
-  simp only [Literal.eqb, Bool.and_eq_true, beq_iff_eq] at h1 h2 ⊢
-  obtain ⟨⟨⟨hx1, hd1⟩, hl1⟩, hr1⟩ := h1
-  obtain ⟨⟨⟨hx2, hd2⟩, hl2⟩, hr2⟩ := h2
-  refine ⟨⟨⟨?_, hd1.trans hd2⟩, langTagOptionEq_trans hl1 hl2⟩, hr1.trans hr2⟩
-  by_cases hxa : a.datatype = rdfXMLLiteral
-  · have hxb : b.datatype = rdfXMLLiteral := hd1 ▸ hxa
-    have hxc : c.datatype = rdfXMLLiteral := hd2 ▸ hxb
-    rw [if_pos (by simp [hxa, hxb])] at hx1
-    rw [if_pos (by simp [hxb, hxc])] at hx2
-    rw [if_pos (by simp [hxa, hxc])]
-    simp only [XmlCanon.xmlCanonEq, beq_iff_eq] at hx1 hx2 ⊢
-    exact hx1.trans hx2
-  · have hxb : ¬ b.datatype = rdfXMLLiteral := fun hb => hxa (hd1.trans hb)
-    rw [if_neg (by simp [hxa])] at hx1
-    rw [if_neg (by simp [hxb])] at hx2
-    rw [if_neg (by simp [hxa])]
-    simp only [beq_iff_eq] at hx1 hx2 ⊢
-    exact hx1.trans hx2
-
-theorem Term.eqb_trans : ∀ {a b c : Term},
-    Term.eqb a b = true → Term.eqb b c = true → Term.eqb a c = true := by
-  intro a
-  induction a with
-  | iri i =>
-    intro b c h1 h2
-    cases b <;> cases c <;> simp_all [Term.eqb]
-  | bnode x =>
-    intro b c h1 h2
-    cases b <;> cases c <;> simp_all [Term.eqb]
-  | literal l =>
-    intro b c h1 h2
-    cases b <;> cases c <;> simp only [Term.eqb] at h1 h2 ⊢ <;>
-      first
-        | exact Literal.eqb_trans h1 h2
-        | simp at h1
-        | simp at h2
-  | tripleTerm s p o ih =>
-    intro b c h1 h2
-    cases b <;> cases c <;>
-      simp only [Term.eqb, Bool.and_eq_true, beq_iff_eq] at h1 h2 ⊢ <;>
-      first
-        | (obtain ⟨⟨hs1, hp1⟩, ho1⟩ := h1
-           obtain ⟨⟨hs2, hp2⟩, ho2⟩ := h2
-           refine ⟨⟨?_, hp1.trans hp2⟩, ih ho1 ho2⟩
-           rw [Subject.eqb_eq hs1, Subject.eqb_eq hs2]
-           exact Subject.eqb_refl _)
-        | simp at h1
-        | simp at h2
-
-theorem Triple.eqb_trans {a b c : Triple}
-    (h1 : Triple.eqb a b = true) (h2 : Triple.eqb b c = true) :
-    Triple.eqb a c = true := by
-  simp only [Triple.eqb, Bool.and_eq_true, beq_iff_eq] at h1 h2 ⊢
-  obtain ⟨⟨hs1, hp1⟩, ho1⟩ := h1
-  obtain ⟨⟨hs2, hp2⟩, ho2⟩ := h2
-  refine ⟨⟨?_, hp1.trans hp2⟩, Term.eqb_trans ho1 ho2⟩
-  rw [Subject.eqb_eq hs1, Subject.eqb_eq hs2]
-  exact Subject.eqb_refl _
-
-/-- Decomposition of a triple eqb-match: subject and predicate match
-EXACTLY; only the object can differ, and only inside literals. -/
-theorem Triple.eqb_parts {u t : Triple} (h : Triple.eqb u t = true) :
-    u.s = t.s ∧ u.p = t.p ∧ Term.eqb u.o t.o = true := by
-  simp only [Triple.eqb, Bool.and_eq_true, beq_iff_eq] at h
-  obtain ⟨⟨hs, hp⟩, ho⟩ := h
-  exact ⟨Subject.eqb_eq hs, hp, ho⟩
-
-theorem Triple.eqb_of_parts {u t : Triple} (hs : u.s = t.s) (hp : u.p = t.p)
-    (ho : Term.eqb u.o t.o = true) : Triple.eqb u t = true := by
-  simp [Triple.eqb, hs, hp, ho]
-
-/-- In the term position the rules match an IRI on, eqb IS equality. -/
-theorem Term.eqb_iri {a : Term} {i : WfIri}
-    (h : Term.eqb a (Term.iri i) = true) : a = Term.iri i := by
-  cases a <;> simp_all [Term.eqb, Subtype.ext_iff]
-
-/-- ... and likewise for an object read as a subject (an IRI or a blank
-node — never a literal, so never fuzzy). -/
-theorem Term.eqb_eq_of_toSubject {a b : Term} {x : Subject}
-    (h : Term.eqb a b = true) (hs : b.toSubject? = some x) : a = b := by
-  cases b <;> simp only [Term.toSubject?] at hs <;>
-    first
-      | exact Term.eqb_iri h
-      | (cases a <;> simp_all [Term.eqb])
-      | simp at hs
-
-theorem graphMem_of_exists {g : Graph} {t : Triple}
-    (h : ∃ u, u ∈ g ∧ Triple.eqb u t = true) : Graph.mem t g = true := by
-  obtain ⟨u, hu, he⟩ := h
-  induction g with
-  | nil => cases hu
-  | cons hd tl ih =>
-    rcases List.mem_cons.mp hu with rfl | h'
-    · simp [Graph.mem, he]
-    · simp [Graph.mem, ih h']
-
-/-- Engine membership is closed under the engine equality. -/
-theorem graphMem_of_graphMem_eqb {g : Graph} {u t : Triple}
-    (h : Graph.mem u g = true) (he : Triple.eqb u t = true) :
-    Graph.mem t g = true := by
-  obtain ⟨v, hv, hve⟩ := exists_of_graphMem h
-  exact graphMem_of_exists ⟨v, hv, Triple.eqb_trans hve he⟩
+/-! ## Section 6 — engine-equality transitivity: MOVED to `RDF/Core.lean`
+(`Subject.eqb_eq`, `Literal.eqb_trans`, `Term.eqb_trans`, `Triple.eqb_trans`,
+`Triple.eqb_parts`, `Triple.eqb_of_parts`, `Term.eqb_iri`,
+`Term.eqb_eq_of_toSubject`) and `RDF/Graph.lean` (`graphMem_of_exists`,
+`graphMem_of_graphMem_eqb`), 2026-08-22 harvest. -/
 
 /-! ## Section 7 — a row's conclusion reaches `stepConclusions` -/
 
