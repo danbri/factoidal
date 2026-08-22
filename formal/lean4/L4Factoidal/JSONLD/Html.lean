@@ -42,6 +42,8 @@ import L4Factoidal.JSONLD.Context
 
 namespace L4Factoidal.JSONLD.Html
 
+open L4Factoidal.JSON
+
 /-! ## Case-insensitive scanning -/
 
 /-- Case-insensitive match of the lowercase-ASCII literal `pat` at
@@ -189,5 +191,28 @@ def extractJsonLdFromHtml (html : String) (fragment : Option String) (extractAll
     -- the error case.)
     | []        => if extractAll then some "[]" else none
     | first :: _ => if extractAll then some (jsonArrayOf scripts) else some first.2
+
+/-- The API's "Load document" step for an HTML source, with its two
+error conditions spelled out instead of collapsed into `none`:
+
+  * no element at the fragment target, or no `ld+json` script at all —
+    `loading document failed` (html fixtures e006, e011-e013,
+    r011-r013);
+  * a script element whose content is not the JSON it must be —
+    `invalid script element` (e014-e017, r014-r017: an uncommented
+    script carrying an HTML comment, a missing start or end comment
+    marker, or plain invalid JSON).
+
+`.ok none` is the one remaining benign case: no script AND no fragment
+target under a POSITIVE test, where the API says the document is simply
+empty and the caller feeds `[]` onward. -/
+def loadHtmlJsonLd (html : String) (fragment : Option String) (extractAll : Bool)
+    : Res (Option String) :=
+  match extractJsonLdFromHtml html fragment extractAll with
+  | none      => .ok none
+  | some text =>
+    match parseJson text with
+    | .ok _    => .ok (some text)
+    | .error _ => .error .invalidScriptElement
 
 end L4Factoidal.JSONLD.Html

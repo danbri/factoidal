@@ -327,22 +327,31 @@ def runEntry (loader : Loader) (baseIri : String) (dir : System.FilePath) (e : E
         | some hb => some (resolveIri fallback hb)
         | none    => some fallback
       else some fallback
-    -- Extract the embedded JSON-LD script(s) (API "HTML Content Algorithms").
-    let contentOpt : Option String :=
+    -- Extract the embedded JSON-LD script(s) (API "HTML Content
+    -- Algorithms"), with its two named error conditions.
+    let loaded : Res (Option String) :=
       if isHtml then
-        Html.extractJsonLdFromHtml content0 (Html.fragmentOf e.input) e.extractAllScripts
-      else some content0
+        Html.loadHtmlJsonLd content0 (Html.fragmentOf e.input) e.extractAllScripts
+      else .ok (some content0)
     let content ←
-      match contentOpt with
-      | none =>
-        -- No script extracted. For a negative test that IS the expected
-        -- outcome; for a positive one the document is empty, so feed `[]`
-        -- to the algorithm (matching bin/jsonld-html-runner).
+      match loaded with
+      | .error err =>
         if e.kind == .negative then
-          return { outcome := .pass, codeMatch := e.errorCode.map (fun c => c == "loading document failed"),
-                   producedCode := some "loading document failed" }
+          return { outcome := .pass, codeMatch := e.errorCode.map (fun c => c == err.code),
+                   producedCode := some err.code }
+        else
+          return { outcome := .fail s!"HTML script extraction failed with \"{err.code}\"" }
+      | .ok none =>
+        -- No script extracted. For a negative test that IS the expected
+        -- outcome (`loading document failed`); for a positive one the
+        -- document is simply empty, so feed `[]` to the algorithm
+        -- (matching bin/jsonld-html-runner).
+        if e.kind == .negative then
+          return { outcome := .pass,
+                   codeMatch := e.errorCode.map (fun c => c == JsonLdError.loadingDocumentFailed.code),
+                   producedCode := some JsonLdError.loadingDocumentFailed.code }
         else pure "[]"
-      | some c => pure c
+      | .ok (some c) => pure c
     if e.algo == .toRdf then
       return ← runToRdfEntry loader baseIri dir e base content
     else
@@ -451,6 +460,17 @@ structure Score where
   total      : Nat := 0
   deriving Repr
 
+/-- The `suite` string `tests/local-overrides/*.json` uses for each
+manifest — the F* runner names (`jsonld-compact`, `jsonld-fromrdf`),
+which differ from this probe's short score-line labels. -/
+def overrideSuiteName : String → String
+  | "expand"  => "jsonld-expand"
+  | "compact" => "jsonld-compact"
+  | "flatten" => "jsonld-flatten"
+  | "fromRdf" => "jsonld-fromrdf"
+  | "html"    => "jsonld-html"
+  | s         => s
+
 def runManifest (dir cacheDir : System.FilePath) (root : System.FilePath)
     (manifestName : String) (dflt : Algo) (suiteName : String) (fstarLine : String)
     : IO Score := do
@@ -468,7 +488,7 @@ def runManifest (dir cacheDir : System.FilePath) (root : System.FilePath)
     let baseIri := (mroot.getString? "baseIri").getD "https://w3c.github.io/json-ld-api/tests/"
     let seq := (mroot.getArray? "sequence").getD []
     let entries := seq.filterMap (entryOf dflt)
-    let overrides ← loadLocalOverrides root suiteName
+    let overrides ← loadLocalOverrides root (overrideSuiteName suiteName)
     let loader ← buildLoader dir cacheDir baseIri
     IO.println s!"manifest: {manifestPath}  ({entries.length} entries of {seq.length} sequence members)"
     let mut sc : Score := { total := entries.length }
