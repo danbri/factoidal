@@ -10,6 +10,7 @@ import L4Factoidal.RDF.Graph
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.RDF.IsomorphismTheorems
 import L4Factoidal.RDF.IsomorphismTests
+import L4Factoidal.SPARQL.PropertyPath
 import L4Factoidal.SPARQL.Algebra
 import L4Factoidal.SPARQL.Invariants
 import L4Factoidal.RDFS.Vocabulary
@@ -19,6 +20,9 @@ import L4Factoidal.RDFS.ClosureTheorems
 import L4Factoidal.RDFS.ClosureTests
 import L4Factoidal.SPARQL.Expr
 import L4Factoidal.SPARQL.ExprTheorems
+import L4Factoidal.SPARQL.Query
+import L4Factoidal.SPARQL.QueryTheorems
+import L4Factoidal.SPARQL.QueryTests
 import L4Factoidal.Syntax.Lexing
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads

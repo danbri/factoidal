@@ -18,8 +18,12 @@ a green test run.
 | `L4Factoidal/RDF/Core.lean` | `RDF.Term.fsti`, `RDF.Triple.fsti` | terms, literals (incl. RDF 1.2 direction + triple terms), the three literal-equality relations, reflexivity/identity theorems |
 | `L4Factoidal/RDF/XmlCanon.lean` | `RDF.Term.fsti` `xmlc_*` family | rdf:XMLLiteral exclusive-c14n value equality (WebOnt-miscellaneous-202 fix) |
 | `L4Factoidal/RDF/Graph.lean` | `RDF.Graph.fsti` (+ `RDF.Dataset.Merge` renaming) | graphs as lists with set-semantics ops, datasets, blank-node renaming, membership theorems |
-| `L4Factoidal/SPARQL/Algebra.lean` | `SPARQL11.Algebra.fst` Parts 1–2, §7.2–7.3/§18.5 | bindings, patterns (incl. SPARQL 1.2 triple-term patterns), `tpMatch`, `evalBgp`, join/leftJoin/union/minus/filter, `GraphPattern.eval` |
+| `L4Factoidal/SPARQL/Algebra.lean` | `SPARQL11.Algebra.fst` Parts 1–2, §7.2–7.3/§18.5, and the `eval_pattern_store` arms of §18.6 | bindings, patterns (incl. SPARQL 1.2 triple-term patterns), `tpMatch`, `evalBgp`, join/leftJoin/union/minus/filter, and the FULL `GraphPattern` constructor set — GRAPH, LATERAL, BIND, VALUES, SERVICE/SERVICE ?var, a post-processed sub-pattern (the sub-SELECT shape), property paths, the empty pattern. `GraphPattern.evalIn ds active` is the dataset-aware evaluator; `GraphPattern.eval g` is its no-named-graphs case, kept so every earlier theorem still applies |
 | `L4Factoidal/SPARQL/Invariants.lean` | (new; replaces the F\* SMT-`Lemma` style) | empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity — all kernel-checked, no solver |
+| `L4Factoidal/SPARQL/PropertyPath.lean` | `SPARQL11.Algebra.fst` Part 4 (`property_path`) + Part 13 (`eval_property_path`) | §9.1 path syntax and §18.4/§9.3 evaluation to (subject, object) pairs; the two closure forms iterate to a fixed point under a node-count fuel bound, with an early stop when a round adds nothing |
+| `L4Factoidal/SPARQL/Query.lean` | `SPARQL11.Algebra.fst` Parts 5, 6, 10, 11, 12 | the concrete `QueryPattern` AST (one constructor per F\* `group_graph_pattern` case), `Query`/`QueryForm`/`SelectClause`/`SelectItem`/`OrderCondition`/`SolutionModifier`/`GroupCondition`/`DatasetClause`, `QueryPattern.lower` into the algebra, §15.1 `sparqlOrder`, §18.4 DISTINCT/REDUCED/slice/project/sort, §18.5.1 grouping + the seven aggregates + HAVING, and `evalSelect`/`evalAsk`/`evalConstruct` |
+| `L4Factoidal/SPARQL/QueryTheorems.lean` | (new; replaces the F\* SMT-`Lemma` style) | §18.3 row equality is an equivalence; DISTINCT is a sublist of its input, idempotent, and loses no row up to equivalence; LIMIT bounds the length; projection preserves the row count; ORDER BY is a permutation; single-graph evaluation is the default-graph case of dataset evaluation; LATERAL's inner-join shape |
+| `L4Factoidal/SPARQL/QueryTests.lean` | (new; ports cases from `tests/unit/lateral_unit.ml`, `tests/unit/lateral_service_unit.ml`, `tests/local/sparql/lateral_topn_per_key.rq`) | 134 `#guard`s over GRAPH iri/var, BIND, VALUES with UNDEF, LATERAL (incl. sub-SELECT projection masking and top-N per key), SERVICE and SERVICE SILENT, projection with expressions, DISTINCT/REDUCED, ORDER BY, LIMIT/OFFSET, the aggregates, HAVING, ASK, CONSTRUCT with template blank nodes, and the property-path forms. NOT a conformance score — no parser, no manifest reader |
 | `L4Factoidal/RDFS/Vocabulary.lean` | `RDF.Vocabulary.fsti` (5 of its constants) | `rdf:type`, `rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range` as `WfIri` with `rfl` witnesses — the whole vocabulary the rdfs-core fragment names |
 | `L4Factoidal/RDFS/RdfsCore.lean` | `RDF.Entailment.RDFS.RhoDFClosure.fst` (banner + rule set) | SPECIFICATION: the six RDF 1.1 Semantics §9.2 rows (rdfs2/3/5/7/9/11) as an inductive relation `Derives g t`, plus `Derives.mono` and `Derives.cut` |
 | `L4Factoidal/RDFS/Closure.lean` | `RhoDFClosure.fst` lines 98-130 + `RDFS.Closure.fsti` lines 242-355 | IMPLEMENTATION: the six `rdfs_rule_*` bodies, `stepConclusions`/`step` (= `rho_df_closure_step`), the fuel/length-test loop `closure` (= `rho_df_closure`), `closureIter` (= `rho_df_closure_iter`), and `closureFix` with a stated fuel bound |
@@ -441,9 +445,38 @@ None of them became a Lean `axiom`, an `opaque`, or a `partial def`:
 | `fx_current_datetime` (§17.4.5.1, issue #287) | NOW() | Became the input `EvalEnv.now : Option String`. The clock read moves to the executable edge; the semantics is a total function of its arguments. With no timestamp supplied, NOW() is a type error. |
 | `extension_function_call` (§17.6, issue #463) | any IRI-named function no native family claims | Became the input `EvalEnv.ext : String → List EvalResult → Option EvalResult`. The default (`none` for every IRI) makes an unregistered IRI a type error, which is what §17.6 requires. |
 
-The remaining F\* `assume val`s in this region belong to features the
-stage does not port: `regex_match` / `regex_replace` (REGEX, REPLACE),
-`eval_property_path_fwd`, and `service_endpoint_lookup`.
+The remaining F\* `assume val` in this region belongs to a feature the
+stage does not port: `regex_match` / `regex_replace` (REGEX, REPLACE).
+
+### Assumptions met by the query stage (`Query.lean`, `PropertyPath.lean`)
+
+The wider graph-pattern set and the §18.2.4 pipeline touch three more
+of the F\* `assume val`s. All three dissolve; none became a Lean
+`axiom`, an `opaque`, or a `partial def`:
+
+| F\* `assume val` | Where it bites | What this stage does instead |
+|---|---|---|
+| `service_endpoint_lookup` (Federated Query §2, issue #57) | the `GP_Service` / `GP_ServiceVar` arms of `eval_pattern_store` | Became the input `EvalEnv.services : List (Iri × Graph)`, read through `EvalEnv.resolveService`. `QueryPattern.lower` resolves a fixed endpoint at lowering time and hands the algebra an `Option Graph`, so `GraphPattern.service` carries a RESOLVED graph and no host call. An endpoint absent from the list is an unreachable endpoint: SILENT then yields one empty solution mapping and non-SILENT yields none — the same two answers the F\* arm gives. |
+| `extension_function_call` (§17.6, issue #463) | GROUP BY / HAVING / ORDER BY / SELECT expressions, which the pipeline evaluates | Already an input (`EvalEnv.ext`) from the expression stage; the query stage threads the same `EvalEnv` through every post-pattern phase, so no new assumption appears. |
+| `eval_property_path_fwd` (§18.4) | the `GP_PropertyPath` arm | An F\* FILE-ORDERING artifact, not a semantic gap: the concrete `eval_property_path` sits about 300 lines BELOW its use site in `SPARQL11.Algebra.fst`, so that file forward-declares it. Lean has no such constraint — `SPARQL.evalPath` is the definition, in `PropertyPath.lean`, and the algebra calls it directly. |
+
+Two F\* proof obligations also disappear rather than being ported,
+because the Lean encoding makes them typing facts:
+
+* `lemma_lateral_substitute_preserves_size` — needed in F\* because
+  `lateral_substitute` returns a pattern that is no subterm of the
+  `GP_Lateral` node being evaluated. Here substitution is FUSED into
+  lowering (`QueryPattern.lowerWith env mu`), so the recursive call
+  goes to a genuine subterm and the composition of an outer
+  substitution with a per-row one is just `Binding.merge` (outer
+  wins).
+* the `%[query_size q; 3]` lexicographic measure across the
+  `eval_pattern_store` / `eval_select_query` / `eval_exists` /
+  `substitute_existentials` clique — needed in F\* because a
+  sub-SELECT re-enters query evaluation. Here `QueryPattern` and
+  `Query` are ONE mutual inductive, so a sub-SELECT's pattern is a
+  subterm, and the inner query's post-pattern pipeline (`selectPost`)
+  does not recurse into patterns at all.
 
 ## Findings from the expression-language stage
 
@@ -1053,3 +1086,80 @@ mis-parsed — the leading `<<` is not a legal IRIREF start, so
 `readIriRef` fails loudly) rather than silently adding parsing support
 the F* source lacks. Worth fixing in the F* tree first (iron rule #1)
 before either port grows a `<<( )>>` TSV reader.
+## The SPARQL query stage (2026-08-22)
+
+### The layering choice
+
+`SPARQL/Expr.lean` imports `SPARQL/Algebra.lean`, because a §17
+expression can contain a graph pattern (EXISTS). So `Algebra.lean`
+cannot import `Expr.lean`, and the wider constructor set had to land
+on one side or the other. Two options were on the table: keep the
+algebra abstract and put the `Expr`-carrying AST one file up, or move
+`GraphPattern` out of `Algebra.lean` entirely.
+
+**The first was taken.** `Algebra.lean` keeps a reviewable
+§18.5/§18.6 semantics in which every expression-shaped detail is an
+opaque argument:
+
+| constructor | abstract argument | concrete form supplied by `Query.lean` |
+|---|---|---|
+| `filter` / `leftJoin` | `Binding → Bool` | EBV of an `Expr` |
+| `bind` | `Binding → Option Term` | `Expr` evaluated, then `toTerm?` |
+| `lateral` | `Binding → GraphPattern` | the row-substituted right operand |
+| `service` | `Option Graph` | the endpoint resolved through `EvalEnv.services` |
+| `modified` | `SolutionSeq → SolutionSeq` | a sub-SELECT's §18.2.4 pipeline |
+
+`QueryPattern` in `Query.lean` mirrors every F\* `group_graph_pattern`
+constructor one-for-one, so it is the AST a future parser targets, and
+`QueryPattern.lower : EvalEnv → QueryPattern → GraphPattern` is the
+single compilation step between the two layers. A consequence worth
+naming: every theorem in `Invariants.lean` and `QueryTheorems.lean`
+about the algebra stays free of expression machinery.
+
+### What this stage does NOT port
+
+* **DESCRIBE.** `QueryForm.describe` exists in the AST for shape, and
+  evaluates to nothing — exactly as the F\* `QF_Describe` arm does.
+  The description a DESCRIBE returns is left to implementations by
+  §16.4, and this port makes no choice for it.
+* **The OWL-rewriter bookkeeping** the F\* `eval_select_query` carries:
+  `rewrite_query_bnodes_pattern` (WHERE-clause blank nodes becoming
+  fresh variables — a parser-level concern),
+  `strip_synthetic_bnode_vars`, and `strip_rewrite_internal_vars`.
+  Those hide variables `OWL.QueryRewrite` invents; there is no OWL
+  rewriter on the Lean side to invent them.
+* **A sub-SELECT's dataset clauses.** The SPARQL 1.1 grammar's
+  `SubSelect ::= SelectClause WhereClause SolutionModifier
+  ValuesClause` has no `DatasetClause`, so the field is carried for
+  shape and does not re-scope the active graph inside a sub-SELECT.
+* **Fresh-node builtins under a query** (BNODE/UUID/STRUUID/RAND). The
+  F\* pipeline threads a per-row / per-item freshness context
+  (`fx_ctx_put`) for them; those builtins are not implemented on the
+  Lean side (see the §17 assumption table), so the context has nothing
+  to feed and is not ported.
+* **Every performance layer**, as elsewhere in this port: no planner,
+  no index seam, no hash join, no tail-recursive accumulator rewrites.
+  `groupSolutions` appends, `distinctSolutions` scans. The F\* source's
+  own comments mark those rewrites as stack-safety and cost fixes over
+  exactly this semantics.
+
+### Deviations recorded
+
+* **`COUNT(DISTINCT *)`.** The F\* source builds a string key per row
+  and deduplicates the keys; this port calls `distinctSolutions`,
+  which is the §18.3 row equality DISTINCT itself uses. The two agree
+  wherever the string key and the row equality agree, and the row
+  equality is the one the spec actually defines.
+* **`REDUCED` is the identity.** §18.4 permits removing some, all, or
+  none of the duplicates; keeping all is conformant, and is what the
+  F\* source specifies.
+* **ORDER BY is a stable insertion sort**, not `List.sortWith`. The
+  point is the proof: `sortSolutions_perm` is four lines against a
+  sort written here, and would otherwise depend on a library sort's
+  specification. §15.1 says nothing about ties, so stability is a free
+  choice; it is the least surprising one.
+* **`SELECT *` header order.** BGP matching CONSES each new binding
+  onto the front of the row (`Binding.bind`, as `sm_bind` does), so
+  `collectVarsInOrder` reports the object variable before the subject
+  variable for `?s :p ?o`. Pinned in `QueryTests.lean` so the order is
+  a decision on record rather than an accident.
