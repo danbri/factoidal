@@ -146,3 +146,5 @@ import L4Factoidal.CSVW.ValidateTests
 import L4Factoidal.ShEx.Schema
 import L4Factoidal.ShEx.Validation
 import L4Factoidal.ShEx.Tests
+import L4Factoidal.ShEx.Shapes
+import L4Factoidal.ShEx.ShapesTests

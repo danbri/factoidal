@@ -3828,3 +3828,31 @@ cannot join a `mutual` block containing inductives.
 NOT ported yet: shape satisfaction proper — triple expressions,
 cardinality matching over neighbourhoods, EXTRA and CLOSED — which is
 where the recursion through shape references lives.
+
+### ShEx: shape satisfaction, EXTRA vs CLOSED (2026-08-22)
+
+`ShEx/Shapes.lean` ports `satisfies(n, Shape, G)`: neighbourhood
+construction, triple-expression matching with cardinality, and the
+two clauses that follow it.
+
+The module exists to keep ONE distinction straight, which the F*
+module records as an actual bug caught during its own measurement run:
+
+* `extra p` tolerates LEFTOVER arcs on predicate `p` — ones the
+  constraint could not take because its [min,max] was full or its
+  valueExpr failed — REGARDLESS of `closed`.
+* `closed` bounds only arcs whose predicate the expression NEVER
+  MENTIONS. It never relaxes a mentioned predicate's own cardinality.
+
+Conflating them — letting "not closed" also grant a mentioned
+predicate's leftover tolerance — is the bug. The two are computed in
+separate steps here that never share a branch, and a guard pins the
+exact case that distinguishes them: an OPEN shape with a failing
+leftover arc on a mentioned predicate must FAIL without `extra`, and
+pass with it.
+
+Scope stated, not implied: no backtracking for ambiguous `OneOf`
+siblings sharing a predicate (first satisfied branch wins), and no
+recursion through shape references — an unresolved `ref` makes an arc
+leftover rather than being silently accepted, which is the
+fail-closed direction.
