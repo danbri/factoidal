@@ -69,6 +69,13 @@ module.exports = function(eleventyConfig) {
   // docs/web/hub/assets/wikifn/README.md).
   eleventyConfig.addPassthroughCopy("web/hub/assets/wikifn");
 
+  // Pass-through the Lean 4 engine compiled to WebAssembly (hub post
+  // 36's fn.loadL4 target; built by formal/lean4/Wasm/build-wasm.sh).
+  // All three files must ship together and keep their names: the
+  // Emscripten glue resolves l4factoidal.wasm from its OWN basename,
+  // so renaming either one breaks loading in every runtime.
+  eleventyConfig.addPassthroughCopy("web/hub/assets/l4");
+
   // Pass-through the project-owned reactive-cell compiler
   // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs
   // so hub.njk can import it same-origin (no CDN). .mjs isn't an

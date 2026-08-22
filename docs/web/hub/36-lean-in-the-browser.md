@@ -133,7 +133,7 @@ leanNames = {
 ```
 
 ```observable-js
-pretty(leanNames)
+leanNamesTable = pretty(leanNames)
 ```
 
 ## Two patterns, correlated on `?s`
@@ -154,7 +154,7 @@ leanNameAge = {
 ```
 
 ```observable-js
-pretty(leanNameAge)
+leanNameAgeTable = pretty(leanNameAge)
 ```
 
 ## The same question, asked of the F\* engine
@@ -175,7 +175,7 @@ fstarNameAge = {
 ```
 
 ```observable-js
-pretty(fstarNameAge)
+fstarNameAgeTable = pretty(fstarNameAge)
 ```
 
 ## Do they agree?
@@ -198,7 +198,7 @@ agreement = {
 ```
 
 ```observable-js
-pretty(agreement)
+agreementTable = pretty(agreement)
 ```
 
 Two proof assistants, two compilers, two runtimes, one answer.

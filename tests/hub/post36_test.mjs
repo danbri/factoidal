@@ -97,6 +97,24 @@ test('post36 cell "do they agree": the two engines return the identical answer s
     'the Lean and F* engines disagreed on a BGP — one of them has a bug');
 });
 
+// The display cells must actually PRODUCE a value. This repo's cell
+// compiler supplies an implicit `return` only for a NAMED cell's
+// expression body; an anonymous cell runs verbatim, so a bare
+// `pretty(x)` renders `undefined`. Caught in the browser value check
+// on 2026-08-22, when four display cells rendered nothing while every
+// other gate was green — `node --test` alone would never have seen it,
+// and neither would the pageerror-only browser sweep.
+test('post36: the four display cells render tables, not undefined', async () => {
+  const p = post();
+  for (const name of ['leanNamesTable', 'leanNameAgeTable', 'fstarNameAgeTable']) {
+    const table = await p.value(name);
+    assert.equal(table.kind, 'table', `${name} did not render a table`);
+    assert.ok(table.rows.length === 2, `${name} rendered ${table.rows.length} rows`);
+  }
+  const summary = await p.value('agreementTable');
+  assert.ok(summary !== undefined, 'agreementTable rendered undefined');
+});
+
 // Beyond the page: the decode-error path. This is pinned because it is
 // the exact path that aborted the whole wasm module when the core
 // library was built without -DNDEBUG (2026-08-22); the happy path was
