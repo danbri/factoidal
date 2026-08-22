@@ -12563,7 +12563,7 @@
    "files": [
     "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst"
    ],
-   "loc": 1796,
+   "loc": 1997,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -12581,22 +12581,24 @@
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
    "merely_tot": false,
-   "local_refinement_lemma_count": 7,
+   "local_refinement_lemma_count": 9,
    "local_refinement_lemma_names": [
     "lemma_rho_df_chain_canonical_shift",
     "lemma_rho_df_pre_dedup_extensive",
+    "lemma_rho_df_clean_implies_chain_canonical",
     "lemma_rho_df_chain_wf_shift",
     "lemma_fold_left_reaches_at",
     "fold_left_reaches_scoped",
     "lemma_emit_once_term_grows",
-    "lemma_subj_term_to_subject"
+    "lemma_subj_term_to_subject",
+    "lemma_rho_df_closure_step_no_repeats"
    ],
    "algorithm_correctness_theorems": [
     {
      "name": "lemma_rho_df_step_is_dedup_of_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 110,
+     "line": 138,
      "unconditional": true,
      "names_shipping_functions": [
       "graph_dedup_sort",
@@ -12608,7 +12610,7 @@
      "name": "lemma_rho_df_closure_iter_shift",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 140,
+     "line": 168,
      "unconditional": true,
      "names_shipping_functions": [
       "rho_df_closure_iter",
@@ -12619,7 +12621,7 @@
      "name": "lemma_after_row1_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1379,
+     "line": 1580,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -12631,7 +12633,7 @@
      "name": "lemma_after_row2_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1393,
+     "line": 1594,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -12644,7 +12646,7 @@
      "name": "lemma_after_row3_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1406,
+     "line": 1607,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -12658,7 +12660,7 @@
      "name": "lemma_after_row4_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1417,
+     "line": 1618,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -12673,7 +12675,7 @@
      "name": "lemma_after_row5_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1428,
+     "line": 1629,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -12689,7 +12691,7 @@
      "name": "lemma_is_rho_df_frag_is_for_all",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1776,
+     "line": 1977,
      "unconditional": true,
      "names_shipping_functions": [
       "is_rho_df_frag",
@@ -12702,7 +12704,7 @@
      "name": "lemma_rho_df_step_extensive",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 172,
+     "line": 200,
      "unconditional": false,
      "names_shipping_functions": [
       "rho_df_closure_step",
@@ -12719,7 +12721,7 @@
      "name": "rho_df_closure_sound",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 291,
+     "line": 472,
      "unconditional": false,
      "names_shipping_functions": [
       "rho_df_closure"
@@ -12735,7 +12737,7 @@
      "name": "lemma_f1_witness_frag",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1283,
+     "line": 1464,
      "unconditional": false,
      "names_shipping_functions": [
       "f1_witness",
@@ -12752,7 +12754,7 @@
      "name": "lemma_f1_bad_triple_not_frag",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1287,
+     "line": 1468,
      "unconditional": true,
      "names_shipping_functions": [
       "f1_bad_triple"
@@ -12768,7 +12770,7 @@
      "name": "rho_df_len_eq_saturated",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1360,
+     "line": 1560,
      "unconditional": false,
      "names_shipping_functions": [
       "graph_len",
@@ -12786,7 +12788,7 @@
      "name": "lemma_pre_dedup_in_c",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1446,
+     "line": 1647,
      "unconditional": false,
      "names_shipping_functions": [
       "rho_df_closure_step_pre_dedup"
@@ -12802,7 +12804,7 @@
      "name": "lemma_is_rho_df_object_ok_correct",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1745,
+     "line": 1946,
      "unconditional": true,
      "names_shipping_functions": [
       "is_rho_df_object_ok"
@@ -12818,7 +12820,7 @@
      "name": "lemma_is_rho_df_frag_triple_correct",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1762,
+     "line": 1963,
      "unconditional": true,
      "names_shipping_functions": [
       "is_rho_df_frag_triple"
@@ -12834,7 +12836,7 @@
      "name": "lemma_is_rho_df_frag_correct",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1788,
+     "line": 1989,
      "unconditional": true,
      "names_shipping_functions": [
       "is_rho_df_frag"
@@ -13213,10 +13215,63 @@
    ],
    "w3c_refinement_theorems": [
     {
+     "name": "lemma_rho_df_pre_dedup_clean",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 266,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "graph_clean"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_pre_dedup_no_dup_keys",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 285,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure_step_pre_dedup"
+     ],
+     "names_declarative_relations": [
+      "graph_clean",
+      "no_dup_keys"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_step_clean",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 298,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure_step"
+     ],
+     "names_declarative_relations": [
+      "graph_clean"
+     ]
+    },
+    {
+     "name": "lemma_rho_df_closure_iter_clean",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 306,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure_iter"
+     ],
+     "names_declarative_relations": [
+      "graph_clean"
+     ]
+    },
+    {
      "name": "lemma_rho_df_closure_extensive_aux",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 186,
+     "line": 348,
      "unconditional": false,
      "names_shipping_functions": [
       "rho_df_closure"
@@ -13229,7 +13284,21 @@
      "name": "rho_df_closure_extensive",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 204,
+     "line": 377,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "rho_df_closure"
+     ],
+     "names_declarative_relations": [
+      "graph_clean",
+      "is_subgraph"
+     ]
+    },
+    {
+     "name": "rho_df_closure_extensive_chain",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 385,
      "unconditional": false,
      "names_shipping_functions": [
       "rho_df_closure"
@@ -13242,7 +13311,7 @@
      "name": "lemma_rho_df_step_sound",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 244,
+     "line": 425,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13258,7 +13327,7 @@
      "name": "lemma_rho_df_closure_sound_aux",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 271,
+     "line": 452,
      "unconditional": false,
      "names_shipping_functions": [
       "rho_df_closure"
@@ -13272,7 +13341,7 @@
      "name": "lemma_f1_bad_triple_derived",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1296,
+     "line": 1477,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13289,7 +13358,7 @@
      "name": "rho_df_frag_preservation_fails",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1323,
+     "line": 1504,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13308,7 +13377,7 @@
      "name": "lemma_rho_df_closed_row_domain",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1528,
+     "line": 1729,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13325,7 +13394,7 @@
      "name": "lemma_rho_df_closed_row_range",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1543,
+     "line": 1744,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13342,7 +13411,7 @@
      "name": "lemma_rho_df_closed_row_subPropertyOf",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1564,
+     "line": 1765,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13359,7 +13428,7 @@
      "name": "lemma_rho_df_closed_row_subClassOf_trans",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1577,
+     "line": 1778,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13376,7 +13445,7 @@
      "name": "lemma_rho_df_closed_row_subPropertyOf_trans",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1593,
+     "line": 1794,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13393,7 +13462,7 @@
      "name": "lemma_rho_df_closed_row_subClassOf",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1612,
+     "line": 1813,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13410,7 +13479,7 @@
      "name": "rho_df_closure_closed",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1657,
+     "line": 1858,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -13430,7 +13499,7 @@
      "name": "rho_df_closure_decides",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1704,
+     "line": 1905,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -14804,7 +14873,7 @@
      "name": "lemma_rho_df_step_is_dedup_of_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 110,
+     "line": 138,
      "unconditional": true,
      "names_shipping_functions": [
       "graph_dedup_sort",
@@ -15028,7 +15097,7 @@
      "name": "rho_df_len_eq_saturated",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1360,
+     "line": 1560,
      "unconditional": false,
      "names_shipping_functions": [
       "graph_len",
@@ -15434,7 +15503,7 @@
      "name": "rho_df_closure_closed",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1657,
+     "line": 1858,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -15454,7 +15523,7 @@
      "name": "rho_df_closure_decides",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1704,
+     "line": 1905,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -16037,7 +16106,7 @@
      "name": "lemma_find_objects_complete",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 444,
+     "line": 625,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -16048,7 +16117,7 @@
      "name": "lemma_after_row1_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1379,
+     "line": 1580,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -16060,7 +16129,7 @@
      "name": "lemma_after_row2_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1393,
+     "line": 1594,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -16073,7 +16142,7 @@
      "name": "lemma_after_row3_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1406,
+     "line": 1607,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -16087,7 +16156,7 @@
      "name": "lemma_after_row4_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1417,
+     "line": 1618,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -16102,7 +16171,7 @@
      "name": "lemma_after_row5_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1428,
+     "line": 1629,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17099,7 +17168,7 @@
      "name": "lemma_rho_df_step_sound",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 244,
+     "line": 425,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17115,7 +17184,7 @@
      "name": "rdfs_rule_domain_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 475,
+     "line": 656,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17132,7 +17201,7 @@
      "name": "rdfs_rule_domain_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 571,
+     "line": 752,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17148,7 +17217,7 @@
      "name": "rdfs_rule_range_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 591,
+     "line": 772,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17165,7 +17234,7 @@
      "name": "rdfs_rule_range_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 695,
+     "line": 876,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17181,7 +17250,7 @@
      "name": "rdfs_rule_subPropertyOf_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 829,
+     "line": 1010,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17198,7 +17267,7 @@
      "name": "rdfs_rule_subPropertyOf_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 916,
+     "line": 1097,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17214,7 +17283,7 @@
      "name": "rdfs_rule_subClassOf_trans_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 951,
+     "line": 1132,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17230,7 +17299,7 @@
      "name": "rdfs_rule_subClassOf_trans_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1024,
+     "line": 1205,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17245,7 +17314,7 @@
      "name": "rdfs_rule_subPropertyOf_trans_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1032,
+     "line": 1213,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17261,7 +17330,7 @@
      "name": "rdfs_rule_subPropertyOf_trans_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1095,
+     "line": 1276,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17276,7 +17345,7 @@
      "name": "rdfs_rule_subClassOf_reaches_iri2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1130,
+     "line": 1311,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17294,7 +17363,7 @@
      "name": "rdfs_rule_subClassOf_reaches_iri",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1228,
+     "line": 1409,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17311,7 +17380,7 @@
      "name": "lemma_f1_bad_triple_derived",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1296,
+     "line": 1477,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17328,7 +17397,7 @@
      "name": "rho_df_frag_preservation_fails",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1323,
+     "line": 1504,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17347,7 +17416,7 @@
      "name": "lemma_c_in_g1",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1469,
+     "line": 1670,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17361,7 +17430,7 @@
      "name": "lemma_c_in_g2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1476,
+     "line": 1677,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17376,7 +17445,7 @@
      "name": "lemma_c_in_g3",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1485,
+     "line": 1686,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17392,7 +17461,7 @@
      "name": "lemma_c_in_g4",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1495,
+     "line": 1696,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17409,7 +17478,7 @@
      "name": "lemma_c_in_g5",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1506,
+     "line": 1707,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17427,7 +17496,7 @@
      "name": "lemma_rho_df_closed_row_domain",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1528,
+     "line": 1729,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17444,7 +17513,7 @@
      "name": "lemma_rho_df_closed_row_range",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1543,
+     "line": 1744,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17461,7 +17530,7 @@
      "name": "lemma_rho_df_closed_row_subPropertyOf",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1564,
+     "line": 1765,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17478,7 +17547,7 @@
      "name": "lemma_rho_df_closed_row_subClassOf_trans",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1577,
+     "line": 1778,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17495,7 +17564,7 @@
      "name": "lemma_rho_df_closed_row_subPropertyOf_trans",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1593,
+     "line": 1794,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17512,7 +17581,7 @@
      "name": "lemma_rho_df_closed_row_subClassOf",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1612,
+     "line": 1813,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17529,7 +17598,7 @@
      "name": "rho_df_closure_closed",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1657,
+     "line": 1858,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -17549,7 +17618,7 @@
      "name": "rho_df_closure_decides",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1704,
+     "line": 1905,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -19247,7 +19316,7 @@
      "name": "lemma_rdf_term_eq_sound",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 320,
+     "line": 501,
      "unconditional": false,
      "names_shipping_functions": [
       "rdf_term_eq"
@@ -19529,7 +19598,7 @@
      "name": "lemma_f1_witness_frag",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1283,
+     "line": 1464,
      "unconditional": false,
      "names_shipping_functions": [
       "f1_witness",
@@ -19558,10 +19627,25 @@
      ]
     },
     {
+     "name": "lemma_graph_clean_satisfiable",
+     "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
+     "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+     "line": 321,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "i_rdf_type",
+      "i_rdfs_Class",
+      "i_rdfs_Resource"
+     ],
+     "names_declarative_relations": [
+      "graph_clean"
+     ]
+    },
+    {
      "name": "rdfs_rule_subClassOf_reaches_iri2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1130,
+     "line": 1311,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -19579,7 +19663,7 @@
      "name": "rdfs_rule_subClassOf_reaches_iri",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1228,
+     "line": 1409,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -19596,7 +19680,7 @@
      "name": "lemma_f1_bad_triple_derived",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1296,
+     "line": 1477,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -19613,7 +19697,7 @@
      "name": "rho_df_frag_preservation_fails",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1323,
+     "line": 1504,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -19935,7 +20019,7 @@
      "name": "lemma_after_row1_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1379,
+     "line": 1580,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -19947,7 +20031,7 @@
      "name": "lemma_after_row2_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1393,
+     "line": 1594,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -19960,7 +20044,7 @@
      "name": "lemma_after_row3_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1406,
+     "line": 1607,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -19974,7 +20058,7 @@
      "name": "lemma_after_row4_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1417,
+     "line": 1618,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -19989,7 +20073,7 @@
      "name": "lemma_after_row5_pre_dedup",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1428,
+     "line": 1629,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21527,7 +21611,7 @@
      "name": "lemma_emit_once_term_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 406,
+     "line": 587,
      "unconditional": false,
      "names_shipping_functions": [
       "emit_once_term"
@@ -21543,7 +21627,7 @@
      "name": "rdfs_rule_domain_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 475,
+     "line": 656,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21560,7 +21644,7 @@
      "name": "rdfs_rule_domain_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 571,
+     "line": 752,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21576,7 +21660,7 @@
      "name": "rdfs_rule_range_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 591,
+     "line": 772,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21593,7 +21677,7 @@
      "name": "rdfs_rule_range_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 695,
+     "line": 876,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21609,7 +21693,7 @@
      "name": "rdfs_rule_subPropertyOf_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 829,
+     "line": 1010,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21626,7 +21710,7 @@
      "name": "rdfs_rule_subPropertyOf_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 916,
+     "line": 1097,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21642,7 +21726,7 @@
      "name": "rdfs_rule_subClassOf_trans_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 951,
+     "line": 1132,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21658,7 +21742,7 @@
      "name": "rdfs_rule_subClassOf_trans_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1024,
+     "line": 1205,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21673,7 +21757,7 @@
      "name": "rdfs_rule_subPropertyOf_trans_reaches2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1032,
+     "line": 1213,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21689,7 +21773,7 @@
      "name": "rdfs_rule_subPropertyOf_trans_reaches",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1095,
+     "line": 1276,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21704,7 +21788,7 @@
      "name": "rdfs_rule_subClassOf_reaches_iri2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1130,
+     "line": 1311,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21722,7 +21806,7 @@
      "name": "rdfs_rule_subClassOf_reaches_iri",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1228,
+     "line": 1409,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21739,7 +21823,7 @@
      "name": "lemma_f1_bad_triple_derived",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1296,
+     "line": 1477,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21756,7 +21840,7 @@
      "name": "rho_df_frag_preservation_fails",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1323,
+     "line": 1504,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21775,7 +21859,7 @@
      "name": "lemma_c_in_g1",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1469,
+     "line": 1670,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21789,7 +21873,7 @@
      "name": "lemma_c_in_g2",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1476,
+     "line": 1677,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21804,7 +21888,7 @@
      "name": "lemma_c_in_g3",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1485,
+     "line": 1686,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21820,7 +21904,7 @@
      "name": "lemma_c_in_g4",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1495,
+     "line": 1696,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -21837,7 +21921,7 @@
      "name": "lemma_c_in_g5",
      "proved_in": "RDF.Entailment.RDFS.RhoDFClosure",
      "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-     "line": 1506,
+     "line": 1707,
      "unconditional": false,
      "names_shipping_functions": [
       "build_indexed",
@@ -43038,7 +43122,7 @@
    "name": "lemma_rho_df_step_is_dedup_of_pre_dedup",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 110,
+   "line": 138,
    "unconditional": true,
    "shipping_functions_named": [
     "graph_dedup_sort",
@@ -43059,7 +43143,7 @@
    "name": "lemma_rho_df_closure_iter_shift",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 140,
+   "line": 168,
    "unconditional": true,
    "shipping_functions_named": [
     "rho_df_closure_iter",
@@ -43078,7 +43162,7 @@
    "name": "lemma_rho_df_chain_canonical_shift",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 143,
+   "line": 171,
    "unconditional": false,
    "shipping_functions_named": [
     "rho_df_closure_step"
@@ -43096,7 +43180,7 @@
    "name": "lemma_rho_df_pre_dedup_extensive",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 153,
+   "line": 181,
    "unconditional": true,
    "shipping_functions_named": [
     "rho_df_closure_step_pre_dedup"
@@ -43114,7 +43198,7 @@
    "name": "lemma_rho_df_step_extensive",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 172,
+   "line": 200,
    "unconditional": false,
    "shipping_functions_named": [
     "rho_df_closure_step",
@@ -43134,10 +43218,154 @@
    "class": "internal_refinement"
   },
   {
+   "name": "lemma_rho_df_pre_dedup_clean",
+   "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
+   "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+   "line": 266,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rho_df_closure_step_pre_dedup"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
+   "declarative_relations_named": [
+    "graph_clean"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_rho_df_pre_dedup_no_dup_keys",
+   "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
+   "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+   "line": 285,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rho_df_closure_step_pre_dedup"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
+   "declarative_relations_named": [
+    "graph_clean",
+    "no_dup_keys"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.FixedPoint",
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_rho_df_step_clean",
+   "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
+   "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+   "line": 298,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rho_df_closure_step"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
+   "declarative_relations_named": [
+    "graph_clean"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_rho_df_closure_iter_clean",
+   "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
+   "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+   "line": 306,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rho_df_closure_iter"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
+   "declarative_relations_named": [
+    "graph_clean"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_graph_clean_satisfiable",
+   "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
+   "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+   "line": 321,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "i_rdf_type",
+    "i_rdfs_Class",
+    "i_rdfs_Resource"
+   ],
+   "shipping_modules": [
+    "RDF.Vocabulary.Axioms"
+   ],
+   "declarative_relations_named": [
+    "graph_clean"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "lemma_rho_df_clean_implies_chain_canonical",
+   "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
+   "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+   "line": 337,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "graph_clean"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.SepFree"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "lemma_rho_df_closure_extensive_aux",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 186,
+   "line": 348,
    "unconditional": false,
    "shipping_functions_named": [
     "rho_df_closure"
@@ -43161,7 +43389,34 @@
    "name": "rho_df_closure_extensive",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 204,
+   "line": 377,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "rho_df_closure"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
+   "declarative_relations_named": [
+    "graph_clean",
+    "is_subgraph"
+   ],
+   "declarative_modules": [
+    "RDF.Entailment.RDFS.SepFree",
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "independent_formalisation_modules": [
+    "RDF.Entailment.RDFS.SepFree",
+    "RDF.Entailment.Simple.Spec"
+   ],
+   "ambiguous_identifiers": [],
+   "class": "w3c_refinement"
+  },
+  {
+   "name": "rho_df_closure_extensive_chain",
+   "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
+   "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+   "line": 385,
    "unconditional": false,
    "shipping_functions_named": [
     "rho_df_closure"
@@ -43185,7 +43440,7 @@
    "name": "lemma_rho_df_chain_wf_shift",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 238,
+   "line": 419,
    "unconditional": false,
    "shipping_functions_named": [
     "rho_df_closure_step"
@@ -43203,7 +43458,7 @@
    "name": "lemma_rho_df_step_sound",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 244,
+   "line": 425,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43232,7 +43487,7 @@
    "name": "lemma_rho_df_closure_sound_aux",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 271,
+   "line": 452,
    "unconditional": false,
    "shipping_functions_named": [
     "rho_df_closure"
@@ -43258,7 +43513,7 @@
    "name": "rho_df_closure_sound",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 291,
+   "line": 472,
    "unconditional": false,
    "shipping_functions_named": [
     "rho_df_closure"
@@ -43280,7 +43535,7 @@
    "name": "lemma_rdf_term_eq_sound",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 320,
+   "line": 501,
    "unconditional": false,
    "shipping_functions_named": [
     "rdf_term_eq"
@@ -43302,7 +43557,7 @@
    "name": "lemma_fold_left_reaches_at",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 339,
+   "line": 520,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -43316,7 +43571,7 @@
    "name": "fold_left_reaches_scoped",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 370,
+   "line": 551,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -43330,7 +43585,7 @@
    "name": "lemma_emit_once_term_grows",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 401,
+   "line": 582,
    "unconditional": true,
    "shipping_functions_named": [
     "emit_once_term"
@@ -43348,7 +43603,7 @@
    "name": "lemma_emit_once_term_reaches",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 406,
+   "line": 587,
    "unconditional": false,
    "shipping_functions_named": [
     "emit_once_term"
@@ -43378,7 +43633,7 @@
    "name": "lemma_find_objects_complete",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 444,
+   "line": 625,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43397,7 +43652,7 @@
    "name": "rdfs_rule_domain_reaches2",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 475,
+   "line": 656,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43431,7 +43686,7 @@
    "name": "rdfs_rule_domain_reaches",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 571,
+   "line": 752,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43462,7 +43717,7 @@
    "name": "lemma_subj_term_to_subject",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 583,
+   "line": 764,
    "unconditional": false,
    "shipping_functions_named": [
     "term_to_subject"
@@ -43480,7 +43735,7 @@
    "name": "rdfs_rule_range_reaches2",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 591,
+   "line": 772,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43514,7 +43769,7 @@
    "name": "rdfs_rule_range_reaches",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 695,
+   "line": 876,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43545,7 +43800,7 @@
    "name": "rdfs_rule_subPropertyOf_reaches2",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 829,
+   "line": 1010,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43579,7 +43834,7 @@
    "name": "rdfs_rule_subPropertyOf_reaches",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 916,
+   "line": 1097,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43610,7 +43865,7 @@
    "name": "rdfs_rule_subClassOf_trans_reaches2",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 951,
+   "line": 1132,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43642,7 +43897,7 @@
    "name": "rdfs_rule_subClassOf_trans_reaches",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1024,
+   "line": 1205,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43671,7 +43926,7 @@
    "name": "rdfs_rule_subPropertyOf_trans_reaches2",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1032,
+   "line": 1213,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43703,7 +43958,7 @@
    "name": "rdfs_rule_subPropertyOf_trans_reaches",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1095,
+   "line": 1276,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43732,7 +43987,7 @@
    "name": "rdfs_rule_subClassOf_reaches_iri2",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1130,
+   "line": 1311,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43766,7 +44021,7 @@
    "name": "rdfs_rule_subClassOf_reaches_iri",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1228,
+   "line": 1409,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43797,7 +44052,7 @@
    "name": "lemma_f1_witness_frag",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1283,
+   "line": 1464,
    "unconditional": false,
    "shipping_functions_named": [
     "f1_witness",
@@ -43821,7 +44076,7 @@
    "name": "lemma_f1_bad_triple_not_frag",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1287,
+   "line": 1468,
    "unconditional": true,
    "shipping_functions_named": [
     "f1_bad_triple"
@@ -43843,7 +44098,7 @@
    "name": "lemma_f1_bad_triple_derived",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1296,
+   "line": 1477,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43874,7 +44129,7 @@
    "name": "rho_df_frag_preservation_fails",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1323,
+   "line": 1504,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43905,10 +44160,28 @@
    "class": "w3c_refinement"
   },
   {
+   "name": "lemma_rho_df_closure_step_no_repeats",
+   "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
+   "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
+   "line": 1550,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "rho_df_closure_step"
+   ],
+   "shipping_modules": [
+    "RDF.Entailment.RDFS.RhoDFClosure"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "rho_df_len_eq_saturated",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1360,
+   "line": 1560,
    "unconditional": false,
    "shipping_functions_named": [
     "graph_len",
@@ -43933,7 +44206,7 @@
    "name": "lemma_after_row1_pre_dedup",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1379,
+   "line": 1580,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43955,7 +44228,7 @@
    "name": "lemma_after_row2_pre_dedup",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1393,
+   "line": 1594,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -43978,7 +44251,7 @@
    "name": "lemma_after_row3_pre_dedup",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1406,
+   "line": 1607,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44002,7 +44275,7 @@
    "name": "lemma_after_row4_pre_dedup",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1417,
+   "line": 1618,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44027,7 +44300,7 @@
    "name": "lemma_after_row5_pre_dedup",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1428,
+   "line": 1629,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44053,7 +44326,7 @@
    "name": "lemma_pre_dedup_in_c",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1446,
+   "line": 1647,
    "unconditional": false,
    "shipping_functions_named": [
     "rho_df_closure_step_pre_dedup"
@@ -44075,7 +44348,7 @@
    "name": "lemma_c_in_g1",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1469,
+   "line": 1670,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44101,7 +44374,7 @@
    "name": "lemma_c_in_g2",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1476,
+   "line": 1677,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44128,7 +44401,7 @@
    "name": "lemma_c_in_g3",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1485,
+   "line": 1686,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44156,7 +44429,7 @@
    "name": "lemma_c_in_g4",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1495,
+   "line": 1696,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44185,7 +44458,7 @@
    "name": "lemma_c_in_g5",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1506,
+   "line": 1707,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44215,7 +44488,7 @@
    "name": "lemma_rho_df_closed_row_domain",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1528,
+   "line": 1729,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44248,7 +44521,7 @@
    "name": "lemma_rho_df_closed_row_range",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1543,
+   "line": 1744,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44281,7 +44554,7 @@
    "name": "lemma_rho_df_closed_row_subPropertyOf",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1564,
+   "line": 1765,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44314,7 +44587,7 @@
    "name": "lemma_rho_df_closed_row_subClassOf_trans",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1577,
+   "line": 1778,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44347,7 +44620,7 @@
    "name": "lemma_rho_df_closed_row_subPropertyOf_trans",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1593,
+   "line": 1794,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44380,7 +44653,7 @@
    "name": "lemma_rho_df_closed_row_subClassOf",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1612,
+   "line": 1813,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44413,7 +44686,7 @@
    "name": "rho_df_closure_closed",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1657,
+   "line": 1858,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44448,7 +44721,7 @@
    "name": "rho_df_closure_decides",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1704,
+   "line": 1905,
    "unconditional": false,
    "shipping_functions_named": [
     "build_indexed",
@@ -44487,7 +44760,7 @@
    "name": "lemma_is_rho_df_object_ok_correct",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1745,
+   "line": 1946,
    "unconditional": true,
    "shipping_functions_named": [
     "is_rho_df_object_ok"
@@ -44509,7 +44782,7 @@
    "name": "lemma_is_rho_df_frag_triple_correct",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1762,
+   "line": 1963,
    "unconditional": true,
    "shipping_functions_named": [
     "is_rho_df_frag_triple"
@@ -44531,7 +44804,7 @@
    "name": "lemma_is_rho_df_frag_is_for_all",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1776,
+   "line": 1977,
    "unconditional": true,
    "shipping_functions_named": [
     "is_rho_df_frag",
@@ -44550,7 +44823,7 @@
    "name": "lemma_is_rho_df_frag_correct",
    "host_module": "RDF.Entailment.RDFS.RhoDFClosure",
    "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-   "line": 1788,
+   "line": 1989,
    "unconditional": true,
    "shipping_functions_named": [
     "is_rho_df_frag"
@@ -63763,7 +64036,7 @@
   "modules_with_algorithm_correctness_theorem": 45,
   "modules_with_internal_refinement_theorem": 22,
   "modules_merely_tot": 122,
-  "w3c_refinement_theorem_count": 316,
+  "w3c_refinement_theorem_count": 322,
   "internal_refinement_theorem_count": 160,
   "algorithm_correctness_theorem_count": 364,
   "unclassified_lemma_count": 3,
@@ -63786,7 +64059,7 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1684,
+  "lemma_count": 1692,
   "tiers": {
    "algorithm-correctness": 29,
    "internal-refinement": 12,
@@ -63797,5 +64070,5 @@
    "w3c-refinement": 11
   }
  },
- "commit": "d7859bed7"
+ "commit": "bd7865fc1"
 }
