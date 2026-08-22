@@ -124,4 +124,6 @@ import L4Factoidal.Geo.BBox
 import L4Factoidal.Geo.Topology
 import L4Factoidal.Geo.Wkt
 import L4Factoidal.Geo.WktTests
+import L4Factoidal.Geo.Functions
+import L4Factoidal.Geo.FunctionsTests
 import L4Factoidal.Geo.Tests
