@@ -24,8 +24,12 @@ Three rules this module keeps:
     `CSVResultFormatTest`, `PositiveSyntaxTest11`,
     `NegativeSyntaxTest11`) run through `SPARQL/Parser.lean` and
     `SPARQL/Query.lean` — see "SPARQL 1.1 Query" below, which
-    reproduces `run_query_eval_test` (~lines 1174–1560). UPDATE,
-    Protocol, Graph Store and Service Description types remain
+    reproduces `run_query_eval_test` (~lines 1174–1560). The SPARQL
+    1.1 UPDATE types (`UpdateEvaluationTest`,
+    `PositiveUpdateSyntaxTest11`, `NegativeUpdateSyntaxTest11`) run
+    through `SPARQL/UpdateParser.lean` and `SPARQL/Update.lean` — see
+    "SPARQL 1.1 Update" below. Protocol, Graph Store and Service
+    Description types remain
     `unsupported <type>`; an entailment-regime evaluation test is
     `unsupported entailment regime <R>` (the Lean tree has the
     rdfs-core closure only, none of the regimes the suite names).
@@ -41,6 +45,7 @@ import L4Factoidal.Syntax.NQuads
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.RDF.Canonical
 import L4Factoidal.SPARQL.Parser
+import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.ResultsXml
 import L4Factoidal.SPARQL.ResultsJson
 import L4Factoidal.SPARQL.ResultsCsvTsv
@@ -296,6 +301,107 @@ def runSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
       | .error _ => .pass
       | .ok _    => .fail "should reject but parsed OK")
 
+/-! ## SPARQL 1.1 Update — port of the `UpdateEvaluationTest` /
+`PositiveUpdateSyntaxTest11` / `NegativeUpdateSyntaxTest11` arms of
+`w3c_runner.ml` (~lines 2217–2312). Rules, in the F* runner's order:
+
+  1. the request is `ut:request`, parsed with its own `file:` IRI as
+     BASE; a parse failure is a FAIL (named);
+  2. a request containing a non-SILENT `LOAD` is a SKIP with that
+     reason (no document fetch; `LOAD SILENT` is the §3.1.4 identity
+     and runs);
+  3. the input store is `ut:data` (default graph; a `.trig` / `.nq`
+     fixture keeps its named graphs) plus `ut:graphData` as named
+     graphs; the expected store is built the same way from
+     `mf:result`; a missing file is a SKIP (path);
+  4. `applyUpdateIn` runs the request; an `UpdateError` is a FAIL
+     carrying the error;
+  5. the two stores are compared by dataset isomorphism
+     (`Dataset.isomorphicOutcome`) after dropping EMPTY named graphs
+     on both sides — the F* comparison canonicalises to N-Quads, which
+     cannot represent an empty graph, while the Lean isomorphism
+     matches graph NAMES, so a slot left by `CLEAR` / `CREATE` would
+     otherwise count as a difference the F* does not see. -/
+
+/-- Read `data` files into the default graph and `graphData` files
+into named graphs (the F* `load_dataset` + `load_triples` fold). -/
+def loadUpdateStore (dataFiles : List String) (graphData : List (String × String)) :
+    IO (Except Outcome Dataset) := do
+  let mut ds : Dataset := Dataset.empty
+  for df in dataFiles do
+    match ← readOpt df with
+    | none      => return .error (.skip s!"file missing: {df}")
+    | some text =>
+      match parseDataFile df text with
+      | .error e => return .error (.fail s!"data parse error in {basename df}: {e}")
+      | .ok d    => ds := mergeDatasets ds d
+  for (iri, path) in graphData do
+    match ← readOpt path with
+    | none      => return .error (.skip s!"file missing: {path}")
+    | some text =>
+      match parseDataFile path text with
+      | .error e => return .error (.fail s!"graph data parse error in {basename path}: {e}")
+      | .ok d    =>
+        if h : isIri iri = true then
+          ds := { ds with named := ds.named ++ [{ name := .iri ⟨iri, h⟩, graph := d.default }] }
+        else return .error (.fail s!"ut:graphData label is not an IRI: {iri}")
+  return .ok ds
+
+/-- Named-graph slots holding no triple are invisible to a quad-level
+comparison (see the section banner). -/
+def dropEmptyNamed (ds : Dataset) : Dataset :=
+  { ds with named := ds.named.filter (fun ng => !ng.graph.isEmpty) }
+
+def quadCount (ds : Dataset) : Nat :=
+  ds.default.length + (ds.named.map (fun ng => ng.graph.length)).sum
+
+/-- One `UpdateEvaluationTest`. -/
+def runUpdateEvaluation (tc : TestCase) : IO RunResult := do
+  let some qf := tc.queryFile
+    | return .ofOutcome (.skip "mf:action carries no ut:request")
+  let some text ← readOpt qf
+    | return .ofOutcome (.skip s!"file missing: {qf}")
+  match parseSparqlUpdate text (some ("file://" ++ qf)) with
+  | .error e => return .ofOutcome (.fail s!"Update parse: {fmtParseError e}")
+  | .ok u =>
+  if u.hasNonSilentLoad then
+    return .ofOutcome (.skip "non-silent LOAD not yet implemented (no HTTP fetch)")
+  match ← loadUpdateStore tc.dataFiles tc.graphData with
+  | .error o => return .ofOutcome o
+  | .ok input =>
+  match ← loadUpdateStore tc.updateResultData tc.updateResultGraphData with
+  | .error o => return .ofOutcome o
+  | .ok expected =>
+  let env : EvalEnv := { now := some fixedNow, base := u.base }
+  match applyUpdateIn env input u with
+  | .error e => return .ofOutcome (.fail s!"update raised an error: {e}")
+  | .ok got =>
+    let got' := dropEmptyNamed got
+    let exp' := dropEmptyNamed expected
+    let r := isoResult
+      s!"UPDATE result mismatch: got {got.default.length} default-graph triples and {got'.named.length} non-empty named graphs, expected {expected.default.length} and {exp'.named.length}"
+      (Dataset.isomorphicOutcome got' exp')
+    return { r with triplesCompared := quadCount got' + quadCount exp' }
+
+/-- `PositiveUpdateSyntaxTest11` / `NegativeUpdateSyntaxTest11`: the
+request file is `mf:action` itself, parsed with its own `file:` IRI
+as BASE. -/
+def runUpdateSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
+  let some qf := (match tc.action with | some a => some a | none => tc.queryFile)
+    | return .ofOutcome (.skip "no update file in mf:action")
+  let some text ← readOpt qf
+    | return .ofOutcome (.skip s!"file missing: {qf}")
+  let res := parseSparqlUpdate text (some ("file://" ++ qf))
+  return .ofOutcome (
+    if positive then
+      match res with
+      | .ok _    => .pass
+      | .error e => .fail s!"should parse but was rejected: {fmtParseError e}"
+    else
+      match res with
+      | .error _ => .pass
+      | .ok _    => .fail "should reject but parsed OK")
+
 /-! ## The dispatcher -/
 
 /-- Run one test case. `assumedBase` is the suite's
@@ -487,8 +593,13 @@ def runTest (assumedBase : Option String) (manifestDir : String) (tc : TestCase)
   | "PositiveSyntaxTest11" | "PositiveSyntaxTest" => runSyntaxTest true tc
   | "NegativeSyntaxTest11" | "NegativeSyntaxTest" => runSyntaxTest false tc
 
+  /- ### SPARQL 1.1 Update (sparql11 suites) — see the section above. -/
+  | "UpdateEvaluationTest"       => runUpdateEvaluation tc
+  | "PositiveUpdateSyntaxTest11" => runUpdateSyntaxTest true tc
+  | "NegativeUpdateSyntaxTest11" => runUpdateSyntaxTest false tc
+
   /- ### Not attemptable yet — named, counted, never passed
-     (UPDATE, Protocol, Graph Store, Service Description). -/
+     (Protocol, Graph Store, Service Description). -/
   | other => return .ofOutcome (.unsupported other)
 
 end Harness
