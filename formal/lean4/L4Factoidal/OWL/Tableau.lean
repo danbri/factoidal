@@ -18,8 +18,9 @@ class names, Boolean connectives, value restrictions
 and the qualified form.
 
 NOT ported yet (later rungs, in the order the F* engine grew them):
-nominals (ObjectOneOf), datatypes, functional roles, and the SHIQ
-≤-rule witness merge. The ∃-witness rule (fresh
+nominals (ObjectOneOf), datatypes, and functional roles. The SHIQ
+≤-rule witness merge IS here (`leqMerge`) — the first rule that
+REWRITES the ABox rather than extending it. The ∃-witness rule (fresh
 individuals) IS here — `exWitness` — with its freshness side condition
 stated over `indsOf`; so is the role box (rung 3): subrole axioms and
 transitive roles (`RoleAxioms`), with the SHIQ ∀⁺-push rule
@@ -167,6 +168,23 @@ def Assertion.inds : Assertion → List Ind
 def indsOf (A : List Assertion) : List Ind :=
   A.flatMap Assertion.inds
 
+/-- Rename one individual to another. `Ind.subst b c x` is `c` when
+    `x` is `b`, else `x` — the name-level half of the SHIQ ≤-rule's
+    witness merge. -/
+def Ind.subst (b c x : Ind) : Ind := if x = b then c else x
+
+/-- Apply a rename inside an assertion. Concepts hold no individuals
+    in this fragment (no nominals yet), so only the assertion-level
+    positions move. -/
+def Assertion.subst (b c : Ind) : Assertion → Assertion
+  | .inst a k  => .inst (Ind.subst b c a) k
+  | .rel r x y => .rel r (Ind.subst b c x) (Ind.subst b c y)
+  | .diff x y  => .diff (Ind.subst b c x) (Ind.subst b c y)
+
+/-- Merge two individuals across a whole ABox. -/
+def mergeInds (b c : Ind) (A : List Assertion) : List Assertion :=
+  A.map (Assertion.subst b c)
+
 /-- Forward derivation of facts from an ABox, against a role box.
     Hypothesis, conjunction elimination, the ∀-rule (value restriction
     applied across a known role edge), and the three role-box rules:
@@ -251,6 +269,25 @@ inductive Refuted (R : RoleAxioms) : List Assertion → Prop where
   | minQMaxClash {A a n r c} :
       Derives R A (.inst a (.atLeastQ (n + 1) r c)) →
       Derives R A (.inst a (.atMost n r)) →
+      Refuted R A
+  /-- The SHIQ ≤-rule (witness merge). `a` has at most `n`
+      `r`-successors but `n+1` DISTINCTLY NAMED ones are asserted, so
+      in any model two of those names collide. The rule is therefore
+      non-deterministic like `disjSplit`, but it branches over PAIRS:
+      if merging any two of the named successors yields a refutation,
+      the ABox is refuted.
+
+      This is the first rule that REWRITES the ABox rather than
+      extending it, which is why the F\* engine keeps its
+      corresponding stage behind a bound. Soundness rests on a
+      pigeonhole step: `n+1` names mapping into at most `n` distinct
+      domain elements must collide somewhere. -/
+  | leqMerge {A a n r} (l : List Ind) :
+      Derives R A (.inst a (.atMost n r)) →
+      l.length = n + 1 →
+      l.Nodup →
+      (∀ b ∈ l, Derives R A (.rel r a b)) →
+      (∀ b ∈ l, ∀ c ∈ l, b ≠ c → Refuted R (mergeInds b c A)) →
       Refuted R A
   /-- The ∃-rule: a derived `∃r.C` at `a` licenses a FRESH witness
       individual `x` with an `r`-edge from `a` and membership in `C`;
