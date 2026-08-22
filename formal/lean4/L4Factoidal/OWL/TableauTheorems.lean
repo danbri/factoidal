@@ -142,6 +142,30 @@ theorem refuted_sound {R : RoleAxioms} {A : List Assertion}
       · intro y hy
         have ⟨b, hb, hfb⟩ := List.mem_map.mp hy
         exact hfb ▸ derives_sound hR (hrel b hb) hM
+  | minMaxClashQ hmin hmax =>
+      intro δ I ν hR hM
+      exact (derives_sound hR hmax hM) (derives_sound hR hmin hM)
+  | maxClashQ l hmax hlen hdiff hrel hcls =>
+      intro δ I ν hR hM
+      apply derives_sound hR hmax hM
+      refine ⟨l.map ν, ?_, ?_, ?_⟩
+      · simpa using hlen
+      · refine pairwise_map_of ν ?_ hdiff
+        intro x y hxy
+        cases hxy with
+        | inl hd => exact derives_sound hR hd hM
+        | inr hd => exact (derives_sound hR hd hM).symm
+      · intro y hy
+        have ⟨b, hb, hfb⟩ := List.mem_map.mp hy
+        exact hfb ▸ ⟨derives_sound hR (hrel b hb) hM,
+                     derives_sound hR (hcls b hb) hM⟩
+  | minQMaxClash hminq hmax =>
+      intro δ I ν hR hM
+      -- A qualified witness list IS an unqualified one: drop the `C`
+      -- component of each conjunct.
+      have ⟨l, hlen, hdist, hall⟩ := derives_sound hR hminq hM
+      exact (derives_sound hR hmax hM)
+        ⟨l, hlen, hdist, fun y hy => (hall y hy).1⟩
   | disjSplit hdisj _ _ ihc ihd =>
       intro δ I ν hR hM
       cases derives_sound hR hdisj hM with

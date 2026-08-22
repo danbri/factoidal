@@ -3417,3 +3417,20 @@ only (still zero external dependencies). Not done: semi-naive evaluation
 saturation, a different proof) — the corpus does not need it at the 20 s
 cap; cls-int1 still enumerates subject OCCURRENCES (`subjectsOf g`, one
 per triple) because the row body must stay `rfl`-equal to the list row.
+
+### OWL tableau: qualified cardinality (2026-08-22, fourth rung)
+
+`atLeastQ` / `atMostQ` join `Concept` with their OWL 2 Direct
+Semantics reading, and three clash rules follow: `minMaxClashQ`
+(qualified twin of the count clash), `maxClashQ` (n+1 named
+successors that are pairwise-distinct AND provably in the qualifying
+class), and `minQMaxClash` — the bridge letting a qualified minimum
+clash with an UNQUALIFIED maximum, since qualified successors are
+still successors. The witness list is inlined into `Interp.sem`
+rather than factored into a `succWitnessQ` helper, so the recursive
+`I.sem c y` stays visibly structural in `c` for the termination
+checker. Motivation is concrete: this is the concept form the
+unsupported W3C SPARQL entailment-regime tests use (`hasChild min 1
+Female`, `max 1 Female`, `exactly 1 Female`) — see the parity ledger
+in docs/designissues/2026-08-22-lean-fstar-parity-ledger.md. Axiom
+base unchanged.
