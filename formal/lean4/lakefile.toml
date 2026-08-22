@@ -1,5 +1,11 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal"]
+defaultTargets = ["L4Factoidal", "l4rdfc-probe"]
 
 [[lean_lib]]
 name = "L4Factoidal"
+
+# Real-corpus probe for RDFC-1.0 (the W3C rdf-canon suite). Not part of
+# the verified library: it does file I/O and prints scores.
+[[lean_exe]]
+name = "l4rdfc-probe"
+root = "Harness.CanonProbe"
