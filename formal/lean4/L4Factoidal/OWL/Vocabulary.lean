@@ -213,6 +213,28 @@ the OWL 2 RDF-Based Semantics condition it relies on. -/
 def owlReflexiveProperty : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#ReflexiveProperty", rfl⟩
 
+/-- `owl:ObjectProperty` — the driving premise of the min-cardinality
+comprehension row. -/
+def owlObjectProperty : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#ObjectProperty", rfl⟩
+
+/-- `owl:Restriction` — the class of restriction class expressions. -/
+def owlRestriction : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#Restriction", rfl⟩
+
+/-- `owl:minCardinality`. -/
+def owlMinCardinality : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#minCardinality", rfl⟩
+
+/-- `"1"^^xsd:int` — the OWL 1 RDF mapping's spelling of the
+cardinality value 1, which the WebOnt-era conclusion documents use.
+`litNni1` is the OWL 2 spelling of the same VALUE; the comprehension
+row emits both, see its doc comment. -/
+def litInt1 : WfLiteral :=
+  ⟨{ lexicalForm := "1",
+     datatype := ⟨"http://www.w3.org/2001/XMLSchema#int", rfl⟩,
+     langTag := none, direction := none }, rfl⟩
+
 /-! ### The XSD numeric tower
 
 The XSD IRIs the `xsdAxioms` row asserts a subtype tower over. `xsd:string`,

@@ -610,6 +610,45 @@ def dtRangeIntersectForS (s : Store) (d : Triple) : List Triple :=
             else []))))
   else []
 
+def caxDwToComplementForS (_s : Store) (d : Triple) : List Triple :=
+  if d.p == owlDisjointWith then
+    (subjIri d.s).flatMap (fun c1 =>
+      (asIri d.o).flatMap (fun c2 => complementWitnessTriples c1 c2))
+  else []
+
+def clsMaxqc1ToComplementForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlMaxQualifiedCardinality && d.o == Term.literal litNni1 then
+    (s.withSubjPred d.s owlOnProperty).flatMap (fun onp =>
+      (asIri onp.o).flatMap (fun p =>
+        (s.withSubjPred d.s owlOnClass).flatMap (fun onc =>
+          (asIri onc.o).flatMap (fun c =>
+            (s.withPredObj rdfType d.s.toTerm).flatMap (fun tu =>
+              (s.withSubjPred tu.s p).flatMap (fun u1 =>
+                (asSubject u1.o).flatMap (fun y1s =>
+                  if s.memB ⟨y1s, rdfType, Term.iri c⟩ then
+                    (s.withSubjPred y1s owlDifferentFrom).flatMap (fun df =>
+                      (asSubject df.o).flatMap (fun y2s =>
+                        if s.memB ⟨tu.s, p, y2s.toTerm⟩
+                        then complementTypeTriples y2s c else []))
+                  else [])))))))
+  else []
+
+def minCard1ComprehensionForS (_s : Store) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlObjectProperty then
+    (subjIri d.s).flatMap minCard1WitnessTriples
+  else []
+
+def caxAdcToDwForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlAllDisjointClasses then
+    (s.withSubjPred d.s owlMembers).flatMap (fun mem =>
+      (listElemsS s mem.o (listFuel s.graph)).flatMap (fun ci =>
+        (asIri ci).flatMap (fun ci' =>
+          (listElemsS s mem.o (listFuel s.graph)).flatMap (fun cj =>
+            (asIri cj).flatMap (fun cj' =>
+              if ci' == cj' then []
+              else [⟨Subject.iri ci', owlDisjointWith, Term.iri cj'⟩])))))
+  else []
+
 /-! ## Section 5 — one round and the loop, over the index -/
 
 def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
@@ -631,7 +670,9 @@ def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
       eqDiffSymForS s d, pdwToDiffForS s d, caxDwToDiffForS s d,
       fpDiffToDiffForS s d, ifpDiffToDiffForS s d,
       chainToTransForS s d, prpRflForS s d,
-      xsdAxiomsForS s d, dtRangeIntersectForS s d ]
+      xsdAxiomsForS s d, dtRangeIntersectForS s d,
+      caxDwToComplementForS s d, clsMaxqc1ToComplementForS s d,
+      minCard1ComprehensionForS s d, caxAdcToDwForS s d ]
 
 def conclusionsFromS (s : Store) (d : Triple) : List Triple :=
   (conclusionsListS s d).flatten
@@ -913,6 +954,18 @@ theorem xsdAxiomsForS_ofGraph (g : Graph) :
     xsdAxiomsForS (Store.ofGraph g) = xsdAxiomsFor g := rfl
 theorem dtRangeIntersectForS_ofGraph (g : Graph) :
     dtRangeIntersectForS (Store.ofGraph g) = dtRangeIntersectFor g := rfl
+theorem caxDwToComplementForS_ofGraph (g : Graph) :
+    caxDwToComplementForS (Store.ofGraph g) = caxDwToComplementFor g := rfl
+theorem clsMaxqc1ToComplementForS_ofGraph (g : Graph) :
+    clsMaxqc1ToComplementForS (Store.ofGraph g) = clsMaxqc1ToComplementFor g := rfl
+theorem minCard1ComprehensionForS_ofGraph (g : Graph) :
+    minCard1ComprehensionForS (Store.ofGraph g) = minCard1ComprehensionFor g := rfl
+theorem caxAdcToDwForS_ofGraph (g : Graph) :
+    caxAdcToDwForS (Store.ofGraph g) = caxAdcToDwFor g := by
+  funext d
+  unfold caxAdcToDwForS caxAdcToDwFor
+  rw [listElemsS_ofGraph]
+  rfl
 
 /-- A round's conclusion list over the list-scan store is
 `RLClosure.conclusionsFrom`. -/
@@ -938,7 +991,9 @@ theorem conclusionsFromS_ofGraph (g : Graph) :
     eqDiffSymForS_ofGraph, pdwToDiffForS_ofGraph, caxDwToDiffForS_ofGraph,
     fpDiffToDiffForS_ofGraph, ifpDiffToDiffForS_ofGraph,
     chainToTransForS_ofGraph, prpRflForS_ofGraph,
-    xsdAxiomsForS_ofGraph, dtRangeIntersectForS_ofGraph]
+    xsdAxiomsForS_ofGraph, dtRangeIntersectForS_ofGraph,
+    caxDwToComplementForS_ofGraph, clsMaxqc1ToComplementForS_ofGraph,
+    minCard1ComprehensionForS_ofGraph, caxAdcToDwForS_ofGraph]
 
 theorem stepConclusionsS_ofGraph (g : Graph) :
     stepConclusionsS (Store.ofGraph g) = stepConclusions g := by

@@ -416,6 +416,69 @@ theorem xsdIntInteger_subset : XsdValueSpaceSubset RDF.xsdInt xsdInteger := by
   intro l h
   simp [RDF.valueInSpace, h]
 
+/-! ### Comprehension witnesses
+
+RDF-Based Semantics §5.14 ("Comprehension Conditions") asserts that
+certain class expressions EXIST for every argument: for every class `c`
+there is a class denoting its complement, and for every property `p`
+and cardinality `n` there is a `minCardinality` restriction on `p`. A
+rule engine states that existence by minting a blank node, which is
+what an existential IS in RDF (RDF 1.1 Semantics §1.5).
+
+The skolem name is a FUNCTION of the argument, not a counter. That is
+what makes the emission idempotent, so the fixpoint loop's "length did
+not change" stopping rule still fires: a second round over the same
+graph mints the same node and `addOne` drops it. A counter would make
+every round grow the graph and the loop would run to its fuel bound.
+The `__rl_` prefix is the same convention the F* engine's
+`canonical_*_bnode` functions use. -/
+
+/-- The blank node denoting the complement class of `c`. -/
+def complementWitness (c : WfIri) : Subject :=
+  Subject.bnode ("__rl_comp__" ++ c.val)
+
+/-- The comprehension pair for `c`'s complement: it is a class, and it
+is the complement of `c`. -/
+def complementWitnessPair (c : WfIri) : List Triple :=
+  [ ⟨complementWitness c, rdfType, Term.iri owlClass⟩,
+    ⟨complementWitness c, owlComplementOf, Term.iri c⟩ ]
+
+/-- What `caxDwToComplement` emits from `c1 owl:disjointWith c2`: the
+comprehension pair for each side, and the subclass edge that carries
+the disjointness — `c1` is inside the complement of `c2`, and
+symmetrically. -/
+def complementWitnessTriples (c1 c2 : WfIri) : List Triple :=
+  complementWitnessPair c2 ++ complementWitnessPair c1 ++
+  [ ⟨Subject.iri c1, rdfsSubClassOf, (complementWitness c2).toTerm⟩,
+    ⟨Subject.iri c2, rdfsSubClassOf, (complementWitness c1).toTerm⟩ ]
+
+/-- What the max-qualified-cardinality contrapositive emits: the
+comprehension pair for `c`, and the typing of `y` into it. -/
+def complementTypeTriples (y : Subject) (c : WfIri) : List Triple :=
+  complementWitnessPair c ++
+  [ ⟨y, rdfType, (complementWitness c).toTerm⟩ ]
+
+/-- The blank node denoting the `minCardinality 1` restriction on `p`. -/
+def minCard1Witness (p : WfIri) : Subject :=
+  Subject.bnode ("__rl_minc1__" ++ p.val)
+
+/-- What `minCard1Comprehension` emits for `p`.
+
+The cardinality is written TWICE, as `"1"^^xsd:nonNegativeInteger` and
+as `"1"^^xsd:int`. §5.14's comprehension condition quantifies over the
+VALUE `n`, not over a lexical form, and both literals denote the value
+1 (RDF 1.1 Semantics §7, with `xsd:int ⊂ xsd:integer ⊂ xsd:decimal`);
+the OWL 2 RDF mapping writes the first spelling and the OWL 1 mapping
+the WebOnt conclusion documents use writes the second. Emitting one
+spelling only would make the row's conclusion depend on which mapping
+generated the document it is compared against, which is a property of
+the comparison and not of the semantics. -/
+def minCard1WitnessTriples (p : WfIri) : List Triple :=
+  [ ⟨minCard1Witness p, rdfType, Term.iri owlRestriction⟩,
+    ⟨minCard1Witness p, owlOnProperty, Term.iri p⟩,
+    ⟨minCard1Witness p, owlMinCardinality, Term.literal litNni1⟩,
+    ⟨minCard1Witness p, owlMinCardinality, Term.literal litInt1⟩ ]
+
 /-- The IRIs occurring in `g` in a subject or object position — the
 "named individuals" the `prpRfl` row quantifies over. Blank nodes are
 excluded: under the OWL 2 RL reading a blank node is an existential,
@@ -991,6 +1054,103 @@ inductive Derives (g : Graph) : Triple → Prop where
   | dtType1Builtin {t : Triple} (h : t ∈ builtinDatatypeAxioms) :
       Derives g t
 
+  /-- **cax-dw-comp** `[ext]`, a COMPREHENSION row —
+  `T(?c1, owl:disjointWith, ?c2) |
+  T(_:comp(c2), rdf:type, owl:Class)
+  T(_:comp(c2), owl:complementOf, ?c2)
+  T(?c1, rdfs:subClassOf, _:comp(c2))`, and symmetrically.
+
+  Two separate claims, each with its own semantic condition.
+
+  1. The blank node EXISTS: RDF-Based Semantics §5.14's comprehension
+     condition for `owl:complementOf` says that for every `c ∈ ICEXT(
+     I(owl:Class))` there is a `z ∈ IR` with `<z, c> ∈
+     IEXT(I(owl:complementOf))`. Asserting that with a blank node is
+     asserting exactly the existential the condition supplies.
+  2. The subclass edge: §5.7 gives `<c1,c2> ∈ IEXT(I(owl:disjointWith))`
+     iff `ICEXT(c1) ∩ ICEXT(c2) = ∅`, and §5.5 gives `ICEXT(z) = IR \
+     ICEXT(c2)`. Disjointness therefore puts `ICEXT(c1)` inside
+     `ICEXT(z)`, which is `rdfs:subClassOf`. -/
+  | caxDwToComplement {c1 c2 : WfIri} {t : Triple}
+      (hdecl : Derives g ⟨Subject.iri c1, owlDisjointWith, Term.iri c2⟩)
+      (hax : t ∈ complementWitnessTriples c1 c2) :
+      Derives g t
+
+  /-- **cls-maxqc1-comp** `[ext]`, the Horn contrapositive of
+  cls-maxqc1 at cardinality 1, landing in a comprehension witness —
+  `T(?x, owl:maxQualifiedCardinality, "1"^^xsd:nnI)
+  T(?x, owl:onProperty, ?p) T(?x, owl:onClass, ?c)
+  T(?u, rdf:type, ?x) T(?u,?p,?y1) T(?u,?p,?y2)
+  T(?y1, rdf:type, ?c) T(?y1, owl:differentFrom, ?y2) |
+  T(?y2, rdf:type, _:comp(c))` plus the comprehension pair for `c`.
+
+  RDF-Based Semantics §5.10: `u ∈ ICEXT(x)` for a
+  `maxQualifiedCardinality 1` restriction on `p` with `onClass c` means
+  `u` has AT MOST ONE `p`-value in `ICEXT(c)`. Suppose `I(y2) ∈
+  ICEXT(c)`. Then `y1` and `y2` are two `p`-values of `u` in `ICEXT(c)`,
+  and the `owl:differentFrom` premise makes them distinct — two values
+  where at most one is allowed. So `I(y2) ∉ ICEXT(c)`, which is
+  membership of the complement class §5.14 supplies. -/
+  | clsMaxqc1ToComplement {x u y1s y2s : Subject} {p c : WfIri} {t : Triple}
+      (hmqc : Derives g ⟨x, owlMaxQualifiedCardinality,
+        Term.literal litNni1⟩)
+      (honp : Derives g ⟨x, owlOnProperty, Term.iri p⟩)
+      (honc : Derives g ⟨x, owlOnClass, Term.iri c⟩)
+      (hty : Derives g ⟨u, rdfType, x.toTerm⟩)
+      (h1 : Derives g ⟨u, p, y1s.toTerm⟩)
+      (h2 : Derives g ⟨u, p, y2s.toTerm⟩)
+      (hy1c : Derives g ⟨y1s, rdfType, Term.iri c⟩)
+      (hdiff : Derives g ⟨y1s, owlDifferentFrom, y2s.toTerm⟩)
+      (hax : t ∈ complementTypeTriples y2s c) :
+      Derives g t
+
+  /-- **minc1-comp** `[ext]`, a COMPREHENSION row —
+  `T(?p, rdf:type, owl:ObjectProperty) |
+  T(_:minc1(p), rdf:type, owl:Restriction)
+  T(_:minc1(p), owl:onProperty, ?p)
+  T(_:minc1(p), owl:minCardinality, "1")`.
+
+  RDF-Based Semantics §5.14's comprehension condition for
+  `owl:minCardinality`: for every `p ∈ IP` and every non-negative
+  integer `n` there is a `z ∈ ICEXT(I(owl:Restriction))` with
+  `<z,p> ∈ IEXT(I(owl:onProperty))` and `<z,n> ∈
+  IEXT(I(owl:minCardinality))`. The row instantiates it at `n = 1`.
+  The driving premise is the property declaration only because a rule
+  engine has to enumerate something; the condition itself needs no
+  premise at all. -/
+  | minCard1Comprehension {p : WfIri} {t : Triple}
+      (hdecl : Derives g ⟨Subject.iri p, rdfType,
+        Term.iri owlObjectProperty⟩)
+      (hax : t ∈ minCard1WitnessTriples p) :
+      Derives g t
+
+  /-- **cax-adc-dw** `[ext]` — an `owl:AllDisjointClasses` axiom is
+  pairwise `owl:disjointWith`:
+  `T(?y, rdf:type, owl:AllDisjointClasses) T(?y, owl:members, ?l)
+  LIST[?l, …, ?ci, …, ?cj, …] ci ≠ cj |
+  T(?ci, owl:disjointWith, ?cj)`.
+
+  RDF-Based Semantics §5.7 reads `y ∈
+  ICEXT(I(owl:AllDisjointClasses))` with members `<c1,…,cn>` as
+  `ICEXT(ci) ∩ ICEXT(cj) = ∅` for every `i ≠ j` — which is §5.7's
+  condition on `owl:disjointWith` for that pair. The row states the
+  pairwise form so that cax-dw, cax-dw-diff and cax-dw-comp all reach
+  an `owl:AllDisjointClasses` axiom without each of them growing a
+  second list-walking body.
+
+  Carries the SAME deviation `caxAdc` carries and for the same reason:
+  the members are required to be distinct TERMS, not to sit at
+  distinct POSITIONS, so a class listed twice does not make itself
+  disjoint from itself. That is strictly weaker than the F* reading. -/
+  | caxAdcToDw {y : Subject} {lst : Term} {ci cj : WfIri} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
+      (hty : Derives g ⟨y, rdfType, Term.iri owlAllDisjointClasses⟩)
+      (hmembers : Derives g ⟨y, owlMembers, lst⟩)
+      (h1 : ListMember gc lst (Term.iri ci))
+      (h2 : ListMember gc lst (Term.iri cj))
+      (hne : ci ≠ cj) :
+      Derives g ⟨Subject.iri ci, owlDisjointWith, Term.iri cj⟩
+
 /-! ## The no-consequent (clash) rows
 
 Rows whose conclusion is `false`: their premises being satisfiable in
@@ -1214,6 +1374,12 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | dtRangeIntersect _ _ hlic ih1 ih2 =>
       exact Derives.dtRangeIntersect ih1 ih2 hlic
   | dtType1Builtin hax => exact Derives.dtType1Builtin hax
+  | caxDwToComplement _ hax ih => exact Derives.caxDwToComplement ih hax
+  | clsMaxqc1ToComplement _ _ _ _ _ _ _ _ hax ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 =>
+      exact Derives.clsMaxqc1ToComplement ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 hax
+  | minCard1Comprehension _ hax ih => exact Derives.minCard1Comprehension ih hax
+  | caxAdcToDw _ _ _ h1 h2 hne ihgc ih1 ih2 =>
+      exact Derives.caxAdcToDw ihgc ih1 ih2 h1 h2 hne
 
 /-- Cut: if every triple of `g'` is derivable from `g`, then everything
 derivable from `g'` is derivable from `g`. This is what makes the
@@ -1305,6 +1471,12 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | dtRangeIntersect _ _ hlic ih1 ih2 =>
       exact Derives.dtRangeIntersect ih1 ih2 hlic
   | dtType1Builtin hax => exact Derives.dtType1Builtin hax
+  | caxDwToComplement _ hax ih => exact Derives.caxDwToComplement ih hax
+  | clsMaxqc1ToComplement _ _ _ _ _ _ _ _ hax ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 =>
+      exact Derives.clsMaxqc1ToComplement ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 hax
+  | minCard1Comprehension _ hax ih => exact Derives.minCard1Comprehension ih hax
+  | caxAdcToDw _ _ _ h1 h2 hne ihgc ih1 ih2 =>
+      exact Derives.caxAdcToDw ihgc ih1 ih2 h1 h2 hne
 
 /-- Clash detection is monotone too: a bigger graph clashes at least as
 often. -/

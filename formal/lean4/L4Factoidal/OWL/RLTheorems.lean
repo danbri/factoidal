@@ -1318,6 +1318,91 @@ theorem dtRangeIntersectFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     · simp at h
   · simp at h
 
+/-- **cax-dw-comp** `[ext]`. -/
+theorem caxDwToComplementFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ caxDwToComplementFor g d) : Derives g t := by
+  unfold caxDwToComplementFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨c1, hc1, c2, hc2, hax⟩ := h
+    exact Derives.caxDwToComplement
+      (derives_of_parts hd (mem_subjIri hc1) hp (mem_asIri hc2)) hax
+  · simp at h
+
+/-- **cls-maxqc1-comp** `[ext]`. -/
+theorem clsMaxqc1ToComplementFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ clsMaxqc1ToComplementFor g d) : Derives g t := by
+  unfold clsMaxqc1ToComplementFor at h
+  split at h
+  · rename_i hpo
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hpo
+    simp only [List.mem_flatMap] at h
+    obtain ⟨onp, honp, p, hp, onc, honc, c, hc, tu, htu, u1, hu1,
+      y1s, hy1s, h⟩ := h
+    obtain ⟨honpg, honps, honpp⟩ := mem_withSubjPred honp
+    obtain ⟨honcg, honcs, honcp⟩ := mem_withSubjPred honc
+    obtain ⟨htug, htup, htuo⟩ := mem_withPredObj htu
+    obtain ⟨hu1g, hu1s, hu1p⟩ := mem_withSubjPred hu1
+    split at h
+    · rename_i hy1c
+      simp only [List.mem_flatMap] at h
+      obtain ⟨df, hdf, y2s, hy2s, h⟩ := h
+      obtain ⟨hdfg, hdfs, hdfp⟩ := mem_withSubjPred hdf
+      split at h
+      · rename_i hu2
+        exact Derives.clsMaxqc1ToComplement
+          (derives_of_parts hd rfl hpo.1 hpo.2)
+          (derives_of_parts honpg honps honpp (mem_asIri hp))
+          (derives_of_parts honcg honcs honcp (mem_asIri hc))
+          (derives_of_parts htug rfl htup htuo)
+          (derives_of_parts hu1g hu1s hu1p (mem_asSubject hy1s))
+          (Derives.base (mem_of_memB hu2))
+          (Derives.base (mem_of_memB hy1c))
+          (derives_of_parts hdfg hdfs hdfp (mem_asSubject hy2s)) h
+      · simp at h
+    · simp at h
+  · simp at h
+
+/-- **minc1-comp** `[ext]`. -/
+theorem minCard1ComprehensionFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ minCard1ComprehensionFor g d) : Derives g t := by
+  unfold minCard1ComprehensionFor at h
+  split at h
+  · rename_i hpo
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hpo
+    simp only [List.mem_flatMap] at h
+    obtain ⟨p, hp, hax⟩ := h
+    exact Derives.minCard1Comprehension
+      (derives_of_parts hd (mem_subjIri hp) hpo.1 hpo.2) hax
+  · simp at h
+
+/-- **cax-adc-dw** `[ext]`. -/
+theorem caxAdcToDwFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ caxAdcToDwFor g d) : Derives g t := by
+  unfold caxAdcToDwFor at h
+  split at h
+  · rename_i hpo
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hpo
+    simp only [List.mem_flatMap] at h
+    obtain ⟨mem, hmem, ci, hci, ci', hci', cj, hcj, cj', hcj', h⟩ := h
+    obtain ⟨hmemg, hmems, hmemp⟩ := mem_withSubjPred hmem
+    split at h
+    · simp at h
+    · rename_i hne
+      simp only [List.mem_singleton] at h
+      subst h
+      have hci2 : ci = Term.iri ci' := mem_asIri hci'
+      have hcj2 : cj = Term.iri cj' := mem_asIri hcj'
+      subst hci2; subst hcj2
+      refine Derives.caxAdcToDw (fun _ hu => Derives.base hu)
+        (derives_of_parts hd rfl hpo.1 hpo.2)
+        (derives_of_parts hmemg hmems hmemp rfl)
+        (listElems_sound g (listFuel g) mem.o hci)
+        (listElems_sound g (listFuel g) mem.o hcj) ?_
+      simpa [Subtype.ext_iff] using hne
+  · simp at h
+
 /-! ## Section 6 — T2, soundness of a round and of the whole closure -/
 
 /-- Every conclusion the ported rows emit from one driving triple is
@@ -1332,7 +1417,7 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact eqRefSFor_sound hd ht
   · exact eqRefPFor_sound hd ht
   · exact eqRefOFor_sound hd ht
@@ -1389,6 +1474,10 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · exact prpRflFor_sound hd ht
   · exact xsdAxiomsFor_sound hd ht
   · exact dtRangeIntersectFor_sound hd ht
+  · exact caxDwToComplementFor_sound hd ht
+  · exact clsMaxqc1ToComplementFor_sound hd ht
+  · exact minCard1ComprehensionFor_sound hd ht
+  · exact caxAdcToDwFor_sound hd ht
 
 /-- **cls-thing** and **cls-nothing1** are premise-free rows, and so is
 the `dtType1Builtin` `[ext]` row, so the axiom triples are derivable
@@ -2396,6 +2485,54 @@ theorem complete_of_saturated {sat : Graph} (hsat : step sat = sat)
     refine axm ?_
     simp only [axiomTriples, List.cons_append, List.nil_append, List.mem_cons]
     exact Or.inr (Or.inr hax)
+  | @caxDwToComplement c1 c2 t' _ hax ih =>
+    have hc : t' ∈ caxDwToComplementFor sat
+        ⟨Subject.iri c1, owlDisjointWith, Term.iri c2⟩ := by
+      simp only [caxDwToComplementFor, beq_self_eq_true, if_true,
+        List.mem_flatMap]
+      exact ⟨c1, mem_subjIri_self c1, c2, mem_asIri_self c2, hax⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @clsMaxqc1ToComplement x u y1s y2s p c t' _ _ _ _ _ _ _ _ hax
+      ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 =>
+    have hc : t' ∈ clsMaxqc1ToComplementFor sat
+        ⟨x, owlMaxQualifiedCardinality, Term.literal litNni1⟩ := by
+      simp only [clsMaxqc1ToComplementFor, beq_self_eq_true, Bool.and_self,
+        if_true, List.mem_flatMap]
+      refine ⟨⟨x, owlOnProperty, Term.iri p⟩,
+        mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
+        ⟨x, owlOnClass, Term.iri c⟩, mem_withSubjPred_of ih3 rfl rfl,
+        c, mem_asIri_self c,
+        ⟨u, rdfType, x.toTerm⟩, mem_withPredObj_of ih4 rfl rfl,
+        ⟨u, p, y1s.toTerm⟩, mem_withSubjPred_of ih5 rfl rfl,
+        y1s, mem_asSubject_toTerm y1s, ?_⟩
+      rw [if_pos (memB_of_mem ih7)]
+      simp only [List.mem_flatMap]
+      refine ⟨⟨y1s, owlDifferentFrom, y2s.toTerm⟩,
+        mem_withSubjPred_of ih8 rfl rfl, y2s, mem_asSubject_toTerm y2s, ?_⟩
+      rw [if_pos (memB_of_mem ih6)]
+      exact hax
+    exact R ih1 hc (by simp [conclusionsList])
+  | @minCard1Comprehension p t' _ hax ih =>
+    have hc : t' ∈ minCard1ComprehensionFor sat
+        ⟨Subject.iri p, rdfType, Term.iri owlObjectProperty⟩ := by
+      simp only [minCard1ComprehensionFor, beq_self_eq_true, Bool.and_self,
+        if_true, List.mem_flatMap]
+      exact ⟨p, mem_subjIri_self p, hax⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @caxAdcToDw y lst ci cj gc _ _ _ h1 h2 hne ihgc ih1 ih2 =>
+    have hc : (⟨Subject.iri ci, owlDisjointWith, Term.iri cj⟩ : Triple) ∈
+        caxAdcToDwFor sat ⟨y, rdfType, Term.iri owlAllDisjointClasses⟩ := by
+      simp only [caxAdcToDwFor, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap]
+      refine ⟨⟨y, owlMembers, lst⟩, mem_withSubjPred_of ih2 rfl rfl,
+        Term.iri ci, hlf.1 lst (Term.iri ci) (h1.mono ihgc),
+        ci, mem_asIri_self ci,
+        Term.iri cj, hlf.1 lst (Term.iri cj) (h2.mono ihgc),
+        cj, mem_asIri_self cj, ?_⟩
+      have hb : (ci == cj) = false := by
+        simp only [beq_eq_false_iff_ne, ne_eq]; exact hne
+      simp [hb]
+    exact R ih1 hc (by simp [conclusionsList])
 
 /-- **T4.** Everything derivable from `g` is in `g`'s closure, provided
 the closure is saturated (which `closure_saturated_or_underfueled`

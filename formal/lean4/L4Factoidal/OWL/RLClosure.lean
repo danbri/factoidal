@@ -728,6 +728,51 @@ def dtRangeIntersectFor (g : Graph) (d : Triple) : List Triple :=
             else []))))
   else []
 
+/-- **cax-dw-comp** `[ext]`, driven by the disjointness declaration. -/
+def caxDwToComplementFor (_g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlDisjointWith then
+    (subjIri d.s).flatMap (fun c1 =>
+      (asIri d.o).flatMap (fun c2 => complementWitnessTriples c1 c2))
+  else []
+
+/-- **cls-maxqc1-comp** `[ext]`, driven by the cardinality
+restriction. -/
+def clsMaxqc1ToComplementFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlMaxQualifiedCardinality && d.o == Term.literal litNni1 then
+    (withSubjPred g d.s owlOnProperty).flatMap (fun onp =>
+      (asIri onp.o).flatMap (fun p =>
+        (withSubjPred g d.s owlOnClass).flatMap (fun onc =>
+          (asIri onc.o).flatMap (fun c =>
+            (withPredObj g rdfType d.s.toTerm).flatMap (fun tu =>
+              (withSubjPred g tu.s p).flatMap (fun u1 =>
+                (asSubject u1.o).flatMap (fun y1s =>
+                  if memB g ⟨y1s, rdfType, Term.iri c⟩ then
+                    (withSubjPred g y1s owlDifferentFrom).flatMap (fun df =>
+                      (asSubject df.o).flatMap (fun y2s =>
+                        if memB g ⟨tu.s, p, y2s.toTerm⟩
+                        then complementTypeTriples y2s c else []))
+                  else [])))))))
+  else []
+
+/-- **minc1-comp** `[ext]`, driven by the object-property
+declaration. -/
+def minCard1ComprehensionFor (_g : Graph) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlObjectProperty then
+    (subjIri d.s).flatMap minCard1WitnessTriples
+  else []
+
+/-- **cax-adc-dw** `[ext]`, driven by the AllDisjointClasses typing. -/
+def caxAdcToDwFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlAllDisjointClasses then
+    (withSubjPred g d.s owlMembers).flatMap (fun mem =>
+      (listElems g mem.o (listFuel g)).flatMap (fun ci =>
+        (asIri ci).flatMap (fun ci' =>
+          (listElems g mem.o (listFuel g)).flatMap (fun cj =>
+            (asIri cj).flatMap (fun cj' =>
+              if ci' == cj' then []
+              else [⟨Subject.iri ci', owlDisjointWith, Term.iri cj'⟩])))))
+  else []
+
 /-! ## Section 6 — one round
 
 `conclusionsFrom` is written as `List.flatten` of a literal list of
@@ -756,7 +801,9 @@ def conclusionsList (g : Graph) (d : Triple) : List (List Triple) :=
       eqDiffSymFor g d, pdwToDiffFor g d, caxDwToDiffFor g d,
       fpDiffToDiffFor g d, ifpDiffToDiffFor g d,
       chainToTransFor g d, prpRflFor g d,
-      xsdAxiomsFor g d, dtRangeIntersectFor g d ]
+      xsdAxiomsFor g d, dtRangeIntersectFor g d,
+      caxDwToComplementFor g d, clsMaxqc1ToComplementFor g d,
+      minCard1ComprehensionFor g d, caxAdcToDwFor g d ]
 
 /-- The flattening of `conclusionsList`. -/
 def conclusionsFrom (g : Graph) (d : Triple) : List Triple :=
