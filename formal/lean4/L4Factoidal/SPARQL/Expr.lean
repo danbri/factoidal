@@ -1021,6 +1021,19 @@ structure EvalEnv where
   xsd:dateTime lexical form. Read once, at the edge, and passed in —
   never an ambient clock call. -/
   now : Option String := none
+  /-- SPARQL 1.1 Federated Query §2 SERVICE: the endpoint IRI → graph
+  map. The F* tree reaches the same information through the
+  `service_endpoint_lookup` `assume val`; here it is an ordinary input,
+  so SERVICE evaluation stays a total function of its arguments. An
+  endpoint absent from this list is an unreachable endpoint, which is
+  what SILENT is defined against. -/
+  services : List (Iri × Graph) := []
+
+/-- Resolve a SERVICE endpoint IRI to the graph it serves. -/
+def EvalEnv.resolveService (env : EvalEnv) (i : Iri) : Option Graph :=
+  match env.services.find? (fun p => p.1 == i) with
+  | some p => some p.2
+  | none   => none
 
 /-- The environment with no host services: extension functions error,
 EXISTS errors, NOW errors. -/
