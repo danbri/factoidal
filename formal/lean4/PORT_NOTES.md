@@ -4189,3 +4189,105 @@ Method note: a `#guard` caught my own wrong test constants here —
 scale confused with divisor, `1.5` written as `finite 15 10` rather
 than `finite 15 1`. Third time build-time checking has caught an
 authoring error in a new area today.
+
+### JSON-LD: the rest of the API — compact, flatten, fromRdf, html (2026-08-22)
+
+`JSONLD/Compact.lean`, `Flatten.lean`, `FromRdf.lean` and `Html.lean`
+port `JSONLD.Compact.fst`, `JSONLD.Flatten.fst`, `JSONLD.FromRdf.fst`
+and `Parser.JSONLD.Html.fst`. With expansion and toRdf already in the
+tree, this closes the five json-ld-api manifests the F\* runners cover.
+`Harness/JsonLdApiProbe.lean` (`lake exe l4jsonld-api`) reads the real
+manifests; `Harness/JsonLdProbe.lean` keeps toRdf and is untouched.
+
+Measured from the repository root, beside the F\* numbers for the same
+manifests:
+
+| manifest | Lean (`l4jsonld-api`) | F\* runner |
+|---|---|---|
+| expand | 385 pass, 0 fail (out of 385) | 385 pass, 0 fail, 0 skip (out of 385) |
+| compact | 245 pass, 0 fail, 1 local-override (out of 246) | 245 pass, 0 fail, 1 local-override, 0 skip (out of 246) |
+| flatten | 58 pass, 0 fail (out of 58) | 58 pass, 0 fail, 0 skip (out of 58) |
+| fromRdf | 53 pass, 0 fail, 1 local-override (out of 54) | 53 pass, 0 fail, 1 local-override (out of 54) |
+| html | 50 pass, 0 fail (out of 50) | 50 pass, 0 fail, 0 skip (out of 50) |
+| TOTAL | 791 pass, 0 fail, 2 local-override (out of 793) | same |
+
+The two local-overrides are the SAME two fixtures the F\* runners
+dispute — compact `#t0038` and fromRdf `#t0008`, both JSON-LD 1.0-only
+expectations, both already argued in `tests/local-overrides/`. This
+probe reads those files rather than carrying its own opinion.
+
+Translation decisions worth recording:
+
+1. **The comparison rule is the runners', not a new one.** All five F\*
+   runners compare two JSON trees by `jsonld_expanded_equal`: RFC 8785
+   canonical serialisation, then string equality. Object member order is
+   insignificant, array order significant, numbers by canonical value —
+   and there is NO blank-node relabelling, because the fixtures pin the
+   exact `_:b0`, `_:b1` … labels the algorithms' own issuers produce.
+   The Lean side calls `JSONLD.expandedEqual`, which is that rule.
+2. **`option` became `Res`, and the extra information is real.** The F\*
+   sources return a bare `option`, so the runners can only check THAT a
+   negative test failed. This port returns `Except JsonLdError`, so the
+   probe also checks the manifest's `expectErrorCode`: 140 of 144
+   negative tests across the five manifests produce the exact code the
+   manifest names. Four do not, and each is a different-but-legitimate
+   failure reason, not a wrong answer:
+   * expand `#ten04` (`invalid local context` vs `invalid @nest value`),
+     `#ter33` (`invalid reverse property value` vs `invalid @reverse
+     value`), `#tpi05` (`invalid @index value` vs `invalid value
+     object`) — the same three the toRdf probe already reports;
+   * compact `#te001` — the manifest says `compaction to list of
+     lists`, but the fixture's INPUT already contains
+     `{"@list": [{"@list": ...}]}`, which §5.1 Expansion rejects first
+     with `list of lists`. Compaction never runs. The F\* engine takes
+     the same route; its `option` return simply cannot show it.
+   Five new error constructors were added to `JSONLD/Context.lean` for
+   the codes the compact / flatten / html manifests name:
+   `compactionToListOfLists`, `iriConfusedWithPrefix`,
+   `conflictingIndexes`, `loadingDocumentFailed`, `invalidScriptElement`.
+3. **`ac_previous` is the `prev` list.** F\*'s `active_context` carries a
+   self-referential `ac_previous : option active_context`; this port's
+   `ActiveContext` has `cur` plus a `prev` stack, which the expansion
+   port had already established. Compaction's three uses map exactly:
+   step 5's conditional pop is `if ac0.prev.isEmpty then ac0 else
+   ac0.pop`, and step 11's non-propagating type-scoped context is
+   `ac3a.setPrev ac2`.
+4. **Byte scanning became character scanning.** The F\* originals index
+   UTF-8 bytes (`Parser.FastString`); this tree indexes `Char`s. Every
+   delimiter the compaction relativizer and the HTML extractor look for
+   is ASCII (`: / # ? _ @ < > " '`), and a UTF-8 multi-byte sequence
+   never contains an ASCII byte, so the two scans agree. The one place
+   the difference is observable in principle is `cmpTermLess`, which
+   compares term LENGTHS: a term with non-ASCII characters has a
+   shorter char length than byte length. No suite fixture has one.
+5. **`Ov` needed a hand-written `eqb`.** `JSONLD.FromRdf`'s
+   intermediate value tree is a nested inductive (`lst : List Ov`), the
+   shape `deriving DecidableEq` does not support — the same gap `Json`
+   already documents. A mutual `Ov.eqb` / `Ov.eqbList` supplies the
+   structural equality the spec's "unless the value is already in the
+   array" check needs (fromRdf fixture 0017), with `BEq` from it. Not
+   `deriving BEq` (pitfall #1).
+6. **`scoped` is a reserved word in Lean 4.** `| some (scoped, defUrl) =>`
+   is a parse error whose message points at the NEXT line and then
+   cascades through the whole `mutual` block as "unknown identifier"
+   for every later function. Same family as pitfall #8 (`local`, `/-`).
+7. **`compactIri`'s spec-mandated self-probe uses `if h : depth = 0`.**
+   §6.3 step 4.15 asks whether the value's `@id` itself compacts to a
+   term that round-trips — one bounded recursive call. Written as
+   `match depth with | 0 | d+1`, Lean cannot see `d < depth` inside a
+   `let`; `if h : depth = 0 then ... else ... (depth - 1)` with
+   `decreasing_by omega` does.
+
+Sabotage test (the discipline this tree uses when extending): inverting
+`cmpTermLess` to prefer the LONGEST term makes `lake build` fail at
+three places — the theorem `cmpTermLess_length_le` in
+`JSONLD/ApiTests.lean` and two of its `#guard`s — and drops the compact
+manifest to 244 pass, 1 fail, 1 local-override (out of 246), the named
+failure being `#ta038` "Index map round-tripping". Restoring the
+comparator returns all of it. Worth noting how NARROW the corpus signal
+is: one fixture out of 246, because the suite's contexts rarely define
+two terms of different length for one IRI. The build-time theorem is the
+stronger tripwire here, which is the argument for keeping both.
+
+What is NOT ported: JSON-LD Framing (`JSONLD.Frame.fst`) — a separate
+specification with a separate suite, and no manifest above needs it.
