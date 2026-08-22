@@ -1,5 +1,5 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal", "xmlconf-probe", "l4rdfc-probe"]
+defaultTargets = ["L4Factoidal", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe"]
 
 [[lean_lib]]
 name = "L4Factoidal"
@@ -16,3 +16,9 @@ root = "L4Factoidal.XML.ConfProbe"
 [[lean_exe]]
 name = "l4rdfc-probe"
 root = "Harness.CanonProbe"
+# Real-corpus probe for the Turtle / TriG parsers (Harness/TurtleProbe.lean).
+# Separate from the library so the library stays specification-only, per the
+# spec/pragmatics split recorded in PORT_NOTES.md.
+[[lean_exe]]
+name = "l4turtle-probe"
+root = "Harness.TurtleProbe"
