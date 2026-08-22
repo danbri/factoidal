@@ -148,3 +148,5 @@ import L4Factoidal.ShEx.Validation
 import L4Factoidal.ShEx.Tests
 import L4Factoidal.ShEx.Shapes
 import L4Factoidal.ShEx.ShapesTests
+import L4Factoidal.RML.Mapping
+import L4Factoidal.RML.Tests
