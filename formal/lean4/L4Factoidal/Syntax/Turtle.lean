@@ -44,23 +44,39 @@ Grammar productions ported (RDF 1.1 Turtle, https://www.w3.org/TR/turtle/):
   [169s] PLX, [170s] PERCENT, [172s] PN_LOCAL_ESC
   plus `#`-to-end-of-line comments (Turtle §2.1).
 
-RDF 1.2 (`.rdf12`, W3C Working Draft; epic #305 in the F* tree) — the
-subset of the F* source's `Mode_12` that this port covers, stated
-exactly:
-  COVERED — triple terms `<<( s p o )>>` in OBJECT position (port of
-            `parse_turtle_triple_term`); the reifier annotation
-            `~ (iri | BlankNode)?` and the annotation block
-            `{| predicateObjectList |}` after an object (port of
-            `parse_annotations`), both emitting `rdf:reifies` triples;
-            directional language tags `@lang--ltr` / `@lang--rtl` (via
-            `Syntax.Lexing.readLangDir12`).
-  NOT COVERED — the reified-triple form `<< s p o (~ r)? >>` in
-            subject/object position (F* `parse_reified_triple` /
-            `parse_rt_subject` / `parse_rt_object`), and the `VERSION`
-            / `@version` directive (F* `parse_version_directive`).
-            Both are RDF-1.2-only, are not exercised by the RDF 1.1
-            W3C suites this port is measured against, and are recorded
-            as open gaps in `PORT_NOTES.md`.
+RDF 1.2 (`.rdf12`; RDF 1.2 Turtle, https://www.w3.org/TR/rdf12-turtle/,
+the productions the F* source's `Mode_12` covers), all ported:
+
+  [2]   statement            ::= directive | triples '.'
+  [3]   directive            ::= prefixID | base | sparqlPrefix | sparqlBase | version
+  [4a]  version              ::= '@version' VERSION_STRING '.'       (port of
+        sparqlVersion         ::= "VERSION" VERSION_STRING            `parse_version_directive`)
+  [10]  subject              ::= iri | BlankNode | collection | reifiedTriple
+  [12]  object               ::= iri | BlankNode | collection
+                               | blankNodePropertyList | literal
+                               | tripleTerm | reifiedTriple
+  [27]  reifiedTriple        ::= '<<' rtSubject verb rtObject reifier? '>>'
+  [28]  rtSubject            ::= iri | BlankNode | reifiedTriple
+  [29]  rtObject             ::= iri | BlankNode | literal | tripleTerm | reifiedTriple
+  [30]  tripleTerm           ::= '<<(' ttSubject verb ttObject ')>>'
+  [31]  ttSubject            ::= iri | BlankNode
+  [32]  ttObject             ::= iri | BlankNode | literal | tripleTerm
+  [33]  reifier              ::= '~' (iri | BlankNode)?
+  [34]  annotation           ::= (reifier | annotationBlock)*
+  [35]  annotationBlock      ::= '{|' predicateObjectList '|}'
+  plus the `@lang--ltr` / `@lang--rtl` base direction on LANG_DIR
+  (`Syntax.Lexing.readLangDir12`).
+
+  A reified triple denotes its REIFIER (the `~`-named IRI or blank
+  node, or a fresh blank node) and emits
+  `reifier rdf:reifies <<( s p o )>>`; the reifier stands in the
+  enclosing subject / object position. Ports of `parse_reified_triple`
+  / `parse_rt_subject` / `parse_rt_object` / `parse_reifier`,
+  `parse_turtle_triple_term` / `parse_tt_object`, `parse_annotations`.
+  Every one of them is reachable only under `.rdf12`; under `.rdf11`
+  the `<<`, `{|`, `~` and `VERSION` forms are rejected exactly as the
+  RDF 1.1 grammar rejects them, and the RDF 1.1 W3C suites' scores are
+  unchanged by their presence.
 
 F* → Lean correspondences and the deliberate departures:
 
@@ -789,19 +805,31 @@ def subjectOfTerm : Term → Subject
   | .bnode b => .bnode b
   | _        => .bnode "reifier-non-node"
 
-/-- The subject slot of a triple term: an IRI or a blank node only
-(RDF 1.2 does not allow a nested triple term there). -/
+/-- [31] `ttSubject ::= iri | BlankNode` — the subject slot of a triple
+term: an IRI, a `_:label`, or the anonymous `[]` (never a nested triple
+term, never a non-empty `[ … ]`). Port of `parse_tt_subject`, widened
+to admit ANON as the grammar does (the F* source rejects `[]` here —
+see `PORT_NOTES.md`). -/
 def readTtSubject (st : TurtleState) (pos : Nat) (cs : List Char) :
-    Except ParseError (Subject × Nat × List Char) :=
+    Except ParseError (Subject × TurtleState × Nat × List Char) :=
   match cs with
+  | '<' :: '<' :: _ =>
+      .error ⟨"a triple term's subject may not be a triple term or a reified triple", pos⟩
   | '_' :: ':' :: _ =>
       (match readTurtleBnode pos cs with
        | .error e => .error e
-       | .ok (b, pos', rest) => .ok (.bnode b, pos', rest))
+       | .ok (b, pos', rest) => .ok (.bnode b, st, pos', rest))
+  | '[' :: rest =>
+      let (p2, r2) := tws (pos + 1) rest
+      (match r2 with
+       | ']' :: r3 =>
+           let (b, st') := st.freshBnode
+           .ok (.bnode b, st', p2 + 1, r3)
+       | _ => .error ⟨"blank node property list not allowed in a triple term", pos⟩)
   | _ =>
       match readTurtleIri st pos cs with
       | .error e => .error e
-      | .ok (i, pos', rest) => .ok (.iri i, pos', rest)
+      | .ok (i, pos', rest) => .ok (.iri i, st, pos', rest)
 
 /-- [9] `verb ::= predicate | 'a'`. Port of `parse_turtle_predicate`. -/
 def readVerb (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
@@ -812,6 +840,285 @@ def readVerb (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
     match readAKeyword pos cs with
     | .ok r    => .ok r
     | .error _ => readTurtleIri st pos cs
+
+/-- A literal in one of the three forms [13] admits: an RDFLiteral
+(string), a BooleanLiteral, or a NumericLiteral. Shared by the
+triple-term and reified-triple object slots, which admit literals but
+not the `[ … ]` / `( … )` constructions. -/
+def readAnyLiteral (st : TurtleState) (pos : Nat) (cs : List Char) :
+    Except ParseError (WfLiteral × Nat × List Char) :=
+  match cs with
+  | '"' :: _ | '\'' :: _ => readRdfLiteral st pos cs
+  | _ =>
+      match readBooleanLiteral pos cs with
+      | .ok (l, pos', rest) =>
+          (match mkLiteral pos l with
+           | .error e => .error e
+           | .ok wl => .ok (wl, pos', rest))
+      | .error _ =>
+          match readNumericLiteral pos cs with
+          | .error e => .error e
+          | .ok ((lex, dt), pos', rest) =>
+              match mkLiteral pos
+                  { lexicalForm := lex, datatype := dt, langTag := none, direction := none } with
+              | .error e => .error e
+              | .ok wl => .ok (wl, pos', rest)
+
+/-! ## RDF 1.2 triple terms — [30] tripleTerm, [32] ttObject
+
+`tripleTerm ::= '<<(' ttSubject verb ttObject ')>>'` with
+`ttObject ::= iri | BlankNode | literal | tripleTerm`. A triple term
+emits NO triples of its own — it is a term. The only recursion is the
+object slot nesting another triple term, so this is a self-contained
+fuel recursion outside the main mutual block, exactly as the F* source
+keeps `parse_tt_object` / `parse_turtle_triple_term` apart. -/
+
+mutual
+
+/-- [32] `ttObject`. Port of `parse_tt_object`; `[]` admitted as the
+grammar's ANON (the F* source rejects it). -/
+def readTtObject (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
+    Except ParseError (Term × TurtleState × Nat × List Char) :=
+  match fuel with
+  | 0 => .error ⟨"triple-term nesting too deep", pos⟩
+  | f + 1 =>
+    match cs with
+    | '<' :: '<' :: '(' :: rest => readTripleTerm f st (pos + 3) rest
+    | '<' :: '<' :: _ =>
+        .error ⟨"a reified triple is not allowed inside a triple term", pos⟩
+    | '<' :: _ =>
+        (match readTurtleIri st pos cs with
+         | .error e => .error e
+         | .ok (i, pos', rest) => .ok (.iri i, st, pos', rest))
+    | '_' :: ':' :: _ =>
+        (match readTurtleBnode pos cs with
+         | .error e => .error e
+         | .ok (b, pos', rest) => .ok (.bnode b, st, pos', rest))
+    | '[' :: rest =>
+        let (p2, r2) := tws (pos + 1) rest
+        (match r2 with
+         | ']' :: r3 =>
+             let (b, st') := st.freshBnode
+             .ok (.bnode b, st', p2 + 1, r3)
+         | _ => .error ⟨"blank node property list not allowed in a triple term", pos⟩)
+    | '(' :: _ => .error ⟨"collection not allowed in a triple term", pos⟩
+    | '"' :: _ | '\'' :: _ =>
+        (match readRdfLiteral st pos cs with
+         | .error e => .error e
+         | .ok (l, pos', rest) => .ok (.literal l, st, pos', rest))
+    | _ =>
+        match readAnyLiteral st pos cs with
+        | .ok (l, pos', rest) => .ok (.literal l, st, pos', rest)
+        | .error _ =>
+            match readTurtleIri st pos cs with
+            | .error e => .error e
+            | .ok (i, pos', rest) => .ok (.iri i, st, pos', rest)
+termination_by fuel
+
+/-- [30] `tripleTerm`, `pos`/`cs` just after the opening `<<(`. Port of
+`parse_turtle_triple_term`. Returns the term and the state (ANON
+subjects/objects advance the blank-node counter); no side triples. -/
+def readTripleTerm (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
+    Except ParseError (Term × TurtleState × Nat × List Char) :=
+  match fuel with
+  | 0 => .error ⟨"triple-term nesting too deep", pos⟩
+  | f + 1 =>
+    let (p1, r1) := tws pos cs
+    match readTtSubject st p1 r1 with
+    | .error e => .error e
+    | .ok (s, st1, p2, r2) =>
+        let (p3, r3) := tws p2 r2
+        match readVerb f st1 p3 r3 with
+        | .error e => .error e
+        | .ok (p, p4, r4) =>
+            let (p5, r5) := tws p4 r4
+            match readTtObject f st1 p5 r5 with
+            | .error e => .error e
+            | .ok (o, st2, p6, r6) =>
+                let (p7, r7) := tws p6 r6
+                match r7 with
+                | ')' :: '>' :: '>' :: r8 => .ok (.tripleTerm s p o, st2, p7 + 3, r8)
+                | _ => .error ⟨"expected ')>>' closing triple term", p7⟩
+termination_by fuel
+
+end
+
+/-! ## RDF 1.2 reifiers and reified triples — [27]–[29], [33]
+
+`reifier ::= '~' (iri | BlankNode)?` names the reifier of a reified
+triple or of an annotated triple; with nothing after the `~` a fresh
+blank node is minted. `reifiedTriple ::= '<<' rtSubject verb rtObject
+reifier? '>>'` is SUGAR: it denotes its reifier and emits
+`reifier rdf:reifies <<( s p o )>>`. `rtSubject` / `rtObject` are
+narrower than [10] / [12]: an IRI, a `_:label`, an EMPTY `[]`, a
+nested reified triple, and (object only) a literal or a triple term —
+never a collection or a non-empty property list
+(turtle12-syntax-bad-06 / bad-07). Like the triple-term block this is
+a self-contained fuel recursion that never re-enters the collection /
+annotation / object-list machinery. -/
+
+/-- [33] `reifier`, `pos`/`cs` at the `~`. Port of `parse_reifier`:
+`_:label`, `[]`, an IRIREF or a prefixed name name the reifier; anything
+else (a following `>>`, `{|`, `,`, `;`, `.`, …) means "no explicit
+reifier" and a fresh blank node is minted. The F* source does not
+accept `[]` here; the grammar's BlankNode does. -/
+def readReifier (st : TurtleState) (pos : Nat) (cs : List Char) :
+    Except ParseError (Subject × TurtleState × Nat × List Char) :=
+  match cs with
+  | '~' :: rest =>
+      let (p1, r1) := tws (pos + 1) rest
+      let fresh : Except ParseError (Subject × TurtleState × Nat × List Char) :=
+        let (b, st') := st.freshBnode
+        .ok (.bnode b, st', p1, r1)
+      (match r1 with
+       | '_' :: ':' :: _ =>
+           (match readTurtleBnode p1 r1 with
+            | .error e => .error e
+            | .ok (b, p2, r2) => .ok (.bnode b, st, p2, r2))
+       | '[' :: r2 =>
+           let (p3, r3) := tws (p1 + 1) r2
+           (match r3 with
+            | ']' :: r4 =>
+                let (b, st') := st.freshBnode
+                .ok (.bnode b, st', p3 + 1, r4)
+            | _ => .error ⟨"blank node property list not allowed as a reifier", p1⟩)
+       | '<' :: _ =>
+           (match readTurtleIri st p1 r1 with
+            | .error e => .error e
+            | .ok (i, p2, r2) => .ok (.iri i, st, p2, r2))
+       | c :: _ =>
+           if isNameStartChar c || c == ':' then
+             (match readTurtleIri st p1 r1 with
+              | .ok (i, p2, r2) => .ok (.iri i, st, p2, r2)
+              | .error _ => fresh)
+           else fresh
+       | [] => fresh)
+  | _ => .error ⟨"expected '~'", pos⟩
+
+mutual
+
+/-- [28] `rtSubject ::= iri | BlankNode | reifiedTriple`. Port of
+`parse_rt_subject`. -/
+def readRtSubject (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
+    Except ParseError (Subject × List Triple × TurtleState × Nat × List Char) :=
+  match fuel with
+  | 0 => .error ⟨"reified-triple nesting too deep", pos⟩
+  | f + 1 =>
+    match cs with
+    | [] => .error ⟨"expected reified-triple subject", pos⟩
+    | '<' :: '<' :: '(' :: _ =>
+        .error ⟨"triple term not allowed as reified-triple subject", pos⟩
+    | '<' :: '<' :: _ =>
+        (match readReifiedTriple f st pos cs with
+         | .error e => .error e
+         | .ok (o, pos', rest) => .ok (subjectOfTerm o.term, o.triples, o.state, pos', rest))
+    | '_' :: ':' :: _ =>
+        (match readTurtleBnode pos cs with
+         | .error e => .error e
+         | .ok (b, pos', rest) => .ok (.bnode b, [], st, pos', rest))
+    | '[' :: rest =>
+        let (p2, r2) := tws (pos + 1) rest
+        (match r2 with
+         | ']' :: r3 =>
+             let (b, st') := st.freshBnode
+             .ok (.bnode b, [], st', p2 + 1, r3)
+         | _ => .error ⟨"blank node property list not allowed in a reified triple", pos⟩)
+    | '(' :: _ => .error ⟨"collection not allowed in a reified triple", pos⟩
+    | _ =>
+        match readTurtleIri st pos cs with
+        | .error e => .error e
+        | .ok (i, pos', rest) => .ok (.iri i, [], st, pos', rest)
+termination_by fuel
+
+/-- [29] `rtObject ::= iri | BlankNode | literal | tripleTerm |
+reifiedTriple`. Port of `parse_rt_object`. -/
+def readRtObject (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
+    Except ParseError (Term × List Triple × TurtleState × Nat × List Char) :=
+  match fuel with
+  | 0 => .error ⟨"reified-triple nesting too deep", pos⟩
+  | f + 1 =>
+    match cs with
+    | [] => .error ⟨"expected reified-triple object", pos⟩
+    | '<' :: '<' :: '(' :: rest =>
+        (match readTripleTerm f st (pos + 3) rest with
+         | .error e => .error e
+         | .ok (t, st', pos', rest') => .ok (t, [], st', pos', rest'))
+    | '<' :: '<' :: _ =>
+        (match readReifiedTriple f st pos cs with
+         | .error e => .error e
+         | .ok (o, pos', rest) => .ok (o.term, o.triples, o.state, pos', rest))
+    | '_' :: ':' :: _ =>
+        (match readTurtleBnode pos cs with
+         | .error e => .error e
+         | .ok (b, pos', rest) => .ok (.bnode b, [], st, pos', rest))
+    | '[' :: rest =>
+        let (p2, r2) := tws (pos + 1) rest
+        (match r2 with
+         | ']' :: r3 =>
+             let (b, st') := st.freshBnode
+             .ok (.bnode b, [], st', p2 + 1, r3)
+         | _ => .error ⟨"blank node property list not allowed in a reified triple", pos⟩)
+    | '(' :: _ => .error ⟨"collection not allowed in a reified triple", pos⟩
+    | '"' :: _ | '\'' :: _ =>
+        (match readRdfLiteral st pos cs with
+         | .error e => .error e
+         | .ok (l, pos', rest) => .ok (.literal l, [], st, pos', rest))
+    | _ =>
+        match readAnyLiteral st pos cs with
+        | .ok (l, pos', rest) => .ok (.literal l, [], st, pos', rest)
+        | .error _ =>
+            match readTurtleIri st pos cs with
+            | .error e => .error e
+            | .ok (i, pos', rest) => .ok (.iri i, [], st, pos', rest)
+termination_by fuel
+
+/-- [27] `reifiedTriple`, `pos`/`cs` at the opening `<<` (NOT `<<(`).
+The result's `term` is the reifier; its `triples` are the nested
+reified triples' `rdf:reifies` triples followed by this one's. Port of
+`parse_reified_triple`. -/
+def readReifiedTriple (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
+    Except ParseError (ObjResult × Nat × List Char) :=
+  match fuel with
+  | 0 => .error ⟨"reified-triple nesting too deep", pos⟩
+  | f + 1 =>
+    match cs with
+    | '<' :: '<' :: '(' :: _ => .error ⟨"a triple term is not a reified triple", pos⟩
+    | '<' :: '<' :: rest =>
+        let (p1, r1) := tws (pos + 2) rest
+        match readRtSubject f st p1 r1 with
+        | .error e => .error e
+        | .ok (s, sTriples, st1, p2, r2) =>
+            let (p3, r3) := tws p2 r2
+            match readVerb f st1 p3 r3 with
+            | .error e => .error e
+            | .ok (p, p4, r4) =>
+                let (p5, r5) := tws p4 r4
+                match readRtObject f st1 p5 r5 with
+                | .error e => .error e
+                | .ok (o, oTriples, st2, p6, r6) =>
+                    let (p7, r7) := tws p6 r6
+                    let tt : Term := .tripleTerm s p o
+                    let side := sTriples ++ oTriples
+                    let finish (r : Subject) (st3 : TurtleState) (p8 : Nat) (r8 : List Char) :
+                        Except ParseError (ObjResult × Nat × List Char) :=
+                      let (p9, r9) := tws p8 r8
+                      match r9 with
+                      | '>' :: '>' :: r10 =>
+                          .ok (⟨r.toTerm, side ++ [{ s := r, p := rdfReifies, o := tt }], st3⟩,
+                               p9 + 2, r10)
+                      | _ => .error ⟨"expected '>>' closing reified triple", p9⟩
+                    match r7 with
+                    | '~' :: _ =>
+                        (match readReifier st2 p7 r7 with
+                         | .error e => .error e
+                         | .ok (r, st3, p8, r8) => finish r st3 p8 r8)
+                    | _ =>
+                        let (b, st3) := st2.freshBnode
+                        finish (.bnode b) st3 p7 r7
+    | _ => .error ⟨"expected '<<'", pos⟩
+termination_by fuel
+
+end
 
 mutual
 
@@ -826,8 +1133,15 @@ def readObject (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
     match cs with
     | [] => .error ⟨"expected object", pos⟩
     | '<' :: '<' :: '(' :: rest =>
-        if st.mode == .rdf12 then readTripleTerm f st (pos + 3) rest
+        if st.mode == .rdf12 then
+          (match readTripleTerm f st (pos + 3) rest with
+           | .error e => .error e
+           | .ok (t, st', pos', rest') => .ok (⟨t, [], st'⟩, pos', rest'))
         else .error ⟨"triple term <<( )>> requires RDF 1.2 mode", pos⟩
+    | '<' :: '<' :: _ =>
+        -- [27] reifiedTriple in object position (RDF 1.2 only).
+        if st.mode == .rdf12 then readReifiedTriple f st pos cs
+        else .error ⟨"reified triple << >> requires RDF 1.2 mode", pos⟩
     | '<' :: _ =>
         (match readTurtleIri st pos cs with
          | .error e => .error e
@@ -875,33 +1189,6 @@ def readObject (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
                  match readTurtleIri st pos cs with
                  | .error e => .error e
                  | .ok (i, pos', rest) => .ok (⟨.iri i, [], st⟩, pos', rest))
-termination_by fuel
-
-/-- RDF 1.2 triple term `<<( subject predicate object )>>` in object
-position. Port of `parse_turtle_triple_term`; `pos`/`cs` start just
-after the opening `<<(`. -/
-def readTripleTerm (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
-    Except ParseError (ObjResult × Nat × List Char) :=
-  match fuel with
-  | 0 => .error ⟨"recursion limit in triple term", pos⟩
-  | f + 1 =>
-    let (p1, r1) := tws pos cs
-    match readTtSubject st p1 r1 with
-    | .error e => .error e
-    | .ok (s, p2, r2) =>
-        let (p3, r3) := tws p2 r2
-        match readVerb f st p3 r3 with
-        | .error e => .error e
-        | .ok (p, p4, r4) =>
-            let (p5, r5) := tws p4 r4
-            match readObject f st p5 r5 with
-            | .error e => .error e
-            | .ok (o, p6, r6) =>
-                let (p7, r7) := tws p6 r6
-                match r7 with
-                | ')' :: '>' :: '>' :: r8 =>
-                    .ok (⟨.tripleTerm s p o.term, o.triples, o.state⟩, p7 + 3, r8)
-                | _ => .error ⟨"expected ')>>' closing triple term", p7⟩
 termination_by fuel
 
 /-- [15] `collection ::= '(' object* ')'`, encoded as an
@@ -1003,19 +1290,15 @@ def readAnnotations (fuel : Nat) (st : TurtleState) (bs : Subject) (bp : WfIri) 
   | f + 1 =>
     let (p1, r1) := tws pos cs
     match r1 with
-    | '~' :: r2 =>
-        let (p2a, r2a) := tws (p1 + 1) r2
-        let (rsubj, st1, p3, r3) :=
-          match r2a with
-          | '<' :: _ | '_' :: ':' :: _ =>
-              (match readTtSubject st p2a r2a with
-               | .ok (s, p, r) => (s, st, p, r)
-               | .error _ => let (b, stb) := st.freshBnode; ((.bnode b : Subject), stb, p1 + 1, r2))
-          | _ => let (b, stb) := st.freshBnode; ((.bnode b : Subject), stb, p1 + 1, r2)
-        let reif : Triple := { s := rsubj, p := rdfReifies, o := .tripleTerm bs bp bo }
-        (match readAnnotations f st1 bs bp bo p3 r3 (some rsubj) with
+    | '~' :: _ =>
+        -- [33] reifier: `~ :r`, `~ <r>`, `~ _:r`, `~ []`, or a bare `~`.
+        (match readReifier st p1 r1 with
          | .error e => .error e
-         | .ok (rest, st2, p4, r4) => .ok (reif :: rest, st2, p4, r4))
+         | .ok (rsubj, st1, p3, r3) =>
+             let reif : Triple := { s := rsubj, p := rdfReifies, o := .tripleTerm bs bp bo }
+             match readAnnotations f st1 bs bp bo p3 r3 (some rsubj) with
+             | .error e => .error e
+             | .ok (rest, st2, p4, r4) => .ok (reif :: rest, st2, p4, r4))
     | '{' :: '|' :: r2 =>
         let (rsubj, st1, pre) :=
           match pending with
@@ -1110,6 +1393,17 @@ def readSubjectTurtle (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Cha
     | [] => .error ⟨"expected subject", pos⟩
     | '<' :: '<' :: '(' :: _ =>
         .error ⟨"triple term is not allowed as a subject", pos⟩
+    | '<' :: '<' :: _ =>
+        -- [27] reifiedTriple as subject (RDF 1.2 only). Like a `[ … ]`
+        -- property list it may stand as a whole statement — just its
+        -- `rdf:reifies` triple — with no predicateObjectList
+        -- (turtle12-syntax-basic-04: `<<:s :p :o>> .`).
+        if st.mode == .rdf12 then
+          (match readReifiedTriple f st pos cs with
+           | .error e => .error e
+           | .ok (o, pos', rest) =>
+               .ok (⟨subjectOfTerm o.term, o.triples, o.state, true⟩, pos', rest))
+        else .error ⟨"reified triple << >> requires RDF 1.2 mode", pos⟩
     | '<' :: _ =>
         (match readTurtleIri st pos cs with
          | .error e => .error e
@@ -1218,6 +1512,47 @@ def readBaseDirective (st : TurtleState) (pos : Nat) (cs : List Char) :
       | some rest => body false 4 rest
       | none => .error ⟨"not a base directive", pos⟩
 
+/-! ## RDF 1.2 `VERSION` directive — [4a] version / sparqlVersion
+
+`@version VERSION_STRING '.'` (at-form, trailing dot REQUIRED) and
+`VERSION VERSION_STRING` (keyword form, case-insensitive like
+`PREFIX` / `BASE`, NO dot). `VERSION_STRING` is a SHORT string
+literal — a long `"""…"""` / `'''…'''` string or an unquoted token is
+rejected (turtle12-version-bad-01..06); the string's content is not
+validated (turtle12-version-08 accepts `"abc"`). The directive is
+state-neutral. Port of `parse_version_short` /
+`parse_version_directive`; reachable only under `.rdf12`. -/
+
+/-- Exactly one short string literal, value discarded. -/
+def readVersionString (pos : Nat) (cs : List Char) : Except ParseError (Nat × List Char) :=
+  match cs with
+  | '"' :: '"' :: '"' :: _ | '\'' :: '\'' :: '\'' :: _ =>
+      .error ⟨"long string not allowed in VERSION directive", pos⟩
+  | '"' :: _ | '\'' :: _ =>
+      (match readTurtleString pos cs with
+       | .error e => .error e
+       | .ok (_, pos', rest) => .ok (pos', rest))
+  | _ => .error ⟨"expected string literal in VERSION directive", pos⟩
+
+/-- `@version "…" .` or `VERSION "…"`. Returns the new position. -/
+def readVersionDirective (pos : Nat) (cs : List Char) : Except ParseError (Nat × List Char) :=
+  match matchKeyword false "@version".toList cs with
+  | some rest =>
+      let (p1, r1) := tws (pos + 8) rest
+      (match readVersionString p1 r1 with
+       | .error e => .error e
+       | .ok (p2, r2) =>
+           let (p3, r3) := tws p2 r2
+           match r3 with
+           | '.' :: r4 => .ok (p3 + 1, r4)
+           | _ => .error ⟨"expected '.' after @version directive", p3⟩)
+  | none =>
+      match matchKeyword true "VERSION".toList cs with
+      | some rest =>
+          let (p1, r1) := tws (pos + 7) rest
+          readVersionString p1 r1
+      | none => .error ⟨"not a version directive", pos⟩
+
 /-! ## Statements and the document — [1] turtleDoc, [2] statement -/
 
 /-- [2] `statement ::= directive | triples '.'`. Returns the statement's
@@ -1238,6 +1573,11 @@ def readStatement (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) :
         match readBaseDirective st p1 r1 with
         | .ok (b, p2, r2) => .ok ([], { st with baseIri := b }, p2, r2)
         | .error _ =>
+            -- [4a] RDF 1.2 VERSION directive: state-neutral, `.rdf12` only.
+            match (if st.mode == .rdf12 then readVersionDirective p1 r1
+                   else .error ⟨"not RDF 1.2", p1⟩) with
+            | .ok (p2, r2) => .ok ([], st, p2, r2)
+            | .error _ =>
             match readSubjectTurtle fuel st p1 r1 with
             | .error e => .error e
             | .ok (sr, p2, r2) =>

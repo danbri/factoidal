@@ -89,7 +89,8 @@ def isDirectiveAt (cs : List Char) : Bool :=
                    | c :: _ => !(isPnChars c || c == ':')
   (matchKeyword false "@prefix".toList cs).isSome ||
   (matchKeyword false "@base".toList cs).isSome ||
-  ci "PREFIX" || ci "BASE"
+  (matchKeyword false "@version".toList cs).isSome ||
+  ci "PREFIX" || ci "BASE" || ci "VERSION"
 
 /-! ## [7g] labelOrSubject -/
 
@@ -164,6 +165,12 @@ def readTriGStatement (st : TurtleState) (pos : Nat) (cs : List Char) :
       match readBaseDirective st p1 r1 with
       | .ok (b, p2, r2) => .ok ((none, []), { st with baseIri := b }, p2, r2)
       | .error _ =>
+        -- RDF 1.2 TriG [3] directive additionally admits `version`
+        -- (`@version "…" .` / `VERSION "…"`), top level only, `.rdf12` only.
+        match (if st.mode == .rdf12 then readVersionDirective p1 r1
+               else .error ⟨"not RDF 1.2", p1⟩) with
+        | .ok (p2, r2) => .ok ((none, []), st, p2, r2)
+        | .error _ =>
         match r1 with
         -- [5g] a bare wrappedGraph: the DEFAULT graph.
         | '{' :: r2 =>
