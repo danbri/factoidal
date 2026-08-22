@@ -1,10 +1,12 @@
 # Factoidal
 
-An RDF database and query engine whose APIs, interfaces and protocols
-are grounded in the W3C specifications and in mathematics, using F\*
-and Lean 4, and extracted to OCaml (and JS/wasm/C) for execution.
+**A linked information system with graph data and the Web at its
+heart.** Factoidal stores, queries, links and serves RDF, with its
+APIs, interfaces and protocols grounded in the W3C specifications and
+in mathematics using F\* and Lean 4, and extracted to OCaml (and
+JS/wasm/C) for execution.
 
-The engine is the product; the formal layer is what makes it safe to
+The system is the product; the formal layer is what makes it safe to
 optimise. Implementations can be varied, tuned and replaced
 aggressively, because a change that broke standards compliance could
 not pass. Executable code is obtained by extraction from the formal
