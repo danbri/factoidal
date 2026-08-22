@@ -139,3 +139,5 @@ import L4Factoidal.CSVW.Emit
 import L4Factoidal.CSVW.EmitTests
 import L4Factoidal.CSVW.Formats
 import L4Factoidal.CSVW.FormatsTests
+import L4Factoidal.CSVW.Json
+import L4Factoidal.CSVW.JsonTests

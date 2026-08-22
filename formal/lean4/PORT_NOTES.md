@@ -3752,3 +3752,25 @@ MALFORMED and rejects everything rather than falling back to the XSD
 `true`/`1` space; and percent / per-mille scaling is done by shifting
 the DIGIT STRING, not by float arithmetic, so `12.5%` is exactly
 `0.125`.
+
+### CSVW: csv2json output (2026-08-22)
+
+`CSVW/Json.lean` ports `CSVW.Json.fst` — minimal and standard csv2json
+modes. Kept as its OWN output rather than a rendering of the triples:
+csv2json is a separate conformance suite and its shapes differ
+(`describes` arrays, `rownum`/`url` members, `rdfs:comment`), so
+deriving one from the other would lose exactly the distinctions the
+tests check.
+
+Three shape rules the guards pin, each an "absent vs empty"
+distinction that is easy to get wrong and impossible to see in a
+diff of passing counts:
+
+1. A NULL cell contributes NO MEMBER, rather than a member with JSON
+   `null`.
+2. A `separator` column is ALWAYS an array, even with one element —
+   the list-ness comes from the metadata, not from the cell content.
+3. An empty comment list produces NO `rdfs:comment` member: csv2json
+   says verbatim "If M.rdfs:comment is an empty array, remove the
+   rdfs:comment property from M", so emitting `[]` is wrong output,
+   not harmless output.
