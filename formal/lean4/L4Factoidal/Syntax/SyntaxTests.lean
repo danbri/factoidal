@@ -9,6 +9,12 @@ syntax test suite (`rdf-n-triples/nt-syntax-*`, `nt-syntax-bad-*`) and the
 RDF 1.2 c14n / syntax suites — this worktree has no `third_party/testing`
 checkout (submodules absent), so the fixtures below are written BY HAND
 against the same grammar the W3C suite exercises, not copied from disk.
+
+Local helpers below (`isOk`/`isErr`/`okEq`/`namedGraphsEq`) exist ONLY
+because `Except` has no core `BEq`/`isOk` and `RDF.NamedGraph` (defined
+in `RDF.Graph`, which this port does not edit) derives `Repr` but not
+`DecidableEq` — see the "Core/Graph change needed" note in this branch's
+final report.
 -/
 
 import L4Factoidal.Syntax.NQuads
@@ -17,124 +23,145 @@ namespace L4Factoidal.Syntax.SyntaxTests
 
 open L4Factoidal.RDF L4Factoidal.Syntax
 
+/-! ### Local test helpers (not part of the port; see module header) -/
+
+def isOk {ε α : Type} : Except ε α → Bool
+  | .ok _ => true
+  | .error _ => false
+
+def isErr {ε α : Type} : Except ε α → Bool
+  | .ok _ => false
+  | .error _ => true
+
+def okEq {ε α : Type} [BEq α] (x : Except ε α) (v : α) : Bool :=
+  match x with
+  | .ok a => a == v
+  | .error _ => false
+
+def namedGraphEq (a b : NamedGraph) : Bool :=
+  a.name == b.name && a.graph == b.graph
+
+def namedGraphsEq (a b : List NamedGraph) : Bool :=
+  a.length == b.length && (a.zip b).all (fun p => namedGraphEq p.1 p.2)
+
 /-! ### Positive N-Triples fixtures (RDF 1.1) -/
 
 -- nt-syntax-file-01-style: a single plain-literal triple.
-#guard (parseNTriples "<http://example.org/s> <http://example.org/p> \"o\" .\n").isOk
+#guard isOk (parseNTriples "<http://example.org/s> <http://example.org/p> \"o\" .\n")
 
 -- nt-syntax-uri-04-style: an IRI object.
-#guard (parseNTriples
-  "<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n").isOk
+#guard isOk (parseNTriples
+  "<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n")
 
 -- nt-syntax-bnode-01-style: blank-node subject and object.
-#guard (parseNTriples
-  "_:a <http://example.org/p> _:b .\n").isOk
+#guard isOk (parseNTriples
+  "_:a <http://example.org/p> _:b .\n")
 
 -- nt-syntax-str-esc-01-style: every ECHAR plus a UCHAR.
-#guard (parseNTriples
-  "<http://example.org/s> <http://example.org/p> \"tab:\\t nl:\\n cr:\\r bs:\\\\ q:\\\" u:\\u00E9\" .\n").isOk
+#guard isOk (parseNTriples
+  "<http://example.org/s> <http://example.org/p> \"tab:\\t nl:\\n cr:\\r bs:\\\\ q:\\\" u:\\u00E9\" .\n")
 
 -- nt-syntax-string-with-lang: language-tagged literal.
-#guard (parseNTriples
-  "<http://example.org/s> <http://example.org/p> \"chat\"@en .\n").isOk
+#guard isOk (parseNTriples
+  "<http://example.org/s> <http://example.org/p> \"chat\"@en .\n")
 
 -- BCP47 subtag language tag.
-#guard (parseNTriples
-  "<http://example.org/s> <http://example.org/p> \"chat\"@en-US .\n").isOk
+#guard isOk (parseNTriples
+  "<http://example.org/s> <http://example.org/p> \"chat\"@en-US .\n")
 
 -- nt-syntax-datatypes-01-style: a datatyped literal.
-#guard (parseNTriples
-  "<http://example.org/s> <http://example.org/p> \"42\"^^<http://www.w3.org/2001/XMLSchema#integer> .\n").isOk
+#guard isOk (parseNTriples
+  "<http://example.org/s> <http://example.org/p> \"42\"^^<http://www.w3.org/2001/XMLSchema#integer> .\n")
 
 -- nt-syntax-bnode-with-digits: a blank-node label starting with a digit
 -- (BLANK_NODE_LABEL start char is PN_CHARS_U | [0-9]).
-#guard (parseNTriples "_:0a <http://example.org/p> _:1 .\n").isOk
+#guard isOk (parseNTriples "_:0a <http://example.org/p> _:1 .\n")
 
 -- nt-syntax-bnode-with-internal-dot: an internal dot is legal; the label
 -- is `a.b`, not truncated at the dot.
-#guard (parseNTriples "_:a.b <http://example.org/p> _:c .\n").isOk
+#guard isOk (parseNTriples "_:a.b <http://example.org/p> _:c .\n")
 
 -- nt-syntax-comment-01-style: comment lines and blank lines are skipped.
-#guard (parseNTriples
-  "# a comment\n\n<http://example.org/s> <http://example.org/p> \"o\" .\n# trailing\n").isOk
+#guard isOk (parseNTriples
+  "# a comment\n\n<http://example.org/s> <http://example.org/p> \"o\" .\n# trailing\n")
 
 -- Multiple triples, one per line.
-#guard ((parseNTriples
+#guard okEq (Except.map List.length (parseNTriples
   "<http://example.org/s> <http://example.org/p> \"1\" .\n\
-   <http://example.org/s> <http://example.org/p> \"2\" .\n").map (·.length)) == .ok 2
+   <http://example.org/s> <http://example.org/p> \"2\" .\n")) 2
 
 /-! ### Negative N-Triples fixtures (RDF 1.1) -/
 
 -- nt-syntax-bad-uri-04-style: a raw space inside an IRIREF.
-#guard (parseNTriples "<http://example.org/s p> <http://example.org/p> \"o\" .\n").isError
+#guard isErr (parseNTriples "<http://example.org/s p> <http://example.org/p> \"o\" .\n")
 
 -- nt-syntax-bad-string-04-style: an unescaped raw newline inside a string.
-#guard (parseNTriples "<http://example.org/s> <http://example.org/p> \"o\no\" .\n").isError
+#guard isErr (parseNTriples "<http://example.org/s> <http://example.org/p> \"o\no\" .\n")
 
 -- nt-syntax-bad-esc-01-style: an unknown escape.
-#guard (parseNTriples "<http://example.org/s> <http://example.org/p> \"\\q\" .\n").isError
+#guard isErr (parseNTriples "<http://example.org/s> <http://example.org/p> \"\\q\" .\n")
 
 -- Missing terminating '.'.
-#guard (parseNTriples "<http://example.org/s> <http://example.org/p> \"o\"\n").isError
+#guard isErr (parseNTriples "<http://example.org/s> <http://example.org/p> \"o\"\n")
 
 -- A literal used as the subject is not legal.
-#guard (parseNTriples "\"s\" <http://example.org/p> \"o\" .\n").isError
+#guard isErr (parseNTriples "\"s\" <http://example.org/p> \"o\" .\n")
 
 -- A surrogate codepoint in a \u escape is rejected, not silently replaced.
-#guard (parseNTriples "<http://example.org/s> <http://example.org/p> \"\\uD800\" .\n").isError
+#guard isErr (parseNTriples "<http://example.org/s> <http://example.org/p> \"\\uD800\" .\n")
 
 -- An empty blank-node label ("_:" with nothing after it).
-#guard (parseNTriples "_: <http://example.org/p> \"o\" .\n").isError
+#guard isErr (parseNTriples "_: <http://example.org/p> \"o\" .\n")
 
 -- Mode_11 rejects a triple term in object position (RDF 1.2 syntax).
-#guard (parseNTriples
+#guard isErr (parseNTriples
   "<http://example.org/s> <http://example.org/p> <<( <http://example.org/a> <http://example.org/b> <http://example.org/c> )>> .\n"
-  (mode := .rdf11)).isError
+  .rdf11)
 
 -- Mode_11 rejects the retired RDF-star quoted-triple form too.
-#guard (parseNTriples
+#guard isErr (parseNTriples
   "<http://example.org/s> <http://example.org/p> << <http://example.org/a> <http://example.org/b> <http://example.org/c> >> .\n"
-  (mode := .rdf11)).isError
+  .rdf11)
 
 /-! ### RDF 1.2 fixtures -/
 
 -- A directional language-tagged literal, Mode_12.
-#guard (parseNTriples
+#guard isOk (parseNTriples
   "<http://example.org/s> <http://example.org/p> \"hello\"@en--ltr .\n"
-  (mode := .rdf12)).isOk
+  .rdf12)
 
-#guard (parseNTriples
+#guard isOk (parseNTriples
   "<http://example.org/s> <http://example.org/p> \"hello\"@ar--rtl .\n"
-  (mode := .rdf12)).isOk
+  .rdf12)
 
 -- Uppercase direction token is rejected (only lowercase ltr/rtl).
-#guard (parseNTriples
+#guard isErr (parseNTriples
   "<http://example.org/s> <http://example.org/p> \"hello\"@en--LTR .\n"
-  (mode := .rdf12)).isError
+  .rdf12)
 
 -- A triple term in object position, Mode_12.
-#guard (parseNTriples
+#guard isOk (parseNTriples
   "<http://example.org/s> <http://example.org/p> <<( <http://example.org/a> <http://example.org/b> <http://example.org/c> )>> .\n"
-  (mode := .rdf12)).isOk
+  .rdf12)
 
 -- Nested triple terms.
-#guard (parseNTriples
+#guard isOk (parseNTriples
   "<http://example.org/s> <http://example.org/p> \
    <<( <http://example.org/a> <http://example.org/b> \
        <<( <http://example.org/x> <http://example.org/y> <http://example.org/z> )>> )>> .\n"
-  (mode := .rdf12)).isOk
+  .rdf12)
 
 -- The legacy RDF-star `<< s p o >>` quoted-triple form is rejected even
 -- under Mode_12 (only the `<<( )>>` triple-TERM form is RDF 1.2 syntax).
-#guard (parseNTriples
+#guard isErr (parseNTriples
   "<http://example.org/s> <http://example.org/p> << <http://example.org/a> <http://example.org/b> <http://example.org/c> >> .\n"
-  (mode := .rdf12)).isError
+  .rdf12)
 
 -- A literal subject inside a triple term is rejected (triple-term subject
 -- is `subject`, i.e. IRIREF | BLANK_NODE_LABEL — never a literal).
-#guard (parseNTriples
+#guard isErr (parseNTriples
   "<http://example.org/s> <http://example.org/p> <<( \"lit\" <http://example.org/b> <http://example.org/c> )>> .\n"
-  (mode := .rdf12)).isError
+  .rdf12)
 
 /-! ### Serialise-then-parse round trips (N-Triples) -/
 
@@ -186,22 +213,22 @@ def rtGraphDir : Graph :=
      o := .literal ⟨{ lexicalForm := "hello", datatype := rdfDirLangString,
                        langTag := some "en", direction := some .ltr }, rfl⟩ }]
 #guard rtCheck .rdf12 rtGraphDir
-#guard (Graph.toNTriples rtGraphDir .rdf11).isError
+#guard isErr (Graph.toNTriples rtGraphDir .rdf11)
 
 -- RDF 1.2: a triple term round-trips only under .rdf12.
 def rtGraphTripleTerm : Graph :=
   [{ s := .iri exS, p := exP,
      o := .tripleTerm (.iri exS) exP (.literal (Literal.string "claimed")) }]
 #guard rtCheck .rdf12 rtGraphTripleTerm
-#guard (Graph.toNTriples rtGraphTripleTerm .rdf11).isError
+#guard isErr (Graph.toNTriples rtGraphTripleTerm .rdf11)
 
 /-! ### N-Quads: default graph, two named graphs -/
 
-#guard (parseNQuads
+#guard isOk (parseNQuads
   "<http://example.org/s> <http://example.org/p> \"default\" .\n\
    <http://example.org/s> <http://example.org/p> \"g1\" <http://example.org/g1> .\n\
    <http://example.org/s> <http://example.org/p> \"g2\" <http://example.org/g2> .\n\
-   <http://example.org/s2> <http://example.org/p> \"g1-again\" <http://example.org/g1> .\n").isOk
+   <http://example.org/s2> <http://example.org/p> \"g1-again\" <http://example.org/g1> .\n")
 
 def dsCheck : Except ParseError Dataset :=
   parseNQuads
@@ -210,26 +237,26 @@ def dsCheck : Except ParseError Dataset :=
      <http://example.org/s> <http://example.org/p> \"g2\" <http://example.org/g2> .\n\
      <http://example.org/s2> <http://example.org/p> \"g1-again\" <http://example.org/g1> .\n"
 
-#guard (dsCheck.map (·.default.length)) == .ok 1
-#guard (dsCheck.map (·.named.length)) == .ok 2
+#guard okEq (Except.map (fun ds => ds.default.length) dsCheck) 1
+#guard okEq (Except.map (fun ds => ds.named.length) dsCheck) 2
 -- Insertion order of named graphs is preserved (g1 first, g2 second).
-#guard (dsCheck.map (fun ds => ds.named.map (·.name))) ==
-  .ok ["http://example.org/g1", "http://example.org/g2"]
-#guard (dsCheck.map (fun ds => (ds.lookupNamed "http://example.org/g1").map (·.length))) ==
-  .ok (some 2)
+#guard okEq (Except.map (fun ds => ds.named.map (·.name)) dsCheck)
+  ["http://example.org/g1", "http://example.org/g2"]
+#guard okEq (Except.map (fun ds => (ds.lookupNamed "http://example.org/g1").map (·.length)) dsCheck)
+  (some 2)
 
 -- A blank-node graph label.
-#guard (parseNQuads
-  "<http://example.org/s> <http://example.org/p> \"o\" _:g .\n").isOk
+#guard isOk (parseNQuads
+  "<http://example.org/s> <http://example.org/p> \"o\" _:g .\n")
 
 -- A literal graph label is rejected.
-#guard (parseNQuads
-  "<http://example.org/s> <http://example.org/p> \"o\" \"not-a-graph\" .\n").isError
+#guard isErr (parseNQuads
+  "<http://example.org/s> <http://example.org/p> \"o\" \"not-a-graph\" .\n")
 
 -- RDF 1.2 triple term in N-Quads object position.
-#guard (parseNQuads
+#guard isOk (parseNQuads
   "<http://example.org/s> <http://example.org/p> <<( <http://example.org/a> <http://example.org/b> <http://example.org/c> )>> <http://example.org/g> .\n"
-  (mode := .rdf12)).isOk
+  .rdf12)
 
 /-! ### N-Quads serialise-then-parse round trip -/
 
@@ -239,7 +266,7 @@ def rtDsCheck (mode : Mode) (ds : Dataset) : Bool :=
   | .ok text =>
       match parseNQuads text mode with
       | .error _ => false
-      | .ok ds' => ds'.default == ds.default && ds'.named == ds.named
+      | .ok ds' => ds'.default == ds.default && namedGraphsEq ds'.named ds.named
 
 def rtDataset : Dataset :=
   { default := [{ s := .iri exS, p := exP, o := .literal (Literal.string "d") }],

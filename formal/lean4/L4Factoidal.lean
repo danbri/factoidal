@@ -9,4 +9,5 @@ import L4Factoidal.SPARQL.Invariants
 import L4Factoidal.Syntax.Lexing
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads
+import L4Factoidal.Syntax.SyntaxTests
 import L4Factoidal.Tests
