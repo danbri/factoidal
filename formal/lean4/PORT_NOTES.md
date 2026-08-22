@@ -4449,3 +4449,34 @@ Validity dates are checked for SHAPE only. Their ordering against
 "now" belongs to a caller with a clock; this module stays a total
 function of its input rather than reading one, per the purity
 doctrine.
+
+### CSVW: a reader probe over the real corpus, and the bug it found
+(2026-08-22)
+
+`Harness/CsvwProbe.lean` runs the Lean dialect reader against the
+REAL vendored W3C csvw corpus — 177 `.csv` files off disk, never
+synthetic input.
+
+IT IMMEDIATELY FOUND A BUG the unit tests had missed: a FINAL line
+terminator was creating a phantom one-cell row, so 85 of 177 files
+read as "ragged". RFC 4180 makes the terminator optional on the last
+record, so `"a\nb\n"` and `"a\nb"` are the same two rows. A synthetic
+test does not catch this because one rarely writes the trailing
+newline by hand — which is precisely the argument for running the
+suite's own files. Fixed (`dropTrailingTerminator`) and guarded,
+including the case it must NOT break: an INTERIOR blank line is still
+a row.
+
+After the fix: 170 read with uniform width, 7 read ragged, 0 failed
+to read.
+
+The probe reports RAGGED SEPARATELY rather than as failure, because
+CSVW treats a wrong cell count as a VALIDATION error, not a parse
+error, and the suite ships such files deliberately (test058,
+test091). Counting them as failures would penalise correct behaviour.
+
+The output states plainly that this is a READER-LEVEL check and NOT a
+conformance score — it never compares against the expected `.ttl`,
+which needs metadata resolution and graph isomorphism. Calling the
+number "csvw: 170 pass" would be a lie by naming, so the probe says
+so itself rather than trusting a reader of the log to remember.
