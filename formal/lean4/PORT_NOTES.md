@@ -17,8 +17,8 @@ a green test run.
 | `L4Factoidal/RDF/Graph.lean` | `RDF.Graph.fsti` (+ `RDF.Dataset.Merge` renaming) | graphs as lists with set-semantics ops, datasets, blank-node renaming, membership theorems |
 | `L4Factoidal/SPARQL/Algebra.lean` | `SPARQL11.Algebra.fst` Parts 1–2, §7.2–7.3/§18.5 | bindings, patterns (incl. SPARQL 1.2 triple-term patterns), `tpMatch`, `evalBgp`, join/leftJoin/union/minus/filter, `GraphPattern.eval` |
 | `L4Factoidal/SPARQL/Invariants.lean` | (new; replaces the F\* SMT-`Lemma` style) | empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity — all kernel-checked, no solver |
-| `L4Factoidal/RDFS/Vocabulary.lean` | `RDF.Vocabulary.fsti` (5 of its constants) | `rdf:type`, `rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range` as `WfIri` with `rfl` witnesses — the whole vocabulary the rho-df fragment names |
-| `L4Factoidal/RDFS/RhoDF.lean` | `RDF.Entailment.RDFS.RhoDFClosure.fst` (banner + rule set) | SPECIFICATION: the six RDF 1.1 Semantics §9.2 rows (rdfs2/3/5/7/9/11) as an inductive relation `Derives g t`, plus `Derives.mono` and `Derives.cut` |
+| `L4Factoidal/RDFS/Vocabulary.lean` | `RDF.Vocabulary.fsti` (5 of its constants) | `rdf:type`, `rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range` as `WfIri` with `rfl` witnesses — the whole vocabulary the rdfs-core fragment names |
+| `L4Factoidal/RDFS/RdfsCore.lean` | `RDF.Entailment.RDFS.RhoDFClosure.fst` (banner + rule set) | SPECIFICATION: the six RDF 1.1 Semantics §9.2 rows (rdfs2/3/5/7/9/11) as an inductive relation `Derives g t`, plus `Derives.mono` and `Derives.cut` |
 | `L4Factoidal/RDFS/Closure.lean` | `RhoDFClosure.fst` lines 98-130 + `RDFS.Closure.fsti` lines 242-355 | IMPLEMENTATION: the six `rdfs_rule_*` bodies, `stepConclusions`/`step` (= `rho_df_closure_step`), the fuel/length-test loop `closure` (= `rho_df_closure`), `closureIter` (= `rho_df_closure_iter`), and `closureFix` with a stated fuel bound |
 | `L4Factoidal/RDFS/ClosureTheorems.lean` | `RhoDFClosure.fst` theorems 1-3 | T1 extensivity, T2 soundness against `Derives`, T3 monotonicity, T4 completeness at a saturated graph, the fuel dichotomy, and the `Triple.eqb` transitivity chain the last two need |
 | `L4Factoidal/RDFS/ClosureTests.lean` | (new) | 31 `#guard`s over five fixtures, each checking a derived AND a non-derived triple, plus the axiom audit lines |
@@ -85,12 +85,12 @@ the source modules.
 - `RDF.Entailment.RDFS.RhoDFClosure.fst`, `RDFS.Closure.fsti` and
   `RDF.Vocabulary.fsti`: **zero** `assume val`s, zero `admit`, zero
   `--lax` — checked by grep over all three files at port time
-  (2026-08-22). The rho-df closure is pure F\* throughout, so the Lean
+  (2026-08-22). The rdfs-core closure is pure F\* throughout, so the Lean
   port inherits no assumption from it. What it DOES inherit are the
   F\* module's CARRIED HYPOTHESES, and those are the interesting part
   of the correspondence — see the next section.
 
-## What the rho-df port proves, and what it does not
+## What the rdfs-core port proves, and what it does not
 
 The F\* module states five theorems; three of them carry hypotheses it
 does not discharge (`rho_df_chain_canonical`, `rho_df_chain_wf`, and
@@ -173,12 +173,12 @@ those files are touched:
    are measured by the same files (the F\* tree's iron rule #6).
 4. Wider `GraphPattern`: GRAPH, VALUES, BIND, sub-SELECT, property
    paths, and the SPARQL 1.2-track LATERAL.
-5. ~~RDFS closure + soundness~~ — LANDED for the six-row rho-df
+5. ~~RDFS closure + soundness~~ — LANDED for the six-row rdfs-core
    fragment (`L4Factoidal/RDFS/`, 2026-08-22). The continuations it
    opens, in order:
    a. the term-universe counting bound that discharges
       `closureFuelBound` (the one named obligation above);
-   b. the rho-df MODEL THEORY (interpretations, `rho_df_conditions`,
+   b. the rdfs-core MODEL THEORY (interpretations, `rho_df_conditions`,
       `satisfies`), which turns T2 from proof-theoretic into the
       model-theoretic statement the F\* tree proves, and gives the
       "decides entailment" payoff;

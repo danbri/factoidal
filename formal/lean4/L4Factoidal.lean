@@ -7,7 +7,7 @@ import L4Factoidal.RDF.Graph
 import L4Factoidal.SPARQL.Algebra
 import L4Factoidal.SPARQL.Invariants
 import L4Factoidal.RDFS.Vocabulary
-import L4Factoidal.RDFS.RhoDF
+import L4Factoidal.RDFS.RdfsCore
 import L4Factoidal.RDFS.Closure
 import L4Factoidal.RDFS.ClosureTheorems
 import L4Factoidal.RDFS.ClosureTests

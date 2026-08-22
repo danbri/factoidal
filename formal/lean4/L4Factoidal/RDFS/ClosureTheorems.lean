@@ -20,7 +20,7 @@ WHAT IS PROVED HERE, and how it differs from the F* statements.
 * **T2 soundness** — `closure_sound`: `t ∈ closure g fuel → Derives g
   t`. F* theorem 2 (`rho_df_closure_sound`, line 291) is MODEL-
   THEORETIC (`rho_df_entails g (rho_df_closure g fuel)`: every
-  rho-df interpretation satisfying `g` satisfies the closure). The
+  rdfs-core interpretation satisfying `g` satisfies the closure). The
   Lean statement is PROOF-THEORETIC: every computed triple has a
   derivation in the §9.2 rule relation. Model-theoretic soundness
   would need the interpretation machinery
@@ -461,7 +461,7 @@ than a rewrite. None of these lemmas exists in `RDF/Core.lean`; they
 belong there — see PORT_NOTES.md.
 
 Note what is NOT claimed: `Term.eqb` is not equality. Only in the
-positions the rho-df rules MATCH on — subjects, predicates, and objects
+positions the rdfs-core rules MATCH on — subjects, predicates, and objects
 that must be usable as subjects — does eqb collapse to equality
 (`Subject.eqb_eq`, `Term.eqb_iri`, `Term.eqb_eq_of_toSubject`), which
 is what lets a rule be fired on an eqb-witness at all. -/

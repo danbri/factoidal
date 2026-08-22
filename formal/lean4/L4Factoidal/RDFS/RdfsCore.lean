@@ -1,5 +1,5 @@
 /-
-L4Factoidal.RDFS.RhoDF — the SPECIFICATION of the rho-df fragment:
+L4Factoidal.RDFS.RdfsCore — the SPECIFICATION of the rdfs-core fragment:
 the six RDFS entailment rows as an inductive derivation relation.
 
 Ports the rule set of `formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst`
@@ -14,7 +14,7 @@ those six:
     rdfs5  rdfs_rule_subPropertyOf_trans
 
 This is the reviewer-facing object: `Derives g t` says "t is derivable
-from g by the rho-df rules", written the way the RDF 1.1 Semantics §9.2
+from g by the rdfs-core rules", written the way the RDF 1.1 Semantics §9.2
 rule table writes it — premises above the line, conclusion below —
 with nothing about fuel, indexes, deduplication, or evaluation order.
 `L4Factoidal/RDFS/Closure.lean` is the executable closure; the two are
@@ -24,11 +24,11 @@ closure computes is derivable here; saturation-completeness: everything
 derivable here is in a saturated closure).
 
 WHAT IS NOT HERE. The rows RDF 1.1 Semantics §9.2 lists that the
-rho-df fragment drops — rdfs1, rdfs4a, rdfs4b, rdfs6, rdfs8, rdfs10,
+rdfs-core fragment drops — rdfs1, rdfs4a, rdfs4b, rdfs6, rdfs8, rdfs10,
 rdfs12, rdfs13 and the container-membership axioms — are absent by
 design, not by oversight. Finding C-2 in the F* tree's
 `RDF.Entailment.RDFS.Completeness.fst` is exactly that those rows rest
-on interpretation conditions the rho-df model theory does not carry, so
+on interpretation conditions the rdfs-core model theory does not carry, so
 the twelve-rule closure cannot instantiate the fragment's soundness
 side. This module is the six-row operator that can.
 
@@ -38,6 +38,12 @@ The model theory itself (interpretations, `rho_df_conditions`,
 Lean soundness theorem here is stated against this rule relation. The
 two differ in strength — see the header of `ClosureTheorems.lean` for
 what is and is not claimed.
+
+
+Naming: this fragment is called ρdf ("rho-df") in the literature —
+Muñoz, Pérez, Gutierrez, "Minimal deductive systems for RDF" (ESWC
+2007) — and "core RDFS" / rdfs-core in this repository (owner
+decision 2026-08-22: the Greek letter reads as "pdf" on a phone).
 -/
 import L4Factoidal.RDF.Graph
 import L4Factoidal.RDFS.Vocabulary
@@ -48,7 +54,7 @@ open L4Factoidal.RDF
 
 /-! ## The derivation relation
 
-`Derives g t` — "graph `g` rho-df-derives triple `t`". Membership of
+`Derives g t` — "graph `g` rdfs-core-derives triple `t`". Membership of
 the base case is LIST membership (`t ∈ g`), not the engine's
 `Graph.mem`; the engine's `Triple.eqb` is coarser than equality on
 literals (language-tag case folding, `rdf:XMLLiteral` canonicalisation),

@@ -1,10 +1,10 @@
 /-
 L4Factoidal.RDFS.Vocabulary — the five RDF/RDFS vocabulary IRIs the
-rho-df fragment uses.
+rdfs-core fragment uses.
 
 Port of the corresponding constants in `formal/fstar/RDF.Vocabulary.fsti`
 (`rdf_type`, `rdfs_subClassOf`, `rdfs_subPropertyOf`, `rdfs_domain`,
-`rdfs_range`). Only those five are ported: the rho-df fragment
+`rdfs_range`). Only those five are ported: the rdfs-core fragment
 (Munoz/Perez/Gutierrez, "Simple and Efficient Minimal RDFS", JWS 2009 —
 the fragment RDF 1.1 Semantics §9.2 rows rdfs2/3/5/7/9/11 range over)
 mentions no other vocabulary term. The F* file carries the whole RDF +

@@ -1,5 +1,5 @@
 /-
-L4Factoidal.RDFS.Closure — the EXECUTABLE rho-df closure.
+L4Factoidal.RDFS.Closure — the EXECUTABLE rdfs-core closure.
 
 Port of the extractable part of
 `formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst`:
@@ -8,7 +8,7 @@ Port of the extractable part of
 (line 114), together with the six `rdfs_rule_*` bodies those compose,
 which live in `formal/fstar/RDFS.Closure.fsti` lines 242-355.
 
-`RhoDF.lean` is the specification (the rule relation `Derives`); this
+`RdfsCore.lean` is the specification (the rule relation `Derives`); this
 file is the implementation; `ClosureTheorems.lean` connects them. The
 split is deliberate: a reviewer checks the six inductive constructors
 of `Derives` against the RDF 1.1 Semantics §9.2 table by eye, and
@@ -44,7 +44,7 @@ trusts this file only through the proved theorems.
    step is a plain function of its input, which is what makes the
    soundness and saturation proofs one induction each.
 -/
-import L4Factoidal.RDFS.RhoDF
+import L4Factoidal.RDFS.RdfsCore
 
 namespace L4Factoidal.RDFS
 

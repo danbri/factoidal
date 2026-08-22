@@ -1,5 +1,5 @@
 /-
-L4Factoidal.RDFS.ClosureTests — build-time tests for the rho-df
+L4Factoidal.RDFS.ClosureTests — build-time tests for the rdfs-core
 closure, and the axiom audit for its theorems.
 
 `#guard` runs during elaboration, so a wrong answer is a BUILD ERROR:
