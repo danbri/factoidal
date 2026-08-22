@@ -38,7 +38,21 @@
   Function(...)` at runtime (the whole reactive-cell mechanism this
   entire hub is built on). Every script SOURCE is still same-origin
   only in both modes -- no external <script src="https://..."> host is
-  ever allowed, live mode or strict.
+  ever allowed, live mode or strict -- WITH ONE NAMED, NARROW
+  EXCEPTION: a post whose own front matter sets
+  `hubAllowRegistryCdn: true` (as of this writing, only post 37,
+  "Installed, not vendored" -- the page whose entire point is running
+  the ACTUAL @factoidal/core code published to the npm registry, not a
+  same-origin mirror of it) gets exactly `https://cdn.jsdelivr.net` and
+  `https://unpkg.com` added to script-src, and ONLY on that post's live
+  twin (hubMode == 'live' AND hubAllowRegistryCdn) -- the strict/
+  default page for that post carries NO such carve-out, so it degrades
+  exactly like every other post's strict page (no third-party code,
+  cells catch the CSP-blocked fetch and render "registry unreachable").
+  This is a deliberate, per-page opt-in, not a loosening of the shared
+  policy -- every other post's script-src stays untouched in both
+  modes, and the two hostnames are the npm-package CDN mirrors
+  themselves, not a general allowance.
 
   `frame-ancestors` is deliberately NOT in the policy below: the CSP
   spec requires it be delivered as a real HTTP response header --
@@ -47,7 +61,7 @@
   would just be console noise on every hub page for no enforcement
   gained.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:{% if hubMode == 'live' %} https:{% endif %}; connect-src 'self'{% if hubMode == 'live' %} https:{% endif %}; font-src 'self'; object-src 'none'; base-uri {% if hubMode == 'live' %}'self'{% else %}'none'{% endif %}">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'{% if hubMode == 'live' and hubAllowRegistryCdn %} https://cdn.jsdelivr.net https://unpkg.com{% endif %}; style-src 'self' 'unsafe-inline'; img-src 'self' data:{% if hubMode == 'live' %} https:{% endif %}; connect-src 'self'{% if hubMode == 'live' %} https:{% endif %}{% if hubMode == 'live' and hubAllowRegistryCdn %} https://cdn.jsdelivr.net https://unpkg.com{% endif %}; font-src 'self'; object-src 'none'; base-uri {% if hubMode == 'live' %}'self'{% else %}'none'{% endif %}">
 <title>{{ title }}{% if hubMode == 'live' %} (live mode){% endif %} — Factoidal</title>
 {% if hubMode == 'live' %}
 <!--
@@ -606,6 +620,52 @@ function srjTermToFn(t) {
   return { termType: "Literal", value: t.value, language, datatype: { termType: "NamedNode", value: datatype } };
 }
 
+// Reshape a RAW, CLI-shaped Factoidal module (query/toRdf/canonicalize/
+// registerExtensionFunction/version, same shape as npm/factoidal/
+// browser.js's own exports -- see "Why `fn` is an adapter, not an
+// import" in docs/web/hub/README.md) into the typed Dataset-based shape
+// `fn` exposes. `fn.parse`/`fn.query` below are this same reshaping
+// hardcoded to the module-scope `Factoidal` (the same-origin bundle);
+// this is the parameterized version, used by `fn.loadRegistryPackage`
+// (post 37) to apply IDENTICAL reshaping to whichever raw module a
+// cell loaded from the npm registry CDN, so a cell can call
+// `registry.parse(...)`/`registry.query(...)` with the exact same
+// contract as `fn.parse`/`fn.query`.
+function makeTypedApiOverRaw(raw) {
+  return {
+    version: raw.version,
+    async parse(text, options) {
+      const opts = options || {};
+      const nq = await raw.toRdf(text, { format: opts.format || "turtle", baseIRI: opts.baseIRI });
+      return new FnDataset(nq);
+    },
+    async query(dataset, sparql, options) {
+      const opts = options || {};
+      const entail = opts.entail || "none";
+      const sparql12 = opts.sparql12 === true || String(opts.version || "") === "1.2";
+      const form = sniffQueryForm(sparql);
+      if (form === "construct" || form === "describe") {
+        const nt = await raw.query(dataset.toNQuads(), sparql, {
+          dataFormat: "nquads", entail, output: "ntriples", sparql12,
+        });
+        return new FnDataset(nt);
+      }
+      const result = await raw.query(dataset.toNQuads(), sparql, {
+        dataFormat: "nquads", entail, output: "json", sparql12,
+      });
+      if (form === "ask") return !!result.boolean;
+      const rows = (result.results && result.results.bindings) || [];
+      return rows.map((row) => {
+        const map = new Map();
+        for (const [name, term] of Object.entries(row)) map.set(name, srjTermToFn(term));
+        return map;
+      });
+    },
+    async canonicalize(text, options) { return raw.canonicalize(text, options); },
+    async registerExtensionFunction(iri, f) { return raw.registerExtensionFunction(iri, f); },
+  };
+}
+
 const fn = {
   /**
    * Certified core-RDFS closure + its decidable fragment check (post
@@ -975,6 +1035,42 @@ const fn = {
       for (const [name, term] of Object.entries(row)) map.set(name, srjTermToFn(term));
       return map;
     });
+  },
+  /**
+   * Post 37 ("Installed, not vendored"): load the ACTUAL
+   * `@factoidal/core` package published to the npm registry, from a
+   * CDN that serves npm packages verbatim, and reshape it into the
+   * same typed contract `fn` exposes (see makeTypedApiOverRaw above).
+   * Tries jsdelivr then unpkg -- both mirror npm's exact file layout
+   * for this package (confirmed: browser.js's relative `./factoidal.js`
+   * / `./factoidal-npm-entry.js` fetches resolve against either CDN
+   * origin). This is the ONE cell binding in the whole hub that loads
+   * third-party CODE, not just third-party data -- see hub.njk's CSP
+   * comment at the top of this file for the narrow, per-page carve-out
+   * that makes the dynamic import() below survive CSP on this post's
+   * live twin; on every other page (and on this post's own strict/
+   * default page) the import is CSP-blocked and rejects, which the
+   * calling cell must catch itself (see the post's prose -- this
+   * function deliberately does NOT swallow the error, so the happy
+   * path stays assertable in the Node test).
+   */
+  async loadRegistryPackage(version) {
+    const v = version || "0.1.0";
+    const urls = [
+      `https://cdn.jsdelivr.net/npm/@factoidal/core@${v}/browser.js`,
+      `https://unpkg.com/@factoidal/core@${v}/browser.js`,
+    ];
+    const errors = [];
+    for (const url of urls) {
+      try {
+        const raw = await import(/* @vite-ignore */ url);
+        return makeTypedApiOverRaw(raw);
+      } catch (e) {
+        errors.push(`${url}: ${e && e.message}`);
+      }
+    }
+    throw new Error(
+      `loadRegistryPackage: could not load @factoidal/core@${v} from any CDN -- ${errors.join("; ")}`);
   },
 };
 

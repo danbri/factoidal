@@ -12,24 +12,22 @@ description: Everything a session needs for the Lean 4 side of Factoidal (formal
 that"). Workstream + continuation ladder:
 https://github.com/danbri/factoidal/issues/466
 
-| File | Content |
-|---|---|
-| `L4Factoidal/RDF/Core.lean` | RDF 1.1/1.2 terms: wf-IRI subtypes, literals incl. RDF 1.2 base direction, triple terms; the THREE literal equalities (strict/engine/value) kept distinct; strict equality proved to be identity |
-| `L4Factoidal/RDF/XmlCanon.lean` | rdf:XMLLiteral exclusive-c14n value equality (the WebOnt-miscellaneous-202 fix, ported whole) |
-| `L4Factoidal/RDF/Graph.lean` | set-semantics graphs, datasets, blank-node renaming, membership theorems |
-| `L4Factoidal/SPARQL/Algebra.lean` | solution mappings (§18.1.8), compatibility/merge (§18.3), triple patterns incl. SPARQL 1.2 triple-term patterns, BGP evaluation, §18.5 Join/LeftJoin/Union/Minus/Filter |
-| `L4Factoidal/SPARQL/Invariants.lean` | PROVED: empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity |
-| `L4Factoidal/Tests.lean` | 19 `#guard` build-time tests + `#print axioms` audit lines |
-| `Demo.lean` | runnable guided tour with a Turtle-ish printer |
-| `L4Factoidal/OWL/Tableau.lean` (+`TableauTheorems`, `TableauTests`) | OWL tableau clash calculus (unqualified-cardinality fragment) + `refuted_sound` (a refuted ABox has no model, by structural induction — the theorem the F\* SMT wall blocked); folded in 2026-08-22 from the duplicate `formal/lean/` track, [#468](https://github.com/danbri/factoidal/issues/468) |
-| `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence + assumption report |
+| Area | Files | Content |
+|---|---|---|
+| `RDF/Core.lean`, `XmlCanon.lean`, `Graph.lean` | term model, XMLLiteral c14n, graphs/datasets, bnode renaming; eqb transitivity + membership/length lemma families (harvested) |
+| `RDF/Isomorphism*.lean` | §3.6 isomorphism spec + witness-returning bounded search, soundness proved |
+| `SPARQL/Algebra.lean`, `Invariants.lean` | solution mappings, BGP eval, §18.5 operators; empty laws, merge/lookup, BGP monotonicity proved |
+| `SPARQL/Expr*.lean` | §17 expression language: EBV, scaled-decimal numerics (order proved), §17.3 logic, builtins; EXISTS/NOW/extension fns via `EvalEnv` parameters |
+| `RDFS/Vocabulary.lean`, `RdfsCore.lean`, `Closure*.lean` | rdfs-core (six-rule) derivation relation + executable closure; extensive/sound/complete-at-saturation proved |
+| `Syntax/Lexing.lean`, `NTriples.lean`, `NQuads.lean`, `Syntax*.lean` | N-Triples/N-Quads rdf11+rdf12 parse/serialise; round-trip stated |
+| `XML/*.lean` (+ `xmlconf-probe` exe) | XML 1.0 parser with 20 WFCs, namespaces; xmlconf corpus probe |
+| `JSON/*.lean` | RFC 8259 parser/serialiser; escape + literal round-trips proved |
+| `Crypto/SHA2*.lean` | SHA-256/384/512 + `HashAlgorithm` agility; size theorems proved; FIPS vectors guarded |
+| `OWL/Tableau.lean`, `TableauTheorems.lean`, `TableauTests.lean` | tableau clash calculus (unqualified-cardinality fragment) + `refuted_sound` (a refuted ABox has no model, by structural induction — the theorem the F\* SMT wall blocked); folded in 2026-08-22 from the duplicate `formal/lean/` track, [#468](https://github.com/danbri/factoidal/issues/468) |
+| `Tests.lean`, `Demo.lean` | build-time guards + `#print axioms` audit; runnable tour |
+| `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence, decisions, assumption report |
 
-Honest completeness: ~1,200 lines, 69 defs, 31 theorems — roughly 2%
-of Factoidal, but the load-bearing 2%: the full term model and the
-algebra core, cleanly separated from engine machinery. There is NO
-parser (queries are Lean AST values), no expression language (filters
-are `Binding → Bool`), no projection/ORDER BY, no Turtle. Say so when
-asked; never imply more.
+Measured 2026-08-22 after wave 1: 12942 lines, 615 top-level definitions/types, 243 theorems, 503 build-time guards; zero `sorry`/`axiom`/`native_decide`/`partial` across the tree (axiom audit: propext/Classical.choice/Quot.sound only). In flight: Turtle+TriG (branch lean4/syntax-turtle), RDFC-1.0 (lean4/rdf-canonical), Lean→wasm pipeline (lean4/wasm-export).
 
 ## Toolchain
 
@@ -154,7 +152,13 @@ executable edge only.
    copy with a clone of the main checkout's file (`cmp -s` to verify
    identical, then `cp -c main/f wt/f.tmp && mv wt/f.tmp wt/f`) —
    blocks are shared, git sees no change, agents keep working.
-7. **Integrate agent branches with MERGES, then push; never
+7. **Well-founded recursion blocks `decide`/`rfl`.** A mutually
+   recursive function group (the JSON parser's five functions)
+   compiles via well-founded recursion, so the kernel cannot unfold it
+   by evaluation and `decide`/`rfl` get stuck. Recipe: `unfold <fn>`
+   (its equation lemma) then `decide`; or keep parsers structurally
+   recursive on a fuel `Nat` where possible.
+8. **Integrate agent branches with MERGES, then push; never
    `git pull --rebase` afterwards.** A rebase replays the branch's
    commits onto origin and re-hits the same additive conflicts
    (`L4Factoidal.lean` imports, `PORT_NOTES.md` appends) the merge

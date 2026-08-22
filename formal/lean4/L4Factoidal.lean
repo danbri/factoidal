@@ -24,6 +24,11 @@ import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads
 import L4Factoidal.Syntax.SyntaxTests
 import L4Factoidal.Syntax.SyntaxTheorems
+import L4Factoidal.JSON.Value
+import L4Factoidal.JSON.Parser
+import L4Factoidal.JSON.Serialize
+import L4Factoidal.JSON.Tests
+import L4Factoidal.JSON.Theorems
 import L4Factoidal.Tests
 import L4Factoidal.SPARQL.ExprTests
 import L4Factoidal.XML.Document

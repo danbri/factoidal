@@ -293,4 +293,109 @@ theorem Literal.termEq_iff_eq (l1 l2 : Literal) :
 @[simp] theorem Triple.eqb_refl (t : Triple) : t.eqb t = true := by
   simp [Triple.eqb]
 
+/-! ## Transitivity and decomposition of the engine equality
+
+Harvested 2026-08-22 from the rdfs-core closure proofs (where they were
+first needed): `Term.eqb` is transitive, and in the positions the
+closure rules match on — subjects, predicates, objects usable as
+subjects — it collapses to propositional equality. -/
+
+theorem Subject.eqb_eq {a b : Subject} (h : Subject.eqb a b = true) : a = b := by
+  cases a <;> cases b <;> simp_all [Subject.eqb, Subtype.ext_iff]
+
+theorem langTagOptionEq_trans {a b c : Option String}
+    (h1 : langTagOptionEq a b = true) (h2 : langTagOptionEq b c = true) :
+    langTagOptionEq a c = true := by
+  cases a <;> cases b <;> cases c <;> simp_all [langTagOptionEq, langTagEq]
+
+theorem Literal.eqb_trans {a b c : Literal}
+    (h1 : Literal.eqb a b = true) (h2 : Literal.eqb b c = true) :
+    Literal.eqb a c = true := by
+  simp only [Literal.eqb, Bool.and_eq_true, beq_iff_eq] at h1 h2 ⊢
+  obtain ⟨⟨⟨hx1, hd1⟩, hl1⟩, hr1⟩ := h1
+  obtain ⟨⟨⟨hx2, hd2⟩, hl2⟩, hr2⟩ := h2
+  refine ⟨⟨⟨?_, hd1.trans hd2⟩, langTagOptionEq_trans hl1 hl2⟩, hr1.trans hr2⟩
+  by_cases hxa : a.datatype = rdfXMLLiteral
+  · have hxb : b.datatype = rdfXMLLiteral := hd1 ▸ hxa
+    have hxc : c.datatype = rdfXMLLiteral := hd2 ▸ hxb
+    rw [if_pos (by simp [hxa, hxb])] at hx1
+    rw [if_pos (by simp [hxb, hxc])] at hx2
+    rw [if_pos (by simp [hxa, hxc])]
+    simp only [XmlCanon.xmlCanonEq, beq_iff_eq] at hx1 hx2 ⊢
+    exact hx1.trans hx2
+  · have hxb : ¬ b.datatype = rdfXMLLiteral := fun hb => hxa (hd1.trans hb)
+    rw [if_neg (by simp [hxa])] at hx1
+    rw [if_neg (by simp [hxb])] at hx2
+    rw [if_neg (by simp [hxa])]
+    simp only [beq_iff_eq] at hx1 hx2 ⊢
+    exact hx1.trans hx2
+
+theorem Term.eqb_trans : ∀ {a b c : Term},
+    Term.eqb a b = true → Term.eqb b c = true → Term.eqb a c = true := by
+  intro a
+  induction a with
+  | iri i =>
+    intro b c h1 h2
+    cases b <;> cases c <;> simp_all [Term.eqb]
+  | bnode x =>
+    intro b c h1 h2
+    cases b <;> cases c <;> simp_all [Term.eqb]
+  | literal l =>
+    intro b c h1 h2
+    cases b <;> cases c <;> simp only [Term.eqb] at h1 h2 ⊢ <;>
+      first
+        | exact Literal.eqb_trans h1 h2
+        | simp at h1
+        | simp at h2
+  | tripleTerm s p o ih =>
+    intro b c h1 h2
+    cases b <;> cases c <;>
+      simp only [Term.eqb, Bool.and_eq_true, beq_iff_eq] at h1 h2 ⊢ <;>
+      first
+        | (obtain ⟨⟨hs1, hp1⟩, ho1⟩ := h1
+           obtain ⟨⟨hs2, hp2⟩, ho2⟩ := h2
+           refine ⟨⟨?_, hp1.trans hp2⟩, ih ho1 ho2⟩
+           rw [Subject.eqb_eq hs1, Subject.eqb_eq hs2]
+           exact Subject.eqb_refl _)
+        | simp at h1
+        | simp at h2
+
+theorem Triple.eqb_trans {a b c : Triple}
+    (h1 : Triple.eqb a b = true) (h2 : Triple.eqb b c = true) :
+    Triple.eqb a c = true := by
+  simp only [Triple.eqb, Bool.and_eq_true, beq_iff_eq] at h1 h2 ⊢
+  obtain ⟨⟨hs1, hp1⟩, ho1⟩ := h1
+  obtain ⟨⟨hs2, hp2⟩, ho2⟩ := h2
+  refine ⟨⟨?_, hp1.trans hp2⟩, Term.eqb_trans ho1 ho2⟩
+  rw [Subject.eqb_eq hs1, Subject.eqb_eq hs2]
+  exact Subject.eqb_refl _
+
+/-- Decomposition of a triple eqb-match: subject and predicate match
+EXACTLY; only the object can differ, and only inside literals. -/
+theorem Triple.eqb_parts {u t : Triple} (h : Triple.eqb u t = true) :
+    u.s = t.s ∧ u.p = t.p ∧ Term.eqb u.o t.o = true := by
+  simp only [Triple.eqb, Bool.and_eq_true, beq_iff_eq] at h
+  obtain ⟨⟨hs, hp⟩, ho⟩ := h
+  exact ⟨Subject.eqb_eq hs, hp, ho⟩
+
+theorem Triple.eqb_of_parts {u t : Triple} (hs : u.s = t.s) (hp : u.p = t.p)
+    (ho : Term.eqb u.o t.o = true) : Triple.eqb u t = true := by
+  simp [Triple.eqb, hs, hp, ho]
+
+/-- In the term position the rules match an IRI on, eqb IS equality. -/
+theorem Term.eqb_iri {a : Term} {i : WfIri}
+    (h : Term.eqb a (Term.iri i) = true) : a = Term.iri i := by
+  cases a <;> simp_all [Term.eqb, Subtype.ext_iff]
+
+/-- ... and likewise for an object read as a subject (an IRI or a blank
+node — never a literal, so never fuzzy). -/
+theorem Term.eqb_eq_of_toSubject {a b : Term} {x : Subject}
+    (h : Term.eqb a b = true) (hs : b.toSubject? = some x) : a = b := by
+  cases b <;> simp only [Term.toSubject?] at hs <;>
+    first
+      | exact Term.eqb_iri h
+      | (cases a <;> simp_all [Term.eqb])
+      | simp at hs
+
+
 end L4Factoidal.RDF
