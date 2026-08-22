@@ -14,7 +14,7 @@ OWL RL.
 
 ## Design: one row body, two premise stores
 
-Each of the 47 row functions is written ONCE here, over an abstract
+Each of the 61 row functions is written ONCE here, over an abstract
 `Store` — a record holding the graph list and the six premise lookups
 (`withPred`, `withSubj`, `withObj`, `withSubjPred`, `withPredObj`,
 `memB`). Two stores exist:
@@ -22,7 +22,7 @@ Each of the 47 row functions is written ONCE here, over an abstract
 * `Store.ofGraph g` packs `RLClosure`'s list scans. Every row applied
   to it is DEFINITIONALLY the `RLClosure` row (`eqRepSForS_ofGraph :
   eqRepSForS (Store.ofGraph g) d = eqRepSFor g d := rfl`, and so on
-  for all 47 rows and the 13 clash rows). The per-row soundness
+  for all 61 rows and the 13 clash rows). The per-row soundness
   lemmas of `RLTheorems.lean` therefore apply unchanged.
 * `Store.ofIndex i` packs the hash-index lookups of an `Index`.
 
@@ -58,7 +58,7 @@ round's input, `E` = conclusions emitted before deduplication):
   `HashMap.getD` + `insert` with a list cons — O(1).
 * a bucket lookup: O(1) + O(result) for the reversal.
 * `memB`: O(1).
-* one round: 47 guard checks per input triple (string equalities on
+* one round: 61 guard checks per input triple (string equalities on
   the predicate) + the joins, each proportional to its own output,
   + O(E) deduplication — O(n + E) instead of the list engine's
   O(n · E · n)-ish (each join a scan, each dedup a scan).
@@ -532,6 +532,123 @@ def scmUniForS (s : Store) (d : Triple) : List Triple :=
       (asSubject ci).map (fun cis => ⟨cis, rdfsSubClassOf, d.s.toTerm⟩))
   else []
 
+/-! ### The `[ext]` rows, over a store -/
+
+def eqDiffSymForS (_s : Store) (d : Triple) : List Triple :=
+  if d.p == owlDifferentFrom then
+    (asSubject d.o).map (fun ys => ⟨ys, owlDifferentFrom, d.s.toTerm⟩)
+  else []
+
+def pdwToDiffForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlPropertyDisjointWith then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        (s.withPred p1).flatMap (fun t1 =>
+          (asSubject t1.o).flatMap (fun o1s =>
+            (s.withSubjPred t1.s p2).flatMap (fun t2 =>
+              if o1s.toTerm == t2.o then []
+              else [⟨o1s, owlDifferentFrom, t2.o⟩])))))
+  else []
+
+def caxDwToDiffForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlDisjointWith then
+    (subjIri d.s).flatMap (fun c1 =>
+      (asIri d.o).flatMap (fun c2 =>
+        (s.withPredObj rdfType (Term.iri c1)).flatMap (fun tx =>
+          (s.withPredObj rdfType (Term.iri c2)).flatMap (fun ty =>
+            if tx.s == ty.s then [] else [⟨tx.s, owlDifferentFrom, ty.s.toTerm⟩]))))
+  else []
+
+def fpDiffToDiffForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlDifferentFrom then
+    (s.withObj d.s.toTerm).flatMap (fun t1 =>
+      if s.memB ⟨Subject.iri t1.p, rdfType, Term.iri owlFunctionalProperty⟩ then
+        (s.withPredObj t1.p d.o).flatMap (fun t2 =>
+          if t1.s == t2.s then [] else [⟨t1.s, owlDifferentFrom, t2.s.toTerm⟩])
+      else [])
+  else []
+
+def ifpDiffToDiffForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlDifferentFrom then
+    (s.withSubj d.s).flatMap (fun t1 =>
+      if s.memB ⟨Subject.iri t1.p, rdfType,
+          Term.iri owlInverseFunctionalProperty⟩ then
+        (asSubject t1.o).flatMap (fun y1s =>
+          (asSubject d.o).flatMap (fun x2s =>
+            (s.withSubjPred x2s t1.p).flatMap (fun t2 =>
+              if y1s.toTerm == t2.o then []
+              else [⟨y1s, owlDifferentFrom, t2.o⟩])))
+      else [])
+  else []
+
+def chainToTransForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlPropertyChainAxiom then
+    (subjIri d.s).flatMap (fun p =>
+      (listSeqsS s d.o (listFuel s.graph)).flatMap (fun terms =>
+        if terms == [Term.iri p, Term.iri p]
+        then [⟨Subject.iri p, rdfType, Term.iri owlTransitiveProperty⟩]
+        else []))
+  else []
+
+def prpRflForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlReflexiveProperty then
+    (subjIri d.s).flatMap (fun p =>
+      (iriIndividuals s.graph).map (fun i => ⟨Subject.iri i, p, Term.iri i⟩))
+  else []
+
+def xsdAxiomsForS (_s : Store) (d : Triple) : List Triple :=
+  if drivesXsdAxioms d then xsdAxiomTriples else []
+
+def dtRangeIntersectForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == rdfsRange then
+    (asIri d.o).flatMap (fun d1 =>
+      (s.withSubjPred d.s rdfsRange).flatMap (fun t2 =>
+        (asIri t2.o).flatMap (fun d2 =>
+          xsdRangeIntersections.flatMap (fun e =>
+            if (e.1 == d1 && e.2.1 == d2) || (e.1 == d2 && e.2.1 == d1)
+            then e.2.2.map (fun d3 => ⟨d.s, rdfsRange, Term.iri d3⟩)
+            else []))))
+  else []
+
+def caxDwToComplementForS (_s : Store) (d : Triple) : List Triple :=
+  if d.p == owlDisjointWith then
+    (subjIri d.s).flatMap (fun c1 =>
+      (asIri d.o).flatMap (fun c2 => complementWitnessTriples c1 c2))
+  else []
+
+def clsMaxqc1ToComplementForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlMaxQualifiedCardinality && d.o == Term.literal litNni1 then
+    (s.withSubjPred d.s owlOnProperty).flatMap (fun onp =>
+      (asIri onp.o).flatMap (fun p =>
+        (s.withSubjPred d.s owlOnClass).flatMap (fun onc =>
+          (asIri onc.o).flatMap (fun c =>
+            (s.withPredObj rdfType d.s.toTerm).flatMap (fun tu =>
+              (s.withSubjPred tu.s p).flatMap (fun u1 =>
+                (asSubject u1.o).flatMap (fun y1s =>
+                  if s.memB ⟨y1s, rdfType, Term.iri c⟩ then
+                    (s.withSubjPred y1s owlDifferentFrom).flatMap (fun df =>
+                      (asSubject df.o).flatMap (fun y2s =>
+                        if s.memB ⟨tu.s, p, y2s.toTerm⟩
+                        then complementTypeTriples y2s c else []))
+                  else [])))))))
+  else []
+
+def minCard1ComprehensionForS (_s : Store) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlObjectProperty then
+    (subjIri d.s).flatMap minCard1WitnessTriples
+  else []
+
+def caxAdcToDwForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlAllDisjointClasses then
+    (s.withSubjPred d.s owlMembers).flatMap (fun mem =>
+      (listElemsS s mem.o (listFuel s.graph)).flatMap (fun ci =>
+        (asIri ci).flatMap (fun ci' =>
+          (listElemsS s mem.o (listFuel s.graph)).flatMap (fun cj =>
+            (asIri cj).flatMap (fun cj' =>
+              if ci' == cj' then []
+              else [⟨Subject.iri ci', owlDisjointWith, Term.iri cj'⟩])))))
+  else []
+
 /-! ## Section 5 — one round and the loop, over the index -/
 
 def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
@@ -549,7 +666,13 @@ def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
       scmClsForS s d, scmScoForS s d, scmEqc1ForS s d, scmEqc2ForS s d,
       scmSpoForS s d, scmEqp1ForS s d, scmEqp2ForS s d,
       scmDom1ForS s d, scmDom2ForS s d, scmRng1ForS s d, scmRng2ForS s d,
-      scmIntForS s d, scmUniForS s d ]
+      scmIntForS s d, scmUniForS s d,
+      eqDiffSymForS s d, pdwToDiffForS s d, caxDwToDiffForS s d,
+      fpDiffToDiffForS s d, ifpDiffToDiffForS s d,
+      chainToTransForS s d, prpRflForS s d,
+      xsdAxiomsForS s d, dtRangeIntersectForS s d,
+      caxDwToComplementForS s d, clsMaxqc1ToComplementForS s d,
+      minCard1ComprehensionForS s d, caxAdcToDwForS s d ]
 
 def conclusionsFromS (s : Store) (d : Triple) : List Triple :=
   (conclusionsListS s d).flatten
@@ -806,6 +929,44 @@ theorem scmUniForS_ofGraph (g : Graph) : scmUniForS (Store.ofGraph g) = scmUniFo
   rw [listElemsS_ofGraph]
   rfl
 
+-- The `[ext]` rows. Only the two that call a recursive walker
+-- (`chainToTrans` through `listSeqsS`) or read `s.graph` through a
+-- helper (`prpRfl` through `iriIndividuals`) need more than `rfl`.
+theorem eqDiffSymForS_ofGraph (g : Graph) :
+    eqDiffSymForS (Store.ofGraph g) = eqDiffSymFor g := rfl
+theorem pdwToDiffForS_ofGraph (g : Graph) :
+    pdwToDiffForS (Store.ofGraph g) = pdwToDiffFor g := rfl
+theorem caxDwToDiffForS_ofGraph (g : Graph) :
+    caxDwToDiffForS (Store.ofGraph g) = caxDwToDiffFor g := rfl
+theorem fpDiffToDiffForS_ofGraph (g : Graph) :
+    fpDiffToDiffForS (Store.ofGraph g) = fpDiffToDiffFor g := rfl
+theorem ifpDiffToDiffForS_ofGraph (g : Graph) :
+    ifpDiffToDiffForS (Store.ofGraph g) = ifpDiffToDiffFor g := rfl
+theorem chainToTransForS_ofGraph (g : Graph) :
+    chainToTransForS (Store.ofGraph g) = chainToTransFor g := by
+  funext d
+  unfold chainToTransForS chainToTransFor
+  rw [listSeqsS_ofGraph]
+  rfl
+theorem prpRflForS_ofGraph (g : Graph) :
+    prpRflForS (Store.ofGraph g) = prpRflFor g := rfl
+theorem xsdAxiomsForS_ofGraph (g : Graph) :
+    xsdAxiomsForS (Store.ofGraph g) = xsdAxiomsFor g := rfl
+theorem dtRangeIntersectForS_ofGraph (g : Graph) :
+    dtRangeIntersectForS (Store.ofGraph g) = dtRangeIntersectFor g := rfl
+theorem caxDwToComplementForS_ofGraph (g : Graph) :
+    caxDwToComplementForS (Store.ofGraph g) = caxDwToComplementFor g := rfl
+theorem clsMaxqc1ToComplementForS_ofGraph (g : Graph) :
+    clsMaxqc1ToComplementForS (Store.ofGraph g) = clsMaxqc1ToComplementFor g := rfl
+theorem minCard1ComprehensionForS_ofGraph (g : Graph) :
+    minCard1ComprehensionForS (Store.ofGraph g) = minCard1ComprehensionFor g := rfl
+theorem caxAdcToDwForS_ofGraph (g : Graph) :
+    caxAdcToDwForS (Store.ofGraph g) = caxAdcToDwFor g := by
+  funext d
+  unfold caxAdcToDwForS caxAdcToDwFor
+  rw [listElemsS_ofGraph]
+  rfl
+
 /-- A round's conclusion list over the list-scan store is
 `RLClosure.conclusionsFrom`. -/
 theorem conclusionsFromS_ofGraph (g : Graph) :
@@ -826,7 +987,13 @@ theorem conclusionsFromS_ofGraph (g : Graph) :
     scmClsForS_ofGraph, scmScoForS_ofGraph, scmEqc1ForS_ofGraph, scmEqc2ForS_ofGraph,
     scmSpoForS_ofGraph, scmEqp1ForS_ofGraph, scmEqp2ForS_ofGraph,
     scmDom1ForS_ofGraph, scmDom2ForS_ofGraph, scmRng1ForS_ofGraph, scmRng2ForS_ofGraph,
-    scmIntForS_ofGraph, scmUniForS_ofGraph]
+    scmIntForS_ofGraph, scmUniForS_ofGraph,
+    eqDiffSymForS_ofGraph, pdwToDiffForS_ofGraph, caxDwToDiffForS_ofGraph,
+    fpDiffToDiffForS_ofGraph, ifpDiffToDiffForS_ofGraph,
+    chainToTransForS_ofGraph, prpRflForS_ofGraph,
+    xsdAxiomsForS_ofGraph, dtRangeIntersectForS_ofGraph,
+    caxDwToComplementForS_ofGraph, clsMaxqc1ToComplementForS_ofGraph,
+    minCard1ComprehensionForS_ofGraph, caxAdcToDwForS_ofGraph]
 
 theorem stepConclusionsS_ofGraph (g : Graph) :
     stepConclusionsS (Store.ofGraph g) = stepConclusions g := by

@@ -22,20 +22,23 @@ Port of the extractable part of `formal/fstar/OWL.Closure.fsti`: the
   layering: it names those rows directly, under the OWL table ids the
   Recommendation gives them.
 
-* `[ext]` — a sound EXTENSION with no table row (the comprehension-
-  witness layer, the differentFrom-synthesis family, the chain and
-  transitivity bridges, `cls_hasself*`, and the `#236`
-  `cls_maxqc_comp` anchor machinery whose narrowness CLAUDE.md
-  records). **NOT ported.** Their justification lives in each F*
-  rule's own banner, not in the Recommendation, so porting them would
-  import claims this file cannot cite a row for.
+* `[ext]` — a sound EXTENSION with no table row. **Fourteen of them
+  are ported**, in the `[ext]` block of Section 5: the
+  differentFrom-synthesis family, the chain and reflexivity bridges,
+  Table 7's datatype rows over the XSD map, and four
+  comprehension-witness rows. Each cites the OWL 2 RDF-Based Semantics
+  condition it rests on in `RLRules.lean` instead of a table id. NOT
+  ported: `cls_hasself*`, `svf2_existential_witness`, the `#236`
+  `cls_maxqc_comp` anchor machinery, and any witness needing a skolem
+  LIST rather than a single skolem node.
 
 * `[axm]` — materialises an axiomatic-triple table (`xsd_datatype_axioms`,
   `builtin_vocabulary_axioms`, the owl:Thing/owl:Nothing group).
-  **Partly ported**: cls-thing and cls-nothing1, the two premise-free
-  Table 5 rows, are here as `axiomTriples`. The XSD datatype axioms are
-  not — they instantiate Table 7's dt-type1 over a fixed datatype map,
-  and this port fixes no datatype map (see `RLRules.lean`).
+  **Ported**: cls-thing and cls-nothing1 plus the two premise-free
+  `rdfs:Datatype` typings are `axiomTriples`; the XSD numeric tower is
+  the guarded `xsdAxiomsFor` row. `RDF/Datatypes.lean` supplies the
+  datatype map, and `RLRules.lean` records which value-space facts are
+  discharged against it and which are carried as an assumption.
 
 * `[mode]` — fires only under a catalog semantics mode
   (`named_equivClass_to_sameAs_mode`, the RDF-Based full meta axioms).
@@ -225,10 +228,12 @@ def chainTargets (g : Graph) : Subject → List WfIri → List Term
 Table 5's cls-thing and cls-nothing1 have no premises, so they are not
 driven by any triple. -/
 
-/-- **cls-thing** and **cls-nothing1**. -/
+/-- **cls-thing** and **cls-nothing1**, plus the two premise-free
+`rdfs:Datatype` typings of the `dtType1Builtin` `[ext]` row. -/
 def axiomTriples : List Triple :=
   [⟨Subject.iri owlThing, rdfType, Term.iri owlClass⟩,
-   ⟨Subject.iri owlNothing, rdfType, Term.iri owlClass⟩]
+   ⟨Subject.iri owlNothing, rdfType, Term.iri owlClass⟩] ++
+  builtinDatatypeAxioms
 
 /-! ## Section 5 — one function per row
 
@@ -620,6 +625,157 @@ def scmUniFor (g : Graph) (d : Triple) : List Triple :=
       (asSubject ci).map (fun cis => ⟨cis, rdfsSubClassOf, d.s.toTerm⟩))
   else []
 
+-- ---------------------------------------------------------------
+-- `[ext]` — the sound extensions, no table row
+--
+-- Driving-premise choice matters for COST here, not just for style.
+-- The two contrapositive rows (prp-fp-diff, prp-ifp-diff) are driven
+-- by the `owl:differentFrom` triple rather than by the property
+-- declaration: driving from the declaration would pair every
+-- `p`-triple with every other `p`-triple (quadratic in the property's
+-- extension), while driving from the inequality pairs only the
+-- triples that MENTION the two named individuals — one bucket read
+-- each in `RLClosureIndexed`.
+-- ---------------------------------------------------------------
+
+/-- **eq-diff-sym** `[ext]`. -/
+def eqDiffSymFor (_g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlDifferentFrom then
+    (asSubject d.o).map (fun ys => ⟨ys, owlDifferentFrom, d.s.toTerm⟩)
+  else []
+
+/-- **prp-pdw-diff** `[ext]`, driven by the disjointness declaration. -/
+def pdwToDiffFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlPropertyDisjointWith then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        (withPred g p1).flatMap (fun t1 =>
+          (asSubject t1.o).flatMap (fun o1s =>
+            (withSubjPred g t1.s p2).flatMap (fun t2 =>
+              if o1s.toTerm == t2.o then []
+              else [⟨o1s, owlDifferentFrom, t2.o⟩])))))
+  else []
+
+/-- **cax-dw-diff** `[ext]`, driven by the disjointness declaration. -/
+def caxDwToDiffFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlDisjointWith then
+    (subjIri d.s).flatMap (fun c1 =>
+      (asIri d.o).flatMap (fun c2 =>
+        (withPredObj g rdfType (Term.iri c1)).flatMap (fun tx =>
+          (withPredObj g rdfType (Term.iri c2)).flatMap (fun ty =>
+            if tx.s == ty.s then [] else [⟨tx.s, owlDifferentFrom, ty.s.toTerm⟩]))))
+  else []
+
+/-- **prp-fp-diff** `[ext]`, driven by the `owl:differentFrom` triple:
+`d` is `(x1 owl:differentFrom x2)`, and the row looks for a functional
+property leading INTO each of them. -/
+def fpDiffToDiffFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlDifferentFrom then
+    (withObj g d.s.toTerm).flatMap (fun t1 =>
+      if memB g ⟨Subject.iri t1.p, rdfType, Term.iri owlFunctionalProperty⟩ then
+        (withPredObj g t1.p d.o).flatMap (fun t2 =>
+          if t1.s == t2.s then [] else [⟨t1.s, owlDifferentFrom, t2.s.toTerm⟩])
+      else [])
+  else []
+
+/-- **prp-ifp-diff** `[ext]`, driven by the `owl:differentFrom` triple:
+`d` is `(x1 owl:differentFrom x2)`, and the row looks for an
+inverse-functional property leading OUT of each of them. -/
+def ifpDiffToDiffFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlDifferentFrom then
+    (withSubj g d.s).flatMap (fun t1 =>
+      if memB g ⟨Subject.iri t1.p, rdfType,
+          Term.iri owlInverseFunctionalProperty⟩ then
+        (asSubject t1.o).flatMap (fun y1s =>
+          (asSubject d.o).flatMap (fun x2s =>
+            (withSubjPred g x2s t1.p).flatMap (fun t2 =>
+              if y1s.toTerm == t2.o then []
+              else [⟨y1s, owlDifferentFrom, t2.o⟩])))
+      else [])
+  else []
+
+/-- **scm-trans-from-chain** `[ext]`. -/
+def chainToTransFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlPropertyChainAxiom then
+    (subjIri d.s).flatMap (fun p =>
+      (listSeqs g d.o (listFuel g)).flatMap (fun terms =>
+        if terms == [Term.iri p, Term.iri p]
+        then [⟨Subject.iri p, rdfType, Term.iri owlTransitiveProperty⟩]
+        else []))
+  else []
+
+/-- **prp-rfl** `[ext]`, driven by the reflexive-property declaration.
+Emits one triple per IRI of the graph, which is why the guard on the
+declaration comes first — a graph with no `owl:ReflexiveProperty`
+never walks the individual list at all. -/
+def prpRflFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlReflexiveProperty then
+    (subjIri d.s).flatMap (fun p =>
+      (iriIndividuals g).map (fun i => ⟨Subject.iri i, p, Term.iri i⟩))
+  else []
+
+/-- **xsd-axioms** `[ext]`, driven by any triple mentioning an XSD IRI. -/
+def xsdAxiomsFor (_g : Graph) (d : Triple) : List Triple :=
+  if drivesXsdAxioms d then xsdAxiomTriples else []
+
+/-- **dt-rng-intersect** `[ext]`, driven by one of the two range
+axioms. -/
+def dtRangeIntersectFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == rdfsRange then
+    (asIri d.o).flatMap (fun d1 =>
+      (withSubjPred g d.s rdfsRange).flatMap (fun t2 =>
+        (asIri t2.o).flatMap (fun d2 =>
+          xsdRangeIntersections.flatMap (fun e =>
+            if (e.1 == d1 && e.2.1 == d2) || (e.1 == d2 && e.2.1 == d1)
+            then e.2.2.map (fun d3 => ⟨d.s, rdfsRange, Term.iri d3⟩)
+            else []))))
+  else []
+
+/-- **cax-dw-comp** `[ext]`, driven by the disjointness declaration. -/
+def caxDwToComplementFor (_g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlDisjointWith then
+    (subjIri d.s).flatMap (fun c1 =>
+      (asIri d.o).flatMap (fun c2 => complementWitnessTriples c1 c2))
+  else []
+
+/-- **cls-maxqc1-comp** `[ext]`, driven by the cardinality
+restriction. -/
+def clsMaxqc1ToComplementFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlMaxQualifiedCardinality && d.o == Term.literal litNni1 then
+    (withSubjPred g d.s owlOnProperty).flatMap (fun onp =>
+      (asIri onp.o).flatMap (fun p =>
+        (withSubjPred g d.s owlOnClass).flatMap (fun onc =>
+          (asIri onc.o).flatMap (fun c =>
+            (withPredObj g rdfType d.s.toTerm).flatMap (fun tu =>
+              (withSubjPred g tu.s p).flatMap (fun u1 =>
+                (asSubject u1.o).flatMap (fun y1s =>
+                  if memB g ⟨y1s, rdfType, Term.iri c⟩ then
+                    (withSubjPred g y1s owlDifferentFrom).flatMap (fun df =>
+                      (asSubject df.o).flatMap (fun y2s =>
+                        if memB g ⟨tu.s, p, y2s.toTerm⟩
+                        then complementTypeTriples y2s c else []))
+                  else [])))))))
+  else []
+
+/-- **minc1-comp** `[ext]`, driven by the object-property
+declaration. -/
+def minCard1ComprehensionFor (_g : Graph) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlObjectProperty then
+    (subjIri d.s).flatMap minCard1WitnessTriples
+  else []
+
+/-- **cax-adc-dw** `[ext]`, driven by the AllDisjointClasses typing. -/
+def caxAdcToDwFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlAllDisjointClasses then
+    (withSubjPred g d.s owlMembers).flatMap (fun mem =>
+      (listElems g mem.o (listFuel g)).flatMap (fun ci =>
+        (asIri ci).flatMap (fun ci' =>
+          (listElems g mem.o (listFuel g)).flatMap (fun cj =>
+            (asIri cj).flatMap (fun cj' =>
+              if ci' == cj' then []
+              else [⟨Subject.iri ci', owlDisjointWith, Term.iri cj'⟩])))))
+  else []
+
 /-! ## Section 6 — one round
 
 `conclusionsFrom` is written as `List.flatten` of a literal list of
@@ -644,7 +800,13 @@ def conclusionsList (g : Graph) (d : Triple) : List (List Triple) :=
       scmClsFor g d, scmScoFor g d, scmEqc1For g d, scmEqc2For g d,
       scmSpoFor g d, scmEqp1For g d, scmEqp2For g d,
       scmDom1For g d, scmDom2For g d, scmRng1For g d, scmRng2For g d,
-      scmIntFor g d, scmUniFor g d ]
+      scmIntFor g d, scmUniFor g d,
+      eqDiffSymFor g d, pdwToDiffFor g d, caxDwToDiffFor g d,
+      fpDiffToDiffFor g d, ifpDiffToDiffFor g d,
+      chainToTransFor g d, prpRflFor g d,
+      xsdAxiomsFor g d, dtRangeIntersectFor g d,
+      caxDwToComplementFor g d, clsMaxqc1ToComplementFor g d,
+      minCard1ComprehensionFor g d, caxAdcToDwFor g d ]
 
 /-- The flattening of `conclusionsList`. -/
 def conclusionsFrom (g : Graph) (d : Triple) : List Triple :=
