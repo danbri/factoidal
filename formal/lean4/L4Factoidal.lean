@@ -6,4 +6,9 @@ import L4Factoidal.RDF.Core
 import L4Factoidal.RDF.Graph
 import L4Factoidal.SPARQL.Algebra
 import L4Factoidal.SPARQL.Invariants
+import L4Factoidal.JSON.Value
+import L4Factoidal.JSON.Parser
+import L4Factoidal.JSON.Serialize
+import L4Factoidal.JSON.Tests
+import L4Factoidal.JSON.Theorems
 import L4Factoidal.Tests
