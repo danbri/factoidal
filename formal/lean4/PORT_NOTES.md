@@ -4582,3 +4582,38 @@ stronger tripwire here, which is the argument for keeping both.
 
 What is NOT ported: JSON-LD Framing (`JSONLD.Frame.fst`) — a separate
 specification with a separate suite, and no manifest above needs it.
+### CSVW: a REAL csv2rdf conformance runner, and what it measured
+(2026-08-22)
+
+`Harness/CsvwRdfRun.lean` runs the whole pipeline — Lean CSVW reader →
+conversion → emit — and compares against the suite's OWN expected
+`.ttl`, parsed by the Lean Turtle parser and compared by GRAPH
+ISOMORPHISM. That comparison is what makes it conformance rather than
+a probe. Isomorphism rather than triple-set equality because csv2rdf
+mints blank nodes whose labels are arbitrary; comparing labels would
+fail correct output.
+
+📊 FIRST MEASURED RESULT: **0 pass, 7 fail, 2 skip** out of the 9
+no-metadata manifest entries. 261 of 270 entries carry metadata
+(an `implicit` member) and are not attempted — reported, not hidden.
+
+DIAGNOSIS, from the numbers themselves: every failure produced roughly
+a THIRD of the expected triples, and the expected `.ttl` files open
+with `a csvw:TableGroup ; csvw:table [ a csvw:Table ; csvw:row [ a
+csvw:Row ; csvw:describes [...`. The suite's no-metadata tests expect
+STANDARD mode — the full TableGroup/Table/Row scaffolding — while the
+runner's conversion path emits MINIMAL mode. `Emit.lean` has
+`rowTriplesStandard`, but it produces per-row description only; the
+group and table nodes above it are not built yet.
+
+So the gap is NAMED and SIZED rather than guessed at: standard-mode
+table and group assembly, roughly a third to two-thirds of each
+expected graph. That is the next increment, and it is a much more
+useful thing to know than "the port exists".
+
+METHOD NOTE, paid for here: the first version of this runner paired
+files by BASENAME and treated `test001.json` as input metadata. It is
+not — it is the expected JSON OUTPUT of the csv2json suite. Pairing
+must come from the manifest's own `action`/`result`, which is why the
+runner now parses `manifest-rdf.jsonld` instead of guessing from
+filenames.

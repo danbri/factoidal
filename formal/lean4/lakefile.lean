@@ -141,6 +141,11 @@ extern_lib libl4hacl pkg := do
 -- conversion matches the suite's expected .ttl.
 @[default_target] lean_exe «l4csvw-probe» where root := `Harness.CsvwProbe
 
+-- A REAL csv2rdf conformance runner: full pipeline, compared against
+-- the suite's expected .ttl by graph isomorphism. Restricted to the
+-- no-metadata subset; every skip is reported with its reason.
+@[default_target] lean_exe «l4csvw-rdf» where root := `Harness.CsvwRdfRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.
