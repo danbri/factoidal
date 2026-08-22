@@ -512,3 +512,73 @@ PositiveSyntaxTest11, NegativeSyntaxTest11) passes; the 275 are the
 UPDATE, Protocol, Graph Store, Service Description and entailment-regime
 types, still named and counted. The F\* runner's line for the same
 631 is 631 pass, 0 fail. The six RDF suites stay at 1078 of 1078.
+
+## Status 2026-08-22 — SPARQL 1.1 Update (branch `lean4/sparql-update`)
+
+The three UPDATE test types run. `SPARQL/Update.lean` is the port of
+`SPARQL11.Algebra.fst` Parts 6b and 19b–19e (AST, INSERT DATA, DELETE
+DATA, DELETE WHERE, DELETE/INSERT with WITH / USING / USING NAMED,
+CREATE / CLEAR / DROP / COPY / MOVE / ADD, LOAD SILENT);
+`SPARQL/UpdateParser.lean` is grammar [29]–[52] over the existing
+tokenizer, reusing the query parser's triples-block, group-graph-
+pattern and prologue productions; `Harness/Manifest.lean` reads the
+`ut:` vocabulary (`ut:request`, `ut:data`, `ut:graphData` with
+`ut:graph` + `rdfs:label`, on the action and on `mf:result`);
+`Harness/Run.lean` gained `runUpdateEvaluation` / `runUpdateSyntaxTest`
+in one block. Two semantic choices differ from the F\* and are
+recorded in `PORT_NOTES.md` (this stage's "Decisions"): the semantics
+returns `Except UpdateError Dataset` and raises the §3.2 errors that
+`SILENT` suppresses (the F\* ignores `SILENT`), and fresh blank-node
+labels are longer than every label in the store rather than salted by
+triple count.
+
+Verbatim, `lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`:
+
+```
+add: 8 pass, 0 fail, 0 skip, 0 unsupported (out of 8)
+basic-update: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+clear: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+copy: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete-data: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete-insert: 17 pass, 0 fail, 0 skip, 0 unsupported (out of 17)
+delete-where: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
+drop: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+move: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+syntax-update-1: 54 pass, 0 fail, 0 skip, 0 unsupported (out of 54)
+syntax-update-2: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)
+update-silent: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+TOTAL: 505 pass, 0 fail, 0 skip, 126 unsupported (out of 631)
+```
+
+From the baseline `TOTAL: 356 pass, 0 fail, 0 skip, 275 unsupported
+(out of 631)` the 149 UPDATE entries (94 UpdateEvaluationTest, 42
+PositiveUpdateSyntaxTest11, 13 NegativeUpdateSyntaxTest11) all moved to
+pass; no FAIL, no SKIP (the suites hold no non-SILENT LOAD, which
+would skip with "non-silent LOAD not yet implemented (no HTTP fetch)"
+as in the F\* runner). The 126 still `unsupported` are the Protocol,
+Graph Store, Service Description and entailment-regime types. The
+query-type entries are unchanged at 356 pass, 0 fail. The six RDF
+suites: `TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of
+1078)`.
+
+Comparison note: the expected and actual stores are compared by
+`Dataset.isomorphicOutcome` after dropping empty named-graph slots on
+both sides — the F\* runner canonicalises to N-Quads, which has no
+representation for an empty graph, while the Lean isomorphism matches
+graph names; without the drop, `CLEAR GRAPH` / `CREATE GRAPH` tests
+would fail here and pass there on an artefact of the comparison.
+
+Sabotage check (2026-08-22): with the DELETE and INSERT steps of
+`applyModify` swapped (insert first, then delete), `lake build` fails
+at `UpdateTests.lean:110` (`DELETE { :s :p :o } INSERT { :s :p :o }
+WHERE {}` must leave the triple in place). The W3C run, however, is
+UNCHANGED at 505 pass, 0 fail: the only combined DELETE/INSERT
+operation in the suites is `delete-insert-01`
+(`DELETE { ?a foaf:knows ?b } INSERT { ?b foaf:knows ?a }`), and its
+data `delete-insert-pre-01.ttl` holds no symmetric `foaf:knows` pair,
+so both orders give the same store; `delete-insert-01b` / `01c`
+sequence the two operations explicitly. The §3.1.3 ordering is pinned
+by the guard, not by the corpus — a gap in the W3C suite worth
+knowing. Restored (file checked out from the branch), build green
+again.
