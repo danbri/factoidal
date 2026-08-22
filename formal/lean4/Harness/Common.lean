@@ -193,14 +193,23 @@ def fixtureBase (assumedBase : Option String) (manifestDir filePath : String) : 
 
 /-- The suite name a score line carries: the manifest's parent
 directory, which is how the F* runner's dashboard names these suites
-(`rdf-turtle`, `rdf-trig`, …). The rdf-canon manifest sits in a
-directory literally called `tests`, which names nothing, so that case
-falls back to the grandparent (`rdf-canon`). -/
+(`rdf-turtle`, `rdf-trig`, …). Two directory names name nothing on
+their own and take the grandparent as well:
+
+  * `tests` — the rdf-canon manifest sits in a directory literally
+    called that, so the label falls back to `rdf-canon`;
+  * `syntax` / `eval` / `c14n` — every rdf12 leaf manifest sits under
+    one of these, so the label is `<format>/<leaf>`
+    (`rdf-turtle/syntax`, `rdf-n-quads/c14n`), exactly the names
+    `bin/w3c-runner/w3c_runner.ml`'s `--rdf12` mode prints. -/
 def suiteLabel (manifestPath : String) : String :=
   let d := basename (dirname manifestPath)
   if d == "tests" || d == "." || d.isEmpty then
     let up := basename (dirname (dirname manifestPath))
     if up.isEmpty || up == "." then d else up
+  else if d == "syntax" || d == "eval" || d == "c14n" then
+    let up := basename (dirname (dirname manifestPath))
+    if up.isEmpty || up == "." then d else up ++ "/" ++ d
   else d
 
 /-- Drop trailing CR/LF so a missing or extra final newline is not a

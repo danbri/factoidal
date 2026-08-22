@@ -247,4 +247,34 @@ def Dataset.toNQuads (ds : Dataset) (mode : Mode := .rdf11) : Except String Stri
               (.ok s))
         (.ok defaultLines)
 
+/-! ## Canonical N-Quads (RDF 1.2 N-Quads §canonical form)
+
+https://www.w3.org/TR/rdf12-n-quads/#canonical-quads — the byte-exact
+form the W3C `rdf12/rdf-n-quads/c14n` suite compares against. Port of
+`RDF.NQuads.Serialize.fst`'s `nq_canon_line_graph`,
+`canon_nq_named_lines`, `canon_nq_named` and `canonical_nq_document`.
+The term-level rules live in `Syntax.NTriples`
+(`Term.toCanonicalNTriples`); only the graph slot is added here.
+
+The F* source writes the graph label as `<iri>` unconditionally
+(`nq_canon_line_graph` takes a `string` name), because its
+`named_graph.ng_name` is an IRI string. This tree's `NamedGraph.name`
+is a `Subject`, so a blank-node graph label round-trips as `_:label`
+via `Subject.toNTriples`; on the IRI names the suite uses, the two
+renderings are identical. -/
+
+/-- One canonical line for a triple in a named graph. Port of
+`nq_canon_line_graph`. -/
+def canonNamedLine (graphName : Subject) (t : Triple) : String :=
+  Subject.toNTriples t.s ++ " <" ++ t.p.val ++ "> " ++
+  Term.toCanonicalNTriples t.o ++ " " ++ Subject.toNTriples graphName ++ " .\n"
+
+/-- Canonical N-Quads document: default-graph lines, then each named
+graph's lines, order preserved throughout. Port of
+`canonical_nq_document`. -/
+def Dataset.toCanonicalNQuads (ds : Dataset) : String :=
+  Graph.toCanonicalNTriples ds.default ++
+  String.join (ds.named.map (fun ng =>
+    String.join (ng.graph.map (canonNamedLine ng.name))))
+
 end L4Factoidal.Syntax

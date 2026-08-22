@@ -36,6 +36,20 @@ namespace Harness
 `<suite>/manifest.ttl` is one level; the bound only stops a cycle. -/
 def includeDepth : Nat := 4
 
+/-- The RDF version a manifest's fixtures are written in — this
+tree's answer to the F* runner's `--rdf` / `--rdf12` CLI flags (see
+`Harness/Run.lean` §"RDF version"). A manifest is RDF 1.2 when its
+`mf:assumedTestBase` sits under `…/rdf/rdf12/` (every rdf12 leaf
+manifest declares one) or, failing that, when its own path does. A
+manifest that says neither is RDF 1.1, which keeps every existing
+suite exactly where it was. -/
+def modeOfManifest (assumedBase : Option String) (path : String) :
+    L4Factoidal.Syntax.Mode :=
+  let says (s : String) : Bool := (s.splitOn "/rdf12/").length > 1
+  match assumedBase with
+  | some b => if says b then .rdf12 else .rdf11
+  | none   => if says path then .rdf12 else .rdf11
+
 /-- Run every entry of one manifest. A manifest with NO entries but an
 `mf:include` list (`sparql11/manifest-all.ttl`) runs each included
 manifest in turn, printing one score line per sub-suite, and returns
@@ -81,16 +95,18 @@ def runManifest : Nat → System.FilePath → Bool → IO (Score × Diag)
           IO.println ""
         return (total, totalDiag)
       else
+      let mode := modeOfManifest assumedBase abs
       if verbose then
+        let v := match mode with | .rdf11 => "RDF 1.1" | .rdf12 => "RDF 1.2"
         match assumedBase with
-        | some b => IO.println s!"# {label}: {tests.length} entries, mf:assumedTestBase {b}"
-        | none   => IO.println s!"# {label}: {tests.length} entries, no mf:assumedTestBase"
+        | some b => IO.println s!"# {label}: {tests.length} entries, {v}, mf:assumedTestBase {b}"
+        | none   => IO.println s!"# {label}: {tests.length} entries, {v}, no mf:assumedTestBase"
       let mut score : Score := {}
       let mut diag : Diag := { zeroTests := if tests.isEmpty then 1 else 0 }
       -- The Graph Store the http-rdf-update entries share, in manifest order.
       let gspStore ← IO.mkRef L4Factoidal.SPARQL.GraphStore.GraphStore.empty
       for tc in tests do
-        let r ← runTest assumedBase manifestDir gspStore tc
+        let r ← runTest mode assumedBase manifestDir gspStore tc
         score := score.bump r.outcome
         diag := { diag with
                   budgetExceeded := diag.budgetExceeded + (if r.budgetExceeded then 1 else 0),

@@ -374,6 +374,133 @@ def trigShape (s : String) (base : Option String := none) : Nat × Nat × Nat :=
 -- Relative IRIs inside a block resolve against the document base.
 #guard trigShape "<g> { <s> <p> <o> . }" (some exBase) == (0, 1, 1)
 
+/-! ## RDF 1.2 Turtle and TriG
+
+https://www.w3.org/TR/rdf12-turtle/ — the productions `.rdf12` adds over
+`.rdf11`, one guard per production, each also stated in its NEGATIVE
+form: `.rdf11` must still REJECT every one of them, or the mode
+parameter would be decoration.
+
+  [30] tripleTerm      `<<( s p o )>>`, object position only
+  [27] reifiedTriple   `<< s p o >>` (subject or object)
+  [33] reifier         `~` / `~ <label>` after an object
+  [34] annotation      `(reifier | annotationBlock)*`
+  [35] annotationBlock `{| predicateObjectList |}`
+  [4a] version         `@version "…" .` / `VERSION "…"`
+  base direction       `"chat"@en--ltr` (RDF 1.2 Concepts §3.3)
+
+The expectations are written as N-Triples TEXT wherever the answer is
+ground; where the shorthand mints a blank-node reifier they are stated
+as a triple COUNT plus the parse succeeding, since the label is the
+parser's to choose. -/
+
+/-- Parse in RDF 1.2 mode and render as RDF 1.2 N-Triples. -/
+def ttl12ToNT (s : String) (base : Option String := none) : String :=
+  match parseTurtle s base .rdf12 with
+  | .error e => s!"PARSE-ERROR: {e.msg}"
+  | .ok g    => match Graph.toNTriples g .rdf12 with
+                | .error e => s!"SERIALISE-ERROR: {e}"
+                | .ok t    => t
+
+/-- Triple count of a successful RDF 1.2 parse; `0` on failure. -/
+def ttl12Count (s : String) (base : Option String := none) : Nat :=
+  match parseTurtle s base .rdf12 with
+  | .error _ => 0
+  | .ok g    => g.length
+
+/-- Was this fragment rejected under RDF 1.1? -/
+def ttl11Rejects (s : String) (base : Option String := none) : Bool :=
+  (parseTurtle s base .rdf11).toOption.isNone
+
+-- [30] tripleTerm: the object is a TRIPLE TERM, not a new statement.
+#guard ttl12ToNT "@prefix p: <http://a/> . p:s p:p <<( p:s2 p:p2 p:o2 )>> ." ==
+  "<http://a/s> <http://a/p> <<( <http://a/s2> <http://a/p2> <http://a/o2> )>> .\n"
+#guard ttl11Rejects "@prefix p: <http://a/> . p:s p:p <<( p:s2 p:p2 p:o2 )>> ."
+-- …and it nests.
+#guard ttl12Count "@prefix p: <http://a/> . p:s p:p <<( p:s2 p:p2 <<( p:a p:b p:c )>> )>> ." == 1
+
+-- [27] reifiedTriple in object position: the base triple, plus the
+-- reifier's `rdf:reifies` triple. `<< >>` alone mints a blank node.
+#guard ttl12ToNT "@prefix p: <http://a/> . p:s p:p << p:s2 p:p2 p:o2 ~ p:r >> ." ==
+  ("<http://a/r> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> "
+    ++ "<<( <http://a/s2> <http://a/p2> <http://a/o2> )>> .\n"
+    ++ "<http://a/s> <http://a/p> <http://a/r> .\n")
+#guard ttl11Rejects "@prefix p: <http://a/> . p:s p:p << p:s2 p:p2 p:o2 ~ p:r >> ."
+-- …and in SUBJECT position.
+#guard ttl12Count "@prefix p: <http://a/> . << p:s2 p:p2 p:o2 ~ p:r >> p:p p:o ." == 2
+
+-- [33] reifier after an object: one extra `rdf:reifies` triple naming
+-- the statement just made.
+#guard ttl12ToNT "@prefix p: <http://a/> . p:s p:p p:o ~ p:r ." ==
+  ("<http://a/s> <http://a/p> <http://a/o> .\n"
+    ++ "<http://a/r> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> "
+    ++ "<<( <http://a/s> <http://a/p> <http://a/o> )>> .\n")
+#guard ttl11Rejects "@prefix p: <http://a/> . p:s p:p p:o ~ p:r ."
+-- A bare `~` mints the reifier: still exactly two triples.
+#guard ttl12Count "@prefix p: <http://a/> . p:s p:p p:o ~ ." == 2
+
+-- [34]/[35] annotationBlock: the block's predicateObjectList hangs off
+-- the reifier — base triple + rdf:reifies + one annotation triple.
+#guard ttl12ToNT "@prefix p: <http://a/> . p:s p:p p:o ~ p:r {| p:src p:doc |} ." ==
+  ("<http://a/s> <http://a/p> <http://a/o> .\n"
+    ++ "<http://a/r> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> "
+    ++ "<<( <http://a/s> <http://a/p> <http://a/o> )>> .\n"
+    ++ "<http://a/r> <http://a/src> <http://a/doc> .\n")
+#guard ttl11Rejects "@prefix p: <http://a/> . p:s p:p p:o {| p:src p:doc |} ."
+-- A block with no explicit reifier mints one: still three triples.
+#guard ttl12Count "@prefix p: <http://a/> . p:s p:p p:o {| p:src p:doc |} ." == 3
+-- An EMPTY annotation block is a syntax error.
+#guard (parseTurtle "@prefix p: <http://a/> . p:s p:p p:o {| |} ." none .rdf12).toOption.isNone
+
+-- [4a] version directive, both spellings, top level only, and
+-- state-neutral (it licenses no triple of its own).
+#guard ttl12ToNT "@version \"1.2\" . @prefix p: <http://a/> . p:s p:p p:o ." ==
+  "<http://a/s> <http://a/p> <http://a/o> .\n"
+#guard ttl12ToNT "VERSION \"1.2\" PREFIX p: <http://a/> p:s p:p p:o ." ==
+  "<http://a/s> <http://a/p> <http://a/o> .\n"
+#guard ttl11Rejects "@version \"1.2\" . @prefix p: <http://a/> . p:s p:p p:o ."
+
+-- Base direction (RDF 1.2 Concepts §3.3): `@lang--ltr` / `@lang--rtl`
+-- make an `rdf:dirLangString`, and RDF 1.1 rejects the suffix.
+#guard ttl12ToNT "@prefix p: <http://a/> . p:s p:p \"chat\"@en--ltr ." ==
+  "<http://a/s> <http://a/p> \"chat\"@en--ltr .\n"
+#guard ttl12ToNT "@prefix p: <http://a/> . p:s p:p \"chat\"@he--rtl ." ==
+  "<http://a/s> <http://a/p> \"chat\"@he--rtl .\n"
+-- …and RDF 1.1 does NOT reject the `--ltr` spelling: it reads the whole
+-- run as ONE language tag, `en--ltr`, with no direction. Both trees are
+-- lax here — neither `Parser.NTriples.fst`'s `parse_lang_tag`
+-- (line 514) nor this port's `readLangTag` applies the BCP47 subtag
+-- check `valid_lang_subtags` / `validLangSubtags` that the RDF 1.2 path
+-- does, so an empty subtag passes. The guard PINS the current answer so
+-- a future tightening is a deliberate change, not a surprise.
+#guard (match parseTurtle "@prefix p: <http://a/> . p:s p:p \"chat\"@en--ltr ." none .rdf11 with
+        | .ok [t] =>
+            (match t.o with
+             | .literal l => l.val.langTag == some "en--ltr" && l.val.direction == none
+             | _ => false)
+        | _ => false)
+-- A plain language tag is unaffected in BOTH modes.
+#guard ttlToNT "@prefix p: <http://a/> . p:s p:p \"chat\"@en ." ==
+  "<http://a/s> <http://a/p> \"chat\"@en .\n"
+
+-- [10] triples admits `reifiedTriple predicateObjectList?`, so a
+-- reified triple ALONE is a statement: it makes only the reifier's
+-- `rdf:reifies` triple. RDF 1.1 rejects the whole form.
+#guard ttl12Count "@prefix p: <http://a/> . << p:s p:p p:o >> ." == 1
+#guard ttl11Rejects "@prefix p: <http://a/> . << p:s p:p p:o >> ."
+
+/-! ### TriG 1.2
+
+The same productions inside a `GRAPH` block, plus the `VERSION`
+directive at TriG's own top level ([3] directive). -/
+
+#guard (match parseTriG "@prefix p: <http://a/> . p:g { p:s p:p p:o ~ p:r . }" none .rdf12 with
+        | .ok ds => ds.named.foldl (fun n g => n + g.graph.length) 0
+        | .error _ => 0) == 2
+#guard (parseTriG "@prefix p: <http://a/> . p:g { p:s p:p p:o ~ p:r . }" none .rdf11).toOption.isNone
+#guard (parseTriG "VERSION \"1.2\" PREFIX p: <http://a/> p:g { p:s p:p p:o }" none .rdf12).toOption.isSome
+#guard (parseTriG "VERSION \"1.2\" PREFIX p: <http://a/> p:g { p:s p:p p:o }" none .rdf11).toOption.isNone
+
 /-! ## Axiom audit
 
 Every `#guard` above is a kernel computation, so nothing here can

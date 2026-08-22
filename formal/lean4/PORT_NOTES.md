@@ -4040,3 +4040,97 @@ Relevance beyond RIF itself: 4 of the 30 SPARQL entailment-regime
 tests the Lean tree currently reports UNSUPPORTED are RIF-regime
 tests (see the parity ledger), so this is a step toward those as well
 as toward the rif-core suite.
+---
+
+## Stage: the RDF 1.2 W3C suites run (branch `lean4/rdf12`, 2026-08-22)
+
+`lake exe l4w3c` now scores the `rdf12/` manifests. The full write-up
+— how the version is selected, the sabotage record, the findings — is
+in
+[`docs/designissues/2026-08-22-lean4-w3c-harness.md`](../../docs/designissues/2026-08-22-lean4-w3c-harness.md)
+§ "Status 2026-08-22 — the RDF 1.2 suites run"; what follows is the
+F\*↔Lean ledger for it.
+
+### Measured (verbatim)
+
+```
+rdf-n-triples/syntax: 29 pass, 0 fail, 0 skip, 0 unsupported (out of 29)
+rdf-n-quads/syntax: 27 pass, 0 fail, 0 skip, 0 unsupported (out of 27)
+rdf-turtle/syntax: 67 pass, 0 fail, 0 skip, 0 unsupported (out of 67)
+rdf-turtle/eval: 29 pass, 0 fail, 0 skip, 0 unsupported (out of 29)
+rdf-trig/syntax: 35 pass, 0 fail, 0 skip, 0 unsupported (out of 35)
+rdf-trig/eval: 25 pass, 0 fail, 0 skip, 0 unsupported (out of 25)
+rdf-xml/eval: 30 pass, 0 fail, 0 skip, 0 unsupported (out of 30)
+rdf-n-triples/c14n: 41 pass, 0 fail, 0 skip, 0 unsupported (out of 41)
+rdf-n-quads/c14n: 41 pass, 0 fail, 0 skip, 0 unsupported (out of 41)
+rdf-semantics: 0 pass, 0 fail, 0 skip, 0 unsupported (out of 0)
+  (manifest did NOT parse: manifest parse error at offset 9732: undefined prefix: test)
+TOTAL: 324 pass, 0 fail, 0 skip, 0 unsupported (out of 324)
+```
+
+The F\* runner scores 242 (`--rdf12`) + 82 (`--rdf12c14n`) = 324 pass,
+0 fail on the same nine manifests, suite for suite. It also scores
+`rdf-semantics` at 41 pass, 3 fail, 3 skip (out of 47), which this tree
+cannot yet reach — see the module-correspondence row for
+`read_manifest`.
+
+Regression gates on the same build: the seven RDF 1.1 suites at
+`TOTAL: 1117 pass, 0 fail, 0 skip, 0 unsupported (out of 1117)` and
+sparql11 `manifest-all.ttl` at `TOTAL: 601 pass, 0 fail, 0 skip, 30
+unsupported (out of 631)`.
+
+### Module correspondence (append)
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `w3c_runner.ml` `--rdf` / `--rdf12` / `--rdf12c14n` / `--rdf12entail` CLI flags | `Harness/Main.lean` `modeOfManifest` + the `mode : Mode` parameter of `Harness/Run.lean` `runTest` | the F\* selects the version per RUN, this tree per MANIFEST (off `mf:assumedTestBase`, falling back to the path), because `l4w3c` takes manifest paths and one invocation may mix the trees |
+| `run_rdf12_test`'s `TestNTriplesPositiveC14N` / `TestNQuadsPositiveC14N` arms | `Harness/Run.lean`, the contiguous "RDF 1.2 canonical N-Triples / N-Quads" block | byte comparison against the `-c14n.{nt,nq}` oracle, no newline trimming, as in the F\* `actual = expected` |
+| `RDF.NQuads.Serialize.fst` `canon_hex_upper`, `canon_byte_uchar`, `nq_canon_special_byte`, `nq_canon_escape_byte`, `nq_canon_walk`, `nq_canon_term`, `nq_canon_line_default`, `canonical_nt_document` | `Syntax/NTriples.lean` `canonHexUpper`, `canonUchar2`, `canonEscapeChar`, `canonEscapeLiteral`, `Term.toCanonicalNTriples`, `Triple.toCanonicalNTriples`, `Graph.toCanonicalNTriples` | the F\* walks UTF-8 BYTES, this walks CHARACTERS; equivalent because every escaped byte is < 0x80 and the U+FFFE/U+FFFF byte triples are exactly those codepoints |
+| `nq_canon_line_graph`, `canon_nq_named_lines`, `canon_nq_named`, `canonical_nq_document` | `Syntax/NQuads.lean` `canonNamedLine`, `Dataset.toCanonicalNQuads` | the F\* graph name is a `string` (always `<iri>`); `NamedGraph.name` here is a `Subject`, so a blank-node graph label round-trips as `_:label` |
+| `Parser.NTriples.fst` `parse_literal_12`, `parse_datatype_ws_12` | `Syntax/NTriples.lean` `readLiteral` (the `.rdf12` whitespace look-ahead) and `readDatatypeWs12` | the run is consumed only when a `@` or `^^` really follows, so a plain `xsd:string` literal leaves it for the triple parser |
+| `Parser.RDFXML.fst` `extract_version`, `extract_dir`, `effective_dir`, `is_rdf_syntax_attr`'s three 1.2 names | `Syntax/RdfXml.lean` `updateVersion`, `updateDir`, `St.effectiveDir`, `rdfSyntaxAttrNames` (+`version`, `annotation`, `annotationNodeID`) | `St.dir` / `St.sawVersion12` are XML-scoped, restored for siblings by `restoreScope` exactly as the F\* `restore_scope` does |
+| `Parser.RDFXML.fst` the `Some "Triple"` arm of `process_property_element` | `Syntax/RdfXml.lean` `propertyEltBody`'s `some "Triple"` arm | same version gate, same "exactly one element child making exactly one triple, else a syntax error" |
+| `Parser.RDFXML.fst` `annot_reifier_opt` / `annot_of` / `reif_of` | `Syntax/RdfXml.lean` `annotReifier`, `annotTriples`, `reifyAll` | the F\* uses an `rdf:annotationNodeID` value verbatim as a blank-node label; this port sends it through `nodeIdLabel`, the same map `rdf:nodeID` uses, so the two attributes name the same node |
+| `make_plain_literal lex lang dir` | `Syntax/RdfXml.lean` `mkPlainLiteral` (+ `RDF/Core.lean` `Literal.dirLangString`) | a direction with no language tag is ill-formed under `literalWf`, so it is dropped rather than made unrepresentable |
+| `w3c_runner.ml` `read_manifest`'s LENIENT-WITH-REPORT manifest parse (issue #334) | *(no counterpart)* | `Harness/Manifest.lean` parses strictly; the `rdf12/rdf-semantics` manifest's undeclared `test:` prefix therefore zeroes that one suite, reported as `0 out of 0` with `no_manifest=1` rather than hidden |
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial` in anything
+this stage touched (`Syntax/NTriples.lean`, `Syntax/NQuads.lean`,
+`Syntax/RdfXml.lean`, `Syntax/RdfXmlTheorems.lean`, `RDF/Core.lean`,
+`Harness/Common.lean`, `Harness/Run.lean`, `Harness/Main.lean`). The
+canonical serialisers are total: canonical form IS RDF 1.2, so unlike
+`Term.toNTriples` they take no mode and have no failure case.
+`Literal.dirLangString`'s well-formedness witness is `rfl` — the third
+clause of `literalWf` does not scrutinise WHICH direction it is.
+
+55 new `#guard`s: 26 in `Syntax/TurtleTests.lean` (one per RDF 1.2
+Turtle/TriG production, each with its RDF 1.1 rejection), 16 in
+`Syntax/SyntaxTests.lean` (canonical form and the whitespace
+relaxation), 13 in `Syntax/RdfXmlTests.lean` (the four RDF/XML
+additions).
+
+### Not ported (and said so)
+
+* A lenient manifest reader. The F\* has one and needs it for exactly
+  one vendored file; this tree keeps the strict parse and reports the
+  loss in the score line.
+* The RDF 1.2 entailment regimes. `rdf12/rdf-semantics` names
+  `RDFS-Plus`, which `RDF/Entailment.lean` has no counterpart for; the
+  manifest does not load anyway.
+* `sparql12`. The F\* runner has a `--sparql12` mode; nothing here
+  reads those manifests yet.
+
+### Findings against the F\* (not fixed here)
+
+* **`Parser.NTriples.fst:514`, `parse_lang_tag`.** RDF 1.1 mode takes
+  the maximal run of language-tag characters with no BCP47 subtag
+  check, so `"chat"@en--ltr` parses as ONE tag, `en--ltr`, with an
+  empty subtag. The RDF 1.2 path applies `valid_lang_subtags`
+  (line 1176); the 1.1 path does not, and `readLangTag` here inherits
+  it. An RDF 1.1 document therefore changes meaning if re-serialised
+  in RDF 1.2 mode: the `rdf:langString` comes back looking like an
+  `rdf:dirLangString`. A `#guard` in `TurtleTests.lean` pins the
+  current answer. Fixing it changes RDF 1.1 ACCEPTANCE in both trees,
+  so it belongs in its own change.

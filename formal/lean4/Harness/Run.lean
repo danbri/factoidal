@@ -488,15 +488,17 @@ Port of the F* runner's `PositiveEntailmentTest` /
      iff it does not. An inconsistent action graph entails everything
      (RDF 1.1 Semantics §5.1). -/
 
-/-- Parse an rdf-mt fixture by extension. -/
-def parseEntailmentGraph (path text : String) : Except String Graph :=
-  let r := if path.endsWith ".nt" then parseNTriples text .rdf11
-           else parseTurtle text (some ("file://" ++ path)) .rdf11
+/-- Parse an rdf-mt fixture by extension. `mode` is the suite's RDF
+version (see `runTest`): the rdf12 `rdf-semantics` fixtures carry
+triple terms and reifier shorthand, which `.rdf11` rejects. -/
+def parseEntailmentGraph (mode : Mode) (path text : String) : Except String Graph :=
+  let r := if path.endsWith ".nt" then parseNTriples text mode
+           else parseTurtle text (some ("file://" ++ path)) mode
   r.mapError fmtParseError
 
 /-- One `PositiveEntailmentTest` (`positive = true`) or
 `NegativeEntailmentTest`. -/
-def runEntailmentTest (positive : Bool) (tc : TestCase) : IO RunResult := do
+def runEntailmentTest (mode : Mode) (positive : Bool) (tc : TestCase) : IO RunResult := do
   let regimeName := tc.entailmentRegime.getD "simple"
   let some regime := Regime.ofName? regimeName
     | return .ofOutcome (.unsupported s!"entailment regime {regimeName}")
@@ -507,7 +509,7 @@ def runEntailmentTest (positive : Bool) (tc : TestCase) : IO RunResult := do
     | return .ofOutcome (.skip "mf:action is not a file IRI")
   let some atext ← readOpt af
     | return .ofOutcome (.skip s!"file missing: {af}")
-  match parseEntailmentGraph af atext with
+  match parseEntailmentGraph mode af atext with
   | .error e => return .ofOutcome (.fail s!"action parse error in {basename af}: {e}")
   | .ok action =>
   let kind := if positive then "Positive" else "Negative"
@@ -528,7 +530,7 @@ def runEntailmentTest (positive : Bool) (tc : TestCase) : IO RunResult := do
     | return .ofOutcome (.skip "no mf:result")
   let some rtext ← readOpt rf
     | return .ofOutcome (.skip s!"result file missing: {rf}")
-  match parseEntailmentGraph rf rtext with
+  match parseEntailmentGraph mode rf rtext with
   | .error e => return .ofOutcome (.fail s!"result parse error in {basename rf}: {e}")
   | .ok expected =>
   let entails := regimeEntails regime D action expected
@@ -544,11 +546,34 @@ def runEntailmentTest (positive : Bool) (tc : TestCase) : IO RunResult := do
 
 /-! ## The dispatcher -/
 
-/-- Run one test case. `assumedBase` is the suite's
-`mf:assumedTestBase`; `manifestDir` the directory the manifest sits
-in; `gspStore` the Graph Store the http-rdf-update entries share
-(one per manifest — see `Harness/ProtocolRun.lean`). -/
-def runTest (assumedBase : Option String) (manifestDir : String)
+/-! ## RDF version (`mode`)
+
+The F* runner picks the RDF version with a CLI FLAG: `--rdf` runs the
+`rdf11/` suites through `parse_*_strict`, `--rdf12` /`--rdf12c14n` /
+`--rdf12entail` run the `rdf12/` suites through `parse_*_strict_12`
+(`bin/w3c-runner/w3c_runner.ml`, the `run_rdf12_test` dispatch and the
+`run_rdf12*_mode` branches of `main`). This tree takes manifest PATHS
+rather than suite names, so a run may mix the two trees in one
+invocation; the version therefore travels with the manifest —
+`Harness.Main.modeOfManifest` reads it off `mf:assumedTestBase` (every
+rdf12 leaf manifest declares one under `…/rdf/rdf12/…`) and falls back
+to the manifest's own path. It is passed in here and used for every
+fixture the suite's own format owns.
+
+Under `.rdf12` the same parsers additionally admit the RDF 1.2
+productions — triple terms `<<( s p o )>>`, reifiers `<< s p o >>` and
+`~`, annotation blocks `{| … |}`, the `VERSION` directive, and base
+direction (`"chat"@en--ltr`) — and reject nothing the 1.1 grammar
+accepts. Fixtures a suite does NOT own stay at `.rdf11`: the sparql11
+`qt:data` files and the rdf-canon `.nq` inputs are RDF 1.1 documents
+whatever manifest names them. -/
+
+/-- Run one test case. `mode` is the suite's RDF version (see above);
+`assumedBase` is the suite's `mf:assumedTestBase`; `manifestDir` the
+directory the manifest sits in; `gspStore` the Graph Store the
+http-rdf-update entries share (one per manifest — see
+`Harness/ProtocolRun.lean`). -/
+def runTest (mode : Mode) (assumedBase : Option String) (manifestDir : String)
     (gspStore : IO.Ref GraphStore.GraphStore) (tc : TestCase) :
     IO RunResult := do
   -- Every type handled here takes its input from `mf:action` as a file.
@@ -573,24 +598,24 @@ def runTest (assumedBase : Option String) (manifestDir : String)
   /- ### N-Triples (RDF 1.1 N-Triples §4) -/
   | "TestNTriplesPositiveSyntax" =>
     withAction fun _ text => return .ofOutcome (
-      match parseNTriples text .rdf11 with
+      match parseNTriples text mode with
       | .ok _    => .pass
       | .error e => .fail s!"parser rejected input that should parse: {e.msg} (offset {e.pos})")
   | "TestNTriplesNegativeSyntax" =>
     withAction fun _ text => return .ofOutcome (
-      match parseNTriples text .rdf11 with
+      match parseNTriples text mode with
       | .error _ => .pass
       | .ok g    => .fail s!"should reject but parsed OK ({g.length} triples)")
 
   /- ### N-Quads (RDF 1.1 N-Quads §4) -/
   | "TestNQuadsPositiveSyntax" =>
     withAction fun _ text => return .ofOutcome (
-      match parseNQuads text .rdf11 with
+      match parseNQuads text mode with
       | .ok _    => .pass
       | .error e => .fail s!"parser rejected input that should parse: {e.msg} (offset {e.pos})")
   | "TestNQuadsNegativeSyntax" =>
     withAction fun _ text => return .ofOutcome (
-      match parseNQuads text .rdf11 with
+      match parseNQuads text mode with
       | .error _ => .pass
       | .ok _    => .fail "should reject but parsed OK")
 
@@ -599,23 +624,23 @@ def runTest (assumedBase : Option String) (manifestDir : String)
     withAction fun path text => do
       let base := fixtureBase assumedBase manifestDir path
       return .ofOutcome (
-        match parseTurtle text (some base) .rdf11 with
+        match parseTurtle text (some base) mode with
         | .ok _    => .pass
         | .error e => .fail s!"parser rejected input that should parse: {e.msg} (offset {e.pos})")
   | "TestTurtleNegativeSyntax" =>
     withAction fun path text => do
       let base := fixtureBase assumedBase manifestDir path
       return .ofOutcome (
-        match parseTurtle text (some base) .rdf11 with
+        match parseTurtle text (some base) mode with
         | .error _ => .pass
         | .ok g    => .fail s!"should reject but parsed OK ({g.length} triples)")
   | "TestTurtleEval" =>
     withActionAndResult fun path text expectedText => do
       let base := fixtureBase assumedBase manifestDir path
-      match parseTurtle text (some base) .rdf11 with
+      match parseTurtle text (some base) mode with
       | .error e => return .ofOutcome (.fail s!"Turtle parse error: {e.msg} (offset {e.pos})")
       | .ok g =>
-        match parseNTriples expectedText .rdf11 with
+        match parseNTriples expectedText mode with
         | .error e =>
             return .ofOutcome (.fail s!"expected-result N-Triples parse error: {e.msg} (offset {e.pos})")
         | .ok expected =>
@@ -628,7 +653,7 @@ def runTest (assumedBase : Option String) (manifestDir : String)
     withAction fun path text => do
       let base := fixtureBase assumedBase manifestDir path
       return .ofOutcome (
-        match parseTurtle text (some base) .rdf11 with
+        match parseTurtle text (some base) mode with
         | .error _ => .pass
         | .ok g    => if g.isEmpty then .pass
                       else .fail s!"should produce an eval error but succeeded ({g.length} triples)")
@@ -638,23 +663,23 @@ def runTest (assumedBase : Option String) (manifestDir : String)
     withAction fun path text => do
       let base := fixtureBase assumedBase manifestDir path
       return .ofOutcome (
-        match parseTriG text (some base) .rdf11 with
+        match parseTriG text (some base) mode with
         | .ok _    => .pass
         | .error e => .fail s!"parser rejected input that should parse: {e.msg} (offset {e.pos})")
   | "TestTrigNegativeSyntax" =>
     withAction fun path text => do
       let base := fixtureBase assumedBase manifestDir path
       return .ofOutcome (
-        match parseTriG text (some base) .rdf11 with
+        match parseTriG text (some base) mode with
         | .error _ => .pass
         | .ok _    => .fail "should reject but parsed OK")
   | "TestTrigEval" =>
     withActionAndResult fun path text expectedText => do
       let base := fixtureBase assumedBase manifestDir path
-      match parseTriG text (some base) .rdf11 with
+      match parseTriG text (some base) mode with
       | .error e => return .ofOutcome (.fail s!"TriG parse error: {e.msg} (offset {e.pos})")
       | .ok ds =>
-        match parseNQuads expectedText .rdf11 with
+        match parseNQuads expectedText mode with
         | .error e =>
             return .ofOutcome (.fail s!"expected-result N-Quads parse error: {e.msg} (offset {e.pos})")
         | .ok expected =>
@@ -667,7 +692,7 @@ def runTest (assumedBase : Option String) (manifestDir : String)
     withAction fun path text => do
       let base := fixtureBase assumedBase manifestDir path
       return .ofOutcome (
-        match parseTriG text (some base) .rdf11 with
+        match parseTriG text (some base) mode with
         | .error _ => .pass
         | .ok ds   =>
           let n := ds.default.length + (ds.named.map (fun ng => ng.graph.length)).sum
@@ -715,7 +740,7 @@ def runTest (assumedBase : Option String) (manifestDir : String)
       match RdfXml.parseRdfXml text (some base) with
       | .error e => return .ofOutcome (.fail s!"RDF/XML parse error: {e}")
       | .ok g =>
-        match parseNTriples expectedText .rdf11 with
+        match parseNTriples expectedText mode with
         | .error e =>
             return .ofOutcome (.fail s!"expected-result N-Triples parse error: {e.msg} (offset {e.pos})")
         | .ok expected =>
@@ -730,6 +755,40 @@ def runTest (assumedBase : Option String) (manifestDir : String)
         | .error _ => .pass
         | .ok g    => .fail s!"should reject but parsed OK ({g.length} triples)")
 
+  /- ### RDF 1.2 canonical N-Triples / N-Quads — the two `rdf12/…/c14n`
+     leaf manifests, and the only test types no rdf11 suite uses. Port
+     of `run_rdf12_test`'s `TestNTriplesPositiveC14N` /
+     `TestNQuadsPositiveC14N` arms (`w3c_runner.ml` ~lines 3246–3281):
+     parse the input in RDF 1.2 mode, re-serialise with the canonical
+     serialiser (`Graph.toCanonicalNTriples` /
+     `Dataset.toCanonicalNQuads`, `Syntax/NTriples.lean` §"Canonical
+     N-Triples"), and compare the result to the `-c14n.{nt,nq}` oracle
+     BYTE FOR BYTE — no newline trimming, exactly as the F* runner's
+     `actual = expected`. An input that does not parse is a FAIL, not a
+     skip: the oracle says it is well-formed. -/
+  | "TestNTriplesPositiveC14N" =>
+    withActionAndResult fun _ text expectedText => do
+      match parseNTriples text .rdf12 with
+      | .error e =>
+          return .ofOutcome (.fail s!"input failed to parse (RDF 1.2 N-Triples): {e.msg} (offset {e.pos})")
+      | .ok g =>
+        let got := Graph.toCanonicalNTriples g
+        return { outcome :=
+                   if got == expectedText then .pass
+                   else .fail s!"canonical N-Triples output differs from the expected file ({got.length} chars, expected {expectedText.length})",
+                 triplesCompared := g.length }
+  | "TestNQuadsPositiveC14N" =>
+    withActionAndResult fun _ text expectedText => do
+      match parseNQuads text .rdf12 with
+      | .error e =>
+          return .ofOutcome (.fail s!"input failed to parse (RDF 1.2 N-Quads): {e.msg} (offset {e.pos})")
+      | .ok ds =>
+        let got := Dataset.toCanonicalNQuads ds
+        return { outcome :=
+                   if got == expectedText then .pass
+                   else .fail s!"canonical N-Quads output differs from the expected file ({got.length} chars, expected {expectedText.length})",
+                 triplesCompared := quadCount ds }
+
   /- ### SPARQL 1.1 Query (sparql11 suites) — see the section above. -/
   | "QueryEvaluationTest" | "CSVResultFormatTest" => runQueryEvaluation tc
   | "PositiveSyntaxTest11" | "PositiveSyntaxTest" => runSyntaxTest true tc
@@ -741,8 +800,8 @@ def runTest (assumedBase : Option String) (manifestDir : String)
   | "NegativeUpdateSyntaxTest11" => runUpdateSyntaxTest false tc
 
   /- ### RDF 1.1 Semantics (rdf-mt) — see "RDF 1.1 Semantics" above. -/
-  | "PositiveEntailmentTest" => runEntailmentTest true tc
-  | "NegativeEntailmentTest" => runEntailmentTest false tc
+  | "PositiveEntailmentTest" => runEntailmentTest mode true tc
+  | "NegativeEntailmentTest" => runEntailmentTest mode false tc
 
 
   /- ### SPARQL 1.1 Protocol, Graph Store HTTP Protocol, Service
