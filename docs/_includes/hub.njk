@@ -687,6 +687,28 @@ const fn = {
   async registerServiceEndpoint(iri, data, options) { return Factoidal.registerServiceEndpoint(iri, data, options); },
   async clearServiceEndpoints() { return Factoidal.clearServiceEndpoints(); },
   /**
+   * Load the vendored wikifn-fstar compiled Wikifunctions engine
+   * (hub post 35; provenance in web/hub/assets/wikifn/README.md).
+   * Resolves once globalThis.wikifnCompiledCall / wikifnEngineCall
+   * exist; idempotent. The node-side twin lives in
+   * tests/hub/post35_test.mjs (reads the same vendored file from
+   * disk), mirroring post24's fn.queryHdt browser-vs-test duality.
+   */
+  async loadWikifunctions() {
+    if (typeof globalThis.wikifnCompiledCall === "function") return true;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "../assets/wikifn/wikifn_engine.js";
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("could not load wikifn_engine.js"));
+      document.head.appendChild(s);
+    });
+    if (typeof globalThis.wikifnCompiledCall !== "function") {
+      throw new Error("wikifn_engine.js loaded but did not export wikifnCompiledCall");
+    }
+    return true;
+  },
+  /**
    * SHACL Core validation (mirrors npm/factoidal/index.js's
    * `shaclValidate(data, shapes, options) -> Promise<{conforms, report}>`).
    * `data`/`shapes` may each be raw RDF text (parsed with `options.format`,

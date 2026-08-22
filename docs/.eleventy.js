@@ -64,6 +64,11 @@ module.exports = function(eleventyConfig) {
   // simplified, re-keyed) rather than an unmodified vendored file.
   eleventyConfig.addPassthroughCopy("web/hub/assets/geo");
 
+  // Pass-through the vendored wikifn-fstar compiled engine (hub post
+  // 35's fn.loadWikifunctions target; provenance + licence in
+  // docs/web/hub/assets/wikifn/README.md).
+  eleventyConfig.addPassthroughCopy("web/hub/assets/wikifn");
+
   // Pass-through the project-owned reactive-cell compiler
   // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs
   // so hub.njk can import it same-origin (no CDN). .mjs isn't an
