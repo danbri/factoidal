@@ -4388,3 +4388,36 @@ all; a name-only template never matches by pattern; and named lookup
 for `call-template` resolves by import precedence rather than document
 order. Pattern parsing keeps `//x` (relative descendant) distinct from
 `/x` (root-anchored) — one slash apart, quite different meanings.
+
+### Storage: the durable-UPDATE delta log (2026-08-22)
+
+`Storage/DeltaLog.lean` ports the framing from
+`RDF.Store.Columnar.DeltaLog.fst`. The COTTAS base file is immutable;
+a SPARQL UPDATE appends to a log beside it, and compaction later folds
+the log into a new base. That makes this framing the CRASH-SAFETY
+BOUNDARY of the whole store, which is why it belongs in the formal
+source rather than in a writer.
+
+The checksum is a plain ADDITIVE mod-2^32 check and deliberately NOT a
+cryptographic digest. Its only job is letting a replay reject a TORN
+record without decoding it. Whole-log drift detection is a separate
+mechanism (the sha256 hash-witness pattern); conflating them would put
+a cryptographic cost on every append for a property appends do not
+need.
+
+Two behaviours guarded because they are what a storage layer gets
+wrong under crash conditions:
+
+1. **A torn tail is not an error.** A crash mid-append is EXPECTED,
+   and recovery means "take every record that verifies, discard from
+   the first that does not". `replay` returns the recovered records
+   AND a clean/torn flag, so the caller can tell a tidy shutdown from
+   a crash without that changing what was recovered.
+2. **The epoch guard prevents double-apply.** A base compacted at
+   epoch `n` must ignore log records from epoch ≤ `n`, or a replay
+   re-applies updates the compaction already folded in. `shouldReplay`
+   is strict-greater-than, and both boundary cases are guarded.
+
+The four magic numbers are pinned as their documented ASCII bytes
+(`DLE1`, `DLB1`, `DLOG`, `CEP1`), little-endian — a silently
+byte-swapped magic would make every existing store unreadable.

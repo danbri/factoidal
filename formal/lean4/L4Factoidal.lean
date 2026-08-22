@@ -168,3 +168,5 @@ import L4Factoidal.MathML.Core
 import L4Factoidal.MathML.Tests
 import L4Factoidal.XSLT.Templates
 import L4Factoidal.XSLT.Tests
+import L4Factoidal.Storage.DeltaLog
+import L4Factoidal.Storage.DeltaLogTests
