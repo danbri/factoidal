@@ -3046,3 +3046,374 @@ instead of one empty solution; `GRAPH ?g { ?x ?p ?g }` ignores the
 inner `?g`; `UUID()` repeats within a query; a CONSTRUCT template
 list emits `_:tpl_0__:bnode_13` in N-Triples output; the CLI has no
 query BASE.
+
+## Stage: Verifiable Credentials Data Integrity, `eddsa-rdfc-2022`, did:key (branch `lean4/vc`, 2026-08-22)
+
+Proof creation and verification for the Data Integrity EdDSA
+cryptosuite (W3C vc-di-eddsa §3.3), on top of the landed RDFC-1.0
+(`RDF/Canonical.lean`) and JSON-LD toRdf (`JSONLD/`), with the Ed25519
+primitive bound to HACL\* — the Lean tree's first and only `@[extern]`
+family, exactly as `docs/designissues/2026-08-22-lean4-external-dependencies.md`
+§3 step 6 predicted.
+
+### Module correspondence
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `VC.Multibase.fst` (`hex_digit_val`, `hex_to_bytes`, `bytes_to_hex`, `bytes_to_nat`, `nat_to_bytes_be`, `base58btc_encode/decode`, `multibase_encode_base58btc`, `multibase_decode`, `hex_to_multibase_z`, `multibase_z_to_hex`, `ed25519_multicodec_prefix`, `ed25519_pubkey_to_multikey`) | `VC/Multibase.lean` (`hexDigitVal?`, `bytesOfHex?`, `hexOfBytes`, `bytesToNat`, `natToBytesBE`, `base58Encode`/`base58Decode?`, `multibaseEncodeBase58btc`, `multibaseDecode?`, `hexToMultibaseZ?`, `multibaseZToHex?`, `ed25519PubPrefix`, `ed25519PublicKeyToMultikey`) | bytes are `List UInt8`; nat codecs are most-significant-first with an accumulator so the round trip is a structural induction (below). New: `ed25519PrivPrefix` (`80 26`, the `z3u2…` secret-key Multikey of the spec vectors), `multikeyToEd25519PublicKey?` / `…SecretKey?`. NOT ported: the lenient base64(-url) decoder — it serves `VC.Credential`'s `relatedResource` digests, and that module is not in this stage. |
+| `DID.Key.fst` (`parse_did_key`, `did_key_document`, the nine pinned IRIs) | `VC/DidKey.lean` (`parseDidKey`, `didKeyDocument`, same IRIs) | prefix stripping over `List Char`. New: the inverse `didKeyOfPublicKey` / `verificationMethodOfPublicKey` (the F\* tree re-implements it in JavaScript in `bin/vc-api-shim/server.mjs`) and `publicKeyOfVerificationMethod?`. `keyAgreement` omitted as in the F\*. |
+| `VC.DataIntegrity.fst` (`transform_dataset`, `hash_data_hex`, `eddsa_rdfc_2022_create_from_canonical`, `…verify_from_canonical`, `eddsa_rdfc_2022_create`, `…verify`, `di_proof`, `serialize_proof`, `make_eddsa_proof`) | `VC/DataIntegrity.lean` (`transformDataset`, `hashData`/`hashDataHex`, `createFromCanonical`, `verifyFromCanonical`, `createProofValue`, `verifyProofValue`, `DiProof`, `serializeProof`, `makeEddsaProof`) | the four crypto `assume val`s become: SHA-256 = pure `Crypto/SHA2.lean` behind `HashAlgorithm` (hash agility); Ed25519 = `SignFn` / `VerifyFn` PARAMETERS. New, document level (what `bin/vc-api-shim/server.mjs` does in JavaScript): `proofOptionsOf`, `unsecuredOf`, `canonicalizeJsonLd`, `verifyOneProof`, `verifyDocument` (typed `VerifyError` refusals), `secureDocument`. |
+| `bin/vc-api-shim/server.mjs` `proofContextFor`; `third_party/contexts/PROVENANCE.md` | `VC/Context.lean` (`proofContextFor`, `vendoredContextFiles`, `vcLoader`) | data + the proof-options context rule; the loader is a parameter. NOT a port of `VC.Context.fst` (see "Not ported"). |
+| `experimental_ocaml_glue/hacl_stubs.c` + `fstar_hacl_crypto.ml` (hex-string FFI to HACL\*) | `ffi/hacl_ed25519.c` + `Crypto/Ed25519.lean` (`secretToPublic`, `sign`, `verify` over `ByteArray`) | compiled and archived by Lake (`lakefile.lean`, `extern_lib libl4hacl`) from the unmodified `third_party/hacl/` sources. |
+| `bin/did-runner/did_runner.ml`, `bin/vc-runner/vc_runner.ml --crypto` | `Harness/VcProbe.lean` (`lake exe l4vc-probe`) | same fixtures, same checks, plus RFC 8032 and the W3C spec vectors. |
+
+### `lakefile.toml` → `lakefile.lean`
+
+Lake's TOML format has no `extern_lib` target (Lake 4.33:
+`Lake/Load/Toml.lean` decodes `lean_lib`, `lean_exe`, `input_file`,
+`input_dir` only), so the configuration became the Lean DSL — the
+`lake translate-config lean` output of the former TOML, comments carried
+over, plus four `target … : FilePath` C compilations (`buildO`, `-O2
+-fPIC -I third_party/hacl/include -I <lean include>`, the flags
+`build-ocaml.sh` uses for the same units) and the `extern_lib` that
+archives them into `.lake/build/lib/libl4hacl.a`. Lake links an
+`extern_lib` into every executable of the package, so nothing else
+changed for the probes. Integrators merging other `lean4/*` branches:
+a TOML edit on their side is a modify/delete conflict here — re-apply
+it to the DSL file by hand (the shapes correspond one to one).
+
+### Measured (`lake exe l4vc-probe`, verbatim)
+
+```
+ed25519-rfc8032: 22 pass, 0 fail (out of 22)
+did:key: 8 pass, 0 fail (out of 8)
+vc-dataintegrity-eddsa-rdfc-2022: 8 pass, 0 fail (out of 8)
+vc-di-eddsa-spec-vectors: 20 pass, 0 fail (out of 20)
+TOTAL: 58 pass, 0 fail (out of 58)
+```
+
+Beside the F\* tree (`docs/test-results/latest.json`): `did_key` 8
+pass, 0 fail (out of 8) — the same three `tests/did` vectors and five
+rejection cases; `bin/vc-runner --crypto` prints
+`vc-dataintegrity-eddsa-rdfc-2022: 8 pass, 0 fail (out of 8)` on the
+same inputs (its eight checks are replayed one for one, N-Quads and keys
+identical). The two remaining sections have no F\* counterpart to put
+beside them: the RFC 8032 vectors are the binding's own measurement
+(an `@[extern]` cannot be `#guard`ed), and the F\* tree's
+`vc_di_eddsa` score (31 pass, 0 fail) is the live-endpoint mocha suite
+through the Node VC-API shim, not an offline run of the specification's
+vectors. Section 4 is the strongest line: the spec's unsigned
+credential and proof options go through the Lean JSON-LD processor
+(vendored contexts) and RDFC-1.0 and reproduce the spec's canonical
+N-Quads byte for byte, its two SHA-256 digests, the Ed25519 signature
+`4d8e53…` and the proofValue `z2YwC8…`; `secureDocument` then produces
+that proof and `verifyDocument` accepts it and refuses a tampered
+proofValue, a changed claim, the wrong purpose, a non-did:key
+verification method, and the unsecured credential.
+
+`lake build`: 272 jobs, green; 77 new `#guard`s in `VC/Tests.lean`
+(base58 Bitcoin Core vectors, the three did:key vectors and five
+rejections, the DID document, the spec vectors' pure parts, the
+pipeline with a stub verifier, the proof-options context rule, the
+document-level field surgery).
+
+### Theorems (`VC/Theorems.lean`, 34; axioms: propext, Classical.choice, Quot.sound)
+
+- `base58Decode?_base58Encode : base58Decode? (base58Encode bs) = some bs`
+  — the lemma `VC.Multibase.fst`'s banner declines ("a full base58
+  bijection proof … is a disproportionate proof burden"). It is ~150
+  lines: digits→nat→digits and bytes→nat→bytes by strong induction
+  (`digitsToNat58_natToDigits58`, `natToBytesBE_bytesToNatAcc` in
+  accumulator form), the leading-zero run via `takeWhile_append_dropWhile`,
+  the two alphabet facts (`base58Digit?_base58Char`, `base58Char_ne_one`)
+  by `decide` over the 58-entry list literal.
+- `multibaseDecode?_encode`, `multikeyToEd25519PublicKey?_of_key`,
+  `parseDidKey_didKeyOfPublicKey` (a 32-byte key survives `did:key:`).
+- `hashData_congr`, `createProofValue_of_canonical_eq`,
+  `verifyProofValue_of_canonical_eq`: the hash input, the proof value and
+  the verdict are functions of the RDFC-1.0 canonical forms only.
+- `verifyFromCanonical_not_multibase`, `verifyDocument_noProof`: refusals
+  that hold for every primitive and loader.
+- `verifyFromCanonical_createFromCanonical`: create-then-verify succeeds
+  under the single hypothesis `verifyF pk m (signF sk m) = true` — the
+  signature scheme's correctness, stated as a premise, never assumed
+  globally.
+
+### Translation decisions
+
+- **Primitives are parameters.** `createFromCanonical`/`verifyFromCanonical`
+  and everything above them take `SignFn`/`VerifyFn`. Consequences: the
+  library is a total function of its inputs; the `#guard`s exercise the
+  pipeline with a stub verifier that accepts exactly the spec vector's
+  (pk, hashData, signature); no compile-time evaluation ever touches the
+  extern (it could not — `#guard` runs the interpreter, which has no
+  native symbol for an `@[extern]` opaque).
+- **Bytes, not hex, at the FFI.** The F\* boundary is lowercase hex
+  strings; the Lean binding takes `ByteArray`s and the C shim only checks
+  lengths. Hex lives in `Multibase` for the vectors and the
+  `hash_data_hex` parity function.
+- **Refusals are typed.** `verifyDocument : … → Except VerifyError Unit`;
+  every non-success has a constructor and a `describe`. A length-refused
+  key is an EMPTY result from the primitive and `none` from
+  `createFromCanonical` (the F\* `""` convention), never a proof value.
+- **Proof sets verify member by member; proof chains are refused**
+  (`proofChainUnsupported`). The F\* shim implements chains in JavaScript;
+  porting that is document-level work for a later stage.
+- **`created` is optional** and not validated beyond presence (as in the
+  F\*); `proofPurpose` must equal the caller's expected purpose (default
+  `assertionMethod`).
+- **The securing document's `@context` is extended** by
+  `proofContextFor` exactly as the shim extends it, so re-verification
+  rebuilds the same proof-options context; for a VCDM 2.0 document that
+  is the identity.
+
+### Sabotage record (2026-08-22)
+
+1. `hashData` concatenation order swapped (document hash first):
+   `lake build` fails at `VC/Tests.lean:177` (`hashDataHex … ==
+   specCfgHash ++ specDocHash`). Restored, green.
+2. `base58Encode` stops emitting the leading `'1'` per zero byte:
+   `VC/Tests.lean:59` and `:66` (the two Bitcoin Core vectors with
+   leading zeros) fail AND `VC/Theorems.lean:248`
+   (`base58Decode?_base58Encode`) no longer proves. Restored, green.
+3. The C shim's `l4_hacl_ed25519_verify` made to return 1
+   unconditionally (the build stays green — no `#guard` can see an
+   extern): `l4vc-probe` reports `ed25519-rfc8032: 13 pass, 9 fail (out
+   of 22)`, `vc-dataintegrity-eddsa-rdfc-2022: 5 pass, 3 fail (out of
+   8)`, `vc-di-eddsa-spec-vectors: 17 pass, 3 fail (out of 20)` — every
+   negative check (flipped signature bytes, wrong key, tampered
+   proofValue, changed claim, corrupted canonical form). Restored:
+   58 pass, 0 fail. This is why the probe carries negative checks in
+   every section.
+4. Measured live rather than by code sabotage, as the probe's own
+   checks: flipping byte 0 or byte 63 of each RFC 8032 signature makes
+   `verify` false; swapping two INPUT quads leaves the RDFC-1.0
+   canonical form unchanged (so the proof still verifies), while
+   swapping two lines of the canonical form changes the SHA-256 digest
+   and the spec signature no longer verifies over it.
+
+### Assumption report (append) — THE ONE EXTERN
+
+The F\* `VC.DataIntegrity.fst` has four `assume val`s:
+`hash_sha256_hex` (dissolved: pure Lean SHA-256, FIPS 180-4 vectors as
+`#guard`s, `Crypto/SHA2.lean`) and `ed25519_secret_to_public` /
+`ed25519_sign` / `ed25519_verify`. The latter three are
+`Crypto/Ed25519.lean`'s `@[extern "l4_hacl_ed25519_*"] opaque`
+declarations — the Lean tree's single permitted `extern` family under
+the crypto-policy skill's Lean 4 amendment (signatures via HACL\* FFI
+only; never a hand-written implementation). Trust statement, in full,
+in that module's header; in short: Lean knows their types and nothing
+about their values; no theorem depends on them (`#print axioms` on
+every theorem of the library is unchanged: propext, Classical.choice,
+Quot.sound); what is trusted is HACL\*'s F\*/Low\*-verified Ed25519
+(vendored unmodified, Apache-2.0, cryspen/hacl-packages
+`05c3d8fb321ed65e3db3a6a8b853019e86fb40a2`), the 60-line
+length-checking shim, and Lean's FFI calling convention; what is
+measured is RFC 8032 §7.1 through the binding at run time. `VC.Multibase.fst`,
+`DID.Key.fst`: zero `assume val`s, confirmed by grep. No `sorry`, no
+`axiom`, no `native_decide`, no `partial` in `L4Factoidal/`
+(`Harness/VcProbe.lean`'s `findRepoRoot` is `partial`, in the harness,
+outside the library, like the other probes' directory walks).
+
+### Not ported (and said so)
+
+- `VC.Credential.fst` + `VC.Context.fst` — the VCDM 2.0 STRUCTURAL
+  validator and its purpose-built term-resolution walker (the F\*
+  `vc_stage1` suite, 117 pass, 0 fail (out of 117) over
+  `third_party/testing/vc/tests/input/*-ok|-fail.json`). A separate
+  stage; the Lean tree's full JSON-LD processor would replace the
+  walker rather than port it.
+- Proof chains (`previousProof`), the live-endpoint suites
+  (`vc_di_eddsa` 31, `vc20_api` 59 — mocha over HTTP through the Node
+  shim), `keyAgreement` derivation (curve arithmetic; crypto policy).
+- The wasm artifact: `Wasm/build-wasm.sh` now compiles the same four C
+  units for wasm32 (each compile-checked under emcc 2026-08-22; the
+  shim's object is named `l4_hacl_shim.o` because `hacl_ed25519.o`
+  collides with `Hacl_Ed25519.o` on a case-insensitive filesystem — a
+  trap found while checking), but the full module was not rebuilt in
+  this stage.
+
+### Findings against the F\* (not fixed here)
+
+- `formal/fstar/VC.DataIntegrity.fst:21-23` ("NATIVE-ONLY … This module
+  is deliberately excluded from the js_of_ocaml/wasm bundle") and
+  `formal/fstar/build-ocaml.sh:1182-1184` (same claim) are stale since
+  #286: the `js` step compiles `VC_DataIntegrity.ml` and links
+  `hacl_stubs.js` (`build-ocaml.sh:2309`, `:2343`, `:2441`), and
+  `skills/node-crypto-haclstar-vc-wasm-build` documents VC verify
+  working off-native. An obsolescence-sweep item.
+- `formal/fstar/VC.Multibase.fst:20-25`: the banner's reason for not
+  stating `decode (encode bs) == Some bs` ("disproportionate proof
+  burden") no longer holds as an estimate — the Lean proof is ~150
+  lines with no library beyond core; the F\* statement would be of the
+  same size.
+- `bin/vc-runner/vc_runner.ml:381-383`: the `--crypto` roundtrip's
+  proof-options dataset uses `http://www.w3.org/ns/data-integrity#cryptosuite`
+  and `…#proofPurpose`, which are not the Data Integrity vocabulary
+  (`https://w3id.org/security#cryptosuite`, typed
+  `sec:cryptosuiteString`; `…#proofPurpose` with an IRI object). Harmless
+  for a self-contained roundtrip — the Lean probe replays the same
+  strings for parity — but it is not a spec-shaped input; the W3C
+  vectors in section 4 are.
+## Stage: indexed OWL 2 RL closure — no cap hits on the W3C OWL corpus (branch `lean4/owl-indexed`, 2026-08-22)
+
+What landed: `L4Factoidal/OWL/RLClosureIndexed.lean` — the OWL 2 RL/RDF
+closure over an indexed triple store, with a PROVED list equality to the
+specification engine `RLClosure.closure`; `Harness/OwlProbe.lean` scores
+with it, scopes imported-document blank nodes per import, and carries a
+`--profile` mode (per-row timing of the list engine, indexed cross-check,
+`--indexed-only` rounds). The spec (`RLRules.lean`) and the theorem file
+(`RLTheorems.lean`) are untouched. The F\* counterpart of this step is
+`RDFS.Closure.SemiNaive.fst`.
+
+### Measured first: where the time was (list engine, `--profile`)
+
+Per-row wall time of one `RLClosure.step` round, IO.Ref-forced (see the
+measuring-inference skill, rule 9, for why the first instrument read 0 ms
+on every row):
+
+```
+WebOnt-description-logic-204  premise 1074 triples
+  round 1: rows total emitted=5235 ms=586     dedup addAll new=1750 ms=109    cls-int1: emitted=0 ms=577
+  round 5: rows total emitted=30361 ms=6640   dedup addAll new=0 ms=648       cls-int1: emitted=328 ms=6443
+WebOnt-miscellaneous-001      premise 2912 triples
+  round 1: rows total emitted=12282 ms=20724  dedup addAll new=3534 ms=491    cls-int1: emitted=0 ms=20634
+  round 2: rows total emitted=62272 ms=104840 dedup addAll new=4108 ms=2810   cls-int1: emitted=6323 ms=104322
+```
+
+One row — cls-int1 — is 95–99.6 % of every round: per `owl:intersectionOf`
+triple it walks EVERY subject occurrence of the graph and runs a `memB`
+list scan per class (O(#intersections × |g| × |list| × |g|)). The exact
+dedup (`addAll`, a scan per conclusion) is second and grows with |g|;
+every other row is under 50 ms. The 20 s budget was spent inside round 1
+of the ~3 000-triple cases, as the task brief said.
+
+### The indexed engine and its cost model
+
+`Index`: `Array Triple` (insertion order), `Std.HashSet Triple` (exact
+membership), five `Std.HashMap` buckets — S, P, O, (S,P), (P,O) — each
+holding the REVERSED filter of the array. Lookup = `getD` + reverse:
+O(1) + O(result). Insert = one `push`, one set insert, five `getD` +
+`insert` with a cons: O(1). `memB`: O(1). A round is O(|g| + emitted)
+instead of O(|g| × scans); the round count is unchanged (same stopping
+rule). Evaluation is NAIVE with indexed joins, not semi-naive: each round
+still drives every row from every triple of the input snapshot, which is
+what makes the bridge a per-round equality. Measured on
+WebOnt-miscellaneous-001 after the blank-node fix below: 8 rounds,
+12 280 triples, 1 107 ms cumulative (round 1: 30 ms; list engine round 1:
+20 724 ms).
+
+### What is proved (`RLClosureIndexed.lean`, axioms: propext, Classical.choice, Quot.sound)
+
+The rows are written once over a `Store` record of lookups. `Store.ofGraph g`
+packs the list scans, and every row over it is the `RLClosure` row by
+`rfl` (47 `xxxForS_ofGraph` lemmas, 13 clash rows; the five recursive
+walkers by induction). `Index.Wf i g` — the array is `g`, the set decides
+`memB g`, every bucket lookup EQUALS the list filter as a list — is
+preserved by `push`, `insert` (= `addOne`), `insertAll` (= `addAll`), and
+gives `Store.ofIndex_eq : Store.ofIndex i = Store.ofGraph g`. Hence:
+
+- `Index.Wf.step` — one indexed round pictures one `RLClosure.step`;
+- `Index.Wf.closure` — the loop takes the same branch at every fuel;
+- `indexedClosure_eq : indexedClosure g fuel = closure g fuel` — LIST
+  equality (order included), every graph, every fuel;
+- `mem_indexedClosure_iff` — the set-membership form the task asked for;
+- `detectClashI_closureI` — the indexed clash verdict is `inconsistent`.
+
+So T1/T2/T4 and `detectClash_sound` of `RLTheorems.lean` hold of the
+indexed engine by rewriting, with nothing re-proved. The proofs reason
+about `Std.HashMap.getD_insert` / `Std.HashSet.contains_insert` only.
+`RLTests.lean` evaluates `indexedClosure == closure` on every fixture so
+the compiled hash path is exercised too.
+
+Sabotage (2026-08-22): `Index.push` changed to skip `rdf:type` triples in
+the (P,O) bucket. `lake build` fails at `Index.Wf.push` (line 912, type
+mismatch: `BucketWf (i.byPO.insert …)` expected `BucketWf (i.push t).byPO`).
+Restored; green.
+
+### Measured score lines, verbatim — before and after, same 20 s cap
+
+Baseline, list engine (`l4owl-probe --cap-ms 20000`, run from the repo
+root, commit 9dd44d59a engine):
+
+```
+profile-RL.rdf: 102 pass, 19 fail, 0 skip, 5 unsupported (out of 126)
+HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1227 closure_rounds=428 clashes=10 cap_hits=0 parse_failures=0 wall_ms=81
+profile-EL.rdf: 95 pass, 21 fail, 1 skip, 4 unsupported (out of 121)
+HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1098 closure_rounds=409 clashes=4 cap_hits=0 parse_failures=0 wall_ms=69
+profile-QL.rdf: 76 pass, 11 fail, 0 skip, 0 unsupported (out of 87)
+HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=303 clashes=5 cap_hits=0 parse_failures=0 wall_ms=57
+type-positive-entailment.rdf: 290 pass, 116 fail, 0 skip, 6 unsupported (out of 412)
+HARNESS-DIAG-OWL type-positive-entailment.rdf: cases=206 units=412 triples_parsed=28902 closure_rounds=1542 clashes=0 cap_hits=10 parse_failures=0 wall_ms=327877
+type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5258 closure_rounds=425 clashes=29 cap_hits=0 parse_failures=0 wall_ms=1759
+type-consistency.rdf: 451 pass, 120 fail, 0 skip, 12 unsupported (out of 583)
+HARNESS-DIAG-OWL type-consistency.rdf: cases=354 units=583 triples_parsed=41248 closure_rounds=2107 clashes=0 cap_hits=14 parse_failures=1 wall_ms=401706
+TOTAL: 1043 pass, 371 fail, 2 skip, 41 unsupported (out of 1457)
+HARNESS-DIAG-OWL TOTAL: cases=931 units=1457 triples_parsed=78605 closure_rounds=5214 clashes=48 cap_hits=24 parse_failures=1
+```
+
+After — indexed engine + per-import blank-node scoping, same command:
+
+```
+profile-RL.rdf: 102 pass, 19 fail, 0 skip, 5 unsupported (out of 126)
+HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1227 closure_rounds=428 clashes=10 cap_hits=0 parse_failures=0 wall_ms=52
+profile-EL.rdf: 95 pass, 21 fail, 1 skip, 4 unsupported (out of 121)
+HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1098 closure_rounds=409 clashes=4 cap_hits=0 parse_failures=0 wall_ms=43
+profile-QL.rdf: 76 pass, 11 fail, 0 skip, 0 unsupported (out of 87)
+HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=303 clashes=5 cap_hits=0 parse_failures=0 wall_ms=32
+type-positive-entailment.rdf: 297 pass, 109 fail, 0 skip, 6 unsupported (out of 412)
+HARNESS-DIAG-OWL type-positive-entailment.rdf: cases=206 units=412 triples_parsed=28902 closure_rounds=1576 clashes=0 cap_hits=0 parse_failures=0 wall_ms=4116
+type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5258 closure_rounds=425 clashes=29 cap_hits=0 parse_failures=0 wall_ms=172
+type-consistency.rdf: 461 pass, 110 fail, 0 skip, 12 unsupported (out of 583)
+HARNESS-DIAG-OWL type-consistency.rdf: cases=354 units=583 triples_parsed=41248 closure_rounds=2159 clashes=0 cap_hits=0 parse_failures=1 wall_ms=7024
+TOTAL: 1060 pass, 354 fail, 2 skip, 41 unsupported (out of 1457)
+HARNESS-DIAG-OWL TOTAL: cases=931 units=1457 triples_parsed=78605 closure_rounds=5300 clashes=48 cap_hits=0 parse_failures=1
+```
+
+FAIL lists diffed (`comm` on the `FAIL <id> [type]` lines): no new FAIL;
+these 10 units moved from fail to pass — WebOnt-description-logic-201,
+-204, -206, -661, -664 [ConsistencyTest], -204 [PositiveEntailmentTest],
+WebOnt-miscellaneous-001, -002, -011 [ConsistencyTest], -011
+[PositiveEntailmentTest]. The 24 baseline cap hits are 12 distinct units;
+the two not in the list above now fail on their merits:
+WebOnt-description-logic-201 and -206 [PositiveEntailmentTest],
+`closure-gap: missing <…#V822576> rdf:type <…#C110>` / `<…#V21027>
+rdf:type <…#C30>` — the conclusions the F\* runner reaches through its
+PE-via-refutation tableau fallback, which this probe's header already
+names as not ported. The one `parse_failures=1` (FS2RDF-literals-ar,
+RDF/XML §7.2.16) is unchanged.
+
+### Finding on the way: an RDF union where a merge was needed (fixed in the probe)
+
+With the fast engine, WebOnt-miscellaneous-001/002/011 [ConsistencyTest]
+first FAILED with `clash: detectClash fired on a premise asserted
+consistent (67989 triples)` after 5 rounds, the closure doubling per
+round (2912 → 6446 → 10554 → 15515 → 30829 → 67989). The OWL 2 RL rules
+are sound for any RDF graph, so the input was wrong: `loadImports` merged
+each imported RDF/XML graph by plain concatenation, and the parser labels
+blank nodes `b0, b1, …` per document, so wine's restrictions and food's
+restrictions shared labels — chimera restrictions. The F\* runner hit and
+fixed the same defect on 2026-07-10 (`owl_runner.ml`, "Bnode renaming");
+the port now applies `Graph.prefixBnodes "imp<n>_"` per import. The list
+engine never got past round 1 on these cases, so the defect was invisible
+until the engine was fast — the measurement that was supposed to confirm
+a speed-up instead found a correctness bug in the harness.
+
+### Module correspondence (append)
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `RDFS.Closure.SemiNaive.fst` (indexed/semi-naive RDFS closure), `RDF.Indexed` bucket trees | `OWL/RLClosureIndexed.lean` `Store`, `Index`, `stepI`, `closureI`, `indexedClosure`, `detectClashI` | naive rounds over hash buckets, not semi-naive deltas; the bridge is a list equality, not a saturation argument |
+| `owl_runner.ml` `load_imports_into_premise` + per-import bnode renaming | `Harness/OwlProbe.lean` `loadImports` with `Graph.prefixBnodes` | same ordinal-prefix discipline |
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no `@[extern]`
+in `RLClosureIndexed.lean`. `Std.HashMap` / `Std.HashSet` from core Lean
+only (still zero external dependencies). Not done: semi-naive evaluation
+(each round re-derives everything; its bridge would be an equality at
+saturation, a different proof) — the corpus does not need it at the 20 s
+cap; cls-int1 still enumerates subject OCCURRENCES (`subjectsOf g`, one
+per triple) because the row body must stay `rfl`-equal to the list row.
