@@ -10,4 +10,5 @@ import L4Factoidal.Syntax.Lexing
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads
 import L4Factoidal.Syntax.SyntaxTests
+import L4Factoidal.Syntax.SyntaxTheorems
 import L4Factoidal.Tests
