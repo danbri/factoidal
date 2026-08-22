@@ -17,6 +17,9 @@ a green test run.
 | `L4Factoidal/RDF/Graph.lean` | `RDF.Graph.fsti` (+ `RDF.Dataset.Merge` renaming) | graphs as lists with set-semantics ops, datasets, blank-node renaming, membership theorems |
 | `L4Factoidal/SPARQL/Algebra.lean` | `SPARQL11.Algebra.fst` Parts 1–2, §7.2–7.3/§18.5 | bindings, patterns (incl. SPARQL 1.2 triple-term patterns), `tpMatch`, `evalBgp`, join/leftJoin/union/minus/filter, `GraphPattern.eval` |
 | `L4Factoidal/SPARQL/Invariants.lean` | (new; replaces the F\* SMT-`Lemma` style) | empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity — all kernel-checked, no solver |
+| `L4Factoidal/RDF/Isomorphism.lean` | `RDF.GraphIsomorphism.fst` (comparison role only — ALGORITHM DIFFERS, see below) | RDF 1.1 Concepts §3.6 specification (`Graph.Isomorphic`, `Dataset.Isomorphic`) + the executable decision procedure: ground pre-filter, blank-node signature pruning, bounded backtracking bijection search returning the WITNESS mapping, three-way `IsoOutcome` |
+| `L4Factoidal/RDF/IsomorphismTheorems.lean` | (new) | reflexivity (graphs; datasets under distinct graph names) and SOUNDNESS for both, plus the checker-correctness sub-lemmas `Graph.setEq_of_setEqB`, `bijectiveCert_inj`, `bijectiveCert_onto` |
+| `L4Factoidal/RDF/IsomorphismTests.lean` | (new) | 73 `#guard`s: relabelling, chain vs fork, ground-set comparison, order/duplicate insensitivity, the two-blank-node cycle vs two self-loops, RDF 1.2 nested blank nodes, dataset-wide blank-node scoping, named-graph matching by IRI, the budget refusal |
 
 ## Translation decisions
 
@@ -46,11 +49,55 @@ a green test run.
   `Classical.choice`, `Quot.sound` — Lean's standard foundations; no
   `sorry`, no user axioms, no `native_decide`.
 
+- **Graph isomorphism: a DIFFERENT ALGORITHM, deliberately.** This is
+  the one place so far where the Lean port does not reproduce the F\*
+  method, so it is recorded loudly rather than buried.
+  `RDF.GraphIsomorphism.fst` reduces isomorphism to
+  CANONICALISATION — it runs both sides through the verified RDFC-1.0
+  canonicaliser (`RDF.Canonical`; SHA-256 + Hash-N-Degree-Quads) and
+  byte-compares the canonical N-Quads, which is rdflib's reduction.
+  `L4Factoidal/RDF/Isomorphism.lean` instead searches for the
+  blank-node bijection directly, with ground pre-filtering and
+  signature pruning. Two reasons: (1) RDFC-1.0 needs SHA-256, a much
+  larger port than the comparison primitive the W3C harness is waiting
+  on; (2) a canonical-hash comparison yields a Bool with no witness,
+  whereas a search that RETURNS the mapping makes soundness a direct
+  check — which is what `Graph.isomorphic?_sound` proves. Ported
+  faithfully from the F\* module: the three-way outcome
+  (`Iso_Equal`/`Iso_NotEqual`/`Iso_BudgetExceeded` → `IsoOutcome`), so
+  a work-budget trip is reported and never a silent pass; and the
+  language-tag case folding (`normalize_literal` there, already inside
+  `Literal.eqb` here). NOT ported: `solutions_isomorphic`, the
+  Jena-style SELECT-result reification, which needs the SPARQL
+  solution type and belongs with the SPARQL side.
+- **Search bound.** Termination is structural (recursion on the list
+  of `g1`'s blank nodes), so no fuel parameter is needed for totality;
+  the breadth bound is signature pruning plus `isoBnodeBudget = 16`,
+  above which the procedure refuses and reports `budgetExceeded`. The
+  identity mapping is tried first, so a parser evaluation test whose
+  labels already agree costs one set comparison.
+- **What is proved and what is not.** Proved: reflexivity, and
+  SOUNDNESS (`isomorphic? = true` → `Graph.Isomorphic`) for graphs and
+  datasets — the search is untrusted, since `isomorphismMap?` re-checks
+  whatever it returns and only the check is used in the proof. NOT
+  proved: completeness (false as stated, because of the budget and
+  because signature keys write `rdf:XMLLiteral` literals lexically),
+  and symmetry of the PROCEDURE (exercised on fixtures in both
+  directions; a proof would need completeness first). Dataset
+  reflexivity carries a `Dataset.namesNoDup` hypothesis, because
+  `lookupNamed` returns the first graph under a name and the Lean type
+  does not enforce RDF 1.1 §4's uniqueness of graph names.
+
 ## Assumption report — `assume val`s in the F\* originals
 
 Requested by the port brief: unverified assumptions encountered in
 the source modules.
 
+- `RDF.GraphIsomorphism.fst`: **zero** `assume val`s (200 lines,
+  measured 2026-08-22 with `grep -c "assume val"`). The comparison
+  semantics are fully defined in F\* and extracted; `w3c_runner.ml` is
+  I/O glue that only calls them. Its dependency `RDF.Canonical` is a
+  separate module and was not audited here.
 - `RDF.Term`, `RDF.Triple`, `RDF.Graph`: **zero** `assume val`s. The
   core data model is fully defined; nothing was assumed away, and the
   port confirms it (every ported definition is total and executable).

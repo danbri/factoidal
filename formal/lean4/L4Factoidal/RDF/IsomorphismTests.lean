@@ -220,7 +220,39 @@ private def dsBroken : Dataset :=
 #guard Graph.isomorphic? [] [ ti iA iP (oi iB) ] = false
 #guard Graph.isomorphic? [ ti iA iP (oi iB) ] [] = false
 
-/-! ## 9. Helper-level guards -/
+/-! ## 9. Reflexivity, concretely
+
+`IsomorphismTheorems.lean` proves `Graph.isomorphic?_refl` for every
+graph; these check the same thing on the fixtures, so a broken proof
+and a broken procedure cannot cover for each other. -/
+
+#guard Graph.isomorphic? chain chain = true
+#guard Graph.isomorphic? cycle2 cycle2 = true
+#guard Graph.isomorphic? ground1 ground1 = true
+#guard Graph.isomorphic? (ttBnode "x") (ttBnode "x") = true
+#guard Dataset.namesNoDup dsA = true
+#guard Dataset.isomorphic? dsA dsA = true
+
+/-! ## 10. The blank-node budget
+
+Above `isoBnodeBudget` the procedure REFUSES to search and reports
+`budgetExceeded` — it never answers a bare `false` that a caller could
+mistake for "definitely different" (the reason the F* module carries
+`Iso_BudgetExceeded`). The identity fast path runs before the budget,
+so two graphs that already agree on labels still compare equal no
+matter how many blank nodes they have. -/
+
+private def manyBnodes (pre : String) : Graph :=
+  (List.range 17).map (fun i => tb (pre ++ toString i) iP (oi iA))
+
+#guard (Graph.bnodes (manyBnodes "a")).length = 17
+#guard isoBnodeBudget = 16
+#guard Graph.isomorphic? (manyBnodes "a") (manyBnodes "a") = true
+#guard Graph.isomorphic? (manyBnodes "a") (manyBnodes "b") = false
+#guard Graph.isomorphicOutcome (manyBnodes "a") (manyBnodes "b")
+         = IsoOutcome.budgetExceeded
+
+/-! ## 11. Helper-level guards -/
 
 #guard Graph.bnodes chain = ["a", "b", "c"]
 #guard Graph.bnodes ground1 = []

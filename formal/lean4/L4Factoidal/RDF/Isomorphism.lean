@@ -422,6 +422,15 @@ def Dataset.renameBnodes (f : BNodeId → BNodeId) (ds : Dataset) : Dataset :=
   { default := ds.default.renameBnodes f,
     named   := ds.named.map (fun ng => { ng with graph := ng.graph.renameBnodes f }) }
 
+/-- Distinct graph names — the well-formedness condition of RDF 1.1
+Concepts §4 (a dataset holds at most one graph per name). The Lean
+type does not enforce it, so `Dataset.isomorphic?_refl` takes it as a
+hypothesis rather than pretending: `Dataset.lookupNamed` returns the
+FIRST graph carrying a name, so a value listing two different graphs
+under one name is not even equal to itself under name matching. -/
+def Dataset.namesNoDup (ds : Dataset) : Bool :=
+  noDupLabels (ds.named.map (fun ng => ng.name))
+
 /-- The two datasets name the same graphs. -/
 def Dataset.namesMatchB (ds1 ds2 : Dataset) : Bool :=
   ds1.named.all (fun ng => (ds2.lookupNamed ng.name).isSome) &&
