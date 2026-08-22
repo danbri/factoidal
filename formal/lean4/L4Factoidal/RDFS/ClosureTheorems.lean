@@ -450,4 +450,349 @@ theorem closure_sound (fuel : Nat) :
     · exact Derives.base h
     · exact Derives.cut (fun _ hu => step_sound hu) (ih (step g) h)
 
+/-! ## Section 6 — the engine equality is transitive
+
+T4 has to speak in `Graph.mem`, and chaining "the premise is present up
+to `Triple.eqb`" through a rule application needs `Triple.eqb` to be
+transitive. It is, but not for free: `Literal.eqb` compares
+`rdf:XMLLiteral` lexical forms through canonical XML and language tags
+case-insensitively, so transitivity is a real (if small) proof rather
+than a rewrite. None of these lemmas exists in `RDF/Core.lean`; they
+belong there — see PORT_NOTES.md.
+
+Note what is NOT claimed: `Term.eqb` is not equality. Only in the
+positions the rho-df rules MATCH on — subjects, predicates, and objects
+that must be usable as subjects — does eqb collapse to equality
+(`Subject.eqb_eq`, `Term.eqb_iri`, `Term.eqb_eq_of_toSubject`), which
+is what lets a rule be fired on an eqb-witness at all. -/
+
+theorem Subject.eqb_eq {a b : Subject} (h : Subject.eqb a b = true) : a = b := by
+  cases a <;> cases b <;> simp_all [Subject.eqb, Subtype.ext_iff]
+
+theorem langTagOptionEq_trans {a b c : Option String}
+    (h1 : langTagOptionEq a b = true) (h2 : langTagOptionEq b c = true) :
+    langTagOptionEq a c = true := by
+  cases a <;> cases b <;> cases c <;> simp_all [langTagOptionEq, langTagEq]
+
+theorem Literal.eqb_trans {a b c : Literal}
+    (h1 : Literal.eqb a b = true) (h2 : Literal.eqb b c = true) :
+    Literal.eqb a c = true := by
+  simp only [Literal.eqb, Bool.and_eq_true, beq_iff_eq] at h1 h2 ⊢
+  obtain ⟨⟨⟨hx1, hd1⟩, hl1⟩, hr1⟩ := h1
+  obtain ⟨⟨⟨hx2, hd2⟩, hl2⟩, hr2⟩ := h2
+  refine ⟨⟨⟨?_, hd1.trans hd2⟩, langTagOptionEq_trans hl1 hl2⟩, hr1.trans hr2⟩
+  by_cases hxa : a.datatype = rdfXMLLiteral
+  · have hxb : b.datatype = rdfXMLLiteral := hd1 ▸ hxa
+    have hxc : c.datatype = rdfXMLLiteral := hd2 ▸ hxb
+    rw [if_pos (by simp [hxa, hxb])] at hx1
+    rw [if_pos (by simp [hxb, hxc])] at hx2
+    rw [if_pos (by simp [hxa, hxc])]
+    simp only [XmlCanon.xmlCanonEq, beq_iff_eq] at hx1 hx2 ⊢
+    exact hx1.trans hx2
+  · have hxb : ¬ b.datatype = rdfXMLLiteral := fun hb => hxa (hd1.trans hb)
+    rw [if_neg (by simp [hxa])] at hx1
+    rw [if_neg (by simp [hxb])] at hx2
+    rw [if_neg (by simp [hxa])]
+    simp only [beq_iff_eq] at hx1 hx2 ⊢
+    exact hx1.trans hx2
+
+theorem Term.eqb_trans : ∀ {a b c : Term},
+    Term.eqb a b = true → Term.eqb b c = true → Term.eqb a c = true := by
+  intro a
+  induction a with
+  | iri i =>
+    intro b c h1 h2
+    cases b <;> cases c <;> simp_all [Term.eqb]
+  | bnode x =>
+    intro b c h1 h2
+    cases b <;> cases c <;> simp_all [Term.eqb]
+  | literal l =>
+    intro b c h1 h2
+    cases b <;> cases c <;> simp only [Term.eqb] at h1 h2 ⊢ <;>
+      first
+        | exact Literal.eqb_trans h1 h2
+        | simp at h1
+        | simp at h2
+  | tripleTerm s p o ih =>
+    intro b c h1 h2
+    cases b <;> cases c <;>
+      simp only [Term.eqb, Bool.and_eq_true, beq_iff_eq] at h1 h2 ⊢ <;>
+      first
+        | (obtain ⟨⟨hs1, hp1⟩, ho1⟩ := h1
+           obtain ⟨⟨hs2, hp2⟩, ho2⟩ := h2
+           refine ⟨⟨?_, hp1.trans hp2⟩, ih ho1 ho2⟩
+           rw [Subject.eqb_eq hs1, Subject.eqb_eq hs2]
+           exact Subject.eqb_refl _)
+        | simp at h1
+        | simp at h2
+
+theorem Triple.eqb_trans {a b c : Triple}
+    (h1 : Triple.eqb a b = true) (h2 : Triple.eqb b c = true) :
+    Triple.eqb a c = true := by
+  simp only [Triple.eqb, Bool.and_eq_true, beq_iff_eq] at h1 h2 ⊢
+  obtain ⟨⟨hs1, hp1⟩, ho1⟩ := h1
+  obtain ⟨⟨hs2, hp2⟩, ho2⟩ := h2
+  refine ⟨⟨?_, hp1.trans hp2⟩, Term.eqb_trans ho1 ho2⟩
+  rw [Subject.eqb_eq hs1, Subject.eqb_eq hs2]
+  exact Subject.eqb_refl _
+
+/-- Decomposition of a triple eqb-match: subject and predicate match
+EXACTLY; only the object can differ, and only inside literals. -/
+theorem Triple.eqb_parts {u t : Triple} (h : Triple.eqb u t = true) :
+    u.s = t.s ∧ u.p = t.p ∧ Term.eqb u.o t.o = true := by
+  simp only [Triple.eqb, Bool.and_eq_true, beq_iff_eq] at h
+  obtain ⟨⟨hs, hp⟩, ho⟩ := h
+  exact ⟨Subject.eqb_eq hs, hp, ho⟩
+
+theorem Triple.eqb_of_parts {u t : Triple} (hs : u.s = t.s) (hp : u.p = t.p)
+    (ho : Term.eqb u.o t.o = true) : Triple.eqb u t = true := by
+  simp [Triple.eqb, hs, hp, ho]
+
+/-- In the term position the rules match an IRI on, eqb IS equality. -/
+theorem Term.eqb_iri {a : Term} {i : WfIri}
+    (h : Term.eqb a (Term.iri i) = true) : a = Term.iri i := by
+  cases a <;> simp_all [Term.eqb, Subtype.ext_iff]
+
+/-- ... and likewise for an object read as a subject (an IRI or a blank
+node — never a literal, so never fuzzy). -/
+theorem Term.eqb_eq_of_toSubject {a b : Term} {x : Subject}
+    (h : Term.eqb a b = true) (hs : b.toSubject? = some x) : a = b := by
+  cases b <;> simp only [Term.toSubject?] at hs <;>
+    first
+      | exact Term.eqb_iri h
+      | (cases a <;> simp_all [Term.eqb])
+      | simp at hs
+
+theorem graphMem_of_exists {g : Graph} {t : Triple}
+    (h : ∃ u, u ∈ g ∧ Triple.eqb u t = true) : Graph.mem t g = true := by
+  obtain ⟨u, hu, he⟩ := h
+  induction g with
+  | nil => cases hu
+  | cons hd tl ih =>
+    rcases List.mem_cons.mp hu with rfl | h'
+    · simp [Graph.mem, he]
+    · simp [Graph.mem, ih h']
+
+/-- Engine membership is closed under the engine equality. -/
+theorem graphMem_of_graphMem_eqb {g : Graph} {u t : Triple}
+    (h : Graph.mem u g = true) (he : Triple.eqb u t = true) :
+    Graph.mem t g = true := by
+  obtain ⟨v, hv, hve⟩ := exists_of_graphMem h
+  exact graphMem_of_exists ⟨v, hv, Triple.eqb_trans hve he⟩
+
+/-! ## Section 7 — a row's conclusion reaches `stepConclusions` -/
+
+theorem mem_stepConclusions_rdfs7 {g : Graph} {d t : Triple}
+    (hd : d ∈ g) (h : t ∈ rdfs7For g d) : t ∈ stepConclusions g := by
+  simp only [stepConclusions, List.mem_append, List.mem_flatMap]
+  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl ⟨d, hd, h⟩))))
+
+theorem mem_stepConclusions_rdfs2 {g : Graph} {d t : Triple}
+    (hd : d ∈ g) (h : t ∈ rdfs2For g d) : t ∈ stepConclusions g := by
+  simp only [stepConclusions, List.mem_append, List.mem_flatMap]
+  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inr ⟨d, hd, h⟩))))
+
+theorem mem_stepConclusions_rdfs3 {g : Graph} {d t : Triple}
+    (hd : d ∈ g) (h : t ∈ rdfs3For g d) : t ∈ stepConclusions g := by
+  simp only [stepConclusions, List.mem_append, List.mem_flatMap]
+  exact Or.inl (Or.inl (Or.inl (Or.inr ⟨d, hd, h⟩)))
+
+theorem mem_stepConclusions_rdfs9 {g : Graph} {d t : Triple}
+    (hd : d ∈ g) (h : t ∈ rdfs9For g d) : t ∈ stepConclusions g := by
+  simp only [stepConclusions, List.mem_append, List.mem_flatMap]
+  exact Or.inl (Or.inl (Or.inr ⟨d, hd, h⟩))
+
+theorem mem_stepConclusions_rdfs11 {g : Graph} {d t : Triple}
+    (hd : d ∈ g) (h : t ∈ rdfs11For g d) : t ∈ stepConclusions g := by
+  simp only [stepConclusions, List.mem_append, List.mem_flatMap]
+  exact Or.inl (Or.inr ⟨d, hd, h⟩)
+
+theorem mem_stepConclusions_rdfs5 {g : Graph} {d t : Triple}
+    (hd : d ∈ g) (h : t ∈ rdfs5For g d) : t ∈ stepConclusions g := by
+  simp only [stepConclusions, List.mem_append, List.mem_flatMap]
+  exact Or.inr ⟨d, hd, h⟩
+
+/-! ## Section 8 — saturation, and how the fuel loop reaches it
+
+F* theorem 3 (`rho_df_closure_closed`) says the result is closed AT A
+FUEL WITNESS where the length test passes, and takes `no_repeats_p` as
+a hypothesis at that witness. The Lean statement below needs no
+hypothesis and covers every fuel: either the loop stopped at a genuine
+fixpoint, or it consumed all its fuel — and in that case each unit of
+fuel bought at least one new triple, which is the growth the counting
+argument in `closureFuelBound` bounds. -/
+
+/-- **The fuel dichotomy.** For every graph and every fuel: either the
+closure is saturated (one more round changes nothing), or the closure
+grew by at least one triple per unit of fuel spent. -/
+theorem closure_saturated_or_underfueled (fuel : Nat) :
+    ∀ (g : Graph), step (closure g fuel) = closure g fuel ∨
+      g.length + fuel ≤ (closure g fuel).length := by
+  induction fuel with
+  | zero => intro g; exact Or.inr (by simp [closure])
+  | succ n ih =>
+    intro g
+    simp only [closure]
+    split
+    · rename_i heq
+      exact Or.inl (step_eq_of_length_eq heq)
+    · rename_i hne
+      rcases ih (step g) with h | h
+      · exact Or.inl h
+      · have h1 : g.length ≤ (step g).length := length_le_addAll _ g
+        exact Or.inr (by omega)
+
+/-! ## Section 9 — T4, completeness at a saturated graph
+
+One case per RDF 1.1 Semantics §9.2 row. Each case runs the same three
+moves:
+
+1. the induction hypotheses give the premises PRESENT UP TO
+   `Triple.eqb`; take the witnesses;
+2. in every position the row matches on, eqb is equality
+   (`Subject.eqb_eq`, `Term.eqb_iri`, `Term.eqb_eq_of_toSubject`), so
+   the witnesses fire the row — the only slack is in the row's
+   "payload" object, which the row copies unexamined into its
+   conclusion;
+3. the fired conclusion is in `stepConclusions`, hence (saturation) in
+   the graph, and it eqb-matches the target because the payload slack
+   is carried along. -/
+
+/-- **T4 (general form).** A saturated graph containing `g` contains
+everything `g` derives. Membership is the engine's (`Graph.mem`) — see
+the module header for why it must be. -/
+theorem complete_of_saturated {c : Graph} (hsat : step c = c) {g : Graph}
+    (hg : ∀ u, u ∈ g → Graph.mem u c = true) :
+    ∀ {t : Triple}, Derives g t → Graph.mem t c = true := by
+  have fire : ∀ {t' : Triple}, t' ∈ stepConclusions c → Graph.mem t' c = true := by
+    intro t' h'
+    have h'' := graphMem_step_of_mem_conclusions h'
+    rwa [hsat] at h''
+  intro t h
+  induction h with
+  | @base t hm => exact hg _ hm
+  | @rdfs2 p cls s o _ _ ih1 ih2 =>
+      obtain ⟨u1, hu1, he1⟩ := exists_of_graphMem ih1
+      obtain ⟨u2, hu2, he2⟩ := exists_of_graphMem ih2
+      obtain ⟨a1, b1, c1⟩ := u1
+      obtain ⟨a2, b2, c2⟩ := u2
+      obtain ⟨hs1, hp1, ho1⟩ := Triple.eqb_parts he1
+      obtain ⟨hs2, hp2, ho2⟩ := Triple.eqb_parts he2
+      simp only at hs1 hp1 ho1 hs2 hp2 ho2
+      subst hs1; subst hp1
+      have hconcl : (⟨a2, rdfType, c1⟩ : Triple) ∈
+          rdfs2For c ⟨Subject.iri p, rdfsDomain, c1⟩ := by
+        simp only [rdfs2For, beq_self_eq_true, if_true, List.mem_map]
+        exact ⟨⟨a2, b2, c2⟩, mem_triplesWithPredicate_of hu2 hp2, rfl⟩
+      exact graphMem_of_graphMem_eqb (fire (mem_stepConclusions_rdfs2 hu1 hconcl))
+        (Triple.eqb_of_parts hs2 rfl ho1)
+  | @rdfs3 p cls s o osub _ _ hsub ih1 ih2 =>
+      obtain ⟨u1, hu1, he1⟩ := exists_of_graphMem ih1
+      obtain ⟨u2, hu2, he2⟩ := exists_of_graphMem ih2
+      obtain ⟨a1, b1, c1⟩ := u1
+      obtain ⟨a2, b2, c2⟩ := u2
+      obtain ⟨hs1, hp1, ho1⟩ := Triple.eqb_parts he1
+      obtain ⟨hs2, hp2, ho2⟩ := Triple.eqb_parts he2
+      simp only at hs1 hp1 ho1 hs2 hp2 ho2
+      subst hs1; subst hp1
+      have hc2 : c2 = o := Term.eqb_eq_of_toSubject ho2 hsub
+      subst hc2
+      have hconcl : (⟨osub, rdfType, c1⟩ : Triple) ∈
+          rdfs3For c ⟨Subject.iri p, rdfsRange, c1⟩ := by
+        simp only [rdfs3For, beq_self_eq_true, if_true, List.mem_filterMap]
+        exact ⟨⟨a2, b2, c2⟩, mem_triplesWithPredicate_of hu2 hp2, by simp [hsub]⟩
+      exact graphMem_of_graphMem_eqb (fire (mem_stepConclusions_rdfs3 hu1 hconcl))
+        (Triple.eqb_of_parts rfl rfl ho1)
+  | @rdfs5 a b bsub cterm _ hsub _ ih1 ih2 =>
+      obtain ⟨u1, hu1, he1⟩ := exists_of_graphMem ih1
+      obtain ⟨u2, hu2, he2⟩ := exists_of_graphMem ih2
+      obtain ⟨a1, b1, c1⟩ := u1
+      obtain ⟨a2, b2, c2⟩ := u2
+      obtain ⟨hs1, hp1, ho1⟩ := Triple.eqb_parts he1
+      obtain ⟨hs2, hp2, ho2⟩ := Triple.eqb_parts he2
+      simp only at hs1 hp1 ho1 hs2 hp2 ho2
+      subst hp1; subst hs2; subst hp2
+      have hc1 : c1 = b := Term.eqb_eq_of_toSubject ho1 hsub
+      subst hc1
+      have hconcl : (⟨a1, rdfsSubPropertyOf, c2⟩ : Triple) ∈
+          rdfs5For c ⟨a1, rdfsSubPropertyOf, c1⟩ := by
+        simp only [rdfs5For, beq_self_eq_true, if_true, hsub, List.mem_map]
+        exact ⟨c2, mem_objectsOf_of_mem hu2, rfl⟩
+      exact graphMem_of_graphMem_eqb (fire (mem_stepConclusions_rdfs5 hu1 hconcl))
+        (Triple.eqb_of_parts hs1 rfl ho2)
+  | @rdfs7 p q s o _ _ ih1 ih2 =>
+      obtain ⟨u1, hu1, he1⟩ := exists_of_graphMem ih1
+      obtain ⟨u2, hu2, he2⟩ := exists_of_graphMem ih2
+      obtain ⟨a1, b1, c1⟩ := u1
+      obtain ⟨a2, b2, c2⟩ := u2
+      obtain ⟨hs1, hp1, ho1⟩ := Triple.eqb_parts he1
+      obtain ⟨hs2, hp2, ho2⟩ := Triple.eqb_parts he2
+      simp only at hs1 hp1 ho1 hs2 hp2 ho2
+      have hc1 : c1 = Term.iri q := Term.eqb_iri ho1
+      subst hs1; subst hp1; subst hc1
+      have hconcl : (⟨a2, q, c2⟩ : Triple) ∈
+          rdfs7For c ⟨Subject.iri p, rdfsSubPropertyOf, Term.iri q⟩ := by
+        simp only [rdfs7For, beq_self_eq_true, if_true, List.mem_map]
+        exact ⟨⟨a2, b2, c2⟩, mem_triplesWithPredicate_of hu2 hp2, rfl⟩
+      exact graphMem_of_graphMem_eqb (fire (mem_stepConclusions_rdfs7 hu1 hconcl))
+        (Triple.eqb_of_parts hs2 rfl ho2)
+  | @rdfs9 s a b _ _ ih1 ih2 =>
+      obtain ⟨u1, hu1, he1⟩ := exists_of_graphMem ih1
+      obtain ⟨u2, hu2, he2⟩ := exists_of_graphMem ih2
+      obtain ⟨a1, b1, c1⟩ := u1
+      obtain ⟨a2, b2, c2⟩ := u2
+      obtain ⟨hs1, hp1, ho1⟩ := Triple.eqb_parts he1
+      obtain ⟨hs2, hp2, ho2⟩ := Triple.eqb_parts he2
+      simp only at hs1 hp1 ho1 hs2 hp2 ho2
+      have hc1 : c1 = Term.iri a := Term.eqb_iri ho1
+      subst hp1; subst hc1; subst hs2; subst hp2
+      have hconcl : (⟨a1, rdfType, c2⟩ : Triple) ∈
+          rdfs9For c ⟨a1, rdfType, Term.iri a⟩ := by
+        simp only [rdfs9For, beq_self_eq_true, if_true, List.mem_map]
+        exact ⟨c2, mem_objectsOf_of_mem hu2, rfl⟩
+      exact graphMem_of_graphMem_eqb (fire (mem_stepConclusions_rdfs9 hu1 hconcl))
+        (Triple.eqb_of_parts hs1 rfl ho2)
+  | @rdfs11 a b bsub cterm _ hsub _ ih1 ih2 =>
+      obtain ⟨u1, hu1, he1⟩ := exists_of_graphMem ih1
+      obtain ⟨u2, hu2, he2⟩ := exists_of_graphMem ih2
+      obtain ⟨a1, b1, c1⟩ := u1
+      obtain ⟨a2, b2, c2⟩ := u2
+      obtain ⟨hs1, hp1, ho1⟩ := Triple.eqb_parts he1
+      obtain ⟨hs2, hp2, ho2⟩ := Triple.eqb_parts he2
+      simp only at hs1 hp1 ho1 hs2 hp2 ho2
+      subst hp1; subst hs2; subst hp2
+      have hc1 : c1 = b := Term.eqb_eq_of_toSubject ho1 hsub
+      subst hc1
+      have hconcl : (⟨a1, rdfsSubClassOf, c2⟩ : Triple) ∈
+          rdfs11For c ⟨a1, rdfsSubClassOf, c1⟩ := by
+        simp only [rdfs11For, beq_self_eq_true, if_true, hsub, List.mem_map]
+        exact ⟨c2, mem_objectsOf_of_mem hu2, rfl⟩
+      exact graphMem_of_graphMem_eqb (fire (mem_stepConclusions_rdfs11 hu1 hconcl))
+        (Triple.eqb_of_parts hs1 rfl ho2)
+
+/-- **T4.** Everything derivable from `g` is in `g`'s closure, provided
+the closure is saturated (which `closure_saturated_or_underfueled`
+turns into "provided the fuel was not exhausted"). -/
+theorem closure_complete_of_saturated {g : Graph} {fuel : Nat}
+    (hsat : step (closure g fuel) = closure g fuel) {t : Triple}
+    (h : Derives g t) : Graph.mem t (closure g fuel) = true :=
+  complete_of_saturated hsat (fun _ hu => graphMem_closure_of_mem hu) h
+
+/-! ## Section 10 — T3, monotonicity
+
+Not an independent proof: T2 says the small closure is derivable,
+`Derives.mono` moves the derivation to the bigger graph, and T4 puts it
+in the bigger closure. The saturation hypothesis is where the
+conditionality comes from — with a fixed fuel the two runs stop at
+different rounds, so the unconditional inclusion is not available. -/
+
+/-- **T3.** If `g ⊆ g'` and `g'`'s closure is saturated, then `g`'s
+closure is contained in it. -/
+theorem closure_mono_of_saturated {g g' : Graph} {fuel fuel' : Nat}
+    (hsub : ∀ u, u ∈ g → u ∈ g')
+    (hsat : step (closure g' fuel') = closure g' fuel')
+    {t : Triple} (h : t ∈ closure g fuel) :
+    Graph.mem t (closure g' fuel') = true :=
+  closure_complete_of_saturated hsat (Derives.mono hsub (closure_sound fuel g h))
+
 end L4Factoidal.RDFS

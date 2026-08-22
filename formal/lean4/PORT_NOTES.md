@@ -17,6 +17,11 @@ a green test run.
 | `L4Factoidal/RDF/Graph.lean` | `RDF.Graph.fsti` (+ `RDF.Dataset.Merge` renaming) | graphs as lists with set-semantics ops, datasets, blank-node renaming, membership theorems |
 | `L4Factoidal/SPARQL/Algebra.lean` | `SPARQL11.Algebra.fst` Parts 1–2, §7.2–7.3/§18.5 | bindings, patterns (incl. SPARQL 1.2 triple-term patterns), `tpMatch`, `evalBgp`, join/leftJoin/union/minus/filter, `GraphPattern.eval` |
 | `L4Factoidal/SPARQL/Invariants.lean` | (new; replaces the F\* SMT-`Lemma` style) | empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity — all kernel-checked, no solver |
+| `L4Factoidal/RDFS/Vocabulary.lean` | `RDF.Vocabulary.fsti` (5 of its constants) | `rdf:type`, `rdfs:subClassOf`, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range` as `WfIri` with `rfl` witnesses — the whole vocabulary the rho-df fragment names |
+| `L4Factoidal/RDFS/RhoDF.lean` | `RDF.Entailment.RDFS.RhoDFClosure.fst` (banner + rule set) | SPECIFICATION: the six RDF 1.1 Semantics §9.2 rows (rdfs2/3/5/7/9/11) as an inductive relation `Derives g t`, plus `Derives.mono` and `Derives.cut` |
+| `L4Factoidal/RDFS/Closure.lean` | `RhoDFClosure.fst` lines 98-130 + `RDFS.Closure.fsti` lines 242-355 | IMPLEMENTATION: the six `rdfs_rule_*` bodies, `stepConclusions`/`step` (= `rho_df_closure_step`), the fuel/length-test loop `closure` (= `rho_df_closure`), `closureIter` (= `rho_df_closure_iter`), and `closureFix` with a stated fuel bound |
+| `L4Factoidal/RDFS/ClosureTheorems.lean` | `RhoDFClosure.fst` theorems 1-3 | T1 extensivity, T2 soundness against `Derives`, T3 monotonicity, T4 completeness at a saturated graph, the fuel dichotomy, and the `Triple.eqb` transitivity chain the last two need |
+| `L4Factoidal/RDFS/ClosureTests.lean` | (new) | 31 `#guard`s over five fixtures, each checking a derived AND a non-derived triple, plus the axiom audit lines |
 
 ## Translation decisions
 
@@ -77,6 +82,86 @@ the source modules.
   feasible for all of them: Unicode tables, vendored hash cores, and
   a clock parameter instead of an ambient call).
 
+- `RDF.Entailment.RDFS.RhoDFClosure.fst`, `RDFS.Closure.fsti` and
+  `RDF.Vocabulary.fsti`: **zero** `assume val`s, zero `admit`, zero
+  `--lax` — checked by grep over all three files at port time
+  (2026-08-22). The rho-df closure is pure F\* throughout, so the Lean
+  port inherits no assumption from it. What it DOES inherit are the
+  F\* module's CARRIED HYPOTHESES, and those are the interesting part
+  of the correspondence — see the next section.
+
+## What the rho-df port proves, and what it does not
+
+The F\* module states five theorems; three of them carry hypotheses it
+does not discharge (`rho_df_chain_canonical`, `rho_df_chain_wf`, and
+the two `no_repeats_p` premises of `lemma_len_eq_saturated`). The Lean
+port re-proves the executable content natively and needs fewer
+hypotheses, but its soundness statement is WEAKER in kind:
+
+| | F\* | Lean |
+|---|---|---|
+| T1 extensivity | `is_subgraph g (rho_df_closure g fuel)` under `rho_df_chain_canonical` | `closure_extensive`, no hypothesis |
+| T2 soundness | MODEL-THEORETIC: `rho_df_entails g (rho_df_closure g fuel)` under `rho_df_chain_wf` | PROOF-THEORETIC: `closure_sound`, every computed triple has a §9.2 derivation. No interpretations are ported, so this is NOT the F\* theorem |
+| T3 closedness/monotonicity | `rho_df_closure_closed` at a fuel witness, under two `no_repeats_p` | `closure_mono_of_saturated`, derived from T2 + `Derives.mono` + T4 |
+| T4 completeness | (the payoff `rho_df_closure_decides`, via `rho_df_saturation_iff`) | `complete_of_saturated` / `closure_complete_of_saturated`: all six rule cases proved |
+| fixpoint test | length test, exactness assumed (`no_repeats_p`) | `addAll_eq_of_length_eq`: equal length PROVES the round was the identity |
+
+Named remaining obligation (one, and it is stated in the code, not
+hidden): that `closureFuelBound` is always enough — i.e. that the
+closure of an `n`-triple graph holds at most `n * (n + 1) * n` triples,
+so the length test must fire before the fuel runs out. What IS proved
+is the dichotomy `closure_saturated_or_underfueled`: either the result
+is saturated, or it grew by at least one triple per unit of fuel. T4
+takes saturation as a hypothesis; the `#guard`s in `ClosureTests.lean`
+check `step c == c` on every fixture, so nothing in the tests relies on
+an unproved bound either.
+
+Two other translation notes for this module:
+
+- **Intra-step chaining is dropped, deliberately.** The F\* step threads
+  its accumulator through the six rows, so a triple emitted by rdfs7
+  can drive rdfs9 in the same round. The Lean step reads every premise
+  from the round's input. Per round this emits less; at the fixpoint
+  it emits the same set (the chained conclusion arrives one round
+  later), and the loop runs to saturation. The gain is that `step` is a
+  plain function of its input, which is what makes soundness and
+  saturation one induction each. Documented at the head of
+  `Closure.lean`.
+- **Two membership relations, on purpose.** T1 and T2 use LIST
+  membership (`t ∈ g`); T4 uses `Graph.mem` (the engine's `Triple.eqb`
+  membership). It has to: `Graph.add` skips an insert when an
+  eqb-equal triple is already present, so after adding `t` the graph
+  may hold an `rdf:XMLLiteral` variant of `t` rather than `t` itself.
+  This is a property of the ported `Graph.add`, not of the proof.
+
+## Lemmas this port had to prove locally, that belong in `RDF/Core.lean`
+
+`ClosureTheorems.lean` section 6 proves facts about the engine
+equality that no ported module had needed yet. They are stated in the
+`L4Factoidal.RDFS` namespace to avoid editing `RDF/Core.lean` in this
+landing; they should MOVE to `Core.lean` (and `Graph.lean`) next time
+those files are touched:
+
+- `Subject.eqb_eq` — on subjects, engine equality IS equality.
+- `langTagOptionEq_trans`, `Literal.eqb_trans`, `Term.eqb_trans`,
+  `Triple.eqb_trans` — transitivity of the coarse comparison chain.
+  `Core.lean` has the reflexivity lemmas (`Term.eqb_refl`,
+  `Triple.eqb_refl`) but no transitivity, and transitivity is what any
+  proof that chains two eqb-matches needs.
+- `Triple.eqb_parts` / `Triple.eqb_of_parts` — the componentwise
+  decomposition/introduction pair.
+- `Term.eqb_iri`, `Term.eqb_eq_of_toSubject` — eqb collapses to
+  equality in exactly the positions the entailment rules match on.
+- For `Graph.lean`: `graphMem_of_mem` (list membership implies
+  `Graph.mem`), `exists_of_graphMem` / `graphMem_of_exists` (the
+  witness characterisation of `Graph.mem`),
+  `graphMem_of_graphMem_eqb` (`Graph.mem` respects `Triple.eqb`),
+  `mem_add_of_mem_list`, `mem_add_cases`, `length_le_add`,
+  `add_eq_of_length_eq`. `Graph.lean` currently has only
+  `mem_append`, `mem_add_of_mem`, `mem_add_self` — all three in the
+  Bool relation, none in the list relation, and no length lemma.
+  No change was made to `Core.lean` or `Graph.lean` in this landing.
+
 ## Next stages (in rough order of value)
 
 1. The expression language (`expr`, EBV, §17 operators) and with it
@@ -88,6 +173,17 @@ the source modules.
    are measured by the same files (the F\* tree's iron rule #6).
 4. Wider `GraphPattern`: GRAPH, VALUES, BIND, sub-SELECT, property
    paths, and the SPARQL 1.2-track LATERAL.
-5. RDFS closure + soundness — the natural first deep theorem target;
-   tableau work (#448-adjacent) after that, where Lean's structural
+5. ~~RDFS closure + soundness~~ — LANDED for the six-row rho-df
+   fragment (`L4Factoidal/RDFS/`, 2026-08-22). The continuations it
+   opens, in order:
+   a. the term-universe counting bound that discharges
+      `closureFuelBound` (the one named obligation above);
+   b. the rho-df MODEL THEORY (interpretations, `rho_df_conditions`,
+      `satisfies`), which turns T2 from proof-theoretic into the
+      model-theoretic statement the F\* tree proves, and gives the
+      "decides entailment" payoff;
+   c. the twelve-row RDFS closure, whose extra rows need the axiomatic
+      triples the fragment omits;
+   d. moving the eqb lemmas of section 6 into `RDF/Core.lean`.
+   Tableau work (#448-adjacent) after that, where Lean's structural
    induction is expected to shine.
