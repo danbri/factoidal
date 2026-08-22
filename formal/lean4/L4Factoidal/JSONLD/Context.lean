@@ -484,13 +484,24 @@ def resolveContextIri (ac : ActiveContext) (raw : String) : Option String :=
     | some b => some (resolveRel b raw)
     | none   => if L4Factoidal.RDF.isIri raw then some raw else none
 
+/-- What a context object's `@import` member (if any) is. JSON-LD 1.1
+API §4.1: "If the value of @import is not a string, an invalid @import
+value error has been detected" — a present-but-non-string value is its
+own named error, distinct from the absent case. -/
+inductive ImportRef where
+  | absent
+  | ref (iri : String)
+  | invalid
+  deriving DecidableEq, Repr
+
 /-- Split a context object's members into its (at most one) `@import`
 value and the rest. -/
-def extractImport (fields : List (String × Json)) : Option String × List (String × Json) :=
+def extractImport (fields : List (String × Json)) : ImportRef × List (String × Json) :=
   let importVal :=
     match fields.find? (fun kv => kv.1 == "@import") with
-    | some (_, .string s) => some s
-    | _                   => none
+    | some (_, .string s) => ImportRef.ref s
+    | some _              => ImportRef.invalid
+    | none                => ImportRef.absent
   (importVal, fields.filter (fun kv => kv.1 != "@import"))
 
 /-- Fetch, parse, and return the document's top-level `@context` member.
@@ -969,11 +980,14 @@ def contextProcess (loader : Loader) (ac : ActiveContext) (ctx : Json)
     | .array items => contextProcessArray loader ac items overrideProtected fuel rfuel visited
     | .object fields =>
       match extractImport fields with
-      | (none, _) =>
+      | (.absent, _) =>
         let acPreview := previewPrefixes ac fields
         contextProcessFields loader acPreview fields
           (scanBoolKey fields "@protected" false) overrideProtected fuel rfuel visited
-      | (some importRef, restFields) =>
+      -- §4.1: "If the value of @import is not a string, an invalid
+      -- @import value error has been detected."
+      | (.invalid, _) => .error .invalidImportValue
+      | (.ref importRef, restFields) =>
         -- §4.1 `@import`: fetch the imported context, MERGE its fields
         -- with this object's remaining members (local wins on collision),
         -- then process the merged set as ONE context object — special
@@ -993,6 +1007,12 @@ def contextProcess (loader : Loader) (ac : ActiveContext) (ctx : Json)
                 -- a single context OBJECT.
                 match importedCtx with
                 | .object importedFields =>
+                  -- §4.1: "If the resulting document contains an
+                  -- @import entry, an invalid context entry error has
+                  -- been detected" — `@import` may not chain.
+                  if importedFields.any (fun kv => kv.1 == "@import") then
+                    .error .invalidContextEntry
+                  else
                   let merged := mergeImport importedFields restFields
                   let acPreview := previewPrefixes ac merged
                   let (special, ordinary) := partitionSpecial merged
