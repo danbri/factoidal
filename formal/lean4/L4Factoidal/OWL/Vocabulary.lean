@@ -44,6 +44,10 @@ abbrev rdfsSubClassOf : WfIri := L4Factoidal.RDFS.rdfsSubClassOf
 abbrev rdfsSubPropertyOf : WfIri := L4Factoidal.RDFS.rdfsSubPropertyOf
 abbrev rdfsDomain : WfIri := L4Factoidal.RDFS.rdfsDomain
 abbrev rdfsRange : WfIri := L4Factoidal.RDFS.rdfsRange
+/-- `rdfs:Datatype` — the class of datatypes (RDF 1.1 Schema §3.5).
+Named by Table 7's dt-type1 and by the XSD axiom table of the
+`[ext]` section in `RLRules.lean`. -/
+abbrev rdfsDatatype : WfIri := L4Factoidal.RDFS.rdfsDatatype
 
 /-! ## RDF collection vocabulary — RDF 1.1 Schema §5.1
 
@@ -198,5 +202,47 @@ def litNni0 : WfLiteral :=
 def litNni1 : WfLiteral :=
   ⟨{ lexicalForm := "1", datatype := xsdNonNegativeInteger,
      langTag := none, direction := none }, rfl⟩
+
+/-! ## Vocabulary the `[ext]` rows name
+
+Nothing below is named by a W3C table row. Each constant is used by
+exactly one `[ext]` row of `RLRules.lean`, whose doc comment carries
+the OWL 2 RDF-Based Semantics condition it relies on. -/
+
+/-- `owl:ReflexiveProperty` — the driving premise of prp-rfl. -/
+def owlReflexiveProperty : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#ReflexiveProperty", rfl⟩
+
+/-! ### The XSD numeric tower
+
+The XSD IRIs the `xsdAxioms` row asserts a subtype tower over. `xsd:string`,
+`xsd:integer`, `xsd:decimal`, `xsd:double` and `xsd:boolean` come from
+`RDF/Core.lean`; the derived numeric types below have no other use in
+this tree. -/
+
+def xsdLong : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#long", rfl⟩
+def xsdIntIri : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#int", rfl⟩
+def xsdShort : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#short", rfl⟩
+def xsdByte : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#byte", rfl⟩
+def xsdPositiveInteger : WfIri :=
+  ⟨"http://www.w3.org/2001/XMLSchema#positiveInteger", rfl⟩
+def xsdUnsignedLong : WfIri :=
+  ⟨"http://www.w3.org/2001/XMLSchema#unsignedLong", rfl⟩
+def xsdUnsignedInt : WfIri :=
+  ⟨"http://www.w3.org/2001/XMLSchema#unsignedInt", rfl⟩
+def xsdUnsignedShort : WfIri :=
+  ⟨"http://www.w3.org/2001/XMLSchema#unsignedShort", rfl⟩
+def xsdUnsignedByte : WfIri :=
+  ⟨"http://www.w3.org/2001/XMLSchema#unsignedByte", rfl⟩
+def xsdNonPositiveInteger : WfIri :=
+  ⟨"http://www.w3.org/2001/XMLSchema#nonPositiveInteger", rfl⟩
+def xsdNegativeInteger : WfIri :=
+  ⟨"http://www.w3.org/2001/XMLSchema#negativeInteger", rfl⟩
+
+/-- The XSD namespace, as the `xsdMentions` guard tests it. -/
+def xsdNamespace : String := "http://www.w3.org/2001/XMLSchema#"
+
+/-- Is this IRI in the XSD namespace? -/
+def iriInXsdNs (i : WfIri) : Bool := i.val.startsWith xsdNamespace
 
 end L4Factoidal.OWL.RL
