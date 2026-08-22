@@ -143,3 +143,6 @@ import L4Factoidal.CSVW.Json
 import L4Factoidal.CSVW.JsonTests
 import L4Factoidal.CSVW.Validate
 import L4Factoidal.CSVW.ValidateTests
+import L4Factoidal.ShEx.Schema
+import L4Factoidal.ShEx.Validation
+import L4Factoidal.ShEx.Tests
