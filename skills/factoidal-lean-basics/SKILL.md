@@ -139,6 +139,14 @@ executable edge only.
    still resolves `g.mem` to `Graph.mem` — safe to define namespace
    functions on abbrevs.
 5. **Sabotage-tests can void themselves** — see the PATH trap above.
+6. **Parallel worktree agents eat disk**: each agent worktree is a
+   full checkout (~1.2 GB with the committed binaries) plus its own
+   `.lake` build; eight at once plus caches hit ENOSPC on a 228 GB
+   laptop (2026-08-22) and a ninth spawn failed. Before a fan-out:
+   `df -h /`, `git worktree prune`, remove stale worktrees under
+   `.claude/worktrees/`, `npm cache clean --force`; budget ~1.5 GB
+   per agent; never delete the owner's own caches
+   (`~/.cache/huggingface` was 20 GB) without asking.
 
 ## Style contract (owner priority: W3C-expert readability)
 

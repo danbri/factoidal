@@ -146,3 +146,17 @@ Two-tier rule for `formal/lean4/` (analysis:
    (Node, Deno) via HACL*'s official wasm build already vendored
    under `npm/factoidal/hacl-wasm/`. No target gets a different
    crypto implementation.
+
+### Hash agility (owner, 2026-08-22)
+
+Owner, verbatim: "wherever we use SHA-256 maybe we should prep the
+next one, since it sooner or later will fall and we want to be
+ready." Rule for both trees: no consumer calls a concrete hash
+function directly. The Lean tree exposes `HashAlgorithm`
+(`sha256 | sha384 | sha512`, with `sha3_256`/`shake256` as the
+planned next entries) and `hashHex (alg)` dispatchers; RDFC-1.0
+(whose spec already parameterises the hash, SHA-256 default, SHA-384
+tested alternate), VC Data Integrity cryptosuites, and the SPARQL
+hash builtins take the algorithm as a parameter. Adding the successor
+is then one constructor + one dispatcher arm + its test vectors, not
+a hunt through call sites.
