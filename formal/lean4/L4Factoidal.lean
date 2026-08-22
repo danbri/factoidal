@@ -131,3 +131,5 @@ import L4Factoidal.CSVW.Dialect
 import L4Factoidal.CSVW.DialectTests
 import L4Factoidal.CSVW.UriTemplate
 import L4Factoidal.CSVW.UriTemplateTests
+import L4Factoidal.CSVW.Metadata
+import L4Factoidal.CSVW.MetadataTests

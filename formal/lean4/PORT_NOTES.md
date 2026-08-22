@@ -3653,3 +3653,29 @@ it is not.
 CSVW's `_row`/`_sourceRow`/`_name` variables need no special handling
 here; they resolve through the caller's lookup like any column name,
 which keeps this module free of CSVW knowledge.
+
+### CSVW: the metadata model and §5.1.1 inheritance (2026-08-22)
+
+`CSVW/Metadata.lean` ports the datatype, column, schema, table and
+table-group records plus the inherited-property chain. Scope stated as
+the F* module states it: ten of the eleven inherited properties
+(everything but `textDirection`) — a slice, not a completeness claim.
+
+`Inherited.override` is why every field in this family stays `Option`.
+`none` means INHERIT, and the group → table → schema → column chain
+resolves it. A field defaulted early would shadow the parent value it
+was meant to inherit, which is a silent wrong answer rather than a
+crash. The guards walk the whole chain: a column override wins, a
+schema value reaches the column, and with neither, the group's value
+arrives.
+
+Naming note with a reason: the metadata table record is `TableDesc`,
+because `Table` already names the reader's PARSED CONTENT in
+`Dialect.lean`. Metadata about a table and the rows read from one are
+different things, and letting one name cover both would be a real
+bug waiting to happen, not a style nit.
+
+§5.6 column-name derivation is pinned in full, since its fallback
+order is easy to shorten by accident: explicit `name`, then a title
+tagged with the requested language, then an untagged title, then the
+positional `_col.N` the spec mandates.
