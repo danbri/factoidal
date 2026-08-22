@@ -2,9 +2,17 @@
   "_comment": "Project-scoped MCP servers for the Factoidal repo. Loaded by Claude Code at session start; requires one-time per-project user approval. Future contributors can pre-approve via `claude mcp` or by accepting the prompt on first session.",
   "mcpServers": {
     "fstar": {
-      "_comment": "F* IDE-protocol bridge from FStarLang/fstar-mcp. fstar-mcp is HTTP-only (Streamable HTTP transport) — it's started as a background daemon by tools/sandbox-bootstrap.sh on session start, and Claude Code connects over HTTP. The port (3700) is shared with tools/fstar-mcp-server.sh via FSTAR_MCP_PORT; change both if you need a different one.",
+      "_comment": "F* IDE-protocol bridge from FStarLang/fstar-mcp. fstar-mcp is HTTP-only (Streamable HTTP transport) \u2014 it's started as a background daemon by tools/sandbox-bootstrap.sh on session start, and Claude Code connects over HTTP. The port (3700) is shared with tools/fstar-mcp-server.sh via FSTAR_MCP_PORT; change both if you need a different one.",
       "type": "http",
       "url": "http://127.0.0.1:3700"
+    },
+    "lean-lsp": {
+      "_comment": "Lean 4 LSP bridge (lean-lsp-mcp, PyPI) for the formal/lean4 L4Factoidal port: per-file diagnostics, goal states at a position, hover docs, and loogle/leansearch lemma search. Runs over stdio via uvx (installed by `curl -LsSf https://astral.sh/uv/install.sh | sh`). Tools operate on absolute file paths under formal/lean4/; the server auto-detects the lake project root.",
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "lean-lsp-mcp"
+      ]
     }
   }
 }
