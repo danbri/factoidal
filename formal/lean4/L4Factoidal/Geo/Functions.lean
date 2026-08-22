@@ -39,28 +39,16 @@ def wktArg : EvalResult → Option WktValue
       else none
   | _ => none
 
-/-- Apply a point-vs-polygon predicate to two parsed literals, with
-    the CRS guard. Returns `none` (→ type error) when either argument
-    is not a WKT literal, when the CRSes differ, or when the geometry
-    pair is outside the ported fragment. -/
-def pointPolyPredicate (f : Point → Polygon → Bool)
+/-- Apply a general geometry predicate to two parsed literals with
+    the CRS guard. A REFUSAL from the predicate (`none`) becomes a
+    §17.6 type error, exactly like a bad argument — the evaluator must
+    never see a guessed boolean. -/
+def geoPredicate (f : Geometry → Geometry → Option Bool)
     (a b : EvalResult) : Option EvalResult := do
   let va ← wktArg a
   let vb ← wktArg b
   if !(sameCrs va.crs vb.crs) then none
-  else match va.geom, vb.geom with
-    | .point p, .polygon poly => some (.bool (f p poly))
-    | _, _ => none
-
-/-- `geof:sfEquals` on two points. -/
-def pointPointPredicate (f : Point → Point → Bool)
-    (a b : EvalResult) : Option EvalResult := do
-  let va ← wktArg a
-  let vb ← wktArg b
-  if !(sameCrs va.crs vb.crs) then none
-  else match va.geom, vb.geom with
-    | .point p, .point q => some (.bool (f p q))
-    | _, _ => none
+  else (f va.geom vb.geom).map EvalResult.bool
 
 /-- The function table. Install as `EvalEnv.ext`. Unregistered IRIs
     fall through to `none`, which the evaluator turns into the §17.6
@@ -72,14 +60,12 @@ def extFns (iri : String) (args : List EvalResult) : Option EvalResult :=
     let name := iri.drop geofNs.length
     match args with
     | [a, b] =>
-        if name == "sfEquals" then pointPointPredicate pointEquals a b
-        else if name == "sfWithin" then pointPolyPredicate pointWithinPolygon a b
-        else if name == "sfIntersects" then pointPolyPredicate pointIntersectsPolygon a b
-        else if name == "sfDisjoint" then pointPolyPredicate pointDisjointPolygon a b
-        else if name == "sfTouches" then pointPolyPredicate pointTouchesPolygon a b
-        else if name == "sfContains" then
-          -- Contains is Within with the arguments swapped.
-          pointPolyPredicate pointWithinPolygon b a
+        if name == "sfEquals" then geoPredicate sfEquals a b
+        else if name == "sfWithin" then geoPredicate sfWithin a b
+        else if name == "sfContains" then geoPredicate sfContains a b
+        else if name == "sfIntersects" then geoPredicate sfIntersects a b
+        else if name == "sfDisjoint" then geoPredicate sfDisjoint a b
+        else if name == "sfTouches" then geoPredicate sfTouches a b
         else none
     | _ => none
 

@@ -3583,3 +3583,29 @@ pair must each return `none` so the evaluator raises the §17.6 type
 error — never `false`, which would look like a legitimate negative
 answer. The no-CRS-transform rule is inherited from the F* port
 verbatim.
+
+### GeoSPARQL: three-valued predicates over all geometry kinds
+(2026-08-22, completing the family)
+
+The point-vs-polygon fragment is now the general dispatch. Added:
+`segmentSubsegOf`/`pathWithinPath` (line-in-line),
+`linestringEquals`, `lineIntersectsPolygon`, the `sf*Base` tables for
+Point/LineString/Polygon/Empty, `sfTouchesBase`, and the
+`Multi*`/`GeometryCollection` decomposition.
+
+The design property that mattered to port faithfully is the F* module's
+`option bool`: where the ported algorithm is INCOMPLETE it REFUSES
+(`none`) instead of answering. Two named cases: a path covered by two
+or more collinear outer edges across a bend, and two closed loops of
+equal length listed from different starting vertices. Answering
+`false` there would be indistinguishable from a real negative answer
+to a user's query, which is the failure mode this whole three-valued
+shape exists to prevent. `Geo/Functions.lean` maps a refusal to the
+SPARQL §17.6 TYPE ERROR, so the evaluator raises rather than reports.
+
+Decomposition combinators are Kleene three-valued: `combineExists`
+returns `some true` on one witness even when siblings refused (a
+witness settles an existential), but `some false` only when EVERY
+component definitely said false. `combineForall` is the dual. Getting
+this backwards would convert refusals into confident wrong answers at
+exactly the point where compound geometries meet partial algorithms.
