@@ -579,6 +579,65 @@ def pathPairs (path : PropertyPath) : List (String × String) :=
 #guard ((QueryPattern.lower emptyEnv pLabels).eval gNoCarol
         == (QueryPattern.lower emptyEnv pLabels).evalIn dsMain gNoCarol) == true
 
+/-! ## §18.6 EXISTS — active graph and nesting
+
+The shapes of the two sparql11 `exists` cases this stage fixed
+(`Exists within graph pattern`, `Nested positive exists`), on inline
+graphs with the same structure as `exists01.ttl` / `exists02.ttl`:
+default graph `:s :p :o, :o1, :o2 . :t :p :o1, :o2`; named graph `gTwo`
+holds `:a :p :o1 . :b :p :o1, :o2`. -/
+
+def pEx : WfIri := iriQ "https://example.org/p"
+def oEx  : WfIri := iriQ "https://example.org/o"
+def oEx1 : WfIri := iriQ "https://example.org/o1"
+def oEx2 : WfIri := iriQ "https://example.org/o2"
+def sEx : WfIri := iriQ "https://example.org/s"
+def tEx : WfIri := iriQ "https://example.org/t"
+def aEx : WfIri := iriQ "https://example.org/a"
+def bEx : WfIri := iriQ "https://example.org/b"
+
+def dsExists : Dataset :=
+  { default := [ tr sEx pEx (.iri oEx), tr sEx pEx (.iri oEx1), tr sEx pEx (.iri oEx2),
+                 tr tEx pEx (.iri oEx1), tr tEx pEx (.iri oEx2) ]
+    named := [ { name := .iri gTwo,
+                 graph := [ tr aEx pEx (.iri oEx1), tr bEx pEx (.iri oEx1), tr bEx pEx (.iri oEx2) ] } ] }
+
+/-- `?s ?p <o1> FILTER EXISTS { ?s ?p <o2> }` — the EXISTS body shares
+the outer row's variables, which `substitute(pattern, μ)` replaces. -/
+def pExistsO2 : QueryPattern :=
+  .filter (.existsPat (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx2 }]))
+    (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx1 }])
+
+-- Against the default graph both subjects carry <o2>.
+#guard colS "s" (rows dsExists (qAll pExistsO2)) == ["s", "t"]
+-- exists03: inside `GRAPH <g2> { … }` the EXISTS sees the NAMED graph,
+-- where only <b> carries <o2>.
+#guard colS "s" (rows dsExists (qAll (.graph (.iri gTwo) pExistsO2))) == ["b"]
+-- The same under `GRAPH ?g`: the active graph is the one being iterated.
+#guard colS "s" (rows dsExists (qAll (.graph (.var "g") pExistsO2))) == ["b"]
+-- exists04: a nested EXISTS is evaluated too (not an error → false).
+#guard colS "s" (rows dsExists (qAll
+    (.filter (.existsPat (.filter (.existsPat (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx2 }]))
+                           (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx1 }])))
+      (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx }])))) == ["s"]
+-- exists05: a nested NOT EXISTS inside a positive EXISTS: <s> has <o2>,
+-- so the inner NOT EXISTS fails and no row survives.
+#guard rows dsExists (qAll
+    (.filter (.existsPat (.filter (.notExistsPat (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx2 }]))
+                           (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx1 }])))
+      (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx }]))) == []
+-- NOT EXISTS in the GRAPH case is the complement: <a> has no <o2>.
+#guard colS "s" (rows dsExists (qAll (.graph (.iri gTwo)
+    (.filter (.notExistsPat (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx2 }]))
+      (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx1 }]))))) == ["a"]
+-- EXISTS in an OPTIONAL condition goes through `leftJoin`'s active graph.
+#guard colS "s" (rows dsExists (qAll (.graph (.iri gTwo)
+    (.leftJoin (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx1 }]) .empty
+      (.existsPat (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx2 }])))))) == ["a", "b"]
+-- Without a dataset in the environment (no `evalSelect`), an EXISTS is
+-- the expression-layer error, so FILTER drops every row.
+#guard ((QueryPattern.lower emptyEnv pExistsO2).evalIn dsExists dsExists.default) == []
+
 /-! ### Axiom audit — the whole pipeline is definition-only -/
 
 #print axioms GraphPattern.evalIn

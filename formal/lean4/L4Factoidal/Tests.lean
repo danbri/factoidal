@@ -76,7 +76,9 @@ def isAdult (mu : Binding) : Bool :=
   | _ => false
 
 -- FILTER keeps only Alice's row.
-#guard ((GraphPattern.filter isAdult (.bgp qNameAge)).eval g).length == 1
+-- (The condition also receives the active graph — for EXISTS — which
+-- a plain row predicate ignores.)
+#guard ((GraphPattern.filter (fun _ => isAdult) (.bgp qNameAge)).eval g).length == 1
 
 -- UNION doubles the rows.
 #guard ((GraphPattern.union (.bgp qNames) (.bgp qNames)).eval g).length == 4
@@ -92,7 +94,7 @@ def qAges : Bgp := [{ s := .var "x", p := .iri exAge, o := .var "y" }]
 -- fails the adult filter so Bob stays unextended.
 #guard (((GraphPattern.leftJoin (.bgp qNames)
     (.bgp [{ s := .var "s", p := .iri exAge, o := .var "a" }])
-    isAdult)).eval g |>.map (fun mu => (mu.lookup "n").isSome && (mu.lookup "a").isSome))
+    (fun _ => isAdult))).eval g |>.map (fun mu => (mu.lookup "n").isSome && (mu.lookup "a").isSome))
   == [true, false]
 
 /-! ### RDF 1.2 triple terms match recursively -/

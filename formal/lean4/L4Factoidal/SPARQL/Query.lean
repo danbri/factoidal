@@ -16,19 +16,23 @@ LAYERING (the choice, recorded here as the module banner asked for).
 expression can contain a graph pattern (EXISTS) and so `Expr.lean`
 already imports `Algebra.lean`. Two ways out were available:
 
-  (a) keep the ALGEBRA spec-level and abstract — `Binding → Bool`
-      conditions, `Binding → Option Term` binders, `Binding →
+  (a) keep the ALGEBRA spec-level and abstract — `Graph → Binding →
+      Bool` conditions, `Binding → Option Term` binders, `Binding →
       GraphPattern` correlated operands — and put the concrete,
-      `Expr`-carrying AST in THIS file; or
+      `Expr`-carrying AST above it; or
   (b) move `GraphPattern` up into this file entirely.
 
 **(a) was taken.** `Algebra.lean` keeps a reviewable §18.5/§18.6
 semantics in which every expression-shaped detail is an opaque
-argument, and this file holds `QueryPattern` — one constructor per F*
-`group_graph_pattern` case, the AST a parser will target — plus
-`QueryPattern.lower`, which compiles it into that algebra under an
-`EvalEnv`. The split also keeps every theorem in `Invariants.lean`
-about the algebra alone, with no expression machinery in scope.
+argument. The concrete AST — `QueryPattern`, one constructor per F*
+`group_graph_pattern` case, the AST the parser targets, together with
+`Query` and the query-level pieces — is declared in `Expr.lean` in one
+mutual block with `Expr` (EXISTS carries a pattern, a pattern carries
+expressions; see `SPARQL/Exists.lean` for the record of that choice).
+THIS file holds `QueryPattern.lower`, which compiles the AST into the
+algebra under an `EvalEnv`, and the §18.2.4 pipeline. The split keeps
+every theorem in `Invariants.lean` about the algebra alone, with no
+expression machinery in scope.
 
 TERMINATION. Nothing here uses fuel, `partial`, or well-founded
 recursion:
@@ -188,101 +192,16 @@ def sparqlOrder (a b : EvalResult) : Int :=
 /-- Order-equality of two evaluated values (port of `er_equal`). -/
 def erEqual (a b : EvalResult) : Bool := sparqlOrder a b == 0
 
-/-! ## The query AST — SPARQL 1.1 §18.2.4 -/
+/-! ## The query AST — SPARQL 1.1 §18.2.4
 
-/-- A SELECT projection item: a bare variable, or `(expr AS ?v)`. -/
-inductive SelectItem where
-  | var  (v : VarName)
-  | expr (e : Expr) (v : VarName)
-
-/-- `SELECT ?a ?b` versus `SELECT *`. -/
-inductive SelectClause where
-  | vars (items : List SelectItem)
-  | all
-
-/-- §18.2 query forms. DESCRIBE is carried in the AST for completeness
-but evaluates to nothing, exactly as the F* source's `QF_Describe`
-does — the description shape is a policy decision the spec leaves to
-implementations, and this port makes no choice for it. -/
-inductive QueryForm where
-  | select    (sel : SelectClause)
-  | construct (template : List TriplePattern)
-  | ask
-  | describe  (terms : List PatternTerm)
-
-/-- §15.1 `ORDER BY ASC(e)` / `DESC(e)`. -/
-inductive OrderCondition where
-  | asc  (e : Expr)
-  | desc (e : Expr)
-
-/-- §15 solution modifiers, gathered (port of `solution_modifier`). -/
-structure SolutionModifier where
-  orderBy  : Option (List OrderCondition) := none
-  distinct : Bool := false
-  reduced  : Bool := false
-  offset   : Option Nat := none
-  limit    : Option Nat := none
-
-/-- §18.2.4.1 GROUP BY: a variable, or an expression with an optional
-`AS ?alias`. -/
-inductive GroupCondition where
-  | var  (v : VarName)
-  | expr (e : Expr) (alias : Option VarName)
-
-/-- §13.2 `FROM` / `FROM NAMED`. -/
-inductive DatasetClause where
-  | default (i : WfIri)
-  | named   (i : WfIri)
-
-mutual
-
-/-- The concrete graph-pattern AST — one constructor per F*
-`group_graph_pattern` case (§18.2.2). Lowered into
-`SPARQL.GraphPattern` by `QueryPattern.lower`. -/
-inductive QueryPattern where
-  | bgp          (patterns : Bgp)
-  | join         (l r : QueryPattern)
-  /-- `OPTIONAL { P } FILTER(e)` — LeftJoin(P1, P2, e), §18.5. -/
-  | leftJoin     (l r : QueryPattern) (cond : Expr)
-  | filter       (cond : Expr) (p : QueryPattern)
-  | union        (l r : QueryPattern)
-  | minus        (l r : QueryPattern)
-  /-- `GRAPH <iri> { P }` / `GRAPH ?g { P }` — §18.6. -/
-  | graph        (name : PatternTerm) (p : QueryPattern)
-  /-- `P1 LATERAL { P2 }` — correlated evaluation. -/
-  | lateral      (l r : QueryPattern)
-  /-- `BIND(e AS ?v)` — §18.6. -/
-  | bind         (e : Expr) (v : VarName) (p : QueryPattern)
-  /-- `VALUES (?x ?y) { (1 2) (3 UNDEF) }` — §10.2. -/
-  | values       (vars : List VarName) (rows : List (List (Option Term)))
-  /-- `SERVICE [SILENT] <iri> { P }` — Federated Query §2. -/
-  | service      (endpoint : WfIri) (silent : Bool) (p : QueryPattern)
-  /-- `SERVICE [SILENT] ?v { P }` — variable endpoint. -/
-  | serviceVar   (v : VarName) (silent : Bool) (p : QueryPattern)
-  /-- A sub-SELECT used as a group graph pattern (§18.2.4). -/
-  | subSelect    (q : Query)
-  /-- `?s path ?o` — §18.4. -/
-  | propertyPath (s : PatternSubject) (path : PropertyPath) (o : PatternTerm)
-  /-- The empty group pattern `{}`. -/
-  | empty
-
-/-- A complete SPARQL 1.1 query (port of the F* `query` record). It is
-an `inductive` rather than a `structure` only because Lean's mutual
-blocks admit inductives alone; `mkQuery` and the field accessors below
-restore the record ergonomics.
-
-`postValues` is the trailing `VALUES` block a query may carry after
-its WHERE clause (§10.2): its rows are JOINed onto the WHERE result. -/
-inductive Query where
-  | mk (form       : QueryForm)
-       (dataset    : List DatasetClause)
-       (pattern    : QueryPattern)
-       (groupBy    : Option (List GroupCondition))
-       (having     : List Expr)
-       (modifier   : SolutionModifier)
-       (postValues : Option (List Binding))
-
-end
+`SelectItem`, `SelectClause`, `QueryForm`, `OrderCondition`,
+`SolutionModifier`, `GroupCondition`, `DatasetClause`, `QueryPattern`
+and `Query` are DECLARED in `Expr.lean`, in one mutual block with
+`Expr`: §18.6's EXISTS carries a `QueryPattern` inside an expression,
+and a pattern carries expressions, so the two ASTs are one inductive
+family (the F* `type expr … and group_graph_pattern … and query` group
+is the same knot). Everything that USES them — accessors, `mkQuery`,
+lowering, evaluation — lives here. -/
 
 def Query.form : Query → QueryForm
   | .mk f _ _ _ _ _ _ => f
@@ -895,7 +814,32 @@ of anything (which is why the F* source needs
 substitution `mu` with a per-row one `mu2` is `Binding.merge mu mu2` —
 the outer wins, which is exactly what substituting outside-in gives:
 a variable the outer row already replaced by a constant is no longer
-there for the inner row to touch. -/
+there for the inner row to touch.
+
+The same fusion is what §18.6 EXISTS needs: `exists(pattern, μ)`
+"evaluates substitute(pattern, μ)", and `lowerWith env μ pattern` IS
+that substituted pattern. So EXISTS is handled here, in the mutual
+block below, by the port of the F* `substitute_existentials`: before a
+FILTER / OPTIONAL condition is evaluated on a row, every `EXISTS { P }`
+/ `NOT EXISTS { P }` inside it is replaced by its boolean, obtained by
+lowering `P` under the row and evaluating it against the ACTIVE graph
+(the `Graph` the algebra hands the condition — `GRAPH ?g { … FILTER
+EXISTS {…} }` sees the named graph, as `eval_exists … gs.gs_graph` does
+in the F*) and the query's dataset (`EvalEnv.dataset`). The recursion
+is structural: the EXISTS body is a subterm of the condition, which is
+a subterm of the pattern — no fuel, no hook, no `partial`. With no
+dataset in the environment an EXISTS is left in place and is the
+expression-layer error.
+
+Expressions are evaluated on `μ ⊕ row` (μ first): the substitution
+replaces a variable the outer row bound EVERYWHERE in the pattern,
+expressions included, which is the §18.6 text. (The F*
+`substitute_pattern` / `lateral_substitute` leave embedded expressions
+verbatim; the two agree whenever the body rebinds, or does not mention,
+the outer variables — every W3C case — and this port keeps the
+spec-literal reading the previous EXISTS stage chose.) -/
+
+mutual
 
 def QueryPattern.lowerWith (env : EvalEnv) (mu : Binding) (p : QueryPattern) :
     GraphPattern :=
@@ -904,9 +848,13 @@ def QueryPattern.lowerWith (env : EvalEnv) (mu : Binding) (p : QueryPattern) :
   | .join l r    => .join (QueryPattern.lowerWith env mu l) (QueryPattern.lowerWith env mu r)
   | .leftJoin l r c =>
       .leftJoin (QueryPattern.lowerWith env mu l) (QueryPattern.lowerWith env mu r)
-        (fun row => ebvOrFalse (Expr.evalIn env row c))
+        (fun active row =>
+          let mu' := mu.merge row
+          ebvOrFalse (Expr.evalIn env mu' (substituteExistentials env active mu' c)))
   | .filter c q  =>
-      .filter (fun row => ebvOrFalse (Expr.evalIn env row c))
+      .filter (fun active row =>
+          let mu' := mu.merge row
+          ebvOrFalse (Expr.evalIn env mu' (substituteExistentials env active mu' c)))
         (QueryPattern.lowerWith env mu q)
   | .union l r   => .union (QueryPattern.lowerWith env mu l) (QueryPattern.lowerWith env mu r)
   | .minus l r   => .minus (QueryPattern.lowerWith env mu l) (QueryPattern.lowerWith env mu r)
@@ -915,8 +863,11 @@ def QueryPattern.lowerWith (env : EvalEnv) (mu : Binding) (p : QueryPattern) :
   | .lateral l r =>
       .lateral (QueryPattern.lowerWith env mu l)
         (fun mu2 => QueryPattern.lowerWith env (mu.merge mu2) r)
+  -- BIND: the F* `fx_bind_rows` evaluates the expression as is, with
+  -- no existential substitution, so `BIND(EXISTS {…} AS ?v)` is an
+  -- error there (and leaves ?v unbound); kept the same here.
   | .bind e v q =>
-      .bind (fun row => (Expr.evalIn env row e).toTerm?) v
+      .bind (fun row => (Expr.evalIn env (mu.merge row) e).toTerm?) v
         (QueryPattern.lowerWith env mu q)
   | .values vars rows => .values vars rows
   | .service i silent q =>
@@ -942,6 +893,142 @@ def QueryPattern.lowerWith (env : EvalEnv) (mu : Binding) (p : QueryPattern) :
   | .propertyPath s path o =>
       .propertyPath (substPatternSubject mu s) path (substPatternTerm mu o)
   | .empty => .empty
+
+/-- Port of the F* `substitute_existentials`: replace every
+`EXISTS { P }` / `NOT EXISTS { P }` in an expression by the boolean
+`exists(P, μ)` gives — §18.6: "true if `substitute(P, μ)`, evaluated
+against the active graph and the dataset, has at least one solution"
+(the F* `eval_exists`; named `evalExists` in `Exists.lean`) — so the
+graph-free expression evaluator can finish the job. Every other
+constructor is rebuilt with its sub-expressions substituted — arm for
+arm with the F*, no catch-all, so a new expression form cannot
+silently hide an EXISTS. -/
+def substituteExistentials (env : EvalEnv) (active : Graph) (mu : Binding) :
+    Expr → Expr
+  | .existsPat p =>
+      match env.dataset with
+      | some ds => .boolLit (!((QueryPattern.lowerWith env mu p).evalIn ds active).isEmpty)
+      | none    => .existsPat p
+  | .notExistsPat p =>
+      match env.dataset with
+      | some ds => .boolLit ((QueryPattern.lowerWith env mu p).evalIn ds active).isEmpty
+      | none    => .notExistsPat p
+  -- Leaves.
+  | .var v => .var v
+  | .iri i => .iri i
+  | .lit l => .lit l
+  | .boolLit b => .boolLit b
+  | .numericLit n => .numericLit n
+  | .decimalLit s => .decimalLit s
+  | .doubleLit s => .doubleLit s
+  | .bound v => .bound v
+  | .now => .now
+  -- Recurse into sub-expressions.
+  | .arith op a b => .arith op (substituteExistentials env active mu a)
+                              (substituteExistentials env active mu b)
+  | .unaryMinus a => .unaryMinus (substituteExistentials env active mu a)
+  | .unaryPlus a => .unaryPlus (substituteExistentials env active mu a)
+  | .compare op a b => .compare op (substituteExistentials env active mu a)
+                                  (substituteExistentials env active mu b)
+  | .and a b => .and (substituteExistentials env active mu a)
+                     (substituteExistentials env active mu b)
+  | .or a b => .or (substituteExistentials env active mu a)
+                   (substituteExistentials env active mu b)
+  | .not a => .not (substituteExistentials env active mu a)
+  | .isIri a => .isIri (substituteExistentials env active mu a)
+  | .isBlank a => .isBlank (substituteExistentials env active mu a)
+  | .isLiteral a => .isLiteral (substituteExistentials env active mu a)
+  | .isNumeric a => .isNumeric (substituteExistentials env active mu a)
+  | .str a => .str (substituteExistentials env active mu a)
+  | .lang a => .lang (substituteExistentials env active mu a)
+  | .datatype a => .datatype (substituteExistentials env active mu a)
+  | .iriFn a => .iriFn (substituteExistentials env active mu a)
+  | .hasLang a => .hasLang (substituteExistentials env active mu a)
+  | .hasLangDir a => .hasLangDir (substituteExistentials env active mu a)
+  | .langDir a => .langDir (substituteExistentials env active mu a)
+  | .strDt a b => .strDt (substituteExistentials env active mu a)
+                         (substituteExistentials env active mu b)
+  | .strLang a b => .strLang (substituteExistentials env active mu a)
+                             (substituteExistentials env active mu b)
+  | .strLangDir a b c => .strLangDir (substituteExistentials env active mu a)
+                                     (substituteExistentials env active mu b)
+                                     (substituteExistentials env active mu c)
+  | .cond c t e => .cond (substituteExistentials env active mu c)
+                         (substituteExistentials env active mu t)
+                         (substituteExistentials env active mu e)
+  | .coalesce es => .coalesce (substituteExistentialsList env active mu es)
+  | .inList a es => .inList (substituteExistentials env active mu a)
+                            (substituteExistentialsList env active mu es)
+  | .notInList a es => .notInList (substituteExistentials env active mu a)
+                                  (substituteExistentialsList env active mu es)
+  | .strLen a => .strLen (substituteExistentials env active mu a)
+  | .substr a b c => .substr (substituteExistentials env active mu a)
+                             (substituteExistentials env active mu b)
+                             (substituteExistentialsOpt env active mu c)
+  | .uCase a => .uCase (substituteExistentials env active mu a)
+  | .lCase a => .lCase (substituteExistentials env active mu a)
+  | .strStarts a b => .strStarts (substituteExistentials env active mu a)
+                                 (substituteExistentials env active mu b)
+  | .strEnds a b => .strEnds (substituteExistentials env active mu a)
+                             (substituteExistentials env active mu b)
+  | .contains a b => .contains (substituteExistentials env active mu a)
+                               (substituteExistentials env active mu b)
+  | .strBefore a b => .strBefore (substituteExistentials env active mu a)
+                                 (substituteExistentials env active mu b)
+  | .strAfter a b => .strAfter (substituteExistentials env active mu a)
+                               (substituteExistentials env active mu b)
+  | .concat es => .concat (substituteExistentialsList env active mu es)
+  | .encodeForUri a => .encodeForUri (substituteExistentials env active mu a)
+  | .replace a b c d => .replace (substituteExistentials env active mu a)
+                                 (substituteExistentials env active mu b)
+                                 (substituteExistentials env active mu c)
+                                 (substituteExistentialsOpt env active mu d)
+  | .regex a b c => .regex (substituteExistentials env active mu a)
+                           (substituteExistentials env active mu b)
+                           (substituteExistentialsOpt env active mu c)
+  | .abs a => .abs (substituteExistentials env active mu a)
+  | .round a => .round (substituteExistentials env active mu a)
+  | .ceil a => .ceil (substituteExistentials env active mu a)
+  | .floor a => .floor (substituteExistentials env active mu a)
+  | .md5 a => .md5 (substituteExistentials env active mu a)
+  | .sha1 a => .sha1 (substituteExistentials env active mu a)
+  | .sha256 a => .sha256 (substituteExistentials env active mu a)
+  | .sha384 a => .sha384 (substituteExistentials env active mu a)
+  | .sha512 a => .sha512 (substituteExistentials env active mu a)
+  | .year a => .year (substituteExistentials env active mu a)
+  | .month a => .month (substituteExistentials env active mu a)
+  | .day a => .day (substituteExistentials env active mu a)
+  | .hours a => .hours (substituteExistentials env active mu a)
+  | .minutes a => .minutes (substituteExistentials env active mu a)
+  | .seconds a => .seconds (substituteExistentials env active mu a)
+  | .timezone a => .timezone (substituteExistentials env active mu a)
+  | .tz a => .tz (substituteExistentials env active mu a)
+  | .sameTerm a b => .sameTerm (substituteExistentials env active mu a)
+                               (substituteExistentials env active mu b)
+  | .aggregate fn d a => .aggregate fn d (substituteExistentials env active mu a)
+  | .functionCall i args => .functionCall i (substituteExistentialsList env active mu args)
+  | .tripleTerm a b c => .tripleTerm (substituteExistentials env active mu a)
+                                     (substituteExistentials env active mu b)
+                                     (substituteExistentials env active mu c)
+  | .ttSubject a => .ttSubject (substituteExistentials env active mu a)
+  | .ttPredicate a => .ttPredicate (substituteExistentials env active mu a)
+  | .ttObject a => .ttObject (substituteExistentials env active mu a)
+  | .isTriple a => .isTriple (substituteExistentials env active mu a)
+
+/-- `substitute_existentials_list`. -/
+def substituteExistentialsList (env : EvalEnv) (active : Graph) (mu : Binding) :
+    List Expr → List Expr
+  | []      => []
+  | e :: es => substituteExistentials env active mu e ::
+               substituteExistentialsList env active mu es
+
+/-- `substitute_existentials_opt`. -/
+def substituteExistentialsOpt (env : EvalEnv) (active : Graph) (mu : Binding) :
+    Option Expr → Option Expr
+  | none   => none
+  | some e => some (substituteExistentials env active mu e)
+
+end
 
 /-- Compile a query pattern into the §18.5 algebra. -/
 def QueryPattern.lower (env : EvalEnv) (p : QueryPattern) : GraphPattern :=
@@ -1057,6 +1144,9 @@ the `SELECT *` strip inside `selectPost`. The one omitted stage is
 def evalSelect (env : EvalEnv) (ds : Dataset) (q : Query) :
     List VarName × SolutionSeq :=
   let (ds', active) := applyDataset q.dataset ds ds.default
+  -- §18.6: EXISTS inside the WHERE clause evaluates against the
+  -- query's dataset (after FROM / FROM NAMED).
+  let env := { env with dataset := some ds' }
   match q.form with
   | .select sel =>
       let omega := (q.pattern.rewriteBnodes.lower env).evalIn ds' active
@@ -1071,6 +1161,7 @@ def evalSelect (env : EvalEnv) (ds : Dataset) (q : Query) :
 at least one solution (port of `eval_ask_query`). -/
 def evalAsk (env : EvalEnv) (ds : Dataset) (q : Query) : Bool :=
   let (ds', active) := applyDataset q.dataset ds ds.default
+  let env := { env with dataset := some ds' }
   match q.form with
   | .ask =>
       let omega0 := (q.pattern.rewriteBnodes.lower env).evalIn ds' active
@@ -1170,6 +1261,7 @@ WHERE clause still limits which bindings drive the template, matching
 the F* source (and Jena / RDF4J). -/
 def evalConstruct (env : EvalEnv) (ds : Dataset) (q : Query) : Graph :=
   let (ds', active) := applyDataset q.dataset ds ds.default
+  let env := { env with dataset := some ds' }
   match q.form with
   | .construct template =>
       let omega0 := (q.pattern.rewriteBnodes.lower env).evalIn ds' active

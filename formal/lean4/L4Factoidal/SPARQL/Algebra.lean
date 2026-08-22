@@ -21,8 +21,10 @@ What is deliberately NOT ported here (with why):
     the hash join as an optimisation over exactly this semantics.)
   * the SPARQL expression language (`expr`, `eval_expr`, effective
     boolean value). `Filter`/`LeftJoin` conditions are abstracted as
-    `Binding → Bool` — the shape §18.5 needs from a filter. The
-    expression AST is a later porting stage of its own.
+    `Graph → Binding → Bool` — the shape §18.5 needs from a filter,
+    plus the ACTIVE graph, because §18.6's EXISTS inside a condition
+    is evaluated against the graph the enclosing GRAPH clause selected.
+    The expression AST is a porting stage of its own (`Expr.lean`).
 
 LAYERING (decided when the wider constructor set landed). `Expr.lean`
 imports THIS file (an expression can contain a pattern: EXISTS), so
@@ -32,18 +34,20 @@ expression would appear:
 
   | constructor      | abstract argument            | concrete AST lives in |
   |------------------|------------------------------|-----------------------|
-  | `filter`         | `Binding → Bool`             | `Query.lean`          |
-  | `leftJoin`       | `Binding → Bool`             | `Query.lean`          |
+  | `filter`         | `Graph → Binding → Bool`     | `Query.lean`          |
+  | `leftJoin`       | `Graph → Binding → Bool`     | `Query.lean`          |
   | `bind`           | `Binding → Option Term`      | `Query.lean`          |
   | `lateral`        | `Binding → GraphPattern`     | `Query.lean`          |
   | `service`        | `Option Graph` (resolved)    | `Query.lean`          |
   | `modified`       | `SolutionSeq → SolutionSeq`  | `Query.lean`          |
 
-`SPARQL/Query.lean` holds `QueryPattern` — the concrete AST with one
-constructor per F* `group_graph_pattern` case, the one a parser will
-build — together with `QueryPattern.lower`, which compiles it into
-this algebra under an `EvalEnv`. So the reviewable §18.5/§18.6
-semantics is here, and every expression-shaped detail is one file up.
+`QueryPattern` — the concrete AST with one constructor per F*
+`group_graph_pattern` case, the one a parser builds — is declared in
+`Expr.lean` (in one mutual block with `Expr`, because EXISTS carries a
+pattern), and `SPARQL/Query.lean` holds `QueryPattern.lower`, which
+compiles it into this algebra under an `EvalEnv`. So the reviewable
+§18.5/§18.6 semantics is here, and every expression-shaped detail is
+one file up.
 
 Readability contract: every definition cites the SPARQL 1.1 spec
 section it implements; names track the spec's vocabulary (solution
@@ -384,10 +388,15 @@ inductive GraphPattern where
   | bgp      (patterns : Bgp)
   /-- Join(P1, P2) — §18.5. -/
   | join     (l r : GraphPattern)
-  /-- LeftJoin(P1, P2, expr) — OPTIONAL, §18.5. -/
-  | leftJoin (l r : GraphPattern) (cond : Binding → Bool)
-  /-- Filter(expr, P) — §18.5. -/
-  | filter   (cond : Binding → Bool) (p : GraphPattern)
+  /-- LeftJoin(P1, P2, expr) — OPTIONAL, §18.5. The condition is a
+  function of the ACTIVE graph as well as the row: §18.6's EXISTS,
+  which may appear inside the expression, is evaluated against the
+  graph the enclosing GRAPH clause selected (the F* evaluator passes
+  `gs.gs_graph` into `left_join_with_graph` for exactly this). -/
+  | leftJoin (l r : GraphPattern) (cond : Graph → Binding → Bool)
+  /-- Filter(expr, P) — §18.5. Same active-graph argument as
+  `leftJoin` (F*: `filter_solutions_with_graph … gs.gs_graph`). -/
+  | filter   (cond : Graph → Binding → Bool) (p : GraphPattern)
   /-- Union(P1, P2) — §18.5. -/
   | union    (l r : GraphPattern)
   /-- Minus(P1, P2) — §18.5. -/
@@ -477,8 +486,9 @@ def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
   | .join l r       =>
       SPARQL.join (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
   | .leftJoin l r c =>
-      SPARQL.leftJoin (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r) c
-  | .filter c q     => filterSeq c (GraphPattern.evalIn ds active q)
+      SPARQL.leftJoin (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
+        (c active)
+  | .filter c q     => filterSeq (c active) (GraphPattern.evalIn ds active q)
   | .union l r      =>
       SPARQL.union (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
   | .minus l r      =>
