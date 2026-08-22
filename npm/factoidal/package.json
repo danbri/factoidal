@@ -57,7 +57,11 @@
     "./factoidal.js": "./factoidal.js",
     "./factoidal.wasm.js": "./factoidal.wasm.js",
     "./factoidal.wasm.assets/*": "./factoidal.wasm.assets/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./l4": {
+      "types": "./l4.d.ts",
+      "default": "./l4.js"
+    }
   },
   "files": [
     "index.js",
@@ -68,6 +72,8 @@
     "rdfjs.js",
     "fn.js",
     "fn.d.ts",
+    "l4.js",
+    "l4.d.ts",
     "lib/",
     "browser.js",
     "browser.d.ts",
