@@ -1,5 +1,5 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe"]
+defaultTargets = ["L4Factoidal", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4wasm-cli"]
 
 [[lean_lib]]
 name = "L4Factoidal"
@@ -22,3 +22,17 @@ root = "Harness.CanonProbe"
 [[lean_exe]]
 name = "l4turtle-probe"
 root = "Harness.TurtleProbe"
+# The WebAssembly export surface: the JSON string-in / string-out ABI
+# (Wasm/Abi.lean) and the `@[export]` C symbols (Wasm/Exports.lean).
+# `lake build` compiles it, so the ABI is type-checked on every build
+# even when no wasm toolchain is present.
+[[lean_lib]]
+name = "l4wasm"
+srcDir = "."
+roots = ["Wasm.Abi", "Wasm.Exports"]
+
+# Native driver for the same ABI, so it can be exercised without wasm.
+[[lean_exe]]
+name = "l4wasm-cli"
+srcDir = "."
+root = "Wasm.Main"

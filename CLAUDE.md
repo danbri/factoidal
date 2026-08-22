@@ -321,6 +321,11 @@ session.
   build/demo/test, the no-sorry/no-axiom policy + audit, the purity
   doctrine replacing `assume val`, lean-lsp-mcp + lemma search, and
   the paid-for Lean pitfalls.
+- [`lean4-wasm-export`](skills/lean4-wasm-export/SKILL.md) — compile the
+  Lean 4 port to ONE wasm module for browser + Node + Deno (#466): the
+  toolchain route and the three rejected, rebuilding Lean's runtime and
+  core library for wasm32 GMP-free, the C ABI + memory ownership, how to
+  add an export, and the traps (silent `leanir`, the `-DNDEBUG` abort).
 - [`crypto-policy`](skills/crypto-policy/SKILL.md) — never roll our
   own crypto; HACL\* adoption order for the hash/signature
   `assume val`s (#63), and the wasm compatibility gate.

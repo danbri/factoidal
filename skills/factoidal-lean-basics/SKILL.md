@@ -26,6 +26,17 @@ https://github.com/danbri/factoidal/issues/466
 | `OWL/Tableau.lean`, `TableauTheorems.lean`, `TableauTests.lean` | tableau clash calculus (unqualified-cardinality fragment) + `refuted_sound` (a refuted ABox has no model, by structural induction — the theorem the F\* SMT wall blocked); folded in 2026-08-22 from the duplicate `formal/lean/` track, [#468](https://github.com/danbri/factoidal/issues/468) |
 | `Tests.lean`, `Demo.lean` | build-time guards + `#print axioms` audit; runnable tour |
 | `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence, decisions, assumption report |
+| File | Content |
+|---|---|
+| `L4Factoidal/RDF/Core.lean` | RDF 1.1/1.2 terms: wf-IRI subtypes, literals incl. RDF 1.2 base direction, triple terms; the THREE literal equalities (strict/engine/value) kept distinct; strict equality proved to be identity |
+| `L4Factoidal/RDF/XmlCanon.lean` | rdf:XMLLiteral exclusive-c14n value equality (the WebOnt-miscellaneous-202 fix, ported whole) |
+| `L4Factoidal/RDF/Graph.lean` | set-semantics graphs, datasets, blank-node renaming, membership theorems |
+| `L4Factoidal/SPARQL/Algebra.lean` | solution mappings (§18.1.8), compatibility/merge (§18.3), triple patterns incl. SPARQL 1.2 triple-term patterns, BGP evaluation, §18.5 Join/LeftJoin/Union/Minus/Filter |
+| `L4Factoidal/SPARQL/Invariants.lean` | PROVED: empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity |
+| `L4Factoidal/Tests.lean` | 19 `#guard` build-time tests + `#print axioms` audit lines |
+| `Demo.lean` | runnable guided tour with a Turtle-ish printer |
+| `Wasm/` | the WebAssembly export: JSON string-in/string-out ABI (`Abi.lean`), the `@[export]` C symbols (`Exports.lean`), a native driver over the same ABI (`Main.lean`), the C shim and `build-wasm.sh`. Produces `docs/web/hub/assets/l4/l4factoidal.wasm` (1.4 MB), which runs in browser, Node and Deno — hub post 36 runs it beside the F\* engine. Recipe + traps: `skills/lean4-wasm-export/SKILL.md` |
+| `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence + assumption report |
 
 Measured 2026-08-22 after wave 1: 12942 lines, 615 top-level definitions/types, 243 theorems, 503 build-time guards; zero `sorry`/`axiom`/`native_decide`/`partial` across the tree (axiom audit: propext/Classical.choice/Quot.sound only). In flight: Turtle+TriG (branch lean4/syntax-turtle), RDFC-1.0 (lean4/rdf-canonical), Lean→wasm pipeline (lean4/wasm-export).
 
@@ -54,6 +65,11 @@ Measured 2026-08-22 after wave 1: 12942 lines, 615 top-level definitions/types, 
 - `cd formal/lean4 && lake build` — this IS the test run and the
   proof check: `#guard` expressions evaluate during elaboration, so a
   wrong answer is a build error; every theorem is kernel-rechecked.
+- `formal/lean4/Wasm/build-wasm.sh` — rebuild the WebAssembly artifact.
+  Needed whenever a Lean change must reach the browser, and whenever
+  `lean-toolchain` is bumped (the wasm objects are generated from the
+  toolchain's core sources, so a version bump without a rebuild leaves
+  the artifact built against the old core library).
 - `lake env lean --run Demo.lean` — the human-facing tour: BGP rows
   printed Turtle-ish, the §18.5 MINUS domain-disjointness contrast,
   live monotonicity, RDF 1.2 triple-term matching, the literal

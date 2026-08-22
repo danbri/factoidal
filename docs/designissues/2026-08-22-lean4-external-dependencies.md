@@ -36,7 +36,7 @@ optional FFI), **3 are Ed25519** (FFI to HACL\*, the single principled
 | Dependency | Role in the F\* tree | Lean 4 status |
 |---|---|---|
 | OCaml toolchain + `zarith` (GMP) | extraction target; `Prims.int` → `Z.t` | Not needed: Lean compiles to C; `Nat`/`Int` are arbitrary-precision natively (GMP-backed in the runtime). |
-| `js_of_ocaml` / `wasm_of_ocaml` | the npm package, the hub's live cells, the browser demos | **The largest real gap.** Lean has NO JavaScript backend. Lean → C → **wasm via Emscripten** is feasible (the `lean4web` project runs the Lean compiler itself in the browser that way) but is not turnkey: the Lean runtime (GMP-dependent by default; there is an `LEAN_SMALL_ALLOCATOR`/no-GMP configuration) and its allocator must be cross-compiled. Plan: a Lean `main` exposing a JSON ABI (the same `factoidalNpmEntry` shape) compiled to wasm; accept that the Lean artifact will be larger and slower to start than js_of_ocaml's. Until that exists, the hub keeps running the F\* bundles. |
+| `js_of_ocaml` / `wasm_of_ocaml` | the npm package, the hub's live cells, the browser demos | **CLOSED 2026-08-22** — Lean still has no JavaScript backend, but Lean → C → wasm now works and is committed: `formal/lean4/Wasm/` (JSON ABI, C shim, `build-wasm.sh`) produces one 1.4 MB `docs/web/hub/assets/l4/l4factoidal.wasm` that runs in browser, Node and Deno; hub post 36 runs it beside the F\* engine. It did NOT need the lean4web route (cross-building the Lean compiler): the toolchain ships the core library's sources, so its C is regenerated with the native `lean` (~1s per module) and only Lean's C++ runtime (plus mimalloc) is cross-compiled — GMP-free via a hand-written `lean/config.h`. Measured: ~41 ms to instantiate and initialise in Node, 2.7 ms for a 2-pattern BGP; hub gate 10 pass, 0 fail. Recipe + traps: `skills/lean4-wasm-export/SKILL.md`. The hub's OTHER pages still run the F\* bundles; nothing was replaced. |
 | KaRaMeL (F\* → C) | the C build track, the delta-log demo | Replaced outright: Lean's native path IS C. |
 | HACL\* C + wasm | crypto (above) | Reused as-is via FFI / the vendored wasm. |
 | zstd (C) | COTTAS/Parquet pages | Deferred with storage. |
@@ -83,5 +83,16 @@ We'll need HACL* everywhere etc."
   GMP-free runtime build, and ONE artifact serving browser + Node +
   Deno. The F\* bundles remain the hub's engine until the Lean
   artifact passes the same hub node tests and browser sweep.
+
+  **Outcome (2026-08-22): Emscripten, and it met all four criteria** —
+  1.4 MB, ~41 ms to instantiate, GMP-free, one artifact for
+  browser + Node + Deno. WASI and `zig cc` were NOT
+  attempted, because the instruction was to take the route that links
+  first; the risk to check if they are revisited is that Lean's runtime
+  throws C++ exceptions and wasi-sdk's libc++ exception support is the
+  historic weak point. The `-pthread` that lean4's own Emscripten build
+  uses was deliberately dropped: it needs `SharedArrayBuffer`, hence
+  COOP/COEP headers, which GitHub Pages does not send. Full comparison
+  and the rejected `leanir` shortcut: `skills/lean4-wasm-export/SKILL.md`.
 - HACL\* on every target: C sources linked natively; the vendored
   official wasm build for browser, Node, and Deno.
