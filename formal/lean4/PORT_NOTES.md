@@ -2964,3 +2964,85 @@ reachable from Core.
   separators are never checked — `"2002x10x10x12x00x00"^^xsd:dateTime`
   parses as a valid dateTime. Ported unchanged so the two trees agree on
   the suite; `ShaclTests.lean` does not pin the lenient reading.
+
+## Stage: differential harness + property-based probe (branch `lean4/differential`, 2026-08-22)
+
+Owner's ask, verbatim: "look into ways of creating more unit tests
+that truly exercise an implementation". Two mechanisms from
+`docs/designissues/2026-08-22-lean4-w3c-harness.md` § "Tests that truly
+exercise an implementation", built and measured (the numbers, the
+findings with attribution and the sabotage record are in that
+document's closing section).
+
+### Module correspondence
+
+| F\* / OCaml | Lean | Notes |
+|---|---|---|
+| — (no generator in the F\* tree) | `L4Factoidal/Testing/Gen.lean` | splitmix64 over `Nat` (`Rng`), `Gen` state monad, vocabulary, graph / BGP / query generators, SPARQL-text and algebra-AST renderings, `genCase seed` |
+| `SPARQL/Invariants.lean` theorems, `QueryTheorems.lean` | `L4Factoidal/Testing/Props.lean` | 18 executable invariants `Case → Option String`; the theorems' statements checked on the EXECUTED code, plus laws no theorem covers (join commutativity, results-format round trips, RDFC relabelling, isomorphism) |
+| `bin/w3c-runner/w3c_runner.ml` `run_query_eval_test` (one engine vs a file) | `Harness/Differential.lean` (`l4diff`) | TWO engines vs each other: `bin/<platform>/factoidal` via `IO.Process` (`-o json` / `-o ntriples`, `perl alarm` cap) against `parseSparql` + `evalSelect`/`evalAsk`/`evalConstruct`; compared with `Harness/Compare.lean` unchanged |
+| — | `Harness/PropProbe.lean` (`l4prop`) | N seeded cases, per-invariant `pass, fail (out of N)`, repro on every failure, exit 1 |
+| — | `L4Factoidal/Testing/GenTests.lean` | `#guard`s: splitmix64 reference output, determinism, pinned renderings of two seeds, the invariants on three seeds |
+
+### Translation decisions
+
+- The generator is a `structure Gen` state monad rather than a
+  function abbreviation, so `do` notation resolves without fighting
+  the function-space instances; `natLt`, `pick`, `listOf`, `bool` are
+  the whole combinator set.
+- The vocabulary is bounded and dense on purpose (three subjects,
+  three predicates, two blank nodes, thirteen literals over four
+  datatypes and three language tags) so joins join and OPTIONALs
+  sometimes bind — the property probe prints how many BGP rows it
+  evaluated (`measurement:` line) so a vacuous run is visible.
+- Generated `LIMIT` is only emitted together with an `ORDER BY` over
+  ALL three variables: a LIMIT over an unordered or partially ordered
+  sequence is implementation-defined and would report spec-permitted
+  differences as disagreements.
+- The differential harness keeps the W3C comparator as it is
+  (multiset under bijection; ORDER BY pins positions only for rows
+  with blank nodes). An ordered comparison that fails but passes
+  unordered is reported as `tie-order`, its own bucket, never as
+  agreement. None occurred in the measured runs.
+- CSV/TSV round trips are stated for results with ≥ 1 variable (the
+  zero-column header is spec-ambiguous — recorded in the design doc).
+- `evalConstruct` now applies `ORDER BY` before `LIMIT` (§18.2.4); the
+  differential harness found the unordered slice, in BOTH trees.
+
+### Guards and theorems
+
+No new theorem. `GenTests.lean` adds 13 `#guard`s; `QueryTests.lean`
+adds one (`CONSTRUCT … ORDER BY DESC(?label) LIMIT 1`). The library
+build stays at zero `sorry` / `axiom` / `native_decide` / `partial`.
+
+### Sabotage record (2026-08-22)
+
+- `insertOrdered` dropping tied rows: caught by `l4prop`
+  (`orderby_perm` 497 pass, 3 fail, out of 500), by `l4diff` (one more
+  sparql11 disagreement) and by the full build (`sortSolutions_perm`,
+  a `QueryTests` guard).
+- `tryBindTerm` ignoring an existing binding of a repeated variable:
+  caught by `l4diff` only (generated: 403 agree, 97 disagree, out of
+  500); `l4prop` 0 failures (the laws are relative); the full library
+  build PASSED — no guard or theorem covered it. Two guards added to
+  `Tests.lean` so it does now.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]` in `L4Factoidal/`. The harness executables do file and
+process I/O (`IO.Process.output`) — harness code, outside the library.
+
+### Findings against the F\* (not fixed here)
+
+See the design document's closing section for the eleven itemised
+findings. In one line each: `eval_construct_query` slices before
+ordering; `ASK { ?x <q> ?x }` is true when `SELECT` returns no row;
+the `functions` / `cast` expression errors that §17 says must leave a
+variable unbound are bound (13 W3C tests), hidden by
+`w3c_runner.ml`'s row matcher ignoring extra actual bindings;
+`SERVICE SILENT` to an unreachable endpoint yields no solution
+instead of one empty solution; `GRAPH ?g { ?x ?p ?g }` ignores the
+inner `?g`; `UUID()` repeats within a query; a CONSTRUCT template
+list emits `_:tpl_0__:bnode_13` in N-Triples output; the CLI has no
+query BASE.

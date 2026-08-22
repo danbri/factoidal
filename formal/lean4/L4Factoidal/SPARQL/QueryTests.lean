@@ -505,6 +505,15 @@ def bnodeSubjects : List String :=
 #guard (evalConstruct emptyEnv dsMain
     (mkQuery (.construct [{ s := .var "s", p := .iri pKnows, o := .var "s" }]) pLabels
       (modifier := { limit := some 1 }))).length == 1
+-- ORDER BY applies to the solution sequence BEFORE LIMIT in a
+-- CONSTRUCT too (§18.2.4 builds OrderBy then Slice for every query
+-- form): `DESC(?label) LIMIT 1` drives the template with bob's row
+-- ("bbb"), whatever order the BGP produced. Pinned after the
+-- differential harness found the unordered slice (2026-08-22).
+#guard evalConstruct emptyEnv { default := gMain, named := [] }
+    (mkQuery (.construct [{ s := .var "s", p := .iri pKnows, o := .var "s" }]) pLabels
+      (modifier := { orderBy := some [.desc (.var "label")], limit := some 1 }))
+    == [{ s := .iri iBob, p := pKnows, o := .iri iBob }]
 -- The result is a GRAPH, so a template that yields the same triple for
 -- every solution collapses to one triple.
 #guard (evalConstruct emptyEnv dsMain
