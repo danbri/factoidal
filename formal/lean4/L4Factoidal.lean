@@ -21,6 +21,7 @@ import L4Factoidal.RDFS.ClosureTests
 import L4Factoidal.SPARQL.Expr
 import L4Factoidal.SPARQL.ExprTheorems
 import L4Factoidal.SPARQL.Query
+import L4Factoidal.SPARQL.Exists
 import L4Factoidal.SPARQL.QueryTheorems
 import L4Factoidal.SPARQL.QueryTests
 import L4Factoidal.Syntax.Lexing

@@ -698,6 +698,18 @@ def evalSelectItems (env : EvalEnv) (items : List SelectItem)
     (omega : SolutionSeq) : SolutionSeq :=
   omega.map (evalSelectItemsRow env items)
 
+/-- `is_synthetic_bnode_var`: the variables `QueryPattern.rewriteBnodes`
+(below) invents for WHERE-clause blank nodes. -/
+def isSyntheticBnodeVar (v : VarName) : Bool := "_bnode_".isPrefixOf v
+
+/-- `strip_synthetic_bnode_vars`: drop the rewrite-invented variables
+from every row — what `SELECT *` must do, since §18.2.4 keeps
+WHERE-clause blank nodes out of the user's variable scope. Applied
+BEFORE DISTINCT/REDUCED, as in the F* source, so rows that differ
+only in a synthetic binding collapse to one. -/
+def stripSyntheticBnodeVars (omega : SolutionSeq) : SolutionSeq :=
+  omega.map (fun mu => mu.filter (fun b => !isSyntheticBnodeVar b.1))
+
 /-! ## The §18.2.4 pipeline
 
 `selectPost` is everything a SELECT query does AFTER its WHERE clause
@@ -726,7 +738,8 @@ def selectPost (env : EvalEnv) (q : Query) (omega0 : SolutionSeq) : SolutionSeq 
         -- 4. Aggregation: one row per surviving group.
         let omega' := match sel with
           | .vars items => aggregateGroups env items filtered
-          | .all        => filtered.map (fun g => g.solutions.headD Binding.empty)
+          | .all        =>
+              stripSyntheticBnodeVars (filtered.map (fun g => g.solutions.headD Binding.empty))
         -- 6. ORDER BY.
         let ordered := match q.modifier.orderBy with
           | none   => omega'
@@ -748,10 +761,11 @@ def selectPost (env : EvalEnv) (q : Query) (omega0 : SolutionSeq) : SolutionSeq 
         let ordered := match q.modifier.orderBy with
           | none   => omega'
           | some o => sortSolutions (compareOnConditions env o) omega'
-        -- 7. Projection.
+        -- 7. Projection. `SELECT *` drops the rewrite-invented
+        -- `_bnode_*` variables here, before DISTINCT (F* site).
         let projected := match sel with
           | .vars items => projectSolutions (selectItemVars items) ordered
-          | .all        => ordered
+          | .all        => stripSyntheticBnodeVars ordered
         let deduped :=
           if q.modifier.distinct then distinctSolutions projected
           else if q.modifier.reduced then reducedSolutions projected
@@ -957,6 +971,66 @@ def applyDataset (dcs : List DatasetClause) (ds : Dataset) (active : Graph) :
     let newDefault := defaults.foldl Graph.union Graph.empty
     ({ default := newDefault, named := named }, newDefault)
 
+/-! ## WHERE-clause blank nodes — §18.2.4 (OutScope), §4.1.4
+
+SPARQL 1.1 §4.1.4: "Blank node labels are scoped to the query … a
+blank node in a query pattern acts as a non-distinguished variable".
+The F* evaluator (`eval_select_query`, via
+`rewrite_query_bnodes_pattern`) makes that literal: every `_:label`
+in the WHERE clause becomes the variable `_bnode_label` before
+matching, so it matches ANY term rather than only a data blank node
+that happens to carry the same label — and `SELECT *` strips those
+variables again (`strip_synthetic_bnode_vars`) because §18.2.4 puts
+them outside the user's variable scope.
+
+Port of `rewrite_query_bnode_term` / `rewrite_query_bnode_subject` /
+`rewrite_query_bnodes_pattern`. Like the F* source, the rewrite does
+NOT enter embedded expressions (a FILTER's EXISTS body keeps its blank
+nodes) and does not enter SERVICE bodies or VALUES rows. -/
+
+/-- `rewrite_query_bnode_term`: a blank node becomes `?_bnode_<label>`;
+RDF 1.2 triple-term patterns are rewritten position by position. -/
+def rewriteBnodeTerm : PatternTerm → PatternTerm
+  | .bnode b          => .var ("_bnode_" ++ b)
+  | .tripleTerm s p o => .tripleTerm (rewriteBnodeTerm s) (rewriteBnodeTerm p) (rewriteBnodeTerm o)
+  | pt                => pt
+
+/-- `rewrite_query_bnode_subject`. -/
+def rewriteBnodeSubject : PatternSubject → PatternSubject
+  | .bnode b => .var ("_bnode_" ++ b)
+  | ps       => ps
+
+/-- `rewrite_query_bnode_tp`. -/
+def rewriteBnodeTriple (tp : TriplePattern) : TriplePattern :=
+  { s := rewriteBnodeSubject tp.s, p := rewriteBnodeTerm tp.p, o := rewriteBnodeTerm tp.o }
+
+mutual
+
+/-- `rewrite_query_bnodes_pattern`, arm for arm. -/
+def QueryPattern.rewriteBnodes : QueryPattern → QueryPattern
+  | .bgp b            => .bgp (b.map rewriteBnodeTriple)
+  | .join l r         => .join l.rewriteBnodes r.rewriteBnodes
+  | .leftJoin l r c   => .leftJoin l.rewriteBnodes r.rewriteBnodes c
+  | .filter c p       => .filter c p.rewriteBnodes
+  | .union l r        => .union l.rewriteBnodes r.rewriteBnodes
+  | .minus l r        => .minus l.rewriteBnodes r.rewriteBnodes
+  | .graph n p        => .graph (rewriteBnodeTerm n) p.rewriteBnodes
+  | .lateral l r      => .lateral l.rewriteBnodes r.rewriteBnodes
+  | .bind e v p       => .bind e v p.rewriteBnodes
+  | .values vs rows   => .values vs rows
+  | .service i s p    => .service i s p
+  | .serviceVar v s p => .serviceVar v s p
+  | .subSelect q      => .subSelect q.rewriteBnodes
+  | .propertyPath s path o => .propertyPath (rewriteBnodeSubject s) path (rewriteBnodeTerm o)
+  | .empty            => .empty
+
+/-- The `GP_SubSelect` arm: a sub-SELECT's own WHERE clause is rewritten
+too (WHERE-clause blank nodes have to reach sub-SELECTs). -/
+def Query.rewriteBnodes : Query → Query
+  | .mk f d p g h m v => .mk f d p.rewriteBnodes g h m v
+
+end
+
 /-! ## Query evaluation — §18.2.4, §16.2 -/
 
 /-- Every distinct variable a solution sequence binds, in first-seen
@@ -974,18 +1048,18 @@ def collectVarsInOrder (omega : SolutionSeq) : List VarName :=
 /-- Evaluate a SELECT query — §18.2.4. Returns the projected variable
 list (the result-set header) and the solution sequence.
 
-Port of `eval_select_query`. The two omitted stages are both
-OWL-rewriter bookkeeping with no counterpart on this side:
-`rewrite_query_bnodes_pattern` (turning WHERE-clause blank nodes into
-fresh variables, a parser-level concern) and
-`strip_synthetic_bnode_vars` / `strip_rewrite_internal_vars` (hiding
-variables `OWL.QueryRewrite` invents). -/
+Port of `eval_select_query`, including its first stage
+`rewrite_query_bnodes_pattern` (WHERE-clause blank nodes become
+non-distinguished variables — `QueryPattern.rewriteBnodes` above) and
+the `SELECT *` strip inside `selectPost`. The one omitted stage is
+`strip_rewrite_internal_vars`, which hides variables the F* tree's
+`OWL.QueryRewrite` invents; that rewriter has no counterpart here. -/
 def evalSelect (env : EvalEnv) (ds : Dataset) (q : Query) :
     List VarName × SolutionSeq :=
   let (ds', active) := applyDataset q.dataset ds ds.default
   match q.form with
   | .select sel =>
-      let omega := (q.pattern.lower env).evalIn ds' active
+      let omega := (q.pattern.rewriteBnodes.lower env).evalIn ds' active
       let rows := selectPost env q omega
       let vars := match sel with
         | .vars items => selectItemVars items
@@ -999,7 +1073,7 @@ def evalAsk (env : EvalEnv) (ds : Dataset) (q : Query) : Bool :=
   let (ds', active) := applyDataset q.dataset ds ds.default
   match q.form with
   | .ask =>
-      let omega0 := (q.pattern.lower env).evalIn ds' active
+      let omega0 := (q.pattern.rewriteBnodes.lower env).evalIn ds' active
       let omega := match q.postValues with
         | none      => omega0
         | some vals => join omega0 vals
@@ -1098,7 +1172,7 @@ def evalConstruct (env : EvalEnv) (ds : Dataset) (q : Query) : Graph :=
   let (ds', active) := applyDataset q.dataset ds ds.default
   match q.form with
   | .construct template =>
-      let omega0 := (q.pattern.lower env).evalIn ds' active
+      let omega0 := (q.pattern.rewriteBnodes.lower env).evalIn ds' active
       let omega := match q.postValues with
         | none      => omega0
         | some vals => join omega0 vals

@@ -78,7 +78,13 @@ report quote, so it is pinned here. -/
        == { pass := 3, fail := 1, skip := 5 }
 
 #guard Diag.line "rdf-turtle" { noManifest := 0, zeroTests := 0, budgetExceeded := 0 }
-       == "HARNESS-DIAG rdf-turtle: no_manifest=0 zero_tests=0 budget_exceeded=0"
+       == "HARNESS-DIAG rdf-turtle: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0"
+-- The measurement counters are printed so a SPARQL suite that compared
+-- nothing cannot read as green.
+#guard Diag.line "bind" { rowsCompared := 42, triplesCompared := 7 }
+       == "HARNESS-DIAG bind: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=42 triples_compared=7"
+#guard (Diag.add { rowsCompared := 1, budgetExceeded := 1 } { rowsCompared := 2, triplesCompared := 3 })
+       == { budgetExceeded := 1, rowsCompared := 3, triplesCompared := 3 }
 
 #guard Outcome.line "t1" .pass == "PASS t1"
 #guard Outcome.line "t1" (.fail "boom") == "FAIL t1: boom"
@@ -180,6 +186,147 @@ def caseNamed (n : String) : Option TestCase := miniCases.1.find? (fun tc => tc.
 -- An entry with no `rdft:approval` triple records the empty string
 -- rather than vanishing.
 #guard (caseNamed "delta").map (·.approval) == some ""
+
+/-! ## The sparql11 manifest shapes
+
+An umbrella manifest (`mf:include`, no entries), an entailment-regime
+action (`sd:entailmentRegime` as one IRI and as a collection) and a
+SERVICE action (`qt:serviceData`). -/
+
+def umbrellaManifest : String :=
+"@prefix mf: <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+<> a mf:Manifest ;
+   mf:include ( <aggregates/manifest.ttl> <bind/manifest.ttl> ) ."
+
+#guard parseManifestIncludes "/s/manifest-all.ttl" umbrellaManifest
+       == ["/s/aggregates/manifest.ttl", "/s/bind/manifest.ttl"]
+-- …and it has no entries of its own.
+#guard (match parseManifestText "/s/manifest-all.ttl" umbrellaManifest with
+        | .ok (tests, _) => tests.length
+        | .error _       => 99) == 0
+
+def sparqlManifest : String :=
+"@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix mf: <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix qt: <http://www.w3.org/2001/sw/DataAccess/tests/test-query#> .
+@prefix sd: <http://www.w3.org/ns/sparql-service-description#> .
+@prefix ent: <http://www.w3.org/ns/entailment/> .
+
+<> rdf:type mf:Manifest ;
+   mf:entries ( <#one> <#two> <#svc> ) .
+
+<#one> rdf:type mf:QueryEvaluationTest ;
+   mf:name \"one\" ;
+   mf:action [ qt:query <one.rq> ; qt:data <one.ttl> ;
+               sd:entailmentRegime ( ent:RDFS ent:D ) ] ;
+   mf:result <one.srx> .
+
+<#two> rdf:type mf:QueryEvaluationTest ;
+   mf:name \"two\" ;
+   mf:action [ qt:query <two.rq> ; qt:data <two.ttl> ;
+               qt:graphData <g1.ttl> ;
+               sd:entailmentRegime ent:OWL-Direct ] ;
+   mf:result <two.srx> .
+
+<#svc> rdf:type mf:QueryEvaluationTest ;
+   mf:name \"svc\" ;
+   mf:action [ qt:query <svc.rq> ;
+               qt:serviceData [ qt:endpoint <http://example.org/sparql> ;
+                                qt:data <svc-endpoint.ttl> ] ] ;
+   mf:result <svc.srx> ."
+
+def sparqlCases : List TestCase :=
+  match parseManifestText "/s/manifest.ttl" sparqlManifest with
+  | .ok (tests, _) => tests
+  | .error _       => []
+
+def sparqlCase (n : String) : Option TestCase := sparqlCases.find? (fun tc => tc.name == n)
+
+#guard sparqlCases.length == 3
+#guard (sparqlCase "one").map (·.entailmentRegimes) == some ["RDFS", "D"]
+#guard (sparqlCase "two").map (·.entailmentRegimes) == some ["OWL-Direct"]
+#guard (sparqlCase "two").map (·.graphData) == some [("file:///s/g1.ttl", "/s/g1.ttl")]
+#guard (sparqlCase "svc").map (·.entailmentRegimes) == some []
+#guard (sparqlCase "svc").map (·.serviceData)
+       == some [("http://example.org/sparql", "/s/svc-endpoint.ttl")]
+#guard (sparqlCase "svc").map (·.dataFiles) == some []
+
+/-! ## Result comparison (`Harness/Compare.lean`)
+
+The rules of `run_query_eval_test`, pinned on tiny inputs. -/
+
+section compare
+open L4Factoidal.RDF
+open L4Factoidal.SPARQL
+
+def exA : Term := .iri ⟨"http://example.org/a", rfl⟩
+def exB : Term := .iri ⟨"http://example.org/b", rfl⟩
+def lit1 : Term := .literal (Literal.string "1")
+def litInt1 : Term :=
+  .literal ⟨{ lexicalForm := "1", datatype := xsdInteger, langTag := none, direction := none }, rfl⟩
+def bn (l : String) : Term := .bnode l
+
+-- Plain rows: a multiset, order-insensitive.
+#guard compareSelectRows false false [[("x", exA)], [("x", exB)]] [[("x", exB)], [("x", exA)]] == .equal
+-- A missing row, an extra row, a different value: not equal.
+#guard compareSelectRows false false [[("x", exA)]] [[("x", exA)], [("x", exB)]] == .notEqual
+#guard compareSelectRows false false [[("x", exA)], [("x", exB)]] [[("x", exA)]] == .notEqual
+#guard compareSelectRows false false [[("x", exA)]] [[("x", exB)]] == .notEqual
+-- Domains must agree: an unbound variable is not a wildcard.
+#guard compareSelectRows false false [[("x", exA)]] [[("x", exA), ("y", exB)]] == .notEqual
+-- Strict term equality: "1" (xsd:string) is not "1"^^xsd:integer.
+#guard compareSelectRows false false [[("x", lit1)]] [[("x", litInt1)]] == .notEqual
+-- …but the CSV-lenient comparison accepts it (CSV lost the datatype).
+#guard compareSelectRows false true [[("x", lit1)]] [[("x", litInt1)]] == .equal
+
+-- Blank nodes: ONE bijection across all rows. `_:a` in two expected
+-- rows must map to the SAME actual label.
+#guard compareSelectRows false false [[("x", bn "a")], [("x", bn "a")]]
+                                     [[("x", bn "p")], [("x", bn "p")]] == .equal
+#guard compareSelectRows false false [[("x", bn "a")], [("x", bn "a")]]
+                                     [[("x", bn "p")], [("x", bn "q")]] == .notEqual
+-- …and two distinct expected labels may not share one actual label.
+#guard compareSelectRows false false [[("x", bn "a")], [("x", bn "b")]]
+                                     [[("x", bn "p")], [("x", bn "p")]] == .notEqual
+-- Unordered: rows may be permuted while the bijection holds.
+#guard compareSelectRows false false [[("x", bn "a"), ("y", exA)], [("x", bn "b"), ("y", exB)]]
+                                     [[("x", bn "q"), ("y", exB)], [("x", bn "p"), ("y", exA)]] == .equal
+-- ORDER BY pins the bijection to row position: the same rows
+-- permuted are now a mismatch.
+#guard compareSelectRows true false [[("x", bn "a"), ("y", exA)], [("x", bn "b"), ("y", exB)]]
+                                    [[("x", bn "q"), ("y", exB)], [("x", bn "p"), ("y", exA)]] == .notEqual
+#guard compareSelectRows true false [[("x", bn "a"), ("y", exA)], [("x", bn "b"), ("y", exB)]]
+                                    [[("x", bn "p"), ("y", exA)], [("x", bn "q"), ("y", exB)]] == .equal
+-- CSV: blank nodes collapse, no bijection is demanded.
+#guard compareSelectRows false true [[("x", bn "a")], [("x", bn "a")]]
+                                    [[("x", bn "p")], [("x", bn "q")]] == .equal
+-- An exhausted search is reported, never passed.
+#guard (matchBack termMatchStrict 1 1 [] [[("x", bn "a")]] [[("x", bn "p")]]).1
+       matches .exceeded
+
+/-- An `rs:ResultSet` in the DAWG vocabulary, with `rs:index`. -/
+def rsTurtle : String :=
+"@prefix rs: <http://www.w3.org/2001/sw/DataAccess/tests/result-set#> .
+[] a rs:ResultSet ;
+   rs:resultVariable \"x\" ;
+   rs:solution [ rs:index 2 ; rs:binding [ rs:variable \"x\" ; rs:value <http://example.org/b> ] ] ;
+   rs:solution [ rs:index 1 ; rs:binding [ rs:variable \"x\" ; rs:value <http://example.org/a> ] ] ."
+
+def rsDecoded : Option (List VarName × List Binding) :=
+  match L4Factoidal.Syntax.parseTurtle rsTurtle (some "file:///r/x.ttl") with
+  | .ok g    => decodeRsResultSet g
+  | .error _ => none
+
+#guard rsDecoded.map Prod.fst == some ["x"]
+-- Rows come back in `rs:index` order.
+#guard rsDecoded.map Prod.snd == some [[("x", exA)], [("x", exB)]]
+#guard (match L4Factoidal.Syntax.parseTurtle rsTurtle (some "file:///r/x.ttl") with
+        | .ok g => isRsResultSet g | .error _ => false)
+-- A plain graph is not a result set.
+#guard (match L4Factoidal.Syntax.parseTurtle "<http://example.org/a> <http://example.org/p> 1 ." none with
+        | .ok g => isRsResultSet g | .error _ => true) == false
+
+end compare
 
 /-! ## rdf-canon helpers -/
 

@@ -90,19 +90,29 @@ structure Diag where
   noManifest     : Nat := 0
   /-- Manifest parsed but yielded no entries. -/
   zeroTests      : Nat := 0
-  /-- A comparison gave up: `IsoOutcome.budgetExceeded`. Counted here
-  AND scored as `fail`, never as `pass`. -/
+  /-- A comparison gave up: `IsoOutcome.budgetExceeded` or
+  `CmpOutcome.budgetExceeded`. Counted here AND scored as `fail`,
+  never as `pass`. -/
   budgetExceeded : Nat := 0
+  /-- MEASUREMENT CHECK for the SPARQL evaluation tests: solution rows
+  (expected + actual) and ASK booleans actually compared. A SPARQL
+  suite at 100% with this at 0 compared nothing. -/
+  rowsCompared   : Nat := 0
+  /-- Same check for CONSTRUCT: triples (expected + actual) compared. -/
+  triplesCompared : Nat := 0
   deriving DecidableEq, Repr
 
 def Diag.add (a b : Diag) : Diag :=
   { noManifest := a.noManifest + b.noManifest,
     zeroTests := a.zeroTests + b.zeroTests,
-    budgetExceeded := a.budgetExceeded + b.budgetExceeded }
+    budgetExceeded := a.budgetExceeded + b.budgetExceeded,
+    rowsCompared := a.rowsCompared + b.rowsCompared,
+    triplesCompared := a.triplesCompared + b.triplesCompared }
 
 def Diag.line (label : String) (d : Diag) : String :=
   s!"HARNESS-DIAG {label}: no_manifest={d.noManifest} " ++
-  s!"zero_tests={d.zeroTests} budget_exceeded={d.budgetExceeded}"
+  s!"zero_tests={d.zeroTests} budget_exceeded={d.budgetExceeded} " ++
+  s!"rows_compared={d.rowsCompared} triples_compared={d.triplesCompared}"
 
 /-! ## String / path arithmetic
 
