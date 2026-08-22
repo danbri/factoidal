@@ -245,7 +245,7 @@ def multikeyToEd25519SecretKey? (mk : String) : Option Bytes :=
 def toByteArray (bs : Bytes) : ByteArray := ⟨⟨bs⟩⟩
 
 /-- `ByteArray` → byte list. -/
-def ofByteArray (a : ByteArray) : Bytes := a.toList
+def ofByteArray (a : ByteArray) : Bytes := a.data.toList
 
 /-- Hex → `ByteArray`. -/
 def byteArrayOfHex? (s : String) : Option ByteArray := (bytesOfHex? s).map toByteArray

@@ -214,6 +214,21 @@ while IFS= read -r f; do
 done < <(find "$LEAN_DIR/.lake/build/ir" -name '*.c')
 emcc $CFLAGS -c "$LEAN_DIR/Wasm/l4_shim.c"  -o "$LIB_OBJ/l4_shim.o"
 emcc $CFLAGS -c "$LEAN_DIR/Wasm/l4_stubs.c" -o "$LIB_OBJ/l4_stubs.o"
+# HACL* Ed25519 — the library's one `@[extern]` family
+# (L4Factoidal/Crypto/Ed25519.lean, realised by ffi/hacl_ed25519.c over
+# the vendored, unmodified third_party/hacl C). Native builds get the
+# same four units from the lakefile's extern_lib; the wasm module needs
+# them compiled for wasm32 here, or the link fails on the three
+# l4_hacl_ed25519_* symbols. Crypto policy: HACL* on every target, never
+# a different implementation (skills/crypto-policy, Lean 4 amendment).
+# The shim's object is named l4_hacl_shim.o, NOT hacl_ed25519.o: on a
+# case-insensitive filesystem that name collides with Hacl_Ed25519.o.
+HACL_DIR="$REPO_ROOT/third_party/hacl"
+for f in "$HACL_DIR/src/Hacl_Ed25519.c" "$HACL_DIR/src/Hacl_Curve25519_51.c" \
+         "$HACL_DIR/src/Hacl_Hash_SHA2.c"; do
+  emcc $CFLAGS -I "$HACL_DIR/include" -c "$f" -o "$LIB_OBJ/$(basename "${f%.c}").o"
+done
+emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_ed25519.c" -o "$LIB_OBJ/l4_hacl_shim.o"
 echo "  library objects: $(ls "$LIB_OBJ"/*.o | wc -l | tr -d ' ')"
 
 # ---------------------------------------------------------------------
