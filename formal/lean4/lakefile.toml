@@ -1,0 +1,5 @@
+name = "l4factoidal"
+defaultTargets = ["L4Factoidal"]
+
+[[lean_lib]]
+name = "L4Factoidal"
