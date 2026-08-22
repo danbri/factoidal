@@ -4230,3 +4230,104 @@ Method note: a `#guard` caught my own wrong test constants here —
 scale confused with divisor, `1.5` written as `finite 15 10` rather
 than `finite 15 1`. Third time build-time checking has caught an
 authoring error in a new area today.
+
+### Schematron: the report model and the assert/report inversion
+(2026-08-22)
+
+`Schematron/Validate.lean` ports `Schematron.Validate.fst`: schema,
+patterns, rules, assertions and the finding report.
+
+THE INVERSION is the one thing Schematron implementations get wrong,
+so it lives in exactly one function and is guarded in both
+directions: an `<assert test="X">` produces a finding when X is
+FALSE, a `<report test="X">` produces one when X is TRUE. They are
+kept as SEPARATE finding constructors rather than one predicate
+negated at the call site, so a consumer cannot lose the distinction.
+
+Two more rules with guards, each producing confidently-wrong output
+if flipped:
+- Within a PATTERN the FIRST matching rule claims a node and later
+  rules in that pattern do not fire for it; PATTERNS are independent
+  of each other. Getting this wrong yields duplicate findings that
+  read as genuine extra violations.
+- An undecidable test yields an INDETERMINATE finding carrying its
+  reason — for assert and report alike — and `hasViolations` does NOT
+  count it, while `hasIndeterminate` reports it separately. The same
+  refusal discipline as the Geo predicates, the CSVW formats and the
+  JSON Schema validator.
+
+The XPath evaluation and context selection are PARAMETERS, not a
+global registry — purity doctrine, and it also makes the whole module
+testable without an XPath engine.
+
+### HTTP: the SPARQL endpoint's request/response layer (2026-08-22)
+
+`HTTP/Server.lean` ports `SPARQL.HTTP.fst`, `.Routes.fst` and
+`.Response.fst`: request model, query-string parsing, routing,
+content negotiation and the response constructors. Everything is a
+TOTAL FUNCTION from a parsed request to a response decision — sockets
+and reads stay outside — so the whole Web surface is testable with no
+network.
+
+This closes a gap the parity ledger flagged against the project's own
+framing: the Lean tree had the protocol SEMANTICS (Protocol,
+GraphStore, ServiceDescription) but not the server that speaks them.
+
+A REAL BUG in this port, caught by a `#guard` before it landed:
+`formDecode` built one `Char` per percent-escape, so `%C3%A9` became
+two Latin-1 characters instead of `é`. Percent-decoding must happen at
+the BYTE level with UTF-8 interpretation at the end. That is the
+classic mojibake bug and it would have corrupted every non-ASCII
+query string. Fixed and guarded.
+
+Spec details pinned because each is a protocol violation when wrong:
+- A 405 MUST carry `Allow` (RFC 7231 §6.5.5); a bare 405 is
+  non-conforming, not merely unhelpful.
+- `HEAD` is allowed wherever `GET` is.
+- `OPTIONS` is answered BEFORE path matching, so CORS preflight works
+  on every endpoint including unknown ones.
+- On a shared endpoint an `update=` parameter (or the
+  `application/sparql-update` content type) selects update even on the
+  query path — Protocol §2.2.
+- `q=0` means NOT ACCEPTABLE and can never be chosen, even for the
+  server's own first preference. q-values are scaled to integers so
+  the ordering is exact rather than a float comparison.
+- A malformed percent-escape is kept VERBATIM rather than dropped;
+  deleting bytes from a query changes what was asked.
+
+### Storage: HDT byte primitives (2026-08-22)
+
+`Storage/Bytes.lean` opens the storage layer — VByte, little-endian
+32-bit reads and writes, CRC8 and CRC32C, and the checksummed section
+that HDT's format is built from.
+
+This belongs in the Lean tree by the same rule that governs the F*
+side: iron rule 11 puts byte ASSEMBLY in the formal source
+(`serialize : data -> List UInt8`), leaving only `write_bytes`
+outside. So the format is specifiable here and reading it back is a
+total function over a byte list, with no I/O at all.
+
+Two decisions worth recording:
+
+1. **Checksums are typed `UInt8`/`UInt32`, not `Nat`.** The width is
+   part of the format, so carrying it in the TYPE removes every
+   "< 256" side obligation from the round-trip reasoning instead of
+   discharging them one at a time. That restructure happened
+   mid-increment, when the `Nat` version left exactly those goals
+   dangling.
+2. **HDT's VByte marks the LAST byte with the high bit** — the
+   OPPOSITE of LEB128's continuation marker. A flipped polarity
+   decodes every multi-byte number wrongly while single-byte values
+   keep working, which is the failure mode that survives casual
+   testing, so `vbyteEncode 5 == [133]` is guarded explicitly.
+
+Corruption rejection is guarded in both halves: a flipped data byte
+and a flipped preamble byte each make `Section.parse` return `none`.
+A storage layer that reads on through a bad checksum turns a disk
+error into wrong query answers.
+
+TWO OBLIGATIONS ARE STATED IN THE SOURCE, not admitted: the general
+VByte round trip (needs induction on `n / 128` with the accumulator
+generalised) and the section round trip (needs a readU32LE-over-append
+lemma). `#guard` covers both by evaluation meanwhile — including
+VByte boundary values at 127/128/16383/16384.
