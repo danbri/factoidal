@@ -1,5 +1,5 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal", "Harness", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4wasm-cli", "l4w3c", "l4rdfxml-probe", "l4sparql-probe"]
+defaultTargets = ["L4Factoidal", "Harness", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4owl-probe", "l4wasm-cli", "l4w3c", "l4rdfxml-probe", "l4sparql-probe"]
 
 [[lean_lib]]
 name = "L4Factoidal"
@@ -38,6 +38,14 @@ root = "Harness.TurtleProbe"
 [[lean_exe]]
 name = "l4jsonld-probe"
 root = "Harness.JsonLdProbe"
+# Corpus census for the W3C OWL 2 test catalogs (Harness/OwlProbe.lean):
+# reads the RDF/XML catalogs with the Lean XML parser and reports, with
+# denominators, how many test cases carry a serialisation the Lean tree
+# can turn into triples. Not part of the verified library: file I/O and
+# printed scores.
+[[lean_exe]]
+name = "l4owl-probe"
+root = "Harness.OwlProbe"
 # The WebAssembly export surface: the JSON string-in / string-out ABI
 # (Wasm/Abi.lean) and the `@[export]` C symbols (Wasm/Exports.lean).
 # `lake build` compiles it, so the ABI is type-checked on every build
