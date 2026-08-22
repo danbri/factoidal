@@ -212,12 +212,16 @@ Rules that follow:
 1. **"X deprioritized" is an ordering decision, never a scope
    prohibition.** Do not let a steer calcify into "out of scope by
    owner directive" through document inheritance. (It happened: a
-   2026-07-11 "protocols deprioritized" — which actually meant
-   "format work is the lowest-hanging fruit, especially given the
-   historical difficulty of AI-written F\*" — was inherited three
-   documents deep into "owner-excluded" labels on specific CSVW
-   tests. The owner never made that call; see the 2026-07-15
-   correction in the CSVW triage ledger.)
+   2026-07-11 "protocols deprioritized" was inherited three documents
+   deep into "owner-excluded" labels on specific CSVW tests. The owner
+   never made that call; see the 2026-07-15 correction in the CSVW
+   triage ledger. The owner's own account of what that steer meant,
+   given 2026-08-22, verbatim: "Protocols were not deprioritised but
+   we needed basic sparql first - and early f\* was glacially slow at
+   points where io bridged the non f\* universe." Note that BOTH the
+   original label and the earlier gloss recorded here were wrong: it
+   was a sequencing constraint plus a performance problem at the I/O
+   boundary, not a judgement about protocol work.)
 2. **Quote steers with date and original wording** when writing them
    into ledgers or design docs. Paraphrase drifts; drift compounds.
 3. **Never invent a rationale and attribute it to the owner.** State
