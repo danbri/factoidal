@@ -56,6 +56,19 @@ def qNames : Bgp :=
   [some (.literal (Literal.string "Alice")),
    some (.literal (Literal.string "Bob"))]
 
+/-! ### A repeated variable in the OBJECT position constrains the match
+
+Added 2026-08-22 after a sabotage that made `tryBindTerm` ignore an
+existing binding passed every guard and theorem in the library and
+was caught only by the differential harness (`l4diff`, 97 of 500
+generated cases). `?x :name ?x` matches no triple of the fixture (no
+subject is its own name), and `?s :name ?n . ?s :age ?n` matches none
+(nobody's age equals their name). -/
+
+#guard (evalBgp [{ s := .var "x", p := .iri exName, o := .var "x" }] g).length == 0
+#guard (evalBgp [{ s := .var "s", p := .iri exName, o := .var "n" },
+                 { s := .var "s", p := .iri exAge,  o := .var "n" }] g).length == 0
+
 /-! ### Two-pattern BGP: shared ?s correlates name and age -/
 
 def qNameAge : Bgp :=

@@ -75,6 +75,13 @@ Beyond W3C conformance, three mechanisms fit Lean specifically:
   isomorphism reflexivity, parse∘serialise) is ~100 lines and
   exercises paths the hand-written fixtures miss.
 
+**Status 2026-08-22 (branch `lean4/differential`):** the first and
+third mechanisms are built and measured — `lake exe l4diff` and
+`lake exe l4prop`, see the section "Tests that truly exercise an
+implementation — measured" at the end of this document. The sabotage
+script (second mechanism) is still practised by hand; that section
+records the two sabotages run against the new probes.
+
 ## Status 2026-08-22
 
 The runner exists and has been run. `lake exe l4w3c` is a native Lean
@@ -747,3 +754,227 @@ request shapes.
   seen to carry `USING` and the §2.2.4 conflict is missed.
 - `CLAUDE.md` says "SPARQL Protocol reaching 53 pass, 0 fail";
   `latest.json` has 56 pass, 0 fail across the three suites.
+
+## Status 2026-08-22 — "Tests that truly exercise an implementation" — measured (branch `lean4/differential`)
+
+Two executables, both in `formal/lean4/lakefile.toml`'s default
+targets, both run from the repository root:
+
+- `formal/lean4/.lake/build/bin/l4diff [--fstar BIN] [--gen N] [--seed S] [manifest.ttl ...]`
+  (`Harness/Differential.lean`) — the DIFFERENTIAL harness. Every
+  `QueryEvaluationTest` / `CSVResultFormatTest` of the manifests given,
+  plus `N` generated (graph, query) pairs, run through
+  `bin/darwin-arm64/factoidal` (`-o json` for SELECT/ASK, `-o ntriples`
+  for CONSTRUCT, via `IO.Process` under a `perl alarm` cap) AND through
+  `parseSparql` + `evalSelect` / `evalAsk` / `evalConstruct` (the path
+  `Harness/Run.lean` takes), compared with `Harness/Compare.lean`'s
+  `compareSelectRows` (solution multisets under a blank-node bijection)
+  and `Graph.isomorphicOutcome`. Per-suite outcomes: agree / disagree /
+  tie-order / fstar-error / lean-error / skipped (named), with the
+  rows-or-triples-compared measurement on every line. Exit 1 on any
+  disagreement or error.
+- `formal/lean4/.lake/build/bin/l4prop [--cases N] [--seed S]`
+  (`Harness/PropProbe.lean`) — the PROPERTY probe over
+  `L4Factoidal/Testing/Gen.lean` (pure, seeded: splitmix64 over `Nat`;
+  graphs over a bounded vocabulary with plain, language-tagged and
+  typed numeric literals; BGPs; a query grammar of BGP / OPTIONAL /
+  FILTER-comparison-and-BOUND / UNION / MINUS with DISTINCT / ORDER BY /
+  LIMIT, rendered as SPARQL text AND as the algebra AST) and
+  `L4Factoidal/Testing/Props.lean` (18 invariants, each `Case → Option
+  String`). Every failure prints the seed, the graph as N-Triples and
+  the query; exit 1 on any failure. `L4Factoidal/Testing/GenTests.lean`
+  pins determinism (same seed → same case; the exact rendering of two
+  seeds; the splitmix64 reference output for seed 0) and the
+  invariants on three fixed seeds, as build-time `#guard`s.
+
+### Measured, verbatim
+
+`l4diff --gen 500 --seed 0 third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`
+(every per-suite line with at least one case; the other 19 suites are
+all `skipped` — syntax, update, protocol types):
+
+```
+DIFF aggregates: 42 agree, 0 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 5 skipped (out of 47); rows_or_triples_compared=176
+DIFF bind: 10 agree, 0 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 0 skipped (out of 10); rows_or_triples_compared=60
+DIFF bindings: 10 agree, 0 disagree, 0 tie-order, 1 fstar-error, 0 lean-error, 0 skipped (out of 11); rows_or_triples_compared=44
+DIFF cast: 3 agree, 3 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 0 skipped (out of 6); rows_or_triples_compared=372
+DIFF construct: 3 agree, 0 disagree, 0 tie-order, 2 fstar-error, 0 lean-error, 2 skipped (out of 7); rows_or_triples_compared=16
+DIFF csv-tsv-res: 6 agree, 0 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 0 skipped (out of 6); rows_or_triples_compared=76
+DIFF exists: 5 agree, 0 disagree, 0 tie-order, 1 fstar-error, 0 lean-error, 0 skipped (out of 6); rows_or_triples_compared=14
+DIFF functions: 65 agree, 10 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 0 skipped (out of 75); rows_or_triples_compared=569
+DIFF grouping: 4 agree, 0 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 2 skipped (out of 6); rows_or_triples_compared=18
+DIFF json-res: 4 agree, 0 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 0 skipped (out of 4); rows_or_triples_compared=26
+DIFF negation: 12 agree, 0 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 0 skipped (out of 12); rows_or_triples_compared=84
+DIFF project-expression: 7 agree, 0 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 0 skipped (out of 7); rows_or_triples_compared=24
+DIFF property-path: 31 agree, 0 disagree, 0 tie-order, 2 fstar-error, 0 lean-error, 0 skipped (out of 33); rows_or_triples_compared=137
+DIFF service: 0 agree, 1 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 6 skipped (out of 7); rows_or_triples_compared=2
+DIFF subquery: 13 agree, 1 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 0 skipped (out of 14); rows_or_triples_compared=99
+DIFF sparql11 (all): 215 agree, 15 disagree, 0 tie-order, 6 fstar-error, 0 lean-error, 395 skipped (out of 631); rows_or_triples_compared=1717
+DIFF generated (500 cases from seed 0): 497 agree, 3 disagree, 0 tie-order, 0 fstar-error, 0 lean-error, 0 skipped (out of 500); rows_or_triples_compared=461
+DIFF TOTAL: 712 agree, 18 disagree, 0 tie-order, 6 fstar-error, 0 lean-error, 395 skipped (out of 1131); rows_or_triples_compared=2178
+```
+
+The 395 skipped: 319 entries whose type is not a query evaluation
+test (syntax, update, protocol), 70 entailment-regime entries (the
+CLI is not driven with `--entail`), 6 SERVICE tests that need
+`qt:serviceData` (the CLI has no such form). Nothing is skipped
+silently: every skip line names its reason.
+
+`l4prop --cases 500 --seed 0` (and again with `--seed 1000`: 500
+cases, 0 failures, 495 BGP rows):
+
+```
+PROP bgp_mono: 500 pass, 0 fail (out of 500)
+PROP join_comm: 500 pass, 0 fail (out of 500)
+PROP union_append: 500 pass, 0 fail (out of 500)
+PROP minus_subset: 500 pass, 0 fail (out of 500)
+PROP filter_subset: 500 pass, 0 fail (out of 500)
+PROP distinct_idem: 500 pass, 0 fail (out of 500)
+PROP orderby_perm: 500 pass, 0 fail (out of 500)
+PROP ntriples_roundtrip: 500 pass, 0 fail (out of 500)
+PROP turtle_roundtrip: 500 pass, 0 fail (out of 500)
+PROP srx_roundtrip: 500 pass, 0 fail (out of 500)
+PROP srj_roundtrip: 500 pass, 0 fail (out of 500)
+PROP csv_roundtrip: 500 pass, 0 fail (out of 500)
+PROP tsv_roundtrip: 500 pass, 0 fail (out of 500)
+PROP rdfc_relabel: 500 pass, 0 fail (out of 500)
+PROP iso_reflexive: 500 pass, 0 fail (out of 500)
+PROP iso_relabel: 500 pass, 0 fail (out of 500)
+PROP query_parses: 500 pass, 0 fail (out of 500)
+PROP distinct_no_dup: 500 pass, 0 fail (out of 500)
+PROP TOTAL: 500 cases, 0 failures; measurement: 3229 triples generated, 514 BGP rows evaluated
+```
+
+### Findings, with attribution (none "fixed" in the comparator)
+
+Each disagreement was attributed by reading the specification and,
+for the W3C entries, the expected-result file. "F\* CLI" means
+`bin/darwin-arm64/factoidal` as driven here; where the F\* W3C runner
+(`bin/darwin-arm64/w3c_runner`) scores the same test as a pass, the
+reason is stated.
+
+1. **Lean bug, FIXED in this landing — CONSTRUCT sliced the UNORDERED
+   solution sequence** (generated seeds 169 and 324: `CONSTRUCT …
+   ORDER BY … LIMIT n`). `evalConstruct` applied `sliceSolutions`
+   without `sortSolutions`; §18.2.4 builds OrderBy then Slice for every
+   query form. Fixed in `SPARQL/Query.lean`, pinned by a `#guard` in
+   `SPARQL/QueryTests.lean` (`DESC(?label) LIMIT 1` drives the template
+   with bob). The two seeds STILL disagree after the fix because —
+2. **F\* bug — `eval_construct_query` also slices the unordered
+   sequence.** Repro (seed 169): the same query as `SELECT * … ORDER BY
+   ?x ?y ?z LIMIT 1` returns the row `?x=_:b2 ?y=_:b1`, but the
+   CONSTRUCT output is EMPTY; seed 324: the SELECT `LIMIT 3` returns
+   `s2, s1, s1` rows, the CONSTRUCT emits a triple for the `_:b1` row
+   instead of one `s1` row. The same omission in both trees; they
+   disagreed only because their unordered evaluation orders differ.
+3. **F\* bug — ASK with a repeated variable in one triple pattern**
+   (generated seed 115): `ASK { ?x <q> ?x }` answers `true` on a graph
+   with no such triple, while `SELECT * { ?x <q> ?x }` on the same
+   graph returns no row. Same answer through both CLI evaluation
+   paths (`--entail none` forces `SPARQL11_Algebra.eval_ask_query`).
+   Lean: `false`. §16.3: ASK is true iff the pattern has a solution.
+4. **F\* evaluator: SELECT expressions that must be ERRORS (unbound)
+   are bound** — `functions`: `STRDT()` (`STRDT("bar"@en, xsd:string)`
+   → `"bar"`; expected unbound), `STRDT() TypeErrors`, `CONCAT() 2`
+   (`CONCAT(7, 7)` → `"77"^^xsd:integer`), `IF() error propogation`
+   (`IF(1/0, …)` → `true`; expected unbound), `STRBEFORE()` /
+   `STRAFTER()` (on `"DEF"^^xsd:string`), `STRBEFORE() datatyping` /
+   `STRAFTER() datatyping` (`STRBEFORE("abc", "b"@cy)` → `"a"`; §17.4.3
+   argument compatibility says error), `REPLACE()` (on an integer);
+   `cast`: `xsd:boolean` / `xsd:integer` / `xsd:decimal` (extra or
+   differing cast results, e.g. `xsd:decimal("+33.3300")` → Lean
+   `"33.33"`, F\* no binding; `xsd:integer("1.5")` → F\* `1`). Lean's
+   rows match the W3C `.srx` files (the Lean harness scores all of
+   these as PASS). **Why the F\* W3C runner reports them as PASS:**
+   `bin/w3c-runner/w3c_runner.ml:741–752` `binding_row_matches_with`
+   checks that every EXPECTED binding is present in the actual row and
+   ignores EXTRA actual bindings, so a row that should have an unbound
+   variable passes when the engine binds it. The Lean comparator
+   (`Harness/Compare.lean` `domainsEqual`) requires equal domains.
+   This is a comparator leniency in the F\* runner hiding evaluator
+   bugs; 13 of the 15 W3C disagreements are of this kind.
+5. **F\* CLI — `SERVICE SILENT <unreachable>` yields no solutions**
+   (`service` test 7: expected 2 rows with `?o2` unbound, F\* 0 rows,
+   Lean 2 rows; SPARQL 1.1 Federated Query §2.3 — SILENT makes the
+   failed SERVICE a single empty solution). The F\* runner passes the
+   test through its own SERVICE handling; not chased further here.
+6. **F\* CLI — `GRAPH ?g { ?x ?p ?g }` does not constrain the inner
+   `?g` to the graph name** (`subquery` sq02: expected 1 row, F\* 2,
+   Lean 1; also reproduced WITHOUT the sub-select). §18.6: the graph
+   name binding must be compatible with the inner solution. The F\*
+   runner passes sq02; its named-graph loading differs from the CLI's
+   `-n IRI=FILE` and was not chased.
+7. **F\* CLI — `UUID()` returns the same value for two BINDs in one
+   query** (`functions` uuid02, ASK `FILTER(?u1 != ?u2)`: F\* false,
+   Lean true, expected true). Both CLI paths.
+8. **F\* CLI — CONSTRUCT with an RDF collection in the template emits
+   an invalid blank-node label**: `_:tpl_0__:bnode_13 <…> <…> .` in
+   `-o ntriples` output (`construct` "CONSTRUCT list"; counted as
+   `fstar-error` because the output is not N-Triples). The template's
+   list blank node keeps its `_:` prefix inside the label the
+   per-solution freshening builds.
+9. **F\* CLI has no query BASE** (5 `fstar-error`s: `bindings`
+   "VALUES inside GRAPH …" `<empty.ttl>`, `construct`where04 `FROM
+   <data.ttl>`, `exists`02 `graph <exists02.ttl>`, `property-path`
+   pp34/pp35 `<ng-01.ttl>`): `factoidal_cli.ml` calls `parse_sparql
+   query_text` with no base, and `-b` rebases only the data files
+   (tried: it did not reach the parser and it broke one exists test
+   by moving the data base). Harness-visible CLI limitation, not an
+   engine finding; the W3C runners of both trees pass the query's
+   file IRI as base.
+10. **Spec ambiguity, recorded, not decided — zero-column CSV/TSV.**
+    A `SELECT` result with NO variables serialises to an empty header
+    line; `parseCsv` / `parseTsv` reject it as "empty input (no header
+    line)". RFC 4180 reads an empty line as one empty field; the
+    CSV/TSV format §2 says the header lists the variable names. The
+    CSV and TSV round-trip properties are therefore stated for results
+    with at least one variable (`Case.hasVars`).
+11. **Comparator observation (kept as is):** `compareSelectRows`'s
+    numeric leniency (`numericLiteralEqual`: same numeric datatype,
+    equal value) means a lexical-form-only difference such as `"1E0"`
+    vs `"1.0E0"^^xsd:double` counts as agreement. The W3C expected
+    files need this; it is named here so nobody reads "agree" as
+    "byte-identical".
+
+### Sabotage
+
+Two sabotages, each applied to the restored tree, with ONLY the two
+probe executables rebuilt (`lake build l4prop l4diff`) so the library's
+own `#guard`s and theorems could not stop the build first; then the
+full `lake build` was run to see whether the library catches it too;
+then `git checkout --` and a green rebuild (261 jobs).
+
+1. **`insertOrdered` drops a row that ties with the one it is
+   inserted next to** (`SPARQL/Query.lean`):
+   - `l4prop`: exit 1, `PROP orderby_perm: 497 pass, 3 fail (out of
+     500)`, the other 17 invariants unchanged; first repro printed:
+     seed 207, the ORDER BY output missing two tied rows.
+   - `l4diff`: `sparql11 (all): 214 agree, 16 disagree` (one more than
+     the baseline 15) — the generated 500 stayed at 3 because generated
+     ORDER BY covers all three variables, so ties are between identical
+     rows only.
+   - full `lake build`: FAILS — `QueryTheorems.lean:283` (the
+     `sortSolutions_perm` proof no longer type-checks) and
+     `QueryTests.lean:379` (a `#guard`).
+2. **`tryBindTerm` ignores an existing binding of a repeated
+   variable** (`SPARQL/Algebra.lean`: `?x <q> ?x`, or `?s :p ?o . ?t
+   :q ?o`, match regardless of what `?x` / `?o` already holds — the
+   class of bug finding 3 above is in the F\* tree):
+   - `l4prop`: exit 0, 0 failures — NOT caught. The algebra laws are
+     relative (monotonicity, commutativity, subset) and a uniformly
+     wrong matcher satisfies them; the round trips and canonicalisation
+     do not touch matching. Recorded as a limit of property testing
+     without an oracle.
+   - `l4diff`: exit 1, `generated (500 cases from seed 0): 403 agree,
+     97 disagree` (baseline 3) and `sparql11 (all): 214 agree, 16
+     disagree` (baseline 15; the W3C queries rarely repeat a variable
+     in a predicate or object position).
+   - full `lake build`: **PASSES** — none of the library's 966 `#guard`s
+     and no theorem constrains a repeated variable in the object or
+     predicate position. Two `#guard`s were added to
+     `L4Factoidal/Tests.lean` after this run (`?x :name ?x` and
+     `?s :name ?n . ?s :age ?n` both yield no row on the fixture), so
+     the library build now catches this class as well.
+
+Both sabotages were restored; the numbers in "Measured, verbatim"
+above are from the restored build.

@@ -52,6 +52,7 @@ can step through — no SMT solver in the loop.
 12. [`L4Factoidal/XML/`](L4Factoidal/XML/) and [`JSON/`](L4Factoidal/JSON/) — the generic parsers the RDF syntaxes and results formats build on.
 12a. [`L4Factoidal/JSONLD/`](L4Factoidal/JSONLD/) — JSON-LD 1.1 context processing, expansion and toRdf (`Context.lean`, `Expand.lean`, `ToRdf.lean`); the remote document loader is an explicit parameter and the no-empty-context-fallback rule is a theorem. `lake exe l4jsonld-probe` (from the repo root): toRdf 467 of 467, matching the F\* runner.
 13. [`Wasm/`](Wasm/) — the C ABI and build for the WebAssembly export; skill `lean4-wasm-export` has the pipeline.
+13a. [`L4Factoidal/Testing/Gen.lean`](L4Factoidal/Testing/Gen.lean) + [`Props.lean`](L4Factoidal/Testing/Props.lean) and [`Harness/Differential.lean`](Harness/Differential.lean) / [`Harness/PropProbe.lean`](Harness/PropProbe.lean) — tests that exercise the implementation beyond the W3C files: pure seeded generators (graphs, BGPs, a small query grammar) with 18 invariants checked by `lake exe l4prop` (500 cases, 0 failures), and the differential harness `l4diff` that runs the same (data, query) pairs through `bin/<platform>/factoidal` and the Lean evaluator (sparql11 query tests: 215 agree, 15 disagree, 6 fstar-error, 0 lean-error, 395 skipped, out of 631; 500 generated: 497 agree, 3 disagree) — every disagreement attributed in `docs/designissues/2026-08-22-lean4-w3c-harness.md`.
 
 `PORT_NOTES.md` records the F\* correspondence, the translation
 decisions, and the assumption report against the originals.
