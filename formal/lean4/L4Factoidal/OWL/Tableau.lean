@@ -17,10 +17,12 @@ class names, Boolean connectives, value restrictions
 cardinality bounds (ObjectMinCardinality / ObjectMaxCardinality).
 
 NOT ported yet (later rungs, in the order the F* engine grew them):
-qualified cardinality, nominals (ObjectOneOf), datatypes, the role box
-(subPropertyOf / functional / transitive), and the SHIQ ≤-rule witness
-merge. The ∃-witness rule (fresh individuals) IS here — `exWitness`
-below — with its freshness side condition stated over `indsOf`.
+qualified cardinality, nominals (ObjectOneOf), datatypes, functional
+roles, and the SHIQ ≤-rule witness merge. The ∃-witness rule (fresh
+individuals) IS here — `exWitness` — with its freshness side condition
+stated over `indsOf`; so is the role box (rung 3): subrole axioms and
+transitive roles (`RoleAxioms`), with the SHIQ ∀⁺-push rule
+`allTransE`.
 
 Cardinality without set theory: OWL says "at least/most n distinct
 r-successors". Distinct-successor counting is phrased with plain
@@ -30,10 +32,10 @@ subset witness.
 
 Two layers, mirroring how the F* engine's verdicts decompose:
 
-* `Derives A φ` — positive facts obtainable from the ABox by forward
-  rules (the analogue of `Tableau.fst`'s positive-sound
+* `Derives R A φ` — positive facts obtainable from the ABox by
+  forward rules against role box `R` (the analogue of `Tableau.fst`'s positive-sound
   materialisation).
-* `Refuted A` — the clash calculus (the analogue of
+* `Refuted R A` — the clash calculus (the analogue of
   `Tableau.Refute.fst`'s `tableau_consistent = Some false`). One
   constructor per clash rule; `disjSplit` is the branching rule. A
   `Refuted` derivation tree IS a clash certificate — the object the
@@ -115,11 +117,30 @@ def SatAll {δ : Type} (I : Interp δ) (ν : Ind → δ)
     (A : List Assertion) : Prop :=
   ∀ φ ∈ A, Satisfies I ν φ
 
-/-- Consistency: some domain, interpretation, and assignment model the
-    ABox. `TableauTheorems.refuted_not_consistent` refutes exactly
-    this. -/
-def Consistent (A : List Assertion) : Prop :=
-  ∃ (δ : Type) (I : Interp δ) (ν : Ind → δ), SatAll I ν A
+/-- The role box (rung 3): subrole axioms `r ⊑ s` and transitivity
+    declarations — the SHIQ-side context role facts are read against.
+    The F* engine keeps the same data in `Tableau.Types.fst`'s
+    role-axiom list. -/
+structure RoleAxioms where
+  subRole : List (Role × Role)   -- pairs (r, s) meaning r ⊑ s
+  trans   : List Role            -- roles declared transitive
+deriving Repr, DecidableEq
+
+/-- The empty role box — the pre-role-box calculus embeds as this
+    instance. -/
+def RoleAxioms.empty : RoleAxioms := ⟨[], []⟩
+
+/-- An interpretation respects the role box: subrole inclusion and
+    transitivity hold of the role extensions. -/
+def RespectsRBox {δ : Type} (I : Interp δ) (R : RoleAxioms) : Prop :=
+  (∀ p ∈ R.subRole, ∀ x y, I.role p.1 x y → I.role p.2 x y) ∧
+  (∀ r ∈ R.trans, ∀ x y z, I.role r x y → I.role r y z → I.role r x z)
+
+/-- Consistency w.r.t. a role box: some domain, interpretation, and
+    assignment respect the role box and model the ABox.
+    `TableauTheorems.refuted_not_consistent` refutes exactly this. -/
+def Consistent (R : RoleAxioms) (A : List Assertion) : Prop :=
+  ∃ (δ : Type) (I : Interp δ) (ν : Ind → δ), RespectsRBox I R ∧ SatAll I ν A
 
 /-- The individual names occurring in an assertion. Concepts in this
     fragment contain no individuals (no nominals, no hasValue), so
@@ -134,53 +155,66 @@ def Assertion.inds : Assertion → List Ind
 def indsOf (A : List Assertion) : List Ind :=
   A.flatMap Assertion.inds
 
-/-- Forward derivation of facts from an ABox. Deliberately minimal:
-    hypothesis, conjunction elimination, and the ∀-rule (value
-    restriction applied across a known role edge). -/
-inductive Derives (A : List Assertion) : Assertion → Prop where
-  | hyp {φ} : φ ∈ A → Derives A φ
+/-- Forward derivation of facts from an ABox, against a role box.
+    Hypothesis, conjunction elimination, the ∀-rule (value restriction
+    applied across a known role edge), and the three role-box rules:
+    subrole inclusion, transitive composition, and the SHIQ ∀⁺-push
+    (a value restriction on a transitive role travels across each edge
+    of that role, so it reaches every individual on an r-chain). -/
+inductive Derives (R : RoleAxioms) (A : List Assertion) : Assertion → Prop where
+  | hyp {φ} : φ ∈ A → Derives R A φ
   | conjE1 {a c d} :
-      Derives A (.inst a (.conj c d)) → Derives A (.inst a c)
+      Derives R A (.inst a (.conj c d)) → Derives R A (.inst a c)
   | conjE2 {a c d} :
-      Derives A (.inst a (.conj c d)) → Derives A (.inst a d)
+      Derives R A (.inst a (.conj c d)) → Derives R A (.inst a d)
   | allE {a b r c} :
-      Derives A (.inst a (.all r c)) → Derives A (.rel r a b) →
-      Derives A (.inst b c)
+      Derives R A (.inst a (.all r c)) → Derives R A (.rel r a b) →
+      Derives R A (.inst b c)
+  | subRoleE {r s a b} :
+      Derives R A (.rel r a b) → (r, s) ∈ R.subRole →
+      Derives R A (.rel s a b)
+  | transE {r a b e} :
+      Derives R A (.rel r a b) → Derives R A (.rel r b e) →
+      r ∈ R.trans → Derives R A (.rel r a e)
+  | allTransE {a b r c} :
+      Derives R A (.inst a (.all r c)) → r ∈ R.trans →
+      Derives R A (.rel r a b) →
+      Derives R A (.inst b (.all r c))
 
 /-- The clash calculus. A constructor = a clash rule = a certificate
     node. `Prop`-valued for the soundness development; the
     certificate-checker rung re-states it as a `Type` so trees can be
     serialized and checked. -/
-inductive Refuted : List Assertion → Prop where
+inductive Refuted (R : RoleAxioms) : List Assertion → Prop where
   /-- C ⊓ ¬C at one individual. -/
   | clash {A a c} :
-      Derives A (.inst a c) → Derives A (.inst a (.neg c)) →
-      Refuted A
+      Derives R A (.inst a c) → Derives R A (.inst a (.neg c)) →
+      Refuted R A
   /-- owl:Nothing is uninhabited. -/
   | botClash {A a} :
-      Derives A (.inst a .bot) → Refuted A
+      Derives R A (.inst a .bot) → Refuted R A
   /-- ≥(n+1) r together with ≤n r at one individual (the F* engine's
       C3/C4 count clash). -/
   | minMaxClash {A a n r} :
-      Derives A (.inst a (.atLeast (n + 1) r)) →
-      Derives A (.inst a (.atMost n r)) →
-      Refuted A
+      Derives R A (.inst a (.atLeast (n + 1) r)) →
+      Derives R A (.inst a (.atMost n r)) →
+      Refuted R A
   /-- ≤n r refuted by n+1 named successors that are pairwise provably
       distinct via owl:differentFrom (the engine's differentFrom-based
       max-cardinality refutation). -/
   | maxClash {A a n r} (l : List Ind) :
-      Derives A (.inst a (.atMost n r)) →
+      Derives R A (.inst a (.atMost n r)) →
       l.length = n + 1 →
-      l.Pairwise (fun x y => Derives A (.diff x y) ∨ Derives A (.diff y x)) →
-      (∀ b ∈ l, Derives A (.rel r a b)) →
-      Refuted A
+      l.Pairwise (fun x y => Derives R A (.diff x y) ∨ Derives R A (.diff y x)) →
+      (∀ b ∈ l, Derives R A (.rel r a b)) →
+      Refuted R A
   /-- Disjunction branching: if both extensions are refuted, the ABox
       is refuted. -/
   | disjSplit {A a c d} :
-      Derives A (.inst a (.disj c d)) →
-      Refuted (.inst a c :: A) →
-      Refuted (.inst a d :: A) →
-      Refuted A
+      Derives R A (.inst a (.disj c d)) →
+      Refuted R (.inst a c :: A) →
+      Refuted R (.inst a d :: A) →
+      Refuted R A
   /-- The ∃-rule: a derived `∃r.C` at `a` licenses a FRESH witness
       individual `x` with an `r`-edge from `a` and membership in `C`;
       if that extension is refuted, so is the ABox. Freshness (`x` not
@@ -190,9 +224,9 @@ inductive Refuted : List Assertion → Prop where
       rule the F* engine bounds with witness depth caps
       (`Tableau.Refute.fst`, stage (e)). -/
   | exWitness {A a r c} (x : Ind) :
-      Derives A (.inst a (.ex r c)) →
+      Derives R A (.inst a (.ex r c)) →
       x ∉ indsOf A →
-      Refuted (.rel r a x :: .inst x c :: A) →
-      Refuted A
+      Refuted R (.rel r a x :: .inst x c :: A) →
+      Refuted R A
 
 end L4Factoidal.OWL
