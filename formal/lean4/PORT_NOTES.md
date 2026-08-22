@@ -1902,3 +1902,114 @@ position), the CSV leniency, the budget give-up, the `rs:ResultSet`
 decoder with `rs:index`, `mf:include`, `sd:entailmentRegime` in both
 shapes and `qt:serviceData`. Sabotaging `compareSelectRows` to
 always-true fails the build at those guards.
+
+## Stage: the §17 builtins the sparql11 harness named (2026-08-22)
+
+What: the evaluator gaps the harness report listed — §17.5 XSD
+constructor functions, the five hash builtins, TIMEZONE/TZ, the
+fresh-value builtins BNODE()/UUID()/STRUUID()/RAND(), IRI() against
+the query's BASE, SECONDS' lexical form, and the argument rules of
+STRDT / IF / CONCAT / STRBEFORE / STRAFTER. Branch
+`lean4/sparql-builtins`.
+
+### Module correspondence (append)
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `assume val hash_md5` | `Crypto/MD5.lean` `md5`, `md5Hex` | pure Lean, RFC 1321 vectors as `#guard`s; crypto-policy tier 1 (public data) |
+| `assume val hash_sha1` | `Crypto/SHA1.lean` `sha1`, `sha1Hex` | pure Lean, FIPS 180-4 vectors; reuses `pad256` |
+| `assume val hash_sha256/384/512` | `Crypto.hashHex` (existing) | the hash-agile dispatcher, as the SHA2 module header requires |
+| `eval_xsd_cast` | `SPARQL/Expr.lean` `evalXsdCast` + `castInteger` … `castString` | see the deviation below |
+| `dt_timezone`, `dt_tz`, `strip_leading_zeros_num` | `dtTimezone`, `dtTz`, `stripLeadingZerosNum` | arm for arm |
+| `fx_key_row`, `fx_key_occ`, `fx_ctx_put`, `fx_ctx_get` | `SPARQL/Algebra.lean` `fxKeyRow`, `fxKeyOcc`, `Binding.withFreshnessCtx`, `Binding.freshnessCtx` | reserved keys with a U+0001 prefix, as the F\* |
+| `fx_bind_rows` | `Algebra.lean` `bindRowsFresh` (the `GraphPattern.bind` arm) | row index + bound variable as call-site tag |
+| `eval_select_item` / `eval_select_items_row` row+position context | `Query.lean` `evalSelectItemsRow`, `evalSelectItemsFrom` | same two seeds |
+| `fx_uuid_of_seed`, `fx_bnode_of_seed` | `fxUuidOfSeed`, `fxBnodeOfSeed` | bnode label has no `_:` prefix (Lean labels never do) |
+| `q_base` / `eval_expr_with_base`'s `base` | `Query.base` (8th field) → `EvalEnv.base` | the parser records the prologue's BASE (else the document IRI it was given) |
+| `w3c_runner.ml` `numeric_literal_equal` | `Harness/Compare.lean` `numericLiteralEqual`, `termEqualLenient` | harness, not library |
+
+### Measured
+
+`lake exe l4w3c …/sparql11/manifest-all.ttl`, before → after (same
+tree, same fixtures):
+
+- `aggregates: 42 pass, 5 fail (out of 47)` → `47 pass, 0 fail (out of 47)`
+- `cast: 0 pass, 6 fail (out of 6)` → `6 pass, 0 fail (out of 6)`
+- `csv-tsv-res: 5 pass, 1 fail (out of 6)` → `6 pass, 0 fail (out of 6)`
+- `functions: 43 pass, 32 fail (out of 75)` → `69 pass, 6 fail (out of 75)`
+- `service: 6 pass, 1 fail (out of 7)` → unchanged
+- `TOTAL: 309 pass, 47 fail, 0 skip, 275 unsupported (out of 631)` →
+  `TOTAL: 347 pass, 9 fail, 0 skip, 275 unsupported (out of 631)`
+
+38 tests fixed, zero regressions (the FAIL lists were diffed by name).
+The 9 remaining: 4 REPLACE and `UUID() pattern match`, `STRUUID()
+pattern match`, `SERVICE test 5` need REGEX (a separate port in
+flight); `Exists within graph pattern` and `Nested positive exists`
+are the two EXISTS limits already recorded. The six RDF suites:
+`1078 pass, 0 fail (out of 1078)` (313 + 70 + 87 + 356 + 166 + 86).
+
+Sabotage: dropping one nibble from the SHA-256 builtin's output fails
+`lake build` at `SPARQL/ExprTests.lean:436` (the `SHA256("foo")`
+guard); with that one guard silenced, the harness reports `FAIL
+SHA256()` and `FAIL SHA256() on Unicode data`. Restored; build green.
+
+### Numeric lexical forms — decision per test
+
+The harness now carries the F\* runner's one numeric leniency
+(`numeric_literal_equal`: same numeric datatype, equal VALUE). It was
+measured by running the four suites with the rule switched off; the
+tests that pass ONLY through it, and why:
+
+| Test | Expected file | Lean output | Why (b) tolerance |
+|---|---|---|---|
+| `MIN with GROUP BY` | `"2.0E-1"^^xsd:double` | `"2E-1"` | MIN returns the data term unchanged (spec); the data says `2E-1`, the expected file records a re-serialisation |
+| `AVG DISTINCT with GROUP BY` | `"1050"^^xsd:double` | `"1.05E3"` | the expected form is not the XSD canonical double; the F\* prints `1.05E3` too |
+| `SUM DISTINCT with GROUP BY` | `"2100"^^xsd:double` | `"2.1E3"` | same |
+| `tsv03 - TSV Result Format` | `"1.0e6"` (lowercase e) | `"1.0E6"` | the data's own lexical form, lowercase in the TSV file |
+| `xsd:float cast`, `xsd:double cast` | e.g. `-1.02E4`, `3.333E1`, `0E0`, `1.5E0`, `1.0` | the F\* lexical conventions (`-10.2E3`, `33.3300`, `0.0`, `1.5`, `1E0`) | one implementation's float printer; the F\* runner relies on tolerance for these rows too |
+| `xsd:decimal cast` | `"0"^^xsd:decimal` for `0^^xsd:integer` | `"0.0"` | every other row matches exactly after canonicalisation (`33.33`, `0.0`, `1.0`, `13.0`) |
+
+Every other test in those suites matches lexically. Option (a) —
+porting the F\* formatting — was taken wherever the F\* evaluator
+produces the expected form (SECONDS, the decimal canonicalisation,
+`xsd:float` of a boolean/integer/integer-valued double, `xsd:string`
+of an integer-valued number).
+
+### Translation decisions (append)
+
+- STRDT takes a simple / `xsd:string` literal only (§17.4.2.3); IF
+  propagates a type error in its condition (§17.4.1.2); CONCAT,
+  STRBEFORE, STRAFTER take STRING literals only (§17.4.3.1); the
+  STRBEFORE/STRAFTER compatibility table has exactly three pairs. In
+  each case the F\* evaluator is more permissive and the W3C expected
+  file disagrees; the F\* runner does not see it because
+  `bin/w3c-runner/w3c_runner.ml` `binding_row_matches_with` checks
+  only that every EXPECTED binding is present in the actual row, so
+  an actual row with an extra binding where the expected row is
+  unbound still "matches". The Lean harness compares domains
+  (`domainsEqual`) and so cannot hide it. Recorded in the `Expr.lean`
+  banner under "DEVIATIONS FROM THE F\* SOURCE" with F\* line
+  references.
+- XSD casts: a cast FROM A STRING requires the lexical form to be in
+  the target's lexical space (`xsd:integer("1.5")`,
+  `xsd:boolean("0.0")`, `xsd:decimal("1E0")` are errors); a cast from
+  a number converts the value. The F\* `eval_xsd_cast` accepts the
+  string forms (`parse_to_scaled`/`parse_double_to_scaled` fallbacks),
+  hidden by the same runner rule.
+- RAND() is the F\* tree's fixed `0.5` — deterministic, not random;
+  the banner says so.
+- Fresh values: the freshness context is row index + call-site tag,
+  exactly the F\* design; BIND numbers rows inside the algebra
+  (`bindRowsFresh`), the SELECT projection numbers rows and items.
+  No `EvalEnv` state, no counter — a query's result is a function of
+  its inputs.
+
+### Assumption report (append)
+
+No `sorry`, `axiom`, `native_decide`, `partial`, `@[extern]` or
+`opaque` added. No new theorems; the build log's axiom audit lines
+still show only subsets of `[propext, Classical.choice, Quot.sound]`
+(111 lines checked). The two hash modules are tier-1 pure Lean under
+`skills/crypto-policy/SKILL.md` (public data, no secret) and carry
+the RFC 1321 / FIPS 180-4 vectors plus block-boundary lengths (55,
+56, 63, 64, 65 bytes) as `#guard`s.
