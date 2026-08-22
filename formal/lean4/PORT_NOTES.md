@@ -2397,3 +2397,140 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
 - `SPARQL11.Algebra.fst:1575–1577` (`regex_replace`): `^` / `$` parse
   to eps in a replace pattern (documented there as a known limitation);
   kept as-is in `replaceRe` so `replace` agrees with the F\*.
+
+## Stage: entailment regimes — simple, D, RDF, RDFS — on the real suites (2026-08-22)
+
+Branch `lean4/entailment`. What landed: the full RDF 1.1 Semantics rule
+set as a derivation relation and an executable closure
+(`RDFS/FullClosure.lean`, `RDFS/FullClosureTheorems.lean`), the
+datatype map and D-value model (`RDF/Datatypes.lean`), simple
+entailment and the four regimes with D-inconsistency
+(`RDF/Entailment.lean`, `RDF/EntailmentTheorems.lean`,
+`RDF/EntailmentTests.lean`), and the harness arms for rdf-mt's
+`PositiveEntailmentTest` / `NegativeEntailmentTest` and for the
+sparql11 `entailment` suite's RDFS / RDF / D regimes
+(`Harness/Manifest.lean`, `Harness/Run.lean`).
+
+### Measured score lines, verbatim
+
+`lake exe l4w3c` from the repository root, binary built at this stage:
+
+```
+rdf-mt: 39 pass, 0 fail, 0 skip, 0 unsupported (out of 39)
+entailment: 40 pass, 0 fail, 0 skip, 30 unsupported (out of 70)
+TOTAL: 396 pass, 0 fail, 0 skip, 235 unsupported (out of 631)   (sparql11/manifest-all.ttl)
+TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of 1078)   (the six RDF suites)
+```
+
+F\* runner, same manifests (`docs/test-results/latest.json`): rdf-mt
+38 pass, 0 fail, 1 unsupported (out of 39) — the unsupported one is
+`rdfs-entailment-test001` (rdf:XMLLiteral well-formedness, which
+`RDF.Entailment.RDFS.DatatypeClash.fst` declares out of scope; here the
+XML parser decides it); sparql11 entailment 70 pass, 0 fail (out of
+70), the F\* tree having the OWL-RL / OWL-Direct / RIF regimes this
+port does not. The 30 `unsupported` here are exactly those entries:
+18 `OWL-Direct` only (paper-sparqldl-Q2/Q3, parent3–10, simple1–8),
+8 `OWL-Direct/OWL-RDF-Based` (lang, plainLit, paper-sparqldl-Q1/Q4,
+sparqldl-10–13), 4 `RIF`. Each is named with its regime in the run
+log; none is passed, none leaves the denominator. The sparql11
+TOTAL moved from 356 to 396 pass by exactly those 40 entailment
+entries; the query-type suites are unchanged.
+
+### Module correspondence (append)
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `RDFS.Closure.fsti` rows rdfs1, rdfs4a, rdfs4b, rdfs8, rdfs13 (+ `rdfs_rule_container_membership`, `rdf_property_axiom_closure` = rdfD2), `rdfs_reflexivity_axioms` (the rdfs6 / rdfs10 approximation) | `RDFS/FullClosure.lean` `DerivesFull`, `rdfD2For`, `rdfs4aFor`, `rdfs4bFor`, `rdfs6For`, `rdfs8For`, `rdfs10For`, `rdfs12For`, `rdfs13For`, `fullClosure`, `rdfClosure` | rdfs6 / rdfs10 / rdfs12 are RULES here, not a post-hoc class/property harvest; rdfs1 is an axiom table over D |
+| `RDF.Vocabulary.Axioms.fst` `rdf_axiomatic_triples`, `rdfs_axiom_*` (finite, `rdf:_1..rdf:_5`) | `rdfAxiomaticTriples`, `rdfsAxiomaticTriplesFixed`, `rdfsContainerAxioms`, `datatypeAxioms` | the `rdf:_n` slice is `rdf:_1` plus every `rdf:_n` the premise and conclusion mention (`containerMembershipIn`), not a fixed 1..5 |
+| `RDF.Entailment.Simple.fst` `simple_entails`, `entails_with leq bnd` | `RDF/Entailment.lean` `SimpleEntails` (spec), `searchInstance` + `instanceCert` + `entailsWith` | witness-then-certificate, as `Isomorphism.lean`; `simpleEntails_sound` proved |
+| `RDF.Entailment.Regime.fst` `dt_value_leq`, `bnd_rdf`, `entails_rdf`, `entails_rdfs` | `RDF/Datatypes.lean` `literalValueEq`, `literalIllFormed`; `Regime.literalEq`, `Regime.bindable`, `regimeEntails` | no xsd:float / xsd:double / rdf:JSON value model here (the rdf12 fixtures are not in scope of this stage) |
+| `RDF.Entailment.RDFS.DatatypeClash.fst` `rdfs_d_inconsistent` | `hasIllFormedLiteral`, `hasRangeClash`, `Regime.inconsistent` | rule (b) walks `rdfs:subClassOf` from the range class and requires the literal's own datatype recognised; the F\* fires on any datatype mismatch |
+| `bin/w3c-runner/w3c_runner.ml` `apply_entailment_regime`, `simple_entails_regime`, the `PositiveEntailmentTest` / `NegativeEntailmentTest` arms, the `run_query_eval_test` regime branch | `Harness/Run.lean` `runEntailmentTest`, `pickRegime`, `closeDataset`, `recognizedDatatypesOf` | regime list read as RDFS > RDF > D; OWL / RIF names refused by name |
+
+### Theorems
+
+`RDFS/FullClosureTheorems.lean`: `Derives.toFull` (every rdfs-core
+derivation is a full-RDFS derivation — the theorem relating the two
+rule sets), `DerivesFull.mono`, `DerivesFull.cut`, `rdfD2For_sound`,
+`rdfs4aFor_sound`, `rdfs4bFor_sound`, `rdfs6For_sound`,
+`rdfs8For_sound`, `rdfs10For_sound`, `rdfs12For_sound`,
+`rdfs13For_sound`, `fullStepConclusions_sound`, `fullStep_sound`,
+`fullClosureLoop_sound`, `fullClosureLoop_extensive`,
+`fullClosure_extensive` (T1), `fullClosure_sound` (T2),
+`rdfClosure_extensive`, `rdfClosure_sound`,
+`fullClosure_saturated_or_underfueled`.
+`RDF/EntailmentTheorems.lean`: `termMatch_strict_eq`,
+`tripleMatch_strict_eq`, `instanceCert_strict_sound`,
+`simpleEntails_sound`, `SimpleEntails.refl`.
+Axiom audit (`#print axioms` in `EntailmentTests.lean`): propext,
+Classical.choice, Quot.sound only.
+
+Not proved: completeness at saturation for the eight new rows (T4 of
+`ClosureTheorems.lean` covers the six rdfs-core rows; the extension is
+the same argument per row and is the named obligation); any
+model-theoretic statement (D-interpretations are not ported, so the
+regime comparisons `literalValueEq` carry guards, not theorems).
+
+### Translation decisions
+
+- rdfD1 is not a row: it mints a blank node per literal. Its
+  observable effects are covered by the instance search (a conclusion
+  blank node may map to a literal, §5.2) and by rule (a) of
+  D-inconsistency. Documented in the `FullClosure.lean` header.
+- Generalised-RDF conclusions (literal subjects from rdfs3 / rdfs4b)
+  are dropped, as the F\* rows drop them; the one place they carry
+  meaning — a literal forced into a datatype class — is rule (b).
+- The `rdf:_n` family is instantiated per entailment check from both
+  graphs, with an argument in the header for why that is complete.
+- Under `simple`, literal comparison is strict term identity
+  (Concepts §3.3); under D / RDF / RDFS it is D-value equality, whose
+  base is `Literal.eqb` (language tags case-folded) plus numeric value
+  equality for recognised numeric datatypes. `xsd:int ⊂ xsd:integer ⊂
+  xsd:decimal` is the only non-disjointness modelled.
+- A test whose `mf:recognizedDatatypes` names a datatype outside
+  `modelledDatatypes` is `unsupported`, naming it. None in rdf-mt does.
+- The minimal D (`xsd:string`, `rdf:langString`) is added to every
+  map; the sparql11 entailment suite names none, so it runs with the
+  minimal map.
+
+### Sabotage record (2026-08-22)
+
+- rdfs9 removed from `Closure.stepConclusions`: rdf-mt STAYS at 39
+  pass — no rdf-mt entry exercises rdfs9 (subClassOf on an instance);
+  the sparql11 entailment suite drops to 37 pass, 3 fail (rdfs04,
+  rdfs05, rdfs09 named), and `lake build` fails in
+  `ClosureTheorems.lean` at `stepConclusions_sound` (line 378) and the
+  rdfs9 case of the completeness proof. A guard for rdfs9 was added to
+  `EntailmentTests.lean` so the library build also catches it.
+- rdfs7 removed: rdf-mt drops to 37 pass, 2 fail
+  (`rdfms-seq-representation-test003`,
+  `rdfs-subPropertyOf-semantics-test001`). Restored; green again.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]`. The F\* originals carry no `assume val` in these modules.
+
+### Findings against the F\* (not fixed here)
+
+- `RDF.Entailment.RDFS.DatatypeClash.fst:109-120`
+  (`exists_range_literal_mismatch`): a clash is asserted whenever the
+  literal's datatype differs from the range datatype, so
+  `ex:p rdfs:range xsd:decimal . ex:s ex:p "25"^^xsd:integer .` with
+  both recognised would be reported D-inconsistent, although 25 is in
+  the value space of `xsd:decimal` (XSD 1.1 §3.4.13: integer is a
+  subset of decimal). The same function also fires when the literal's
+  own datatype is unrecognised (`"x"^^ex:dt` under a recognised range),
+  where RDF 1.1 Semantics §7 gives the literal an unknown denotation.
+  No rdf-mt fixture exercises either shape; `EntailmentTests.lean`
+  guards the Lean behaviour.
+- `RDFS.Closure.fsti` runs rdfs6 / rdfs10 as the class/property
+  harvest `rdfs_reflexivity_axioms` (two extra closure passes) rather
+  than as rows inside the step; with the §9.3 axioms seeded, the rows
+  alone reach the same triples (`A subClassOf B` ⊢ `B subClassOf B`
+  through `rdfs:subClassOf rdfs:range rdfs:Class` + rdfs3 + rdfs10),
+  which is what `paper-sparqldl-Q1-rdfs`, `rdfs05`, `rdfs11` and
+  `sparqldl-02` need. The F\* banner records that seeding its axiom
+  table regressed an OWL consistency test (#236 interaction); this
+  port has no OWL-RL closure on the RDFS path, so the seed is safe
+  here and that interaction remains the F\* tree's.
