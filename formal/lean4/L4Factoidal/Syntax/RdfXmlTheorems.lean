@@ -218,11 +218,25 @@ inheritance clause lifts to `updateState`: an element declaring no
   simp only [updateBase]
   split <;> rfl
 
+/-- The two RDF 1.2 scoped updates do not touch the language either, so
+the inheritance clause still lifts to `updateState`. -/
+@[simp] theorem updateDir_lang (st : St) (attrs : List XML.Attribute) :
+    (updateDir st attrs).lang = st.lang := by
+  simp only [updateDir]
+  repeat' split
+  all_goals rfl
+
+@[simp] theorem updateVersion_lang (st : St) (attrs : List XML.Attribute) :
+    (updateVersion st attrs).lang = st.lang := by
+  simp only [updateVersion]
+  repeat' split
+  all_goals rfl
+
 /-- **`xml:lang` inheritance, at the level the grammar walk uses it.** -/
 theorem updateState_lang_inherited {st : St} {attrs : List XML.Attribute}
     (h : findXmlAttr (updateBase (updateScope st attrs) attrs) "lang" attrs = none) :
     (updateState st attrs).lang = st.lang := by
-  simp only [updateState]
+  simp only [updateState, updateVersion_lang, updateDir_lang]
   rw [updateLang_lang_of_none h, updateBase_lang, updateScope_lang]
 
 /-! ## XML Base §3 / RFC 3986 §5 — base resolution

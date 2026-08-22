@@ -658,4 +658,139 @@ collide under the F* source's scheme. -/
     ++ "<rdf:Description><eg:p>anon</eg:p></rdf:Description>")
   ("_:x <http://example.org/p> \"named\" .\n_:y <http://example.org/p> \"anon\" .")
 
+/-! ## RDF 1.2 XML Syntax
+
+`rdf:version`, `its:dir`, `rdf:parseType="Triple"` and the
+`rdf:annotation` / `rdf:annotationNodeID` reifiers — one guard per rule,
+named after the `rdf12/rdf-xml/eval` entries whose shape it reproduces.
+Expected graphs are read in RDF 1.2 N-Triples mode so `<<( … )>>` triple
+terms survive. -/
+
+/-- A document element binding `its:` as well, with `extra` spliced in
+so a guard can add or withhold `rdf:version='1.2'`. -/
+def hdrIts (extra : String) : String :=
+  "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'"
+    ++ " xmlns:eg='http://example.org/'"
+    ++ " xmlns:its='http://www.w3.org/2005/11/its'" ++ extra ++ ">"
+
+/-- As `iso`, with `hdrIts extra` as the document element and the
+expected N-Triples read in RDF 1.2 mode. -/
+def isoIts (extra body nt : String) : Bool :=
+  match RdfXml.parseRdfXml (hdrIts extra ++ body ++ ftr) (some base),
+        parseNTriples nt .rdf12 with
+  | .ok g, .ok e => Graph.isomorphic? g e
+  | _, _         => false
+
+/-- The parser REJECTS this body inside `hdrIts extra`. -/
+def rejectsIts (extra body : String) : Bool :=
+  (RdfXml.parseRdfXml (hdrIts extra ++ body ++ ftr) (some base)).toOption.isNone
+
+-- `rdf12-xml-dir-01`: `its:dir` + `xml:lang` under `rdf:version='1.2'`
+-- makes a DIRECTIONAL language-tagged literal.
+#guard isoIts " rdf:version='1.2' its:dir='ltr' xml:lang='en'"
+  "<rdf:Description rdf:about='http://example.org/s' eg:name='bar'/>"
+  "<http://example.org/s> <http://example.org/name> \"bar\"@en--ltr ."
+
+#guard isoIts " rdf:version='1.2' its:dir='rtl' xml:lang='he'"
+  "<rdf:Description rdf:about='http://example.org/s'><eg:name>bar</eg:name></rdf:Description>"
+  "<http://example.org/s> <http://example.org/name> \"bar\"@he--rtl ."
+
+-- The direction is VERSION-GATED: without `rdf:version='1.2'` the same
+-- document makes a plain language-tagged literal.
+#guard isoIts " its:dir='ltr' xml:lang='en'"
+  "<rdf:Description rdf:about='http://example.org/s' eg:name='bar'/>"
+  "<http://example.org/s> <http://example.org/name> \"bar\"@en ."
+
+-- `its:dir=''` CLEARS the inherited direction; `its:version` is an ITS
+-- attribute, never a property attribute.
+#guard isoIts " rdf:version='1.2' its:dir='ltr' xml:lang='en'"
+  ("<rdf:Description rdf:about='http://example.org/s'>"
+    ++ "<eg:name its:version='2.0' its:dir=''>bar</eg:name></rdf:Description>")
+  "<http://example.org/s> <http://example.org/name> \"bar\"@en ."
+
+-- `rdf:version` is consumed, never a property attribute.
+#guard isoIts " rdf:version='1.2'"
+  "<rdf:Description rdf:about='http://example.org/s' rdf:version='1.2' eg:p='v'/>"
+  "<http://example.org/s> <http://example.org/p> \"v\" ."
+
+-- `rdf12-xml-tt-02`: `rdf:parseType='Triple'` makes a TRIPLE TERM.
+#guard isoIts " rdf:version='1.2'"
+  ("<rdf:Description rdf:about='http://example.org/s'>"
+    ++ "<eg:p rdf:parseType='Triple'>"
+    ++ "<rdf:Description rdf:about='http://example.org/s2'>"
+    ++ "<eg:q rdf:resource='http://example.org/o2'/></rdf:Description>"
+    ++ "</eg:p></rdf:Description>")
+  ("<http://example.org/s> <http://example.org/p> "
+    ++ "<<( <http://example.org/s2> <http://example.org/q> <http://example.org/o2> )>> .")
+
+-- `rdf12-xml-tt-01`: without `rdf:version='1.2'` the triple term is
+-- IGNORED — no triple, and no error.
+#guard isoIts ""
+  ("<rdf:Description rdf:about='http://example.org/s'>"
+    ++ "<eg:p rdf:parseType='Triple'>"
+    ++ "<rdf:Description rdf:about='http://example.org/s2'>"
+    ++ "<eg:q rdf:resource='http://example.org/o2'/></rdf:Description>"
+    ++ "</eg:p></rdf:Description>")
+  ""
+
+-- `rdf12-xml-tt-07` / `-08`: with 1.2 active, content that does not make
+-- exactly one triple is a SYNTAX ERROR.
+#guard rejectsIts " rdf:version='1.2'"
+  ("<rdf:Description rdf:about='http://example.org/s'>"
+    ++ "<eg:p rdf:parseType='Triple'>"
+    ++ "<rdf:Description rdf:about='http://example.org/s2'/>"
+    ++ "</eg:p></rdf:Description>")
+#guard rejectsIts " rdf:version='1.2'"
+  ("<rdf:Description rdf:about='http://example.org/s'>"
+    ++ "<eg:p rdf:parseType='Triple'>"
+    ++ "<rdf:Description rdf:about='http://example.org/s2'>"
+    ++ "<eg:q rdf:resource='http://example.org/o1'/>"
+    ++ "<eg:q rdf:resource='http://example.org/o2'/></rdf:Description>"
+    ++ "</eg:p></rdf:Description>")
+
+-- `rdf12-xml-an-01`: `rdf:annotation` names a reifier of the triple the
+-- property element makes. NOT version-gated.
+#guard isoIts ""
+  ("<rdf:Description rdf:about='http://example.org/s'>"
+    ++ "<eg:p rdf:annotation='http://example.org/r'>blah</eg:p></rdf:Description>")
+  ("<http://example.org/s> <http://example.org/p> \"blah\" .\n"
+    ++ "<http://example.org/r> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> "
+    ++ "<<( <http://example.org/s> <http://example.org/p> \"blah\" )>> .")
+
+-- `rdf:annotationNodeID` names the reifier by blank node instead.
+#guard isoIts ""
+  ("<rdf:Description rdf:about='http://example.org/s'>"
+    ++ "<eg:p rdf:annotationNodeID='r'>blah</eg:p></rdf:Description>")
+  ("<http://example.org/s> <http://example.org/p> \"blah\" .\n"
+    ++ "_:r <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> "
+    ++ "<<( <http://example.org/s> <http://example.org/p> \"blah\" )>> .")
+
+-- A reifier on an `rdf:resource` object reifies THAT triple.
+#guard isoIts ""
+  ("<rdf:Description rdf:about='http://example.org/s'>"
+    ++ "<eg:p rdf:resource='http://example.org/o' rdf:annotation='http://example.org/r'/>"
+    ++ "</rdf:Description>")
+  ("<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n"
+    ++ "<http://example.org/r> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> "
+    ++ "<<( <http://example.org/s> <http://example.org/p> <http://example.org/o> )>> .")
+
+-- The §7.3 `rdf:ID` reification and an RDF 1.2 reifier COEXIST: five
+-- triples, four classic plus one `rdf:reifies`.
+#guard isoIts ""
+  ("<rdf:Description rdf:about='http://example.org/s'>"
+    ++ "<eg:p rdf:ID='st' rdf:annotation='http://example.org/r'>blah</eg:p>"
+    ++ "</rdf:Description>")
+  ("<http://example.org/s> <http://example.org/p> \"blah\" .\n"
+    ++ "<http://example.org/dir/doc.rdf#st> "
+    ++ "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
+    ++ "<http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement> .\n"
+    ++ "<http://example.org/dir/doc.rdf#st> "
+    ++ "<http://www.w3.org/1999/02/22-rdf-syntax-ns#subject> <http://example.org/s> .\n"
+    ++ "<http://example.org/dir/doc.rdf#st> "
+    ++ "<http://www.w3.org/1999/02/22-rdf-syntax-ns#predicate> <http://example.org/p> .\n"
+    ++ "<http://example.org/dir/doc.rdf#st> "
+    ++ "<http://www.w3.org/1999/02/22-rdf-syntax-ns#object> \"blah\" .\n"
+    ++ "<http://example.org/r> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> "
+    ++ "<<( <http://example.org/s> <http://example.org/p> \"blah\" )>> .")
+
 end L4Factoidal.Syntax.RdfXmlTests

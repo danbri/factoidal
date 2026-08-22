@@ -30,12 +30,17 @@ Productions implemented (each cited at its definition below):
   §5.3     `rdf:li` ↦ `rdf:_n` (per-node-element counter)
   XML Base §3.3 / RFC 3986 §5 base resolution, `xml:lang` inheritance.
 
+RDF 1.2 additions (RDF 1.2 XML Syntax, the `rdf12/rdf-xml` suite), each
+cited at its definition:
+  `rdf:version="1.2"`      the feature switch, inherited by descendants
+  `its:dir`                base direction (ITS 2.0), inherited like `xml:lang`
+  `rdf:parseType="Triple"` a triple term as the property's object
+  `rdf:annotation` / `rdf:annotationNodeID`
+                           a reifier: `<r> rdf:reifies <<( s p o )>>`
+They are unconditional except the triple term, which the F* source gates
+on `rdf:version="1.2"` and this port gates the same way.
+
 Deliberately NOT ported:
-  * the RDF 1.2 additions the F* source carries — `rdf:version="1.2"`
-    gating, `its:dir` base direction, `rdf:parseType="Triple"` triple
-    terms, and the `rdf:annotation` / `rdf:annotationNodeID` reifiers.
-    They belong to a separate W3C draft and a separate test suite
-    (`rdf12/rdf-xml`); this module is RDF 1.1 XML Syntax exactly.
   * the F* source's "a datatyped property element with element children
     is an opaque XML literal" leniency, which exists for OWL fixtures
     outside the RDF/XML suite and has no production in §7.2.
@@ -93,13 +98,31 @@ def rdfSubjectIri   : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#su
 def rdfPredicateIri : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#predicate", rfl⟩
 def rdfObjectIri    : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#object", rfl⟩
 
+/-- RDF 1.2's reifier property, the object of an `rdf:annotation` /
+`rdf:annotationNodeID` reifier triple. -/
+def rdfReifiesIri   : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies", rfl⟩
+
+/-- The ITS 2.0 namespace name. RDF 1.2 XML Syntax borrows `its:dir`
+from Internationalization Tag Set 2.0 to carry a literal's base
+direction, the way it borrows `xml:lang` for the language tag. -/
+def itsNs : String := "http://www.w3.org/2005/11/its"
+
 /-- Attribute local names in the RDF namespace that §7.2 CONSUMES: they
 control the grammar and never become `[7.2.26] propertyAttr` triples.
 `rdf:type` is deliberately absent — it IS a property attribute, with an
-IRI object rather than a literal one (§7.2.26 note). -/
+IRI object rather than a literal one (§7.2.26 note).
+
+The last three are RDF 1.2's: `rdf:version` announces the version and
+`rdf:annotation` / `rdf:annotationNodeID` name a reifier, so all three
+are consumed here. Excluding `rdf:annotation` is also what lets an
+empty property element carrying only that attribute fall through to the
+empty-literal case rather than the blank-node-object case — the F*
+source's `is_rdf_syntax_attr` carries the same note, naming
+`rdf12-xml-an-04`…`-12`. -/
 def rdfSyntaxAttrNames : List String :=
   ["about", "ID", "resource", "datatype", "nodeID", "parseType",
-   "bagID", "aboutEach", "aboutEachPrefix", "li", "RDF", "Description"]
+   "bagID", "aboutEach", "aboutEachPrefix", "li", "RDF", "Description",
+   "version", "annotation", "annotationNodeID"]
 
 /-! ## Well-formed-term constructors
 
@@ -119,12 +142,16 @@ def mkTypedLiteral? (lex : String) (dt : WfIri) : Option WfLiteral :=
   if h : RDF.literalWf l = true then some ⟨l, h⟩ else none
 
 /-- A plain literal: `xsd:string` with no language, `rdf:langString`
-with one. Port of `make_plain_literal` minus its RDF 1.2 direction
-cases. -/
-def mkPlainLiteral (lex : String) (lang : Option String) : WfLiteral :=
-  match lang with
-  | none   => Literal.string lex
-  | some l => Literal.langString lex l
+with one, and (RDF 1.2) `rdf:dirLangString` with a language AND a base
+direction. A direction with no language tag is ill-formed, so it is
+dropped rather than made into an unrepresentable literal. Port of
+`make_plain_literal`. -/
+def mkPlainLiteral (lex : String) (lang : Option String)
+    (dir : Option TextDirection := none) : WfLiteral :=
+  match lang, dir with
+  | none,   _      => Literal.string lex
+  | some l, none   => Literal.langString lex l
+  | some l, some d => Literal.dirLangString lex l d
 
 /-! ## Blank-node labels
 
@@ -164,6 +191,16 @@ structure St where
   must not corrupt the parent's numbering (the F* comment names
   rdf-containers-syntax-vs-schema test004 / test007 as the regression). -/
   liCounter : Nat
+  /-- RDF 1.2: the inherited `its:dir` base direction (ITS 2.0),
+  `none` when none is in scope or the nearest one is `its:dir=""`.
+  XML-scoped, exactly like `lang`. -/
+  dir : Option TextDirection := none
+  /-- RDF 1.2: has an ancestor (or this element) said
+  `rdf:version="1.2"`? The switch flows DOWN to descendants and is
+  restored for siblings by `restoreScope`, like the other XML-scoped
+  fields. Only `rdf:parseType="Triple"` is gated on it; `its:dir` and
+  the annotation reifiers are not (the F* source gates the same way). -/
+  sawVersion12 : Bool := false
   /-- Resolved `[7.2.23] idAttr` keys seen so far. Document-scoped —
   §7.2.23's uniqueness constraint is per base IRI over the whole
   document. -/
@@ -175,6 +212,7 @@ structure St where
 /-- The initial state for a document retrieved from `base`. -/
 def St.init (base : String) : St :=
   { base := base, scope := XML.initialScope, lang := none,
+    dir := none, sawVersion12 := false,
     bnodeCounter := 0, liCounter := 1, seenIds := [], err := none }
 
 /-- Record a rule violation. The FIRST one wins, so the reported error
@@ -199,9 +237,10 @@ def St.nextLi (st : St) : Nat × St :=
 element and every `rdf:parseType="Resource"` group. -/
 def St.resetLi (st : St) : St := { st with liCounter := 1 }
 
-/-- Close a child's scope: `base` / `scope` / `lang` / `liCounter` are
-XML-scoped and revert to the parent's; `bnodeCounter` / `seenIds` /
-`err` are document-scoped and flow out. Port of F* `restore_scope`. -/
+/-- Close a child's scope: `base` / `scope` / `lang` / `dir` /
+`sawVersion12` / `liCounter` are XML-scoped and revert to the parent's;
+`bnodeCounter` / `seenIds` / `err` are document-scoped and flow out.
+Port of F* `restore_scope`. -/
 def restoreScope (parent child : St) : St :=
   { parent with
     bnodeCounter := child.bnodeCounter,
@@ -270,11 +309,41 @@ def updateLang (st : St) (attrs : List XML.Attribute) : St :=
   | some l => if l.isEmpty then { st with lang := none } else { st with lang := some l }
   | none   => st
 
-/-- All three scoped updates, in the order the later ones depend on:
+/-- RDF 1.2 XML Syntax: `its:dir` (ITS 2.0) carries a literal's base
+direction the way `xml:lang` carries its language, and inherits the
+same way. `its:dir="ltr"` / `"rtl"` set it, `its:dir=""` CLEARS it, and
+any other value leaves the inherited value unchanged. Port of
+`extract_dir`. -/
+def updateDir (st : St) (attrs : List XML.Attribute) : St :=
+  match findNsAttr st itsNs "dir" attrs with
+  | some d =>
+      if d == "ltr" then { st with dir := some .ltr }
+      else if d == "rtl" then { st with dir := some .rtl }
+      else if d.isEmpty then { st with dir := none }
+      else st
+  | none => st
+
+/-- RDF 1.2 XML Syntax: `rdf:version="1.2"` switches the version-gated
+features on for this element and its descendants. Any other value
+leaves the inherited setting alone (it never switches 1.2 back off).
+Port of `extract_version`. -/
+def updateVersion (st : St) (attrs : List XML.Attribute) : St :=
+  match findRdfAttr st "version" attrs with
+  | some v => if v == "1.2" then { st with sawVersion12 := true } else st
+  | none   => st
+
+/-- All the scoped updates, in the order the later ones depend on:
 declarations first (they decide what `xml:base` even resolves to as a
-name), then base, then language. Port of `update_state_from_attrs`. -/
+name), then base, then language, then the two RDF 1.2 ones (`its:dir`
+and `rdf:version`, both of which need the declarations resolved).
+Port of `update_state_from_attrs`. -/
 def updateState (st : St) (attrs : List XML.Attribute) : St :=
-  updateLang (updateBase (updateScope st attrs) attrs) attrs
+  updateVersion (updateDir (updateLang (updateBase (updateScope st attrs) attrs) attrs) attrs) attrs
+
+/-- The base direction that actually applies: RDF 1.2's, and only when
+`rdf:version="1.2"` is in scope. Port of `effective_dir`. -/
+def St.effectiveDir (st : St) : Option TextDirection :=
+  if st.sawVersion12 then st.dir else none
 
 /-- Resolve a relative reference against the in-scope base
 (RFC 3986 §5). Definitionally `Syntax.resolveIri` — see
@@ -324,6 +393,7 @@ def propertyAttrTriples (st : St) (subj : Subject) :
         | some ns =>
           if ns == XML.xmlNsUri then restTriples    -- xml:lang / xml:base / xml:space
           else if ns == rdfNs && rdfSyntaxAttrNames.contains e.localPart then restTriples
+          else if ns == itsNs then restTriples      -- RDF 1.2: its:dir / its:version
           else
             let full := ns ++ e.localPart
             match mkIri? full with
@@ -334,7 +404,8 @@ def propertyAttrTriples (st : St) (subj : Subject) :
                 | some o => { s := subj, p := p, o := Term.iri o } :: restTriples
                 | none   => restTriples
               else
-                { s := subj, p := p, o := Term.literal (mkPlainLiteral a.value st.lang) }
+                { s := subj, p := p,
+                  o := Term.literal (mkPlainLiteral a.value st.lang st.effectiveDir) }
                   :: restTriples
 
 /-! ## §7.2's attribute constraints
@@ -460,6 +531,39 @@ def reifyWith (r : Option WfIri) (s : Subject) (p : WfIri) (o : Term) : List Tri
   | none   => []
   | some w => reificationTriples w s p o
 
+/-! ### RDF 1.2 reifiers — `rdf:annotation` / `rdf:annotationNodeID`
+
+RDF 1.2 XML Syntax's replacement for the §7.3 `rdf:ID` expansion: the
+named reifier is asserted to `rdf:reifies` the TRIPLE TERM of the
+statement the property element makes, one triple instead of four. The
+two forms are exclusive alternatives — `rdf:annotation` names the
+reifier by IRI, `rdf:annotationNodeID` by blank-node label — and
+neither is version-gated (the F* source reads them unconditionally). A
+property element may carry an `rdf:ID` reification AND an annotation
+reifier; both are emitted. -/
+
+/-- The reifier a property element names, if any. An `rdf:annotation`
+value that does not resolve to an IRI names nothing. -/
+def annotReifier (st : St) (attrs : List XML.Attribute) : Option Subject :=
+  match findRdfAttr st "annotation" attrs with
+  | some v => (mkIri? (resolveRef st v)).map Subject.iri
+  | none   =>
+    match findRdfAttr st "annotationNodeID" attrs with
+    | some n => some (.bnode (nodeIdLabel n))
+    | none   => none
+
+/-- `<reifier> rdf:reifies <<( s p o )>>`, or nothing. -/
+def annotTriples (r : Option Subject) (s : Subject) (p : WfIri) (o : Term) : List Triple :=
+  match r with
+  | none         => []
+  | some reifier => [{ s := reifier, p := rdfReifiesIri, o := Term.tripleTerm s p o }]
+
+/-- Both reification forms for one statement: the §7.3 `rdf:ID`
+expansion and the RDF 1.2 reifier. Port of the F* `reif_of`. -/
+def reifyAll (r : Option WfIri) (a : Option Subject) (s : Subject) (p : WfIri) (o : Term) :
+    List Triple :=
+  reifyWith r s p o ++ annotTriples a s p o
+
 /-! ## `[7.2.17] parseTypeLiteralPropertyElt` — serialising the content
 
 The object is a literal whose datatype is `rdf:XMLLiteral` and whose
@@ -580,13 +684,13 @@ structure Res where
 /-- `[7.2.17] parseTypeLiteralPropertyElt` (also the target of
 `[7.2.20]`). -/
 def parseTypeLiteral (st : St) (subj : Subject) (pred : WfIri)
-    (reif : Option WfIri) (children : List XML.Node) : Res :=
+    (reif : Option WfIri) (annot : Option Subject) (children : List XML.Node) : Res :=
   let lex := serializeLiteralContent st.scope children
   match mkTypedLiteral? lex rdfXMLLiteral with
   | none => ⟨[], st.fail "rdf:XMLLiteral cannot type this literal"⟩
   | some l =>
     let obj := Term.literal l
-    ⟨{ s := subj, p := pred, o := obj } :: reifyWith reif subj pred obj, st⟩
+    ⟨{ s := subj, p := pred, o := obj } :: reifyAll reif annot subj pred obj, st⟩
 
 /-- `[7.2.23] idAttr` / `[7.2.24] nodeIdAttr` / `[7.2.25] aboutAttr`, in
 the order §7.2.11 tries them. A node element carrying none of the three
@@ -718,34 +822,61 @@ def propertyElt : Nat → St → Subject → XML.Node → Res
                 match findRdfAttr st3 "ID" attrs with
                 | some v => mkIri? (resolveRef st3 ("#" ++ v))
                 | none   => none
-              propertyEltBody fuel st3 subj pred reif attrs children
+              -- RDF 1.2: the `rdf:annotation` / `rdf:annotationNodeID` reifier.
+              let annot : Option Subject := annotReifier st3 attrs
+              propertyEltBody fuel st3 subj pred reif annot attrs children
     | _ => ⟨[], st⟩
 
 /-- The object-shaped half of `[7.2.14]`, once the predicate and the
 §7.3 statement IRI are known. Split out so `propertyElt` stays readable;
 the six branches below are the six productions. -/
 def propertyEltBody : Nat → St → Subject → WfIri → Option WfIri →
-    List XML.Attribute → List XML.Node → Res
-  | 0, st, _, _, _, _, _ => ⟨[], st.fail "recursion budget exhausted"⟩
-  | fuel + 1, st, subj, pred, reif, attrs, children =>
+    Option Subject → List XML.Attribute → List XML.Node → Res
+  | 0, st, _, _, _, _, _, _ => ⟨[], st.fail "recursion budget exhausted"⟩
+  | fuel + 1, st, subj, pred, reif, annot, attrs, children =>
     match findRdfAttr st "parseType" attrs with
     -- [7.2.17] parseTypeLiteralPropertyElt
-    | some "Literal" => parseTypeLiteral st subj pred reif children
+    | some "Literal" => parseTypeLiteral st subj pred reif annot children
     -- [7.2.18] parseTypeResourcePropertyElt
     | some "Resource" =>
       let (bid, st1) := st.freshBnode
       let obj := Term.bnode bid
       let inner := propertyEltList fuel st1.resetLi (.bnode bid) children []
-      ⟨{ s := subj, p := pred, o := obj } :: reifyWith reif subj pred obj ++ inner.triples,
+      ⟨{ s := subj, p := pred, o := obj } :: reifyAll reif annot subj pred obj ++ inner.triples,
        restoreScope st inner.st⟩
     -- [7.2.19] parseTypeCollectionPropertyElt
     | some "Collection" =>
       let items := children.filter (fun c => c.elementTag.isSome)
       let (head, ts, st1) := collectionList fuel st items
-      ⟨{ s := subj, p := pred, o := head } :: reifyWith reif subj pred head ++ ts, st1⟩
+      ⟨{ s := subj, p := pred, o := head } :: reifyAll reif annot subj pred head ++ ts, st1⟩
+    -- RDF 1.2: `rdf:parseType="Triple"` — the property element holds
+    -- exactly ONE `rdf:Description` making exactly ONE triple, and that
+    -- triple becomes this property's object as a TRIPLE TERM
+    -- `<<( s p o )>>`. Gated on `rdf:version="1.2"`: without it the
+    -- content is IGNORED and nothing is emitted (`rdf12-xml-tt-01`).
+    -- With it, an inner element that does not make exactly one triple —
+    -- or a content that is not exactly one element — is a syntax error
+    -- (`rdf12-xml-tt-07` / `-08`). Port of the F* `Some "Triple"` arm.
+    | some "Triple" =>
+      if !st.sawVersion12 then ⟨[], st⟩
+      else
+        match children.filter (fun c => c.elementTag.isSome) with
+        | [childDesc] =>
+          let inner := nodeElement fuel st childDesc
+          (match inner.triples with
+           | [tt] =>
+             let obj := Term.tripleTerm tt.s tt.p tt.o
+             ⟨{ s := subj, p := pred, o := obj } :: reifyAll reif annot subj pred obj,
+              restoreScope st inner.st⟩
+           | ts =>
+             ⟨[], (restoreScope st inner.st).fail
+                s!"rdf:parseType=\"Triple\" content makes {ts.length} triples, not 1 (RDF 1.2 XML Syntax)"⟩)
+        | cs =>
+          ⟨[], st.fail
+             s!"rdf:parseType=\"Triple\" needs exactly one element child, found {cs.length} (RDF 1.2 XML Syntax)"⟩
     -- [7.2.20] parseTypeOtherPropertyElt — "any other value … is
     -- treated as if it were rdf:parseType='Literal'".
-    | some _ => parseTypeLiteral st subj pred reif children
+    | some _ => parseTypeLiteral st subj pred reif annot children
     | none =>
       -- [7.2.21] emptyPropertyElt with an explicit object
       match findRdfAttr st "resource" attrs with
@@ -754,13 +885,13 @@ def propertyEltBody : Nat → St → Subject → WfIri → Option WfIri →
         | none => ⟨[], st.fail s!"rdf:resource does not resolve to an IRI: {r} (RDF/XML §7.2.31)"⟩
         | some w =>
           let obj := Term.iri w
-          ⟨{ s := subj, p := pred, o := obj } :: reifyWith reif subj pred obj
+          ⟨{ s := subj, p := pred, o := obj } :: reifyAll reif annot subj pred obj
              ++ propertyAttrTriples st (.iri w) attrs, st⟩
       | none =>
       match findRdfAttr st "nodeID" attrs with
       | some n =>
         let obj := Term.bnode (nodeIdLabel n)
-        ⟨{ s := subj, p := pred, o := obj } :: reifyWith reif subj pred obj
+        ⟨{ s := subj, p := pred, o := obj } :: reifyAll reif annot subj pred obj
            ++ propertyAttrTriples st (.bnode (nodeIdLabel n)) attrs, st⟩
       | none =>
         let elemChildren := children.filter (fun c => c.elementTag.isSome)
@@ -774,7 +905,7 @@ def propertyEltBody : Nat → St → Subject → WfIri → Option WfIri →
           else
             let nr := nodeElement fuel st child
             let obj := nr.subj.toTerm
-            ⟨{ s := subj, p := pred, o := obj } :: reifyWith reif subj pred obj ++ nr.triples,
+            ⟨{ s := subj, p := pred, o := obj } :: reifyAll reif annot subj pred obj ++ nr.triples,
              nr.st⟩
         | [] =>
           let text := XML.Node.textContentList children
@@ -785,7 +916,7 @@ def propertyEltBody : Nat → St → Subject → WfIri → Option WfIri →
             -- object is a fresh blank node they describe.
             let (bid, st1) := st.freshBnode
             let obj := Term.bnode bid
-            ⟨{ s := subj, p := pred, o := obj } :: reifyWith reif subj pred obj
+            ⟨{ s := subj, p := pred, o := obj } :: reifyAll reif annot subj pred obj
                ++ propertyAttrTriples st1 (.bnode bid) attrs, st1⟩
           else if !probe.isEmpty then
             ⟨[], st.fail "property attributes on a property element with content (RDF/XML §7.2.16)"⟩
@@ -801,10 +932,10 @@ def propertyEltBody : Nat → St → Subject → WfIri → Option WfIri →
                 | none => ⟨[], st.fail s!"{w.val} needs a language tag and cannot type a literal"⟩
                 | some l =>
                   let obj := Term.literal l
-                  ⟨{ s := subj, p := pred, o := obj } :: reifyWith reif subj pred obj, st⟩
+                  ⟨{ s := subj, p := pred, o := obj } :: reifyAll reif annot subj pred obj, st⟩
             | none =>
-              let obj := Term.literal (mkPlainLiteral text st.lang)
-              ⟨{ s := subj, p := pred, o := obj } :: reifyWith reif subj pred obj, st⟩
+              let obj := Term.literal (mkPlainLiteral text st.lang st.effectiveDir)
+              ⟨{ s := subj, p := pred, o := obj } :: reifyAll reif annot subj pred obj, st⟩
 
 /-- `[7.2.19]`'s list construction: the collection's items become an
 `rdf:first`/`rdf:rest` chain terminated by `rdf:nil`. Returns the head

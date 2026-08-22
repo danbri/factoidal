@@ -159,6 +159,13 @@ def Literal.langString (lex tag : String) : WfLiteral :=
   ⟨{ lexicalForm := lex, datatype := rdfLangString,
      langTag := some tag, direction := none }, rfl⟩
 
+/-- Convenience constructor: RDF 1.2's directional language-tagged
+literal (a language tag AND a base direction, so the datatype is
+`rdf:dirLangString` — the third clause of `literalWf`). -/
+def Literal.dirLangString (lex tag : String) (d : TextDirection) : WfLiteral :=
+  ⟨{ lexicalForm := lex, datatype := rdfDirLangString,
+     langTag := some tag, direction := some d }, rfl⟩
+
 /-! ## Equality — the three literal-equality relations
 
 The F* source distinguishes (and warns against conflating):
