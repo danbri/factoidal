@@ -272,9 +272,9 @@ def tripleIris (t : Triple) : List WfIri :=
   (match t.s with | .iri i => [i] | _ => []) ++ [t.p] ++
   (match t.o with | .iri i => [i] | _ => [])
 
-/-- Does this triple mention an IRI in the XSD namespace? The guard on
-the `xsdAxioms` row: a graph that never names an XSD datatype gets no
-XSD tower, so the tower cannot pollute an unrelated closure. -/
+/-- Does this triple mention an IRI in the XSD namespace? Half of the
+guard on the `xsdAxioms` row: a graph that never names an XSD datatype
+gets no XSD tower, so the tower cannot pollute an unrelated closure. -/
 def mentionsXsd (t : Triple) : Bool := (tripleIris t).any iriInXsdNs
 
 /-- The XSD numeric subtype tower, as (subtype, supertype) pairs.
@@ -363,6 +363,37 @@ them `rdfs:Datatype`. -/
 def builtinDatatypeAxioms : List Triple :=
   [ ⟨Subject.iri xsdInteger, rdfType, Term.iri rdfsDatatype⟩,
     ⟨Subject.iri xsdString, rdfType, Term.iri rdfsDatatype⟩ ]
+
+/-- The predicates under which an XSD IRI in the OBJECT slot is being
+used as a datatype rather than merely named. The `xsdAxioms` guard
+reads this list. -/
+def datatypePositionPredicates : List WfIri :=
+  [ rdfsRange, rdfsDomain, rdfType, rdfsSubClassOf,
+    owlEquivalentClass, owlDisjointWith, owlComplementOf,
+    owlOnClass, owlSomeValuesFrom, owlAllValuesFrom ]
+
+/-- The `xsdAxioms` guard: the driving triple USES an XSD IRI as a
+datatype — an XSD object under one of the class/datatype predicates
+above.
+
+This is NARROWER than the F* `graph_mentions_xsd_iri`, which fires on
+any XSD IRI in any position, and the narrowing is deliberate.
+`dtType1Builtin` puts `xsd:integer rdf:type rdfs:Datatype` into EVERY
+closure with no premise; eq-ref then derives `xsd:integer owl:sameAs
+xsd:integer` from it, and under the "mentions" guard THAT triple drives
+the whole XSD tower plus its `scm-sco` transitive closure into every
+closure this engine ever computes. Measured on the OWL corpus,
+2026-08-22: 116 triples and 6 rounds for a 3-triple `rdfs:subClassOf`
+fixture that has nothing to do with datatypes, `type-consistency` up
+from 6417 ms to 11622 ms, and the `RLTests` idempotence guards (which
+assert saturation at a fixed fuel) red. Restricting to a datatype
+POSITION cuts the feedback loop at its source: `owl:sameAs` is not a
+datatype position, so eq-ref cannot re-seed the row. The rows that
+motivate the tower — WebOnt-I5.8-006/008/009, premise `p rdfs:range
+xsd:byte` — are all `rdfs:range`, so nothing they need is lost. -/
+def drivesXsdAxioms (t : Triple) : Bool :=
+  datatypePositionPredicates.contains t.p &&
+  (match t.o with | .iri i => iriInXsdNs i | _ => false)
 
 /-- The shape of the assumption the XSD tables carry: the value space
 of `sub` is inside the value space of `sup`, as `RDF/Datatypes.lean`'s
@@ -926,7 +957,7 @@ inductive Derives (g : Graph) : Triple → Prop where
   which is the F* `graph_mentions_xsd_iri` guard read per triple. -/
   | xsdAxioms {d t : Triple}
       (hd : Derives g d)
-      (hx : mentionsXsd d = true)
+      (hx : drivesXsdAxioms d = true)
       (hax : t ∈ xsdAxiomTriples) :
       Derives g t
 

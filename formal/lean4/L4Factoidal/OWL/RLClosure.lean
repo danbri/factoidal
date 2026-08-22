@@ -713,7 +713,7 @@ def prpRflFor (g : Graph) (d : Triple) : List Triple :=
 
 /-- **xsd-axioms** `[ext]`, driven by any triple mentioning an XSD IRI. -/
 def xsdAxiomsFor (_g : Graph) (d : Triple) : List Triple :=
-  if mentionsXsd d then xsdAxiomTriples else []
+  if drivesXsdAxioms d then xsdAxiomTriples else []
 
 /-- **dt-rng-intersect** `[ext]`, driven by one of the two range
 axioms. -/

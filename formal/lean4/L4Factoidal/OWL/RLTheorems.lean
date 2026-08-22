@@ -1136,6 +1136,188 @@ theorem scmUniFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · simp at h
 
 
+-- --- The `[ext]` rows -------------------------------------------------
+--
+-- Same shape as every lemma above: the row's output is licensed by the
+-- matching `Derives` constructor. What these lemmas do NOT say is that
+-- the constructor preserves truth — that is the model-theoretic claim
+-- the module header disclaims for the whole file, and each `[ext]`
+-- constructor carries its RDF-Based-Semantics argument in its own doc
+-- comment instead.
+
+/-- **eq-diff-sym** `[ext]`. -/
+theorem eqDiffSymFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ eqDiffSymFor g d) : Derives g t := by
+  unfold eqDiffSymFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_map] at h
+    obtain ⟨ys, hys, rfl⟩ := h
+    exact Derives.eqDiffSym (derives_of_parts hd rfl hp (mem_asSubject hys))
+  · simp at h
+
+/-- **prp-pdw-diff** `[ext]`. -/
+theorem pdwToDiffFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ pdwToDiffFor g d) : Derives g t := by
+  unfold pdwToDiffFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨p1, hp1, p2, hp2, t1, ht1, o1s, ho1s, t2, ht2, h⟩ := h
+    obtain ⟨ht1g, ht1p⟩ := mem_withPred ht1
+    obtain ⟨ht2g, ht2s, ht2p⟩ := mem_withSubjPred ht2
+    split at h
+    · simp at h
+    · rename_i hne
+      simp only [List.mem_singleton] at h
+      subst h
+      refine Derives.pdwToDiff
+        (derives_of_parts hd (mem_subjIri hp1) hp (mem_asIri hp2))
+        (derives_of_parts ht1g rfl ht1p (mem_asSubject ho1s))
+        (derives_of_parts ht2g ht2s ht2p rfl) ?_
+      simpa using hne
+  · simp at h
+
+/-- **cax-dw-diff** `[ext]`. -/
+theorem caxDwToDiffFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ caxDwToDiffFor g d) : Derives g t := by
+  unfold caxDwToDiffFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨c1, hc1, c2, hc2, tx, htx, ty, hty, h⟩ := h
+    obtain ⟨htxg, htxp, htxo⟩ := mem_withPredObj htx
+    obtain ⟨htyg, htyp, htyo⟩ := mem_withPredObj hty
+    split at h
+    · simp at h
+    · rename_i hne
+      simp only [List.mem_singleton] at h
+      subst h
+      refine Derives.caxDwToDiff
+        (derives_of_parts hd (mem_subjIri hc1) hp (mem_asIri hc2))
+        (derives_of_parts htxg rfl htxp htxo)
+        (derives_of_parts htyg rfl htyp htyo) ?_
+      simpa using hne
+  · simp at h
+
+/-- **prp-fp-diff** `[ext]`. -/
+theorem fpDiffToDiffFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ fpDiffToDiffFor g d) : Derives g t := by
+  unfold fpDiffToDiffFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨t1, ht1, h⟩ := h
+    obtain ⟨ht1g, ht1o⟩ := mem_withObj ht1
+    split at h
+    · rename_i hfp
+      simp only [List.mem_flatMap] at h
+      obtain ⟨t2, ht2, h⟩ := h
+      obtain ⟨ht2g, ht2p, ht2o⟩ := mem_withPredObj ht2
+      split at h
+      · simp at h
+      · rename_i hne
+        simp only [List.mem_singleton] at h
+        subst h
+        refine Derives.fpDiffToDiff (Derives.base (mem_of_memB hfp))
+          (derives_of_parts ht1g rfl rfl ht1o)
+          (derives_of_parts ht2g rfl ht2p ht2o)
+          (derives_of_parts hd rfl hp rfl) ?_
+        simpa using hne
+    · simp at h
+  · simp at h
+
+/-- **prp-ifp-diff** `[ext]`. -/
+theorem ifpDiffToDiffFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ ifpDiffToDiffFor g d) : Derives g t := by
+  unfold ifpDiffToDiffFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨t1, ht1, h⟩ := h
+    obtain ⟨ht1g, ht1s⟩ := mem_withSubj ht1
+    split at h
+    · rename_i hifp
+      simp only [List.mem_flatMap] at h
+      obtain ⟨y1s, hy1s, x2s, hx2s, t2, ht2, h⟩ := h
+      obtain ⟨ht2g, ht2s, ht2p⟩ := mem_withSubjPred ht2
+      split at h
+      · simp at h
+      · rename_i hne
+        simp only [List.mem_singleton] at h
+        subst h
+        refine Derives.ifpDiffToDiff (Derives.base (mem_of_memB hifp))
+          (derives_of_parts ht1g ht1s rfl (mem_asSubject hy1s))
+          (derives_of_parts ht2g ht2s ht2p rfl)
+          (derives_of_parts hd rfl hp (mem_asSubject hx2s)) ?_
+        simpa using hne
+    · simp at h
+  · simp at h
+
+/-- **scm-trans-from-chain** `[ext]`. -/
+theorem chainToTransFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ chainToTransFor g d) : Derives g t := by
+  unfold chainToTransFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨p, hpi, terms, hterms, h⟩ := h
+    split at h
+    · rename_i heq
+      simp only [List.mem_singleton] at h
+      subst h
+      have hterms' : terms = [Term.iri p, Term.iri p] := by simpa using heq
+      subst hterms'
+      exact Derives.chainToTrans (fun _ hu => Derives.base hu)
+        (derives_of_parts hd (mem_subjIri hpi) hp rfl)
+        (listSeqs_sound g (listFuel g) d.o hterms)
+    · simp at h
+  · simp at h
+
+/-- **prp-rfl** `[ext]`. -/
+theorem prpRflFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ prpRflFor g d) : Derives g t := by
+  unfold prpRflFor at h
+  split at h
+  · rename_i hpo
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hpo
+    simp only [List.mem_flatMap, List.mem_map] at h
+    obtain ⟨p, hpi, i, hi, rfl⟩ := h
+    exact Derives.prpRfl (fun _ hu => Derives.base hu)
+      (derives_of_parts hd (mem_subjIri hpi) hpo.1 hpo.2) hi
+  · simp at h
+
+/-- **xsd-axioms** `[ext]`. -/
+theorem xsdAxiomsFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ xsdAxiomsFor g d) : Derives g t := by
+  unfold xsdAxiomsFor at h
+  split at h
+  · rename_i hx
+    exact Derives.xsdAxioms (Derives.base hd) hx h
+  · simp at h
+
+/-- **dt-rng-intersect** `[ext]`. -/
+theorem dtRangeIntersectFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ dtRangeIntersectFor g d) : Derives g t := by
+  unfold dtRangeIntersectFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨d1, hd1, t2, ht2, d2, hd2, e, he, h⟩ := h
+    obtain ⟨ht2g, ht2s, ht2p⟩ := mem_withSubjPred ht2
+    split at h
+    · rename_i hmatch
+      simp only [List.mem_map] at h
+      obtain ⟨d3, hd3, rfl⟩ := h
+      refine Derives.dtRangeIntersect
+        (derives_of_parts hd rfl hp (mem_asIri hd1))
+        (derives_of_parts ht2g ht2s ht2p (mem_asIri hd2)) ?_
+      simp only [rangeIntersectLicenses, List.any_eq_true, Bool.and_eq_true]
+      refine ⟨e, he, hmatch, ?_⟩
+      simpa [List.contains_iff_mem] using hd3
+    · simp at h
+  · simp at h
+
 /-! ## Section 6 — T2, soundness of a round and of the whole closure -/
 
 /-- Every conclusion the ported rows emit from one driving triple is
@@ -1149,7 +1331,8 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   rcases hl with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact eqRefSFor_sound hd ht
   · exact eqRefPFor_sound hd ht
   · exact eqRefOFor_sound hd ht
@@ -1197,15 +1380,27 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · exact scmRng2For_sound hd ht
   · exact scmIntFor_sound hd ht
   · exact scmUniFor_sound hd ht
+  · exact eqDiffSymFor_sound hd ht
+  · exact pdwToDiffFor_sound hd ht
+  · exact caxDwToDiffFor_sound hd ht
+  · exact fpDiffToDiffFor_sound hd ht
+  · exact ifpDiffToDiffFor_sound hd ht
+  · exact chainToTransFor_sound hd ht
+  · exact prpRflFor_sound hd ht
+  · exact xsdAxiomsFor_sound hd ht
+  · exact dtRangeIntersectFor_sound hd ht
 
-/-- **cls-thing** and **cls-nothing1** are premise-free rows, so the
-axiom triples are derivable from any graph. -/
+/-- **cls-thing** and **cls-nothing1** are premise-free rows, and so is
+the `dtType1Builtin` `[ext]` row, so the axiom triples are derivable
+from any graph. -/
 theorem axiomTriples_sound {g : Graph} {t : Triple} (h : t ∈ axiomTriples) :
     Derives g t := by
-  simp only [axiomTriples, List.mem_cons, List.not_mem_nil, or_false] at h
-  rcases h with rfl | rfl
+  simp only [axiomTriples, List.cons_append, List.nil_append,
+    List.mem_cons, List.not_mem_nil, or_false] at h
+  rcases h with rfl | rfl | h'
   · exact Derives.clsThing
   · exact Derives.clsNothing1
+  · exact Derives.dtType1Builtin h'
 
 /-- Every conclusion a round emits is derivable from the round's
 input. -/
@@ -1531,6 +1726,16 @@ Both existence lemmas are proved; what is NOT proved is that
 `listFuel g = g.length + 1` is always enough (the same term-universe
 counting obligation `closureFuelBound` carries), which is why T4 takes
 `ListFuelAdequate` as a hypothesis instead of asserting it. -/
+
+/-- `iriIndividuals` is monotone: prp-rfl's individual set only grows
+with the graph. The T4 case for that row needs it to carry the
+individual from the rule's collection graph `gc` up to the saturated
+graph. -/
+theorem iriIndividuals_mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
+    {i : WfIri} (h : i ∈ iriIndividuals g) : i ∈ iriIndividuals g' := by
+  simp only [iriIndividuals, List.mem_flatMap] at h ⊢
+  obtain ⟨u, hu, hi⟩ := h
+  exact ⟨u, hsub _ hu, hi⟩
 
 /-- The hypothesis T4's list-valued rows need: the walks used by the
 engine at this fuel find everything the specification relations
@@ -2101,6 +2306,96 @@ theorem complete_of_saturated {sat : Graph} (hsat : step sat = sat)
       exact ⟨cis.toTerm, hlf.1 lst cis.toTerm (hmem.mono ihgc),
         cis, mem_asSubject_toTerm cis, rfl⟩
     exact R ih hc (by simp [conclusionsList])
+  -- `[ext]` rows
+  | @eqDiffSym x ys _ ih =>
+    have hc : (⟨ys, owlDifferentFrom, x.toTerm⟩ : Triple) ∈
+        eqDiffSymFor sat ⟨x, owlDifferentFrom, ys.toTerm⟩ := by
+      simp only [eqDiffSymFor, beq_self_eq_true, if_true, List.mem_map]
+      exact ⟨ys, mem_asSubject_toTerm ys, rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @pdwToDiff p1 p2 x o1s o2 _ _ _ hne ih1 ih2 ih3 =>
+    have hc : (⟨o1s, owlDifferentFrom, o2⟩ : Triple) ∈
+        pdwToDiffFor sat ⟨Subject.iri p1, owlPropertyDisjointWith,
+          Term.iri p2⟩ := by
+      simp only [pdwToDiffFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨p1, mem_subjIri_self p1, p2, mem_asIri_self p2,
+        ⟨x, p1, o1s.toTerm⟩, mem_withPred_of ih2 rfl,
+        o1s, mem_asSubject_toTerm o1s, ⟨x, p2, o2⟩,
+        mem_withSubjPred_of ih3 rfl rfl, ?_⟩
+      simp [hne]
+    exact R ih1 hc (by simp [conclusionsList])
+  | @caxDwToDiff c1 c2 x ys _ _ _ hne ih1 ih2 ih3 =>
+    have hc : (⟨x, owlDifferentFrom, ys.toTerm⟩ : Triple) ∈
+        caxDwToDiffFor sat ⟨Subject.iri c1, owlDisjointWith,
+          Term.iri c2⟩ := by
+      simp only [caxDwToDiffFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨c1, mem_subjIri_self c1, c2, mem_asIri_self c2,
+        ⟨x, rdfType, Term.iri c1⟩, mem_withPredObj_of ih2 rfl rfl,
+        ⟨ys, rdfType, Term.iri c2⟩, mem_withPredObj_of ih3 rfl rfl, ?_⟩
+      simp [hne]
+    exact R ih1 hc (by simp [conclusionsList])
+  | @fpDiffToDiff p y1 y2 x1s x2 _ _ _ _ hne ih1 ih2 ih3 ih4 =>
+    have hc : (⟨y1, owlDifferentFrom, y2.toTerm⟩ : Triple) ∈
+        fpDiffToDiffFor sat ⟨x1s, owlDifferentFrom, x2⟩ := by
+      simp only [fpDiffToDiffFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨⟨y1, p, x1s.toTerm⟩, mem_withObj_of ih2 rfl, ?_⟩
+      rw [if_pos (memB_of_mem ih1)]
+      simp only [List.mem_flatMap]
+      refine ⟨⟨y2, p, x2⟩, mem_withPredObj_of ih3 rfl rfl, ?_⟩
+      simp [hne]
+    exact R ih4 hc (by simp [conclusionsList])
+  | @ifpDiffToDiff p x1 x2s y1s y2 _ _ _ _ hne ih1 ih2 ih3 ih4 =>
+    have hc : (⟨y1s, owlDifferentFrom, y2⟩ : Triple) ∈
+        ifpDiffToDiffFor sat ⟨x1, owlDifferentFrom, x2s.toTerm⟩ := by
+      simp only [ifpDiffToDiffFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨⟨x1, p, y1s.toTerm⟩, mem_withSubj_of ih2 rfl, ?_⟩
+      rw [if_pos (memB_of_mem ih1)]
+      simp only [List.mem_flatMap]
+      refine ⟨y1s, mem_asSubject_toTerm y1s, x2s, mem_asSubject_toTerm x2s,
+        ⟨x2s, p, y2⟩, mem_withSubjPred_of ih3 rfl rfl, ?_⟩
+      simp [hne]
+    exact R ih4 hc (by simp [conclusionsList])
+  | @chainToTrans p lst gc _ _ hlist ihgc ih =>
+    have hc : (⟨Subject.iri p, rdfType,
+        Term.iri owlTransitiveProperty⟩ : Triple) ∈
+        chainToTransFor sat ⟨Subject.iri p, owlPropertyChainAxiom, lst⟩ := by
+      simp only [chainToTransFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨p, mem_subjIri_self p, [Term.iri p, Term.iri p],
+        hlf.2 lst _ (hlist.mono ihgc), ?_⟩
+      simp
+    exact R ih hc (by simp [conclusionsList])
+  | @prpRfl p i gc _ _ hind ihgc ih =>
+    have hc : (⟨Subject.iri i, p, Term.iri i⟩ : Triple) ∈
+        prpRflFor sat ⟨Subject.iri p, rdfType,
+          Term.iri owlReflexiveProperty⟩ := by
+      simp only [prpRflFor, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap, List.mem_map]
+      exact ⟨p, mem_subjIri_self p, i, iriIndividuals_mono ihgc hind, rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @xsdAxioms d t' _ hx hax ih =>
+    have hc : t' ∈ xsdAxiomsFor sat d := by
+      simp only [xsdAxiomsFor, hx, if_true]
+      exact hax
+    exact R ih hc (by simp [conclusionsList])
+  | @dtRangeIntersect pd d1 d2 d3 _ _ hlic ih1 ih2 =>
+    have hc : (⟨pd, rdfsRange, Term.iri d3⟩ : Triple) ∈
+        dtRangeIntersectFor sat ⟨pd, rdfsRange, Term.iri d1⟩ := by
+      simp only [dtRangeIntersectFor, beq_self_eq_true, if_true,
+        List.mem_flatMap]
+      simp only [rangeIntersectLicenses, List.any_eq_true,
+        Bool.and_eq_true] at hlic
+      obtain ⟨e, he, hmatch, hcon⟩ := hlic
+      refine ⟨d1, mem_asIri_self d1, ⟨pd, rdfsRange, Term.iri d2⟩,
+        mem_withSubjPred_of ih2 rfl rfl, d2, mem_asIri_self d2,
+        e, he, ?_⟩
+      rw [if_pos hmatch]
+      simp only [List.mem_map]
+      exact ⟨d3, by simpa [List.contains_iff_mem] using hcon, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @dtType1Builtin t' hax =>
+    refine axm ?_
+    simp only [axiomTriples, List.cons_append, List.nil_append, List.mem_cons]
+    exact Or.inr (Or.inr hax)
 
 /-- **T4.** Everything derivable from `g` is in `g`'s closure, provided
 the closure is saturated (which `closure_saturated_or_underfueled`

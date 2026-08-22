@@ -597,7 +597,7 @@ def prpRflForS (s : Store) (d : Triple) : List Triple :=
   else []
 
 def xsdAxiomsForS (_s : Store) (d : Triple) : List Triple :=
-  if mentionsXsd d then xsdAxiomTriples else []
+  if drivesXsdAxioms d then xsdAxiomTriples else []
 
 def dtRangeIntersectForS (s : Store) (d : Triple) : List Triple :=
   if d.p == rdfsRange then
