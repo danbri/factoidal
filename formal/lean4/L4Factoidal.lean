@@ -4,6 +4,9 @@
 import L4Factoidal.RDF.XmlCanon
 import L4Factoidal.RDF.Core
 import L4Factoidal.RDF.Graph
+import L4Factoidal.RDF.Isomorphism
+import L4Factoidal.RDF.IsomorphismTheorems
+import L4Factoidal.RDF.IsomorphismTests
 import L4Factoidal.SPARQL.Algebra
 import L4Factoidal.SPARQL.Invariants
 import L4Factoidal.Tests

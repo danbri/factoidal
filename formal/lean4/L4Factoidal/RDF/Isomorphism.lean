@@ -343,28 +343,41 @@ inductive IsoOutcome where
 W3C evaluation test; beyond it, report rather than guess). -/
 def isoBnodeBudget : Nat := 16
 
+/-- The identity mapping on `g`'s blank nodes, as an association
+list. -/
+def Graph.idMapping (g : Graph) : List (BNodeId × BNodeId) :=
+  g.bnodes.map (fun b => (b, b))
+
+/-- Everything after the identity fast path: cheap necessary
+conditions, the budget refusal, then the backtracking search. Its
+result is a CANDIDATE — `Graph.isomorphismMap?` is what certifies
+it. -/
+def Graph.isoSearchStep (g1 g2 : Graph) : Option (List (BNodeId × BNodeId)) :=
+  if g1.bnodes.length != g2.bnodes.length then none
+  else if !Graph.setEqB g1.ground g2.ground then none
+  else if g1.bnodes.length > isoBnodeBudget then none
+  else
+    searchBijection
+      (fun m => Graph.isoCert m g1 g2 g1.bnodes g2.bnodes)
+      (fun b1 b2 => keyMultisetEq (sigLookup g1.sigTable b1)
+                                  (sigLookup g2.sigTable b2))
+      g1.bnodes g2.bnodes []
+
+/-- Candidate mapping: the identity first (the common eval-test case,
+one set comparison, no search and no budget), then the search. -/
+def Graph.isoSearch (g1 g2 : Graph) : Option (List (BNodeId × BNodeId)) :=
+  if Graph.isoCert g1.idMapping g1 g2 g1.bnodes g2.bnodes
+  then some g1.idMapping
+  else Graph.isoSearchStep g1 g2
+
 /-- The mapping search for graphs. Returns the WITNESS, not just a
-Bool, and re-checks the certificate on the way out so that soundness
-needs nothing from the search itself. -/
+Bool, and certifies it on the way out, so soundness needs NOTHING from
+the search — only that whatever comes back passes `Graph.isoCert`. -/
 def Graph.isomorphismMap? (g1 g2 : Graph) :
     Option (List (BNodeId × BNodeId)) :=
-  let bs1 := g1.bnodes
-  let bs2 := g2.bnodes
-  let idm := bs1.map (fun b => (b, b))
-  -- Fast path: the labels already agree (the common eval-test case).
-  if Graph.isoCert idm g1 g2 bs1 bs2 then some idm
-  -- Cheap necessary conditions before any search.
-  else if bs1.length != bs2.length then none
-  else if !Graph.setEqB g1.ground g2.ground then none
-  else if bs1.length > isoBnodeBudget then none
-  else
-    let t1 := g1.sigTable
-    let t2 := g2.sigTable
-    match searchBijection (fun m => Graph.isoCert m g1 g2 bs1 bs2)
-            (fun b1 b2 => keyMultisetEq (sigLookup t1 b1) (sigLookup t2 b2))
-            bs1 bs2 [] with
-    | some m => if Graph.isoCert m g1 g2 bs1 bs2 then some m else none
-    | none   => none
+  match Graph.isoSearch g1 g2 with
+  | some m => if Graph.isoCert m g1 g2 g1.bnodes g2.bnodes then some m else none
+  | none   => none
 
 /-- Graph isomorphism as a Bool (RDF 1.1 Concepts §3.6). -/
 def Graph.isomorphic? (g1 g2 : Graph) : Bool :=
@@ -450,26 +463,37 @@ def Dataset.Isomorphic (ds1 ds2 : Dataset) : Prop :=
     Dataset.OntoBnodes f ds1 ds2 ∧
     Dataset.SetEq (ds1.renameBnodes f) ds2
 
+/-- The identity mapping on a dataset's blank nodes. -/
+def Dataset.idMapping (ds : Dataset) : List (BNodeId × BNodeId) :=
+  ds.bnodes.map (fun b => (b, b))
+
+/-- Everything after the identity fast path, for datasets. -/
+def Dataset.isoSearchStep (ds1 ds2 : Dataset) :
+    Option (List (BNodeId × BNodeId)) :=
+  if ds1.bnodes.length != ds2.bnodes.length then none
+  else if !Dataset.namesMatchB ds1 ds2 then none
+  else if ds1.bnodes.length > isoBnodeBudget then none
+  else
+    searchBijection
+      (fun m => Dataset.isoCert m ds1 ds2 ds1.bnodes ds2.bnodes)
+      (fun b1 b2 => keyMultisetEq (sigLookup ds1.flatten.sigTable b1)
+                                  (sigLookup ds2.flatten.sigTable b2))
+      ds1.bnodes ds2.bnodes []
+
+def Dataset.isoSearch (ds1 ds2 : Dataset) : Option (List (BNodeId × BNodeId)) :=
+  if Dataset.isoCert ds1.idMapping ds1 ds2 ds1.bnodes ds2.bnodes
+  then some ds1.idMapping
+  else Dataset.isoSearchStep ds1 ds2
+
 /-- The mapping search for datasets. Same shape as the graph one; the
 signature pruning uses the flattened dataset, the certificate does
 not. -/
 def Dataset.isomorphismMap? (ds1 ds2 : Dataset) :
     Option (List (BNodeId × BNodeId)) :=
-  let bs1 := ds1.bnodes
-  let bs2 := ds2.bnodes
-  let idm := bs1.map (fun b => (b, b))
-  if Dataset.isoCert idm ds1 ds2 bs1 bs2 then some idm
-  else if bs1.length != bs2.length then none
-  else if !Dataset.namesMatchB ds1 ds2 then none
-  else if bs1.length > isoBnodeBudget then none
-  else
-    let t1 := ds1.flatten.sigTable
-    let t2 := ds2.flatten.sigTable
-    match searchBijection (fun m => Dataset.isoCert m ds1 ds2 bs1 bs2)
-            (fun b1 b2 => keyMultisetEq (sigLookup t1 b1) (sigLookup t2 b2))
-            bs1 bs2 [] with
-    | some m => if Dataset.isoCert m ds1 ds2 bs1 bs2 then some m else none
-    | none   => none
+  match Dataset.isoSearch ds1 ds2 with
+  | some m =>
+      if Dataset.isoCert m ds1 ds2 ds1.bnodes ds2.bnodes then some m else none
+  | none   => none
 
 /-- Dataset isomorphism as a Bool. -/
 def Dataset.isomorphic? (ds1 ds2 : Dataset) : Bool :=
