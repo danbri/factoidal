@@ -25,6 +25,7 @@ fixtures here saturate in two or three rounds, and the idempotence
 checks pin that.
 -/
 import L4Factoidal.OWL.RLTheorems
+import L4Factoidal.OWL.RLClosureIndexed
 
 namespace L4Factoidal.OWL.RL
 
@@ -373,5 +374,42 @@ for every k — the length test in `closure` is what makes that hold, and
 #guard closure gEq 4 == closure gEq 6
 #guard closure gUni 4 == closure gUni 6
 #guard (closure gSco 4).length == (step (closure gSco 4)).length
+
+/-! ## The indexed engine computes the same list
+
+`RLClosureIndexed.indexedClosure_eq` proves `indexedClosure g fuel =
+closure g fuel` for every graph and fuel; these guards evaluate both
+engines on the fixtures above and compare the LISTS (order included),
+so a build also exercises the compiled `Std.HashMap` path the proof
+reasons about abstractly. The clash verdict is compared the same way. -/
+
+#guard indexedClosure gEq 4 == closure gEq 4
+#guard indexedClosure gTrp 4 == closure gTrp 4
+#guard indexedClosure gSymp 3 == closure gSymp 3
+#guard indexedClosure gInv 3 == closure gInv 3
+#guard indexedClosure gFp 3 == closure gFp 3
+#guard indexedClosure gIfp 3 == closure gIfp 3
+#guard indexedClosure gDomRng 3 == closure gDomRng 3
+#guard indexedClosure gSpo 3 == closure gSpo 3
+#guard indexedClosure gEqp 3 == closure gEqp 3
+#guard indexedClosure gInt 3 == closure gInt 3
+#guard indexedClosure gUni 3 == closure gUni 3
+#guard indexedClosure gSvf 3 == closure gSvf 3
+#guard indexedClosure gAvf 3 == closure gAvf 3
+#guard indexedClosure gHv 3 == closure gHv 3
+#guard indexedClosure gSco 4 == closure gSco 4
+#guard indexedClosure gEqc 3 == closure gEqc 3
+#guard indexedClosure gCls 3 == closure gCls 3
+#guard indexedClosure gDomProp 3 == closure gDomProp 3
+#guard indexedClosure gRngProp 3 == closure gRngProp 3
+#guard indexedClosure gDw 3 == closure gDw 3
+#guard indexedClosure [] 3 == closure [] 3
+-- A duplicate in the input survives in both (the index pictures the
+-- list, duplicates and all).
+#guard indexedClosure (gSco ++ gSco) 4 == closure (gSco ++ gSco) 4
+#guard detectClashI (closureI (Index.ofGraph gDw) 3) == inconsistent gDw 3
+#guard detectClashI (closureI (Index.ofGraph gSco) 3) == inconsistent gSco 3
+#guard detectClashI (Index.ofGraph
+  [⟨S iX, owlSameAs, O iY⟩, ⟨S iX, owlDifferentFrom, O iY⟩]) == true
 
 end L4Factoidal.OWL.RL
