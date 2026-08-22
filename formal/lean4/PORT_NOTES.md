@@ -91,3 +91,39 @@ the source modules.
 5. RDFS closure + soundness — the natural first deep theorem target;
    tableau work (#448-adjacent) after that, where Lean's structural
    induction is expected to shine.
+
+## Crypto/SHA2 landing (2026-08-22)
+
+`L4Factoidal/Crypto/SHA2.lean` + `SHA2Theorems.lean` + `SHA2Tests.lean`
+— a pure Lean 4 implementation of FIPS 180-4 SHA-256/384/512, under
+the crypto-policy skill's "Lean 4 tree amendment" (owner-approved
+2026-08-22: a pure Lean hash over PUBLIC data is permitted, carrying
+FIPS/RFC test vectors as build-time `#guard`s; signatures/MACs/
+key-agreement stay HACL*-FFI-only, never hand-written Lean).
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `L4Factoidal/Crypto/SHA2.lean` | `RDF.Canonical.fst` `hash_sha256`/`hash_sha384` `assume val`s | full message schedule, compression, §5.1.1/§5.1.2 padding, `sha256`/`sha384`/`sha512` (`ByteArray → ByteArray`) + `sha256Hex`/`sha384Hex`/`sha512Hex` (`String → String`, UTF-8-in/lowercase-hex-out — the exact shape the F\* `assume val`s need) |
+| `L4Factoidal/Crypto/SHA2.lean` (`HashAlgorithm`/`hashBytes`/`hashHex`) | (new; hash-agility layer, owner directive 2026-08-22 — "sooner or later [SHA-256] will fall and we want to be ready") | every future consumer (RDFC-1.0, VC Data Integrity, SPARQL §17.4.4) is required to take a `HashAlgorithm` parameter and call the dispatcher, never `sha256`/`sha256Hex` directly; `HashAlgorithm` deliberately leaves room for a `sha3_256`/`shake256` constructor (FIPS 202, not ported — different Keccak-based construction) |
+| `L4Factoidal/Crypto/SHA2Theorems.lean` | (new) | `pushN_size` (padding-fill byte count), `pad256_size`/`pad512_size` (padded length is a multiple of 64/128 — the fact that makes the outer block loop's Nat-fuel exact rather than approximate), `sha256_size`/`sha384_size`/`sha512_size` (32/48/64-byte digest length) — all six proved (`propext`, `Quot.sound` only; no `sorry`, no extra axioms), none needed to be left unproved |
+| `L4Factoidal/Crypto/SHA2Tests.lean` | (new) | 22 `#guard`s: FIPS 180-4's three official example messages ("abc", the 56-byte and 112-byte two-block examples, 1,000,000×'a') for all three algorithms, plus a non-ASCII UTF-8 case and the hash-agility dispatcher, against digests generated (not hand-typed) from macOS `shasum -a 256/384/512` output — see the file's own provenance note for why (two hand-typed digest transcription errors were caught and replaced in-session before landing) |
+
+**This REPLACES `RDF.Canonical.fst`'s `hash_sha256`/`hash_sha384`
+`assume val`s with pure, verified-total code** for the Lean tree (the
+F\* tree's own `assume val`s are untouched by this landing — that is
+a separate F\*-side realisation step, tracked by crypto-policy/#63).
+**MD5 and SHA-1 remain unported** — out of scope for this landing
+(SPARQL §17.4.4 also names `MD5`/`SHA1`; both are legacy/broken
+algorithms with no RDFC-1.0 or VC Data Integrity call site, so porting
+them was not prioritised here).
+
+Structural discipline: no `partial def` anywhere. The outer block
+loop is Nat-fuel-by-exact-block-count (`pad256_size`/`pad512_size`
+prove the fuel is exact); the two per-block fixed-length loops
+(message schedule extension, round function) use core Lean's
+`for _ in [a:b] do` over a compile-time-constant range; `pushN`
+(padding) is explicit Nat-structural recursion; the digest
+serialisation is a straight-line, statically-fixed-count push chain
+(not a loop) — see `SHA2.lean`'s module header for why that specific
+design choice is what makes the length theorems tractable by `simp`
+alone, without reasoning about the hash's actual arithmetic.
