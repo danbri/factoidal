@@ -29,6 +29,9 @@ import L4Factoidal.JSON.Parser
 import L4Factoidal.JSON.Serialize
 import L4Factoidal.JSON.Tests
 import L4Factoidal.JSON.Theorems
+import L4Factoidal.RDF.Canonical
+import L4Factoidal.RDF.CanonicalTheorems
+import L4Factoidal.RDF.CanonicalTests
 import L4Factoidal.Tests
 import L4Factoidal.SPARQL.ExprTests
 import L4Factoidal.XML.Document
