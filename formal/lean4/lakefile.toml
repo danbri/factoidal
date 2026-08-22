@@ -36,3 +36,10 @@ roots = ["Wasm.Abi", "Wasm.Exports"]
 name = "l4wasm-cli"
 srcDir = "."
 root = "Wasm.Main"
+
+# Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
+# .rq files without a manifest, using the suites' naming convention.
+# See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.
+[[lean_exe]]
+name = "l4sparql-probe"
+root = "Harness.SparqlSyntaxProbe"
