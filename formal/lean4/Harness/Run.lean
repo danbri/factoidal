@@ -41,7 +41,6 @@ import L4Factoidal.Syntax.NQuads
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.RDF.Canonical
 import L4Factoidal.SPARQL.Parser
-import L4Factoidal.SPARQL.Exists
 import L4Factoidal.SPARQL.ResultsXml
 import L4Factoidal.SPARQL.ResultsJson
 import L4Factoidal.SPARQL.ResultsCsvTsv

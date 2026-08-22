@@ -1902,3 +1902,88 @@ position), the CSV leniency, the budget give-up, the `rs:ResultSet`
 decoder with `rs:index`, `mf:include`, `sd:entailmentRegime` in both
 shapes and `qt:serviceData`. Sabotaging `compareSelectRows` to
 always-true fails the build at those guards.
+
+## Stage: EXISTS gets its proper shape — `QueryPattern` in the AST, active graph in conditions (2026-08-22)
+
+Branch `lean4/sparql-exists`. Fixes the two sparql11 `exists` cases
+the harness named (`Exists within graph pattern`, `Nested positive
+exists`). Design record, with the option not taken and why:
+`SPARQL/Exists.lean` header.
+
+### What changed
+
+- `Expr.existsPat` / `Expr.notExistsPat` carry a `QueryPattern` (the
+  F\* `E_Exists : group_graph_pattern -> expr`), no longer a lowered
+  `GraphPattern`. `Expr`, `QueryPattern`, `Query`, `SelectItem`,
+  `SelectClause`, `QueryForm`, `OrderCondition`, `SolutionModifier`,
+  `GroupCondition` are one mutual inductive in `Expr.lean`
+  (`DatasetClause` sits just above it); the accessors, `mkQuery`,
+  lowering and evaluation stay in `Query.lean`.
+- `GraphPattern.filter` / `GraphPattern.leftJoin` conditions are
+  `Graph → Binding → Bool`: the algebra hands the condition the ACTIVE
+  graph (F\* `filter_solutions_with_graph … gs.gs_graph`,
+  `left_join_with_graph`). `bind` is unchanged (F\* `fx_bind_rows` does
+  no existential substitution).
+- `QueryPattern.lowerWith` and the new `substituteExistentials` (port
+  of the F\* `substitute_existentials`, arm for arm, no catch-all) are
+  one STRUCTURAL mutual block: an EXISTS body is lowered under the row
+  (`lowerWith env μ body` is `substitute(body, μ)`) and evaluated
+  against the active graph and `EvalEnv.dataset`. No fuel, no hook, no
+  `partial`. `EvalEnv.existsHook` is gone; `EvalEnv.dataset : Option
+  Dataset` (last field, default `none`) is installed by `evalSelect` /
+  `evalAsk` / `evalConstruct` from the query's dataset after FROM /
+  FROM NAMED. The harness no longer builds a hook.
+- `Query.toSse` prints EXISTS bodies through `sseGgp` (full fidelity;
+  the `_` placeholders and `sseGraphPattern` are gone). The parser's
+  EXISTS arm keeps the operand as parsed.
+
+### Module correspondence (append)
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `E_Exists` / `E_NotExists : group_graph_pattern -> expr` | `Expr.existsPat` / `Expr.notExistsPat (p : QueryPattern)` | one mutual inductive with the query AST, `SPARQL/Expr.lean` |
+| `substitute_existentials` (+ `_list`, `_opt`) | `SPARQL/Query.lean` `substituteExistentials`, `substituteExistentialsList`, `substituteExistentialsOpt` | structural, in the `lowerWith` mutual block |
+| `eval_exists` | `SPARQL/Exists.lean` `evalExists`; the substitution arm is `rfl`-equal to it (`substituteExistentials_existsPat`) | `substitute_pattern` is `lowerWith env μ` |
+| `filter_solutions_with_graph … g`, `left_join_with_graph … g` | `GraphPattern.filter` / `leftJoin` conditions take the active `Graph` | `SPARQL/Algebra.lean` |
+
+### Measured
+
+Before (claude/main 693dad6e0): `exists: 4 pass, 2 fail, 0 skip, 0
+unsupported (out of 6)`; `TOTAL: 309 pass, 47 fail, 0 skip, 275
+unsupported (out of 631)`.
+After: `exists: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)`;
+`TOTAL: 311 pass, 45 fail, 0 skip, 275 unsupported (out of 631)`. The
+FAIL lists differ by exactly the two named lines removed; nothing new.
+The six RDF suites: `TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported
+(out of 1078)`, unchanged.
+
+### Translation decisions (append)
+
+- Expressions inside a substituted body are evaluated on `μ ⊕ row`
+  (μ first) — the previous stage's spec-literal reading of §18.6
+  `substitute`, now applied uniformly by `lowerWith` (LATERAL bodies
+  included; Jena substitutes into expressions there too). The F\*
+  `substitute_pattern` / `lateral_substitute` leave embedded
+  expressions verbatim; the two agree on every W3C case.
+- A sub-SELECT inside an EXISTS body is lowered with the
+  projection-masked row (`lateralVisibleMu`), as LATERAL does; the F\*
+  `substitute_pattern` leaves `GP_SubSelect` verbatim.
+- `EvalEnv.dataset` is the §18.6 `D`, passed the way `services`
+  already is. `emptyEnv` therefore has no dataset and an EXISTS under
+  it is the expression-layer error (`E_Exists _ -> ER_Error`).
+- F\* behaviours ported as they are, each questionable against §18.6
+  ("EXISTS may appear wherever an expression may"): `BIND(EXISTS{…}
+  AS ?v)` errors (`fx_bind_rows`, `SPARQL11.Algebra.fst:4800`), and
+  EXISTS in SELECT expressions / ORDER BY / HAVING / GROUP BY errors
+  (`eval_select_query` never substitutes existentials).
+
+### Assumption report (append)
+
+Nothing new: no `sorry`, `axiom`, `native_decide`, `partial`, `opaque`
+or `@[extern]`. `#print axioms QueryPattern.lowerWith` and `evalSelect`
+still show `[propext, Classical.choice, Quot.sound]`. New `#guard`s in
+`QueryTests.lean` pin both fixed shapes on inline graphs (GRAPH <iri>,
+GRAPH ?g, nested EXISTS, nested NOT EXISTS, EXISTS under OPTIONAL, and
+the no-dataset error). Sabotage: lowering the nested body with
+`emptyEnv` fails `Nested positive exists` and the nested-EXISTS guard;
+restored.
