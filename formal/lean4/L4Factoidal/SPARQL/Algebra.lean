@@ -23,14 +23,34 @@ What is deliberately NOT ported here (with why):
     boolean value). `Filter`/`LeftJoin` conditions are abstracted as
     `Binding → Bool` — the shape §18.5 needs from a filter. The
     expression AST is a later porting stage of its own.
-  * property paths, GRAPH/SERVICE/VALUES/BIND/sub-SELECT — the wider
-    `GraphPattern` constructor set beyond this port's step-2 scope.
+
+LAYERING (decided when the wider constructor set landed). `Expr.lean`
+imports THIS file (an expression can contain a pattern: EXISTS), so
+this file cannot import `Expr.lean`. Rather than merge the two, the
+algebra stays SPEC-LEVEL and ABSTRACT in exactly the places an
+expression would appear:
+
+  | constructor      | abstract argument            | concrete AST lives in |
+  |------------------|------------------------------|-----------------------|
+  | `filter`         | `Binding → Bool`             | `Query.lean`          |
+  | `leftJoin`       | `Binding → Bool`             | `Query.lean`          |
+  | `bind`           | `Binding → Option Term`      | `Query.lean`          |
+  | `lateral`        | `Binding → GraphPattern`     | `Query.lean`          |
+  | `service`        | `Option Graph` (resolved)    | `Query.lean`          |
+  | `modified`       | `SolutionSeq → SolutionSeq`  | `Query.lean`          |
+
+`SPARQL/Query.lean` holds `QueryPattern` — the concrete AST with one
+constructor per F* `group_graph_pattern` case, the one a parser will
+build — together with `QueryPattern.lower`, which compiles it into
+this algebra under an `EvalEnv`. So the reviewable §18.5/§18.6
+semantics is here, and every expression-shaped detail is one file up.
 
 Readability contract: every definition cites the SPARQL 1.1 spec
 section it implements; names track the spec's vocabulary (solution
 mapping, compatibility, merge) rather than implementation jargon.
 -/
 import L4Factoidal.RDF.Graph
+import L4Factoidal.SPARQL.PropertyPath
 
 namespace L4Factoidal.SPARQL
 
@@ -264,28 +284,267 @@ def leftJoin (omega1 omega2 : SolutionSeq) (cond : Binding → Bool) :
       else none)
     if extended.isEmpty then [mu1] else extended)
 
+/-! ## VALUES — SPARQL 1.1 §10.2 / §18.6
+
+`VALUES (?x ?y) { (1 2) (3 UNDEF) }` is inline data: each row becomes
+one solution mapping, and an UNDEF cell simply leaves that variable
+unbound in that row. -/
+
+/-- Zip a variable list against one VALUES row, skipping UNDEF cells —
+port of `zip_bindings`. -/
+def zipBindings : List VarName → List (Option Term) → Binding → Binding
+  | v :: vs, some t :: ts, mu => zipBindings vs ts (mu.bind v t)
+  | _ :: vs, _ :: ts,      mu => zipBindings vs ts mu
+  | _,       _,            mu => mu
+
+/-- eval(VALUES) — one solution mapping per data row (§18.6). Port of
+`eval_values`. -/
+def evalValues (vars : List VarName) (rows : List (List (Option Term))) :
+    SolutionSeq :=
+  rows.map (fun row => zipBindings vars row Binding.empty)
+
+/-- Bind `v ↦ t` unless `v` already holds a DIFFERENT term — the
+compatibility check GRAPH ?g needs before it can add its graph-name
+binding to an inner row (§18.6). Port of `sm_bind_if_compatible`. -/
+def Binding.bindIfCompatible (v : VarName) (t : Term) (mu : Binding) :
+    Option Binding :=
+  match mu.lookup v with
+  | some existing => if existing.eqb t then some mu else none
+  | none          => some (mu.bind v t)
+
+/-! ## Property-path results as solution mappings — §18.4
+
+A path denotes (subject, object) PAIRS; the pattern's own subject and
+object positions turn each pair into a solution mapping, or reject
+it. -/
+
+/-- Port of `path_result_to_solutions`. A variable in both positions
+must receive the SAME term for the pair to survive (`?x path ?x`). -/
+def pathResultToSolutions (ps : PatternSubject) (pt : PatternTerm)
+    (pairs : PathResult) : SolutionSeq :=
+  pairs.filterMap (fun pr =>
+    let s := pr.1
+    let o := pr.2
+    let muS : Option Binding :=
+      match ps with
+      | .var v            => some [(v, s)]
+      | .iri i            => if (Term.iri i).eqb s then some [] else none
+      | .bnode b          => if (Term.bnode b).eqb s then some [] else none
+      -- A triple term never occupies a path endpoint (RDF 1.2 #305).
+      | .tripleTerm _ _ _ => none
+    match muS with
+    | none => none
+    | some bs =>
+        match pt with
+        | .var v =>
+            match bs.lookup v with
+            | some existing => if existing.eqb o then some bs else none
+            | none          => some ((v, o) :: bs)
+        | .iri i            => if (Term.iri i).eqb o then some bs else none
+        | .bnode b          => if (Term.bnode b).eqb o then some bs else none
+        | .literal l        => if (Term.literal l).eqb o then some bs else none
+        | .tripleTerm _ _ _ => none)
+
+/-- The constants a property-path pattern names in its endpoints. The
+§18.2.2.5 reflexivity fix for `p*` / `p?` needs them: a query constant
+that appears nowhere in the data still matches itself under a
+zero-length path. -/
+def pathPatternConstants (ps : PatternSubject) (pt : PatternTerm) : List Term :=
+  (match ps with
+   | .iri i   => [Term.iri i]
+   | .bnode b => [Term.bnode b]
+   | _        => []) ++
+  (match pt with
+   | .iri i     => [Term.iri i]
+   | .bnode b   => [Term.bnode b]
+   | .literal l => [Term.literal l]
+   | _          => [])
+
+/-- Add the missing `(c, c)` pairs for the pattern's own constants —
+the F* tree's issue-#66 fix, applied only to the two zero-length-
+admitting path forms (§18.2.2.5). -/
+def addConstantReflexivity (ps : PatternSubject) (pt : PatternTerm)
+    (path : PropertyPath) (pairs : PathResult) : PathResult :=
+  match path with
+  | .zeroOrMore _ | .zeroOrOne _ =>
+      let hasReflexive (t : Term) : Bool :=
+        pairs.any (fun pr => pr.1.eqb t && pr.2.eqb t)
+      let missing := (pathPatternConstants ps pt).filter (fun t => !hasReflexive t)
+      pairs ++ missing.map (fun n => (n, n))
+  | _ => pairs
+
 /-! ## Graph patterns — the algebra AST (§18.2.2.6 output forms)
 
-The constructor set of this stage: BGP and the §18.5 binary
-operations. (The full F* `group_graph_pattern` additionally carries
-GRAPH, SERVICE, BIND, VALUES, sub-SELECT, property paths, and the
-SPARQL 1.2-track LATERAL — later porting stages.) -/
+One constructor per F* `group_graph_pattern` case, with the
+expression-shaped arguments abstracted per the LAYERING table in the
+module banner. -/
 
 inductive GraphPattern where
+  /-- A Basic Graph Pattern (§18.3). -/
   | bgp      (patterns : Bgp)
+  /-- Join(P1, P2) — §18.5. -/
   | join     (l r : GraphPattern)
+  /-- LeftJoin(P1, P2, expr) — OPTIONAL, §18.5. -/
   | leftJoin (l r : GraphPattern) (cond : Binding → Bool)
+  /-- Filter(expr, P) — §18.5. -/
   | filter   (cond : Binding → Bool) (p : GraphPattern)
+  /-- Union(P1, P2) — §18.5. -/
   | union    (l r : GraphPattern)
+  /-- Minus(P1, P2) — §18.5. -/
   | minus    (l r : GraphPattern)
+  /-- `GRAPH <iri> { P }` / `GRAPH ?g { P }` — §18.6. The name is a
+  pattern term so both forms share one constructor, as in the F*
+  source. -/
+  | graph    (name : PatternTerm) (p : GraphPattern)
+  /-- `P1 LATERAL { P2 }` — correlated evaluation. The right operand is
+  a FUNCTION of the left row: the spec-level statement of "substitute
+  the left row's bindings into the right pattern, then evaluate". The
+  concrete substitution (`lateralSubstitute`, with the sub-SELECT
+  projection-masking rule) lives in `Query.lean`.
+  Jena: https://jena.apache.org/documentation/query/lateral-join.html -/
+  | lateral  (l : GraphPattern) (r : Binding → GraphPattern)
+  /-- `BIND(expr AS ?v)` appended to a pattern — §18.6. The binder is
+  abstract: `none` is the spec's "expression error, leave unbound". -/
+  | bind     (binder : Binding → Option Term) (v : VarName) (p : GraphPattern)
+  /-- `VALUES (?x ?y) { (1 2) (3 UNDEF) }` — inline data, §10.2. -/
+  | values   (vars : List VarName) (rows : List (List (Option Term)))
+  /-- `SERVICE [SILENT] <iri> { P }` — §18.6 / SPARQL 1.1 Federated
+  Query §2. The endpoint is already RESOLVED to the graph it serves
+  (`none` = unknown endpoint), because endpoint resolution is a host
+  service, not algebra. -/
+  | service  (remote : Option Graph) (silent : Bool) (p : GraphPattern)
+  /-- `SERVICE [SILENT] ?v { P }` — the endpoint IRI comes from a
+  binding, so resolution has to wait until a row supplies one. -/
+  | serviceVar (v : VarName) (resolve : Iri → Option Graph) (silent : Bool)
+               (p : GraphPattern)
+  /-- A sub-pattern whose solution sequence is post-processed — the
+  algebra-level shape of a sub-SELECT (§18.2.4): evaluate the inner
+  WHERE, then run the inner query's grouping / projection / DISTINCT /
+  ORDER / slice pipeline over the result. `Query.lean` supplies that
+  pipeline as `post`. -/
+  | modified (post : SolutionSeq → SolutionSeq) (p : GraphPattern)
+  /-- `?s path ?o` — a property-path pattern, §18.4. -/
+  | propertyPath (s : PatternSubject) (path : PropertyPath) (o : PatternTerm)
+  /-- The empty group pattern `{}` — the identity for Join (§18.2.2.6:
+  it yields exactly the empty solution mapping). -/
+  | empty
 
-/-- eval(P, G) — §18.5's recursive evaluation over the algebra. -/
-def GraphPattern.eval (g : Graph) : GraphPattern → SolutionSeq
-  | .bgp b           => evalBgp b g
-  | .join l r        => SPARQL.join (l.eval g) (r.eval g)
-  | .leftJoin l r c  => SPARQL.leftJoin (l.eval g) (r.eval g) c
-  | .filter c p      => filterSeq c (p.eval g)
-  | .union l r       => SPARQL.union (l.eval g) (r.eval g)
-  | .minus l r       => SPARQL.minus (l.eval g) (r.eval g)
+/-! ## Evaluation over a dataset — SPARQL 1.1 §18.5 / §18.6
+
+`evalIn ds active P` evaluates `P` against the ACTIVE graph, with `ds`
+supplying the named graphs GRAPH can switch to. Every arm threads the
+same dataset; only `graph` and `service` change the active graph.
+
+TERMINATION: structural on the pattern. The `lateral` arm's recursive
+call is `evalIn ds active (r mu1)`, and `r mu1` is covered by the
+recursor's induction hypothesis for the function-valued field — so
+this is ordinary structural recursion, not fuel and not
+well-founded. (The F* source needs a lexicographic
+`%[pattern_size; phase]` measure plus
+`lemma_lateral_substitute_preserves_size` for the same clique,
+because there LATERAL substitutes and then re-enters the evaluator on
+a pattern that is not a subterm. Making the right operand a FUNCTION
+of the row moves that obligation into the type.) -/
+
+def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
+    SolutionSeq :=
+  match p with
+  | .bgp b          => evalBgp b active
+  -- SERVICE ?v on the RIGHT of a join: evaluate the left side first,
+  -- then dispatch each row to the endpoint that row's binding names.
+  -- Port of the F* `GP_Join p1 (GP_ServiceVar ...)` arm.
+  | .join p1 (.serviceVar v resolve silent inner) =>
+      (GraphPattern.evalIn ds active p1).flatMap (fun mu =>
+        match mu.lookup v with
+        | some (.iri i) =>
+            match resolve i.val with
+            | some remote =>
+                (GraphPattern.evalIn ds remote inner).filterMap (fun mu1 =>
+                  if mu.compatible mu1 then some (mu.merge mu1) else none)
+            | none => if silent then [mu] else []
+        | _ => if silent then [mu] else [])
+  -- Symmetric: SERVICE ?v on the LEFT of a join.
+  | .join (.serviceVar v resolve silent inner) p2 =>
+      (GraphPattern.evalIn ds active p2).flatMap (fun mu =>
+        match mu.lookup v with
+        | some (.iri i) =>
+            match resolve i.val with
+            | some remote =>
+                (GraphPattern.evalIn ds remote inner).filterMap (fun mu1 =>
+                  if mu.compatible mu1 then some (mu.merge mu1) else none)
+            | none => if silent then [mu] else []
+        | _ => if silent then [mu] else [])
+  | .join l r       =>
+      SPARQL.join (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
+  | .leftJoin l r c =>
+      SPARQL.leftJoin (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r) c
+  | .filter c q     => filterSeq c (GraphPattern.evalIn ds active q)
+  | .union l r      =>
+      SPARQL.union (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
+  | .minus l r      =>
+      SPARQL.minus (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
+  -- §18.6 GRAPH.
+  | .graph name q =>
+      match name with
+      -- GRAPH <iri>: evaluate against that named graph; an IRI the
+      -- dataset does not name contributes nothing.
+      | .iri i =>
+          match ds.lookupNamed i.val with
+          | some g => GraphPattern.evalIn ds g q
+          | none   => []
+      -- GRAPH ?g: evaluate against EVERY named graph, binding ?g to
+      -- that graph's name in each row it produces.
+      | .var v =>
+          ds.named.flatMap (fun ng =>
+            let rows := GraphPattern.evalIn ds ng.graph q
+            if h : isIri ng.name = true then
+              rows.filterMap (fun mu => mu.bindIfCompatible v (.iri ⟨ng.name, h⟩))
+            else rows)
+      -- Any other pattern term in the name position: the F* source
+      -- falls back to the active graph.
+      | _ => GraphPattern.evalIn ds active q
+  -- LATERAL: per left row, evaluate the row-specialised right pattern
+  -- and merge back. An empty right side drops the row (inner-join
+  -- shaped, unlike OPTIONAL).
+  | .lateral l r =>
+      (GraphPattern.evalIn ds active l).flatMap (fun mu1 =>
+        (GraphPattern.evalIn ds active (r mu1)).filterMap (fun mu2 =>
+          if mu1.compatible mu2 then some (mu1.merge mu2) else none))
+  -- §18.6 BIND: extend each row, unless the variable is already bound
+  -- there or the expression errors.
+  | .bind binder v q =>
+      (GraphPattern.evalIn ds active q).map (fun mu =>
+        match binder mu with
+        | some t => match mu.lookup v with
+                    | some _ => mu
+                    | none   => mu.bind v t
+        | none   => mu)
+  | .values vars rows => evalValues vars rows
+  -- SERVICE with a fixed endpoint. On a miss, SILENT yields one empty
+  -- solution mapping and non-SILENT yields none — the F* arm exactly.
+  | .service remote silent q =>
+      match remote with
+      | some g => GraphPattern.evalIn ds g q
+      | none   => if silent then [Binding.empty] else []
+  -- SERVICE ?v outside a join has no row to read the endpoint from.
+  | .serviceVar _ _ silent _  => if silent then [Binding.empty] else []
+  | .modified post q => post (GraphPattern.evalIn ds active q)
+  -- §18.4 property paths, with the §18.2.2.5 constant-reflexivity fix.
+  | .propertyPath ps path pt =>
+      pathResultToSolutions ps pt
+        (addConstantReflexivity ps pt path (evalPath path active))
+  | .empty => [Binding.empty]
+
+/-- eval(P, G) — §18.5 evaluation against a single graph, the
+default-graph special case of `evalIn` (no named graphs, so GRAPH
+contributes nothing). Kept as the entry point every earlier theorem
+uses. -/
+def GraphPattern.eval (g : Graph) (p : GraphPattern) : SolutionSeq :=
+  p.evalIn { default := g, named := [] } g
+
+/-- The two entry points agree by definition, stated so it is checked
+rather than assumed. -/
+theorem GraphPattern.eval_eq_evalIn (g : Graph) (p : GraphPattern) :
+    p.eval g = p.evalIn { default := g, named := [] } g := rfl
 
 end L4Factoidal.SPARQL
