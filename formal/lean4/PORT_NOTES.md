@@ -3535,3 +3535,26 @@ segment intersection; a hole returns an otherwise-interior point to
 exterior. Caller-side assumption carried over verbatim: ray-casting is
 meaningful only for SIMPLE rings — segment intersection needs no such
 assumption.
+
+### GeoSPARQL: WKT parsing and decimal rendering (2026-08-22)
+
+`Geo/Wkt.lean` ports `Parser.WKT.fst`: the Simple Features WKT
+grammar behind `geo:wktLiteral`, with the optional `<IRI>` CRS prefix,
+all seven geometry tags, `EMPTY` forms, nested
+`GEOMETRYCOLLECTION`, and case-insensitive tags. Numbers parse to
+EXACT decimals, so `POINT(0.1 0.2)` compares equal to `⟨10,2⟩,⟨20,2⟩`
+— the whole reason the Geo port exists.
+
+Lean-side difference worth recording: the F* parser threads an
+explicit FUEL parameter because its input is a string with an index.
+This port works on `List Char`, so every production except the two
+genuinely recursive ones (comma lists, collections) is structurally
+decreasing and needs no fuel; the recursive pair is `partial` and
+`geometry`/`geometryList` must be declared `mutual`.
+
+Guards pin what a parser gets wrong quietly: trailing junk, a
+one-coordinate point, an unknown tag, an unclosed paren and the empty
+string must all FAIL rather than partially parse. `Scaled.toStringDec`
+renders the exact value back (`-0.1`, `0.001`), and a parsed polygon
+feeds `pointWithinPolygon` directly, so parse and topology are wired
+end to end.
