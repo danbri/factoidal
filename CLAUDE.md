@@ -316,6 +316,11 @@ session.
   inventory (toolchain-cache, checked-cache), what the hook restores
   automatically, skill-symlink regeneration, and the never-again
   rules from the 90-minutes-of-compiles incident.
+- [`factoidal-lean-basics`](skills/factoidal-lean-basics/SKILL.md)
+  — the Lean 4 side (formal/lean4/, L4Factoidal, #466): toolchain,
+  build/demo/test, the no-sorry/no-axiom policy + audit, the purity
+  doctrine replacing `assume val`, lean-lsp-mcp + lemma search, and
+  the paid-for Lean pitfalls.
 - [`crypto-policy`](skills/crypto-policy/SKILL.md) — never roll our
   own crypto; HACL\* adoption order for the hash/signature
   `assume val`s (#63), and the wasm compatibility gate.
