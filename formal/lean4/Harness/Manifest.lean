@@ -163,6 +163,17 @@ structure TestCase where
   /-- `qt:serviceData`: (endpoint IRI, local data path) pairs for
   SERVICE tests. -/
   serviceData : List (String × String) := []
+  /-- `mf:entailmentRegime` — the rdf-mt suite's literal (`"simple"`,
+  `"RDF"`, `"RDFS"`) on the entry itself (the F* runner's
+  `test_type_detail`). -/
+  entailmentRegime : Option String := none
+  /-- `mf:recognizedDatatypes ( … )` — the datatype IRIs the test asks
+  the implementation to recognise (rdf-mt only; empty otherwise). -/
+  recognizedDatatypes : List String := []
+  /-- `mf:result false` — the rdf-mt encoding of "the action graph is
+  (Positive) / is not (Negative) inconsistent". Recorded as a flag;
+  `resultFile` is `none` for such an entry. -/
+  resultFalse : Bool := false
   deriving Repr
 
 /-- One entry → one `TestCase`. Total: never returns `none`, because
@@ -188,8 +199,22 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
       | some t => localName (termKey t)
       | none   => ""
     let hashAlgorithm := (findObject? g subj (rdfcNs ++ "hashAlgorithm")).map termKey
+    -- `mf:result` is a file IRI, or (rdf-mt) the literal `false`.
+    let resultTerm := findObject? g subj (mfNs ++ "result")
+    let resultFalse := match resultTerm with
+                       | some (.literal l) => l.val.lexicalForm == "false"
+                       | _ => false
     let resultFile :=
-      (findObject? g subj (mfNs ++ "result")).map (fun t => iriToLocalPath manifestDir (termKey t))
+      if resultFalse then none
+      else resultTerm.map (fun t => iriToLocalPath manifestDir (termKey t))
+    -- rdf-mt: `mf:entailmentRegime "RDFS"` and `mf:recognizedDatatypes ( … )`
+    -- on the entry itself (the F* runner's `test_type_detail` /
+    -- `extract_iri_list`). `( )` and an absent triple both give `[]`.
+    let entailmentRegime := (findObject? g subj (mfNs ++ "entailmentRegime")).map termKey
+    let recognizedDatatypes :=
+      match findObject? g subj (mfNs ++ "recognizedDatatypes") with
+      | some t => (collectList g (g.length + 1) t).map termKey
+      | none   => []
     -- `mf:action`: a file IRI, or a bnode carrying qt: predicates.
     let actionTerm := findObject? g subj (mfNs ++ "action")
     let noBnodeAction : Option String × List String × List (String × String) ×
@@ -229,7 +254,8 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
             (none, (q, d, gd, regimes, sd))
       | none => (none, noBnodeAction)
     { name, entryId, testType, action, queryFile, dataFiles, graphData,
-      resultFile, approval, hashAlgorithm, entailmentRegimes, serviceData }
+      resultFile, approval, hashAlgorithm, entailmentRegimes, serviceData,
+      entailmentRegime, recognizedDatatypes, resultFalse }
 
 /-- `mf:assumedTestBase` — the base IRI the suite documents for its own
 fixtures. Read out of the manifest rather than hardcoded, because the

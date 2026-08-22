@@ -20,6 +20,12 @@ import L4Factoidal.RDFS.RdfsCore
 import L4Factoidal.RDFS.Closure
 import L4Factoidal.RDFS.ClosureTheorems
 import L4Factoidal.RDFS.ClosureTests
+import L4Factoidal.RDFS.FullClosure
+import L4Factoidal.RDFS.FullClosureTheorems
+import L4Factoidal.RDF.Datatypes
+import L4Factoidal.RDF.Entailment
+import L4Factoidal.RDF.EntailmentTheorems
+import L4Factoidal.RDF.EntailmentTests
 import L4Factoidal.SPARQL.Expr
 import L4Factoidal.SPARQL.ExprTheorems
 import L4Factoidal.SPARQL.Query
