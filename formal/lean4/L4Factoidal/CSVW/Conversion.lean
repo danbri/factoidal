@@ -134,9 +134,9 @@ def prepareLexical (dt : Option Datatype) (cell : String) : String × Bool :=
       -- The VALUE CONSTRAINTS are checked after the format, on the
       -- normalised form: `minimum: 5` against a cell of `4` makes the
       -- cell invalid, so it keeps its text and loses the datatype.
-      | .valid lex => (lex, satisfiesFacets d.facets lex)
+      | .valid lex => (lex, satisfiesFacetsFor base d.facets lex)
       | .invalid   => (trimmed, false)
-      | .noFormat  => (trimmed, satisfiesFacets d.facets trimmed)
+      | .noFormat  => (trimmed, satisfiesFacetsFor base d.facets trimmed)
 
 /-- What one cell contributes, before RDF terms are built: the
     resolved property IRI reference, and the object values (several

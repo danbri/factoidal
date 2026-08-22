@@ -63,6 +63,20 @@ def jsonScalarDatatype (n : String) : String :=
 private def xsdIri? (s : String) : Option WfIri :=
   if h : isIri s then some ⟨s, h⟩ else none
 
+/-- A CSVW class name written bare in `@type`. The metadata document's
+    `@context` IS the CSVW vocabulary, so `"@type": "Table"` means
+    `csvw:Table`; resolving it against the document base instead
+    produced an `rdf:type` to `<…/tests/Table>` (test263). -/
+def csvwClassNames : List String :=
+  ["TableGroup", "Table", "Schema", "Column", "Dialect", "Template",
+   "Datatype", "Direction", "ForeignKey", "Row", "Cell", "JSON",
+   "NumericFormat"]
+
+/-- Expand a `@type` value: a bare CSVW class name, else a prefixed
+    name, else left as written for `absoluteIri?` to reject. -/
+def expandTypeName (s : String) : String :=
+  if csvwClassNames.contains s then csvwNs ++ s else expandPrefixed s
+
 /-- The object term a LEAF common-property value denotes, if it is a
     leaf at all (`none` for an array or a nested node, which the
     caller handles). -/
@@ -70,7 +84,10 @@ def commonLeafTerm (base : String) (defaultLang : Option String) (v : Json)
     : Option Term :=
   match v with
   | .string s =>
-      match defaultLang with
+      -- An invalid `@language` is IGNORED, exactly as an invalid
+      -- column `lang` is: `"@language": "a-bad-language"` must give a
+      -- plain literal (test073).
+      match defaultLang.filter isLangTagValid with
       | some tag => some (.literal (Literal.langString s tag))
       | none     => some (.literal (Literal.string s))
   | .bool b =>
@@ -84,14 +101,14 @@ def commonLeafTerm (base : String) (defaultLang : Option String) (v : Json)
   | .object _ =>
       match jStrField? "@value" v with
       | some lex =>
-          match jStrField? "@language" v with
+          match (jStrField? "@language" v).filter isLangTagValid with
           | some tag => some (.literal (Literal.langString lex tag))
           | none =>
               match (jStrField? "@type" v).map expandPrefixed with
               | some ty =>
                   (refIri? base ty).map (fun dt => Term.literal (typedLiteral dt lex))
               | none =>
-                  match defaultLang with
+                  match defaultLang.filter isLangTagValid with
                   | some tag => some (.literal (Literal.langString lex tag))
                   | none     => some (.literal (Literal.string lex))
       | none =>
@@ -130,7 +147,7 @@ def commonTriples (base : String) (defaultLang : Option String)
                       let inner := ms.flatMap (fun (k, w) =>
                         if k == "@id" || k == "@value" || k == "@language" then []
                         else if k == "@type" then
-                          match (jStr? w).map expandPrefixed with
+                          match (jStr? w).map expandTypeName with
                           | some ty =>
                               match absoluteIri? ty with
                               | some t => [(⟨node, rdfTypeIri, .iri t⟩ : Triple)]

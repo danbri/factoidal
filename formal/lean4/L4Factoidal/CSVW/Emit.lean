@@ -122,7 +122,11 @@ def isLangTagValid (s : String) : Bool :=
   !s.isEmpty &&
   parts.all (fun p => p.length ≥ 1 && p.length ≤ 8 && p.all Char.isAlphanum) &&
   (match parts.head? with
-   | some p => p.all Char.isAlpha
+   -- The PRIMARY subtag is 2–8 alphabetic characters. A single letter
+   -- is reserved by BCP 47 and is not a language, which is what makes
+   -- `a-bad-language` invalid despite every subtag being well formed
+   -- on its own (test073).
+   | some p => p.all Char.isAlpha && p.length ≥ 2
    | none   => false)
 
 /-- The object terms a cell contributes: value IRIs when `valueUrl`
