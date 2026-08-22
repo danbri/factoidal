@@ -200,27 +200,25 @@ def canonTerm : Term → String
 
 /-! ### Blank-node graph names
 
-`RDF.NamedGraph.name` is an `Iri` string in both the F* source and this
-port, so the N-Quads parser encodes a blank-node graph label as the
-sentinel `"_:label"` (see `Syntax.NQuads.graphLabelToIri`). The
-canonical serialiser detects the sentinel and emits it as a blank node
-rather than wrapping it in angle brackets. -/
+RDF 1.1 Concepts §4 lets a graph name be an IRI or a blank node, and
+RDFC-1.0 treats a blank-node graph name as a blank node in every step
+that reasons over blank nodes (§4.5's placeholder rewrite, §4.7's
+related-component walk, §4.4's label issuing). `RDF.NamedGraph.name` is
+a `Subject`, so the graph slot needs no encoding of its own: its
+canonical N-Quads form is `canonSubject`, the very function the subject
+slot uses. -/
 
-def isBnodeGraphLabel (gi : Iri) : Bool := gi.startsWith "_:"
-
-def bnodeOfGraphLabel (gi : Iri) : BNodeId :=
-  if isBnodeGraphLabel gi then String.ofList (gi.toList.drop 2) else gi
-
-def canonGraphName (gi : Iri) : String :=
-  if isBnodeGraphLabel gi then "_:" ++ bnodeOfGraphLabel gi else "<" ++ gi ++ ">"
+/-- Canonical N-Quads form of a graph name (RDFC-1.0 §3): `<iri>` or
+`_:label`. -/
+def canonGraphName (g : Subject) : String := canonSubject g
 
 /-! ## Quads with graph names
 
 RDFC-1.0 reasons over quads; the default graph is the `none` graph
 name. -/
 
-/-- A quad: an optional graph name plus a triple. -/
-abbrev QQuad := Option Iri × Triple
+/-- A quad: an optional graph name (IRI or blank node) plus a triple. -/
+abbrev QQuad := Option Subject × Triple
 
 /-- Canonical N-Quads line for one quad, `" .\n"`-terminated
 (RDFC-1.0 §3). -/
@@ -270,8 +268,8 @@ def bnodesInQuad (q : QQuad) : List BNodeId :=
   (match t.s with | .bnode b => [b] | _ => []) ++
   bnodesInTerm t.o ++
   (match g with
-   | some gi => if isBnodeGraphLabel gi then [bnodeOfGraphLabel gi] else []
-   | none    => [])
+   | some (.bnode b) => [b]
+   | _               => [])
 
 /-- Sort and deduplicate a list of labels. -/
 def dedupStrings (xs : List String) : List String := dedupAdj (sortStrings xs)
@@ -304,12 +302,10 @@ def rewriteTripleForHfdq (target : BNodeId) (t : Triple) : Triple :=
 
 /-- Graph-name slot under the §4.5 rewrite: own label → `_:a`, another
 blank node → `_:z`, IRI graph and default graph unchanged. -/
-def rewriteGraphForHfdq (target : BNodeId) : Option Iri → Option Iri
-  | none      => none
-  | some gi   =>
-      if isBnodeGraphLabel gi then
-        some (if bnodeOfGraphLabel gi == target then "_:a" else "_:z")
-      else some gi
+def rewriteGraphForHfdq (target : BNodeId) : Option Subject → Option Subject
+  | none              => none
+  | some (.bnode b)   => some (.bnode (if b == target then "a" else "z"))
+  | some (.iri i)     => some (.iri i)
 
 /-- Does this quad mention `target` in any slot? -/
 def quadMentionsBnode (target : BNodeId) (q : QQuad) : Bool :=
@@ -317,8 +313,8 @@ def quadMentionsBnode (target : BNodeId) (q : QQuad) : Bool :=
   (match t.s with | .bnode b => b == target | _ => false) ||
   (bnodesInTerm t.o).contains target ||
   (match g with
-   | some gi => isBnodeGraphLabel gi && bnodeOfGraphLabel gi == target
-   | none    => false)
+   | some (.bnode b) => b == target
+   | _               => false)
 
 /-- The quads a blank node occurs in, input order preserved. -/
 def quadsForBnode (target : BNodeId) (qs : List QQuad) : List QQuad :=
@@ -432,8 +428,8 @@ yields an `o` entry and a `g` entry); a quad whose only blank node is
 `target` contributes none — it was fully accounted for by §4.5. -/
 def graphBnodeOf (q : QQuad) : Option BNodeId :=
   match q.1 with
-  | some gi => if isBnodeGraphLabel gi then some (bnodeOfGraphLabel gi) else none
-  | none    => none
+  | some (.bnode b) => some b
+  | _               => none
 
 def relatedComponents (target : BNodeId) (q : QQuad) : List (String × BNodeId) :=
   let (_, t) := q
@@ -773,14 +769,12 @@ def relabelTerm (m : List (BNodeId × String)) : Term → Term
 def relabelTriple (m : List (BNodeId × String)) (t : Triple) : Triple :=
   { s := relabelSubject m t.s, p := t.p, o := relabelTerm m t.o }
 
-/-- Canonical labels are stored bare (`c14n0`); the `"_:"` sentinel is
-re-attached when writing back into the `Iri`-typed graph-name slot. -/
-def relabelGraphName (m : List (BNodeId × String)) (gi : Iri) : Iri :=
-  if isBnodeGraphLabel gi then
-    match lookupMap (bnodeOfGraphLabel gi) m with
-    | some l => "_:" ++ l
-    | none   => gi
-  else gi
+/-- A blank-node graph name takes its canonical label like any other
+blank node (RDF 1.1 Concepts §4 + RDFC-1.0 §4.4); an IRI name is
+untouched. Same function as the subject slot, which is the point of
+typing the name as a `Subject`. -/
+def relabelGraphName (m : List (BNodeId × String)) (g : Subject) : Subject :=
+  relabelSubject m g
 
 def relabelDataset (m : List (BNodeId × String)) (ds : Dataset) : Dataset :=
   { default := ds.default.map (relabelTriple m),

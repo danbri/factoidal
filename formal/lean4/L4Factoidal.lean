@@ -10,6 +10,7 @@ import L4Factoidal.RDF.Graph
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.RDF.IsomorphismTheorems
 import L4Factoidal.RDF.IsomorphismTests
+import L4Factoidal.SPARQL.PropertyPath
 import L4Factoidal.SPARQL.Algebra
 import L4Factoidal.SPARQL.Invariants
 import L4Factoidal.RDFS.Vocabulary
@@ -19,6 +20,9 @@ import L4Factoidal.RDFS.ClosureTheorems
 import L4Factoidal.RDFS.ClosureTests
 import L4Factoidal.SPARQL.Expr
 import L4Factoidal.SPARQL.ExprTheorems
+import L4Factoidal.SPARQL.Query
+import L4Factoidal.SPARQL.QueryTheorems
+import L4Factoidal.SPARQL.QueryTests
 import L4Factoidal.Syntax.Lexing
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads
@@ -29,6 +33,9 @@ import L4Factoidal.Syntax.TurtleTests
 import L4Factoidal.Syntax.TurtleTheorems
 import L4Factoidal.Syntax.SyntaxTests
 import L4Factoidal.Syntax.SyntaxTheorems
+import L4Factoidal.Syntax.RdfXml
+import L4Factoidal.Syntax.RdfXmlTests
+import L4Factoidal.Syntax.RdfXmlTheorems
 import L4Factoidal.JSON.Value
 import L4Factoidal.JSON.Parser
 import L4Factoidal.JSON.Serialize
@@ -48,6 +55,12 @@ import L4Factoidal.XML.Tests
 import L4Factoidal.OWL.Tableau
 import L4Factoidal.OWL.TableauTheorems
 import L4Factoidal.OWL.TableauTests
+import L4Factoidal.SPARQL.Results
+import L4Factoidal.SPARQL.ResultsXml
+import L4Factoidal.SPARQL.ResultsJson
+import L4Factoidal.SPARQL.ResultsCsvTsv
+import L4Factoidal.SPARQL.ResultsTests
+import L4Factoidal.SPARQL.ResultsTheorems
 import L4Factoidal.JSONLD.Loader
 import L4Factoidal.JSONLD.Context
 import L4Factoidal.JSONLD.Expand

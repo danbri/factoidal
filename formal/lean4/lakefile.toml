@@ -1,8 +1,17 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4wasm-cli"]
+defaultTargets = ["L4Factoidal", "Harness", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4wasm-cli", "l4w3c", "l4rdfxml-probe"]
 
 [[lean_lib]]
 name = "L4Factoidal"
+
+# The W3C harness's shared modules. They live in a lib rather than
+# hanging off an executable root because `Harness.Main` imports them
+# and Lake only builds modules a lib claims. NOT part of the verified
+# library: these do file I/O and print scores. The probes
+# (`Harness.TurtleProbe`, `Harness.CanonProbe`) stay executable roots.
+[[lean_lib]]
+name = "Harness"
+globs = ["Harness.Common", "Harness.Manifest", "Harness.Run", "Harness.HarnessTests"]
 
 # Runs the XML parser over real W3C XML Conformance Test Suite files:
 # reads paths from stdin, prints WF / NWF per file. See
@@ -43,3 +52,22 @@ roots = ["Wasm.Abi", "Wasm.Exports"]
 name = "l4wasm-cli"
 srcDir = "."
 root = "Wasm.Main"
+
+# The MANIFEST-DRIVEN W3C conformance runner (issue #466, ladder rung
+# 3). Reads the real `manifest.ttl` files off disk with the Lean
+# Turtle parser and scores the Lean engine in the same score-line
+# grammar `bin/w3c-runner/w3c_runner.ml` uses, so the two trees'
+# numbers are directly comparable. Design:
+# docs/designissues/2026-08-22-lean4-w3c-harness.md
+#   lake exe l4w3c ../../third_party/testing/w3c/rdf/rdf11/rdf-turtle/manifest.ttl
+# `Harness.HarnessTests` is imported so its `#guard`s run in the build.
+[[lean_exe]]
+name = "l4w3c"
+root = "Harness.Main"
+# Real-corpus probe for the RDF/XML parser (Harness/RdfXmlProbe.lean).
+# Directory-driven, not manifest-driven, so it does not depend on the
+# Turtle parser. Separate from the library so the library stays
+# specification-only, per the spec/pragmatics split in PORT_NOTES.md.
+[[lean_exe]]
+name = "l4rdfxml-probe"
+root = "Harness.RdfXmlProbe"

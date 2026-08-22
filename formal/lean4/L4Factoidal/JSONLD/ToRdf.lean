@@ -40,7 +40,13 @@ objects / node references / value objects / list objects.
 Allocated from a threaded counter (§8.2's "generate blank node
 identifier"), prefixed `_jld_anon` to stay visually distinct from
 document-supplied `_:` labels. Labels are stored WITHOUT the `_:`
-prefix, matching `RDF.Core.BNodeId`; `Syntax.NQuads` re-adds it.
+prefix, matching `RDF.Core.BNodeId`; `Syntax.NQuads` re-adds it. The
+label shape is `RDF.Canonical.mkLabel`'s, so its proved injectivity
+carries over (`JSONLD/Theorems.lean`'s `freshBnode_injective`).
+
+A `@graph` whose `@id` is a blank node becomes a blank-node GRAPH NAME
+directly: `RDF.NamedGraph.name` is a `Subject`, so no `"_:<label>"`
+sentinel string is needed or used here.
 -/
 import L4Factoidal.JSON.Value
 import L4Factoidal.JSON.Serialize
@@ -557,12 +563,12 @@ def typePrependItems (subj : Subject) : List Json → List Triple → List Tripl
 def typePrepend (subj : Subject) (v : Json) (acc : List Triple) : List Triple :=
   typePrependItems subj (jldAsArray v) acc
 
-/-- Graph name slot for a named graph. A blank-node graph name is stored
-as the literal string `"_:<label>"` inside the IRI-typed name field —
-the `Syntax.NQuads` convention. -/
-def graphNameOfSubject : Subject → Iri
-  | .iri i   => i.val
-  | .bnode b => "_:" ++ b
+/-- Graph name slot for a named graph. `RDF.NamedGraph.name` is a
+`Subject`, so a JSON-LD `@graph` whose `@id` is a blank node maps
+straight across — RDF 1.1 Concepts §4 permits a blank-node graph name,
+and this port no longer needs the `"_:<label>"` sentinel string the
+earlier IRI-typed field forced. -/
+def graphNameOfSubject (s : Subject) : Subject := s
 
 /-- §8.6 `compound-literal`: a `@direction`-bearing value object becomes
 a FRESH BLANK NODE carrying `rdf:value` (the lexical form),

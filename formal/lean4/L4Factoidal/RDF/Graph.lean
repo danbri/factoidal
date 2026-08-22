@@ -76,11 +76,18 @@ def Graph.prefixBnodes (pre : String) (g : Graph) : Graph :=
 
 /-! ## Datasets — RDF 1.1 Concepts §4 -/
 
-/-- One named graph: an IRI naming a graph. -/
+/-- One named graph. RDF 1.1 Concepts §4 says a graph name "may be an
+IRI or a blank node", so the name slot is a `Subject` — the sum of
+exactly those two — and not an `Iri` string. That is what the N-Quads
+`[6] graphLabel` and TriG `[7g] labelOrSubject` productions accept, so
+the parsers hand the label straight over with no encoding in between.
+(The F* source's `named_graph.ng_name` is a bare `iri`, which is why
+`RDF.NQuads` there packs a blank-node name into the string as
+`"_:label"`; this port carries the sum type instead.) -/
 structure NamedGraph where
-  name  : Iri
+  name  : Subject
   graph : Graph
-  deriving Repr
+  deriving DecidableEq, Repr
 
 /-- An RDF dataset: exactly one default graph plus zero or more named
 graphs — the unit SPARQL's `FROM`/`FROM NAMED`/`GRAPH` clauses
@@ -88,15 +95,43 @@ graphs — the unit SPARQL's `FROM`/`FROM NAMED`/`GRAPH` clauses
 structure Dataset where
   default : Graph
   named   : List NamedGraph
-  deriving Repr
+  deriving DecidableEq, Repr
 
 def Dataset.empty : Dataset := { default := [], named := [] }
 
-/-- Look up a named graph by IRI (port of `lookup_named_graph`). -/
-def Dataset.lookupNamed (name : Iri) (ds : Dataset) : Option Graph :=
+/-- Look up a named graph by its name — an IRI or a blank node (port of
+`lookup_named_graph`). -/
+def Dataset.lookupNamed (name : Subject) (ds : Dataset) : Option Graph :=
   match ds.named.find? (fun ng => ng.name == name) with
   | some ng => some ng.graph
   | none    => none
+
+/-- Look up a named graph by a plain IRI — the SPARQL 1.1 `GRAPH <iri>`
+(§13.3) and `FROM NAMED` (§13.2) call sites, where the grammar admits
+only an IRI in the name position. A string that is not a well-formed
+IRI names nothing. -/
+def Dataset.lookupNamedIri (i : Iri) (ds : Dataset) : Option Graph :=
+  if h : isIri i = true then ds.lookupNamed (.iri ⟨i, h⟩) else none
+
+/-! ## Blank-node renaming over a dataset
+
+RDF 1.1 Concepts §3.4 scopes blank-node labels to the whole document,
+and §4 puts graph NAMES in that scope too — a `_:g` used as a graph
+name is the same blank node as a `_:g` in a triple. So a dataset-wide
+renaming touches the name slot as well as the triples. -/
+
+/-- Rename every blank node of a dataset: default graph, every named
+graph, and every blank-node graph NAME. -/
+def Dataset.renameBnodes (f : BNodeId → BNodeId) (ds : Dataset) : Dataset :=
+  { default := ds.default.renameBnodes f,
+    named   := ds.named.map (fun ng =>
+      { name := ng.name.renameBnodes f, graph := ng.graph.renameBnodes f }) }
+
+/-- Prefix every blank-node label of a dataset — the dataset-wide
+counterpart of `Graph.prefixBnodes`, used to scope one parsed
+document's labels apart from another's. -/
+def Dataset.prefixBnodes (pre : String) (ds : Dataset) : Dataset :=
+  ds.renameBnodes (fun b => pre ++ b)
 
 /-! ## Set-semantics theorems -/
 

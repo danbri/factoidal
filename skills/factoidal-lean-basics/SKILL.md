@@ -14,31 +14,23 @@ https://github.com/danbri/factoidal/issues/466
 
 | Area | Files | Content |
 |---|---|---|
-| `RDF/Core.lean`, `XmlCanon.lean`, `Graph.lean` | term model, XMLLiteral c14n, graphs/datasets, bnode renaming; eqb transitivity + membership/length lemma families (harvested) |
-| `RDF/Isomorphism*.lean` | §3.6 isomorphism spec + witness-returning bounded search, soundness proved |
-| `SPARQL/Algebra.lean`, `Invariants.lean` | solution mappings, BGP eval, §18.5 operators; empty laws, merge/lookup, BGP monotonicity proved |
-| `SPARQL/Expr*.lean` | §17 expression language: EBV, scaled-decimal numerics (order proved), §17.3 logic, builtins; EXISTS/NOW/extension fns via `EvalEnv` parameters |
-| `RDFS/Vocabulary.lean`, `RdfsCore.lean`, `Closure*.lean` | rdfs-core (six-rule) derivation relation + executable closure; extensive/sound/complete-at-saturation proved |
-| `Syntax/Lexing.lean`, `NTriples.lean`, `NQuads.lean`, `Syntax*.lean` | N-Triples/N-Quads rdf11+rdf12 parse/serialise; round-trip stated |
-| `XML/*.lean` (+ `xmlconf-probe` exe) | XML 1.0 parser with 20 WFCs, namespaces; xmlconf corpus probe |
-| `JSON/*.lean` | RFC 8259 parser/serialiser; escape + literal round-trips proved |
-| `Crypto/SHA2*.lean` | SHA-256/384/512 + `HashAlgorithm` agility; size theorems proved; FIPS vectors guarded |
-| `OWL/Tableau.lean`, `TableauTheorems.lean`, `TableauTests.lean` | tableau clash calculus (unqualified-cardinality fragment) + `refuted_sound` (a refuted ABox has no model, by structural induction — the theorem the F\* SMT wall blocked); folded in 2026-08-22 from the duplicate `formal/lean/` track, [#468](https://github.com/danbri/factoidal/issues/468) |
-| `Tests.lean`, `Demo.lean` | build-time guards + `#print axioms` audit; runnable tour |
-| `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence, decisions, assumption report |
-| File | Content |
-|---|---|
-| `L4Factoidal/RDF/Core.lean` | RDF 1.1/1.2 terms: wf-IRI subtypes, literals incl. RDF 1.2 base direction, triple terms; the THREE literal equalities (strict/engine/value) kept distinct; strict equality proved to be identity |
-| `L4Factoidal/RDF/XmlCanon.lean` | rdf:XMLLiteral exclusive-c14n value equality (the WebOnt-miscellaneous-202 fix, ported whole) |
-| `L4Factoidal/RDF/Graph.lean` | set-semantics graphs, datasets, blank-node renaming, membership theorems |
-| `L4Factoidal/SPARQL/Algebra.lean` | solution mappings (§18.1.8), compatibility/merge (§18.3), triple patterns incl. SPARQL 1.2 triple-term patterns, BGP evaluation, §18.5 Join/LeftJoin/Union/Minus/Filter |
-| `L4Factoidal/SPARQL/Invariants.lean` | PROVED: empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity |
-| `L4Factoidal/Tests.lean` | 19 `#guard` build-time tests + `#print axioms` audit lines |
-| `Demo.lean` | runnable guided tour with a Turtle-ish printer |
-| `Wasm/` | the WebAssembly export: JSON string-in/string-out ABI (`Abi.lean`), the `@[export]` C symbols (`Exports.lean`), a native driver over the same ABI (`Main.lean`), the C shim and `build-wasm.sh`. Produces `docs/web/hub/assets/l4/l4factoidal.wasm` (1.4 MB), which runs in browser, Node and Deno — hub post 36 runs it beside the F\* engine. Recipe + traps: `skills/lean4-wasm-export/SKILL.md` |
-| `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence + assumption report |
+| RDF core | `RDF/Core.lean`, `XmlCanon.lean`, `Graph.lean` | term model, XMLLiteral c14n, graphs/datasets, bnode renaming; eqb transitivity + membership/length lemma families |
+| Isomorphism | `RDF/Isomorphism*.lean` | §3.6 spec + witness-returning bounded search, soundness proved |
+| Canonicalisation | `RDF/Canonical*.lean`, `Harness/CanonProbe.lean` | RDFC-1.0 parameterised by `HashAlgorithm`; §3 sortedness + issuer injectivity proved; rdf-canon suite 86 pass, 0 fail (of 86) |
+| SPARQL algebra | `SPARQL/Algebra.lean`, `PropertyPath.lean`, `Invariants.lean` | 15-constructor GraphPattern (GRAPH/LATERAL/BIND/VALUES/SERVICE/sub-SELECT/paths), dataset-aware `evalIn`; monotonicity/merge/empty laws proved |
+| SPARQL expressions | `SPARQL/Expr*.lean` | §17 EBV, scaled numerics (order proved), §17.3 logic, builtins; EXISTS/NOW/extension fns/SERVICE via `EvalEnv` parameters |
+| SPARQL query | `SPARQL/Query*.lean` | QueryPattern→GraphPattern lowering, forms, modifiers, aggregates; ORDER BY permutation + DISTINCT laws proved; LATERAL cases pinned |
+| SPARQL results | `SPARQL/Results*.lean` | SRX/SRJ/CSV/TSV parse+serialise; SRJ N-row shape theorem proved |
+| RDFS | `RDFS/Vocabulary.lean`, `RdfsCore.lean`, `Closure*.lean` | rdfs-core derivation relation + closure; extensive/sound/complete-at-saturation proved |
+| RDF syntaxes | `Syntax/Lexing.lean`, `NTriples.lean`, `NQuads.lean`, `Turtle.lean`, `TriG.lean`, `IriResolve.lean`, `Harness/TurtleProbe.lean` | rdf11+rdf12 parse/serialise; RFC 3986 resolution (all §5.4 examples guarded); rdf-turtle eval 111 of 111, rdf-trig 107 of 108 |
+| XML | `XML/*.lean`, `xmlconf-probe` | XML 1.0 parser with 20 WFCs, namespaces; xmlconf probe cross-checked file-by-file against F\* |
+| JSON | `JSON/*.lean` | RFC 8259 parser/serialiser; escape + literal round-trips proved |
+| Crypto | `Crypto/SHA2*.lean` | SHA-256/384/512 + `HashAlgorithm` agility; size theorems; FIPS vectors (million-byte ones parked opt-in) |
+| Wasm | `Wasm/`, `docs/web/hub/assets/l4/`, skill `lean4-wasm-export` | Lean→C→wasm via Emscripten (1.4 MB, ~40 ms load); hub post 36 runs Lean and F\* side by side |
+| Tests/demo | `Tests.lean`, `Demo.lean` | build-time guards + `#print axioms` audit; runnable tour |
+| Docs | `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence, decisions, assumption report |
 
-Measured 2026-08-22 after wave 1: 12942 lines, 615 top-level definitions/types, 243 theorems, 503 build-time guards; zero `sorry`/`axiom`/`native_decide`/`partial` across the tree (axiom audit: propext/Classical.choice/Quot.sound only). In flight: Turtle+TriG (branch lean4/syntax-turtle), RDFC-1.0 (lean4/rdf-canonical), Lean→wasm pipeline (lean4/wasm-export).
+Measured 2026-08-22 after twelve rungs: 22721 lines, 1111 top-level definitions/types, 348 theorems, 966 build-time guards; zero `sorry`/`axiom`/`native_decide`/`partial` in the library (axiom audit: propext/Classical.choice/Quot.sound only). In flight: W3C manifest harness (lean4/w3c-harness), RDF/XML (lean4/syntax-rdfxml), JSON-LD (lean4/jsonld), SPARQL string parser (lean4/sparql-parser).
 
 ## Toolchain
 
@@ -174,7 +166,12 @@ executable edge only.
    by evaluation and `decide`/`rfl` get stuck. Recipe: `unfold <fn>`
    (its equation lemma) then `decide`; or keep parsers structurally
    recursive on a fuel `Nat` where possible.
-8. **Integrate agent branches with MERGES, then push; never
+8. **`/-` inside prose opens a block comment** — a doc comment or
+   string containing `/-` (e.g. "XML/-JSON") nests a new comment and
+   silently swallows the file to EOF, exactly like F\*'s `(* *)` trap.
+   Never write `/-` in comment prose; `local` is a reserved word in
+   Lean 4 too (2026-08-22, results-formats port).
+9. **Integrate agent branches with MERGES, then push; never
    `git pull --rebase` afterwards.** A rebase replays the branch's
    commits onto origin and re-hits the same additive conflicts
    (`L4Factoidal.lean` imports, `PORT_NOTES.md` appends) the merge

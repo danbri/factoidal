@@ -10,11 +10,10 @@ RDF 1.2 c14n / syntax suites — this worktree has no `third_party/testing`
 checkout (submodules absent), so the fixtures below are written BY HAND
 against the same grammar the W3C suite exercises, not copied from disk.
 
-Local helpers below (`isOk`/`isErr`/`okEq`/`namedGraphsEq`) exist ONLY
-because `Except` has no core `BEq`/`isOk` and `RDF.NamedGraph` (defined
-in `RDF.Graph`, which this port does not edit) derives `Repr` but not
-`DecidableEq` — see the "Core/Graph change needed" note in this branch's
-final report.
+Local helpers below (`isOk`/`isErr`/`okEq`) exist ONLY because `Except`
+has no core `BEq`/`isOk`. `RDF.NamedGraph` and `RDF.Dataset` derive
+`DecidableEq`, so `==` compares them directly — the earlier local
+`namedGraphsEq` workaround is gone.
 -/
 
 import L4Factoidal.Syntax.NQuads
@@ -37,12 +36,6 @@ def okEq {ε α : Type} [BEq α] (x : Except ε α) (v : α) : Bool :=
   match x with
   | .ok a => a == v
   | .error _ => false
-
-def namedGraphEq (a b : NamedGraph) : Bool :=
-  a.name == b.name && a.graph == b.graph
-
-def namedGraphsEq (a b : List NamedGraph) : Bool :=
-  a.length == b.length && (a.zip b).all (fun p => namedGraphEq p.1 p.2)
 
 /-! ### Positive N-Triples fixtures (RDF 1.1) -/
 
@@ -241,13 +234,17 @@ def dsCheck : Except ParseError Dataset :=
 #guard okEq (Except.map (fun ds => ds.named.length) dsCheck) 2
 -- Insertion order of named graphs is preserved (g1 first, g2 second).
 #guard okEq (Except.map (fun ds => ds.named.map (·.name)) dsCheck)
-  ["http://example.org/g1", "http://example.org/g2"]
-#guard okEq (Except.map (fun ds => (ds.lookupNamed "http://example.org/g1").map (·.length)) dsCheck)
+  [Subject.iri (iri! "http://example.org/g1"), Subject.iri (iri! "http://example.org/g2")]
+#guard okEq
+  (Except.map (fun ds => (ds.lookupNamedIri "http://example.org/g1").map (·.length)) dsCheck)
   (some 2)
 
--- A blank-node graph label.
+-- A blank-node graph label: parsed as `Subject.bnode`, NOT as an IRI
+-- and NOT as a `"_:"`-prefixed string (RDF 1.1 Concepts §4).
 #guard isOk (parseNQuads
   "<http://example.org/s> <http://example.org/p> \"o\" _:g .\n")
+#guard okEq (Except.map (fun ds => ds.named.map (·.name)) (parseNQuads
+  "<http://example.org/s> <http://example.org/p> \"o\" _:g .\n")) [Subject.bnode "g"]
 
 -- A literal graph label is rejected.
 #guard isErr (parseNQuads
@@ -266,14 +263,27 @@ def rtDsCheck (mode : Mode) (ds : Dataset) : Bool :=
   | .ok text =>
       match parseNQuads text mode with
       | .error _ => false
-      | .ok ds' => ds'.default == ds.default && namedGraphsEq ds'.named ds.named
+      | .ok ds' => ds' == ds
+
+def exG1 : WfIri := iri! "http://example.org/g1"
+def exG2 : WfIri := iri! "http://example.org/g2"
 
 def rtDataset : Dataset :=
   { default := [{ s := .iri exS, p := exP, o := .literal (Literal.string "d") }],
-    named := [{ name := "http://example.org/g1",
+    named := [{ name := .iri exG1,
                 graph := [{ s := .iri exS, p := exP, o := .literal (Literal.string "n1") }] },
-              { name := "http://example.org/g2",
+              { name := .iri exG2,
                 graph := [{ s := .iri exS, p := exP, o := .iri exO }] }] }
 #guard rtDsCheck .rdf11 rtDataset
+
+-- RDF 1.1 Concepts §4: a graph name may be a BLANK NODE. It survives
+-- the serialise-then-parse round trip as `_:g`, not as an IRI.
+def rtBnodeNamedDataset : Dataset :=
+  { default := [],
+    named := [{ name := .bnode "g",
+                graph := [{ s := .iri exS, p := exP, o := .literal (Literal.string "in-g") }] }] }
+#guard rtDsCheck .rdf11 rtBnodeNamedDataset
+#guard (Dataset.toNQuads rtBnodeNamedDataset).toOption
+  == some "<http://example.org/s> <http://example.org/p> \"in-g\" _:g .\n"
 
 end L4Factoidal.Syntax.SyntaxTests
