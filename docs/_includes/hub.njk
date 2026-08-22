@@ -709,6 +709,37 @@ const fn = {
     return true;
   },
   /**
+   * Load the Lean 4 engine compiled to WebAssembly (hub post 36).
+   * A SECOND, independent engine on the page: the rest of `fn` is the
+   * F*-derived OCaml compiled by js_of_ocaml, while this is Lean source
+   * compiled Lean -> C -> wasm32 by Emscripten. Built by
+   * formal/lean4/Wasm/build-wasm.sh; artifacts in web/hub/assets/l4/.
+   *
+   * Idempotent: the promise is cached, so a page with several L4 cells
+   * instantiates one module. The node-side twin lives in
+   * tests/hub/post36_test.mjs (imports the same loader from disk),
+   * mirroring the fn.loadWikifunctions duality above.
+   */
+  async loadL4() {
+    if (!this._l4Promise) {
+      this._l4Promise = import("../assets/l4/l4factoidal.js").then((m) => m.loadL4());
+    }
+    return this._l4Promise;
+  },
+  /** The Lean-side ABI version string (hub post 36). */
+  async l4Version() {
+    return (await this.loadL4()).version();
+  },
+  /**
+   * Evaluate a Basic Graph Pattern with Lean's
+   * `L4Factoidal.SPARQL.evalBgp` inside wasm (hub post 36). `data` and
+   * `bgp` are arrays of SPARQL-Results-JSON-shaped term objects; the
+   * result is a SPARQL 1.1 Query Results JSON document.
+   */
+  async l4BgpQuery(data, bgp) {
+    return (await this.loadL4()).bgpQuery(data, bgp);
+  },
+  /**
    * SHACL Core validation (mirrors npm/factoidal/index.js's
    * `shaclValidate(data, shapes, options) -> Promise<{conforms, report}>`).
    * `data`/`shapes` may each be raw RDF text (parsed with `options.format`,
