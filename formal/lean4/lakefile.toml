@@ -1,5 +1,12 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal"]
+defaultTargets = ["L4Factoidal", "l4turtle-probe"]
 
 [[lean_lib]]
 name = "L4Factoidal"
+
+# Real-corpus probe for the Turtle / TriG parsers (Harness/TurtleProbe.lean).
+# Separate from the library so the library stays specification-only, per the
+# spec/pragmatics split recorded in PORT_NOTES.md.
+[[lean_exe]]
+name = "l4turtle-probe"
+root = "Harness.TurtleProbe"
