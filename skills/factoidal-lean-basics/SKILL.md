@@ -21,6 +21,7 @@ https://github.com/danbri/factoidal/issues/466
 | `L4Factoidal/SPARQL/Invariants.lean` | PROVED: empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity |
 | `L4Factoidal/Tests.lean` | 19 `#guard` build-time tests + `#print axioms` audit lines |
 | `Demo.lean` | runnable guided tour with a Turtle-ish printer |
+| `L4Factoidal/OWL/Tableau.lean` (+`TableauTheorems`, `TableauTests`) | OWL tableau clash calculus (unqualified-cardinality fragment) + `refuted_sound` (a refuted ABox has no model, by structural induction — the theorem the F\* SMT wall blocked); folded in 2026-08-22 from the duplicate `formal/lean/` track, [#468](https://github.com/danbri/factoidal/issues/468) |
 | `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence + assumption report |
 
 Honest completeness: ~1,200 lines, 69 defs, 31 theorems — roughly 2%
