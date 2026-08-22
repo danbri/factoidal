@@ -228,6 +228,14 @@ def rdf7t : WfIri := iri! "http://www.w3.org/1999/02/22-rdf-syntax-ns#_7"
 -- … and not a simple-entailment one
 #guard regimeEntails .simple [] [⟨.iri exA, exP, .iri exB⟩]
          [⟨.iri exP, rdfType, .iri rdfProperty⟩] == false
+-- rdfs9 (no rdf-mt entry exercises it — see the sabotage record in
+-- PORT_NOTES.md; the sparql11 entailment entries rdfs04/05/09 do)
+#guard regimeEntails .rdfs D0
+         [ ⟨.iri exA, rdfType, .iri exC⟩, ⟨.iri exC, rdfsSubClassOf, .iri exD⟩ ]
+         [ ⟨.iri exA, rdfType, .iri exD⟩ ] == true
+#guard regimeEntails .simple []
+         [ ⟨.iri exA, rdfType, .iri exC⟩, ⟨.iri exC, rdfsSubClassOf, .iri exD⟩ ]
+         [ ⟨.iri exA, rdfType, .iri exD⟩ ] == false
 -- rdfs4a/4b
 #guard regimeEntails .rdfs D0 [⟨.iri exA, exP, .iri exB⟩]
          [⟨.iri exA, rdfType, .iri rdfsResource⟩, ⟨.iri exB, rdfType, .iri rdfsResource⟩] == true
