@@ -4015,3 +4015,28 @@ Two details carried with their reasons:
 RML templates escape braces with a backslash; the CSVW RFC 6570
 templates deliberately do NOT. The two look similar enough to merge
 and must not be — noted in both modules.
+
+### RIF Core: syntax and forward chaining (2026-08-22)
+
+`RIF/Core.lean` ports the AST from `RIF.Core.Syntax.fst` and the
+forward chain from `RIF.Core.Eval.fst`: terms, atoms (triple / frame /
+member / sub / uniterm), bodies, rules, substitutions with
+join-consistent extension, and closure to a fixed point.
+
+The bound is REPORTED, not absorbed. `closure` returns the facts AND
+whether the round bound was reached, because RIF Core with external
+builtins can generate ground terms indefinitely, and a caller that
+reports entailment from a truncated closure is reporting a guess. A
+guard pins both directions: the ancestor program terminates before
+the bound with the flag false, and hits it with the flag true when
+given too few rounds.
+
+Two fail-closed choices carried from the F* module: an unevaluated
+`external` grounds to NOTHING rather than a placeholder, and a head
+whose predicate does not ground to an IRI (or whose subject is a
+literal) produces no triple rather than a malformed one.
+
+Relevance beyond RIF itself: 4 of the 30 SPARQL entailment-regime
+tests the Lean tree currently reports UNSUPPORTED are RIF-regime
+tests (see the parity ledger), so this is a step toward those as well
+as toward the rif-core suite.
