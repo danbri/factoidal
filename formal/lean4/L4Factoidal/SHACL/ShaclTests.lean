@@ -250,11 +250,24 @@ def reportG : Graph := reportToGraph (run maxCountDoc)
 -- A conforming report is two triples.
 #guard (reportToGraph (run minCountZeroDoc)).length == 2
 
-/-! ### SHACL-SPARQL is named, not silently skipped -/
+/-! ### SHACL-SPARQL (Part 2) is decoded, not named as unsupported
+
+Since the SHACL-SPARQL stage, `sh:sparql` and the §6 constraint
+components are evaluated (`SHACL/Sparql.lean`); the one remaining
+entry of `sparqlFeaturePredicates` is the SPARQL-based TARGET
+(`sh:target`, SHACL-AF). -/
 
 def sparqlDoc : String :=
   "ex:S a sh:NodeShape ; sh:targetNode ex:n ; sh:sparql [ sh:select \"SELECT $this WHERE { }\" ] ."
 
-#guard (decodeShapesGraph (ttl sparqlDoc)).unsupported == ["sh:sparql", "sh:select"]
+#guard (decodeShapesGraph (ttl sparqlDoc)).unsupported == ([] : List String)
+#guard (decodeShapesGraph (ttl sparqlDoc)).shapes.any (fun s =>
+         s.constraints.any fun c => match c with | .sparql _ _ _ _ => true | _ => false)
+
+def sparqlTargetDoc : String :=
+  "ex:S a sh:NodeShape ; sh:target [ sh:select \"SELECT $this WHERE { }\" ] ."
+
+#guard (decodeShapesGraph (ttl sparqlTargetDoc)).unsupported
+         == ["sh:target (SPARQL-based targets)"]
 
 end L4Factoidal.SHACL.Tests
