@@ -6,6 +6,37 @@ A formally verified RDF/SPARQL implementation. The **F\* specifications are
 the product**. Executable code is obtained by **extraction**, not by
 hand-writing Rust/JS/OCaml/anything that "mirrors" a spec.
 
+## Founding view (danbri, 2026-08-22) — verbatim
+
+> "The key thing is to define APIs and interfaces and protocols
+> grounded via F\* and Lean4 in W3C specs and maths. These should be
+> implemented faithfully, efficiently, tunably, and formally, but
+> don't confuse the spec and the code satisfying it. Even as we use
+> F\* and/or Lean 4 to define and implement everything. The use of
+> these formal languages gives us, and coding agents, collaborators
+> etc., a safe platform for experimentation and variation without
+> fear that small improvements will destroy standards compliance."
+>
+> "If we get this right we may get a good chance of creating SOTA
+> technology and a highly optimised, flexible, performant rdf db and
+> querying etc environment."
+
+What follows from it, and settles recurring arguments:
+
+- **Spec and implementation are DISTINCT artifacts even when both are
+  written in F\* or Lean.** A fast implementation is not a betrayal of
+  the spec; a spec-shaped definition is not a performance failure. The
+  correct relation between them is a proof, not a resemblance.
+- **Efficiency and tunability are in scope, not concessions.** Speed
+  work is legitimate everywhere, in either tree, provided the spec it
+  satisfies stays fixed and the satisfaction is proved or measured —
+  never assumed.
+- **The point of the formal layer is freedom to experiment.** Agents
+  and collaborators should be able to vary implementations
+  aggressively; the specs are what make that safe. Treat a refusal to
+  optimise "because it is the spec tree" as a category error — move
+  or prove the boundary instead.
+
 **Goal:** a performant, compliant engine for RDF Core 1.1 (all concrete
 syntaxes), RDF/S, OWL, SHACL, RDFC-1.0 canonicalization, and full
 SPARQL 1.1 (query, update, protocol, results) — specified in F\*,
