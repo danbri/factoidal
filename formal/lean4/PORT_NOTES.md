@@ -2692,3 +2692,166 @@ explicit `UpdateError` instead of a silent success.
   table regressed an OWL consistency test (#236 interaction); this
   port has no OWL-RL closure on the RDFS path, so the seed is safe
   here and that interaction remains the F\* tree's.
+
+## Stage: indexed OWL 2 RL closure — no cap hits on the W3C OWL corpus (branch `lean4/owl-indexed`, 2026-08-22)
+
+What landed: `L4Factoidal/OWL/RLClosureIndexed.lean` — the OWL 2 RL/RDF
+closure over an indexed triple store, with a PROVED list equality to the
+specification engine `RLClosure.closure`; `Harness/OwlProbe.lean` scores
+with it, scopes imported-document blank nodes per import, and carries a
+`--profile` mode (per-row timing of the list engine, indexed cross-check,
+`--indexed-only` rounds). The spec (`RLRules.lean`) and the theorem file
+(`RLTheorems.lean`) are untouched. The F\* counterpart of this step is
+`RDFS.Closure.SemiNaive.fst`.
+
+### Measured first: where the time was (list engine, `--profile`)
+
+Per-row wall time of one `RLClosure.step` round, IO.Ref-forced (see the
+measuring-inference skill, rule 9, for why the first instrument read 0 ms
+on every row):
+
+```
+WebOnt-description-logic-204  premise 1074 triples
+  round 1: rows total emitted=5235 ms=586     dedup addAll new=1750 ms=109    cls-int1: emitted=0 ms=577
+  round 5: rows total emitted=30361 ms=6640   dedup addAll new=0 ms=648       cls-int1: emitted=328 ms=6443
+WebOnt-miscellaneous-001      premise 2912 triples
+  round 1: rows total emitted=12282 ms=20724  dedup addAll new=3534 ms=491    cls-int1: emitted=0 ms=20634
+  round 2: rows total emitted=62272 ms=104840 dedup addAll new=4108 ms=2810   cls-int1: emitted=6323 ms=104322
+```
+
+One row — cls-int1 — is 95–99.6 % of every round: per `owl:intersectionOf`
+triple it walks EVERY subject occurrence of the graph and runs a `memB`
+list scan per class (O(#intersections × |g| × |list| × |g|)). The exact
+dedup (`addAll`, a scan per conclusion) is second and grows with |g|;
+every other row is under 50 ms. The 20 s budget was spent inside round 1
+of the ~3 000-triple cases, as the task brief said.
+
+### The indexed engine and its cost model
+
+`Index`: `Array Triple` (insertion order), `Std.HashSet Triple` (exact
+membership), five `Std.HashMap` buckets — S, P, O, (S,P), (P,O) — each
+holding the REVERSED filter of the array. Lookup = `getD` + reverse:
+O(1) + O(result). Insert = one `push`, one set insert, five `getD` +
+`insert` with a cons: O(1). `memB`: O(1). A round is O(|g| + emitted)
+instead of O(|g| × scans); the round count is unchanged (same stopping
+rule). Evaluation is NAIVE with indexed joins, not semi-naive: each round
+still drives every row from every triple of the input snapshot, which is
+what makes the bridge a per-round equality. Measured on
+WebOnt-miscellaneous-001 after the blank-node fix below: 8 rounds,
+12 280 triples, 1 107 ms cumulative (round 1: 30 ms; list engine round 1:
+20 724 ms).
+
+### What is proved (`RLClosureIndexed.lean`, axioms: propext, Classical.choice, Quot.sound)
+
+The rows are written once over a `Store` record of lookups. `Store.ofGraph g`
+packs the list scans, and every row over it is the `RLClosure` row by
+`rfl` (47 `xxxForS_ofGraph` lemmas, 13 clash rows; the five recursive
+walkers by induction). `Index.Wf i g` — the array is `g`, the set decides
+`memB g`, every bucket lookup EQUALS the list filter as a list — is
+preserved by `push`, `insert` (= `addOne`), `insertAll` (= `addAll`), and
+gives `Store.ofIndex_eq : Store.ofIndex i = Store.ofGraph g`. Hence:
+
+- `Index.Wf.step` — one indexed round pictures one `RLClosure.step`;
+- `Index.Wf.closure` — the loop takes the same branch at every fuel;
+- `indexedClosure_eq : indexedClosure g fuel = closure g fuel` — LIST
+  equality (order included), every graph, every fuel;
+- `mem_indexedClosure_iff` — the set-membership form the task asked for;
+- `detectClashI_closureI` — the indexed clash verdict is `inconsistent`.
+
+So T1/T2/T4 and `detectClash_sound` of `RLTheorems.lean` hold of the
+indexed engine by rewriting, with nothing re-proved. The proofs reason
+about `Std.HashMap.getD_insert` / `Std.HashSet.contains_insert` only.
+`RLTests.lean` evaluates `indexedClosure == closure` on every fixture so
+the compiled hash path is exercised too.
+
+Sabotage (2026-08-22): `Index.push` changed to skip `rdf:type` triples in
+the (P,O) bucket. `lake build` fails at `Index.Wf.push` (line 912, type
+mismatch: `BucketWf (i.byPO.insert …)` expected `BucketWf (i.push t).byPO`).
+Restored; green.
+
+### Measured score lines, verbatim — before and after, same 20 s cap
+
+Baseline, list engine (`l4owl-probe --cap-ms 20000`, run from the repo
+root, commit 9dd44d59a engine):
+
+```
+profile-RL.rdf: 102 pass, 19 fail, 0 skip, 5 unsupported (out of 126)
+HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1227 closure_rounds=428 clashes=10 cap_hits=0 parse_failures=0 wall_ms=81
+profile-EL.rdf: 95 pass, 21 fail, 1 skip, 4 unsupported (out of 121)
+HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1098 closure_rounds=409 clashes=4 cap_hits=0 parse_failures=0 wall_ms=69
+profile-QL.rdf: 76 pass, 11 fail, 0 skip, 0 unsupported (out of 87)
+HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=303 clashes=5 cap_hits=0 parse_failures=0 wall_ms=57
+type-positive-entailment.rdf: 290 pass, 116 fail, 0 skip, 6 unsupported (out of 412)
+HARNESS-DIAG-OWL type-positive-entailment.rdf: cases=206 units=412 triples_parsed=28902 closure_rounds=1542 clashes=0 cap_hits=10 parse_failures=0 wall_ms=327877
+type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5258 closure_rounds=425 clashes=29 cap_hits=0 parse_failures=0 wall_ms=1759
+type-consistency.rdf: 451 pass, 120 fail, 0 skip, 12 unsupported (out of 583)
+HARNESS-DIAG-OWL type-consistency.rdf: cases=354 units=583 triples_parsed=41248 closure_rounds=2107 clashes=0 cap_hits=14 parse_failures=1 wall_ms=401706
+TOTAL: 1043 pass, 371 fail, 2 skip, 41 unsupported (out of 1457)
+HARNESS-DIAG-OWL TOTAL: cases=931 units=1457 triples_parsed=78605 closure_rounds=5214 clashes=48 cap_hits=24 parse_failures=1
+```
+
+After — indexed engine + per-import blank-node scoping, same command:
+
+```
+profile-RL.rdf: 102 pass, 19 fail, 0 skip, 5 unsupported (out of 126)
+HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1227 closure_rounds=428 clashes=10 cap_hits=0 parse_failures=0 wall_ms=52
+profile-EL.rdf: 95 pass, 21 fail, 1 skip, 4 unsupported (out of 121)
+HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1098 closure_rounds=409 clashes=4 cap_hits=0 parse_failures=0 wall_ms=43
+profile-QL.rdf: 76 pass, 11 fail, 0 skip, 0 unsupported (out of 87)
+HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=303 clashes=5 cap_hits=0 parse_failures=0 wall_ms=32
+type-positive-entailment.rdf: 297 pass, 109 fail, 0 skip, 6 unsupported (out of 412)
+HARNESS-DIAG-OWL type-positive-entailment.rdf: cases=206 units=412 triples_parsed=28902 closure_rounds=1576 clashes=0 cap_hits=0 parse_failures=0 wall_ms=4116
+type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5258 closure_rounds=425 clashes=29 cap_hits=0 parse_failures=0 wall_ms=172
+type-consistency.rdf: 461 pass, 110 fail, 0 skip, 12 unsupported (out of 583)
+HARNESS-DIAG-OWL type-consistency.rdf: cases=354 units=583 triples_parsed=41248 closure_rounds=2159 clashes=0 cap_hits=0 parse_failures=1 wall_ms=7024
+TOTAL: 1060 pass, 354 fail, 2 skip, 41 unsupported (out of 1457)
+HARNESS-DIAG-OWL TOTAL: cases=931 units=1457 triples_parsed=78605 closure_rounds=5300 clashes=48 cap_hits=0 parse_failures=1
+```
+
+FAIL lists diffed (`comm` on the `FAIL <id> [type]` lines): no new FAIL;
+these 10 units moved from fail to pass — WebOnt-description-logic-201,
+-204, -206, -661, -664 [ConsistencyTest], -204 [PositiveEntailmentTest],
+WebOnt-miscellaneous-001, -002, -011 [ConsistencyTest], -011
+[PositiveEntailmentTest]. The 24 baseline cap hits are 12 distinct units;
+the two not in the list above now fail on their merits:
+WebOnt-description-logic-201 and -206 [PositiveEntailmentTest],
+`closure-gap: missing <…#V822576> rdf:type <…#C110>` / `<…#V21027>
+rdf:type <…#C30>` — the conclusions the F\* runner reaches through its
+PE-via-refutation tableau fallback, which this probe's header already
+names as not ported. The one `parse_failures=1` (FS2RDF-literals-ar,
+RDF/XML §7.2.16) is unchanged.
+
+### Finding on the way: an RDF union where a merge was needed (fixed in the probe)
+
+With the fast engine, WebOnt-miscellaneous-001/002/011 [ConsistencyTest]
+first FAILED with `clash: detectClash fired on a premise asserted
+consistent (67989 triples)` after 5 rounds, the closure doubling per
+round (2912 → 6446 → 10554 → 15515 → 30829 → 67989). The OWL 2 RL rules
+are sound for any RDF graph, so the input was wrong: `loadImports` merged
+each imported RDF/XML graph by plain concatenation, and the parser labels
+blank nodes `b0, b1, …` per document, so wine's restrictions and food's
+restrictions shared labels — chimera restrictions. The F\* runner hit and
+fixed the same defect on 2026-07-10 (`owl_runner.ml`, "Bnode renaming");
+the port now applies `Graph.prefixBnodes "imp<n>_"` per import. The list
+engine never got past round 1 on these cases, so the defect was invisible
+until the engine was fast — the measurement that was supposed to confirm
+a speed-up instead found a correctness bug in the harness.
+
+### Module correspondence (append)
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `RDFS.Closure.SemiNaive.fst` (indexed/semi-naive RDFS closure), `RDF.Indexed` bucket trees | `OWL/RLClosureIndexed.lean` `Store`, `Index`, `stepI`, `closureI`, `indexedClosure`, `detectClashI` | naive rounds over hash buckets, not semi-naive deltas; the bridge is a list equality, not a saturation argument |
+| `owl_runner.ml` `load_imports_into_premise` + per-import bnode renaming | `Harness/OwlProbe.lean` `loadImports` with `Graph.prefixBnodes` | same ordinal-prefix discipline |
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no `@[extern]`
+in `RLClosureIndexed.lean`. `Std.HashMap` / `Std.HashSet` from core Lean
+only (still zero external dependencies). Not done: semi-naive evaluation
+(each round re-derives everything; its bridge would be an equality at
+saturation, a different proof) — the corpus does not need it at the 20 s
+cap; cls-int1 still enumerates subject OCCURRENCES (`subjectsOf g`, one
+per triple) because the row body must stay `rfl`-equal to the list row.
