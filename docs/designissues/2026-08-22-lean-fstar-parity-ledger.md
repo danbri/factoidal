@@ -52,10 +52,22 @@ this port does NOT yet cover — the Lean side is the kernel plus the
 point-vs-polygon fragment. The 37 W3C tests are not yet run against
 it, because that needs the harness wiring, not more geometry.
 
+**CSVW** (2026-08-22): the main module set is ported —
+`L4Factoidal/CSVW/` carries `Dialect` (dialect description + CSV
+reader), `Metadata` (model + §5.1.1 inheritance), `UriTemplate`,
+`Conversion` (cell rules), `Emit` (csv2rdf triples, minimal and
+standard), `Formats` (boolean + numeric), `Json` (csv2json, minimal
+and standard) and `Validate` (with the error/warning split the W3C
+suite depends on). Scope honesty: date/time patterns and the
+regex-valued duration `format` facet are NOT ported (`noFormat` is
+returned, which keeps the cell rather than rejecting it), and the 270
+W3C tests are not yet run against the Lean side — that needs harness
+wiring.
+
 ## Absent from the Lean tree
 
 Present in F\*, no Lean counterpart: ShEx (1,182 tests), RML (76+),
-RIF Core (46 of 50), CSVW (270), XSLT/XPath/MathML/
+RIF Core (46 of 50), XSLT/XPath/MathML/
 JSON Schema/Schematron, the XML conformance corpus (1,447 of 2,585),
 the VC/DID stack beyond the Lean `VC/` modules, the COTTAS/HDT storage
 layer, and the HTTP serving layer (`SPARQL.HTTP.*`, admin, static
