@@ -84,6 +84,7 @@ import L4Factoidal.JSONLD.FromRdf
 import L4Factoidal.JSONLD.Compact
 import L4Factoidal.JSONLD.Flatten
 import L4Factoidal.JSONLD.Html
+import L4Factoidal.JSONLD.ApiTests
 import L4Factoidal.JSONLD.Tests
 import L4Factoidal.JSONLD.Theorems
 import L4Factoidal.SPARQL.Tokenizer
