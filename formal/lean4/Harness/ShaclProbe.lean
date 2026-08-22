@@ -29,10 +29,13 @@ so the two trees' numbers share denominators:
   * `--conforms-only` compares only the `sh:conforms` boolean (the F*
     runner's slice-1 floor).
 
-A manifest entry whose shapes graph uses a SHACL-SPARQL predicate
-(sh:sparql, sh:select, sh:ask, sh:validator, sh:parameter, …), or
-whose `mf:result` is the bare IRI `sht:Failure`, is reported as
-`UNSUPPORTED` — counted, named, in the denominator, never passed.
+SHACL-SPARQL (Part 2) is evaluated: `sh:sparql` constraints and the §6
+SPARQL-based constraint components run through `SHACL/Sparql.lean`,
+and an entry whose `mf:result` is the bare IRI `sht:Failure` passes
+exactly when the validation reports a §5.3.2 pre-binding failure. The
+one feature still reported as `UNSUPPORTED` — counted, named, in the
+denominator, never passed — is the SPARQL-based TARGET (`sh:target`,
+SHACL-AF).
 
 Scores are printed per sub-directory (core/node, core/property, …) and
 in total, each with its denominator (anti-pattern #25), in the score-
@@ -46,6 +49,7 @@ Usage (from the repository root, paths resolve from the CWD):
 -/
 
 import L4Factoidal.SHACL.Report
+import L4Factoidal.SHACL.Sparql
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.RDF.Canonical
 import Harness.Common
@@ -279,13 +283,26 @@ def runTest (opts : Options) (tc : TestCase) : Outcome × Bool :=
   | none, _ => (.skip "no dataGraph resolved from mf:action", false)
   | _, none => (.skip "no shapesGraph resolved from mf:action", false)
   | some data, some shapesG =>
-    if tc.expectFailure then (.unsupported "mf:result sht:Failure (SHACL-SPARQL pre-binding)", false)
+    let sg := decodeShapesGraph shapesG
+    if !sg.unsupported.isEmpty then
+      (.unsupported ("SHACL-SPARQL: " ++ String.intercalate ", " sg.unsupported), false)
     else
-      let sg := decodeShapesGraph shapesG
-      if !sg.unsupported.isEmpty then
-        (.unsupported ("SHACL-SPARQL: " ++ String.intercalate ", " sg.unsupported), false)
+      -- The raw shapes graph is threaded in as well as the decoded one:
+      -- SHACL §5.3.1's `$shapesGraph` pre-binding needs the shapes
+      -- graph's own triples as a named graph, which the decoded AST
+      -- cannot supply.
+      let report := validateWithSparql data shapesG sg
+      -- SHACL §5.3.2 / the suite's `mf:result sht:Failure`: a query
+      -- that cannot be pre-bound must be rejected with a failure, and
+      -- a failed validation produces no report to compare.
+      if tc.expectFailure then
+        match report.failure with
+        | some _ => (.pass, false)
+        | none => (.fail s!"expected a validation failure (sht:Failure), got conforms={report.conforms} with {report.results.length} results", false)
       else
-        let report := validate data sg
+        match report.failure with
+        | some why => (.fail s!"unexpected validation failure: {why}", false)
+        | none =>
         if opts.conformsOnly then
           match tc.expectConforms with
           | none => (.skip "mf:result has no sh:conforms boolean", false)
