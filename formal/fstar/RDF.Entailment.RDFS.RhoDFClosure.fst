@@ -313,6 +313,26 @@ let rec lemma_rho_df_closure_iter_clean (g : rdf_graph) (n : nat)
     lemma_rho_df_closure_iter_clean (rho_df_closure_step g) (n - 1)
   end
 
+// NON-VACUITY. Theorem 1's new hypothesis has to be SATISFIABLE or
+// the theorem says nothing; a witness is cheaper than an argument.
+// Guards the failure mode `skills/measuring-inference/SKILL.md`
+// names -- a theorem that verifies because nothing can meet its
+// `requires`.
+let lemma_graph_clean_satisfiable ()
+  : Lemma (ensures (let w = ({ s = S_IRI i_rdfs_Resource; p = i_rdf_type;
+                               o = T_IRI i_rdfs_Class } <: triple) in
+                    graph_clean [w])) =
+  let w = ({ s = S_IRI i_rdfs_Resource; p = i_rdf_type;
+             o = T_IRI i_rdfs_Class } <: triple) in
+  assert_norm (str_sep_free i_rdfs_Resource);
+  assert_norm (str_sep_free i_rdf_type);
+  assert_norm (str_sep_free i_rdfs_Class);
+  assert (triple_sep_free w);
+  assert (triple_obj_not_tt w);
+  introduce forall (t : triple). memP t [w] ==> (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t [w] ==> (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . ()
+
 // The chain hypothesis, no longer carried.
 let lemma_rho_df_clean_implies_chain_canonical (g : rdf_graph)
   : Lemma (requires graph_clean g)
