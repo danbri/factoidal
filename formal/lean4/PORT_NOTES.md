@@ -1582,3 +1582,68 @@ thousand fuel levels and exhausts memory. `parseSparql` was therefore
 split into `parseSparqlWith (fuel : Nat) …` plus a wrapper, so a proof
 can keep the fuel SYMBOLIC; and the proofs use `cases h : e`, which
 cases on the `Except` constructor without ever evaluating `e`.
+
+## Stage: the W3C harness runs the sparql11 query suites (2026-08-22)
+
+`lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`
+follows `mf:include` and scores `QueryEvaluationTest`,
+`CSVResultFormatTest`, `PositiveSyntaxTest11` and
+`NegativeSyntaxTest11` with the Lean parser and evaluator. Full
+status, verbatim score lines, the sabotage record and the failure
+table: `docs/designissues/2026-08-22-lean4-w3c-harness.md`,
+"Status 2026-08-22 (later)".
+
+### Module correspondence (append)
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `SPARQL11.Algebra.rewrite_query_bnodes_pattern` (+ `_term`, `_subject`, `_tp`) | `SPARQL/Query.lean` `QueryPattern.rewriteBnodes`, `Query.rewriteBnodes`, `rewriteBnodeTerm`, `rewriteBnodeSubject`, `rewriteBnodeTriple` | applied at the same site: the first stage of `evalSelect` / `evalAsk` / `evalConstruct` |
+| `is_synthetic_bnode_var`, `strip_synthetic_bnode_vars` | `isSyntheticBnodeVar`, `stripSyntheticBnodeVars` | at the `SELECT *` projection, before DISTINCT, as in the F\* |
+| `substitute_pattern`, `eval_exists` | `SPARQL/Exists.lean` `GraphPattern.substitute`, `evalExists`, `existsHookFor` | over the LOWERED pattern; closures re-based on μ (spec-faithful substitution into expressions, where the F\* leaves `e` verbatim) |
+| `w3c_runner.ml` `select_results_equal_strict` / `results_match_with` / `term_equal_csv_lenient` / the `rs:ResultSet` decoder | `Harness/Compare.lean` | harness, not library |
+| `w3c_runner.ml` `run_query_eval_test`, syntax-test arms | `Harness/Run.lean` `runQueryEvaluation`, `runSyntaxTest` | harness |
+| `w3c_runner.ml` `mf:include` walk, `qt:serviceData`, `sd:entailmentRegime` | `Harness/Manifest.lean` | harness |
+
+### Measured
+
+`TOTAL: 309 pass, 47 fail, 0 skip, 275 unsupported (out of 631)` —
+the F\* tree's bar is `631 pass, 0 fail, 0 skip, 0 unsupported (out
+of 631)`. All 47 failures are evaluator findings, listed by cause in
+the design doc; none was fixed in this stage. The six RDF suites
+still print `TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of
+1078)`.
+
+### Translation decisions (append)
+
+- The `evalSelect` doc comment used to call the blank-node rewrite "a
+  parser-level concern" and omit it. That was wrong: the F\* applies
+  it inside `eval_select_query`, and without it a WHERE-clause `[]`
+  or `_:a` matched only a data blank node carrying the same label.
+  Ported at the same site. The rewrite does not enter embedded
+  expressions (an EXISTS body keeps its blank nodes), SERVICE bodies
+  or VALUES rows — the F\* arms are the same.
+- EXISTS substitution works on the lowered algebra because the parser
+  stores a `GraphPattern` inside `Expr.existsPat`. Filter / bind /
+  left-join closures are evaluated on `μ ⊕ row` (μ first), which is
+  what textual substitution of `μ(v)` for `v` amounts to. Two limits
+  are stated in the module header: one active graph per hook (an
+  EXISTS inside `GRAPH ?g` sees the top-level graph) and no hook for
+  an EXISTS nested inside an EXISTS body (it was lowered with
+  `emptyEnv`). Both cost one sparql11 test each.
+- Comparison strictness: values compare with `Term.eqb` (brief rule),
+  NOT the F\* runner's `numeric_literal_equal` fallback. Four tests
+  differ only there (`2E-1` vs `2.0E-1` and kin) and are reported as
+  failures with that cause named, rather than hidden by leniency.
+- `NOW()` is the fixed `fixedNow` string; `EvalEnv.ext` stays empty;
+  `qt:serviceData` graphs go into `EvalEnv.services`.
+
+### Assumption report (append)
+
+No new `assume`-shaped anything: the harness reads files in `IO` and
+everything else is total. New `#guard`s in `Harness/HarnessTests.lean`
+pin the bijection rules (same expected label → same actual label, two
+expected labels may not share one actual label, ORDER BY pins by
+position), the CSV leniency, the budget give-up, the `rs:ResultSet`
+decoder with `rs:index`, `mf:include`, `sd:entailmentRegime` in both
+shapes and `qt:serviceData`. Sabotaging `compareSelectRows` to
+always-true fails the build at those guards.

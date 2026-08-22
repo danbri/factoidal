@@ -276,3 +276,155 @@ RDF/XML landed (166 of 166, see the update above) with exactly the
 predicted change: two `Run.lean` clauses. SPARQL needs the
 query-string parser first; `TestCase` already carries `qt:query`,
 `qt:data` and `qt:graphData` for that day.
+
+## Status 2026-08-22 (later): the sparql11 QUERY suites run
+
+Branch `lean4/sparql-harness`. `lake exe l4w3c
+../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl` now
+follows `mf:include` (one score line per sub-manifest plus `TOTAL`)
+and runs four SPARQL test types: `QueryEvaluationTest`,
+`CSVResultFormatTest`, `PositiveSyntaxTest11`, `NegativeSyntaxTest11`.
+UPDATE, Protocol, Graph Store and Service Description types stay
+`unsupported <type>` (named, counted); an evaluation test that names
+an `sd:entailmentRegime` is `unsupported entailment regime <R>` (the
+Lean tree has the rdfs-core closure only).
+
+What changed, by file:
+
+- `Harness/Manifest.lean` — `mf:include` (`manifestIncludes` /
+  `parseManifestIncludes`), `sd:entailmentRegime` (one IRI or a
+  collection), `qt:serviceData`.
+- `Harness/Compare.lean` (new) — the comparison rules of
+  `run_query_eval_test`: multiset of rows under ONE blank-node
+  bijection, pinned to row position when the query has ORDER BY;
+  `Term.eqb` for values; CSV-lenient comparison for `.csv` expected
+  files; a budgeted search whose give-up is `budgetExceeded`, never a
+  pass; the `rs:ResultSet` Turtle decoder (with `rs:index`).
+- `Harness/Run.lean` — fixture loading by extension (`.ttl` / `.nt` /
+  `.nq` / `.trig` / `.rdf`), `qt:graphData` as IRI-named graphs,
+  `qt:serviceData` into `EvalEnv.services`, expected files by
+  extension (`.srx` / `.srj` / `.tsv` / `.csv` / `.ttl`), SELECT / ASK
+  / CONSTRUCT dispatch; syntax tests parse with the query file's own
+  `file:` IRI as BASE.
+- `Harness/Common.lean` — `HARNESS-DIAG` gains `rows_compared` and
+  `triples_compared`: the measurement check. A suite at 100% with
+  both at 0 compared nothing.
+- Library: `SPARQL/Query.lean` gains `QueryPattern.rewriteBnodes`
+  (port of `rewrite_query_bnodes_pattern`: WHERE-clause blank nodes
+  are non-distinguished variables) applied inside `evalSelect` /
+  `evalAsk` / `evalConstruct` as the F\* `eval_select_query` does, and
+  `stripSyntheticBnodeVars` at the `SELECT *` projection (before
+  DISTINCT, F\* site). The old doc comment called the rewrite "a
+  parser-level concern"; the F\* source applies it in evaluation, and
+  without it `[ :p ?x ]` in a WHERE clause matched only a data blank
+  node with the same generated label. `SPARQL/Exists.lean` (new)
+  supplies `EvalEnv.existsHook` (§18.6 `substitute` then evaluate).
+
+### Measured score lines, verbatim
+
+`lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`,
+score lines only (the `HARNESS-DIAG` line follows each one in the
+real output):
+
+```
+add: 0 pass, 0 fail, 0 skip, 8 unsupported (out of 8)
+aggregates: 42 pass, 5 fail, 0 skip, 0 unsupported (out of 47)
+basic-update: 0 pass, 0 fail, 0 skip, 13 unsupported (out of 13)
+bind: 10 pass, 0 fail, 0 skip, 0 unsupported (out of 10)
+bindings: 11 pass, 0 fail, 0 skip, 0 unsupported (out of 11)
+cast: 0 pass, 6 fail, 0 skip, 0 unsupported (out of 6)
+clear: 0 pass, 0 fail, 0 skip, 4 unsupported (out of 4)
+construct: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)
+copy: 0 pass, 0 fail, 0 skip, 6 unsupported (out of 6)
+csv-tsv-res: 5 pass, 1 fail, 0 skip, 0 unsupported (out of 6)
+delete-data: 0 pass, 0 fail, 0 skip, 6 unsupported (out of 6)
+delete-insert: 8 pass, 0 fail, 0 skip, 9 unsupported (out of 17)
+delete-where: 0 pass, 0 fail, 0 skip, 6 unsupported (out of 6)
+delete: 0 pass, 0 fail, 0 skip, 19 unsupported (out of 19)
+drop: 0 pass, 0 fail, 0 skip, 4 unsupported (out of 4)
+entailment: 0 pass, 0 fail, 0 skip, 70 unsupported (out of 70)
+exists: 4 pass, 2 fail, 0 skip, 0 unsupported (out of 6)
+functions: 43 pass, 32 fail, 0 skip, 0 unsupported (out of 75)
+grouping: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+json-res: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+move: 0 pass, 0 fail, 0 skip, 6 unsupported (out of 6)
+negation: 12 pass, 0 fail, 0 skip, 0 unsupported (out of 12)
+project-expression: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)
+property-path: 33 pass, 0 fail, 0 skip, 0 unsupported (out of 33)
+service: 6 pass, 1 fail, 0 skip, 0 unsupported (out of 7)
+subquery: 14 pass, 0 fail, 0 skip, 0 unsupported (out of 14)
+syntax-query: 94 pass, 0 fail, 0 skip, 0 unsupported (out of 94)
+syntax-update-1: 0 pass, 0 fail, 0 skip, 54 unsupported (out of 54)
+syntax-update-2: 0 pass, 0 fail, 0 skip, 1 unsupported (out of 1)
+update-silent: 0 pass, 0 fail, 0 skip, 13 unsupported (out of 13)
+syntax-fed: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)
+service-description: 0 pass, 0 fail, 0 skip, 3 unsupported (out of 3)
+protocol: 0 pass, 0 fail, 0 skip, 34 unsupported (out of 34)
+http-rdf-update: 0 pass, 0 fail, 0 skip, 19 unsupported (out of 19)
+TOTAL: 309 pass, 47 fail, 0 skip, 275 unsupported (out of 631)
+HARNESS-DIAG TOTAL: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=1715 triples_compared=88
+```
+
+The denominator, 631, is the sum of the typed entries in the 34
+included manifests (3 + 19 + 48 + 13 + 66 + 42 + 34 + 309 + 3 + 94)
+and equals the F\* runner's `sparql` total in
+[`docs/test-results/latest.json`](../test-results/latest.json):
+`631 pass, 0 fail, 0 skip, 0 unsupported (out of 631)` — the bar.
+
+Measurement check per suite at 100%: `bind` rows_compared=60,
+`bindings` 50, `construct` triples_compared=64, `grouping` 18,
+`json-res` 26, `negation` 84, `project-expression` 24,
+`property-path` 149, `subquery` rows 74 + triples 24. `syntax-query`
+(94) and `syntax-fed` (3) compare nothing by design — they are
+accept/reject tests. Caveat: `delete-insert`'s 8 passes are
+`mf:NegativeSyntaxTest11` entries whose action is an UPDATE request;
+the QUERY parser rejects them, which is the expected verdict — the
+F\* runner scores them the same way, but the pass says nothing about
+UPDATE syntax.
+
+The `unsupported` bucket, by reason: `UpdateEvaluationTest` 94,
+`PositiveUpdateSyntaxTest11` 42, `NegativeUpdateSyntaxTest11` 13,
+`ProtocolTest` 34, `GraphStoreProtocolTest` 19,
+`ServiceDescriptionTest` 3, entailment regimes 70 (OWL-Direct 18 on
+its own; the rest name combinations of OWL-Direct / OWL-RDF-Based /
+RDFS / RDF / D; RIF 4).
+
+### Sabotage
+
+1. `compareSelectRows` forced to `.equal`: `lake build` FAILS at
+   `Harness/HarnessTests.lean:272–278` (the bijection and
+   strict-equality `#guard`s) — the build never reaches the runner.
+2. The runner's call site forced to `.equal` (guards untouched):
+   `TOTAL: 354 pass, 2 fail` — 45 named tests FLIP from fail to pass
+   (`cast` 0 → 6 of 6, `functions` 43 → 73 of 75, `aggregates`
+   42 → 47 of 47, `csv-tsv-res` 5 → 6, `exists` 4 → 6, `service`
+   6 → 7). The two that stay failed are ASK tests (`RAND()`, `UUID()
+   per binding`), which the SELECT path does not touch. Restored;
+   the numbers above are from the restored build.
+
+The six RDF suites after the change:
+`TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of 1078)`.
+
+### The 47 failures, by cause
+
+All 47 are EVALUATOR findings (the harness reproduces the F\* rules;
+the F\* tree passes every one of these). Grouped:
+
+| Cause | Tests | Where |
+|---|---|---|
+| §17.5 XSD constructor functions (`xsd:integer(?v)` …) are not evaluated: the IRI goes to `EvalEnv.ext` and errors | 8: `cast` ×6, `GROUP BY with a function`, `Protect from error in AVG` | `SPARQL/Expr.lean` functionCall dispatch (banner: "every unrecognised functionCall IRI") |
+| Hash builtins scoped out | 10: `MD5()`, `SHA1()`, `SHA256()`, `SHA384()`, `SHA512()` ×2 each | `Expr.lean:1361` |
+| REGEX / REPLACE scoped out (no regex engine) | 5: `REPLACE()` ×4, `SERVICE test 5` (its FILTER is a `regex`) | `Expr.lean:1331` |
+| Fresh-value builtins unimplemented (`BNODE()`, `BNODE(str)`, `RAND()`, `UUID()` ×2, `STRUUID()`) | 6 | `Expr.lean` banner (§17.6 family) |
+| `TIMEZONE()` / `TZ()` scoped out | 2 | `Expr.lean:1393` |
+| Numeric lexical form: value-equal, lexically different (`2E-1` vs `2.0E-1`, `1.05E3` vs `1050`, `2.1E3` vs `2100`, data `"1.0E6"` vs TSV `1.0e6`). The F\* runner tolerates these through `numeric_literal_equal`; this harness compares with `Term.eqb` per the brief | 4: `MIN with GROUP BY`, `AVG DISTINCT with GROUP BY`, `SUM DISTINCT with GROUP BY`, `tsv03` | aggregate result serialisation in `SPARQL/Query.lean` / `Expr.lean` (double formatting) |
+| `STRBEFORE` / `STRAFTER` argument checks: a non-string first argument (`:s7 :str 7`) and incompatible language tags must be errors (§17.4.3.1) | 4 | `Expr.lean:1305`, `:1315` |
+| `STRDT` on a language-tagged or typed literal must be an error | 2: `STRDT()`, `STRDT() TypeErrors` | `Expr.lean:1240` |
+| EXISTS hook limits: active graph inside `GRAPH`, and an EXISTS nested in an EXISTS body (lowered with `emptyEnv` at parse time) | 2: `Exists within graph pattern`, `Nested positive exists` | `SPARQL/Exists.lean` header; `Parser.lean:79` AST-gap note |
+| `CONCAT` argument compatibility (non-string / mixed-language arguments must error) | 1: `CONCAT() 2` | `Expr.lean:1325` |
+| `IF(1/0, …)`: an error in the condition must propagate, not read as false | 1 | `Expr.lean:1267` |
+| `IRI("rel")` needs the query BASE (`EvalEnv` carries none; F\* passes `q.q_base`) | 1 | `Expr.lean:1231` |
+| `SECONDS()` returns `"01"` where `"1"` (canonical decimal) is expected | 1 | `Expr.lean:1389` |
+
+None of these was changed in this branch (the brief: list, do not
+fix). Each group is a separate issue candidate.

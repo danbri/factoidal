@@ -218,10 +218,12 @@ no actual row matches (the F* runner's `UNMATCHED` lines). -/
 def selectMismatch (csv : Bool) (expected actual : List Binding) : String :=
   let cmp := if csv then termMatchCsv else termMatchStrict
   let unmatched := unmatchedRows cmp expected actual
+  let extra := unmatchedRows (fun m a e => cmp m e a) actual expected
+  let showRows (rs : List Binding) : String :=
+    String.intercalate " | " (rs.take 5 |>.map (fun r => "[" ++ rowShow r ++ "]"))
   let base := s!"results mismatch: expected {expected.length} rows, got {actual.length}"
-  if unmatched.isEmpty then base
-  else base ++ "; unmatched expected: " ++
-       String.intercalate " | " (unmatched.take 5 |>.map (fun r => "[" ++ rowShow r ++ "]"))
+  (if unmatched.isEmpty then base else base ++ "; unmatched expected: " ++ showRows unmatched) ++
+  (if extra.isEmpty then "" else "; unmatched actual: " ++ showRows extra)
 
 /-- One `QueryEvaluationTest` / `CSVResultFormatTest`. -/
 def runQueryEvaluation (tc : TestCase) : IO RunResult := do

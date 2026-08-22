@@ -255,9 +255,9 @@ def sparqlCase (n : String) : Option TestCase := sparqlCases.find? (fun tc => tc
 
 The rules of `run_query_eval_test`, pinned on tiny inputs. -/
 
-open L4Factoidal.RDF in
-open L4Factoidal.SPARQL in
 section compare
+open L4Factoidal.RDF
+open L4Factoidal.SPARQL
 
 def exA : Term := .iri ⟨"http://example.org/a", rfl⟩
 def exB : Term := .iri ⟨"http://example.org/b", rfl⟩
