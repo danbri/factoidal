@@ -38,6 +38,10 @@ a green test run.
 | `L4Factoidal/XML/Theorems.lean` | (new) | a structural well-formedness checker over the parse tree, a serialiser, the proved tag-matching theorem, and the two general claims stated as named `Prop`s |
 | `L4Factoidal/XML/Tests.lean` | (new) | 118 `#guard`s: hub post 25's two live documents, every constraint in `Parser.lean`'s header, the namespace layer, reflexivity and round-trip fixtures |
 | `L4Factoidal/XML/ConfProbe.lean` | `bin/xml-runner/xml_runner.ml` (the driver only) | the `xmlconf-probe` executable: reads W3C conformance file paths from stdin, prints a well-formed/malformed verdict per file |
+| `L4Factoidal/Syntax/RdfXml.lean` | `Parser.RDFXML.fst` + the RDF/XML half of `XML.Wellformedness.fst` | RDF 1.1 XML Syntax §7.2: `parseRdfXml : String → Option String → Except ParseError Graph`. Node/property element dispatch, all four `rdf:parseType` forms, `rdf:li`↦`rdf:_n`, `[7.2.23]` `rdf:ID` uniqueness, §7.3 reification, XML Base + `xml:lang` scoping. Namespace-CORRECT where the F\* is not — see below |
+| `L4Factoidal/Syntax/RdfXmlTests.lean` | (new) | 89 `#guard`s: at least one per §7.2 production cited in the file, plus the negative cases the W3C `rdf-xml` suite carries (`rdf:li` as a node element, non-NCName `rdf:ID`, duplicate `rdf:ID`, property attribute + `parseType`, `xml:base` fragment, withdrawn `rdf:aboutEach`/`bagID`) |
+| `L4Factoidal/Syntax/RdfXmlTheorems.lean` | (new) | 37 theorems: the `rdf:_n` counter is strictly increasing and never reuses an ordinal; `xml:lang` inherits when absent and clears on `""`; base resolution reduces DEFINITIONALLY to `Syntax.resolveIri`; generated and `rdf:nodeID` blank-node labels cannot collide; the XML-scoped vs document-scoped split of `restoreScope` |
+| `Harness/RdfXmlProbe.lean` | `bin/w3c-runner` (the driver role only) | the `l4rdfxml-probe` executable: walks `third_party/testing/w3c/rdf/rdf11/rdf-xml` by directory layout (no manifest, so no dependency on the Turtle parser), scores parse/reject/isomorphism with denominators |
 | `L4Factoidal/JSON/Value.lean` | `Parser.JSON.fst` `json_val` + accessors | `Json` (`null`/`bool`/`string`/`number`/`array`/`object`), hand-written `DecidableEq` (nested-inductive — `deriving` does not apply, see file header), `field?`/`getString?`/`getBool?`/`getArray?`/`getStringArray?` |
 | `L4Factoidal/JSON/Parser.lean` | `Parser.JSON.fst` (the parser half) | `parseJson : String → Except JsonError Json`, total via fuel (mirrors the F\* fuel discipline); indexes a `List Char`, not raw bytes — see file header on why (Lean `Char` = full Unicode scalar value; sidesteps `Parser.FastString`'s byte-slicing machinery and this toolchain's `String.Pos` API) |
 | `L4Factoidal/JSON/Serialize.lean` | `SPARQL.JSON.Escape.fst` (`json_escape`) + the writer shape of `Parser.JSONLD.fst`'s `jcanon_serialize` (NOT its JCS canonicalisation/field-sorting) | `Json.toString` (compact) and `Json.toStringPretty` (new; no F\* counterpart) |
@@ -982,3 +986,150 @@ That is one test today; it will be every `graph-*` entry of the
 rdf-canon suite later. The same file also still lacks
 `deriving DecidableEq` on `NamedGraph`/`Dataset`, as the previous stage
 recorded.
+
+## Stage: RDF/XML (`Syntax/RdfXml*.lean`, `Harness/RdfXmlProbe.lean`, 2026-08-22)
+
+Ports `formal/fstar/Parser.RDFXML.fst` (1402 lines) together with the
+RDF/XML-specific half of `formal/fstar/XML.Wellformedness.fst`. Built on
+the landed XML infoset parser (`XML/Parser.lean`), the namespace layer
+(`XML/Namespaces.lean`) and the RFC 3986 resolver
+(`Syntax/IriResolve.lean`); the `rdf:XMLLiteral` value comparison reuses
+`RDF/XmlCanon.lean` through `Literal.eqb`, exactly as the F\* reuses
+`RDF.Term.fsti`'s `xmlc_*` family.
+
+### Measured against the real W3C files
+
+`lake exe l4rdfxml-probe` over
+`third_party/testing/w3c/rdf/rdf11/rdf-xml` (28 test directories,
+173 `.rdf` files):
+
+| Check | Result |
+|---|---|
+| parse-positive (non-`error*.rdf` must parse) | 132 pass, 0 fail (out of 132) |
+| reject-negative (`error*.rdf` must be rejected) | 41 pass, 0 fail (out of 41) |
+| eval-isomorphic (graph vs sibling `.nt`, RDF 1.1 Concepts §3.6) | 130 pass, 2 fail (out of 132) |
+
+The two isomorphism failures are `rdfms-xml-literal-namespaces/test001`
+and `test002`, which upstream WITHDREW from `manifest.ttl` (both entries
+are commented out there). They are withdrawn because their expectation
+contradicts the graded `xml-canon` tests: `xml-literal-namespaces`
+expects Exclusive XML Canonicalization proper — each element of the
+`rdf:parseType="Literal"` content carrying only the declarations IT
+visibly utilizes — while `xml-canon/test001`, which IS graded, expects
+every ambient declaration on the apex element. No single serialiser
+satisfies both. This port satisfies the graded one, which is the same
+choice `Parser.RDFXML.fst` makes (its issue-#446 comment records the
+same tension). The F\* tree scores 166 pass, 0 fail on the manifest-graded
+subset; this probe is directory-driven and therefore also walks the
+withdrawn files.
+
+`lake build` is green with zero `sorry` / user `axiom` /
+`native_decide` / `partial`; the axiom audit prints
+`[propext, Classical.choice, Quot.sound]` or less for every theorem.
+Sabotage-checked: changing `St.resetLi` to reset the `rdf:li` counter to
+2 instead of 1 fails three named `#guard`s in `RdfXmlTests.lean`.
+
+### Assumption report
+
+`Parser.RDFXML.fst` is **PURE** — confirmed by reading the whole module.
+It contains no `assume val`, no effectful call-out, and no `--admit` or
+`--lax` pragma; the one `#push-options "--z3rlimit 60"` is an SMT budget,
+not an escape hatch. Every definition is `Tot`, with an explicit `fuel`
+argument wherever F\* could not see termination. This port therefore
+needs no purity workaround: the F\* `fuel : nat` becomes structural
+recursion on a Lean `Nat`, and the `has_error : bool` flag becomes an
+`Option ParseError` that names the violated rule.
+
+`XML.Wellformedness.fst` is likewise pure, and was already ported as
+`XML/Wellformedness.lean`.
+
+### Where this port is namespace-correct and the F\* source is not
+
+`Parser.RDFXML.fst` looks attributes up by their LITERAL spelling —
+`find_attr "rdf:about"`, `find_attr "xml:lang"` — against a
+`namespaces` map that `initial_state` SEEDS with five bindings
+(`rdf`, `rdfs`, `xml`, `xmlns`, `xsd`). Two consequences follow that
+"Namespaces in XML" forbids: a document that never declares `rdf:` still
+has its `rdf:about` honoured, and a document that binds `foo:` to the
+RDF namespace has its `foo:about` ignored.
+
+This port resolves every element and attribute name through
+`XML.resolveElementName` / `XML.resolveAttributeName` against the real
+in-scope bindings, starting from `XML.initialScope` (which binds only
+`xml`, as §3 requires). The `rdf-ns-prefix-confusion` directory — 11
+files that bind the RDF namespace to unusual prefixes and bind unusual
+namespaces to `rdf:` — passes on that basis rather than by accident.
+
+### Deliberate differences from the F\* source
+
+1. **Blank-node label spaces are disjoint.** The F\* mints
+   `rdfxml_b<N>` and uses an `rdf:nodeID` value verbatim, so a document
+   containing `rdf:nodeID="rdfxml_b0"` can name a node the parser also
+   mints. This port writes generated labels `b<N>` and `rdf:nodeID`
+   labels `n<value>`, which differ in their first character —
+   `genLabel_ne_nodeIdLabel` proves the collision is impossible. Labels
+   are document-local and graph identity is up to renaming (RDF 1.1
+   Concepts §3.4), so the change costs nothing observable.
+2. **`nodeElement` RETURNS its subject.** The F\* re-derives it at each
+   call site with `determine_subject_readonly`, and its own comment
+   records the counter-desynchronisation bug that produced (orphan
+   `rdf:first` targets for anonymous collection members, hit by the OWL
+   class-expression fixtures). Returning it removes the class of bug.
+3. **RDF 1.2 is NOT ported.** `rdf:version="1.2"` gating, `its:dir` base
+   direction, `rdf:parseType="Triple"` triple terms, and the
+   `rdf:annotation` / `rdf:annotationNodeID` reifiers all live in the
+   F\* source and are all skipped here: they belong to a separate W3C
+   draft and a separate suite (`rdf12/rdf-xml`), which this stage does
+   not claim.
+4. **The F\*'s datatyped-with-element-children leniency is NOT
+   ported.** `Parser.RDFXML.fst` treats a property element carrying both
+   `rdf:datatype` and element children as an opaque XML literal, for OWL
+   fixtures outside the RDF/XML suite. §7.2 has no such production, so
+   this port rejects it.
+5. **Errors say which rule was violated.** `parse_rdfxml_strict` returns
+   `None`; `parseRdfXml` returns the first `ParseError`, with the §7.2
+   production number in its message.
+
+### What `XML/` should gain (not made — `XML/` is read-only for this stage)
+
+`XML/Wellformedness.lean` states the RDF/XML attribute constraints over
+LITERAL attribute spellings, inherited from the F\* module it ports:
+`hasAttr "rdf:parseType" attrs`, `validateRdfIdAttr` matching
+`a.name == "rdf:ID"`. Those predicates are wrong for any document that
+does not use the customary prefixes, which is exactly what
+`rdf-ns-prefix-confusion` tests. This stage therefore could NOT reuse
+`checkConflictingAttrsNode` / `checkConflictingAttrsProperty` /
+`validateRdfIdAttr` and states namespace-correct equivalents locally in
+`RdfXml.lean` (`checkCommonAttrs`, `checkNodeAttrs`,
+`checkPropertyAttrs`, `checkIdNCNames`).
+
+What `XML/Wellformedness.lean` should gain, so the duplication can go
+away:
+
+  * variants of the three conflict checks and of `validateRdfIdAttr`
+    taking a resolved view of the attributes — either
+    `List (XML.ExpandedName × String)`, or `(NsScope, List Attribute)` —
+    so the rule is stated over expanded names rather than spellings;
+  * `hasAttrNs (scope) (ns localName) (attrs) : Bool` and
+    `findAttrNs : … → Option String` alongside the existing `hasAttr` /
+    `findAttr`, since every RDF/XML lookup wants the namespace-aware
+    form (this port has private `findNsAttr` / `hasRdfAttr` copies);
+  * the existing spelling-based functions kept only if some caller
+    genuinely needs a non-namespace view; nothing in this port does.
+
+Two smaller items, both worked around locally:
+
+  * `XML/Namespaces.lean` has no "render the in-scope declarations"
+    function, which `[7.2.17] parseTypeLiteralPropertyElt` needs.
+    `RdfXml.renderNsDecls` / `dedupScope` do it here. If a second
+    consumer appears (XSLT serialisation, XML canonicalization proper),
+    that belongs in `XML/`.
+  * `XML/` has no XML serialiser at all — `XML/Theorems.lean` has one
+    for its round-trip theorem, but it is not exported for reuse and it
+    does not implement c14n's open+close and escaping rules.
+    `RdfXml.serializeNode` is a local, c14n-shaped one. An
+    `XML/Canonical.lean` implementing Exclusive XML Canonicalization
+    properly would let §7.2.17 stop approximating — and would let the
+    two withdrawn `rdfms-xml-literal-namespaces` tests be revisited
+    deliberately rather than by default.
+
