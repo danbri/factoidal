@@ -4134,3 +4134,29 @@ additions).
   `rdf:dirLangString`. A `#guard` in `TurtleTests.lean` pins the
   current answer. Fixing it changes RDF 1.1 ACCEPTANCE in both trees,
   so it belongs in its own change.
+
+### JSON Schema: validation with a three-valued result (2026-08-22)
+
+`JSONSchema/Validate.lean` ports `JSONSchema.Validate.fst` — draft
+2020-12 core plus the validation vocabulary slice: type, const, enum,
+the numeric range keywords, multipleOf, string/array length,
+items/properties/required, allOf/anyOf/not, and the annotation
+keywords.
+
+Two design points decide whether this validator is HONEST rather than
+merely green, and both are carried:
+
+1. **The result is three-valued** — pass, fail, or UNSUPPORTED. A
+   keyword outside the ported slice makes the verdict undetermined
+   rather than passing. `vand` lets a definite failure dominate an
+   unsupported sibling, `vor` lets a definite pass dominate one. Both
+   directions matter: collapsing unsupported into pass inflates the
+   score, into fail deflates it, and neither is the truth. A guard
+   pins an unknown keyword returning `unsupported` and the same schema
+   with a definite type failure still returning `fail`.
+2. **Numbers are exact rationals parsed from the JSON lexeme**, never
+   floats — `(numerator, power-of-ten denominator)`. `multipleOf` is
+   decided on the cross product with no division, so `0.3` IS a
+   multiple of `0.1`, which a float-based check famously gets wrong.
+   `1.0` equals `1` for const/enum, and `integer` accepts a number
+   whose VALUE is integral.
