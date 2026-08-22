@@ -185,6 +185,13 @@ def diffTestCase (bin : String) (tc : TestCase) : IO DiffOutcome := do
   let fmt := match q.form with
     | .construct _ => "ntriples"
     | _            => "json"
+  -- No `-b`: the CLI parses the query with NO base at all
+  -- (`bin/factoidal-cli/factoidal_cli.ml` calls `parse_sparql
+  -- query_text`; `-b` rebases only the DATA files), so a query with a
+  -- relative IRI (`FROM <data.ttl>`, `GRAPH <ng-01.ttl>`) is an
+  -- `fstar-error` here — counted and named, not hidden. Passing `-b`
+  -- was tried (2026-08-22): it does not reach the query parser and it
+  -- changes the data files' base, which broke one exists test.
   let args := tc.dataFiles.flatMap (fun f => ["-d", f]) ++
               tc.graphData.flatMap (fun (iri, f) => ["-n", iri ++ "=" ++ f]) ++
               ["--query", qf, "-o", fmt]
