@@ -332,6 +332,60 @@ Recorded per the standing order in
    pattern aggregation uses is disproportionately expensive under
    js_of_ocaml.
 
+## Lean 4 engine vs the two F\* runtimes (2026-08-22)
+
+Harness: `tests/perf/l4_vs_fstar_wasm_bench.mjs`, commit `8d4a389f7`,
+node v22.22.2, macOS arm64, machine otherwise idle. Workload: K people
+with a `:name` and an `:age` triple (2K triples); query is the
+two-pattern join `?s :name ?n . ?s :age ?a`. Each engine runs in its
+OWN child process, so RSS is not contaminated by a sibling heap. Query
+time is the median of 5 runs after 1 warmup. Re-running the same sweep
+under two concurrent Lean compiles changed every figure by under 5 %,
+so the numbers below are not contention artefacts.
+
+Query, median milliseconds — the only like-for-like column, because
+both sides hold the data by then:
+
+| K (people) | triples | Lean wasm | F\* wasm_of_ocaml | F\* js_of_ocaml |
+|---|---|---|---|---|
+| 100 | 200 | 4.4 | 3.8 | 9.8 |
+| 1000 | 2000 | 136.8 | 26.3 | 79.0 |
+| 4000 | 8000 | 1692.8 | 140.7 | 372.5 |
+
+Ingest is NOT comparable across the two families and is reported
+separately, never folded into a ratio: the Lean ABI takes pre-built
+JSON triples (`stringifyMs` 0.1 / 0.8 / 5.2), while the F\* engines
+parse Turtle (`parseMs` below). Init: Lean 42.4 ms, wasm_of_ocaml
+35.5 ms, js_of_ocaml 49.5 ms.
+
+| K | parse ms, wasm_of_ocaml | parse ms, js_of_ocaml | RSS MB (Lean / wasm / js) |
+|---|---|---|---|
+| 100 | 8.6 | 19.1 | 32.2 / 26.4 / 41.6 |
+| 1000 | 319.9 | 200.6 | 57.0 / 71.9 / 95.9 |
+| 4000 | 2129.5 | 1276.7 | 137.6 / 111.6 / 174.4 |
+
+Two findings, both filed:
+
+1. **The Lean spec evaluator is quadratic in the data**
+   ([#507](https://github.com/danbri/factoidal/issues/507)). It is
+   competitive at K=100 and 12.0× slower than wasm_of_ocaml at K=4000;
+   its own cost rises 12.4× for a 4× data increase. This is not a
+   defect in the port — `SPARQL/Algebra.lean` states that BGP matching
+   is nested loops over lists, chosen so W3C reviewers can read it. The
+   fix has a proved precedent already in the tree: the OWL closure got
+   an indexed engine with `indexedClosure g fuel = closure g fuel`
+   proved as list equality, so the naive definition stays the
+   specification and every theorem transfers. The same shape applies to
+   `evalBgp`.
+2. **wasm_of_ocaml parses slower than js_of_ocaml above ~K=100 while
+   querying much faster.** At K=100 wasm parse is 2.2× FASTER (8.6 vs
+   19.1 ms); by K=1000 it is 1.6× slower and by K=4000 1.7× slower
+   (2129.5 vs 1276.7 ms) — a crossover, not a constant offset — while
+   query stays 2.6× faster at K=4000. Since parse dominates ingest, the
+   backend choice is workload-dependent today: query-heavy favours
+   wasm, parse-heavy favours js. Worth finding what in the Turtle
+   parser penalises the wasm backend at scale.
+
 ## See also
 
 - [Competitive benchmark (engine-vs-engine)](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-06-competitive-benchmark-results.md)
