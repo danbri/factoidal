@@ -44,6 +44,7 @@ can step through — no SMT solver in the loop.
 10. [`L4Factoidal/Syntax/`](L4Factoidal/Syntax/) — N-Triples, N-Quads, Turtle, TriG, RDF/XML ([`RdfXml.lean`](L4Factoidal/Syntax/RdfXml.lean): blank-node label spaces disjoint by construction, proved), RFC 3986 IRI resolution; [`Harness/`](Harness/) runs the real W3C manifests (`lake exe l4w3c <manifest.ttl>`; `lake exe l4rdfxml-probe` walks the rdf-xml directory).
 11. [`L4Factoidal/RDF/Isomorphism.lean`](L4Factoidal/RDF/Isomorphism.lean) and [`RDF/Canonical.lean`](L4Factoidal/RDF/Canonical.lean) — blank-node isomorphism (witness-returning, soundness proved) and RDFC-1.0 (hash-algorithm-agile; 86 of 86 on the W3C suite) over [`Crypto/SHA2.lean`](L4Factoidal/Crypto/SHA2.lean).
 12. [`L4Factoidal/XML/`](L4Factoidal/XML/) and [`JSON/`](L4Factoidal/JSON/) — the generic parsers the RDF syntaxes and results formats build on.
+12a. [`L4Factoidal/JSONLD/`](L4Factoidal/JSONLD/) — JSON-LD 1.1 context processing, expansion and toRdf (`Context.lean`, `Expand.lean`, `ToRdf.lean`); the remote document loader is an explicit parameter and the no-empty-context-fallback rule is a theorem. `lake exe l4jsonld-probe` (from the repo root): toRdf 467 of 467, matching the F\* runner.
 13. [`Wasm/`](Wasm/) — the C ABI and build for the WebAssembly export; skill `lean4-wasm-export` has the pipeline.
 
 `PORT_NOTES.md` records the F\* correspondence, the translation

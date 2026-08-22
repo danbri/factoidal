@@ -1287,17 +1287,18 @@ takes, three checks back it up, all reported by the probe itself:
    pass by accident. The F\* source cannot make this check at all — it
    returns a bare `option`.
 
-### The F\* comparison is NOT a live side-by-side
+### The F\* side-by-side
 
-`skills/test-suites/SKILL.md`'s `jsonld_runner` row reads 399 pass, 57
-fail, 11 skip (out of 467), dated **2026-07-05**. That number is stale:
-`jsonld_runner.ml`'s own comments record three later fix waves
-(2026-07-16 skip audit, 2026-07-17 term-redefinition wave) that emptied
-its skip allowlist, so "11 skip" cannot still be current. No
-`darwin-arm64` `jsonld_runner` binary is committed and building F\* was
-out of scope for this stage, so **the F\* side was not re-measured**.
-Treat 399 as a stale lower bound. The probe prints this caveat with
-every run rather than presenting the two numbers as comparable.
+Measured 2026-08-22 at integration time, same manifest, same machine:
+`bin/darwin-arm64/jsonld_runner third_party/testing/json-ld/tests/toRdf-manifest.jsonld`
+prints `jsonld-toRdf: 467 pass, 0 fail, 0 skip (out of 467)`. The two
+trees agree on every test. (The porting agent had reported the F\*
+number as a stale 2026-07-05 lower bound of 399 because it did not
+find the committed `darwin-arm64` binary; the binary was there — a
+lesson for reports: `ls bin/<platform>/` before claiming a runner is
+absent.) The Lean side adds one check the F\* runner cannot make: the
+negative tests' error codes, 103 of 106 matching the manifest's
+`expectErrorCode`.
 
 ### Translation decisions
 
