@@ -460,3 +460,168 @@ work). Adding `deriving DecidableEq` to `NamedGraph` and `Dataset` in
 matching the `instBEqOfDecidableEq` convention this project's own
 pitfall list (`skills/factoidal-lean-basics`) already recommends for
 every other structure in the tree.
+
+---
+
+## Stage: Turtle 1.1 + TriG 1.1 + RFC 3986 reference resolution (2026-08-22)
+
+Ladder rung: the gating item for a manifest-driven Lean W3C harness
+(https://github.com/danbri/factoidal/issues/466, and
+`docs/designissues/2026-08-22-lean4-w3c-harness.md` — the manifests are
+Turtle, so nothing manifest-driven can run before a Turtle parser
+exists). Branch `lean4/syntax-turtle`.
+
+### Module correspondence (append)
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `L4Factoidal/Syntax/IriResolve.lean` | `RDF.IRI.fst` (`parse_iri`, `remove_dot_segments_step`/`remove_dot_segments`, `merge_paths`, `transform_references`, `recompose`, `resolve_iri_v2`), which `Parser.Turtle.resolve_iri` and `SPARQL11.IRI.Resolve.resolve_iri` both delegate to | RFC 3986 §3 decomposition, §5.2.2/§5.2.3/§5.2.4/§5.3, §5.2 top level. All 24 normal + 20 abnormal RFC 3986 §5.4 examples as build-time `#guard`s (the F\* source parks the same battery behind `if false` to spare Z3, so this port CHECKS strictly more than the original) |
+| `L4Factoidal/Syntax/Turtle.lean` | `Parser.Turtle.fst` + `Parser.TurtleScanner.fst` | Turtle 1.1 productions [1]–[17], [128s]/[133s]/[135s]–[141s], [161s]–[172s]; `parseTurtle (text) (base := none) (mode := .rdf11)` |
+| `L4Factoidal/Syntax/TriG.lean` | `Parser.TriG.fst` | TriG 1.1 productions [1g]–[7g] on top of Turtle; `parseTriG (text) (base := none) (mode := .rdf11) : Except ParseError Dataset` |
+| `L4Factoidal/Syntax/TurtleTests.lean` | (new) | 127 `#guard`s, one section per grammar production, plus prefix/base interplay, relative-IRI resolution, collection nesting, negative cases, and Turtle→N-Triples→N-Triples round-trips through the landed `Graph.toNTriples` |
+| `L4Factoidal/Syntax/TurtleTheorems.lean` | (new) | 22 proved theorems + 21 `#guard`s: RFC 3986 §5.2.2 base-independence and the `resolve base abs = abs` identity, §5.2.4 no-dot-segment invariant, collection chain shape, `maxUnderscoreRun` monotonicity |
+| `Harness/TurtleProbe.lean` (`lean_exe l4turtle-probe`) | (new; the role `bin/w3c-runner/w3c_runner.ml` plays for the F\* tree) | walks the real W3C directories, reading each suite's base IRI out of its own `manifest.ttl` with this parser |
+
+### Measured against the real W3C files
+
+`lake build && ./.lake/build/bin/l4turtle-probe third_party/testing/w3c/rdf/rdf11`
+
+| Suite | parse-positive | reject-negative | eval-iso |
+|---|---|---|---|
+| rdf-turtle | 222 of 223 | 94 of 94 | 111 of 111 |
+| rdf-trig | 242 of 242 | 115 of 115 | 107 of 108 |
+
+`manifest.ttl` parses in both suites (2338 triples / 313 `mf:action`
+entries; 2637 / 356), which is the rung's actual deliverable. These are
+PROBE numbers from a directory walk, not conformance scores: the probe
+uses the `-bad-` naming convention plus `.ttl`/`.nt` sibling pairs, and
+does not yet read test TYPES from the manifest. A conformance claim
+waits for the `l4w3c` runner.
+
+The two failures, both named rather than rounded away:
+
+- `test-38.ttl` — a UTF-16 surrogate PAIR written as two `\u` escapes.
+  Rejected: `\uD801` is not a Unicode scalar value, and RDF 1.1
+  Turtle's UCHAR denotes a code point, not a UTF-16 code unit. The F\*
+  source rejects it too (`valid_codepoint`). The file is NOT one of the
+  manifest's 313 entries — the probe reports how many walked files the
+  manifest does not list (4 for rdf-turtle, 1 for rdf-trig).
+- `labeled_blank_node_graph.trig` — a blank-node GRAPH NAME. See the
+  Core/Graph note below.
+
+### Translation decisions (append)
+
+- **Fuel is kept exactly where the F\* source needs it** — the
+  whitespace/comment skipper, the name-token scanner, the string
+  bodies, the numeric collector, `remove_dot_segments_step`, and the
+  mutually-recursive term block. Every budget is derived from the
+  remaining input length, so it cannot bind before the input is
+  consumed. Everything else recurses structurally, with no fuel: the
+  F\* byte scanners in `RDF.IRI.fst` (`find_colon`,
+  `find_authority_end_iri`, `find_path_end_iri`, `find_hash_iri`,
+  `find_slash_iri`, `find_last_slash_iri`, `scheme_tail_ok`) all
+  collapse into `List.span` / `List.dropWhile` / `List.all`.
+- **One name-character table, four consumers.** Turtle's [163s]
+  PN_CHARS_BASE / [164s] PN_CHARS_U / [166s] PN_CHARS are DERIVED from
+  the tables `Syntax.Lexing` already carries for BLANK_NODE_LABEL
+  (`isBnodeStartChar` = PN_CHARS_U plus digits, `isBnodeChar` =
+  PN_CHARS plus `.`), rather than re-tabulated. IRIREF, STRING,
+  LANGTAG, BLANK_NODE_LABEL, UCHAR and ECHAR reading are
+  `Syntax.Lexing`'s landed readers, reused unchanged.
+- **The F\* `resolve_iri_hint` colon short-circuit is NOT reproduced.**
+  `Parser.Turtle.resolve_iri_hint st rel has_colon` returns `rel`
+  unchanged whenever the RAW IRIREF text contains a colon ANYWHERE.
+  That is right for a genuine scheme but wrong for a relative reference
+  with a colon in a later path segment (`<a/b:c>`), which RFC 3986 §4.2
+  makes relative. This port always routes through
+  `Syntax.IriResolve.resolveIri`, which is a no-op on an absolute
+  reference (proved: `resolveIri_base_irrelevant`,
+  `resolveIri_eq_self`) and correct on `<a/b:c>`.
+- **Grammar-exact PN_PREFIX and prefixed-name start.** The F\*
+  `validate_pname_ns_from` tests every position against one ASCII class
+  and so also accepts a leading digit; `Parser.TurtleScanner`'s
+  `is_ascii_name_start` rejects a NON-ASCII PN_CHARS_BASE opening
+  character outright, so a non-ASCII prefix cannot be a prefixed name
+  there. This port follows [167s]/[139s] instead: the first character
+  must be PN_CHARS_BASE, ASCII or not. Both suites stay green under the
+  stricter reading.
+- **Blank-node label scoping.** The F\* source mints `_anon0`,
+  `_anon1`, … and passes user labels through unchanged, so a document
+  writing `_:_anon0` COLLIDES with a generated label. This port keeps
+  user labels UNCHANGED (needed: a TriG blank-node graph name `_:G` has
+  to stay comparable with the `_:G` of an N-Quads fixture, because
+  `RDF.Dataset` keys named graphs by label string) and instead prefixes
+  every GENERATED label with `anon` plus one more consecutive `_` than
+  occurs anywhere in the document text (`freshBnodePrefix`). A
+  BLANK_NODE_LABEL is a substring of the text, so it cannot contain a
+  longer underscore run — the two namespaces are disjoint by
+  construction.
+- **TriG error recovery not ported.** `Parser.TriG.parse_graph_body`
+  skips the offending line, sets `has_error`, and lets the strict entry
+  point turn that into `None` later. This port fails at the first error
+  and returns its message and position. Same accept/reject verdict,
+  better diagnostic; the recovery machinery is a CLI affordance, like
+  the lenient Turtle entry points already recorded as out of scope.
+
+### RDF 1.2 (`Mode_12`) coverage — stated exactly
+
+COVERED: object-position triple terms `<<( s p o )>>` (port of
+`parse_turtle_triple_term`); the reifier `~ (iri | BlankNode)?` and the
+annotation block `{| predicateObjectList |}` after an object, both
+emitting `rdf:reifies` triples (port of `parse_annotations`); and
+directional language tags `@lang--ltr` / `@lang--rtl` via
+`Syntax.Lexing.readLangDir12`.
+
+NOT COVERED (open gaps, not silent drops): the reified-triple form
+`<< s p o (~ r)? >>` in subject/object position (F\*
+`parse_reified_triple` / `parse_rt_subject` / `parse_rt_object`), and
+the `VERSION` / `@version` directive (F\* `parse_version_directive`).
+Neither is exercised by the RDF 1.1 suites this stage is measured
+against.
+
+### Assumption report — F\* primitives this stage replaces
+
+- `Parser.FastString`'s byte-indexed primitives (`fs_byte_length`,
+  `fs_byte_index`, `fs_byte_at`, `fs_byte_sub`, `fs_cp_at`) are
+  `assume val` realisations in the F\* tree and are used throughout
+  `Parser.Turtle.fst`, `Parser.TurtleScanner.fst`, `Parser.TriG.fst`,
+  and `RDF.IRI.fst`. This stage needs NONE of them. The native Lean
+  operations that replaced them, by F\* primitive:
+  `fs_byte_length` → `List.length` on `String.toList`;
+  `fs_byte_index` / `fs_byte_at` → ordinary cons-pattern matching;
+  `fs_byte_sub` → `List.span` / `List.take` / `String.ofList`;
+  `fs_cp_at` → nothing at all, because `String.toList` already decoded
+  the UTF-8 and a Lean `Char` already IS a Unicode scalar value. Each
+  F\* function that carried an ASCII-byte fast path beside a codepoint
+  slow path (`validate_pname_ns_from`, `validate_pn_local_from`,
+  `parse_long_string_body`, `scan_name_body_end`) becomes ONE
+  definition here.
+- ZERO semantic `assume val`s were carried over, and no Lean equivalent
+  (`axiom`, `sorry`, `opaque`, `@[extern]`, `partial`, `native_decide`)
+  appears in any file of this stage. `#print axioms` on all nine
+  audited theorems in `TurtleTheorems.lean` and on `parseTurtle` /
+  `parseTriG` / `resolveIri` reports exactly `propext`,
+  `Classical.choice`, `Quot.sound`.
+- `unescape_pn_local`'s raw-byte-fragment workaround (F\* issue #325 —
+  a non-ASCII local name carrying a PN_LOCAL_ESC resolved to mojibake
+  because the escape path re-encoded each element as UTF-8) has no
+  counterpart here: the port works on codepoints throughout, and
+  `TurtleTests.lean` checks the exact case the F\* bug hit.
+
+### Core/Graph change that would help (not made — this stage adds files only)
+
+`RDF.Graph.NamedGraph` keys a named graph by an `Iri` STRING, and
+`RDF.Isomorphism.Dataset.namesMatchB` therefore matches named graphs by
+STRING equality. A blank-node graph name consequently cannot take part
+in the blank-node bijection: `labeled_blank_node_graph.trig` writes
+`_:g` where its `.nq` fixture writes `_:b1`, and the two datasets are
+isomorphic in the RDF 1.1 Concepts §4/§3.6 sense but are reported
+unequal. (`alternating_bnode_graphs.trig` passes only because both
+sides happen to use the label `G`.) The fix is in the DATASET MODEL,
+not in either parser: `NamedGraph.name` wants to be a `Subject` (or an
+`Iri` plus `BNodeId` sum), and `Dataset.checkMapping` wants to apply
+the candidate blank-node mapping to graph names before comparing them.
+That is one test today; it will be every `graph-*` entry of the
+rdf-canon suite later. The same file also still lacks
+`deriving DecidableEq` on `NamedGraph`/`Dataset`, as the previous stage
+recorded.

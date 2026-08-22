@@ -137,9 +137,10 @@ structure TurtleState where
 /-- The longest run of consecutive `_` characters anywhere in the
 document. -/
 def maxUnderscoreRun : List Char → Nat → Nat → Nat
-  | [],        cur, best => max cur best
-  | '_' :: cs, cur, best => maxUnderscoreRun cs (cur + 1) (max (cur + 1) best)
-  | _ :: cs,   _,   best => maxUnderscoreRun cs 0 best
+  | [],      cur, best => max cur best
+  | c :: cs, cur, best =>
+      if c == '_' then maxUnderscoreRun cs (cur + 1) (max (cur + 1) best)
+      else maxUnderscoreRun cs 0 best
 
 /-- The prefix every GENERATED blank-node label carries for this
 document: `anon` followed by one more consecutive `_` than appears

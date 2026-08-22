@@ -22,6 +22,11 @@ import L4Factoidal.SPARQL.ExprTheorems
 import L4Factoidal.Syntax.Lexing
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads
+import L4Factoidal.Syntax.IriResolve
+import L4Factoidal.Syntax.Turtle
+import L4Factoidal.Syntax.TriG
+import L4Factoidal.Syntax.TurtleTests
+import L4Factoidal.Syntax.TurtleTheorems
 import L4Factoidal.Syntax.SyntaxTests
 import L4Factoidal.Syntax.SyntaxTheorems
 import L4Factoidal.Tests

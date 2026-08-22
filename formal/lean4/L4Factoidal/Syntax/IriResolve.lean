@@ -176,12 +176,37 @@ algorithm mishandled terminal `.` / `..`; the F* source records
 `Parser.Turtle.fst`, not this algorithm. The §5.4 `#guard`s at the
 bottom of this file settle the question by execution. -/
 
+/-- Pop the last real segment, but never pop a lone leading `"/"` — the
+root clamp described above. Named (rather than inlined in the loop) so
+that `Syntax.TurtleTheorems` can state its invariant about it. -/
+def popKeepRoot : List String → List String
+  | []      => []
+  | [x]     => if x == "/" then ["/"] else []
+  | _ :: tl => tl
+
+/-- The text a segment contributes to the output: its own characters,
+plus the `/` that followed it if there was one. -/
+def segmentText (seg : String) (hasSlash : Bool) : String :=
+  if hasSlash then seg ++ "/" else seg
+
+/-- The accumulator update of one §5.2.4 iteration: drop a `.`, pop on
+a `..` (clamping at the root, and synthesising `"/"` for a terminal
+`..` with nothing left to pop), push anything else. -/
+def dotSegmentStep (seg : String) (hasSlash : Bool) (out : List String) : List String :=
+  if seg == "." then out
+  else if seg == ".." then
+    (if hasSlash then popKeepRoot out
+     else match popKeepRoot out with
+          | [] => ["/"]
+          | l  => l)
+  else segmentText seg hasSlash :: out
+
 /-- One step of the §5.2.4 loop: split off the next segment (up to and
-excluding the next `/`), classify it, and either drop it (`.`), pop
-(`..`), or push it. `fuel` bounds the loop exactly as the F* source's
-`decreases fuel` does — the remaining-input argument comes out of a
-`span`, so it is not a syntactic sub-term Lean's structural check can
-use. Port of `remove_dot_segments_step`. -/
+excluding the next `/`), then apply `dotSegmentStep`. `fuel` bounds the
+loop exactly as the F* source's `decreases fuel` does — the
+remaining-input argument comes out of a `span`, so it is not a
+syntactic sub-term Lean's structural check can use. Port of
+`remove_dot_segments_step`. -/
 def removeDotSegmentsStep : Nat → List Char → List String → List String
   | 0,        _,  out => out.reverse
   | _,        [], out => out.reverse
@@ -189,24 +214,7 @@ def removeDotSegmentsStep : Nat → List Char → List String → List String
       let (segCs, afterSeg) := cs.span (fun c => !(c == '/'))
       let hasSlash := match afterSeg with | '/' :: _ => true | _ => false
       let next     := match afterSeg with | _ :: tl  => tl    | []  => []
-      let seg := String.ofList segCs
-      -- Pop the last real segment, but never pop a lone leading "/".
-      let popKeepRoot : List String :=
-        match out with
-        | []       => []
-        | ["/"]    => ["/"]
-        | _ :: tl  => tl
-      let out' :=
-        if seg == "." then
-          out
-        else if seg == ".." then
-          if hasSlash then popKeepRoot
-          else match popKeepRoot with
-               | [] => ["/"]
-               | l  => l
-        else
-          (if hasSlash then seg ++ "/" else seg) :: out
-      removeDotSegmentsStep fuel next out'
+      removeDotSegmentsStep fuel next (dotSegmentStep (String.ofList segCs) hasSlash out)
 
 /-- RFC 3986 §5.2.4: remove `.` and `..` segments from a path. Port of
 `remove_dot_segments` (fuel `len + 2`, as in the F* source). -/
