@@ -1272,9 +1272,17 @@ def instantiateSolutions (template : List TriplePattern) :
                      instantiateSolutions template rest (i + 1)
 
 /-- Evaluate a CONSTRUCT query — §16.2. The result is a GRAPH, so
-duplicate triples collapse (`Graph.add` is set-based); a LIMIT on the
-WHERE clause still limits which bindings drive the template, matching
-the F* source (and Jena / RDF4J). -/
+duplicate triples collapse (`Graph.add` is set-based); the solution
+modifiers apply to the solution sequence BEFORE the template is
+instantiated (§18.2.4 builds `OrderBy` then `Slice` for every query
+form; §16.2 instantiates the template over the resulting sequence), so
+`ORDER BY … LIMIT n` selects the first `n` rows of the ORDERED
+sequence, as in Jena / RDF4J.
+
+Found by the differential harness (2026-08-22, generated seeds 169 and
+324): this function sliced the UNORDERED sequence, and so does the F*
+`eval_construct_query` — the two trees disagreed only because their
+unordered evaluation orders differ. -/
 def evalConstruct (env : EvalEnv) (ds : Dataset) (q : Query) : Graph :=
   let (ds', active) := applyDataset q.dataset ds ds.default
   let env := { env with dataset := some ds' }
@@ -1284,7 +1292,10 @@ def evalConstruct (env : EvalEnv) (ds : Dataset) (q : Query) : Graph :=
       let omega := match q.postValues with
         | none      => omega0
         | some vals => join omega0 vals
-      let limited := sliceSolutions q.modifier.offset q.modifier.limit omega
+      let ordered := match q.modifier.orderBy with
+        | none   => omega
+        | some o => sortSolutions (compareOnConditions env o) omega
+      let limited := sliceSolutions q.modifier.offset q.modifier.limit ordered
       (instantiateSolutions template limited 0).foldl (fun g t => g.add t) Graph.empty
   | _ => []
 

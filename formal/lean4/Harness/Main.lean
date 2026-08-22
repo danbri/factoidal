@@ -87,13 +87,16 @@ def runManifest : Nat → System.FilePath → Bool → IO (Score × Diag)
         | none   => IO.println s!"# {label}: {tests.length} entries, no mf:assumedTestBase"
       let mut score : Score := {}
       let mut diag : Diag := { zeroTests := if tests.isEmpty then 1 else 0 }
+      -- The Graph Store the http-rdf-update entries share, in manifest order.
+      let gspStore ← IO.mkRef L4Factoidal.SPARQL.GraphStore.GraphStore.empty
       for tc in tests do
-        let r ← runTest assumedBase manifestDir tc
+        let r ← runTest assumedBase manifestDir gspStore tc
         score := score.bump r.outcome
         diag := { diag with
                   budgetExceeded := diag.budgetExceeded + (if r.budgetExceeded then 1 else 0),
                   rowsCompared := diag.rowsCompared + r.rowsCompared,
-                  triplesCompared := diag.triplesCompared + r.triplesCompared }
+                  triplesCompared := diag.triplesCompared + r.triplesCompared,
+                  gspSeeded := diag.gspSeeded + (if r.gspSeeded then 1 else 0) }
         if verbose || r.outcome.isFail then
           IO.println (Outcome.line tc.name r.outcome)
       IO.println (Score.line label score)

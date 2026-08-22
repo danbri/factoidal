@@ -55,6 +55,13 @@ def rdfcNs : String := "https://w3c.github.io/rdf-canon/tests/vocab#"
 /-- SPARQL 1.1 Service Description — `sd:entailmentRegime` on the
 entailment suite's actions. -/
 def sdNs   : String := "http://www.w3.org/ns/sparql-service-description#"
+/-- SPARQL 1.1 Update test vocabulary — `ut:request`, `ut:data`,
+`ut:graphData` / `ut:graph` on the action and on the result of an
+`UpdateEvaluationTest`. -/
+def utNs   : String := "http://www.w3.org/2009/sparql/tests/test-update#"
+/-- `rdfs:label` names the graph of a `ut:graphData` node; `rdfs:comment`
+carries the HTTP exchange of a Protocol / Graph Store test. -/
+def rdfsNs : String := "http://www.w3.org/2000/01/rdf-schema#"
 
 def rdfType  : String := rdfNs ++ "type"
 def rdfFirst : String := rdfNs ++ "first"
@@ -163,7 +170,54 @@ structure TestCase where
   /-- `qt:serviceData`: (endpoint IRI, local data path) pairs for
   SERVICE tests. -/
   serviceData : List (String × String) := []
+  /-- `UpdateEvaluationTest` only: the expected Graph Store after the
+  update — `ut:data` files (default graph) under `mf:result`. The
+  F* runner's `update_result_default_files`. -/
+  updateResultData : List String := []
+  /-- … and its `ut:graphData` (graph IRI, local path) pairs. The F*
+  runner's `update_result_named_files`. -/
+  updateResultGraphData : List (String × String) := []
+  /-- `mf:entailmentRegime` — the rdf-mt suite's literal (`"simple"`,
+  `"RDF"`, `"RDFS"`) on the entry itself (the F* runner's
+  `test_type_detail`). -/
+  entailmentRegime : Option String := none
+  /-- `mf:recognizedDatatypes ( … )` — the datatype IRIs the test asks
+  the implementation to recognise (rdf-mt only; empty otherwise). -/
+  recognizedDatatypes : List String := []
+  /-- `mf:result false` — the rdf-mt encoding of "the action graph is
+  (Positive) / is not (Negative) inconsistent". Recorded as a flag;
+  `resultFile` is `none` for such an entry. -/
+  resultFalse : Bool := false
+  /-- The first non-empty `rdfs:comment` literal on the entry: the
+  HTTP request/response description of a `ProtocolTest` or
+  `GraphStoreProtocolTest` (the F* runner's `protocol_comment`). -/
+  comment : Option String := none
   deriving Repr
+
+/-- `ut:data` / `qt:data` files and `ut:graphData` / `qt:graphData`
+pairs under one node (an action, or an UPDATE result). Port of the F*
+runner's `extract_data_and_graphdata`: a `qt:graphData` object is a
+file IRI that is also the graph name; a `ut:graphData` object is
+either such an IRI or a blank node carrying `ut:graph` (the file) and
+`rdfs:label` (the graph IRI). -/
+def dataAndGraphData (manifestDir : String) (g : Graph) (subj : Subject) :
+    List String × List (String × String) :=
+  let d := (findObjects g subj (qtNs ++ "data") ++ findObjects g subj (utNs ++ "data")).map
+             (fun t => iriToLocalPath manifestDir (termKey t))
+  let qtGd := (findObjects g subj (qtNs ++ "graphData")).map (fun t =>
+                let iri := termKey t
+                (iri, iriToLocalPath manifestDir iri))
+  let utGd := (findObjects g subj (utNs ++ "graphData")).filterMap (fun t =>
+                match t with
+                | .iri i   => some (i.val, iriToLocalPath manifestDir i.val)
+                | .bnode b =>
+                    match findObject? g (.bnode b) (utNs ++ "graph"),
+                          findObject? g (.bnode b) (rdfsNs ++ "label") with
+                    | some file, some label =>
+                        some (termKey label, iriToLocalPath manifestDir (termKey file))
+                    | _, _ => none
+                | _ => none)
+  (d, qtGd ++ utGd)
 
 /-- One entry → one `TestCase`. Total: never returns `none`, because
 an entry the runner cannot execute must still occupy a slot in the
@@ -188,8 +242,30 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
       | some t => localName (termKey t)
       | none   => ""
     let hashAlgorithm := (findObject? g subj (rdfcNs ++ "hashAlgorithm")).map termKey
-    let resultFile :=
-      (findObject? g subj (mfNs ++ "result")).map (fun t => iriToLocalPath manifestDir (termKey t))
+    -- `mf:result`: a file IRI (query / rdf-mt entailment tests); the
+    -- literal `false` (rdf-mt inconsistency tests); or a blank node
+    -- carrying `ut:data` / `ut:graphData` — possibly none, for an
+    -- expected EMPTY store (`mf:result []`, update-silent) — for UPDATE.
+    let resultTerm := findObject? g subj (mfNs ++ "result")
+    let resultFalse := match resultTerm with
+                       | some (.literal l) => l.val.lexicalForm == "false"
+                       | _ => false
+    let (resultFile, updateResultData, updateResultGraphData) :=
+      match resultTerm with
+      | some (.bnode b) =>
+          let (d, gd) := dataAndGraphData manifestDir g (.bnode b)
+          (none, d, gd)
+      | some (.literal _) => (none, [], [])
+      | some t => (some (iriToLocalPath manifestDir (termKey t)), [], [])
+      | none   => (none, [], [])
+    -- rdf-mt: `mf:entailmentRegime "RDFS"` and `mf:recognizedDatatypes ( … )`
+    -- on the entry itself (the F* runner's `test_type_detail` /
+    -- `extract_iri_list`). `( )` and an absent triple both give `[]`.
+    let entailmentRegime := (findObject? g subj (mfNs ++ "entailmentRegime")).map termKey
+    let recognizedDatatypes :=
+      match findObject? g subj (mfNs ++ "recognizedDatatypes") with
+      | some t => (collectList g (g.length + 1) t).map termKey
+      | none   => []
     -- `mf:action`: a file IRI, or a bnode carrying qt: predicates.
     let actionTerm := findObject? g subj (mfNs ++ "action")
     let noBnodeAction : Option String × List String × List (String × String) ×
@@ -202,15 +278,14 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
           match subjectOfTerm other with
           | none => (none, noBnodeAction)
           | some aSubj =>
-            let q := (findObject? g aSubj (qtNs ++ "query")).map
+            -- `qt:query` (query tests) or `ut:request` (UPDATE tests).
+            let q := (match findObject? g aSubj (qtNs ++ "query") with
+                      | some t => some t
+                      | none   => findObject? g aSubj (utNs ++ "request")).map
                        (fun t => iriToLocalPath manifestDir (termKey t))
-            let d := (findObjects g aSubj (qtNs ++ "data")).map
-                       (fun t => iriToLocalPath manifestDir (termKey t))
-            let gd := (findObjects g aSubj (qtNs ++ "graphData")).map (fun t =>
-                        let iri := termKey t
-                        (iri, iriToLocalPath manifestDir iri))
+            let (d, gd) := dataAndGraphData manifestDir g aSubj
             -- `sd:entailmentRegime` is one IRI or an RDF collection of them.
-            let regimes := (findObjects g aSubj (sdNs ++ "entailmentRegime")).flatMap (fun t =>
+            let regimes := (findObjects g aSubj (sdNs ++ "entailmentRegime")).flatMap (fun (t : Term) =>
                              match t with
                              | .iri i   => [lastSegment i.val]
                              | .bnode _ => (collectList g (g.length + 1) t).map
@@ -228,8 +303,16 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
                           | _, _ => none)
             (none, (q, d, gd, regimes, sd))
       | none => (none, noBnodeAction)
+    -- `rdfs:comment`: the first literal with a non-empty lexical form.
+    let comment : Option String :=
+      (findObjects g subj (rdfsNs ++ "comment")).findSome? (fun (t : Term) =>
+        match t with
+        | .literal l => if l.val.lexicalForm.isEmpty then none else some l.val.lexicalForm
+        | _          => none)
     { name, entryId, testType, action, queryFile, dataFiles, graphData,
-      resultFile, approval, hashAlgorithm, entailmentRegimes, serviceData }
+      resultFile, approval, hashAlgorithm, entailmentRegimes, serviceData,
+      updateResultData, updateResultGraphData,
+      entailmentRegime, recognizedDatatypes, resultFalse, comment }
 
 /-- `mf:assumedTestBase` — the base IRI the suite documents for its own
 fixtures. Read out of the manifest rather than hardcoded, because the

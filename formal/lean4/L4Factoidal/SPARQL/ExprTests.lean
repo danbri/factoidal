@@ -6,11 +6,9 @@ Every `#guard` here is evaluated during `lake build`, so a wrong answer
 is a BUILD FAILURE. The cases are drawn from the intent of the W3C
 SPARQL 1.1 expression tests (the `expr-builtin`, `expr-equals`,
 `expr-ops`, `functions` and `lang-basedir` families) rather than from
-their files: this port has no query parser and no manifest reader yet,
-so it cannot claim a CONFORMANCE score — these are unit checks of the
-semantics, and the project's iron rule #6 ("run the real W3C test
-files") is satisfied only when a Lean runner reads those manifests.
-Said plainly so no reader mistakes a green build for a suite result.
+their files: these are unit checks of the semantics. The CONFORMANCE
+score comes from `Harness/` (`lake exe l4w3c` over the sparql11
+manifests — iron rule #6), not from a green build of this file.
 -/
 import L4Factoidal.SPARQL.Expr
 import L4Factoidal.Tests
@@ -310,11 +308,31 @@ def ttDec : Term :=
 -- Triple terms have no ordering: `<` on them is a type error.
 #guard valueCompare (.term ttInt) (.term ttDec) .lt == none
 
+/-! ### §17.4.3.14 REGEX / §17.4.3.15 REPLACE over the pure engine -/
+
+-- Unanchored search: "a." matches inside "abc".
+#guard (Expr.regex (.lit (litStr "abc")) (.lit (litStr "a.")) none).eval [] == .bool true
+#guard (Expr.regex (.lit (litStr "abc")) (.lit (litStr "^b")) none).eval [] == .bool false
+-- The `i` flag.
+#guard (Expr.regex (.lit (litStr "ABC")) (.lit (litStr "b")) (some (.lit (litStr "i")))).eval []
+  == .bool true
+-- An unknown flag is an error (FORX0001), as is an invalid pattern (FORX0002).
+#guard (Expr.regex (.lit (litStr "abc")) (.lit (litStr "b")) (some (.lit (litStr "z")))).eval []
+  == .error
+#guard (Expr.regex (.lit (litStr "abc")) (.lit (litStr "(")) none).eval [] == .error
+-- A non-string text argument is an error.
+#guard (Expr.regex (.lit (litInt "1")) (.lit (litStr "1")) none).eval [] == .error
+-- REPLACE keeps the text's language tag and replaces every match.
+#guard (Expr.replace (.lit (litStr "abcb")) (.lit (litStr "b")) (.lit (litStr "z")) none).eval []
+  == erString "azcz"
+#guard (Expr.replace (.lit (litLang "abc" "en")) (.lit (litStr "b")) (.lit (litStr "z")) none).eval []
+  == (Expr.lit (litLang "azc" "en")).eval []
+-- A pattern that matches the empty string is an error (FORX0003).
+#guard (Expr.replace (.lit (litStr "abc")) (.lit (litStr "x*")) (.lit (litStr "z")) none).eval []
+  == .error
+
 /-! ### Scoped-out operators return the type error, not a wrong answer -/
 
-#guard (Expr.regex (.lit (litStr "abc")) (.lit (litStr "a.")) none).eval [] == .error
-#guard (Expr.replace (.lit (litStr "abc")) (.lit (litStr "b")) (.lit (litStr "z")) none).eval []
-  == .error
 #guard Expr.now.eval [] == .error
 #guard (Expr.aggregate .count false (.var "a")).eval muNums == .error
 -- §17.6: an unregistered extension-function IRI is the spec-required error.

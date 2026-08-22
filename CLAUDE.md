@@ -215,7 +215,8 @@ Rules that follow:
    staleness there is a bug). Status reports LINK issues instead of
    restating their content.
 8. **Old steers decay — re-verify before acting on one.** "Protocols
-   deprioritized" predated SPARQL Protocol reaching 53 pass, 0 fail;
+   deprioritized" predated SPARQL Protocol reaching 56 pass, 0 fail
+   (34 protocol + 19 graph-store + 3 service-description, both trees);
    citing a steer against a tree that has since moved is acting on
    stale data.
 

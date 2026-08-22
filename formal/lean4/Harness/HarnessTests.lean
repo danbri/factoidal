@@ -78,11 +78,11 @@ report quote, so it is pinned here. -/
        == { pass := 3, fail := 1, skip := 5 }
 
 #guard Diag.line "rdf-turtle" { noManifest := 0, zeroTests := 0, budgetExceeded := 0 }
-       == "HARNESS-DIAG rdf-turtle: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0"
+       == "HARNESS-DIAG rdf-turtle: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0"
 -- The measurement counters are printed so a SPARQL suite that compared
 -- nothing cannot read as green.
 #guard Diag.line "bind" { rowsCompared := 42, triplesCompared := 7 }
-       == "HARNESS-DIAG bind: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=42 triples_compared=7"
+       == "HARNESS-DIAG bind: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=42 triples_compared=7 gsp_seeded=0"
 #guard (Diag.add { rowsCompared := 1, budgetExceeded := 1 } { rowsCompared := 2, triplesCompared := 3 })
        == { budgetExceeded := 1, rowsCompared := 3, triplesCompared := 3 }
 
@@ -354,6 +354,67 @@ runs out of budget is a FAILURE with its own name, and it raises the
 #guard (isoResult "x" .budgetExceeded).outcome == .fail "isomorphism budget exceeded (x)"
 #guard (isoResult "x" .budgetExceeded).budgetExceeded
 #guard !(isoResult "x" .notEqual).budgetExceeded
+
+/-! ## The sparql11 UPDATE manifest shape
+
+`ut:request` / `ut:data` / `ut:graphData` on the action, and the
+expected Graph Store as `ut:data` / `ut:graphData` under `mf:result`
+— a `ut:graphData` node carries `ut:graph` (file) + `rdfs:label`
+(graph IRI). An `mf:result []` (update-silent) is an expected EMPTY
+store: no result file, no data. -/
+
+def updateManifest : String :=
+"@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix mf: <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix ut: <http://www.w3.org/2009/sparql/tests/test-update#> .
+
+<> rdf:type mf:Manifest ;
+   mf:entries ( <#u1> <#u2> <#u3> ) .
+
+<#u1> rdf:type mf:UpdateEvaluationTest ;
+   mf:name \"u1\" ;
+   mf:action [ ut:request <u1.ru> ;
+               ut:data <in.ttl> ;
+               ut:graphData [ ut:graph <in-g1.ttl> ; rdfs:label \"http://example.org/g1\" ] ] ;
+   mf:result [ ut:result ut:success ;
+               ut:data <out.ttl> ;
+               ut:graphData [ ut:graph <out-g1.ttl> ; rdfs:label \"http://example.org/g1\" ] ] .
+
+<#u2> rdf:type mf:UpdateEvaluationTest ;
+   mf:name \"u2\" ;
+   mf:action [ ut:request <u2.ru> ] ;
+   mf:result [] .
+
+<#u3> rdf:type mf:PositiveUpdateSyntaxTest11 ;
+   mf:name \"u3\" ;
+   mf:action <u3.ru> .
+"
+
+def updateCases : List TestCase :=
+  match parseManifestText "/u/manifest.ttl" updateManifest with
+  | .ok r    => r.1
+  | .error _ => []
+
+def updateCase (n : String) : Option TestCase := updateCases.find? (fun tc => tc.name == n)
+
+#guard updateCases.map (·.testType)
+       == ["UpdateEvaluationTest", "UpdateEvaluationTest", "PositiveUpdateSyntaxTest11"]
+#guard (updateCase "u1").bind (·.queryFile) == some "/u/u1.ru"
+#guard (updateCase "u1").map (·.dataFiles) == some ["/u/in.ttl"]
+#guard (updateCase "u1").map (·.graphData) == some [("http://example.org/g1", "/u/in-g1.ttl")]
+-- The result is a blank node, so there is NO result file …
+#guard (updateCase "u1").bind (·.resultFile) == none
+-- … and the expected store is captured from it.
+#guard (updateCase "u1").map (·.updateResultData) == some ["/u/out.ttl"]
+#guard (updateCase "u1").map (·.updateResultGraphData)
+       == some [("http://example.org/g1", "/u/out-g1.ttl")]
+-- `mf:result []`: an expected empty store.
+#guard (updateCase "u2").bind (·.resultFile) == none
+#guard (updateCase "u2").map (·.updateResultData) == some []
+#guard (updateCase "u2").map (·.updateResultGraphData) == some []
+-- A syntax test's action is the request file itself.
+#guard (updateCase "u3").bind (·.action) == some "/u/u3.ru"
 
 /-! ## Axiom audit
 

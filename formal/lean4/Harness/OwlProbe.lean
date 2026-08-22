@@ -84,15 +84,24 @@ runner has a narrow Functional Syntax parser; this tree has none.
 An RDF/XML premise or conclusion that does not parse is a FAIL with the
 parser's message — that is a finding about the parser, not a skip.
 
-## Budget
+## Budget and engine
 
-The closure is the library's `OWL.RL.step`, iterated here round by
-round in `IO` (same stopping rule as `OWL.RL.closure`: stop when the
-length does not change) so that a wall-clock deadline can be checked
-BETWEEN rounds. The F* runner uses fuel 100 and a per-test SIGALRM cap;
-this probe uses fuel 100 and `--cap-ms` (default 30000) per closure.
-Every cap hit is counted in the diagnostics line and scores as a FAIL
-for any absence-shaped verdict.
+The closure is the library's INDEXED engine `OWL.RL.stepI`
+(`RLClosureIndexed.lean`), iterated here round by round in `IO` (same
+stopping rule as `OWL.RL.closure`: stop when the size does not change)
+so that a wall-clock deadline can be checked inside a round. The
+indexed engine computes the same list as the specification-level
+`OWL.RL.closure` at every fuel (`RLClosureIndexed.indexedClosure_eq`,
+a proved list equality), so the scores below are scores of the
+specification engine; the index only changes the wall clock. The F*
+runner uses fuel 100 and a per-test SIGALRM cap; this probe uses fuel
+100 and `--cap-ms` (default 30000) per closure. Every cap hit is
+counted in the diagnostics line and scores as a FAIL for any
+absence-shaped verdict.
+
+`--profile --case <id>` runs the LIST engine row by row with timing
+(the measurement that motivated the index), then the indexed round on
+the same input, and checks the two rounds produced the same list.
 
 ## Output grammar
 
@@ -112,6 +121,7 @@ clock, and prints scores.
 import L4Factoidal.XML.Parser
 import L4Factoidal.XML.Document
 import L4Factoidal.OWL.RLClosure
+import L4Factoidal.OWL.RLClosureIndexed
 import L4Factoidal.Syntax.RdfXml
 import Harness.Common
 
@@ -302,7 +312,20 @@ def parseDoc (what : String) (base : String) (text : String) : Except String Gra
 
 /-- Port of `load_imports_into_premise`: merge an import only once the
 graph so far asserts `owl:imports` for it; iterate to a fixpoint. The
-fuel is the number of candidate imports, which bounds the rounds. -/
+fuel is the number of candidate imports, which bounds the rounds.
+
+Blank-node scoping: every document is parsed on its own, so the
+parser's generated labels (`b0`, `b1`, …) collide across documents.
+The merge is therefore an RDF MERGE (RDF 1.1 Semantics §4.1), not a
+union: each imported graph's labels get a per-import ordinal prefix
+(`Graph.prefixBnodes`), the F* runner's 2026-07-10 fix
+(`owl_runner.ml` "Bnode renaming"). Before this, the wine+food pair
+of WebOnt-miscellaneous-001/002/011 carried chimera restrictions (one
+label holding wine's `owl:onProperty` and food's `owl:hasValue`), and
+the OWL RL closure of that garbage grew past 68 000 triples and
+clashed on a premise the corpus asserts consistent (measured
+2026-08-22 with the indexed engine; the list engine never got past
+round 1 so the defect was invisible). -/
 def loadImports (lookup : List ImportDoc) (allowed : List String)
     (g : Graph) (seen : List String) : Nat → Except String Graph
   | 0       => .ok g
@@ -322,7 +345,10 @@ def loadImports (lookup : List ImportDoc) (allowed : List String)
         match lookup.find? (fun d => d.ontIri == i) with
         | some { text := some txt, .. } =>
             match parseDoc s!"import {i}" i txt with
-            | .ok gi   => .ok (acc ++ gi)
+            | .ok gi   =>
+                -- ordinal = position of this import among all seen so far
+                let ord := (seen'.findIdx? (· == i)).getD 0
+                .ok (acc ++ gi.prefixBnodes s!"imp{ord}_")
             | .error e => .error e
         | _ => .ok acc) g
       match merged with
@@ -333,41 +359,42 @@ def loadImports (lookup : List ImportDoc) (allowed : List String)
 
 structure ClosureResult where
   graph  : Graph
+  index  : Index
   rounds : Nat
   capped : Bool
 
-/-- One round, `OWL.RL.step g`, computed per driving triple so the
-clock can be read INSIDE a round (a single round over a large ontology
-can take minutes, and a cap that only fires between rounds is not a
-cap). When the deadline has not passed the result is exactly
-`addAll g (axiomTriples ++ g.flatMap (conclusionsFrom g))`, i.e.
-`step g`; `none` means the deadline passed mid-round. -/
-def stepIO (g : Graph) (deadlineMs : Nat) : IO (Option Graph) := do
+/-- One round, `OWL.RL.stepI i`, computed per driving triple so the
+clock can be read INSIDE a round (a cap that only fires between rounds
+is not a cap). When the deadline has not passed the result is exactly
+`i.insertAll (stepConclusionsS (Store.ofIndex i))`, i.e. `stepI i`;
+`none` means the deadline passed mid-round. -/
+def stepIO (i : Index) (deadlineMs : Nat) : IO (Option Index) := do
+  let s := Store.ofIndex i
   let mut acc : Array Triple := #[]
-  let mut i := 0
-  for d in g do
-    acc := acc ++ (conclusionsFrom g d).toArray
-    i := i + 1
-    if i % 32 == 0 then
+  let mut n := 0
+  for d in s.graph do
+    acc := acc ++ (conclusionsFromS s d).toArray
+    n := n + 1
+    if n % 32 == 0 then
       if (← IO.monoMsNow) > deadlineMs then return none
-  return some (addAll g (axiomTriples ++ acc.toList))
+  return some (i.insertAll (axiomTriples ++ acc.toList))
 
-/-- `OWL.RL.closure` with the same stopping rule (stop when the length
+/-- `OWL.RL.closureI` with the same stopping rule (stop when the size
 did not change), one `stepIO` per loop iteration. Fuel exhausted
 without saturation counts as a cap hit too. -/
 def closureIO (g : Graph) (fuel : Nat) (deadlineMs : Nat) : IO ClosureResult := do
-  let mut cur := g
+  let mut cur := Index.ofGraph g
   let mut rounds := 0
   for _ in [0:fuel] do
     match ← stepIO cur deadlineMs with
     | none =>
-      return { graph := cur, rounds := rounds, capped := true }
-    | some g' =>
+      return { graph := cur.toGraph, index := cur, rounds := rounds, capped := true }
+    | some i' =>
       rounds := rounds + 1
-      if g'.length = cur.length then
-        return { graph := cur, rounds := rounds, capped := false }
-      cur := g'
-  return { graph := cur, rounds := rounds, capped := true }
+      if i'.all.size = cur.all.size then
+        return { graph := cur.toGraph, index := cur, rounds := rounds, capped := false }
+      cur := i'
+  return { graph := cur.toGraph, index := cur, rounds := rounds, capped := true }
 
 /-! ## Judging -/
 
@@ -397,27 +424,141 @@ def isDirectOnly (c : Case) : Bool :=
 def isRdfBasedOnly (c : Case) : Bool :=
   c.semantics.contains "RDF-BASED" && !c.semantics.contains "DIRECT"
 
+/-- Parse the premise and merge its imports: the graph the closure
+runs on. -/
+def premiseGraph (cat : Catalog) (c : Case) : Except Harness.Outcome Graph :=
+  match c.premise with
+  | none => .error (.fail "harness: no RDF/XML premise")
+  | some ptxt =>
+    match parseDoc "premise" c.iri ptxt with
+    | .error e => .error (.fail e)
+    | .ok gp0 =>
+      let allowed := c.imports.filterMap (fun w =>
+        (cat.imports.find? (fun d => d.wrapper == w)).map (·.ontIri))
+      match loadImports cat.imports allowed gp0 [] (allowed.length + 1) with
+      | .error e => .error (.fail e)
+      | .ok gp => .ok gp
+
 /-- Parse the premise, merge imports, run the closure. Shared by the
 four judges. Returns the closure result or a fail outcome, plus the
 measurement delta. -/
 def premiseClosure (cat : Catalog) (c : Case) (capMs : Nat)
     : IO (Except Harness.Outcome ClosureResult × Measure) := do
-  match c.premise with
-  | none => return (.error (.fail "harness: no RDF/XML premise"), {})
-  | some ptxt =>
-    match parseDoc "premise" c.iri ptxt with
-    | .error e => return (.error (.fail e), { parseFailures := 1 })
-    | .ok gp0 =>
-      let allowed := c.imports.filterMap (fun w =>
-        (cat.imports.find? (fun d => d.wrapper == w)).map (·.ontIri))
-      match loadImports cat.imports allowed gp0 [] (allowed.length + 1) with
-      | .error e => return (.error (.fail e), { parseFailures := 1 })
-      | .ok gp =>
+  match premiseGraph cat c with
+  | .error o => return (.error o, { parseFailures := 1 })
+  | .ok gp =>
+    let t0 ← IO.monoMsNow
+    let r ← closureIO gp closureFuel (t0 + capMs)
+    let m : Measure := { triplesParsed := gp.length, closureRounds := r.rounds,
+                         capHits := if r.capped then 1 else 0 }
+    return (.ok r, m)
+
+/-! ## Profiling — where does a round spend its time?
+
+`--profile --case <id> [--rounds N]` runs the LIST engine round by
+round on the named cases and prints, per round, the wall time and the
+emitted (pre-dedup) triple count of every row function, then the time
+the exact dedup (`addAll`) takes. This is the measurement the
+`measuring-inference` skill asks for BEFORE any engine change: which
+phase the time is in, per rule family, on the real corpus cases. -/
+
+/-- Every row function of `RLClosure.conclusionsList`, named, in that
+list's order. -/
+def namedRows : List (String × (Graph → Triple → List Triple)) :=
+  [ ("eq-ref-s", eqRefSFor), ("eq-ref-p", eqRefPFor), ("eq-ref-o", eqRefOFor),
+    ("eq-sym", eqSymFor), ("eq-trans", eqTransFor),
+    ("eq-rep-s", eqRepSFor), ("eq-rep-p", eqRepPFor), ("eq-rep-o", eqRepOFor),
+    ("prp-dom", prpDomFor), ("prp-rng", prpRngFor), ("prp-fp", prpFpFor),
+    ("prp-ifp", prpIfpFor), ("prp-symp", prpSympFor), ("prp-trp", prpTrpFor),
+    ("prp-spo1", prpSpo1For), ("prp-spo2", prpSpo2For),
+    ("prp-eqp1", prpEqp1For), ("prp-eqp2", prpEqp2For),
+    ("prp-inv1", prpInv1For), ("prp-inv2", prpInv2For), ("prp-key", prpKeyFor),
+    ("cls-int1", clsInt1For), ("cls-int2", clsInt2For), ("cls-uni", clsUniFor),
+    ("cls-svf1", clsSvf1For), ("cls-svf2", clsSvf2For), ("cls-avf", clsAvfFor),
+    ("cls-hv1", clsHv1For), ("cls-hv2", clsHv2For), ("cls-maxc2", clsMaxc2For),
+    ("cls-oo", clsOoFor),
+    ("cax-sco", caxScoFor), ("cax-eqc1", caxEqc1For), ("cax-eqc2", caxEqc2For),
+    ("scm-cls", scmClsFor), ("scm-sco", scmScoFor), ("scm-eqc1", scmEqc1For),
+    ("scm-eqc2", scmEqc2For), ("scm-spo", scmSpoFor), ("scm-eqp1", scmEqp1For),
+    ("scm-eqp2", scmEqp2For), ("scm-dom1", scmDom1For), ("scm-dom2", scmDom2For),
+    ("scm-rng1", scmRng1For), ("scm-rng2", scmRng2For),
+    ("scm-int", scmIntFor), ("scm-uni", scmUniFor) ]
+
+/-- Predicate histogram of a graph: the shape the joins run over. -/
+def predicateHistogram (g : Graph) : List (String × Nat) := Id.run do
+  let mut acc : List (String × Nat) := []
+  for t in g do
+    let k := t.p.val
+    match acc.find? (fun p => p.1 == k) with
+    | some _ => acc := acc.map (fun p => if p.1 == k then (p.1, p.2 + 1) else p)
+    | none   => acc := acc ++ [(k, 1)]
+  return acc.mergeSort (fun a b => a.2 ≥ b.2)
+
+/-- Print and flush, so a run killed by an outer timeout keeps the
+lines it already measured. -/
+def say (line : String) : IO Unit := do
+  IO.println line
+  (← IO.getStdout).flush
+
+def profileCase (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO Unit := do
+  say s!"PROFILE {name} {c.id}"
+  match premiseGraph cat c with
+  | .error o => IO.println (o.line c.id)
+  | .ok gp =>
+    IO.println s!"  premise triples={gp.length}"
+    for (p, n) in (predicateHistogram gp).take 12 do
+      IO.println s!"    {n}  {p}"
+    -- The results are written to an `IO.Ref` between the two clock
+    -- reads: a pure `let` whose value is only used later is moved past
+    -- the second `IO.monoMsNow` by the compiler (measured 2026-08-22:
+    -- every row read 0 ms while the round read seconds). The ref write
+    -- is an IO action that consumes the value, so it is forced there.
+    let outRef ← IO.mkRef (#[] : Array Triple)
+    let gRef ← IO.mkRef (#[] : Array Triple)
+    let idxRef ← IO.mkRef Index.empty
+    let mut g := gp
+    for r in [0:rounds] do
+      say s!"  round {r + 1}: input triples={g.length}"
+      let tr0 ← IO.monoMsNow
+      let mut all : Array Triple := #[]
+      for (nm, f) in namedRows do
         let t0 ← IO.monoMsNow
-        let r ← closureIO gp closureFuel (t0 + capMs)
-        let m : Measure := { triplesParsed := gp.length, closureRounds := r.rounds,
-                             capHits := if r.capped then 1 else 0 }
-        return (.ok r, m)
+        outRef.set (g.flatMap (f g)).toArray
+        let t1 ← IO.monoMsNow
+        let out ← outRef.get
+        if t1 - t0 > 0 || out.size > 0 then
+          say s!"      {nm}: emitted={out.size} ms={t1 - t0}"
+        all := all ++ out
+      let t2 ← IO.monoMsNow
+      gRef.set (addAll g (axiomTriples ++ all.toList)).toArray
+      let t3 ← IO.monoMsNow
+      let g' := (← gRef.get).toList
+      say s!"    list rows total: emitted={all.size} ms={t2 - tr0}"
+      say s!"    list dedup addAll: new={g'.length - g.length} ms={t3 - t2}"
+      -- The indexed engine on the same input: build, one round, and the
+      -- identity check against the list round (RLClosureIndexed's
+      -- Index.Wf.step, evaluated on corpus data). The per-row loop above
+      -- groups conclusions BY ROW, so `g'` holds the same SET as
+      -- `step g` in a different insertion order; the set check is what
+      -- applies to it. The LIST check is against `step g` itself, which
+      -- costs another list round, so it runs only on inputs small enough
+      -- for that to be affordable.
+      let t4 ← IO.monoMsNow
+      idxRef.set (Index.ofGraph g)
+      let t5 ← IO.monoMsNow
+      let idx ← idxRef.get
+      idxRef.set (stepI idx)
+      let t6 ← IO.monoMsNow
+      let idx' ← idxRef.get
+      let sameSet := idx'.all.size == g'.length && g'.all (fun t => idx'.memB t)
+      let sameList := if g.length ≤ 1500 then toString (decide (idx'.toGraph = step g))
+                      else "not checked (input > 1500 triples)"
+      say s!"    indexed build: ms={t5 - t4}  indexed round: new={idx'.all.size - idx.all.size} \
+ms={t6 - t5}  same set as the list round: {sameSet}  same list as step g: {sameList}"
+      if g'.length = g.length then
+        say s!"    saturated after {r + 1} rounds"
+        break
+      g := g'
 
 def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
   if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
@@ -469,7 +610,7 @@ def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outc
   match res with
   | .error o => return (o, m)
   | .ok r =>
-    let clash := detectClash r.graph
+    let clash := detectClashI r.index
     let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
     if clash then return (.fail s!"clash: detectClash fired on a premise asserted consistent ({r.graph.length} triples)", m)
     else if r.capped then
@@ -483,7 +624,7 @@ def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Ou
   match res with
   | .error o => return (o, m)
   | .ok r =>
-    let clash := detectClash r.graph
+    let clash := detectClashI r.index
     let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
     if clash then return (.pass, m)
     else if r.capped then
@@ -531,6 +672,12 @@ def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (verbose : Bool)
       if c.types.contains ty then
         let (o, m) ← judge cat c capMs ty
         let label := s!"{c.id} [{ty}]"
+        -- A cap hit is named even when the unit still scored (a
+        -- conclusion found before the budget, a clash on a truncated
+        -- closure): the diagnostics count alone does not say WHICH case.
+        if m.capHits > 0 then
+          IO.println s!"CAP {label}: budget hit after {m.closureRounds} rounds \
+(premise {m.triplesParsed} triples)"
         match o with
         | .pass => if verbose then IO.println (o.line label)
         | .fail reason =>
@@ -599,15 +746,105 @@ structure Opts where
   only    : List String := []
   capMs   : Nat := 30000
   verbose : Bool := false
+  /-- `--profile`: per-row timing of the list engine on `--case` ids. -/
+  profile : Bool := false
+  cases   : List String := []
+  rounds  : Nat := 3
+  /-- `--indexed-only`: profile rounds of the indexed engine alone
+  (no list-engine rows), for inputs the list engine cannot finish. -/
+  indexedOnly : Bool := false
 
 def parseArgs : List String → Opts → Opts
   | [], o => o
   | "--cap-ms" :: n :: rest, o => parseArgs rest { o with capMs := n.toNat!.max 1 }
   | "-v" :: rest, o => parseArgs rest { o with verbose := true }
   | "--dir" :: d :: rest, o => parseArgs rest { o with dir := d }
+  | "--profile" :: rest, o => parseArgs rest { o with profile := true }
+  | "--case" :: c :: rest, o => parseArgs rest { o with cases := o.cases ++ [c] }
+  | "--rounds" :: n :: rest, o => parseArgs rest { o with rounds := n.toNat!.max 1 }
+  | "--indexed-only" :: rest, o => parseArgs rest { o with indexedOnly := true }
   | a :: rest, o =>
       if a.endsWith ".rdf" then parseArgs rest { o with only := o.only ++ [a] }
       else parseArgs rest { o with dir := a }
+
+/-- The store-parameterised rows of `RLClosureIndexed.conclusionsListS`,
+named, in that list's order. -/
+def namedRowsS : List (String × (Store → Triple → List Triple)) :=
+  [ ("eq-ref-s", eqRefSForS), ("eq-ref-p", eqRefPForS), ("eq-ref-o", eqRefOForS),
+    ("eq-sym", eqSymForS), ("eq-trans", eqTransForS),
+    ("eq-rep-s", eqRepSForS), ("eq-rep-p", eqRepPForS), ("eq-rep-o", eqRepOForS),
+    ("prp-dom", prpDomForS), ("prp-rng", prpRngForS), ("prp-fp", prpFpForS),
+    ("prp-ifp", prpIfpForS), ("prp-symp", prpSympForS), ("prp-trp", prpTrpForS),
+    ("prp-spo1", prpSpo1ForS), ("prp-spo2", prpSpo2ForS),
+    ("prp-eqp1", prpEqp1ForS), ("prp-eqp2", prpEqp2ForS),
+    ("prp-inv1", prpInv1ForS), ("prp-inv2", prpInv2ForS), ("prp-key", prpKeyForS),
+    ("cls-int1", clsInt1ForS), ("cls-int2", clsInt2ForS), ("cls-uni", clsUniForS),
+    ("cls-svf1", clsSvf1ForS), ("cls-svf2", clsSvf2ForS), ("cls-avf", clsAvfForS),
+    ("cls-hv1", clsHv1ForS), ("cls-hv2", clsHv2ForS), ("cls-maxc2", clsMaxc2ForS),
+    ("cls-oo", clsOoForS),
+    ("cax-sco", caxScoForS), ("cax-eqc1", caxEqc1ForS), ("cax-eqc2", caxEqc2ForS),
+    ("scm-cls", scmClsForS), ("scm-sco", scmScoForS), ("scm-eqc1", scmEqc1ForS),
+    ("scm-eqc2", scmEqc2ForS), ("scm-spo", scmSpoForS), ("scm-eqp1", scmEqp1ForS),
+    ("scm-eqp2", scmEqp2ForS), ("scm-dom1", scmDom1ForS), ("scm-dom2", scmDom2ForS),
+    ("scm-rng1", scmRng1ForS), ("scm-rng2", scmRng2ForS),
+    ("scm-int", scmIntForS), ("scm-uni", scmUniForS) ]
+
+/-- `--profile --indexed-only`: rounds of the indexed engine alone,
+timed, with the size after each round, the per-row emitted counts and
+times over the round's input, and the `owl:sameAs` / `rdf:type`
+population of the store after the round. -/
+def profileIndexed (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO Unit := do
+  say s!"PROFILE-INDEXED {name} {c.id}"
+  match premiseGraph cat c with
+  | .error o => say (o.line c.id)
+  | .ok gp =>
+    say s!"  premise triples={gp.length}"
+    let idxRef ← IO.mkRef Index.empty
+    let t0 ← IO.monoMsNow
+    idxRef.set (Index.ofGraph gp)
+    let t1 ← IO.monoMsNow
+    say s!"  index build: ms={t1 - t0}"
+    let mut idx ← idxRef.get
+    let mut total := t1 - t0
+    let outRef ← IO.mkRef (#[] : Array Triple)
+    for r in [0:rounds] do
+      let st := Store.ofIndex idx
+      for (nm, f) in namedRowsS do
+        let ra ← IO.monoMsNow
+        outRef.set (st.graph.flatMap (f st)).toArray
+        let rb ← IO.monoMsNow
+        let out ← outRef.get
+        if rb - ra > 0 || out.size > 0 then
+          say s!"      {nm}: emitted={out.size} ms={rb - ra}"
+      let ta ← IO.monoMsNow
+      idxRef.set (stepI idx)
+      let tb ← IO.monoMsNow
+      let idx' ← idxRef.get
+      total := total + (tb - ta)
+      say s!"  round {r + 1}: input={idx.all.size} new={idx'.all.size - idx.all.size} ms={tb - ta} \
+cumulative_ms={total} sameAs={(idx'.withPred owlSameAs).length} rdfType={(idx'.withPred rdfType).length}"
+      if idx'.all.size = idx.all.size then
+        say s!"  saturated after {r + 1} rounds, {idx'.all.size} triples, cumulative_ms={total}"
+        break
+      idx := idx'
+
+/-- `--profile` entry: only the named cases, only the timing. -/
+def profileMain (o : Opts) : IO UInt32 := do
+  let dir : System.FilePath := o.dir
+  let names := if o.only.isEmpty then catalogs else o.only
+  for name in names do
+    let p := dir / name
+    if !(← p.pathExists) then
+      IO.println s!"  MISSING {name}"
+    else
+      match ← readCatalog p with
+      | none => pure ()
+      | some cat =>
+        for c in cat.cases do
+          if o.cases.contains c.id then
+            if o.indexedOnly then profileIndexed name cat c o.rounds
+            else profileCase name cat c o.rounds
+  return 0
 
 def main (args : List String) : IO UInt32 := do
   let o := parseArgs args {}
@@ -617,6 +854,7 @@ def main (args : List String) : IO UInt32 := do
   let (scoOk, unrelatedAbsent) := engineSelfCheck
   IO.println s!"engine self-check: cax-sco fires = {scoOk}, \
 unrelated triple absent = {!unrelatedAbsent}"
+  if o.profile then return (← profileMain o)
   let names := if o.only.isEmpty then catalogs else o.only
   let mut total : Harness.Score := {}
   let mut totalM : Measure := {}

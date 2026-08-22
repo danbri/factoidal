@@ -2236,3 +2236,1184 @@ still show only subsets of `[propext, Classical.choice, Quot.sound]`
 `skills/crypto-policy/SKILL.md` (public data, no secret) and carry
 the RFC 1321 / FIPS 180-4 vectors plus block-boundary lengths (55,
 56, 63, 64, 65 bytes) as `#guard`s.
+## Stage: the regex engine — Brzozowski derivatives, XSD patterns, fn:matches / fn:replace (2026-08-22)
+
+Port of the four pure F\* regex modules and the `regex_match` /
+`regex_replace` block of `SPARQL11.Algebra.fst` to
+`L4Factoidal/Regex/`. `grep -c "assume val"` on
+`Regex.{Syntax,Derivative,Exec,XSDPattern}.fst` gives 0, 0, 0, 0 real
+declarations (the two grep hits are the comments "no assume val"), so
+there was nothing to realise: the whole engine is total code and
+proofs, and it is ported as such. Codepoints are `Nat` as in the F\*
+(never bytes; `String.toList.map Char.toNat` in, `Char.ofNatAux` out),
+because the XPath layer needs two values above `0x10FFFF` as anchor
+sentinels.
+
+Public API for the SPARQL evaluator (`SPARQL/Expr.lean` is wired by its
+owner; the names differ from the brief only where Lean forced it —
+`matches` is a Lean keyword):
+
+| Brief | Landed | Notes |
+|---|---|---|
+| `Regex.compile (pattern flags : String) : Except RegexError Regex` | `L4Factoidal.Regex.compile : String → String → Except RegexError Compiled` | flags `i s m x q`; err:FORX0001 / FORX0002 |
+| `Regex.matches (r) (s) : Bool` | `L4Factoidal.Regex.isMatch : Compiled → String → Bool` | unanchored search; `^` / `$` are real anchors; `m` implemented |
+| `Regex.replace (r) (s) (replacement) : Except RegexError String` | `L4Factoidal.Regex.replace : Compiled → String → String → Except RegexError String` | `$N`, `\$`, `\\`; err:FORX0003 / FORX0004 |
+| `Regex.xsdPatternMatches (pattern s) : Option Bool` | `L4Factoidal.Regex.xsdPatternMatches : String → String → Option Bool` | whole-string; `none` outside the fragment |
+
+### Module correspondence
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `Regex.Syntax.regex` (`R_Empty R_Eps R_Ranges R_Cat R_Alt R_Star R_And R_Not`) | `Regex/Syntax.lean` `Re` (`empty eps ranges cat alt star inter compl`) | `and` / `not` would shadow the Bool functions inside `namespace Re` |
+| `size`, `in_ranges`, `complement_from`, `complement_ranges` | `Re.size`, `inRanges`, `complementFrom`, `complementRanges` | same constants (`size` still feeds `isEmpty`'s fuel) |
+| `take_n`, `drop_n` | `List.take`, `List.drop` | core |
+| `mem` / `cat_try` / `star_try` (one mutual well-founded recursion on `[‖w‖; size; k; tag]`) | `mem` (structural on `Re`), `catTry`, `starTry` (structural on the split index, sub-languages as function arguments), `memStar` (fuel = `‖w‖`) | same language, same split order `k = ‖w‖ .. 0`; `memStar_fuel` closes the fuel |
+| `nullable` | `nullable` | |
+| `r_universal`, `ranges_cmp`, `regex_cmp`, `regex_le` | `rUniversal`, `rangesCmp`, `reCmp` (`Ordering`), `reLe` | same tag numbering |
+| `smart_alt`, `smart_and`, `smart_not`, `smart_cat`, `smart_star` | `smartAlt`, `smartAnd`, `smartNot`, `smartCat`, `smartStar` | |
+| `Regex.Derivative.deriv`, `deriv_word`, `matches` | `Regex/Derivative.lean` `deriv`, `derivWord`, `accepts` | `matches` is a Lean keyword |
+| `Regex.Exec.insert_regex`, `alt_flatten`, `and_flatten`, `has_universal`, `has_empty`, `rebuild_alt`, `rebuild_and`, `ealt`, `eand`, `nderiv` | `Regex/Exec.lean` same names in camelCase | |
+| `run_word`, `matches`, `run_word_norm`, `matches_norm` | `runWord`, `accepts`, `runWordNorm`, `acceptsNorm` | |
+| `any_char`, `dot_star`, `contains`, `search`, `anchored_prefix`, `find_from`, `find_match` | `anyChar`, `dotStar`, `contains`, `search`, `anchoredPrefix`, `findFrom`, `findMatch` | |
+| `insert_sorted`, `collect_bounds`, `collect_range_bounds`, `class_reps`, `mem_state`, `succ_states`, `add_new`, `bfs_empty`, `is_empty`, `intersection_empty`, `subsumes` | same, camelCase | fuel `1000 * (size + 1)` as in the F\* |
+| `Regex.XSDPattern.*` (constants, `single`, `dot_regex`, `hex_val`, `read_hex_n`, `char_escape`, `class_escape_ranges`, `parse_escape_atom`, `class_escape_item`, `parse_class_items`, `insert_range`, `sort_ranges`, `parse_class`, `repeat_exact`, `repeat_opt`, `read_digits_acc`, `read_uint`, `parse_brace`, `skip_lazy`, `parse_quant`, `is_atom_meta`, `parse_alt … parse_group_close`, `parse_cps`, `cps_of_string`, `parse_xsd_pattern`) | `Regex/XSDPattern.lean` same names in camelCase; `cpsOfString` lives in `Syntax.lean` | `parseClassItems` takes the input length as fuel where the F\* used `decreases (length input)` |
+| `SPARQL11.Algebra.rx_flag_has`, `rx_is_ws`, `rx_strip_ws`, `rx_replace_anchors`, `rx_begin_sentinel`, `rx_end_sentinel`, `rx_nonsent`, `rx_gap_left`, `rx_gap_right`, `rx_literal_regex`, `rx_ci_extra`, `rx_ci_ranges`, `rx_fold_ci`, `rx_dotall`, `regex_match` | `Regex/XPath.lean` `flagHas`, `isWs`, `stripWs`, `replaceAnchors`, `beginSentinel`, `endSentinel`, `nonSent`, `gapLeft`, `gapRight`, `literalRegex`, `ciExtra`, `ciRanges`, `foldCi`, `dotAll`, `regexMatch` | `regexMatch` keeps the exact F\* behaviour (unparseable pattern → `false`, `m` ignored) |
+| `rx_safe_char`, `rx_string_of_cps`, `rx_take` / `rx_drop` / `rx_slice`, `rx_leaf_ends_from`, `rx_leaf_ends`, `rx_list_max_opt`, `rx_longest_end` | `safeChar`, `stringOfCps` (in `Syntax.lean`), `List.take` / `List.drop` / `slice`, `leafEndsFrom`, `leafEnds`, `listMaxOpt`, `longestEnd` | |
+| `rx_cre` (`RC_Leaf RC_Eps RC_Cat RC_Alt RC_Star RC_Group`), `rx_cre_size`, `rx_cre_fold_ci`, `rx_cre_dotall`, `rx_cre_repeat_exact`, `rx_cre_repeat_opt` | `CRe` (`leaf eps cat alt star group`), `CRe.size`, `CRe.foldCi`, `CRe.dotAll`, `CRe.repeatExact`, `CRe.repeatOpt` | |
+| `rx_cparse_brace`, `rx_cparse_quant`, `rx_cparse_alt … rx_cparse_noncap`, `rx_parse_capturing` | `cparseBrace`, `cparseQuant`, `cparseAlt … cparseNoncap`, `parseCapturing` | groups numbered from 1, outer before nested, as in the F\* |
+| `rx_cmatch`, `rx_pick_caps`, `rx_find_cap`, `rx_group_text`, `rx_expand_template`, `rx_template_has_group`, `rx_cmatch_fuel`, `rx_replace_loop`, `regex_replace`, `string_replace` | `cmatch` (outcomes as `COut` records, caps as `Cap`), `pickCaps`, `findCap`, `groupText`, `expandTemplate`, `templateHasGroup`, `cmatchFuel`, `replaceLoop`, `regexReplace` | same mechanism: the verified engine finds the leftmost-longest span, the capturing matcher only explains the span |
+| — | `templateValid`, `validFlags`, `RegexError`, `Compiled`, `compile`, `isMatch`, `replace`, `xsdPatternMatches`, `markerClass`, `sigmaAllStar`, `isSentinelLeaf`, `absorbMarkers`, `wrapMultiline` | new: the API surface and the `m` flag |
+| `tests/unit/regex_engine_unit.ml` (F\* unit suite) | `Regex/RegexTests.lean` §1 | every case ported as a `#guard` |
+
+### Lemma status (every F\* `Lemma` of the four modules)
+
+| F\* lemma | Lean theorem (`Regex/RegexTheorems.lean`) | Status |
+|---|---|---|
+| `nullable_correct` | `nullable_correct` | proved |
+| `smart_alt_ok`, `smart_and_ok`, `smart_not_ok` | `smartAlt_ok`, `smartAnd_ok`, `smartNot_ok` | proved |
+| `take_all`, `drop_all`, `drop_below` | `List.take_length`, `List.drop_length`, `List.drop_eq_nil_iff` | core lemmas, used inline |
+| `cat_empty_left`, `cat_empty_right` | `catTry_empty_left`, `catTry_empty_right` | proved |
+| `cat_eps_left`, `cat_eps_right_below`, `cat_eps_right` | `catTry_eps_left`, `catTry_eps_right_below`, `catTry_eps_right` | proved |
+| `smart_cat_ok` | `smartCat_ok` | proved |
+| `star_try_empty`, `star_empty_lang`, `star_try_eps`, `star_eps_lang` | `starTry_empty`, `memStar_empty`, `starTry_eps`, `memStar_eps` | proved (stated for every fuel) |
+| `smart_star_ok` (non-star argument) | `smartStar_ok` | proved, same restriction; star idempotence stays deferred in both trees and is off the `nderiv` path |
+| `ranges_cmp_eq`, `regex_cmp_eq` | `rangesCmp_eq`, `reCmp_eq` | proved |
+| `take_zero`, `drop_zero`, `take_cons`, `drop_cons` | `List.take_zero`, `List.drop_zero`, `List.take_succ_cons`, `List.drop_succ_cons` | core lemmas |
+| `cat_shift` + `cat_shift_gen` | `catTry_shift` (the generic form) | proved; one theorem serves `deriv` and `nderiv` |
+| `star_shift` + `star_shift_gen` | `starTry_shift` | proved |
+| `deriv_cat_w` + `nderiv_cat_w` | `deriv_cat_w` (generic in the derivative) | proved |
+| `deriv_star_w` + `nderiv_star_w` | `deriv_star_w` | proved |
+| `deriv_correct` | `deriv_correct` | proved, full AST |
+| `deriv_word_correct`, `matches_correct` | `derivWord_correct`, `accepts_correct` | proved |
+| `insert_regex_ok`, `alt_flatten_ok`, `rebuild_alt_ok`, `has_universal_ok`, `ealt_ok` | same names, camelCase | proved |
+| `insert_regex_and_ok`, `and_flatten_ok`, `rebuild_and_ok`, `has_empty_ok`, `eand_ok` | same names, camelCase | proved |
+| `nderiv_correct`, `run_word_norm_correct`, `matches_norm_correct`, `matches_norm_eq_proven` | `nderiv_correct`, `runWordNorm_correct`, `acceptsNorm_correct`, `acceptsNorm_eq_proven` | proved |
+| — | `memStar_fuel`, `memStar_length`, `catTry_congr_right`, `starTry_congr_right`, `runWord_eq_derivWord`, `Exec.accepts_correct`, `search_correct`, `size_pos`, `mem_universal` | added (fuel and congruence plumbing the F\* does not need) |
+
+Not proved, in either tree: the derivative-class-coverage lemma behind
+`isEmpty` (the Owens–Reppy–Turon finiteness argument); `isEmpty` stays
+sound-by-construction and guard-checked, with its fuel / closure
+guarantee stated at its definition, as the F\* `is_empty` banner says.
+Nothing about the capturing matcher, the XSD parser, or the XPath flag
+rewrites is proved in either tree; the XPath layer's correctness
+argument is the F\* one (the span is decided by the proven engine; the
+capturing AST reuses the parser's leaf builders).
+
+Axiom audit: all eleven `#print axioms` lines at the end of
+`RegexTheorems.lean` show subsets of `[propext, Quot.sound]`.
+
+### Translation decisions
+
+- `mem` is structural. The F\* `mem` / `cat_try` / `star_try` are one
+  well-founded mutual recursion; Lean gets the same language with
+  `mem` structural on the regex, the enumerators structural on the
+  split index with the sub-languages as function arguments, and star
+  iteration on a fuel set to the word length. Cost: one extra lemma
+  (`memStar_fuel`) and two congruence lemmas. Benefit: every proof
+  unfolds by `simp`, and `#guard`s run the compiled code without
+  well-founded-recursion unfolding (pitfall 7).
+- `matches` → `accepts` / `acceptsNorm` / `isMatch`: `matches` is a
+  Lean keyword.
+- `fn:matches` / `fn:replace` live with the engine (`Regex/XPath.lean`),
+  not in the SPARQL algebra module where the F\* keeps them (they were
+  placed there when they retired two `assume val`s). `regexMatch` /
+  `regexReplace` reproduce the F\* functions for side-by-side
+  comparison; `compile` / `isMatch` / `replace` add the error channel
+  the evaluator needs.
+- The `m` flag is implemented (the F\* accepts it and treats `^` / `$`
+  as string anchors, which fails W3C `sparql10/regex`
+  `regex-start-end-multiline`): the input is wrapped with a sentinel
+  pair around every line, non-anchor leaves may absorb sentinel runs
+  (`absorbMarkers`), and the search gaps accept any codepoint.
+  Guarded: `^b$` + `m` on `"a\nb\nc"` is true, without `m` false;
+  `a.*c` + `sm` crosses lines; `a.c` + `m` alone does not match `"a\nc"`.
+- Error channel, all in the direction of XPath F&O: unknown flag
+  (FORX0001), unparseable pattern (FORX0002), pattern matching the
+  empty string in `replace` (FORX0003 — the F\* copies one codepoint
+  through), ill-formed template `\x` / `$x` (FORX0004 — the F\* expands
+  `\c` to `c`).
+- Non-ASCII case folding under `i` is not applied, as in the F\*;
+  `\w` is `[A-Za-z0-9_]`, as in the F\*; `$12` reads as `$1` then `2`,
+  as in the F\*.
+
+### Guards
+
+`RegexTests.lean`: 183 `#guard`s. §1 is the F\* unit suite
+`tests/unit/regex_engine_unit.ml` case for case (engine, emptiness,
+the `(a?)^25 a^25` non-blow-up, astral codepoints, the XSD parser on
+the OWL / CSVW / SHACL / ShEx fixture patterns, the clean-`none`
+cases). §2 pins the exact W3C inputs: `sparql11/functions`
+`replace01` (all eight `data3.ttl` strings), `replace02`, `replace03`
+(`(ab)|(a)` → `[1=ab][2=]cd`), `replace-case-insensitive`;
+`sparql11/service/service05` (`data05.ttl` subjects); `uuid01` /
+`struuid01`; and the full `sparql10/regex` manifest — `regex-query-001
+..004` on `regex-data-01.ttl` and the 17 quantifier / dot / flag /
+class / anchor tests on `regex-data-quantifiers.ttl`, each as a filter
+over the data strings equal to the `.srx` rows. Not a conformance
+score: the W3C files are not read by this stage.
+
+Sabotage record (2026-08-22): replacing `nderiv`'s star case by
+`nderiv c a` fails the build at 28 guards (`a*`, `(ab)*`, the
+`(a?)^25 a^25` pair, the CSVW `^-?P.*$` forms, `[0-9]+`, `ab*c`,
+`ab+c`, `ab{1,}c` …) and at `nderiv_correct` (the `rw [smartCat_ok]`
+step); replacing `deriv`'s star case by `deriv c a` fails
+`deriv_correct` (the star case's `rfl`) and the
+`Derivative.accepts (star …) == acceptsNorm …` guard. Both restored
+with `git checkout`, build green again.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]`. The F\* side had no `assume val` here either.
+
+### Findings against the F\* (not fixed here)
+
+- `SPARQL11.Algebra.fst:1364–1367` (`regex_match`): the `m` flag is
+  accepted but not modelled, so `^b$` with `m` on `"a\nb\nc"` is
+  `false`; W3C `sparql10/regex/regex-start-end-multiline.srx` expects
+  that row. `bin/darwin-arm64/w3c_runner --list` shows only the 34
+  SPARQL 1.1 suites, so the F\* score on the `sparql10/regex` manifest
+  is not measured by the committed runner.
+- `SPARQL11.Algebra.fst:1575–1577` (`regex_replace`): `^` / `$` parse
+  to eps in a replace pattern (documented there as a known limitation);
+  kept as-is in `replaceRe` so `replace` agrees with the F\*.
+
+## Stage: SPARQL 1.1 Update (branch `lean4/sparql-update`, 2026-08-22)
+
+Files: `L4Factoidal/SPARQL/Update.lean` (AST + §3 semantics),
+`SPARQL/UpdateParser.lean` (grammar [29]–[52]), `SPARQL/UpdateTests.lean`
+(84 guards), `SPARQL/UpdateTheorems.lean` (nine theorems),
+`Harness/Manifest.lean` (the `ut:` vocabulary), `Harness/Run.lean`
+(`UpdateEvaluationTest`, `PositiveUpdateSyntaxTest11`,
+`NegativeUpdateSyntaxTest11`).
+
+### Correspondence
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `graph_ref` (`GR_Default GR_Named GR_All GR_Graph`) | `GraphRef` | derives `DecidableEq` (the F\* `graph_ref_eq`) |
+| `update_op` (`U_Load` … `U_Modify`) | `UpdateOp` | same eleven constructors, same payloads |
+| `sparql_update` | `Update` | |
+| `count_named_triples`, `dataset_triple_count` (the fresh-label salt) | `Dataset.maxBnodeLabelLength`, `requestPrefix` | freshness by LENGTH, not by triple count — see "Decisions" |
+| `ps_to_subject_concrete`, `pt_to_iri_concrete`, `pt_to_term_concrete`, `tp_to_triple_concrete`, `bgp_to_triples_concrete`, `collect_quads` | `groundSubject`, `groundPredicate`, `groundObject`, `groundTriple`, `collectQuads` | |
+| `upsert_named_graph`, `insert_quad`, `insert_quads`, `remove_from_named_graph`, `delete_quad`, `delete_quads` | `replaceNamed`, `Dataset.insertQuad`, `Dataset.insertQuads`, `Dataset.deleteQuad`, `Dataset.deleteQuads`, `Graph.remove` | |
+| `rename_quad_bnodes`, `apply_insert_data` | `Quad.renameBnodes`, `freshDataBnode`, `applyInsertData` | |
+| `triple_has_bnode`, `filter_no_bnode_quads`, `apply_delete_data` | `Triple.hasBnode`, `applyDeleteData` | |
+| `instantiate_tp`, `instantiate_bgp`, `instantiate_ggp_quads`, `bound_subject_of_pattern_freshen`, `bound_object_of_pattern_freshen`, `instantiate_tp_freshen`, `instantiate_bgp_freshen`, `instantiate_ggp_quads_freshen`, `fresh_bnode_for_op` | `instSubject`, `instObject`, `instTriple`, `instQuads`, `freshTemplateBnode` | ONE instantiator with a `fresh : String → BNodeId` argument: `id` for DELETE templates, `freshTemplateBnode pre opIx solIx` for INSERT templates |
+| `instantiate_ggp_all`, `apply_delete_where` | `evalWhere`, `applyDeleteWhere` | |
+| `using_default_iris`, `using_named_iris`, `union_named_graphs_by_iri`, `named_graphs_by_iri`, `build_where_dataset` | `whereDataset` | |
+| `redirect_default_quad(s)`, `per_mapping_quads`, `per_mapping_insert_quads`, `insert_per_mapping_quads`, `apply_modify` | `redirectQuad`, `insertQuadsFor`, `applyModify` | |
+| `find_named_graph_triples`, `has_named_graph`, `replace_named_graph_triples`, `empty_graph_named`, `drop_named_by_iri`, `empty_all_named`, `ensure_named_graph` | `Dataset.graphOf`, `Dataset.hasGraph`, `Dataset.setGraph`, `Dataset.dropGraph`, `Dataset.clearAllNamed`, `Dataset.ensureGraph` | |
+| `read_graph_ref`, `graph_ref_exists`, `write_graph_ref` | `readRef`, `refExists`, `writeRef` | |
+| `apply_create`, `apply_clear`, `apply_drop`, `apply_copy`, `apply_move`, `apply_add`, `graph_append` | `applyCreate`, `applyClear`, `applyDrop`, `applyCopy`, `applyMove`, `applyAdd` (with `Graph.union`) | return `Except UpdateError Dataset` — see "Decisions" |
+| `apply_update_op`, `apply_update_ops_aux`, `apply_update_ops`, `apply_update` | `applyOp`, `applyOps`, `applyUpdateIn`, `applyUpdate` | |
+| `is_implemented_op`, `update_is_implemented_only` | `Update.hasNonSilentLoad` | |
+| `parse_iri_ref`, `parse_graph_ref_graph_only`, `parse_graph_ref_all`, `parse_graph_or_default`, `parse_silent` | `pIriRef`, `pGraphRef`, `pGraphRefAll`, `pGraphOrDefault`, `pSilent` | |
+| `gp_has_var`, `bgp_has_any_var`, `gp_has_bnode`, `bgp_has_any_bnode`, `gp_has_nested_graph_under_graph`, `gp_has_graph_anywhere` | `patHasVar`, `bgpHasVar`, `patHasBnode`, `bgpHasBnode`, `patHasNestedGraph`, `patHasGraph` | |
+| `parse_quad_block`, `parse_quad_data`, `parse_using_list`, `parse_single_update_op`, `parse_modify_after_with`, `parse_update_seq` | `pQuadBlock`, `pQuadData`, `pUsingList`, `pUpdateOp` (+ `pInsertTemplateOpt`, `pModifyRest`), `pModifyAfterWith`, `pUpdateSeq` | templates and WHERE clauses reuse `pTriplesBlock` / `pGroupGraphPattern` / `pGraphName` / `pPrologue` unchanged |
+| `labeled_bnodes_in_data_op`, `bnode_labels_unique_across_data_ops` | `labeledBnodesInDataOp`, `bnodeLabelsUniqueAcrossDataOps` | §19.6 |
+| `parse_sparql_update_with_base`, `parse_sparql_update_12_with_base`, `parse_sparql_update` | `parseSparqlUpdateWith`, `parseSparqlUpdate` | one entry point with a `version` argument |
+| `w3c_runner.ml` `extract_data_and_graphdata` (~409–464), the `mf:result` bnode branch (~552–573) | `Harness/Manifest.lean` `dataAndGraphData`, `TestCase.updateResultData` / `updateResultGraphData` | |
+| `w3c_runner.ml` the three update arms (2217–2312) | `Harness/Run.lean` `runUpdateEvaluation`, `runUpdateSyntaxTest`, `loadUpdateStore`, `dropEmptyNamed` | |
+
+### Decisions
+
+- **Error channel.** `applyUpdate : Dataset → Update → Except UpdateError
+  Dataset`. The F\* `apply_update` is total and its Part 19e banner
+  says "SILENT is advisory in our pure model — errors do not exist".
+  SPARQL 1.1 Update §3.2.1–§3.2.5 and §3.1.5 say CREATE of an existing
+  graph and CLEAR / DROP / COPY / MOVE / ADD naming a missing graph are
+  errors unless SILENT; this port raises `graphExists` /
+  `graphMissing` exactly there and `loadUnavailable` for a non-silent
+  LOAD. `SILENT` makes each the identity (theorems
+  `applyUpdate_clear_missing` / `_silent`, `applyUpdate_create_existing`).
+  The W3C suites never exercise the non-SILENT error path, so both
+  trees score the same 149; the difference is observable only on a
+  request the suites do not contain.
+- **Fresh blank nodes by construction.** `requestPrefix ds` is one
+  character longer than the longest label in the store, so every label
+  it prefixes is new. The F\* salts with the triple COUNT
+  (`SPARQL11.Algebra.fst:8709`), which can repeat across requests
+  (insert → delete something else → insert again lands on the same
+  count and the same `_insdata_<n>_<label>`). The SCOPING is the
+  F\*'s: one prefix per request for INSERT DATA (`freshDataBnode`,
+  §19.6, W3C `insert-data-same-bnode`), one node per (operation,
+  solution, label) for INSERT templates (`freshTemplateBnode`,
+  §3.1.3.2, W3C `insert-where-same-bnode`), variable-bound nodes pass
+  through (W3C `insert-05a`).
+- **One template instantiator.** The F\* keeps two families
+  (`instantiate_*` for DELETE, `*_freshen` for INSERT); here
+  `instQuads` takes the freshening function as an argument.
+- **Empty named graphs in the comparison.** `Harness/Run.lean` drops
+  empty named-graph slots on both sides before
+  `Dataset.isomorphicOutcome`. The F\* compares canonical N-Quads,
+  which cannot represent an empty graph; the Lean isomorphism matches
+  graph NAMES, so a slot left by `CLEAR GRAPH` / `CREATE GRAPH` would
+  otherwise fail a test the F\* passes. Recorded in the `Run.lean`
+  section banner.
+- **`WITH <g> DELETE WHERE { P }`** parses as the F\* does: a `modify`
+  whose DELETE template and WHERE clause are both `P`.
+
+### Measured against the real corpus
+
+`lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`,
+verbatim (update suites and total):
+
+```
+add: 8 pass, 0 fail, 0 skip, 0 unsupported (out of 8)
+basic-update: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+clear: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+copy: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete-data: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete-insert: 17 pass, 0 fail, 0 skip, 0 unsupported (out of 17)
+delete-where: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
+drop: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+move: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+syntax-update-1: 54 pass, 0 fail, 0 skip, 0 unsupported (out of 54)
+syntax-update-2: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)
+update-silent: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+TOTAL: 505 pass, 0 fail, 0 skip, 126 unsupported (out of 631)
+```
+
+Baseline before this stage: `TOTAL: 356 pass, 0 fail, 0 skip, 275
+unsupported (out of 631)`; the 149 entries that moved are exactly the
+UpdateEvaluationTest (94), PositiveUpdateSyntaxTest11 (42) and
+NegativeUpdateSyntaxTest11 (13) entries. No LOAD skip: the suites
+contain no non-SILENT LOAD (the two `update-silent` LOAD tests are
+SILENT and run). The F\* runner's line for the same 631 is 631 pass,
+0 fail. The six RDF suites stay at 1078 pass, 0 fail, 0 skip, 0
+unsupported (out of 1078).
+
+### Guards and theorems
+
+`UpdateTests.lean`: 84 `#guard`s — INSERT DATA (set semantics, GRAPH
+blocks, same-label-one-node, request-fresh label), DELETE DATA (absent
+triple and absent graph are no-ops), DELETE WHERE (default, `GRAPH ?g`,
+`GRAPH <g>`), DELETE/INSERT (predicate rename, delete-before-insert,
+unbound-variable and literal-subject templates dropped, WITH on INSERT
+and DELETE, USING, USING NAMED, `GRAPH ?g` templates, fresh per
+solution, fresh per operation, variable-bound node preserved, WHERE
+blank node as variable), LOAD (SILENT identity, non-silent error,
+`hasNonSilentLoad`), CLEAR / CREATE / DROP / COPY / MOVE / ADD with
+their SILENT and error cases, the `;` sequence rules, prologue between
+operations, BASE, and the twelve `syntax-update-bad-NN.ru` texts
+verbatim plus §19.6.
+
+`UpdateTheorems.lean`: `applyUpdate_nil`, `applyUpdate_insertData_empty`,
+`applyUpdate_deleteData_empty`, `applyUpdate_insert_then_delete`
+(round trip, exact list equality), `applyUpdate_clearAll`,
+`applyUpdate_dropAll`, `applyUpdate_clear_missing`,
+`applyUpdate_clear_missing_silent`, `applyUpdate_create_existing`,
+`applyOps_cons`, with the helper lemmas `Graph.remove_of_not_mem` and
+`Graph.remove_add_of_not_mem`. Every `#print axioms` line reads a
+subset of `[propext, Classical.choice, Quot.sound]`.
+
+Sabotage record (2026-08-22): see the design-doc Status entry of the
+same date for the delete/insert-order swap.
+## Stage: entailment regimes — simple, D, RDF, RDFS — on the real suites (2026-08-22)
+
+Branch `lean4/entailment`. What landed: the full RDF 1.1 Semantics rule
+set as a derivation relation and an executable closure
+(`RDFS/FullClosure.lean`, `RDFS/FullClosureTheorems.lean`), the
+datatype map and D-value model (`RDF/Datatypes.lean`), simple
+entailment and the four regimes with D-inconsistency
+(`RDF/Entailment.lean`, `RDF/EntailmentTheorems.lean`,
+`RDF/EntailmentTests.lean`), and the harness arms for rdf-mt's
+`PositiveEntailmentTest` / `NegativeEntailmentTest` and for the
+sparql11 `entailment` suite's RDFS / RDF / D regimes
+(`Harness/Manifest.lean`, `Harness/Run.lean`).
+
+### Measured score lines, verbatim
+
+`lake exe l4w3c` from the repository root, binary built at this stage:
+
+```
+rdf-mt: 39 pass, 0 fail, 0 skip, 0 unsupported (out of 39)
+entailment: 40 pass, 0 fail, 0 skip, 30 unsupported (out of 70)
+TOTAL: 396 pass, 0 fail, 0 skip, 235 unsupported (out of 631)   (sparql11/manifest-all.ttl)
+TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of 1078)   (the six RDF suites)
+```
+
+F\* runner, same manifests (`docs/test-results/latest.json`): rdf-mt
+38 pass, 0 fail, 1 unsupported (out of 39) — the unsupported one is
+`rdfs-entailment-test001` (rdf:XMLLiteral well-formedness, which
+`RDF.Entailment.RDFS.DatatypeClash.fst` declares out of scope; here the
+XML parser decides it); sparql11 entailment 70 pass, 0 fail (out of
+70), the F\* tree having the OWL-RL / OWL-Direct / RIF regimes this
+port does not. The 30 `unsupported` here are exactly those entries:
+18 `OWL-Direct` only (paper-sparqldl-Q2/Q3, parent3–10, simple1–8),
+8 `OWL-Direct/OWL-RDF-Based` (lang, plainLit, paper-sparqldl-Q1/Q4,
+sparqldl-10–13), 4 `RIF`. Each is named with its regime in the run
+log; none is passed, none leaves the denominator. The sparql11
+TOTAL moved from 356 to 396 pass by exactly those 40 entailment
+entries; the query-type suites are unchanged.
+
+### Module correspondence (append)
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `RDFS.Closure.fsti` rows rdfs1, rdfs4a, rdfs4b, rdfs8, rdfs13 (+ `rdfs_rule_container_membership`, `rdf_property_axiom_closure` = rdfD2), `rdfs_reflexivity_axioms` (the rdfs6 / rdfs10 approximation) | `RDFS/FullClosure.lean` `DerivesFull`, `rdfD2For`, `rdfs4aFor`, `rdfs4bFor`, `rdfs6For`, `rdfs8For`, `rdfs10For`, `rdfs12For`, `rdfs13For`, `fullClosure`, `rdfClosure` | rdfs6 / rdfs10 / rdfs12 are RULES here, not a post-hoc class/property harvest; rdfs1 is an axiom table over D |
+| `RDF.Vocabulary.Axioms.fst` `rdf_axiomatic_triples`, `rdfs_axiom_*` (finite, `rdf:_1..rdf:_5`) | `rdfAxiomaticTriples`, `rdfsAxiomaticTriplesFixed`, `rdfsContainerAxioms`, `datatypeAxioms` | the `rdf:_n` slice is `rdf:_1` plus every `rdf:_n` the premise and conclusion mention (`containerMembershipIn`), not a fixed 1..5 |
+| `RDF.Entailment.Simple.fst` `simple_entails`, `entails_with leq bnd` | `RDF/Entailment.lean` `SimpleEntails` (spec), `searchInstance` + `instanceCert` + `entailsWith` | witness-then-certificate, as `Isomorphism.lean`; `simpleEntails_sound` proved |
+| `RDF.Entailment.Regime.fst` `dt_value_leq`, `bnd_rdf`, `entails_rdf`, `entails_rdfs` | `RDF/Datatypes.lean` `literalValueEq`, `literalIllFormed`; `Regime.literalEq`, `Regime.bindable`, `regimeEntails` | no xsd:float / xsd:double / rdf:JSON value model here (the rdf12 fixtures are not in scope of this stage) |
+| `RDF.Entailment.RDFS.DatatypeClash.fst` `rdfs_d_inconsistent` | `hasIllFormedLiteral`, `hasRangeClash`, `Regime.inconsistent` | rule (b) walks `rdfs:subClassOf` from the range class and requires the literal's own datatype recognised; the F\* fires on any datatype mismatch |
+| `bin/w3c-runner/w3c_runner.ml` `apply_entailment_regime`, `simple_entails_regime`, the `PositiveEntailmentTest` / `NegativeEntailmentTest` arms, the `run_query_eval_test` regime branch | `Harness/Run.lean` `runEntailmentTest`, `pickRegime`, `closeDataset`, `recognizedDatatypesOf` | regime list read as RDFS > RDF > D; OWL / RIF names refused by name |
+
+### Theorems
+
+`RDFS/FullClosureTheorems.lean`: `Derives.toFull` (every rdfs-core
+derivation is a full-RDFS derivation — the theorem relating the two
+rule sets), `DerivesFull.mono`, `DerivesFull.cut`, `rdfD2For_sound`,
+`rdfs4aFor_sound`, `rdfs4bFor_sound`, `rdfs6For_sound`,
+`rdfs8For_sound`, `rdfs10For_sound`, `rdfs12For_sound`,
+`rdfs13For_sound`, `fullStepConclusions_sound`, `fullStep_sound`,
+`fullClosureLoop_sound`, `fullClosureLoop_extensive`,
+`fullClosure_extensive` (T1), `fullClosure_sound` (T2),
+`rdfClosure_extensive`, `rdfClosure_sound`,
+`fullClosure_saturated_or_underfueled`.
+`RDF/EntailmentTheorems.lean`: `termMatch_strict_eq`,
+`tripleMatch_strict_eq`, `instanceCert_strict_sound`,
+`simpleEntails_sound`, `SimpleEntails.refl`.
+Axiom audit (`#print axioms` in `EntailmentTests.lean`): propext,
+Classical.choice, Quot.sound only.
+
+Not proved: completeness at saturation for the eight new rows (T4 of
+`ClosureTheorems.lean` covers the six rdfs-core rows; the extension is
+the same argument per row and is the named obligation); any
+model-theoretic statement (D-interpretations are not ported, so the
+regime comparisons `literalValueEq` carry guards, not theorems).
+
+### Translation decisions
+
+- rdfD1 is not a row: it mints a blank node per literal. Its
+  observable effects are covered by the instance search (a conclusion
+  blank node may map to a literal, §5.2) and by rule (a) of
+  D-inconsistency. Documented in the `FullClosure.lean` header.
+- Generalised-RDF conclusions (literal subjects from rdfs3 / rdfs4b)
+  are dropped, as the F\* rows drop them; the one place they carry
+  meaning — a literal forced into a datatype class — is rule (b).
+- The `rdf:_n` family is instantiated per entailment check from both
+  graphs, with an argument in the header for why that is complete.
+- Under `simple`, literal comparison is strict term identity
+  (Concepts §3.3); under D / RDF / RDFS it is D-value equality, whose
+  base is `Literal.eqb` (language tags case-folded) plus numeric value
+  equality for recognised numeric datatypes. `xsd:int ⊂ xsd:integer ⊂
+  xsd:decimal` is the only non-disjointness modelled.
+- A test whose `mf:recognizedDatatypes` names a datatype outside
+  `modelledDatatypes` is `unsupported`, naming it. None in rdf-mt does.
+- The minimal D (`xsd:string`, `rdf:langString`) is added to every
+  map; the sparql11 entailment suite names none, so it runs with the
+  minimal map.
+
+### Sabotage record (2026-08-22)
+
+- rdfs9 removed from `Closure.stepConclusions`: rdf-mt STAYS at 39
+  pass — no rdf-mt entry exercises rdfs9 (subClassOf on an instance);
+  the sparql11 entailment suite drops to 37 pass, 3 fail (rdfs04,
+  rdfs05, rdfs09 named), and `lake build` fails in
+  `ClosureTheorems.lean` at `stepConclusions_sound` (line 378) and the
+  rdfs9 case of the completeness proof. A guard for rdfs9 was added to
+  `EntailmentTests.lean` so the library build also catches it.
+- rdfs7 removed: rdf-mt drops to 37 pass, 2 fail
+  (`rdfms-seq-representation-test003`,
+  `rdfs-subPropertyOf-semantics-test001`). Restored; green again.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]`. The F\* side: LOAD is the `U_Load _ _ _ -> ds` no-op
+(`SPARQL11.Algebra.fst:8693`); this port makes the non-silent case an
+explicit `UpdateError` instead of a silent success.
+
+### Findings against the F\* (not fixed here)
+
+- `SPARQL11.Algebra.fst:8438–8441` (Part 19e banner) with
+  `apply_create` (8566), `apply_clear` (8575), `apply_drop` (8594),
+  `apply_copy` (8611), `apply_move` (8627), `apply_add` (8655): the
+  `silent` flag is bound and discarded (`let _ = silent in`), so
+  `CREATE GRAPH <g>` on an existing graph and `CLEAR` / `DROP` /
+  `COPY` / `MOVE` / `ADD` on a missing graph succeed without SILENT.
+  SPARQL 1.1 Update §3.2.1–§3.2.5 and §3.1.5 make those errors. Not
+  visible in the W3C suites (no non-SILENT error case).
+- `SPARQL11.Algebra.fst:8707–8710` (`apply_update_ops`): the INSERT
+  DATA label salt is `string_of_int (dataset_triple_count ds)`. Two
+  requests run on stores with the same triple count produce the same
+  `_insdata_<n>_<label>`, so `INSERT DATA { _:b … }` re-run after a
+  delete that restores the count silently re-uses the earlier node
+  instead of creating a fresh one.
+- `SPARQL11.Algebra.fst:8693` (`apply_update_op`, `U_Load`): a
+  non-silent LOAD is a silent no-op inside the algebra; only the
+  runner's `update_is_implemented_only` pre-check (`w3c_runner.ml:2250`)
+  keeps it from scoring. A caller of `apply_update` that skips the
+  pre-check gets a success for a request §3.1.4 says must fail.
+`@[extern]`. The F\* originals carry no `assume val` in these modules.
+
+### Findings against the F\* (not fixed here)
+
+- `RDF.Entailment.RDFS.DatatypeClash.fst:109-120`
+  (`exists_range_literal_mismatch`): a clash is asserted whenever the
+  literal's datatype differs from the range datatype, so
+  `ex:p rdfs:range xsd:decimal . ex:s ex:p "25"^^xsd:integer .` with
+  both recognised would be reported D-inconsistent, although 25 is in
+  the value space of `xsd:decimal` (XSD 1.1 §3.4.13: integer is a
+  subset of decimal). The same function also fires when the literal's
+  own datatype is unrecognised (`"x"^^ex:dt` under a recognised range),
+  where RDF 1.1 Semantics §7 gives the literal an unknown denotation.
+  No rdf-mt fixture exercises either shape; `EntailmentTests.lean`
+  guards the Lean behaviour.
+- `RDFS.Closure.fsti` runs rdfs6 / rdfs10 as the class/property
+  harvest `rdfs_reflexivity_axioms` (two extra closure passes) rather
+  than as rows inside the step; with the §9.3 axioms seeded, the rows
+  alone reach the same triples (`A subClassOf B` ⊢ `B subClassOf B`
+  through `rdfs:subClassOf rdfs:range rdfs:Class` + rdfs3 + rdfs10),
+  which is what `paper-sparqldl-Q1-rdfs`, `rdfs05`, `rdfs11` and
+  `sparqldl-02` need. The F\* banner records that seeding its axiom
+  table regressed an OWL consistency test (#236 interaction); this
+  port has no OWL-RL closure on the RDFS path, so the seed is safe
+  here and that interaction remains the F\* tree's.
+
+## Stage: SPARQL 1.1 Protocol, Graph Store HTTP Protocol, Service Description (2026-08-22)
+
+Branch `lean4/protocol`. The three protocol-shaped sparql11 test
+types run in the Lean harness. No HTTP server in either tree: each
+test is request/response decoding over the Markdown in the entry's
+`rdfs:comment`, so the port is of the PURE F\* modules plus the
+runner clauses that drive them.
+
+### Module correspondence
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `SPARQL.Protocol.fst` Part 2 (`is_hex_digit`, `hex_value`, `ascii_lower_string`, `trim_ws`) | `SPARQL/Protocol.lean` `isHexDigit`, `hexValue`, `asciiLower`, `trimWs` | |
+| Part 3 `url_decode_chars` / `url_decode` / `form_decode` | `pctUnits` + `utf8Assemble` + `percentDecodeChars`, `urlDecode`, `formDecode` | escapes decode to BYTES, then UTF-8 (see findings); `+` → space only under `formDecode` |
+| — | `percentEncode`, `isUnreserved`, `hexDigitUpper`, `percentEncodeByte` | new: the inverse, for the round-trip theorem |
+| Part 4 `split_once_on`, `split_all_on` | `splitOnce`, `splitAll` | `splitAll` is `String.splitOn` (same `""` → `[""]` behaviour) |
+| Part 5 `parse_kv_pair`, `parse_query_string`, `collect_values`, `first_value` | same names, camelCase | |
+| Part 7 `path_is_update`, `split_path_qs`, `content_type_base`, `extract_charset_param`, `charset_is_utf8_or_absent`, `chars_contains_word`, `str_contains_word_ci`, `update_has_dataset_clause`, `kvs_have_using_param`, `build_from_kvs`, `decode_request` | `pathIsUpdate`, `splitPathQs`, `contentTypeBase`, `extractCharsetParam`, `charsetIsUtf8OrAbsent`, `containsWord`, `containsWordCi`, `updateHasDatasetClause`, `kvsHaveUsingParam`, `buildFromKvs`, `decodeRequest` (+ `effectiveQs`) | `containsWord` diverges, see below |
+| Part 14 `proto_request`, `proto_status_class`, `proto_strip_indent` …, `extract_request`, `extract_status_class`, `proto_header` | `ProtoRequest`, `StatusClass`, `stripIndent` …, `extractRequest`, `extractStatusClass`, `header` | |
+| `w3c_runner.ml` `_gsp_extract_response_status` (OCaml) | `extractResponseStatus` | the numeric status the Graph Store manifest carries |
+| `SPARQL.GraphStore.fst` (`graph_store`, `gs_target`, `gsp_get/head/put/post/delete`, `status_*`) | `SPARQL/GraphStore.lean` `GraphStore`, `Target`, `get/head/put/post/delete`, `status*` | keys are plain strings, as in the F\* |
+| `w3c_runner.ml` `_gsp_target_of_request` (OCaml) | `decodeTarget` | §4.1 identification in the library; a non-IRI `graph=` is 400 (new) |
+| — | `Method`, `handle` | new: the state machine as one total function; PATCH → 405 |
+| `SPARQL.ServiceDescription.fst` (`sd_*`, `build_sd`, `has_endpoint_triple`, `has_service_type`, `has_supported_language`, `conforms_to_schema`, `returns_rdf`) | `SPARQL/ServiceDescription.lean`, same names camelCase | `datasetIriOf` / `defaultGraphIriOf` keep the F\* fallback to the endpoint |
+| `run_protocol_test`, `run_gsp_test`, `run_service_description_test`, `_gsp_canonical_key`, `_gsp_should_seed`, `_gsp_is_mismatched_payload_test`, `_gsp_status_matches` | `Harness/ProtocolRun.lean` `protocolVerdict` / `runProtocolTest`, `gspStep` / `runGspTest`, `serviceDescriptionVerdict`, `gspCanonicalKey`, `gspShouldSeed`, `gspIsMismatchedPayload`, `gspStatusMatches` | the cross-test store is an `IO.Ref` per manifest (`Harness.Main`), reset at `PUT - Initial state` |
+
+Not ported: Accept-header negotiation (F\* Part 6) and the response
+serialisers (Parts 8–12) — the tests assert on status class, and the
+Lean tree already has the results serialisers.
+
+### Translation decisions
+
+- `%XX` escapes decode to bytes and byte runs are read as UTF-8
+  (`%C3%A9` → `é`), with a one-codepoint-per-byte fallback for runs
+  that are not UTF-8, so decoding stays total. The F\* maps each
+  escape to the codepoint of its value (finding below). No W3C
+  protocol request carries a non-ASCII escape, so the score is the
+  same either way; the guards pin the 2-, 3- and 4-byte cases.
+- `pctUnits` / `utf8Assemble` are well-founded on list length
+  (nested matches on the tail blocked structural recursion), so
+  proofs unfold them with `conv => lhs; unfold …` and `#guard`s run
+  the compiled code (pitfall 7 applies: no `decide` over them).
+- `containsWord` keeps scanning after a prefix match that is not
+  whitespace-bounded; the F\* returns `false` there (finding below).
+  Guarded: `INSERT { <withdraw> … } USING <g> WHERE {}` is `true`.
+- `decodeTarget` lives in the library as GSP §4.1; the
+  `$GRAPHSTORE$` / `$HOST$` / `$NEWPATH$` placeholder collapse, the
+  entry-name seeding and the `mismatched payload` name dispatch stay
+  in the harness as manifest-shape glue, exactly where the F\* runner
+  keeps them. Seeding is counted: `HARNESS-DIAG … gsp_seeded=N`
+  (the F\* runner's `gsp_seed`; both trees report 1 on this suite —
+  `DELETE - existing graph` names `person/2.ttl`, which no earlier
+  entry PUT).
+- The F\* runner evaluates the decoded query (or applies the update)
+  over an empty dataset and drops the result, mapping every
+  evaluation outcome to PASS when 2xx is expected; the verdict depends
+  on the decoder and the parser only. This port does the same
+  evaluation and carries its one-line summary into the FAIL text of an
+  accepted-but-4xx-expected entry — the only place it can show. Only
+  the first request block of an entry is decoded in either tree (the
+  `update_dataset_*` UPDATE-then-ASK sequences are not replayed).
+- Update-shaped requests go through `parseSparqlUpdate` /
+  `applyUpdateIn` (the SPARQL 1.1 Update stage above, merged from
+  `claude/main` into this branch before it closed). Before that merge
+  they scored `unsupported` (26 pass, 8 unsupported on protocol); the
+  merge took the suite to 34 of 34.
+
+### Guards and theorems
+
+`ProtocolTests.lean`: 134 `#guard`s — percent-decoding (ASCII,
+`+`, malformed `%`, 2/3/4-byte UTF-8, Latin-1 fallback, encode
+round-trips), the parameter bag, Content-Type / charset, USING/WITH
+detection, every W3C protocol request shape (12 positive, 14
+negative) against `decodeRequest` with the rule named, the
+`rdfs:comment` scrapers on three manifest shapes, the Graph Store
+state machine (PUT 201/204, POST 201/200 with merge, DELETE 204/404,
+GET/HEAD, default graph, PATCH 405), §4.1 target decoding (incl. two
+malformed `graph=` → 400), and the three Service Description checks.
+
+`ProtocolTheorems.lean` (axioms: propext, Classical.choice,
+Quot.sound): `percentDecode_percentEncode_ascii` /
+`urlDecode_percentEncode_ascii` (decoding inverts encoding on every
+ASCII string — the RFC 3986 reserved and unreserved sets and `%`),
+`decodeRequest_get_no_query` (a GET with no `query=` parameter is
+a 400-class verdict, Protocol §2.1.1 + §2.2.2), and
+`decodeTarget_malformed_graph` (GSP §4.1: a `graph=` that is not an
+IRI is 400).
+
+### Measured (`lake exe l4w3c`, verbatim)
+
+```
+protocol: 34 pass, 0 fail, 0 skip, 0 unsupported (out of 34)
+http-rdf-update: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
+service-description: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)
+TOTAL: 601 pass, 0 fail, 0 skip, 30 unsupported (out of 631)
+```
+
+The 30 unsupported are the OWL-Direct / OWL-RDF-Based / RIF
+entailment-regime evaluation tests (the RDFS / RDF / D ones run since
+the entailment stage, merged from `claude/main` as well). The F\*
+runner (`docs/test-results/latest.json`) has protocol 34 pass,
+0 fail (out of 34); http-rdf-update 19 pass, 0 fail (out of 19),
+`gsp_seed` 1; service-description 3 pass, 0 fail (out of 3). The
+query types stay at 356 pass, 0 fail; the Update types at the Update
+stage's numbers; the six RDF suites at 1078 pass, 0 fail (out of
+1078).
+
+Sabotage record (2026-08-22):
+1. `+` → space removed from `pctUnits`: `lake build` fails at
+   `ProtocolTests.lean:31` (`formDecode "a+b"`) and `:56` (the
+   parameter bag). With those two guards disabled, NO W3C protocol
+   test flips — the manifest writes every space as `%20` and its
+   only `+` characters are in response media types. The guards are
+   the only detector for this rule.
+2. `charsetIsUtf8OrAbsent` forced to `true` (three guards disabled):
+   `bad_query_non_utf8` and `bad_update_non_utf8` flip to FAIL
+   ("Expected 4xx but decode_request accepted (POST /sparql/; …)").
+   Before the Update merge the second landed in `unsupported` instead
+   — a decoder regression on an update-shaped entry was invisible
+   until the Update parser existed. Restored; the numbers above are
+   from the restored build.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]`. The F\* modules had no `assume val`.
+
+### Findings against the F\* (not fixed here)
+
+- `formal/fstar/SPARQL.Protocol.fst:146–167` (`url_decode_chars`):
+  each `%XX` becomes the codepoint XX, so a percent-encoded
+  multi-byte UTF-8 sequence decodes to one character per byte
+  (`%C3%A9` → `Ã©`, not `é`). Invisible to the W3C suite (all-ASCII
+  requests); visible to any non-ASCII IRI or literal in a GET query
+  string.
+- `formal/fstar/SPARQL.Protocol.fst:509–533` (`chars_contains_word`):
+  on a prefix match that is not whitespace-bounded the function
+  returns `false` instead of continuing the scan, so an update text
+  such as `INSERT { <withdraw> … } USING <g> WHERE {}` is not seen to
+  carry a `USING` clause and the §2.2.4 conflict with
+  `using-graph-uri` is not raised. Also invisible to the W3C suite.
+- `CLAUDE.md` quotes "SPARQL Protocol reaching 53 pass, 0 fail";
+  `docs/test-results/latest.json` now has 34 + 19 + 3 = 56 pass,
+  0 fail across the three suites.
+## Stage: SHACL Core on the W3C data-shapes suite (branch `lean4/shacl`, 2026-08-22)
+
+The SHACL Core validator (W3C Recommendation, 20 July 2017) is ported
+from `formal/fstar/SHACL.Validation.fst`, with the spec/engine split the
+owner asked for: `Spec.Conforms` is §3.4 conformance as a relation,
+`validate` is the engine, and `ShaclTheorems.lean` proves the two agree
+for every Core component. The real W3C manifests are read with the Lean
+Turtle parser by a standalone probe (`lake exe l4shacl`, which does not
+touch `Harness/Run.lean` / `Harness/Manifest.lean`).
+
+### Module correspondence (append)
+
+| F\* | Lean 4 | Notes |
+|---|---|---|
+| `SHACL.Validation.fst` §1, §11b (IRI constants) | `SHACL/Vocabulary.lean` | `assert_norm (is_iri …)` → `⟨"…", rfl⟩`; SHACL-SPARQL predicates kept only as `sparqlFeaturePredicates` for the `unsupported` report |
+| §2–§7 (`severity`, `node_kind`, `path`, `target`, `constraint_component`, `shape`) | `SHACL/Shapes.lean` (`Severity`, `NodeKind`, `Path`, `Target`, `Constraint`, `Shape`, `ShapesGraph`) | Core 1.1 constructors only; the SHACL 1.2 / SHACL-AF / SHACL-SPARQL constructors (`CC_DatatypeIn`, `CC_SingleLine`, `CC_MemberShape`, `CC_Sparql`, `CC_Custom`, `T_Sparql`, `values_query`, `target_where`, `constraint_meta`) are not ported |
+| §11a `rdf_list_terms`, §11c `parse_path`, §11f `build_targets` / `build_constraints` / `build_shape` / `parse_shape_from_graph_pure` | `rdfListTerms`, `decodePath`, `decodeTargets`, `decodeConstraints`, `decodeShape`, `decodeShapesGraph` | same fuel idiom (graph length bounds every data-driven walk); list-before-sh:*Path reading kept for path-strange-001/002 |
+| §11c `path_invert`, `eval_path_fuel` / `eval_seq_fuel` / `eval_alt_fuel` / `eval_plus_fuel` | `Path.invert`, `evalPathFuel` group, `evalPath` | structural recursion on the fuel; `dedupTerms` after every hop |
+| §11d `shacl_class_closure` / `is_shacl_instance` | `superClasses` (fixpoint over `addNew`), `isShaclInstance` | the F\* materialises the closure of the whole graph with the RDFS rules; the Lean walks rdfs:subClassOf from the node's rdf:type values — same §1.4 relation, proved both ways |
+| §11e `eval_target` | `evalTarget`, `shapeFocusNodes` | `T_Sparql`, `T_DataShape` not ported |
+| `XSD.Datatypes.fst` `literal_ill_formed`, `numeric_cmp_le/lt`, `dt_parse_ms` | `literalIllFormed`, `numericCmpLe/Lt`, `dtParseMs`, `literalToScaled` | `Scaled` / `parseToScaled` / `parseDoubleToScaled` reused from `SPARQL/Expr.lean` |
+| §11g `term_lt` / `term_le` | `termLt`, `termLe` | |
+| §11h–§11i `collect_shape_violations` / `eval_one_constraint` / `eval_aggregate_constraints` | `collectShapeViolations` / `evalOneConstraint` / `evalAggregate` / `qualifyingCount`, with `simpleValueCheck` and `evalAggregateNonRec` factored out | the non-recursive components are plain functions so each has its own theorem |
+| §11j `validate` | `validate` | fuel `4·|shapes| + 50` as the F\* |
+| §13 `validation_report_to_graph`, `result_to_triples`, `path_to_rdf` | `SHACL/Report.lean` (`reportToGraph`, `resultToTriples`, `pathToRdf`) | same predicate set, same single blank-node counter |
+| `bin/shacl-runner/shacl_runner.ml` | `Harness/ShaclProbe.lean` (exe `l4shacl`) | manifest walk through repeated `mf:include`, `expected_report_graph` closure, the sh:resultMessage carve-out, RDFC-1.0 canonical N-Quads comparison (`RDF/Canonical.lean`), `--conforms-only` |
+| `assume val eval_sparql_target_select` (the one SHACL `assume val`) | — | a forward reference for the unimplemented SPARQL-target form; no counterpart needed |
+
+### Measured (verbatim, 2026-08-22)
+
+```
+shacl-core core/complex: 2 pass, 0 fail, 0 skip, 0 unsupported (out of 2)
+shacl-core core/misc: 5 pass, 0 fail, 0 skip, 0 unsupported (out of 5)
+shacl-core core/node: 32 pass, 0 fail, 0 skip, 0 unsupported (out of 32)
+shacl-core core/path: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+shacl-core core/property: 38 pass, 0 fail, 0 skip, 0 unsupported (out of 38)
+shacl-core core/targets: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)
+shacl-core core/validation-reports: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)
+shacl-core TOTAL: 98 pass, 0 fail, 0 skip, 0 unsupported (out of 98)
+shacl-sparql sparql/component: 0 pass, 0 fail, 0 skip, 3 unsupported (out of 3)
+shacl-sparql sparql/node: 0 pass, 0 fail, 0 skip, 4 unsupported (out of 4)
+shacl-sparql sparql/property: 0 pass, 0 fail, 0 skip, 1 unsupported (out of 1)
+shacl-sparql sparql/pre-binding: 0 pass, 0 fail, 0 skip, 14 unsupported (out of 14)
+shacl-sparql TOTAL: 0 pass, 0 fail, 0 skip, 22 unsupported (out of 22)
+```
+
+F\* side, same denominators (`skills/test-suites/SKILL.md`, baseline
+2026-07-05): shacl-core 98 pass, 0 fail (out of 98); shacl-sparql 22
+pass, 0 fail (out of 22). The Lean tree matches on core and names the
+whole SPARQL suite unsupported. Full-report comparison (default), not
+conforms-only.
+
+### Sabotage record
+
+`sh:maxCount` disabled (`| .maxCount _ => []` in `evalAggregateNonRec`):
+shacl-core drops to 88 pass, 10 fail (out of 98) — maxCount-001,
+maxCount-002, targetClass-001, targetNode-001, targetSubjectsOf-001,
+targetSubjectsOf-002, and-002, path-inverse-001, personexample,
+shacl-shacl (the last reports 59 results against an expected conforming
+report). Restored; 98 pass, 0 fail again; `ShaclTests.lean` pins
+maxCount at the unit level too.
+
+### Theorems (`ShaclTheorems.lean`; axiom audit propext, Classical.choice, Quot.sound)
+
+- `validate_empty_conforms`, `validate_no_targets_conforms` (§3.1, §2.1).
+- `minCount_zero_no_result` (§4.2.1).
+- `notOf_flips` (§4.6.1): a node shape whose only component is `sh:not r`
+  has no result iff the referenced shape has one.
+- `isShaclInstance_iff` (§1.4): the closure walk is sound
+  (`superClassesFuel_sound`) and complete
+  (`superClasses_complete` — a non-closed run with fuel `|g| + 1` would
+  hold more distinct classes than rdfs:subClassOf objects plus one,
+  `Nodup.length_le_of_subset`).
+- `simpleValueCheck_iff`: sh:class, sh:datatype, sh:nodeKind, sh:in,
+  sh:pattern, sh:minLength, sh:maxLength, sh:languageIn, the four
+  sh:min/maxInclusive/Exclusive — each decides its `Spec.ValueSatisfies`
+  clause.
+- `evalAggregateNonRec_eq_nil_iff`: sh:minCount, sh:maxCount,
+  sh:hasValue, sh:uniqueLang, sh:closed, sh:equals, sh:disjoint,
+  sh:lessThan, sh:lessThanOrEquals — each decides its
+  `Spec.FocusSatisfies` clause.
+- `collectShapeViolations_eq_nil_iff` (§3.4) and `validate_conforms_iff`
+  / `validate_sound` (§3.1): the engine reports no result iff
+  `Spec.Conforms` / `Spec.GraphConforms`, by induction on the fuel
+  through the mutual group.
+
+Where the specification names the engine: `Spec.ValueConforms` for
+sh:xone counts matching shapes with the engine's filter, and
+`Spec.AggConforms` for sh:qualifiedMin/MaxCount uses `qualifyingCount`;
+path evaluation (`evalPath`) is the path semantics on both sides. Those
+three are the named open obligations for a fully independent spec.
+
+### Translation decisions
+
+- Deactivated shapes are dropped at decode time (as the F\*); a
+  deactivated shape is unreachable by reference and by target alike.
+- `sh:uniqueLang` / `sh:closed` / `sh:deactivated` / qualified-disjoint
+  flags are matched LEXICALLY against `"true"` (uniqueLang-002-shapes.ttl
+  documents the suite's intent).
+- The implicit class target (§2.1.3.1) requires `rdf:type sh:NodeShape`
+  together with `rdfs:Class` / `owl:Class`, as the F\*.
+- `Spec.Conforms 0` is `True`: the engine's fuel exhaustion is
+  sound-by-omission and the specification says so at the same budget.
+- `sh:minCount` / `sh:maxCount` / the other non-recursive aggregates run
+  at the shape's fuel level, not one below (the F\* evaluates them inside
+  the fuel-decrementing group); observable only at fuel 1, which
+  `validate` never uses.
+
+### Assumption report (append)
+
+None: no `axiom`, `sorry`, `native_decide`, `partial`, `opaque` or
+`@[extern]` in `L4Factoidal/SHACL/`. The probe uses one `partial def`
+(the manifest walk) outside the library. The F\* module carries one
+`assume val` (`eval_sparql_target_select`, SPARQL targets), not
+reachable from Core.
+
+### Findings against the F\* (not fixed here)
+
+- `formal/fstar/SHACL.Validation.fst:2464-2465` (`CC_MinLength` /
+  `CC_MaxLength`): `String.length` on the extracted OCaml string is a
+  BYTE count, while §4.4.1 counts characters ("the length of the string
+  representation"); a value such as `"ü"` has length 2 there. No suite
+  fixture exercises a non-ASCII length. The Lean counts codepoints.
+- `formal/fstar/XSD.Datatypes.fst:178-195` (`dt_parse_ms`): the date
+  separators are never checked — `"2002x10x10x12x00x00"^^xsd:dateTime`
+  parses as a valid dateTime. Ported unchanged so the two trees agree on
+  the suite; `ShaclTests.lean` does not pin the lenient reading.
+
+## Stage: differential harness + property-based probe (branch `lean4/differential`, 2026-08-22)
+
+Owner's ask, verbatim: "look into ways of creating more unit tests
+that truly exercise an implementation". Two mechanisms from
+`docs/designissues/2026-08-22-lean4-w3c-harness.md` § "Tests that truly
+exercise an implementation", built and measured (the numbers, the
+findings with attribution and the sabotage record are in that
+document's closing section).
+
+### Module correspondence
+
+| F\* / OCaml | Lean | Notes |
+|---|---|---|
+| — (no generator in the F\* tree) | `L4Factoidal/Testing/Gen.lean` | splitmix64 over `Nat` (`Rng`), `Gen` state monad, vocabulary, graph / BGP / query generators, SPARQL-text and algebra-AST renderings, `genCase seed` |
+| `SPARQL/Invariants.lean` theorems, `QueryTheorems.lean` | `L4Factoidal/Testing/Props.lean` | 18 executable invariants `Case → Option String`; the theorems' statements checked on the EXECUTED code, plus laws no theorem covers (join commutativity, results-format round trips, RDFC relabelling, isomorphism) |
+| `bin/w3c-runner/w3c_runner.ml` `run_query_eval_test` (one engine vs a file) | `Harness/Differential.lean` (`l4diff`) | TWO engines vs each other: `bin/<platform>/factoidal` via `IO.Process` (`-o json` / `-o ntriples`, `perl alarm` cap) against `parseSparql` + `evalSelect`/`evalAsk`/`evalConstruct`; compared with `Harness/Compare.lean` unchanged |
+| — | `Harness/PropProbe.lean` (`l4prop`) | N seeded cases, per-invariant `pass, fail (out of N)`, repro on every failure, exit 1 |
+| — | `L4Factoidal/Testing/GenTests.lean` | `#guard`s: splitmix64 reference output, determinism, pinned renderings of two seeds, the invariants on three seeds |
+
+### Translation decisions
+
+- The generator is a `structure Gen` state monad rather than a
+  function abbreviation, so `do` notation resolves without fighting
+  the function-space instances; `natLt`, `pick`, `listOf`, `bool` are
+  the whole combinator set.
+- The vocabulary is bounded and dense on purpose (three subjects,
+  three predicates, two blank nodes, thirteen literals over four
+  datatypes and three language tags) so joins join and OPTIONALs
+  sometimes bind — the property probe prints how many BGP rows it
+  evaluated (`measurement:` line) so a vacuous run is visible.
+- Generated `LIMIT` is only emitted together with an `ORDER BY` over
+  ALL three variables: a LIMIT over an unordered or partially ordered
+  sequence is implementation-defined and would report spec-permitted
+  differences as disagreements.
+- The differential harness keeps the W3C comparator as it is
+  (multiset under bijection; ORDER BY pins positions only for rows
+  with blank nodes). An ordered comparison that fails but passes
+  unordered is reported as `tie-order`, its own bucket, never as
+  agreement. None occurred in the measured runs.
+- CSV/TSV round trips are stated for results with ≥ 1 variable (the
+  zero-column header is spec-ambiguous — recorded in the design doc).
+- `evalConstruct` now applies `ORDER BY` before `LIMIT` (§18.2.4); the
+  differential harness found the unordered slice, in BOTH trees.
+
+### Guards and theorems
+
+No new theorem. `GenTests.lean` adds 13 `#guard`s; `QueryTests.lean`
+adds one (`CONSTRUCT … ORDER BY DESC(?label) LIMIT 1`). The library
+build stays at zero `sorry` / `axiom` / `native_decide` / `partial`.
+
+### Sabotage record (2026-08-22)
+
+- `insertOrdered` dropping tied rows: caught by `l4prop`
+  (`orderby_perm` 497 pass, 3 fail, out of 500), by `l4diff` (one more
+  sparql11 disagreement) and by the full build (`sortSolutions_perm`,
+  a `QueryTests` guard).
+- `tryBindTerm` ignoring an existing binding of a repeated variable:
+  caught by `l4diff` only (generated: 403 agree, 97 disagree, out of
+  500); `l4prop` 0 failures (the laws are relative); the full library
+  build PASSED — no guard or theorem covered it. Two guards added to
+  `Tests.lean` so it does now.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]` in `L4Factoidal/`. The harness executables do file and
+process I/O (`IO.Process.output`) — harness code, outside the library.
+
+### Findings against the F\* (not fixed here)
+
+See the design document's closing section for the eleven itemised
+findings. In one line each: `eval_construct_query` slices before
+ordering; `ASK { ?x <q> ?x }` is true when `SELECT` returns no row;
+the `functions` / `cast` expression errors that §17 says must leave a
+variable unbound are bound (13 W3C tests), hidden by
+`w3c_runner.ml`'s row matcher ignoring extra actual bindings;
+`SERVICE SILENT` to an unreachable endpoint yields no solution
+instead of one empty solution; `GRAPH ?g { ?x ?p ?g }` ignores the
+inner `?g`; `UUID()` repeats within a query; a CONSTRUCT template
+list emits `_:tpl_0__:bnode_13` in N-Triples output; the CLI has no
+query BASE.
+
+## Stage: Verifiable Credentials Data Integrity, `eddsa-rdfc-2022`, did:key (branch `lean4/vc`, 2026-08-22)
+
+Proof creation and verification for the Data Integrity EdDSA
+cryptosuite (W3C vc-di-eddsa §3.3), on top of the landed RDFC-1.0
+(`RDF/Canonical.lean`) and JSON-LD toRdf (`JSONLD/`), with the Ed25519
+primitive bound to HACL\* — the Lean tree's first and only `@[extern]`
+family, exactly as `docs/designissues/2026-08-22-lean4-external-dependencies.md`
+§3 step 6 predicted.
+
+### Module correspondence
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `VC.Multibase.fst` (`hex_digit_val`, `hex_to_bytes`, `bytes_to_hex`, `bytes_to_nat`, `nat_to_bytes_be`, `base58btc_encode/decode`, `multibase_encode_base58btc`, `multibase_decode`, `hex_to_multibase_z`, `multibase_z_to_hex`, `ed25519_multicodec_prefix`, `ed25519_pubkey_to_multikey`) | `VC/Multibase.lean` (`hexDigitVal?`, `bytesOfHex?`, `hexOfBytes`, `bytesToNat`, `natToBytesBE`, `base58Encode`/`base58Decode?`, `multibaseEncodeBase58btc`, `multibaseDecode?`, `hexToMultibaseZ?`, `multibaseZToHex?`, `ed25519PubPrefix`, `ed25519PublicKeyToMultikey`) | bytes are `List UInt8`; nat codecs are most-significant-first with an accumulator so the round trip is a structural induction (below). New: `ed25519PrivPrefix` (`80 26`, the `z3u2…` secret-key Multikey of the spec vectors), `multikeyToEd25519PublicKey?` / `…SecretKey?`. NOT ported: the lenient base64(-url) decoder — it serves `VC.Credential`'s `relatedResource` digests, and that module is not in this stage. |
+| `DID.Key.fst` (`parse_did_key`, `did_key_document`, the nine pinned IRIs) | `VC/DidKey.lean` (`parseDidKey`, `didKeyDocument`, same IRIs) | prefix stripping over `List Char`. New: the inverse `didKeyOfPublicKey` / `verificationMethodOfPublicKey` (the F\* tree re-implements it in JavaScript in `bin/vc-api-shim/server.mjs`) and `publicKeyOfVerificationMethod?`. `keyAgreement` omitted as in the F\*. |
+| `VC.DataIntegrity.fst` (`transform_dataset`, `hash_data_hex`, `eddsa_rdfc_2022_create_from_canonical`, `…verify_from_canonical`, `eddsa_rdfc_2022_create`, `…verify`, `di_proof`, `serialize_proof`, `make_eddsa_proof`) | `VC/DataIntegrity.lean` (`transformDataset`, `hashData`/`hashDataHex`, `createFromCanonical`, `verifyFromCanonical`, `createProofValue`, `verifyProofValue`, `DiProof`, `serializeProof`, `makeEddsaProof`) | the four crypto `assume val`s become: SHA-256 = pure `Crypto/SHA2.lean` behind `HashAlgorithm` (hash agility); Ed25519 = `SignFn` / `VerifyFn` PARAMETERS. New, document level (what `bin/vc-api-shim/server.mjs` does in JavaScript): `proofOptionsOf`, `unsecuredOf`, `canonicalizeJsonLd`, `verifyOneProof`, `verifyDocument` (typed `VerifyError` refusals), `secureDocument`. |
+| `bin/vc-api-shim/server.mjs` `proofContextFor`; `third_party/contexts/PROVENANCE.md` | `VC/Context.lean` (`proofContextFor`, `vendoredContextFiles`, `vcLoader`) | data + the proof-options context rule; the loader is a parameter. NOT a port of `VC.Context.fst` (see "Not ported"). |
+| `experimental_ocaml_glue/hacl_stubs.c` + `fstar_hacl_crypto.ml` (hex-string FFI to HACL\*) | `ffi/hacl_ed25519.c` + `Crypto/Ed25519.lean` (`secretToPublic`, `sign`, `verify` over `ByteArray`) | compiled and archived by Lake (`lakefile.lean`, `extern_lib libl4hacl`) from the unmodified `third_party/hacl/` sources. |
+| `bin/did-runner/did_runner.ml`, `bin/vc-runner/vc_runner.ml --crypto` | `Harness/VcProbe.lean` (`lake exe l4vc-probe`) | same fixtures, same checks, plus RFC 8032 and the W3C spec vectors. |
+
+### `lakefile.toml` → `lakefile.lean`
+
+Lake's TOML format has no `extern_lib` target (Lake 4.33:
+`Lake/Load/Toml.lean` decodes `lean_lib`, `lean_exe`, `input_file`,
+`input_dir` only), so the configuration became the Lean DSL — the
+`lake translate-config lean` output of the former TOML, comments carried
+over, plus four `target … : FilePath` C compilations (`buildO`, `-O2
+-fPIC -I third_party/hacl/include -I <lean include>`, the flags
+`build-ocaml.sh` uses for the same units) and the `extern_lib` that
+archives them into `.lake/build/lib/libl4hacl.a`. Lake links an
+`extern_lib` into every executable of the package, so nothing else
+changed for the probes. Integrators merging other `lean4/*` branches:
+a TOML edit on their side is a modify/delete conflict here — re-apply
+it to the DSL file by hand (the shapes correspond one to one).
+
+### Measured (`lake exe l4vc-probe`, verbatim)
+
+```
+ed25519-rfc8032: 22 pass, 0 fail (out of 22)
+did:key: 8 pass, 0 fail (out of 8)
+vc-dataintegrity-eddsa-rdfc-2022: 8 pass, 0 fail (out of 8)
+vc-di-eddsa-spec-vectors: 20 pass, 0 fail (out of 20)
+TOTAL: 58 pass, 0 fail (out of 58)
+```
+
+Beside the F\* tree (`docs/test-results/latest.json`): `did_key` 8
+pass, 0 fail (out of 8) — the same three `tests/did` vectors and five
+rejection cases; `bin/vc-runner --crypto` prints
+`vc-dataintegrity-eddsa-rdfc-2022: 8 pass, 0 fail (out of 8)` on the
+same inputs (its eight checks are replayed one for one, N-Quads and keys
+identical). The two remaining sections have no F\* counterpart to put
+beside them: the RFC 8032 vectors are the binding's own measurement
+(an `@[extern]` cannot be `#guard`ed), and the F\* tree's
+`vc_di_eddsa` score (31 pass, 0 fail) is the live-endpoint mocha suite
+through the Node VC-API shim, not an offline run of the specification's
+vectors. Section 4 is the strongest line: the spec's unsigned
+credential and proof options go through the Lean JSON-LD processor
+(vendored contexts) and RDFC-1.0 and reproduce the spec's canonical
+N-Quads byte for byte, its two SHA-256 digests, the Ed25519 signature
+`4d8e53…` and the proofValue `z2YwC8…`; `secureDocument` then produces
+that proof and `verifyDocument` accepts it and refuses a tampered
+proofValue, a changed claim, the wrong purpose, a non-did:key
+verification method, and the unsecured credential.
+
+`lake build`: 272 jobs, green; 77 new `#guard`s in `VC/Tests.lean`
+(base58 Bitcoin Core vectors, the three did:key vectors and five
+rejections, the DID document, the spec vectors' pure parts, the
+pipeline with a stub verifier, the proof-options context rule, the
+document-level field surgery).
+
+### Theorems (`VC/Theorems.lean`, 34; axioms: propext, Classical.choice, Quot.sound)
+
+- `base58Decode?_base58Encode : base58Decode? (base58Encode bs) = some bs`
+  — the lemma `VC.Multibase.fst`'s banner declines ("a full base58
+  bijection proof … is a disproportionate proof burden"). It is ~150
+  lines: digits→nat→digits and bytes→nat→bytes by strong induction
+  (`digitsToNat58_natToDigits58`, `natToBytesBE_bytesToNatAcc` in
+  accumulator form), the leading-zero run via `takeWhile_append_dropWhile`,
+  the two alphabet facts (`base58Digit?_base58Char`, `base58Char_ne_one`)
+  by `decide` over the 58-entry list literal.
+- `multibaseDecode?_encode`, `multikeyToEd25519PublicKey?_of_key`,
+  `parseDidKey_didKeyOfPublicKey` (a 32-byte key survives `did:key:`).
+- `hashData_congr`, `createProofValue_of_canonical_eq`,
+  `verifyProofValue_of_canonical_eq`: the hash input, the proof value and
+  the verdict are functions of the RDFC-1.0 canonical forms only.
+- `verifyFromCanonical_not_multibase`, `verifyDocument_noProof`: refusals
+  that hold for every primitive and loader.
+- `verifyFromCanonical_createFromCanonical`: create-then-verify succeeds
+  under the single hypothesis `verifyF pk m (signF sk m) = true` — the
+  signature scheme's correctness, stated as a premise, never assumed
+  globally.
+
+### Translation decisions
+
+- **Primitives are parameters.** `createFromCanonical`/`verifyFromCanonical`
+  and everything above them take `SignFn`/`VerifyFn`. Consequences: the
+  library is a total function of its inputs; the `#guard`s exercise the
+  pipeline with a stub verifier that accepts exactly the spec vector's
+  (pk, hashData, signature); no compile-time evaluation ever touches the
+  extern (it could not — `#guard` runs the interpreter, which has no
+  native symbol for an `@[extern]` opaque).
+- **Bytes, not hex, at the FFI.** The F\* boundary is lowercase hex
+  strings; the Lean binding takes `ByteArray`s and the C shim only checks
+  lengths. Hex lives in `Multibase` for the vectors and the
+  `hash_data_hex` parity function.
+- **Refusals are typed.** `verifyDocument : … → Except VerifyError Unit`;
+  every non-success has a constructor and a `describe`. A length-refused
+  key is an EMPTY result from the primitive and `none` from
+  `createFromCanonical` (the F\* `""` convention), never a proof value.
+- **Proof sets verify member by member; proof chains are refused**
+  (`proofChainUnsupported`). The F\* shim implements chains in JavaScript;
+  porting that is document-level work for a later stage.
+- **`created` is optional** and not validated beyond presence (as in the
+  F\*); `proofPurpose` must equal the caller's expected purpose (default
+  `assertionMethod`).
+- **The securing document's `@context` is extended** by
+  `proofContextFor` exactly as the shim extends it, so re-verification
+  rebuilds the same proof-options context; for a VCDM 2.0 document that
+  is the identity.
+
+### Sabotage record (2026-08-22)
+
+1. `hashData` concatenation order swapped (document hash first):
+   `lake build` fails at `VC/Tests.lean:177` (`hashDataHex … ==
+   specCfgHash ++ specDocHash`). Restored, green.
+2. `base58Encode` stops emitting the leading `'1'` per zero byte:
+   `VC/Tests.lean:59` and `:66` (the two Bitcoin Core vectors with
+   leading zeros) fail AND `VC/Theorems.lean:248`
+   (`base58Decode?_base58Encode`) no longer proves. Restored, green.
+3. The C shim's `l4_hacl_ed25519_verify` made to return 1
+   unconditionally (the build stays green — no `#guard` can see an
+   extern): `l4vc-probe` reports `ed25519-rfc8032: 13 pass, 9 fail (out
+   of 22)`, `vc-dataintegrity-eddsa-rdfc-2022: 5 pass, 3 fail (out of
+   8)`, `vc-di-eddsa-spec-vectors: 17 pass, 3 fail (out of 20)` — every
+   negative check (flipped signature bytes, wrong key, tampered
+   proofValue, changed claim, corrupted canonical form). Restored:
+   58 pass, 0 fail. This is why the probe carries negative checks in
+   every section.
+4. Measured live rather than by code sabotage, as the probe's own
+   checks: flipping byte 0 or byte 63 of each RFC 8032 signature makes
+   `verify` false; swapping two INPUT quads leaves the RDFC-1.0
+   canonical form unchanged (so the proof still verifies), while
+   swapping two lines of the canonical form changes the SHA-256 digest
+   and the spec signature no longer verifies over it.
+
+### Assumption report (append) — THE ONE EXTERN
+
+The F\* `VC.DataIntegrity.fst` has four `assume val`s:
+`hash_sha256_hex` (dissolved: pure Lean SHA-256, FIPS 180-4 vectors as
+`#guard`s, `Crypto/SHA2.lean`) and `ed25519_secret_to_public` /
+`ed25519_sign` / `ed25519_verify`. The latter three are
+`Crypto/Ed25519.lean`'s `@[extern "l4_hacl_ed25519_*"] opaque`
+declarations — the Lean tree's single permitted `extern` family under
+the crypto-policy skill's Lean 4 amendment (signatures via HACL\* FFI
+only; never a hand-written implementation). Trust statement, in full,
+in that module's header; in short: Lean knows their types and nothing
+about their values; no theorem depends on them (`#print axioms` on
+every theorem of the library is unchanged: propext, Classical.choice,
+Quot.sound); what is trusted is HACL\*'s F\*/Low\*-verified Ed25519
+(vendored unmodified, Apache-2.0, cryspen/hacl-packages
+`05c3d8fb321ed65e3db3a6a8b853019e86fb40a2`), the 60-line
+length-checking shim, and Lean's FFI calling convention; what is
+measured is RFC 8032 §7.1 through the binding at run time. `VC.Multibase.fst`,
+`DID.Key.fst`: zero `assume val`s, confirmed by grep. No `sorry`, no
+`axiom`, no `native_decide`, no `partial` in `L4Factoidal/`
+(`Harness/VcProbe.lean`'s `findRepoRoot` is `partial`, in the harness,
+outside the library, like the other probes' directory walks).
+
+### Not ported (and said so)
+
+- `VC.Credential.fst` + `VC.Context.fst` — the VCDM 2.0 STRUCTURAL
+  validator and its purpose-built term-resolution walker (the F\*
+  `vc_stage1` suite, 117 pass, 0 fail (out of 117) over
+  `third_party/testing/vc/tests/input/*-ok|-fail.json`). A separate
+  stage; the Lean tree's full JSON-LD processor would replace the
+  walker rather than port it.
+- Proof chains (`previousProof`), the live-endpoint suites
+  (`vc_di_eddsa` 31, `vc20_api` 59 — mocha over HTTP through the Node
+  shim), `keyAgreement` derivation (curve arithmetic; crypto policy).
+- The wasm artifact: `Wasm/build-wasm.sh` now compiles the same four C
+  units for wasm32 (each compile-checked under emcc 2026-08-22; the
+  shim's object is named `l4_hacl_shim.o` because `hacl_ed25519.o`
+  collides with `Hacl_Ed25519.o` on a case-insensitive filesystem — a
+  trap found while checking), but the full module was not rebuilt in
+  this stage.
+
+### Findings against the F\* (not fixed here)
+
+- `formal/fstar/VC.DataIntegrity.fst:21-23` ("NATIVE-ONLY … This module
+  is deliberately excluded from the js_of_ocaml/wasm bundle") and
+  `formal/fstar/build-ocaml.sh:1182-1184` (same claim) are stale since
+  #286: the `js` step compiles `VC_DataIntegrity.ml` and links
+  `hacl_stubs.js` (`build-ocaml.sh:2309`, `:2343`, `:2441`), and
+  `skills/node-crypto-haclstar-vc-wasm-build` documents VC verify
+  working off-native. An obsolescence-sweep item.
+- `formal/fstar/VC.Multibase.fst:20-25`: the banner's reason for not
+  stating `decode (encode bs) == Some bs` ("disproportionate proof
+  burden") no longer holds as an estimate — the Lean proof is ~150
+  lines with no library beyond core; the F\* statement would be of the
+  same size.
+- `bin/vc-runner/vc_runner.ml:381-383`: the `--crypto` roundtrip's
+  proof-options dataset uses `http://www.w3.org/ns/data-integrity#cryptosuite`
+  and `…#proofPurpose`, which are not the Data Integrity vocabulary
+  (`https://w3id.org/security#cryptosuite`, typed
+  `sec:cryptosuiteString`; `…#proofPurpose` with an IRI object). Harmless
+  for a self-contained roundtrip — the Lean probe replays the same
+  strings for parity — but it is not a spec-shaped input; the W3C
+  vectors in section 4 are.
+## Stage: indexed OWL 2 RL closure — no cap hits on the W3C OWL corpus (branch `lean4/owl-indexed`, 2026-08-22)
+
+What landed: `L4Factoidal/OWL/RLClosureIndexed.lean` — the OWL 2 RL/RDF
+closure over an indexed triple store, with a PROVED list equality to the
+specification engine `RLClosure.closure`; `Harness/OwlProbe.lean` scores
+with it, scopes imported-document blank nodes per import, and carries a
+`--profile` mode (per-row timing of the list engine, indexed cross-check,
+`--indexed-only` rounds). The spec (`RLRules.lean`) and the theorem file
+(`RLTheorems.lean`) are untouched. The F\* counterpart of this step is
+`RDFS.Closure.SemiNaive.fst`.
+
+### Measured first: where the time was (list engine, `--profile`)
+
+Per-row wall time of one `RLClosure.step` round, IO.Ref-forced (see the
+measuring-inference skill, rule 9, for why the first instrument read 0 ms
+on every row):
+
+```
+WebOnt-description-logic-204  premise 1074 triples
+  round 1: rows total emitted=5235 ms=586     dedup addAll new=1750 ms=109    cls-int1: emitted=0 ms=577
+  round 5: rows total emitted=30361 ms=6640   dedup addAll new=0 ms=648       cls-int1: emitted=328 ms=6443
+WebOnt-miscellaneous-001      premise 2912 triples
+  round 1: rows total emitted=12282 ms=20724  dedup addAll new=3534 ms=491    cls-int1: emitted=0 ms=20634
+  round 2: rows total emitted=62272 ms=104840 dedup addAll new=4108 ms=2810   cls-int1: emitted=6323 ms=104322
+```
+
+One row — cls-int1 — is 95–99.6 % of every round: per `owl:intersectionOf`
+triple it walks EVERY subject occurrence of the graph and runs a `memB`
+list scan per class (O(#intersections × |g| × |list| × |g|)). The exact
+dedup (`addAll`, a scan per conclusion) is second and grows with |g|;
+every other row is under 50 ms. The 20 s budget was spent inside round 1
+of the ~3 000-triple cases, as the task brief said.
+
+### The indexed engine and its cost model
+
+`Index`: `Array Triple` (insertion order), `Std.HashSet Triple` (exact
+membership), five `Std.HashMap` buckets — S, P, O, (S,P), (P,O) — each
+holding the REVERSED filter of the array. Lookup = `getD` + reverse:
+O(1) + O(result). Insert = one `push`, one set insert, five `getD` +
+`insert` with a cons: O(1). `memB`: O(1). A round is O(|g| + emitted)
+instead of O(|g| × scans); the round count is unchanged (same stopping
+rule). Evaluation is NAIVE with indexed joins, not semi-naive: each round
+still drives every row from every triple of the input snapshot, which is
+what makes the bridge a per-round equality. Measured on
+WebOnt-miscellaneous-001 after the blank-node fix below: 8 rounds,
+12 280 triples, 1 107 ms cumulative (round 1: 30 ms; list engine round 1:
+20 724 ms).
+
+### What is proved (`RLClosureIndexed.lean`, axioms: propext, Classical.choice, Quot.sound)
+
+The rows are written once over a `Store` record of lookups. `Store.ofGraph g`
+packs the list scans, and every row over it is the `RLClosure` row by
+`rfl` (47 `xxxForS_ofGraph` lemmas, 13 clash rows; the five recursive
+walkers by induction). `Index.Wf i g` — the array is `g`, the set decides
+`memB g`, every bucket lookup EQUALS the list filter as a list — is
+preserved by `push`, `insert` (= `addOne`), `insertAll` (= `addAll`), and
+gives `Store.ofIndex_eq : Store.ofIndex i = Store.ofGraph g`. Hence:
+
+- `Index.Wf.step` — one indexed round pictures one `RLClosure.step`;
+- `Index.Wf.closure` — the loop takes the same branch at every fuel;
+- `indexedClosure_eq : indexedClosure g fuel = closure g fuel` — LIST
+  equality (order included), every graph, every fuel;
+- `mem_indexedClosure_iff` — the set-membership form the task asked for;
+- `detectClashI_closureI` — the indexed clash verdict is `inconsistent`.
+
+So T1/T2/T4 and `detectClash_sound` of `RLTheorems.lean` hold of the
+indexed engine by rewriting, with nothing re-proved. The proofs reason
+about `Std.HashMap.getD_insert` / `Std.HashSet.contains_insert` only.
+`RLTests.lean` evaluates `indexedClosure == closure` on every fixture so
+the compiled hash path is exercised too.
+
+Sabotage (2026-08-22): `Index.push` changed to skip `rdf:type` triples in
+the (P,O) bucket. `lake build` fails at `Index.Wf.push` (line 912, type
+mismatch: `BucketWf (i.byPO.insert …)` expected `BucketWf (i.push t).byPO`).
+Restored; green.
+
+### Measured score lines, verbatim — before and after, same 20 s cap
+
+Baseline, list engine (`l4owl-probe --cap-ms 20000`, run from the repo
+root, commit 9dd44d59a engine):
+
+```
+profile-RL.rdf: 102 pass, 19 fail, 0 skip, 5 unsupported (out of 126)
+HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1227 closure_rounds=428 clashes=10 cap_hits=0 parse_failures=0 wall_ms=81
+profile-EL.rdf: 95 pass, 21 fail, 1 skip, 4 unsupported (out of 121)
+HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1098 closure_rounds=409 clashes=4 cap_hits=0 parse_failures=0 wall_ms=69
+profile-QL.rdf: 76 pass, 11 fail, 0 skip, 0 unsupported (out of 87)
+HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=303 clashes=5 cap_hits=0 parse_failures=0 wall_ms=57
+type-positive-entailment.rdf: 290 pass, 116 fail, 0 skip, 6 unsupported (out of 412)
+HARNESS-DIAG-OWL type-positive-entailment.rdf: cases=206 units=412 triples_parsed=28902 closure_rounds=1542 clashes=0 cap_hits=10 parse_failures=0 wall_ms=327877
+type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5258 closure_rounds=425 clashes=29 cap_hits=0 parse_failures=0 wall_ms=1759
+type-consistency.rdf: 451 pass, 120 fail, 0 skip, 12 unsupported (out of 583)
+HARNESS-DIAG-OWL type-consistency.rdf: cases=354 units=583 triples_parsed=41248 closure_rounds=2107 clashes=0 cap_hits=14 parse_failures=1 wall_ms=401706
+TOTAL: 1043 pass, 371 fail, 2 skip, 41 unsupported (out of 1457)
+HARNESS-DIAG-OWL TOTAL: cases=931 units=1457 triples_parsed=78605 closure_rounds=5214 clashes=48 cap_hits=24 parse_failures=1
+```
+
+After — indexed engine + per-import blank-node scoping, same command:
+
+```
+profile-RL.rdf: 102 pass, 19 fail, 0 skip, 5 unsupported (out of 126)
+HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1227 closure_rounds=428 clashes=10 cap_hits=0 parse_failures=0 wall_ms=52
+profile-EL.rdf: 95 pass, 21 fail, 1 skip, 4 unsupported (out of 121)
+HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1098 closure_rounds=409 clashes=4 cap_hits=0 parse_failures=0 wall_ms=43
+profile-QL.rdf: 76 pass, 11 fail, 0 skip, 0 unsupported (out of 87)
+HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=303 clashes=5 cap_hits=0 parse_failures=0 wall_ms=32
+type-positive-entailment.rdf: 297 pass, 109 fail, 0 skip, 6 unsupported (out of 412)
+HARNESS-DIAG-OWL type-positive-entailment.rdf: cases=206 units=412 triples_parsed=28902 closure_rounds=1576 clashes=0 cap_hits=0 parse_failures=0 wall_ms=4116
+type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5258 closure_rounds=425 clashes=29 cap_hits=0 parse_failures=0 wall_ms=172
+type-consistency.rdf: 461 pass, 110 fail, 0 skip, 12 unsupported (out of 583)
+HARNESS-DIAG-OWL type-consistency.rdf: cases=354 units=583 triples_parsed=41248 closure_rounds=2159 clashes=0 cap_hits=0 parse_failures=1 wall_ms=7024
+TOTAL: 1060 pass, 354 fail, 2 skip, 41 unsupported (out of 1457)
+HARNESS-DIAG-OWL TOTAL: cases=931 units=1457 triples_parsed=78605 closure_rounds=5300 clashes=48 cap_hits=0 parse_failures=1
+```
+
+FAIL lists diffed (`comm` on the `FAIL <id> [type]` lines): no new FAIL;
+these 10 units moved from fail to pass — WebOnt-description-logic-201,
+-204, -206, -661, -664 [ConsistencyTest], -204 [PositiveEntailmentTest],
+WebOnt-miscellaneous-001, -002, -011 [ConsistencyTest], -011
+[PositiveEntailmentTest]. The 24 baseline cap hits are 12 distinct units;
+the two not in the list above now fail on their merits:
+WebOnt-description-logic-201 and -206 [PositiveEntailmentTest],
+`closure-gap: missing <…#V822576> rdf:type <…#C110>` / `<…#V21027>
+rdf:type <…#C30>` — the conclusions the F\* runner reaches through its
+PE-via-refutation tableau fallback, which this probe's header already
+names as not ported. The one `parse_failures=1` (FS2RDF-literals-ar,
+RDF/XML §7.2.16) is unchanged.
+
+### Finding on the way: an RDF union where a merge was needed (fixed in the probe)
+
+With the fast engine, WebOnt-miscellaneous-001/002/011 [ConsistencyTest]
+first FAILED with `clash: detectClash fired on a premise asserted
+consistent (67989 triples)` after 5 rounds, the closure doubling per
+round (2912 → 6446 → 10554 → 15515 → 30829 → 67989). The OWL 2 RL rules
+are sound for any RDF graph, so the input was wrong: `loadImports` merged
+each imported RDF/XML graph by plain concatenation, and the parser labels
+blank nodes `b0, b1, …` per document, so wine's restrictions and food's
+restrictions shared labels — chimera restrictions. The F\* runner hit and
+fixed the same defect on 2026-07-10 (`owl_runner.ml`, "Bnode renaming");
+the port now applies `Graph.prefixBnodes "imp<n>_"` per import. The list
+engine never got past round 1 on these cases, so the defect was invisible
+until the engine was fast — the measurement that was supposed to confirm
+a speed-up instead found a correctness bug in the harness.
+
+### Module correspondence (append)
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `RDFS.Closure.SemiNaive.fst` (indexed/semi-naive RDFS closure), `RDF.Indexed` bucket trees | `OWL/RLClosureIndexed.lean` `Store`, `Index`, `stepI`, `closureI`, `indexedClosure`, `detectClashI` | naive rounds over hash buckets, not semi-naive deltas; the bridge is a list equality, not a saturation argument |
+| `owl_runner.ml` `load_imports_into_premise` + per-import bnode renaming | `Harness/OwlProbe.lean` `loadImports` with `Graph.prefixBnodes` | same ordinal-prefix discipline |
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no `@[extern]`
+in `RLClosureIndexed.lean`. `Std.HashMap` / `Std.HashSet` from core Lean
+only (still zero external dependencies). Not done: semi-naive evaluation
+(each round re-derives everything; its bridge would be an equality at
+saturation, a different proof) — the corpus does not need it at the 20 s
+cap; cls-int1 still enumerates subject OCCURRENCES (`subjectsOf g`, one
+per triple) because the row body must stay `rfl`-equal to the list row.
