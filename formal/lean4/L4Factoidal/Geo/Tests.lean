@@ -1,0 +1,57 @@
+/-
+L4Factoidal.Geo.Tests — build-time checks for the GeoSPARQL port.
+Every `#guard` evaluates during elaboration, so a wrong answer is a
+build error.
+-/
+import L4Factoidal.Geo.BBox
+
+namespace L4Factoidal.Geo
+
+-- Exact decimals: scale differences must not change a value.
+#guard Scaled.eq ⟨1, 1⟩ ⟨10, 2⟩          -- 0.1 = 0.10
+#guard Scaled.eq (Scaled.add ⟨1, 1⟩ ⟨2, 1⟩) ⟨3, 1⟩   -- 0.1 + 0.2 = 0.3
+#guard !(Scaled.eq ⟨1, 1⟩ ⟨2, 1⟩)
+#guard Scaled.lt ⟨-5, 0⟩ ⟨1, 3⟩          -- -5 < 0.001
+#guard Scaled.eq (Scaled.mul ⟨5, 1⟩ ⟨2, 1⟩) ⟨1, 1⟩   -- 0.5 * 0.2 = 0.1 exactly
+#guard Scaled.eq (Scaled.sub ⟨3, 1⟩ ⟨1, 1⟩) ⟨2, 1⟩
+
+-- The float trap this port exists to avoid: 0.1 + 0.2 = 0.3 exactly.
+#guard Scaled.cmp (Scaled.add ⟨1, 1⟩ ⟨2, 1⟩) ⟨3, 1⟩ == 0
+
+-- Points compare across scales.
+#guard Point.eq ⟨⟨1, 1⟩, ⟨2, 1⟩⟩ ⟨⟨10, 2⟩, ⟨20, 2⟩⟩
+
+-- Bounding boxes.
+private def p00 : Point := ⟨Scaled.ofInt 0, Scaled.ofInt 0⟩
+private def p11 : Point := ⟨Scaled.ofInt 1, Scaled.ofInt 1⟩
+private def p22 : Point := ⟨Scaled.ofInt 2, Scaled.ofInt 2⟩
+
+#guard (BBox.ofPoints [p00, p11]).isSome
+#guard (BBox.ofPoints []).isNone
+#guard match BBox.ofPoints [p00, p11] with
+       | some b => Scaled.eq b.xmin (Scaled.ofInt 0) && Scaled.eq b.xmax (Scaled.ofInt 1)
+       | none => false
+
+-- An empty geometry has no box; a collection takes the union.
+#guard (BBox.ofGeometry (.empty .point)).isNone
+#guard match BBox.ofGeometry (.geometryCollection [.point p00, .point p22]) with
+       | some b => Scaled.eq b.xmax (Scaled.ofInt 2) && Scaled.eq b.ymin (Scaled.ofInt 0)
+       | none => false
+
+-- Overlap is inclusive: boxes sharing only an edge DO overlap, per
+-- Simple Features (a shared boundary point is an intersection).
+#guard BBox.overlaps (BBox.ofPoint p00) (BBox.ofPoint p00)
+#guard BBox.overlaps ⟨Scaled.ofInt 0, Scaled.ofInt 0, Scaled.ofInt 1, Scaled.ofInt 1⟩
+                     ⟨Scaled.ofInt 1, Scaled.ofInt 1, Scaled.ofInt 2, Scaled.ofInt 2⟩
+#guard !(BBox.overlaps ⟨Scaled.ofInt 0, Scaled.ofInt 0, Scaled.ofInt 1, Scaled.ofInt 1⟩
+                       ⟨Scaled.ofInt 2, Scaled.ofInt 2, Scaled.ofInt 3, Scaled.ofInt 3⟩)
+
+-- CRS matching: absent means CRS84, so it matches the explicit IRI.
+#guard sameCrs none none
+#guard sameCrs none (some crs84)
+#guard !(sameCrs (some "http://example.org/crs/other") none)
+
+#print axioms contains_ofPoint
+#print axioms overlaps_self
+
+end L4Factoidal.Geo
