@@ -12,13 +12,18 @@ W3C SHACL Recommendation (20 July 2017), https://www.w3.org/TR/shacl/:
 
 Port of `formal/fstar/SHACL.Validation.fst` sections 2–7 (the AST) and
 11a/11b/11c/11f (`rdf_list_terms`, `parse_path`, `build_targets`,
-`build_constraints`, `build_shape`, `parse_shape_from_graph_pure`).
-The F* constructors for SHACL 1.2 (list-valued sh:datatype,
+`build_constraints`, `build_shape`, `parse_shape_from_graph_pure`),
+plus the SHACL-SPARQL decoders of section 11b (`prefix_header_for`,
+`build_sparql_constraints`, `build_custom_constraints`) — Part 2 §5.1
+sh:sparql constraints (`Constraint.sparql`) and §6 constraint
+components (`Constraint.custom`), whose SPARQL text is kept as a
+string here and parsed at validation time (`Sparql.lean`), as the F*
+does. The F* constructors for SHACL 1.2 (list-valued sh:datatype,
 sh:singleLine, sh:memberShape, …), SHACL-AF (sh:values, sh:targetWhere)
-and SHACL-SPARQL (CC_Sparql, CC_Custom, T_Sparql) are not ported —
-see `Vocabulary.lean`'s header. A shapes graph that uses a SHACL-SPARQL
-predicate is recorded in `ShapesGraph.unsupported` so the harness can
-name it.
+and the SPARQL-based target (T_Sparql) are not ported — see
+`Vocabulary.lean`'s header. A shapes graph that uses the SPARQL-based
+target predicate is recorded in `ShapesGraph.unsupported` so the
+harness can name it.
 
 Decoding is a total function of the shapes graph. Every graph walk
 that follows runtime data (rdf:first/rdf:rest chains, nested path
@@ -157,6 +162,27 @@ inductive Constraint where
   | closed (ignored : List WfIri)
   | hasValue (t : Term)
   | inSet (items : List Term)
+  -- SHACL-SPARQL Part 2 §5.1: a sh:sparql constraint. `node` is the
+  -- constraint node (reported as sh:sourceConstraint, distinct from the
+  -- owning shape's sh:sourceShape); `query` is the sh:select text with
+  -- its §5.2 `PREFIX` header already prepended (`$this`, `$PATH`, … are
+  -- substituted at validation time); `message` / `severity` are the
+  -- constraint node's own sh:message / sh:severity, which take priority
+  -- over the owning shape's (node/sparql-001, node/sparql-003).
+  | sparql (node : ShapeRef) (query : String) (message : Option WfLiteral)
+           (severity : Option Severity)
+  -- SHACL-SPARQL Part 2 §6: a use of a SPARQL-based constraint
+  -- component. `component` is the component IRI (reported as
+  -- sh:sourceConstraintComponent); `isAsk` says whether the chosen
+  -- validator (§6.2, node/property validator before the generic one)
+  -- is a SPARQLAskValidator (run per value node) or a
+  -- SPARQLSelectValidator (run per focus node); `query` is its
+  -- sh:ask / sh:select text with the `PREFIX` header prepended;
+  -- `params` are the §6.1 parameter bindings read off the shape (SPARQL
+  -- variable = local name of the parameter's sh:path); `msgTemplate` is
+  -- the validator's sh:message with `{?x}` / `{$x}` placeholders (§6.3).
+  | custom (component : WfIri) (isAsk : Bool) (query : String)
+           (params : List (String × Term)) (msgTemplate : Option String)
   deriving Repr, Inhabited
 
 /-- §2.2: one record covers node shapes and property shapes; a
@@ -459,6 +485,171 @@ def decodeConstraints (g : Graph) (s : Subject) : List Constraint :=
   nots ++ ands ++ ors ++ xones ++ nodes ++ qualified ++ equals ++ disjoint ++ lessThan ++
   lessThanOrEquals ++ closed
 
+/-! ## SHACL-SPARQL §5.2 prefix declarations
+
+`sh:prefixes` names one or more nodes carrying `sh:declare` prefix
+declarations (each with `sh:prefix` and `sh:namespace`); the vendored
+suite links declaration nodes with `owl:imports` (node/prefixes-001),
+so the walk follows it transitively, cycle-safe. The result is the
+`PREFIX p: <ns>` header the SPARQL parser needs in the query text (the
+parser has no ambient prefix map, unlike Turtle's `@prefix`). Port of
+`declares_to_header` / `collect_declares` / `prefix_header_for`. -/
+
+/-- One `PREFIX` line per declaration node that has both parts. -/
+def declaresToHeader (g : Graph) (decls : List Term) : String :=
+  decls.foldl (fun acc d =>
+    let pfx := match objectsOfTerm g d shDeclPrefix with
+      | .literal l :: _ => some l.val.lexicalForm | _ => none
+    let ns := match objectsOfTerm g d shDeclNamespace with
+      | .literal l :: _ => some l.val.lexicalForm | _ => none
+    match pfx, ns with
+    | some p, some n => acc ++ "PREFIX " ++ p ++ ": <" ++ n ++ ">\n"
+    | _, _ => acc) ""
+
+/-- Every sh:declare node reachable from `frontier` through owl:imports
+(fuel-bounded, `visited` keeps cycles finite). -/
+def collectDeclares (g : Graph) : List Term → List Term → Nat → List Term
+  | _, _, 0 => []
+  | [], _, _ + 1 => []
+  | n :: rest, visited, fuel + 1 =>
+    if visited.contains n then collectDeclares g rest visited fuel
+    else
+      objectsOfTerm g n shDeclare ++
+      collectDeclares g (objectsOfTerm g n owlImports ++ rest) (n :: visited) fuel
+
+/-- The `PREFIX` header for the query text of constraint / validator
+node `s`: its sh:prefixes nodes' declarations; with no sh:prefixes, the
+declarations of every `sh:ShapesGraph` node (the SHACL 1.2 default the
+F* applies). -/
+def prefixHeaderFor (g : Graph) (s : Subject) : String :=
+  let viaNodes := objectsOf g s shPrefixes
+  let nodes := if viaNodes.isEmpty then subjectsOf g rdfType (.iri shShapesGraph) else viaNodes
+  declaresToHeader g (collectDeclares g nodes [] (g.length + 10))
+
+/-! ## SHACL-SPARQL §5.1 sh:sparql constraints -/
+
+/-- Every sh:sparql value of `s` that carries a sh:select (F*
+`build_sparql_constraints`). The constraint node's own sh:message and
+sh:severity are read here; the query text gets its prefix header. -/
+def decodeSparqlConstraints (g : Graph) (s : Subject) : List Constraint :=
+  (objectsOf g s shSparql).filterMap fun t =>
+    match t.toSubject? with
+    | none => none
+    | some cs =>
+      match objectsOf g cs shSelect with
+      | .literal l :: _ =>
+        let msg := match objectsOf g cs shMessage with
+          | .literal ml :: _ => some ml | _ => none
+        let sev := match objectsOf g cs shSeverity with
+          | .iri i :: _ => some (severityOfIri i) | _ => none
+        some (Constraint.sparql (subjectToShapeRef cs)
+          (prefixHeaderFor g cs ++ l.val.lexicalForm) msg sev)
+      | _ => none
+
+/-! ## SHACL-SPARQL §6 SPARQL-based constraint components
+
+A constraint component is recognised STRUCTURALLY — a subject with at
+least one sh:parameter and one of sh:validator / sh:nodeValidator /
+sh:propertyValidator — not through rdf:type / rdfs:subClassOf
+sh:ConstraintComponent (component/validator-001 routes the typing
+through user-defined subclasses that no Core-level reading follows;
+the structural signature is unambiguous). A shape USES a component
+(§6.1) when every non-optional parameter has a value on the shape node
+and at least one parameter is bound at all (component/optional-001:
+`ex:IncompleteShape` has only the optional parameter and must not
+trigger the component). Port of `is_custom_component_def`,
+`parse_custom_param`, `custom_params_applicable`, `choose_validator`,
+`build_custom_constraints`. -/
+
+/-- §6.1: the SPARQL variable of a parameter is the local name of its
+sh:path IRI — the text after the last `#` or `/`. -/
+def localNameOfIri (iri : String) : String :=
+  String.ofList ((iri.toList.reverse.takeWhile (fun c => c != '#' && c != '/')).reverse)
+
+structure CustomParam where
+  path     : WfIri
+  name     : String
+  optional : Bool
+  deriving Repr
+
+def isCustomComponentDef (g : Graph) (subj : Subject) : Bool :=
+  !(objectsOf g subj shParameter).isEmpty &&
+  (!(objectsOf g subj shValidator).isEmpty ||
+   !(objectsOf g subj shNodeValidator).isEmpty ||
+   !(objectsOf g subj shPropertyValidator).isEmpty)
+
+def decodeCustomParam (g : Graph) (t : Term) : Option CustomParam :=
+  match t.toSubject? with
+  | none => none
+  | some ps =>
+    match objectsOf g ps shPath with
+    | .iri p :: _ =>
+      some { path := p, name := localNameOfIri p.val,
+             optional := (firstBool (objectsOf g ps shOptional)).getD false }
+    | _ => none
+
+/-- The (variable, value) bindings of the parameters on shape node `s`,
+with the "some parameter is bound" flag; `none` when a non-optional
+parameter is missing. -/
+def customParamsApplicable (g : Graph) (s : Subject) :
+    List CustomParam → Bool → Option (List (String × Term) × Bool)
+  | [], anyBound => some ([], anyBound)
+  | p :: rest, anyBound =>
+    match objectsOf g s p.path with
+    | v :: _ =>
+      (customParamsApplicable g s rest true).map fun (acc, ab) => ((p.name, v) :: acc, ab)
+    | [] => if p.optional then customParamsApplicable g s rest anyBound else none
+
+def componentParams (g : Graph) (s : Subject) (params : List CustomParam) :
+    Option (List (String × Term)) :=
+  match customParamsApplicable g s params false with
+  | some (binds, true) => some binds
+  | _ => none
+
+/-- A validator node's kind (sh:ask → ASK validator, else sh:select →
+SELECT validator), its prefix-headered query text, and its sh:message
+template. -/
+def validatorQueryOf (g : Graph) (v : Term) : Option (Bool × String × Option String) :=
+  match v.toSubject? with
+  | none => none
+  | some vs =>
+    let tmpl := match objectsOf g vs shMessage with
+      | .literal l :: _ => some l.val.lexicalForm | _ => none
+    match objectsOf g vs shAsk with
+    | .literal l :: _ => some (true, prefixHeaderFor g vs ++ l.val.lexicalForm, tmpl)
+    | _ =>
+      match objectsOf g vs shSelect with
+      | .literal l :: _ => some (false, prefixHeaderFor g vs ++ l.val.lexicalForm, tmpl)
+      | _ => none
+
+/-- §6.2: sh:nodeValidator (node shapes) / sh:propertyValidator
+(property shapes) before the generic sh:validator. -/
+def chooseValidator (g : Graph) (comp : Subject) (isProperty : Bool) :
+    Option (Bool × String × Option String) :=
+  let generic := match objectsOf g comp shValidator with
+    | v :: _ => validatorQueryOf g v | [] => none
+  let specific := if isProperty then objectsOf g comp shPropertyValidator
+                  else objectsOf g comp shNodeValidator
+  match specific with
+  | v :: _ => match validatorQueryOf g v with | some r => some r | none => generic
+  | [] => generic
+
+/-- Every IRI-named component definition in the shapes graph that
+shape node `s` uses, as a `Constraint.custom`. -/
+def decodeCustomConstraints (g : Graph) (s : Subject) (isProperty : Bool) : List Constraint :=
+  ((distinctSubjects g).filter (isCustomComponentDef g)).filterMap fun comp =>
+    match comp with
+    | .bnode _ => none
+    | .iri ci =>
+      let params := (objectsOf g comp shParameter).filterMap (decodeCustomParam g)
+      if params.isEmpty then none
+      else
+        match componentParams g s params with
+        | none => none
+        | some binds =>
+          (chooseValidator g comp isProperty).map fun (isAsk, q, tmpl) =>
+            Constraint.custom ci isAsk q binds tmpl
+
 /-! ## §2 shape decoding -/
 
 /-- A triple that makes its subject a shape: any sh: predicate, or
@@ -496,10 +687,12 @@ def decodeShape (g : Graph) (s : Subject) : Shape :=
     targets := decodeTargets g s,
     severity := severity,
     message := message,
-    constraints := decodeConstraints g s,
+    constraints := decodeConstraints g s ++ decodeSparqlConstraints g s ++
+                   decodeCustomConstraints g s (!pathObjs.isEmpty),
     propertyRefs := (objectsOf g s shProperty).filterMap termToShapeRef }
 
-/-- The SHACL-SPARQL feature names a graph uses (predicates only). -/
+/-- The unsupported SHACL-SPARQL feature names a graph uses (predicates
+only; today only the SPARQL-based target). -/
 def sparqlFeaturesUsed (g : Graph) : List String :=
   sparqlFeaturePredicates.filterMap fun (p, name) =>
     if g.any (fun t => t.p == p) then some name else none

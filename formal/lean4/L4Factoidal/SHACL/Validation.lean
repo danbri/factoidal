@@ -29,10 +29,14 @@ the numeric / dateTime / ill-formed-literal helpers of
   node's own rdf:type values — the same SHACL-instance relation (§1.4:
   rdf:type plus rdfs:subClassOf*, in the data graph only, no RDFS
   entailment), without the intermediate graph.
-* SHACL-SPARQL (sh:sparql, custom components, SPARQL targets) is not
-  ported — see `Vocabulary.lean`. The F* `assume val
-  eval_sparql_target_select` is a forward reference for SPARQL targets;
-  nothing corresponds to it here.
+* SHACL-SPARQL (sh:sparql constraints, custom constraint components)
+  is a separate pass in `Sparql.lean` (`validateWithSparql`), as the
+  F* dispatches CC_Sparql / CC_Custom outside its Core mutual group;
+  `validate` here is SHACL Core only and sees the `.sparql` / `.custom`
+  constructors as inert. SPARQL-based TARGETS (sh:target) are not
+  ported — see `Vocabulary.lean`; the F* `assume val
+  eval_sparql_target_select` is a forward reference for exactly those,
+  and nothing corresponds to it here.
 
 The specification side (`Spec` namespace) states each ported Core
 component declaratively over the same data, and `Spec.Conforms` is
@@ -69,10 +73,18 @@ instance : Inhabited Violation :=
   ⟨{ focus := .bnode "", path := none, value := none, sourceShape := "",
      constraint := default, severity := default, message := none }⟩
 
-/-- §3.6.1: `conforms` is true iff there are no validation results. -/
+/-- §3.6.1: `conforms` is true iff there are no validation results.
+`failure` is the SHACL-SPARQL failure channel (Part 2 §5.3.2: a query
+that does not parse or uses a construct forbidden with pre-bound
+variables "must be rejected with a failure", the suite's `sht:Failure`
+outcome) — always `none` for SHACL Core (`validate`); set only by
+`validateWithSparql` (`Sparql.lean`). A failed validation is not a
+conforming one: `conforms` / `results` are the partial answer, and the
+harness treats `failure` as the outcome. -/
 structure ValidationReport where
   conforms : Bool
   results  : List Violation
+  failure  : Option String := none
   deriving Repr, Inhabited
 
 def conformingReport : ValidationReport := { conforms := true, results := [] }

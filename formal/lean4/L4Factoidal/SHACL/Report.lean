@@ -12,8 +12,9 @@ rdf:type, sh:focusNode, sh:resultPath (with its own freshly-minted
 blank-node path structure — the suite requires that "blank node
 structures representing property paths ... must not be shared among
 multiple results"), sh:resultSeverity, sh:sourceConstraintComponent,
-sh:sourceShape, sh:value, sh:resultMessage. Every blank node comes from
-one counter threaded through the serialisation.
+sh:sourceShape, sh:value, sh:resultMessage, and (sh:sparql results only)
+sh:sourceConstraint. Every blank node comes from one counter threaded
+through the serialisation.
 -/
 import L4Factoidal.SHACL.Validation
 
@@ -51,6 +52,17 @@ def constraintComponentIri : Constraint → WfIri
   | .closed _ => shClosedCC
   | .hasValue _ => shHasValueCC
   | .inSet _ => shInCC
+  -- SHACL-SPARQL: §5.1 results name sh:SPARQLConstraintComponent; §6
+  -- results name the component itself.
+  | .sparql _ _ _ _ => shSPARQLConstraintComponent
+  | .custom comp _ _ _ _ => comp
+
+/-- §5.1: a sh:sparql result also carries sh:sourceConstraint, the
+constraint node (node/sparql-001 expects it; §6 results do not carry
+one, matching the suite's expected reports). -/
+def sourceConstraintOf : Constraint → Option Term
+  | .sparql node _ _ _ => some (shapeRefToTerm node)
+  | _ => none
 
 def severityToIri : Severity → WfIri
   | .info => shInfo
@@ -126,7 +138,11 @@ def resultToTriples (report : Subject) (v : Violation) (ctr : Nat) : List Triple
     match v.message with
     | some m => [{ s := rsubj, p := shResultMessage, o := .literal m }]
     | none => []
-  (base ++ pathTs ++ valueTs ++ msgTs, ctr2)
+  let scTs : List Triple :=
+    match sourceConstraintOf v.constraint with
+    | some sc => [{ s := rsubj, p := shSourceConstraint, o := sc }]
+    | none => []
+  (base ++ pathTs ++ valueTs ++ msgTs ++ scTs, ctr2)
 
 def resultsToTriples (report : Subject) : List Violation → Nat → List Triple × Nat
   | [], ctr => ([], ctr)

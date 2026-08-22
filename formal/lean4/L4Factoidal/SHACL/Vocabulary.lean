@@ -10,9 +10,12 @@ witness is `rfl` — kernel evaluation of `isIri` — so every constant is
 a `WfIri` with no runtime check.
 
 Scope: SHACL Core (§2 shapes and targets, §2.3.1 property paths, §3
-validation, §4 the Core constraint components). The SHACL-SPARQL
-vocabulary (sh:sparql, sh:select, sh:ask, sh:validator, sh:parameter)
-appears ONLY in `sparqlFeaturePredicates` — the predicates whose
+validation, §4 the Core constraint components) and SHACL-SPARQL (Part
+2: §5 sh:sparql constraints with sh:select / sh:prefixes / sh:declare,
+§6 constraint components with sh:parameter / sh:validator /
+sh:nodeValidator / sh:propertyValidator). The one SHACL-SPARQL feature
+NOT ported is the SPARQL-based target (`sh:target`, SHACL-AF); it is
+the only entry of `sparqlFeaturePredicates` — the predicates whose
 presence in a shapes graph the harness reports as `unsupported`, never
 silently skipped. SHACL 1.2 additions (sh:singleLine, sh:memberShape,
 sh:reifierShape, …) are not ported: the vendored suite
@@ -158,12 +161,15 @@ def shClosedCC       : WfIri := ⟨"http://www.w3.org/ns/shacl#ClosedConstraintC
 def shHasValueCC     : WfIri := ⟨"http://www.w3.org/ns/shacl#HasValueConstraintComponent", rfl⟩
 def shInCC           : WfIri := ⟨"http://www.w3.org/ns/shacl#InConstraintComponent", rfl⟩
 
-/-! ## SHACL-SPARQL predicates — recognised only to be reported
+/-! ## SHACL-SPARQL vocabulary (Part 2, §5–§6)
 
-Part 2 of the Recommendation (SPARQL-based constraints, §5–§6) is out of
-this port's scope. A shapes graph using any of these predicates is
-reported as `unsupported` by the harness (counted in the denominator,
-named), per the project's score-reporting rule. -/
+§5.1 sh:sparql / sh:select, §5.2 sh:prefixes / sh:declare / sh:prefix /
+sh:namespace (with owl:imports between prefix-declaration nodes, as
+the vendored suite uses), §6.1 sh:parameter / sh:optional, §6.2
+sh:validator / sh:nodeValidator / sh:propertyValidator, §6.2.1 sh:ask,
+§6.2.2 sh:select, and the sh:SPARQLConstraintComponent IRI every
+sh:sparql result names. Decoded in `Shapes.lean`, evaluated in
+`Sparql.lean`. -/
 
 def shSparql            : WfIri := ⟨"http://www.w3.org/ns/shacl#sparql", rfl⟩
 def shSelect            : WfIri := ⟨"http://www.w3.org/ns/shacl#select", rfl⟩
@@ -173,13 +179,23 @@ def shValidator         : WfIri := ⟨"http://www.w3.org/ns/shacl#validator", rf
 def shNodeValidator     : WfIri := ⟨"http://www.w3.org/ns/shacl#nodeValidator", rfl⟩
 def shPropertyValidator : WfIri := ⟨"http://www.w3.org/ns/shacl#propertyValidator", rfl⟩
 def shParameter         : WfIri := ⟨"http://www.w3.org/ns/shacl#parameter", rfl⟩
+def shOptional          : WfIri := ⟨"http://www.w3.org/ns/shacl#optional", rfl⟩
+def shPrefixes          : WfIri := ⟨"http://www.w3.org/ns/shacl#prefixes", rfl⟩
+def shDeclare           : WfIri := ⟨"http://www.w3.org/ns/shacl#declare", rfl⟩
+def shDeclPrefix        : WfIri := ⟨"http://www.w3.org/ns/shacl#prefix", rfl⟩
+def shDeclNamespace     : WfIri := ⟨"http://www.w3.org/ns/shacl#namespace", rfl⟩
+def shShapesGraph       : WfIri := ⟨"http://www.w3.org/ns/shacl#ShapesGraph", rfl⟩
+def shSPARQLConstraintComponent : WfIri :=
+  ⟨"http://www.w3.org/ns/shacl#SPARQLConstraintComponent", rfl⟩
+def owlImports          : WfIri := ⟨"http://www.w3.org/2002/07/owl#imports", rfl⟩
 
-/-- The predicates whose presence marks a SHACL-SPARQL shapes graph. -/
+/-- The predicates whose presence marks a shapes graph as using a
+SHACL-SPARQL feature this port does NOT evaluate: only the SPARQL-based
+target (`sh:target`, SHACL-AF) remains. A shapes graph using it is
+reported as `unsupported` by the harness (counted in the denominator,
+named), per the project's score-reporting rule. -/
 def sparqlFeaturePredicates : List (WfIri × String) :=
-  [(shSparql, "sh:sparql"), (shSelect, "sh:select"), (shAsk, "sh:ask"),
-   (shTarget, "sh:target"), (shValidator, "sh:validator"),
-   (shNodeValidator, "sh:nodeValidator"), (shPropertyValidator, "sh:propertyValidator"),
-   (shParameter, "sh:parameter")]
+  [(shTarget, "sh:target (SPARQL-based targets)")]
 
 /-! ## RDF / RDFS / OWL IRIs used by the decoder -/
 
