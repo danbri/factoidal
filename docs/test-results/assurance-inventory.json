@@ -24538,7 +24538,7 @@
    "files": [
     "formal/fstar/SPARQL11.Algebra.fst"
    ],
-   "loc": 8794,
+   "loc": 8770,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -24546,10 +24546,10 @@
    "extracted_ml": "formal/fstar/ocaml-output/SPARQL11_Algebra.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 516,
+   "shipping_function_count": 515,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
-   "assume_val_active": 11,
+   "assume_val_active": 10,
    "assume_val_names": [
     "string_uppercase_unicode",
     "string_lowercase_unicode",
@@ -24559,7 +24559,6 @@
     "hash_sha384",
     "hash_sha512",
     "fx_current_datetime",
-    "extension_function_call",
     "eval_property_path_fwd",
     "service_endpoint_lookup"
    ],
@@ -25026,7 +25025,7 @@
      "name": "lemma_substitute_pattern_preserves_size",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 4976,
+     "line": 4952,
      "unconditional": true,
      "names_shipping_functions": [
       "group_graph_pattern",
@@ -25038,7 +25037,7 @@
      "name": "lemma_lateral_substitute_preserves_size",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 5031,
+     "line": 5007,
      "unconditional": true,
      "names_shipping_functions": [
       "group_graph_pattern",
@@ -25050,7 +25049,7 @@
      "name": "lemma_rewrite_query_bnodes_pattern_preserves_size",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 5890,
+     "line": 5866,
      "unconditional": true,
      "names_shipping_functions": [
       "group_graph_pattern",
@@ -25062,7 +25061,7 @@
      "name": "lemma_filter_union",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7469,
+     "line": 7445,
      "unconditional": true,
      "names_shipping_functions": [
       "filter_solutions",
@@ -25073,7 +25072,7 @@
      "name": "lemma_sm_compatible_refl",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7544,
+     "line": 7520,
      "unconditional": false,
      "names_shipping_functions": [
       "sm_compatible",
@@ -25084,7 +25083,7 @@
      "name": "lemma_sm_merge_empty_l",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7593,
+     "line": 7569,
      "unconditional": true,
      "names_shipping_functions": [
       "sm_lookup",
@@ -25095,7 +25094,7 @@
      "name": "lemma_store_search_empty",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7698,
+     "line": 7674,
      "unconditional": true,
      "names_shipping_functions": [
       "graph_to_store",
@@ -25106,7 +25105,7 @@
      "name": "lemma_eval_single_tp_empty",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7702,
+     "line": 7678,
      "unconditional": true,
      "names_shipping_functions": [
       "eval_single_tp_store",
@@ -25117,7 +25116,7 @@
      "name": "lemma_eval_bgp_store_empty_fuel",
      "proved_in": "SPARQL11.Algebra",
      "file": "formal/fstar/SPARQL11.Algebra.fst",
-     "line": 7716,
+     "line": 7692,
      "unconditional": true,
      "names_shipping_functions": [
       "eval_bgp_store_from_mu_fuel",
@@ -60114,7 +60113,7 @@
    "name": "lemma_substitute_pattern_preserves_size",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 4976,
+   "line": 4952,
    "unconditional": true,
    "shipping_functions_named": [
     "group_graph_pattern",
@@ -60134,7 +60133,7 @@
    "name": "lemma_lateral_substitute_preserves_size",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 5031,
+   "line": 5007,
    "unconditional": true,
    "shipping_functions_named": [
     "group_graph_pattern",
@@ -60154,7 +60153,7 @@
    "name": "lemma_rewrite_query_bnodes_pattern_preserves_size",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 5890,
+   "line": 5866,
    "unconditional": true,
    "shipping_functions_named": [
     "group_graph_pattern",
@@ -60174,7 +60173,7 @@
    "name": "lemma_union_assoc",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7436,
+   "line": 7412,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -60192,7 +60191,7 @@
    "name": "lemma_union_nil_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7448,
+   "line": 7424,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -60210,7 +60209,7 @@
    "name": "lemma_union_nil_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7451,
+   "line": 7427,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -60228,7 +60227,7 @@
    "name": "lemma_filter_append",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7459,
+   "line": 7435,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60242,7 +60241,7 @@
    "name": "lemma_filter_union",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7469,
+   "line": 7445,
    "unconditional": true,
    "shipping_functions_named": [
     "filter_solutions",
@@ -60261,7 +60260,7 @@
    "name": "lemma_offset_zero",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7479,
+   "line": 7455,
    "unconditional": true,
    "shipping_functions_named": [
     "slice_solutions"
@@ -60279,7 +60278,7 @@
    "name": "lemma_list_drop_zero",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7483,
+   "line": 7459,
    "unconditional": true,
    "shipping_functions_named": [
     "list_drop"
@@ -60297,7 +60296,7 @@
    "name": "lemma_list_take_nil",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7487,
+   "line": 7463,
    "unconditional": true,
    "shipping_functions_named": [
     "list_take"
@@ -60315,7 +60314,7 @@
    "name": "lemma_filter_mem",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7492,
+   "line": 7468,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60329,7 +60328,7 @@
    "name": "lemma_assoc_none_of_domain",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7526,
+   "line": 7502,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_domain"
@@ -60347,7 +60346,7 @@
    "name": "lemma_sm_compatible_extra_binding",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7536,
+   "line": 7512,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_compatible"
@@ -60365,7 +60364,7 @@
    "name": "lemma_sm_compatible_refl",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7544,
+   "line": 7520,
    "unconditional": false,
    "shipping_functions_named": [
     "sm_compatible",
@@ -60384,7 +60383,7 @@
    "name": "lemma_sm_compatible_not_refl_with_dup_keys",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7557,
+   "line": 7533,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_compatible"
@@ -60402,7 +60401,7 @@
    "name": "lemma_sm_merge_empty_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7563,
+   "line": 7539,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_merge"
@@ -60420,7 +60419,7 @@
    "name": "lemma_sm_merge_aux_lookup",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7580,
+   "line": 7556,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_merge_aux"
@@ -60438,7 +60437,7 @@
    "name": "lemma_sm_merge_empty_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7593,
+   "line": 7569,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_lookup",
@@ -60457,7 +60456,7 @@
    "name": "lemma_sm_merge_empty_l_not_structural_identity",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7604,
+   "line": 7580,
    "unconditional": true,
    "shipping_functions_named": [
     "sm_merge"
@@ -60475,7 +60474,7 @@
    "name": "lemma_domains_disjoint_empty_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7613,
+   "line": 7589,
    "unconditional": true,
    "shipping_functions_named": [
     "domains_disjoint"
@@ -60493,7 +60492,7 @@
    "name": "lemma_filter_true",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7628,
+   "line": 7604,
    "unconditional": true,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60507,7 +60506,7 @@
    "name": "lemma_join_empty_l",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7635,
+   "line": 7611,
    "unconditional": true,
    "shipping_functions_named": [
     "join"
@@ -60525,7 +60524,7 @@
    "name": "lemma_concatMap_nil",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7639,
+   "line": 7615,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60539,7 +60538,7 @@
    "name": "lemma_join_empty_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7646,
+   "line": 7622,
    "unconditional": true,
    "shipping_functions_named": [
     "join"
@@ -60557,7 +60556,7 @@
    "name": "lemma_minus_empty_r",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7664,
+   "line": 7640,
    "unconditional": true,
    "shipping_functions_named": [
     "minus"
@@ -60575,7 +60574,7 @@
    "name": "lemma_union_length",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7671,
+   "line": 7647,
    "unconditional": true,
    "shipping_functions_named": [
     "union"
@@ -60593,7 +60592,7 @@
    "name": "lemma_concatMap_all_nil",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7679,
+   "line": 7655,
    "unconditional": false,
    "shipping_functions_named": [],
    "shipping_modules": [],
@@ -60607,7 +60606,7 @@
    "name": "lemma_ig_search_empty",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7690,
+   "line": 7666,
    "unconditional": true,
    "shipping_functions_named": [
     "ig_search"
@@ -60625,7 +60624,7 @@
    "name": "lemma_store_search_empty",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7698,
+   "line": 7674,
    "unconditional": true,
    "shipping_functions_named": [
     "graph_to_store",
@@ -60644,7 +60643,7 @@
    "name": "lemma_eval_single_tp_empty",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7702,
+   "line": 7678,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_single_tp_store",
@@ -60663,7 +60662,7 @@
    "name": "lemma_eval_bgp_store_empty_fuel",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7716,
+   "line": 7692,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_bgp_store_from_mu_fuel",
@@ -60682,7 +60681,7 @@
    "name": "lemma_bgp_empty_graph",
    "host_module": "SPARQL11.Algebra",
    "file": "formal/fstar/SPARQL11.Algebra.fst",
-   "line": 7731,
+   "line": 7707,
    "unconditional": true,
    "shipping_functions_named": [
     "eval_bgp"
@@ -63755,7 +63754,7 @@
  "totals": {
   "modules": 221,
   "files": 231,
-  "assume_val_active": 88,
+  "assume_val_active": 87,
   "assume_other_active": 4,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
@@ -63797,5 +63796,5 @@
    "w3c-refinement": 11
   }
  },
- "commit": "85bdfba6c"
+ "commit": "760dba15f"
 }
