@@ -1,10 +1,19 @@
 > **only report to me in ASD-STE100 Simplified Technical English.**
 
-# Factoidal — Verified RDF/SPARQL from F\*
+# Factoidal — a formally grounded RDF/SPARQL engine
 
-A formally verified RDF/SPARQL implementation. The **F\* specifications are
-the product**. Executable code is obtained by **extraction**, not by
-hand-writing Rust/JS/OCaml/anything that "mirrors" a spec.
+**The product is the engine**: a highly optimised, flexible, performant
+RDF database and query environment. F\* and Lean 4 are how its APIs,
+interfaces and protocols are grounded in the W3C specifications and in
+mathematics. They are not a separate deliverable, and a specification
+is not a substitute for the code that satisfies it.
+
+That grounding is what buys the freedom to go fast: implementations
+may be varied, tuned and replaced aggressively, because the specs make
+it impossible for an improvement to silently destroy standards
+compliance. Executable code is still obtained by **extraction from the
+formal source**, never by hand-writing Rust/JS/OCaml that "mirrors" a
+spec — that is the mechanism, not the goal.
 
 ## Founding view (danbri, 2026-08-22) — verbatim
 
@@ -39,9 +48,10 @@ What follows from it, and settles recurring arguments:
 
 **Goal:** a performant, compliant engine for RDF Core 1.1 (all concrete
 syntaxes), RDF/S, OWL, SHACL, RDFC-1.0 canonicalization, and full
-SPARQL 1.1 (query, update, protocol, results) — specified in F\*,
-extracted to native/JS/wasm (and C via KaRaMeL), with correctness and
-speed each proven by test suites and measurements, never by assertion.
+SPARQL 1.1 (query, update, protocol, results) — grounded in F\* and
+Lean 4, extracted to native/JS/wasm (and C via KaRaMeL), with
+correctness and speed each established by proof, test suites and
+measurement, never by assertion.
 Standing priorities: `docs/claude-rules/current-state.md` § Standing
 priorities.
 
@@ -72,10 +82,15 @@ The two that corrupt files silently:
 
 ## Iron Rules
 
-1. **F\* is the source of truth.** All RDF/SPARQL logic lives in `.fst` files.
+1. **The formal source is the source of truth.** RDF/SPARQL logic
+   lives in `.fst` files (`formal/fstar`, the shipping engine) and in
+   `.lean` files (`formal/lean4`, `L4Factoidal`) — never in
+   hand-written code downstream of them.
 2. **Code is extracted, not hand-written.** Use `fstar.exe --codegen OCaml`
-   or KaRaMeL for C/WASM. Never vibe-code an implementation that "mirrors"
-   the spec.
+   or KaRaMeL for C/WASM; the Lean tree compiles via Lean→C→wasm. Never
+   vibe-code an implementation that "mirrors" the spec. Optimising an
+   implementation IS allowed and wanted — inside the formal source,
+   where the refinement can be proved.
 3. **`assume val` = acknowledged gap OR allowed realisation — never a
    silent hole.** An `assume val` is one of two things, and each has a
    home:
