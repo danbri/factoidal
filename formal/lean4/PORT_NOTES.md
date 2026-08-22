@@ -653,3 +653,75 @@ work). Adding `deriving DecidableEq` to `NamedGraph` and `Dataset` in
 matching the `instBEqOfDecidableEq` convention this project's own
 pitfall list (`skills/factoidal-lean-basics`) already recommends for
 every other structure in the tree.
+
+## Addendum (2026-08-22): SPARQL Query Results formats (SRX/SRJ/CSV/TSV)
+
+Scope: SPARQL 1.1 Query Results XML, JSON, CSV, and TSV Formats —
+parsing AND serialising all four, a prerequisite for the Lean W3C
+harness (`docs/designissues/2026-08-22-lean4-w3c-harness.md` names
+`.srx`/`.srj`/`.csv`/`.tsv` expected-result files as gating items).
+Adds `L4Factoidal/SPARQL/{Results,ResultsXml,ResultsJson,
+ResultsCsvTsv,ResultsTests,ResultsTheorems}.lean` (1,577 lines: 77
+definitions, 4 theorems in `ResultsTheorems.lean` plus the reflexivity/
+transitivity-style facts folded into the format modules, 56 `#guard`
+checks in `ResultsTests.lean`). `lake build` remains green with all
+six modules wired into `L4Factoidal.lean`.
+
+### Module correspondence
+
+| Lean 4 | Ports (F*) | Notes |
+|---|---|---|
+| `L4Factoidal/SPARQL/Results.lean` | (new; the shared model the four F* modules below each reinvent a slice of) | `QueryResult` (`bindings`/`boolean` — CONSTRUCT/DESCRIBE graphs are out of scope, see the file's own header), `ResultsError`, and the shared `mkResultUri`/`mkResultBnode`/`mkResultLiteral`/`mkResultDirLiteral`/`mkResultTriple`/`parseResultDirection` constructors ported from `Parser.JSONResults.fst`'s `mk_literal`/`mk_dir_literal` (which `Parser.SRX.fst`/`Parser.CSVResults.fst` each redefine near-verbatim) |
+| `L4Factoidal/SPARQL/ResultsXml.lean` | `Parser.SRX.fst` (parsing) + `SPARQL.Protocol.fst` Part 10 (`xml_term`/`serialise_response_xml`/`serialise_response_boolean_xml`, serialising) | Built on `L4Factoidal.XML` (`Document`/`Parser`) — walks the already-parsed infoset, does not re-implement XML parsing. Deviation: the root element must (namespace-flexibly) be `<sparql>` — the F* source never checks this |
+| `L4Factoidal/SPARQL/ResultsJson.lean` | `Parser.JSONResults.fst` (parsing) + `SPARQL.Protocol.fst` Part 9 (`json_term`/`serialise_response_json`/`serialise_response_boolean_json`, serialising) | Built on `L4Factoidal.JSON` (`Value`/`Parser`/`Serialize`) — binding values are `Json` trees rendered via the already-verified compact writer; the document wrapper is hand-composed exactly as `serialise_response_json` composes it (load-bearing for the N-row shape theorem, see `ResultsTheorems.lean`). Deviations: `parse_srj_results`/`parse_srj_boolean` unified into one `parseSrj` dispatching on `"boolean"` presence; `"head"` is now REQUIRED (§2.1's grammar has it non-optional; the F* source silently defaults to `vars = []` when absent) |
+| `L4Factoidal/SPARQL/ResultsCsvTsv.lean` | `Parser.CSVResults.fst` (parsing) + `SPARQL.Protocol.fst` Part 11 (`csv_plain_term`/`serialise_response_csv`, `tsv_term`/`serialise_response_tsv`, serialising) | TSV's IRI/blank-node/literal/triple-term cell syntax is IS (approximately) N-Triples syntax, so this port REUSES `Syntax.Lexing`'s `readIriRef`/`readBlankNodeLabel` and `Syntax.NTriples`'s `readLiteral`/`mkIri`/`Term.toNTriples` rather than hand-rolling a second caret/at-sign scanner the way `parse_tsv_quoted_literal` does — a genuine simplification, not just a different implementation of the same primitive (same shape of win as the N-Triples/N-Quads stage's byte-vs-codepoint collapse). Bare numeric TSV field sniffing (`isIntegerStr`/`isDecimalStr`/`isDoubleStr`) is a direct port, since bare numerals are not N-Triples syntax. Also carries `Term.eqbCsvLenient`, the Lean counterpart of `bin/w3c-runner/w3c_runner.ml`'s `term_equal_csv_lenient` — the lossy-comparison rule the W3C harness will need for every CSV-backed test |
+| `L4Factoidal/SPARQL/ResultsTests.lean` | (new; fixtures copied verbatim from `third_party/testing/w3c/sparql/`) | 56 `#guard`s: round-trips (bindings incl. unbound variables, language-tagged/directional/typed literals, blank nodes, RDF 1.2 triple terms, booleans, empty results) for SRX/SRJ/TSV; forward-only fixture parsing for CSV (round-trip only claimed for CSV-native `xsd:string` content — CSV is lossy by spec); real W3C fixtures (`pp08.srx`, `projexp04.srx`, `langstring-datatype.srj`, `plain-string-same.srj`, `csvtsv01.csv`, `csvtsv01.tsv`); negative cases per format (wrong root element, malformed XML, bad `<boolean>` text; missing `head`, bad JSON syntax, non-object root; empty CSV input; malformed TSV IRIREF; CSV/TSV `.boolean` serialisation, which the format defines no encoding for) |
+| `L4Factoidal/SPARQL/ResultsTheorems.lean` | `SPARQL.Protocol.RoundTrip.fst`'s `lemma_srj_n_rows` (native re-proof) | `toSrj_bindings_shape`: the N-row SRJ shape theorem, proved by `rfl` — see below for why this port needs no accumulator-bridging proof the F* lemma exists to supply. `rowsJoined_nil`/`_singleton`/`_cons_cons`/`_cons`: the N = 0/1/≥2 decomposition. `SrjRoundTripGoal`: the general round-trip goal, stated as a `def : Prop` (not a `theorem` — see the file for the named, JSON-layer-inherited gap) |
+
+### Assumption report — F* sources ported
+
+`Parser.SRX.fst`, `Parser.JSONResults.fst`, `Parser.CSVResults.fst`,
+`SPARQL.Protocol.fst`: **zero** `assume val`s in all four (confirmed
+2026-08-22 by `grep -c "assume val"` on each file). Nothing was
+assumed away on the F* side, so the port declares no
+`axiom`/`opaque`/`partial` on the Lean side either — confirmed by
+`#print axioms` on every theorem in `ResultsTheorems.lean`: exactly
+`propext`/`Classical.choice`/`Quot.sound`, this tree's standard
+baseline.
+
+### Why the N-row shape theorem needed no accumulator bridge
+
+`SPARQL.Protocol.fst`'s `serialise_response_json` computes its row
+list via `json_rows_body_acc` (a TAIL-RECURSIVE accumulator) plus
+`List.Tot.rev`, a deliberate rewrite (`tav5`, 2026-04-26) of the
+original direct recursion — the direct form overflowed the macOS
+pthread 544 KB default stack on a real 3M-row dataset. `lemma_srj_n_rows`
+exists entirely to prove that rewrite still computes the SAME string
+as the original direct spec (`json_rows_joined`). This Lean port is
+the tree's own SPECIFICATION evaluator (list scans, no tail-call/
+stack-depth engineering, per `PORT_NOTES.md`'s translation-decisions
+section above and every prior addendum), so `ResultsJson.lean`'s
+`toSrj` is written directly against `rowsJoined` with no accumulator
+detour — there is nothing to bridge, and the theorem is `rfl`. This is
+not a shortcut around the F* proof; it is what NOT carrying the
+performance rewrite into the spec tree buys back. A future Lean
+PERFORMANCE variant of this serialiser (if one is ever built for a
+large-graph demo) would need the accumulator rewrite and would then
+need this same bridging lemma, proved the same way the F* tree proved
+it.
+
+### A finding: `Parser.CSVResults.fst`'s TSV reader/writer asymmetry for RDF 1.2 triple terms
+
+`SPARQL.Protocol.fst`'s `tsv_term` SERIALISES an RDF 1.2 triple-term
+binding as `<<( s <p> o )>>`, but `Parser.CSVResults.fst`'s
+`parse_tsv_value` has NO case for a `<<(`-prefixed field at all — only
+`<...>` (IRI), `"..."` (literal), `_:...` (blank node), and bare
+numerals. The F* TSV format is therefore write-only for triple terms:
+a value written by the F* tree's own serialiser cannot be read back by
+its own parser. `ResultsCsvTsv.lean`'s `parseTsvValue` reproduces this
+gap faithfully (documented at its call site and pinned by a `#guard`
+in `ResultsTests.lean` showing the field is REJECTED, not
+mis-parsed — the leading `<<` is not a legal IRIREF start, so
+`readIriRef` fails loudly) rather than silently adding parsing support
+the F* source lacks. Worth fixing in the F* tree first (iron rule #1)
+before either port grows a `<<( )>>` TSV reader.
