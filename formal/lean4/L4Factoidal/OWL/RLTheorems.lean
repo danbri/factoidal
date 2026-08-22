@@ -1575,4 +1575,560 @@ theorem exists_fuel_listSeqs {g : Graph} {head : Term} {es : List Term}
       ⟨node, rdfRest, tail⟩, mem_withSubjPred_of hr rfl rfl,
       rest, hn, rfl⟩
 
+
+/-! ## Section 11 — the collection helpers, the other way round
+
+`listElems_sound` and friends say the walk finds ONLY real members.
+These say it finds ALL of them, for the parts that need no fuel
+argument (the decisions and the chain walk are exact); the two that DO
+need a fuel argument are what `ListFuelAdequate` packages. -/
+
+theorem mem_nonEmpty_of {a : Type} {ls : List (List a)} {l : List a}
+    (hm : l ∈ ls) (hne : l ≠ []) : l ∈ nonEmpty ls := by
+  simp only [nonEmpty, List.mem_filter, Bool.not_eq_eq_eq_not, Bool.not_true]
+  refine ⟨hm, ?_⟩
+  cases l with
+  | nil => exact absurd rfl hne
+  | cons _ _ => rfl
+
+theorem allIris_complete : ∀ (ps : List WfIri), ps ∈ allIris (ps.map Term.iri) := by
+  intro ps
+  induction ps with
+  | nil => simp [allIris]
+  | cons p ps ih =>
+    simp only [List.map_cons, allIris, List.mem_map]
+    exact ⟨ps, ih, rfl⟩
+
+theorem typesAllB_complete {g : Graph} {y : Subject} : ∀ {cs : List Term},
+    TypesAll g y cs → typesAllB g y cs = true := by
+  intro cs h
+  induction h with
+  | nil => simp [typesAllB]
+  | cons hm _ ih =>
+    simp only [typesAllB, List.all_cons, Bool.and_eq_true]
+    exact ⟨memB_of_mem hm, ih⟩
+
+theorem sharesKeyValuesB_complete {g : Graph} {x y : Subject} :
+    ∀ {ps : List WfIri},
+      SharesKeyValues g x y ps → sharesKeyValuesB g x y ps = true := by
+  intro ps h
+  induction h with
+  | nil => simp [sharesKeyValuesB]
+  | @cons p o rest hx hy _ ih =>
+    simp only [sharesKeyValuesB, List.all_cons, Bool.and_eq_true, List.any_eq_true]
+    exact ⟨⟨⟨x, p, o⟩, mem_withSubjPred_of hx rfl rfl, memB_of_mem hy⟩, ih⟩
+
+theorem chainTargets_complete {g : Graph} : ∀ {s : Subject} {ps : List WfIri}
+    {fin : Term}, ChainHolds g s ps fin → fin ∈ chainTargets g s ps := by
+  intro s ps fin h
+  induction h with
+  | nil => simp [chainTargets]
+  | @last s p o hm =>
+    simp only [chainTargets, List.mem_map]
+    exact ⟨⟨s, p, o⟩, mem_withSubjPred_of hm rfl rfl, rfl⟩
+  | @step s mid p rest fin hm _ ih =>
+    cases rest with
+    | nil =>
+      simp only [chainTargets, List.mem_singleton] at ih
+      subst ih
+      simp only [chainTargets, List.mem_map]
+      exact ⟨⟨s, p, mid.toTerm⟩, mem_withSubjPred_of hm rfl rfl, rfl⟩
+    | cons q rest' =>
+      simp only [chainTargets, List.mem_flatMap]
+      exact ⟨⟨s, p, mid.toTerm⟩, mem_withSubjPred_of hm rfl rfl,
+        mid, mem_asSubject_toTerm mid, ih⟩
+
+/-- The subject of a `ChainHolds` chain of at least one link occurs in
+the graph, which is what puts it in `subjectsOf` — the candidate set
+prp-spo2 iterates. -/
+theorem chain_start_mem {g : Graph} {s : Subject} {ps : List WfIri}
+    {fin : Term} (h : ChainHolds g s ps fin) (hne : ps ≠ []) :
+    s ∈ subjectsOf g := by
+  cases h with
+  | nil => exact absurd rfl hne
+  | last hm => exact mem_subjectsOf hm
+  | step hm _ => exact mem_subjectsOf hm
+
+/-- Likewise for cls-int1: a `TypesAll` over a non-empty class list
+puts its individual in `subjectsOf`. -/
+theorem typesAll_subject_mem {g : Graph} {y : Subject} {cs : List Term}
+    (h : TypesAll g y cs) (hne : cs ≠ []) : y ∈ subjectsOf g := by
+  cases h with
+  | nil => exact absurd rfl hne
+  | cons hm _ => exact mem_subjectsOf hm
+
+/-! ## Section 12 — T4, completeness at a saturated graph
+
+One case per constructor of `Derives`. Each case runs the same three
+moves:
+
+1. the induction hypotheses give the row's triple premises AS MEMBERS
+   of the saturated graph (exactly — there is no `Triple.eqb` slack
+   here, which is the payoff of exact deduplication);
+2. the row's own function is fired on the driving premise, producing
+   the conclusion in that row's output list;
+3. saturation carries anything in `stepConclusions` back into the
+   graph.
+
+The `ListFuelAdequate` hypothesis is used by exactly the nine
+collection-valued rows, and only in move 2. -/
+
+/-- **T4 (general form).** A saturated graph containing `g` contains
+everything `g` derives, provided its collection walks are adequately
+fuelled. -/
+theorem complete_of_saturated {sat : Graph} (hsat : step sat = sat)
+    (hlf : ListFuelAdequate sat (listFuel sat)) {g : Graph}
+    (hg : ∀ u, u ∈ g → u ∈ sat) :
+    ∀ {t : Triple}, Derives g t → t ∈ sat := by
+  have fire : ∀ {t' : Triple}, t' ∈ stepConclusions sat → t' ∈ sat := by
+    intro t' h'
+    have h'' := mem_step_of_mem_conclusions h'
+    rwa [hsat] at h''
+  have R : ∀ {d t' : Triple} {l : List Triple}, d ∈ sat → t' ∈ l →
+      l ∈ conclusionsList sat d → t' ∈ sat := by
+    intro d t' l hd ht hl
+    refine fire ?_
+    simp only [stepConclusions, List.mem_append, List.mem_flatMap]
+    exact Or.inr ⟨d, hd, List.mem_flatten.mpr ⟨l, hl, ht⟩⟩
+  have axm : ∀ {t' : Triple}, t' ∈ axiomTriples → t' ∈ sat := by
+    intro t' h'
+    refine fire ?_
+    simp only [stepConclusions, List.mem_append]
+    exact Or.inl h'
+  intro t h
+  induction h with
+  | base hm => exact hg _ hm
+  | @eqRefS s p o _ ih =>
+    have hc : (⟨s, owlSameAs, s.toTerm⟩ : Triple) ∈ eqRefSFor sat ⟨s, p, o⟩ := by
+      simp [eqRefSFor]
+    exact R ih hc (by simp [conclusionsList])
+  | @eqRefP s p o _ ih =>
+    have hc : (⟨Subject.iri p, owlSameAs, Term.iri p⟩ : Triple) ∈
+        eqRefPFor sat ⟨s, p, o⟩ := by simp [eqRefPFor]
+    exact R ih hc (by simp [conclusionsList])
+  | @eqRefO s p os _ ih =>
+    have hc : (⟨os, owlSameAs, os.toTerm⟩ : Triple) ∈
+        eqRefOFor sat ⟨s, p, os.toTerm⟩ := by
+      simp only [eqRefOFor, List.mem_map]
+      exact ⟨os, mem_asSubject_toTerm os, rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @eqSym x ys _ ih =>
+    have hc : (⟨ys, owlSameAs, x.toTerm⟩ : Triple) ∈
+        eqSymFor sat ⟨x, owlSameAs, ys.toTerm⟩ := by
+      simp only [eqSymFor, beq_self_eq_true, if_true, List.mem_map]
+      exact ⟨ys, mem_asSubject_toTerm ys, rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @eqTrans x ys z _ _ ih1 ih2 =>
+    have hc : (⟨x, owlSameAs, z⟩ : Triple) ∈
+        eqTransFor sat ⟨x, owlSameAs, ys.toTerm⟩ := by
+      simp only [eqTransFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨ys, mem_asSubject_toTerm ys, ⟨ys, owlSameAs, z⟩,
+        mem_withSubjPred_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @eqRepS s s' p o _ _ ih1 ih2 =>
+    have hc : (⟨s', p, o⟩ : Triple) ∈
+        eqRepSFor sat ⟨s, owlSameAs, s'.toTerm⟩ := by
+      simp only [eqRepSFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨s', mem_asSubject_toTerm s', ⟨s, p, o⟩,
+        mem_withSubj_of ih2 rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @eqRepP p p' s o _ _ ih1 ih2 =>
+    have hc : (⟨s, p', o⟩ : Triple) ∈
+        eqRepPFor sat ⟨Subject.iri p, owlSameAs, Term.iri p'⟩ := by
+      simp only [eqRepPFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p, mem_subjIri_self p, p', mem_asIri_self p', ⟨s, p, o⟩,
+        mem_withPred_of ih2 rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @eqRepO os s o' p _ _ ih1 ih2 =>
+    have hc : (⟨s, p, o'⟩ : Triple) ∈ eqRepOFor sat ⟨os, owlSameAs, o'⟩ := by
+      simp only [eqRepOFor, beq_self_eq_true, if_true, List.mem_map]
+      exact ⟨⟨s, p, os.toTerm⟩, mem_withObj_of ih2 rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpDom p cls x y _ _ ih1 ih2 =>
+    have hc : (⟨x, rdfType, cls⟩ : Triple) ∈
+        prpDomFor sat ⟨Subject.iri p, rdfsDomain, cls⟩ := by
+      simp only [prpDomFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p, mem_subjIri_self p, ⟨x, p, y⟩, mem_withPred_of ih2 rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpRng p cls x ys _ _ ih1 ih2 =>
+    have hc : (⟨ys, rdfType, cls⟩ : Triple) ∈
+        prpRngFor sat ⟨Subject.iri p, rdfsRange, cls⟩ := by
+      simp only [prpRngFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p, mem_subjIri_self p, ⟨x, p, ys.toTerm⟩,
+        mem_withPred_of ih2 rfl, ys, mem_asSubject_toTerm ys, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpFp p x y1s y2 _ _ _ ih1 ih2 ih3 =>
+    have hc : (⟨y1s, owlSameAs, y2⟩ : Triple) ∈
+        prpFpFor sat ⟨Subject.iri p, rdfType,
+          Term.iri owlFunctionalProperty⟩ := by
+      simp only [prpFpFor, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap, List.mem_map]
+      exact ⟨p, mem_subjIri_self p, ⟨x, p, y1s.toTerm⟩,
+        mem_withPred_of ih2 rfl, y1s, mem_asSubject_toTerm y1s,
+        ⟨x, p, y2⟩, mem_withSubjPred_of ih3 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpIfp p x1 x2 y _ _ _ ih1 ih2 ih3 =>
+    have hc : (⟨x1, owlSameAs, x2.toTerm⟩ : Triple) ∈
+        prpIfpFor sat ⟨Subject.iri p, rdfType,
+          Term.iri owlInverseFunctionalProperty⟩ := by
+      simp only [prpIfpFor, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap, List.mem_map]
+      exact ⟨p, mem_subjIri_self p, ⟨x1, p, y⟩, mem_withPred_of ih2 rfl,
+        ⟨x2, p, y⟩, mem_withPredObj_of ih3 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpSymp p x ys _ _ ih1 ih2 =>
+    have hc : (⟨ys, p, x.toTerm⟩ : Triple) ∈
+        prpSympFor sat ⟨Subject.iri p, rdfType,
+          Term.iri owlSymmetricProperty⟩ := by
+      simp only [prpSympFor, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap, List.mem_map]
+      exact ⟨p, mem_subjIri_self p, ⟨x, p, ys.toTerm⟩,
+        mem_withPred_of ih2 rfl, ys, mem_asSubject_toTerm ys, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpTrp p x ys z _ _ _ ih1 ih2 ih3 =>
+    have hc : (⟨x, p, z⟩ : Triple) ∈
+        prpTrpFor sat ⟨Subject.iri p, rdfType,
+          Term.iri owlTransitiveProperty⟩ := by
+      simp only [prpTrpFor, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap, List.mem_map]
+      exact ⟨p, mem_subjIri_self p, ⟨x, p, ys.toTerm⟩,
+        mem_withPred_of ih2 rfl, ys, mem_asSubject_toTerm ys,
+        ⟨ys, p, z⟩, mem_withSubjPred_of ih3 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpSpo1 p1 p2 x y _ _ ih1 ih2 =>
+    have hc : (⟨x, p2, y⟩ : Triple) ∈
+        prpSpo1For sat ⟨Subject.iri p1, rdfsSubPropertyOf,
+          Term.iri p2⟩ := by
+      simp only [prpSpo1For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p1, mem_subjIri_self p1, p2, mem_asIri_self p2, ⟨x, p1, y⟩,
+        mem_withPred_of ih2 rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpSpo2 p lst preds x1 xn gc _ _ hlist hne hchain ihgc ih =>
+    have hc : (⟨x1, p, xn⟩ : Triple) ∈
+        prpSpo2For sat ⟨Subject.iri p, owlPropertyChainAxiom, lst⟩ := by
+      simp only [prpSpo2For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p, mem_subjIri_self p, preds.map Term.iri,
+        hlf.2 lst (preds.map Term.iri) (hlist.mono ihgc),
+        preds, mem_nonEmpty_of (allIris_complete preds) hne,
+        x1, chain_start_mem (hchain.mono ihgc) hne,
+        xn, chainTargets_complete (hchain.mono ihgc), rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @prpEqp1 p1 p2 x y _ _ ih1 ih2 =>
+    have hc : (⟨x, p2, y⟩ : Triple) ∈
+        prpEqp1For sat ⟨Subject.iri p1, owlEquivalentProperty,
+          Term.iri p2⟩ := by
+      simp only [prpEqp1For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p1, mem_subjIri_self p1, p2, mem_asIri_self p2, ⟨x, p1, y⟩,
+        mem_withPred_of ih2 rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpEqp2 p1 p2 x y _ _ ih1 ih2 =>
+    have hc : (⟨x, p1, y⟩ : Triple) ∈
+        prpEqp2For sat ⟨Subject.iri p1, owlEquivalentProperty,
+          Term.iri p2⟩ := by
+      simp only [prpEqp2For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p1, mem_subjIri_self p1, p2, mem_asIri_self p2, ⟨x, p2, y⟩,
+        mem_withPred_of ih2 rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpInv1 p1 p2 x ys _ _ ih1 ih2 =>
+    have hc : (⟨ys, p2, x.toTerm⟩ : Triple) ∈
+        prpInv1For sat ⟨Subject.iri p1, owlInverseOf, Term.iri p2⟩ := by
+      simp only [prpInv1For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p1, mem_subjIri_self p1, p2, mem_asIri_self p2,
+        ⟨x, p1, ys.toTerm⟩, mem_withPred_of ih2 rfl,
+        ys, mem_asSubject_toTerm ys, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpInv2 p1 p2 x ys _ _ ih1 ih2 =>
+    have hc : (⟨ys, p1, x.toTerm⟩ : Triple) ∈
+        prpInv2For sat ⟨Subject.iri p1, owlInverseOf, Term.iri p2⟩ := by
+      simp only [prpInv2For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p1, mem_subjIri_self p1, p2, mem_asIri_self p2,
+        ⟨x, p2, ys.toTerm⟩, mem_withPred_of ih2 rfl,
+        ys, mem_asSubject_toTerm ys, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @prpKey cls x ys lst preds gc _ _ hlist hne _ _ hshare ihgc ih1 ih2 ih3 =>
+    have hc : (⟨x, owlSameAs, ys.toTerm⟩ : Triple) ∈
+        prpKeyFor sat ⟨cls, owlHasKey, lst⟩ := by
+      simp only [prpKeyFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨preds.map Term.iri,
+        hlf.2 lst (preds.map Term.iri) (hlist.mono ihgc),
+        preds, mem_nonEmpty_of (allIris_complete preds) hne,
+        ⟨x, rdfType, cls.toTerm⟩, mem_withPredObj_of ih2 rfl rfl,
+        ⟨ys, rdfType, cls.toTerm⟩, mem_withPredObj_of ih3 rfl rfl, ?_⟩
+      rw [if_pos (sharesKeyValuesB_complete (hshare.mono ihgc))]
+      simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | clsThing => exact axm (by simp [axiomTriples])
+  | clsNothing1 => exact axm (by simp [axiomTriples])
+  | @clsInt1 cls y lst cs gc _ _ hlist hne htypes ihgc ih =>
+    have hc : (⟨y, rdfType, cls.toTerm⟩ : Triple) ∈
+        clsInt1For sat ⟨cls, owlIntersectionOf, lst⟩ := by
+      simp only [clsInt1For, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨cs, mem_nonEmpty_of (hlf.2 lst cs (hlist.mono ihgc)) hne,
+        y, typesAll_subject_mem (htypes.mono ihgc) hne, ?_⟩
+      rw [if_pos (typesAllB_complete (htypes.mono ihgc))]
+      simp
+    exact R ih hc (by simp [conclusionsList])
+  | @clsInt2 cls y lst ci gc _ _ hmem _ ihgc ih1 ih2 =>
+    have hc : (⟨y, rdfType, ci⟩ : Triple) ∈
+        clsInt2For sat ⟨cls, owlIntersectionOf, lst⟩ := by
+      simp only [clsInt2For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨ci, hlf.1 lst ci (hmem.mono ihgc), ⟨y, rdfType, cls.toTerm⟩,
+        mem_withPredObj_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsUni cls y lst ci gc _ _ hmem _ ihgc ih1 ih2 =>
+    have hc : (⟨y, rdfType, cls.toTerm⟩ : Triple) ∈
+        clsUniFor sat ⟨cls, owlUnionOf, lst⟩ := by
+      simp only [clsUniFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨ci, hlf.1 lst ci (hmem.mono ihgc), ⟨y, rdfType, ci⟩,
+        mem_withPredObj_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsSvf1 x u vs yc p _ _ _ _ ih1 ih2 ih3 ih4 =>
+    have hc : (⟨u, rdfType, x.toTerm⟩ : Triple) ∈
+        clsSvf1For sat ⟨x, owlSomeValuesFrom, yc⟩ := by
+      simp only [clsSvf1For, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨⟨x, owlOnProperty, Term.iri p⟩,
+        mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
+        ⟨u, p, vs.toTerm⟩, mem_withPred_of ih3 rfl,
+        vs, mem_asSubject_toTerm vs, ?_⟩
+      rw [if_pos (memB_of_mem ih4)]
+      simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsSvf2 x u v p _ _ _ ih1 ih2 ih3 =>
+    have hc : (⟨u, rdfType, x.toTerm⟩ : Triple) ∈
+        clsSvf2For sat ⟨x, owlSomeValuesFrom, Term.iri owlThing⟩ := by
+      simp only [clsSvf2For, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap, List.mem_map]
+      exact ⟨⟨x, owlOnProperty, Term.iri p⟩,
+        mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
+        ⟨u, p, v⟩, mem_withPred_of ih3 rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsAvf x u vs yc p _ _ _ _ ih1 ih2 ih3 ih4 =>
+    have hc : (⟨vs, rdfType, yc⟩ : Triple) ∈
+        clsAvfFor sat ⟨x, owlAllValuesFrom, yc⟩ := by
+      simp only [clsAvfFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨⟨x, owlOnProperty, Term.iri p⟩,
+        mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
+        ⟨u, rdfType, x.toTerm⟩, mem_withPredObj_of ih3 rfl rfl,
+        ⟨u, p, vs.toTerm⟩, mem_withSubjPred_of ih4 rfl rfl,
+        vs, mem_asSubject_toTerm vs, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsHv1 x u yv p _ _ _ ih1 ih2 ih3 =>
+    have hc : (⟨u, p, yv⟩ : Triple) ∈ clsHv1For sat ⟨x, owlHasValue, yv⟩ := by
+      simp only [clsHv1For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨⟨x, owlOnProperty, Term.iri p⟩,
+        mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
+        ⟨u, rdfType, x.toTerm⟩, mem_withPredObj_of ih3 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsHv2 x u yv p _ _ _ ih1 ih2 ih3 =>
+    have hc : (⟨u, rdfType, x.toTerm⟩ : Triple) ∈
+        clsHv2For sat ⟨x, owlHasValue, yv⟩ := by
+      simp only [clsHv2For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨⟨x, owlOnProperty, Term.iri p⟩,
+        mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
+        ⟨u, p, yv⟩, mem_withPredObj_of ih3 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsMaxc2 x u y1s y2 p _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+    have hc : (⟨y1s, owlSameAs, y2⟩ : Triple) ∈
+        clsMaxc2For sat ⟨x, owlMaxCardinality, Term.literal litNni1⟩ := by
+      simp only [clsMaxc2For, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap, List.mem_map]
+      exact ⟨⟨x, owlOnProperty, Term.iri p⟩,
+        mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
+        ⟨u, rdfType, x.toTerm⟩, mem_withPredObj_of ih3 rfl rfl,
+        ⟨u, p, y1s.toTerm⟩, mem_withSubjPred_of ih4 rfl rfl,
+        y1s, mem_asSubject_toTerm y1s,
+        ⟨u, p, y2⟩, mem_withSubjPred_of ih5 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsOo cls yis lst gc _ _ hmem ihgc ih =>
+    have hc : (⟨yis, rdfType, cls.toTerm⟩ : Triple) ∈
+        clsOoFor sat ⟨cls, owlOneOf, lst⟩ := by
+      simp only [clsOoFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨yis.toTerm, hlf.1 lst yis.toTerm (hmem.mono ihgc),
+        yis, mem_asSubject_toTerm yis, rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @caxSco c1 x c2 _ _ ih1 ih2 =>
+    have hc : (⟨x, rdfType, c2⟩ : Triple) ∈
+        caxScoFor sat ⟨c1, rdfsSubClassOf, c2⟩ := by
+      simp only [caxScoFor, beq_self_eq_true, if_true, List.mem_map]
+      exact ⟨⟨x, rdfType, c1.toTerm⟩, mem_withPredObj_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @caxEqc1 c1 x c2 _ _ ih1 ih2 =>
+    have hc : (⟨x, rdfType, c2⟩ : Triple) ∈
+        caxEqc1For sat ⟨c1, owlEquivalentClass, c2⟩ := by
+      simp only [caxEqc1For, beq_self_eq_true, if_true, List.mem_map]
+      exact ⟨⟨x, rdfType, c1.toTerm⟩, mem_withPredObj_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @caxEqc2 c1 x c2 _ _ ih1 ih2 =>
+    have hc : (⟨x, rdfType, c1.toTerm⟩ : Triple) ∈
+        caxEqc2For sat ⟨c1, owlEquivalentClass, c2⟩ := by
+      simp only [caxEqc2For, beq_self_eq_true, if_true, List.mem_map]
+      exact ⟨⟨x, rdfType, c2⟩, mem_withPredObj_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmClsSelf cls _ ih =>
+    have hc : (⟨cls, rdfsSubClassOf, cls.toTerm⟩ : Triple) ∈
+        scmClsFor sat ⟨cls, rdfType, Term.iri owlClass⟩ := by
+      simp [scmClsFor]
+    exact R ih hc (by simp [conclusionsList])
+  | @scmClsEqc cls _ ih =>
+    have hc : (⟨cls, owlEquivalentClass, cls.toTerm⟩ : Triple) ∈
+        scmClsFor sat ⟨cls, rdfType, Term.iri owlClass⟩ := by
+      simp [scmClsFor]
+    exact R ih hc (by simp [conclusionsList])
+  | @scmClsThing cls _ ih =>
+    have hc : (⟨cls, rdfsSubClassOf, Term.iri owlThing⟩ : Triple) ∈
+        scmClsFor sat ⟨cls, rdfType, Term.iri owlClass⟩ := by
+      simp [scmClsFor]
+    exact R ih hc (by simp [conclusionsList])
+  | @scmClsNothing cls _ ih =>
+    have hc : (⟨Subject.iri owlNothing, rdfsSubClassOf, cls.toTerm⟩ : Triple) ∈
+        scmClsFor sat ⟨cls, rdfType, Term.iri owlClass⟩ := by
+      simp [scmClsFor]
+    exact R ih hc (by simp [conclusionsList])
+  | @scmSco c1 c2s c3 _ _ ih1 ih2 =>
+    have hc : (⟨c1, rdfsSubClassOf, c3⟩ : Triple) ∈
+        scmScoFor sat ⟨c1, rdfsSubClassOf, c2s.toTerm⟩ := by
+      simp only [scmScoFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨c2s, mem_asSubject_toTerm c2s, ⟨c2s, rdfsSubClassOf, c3⟩,
+        mem_withSubjPred_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmEqc1a c1 c2 _ ih =>
+    have hc : (⟨c1, rdfsSubClassOf, c2⟩ : Triple) ∈
+        scmEqc1For sat ⟨c1, owlEquivalentClass, c2⟩ := by
+      simp [scmEqc1For]
+    exact R ih hc (by simp [conclusionsList])
+  | @scmEqc1b c1 c2s _ ih =>
+    have hc : (⟨c2s, rdfsSubClassOf, c1.toTerm⟩ : Triple) ∈
+        scmEqc1For sat ⟨c1, owlEquivalentClass, c2s.toTerm⟩ := by
+      simp only [scmEqc1For, beq_self_eq_true, if_true, List.mem_cons,
+        List.mem_map]
+      exact Or.inr ⟨c2s, mem_asSubject_toTerm c2s, rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @scmEqc2 c1 c2s _ _ ih1 ih2 =>
+    have hc : (⟨c1, owlEquivalentClass, c2s.toTerm⟩ : Triple) ∈
+        scmEqc2For sat ⟨c1, rdfsSubClassOf, c2s.toTerm⟩ := by
+      simp only [scmEqc2For, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨c2s, mem_asSubject_toTerm c2s, ?_⟩
+      rw [if_pos (memB_of_mem ih2)]
+      simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmSpo p1 p2s p3 _ _ ih1 ih2 =>
+    have hc : (⟨p1, rdfsSubPropertyOf, p3⟩ : Triple) ∈
+        scmSpoFor sat ⟨p1, rdfsSubPropertyOf, p2s.toTerm⟩ := by
+      simp only [scmSpoFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨p2s, mem_asSubject_toTerm p2s, ⟨p2s, rdfsSubPropertyOf, p3⟩,
+        mem_withSubjPred_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmEqp1a p1 p2 _ ih =>
+    have hc : (⟨p1, rdfsSubPropertyOf, p2⟩ : Triple) ∈
+        scmEqp1For sat ⟨p1, owlEquivalentProperty, p2⟩ := by
+      simp [scmEqp1For]
+    exact R ih hc (by simp [conclusionsList])
+  | @scmEqp1b p1 p2s _ ih =>
+    have hc : (⟨p2s, rdfsSubPropertyOf, p1.toTerm⟩ : Triple) ∈
+        scmEqp1For sat ⟨p1, owlEquivalentProperty, p2s.toTerm⟩ := by
+      simp only [scmEqp1For, beq_self_eq_true, if_true, List.mem_cons,
+        List.mem_map]
+      exact Or.inr ⟨p2s, mem_asSubject_toTerm p2s, rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @scmEqp2 p1 p2s _ _ ih1 ih2 =>
+    have hc : (⟨p1, owlEquivalentProperty, p2s.toTerm⟩ : Triple) ∈
+        scmEqp2For sat ⟨p1, rdfsSubPropertyOf, p2s.toTerm⟩ := by
+      simp only [scmEqp2For, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨p2s, mem_asSubject_toTerm p2s, ?_⟩
+      rw [if_pos (memB_of_mem ih2)]
+      simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmDom1 p c1s c2 _ _ ih1 ih2 =>
+    have hc : (⟨p, rdfsDomain, c2⟩ : Triple) ∈
+        scmDom1For sat ⟨p, rdfsDomain, c1s.toTerm⟩ := by
+      simp only [scmDom1For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨c1s, mem_asSubject_toTerm c1s, ⟨c1s, rdfsSubClassOf, c2⟩,
+        mem_withSubjPred_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmDom2 p2 p1 cls _ _ ih1 ih2 =>
+    have hc : (⟨p1, rdfsDomain, cls⟩ : Triple) ∈
+        scmDom2For sat ⟨p2, rdfsDomain, cls⟩ := by
+      simp only [scmDom2For, beq_self_eq_true, if_true, List.mem_map]
+      exact ⟨⟨p1, rdfsSubPropertyOf, p2.toTerm⟩,
+        mem_withPredObj_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmRng1 p c1s c2 _ _ ih1 ih2 =>
+    have hc : (⟨p, rdfsRange, c2⟩ : Triple) ∈
+        scmRng1For sat ⟨p, rdfsRange, c1s.toTerm⟩ := by
+      simp only [scmRng1For, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨c1s, mem_asSubject_toTerm c1s, ⟨c1s, rdfsSubClassOf, c2⟩,
+        mem_withSubjPred_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmRng2 p2 p1 cls _ _ ih1 ih2 =>
+    have hc : (⟨p1, rdfsRange, cls⟩ : Triple) ∈
+        scmRng2For sat ⟨p2, rdfsRange, cls⟩ := by
+      simp only [scmRng2For, beq_self_eq_true, if_true, List.mem_map]
+      exact ⟨⟨p1, rdfsSubPropertyOf, p2.toTerm⟩,
+        mem_withPredObj_of ih2 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmInt cls lst ci gc _ _ hmem ihgc ih =>
+    have hc : (⟨cls, rdfsSubClassOf, ci⟩ : Triple) ∈
+        scmIntFor sat ⟨cls, owlIntersectionOf, lst⟩ := by
+      simp only [scmIntFor, beq_self_eq_true, if_true, List.mem_map]
+      exact ⟨ci, hlf.1 lst ci (hmem.mono ihgc), rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+  | @scmUni cls cis lst gc _ _ hmem ihgc ih =>
+    have hc : (⟨cis, rdfsSubClassOf, cls.toTerm⟩ : Triple) ∈
+        scmUniFor sat ⟨cls, owlUnionOf, lst⟩ := by
+      simp only [scmUniFor, beq_self_eq_true, if_true, List.mem_flatMap,
+        List.mem_map]
+      exact ⟨cis.toTerm, hlf.1 lst cis.toTerm (hmem.mono ihgc),
+        cis, mem_asSubject_toTerm cis, rfl⟩
+    exact R ih hc (by simp [conclusionsList])
+
+/-- **T4.** Everything derivable from `g` is in `g`'s closure, provided
+the closure is saturated (which `closure_saturated_or_underfueled`
+turns into "provided the fuel was not exhausted") and its collection
+walks are adequately fuelled. -/
+theorem closure_complete_of_saturated {g : Graph} {fuel : Nat}
+    (hsat : step (closure g fuel) = closure g fuel)
+    (hlf : ListFuelAdequate (closure g fuel) (listFuel (closure g fuel)))
+    {t : Triple} (h : Derives g t) : t ∈ closure g fuel :=
+  complete_of_saturated hsat hlf (fun _ hu => closure_extensive fuel g hu) h
+
+/-! ## Section 13 — T3, monotonicity
+
+Not an independent proof: T2 says the small closure is derivable,
+`Derives.mono` moves the derivation to the bigger graph, and T4 puts it
+in the bigger closure. The saturation and collection-fuel hypotheses
+are where the conditionality comes from — with a fixed fuel the two
+runs stop at different rounds, so the unconditional inclusion is not
+available. -/
+
+/-- **T3.** If `g ⊆ g'` and `g'`'s closure is saturated and adequately
+fuelled, then `g`'s closure is contained in it. -/
+theorem closure_mono_of_saturated {g g' : Graph} {fuel fuel' : Nat}
+    (hsub : ∀ u, u ∈ g → u ∈ g')
+    (hsat : step (closure g' fuel') = closure g' fuel')
+    (hlf : ListFuelAdequate (closure g' fuel') (listFuel (closure g' fuel')))
+    {t : Triple} (h : t ∈ closure g fuel) : t ∈ closure g' fuel' :=
+  closure_complete_of_saturated hsat hlf
+    (Derives.mono hsub (closure_sound fuel g h))
+
 end L4Factoidal.OWL.RL

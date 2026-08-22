@@ -1163,3 +1163,259 @@ about the algebra stays free of expression machinery.
   `collectVarsInOrder` reports the object variable before the subject
   variable for `?s :p ?o`. Pinned in `QueryTests.lean` so the order is
   a decision on record rather than an accident.
+
+## OWL 2 RL/RDF rule-based closure (`OWL/RL*.lean`, `Harness/OwlProbe`, 2026-08-22)
+
+The Datalog materialisation layer of OWL 2 RL, in the same
+spec / implementation / theorems shape as the rdfs-core port. Namespace
+`L4Factoidal.OWL.RL` — NOT the flat `L4Factoidal.OWL`, which
+`OWL/Tableau.lean` already occupies (it holds its own `Derives`).
+
+### Module correspondence (append)
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `L4Factoidal/OWL/Vocabulary.lean` | vocabulary blocks of `OWL.RL.Spec.fst` (lines 109-182, 623-681, 1082-1097) + the `owl_*` constants interleaved through `OWL.Closure.fsti` | 38 IRIs and the two `xsd:nonNegativeInteger` cardinality literals, each with an `rfl` well-formedness witness. The five RDF/RDFS terms shared with rdfs-core are `abbrev`-re-exported from `RDFS/Vocabulary.lean`, so the two closures agree on them by construction |
+| `L4Factoidal/OWL/RLRules.lean` | `OWL.RL.Spec.fst` (the rule transcription) | SPECIFICATION: `inductive Derives` with 55 constructors covering 50 rows of the OWL 2 RL/RDF tables, `inductive Clash` with 13 no-consequent rows, the `LIST[…]` premise as `ListMember` / `ListDenotes`, the batched premises as `TypesAll` / `ChainHolds` / `SharesKeyValues`, plus `mono` and `cut`. Every constructor cites its table row id |
+| `L4Factoidal/OWL/RLClosure.lean` | the extractable half of `OWL.Closure.fsti` (`owl_rule_*`, `owl_rl_closure`, `is_inconsistent`) | IMPLEMENTATION: 47 row functions, `conclusionsList`/`conclusionsFrom`/`stepConclusions`/`step`, the fuel/length-test loop `closure`, `closureFix` with a stated bound, the collection walks `listElems`/`listSeqs`/`chainTargets`, and `detectClash` over 13 clash-row decisions |
+| `L4Factoidal/OWL/RLTheorems.lean` | `OWL.RL.Refinement.fst` (the licensing theorems) | T1 extensivity, T2 soundness assembled from ONE LEMMA PER ROW (47), T3 monotonicity, T4 completeness at saturation (all 55 constructor cases), the fuel dichotomy, clash soundness from one lemma per clash row (13), and the collection-walk soundness/existence lemmas |
+| `L4Factoidal/OWL/RLTests.lean` | (new) | 98 `#guard`s: per-family positives AND the paired negative check, the clash rows, idempotence past saturation |
+| `Harness/OwlProbe.lean` | driver role only (`bin/owl-runner/owl_runner.ml`) | the `l4owl-probe` executable: a census of the six W3C OWL 2 catalogs, read with the Lean XML parser |
+
+### Rows ported, and rows not ported
+
+`OWL.Closure.fsti` holds 77 `owl_rule_*` functions. Its own ledger
+(transcribed into `OWL.RL.Spec.fst`, landing 4) classifies each as
+`[row]` (implements a named W3C table row), `[ext]` (a sound extension
+with no table row), `[axm]` (materialises an axiomatic-triple table) or
+`[mode]` (fires only under a catalog semantics mode).
+
+**Ported — 50 rows.** Table 4 equality: eq-ref (3 conclusions), eq-sym,
+eq-trans, eq-rep-s, eq-rep-p, eq-rep-o. Table 4 properties: prp-dom,
+prp-rng, prp-fp, prp-ifp, prp-symp, prp-trp, prp-spo1, prp-spo2,
+prp-eqp1, prp-eqp2, prp-inv1, prp-inv2, prp-key. Table 5: cls-thing,
+cls-nothing1, cls-int1, cls-int2, cls-uni, cls-svf1, cls-svf2, cls-avf,
+cls-hv1, cls-hv2, cls-maxc2, cls-oo. Table 6: cax-sco, cax-eqc1,
+cax-eqc2. Table 8: scm-cls (4 conclusions), scm-sco, scm-eqc1 (2),
+scm-eqc2, scm-spo, scm-eqp1 (2), scm-eqp2, scm-dom1, scm-dom2,
+scm-rng1, scm-rng2, scm-int, scm-uni. Clash rows: eq-diff1, prp-irp,
+prp-asyp, prp-pdw, prp-npa1, prp-npa2, cls-nothing2, cls-com,
+cls-maxc1, cls-maxqc1, cls-maxqc2, cax-dw, cax-adc.
+
+Six of those rows reach the F\* engine through the layer BELOW it
+rather than through an `owl_rule_*` of its own:
+`owl_rl_closure_step_mode` runs on top of
+`owl_rdfs_closure_with_reflexivity`, so prp-dom, prp-rng, prp-spo1,
+cax-sco, scm-sco and scm-spo arrive as rdfs2, rdfs3, rdfs7, rdfs9,
+rdfs11 and rdfs5. This port has no layering and names them under the
+OWL table ids the Recommendation gives them.
+
+**Not ported, with the F\* module's own reason.**
+
+* **Table 7 (dt-type1, dt-type2, dt-eq, dt-diff, dt-not-type).** These
+  quantify over DATA VALUES, and a value space belongs to the DATATYPE
+  MAP, not to the graph. `OWL.RL.Spec.fst` states them PARAMETRICALLY
+  for exactly that reason and fixes no datatype map. This port fixes
+  none either, so there is nothing to instantiate. (`dt-not-type` was
+  on the port brief's clash list; this is why it is absent.)
+* **Every `[ext]` engine rule** — the comprehension-witness layer
+  (`svf2_existential_witness`, `minc1_bridge`, `cls_hasself1/2`,
+  `cls_svf_thing_*`), the differentFrom-synthesis family
+  (`pdw_to_differentFrom`, `fp_diff_to_diff`, `cax_dw_to_differentFrom`),
+  the chain/transitivity bridges, and the `#236` `cls_maxqc_comp`
+  anchor machinery whose narrowness CLAUDE.md records. Their
+  justification lives in each F\* rule's own banner, not in the
+  Recommendation; porting them would import claims this port cannot
+  cite a row for.
+* **Every `[mode]` rule** — there are no catalog semantics modes on the
+  Lean side.
+* **cls-maxqc3 / cls-maxqc4** (F\* `owl_rule_cls_maxqc34`): the two
+  qualified-cardinality DERIVING rows. Their CLASH siblings cls-maxqc1
+  and cls-maxqc2 ARE ported.
+* **eq-diff2, eq-diff3, prp-adp, cax-adp** — the AllDifferent /
+  AllDisjointProperties clash rows. Same shape as cax-adc, which is
+  ported; omitted for size only.
+* **scm-op, scm-dp, scm-hv, scm-svf1, scm-svf2, scm-avf1, scm-avf2** —
+  Table 8 restriction-comparison rows. The F\* engine ledger lists no
+  `owl_rule_*` for any of them either, so nothing is lost against the
+  F\* engine's own row coverage.
+
+One asymmetry in the other direction: **cls-svf1 is ported here but the
+F\* ledger names no `owl_rule_cls_svf1`** — the F\* engine reaches that
+row's effect through `cls_svf2_qualified` and the comprehension-witness
+rules. This port implements the row as the Recommendation writes it.
+
+### Proof status
+
+* **T1 extensivity** — `closure_extensive`, no hypothesis, any fuel.
+* **T2 soundness (the LICENSING theorem)** — `closure_sound`: every
+  triple the closure computes has a derivation in the rule relation.
+  Assembled from **47 per-row lemmas, one per row function, all
+  proved**: `eqRefSFor_sound` … `scmUniFor_sound`. Per-row status is
+  therefore uniform — every ported row is proved licensed, with no row
+  parked. This is the statement `OWL.RL.Refinement.fst` makes and
+  `docs/theorem-registry.md` §1 tracks per row.
+* **T3 monotonicity** — `closure_mono_of_saturated`, derived from T2 +
+  `Derives.mono` + T4 and therefore carrying T4's two hypotheses. The
+  unconditional same-fuel form is not proved and is not expected to
+  hold pointwise: two runs stop at different rounds.
+* **T4 completeness at saturation** — `complete_of_saturated` and
+  `closure_complete_of_saturated`: everything derivable is in a
+  saturated closure. **All 55 constructor cases proved**, under two
+  named hypotheses — saturation (which
+  `closure_saturated_or_underfueled` turns into "the fuel was not
+  exhausted") and `ListFuelAdequate` (see below).
+* **Clash soundness** — `detectClash_sound`: every `true` verdict is a
+  real `Clash`, from 13 per-row lemmas.
+* **The fuel dichotomy** — `closure_saturated_or_underfueled`: either
+  the closure is saturated or it grew by at least one triple per unit
+  of fuel.
+* **Truth preservation (model theory)** — NOT ported, and its statement
+  shape is written out in `RLTheorems.lean`'s header referencing
+  `OWL.Semantics.fst` / `OWL.Semantics.Soundness.fst`. T2 is
+  PROOF-THEORETIC. Do not read it as the F\* model-theoretic soundness
+  theorem.
+
+`#print axioms` on `closure_extensive`, `closure_sound`,
+`complete_of_saturated`, `closure_complete_of_saturated`,
+`closure_mono_of_saturated`, `closure_saturated_or_underfueled`,
+`detectClash_sound`, `conclusionsFrom_sound`, `clashFrom_sound`,
+`listSeqs_sound`, `exists_fuel_listSeqs`, `chainTargets_complete`,
+`typesAllB_complete`, `sharesKeyValuesB_complete`, `Derives.cut` and
+`Derives.mono` reports
+`[propext, Classical.choice, Quot.sound]` and nothing else — no
+`sorryAx`, no local axiom. No `sorry`, no `native_decide`; the one
+`partial` in the tree is `elementsOfAux` in the PROBE, which is not
+part of the verified library.
+
+### Two specification corrections the proofs found
+
+1. **`Derives.cut` is FALSE if the collection-valued rows read the
+   graph directly.** A closure round can DERIVE an `rdf:first` or
+   `rdf:rest` triple (eq-rep-s and prp-spo1 both can), so a later
+   round's collection walk may rest on structure the earlier graph
+   never asserted, and there is no way to pull that walk back. The
+   eight collection-valued constructors therefore carry a COLLECTION
+   GRAPH `gc` and the side condition `hgc : ∀ u ∈ gc, Derives g u`.
+   That occurrence of `Derives` is strictly positive, so no mutual
+   inductive is needed, and `cut` then needs no extra hypothesis at
+   all. Caught while proving `closure_sound`.
+2. **`ListDenotes.cons` needs `node.toTerm ≠ Term.iri rdfNil`.** RDF
+   Schema §5.1 gives `rdf:nil` one meaning; a graph that also hangs an
+   `rdf:first` off it is malformed, and the F\* `owl_list_denotes`
+   (which omits the guard) admits a reading of such a graph that the
+   executable walk cannot produce. Without the guard
+   `exists_fuel_listSeqs` is false. Caught while proving it.
+
+### T4: the rdfs-core pattern transfers, with one added hypothesis
+
+`complete_of_saturated` is the rdfs-core proof at 55 cases instead of
+6, and it is CHEAPER per case than the rdfs-core one: exact
+deduplication removes the list-membership / `Graph.mem` asymmetry the
+rdfs-core proof has to carry, so each case is "the IHs give the
+premises as exact members, fire the row's own function, saturation
+carries the conclusion back" with no engine-equality reasoning at all.
+Nine supporting lemmas were needed, all proved: `mem_nonEmpty_of`,
+`allIris_complete`, `typesAllB_complete`, `sharesKeyValuesB_complete`,
+`chainTargets_complete`, `chain_start_mem`, `typesAll_subject_mem`,
+plus the two `exists_fuel_*`.
+
+The one thing that does NOT transfer for free is the collection-walk
+fuel. The nine list-valued rows read their premises through a
+fuel-bounded walk. Soundness needs nothing extra (`listElems_sound`,
+`listSeqs_sound` are unconditional), but completeness needs the
+converse — that the walk FINDS everything — which is false at fuel 0
+and true above the longest chain. `ListFuelAdequate g fuel` packages
+exactly that, T4 takes it as a hypothesis, and
+`exists_fuel_listElems` / `exists_fuel_listSeqs` prove such a fuel
+always exists. That `listFuel g = g.length + 1` is always one is the
+same term-universe counting obligation `closureFuelBound` carries, and
+it is unproved. T1, T2, the fuel dichotomy and clash soundness do not
+depend on it.
+
+### Deliberate difference from the rdfs-core port: EXACT deduplication
+
+`RDFS/Closure.lean` folds `Graph.add`, whose membership test is the
+engine's coarse `Triple.eqb` (case-folded language tags,
+`rdf:XMLLiteral` canonical-XML equality). This port folds `addOne`,
+which tests propositional equality. Two consequences, both wanted: an
+RDF graph is a SET OF TRIPLES under term identity (RDF 1.1 Concepts
+§3), which is what exact dedup implements; and every theorem here is
+stated in ONE membership relation (`t ∈ closure g fuel`) in both
+directions, instead of the list-membership / `Graph.mem` asymmetry the
+coarse test forces on the rdfs-core proofs. The cost is that two
+triples differing only by language-tag case both survive a round, where
+the F\* engine would keep one.
+
+Two further deviations, both recorded in the module headers:
+
+* **Every premise is read from the round's INPUT snapshot** (the F\*
+  step threads its accumulator through the rules). Per round this emits
+  less; at the fixpoint it emits the same set. Same deviation, same
+  reasoning, as `RDFS/Closure.lean`.
+* **cax-adc requires two distinct TERMS, not two distinct POSITIONS.**
+  The F\* `two_distinct_members` fires the clash on a single
+  `x rdf:type C` when C is listed twice; this port requires `ci ≠ cj`,
+  which is strictly weaker and matches the row's intent.
+
+### Assumption report — `assume val`s in the F\* originals
+
+`grep -c "assume val"` over the six F\* OWL modules
+(`OWL.Closure.fsti`, `OWL.RL.Spec.fst`, `OWL.RL.Refinement.fst`,
+`OWL.Semantics.fst`, `OWL.Semantics.Soundness.fst`,
+`OWL.Vocabulary.fst`) returns **0 for every one of them**. The OWL
+layer is pure F\*: nothing to realise, nothing this port has to replace
+or carry over. That confirms the port brief's expectation.
+
+### Lemmas needed from other modules
+
+None were added to `RDF/` or `RDFS/` — those are owned elsewhere and
+this stage touched neither. The port reuses `RDF/Core.lean`'s
+`Term.toSubject?`, `Subject.toTerm` and the derived `DecidableEq`
+instances, and `RDF/Graph.lean`'s `Graph` abbreviation, and nothing
+else from them. `RDF/Graph.lean`'s `Graph.mem` / `Graph.add` are
+deliberately NOT used, per the exact-deduplication decision above; the
+membership and insertion lemmas this port needs (`mem_of_memB`,
+`memB_of_mem`, `mem_addOne_*`, `addAll_*`, `addAll_eq_of_length_eq`)
+are proved locally against `addOne` in `RLTheorems.lean` §1.
+
+If a later stage wants them shared, the natural home is an exact-set
+sibling of `RDF/Graph.lean`'s `Graph.add` family — `Graph.addExact` and
+its six lemmas. Not made here: this stage adds files only.
+
+### Measured against the real corpus
+
+`lake build l4owl-probe && ./.lake/build/bin/l4owl-probe third_party/testing/owl`
+
+    engine self-check: cax-sco fires = true, unrelated triple absent = true
+    profile-RL.rdf:                 91 test cases,   0 readable by the Lean parsers
+    profile-EL.rdf:                 87 test cases,   0 readable
+    profile-QL.rdf:                 65 test cases,   0 readable
+    type-positive-entailment.rdf:  206 test cases,   0 readable
+    type-inconsistency.rdf:        128 test cases,   0 readable
+    type-consistency.rdf:          354 test cases,   0 readable
+    RUNNABLE BY THE LEAN CLOSURE: 0 of 931
+
+All six catalogs PARSE as XML (including their DOCTYPE internal-subset
+entity declarations), so the blocker is located exactly: the corpus
+offers only RDF/XML (`test:rdfXmlPremiseOntology`, 895 of the 931
+cases) and OWL Functional Syntax (`test:fsPremiseOntology`, 211), and
+the Lean tree has no RDF/XML-to-triples mapping and no functional-syntax
+parser. The generic XML 1.0 parser is landed; RDF 1.1 XML Syntax §7 is
+not. When the RDF/XML branch lands, the runnable count is the number to
+watch, and `readCase`'s `leanReadable` field is the one line to change.
+
+The F\* `owl_runner` numbers, for comparison and NOT on the same
+denominator (the F\* runner selects the subset it drives; this census
+counts every `test:TestCase`): `owl_rl_positive_entailment` 30 pass, 0
+fail (out of 30); `owl2_profile_ql` 87 pass, 0 fail (out of 87);
+`owl2_profile_el` 119 pass, 1 fail (out of 120);
+`owl2_dl_inconsistency` 126 pass, 1 fail (out of 127);
+`owl_syntax_dl_species` 319 pass, 2 fail, 2 skip (out of 323).
+
+The 98 `#guard`s in `RLTests.lean` are NOT a conformance score and are
+not offered as one: they are hand-written fixtures, and iron rule #6 is
+met only when a Lean runner reads the W3C files. Each family pairs a
+positive check with a negative one, per `skills/measuring-inference` —
+a closure test that only asserts presence passes just as happily when
+the rule never fired.
