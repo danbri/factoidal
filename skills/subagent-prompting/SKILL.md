@@ -328,3 +328,32 @@ MANDATORY brief inclusion for any agent that builds:
 The orchestrator-side tell that an agent has done this anyway: its
 task-notification "result" is a sentence about waiting, not a report.
 Resume it immediately with the poll instruction; do not wait for it.
+
+## Worktree agents cannot see UNTRACKED locally-built binaries (2026-08-22)
+
+A brief said "re-measure the F\* side live — `bin/darwin-arm64/shacl_runner`
+exists". In the main checkout it does. In the agent's worktree it does
+not, and the agent correctly reported it could not meet that gate.
+
+Cause: most `bin/darwin-arm64/*` runners are **untracked** — built
+locally by `build-ocaml.sh`, never committed (only 7 of ~30 darwin
+binaries are tracked; the untracked remainder is 263 MB, which is why
+they were not committed casually). `git worktree add` materialises
+tracked content only, so every locally-built runner is invisible there.
+The orchestrator's APFS clone pass does not help: it iterates
+`git ls-files bin`, i.e. tracked paths only.
+
+Rules:
+
+1. **Never promise an agent a binary without checking it is tracked.**
+   `git ls-files bin/<platform>/<name>` must print the path. If it does
+   not, the agent cannot run it.
+2. When a live F\* comparison genuinely matters, either (a) run the F\*
+   binary yourself in the main checkout and paste the verbatim score
+   line into the brief, or (b) give the agent the absolute main-checkout
+   path explicitly AND say it is read-only — never let it `cd` there.
+3. An agent that reports "the gate binary does not exist" has done the
+   right thing. Check trackedness before treating it as agent error.
+4. Same trap for anything else built but not committed:
+   `formal/fstar/ocaml-output/*.byte`, `docs/fstar-extracted/*` when
+   regenerated, `.lake/build/` (cloned separately, on purpose).
