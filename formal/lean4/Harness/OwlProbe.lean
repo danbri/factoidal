@@ -475,6 +475,13 @@ def profileCase (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO U
     IO.println s!"  premise triples={gp.length}"
     for (p, n) in (predicateHistogram gp).take 12 do
       IO.println s!"    {n}  {p}"
+    -- The results are written to an `IO.Ref` between the two clock
+    -- reads: a pure `let` whose value is only used later is moved past
+    -- the second `IO.monoMsNow` by the compiler (measured 2026-08-22:
+    -- every row read 0 ms while the round read seconds). The ref write
+    -- is an IO action that consumes the value, so it is forced there.
+    let outRef ← IO.mkRef (#[] : Array Triple)
+    let gRef ← IO.mkRef (#[] : Array Triple)
     let mut g := gp
     for r in [0:rounds] do
       IO.println s!"  round {r + 1}: input triples={g.length}"
@@ -483,14 +490,15 @@ def profileCase (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO U
       let mut rowStats : List (String × Nat × Nat) := []
       for (nm, f) in namedRows do
         let t0 ← IO.monoMsNow
-        let out := g.flatMap (f g)
-        let n := out.length
+        outRef.set (g.flatMap (f g)).toArray
         let t1 ← IO.monoMsNow
-        rowStats := rowStats ++ [(nm, n, t1 - t0)]
-        all := all ++ out.toArray
+        let out ← outRef.get
+        rowStats := rowStats ++ [(nm, out.size, t1 - t0)]
+        all := all ++ out
       let t2 ← IO.monoMsNow
-      let g' := addAll g (axiomTriples ++ all.toList)
+      gRef.set (addAll g (axiomTriples ++ all.toList)).toArray
       let t3 ← IO.monoMsNow
+      let g' := (← gRef.get).toList
       IO.println s!"    rows total: emitted={all.size} ms={t2 - tr0}"
       IO.println s!"    dedup addAll: new={g'.length - g.length} ms={t3 - t2}"
       let sorted := rowStats.mergeSort (fun a b => a.2.2 ≥ b.2.2)
