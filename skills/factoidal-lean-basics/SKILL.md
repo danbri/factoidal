@@ -21,6 +21,7 @@ https://github.com/danbri/factoidal/issues/466
 | `L4Factoidal/SPARQL/Invariants.lean` | PROVED: empty-pattern laws, merge/lookup characterisation, filter/minus safety, BGP monotonicity |
 | `L4Factoidal/Tests.lean` | 19 `#guard` build-time tests + `#print axioms` audit lines |
 | `Demo.lean` | runnable guided tour with a Turtle-ish printer |
+| `Wasm/` | the WebAssembly export: JSON string-in/string-out ABI (`Abi.lean`), the `@[export]` C symbols (`Exports.lean`), a native driver over the same ABI (`Main.lean`), the C shim and `build-wasm.sh`. Produces `docs/web/hub/assets/l4/l4factoidal.wasm` (1.4 MB), which runs in browser, Node and Deno — hub post 36 runs it beside the F\* engine. Recipe + traps: `skills/lean4-wasm-export/SKILL.md` |
 | `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence + assumption report |
 
 Honest completeness: ~1,200 lines, 69 defs, 31 theorems — roughly 2%
@@ -55,6 +56,11 @@ asked; never imply more.
 - `cd formal/lean4 && lake build` — this IS the test run and the
   proof check: `#guard` expressions evaluate during elaboration, so a
   wrong answer is a build error; every theorem is kernel-rechecked.
+- `formal/lean4/Wasm/build-wasm.sh` — rebuild the WebAssembly artifact.
+  Needed whenever a Lean change must reach the browser, and whenever
+  `lean-toolchain` is bumped (the wasm objects are generated from the
+  toolchain's core sources, so a version bump without a rebuild leaves
+  the artifact built against the old core library).
 - `lake env lean --run Demo.lean` — the human-facing tour: BGP rows
   printed Turtle-ish, the §18.5 MINUS domain-disjointness contrast,
   live monotonicity, RDF 1.2 triple-term matching, the literal
