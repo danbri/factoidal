@@ -312,7 +312,20 @@ def parseDoc (what : String) (base : String) (text : String) : Except String Gra
 
 /-- Port of `load_imports_into_premise`: merge an import only once the
 graph so far asserts `owl:imports` for it; iterate to a fixpoint. The
-fuel is the number of candidate imports, which bounds the rounds. -/
+fuel is the number of candidate imports, which bounds the rounds.
+
+Blank-node scoping: every document is parsed on its own, so the
+parser's generated labels (`b0`, `b1`, …) collide across documents.
+The merge is therefore an RDF MERGE (RDF 1.1 Semantics §4.1), not a
+union: each imported graph's labels get a per-import ordinal prefix
+(`Graph.prefixBnodes`), the F* runner's 2026-07-10 fix
+(`owl_runner.ml` "Bnode renaming"). Before this, the wine+food pair
+of WebOnt-miscellaneous-001/002/011 carried chimera restrictions (one
+label holding wine's `owl:onProperty` and food's `owl:hasValue`), and
+the OWL RL closure of that garbage grew past 68 000 triples and
+clashed on a premise the corpus asserts consistent (measured
+2026-08-22 with the indexed engine; the list engine never got past
+round 1 so the defect was invisible). -/
 def loadImports (lookup : List ImportDoc) (allowed : List String)
     (g : Graph) (seen : List String) : Nat → Except String Graph
   | 0       => .ok g
@@ -332,7 +345,10 @@ def loadImports (lookup : List ImportDoc) (allowed : List String)
         match lookup.find? (fun d => d.ontIri == i) with
         | some { text := some txt, .. } =>
             match parseDoc s!"import {i}" i txt with
-            | .ok gi   => .ok (acc ++ gi)
+            | .ok gi   =>
+                -- ordinal = position of this import among all seen so far
+                let ord := (seen'.findIdx? (· == i)).getD 0
+                .ok (acc ++ gi.prefixBnodes s!"imp{ord}_")
             | .error e => .error e
         | _ => .ok acc) g
       match merged with
@@ -521,7 +537,12 @@ def profileCase (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO U
       say s!"    list dedup addAll: new={g'.length - g.length} ms={t3 - t2}"
       -- The indexed engine on the same input: build, one round, and the
       -- identity check against the list round (RLClosureIndexed's
-      -- Index.Wf.step, evaluated on corpus data).
+      -- Index.Wf.step, evaluated on corpus data). The per-row loop above
+      -- groups conclusions BY ROW, so `g'` holds the same SET as
+      -- `step g` in a different insertion order; the set check is what
+      -- applies to it. The LIST check is against `step g` itself, which
+      -- costs another list round, so it runs only on inputs small enough
+      -- for that to be affordable.
       let t4 ← IO.monoMsNow
       idxRef.set (Index.ofGraph g)
       let t5 ← IO.monoMsNow
@@ -529,8 +550,11 @@ def profileCase (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO U
       idxRef.set (stepI idx)
       let t6 ← IO.monoMsNow
       let idx' ← idxRef.get
+      let sameSet := idx'.all.size == g'.length && g'.all (fun t => idx'.memB t)
+      let sameList := if g.length ≤ 1500 then toString (decide (idx'.toGraph = step g))
+                      else "not checked (input > 1500 triples)"
       say s!"    indexed build: ms={t5 - t4}  indexed round: new={idx'.all.size - idx.all.size} \
-ms={t6 - t5}  same list as the list round: {decide (idx'.toGraph = g')}"
+ms={t6 - t5}  same set as the list round: {sameSet}  same list as step g: {sameList}"
       if g'.length = g.length then
         say s!"    saturated after {r + 1} rounds"
         break
@@ -648,6 +672,12 @@ def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (verbose : Bool)
       if c.types.contains ty then
         let (o, m) ← judge cat c capMs ty
         let label := s!"{c.id} [{ty}]"
+        -- A cap hit is named even when the unit still scored (a
+        -- conclusion found before the budget, a clash on a truncated
+        -- closure): the diagnostics count alone does not say WHICH case.
+        if m.capHits > 0 then
+          IO.println s!"CAP {label}: budget hit after {m.closureRounds} rounds \
+(premise {m.triplesParsed} triples)"
         match o with
         | .pass => if verbose then IO.println (o.line label)
         | .fail reason =>
@@ -720,6 +750,9 @@ structure Opts where
   profile : Bool := false
   cases   : List String := []
   rounds  : Nat := 3
+  /-- `--indexed-only`: profile rounds of the indexed engine alone
+  (no list-engine rows), for inputs the list engine cannot finish. -/
+  indexedOnly : Bool := false
 
 def parseArgs : List String → Opts → Opts
   | [], o => o
@@ -729,9 +762,71 @@ def parseArgs : List String → Opts → Opts
   | "--profile" :: rest, o => parseArgs rest { o with profile := true }
   | "--case" :: c :: rest, o => parseArgs rest { o with cases := o.cases ++ [c] }
   | "--rounds" :: n :: rest, o => parseArgs rest { o with rounds := n.toNat!.max 1 }
+  | "--indexed-only" :: rest, o => parseArgs rest { o with indexedOnly := true }
   | a :: rest, o =>
       if a.endsWith ".rdf" then parseArgs rest { o with only := o.only ++ [a] }
       else parseArgs rest { o with dir := a }
+
+/-- The store-parameterised rows of `RLClosureIndexed.conclusionsListS`,
+named, in that list's order. -/
+def namedRowsS : List (String × (Store → Triple → List Triple)) :=
+  [ ("eq-ref-s", eqRefSForS), ("eq-ref-p", eqRefPForS), ("eq-ref-o", eqRefOForS),
+    ("eq-sym", eqSymForS), ("eq-trans", eqTransForS),
+    ("eq-rep-s", eqRepSForS), ("eq-rep-p", eqRepPForS), ("eq-rep-o", eqRepOForS),
+    ("prp-dom", prpDomForS), ("prp-rng", prpRngForS), ("prp-fp", prpFpForS),
+    ("prp-ifp", prpIfpForS), ("prp-symp", prpSympForS), ("prp-trp", prpTrpForS),
+    ("prp-spo1", prpSpo1ForS), ("prp-spo2", prpSpo2ForS),
+    ("prp-eqp1", prpEqp1ForS), ("prp-eqp2", prpEqp2ForS),
+    ("prp-inv1", prpInv1ForS), ("prp-inv2", prpInv2ForS), ("prp-key", prpKeyForS),
+    ("cls-int1", clsInt1ForS), ("cls-int2", clsInt2ForS), ("cls-uni", clsUniForS),
+    ("cls-svf1", clsSvf1ForS), ("cls-svf2", clsSvf2ForS), ("cls-avf", clsAvfForS),
+    ("cls-hv1", clsHv1ForS), ("cls-hv2", clsHv2ForS), ("cls-maxc2", clsMaxc2ForS),
+    ("cls-oo", clsOoForS),
+    ("cax-sco", caxScoForS), ("cax-eqc1", caxEqc1ForS), ("cax-eqc2", caxEqc2ForS),
+    ("scm-cls", scmClsForS), ("scm-sco", scmScoForS), ("scm-eqc1", scmEqc1ForS),
+    ("scm-eqc2", scmEqc2ForS), ("scm-spo", scmSpoForS), ("scm-eqp1", scmEqp1ForS),
+    ("scm-eqp2", scmEqp2ForS), ("scm-dom1", scmDom1ForS), ("scm-dom2", scmDom2ForS),
+    ("scm-rng1", scmRng1ForS), ("scm-rng2", scmRng2ForS),
+    ("scm-int", scmIntForS), ("scm-uni", scmUniForS) ]
+
+/-- `--profile --indexed-only`: rounds of the indexed engine alone,
+timed, with the size after each round, the per-row emitted counts and
+times over the round's input, and the `owl:sameAs` / `rdf:type`
+population of the store after the round. -/
+def profileIndexed (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO Unit := do
+  say s!"PROFILE-INDEXED {name} {c.id}"
+  match premiseGraph cat c with
+  | .error o => say (o.line c.id)
+  | .ok gp =>
+    say s!"  premise triples={gp.length}"
+    let idxRef ← IO.mkRef Index.empty
+    let t0 ← IO.monoMsNow
+    idxRef.set (Index.ofGraph gp)
+    let t1 ← IO.monoMsNow
+    say s!"  index build: ms={t1 - t0}"
+    let mut idx ← idxRef.get
+    let mut total := t1 - t0
+    let outRef ← IO.mkRef (#[] : Array Triple)
+    for r in [0:rounds] do
+      let st := Store.ofIndex idx
+      for (nm, f) in namedRowsS do
+        let ra ← IO.monoMsNow
+        outRef.set (st.graph.flatMap (f st)).toArray
+        let rb ← IO.monoMsNow
+        let out ← outRef.get
+        if rb - ra > 0 || out.size > 0 then
+          say s!"      {nm}: emitted={out.size} ms={rb - ra}"
+      let ta ← IO.monoMsNow
+      idxRef.set (stepI idx)
+      let tb ← IO.monoMsNow
+      let idx' ← idxRef.get
+      total := total + (tb - ta)
+      say s!"  round {r + 1}: input={idx.all.size} new={idx'.all.size - idx.all.size} ms={tb - ta} \
+cumulative_ms={total} sameAs={(idx'.withPred owlSameAs).length} rdfType={(idx'.withPred rdfType).length}"
+      if idx'.all.size = idx.all.size then
+        say s!"  saturated after {r + 1} rounds, {idx'.all.size} triples, cumulative_ms={total}"
+        break
+      idx := idx'
 
 /-- `--profile` entry: only the named cases, only the timing. -/
 def profileMain (o : Opts) : IO UInt32 := do
@@ -747,7 +842,8 @@ def profileMain (o : Opts) : IO UInt32 := do
       | some cat =>
         for c in cat.cases do
           if o.cases.contains c.id then
-            profileCase name cat c o.rounds
+            if o.indexedOnly then profileIndexed name cat c o.rounds
+            else profileCase name cat c o.rounds
   return 0
 
 def main (args : List String) : IO UInt32 := do
