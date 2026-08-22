@@ -292,24 +292,59 @@ and a broken procedure cannot cover for each other. -/
 #guard Dataset.namesNoDup dsA = true
 #guard Dataset.isomorphic? dsA dsA = true
 
-/-! ## 10. The blank-node budget
+/-! ## 10. The two budgets
 
-Above `isoBnodeBudget` the procedure REFUSES to search and reports
-`budgetExceeded` — it never answers a bare `false` that a caller could
-mistake for "definitely different" (the reason the F* module carries
-`Iso_BudgetExceeded`). The identity fast path runs before the budget,
-so two graphs that already agree on labels still compare equal no
-matter how many blank nodes they have. -/
+The procedure has TWO refusals and both report `budgetExceeded`, never
+a bare `false` a caller could mistake for "definitely different" (the
+reason the F* module carries `Iso_BudgetExceeded`):
+
+  * `isoBnodeBudget` — a coarse guard on the polynomial parts;
+  * `isoWorkBudget` — candidate assignments the search may try.
+
+The node budget was 16 until 2026-08-22, and the guards below used to
+record 17 identical blank nodes as `isomorphic? = false`. They ARE
+isomorphic — every mapping works — so that `false` was a refusal
+written down as a difference, and it reached a real score: the csv2rdf
+standard-mode runner reported `test001` and `test005` as failures with
+the triple counts equal on both sides. The guards now say what is
+true. -/
 
 private def manyBnodes (pre : String) : Graph :=
   (List.range 17).map (fun i => tb (pre ++ toString i) iP (oi iA))
 
 #guard (Graph.bnodes (manyBnodes "a")).length = 17
-#guard isoBnodeBudget = 16
+#guard isoBnodeBudget = 128
 #guard Graph.isomorphic? (manyBnodes "a") (manyBnodes "a") = true
-#guard Graph.isomorphic? (manyBnodes "a") (manyBnodes "b") = false
+-- 17 interchangeable blank nodes: relabelling every one of them is an
+-- isomorphism, and the search now finds it instead of refusing.
+#guard Graph.isomorphic? (manyBnodes "a") (manyBnodes "b") = true
 #guard Graph.isomorphicOutcome (manyBnodes "a") (manyBnodes "b")
+         = IsoOutcome.equal
+
+-- Above the node budget the procedure refuses and SAYS SO. The
+-- identity fast path runs first, so differing labels are needed to
+-- reach the refusal at all.
+private def hugeBnodes (pre : String) : Graph :=
+  (List.range (isoBnodeBudget + 1)).map (fun i => tb (pre ++ toString i) iP (oi iA))
+
+#guard (Graph.bnodes (hugeBnodes "a")).length = isoBnodeBudget + 1
+#guard Graph.isomorphic? (hugeBnodes "a") (hugeBnodes "b") = false
+#guard Graph.isomorphicOutcome (hugeBnodes "a") (hugeBnodes "b")
          = IsoOutcome.budgetExceeded
+-- A node-budget refusal reports ZERO remaining work, which is how the
+-- outcome tells a refusal from a completed search that found nothing.
+#guard (Graph.isoSearchStepFull (hugeBnodes "a") (hugeBnodes "b")).2 = 0
+
+-- The work budget itself: with no fuel the search reports a give-up
+-- rather than "no mapping exists", and a completed search hands back
+-- what it did not spend.
+#guard (searchBijectionFuel (fun _ => true) (fun _ _ => true)
+          ["x"] ["y"] [] 0) = (none, 0)
+#guard (searchBijectionFuel (fun _ => true) (fun _ _ => true)
+          ["x"] ["y"] [] 5).1 = some [("x", "y")]
+#guard (searchBijectionFuel (fun _ => true) (fun _ _ => true)
+          ["x"] ["y"] [] 5).2 = 4
+#guard isoWorkBudget = 100000
 
 /-! ## 11. Helper-level guards -/
 

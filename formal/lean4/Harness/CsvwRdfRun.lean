@@ -43,51 +43,86 @@ private def rowBindings (names : List String) (cells : List String)
     : List (String × String) :=
   (names.zip cells)
 
-/-- Convert one table to triples the way csv2rdf minimal mode does,
-    with the default column URLs the suite's no-metadata tests expect:
-    the table URL with the column name as a fragment. -/
-def convertTable (tableUrl : String) (t : Table) : List Triple :=
+/-- Convert every data row to `RowInput`s, with the default column
+    URLs the suite's no-metadata tests expect: the table URL with the
+    column name as a fragment.
+
+    `row.num` is the SOURCE line number the reader recorded, and it is
+    what the `#row=` fragment must report; `rowNum` is the 1-based
+    position within the table. With a header row present they differ
+    by one, so using either for both would put every row URL off by a
+    line while the triple COUNT still looked right. -/
+def tableRows (tableUrl : String) (t : Table) : List RowInput :=
   let names := match t.header.head? with
     | some h => h.cells
     | none   => []
-  let rows := t.rows.zipIdx
-  rows.flatMap (fun (row, i) =>
+  t.rows.zipIdx.map (fun (row, i) =>
     let rowNum := i + 1
-    let binds := rowBindings names row.cells
-    let look := rowLookup binds rowNum row.num
-    let subj : Subject := .bnode s!"row{rowNum}"
-    (names.zip row.cells).flatMap (fun (nm, cell) =>
-      let inh : Inherited := { propertyUrl := some (defaultPropertyRef tableUrl nm) }
-      let r := convertCell inh nm look cell
-      cellTriples inh subj r))
+    let look := rowLookup (rowBindings names row.cells) rowNum row.num
+    { rowNum := rowNum, sourceRow := row.num,
+      cells := (names.zip row.cells).map (fun (nm, cell) =>
+        let inh : Inherited := { propertyUrl := some (defaultPropertyRef tableUrl nm) }
+        (inh, convertCell inh nm look cell)) })
+
+/-- Minimal mode: the cell triples only. -/
+def convertTableMinimal (tableUrl : String) (t : Table) : List Triple :=
+  (tableRows tableUrl t).flatMap (fun r => rowTriplesMinimal r.rowNum r.cells)
+
+/-- Standard mode: the full TableGroup / Table / Row scaffolding. -/
+def convertTableStandard (tableUrl : String) (t : Table) : List Triple :=
+  tableGroupTriplesStandard tableUrl (tableRows tableUrl t)
 
 structure TestOutcome where
   name   : String
   status : String        -- "pass" | "fail" | "skip"
   detail : String
 
-def runOne (dir base : String) : IO TestOutcome := do
-  let csvPath := dir ++ "/" ++ base ++ ".csv"
-  let ttlPath := dir ++ "/" ++ base ++ ".ttl"
+/-- Run one manifest entry. `action` and `result` are the manifest's
+    OWN file names and are used verbatim.
+
+    They must not be derived from each other: test028 and test029 both
+    read `countries.csv` but expect `test028.ttl` and `test029.ttl`,
+    so a runner that guessed the expected file from the CSV name
+    looked for `countries.ttl`, found nothing, and reported both as
+    skips — a silently narrowed denominator. -/
+def runOne (dir action result : String) (minimal : Bool) : IO TestOutcome := do
+  let csvPath := dir ++ "/" ++ action
+  let ttlPath := dir ++ "/" ++ result
   if !(← System.FilePath.pathExists csvPath) then
-    return ⟨base, "skip", "no .csv action"⟩
+    return ⟨action, "skip", "action file missing: " ++ action⟩
   if !(← System.FilePath.pathExists ttlPath) then
-    return ⟨base, "skip", "no expected .ttl"⟩
+    return ⟨action, "skip", "expected file missing: " ++ result⟩
   let src ← IO.FS.readFile csvPath
   let expectedSrc ← IO.FS.readFile ttlPath
-  let tableUrl := "http://www.w3.org/2013/csvw/tests/" ++ base ++ ".csv"
-  let got := convertTable tableUrl (read (({} : Dialect).resolve) src)
+  let tableUrl := "http://www.w3.org/2013/csvw/tests/" ++ action
+  let table := read (({} : Dialect).resolve) src
+  let got := if minimal then convertTableMinimal tableUrl table
+             else convertTableStandard tableUrl table
   match parseTurtle expectedSrc (some tableUrl) with
-  | .error _ => return ⟨base, "skip", "expected .ttl did not parse"⟩
+  | .error _ => return ⟨action, "skip", "expected .ttl did not parse"⟩
   | .ok want =>
-      if Graph.isomorphic? got want then
-        return ⟨base, "pass", s!"{got.length} triples"⟩
-      else
-        return ⟨base, "fail", s!"produced {got.length}, expected {want.length}"⟩
+      -- The THREE-WAY outcome, not the Bool. `Graph.isomorphic?`
+      -- returns `false` both for "different" and for "the comparison
+      -- gave up", and scoring the second as a failure is how this
+      -- runner reported two correct graphs as broken on 2026-08-22
+      -- (produced 60, expected 60). A give-up is its own bucket.
+      match Graph.isomorphicOutcome got want with
+      | .equal    => return ⟨action, "pass", s!"{got.length} triples"⟩
+      | .notEqual =>
+          return ⟨action, "fail", s!"produced {got.length}, expected {want.length}"⟩
+      | .budgetExceeded =>
+          return ⟨action, "budget",
+                  s!"isomorphism budget exceeded ({got.length} vs {want.length} triples)"⟩
 
 /-- Manifest entries with no `implicit` member: the no-metadata
-    tests. Returns (name, action, result). -/
-def noMetadataEntries (j : L4Factoidal.JSON.Json) : List (String × String × String) :=
+    tests. Returns (name, action, result, minimal).
+
+    `minimal` comes from the entry's own `option` object. csv2rdf has
+    TWO output modes and the manifest says which one each test wants;
+    running every test in one mode would fail the other mode's tests
+    for a reason that is a harness bug, not an engine gap. -/
+def noMetadataEntries (j : L4Factoidal.JSON.Json)
+    : List (String × String × String × Bool) :=
   let field? (k : String) (v : L4Factoidal.JSON.Json) : Option L4Factoidal.JSON.Json :=
     match v with
     | .object ms => (ms.find? (fun (key, _) => key == k)).map (·.2)
@@ -100,9 +135,16 @@ def noMetadataEntries (j : L4Factoidal.JSON.Json) : List (String × String × St
   | some (.array es) =>
       es.filterMap (fun e =>
         if (field? "implicit" e).isSome then none
-        else match str? "id" e, str? "action" e, str? "result" e with
+        else
+          let minimal := match field? "option" e with
+            | some o => match field? "minimal" o with
+                | some (.bool b) => b
+                | _ => false
+            | none => false
+          match str? "id" e, str? "action" e, str? "result" e with
           | some i, some a, some r =>
-              if a.endsWith ".csv" && r.endsWith ".ttl" then some (i, a, r) else none
+              if a.endsWith ".csv" && r.endsWith ".ttl" then some (i, a, r, minimal)
+              else none
           | _, _, _ => none)
   | _ => []
 
@@ -129,23 +171,30 @@ def main (args : List String) : IO UInt32 := do
       let mut pass := 0
       let mut fail := 0
       let mut skip := 0
-      for (id, action, result) in entries do
-        let base := action.dropRight 4
-        let o ← runOne dir base
+      let mut budget := 0
+      for (id, action, result, minimal) in entries do
+        let mode := if minimal then "minimal" else "standard"
+        let o ← runOne dir action result minimal
         if o.status == "pass" then pass := pass + 1
         else if o.status == "fail" then
           fail := fail + 1
-          IO.println s!"FAIL {id} ({action} vs {result}): {o.detail}"
+          IO.println s!"FAIL {id} ({action} vs {result}, {mode} mode): {o.detail}"
+        else if o.status == "budget" then
+          budget := budget + 1
+          IO.println s!"BUDGET {id} ({action}, {mode} mode): {o.detail}"
         else
           skip := skip + 1
           IO.println s!"skip {id}: {o.detail}"
       IO.println ""
-      IO.println s!"csv2rdf NO-METADATA subset: {pass} pass, {fail} fail, {skip} skip (out of {entries.length} such entries)"
+      IO.println s!"csv2rdf NO-METADATA subset: {pass} pass, {fail} fail, {budget} comparison-gave-up, {skip} skip (out of {entries.length} such entries)"
       IO.println s!"NOT ATTEMPTED: {total - entries.length} of {total} manifest entries carry metadata"
       IO.println "  (an `implicit` member), which needs @context resolution,"
       IO.println "  tableSchema inheritance and metadata discovery -- not ported."
       IO.println ""
       IO.println "Comparison is by GRAPH ISOMORPHISM against the suite's own"
       IO.println "expected .ttl: blank-node labels are arbitrary, so triple-set"
-      IO.println "equality would fail correct output."
+      IO.println "equality would fail correct output. A comparison that gives"
+      IO.println "up is counted SEPARATELY from a failure -- it is not evidence"
+      IO.println "the graphs differ, and folding it into `fail` misreports the"
+      IO.println "engine."
       return 0

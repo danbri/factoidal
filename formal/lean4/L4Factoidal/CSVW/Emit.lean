@@ -43,6 +43,26 @@ def typedLiteral (dt : WfIri) (lex : String) : WfLiteral :=
 /-- CSVW vocabulary terms used by standard mode. -/
 def csvwIri? (local' : String) : Option WfIri := toIri? (csvwNs ++ local')
 
+/-! ### The standard-mode vocabulary, as CHECKED constants
+
+These are written as `WfIri` literals with `rfl` proofs rather than
+routed through `csvwIri?`, because the scaffolding must not be
+silently droppable. `csvwIri?` returns an `Option`, and a `none`
+there would make a table lose its `csvw:Table` node with no error —
+exactly the failure mode that produced a third of each expected graph
+before this landing. A constant that cannot fail to typecheck cannot
+fail at runtime either. -/
+
+def rdfTypeIri     : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#type", rfl⟩
+def csvwTableGroup : WfIri := ⟨"http://www.w3.org/ns/csvw#TableGroup", rfl⟩
+def csvwTableCls   : WfIri := ⟨"http://www.w3.org/ns/csvw#Table", rfl⟩
+def csvwRowCls     : WfIri := ⟨"http://www.w3.org/ns/csvw#Row", rfl⟩
+def csvwTableProp  : WfIri := ⟨"http://www.w3.org/ns/csvw#table", rfl⟩
+def csvwRowProp    : WfIri := ⟨"http://www.w3.org/ns/csvw#row", rfl⟩
+def csvwUrlProp    : WfIri := ⟨"http://www.w3.org/ns/csvw#url", rfl⟩
+def csvwRownumProp : WfIri := ⟨"http://www.w3.org/ns/csvw#rownum", rfl⟩
+def csvwDescribes  : WfIri := ⟨"http://www.w3.org/ns/csvw#describes", rfl⟩
+
 /-- A row's subject: the aboutUrl if it resolves, else a blank node
     keyed by the row number so every cell of a row shares it. -/
 def rowSubject (aboutRef : Option String) (rowNum : Nat) : Subject :=
@@ -83,25 +103,66 @@ def rowTriplesMinimal (rowNum : Nat) (cells : List (Inherited × CellResult))
   let subj := rowSubject (cells.findSome? (fun (_, r) => r.aboutRef)) rowNum
   cells.flatMap (fun (inh, r) => cellTriples inh subj r)
 
+/-- The blank node that carries one row's description. Named, and
+    exported, because the enclosing table must link the SAME node
+    with `csvw:row` — a table that mints its own label would produce
+    a graph with orphan row nodes that no isomorphism check can
+    repair. -/
+def rowNode (rowNum : Nat) : Subject := .bnode ("rownode" ++ toString rowNum)
+
 /-- Standard mode, one row: the cell triples plus the row description
-    — `csvw:describes` linking the row node to the cell subject,
-    `csvw:rownum` and `csvw:url`. -/
+    — `rdf:type csvw:Row`, `csvw:describes` linking the row node to
+    the cell subject, `csvw:rownum` and `csvw:url`. -/
 def rowTriplesStandard (tableUrl : String) (rowNum sourceRow : Nat)
     (cells : List (Inherited × CellResult)) : List Triple :=
   let subj := rowSubject (cells.findSome? (fun (_, r) => r.aboutRef)) rowNum
-  let rowNode : Subject := .bnode ("rownode" ++ toString rowNum)
+  let node := rowNode rowNum
   let core := cells.flatMap (fun (inh, r) => cellTriples inh subj r)
-  let desc :=
-    match csvwIri? "describes", csvwIri? "rownum", csvwIri? "url" with
-    | some dIri, some nIri, some uIri =>
-        let rowUrl := tableUrl ++ "#row=" ++ toString sourceRow
-        let urlTriples := match toIri? rowUrl with
-          | some u => [(⟨rowNode, uIri, .iri u⟩ : Triple)]
-          | none   => []
-        [ ⟨rowNode, dIri, subj.toTerm⟩,
-          ⟨rowNode, nIri, .literal (typedLiteral xsdInteger (toString rowNum))⟩ ]
-        ++ urlTriples
-    | _, _, _ => []
-  desc ++ core
+  let rowUrl := tableUrl ++ "#row=" ++ toString sourceRow
+  let urlTriples := match toIri? rowUrl with
+    | some u => [(⟨node, csvwUrlProp, .iri u⟩ : Triple)]
+    | none   => []
+  [ ⟨node, rdfTypeIri, .iri csvwRowCls⟩,
+    ⟨node, csvwDescribes, subj.toTerm⟩,
+    ⟨node, csvwRownumProp, .literal (typedLiteral xsdInteger (toString rowNum))⟩ ]
+  ++ urlTriples ++ core
+
+/-- One row's converted cells, with both row numbers it needs: the
+    1-based position within the table (`rowNum`, which `csvw:rownum`
+    reports and which keys the blank nodes) and the line number in
+    the source file (`sourceRow`, which the `#row=` fragment
+    reports). They differ whenever the file has a header. -/
+structure RowInput where
+  rowNum    : Nat
+  sourceRow : Nat
+  cells     : List (Inherited × CellResult)
+
+/-- Standard mode, one table: a `csvw:Table` node carrying
+    `csvw:url` and one `csvw:row` link per row, above the row
+    descriptions. csv2rdf §6. -/
+def tableTriplesStandard (tableNodeId tableUrl : String)
+    (rows : List RowInput) : List Triple :=
+  let node : Subject := .bnode tableNodeId
+  let urlTriples := match toIri? tableUrl with
+    | some u => [(⟨node, csvwUrlProp, .iri u⟩ : Triple)]
+    | none   => []
+  let rowLinks := rows.map (fun r =>
+    (⟨node, csvwRowProp, (rowNode r.rowNum).toTerm⟩ : Triple))
+  let rowTs := rows.flatMap (fun r =>
+    rowTriplesStandard tableUrl r.rowNum r.sourceRow r.cells)
+  (⟨node, rdfTypeIri, .iri csvwTableCls⟩ : Triple) :: (urlTriples ++ rowLinks ++ rowTs)
+
+/-- Standard mode, whole output: the `csvw:TableGroup` node above one
+    table. csv2rdf emits the group even for a single table — the
+    no-metadata tests in the W3C suite all expect it, and omitting it
+    is why this path scored zero before the group and table nodes
+    existed. -/
+def tableGroupTriplesStandard (tableUrl : String) (rows : List RowInput)
+    : List Triple :=
+  let group : Subject := .bnode "tablegroup"
+  let tableNodeId := "table"
+  [ ⟨group, rdfTypeIri, .iri csvwTableGroup⟩,
+    ⟨group, csvwTableProp, (Subject.bnode tableNodeId).toTerm⟩ ]
+  ++ tableTriplesStandard tableNodeId tableUrl rows
 
 end L4Factoidal.CSVW
