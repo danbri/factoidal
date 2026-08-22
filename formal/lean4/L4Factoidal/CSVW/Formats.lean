@@ -108,27 +108,75 @@ def shiftLeft (s : String) (n : Nat) : String :=
   let fpOut := String.ofList (digits.drop cut)
   (if neg then "-" else "") ++ ipOut ++ (if fpOut == "" then "" else "." ++ fpOut)
 
+/-! ### XSD lexical spaces for the numeric bases
+
+A numeric column validates its cells even with NO `format`: `3.2` is
+not an `xsd:integer` and `123.456E7` is not an `xsd:decimal`, whatever
+the metadata says about grouping. Before this the numeric path
+returned `noFormat` whenever no pattern, `groupChar` or `decimalChar`
+was stated, so nothing was checked and every such cell got its base's
+datatype — asserting that `NaN` is a decimal (measured 2026-08-22,
+tests 161 and 163–167). -/
+
+private def stripSign (s : String) : String :=
+  if s.startsWith "-" || s.startsWith "+" then String.ofList (s.toList.drop 1) else s
+
+def isIntegerLexical (s : String) : Bool :=
+  let core := stripSign s
+  core != "" && core.toList.all isDigit
+
+def isDecimalLexical (s : String) : Bool :=
+  let core := stripSign s
+  let parts := core.splitOn "."
+  core != "" && parts.length ≤ 2 &&
+  parts.all (fun p => p.toList.all isDigit) && parts.any (fun p => p != "")
+
+/-- `xsd:double` / `xsd:float`: a decimal mantissa with an optional
+    exponent, or one of the three special values. -/
+def isDoubleLexical (s : String) : Bool :=
+  if s == "NaN" || s == "INF" || s == "-INF" || s == "+INF" then true
+  else
+    match splitFirst 'e' s.toList, splitFirst 'E' s.toList with
+    | some (m, e), _ =>
+        isDecimalLexical (String.ofList m) && isIntegerLexical (String.ofList e)
+    | none, some (m, e) =>
+        isDecimalLexical (String.ofList m) && isIntegerLexical (String.ofList e)
+    | none, none => isDecimalLexical s
+
+/-- Which lexical space a numeric base uses. -/
+def isXsdNumericLexical (base : String) (s : String) : Bool :=
+  if base == "decimal" then isDecimalLexical s
+  else if base == "double" || base == "float" || base == "number" then
+    isDoubleLexical s
+  else isIntegerLexical s
+
 /-- Apply a numeric format: strip grouping characters, normalise the
-    decimal character to `.`, and apply percent / per-mille scaling.
-    Rejects anything that is not a well-formed number afterwards. -/
-def parseNumber (nf : NumFmt) (v : String) : FmtOutcome :=
+    decimal character to `.`, apply percent / per-mille scaling, and
+    check the result against the base's XSD lexical space.
+
+    Grouping characters must SEPARATE digits. Two in a row, or one at
+    either end, is a validation error the corpus states outright:
+    "Implementations MUST add a validation error … if the string being
+    parsed contains two consecutive groupChar strings." Filtering them
+    out unconditionally turned `123,,456.789` into a valid decimal. -/
+def groupingWellPlaced (grp : Char) (v : String) : Bool :=
+  let cs := v.toList
+  let adjacent := (cs.zip (cs.drop 1)).any (fun (a, b) => a == grp && b == grp)
+  let atEdge := (cs.head? == some grp) || (cs.reverse.head? == some grp)
+  !adjacent && !atEdge
+
+def parseNumber (base : String) (nf : NumFmt) (v : String) : FmtOutcome :=
+  if !groupingWellPlaced nf.groupChar v then .invalid
+  else
   let body := v.toList.filter (fun c => c != nf.groupChar && c != '%' && c != '‰')
   let body := body.map (fun c => if c == nf.decimalChar then '.' else c)
   let s := String.ofList body
-  let core := if s.startsWith "-" || s.startsWith "+"
-              then String.ofList (s.toList.drop 1) else s
-  let parts := core.splitOn "."
-  let wellFormed :=
-    core != "" && parts.length ≤ 2 &&
-    parts.all (fun p => p.toList.all isDigit) &&
-    parts.any (fun p => p != "")
-  if !wellFormed then .invalid
+  if !isXsdNumericLexical base s then .invalid
   else
     let s := if s.startsWith "+" then String.ofList (s.toList.drop 1) else s
     if nf.percent then .valid (shiftLeft s 2)
     else if nf.permille then .valid (shiftLeft s 3)
     else .valid s
-
 
 /-! ## Date and time formats (§5.11.3, tabular-data-model §6.4.2)
 
@@ -333,11 +381,14 @@ def formatConvert (baseName : String) (formatStr pattern groupChar decimalChar :
   if baseName == "boolean" then parseBool formatStr txt
   else if isNumericBase baseName then
     let pat := pattern.orElse (fun _ => formatStr)
-    if pat.isNone && groupChar.isNone && decimalChar.isNone then .noFormat
-    else
-      let grp := (groupChar.bind (·.toList.head?)).getD ','
-      let dec := (decimalChar.bind (·.toList.head?)).getD '.'
-      parseNumber (parseNumFmt pat grp dec) txt
+    -- No early `noFormat` exit: the XSD lexical space applies even
+    -- with no format stated. The default grouping character is the
+    -- comma only when a format asks for grouping; with none stated a
+    -- comma is just a character the lexical check will reject.
+    let grp := (groupChar.bind (·.toList.head?)).getD
+      (if groupChar.isNone && pat.isNone then '\u0000' else ',')
+    let dec := (decimalChar.bind (·.toList.head?)).getD '.'
+    parseNumber baseName (parseNumFmt pat grp dec) txt
   else if isDateBase baseName then
     match formatStr with
     | some f => parseDate baseName f txt

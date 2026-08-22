@@ -23,7 +23,7 @@ open L4Factoidal.JSON
     list, a single value otherwise, and ABSENT (no member at all)
     when the cell is null. -/
 def cellJson (inh : Inherited) (r : CellResult) : Option Json :=
-  let vals := (r.valueRefs.map Json.string) ++ (r.literals.map Json.string)
+  let vals := (r.valueRefs.map Json.string) ++ (r.lexicals.map Json.string)
   match vals with
   | []  => none
   | [v] => if inh.separator.isSome then some (.array [v]) else some v

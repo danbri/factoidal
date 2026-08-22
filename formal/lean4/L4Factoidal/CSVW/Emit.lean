@@ -142,11 +142,13 @@ def cellObjects (inh : Inherited) (r : CellResult) : List Term :=
     | none   => true
     | some b => b == "string"
   let usableLang := inh.lang.filter isLangTagValid
-  let fromLits := r.literals.map (fun lex =>
+  let fromLits := r.literals.map (fun (lex, ok) =>
     match (if langApplies then usableLang else none) with
     | some tag => Term.literal (Literal.langString lex tag)
     | none =>
-        match (base.bind datatypeIriFor).bind toIri? with
+        -- A value that failed its own format gets NO datatype: the
+        -- text is reported, the claim about its value is not.
+        match (if ok then (base.bind datatypeIriFor).bind toIri? else none) with
         | some dt => Term.literal (typedLiteral dt lex)
         | none    => Term.literal (Literal.string lex))
   fromUrls ++ fromLits

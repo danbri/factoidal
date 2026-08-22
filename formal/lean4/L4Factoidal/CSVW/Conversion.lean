@@ -123,17 +123,17 @@ def applyDefault (dflt : Option String) (cell : String) : String :=
     still reported, and it is `Validate` that says it is bad. Dropping
     it here would lose data on the strength of a format this module
     might have read wrongly. -/
-def prepareLexical (dt : Option Datatype) (cell : String) : String :=
+def prepareLexical (dt : Option Datatype) (cell : String) : String × Bool :=
   let base := (dt.bind Datatype.baseName).getD "string"
   let trimmed := if dtPreservesWs base then cell else csvwTrim cell
   match dt with
-  | none => trimmed
+  | none => (trimmed, true)
   | some d =>
       match formatConvert base (Datatype.formatOf d) (Datatype.patternOf d)
               (Datatype.groupCharOf d) (Datatype.decimalCharOf d) trimmed with
-      | .valid lex => lex
-      | .invalid   => trimmed
-      | .noFormat  => trimmed
+      | .valid lex => (lex, true)
+      | .invalid   => (trimmed, false)
+      | .noFormat  => (trimmed, true)
 
 /-- What one cell contributes, before RDF terms are built: the
     resolved property IRI reference, and the object values (several
@@ -142,7 +142,16 @@ structure CellResult where
   propertyRef : Option String
   aboutRef    : Option String
   valueRefs   : List String      -- when valueUrl applies
-  literals    : List String      -- otherwise, the lexical forms
+  /-- Otherwise the lexical forms, each paired with whether the
+      column's datatype APPLIES to it.
+
+      The flag is not decoration. csv2rdf gives a cell that fails its
+      datatype's format NO typed value: the corpus expects
+      `"123,,456.789"` plain where the column says `decimal` with a
+      `groupChar`, and emitting `^^xsd:decimal` on unparsed text
+      asserts something false about the value (measured 2026-08-22,
+      the whole test160–177 family). -/
+  literals    : List (String × Bool)
 deriving Repr, Inhabited
 
 /-- Convert one cell under its effective inherited properties.
@@ -169,6 +178,10 @@ def convertCell (inh : Inherited) (colName : String)
           | none     => [cell]
         let lits := parts.filter (fun p => !(isNullCell inh.null p))
         ⟨propertyRef, aboutRef, [], lits.map (prepareLexical inh.datatype)⟩
+
+/-- The lexical forms alone, for callers that do not care whether the
+    datatype applied (csv2json emits strings either way). -/
+def CellResult.lexicals (r : CellResult) : List String := r.literals.map (·.1)
 
 /-- The default property IRI for a column with no `propertyUrl`: the
     table URL with the column name as a fragment, per csv2rdf. -/

@@ -5031,3 +5031,54 @@ before the metadata parse existed.
 Every one of these six produced the RIGHT number of triples with the
 wrong content, except (2). The score line read "produced 19, expected
 19" through four consecutive bugs.
+
+### CSVW: invalid values, invalid metadata, and the XSD numeric
+lexical spaces (2026-08-22)
+
+Six more rules, same loop — each read off the `--dump` diff, each
+producing the RIGHT triple count with wrong content:
+
+1. **A non-string LINK property normalises to the EMPTY template**,
+   not to nothing. With `"aboutUrl": true` the subject is the TABLE
+   URL — the empty template resolved against the table — not a fresh
+   blank node (tests 047/048/049).
+2. **A numeric field must be a NUMBER.** The corpus supplies
+   `"headerRowCount": "0"`, which is invalid, so the default of one
+   header row applies. Accepting the string turned the header into a
+   data row and added a whole extra row of triples.
+3. **Header titles apply only when the table has NO schema.** A
+   metadata schema REPLACES the embedded one, so a schema describing
+   no usable column leaves the columns as `_col.1`, `_col.2`, … rather
+   than falling back to the file's headings (test100 supplies
+   `"columns"` as an object instead of an array).
+4. **An invalid `tableSchema` acts as an EMPTY OBJECT** — a schema is
+   present, with no columns (test107, `"tableSchema": 1`).
+5. **An invalid column `name` is ignored** and the column falls back
+   to its title. §5.6 restricts a name to the RFC 6570 variable
+   syntax; `"name": "G I D"` with `"titles": "GID"` must produce
+   `#GID`, and taking the name verbatim produced `#G%20I%20D`
+   (test130).
+6. **A cell that fails its datatype gets NO datatype.** `CellResult.
+   literals` is now `List (String × Bool)` — the lexical form and
+   whether the datatype applies. Emitting `^^xsd:decimal` on
+   `"123,,456.789"` asserts something false about the value.
+
+And the one that moved the most: **the XSD numeric lexical spaces are
+checked even with no `format`.** The numeric path used to return
+`noFormat` whenever no pattern, `groupChar` or `decimalChar` was
+stated, so nothing was checked and every such cell got its base's
+datatype — `3.2` as an `xsd:integer`, `123.456E7` and `NaN` as
+`xsd:decimal`. `isIntegerLexical` / `isDecimalLexical` /
+`isDoubleLexical` now decide, and grouping characters must SEPARATE
+digits (two in a row is a validation error the corpus states in
+words). `datatype.format` is also read as an OBJECT, which is where
+`groupChar` actually lives.
+
+📊 MEASURED, csv2rdf: **123 pass, 82 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 100 at the previous landing.
+
+Two `FormatsTests` guards had to be CORRECTED rather than extended,
+and both were pinning behaviour rather than the specification:
+`formatConvert "integer" none … "42" == .noFormat` (it is `.valid`,
+and the `noFormat` answer is why `3.2` reached the output typed) and
+the date guards that asserted date formats were out of scope.

@@ -79,13 +79,17 @@ def jStrField? (k : String) (j : Json) : Option String :=
 def jBoolField? (k : String) (j : Json) : Option Bool :=
   (jField? k j).bind jBool?
 
-/-- A field that the spec allows as either a number or a string
-    (`length`, `minLength`, …). JSON numbers arrive as their source
-    text, so this is a decimal-int read, not a float round trip. -/
+/-- A NUMERIC field. JSON numbers arrive as their source text, so this
+    is a decimal-int read, not a float round trip.
+
+    A string is NOT accepted, even one that reads as a number. The
+    corpus supplies `"headerRowCount": "0"`, which is invalid, so the
+    default of one header row applies — and honouring the string
+    instead turned the header into a data row, adding a whole extra
+    row of triples to every such test (measured 2026-08-22). -/
 def jIntField? (k : String) (j : Json) : Option Int :=
   match jField? k j with
   | some (.number n) => n.toInt?
-  | some (.string s) => s.toInt?
   | _                => none
 
 /-- A field whose value the spec allows as a bare string OR an object
@@ -159,14 +163,22 @@ def readContext (j : Json) : Ctx :=
 
 /-! ## Datatype (§5.11) -/
 
+/-- `format` is a string for most datatypes, but §5.11.3 also allows an
+    OBJECT for the numeric ones, carrying `pattern` / `groupChar` /
+    `decimalChar`. Reading only the string form left `groupChar`
+    unset, so a `decimal` column with `{"groupChar": ","}` never had
+    its separators stripped. -/
 def parseDatatype (j : Json) : Option Datatype :=
+  let fmtObj := (jField? "format" j).bind asObject?
+  let sub := fun (k : String) =>
+    (jStrField? k j).orElse (fun _ => fmtObj.bind (jStrField? k))
   match j with
   | .string s => some (.named s)
   | .object _ =>
       some (.object
         (jStrField? "base" j) (jStrField? "format" j)
-        (jStrField? "pattern" j) (jStrField? "groupChar" j)
-        (jStrField? "decimalChar" j) (jStrField? "@id" j)
+        (sub "pattern") (sub "groupChar")
+        (sub "decimalChar") (jStrField? "@id" j)
         (jIntField? "length" j) (jIntField? "minLength" j)
         (jIntField? "maxLength" j) (jAtomField? "minimum" j)
         (jAtomField? "maximum" j) (jAtomField? "minInclusive" j)
@@ -192,10 +204,27 @@ def parseNull? (j : Json) : Option String :=
   | some (.array (a :: _)) => jStr? a
   | _ => none
 
+/-- A LINK property (`aboutUrl` / `propertyUrl` / `valueUrl`), which
+    §5.1.2 requires to be a URI-template string.
+
+    A value of the wrong type normalises to the EMPTY template rather
+    than disappearing. That is what the corpus expects: with
+    `"aboutUrl": true` the subject is the TABLE URL — the empty
+    template expanded and resolved against the table — not a fresh
+    blank node (tests 047 / 048 / 049, all
+    `ToRdfTestWithWarnings`). Dropping the property instead produces a
+    graph with the right shape and the wrong subject on every row. -/
+def jLinkField? (k : String) (j : Json) : Option String :=
+  match jField? k j with
+  | some (.string s) => some s
+  | some .null       => none
+  | some _           => some ""
+  | none             => none
+
 def parseInherited (j : Json) : Inherited :=
-  { aboutUrl    := jStrField? "aboutUrl" j
-    propertyUrl := jStrField? "propertyUrl" j
-    valueUrl    := jStrField? "valueUrl" j
+  { aboutUrl    := jLinkField? "aboutUrl" j
+    propertyUrl := jLinkField? "propertyUrl" j
+    valueUrl    := jLinkField? "valueUrl" j
     datatype    := (jField? "datatype" j).bind parseDatatype
     lang        := jStrField? "lang" j
     null        := parseNull? j
@@ -264,11 +293,25 @@ def parseDialect (j : Json) : Dialect :=
 def columnKeys : List String :=
   ["name", "titles", "virtual", "suppressOutput"]
 
+/-- Is this a usable column `name`? §5.6 restricts it to the variable
+    syntax of RFC 6570 — letters, digits, underscore and percent
+    escapes — and reserves names beginning with `_` for the
+    specification's own (`_row`, `_name`, …).
+
+    An invalid name is IGNORED, and the column falls back to its
+    title. The corpus pins this: `"name": "G I D"` with
+    `"titles": "GID"` must produce `#GID`, and taking the name
+    verbatim produced `#G%20I%20D` — a predicate no query would find
+    (measured 2026-08-22). -/
+def validColumnName (s : String) : Bool :=
+  !s.isEmpty && !s.startsWith "_" &&
+  s.all (fun c => c.isAlphanum || c == '_' || c == '%')
+
 def parseColumn (ctx : Ctx) (j : Json) : Column :=
   let tl := match jField? "titles" j with
     | some v => titlesOf ctx.lang v
     | none   => []
-  { name           := jStrField? "name" j
+  { name           := (jStrField? "name" j).filter validColumnName
     titles         := tl.map (·.1)
     titlesLang     := tl
     virtual        := jBoolField? "virtual" j
@@ -293,7 +336,7 @@ def parseSchema (ctx : Ctx) (j : Json) : TableSchema :=
       | _                => []
     primaryKey := (jField? "primaryKey" j).map strList |>.getD []
     rowTitles  := (jField? "rowTitles" j).map strList |>.getD []
-    aboutUrlBase := jStrField? "aboutUrl" j
+    aboutUrlBase := jLinkField? "aboutUrl" j
     inherited  := parseInherited j
     common     := commonProps schemaKeys j }
 
@@ -307,7 +350,20 @@ def parseTable (ctx : Ctx) (j : Json) : Option TableDesc :=
   | some url =>
       some
         { url       := url
-          schema    := ((jField? "tableSchema" j).bind asObject?).map (parseSchema ctx)
+          schema    := match jField? "tableSchema" j with
+            | some (.object _) =>
+                ((jField? "tableSchema" j).bind asObject?).map (parseSchema ctx)
+            -- A STRING is a link to another document: metadata
+            -- discovery, which is I/O and not modelled here.
+            | some (.string _) => none
+            -- Any other value is INVALID and, per the corpus, acts as
+            -- an EMPTY OBJECT: the table has a schema with no columns,
+            -- so its columns are `_col.1`, `_col.2`, … rather than the
+            -- file's headings. Treating it as "no schema" instead
+            -- brings the header titles back and changes every
+            -- predicate (test107).
+            | some _           => some ({} : TableSchema)
+            | none             => none
           dialect   := (jField? "dialect" j).map parseDialect
           suppress  := jBoolField? "suppressOutput" j
           inherited := parseInherited j
