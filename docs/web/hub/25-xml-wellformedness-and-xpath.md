@@ -113,11 +113,17 @@ exercises section by section.
 
 Two boundaries are deliberate and named in the runner:
 
-- **No DTD/DOCTYPE processing.** `Parser.XML.fst` has no `<!DOCTYPE`
-  production at all, so a document carrying an internal or external DTD
-  subset is reported as not well-formed rather than validated. This is a
-  scope cut, not a defect — the W3C runner skips DTD-validation tests
-  by design.
+- **No DTD *validation*.** `Parser.XML.fst` parses `<!DOCTYPE` with its
+  internal subset for well-formedness purposes — it collects entity
+  declarations (so `&e;` references to internally declared entities
+  expand, and WFC Entity Declared / No Recursion are checked) and scans
+  `<!ATTLIST>` for ID attributes — but it does not *validate* against
+  the DTD: validity constraints, the external subset, conditional
+  sections, and parameter-entity expansion are out of scope. (Corrected
+  2026-08-22: this paragraph previously claimed the parser had no
+  DOCTYPE production at all — false since the internal-subset parser
+  landed; caught by the Lean 4 port's file-by-file cross-check against
+  the xmlconf corpus, issue #469.)
 - **XPath covers a documented subset.** The forward and reverse axes,
   positional predicates, the node tests, and the core function library
   are supported; `following::`/`preceding-sibling::` and the id()
