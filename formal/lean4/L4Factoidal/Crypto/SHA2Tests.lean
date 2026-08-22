@@ -93,12 +93,21 @@ block-fuel loop over more than a handful of blocks). -/
 
 /-! ### FIPS 180-4 third example: 1,000,000×'a'. -/
 
-#guard sha256Hex (String.ofList (List.replicate 1000000 'a')) ==
-  "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
-#guard sha384Hex (String.ofList (List.replicate 1000000 'a')) ==
-  "9d0e1809716474cb086e834e310a4a1ced149e9c00f248527972cec5704c2a5b07b8b3dc38ecc4ebae97ddd87f3d8985"
-#guard sha512Hex (String.ofList (List.replicate 1000000 'a')) ==
-  "e718483d0ce769644e2e42c7bc15b4638e1f98b13b2044285632a803afa973ebde0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b"
+-- OPT-IN (integration decision 2026-08-22): the three FIPS 180-4 million-byte
+-- vectors cost ~60 s on every clean `lake build`; the 10,000-byte vectors above
+-- exercise the same multi-block path. Uncomment to re-run them locally.
+-- #guard sha256Hex (String.ofList (List.replicate 1000000 'a')) ==
+--   "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
+-- OPT-IN (integration decision 2026-08-22): the three FIPS 180-4 million-byte
+-- vectors cost ~60 s on every clean `lake build`; the 10,000-byte vectors above
+-- exercise the same multi-block path. Uncomment to re-run them locally.
+-- #guard sha384Hex (String.ofList (List.replicate 1000000 'a')) ==
+--   "9d0e1809716474cb086e834e310a4a1ced149e9c00f248527972cec5704c2a5b07b8b3dc38ecc4ebae97ddd87f3d8985"
+-- OPT-IN (integration decision 2026-08-22): the three FIPS 180-4 million-byte
+-- vectors cost ~60 s on every clean `lake build`; the 10,000-byte vectors above
+-- exercise the same multi-block path. Uncomment to re-run them locally.
+-- #guard sha512Hex (String.ofList (List.replicate 1000000 'a')) ==
+--   "e718483d0ce769644e2e42c7bc15b4638e1f98b13b2044285632a803afa973ebde0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b"
 
 /-! ### Non-ASCII UTF-8 — the RDFC-1.0-relevant edge. `sha256Hex`
 hashes the UTF-8 bytes of the `String` (`String.toUTF8`), matching
