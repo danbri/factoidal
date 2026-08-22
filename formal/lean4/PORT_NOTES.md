@@ -2013,3 +2013,18 @@ position), the CSV leniency, the budget give-up, the `rs:ResultSet`
 decoder with `rs:index`, `mf:include`, `sd:entailmentRegime` in both
 shapes and `qt:serviceData`. Sabotaging `compareSelectRows` to
 always-true fails the build at those guards.
+
+### OWL tableau: the ∃-witness rule (2026-08-22, second rung)
+
+`exWitness` added to `OWL/Tableau.lean`'s clash calculus with its
+freshness side condition (`x ∉ indsOf A`), and `refuted_sound`
+extended. The predicted hard part — "fresh individuals need model
+extension" — dissolved: assignments are TOTAL functions `Ind → δ`, so
+soundness only bends the assignment at the fresh name toward the
+semantic witness that `∃r.C` guarantees, and `satisfies_agree` (new)
+shows the rest of the ABox cannot see the change because satisfaction
+reads the assignment only at an assertion's named individuals.
+`derives_inds` (new) proves the forward rules invent no names, which
+turns ABox-freshness into the `x ≠ a` the edge case needs. Checked at
+build time: `∃r.⊥` and the textbook `(∃r.C) ⊓ (∀r.¬C)` refutations.
+Axiom base unchanged.
