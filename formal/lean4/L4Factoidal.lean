@@ -93,3 +93,4 @@ import L4Factoidal.Regex.Exec
 import L4Factoidal.Regex.XSDPattern
 import L4Factoidal.Regex.XPath
 import L4Factoidal.Regex.RegexTests
+import L4Factoidal.Regex.RegexTheorems
