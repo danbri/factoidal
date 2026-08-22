@@ -48,3 +48,9 @@ import L4Factoidal.XML.Tests
 import L4Factoidal.OWL.Tableau
 import L4Factoidal.OWL.TableauTheorems
 import L4Factoidal.OWL.TableauTests
+import L4Factoidal.SPARQL.Results
+import L4Factoidal.SPARQL.ResultsXml
+import L4Factoidal.SPARQL.ResultsJson
+import L4Factoidal.SPARQL.ResultsCsvTsv
+import L4Factoidal.SPARQL.ResultsTests
+import L4Factoidal.SPARQL.ResultsTheorems

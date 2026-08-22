@@ -174,7 +174,12 @@ executable edge only.
    by evaluation and `decide`/`rfl` get stuck. Recipe: `unfold <fn>`
    (its equation lemma) then `decide`; or keep parsers structurally
    recursive on a fuel `Nat` where possible.
-8. **Integrate agent branches with MERGES, then push; never
+8. **`/-` inside prose opens a block comment** — a doc comment or
+   string containing `/-` (e.g. "XML/-JSON") nests a new comment and
+   silently swallows the file to EOF, exactly like F\*'s `(* *)` trap.
+   Never write `/-` in comment prose; `local` is a reserved word in
+   Lean 4 too (2026-08-22, results-formats port).
+9. **Integrate agent branches with MERGES, then push; never
    `git pull --rebase` afterwards.** A rebase replays the branch's
    commits onto origin and re-hits the same additive conflicts
    (`L4Factoidal.lean` imports, `PORT_NOTES.md` appends) the merge
