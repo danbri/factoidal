@@ -3797,3 +3797,34 @@ what a later reader would "fix" into a bug:
   absolute-URL case as `WarningValidationTest`).
 - A NON-STRING `@id` is graceful degradation, not an error, so it is
   deliberately not flagged; only a blank-node `@id` is an error.
+
+### ShEx: schema AST and node constraints (2026-08-22)
+
+Opens the family with the largest test count still absent (1,182 W3C
+tests; F* side is 3,053 lines across 3 modules). `ShEx/Schema.lean`
+ports the mutually recursive shapeExpr/tripleExpr AST;
+`ShEx/Validation.lean` ports §5.4 node-constraint satisfaction.
+
+Three details carried deliberately:
+
+1. **Numeric facets keep their verbatim JSON lexeme** as a `String`,
+   as in the F* module. Parsing them early would fix a precision
+   decision before the governing datatype is known, and ShEx compares
+   them against the node's own lexical value. `compareDecimal`
+   therefore compares two decimal STRINGS exactly — pad to common
+   widths, then one lexicographic pass — so no float ever exists to
+   round.
+2. **Length facets count CHARACTERS, not bytes.** A guard pins `é`
+   as length 1.
+3. **An absent language or datatype in an ObjectValue means
+   UNCONSTRAINED**, not "must be absent" — the opposite reading
+   silently rejects every tagged literal.
+
+Lean-specific: `extends` is a KEYWORD, so `Shape`'s field is
+`extendsRefs`. The mutually recursive records had to become
+inductives with hand-written accessors, since a Lean `structure`
+cannot join a `mutual` block containing inductives.
+
+NOT ported yet: shape satisfaction proper — triple expressions,
+cardinality matching over neighbourhoods, EXTRA and CLOSED — which is
+where the recursion through shape references lives.
