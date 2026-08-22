@@ -29,10 +29,13 @@ Three rules this module keeps:
     `PositiveUpdateSyntaxTest11`, `NegativeUpdateSyntaxTest11`) run
     through `SPARQL/UpdateParser.lean` and `SPARQL/Update.lean` — see
     "SPARQL 1.1 Update" below. Protocol, Graph Store and Service
-    Description types remain
-    `unsupported <type>`; an entailment-regime evaluation test is
-    `unsupported entailment regime <R>` (the Lean tree has the
-    rdfs-core closure only, none of the regimes the suite names).
+    Description types remain `unsupported <type>`. An entailment-regime
+    evaluation test runs when the regime list names RDFS, RDF or D (the
+    closure of `RDF/Entailment.lean` is applied to the data before
+    evaluation — see "Entailment regimes" below); a test naming only
+    OWL-Direct, OWL-RDF-Based or RIF is `unsupported entailment regime
+    <R>`. The rdf-mt `PositiveEntailmentTest` / `NegativeEntailmentTest`
+    types run through the same module (see "RDF 1.1 Semantics").
 
 No `sorry`, no `axiom`, no `native_decide`, no `partial`.
 -/
@@ -44,6 +47,7 @@ import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.RDF.Canonical
+import L4Factoidal.RDF.Entailment
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.ResultsXml
@@ -229,11 +233,59 @@ def selectMismatch (csv : Bool) (expected actual : List Binding) : String :=
   (if unmatched.isEmpty then base else base ++ "; unmatched expected: " ++ showRows unmatched) ++
   (if extra.isEmpty then "" else "; unmatched actual: " ++ showRows extra)
 
+/-! ## Entailment regimes — shared by the sparql11 `entailment` suite
+and the rdf-mt suite
+
+The F* runner's `apply_entailment_regime` / `run_query_eval_test`
+regime branch, reproduced with the regimes `RDF/Entailment.lean`
+decides. Picking one regime from a manifest's list: the F* runner
+prefers OWL-RDF-Based, then OWL-Direct, RDFS, RDF, D; this tree has no
+OWL regime, so a list is read as RDFS > RDF > D and a list naming none
+of those (OWL-only, RIF) is unsupported, with the names. -/
+
+/-- The regime a `sd:entailmentRegime` list selects. -/
+def pickRegime (names : List String) : Option Regime :=
+  if names.contains "RDFS" then some .rdfs
+  else if names.contains "RDF" then some .rdf
+  else if names.contains "D" then some .d
+  else none
+
+/-- The `rdf:_n` slice for a graph: `rdf:_1` plus those it mentions. -/
+def cmpSlice (g : Graph) : List WfIri :=
+  (L4Factoidal.RDFS.containerMembershipIn g).foldl
+    (fun acc i => if acc.contains i then acc else acc ++ [i]) [L4Factoidal.RDFS.rdf1]
+
+/-- Close every graph of a dataset under the regime (the F* runner
+closes the default graph and each `qt:graphData` graph alike). -/
+def closeDataset (r : Regime) (D : List WfIri) (ds : Dataset) : Dataset :=
+  { default := r.closure D (cmpSlice ds.default) ds.default,
+    named := ds.named.map (fun ng => { ng with graph := r.closure D (cmpSlice ng.graph) ng.graph }) }
+
+/-- The datatype map a test asks for, as well-formed IRIs, refused
+(with the name) when it lists a datatype `RDF/Datatypes.lean` does not
+model — a recognised-but-unmodelled datatype would make "well-formed"
+a guess. The minimal `D` (`xsd:string`, `rdf:langString`) is added. -/
+def recognizedDatatypesOf (names : List String) : Except String (List WfIri) := do
+  let mut ds : List WfIri := []
+  for n in names do
+    if h : isIri n = true then
+      let d : WfIri := ⟨n, h⟩
+      if !modelledDatatypes.contains d then
+        throw s!"recognized datatype {n} is not modelled by RDF/Datatypes.lean"
+      ds := ds ++ [d]
+    else throw s!"recognized datatype is not an IRI: {n}"
+  return withMinimalD ds
+
 /-- One `QueryEvaluationTest` / `CSVResultFormatTest`. -/
 def runQueryEvaluation (tc : TestCase) : IO RunResult := do
-  if !tc.entailmentRegimes.isEmpty then
-    return .ofOutcome (.unsupported
-      s!"entailment regime {String.intercalate "/" tc.entailmentRegimes}")
+  -- Entailment-regime tests: pick the regime now; the closure is
+  -- applied to the fixtures once they are loaded.
+  let regime? : Option Regime ←
+    if tc.entailmentRegimes.isEmpty then pure none
+    else match pickRegime tc.entailmentRegimes with
+      | some r => pure (some r)
+      | none => return .ofOutcome (.unsupported
+          s!"entailment regime {String.intercalate "/" tc.entailmentRegimes}")
   let some qf := tc.queryFile
     | return .ofOutcome (.skip "mf:action carries no qt:query")
   let some qtext ← readOpt qf
@@ -243,7 +295,13 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   | .ok q =>
   match ← loadFixtures tc with
   | .error o => return .ofOutcome o
-  | .ok (ds, services) =>
+  | .ok (ds0, services) =>
+  -- SPARQL 1.1 Entailment Regimes: answers are simple-entailment
+  -- answers over the regime's closure of the active graph, with the
+  -- minimal datatype map (the suite names no recognised datatypes).
+  let ds := match regime? with
+            | some r => closeDataset r (withMinimalD []) ds0
+            | none   => ds0
   let some rf := tc.resultFile
     | return .ofOutcome (.skip "no mf:result")
   let some rtext ← readOpt rf
@@ -401,6 +459,81 @@ def runUpdateSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
       match res with
       | .error _ => .pass
       | .ok _    => .fail "should reject but parsed OK")
+
+/-! ## RDF 1.1 Semantics — the rdf-mt suite
+
+Port of the F* runner's `PositiveEntailmentTest` /
+`NegativeEntailmentTest` arms (`run_rdf_test`, ~lines 2853–2936):
+
+  1. `mf:entailmentRegime` is `"simple"`, `"RDF"` or `"RDFS"` (the
+     suite uses no other); `mf:recognizedDatatypes` is the datatype
+     map, refused by name when it lists a datatype this tree does not
+     model (the F* runner reports `rdf:XMLLiteral` as unsupported
+     there; here it is modelled, via the XML parser);
+  2. the action graph is parsed by extension (`.nt` N-Triples, else
+     Turtle with the file's own `file:` IRI as base) and closed under
+     the regime;
+  3. `mf:result false`: a Positive test passes iff the closure is
+     D-INCONSISTENT, a Negative test iff it is CONSISTENT (rdf-mt
+     README: "for tests that have false as output …");
+  4. otherwise the result graph is parsed the same way and
+     `regimeEntails` decides: Positive passes iff it entails, Negative
+     iff it does not. An inconsistent action graph entails everything
+     (RDF 1.1 Semantics §5.1). -/
+
+/-- Parse an rdf-mt fixture by extension. -/
+def parseEntailmentGraph (path text : String) : Except String Graph :=
+  let r := if path.endsWith ".nt" then parseNTriples text .rdf11
+           else parseTurtle text (some ("file://" ++ path)) .rdf11
+  r.mapError fmtParseError
+
+/-- One `PositiveEntailmentTest` (`positive = true`) or
+`NegativeEntailmentTest`. -/
+def runEntailmentTest (positive : Bool) (tc : TestCase) : IO RunResult := do
+  let regimeName := tc.entailmentRegime.getD "simple"
+  let some regime := Regime.ofName? regimeName
+    | return .ofOutcome (.unsupported s!"entailment regime {regimeName}")
+  let D ← match recognizedDatatypesOf tc.recognizedDatatypes with
+    | .ok d => pure d
+    | .error e => return .ofOutcome (.unsupported e)
+  let some af := tc.action
+    | return .ofOutcome (.skip "mf:action is not a file IRI")
+  let some atext ← readOpt af
+    | return .ofOutcome (.skip s!"file missing: {af}")
+  match parseEntailmentGraph af atext with
+  | .error e => return .ofOutcome (.fail s!"action parse error in {basename af}: {e}")
+  | .ok action =>
+  let kind := if positive then "Positive" else "Negative"
+  if tc.resultFalse then
+    -- Consistency: Positive expects an inconsistent action graph,
+    -- Negative a consistent one.
+    let inconsistent := regimeInconsistent regime D action
+    let outcome :=
+      if positive then
+        (if inconsistent then Outcome.pass
+         else .fail s!"expected a D-inconsistent action graph ({regimeName}, recognized {String.intercalate ", " tc.recognizedDatatypes}) but no clash was found")
+      else
+        (if inconsistent then Outcome.fail s!"action graph is D-inconsistent but the {kind} test expects it consistent"
+         else .pass)
+    return { outcome, triplesCompared := action.length }
+  else
+  let some rf := tc.resultFile
+    | return .ofOutcome (.skip "no mf:result")
+  let some rtext ← readOpt rf
+    | return .ofOutcome (.skip s!"result file missing: {rf}")
+  match parseEntailmentGraph rf rtext with
+  | .error e => return .ofOutcome (.fail s!"result parse error in {basename rf}: {e}")
+  | .ok expected =>
+  let entails := regimeEntails regime D action expected
+  let n := action.length + expected.length
+  let outcome :=
+    if positive then
+      (if entails then Outcome.pass
+       else .fail s!"should entail under {regimeName} but does not (action {action.length} triples, result {expected.length})")
+    else
+      (if entails then Outcome.fail s!"should NOT entail under {regimeName} but does"
+       else .pass)
+  return { outcome, triplesCompared := n }
 
 /-! ## The dispatcher -/
 
@@ -597,6 +730,10 @@ def runTest (assumedBase : Option String) (manifestDir : String) (tc : TestCase)
   | "UpdateEvaluationTest"       => runUpdateEvaluation tc
   | "PositiveUpdateSyntaxTest11" => runUpdateSyntaxTest true tc
   | "NegativeUpdateSyntaxTest11" => runUpdateSyntaxTest false tc
+
+  /- ### RDF 1.1 Semantics (rdf-mt) — see "RDF 1.1 Semantics" above. -/
+  | "PositiveEntailmentTest" => runEntailmentTest true tc
+  | "NegativeEntailmentTest" => runEntailmentTest false tc
 
   /- ### Not attemptable yet — named, counted, never passed
      (Protocol, Graph Store, Service Description). -/
