@@ -513,6 +513,76 @@ UPDATE, Protocol, Graph Store, Service Description and entailment-regime
 types, still named and counted. The F\* runner's line for the same
 631 is 631 pass, 0 fail. The six RDF suites stay at 1078 of 1078.
 
+## Status 2026-08-22 — SPARQL 1.1 Update (branch `lean4/sparql-update`)
+
+The three UPDATE test types run. `SPARQL/Update.lean` is the port of
+`SPARQL11.Algebra.fst` Parts 6b and 19b–19e (AST, INSERT DATA, DELETE
+DATA, DELETE WHERE, DELETE/INSERT with WITH / USING / USING NAMED,
+CREATE / CLEAR / DROP / COPY / MOVE / ADD, LOAD SILENT);
+`SPARQL/UpdateParser.lean` is grammar [29]–[52] over the existing
+tokenizer, reusing the query parser's triples-block, group-graph-
+pattern and prologue productions; `Harness/Manifest.lean` reads the
+`ut:` vocabulary (`ut:request`, `ut:data`, `ut:graphData` with
+`ut:graph` + `rdfs:label`, on the action and on `mf:result`);
+`Harness/Run.lean` gained `runUpdateEvaluation` / `runUpdateSyntaxTest`
+in one block. Two semantic choices differ from the F\* and are
+recorded in `PORT_NOTES.md` (this stage's "Decisions"): the semantics
+returns `Except UpdateError Dataset` and raises the §3.2 errors that
+`SILENT` suppresses (the F\* ignores `SILENT`), and fresh blank-node
+labels are longer than every label in the store rather than salted by
+triple count.
+
+Verbatim, `lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`:
+
+```
+add: 8 pass, 0 fail, 0 skip, 0 unsupported (out of 8)
+basic-update: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+clear: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+copy: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete-data: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete-insert: 17 pass, 0 fail, 0 skip, 0 unsupported (out of 17)
+delete-where: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
+drop: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+move: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+syntax-update-1: 54 pass, 0 fail, 0 skip, 0 unsupported (out of 54)
+syntax-update-2: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)
+update-silent: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+TOTAL: 505 pass, 0 fail, 0 skip, 126 unsupported (out of 631)
+```
+
+From the baseline `TOTAL: 356 pass, 0 fail, 0 skip, 275 unsupported
+(out of 631)` the 149 UPDATE entries (94 UpdateEvaluationTest, 42
+PositiveUpdateSyntaxTest11, 13 NegativeUpdateSyntaxTest11) all moved to
+pass; no FAIL, no SKIP (the suites hold no non-SILENT LOAD, which
+would skip with "non-silent LOAD not yet implemented (no HTTP fetch)"
+as in the F\* runner). The 126 still `unsupported` are the Protocol,
+Graph Store, Service Description and entailment-regime types. The
+query-type entries are unchanged at 356 pass, 0 fail. The six RDF
+suites: `TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of
+1078)`.
+
+Comparison note: the expected and actual stores are compared by
+`Dataset.isomorphicOutcome` after dropping empty named-graph slots on
+both sides — the F\* runner canonicalises to N-Quads, which has no
+representation for an empty graph, while the Lean isomorphism matches
+graph names; without the drop, `CLEAR GRAPH` / `CREATE GRAPH` tests
+would fail here and pass there on an artefact of the comparison.
+
+Sabotage check (2026-08-22): with the DELETE and INSERT steps of
+`applyModify` swapped (insert first, then delete), `lake build` fails
+at `UpdateTests.lean:110` (`DELETE { :s :p :o } INSERT { :s :p :o }
+WHERE {}` must leave the triple in place). The W3C run, however, is
+UNCHANGED at 505 pass, 0 fail: the only combined DELETE/INSERT
+operation in the suites is `delete-insert-01`
+(`DELETE { ?a foaf:knows ?b } INSERT { ?b foaf:knows ?a }`), and its
+data `delete-insert-pre-01.ttl` holds no symmetric `foaf:knows` pair,
+so both orders give the same store; `delete-insert-01b` / `01c`
+sequence the two operations explicitly. The §3.1.3 ordering is pinned
+by the guard, not by the corpus — a gap in the W3C suite worth
+knowing. Restored (file checked out from the branch), build green
+again.
+
 ## Status 2026-08-22 (night): the three protocol-shaped types run (branch `lean4/protocol`)
 
 `ProtocolTest`, `GraphStoreProtocolTest` and `ServiceDescriptionTest`
@@ -541,31 +611,35 @@ reset at `PUT - Initial state`) and adds the three arms as one block;
 `lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`:
 
 ```
-protocol: 26 pass, 0 fail, 0 skip, 8 unsupported (out of 34)
+protocol: 34 pass, 0 fail, 0 skip, 0 unsupported (out of 34)
 HARNESS-DIAG protocol: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0
 http-rdf-update: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
 HARNESS-DIAG http-rdf-update: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=1
 service-description: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)
 HARNESS-DIAG service-description: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0
-TOTAL: 404 pass, 0 fail, 0 skip, 227 unsupported (out of 631)
+TOTAL: 561 pass, 0 fail, 0 skip, 70 unsupported (out of 631)
 ```
 
-The query types stay at 356 pass, 0 fail; the six RDF suites at
+(Measured after merging `claude/main` with the SPARQL 1.1 Update
+stage into the branch; before that merge the update-shaped protocol
+entries were `unsupported` and the line read `protocol: 26 pass,
+0 fail, 0 skip, 8 unsupported (out of 34)`.) The query types stay at
+356 pass, 0 fail; the 70 unsupported are the entailment-regime
+evaluation tests; the six RDF suites at
 `TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of 1078)`.
 The F\* runner's lines for the same three suites
 (`docs/test-results/latest.json`): protocol 34 pass, 0 fail (out of
 34); http-rdf-update 19 pass, 0 fail (out of 19), `gsp_seed` 1;
 service-description 3 pass, 0 fail (out of 3).
 
-### The 8 unsupported, by cause
+### FAIL / unsupported, by cause
 
-All eight are requests the decoder classifies as SPARQL Update
-(`update_dataset_default_graph`, `update_dataset_default_graphs`,
-`update_dataset_named_graphs`, `update_dataset_full`,
-`update_post_form`, `update_post_direct`, `update_base_uri`,
-`bad_update_syntax`): the Lean tree has no Update parser on
-`claude/main` at the time of this stage (branch `lean4/sparql-update`
-is in flight). They are named, counted, never passed. No FAIL.
+No FAIL. No unsupported in the three suites. The update-shaped
+entries (`update_dataset_*`, `update_post_form`, `update_post_direct`,
+`update_base_uri`, `bad_update_syntax`) go through
+`parseSparqlUpdate` / `applyUpdateIn` from the Update stage; only the
+first request block of an UPDATE-then-ASK entry is decoded, as in the
+F\* runner.
 
 ### Theorems (axioms: propext, Classical.choice, Quot.sound)
 
@@ -584,13 +658,13 @@ request shapes.
    NO W3C protocol test flips: the manifest writes every space as
    `%20`, and its only `+` characters are in response media types.
    The guards are the only detector for that rule.
-2. The §2.1.6 charset rule forced to accept everything: `bad_query_non_utf8`
-   flips to FAIL (`Expected 4xx but decode_request accepted (POST
-   /sparql/)`); `bad_update_non_utf8` moves to unsupported, because
-   the decoder then classifies it as an Update request. Until Update
-   parsing lands, a decoder regression on an update-shaped 4xx entry
-   hides in the unsupported bucket — a known limit of this stage.
-   Restored; the numbers above are from the restored build.
+2. The §2.1.6 charset rule forced to accept everything:
+   `bad_query_non_utf8` and `bad_update_non_utf8` flip to FAIL
+   (`Expected 4xx but decode_request accepted (POST /sparql/; …)`).
+   Before the Update merge the second landed in `unsupported` — a
+   decoder regression on an update-shaped entry was invisible until
+   the Update parser existed. Restored; the numbers above are from
+   the restored build.
 
 ### Findings against the F\* (not fixed here)
 

@@ -15,16 +15,19 @@ store model (`SPARQL/GraphStore.lean`) or the description builder
 (`SPARQL/ServiceDescription.lean`).
 
 Rules kept from `Harness/Run.lean`: a missing or empty `rdfs:comment`
-is a FAIL (a manifest-shape regression, as the F* runner scores it);
-what this tree cannot attempt is `unsupported`, named — here, a
-request the decoder classifies as SPARQL Update, because the Lean
-tree has no Update parser yet (branch `lean4/sparql-update` is in
-flight). The F* runner evaluates the decoded query over an empty
-dataset and DROPS the result: every evaluation outcome — rows, a
+is a FAIL (a manifest-shape regression, as the F* runner scores it).
+The F* runner parses the decoded query or update with the service IRI
+as BASE, evaluates it over an EMPTY dataset (`apply_update` for an
+update) and drops the result: every evaluation outcome — rows, a
 raised exception, an unsupported feature — scores PASS when a 2xx is
-expected ("the evaluator gap is orthogonal to protocol shape"), so
-the verdict depends only on the decoder and the parser. This port
-reproduces the verdict and omits the discarded evaluation.
+expected ("the evaluator gap is orthogonal to protocol shape"), so the
+verdict depends on the decoder and the parser only. This port does
+the same evaluation (`SPARQL/Query.lean`, `SPARQL/Update.lean`) and
+carries its summary into the FAIL text of an accepted-but-4xx-expected
+entry, which is the only place it can show. Only the FIRST request
+block of an entry is decoded, as in the F* runner: the
+`update_dataset_*` entries are UPDATE-then-ASK sequences whose second
+block is not replayed in either tree.
 
 No `sorry`, no `axiom`, no `native_decide`, no `partial`.
 -/
@@ -33,6 +36,8 @@ import L4Factoidal.SPARQL.Protocol
 import L4Factoidal.SPARQL.GraphStore
 import L4Factoidal.SPARQL.ServiceDescription
 import L4Factoidal.SPARQL.Parser
+import L4Factoidal.SPARQL.UpdateParser
+import L4Factoidal.SPARQL.Update
 
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
@@ -55,22 +60,44 @@ def serviceIriOf (req : ProtoRequest) : String :=
   let path := if req.path.isEmpty then "/sparql/" else req.path
   "http://" ++ host ++ path
 
+/-- `NOW()` for a protocol evaluation: fixed, so a run is reproducible. -/
+def protocolNow : String := "2026-08-22T00:00:00Z"
+
+/-- Evaluate a parsed query over the empty dataset; the summary is
+informational (see the module header). -/
+def evalQueryNote (serviceIri : String) (q : Query) : String :=
+  let env : EvalEnv := { now := some protocolNow, base := q.base.orElse (fun _ => some serviceIri) }
+  match q.form with
+  | .select _    => s!"SELECT evaluated: {(evalSelect env Dataset.empty q).2.length} rows"
+  | .ask         => s!"ASK evaluated: {evalAsk env Dataset.empty q}"
+  | .construct _ => s!"CONSTRUCT evaluated: {(evalConstruct env Dataset.empty q).length} triples"
+  | .describe _  => "DESCRIBE parsed (no description policy in the Lean tree)"
+
+/-- Apply a parsed update to the empty dataset; the summary is
+informational. -/
+def applyUpdateNote (serviceIri : String) (u : Update) : String :=
+  let env : EvalEnv := { now := some protocolNow, base := u.base.orElse (fun _ => some serviceIri) }
+  match applyUpdateIn env Dataset.empty u with
+  | .ok ds   => s!"update applied: {ds.default.length} default triples, {ds.named.length} named graphs"
+  | .error e => s!"update error: {repr e}"
+
 /-- The protocol verdict for one decoded request against the expected
 status class. Pure, so the rule table is `#guard`-able:
 
   * `bad` → PASS iff 4xx expected;
   * `query` → parse with the service IRI as BASE: a parse error is a
     rejection (PASS iff 4xx expected); a parse is an acceptance
-    (PASS iff 2xx/3xx expected);
-  * `update` → `unsupported` (no Lean Update parser yet). -/
+    (PASS iff 2xx/3xx expected), evaluated over the empty dataset;
+  * `update` → the same through `parseSparqlUpdate` / `applyUpdateIn`. -/
 def protocolVerdict (req : ProtoRequest) (expected : StatusClass) : Outcome :=
   let ct := header req.headers "content-type"
   let decoded := decodeRequest req.method req.path req.qs ct req.body
-  let passIf2or3 : Outcome :=
+  let serviceIri := serviceIriOf req
+  let passIf2or3 (note : String) : Outcome :=
     match expected with
     | .s2or3 => .pass
-    | .s4xx  => .fail s!"Expected 4xx but decode_request accepted ({req.method} {req.path})"
-    | _      => .fail "Expected status class unknown; decode_request accepted"
+    | .s4xx  => .fail s!"Expected 4xx but decode_request accepted ({req.method} {req.path}; {note})"
+    | _      => .fail s!"Expected status class unknown; decode_request accepted ({note})"
   let passIf4xx (reason : String) : Outcome :=
     match expected with
     | .s4xx => .pass
@@ -78,11 +105,13 @@ def protocolVerdict (req : ProtoRequest) (expected : StatusClass) : Outcome :=
   match decoded with
   | .bad reason => passIf4xx reason
   | .query qtext _ _ =>
-    match parseSparql qtext (some (serviceIriOf req)) with
+    match parseSparql qtext (some serviceIri) with
     | .error e => passIf4xx s!"parse error: {e.msg} (offset {e.pos})"
-    | .ok _    => passIf2or3
-  | .update _ _ _ =>
-    .unsupported "SPARQL 1.1 Update request (the Lean tree has no Update parser yet)"
+    | .ok q    => passIf2or3 (evalQueryNote serviceIri q)
+  | .update utext _ _ =>
+    match parseSparqlUpdate utext (some serviceIri) with
+    | .error e => passIf4xx s!"update parse error: {e.msg} (offset {e.pos})"
+    | .ok u    => passIf2or3 (applyUpdateNote serviceIri u)
 
 def runProtocolTest (tc : TestCase) : IO Outcome := do
   match tc.comment with

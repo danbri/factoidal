@@ -2398,6 +2398,169 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
   to eps in a replace pattern (documented there as a known limitation);
   kept as-is in `replaceRe` so `replace` agrees with the F\*.
 
+## Stage: SPARQL 1.1 Update (branch `lean4/sparql-update`, 2026-08-22)
+
+Files: `L4Factoidal/SPARQL/Update.lean` (AST + §3 semantics),
+`SPARQL/UpdateParser.lean` (grammar [29]–[52]), `SPARQL/UpdateTests.lean`
+(84 guards), `SPARQL/UpdateTheorems.lean` (nine theorems),
+`Harness/Manifest.lean` (the `ut:` vocabulary), `Harness/Run.lean`
+(`UpdateEvaluationTest`, `PositiveUpdateSyntaxTest11`,
+`NegativeUpdateSyntaxTest11`).
+
+### Correspondence
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `graph_ref` (`GR_Default GR_Named GR_All GR_Graph`) | `GraphRef` | derives `DecidableEq` (the F\* `graph_ref_eq`) |
+| `update_op` (`U_Load` … `U_Modify`) | `UpdateOp` | same eleven constructors, same payloads |
+| `sparql_update` | `Update` | |
+| `count_named_triples`, `dataset_triple_count` (the fresh-label salt) | `Dataset.maxBnodeLabelLength`, `requestPrefix` | freshness by LENGTH, not by triple count — see "Decisions" |
+| `ps_to_subject_concrete`, `pt_to_iri_concrete`, `pt_to_term_concrete`, `tp_to_triple_concrete`, `bgp_to_triples_concrete`, `collect_quads` | `groundSubject`, `groundPredicate`, `groundObject`, `groundTriple`, `collectQuads` | |
+| `upsert_named_graph`, `insert_quad`, `insert_quads`, `remove_from_named_graph`, `delete_quad`, `delete_quads` | `replaceNamed`, `Dataset.insertQuad`, `Dataset.insertQuads`, `Dataset.deleteQuad`, `Dataset.deleteQuads`, `Graph.remove` | |
+| `rename_quad_bnodes`, `apply_insert_data` | `Quad.renameBnodes`, `freshDataBnode`, `applyInsertData` | |
+| `triple_has_bnode`, `filter_no_bnode_quads`, `apply_delete_data` | `Triple.hasBnode`, `applyDeleteData` | |
+| `instantiate_tp`, `instantiate_bgp`, `instantiate_ggp_quads`, `bound_subject_of_pattern_freshen`, `bound_object_of_pattern_freshen`, `instantiate_tp_freshen`, `instantiate_bgp_freshen`, `instantiate_ggp_quads_freshen`, `fresh_bnode_for_op` | `instSubject`, `instObject`, `instTriple`, `instQuads`, `freshTemplateBnode` | ONE instantiator with a `fresh : String → BNodeId` argument: `id` for DELETE templates, `freshTemplateBnode pre opIx solIx` for INSERT templates |
+| `instantiate_ggp_all`, `apply_delete_where` | `evalWhere`, `applyDeleteWhere` | |
+| `using_default_iris`, `using_named_iris`, `union_named_graphs_by_iri`, `named_graphs_by_iri`, `build_where_dataset` | `whereDataset` | |
+| `redirect_default_quad(s)`, `per_mapping_quads`, `per_mapping_insert_quads`, `insert_per_mapping_quads`, `apply_modify` | `redirectQuad`, `insertQuadsFor`, `applyModify` | |
+| `find_named_graph_triples`, `has_named_graph`, `replace_named_graph_triples`, `empty_graph_named`, `drop_named_by_iri`, `empty_all_named`, `ensure_named_graph` | `Dataset.graphOf`, `Dataset.hasGraph`, `Dataset.setGraph`, `Dataset.dropGraph`, `Dataset.clearAllNamed`, `Dataset.ensureGraph` | |
+| `read_graph_ref`, `graph_ref_exists`, `write_graph_ref` | `readRef`, `refExists`, `writeRef` | |
+| `apply_create`, `apply_clear`, `apply_drop`, `apply_copy`, `apply_move`, `apply_add`, `graph_append` | `applyCreate`, `applyClear`, `applyDrop`, `applyCopy`, `applyMove`, `applyAdd` (with `Graph.union`) | return `Except UpdateError Dataset` — see "Decisions" |
+| `apply_update_op`, `apply_update_ops_aux`, `apply_update_ops`, `apply_update` | `applyOp`, `applyOps`, `applyUpdateIn`, `applyUpdate` | |
+| `is_implemented_op`, `update_is_implemented_only` | `Update.hasNonSilentLoad` | |
+| `parse_iri_ref`, `parse_graph_ref_graph_only`, `parse_graph_ref_all`, `parse_graph_or_default`, `parse_silent` | `pIriRef`, `pGraphRef`, `pGraphRefAll`, `pGraphOrDefault`, `pSilent` | |
+| `gp_has_var`, `bgp_has_any_var`, `gp_has_bnode`, `bgp_has_any_bnode`, `gp_has_nested_graph_under_graph`, `gp_has_graph_anywhere` | `patHasVar`, `bgpHasVar`, `patHasBnode`, `bgpHasBnode`, `patHasNestedGraph`, `patHasGraph` | |
+| `parse_quad_block`, `parse_quad_data`, `parse_using_list`, `parse_single_update_op`, `parse_modify_after_with`, `parse_update_seq` | `pQuadBlock`, `pQuadData`, `pUsingList`, `pUpdateOp` (+ `pInsertTemplateOpt`, `pModifyRest`), `pModifyAfterWith`, `pUpdateSeq` | templates and WHERE clauses reuse `pTriplesBlock` / `pGroupGraphPattern` / `pGraphName` / `pPrologue` unchanged |
+| `labeled_bnodes_in_data_op`, `bnode_labels_unique_across_data_ops` | `labeledBnodesInDataOp`, `bnodeLabelsUniqueAcrossDataOps` | §19.6 |
+| `parse_sparql_update_with_base`, `parse_sparql_update_12_with_base`, `parse_sparql_update` | `parseSparqlUpdateWith`, `parseSparqlUpdate` | one entry point with a `version` argument |
+| `w3c_runner.ml` `extract_data_and_graphdata` (~409–464), the `mf:result` bnode branch (~552–573) | `Harness/Manifest.lean` `dataAndGraphData`, `TestCase.updateResultData` / `updateResultGraphData` | |
+| `w3c_runner.ml` the three update arms (2217–2312) | `Harness/Run.lean` `runUpdateEvaluation`, `runUpdateSyntaxTest`, `loadUpdateStore`, `dropEmptyNamed` | |
+
+### Decisions
+
+- **Error channel.** `applyUpdate : Dataset → Update → Except UpdateError
+  Dataset`. The F\* `apply_update` is total and its Part 19e banner
+  says "SILENT is advisory in our pure model — errors do not exist".
+  SPARQL 1.1 Update §3.2.1–§3.2.5 and §3.1.5 say CREATE of an existing
+  graph and CLEAR / DROP / COPY / MOVE / ADD naming a missing graph are
+  errors unless SILENT; this port raises `graphExists` /
+  `graphMissing` exactly there and `loadUnavailable` for a non-silent
+  LOAD. `SILENT` makes each the identity (theorems
+  `applyUpdate_clear_missing` / `_silent`, `applyUpdate_create_existing`).
+  The W3C suites never exercise the non-SILENT error path, so both
+  trees score the same 149; the difference is observable only on a
+  request the suites do not contain.
+- **Fresh blank nodes by construction.** `requestPrefix ds` is one
+  character longer than the longest label in the store, so every label
+  it prefixes is new. The F\* salts with the triple COUNT
+  (`SPARQL11.Algebra.fst:8709`), which can repeat across requests
+  (insert → delete something else → insert again lands on the same
+  count and the same `_insdata_<n>_<label>`). The SCOPING is the
+  F\*'s: one prefix per request for INSERT DATA (`freshDataBnode`,
+  §19.6, W3C `insert-data-same-bnode`), one node per (operation,
+  solution, label) for INSERT templates (`freshTemplateBnode`,
+  §3.1.3.2, W3C `insert-where-same-bnode`), variable-bound nodes pass
+  through (W3C `insert-05a`).
+- **One template instantiator.** The F\* keeps two families
+  (`instantiate_*` for DELETE, `*_freshen` for INSERT); here
+  `instQuads` takes the freshening function as an argument.
+- **Empty named graphs in the comparison.** `Harness/Run.lean` drops
+  empty named-graph slots on both sides before
+  `Dataset.isomorphicOutcome`. The F\* compares canonical N-Quads,
+  which cannot represent an empty graph; the Lean isomorphism matches
+  graph NAMES, so a slot left by `CLEAR GRAPH` / `CREATE GRAPH` would
+  otherwise fail a test the F\* passes. Recorded in the `Run.lean`
+  section banner.
+- **`WITH <g> DELETE WHERE { P }`** parses as the F\* does: a `modify`
+  whose DELETE template and WHERE clause are both `P`.
+
+### Measured against the real corpus
+
+`lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`,
+verbatim (update suites and total):
+
+```
+add: 8 pass, 0 fail, 0 skip, 0 unsupported (out of 8)
+basic-update: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+clear: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+copy: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete-data: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete-insert: 17 pass, 0 fail, 0 skip, 0 unsupported (out of 17)
+delete-where: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+delete: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
+drop: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+move: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+syntax-update-1: 54 pass, 0 fail, 0 skip, 0 unsupported (out of 54)
+syntax-update-2: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)
+update-silent: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)
+TOTAL: 505 pass, 0 fail, 0 skip, 126 unsupported (out of 631)
+```
+
+Baseline before this stage: `TOTAL: 356 pass, 0 fail, 0 skip, 275
+unsupported (out of 631)`; the 149 entries that moved are exactly the
+UpdateEvaluationTest (94), PositiveUpdateSyntaxTest11 (42) and
+NegativeUpdateSyntaxTest11 (13) entries. No LOAD skip: the suites
+contain no non-SILENT LOAD (the two `update-silent` LOAD tests are
+SILENT and run). The F\* runner's line for the same 631 is 631 pass,
+0 fail. The six RDF suites stay at 1078 pass, 0 fail, 0 skip, 0
+unsupported (out of 1078).
+
+### Guards and theorems
+
+`UpdateTests.lean`: 84 `#guard`s — INSERT DATA (set semantics, GRAPH
+blocks, same-label-one-node, request-fresh label), DELETE DATA (absent
+triple and absent graph are no-ops), DELETE WHERE (default, `GRAPH ?g`,
+`GRAPH <g>`), DELETE/INSERT (predicate rename, delete-before-insert,
+unbound-variable and literal-subject templates dropped, WITH on INSERT
+and DELETE, USING, USING NAMED, `GRAPH ?g` templates, fresh per
+solution, fresh per operation, variable-bound node preserved, WHERE
+blank node as variable), LOAD (SILENT identity, non-silent error,
+`hasNonSilentLoad`), CLEAR / CREATE / DROP / COPY / MOVE / ADD with
+their SILENT and error cases, the `;` sequence rules, prologue between
+operations, BASE, and the twelve `syntax-update-bad-NN.ru` texts
+verbatim plus §19.6.
+
+`UpdateTheorems.lean`: `applyUpdate_nil`, `applyUpdate_insertData_empty`,
+`applyUpdate_deleteData_empty`, `applyUpdate_insert_then_delete`
+(round trip, exact list equality), `applyUpdate_clearAll`,
+`applyUpdate_dropAll`, `applyUpdate_clear_missing`,
+`applyUpdate_clear_missing_silent`, `applyUpdate_create_existing`,
+`applyOps_cons`, with the helper lemmas `Graph.remove_of_not_mem` and
+`Graph.remove_add_of_not_mem`. Every `#print axioms` line reads a
+subset of `[propext, Classical.choice, Quot.sound]`.
+
+Sabotage record (2026-08-22): see the design-doc Status entry of the
+same date for the delete/insert-order swap.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]`. The F\* side: LOAD is the `U_Load _ _ _ -> ds` no-op
+(`SPARQL11.Algebra.fst:8693`); this port makes the non-silent case an
+explicit `UpdateError` instead of a silent success.
+
+### Findings against the F\* (not fixed here)
+
+- `SPARQL11.Algebra.fst:8438–8441` (Part 19e banner) with
+  `apply_create` (8566), `apply_clear` (8575), `apply_drop` (8594),
+  `apply_copy` (8611), `apply_move` (8627), `apply_add` (8655): the
+  `silent` flag is bound and discarded (`let _ = silent in`), so
+  `CREATE GRAPH <g>` on an existing graph and `CLEAR` / `DROP` /
+  `COPY` / `MOVE` / `ADD` on a missing graph succeed without SILENT.
+  SPARQL 1.1 Update §3.2.1–§3.2.5 and §3.1.5 make those errors. Not
+  visible in the W3C suites (no non-SILENT error case).
+- `SPARQL11.Algebra.fst:8707–8710` (`apply_update_ops`): the INSERT
+  DATA label salt is `string_of_int (dataset_triple_count ds)`. Two
+  requests run on stores with the same triple count produce the same
+  `_insdata_<n>_<label>`, so `INSERT DATA { _:b … }` re-run after a
+  delete that restores the count silently re-uses the earlier node
+  instead of creating a fresh one.
+- `SPARQL11.Algebra.fst:8693` (`apply_update_op`, `U_Load`): a
+  non-silent LOAD is a silent no-op inside the algebra; only the
+  runner's `update_is_implemented_only` pre-check (`w3c_runner.ml:2250`)
+  keeps it from scoring. A caller of `apply_update` that skips the
+  pre-check gets a success for a request §3.1.4 says must fail.
+
 ## Stage: SPARQL 1.1 Protocol, Graph Store HTTP Protocol, Service Description (2026-08-22)
 
 Branch `lean4/protocol`. The three protocol-shaped sparql11 test
@@ -2451,16 +2614,19 @@ Lean tree already has the results serialisers.
   (the F\* runner's `gsp_seed`; both trees report 1 on this suite —
   `DELETE - existing graph` names `person/2.ttl`, which no earlier
   entry PUT).
-- The protocol verdict omits the F\* runner's evaluation of the
-  decoded query over an empty dataset: that runner drops the result
-  and maps every evaluation outcome (rows, exception, unsupported
-  feature) to PASS when 2xx is expected, so the verdict there depends
-  on the decoder and the parser only; this port reproduces the verdict.
-- A request the decoder classifies as Update is `unsupported`, named
-  (no Lean Update parser on `claude/main` at the time of this stage).
-  Caveat recorded by the second sabotage below: a decoder regression
-  on an update-shaped 4xx test (e.g. `bad_update_non_utf8`) lands in
-  the unsupported bucket, not in fail, until Update parsing lands.
+- The F\* runner evaluates the decoded query (or applies the update)
+  over an empty dataset and drops the result, mapping every
+  evaluation outcome to PASS when 2xx is expected; the verdict depends
+  on the decoder and the parser only. This port does the same
+  evaluation and carries its one-line summary into the FAIL text of an
+  accepted-but-4xx-expected entry — the only place it can show. Only
+  the first request block of an entry is decoded in either tree (the
+  `update_dataset_*` UPDATE-then-ASK sequences are not replayed).
+- Update-shaped requests go through `parseSparqlUpdate` /
+  `applyUpdateIn` (the SPARQL 1.1 Update stage above, merged from
+  `claude/main` into this branch before it closed). Before that merge
+  they scored `unsupported` (26 pass, 8 unsupported on protocol); the
+  merge took the suite to 34 of 34.
 
 ### Guards and theorems
 
@@ -2486,21 +2652,19 @@ IRI is 400).
 ### Measured (`lake exe l4w3c`, verbatim)
 
 ```
-protocol: 26 pass, 0 fail, 0 skip, 8 unsupported (out of 34)
+protocol: 34 pass, 0 fail, 0 skip, 0 unsupported (out of 34)
 http-rdf-update: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
 service-description: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)
-TOTAL: 404 pass, 0 fail, 0 skip, 227 unsupported (out of 631)
+TOTAL: 561 pass, 0 fail, 0 skip, 70 unsupported (out of 631)
 ```
 
-The 8 unsupported are the update-shaped entries:
-`update_dataset_default_graph`, `update_dataset_default_graphs`,
-`update_dataset_named_graphs`, `update_dataset_full`,
-`update_post_form`, `update_post_direct`, `update_base_uri`,
-`bad_update_syntax`. The F\* runner (`docs/test-results/latest.json`)
-has protocol 34 pass, 0 fail (out of 34); http-rdf-update 19 pass,
-0 fail (out of 19), `gsp_seed` 1; service-description 3 pass, 0 fail
-(out of 3). The query types stay at 356 pass, 0 fail; the six RDF
-suites at 1078 pass, 0 fail (out of 1078).
+The 70 unsupported are the entailment-regime evaluation tests. The
+F\* runner (`docs/test-results/latest.json`) has protocol 34 pass,
+0 fail (out of 34); http-rdf-update 19 pass, 0 fail (out of 19),
+`gsp_seed` 1; service-description 3 pass, 0 fail (out of 3). The
+query types stay at 356 pass, 0 fail; the Update types at the Update
+stage's numbers; the six RDF suites at 1078 pass, 0 fail (out of
+1078).
 
 Sabotage record (2026-08-22):
 1. `+` → space removed from `pctUnits`: `lake build` fails at
@@ -2510,10 +2674,12 @@ Sabotage record (2026-08-22):
    only `+` characters are in response media types. The guards are
    the only detector for this rule.
 2. `charsetIsUtf8OrAbsent` forced to `true` (three guards disabled):
-   `bad_query_non_utf8` flips to FAIL ("Expected 4xx but
-   decode_request accepted (POST /sparql/)"); `bad_update_non_utf8`
-   moves to unsupported (the caveat above). Restored; the numbers
-   above are from the restored build.
+   `bad_query_non_utf8` and `bad_update_non_utf8` flip to FAIL
+   ("Expected 4xx but decode_request accepted (POST /sparql/; …)").
+   Before the Update merge the second landed in `unsupported` instead
+   — a decoder regression on an update-shaped entry was invisible
+   until the Update parser existed. Restored; the numbers above are
+   from the restored build.
 
 ### Assumption report (append)
 
