@@ -160,3 +160,5 @@ import L4Factoidal.XPath.Number
 import L4Factoidal.XPath.NumberTests
 import L4Factoidal.Schematron.Validate
 import L4Factoidal.Schematron.Tests
+import L4Factoidal.HTTP.Server
+import L4Factoidal.HTTP.Tests

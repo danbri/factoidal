@@ -4218,3 +4218,38 @@ if flipped:
 The XPath evaluation and context selection are PARAMETERS, not a
 global registry — purity doctrine, and it also makes the whole module
 testable without an XPath engine.
+
+### HTTP: the SPARQL endpoint's request/response layer (2026-08-22)
+
+`HTTP/Server.lean` ports `SPARQL.HTTP.fst`, `.Routes.fst` and
+`.Response.fst`: request model, query-string parsing, routing,
+content negotiation and the response constructors. Everything is a
+TOTAL FUNCTION from a parsed request to a response decision — sockets
+and reads stay outside — so the whole Web surface is testable with no
+network.
+
+This closes a gap the parity ledger flagged against the project's own
+framing: the Lean tree had the protocol SEMANTICS (Protocol,
+GraphStore, ServiceDescription) but not the server that speaks them.
+
+A REAL BUG in this port, caught by a `#guard` before it landed:
+`formDecode` built one `Char` per percent-escape, so `%C3%A9` became
+two Latin-1 characters instead of `é`. Percent-decoding must happen at
+the BYTE level with UTF-8 interpretation at the end. That is the
+classic mojibake bug and it would have corrupted every non-ASCII
+query string. Fixed and guarded.
+
+Spec details pinned because each is a protocol violation when wrong:
+- A 405 MUST carry `Allow` (RFC 7231 §6.5.5); a bare 405 is
+  non-conforming, not merely unhelpful.
+- `HEAD` is allowed wherever `GET` is.
+- `OPTIONS` is answered BEFORE path matching, so CORS preflight works
+  on every endpoint including unknown ones.
+- On a shared endpoint an `update=` parameter (or the
+  `application/sparql-update` content type) selects update even on the
+  query path — Protocol §2.2.
+- `q=0` means NOT ACCEPTABLE and can never be chosen, even for the
+  server's own first preference. q-values are scaled to integers so
+  the ordering is exact rather than a float comparison.
+- A malformed percent-escape is kept VERBATIM rather than dropped;
+  deleting bytes from a query changes what was asked.
