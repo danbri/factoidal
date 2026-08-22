@@ -166,3 +166,5 @@ import L4Factoidal.Storage.Bytes
 import L4Factoidal.Storage.Tests
 import L4Factoidal.MathML.Core
 import L4Factoidal.MathML.Tests
+import L4Factoidal.XSLT.Templates
+import L4Factoidal.XSLT.Tests
