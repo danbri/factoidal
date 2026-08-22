@@ -19,5 +19,10 @@ import L4Factoidal.RDFS.ClosureTheorems
 import L4Factoidal.RDFS.ClosureTests
 import L4Factoidal.SPARQL.Expr
 import L4Factoidal.SPARQL.ExprTheorems
+import L4Factoidal.Syntax.Lexing
+import L4Factoidal.Syntax.NTriples
+import L4Factoidal.Syntax.NQuads
+import L4Factoidal.Syntax.SyntaxTests
+import L4Factoidal.Syntax.SyntaxTheorems
 import L4Factoidal.Tests
 import L4Factoidal.SPARQL.ExprTests

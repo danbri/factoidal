@@ -1,0 +1,262 @@
+/-
+L4Factoidal.Syntax.NQuads — the N-Quads parser and serialiser.
+
+Port of `formal/fstar/Parser.NQuads.fst`'s document-level grammar
+(`parse_graph_label` / `parse_opt_graph_label` / `parse_nquad` /
+`parse_nquads_strict` / `parse_nquads_strict_12` / `dataset_add_quad`) and
+of the N-Quads half of `formal/fstar/RDF.NQuads.Serialize.fst`
+(`nq_line_for_triple`, folded over a dataset's named graphs), built on
+`Syntax.NTriples` (N-Quads reuses N-Triples' subject/predicate/object/
+literal readers verbatim — RDF 1.1 N-Quads §"N-Quads" extends N-Triples
+with exactly one addition: an optional fourth GRAPH LABEL slot).
+
+Grammar productions ported (RDF 1.1 N-Quads, https://www.w3.org/TR/n-quads/):
+  [1] nquadsDoc  [2] statement  [6] graphLabel
+(`[3] subject`, `[4] predicate`, `[5] object`, `[7] literal`, etc. are
+identical to N-Triples and are NOT re-ported — `Syntax.NTriples`'s
+readers are reused directly.)
+
+Ported entry points: `parseNQuads` (strict — port of `parse_nquads_strict`
+/ `parse_nquads_strict_12`; any malformed line aborts the whole parse,
+same STRICT design choice as `Syntax.NTriples.parseNTriples` and for the
+same reason: a lenient skip-and-recover parser is a CLI/import-pipeline
+convenience, not part of the grammar this module specifies). NOT ported:
+the F* source's lenient `parse_nquads`/`parse_nquads_12`, the streaming
+fold (`fold_nquads`), the `--count` scanners (`count_nquads_quads`,
+`validate_*`), and the flat-quad-list convenience (`parse_nquads_flat`) —
+all CLI/performance pragmatics over the same grammar.
+
+The blank-node-as-graph-name sentinel encoding the F* source uses
+(`"_:label"` packed into the `iri` string slot, because `named_graph.ng_name`
+has no sum type — see `docs/designissues/2026-04-25-nquads-bnode-graph-fix.md`)
+is NOT needed here: `RDF.NamedGraph.name` is typed `Iri := String` too, but
+this port keeps the graph label as a genuine `Subject` end to end
+(`Iri ⊕ BNodeId`, realised via `Subject`) through parsing and only
+projects it to a bare `Iri` string at the `Dataset.lookupNamed`
+boundary the way `RDF.Graph` already expects it — see `graphLabelToIri`
+below, the one place this port's `Dataset` (from `RDF.Graph`) forces a
+choice the F* `rdf_dataset` type did not have to make.
+-/
+
+import L4Factoidal.RDF.Graph
+import L4Factoidal.Syntax.NTriples
+
+namespace L4Factoidal.Syntax
+
+open L4Factoidal.RDF
+
+/-! ## Graph label — [6] graphLabel: `graphLabel ::= IRIREF | BLANK_NODE_LABEL`
+
+A literal is explicitly NOT a legal graph label (RDF 1.1 N-Quads
+§"N-Quads", port of `parse_opt_graph_label`'s literal-rejection branch). -/
+
+/-- Read a graph label as a `Subject` (IRI or blank node) — the same shape
+as `readSubject`, kept as a distinct reader because the ERROR MESSAGE at
+the literal-rejection branch is graph-label-specific (port of
+`parse_graph_label`). -/
+def readGraphLabel (pos : Nat) (cs : List Char) : Except ParseError (Subject × Nat × List Char) :=
+  match cs with
+  | '<' :: _ =>
+      match readIriRef pos cs with
+      | .error e => .error e
+      | .ok (s, pos', rest') =>
+          match mkIri pos s with
+          | .error e => .error e
+          | .ok wi => .ok (.iri wi, pos', rest')
+  | '_' :: ':' :: _ =>
+      match readBlankNodeLabel pos cs with
+      | .error e => .error e
+      | .ok (label, pos', rest') => .ok (.bnode label, pos', rest')
+  | '"' :: _ => .error ⟨"literals are not allowed as graph names in N-Quads", pos⟩
+  | _ => .error ⟨"expected graph label (IRIREF or BLANK_NODE_LABEL)", pos⟩
+
+/-- Optional fourth (graph-label) slot: peeks past whitespace; `none` if
+the next non-whitespace character is `.` (default graph). Port of
+`parse_opt_graph_label`. -/
+def readOptGraphLabel (pos : Nat) (cs : List Char) :
+    Except ParseError (Option Subject × Nat × List Char) :=
+  let (pos1, cs1) := skipWs pos cs
+  match cs1 with
+  | '.' :: _ => .ok (none, pos1, cs1)
+  | '<' :: _ =>
+      (match readGraphLabel pos1 cs1 with
+       | .error e => .error e
+       | .ok (g, pos', rest') => .ok (some g, pos', rest'))
+  | '_' :: ':' :: _ =>
+      (match readGraphLabel pos1 cs1 with
+       | .error e => .error e
+       | .ok (g, pos', rest') => .ok (some g, pos', rest'))
+  | '"' :: _ => .error ⟨"literals are not allowed as graph names in N-Quads", pos1⟩
+  | _ => .ok (none, pos1, cs1)
+
+/-- Project a graph-label `Subject` down to the `Iri` string
+`RDF.NamedGraph.name`/`Dataset.lookupNamed` key on. Blank-node graph
+labels are given the SAME `"_:label"` sentinel prefix the F* source's
+`parse_graph_label` doc comment describes (`ds_named`'s key really is
+just a `string`, in both the F* source and this port's `RDF.Graph`) —
+kept for exact behavioural parity with the F* dataset, even though this
+port could in principle carry `Subject` all the way into `NamedGraph`. -/
+def graphLabelToIri : Subject → Iri
+  | .iri i   => i.val
+  | .bnode b => "_:" ++ b
+
+/-! ## Statement — [2] statement:
+`statement ::= subject predicate object graphLabel? '.'`
+
+Reuses `Syntax.NTriples.readSubject` / `readPredicate` /
+`readObject11` / `readObject12` verbatim (RDF 1.1 N-Quads §"N-Quads":
+"The syntax of N-Quads is a superset of the syntax for N-Triples […]
+extended to represent an optional context"). -/
+
+/-- One N-Quad line (RDF 1.1 object grammar). Port of `parse_nquad`. -/
+def readNQuad11 (pos : Nat) (cs : List Char) :
+    Except ParseError (Triple × Option Subject × Nat × List Char) :=
+  let (pos1, cs1) := skipWs pos cs
+  match readSubject pos1 cs1 with
+  | .error e => .error e
+  | .ok (subj, pos2, cs2) =>
+      let (pos3, cs3) := skipWs pos2 cs2
+      match readPredicate pos3 cs3 with
+      | .error e => .error e
+      | .ok (pred, pos4, cs4) =>
+          let (pos5, cs5) := skipWs pos4 cs4
+          match readObject11 pos5 cs5 with
+          | .error e => .error e
+          | .ok (obj, pos6, cs6) =>
+              match readOptGraphLabel pos6 cs6 with
+              | .error e => .error e
+              | .ok (gopt, pos7, cs7) =>
+                  let (pos8, cs8) := skipWs pos7 cs7
+                  match cs8 with
+                  | '.' :: cs9 =>
+                      .ok ({ s := subj, p := pred, o := obj }, gopt, pos8 + 1, cs9)
+                  | _ => .error ⟨"expected '.' terminator", pos8⟩
+
+/-- One N-Quad line (RDF 1.2 object grammar: the object slot may be a
+triple term). Port of `parse_nquad_12`. -/
+def readNQuad12 (pos : Nat) (cs : List Char) :
+    Except ParseError (Triple × Option Subject × Nat × List Char) :=
+  let (pos1, cs1) := skipWs pos cs
+  match readSubject pos1 cs1 with
+  | .error e => .error e
+  | .ok (subj, pos2, cs2) =>
+      let (pos3, cs3) := skipWs pos2 cs2
+      match readPredicate pos3 cs3 with
+      | .error e => .error e
+      | .ok (pred, pos4, cs4) =>
+          let (pos5, cs5) := skipWs pos4 cs4
+          match readObject12 (cs5.length + 1) pos5 cs5 with
+          | .error e => .error e
+          | .ok (obj, pos6, cs6) =>
+              match readOptGraphLabel pos6 cs6 with
+              | .error e => .error e
+              | .ok (gopt, pos7, cs7) =>
+                  let (pos8, cs8) := skipWs pos7 cs7
+                  match cs8 with
+                  | '.' :: cs9 =>
+                      .ok ({ s := subj, p := pred, o := obj }, gopt, pos8 + 1, cs9)
+                  | _ => .error ⟨"expected '.' terminator", pos8⟩
+
+/-! ## Dataset construction -/
+
+/-- Add one parsed quad to a dataset: no graph label → default graph,
+`Some g` → the named graph `g` (created if absent). Port of
+`dataset_add_quad`, minus its `graph_add_unchecked` / `dataset_finalise`
+prepend-then-reverse performance split (an O(1)-amortised-append
+optimisation over the same set semantics `RDF.Graph.add`/`Graph.union`
+already implement for this port's executable `Dataset`) — this port adds
+directly via `Graph.add`/list-append, matching `RDF.Graph`'s existing
+representation. -/
+def addQuad (ds : Dataset) (t : Triple) (gopt : Option Subject) : Dataset :=
+  match gopt with
+  | none => { ds with default := ds.default.add t }
+  | some g =>
+      let name := graphLabelToIri g
+      match ds.named.find? (fun ng => ng.name == name) with
+      | some ng =>
+          let updated : NamedGraph := { name := name, graph := ng.graph.add t }
+          { ds with named := ds.named.map (fun ng' => if ng'.name == name then updated else ng') }
+      | none =>
+          { ds with named := ds.named ++ [{ name := name, graph := [t] }] }
+
+/-! ## Document — [1] nquadsDoc
+
+`nquadsDoc ::= statement? (EOL statement?)*`, plus `#`-comments and blank
+lines (identical document structure to N-Triples). STRICT: any malformed
+line aborts the whole parse. Port of `parse_nquads_strict_acc` /
+`parse_nquads_strict_12_acc`. -/
+def parseQuadLinesAcc (mode : Mode) :
+    Nat → Nat → List Char → Dataset → Except ParseError Dataset
+  | 0, pos, _, _ =>
+      .error ⟨"internal error: parser fuel exhausted (should be unreachable)", pos⟩
+  | fuel' + 1, pos, cs, ds =>
+      let (pos1, cs1) := skipWs pos cs
+      match cs1 with
+      | [] => .ok ds
+      | '#' :: _ =>
+          let (pos2, cs2) := skipComment pos1 cs1
+          let (pos3, cs3) := skipEol pos2 cs2
+          parseQuadLinesAcc mode fuel' pos3 cs3 ds
+      | '\n' :: _ =>
+          let (pos2, cs2) := skipEol pos1 cs1
+          parseQuadLinesAcc mode fuel' pos2 cs2 ds
+      | '\r' :: _ =>
+          let (pos2, cs2) := skipEol pos1 cs1
+          parseQuadLinesAcc mode fuel' pos2 cs2 ds
+      | _ =>
+          let step := match mode with
+            | .rdf11 => readNQuad11 pos1 cs1
+            | .rdf12 => readNQuad12 pos1 cs1
+          match step with
+          | .error e => .error e
+          | .ok (t, gopt, pos2, cs2) =>
+              let ds' := addQuad ds t gopt
+              let (pos3, cs3) := skipWs pos2 cs2
+              let (pos4, cs4) := skipComment pos3 cs3
+              let (pos5, cs5) := skipEol pos4 cs4
+              parseQuadLinesAcc mode fuel' pos5 cs5 ds'
+
+/-- Parse a complete N-Quads document into a `Dataset`. Default mode is
+RDF 1.1. Port of `parse_nquads_strict_mode`. -/
+def parseNQuads (s : String) (mode : Mode := .rdf11) : Except ParseError Dataset :=
+  let cs := s.toList
+  parseQuadLinesAcc mode (cs.length + 1) 0 cs Dataset.empty
+
+/-! ## Serialisation
+
+Port of `RDF.NQuads.Serialize.fst`'s `nq_line_for_triple` (named-graph
+lines) composed with `Syntax.NTriples`'s default-graph line
+(`Triple.toNTriples`) over a whole `Dataset` — the F* source has no single
+"serialise a dataset" entry point at this layer either (see the note on
+`Graph.toNTriples`); this is the natural `Except`-threaded fold. -/
+
+/-- One line for a triple in a named graph: `s p o <graph> .\n`. Port of
+`nq_line_for_triple`. -/
+def namedLine (mode : Mode) (graphIri : Iri) (t : Triple) : Except String String :=
+  match Term.toNTriples mode t.o with
+  | .error e => .error e
+  | .ok oStr =>
+      .ok (Subject.toNTriples t.s ++ " <" ++ t.p.val ++ "> " ++ oStr ++
+           " <" ++ graphIri ++ "> .\n")
+
+/-- Serialise a whole `Dataset`: default-graph lines (N-Triples form),
+then named-graph lines, input order preserved within each graph. -/
+def Dataset.toNQuads (ds : Dataset) (mode : Mode := .rdf11) : Except String String :=
+  match Graph.toNTriples ds.default mode with
+  | .error e => .error e
+  | .ok defaultLines =>
+      ds.named.foldl (fun acc ng =>
+        match acc with
+        | .error e => .error e
+        | .ok s =>
+            ng.graph.foldl (fun acc2 t =>
+              match acc2 with
+              | .error e => .error e
+              | .ok s2 =>
+                  match namedLine mode ng.name t with
+                  | .error e => .error e
+                  | .ok line => .ok (s2 ++ line))
+              (.ok s))
+        (.ok defaultLines)
+
+end L4Factoidal.Syntax
