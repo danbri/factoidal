@@ -11,4 +11,7 @@ import L4Factoidal.RDFS.RdfsCore
 import L4Factoidal.RDFS.Closure
 import L4Factoidal.RDFS.ClosureTheorems
 import L4Factoidal.RDFS.ClosureTests
+import L4Factoidal.SPARQL.Expr
+import L4Factoidal.SPARQL.ExprTheorems
 import L4Factoidal.Tests
+import L4Factoidal.SPARQL.ExprTests
