@@ -45,6 +45,12 @@ module.exports = class {
         series: (data) => data.post.data.series,
         series_order: (data) => data.post.data.series_order,
         vocab: (data) => data.post.data.vocab,
+        // Threaded through so hub.njk's CSP meta tag can add the two
+        // npm-CDN hostnames to script-src on this post's live twin ONLY
+        // (see hub.njk's CSP comment) -- undefined for every post that
+        // doesn't set it in front matter, which keeps script-src
+        // identical to before for all of them.
+        hubAllowRegistryCdn: (data) => data.post.data.hubAllowRegistryCdn,
         // hub.njk's live banner + <base href> point back at the strict
         // original via `livePostSlug` — the ONE piece of per-post
         // state the layout needs that isn't already on `post`/`page`
