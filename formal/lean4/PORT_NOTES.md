@@ -982,3 +982,144 @@ That is one test today; it will be every `graph-*` entry of the
 rdf-canon suite later. The same file also still lacks
 `deriving DecidableEq` on `NamedGraph`/`Dataset`, as the previous stage
 recorded.
+
+## The W3C harness stage (`Harness/{Common,Manifest,Run,Main,HarnessTests}.lean`, 2026-08-22)
+
+Ladder rung 3 of https://github.com/danbri/factoidal/issues/466: a
+native Lean executable, `lake exe l4w3c`, that reads the REAL W3C
+`manifest.ttl` files off disk with the Lean Turtle parser and scores
+the Lean engine in the same score-line grammar
+`bin/w3c-runner/w3c_runner.ml` prints. Design:
+[`docs/designissues/2026-08-22-lean4-w3c-harness.md`](../../docs/designissues/2026-08-22-lean4-w3c-harness.md).
+
+This replaces the DIRECTORY WALK the two probes do.
+`Harness/TurtleProbe.lean` and `Harness/CanonProbe.lean` still build
+and still work; they infer what a file means from its NAME
+(`*-bad-*`) and from sibling pairs, which is one rung below reading
+the test TYPE out of the manifest. `l4w3c` reads the type, so its
+numbers are conformance scores rather than probe counts.
+
+### Module correspondence (append)
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `Harness/Common.lean` | `w3c_runner.ml` `iri_to_local_path` / `relpath_under` / `make_turtle_base_tc`, the `Pass`/`Fail`/`Skip` result type, the score + `HARNESS-DIAG` lines | pure string/counter code, so every piece is pinned by `#guard`; adds the fourth bucket `unsupported` |
+| `Harness/Manifest.lean` | `w3c_runner.ml` `extract_test_cases` (~line 380), `read_manifest` (~line 602), `extract_assumed_test_base` | `mf:entries` RDF-collection walk (`rdf:first`/`rdf:rest`), `rdf:type` to type local name, `mf:action` as file IRI OR `qt:`-bearing bnode, `mf:result`, `rdft:approval`, `rdfc:hashAlgorithm` |
+| `Harness/Run.lean` | `w3c_runner.ml` `run_rdf_test` (~lines 2644-2850) + `Harness/CanonProbe.lean` | per-test-type dispatch for the four rdf11 syntax suites and RDFC-1.0 |
+| `Harness/Main.lean` | `w3c_runner.ml` main loop + summary rows | `lake exe l4w3c [--quiet] <manifest.ttl>...`; exit 1 on any fail |
+| `Harness/HarnessTests.lean` | (new) | 57 `#guard`s on the manifest walk, the path arithmetic and the score-line formatter, plus six `#print axioms` audit lines |
+
+### Decisions taken, and why
+
+- **The manifest is parsed with base `file://<absolute manifest path>`**,
+  exactly as `read_manifest` does, so a relative entry `<x.ttl>`
+  resolves to `file:///.../x.ttl` and `iriToLocalPath` turns it
+  straight back into a path. No path guessing anywhere.
+- **`mf:assumedTestBase` is READ, not hardcoded.** The design brief
+  named `http://www.w3.org/2013/TurtleTests/<file>`; the vendored
+  corpus has since MOVED and its manifests declare
+  `https://w3c.github.io/rdf-tests/rdf/rdf11/rdf-turtle/`, with
+  fixtures regenerated against the new base. The F\* runner reads the
+  triple (`extract_assumed_test_base`), so this port does too — a
+  hardcoded base would have silently failed the IRI-resolution tests.
+- **`rdft:approval` is recorded, never filtered on.** The F\* runner
+  never consults approval: it runs `Approved`, `Proposed` and
+  `Rejected` entries alike, and its denominators are the full typed
+  entry counts. Matching its denominators means matching that
+  treatment. The field is on `TestCase` for a later policy decision.
+- **An unexecutable type still produces a `TestCase`.** RDF/XML and
+  every SPARQL type score `unsupported <type>` — named and counted,
+  inside the denominator. Dropping them would shrink the total
+  silently, which is the exact failure mode `HARNESS-DIAG` exists to
+  prevent.
+- **A give-up is not a pass.** `IsoOutcome.budgetExceeded` scores
+  `fail` with its own reason string AND raises the `budget_exceeded`
+  diagnostic counter. `RDFC10NegativeEvalTest` uses the same
+  `negativeBudget := 1000` `CanonProbe` uses.
+- **Comparison mechanism follows the F\* runner exactly.** Turtle eval
+  is `Graph.isomorphicOutcome` against the parsed `.nt`; TriG eval is
+  `Dataset.isomorphicOutcome` against the parsed `.nq`. The F\*
+  runner's `graphs_equal_strict` / `datasets_equal_strict` call
+  `graphs_isomorphic_outcome` / `datasets_isomorphic_outcome` — NOT
+  the canonicalizer, despite what the comment above
+  `datasets_equal_strict` says. Following the code rather than the
+  comment is what makes the two trees' TriG numbers comparable, and it
+  is what exposes the dataset-model gap below instead of masking it.
+- **Totality.** The `mf:entries` collection walk is fuel-bounded by
+  the manifest's triple count (each link consumes an `rdf:rest`
+  triple, so no chain can be longer). No `partial` anywhere in
+  `Harness/`, including the I/O driver loop. `#print axioms` on
+  `parseManifestText`, `extractTestCases`, `collectList`,
+  `iriToLocalPath` and `fixtureBase` reports exactly `propext`,
+  `Classical.choice`, `Quot.sound`; on `Score.line`, only `propext`.
+
+### Measured 2026-08-22 — the first Lean conformance scores
+
+Score lines exactly as `lake exe l4w3c --quiet` printed them, beside
+the F\* tree's numbers for the same manifests from
+[`docs/test-results/latest.json`](../../docs/test-results/latest.json)
+(commit `c3c0c37`):
+
+```
+rdf-turtle: 313 pass, 0 fail, 0 skip, 0 unsupported (out of 313)
+rdf-n-triples: 70 pass, 0 fail, 0 skip, 0 unsupported (out of 70)
+rdf-n-quads: 87 pass, 0 fail, 0 skip, 0 unsupported (out of 87)
+rdf-trig: 354 pass, 2 fail, 0 skip, 0 unsupported (out of 356)
+rdf-canon: 86 pass, 0 fail, 0 skip, 0 unsupported (out of 86)
+TOTAL: 910 pass, 2 fail, 0 skip, 0 unsupported (out of 912)
+```
+
+| Suite | Lean (`l4w3c`) | F\* (`w3c_runner`) | Denominator |
+|---|---|---|---|
+| rdf-turtle | 313 pass, 0 fail | 313 pass, 0 fail | 313 = 313, agrees |
+| rdf-n-triples | 70 pass, 0 fail | 70 pass, 0 fail | 70 = 70, agrees |
+| rdf-n-quads | 87 pass, 0 fail | 87 pass, 0 fail | 87 = 87, agrees |
+| rdf-trig | 354 pass, **2 fail** | 356 pass, 0 fail | 356 = 356, agrees |
+| rdf-canon | 86 pass, 0 fail | 86 pass, 0 fail | 86 = 86, agrees |
+
+Every denominator matches the F\* runner's, which is the check that
+the manifest walk is not quietly dropping entries. Cross-checked
+against the manifests directly: the type counts
+(`grep -oE "rdft:Test[A-Za-z0-9]+" manifest.ttl | sort | uniq -c`)
+sum to 313 / 70 / 87 / 356, and the rdf-canon `mf:entries` list has
+86 members.
+
+### The two failures, both engine-attributed
+
+Both are `TestTrigEval` entries, and both are the dataset-model gap
+the previous stage recorded under "Core/Graph change that would help"
+— now measured against the real manifest rather than a directory walk:
+
+- `anonymous_blank_node_graph` — `[] {...}`, an anonymous blank-node
+  graph name; the fixture's `.nq` writes `_:b1`.
+- `labeled_blank_node_graph` — `_:g {...}`; the `.nq` writes `_:b1`.
+
+Root cause, pinned: `RDF/Graph.lean:81` gives `NamedGraph.name` the
+type `Iri` (a `String`), so `Syntax.NQuads.graphLabelToIri` carries a
+blank-node graph name as the sentinel string `"_:" ++ label`. Then
+`RDF/Isomorphism.lean:435` `Dataset.namesMatchB` compares graph names
+by raw string equality, and `Dataset.isoSearchStep:483` short-circuits
+to `none` on a name mismatch BEFORE any bijection search runs. `_:g`
+and `_:b1` are different strings, so two datasets that are isomorphic
+in the RDF 1.1 Concepts §4/§3.6 sense are reported unequal.
+
+Not a parser defect and not a harness defect: the same two files run
+through this tree's own RDFC-1.0 canonicalizer come out IDENTICAL
+(`<http://a.example/s> <http://a.example/p> <http://a.example/o> _:c14n0 .`
+on both sides), so `RDF/Canonical.lean` already handles blank-node
+graph labels. Only the isomorphism path does not. The fix is the one
+already written down: `NamedGraph.name` wants to be a `Subject` (or an
+`Iri`/`BNodeId` sum) and `Dataset.checkMapping` wants to apply the
+candidate blank-node mapping to graph names before comparing them.
+`RDF/Graph.lean` and `RDF/Isomorphism.lean` are owned elsewhere, so
+this stage reports rather than edits.
+
+### One earlier "known miss" that turns out not to be scored
+
+`test-38.ttl` (a UTF-16 surrogate PAIR written as two `\u` escapes,
+rejected because `\uD801` is not a Unicode scalar value) is NOT one of
+the rdf-turtle manifest's 313 entries. The directory-walking probe hit
+it; the manifest-driven runner does not, and neither does the F\*
+runner. That is why rdf-turtle scores 313 of 313 here while the probe
+reported a failure — the two are counting different populations, which
+is the whole reason this rung exists.

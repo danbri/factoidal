@@ -208,4 +208,19 @@ runs out of budget is a FAILURE with its own name, and it raises the
 #guard (isoResult "x" .budgetExceeded).budgetExceeded
 #guard !(isoResult "x" .notEqual).budgetExceeded
 
+/-! ## Axiom audit
+
+Printed into every build log. The acceptable base is exactly Lean's
+own foundations — `propext`, `Classical.choice`, `Quot.sound` — and
+these definitions should reach even fewer. No `sorry`, no user
+`axiom`, no `Lean.ofReduceBool` (which is what `native_decide` would
+smuggle in). -/
+
+#print axioms parseManifestText
+#print axioms extractTestCases
+#print axioms collectList
+#print axioms Score.line
+#print axioms iriToLocalPath
+#print axioms fixtureBase
+
 end Harness.Tests
