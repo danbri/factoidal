@@ -148,7 +148,11 @@ def cellObjects (inh : Inherited) (r : CellResult) : List Term :=
     | none =>
         -- A value that failed its own format gets NO datatype: the
         -- text is reported, the claim about its value is not.
-        match (if ok then (base.bind datatypeIriFor).bind toIri? else none) with
+        -- An explicit `@id` on the datatype object names the IRI
+        -- directly; only when there is none does the `base` decide.
+        let dtIri := (inh.datatype.bind Datatype.idOf).orElse
+          (fun _ => base.bind datatypeIriFor)
+        match (if ok then dtIri.bind toIri? else none) with
         | some dt => Term.literal (typedLiteral dt lex)
         | none    => Term.literal (Literal.string lex))
   fromUrls ++ fromLits

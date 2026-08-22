@@ -115,10 +115,12 @@ private def euro : NumFmt := { groupChar := '.', decimalChar := ',' }
 -- January.
 #guard formatConvert "date" (some "yyyy") none none none "1960" == .invalid
 
--- The duration `format` facet is an XSD REGEX and still needs an
--- engine this slice does not have, but the LEXICAL SPACE is checkable
--- either way -- which is what stops `Foo` becoming an xsd:duration.
-#guard formatConvert "duration" (some "^.$") none none none "P1D" == .valid "P1D"
+-- The duration `format` facet is an XSD REGEX and needs an engine this
+-- slice does not have, so a value under one cannot be SHOWN valid and
+-- gets no datatype. With NO format the lexical space is still
+-- checkable, which is what stops `Foo` becoming an xsd:duration.
+#guard formatConvert "duration" (some "^.$") none none none "P1D" == .invalid
+#guard formatConvert "duration" none none none none "P1D" == .valid "P1D"
 #guard formatConvert "duration" none none none none "Foo" == .invalid
 #guard isDurationLexical "P1Y2M3DT4H5M6S"
 #guard isDurationLexical "-P1D"

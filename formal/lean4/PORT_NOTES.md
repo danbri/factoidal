@@ -5153,3 +5153,38 @@ skip (out of 210 attempted)** — from 153.
 
 Running total for the day: 9 pass out of 9 attempted → 179 pass out of
 210 attempted, with the denominator itself growing from 9 to 210.
+
+### CSVW: five more rules, and one where "cannot check" is the answer
+(2026-08-22)
+
+1. **The exponent marker in a number pattern is LITERAL.** A pattern
+   written with `E` requires an `E` in the value: `10.10e10` does not
+   match `0.00E0` (test157).
+2. **An explicit `@id` on a datatype object names the literal's IRI**,
+   overriding the one its `base` would give (test242).
+3. **A column title must be LANGUAGE-COMPATIBLE to name its column.**
+   A document with `"lang": "de"` whose column states
+   `"titles": {"en": "On Street"}` has no usable title there, so the
+   column is `_col.2`. `langCompatible` implements the BCP 47
+   truncated match, with `und` matching anything (test148).
+4. **`X` is the ISO 8601 BASIC timezone form**: hours, with minutes
+   OPTIONAL. Reading only the hours left `+0800` with a trailing `00`
+   the pattern could not match (test190).
+5. **A common-property NAME must be an ABSOLUTE IRI**, not resolved
+   against the document base. `"foo": "bar"` became `<…/tests/foo>
+   "bar"` (test093) and `"@type": "Table"` became an `rdf:type` to
+   `<…/tests/Table>` (test263) — predicates the documents never wrote.
+   `absoluteIri?` requires a scheme; `@id` VALUES still resolve
+   relatively, because those really are references.
+
+And one where the honest answer is a refusal: **a `duration` with a
+`format` gets NO datatype.** The facet is an XSD regex and this slice
+has no engine for it, so the value cannot be SHOWN to satisfy it.
+test194 states `"format": "^.$"`, which no duration can match, and
+expects every cell plain — asserting the datatype anyway would claim a
+validity the code did not establish. With NO format the lexical space
+is still checkable, and it is what stops `Foo` becoming an
+`xsd:duration`.
+
+📊 MEASURED, csv2rdf: **186 pass, 19 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 179.

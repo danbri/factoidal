@@ -71,6 +71,12 @@ def Datatype.decimalCharOf : Datatype → Option String
   | .named _ => none
   | .object _ _ _ _ d _ _ _ _ _ _ _ _ _ _ => d
 
+/-- An explicit `@id` on a datatype object: the IRI the literal takes,
+    overriding the one its `base` would give. -/
+def Datatype.idOf : Datatype → Option String
+  | .named _ => none
+  | .object _ _ _ _ _ i _ _ _ _ _ _ _ _ _ => i
+
 /-- The §5.11.2 value constraints, in the shape `Formats` checks. -/
 def Datatype.facets : Datatype → Facets
   | .named _ => {}
@@ -179,25 +185,33 @@ def effectiveDialect (g : TableGroup) (t : TableDesc) : Dialect :=
   | none,   some d => d
   | none,   none   => {}
 
+/-- Do two language tags match? BCP 47, truncated to the shorter: `de`
+    matches `de-AT`, and `und` matches anything. -/
+def langCompatible (want have' : Option String) : Bool :=
+  match want, have' with
+  | _, none        => true
+  | _, some "und"  => true
+  | none, _        => true
+  | some w, some h =>
+      let k := Nat.min w.length h.length
+      String.ofList (w.toList.take k) == String.ofList (h.toList.take k)
+
 /-- §5.6 column-name derivation: an explicit `name`, else the first
-    title (preferring one tagged with the requested language, then an
-    untagged one), else the positional `_col.N` form the spec
-    mandates. `n` is the 1-based column position. -/
+    title whose LANGUAGE is compatible with the document's, else the
+    positional `_col.N` form the spec mandates. `n` is the 1-based
+    column position.
+
+    The language check is not optional. A document with `"lang": "de"`
+    whose column states `"titles": {"en": "On Street"}` has no usable
+    title for that column, so it is `_col.2` — taking the English
+    title anyway names the column after a title the document does not
+    offer in its own language (test148). -/
 def columnName (c : Column) (n : Nat) (preferLang : Option String) : String :=
   match c.name with
   | some nm => nm
   | none =>
-      let tagged := c.titlesLang.find? (fun (_, l) =>
-        match preferLang, l with
-        | some want, some have' => want == have'
-        | _, _ => false)
-      match tagged with
+      match c.titlesLang.find? (fun (_, l) => langCompatible preferLang l) with
       | some (t, _) => t
-      | none =>
-          match c.titlesLang.find? (fun (_, l) => l.isNone) with
-          | some (t, _) => t
-          | none => match c.titles.head? with
-            | some t => t
-            | none   => "_col." ++ toString n
+      | none        => "_col." ++ toString n
 
 end L4Factoidal.CSVW
