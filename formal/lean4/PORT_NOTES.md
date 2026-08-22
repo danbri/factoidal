@@ -3484,3 +3484,31 @@ rescaling-invariance lemma because pairwise `align` calls in a
 three-way chain use different common scales. The obligation is written
 into `BBox.lean` and NO code takes the disjoint-box shortcut until it
 is discharged.
+
+### GeoSPARQL: Scaled is a linear order; the box pre-filter is sound
+(2026-08-22, same day as the model)
+
+`Geo/Order.lean` discharges the obligation `BBox.lean` had named.
+`disjoint_bbox_no_shared_point` — two non-overlapping boxes share no
+point — is now proved, so the disjoint-box shortcut in front of the
+topology predicates is safe to take.
+
+The proof that mattered is `Scaled.le_trans`. It is not immediate
+because `cmp` aligns ITS TWO arguments at THEIR common scale, so a
+chain `a ≤ b ≤ c` involves three different alignment scales. The fix
+is rescaling invariance (`le_at'_shift`): comparing at any scale that
+dominates both operands gives the same verdict, after which
+transitivity is integer transitivity at one shared scale.
+
+Three core-Lean lessons, all paid for here:
+1. **Inside `namespace Scaled`, bare `max` resolves to `Scaled.max`**
+   and silently mis-typechecks against `Nat` scales. Write `Nat.max`.
+   (`align` in Types.lean is safe only because `Scaled.max` is
+   declared after it.)
+2. **No mathlib means no `push_cast`, no `ring`, no `split_ifs`.**
+   Use `Int.natCast_mul` + `Int.mul_assoc` by hand; probe unfamiliar
+   core lemma names with a scratch file through `lake env lean`
+   before writing the proof around them.
+3. **`omega` refuses nonlinear atoms** like `mantissa * 10^k`.
+   `generalize` the products to fresh variables first; the remaining
+   if-chain reasoning is then linear and `omega` closes it.

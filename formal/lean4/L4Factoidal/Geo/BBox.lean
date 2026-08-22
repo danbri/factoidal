@@ -10,7 +10,7 @@ is proved below (`disjoint_bbox_no_shared_point`) rather than assumed
 
 An EMPTY geometry has no box, hence `Option`.
 -/
-import L4Factoidal.Geo.Types
+import L4Factoidal.Geo.Order
 
 namespace L4Factoidal.Geo
 
@@ -86,19 +86,25 @@ theorem overlaps_self (p : Point) :
     (BBox.ofPoint p).overlaps (BBox.ofPoint p) = true := by
   simp [BBox.ofPoint, BBox.overlaps, Scaled.le, Scaled.cmp, Scaled.align]
 
-/-  NEXT PROOF OBLIGATION (stated here, deliberately not `sorry`-ed):
+/-- SOUNDNESS OF THE PRE-FILTER. If two boxes do not overlap, no
+    point lies in both — so a disjoint-box pair may safely skip the
+    topology test. Without this, a disjoint-box shortcut could
+    silently drop query answers.
 
-    `disjoint_bbox_no_shared_point : a.overlaps b = false →
-       ¬ (a.contains p ∧ b.contains p)`
-
-    is the soundness of using the box test as a pre-filter in front of
-    the topology predicates — without it, a disjoint-box shortcut
-    could silently drop query answers. It needs transitivity of
-    `Scaled.le`, which in turn needs the rescaling-invariance lemma
-    `cmp ⟨m, s⟩ ⟨m', s'⟩ = cmp ⟨m * 10^k, s + k⟩ ⟨m', s'⟩`, since the
-    pairwise `align` calls in a three-way chain use different common
-    scales. That lemma family lands with `Geo/Order.lean`; until it
-    does, no code in this port takes the disjoint-box shortcut.
--/
+    The argument is four applications of `Scaled.le_trans`: a point
+    inside both boxes chains each box's min under the other box's max,
+    which is exactly the four conjuncts of `overlaps`. -/
+theorem disjoint_bbox_no_shared_point (a b : BBox) (p : Point)
+    (h : a.overlaps b = false) : ¬ (a.contains p = true ∧ b.contains p = true) := by
+  intro ⟨ha, hb⟩
+  simp only [BBox.contains, Bool.and_eq_true] at ha hb
+  obtain ⟨⟨⟨hax1, hax2⟩, hay1⟩, hay2⟩ := ha
+  obtain ⟨⟨⟨hbx1, hbx2⟩, hby1⟩, hby2⟩ := hb
+  have h1 : Scaled.le a.xmin b.xmax = true := Scaled.le_trans hax1 hbx2
+  have h2 : Scaled.le b.xmin a.xmax = true := Scaled.le_trans hbx1 hax2
+  have h3 : Scaled.le a.ymin b.ymax = true := Scaled.le_trans hay1 hby2
+  have h4 : Scaled.le b.ymin a.ymax = true := Scaled.le_trans hby1 hay2
+  rw [BBox.overlaps, h1, h2, h3, h4] at h
+  simp at h
 
 end L4Factoidal.Geo

@@ -51,6 +51,9 @@ private def p22 : Point := ⟨Scaled.ofInt 2, Scaled.ofInt 2⟩
 #guard sameCrs none (some crs84)
 #guard !(sameCrs (some "http://example.org/crs/other") none)
 
+-- The pre-filter soundness theorem and its ordering foundation.
+#print axioms Scaled.le_trans
+#print axioms disjoint_bbox_no_shared_point
 #print axioms contains_ofPoint
 #print axioms overlaps_self
 
