@@ -4189,3 +4189,32 @@ Method note: a `#guard` caught my own wrong test constants here —
 scale confused with divisor, `1.5` written as `finite 15 10` rather
 than `finite 15 1`. Third time build-time checking has caught an
 authoring error in a new area today.
+
+### Schematron: the report model and the assert/report inversion
+(2026-08-22)
+
+`Schematron/Validate.lean` ports `Schematron.Validate.fst`: schema,
+patterns, rules, assertions and the finding report.
+
+THE INVERSION is the one thing Schematron implementations get wrong,
+so it lives in exactly one function and is guarded in both
+directions: an `<assert test="X">` produces a finding when X is
+FALSE, a `<report test="X">` produces one when X is TRUE. They are
+kept as SEPARATE finding constructors rather than one predicate
+negated at the call site, so a consumer cannot lose the distinction.
+
+Two more rules with guards, each producing confidently-wrong output
+if flipped:
+- Within a PATTERN the FIRST matching rule claims a node and later
+  rules in that pattern do not fire for it; PATTERNS are independent
+  of each other. Getting this wrong yields duplicate findings that
+  read as genuine extra violations.
+- An undecidable test yields an INDETERMINATE finding carrying its
+  reason — for assert and report alike — and `hasViolations` does NOT
+  count it, while `hasIndeterminate` reports it separately. The same
+  refusal discipline as the Geo predicates, the CSVW formats and the
+  JSON Schema validator.
+
+The XPath evaluation and context selection are PARAMETERS, not a
+global registry — purity doctrine, and it also makes the whole module
+testable without an XPath engine.
