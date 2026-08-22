@@ -3512,3 +3512,26 @@ Three core-Lean lessons, all paid for here:
 3. **`omega` refuses nonlinear atoms** like `mantissa * 10^k`.
    `generalize` the products to fresh variables first; the remaining
    if-chain reasoning is then linear and `omega` closes it.
+
+### GeoSPARQL: the exact geometric kernel (2026-08-22)
+
+`Geo/Topology.lean` ports the predicate kernel from
+`RDF.Geo.Topology.fst`: orientation determinant, exact
+point-on-segment, four-orientation segment intersection, path
+crossing, ray-cast crossing parity, and point classification against
+rings and holed polygons, then the Simple Features point-vs-polygon
+predicates (`sfEquals`, `sfDisjoint`, `sfIntersects`, `sfWithin`,
+`sfTouches`).
+
+Everything is DIVISION-FREE by design, inherited from the F* module:
+computing an actual intersection coordinate would need division and
+would leave the exact-decimal world, so every test is phrased with the
+orientation sign instead. The ray-cast likewise decides "crosses to
+the right" from the orientation sign rather than an x-coordinate.
+
+Simple Features conventions pinned by `#guard`: a boundary point
+INTERSECTS but is not WITHIN; touching at an endpoint counts as
+segment intersection; a hole returns an otherwise-interior point to
+exterior. Caller-side assumption carried over verbatim: ray-casting is
+meaningful only for SIMPLE rings — segment intersection needs no such
+assumption.

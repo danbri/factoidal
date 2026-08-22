@@ -3,7 +3,7 @@ L4Factoidal.Geo.Tests — build-time checks for the GeoSPARQL port.
 Every `#guard` evaluates during elaboration, so a wrong answer is a
 build error.
 -/
-import L4Factoidal.Geo.BBox
+import L4Factoidal.Geo.Topology
 
 namespace L4Factoidal.Geo
 
@@ -50,6 +50,61 @@ private def p22 : Point := ⟨Scaled.ofInt 2, Scaled.ofInt 2⟩
 #guard sameCrs none none
 #guard sameCrs none (some crs84)
 #guard !(sameCrs (some "http://example.org/crs/other") none)
+
+-- Orientation: counter-clockwise, clockwise, collinear.
+#guard orientSign p00 (Point.mk (Scaled.ofInt 1) (Scaled.ofInt 0))
+                      (Point.mk (Scaled.ofInt 0) (Scaled.ofInt 1)) == 1
+#guard orientSign p00 (Point.mk (Scaled.ofInt 0) (Scaled.ofInt 1))
+                      (Point.mk (Scaled.ofInt 1) (Scaled.ofInt 0)) == -1
+#guard orientSign p00 p11 p22 == 0
+
+-- A point on a segment, and one off it.
+#guard pointOnSegment p11 p00 p22
+#guard !(pointOnSegment (Point.mk (Scaled.ofInt 1) (Scaled.ofInt 2)) p00 p22)
+
+-- Crossing segments; touching-at-endpoint counts (Simple Features).
+#guard segmentsIntersect p00 p22 (Point.mk (Scaled.ofInt 0) (Scaled.ofInt 2))
+                                 (Point.mk (Scaled.ofInt 2) (Scaled.ofInt 0))
+#guard segmentsIntersect p00 p11 p11 p22
+#guard !(segmentsIntersect p00 (Point.mk (Scaled.ofInt 1) (Scaled.ofInt 0))
+                           (Point.mk (Scaled.ofInt 0) (Scaled.ofInt 1))
+                           (Point.mk (Scaled.ofInt 1) (Scaled.ofInt 1)))
+
+-- The unit square, closed (WKT rings repeat the first point).
+private def unitSquare : Ring :=
+  [p00, Point.mk (Scaled.ofInt 2) (Scaled.ofInt 0), p22,
+   Point.mk (Scaled.ofInt 0) (Scaled.ofInt 2), p00]
+
+#guard ringClass p11 unitSquare == PtClass.interior
+#guard ringClass p00 unitSquare == PtClass.boundary
+#guard ringClass (Point.mk (Scaled.ofInt 3) (Scaled.ofInt 3)) unitSquare == PtClass.exterior
+
+-- Simple Features: a boundary point INTERSECTS but is not WITHIN.
+private def square : Polygon := ⟨unitSquare, []⟩
+#guard pointIntersectsPolygon p00 square
+#guard !(pointWithinPolygon p00 square)
+#guard pointTouchesPolygon p00 square
+#guard pointWithinPolygon p11 square
+
+-- A hole punches the interior back out to exterior.
+private def holed : Polygon :=
+  ⟨[Point.mk (Scaled.ofInt 0) (Scaled.ofInt 0),
+    Point.mk (Scaled.ofInt 6) (Scaled.ofInt 0),
+    Point.mk (Scaled.ofInt 6) (Scaled.ofInt 6),
+    Point.mk (Scaled.ofInt 0) (Scaled.ofInt 6),
+    Point.mk (Scaled.ofInt 0) (Scaled.ofInt 0)],
+   [[Point.mk (Scaled.ofInt 2) (Scaled.ofInt 2),
+     Point.mk (Scaled.ofInt 4) (Scaled.ofInt 2),
+     Point.mk (Scaled.ofInt 4) (Scaled.ofInt 4),
+     Point.mk (Scaled.ofInt 2) (Scaled.ofInt 4),
+     Point.mk (Scaled.ofInt 2) (Scaled.ofInt 2)]]⟩
+#guard polygonClass (Point.mk (Scaled.ofInt 3) (Scaled.ofInt 3)) holed == PtClass.exterior
+#guard polygonClass (Point.mk (Scaled.ofInt 1) (Scaled.ofInt 1)) holed == PtClass.interior
+#guard polygonClass (Point.mk (Scaled.ofInt 2) (Scaled.ofInt 3)) holed == PtClass.boundary
+
+-- Exactness: a point on a segment at a fine scale is still ON it,
+-- where floating point would drift.
+#guard pointOnSegment ⟨⟨1, 1⟩, ⟨1, 1⟩⟩ p00 p22
 
 -- The pre-filter soundness theorem and its ordering foundation.
 #print axioms Scaled.le_trans
