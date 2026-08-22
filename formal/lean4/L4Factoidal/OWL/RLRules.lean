@@ -161,10 +161,20 @@ inductive ListMember (g : Graph) : Term → Term → Prop where
 
 /-- `ListDenotes g head elems` — the collection headed by `head` is
 EXACTLY the sequence `elems`. Port of the F* `owl_list_denotes`: a
-cyclic or rdf:nil-less chain denotes nothing. -/
+cyclic or rdf:nil-less chain denotes nothing.
+
+The `hnil` side condition on `cons` says a non-empty collection is not
+headed by `rdf:nil`. RDF Schema §5.1 gives `rdf:nil` one meaning — the
+empty list — so a graph that also hangs an `rdf:first` off it is
+malformed, and reading it as a non-empty collection is not a reading
+worth having. The F* `owl_list_denotes` omits the guard and so admits
+both readings of such a graph; this port takes the one the executable
+walk takes, which is what makes spec and engine agree in BOTH
+directions (`listSeqs_sound` and `exists_fuel_listSeqs`). -/
 inductive ListDenotes (g : Graph) : Term → List Term → Prop where
   | nil : ListDenotes g (Term.iri rdfNil) []
   | cons {node : Subject} {e tail : Term} {rest : List Term}
+      (hnil : node.toTerm ≠ Term.iri rdfNil)
       (hf : (⟨node, rdfFirst, e⟩ : Triple) ∈ g)
       (hr : (⟨node, rdfRest, tail⟩ : Triple) ∈ g)
       (ht : ListDenotes g tail rest) :
@@ -329,11 +339,12 @@ inductive Derives (g : Graph) : Triple → Prop where
   T(?u1, ?p, ?un+1)`. Every chain element occupies a predicate
   position, hence the `Term.iri` image of the list. -/
   | prpSpo2 {p : WfIri} {lst : Term} {preds : List WfIri}
-      {x1 : Subject} {xn : Term}
+      {x1 : Subject} {xn : Term} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
       (hdecl : Derives g ⟨Subject.iri p, owlPropertyChainAxiom, lst⟩)
-      (hlist : ListDenotes g lst (preds.map Term.iri))
+      (hlist : ListDenotes gc lst (preds.map Term.iri))
       (hne : preds ≠ [])
-      (hchain : ChainHolds g x1 preds xn) :
+      (hchain : ChainHolds gc x1 preds xn) :
       Derives g ⟨x1, p, xn⟩
   /-- **prp-eqp1** — `T(?p1, owl:equivalentProperty, ?p2)
   T(?x,?p1,?y) | T(?x,?p2,?y)`. -/
@@ -363,13 +374,14 @@ inductive Derives (g : Graph) : Triple → Prop where
   /-- **prp-key** — `T(?c, owl:hasKey, ?u) LIST[?u, ?p1, ..., ?pn]
   T(?x, rdf:type, ?c) T(?x,?p1,?z1) ... T(?y, rdf:type, ?c)
   T(?y,?p1,?z1) ... | T(?x, owl:sameAs, ?y)`. -/
-  | prpKey {c x ys : Subject} {lst : Term} {preds : List WfIri}
+  | prpKey {c x ys : Subject} {lst : Term} {preds : List WfIri} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
       (hdecl : Derives g ⟨c, owlHasKey, lst⟩)
-      (hlist : ListDenotes g lst (preds.map Term.iri))
+      (hlist : ListDenotes gc lst (preds.map Term.iri))
       (hne : preds ≠ [])
       (hx : Derives g ⟨x, rdfType, c.toTerm⟩)
       (hy : Derives g ⟨ys, rdfType, c.toTerm⟩)
-      (hshare : SharesKeyValues g x ys preds) :
+      (hshare : SharesKeyValues gc x ys preds) :
       Derives g ⟨x, owlSameAs, ys.toTerm⟩
 
   -- ===================================================================
@@ -386,26 +398,29 @@ inductive Derives (g : Graph) : Triple → Prop where
   /-- **cls-int1** — `T(?c, owl:intersectionOf, ?x)
   LIST[?x, ?c1, ..., ?cn] T(?y, rdf:type, ?c1) ... |
   T(?y, rdf:type, ?c)`. -/
-  | clsInt1 {c y : Subject} {lst : Term} {cs : List Term}
+  | clsInt1 {c y : Subject} {lst : Term} {cs : List Term} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
       (hdecl : Derives g ⟨c, owlIntersectionOf, lst⟩)
-      (hlist : ListDenotes g lst cs)
+      (hlist : ListDenotes gc lst cs)
       (hne : cs ≠ [])
-      (htypes : TypesAll g y cs) :
+      (htypes : TypesAll gc y cs) :
       Derives g ⟨y, rdfType, c.toTerm⟩
   /-- **cls-int2** — `T(?c, owl:intersectionOf, ?x)
   LIST[?x, ?c1, ..., ?cn] T(?y, rdf:type, ?c) |
   T(?y, rdf:type, ?c1) ... T(?y, rdf:type, ?cn)`. `t` is any one of
   the n conclusions, so its class is SOME list member. -/
-  | clsInt2 {c y : Subject} {lst ci : Term}
+  | clsInt2 {c y : Subject} {lst ci : Term} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
       (hdecl : Derives g ⟨c, owlIntersectionOf, lst⟩)
-      (hmem : ListMember g lst ci)
+      (hmem : ListMember gc lst ci)
       (hy : Derives g ⟨y, rdfType, c.toTerm⟩) :
       Derives g ⟨y, rdfType, ci⟩
   /-- **cls-uni** — `T(?c, owl:unionOf, ?x) LIST[?x, ?c1, ..., ?cn]
   T(?y, rdf:type, ?ci) | T(?y, rdf:type, ?c)`. -/
-  | clsUni {c y : Subject} {lst ci : Term}
+  | clsUni {c y : Subject} {lst ci : Term} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
       (hdecl : Derives g ⟨c, owlUnionOf, lst⟩)
-      (hmem : ListMember g lst ci)
+      (hmem : ListMember gc lst ci)
       (hy : Derives g ⟨y, rdfType, ci⟩) :
       Derives g ⟨y, rdfType, c.toTerm⟩
   /-- **cls-svf1** — `T(?x, owl:someValuesFrom, ?y)
@@ -460,9 +475,10 @@ inductive Derives (g : Graph) : Triple → Prop where
       Derives g ⟨y1s, owlSameAs, y2⟩
   /-- **cls-oo** — `T(?c, owl:oneOf, ?x) LIST[?x, ?y1, ..., ?yn] |
   T(?y1, rdf:type, ?c) ... T(?yn, rdf:type, ?c)`. -/
-  | clsOo {c yis : Subject} {lst : Term}
+  | clsOo {c yis : Subject} {lst : Term} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
       (hdecl : Derives g ⟨c, owlOneOf, lst⟩)
-      (hmem : ListMember g lst yis.toTerm) :
+      (hmem : ListMember gc lst yis.toTerm) :
       Derives g ⟨yis, rdfType, c.toTerm⟩
 
   -- ===================================================================
@@ -579,15 +595,17 @@ inductive Derives (g : Graph) : Triple → Prop where
       Derives g ⟨p1, rdfsRange, c⟩
   /-- **scm-int** — `T(?c, owl:intersectionOf, ?x)
   LIST[?x, ?c1, ..., ?cn] | T(?c, rdfs:subClassOf, ?c1) ...`. -/
-  | scmInt {c : Subject} {lst ci : Term}
+  | scmInt {c : Subject} {lst ci : Term} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
       (hdecl : Derives g ⟨c, owlIntersectionOf, lst⟩)
-      (hmem : ListMember g lst ci) :
+      (hmem : ListMember gc lst ci) :
       Derives g ⟨c, rdfsSubClassOf, ci⟩
   /-- **scm-uni** — `T(?c, owl:unionOf, ?x) LIST[?x, ?c1, ..., ?cn] |
   T(?c1, rdfs:subClassOf, ?c) ...`. -/
-  | scmUni {c cis : Subject} {lst : Term}
+  | scmUni {c cis : Subject} {lst : Term} {gc : Graph}
+      (hgc : ∀ u, u ∈ gc → Derives g u)
       (hdecl : Derives g ⟨c, owlUnionOf, lst⟩)
-      (hmem : ListMember g lst cis.toTerm) :
+      (hmem : ListMember gc lst cis.toTerm) :
       Derives g ⟨cis, rdfsSubClassOf, c.toTerm⟩
 
 /-! ## The no-consequent (clash) rows
@@ -710,7 +728,8 @@ theorem ListDenotes.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
     ListDenotes g' head es := by
   induction h with
   | nil => exact ListDenotes.nil
-  | cons hf hr _ ih => exact ListDenotes.cons (hsub _ hf) (hsub _ hr) ih
+  | cons hnil hf hr _ ih =>
+      exact ListDenotes.cons hnil (hsub _ hf) (hsub _ hr) ih
 
 theorem TypesAll.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
     {y : Subject} {cs : List Term} (h : TypesAll g y cs) :
@@ -754,20 +773,20 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | prpSymp _ _ ih1 ih2 => exact Derives.prpSymp ih1 ih2
   | prpTrp _ _ _ ih1 ih2 ih3 => exact Derives.prpTrp ih1 ih2 ih3
   | prpSpo1 _ _ ih1 ih2 => exact Derives.prpSpo1 ih1 ih2
-  | prpSpo2 _ hl hne hc ih =>
-      exact Derives.prpSpo2 ih (hl.mono hsub) hne (hc.mono hsub)
+  | prpSpo2 _ _ hl hne hc ihgc ih =>
+      exact Derives.prpSpo2 ihgc ih hl hne hc
   | prpEqp1 _ _ ih1 ih2 => exact Derives.prpEqp1 ih1 ih2
   | prpEqp2 _ _ ih1 ih2 => exact Derives.prpEqp2 ih1 ih2
   | prpInv1 _ _ ih1 ih2 => exact Derives.prpInv1 ih1 ih2
   | prpInv2 _ _ ih1 ih2 => exact Derives.prpInv2 ih1 ih2
-  | prpKey _ hl hne _ _ hs ih1 ih2 ih3 =>
-      exact Derives.prpKey ih1 (hl.mono hsub) hne ih2 ih3 (hs.mono hsub)
+  | prpKey _ _ hl hne _ _ hs ihgc ih1 ih2 ih3 =>
+      exact Derives.prpKey ihgc ih1 hl hne ih2 ih3 hs
   | clsThing => exact Derives.clsThing
   | clsNothing1 => exact Derives.clsNothing1
-  | clsInt1 _ hl hne ht ih =>
-      exact Derives.clsInt1 ih (hl.mono hsub) hne (ht.mono hsub)
-  | clsInt2 _ hm _ ih1 ih2 => exact Derives.clsInt2 ih1 (hm.mono hsub) ih2
-  | clsUni _ hm _ ih1 ih2 => exact Derives.clsUni ih1 (hm.mono hsub) ih2
+  | clsInt1 _ _ hl hne ht ihgc ih =>
+      exact Derives.clsInt1 ihgc ih hl hne ht
+  | clsInt2 _ _ hm _ ihgc ih1 ih2 => exact Derives.clsInt2 ihgc ih1 hm ih2
+  | clsUni _ _ hm _ ihgc ih1 ih2 => exact Derives.clsUni ihgc ih1 hm ih2
   | clsSvf1 _ _ _ _ ih1 ih2 ih3 ih4 => exact Derives.clsSvf1 ih1 ih2 ih3 ih4
   | clsSvf2 _ _ _ ih1 ih2 ih3 => exact Derives.clsSvf2 ih1 ih2 ih3
   | clsAvf _ _ _ _ ih1 ih2 ih3 ih4 => exact Derives.clsAvf ih1 ih2 ih3 ih4
@@ -775,7 +794,7 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | clsHv2 _ _ _ ih1 ih2 ih3 => exact Derives.clsHv2 ih1 ih2 ih3
   | clsMaxc2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
       exact Derives.clsMaxc2 ih1 ih2 ih3 ih4 ih5
-  | clsOo _ hm ih => exact Derives.clsOo ih (hm.mono hsub)
+  | clsOo _ _ hm ihgc ih => exact Derives.clsOo ihgc ih hm
   | caxSco _ _ ih1 ih2 => exact Derives.caxSco ih1 ih2
   | caxEqc1 _ _ ih1 ih2 => exact Derives.caxEqc1 ih1 ih2
   | caxEqc2 _ _ ih1 ih2 => exact Derives.caxEqc2 ih1 ih2
@@ -795,24 +814,23 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | scmDom2 _ _ ih1 ih2 => exact Derives.scmDom2 ih1 ih2
   | scmRng1 _ _ ih1 ih2 => exact Derives.scmRng1 ih1 ih2
   | scmRng2 _ _ ih1 ih2 => exact Derives.scmRng2 ih1 ih2
-  | scmInt _ hm ih => exact Derives.scmInt ih (hm.mono hsub)
-  | scmUni _ hm ih => exact Derives.scmUni ih (hm.mono hsub)
+  | scmInt _ _ hm ihgc ih => exact Derives.scmInt ihgc ih hm
+  | scmUni _ _ hm ihgc ih => exact Derives.scmUni ihgc ih hm
 
 /-- Cut: if every triple of `g'` is derivable from `g`, then everything
 derivable from `g'` is derivable from `g`. This is what makes the
 iterated closure sound — each round's output is derivable from the
 round's input, and cut chains the rounds.
 
-The list-premise relations are the one place cut needs care: they read
-`g'` DIRECTLY (graph membership, not `Derives`), so cutting them back
-to `g` needs every triple they use to be IN `g`, which the hypothesis
-does not give. The statement therefore carries the extra hypothesis
-`hlist : ∀ u, u ∈ g' → u ∈ g` for those premises. In the closure that
-hypothesis holds, because the closure is EXTENSIVE: each round's input
-is a sublist of the round's output, so the collection structure a later
-round reads was already present in the earlier one. -/
+The list-premise rows are the reason those constructors carry a
+COLLECTION GRAPH `gc` and the side condition `hgc : ∀ u ∈ gc, Derives g
+u`, instead of reading `g` directly. Without it cut is FALSE for those
+rows: a round can DERIVE an `rdf:first`/`rdf:rest` triple (eq-rep-s and
+prp-spo1 both can), so a later round's collection walk may rest on
+structure the earlier graph never asserted, and there is no way to pull
+that walk back to `g`. With `gc` a parameter, cut just carries the
+side condition through its own induction hypothesis. -/
 theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
-    (hlist : ∀ u, u ∈ g' → u ∈ g)
     {t : Triple} (h : Derives g' t) : Derives g t := by
   induction h with
   | base hm => exact hall _ hm
@@ -831,20 +849,20 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | prpSymp _ _ ih1 ih2 => exact Derives.prpSymp ih1 ih2
   | prpTrp _ _ _ ih1 ih2 ih3 => exact Derives.prpTrp ih1 ih2 ih3
   | prpSpo1 _ _ ih1 ih2 => exact Derives.prpSpo1 ih1 ih2
-  | prpSpo2 _ hl hne hc ih =>
-      exact Derives.prpSpo2 ih (hl.mono hlist) hne (hc.mono hlist)
+  | prpSpo2 _ _ hl hne hc ihgc ih =>
+      exact Derives.prpSpo2 ihgc ih hl hne hc
   | prpEqp1 _ _ ih1 ih2 => exact Derives.prpEqp1 ih1 ih2
   | prpEqp2 _ _ ih1 ih2 => exact Derives.prpEqp2 ih1 ih2
   | prpInv1 _ _ ih1 ih2 => exact Derives.prpInv1 ih1 ih2
   | prpInv2 _ _ ih1 ih2 => exact Derives.prpInv2 ih1 ih2
-  | prpKey _ hl hne _ _ hs ih1 ih2 ih3 =>
-      exact Derives.prpKey ih1 (hl.mono hlist) hne ih2 ih3 (hs.mono hlist)
+  | prpKey _ _ hl hne _ _ hs ihgc ih1 ih2 ih3 =>
+      exact Derives.prpKey ihgc ih1 hl hne ih2 ih3 hs
   | clsThing => exact Derives.clsThing
   | clsNothing1 => exact Derives.clsNothing1
-  | clsInt1 _ hl hne ht ih =>
-      exact Derives.clsInt1 ih (hl.mono hlist) hne (ht.mono hlist)
-  | clsInt2 _ hm _ ih1 ih2 => exact Derives.clsInt2 ih1 (hm.mono hlist) ih2
-  | clsUni _ hm _ ih1 ih2 => exact Derives.clsUni ih1 (hm.mono hlist) ih2
+  | clsInt1 _ _ hl hne ht ihgc ih =>
+      exact Derives.clsInt1 ihgc ih hl hne ht
+  | clsInt2 _ _ hm _ ihgc ih1 ih2 => exact Derives.clsInt2 ihgc ih1 hm ih2
+  | clsUni _ _ hm _ ihgc ih1 ih2 => exact Derives.clsUni ihgc ih1 hm ih2
   | clsSvf1 _ _ _ _ ih1 ih2 ih3 ih4 => exact Derives.clsSvf1 ih1 ih2 ih3 ih4
   | clsSvf2 _ _ _ ih1 ih2 ih3 => exact Derives.clsSvf2 ih1 ih2 ih3
   | clsAvf _ _ _ _ ih1 ih2 ih3 ih4 => exact Derives.clsAvf ih1 ih2 ih3 ih4
@@ -852,7 +870,7 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | clsHv2 _ _ _ ih1 ih2 ih3 => exact Derives.clsHv2 ih1 ih2 ih3
   | clsMaxc2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
       exact Derives.clsMaxc2 ih1 ih2 ih3 ih4 ih5
-  | clsOo _ hm ih => exact Derives.clsOo ih (hm.mono hlist)
+  | clsOo _ _ hm ihgc ih => exact Derives.clsOo ihgc ih hm
   | caxSco _ _ ih1 ih2 => exact Derives.caxSco ih1 ih2
   | caxEqc1 _ _ ih1 ih2 => exact Derives.caxEqc1 ih1 ih2
   | caxEqc2 _ _ ih1 ih2 => exact Derives.caxEqc2 ih1 ih2
@@ -872,8 +890,8 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | scmDom2 _ _ ih1 ih2 => exact Derives.scmDom2 ih1 ih2
   | scmRng1 _ _ ih1 ih2 => exact Derives.scmRng1 ih1 ih2
   | scmRng2 _ _ ih1 ih2 => exact Derives.scmRng2 ih1 ih2
-  | scmInt _ hm ih => exact Derives.scmInt ih (hm.mono hlist)
-  | scmUni _ hm ih => exact Derives.scmUni ih (hm.mono hlist)
+  | scmInt _ _ hm ihgc ih => exact Derives.scmInt ihgc ih hm
+  | scmUni _ _ hm ihgc ih => exact Derives.scmUni ihgc ih hm
 
 /-- Clash detection is monotone too: a bigger graph clashes at least as
 often. -/

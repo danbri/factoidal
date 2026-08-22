@@ -338,13 +338,15 @@ theorem listSeqs_sound (g : Graph) : ∀ (n : Nat) (head : Term) {es : List Term
       have : es = [] := by simpa using h
       subst this
       exact ListDenotes.nil
-    · simp only [List.mem_flatMap, List.mem_map] at h
+    · rename_i hne
+      simp only [List.mem_flatMap, List.mem_map] at h
       obtain ⟨node, hnode, f, hf, r, hr, rest, hrest, rfl⟩ := h
       have hhead : head = node.toTerm := mem_asSubject hnode
       subst hhead
       obtain ⟨hfg, hfs, hfp⟩ := mem_withSubjPred hf
       obtain ⟨hrg, hrs, hrp⟩ := mem_withSubjPred hr
-      exact ListDenotes.cons (mem_of_parts hfg hfs hfp rfl)
+      exact ListDenotes.cons (by simpa using hne)
+        (mem_of_parts hfg hfs hfp rfl)
         (mem_of_parts hrg hrs hrp rfl) (ih r.o hrest)
 
 theorem typesAllB_sound {g : Graph} {y : Subject} : ∀ {cs : List Term},
@@ -639,7 +641,8 @@ theorem prpSpo2For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     simp only [List.mem_flatMap, List.mem_map] at h
     obtain ⟨p, hpi, terms, hterms, preds, hpreds, x1, _hx1, xn, hxn, rfl⟩ := h
     obtain ⟨hpm, hpne⟩ := mem_nonEmpty hpreds
-    refine Derives.prpSpo2 (derives_of_parts hd (mem_subjIri hpi) hp rfl)
+    refine Derives.prpSpo2 (fun _ hu => Derives.base hu)
+      (derives_of_parts hd (mem_subjIri hpi) hp rfl)
       ?_ hpne (chainTargets_sound g preds x1 hxn)
     rw [← allIris_sound hpm]
     exact listSeqs_sound g (listFuel g) d.o hterms
@@ -716,7 +719,8 @@ theorem prpKeyFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
       subst h
       obtain ⟨htxg, htxp, htxo⟩ := mem_withPredObj htx
       obtain ⟨htyg, htyp, htyo⟩ := mem_withPredObj hty
-      refine Derives.prpKey (derives_of_parts hd rfl hp rfl) ?_ hpne
+      refine Derives.prpKey (fun _ hu => Derives.base hu)
+        (derives_of_parts hd rfl hp rfl) ?_ hpne
         (derives_of_parts htxg rfl htxp htxo)
         (derives_of_parts htyg rfl htyp htyo)
         (sharesKeyValuesB_sound hsh)
@@ -741,7 +745,8 @@ theorem clsInt1For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     · rename_i hta
       simp only [List.mem_singleton] at h
       subst h
-      exact Derives.clsInt1 (derives_of_parts hd rfl hp rfl)
+      exact Derives.clsInt1 (fun _ hu => Derives.base hu)
+        (derives_of_parts hd rfl hp rfl)
         (listSeqs_sound g (listFuel g) d.o hcsm) hcsne (typesAllB_sound hta)
     · simp at h
   · simp at h
@@ -755,7 +760,8 @@ theorem clsInt2For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     simp only [List.mem_flatMap, List.mem_map] at h
     obtain ⟨ci, hci, u, hu, rfl⟩ := h
     obtain ⟨hug, hup, huo⟩ := mem_withPredObj hu
-    exact Derives.clsInt2 (derives_of_parts hd rfl hp rfl)
+    exact Derives.clsInt2 (fun _ hu => Derives.base hu)
+      (derives_of_parts hd rfl hp rfl)
       (listElems_sound g (listFuel g) d.o hci)
       (derives_of_parts hug rfl hup huo)
   · simp at h
@@ -769,7 +775,8 @@ theorem clsUniFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     simp only [List.mem_flatMap, List.mem_map] at h
     obtain ⟨ci, hci, u, hu, rfl⟩ := h
     obtain ⟨hug, hup, huo⟩ := mem_withPredObj hu
-    exact Derives.clsUni (derives_of_parts hd rfl hp rfl)
+    exact Derives.clsUni (fun _ hu => Derives.base hu)
+      (derives_of_parts hd rfl hp rfl)
       (listElems_sound g (listFuel g) d.o hci)
       (derives_of_parts hug rfl hup huo)
   · simp at h
@@ -890,7 +897,8 @@ theorem clsOoFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     obtain ⟨yi, hyi, yis, hyis, rfl⟩ := h
     have hy : yi = yis.toTerm := mem_asSubject hyis
     subst hy
-    exact Derives.clsOo (derives_of_parts hd rfl hp rfl)
+    exact Derives.clsOo (fun _ hu => Derives.base hu)
+      (derives_of_parts hd rfl hp rfl)
       (listElems_sound g (listFuel g) d.o hyi)
   · simp at h
 
@@ -1107,7 +1115,8 @@ theorem scmIntFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · rename_i hp; rw [beq_iff_eq] at hp
     simp only [List.mem_map] at h
     obtain ⟨ci, hci, rfl⟩ := h
-    exact Derives.scmInt (derives_of_parts hd rfl hp rfl)
+    exact Derives.scmInt (fun _ hu => Derives.base hu)
+      (derives_of_parts hd rfl hp rfl)
       (listElems_sound g (listFuel g) d.o hci)
   · simp at h
 
@@ -1121,8 +1130,449 @@ theorem scmUniFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     obtain ⟨ci, hci, cis, hcis, rfl⟩ := h
     have hc : ci = cis.toTerm := mem_asSubject hcis
     subst hc
-    exact Derives.scmUni (derives_of_parts hd rfl hp rfl)
+    exact Derives.scmUni (fun _ hu => Derives.base hu)
+      (derives_of_parts hd rfl hp rfl)
       (listElems_sound g (listFuel g) d.o hci)
   · simp at h
+
+
+/-! ## Section 6 — T2, soundness of a round and of the whole closure -/
+
+/-- Every conclusion the ported rows emit from one driving triple is
+derivable. The 47-way case split is over `conclusionsList`, in the
+order that list is written. -/
+theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ conclusionsFrom g d) : Derives g t := by
+  simp only [conclusionsFrom, List.mem_flatten, conclusionsList,
+    List.mem_cons, List.not_mem_nil, or_false] at h
+  obtain ⟨l, hl, ht⟩ := h
+  rcases hl with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  · exact eqRefSFor_sound hd ht
+  · exact eqRefPFor_sound hd ht
+  · exact eqRefOFor_sound hd ht
+  · exact eqSymFor_sound hd ht
+  · exact eqTransFor_sound hd ht
+  · exact eqRepSFor_sound hd ht
+  · exact eqRepPFor_sound hd ht
+  · exact eqRepOFor_sound hd ht
+  · exact prpDomFor_sound hd ht
+  · exact prpRngFor_sound hd ht
+  · exact prpFpFor_sound hd ht
+  · exact prpIfpFor_sound hd ht
+  · exact prpSympFor_sound hd ht
+  · exact prpTrpFor_sound hd ht
+  · exact prpSpo1For_sound hd ht
+  · exact prpSpo2For_sound hd ht
+  · exact prpEqp1For_sound hd ht
+  · exact prpEqp2For_sound hd ht
+  · exact prpInv1For_sound hd ht
+  · exact prpInv2For_sound hd ht
+  · exact prpKeyFor_sound hd ht
+  · exact clsInt1For_sound hd ht
+  · exact clsInt2For_sound hd ht
+  · exact clsUniFor_sound hd ht
+  · exact clsSvf1For_sound hd ht
+  · exact clsSvf2For_sound hd ht
+  · exact clsAvfFor_sound hd ht
+  · exact clsHv1For_sound hd ht
+  · exact clsHv2For_sound hd ht
+  · exact clsMaxc2For_sound hd ht
+  · exact clsOoFor_sound hd ht
+  · exact caxScoFor_sound hd ht
+  · exact caxEqc1For_sound hd ht
+  · exact caxEqc2For_sound hd ht
+  · exact scmClsFor_sound hd ht
+  · exact scmScoFor_sound hd ht
+  · exact scmEqc1For_sound hd ht
+  · exact scmEqc2For_sound hd ht
+  · exact scmSpoFor_sound hd ht
+  · exact scmEqp1For_sound hd ht
+  · exact scmEqp2For_sound hd ht
+  · exact scmDom1For_sound hd ht
+  · exact scmDom2For_sound hd ht
+  · exact scmRng1For_sound hd ht
+  · exact scmRng2For_sound hd ht
+  · exact scmIntFor_sound hd ht
+  · exact scmUniFor_sound hd ht
+
+/-- **cls-thing** and **cls-nothing1** are premise-free rows, so the
+axiom triples are derivable from any graph. -/
+theorem axiomTriples_sound {g : Graph} {t : Triple} (h : t ∈ axiomTriples) :
+    Derives g t := by
+  simp only [axiomTriples, List.mem_cons, List.not_mem_nil, or_false] at h
+  rcases h with rfl | rfl
+  · exact Derives.clsThing
+  · exact Derives.clsNothing1
+
+/-- Every conclusion a round emits is derivable from the round's
+input. -/
+theorem stepConclusions_sound {g : Graph} {t : Triple}
+    (h : t ∈ stepConclusions g) : Derives g t := by
+  simp only [stepConclusions, List.mem_append, List.mem_flatMap] at h
+  rcases h with h | ⟨d, hd, ht⟩
+  · exact axiomTriples_sound h
+  · exact conclusionsFrom_sound hd ht
+
+/-- Every triple a round produces is derivable from the round's
+input. -/
+theorem step_sound {g : Graph} {t : Triple} (h : t ∈ step g) :
+    Derives g t := by
+  rcases mem_step_cases h with h' | h'
+  · exact Derives.base h'
+  · exact stepConclusions_sound h'
+
+/-! ## Section 7 — T1, extensivity -/
+
+/-- **T1.** The closure contains the input graph, at any fuel. -/
+theorem closure_extensive (fuel : Nat) :
+    ∀ (g : Graph) {t : Triple}, t ∈ g → t ∈ closure g fuel := by
+  induction fuel with
+  | zero => intro g t h; exact h
+  | succ n ih =>
+    intro g t h
+    simp only [closure]
+    split
+    · exact h
+    · exact ih (step g) (mem_step_of_mem h)
+
+/-- **T2.** Every triple of the computed closure has a derivation in
+the OWL 2 RL/RDF rule relation. This is the LICENSING statement of
+`OWL.RL.Refinement.fst`, assembled from the 47 per-row lemmas above.
+
+Chaining the rounds is `Derives.cut`, which needs no side condition
+because the collection-valued rows carry their own derivable-collection
+graph (see `RLRules.Derives.cut`'s comment for why reading `g`
+directly would make cut false here). -/
+theorem closure_sound (fuel : Nat) :
+    ∀ (g : Graph) {t : Triple}, t ∈ closure g fuel → Derives g t := by
+  induction fuel with
+  | zero => intro g t h; exact Derives.base h
+  | succ n ih =>
+    intro g t h
+    simp only [closure] at h
+    split at h
+    · exact Derives.base h
+    · exact Derives.cut (fun _ hu => step_sound hu) (ih (step g) h)
+
+/-! ## Section 8 — the fuel dichotomy -/
+
+/-- **The fuel dichotomy.** For every graph and every fuel: either the
+closure is saturated (one more round changes nothing), or the closure
+grew by at least one triple per unit of fuel spent. This is what turns
+`closure_complete_of_saturated`'s hypothesis into "provided the fuel
+was not exhausted". -/
+theorem closure_saturated_or_underfueled (fuel : Nat) :
+    ∀ (g : Graph), step (closure g fuel) = closure g fuel ∨
+      g.length + fuel ≤ (closure g fuel).length := by
+  induction fuel with
+  | zero => intro g; exact Or.inr (by simp [closure])
+  | succ n ih =>
+    intro g
+    simp only [closure]
+    split
+    · rename_i heq
+      exact Or.inl (step_eq_of_length_eq heq)
+    · rename_i hne
+      rcases ih (step g) with h | h
+      · exact Or.inl h
+      · have h1 : g.length ≤ (step g).length := length_le_step g
+        exact Or.inr (by omega)
+
+/-! ## Section 9 — the clash rows
+
+One lemma per no-consequent row, then the decision procedure. -/
+
+theorem exists_mem_of_not_isEmpty {a : Type} {l : List a}
+    (h : (!l.isEmpty) = true) : ∃ x, x ∈ l := by
+  cases l with
+  | nil => simp at h
+  | cons x xs => exact ⟨x, List.mem_cons_self ..⟩
+
+/-- **eq-diff1**. -/
+theorem eqDiff1At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : eqDiff1At g d = true) : Clash g := by
+  simp only [eqDiff1At, Bool.and_eq_true, beq_iff_eq] at h
+  exact Clash.eqDiff1 (mem_of_parts hd rfl h.1 rfl) (mem_of_memB h.2)
+
+/-- **prp-irp**. -/
+theorem prpIrpAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : prpIrpAt g d = true) : Clash g := by
+  unfold prpIrpAt at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true, beq_iff_eq] at h
+    obtain ⟨p, hpi, u, hu, hoo⟩ := h
+    obtain ⟨hug, hup⟩ := mem_withPred hu
+    exact Clash.prpIrp (mem_of_parts hd (mem_subjIri hpi) hp1 hp2)
+      (mem_of_parts hug rfl hup hoo)
+  · simp at h
+
+/-- **prp-asyp**. -/
+theorem prpAsypAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : prpAsypAt g d = true) : Clash g := by
+  unfold prpAsypAt at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨p, hpi, u1, hu1, y, hy, hm⟩ := h
+    obtain ⟨hu1g, hu1p⟩ := mem_withPred hu1
+    exact Clash.prpAsyp (mem_of_parts hd (mem_subjIri hpi) hp1 hp2)
+      (mem_of_parts hu1g rfl hu1p (mem_asSubject hy))
+      (mem_of_memB hm)
+  · simp at h
+
+/-- **prp-pdw**. -/
+theorem prpPdwAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : prpPdwAt g d = true) : Clash g := by
+  unfold prpPdwAt at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨p1, hp1i, p2, hp2i, u, hu, hm⟩ := h
+    obtain ⟨hug, hup⟩ := mem_withPred hu
+    exact Clash.prpPdw (mem_of_parts hd (mem_subjIri hp1i) hp (mem_asIri hp2i))
+      (mem_of_parts hug rfl hup rfl) (mem_of_memB hm)
+  · simp at h
+
+/-- **prp-npa1**. -/
+theorem prpNpa1At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : prpNpa1At g d = true) : Clash g := by
+  unfold prpNpa1At at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨x, hx, ap, hap, p, hpi, ti, hti, hm⟩ := h
+    obtain ⟨hapg, haps, happ⟩ := mem_withSubjPred hap
+    obtain ⟨htig, htis, htip⟩ := mem_withSubjPred hti
+    exact Clash.prpNpa1 (mem_of_parts hd rfl hp (mem_asSubject hx))
+      (mem_of_parts hapg haps happ (mem_asIri hpi))
+      (mem_of_parts htig htis htip rfl)
+      (mem_of_memB hm)
+  · simp at h
+
+/-- **prp-npa2**. -/
+theorem prpNpa2At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : prpNpa2At g d = true) : Clash g := by
+  unfold prpNpa2At at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨x, hx, ap, hap, p, hpi, tv, htv, hm⟩ := h
+    obtain ⟨hapg, haps, happ⟩ := mem_withSubjPred hap
+    obtain ⟨htvg, htvs, htvp⟩ := mem_withSubjPred htv
+    exact Clash.prpNpa2 (mem_of_parts hd rfl hp (mem_asSubject hx))
+      (mem_of_parts hapg haps happ (mem_asIri hpi))
+      (mem_of_parts htvg htvs htvp rfl)
+      (mem_of_memB hm)
+  · simp at h
+
+/-- **cls-nothing2**. -/
+theorem clsNothing2At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : clsNothing2At g d = true) : Clash g := by
+  simp only [clsNothing2At, Bool.and_eq_true, beq_iff_eq] at h
+  exact Clash.clsNothing2 (mem_of_parts hd rfl h.1 h.2)
+
+/-- **cls-com**. -/
+theorem clsComAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : clsComAt g d = true) : Clash g := by
+  unfold clsComAt at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨u, hu, hm⟩ := h
+    obtain ⟨hug, hup, huo⟩ := mem_withPredObj hu
+    exact Clash.clsCom (mem_of_parts hd rfl hp rfl)
+      (mem_of_parts hug rfl hup huo) (mem_of_memB hm)
+  · simp at h
+
+/-- **cls-maxc1**. -/
+theorem clsMaxc1At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : clsMaxc1At g d = true) : Clash g := by
+  unfold clsMaxc1At at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨onp, honp, p, hpi, tu, htu, hne⟩ := h
+    obtain ⟨honpg, honps, honpp⟩ := mem_withSubjPred honp
+    obtain ⟨htug, htup, htuo⟩ := mem_withPredObj htu
+    obtain ⟨u, hu⟩ := exists_mem_of_not_isEmpty hne
+    obtain ⟨hug, hus, hup⟩ := mem_withSubjPred hu
+    exact Clash.clsMaxc1 (mem_of_parts hd rfl hp1 hp2)
+      (mem_of_parts honpg honps honpp (mem_asIri hpi))
+      (mem_of_parts htug rfl htup htuo)
+      (mem_of_parts hug hus hup rfl)
+  · simp at h
+
+/-- **cls-maxqc1**. -/
+theorem clsMaxqc1At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : clsMaxqc1At g d = true) : Clash g := by
+  unfold clsMaxqc1At at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨onp, honp, p, hpi, onc, honc, tu, htu, u, hu, ys, hys, hm⟩ := h
+    obtain ⟨honpg, honps, honpp⟩ := mem_withSubjPred honp
+    obtain ⟨honcg, honcs, honcp⟩ := mem_withSubjPred honc
+    obtain ⟨htug, htup, htuo⟩ := mem_withPredObj htu
+    obtain ⟨hug, hus, hup⟩ := mem_withSubjPred hu
+    exact Clash.clsMaxqc1 (mem_of_parts hd rfl hp1 hp2)
+      (mem_of_parts honpg honps honpp (mem_asIri hpi))
+      (mem_of_parts honcg honcs honcp rfl)
+      (mem_of_parts htug rfl htup htuo)
+      (mem_of_parts hug hus hup (mem_asSubject hys))
+      (mem_of_memB hm)
+  · simp at h
+
+/-- **cls-maxqc2**. -/
+theorem clsMaxqc2At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : clsMaxqc2At g d = true) : Clash g := by
+  unfold clsMaxqc2At at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true, Bool.and_eq_true, beq_iff_eq] at h
+    obtain ⟨onp, honp, p, hpi, onc, honc, honcth, tu, htu, hne⟩ := h
+    obtain ⟨honpg, honps, honpp⟩ := mem_withSubjPred honp
+    obtain ⟨honcg, honcs, honcp⟩ := mem_withSubjPred honc
+    obtain ⟨htug, htup, htuo⟩ := mem_withPredObj htu
+    obtain ⟨u, hu⟩ := exists_mem_of_not_isEmpty hne
+    obtain ⟨hug, hus, hup⟩ := mem_withSubjPred hu
+    exact Clash.clsMaxqc2 (mem_of_parts hd rfl hp1 hp2)
+      (mem_of_parts honpg honps honpp (mem_asIri hpi))
+      (mem_of_parts honcg honcs honcp honcth)
+      (mem_of_parts htug rfl htup htuo)
+      (mem_of_parts hug hus hup rfl)
+  · simp at h
+
+/-- **cax-dw**. -/
+theorem caxDwAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : caxDwAt g d = true) : Clash g := by
+  unfold caxDwAt at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨u, hu, hm⟩ := h
+    obtain ⟨hug, hup, huo⟩ := mem_withPredObj hu
+    exact Clash.caxDw (mem_of_parts hd rfl hp rfl)
+      (mem_of_parts hug rfl hup huo) (mem_of_memB hm)
+  · simp at h
+
+/-- **cax-adc**. -/
+theorem caxAdcAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : caxAdcAt g d = true) : Clash g := by
+  unfold caxAdcAt at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+      Bool.not_true, beq_eq_false_iff_ne, ne_eq] at h
+    obtain ⟨mem, hmem, ci, hci, cj, hcj, hne, u, hu, hm⟩ := h
+    obtain ⟨hmg, hms, hmp⟩ := mem_withSubjPred hmem
+    obtain ⟨hug, hup, huo⟩ := mem_withPredObj hu
+    exact Clash.caxAdc (mem_of_parts hd rfl hp1 hp2)
+      (mem_of_parts hmg hms hmp rfl)
+      (listElems_sound g (listFuel g) mem.o hci)
+      (listElems_sound g (listFuel g) mem.o hcj)
+      hne
+      (mem_of_parts hug rfl hup huo)
+      (mem_of_memB hm)
+  · simp at h
+
+/-- Every clash-row verdict for one driving triple is a real clash. -/
+theorem clashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : clashFrom g d = true) : Clash g := by
+  simp only [clashFrom, List.any_eq_true, clashRows, List.mem_cons,
+    List.not_mem_nil, or_false] at h
+  obtain ⟨b, hb, hv⟩ := h
+  rcases hb with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl
+  · exact eqDiff1At_sound hd hv
+  · exact prpIrpAt_sound hd hv
+  · exact prpAsypAt_sound hd hv
+  · exact prpPdwAt_sound hd hv
+  · exact prpNpa1At_sound hd hv
+  · exact prpNpa2At_sound hd hv
+  · exact clsNothing2At_sound hd hv
+  · exact clsComAt_sound hd hv
+  · exact clsMaxc1At_sound hd hv
+  · exact clsMaxqc1At_sound hd hv
+  · exact clsMaxqc2At_sound hd hv
+  · exact caxDwAt_sound hd hv
+  · exact caxAdcAt_sound hd hv
+
+/-- **Clash soundness.** Every `true` verdict of the decision procedure
+is a real `Clash` — the graph really does satisfy the premises of a
+no-consequent row of the tables. (The converse, completeness of the
+decision, is not claimed: `caxAdcAt` reads its member list through the
+same fuel-bounded walk the list-valued rows use.) -/
+theorem detectClash_sound {g : Graph} (h : detectClash g = true) : Clash g := by
+  simp only [detectClash, List.any_eq_true] at h
+  obtain ⟨d, hd, hc⟩ := h
+  exact clashFrom_sound hd hc
+
+/-! ## Section 10 — collection-walk fuel
+
+The direction the T4 proof needs and the soundness proofs do not: that
+a walk with enough fuel finds every list member and every denotation.
+Both existence lemmas are proved; what is NOT proved is that
+`listFuel g = g.length + 1` is always enough (the same term-universe
+counting obligation `closureFuelBound` carries), which is why T4 takes
+`ListFuelAdequate` as a hypothesis instead of asserting it. -/
+
+/-- The hypothesis T4's list-valued rows need: the walks used by the
+engine at this fuel find everything the specification relations
+relate. -/
+def ListFuelAdequate (g : Graph) (fuel : Nat) : Prop :=
+  (∀ head e, ListMember g head e → e ∈ listElems g head fuel) ∧
+  (∀ head es, ListDenotes g head es → es ∈ listSeqs g head fuel)
+
+/-- Some fuel finds any given list member. -/
+theorem exists_fuel_listElems {g : Graph} {head e : Term}
+    (h : ListMember g head e) : ∃ n, e ∈ listElems g head n := by
+  induction h with
+  | @here node e hf =>
+    refine ⟨1, ?_⟩
+    simp only [listElems, List.mem_flatMap]
+    refine ⟨node, mem_asSubject_toTerm node, ?_⟩
+    exact List.mem_append_left _
+      (List.mem_map_of_mem (mem_withSubjPred_of hf rfl rfl))
+  | @there node tail e hr _ ih =>
+    obtain ⟨n, hn⟩ := ih
+    refine ⟨n + 1, ?_⟩
+    simp only [listElems, List.mem_flatMap]
+    refine ⟨node, mem_asSubject_toTerm node, ?_⟩
+    refine List.mem_append_right _ ?_
+    simp only [List.mem_flatMap]
+    exact ⟨⟨node, rdfRest, tail⟩, mem_withSubjPred_of hr rfl rfl, hn⟩
+
+/-- Some fuel finds any given denotation. -/
+theorem exists_fuel_listSeqs {g : Graph} {head : Term} {es : List Term}
+    (h : ListDenotes g head es) : ∃ n, es ∈ listSeqs g head n := by
+  induction h with
+  | nil =>
+    refine ⟨1, ?_⟩
+    simp [listSeqs]
+  | @cons node e tail rest hnil hf hr _ ih =>
+    obtain ⟨n, hn⟩ := ih
+    refine ⟨n + 1, ?_⟩
+    rw [listSeqs, if_neg (by simpa using hnil)]
+    simp only [List.mem_flatMap, List.mem_map]
+    exact ⟨node, mem_asSubject_toTerm node,
+      ⟨node, rdfFirst, e⟩, mem_withSubjPred_of hf rfl rfl,
+      ⟨node, rdfRest, tail⟩, mem_withSubjPred_of hr rfl rfl,
+      rest, hn, rfl⟩
 
 end L4Factoidal.OWL
