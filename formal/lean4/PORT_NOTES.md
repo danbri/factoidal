@@ -3633,3 +3633,23 @@ backwards: `header: false` means zero header rows UNLESS
 quoting at all" rather than "use the default quote". Row numbers are
 SOURCE line numbers and must survive skipping, because `csvw:rownum`
 and every error report reference them.
+
+### CSVW: URI template expansion (2026-08-22)
+
+`CSVW/UriTemplate.lean` ports `CSVW.URITemplate.fst` — the RFC 6570
+subset CSVW actually uses: level-1 `{var}` and level-2 `{#var}`. No
+query form, path segments, lists, or modifiers, matching the F*
+module's deliberate scope.
+
+Ported WITH its war story, as a regression guard: RFC 6570 §3.2.4
+prefixes a DEFINED `{#var}` expansion with a literal `'#'`, while an
+UNDEFINED one produces no output at all. Dropping that prefix made
+`countries.csv{#countryCode}` expand to `countries.csvAD` instead of
+`countries.csv#AD`, silently breaking every aboutUrl/valueUrl
+fragment template in the csv2rdf corpus. The guard pins both halves —
+the '#' appears when the variable is defined and does NOT appear when
+it is not.
+
+CSVW's `_row`/`_sourceRow`/`_name` variables need no special handling
+here; they resolve through the caller's lookup like any column name,
+which keeps this module free of CSVW knowledge.
