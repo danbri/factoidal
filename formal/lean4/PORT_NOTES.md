@@ -2598,11 +2598,52 @@ rule sets), `DerivesFull.mono`, `DerivesFull.cut`, `rdfD2For_sound`,
 Axiom audit (`#print axioms` in `EntailmentTests.lean`): propext,
 Classical.choice, Quot.sound only.
 
-Not proved: completeness at saturation for the eight new rows (T4 of
-`ClosureTheorems.lean` covers the six rdfs-core rows; the extension is
-the same argument per row and is the named obligation); any
-model-theoretic statement (D-interpretations are not ported, so the
-regime comparisons `literalValueEq` carry guards, not theorems).
+**T4 completeness at saturation: CLOSED (2026-08-22, branch
+`lean4/rdfs-complete`).** The entry below previously named it the open
+obligation of this stage. It is now proved for the FULL rule set — all
+sixteen `DerivesFull` constructors, the eight rows this stage added
+(rdfD2, rdfs4a, rdfs4b, rdfs6, rdfs8, rdfs10, rdfs12, rdfs13) plus the
+`axiomatic` constructor that carries rdfs1-as-axioms and the §8.2 /
+§9.3 axiomatic triples. Theorems, in
+`RDFS/FullClosureTheorems.lean`:
+
+| Theorem | Statement |
+|---|---|
+| `fullComplete_of_saturated` | `fullStep c = c` and `∀ u ∈ ax, Graph.mem u c` and `∀ u ∈ g, Graph.mem u c` imply `DerivesFull ax g t → Graph.mem t c = true` |
+| `fullClosure_complete_of_saturated` | `fullStep (fullClosure D cmps g) = fullClosure D cmps g` implies `DerivesFull (axiomaticTriples D cmps) g t → Graph.mem t (fullClosure D cmps g) = true` |
+| `fullClosure_mono_of_saturated` | `g ⊆ g'` and `g'`'s closure saturated imply `t ∈ fullClosure D cmps g → Graph.mem t (fullClosure D cmps g') = true` |
+| `graphMem_fullClosure_of_mem_closure` | the two closures compared: `t ∈ closure g fuel → Graph.mem t (fullClosure D cmps g) = true` under the same saturation hypothesis |
+
+Support lemmas landed with them: `mem_fullStepConclusions_core` and
+one `mem_fullStepConclusions_<row>` per new row (a row's conclusion
+reaches the round's conclusion list), `graphMem_fullClosureLoop_of_graphMem`,
+`graphMem_fullClosure_of_mem`, `graphMem_fullClosure_of_mem_axioms`.
+
+Hypotheses, named rather than assumed:
+
+- **saturation** (`fullStep c = c`) — the same hypothesis T4 of
+  `ClosureTheorems.lean` carries; `fullClosure_saturated_or_underfueled`
+  turns it into "the fuel was not exhausted".
+- **`hax`** — NEW relative to the rdfs-core T4, and forced by the
+  `axiomatic` constructor: a graph closed under the RULES still misses
+  a derivation that quotes an axiom unless it was SEEDED with the
+  axiom set. `fullClosure` seeds it, which is how
+  `fullClosure_complete_of_saturated` discharges the hypothesis.
+- **no list-fuel hypothesis** — unlike the OWL-RL collection rows,
+  every one of the eight rows is single-premise and premise-local
+  (one triple in, at most one conclusion out), so there is no bounded
+  walk to fuel.
+
+Axiom audit for the four theorems (`#print axioms` in `Tests.lean`):
+propext, Classical.choice, Quot.sound only.
+
+Still not proved: that `fullClosureFuelBound` is always enough — the
+term-universe counting obligation `Closure.closureFuelBound` already
+carries and this module inherits. T4 is stated against saturation, not
+against a fuel constant, so nothing above depends on it. Also not
+proved: any model-theoretic statement (D-interpretations are not
+ported, so the regime comparisons `literalValueEq` carry guards, not
+theorems).
 
 ### Translation decisions
 

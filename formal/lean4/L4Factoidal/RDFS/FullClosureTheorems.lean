@@ -26,13 +26,30 @@ Follows `ClosureTheorems.lean` row for row. What is proved:
   still admissible, so this is a sound over-approximation of RDF
   entailment, never a claim that the RDF regime runs those rows).
 
-NOT proved here: completeness at saturation (T4 of
-`ClosureTheorems.lean`). Its proof for the six rdfs-core rows is in
-that file; extending it to the eight new rows is the same three-move
-argument per row and is the named remaining obligation of this stage.
-`fullClosure_saturated_or_underfueled` (the fuel dichotomy) IS proved,
-so the hypothesis such a theorem needs is discharged for every graph
-whose closure is reached inside the fuel.
+* **T4 completeness at saturation** — `fullComplete_of_saturated`, all
+  SIXTEEN constructor cases (base, axiomatic, rdfD2, rdfs2–rdfs13):
+  a graph saturated under `fullStep` that contains `g` and contains
+  the axiom set contains everything `DerivesFull ax g` derives.
+  `fullClosure_complete_of_saturated` is the form for the computed
+  closure, and `fullClosure_saturated_or_underfueled` (the fuel
+  dichotomy, proved below) discharges its hypothesis for every graph
+  whose closure is reached inside the fuel. TWO hypotheses, both
+  named: saturation, and `hax` — the axiom set must be present in the
+  saturated graph, because `DerivesFull` may quote any axiomatic
+  triple and rule-saturation alone does not put it there.
+* **T3 monotonicity** — `fullClosure_mono_of_saturated`, conditional
+  on the larger closure being saturated, as in `ClosureTheorems.lean`.
+  The two closures must carry the SAME datatype map and `rdf:_n`
+  slice: the axiom set is what `DerivesFull` quotes from.
+* **The two closures compared** —
+  `graphMem_fullClosure_of_mem_closure`: `closure g fuel ⊆ fullClosure
+  D cmps g` in the engine's membership, via `Derives.toFull`.
+
+The remaining obligation of the stage is the one
+`Closure.closureFuelBound` already carries and this module's
+`fullClosureFuelBound` inherits: that the stated fuel is always
+enough, i.e. the term-universe counting bound. Nothing here depends on
+it — T4 is stated against saturation, not against a fuel constant.
 
 Membership conventions are those of `ClosureTheorems.lean` (list
 membership in T1/T2). No `sorry`, no `axiom`, no `native_decide`.
