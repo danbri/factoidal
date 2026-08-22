@@ -336,20 +336,37 @@ structure ClosureResult where
   rounds : Nat
   capped : Bool
 
-/-- `OWL.RL.closure` with the same stopping rule, one `step` per loop
-iteration so the wall clock can be read between rounds. Fuel exhausted
+/-- One round, `OWL.RL.step g`, computed per driving triple so the
+clock can be read INSIDE a round (a single round over a large ontology
+can take minutes, and a cap that only fires between rounds is not a
+cap). When the deadline has not passed the result is exactly
+`addAll g (axiomTriples ++ g.flatMap (conclusionsFrom g))`, i.e.
+`step g`; `none` means the deadline passed mid-round. -/
+def stepIO (g : Graph) (deadlineMs : Nat) : IO (Option Graph) := do
+  let mut acc : Array Triple := #[]
+  let mut i := 0
+  for d in g do
+    acc := acc ++ (conclusionsFrom g d).toArray
+    i := i + 1
+    if i % 32 == 0 then
+      if (← IO.monoMsNow) > deadlineMs then return none
+  return some (addAll g (axiomTriples ++ acc.toList))
+
+/-- `OWL.RL.closure` with the same stopping rule (stop when the length
+did not change), one `stepIO` per loop iteration. Fuel exhausted
 without saturation counts as a cap hit too. -/
 def closureIO (g : Graph) (fuel : Nat) (deadlineMs : Nat) : IO ClosureResult := do
   let mut cur := g
   let mut rounds := 0
   for _ in [0:fuel] do
-    let g' := step cur
-    rounds := rounds + 1
-    if g'.length = cur.length then
-      return { graph := cur, rounds := rounds, capped := false }
-    cur := g'
-    if (← IO.monoMsNow) > deadlineMs then
+    match ← stepIO cur deadlineMs with
+    | none =>
       return { graph := cur, rounds := rounds, capped := true }
+    | some g' =>
+      rounds := rounds + 1
+      if g'.length = cur.length then
+        return { graph := cur, rounds := rounds, capped := false }
+      cur := g'
   return { graph := cur, rounds := rounds, capped := true }
 
 /-! ## Judging -/

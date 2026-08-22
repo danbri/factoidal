@@ -276,3 +276,71 @@ RDF/XML landed (166 of 166, see the update above) with exactly the
 predicted change: two `Run.lean` clauses. SPARQL needs the
 query-string parser first; `TestCase` already carries `qt:query`,
 `qt:data` and `qt:graphData` for that day.
+
+## Status 2026-08-22 — the OWL 2 corpus runs (`l4owl-probe`, branch `lean4/owl-corpus`)
+
+`Harness/OwlProbe.lean` was a census ("0 of 931 runnable: no RDF/XML
+mapping"). With `Syntax/RdfXml.lean` landed the same day, it now parses
+every case's RDF/XML premise and conclusion, merges `owl:imports` from
+the catalog wrapper nodes, runs `OWL.RL.step` under fuel 100 and a
+per-closure wall-clock cap (checked between driving triples, so one
+slow round cannot escape it), and judges the four test types exactly as
+`bin/owl-runner/owl_runner.ml` does — one unit per (case, test type),
+`ProfileIdentificationTest` tallied only, relaxed blank-node match on
+conclusions, functional-syntax-only cases `unsupported` and in the
+denominator, a parse failure a FAIL with the parser's message.
+
+Verbatim (per-closure cap 20 000 ms; the three profile catalogs and
+type-inconsistency run in 82 / 70 / 57 / 1570 ms, the two large type
+catalogs in 326 s and 397 s):
+
+```
+profile-RL.rdf: 102 pass, 19 fail, 0 skip, 5 unsupported (out of 126)
+HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1227 closure_rounds=428 clashes=10 cap_hits=0 parse_failures=0 wall_ms=82
+profile-EL.rdf: 95 pass, 21 fail, 1 skip, 4 unsupported (out of 121)
+HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1098 closure_rounds=409 clashes=4 cap_hits=0 parse_failures=0 wall_ms=70
+profile-QL.rdf: 76 pass, 11 fail, 0 skip, 0 unsupported (out of 87)
+HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=303 clashes=5 cap_hits=0 parse_failures=0 wall_ms=57
+type-positive-entailment.rdf: 291 pass, 115 fail, 0 skip, 6 unsupported (out of 412)
+HARNESS-DIAG-OWL type-positive-entailment.rdf: cases=206 units=412 triples_parsed=28902 closure_rounds=1544 clashes=0 cap_hits=10 parse_failures=0 wall_ms=326261
+type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5258 closure_rounds=425 clashes=29 cap_hits=0 parse_failures=0 wall_ms=1570
+type-consistency.rdf: 453 pass, 118 fail, 0 skip, 12 unsupported (out of 583)
+HARNESS-DIAG-OWL type-consistency.rdf: cases=354 units=583 triples_parsed=41248 closure_rounds=2111 clashes=0 cap_hits=12 parse_failures=1 wall_ms=396557
+```
+
+Sum over the six catalogs: 1046 pass, 368 fail, 2 skip, 41 unsupported
+(out of 1457 units over 931 cases). The per-type denominators agree
+with the F\* runner's where it publishes them (profile-RL PE 30 of 30;
+profile-QL 87; profile-EL 121 less one functional-syntax skip = 120;
+type-inconsistency 128 less one RDF-BASED-only skip = 127).
+
+F\* side, each with its manifest and regime: `owl_rl_positive_entailment`
+30 pass, 0 fail (out of 30) = profile-RL.rdf PE line, RL regime (Lean:
+11 pass, 18 fail, 1 unsupported); `owl2_profile_ql` 87 pass, 0 fail
+(out of 87) = profile-QL.rdf (Lean 76 of 87); `owl2_profile_el` 119
+pass, 1 fail (out of 120) = profile-EL.rdf (Lean 95 of 121);
+`owl2_dl_inconsistency` 126 pass, 1 fail (out of 127) =
+type-inconsistency.rdf under `--regime dl`, i.e. RL closure + tableau
+refuter (Lean, RL closure only: 29 of 128). No F\* line exists for
+type-positive-entailment.rdf or type-consistency.rdf.
+
+Every FAIL is named in the run log and grouped by cause. On the RL
+profile catalogs all are rows the port scoped out by name (the F\*
+`[ext]` differentFrom-synthesis, comprehension-witness, hasSelf, chain
+and equivalentClass-annotation rules; the `with_reflexivity` wrapper
+that types every subject `owl:Thing`; Table 7 dt-diff and the datatype
+map; the eq-diff2/3 and prp-adp clash rows). On the type catalogs the
+bulk are OWL DL entailments that need the tableau. Full list with rule
+names: `formal/lean4/PORT_NOTES.md`, "Measured against the real
+corpus, second entry". One parser finding: `FS2RDF-literals-ar` carries
+an XMLLiteral as element content under `rdf:datatype`, which §7.2.16
+forbids; `Parser.RDFXML.fst` accepts it by a documented non-spec
+extension the Lean parser deliberately does not copy. `RdfXml.lean`
+was not edited; the rdf11 gates still read 1078 of 1078 (`l4w3c`) and
+132 / 41 / 130 of 132 (`l4rdfxml-probe`).
+
+Sabotage check: removing cax-sco from `conclusionsList` takes
+profile-RL from 102 pass to 98 pass (WebOnt-imports-011 PE and
+WebOnt-description-logic-101/103/104 Inconsistency flip to FAIL);
+restored.
