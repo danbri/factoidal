@@ -582,6 +582,75 @@ sequence the two operations explicitly. The §3.1.3 ordering is pinned
 by the guard, not by the corpus — a gap in the W3C suite worth
 knowing. Restored (file checked out from the branch), build green
 again.
+## Status 2026-08-22 — entailment regimes run (branch `lean4/entailment`)
+
+The rdf-mt suite and the RDFS / RDF / D entries of the sparql11
+`entailment` suite now run in the Lean harness. The engine side is
+`formal/lean4/L4Factoidal/RDFS/FullClosure.lean` (RDF 1.1 Semantics
+§8.1 rdfD2, §9.2 rdfs1–13, §8.2 / §9.3 axiomatic triples; derivation
+relation `DerivesFull` plus the `fullClosure` fixpoint on top of the
+rdfs-core step), `RDF/Datatypes.lean` (the datatype map: lexical
+spaces, D-value equality, value-space membership; `rdf:XMLLiteral`
+decided by the XML parser) and `RDF/Entailment.lean` (simple
+entailment by instance — specification `SimpleEntails`, §5.2 — with a
+witness-then-certificate decision procedure, the four regimes, and the
+two D-inconsistency shapes). Harness: `Harness/Manifest.lean` reads
+`mf:entailmentRegime`, `mf:recognizedDatatypes` and `mf:result false`;
+`Harness/Run.lean` gains `runEntailmentTest` (one contiguous block for
+`PositiveEntailmentTest` / `NegativeEntailmentTest`) and applies
+`Regime.closure` to the fixtures of a sparql11 entailment entry.
+
+### Measured score lines, verbatim
+
+```
+rdf-mt: 39 pass, 0 fail, 0 skip, 0 unsupported (out of 39)
+HARNESS-DIAG rdf-mt: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=133
+entailment: 40 pass, 0 fail, 0 skip, 30 unsupported (out of 70)
+HARNESS-DIAG entailment: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=133 triples_compared=0
+TOTAL: 396 pass, 0 fail, 0 skip, 235 unsupported (out of 631)        (sparql11/manifest-all.ttl)
+TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of 1078)        (rdf-n-triples, rdf-n-quads, rdf-turtle, rdf-trig, rdf-xml, rdf-canon)
+```
+
+Denominators match the F\* runner's (rdf-mt 39; entailment 70; 631).
+F\* side: rdf-mt 38 pass, 0 fail, 1 unsupported (out of 39) — the
+unsupported entry is `rdfs-entailment-test001`, rdf:XMLLiteral
+well-formedness, which this tree decides; sparql11 entailment 70 pass,
+0 fail (out of 70), the difference being the OWL-RL / OWL-Direct / RIF
+regimes.
+
+### The 30 unsupported, by regime
+
+- `OWL-Direct` only (18): paper-sparqldl-Q2, paper-sparqldl-Q3,
+  parent3, parent4, parent5, parent6, parent7, parent8, parent9,
+  parent10, simple1–simple8.
+- `OWL-Direct/OWL-RDF-Based` (8): lang, plainLit, paper-sparqldl-Q1,
+  paper-sparqldl-Q4, sparqldl-10, sparqldl-11, sparqldl-12, sparqldl-13.
+- `RIF` (4): rif01, rif03, rif04, rif06.
+
+Every entry whose regime list names RDFS, RDF or D (alone or beside
+OWL names) runs under the strongest of those three and passes. No
+FAIL in either suite.
+
+### Sabotage
+
+rdfs9 removed from the rdfs-core step: the sparql11 entailment suite
+drops to 37 pass, 3 fail (rdfs04, rdfs05, rdfs09) and `lake build`
+fails at `ClosureTheorems.stepConclusions_sound`; rdf-mt does NOT move
+(39 pass) — the suite has no entry exercising rdfs9, which is now
+recorded in `PORT_NOTES.md` and pinned by a guard. rdfs7 removed:
+rdf-mt drops to 37 pass, 2 fail (`rdfms-seq-representation-test003`,
+`rdfs-subPropertyOf-semantics-test001`). Both restored, all gates
+green.
+
+### Theorems landed
+
+`Derives.toFull` (rdfs-core ⊆ full RDFS), `DerivesFull.mono` /
+`.cut`, eight per-row soundness lemmas, `fullClosure_extensive`,
+`fullClosure_sound`, `rdfClosure_extensive`, `rdfClosure_sound`,
+`fullClosure_saturated_or_underfueled`, `simpleEntails_sound`,
+`SimpleEntails.refl`. Axiom audit: propext, Classical.choice,
+Quot.sound. Completeness at saturation for the eight new rows is the
+named open obligation.
 
 ## Status 2026-08-22 (night): the three protocol-shaped types run (branch `lean4/protocol`)
 
@@ -617,15 +686,17 @@ http-rdf-update: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
 HARNESS-DIAG http-rdf-update: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=1
 service-description: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)
 HARNESS-DIAG service-description: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0
-TOTAL: 561 pass, 0 fail, 0 skip, 70 unsupported (out of 631)
+TOTAL: 601 pass, 0 fail, 0 skip, 30 unsupported (out of 631)
 ```
 
 (Measured after merging `claude/main` with the SPARQL 1.1 Update
 stage into the branch; before that merge the update-shaped protocol
 entries were `unsupported` and the line read `protocol: 26 pass,
 0 fail, 0 skip, 8 unsupported (out of 34)`.) The query types stay at
-356 pass, 0 fail; the 70 unsupported are the entailment-regime
-evaluation tests; the six RDF suites at
+356 pass, 0 fail; the 30 unsupported are the OWL-Direct /
+OWL-RDF-Based / RIF entailment-regime tests (after merging the
+entailment stage from `claude/main` too; rdf-mt 39 pass, 0 fail (out
+of 39)); the six RDF suites at
 `TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of 1078)`.
 The F\* runner's lines for the same three suites
 (`docs/test-results/latest.json`): protocol 34 pass, 0 fail (out of

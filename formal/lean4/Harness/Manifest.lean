@@ -177,6 +177,17 @@ structure TestCase where
   /-- … and its `ut:graphData` (graph IRI, local path) pairs. The F*
   runner's `update_result_named_files`. -/
   updateResultGraphData : List (String × String) := []
+  /-- `mf:entailmentRegime` — the rdf-mt suite's literal (`"simple"`,
+  `"RDF"`, `"RDFS"`) on the entry itself (the F* runner's
+  `test_type_detail`). -/
+  entailmentRegime : Option String := none
+  /-- `mf:recognizedDatatypes ( … )` — the datatype IRIs the test asks
+  the implementation to recognise (rdf-mt only; empty otherwise). -/
+  recognizedDatatypes : List String := []
+  /-- `mf:result false` — the rdf-mt encoding of "the action graph is
+  (Positive) / is not (Negative) inconsistent". Recorded as a flag;
+  `resultFile` is `none` for such an entry. -/
+  resultFalse : Bool := false
   /-- The first non-empty `rdfs:comment` literal on the entry: the
   HTTP request/response description of a `ProtocolTest` or
   `GraphStoreProtocolTest` (the F* runner's `protocol_comment`). -/
@@ -231,16 +242,30 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
       | some t => localName (termKey t)
       | none   => ""
     let hashAlgorithm := (findObject? g subj (rdfcNs ++ "hashAlgorithm")).map termKey
-    -- `mf:result`: a file IRI (query tests), or a blank node carrying
-    -- `ut:data` / `ut:graphData` — possibly none, for an expected
-    -- EMPTY store (`mf:result []`, update-silent) — for UPDATE tests.
+    -- `mf:result`: a file IRI (query / rdf-mt entailment tests); the
+    -- literal `false` (rdf-mt inconsistency tests); or a blank node
+    -- carrying `ut:data` / `ut:graphData` — possibly none, for an
+    -- expected EMPTY store (`mf:result []`, update-silent) — for UPDATE.
+    let resultTerm := findObject? g subj (mfNs ++ "result")
+    let resultFalse := match resultTerm with
+                       | some (.literal l) => l.val.lexicalForm == "false"
+                       | _ => false
     let (resultFile, updateResultData, updateResultGraphData) :=
-      match findObject? g subj (mfNs ++ "result") with
+      match resultTerm with
       | some (.bnode b) =>
           let (d, gd) := dataAndGraphData manifestDir g (.bnode b)
           (none, d, gd)
+      | some (.literal _) => (none, [], [])
       | some t => (some (iriToLocalPath manifestDir (termKey t)), [], [])
       | none   => (none, [], [])
+    -- rdf-mt: `mf:entailmentRegime "RDFS"` and `mf:recognizedDatatypes ( … )`
+    -- on the entry itself (the F* runner's `test_type_detail` /
+    -- `extract_iri_list`). `( )` and an absent triple both give `[]`.
+    let entailmentRegime := (findObject? g subj (mfNs ++ "entailmentRegime")).map termKey
+    let recognizedDatatypes :=
+      match findObject? g subj (mfNs ++ "recognizedDatatypes") with
+      | some t => (collectList g (g.length + 1) t).map termKey
+      | none   => []
     -- `mf:action`: a file IRI, or a bnode carrying qt: predicates.
     let actionTerm := findObject? g subj (mfNs ++ "action")
     let noBnodeAction : Option String × List String × List (String × String) ×
@@ -286,7 +311,8 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
         | _          => none)
     { name, entryId, testType, action, queryFile, dataFiles, graphData,
       resultFile, approval, hashAlgorithm, entailmentRegimes, serviceData,
-      updateResultData, updateResultGraphData, comment }
+      updateResultData, updateResultGraphData,
+      entailmentRegime, recognizedDatatypes, resultFalse, comment }
 
 /-- `mf:assumedTestBase` — the base IRI the suite documents for its own
 fixtures. Read out of the manifest rather than hardcoded, because the
