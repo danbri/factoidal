@@ -4331,3 +4331,29 @@ VByte round trip (needs induction on `n / 128` with the accumulator
 generalised) and the section round trip (needs a readU32LE-over-append
 lemma). `#guard` covers both by evaluation meanwhile — including
 VByte boundary values at 127/128/16383/16384.
+
+### MathML: content evaluation and presentation rendering (2026-08-22)
+
+`MathML/Core.lean` ports `MathML.Content.fst` and
+`MathML.Present.fst`: the Content expression tree, exact-rational
+evaluation, Presentation rendering with operator precedence, and the
+content-vs-presentation classifier.
+
+Rationals are EXACT and normalised to lowest terms, so `1/3 + 1/3 +
+1/3` is exactly `1` — Content MathML denotes the mathematical value,
+and a float would make that guard fail.
+
+Division by zero REFUSES (`none`) rather than producing an infinity:
+Content MathML has no such value, so inventing one would be answering
+a question the vocabulary cannot ask. Same for an unbound symbol and
+an unknown operator — every refusal path returns `none`, never a
+default.
+
+Rendering detail worth keeping: a NEGATIVE literal carries the loose
+precedence of a `minus`, so it gets fenced inside a tighter parent
+(`2^(-3)`, not `2^-3`). Both directions are guarded — a looser child
+IS fenced, a tighter one is NOT.
+
+The classifier lets CONTENT win when both vocabularies appear, matching
+the F* order: a mixed document is processed as content markup, since
+that is the half carrying meaning rather than layout.

@@ -164,3 +164,5 @@ import L4Factoidal.HTTP.Server
 import L4Factoidal.HTTP.Tests
 import L4Factoidal.Storage.Bytes
 import L4Factoidal.Storage.Tests
+import L4Factoidal.MathML.Core
+import L4Factoidal.MathML.Tests
