@@ -64,19 +64,34 @@ returned, which keeps the cell rather than rejecting it), and the 270
 W3C tests are not yet run against the Lean side — that needs harness
 wiring.
 
+**Opened 2026-08-22, same day** (module set ported, W3C suites not yet
+run against the Lean side — that needs harness wiring):
+
+| Family | Lean modules |
+|---|---|
+| ShEx | `ShEx/Schema`, `Validation` (node constraints), `Shapes` (satisfaction with EXTRA/CLOSED) |
+| RML | `RML/Mapping` (term maps, templates, IRI-vs-URI encoding) |
+| RIF Core | `RIF/Core` (AST + bounded forward chaining) |
+| JSON Schema | `JSONSchema/Validate` (three-valued, exact rationals) |
+| Schematron | `Schematron/Validate` (assert/report inversion) |
+| XPath | `XPath/Number` (IEEE specials + exact decimals) |
+| HTTP serving | `HTTP/Server` (routing, negotiation, responses) |
+| Storage | `Storage/Bytes` (VByte, CRCs, checksummed sections) |
+
+The HTTP one closes the gap this ledger flagged against the project's
+framing: the Lean tree HAD the protocol SEMANTICS (`SPARQL/Protocol`,
+`GraphStore`, `ServiceDescription`) but not the server that speaks
+them. It now has both.
+
 ## Absent from the Lean tree
 
-Present in F\*, no Lean counterpart: ShEx (1,182 tests), RML (76+),
-RIF Core (46 of 50), XSLT/XPath/MathML/
-JSON Schema/Schematron, the XML conformance corpus (1,447 of 2,585),
-the VC/DID stack beyond the Lean `VC/` modules, the COTTAS/HDT storage
-layer, and the HTTP serving layer (`SPARQL.HTTP.*`, admin, static
-files, backend info).
-
-That last one matters for the new framing — a linked information
-system with the Web at its heart. The Lean tree HAS `SPARQL/Protocol`,
-`GraphStore` and `ServiceDescription` modules, so the protocol
-SEMANTICS are ported; what is absent is the server that speaks them.
+Present in F\*, no Lean counterpart: XSLT, MathML, the XML conformance
+corpus (1,447 of 2,585), the VC/DID stack beyond the Lean `VC/`
+modules, and the COTTAS columnar store above the byte layer. Several
+ported families are SLICES rather than complete — ShEx has no
+reference recursion, RIF no builtins, XPath only the number type,
+storage only the byte primitives, CSVW no date formats. Each states
+its own scope in its module header.
 
 ## The 30 unsupported, characterised
 
