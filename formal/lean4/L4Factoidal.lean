@@ -26,3 +26,9 @@ import L4Factoidal.Syntax.SyntaxTests
 import L4Factoidal.Syntax.SyntaxTheorems
 import L4Factoidal.Tests
 import L4Factoidal.SPARQL.ExprTests
+import L4Factoidal.XML.Document
+import L4Factoidal.XML.Parser
+import L4Factoidal.XML.Namespaces
+import L4Factoidal.XML.Wellformedness
+import L4Factoidal.XML.Theorems
+import L4Factoidal.XML.Tests
