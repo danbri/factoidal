@@ -65,6 +65,29 @@ The Lean tree's assumption report would then read: "zero `sorry`,
 zero `axiom`; one `extern` family (HACL\* Ed25519, F\*-verified
 upstream), labelled" — strictly better than the F\* tree's ~88.
 
+**Status (2026-08-22, branch `lean4/vc`): step 6 landed.** Steps 1–5
+were already in the tree; the VC Data Integrity stage adds
+`formal/lean4/L4Factoidal/VC/` (`Multibase`, `DidKey`, `Context`,
+`DataIntegrity`, `Tests`, `Theorems`) and
+`formal/lean4/L4Factoidal/Crypto/Ed25519.lean` — the predicted single
+`extern` family, bound through `formal/lean4/ffi/hacl_ed25519.c` to the
+vendored HACL\* C and compiled by Lake (`lakefile.lean` `extern_lib`;
+the TOML lakefile had no such target, so the file became Lean DSL). The
+assumption report now reads as §3 predicted: zero `sorry`, zero
+`axiom`, zero `partial` in the library; one `extern` family (HACL\*
+Ed25519), labelled in `PORT_NOTES.md`. Measured by `lake exe
+l4vc-probe`: RFC 8032 vectors through the extern 22 pass, 0 fail (out
+of 22); did:key 8 pass, 0 fail (out of 8) — the F\* `did_runner`'s 8;
+the `vc_runner --crypto` roundtrip 8 pass, 0 fail (out of 8); the W3C
+vc-di-eddsa §3.4 test vectors end to end (JSON-LD → RDFC-1.0 →
+SHA-256 → Ed25519, reproducing the spec's canonical N-Quads, hashes,
+signature and proofValue, then securing and verifying the credential)
+20 pass, 0 fail (out of 20). Not ported: the structural validator
+`VC.Credential.fst` (the 117-fixture `vc_stage1` suite) and the
+live-endpoint VC-API suites. The wasm module has the HACL\* units added
+to `Wasm/build-wasm.sh` (compile-checked under emcc, full artifact not
+rebuilt in this stage).
+
 ## 4. Decisions — APPROVED by owner 2026-08-22
 
 Owner, verbatim: "yes, approved re policy and browser strategy

@@ -110,3 +110,10 @@ import L4Factoidal.SHACL.ShaclTheorems
 import L4Factoidal.Testing.Gen
 import L4Factoidal.Testing.Props
 import L4Factoidal.Testing.GenTests
+import L4Factoidal.Crypto.Ed25519
+import L4Factoidal.VC.Multibase
+import L4Factoidal.VC.DidKey
+import L4Factoidal.VC.Context
+import L4Factoidal.VC.DataIntegrity
+import L4Factoidal.VC.Tests
+import L4Factoidal.VC.Theorems

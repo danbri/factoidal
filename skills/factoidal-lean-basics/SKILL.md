@@ -25,7 +25,8 @@ https://github.com/danbri/factoidal/issues/466
 | RDF syntaxes | `Syntax/Lexing.lean`, `NTriples.lean`, `NQuads.lean`, `Turtle.lean`, `TriG.lean`, `IriResolve.lean`, `Harness/TurtleProbe.lean` | rdf11+rdf12 parse/serialise; RFC 3986 resolution (all §5.4 examples guarded); rdf-turtle eval 111 of 111, rdf-trig 107 of 108 |
 | XML | `XML/*.lean`, `xmlconf-probe` | XML 1.0 parser with 20 WFCs, namespaces; xmlconf probe cross-checked file-by-file against F\* |
 | JSON | `JSON/*.lean` | RFC 8259 parser/serialiser; escape + literal round-trips proved |
-| Crypto | `Crypto/SHA2*.lean` | SHA-256/384/512 + `HashAlgorithm` agility; size theorems; FIPS vectors (million-byte ones parked opt-in) |
+| Crypto | `Crypto/SHA2*.lean`, `Crypto/Ed25519.lean` | SHA-256/384/512 + `HashAlgorithm` agility; size theorems; FIPS vectors (million-byte ones parked opt-in). Ed25519 = the ONE `@[extern]` (HACL\* C through `lakefile.lean` `extern_lib`) |
+| VC / DID | `VC/*.lean`, `Harness/VcProbe.lean` | Data Integrity `eddsa-rdfc-2022` create/verify (canonical forms, datasets, JSON-LD documents; primitives are parameters), base58/multibase with the decode-of-encode theorem, did:key both ways; `l4vc-probe` 58 pass, 0 fail (RFC 8032 22, did:key 8, vc_runner roundtrip 8, W3C vc-di-eddsa spec vectors 20) |
 | Wasm | `Wasm/`, `docs/web/hub/assets/l4/`, skill `lean4-wasm-export` | Lean→C→wasm via Emscripten (1.4 MB, ~40 ms load); hub post 36 runs Lean and F\* side by side |
 | Tests/demo | `Tests.lean`, `Demo.lean` | build-time guards + `#print axioms` audit; runnable tour |
 | Docs | `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence, decisions, assumption report |
@@ -42,6 +43,8 @@ Measured 2026-08-22 after twelve rungs: 22721 lines, 1111 top-level definitions/
   result was actually "the build never ran" (`command not found`
   filtered away by a grep for 'error'). Always confirm the tool ran
   before trusting its silence.
+- The lakefile is `lakefile.lean` (Lean DSL) since the VC stage — the
+  TOML format has no `extern_lib`; keep new targets in the DSL.
 - `formal/lean4/lean-toolchain` pins the version (4.33.1 at
   creation); elan auto-fetches it. Bump only deliberately, own
   commit, green `lake build`.
@@ -92,7 +95,13 @@ Measured 2026-08-22 after twelve rungs: 22721 lines, 1111 top-level definitions/
 ## Purity doctrine — the Lean answer to F\* `assume val`
 
 Lean's equivalents are `axiom`, `sorry`, `@[extern]`/`opaque` (host
-implementations), and `partial`. This project uses NONE. The ten
+implementations), and `partial`. This project uses NONE of the first
+two and `partial` only in harness directory walks; `@[extern]`/`opaque`
+exists in exactly ONE place — `Crypto/Ed25519.lean`, HACL\* Ed25519 via
+Lake's `extern_lib` (`lakefile.lean`, `ffi/hacl_ed25519.c`), the single
+permitted extern family under the crypto-policy skill's Lean 4
+amendment, with its trust statement in the module header and its
+run-time measurement (RFC 8032 vectors) in `lake exe l4vc-probe`. The ten
 `assume val`s in `SPARQL11.Algebra.fst` (none in the ported fragment)
 each dissolve by parameterisation when their feature is ported:
 

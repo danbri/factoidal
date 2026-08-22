@@ -3046,3 +3046,212 @@ instead of one empty solution; `GRAPH ?g { ?x ?p ?g }` ignores the
 inner `?g`; `UUID()` repeats within a query; a CONSTRUCT template
 list emits `_:tpl_0__:bnode_13` in N-Triples output; the CLI has no
 query BASE.
+
+## Stage: Verifiable Credentials Data Integrity, `eddsa-rdfc-2022`, did:key (branch `lean4/vc`, 2026-08-22)
+
+Proof creation and verification for the Data Integrity EdDSA
+cryptosuite (W3C vc-di-eddsa §3.3), on top of the landed RDFC-1.0
+(`RDF/Canonical.lean`) and JSON-LD toRdf (`JSONLD/`), with the Ed25519
+primitive bound to HACL\* — the Lean tree's first and only `@[extern]`
+family, exactly as `docs/designissues/2026-08-22-lean4-external-dependencies.md`
+§3 step 6 predicted.
+
+### Module correspondence
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `VC.Multibase.fst` (`hex_digit_val`, `hex_to_bytes`, `bytes_to_hex`, `bytes_to_nat`, `nat_to_bytes_be`, `base58btc_encode/decode`, `multibase_encode_base58btc`, `multibase_decode`, `hex_to_multibase_z`, `multibase_z_to_hex`, `ed25519_multicodec_prefix`, `ed25519_pubkey_to_multikey`) | `VC/Multibase.lean` (`hexDigitVal?`, `bytesOfHex?`, `hexOfBytes`, `bytesToNat`, `natToBytesBE`, `base58Encode`/`base58Decode?`, `multibaseEncodeBase58btc`, `multibaseDecode?`, `hexToMultibaseZ?`, `multibaseZToHex?`, `ed25519PubPrefix`, `ed25519PublicKeyToMultikey`) | bytes are `List UInt8`; nat codecs are most-significant-first with an accumulator so the round trip is a structural induction (below). New: `ed25519PrivPrefix` (`80 26`, the `z3u2…` secret-key Multikey of the spec vectors), `multikeyToEd25519PublicKey?` / `…SecretKey?`. NOT ported: the lenient base64(-url) decoder — it serves `VC.Credential`'s `relatedResource` digests, and that module is not in this stage. |
+| `DID.Key.fst` (`parse_did_key`, `did_key_document`, the nine pinned IRIs) | `VC/DidKey.lean` (`parseDidKey`, `didKeyDocument`, same IRIs) | prefix stripping over `List Char`. New: the inverse `didKeyOfPublicKey` / `verificationMethodOfPublicKey` (the F\* tree re-implements it in JavaScript in `bin/vc-api-shim/server.mjs`) and `publicKeyOfVerificationMethod?`. `keyAgreement` omitted as in the F\*. |
+| `VC.DataIntegrity.fst` (`transform_dataset`, `hash_data_hex`, `eddsa_rdfc_2022_create_from_canonical`, `…verify_from_canonical`, `eddsa_rdfc_2022_create`, `…verify`, `di_proof`, `serialize_proof`, `make_eddsa_proof`) | `VC/DataIntegrity.lean` (`transformDataset`, `hashData`/`hashDataHex`, `createFromCanonical`, `verifyFromCanonical`, `createProofValue`, `verifyProofValue`, `DiProof`, `serializeProof`, `makeEddsaProof`) | the four crypto `assume val`s become: SHA-256 = pure `Crypto/SHA2.lean` behind `HashAlgorithm` (hash agility); Ed25519 = `SignFn` / `VerifyFn` PARAMETERS. New, document level (what `bin/vc-api-shim/server.mjs` does in JavaScript): `proofOptionsOf`, `unsecuredOf`, `canonicalizeJsonLd`, `verifyOneProof`, `verifyDocument` (typed `VerifyError` refusals), `secureDocument`. |
+| `bin/vc-api-shim/server.mjs` `proofContextFor`; `third_party/contexts/PROVENANCE.md` | `VC/Context.lean` (`proofContextFor`, `vendoredContextFiles`, `vcLoader`) | data + the proof-options context rule; the loader is a parameter. NOT a port of `VC.Context.fst` (see "Not ported"). |
+| `experimental_ocaml_glue/hacl_stubs.c` + `fstar_hacl_crypto.ml` (hex-string FFI to HACL\*) | `ffi/hacl_ed25519.c` + `Crypto/Ed25519.lean` (`secretToPublic`, `sign`, `verify` over `ByteArray`) | compiled and archived by Lake (`lakefile.lean`, `extern_lib libl4hacl`) from the unmodified `third_party/hacl/` sources. |
+| `bin/did-runner/did_runner.ml`, `bin/vc-runner/vc_runner.ml --crypto` | `Harness/VcProbe.lean` (`lake exe l4vc-probe`) | same fixtures, same checks, plus RFC 8032 and the W3C spec vectors. |
+
+### `lakefile.toml` → `lakefile.lean`
+
+Lake's TOML format has no `extern_lib` target (Lake 4.33:
+`Lake/Load/Toml.lean` decodes `lean_lib`, `lean_exe`, `input_file`,
+`input_dir` only), so the configuration became the Lean DSL — the
+`lake translate-config lean` output of the former TOML, comments carried
+over, plus four `target … : FilePath` C compilations (`buildO`, `-O2
+-fPIC -I third_party/hacl/include -I <lean include>`, the flags
+`build-ocaml.sh` uses for the same units) and the `extern_lib` that
+archives them into `.lake/build/lib/libl4hacl.a`. Lake links an
+`extern_lib` into every executable of the package, so nothing else
+changed for the probes. Integrators merging other `lean4/*` branches:
+a TOML edit on their side is a modify/delete conflict here — re-apply
+it to the DSL file by hand (the shapes correspond one to one).
+
+### Measured (`lake exe l4vc-probe`, verbatim)
+
+```
+ed25519-rfc8032: 22 pass, 0 fail (out of 22)
+did:key: 8 pass, 0 fail (out of 8)
+vc-dataintegrity-eddsa-rdfc-2022: 8 pass, 0 fail (out of 8)
+vc-di-eddsa-spec-vectors: 20 pass, 0 fail (out of 20)
+TOTAL: 58 pass, 0 fail (out of 58)
+```
+
+Beside the F\* tree (`docs/test-results/latest.json`): `did_key` 8
+pass, 0 fail (out of 8) — the same three `tests/did` vectors and five
+rejection cases; `bin/vc-runner --crypto` prints
+`vc-dataintegrity-eddsa-rdfc-2022: 8 pass, 0 fail (out of 8)` on the
+same inputs (its eight checks are replayed one for one, N-Quads and keys
+identical). The two remaining sections have no F\* counterpart to put
+beside them: the RFC 8032 vectors are the binding's own measurement
+(an `@[extern]` cannot be `#guard`ed), and the F\* tree's
+`vc_di_eddsa` score (31 pass, 0 fail) is the live-endpoint mocha suite
+through the Node VC-API shim, not an offline run of the specification's
+vectors. Section 4 is the strongest line: the spec's unsigned
+credential and proof options go through the Lean JSON-LD processor
+(vendored contexts) and RDFC-1.0 and reproduce the spec's canonical
+N-Quads byte for byte, its two SHA-256 digests, the Ed25519 signature
+`4d8e53…` and the proofValue `z2YwC8…`; `secureDocument` then produces
+that proof and `verifyDocument` accepts it and refuses a tampered
+proofValue, a changed claim, the wrong purpose, a non-did:key
+verification method, and the unsecured credential.
+
+`lake build`: 272 jobs, green; 77 new `#guard`s in `VC/Tests.lean`
+(base58 Bitcoin Core vectors, the three did:key vectors and five
+rejections, the DID document, the spec vectors' pure parts, the
+pipeline with a stub verifier, the proof-options context rule, the
+document-level field surgery).
+
+### Theorems (`VC/Theorems.lean`, 34; axioms: propext, Classical.choice, Quot.sound)
+
+- `base58Decode?_base58Encode : base58Decode? (base58Encode bs) = some bs`
+  — the lemma `VC.Multibase.fst`'s banner declines ("a full base58
+  bijection proof … is a disproportionate proof burden"). It is ~150
+  lines: digits→nat→digits and bytes→nat→bytes by strong induction
+  (`digitsToNat58_natToDigits58`, `natToBytesBE_bytesToNatAcc` in
+  accumulator form), the leading-zero run via `takeWhile_append_dropWhile`,
+  the two alphabet facts (`base58Digit?_base58Char`, `base58Char_ne_one`)
+  by `decide` over the 58-entry list literal.
+- `multibaseDecode?_encode`, `multikeyToEd25519PublicKey?_of_key`,
+  `parseDidKey_didKeyOfPublicKey` (a 32-byte key survives `did:key:`).
+- `hashData_congr`, `createProofValue_of_canonical_eq`,
+  `verifyProofValue_of_canonical_eq`: the hash input, the proof value and
+  the verdict are functions of the RDFC-1.0 canonical forms only.
+- `verifyFromCanonical_not_multibase`, `verifyDocument_noProof`: refusals
+  that hold for every primitive and loader.
+- `verifyFromCanonical_createFromCanonical`: create-then-verify succeeds
+  under the single hypothesis `verifyF pk m (signF sk m) = true` — the
+  signature scheme's correctness, stated as a premise, never assumed
+  globally.
+
+### Translation decisions
+
+- **Primitives are parameters.** `createFromCanonical`/`verifyFromCanonical`
+  and everything above them take `SignFn`/`VerifyFn`. Consequences: the
+  library is a total function of its inputs; the `#guard`s exercise the
+  pipeline with a stub verifier that accepts exactly the spec vector's
+  (pk, hashData, signature); no compile-time evaluation ever touches the
+  extern (it could not — `#guard` runs the interpreter, which has no
+  native symbol for an `@[extern]` opaque).
+- **Bytes, not hex, at the FFI.** The F\* boundary is lowercase hex
+  strings; the Lean binding takes `ByteArray`s and the C shim only checks
+  lengths. Hex lives in `Multibase` for the vectors and the
+  `hash_data_hex` parity function.
+- **Refusals are typed.** `verifyDocument : … → Except VerifyError Unit`;
+  every non-success has a constructor and a `describe`. A length-refused
+  key is an EMPTY result from the primitive and `none` from
+  `createFromCanonical` (the F\* `""` convention), never a proof value.
+- **Proof sets verify member by member; proof chains are refused**
+  (`proofChainUnsupported`). The F\* shim implements chains in JavaScript;
+  porting that is document-level work for a later stage.
+- **`created` is optional** and not validated beyond presence (as in the
+  F\*); `proofPurpose` must equal the caller's expected purpose (default
+  `assertionMethod`).
+- **The securing document's `@context` is extended** by
+  `proofContextFor` exactly as the shim extends it, so re-verification
+  rebuilds the same proof-options context; for a VCDM 2.0 document that
+  is the identity.
+
+### Sabotage record (2026-08-22)
+
+1. `hashData` concatenation order swapped (document hash first):
+   `lake build` fails at `VC/Tests.lean:177` (`hashDataHex … ==
+   specCfgHash ++ specDocHash`). Restored, green.
+2. `base58Encode` stops emitting the leading `'1'` per zero byte:
+   `VC/Tests.lean:59` and `:66` (the two Bitcoin Core vectors with
+   leading zeros) fail AND `VC/Theorems.lean:248`
+   (`base58Decode?_base58Encode`) no longer proves. Restored, green.
+3. The C shim's `l4_hacl_ed25519_verify` made to return 1
+   unconditionally (the build stays green — no `#guard` can see an
+   extern): `l4vc-probe` reports `ed25519-rfc8032: 13 pass, 9 fail (out
+   of 22)`, `vc-dataintegrity-eddsa-rdfc-2022: 5 pass, 3 fail (out of
+   8)`, `vc-di-eddsa-spec-vectors: 17 pass, 3 fail (out of 20)` — every
+   negative check (flipped signature bytes, wrong key, tampered
+   proofValue, changed claim, corrupted canonical form). Restored:
+   58 pass, 0 fail. This is why the probe carries negative checks in
+   every section.
+4. Measured live rather than by code sabotage, as the probe's own
+   checks: flipping byte 0 or byte 63 of each RFC 8032 signature makes
+   `verify` false; swapping two INPUT quads leaves the RDFC-1.0
+   canonical form unchanged (so the proof still verifies), while
+   swapping two lines of the canonical form changes the SHA-256 digest
+   and the spec signature no longer verifies over it.
+
+### Assumption report (append) — THE ONE EXTERN
+
+The F\* `VC.DataIntegrity.fst` has four `assume val`s:
+`hash_sha256_hex` (dissolved: pure Lean SHA-256, FIPS 180-4 vectors as
+`#guard`s, `Crypto/SHA2.lean`) and `ed25519_secret_to_public` /
+`ed25519_sign` / `ed25519_verify`. The latter three are
+`Crypto/Ed25519.lean`'s `@[extern "l4_hacl_ed25519_*"] opaque`
+declarations — the Lean tree's single permitted `extern` family under
+the crypto-policy skill's Lean 4 amendment (signatures via HACL\* FFI
+only; never a hand-written implementation). Trust statement, in full,
+in that module's header; in short: Lean knows their types and nothing
+about their values; no theorem depends on them (`#print axioms` on
+every theorem of the library is unchanged: propext, Classical.choice,
+Quot.sound); what is trusted is HACL\*'s F\*/Low\*-verified Ed25519
+(vendored unmodified, Apache-2.0, cryspen/hacl-packages
+`05c3d8fb321ed65e3db3a6a8b853019e86fb40a2`), the 60-line
+length-checking shim, and Lean's FFI calling convention; what is
+measured is RFC 8032 §7.1 through the binding at run time. `VC.Multibase.fst`,
+`DID.Key.fst`: zero `assume val`s, confirmed by grep. No `sorry`, no
+`axiom`, no `native_decide`, no `partial` in `L4Factoidal/`
+(`Harness/VcProbe.lean`'s `findRepoRoot` is `partial`, in the harness,
+outside the library, like the other probes' directory walks).
+
+### Not ported (and said so)
+
+- `VC.Credential.fst` + `VC.Context.fst` — the VCDM 2.0 STRUCTURAL
+  validator and its purpose-built term-resolution walker (the F\*
+  `vc_stage1` suite, 117 pass, 0 fail (out of 117) over
+  `third_party/testing/vc/tests/input/*-ok|-fail.json`). A separate
+  stage; the Lean tree's full JSON-LD processor would replace the
+  walker rather than port it.
+- Proof chains (`previousProof`), the live-endpoint suites
+  (`vc_di_eddsa` 31, `vc20_api` 59 — mocha over HTTP through the Node
+  shim), `keyAgreement` derivation (curve arithmetic; crypto policy).
+- The wasm artifact: `Wasm/build-wasm.sh` now compiles the same four C
+  units for wasm32 (each compile-checked under emcc 2026-08-22; the
+  shim's object is named `l4_hacl_shim.o` because `hacl_ed25519.o`
+  collides with `Hacl_Ed25519.o` on a case-insensitive filesystem — a
+  trap found while checking), but the full module was not rebuilt in
+  this stage.
+
+### Findings against the F\* (not fixed here)
+
+- `formal/fstar/VC.DataIntegrity.fst:21-23` ("NATIVE-ONLY … This module
+  is deliberately excluded from the js_of_ocaml/wasm bundle") and
+  `formal/fstar/build-ocaml.sh:1182-1184` (same claim) are stale since
+  #286: the `js` step compiles `VC_DataIntegrity.ml` and links
+  `hacl_stubs.js` (`build-ocaml.sh:2309`, `:2343`, `:2441`), and
+  `skills/node-crypto-haclstar-vc-wasm-build` documents VC verify
+  working off-native. An obsolescence-sweep item.
+- `formal/fstar/VC.Multibase.fst:20-25`: the banner's reason for not
+  stating `decode (encode bs) == Some bs` ("disproportionate proof
+  burden") no longer holds as an estimate — the Lean proof is ~150
+  lines with no library beyond core; the F\* statement would be of the
+  same size.
+- `bin/vc-runner/vc_runner.ml:381-383`: the `--crypto` roundtrip's
+  proof-options dataset uses `http://www.w3.org/ns/data-integrity#cryptosuite`
+  and `…#proofPurpose`, which are not the Data Integrity vocabulary
+  (`https://w3id.org/security#cryptosuite`, typed
+  `sec:cryptosuiteString`; `…#proofPurpose` with an IRI object). Harmless
+  for a self-contained roundtrip — the Lean probe replays the same
+  strings for parity — but it is not a spec-shaped input; the W3C
+  vectors in section 4 are.

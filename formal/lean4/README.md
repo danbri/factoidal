@@ -51,6 +51,7 @@ can step through — no SMT solver in the loop.
 9c. [`L4Factoidal/SHACL/Shapes.lean`](L4Factoidal/SHACL/Shapes.lean), [`SHACL/Validation.lean`](L4Factoidal/SHACL/Validation.lean), [`SHACL/Report.lean`](L4Factoidal/SHACL/Report.lean) — SHACL Core: shapes-graph decoding into a typed `Shape` (targets, paths, the Core components), `Spec.Conforms` (§3.4 as a relation) beside `validate` (the engine), the report as a graph; [`ShaclTheorems.lean`](L4Factoidal/SHACL/ShaclTheorems.lean) proves `validate` conforms iff `Spec.GraphConforms`, component by component. `lake exe l4shacl` on the W3C data-shapes suite: core 98 pass, 0 fail (out of 98); sparql 22 unsupported (out of 22).
 10. [`L4Factoidal/Syntax/`](L4Factoidal/Syntax/) — N-Triples, N-Quads, Turtle, TriG, RDF/XML ([`RdfXml.lean`](L4Factoidal/Syntax/RdfXml.lean): blank-node label spaces disjoint by construction, proved), RFC 3986 IRI resolution; [`Harness/`](Harness/) runs the real W3C manifests (`lake exe l4w3c <manifest.ttl>...`): the seven RDF suites (turtle, n-triples, n-quads, trig, xml, mt, canon) score 1117 pass, 0 fail (out of 1117); sparql11 `manifest-all.ttl` scores 545 pass, 0 fail, 86 unsupported (out of 631) — the F\* runner's denominators throughout.
 11. [`L4Factoidal/RDF/Isomorphism.lean`](L4Factoidal/RDF/Isomorphism.lean) and [`RDF/Canonical.lean`](L4Factoidal/RDF/Canonical.lean) — blank-node isomorphism (witness-returning, soundness proved) and RDFC-1.0 (hash-algorithm-agile; 86 of 86 on the W3C suite) over [`Crypto/SHA2.lean`](L4Factoidal/Crypto/SHA2.lean).
+11a. [`L4Factoidal/VC/DataIntegrity.lean`](L4Factoidal/VC/DataIntegrity.lean), [`VC/Multibase.lean`](L4Factoidal/VC/Multibase.lean), [`VC/DidKey.lean`](L4Factoidal/VC/DidKey.lean), [`VC/Context.lean`](L4Factoidal/VC/Context.lean) — Verifiable Credentials Data Integrity, cryptosuite `eddsa-rdfc-2022`: RDFC-1.0 transform, SHA-256 hash data, Ed25519 proof creation and verification over canonical forms, datasets, and JSON-LD documents (signing/verifying primitives are parameters); base58btc/multibase with the decode-of-encode theorem the F\* declines to state, and did:key resolution both ways. The Ed25519 primitive is [`Crypto/Ed25519.lean`](L4Factoidal/Crypto/Ed25519.lean) — the tree's ONE `@[extern]` family, HACL\* C linked by Lake (`lakefile.lean` `extern_lib`, `ffi/hacl_ed25519.c`), with its trust statement in the module header. `lake exe l4vc-probe`: RFC 8032 vectors through the extern 22 of 22, did:key 8 of 8 (the F\* runner's 8), the `vc_runner --crypto` roundtrip 8 of 8, and the W3C vc-di-eddsa specification test vectors end to end 20 of 20.
 12. [`L4Factoidal/XML/`](L4Factoidal/XML/) and [`JSON/`](L4Factoidal/JSON/) — the generic parsers the RDF syntaxes and results formats build on.
 12a. [`L4Factoidal/JSONLD/`](L4Factoidal/JSONLD/) — JSON-LD 1.1 context processing, expansion and toRdf (`Context.lean`, `Expand.lean`, `ToRdf.lean`); the remote document loader is an explicit parameter and the no-empty-context-fallback rule is a theorem. `lake exe l4jsonld-probe` (from the repo root): toRdf 467 of 467, matching the F\* runner.
 13. [`Wasm/`](Wasm/) — the C ABI and build for the WebAssembly export; skill `lean4-wasm-export` has the pipeline.
@@ -67,8 +68,11 @@ cd formal/lean4
 lake build                   # library + proofs + #guard tests
 ```
 
-No dependencies beyond the pinned Lean toolchain — no mathlib, no
-batteries; everything is core Lean 4.
+No Lean dependencies beyond the pinned toolchain — no mathlib, no
+batteries; everything is core Lean 4. The one C dependency is the
+vendored HACL\* Ed25519 under `third_party/hacl/` (Apache-2.0), which
+`lakefile.lean` compiles with the system `cc` into `libl4hacl.a`; see
+`Crypto/Ed25519.lean` for why it is the only extern.
 
 ## Relation to the F\* development
 
