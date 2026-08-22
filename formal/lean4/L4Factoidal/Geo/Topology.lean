@@ -122,6 +122,78 @@ def polygonClass (p : Point) (poly : Polygon) : PtClass :=
     | .interior => if pointInAnyHoleInterior p poly.holes then .exterior else .interior
     | c         => c
 
+/-! ## Curve and area helpers -/
+
+/-- Is `[a,b]` a sub-segment of `[c,d]`? Both endpoints collinear with
+    `cd` and inside its box. -/
+def segmentSubsegOf (a b c d : Point) : Bool :=
+  orientSign c d a == 0 && orientSign c d b == 0 &&
+  inSegBBox a c d && inSegBBox b c d
+
+def segmentSubsegOfAny (a b : Point) : List Point → Bool
+  | []          => false
+  | [_]         => false
+  | c :: d :: rest => segmentSubsegOf a b c d || segmentSubsegOfAny a b (d :: rest)
+
+/-- Every edge of `inner` lies inside a SINGLE edge of `outer`.
+    Sufficient but NOT complete for point-set containment: it misses
+    an inner edge covered by two or more collinear outer edges across
+    a bend. That incompleteness is why the caller below returns
+    `Option Bool` rather than `Bool`. -/
+def pathWithinPathByEdges : List Point → List Point → Bool
+  | [], _  => true
+  | [_], _ => true
+  | a :: b :: rest, outer =>
+      segmentSubsegOfAny a b outer && pathWithinPathByEdges (b :: rest) outer
+
+def allPointsOnPath : List Point → List Point → Bool
+  | [], _       => true
+  | p :: rest, outer => pointOnPath p outer && allPointsOnPath rest outer
+
+/-- THREE-VALUED line-within-line. `some true` when the per-edge check
+    succeeds; `some false` only when some vertex of `inner` is not
+    even on `outer` (certain non-containment); otherwise `none` —
+    REFUSED rather than guessed. Refusing is the whole point: a
+    `false` here would be indistinguishable from a real negative
+    answer to a query. -/
+def pathWithinPath (inner outer : List Point) : Option Bool :=
+  if pathWithinPathByEdges inner outer then some true
+  else if !(allPointsOnPath inner outer) then some false
+  else none
+
+def listPointEq : List Point → List Point → Bool
+  | [], []           => true
+  | x :: xs, y :: ys => Point.eq x y && listPointEq xs ys
+  | _, _             => false
+
+/-- Is the path a closed loop? -/
+def isClosedLine (l : List Point) : Bool :=
+  match l, l.getLast? with
+  | p :: _, some q => Point.eq p q && l.length ≥ 2
+  | _, _ => false
+
+/-- THREE-VALUED linestring equality. Reversal-invariant equality is a
+    COMPLETE invariant for OPEN curves — their two endpoints are
+    geometrically distinguished. For CLOSED loops of equal length a
+    sequence mismatch does NOT prove inequality (the same loop can be
+    listed from any starting vertex), so that case is refused. -/
+def linestringEquals (l1 l2 : List Point) : Option Bool :=
+  if listPointEq l1 l2 || listPointEq l1 l2.reverse then some true
+  else if isClosedLine l1 && isClosedLine l2 && l1.length == l2.length then none
+  else some false
+
+def allPointsEqTo (pts : List Point) (p : Point) : Bool :=
+  pts.all (fun q => Point.eq q p)
+
+/-- Does a linestring meet a polygon? Either a vertex is non-exterior
+    or an edge crosses the boundary. -/
+def lineIntersectsPolygon (l : List Point) (poly : Polygon) : Bool :=
+  l.any (fun p => polygonClass p poly != .exterior) ||
+  segmentCrossesRings l (poly.ext :: poly.holes)
+where
+  segmentCrossesRings : List Point → List Ring → Bool
+  | l, rings => rings.any (fun r => pathCrossesPath l r)
+
 /-- `sfEquals` on points: coordinate equality across scales. -/
 def pointEquals (p q : Point) : Bool := Point.eq p q
 
@@ -142,5 +214,160 @@ def pointWithinPolygon (p : Point) (poly : Polygon) : Bool :=
 /-- `sfTouches` for point vs polygon: boundary only. -/
 def pointTouchesPolygon (p : Point) (poly : Polygon) : Bool :=
   polygonClass p poly == .boundary
+
+/-! ## Base-kind predicate dispatch
+
+Point / LineString / Polygon / Empty only. `Multi*` and
+`GeometryCollection` are decomposed before reaching these, exactly as
+the F* module does. Every result is `Option Bool`: `none` means the
+ported algorithm REFUSES to decide, never that the answer is false. -/
+
+/-- `sfEquals` over the base kinds. -/
+def sfEqualsBase : Geometry → Geometry → Option Bool
+  | .empty k1, .empty k2 => some (k1 == k2)
+  | .empty _, _ => some false
+  | _, .empty _ => some false
+  | .point p1, .point p2 => some (Point.eq p1 p2)
+  | .point _, _ => some false
+  | _, .point _ => some false
+  | .lineString l1, .lineString l2 => linestringEquals l1 l2
+  | .lineString _, _ => some false
+  | _, .lineString _ => some false
+  | _, _ => none
+
+/-- `sfIntersects` over the base kinds. -/
+def sfIntersectsBase : Geometry → Geometry → Option Bool
+  | .empty _, _ => some false
+  | _, .empty _ => some false
+  | .point p1, .point p2 => some (Point.eq p1 p2)
+  | .point p, .lineString l => some (pointOnPath p l)
+  | .lineString l, .point p => some (pointOnPath p l)
+  | .point p, .polygon poly => some (polygonClass p poly != .exterior)
+  | .polygon poly, .point p => some (polygonClass p poly != .exterior)
+  | .lineString l1, .lineString l2 => some (pathCrossesPath l1 l2)
+  | .lineString l, .polygon poly => some (lineIntersectsPolygon l poly)
+  | .polygon poly, .lineString l => some (lineIntersectsPolygon l poly)
+  | _, _ => none
+
+/-- `sfWithin` over the base kinds. An empty geometry is within
+    anything; nothing non-empty is within an empty one. -/
+def sfWithinBase : Geometry → Geometry → Option Bool
+  | .empty _, _ => some true
+  | _, .empty _ => some false
+  | .point p1, .point p2 => some (Point.eq p1 p2)
+  | .point p, .lineString l =>
+      if !(pointOnPath p l) then some false
+      else if isClosedLine l then some true
+      else match l, l.getLast? with
+        | first :: _, some last => some (!(Point.eq p first) && !(Point.eq p last))
+        | _, _ => some true
+  | .lineString l, .point p => some (allPointsEqTo l p)
+  | .point p, .polygon poly => some (polygonClass p poly == .interior)
+  | .polygon _, .point _ => some false
+  | .lineString l1, .lineString l2 => pathWithinPath l1 l2
+  | _, _ => none
+
+/-- `sfTouches` over the base kinds: the geometries meet, but only at
+    boundaries — their interiors are disjoint. Two equal points share
+    an interior, so points never touch points. A point touches a
+    linestring exactly at an endpoint of an OPEN curve. Pairs outside
+    the ported fragment are REFUSED, not guessed. -/
+def sfTouchesBase : Geometry → Geometry → Option Bool
+  | .empty _, _ => some false
+  | _, .empty _ => some false
+  | .point _, .point _ => some false
+  | .point p, .polygon poly => some (polygonClass p poly == .boundary)
+  | .polygon poly, .point p => some (polygonClass p poly == .boundary)
+  | .point p, .lineString l =>
+      if isClosedLine l then some false
+      else match l, l.getLast? with
+        | first :: _, some last => some (Point.eq p first || Point.eq p last)
+        | _, _ => some false
+  | .lineString l, .point p =>
+      if isClosedLine l then some false
+      else match l, l.getLast? with
+        | first :: _, some last => some (Point.eq p first || Point.eq p last)
+        | _, _ => some false
+  | _, _ => none
+
+/-! ## Multi* / GeometryCollection decomposition
+
+`Multi*` and `GeometryCollection` are decomposed into base components
+before the base predicates see them. The combinators are three-valued
+(Kleene): a REFUSAL anywhere blocks a definite `false` but never
+blocks a definite `true`, because one witness settles an existential
+regardless of what the refused components would have said. -/
+
+/-- Three-valued OR: `some true` if any component says true, `some
+    false` only if EVERY component definitely says false, else
+    refused. -/
+def combineExists (rs : List (Option Bool)) : Option Bool :=
+  if rs.any (· == some true) then some true
+  else if rs.all (· == some false) then some false
+  else none
+
+/-- Three-valued AND: `some false` if any component definitely says
+    false, `some true` only if every component definitely says true,
+    else refused. -/
+def combineForall (rs : List (Option Bool)) : Option Bool :=
+  if rs.any (· == some false) then some false
+  else if rs.all (· == some true) then some true
+  else none
+
+/-- The base geometries a value decomposes into. `GeometryCollection`
+    nests, so this recurses; `Multi*` do not. -/
+partial def components : Geometry → List Geometry
+  | .multiPoint ps      => ps.map .point
+  | .multiLineString ls => ls.map .lineString
+  | .multiPolygon ps    => ps.map .polygon
+  | .geometryCollection gs => gs.flatMap components
+  | g => [g]
+
+/-- Is this a compound value needing decomposition? -/
+def isCompound : Geometry → Bool
+  | .multiPoint _ | .multiLineString _ | .multiPolygon _
+  | .geometryCollection _ => true
+  | _ => false
+
+/-- `sfIntersects`: two geometries meet if ANY component pair meets. -/
+def sfIntersects (g1 g2 : Geometry) : Option Bool :=
+  if !(isCompound g1) && !(isCompound g2) then sfIntersectsBase g1 g2
+  else
+    combineExists
+      ((components g1).flatMap (fun a => (components g2).map (sfIntersectsBase a)))
+
+/-- `sfDisjoint` is the negation of `sfIntersects`, propagating the
+    refusal rather than turning it into an answer. -/
+def sfDisjoint (g1 g2 : Geometry) : Option Bool :=
+  (sfIntersects g1 g2).map (!·)
+
+/-- `sfWithin`: EVERY component of the left must be within SOME
+    component of the right. -/
+def sfWithin (g1 g2 : Geometry) : Option Bool :=
+  if !(isCompound g1) && !(isCompound g2) then sfWithinBase g1 g2
+  else
+    combineForall
+      ((components g1).map (fun a =>
+        combineExists ((components g2).map (sfWithinBase a))))
+
+/-- `sfContains` is `sfWithin` with the arguments swapped. -/
+def sfContains (g1 g2 : Geometry) : Option Bool := sfWithin g2 g1
+
+/-- `sfTouches` over full geometries. -/
+def sfTouches (g1 g2 : Geometry) : Option Bool :=
+  if !(isCompound g1) && !(isCompound g2) then sfTouchesBase g1 g2
+  else
+    combineExists
+      ((components g1).flatMap (fun a => (components g2).map (sfTouchesBase a)))
+
+/-- `sfEquals`: mutual containment for compounds; the base test
+    otherwise. -/
+def sfEquals (g1 g2 : Geometry) : Option Bool :=
+  if !(isCompound g1) && !(isCompound g2) then sfEqualsBase g1 g2
+  else match sfWithin g1 g2, sfWithin g2 g1 with
+    | some true, some true   => some true
+    | some false, _          => some false
+    | _, some false          => some false
+    | _, _                   => none
 
 end L4Factoidal.Geo
