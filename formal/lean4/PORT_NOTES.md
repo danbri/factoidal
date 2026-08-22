@@ -653,3 +653,29 @@ work). Adding `deriving DecidableEq` to `NamedGraph` and `Dataset` in
 matching the `instBEqOfDecidableEq` convention this project's own
 pitfall list (`skills/factoidal-lean-basics`) already recommends for
 every other structure in the tree.
+
+## OWL tableau clash calculus (`OWL/Tableau*.lean`, 2026-08-22)
+
+Folded in from the duplicate track
+[#468](https://github.com/danbri/factoidal/issues/468) (a remote
+session opened a parallel `formal/lean/` package unaware of this one;
+that directory is deleted and its content lives here under the
+`L4Factoidal.OWL` namespace).
+
+- F* correspondence: NOT a port of `Tableau.Refute.fst`'s 4,682-line
+  search engine. It is the declarative counterpart: the model theory
+  (OWL 2 Direct Semantics Table 5, unqualified-cardinality fragment)
+  plus a clash calculus whose constructors match the engine's first
+  clash rules (complement, owl:Nothing, C3/C4 count clash,
+  differentFrom max-cardinality refutation, disjunction branching).
+  The engine file carries these soundness arguments as comments;
+  `TableauTheorems.lean` machine-checks them
+  (`refuted_sound : Refuted A → no model of A`).
+- Assumption report: no `axiom`, no `sorry`, no `partial`;
+  `derives_sound` axiom-free; `refuted_sound` /
+  `refuted_not_consistent` use `propext` + `Quot.sound`.
+- Individual and role names are raw `String`, not `RDF.Core`'s
+  wf-IRI subtype — reconnecting them is part of the next rung, with
+  the ∃-witness rule, the role box, qualified cardinality, and the
+  `Type`-valued certificate checker (ladder on
+  [#466](https://github.com/danbri/factoidal/issues/466)).

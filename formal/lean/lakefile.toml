@@ -1,5 +1,0 @@
-name = "tableauSound"
-defaultTargets = ["TableauSound"]
-
-[[lean_lib]]
-name = "TableauSound"

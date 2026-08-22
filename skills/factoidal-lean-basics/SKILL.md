@@ -23,6 +23,7 @@ https://github.com/danbri/factoidal/issues/466
 | `XML/*.lean` (+ `xmlconf-probe` exe) | XML 1.0 parser with 20 WFCs, namespaces; xmlconf corpus probe |
 | `JSON/*.lean` | RFC 8259 parser/serialiser; escape + literal round-trips proved |
 | `Crypto/SHA2*.lean` | SHA-256/384/512 + `HashAlgorithm` agility; size theorems proved; FIPS vectors guarded |
+| `OWL/Tableau.lean`, `TableauTheorems.lean`, `TableauTests.lean` | tableau clash calculus (unqualified-cardinality fragment) + `refuted_sound` (a refuted ABox has no model, by structural induction — the theorem the F\* SMT wall blocked); folded in 2026-08-22 from the duplicate `formal/lean/` track, [#468](https://github.com/danbri/factoidal/issues/468) |
 | `Tests.lean`, `Demo.lean` | build-time guards + `#print axioms` audit; runnable tour |
 | `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence, decisions, assumption report |
 
