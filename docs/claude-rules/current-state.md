@@ -845,7 +845,7 @@ Repository contains 90 F\* modules totalling 47517 lines of code. Key modules:
 formal/fstar/
 
 Core (RDF/SPARQL evaluation):
-  SPARQL11.Algebra.fst            5777 lines, 13 assume val (query evaluator)
+  SPARQL11.Algebra.fst            8793 lines, 11 assume val (query evaluator; +1 2026-08-22: extension_function_call, the §17.6 host registry hook, issue #463 — count re-measured with grep -c "^assume val", the old "13" had drifted)
   SPARQL11.Parser.fst             4522 lines (fully verified, zero admits since 2026-07-10)
   RDF.Graph.Executable.fst        4152 lines
 

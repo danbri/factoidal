@@ -2347,6 +2347,124 @@ let sigmoid_formula_mathml_json () : string =
     ^ "}")
 
 (* ---------------------------------------------------------------------
+   SPARQL 1.1 s17.6 extension functions -- issue #463.
+   https://github.com/danbri/factoidal/issues/463
+
+   Bridges caller-supplied JS functions (Comunica-style
+   extensionFunctions, keyed by absolute IRI) into the F*-specified
+   registry hook (SPARQL11.Algebra.extension_function_call, realised
+   by experimental_ocaml_glue/extension_function_registry.sh).
+
+   Marshaling only, no semantics: argument values go OUT through the
+   F*-extracted converters (er_to_term + SPARQL_Protocol.json_term, the
+   same SRJ term shape query results use), serialised as one JSON array
+   string. The JS return value comes BACK as a raw JS value decoded
+   field-by-field into an eval_result: an SRJ-style term object, or an
+   ergonomic JS primitive (boolean / number / string). null, undefined,
+   a thrown exception, or the JS bridge's pending marker all map to
+   None -> ER_Error in F*.
+
+   The async contract lives in lib/api.js: the engine is synchronous,
+   so api.js memoises per (iri, serialised args) and re-runs the query
+   until no pending async results remain. This file stays sync.
+   --------------------------------------------------------------------- *)
+
+let ext_pending_marker = "__FACTOIDAL_EXT_PENDING__"
+
+let ext_args_to_json (args : SPARQL11_Algebra.eval_result list) : string =
+  "["
+  ^ String.concat ","
+      (List.map
+         (fun r ->
+            match SPARQL11_Algebra.er_to_term r with
+            | FStar_Pervasives_Native.Some t -> SPARQL_Protocol.json_term t
+            | FStar_Pervasives_Native.None -> "{\"type\":\"error\"}")
+         args)
+  ^ "]"
+
+let ext_string_literal (s : string) : RDF_Term.rdf_term =
+  RDF_Term.T_Literal
+    { RDF_Term.lexical_form = s;
+      RDF_Term.datatype = "http://www.w3.org/2001/XMLSchema#string";
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None }
+
+(* Read a string-valued field from a JS object; None when absent or
+   not a string. *)
+let ext_js_field (v : Js.Unsafe.any) (name : string) : string option =
+  let f = Js.Unsafe.get v (Js.string name) in
+  if Js.to_string (Js.typeof f) = "string"
+  then Some (Js.to_string (Js.Unsafe.coerce f))
+  else None
+
+let ext_decode_result (v : Js.Unsafe.any) : SPARQL11_Algebra.eval_result option =
+  match Js.to_string (Js.typeof (Js.Unsafe.coerce v)) with
+  | "undefined" -> None
+  | "boolean" -> Some (SPARQL11_Algebra.ER_Bool (Js.to_bool (Js.Unsafe.coerce v)))
+  | "number" ->
+    let f = Js.float_of_number (Js.Unsafe.coerce v) in
+    if Float.is_integer f && Float.abs f <= 9007199254740991.0
+    then Some (SPARQL11_Algebra.ER_Num (Z.of_float f))
+    else Some (SPARQL11_Algebra.ER_Dbl (Printf.sprintf "%.17g" f))
+  | "string" ->
+    let s = Js.to_string (Js.Unsafe.coerce v) in
+    if s = ext_pending_marker then None
+    else Some (SPARQL11_Algebra.ER_Term (ext_string_literal s))
+  | "object" ->
+    if not (Js.Opt.test (Obj.magic v : 'a Js.opt)) then None (* null *)
+    else
+      (match ext_js_field v "type", ext_js_field v "value" with
+       | Some "uri", Some value ->
+         Some (SPARQL11_Algebra.ER_Term (RDF_Term.T_IRI value))
+       | Some "bnode", Some value ->
+         Some (SPARQL11_Algebra.ER_Term (RDF_Term.T_BNode value))
+       | Some "literal", Some value ->
+         let (datatype, lang_tag) =
+           match ext_js_field v "xml:lang" with
+           | Some l ->
+             ("http://www.w3.org/1999/02/22-rdf-syntax-ns#langString",
+              FStar_Pervasives_Native.Some l)
+           | None ->
+             ((match ext_js_field v "datatype" with
+               | Some d -> d
+               | None -> "http://www.w3.org/2001/XMLSchema#string"),
+              FStar_Pervasives_Native.None)
+         in
+         Some (SPARQL11_Algebra.ER_Term (RDF_Term.T_Literal
+           { RDF_Term.lexical_form = value;
+             RDF_Term.datatype = datatype;
+             RDF_Term.lang_tag = lang_tag;
+             RDF_Term.direction = FStar_Pervasives_Native.None }))
+       | _, _ -> None)
+  | _ -> None
+
+let ext_register (iri : Js.js_string Js.t) (cb : Js.Unsafe.any) : Js.js_string Js.t =
+  let iri_s = Js.to_string iri in
+  SPARQL11_Algebra.extension_function_register iri_s
+    (fun args ->
+       let args_json = ext_args_to_json args in
+       match
+         (try
+            Some (Js.Unsafe.fun_call cb
+                    [| Js.Unsafe.inject (Js.string iri_s);
+                       Js.Unsafe.inject (Js.string args_json) |])
+          with _ -> None)
+       with
+       | None -> None
+       | Some v -> ext_decode_result v);
+  Js.string "{\"ok\":true}"
+
+let ext_unregister (iri : string) : string =
+  guarded (fun () ->
+    SPARQL11_Algebra.extension_function_unregister iri;
+    "{\"ok\":true}")
+
+let ext_clear () : string =
+  guarded (fun () ->
+    SPARQL11_Algebra.extension_function_clear ();
+    "{\"ok\":true}")
+
+(* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
    boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
    --------------------------------------------------------------------- *)
@@ -2441,5 +2559,12 @@ let () =
           ("openCottas", s1 open_cottas);
           ("queryCottas", s2 query_cottas);
           ("closeCottas", s1 close_cottas);
-          ("toCottas", s1 to_cottas)
+          ("toCottas", s1 to_cottas);
+          (* SPARQL 1.1 s17.6 extension functions (issue #463). The
+             callback is a JS function, not a string — registered
+             directly rather than through the sN string helpers. *)
+          ("registerExtensionFunction",
+             Js.Unsafe.inject (Js.wrap_callback ext_register));
+          ("unregisterExtensionFunction", s1 ext_unregister);
+          ("clearExtensionFunctions", s0 ext_clear)
        |])

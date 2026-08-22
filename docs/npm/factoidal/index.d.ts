@@ -187,6 +187,40 @@ export function queryHdt(
 ): Promise<Bindings[] | boolean>;
 
 /**
+ * An argument or return value of a custom extension function, in the
+ * SRJ term shape: {type:'uri'|'literal'|'bnode', value, datatype?,
+ * 'xml:lang'?}. An errored argument arrives as {type:'error'}.
+ */
+export interface ExtensionTerm {
+  type: 'uri' | 'literal' | 'bnode' | 'error';
+  value?: string;
+  datatype?: string;
+  'xml:lang'?: string;
+}
+
+/**
+ * Register a custom SPARQL extension function (SPARQL 1.1 §17.6,
+ * issue #463; Comunica-style). `fn` may be sync or async; it receives
+ * the evaluated arguments as ExtensionTerm[] and returns an
+ * ExtensionTerm, a JS primitive (boolean | number | string), a
+ * Promise of either, or null/undefined (= the §17.6 error). A query
+ * calling an IRI with no registered function gets the same error:
+ * unbound in SELECT/BIND position, row dropped in FILTER position.
+ */
+export function registerExtensionFunction(
+  iri: string,
+  fn: (args: ExtensionTerm[]) =>
+    ExtensionTerm | boolean | number | string | null | undefined |
+    Promise<ExtensionTerm | boolean | number | string | null | undefined>
+): Promise<void>;
+
+/** Remove one registered extension function. */
+export function unregisterExtensionFunction(iri: string): Promise<void>;
+
+/** Remove every registered extension function. */
+export function clearExtensionFunctions(): Promise<void>;
+
+/**
  * Apply a SPARQL 1.1 Update, returning the updated Dataset.
  * Needs the npm-entry engine bundle.
  */

@@ -2,6 +2,19 @@
 
 ## 0.1.0 — First published release (as `@factoidal/core`)
 
+- SPARQL 1.1 §17.6 extension functions
+  ([#463](https://github.com/danbri/factoidal/issues/463)),
+  Comunica-style: `registerExtensionFunction(iri, fn)` /
+  `unregisterExtensionFunction(iri)` / `clearExtensionFunctions()`.
+  `fn` may be sync or async; it receives the evaluated arguments as
+  SRJ-style term objects and returns a term object, a JS primitive,
+  or a Promise of either. Dispatch semantics are F*-specified
+  (SPARQL11.Algebra.fst's E_FunctionCall arm consults the registry
+  LAST; an unregistered IRI is the spec-required error — unbound in
+  SELECT/BIND position, row dropped in FILTER position). Async
+  functions run over the synchronous extracted engine via a bounded
+  memoised re-evaluation trampoline in `lib/api.js`.
+
 - Final name: `@factoidal/core`, published under the `@factoidal` npm
   org (owner decision, 2026-08-22). Everything under "Unreleased"
   below ships in this first cut. The `private` flag and the

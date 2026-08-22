@@ -214,6 +214,37 @@ const q = quad(blankNode("x"),
 // (add/delete/has/match/size/iteration).
 ```
 
+## Custom extension functions (SPARQL 1.1 §17.6)
+
+Register your own functions by IRI (the
+[Comunica model](https://comunica.dev/docs/query/advanced/extension_functions/));
+sync or async both work. The dispatch semantics are F\*-specified:
+built-in function families always win, and a call to an IRI with no
+registered function is the spec-required error (unbound in
+SELECT/BIND position, row dropped in FILTER position). Issue:
+[#463](https://github.com/danbri/factoidal/issues/463).
+
+```js
+import { query, registerExtensionFunction } from "@factoidal/core";
+
+await registerExtensionFunction(
+  "http://example.org/fn#isAdult",
+  async ([age]) => Number(age.value) >= 18   // args are SRJ-style terms
+);
+
+const rows = await query(ds, `
+  PREFIX fn: <http://example.org/fn#>
+  SELECT ?s WHERE { ?s <http://example.org/age> ?a
+                    FILTER(fn:isAdult(?a)) }`);
+```
+
+Return a JS primitive (`boolean`/`number`/`string`), an SRJ-style term
+object (`{type:'uri'|'literal'|'bnode', value, datatype?, 'xml:lang'?}`),
+or a Promise of either; `null`/`undefined`/a thrown error is the §17.6
+error. Async functions run over the synchronous verified engine
+through a bounded, memoised re-evaluation loop — within one query
+every call with the same arguments sees one stable answer.
+
 ## Functional API (fn)
 
 `@factoidal/core/fn` is a strictly functional variant of the API above:

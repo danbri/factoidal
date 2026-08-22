@@ -4957,6 +4957,31 @@ let eval_geof_call (iri_s : Prims.string) (arg_vals : eval_result Prims.list)
             | FStar_Pervasives_Native.None -> ER_Error)
          else ER_Error
      | uu___1 -> ER_Error)
+(* Extension-function registry -- issue #463 (SPARQL 1.1 s17.6).
+   Global table of host-supplied closures keyed by absolute function
+   IRI. Populated by the npm-entry JS bridge (Comunica-style
+   extensionFunctions) or by native registrants (unit tests, future
+   CLI plug-ins). All dispatch DECISIONS live in F*: the E_FunctionCall
+   arm consults this hook last and maps None to ER_Error, the
+   spec-required unsupported-function error. The closure type uses
+   stdlib option for registrant ergonomics; conversion to the
+   extracted FStar_Pervasives_Native.option happens here. *)
+let extension_function_table : (string, eval_result list -> eval_result option) Hashtbl.t =
+  Hashtbl.create 16
+let extension_function_register (iri : string) (f : eval_result list -> eval_result option) : unit =
+  Hashtbl.replace extension_function_table iri f
+let extension_function_unregister (iri : string) : unit =
+  Hashtbl.remove extension_function_table iri
+let extension_function_clear () : unit =
+  Hashtbl.clear extension_function_table
+let extension_function_call (iri : Prims.string) (args : eval_result Prims.list)
+  : eval_result FStar_Pervasives_Native.option =
+  match Hashtbl.find_opt extension_function_table iri with
+  | None -> FStar_Pervasives_Native.None
+  | Some f ->
+    (match f args with
+     | Some r -> FStar_Pervasives_Native.Some r
+     | None -> FStar_Pervasives_Native.None)
 let rec eval_expr_with_base
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
@@ -5629,7 +5654,12 @@ let rec eval_expr_with_base
                                 (FStar_String.strlen xsd_ns)) in
                          eval_xsd_cast v target_type iri_s
                      | uu___6 -> ER_Error
-                   else ER_Error)
+                   else
+                     (match extension_function_call iri_s
+                              (eval_geof_args_with_base base args mu)
+                      with
+                      | FStar_Pervasives_Native.Some r -> r
+                      | FStar_Pervasives_Native.None -> ER_Error))
 and eval_coalesce_with_base
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping) :

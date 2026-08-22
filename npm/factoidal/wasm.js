@@ -114,6 +114,9 @@ const api = buildApi({
 module.exports = {
   parse: api.parse,
   query: api.query,
+  registerExtensionFunction: api.registerExtensionFunction,
+  unregisterExtensionFunction: api.unregisterExtensionFunction,
+  clearExtensionFunctions: api.clearExtensionFunctions,
   update: api.update,
   serialize: api.serialize,
   canonicalize: api.canonicalize,

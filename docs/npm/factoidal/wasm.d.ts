@@ -23,6 +23,13 @@ export {
   Bindings,
 };
 
+export {
+  ExtensionTerm,
+  registerExtensionFunction,
+  unregisterExtensionFunction,
+  clearExtensionFunctions,
+} from './index';
+
 export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
 export function query(
   data: DataInput,

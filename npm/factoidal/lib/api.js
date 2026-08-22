@@ -198,6 +198,148 @@ function buildApi(driver) {
     return `p${parseCounter++}_`;
   }
 
+  // ---------------------------------------------------------------
+  // SPARQL 1.1 §17.6 extension functions — issue #463.
+  // https://github.com/danbri/factoidal/issues/463
+  //
+  // Comunica-style: the caller registers (possibly async) JS functions
+  // keyed by absolute IRI; a query using an unregistered IRI gets the
+  // spec-required error (in expression position: the row's value
+  // errors — unbound in SELECT/BIND, row dropped in FILTER).
+  //
+  // The F*-extracted evaluator is synchronous, so async functions are
+  // bridged with a bounded re-evaluation trampoline: each engine call
+  // reaches extBridge synchronously; a cache miss on an async function
+  // records the promise, returns a pending marker (an engine-side
+  // error in THAT pass), and after the pass every pending promise is
+  // awaited into the cache and the query re-runs. The per-(iri, args)
+  // memoisation is also what honors the F* purity assumption on the
+  // extension_function_call hook — within one evaluation every call
+  // with the same arguments sees one stable answer.
+  //
+  // The user function receives an array of SRJ-style term objects
+  // ({type:'uri'|'literal'|'bnode', value, datatype?, 'xml:lang'?};
+  // {type:'error'} for an errored argument) and returns a term object,
+  // a JS primitive (boolean / number / string), a Promise of either,
+  // or null/undefined (= error). Thrown errors and rejections map to
+  // the §17.6 error too.
+  // ---------------------------------------------------------------
+  const EXT_PENDING_MARKER = '__FACTOIDAL_EXT_PENDING__';
+  const EXT_MAX_ROUNDS = 25;
+  const extFunctions = new Map();    // iri -> user fn
+  const extInstalled = new Set();    // iris registered into the ABI
+  let extCache = new Map();          // key -> normalized result (or null)
+  let extPending = [];               // [{key, promise}] for this pass
+
+  function extBridge(iriJs, argsJsonJs) {
+    // Called SYNCHRONOUSLY from inside the engine.
+    const iri = String(iriJs);
+    const argsJson = String(argsJsonJs);
+    const key = iri + ' ' + argsJson;
+    if (extCache.has(key)) return extCache.get(key);
+    const fn = extFunctions.get(iri);
+    if (!fn) return null;
+    let out;
+    try {
+      out = fn(JSON.parse(argsJson));
+    } catch (_e) {
+      extCache.set(key, null);
+      return null;
+    }
+    if (out && typeof out.then === 'function') {
+      extPending.push({ key, promise: out });
+      return EXT_PENDING_MARKER;
+    }
+    out = out === undefined ? null : out;
+    extCache.set(key, out);
+    return out;
+  }
+
+  async function extEnsureInstalled(what) {
+    const e = await entry();
+    if (!e) return null;
+    if (typeof e.registerExtensionFunction !== 'function') {
+      throw new Error(
+        `${what}: this npm-entry bundle predates extension functions ` +
+        '(issue #463) — rebuild build-ocaml.sh js + npm.');
+    }
+    for (const iri of extFunctions.keys()) {
+      if (!extInstalled.has(iri)) {
+        entryResult(e.registerExtensionFunction(iri, extBridge),
+          'registerExtensionFunction');
+        extInstalled.add(iri);
+      }
+    }
+    return e;
+  }
+
+  /**
+   * Register a custom SPARQL extension function (SPARQL 1.1 §17.6).
+   * @param {string} iri absolute IRI the function is invoked by
+   * @param {(args: object[]) => any} fn sync or async; see the block
+   *   comment above for the argument/return contract
+   */
+  async function registerExtensionFunction(iri, fn) {
+    if (typeof iri !== 'string' || !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(iri)) {
+      throw new TypeError(
+        'registerExtensionFunction: iri must be an absolute IRI string');
+    }
+    if (typeof fn !== 'function') {
+      throw new TypeError('registerExtensionFunction: fn must be a function');
+    }
+    extFunctions.set(iri, fn);
+    await extEnsureInstalled('registerExtensionFunction');
+  }
+
+  /** Remove one registered extension function. */
+  async function unregisterExtensionFunction(iri) {
+    extFunctions.delete(iri);
+    const e = await entry();
+    if (e && typeof e.unregisterExtensionFunction === 'function'
+        && extInstalled.has(iri)) {
+      entryResult(e.unregisterExtensionFunction(iri),
+        'unregisterExtensionFunction');
+      extInstalled.delete(iri);
+    }
+  }
+
+  /** Remove every registered extension function. */
+  async function clearExtensionFunctions() {
+    extFunctions.clear();
+    const e = await entry();
+    if (e && typeof e.clearExtensionFunctions === 'function') {
+      entryResult(e.clearExtensionFunctions(), 'clearExtensionFunctions');
+    }
+    extInstalled.clear();
+  }
+
+  // Run one synchronous engine pass, re-running until no NEW async
+  // extension results are pending. With no registered functions this
+  // is exactly one pass with zero overhead beyond the length check.
+  async function withExtensionRounds(runOnce) {
+    extCache = new Map(); // per-evaluation memo (purity contract)
+    for (let round = 0; ; round++) {
+      extPending = [];
+      const result = runOnce();
+      if (extPending.length === 0) return result;
+      if (round >= EXT_MAX_ROUNDS) {
+        throw new Error(
+          'extension functions: async resolution did not converge ' +
+          `within ${EXT_MAX_ROUNDS} evaluation rounds`);
+      }
+      const pend = extPending;
+      extPending = [];
+      await Promise.all(pend.map(async ({ key, promise }) => {
+        try {
+          const v = await promise;
+          extCache.set(key, v === undefined ? null : v);
+        } catch (_e) {
+          extCache.set(key, null);
+        }
+      }));
+    }
+  }
+
   // Normalize the `data` argument of query/update/serialize/
   // canonicalize into engine inputs. Accepts a Dataset, a raw string
   // (with options.format, default turtle), or an array of those —
@@ -347,8 +489,8 @@ function buildApi(driver) {
           'SPARQL 1.2 requested but this npm-entry bundle predates ' +
           'queryDataset12 — rebuild build-ocaml.sh js + npm.');
       }
-      const r = entryResult(
-        (sparql12 ? e.queryDataset12 : e.queryDataset)(nq, sparql), 'query');
+      const r = await withExtensionRounds(() => entryResult(
+        (sparql12 ? e.queryDataset12 : e.queryDataset)(nq, sparql), 'query'));
       if (r.kind === 'ask') return r.boolean;
       if (r.kind === 'construct') {
         return Dataset.fromNQuads(r.nquads, {
@@ -1897,6 +2039,9 @@ function buildApi(driver) {
     query,
     queryHdt,
     update,
+    registerExtensionFunction,
+    unregisterExtensionFunction,
+    clearExtensionFunctions,
     serialize,
     canonicalize,
     graphs,

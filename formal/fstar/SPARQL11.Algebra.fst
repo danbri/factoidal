@@ -3969,6 +3969,23 @@ let eval_geof_call (iri_s : string) (arg_vals : list eval_result) : eval_result 
       else ER_Error
     | _ -> ER_Error
 
+(* SPARQL 1.1 §17.6 extension functions — issue #463. Host-registered
+   custom functions keyed by absolute IRI. The evaluator's
+   E_FunctionCall arm consults this hook LAST, after every
+   natively-implemented function family (built-ins, geof:, xsd:
+   casts): Some r is the function's result for the already-evaluated
+   argument list; None means no function is registered under that
+   IRI, and the caller maps it to ER_Error — the error §17.6 requires
+   for an unsupported function. Rule-#11 host call-out, same family
+   as service_endpoint_lookup below: the OCaml side realises it as a
+   registry table; the npm/browser side bridges it to
+   caller-supplied JS functions (Comunica-style extensionFunctions).
+   Pure from F*'s perspective: within one query evaluation each
+   (iri, args) call sees a single stable answer — the JS bridge
+   memoises per (iri, serialised args) to honor exactly this
+   contract, including for async host functions. *)
+assume val extension_function_call : string -> list eval_result -> option eval_result
+
 let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_mapping)
   : Tot eval_result (decreases e) =
   match e with
@@ -4464,7 +4481,14 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
            let target_type = String.sub iri_s (String.length xsd_ns) (String.length iri_s - String.length xsd_ns) in
            eval_xsd_cast v target_type iri_s
          | _ -> ER_Error
-       else ER_Error)
+       else
+         // §17.6 extension functions (issue #463): an IRI no native
+         // family claims is offered to the host registry with the
+         // evaluated argument list; an unregistered IRI is the
+         // spec-required error.
+         (match extension_function_call iri_s (eval_geof_args_with_base base args mu) with
+          | Some r -> r
+          | None -> ER_Error))
 
 (* Coalesce: first non-error result from list *)
 and eval_coalesce_with_base (base : option wf_iri) (es : list expr) (mu : solution_mapping)
