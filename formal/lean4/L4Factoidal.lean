@@ -158,3 +158,17 @@ import L4Factoidal.JSONSchema.Validate
 import L4Factoidal.JSONSchema.Tests
 import L4Factoidal.XPath.Number
 import L4Factoidal.XPath.NumberTests
+import L4Factoidal.Schematron.Validate
+import L4Factoidal.Schematron.Tests
+import L4Factoidal.HTTP.Server
+import L4Factoidal.HTTP.Tests
+import L4Factoidal.Storage.Bytes
+import L4Factoidal.Storage.Tests
+import L4Factoidal.MathML.Core
+import L4Factoidal.MathML.Tests
+import L4Factoidal.XSLT.Templates
+import L4Factoidal.XSLT.Tests
+import L4Factoidal.Storage.DeltaLog
+import L4Factoidal.Storage.DeltaLogTests
+import L4Factoidal.VC.Credential
+import L4Factoidal.VC.CredentialTests

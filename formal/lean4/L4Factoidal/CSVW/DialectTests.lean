@@ -63,6 +63,16 @@ private def src : String := "name,age\nAlice,30\nBob,24"
 #guard (read ({ skipBlankRows := some true : Dialect }).resolve "h\n\nv").rows.length == 1
 #guard (read dflt "h\n\nv").rows.length == 2
 
+-- A FINAL line terminator ends the last row; it does not start a new
+-- empty one (RFC 4180 makes the terminator optional on the last
+-- record). Found by running the real W3C corpus, where 85 of 177
+-- files otherwise read as ragged.
+#guard (read dflt "h\nv\n").rows.length == 1
+#guard (read dflt "h\nv").rows.length == 1
+#guard (read dflt "h\nv\r\n").rows.length == 1
+-- ...but an INTERIOR blank line is still a row, unless skipBlankRows.
+#guard (read dflt "h\n\nv\n").rows.length == 2
+
 -- Trimming is on by default; `trim: false` keeps the spaces.
 #guard (read dflt "h\n  v  ").rows.head!.cells == ["v"]
 #guard (read ({ trim := some "false" : Dialect }).resolve "h\n  v  ").rows.head!.cells == ["  v  "]

@@ -128,6 +128,17 @@ extern_lib libl4hacl pkg := do
 -- specification-only, per the spec/pragmatics split in PORT_NOTES.md.
 @[default_target] lean_exe «l4rdfxml-probe» where root := `Harness.RdfXmlProbe
 
+-- Reader-level probe over the vendored W3C csvw corpus. Named a
+-- PROBE, not a conformance runner, because it measures whether the
+-- dialect reader reads each .csv cleanly -- not whether the
+-- conversion matches the suite's expected .ttl.
+@[default_target] lean_exe «l4csvw-probe» where root := `Harness.CsvwProbe
+
+-- A REAL csv2rdf conformance runner: full pipeline, compared against
+-- the suite's expected .ttl by graph isomorphism. Restricted to the
+-- no-metadata subset; every skip is reported with its reason.
+@[default_target] lean_exe «l4csvw-rdf» where root := `Harness.CsvwRdfRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.

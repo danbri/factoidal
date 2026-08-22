@@ -164,11 +164,25 @@ def splitLines (s : String) : List String :=
     | c :: r          => go (c :: cur) acc r
   go [] [] s.toList
 
+/-- A FINAL line terminator ends the last row; it does not start a new
+    empty one. RFC 4180 makes the terminator optional on the last
+    record, so `"a\nb\n"` and `"a\nb"` are the same two rows.
+
+    Found by running the real W3C csvw corpus: without this, 85 of
+    177 files read as "ragged" because their trailing newline produced
+    a phantom one-cell row. A synthetic test would not have caught it,
+    since one rarely writes the trailing newline by hand. -/
+def dropTrailingTerminator (ls : List String) : List String :=
+  match ls.reverse with
+  | "" :: rest => rest.reverse
+  | _          => ls
+
 /-- Read a CSV source under a dialect: skip rows, drop comments and
     (optionally) blank rows, split cells, skip leading columns, trim,
     and separate header rows from data rows. -/
 def read (d : ResolvedDialect) (src : String) : Table :=
-  let numbered := (splitLines src).zipIdx.map (fun (l, i) => (i + 1, l))
+  let numbered := (dropTrailingTerminator (splitLines src)).zipIdx.map
+                    (fun (l, i) => (i + 1, l))
   let afterSkip := numbered.drop d.skipRows
   let kept := afterSkip.filter (fun (_, l) => !(isComment d l))
   let toRow : (Nat × String) → Row := fun (n, l) =>
