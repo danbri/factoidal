@@ -147,6 +147,30 @@ Same family as the OWL cap-escapes (#326) and the vacuous negatives
 Fixing #326 is why a capped OWL test now reports `unsupported` instead of
 passing.
 
+## 9. A timer around a pure `let` in Lean measures nothing
+
+**Force the value between the two clock reads with an I/O action that
+consumes it (an `IO.Ref` write), and print a total the parts must add
+up to.**
+
+> 🔴 **2026-08-22 (Lean, OWL RL closure).** The first per-row profile of
+> `OWL.RL.step` read `rows total … ms=587` and `cls-int1 … ms=0` — every
+> row 0 ms, the round seconds. Lean's compiler had moved the pure
+> `let out := g.flatMap (f g)` past the second `IO.monoMsNow`, to the
+> point where `out` was first used. The numbers were internally
+> consistent enough to read as "the cost is somewhere else". With the
+> value forced through an `IO.Ref` between the reads, the same row read
+> `cls-int1 … ms=6443` of `ms=6640` — 97 % of the round, one quadratic
+> join (every subject × a `memB` scan per class). That row alone kept
+> WebOnt-miscellaneous-001 from finishing one round in 20 s
+> (`cls-int1 … ms=20634` of `ms=20724`); the index that replaced the
+> scan took the round to 88 ms.
+
+A per-part timing whose parts do not sum to the whole it sits inside is
+an instrument that did not run. The same applies to `decide`/`rfl`
+over results: keep measurement in `IO`, force it, and cross-check the
+sum.
+
 ## The standing discipline
 
 1. State the acceptance criterion **as a number**, before the work.
