@@ -3558,3 +3558,28 @@ string must all FAIL rather than partially parse. `Scaled.toStringDec`
 renders the exact value back (`-0.1`, `0.001`), and a parsed polygon
 feeds `pointWithinPolygon` directly, so parse and topology are wired
 end to end.
+
+### GeoSPARQL: the geof: extension functions (2026-08-22)
+
+`Geo/Functions.lean` ports `RDF.Geo.Functions.fst` and completes the
+GeoSPARQL slice: `sfEquals`, `sfWithin`, `sfContains`, `sfIntersects`,
+`sfDisjoint`, `sfTouches` over the point/polygon fragment.
+
+It required ZERO change to the SPARQL evaluator. GeoSPARQL 1.1 §9
+names its predicates as SPARQL functions, SPARQL §17.6 already defines
+an extension point, and the Lean evaluator exposes that point as an
+ordinary field — `EvalEnv.ext : String → List EvalResult → Option
+EvalResult`. A caller installs the table with
+`{ EvalEnv.empty with ext := Geo.extFns }`. This is the purity
+doctrine (PORT_NOTES §"Purity doctrine") paying off concretely: where
+the F* side consults a registry the evaluator knows about, here the
+table is an argument, so a whole spec family bolts on without
+touching the evaluator or mutating anything global.
+
+Guards pin the failure direction, which is the part that silently
+corrupts answers if wrong: an unknown `geof:` name, a non-WKT
+argument, wrong arity, an unparseable lexical form, and a CROSS-CRS
+pair must each return `none` so the evaluator raises the §17.6 type
+error — never `false`, which would look like a legitimate negative
+answer. The no-CRS-transform rule is inherited from the F* port
+verbatim.
