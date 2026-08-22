@@ -945,11 +945,14 @@ def applyDataset (dcs : List DatasetClause) (ds : Dataset) (active : Graph) :
   else
     let defaults := dcs.filterMap (fun dc =>
       match dc with
-      | .default i => ds.lookupNamed i.val
+      | .default i => ds.lookupNamedIri i.val
       | .named _   => none)
     let named := dcs.filterMap (fun dc =>
       match dc with
-      | .named i => (ds.lookupNamed i.val).map (fun g => ({ name := i.val, graph := g } : NamedGraph))
+      -- §13.2: a `FROM NAMED` clause carries an IRI, so the graph it
+      -- installs is IRI-named.
+      | .named i => (ds.lookupNamedIri i.val).map (fun g =>
+          ({ name := .iri i, graph := g } : NamedGraph))
       | .default _ => none)
     let newDefault := defaults.foldl Graph.union Graph.empty
     ({ default := newDefault, named := named }, newDefault)

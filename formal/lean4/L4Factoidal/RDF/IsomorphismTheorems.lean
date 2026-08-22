@@ -75,6 +75,11 @@ theorem mem_of_contains {l : List BNodeId} {b : BNodeId}
 theorem contains_of_mem {l : List BNodeId} {b : BNodeId}
     (h : b ∈ l) : l.contains b = true := by simpa using h
 
+/-- The same fact at any lawfully-compared element type — used for the
+`Subject`-valued graph names of RDF 1.1 Concepts §4. -/
+theorem contains_of_mem' {α : Type} [BEq α] [LawfulBEq α] {l : List α} {b : α}
+    (h : b ∈ l) : l.contains b = true := by simpa using h
+
 /-! ## Membership and set equality -/
 
 /-- A triple that is literally in the list is a member under the
@@ -174,6 +179,31 @@ theorem uniq_of_nodup_key {α : Type} (key : α → String) {l : List α}
       have hin : key a ∈ t.map key := List.mem_map_of_mem m1
       rw [he, e2] at hin
       exact absurd (contains_of_mem hin) (by simpa using hcont)
+    · exact ih htail m1 m2
+
+/-- The `noDupNames` counterpart: in a list of named graphs whose names
+are duplicate-free, the NAME determines the entry. This is exactly the
+RDF 1.1 Concepts §4 well-formedness condition (at most one graph per
+name) turned into the uniqueness fact `Dataset.lookupNamed` needs. -/
+theorem uniq_of_nodup_name {l : List NamedGraph}
+    (h : noDupNames (l.map (fun ng => ng.name)) = true) {a b : NamedGraph}
+    (h1 : a ∈ l) (h2 : b ∈ l) (he : a.name = b.name) : a = b := by
+  induction l with
+  | nil => cases h1
+  | cons x t ih =>
+    simp only [List.map_cons, noDupNames, Bool.and_eq_true,
+               Bool.not_eq_true'] at h
+    obtain ⟨hcont, htail⟩ := h
+    rcases List.mem_cons.1 h1 with e1 | m1 <;> rcases List.mem_cons.1 h2 with e2 | m2
+    · rw [e1, e2]
+    · exfalso
+      have hin : b.name ∈ t.map (fun ng => ng.name) := List.mem_map_of_mem m2
+      rw [← he, e1] at hin
+      exact absurd (contains_of_mem' hin) (by simpa using hcont)
+    · exfalso
+      have hin : a.name ∈ t.map (fun ng => ng.name) := List.mem_map_of_mem m1
+      rw [he, e2] at hin
+      exact absurd (contains_of_mem' hin) (by simpa using hcont)
     · exact ih htail m1 m2
 
 /-- Pairs are determined by their first (or second) component when
@@ -346,26 +376,17 @@ theorem Graph.isomorphicOutcome_refl (g : Graph) :
 
 /-! ## Datasets -/
 
-theorem Dataset.lookupNamed_rename (f : BNodeId → BNodeId) (ds : Dataset)
-    (n : Iri) :
-    (ds.renameBnodes f).lookupNamed n
-      = (ds.lookupNamed n).map (Graph.renameBnodes f) := by
-  have key : ∀ l : List NamedGraph,
-      (l.map (fun ng => { ng with graph := ng.graph.renameBnodes f })).find?
-          (fun ng => ng.name == n)
-        = (l.find? (fun ng => ng.name == n)).map
-            (fun ng => { ng with graph := ng.graph.renameBnodes f }) := by
-    intro l
-    induction l with
-    | nil => rfl
-    | cons hd tl ih =>
-      by_cases h : (hd.name == n) = true
-      · simp only [List.map_cons, List.find?, h, Option.map_some]
-      · simp only [List.map_cons, List.find?, h, ih]
-  unfold Dataset.renameBnodes Dataset.lookupNamed
-  simp only
-  rw [key ds.named]
-  cases ds.named.find? (fun ng => ng.name == n) <;> rfl
+/-- A dataset that LISTS a graph under a name looks that name up
+successfully. (Weaker than `lookupNamed_self` below — it does not say
+WHICH graph comes back — but it needs no duplicate-free hypothesis,
+which is what the onto direction of name matching wants.) -/
+theorem Dataset.lookupNamed_isSome_of_mem {ds : Dataset} {n : Subject}
+    {ng : NamedGraph} (h : ng ∈ ds.named) (hn : ng.name = n) :
+    (ds.lookupNamed n).isSome = true := by
+  unfold Dataset.lookupNamed
+  cases hf : ds.named.find? (fun x => x.name == n) with
+  | none   => exact absurd (List.find?_eq_none.1 hf ng h) (by simp [hn])
+  | some _ => rfl
 
 theorem Dataset.setEq_of_checkMapping {m : List (BNodeId × BNodeId)}
     {ds1 ds2 : Dataset} (h : Dataset.checkMapping m ds1 ds2 = true) :
@@ -378,7 +399,7 @@ theorem Dataset.setEq_of_checkMapping {m : List (BNodeId × BNodeId)}
     obtain ⟨ng0, hng0, hEq⟩ := List.mem_map.1 hng
     subst hEq
     have hstep := (List.all_eq_true.1 hnamed) ng0 hng0
-    cases hlook : ds2.lookupNamed ng0.name with
+    cases hlook : ds2.lookupNamed (ng0.name.renameBnodes (mapWith m)) with
     | none => rw [hlook] at hstep; simp at hstep
     | some g2 =>
       rw [hlook] at hstep
@@ -386,8 +407,12 @@ theorem Dataset.setEq_of_checkMapping {m : List (BNodeId × BNodeId)}
       exact ⟨g2, rfl, Graph.setEq_of_setEqB hstep⟩
   · intro ng hng
     have hb := (List.all_eq_true.1 hback) ng hng
-    rw [Dataset.lookupNamed_rename]
-    simpa using hb
+    obtain ⟨ng1, hng1, hname⟩ := List.any_eq_true.1 hb
+    have hmem : ({ name := ng1.name.renameBnodes (mapWith m),
+                   graph := ng1.graph.renameBnodes (mapWith m) } : NamedGraph)
+                  ∈ (ds1.renameBnodes (mapWith m)).named :=
+      List.mem_map_of_mem hng1
+    exact Dataset.lookupNamed_isSome_of_mem hmem (by simpa using hname)
 
 theorem Dataset.isomorphismMap?_cert {ds1 ds2 : Dataset}
     {m : List (BNodeId × BNodeId)} (h : ds1.isomorphismMap? ds2 = some m) :
@@ -442,8 +467,8 @@ theorem Dataset.lookupNamed_self {ds : Dataset}
     have hm : ng' ∈ ds.named := List.mem_of_find?_eq_some hf
     have hn : ng'.name = ng.name := by
       have := List.find?_some hf; simpa using this
-    have hnd' : noDupLabels (ds.named.map (fun x => x.name)) = true := hnd
-    have : ng' = ng := uniq_of_nodup_key (fun x => x.name) hnd' hm h hn
+    have hnd' : noDupNames (ds.named.map (fun x => x.name)) = true := hnd
+    have : ng' = ng := uniq_of_nodup_name hnd' hm h hn
     simp [this]
 
 theorem Dataset.isoCert_idMapping (ds : Dataset)
@@ -455,23 +480,32 @@ theorem Dataset.isoCert_idMapping (ds : Dataset)
   have hdef : Graph.setEqB (ds.default.renameBnodes (mapWith ds.idMapping))
                 ds.default = true := by
     rw [Graph.renameBnodes_id hidf]; exact Graph.setEqB_self _
+  have hidn : ∀ n : Subject, n.renameBnodes (mapWith ds.idMapping) = n :=
+    fun n => Subject.renameBnodes_id hidf n
   have hnamed : ds.named.all (fun ng =>
-      match ds.lookupNamed ng.name with
+      match ds.lookupNamed (ng.name.renameBnodes (mapWith ds.idMapping)) with
       | some g2 => Graph.setEqB (ng.graph.renameBnodes (mapWith ds.idMapping)) g2
       | none    => false) = true := by
     apply List.all_eq_true.2
     intro ng hng
-    rw [Dataset.lookupNamed_self hnd hng]
+    rw [hidn ng.name, Dataset.lookupNamed_self hnd hng]
     simp only
     rw [Graph.renameBnodes_id hidf]
     exact Graph.setEqB_self _
-  have hmatch : Dataset.namesMatchB ds ds = true := by
-    have hs : ds.named.all (fun ng => (ds.lookupNamed ng.name).isSome) = true := by
+  have hmatch : Dataset.namesMatchB ds.idMapping ds ds = true := by
+    have hs : ds.named.all (fun ng =>
+        (ds.lookupNamed (ng.name.renameBnodes (mapWith ds.idMapping))).isSome) = true := by
       apply List.all_eq_true.2
       intro ng hng
-      rw [Dataset.lookupNamed_self hnd hng]
+      rw [hidn ng.name, Dataset.lookupNamed_self hnd hng]
       rfl
-    simp [Dataset.namesMatchB, hs]
+    have hb : ds.named.all (fun ng2 =>
+        ds.named.any (fun ng1 =>
+          ng1.name.renameBnodes (mapWith ds.idMapping) == ng2.name)) = true := by
+      apply List.all_eq_true.2
+      intro ng2 hng2
+      exact List.any_eq_true.2 ⟨ng2, hng2, by rw [hidn ng2.name]; simp⟩
+    simp [Dataset.namesMatchB, hs, hb]
   simp only [Dataset.isoCert, Dataset.checkMapping, Bool.and_eq_true]
   exact ⟨hbij, ⟨hdef, hnamed⟩, hmatch⟩
 

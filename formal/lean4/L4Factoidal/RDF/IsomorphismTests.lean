@@ -168,30 +168,33 @@ different graph from two distinct ones. -/
          [ ti iA iP (.tripleTerm (.bnode "x") iQ (ob "x")) ]
          [ ti iA iP (.tripleTerm (.bnode "m") iQ (ob "n")) ] = false
 
-/-! ## 8. Datasets: named graphs matched by IRI name, blank nodes
-scoped to the whole dataset -/
+/-! ## 8. Datasets: named graphs matched by name, blank nodes scoped to
+the whole dataset -/
+
+private def gN1 : WfIri := ⟨"http://example.org/g1", rfl⟩
+private def gN2 : WfIri := ⟨"http://example.org/g2", rfl⟩
 
 private def dsA : Dataset :=
   { default := [ ti iA iP (ob "s") ],
-    named   := [ { name := "http://example.org/g1", graph := [ tb "s" iP (oi iB) ] },
-                 { name := "http://example.org/g2", graph := [ ti iC iQ (ob "t") ] } ] }
+    named   := [ { name := .iri gN1, graph := [ tb "s" iP (oi iB) ] },
+                 { name := .iri gN2, graph := [ ti iC iQ (ob "t") ] } ] }
 
 /-- Same dataset, blank nodes relabelled `s,t ↦ n0,n1`. -/
 private def dsB : Dataset :=
   { default := [ ti iA iP (ob "n0") ],
-    named   := [ { name := "http://example.org/g1", graph := [ tb "n0" iP (oi iB) ] },
-                 { name := "http://example.org/g2", graph := [ ti iC iQ (ob "n1") ] } ] }
+    named   := [ { name := .iri gN1, graph := [ tb "n0" iP (oi iB) ] },
+                 { name := .iri gN2, graph := [ ti iC iQ (ob "n1") ] } ] }
 
 /-- The two named graphs SWAPPED between their names. -/
 private def dsSwapped : Dataset :=
   { default := [ ti iA iP (ob "n0") ],
-    named   := [ { name := "http://example.org/g1", graph := [ ti iC iQ (ob "n1") ] },
-                 { name := "http://example.org/g2", graph := [ tb "n0" iP (oi iB) ] } ] }
+    named   := [ { name := .iri gN1, graph := [ ti iC iQ (ob "n1") ] },
+                 { name := .iri gN2, graph := [ tb "n0" iP (oi iB) ] } ] }
 
 /-- One named graph missing. -/
 private def dsShort : Dataset :=
   { default := [ ti iA iP (ob "n0") ],
-    named   := [ { name := "http://example.org/g1", graph := [ tb "n0" iP (oi iB) ] } ] }
+    named   := [ { name := .iri gN1, graph := [ tb "n0" iP (oi iB) ] } ] }
 
 #guard Dataset.isomorphic? dsA dsB = true
 #guard Dataset.isomorphic? dsB dsA = true
@@ -207,12 +210,68 @@ and the datasets stop being isomorphic even though each graph, taken
 alone, still is. -/
 private def dsBroken : Dataset :=
   { default := [ ti iA iP (ob "n0") ],
-    named   := [ { name := "http://example.org/g1", graph := [ tb "n9" iP (oi iB) ] },
-                 { name := "http://example.org/g2", graph := [ ti iC iQ (ob "n1") ] } ] }
+    named   := [ { name := .iri gN1, graph := [ tb "n9" iP (oi iB) ] },
+                 { name := .iri gN2, graph := [ ti iC iQ (ob "n1") ] } ] }
 
 #guard Graph.isomorphic? [ ti iA iP (ob "s") ] [ ti iA iP (ob "n0") ] = true
 #guard Graph.isomorphic? [ tb "s" iP (oi iB) ] [ tb "n9" iP (oi iB) ] = true
 #guard Dataset.isomorphic? dsA dsBroken = false
+
+/-! ### Blank-node GRAPH NAMES (RDF 1.1 Concepts §4)
+
+A graph name may be a blank node, and a blank node has no identity
+outside the document. So two datasets that differ ONLY in the label of
+a blank-node graph name are isomorphic — the bijection has to range
+over graph names, not only over the quads. An IRI name, by contrast,
+is ground: change it and the datasets are different. These are the
+`rdf-trig` cases `anonymous_blank_node_graph` and
+`labeled_blank_node_graph`. -/
+
+private def dsBnodeNamedG : Dataset :=
+  { default := [],
+    named   := [ { name := .bnode "g", graph := [ ti iA iP (oi iB) ] } ] }
+
+private def dsBnodeNamedB1 : Dataset :=
+  { default := [],
+    named   := [ { name := .bnode "b1", graph := [ ti iA iP (oi iB) ] } ] }
+
+private def dsIriNamedG1 : Dataset :=
+  { default := [],
+    named   := [ { name := .iri gN1, graph := [ ti iA iP (oi iB) ] } ] }
+
+private def dsIriNamedG2 : Dataset :=
+  { default := [],
+    named   := [ { name := .iri gN2, graph := [ ti iA iP (oi iB) ] } ] }
+
+-- Differ only in the graph name's BLANK-NODE label: isomorphic.
+#guard Dataset.isomorphic? dsBnodeNamedG dsBnodeNamedB1 = true
+#guard Dataset.isomorphic? dsBnodeNamedB1 dsBnodeNamedG = true
+-- Differ only in the graph name's IRI: NOT isomorphic.
+#guard Dataset.isomorphic? dsIriNamedG1 dsIriNamedG2 = false
+#guard Dataset.isomorphic? dsIriNamedG2 dsIriNamedG1 = false
+-- A blank-node name and an IRI name are never interchangeable.
+#guard Dataset.isomorphic? dsBnodeNamedG dsIriNamedG1 = false
+#guard Dataset.isomorphic? dsIriNamedG1 dsBnodeNamedG = false
+
+/-- One bijection, dataset-wide: the graph NAME `_:g` and the object
+`_:g` are the same blank node, so they must move together. Mapping the
+name to `_:x` while the object stays `_:g` is not an isomorphism. -/
+private def dsNameSharedLeft : Dataset :=
+  { default := [ ti iA iP (ob "g") ],
+    named   := [ { name := .bnode "g", graph := [ ti iA iP (oi iB) ] } ] }
+
+private def dsNameSharedRight : Dataset :=
+  { default := [ ti iA iP (ob "x") ],
+    named   := [ { name := .bnode "x", graph := [ ti iA iP (oi iB) ] } ] }
+
+private def dsNameSplitRight : Dataset :=
+  { default := [ ti iA iP (ob "g") ],
+    named   := [ { name := .bnode "x", graph := [ ti iA iP (oi iB) ] } ] }
+
+#guard Dataset.isomorphic? dsNameSharedLeft dsNameSharedRight = true
+#guard Dataset.isomorphic? dsNameSharedLeft dsNameSplitRight = false
+#guard Dataset.namesNoDup dsBnodeNamedG = true
+#guard Dataset.isomorphic? dsBnodeNamedG dsBnodeNamedG = true
 
 /- The empty dataset and the empty graph. -/
 #guard Graph.isomorphic? [] [] = true
