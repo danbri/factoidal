@@ -100,6 +100,12 @@ structure Diag where
   rowsCompared   : Nat := 0
   /-- Same check for CONSTRUCT: triples (expected + actual) compared. -/
   triplesCompared : Nat := 0
+  /-- Graph Store tests whose pre-state the harness MANUFACTURED from
+  the entry name ("existing graph", "already in store") because the
+  store did not already hold it — the F* runner's `hd_gsp_seed`
+  (issue #316). A seed can turn a would-be FAIL into a PASS, so the
+  count is printed. -/
+  gspSeeded : Nat := 0
   deriving DecidableEq, Repr
 
 def Diag.add (a b : Diag) : Diag :=
@@ -107,12 +113,14 @@ def Diag.add (a b : Diag) : Diag :=
     zeroTests := a.zeroTests + b.zeroTests,
     budgetExceeded := a.budgetExceeded + b.budgetExceeded,
     rowsCompared := a.rowsCompared + b.rowsCompared,
-    triplesCompared := a.triplesCompared + b.triplesCompared }
+    triplesCompared := a.triplesCompared + b.triplesCompared,
+    gspSeeded := a.gspSeeded + b.gspSeeded }
 
 def Diag.line (label : String) (d : Diag) : String :=
   s!"HARNESS-DIAG {label}: no_manifest={d.noManifest} " ++
   s!"zero_tests={d.zeroTests} budget_exceeded={d.budgetExceeded} " ++
-  s!"rows_compared={d.rowsCompared} triples_compared={d.triplesCompared}"
+  s!"rows_compared={d.rowsCompared} triples_compared={d.triplesCompared} " ++
+  s!"gsp_seeded={d.gspSeeded}"
 
 /-! ## String / path arithmetic
 

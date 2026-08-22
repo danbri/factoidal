@@ -34,6 +34,7 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`.
 -/
 import Harness.Manifest
 import Harness.Compare
+import Harness.ProtocolRun
 import L4Factoidal.Syntax.TriG
 import L4Factoidal.Syntax.RdfXml
 import L4Factoidal.Syntax.NTriples
@@ -61,6 +62,9 @@ structure RunResult where
   budgetExceeded  : Bool := false
   rowsCompared    : Nat := 0
   triplesCompared : Nat := 0
+  /-- A Graph Store test whose pre-state was manufactured from its
+  name (`HARNESS-DIAG gsp_seeded`). -/
+  gspSeeded       : Bool := false
 
 def RunResult.ofOutcome (o : Outcome) : RunResult := { outcome := o }
 
@@ -300,8 +304,10 @@ def runSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
 
 /-- Run one test case. `assumedBase` is the suite's
 `mf:assumedTestBase`; `manifestDir` the directory the manifest sits
-in. -/
-def runTest (assumedBase : Option String) (manifestDir : String) (tc : TestCase) :
+in; `gspStore` the Graph Store the http-rdf-update entries share
+(one per manifest — see `Harness/ProtocolRun.lean`). -/
+def runTest (assumedBase : Option String) (manifestDir : String)
+    (gspStore : IO.Ref GraphStore.GraphStore) (tc : TestCase) :
     IO RunResult := do
   -- Every type handled here takes its input from `mf:action` as a file.
   let withAction (k : String → String → IO RunResult) : IO RunResult := do
@@ -487,8 +493,17 @@ def runTest (assumedBase : Option String) (manifestDir : String) (tc : TestCase)
   | "PositiveSyntaxTest11" | "PositiveSyntaxTest" => runSyntaxTest true tc
   | "NegativeSyntaxTest11" | "NegativeSyntaxTest" => runSyntaxTest false tc
 
+  /- ### SPARQL 1.1 Protocol, Graph Store HTTP Protocol, Service
+     Description — request/response decoding over the entry's
+     `rdfs:comment`; see `Harness/ProtocolRun.lean`. -/
+  | "ProtocolTest" => return .ofOutcome (← runProtocolTest tc)
+  | "GraphStoreProtocolTest" => do
+      let (o, seeded) ← runGspTest gspStore tc
+      return { outcome := o, gspSeeded := seeded }
+  | "ServiceDescriptionTest" => return .ofOutcome (← runServiceDescriptionTest tc)
+
   /- ### Not attemptable yet — named, counted, never passed
-     (UPDATE, Protocol, Graph Store, Service Description). -/
+     (UPDATE). -/
   | other => return .ofOutcome (.unsupported other)
 
 end Harness

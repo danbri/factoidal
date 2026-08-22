@@ -55,6 +55,9 @@ def rdfcNs : String := "https://w3c.github.io/rdf-canon/tests/vocab#"
 /-- SPARQL 1.1 Service Description — `sd:entailmentRegime` on the
 entailment suite's actions. -/
 def sdNs   : String := "http://www.w3.org/ns/sparql-service-description#"
+/-- `rdfs:comment` — the Protocol and Graph Store suites describe each
+test as an HTTP exchange in Markdown inside this literal. -/
+def rdfsNs : String := "http://www.w3.org/2000/01/rdf-schema#"
 
 def rdfType  : String := rdfNs ++ "type"
 def rdfFirst : String := rdfNs ++ "first"
@@ -163,6 +166,10 @@ structure TestCase where
   /-- `qt:serviceData`: (endpoint IRI, local data path) pairs for
   SERVICE tests. -/
   serviceData : List (String × String) := []
+  /-- The first non-empty `rdfs:comment` literal on the entry: the
+  HTTP request/response description of a `ProtocolTest` or
+  `GraphStoreProtocolTest` (the F* runner's `protocol_comment`). -/
+  comment : Option String := none
   deriving Repr
 
 /-- One entry → one `TestCase`. Total: never returns `none`, because
@@ -210,7 +217,7 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
                         let iri := termKey t
                         (iri, iriToLocalPath manifestDir iri))
             -- `sd:entailmentRegime` is one IRI or an RDF collection of them.
-            let regimes := (findObjects g aSubj (sdNs ++ "entailmentRegime")).flatMap (fun t =>
+            let regimes := (findObjects g aSubj (sdNs ++ "entailmentRegime")).flatMap (fun (t : Term) =>
                              match t with
                              | .iri i   => [lastSegment i.val]
                              | .bnode _ => (collectList g (g.length + 1) t).map
@@ -228,8 +235,14 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
                           | _, _ => none)
             (none, (q, d, gd, regimes, sd))
       | none => (none, noBnodeAction)
+    -- `rdfs:comment`: the first literal with a non-empty lexical form.
+    let comment : Option String :=
+      (findObjects g subj (rdfsNs ++ "comment")).findSome? (fun (t : Term) =>
+        match t with
+        | .literal l => if l.val.lexicalForm.isEmpty then none else some l.val.lexicalForm
+        | _          => none)
     { name, entryId, testType, action, queryFile, dataFiles, graphData,
-      resultFile, approval, hashAlgorithm, entailmentRegimes, serviceData }
+      resultFile, approval, hashAlgorithm, entailmentRegimes, serviceData, comment }
 
 /-- `mf:assumedTestBase` — the base IRI the suite documents for its own
 fixtures. Read out of the manifest rather than hardcoded, because the

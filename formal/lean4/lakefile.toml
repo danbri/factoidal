@@ -11,7 +11,7 @@ name = "L4Factoidal"
 # (`Harness.TurtleProbe`, `Harness.CanonProbe`) stay executable roots.
 [[lean_lib]]
 name = "Harness"
-globs = ["Harness.Common", "Harness.Manifest", "Harness.Compare", "Harness.Run", "Harness.HarnessTests"]
+globs = ["Harness.Common", "Harness.Manifest", "Harness.Compare", "Harness.ProtocolRun", "Harness.Run", "Harness.HarnessTests"]
 
 # Runs the XML parser over real W3C XML Conformance Test Suite files:
 # reads paths from stdin, prints WF / NWF per file. See

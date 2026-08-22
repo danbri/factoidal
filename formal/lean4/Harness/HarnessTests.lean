@@ -78,11 +78,11 @@ report quote, so it is pinned here. -/
        == { pass := 3, fail := 1, skip := 5 }
 
 #guard Diag.line "rdf-turtle" { noManifest := 0, zeroTests := 0, budgetExceeded := 0 }
-       == "HARNESS-DIAG rdf-turtle: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0"
+       == "HARNESS-DIAG rdf-turtle: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0"
 -- The measurement counters are printed so a SPARQL suite that compared
 -- nothing cannot read as green.
 #guard Diag.line "bind" { rowsCompared := 42, triplesCompared := 7 }
-       == "HARNESS-DIAG bind: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=42 triples_compared=7"
+       == "HARNESS-DIAG bind: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=42 triples_compared=7 gsp_seeded=0"
 #guard (Diag.add { rowsCompared := 1, budgetExceeded := 1 } { rowsCompared := 2, triplesCompared := 3 })
        == { budgetExceeded := 1, rowsCompared := 3, triplesCompared := 3 }
 

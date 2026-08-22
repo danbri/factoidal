@@ -378,8 +378,9 @@ def effectiveQs (urlPath urlQuery : String) : String × String :=
 string without the `?`, `contentType` the header value (`""` when
 absent), `body` the request body as text. -/
 def decodeRequest (httpMethod urlPath urlQuery contentType body : String) : SparqlRequest :=
-  let (cleanPath, qs) := effectiveQs urlPath urlQuery
-  let isUpdate := pathIsUpdate cleanPath
+  let pq := effectiveQs urlPath urlQuery
+  let qs := pq.2
+  let isUpdate := pathIsUpdate pq.1
   let m := asciiLower httpMethod
   if m == "get" then
     buildFromKvs true isUpdate (parseQueryString qs)
