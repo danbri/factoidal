@@ -137,3 +137,5 @@ import L4Factoidal.CSVW.Conversion
 import L4Factoidal.CSVW.ConversionTests
 import L4Factoidal.CSVW.Emit
 import L4Factoidal.CSVW.EmitTests
+import L4Factoidal.CSVW.Formats
+import L4Factoidal.CSVW.FormatsTests
