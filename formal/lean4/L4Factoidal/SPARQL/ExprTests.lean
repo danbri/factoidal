@@ -167,8 +167,17 @@ def errE : Expr := .var "unbound"
 -- IRI() on an absolute IRI string.
 #guard (Expr.iriFn (.lit (litStr "http://example.org/a"))).eval []
   == .term (.iri (iriE "http://example.org/a"))
--- A relative reference is an error here (no BASE resolution is ported).
+-- A relative reference is an error with no BASE in the environment…
 #guard (Expr.iriFn (.lit (litStr "relative"))).eval [] == .error
+-- …and resolves (RFC 3986) against `EvalEnv.base` when there is one
+-- (W3C `iri01`: `BASE <http://example.org/> … IRI("iri")`).
+#guard (Expr.iriFn (.lit (litStr "iri"))).evalIn { base := some "http://example.org/" } []
+  == .term (.iri (iriE "http://example.org/iri"))
+#guard (Expr.iriFn (.lit (litStr "../x"))).evalIn { base := some "http://example.org/a/b" } []
+  == .term (.iri (iriE "http://example.org/x"))
+-- An absolute lexical form is unchanged by BASE.
+#guard (Expr.iriFn (.lit (litStr "http://other.org/z"))).evalIn { base := some "http://example.org/" } []
+  == .term (.iri (iriE "http://other.org/z"))
 
 -- STRDT / STRLANG.
 #guard (Expr.strDt (.lit (litStr "1")) (.iri xsdInteger)).eval []
@@ -266,8 +275,12 @@ def langMatches (a b : Expr) : Expr := .functionCall langMatchesIri [a, b]
 /-! ### §17.4.1 functional forms: IF / COALESCE / IN / NOT IN / sameTerm -/
 
 #guard (Expr.cond (.boolLit true) (.numericLit 1) (.numericLit 2)).eval [] == .num 1
--- IF's condition uses the FILTER-style collapse: an error acts as false.
-#guard (Expr.cond errE (.numericLit 1) (.numericLit 2)).eval [] == .num 2
+#guard (Expr.cond (.boolLit false) (.numericLit 1) (.numericLit 2)).eval [] == .num 2
+-- §17.4.1.2: a type error in the condition PROPAGATES (W3C `if02`,
+-- `IF(1/0, false, true)` is unbound) — it is not folded to the else arm.
+#guard (Expr.cond errE (.numericLit 1) (.numericLit 2)).eval [] == .error
+#guard (Expr.cond (.arith .div (.numericLit 1) (.numericLit 0)) (.boolLit false) (.boolLit true)).eval []
+  == .error
 
 #guard (Expr.coalesce [errE, .numericLit 3]).eval [] == .num 3
 #guard (Expr.coalesce [errE, errE]).eval [] == .error
@@ -302,7 +315,6 @@ def ttDec : Term :=
 #guard (Expr.regex (.lit (litStr "abc")) (.lit (litStr "a.")) none).eval [] == .error
 #guard (Expr.replace (.lit (litStr "abc")) (.lit (litStr "b")) (.lit (litStr "z")) none).eval []
   == .error
-#guard (Expr.md5 (.lit (litStr "abc"))).eval [] == .error
 #guard Expr.now.eval [] == .error
 #guard (Expr.aggregate .count false (.var "a")).eval muNums == .error
 -- §17.6: an unregistered extension-function IRI is the spec-required error.
@@ -411,5 +423,164 @@ def gTyped : Graph :=
   == [true, false]
 
 end AlgebraBridge
+
+/-! ### §17.4.4.7–11 hash builtins — the W3C `functions` fixture values -/
+
+#guard (Expr.md5 (.lit (litStr "foo"))).eval [] == erString "acbd18db4cc2f85cedef654fccc4a4d8"
+#guard (Expr.md5 (.lit (litStr "abc"))).eval [] == erString "900150983cd24fb0d6963f7d28e17f72"
+#guard (Expr.sha1 (.lit (litStr "foo"))).eval [] == erString "0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33"
+#guard (Expr.sha256 (.lit (litStr "foo"))).eval []
+  == erString "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+#guard (Expr.sha384 (.lit (litStr "foo"))).eval []
+  == erString "98c11ffdfdd540676b1a137cb1a22b2a70350c9a44171d6b1180c6be5cbb2ee3f79d532c8a1dd9ef2e8e08e752a3babb"
+#guard (Expr.sha512 (.lit (litStr "foo"))).eval []
+  == erString "f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc6638326e282c41be5e4254d8820772c5518a2c5a8c0c7f7eda19594a7eb539453e1ed7"
+-- Unicode input hashes its UTF-8 bytes (W3C `md5-02`).
+#guard (Expr.md5 (.lit (litLang "食べ物" "ja"))).eval [] == erString "e7ada485d13b1decf628c9211bc3a97b"
+-- A hash of a promoted number uses its canonical lexical form; an
+-- unbound variable or a blank node is a type error.
+#guard (Expr.md5 (.numericLit 1)).eval [] == erString "c4ca4238a0b923820dcc509a6f75849b"
+#guard (Expr.sha256 errE).eval [] == .error
+#guard (Expr.sha1 (.var "b")).eval [("b", .bnode "x")] == .error
+
+/-! ### §17.4.5 SECONDS / TIMEZONE / TZ (W3C `seconds01`, `timezone01`, `tz01`) -/
+
+def dtLit (s : String) : Expr := .lit (mkTypedLiteral s xsdDateTime)
+
+#guard (Expr.seconds (dtLit "2010-06-21T11:28:01Z")).eval [] == .dec "1"
+#guard (Expr.seconds (dtLit "2008-06-20T23:59:00Z")).eval [] == .dec "0"
+#guard (Expr.seconds (dtLit "2010-12-21T15:38:02.5-08:00")).eval [] == .dec "2.5"
+#guard (Expr.timezone (dtLit "2010-06-21T11:28:01Z")).eval []
+  == .term (.literal (mkTypedLiteral "PT0S" xsdDayTimeDuration))
+#guard (Expr.timezone (dtLit "2010-12-21T15:38:02-08:00")).eval []
+  == .term (.literal (mkTypedLiteral "-PT8H" xsdDayTimeDuration))
+#guard (Expr.timezone (dtLit "2010-12-21T15:38:02+05:30")).eval []
+  == .term (.literal (mkTypedLiteral "PT5H30M" xsdDayTimeDuration))
+-- No timezone: TIMEZONE is a type error, TZ is the empty string.
+#guard (Expr.timezone (dtLit "2011-02-01T01:02:03")).eval [] == .error
+#guard (Expr.tz (dtLit "2011-02-01T01:02:03")).eval [] == erString ""
+#guard (Expr.tz (dtLit "2010-06-21T11:28:01Z")).eval [] == erString "Z"
+#guard (Expr.tz (dtLit "2010-12-21T15:38:02-08:00")).eval [] == erString "-08:00"
+-- A non-dateTime argument is a type error.
+#guard (Expr.tz (.lit (litStr "2010-06-21T11:28:01Z"))).eval [] == .error
+
+/-! ### §17.4.3.1 string-literal arguments (W3C `concat02`, `strbefore01a`, `strbefore02`) -/
+
+-- CONCAT / STRBEFORE / STRAFTER require string literals: a number is
+-- a type error.
+#guard (Expr.concat [.lit (litStr "abc"), .numericLit 7]).eval [] == .error
+#guard (Expr.concat [.numericLit 7]).eval [] == .error
+#guard (Expr.strBefore (.numericLit 7) (.lit (litStr "b"))).eval [] == .error
+#guard (Expr.strAfter (.numericLit 7) (.lit (litStr "b"))).eval [] == .error
+-- A simple first argument with a TAGGED second is not compatible…
+#guard (Expr.strBefore (.lit (litStr "abc")) (.lit (litLang "b" "cy"))).eval [] == .error
+#guard (Expr.strAfter (.lit (litStr "abc")) (.lit (litLang "" "en"))).eval [] == .error
+-- …a tagged first with a simple second is; the tag is preserved…
+#guard (Expr.strBefore (.lit (litLang "abc" "en")) (.lit (litStr "b"))).eval []
+  == .term (.literal (litLang "a" "en"))
+-- …two tags must agree…
+#guard (Expr.strAfter (.lit (litLang "abc" "en")) (.lit (litLang "b" "en"))).eval []
+  == .term (.literal (litLang "c" "en"))
+#guard (Expr.strAfter (.lit (litLang "abc" "en")) (.lit (litLang "b" "cy"))).eval [] == .error
+-- …an empty tagged separator returns the tagged empty string / the
+-- whole string (W3C `strbefore02` row s2: `?ben = ""@en`).
+#guard (Expr.strBefore (.lit (litLang "abc" "en")) (.lit (litLang "" "en"))).eval []
+  == .term (.literal (litLang "" "en"))
+-- A separator that does not occur gives the SIMPLE empty literal.
+#guard (Expr.strBefore (.lit (litLang "abc" "en")) (.lit (litStr "xyz"))).eval []
+  == erString ""
+
+/-! ### §17.4.2.3 STRDT takes a simple literal only (W3C `strdt01`, `strdt03`) -/
+
+#guard (Expr.strDt (.lit (litLang "bar" "en")) (.iri xsdString)).eval [] == .error
+#guard (Expr.strDt (.lit (litInt "-2")) (.iri xsdString)).eval [] == .error
+#guard (Expr.strDt (.numericLit 3) (.iri xsdString)).eval [] == .error
+#guard (Expr.strDt (.lit (litStr "abc")) (.iri xsdString)).eval []
+  == .term (.literal (litStr "abc"))
+
+/-! ### §17.5 XSD constructor functions (the W3C `cast` suite's rules) -/
+
+def xsdFn (t : String) (e : Expr) (h : isIri (xsdNamespace ++ t) := by rfl) : Expr :=
+  .functionCall ⟨xsdNamespace ++ t, h⟩ [e]
+
+-- From a STRING: the lexical form must be in the target's lexical space.
+#guard (xsdFn "integer" (.lit (litStr "13"))).eval [] == .num 13
+#guard (xsdFn "integer" (.lit (litStr "+13"))).eval [] == .num 13
+#guard (xsdFn "integer" (.lit (litStr "1.5"))).eval [] == .error
+#guard (xsdFn "integer" (.lit (litStr "1E0"))).eval [] == .error
+#guard (xsdFn "integer" (.lit (litStr "string"))).eval [] == .error
+#guard (xsdFn "decimal" (.lit (litStr "+33.3300"))).eval [] == .dec "33.33"
+#guard (xsdFn "decimal" (.lit (litStr "0"))).eval [] == .dec "0.0"
+#guard (xsdFn "decimal" (.lit (litStr "1E0"))).eval [] == .error
+#guard (xsdFn "double" (.lit (litStr "-10.2E3"))).eval [] == .dbl "-10.2E3"
+#guard (xsdFn "double" (.lit (litStr "true"))).eval [] == .error
+#guard (xsdFn "float" (.lit (litStr "1.5"))).eval []
+  == .term (.literal (mkTypedLiteral "1.5" xsdFloat))
+#guard (xsdFn "boolean" (.lit (litStr "1"))).eval [] == .bool true
+#guard (xsdFn "boolean" (.lit (litStr "false"))).eval [] == .bool false
+#guard (xsdFn "boolean" (.lit (litStr "0.0"))).eval [] == .error
+#guard (xsdFn "boolean" (.lit (litStr "13"))).eval [] == .error
+#guard (xsdFn "string" (.iri (iriE "http://example.org/z"))).eval []
+  == erString "http://example.org/z"
+-- From a NUMBER or BOOLEAN: the VALUE converts.
+#guard (xsdFn "integer" (.decimalLit "-7.875")).eval [] == .num (-7)
+#guard (xsdFn "integer" (.doubleLit "1E0")).eval [] == .num 1
+#guard (xsdFn "integer" (.boolLit true)).eval [] == .num 1
+#guard (xsdFn "decimal" (.numericLit 1)).eval [] == .dec "1.0"
+#guard (xsdFn "decimal" (.doubleLit "0E1")).eval [] == .dec "0.0"
+#guard (xsdFn "decimal" (.doubleLit "1.25")).eval [] == .dec "1.25"
+#guard (xsdFn "boolean" (.decimalLit "0.0")).eval [] == .bool false
+#guard (xsdFn "boolean" (.doubleLit "1.25")).eval [] == .bool true
+#guard (xsdFn "float" (.boolLit false)).eval []
+  == .term (.literal (mkTypedLiteral "0E0" xsdFloat))
+#guard (xsdFn "float" (.doubleLit "1E0")).eval []
+  == .term (.literal (mkTypedLiteral "1.0" xsdFloat))
+#guard (xsdFn "string" (.decimalLit "1.0")).eval [] == erString "1"
+#guard (xsdFn "string" (.doubleLit "1E0")).eval [] == erString "1"
+#guard (xsdFn "string" (.boolLit false)).eval [] == erString "false"
+-- Any other XSD datatype builds a typed literal; a blank node or an
+-- unbound variable is a type error; the arity is one.
+#guard (xsdFn "dateTime" (.lit (litStr "2002-10-10T17:00:00Z"))).eval []
+  == .term (.literal (mkTypedLiteral "2002-10-10T17:00:00Z" xsdDateTime))
+#guard (xsdFn "integer" errE).eval [] == .error
+#guard (Expr.functionCall (iriE "http://www.w3.org/2001/XMLSchema#integer")
+          [.numericLit 1, .numericLit 2]).eval [] == .error
+
+/-! ### §17.4.2.9/12/13 fresh values, reproducibly (W3C `bnode01`, `bnode02`, `uuid02`, `rand01`) -/
+
+def fnCall (n : String) (args : List Expr) (h : isIri (fnNamespace ++ n) := by rfl) : Expr :=
+  .functionCall ⟨fnNamespace ++ n, h⟩ args
+
+def muRow (row occ : String) : Binding := Binding.withFreshnessCtx row occ []
+
+-- RAND(): a double in [0, 1).
+#guard (fnCall "rand" []).eval [] == .dbl "0.5"
+-- UUID(): an IRI of the `urn:uuid:` shape, STRUUID() the bare string.
+#guard (match (fnCall "uuid" []).eval (muRow "0" "u1") with
+        | .term (.iri i) => "urn:uuid:".isPrefixOf i.val && i.val.length == 45
+        | _ => false)
+#guard (match (fnCall "struuid" []).eval (muRow "0" "u1") with
+        | .term (.literal l) => l.val.lexicalForm.length == 36 && l.val.datatype == xsdString
+        | _ => false)
+-- Two call sites in one row differ; the same call site across rows differs.
+#guard (fnCall "uuid" []).eval (muRow "0" "u1") != (fnCall "uuid" []).eval (muRow "0" "u2")
+#guard (fnCall "uuid" []).eval (muRow "0" "u1") != (fnCall "uuid" []).eval (muRow "1" "u1")
+-- Deterministic: the same context gives the same value.
+#guard (fnCall "uuid" []).eval (muRow "0" "u1") == (fnCall "uuid" []).eval (muRow "0" "u1")
+-- BNODE(): a blank node, distinct per call site and per row.
+#guard (match (fnCall "bnode" []).eval (muRow "0" "b1") with | .term (.bnode _) => true | _ => false)
+#guard (fnCall "bnode" []).eval (muRow "0" "b1") != (fnCall "bnode" []).eval (muRow "0" "b2")
+-- BNODE(str): the same label for the same string within a row, a
+-- different one across rows, and distinct for different strings.
+#guard (fnCall "bnode" [.lit (litStr "foo")]).eval (muRow "2" "b1")
+  == (fnCall "bnode" [.lit (litStr "foo")]).eval (muRow "2" "b2")
+#guard (fnCall "bnode" [.lit (litStr "foo")]).eval (muRow "2" "b1")
+  != (fnCall "bnode" [.lit (litStr "foo")]).eval (muRow "3" "b1")
+#guard (fnCall "bnode" [.lit (litStr "foo")]).eval (muRow "2" "b1")
+  != (fnCall "bnode" [.lit (litStr "BAZ")]).eval (muRow "2" "b1")
+#guard (fnCall "bnode" [errE]).eval (muRow "0" "b1") == .error
+#guard (fnCall "bnode" [.numericLit 1, .numericLit 2]).eval (muRow "0" "b1") == .error
+-- The reserved context keys never reach an expression's variables.
+#guard (Expr.bound fxKeyRow).eval [] == .bool false
 
 end L4Factoidal.SPARQL.ExprTests

@@ -33,6 +33,27 @@ WHAT THIS FILE IMPLEMENTS (SPARQL 1.1 Query, W3C Rec. 21 March 2013):
   * SPARQL 1.2 triple-term builtins TRIPLE/SUBJECT/PREDICATE/OBJECT/
     isTRIPLE (Query WD §17.4).
 
+ALSO IMPLEMENTED, each as a total function of explicit inputs:
+  * §17.4.4.7–11 hash builtins MD5 / SHA1 / SHA256 / SHA384 / SHA512 —
+    pure Lean digests (`Crypto/MD5.lean`, `Crypto/SHA1.lean`,
+    `Crypto/SHA2.lean`; see `skills/crypto-policy/SKILL.md`, tier 1:
+    hashes over public data), lowercase hex, where the F* tree assumes
+    them (`assume val hash_*`);
+  * §17.4.5.7/8 TIMEZONE and TZ (`dtTimezone`, `dtTz`, ports of the F*
+    `dt_timezone`/`dt_tz`);
+  * §17.5 XSD constructor functions `xsd:integer` / `decimal` / `float`
+    / `double` / `string` / `boolean` and, for any other XSD datatype
+    IRI, a typed literal (`evalXsdCast`, port of `eval_xsd_cast`);
+  * §17.4.2.9/12/13 BNODE() / BNODE(str) / UUID() / STRUUID() — FRESH
+    values derived deterministically from the (row, call-site) freshness
+    context the caller injects (`Binding.withFreshnessCtx`, the F*
+    `fx_ctx_put` design), so a query's result is reproducible;
+    §17.4.4.3 RAND() is the F* tree's fixed `0.5` (a double in [0, 1)),
+    stated plainly: not random;
+  * §17.4.2.8 IRI()/URI() resolves a relative reference against the
+    query's BASE, carried in `EvalEnv.base` (RFC 3986, `Syntax/
+    IriResolve.lean`).
+
 WHAT THIS FILE DELIBERATELY DOES NOT EVALUATE (each returns the
 constructor-level `EvalResult.error`, which IS an operator's spec
 behaviour when it cannot produce a value — never `sorry`, never a
@@ -54,27 +75,42 @@ behaviour when it cannot produce a value — never `sorry`, never a
     aggregation context over a solution GROUP, not per solution
     mapping. The F* arm is `E_Aggregate _ _ _ -> ER_Error` for exactly
     this reason; the port keeps that.
-  * `Expr.md5` / `sha1` / `sha256` / `sha384` / `sha512` — §17.4.3.16
-    hash builtins. The F* tree assumes them (`assume val hash_*`); the
-    Lean purity doctrine forbids that, so they wait for a pure
-    implementation rather than being faked.
   * `Expr.now` — §17.4.5.1 reads a clock. Modelled purely: the
     timestamp is an INPUT, `EvalEnv.now`; with none supplied the result
     is an error rather than an ambient effect.
-  * `Expr.timezone` / `Expr.tz` — §17.4.5.8/9 timezone extraction; part
-    of the date/time family the `dt_timezone`/`dt_tz` helpers cover in
-    F*, deferred with the xsd:dateTime work.
   * §17.6 extension functions and every unrecognised `functionCall`
     IRI — offered to `EvalEnv.ext`; an unregistered IRI is a type
-    error, which is precisely what §17.6 requires. BNODE(), UUID(),
-    STRUUID(), RAND() live in that family in the F* tree and are
-    effectful there; they stay unimplemented rather than pseudo-random.
+    error, which is precisely what §17.6 requires.
+
+DEVIATIONS FROM THE F* SOURCE, each one the W3C expected file's side
+(the F* runner's row comparison, `bin/w3c-runner/w3c_runner.ml`
+`binding_row_matches_with`, ignores an actual binding the expected row
+lacks, which hides these in the F* scores; this port's harness does
+not):
+  * STRDT's first argument must be a simple / `xsd:string` literal
+    (§17.4.2.3; W3C `strdt01`/`strdt03`); the F* accepts any value.
+  * IF propagates a type error in its condition (§17.4.1.2; W3C
+    `if02`); the F* folds the error to `false`.
+  * CONCAT, STRBEFORE and STRAFTER require STRING literal arguments
+    (§17.4.3.1 argument compatibility; W3C `concat02`,
+    `strbefore01a`, `strafter01a`); the F* accepts promoted numbers.
+  * STRBEFORE/STRAFTER: a simple-literal first argument with a
+    language-tagged second argument is NOT compatible (§17.4.3.1 lists
+    exactly three compatible pairs; W3C `strbefore02`/`strafter02`);
+    the F* compatibility predicate has a fourth, permissive clause.
+  * `xsd:decimal` of a STRING requires an xsd:decimal lexical form (no
+    exponent; W3C `cast-decimal` rows `s03`, `s07`, `s10`); the F*
+    accepts E-notation strings there.
 
 Readability contract (as elsewhere in this port): every definition
 cites the spec section it implements, and names track the spec's
 vocabulary rather than implementation jargon.
 -/
 import L4Factoidal.SPARQL.Algebra
+import L4Factoidal.Syntax.IriResolve
+import L4Factoidal.Crypto.SHA2
+import L4Factoidal.Crypto.MD5
+import L4Factoidal.Crypto.SHA1
 
 namespace L4Factoidal.SPARQL
 
@@ -88,6 +124,18 @@ def xsdFloat : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#float", rfl⟩
 
 /-- `xsd:dateTime` — the operand type of the §17.4.5 accessors. -/
 def xsdDateTime : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#dateTime", rfl⟩
+
+/-- `xsd:dayTimeDuration` — the result type of §17.4.5.7 TIMEZONE. -/
+def xsdDayTimeDuration : WfIri :=
+  ⟨"http://www.w3.org/2001/XMLSchema#dayTimeDuration", rfl⟩
+
+/-- The XML Schema namespace, for §17.5 constructor-function dispatch. -/
+def xsdNamespace : String := "http://www.w3.org/2001/XMLSchema#"
+
+/-- The XPath functions namespace the F* evaluator dispatches RAND(),
+UUID(), STRUUID() and BNODE() on (the parser maps those keywords to
+`functionCall` with these IRIs). -/
+def fnNamespace : String := "http://www.w3.org/2005/xpath-functions#"
 
 /-- SPARQL 1.1 §17.1: the numeric operand types. -/
 def isNumericDatatype (dt : WfIri) : Bool :=
@@ -230,7 +278,7 @@ inductive Expr where
   | round       (e : Expr)
   | ceil        (e : Expr)
   | floor       (e : Expr)
-  -- Hash functions (§17.4.3.16) — scoped out
+  -- Hash functions (§17.4.4.7–11)
   | md5         (e : Expr)
   | sha1        (e : Expr)
   | sha256      (e : Expr)
@@ -244,8 +292,8 @@ inductive Expr where
   | hours       (e : Expr)
   | minutes     (e : Expr)
   | seconds     (e : Expr)
-  | timezone    (e : Expr)                                  -- scoped out
-  | tz          (e : Expr)                                  -- scoped out
+  | timezone    (e : Expr)
+  | tz          (e : Expr)
   -- RDF term identity (§17.4.1.2)
   | sameTerm    (l r : Expr)
   -- EXISTS / NOT EXISTS (§18.6) — the body is the concrete pattern AST
@@ -337,6 +385,9 @@ an `inductive` rather than a `structure` only because it predates
 mutual structures; `mkQuery` and the field accessors in `Query.lean`
 restore the record ergonomics.
 
+`base` is the BASE IRI in force for the query (the prologue's `BASE`,
+else the document/request IRI the parser was given) — the F* `q_base`
+— which §17.4.2.8 IRI() resolves relative references against.
 `postValues` is the trailing `VALUES` block a query may carry after
 its WHERE clause (§10.2): its rows are JOINed onto the WHERE result. -/
 inductive Query where
@@ -347,6 +398,7 @@ inductive Query where
        (having     : List Expr)
        (modifier   : SolutionModifier)
        (postValues : Option (List Binding))
+       (base       : Option String)
 
 end
 
@@ -470,6 +522,22 @@ def EvalResult.stringInfo? : EvalResult → Option (String × Option String × W
   | .dbl s             => some (s, none, xsdDouble)
   | .bool b            => some ((if b then "true" else "false"), none, xsdBoolean)
   | _                  => none
+
+/-- Lexical form + language tag + datatype of a STRING LITERAL only —
+a simple literal, an `xsd:string`, an `rdf:langString` or an
+`rdf:dirLangString`. §17.4.3.1 "Strings in SPARQL functions" defines
+the string functions over exactly these; a promoted number or boolean
+is NOT a string literal (W3C `concat02`, `strbefore01a`: `CONCAT(?x,
+7)` and `STRBEFORE(7, "b")` are type errors). CONCAT, STRBEFORE and
+STRAFTER use this; SUBSTR/UCASE/LCASE keep the wider `stringInfo?`
+as in the F* source. -/
+def EvalResult.stringLiteralInfo? : EvalResult → Option (String × Option String × WfIri)
+  | .term (.literal l) =>
+      if l.val.datatype == xsdString || l.val.datatype == rdfLangString ||
+         l.val.datatype == rdfDirLangString then
+        some (l.val.lexicalForm, l.val.langTag, l.val.datatype)
+      else none
+  | _ => none
 
 /-- The base direction a value carries, if any (RDF 1.2 Concepts §3.3).
 Kept separate from `stringInfo?` because only CONCAT is specified to
@@ -1048,8 +1116,7 @@ def fnLangDir : EvalResult → EvalResult
 /-! ### §17.4.5 xsd:dateTime component accessors
 
 The accessors read the canonical lexical form positionally, exactly as
-the F* `dt_*` helpers do. TIMEZONE and TZ are not ported (see the
-module banner). -/
+the F* `dt_*` helpers do. -/
 
 /-- The xsd:dateTime lexical form behind a value, if it has one. -/
 def erToDateTimeLex : EvalResult → Option String
@@ -1072,13 +1139,69 @@ def dtHours (s : String) : Option Int :=
 def dtMinutes (s : String) : Option Int :=
   if s.length < 16 then none else parseIntString (lexSlice s 14 2)
 
-/-- SECONDS returns an xsd:decimal (fractional seconds are in scope). -/
+/-- Strip leading zeros from a numeric lexical form, keeping one digit
+before a decimal point: `"01" ↦ "1"`, `"00" ↦ "0"`, `"01.5" ↦ "1.5"`,
+`"0.5" ↦ "0.5"` (port of `strip_leading_zeros_num`). -/
+def stripLeadingZerosNum (s : String) : String :=
+  let rec skip : List Char → List Char
+    | '0' :: rest =>
+        match rest with
+        | []       => ['0']
+        | c2 :: _  => if c2 == '.' then '0' :: rest else skip rest
+    | cs => cs
+  match skip s.toList with
+  | [] => "0"
+  | cs => String.ofList cs
+
+/-- SECONDS returns an xsd:decimal (fractional seconds are in scope);
+the lexical form is canonicalised (`"01"` ↦ `"1"`), the W3C
+`seconds01` expectation. -/
 def dtSeconds (s : String) : Option String :=
   if s.length < 19 then none
   else
     let after := s.toList.drop 17
     let secChars := after.takeWhile (fun c => c != 'Z' && c != '+' && c != '-')
-    if secChars.isEmpty then none else some (String.ofList secChars)
+    if secChars.isEmpty then none
+    else some (stripLeadingZerosNum (String.ofList secChars))
+
+/-- Codepoint offset of the timezone sign (`+`/`-`) at or after
+position 19 of an xsd:dateTime lexical form. -/
+def dtTzPos (s : String) : Option Nat :=
+  let rec go : List Char → Nat → Option Nat
+    | [], _ => none
+    | c :: rest, pos =>
+        if pos ≥ 19 && (c == '+' || c == '-') then some pos else go rest (pos + 1)
+  go s.toList 0
+
+/-- §17.4.5.7 TIMEZONE: the timezone as an xsd:dayTimeDuration lexical
+form — `Z ↦ "PT0S"`, `-08:00 ↦ "-PT8H"`, `+05:30 ↦ "PT5H30M"`; `""`
+when the value carries no timezone (the caller turns that into the
+spec's type error). Port of `dt_timezone`. -/
+def dtTimezone (s : String) : Option String :=
+  let len := s.length
+  if len < 19 then none
+  else if s.toList.getLast? == some 'Z' then some "PT0S"
+  else match dtTzPos s with
+    | none => some ""
+    | some pos =>
+        if len ≥ pos + 6 then
+          let signStr := if lexSlice s pos 1 == "-" then "-" else ""
+          match parseIntString (lexSlice s (pos + 1) 2), parseIntString (lexSlice s (pos + 4) 2) with
+          | some h, some m =>
+              if m = 0 then some (signStr ++ "PT" ++ toString h ++ "H")
+              else some (signStr ++ "PT" ++ toString h ++ "H" ++ toString m ++ "M")
+          | _, _ => none
+        else none
+
+/-- §17.4.5.8 TZ: the timezone part of the lexical form as written —
+`"Z"`, `"-08:00"`, or `""` when there is none. Port of `dt_tz`. -/
+def dtTz (s : String) : Option String :=
+  let len := s.length
+  if len < 19 then none
+  else if s.toList.getLast? == some 'Z' then some "Z"
+  else match dtTzPos s with
+    | none => some ""
+    | some pos => if pos < len then some (lexSlice s pos (len - pos)) else none
 
 /-! ### §17.4.4 numeric functions -/
 
@@ -1140,6 +1263,12 @@ structure EvalEnv where
   query's dataset here (after FROM / FROM NAMED); with none, EXISTS
   is left un-substituted and is the expression-layer error. -/
   dataset : Option Dataset := none
+  /-- §17.4.2.8 IRI(): the query's BASE IRI (the prologue's `BASE`, or
+  the request/document IRI the parser was given), against which a
+  relative reference resolves. The F* evaluator threads this as the
+  `base` parameter of `eval_expr_with_base`; here it is an environment
+  field. Absent means a non-absolute lexical form is a type error. -/
+  base : Option String := none
 
 /-- Resolve a SERVICE endpoint IRI to the graph it serves. -/
 def EvalEnv.resolveService (env : EvalEnv) (i : Iri) : Option Graph :=
@@ -1165,14 +1294,14 @@ project has hit before. -/
 def concatResults : List EvalResult → EvalResult
   | [] => erString ""
   | [v] =>
-      match v.stringInfo? with
+      match v.stringLiteralInfo? with
       | none => .error
       | some (s, lang, dt) =>
           match lang, v.direction? with
           | some l1, some d => .term (.literal (mkDirLangLiteral s l1 d))
           | _, _ => erStringPreserve s lang dt
   | v :: rest =>
-      match v.stringInfo? with
+      match v.stringLiteralInfo? with
       | none => .error
       | some (s, lang, dt) =>
           match concatResults rest with
@@ -1228,17 +1357,254 @@ def inResults (v : EvalResult) : List EvalResult → EvalResult
       | some true => .bool true
       | _ => inResults v rest
 
-/-- §17.4.3.13/§17.4.3.14 argument compatibility for STRBEFORE and
-STRAFTER: the two arguments must be plain-string compatible, or agree
-on their language tag. -/
+/-- §17.4.3.1 argument compatibility for STRBEFORE and STRAFTER (both
+arguments already known to be string literals, see
+`stringLiteralInfo?`). The table lists exactly three compatible
+pairs: two simple/`xsd:string` literals; two language-tagged literals
+with the SAME tag; a language-tagged first argument with a
+simple/`xsd:string` second. A simple first argument with a tagged
+second is NOT compatible (W3C `strbefore02`: `STRBEFORE("abc",
+"b"@cy)` is a type error). -/
 def strBeforeAfterCompatible
-    (lang1 : Option String) (dt1 : WfIri)
-    (lang2 : Option String) (dt2 : WfIri) : Bool :=
-  (lang1.isNone && lang2.isNone) ||
-  (lang1.isNone && dt1 == xsdString && lang2.isNone && dt2 == xsdString) ||
-  (lang1.isSome && lang2.isNone && (dt2 == xsdString || dt2 == rdfLangString)) ||
-  (lang1.isNone && dt1 == xsdString && lang2.isSome) ||
-  (lang1.isSome && lang2.isSome && lang1 == lang2)
+    (lang1 : Option String) (_dt1 : WfIri)
+    (lang2 : Option String) (_dt2 : WfIri) : Bool :=
+  match lang1, lang2 with
+  | none,    none    => true
+  | some _,  none    => true
+  | some l1, some l2 => l1 == l2
+  | none,    some _  => false
+
+/-! ## §17.5 XSD constructor functions (casting)
+
+Port of `eval_xsd_cast`, with the XSD lexical-space rule made
+explicit: a cast FROM A STRING succeeds only when the lexical form is
+in the target datatype's lexical space (XSD 1.1 Part 2 §3.3.13
+integer, §3.3.3 decimal, §3.3.5 double, §3.3.2 boolean); a cast from
+a NUMBER or BOOLEAN converts the VALUE. The W3C `cast` suite pins
+both halves (`xsd:integer("1.5")` is an error, `xsd:integer(1.5)` is
+`1`). -/
+
+/-- Drop one leading `+` (numeric lexical forms admit it, results do
+not carry it). -/
+def stripLeadingPlus (s : String) : String :=
+  match s.toList with
+  | '+' :: rest => String.ofList rest
+  | _ => s
+
+def isDigit (c : Char) : Bool := c.toNat ≥ 48 && c.toNat ≤ 57
+
+/-- XSD integer lexical space: `[+-]?[0-9]+`. -/
+def isIntegerLexical (s : String) : Bool :=
+  let cs := match s.toList with
+    | '+' :: rest | '-' :: rest => rest
+    | cs => cs
+  !cs.isEmpty && cs.all isDigit
+
+/-- XSD decimal lexical space: `[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)`. -/
+def isDecimalLexical (s : String) : Bool :=
+  let cs := match s.toList with
+    | '+' :: rest | '-' :: rest => rest
+    | cs => cs
+  let intPart := cs.takeWhile isDigit
+  match cs.dropWhile isDigit with
+  | [] => !intPart.isEmpty
+  | '.' :: frac => (!intPart.isEmpty || !frac.isEmpty) && frac.all isDigit
+  | _ => false
+
+/-- XSD double/float lexical space: a decimal with an optional
+`[Ee][+-]?[0-9]+` exponent, or `INF` / `-INF` / `NaN`. -/
+def isDoubleLexical (s : String) : Bool :=
+  if s == "INF" || s == "-INF" || s == "+INF" || s == "NaN" then true
+  else
+    let cs := s.toList
+    let notE := fun (c : Char) => c != 'E' && c != 'e'
+    let mant := String.ofList (cs.takeWhile notE)
+    match cs.dropWhile notE with
+    | [] => isDecimalLexical mant
+    | _ :: ex => isDecimalLexical mant && isIntegerLexical (String.ofList ex)
+
+/-- Canonical xsd:decimal lexical form of a decimal lexical: no
+leading `+`, a digit before the point, trailing zeros dropped but one
+fraction digit kept (`"+33.3300" ↦ "33.33"`, `"0" ↦ "0.0"`). -/
+def canonDecimalLexical (s : String) : String :=
+  let s1 := stripLeadingPlus s
+  let (neg, cs) := match s1.toList with
+    | '-' :: rest => (true, rest)
+    | cs => (false, cs)
+  let intPart := cs.takeWhile (fun c => c != '.')
+  let frac := (cs.dropWhile (fun c => c != '.')).drop 1
+  let intStr := if intPart.isEmpty then "0"
+                else String.ofList (stripLeadingZerosNum (String.ofList intPart)).toList
+  let fracStr := String.ofList (stripTrailingZerosChars frac)
+  let fracStr := if fracStr.isEmpty then "0" else fracStr
+  (if neg then "-" else "") ++ intStr ++ "." ++ fracStr
+
+/-- Decimal lexical form of a scaled value, with at least one fraction
+digit (`⟨1, 0⟩ ↦ "1.0"`, `⟨125, 2⟩ ↦ "1.25"`). -/
+def scaledToDecimalLexical (v : Scaled) : String :=
+  if v.scale = 0 then toString v.mantissa ++ ".0"
+  else stripTrailingDecimalZeros (formatScaledValue v.mantissa v.scale)
+
+/-- The lexical form a cast reads: promoted numbers print canonically,
+literals and IRIs give their own string; blank nodes and triple terms
+have none. -/
+def castLexical : EvalResult → Option String
+  | .num n => some (toString n)
+  | .dec s => some s
+  | .dbl s => some s
+  | .bool b => some (if b then "true" else "false")
+  | .term (.literal l) => some l.val.lexicalForm
+  | .term (.iri i) => some i.val
+  | _ => none
+
+/-- `xsd:integer(v)`: a boolean maps to 1/0, a number truncates toward
+zero (`-7.875 ↦ -7`), a string must be an integer lexical form. -/
+def castInteger (v : EvalResult) (lex : String) : EvalResult :=
+  match v with
+  | .bool b => .num (if b then 1 else 0)
+  | .num n => .num n
+  | .dec _ | .dbl _ =>
+      match parseDoubleToScaled lex with
+      | some sv => .num (intDivT sv.mantissa (pow10 sv.scale))
+      | none => .error
+  | _ =>
+      if isIntegerLexical lex then
+        match parseIntString lex with
+        | some n => .num n
+        | none => .error
+      else .error
+
+/-- `xsd:decimal(v)`: a boolean maps to `1.0`/`0.0`, an integer gains
+`.0`, a double converts by value, a string must be a decimal lexical
+form (no exponent) and is canonicalised. -/
+def castDecimal (v : EvalResult) (lex : String) : EvalResult :=
+  match v with
+  | .bool b => .dec (if b then "1.0" else "0.0")
+  | .num n => .dec (toString n ++ ".0")
+  | .dec _ => if isDecimalLexical lex then .dec (canonDecimalLexical lex) else .error
+  | .dbl _ =>
+      if isDecimalLexical lex then .dec (canonDecimalLexical lex)
+      else match parseDoubleToScaled lex with
+        | some sv => .dec (scaledToDecimalLexical sv)
+        | none => .error
+  | _ => if isDecimalLexical lex then .dec (canonDecimalLexical lex) else .error
+
+/-- `xsd:double(v)`: the F* lexical conventions — a boolean is
+`1.0E0`/`0.0E0`, an integer `<n>.0E0`, a decimal or double keeps its
+lexical form, a string must be a double lexical form. -/
+def castDouble (v : EvalResult) (lex : String) : EvalResult :=
+  match v with
+  | .bool b => .dbl (if b then "1.0E0" else "0.0E0")
+  | .num n => .dbl (toString n ++ ".0E0")
+  | .dbl _ | .dec _ => if isDoubleLexical lex then .dbl lex else .error
+  | _ => if isDoubleLexical lex then .dbl lex else .error
+
+/-- `xsd:float(v)`: a typed `xsd:float` literal (no promoted float
+kind exists). Lexical conventions follow the F* source (ARQ's, which
+the W3C `cast-float` expectation records): boolean `1.0E0`/`0E0`,
+integer `0` or `<n>.0`, an integer-VALUED double `0.0`/`<n>.0`,
+anything else its own lexical form. -/
+def castFloat (v : EvalResult) (lex : String) : EvalResult :=
+  let mkFloat := fun (s : String) => EvalResult.term (.literal (mkTypedLiteral s xsdFloat))
+  match v with
+  | .bool b => mkFloat (if b then "1.0E0" else "0E0")
+  | .num n => mkFloat (if n = 0 then "0" else toString n ++ ".0")
+  | .dbl _ =>
+      match parseDoubleToScaled lex with
+      | some sv =>
+          let p := pow10 sv.scale
+          if sv.mantissa % p = 0 then
+            let n := intDivT sv.mantissa p
+            mkFloat (if n = 0 then "0.0" else toString n ++ ".0")
+          else mkFloat lex
+      | none => .error
+  | .dec _ => if isDecimalLexical lex then mkFloat lex else .error
+  | _ => if isDoubleLexical lex then mkFloat lex else .error
+
+/-- `xsd:boolean(v)`: a number is `true` iff non-zero; a string must
+be one of `true`, `false`, `1`, `0`. -/
+def castBoolean (v : EvalResult) (lex : String) : EvalResult :=
+  match v with
+  | .bool b => .bool b
+  | .num n => .bool (n ≠ 0)
+  | .dec _ | .dbl _ =>
+      match parseDoubleToScaled lex with
+      | some sv => .bool (sv.mantissa ≠ 0)
+      | none => .error
+  | _ =>
+      if lex == "true" || lex == "1" then .bool true
+      else if lex == "false" || lex == "0" then .bool false
+      else .error
+
+/-- `xsd:string(v)`: a simple literal; an integer-valued decimal or
+double prints as its integer (`1.0 ↦ "1"`, `1E0 ↦ "1"`), as in the F*
+source. -/
+def castString (v : EvalResult) (lex : String) : EvalResult :=
+  match v with
+  | .dec _ =>
+      match parseToScaled lex with
+      | some sv =>
+          let p := pow10 sv.scale
+          if sv.mantissa % p = 0 then erString (toString (intDivT sv.mantissa p)) else erString lex
+      | none => erString lex
+  | .dbl _ =>
+      match parseDoubleToScaled lex with
+      | some sv =>
+          let p := pow10 sv.scale
+          if sv.mantissa % p = 0 then erString (toString (intDivT sv.mantissa p)) else erString lex
+      | none => erString lex
+  | _ => erString lex
+
+/-- §17.5: dispatch `xsd:<targetType>(v)`. Any other XSD datatype IRI
+(`xsd:dateTime`, …) constructs a typed literal from the lexical form;
+the language-tagged datatypes are never constructible this way. -/
+def evalXsdCast (v : EvalResult) (targetType : String) (fullIri : WfIri) : EvalResult :=
+  match castLexical v with
+  | none => .error
+  | some lex0 =>
+      let lex := if targetType == "string" || targetType == "boolean" then lex0
+                 else stripLeadingPlus lex0
+      if targetType == "integer" then castInteger v lex
+      else if targetType == "decimal" then castDecimal v lex
+      else if targetType == "double" then castDouble v lex
+      else if targetType == "float" then castFloat v lex
+      else if targetType == "boolean" then castBoolean v lex
+      else if targetType == "string" then castString v lex
+      else if fullIri != rdfLangString && fullIri != rdfDirLangString then
+        .term (.literal (mkTypedLiteral lex fullIri))
+      else .error
+
+/-! ## §17.4.2.9 / §17.4.2.12 / §17.4.2.13 — fresh values, purely
+
+BNODE(), UUID() and STRUUID() must return a value distinct per
+solution and per call site. The caller (BIND, the SELECT projection)
+injects the row index and a call-site tag under the reserved keys of
+`Binding.withFreshnessCtx`; the value is SHA-256 of a seed built from
+them, so it is deterministic, reproducible, and distinct wherever the
+spec requires distinctness (port of `fx_uuid_of_seed` /
+`fx_bnode_of_seed`). -/
+
+/-- The first 32 hex digits of SHA-256(seed) laid out 8-4-4-4-12
+(lowercase; the W3C UUID fixtures match case-insensitively). -/
+def fxUuidOfSeed (seed : String) : String :=
+  let cs := (Crypto.hashHex .sha256 seed).toList.take 32
+  let s := fun (l : List Char) => String.ofList l
+  s (cs.take 8) ++ "-" ++ s ((cs.drop 8).take 4) ++ "-" ++ s ((cs.drop 12).take 4) ++ "-" ++
+  s ((cs.drop 16).take 4) ++ "-" ++ s (cs.drop 20)
+
+/-- A fresh blank-node label; the `fxbn` prefix keeps these apart
+from data blank nodes. (The F* label carries a literal `_:` prefix;
+Lean blank-node labels never do, so it is omitted here.) -/
+def fxBnodeOfSeed (seed : String) : String :=
+  "fxbn" ++ Crypto.hashHex .sha256 seed
+
+/-- Hash builtin body shared by MD5/SHA1/SHA256/SHA384/SHA512
+(§17.4.4.7–11): the string value of the argument, hashed, as a simple
+literal of lowercase hex; a non-string argument is a type error. -/
+def hashResult (digest : String → String) (v : EvalResult) : EvalResult :=
+  match v.toString? with
+  | some s => erString (digest s)
+  | none => .error
 
 /-! ## The evaluator — SPARQL 1.1 §17
 
@@ -1336,22 +1702,29 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
   | .hasLang e1 => fnHasLang (Expr.evalIn env mu e1)
   | .hasLangDir e1 => fnHasLangDir (Expr.evalIn env mu e1)
   | .langDir e1 => fnLangDir (Expr.evalIn env mu e1)
-  -- §17.4.2.8 IRI(). DEVIATION from the F* source, stated plainly: the
-  -- F* arm resolves a RELATIVE reference against the query's BASE
-  -- (`resolve_iri`); RFC 3986 reference resolution is not ported here,
-  -- so a lexical form that is not already an absolute IRI is an error.
+  -- §17.4.2.8 IRI(): a literal's lexical form is resolved against the
+  -- query's BASE when there is one (RFC 3986 §5.2, `resolveIri`), as
+  -- the F* arm does with `resolve_iri`; the result must be an
+  -- absolute IRI.
   | .iriFn e1 =>
       match Expr.evalIn env mu e1 with
       | .term (.iri i) => .term (.iri i)
       | .term (.literal l) =>
-          if h : L4Factoidal.RDF.isIri l.val.lexicalForm then .term (.iri ⟨l.val.lexicalForm, h⟩)
+          let s := L4Factoidal.Syntax.resolveAgainst? env.base l.val.lexicalForm
+          if h : L4Factoidal.RDF.isIri s then .term (.iri ⟨s, h⟩)
           else .error
       | _ => .error
 
-  -- §17.4.2 term constructors.
+  -- §17.4.2 term constructors. STRDT takes a SIMPLE LITERAL (RDF 1.1:
+  -- an `xsd:string` literal without a language tag); a tagged or
+  -- otherwise-typed literal, or a promoted value, is a type error
+  -- (W3C `strdt01`, `strdt03`).
   | .strDt e1 e2 =>
-      match (Expr.evalIn env mu e1).toString?, Expr.evalIn env mu e2 with
-      | some s, .term (.iri dt) => .term (.literal (mkTypedLiteral s dt))
+      match Expr.evalIn env mu e1, Expr.evalIn env mu e2 with
+      | .term (.literal l), .term (.iri dt) =>
+          if l.val.datatype == xsdString && l.val.langTag.isNone then
+            .term (.literal (mkTypedLiteral l.val.lexicalForm dt))
+          else .error
       | _, _ => .error
   | .strLang e1 e2 =>
       match Expr.evalIn env mu e1, (Expr.evalIn env mu e2).toString? with
@@ -1375,10 +1748,15 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
   -- rather than a value, and so the only one that never errors.
   | .bound v => .bool (mu.lookup v).isSome
 
-  -- §17.4.1 functional forms.
+  -- §17.4.1.2 IF: "if the EBV of expression1 raises an error, then an
+  -- error is raised" — the condition's type error PROPAGATES (W3C
+  -- `if02`: `IF(1/0, false, true)` is unbound), it is not folded to
+  -- the else branch.
   | .cond c t e =>
-      if ebvOrFalse (Expr.evalIn env mu c) then Expr.evalIn env mu t
-      else Expr.evalIn env mu e
+      match ebv (Expr.evalIn env mu c) with
+      | some true  => Expr.evalIn env mu t
+      | some false => Expr.evalIn env mu e
+      | none       => .error
   | .coalesce es => coalesceResults (Expr.evalArgs env mu es)
   | .inList e1 es => inResults (Expr.evalIn env mu e1) (Expr.evalArgs env mu es)
   | .notInList e1 es =>
@@ -1415,7 +1793,8 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
       | some s, some p => .bool (strContains s p)
       | _, _ => .error
   | .strBefore e1 e2 =>
-      match (Expr.evalIn env mu e1).stringInfo?, (Expr.evalIn env mu e2).stringInfo? with
+      match (Expr.evalIn env mu e1).stringLiteralInfo?,
+            (Expr.evalIn env mu e2).stringLiteralInfo? with
       | some (s, lang1, dt1), some (arg, lang2, dt2) =>
           if !strBeforeAfterCompatible lang1 dt1 lang2 dt2 then .error
           else if arg.length = 0 then erStringPreserve "" lang1 dt1
@@ -1425,7 +1804,8 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
             else erStringPreserve result lang1 dt1
       | _, _ => .error
   | .strAfter e1 e2 =>
-      match (Expr.evalIn env mu e1).stringInfo?, (Expr.evalIn env mu e2).stringInfo? with
+      match (Expr.evalIn env mu e1).stringLiteralInfo?,
+            (Expr.evalIn env mu e2).stringLiteralInfo? with
       | some (s, lang1, dt1), some (arg, lang2, dt2) =>
           if !strBeforeAfterCompatible lang1 dt1 lang2 dt2 then .error
           else if arg.length = 0 then erStringPreserve s lang1 dt1
@@ -1470,8 +1850,13 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
       | .dbl s => .dbl (toString (lexFloor s))
       | _ => .error
 
-  -- SCOPED OUT: §17.4.3.16 hash builtins (see banner).
-  | .md5 _ | .sha1 _ | .sha256 _ | .sha384 _ | .sha512 _ => .error
+  -- §17.4.4.7–11 hash builtins: pure Lean digests of the UTF-8 bytes,
+  -- lowercase hex. SHA-2 goes through the hash-agile `Crypto.hashHex`.
+  | .md5 e1    => hashResult Crypto.md5Hex (Expr.evalIn env mu e1)
+  | .sha1 e1   => hashResult Crypto.sha1Hex (Expr.evalIn env mu e1)
+  | .sha256 e1 => hashResult (Crypto.hashHex .sha256) (Expr.evalIn env mu e1)
+  | .sha384 e1 => hashResult (Crypto.hashHex .sha384) (Expr.evalIn env mu e1)
+  | .sha512 e1 => hashResult (Crypto.hashHex .sha512) (Expr.evalIn env mu e1)
 
   -- §17.4.5 date/time.
   | .now =>
@@ -1502,8 +1887,21 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
       match erToDateTimeLex (Expr.evalIn env mu e1) with
       | some s => match dtSeconds s with | some ds => .dec ds | none => .error
       | none => .error
-  -- SCOPED OUT: TIMEZONE/TZ (see banner).
-  | .timezone _ | .tz _ => .error
+  -- §17.4.5.7 TIMEZONE: an xsd:dayTimeDuration; a dateTime with no
+  -- timezone is a type error (W3C `timezone01`, row `d4` unbound).
+  | .timezone e1 =>
+      match erToDateTimeLex (Expr.evalIn env mu e1) with
+      | some s =>
+          match dtTimezone s with
+          | some "" => .error
+          | some tzStr => .term (.literal (mkTypedLiteral tzStr xsdDayTimeDuration))
+          | none => .error
+      | none => .error
+  -- §17.4.5.8 TZ: a simple literal, `""` when there is no timezone.
+  | .tz e1 =>
+      match erToDateTimeLex (Expr.evalIn env mu e1) with
+      | some s => match dtTz s with | some tzStr => erString tzStr | none => .error
+      | none => .error
 
   -- §17.4.1.2 sameTerm — term IDENTITY, stricter than `=`.
   | .sameTerm e1 e2 =>
@@ -1525,11 +1923,14 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
   -- SCOPED OUT: §18.5.1 aggregates evaluate over a GROUP.
   | .aggregate _ _ _ => .error
 
-  -- §17.4.3.10 langMatches is the one IRI-named function with native
-  -- semantics; everything else is offered to the §17.6 host registry,
-  -- and an unregistered IRI is the spec-required type error.
+  -- IRI-named functions, dispatched in the F* arm's order: langMatches
+  -- (§17.4.3.10); RAND / UUID / STRUUID / BNODE (the parser maps the
+  -- keywords to `fn:` IRIs); the §17.5 `xsd:` constructor functions;
+  -- then the §17.6 host registry, where an unregistered IRI is the
+  -- spec-required type error.
   | .functionCall i args =>
       let vals := Expr.evalArgs env mu args
+      let iriS := i.val
       if i == langMatchesIri then
         match vals with
         | [v1, v2] =>
@@ -1537,8 +1938,41 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
             | some tag, some range => .bool (fnLangMatches tag range)
             | _, _ => .error
         | _ => .error
+      -- §17.4.4.3 RAND(): the F* tree's fixed value — a double in
+      -- [0, 1), deterministic by design (stated in the banner).
+      else if iriS == fnNamespace ++ "rand" then .dbl "0.5"
+      -- §17.4.2.12 UUID(): a fresh `urn:uuid:` IRI per (row, call site).
+      else if iriS == fnNamespace ++ "uuid" then
+        let row := mu.freshnessCtx fxKeyRow
+        let occ := mu.freshnessCtx fxKeyOcc
+        let u := "urn:uuid:" ++ fxUuidOfSeed ("u|" ++ row ++ "|" ++ occ)
+        if h : L4Factoidal.RDF.isIri u then .term (.iri ⟨u, h⟩) else .error
+      -- §17.4.2.13 STRUUID(): the same value as a simple literal.
+      else if iriS == fnNamespace ++ "struuid" then
+        let row := mu.freshnessCtx fxKeyRow
+        let occ := mu.freshnessCtx fxKeyOcc
+        erString (fxUuidOfSeed ("u|" ++ row ++ "|" ++ occ))
+      -- §17.4.2.9 BNODE(): distinct across solutions AND across call
+      -- sites within one solution; BNODE(str): the same label for the
+      -- same string within one solution, distinct across solutions.
+      else if iriS == fnNamespace ++ "bnode" then
+        let row := mu.freshnessCtx fxKeyRow
+        match vals with
+        | [] =>
+            let occ := mu.freshnessCtx fxKeyOcc
+            .term (.bnode (fxBnodeOfSeed ("n|" ++ row ++ "|" ++ occ)))
+        | [v1] =>
+            match v1.toString? with
+            | some s => .term (.bnode (fxBnodeOfSeed ("s|" ++ row ++ "|" ++ s)))
+            | none => .error
+        | _ => .error
+      -- §17.5 `xsd:<type>(v)`.
+      else if xsdNamespace.isPrefixOf iriS && iriS.length > xsdNamespace.length then
+        match vals with
+        | [v1] => evalXsdCast v1 (String.ofList (iriS.toList.drop xsdNamespace.length)) i
+        | _ => .error
       else
-        match env.ext i.val vals with
+        match env.ext iriS vals with
         | some r => r
         | none => .error
 

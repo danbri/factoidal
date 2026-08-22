@@ -13,7 +13,14 @@ with the expected one, reproducing `bin/w3c-runner/w3c_runner.ml`'s
     an ORDER BY with ties admits several correct orders and the
     expected file records only one of them.
   * Term comparison is the engine equality `Term.eqb` (language-tag
-    case, XMLLiteral c14n) — no numeric leniency.
+    case, XMLLiteral c14n), plus the F* runner's ONE numeric leniency
+    (`term_equal`'s `numeric_literal_equal` fallback): two literals of
+    the SAME numeric datatype compare by VALUE, so the expected file's
+    `"2.0E-1"^^xsd:double` matches an engine's `"2E-1"`. The W3C
+    expected files record one implementation's lexical conventions
+    (`"1050"^^xsd:double`, `"1.0e6"`), which no canonical formatter
+    reproduces; the tests that pass only through this rule are named
+    in `PORT_NOTES.md`.
   * `.csv` expected files are lossy (every value is written as a plain
     string, blank-node labels are not stable), so the CSV comparison
     collapses all blank nodes to one token and compares a plain-string
@@ -29,6 +36,7 @@ pins the behaviour. No `sorry`, no `axiom`, no `native_decide`, no
 `partial`.
 -/
 import L4Factoidal.SPARQL.Results
+import L4Factoidal.SPARQL.Expr
 import Harness.Manifest
 
 open L4Factoidal.RDF
@@ -51,8 +59,23 @@ def bmapExtend (m : BMap) (e a : String) : Option BMap :=
 /-- A term comparator threading the bijection. -/
 abbrev TermCmp := BMap → Term → Term → Option BMap
 
+/-- The F* runner's `numeric_literal_equal`: two literals of the same
+numeric datatype (integer, decimal, float, double) are equal when
+their VALUES are, read through the engine's own scaled-decimal parser
+(`parseDoubleToScaled`, which also accepts a lowercase `e`). -/
+def numericLiteralEqual (e a : WfLiteral) : Bool :=
+  e.val.datatype == a.val.datatype && isNumericDatatype e.val.datatype &&
+  (match parseDoubleToScaled e.val.lexicalForm, parseDoubleToScaled a.val.lexicalForm with
+   | some x, some y => x.cmp y == 0
+   | _, _ => false)
+
+/-- `Term.eqb`, or value-equal numeric literals (`term_equal`). -/
+def termEqualLenient : Term → Term → Bool
+  | .literal e, .literal a => (Term.literal e).eqb (.literal a) || numericLiteralEqual e a
+  | t1, t2 => t1.eqb t2
+
 /-- Strict: blank nodes through the bijection, everything else by
-`Term.eqb`; RDF 1.2 triple terms position by position. -/
+`termEqualLenient`; RDF 1.2 triple terms position by position. -/
 def termMatchStrict (m : BMap) : Term → Term → Option BMap
   | .bnode e, .bnode a => bmapExtend m e a
   | .tripleTerm s1 p1 o1, .tripleTerm s2 p2 o2 =>
@@ -63,7 +86,7 @@ def termMatchStrict (m : BMap) : Term → Term → Option BMap
       match ms with
       | none    => none
       | some m1 => if p1 == p2 then termMatchStrict m1 o1 o2 else none
-  | t1, t2 => if t1.eqb t2 then some m else none
+  | t1, t2 => if termEqualLenient t1 t2 then some m else none
 
 /-- CSV-lenient (`term_equal_csv_lenient`): any blank node matches any
 blank node; an expected plain `xsd:string` literal matches any literal
@@ -73,7 +96,7 @@ def termMatchCsv (m : BMap) : Term → Term → Option BMap
   | .literal e, .literal a =>
       if e.val.datatype == xsdString && e.val.langTag.isNone then
         (if e.val.lexicalForm == a.val.lexicalForm then some m else none)
-      else if (Term.literal e).eqb (.literal a) then some m else none
+      else if termEqualLenient (.literal e) (.literal a) then some m else none
   | t1, t2 => if t1.eqb t2 then some m else none
 
 /-! ## Rows -/

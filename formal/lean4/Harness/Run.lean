@@ -248,7 +248,7 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   | .ok expected =>
   -- EXISTS needs no hook: `evalSelect` / `evalAsk` / `evalConstruct`
   -- install the query's dataset in the environment themselves.
-  let env : EvalEnv := { now := some fixedNow, services := services }
+  let env : EvalEnv := { now := some fixedNow, services := services, base := q.base }
   let ordered := q.modifier.orderBy.isSome
   match q.form, expected with
   | .select _, .rows erows csv =>

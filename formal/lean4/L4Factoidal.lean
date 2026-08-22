@@ -4,6 +4,8 @@
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Crypto.SHA2Theorems
 import L4Factoidal.Crypto.SHA2Tests
+import L4Factoidal.Crypto.MD5
+import L4Factoidal.Crypto.SHA1
 import L4Factoidal.RDF.XmlCanon
 import L4Factoidal.RDF.Core
 import L4Factoidal.RDF.Graph
