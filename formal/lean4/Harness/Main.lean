@@ -32,8 +32,22 @@ import Harness.HarnessTests
 
 namespace Harness
 
-/-- Run every entry of one manifest. -/
-def runManifest (path : System.FilePath) (verbose : Bool) : IO (Score × Diag) := do
+/-- How deep an `mf:include` chain may go. `manifest-all.ttl` →
+`<suite>/manifest.ttl` is one level; the bound only stops a cycle. -/
+def includeDepth : Nat := 4
+
+/-- Run every entry of one manifest. A manifest with NO entries but an
+`mf:include` list (`sparql11/manifest-all.ttl`) runs each included
+manifest in turn, printing one score line per sub-suite, and returns
+their sum — the F* runner follows includes the same way. -/
+def runManifest : Nat → System.FilePath → Bool → IO (Score × Diag)
+  | 0, path, _ => do
+      let label := suiteLabel path.toString
+      IO.println (Score.line label {})
+      IO.println (Diag.line label { noManifest := 1 })
+      IO.println s!"  (mf:include nesting deeper than {includeDepth}: {path})"
+      return ({}, { noManifest := 1 })
+  | depth + 1, path, verbose => do
   let label := suiteLabel path.toString
   match ← loadManifest path with
   | none =>
@@ -47,7 +61,26 @@ def runManifest (path : System.FilePath) (verbose : Bool) : IO (Score × Diag) :
       IO.println s!"  (manifest did NOT parse: {e})"
       return ({}, { noManifest := 1 })
   | some (.ok (tests, assumedBase)) =>
-      let manifestDir := dirname (← IO.FS.realPath path).toString
+      let abs := (← IO.FS.realPath path).toString
+      let manifestDir := dirname abs
+      -- An umbrella manifest: no entries of its own, only includes.
+      let includes ← if tests.isEmpty then
+          (match ← readOpt path with
+           | some text => pure (parseManifestIncludes abs text)
+           | none      => pure [])
+        else pure []
+      if tests.isEmpty && !includes.isEmpty then
+        if verbose then
+          IO.println s!"# {label}: {includes.length} included manifests"
+        let mut total : Score := {}
+        let mut totalDiag : Diag := {}
+        for inc in includes do
+          let (s, d) ← runManifest depth (System.FilePath.mk inc) verbose
+          total := total.add s
+          totalDiag := totalDiag.add d
+          IO.println ""
+        return (total, totalDiag)
+      else
       if verbose then
         match assumedBase with
         | some b => IO.println s!"# {label}: {tests.length} entries, mf:assumedTestBase {b}"
@@ -57,7 +90,10 @@ def runManifest (path : System.FilePath) (verbose : Bool) : IO (Score × Diag) :
       for tc in tests do
         let r ← runTest assumedBase manifestDir tc
         score := score.bump r.outcome
-        if r.budgetExceeded then diag := { diag with budgetExceeded := diag.budgetExceeded + 1 }
+        diag := { diag with
+                  budgetExceeded := diag.budgetExceeded + (if r.budgetExceeded then 1 else 0),
+                  rowsCompared := diag.rowsCompared + r.rowsCompared,
+                  triplesCompared := diag.triplesCompared + r.triplesCompared }
         if verbose || r.outcome.isFail then
           IO.println (Outcome.line tc.name r.outcome)
       IO.println (Score.line label score)
@@ -70,11 +106,12 @@ def main (args : List String) : IO UInt32 := do
   if manifests.isEmpty then
     IO.eprintln "usage: l4w3c [--quiet] <manifest.ttl>..."
     IO.eprintln "  e.g. lake exe l4w3c ../../third_party/testing/w3c/rdf/rdf11/rdf-turtle/manifest.ttl"
+    IO.eprintln "       lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl"
     return 2
   let mut total : Score := {}
   let mut totalDiag : Diag := {}
   for m in manifests do
-    let (s, d) ← runManifest (System.FilePath.mk m) verbose
+    let (s, d) ← runManifest includeDepth (System.FilePath.mk m) verbose
     total := total.add s
     totalDiag := totalDiag.add d
     IO.println ""

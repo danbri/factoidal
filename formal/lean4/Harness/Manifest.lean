@@ -52,6 +52,9 @@ def qtNs   : String := "http://www.w3.org/2001/sw/DataAccess/tests/test-query#"
 def rdfNs  : String := "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 def rdftNs : String := "http://www.w3.org/ns/rdftest#"
 def rdfcNs : String := "https://w3c.github.io/rdf-canon/tests/vocab#"
+/-- SPARQL 1.1 Service Description — `sd:entailmentRegime` on the
+entailment suite's actions. -/
+def sdNs   : String := "http://www.w3.org/ns/sparql-service-description#"
 
 def rdfType  : String := rdfNs ++ "type"
 def rdfFirst : String := rdfNs ++ "first"
@@ -115,6 +118,10 @@ def collectList (g : Graph) : Nat → Term → List Term
       | some r => heads ++ collectList g fuel r
       | none   => heads
 
+/-- The last path segment of an IRI: after the last `/`, then after the
+last `#`. `http://www.w3.org/ns/entailment/RDFS` → `RDFS`. -/
+def lastSegment (iri : String) : String := lastAfter (lastAfter iri "/") "#"
+
 /-! ## The test case record -/
 
 /-- One manifest entry, in the shape the F* runner models it.
@@ -149,6 +156,13 @@ structure TestCase where
   approval   : String
   /-- `rdfc:hashAlgorithm`, e.g. `"SHA384"` (rdf-canon only). -/
   hashAlgorithm : Option String
+  /-- `sd:entailmentRegime` local names on the action (`RDFS`, `D`,
+  `OWL-Direct`, …; sparql11-entailment only). Empty = simple
+  entailment. -/
+  entailmentRegimes : List String := []
+  /-- `qt:serviceData`: (endpoint IRI, local data path) pairs for
+  SERVICE tests. -/
+  serviceData : List (String × String) := []
   deriving Repr
 
 /-- One entry → one `TestCase`. Total: never returns `none`, because
@@ -178,14 +192,15 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
       (findObject? g subj (mfNs ++ "result")).map (fun t => iriToLocalPath manifestDir (termKey t))
     -- `mf:action`: a file IRI, or a bnode carrying qt: predicates.
     let actionTerm := findObject? g subj (mfNs ++ "action")
-    let (action, queryFile, dataFiles, graphData) :=
+    let noBnodeAction : Option String × List String × List (String × String) ×
+                        List String × List (String × String) :=
+      (none, [], [], [], [])
+    let (action, (queryFile, dataFiles, graphData, entailmentRegimes, serviceData)) :=
       match actionTerm with
-      | some (.iri i) =>
-          (some (iriToLocalPath manifestDir i.val), none, ([] : List String),
-           ([] : List (String × String)))
+      | some (.iri i) => (some (iriToLocalPath manifestDir i.val), noBnodeAction)
       | some other =>
           match subjectOfTerm other with
-          | none => (none, none, [], [])
+          | none => (none, noBnodeAction)
           | some aSubj =>
             let q := (findObject? g aSubj (qtNs ++ "query")).map
                        (fun t => iriToLocalPath manifestDir (termKey t))
@@ -194,10 +209,27 @@ def extractTestCase (manifestDir : String) (g : Graph) (entry : Term) : TestCase
             let gd := (findObjects g aSubj (qtNs ++ "graphData")).map (fun t =>
                         let iri := termKey t
                         (iri, iriToLocalPath manifestDir iri))
-            (none, q, d, gd)
-      | none => (none, none, [], [])
+            -- `sd:entailmentRegime` is one IRI or an RDF collection of them.
+            let regimes := (findObjects g aSubj (sdNs ++ "entailmentRegime")).flatMap (fun t =>
+                             match t with
+                             | .iri i   => [lastSegment i.val]
+                             | .bnode _ => (collectList g (g.length + 1) t).map
+                                             (fun m => lastSegment (termKey m))
+                             | _        => [])
+            -- `qt:serviceData [ qt:endpoint <iri> ; qt:data <file> ]`.
+            let sd := (findObjects g aSubj (qtNs ++ "serviceData")).filterMap (fun t =>
+                        match subjectOfTerm t with
+                        | none => none
+                        | some s =>
+                          match findObject? g s (qtNs ++ "endpoint"),
+                                findObject? g s (qtNs ++ "data") with
+                          | some ep, some df =>
+                              some (termKey ep, iriToLocalPath manifestDir (termKey df))
+                          | _, _ => none)
+            (none, (q, d, gd, regimes, sd))
+      | none => (none, noBnodeAction)
     { name, entryId, testType, action, queryFile, dataFiles, graphData,
-      resultFile, approval, hashAlgorithm }
+      resultFile, approval, hashAlgorithm, entailmentRegimes, serviceData }
 
 /-- `mf:assumedTestBase` — the base IRI the suite documents for its own
 fixtures. Read out of the manifest rather than hardcoded, because the
@@ -233,6 +265,23 @@ def parseManifestText (manifestPath text : String) :
   match parseTurtle text (some base) with
   | .error e => .error s!"manifest parse error at offset {e.pos}: {e.msg}"
   | .ok g    => .ok (extractTestCases (dirname manifestPath) g, assumedTestBase g)
+
+/-- `mf:include` — the sub-manifests an umbrella manifest
+(`sparql11/manifest-all.ttl`) points at, as local paths in collection
+order. The F* runner follows these; so does `Harness.Main`. -/
+def manifestIncludes (manifestDir : String) (g : Graph) : List String :=
+  let fuel := g.length + 1
+  let heads := g.filterMap (fun t =>
+    if t.p.val == mfNs ++ "include" then some t.o else none)
+  heads.flatMap (fun h => (collectList g fuel h).map (fun m => iriToLocalPath manifestDir (termKey m)))
+
+/-- The includes of a manifest text (pure counterpart of
+`parseManifestText`; an unparseable manifest has none). -/
+def parseManifestIncludes (manifestPath text : String) : List String :=
+  let base := "file://" ++ manifestPath
+  match parseTurtle text (some base) with
+  | .error _ => []
+  | .ok g    => manifestIncludes (dirname manifestPath) g
 
 /-- Load a manifest off disk. `none` when the file is absent
 (the caller counts that as `no_manifest`). -/
