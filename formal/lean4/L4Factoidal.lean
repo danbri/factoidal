@@ -106,3 +106,7 @@ import L4Factoidal.Regex.XSDPattern
 import L4Factoidal.Regex.XPath
 import L4Factoidal.Regex.RegexTests
 import L4Factoidal.Regex.RegexTheorems
+import L4Factoidal.SHACL.Vocabulary
+import L4Factoidal.SHACL.Shapes
+import L4Factoidal.SHACL.Validation
+import L4Factoidal.SHACL.Report
