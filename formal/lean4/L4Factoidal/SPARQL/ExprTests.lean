@@ -335,23 +335,19 @@ def envWithExt : EvalEnv :=
 #guard Expr.evalIn envWithExt []
     (.functionCall (iriE "http://example.org/other") [.numericLit 21]) == .error
 
-/-- A host that supplies §18.6 EXISTS by pattern evaluation. Here the
-graph is fixed to the `Tests` fixture, which is exactly the shape the
-pattern-evaluation layer will provide. -/
-def envWithExists : EvalEnv :=
-  { existsHook := some (fun p mu =>
-      !(SPARQL.join [mu] (p.eval L4Factoidal.Tests.g)).isEmpty) }
-
-#guard Expr.evalIn envWithExists []
-    (.existsPat (.bgp L4Factoidal.Tests.qNames)) == .bool true
-#guard Expr.evalIn envWithExists []
-    (.notExistsPat (.bgp L4Factoidal.Tests.qNames)) == .bool false
+-- §18.6 EXISTS is not an expression-layer operation: the pattern
+-- layer substitutes every EXISTS by its boolean before evaluation
+-- (`substituteExistentials`, Query.lean — exercised in
+-- `QueryTests.lean`). One that reaches this evaluator un-substituted is
+-- the F* `E_Exists _ -> ER_Error`.
 #guard Expr.evalIn emptyEnv [] (.existsPat (.bgp L4Factoidal.Tests.qNames)) == .error
+#guard Expr.evalIn emptyEnv [] (.notExistsPat (.bgp L4Factoidal.Tests.qNames)) == .error
 
 /-! ### §18.5 FILTER — the bridge into the algebra
 
-`Expr.toCond` turns an expression into the `Binding → Bool` the
-algebra's `filter`/`leftJoin` take, collapsing a type error to `false`
+`Expr.toCond` turns an expression into the row predicate the
+algebra's `filter`/`leftJoin` take (under a `fun _ =>` for the active
+graph they also receive), collapsing a type error to `false`
 because §18.5 drops the row either way. Run against the `Tests.lean`
 fixture graph (two people, Alice 30 and Bob 7). -/
 
@@ -360,7 +356,7 @@ open L4Factoidal.Tests
 
 -- FILTER(?n = "Alice") keeps one of the two rows.
 #guard ((GraphPattern.filter
-    (Expr.toCond (.compare .eq (.var "n") (.lit (litStr "Alice"))))
+    (fun _ => Expr.toCond (.compare .eq (.var "n") (.lit (litStr "Alice"))))
     (.bgp qNameAge)).eval g).length == 1
 
 -- The same filter written through the expression-level constructor.

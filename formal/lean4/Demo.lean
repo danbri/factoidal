@@ -40,7 +40,7 @@ def main : IO Unit := do
     (evalBgp qNameAge g)
 
   showRows "FILTER(isAdult) over the same"
-    ((GraphPattern.filter isAdult (.bgp qNameAge)).eval g)
+    ((GraphPattern.filter (fun _ => isAdult) (.bgp qNameAge)).eval g)
 
   showRows "names MINUS ages  — shared ?s: everything cancels"
     ((GraphPattern.minus (.bgp qNames) (.bgp qNameAge)).eval g)
@@ -50,7 +50,7 @@ def main : IO Unit := do
   showRows "OPTIONAL age, kept only when adult (LeftJoin)"
     ((GraphPattern.leftJoin (.bgp qNames)
         (.bgp [{ s := .var "s", p := .iri exAge, o := .var "a" }])
-        isAdult).eval g)
+        (fun _ => isAdult)).eval g)
 
   -- Monotonicity, live: the theorem evalBgp_mono says growing the
   -- graph never loses answers. Watch it hold:

@@ -43,10 +43,13 @@ behaviour when it cannot produce a value — never `sorry`, never a
     purity doctrine wants a pure regex matcher, which is a port of its
     own.
   * `Expr.existsPat` / `Expr.notExistsPat` — §18.6 EXISTS needs pattern
-    evaluation against a graph, which sits above expressions. Wired as
-    the optional `EvalEnv.existsHook`; with no hook the result is the
-    error the F* evaluator also returns at this layer
-    (`E_Exists _ -> ER_Error`, delegated to the pattern evaluator).
+    evaluation against the active graph and the dataset, which sits
+    above expressions. The pattern layer (`Query.lean`,
+    `substituteExistentials`) replaces every EXISTS sub-expression by
+    its boolean BEFORE an expression reaches this evaluator, exactly as
+    the F* `substitute_existentials` does; an EXISTS that reaches this
+    layer un-substituted is the error the F* evaluator also returns
+    here (`E_Exists _ -> ER_Error`). Design record: `SPARQL/Exists.lean`.
   * `Expr.aggregate` — aggregates are evaluated in the §18.5.1
     aggregation context over a solution GROUP, not per solution
     mapping. The F* arm is `E_Aggregate _ _ _ -> ER_Error` for exactly
@@ -143,8 +146,26 @@ inductive AggregateFn where
 
 One constructor per §17 operator or function form, matching the F*
 `expr` type constructor for constructor. `existsPat`/`notExistsPat`
-carry a `GraphPattern` because §18.6 defines EXISTS over the algebra;
-this is the only place expressions refer back to patterns. -/
+carry a `QueryPattern` — the CONCRETE pattern AST, exactly as the F*
+`E_Exists : group_graph_pattern -> expr` does — so an EXISTS body is
+lowered into the algebra only at evaluation time, under the real
+environment and the active graph of its enclosing pattern (§18.6:
+"exists(pattern, μ) evaluates substitute(pattern, μ)"). That is why
+the expression AST and the query AST (`QueryPattern`, `Query` and the
+query-level pieces that carry expressions) form ONE mutual inductive
+below: the F* has the same knot in one `type … and …` group. The
+query-level types are documented where the F* documents them
+(`Query.lean` still holds their accessors and the evaluator); they
+live here only because Lean requires a mutual block to be one
+declaration. Design record: `SPARQL/Exists.lean`. -/
+
+/-- §13.2 `FROM` / `FROM NAMED`. Carries no expression, so it sits
+outside the mutual block. -/
+inductive DatasetClause where
+  | default (i : WfIri)
+  | named   (i : WfIri)
+
+mutual
 
 inductive Expr where
   -- Primary expressions (§18.2)
@@ -227,9 +248,9 @@ inductive Expr where
   | tz          (e : Expr)                                  -- scoped out
   -- RDF term identity (§17.4.1.2)
   | sameTerm    (l r : Expr)
-  -- EXISTS / NOT EXISTS (§18.6) — needs pattern evaluation
-  | existsPat    (p : GraphPattern)
-  | notExistsPat (p : GraphPattern)
+  -- EXISTS / NOT EXISTS (§18.6) — the body is the concrete pattern AST
+  | existsPat    (p : QueryPattern)
+  | notExistsPat (p : QueryPattern)
   -- Aggregates (§18.5.1) — evaluated over a group, not a solution
   | aggregate   (fn : AggregateFn) (distinct : Bool) (e : Expr)
   -- IRI-named function call (§17.6 extension point)
@@ -240,6 +261,94 @@ inductive Expr where
   | ttPredicate (e : Expr)
   | ttObject    (e : Expr)
   | isTriple    (e : Expr)
+
+/-- A SELECT projection item: a bare variable, or `(expr AS ?v)`
+(§18.2.4). -/
+inductive SelectItem where
+  | var  (v : VarName)
+  | expr (e : Expr) (v : VarName)
+
+/-- `SELECT ?a ?b` versus `SELECT *`. -/
+inductive SelectClause where
+  | vars (items : List SelectItem)
+  | all
+
+/-- §18.2 query forms. DESCRIBE is carried in the AST for completeness
+but evaluates to nothing, exactly as the F* source's `QF_Describe`
+does — the description shape is a policy decision the spec leaves to
+implementations, and this port makes no choice for it. -/
+inductive QueryForm where
+  | select    (sel : SelectClause)
+  | construct (template : List TriplePattern)
+  | ask
+  | describe  (terms : List PatternTerm)
+
+/-- §15.1 `ORDER BY ASC(e)` / `DESC(e)`. -/
+inductive OrderCondition where
+  | asc  (e : Expr)
+  | desc (e : Expr)
+
+/-- §15 solution modifiers, gathered (port of `solution_modifier`). -/
+structure SolutionModifier where
+  orderBy  : Option (List OrderCondition) := none
+  distinct : Bool := false
+  reduced  : Bool := false
+  offset   : Option Nat := none
+  limit    : Option Nat := none
+
+/-- §18.2.4.1 GROUP BY: a variable, or an expression with an optional
+`AS ?alias`. -/
+inductive GroupCondition where
+  | var  (v : VarName)
+  | expr (e : Expr) (alias : Option VarName)
+
+/-- The concrete graph-pattern AST — one constructor per F*
+`group_graph_pattern` case (§18.2.2). Lowered into
+`SPARQL.GraphPattern` by `QueryPattern.lower` (`Query.lean`). -/
+inductive QueryPattern where
+  | bgp          (patterns : Bgp)
+  | join         (l r : QueryPattern)
+  /-- `OPTIONAL { P } FILTER(e)` — LeftJoin(P1, P2, e), §18.5. -/
+  | leftJoin     (l r : QueryPattern) (cond : Expr)
+  | filter       (cond : Expr) (p : QueryPattern)
+  | union        (l r : QueryPattern)
+  | minus        (l r : QueryPattern)
+  /-- `GRAPH <iri> { P }` / `GRAPH ?g { P }` — §18.6. -/
+  | graph        (name : PatternTerm) (p : QueryPattern)
+  /-- `P1 LATERAL { P2 }` — correlated evaluation. -/
+  | lateral      (l r : QueryPattern)
+  /-- `BIND(e AS ?v)` — §18.6. -/
+  | bind         (e : Expr) (v : VarName) (p : QueryPattern)
+  /-- `VALUES (?x ?y) { (1 2) (3 UNDEF) }` — §10.2. -/
+  | values       (vars : List VarName) (rows : List (List (Option Term)))
+  /-- `SERVICE [SILENT] <iri> { P }` — Federated Query §2. -/
+  | service      (endpoint : WfIri) (silent : Bool) (p : QueryPattern)
+  /-- `SERVICE [SILENT] ?v { P }` — variable endpoint. -/
+  | serviceVar   (v : VarName) (silent : Bool) (p : QueryPattern)
+  /-- A sub-SELECT used as a group graph pattern (§18.2.4). -/
+  | subSelect    (q : Query)
+  /-- `?s path ?o` — §18.4. -/
+  | propertyPath (s : PatternSubject) (path : PropertyPath) (o : PatternTerm)
+  /-- The empty group pattern `{}`. -/
+  | empty
+
+/-- A complete SPARQL 1.1 query (port of the F* `query` record). It is
+an `inductive` rather than a `structure` only because it predates
+mutual structures; `mkQuery` and the field accessors in `Query.lean`
+restore the record ergonomics.
+
+`postValues` is the trailing `VALUES` block a query may carry after
+its WHERE clause (§10.2): its rows are JOINed onto the WHERE result. -/
+inductive Query where
+  | mk (form       : QueryForm)
+       (dataset    : List DatasetClause)
+       (pattern    : QueryPattern)
+       (groupBy    : Option (List GroupCondition))
+       (having     : List Expr)
+       (modifier   : SolutionModifier)
+       (postValues : Option (List Binding))
+
+end
 
 /-! ## The value space of expression evaluation
 
@@ -1014,9 +1123,6 @@ structure EvalEnv where
   registers. Absent (the default) means every unregistered IRI is a
   type error — which is the §17.6 requirement, not a shortcut. -/
   ext : String → List EvalResult → Option EvalResult := fun _ _ => none
-  /-- §18.6 EXISTS: pattern evaluation, supplied by the layer above
-  expressions. Absent means EXISTS is a type error at this layer. -/
-  existsHook : Option (GraphPattern → Binding → Bool) := none
   /-- §17.4.5.1 NOW(): the query's execution timestamp as an
   xsd:dateTime lexical form. Read once, at the edge, and passed in —
   never an ambient clock call. -/
@@ -1028,6 +1134,12 @@ structure EvalEnv where
   endpoint absent from this list is an unreachable endpoint, which is
   what SILENT is defined against. -/
   services : List (Iri × Graph) := []
+  /-- §18.6 EXISTS: the dataset `D` that `exists(pattern, μ)` evaluates
+  the substituted pattern against (the F* `eval_exists … ds`
+  argument). `evalSelect` / `evalAsk` / `evalConstruct` install the
+  query's dataset here (after FROM / FROM NAMED); with none, EXISTS
+  is left un-substituted and is the expression-layer error. -/
+  dataset : Option Dataset := none
 
 /-- Resolve a SERVICE endpoint IRI to the graph it serves. -/
 def EvalEnv.resolveService (env : EvalEnv) (i : Iri) : Option Graph :=
@@ -1035,8 +1147,8 @@ def EvalEnv.resolveService (env : EvalEnv) (i : Iri) : Option Graph :=
   | some p => some p.2
   | none   => none
 
-/-- The environment with no host services: extension functions error,
-EXISTS errors, NOW errors. -/
+/-- The environment with no host services and no dataset: extension
+functions error, EXISTS errors, NOW errors. -/
 def emptyEnv : EvalEnv := {}
 
 /-- The IRI the F* evaluator dispatches `langMatches` on. -/
@@ -1403,15 +1515,12 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
       | .bool a, .bool b => .bool (a == b)
       | _, _ => .bool false
 
-  -- §18.6 EXISTS: delegated to the pattern layer through the hook.
-  | .existsPat p =>
-      match env.existsHook with
-      | some h => .bool (h p mu)
-      | none => .error
-  | .notExistsPat p =>
-      match env.existsHook with
-      | some h => .bool (!h p mu)
-      | none => .error
+  -- §18.6 EXISTS: evaluated by the pattern layer, which replaces every
+  -- EXISTS sub-expression by its boolean before calling this function
+  -- (`substituteExistentials`, Query.lean — the F* arm is
+  -- `E_Exists _ -> ER_Error` for the same reason).
+  | .existsPat _ => .error
+  | .notExistsPat _ => .error
 
   -- SCOPED OUT: §18.5.1 aggregates evaluate over a GROUP.
   | .aggregate _ _ _ => .error
@@ -1481,20 +1590,24 @@ def Expr.eval (mu : Binding) (e : Expr) : EvalResult := Expr.evalIn emptyEnv mu 
 /-! ## Bridge to the algebra — §18.5 FILTER
 
 `GraphPattern.filter` and `GraphPattern.leftJoin` take a
-`Binding → Bool`; §18.5 says a row survives FILTER when its expression
+`Graph → Binding → Bool` (the active graph is what an EXISTS inside
+the condition is evaluated against; `Query.lean` builds those
+conditions). §18.5 says a row survives FILTER when its expression
 "has an effective boolean value of true", so a type error is
 indistinguishable from `false` at that boundary. `Expr.toCond` is
 exactly that collapse — and it is where §17's careful error PRESERVING
-finally stops mattering. -/
+finally stops mattering. This bridge evaluates under `emptyEnv`, so an
+EXISTS in `e` is the expression-layer error; the full pipeline is
+`QueryPattern.lower`. -/
 
 def Expr.toCond (e : Expr) : Binding → Bool := fun mu => (ebv (e.eval mu)).getD false
 
 /-- FILTER(expr) as an algebra operation (§18.5). -/
 def GraphPattern.filterExpr (e : Expr) (p : GraphPattern) : GraphPattern :=
-  .filter e.toCond p
+  .filter (fun _ => e.toCond) p
 
 /-- OPTIONAL with a filter: LeftJoin(P1, P2, expr) (§18.5). -/
 def GraphPattern.leftJoinExpr (l r : GraphPattern) (e : Expr) : GraphPattern :=
-  .leftJoin l r e.toCond
+  .leftJoin l r (fun _ => e.toCond)
 
 end L4Factoidal.SPARQL
