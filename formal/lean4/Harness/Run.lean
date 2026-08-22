@@ -250,7 +250,8 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   let (ds', active) := applyDataset q.dataset ds ds.default
   let env : EvalEnv :=
     { now := some fixedNow, services := services,
-      existsHook := some (existsHookFor ds' active) }
+      existsHook := some (existsHookFor ds' active),
+      base := q.base }
   let ordered := q.modifier.orderBy.isSome
   match q.form, expected with
   | .select _, .rows erows csv =>

@@ -482,7 +482,7 @@ def ggpHasVar (v : VarName) : QueryPattern → Bool
 /-- A sub-SELECT exposes exactly its projected variables; `SELECT *`
 cannot be checked statically and answers `false`, as in the F*. -/
 def queryHasVar (v : VarName) : Query → Bool
-  | .mk form _ _ _ _ _ _ =>
+  | .mk form _ _ _ _ _ _ _ =>
     match form with
     | .select (.vars items) => items.any (fun i => selectItemVar i == v)
     | _                     => false
@@ -514,7 +514,7 @@ def ggpLabeledBnodes : QueryPattern → List String
 
 /-- The sub-SELECT case. -/
 def ggpLabeledBnodesQ : Query → List String
-  | .mk _ _ pat _ _ _ _ => ggpLabeledBnodes pat
+  | .mk _ _ pat _ _ _ _ _ => ggpLabeledBnodes pat
 
 end
 
@@ -562,7 +562,7 @@ def validateBnodeScope : QueryPattern → Bool × List String
 
 /-- `validate_bnode_scope_query`. -/
 def validateBnodeScopeQ : Query → Bool × List String
-  | .mk _ _ pat _ _ _ _ => validateBnodeScope pat
+  | .mk _ _ pat _ _ _ _ _ => validateBnodeScope pat
 
 end
 
@@ -2560,7 +2560,7 @@ def pSelectBody (fuel : Nat) (st : PState) (ts : TStream) : Except ParseError (Q
                    | some g => ggpJoin pattern g
                    | none   => pattern
         .ok (Query.mk (.select sel) ds pat gb hv
-               { md with distinct := dist, reduced := red } none, ts8)
+               { md with distinct := dist, reduced := red } none st.base, ts8)
 
 /-- [12] AskQuery ::= 'ASK' DatasetClause* WhereClause SolutionModifier. -/
 def pAskBody (fuel : Nat) (st : PState) (ts : TStream) : Except ParseError (Query × TStream) :=
@@ -2571,7 +2571,7 @@ def pAskBody (fuel : Nat) (st : PState) (ts : TStream) : Except ParseError (Quer
     let (ds, ts2) ← pDatasetClauses f st ts1
     let ts3 := if peekTok ts2 == Token.whereKw then advTok ts2 else ts2
     let (pattern, ts4) ← pGroupGraphPattern f st ts3
-    .ok (Query.mk .ask ds pattern none [] {} none, ts4)
+    .ok (Query.mk .ask ds pattern none [] {} none st.base, ts4)
 
 /-- [10] ConstructQuery — the full form and the `CONSTRUCT WHERE`
 short form, whose WHERE pattern must be a basic graph pattern. -/
@@ -2590,7 +2590,7 @@ def pConstructBody (fuel : Nat) (st : PState) (ts : TStream) : Except ParseError
       else do
         let (r, ts5) ← pSolutionModifier f st ts4
         .ok (Query.mk (.construct (collectTemplateTriples pattern)) ds pattern
-               r.2.1 r.2.2 r.1 none, ts5)
+               r.2.1 r.2.2 r.1 none st.base, ts5)
     | .lbrace => do
       let (tmpl, ts2)    ← pGroupGraphPattern f st ts1
       let (ds, ts3)      ← pDatasetClauses f st ts2
@@ -2598,7 +2598,7 @@ def pConstructBody (fuel : Nat) (st : PState) (ts : TStream) : Except ParseError
       let (pattern, ts5) ← pGroupGraphPattern f st ts4
       let (r, ts6)       ← pSolutionModifier f st ts5
       .ok (Query.mk (.construct (collectTemplateTriples tmpl)) ds pattern
-             r.2.1 r.2.2 r.1 none, ts6)
+             r.2.1 r.2.2 r.1 none st.base, ts6)
     | _ => pErr "expected WHERE or '{' after CONSTRUCT" ts1
 
 /-- [11] DescribeQuery's `VarOrIri+` list. -/
@@ -2645,10 +2645,10 @@ def pDescribeAfterTargets (fuel : Nat) (st : PState) (targets : List PatternTerm
       let ts2 := if peekTok ts1 == Token.whereKw then advTok ts1 else ts1
       let (pattern, ts3) ← pGroupGraphPattern f st ts2
       let (r, ts4)       ← pSolutionModifier f st ts3
-      .ok (Query.mk (.describe targets) ds pattern r.2.1 r.2.2 r.1 none, ts4)
+      .ok (Query.mk (.describe targets) ds pattern r.2.1 r.2.2 r.1 none st.base, ts4)
     | _ => do
       let (r, ts2) ← pSolutionModifier f st ts1
-      .ok (Query.mk (.describe targets) ds .empty r.2.1 r.2.2 r.1 none, ts2)
+      .ok (Query.mk (.describe targets) ds .empty r.2.1 r.2.2 r.1 none st.base, ts2)
 
 end
 
@@ -2894,7 +2894,7 @@ def sseGgp : QueryPattern → String
 
 /-- `sse_query`. -/
 def sseQuery : Query → String
-  | .mk form _ pat _ _ md _ =>
+  | .mk form _ pat _ _ md _ _ =>
     let head :=
       match form with
       | .select .all          => "(project *"

@@ -86,6 +86,39 @@ def Binding.bind (v : VarName) (t : Term) (mu : Binding) : Binding :=
 def Binding.domain (mu : Binding) : List VarName :=
   mu.map Prod.fst
 
+/-! ### Freshness context for BNODE() / UUID() / STRUUID()
+
+§17.4.2.9 BNODE() and §17.4.2.12/13 UUID()/STRUUID() return a FRESH
+value per solution and per call site. The F* tree threads that
+freshness PURELY (no host randomness): the caller — BIND and the
+SELECT projection — injects a row index and a call-site tag into the
+solution mapping under two reserved keys, and the builtin derives a
+deterministic-but-distinct value from them with SHA-256 (port of
+`fx_key_row` / `fx_key_occ` / `fx_ctx_put`). The leading control
+character keeps the keys disjoint from every parser-produced variable
+name (a SPARQL VARNAME cannot contain U+0001), and callers bind the
+RESULT into the pristine mapping, so the keys never surface in a
+solution sequence. -/
+
+/-- Reserved key carrying the row index (`fx_key_row`). -/
+def fxKeyRow : VarName := String.singleton (Char.ofNat 1) ++ "fx_row"
+
+/-- Reserved key carrying the call-site tag (`fx_key_occ`). -/
+def fxKeyOcc : VarName := String.singleton (Char.ofNat 1) ++ "fx_occ"
+
+/-- Augment a mapping with the freshness context for ONE expression
+evaluation (port of `fx_ctx_put`); used transiently, never stored. -/
+def Binding.withFreshnessCtx (row occ : String) (mu : Binding) : Binding :=
+  (fxKeyRow, .literal (Literal.string row)) ::
+  (fxKeyOcc, .literal (Literal.string occ)) :: mu
+
+/-- Read one freshness key back (port of `fx_ctx_get`); `""` when the
+caller injected none. -/
+def Binding.freshnessCtx (key : VarName) (mu : Binding) : String :=
+  match mu.lookup key with
+  | some (.literal l) => l.val.lexicalForm
+  | _ => ""
+
 /-- SPARQL 1.1 §18.3: "Two solution mappings μ1 and μ2 are compatible
 if, for every variable v in dom(μ1) and in dom(μ2), μ1(v) = μ2(v)."
 Term comparison is the engine equality `Term.eqb` (language-tag case,
@@ -446,6 +479,20 @@ because there LATERAL substitutes and then re-enters the evaluator on
 a pattern that is not a subterm. Making the right operand a FUNCTION
 of the row moves that obligation into the type.) -/
 
+/-- The BIND row loop (port of `fx_bind_rows`): row `i` is evaluated
+with its freshness context injected, and the value (if any, and if
+`v` is still unbound) is bound into the row WITHOUT the context. -/
+def bindRowsFresh (binder : Binding → Option Term) (v : VarName) :
+    SolutionSeq → Nat → SolutionSeq
+  | [],        _ => []
+  | mu :: rest, i =>
+      let row := match binder (mu.withFreshnessCtx (toString i) v) with
+        | some t => match mu.lookup v with
+                    | some _ => mu
+                    | none   => mu.bind v t
+        | none   => mu
+      row :: bindRowsFresh binder v rest (i + 1)
+
 def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
     SolutionSeq :=
   match p with
@@ -511,14 +558,12 @@ def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
         (GraphPattern.evalIn ds active (r mu1)).filterMap (fun mu2 =>
           if mu1.compatible mu2 then some (mu1.merge mu2) else none))
   -- §18.6 BIND: extend each row, unless the variable is already bound
-  -- there or the expression errors.
+  -- there or the expression errors. The binder sees the row with its
+  -- freshness context (row index + the bound variable as call-site
+  -- tag, port of `fx_bind_rows`); the result binds into the PRISTINE
+  -- row.
   | .bind binder v q =>
-      (GraphPattern.evalIn ds active q).map (fun mu =>
-        match binder mu with
-        | some t => match mu.lookup v with
-                    | some _ => mu
-                    | none   => mu.bind v t
-        | none   => mu)
+      bindRowsFresh binder v (GraphPattern.evalIn ds active q) 0
   | .values vars rows => evalValues vars rows
   -- SERVICE with a fixed endpoint. On a miss, SILENT yields one empty
   -- solution mapping and non-SILENT yields none — the F* arm exactly.

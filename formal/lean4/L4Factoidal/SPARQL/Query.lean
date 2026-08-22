@@ -272,7 +272,10 @@ blocks admit inductives alone; `mkQuery` and the field accessors below
 restore the record ergonomics.
 
 `postValues` is the trailing `VALUES` block a query may carry after
-its WHERE clause (§10.2): its rows are JOINed onto the WHERE result. -/
+its WHERE clause (§10.2): its rows are JOINed onto the WHERE result.
+`base` is the BASE IRI in force for the query (the prologue's `BASE`,
+else the document/request IRI the parser was given) — the F* `q_base`
+— which §17.4.2.8 IRI() resolves relative references against. -/
 inductive Query where
   | mk (form       : QueryForm)
        (dataset    : List DatasetClause)
@@ -281,29 +284,33 @@ inductive Query where
        (having     : List Expr)
        (modifier   : SolutionModifier)
        (postValues : Option (List Binding))
+       (base       : Option String)
 
 end
 
 def Query.form : Query → QueryForm
-  | .mk f _ _ _ _ _ _ => f
+  | .mk f _ _ _ _ _ _ _ => f
 
 def Query.dataset : Query → List DatasetClause
-  | .mk _ d _ _ _ _ _ => d
+  | .mk _ d _ _ _ _ _ _ => d
 
 def Query.pattern : Query → QueryPattern
-  | .mk _ _ p _ _ _ _ => p
+  | .mk _ _ p _ _ _ _ _ => p
 
 def Query.groupBy : Query → Option (List GroupCondition)
-  | .mk _ _ _ g _ _ _ => g
+  | .mk _ _ _ g _ _ _ _ => g
 
 def Query.having : Query → List Expr
-  | .mk _ _ _ _ h _ _ => h
+  | .mk _ _ _ _ h _ _ _ => h
 
 def Query.modifier : Query → SolutionModifier
-  | .mk _ _ _ _ _ m _ => m
+  | .mk _ _ _ _ _ m _ _ => m
 
 def Query.postValues : Query → Option (List Binding)
-  | .mk _ _ _ _ _ _ v => v
+  | .mk _ _ _ _ _ _ v _ => v
+
+def Query.base : Query → Option String
+  | .mk _ _ _ _ _ _ _ b => b
 
 /-- Build a query, defaulting every optional part — the shape most
 call sites (and every test below) want. -/
@@ -312,8 +319,9 @@ def mkQuery (form : QueryForm) (pattern : QueryPattern)
     (groupBy : Option (List GroupCondition) := none)
     (having : List Expr := [])
     (modifier : SolutionModifier := {})
-    (postValues : Option (List Binding) := none) : Query :=
-  .mk form dataset pattern groupBy having modifier postValues
+    (postValues : Option (List Binding) := none)
+    (base : Option String := none) : Query :=
+  .mk form dataset pattern groupBy having modifier postValues base
 
 /-! ## §18.4 solution modifiers -/
 
@@ -682,21 +690,33 @@ def selectItemVars : List SelectItem → List VarName
 
 /-- Evaluate the `(expr AS ?v)` items of a non-aggregating SELECT over
 one row; each item sees the bindings the earlier items added (port of
-`eval_select_items_row`). -/
-def evalSelectItemsRow (env : EvalEnv) (items : List SelectItem) (mu : Binding) :
+`eval_select_items_row`). `row` is the row's index and `i` the item's
+position: together they are the freshness context BNODE()/UUID()/
+STRUUID() derive a distinct value from (`Binding.withFreshnessCtx`,
+the F* `eval_select_item` design); the context is seen by the
+expression only and never stored in the returned row. -/
+def evalSelectItemsRow (env : EvalEnv) (row : String) (items : List SelectItem) (mu : Binding) :
     Binding :=
-  items.foldl (fun acc it =>
+  (items.foldl (fun (st : Binding × Nat) it =>
+    let (acc, i) := st
     match it with
-    | .var _    => acc
+    | .var _    => (acc, i + 1)
     | .expr e v =>
-        match (Expr.evalIn env acc e).toTerm? with
-        | some t => acc.bind v t
+        match (Expr.evalIn env (acc.withFreshnessCtx row (toString i)) e).toTerm? with
+        | some t => (acc.bind v t, i + 1)
         -- §18.2.4.2: an expression error leaves the variable unbound.
-        | none   => acc) mu
+        | none   => (acc, i + 1)) (mu, 0)).1
+
+/-- Every row, numbered from 0 (port of `eval_select_items`'s row
+counter). -/
+def evalSelectItemsFrom (env : EvalEnv) (items : List SelectItem) :
+    SolutionSeq → Nat → SolutionSeq
+  | [],        _ => []
+  | mu :: rest, i => evalSelectItemsRow env (toString i) items mu :: evalSelectItemsFrom env items rest (i + 1)
 
 def evalSelectItems (env : EvalEnv) (items : List SelectItem)
     (omega : SolutionSeq) : SolutionSeq :=
-  omega.map (evalSelectItemsRow env items)
+  evalSelectItemsFrom env items omega 0
 
 /-- `is_synthetic_bnode_var`: the variables `QueryPattern.rewriteBnodes`
 (below) invents for WHERE-clause blank nodes. -/
@@ -817,12 +837,12 @@ def lateralAssignableVars : QueryPattern → List VarName
 `SELECT ?a ?b` contributes only its `AS` aliases; `SELECT *`
 conservatively recurses. -/
 def subSelectAssignableVars : Query → List VarName
-  | .mk (.select (.vars items)) _ _ _ _ _ _ =>
+  | .mk (.select (.vars items)) _ _ _ _ _ _ _ =>
       items.filterMap (fun it =>
         match it with
         | .var _    => none
         | .expr _ v => some v)
-  | .mk (.select .all) _ p _ _ _ _ => lateralAssignableVars p
+  | .mk (.select .all) _ p _ _ _ _ _ => lateralAssignableVars p
   | _ => []
 
 end
@@ -932,12 +952,12 @@ def QueryPattern.lowerWith (env : EvalEnv) (mu : Binding) (p : QueryPattern) :
            .serviceVar v env.resolveService silent (QueryPattern.lowerWith env mu q))
   | .subSelect q =>
       match q with
-      | .mk form dcs inner gb hv md pv =>
+      | .mk form dcs inner gb hv md pv bs =>
           -- A sub-SELECT has no dataset clause in the SPARQL 1.1
           -- grammar (`SubSelect ::= SelectClause WhereClause
           -- SolutionModifier ValuesClause`), so `dcs` is carried for
           -- shape only and does not re-scope the graph here.
-          .modified (selectPost env (.mk form dcs inner gb hv md pv))
+          .modified (selectPost env (.mk form dcs inner gb hv md pv bs))
             (QueryPattern.lowerWith env (lateralVisibleMu mu form inner) inner)
   | .propertyPath s path o =>
       .propertyPath (substPatternSubject mu s) path (substPatternTerm mu o)
@@ -1027,7 +1047,7 @@ def QueryPattern.rewriteBnodes : QueryPattern → QueryPattern
 /-- The `GP_SubSelect` arm: a sub-SELECT's own WHERE clause is rewritten
 too (WHERE-clause blank nodes have to reach sub-SELECTs). -/
 def Query.rewriteBnodes : Query → Query
-  | .mk f d p g h m v => .mk f d p.rewriteBnodes g h m v
+  | .mk f d p g h m v b => .mk f d p.rewriteBnodes g h m v b
 
 end
 
