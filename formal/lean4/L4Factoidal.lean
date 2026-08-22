@@ -7,3 +7,9 @@ import L4Factoidal.RDF.Graph
 import L4Factoidal.SPARQL.Algebra
 import L4Factoidal.SPARQL.Invariants
 import L4Factoidal.Tests
+import L4Factoidal.XML.Document
+import L4Factoidal.XML.Parser
+import L4Factoidal.XML.Namespaces
+import L4Factoidal.XML.Wellformedness
+import L4Factoidal.XML.Theorems
+import L4Factoidal.XML.Tests

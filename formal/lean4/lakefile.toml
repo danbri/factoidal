@@ -1,5 +1,13 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal"]
+defaultTargets = ["L4Factoidal", "xmlconf-probe"]
 
 [[lean_lib]]
 name = "L4Factoidal"
+
+# Runs the XML parser over real W3C XML Conformance Test Suite files:
+# reads paths from stdin, prints WF / NWF per file. See
+# L4Factoidal/XML/ConfProbe.lean for what a verdict does and does not
+# mean.
+[[lean_exe]]
+name = "xmlconf-probe"
+root = "L4Factoidal.XML.ConfProbe"

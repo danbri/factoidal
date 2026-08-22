@@ -817,23 +817,47 @@ def parseChildren (ents : EntityTable) (s : Chars) (pos : Nat)
           | .ok node pos' => parseChildren ents s pos' (node :: acc) fuel
       else .err "unexpected end after '<'" pos
     else
-      -- Character data. The F* calls `parse_xml_text`, whose "empty
-      -- text node" failure means "no text here" — and then DISCARDS
-      -- every text failure alike (`ParseFail _ _ -> ParseOk`), so a
-      -- real content error (a bad character reference, a character
-      -- outside `[2] Char`, a literal `]]>`) surfaces later as a
-      -- confusing "expected '</'". Calling `parseTextContent` directly
-      -- separates the two: an empty run means no text, a genuine error
-      -- propagates with its own message.
+      -- Character data. This is the ONE place the port deliberately
+      -- departs from `Parser.XML.fst`'s behaviour, for two reasons.
       --
-      -- The VERDICT is unchanged. Where the F* discarded the error it
-      -- then required `[42] ETag` at `pos`, and `pos` cannot be `<`
-      -- here (that case is handled above), so `</` never matched and
-      -- the document always rejected — exactly as it does now.
+      -- The F* calls `parse_xml_text`, which conflates two outcomes
+      -- into one failure: "there is no text here" (the decoded run is
+      -- empty) and "the text is bad" (a malformed character
+      -- reference, a character outside `[2] Char`, a literal `]]>`).
+      -- `parse_children` then discards BOTH alike
+      -- (`ParseFail _ _ -> ParseOk`).
+      --
+      -- 1. DIAGNOSTIC. A real content error surfaced later as a
+      --    confusing "expected '</'". Calling `parseTextContent`
+      --    directly propagates it with its own message. This half
+      --    changes no verdict: where the F* discarded the error it
+      --    then required `[42] ETag` at `pos`, and `pos` cannot be `<`
+      --    here (that case is handled above), so `</` never matched
+      --    and the document rejected either way.
+      --
+      -- 2. VERDICT, and this half DOES change one. The F* treats a run
+      --    that CONSUMED input but decoded to nothing — content that
+      --    is exactly one reference to an entity whose replacement
+      --    text is empty, `<!ENTITY e "">` with `<doc>&e;</doc>` — as
+      --    a failure, stops collecting children at the `&`, and then
+      --    rejects the document for want of an end tag. Those
+      --    documents are well-formed, and the W3C conformance suite
+      --    marks them valid: `xmltest/valid/sa/023.xml`, `085.xml` and
+      --    `086.xml` are rejected by the F* parser and accepted here.
+      --    Measured 2026-08-22 by running both parsers over the same
+      --    files; those three are the only disagreement on the 306
+      --    files of `xmltest/valid/sa` and `xmltest/not-wf/sa`.
+      --
+      -- The empty run is skipped rather than recorded: an expansion
+      -- that yields no characters contributes no `[14] CharData` to
+      -- the infoset, so emitting an empty text node would both
+      -- misreport the infoset and break the serialiser round-trip
+      -- (`<doc></doc>` re-parses with no child at all).
       match parseTextContent ents s pos [] (s.size + 1) with
       | .err m p => .err m p
       | .ok text pos' =>
         if pos' == pos then .ok acc.reverse pos
+        else if text.isEmpty then parseChildren ents s pos' acc fuel
         else parseChildren ents s pos' (.text text :: acc) fuel
 
 /-- `[39] element ::= EmptyElemTag | STag content ETag`, enforcing
