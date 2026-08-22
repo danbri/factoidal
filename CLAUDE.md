@@ -171,17 +171,31 @@ Rules that follow:
    correction in the CSVW triage ledger.)
 2. **Quote steers with date and original wording** when writing them
    into ledgers or design docs. Paraphrase drifts; drift compounds.
-3. **Load-bearing implications get surfaced, not inferred.** Before
+3. **Never invent a rationale and attribute it to the owner.** State
+   who decided a thing, or label it a Claude-inferred default. In this
+   repo `git blame` CANNOT settle provenance — every commit carries
+   the owner's git identity by iron rule #13 — so provenance survives
+   only if the prose carries it. (It happened: 2026-08-22, a
+   Claude-authored skill bullet said the Lean tree's plain evaluator
+   split was "absolute — never port performance machinery here",
+   placed under an "owner priority" heading it was never given. It
+   hardened into "must stay that way" in a design doc, then into a
+   chat claim that the owner considered indexed joins destructive.
+   Owner: "BS, I never said this." Cost: a real design question —
+   should the Lean tree get indexed joins and a refinement proof? —
+   was recorded as closed for a day. Corrected in
+   `skills/factoidal-lean-basics` with a standing provenance note.)
+4. **Load-bearing implications get surfaced, not inferred.** Before
    recording "owner excluded N tests" or dropping a suite from a
    goal, put the implication back to the owner as one short question.
    A sentence of friction now beats a fabricated decision that future
    sessions will read as settled.
-4. **Write for phone-triage.** The owner's instruction quality is a
+5. **Write for phone-triage.** The owner's instruction quality is a
    function of our output quality: lead with the result or the
    decision needed, keep it short, no pseudo-private jargon (glossary
    rule), scores always labelled. A wall of codenames upstream
    becomes a flawed instruction downstream.
-5. **Use a small, stable emoji palette as visual anchors** (owner
+6. **Use a small, stable emoji palette as visual anchors** (owner
    request, 2026-07-15): colored emoji render as scannable texture on
    a phone, letting the owner navigate giant scrolling blocks at
    flick-speed. Fixed meanings, applied sparingly (one marker per
@@ -191,7 +205,7 @@ Rules that follow:
    ⚠️ risk/caveat · 🧹 cleanup/hygiene. Owner messages may use emoji
    as markers too — treat them as tagging, not tone. Full register
    rules: `skills/markdown-style/SKILL.md`.
-6. **Work tracking lives in GitHub issues, not session state** (owner
+7. **Work tracking lives in GitHub issues, not session state** (owner
    correction, 2026-08-11, verbatim: "This is unacceptably shit for
    ios app users - you spew thousands of lines of blabber at us with
    no tooling to organize it. Use github properly."). Session-local
@@ -200,7 +214,7 @@ Rules that follow:
    **#404 Active work tracker** (update it at every harvest cycle —
    staleness there is a bug). Status reports LINK issues instead of
    restating their content.
-7. **Old steers decay — re-verify before acting on one.** "Protocols
+8. **Old steers decay — re-verify before acting on one.** "Protocols
    deprioritized" predated SPARQL Protocol reaching 53 pass, 0 fail;
    citing a steer against a tree that has since moved is acting on
    stale data.
