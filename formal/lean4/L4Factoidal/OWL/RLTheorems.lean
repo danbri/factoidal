@@ -14,9 +14,14 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`, no solver.
   states and `docs/theorem-registry.md` §1 tracks per row: every triple
   the engine emits is an input triple or a licensed application of a
   named table row. It is assembled from ONE LEMMA PER ROW
-  (`eqSymFor_sound`, `prpTrpFor_sound`, ..., `scmUniFor_sound`) — 45
-  of them, covering the 50 ported rows. Per-row status is therefore
-  uniform: every ported row is proved licensed.
+  (`eqSymFor_sound`, `prpTrpFor_sound`, ..., `caxAdcToDwFor_sound`) —
+  56 of them, covering the 50 ported table rows and the 14 ported
+  `[ext]` rows. Per-row status is therefore uniform: every ported row
+  is proved licensed. Read T2 as LICENSING, not as truth preservation
+  — see item 1 below, which applies to the `[ext]` rows too: each of
+  those carries its OWL 2 RDF-Based Semantics justification in its
+  `RLRules.lean` doc comment, and two of them carry a named datatype-map
+  assumption on top.
 
 * **T3 monotonicity** — `closure_mono_of_saturated`: derived from T2 +
   `Derives.mono` + T4, hence conditional on the larger graph's closure
@@ -26,7 +31,7 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`, no solver.
 * **T4 completeness at the fixpoint** — `closure_complete_of_saturated`:
   `Derives g t → t ∈ closure g fuel`, given that the closure is
   saturated and that the collection-walk fuel was adequate
-  (`ListFuelAdequate`, discussed below). All 55 constructor cases.
+  (`ListFuelAdequate`, discussed below). All 69 constructor cases.
 
 * **Clash soundness** — `detectClash_sound`: every `true` verdict of
   the decision procedure is a real `Clash`, again one lemma per clash

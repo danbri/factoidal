@@ -14,7 +14,7 @@ OWL RL.
 
 ## Design: one row body, two premise stores
 
-Each of the 47 row functions is written ONCE here, over an abstract
+Each of the 61 row functions is written ONCE here, over an abstract
 `Store` — a record holding the graph list and the six premise lookups
 (`withPred`, `withSubj`, `withObj`, `withSubjPred`, `withPredObj`,
 `memB`). Two stores exist:
@@ -22,7 +22,7 @@ Each of the 47 row functions is written ONCE here, over an abstract
 * `Store.ofGraph g` packs `RLClosure`'s list scans. Every row applied
   to it is DEFINITIONALLY the `RLClosure` row (`eqRepSForS_ofGraph :
   eqRepSForS (Store.ofGraph g) d = eqRepSFor g d := rfl`, and so on
-  for all 47 rows and the 13 clash rows). The per-row soundness
+  for all 61 rows and the 13 clash rows). The per-row soundness
   lemmas of `RLTheorems.lean` therefore apply unchanged.
 * `Store.ofIndex i` packs the hash-index lookups of an `Index`.
 
@@ -58,7 +58,7 @@ round's input, `E` = conclusions emitted before deduplication):
   `HashMap.getD` + `insert` with a list cons — O(1).
 * a bucket lookup: O(1) + O(result) for the reversal.
 * `memB`: O(1).
-* one round: 47 guard checks per input triple (string equalities on
+* one round: 61 guard checks per input triple (string equalities on
   the predicate) + the joins, each proportional to its own output,
   + O(E) deduplication — O(n + E) instead of the list engine's
   O(n · E · n)-ish (each join a scan, each dedup a scan).

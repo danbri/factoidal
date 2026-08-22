@@ -4189,3 +4189,204 @@ Method note: a `#guard` caught my own wrong test constants here —
 scale confused with divisor, `1.5` written as `finite 15 10` rather
 than `finite 15 1`. Third time build-time checking has caught an
 authoring error in a new area today.
+
+## Stage: fourteen sound `[ext]` rows in the OWL RL closure (2026-08-22)
+
+`RLRules.lean`'s header used to say the `[ext]` layer of the F\* engine
+was out of scope because "a port of the table is a port of the table".
+That reading was too strict: an extension with a stated OWL 2
+RDF-Based Semantics justification is as reviewable as a table row, and
+those rows were the whole of the profile-RL entailment gap. Fourteen
+of them are now in, each carrying the semantic condition it rests on
+in place of a table id, in `RLRules.lean`'s `[ext]` section, in both
+engines, and with a licensing lemma and a T4 completeness case each.
+
+### The rows, by family
+
+**differentFrom synthesis** (5) — `eqDiffSym` (§5.8: inequality is
+symmetric), `pdwToDiff` and `caxDwToDiff` (the Horn contrapositives of
+prp-pdw and cax-dw: two things a disjointness forbids identifying must
+be different), `fpDiffToDiff` and `ifpDiffToDiff` (the contrapositives
+of prp-fp and prp-ifp). F\* names: `owl_rule_differentFrom_symmetry`,
+`owl_rule_pdw_to_differentFrom`, `owl_rule_cax_dw_to_differentFrom`,
+`owl_rule_fp_diff_to_diff`, `owl_rule_ifp_diff_to_diff`.
+
+**chain and reflexivity** (2) — `chainToTrans` (§5.11 at `l = <p,p>`
+IS §5.9's transitivity condition, so the row reads an equivalence in
+one direction; F\* `owl_rule_chain_to_transitive`) and `prpRfl` (§5.9:
+a reflexive property relates every member of `IR` to itself, so it
+relates every IRI of the graph to itself; F\*
+`owl_rule_reflexive_property`).
+
+**Table 7 over the datatype map** (3) — `xsdAxioms` (the XSD numeric
+subtype tower plus `rdf:type rdfs:Datatype` for each of its members),
+`dtRangeIntersect` (two range axioms constrain to the intersection of
+two value spaces; the four-entry table the F\*
+`xsd_range_intersections` carries), `dtType1Builtin` (the premise-free
+half: every D-interpretation recognises `xsd:string`, and every OWL 2
+datatype map `xsd:integer`, so both are `rdfs:Datatype` from the empty
+graph — WebOnt-I5.8-011).
+
+**comprehension witnesses** (4) — `caxDwToComplement` and
+`clsMaxqc1ToComplement` mint `_:__rl_comp__<c>`, the complement class
+§5.14's comprehension condition supplies; `minCard1Comprehension`
+mints `_:__rl_minc1__<p>`, the `minCardinality 1` restriction the same
+section supplies; `caxAdcToDw` turns an `owl:AllDisjointClasses` list
+into pairwise `owl:disjointWith` so all three cax-dw rows reach it
+without each growing a list-walking body.
+
+### What is CARRIED as an assumption rather than proved
+
+`xsdAxioms` and `dtRangeIntersect` are true only if the
+interpretation's datatype map recognises the XSD datatypes with the
+XSD 1.1 §3.4 value spaces. That assumption is written out as
+`XsdValueSpaceSubset` and the two tables list exactly which
+containments are relied on; `xsdIntegerDecimal_subset` and
+`xsdIntInteger_subset` DISCHARGE the two edges the Lean datatype map
+of `RDF/Datatypes.lean` models (`int ⊂ integer ⊂ decimal`), which is
+all of the tower that map knows. The other twelve edges are assumed
+and marked assumed.
+
+More generally: these lemmas prove LICENSING, not truth preservation.
+`RLTheorems.lean`'s header already disclaims model theory for the whole
+file — there is no `OWL.Semantics` port on the Lean side — and each
+`[ext]` constructor carries its RDF-Based-Semantics argument in its own
+doc comment instead of in a theorem. Do not read a `_sound` lemma here
+as a soundness theorem against the Recommendation.
+
+### Three rows Table 7 CANNOT have here
+
+dt-eq, dt-diff and dt-type2 put a LITERAL in subject position
+(`T(lt1, owl:sameAs, lt2)`). `RDF/Core.lean`'s `Subject` is an IRI or a
+blank node, with no literal case — RDF 1.1 Concepts §3.1, which the
+OWL 2 RL rule table steps outside of by writing generalised triples.
+Reaching them means widening `Subject` across the whole tree. That is
+a property of the term algebra, not a gap in this module's coverage.
+
+### The guard that cost a measurement
+
+`xsdAxioms` fires on a datatype POSITION (an XSD IRI in the object
+slot under `rdfs:range`, `rdf:type`, `rdfs:subClassOf`, …), not on the
+F\* `graph_mentions_xsd_iri`'s "any XSD IRI anywhere". The narrower
+guard is not a simplification, it is a fix: `dtType1Builtin` puts
+`xsd:integer rdf:type rdfs:Datatype` in every closure with no premise,
+eq-ref then derives `xsd:integer owl:sameAs xsd:integer` from it, and
+under the "mentions" guard THAT triple drives the whole tower plus its
+scm-sco transitive closure into every closure the engine computes.
+Measured: 116 triples and 6 rounds for a 3-triple `rdfs:subClassOf`
+fixture with nothing to do with datatypes, `type-consistency` from
+6417 ms to 11622 ms, and the `RLTests` idempotence guards (which assert
+saturation at a FIXED fuel, so they see this) red. `owl:sameAs` is not
+a datatype position, so restricting to a position cuts the loop at its
+source, and the rows that motivate the tower are all `rdfs:range`.
+
+The comprehension skolems are FUNCTIONS of their argument
+(`__rl_comp__<c>`, `__rl_minc1__<p>`), not counters, for the same
+class of reason: a counter would make every round grow the graph and
+the fuel loop's "length did not change" stopping rule would never
+fire. With a function, a second round mints the same node and `addOne`
+drops it.
+
+### Scores
+
+Before (`cd formal/lean4 && lake exe l4owl-probe`, claude/main at
+`8009b9b2b`):
+
+```
+profile-RL.rdf: 102 pass, 19 fail, 0 skip, 5 unsupported (out of 126)
+profile-EL.rdf: 95 pass, 21 fail, 1 skip, 4 unsupported (out of 121)
+profile-QL.rdf: 81 pass, 6 fail, 0 skip, 0 unsupported (out of 87)
+type-positive-entailment.rdf: 297 pass, 109 fail, 0 skip, 6 unsupported (out of 412)   wall_ms=4036
+type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+type-consistency.rdf: 461 pass, 110 fail, 0 skip, 12 unsupported (out of 583)   wall_ms=6417
+TOTAL: 1060 pass, 354 fail, 2 skip, 41 unsupported (out of 1457), cap_hits=0
+profile-RL.rdf PositiveEntailmentTest: 11 pass, 18 fail, 0 skip, 1 unsupported (out of 30)
+```
+
+After:
+
+```
+profile-RL.rdf: 116 pass, 5 fail, 0 skip, 5 unsupported (out of 126)
+profile-EL.rdf: 101 pass, 15 fail, 1 skip, 4 unsupported (out of 121)
+profile-QL.rdf: 82 pass, 5 fail, 0 skip, 0 unsupported (out of 87)
+type-positive-entailment.rdf: 314 pass, 92 fail, 0 skip, 6 unsupported (out of 412)   wall_ms=7091
+type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+type-consistency.rdf: 478 pass, 93 fail, 0 skip, 12 unsupported (out of 583)   wall_ms=11486
+TOTAL: 1120 pass, 294 fail, 2 skip, 41 unsupported (out of 1457), cap_hits=0
+profile-RL.rdf PositiveEntailmentTest: 25 pass, 4 fail, 0 skip, 1 unsupported (out of 30)
+```
+
+NO NEW FAIL anywhere: the FAIL multiset shrank by 60 units over 17
+distinct cases and gained nothing. Every NegativeEntailmentTest line
+held (profile-RL 6 pass 0 fail, profile-QL 3 pass 0 fail,
+type-consistency 23 pass 0 fail), which is the check that matters most
+for rows that ADD triples. `cap_hits` still 0. Wall clock is 1.76x and
+1.79x the baseline on the two big catalogs — the closures are bigger
+(the differentFrom rows are quadratic in a disjoint class extension by
+construction, as the F\* rules are) and the round count moved only
+1590 -> 1596 and 2186 -> 2194, so the cost is per-round work, not
+extra rounds.
+
+### Per-family FAIL accounting
+
+| family | profile-RL cases closed |
+|---|---|
+| differentFrom synthesis | WebOnt-differentFrom-001, WebOnt-disjointWith-001, WebOnt-disjointWith-002, New-Feature-DisjointObjectProperties-001, owl2-rl-rules-fp-differentFrom, owl2-rl-rules-ifp-differentFrom |
+| chain bridge | chain2trans1 |
+| reflexive property | New-Feature-ReflexiveProperty-001 |
+| XSD tower + range intersection | WebOnt-I5.8-006, WebOnt-I5.8-008, WebOnt-I5.8-009 |
+| builtin dt-type1 | WebOnt-I5.8-011 |
+| complement comprehension | DisjointClasses-001, New-Feature-ObjectQCR-002 |
+| AllDisjointClasses to disjointWith | DisjointClasses-003 |
+| minCardinality comprehension | WebOnt-I5.26-009, WebOnt-I5.26-010 |
+
+Seventeen cases, 60 units across the six catalogs (a case counts once
+per catalog it appears in and once per test type it declares).
+
+### Remaining profile-RL failures, all five named
+
+* `New-Feature-DisjointDataProperties-002` and
+  `New-Feature-DisjointObjectProperties-002` — the conclusion is an
+  `owl:AllDifferent` node with an `owl:members` COLLECTION of the
+  three individuals. Materialising it needs a skolem LIST, n cells for
+  n members, not the single-node skolems this stage introduced. The
+  reasoning behind it (an `owl:AllDisjointProperties` axiom plus one
+  edge per property makes the targets pairwise different) becomes
+  reachable through `pdwToDiff` as soon as `AllDisjointProperties` is
+  expanded pairwise the way `caxAdcToDw` expands
+  `AllDisjointClasses`; only the LIST materialisation is missing.
+* `WebOnt-I5.5-005` — `_:c owl:unionOf (a)`, the singleton-union
+  comprehension. Same missing piece: a one-cell skolem list.
+* `WebOnt-I4.6-005-Direct` — the F\* `[mode]` rule
+  `owl_rule_named_equivClass_to_sameAs_mode`. `[mode]` rules fire only
+  under a catalog semantics mode and there are no semantics modes on
+  the Lean side, so this one is out of reach by design, not by gap.
+* `New-Feature-Keys-006` (InconsistencyTest) — needs Table 7's dt-diff
+  to fire prp-key against two literal key values, the row that cannot
+  exist here while `Subject` has no literal case.
+
+### Sabotage (done, then restored)
+
+Removing `eqDiffSymFor` from `RLClosure.conclusionsList` alone does not
+even BUILD: `RLClosureIndexed.conclusionsFromS_ofGraph` refuses,
+because the two engines' row lists must match for the bridge. Removing
+it from BOTH engines builds, and profile-RL PositiveEntailmentTest
+drops from 25 pass to 23 pass, with `WebOnt-differentFrom-001` flipping
+to `closure-gap: missing …#b owl:differentFrom …#a`; TOTAL drops from
+1120 pass to 1112 pass. Restored, rebuilt, re-measured to the numbers
+above. This is a STRONGER gate than the one the previous stage
+recorded: it now takes two coordinated edits to sabotage a row, and
+`RLTheorems`'s T4 proof refuses either of them on its own.
+
+### Gates
+
+`lake build` green (381 jobs). `indexedClosure_eq` still proved as a
+LIST equality at every fuel — every new row went into both engines in
+the same `rowFor`/`rowForS` shape, and each new `…ForS_ofGraph` bridge
+lemma is `rfl` except `chainToTransForS_ofGraph` and
+`caxAdcToDwForS_ofGraph`, which rewrite through the recursive walkers
+first. `#print axioms` on `closure_sound`, `closure_extensive`,
+`closure_complete_of_saturated`, `detectClash_sound`,
+`indexedClosure_eq`, `mem_indexedClosure_iff`, `detectClashI_closureI`,
+all fourteen new `_sound` lemmas and the two discharged value-space
+edges: `[propext, Classical.choice, Quot.sound]` and nothing else.

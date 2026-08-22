@@ -22,20 +22,23 @@ Port of the extractable part of `formal/fstar/OWL.Closure.fsti`: the
   layering: it names those rows directly, under the OWL table ids the
   Recommendation gives them.
 
-* `[ext]` — a sound EXTENSION with no table row (the comprehension-
-  witness layer, the differentFrom-synthesis family, the chain and
-  transitivity bridges, `cls_hasself*`, and the `#236`
-  `cls_maxqc_comp` anchor machinery whose narrowness CLAUDE.md
-  records). **NOT ported.** Their justification lives in each F*
-  rule's own banner, not in the Recommendation, so porting them would
-  import claims this file cannot cite a row for.
+* `[ext]` — a sound EXTENSION with no table row. **Fourteen of them
+  are ported**, in the `[ext]` block of Section 5: the
+  differentFrom-synthesis family, the chain and reflexivity bridges,
+  Table 7's datatype rows over the XSD map, and four
+  comprehension-witness rows. Each cites the OWL 2 RDF-Based Semantics
+  condition it rests on in `RLRules.lean` instead of a table id. NOT
+  ported: `cls_hasself*`, `svf2_existential_witness`, the `#236`
+  `cls_maxqc_comp` anchor machinery, and any witness needing a skolem
+  LIST rather than a single skolem node.
 
 * `[axm]` — materialises an axiomatic-triple table (`xsd_datatype_axioms`,
   `builtin_vocabulary_axioms`, the owl:Thing/owl:Nothing group).
-  **Partly ported**: cls-thing and cls-nothing1, the two premise-free
-  Table 5 rows, are here as `axiomTriples`. The XSD datatype axioms are
-  not — they instantiate Table 7's dt-type1 over a fixed datatype map,
-  and this port fixes no datatype map (see `RLRules.lean`).
+  **Ported**: cls-thing and cls-nothing1 plus the two premise-free
+  `rdfs:Datatype` typings are `axiomTriples`; the XSD numeric tower is
+  the guarded `xsdAxiomsFor` row. `RDF/Datatypes.lean` supplies the
+  datatype map, and `RLRules.lean` records which value-space facts are
+  discharged against it and which are carried as an assumption.
 
 * `[mode]` — fires only under a catalog semantics mode
   (`named_equivClass_to_sameAs_mode`, the RDF-Based full meta axioms).
