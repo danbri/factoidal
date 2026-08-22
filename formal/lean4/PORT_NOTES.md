@@ -3730,3 +3730,25 @@ stop its siblings; a language tag beats a datatype (RDF 1.1 makes any
 tagged literal `rdf:langString`); a `separator` cell emits one triple
 per element sharing subject and predicate; and `valueUrl` produces an
 IRI object rather than a literal.
+
+### CSVW: value formats — booleans and numbers (2026-08-22)
+
+`CSVW/Formats.lean` ports the boolean and numeric halves of
+`CSVW.Formats.fst`. SCOPE IS STATED IN THE MODULE, not implied: date
+/time patterns and the regex-valued duration `format` facet are not
+here yet (the latter needs the XSD regex engine).
+
+The three-way `FmtOutcome` is the reason that scope gap is safe.
+`noFormat` ("no format applied, keep the cell") is a DIFFERENT
+outcome from `invalid` ("a format was applied and the cell failed
+it"). An unported format returns `noFormat`, so a format this port
+cannot yet read never rejects a value it might have accepted.
+Collapsing the two would turn every unported format into a spurious
+validation failure — the conservative direction is not an accident,
+it is the design.
+
+Two rules the guards pin: a boolean `format` with NO `|` is
+MALFORMED and rejects everything rather than falling back to the XSD
+`true`/`1` space; and percent / per-mille scaling is done by shifting
+the DIGIT STRING, not by float arithmetic, so `12.5%` is exactly
+`0.125`.
