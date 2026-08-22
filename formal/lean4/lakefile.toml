@@ -1,5 +1,5 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal", "Harness", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4owl-probe", "l4wasm-cli", "l4w3c", "l4rdfxml-probe", "l4sparql-probe"]
+defaultTargets = ["L4Factoidal", "Harness", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4owl-probe", "l4wasm-cli", "l4w3c", "l4rdfxml-probe", "l4sparql-probe", "l4shacl"]
 
 [[lean_lib]]
 name = "L4Factoidal"
@@ -85,3 +85,12 @@ root = "Harness.RdfXmlProbe"
 [[lean_exe]]
 name = "l4sparql-probe"
 root = "Harness.SparqlSyntaxProbe"
+# Real-corpus runner for SHACL Core over the W3C data-shapes test suite
+# (Harness/ShaclProbe.lean): walks the manifests through mf:include,
+# validates each sht:Validate entry with L4Factoidal.SHACL, and compares
+# the full validation report (RDFC-1.0 canonical N-Quads) the way
+# bin/shacl-runner does. Scores per sub-directory and in total.
+#   formal/lean4/.lake/build/bin/l4shacl third_party/testing/shacl/data-shapes-test-suite/tests/core/manifest.ttl
+[[lean_exe]]
+name = "l4shacl"
+root = "Harness.ShaclProbe"

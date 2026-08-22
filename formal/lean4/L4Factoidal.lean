@@ -67,17 +67,7 @@ import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLTheorems
 import L4Factoidal.OWL.RLTests
 import L4Factoidal.OWL.Tableau
-import L4Factoidal.OWL.Vocabulary
-import L4Factoidal.OWL.RLRules
-import L4Factoidal.OWL.RLClosure
-import L4Factoidal.OWL.RLTheorems
-import L4Factoidal.OWL.RLTests
 import L4Factoidal.OWL.TableauTheorems
-import L4Factoidal.OWL.Vocabulary
-import L4Factoidal.OWL.RLRules
-import L4Factoidal.OWL.RLClosure
-import L4Factoidal.OWL.RLTheorems
-import L4Factoidal.OWL.RLTests
 import L4Factoidal.OWL.TableauTests
 import L4Factoidal.SPARQL.Results
 import L4Factoidal.SPARQL.ResultsXml
@@ -111,3 +101,9 @@ import L4Factoidal.SPARQL.GraphStore
 import L4Factoidal.SPARQL.ServiceDescription
 import L4Factoidal.SPARQL.ProtocolTests
 import L4Factoidal.SPARQL.ProtocolTheorems
+import L4Factoidal.SHACL.Vocabulary
+import L4Factoidal.SHACL.Shapes
+import L4Factoidal.SHACL.Validation
+import L4Factoidal.SHACL.Report
+import L4Factoidal.SHACL.ShaclTests
+import L4Factoidal.SHACL.ShaclTheorems
