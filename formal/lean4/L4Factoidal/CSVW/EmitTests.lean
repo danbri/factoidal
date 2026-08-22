@@ -67,11 +67,38 @@ private def urlCol : Inherited :=
 
 -- STANDARD mode adds the row description on top of the cell triples.
 #guard (rowTriplesStandard "http://ex/t.csv" 1 2 [(nameCol, cell)]).length
-       == 1 + 3   -- cell + describes + rownum + url
+       == 1 + 4   -- cell + type + describes + rownum + url
 #guard (rowTriplesStandard "http://ex/t.csv" 1 2 [(nameCol, cell)]).any
          (fun t => t.p.val == csvwNs ++ "rownum")
 #guard (rowTriplesStandard "http://ex/t.csv" 1 2 [(nameCol, cell)]).any
          (fun t => t.p.val == csvwNs ++ "describes")
+-- The row node is TYPED. The W3C no-metadata tests all expect
+-- `a csvw:Row`, and its absence was a third of the missing graph.
+#guard (rowTriplesStandard "http://ex/t.csv" 1 2 [(nameCol, cell)]).any
+         (fun t => t.p == rdfTypeIri && t.o == Term.iri csvwRowCls)
+-- The `#row=` fragment reports the SOURCE row, not the table row:
+-- with a header they differ by one, and reporting the wrong one
+-- makes every row URL off by a line.
+#guard (rowTriplesStandard "http://ex/t.csv" 1 2 [(nameCol, cell)]).any
+         (fun t => t.o == Term.iri ⟨"http://ex/t.csv#row=2", rfl⟩)
+
+-- The whole standard-mode output: group node, table node, and the
+-- links that hold them together.
+private def oneRow : RowInput := { rowNum := 1, sourceRow := 2, cells := [(nameCol, cell)] }
+private def std : List Triple := tableGroupTriplesStandard "http://ex/t.csv" [oneRow]
+
+#guard std.any (fun t => t.p == rdfTypeIri && t.o == Term.iri csvwTableGroup)
+#guard std.any (fun t => t.p == rdfTypeIri && t.o == Term.iri csvwTableCls)
+#guard std.any (fun t => t.p == csvwTableProp)
+#guard std.any (fun t => t.p == csvwRowProp)
+-- group(type + table) + table(type + url + row) + row(4) + cell(1)
+#guard std.length == 2 + 3 + 4 + 1
+-- The `csvw:row` link and the row description must name the SAME
+-- blank node; if they drift the graph has an orphan row and every
+-- isomorphism check fails for a reason that reads as a data bug.
+#guard match std.find? (fun t => t.p == csvwRowProp) with
+       | some t => std.any (fun u => u.s.toTerm == t.o && u.p == csvwRownumProp)
+       | none   => false
 
 -- The checked-IRI helper.
 #guard (toIri? "http://ex/ok").isSome

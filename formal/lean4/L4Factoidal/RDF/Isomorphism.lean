@@ -311,20 +311,90 @@ Backtracking over blank-node assignments. `rem` are the blank nodes of
 the function is total with no fuel argument; `candOk` prunes the
 breadth. -/
 
+/-! ### The work budget, and why node count was the wrong bound
+
+A node-count refusal ALONE is the wrong bound, and it cost a measured
+regression. On 2026-08-22 the csv2rdf standard-mode runner scored
+`test001` and `test005` as FAILURES with the produced and expected
+triple counts EQUAL (60 vs 60, 106 vs 106). The graphs were correct.
+csv2rdf's row scaffolding mints two blank nodes per row plus two for
+the table and group, so an 8-row table has 18 — over the old
+`isoBnodeBudget` of 16. The search refused, `Graph.isomorphic?`
+returned `false`, and the runner reported `fail`: exactly the "bare
+`false` a caller could mistake for definitely-different" that this
+module's own comment warns against.
+
+Two repairs, both here:
+
+  * the search now carries an explicit WORK budget — candidate
+    assignments tried — which is what the cost actually is, and what
+    the F* module bounds too (Hash-N-Degree-Quads work, not node
+    count); and
+  * the node refusal stays, as a coarse guard on the polynomial parts
+    (the certificate re-check is quadratic in graph size), raised to a
+    level a real conformance graph reaches.
+
+A caller must still treat `false` as "not proved equal". The
+three-way `IsoOutcome` is the interface that separates the two, and
+`Graph.isomorphicOutcome` now reports a WORK trip as
+`budgetExceeded` as well.
+-/
+
+/-- Candidate assignments the bijection search may try before giving
+up. Reported as `IsoOutcome.budgetExceeded`, never as "different". -/
+def isoWorkBudget : Nat := 100000
+
+-- A doc comment cannot precede `mutual` (Lean rejects it outright);
+-- the block's documentation sits on `searchBijectionFuel` inside.
+mutual
+
 /-- Bounded backtracking search for a blank-node bijection satisfying
 `check`. Parameterised by the acceptance test so that graphs and
 datasets share one search (a dataset's test is per-named-graph, which
-a flattened graph test could not express). -/
+a flattened graph test could not express).
+
+Returns the mapping and the REMAINING work budget, so a caller can
+tell "searched everything, found nothing" (fuel left) from "gave up"
+(fuel zero). Termination is structural in the lexicographic measure
+`(rem.length, phase, cands.length)`, not in the fuel — the fuel bounds
+BREADTH, and making it the termination measure would hide the fact
+that depth is already bounded by the blank-node count. -/
+def searchBijectionFuel (check : List (BNodeId × BNodeId) → Bool)
+    (candOk : BNodeId → BNodeId → Bool)
+    (rem avail : List BNodeId) (acc : List (BNodeId × BNodeId)) (fuel : Nat) :
+    Option (List (BNodeId × BNodeId)) × Nat :=
+  match rem with
+  | []      => (if check acc then some acc else none, fuel)
+  | b :: rest =>
+      tryCandidates check candOk b rest (avail.filter (candOk b)) avail acc fuel
+termination_by (rem.length, 1, 0)
+
+def tryCandidates (check : List (BNodeId × BNodeId) → Bool)
+    (candOk : BNodeId → BNodeId → Bool)
+    (b : BNodeId) (rest cands avail : List BNodeId)
+    (acc : List (BNodeId × BNodeId)) (fuel : Nat) :
+    Option (List (BNodeId × BNodeId)) × Nat :=
+  match cands with
+  | []      => (none, fuel)
+  | c :: cs =>
+      match fuel with
+      | 0        => (none, 0)
+      | fuel' + 1 =>
+          match searchBijectionFuel check candOk rest (avail.erase c)
+                  ((b, c) :: acc) fuel' with
+          | (some m, f) => (some m, f)
+          | (none, f)   => tryCandidates check candOk b rest cs avail acc f
+termination_by (rest.length + 1, 0, cands.length)
+
+end
+
+/-- The mapping the search found, discarding the work counter. Kept so
+callers that only want the answer read the same shape as before. -/
 def searchBijection (check : List (BNodeId × BNodeId) → Bool)
     (candOk : BNodeId → BNodeId → Bool)
     (rem avail : List BNodeId) (acc : List (BNodeId × BNodeId)) :
     Option (List (BNodeId × BNodeId)) :=
-  match rem with
-  | []      => if check acc then some acc else none
-  | b :: rest =>
-      (avail.filter (candOk b)).findSome? fun c =>
-        searchBijection check candOk rest (avail.erase c) ((b, c) :: acc)
-termination_by rem.length
+  (searchBijectionFuel check candOk rem avail acc isoWorkBudget).1
 
 /-! ## Outcomes and the top-level decision procedures -/
 
@@ -339,9 +409,13 @@ inductive IsoOutcome where
   | budgetExceeded
   deriving DecidableEq, Repr
 
-/-- Refuse to search above this many blank nodes (16! is far past any
-W3C evaluation test; beyond it, report rather than guess). -/
-def isoBnodeBudget : Nat := 16
+/-- Refuse to search above this many blank nodes. This is now a COARSE
+guard on the polynomial parts of the procedure (the certificate
+re-check is quadratic in graph size), not the bound on search breadth
+— `isoWorkBudget` is that. It was 16 until 2026-08-22, which refused
+an 8-row csv2rdf standard-mode graph; see the work-budget note
+above. -/
+def isoBnodeBudget : Nat := 128
 
 /-- The identity mapping on `g`'s blank nodes, as an association
 list. -/
@@ -352,16 +426,20 @@ def Graph.idMapping (g : Graph) : List (BNodeId × BNodeId) :=
 conditions, the budget refusal, then the backtracking search. Its
 result is a CANDIDATE — `Graph.isomorphismMap?` is what certifies
 it. -/
-def Graph.isoSearchStep (g1 g2 : Graph) : Option (List (BNodeId × BNodeId)) :=
-  if g1.bnodes.length != g2.bnodes.length then none
-  else if !Graph.setEqB g1.ground g2.ground then none
-  else if g1.bnodes.length > isoBnodeBudget then none
+def Graph.isoSearchStepFull (g1 g2 : Graph) :
+    Option (List (BNodeId × BNodeId)) × Nat :=
+  if g1.bnodes.length != g2.bnodes.length then (none, isoWorkBudget)
+  else if !Graph.setEqB g1.ground g2.ground then (none, isoWorkBudget)
+  else if g1.bnodes.length > isoBnodeBudget then (none, 0)
   else
-    searchBijection
+    searchBijectionFuel
       (fun m => Graph.isoCert m g1 g2 g1.bnodes g2.bnodes)
       (fun b1 b2 => keyMultisetEq (sigLookup g1.sigTable b1)
                                   (sigLookup g2.sigTable b2))
-      g1.bnodes g2.bnodes []
+      g1.bnodes g2.bnodes [] isoWorkBudget
+
+def Graph.isoSearchStep (g1 g2 : Graph) : Option (List (BNodeId × BNodeId)) :=
+  (Graph.isoSearchStepFull g1 g2).1
 
 /-- Candidate mapping: the identity first (the common eval-test case,
 one set comparison, no search and no budget), then the search. -/
@@ -383,11 +461,15 @@ def Graph.isomorphismMap? (g1 g2 : Graph) :
 def Graph.isomorphic? (g1 g2 : Graph) : Bool :=
   (g1.isomorphismMap? g2).isSome
 
-/-- Graph comparison with the F* module's three-way outcome. -/
+/-- Graph comparison with the F* module's three-way outcome. A trip of
+EITHER budget — too many blank nodes, or the search giving up part way
+— is `budgetExceeded`, so a caller never reads a give-up as
+"definitely different". -/
 def Graph.isomorphicOutcome (g1 g2 : Graph) : IsoOutcome :=
   if (g1.isomorphismMap? g2).isSome then .equal
   else if g1.bnodes.length > isoBnodeBudget || g2.bnodes.length > isoBnodeBudget
   then .budgetExceeded
+  else if (Graph.isoSearchStepFull g1 g2).2 == 0 then .budgetExceeded
   else .notEqual
 
 /-! ## Datasets — RDF 1.1 Concepts §4 / §3.6
@@ -513,17 +595,21 @@ def Dataset.idMapping (ds : Dataset) : List (BNodeId × BNodeId) :=
   ds.bnodes.map (fun b => (b, b))
 
 /-- Everything after the identity fast path, for datasets. -/
-def Dataset.isoSearchStep (ds1 ds2 : Dataset) :
-    Option (List (BNodeId × BNodeId)) :=
-  if ds1.bnodes.length != ds2.bnodes.length then none
-  else if !Dataset.namesPrune ds1 ds2 then none
-  else if ds1.bnodes.length > isoBnodeBudget then none
+def Dataset.isoSearchStepFull (ds1 ds2 : Dataset) :
+    Option (List (BNodeId × BNodeId)) × Nat :=
+  if ds1.bnodes.length != ds2.bnodes.length then (none, isoWorkBudget)
+  else if !Dataset.namesPrune ds1 ds2 then (none, isoWorkBudget)
+  else if ds1.bnodes.length > isoBnodeBudget then (none, 0)
   else
-    searchBijection
+    searchBijectionFuel
       (fun m => Dataset.isoCert m ds1 ds2 ds1.bnodes ds2.bnodes)
       (fun b1 b2 => keyMultisetEq (sigLookup ds1.flatten.sigTable b1)
                                   (sigLookup ds2.flatten.sigTable b2))
-      ds1.bnodes ds2.bnodes []
+      ds1.bnodes ds2.bnodes [] isoWorkBudget
+
+def Dataset.isoSearchStep (ds1 ds2 : Dataset) :
+    Option (List (BNodeId × BNodeId)) :=
+  (Dataset.isoSearchStepFull ds1 ds2).1
 
 def Dataset.isoSearch (ds1 ds2 : Dataset) : Option (List (BNodeId × BNodeId)) :=
   if Dataset.isoCert ds1.idMapping ds1 ds2 ds1.bnodes ds2.bnodes
@@ -549,6 +635,7 @@ def Dataset.isomorphicOutcome (ds1 ds2 : Dataset) : IsoOutcome :=
   if (ds1.isomorphismMap? ds2).isSome then .equal
   else if ds1.bnodes.length > isoBnodeBudget || ds2.bnodes.length > isoBnodeBudget
   then .budgetExceeded
+  else if (Dataset.isoSearchStepFull ds1 ds2).2 == 0 then .budgetExceeded
   else .notEqual
 
 end L4Factoidal.RDF
