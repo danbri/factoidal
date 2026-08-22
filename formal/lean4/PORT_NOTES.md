@@ -2598,11 +2598,52 @@ rule sets), `DerivesFull.mono`, `DerivesFull.cut`, `rdfD2For_sound`,
 Axiom audit (`#print axioms` in `EntailmentTests.lean`): propext,
 Classical.choice, Quot.sound only.
 
-Not proved: completeness at saturation for the eight new rows (T4 of
-`ClosureTheorems.lean` covers the six rdfs-core rows; the extension is
-the same argument per row and is the named obligation); any
-model-theoretic statement (D-interpretations are not ported, so the
-regime comparisons `literalValueEq` carry guards, not theorems).
+**T4 completeness at saturation: CLOSED (2026-08-22, branch
+`lean4/rdfs-complete`).** The entry below previously named it the open
+obligation of this stage. It is now proved for the FULL rule set — all
+sixteen `DerivesFull` constructors, the eight rows this stage added
+(rdfD2, rdfs4a, rdfs4b, rdfs6, rdfs8, rdfs10, rdfs12, rdfs13) plus the
+`axiomatic` constructor that carries rdfs1-as-axioms and the §8.2 /
+§9.3 axiomatic triples. Theorems, in
+`RDFS/FullClosureTheorems.lean`:
+
+| Theorem | Statement |
+|---|---|
+| `fullComplete_of_saturated` | `fullStep c = c` and `∀ u ∈ ax, Graph.mem u c` and `∀ u ∈ g, Graph.mem u c` imply `DerivesFull ax g t → Graph.mem t c = true` |
+| `fullClosure_complete_of_saturated` | `fullStep (fullClosure D cmps g) = fullClosure D cmps g` implies `DerivesFull (axiomaticTriples D cmps) g t → Graph.mem t (fullClosure D cmps g) = true` |
+| `fullClosure_mono_of_saturated` | `g ⊆ g'` and `g'`'s closure saturated imply `t ∈ fullClosure D cmps g → Graph.mem t (fullClosure D cmps g') = true` |
+| `graphMem_fullClosure_of_mem_closure` | the two closures compared: `t ∈ closure g fuel → Graph.mem t (fullClosure D cmps g) = true` under the same saturation hypothesis |
+
+Support lemmas landed with them: `mem_fullStepConclusions_core` and
+one `mem_fullStepConclusions_<row>` per new row (a row's conclusion
+reaches the round's conclusion list), `graphMem_fullClosureLoop_of_graphMem`,
+`graphMem_fullClosure_of_mem`, `graphMem_fullClosure_of_mem_axioms`.
+
+Hypotheses, named rather than assumed:
+
+- **saturation** (`fullStep c = c`) — the same hypothesis T4 of
+  `ClosureTheorems.lean` carries; `fullClosure_saturated_or_underfueled`
+  turns it into "the fuel was not exhausted".
+- **`hax`** — NEW relative to the rdfs-core T4, and forced by the
+  `axiomatic` constructor: a graph closed under the RULES still misses
+  a derivation that quotes an axiom unless it was SEEDED with the
+  axiom set. `fullClosure` seeds it, which is how
+  `fullClosure_complete_of_saturated` discharges the hypothesis.
+- **no list-fuel hypothesis** — unlike the OWL-RL collection rows,
+  every one of the eight rows is single-premise and premise-local
+  (one triple in, at most one conclusion out), so there is no bounded
+  walk to fuel.
+
+Axiom audit for the four theorems (`#print axioms` in `Tests.lean`):
+propext, Classical.choice, Quot.sound only.
+
+Still not proved: that `fullClosureFuelBound` is always enough — the
+term-universe counting obligation `Closure.closureFuelBound` already
+carries and this module inherits. T4 is stated against saturation, not
+against a fuel constant, so nothing above depends on it. Also not
+proved: any model-theoretic statement (D-interpretations are not
+ported, so the regime comparisons `literalValueEq` carry guards, not
+theorems).
 
 ### Translation decisions
 
@@ -4189,6 +4230,256 @@ Method note: a `#guard` caught my own wrong test constants here —
 scale confused with divisor, `1.5` written as `finite 15 10` rather
 than `finite 15 1`. Third time build-time checking has caught an
 authoring error in a new area today.
+
+### Schematron: the report model and the assert/report inversion
+(2026-08-22)
+
+`Schematron/Validate.lean` ports `Schematron.Validate.fst`: schema,
+patterns, rules, assertions and the finding report.
+
+THE INVERSION is the one thing Schematron implementations get wrong,
+so it lives in exactly one function and is guarded in both
+directions: an `<assert test="X">` produces a finding when X is
+FALSE, a `<report test="X">` produces one when X is TRUE. They are
+kept as SEPARATE finding constructors rather than one predicate
+negated at the call site, so a consumer cannot lose the distinction.
+
+Two more rules with guards, each producing confidently-wrong output
+if flipped:
+- Within a PATTERN the FIRST matching rule claims a node and later
+  rules in that pattern do not fire for it; PATTERNS are independent
+  of each other. Getting this wrong yields duplicate findings that
+  read as genuine extra violations.
+- An undecidable test yields an INDETERMINATE finding carrying its
+  reason — for assert and report alike — and `hasViolations` does NOT
+  count it, while `hasIndeterminate` reports it separately. The same
+  refusal discipline as the Geo predicates, the CSVW formats and the
+  JSON Schema validator.
+
+The XPath evaluation and context selection are PARAMETERS, not a
+global registry — purity doctrine, and it also makes the whole module
+testable without an XPath engine.
+
+### HTTP: the SPARQL endpoint's request/response layer (2026-08-22)
+
+`HTTP/Server.lean` ports `SPARQL.HTTP.fst`, `.Routes.fst` and
+`.Response.fst`: request model, query-string parsing, routing,
+content negotiation and the response constructors. Everything is a
+TOTAL FUNCTION from a parsed request to a response decision — sockets
+and reads stay outside — so the whole Web surface is testable with no
+network.
+
+This closes a gap the parity ledger flagged against the project's own
+framing: the Lean tree had the protocol SEMANTICS (Protocol,
+GraphStore, ServiceDescription) but not the server that speaks them.
+
+A REAL BUG in this port, caught by a `#guard` before it landed:
+`formDecode` built one `Char` per percent-escape, so `%C3%A9` became
+two Latin-1 characters instead of `é`. Percent-decoding must happen at
+the BYTE level with UTF-8 interpretation at the end. That is the
+classic mojibake bug and it would have corrupted every non-ASCII
+query string. Fixed and guarded.
+
+Spec details pinned because each is a protocol violation when wrong:
+- A 405 MUST carry `Allow` (RFC 7231 §6.5.5); a bare 405 is
+  non-conforming, not merely unhelpful.
+- `HEAD` is allowed wherever `GET` is.
+- `OPTIONS` is answered BEFORE path matching, so CORS preflight works
+  on every endpoint including unknown ones.
+- On a shared endpoint an `update=` parameter (or the
+  `application/sparql-update` content type) selects update even on the
+  query path — Protocol §2.2.
+- `q=0` means NOT ACCEPTABLE and can never be chosen, even for the
+  server's own first preference. q-values are scaled to integers so
+  the ordering is exact rather than a float comparison.
+- A malformed percent-escape is kept VERBATIM rather than dropped;
+  deleting bytes from a query changes what was asked.
+
+### Storage: HDT byte primitives (2026-08-22)
+
+`Storage/Bytes.lean` opens the storage layer — VByte, little-endian
+32-bit reads and writes, CRC8 and CRC32C, and the checksummed section
+that HDT's format is built from.
+
+This belongs in the Lean tree by the same rule that governs the F*
+side: iron rule 11 puts byte ASSEMBLY in the formal source
+(`serialize : data -> List UInt8`), leaving only `write_bytes`
+outside. So the format is specifiable here and reading it back is a
+total function over a byte list, with no I/O at all.
+
+Two decisions worth recording:
+
+1. **Checksums are typed `UInt8`/`UInt32`, not `Nat`.** The width is
+   part of the format, so carrying it in the TYPE removes every
+   "< 256" side obligation from the round-trip reasoning instead of
+   discharging them one at a time. That restructure happened
+   mid-increment, when the `Nat` version left exactly those goals
+   dangling.
+2. **HDT's VByte marks the LAST byte with the high bit** — the
+   OPPOSITE of LEB128's continuation marker. A flipped polarity
+   decodes every multi-byte number wrongly while single-byte values
+   keep working, which is the failure mode that survives casual
+   testing, so `vbyteEncode 5 == [133]` is guarded explicitly.
+
+Corruption rejection is guarded in both halves: a flipped data byte
+and a flipped preamble byte each make `Section.parse` return `none`.
+A storage layer that reads on through a bad checksum turns a disk
+error into wrong query answers.
+
+TWO OBLIGATIONS ARE STATED IN THE SOURCE, not admitted: the general
+VByte round trip (needs induction on `n / 128` with the accumulator
+generalised) and the section round trip (needs a readU32LE-over-append
+lemma). `#guard` covers both by evaluation meanwhile — including
+VByte boundary values at 127/128/16383/16384.
+
+### MathML: content evaluation and presentation rendering (2026-08-22)
+
+`MathML/Core.lean` ports `MathML.Content.fst` and
+`MathML.Present.fst`: the Content expression tree, exact-rational
+evaluation, Presentation rendering with operator precedence, and the
+content-vs-presentation classifier.
+
+Rationals are EXACT and normalised to lowest terms, so `1/3 + 1/3 +
+1/3` is exactly `1` — Content MathML denotes the mathematical value,
+and a float would make that guard fail.
+
+Division by zero REFUSES (`none`) rather than producing an infinity:
+Content MathML has no such value, so inventing one would be answering
+a question the vocabulary cannot ask. Same for an unbound symbol and
+an unknown operator — every refusal path returns `none`, never a
+default.
+
+Rendering detail worth keeping: a NEGATIVE literal carries the loose
+precedence of a `minus`, so it gets fenced inside a tighter parent
+(`2^(-3)`, not `2^-3`). Both directions are guarded — a looser child
+IS fenced, a tighter one is NOT.
+
+The classifier lets CONTENT win when both vocabularies appear, matching
+the F* order: a mixed document is processed as content markup, since
+that is the half carrying meaning rather than layout.
+
+### XSLT: template priorities and conflict resolution (2026-08-22)
+
+`XSLT/Templates.lean` ports the SEMANTIC HEART of `XSLT.Transform.fst`
+— §5.5 conflict resolution and §2.6.2 import precedence. Scope stated
+plainly: the F* module is 4,183 lines covering instantiation,
+attribute sets, number formatting, output serialisation and keys.
+What is ported is the part that decides WHICH TEMPLATE FIRES, which is
+where implementations disagree with each other and with the spec.
+
+Priorities are scaled by TEN and kept as integers. XSLT's defaults are
+0, -0.25, -0.5 and 0.5; scaling makes every comparison exact and takes
+float ordering out of the one place where a tie decides which template
+runs.
+
+Two orderings that are bugs when reversed, both guarded:
+
+1. **Import precedence is checked BEFORE priority.** Checking priority
+   first lets an imported template with a specific pattern beat the
+   importing stylesheet's override, which defeats the entire point of
+   `xsl:import`.
+2. **The compound test comes BEFORE the wildcard test** in
+   `altPriority`, so `foo/*` scores 5 rather than -5. Reversing them
+   makes compound patterns lose to bare ones.
+
+Also pinned: at equal precedence and priority the LAST declared
+template wins; a template in a different mode is not a candidate at
+all; a name-only template never matches by pattern; and named lookup
+for `call-template` resolves by import precedence rather than document
+order. Pattern parsing keeps `//x` (relative descendant) distinct from
+`/x` (root-anchored) — one slash apart, quite different meanings.
+
+### Storage: the durable-UPDATE delta log (2026-08-22)
+
+`Storage/DeltaLog.lean` ports the framing from
+`RDF.Store.Columnar.DeltaLog.fst`. The COTTAS base file is immutable;
+a SPARQL UPDATE appends to a log beside it, and compaction later folds
+the log into a new base. That makes this framing the CRASH-SAFETY
+BOUNDARY of the whole store, which is why it belongs in the formal
+source rather than in a writer.
+
+The checksum is a plain ADDITIVE mod-2^32 check and deliberately NOT a
+cryptographic digest. Its only job is letting a replay reject a TORN
+record without decoding it. Whole-log drift detection is a separate
+mechanism (the sha256 hash-witness pattern); conflating them would put
+a cryptographic cost on every append for a property appends do not
+need.
+
+Two behaviours guarded because they are what a storage layer gets
+wrong under crash conditions:
+
+1. **A torn tail is not an error.** A crash mid-append is EXPECTED,
+   and recovery means "take every record that verifies, discard from
+   the first that does not". `replay` returns the recovered records
+   AND a clean/torn flag, so the caller can tell a tidy shutdown from
+   a crash without that changing what was recovered.
+2. **The epoch guard prevents double-apply.** A base compacted at
+   epoch `n` must ignore log records from epoch ≤ `n`, or a replay
+   re-applies updates the compaction already folded in. `shouldReplay`
+   is strict-greater-than, and both boundary cases are guarded.
+
+The four magic numbers are pinned as their documented ASCII bytes
+(`DLE1`, `DLB1`, `DLOG`, `CEP1`), little-endian — a silently
+byte-swapped magic would make every existing store unreadable.
+
+### VC: the credential data model (2026-08-22)
+
+`VC/Credential.lean` ports `VC.Credential.fst`, completing the Lean
+VC module set alongside the existing Context, DataIntegrity, DidKey
+and Multibase.
+
+THE RULE THAT CARRIES SECURITY WEIGHT, and the reason it gets its own
+guard: the base VC 2.0 context IRI must be the FIRST `@context` entry,
+not merely present. JSON-LD context processing is ORDER-DEPENDENT — a
+later entry can redefine terms an earlier one established — so
+accepting a base context in second position would let a crafted
+context silently redefine `issuer` or `credentialSubject`. The guard
+pins both orders.
+
+Verdicts carry a REASON string rather than being booleans: a
+credential-verification failure that says only "false" is
+unactionable, and the VC suite distinguishes failure modes. A
+conjunction keeps the FIRST failure's reason, so the message names
+the earliest problem rather than the last.
+
+An EMPTY `credentialSubject` fails — a credential asserting nothing
+about anyone is not a credential — and so does an empty array form.
+
+Validity dates are checked for SHAPE only. Their ordering against
+"now" belongs to a caller with a clock; this module stays a total
+function of its input rather than reading one, per the purity
+doctrine.
+
+### CSVW: a reader probe over the real corpus, and the bug it found
+(2026-08-22)
+
+`Harness/CsvwProbe.lean` runs the Lean dialect reader against the
+REAL vendored W3C csvw corpus — 177 `.csv` files off disk, never
+synthetic input.
+
+IT IMMEDIATELY FOUND A BUG the unit tests had missed: a FINAL line
+terminator was creating a phantom one-cell row, so 85 of 177 files
+read as "ragged". RFC 4180 makes the terminator optional on the last
+record, so `"a\nb\n"` and `"a\nb"` are the same two rows. A synthetic
+test does not catch this because one rarely writes the trailing
+newline by hand — which is precisely the argument for running the
+suite's own files. Fixed (`dropTrailingTerminator`) and guarded,
+including the case it must NOT break: an INTERIOR blank line is still
+a row.
+
+After the fix: 170 read with uniform width, 7 read ragged, 0 failed
+to read.
+
+The probe reports RAGGED SEPARATELY rather than as failure, because
+CSVW treats a wrong cell count as a VALIDATION error, not a parse
+error, and the suite ships such files deliberately (test058,
+test091). Counting them as failures would penalise correct behaviour.
+
+The output states plainly that this is a READER-LEVEL check and NOT a
+conformance score — it never compares against the expected `.ttl`,
+which needs metadata resolution and graph isomorphism. Calling the
+number "csvw: 170 pass" would be a lie by naming, so the probe says
+so itself rather than trusting a reader of the log to remember.
 
 ### JSON-LD: the rest of the API — compact, flatten, fromRdf, html (2026-08-22)
 
