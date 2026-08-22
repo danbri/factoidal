@@ -512,3 +512,93 @@ PositiveSyntaxTest11, NegativeSyntaxTest11) passes; the 275 are the
 UPDATE, Protocol, Graph Store, Service Description and entailment-regime
 types, still named and counted. The F\* runner's line for the same
 631 is 631 pass, 0 fail. The six RDF suites stay at 1078 of 1078.
+
+## Status 2026-08-22 (night): the three protocol-shaped types run (branch `lean4/protocol`)
+
+`ProtocolTest`, `GraphStoreProtocolTest` and `ServiceDescriptionTest`
+are scored. No HTTP server is started — the W3C entries describe each
+test as an HTTP exchange in Markdown inside `rdfs:comment`, and both
+trees decode that text: the F\* runner through the extracted
+`SPARQL.Protocol` / `SPARQL.GraphStore` / `SPARQL.ServiceDescription`
+modules, the Lean harness through their ports
+(`formal/lean4/L4Factoidal/SPARQL/Protocol.lean`, `GraphStore.lean`,
+`ServiceDescription.lean`) driven by `Harness/ProtocolRun.lean`, which
+reproduces `run_protocol_test`, `run_gsp_test` and
+`run_service_description_test` clause for clause (manifest-shape glue
+included: the `$GRAPHSTORE$` placeholder collapse, the entry-name
+seeding with its `gsp_seeded` counter, the `mismatched payload` name
+dispatch). Stage entry with the module correspondence, decisions and
+findings: `formal/lean4/PORT_NOTES.md`, "Stage: SPARQL 1.1 Protocol,
+Graph Store HTTP Protocol, Service Description".
+
+Harness changes: `Manifest.lean` captures `rdfs:comment`; `Run.lean`
+takes the per-manifest Graph Store (`IO.Ref`, created in `Main.lean`,
+reset at `PUT - Initial state`) and adds the three arms as one block;
+`HARNESS-DIAG` prints `gsp_seeded=N` (the F\* runner's `gsp_seed`).
+
+### Measured score lines, verbatim
+
+`lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`:
+
+```
+protocol: 26 pass, 0 fail, 0 skip, 8 unsupported (out of 34)
+HARNESS-DIAG protocol: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0
+http-rdf-update: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
+HARNESS-DIAG http-rdf-update: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=1
+service-description: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)
+HARNESS-DIAG service-description: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0
+TOTAL: 404 pass, 0 fail, 0 skip, 227 unsupported (out of 631)
+```
+
+The query types stay at 356 pass, 0 fail; the six RDF suites at
+`TOTAL: 1078 pass, 0 fail, 0 skip, 0 unsupported (out of 1078)`.
+The F\* runner's lines for the same three suites
+(`docs/test-results/latest.json`): protocol 34 pass, 0 fail (out of
+34); http-rdf-update 19 pass, 0 fail (out of 19), `gsp_seed` 1;
+service-description 3 pass, 0 fail (out of 3).
+
+### The 8 unsupported, by cause
+
+All eight are requests the decoder classifies as SPARQL Update
+(`update_dataset_default_graph`, `update_dataset_default_graphs`,
+`update_dataset_named_graphs`, `update_dataset_full`,
+`update_post_form`, `update_post_direct`, `update_base_uri`,
+`bad_update_syntax`): the Lean tree has no Update parser on
+`claude/main` at the time of this stage (branch `lean4/sparql-update`
+is in flight). They are named, counted, never passed. No FAIL.
+
+### Theorems (axioms: propext, Classical.choice, Quot.sound)
+
+`percentDecode_percentEncode_ascii` / `urlDecode_percentEncode_ascii`
+(decoding inverts encoding on every ASCII string: RFC 3986 reserved +
+unreserved sets and `%`), `decodeRequest_get_no_query` (a GET without
+`query=` is a 400-class verdict), `decodeTarget_malformed_graph` (a
+GSP `graph=` that is not an IRI is 400). 134 `#guard`s in
+`SPARQL/ProtocolTests.lean`, one per decoding rule, over the W3C
+request shapes.
+
+### Sabotage
+
+1. `+` → space removed from percent-decoding: `lake build` fails at
+   `ProtocolTests.lean:31` and `:56`. With those two guards disabled
+   NO W3C protocol test flips: the manifest writes every space as
+   `%20`, and its only `+` characters are in response media types.
+   The guards are the only detector for that rule.
+2. The §2.1.6 charset rule forced to accept everything: `bad_query_non_utf8`
+   flips to FAIL (`Expected 4xx but decode_request accepted (POST
+   /sparql/)`); `bad_update_non_utf8` moves to unsupported, because
+   the decoder then classifies it as an Update request. Until Update
+   parsing lands, a decoder regression on an update-shaped 4xx entry
+   hides in the unsupported bucket — a known limit of this stage.
+   Restored; the numbers above are from the restored build.
+
+### Findings against the F\* (not fixed here)
+
+- `formal/fstar/SPARQL.Protocol.fst:146–167` (`url_decode_chars`):
+  `%XX` becomes codepoint XX, so `%C3%A9` decodes to `Ã©`, not `é`.
+- `formal/fstar/SPARQL.Protocol.fst:509–533` (`chars_contains_word`):
+  a prefix match not bounded by whitespace returns `false` instead of
+  continuing the scan, so `INSERT { <withdraw> … } USING <g> …` is not
+  seen to carry `USING` and the §2.2.4 conflict is missed.
+- `CLAUDE.md` says "SPARQL Protocol reaching 53 pass, 0 fail";
+  `latest.json` has 56 pass, 0 fail across the three suites.

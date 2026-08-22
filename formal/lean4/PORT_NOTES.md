@@ -2397,3 +2397,143 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
 - `SPARQL11.Algebra.fst:1575–1577` (`regex_replace`): `^` / `$` parse
   to eps in a replace pattern (documented there as a known limitation);
   kept as-is in `replaceRe` so `replace` agrees with the F\*.
+
+## Stage: SPARQL 1.1 Protocol, Graph Store HTTP Protocol, Service Description (2026-08-22)
+
+Branch `lean4/protocol`. The three protocol-shaped sparql11 test
+types run in the Lean harness. No HTTP server in either tree: each
+test is request/response decoding over the Markdown in the entry's
+`rdfs:comment`, so the port is of the PURE F\* modules plus the
+runner clauses that drive them.
+
+### Module correspondence
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `SPARQL.Protocol.fst` Part 2 (`is_hex_digit`, `hex_value`, `ascii_lower_string`, `trim_ws`) | `SPARQL/Protocol.lean` `isHexDigit`, `hexValue`, `asciiLower`, `trimWs` | |
+| Part 3 `url_decode_chars` / `url_decode` / `form_decode` | `pctUnits` + `utf8Assemble` + `percentDecodeChars`, `urlDecode`, `formDecode` | escapes decode to BYTES, then UTF-8 (see findings); `+` → space only under `formDecode` |
+| — | `percentEncode`, `isUnreserved`, `hexDigitUpper`, `percentEncodeByte` | new: the inverse, for the round-trip theorem |
+| Part 4 `split_once_on`, `split_all_on` | `splitOnce`, `splitAll` | `splitAll` is `String.splitOn` (same `""` → `[""]` behaviour) |
+| Part 5 `parse_kv_pair`, `parse_query_string`, `collect_values`, `first_value` | same names, camelCase | |
+| Part 7 `path_is_update`, `split_path_qs`, `content_type_base`, `extract_charset_param`, `charset_is_utf8_or_absent`, `chars_contains_word`, `str_contains_word_ci`, `update_has_dataset_clause`, `kvs_have_using_param`, `build_from_kvs`, `decode_request` | `pathIsUpdate`, `splitPathQs`, `contentTypeBase`, `extractCharsetParam`, `charsetIsUtf8OrAbsent`, `containsWord`, `containsWordCi`, `updateHasDatasetClause`, `kvsHaveUsingParam`, `buildFromKvs`, `decodeRequest` (+ `effectiveQs`) | `containsWord` diverges, see below |
+| Part 14 `proto_request`, `proto_status_class`, `proto_strip_indent` …, `extract_request`, `extract_status_class`, `proto_header` | `ProtoRequest`, `StatusClass`, `stripIndent` …, `extractRequest`, `extractStatusClass`, `header` | |
+| `w3c_runner.ml` `_gsp_extract_response_status` (OCaml) | `extractResponseStatus` | the numeric status the Graph Store manifest carries |
+| `SPARQL.GraphStore.fst` (`graph_store`, `gs_target`, `gsp_get/head/put/post/delete`, `status_*`) | `SPARQL/GraphStore.lean` `GraphStore`, `Target`, `get/head/put/post/delete`, `status*` | keys are plain strings, as in the F\* |
+| `w3c_runner.ml` `_gsp_target_of_request` (OCaml) | `decodeTarget` | §4.1 identification in the library; a non-IRI `graph=` is 400 (new) |
+| — | `Method`, `handle` | new: the state machine as one total function; PATCH → 405 |
+| `SPARQL.ServiceDescription.fst` (`sd_*`, `build_sd`, `has_endpoint_triple`, `has_service_type`, `has_supported_language`, `conforms_to_schema`, `returns_rdf`) | `SPARQL/ServiceDescription.lean`, same names camelCase | `datasetIriOf` / `defaultGraphIriOf` keep the F\* fallback to the endpoint |
+| `run_protocol_test`, `run_gsp_test`, `run_service_description_test`, `_gsp_canonical_key`, `_gsp_should_seed`, `_gsp_is_mismatched_payload_test`, `_gsp_status_matches` | `Harness/ProtocolRun.lean` `protocolVerdict` / `runProtocolTest`, `gspStep` / `runGspTest`, `serviceDescriptionVerdict`, `gspCanonicalKey`, `gspShouldSeed`, `gspIsMismatchedPayload`, `gspStatusMatches` | the cross-test store is an `IO.Ref` per manifest (`Harness.Main`), reset at `PUT - Initial state` |
+
+Not ported: Accept-header negotiation (F\* Part 6) and the response
+serialisers (Parts 8–12) — the tests assert on status class, and the
+Lean tree already has the results serialisers.
+
+### Translation decisions
+
+- `%XX` escapes decode to bytes and byte runs are read as UTF-8
+  (`%C3%A9` → `é`), with a one-codepoint-per-byte fallback for runs
+  that are not UTF-8, so decoding stays total. The F\* maps each
+  escape to the codepoint of its value (finding below). No W3C
+  protocol request carries a non-ASCII escape, so the score is the
+  same either way; the guards pin the 2-, 3- and 4-byte cases.
+- `pctUnits` / `utf8Assemble` are well-founded on list length
+  (nested matches on the tail blocked structural recursion), so
+  proofs unfold them with `conv => lhs; unfold …` and `#guard`s run
+  the compiled code (pitfall 7 applies: no `decide` over them).
+- `containsWord` keeps scanning after a prefix match that is not
+  whitespace-bounded; the F\* returns `false` there (finding below).
+  Guarded: `INSERT { <withdraw> … } USING <g> WHERE {}` is `true`.
+- `decodeTarget` lives in the library as GSP §4.1; the
+  `$GRAPHSTORE$` / `$HOST$` / `$NEWPATH$` placeholder collapse, the
+  entry-name seeding and the `mismatched payload` name dispatch stay
+  in the harness as manifest-shape glue, exactly where the F\* runner
+  keeps them. Seeding is counted: `HARNESS-DIAG … gsp_seeded=N`
+  (the F\* runner's `gsp_seed`; both trees report 1 on this suite —
+  `DELETE - existing graph` names `person/2.ttl`, which no earlier
+  entry PUT).
+- The protocol verdict omits the F\* runner's evaluation of the
+  decoded query over an empty dataset: that runner drops the result
+  and maps every evaluation outcome (rows, exception, unsupported
+  feature) to PASS when 2xx is expected, so the verdict there depends
+  on the decoder and the parser only; this port reproduces the verdict.
+- A request the decoder classifies as Update is `unsupported`, named
+  (no Lean Update parser on `claude/main` at the time of this stage).
+  Caveat recorded by the second sabotage below: a decoder regression
+  on an update-shaped 4xx test (e.g. `bad_update_non_utf8`) lands in
+  the unsupported bucket, not in fail, until Update parsing lands.
+
+### Guards and theorems
+
+`ProtocolTests.lean`: 134 `#guard`s — percent-decoding (ASCII,
+`+`, malformed `%`, 2/3/4-byte UTF-8, Latin-1 fallback, encode
+round-trips), the parameter bag, Content-Type / charset, USING/WITH
+detection, every W3C protocol request shape (12 positive, 14
+negative) against `decodeRequest` with the rule named, the
+`rdfs:comment` scrapers on three manifest shapes, the Graph Store
+state machine (PUT 201/204, POST 201/200 with merge, DELETE 204/404,
+GET/HEAD, default graph, PATCH 405), §4.1 target decoding (incl. two
+malformed `graph=` → 400), and the three Service Description checks.
+
+`ProtocolTheorems.lean` (axioms: propext, Classical.choice,
+Quot.sound): `percentDecode_percentEncode_ascii` /
+`urlDecode_percentEncode_ascii` (decoding inverts encoding on every
+ASCII string — the RFC 3986 reserved and unreserved sets and `%`),
+`decodeRequest_get_no_query` (a GET with no `query=` parameter is
+a 400-class verdict, Protocol §2.1.1 + §2.2.2), and
+`decodeTarget_malformed_graph` (GSP §4.1: a `graph=` that is not an
+IRI is 400).
+
+### Measured (`lake exe l4w3c`, verbatim)
+
+```
+protocol: 26 pass, 0 fail, 0 skip, 8 unsupported (out of 34)
+http-rdf-update: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)
+service-description: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)
+TOTAL: 404 pass, 0 fail, 0 skip, 227 unsupported (out of 631)
+```
+
+The 8 unsupported are the update-shaped entries:
+`update_dataset_default_graph`, `update_dataset_default_graphs`,
+`update_dataset_named_graphs`, `update_dataset_full`,
+`update_post_form`, `update_post_direct`, `update_base_uri`,
+`bad_update_syntax`. The F\* runner (`docs/test-results/latest.json`)
+has protocol 34 pass, 0 fail (out of 34); http-rdf-update 19 pass,
+0 fail (out of 19), `gsp_seed` 1; service-description 3 pass, 0 fail
+(out of 3). The query types stay at 356 pass, 0 fail; the six RDF
+suites at 1078 pass, 0 fail (out of 1078).
+
+Sabotage record (2026-08-22):
+1. `+` → space removed from `pctUnits`: `lake build` fails at
+   `ProtocolTests.lean:31` (`formDecode "a+b"`) and `:56` (the
+   parameter bag). With those two guards disabled, NO W3C protocol
+   test flips — the manifest writes every space as `%20` and its
+   only `+` characters are in response media types. The guards are
+   the only detector for this rule.
+2. `charsetIsUtf8OrAbsent` forced to `true` (three guards disabled):
+   `bad_query_non_utf8` flips to FAIL ("Expected 4xx but
+   decode_request accepted (POST /sparql/)"); `bad_update_non_utf8`
+   moves to unsupported (the caveat above). Restored; the numbers
+   above are from the restored build.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]`. The F\* modules had no `assume val`.
+
+### Findings against the F\* (not fixed here)
+
+- `formal/fstar/SPARQL.Protocol.fst:146–167` (`url_decode_chars`):
+  each `%XX` becomes the codepoint XX, so a percent-encoded
+  multi-byte UTF-8 sequence decodes to one character per byte
+  (`%C3%A9` → `Ã©`, not `é`). Invisible to the W3C suite (all-ASCII
+  requests); visible to any non-ASCII IRI or literal in a GET query
+  string.
+- `formal/fstar/SPARQL.Protocol.fst:509–533` (`chars_contains_word`):
+  on a prefix match that is not whitespace-bounded the function
+  returns `false` instead of continuing the scan, so an update text
+  such as `INSERT { <withdraw> … } USING <g> WHERE {}` is not seen to
+  carry a `USING` clause and the §2.2.4 conflict with
+  `using-graph-uri` is not raised. Also invisible to the W3C suite.
+- `CLAUDE.md` quotes "SPARQL Protocol reaching 53 pass, 0 fail";
+  `docs/test-results/latest.json` now has 34 + 19 + 3 = 56 pass,
+  0 fail across the three suites.
