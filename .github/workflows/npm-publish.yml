@@ -16,10 +16,29 @@
 #   Allowed actions:      npm publish
 # Fields are case-sensitive; npm validates them only at publish time.
 #
-# Trigger: manual (workflow_dispatch) or a v* tag push. The publish
-# runs from the COMMITTED npm/factoidal tree — bundles are committed
-# (iron rule #9 family), so no build step happens here; the package's
-# own prepublishOnly gate (npm test, 180+ tests) still runs.
+# PROVENANCE-AS-EXTRACTION-PEDIGREE (issue #465, rung 2 of 4): before
+# publishing, this workflow RE-EXTRACTS the F* corpus at this commit
+# and fails on ANY drift against the committed OCaml. The npm
+# provenance attestation (automatic under trusted publishing:
+# Sigstore-signed, Rekor-logged, `npm audit signatures`) therefore
+# covers the check itself — the published tarball is bound to a commit
+# whose committed extraction output was re-derived from its .fst
+# sources inside this very workflow. A witness step logs the F*/z3
+# versions, the .fst input-tree digest, and the tarball digest into
+# the attested run. What this does NOT yet attest: the js_of_ocaml
+# bundle layer (rung 3 builds the package from source in-workflow;
+# rung 4 signs intermediates). Caveat, always: provenance proves
+# PEDIGREE, not the theorems — the theorems are the verify steps this
+# pipeline runs and the no-admits/no-lax property of the source.
+#
+# Trigger: manual (workflow_dispatch) or an npm-v* tag. The publish
+# ships the COMMITTED npm/factoidal tree — bundles are committed
+# (iron rule #9 family) — after the drift check passes. The package's
+# own prepublishOnly gate (npm test, 180+ tests) still runs inside
+# npm publish.
+#
+# Cost: ~5-10 min with warm opam/.checked caches; a cold cache
+# re-verifies the tree (~2 h, same as check-extraction.yml cold).
 name: npm-publish
 on:
   workflow_dispatch: {}
@@ -34,6 +53,78 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # --- Extraction drift check (issue #465 rung 2) --------------
+      # Cache blocks mirror check-extraction.yml (#238).
+      - name: Cache opam
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-fstar-${{ runner.os }}-v4
+          restore-keys: |
+            opam-fstar-${{ runner.os }}-
+
+      - name: Cache F* .checked files
+        uses: actions/cache@v4
+        with:
+          path: formal/fstar/*.fst.checked
+          key: fstar-checked-${{ runner.os }}-${{ hashFiles('formal/fstar/*.fst', 'formal/fstar/*.fsti') }}
+          restore-keys: |
+            fstar-checked-${{ runner.os }}-
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev pkg-config libzstd-dev
+
+      - name: Setup opam + F*
+        run: |
+          if [ ! -d ~/.opam ]; then
+            opam init -y --disable-sandboxing
+          fi
+          if ! opam switch list 2>/dev/null | grep -q fstar; then
+            opam switch create fstar ocaml-base-compiler.4.14.1
+          fi
+          eval $(opam env --switch=fstar)
+          opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
+          opam install -y fstar z3.4.13.3 zarith sha digestif ocamlfind uucp
+          echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
+          fstar.exe --version
+          z3 --version
+
+      - name: Re-extract F* and fail on drift vs the committed OCaml
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          # --force-full: bypass the committed incremental-extract
+          # manifest. Without it a manifest hit turns extraction into
+          # a no-op and this drift check into a vacuous pass (the
+          # silently-no-op hazard) — the whole point is to re-derive
+          # every module's .ml here.
+          ./build-ocaml.sh extract --force-full
+          cd ../..
+          # The extracted + patched .ml must be byte-identical to what
+          # this commit ships. Any diff means the committed extraction
+          # output does not derive from the committed .fst — refuse to
+          # bind that state into a provenance attestation.
+          if ! git diff --stat --exit-code -- 'formal/fstar/ocaml-output/*.ml'; then
+            echo '::error::extraction drift: committed .ml does not match a fresh extraction of this commit''s .fst'
+            exit 1
+          fi
+
+      - name: Witness (issue #465 rung 1) — versions + input/output digests into the attested log
+        run: |
+          eval $(opam env --switch=fstar)
+          echo "== extraction pedigree witness =="
+          echo "commit: $GITHUB_SHA"
+          fstar.exe --version | head -1
+          z3 --version | head -1
+          echo "fst-tree-sha256: $(git ls-files 'formal/fstar/*.fst' 'formal/fstar/*.fsti' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)"
+          echo "glue-tree-sha256: $(git ls-files 'formal/fstar/ocaml-patches.sh' 'formal/fstar/experimental_ocaml_glue/*' 'formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/*' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)"
+          echo "npm-package-files:"
+          (cd npm/factoidal && npx --yes npm@latest pack --dry-run --json 2>/dev/null | head -5) || true
+
+      # --- Publish (trusted publishing / OIDC) ---------------------
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
