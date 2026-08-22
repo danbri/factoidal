@@ -3707,3 +3707,26 @@ Three rules pinned because each is a silent-wrong-answer if flipped:
 Template resolution context carried from the F* module: aboutUrl /
 propertyUrl / valueUrl resolve against the CURRENT TABLE's own
 already-resolved URL, never against the document base a second time.
+
+### CSVW: triple emission, minimal and standard modes (2026-08-22)
+
+`CSVW/Emit.lean` closes the csv2rdf pipeline: converted cells become
+RDF triples. BOTH modes are here — minimal (cell triples only) and
+standard (plus `csvw:describes`, `csvw:rownum`, `csvw:url` row
+scaffolding) — because the W3C manifest tests each mode separately,
+and porting only one would score half the suite while looking done.
+
+`typedLiteral` is the interesting piece. `literalWf` forbids
+`rdf:langString`/`rdf:dirLangString` on an untagged literal, and a
+datatype arriving from metadata could be either, so the obligation
+cannot be discharged statically. Rather than admit it, the
+constructor CHECKS and falls back to a plain string literal. Under the
+no-`sorry` policy an unprovable obligation is not a reason to weaken
+the policy — it is a signal that the function needs a runtime guard.
+
+Rules the guards pin: a cell whose predicate does not resolve to a
+valid IRI emits NOTHING rather than a malformed term, and does not
+stop its siblings; a language tag beats a datatype (RDF 1.1 makes any
+tagged literal `rdf:langString`); a `separator` cell emits one triple
+per element sharing subject and predicate; and `valueUrl` produces an
+IRI object rather than a literal.
