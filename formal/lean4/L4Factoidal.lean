@@ -127,3 +127,5 @@ import L4Factoidal.Geo.WktTests
 import L4Factoidal.Geo.Functions
 import L4Factoidal.Geo.FunctionsTests
 import L4Factoidal.Geo.Tests
+import L4Factoidal.CSVW.Dialect
+import L4Factoidal.CSVW.DialectTests

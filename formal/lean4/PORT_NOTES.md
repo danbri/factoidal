@@ -3609,3 +3609,27 @@ witness settles an existential), but `some false` only when EVERY
 component definitely said false. `combineForall` is the dual. Getting
 this backwards would convert refusals into confident wrong answers at
 exactly the point where compound geometries meet partial algorithms.
+
+### CSVW: dialect description and the CSV reader (2026-08-22)
+
+Opens the largest self-contained family still absent from the Lean
+tree (F* CSVW is 5,283 lines across 6 modules, 270 W3C tests).
+`CSVW/Dialect.lean` ports `csvw_dialect` from `CSVW.Metadata.fst` plus
+the row reader it drives: quoting with doubled-quote escaping,
+CRLF/LF/CR line endings, comment prefixes, row and column skipping,
+blank-row handling, and the four trim modes.
+
+Design point carried over deliberately: EVERY dialect property stays
+`Option` in the description, and defaults are applied only at read
+time in `Dialect.resolve`. Collapsing absent into the default earlier
+would destroy the distinction the metadata inheritance rules depend
+on — "not stated here, inherit from the parent" is not the same fact
+as "stated to be the default value".
+
+Two spec corners the guards pin because they are easy to get
+backwards: `header: false` means zero header rows UNLESS
+`headerRowCount` says otherwise (both properties interact, and
+`headerRowCount` wins), and an explicitly EMPTY `quoteChar` means "no
+quoting at all" rather than "use the default quote". Row numbers are
+SOURCE line numbers and must survive skipping, because `csvw:rownum`
+and every error report reference them.
