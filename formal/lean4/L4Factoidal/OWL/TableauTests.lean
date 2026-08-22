@@ -85,6 +85,50 @@ example : Refuted ⟨[], ["r"]⟩
             (.hyp (.tail _ (.tail _ (.head _)))))
           (.hyp (.head _)))))
 
+/-- Qualified count clash: `≥2 hasChild.Female` with `≤1
+    hasChild.Female` — the shape the W3C entailment-regime tests use
+    (`parent query with (hasChild max 1 Female) restriction`). -/
+example : Refuted .empty
+    [.inst "a" (.atLeastQ 2 "hasChild" (.atom "Female")),
+     .inst "a" (.atMostQ 1 "hasChild" (.atom "Female"))] :=
+  .minMaxClashQ (.hyp (.head _)) (.hyp (.tail _ (.head _)))
+
+/-- `≤1 hasChild.Female` refuted by two named daughters asserted
+    different: the qualifier must be checked, so each witness carries
+    both the edge and the class membership. -/
+example : Refuted .empty
+    [.inst "a" (.atMostQ 1 "hasChild" (.atom "Female")),
+     .rel "hasChild" "a" "b", .rel "hasChild" "a" "c",
+     .inst "b" (.atom "Female"), .inst "c" (.atom "Female"),
+     .diff "b" "c"] :=
+  .maxClashQ ["b", "c"] (.hyp (.head _)) rfl
+    (List.Pairwise.cons
+      (by intro y hy
+          cases hy with
+          | head => exact Or.inl (.hyp (by decide))
+          | tail _ h => cases h)
+      (List.Pairwise.cons (by intro _ h; cases h) List.Pairwise.nil))
+    (by intro b hb
+        cases hb with
+        | head => exact .hyp (by decide)
+        | tail _ h => cases h with
+          | head => exact .hyp (by decide)
+          | tail _ h2 => cases h2)
+    (by intro b hb
+        cases hb with
+        | head => exact .hyp (by decide)
+        | tail _ h => cases h with
+          | head => exact .hyp (by decide)
+          | tail _ h2 => cases h2)
+
+/-- The qualified-to-unqualified bridge: `≥2 hasChild.Female` clashes
+    with an UNQUALIFIED `≤1 hasChild`, because qualified successors
+    are still successors. -/
+example : Refuted .empty
+    [.inst "a" (.atLeastQ 2 "hasChild" (.atom "Female")),
+     .inst "a" (.atMost 1 "hasChild")] :=
+  .minQMaxClash (.hyp (.head _)) (.hyp (.tail _ (.head _)))
+
 -- Axiom audit. Expected base (proof policy in
 -- skills/factoidal-lean-basics): at most propext / Classical.choice /
 -- Quot.sound. Measured at landing (2026-08-22): derives_sound is

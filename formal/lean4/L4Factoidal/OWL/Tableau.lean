@@ -13,12 +13,13 @@ invariants involved are a poor fit for SMT-driven F* automation).
 interpretation function
 (https://www.w3.org/TR/owl2-direct-semantics/ Table 5), restricted to:
 class names, Boolean connectives, value restrictions
-(ObjectAllValuesFrom / ObjectSomeValuesFrom), and UNQUALIFIED
-cardinality bounds (ObjectMinCardinality / ObjectMaxCardinality).
+(ObjectAllValuesFrom / ObjectSomeValuesFrom), and cardinality bounds
+(ObjectMinCardinality / ObjectMaxCardinality) in BOTH the unqualified
+and the qualified form.
 
 NOT ported yet (later rungs, in the order the F* engine grew them):
-qualified cardinality, nominals (ObjectOneOf), datatypes, functional
-roles, and the SHIQ ≤-rule witness merge. The ∃-witness rule (fresh
+nominals (ObjectOneOf), datatypes, functional roles, and the SHIQ
+≤-rule witness merge. The ∃-witness rule (fresh
 individuals) IS here — `exWitness` — with its freshness side condition
 stated over `indsOf`; so is the role box (rung 3): subrole axioms and
 transitive roles (`RoleAxioms`), with the SHIQ ∀⁺-push rule
@@ -69,6 +70,8 @@ inductive Concept where
   | ex      (r : Role) (c : Concept) -- ObjectSomeValuesFrom
   | atLeast (n : Nat) (r : Role)     -- ObjectMinCardinality n r
   | atMost  (n : Nat) (r : Role)     -- ObjectMaxCardinality n r
+  | atLeastQ (n : Nat) (r : Role) (c : Concept)  -- ObjectMinCardinality n r C
+  | atMostQ  (n : Nat) (r : Role) (c : Concept)  -- ObjectMaxCardinality n r C
 deriving Repr, DecidableEq
 
 /-- An interpretation over a domain `δ`: class extensions and role
@@ -95,6 +98,15 @@ def Interp.sem {δ : Type} (I : Interp δ) : Concept → δ → Prop
   | .ex r c,      x => ∃ y, I.role r x y ∧ I.sem c y
   | .atLeast n r, x => ∃ l, I.succWitness r x n l
   | .atMost n r,  x => ¬ ∃ l, I.succWitness r x (n + 1) l
+  -- Qualified forms (rung 4). The witness list is inlined rather than
+  -- factored into a helper so the recursive `I.sem c y` is visibly
+  -- structural in `c` for the termination checker.
+  | .atLeastQ n r c, x =>
+      ∃ l : List δ, l.length = n ∧ l.Pairwise (· ≠ ·) ∧
+        ∀ y ∈ l, I.role r x y ∧ I.sem c y
+  | .atMostQ n r c, x =>
+      ¬ ∃ l : List δ, l.length = n + 1 ∧ l.Pairwise (· ≠ ·) ∧
+        ∀ y ∈ l, I.role r x y ∧ I.sem c y
 
 /-- ABox assertions — the ground facts the tableau starts from.
     `diff` is owl:differentFrom, the engine's source of provable
@@ -214,6 +226,31 @@ inductive Refuted (R : RoleAxioms) : List Assertion → Prop where
       Derives R A (.inst a (.disj c d)) →
       Refuted R (.inst a c :: A) →
       Refuted R (.inst a d :: A) →
+      Refuted R A
+  /-- Qualified count clash: ≥(n+1) r.C together with ≤n r.C at one
+      individual (the qualified twin of `minMaxClash`). -/
+  | minMaxClashQ {A a n r c} :
+      Derives R A (.inst a (.atLeastQ (n + 1) r c)) →
+      Derives R A (.inst a (.atMostQ n r c)) →
+      Refuted R A
+  /-- ≤n r.C refuted by n+1 named successors that are provably
+      pairwise distinct AND provably in `C` — the qualified twin of
+      `maxClash`, and the rule the W3C entailment-regime tests with
+      `hasChild max 1 Female` need. -/
+  | maxClashQ {A a n r c} (l : List Ind) :
+      Derives R A (.inst a (.atMostQ n r c)) →
+      l.length = n + 1 →
+      l.Pairwise (fun x y => Derives R A (.diff x y) ∨ Derives R A (.diff y x)) →
+      (∀ b ∈ l, Derives R A (.rel r a b)) →
+      (∀ b ∈ l, Derives R A (.inst b c)) →
+      Refuted R A
+  /-- Bridge: a qualified minimum entails the unqualified one, so an
+      unqualified `≤n r` clashes with `≥(n+1) r.C`. Stated as a clash
+      rule rather than a `Derives` rule because it relates two
+      cardinality facts, not a fact and its consequence. -/
+  | minQMaxClash {A a n r c} :
+      Derives R A (.inst a (.atLeastQ (n + 1) r c)) →
+      Derives R A (.inst a (.atMost n r)) →
       Refuted R A
   /-- The ∃-rule: a derived `∃r.C` at `a` licenses a FRESH witness
       individual `x` with an `r`-edge from `a` and membership in `C`;
