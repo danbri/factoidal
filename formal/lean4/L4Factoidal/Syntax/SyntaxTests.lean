@@ -304,6 +304,23 @@ def canonDsOf (s : String) : Option String :=
   (parseNQuads s .rdf12).toOption.map Dataset.toCanonicalNQuads
 
 -- `literal_with_BACKSPACE`: the SHORTEST escape wins over `\u0008`.
+-- `extra_whitespace-03` / `-04`: RDF 1.2 admits space/tab between the
+-- closing quote and `@lang` / `^^`, and between `^^` and the datatype
+-- IRI. RDF 1.1 stays byte-strict and rejects both.
+#guard canonOf "<http://example/s> <http://example/p> \"Alice\" @en .\n"
+  == some "<http://example/s> <http://example/p> \"Alice\"@en .\n"
+#guard canonOf ("<http://example/s> <http://example/p> \"2\"  ^^  " ++
+    "<http://www.w3.org/2001/XMLSchema#integer> .\n")
+  == some ("<http://example/s> <http://example/p> \"2\"^^" ++
+    "<http://www.w3.org/2001/XMLSchema#integer> .\n")
+#guard isErr (parseNTriples "<http://example/s> <http://example/p> \"Alice\" @en .\n" .rdf11)
+#guard isErr (parseNTriples ("<http://example/s> <http://example/p> \"2\" ^^ " ++
+    "<http://www.w3.org/2001/XMLSchema#integer> .\n") .rdf11)
+-- …and the run is NOT swallowed when no `@`/`^^` follows: a plain
+-- `xsd:string` literal leaves the spaces for the `.` terminator.
+#guard canonOf "<http://example/s> <http://example/p> \"x\"   .\n"
+  == some "<http://example/s> <http://example/p> \"x\" .\n"
+
 #guard canonOf "<http://a.example/s> <http://a.example/p> \"\\u0008\" .\n"
   == some "<http://a.example/s> <http://a.example/p> \"\\b\" .\n"
 

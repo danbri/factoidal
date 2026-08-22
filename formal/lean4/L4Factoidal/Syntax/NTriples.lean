@@ -89,15 +89,46 @@ def readDatatype (pos : Nat) : List Char → Except ParseError (WfIri × Nat × 
           | .ok wi => .ok (wi, pos', rest')
   | _ => .error ⟨"expected '^^'", pos⟩
 
+/-- `'^^' ws* IRIREF` — the RDF 1.2 form, which admits inline
+whitespace between `^^` and the datatype IRI. Port of
+`parse_datatype_ws_12`. -/
+def readDatatypeWs12 (pos : Nat) : List Char → Except ParseError (WfIri × Nat × List Char)
+  | '^' :: '^' :: rest =>
+      let (pos2, rest2) := skipWs (pos + 2) rest
+      match readIriRef pos2 rest2 with
+      | .error e => .error e
+      | .ok (iriStr, pos', rest') =>
+          match mkIri pos iriStr with
+          | .error e => .error e
+          | .ok wi => .ok (wi, pos', rest')
+  | _ => .error ⟨"expected '^^'", pos⟩
+
 /-- A literal (mode-parametrised): the string body, then optionally a
 LANGTAG (with RDF 1.2's `--ltr`/`--rtl` suffix under `.rdf12`) or a
 `^^`-datatype. Port of `parse_literal` (`.rdf11`) / `parse_literal_12`
-(`.rdf12`, minus the inline-whitespace relaxation — see module header). -/
+(`.rdf12`).
+
+RDF 1.2 N-Triples and N-Quads admit inline whitespace (space or tab)
+between the closing quote and a following `@lang` / `^^datatype`, and
+between `^^` and the datatype IRI — the W3C c14n entries
+`extra_whitespace-03` (`"Alice" @en`) and `extra_whitespace-04`
+(`"2"  ^^  <…integer>`). RDF 1.1 stays byte-strict. The run is consumed
+ONLY when a `@` or `^^` really follows; for a plain `xsd:string` the
+position BEFORE the run is returned, so the trailing whitespace stays
+with the triple parser that skips it before the `.` terminator. -/
 def readLiteral (mode : Mode) (pos : Nat) (cs : List Char) :
     Except ParseError (WfLiteral × Nat × List Char) :=
   match readStringLiteralQuoted pos cs with
   | .error e => .error e
-  | .ok (lex, pos1, rest1) =>
+  | .ok (lex, pos1, rest1raw) =>
+      -- Under `.rdf12`, look PAST a run of space/tab for the `@`/`^^`.
+      let (pos1ws, rest1ws) := match mode with
+        | .rdf11 => (pos1, rest1raw)
+        | .rdf12 => skipWs pos1 rest1raw
+      let (pos1, rest1) := match rest1ws with
+        | '@' :: _       => (pos1ws, rest1ws)
+        | '^' :: '^' :: _ => (pos1ws, rest1ws)
+        | _              => (pos1, rest1raw)
       match rest1 with
       | '@' :: _ =>
           match mode with
@@ -124,7 +155,9 @@ def readLiteral (mode : Mode) (pos : Nat) (cs : List Char) :
                   | .error e => .error e
                   | .ok wl => .ok (wl, pos2, rest2)
       | '^' :: '^' :: _ =>
-          match readDatatype pos1 rest1 with
+          match (match mode with
+                 | .rdf11 => readDatatype pos1 rest1
+                 | .rdf12 => readDatatypeWs12 pos1 rest1) with
           | .error e => .error e
           | .ok (dt, pos2, rest2) =>
               match mkLiteral pos1
