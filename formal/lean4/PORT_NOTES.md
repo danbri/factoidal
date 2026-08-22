@@ -4982,3 +4982,52 @@ METHOD NOTE: the `--dump=<manifest id>` switch on `l4csvw-rdf` prints
 both graphs as sorted N-Triples. Every one of the four bugs above was
 found by reading that diff, and none of them was visible in the
 score line, which said "produced 24, expected 24" throughout.
+
+### CSVW: per-cell subjects, virtual columns, and four value-level
+rules the corpus enforces (2026-08-22)
+
+Continuing the same measured loop, each step read off the
+`--dump=<manifest id>` diff rather than guessed:
+
+1. **The subject is per CELL, not per row.** `aboutUrl` is an
+   inherited property, so different columns of one row can describe
+   different things — the corpus has tables whose every row produces
+   an event, a place and an offer, each with its own `aboutUrl` and
+   each listed under that row's `csvw:describes`. `Emit` gained
+   `CellOut` (a converted cell with the subject it hangs from) and
+   `RowInput.subjects` (the DISTINCT subjects, one `csvw:describes`
+   each). A row-level subject merged all three onto one node.
+2. **VIRTUAL columns must not go through the cell rules.** A virtual
+   column has no field, so its cell is empty — and an empty cell IS
+   the null value, which `convertCell` correctly drops. Its value
+   comes from `valueUrl` alone, so the pipeline builds its
+   `CellResult` directly. Ten of twenty expected triples were missing
+   in `test033` for this reason.
+3. **Link properties need PREFIX EXPANSION after template
+   expansion.** `schema:{_name}` is not a prefixed name until
+   `{_name}` is filled in, so expansion belongs in the pipeline, not
+   the parse. Left alone, `rdf:type` and `schema:MusicEvent` pass the
+   `isIri` check — they have a colon — and produce triples on IRIs
+   that denote nothing.
+4. **A language tag applies only where the value is a STRING.** RDF
+   1.1 has no language-tagged `xsd:normalizedString`. A stated
+   non-string datatype wins over an inherited `lang`. An
+   `EmitTests` guard asserted the OPPOSITE rule ("a language tag wins
+   over a datatype") and had to be corrected — it was pinning
+   behaviour, not the specification.
+5. **An invalid language tag is ignored, not attached.** The corpus
+   supplies `"lang": "notavalidlanguagetag"` and expects a plain
+   literal. `isLangTagValid` checks the BCP 47 subtag shape.
+6. **A datatype NAME the specification does not list is rejected.**
+   `anySimpleType` and `anyType` are XSD types CSVW deliberately
+   excludes; reading every name as `xsd:<name>` put
+   `^^xsd:anySimpleType` on literals the expected graph leaves plain.
+   `csvwDatatypeNames` is the permitted list.
+
+📊 MEASURED, csv2rdf: **100 pass, 105 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 90 at the previous landing and 9
+before the metadata parse existed.
+
+Every one of these six produced the RIGHT number of triples with the
+wrong content, except (2). The score line read "produced 19, expected
+19" through four consecutive bugs.

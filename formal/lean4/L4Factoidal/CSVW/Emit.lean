@@ -79,9 +79,28 @@ def rowSubject (aboutRef : Option String) (rowNum : Nat) : Subject :=
     exist — `xsd:number` appeared on twelve triples of the csv2rdf
     corpus before this table, where the value space is `xsd:double`
     (measured 2026-08-22). -/
+def csvwDatatypeNames : List String :=
+  [ "anyAtomicType", "anyURI", "base64Binary", "boolean", "date",
+    "dateTime", "dateTimeStamp", "decimal", "integer", "long", "int",
+    "short", "byte", "nonNegativeInteger", "positiveInteger",
+    "unsignedLong", "unsignedInt", "unsignedShort", "unsignedByte",
+    "nonPositiveInteger", "negativeInteger", "double", "duration",
+    "dayTimeDuration", "yearMonthDuration", "float", "gDay", "gMonth",
+    "gMonthDay", "gYear", "gYearMonth", "hexBinary", "QName", "string",
+    "normalizedString", "token", "language", "Name", "NMTOKEN",
+    "xml", "html", "json", "time",
+    -- the CSVW aliases
+    "number", "binary", "datetime", "any" ]
+
 def datatypeIriFor (base : String) : Option String :=
   let xsd := fun (n : String) => some ("http://www.w3.org/2001/XMLSchema#" ++ n)
-  if base == "number" then xsd "double"
+  -- A name the specification does not list is REJECTED, not passed
+  -- through: `anySimpleType` and `anyType` are XSD types CSVW
+  -- deliberately excludes, and minting `xsd:anySimpleType` from one
+  -- puts a datatype on a literal that the expected graph leaves
+  -- plain (measured 2026-08-22).
+  if !csvwDatatypeNames.contains base then none
+  else if base == "number" then xsd "double"
   else if base == "binary" then xsd "base64Binary"
   else if base == "datetime" then xsd "dateTime"
   else if base == "any" then xsd "anyAtomicType"
@@ -90,17 +109,44 @@ def datatypeIriFor (base : String) : Option String :=
   else if base == "json" then some "http://www.w3.org/ns/csvw#JSON"
   else xsd base
 
+/-- Is this a well-formed BCP 47 language tag, to the extent RDF 1.1
+    requires? Each subtag is 1–8 alphanumeric characters and the first
+    is alphabetic.
+
+    Checked rather than trusted: the corpus supplies
+    `"lang": "notavalidlanguagetag"` and expects a PLAIN literal, so a
+    tag that cannot be a tag must be ignored, not attached. Attaching
+    it produces a literal RDF 1.1 does not permit. -/
+def isLangTagValid (s : String) : Bool :=
+  let parts := s.splitOn "-"
+  !s.isEmpty &&
+  parts.all (fun p => p.length ≥ 1 && p.length ≤ 8 && p.all Char.isAlphanum) &&
+  (match parts.head? with
+   | some p => p.all Char.isAlpha
+   | none   => false)
+
 /-- The object terms a cell contributes: value IRIs when `valueUrl`
     applied, else literals carrying the column's datatype and
     language. A language tag wins over a datatype, per RDF 1.1 (a
     language-tagged literal is always `rdf:langString`). -/
 def cellObjects (inh : Inherited) (r : CellResult) : List Term :=
   let fromUrls := r.valueRefs.filterMap (fun u => (toIri? u).map Term.iri)
+  -- A language tag applies only where the value is a STRING. RDF 1.1
+  -- has no language-tagged `xsd:normalizedString`: a column that
+  -- states a non-string datatype takes that datatype, and an
+  -- inherited `lang` does not override it. Letting `lang` win
+  -- unconditionally produced `"string"@en` where the corpus expects
+  -- `"string"^^xsd:normalizedString` (measured 2026-08-22).
+  let base := inh.datatype.bind Datatype.baseName
+  let langApplies := match base with
+    | none   => true
+    | some b => b == "string"
+  let usableLang := inh.lang.filter isLangTagValid
   let fromLits := r.literals.map (fun lex =>
-    match inh.lang with
+    match (if langApplies then usableLang else none) with
     | some tag => Term.literal (Literal.langString lex tag)
     | none =>
-        match ((inh.datatype.bind Datatype.baseName).bind datatypeIriFor).bind toIri? with
+        match (base.bind datatypeIriFor).bind toIri? with
         | some dt => Term.literal (typedLiteral dt lex)
         | none    => Term.literal (Literal.string lex))
   fromUrls ++ fromLits
@@ -116,11 +162,25 @@ def cellTriples (inh : Inherited) (subj : Subject) (r : CellResult) : List Tripl
 
 /-- Minimal mode, one row: the cell triples only. `cells` pairs each
     column's effective inherited properties with its converted
-    result. -/
+    result. All cells share one subject — the shape a table with no
+    per-column `aboutUrl` has. -/
 def rowTriplesMinimal (rowNum : Nat) (cells : List (Inherited × CellResult))
     : List Triple :=
   let subj := rowSubject (cells.findSome? (fun (_, r) => r.aboutRef)) rowNum
   cells.flatMap (fun (inh, r) => cellTriples inh subj r)
+
+/-- One converted cell, with the subject it hangs from.
+
+    The subject is PER CELL, not per row. `aboutUrl` is an inherited
+    property, so different columns of one row can describe different
+    things — the csv2rdf corpus has tables whose every row produces an
+    event, a place and an offer, each with its own subject and each
+    listed under that row's `csvw:describes`. A row-level subject
+    collapses all three onto one node. -/
+structure CellOut where
+  subject : Subject
+  inh     : Inherited
+  result  : CellResult
 
 /-- The blank node that carries one row's description. Named, and
     exported, because the enclosing table must link the SAME node
@@ -134,61 +194,37 @@ def rowTriplesMinimal (rowNum : Nat) (cells : List (Inherited × CellResult))
 def rowNode (tag : String) (rowNum : Nat) : Subject :=
   .bnode ("rownode" ++ tag ++ "_" ++ toString rowNum)
 
-/-- Standard mode, one row: the cell triples plus the row description
-    — `rdf:type csvw:Row`, `csvw:describes` linking the row node to
-    the cell subject, `csvw:rownum` and `csvw:url`. -/
-def rowTriplesStandard (tag tableUrl : String) (rowNum sourceRow : Nat)
-    (cells : List (Inherited × CellResult)) : List Triple :=
-  let subj := rowSubject (cells.findSome? (fun (_, r) => r.aboutRef)) rowNum
-  let node := rowNode tag rowNum
-  let core := cells.flatMap (fun (inh, r) => cellTriples inh subj r)
-  let rowUrl := tableUrl ++ "#row=" ++ toString sourceRow
-  let urlTriples := match toIri? rowUrl with
-    | some u => [(⟨node, csvwUrlProp, .iri u⟩ : Triple)]
-    | none   => []
-  [ ⟨node, rdfTypeIri, .iri csvwRowCls⟩,
-    ⟨node, csvwDescribes, subj.toTerm⟩,
-    ⟨node, csvwRownumProp, .literal (typedLiteral xsdInteger (toString rowNum))⟩ ]
-  ++ urlTriples ++ core
-
 /-- One row's converted cells, with both row numbers it needs: the
     1-based position within the table (`rowNum`, which `csvw:rownum`
     reports and which keys the blank nodes) and the line number in
     the source file (`sourceRow`, which the `#row=` fragment
-    reports). They differ whenever the file has a header.
-
-    `subject` overrides the subject derived from the cells' `aboutUrl`
-    when the caller has already computed it (the metadata path
-    expands one row-level `aboutUrl` template rather than reading it
-    back off each cell). -/
+    reports). They differ whenever the file has a header. -/
 structure RowInput where
   rowNum    : Nat
   sourceRow : Nat
-  cells     : List (Inherited × CellResult)
-  subject   : Option Subject := none
+  cells     : List CellOut
 
-/-- The subject a row's cells hang from. -/
-def RowInput.subj (r : RowInput) : Subject :=
-  match r.subject with
-  | some s => s
-  | none   => rowSubject (r.cells.findSome? (fun (_, c) => c.aboutRef)) r.rowNum
+/-- The DISTINCT subjects a row describes, in first-appearance order.
+    One `csvw:describes` triple each. -/
+def RowInput.subjects (r : RowInput) : List Subject :=
+  r.cells.foldl (fun acc c => if acc.contains c.subject then acc else acc ++ [c.subject]) []
 
-/-- Minimal mode, one row, honouring an explicit subject. -/
+/-- Minimal mode, one row. -/
 def rowTriplesMinimalOf (r : RowInput) : List Triple :=
-  let subj := r.subj
-  r.cells.flatMap (fun (inh, c) => cellTriples inh subj c)
+  r.cells.flatMap (fun c => cellTriples c.inh c.subject c.result)
 
-/-- Standard mode, one row, honouring an explicit subject. -/
+/-- Standard mode, one row: the cell triples plus the row description
+    — `rdf:type csvw:Row`, one `csvw:describes` per distinct subject,
+    `csvw:rownum` and `csvw:url`. -/
 def rowTriplesStandardOf (tag tableUrl : String) (r : RowInput) : List Triple :=
-  let subj := r.subj
   let node := rowNode tag r.rowNum
   let rowUrl := tableUrl ++ "#row=" ++ toString r.sourceRow
   let urlTriples := match toIri? rowUrl with
     | some u => [(⟨node, csvwUrlProp, .iri u⟩ : Triple)]
     | none   => []
   [ ⟨node, rdfTypeIri, .iri csvwRowCls⟩,
-    ⟨node, csvwDescribes, subj.toTerm⟩,
     ⟨node, csvwRownumProp, .literal (typedLiteral xsdInteger (toString r.rowNum))⟩ ]
+  ++ r.subjects.map (fun s => (⟨node, csvwDescribes, s.toTerm⟩ : Triple))
   ++ urlTriples ++ rowTriplesMinimalOf r
 
 /-- Standard mode, one table: a `csvw:Table` node carrying
