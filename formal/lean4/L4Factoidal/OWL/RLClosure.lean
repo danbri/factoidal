@@ -84,7 +84,7 @@ Two further gaps worth naming rather than leaving to inference:
 -/
 import L4Factoidal.OWL.RLRules
 
-namespace L4Factoidal.OWL
+namespace L4Factoidal.OWL.RL
 
 open L4Factoidal.RDF
 
@@ -842,4 +842,4 @@ usually only visible after materialisation. -/
 def inconsistent (g : Graph) (fuel : Nat) : Bool :=
   detectClash (closure g fuel)
 
-end L4Factoidal.OWL
+end L4Factoidal.OWL.RL

@@ -117,7 +117,7 @@ shape and what is and is not claimed.
 import L4Factoidal.RDF.Graph
 import L4Factoidal.OWL.Vocabulary
 
-namespace L4Factoidal.OWL
+namespace L4Factoidal.OWL.RL
 
 open L4Factoidal.RDF
 
@@ -921,4 +921,4 @@ theorem Clash.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
       exact Clash.caxAdc (hsub _ a) (hsub _ b) (h1.mono hsub) (h2.mono hsub)
         hne (hsub _ t1) (hsub _ t2)
 
-end L4Factoidal.OWL
+end L4Factoidal.OWL.RL

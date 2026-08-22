@@ -83,7 +83,7 @@ eqb-equal variant. That asymmetry is absent here by construction.
 -/
 import L4Factoidal.OWL.RLClosure
 
-namespace L4Factoidal.OWL
+namespace L4Factoidal.OWL.RL
 
 open L4Factoidal.RDF
 
@@ -1575,4 +1575,4 @@ theorem exists_fuel_listSeqs {g : Graph} {head : Term} {es : List Term}
       ⟨node, rdfRest, tail⟩, mem_withSubjPred_of hr rfl rfl,
       rest, hn, rfl⟩
 
-end L4Factoidal.OWL
+end L4Factoidal.OWL.RL

@@ -27,7 +27,7 @@ by inspection.
 import L4Factoidal.RDF.Core
 import L4Factoidal.RDFS.Vocabulary
 
-namespace L4Factoidal.OWL
+namespace L4Factoidal.OWL.RL
 
 open L4Factoidal.RDF
 
@@ -199,4 +199,4 @@ def litNni1 : WfLiteral :=
   ⟨{ lexicalForm := "1", datatype := xsdNonNegativeInteger,
      langTag := none, direction := none }, rfl⟩
 
-end L4Factoidal.OWL
+end L4Factoidal.OWL.RL
