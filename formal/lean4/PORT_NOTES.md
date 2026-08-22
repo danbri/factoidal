@@ -42,6 +42,10 @@ a green test run.
 | `L4Factoidal/XML/Theorems.lean` | (new) | a structural well-formedness checker over the parse tree, a serialiser, the proved tag-matching theorem, and the two general claims stated as named `Prop`s |
 | `L4Factoidal/XML/Tests.lean` | (new) | 118 `#guard`s: hub post 25's two live documents, every constraint in `Parser.lean`'s header, the namespace layer, reflexivity and round-trip fixtures |
 | `L4Factoidal/XML/ConfProbe.lean` | `bin/xml-runner/xml_runner.ml` (the driver only) | the `xmlconf-probe` executable: reads W3C conformance file paths from stdin, prints a well-formed/malformed verdict per file |
+| `L4Factoidal/Syntax/RdfXml.lean` | `Parser.RDFXML.fst` + the RDF/XML half of `XML.Wellformedness.fst` | RDF 1.1 XML Syntax §7.2: `parseRdfXml : String → Option String → Except ParseError Graph`. Node/property element dispatch, all four `rdf:parseType` forms, `rdf:li`↦`rdf:_n`, `[7.2.23]` `rdf:ID` uniqueness, §7.3 reification, XML Base + `xml:lang` scoping. Namespace-CORRECT where the F\* is not — see below |
+| `L4Factoidal/Syntax/RdfXmlTests.lean` | (new) | 89 `#guard`s: at least one per §7.2 production cited in the file, plus the negative cases the W3C `rdf-xml` suite carries (`rdf:li` as a node element, non-NCName `rdf:ID`, duplicate `rdf:ID`, property attribute + `parseType`, `xml:base` fragment, withdrawn `rdf:aboutEach`/`bagID`) |
+| `L4Factoidal/Syntax/RdfXmlTheorems.lean` | (new) | 37 theorems: the `rdf:_n` counter is strictly increasing and never reuses an ordinal; `xml:lang` inherits when absent and clears on `""`; base resolution reduces DEFINITIONALLY to `Syntax.resolveIri`; generated and `rdf:nodeID` blank-node labels cannot collide; the XML-scoped vs document-scoped split of `restoreScope` |
+| `Harness/RdfXmlProbe.lean` | `bin/w3c-runner` (the driver role only) | the `l4rdfxml-probe` executable: walks `third_party/testing/w3c/rdf/rdf11/rdf-xml` by directory layout (no manifest, so no dependency on the Turtle parser), scores parse/reject/isomorphism with denominators |
 | `L4Factoidal/JSON/Value.lean` | `Parser.JSON.fst` `json_val` + accessors | `Json` (`null`/`bool`/`string`/`number`/`array`/`object`), hand-written `DecidableEq` (nested-inductive — `deriving` does not apply, see file header), `field?`/`getString?`/`getBool?`/`getArray?`/`getStringArray?` |
 | `L4Factoidal/JSON/Parser.lean` | `Parser.JSON.fst` (the parser half) | `parseJson : String → Except JsonError Json`, total via fuel (mirrors the F\* fuel discipline); indexes a `List Char`, not raw bytes — see file header on why (Lean `Char` = full Unicode scalar value; sidesteps `Parser.FastString`'s byte-slicing machinery and this toolchain's `String.Pos` API) |
 | `L4Factoidal/JSON/Serialize.lean` | `SPARQL.JSON.Escape.fst` (`json_escape`) + the writer shape of `Parser.JSONLD.fst`'s `jcanon_serialize` (NOT its JCS canonicalisation/field-sorting) | `Json.toString` (compact) and `Json.toStringPretty` (new; no F\* counterpart) |
@@ -504,3 +508,662 @@ the F\* tree first (iron rule #1) rather than only in Lean.
 ## Next stages
 
 The authoritative ladder is https://github.com/danbri/factoidal/issues/466 (every landing and open rung, with its branch). Queued as of 2026-08-22: `NamedGraph.name : Subject` (blank-node graph names — the two remaining rdf-trig fails), RDF/XML, JSON-LD, the SPARQL string parser, OWL 2 RL (all in flight), then SPARQL Update, SHACL Core, the regex engine, xsd:dateTime, the model-theoretic halves of the RDFS/OWL theorems, and closing the stated-but-unproved round-trip goals.
+1. ~~The expression language (`expr`, EBV, §17 operators) and with it
+   real `Filter`/`LeftJoin` conditions.~~ **Landed** —
+   `SPARQL/Expr.lean`, `ExprTheorems.lean`, `ExprTests.lean`. What it
+   still lacks: a pure regex matcher (REGEX/REPLACE), pure hash
+   functions (§17.4.3.16), xsd:dateTime TIMEZONE/TZ, aggregate
+   evaluation over a group, xsd type-cast constructor functions, and
+   RFC 3986 BASE resolution for `IRI()`.
+0. JSON-LD, SPARQL Results JSON, and JSON Schema ports now unblocked
+   by `L4Factoidal/JSON/` (`Parser.JSONLD.fst`/`Parser.JSONResults.fst`
+   are the F\* sources; both consume `json_val`/`Json` via the same
+   `field?`/`json_get_*` shape this port kept API-compatible with).
+   Closing `Theorems.lean`'s `RoundTripGoal` gap (three named items:
+   escaped-content strings, general number lexemes, array/object
+   induction through the mutual-recursion group) is worth doing before
+   or alongside the JSON-LD port, since JSON-LD's own round-trip
+   proofs will need the same techniques one level up.
+1. The expression language (`expr`, EBV, §17 operators) and with it
+   real `Filter`/`LeftJoin` conditions.
+2. N-Triples/N-Quads parsing + serialisation (round-trip theorems —
+   the F\* tree's G4/M1 program has proofs worth re-proving natively).
+3. A W3C-suite harness: build a small Lean executable that reads the
+   same manifests `bin/w3c-runner` does, so the Lean engine's scores
+   are measured by the same files (the F\* tree's iron rule #6).
+4. Wider `GraphPattern`: GRAPH, VALUES, BIND, sub-SELECT, property
+   paths, and the SPARQL 1.2-track LATERAL.
+5. ~~RDFS closure + soundness~~ — LANDED for the six-row rdfs-core
+   fragment (`L4Factoidal/RDFS/`, 2026-08-22). The continuations it
+   opens, in order:
+   a. the term-universe counting bound that discharges
+      `closureFuelBound` (the one named obligation above);
+   b. the rdfs-core MODEL THEORY (interpretations, `rho_df_conditions`,
+      `satisfies`), which turns T2 from proof-theoretic into the
+      model-theoretic statement the F\* tree proves, and gives the
+      "decides entailment" payoff;
+   c. the twelve-row RDFS closure, whose extra rows need the axiomatic
+      triples the fragment omits;
+   d. moving the eqb lemmas of section 6 into `RDF/Core.lean`.
+   Tableau work (#448-adjacent) after that, where Lean's structural
+   induction is expected to shine.
+
+## Crypto/SHA2 landing (2026-08-22)
+
+`L4Factoidal/Crypto/SHA2.lean` + `SHA2Theorems.lean` + `SHA2Tests.lean`
+— a pure Lean 4 implementation of FIPS 180-4 SHA-256/384/512, under
+the crypto-policy skill's "Lean 4 tree amendment" (owner-approved
+2026-08-22: a pure Lean hash over PUBLIC data is permitted, carrying
+FIPS/RFC test vectors as build-time `#guard`s; signatures/MACs/
+key-agreement stay HACL*-FFI-only, never hand-written Lean).
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `L4Factoidal/Crypto/SHA2.lean` | `RDF.Canonical.fst` `hash_sha256`/`hash_sha384` `assume val`s | full message schedule, compression, §5.1.1/§5.1.2 padding, `sha256`/`sha384`/`sha512` (`ByteArray → ByteArray`) + `sha256Hex`/`sha384Hex`/`sha512Hex` (`String → String`, UTF-8-in/lowercase-hex-out — the exact shape the F\* `assume val`s need) |
+| `L4Factoidal/Crypto/SHA2.lean` (`HashAlgorithm`/`hashBytes`/`hashHex`) | (new; hash-agility layer, owner directive 2026-08-22 — "sooner or later [SHA-256] will fall and we want to be ready") | every future consumer (RDFC-1.0, VC Data Integrity, SPARQL §17.4.4) is required to take a `HashAlgorithm` parameter and call the dispatcher, never `sha256`/`sha256Hex` directly; `HashAlgorithm` deliberately leaves room for a `sha3_256`/`shake256` constructor (FIPS 202, not ported — different Keccak-based construction) |
+| `L4Factoidal/Crypto/SHA2Theorems.lean` | (new) | `pushN_size` (padding-fill byte count), `pad256_size`/`pad512_size` (padded length is a multiple of 64/128 — the fact that makes the outer block loop's Nat-fuel exact rather than approximate), `sha256_size`/`sha384_size`/`sha512_size` (32/48/64-byte digest length) — all six proved (`propext`, `Quot.sound` only; no `sorry`, no extra axioms), none needed to be left unproved |
+| `L4Factoidal/Crypto/SHA2Tests.lean` | (new) | 22 `#guard`s: FIPS 180-4's three official example messages ("abc", the 56-byte and 112-byte two-block examples, 1,000,000×'a') for all three algorithms, plus a non-ASCII UTF-8 case and the hash-agility dispatcher, against digests generated (not hand-typed) from macOS `shasum -a 256/384/512` output — see the file's own provenance note for why (two hand-typed digest transcription errors were caught and replaced in-session before landing) |
+
+**This REPLACES `RDF.Canonical.fst`'s `hash_sha256`/`hash_sha384`
+`assume val`s with pure, verified-total code** for the Lean tree (the
+F\* tree's own `assume val`s are untouched by this landing — that is
+a separate F\*-side realisation step, tracked by crypto-policy/#63).
+**MD5 and SHA-1 remain unported** — out of scope for this landing
+(SPARQL §17.4.4 also names `MD5`/`SHA1`; both are legacy/broken
+algorithms with no RDFC-1.0 or VC Data Integrity call site, so porting
+them was not prioritised here).
+
+Structural discipline: no `partial def` anywhere. The outer block
+loop is Nat-fuel-by-exact-block-count (`pad256_size`/`pad512_size`
+prove the fuel is exact); the two per-block fixed-length loops
+(message schedule extension, round function) use core Lean's
+`for _ in [a:b] do` over a compile-time-constant range; `pushN`
+(padding) is explicit Nat-structural recursion; the digest
+serialisation is a straight-line, statically-fixed-count push chain
+(not a loop) — see `SHA2.lean`'s module header for why that specific
+design choice is what makes the length theorems tractable by `simp`
+alone, without reasoning about the hash's actual arithmetic.
+## Addendum (2026-08-22): N-Triples / N-Quads syntax port
+
+Scope of this stage: RDF 1.1 N-Triples and N-Quads parsing + wire
+serialisation, plus the RDF 1.2 object-position triple-term and
+directional-literal extensions (W3C Working Draft, mirroring the F* tree's
+`Mode_11`/`Mode_12` split). Adds `L4Factoidal/Syntax/{Lexing,NTriples,
+NQuads,SyntaxTheorems}.lean` (defs/theorems) and `SyntaxTests.lean`
+(46 `#guard` checks). `lake build` remains green with these five modules
+wired into `L4Factoidal.lean`.
+
+### Module correspondence
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `L4Factoidal/Syntax/Lexing.lean` | `Parser.NTriples.fst` character-level helpers (`hex_val_opt`, `valid_codepoint`/`safe_char_of_int`, `parse_iri_raw`/`parse_iri_body_acc`, `parse_string_literal`/`parse_string_body`, `parse_lang_tag`, `parse_lang_dir_12`, `parse_bnode`, `pws`/`skip_comment`/`skip_eol`) | codepoint-level (`List Char`) instead of the F* source's byte-level (`Parser.FastString`) primitives — see Assumption report below. Structural recursion throughout; no fuel needed (Lean's nested cons-pattern recursion decreases automatically where the F* source needed `decreases fuel`). |
+| `L4Factoidal/Syntax/NTriples.lean` | `Parser.NTriples.fst` triple-level grammar (`parse_subject`/`parse_object`/`parse_object_12_f`/`parse_triple`/`parse_triple_12`/`parse_ntriples_strict`/`parse_ntriples_strict_12`) + the N-Triples half of `RDF.NQuads.Serialize.fst` (`nq_term_to_string`, `nq_subject_to_string`, `nq_line_for_triple_default_graph`) | `Mode` (`rdf11`/`rdf12`) is the Lean counterpart of `rdf_syntax_mode`. Only the STRICT parse entry points are ported (see "Deliberately not ported" below). `readObject12`'s triple-term nesting uses an explicit `fuel : Nat` — the one place this port keeps the F* source's fuel style, because the recursive call is reached after parsing a subject/predicate in between (not a direct cons-pattern suffix), so plain structural recursion on the char list is unavailable there. |
+| `L4Factoidal/Syntax/NQuads.lean` | `Parser.NQuads.fst` (`parse_graph_label`/`parse_opt_graph_label`/`parse_nquad`/`parse_nquad_12`/`parse_nquads_strict`/`parse_nquads_strict_12`/`dataset_add_quad`) + the N-Quads half of `RDF.NQuads.Serialize.fst` (`nq_line_for_triple`) | Reuses `Syntax.NTriples`'s subject/predicate/object readers verbatim, matching the F* source's own module structure (`Parser.NQuads.fst` `open`s `Parser.NTriples`). `addQuad` is a direct-append version of `dataset_add_quad`; the F* source's `graph_add_unchecked` + `dataset_finalise` prepend-then-reverse split is a performance pragmatic over the identical set semantics, not ported (see below). |
+| `L4Factoidal/Syntax/SyntaxTheorems.lean` | (new; no direct F* counterpart — the F* tree's G4/M1 round-trip program is SMT-`Lemma`-based) | ECHAR/UCHAR decode round-trip facts on concrete escape-table entries (`rfl`-proved); the general graph round-trip theorem's BASE CASE (`graph_roundtrip_nil`, proved); the general theorem's FULL statement + induction skeleton (commented out, not `sorry` — see the file's module header for the two blocking gaps). |
+| `L4Factoidal/Syntax/SyntaxTests.lean` | (new; hand-written fixtures in the style of `third_party/testing/w3c/rdf/rdf11/rdf-n-triples/` — that submodule is absent in this worktree, see below) | 46 `#guard`s: positive/negative RDF 1.1 N-Triples, RDF 1.2 fixtures (directional literals, triple terms, nested triple terms, legacy `<< >>` rejection), serialise-then-parse round trips on every positive fixture graph, N-Quads with two named graphs + a blank-node graph label + a rejected literal graph label. |
+
+### Deliberately NOT ported (spec/pragmatics split, matching the existing
+`RDF.Graph`/`SPARQL.Algebra` convention in this tree)
+
+- The F* source's FAST-PATH / SLOW-PATH split (`scan_iri_end` vs.
+  `parse_iri_body_acc`, `scan_string_fast` vs. `parse_string_body`) — a
+  byte-buffer performance optimisation; this port has one code path per
+  reader.
+- The LENIENT document parsers (`parse_ntriples`/`parse_ntriples_12`/
+  `parse_nquads`/`parse_nquads_12` — skip a malformed line and keep
+  going) and the streaming/count/validate-only variants (`fold_ntriples`,
+  `fold_nquads`, `count_ntriples`, `count_nquads_quads`, every
+  `validate_*` function, `parse_nquads_flat`). All are CLI/import-
+  pipeline/performance pragmatics over the identical grammar the STRICT
+  entry points this port ships already specify; this matches the
+  existing `L4Factoidal` convention of porting the SPECIFICATION
+  evaluator, not the OCaml extraction's performance seam.
+- RDF 1.2's inline-whitespace relaxation between a closing quote and a
+  following `@lang`/`^^datatype` (F* `parse_literal_12`'s `pws`-then-peek
+  logic, exercised by the W3C c14n suite's `extra_whitespace-03`/`-04`
+  tests). Not exercised by anything in `SyntaxTests.lean`; flagged as a
+  known gap rather than silently dropped.
+- The F* source's CANONICAL N-Triples/N-Quads serialiser
+  (`nq_canon_term`/`canonical_nt_document`/`canonical_nq_document` —
+  uppercase `\u00XX` for every C0/DEL byte, lowercased language tags,
+  U+FFFE/U+FFFF escaping) — a distinct rendering contract for the
+  RDFC-1.0 c14n test suite, not the general wire serialiser
+  `Graph.toNTriples`/`Dataset.toNQuads` port.
+
+### Assumption report — F\* primitives this port replaces or cannot carry over
+
+- `Parser.FastString`'s byte-indexed primitives (`fs_byte_length`,
+  `fs_byte_index`, `fs_byte_at`, `fs_byte_sub`, `fs_cp_at`,
+  `fs_utf8_of_codepoint`, `unsafe_char_of_d7ff`) — all `assume val`
+  realisations in the F* tree (rule #11(b), pure host-string-library
+  call-outs; the F* source's own comments cite issue #70 and #325 for
+  why the byte/codepoint split exists and a bug it once caused). This
+  port needs NONE of them: Lean's `List Char` is already
+  codepoint-indexed (produced by `String.toList`, which decodes UTF-8),
+  so every byte-vs-codepoint distinction the F* source's comments walk
+  through (the `#325` double-encoding bug, the ASCII-fast-path vs.
+  codepoint-slow-path split in `is_bnode_char_cp`) collapses to a single
+  codepoint-level definition with no host primitive at all. This is a
+  case where the Lean port is STRUCTURALLY simpler than the F* source,
+  not merely a different implementation of the same primitive.
+- `RDF.Term.fsti`'s `is_iri` (ported as `RDF.Core.isIri`, already noted
+  zero-`assume val` in the original port) is reused unchanged by this
+  stage's `mkIri`. Its coarseness (non-empty + contains `:`, not the
+  full IRIREF-forbidden-codepoint grammar) is the SAME gap the F* source
+  has — see `SyntaxTheorems.lean`'s GAP #1 note. Not a regression this
+  port introduced; recorded here because it is the reason the general
+  round-trip theorem could not be closed in this session.
+- No new `assume val`-equivalent (`axiom`/`opaque`/`partial`) was
+  introduced anywhere in `Syntax.*`. Every reader is a total Lean
+  function (`#print axioms` on the proved theorems in
+  `SyntaxTheorems.lean` shows only `propext`/`Classical.choice`/
+  `Quot.sound` — Lean's standard foundations, the same baseline
+  `L4Factoidal.Tests`'s own audit lines already carry).
+
+### Deviation from the port brief's literal signature order
+
+The brief specified `parseNTriples (mode := .rdf11) (s : String)` /
+`parseNQuads (mode := .rdf11) (s : String)` (default parameter FIRST).
+Lean 4 does not skip a leading `optParam` in a bare positional call —
+`parseNTriples "text"` with `mode` first is a TYPE ERROR (confirmed by a
+scratch test: `f "hello"` against `f (mode : M := .a) (s : String)`
+rejects `"hello"` against the `Mode`-typed first slot rather than
+skipping to `s`). This port therefore declares the STRING parameter
+first and `mode` second, trailing, with the default:
+`parseNTriples (s : String) (mode : Mode := .rdf11)`. Same reordering
+for `Graph.toNTriples`/`Dataset.toNQuads` (`g`/`ds` first, `mode`
+second). Every call site in `SyntaxTests.lean`/`SyntaxTheorems.lean`
+uses this order; `parseNTriples s` (RDF 1.1 default) and
+`parseNTriples s .rdf12` both work as intended.
+
+### Core/Graph change that would help (not made — brief scopes this port
+to new files only)
+
+`RDF.Graph.lean`'s `NamedGraph` derives `Repr` only, not `DecidableEq`
+(`Dataset` likewise). This port's tests need to compare `List NamedGraph`
+for the N-Quads round-trip check and cannot add `deriving DecidableEq`
+without editing `RDF.Graph.lean`, so `SyntaxTests.lean` carries a local
+`namedGraphsEq`/`namedGraphEq` helper instead (pointwise `name`/`graph`
+comparison, `List Triple`'s own derived `DecidableEq` doing the real
+work). Adding `deriving DecidableEq` to `NamedGraph` and `Dataset` in
+`RDF.Graph.lean` would let that helper be replaced by ordinary `==`,
+matching the `instBEqOfDecidableEq` convention this project's own
+pitfall list (`skills/factoidal-lean-basics`) already recommends for
+every other structure in the tree.
+
+---
+
+## RDFC-1.0 canonicalization (`RDF/Canonical*.lean`, Harness/CanonProbe)
+
+Ported: `formal/fstar/RDF.Canonical.fst` (2273 lines) → three Lean
+modules plus one harness executable. Spec of record:
+RDF Dataset Canonicalization 1.0 (W3C Recommendation 2024),
+https://www.w3.org/TR/rdf-canon/ .
+
+### Module correspondence
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `L4Factoidal/RDF/Canonical.lean` | `RDF.Canonical.fst` Sections 1–8 | canonical N-Quads form (§3), Hash First Degree Quads (§4.5), Hash Related Blank Node (§4.6), Hash N-Degree Quads with the permutation loop (§4.7), the `c14n`/`b` identifier issuers (§4.8), and the two-pass §4.4 driver; `canonicalize`, `Dataset.canonicalNQuads`, `Dataset.canonicalHash`, `canonicalizeExceedsBudget` |
+| `L4Factoidal/RDF/CanonicalTheorems.lean` | (new; the F\* module's Section 5b label-shape lemmas, plus more) | 37 theorems: output sortedness, decimal-rendering round trip and injectivity, the issuer invariant + step lemma + injectivity preservation, and the §4.5 relabelling-invariance chain up to `hashFirstDegreeQuads_rename` |
+| `L4Factoidal/RDF/CanonicalTests.lean` | (new) | 62 `#guard`s incl. both RDFC-1.0 §4.2 worked examples verbatim |
+| `Harness/CanonProbe.lean` (`lake exe l4rdfc-probe`) | `rdfc10_runner.ml` | walks the vendored W3C corpus off disk |
+
+### Assumption report
+
+The F\* module has exactly TWO `assume val`s: `hash_sha256` and
+`hash_sha384`. Both are **replaced** here by the pure Lean SHA-2 of
+`L4Factoidal/Crypto/SHA2.lean`, reached only through the
+`HashAlgorithm` parameter (`Crypto.hashHex`) — no function in
+`Canonical.lean` names `sha256`/`sha384` directly, per the hash-agility
+rule in `skills/crypto-policy`. That closes the F\* module's whole
+trust surface: in the F\* tree those two are realised by hand-written
+OCaml (`fstar_pure_hashes.ml`), a rule-#11 gap tracked as issue #63.
+
+Nothing else in `RDF.Canonical.fst` was assumed, and nothing else is
+assumed here. No `sorry`, no user `axiom`, no `native_decide`, no
+`partial`. `#print axioms` on every headline theorem and entry point
+shows exactly `[propext, Classical.choice, Quot.sound]`.
+
+### Measured against the real corpus
+
+`lake exe l4rdfc-probe` over
+`third_party/testing/rdf-canon/tests/rdfc10/` (run 2026-08-22):
+
+- rdfc10 eval (SHA-256): **63 pass, 0 fail (out of 63)**
+- sha384 eval: **1 pass, 0 fail (out of 1)** — the suite marks exactly
+  one entry `rdfc:hashAlgorithm "SHA384"` (test075)
+- rdfc10 map eval (issued identifier maps): **21 pass, 0 fail (out of 21)**
+- negative eval (the §4.4 excessive-calls abort): **1 pass, 0 fail (out of 1)**
+- total **86 pass, 0 fail (out of 86)**, the same score the F\* tree
+  reports on the same corpus
+
+Sabotage-checked, per the skill's discipline: replacing §4.5's `_:z`
+placeholder with `_:y` drops the eval score to 35 pass, 28 fail (out of
+63); forcing SHA-256 where the manifest asks for SHA-384 fails test075;
+deleting the §3 sort from `canonicalLinesOf` makes
+`canonicalLines_sorted` fail to compile. None of the three is a test
+that passes by measuring nothing.
+
+### Deliberate differences from the F\* source
+
+1. **Termination without mutual recursion.** F\* bounds Hash N-Degree
+   Quads with a lexicographic `decreases %[fuel; phase; list]` across a
+   six-function mutual block. Here `hndqRun` is structurally recursive
+   on its fuel and passes a "recurse one level down" closure
+   (`HndqRec`) to the bucket/permutation walkers, each structurally
+   recursive on its own list — so Lean accepts all six with no
+   `termination_by` at all. Cost: one fuel unit per HNDQ level instead
+   of F\*'s two. Fuel is seeded at `bnodes + 1` in both and is a
+   totality device neither reaches on real input, so the Lean bound is
+   strictly more generous.
+2. **Permutation cap mirrored, and reported.** `permutationCap = 6`:
+   each §4.7 bucket is truncated to its first six related blank nodes
+   before permuting (720 permutations). This is the F\* source's
+   `take_n 6`. It is a RESULT VARIANT for any dataset with a symmetric
+   collision bucket wider than six — no such dataset exists in the W3C
+   corpus, so the corpus score is unaffected, but the general claim is
+   "the spec's answer for buckets up to width 6", not "the spec's
+   answer".
+3. **Work budget mirrored.** `hndqBudget` counts Hash-N-Degree-Quads
+   calls; `canonicalizeExceedsBudget` is the §4.4 "excessive calls"
+   abort, which is how the suite's negative test passes.
+4. **Insertion sort, not merge sort.** F\* uses a position-split merge
+   sort because its inputs reach 100k+ lines. Every rdf-canon fixture
+   is under 50 lines, so this port uses a stable insertion sort with
+   the same total preorder and the same first-wins tie-breaking — short
+   enough that `sortedB_sortBy` proves it actually sorts.
+5. **F\* dead code not ported.** `compute_all_nbr1`/`nbr2`/`nbr3`,
+   `bn_full_key`, `sort_full_keys`, `assign_full_in_order` — an earlier
+   phase's bounded approximation of HNDQ, unreachable from
+   `build_canonical_mapping_alg_budgeted` in the F\* tree (grep-checked
+   before omitting).
+6. **F\* performance machinery not ported**, per this tree's
+   spec/engine split: byte-level `fs_byte_at` scanning, the
+   `bn_lookup_tree` balanced BST used for relabelling, and the
+   accumulator/`rev` rewrites of every list build.
+
+### What is PROVED and what is only STATED
+
+Proved (kernel-checked, standard axioms only):
+
+- `canonicalLines_sorted` — the emitted canonical N-Quads lines are in
+  code point order (RDFC-1.0 §3), for every dataset and algorithm.
+- `mkLabel_inj`, via `digitsToNat_natToDigits` → `natToDigits_inj` —
+  the §4.8 label shape is injective in the counter.
+- `issueFresh_label_fresh` — the issuer step lemma: the next label
+  differs from every label already issued.
+- `issueFresh_injective` / `issueIdentifier_injective` — both issuing
+  operations preserve `IssuerLabelsInjective`, from either empty
+  issuer.
+- The §4.5 relabelling chain: `rewriteSubjectForHfdq_rename`,
+  `rewriteTermForHfdq_rename`, `rewriteTripleForHfdq_rename`,
+  `quadMentionsBnode_rename`, `renderForHfdq_rename`,
+  `hfdqRenders_rename`, `hashFirstDegreeQuads_rename` — Hash First
+  Degree Quads cannot see the input blank-node labels.
+  Non-vacuity: `prefixLabels_injective` exhibits a label-CHANGING
+  function meeting the hypotheses.
+
+Stated only, as `Prop`-valued definitions so that nothing claims a
+proof it does not have:
+
+- `RelabellingInvariance` — `Graph.Isomorphic g1 g2 →` equal canonical
+  N-Quads. The core theorem of RDFC-1.0.
+- `RenamingInvariance` — its syntactic form under an injective
+  relabelling.
+
+The remaining obligations are enumerated at those definitions: the
+§4.4 grouping needs sorting-is-a-permutation (the sort lemmas here
+prove sortedness only), §4.7 needs an induction on `hndqRun`'s fuel,
+§4.4 step 5.3's first-explored-wins tie-break needs an automorphism
+argument, and the §4.5 lemmas carry an `isBnodeGraphLabel gi = false`
+hypothesis.
+
+### Change to `RDF/Graph.lean` that would remove a hypothesis (not made)
+
+`NamedGraph.name` is an `Iri` (a `String`), so a blank-node graph label
+is carried as the `"_:label"` sentinel that
+`Syntax.NQuads.graphLabelToIri` writes — the same representation the F\*
+source uses. The relabelling lemmas above therefore exclude blank-node
+graph names, because proving them needs
+`("_:" ++ x).startsWith "_:"`-style facts about `String` append, which
+the byte-backed `String` of Lean 4.33 does not give up cheaply. Giving
+`NamedGraph.name` a sum type (`Iri | BNodeId`) would drop the
+hypothesis from four theorems and delete
+`isBnodeGraphLabel`/`bnodeOfGraphLabel` from this module entirely. That
+is an edit to `RDF/Graph.lean`, owned elsewhere.
+## OWL tableau clash calculus (`OWL/Tableau*.lean`, 2026-08-22)
+
+Folded in from the duplicate track
+[#468](https://github.com/danbri/factoidal/issues/468) (a remote
+session opened a parallel `formal/lean/` package unaware of this one;
+that directory is deleted and its content lives here under the
+`L4Factoidal.OWL` namespace).
+
+- F* correspondence: NOT a port of `Tableau.Refute.fst`'s 4,682-line
+  search engine. It is the declarative counterpart: the model theory
+  (OWL 2 Direct Semantics Table 5, unqualified-cardinality fragment)
+  plus a clash calculus whose constructors match the engine's first
+  clash rules (complement, owl:Nothing, C3/C4 count clash,
+  differentFrom max-cardinality refutation, disjunction branching).
+  The engine file carries these soundness arguments as comments;
+  `TableauTheorems.lean` machine-checks them
+  (`refuted_sound : Refuted A → no model of A`).
+- Assumption report: no `axiom`, no `sorry`, no `partial`;
+  `derives_sound` axiom-free; `refuted_sound` /
+  `refuted_not_consistent` use `propext` + `Quot.sound`.
+- Individual and role names are raw `String`, not `RDF.Core`'s
+  wf-IRI subtype — reconnecting them is part of the next rung, with
+  the ∃-witness rule, the role box, qualified cardinality, and the
+  `Type`-valued certificate checker (ladder on
+  [#466](https://github.com/danbri/factoidal/issues/466)).
+## Stage: Turtle 1.1 + TriG 1.1 + RFC 3986 reference resolution (2026-08-22)
+
+Ladder rung: the gating item for a manifest-driven Lean W3C harness
+(https://github.com/danbri/factoidal/issues/466, and
+`docs/designissues/2026-08-22-lean4-w3c-harness.md` — the manifests are
+Turtle, so nothing manifest-driven can run before a Turtle parser
+exists). Branch `lean4/syntax-turtle`.
+
+### Module correspondence (append)
+
+| Lean 4 | Ports (F\*) | Notes |
+|---|---|---|
+| `L4Factoidal/Syntax/IriResolve.lean` | `RDF.IRI.fst` (`parse_iri`, `remove_dot_segments_step`/`remove_dot_segments`, `merge_paths`, `transform_references`, `recompose`, `resolve_iri_v2`), which `Parser.Turtle.resolve_iri` and `SPARQL11.IRI.Resolve.resolve_iri` both delegate to | RFC 3986 §3 decomposition, §5.2.2/§5.2.3/§5.2.4/§5.3, §5.2 top level. All 24 normal + 20 abnormal RFC 3986 §5.4 examples as build-time `#guard`s (the F\* source parks the same battery behind `if false` to spare Z3, so this port CHECKS strictly more than the original) |
+| `L4Factoidal/Syntax/Turtle.lean` | `Parser.Turtle.fst` + `Parser.TurtleScanner.fst` | Turtle 1.1 productions [1]–[17], [128s]/[133s]/[135s]–[141s], [161s]–[172s]; `parseTurtle (text) (base := none) (mode := .rdf11)` |
+| `L4Factoidal/Syntax/TriG.lean` | `Parser.TriG.fst` | TriG 1.1 productions [1g]–[7g] on top of Turtle; `parseTriG (text) (base := none) (mode := .rdf11) : Except ParseError Dataset` |
+| `L4Factoidal/Syntax/TurtleTests.lean` | (new) | 127 `#guard`s, one section per grammar production, plus prefix/base interplay, relative-IRI resolution, collection nesting, negative cases, and Turtle→N-Triples→N-Triples round-trips through the landed `Graph.toNTriples` |
+| `L4Factoidal/Syntax/TurtleTheorems.lean` | (new) | 22 proved theorems + 21 `#guard`s: RFC 3986 §5.2.2 base-independence and the `resolve base abs = abs` identity, §5.2.4 no-dot-segment invariant, collection chain shape, `maxUnderscoreRun` monotonicity |
+| `Harness/TurtleProbe.lean` (`lean_exe l4turtle-probe`) | (new; the role `bin/w3c-runner/w3c_runner.ml` plays for the F\* tree) | walks the real W3C directories, reading each suite's base IRI out of its own `manifest.ttl` with this parser |
+
+### Measured against the real W3C files
+
+`lake build && ./.lake/build/bin/l4turtle-probe third_party/testing/w3c/rdf/rdf11`
+
+| Suite | parse-positive | reject-negative | eval-iso |
+|---|---|---|---|
+| rdf-turtle | 222 of 223 | 94 of 94 | 111 of 111 |
+| rdf-trig | 242 of 242 | 115 of 115 | 107 of 108 |
+
+`manifest.ttl` parses in both suites (2338 triples / 313 `mf:action`
+entries; 2637 / 356), which is the rung's actual deliverable. These are
+PROBE numbers from a directory walk, not conformance scores: the probe
+uses the `-bad-` naming convention plus `.ttl`/`.nt` sibling pairs, and
+does not yet read test TYPES from the manifest. A conformance claim
+waits for the `l4w3c` runner.
+
+The two failures, both named rather than rounded away:
+
+- `test-38.ttl` — a UTF-16 surrogate PAIR written as two `\u` escapes.
+  Rejected: `\uD801` is not a Unicode scalar value, and RDF 1.1
+  Turtle's UCHAR denotes a code point, not a UTF-16 code unit. The F\*
+  source rejects it too (`valid_codepoint`). The file is NOT one of the
+  manifest's 313 entries — the probe reports how many walked files the
+  manifest does not list (4 for rdf-turtle, 1 for rdf-trig).
+- `labeled_blank_node_graph.trig` — a blank-node GRAPH NAME. See the
+  Core/Graph note below.
+
+### Translation decisions (append)
+
+- **Fuel is kept exactly where the F\* source needs it** — the
+  whitespace/comment skipper, the name-token scanner, the string
+  bodies, the numeric collector, `remove_dot_segments_step`, and the
+  mutually-recursive term block. Every budget is derived from the
+  remaining input length, so it cannot bind before the input is
+  consumed. Everything else recurses structurally, with no fuel: the
+  F\* byte scanners in `RDF.IRI.fst` (`find_colon`,
+  `find_authority_end_iri`, `find_path_end_iri`, `find_hash_iri`,
+  `find_slash_iri`, `find_last_slash_iri`, `scheme_tail_ok`) all
+  collapse into `List.span` / `List.dropWhile` / `List.all`.
+- **One name-character table, four consumers.** Turtle's [163s]
+  PN_CHARS_BASE / [164s] PN_CHARS_U / [166s] PN_CHARS are DERIVED from
+  the tables `Syntax.Lexing` already carries for BLANK_NODE_LABEL
+  (`isBnodeStartChar` = PN_CHARS_U plus digits, `isBnodeChar` =
+  PN_CHARS plus `.`), rather than re-tabulated. IRIREF, STRING,
+  LANGTAG, BLANK_NODE_LABEL, UCHAR and ECHAR reading are
+  `Syntax.Lexing`'s landed readers, reused unchanged.
+- **The F\* `resolve_iri_hint` colon short-circuit is NOT reproduced.**
+  `Parser.Turtle.resolve_iri_hint st rel has_colon` returns `rel`
+  unchanged whenever the RAW IRIREF text contains a colon ANYWHERE.
+  That is right for a genuine scheme but wrong for a relative reference
+  with a colon in a later path segment (`<a/b:c>`), which RFC 3986 §4.2
+  makes relative. This port always routes through
+  `Syntax.IriResolve.resolveIri`, which is a no-op on an absolute
+  reference (proved: `resolveIri_base_irrelevant`,
+  `resolveIri_eq_self`) and correct on `<a/b:c>`.
+- **Grammar-exact PN_PREFIX and prefixed-name start.** The F\*
+  `validate_pname_ns_from` tests every position against one ASCII class
+  and so also accepts a leading digit; `Parser.TurtleScanner`'s
+  `is_ascii_name_start` rejects a NON-ASCII PN_CHARS_BASE opening
+  character outright, so a non-ASCII prefix cannot be a prefixed name
+  there. This port follows [167s]/[139s] instead: the first character
+  must be PN_CHARS_BASE, ASCII or not. Both suites stay green under the
+  stricter reading.
+- **Blank-node label scoping.** The F\* source mints `_anon0`,
+  `_anon1`, … and passes user labels through unchanged, so a document
+  writing `_:_anon0` COLLIDES with a generated label. This port keeps
+  user labels UNCHANGED (needed: a TriG blank-node graph name `_:G` has
+  to stay comparable with the `_:G` of an N-Quads fixture, because
+  `RDF.Dataset` keys named graphs by label string) and instead prefixes
+  every GENERATED label with `anon` plus one more consecutive `_` than
+  occurs anywhere in the document text (`freshBnodePrefix`). A
+  BLANK_NODE_LABEL is a substring of the text, so it cannot contain a
+  longer underscore run — the two namespaces are disjoint by
+  construction.
+- **TriG error recovery not ported.** `Parser.TriG.parse_graph_body`
+  skips the offending line, sets `has_error`, and lets the strict entry
+  point turn that into `None` later. This port fails at the first error
+  and returns its message and position. Same accept/reject verdict,
+  better diagnostic; the recovery machinery is a CLI affordance, like
+  the lenient Turtle entry points already recorded as out of scope.
+
+### RDF 1.2 (`Mode_12`) coverage — stated exactly
+
+COVERED: object-position triple terms `<<( s p o )>>` (port of
+`parse_turtle_triple_term`); the reifier `~ (iri | BlankNode)?` and the
+annotation block `{| predicateObjectList |}` after an object, both
+emitting `rdf:reifies` triples (port of `parse_annotations`); and
+directional language tags `@lang--ltr` / `@lang--rtl` via
+`Syntax.Lexing.readLangDir12`.
+
+NOT COVERED (open gaps, not silent drops): the reified-triple form
+`<< s p o (~ r)? >>` in subject/object position (F\*
+`parse_reified_triple` / `parse_rt_subject` / `parse_rt_object`), and
+the `VERSION` / `@version` directive (F\* `parse_version_directive`).
+Neither is exercised by the RDF 1.1 suites this stage is measured
+against.
+
+### Assumption report — F\* primitives this stage replaces
+
+- `Parser.FastString`'s byte-indexed primitives (`fs_byte_length`,
+  `fs_byte_index`, `fs_byte_at`, `fs_byte_sub`, `fs_cp_at`) are
+  `assume val` realisations in the F\* tree and are used throughout
+  `Parser.Turtle.fst`, `Parser.TurtleScanner.fst`, `Parser.TriG.fst`,
+  and `RDF.IRI.fst`. This stage needs NONE of them. The native Lean
+  operations that replaced them, by F\* primitive:
+  `fs_byte_length` → `List.length` on `String.toList`;
+  `fs_byte_index` / `fs_byte_at` → ordinary cons-pattern matching;
+  `fs_byte_sub` → `List.span` / `List.take` / `String.ofList`;
+  `fs_cp_at` → nothing at all, because `String.toList` already decoded
+  the UTF-8 and a Lean `Char` already IS a Unicode scalar value. Each
+  F\* function that carried an ASCII-byte fast path beside a codepoint
+  slow path (`validate_pname_ns_from`, `validate_pn_local_from`,
+  `parse_long_string_body`, `scan_name_body_end`) becomes ONE
+  definition here.
+- ZERO semantic `assume val`s were carried over, and no Lean equivalent
+  (`axiom`, `sorry`, `opaque`, `@[extern]`, `partial`, `native_decide`)
+  appears in any file of this stage. `#print axioms` on all nine
+  audited theorems in `TurtleTheorems.lean` and on `parseTurtle` /
+  `parseTriG` / `resolveIri` reports exactly `propext`,
+  `Classical.choice`, `Quot.sound`.
+- `unescape_pn_local`'s raw-byte-fragment workaround (F\* issue #325 —
+  a non-ASCII local name carrying a PN_LOCAL_ESC resolved to mojibake
+  because the escape path re-encoded each element as UTF-8) has no
+  counterpart here: the port works on codepoints throughout, and
+  `TurtleTests.lean` checks the exact case the F\* bug hit.
+
+### Core/Graph change that would help (not made — this stage adds files only)
+
+`RDF.Graph.NamedGraph` keys a named graph by an `Iri` STRING, and
+`RDF.Isomorphism.Dataset.namesMatchB` therefore matches named graphs by
+STRING equality. A blank-node graph name consequently cannot take part
+in the blank-node bijection: `labeled_blank_node_graph.trig` writes
+`_:g` where its `.nq` fixture writes `_:b1`, and the two datasets are
+isomorphic in the RDF 1.1 Concepts §4/§3.6 sense but are reported
+unequal. (`alternating_bnode_graphs.trig` passes only because both
+sides happen to use the label `G`.) The fix is in the DATASET MODEL,
+not in either parser: `NamedGraph.name` wants to be a `Subject` (or an
+`Iri` plus `BNodeId` sum), and `Dataset.checkMapping` wants to apply
+the candidate blank-node mapping to graph names before comparing them.
+That is one test today; it will be every `graph-*` entry of the
+rdf-canon suite later. The same file also still lacks
+`deriving DecidableEq` on `NamedGraph`/`Dataset`, as the previous stage
+recorded.
+
+## Stage: RDF/XML (`Syntax/RdfXml*.lean`, `Harness/RdfXmlProbe.lean`, 2026-08-22)
+
+Ports `formal/fstar/Parser.RDFXML.fst` (1402 lines) together with the
+RDF/XML-specific half of `formal/fstar/XML.Wellformedness.fst`. Built on
+the landed XML infoset parser (`XML/Parser.lean`), the namespace layer
+(`XML/Namespaces.lean`) and the RFC 3986 resolver
+(`Syntax/IriResolve.lean`); the `rdf:XMLLiteral` value comparison reuses
+`RDF/XmlCanon.lean` through `Literal.eqb`, exactly as the F\* reuses
+`RDF.Term.fsti`'s `xmlc_*` family.
+
+### Measured against the real W3C files
+
+`lake exe l4rdfxml-probe` over
+`third_party/testing/w3c/rdf/rdf11/rdf-xml` (28 test directories,
+173 `.rdf` files):
+
+| Check | Result |
+|---|---|
+| parse-positive (non-`error*.rdf` must parse) | 132 pass, 0 fail (out of 132) |
+| reject-negative (`error*.rdf` must be rejected) | 41 pass, 0 fail (out of 41) |
+| eval-isomorphic (graph vs sibling `.nt`, RDF 1.1 Concepts §3.6) | 130 pass, 2 fail (out of 132) |
+
+The two isomorphism failures are `rdfms-xml-literal-namespaces/test001`
+and `test002`, which upstream WITHDREW from `manifest.ttl` (both entries
+are commented out there). They are withdrawn because their expectation
+contradicts the graded `xml-canon` tests: `xml-literal-namespaces`
+expects Exclusive XML Canonicalization proper — each element of the
+`rdf:parseType="Literal"` content carrying only the declarations IT
+visibly utilizes — while `xml-canon/test001`, which IS graded, expects
+every ambient declaration on the apex element. No single serialiser
+satisfies both. This port satisfies the graded one, which is the same
+choice `Parser.RDFXML.fst` makes (its issue-#446 comment records the
+same tension). The F\* tree scores 166 pass, 0 fail on the manifest-graded
+subset; this probe is directory-driven and therefore also walks the
+withdrawn files.
+
+`lake build` is green with zero `sorry` / user `axiom` /
+`native_decide` / `partial`; the axiom audit prints
+`[propext, Classical.choice, Quot.sound]` or less for every theorem.
+Sabotage-checked: changing `St.resetLi` to reset the `rdf:li` counter to
+2 instead of 1 fails three named `#guard`s in `RdfXmlTests.lean`.
+
+### Assumption report
+
+`Parser.RDFXML.fst` is **PURE** — confirmed by reading the whole module.
+It contains no `assume val`, no effectful call-out, and no `--admit` or
+`--lax` pragma; the one `#push-options "--z3rlimit 60"` is an SMT budget,
+not an escape hatch. Every definition is `Tot`, with an explicit `fuel`
+argument wherever F\* could not see termination. This port therefore
+needs no purity workaround: the F\* `fuel : nat` becomes structural
+recursion on a Lean `Nat`, and the `has_error : bool` flag becomes an
+`Option ParseError` that names the violated rule.
+
+`XML.Wellformedness.fst` is likewise pure, and was already ported as
+`XML/Wellformedness.lean`.
+
+### Where this port is namespace-correct and the F\* source is not
+
+`Parser.RDFXML.fst` looks attributes up by their LITERAL spelling —
+`find_attr "rdf:about"`, `find_attr "xml:lang"` — against a
+`namespaces` map that `initial_state` SEEDS with five bindings
+(`rdf`, `rdfs`, `xml`, `xmlns`, `xsd`). Two consequences follow that
+"Namespaces in XML" forbids: a document that never declares `rdf:` still
+has its `rdf:about` honoured, and a document that binds `foo:` to the
+RDF namespace has its `foo:about` ignored.
+
+This port resolves every element and attribute name through
+`XML.resolveElementName` / `XML.resolveAttributeName` against the real
+in-scope bindings, starting from `XML.initialScope` (which binds only
+`xml`, as §3 requires). The `rdf-ns-prefix-confusion` directory — 11
+files that bind the RDF namespace to unusual prefixes and bind unusual
+namespaces to `rdf:` — passes on that basis rather than by accident.
+
+### Deliberate differences from the F\* source
+
+1. **Blank-node label spaces are disjoint.** The F\* mints
+   `rdfxml_b<N>` and uses an `rdf:nodeID` value verbatim, so a document
+   containing `rdf:nodeID="rdfxml_b0"` can name a node the parser also
+   mints. This port writes generated labels `b<N>` and `rdf:nodeID`
+   labels `n<value>`, which differ in their first character —
+   `genLabel_ne_nodeIdLabel` proves the collision is impossible. Labels
+   are document-local and graph identity is up to renaming (RDF 1.1
+   Concepts §3.4), so the change costs nothing observable.
+2. **`nodeElement` RETURNS its subject.** The F\* re-derives it at each
+   call site with `determine_subject_readonly`, and its own comment
+   records the counter-desynchronisation bug that produced (orphan
+   `rdf:first` targets for anonymous collection members, hit by the OWL
+   class-expression fixtures). Returning it removes the class of bug.
+3. **RDF 1.2 is NOT ported.** `rdf:version="1.2"` gating, `its:dir` base
+   direction, `rdf:parseType="Triple"` triple terms, and the
+   `rdf:annotation` / `rdf:annotationNodeID` reifiers all live in the
+   F\* source and are all skipped here: they belong to a separate W3C
+   draft and a separate suite (`rdf12/rdf-xml`), which this stage does
+   not claim.
+4. **The F\*'s datatyped-with-element-children leniency is NOT
+   ported.** `Parser.RDFXML.fst` treats a property element carrying both
+   `rdf:datatype` and element children as an opaque XML literal, for OWL
+   fixtures outside the RDF/XML suite. §7.2 has no such production, so
+   this port rejects it.
+5. **Errors say which rule was violated.** `parse_rdfxml_strict` returns
+   `None`; `parseRdfXml` returns the first `ParseError`, with the §7.2
+   production number in its message.
+
+### What `XML/` should gain (not made — `XML/` is read-only for this stage)
+
+`XML/Wellformedness.lean` states the RDF/XML attribute constraints over
+LITERAL attribute spellings, inherited from the F\* module it ports:
+`hasAttr "rdf:parseType" attrs`, `validateRdfIdAttr` matching
+`a.name == "rdf:ID"`. Those predicates are wrong for any document that
+does not use the customary prefixes, which is exactly what
+`rdf-ns-prefix-confusion` tests. This stage therefore could NOT reuse
+`checkConflictingAttrsNode` / `checkConflictingAttrsProperty` /
+`validateRdfIdAttr` and states namespace-correct equivalents locally in
+`RdfXml.lean` (`checkCommonAttrs`, `checkNodeAttrs`,
+`checkPropertyAttrs`, `checkIdNCNames`).
+
+What `XML/Wellformedness.lean` should gain, so the duplication can go
+away:
+
+  * variants of the three conflict checks and of `validateRdfIdAttr`
+    taking a resolved view of the attributes — either
+    `List (XML.ExpandedName × String)`, or `(NsScope, List Attribute)` —
+    so the rule is stated over expanded names rather than spellings;
+  * `hasAttrNs (scope) (ns localName) (attrs) : Bool` and
+    `findAttrNs : … → Option String` alongside the existing `hasAttr` /
+    `findAttr`, since every RDF/XML lookup wants the namespace-aware
+    form (this port has private `findNsAttr` / `hasRdfAttr` copies);
+  * the existing spelling-based functions kept only if some caller
+    genuinely needs a non-namespace view; nothing in this port does.
+
+Two smaller items, both worked around locally:
+
+  * `XML/Namespaces.lean` has no "render the in-scope declarations"
+    function, which `[7.2.17] parseTypeLiteralPropertyElt` needs.
+    `RdfXml.renderNsDecls` / `dedupScope` do it here. If a second
+    consumer appears (XSLT serialisation, XML canonicalization proper),
+    that belongs in `XML/`.
+  * `XML/` has no XML serialiser at all — `XML/Theorems.lean` has one
+    for its round-trip theorem, but it is not exported for reuse and it
+    does not implement c14n's open+close and escaping rules.
+    `RdfXml.serializeNode` is a local, c14n-shaped one. An
+    `XML/Canonical.lean` implementing Exclusive XML Canonicalization
+    properly would let §7.2.17 stop approximating — and would let the
+    two withdrawn `rdfms-xml-literal-namespaces` tests be revisited
+    deliberately rather than by default.
+
