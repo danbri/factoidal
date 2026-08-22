@@ -24,29 +24,44 @@ namespace L4Factoidal.CSVW
 
 -- Grouping and decimal characters.
 private def euro : NumFmt := { groupChar := '.', decimalChar := ',' }
-#guard parseNumber euro "1.234,56" == .valid "1234.56"
-#guard parseNumber {} "1,234.56" == .valid "1234.56"
-#guard parseNumber {} "42" == .valid "42"
-#guard parseNumber {} "-42" == .valid "-42"
-#guard parseNumber {} "+42" == .valid "42"
+#guard parseNumber "decimal" euro "1.234,56" == .valid "1234.56"
+#guard parseNumber "decimal" {} "1,234.56" == .valid "1234.56"
+#guard parseNumber "decimal" {} "42" == .valid "42"
+#guard parseNumber "decimal" {} "-42" == .valid "-42"
+#guard parseNumber "decimal" {} "+42" == .valid "42"
 
 -- Malformed numbers are rejected.
-#guard parseNumber {} "abc" == .invalid
-#guard parseNumber {} "" == .invalid
-#guard parseNumber {} "1.2.3" == .invalid
-#guard parseNumber {} "." == .invalid
+#guard parseNumber "decimal" {} "abc" == .invalid
+#guard parseNumber "decimal" {} "" == .invalid
+#guard parseNumber "decimal" {} "1.2.3" == .invalid
+-- A numeric column validates its cells with NO format at all: the XSD
+-- lexical space still applies.
+#guard parseNumber "integer" {} "3.2" == .invalid
+#guard parseNumber "decimal" {} "123.456E7" == .invalid
+#guard parseNumber "double" {} "123.456E7" == .valid "123.456E7"
+#guard parseNumber "decimal" {} "NaN" == .invalid
+#guard parseNumber "double" {} "NaN" == .valid "NaN"
+#guard parseNumber "double" {} "-INF" == .valid "-INF"
+-- Grouping characters must SEPARATE digits. Two in a row is a
+-- validation error the corpus states outright.
+#guard parseNumber "decimal" {} "123,,456.789" == .invalid
+#guard parseNumber "decimal" {} "123,456.789" == .valid "123456.789"
+#guard parseNumber "decimal" {} "." == .invalid
 
 -- Percent and per-mille scale EXACTLY, on the digit string — no
 -- float arithmetic, so 12.5% is 0.125 rather than a binary
 -- approximation.
-#guard parseNumber { percent := true } "12.5%" == .valid "0.125"
-#guard parseNumber { percent := true } "50%" == .valid "0.50"
-#guard parseNumber { permille := true } "125‰" == .valid "0.125"
-#guard parseNumber { percent := true } "-25%" == .valid "-0.25"
+#guard parseNumber "decimal" { percent := true } "12.5%" == .valid "0.125"
+#guard parseNumber "decimal" { percent := true } "50%" == .valid "0.50"
+#guard parseNumber "decimal" { permille := true } "125‰" == .valid "0.125"
+#guard parseNumber "decimal" { percent := true } "-25%" == .valid "-0.25"
 
 -- The three-way outcome: a numeric base with NO format at all is
--- `noFormat`, which is not the same as `invalid`.
-#guard formatConvert "integer" none none none none "42" == .noFormat
+-- A NUMERIC base is checked even with no format: the XSD lexical
+-- space applies regardless. (This guard used to expect `noFormat`;
+-- returning that meant `3.2` reached the output as an `xsd:integer`.)
+#guard formatConvert "integer" none none none none "42" == .valid "42"
+#guard formatConvert "integer" none none none none "3.2" == .invalid
 #guard formatConvert "integer" (some "#,##0") none none none "1,234" == .valid "1234"
 #guard formatConvert "integer" (some "#,##0") none none none "oops" == .invalid
 

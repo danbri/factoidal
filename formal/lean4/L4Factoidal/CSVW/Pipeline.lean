@@ -81,9 +81,16 @@ def tableRowInputs (base : String) (ctx : Ctx) (g : TableGroup) (t : TableDesc)
   -- instead of its own column headings — the whole graph is then
   -- structurally right and semantically wrong, which is exactly the
   -- shape of failure that survives a triple-count check.
-  let headers := match tbl.header.head? with
-    | some h => h.cells
-    | none   => []
+  -- ...but ONLY when the table description carries no schema. A
+  -- metadata document's schema REPLACES the embedded one, so a
+  -- schema that describes no usable column leaves the columns
+  -- unnamed — `_col.1`, `_col.2`, … — rather than falling back to the
+  -- file's headings. The corpus pins this: `test100` supplies
+  -- `"columns"` as an object instead of an array, and expects
+  -- `#_col.1` … `#_col.5`, not the header titles.
+  let headers := match t.schema, tbl.header.head? with
+    | none, some h => h.cells
+    | _, _         => []
   let nameOf : Column → Nat → String := fun c i =>
     match c.name with
     | some nm => nm
