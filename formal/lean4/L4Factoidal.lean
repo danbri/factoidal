@@ -129,3 +129,5 @@ import L4Factoidal.Geo.FunctionsTests
 import L4Factoidal.Geo.Tests
 import L4Factoidal.CSVW.Dialect
 import L4Factoidal.CSVW.DialectTests
+import L4Factoidal.CSVW.UriTemplate
+import L4Factoidal.CSVW.UriTemplateTests
