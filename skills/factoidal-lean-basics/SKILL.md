@@ -179,6 +179,26 @@ executable edge only.
    origin/lean4/<topic>` → resolve additive conflicts by keeping BOTH
    sides (dedupe import lines) → `lake build` green → `git pull
    --no-rebase` if origin moved → `git push`.
+10. **`decide`/`rfl` over a concrete parser or tokenizer result eats
+    RAM by the gigabyte, and the swap it forces FILLS THE DISK.** One
+    theorem `tokensOf (tokenize "<http://a/b>") = …` cost 72 s and
+    10 GB; ten of them in one file killed `lean` with signal 9, and
+    the macOS swapfiles it wrote took the laptop from 7 GB free to
+    0 GB — the disk watchdog fired three times before the cause was
+    known (2026-08-22, SPARQL parser port). Concrete-input facts are
+    `#guard`s (compiler evaluation, free); keep at most one `decide`
+    proof as a demonstration. Relatedly, `split at h` on a scrutinee
+    holding `pX topFuel …` weak-head-normalises every fuel level —
+    expose `parseSparqlWith (fuel : Nat)` and keep fuel symbolic in
+    proofs (`cases h : e`). If free disk oscillates with no large
+    files appearing, suspect swap from a proof, not a writer.
+11. **Probe executables resolve test paths from the CWD.**
+    `lake exe l4jsonld-probe` / `l4sparql-probe` look for
+    `third_party/testing/...` relative to where they run; `lake exe`
+    runs them from `formal/lean4`, so invoke the built binary from the
+    repo root (`formal/lean4/.lake/build/bin/l4jsonld-probe`) or pass
+    an absolute manifest path where the probe accepts one. A probe
+    that prints "manifest not found" has measured nothing.
 
 ## Style contract (owner priority: W3C-expert readability)
 
