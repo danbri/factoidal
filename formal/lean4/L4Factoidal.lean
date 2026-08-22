@@ -121,4 +121,5 @@ import L4Factoidal.VC.Theorems
 import L4Factoidal.Geo.Types
 import L4Factoidal.Geo.Order
 import L4Factoidal.Geo.BBox
+import L4Factoidal.Geo.Topology
 import L4Factoidal.Geo.Tests
