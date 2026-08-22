@@ -117,7 +117,7 @@ def parseLiteralValue (node : Node) : Option Term :=
 its (namespace-stripped) local tag. `fuel` bounds triple-term nesting
 depth exactly as `Parser.SRX.fst`'s `parse_binding_value_fuel` does.
 Port of `parse_binding_value_fuel`. -/
-def parseBindingValueFuel : Nat → Node → Option Term
+def parseSrxBindingValueFuel : Nat → Node → Option Term
   | 0, _ => none
   | fuel' + 1, node =>
       match node with
@@ -136,9 +136,9 @@ def parseBindingValueFuel : Nat → Node → Option Term
                           findChildTag "predicate" vchildren,
                           findChildTag "object" vchildren with
                     | some sj, some pj, some oj =>
-                        mkResultTriple (parseBindingValueFuel fuel' sj)
-                          (parseBindingValueFuel fuel' pj)
-                          (parseBindingValueFuel fuel' oj)
+                        mkResultTriple (parseSrxBindingValueFuel fuel' sj)
+                          (parseSrxBindingValueFuel fuel' pj)
+                          (parseSrxBindingValueFuel fuel' oj)
                     | _, _, _ => none
                   else none
               | _ => none
@@ -147,8 +147,8 @@ def parseBindingValueFuel : Nat → Node → Option Term
 /-- `Parser.SRX.fst` bounds triple-term nesting at a fixed depth of 64
 (`parse_binding_value`); this port keeps the same constant so the two
 trees accept/reject the same inputs. -/
-def parseBindingValue (node : Node) : Option Term :=
-  parseBindingValueFuel 64 node
+def parseSrxBindingValue (node : Node) : Option Term :=
+  parseSrxBindingValueFuel 64 node
 
 /-! ## Row and header parsers — SRX §2.1/§2.2 -/
 
@@ -159,7 +159,7 @@ def parseBindingNode (node : Node) : Option (VarName × Term) :=
   match node with
   | .element _ attrs _ =>
       match findAttr "name" attrs with
-      | some varName => (parseBindingValue node).map (fun t => (varName, t))
+      | some varName => (parseSrxBindingValue node).map (fun t => (varName, t))
       | none => none
   | _ => none
 

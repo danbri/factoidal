@@ -86,7 +86,7 @@ def jsonOfTerm : Term → Json
 /-- Decode an SRJ binding-value object back into a `Term`. `fuel`
 bounds RDF 1.2 triple-term nesting depth, matching
 `Parser.JSONResults.fst`'s `parse_binding_value_fuel`. -/
-def parseBindingValueFuel : Nat → Json → Option Term
+def parseSrjBindingValueFuel : Nat → Json → Option Term
   | 0, _ => none
   | fuel' + 1, obj =>
       match obj.getString? "type" with
@@ -115,15 +115,15 @@ def parseBindingValueFuel : Nat → Json → Option Term
             | some tval =>
                 match tval.field? "subject", tval.field? "predicate", tval.field? "object" with
                 | some sj, some pj, some oj =>
-                    mkResultTriple (parseBindingValueFuel fuel' sj)
-                      (parseBindingValueFuel fuel' pj) (parseBindingValueFuel fuel' oj)
+                    mkResultTriple (parseSrjBindingValueFuel fuel' sj)
+                      (parseSrjBindingValueFuel fuel' pj) (parseSrjBindingValueFuel fuel' oj)
                 | _, _, _ => none
           else none
 
 /-- Same fixed nesting bound as `Parser.JSONResults.fst`'s
 `parse_binding_value`. -/
 def parseBindingValueJson (obj : Json) : Option Term :=
-  parseBindingValueFuel 64 obj
+  parseSrjBindingValueFuel 64 obj
 
 /-- One binding ROW: `{"x":{...},"y":{...}}` → a `Binding`. Port of
 `parse_binding_row`. -/
