@@ -1043,3 +1043,69 @@ then `git checkout --` and a green rebuild (261 jobs).
 
 Both sabotages were restored; the numbers in "Measured, verbatim"
 above are from the restored build.
+
+## Status 2026-08-22 — SHACL-SPARQL runs (`l4shacl`, branch `lean4/shacl-sparql`)
+
+SHACL Part 2 is ported and the second W3C SHACL manifest is green.
+
+```
+shacl-sparql sparql/component: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)
+shacl-sparql sparql/node: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+shacl-sparql sparql/property: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)
+shacl-sparql sparql/pre-binding: 14 pass, 0 fail, 0 skip, 0 unsupported (out of 14)
+shacl-sparql TOTAL: 22 pass, 0 fail, 0 skip, 0 unsupported (out of 22)
+shacl-core TOTAL: 98 pass, 0 fail, 0 skip, 0 unsupported (out of 98)
+```
+
+Run from the repository root:
+
+```
+formal/lean4/.lake/build/bin/l4shacl \
+  third_party/testing/shacl/data-shapes-test-suite/tests/sparql/manifest.ttl
+```
+
+What landed: `L4Factoidal/SHACL/Sparql.lean` (engine and specification)
+and `SHACL/SparqlTheorems.lean` (the two related), plus the SHACL-SPARQL
+decoders in `SHACL/Shapes.lean` and `SHACL/Vocabulary.lean`.
+`Harness/ShaclProbe.lean` now calls `validateWithSparql` with the RAW
+shapes graph as well as the decoded one (§5.3.1's `$shapesGraph` needs
+the shapes graph's own triples as a named graph), and treats an
+`mf:result sht:Failure` entry as a pass exactly when the report carries
+a §5.3.2 failure. The one feature still reported `UNSUPPORTED` is the
+SPARQL-based TARGET (`sh:target`, SHACL-AF).
+
+Pre-binding is implemented by SUBSTITUTION into the parsed
+`QueryPattern` / `Expr` AST, before lowering, with a one-row
+`postValues` binding joined on top for the projection. A post-hoc join
+alone cannot work: `pre-binding-001`'s whole WHERE clause is one
+FILTER, so the variable must be visible inside the pattern. The
+reasoning and the §5.3.2 rejection list are in `PORT_NOTES.md`'s
+SHACL-SPARQL stage entry.
+
+Two findings worth carrying forward, neither fixed in the F\* tree:
+
+1. `SPARQL11.Algebra.fst:4013` evaluates `E_Literal l` to
+   `ER_Term (T_Literal l)` without §17.1 numeric promotion, while a
+   VARIABLE binding is promoted. Since `term_to_expr_opt` substitutes a
+   pre-bound literal as `E_Literal`, an F\* `sh:validator` doing
+   `FILTER($value <= $maxVal)` on `xsd:integer` values compares them
+   LEXICALLY. The Lean port fixes this in `termToExpr?` and proves the
+   agreement (`termToExpr_evalIn_eq_literalPromote`). No vendored
+   fixture exercises it, so no suite score moves either way.
+2. `bin/factoidal-cli/factoidal_cli.ml:2034` and `:2795` print only
+   `sh:conforms` and the results; they never read
+   `report.report_failure`. A SHACL-SPARQL query that §5.3.2 requires
+   to be REJECTED is therefore reported to a CLI user as
+   `sh:conforms true` — the opposite of the outcome. Measured live: all
+   seven `mf:result sht:Failure` fixtures print `sh:conforms true`
+   under `bin/darwin-arm64/factoidal shacl`. The F\* engine itself is
+   right (`shacl_runner` maps `report_failure` correctly); only the
+   consumer printer drops it.
+
+The F\* side could not be re-measured with its own manifest runner on
+this machine: `bin/darwin-arm64/shacl_runner` does not exist in the
+tree (only `bin/linux-x86_64/` and `bin/ci-linux-x86_64/`), and
+building it needs a full F\* extraction. What WAS measured live is the
+`sh:conforms` floor through `bin/darwin-arm64/factoidal shacl` on each
+fixture: 16 of the 16 non-failure fixtures agree with the manifest, and
+the 7 failure fixtures are the finding above.

@@ -3417,3 +3417,138 @@ only (still zero external dependencies). Not done: semi-naive evaluation
 saturation, a different proof) — the corpus does not need it at the 20 s
 cap; cls-int1 still enumerates subject OCCURRENCES (`subjectsOf g`, one
 per triple) because the row body must stay `rfl`-equal to the list row.
+
+## Stage: SHACL-SPARQL, SHACL Part 2 (branch `lean4/shacl-sparql`, 2026-08-22)
+
+`sh:sparql` constraints (§5.1), the SPARQL-based constraint components
+(§6), pre-binding of `$this` / `$value` / `$currentShape` /
+`$shapesGraph` / `$PATH` (§5.3), and the §5.3.2 restrictions that make
+a query ill-formed — the suite's `sht:Failure` outcome. The port is
+`L4Factoidal/SHACL/Sparql.lean` (engine + specification) and
+`SHACL/SparqlTheorems.lean` (the two related).
+
+### The pre-binding decision
+
+SHACL §5.3 pre-binds a variable "with the [pre-bound] value" before
+evaluation. This port SUBSTITUTES the value into the parsed query —
+the concrete `QueryPattern` / `Expr` AST, before `QueryPattern.lower`
+turns filter conditions into closures — as the F\* `subst_vars_gp`
+does, and as `SPARQL/Exists.lean` substitutes into an EXISTS body. A
+one-row `postValues` binding is joined on top, for the projection only.
+
+A post-hoc join alone is not enough, and the suite says so:
+`pre-binding-001`'s whole WHERE clause is
+`FILTER ($this = ex:InvalidResource)`, so with a join `$this` is
+unbound while the FILTER runs and the query yields nothing. `BOUND($v)`
+for a pre-bound `$v` becomes `true` (`shapesGraph-001`).
+
+Substitution and pre-binding agree exactly BECAUSE of §5.3.2 —
+MINUS (the §18.5 domain-disjointness test reads the RHS variable
+domain, which substitution changes), SERVICE and LATERAL (the pattern
+is evaluated somewhere the substitution does not reach), VALUES on a
+pre-bound variable (a second, conflicting binding source), a
+sub-SELECT that does not project the variable (`SELECT *` counts as
+not projecting: `pre-binding-006` fails, `-007` passes), and
+assignment to a pre-bound variable. Each is a FAILURE, not a best
+effort.
+
+### A defect the port fixed, which the F\* still carries
+
+Substituting a term literal into an EXPRESSION position loses the
+SPARQL §17.1 numeric promotion the variable route applies:
+`Expr.var` promotes a literal binding through `literalPromote`, while
+`Expr.lit` does not, so `FILTER($value <= $maxVal)` with two
+`xsd:integer` values compared them LEXICALLY — `"5" > "10"`. Found by
+a new build-time guard, not by the suite (no vendored fixture compares
+a pre-bound number). `termToExpr?` now yields the promoted `Expr`
+constructor, and `termToExpr_evalIn_eq_literalPromote` proves the
+agreement with `literalPromote`. The F\* `term_to_expr_opt` returns the
+un-promoted `E_Literal` and `SPARQL11.Algebra.fst:4013` evaluates it to
+`ER_Term (T_Literal l)`, so the F\* tree has the same exposure —
+reported, not fixed here.
+
+### Module correspondence (append)
+
+| F\* | Lean 4 | Notes |
+|---|---|---|
+| §11b `prefix_header_for`, `declares_to_header`, `collect_declares` | `SHACL/Shapes.lean` `prefixHeaderFor`, `declaresToHeader`, `collectDeclares` | §5.2; `owl:imports` between declaration nodes walked cycle-safe (`prefixes-001`) |
+| §11b `build_sparql_constraints`, `build_custom_constraints`, `is_custom_component_def`, `parse_custom_param`, `custom_params_applicable`, `choose_validator` | `decodeSparqlConstraints`, `decodeCustomConstraints`, `isCustomComponentDef`, `decodeCustomParam`, `customParamsApplicable`, `chooseValidator` | a component is recognised STRUCTURALLY (a `sh:parameter` plus a validator), not through `rdf:type sh:ConstraintComponent` — `component/validator-001` types it through a user subclass |
+| `CC_Sparql` / `CC_Custom` | `Constraint.sparql` / `Constraint.custom` | `.sparql` also carries the constraint node's own `sh:severity` (the F\* re-reads it from the raw shapes graph at evaluation time) |
+| §11k `subst_var_ps` / `_pt` / `_tp` / `_expr` / `_gp`, `subst_vars_gp` | `substVarSubject`, `substVarTerm`, `substVarTP`, `substVarExpr`, `substVarPattern`, `substVarsPattern` | structural mutual recursion, no fuel; `.subSelect` matched open (`.mk f d p …`) so the recursive argument stays a visible subterm |
+| §11k `term_to_expr_opt` | `termToExpr?` | DIVERGES: promotes numeric / boolean literals — see the defect note above |
+| §11k `prebinding_unsupported`, `si_projects_this`, `si_assigns_prebound` | `prebindingUnsupported`, `selectItemProjectsThis`, `selectItemAssignsPrebound`, `queryPrebindingUnsupported` | same five rejections, same messages |
+| §11k `path_to_sparql_expr` / `_atom` / `path_list_to_sparql`, `substitute_path` | `pathToSparql`, `pathToSparqlAtom`, `pathListToSparql`, `substitutePath` | the one spec-sanctioned TEXTUAL substitution (§5.3.1 `$PATH`) |
+| §11k `shacl_internal_shapes_graph_iri`, `sparql_violations_for_focus` / `_all` / `_foci` / `_shape` / `_shapes` | `shaclInternalShapesGraphIri`, `sparqlViolationsForFocus`, `sparqlViolationsForShape`, `SparqlOutcome.concat` | the `(list violation & option string)` pair becomes the `SparqlOutcome` record with `append` / `concat` |
+| §11l `eval_custom_component_ask` / `_ask_values` / `_select`, `eval_one_custom_component`, `custom_violations_for_occurrence` / `_foci` / `_shape` / `_shapes` | `customAskViolation`, `customSelectViolations`, `evalCustomComponent`, `customViolationsForOccurrence`, `customViolationsForShape` | §6.2.1 per value node, §6.2.2 per focus node; the component pass walks `sh:property` (`propertyValidator-select-001`, `unsupported-sparql-006`), the `sh:sparql` pass does not — the same slice the F\* takes |
+| §11l `fill_message_template`, `fill_tmpl_chars`, `split_at_close_brace`, `term_to_plain_string` | `fillMessageTemplate`, `fillTemplateChars`, `splitAtCloseBrace`, `termToPlainString` | §6.3 `{?name}` / `{$name}` |
+| §13 `validate` with `report_failure` | `validateWithSparql`, `ValidationReport.failure` | `validate` stays SHACL Core and sees `.sparql` / `.custom` as inert |
+| `assume val eval_sparql_target_select` | — | a module-ordering artefact in F\*; SHACL imports SPARQL here. `sh:target [ sh:select … ]` (SHACL-AF) is still the one entry of `sparqlFeaturePredicates`, reported `unsupported` |
+
+### What the specification covers, and what it does not
+
+`Spec.Conforms` is NOT extended with the new components, and cannot
+be: `conformance_iff` is an `iff` against `collectShapeViolations`,
+which by design never evaluates a `.sparql` or `.custom` constraint
+(it returns `List Violation` with no room for the §5.3.2 failure
+channel — the same reason the F\* dispatches these outside its Core
+mutual group). A non-trivial `FocusSatisfies` clause for them would
+make `conformance_iff` FALSE. So the SHACL-SPARQL specification is a
+SIBLING relation: `Spec.SparqlSatisfies`, `Spec.AskValidatorSatisfies`,
+`Spec.SelectValidatorSatisfies`, `Spec.CustomSatisfies`,
+`Spec.CustomOccurrenceConforms`, `Spec.SparqlShapeConforms`, and the
+conjunction `Spec.GraphConformsWithSparql`.
+
+Proved (all `#print axioms` = `propext`, `Classical.choice`,
+`Quot.sound`): `termToExpr_evalIn_eq_literalPromote`,
+`substVarExpr_var_evalIn`, `withPreboundQuery_error`,
+`sparqlViolationsForFocus_eq_nil_iff`, `customAskViolation_eq_nil_iff`,
+`customSelectViolations_eq_nil_iff`,
+`SparqlOutcome.concat_results_eq_nil_iff`,
+`evalCustomComponent_eq_nil_iff`, `validateWithSparql_conforms_iff`,
+`validateWithSparql_sound_core`.
+
+Not proved: the quantifier push from "the shape-level pass produced no
+result" down to `Spec.SparqlShapeConforms` /
+`Spec.CustomOccurrenceConforms` (a routine `SparqlOutcome.concat` /
+`List.flatMap` decomposition over the focus-node and constraint
+lists). `validateWithSparql_conforms_iff` therefore states the two
+SHACL-SPARQL conjuncts as pass emptiness, not as the `Spec` relations.
+
+### Sabotage check (2026-08-22)
+
+`sparqlPrebindings` renamed `"this"` to a name no query uses. The build
+FAILED at four named guards — `ShaclTests.lean:312` (`.conforms`),
+`:313` (`.results.length`), `:314` (`.focus`), `:318` (`.value`), all
+on `prebindFilterDoc` — and `lake exe l4shacl` on the sparql manifest
+dropped from 22 pass, 0 fail to **11 pass, 11 fail (out of 22)**:
+`sparql/node` 0 pass, 4 fail; `sparql/property` 0 pass, 1 fail;
+`sparql/pre-binding` 8 pass, 6 fail. `sparql/component` stayed at
+3 pass, 0 fail, because a constraint component pre-binds through
+`customPrebindings`, a different list. Restored with
+`git checkout -- L4Factoidal/SHACL/Sparql.lean`; both suites green
+again.
+
+### Measured (verbatim, 2026-08-22)
+
+```
+shacl-sparql sparql/component: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)
+shacl-sparql sparql/node: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)
+shacl-sparql sparql/property: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)
+shacl-sparql sparql/pre-binding: 14 pass, 0 fail, 0 skip, 0 unsupported (out of 14)
+shacl-sparql TOTAL: 22 pass, 0 fail, 0 skip, 0 unsupported (out of 22)
+shacl-core TOTAL: 98 pass, 0 fail, 0 skip, 0 unsupported (out of 98)
+```
+
+The suite's own `sparql/component/manifest.ttl` includes only three of
+the four fixture files in that directory — `nodeValidator-001.ttl` is
+not referenced, so the shacl-sparql denominator is 22, not 23. Run
+directly, `nodeValidator-001` produces the expected non-conformance.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]` in `SHACL/Sparql.lean` or `SHACL/SparqlTheorems.lean`.
+Still zero external dependencies. Not done: SPARQL-based targets
+(`sh:target`, SHACL-AF); `sh:sparql` on a shape reached only through
+`sh:property` (root shapes only, as the F\*); the two unproved
+decompositions named above.
