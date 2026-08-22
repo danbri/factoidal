@@ -76,24 +76,17 @@ TERMINATION. The whole grammar is ONE mutual block recursive on a
 with the F*'s own top-level seed of 10000. No `partial`, no
 well-founded recursion, no `termination_by`.
 
-THE ONE AST GAP, stated plainly. `Expr.existsPat` / `Expr.notExistsPat`
-carry a `SPARQL.GraphPattern` — the ALGEBRA type, whose `filter`,
-`leftJoin`, `bind`, `serviceVar` and `modified` fields are FUNCTIONS.
-The grammar produces a `QueryPattern` there, so the parser lowers it
-(`QueryPattern.lower emptyEnv`). Two consequences, both handled here
-rather than by editing the AST:
-  * `Query.toSse` cannot print inside an EXISTS with full fidelity:
-    `sseGraphPattern` prints every structural field and writes `_`
-    where a field is a function. Everything OUTSIDE an EXISTS is
-    byte-identical to the F* `sse_ggp`.
-  * The F* `validate_bnode_scope_expr` walks into `E_Exists`; this
-    port instead runs the same check on the EXISTS operand AT
-    CONSTRUCTION TIME, in the parser's EXISTS arm. That is
-    equivalent, not weaker: the F* function returns `(ok, [])` for an
-    EXISTS, so an EXISTS operand's blank-node labels never escape to
-    the enclosing scope — only its own internal validity matters.
-What the AST should gain: `existsPat`/`notExistsPat` taking a
-`QueryPattern`, which needs `Expr` and `Query` in one mutual block.
+EXISTS. `Expr.existsPat` / `Expr.notExistsPat` carry the operand AS
+PARSED, a `QueryPattern` (the F* `E_Exists : group_graph_pattern ->
+expr`; `Expr` and `QueryPattern` are one mutual inductive in
+`Expr.lean` — design record in `SPARQL/Exists.lean`). So `Query.toSse`
+prints inside an EXISTS with full fidelity, byte-identical to the F*
+`sse_ggp`. One F* check is placed differently: `validate_bnode_scope_expr`
+walks into `E_Exists` after parsing; this port runs the same check on
+the EXISTS operand AT CONSTRUCTION TIME, in the parser's EXISTS arm.
+That is equivalent, not weaker: the F* function returns `(ok, [])` for
+an EXISTS, so an EXISTS operand's blank-node labels never escape to the
+enclosing scope — only its own internal validity matters.
 
 NOT PORTED (each with its reason)
   * SPARQL 1.1 Update ([29]-[52]). The tokenizer emits the update
@@ -1020,10 +1013,11 @@ def pPrimaryExpr (fuel : Nat) (st : PState) (ts : TStream) : Except ParseError (
       | _     => pErr "expected EXISTS or IN after NOT" ts1
     | _ => pErr "unexpected token in expression" ts
 
-/-- Build an `Expr.existsPat` / `Expr.notExistsPat`. The AST demands a
-lowered `GraphPattern`, so the blank-node scope check that the F*
-`validate_bnode_scope_expr` would run later happens HERE, on the
-operand as parsed — see the module header on why that is equivalent. -/
+/-- Build an `Expr.existsPat` / `Expr.notExistsPat` over the operand
+AS PARSED (the F* `E_Exists : group_graph_pattern -> expr`). The
+blank-node scope check that the F* `validate_bnode_scope_expr` runs
+later happens HERE, on the operand — see the module header on why that
+is equivalent. -/
 def mkExists (fuel : Nat) (_st : PState) (negated : Bool) (g : QueryPattern)
     (ts : TStream) : Except ParseError (Expr × TStream) :=
   match fuel with
@@ -1032,8 +1026,7 @@ def mkExists (fuel : Nat) (_st : PState) (negated : Bool) (g : QueryPattern)
     if !(validateBnodeScope g).1 then
       pErr "blank node label reused across graph-pattern scope" ts
     else
-      let gp := QueryPattern.lower emptyEnv g
-      .ok (if negated then .notExistsPat gp else .existsPat gp, ts)
+      .ok (if negated then .notExistsPat g else .existsPat g, ts)
 
 /-- [121] BuiltInCall's `BOUND '(' Var ')'` arm. -/
 def pBound (fuel : Nat) (st : PState) (ts : TStream) : Except ParseError (Expr × TStream) :=
@@ -2747,37 +2740,8 @@ def ssePath : PropertyPath → String
   | .zeroOrOne p     => sseWrap "path?" (ssePath p)
   | .negatedSet ps   => sseWrap "notoneof" (String.intercalate " " (ps.map ssePath))
 
-/-- The lowered-`GraphPattern` printer used ONLY inside EXISTS.
-Structural fields print exactly; a function-valued field prints `_`,
-because the AST erased the expression that produced it. `lateral`'s
-right operand is recovered by applying it to the empty binding, which
-is what `QueryPattern.lower` substituted into it. -/
-def sseGraphPattern (fuel : Nat) : GraphPattern → String
-  | .bgp b => sseBgp b
-  | p =>
-    match fuel with
-    | 0 => "_"
-    | f + 1 =>
-      match p with
-      | .bgp b            => sseBgp b
-      | .join a b         => sseWrap "join" (sseGraphPattern f a ++ "\n  " ++ sseGraphPattern f b)
-      | .leftJoin a b _   => sseWrap "leftjoin" (sseGraphPattern f a ++ "\n  " ++
-                                                 sseGraphPattern f b ++ "\n  _")
-      | .filter _ q       => sseWrap "filter" ("_\n  " ++ sseGraphPattern f q)
-      | .union a b        => sseWrap "union" (sseGraphPattern f a ++ "\n  " ++ sseGraphPattern f b)
-      | .minus a b        => sseWrap "minus" (sseGraphPattern f a ++ "\n  " ++ sseGraphPattern f b)
-      | .graph n q        => sseWrap "graph" (ssePatternTerm n ++ "\n  " ++ sseGraphPattern f q)
-      | .lateral a r      => sseWrap "lateral" (sseGraphPattern f a ++ "\n  " ++
-                                                sseGraphPattern f (r []))
-      | .bind _ v q       => sseWrap "extend" ("(?" ++ v ++ " _)\n  " ++ sseGraphPattern f q)
-      | .values vars _    => sseWrap "table" (String.intercalate " " (vars.map (fun v => "?" ++ v)))
-      | .service _ _ q    => sseWrap "service" ("_\n  " ++ sseGraphPattern f q)
-      | .serviceVar v _ _ q => sseWrap "service" ("?" ++ v ++ "\n  " ++ sseGraphPattern f q)
-      | .modified _ q     => sseWrap "modified" (sseGraphPattern f q)
-      | .propertyPath s pp o => sseWrap "path" (ssePatternSubject s ++ " " ++ ssePath pp ++ " " ++
-                                                ssePatternTerm o)
-      | .empty            => "(table unit)"
-
+/-! `sse_expr` and `sse_ggp` are one mutual block: an EXISTS carries a
+`QueryPattern`, and a pattern carries expressions. -/
 mutual
 
 /-- `sse_expr`. -/
@@ -2851,8 +2815,8 @@ def sseExpr : Expr → String
   | .strDt a b    => sseWrap "strdt" (sseExpr a ++ " " ++ sseExpr b)
   | .strLang a b  => sseWrap "strlang" (sseExpr a ++ " " ++ sseExpr b)
   | .strLangDir a b c => sseWrap "strlangdir" (sseExpr a ++ " " ++ sseExpr b ++ " " ++ sseExpr c)
-  | .existsPat g    => sseWrap "exists" (sseGraphPattern 64 g)
-  | .notExistsPat g => sseWrap "notexists" (sseGraphPattern 64 g)
+  | .existsPat g    => sseWrap "exists" (sseGgp g)
+  | .notExistsPat g => sseWrap "notexists" (sseGgp g)
   | .aggregate _ _ a  => sseWrap "agg" (sseExpr a)
   | .functionCall i args => sseWrap ("call " ++ i.val) (sseExprList args)
   | .tripleTerm a b c => sseWrap "tripleterm" (sseExpr a ++ " " ++ sseExpr b ++ " " ++ sseExpr c)
@@ -2866,10 +2830,6 @@ def sseExprList : List Expr → String
   | []       => ""
   | [e]      => sseExpr e
   | e :: rest => sseExpr e ++ " " ++ sseExprList rest
-
-end
-
-mutual
 
 /-- `sse_ggp`. -/
 def sseGgp : QueryPattern → String

@@ -247,10 +247,9 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   match parseExpected rf rtext with
   | .error e => return .ofOutcome (.fail s!"expected-result parse error: {e}")
   | .ok expected =>
-  let (ds', active) := applyDataset q.dataset ds ds.default
-  let env : EvalEnv :=
-    { now := some fixedNow, services := services,
-      existsHook := some (existsHookFor ds' active) }
+  -- EXISTS needs no hook: `evalSelect` / `evalAsk` / `evalConstruct`
+  -- install the query's dataset in the environment themselves.
+  let env : EvalEnv := { now := some fixedNow, services := services }
   let ordered := q.modifier.orderBy.isSome
   match q.form, expected with
   | .select _, .rows erows csv =>
