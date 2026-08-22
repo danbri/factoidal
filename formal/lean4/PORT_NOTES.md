@@ -4357,3 +4357,34 @@ IS fenced, a tighter one is NOT.
 The classifier lets CONTENT win when both vocabularies appear, matching
 the F* order: a mixed document is processed as content markup, since
 that is the half carrying meaning rather than layout.
+
+### XSLT: template priorities and conflict resolution (2026-08-22)
+
+`XSLT/Templates.lean` ports the SEMANTIC HEART of `XSLT.Transform.fst`
+— §5.5 conflict resolution and §2.6.2 import precedence. Scope stated
+plainly: the F* module is 4,183 lines covering instantiation,
+attribute sets, number formatting, output serialisation and keys.
+What is ported is the part that decides WHICH TEMPLATE FIRES, which is
+where implementations disagree with each other and with the spec.
+
+Priorities are scaled by TEN and kept as integers. XSLT's defaults are
+0, -0.25, -0.5 and 0.5; scaling makes every comparison exact and takes
+float ordering out of the one place where a tie decides which template
+runs.
+
+Two orderings that are bugs when reversed, both guarded:
+
+1. **Import precedence is checked BEFORE priority.** Checking priority
+   first lets an imported template with a specific pattern beat the
+   importing stylesheet's override, which defeats the entire point of
+   `xsl:import`.
+2. **The compound test comes BEFORE the wildcard test** in
+   `altPriority`, so `foo/*` scores 5 rather than -5. Reversing them
+   makes compound patterns lose to bare ones.
+
+Also pinned: at equal precedence and priority the LAST declared
+template wins; a template in a different mode is not a candidate at
+all; a name-only template never matches by pattern; and named lookup
+for `call-template` resolves by import precedence rather than document
+order. Pattern parsing keeps `//x` (relative descendant) distinct from
+`/x` (root-anchored) — one slash apart, quite different meanings.
