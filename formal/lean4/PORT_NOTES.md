@@ -3856,3 +3856,28 @@ siblings sharing a predicate (first satisfied branch wins), and no
 recursion through shape references — an unresolved `ref` makes an arc
 leftover rather than being silently accepted, which is the
 fail-closed direction.
+
+### RML: mapping model and term generation (2026-08-22)
+
+`RML/Mapping.lean` ports the term-map core of `RML.Mapping.fst` /
+`RML.Eval.fst`: constant / reference / template forms, templates with
+RML's backslash escaping, the term types, and term generation from a
+data record.
+
+Two details carried with their reasons:
+
+1. **`rml:IRI` and `rml:URI` are NOT synonyms.** `rml:URI` applies
+   URI-safe (RFC 3986, ASCII-only) percent-encoding; `rml:IRI`
+   applies IRI-safe (RFC 3987) encoding where most non-ASCII stays as
+   itself. `"Zoë"` becomes `"Zo%C3%AB"` under one and stays `"Zoë"`
+   under the other. The F* module records this as a CORRECTION to an
+   earlier "legacy synonym" reading, so the distinction is carried
+   here with a guard on exactly that string.
+2. **An unresolved reference generates NO TERM**, and an absent field
+   makes the WHOLE template produce nothing — not an empty string.
+   Emitting `http://ex/` for a missing id would be a valid-looking
+   IRI pointing at the wrong thing.
+
+RML templates escape braces with a backslash; the CSVW RFC 6570
+templates deliberately do NOT. The two look similar enough to merge
+and must not be — noted in both modules.
