@@ -1,5 +1,5 @@
 name = "l4factoidal"
-defaultTargets = ["L4Factoidal", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4wasm-cli"]
+defaultTargets = ["L4Factoidal", "l4wasm", "xmlconf-probe", "l4rdfc-probe", "l4turtle-probe", "l4jsonld-probe", "l4wasm-cli"]
 
 [[lean_lib]]
 name = "L4Factoidal"
@@ -22,6 +22,13 @@ root = "Harness.CanonProbe"
 [[lean_exe]]
 name = "l4turtle-probe"
 root = "Harness.TurtleProbe"
+# Real-corpus probe for JSON-LD 1.1 expansion + toRdf (the W3C
+# json-ld-api toRdf manifest). Same spec/pragmatics split: it reads the
+# manifest and fixtures from disk and prints scores, so it lives outside
+# the library.
+[[lean_exe]]
+name = "l4jsonld-probe"
+root = "Harness.JsonLdProbe"
 # The WebAssembly export surface: the JSON string-in / string-out ABI
 # (Wasm/Abi.lean) and the `@[export]` C symbols (Wasm/Exports.lean).
 # `lake build` compiles it, so the ABI is type-checked on every build
