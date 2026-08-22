@@ -313,6 +313,39 @@ function buildApi(driver) {
     extInstalled.clear();
   }
 
+  /**
+   * Bind a SPARQL SERVICE endpoint IRI to a local graph snapshot, so
+   * SERVICE <iri> { ... } (and LATERAL { SERVICE ... }) queries
+   * resolve against it in-process — the same registry the W3C
+   * federated-query suite uses (qt:serviceData). `data` is a Dataset,
+   * a raw RDF string (options.format, default turtle), or an array of
+   * those. The snapshot is the payload's default graph.
+   */
+  async function registerServiceEndpoint(iri, data, options) {
+    if (typeof iri !== 'string' || !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(iri)) {
+      throw new TypeError(
+        'registerServiceEndpoint: iri must be an absolute IRI string');
+    }
+    const e = await entry();
+    if (!e || typeof e.registerServiceEndpoint !== 'function') {
+      throw new Error(
+        'registerServiceEndpoint: this npm-entry bundle predates SERVICE ' +
+        'endpoint registration — rebuild build-ocaml.sh js + npm.');
+    }
+    const docs = toDocs(data, options);
+    const nq = docsToEntryNQuads(e, docs, 'registerServiceEndpoint');
+    return entryResult(e.registerServiceEndpoint(iri, nq),
+      'registerServiceEndpoint');
+  }
+
+  /** Remove every registered SERVICE endpoint snapshot. */
+  async function clearServiceEndpoints() {
+    const e = await entry();
+    if (e && typeof e.clearServiceEndpoints === 'function') {
+      entryResult(e.clearServiceEndpoints(), 'clearServiceEndpoints');
+    }
+  }
+
   // Run one synchronous engine pass, re-running until no NEW async
   // extension results are pending. With no registered functions this
   // is exactly one pass with zero overhead beyond the length check.
@@ -2042,6 +2075,8 @@ function buildApi(driver) {
     registerExtensionFunction,
     unregisterExtensionFunction,
     clearExtensionFunctions,
+    registerServiceEndpoint,
+    clearServiceEndpoints,
     serialize,
     canonicalize,
     graphs,

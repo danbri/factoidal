@@ -2464,6 +2464,26 @@ let ext_clear () : string =
     SPARQL11_Algebra.extension_function_clear ();
     "{\"ok\":true}")
 
+(* SPARQL 1.1 SERVICE endpoint snapshots -- issue #57 family. The same
+   registry hook the W3C runner fills from qt:serviceData manifests
+   (SPARQL11_Algebra.service_endpoint_register, realised by
+   57_service_client_bind.sh), exposed over the ABI so browser/Node
+   callers can bind an endpoint IRI to a local graph snapshot and then
+   run SERVICE / LATERAL{SERVICE} queries against it. Marshaling only:
+   the payload is parsed by the F*-extracted N-Quads parser; the
+   snapshot registered is the payload's default graph. *)
+let register_service_endpoint (iri : string) (nq : string) : string =
+  guarded (fun () ->
+    let ds = dataset_of_nquads nq in
+    SPARQL11_Algebra.service_endpoint_register iri ds.ds_default;
+    "{\"ok\":true,\"count\":"
+    ^ string_of_int (List.length ds.ds_default) ^ "}")
+
+let clear_service_endpoints () : string =
+  guarded (fun () ->
+    SPARQL11_Algebra.service_endpoint_clear ();
+    "{\"ok\":true}")
+
 (* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
    boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
@@ -2566,5 +2586,7 @@ let () =
           ("registerExtensionFunction",
              Js.Unsafe.inject (Js.wrap_callback ext_register));
           ("unregisterExtensionFunction", s1 ext_unregister);
-          ("clearExtensionFunctions", s0 ext_clear)
+          ("clearExtensionFunctions", s0 ext_clear);
+          ("registerServiceEndpoint", s2 register_service_endpoint);
+          ("clearServiceEndpoints", s0 clear_service_endpoints)
        |])

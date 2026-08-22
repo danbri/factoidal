@@ -306,6 +306,18 @@ export async function query(dataString, queryString, options) {
     );
   }
 
+  // Extension functions / SERVICE endpoint snapshots live in the
+  // npm-entry ABI engine, not the CLI bundle — route through it when
+  // any registration is active (issue #463 / #57).
+  if (abiRegistryActive()) {
+    if (entail !== 'none') {
+      throw new Error(
+        'query: entailment regimes are not yet supported while ' +
+        'extension functions or SERVICE endpoints are registered');
+    }
+    return queryViaAbi(dataString, queryString, { dataFormat, output, sparql12 });
+  }
+
   const { ext, rdf12 } = extAnd12(dataFormat);
   const dataPath = '/static/data.' + ext;
 
@@ -642,6 +654,212 @@ export async function loadNpmEntry() {
       return abi;
     });
   return _npmEntryPromise;
+}
+
+/* ---------------------------------------------------------------
+   SPARQL 1.1 §17.6 extension functions (issue #463) + SERVICE
+   endpoint snapshots (issue #57 family) — browser side.
+
+   Mirrors npm/factoidal/lib/api.js: user functions keyed by IRI, a
+   synchronous bridge into the engine's registry (the extracted
+   evaluator is synchronous), per-query memoisation, and a bounded
+   re-evaluation trampoline for async functions. These run on the
+   npm-entry ABI engine, so query()/fn.query routes through the ABI
+   (queryViaAbi below) whenever a registration is active.
+   --------------------------------------------------------------- */
+const EXT_PENDING_MARKER = '__FACTOIDAL_EXT_PENDING__';
+const EXT_MAX_ROUNDS = 25;
+const extFunctions = new Map();    // iri -> user fn
+const extInstalled = new Set();    // iris registered into the ABI
+let extCache = new Map();          // key -> normalized result (or null)
+let extPending = [];               // [{key, promise}] for this pass
+let serviceEndpointsActive = false;
+
+function abiEntryResult(jsonText, what) {
+  const r = JSON.parse(jsonText);
+  if (!r.ok) throw new Error(`${what}: ${r.error}`);
+  return r;
+}
+
+function extBridge(iriJs, argsJsonJs) {
+  // Called SYNCHRONOUSLY from inside the engine.
+  const iri = String(iriJs);
+  const argsJson = String(argsJsonJs);
+  const key = iri + ' ' + argsJson;
+  if (extCache.has(key)) return extCache.get(key);
+  const fn = extFunctions.get(iri);
+  if (!fn) return null;
+  let out;
+  try {
+    out = fn(JSON.parse(argsJson));
+  } catch (_e) {
+    extCache.set(key, null);
+    return null;
+  }
+  if (out && typeof out.then === 'function') {
+    extPending.push({ key, promise: out });
+    return EXT_PENDING_MARKER;
+  }
+  out = out === undefined ? null : out;
+  extCache.set(key, out);
+  return out;
+}
+
+async function withExtensionRounds(runOnce) {
+  extCache = new Map(); // per-evaluation memo (purity contract)
+  for (let round = 0; ; round++) {
+    extPending = [];
+    const result = runOnce();
+    if (extPending.length === 0) return result;
+    if (round >= EXT_MAX_ROUNDS) {
+      throw new Error(
+        'extension functions: async resolution did not converge ' +
+        `within ${EXT_MAX_ROUNDS} evaluation rounds`);
+    }
+    const pend = extPending;
+    extPending = [];
+    await Promise.all(pend.map(async ({ key, promise }) => {
+      try {
+        const v = await promise;
+        extCache.set(key, v === undefined ? null : v);
+      } catch (_e) {
+        extCache.set(key, null);
+      }
+    }));
+  }
+}
+
+/**
+ * Register a custom SPARQL extension function (SPARQL 1.1 §17.6,
+ * Comunica-style). `fn` may be sync or async; it receives the
+ * evaluated arguments as SRJ-style term objects and returns a term
+ * object, a JS primitive, a Promise of either, or null/undefined
+ * (= the §17.6 error).
+ */
+export async function registerExtensionFunction(iri, fn) {
+  if (typeof iri !== 'string' || !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(iri)) {
+    throw new TypeError(
+      'registerExtensionFunction: iri must be an absolute IRI string');
+  }
+  if (typeof fn !== 'function') {
+    throw new TypeError('registerExtensionFunction: fn must be a function');
+  }
+  extFunctions.set(iri, fn);
+  const abi = await loadNpmEntry();
+  if (typeof abi.registerExtensionFunction !== 'function') {
+    throw new Error(
+      'registerExtensionFunction: this npm-entry bundle predates ' +
+      'extension functions (issue #463) — rebuild.');
+  }
+  if (!extInstalled.has(iri)) {
+    abiEntryResult(abi.registerExtensionFunction(iri, extBridge),
+      'registerExtensionFunction');
+    extInstalled.add(iri);
+  }
+}
+
+/** Remove one registered extension function. */
+export async function unregisterExtensionFunction(iri) {
+  extFunctions.delete(iri);
+  const abi = await loadNpmEntry();
+  if (typeof abi.unregisterExtensionFunction === 'function'
+      && extInstalled.has(iri)) {
+    abiEntryResult(abi.unregisterExtensionFunction(iri),
+      'unregisterExtensionFunction');
+    extInstalled.delete(iri);
+  }
+}
+
+/** Remove every registered extension function. */
+export async function clearExtensionFunctions() {
+  extFunctions.clear();
+  const abi = await loadNpmEntry();
+  if (typeof abi.clearExtensionFunctions === 'function') {
+    abiEntryResult(abi.clearExtensionFunctions(), 'clearExtensionFunctions');
+  }
+  extInstalled.clear();
+}
+
+/**
+ * Bind a SPARQL SERVICE endpoint IRI to a local graph snapshot so
+ * SERVICE <iri> { ... } (and LATERAL { SERVICE ... }) resolve against
+ * it in-process — the same registry the W3C federated suite uses.
+ * `data` is raw RDF text ({format}, default turtle) or any object
+ * with toNQuads(). The snapshot is the payload's default graph.
+ */
+export async function registerServiceEndpoint(iri, data, options) {
+  if (typeof iri !== 'string' || !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(iri)) {
+    throw new TypeError(
+      'registerServiceEndpoint: iri must be an absolute IRI string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.registerServiceEndpoint !== 'function') {
+    throw new Error(
+      'registerServiceEndpoint: this npm-entry bundle predates SERVICE ' +
+      'endpoint registration — rebuild.');
+  }
+  let nq;
+  if (data && typeof data.toNQuads === 'function') {
+    nq = data.toNQuads();
+  } else {
+    const fmt = (options && options.format) || 'turtle';
+    if (fmt === 'nquads' || fmt === 'ntriples') {
+      nq = String(data);
+    } else {
+      nq = abiEntryResult(
+        abi.parseToDatasetJson(String(data), fmt, ''),
+        'registerServiceEndpoint(parse)').nquads;
+    }
+  }
+  const r = abiEntryResult(abi.registerServiceEndpoint(iri, nq),
+    'registerServiceEndpoint');
+  serviceEndpointsActive = true;
+  return r;
+}
+
+/** Remove every registered SERVICE endpoint snapshot. */
+export async function clearServiceEndpoints() {
+  const abi = await loadNpmEntry();
+  if (typeof abi.clearServiceEndpoints === 'function') {
+    abiEntryResult(abi.clearServiceEndpoints(), 'clearServiceEndpoints');
+  }
+  serviceEndpointsActive = false;
+}
+
+function abiRegistryActive() {
+  return extFunctions.size > 0 || serviceEndpointsActive;
+}
+
+// ABI-engine query path, used by query() whenever extension functions
+// or SERVICE endpoints are registered (the CLI bundle is a separate
+// engine instance and cannot see those registrations).
+async function queryViaAbi(dataString, queryString, opts) {
+  const abi = await loadNpmEntry();
+  if (typeof abi.queryDataset !== 'function') {
+    throw new Error('query: npm-entry ABI lacks queryDataset — rebuild.');
+  }
+  const dataFormat = opts.dataFormat || 'turtle';
+  let nq;
+  if (dataFormat === 'nquads' || dataFormat === 'ntriples') {
+    nq = dataString;
+  } else {
+    nq = abiEntryResult(
+      abi.parseToDatasetJson(dataString, dataFormat, ''),
+      'query(parse)').nquads;
+  }
+  const qfn = opts.sparql12 ? abi.queryDataset12 : abi.queryDataset;
+  const r = await withExtensionRounds(
+    () => abiEntryResult(qfn(nq, queryString), 'query'));
+  if (r.kind === 'ask') return { head: {}, boolean: r.boolean };
+  if (r.kind === 'construct') {
+    if (opts.output === 'json') {
+      throw new Error(
+        'query: CONSTRUCT with output "json" is not supported on the ' +
+        'extension/SERVICE registry path');
+    }
+    return r.nquads;
+  }
+  return r.srj;
 }
 
 /**

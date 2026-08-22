@@ -221,6 +221,22 @@ export function unregisterExtensionFunction(iri: string): Promise<void>;
 export function clearExtensionFunctions(): Promise<void>;
 
 /**
+ * Bind a SPARQL SERVICE endpoint IRI to a local graph snapshot, so
+ * SERVICE <iri> { ... } (and LATERAL { SERVICE ... }) queries resolve
+ * against it in-process — the same registry the W3C federated-query
+ * suite uses (qt:serviceData). The snapshot is the payload's default
+ * graph.
+ */
+export function registerServiceEndpoint(
+  iri: string,
+  data: DataInput,
+  options?: { format?: DataFormat }
+): Promise<{ ok: true; count: number }>;
+
+/** Remove every registered SERVICE endpoint snapshot. */
+export function clearServiceEndpoints(): Promise<void>;
+
+/**
  * Apply a SPARQL 1.1 Update, returning the updated Dataset.
  * Needs the npm-entry engine bundle.
  */

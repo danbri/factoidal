@@ -677,6 +677,16 @@ const fn = {
     });
   },
   /**
+   * SPARQL 1.1 §17.6 extension functions (issue #463) + SERVICE
+   * endpoint snapshots (issue #57 family) — thin pass-throughs to the
+   * browser adapter, which owns the registry + async trampoline.
+   */
+  async registerExtensionFunction(iri, f) { return Factoidal.registerExtensionFunction(iri, f); },
+  async unregisterExtensionFunction(iri) { return Factoidal.unregisterExtensionFunction(iri); },
+  async clearExtensionFunctions() { return Factoidal.clearExtensionFunctions(); },
+  async registerServiceEndpoint(iri, data, options) { return Factoidal.registerServiceEndpoint(iri, data, options); },
+  async clearServiceEndpoints() { return Factoidal.clearServiceEndpoints(); },
+  /**
    * SHACL Core validation (mirrors npm/factoidal/index.js's
    * `shaclValidate(data, shapes, options) -> Promise<{conforms, report}>`).
    * `data`/`shapes` may each be raw RDF text (parsed with `options.format`,

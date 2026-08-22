@@ -117,6 +117,8 @@ module.exports = {
   registerExtensionFunction: api.registerExtensionFunction,
   unregisterExtensionFunction: api.unregisterExtensionFunction,
   clearExtensionFunctions: api.clearExtensionFunctions,
+  registerServiceEndpoint: api.registerServiceEndpoint,
+  clearServiceEndpoints: api.clearServiceEndpoints,
   update: api.update,
   serialize: api.serialize,
   canonicalize: api.canonicalize,
