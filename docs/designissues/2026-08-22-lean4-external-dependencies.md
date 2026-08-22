@@ -65,10 +65,23 @@ The Lean tree's assumption report would then read: "zero `sorry`,
 zero `axiom`; one `extern` family (HACL\* Ed25519, F\*-verified
 upstream), labelled" — strictly better than the F\* tree's ~88.
 
-## 4. Decisions requested
+## 4. Decisions — APPROVED by owner 2026-08-22
 
-- Confirm the two-tier hash policy (pure Lean SHA-2 acceptable for
-  public-data hashing; Ed25519 FFI-only) as an amendment to
-  `skills/crypto-policy`.
-- Confirm the browser strategy: Lean→wasm via Emscripten as a later
-  rung, F\* bundles remain the hub's engine until then.
+Owner, verbatim: "yes, approved re policy and browser strategy
+(assuming we might choose to look around at other C to WASM options,
+and noting that non-webplatform JS eg. Node/Deno is important too).
+We'll need HACL* everywhere etc."
+
+- Two-tier hash/signature policy: recorded as the Lean 4 amendment in
+  `skills/crypto-policy/SKILL.md`.
+- Runtime strategy: Lean → C → wasm. Emscripten is the first
+  candidate, NOT a commitment — evaluate alternatives before building
+  (WASI via `wasi-sdk`/`clang --target=wasm32-wasi`, which runs
+  natively in Node ≥ 20 and Deno through their WASI support and needs
+  no Emscripten JS glue; Zig's `zig cc` as a cross-compiler for the
+  Lean runtime). Selection criteria: startup time, artifact size,
+  GMP-free runtime build, and ONE artifact serving browser + Node +
+  Deno. The F\* bundles remain the hub's engine until the Lean
+  artifact passes the same hub node tests and browser sweep.
+- HACL\* on every target: C sources linked natively; the vendored
+  official wasm build for browser, Node, and Deno.

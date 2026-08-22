@@ -114,3 +114,35 @@ not a self-built binary:
   was first recorded.
 - `formal/fstar/ocaml-output/wasm_stub_shims.py` — the current wasm
   digest gap, in its own words.
+
+## Lean 4 tree amendment (owner-approved 2026-08-22)
+
+Owner decision, verbatim: "yes, approved re policy and browser
+strategy (assuming we might choose to look around at other C to WASM
+options, and noting that non-webplatform JS eg. Node/Deno is
+important too). We'll need HACL* everywhere etc."
+
+Two-tier rule for `formal/lean4/` (analysis:
+`docs/designissues/2026-08-22-lean4-external-dependencies.md`):
+
+1. **Hashes over public data** (RDFC-1.0 bnode hashing, the SPARQL
+   §17.4.4 MD5/SHA builtins, VC `sha256_hex` of canonical N-Quads):
+   a pure Lean implementation is PERMITTED — no secret is involved
+   and there is no side channel to protect — provided it carries the
+   FIPS 180-4 / RFC test vectors as build-time `#guard`s. This keeps
+   the canonicalisation algorithm total and axiom-free end to end.
+   Binding HACL*'s `Hacl_Hash_SHA2.c` via Lean FFI as well (for
+   speed, and for bit-parity with the F* tree) is encouraged, never
+   required.
+2. **Signatures and key agreement (Ed25519 for VC Data Integrity and
+   did:key; anything touching a secret): HACL* via Lean FFI ONLY**
+   (`@[extern]` over an `opaque` declaration, compiled through lake's
+   `extern_lib`). Never a hand-written Lean implementation. This is
+   the Lean tree's single permitted `extern` family and must be
+   labelled as such in `formal/lean4/PORT_NOTES.md`'s assumption
+   report, exactly as rule #11 realisations are labelled in F*.
+3. **HACL* everywhere**: every Lean deployment target links the same
+   HACL* — native via the C sources, browser AND non-web JS runtimes
+   (Node, Deno) via HACL*'s official wasm build already vendored
+   under `npm/factoidal/hacl-wasm/`. No target gets a different
+   crypto implementation.
