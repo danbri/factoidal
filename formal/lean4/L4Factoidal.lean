@@ -6,4 +6,7 @@ import L4Factoidal.RDF.Core
 import L4Factoidal.RDF.Graph
 import L4Factoidal.SPARQL.Algebra
 import L4Factoidal.SPARQL.Invariants
+import L4Factoidal.Syntax.Lexing
+import L4Factoidal.Syntax.NTriples
+import L4Factoidal.Syntax.NQuads
 import L4Factoidal.Tests
