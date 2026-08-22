@@ -89,6 +89,10 @@ import L4Factoidal.SPARQL.Tokenizer
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.ParserTests
 import L4Factoidal.SPARQL.ParserTheorems
+import L4Factoidal.SPARQL.Update
+import L4Factoidal.SPARQL.UpdateParser
+import L4Factoidal.SPARQL.UpdateTests
+import L4Factoidal.SPARQL.UpdateTheorems
 import L4Factoidal.Regex.Syntax
 import L4Factoidal.Regex.Derivative
 import L4Factoidal.Regex.Exec
