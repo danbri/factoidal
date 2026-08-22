@@ -59,3 +59,6 @@ import L4Factoidal.SPARQL.ResultsCsvTsv
 import L4Factoidal.SPARQL.ResultsTests
 import L4Factoidal.SPARQL.ResultsTheorems
 import L4Factoidal.SPARQL.Tokenizer
+import L4Factoidal.SPARQL.Parser
+import L4Factoidal.SPARQL.ParserTests
+import L4Factoidal.SPARQL.ParserTheorems

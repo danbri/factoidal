@@ -2661,19 +2661,29 @@ def topFuel : Nat := 10000
 prologue (SPARQL 1.1 §4.1.1.1); `version` selects the 1.1 or 1.2
 terminal layer. Port of `parse_sparql_with_base` /
 `parse_sparql_12_with_base`. -/
-def parseSparql (text : String) (base : Option String := none)
-    (version : SparqlVersion := .v11) : Except ParseError Query :=
+def parseSparqlWith (fuel : Nat) (text : String) (base : Option String)
+    (version : SparqlVersion) : Except ParseError Query :=
   let toks := tokenizeAt version text
   match firstInvalidToken toks with
   | some e => .error e
   | none =>
-    match pSelectQuery topFuel { v12 := version.is12 } base toks with
+    match pSelectQuery fuel { v12 := version.is12 } base toks with
     | .error e => .error e
     | .ok (q, rest) =>
       if !tokensOnlyEof rest then .error ⟨"unexpected tokens after query", peekPos rest⟩
       else if !validateBnodeScopeTop q then
         .error ⟨"blank node label reused across graph-pattern scope", 0⟩
       else .ok q
+
+/-- Parse at the F*'s own fuel seed. The fuel is a PARAMETER of
+`parseSparqlWith` rather than a literal inside it so that a proof can
+reason about the entry point without a tactic ever weak-head-
+normalising `pSelectQuery 10000 …` — doing so unfolds ten thousand
+levels of the mutual block and exhausts memory. See
+`SPARQL/ParserTheorems.lean`. -/
+def parseSparql (text : String) (base : Option String := none)
+    (version : SparqlVersion := .v11) : Except ParseError Query :=
+  parseSparqlWith topFuel text base version
 
 /-! ## The SSE algebra printer — F* Part 8
 
