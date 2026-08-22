@@ -2402,7 +2402,7 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
 
 Files: `L4Factoidal/SPARQL/Update.lean` (AST + §3 semantics),
 `SPARQL/UpdateParser.lean` (grammar [29]–[52]), `SPARQL/UpdateTests.lean`
-(100 guards), `SPARQL/UpdateTheorems.lean` (nine theorems),
+(84 guards), `SPARQL/UpdateTheorems.lean` (nine theorems),
 `Harness/Manifest.lean` (the `ut:` vocabulary), `Harness/Run.lean`
 (`UpdateEvaluationTest`, `PositiveUpdateSyntaxTest11`,
 `NegativeUpdateSyntaxTest11`).
@@ -2507,7 +2507,7 @@ unsupported (out of 1078).
 
 ### Guards and theorems
 
-`UpdateTests.lean`: 100 `#guard`s — INSERT DATA (set semantics, GRAPH
+`UpdateTests.lean`: 84 `#guard`s — INSERT DATA (set semantics, GRAPH
 blocks, same-label-one-node, request-fresh label), DELETE DATA (absent
 triple and absent graph are no-ops), DELETE WHERE (default, `GRAPH ?g`,
 `GRAPH <g>`), DELETE/INSERT (predicate rename, delete-before-insert,
