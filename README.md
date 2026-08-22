@@ -1,9 +1,14 @@
 # Factoidal
 
-An RDF/SPARQL implementation specified in F\* and extracted to OCaml
-(and JS/wasm/C) for execution. The F\* specifications are the product —
-executable code is obtained by extraction, not by hand-writing
-implementations.
+An RDF database and query engine whose APIs, interfaces and protocols
+are grounded in the W3C specifications and in mathematics, using F\*
+and Lean 4, and extracted to OCaml (and JS/wasm/C) for execution.
+
+The engine is the product; the formal layer is what makes it safe to
+optimise. Implementations can be varied, tuned and replaced
+aggressively, because a change that broke standards compliance could
+not pass. Executable code is obtained by extraction from the formal
+source, never by hand-writing implementations that mirror it.
 
 **What "verified" means here — three rings.** Claims differ by layer,
 and the boundary matters more than the headline. Every module's exact
