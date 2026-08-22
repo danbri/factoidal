@@ -1,0 +1,48 @@
+# Publish npm/factoidal (@factoidal/core) to npmjs.com via TRUSTED
+# PUBLISHING (OIDC) — no npm tokens anywhere.
+#
+# https://docs.npmjs.com/trusted-publishers
+# Requirements met here: GitHub-hosted runner; id-token: write; npm CLI
+# >= 11.5.1 + Node >= 22.14 (Node 24 ships npm 11.x; the version-check
+# step makes a too-old npm fail loudly rather than fall back to token
+# auth); package.json's repository.url matches this repository.
+#
+# npmjs.com side (one-time, owner): package Settings -> Trusted
+# Publisher -> GitHub Actions with EXACTLY:
+#   Organization or user: danbri
+#   Repository:           factoidal
+#   Workflow filename:    npm-publish.yml
+#   Environment name:     (leave blank)
+#   Allowed actions:      npm publish
+# Fields are case-sensitive; npm validates them only at publish time.
+#
+# Trigger: manual (workflow_dispatch) or a v* tag push. The publish
+# runs from the COMMITTED npm/factoidal tree — bundles are committed
+# (iron rule #9 family), so no build step happens here; the package's
+# own prepublishOnly gate (npm test, 180+ tests) still runs.
+name: npm-publish
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - 'npm-v*'
+permissions:
+  id-token: write   # OIDC — required for trusted publishing
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Check npm version (trusted publishing needs >= 11.5.1)
+        run: |
+          node --version
+          npm --version
+          npm --version | awk -F. '{ if ($1 < 11 || ($1 == 11 && $2 < 5)) { print "npm too old for trusted publishing"; exit 1 } }'
+      - name: Publish (OIDC; provenance generated automatically)
+        working-directory: npm/factoidal
+        run: npm publish
