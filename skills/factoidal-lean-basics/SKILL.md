@@ -153,7 +153,13 @@ executable edge only.
    copy with a clone of the main checkout's file (`cmp -s` to verify
    identical, then `cp -c main/f wt/f.tmp && mv wt/f.tmp wt/f`) —
    blocks are shared, git sees no change, agents keep working.
-7. **Integrate agent branches with MERGES, then push; never
+7. **Well-founded recursion blocks `decide`/`rfl`.** A mutually
+   recursive function group (the JSON parser's five functions)
+   compiles via well-founded recursion, so the kernel cannot unfold it
+   by evaluation and `decide`/`rfl` get stuck. Recipe: `unfold <fn>`
+   (its equation lemma) then `decide`; or keep parsers structurally
+   recursive on a fuel `Nat` where possible.
+8. **Integrate agent branches with MERGES, then push; never
    `git pull --rebase` afterwards.** A rebase replays the branch's
    commits onto origin and re-hits the same additive conflicts
    (`L4Factoidal.lean` imports, `PORT_NOTES.md` appends) the merge
