@@ -3552,3 +3552,466 @@ Still zero external dependencies. Not done: SPARQL-based targets
 (`sh:target`, SHACL-AF); `sh:sparql` on a shape reached only through
 `sh:property` (root shapes only, as the F\*); the two unproved
 decompositions named above.
+### OWL tableau: qualified cardinality (2026-08-22, fourth rung)
+
+`atLeastQ` / `atMostQ` join `Concept` with their OWL 2 Direct
+Semantics reading, and three clash rules follow: `minMaxClashQ`
+(qualified twin of the count clash), `maxClashQ` (n+1 named
+successors that are pairwise-distinct AND provably in the qualifying
+class), and `minQMaxClash` — the bridge letting a qualified minimum
+clash with an UNQUALIFIED maximum, since qualified successors are
+still successors. The witness list is inlined into `Interp.sem`
+rather than factored into a `succWitnessQ` helper, so the recursive
+`I.sem c y` stays visibly structural in `c` for the termination
+checker. Motivation is concrete: this is the concept form the
+unsupported W3C SPARQL entailment-regime tests use (`hasChild min 1
+Female`, `max 1 Female`, `exactly 1 Female`) — see the parity ledger
+in docs/designissues/2026-08-22-lean-fstar-parity-ledger.md. Axiom
+base unchanged.
+
+### OWL tableau: the SHIQ ≤-rule witness merge (2026-08-22, fifth rung)
+
+`leqMerge` closes the core SHIQ clash calculus. It is the first rule
+that REWRITES the ABox (`mergeInds` renames one individual to
+another) rather than extending it, and it branches over PAIRS of named
+successors the way `disjSplit` branches over disjuncts. Soundness is
+the pigeonhole argument, machine-checked: `n+1` distinctly-named
+`r`-successors cannot all denote different elements when `≤n r` holds,
+so some pair collides in every model, and the merged ABox that pair
+licenses is already refuted. Supporting lemmas, all new:
+`satisfies_subst` (a rename is invisible to a model that already
+identifies the two names), `satAll_mergeInds`, and
+`pairwise_map_ne_of_injOn` (the positive half of the pigeonhole; the
+existence half comes from a classical `by_cases` on whether any pair
+collides). Axiom base unchanged. The `by decide`-in-certificate trap
+from rung 3 recurred here and cost a build: use explicit `Mem` chains
+inside `Refuted` terms, including into a `mergeInds`-rewritten ABox
+where the list is a `List.map` rather than a literal.
+
+### GeoSPARQL: geometry model and bounding boxes (2026-08-22)
+
+First rung of a spec family the Lean tree had never touched, chosen off
+the parity ledger: `formal/fstar/RDF.Geo.*` has 4 modules and 37 W3C
+tests, and is self-contained. `Geo/Types.lean` ports the geometry model
+and `Geo/BBox.lean` the bounding boxes.
+
+Coordinates are EXACT decimals (`Scaled` = mantissa + decimal scale),
+not floats — the same choice the F* side made, and for the same
+reason: topology predicates compare coordinates for equality, so float
+rounding would make `sfEquals` depend on how the literal was parsed.
+`#guard` pins `0.1 + 0.2 = 0.3` exactly.
+
+Two Lean-specific notes. (1) `BBox.ofGeometry` recurses through
+`geometryCollection`; a `foldl` over the sublist hides that recursion
+from the termination checker, so `ofGeometry`/`ofGeometries` are
+declared `mutual` with explicit list recursion. A doc comment may not
+precede `mutual` — it attaches to the first `def` inside. (2) A
+`#guard` caught a wrong arithmetic assertion in the test file itself
+(0.5 × 0.2 written as 1 rather than 0.1) at build time, which is the
+build-time-checking discipline paying for itself in the first hour of
+a new area.
+
+Deliberately NOT stated yet: `disjoint_bbox_no_shared_point`, the
+soundness of using the box test as a pre-filter before the topology
+predicates. It needs transitivity of `Scaled.le`, which needs a
+rescaling-invariance lemma because pairwise `align` calls in a
+three-way chain use different common scales. The obligation is written
+into `BBox.lean` and NO code takes the disjoint-box shortcut until it
+is discharged.
+
+### GeoSPARQL: Scaled is a linear order; the box pre-filter is sound
+(2026-08-22, same day as the model)
+
+`Geo/Order.lean` discharges the obligation `BBox.lean` had named.
+`disjoint_bbox_no_shared_point` — two non-overlapping boxes share no
+point — is now proved, so the disjoint-box shortcut in front of the
+topology predicates is safe to take.
+
+The proof that mattered is `Scaled.le_trans`. It is not immediate
+because `cmp` aligns ITS TWO arguments at THEIR common scale, so a
+chain `a ≤ b ≤ c` involves three different alignment scales. The fix
+is rescaling invariance (`le_at'_shift`): comparing at any scale that
+dominates both operands gives the same verdict, after which
+transitivity is integer transitivity at one shared scale.
+
+Three core-Lean lessons, all paid for here:
+1. **Inside `namespace Scaled`, bare `max` resolves to `Scaled.max`**
+   and silently mis-typechecks against `Nat` scales. Write `Nat.max`.
+   (`align` in Types.lean is safe only because `Scaled.max` is
+   declared after it.)
+2. **No mathlib means no `push_cast`, no `ring`, no `split_ifs`.**
+   Use `Int.natCast_mul` + `Int.mul_assoc` by hand; probe unfamiliar
+   core lemma names with a scratch file through `lake env lean`
+   before writing the proof around them.
+3. **`omega` refuses nonlinear atoms** like `mantissa * 10^k`.
+   `generalize` the products to fresh variables first; the remaining
+   if-chain reasoning is then linear and `omega` closes it.
+
+### GeoSPARQL: the exact geometric kernel (2026-08-22)
+
+`Geo/Topology.lean` ports the predicate kernel from
+`RDF.Geo.Topology.fst`: orientation determinant, exact
+point-on-segment, four-orientation segment intersection, path
+crossing, ray-cast crossing parity, and point classification against
+rings and holed polygons, then the Simple Features point-vs-polygon
+predicates (`sfEquals`, `sfDisjoint`, `sfIntersects`, `sfWithin`,
+`sfTouches`).
+
+Everything is DIVISION-FREE by design, inherited from the F* module:
+computing an actual intersection coordinate would need division and
+would leave the exact-decimal world, so every test is phrased with the
+orientation sign instead. The ray-cast likewise decides "crosses to
+the right" from the orientation sign rather than an x-coordinate.
+
+Simple Features conventions pinned by `#guard`: a boundary point
+INTERSECTS but is not WITHIN; touching at an endpoint counts as
+segment intersection; a hole returns an otherwise-interior point to
+exterior. Caller-side assumption carried over verbatim: ray-casting is
+meaningful only for SIMPLE rings — segment intersection needs no such
+assumption.
+
+### GeoSPARQL: WKT parsing and decimal rendering (2026-08-22)
+
+`Geo/Wkt.lean` ports `Parser.WKT.fst`: the Simple Features WKT
+grammar behind `geo:wktLiteral`, with the optional `<IRI>` CRS prefix,
+all seven geometry tags, `EMPTY` forms, nested
+`GEOMETRYCOLLECTION`, and case-insensitive tags. Numbers parse to
+EXACT decimals, so `POINT(0.1 0.2)` compares equal to `⟨10,2⟩,⟨20,2⟩`
+— the whole reason the Geo port exists.
+
+Lean-side difference worth recording: the F* parser threads an
+explicit FUEL parameter because its input is a string with an index.
+This port works on `List Char`, so every production except the two
+genuinely recursive ones (comma lists, collections) is structurally
+decreasing and needs no fuel; the recursive pair is `partial` and
+`geometry`/`geometryList` must be declared `mutual`.
+
+Guards pin what a parser gets wrong quietly: trailing junk, a
+one-coordinate point, an unknown tag, an unclosed paren and the empty
+string must all FAIL rather than partially parse. `Scaled.toStringDec`
+renders the exact value back (`-0.1`, `0.001`), and a parsed polygon
+feeds `pointWithinPolygon` directly, so parse and topology are wired
+end to end.
+
+### GeoSPARQL: the geof: extension functions (2026-08-22)
+
+`Geo/Functions.lean` ports `RDF.Geo.Functions.fst` and completes the
+GeoSPARQL slice: `sfEquals`, `sfWithin`, `sfContains`, `sfIntersects`,
+`sfDisjoint`, `sfTouches` over the point/polygon fragment.
+
+It required ZERO change to the SPARQL evaluator. GeoSPARQL 1.1 §9
+names its predicates as SPARQL functions, SPARQL §17.6 already defines
+an extension point, and the Lean evaluator exposes that point as an
+ordinary field — `EvalEnv.ext : String → List EvalResult → Option
+EvalResult`. A caller installs the table with
+`{ EvalEnv.empty with ext := Geo.extFns }`. This is the purity
+doctrine (PORT_NOTES §"Purity doctrine") paying off concretely: where
+the F* side consults a registry the evaluator knows about, here the
+table is an argument, so a whole spec family bolts on without
+touching the evaluator or mutating anything global.
+
+Guards pin the failure direction, which is the part that silently
+corrupts answers if wrong: an unknown `geof:` name, a non-WKT
+argument, wrong arity, an unparseable lexical form, and a CROSS-CRS
+pair must each return `none` so the evaluator raises the §17.6 type
+error — never `false`, which would look like a legitimate negative
+answer. The no-CRS-transform rule is inherited from the F* port
+verbatim.
+
+### GeoSPARQL: three-valued predicates over all geometry kinds
+(2026-08-22, completing the family)
+
+The point-vs-polygon fragment is now the general dispatch. Added:
+`segmentSubsegOf`/`pathWithinPath` (line-in-line),
+`linestringEquals`, `lineIntersectsPolygon`, the `sf*Base` tables for
+Point/LineString/Polygon/Empty, `sfTouchesBase`, and the
+`Multi*`/`GeometryCollection` decomposition.
+
+The design property that mattered to port faithfully is the F* module's
+`option bool`: where the ported algorithm is INCOMPLETE it REFUSES
+(`none`) instead of answering. Two named cases: a path covered by two
+or more collinear outer edges across a bend, and two closed loops of
+equal length listed from different starting vertices. Answering
+`false` there would be indistinguishable from a real negative answer
+to a user's query, which is the failure mode this whole three-valued
+shape exists to prevent. `Geo/Functions.lean` maps a refusal to the
+SPARQL §17.6 TYPE ERROR, so the evaluator raises rather than reports.
+
+Decomposition combinators are Kleene three-valued: `combineExists`
+returns `some true` on one witness even when siblings refused (a
+witness settles an existential), but `some false` only when EVERY
+component definitely said false. `combineForall` is the dual. Getting
+this backwards would convert refusals into confident wrong answers at
+exactly the point where compound geometries meet partial algorithms.
+
+### CSVW: dialect description and the CSV reader (2026-08-22)
+
+Opens the largest self-contained family still absent from the Lean
+tree (F* CSVW is 5,283 lines across 6 modules, 270 W3C tests).
+`CSVW/Dialect.lean` ports `csvw_dialect` from `CSVW.Metadata.fst` plus
+the row reader it drives: quoting with doubled-quote escaping,
+CRLF/LF/CR line endings, comment prefixes, row and column skipping,
+blank-row handling, and the four trim modes.
+
+Design point carried over deliberately: EVERY dialect property stays
+`Option` in the description, and defaults are applied only at read
+time in `Dialect.resolve`. Collapsing absent into the default earlier
+would destroy the distinction the metadata inheritance rules depend
+on — "not stated here, inherit from the parent" is not the same fact
+as "stated to be the default value".
+
+Two spec corners the guards pin because they are easy to get
+backwards: `header: false` means zero header rows UNLESS
+`headerRowCount` says otherwise (both properties interact, and
+`headerRowCount` wins), and an explicitly EMPTY `quoteChar` means "no
+quoting at all" rather than "use the default quote". Row numbers are
+SOURCE line numbers and must survive skipping, because `csvw:rownum`
+and every error report reference them.
+
+### CSVW: URI template expansion (2026-08-22)
+
+`CSVW/UriTemplate.lean` ports `CSVW.URITemplate.fst` — the RFC 6570
+subset CSVW actually uses: level-1 `{var}` and level-2 `{#var}`. No
+query form, path segments, lists, or modifiers, matching the F*
+module's deliberate scope.
+
+Ported WITH its war story, as a regression guard: RFC 6570 §3.2.4
+prefixes a DEFINED `{#var}` expansion with a literal `'#'`, while an
+UNDEFINED one produces no output at all. Dropping that prefix made
+`countries.csv{#countryCode}` expand to `countries.csvAD` instead of
+`countries.csv#AD`, silently breaking every aboutUrl/valueUrl
+fragment template in the csv2rdf corpus. The guard pins both halves —
+the '#' appears when the variable is defined and does NOT appear when
+it is not.
+
+CSVW's `_row`/`_sourceRow`/`_name` variables need no special handling
+here; they resolve through the caller's lookup like any column name,
+which keeps this module free of CSVW knowledge.
+
+### CSVW: the metadata model and §5.1.1 inheritance (2026-08-22)
+
+`CSVW/Metadata.lean` ports the datatype, column, schema, table and
+table-group records plus the inherited-property chain. Scope stated as
+the F* module states it: ten of the eleven inherited properties
+(everything but `textDirection`) — a slice, not a completeness claim.
+
+`Inherited.override` is why every field in this family stays `Option`.
+`none` means INHERIT, and the group → table → schema → column chain
+resolves it. A field defaulted early would shadow the parent value it
+was meant to inherit, which is a silent wrong answer rather than a
+crash. The guards walk the whole chain: a column override wins, a
+schema value reaches the column, and with neither, the group's value
+arrives.
+
+Naming note with a reason: the metadata table record is `TableDesc`,
+because `Table` already names the reader's PARSED CONTENT in
+`Dialect.lean`. Metadata about a table and the rows read from one are
+different things, and letting one name cover both would be a real
+bug waiting to happen, not a style nit.
+
+§5.6 column-name derivation is pinned in full, since its fallback
+order is easy to shorten by accident: explicit `name`, then a title
+tagged with the requested language, then an untagged title, then the
+positional `_col.N` the spec mandates.
+
+### CSVW: csv2rdf cell conversion (2026-08-22)
+
+`CSVW/Conversion.lean` ports the cell-level half of
+`CSVW.Conversion.fst`: the row-scoped variable lookup (`_row`,
+`_sourceRow`, column names), `null` and `default` handling, the
+`separator` list split, the §6.4.2 whitespace rule, and
+aboutUrl/propertyUrl/valueUrl template resolution.
+
+Three rules pinned because each is a silent-wrong-answer if flipped:
+
+1. **The whitespace rule is per-datatype-base.** Only the string
+   family and the structured literals (xml/html/json) preserve
+   surrounding whitespace; every other base strips it before lexical
+   parsing. That is what lets a `date` cell parse THROUGH its padding
+   (`" 10/18/2010 "` → `2010-10-18`) while a `string` cell keeps it.
+   An absent datatype defaults to string, so it preserves too.
+2. **An empty cell with a `separator` yields NO elements**, not one
+   empty element — the difference between zero triples and one triple
+   with an empty object.
+3. **A null cell still reports its property.** Standard-mode
+   `csvw:describes` bookkeeping needs the subject and predicate even
+   when no value triple is produced, so `convertCell` returns them
+   alongside an empty object list rather than returning nothing.
+
+Template resolution context carried from the F* module: aboutUrl /
+propertyUrl / valueUrl resolve against the CURRENT TABLE's own
+already-resolved URL, never against the document base a second time.
+
+### CSVW: triple emission, minimal and standard modes (2026-08-22)
+
+`CSVW/Emit.lean` closes the csv2rdf pipeline: converted cells become
+RDF triples. BOTH modes are here — minimal (cell triples only) and
+standard (plus `csvw:describes`, `csvw:rownum`, `csvw:url` row
+scaffolding) — because the W3C manifest tests each mode separately,
+and porting only one would score half the suite while looking done.
+
+`typedLiteral` is the interesting piece. `literalWf` forbids
+`rdf:langString`/`rdf:dirLangString` on an untagged literal, and a
+datatype arriving from metadata could be either, so the obligation
+cannot be discharged statically. Rather than admit it, the
+constructor CHECKS and falls back to a plain string literal. Under the
+no-`sorry` policy an unprovable obligation is not a reason to weaken
+the policy — it is a signal that the function needs a runtime guard.
+
+Rules the guards pin: a cell whose predicate does not resolve to a
+valid IRI emits NOTHING rather than a malformed term, and does not
+stop its siblings; a language tag beats a datatype (RDF 1.1 makes any
+tagged literal `rdf:langString`); a `separator` cell emits one triple
+per element sharing subject and predicate; and `valueUrl` produces an
+IRI object rather than a literal.
+
+### CSVW: value formats — booleans and numbers (2026-08-22)
+
+`CSVW/Formats.lean` ports the boolean and numeric halves of
+`CSVW.Formats.fst`. SCOPE IS STATED IN THE MODULE, not implied: date
+/time patterns and the regex-valued duration `format` facet are not
+here yet (the latter needs the XSD regex engine).
+
+The three-way `FmtOutcome` is the reason that scope gap is safe.
+`noFormat` ("no format applied, keep the cell") is a DIFFERENT
+outcome from `invalid` ("a format was applied and the cell failed
+it"). An unported format returns `noFormat`, so a format this port
+cannot yet read never rejects a value it might have accepted.
+Collapsing the two would turn every unported format into a spurious
+validation failure — the conservative direction is not an accident,
+it is the design.
+
+Two rules the guards pin: a boolean `format` with NO `|` is
+MALFORMED and rejects everything rather than falling back to the XSD
+`true`/`1` space; and percent / per-mille scaling is done by shifting
+the DIGIT STRING, not by float arithmetic, so `12.5%` is exactly
+`0.125`.
+
+### CSVW: csv2json output (2026-08-22)
+
+`CSVW/Json.lean` ports `CSVW.Json.fst` — minimal and standard csv2json
+modes. Kept as its OWN output rather than a rendering of the triples:
+csv2json is a separate conformance suite and its shapes differ
+(`describes` arrays, `rownum`/`url` members, `rdfs:comment`), so
+deriving one from the other would lose exactly the distinctions the
+tests check.
+
+Three shape rules the guards pin, each an "absent vs empty"
+distinction that is easy to get wrong and impossible to see in a
+diff of passing counts:
+
+1. A NULL cell contributes NO MEMBER, rather than a member with JSON
+   `null`.
+2. A `separator` column is ALWAYS an array, even with one element —
+   the list-ness comes from the metadata, not from the cell content.
+3. An empty comment list produces NO `rdfs:comment` member: csv2json
+   says verbatim "If M.rdfs:comment is an empty array, remove the
+   rdfs:comment property from M", so emitting `[]` is wrong output,
+   not harmless output.
+
+### CSVW: metadata validation and the error/warning line (2026-08-22)
+
+`CSVW/Validate.lean` ports `CSVW.Validate.fst`, completing the main
+CSVW module set (Dialect, Metadata, UriTemplate, Conversion, Emit,
+Formats, Json, Validate).
+
+The module exists to preserve ONE distinction. The W3C csvw suite has
+two kinds of negative test: a `ValidationTest` must produce an ERROR,
+a `WarningValidationTest` must produce a WARNING and still convert. A
+port that flagged warnings as errors would fail every warning test
+while looking stricter and more correct — the failure mode where being
+wrong looks like being careful. Severity is therefore part of the
+`Finding`, not a caller's interpretation, and `passes` ignores
+warnings by construction.
+
+Two rules carried with their classification, because both are exactly
+what a later reader would "fix" into a bug:
+- A datatype string that is not a built-in NAME is a WARNING, never a
+  rejection (the suite classifies both the non-builtin and the
+  absolute-URL case as `WarningValidationTest`).
+- A NON-STRING `@id` is graceful degradation, not an error, so it is
+  deliberately not flagged; only a blank-node `@id` is an error.
+
+### ShEx: schema AST and node constraints (2026-08-22)
+
+Opens the family with the largest test count still absent (1,182 W3C
+tests; F* side is 3,053 lines across 3 modules). `ShEx/Schema.lean`
+ports the mutually recursive shapeExpr/tripleExpr AST;
+`ShEx/Validation.lean` ports §5.4 node-constraint satisfaction.
+
+Three details carried deliberately:
+
+1. **Numeric facets keep their verbatim JSON lexeme** as a `String`,
+   as in the F* module. Parsing them early would fix a precision
+   decision before the governing datatype is known, and ShEx compares
+   them against the node's own lexical value. `compareDecimal`
+   therefore compares two decimal STRINGS exactly — pad to common
+   widths, then one lexicographic pass — so no float ever exists to
+   round.
+2. **Length facets count CHARACTERS, not bytes.** A guard pins `é`
+   as length 1.
+3. **An absent language or datatype in an ObjectValue means
+   UNCONSTRAINED**, not "must be absent" — the opposite reading
+   silently rejects every tagged literal.
+
+Lean-specific: `extends` is a KEYWORD, so `Shape`'s field is
+`extendsRefs`. The mutually recursive records had to become
+inductives with hand-written accessors, since a Lean `structure`
+cannot join a `mutual` block containing inductives.
+
+NOT ported yet: shape satisfaction proper — triple expressions,
+cardinality matching over neighbourhoods, EXTRA and CLOSED — which is
+where the recursion through shape references lives.
+
+### ShEx: shape satisfaction, EXTRA vs CLOSED (2026-08-22)
+
+`ShEx/Shapes.lean` ports `satisfies(n, Shape, G)`: neighbourhood
+construction, triple-expression matching with cardinality, and the
+two clauses that follow it.
+
+The module exists to keep ONE distinction straight, which the F*
+module records as an actual bug caught during its own measurement run:
+
+* `extra p` tolerates LEFTOVER arcs on predicate `p` — ones the
+  constraint could not take because its [min,max] was full or its
+  valueExpr failed — REGARDLESS of `closed`.
+* `closed` bounds only arcs whose predicate the expression NEVER
+  MENTIONS. It never relaxes a mentioned predicate's own cardinality.
+
+Conflating them — letting "not closed" also grant a mentioned
+predicate's leftover tolerance — is the bug. The two are computed in
+separate steps here that never share a branch, and a guard pins the
+exact case that distinguishes them: an OPEN shape with a failing
+leftover arc on a mentioned predicate must FAIL without `extra`, and
+pass with it.
+
+Scope stated, not implied: no backtracking for ambiguous `OneOf`
+siblings sharing a predicate (first satisfied branch wins), and no
+recursion through shape references — an unresolved `ref` makes an arc
+leftover rather than being silently accepted, which is the
+fail-closed direction.
+
+### RML: mapping model and term generation (2026-08-22)
+
+`RML/Mapping.lean` ports the term-map core of `RML.Mapping.fst` /
+`RML.Eval.fst`: constant / reference / template forms, templates with
+RML's backslash escaping, the term types, and term generation from a
+data record.
+
+Two details carried with their reasons:
+
+1. **`rml:IRI` and `rml:URI` are NOT synonyms.** `rml:URI` applies
+   URI-safe (RFC 3986, ASCII-only) percent-encoding; `rml:IRI`
+   applies IRI-safe (RFC 3987) encoding where most non-ASCII stays as
+   itself. `"Zoë"` becomes `"Zo%C3%AB"` under one and stays `"Zoë"`
+   under the other. The F* module records this as a CORRECTION to an
+   earlier "legacy synonym" reading, so the distinction is carried
+   here with a guard on exactly that string.
+2. **An unresolved reference generates NO TERM**, and an absent field
+   makes the WHOLE template produce nothing — not an empty string.
+   Emitting `http://ex/` for a missing id would be a valid-looking
+   IRI pointing at the wrong thing.
+
+RML templates escape braces with a backslash; the CSVW RFC 6570
+templates deliberately do NOT. The two look similar enough to merge
+and must not be — noted in both modules.

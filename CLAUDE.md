@@ -1,16 +1,60 @@
 > **only report to me in ASD-STE100 Simplified Technical English.**
 
-# Factoidal — Verified RDF/SPARQL from F\*
+# Factoidal — a linked information system with graph data and the Web at its heart
 
-A formally verified RDF/SPARQL implementation. The **F\* specifications are
-the product**. Executable code is obtained by **extraction**, not by
-hand-writing Rust/JS/OCaml/anything that "mirrors" a spec.
+(Owner's framing, 2026-08-22.)
+
+**The product is the system**: a highly optimised, flexible, performant
+environment for graph data on the Web — storing it, querying it,
+linking it, and serving it over Web protocols. F\* and Lean 4 are how
+its APIs, interfaces and protocols are grounded in the W3C
+specifications and in mathematics. They are not a separate deliverable, and a specification
+is not a substitute for the code that satisfies it.
+
+That grounding is what buys the freedom to go fast: implementations
+may be varied, tuned and replaced aggressively, because the specs make
+it impossible for an improvement to silently destroy standards
+compliance. Executable code is still obtained by **extraction from the
+formal source**, never by hand-writing Rust/JS/OCaml that "mirrors" a
+spec — that is the mechanism, not the goal.
+
+## Founding view (danbri, 2026-08-22) — verbatim
+
+> "The key thing is to define APIs and interfaces and protocols
+> grounded via F\* and Lean4 in W3C specs and maths. These should be
+> implemented faithfully, efficiently, tunably, and formally, but
+> don't confuse the spec and the code satisfying it. Even as we use
+> F\* and/or Lean 4 to define and implement everything. The use of
+> these formal languages gives us, and coding agents, collaborators
+> etc., a safe platform for experimentation and variation without
+> fear that small improvements will destroy standards compliance."
+>
+> "If we get this right we may get a good chance of creating SOTA
+> technology and a highly optimised, flexible, performant rdf db and
+> querying etc environment."
+
+What follows from it, and settles recurring arguments:
+
+- **Spec and implementation are DISTINCT artifacts even when both are
+  written in F\* or Lean.** A fast implementation is not a betrayal of
+  the spec; a spec-shaped definition is not a performance failure. The
+  correct relation between them is a proof, not a resemblance.
+- **Efficiency and tunability are in scope, not concessions.** Speed
+  work is legitimate everywhere, in either tree, provided the spec it
+  satisfies stays fixed and the satisfaction is proved or measured —
+  never assumed.
+- **The point of the formal layer is freedom to experiment.** Agents
+  and collaborators should be able to vary implementations
+  aggressively; the specs are what make that safe. Treat a refusal to
+  optimise "because it is the spec tree" as a category error — move
+  or prove the boundary instead.
 
 **Goal:** a performant, compliant engine for RDF Core 1.1 (all concrete
 syntaxes), RDF/S, OWL, SHACL, RDFC-1.0 canonicalization, and full
-SPARQL 1.1 (query, update, protocol, results) — specified in F\*,
-extracted to native/JS/wasm (and C via KaRaMeL), with correctness and
-speed each proven by test suites and measurements, never by assertion.
+SPARQL 1.1 (query, update, protocol, results) — grounded in F\* and
+Lean 4, extracted to native/JS/wasm (and C via KaRaMeL), with
+correctness and speed each established by proof, test suites and
+measurement, never by assertion.
 Standing priorities: `docs/claude-rules/current-state.md` § Standing
 priorities.
 
@@ -41,10 +85,15 @@ The two that corrupt files silently:
 
 ## Iron Rules
 
-1. **F\* is the source of truth.** All RDF/SPARQL logic lives in `.fst` files.
+1. **The formal source is the source of truth.** RDF/SPARQL logic
+   lives in `.fst` files (`formal/fstar`, the shipping engine) and in
+   `.lean` files (`formal/lean4`, `L4Factoidal`) — never in
+   hand-written code downstream of them.
 2. **Code is extracted, not hand-written.** Use `fstar.exe --codegen OCaml`
-   or KaRaMeL for C/WASM. Never vibe-code an implementation that "mirrors"
-   the spec.
+   or KaRaMeL for C/WASM; the Lean tree compiles via Lean→C→wasm. Never
+   vibe-code an implementation that "mirrors" the spec. Optimising an
+   implementation IS allowed and wanted — inside the formal source,
+   where the refinement can be proved.
 3. **`assume val` = acknowledged gap OR allowed realisation — never a
    silent hole.** An `assume val` is one of two things, and each has a
    home:
@@ -163,25 +212,43 @@ Rules that follow:
 1. **"X deprioritized" is an ordering decision, never a scope
    prohibition.** Do not let a steer calcify into "out of scope by
    owner directive" through document inheritance. (It happened: a
-   2026-07-11 "protocols deprioritized" — which actually meant
-   "format work is the lowest-hanging fruit, especially given the
-   historical difficulty of AI-written F\*" — was inherited three
-   documents deep into "owner-excluded" labels on specific CSVW
-   tests. The owner never made that call; see the 2026-07-15
-   correction in the CSVW triage ledger.)
+   2026-07-11 "protocols deprioritized" was inherited three documents
+   deep into "owner-excluded" labels on specific CSVW tests. The owner
+   never made that call; see the 2026-07-15 correction in the CSVW
+   triage ledger. The owner's own account of what that steer meant,
+   given 2026-08-22, verbatim: "Protocols were not deprioritised but
+   we needed basic sparql first - and early f\* was glacially slow at
+   points where io bridged the non f\* universe." Note that BOTH the
+   original label and the earlier gloss recorded here were wrong: it
+   was a sequencing constraint plus a performance problem at the I/O
+   boundary, not a judgement about protocol work.)
 2. **Quote steers with date and original wording** when writing them
    into ledgers or design docs. Paraphrase drifts; drift compounds.
-3. **Load-bearing implications get surfaced, not inferred.** Before
+3. **Never invent a rationale and attribute it to the owner.** State
+   who decided a thing, or label it a Claude-inferred default. In this
+   repo `git blame` CANNOT settle provenance — every commit carries
+   the owner's git identity by iron rule #13 — so provenance survives
+   only if the prose carries it. (It happened: 2026-08-22, a
+   Claude-authored skill bullet said the Lean tree's plain evaluator
+   split was "absolute — never port performance machinery here",
+   placed under an "owner priority" heading it was never given. It
+   hardened into "must stay that way" in a design doc, then into a
+   chat claim that the owner considered indexed joins destructive.
+   Owner: "BS, I never said this." Cost: a real design question —
+   should the Lean tree get indexed joins and a refinement proof? —
+   was recorded as closed for a day. Corrected in
+   `skills/factoidal-lean-basics` with a standing provenance note.)
+4. **Load-bearing implications get surfaced, not inferred.** Before
    recording "owner excluded N tests" or dropping a suite from a
    goal, put the implication back to the owner as one short question.
    A sentence of friction now beats a fabricated decision that future
    sessions will read as settled.
-4. **Write for phone-triage.** The owner's instruction quality is a
+5. **Write for phone-triage.** The owner's instruction quality is a
    function of our output quality: lead with the result or the
    decision needed, keep it short, no pseudo-private jargon (glossary
    rule), scores always labelled. A wall of codenames upstream
    becomes a flawed instruction downstream.
-5. **Use a small, stable emoji palette as visual anchors** (owner
+6. **Use a small, stable emoji palette as visual anchors** (owner
    request, 2026-07-15): colored emoji render as scannable texture on
    a phone, letting the owner navigate giant scrolling blocks at
    flick-speed. Fixed meanings, applied sparingly (one marker per
@@ -191,7 +258,7 @@ Rules that follow:
    ⚠️ risk/caveat · 🧹 cleanup/hygiene. Owner messages may use emoji
    as markers too — treat them as tagging, not tone. Full register
    rules: `skills/markdown-style/SKILL.md`.
-6. **Work tracking lives in GitHub issues, not session state** (owner
+7. **Work tracking lives in GitHub issues, not session state** (owner
    correction, 2026-08-11, verbatim: "This is unacceptably shit for
    ios app users - you spew thousands of lines of blabber at us with
    no tooling to organize it. Use github properly."). Session-local
@@ -200,7 +267,7 @@ Rules that follow:
    **#404 Active work tracker** (update it at every harvest cycle —
    staleness there is a bug). Status reports LINK issues instead of
    restating their content.
-7. **Old steers decay — re-verify before acting on one.** "Protocols
+8. **Old steers decay — re-verify before acting on one.** "Protocols
    deprioritized" predated SPARQL Protocol reaching 56 pass, 0 fail
    (34 protocol + 19 graph-store + 3 service-description, both trees);
    citing a steer against a tree that has since moved is acting on

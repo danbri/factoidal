@@ -100,6 +100,52 @@ theorem pairwise_map_of {α β : Type} {R : α → α → Prop} {S : β → β �
       have ⟨a', ha', hfa⟩ := List.mem_map.mp hb
       exact hfa ▸ h _ _ (ha a' ha')
 
+/-- Renaming is invisible to a model that already identifies the two
+    names: if `ν b = ν c` then `ν` reads a substituted assertion
+    exactly as it reads the original. -/
+theorem satisfies_subst {δ : Type} {I : Interp δ} {ν : Ind → δ}
+    {b c : Ind} (hbc : ν b = ν c) (φ : Assertion)
+    (hs : Satisfies I ν φ) : Satisfies I ν (Assertion.subst b c φ) := by
+  have hpt : ∀ x, ν (Ind.subst b c x) = ν x := by
+    intro x
+    by_cases h : x = b
+    · simp [Ind.subst, h, hbc]
+    · simp [Ind.subst, h]
+  cases φ with
+  | inst a k  => simpa [Assertion.subst, Satisfies, hpt] using hs
+  | rel r x y => simpa [Assertion.subst, Satisfies, hpt] using hs
+  | diff x y  => simpa [Assertion.subst, Satisfies, hpt] using hs
+
+/-- The whole merged ABox is modelled, when the two merged names
+    already denote one element. -/
+theorem satAll_mergeInds {δ : Type} {I : Interp δ} {ν : Ind → δ}
+    {b c : Ind} (hbc : ν b = ν c) {A : List Assertion}
+    (hM : SatAll I ν A) : SatAll I ν (mergeInds b c A) := by
+  intro φ hφ
+  have ⟨ψ, hψ, hEq⟩ := List.mem_map.mp hφ
+  exact hEq ▸ satisfies_subst hbc ψ (hM _ hψ)
+
+/-- If no two DISTINCT names in a duplicate-free list share a value,
+    the mapped list is pairwise distinct. The positive half of the
+    pigeonhole step in the ≤-rule. -/
+theorem pairwise_map_ne_of_injOn {δ : Type} {ν : Ind → δ} :
+    ∀ {l : List Ind}, l.Nodup →
+      (∀ b ∈ l, ∀ c ∈ l, b ≠ c → ν b ≠ ν c) →
+      (l.map ν).Pairwise (· ≠ ·) := by
+  intro l
+  induction l with
+  | nil => intro _ _; exact List.Pairwise.nil
+  | cons x xs ih =>
+      intro hnd hinj
+      have hx : x ∉ xs := (List.nodup_cons.mp hnd).1
+      refine List.Pairwise.cons ?_ (ih (List.nodup_cons.mp hnd).2 ?_)
+      · intro y hy
+        have ⟨c, hc, hfc⟩ := List.mem_map.mp hy
+        have hne : x ≠ c := fun h => hx (h ▸ hc)
+        exact hfc ▸ hinj x (List.Mem.head _) c (List.Mem.tail _ hc) hne
+      · intro b hb c hc hbc
+        exact hinj b (List.Mem.tail _ hb) c (List.Mem.tail _ hc) hbc
+
 /-- The empty role box is respected by every interpretation, so the
     pre-role-box calculus embeds without side conditions. -/
 theorem respects_empty {δ : Type} (I : Interp δ) :
@@ -142,6 +188,47 @@ theorem refuted_sound {R : RoleAxioms} {A : List Assertion}
       · intro y hy
         have ⟨b, hb, hfb⟩ := List.mem_map.mp hy
         exact hfb ▸ derives_sound hR (hrel b hb) hM
+  | minMaxClashQ hmin hmax =>
+      intro δ I ν hR hM
+      exact (derives_sound hR hmax hM) (derives_sound hR hmin hM)
+  | maxClashQ l hmax hlen hdiff hrel hcls =>
+      intro δ I ν hR hM
+      apply derives_sound hR hmax hM
+      refine ⟨l.map ν, ?_, ?_, ?_⟩
+      · simpa using hlen
+      · refine pairwise_map_of ν ?_ hdiff
+        intro x y hxy
+        cases hxy with
+        | inl hd => exact derives_sound hR hd hM
+        | inr hd => exact (derives_sound hR hd hM).symm
+      · intro y hy
+        have ⟨b, hb, hfb⟩ := List.mem_map.mp hy
+        exact hfb ▸ ⟨derives_sound hR (hrel b hb) hM,
+                     derives_sound hR (hcls b hb) hM⟩
+  | minQMaxClash hminq hmax =>
+      intro δ I ν hR hM
+      -- A qualified witness list IS an unqualified one: drop the `C`
+      -- component of each conjunct.
+      have ⟨l, hlen, hdist, hall⟩ := derives_sound hR hminq hM
+      exact (derives_sound hR hmax hM)
+        ⟨l, hlen, hdist, fun y hy => (hall y hy).1⟩
+  | @leqMerge A' a n r l hmax hlen hnd hrel _ ih =>
+      intro δ I ν hR hM
+      -- Pigeonhole: either two distinct names in `l` already collide
+      -- in this model, or `l.map ν` is a length-(n+1) list of
+      -- pairwise-distinct successors, which `≤n r` forbids.
+      by_cases hcoll : ∃ b ∈ l, ∃ c ∈ l, b ≠ c ∧ ν b = ν c
+      · have ⟨b, hb, c, hc, hbc, hval⟩ := hcoll
+        exact ih b hb c hc hbc I ν hR (satAll_mergeInds hval hM)
+      · apply derives_sound hR hmax hM
+        refine ⟨l.map ν, ?_, ?_, ?_⟩
+        · simpa using hlen
+        · refine pairwise_map_ne_of_injOn hnd ?_
+          intro b hb c hc hbc hEq
+          exact hcoll ⟨b, hb, c, hc, hbc, hEq⟩
+        · intro y hy
+          have ⟨b, hb, hfb⟩ := List.mem_map.mp hy
+          exact hfb ▸ derives_sound hR (hrel b hb) hM
   | disjSplit hdisj _ _ ihc ihd =>
       intro δ I ν hR hM
       cases derives_sound hR hdisj hM with

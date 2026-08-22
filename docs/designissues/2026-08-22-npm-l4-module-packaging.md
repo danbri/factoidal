@@ -100,11 +100,16 @@ Readings, with their limits stated:
   parser now, but it is not behind the wasm ABI yet
   ([#476](https://github.com/danbri/factoidal/issues/476) item 2).
 - **The Lean query column is quadratic** (5.7 → 170 → 2,891 ms as
-  triples go 200 → 2,000 → 8,000): `formal/lean4` is the SPECIFICATION
-  evaluator (nested-loop join, by design, per the style contract in
-  skills/factoidal-lean-basics) and must stay that way. The F\* engine
-  is the indexed production path and stays ~14x faster at 8k triples.
-  Small graphs (≤ ~2,000 triples) are competitive either way.
+  triples go 200 → 2,000 → 8,000). Cause, measured: the Lean evaluator
+  joins by nested list scan, with no index. The F\* engine is the
+  indexed path and stays ~14x faster at 8k triples; small graphs
+  (≤ ~2,000 triples) are competitive either way. 🧭 Whether the Lean
+  tree SHOULD acquire indexed joins — and prove the indexed evaluator
+  refines the plain one, which is the interesting theorem — is an OPEN
+  question for the owner, not a settled design point. An earlier draft
+  of this file asserted the plain evaluator "must stay that way, by
+  design"; no owner instruction said so (correction 2026-08-22, see
+  the provenance note in skills/factoidal-lean-basics).
 - **The F\* wasm_of_ocaml Turtle parse is 2.4x SLOWER than its own
   js_of_ocaml build** (5,480 vs 2,245 ms at 8k) while its query is
   2.8x faster (205 vs 577 ms). Worth its own profile before anyone

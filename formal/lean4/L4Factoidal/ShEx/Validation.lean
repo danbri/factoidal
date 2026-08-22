@@ -1,0 +1,156 @@
+/-
+L4Factoidal.ShEx.Validation — node-constraint satisfaction, ported
+from `formal/fstar/ShEx.Validation.fst`.
+
+Spec: ShEx 2.1 Semantics §5.4 `satisfies2` for node constraints.
+
+This slice covers NODE constraints — nodeKind, datatype, string
+facets, value sets and numeric facets — over an RDF term. Shape
+satisfaction (triple expressions, cardinality matching, EXTRA and
+CLOSED) builds on it and is the next increment.
+-/
+import L4Factoidal.ShEx.Schema
+import L4Factoidal.RDF.Core
+
+namespace L4Factoidal.ShEx
+
+open L4Factoidal.RDF
+
+/-- §5.4.1 nodeKind. `nonLiteral` admits IRIs and blank nodes. -/
+def matchesNodeKind (k : NodeKind) (t : Term) : Bool :=
+  match k, t with
+  | .iri,        .iri _     => true
+  | .bnode,      .bnode _   => true
+  | .literal,    .literal _ => true
+  | .nonLiteral, .iri _     => true
+  | .nonLiteral, .bnode _   => true
+  | _, _ => false
+
+/-- The lexical form a facet applies to. -/
+def lexicalOf (t : Term) : String :=
+  match t with
+  | .literal l => l.val.lexicalForm
+  | .iri i     => i.val
+  | .bnode b   => b
+  | _          => ""
+
+/-- §5.4.3 datatype: only literals can match. -/
+def matchesDatatype (dt : String) (t : Term) : Bool :=
+  match t with
+  | .literal l => l.val.datatype.val == dt
+  | _          => false
+
+/-- §5.4.4 string facets, measured in CHARACTERS not bytes — a length
+    facet over a multi-byte lexical form would otherwise be silently
+    wrong. -/
+def matchesLengthFacets (nc : NodeConstraint) (t : Term) : Bool :=
+  let n : Int := (lexicalOf t).toList.length
+  (match nc.length with    | some l => n == l | none => true) &&
+  (match nc.minLength with | some l => n ≥ l  | none => true) &&
+  (match nc.maxLength with | some l => n ≤ l  | none => true)
+
+/-- Exact object-value match. An ABSENT language or datatype in the
+    constraint means "unconstrained", not "must be absent". -/
+def matchesObjectValue (ov : ObjectValue) (t : Term) : Bool :=
+  match ov, t with
+  | .iri v, .iri i => i.val == v
+  | .literal v lang dt, .literal l =>
+      l.val.lexicalForm == v &&
+      (match lang with | some g => l.val.langTag == some g | none => true) &&
+      (match dt with   | some d => l.val.datatype.val == d | none => true)
+  | _, _ => false
+
+/-- Stem matching: wildcard matches anything, a plain stem is a
+    PREFIX match. -/
+def matchesStem (kind : VsvKind) (s : Stem) (t : Term) : Bool :=
+  let target := match kind, t with
+    | .iri,      .iri i     => some i.val
+    | .literal,  .literal l => some l.val.lexicalForm
+    | .language, .literal l => l.val.langTag
+    | _, _ => none
+  match target, s with
+  | none,   _         => false
+  | some _, .wildcard => true
+  | some v, .plain p  => v.startsWith p
+
+/-- §5.4.5 value set membership. An EXCLUSION removes a term the stem
+    would otherwise have admitted. -/
+def matchesValueSetValue (v : ValueSetValue) (t : Term) : Bool :=
+  match v with
+  | .object ov => matchesObjectValue ov t
+  | .stem k s  => matchesStem k s t
+  | .stemRange k s excl =>
+      matchesStem k s t && !(excl.any (fun e => matchesObjectValue e t))
+  | .language tag =>
+      match t with
+      | .literal l => l.val.langTag == some tag
+      | _          => false
+
+def matchesValues (vs : List ValueSetValue) (t : Term) : Bool :=
+  vs.isEmpty || vs.any (fun v => matchesValueSetValue v t)
+
+/-- Split a char list on the first '.', or return it whole. -/
+private def splitOnDot (l : List Char) : List (List Char) :=
+  match l.findIdx? (· == '.') with
+  | some i => [l.take i, l.drop (i + 1)]
+  | none   => [l]
+
+/-- Compare two decimal lexemes EXACTLY, without a float. `none` when
+    either side is not a plain decimal — the caller then treats the
+    facet as unsatisfied rather than guessing an ordering. -/
+def compareDecimal (a b : String) : Option Ordering :=
+  let parse (s : String) : Option (Bool × List Char × List Char) :=
+    let neg := s.startsWith "-"
+    let body := if neg || s.startsWith "+" then s.toList.drop 1 else s.toList
+    let isD := fun (c : Char) => '0' ≤ c && c ≤ '9'
+    match splitOnDot body with
+    | [ip]     => if !ip.isEmpty && ip.all isD then some (neg, ip, []) else none
+    | [ip, fp] => if (!ip.isEmpty || !fp.isEmpty) && ip.all isD && fp.all isD
+                  then some (neg, ip, fp) else none
+    | _        => none
+  match parse a, parse b with
+  | some (na, ia, fa), some (nb, ib, fb) =>
+      let iw := max ia.length ib.length
+      let fw := max fa.length fb.length
+      let ka := List.replicate (iw - ia.length) '0' ++ ia ++ fa ++ List.replicate (fw - fa.length) '0'
+      let kb := List.replicate (iw - ib.length) '0' ++ ib ++ fb ++ List.replicate (fw - fb.length) '0'
+      let magnitude := compare (String.ofList ka) (String.ofList kb)
+      some (match na, nb with
+        | false, false => magnitude
+        | true,  true  => magnitude.swap
+        | true,  false => .lt
+        | false, true  => .gt)
+  | _, _ => none
+
+private def cmpOk (facet : Option String) (lex : String) (ok : Ordering → Bool) : Bool :=
+  match facet with
+  | none   => true
+  | some f => match compareDecimal lex f with
+              | some o => ok o
+              | none   => false
+
+/-- §5.4.6 numeric facets. Only literals carry them, and a
+    non-numeric lexical form FAILS rather than being coerced. -/
+def matchesNumericFacets (nc : NodeConstraint) (t : Term) : Bool :=
+  let anySet := nc.minInclusive.isSome || nc.maxInclusive.isSome ||
+                nc.minExclusive.isSome || nc.maxExclusive.isSome
+  if !anySet then true
+  else match t with
+    | .literal l =>
+        let lex := l.val.lexicalForm
+        cmpOk nc.minInclusive lex (fun o => o != .lt) &&
+        cmpOk nc.maxInclusive lex (fun o => o != .gt) &&
+        cmpOk nc.minExclusive lex (fun o => o == .gt) &&
+        cmpOk nc.maxExclusive lex (fun o => o == .lt)
+    | _ => false
+
+/-- §5.4 node-constraint satisfaction: every present facet must hold.
+    An EMPTY constraint is satisfied by any node. -/
+def satisfiesNodeConstraint (nc : NodeConstraint) (t : Term) : Bool :=
+  (match nc.nodeKind with | some k => matchesNodeKind k t | none => true) &&
+  (match nc.datatype with | some d => matchesDatatype d t | none => true) &&
+  matchesLengthFacets nc t &&
+  matchesValues nc.values t &&
+  matchesNumericFacets nc t
+
+end L4Factoidal.ShEx
