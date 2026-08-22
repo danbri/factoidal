@@ -1,11 +1,14 @@
 > **only report to me in ASD-STE100 Simplified Technical English.**
 
-# Factoidal — a formally grounded RDF/SPARQL engine
+# Factoidal — a linked information system with graph data and the Web at its heart
 
-**The product is the engine**: a highly optimised, flexible, performant
-RDF database and query environment. F\* and Lean 4 are how its APIs,
-interfaces and protocols are grounded in the W3C specifications and in
-mathematics. They are not a separate deliverable, and a specification
+(Owner's framing, 2026-08-22.)
+
+**The product is the system**: a highly optimised, flexible, performant
+environment for graph data on the Web — storing it, querying it,
+linking it, and serving it over Web protocols. F\* and Lean 4 are how
+its APIs, interfaces and protocols are grounded in the W3C
+specifications and in mathematics. They are not a separate deliverable, and a specification
 is not a substitute for the code that satisfies it.
 
 That grounding is what buys the freedom to go fast: implementations
