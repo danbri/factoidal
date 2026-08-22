@@ -156,3 +156,5 @@ import L4Factoidal.RIF.Core
 import L4Factoidal.RIF.Tests
 import L4Factoidal.JSONSchema.Validate
 import L4Factoidal.JSONSchema.Tests
+import L4Factoidal.XPath.Number
+import L4Factoidal.XPath.NumberTests
