@@ -162,6 +162,11 @@ executable edge only.
   SPECIFICATION evaluator (list scans, nested-loop join). The F\*
   tree's planner / index seam / hash join / fuel bounds / `*_tr`
   rewrites are performance machinery — never port them here.
+- Naming: the certified six-rule RDFS fragment is **rdfs-core** /
+  `RdfsCore` in identifiers and prose — never "ρdf" (owner,
+  2026-08-22: the Greek letter reads as "pdf" on a phone). Cite the
+  Muñoz–Pérez–Gutierrez 2007 name once, in a doc comment, for
+  reviewers who know the literature.
 - Theorem names state observational content
   (`Binding.lookup_merge`); `@[simp]` only on genuine
   simplification laws.
