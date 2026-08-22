@@ -4066,3 +4066,32 @@ merely green, and both are carried:
    multiple of `0.1`, which a float-based check famously gets wrong.
    `1.0` equals `1` for const/enum, and `integer` accepts a number
    whose VALUE is integral.
+
+### XPath: the 1.0 number type (2026-08-22)
+
+`XPath/Number.lean` ports `xpath_number` from `XPath.Eval.fst`. The
+combination is deliberate and worth stating: XPath 1.0 numbers are
+IEEE 754 doubles, so **NaN and ±Infinity are real values with
+specified behaviour, not error states** — but the finite case is an
+EXACT decimal (`mantissa / 10^scale`), not a float.
+
+Both halves are observable. The IEEE half: `1 div 0` is `+Infinity`
+rather than an error, `0 div 0` and `∞ + -∞` and `0 × ∞` are NaN, and
+NaN compares unequal to EVERYTHING including itself. The exact half:
+`0.1 + 0.2 = 0.3` holds, and `number('0.1')` equals the literal.
+Binary rounding is not something any XPath test asks for; the special
+values are asked for constantly.
+
+`boolean()` on a number is false for zero AND for NaN — the rule that
+surprises readers, so it has its own guard. `number()` on an
+unparseable string is NaN rather than an error, and XPath 1.0 does
+NOT accept exponent notation (`1e5` is NaN), which is also guarded.
+
+The one approximation is marked in the source: a non-terminating
+quotient is computed to a bounded 18-place scale, since exact decimal
+division only terminates for some divisors.
+
+Method note: a `#guard` caught my own wrong test constants here —
+scale confused with divisor, `1.5` written as `finite 15 10` rather
+than `finite 15 1`. Third time build-time checking has caught an
+authoring error in a new area today.
