@@ -25,6 +25,45 @@ theorem derives_sound {δ : Type} {I : Interp δ} {ν : Ind → δ}
   | conjE2 _ ih => exact ih.2
   | allE _ _ ihAll ihRel => exact ihAll _ ihRel
 
+/-- Satisfaction only reads the assignment at the individuals NAMED in
+    the assertion (concepts in this fragment name none), so two
+    assignments that agree there satisfy the same assertions. This is
+    the whole reason the ∃-rule's fresh witness is harmless to the
+    rest of the ABox. -/
+theorem satisfies_agree {δ : Type} {I : Interp δ} {ν ν' : Ind → δ}
+    {φ : Assertion} (h : ∀ i ∈ φ.inds, ν' i = ν i)
+    (hs : Satisfies I ν φ) : Satisfies I ν' φ := by
+  cases φ with
+  | inst a c =>
+      have ha : ν' a = ν a := h a (by simp [Assertion.inds])
+      simpa [Satisfies, ha] using hs
+  | rel r a b =>
+      have ha : ν' a = ν a := h a (by simp [Assertion.inds])
+      have hb : ν' b = ν b := h b (by simp [Assertion.inds])
+      simpa [Satisfies, ha, hb] using hs
+  | diff a b =>
+      have ha : ν' a = ν a := h a (by simp [Assertion.inds])
+      have hb : ν' b = ν b := h b (by simp [Assertion.inds])
+      simpa [Satisfies, ha, hb] using hs
+
+/-- Every individual named in a derived fact is already named in the
+    ABox: the forward rules invent no names. (This is what turns the
+    ∃-rule's `x ∉ indsOf A` into `x ≠ a` for the derived `∃r.C` at
+    `a`.) -/
+theorem derives_inds {A : List Assertion} {φ : Assertion}
+    (h : Derives A φ) : ∀ i ∈ φ.inds, i ∈ indsOf A := by
+  induction h with
+  | hyp hφ =>
+      intro i hi
+      exact List.mem_flatMap.mpr ⟨_, hφ, hi⟩
+  | conjE1 _ ih => exact ih
+  | conjE2 _ ih => exact ih
+  | allE _ _ _ ihRel =>
+      intro i hi
+      simp only [Assertion.inds, List.mem_singleton] at hi
+      subst hi
+      exact ihRel _ (by simp [Assertion.inds])
+
 /-- Mapping a pairwise-related list preserves pairwiseness along a
     relation transformer. (Kept local: core-library-independent, and
     the mathlib name for it is not available under the
@@ -86,6 +125,32 @@ theorem refuted_sound {A : List Assertion} (h : Refuted A) :
             cases hφ with
             | head => exact hd
             | tail _ hφ' => exact hM _ hφ')
+  | @exWitness A' a r c x hex hfresh _ ih =>
+      intro δ I ν hM
+      -- The semantic witness ∃r.C guarantees.
+      have ⟨y, hry, hcy⟩ := derives_sound hex hM
+      -- Bend the assignment at the fresh name only.
+      have hax : a ≠ x := fun h =>
+        hfresh (h ▸ derives_inds hex a (by simp [Assertion.inds]))
+      refine ih I (fun i => if i = x then y else ν i) ?_
+      intro φ hφ
+      cases hφ with
+      | head =>
+          show I.role r (if a = x then y else ν a) (if x = x then y else ν x)
+          rw [if_neg hax, if_pos rfl]
+          exact hry
+      | tail _ hφ' =>
+          cases hφ' with
+          | head =>
+              show I.sem c (if x = x then y else ν x)
+              rw [if_pos rfl]
+              exact hcy
+          | tail _ hφ'' =>
+              refine satisfies_agree ?_ (hM _ hφ'')
+              intro i hi
+              have hix : i ≠ x := fun h =>
+                hfresh (h ▸ List.mem_flatMap.mpr ⟨_, hφ'', hi⟩)
+              exact if_neg hix
 
 /-- The corollary in the shape the runner cares about. -/
 theorem refuted_not_consistent {A : List Assertion} (h : Refuted A) :

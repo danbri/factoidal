@@ -44,20 +44,46 @@ module RDF.Entailment.RDFS.RhoDFClosure
 //   5. rho_df_closure_decides          -- the payoff: apply
 //                                         `rho_df_saturation_iff`
 //
-// HYPOTHESES CARRIED, not discharged (M2's job, same discipline as
-// the Completeness module's own banner):
-//   * `rho_df_chain_canonical` / `rho_df_chain_wf` -- `no_dup_keys`
-//     (of the pre-dedup accumulator) and `ig_wf_sp` respectively, at
-//     EVERY graph the fuel recursion visits. Exactly the shape
-//     `RDF.Entailment.RDFS.ModelTheory`'s `closure_chain_wf` and
-//     `RDF.Entailment.RDFS.FixedPoint`'s `closure_chain_canonical`
-//     already carry for the twelve-rule chain; restated here for the
-//     six-rule one because the visited graphs differ.
-//   * `no_repeats_p g` / `no_repeats_p (rho_df_closure_step g)` at the
-//     fuel witness `rho_df_closure_closed` names -- the same two
-//     explicit hypotheses `RDF.Entailment.RDFS.FixedPoint.
-//     lemma_len_eq_saturated` takes, taken here rather than proved,
-//     per the brief.
+// HYPOTHESES DISCHARGED (#474, backport of the Lean 4 re-proof plan
+// in `formal/lean4/L4Factoidal/RDFS/ClosureTheorems.lean`):
+//   * `rho_df_chain_canonical` -- GONE from theorem 1. Section 2b
+//     proves `graph_clean` (separator-free labels, no triple-term
+//     object -- `RDF.Entailment.RDFS.SepFree`) PRESERVED by the
+//     six-rule step, so a clean input makes every graph the fuel
+//     recursion visits key-injective. Theorem 1 now asks only
+//     `graph_clean g`: DECIDABLE, and about the input graph alone,
+//     where the old hypothesis quantified over every visited graph
+//     and no caller could check it. Finding X-1 in section 2b records
+//     why the Lean statement, which carries NO hypothesis, cannot be
+//     transferred as written: the Lean step deduplicates by triple
+//     equality, this one by `triple_to_key` STRING, and that key is
+//     not injective on labels containing U+001F -- section 2b gives
+//     the two-triple counterexample that makes the hypothesis-free
+//     form false here.
+//   * `no_repeats_p (rho_df_closure_step g)` -- GONE from
+//     `rho_df_len_eq_saturated` (section 7). Proved unconditionally
+//     by `lemma_rho_df_closure_step_no_repeats`, on
+//     `RDF.Entailment.RDFS.FixedPoint.lemma_graph_dedup_sort_no_
+//     repeats`, which holds for ANY list. Theorem 3 and theorem 5
+//     still LIST the clause in their `requires` because
+//     `SPARQL11.EntailmentRegime.RDFS.rho_df_decides_hyps`
+//     transcribes theorem 5's hypothesis list verbatim and checks the
+//     transcription by proof; removing the clause from the two `val`s
+//     is a two-file landing, tracked in #474.
+//
+// HYPOTHESES STILL CARRIED, not discharged (M2's job, same discipline
+// as the Completeness module's own banner):
+//   * `rho_df_chain_wf` -- `ig_wf_sp` at EVERY graph the fuel
+//     recursion visits, for theorem 2 (soundness). Exactly the shape
+//     `RDF.Entailment.RDFS.ModelTheory`'s `closure_chain_wf` carries
+//     for the twelve-rule chain; restated here for the six-rule one
+//     because the visited graphs differ.
+//   * `no_repeats_p g` and `no_dup_keys (rho_df_closure_step_pre_dedup
+//     c)` at the fuel witness `rho_df_closure_closed` names. The
+//     second is dischargeable by the same section-2b route the moment
+//     theorem 3 is willing to ask `graph_clean c` instead; that swaps
+//     a hypothesis rather than dropping one, so it waits for the same
+//     two-file landing as the clause above.
 //
 // `rho_df_closure` (section 1) and the decidable fragment checker
 // (section 10, added for the npm/js entry points) are the two
@@ -84,6 +110,8 @@ open RDF.Entailment.RDFS.ModelTheory
 open RDF.Entailment.RDFS.FixedPoint
 open RDF.Entailment.RDFS.Completeness
 open RDF.Indexed.Completeness
+open RDF.Entailment.RDFS.SepFree
+open RDF.Indexed.KeyInjectivity
 
 // ===================================================================
 // 1. THE SIX-RULE STEP AND THE FUEL/LENGTH-TEST LOOP.
@@ -182,6 +210,140 @@ let lemma_rho_df_step_extensive g =
     lemma_rho_df_step_is_dedup_of_pre_dedup g
   end
 
+// -------------------------------------------------------------------
+// 2b. #474 -- `rho_df_chain_canonical` DISCHARGED from a decidable
+// side condition on the INPUT graph alone.
+//
+// Backport of the Lean 4 re-proof plan (`formal/lean4/L4Factoidal/
+// RDFS/ClosureTheorems.lean`, `closure_extensive`), adapted to the
+// difference the two step functions actually have.
+//
+// WHAT THE LEAN PROOF SHOWS. Every rule row only ADDS triples, so
+// extensivity of the step needs nothing about duplicate keys. The
+// Lean step then ends in `addAll`, which deduplicates by
+// `Triple.eqb` -- triple EQUALITY -- so its extensivity is
+// unconditional and `closure_extensive` carries no hypothesis.
+//
+// WHY F-star CANNOT DROP THE HYPOTHESIS OUTRIGHT (finding X-1). The
+// F-star step ends in `graph_dedup_sort`, which keeps one
+// representative per `triple_to_key` STRING, and `triple_to_key`
+// concatenates the subject, predicate and object keys with the
+// separator U+001F. `RDF.Term.is_iri` only tests for a colon, so two
+// DISTINCT triples may share a key when a label contains that
+// separator: with `s1 = I_a<US>b, p1 = c` against `s2 = I_a,
+// p2 = b<US>c` and equal objects, both keys are `I_a<US>b<US>c<US>...`.
+// Put both in `g`, choose a predicate no rho-df row fires on, and
+// `rho_df_closure_step g` drops one of them while the length test
+// sees 1 against 2 and recurses; `rho_df_closure g fuel` for any
+// `fuel >= 1` is then a PROPER subset of `g`. So the
+// hypothesis-free statement of theorem 1 is FALSE for this step
+// function -- the Lean result does not transfer, the DEDUP KEY is
+// the reason, and this is a finding for #474 rather than a proof
+// that failed.
+//
+// WHAT IS PROVED INSTEAD. The carried hypothesis
+// `rho_df_chain_canonical g` quantifies over EVERY graph the fuel
+// recursion visits, so no caller can check it. It is replaced below
+// by `RDF.Entailment.RDFS.SepFree.graph_clean g` -- separator-free
+// labels and no triple-term object, both decidable, both properties
+// of the INPUT graph only, and both already true of any graph a
+// conforming RDF 1.1 parser produces. The route is the one
+// `RDF.Entailment.RDFS.FixedPoint` section 4b/4c already built for
+// the twelve-rule chain: the same six per-row `_clean` lemmas, the
+// same `lemma_graph_clean_full_sep_free` bridge, and the same
+// `RDF.Indexed.KeyInjectivity.lemma_graph_full_sep_free_no_dup_keys`
+// conclusion (whose `ensures` is definitionally `no_dup_keys`, so it
+// discharges by unfolding). New here: `graph_clean` is shown
+// PRESERVED by the six-rule step, which is what turns a
+// one-graph fact into the whole chain.
+// -------------------------------------------------------------------
+
+// Six-row cleanliness, in the same relative order as
+// `rho_df_closure_step_pre_dedup`. Direct reuse of the six per-row
+// `_clean` lemmas FixedPoint section 4b proves; the container-
+// membership and RS-2 rows its twelve-row assembly also threads are
+// simply not in this chain.
+let lemma_rho_df_pre_dedup_clean (g0 : rdf_graph)
+  : Lemma (requires graph_clean g0)
+          (ensures  graph_clean (rho_df_closure_step_pre_dedup g0)) =
+  let ig = build_indexed g0 in
+  lemma_rdfs_rule_subPropertyOf_clean g0 g0 ig;
+  let g1 = rdfs_rule_subPropertyOf g0 ig in
+  lemma_rdfs_rule_domain_clean g0 g1 ig;
+  let g2 = rdfs_rule_domain g1 ig in
+  lemma_rdfs_rule_range_clean g0 g2 ig;
+  let g3 = rdfs_rule_range g2 ig in
+  lemma_rdfs_rule_subClassOf_clean g0 g3 ig;
+  let g4 = rdfs_rule_subClassOf g3 ig in
+  lemma_rdfs_rule_subClassOf_trans_clean g0 g4 ig;
+  let g5 = rdfs_rule_subClassOf_trans g4 ig in
+  lemma_rdfs_rule_subPropertyOf_trans_clean g0 g5 ig
+
+// The pointwise payoff: a clean input makes the pre-dedup
+// accumulator key-injective, which is exactly what
+// `lemma_rho_df_step_extensive` asks for.
+let lemma_rho_df_pre_dedup_no_dup_keys (g : rdf_graph)
+  : Lemma (requires graph_clean g)
+          (ensures  no_dup_keys (rho_df_closure_step_pre_dedup g)) =
+  lemma_rho_df_pre_dedup_clean g;
+  lemma_graph_clean_full_sep_free (rho_df_closure_step_pre_dedup g);
+  lemma_graph_full_sep_free_no_dup_keys (rho_df_closure_step_pre_dedup g)
+
+// `graph_clean` survives the dedup as well, because
+// `lemma_graph_dedup_sort_memP` says the dedup output only ever
+// contains triples of its input. This is the step FixedPoint never
+// needed (it stops at the pre-dedup accumulator) and the one that
+// makes the chain argument below an induction rather than a
+// hypothesis.
+let lemma_rho_df_step_clean (g : rdf_graph)
+  : Lemma (requires graph_clean g)
+          (ensures  graph_clean (rho_df_closure_step g)) =
+  lemma_rho_df_pre_dedup_clean g;
+  FStar.Classical.forall_intro
+    (lemma_graph_dedup_sort_memP (rho_df_closure_step_pre_dedup g));
+  lemma_rho_df_step_is_dedup_of_pre_dedup g
+
+let rec lemma_rho_df_closure_iter_clean (g : rdf_graph) (n : nat)
+  : Lemma (requires graph_clean g)
+          (ensures  graph_clean (rho_df_closure_iter g n))
+          (decreases n) =
+  if n = 0 then ()
+  else begin
+    lemma_rho_df_step_clean g;
+    lemma_rho_df_closure_iter_clean (rho_df_closure_step g) (n - 1)
+  end
+
+// NON-VACUITY. Theorem 1's new hypothesis has to be SATISFIABLE or
+// the theorem says nothing; a witness is cheaper than an argument.
+// Guards the failure mode `skills/measuring-inference/SKILL.md`
+// names -- a theorem that verifies because nothing can meet its
+// `requires`.
+let lemma_graph_clean_satisfiable ()
+  : Lemma (ensures (let w = ({ s = S_IRI i_rdfs_Resource; p = i_rdf_type;
+                               o = T_IRI i_rdfs_Class } <: triple) in
+                    graph_clean [w])) =
+  let w = ({ s = S_IRI i_rdfs_Resource; p = i_rdf_type;
+             o = T_IRI i_rdfs_Class } <: triple) in
+  assert_norm (str_sep_free i_rdfs_Resource);
+  assert_norm (str_sep_free i_rdf_type);
+  assert_norm (str_sep_free i_rdfs_Class);
+  assert (triple_sep_free w);
+  assert (triple_obj_not_tt w);
+  introduce forall (t : triple). memP t [w] ==> (triple_sep_free t /\ triple_obj_not_tt t)
+  with introduce memP t [w] ==> (triple_sep_free t /\ triple_obj_not_tt t)
+  with _ . ()
+
+// The chain hypothesis, no longer carried.
+let lemma_rho_df_clean_implies_chain_canonical (g : rdf_graph)
+  : Lemma (requires graph_clean g)
+          (ensures  rho_df_chain_canonical g) =
+  introduce forall (n : nat).
+      no_dup_keys (rho_df_closure_step_pre_dedup (rho_df_closure_iter g n))
+  with begin
+    lemma_rho_df_closure_iter_clean g n;
+    lemma_rho_df_pre_dedup_no_dup_keys (rho_df_closure_iter g n)
+  end
+
 #push-options "--z3rlimit 120"
 let rec lemma_rho_df_closure_extensive_aux (g : rdf_graph) (fuel : nat)
   : Lemma (requires rho_df_chain_canonical g)
@@ -199,13 +361,32 @@ let rec lemma_rho_df_closure_extensive_aux (g : rdf_graph) (fuel : nat)
 #pop-options
 
 // -------------------------------------------------------------------
-// THEOREM 1.
+// THEOREM 1. The hypothesis is `graph_clean g` since #474 -- a
+// DECIDABLE property of the input graph, in place of the
+// unbounded-forall `rho_df_chain_canonical g` this theorem used to
+// carry. See section 2b for the discharge and for finding X-1 (why
+// the Lean form of the theorem, which carries no hypothesis at all,
+// does not transfer to a key-string dedup).
+//
+// `rho_df_closure_extensive_chain` keeps the OLD statement for
+// callers that hold the chain hypothesis directly rather than
+// `graph_clean` -- theorem 5 below is the one such caller. It is the
+// same proof; neither statement implies the other, since
+// `graph_clean` is stronger where it applies and narrower in scope.
 // -------------------------------------------------------------------
 val rho_df_closure_extensive (g : rdf_graph) (fuel : nat)
+  : Lemma (requires graph_clean g)
+          (ensures  is_subgraph g (rho_df_closure g fuel))
+
+let rho_df_closure_extensive g fuel =
+  lemma_rho_df_clean_implies_chain_canonical g;
+  lemma_rho_df_closure_extensive_aux g fuel
+
+val rho_df_closure_extensive_chain (g : rdf_graph) (fuel : nat)
   : Lemma (requires rho_df_chain_canonical g)
           (ensures  is_subgraph g (rho_df_closure g fuel))
 
-let rho_df_closure_extensive g fuel = lemma_rho_df_closure_extensive_aux g fuel
+let rho_df_closure_extensive_chain g fuel = lemma_rho_df_closure_extensive_aux g fuel
 
 // ===================================================================
 // 3. THEOREM 2 -- SOUNDNESS.
@@ -1357,15 +1538,35 @@ let rho_df_frag_preservation_fails p a =
 let rho_df_step_saturated (c : rdf_graph) : prop =
   forall (t : triple). memP t (rho_df_closure_step c) ==> memP t c
 
+// #474, secondary target. The OUTPUT-side hypothesis `no_repeats_p
+// (rho_df_closure_step c)` is not a hypothesis at all: the step ends
+// in `graph_dedup_sort`, and `RDF.Entailment.RDFS.FixedPoint.
+// lemma_graph_dedup_sort_no_repeats` proves that output repeat-free
+// for ANY input list, with no side condition. Same shape as that
+// module's own `lemma_rdfs_closure_step_no_repeats` for the
+// twelve-rule step. The Lean counterpart is
+// `addAll_eq_of_length_eq`, which likewise needs nothing about the
+// output list.
+val lemma_rho_df_closure_step_no_repeats (g : rdf_graph)
+  : Lemma (no_repeats_p (rho_df_closure_step g))
+
+let lemma_rho_df_closure_step_no_repeats g =
+  lemma_graph_dedup_sort_no_repeats (rho_df_closure_step_pre_dedup g);
+  lemma_rho_df_step_is_dedup_of_pre_dedup g
+
+// One hypothesis lighter than the version this replaced: the
+// output-side `no_repeats_p (rho_df_closure_step c)` clause is now
+// discharged above, not taken.
 val rho_df_len_eq_saturated (c : rdf_graph)
   : Lemma
     (requires no_dup_keys (rho_df_closure_step_pre_dedup c) /\
-              no_repeats_p c /\ no_repeats_p (rho_df_closure_step c) /\
+              no_repeats_p c /\
               graph_len (rho_df_closure_step c) = graph_len c)
     (ensures  rho_df_step_saturated c)
 
 #push-options "--z3rlimit 60"
 let rho_df_len_eq_saturated c =
+  lemma_rho_df_closure_step_no_repeats c;
   introduce forall (t : triple). memP t c ==> memP t (rho_df_closure_step c)
   with introduce memP t c ==> memP t (rho_df_closure_step c)
   with _ . lemma_rho_df_step_extensive c;
@@ -1717,7 +1918,7 @@ val rho_df_closure_decides (g e : rdf_graph) (fuel : nat)
 #push-options "--z3rlimit 60"
 let rho_df_closure_decides g e fuel =
   let c = rho_df_closure g fuel in
-  rho_df_closure_extensive g fuel;
+  rho_df_closure_extensive_chain g fuel;
   rho_df_closure_sound g fuel;
   rho_df_closure_closed g fuel;
   rho_df_saturation_iff g c e

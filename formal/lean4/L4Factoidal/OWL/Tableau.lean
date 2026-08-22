@@ -17,9 +17,10 @@ class names, Boolean connectives, value restrictions
 cardinality bounds (ObjectMinCardinality / ObjectMaxCardinality).
 
 NOT ported yet (later rungs, in the order the F* engine grew them):
-qualified cardinality, nominals (ObjectOneOf), datatypes, the
-∃-witness rule (fresh individuals), the role box (subPropertyOf /
-functional / transitive), and the SHIQ ≤-rule witness merge.
+qualified cardinality, nominals (ObjectOneOf), datatypes, the role box
+(subPropertyOf / functional / transitive), and the SHIQ ≤-rule witness
+merge. The ∃-witness rule (fresh individuals) IS here — `exWitness`
+below — with its freshness side condition stated over `indsOf`.
 
 Cardinality without set theory: OWL says "at least/most n distinct
 r-successors". Distinct-successor counting is phrased with plain
@@ -120,6 +121,19 @@ def SatAll {δ : Type} (I : Interp δ) (ν : Ind → δ)
 def Consistent (A : List Assertion) : Prop :=
   ∃ (δ : Type) (I : Interp δ) (ν : Ind → δ), SatAll I ν A
 
+/-- The individual names occurring in an assertion. Concepts in this
+    fragment contain no individuals (no nominals, no hasValue), so
+    only the assertion-level positions count. -/
+def Assertion.inds : Assertion → List Ind
+  | .inst a _  => [a]
+  | .rel _ a b => [a, b]
+  | .diff a b  => [a, b]
+
+/-- The individual names occurring anywhere in an ABox — the set the
+    ∃-rule's freshness side condition is stated against. -/
+def indsOf (A : List Assertion) : List Ind :=
+  A.flatMap Assertion.inds
+
 /-- Forward derivation of facts from an ABox. Deliberately minimal:
     hypothesis, conjunction elimination, and the ∀-rule (value
     restriction applied across a known role edge). -/
@@ -166,6 +180,19 @@ inductive Refuted : List Assertion → Prop where
       Derives A (.inst a (.disj c d)) →
       Refuted (.inst a c :: A) →
       Refuted (.inst a d :: A) →
+      Refuted A
+  /-- The ∃-rule: a derived `∃r.C` at `a` licenses a FRESH witness
+      individual `x` with an `r`-edge from `a` and membership in `C`;
+      if that extension is refuted, so is the ABox. Freshness (`x` not
+      named anywhere in `A`) is the whole soundness argument: a model
+      of `A` says nothing about `x`, so its assignment can be bent to
+      the semantic witness that `∃r.C` guarantees exists. This is the
+      rule the F* engine bounds with witness depth caps
+      (`Tableau.Refute.fst`, stage (e)). -/
+  | exWitness {A a r c} (x : Ind) :
+      Derives A (.inst a (.ex r c)) →
+      x ∉ indsOf A →
+      Refuted (.rel r a x :: .inst x c :: A) →
       Refuted A
 
 end L4Factoidal.OWL

@@ -1598,7 +1598,7 @@ spec / implementation / theorems shape as the rdfs-core port. Namespace
 | `L4Factoidal/OWL/RLClosure.lean` | the extractable half of `OWL.Closure.fsti` (`owl_rule_*`, `owl_rl_closure`, `is_inconsistent`) | IMPLEMENTATION: 47 row functions, `conclusionsList`/`conclusionsFrom`/`stepConclusions`/`step`, the fuel/length-test loop `closure`, `closureFix` with a stated bound, the collection walks `listElems`/`listSeqs`/`chainTargets`, and `detectClash` over 13 clash-row decisions |
 | `L4Factoidal/OWL/RLTheorems.lean` | `OWL.RL.Refinement.fst` (the licensing theorems) | T1 extensivity, T2 soundness assembled from ONE LEMMA PER ROW (47), T3 monotonicity, T4 completeness at saturation (all 55 constructor cases), the fuel dichotomy, clash soundness from one lemma per clash row (13), and the collection-walk soundness/existence lemmas |
 | `L4Factoidal/OWL/RLTests.lean` | (new) | 98 `#guard`s: per-family positives AND the paired negative check, the clash rows, idempotence past saturation |
-| `Harness/OwlProbe.lean` | driver role only (`bin/owl-runner/owl_runner.ml`) | the `l4owl-probe` executable: a census of the six W3C OWL 2 catalogs, read with the Lean XML parser |
+| `Harness/OwlProbe.lean` | driver role only (`bin/owl-runner/owl_runner.ml`: `triple_matches`, `load_imports_into_premise`, the four `run_*_test` judges, `OWL_DirectMapping_Filter.exclude_annotation_triples`) | the `l4owl-probe` executable: census of the six W3C OWL 2 catalogs, then every RDF/XML case parsed with `Syntax/RdfXml.lean`, closed with `OWL.RL.step` under fuel + wall-clock cap, and judged per test type (see "Measured against the real corpus" below, 2026-08-22 second entry) |
 
 ### Rows ported, and rows not ported
 
@@ -1814,22 +1814,133 @@ its six lemmas. Not made here: this stage adds files only.
     type-consistency.rdf:          354 test cases,   0 readable
     RUNNABLE BY THE LEAN CLOSURE: 0 of 931
 
-All six catalogs PARSE as XML (including their DOCTYPE internal-subset
-entity declarations), so the blocker is located exactly: the corpus
-offers only RDF/XML (`test:rdfXmlPremiseOntology`, 895 of the 931
-cases) and OWL Functional Syntax (`test:fsPremiseOntology`, 211), and
-the Lean tree has no RDF/XML-to-triples mapping and no functional-syntax
-parser. The generic XML 1.0 parser is landed; RDF 1.1 XML Syntax §7 is
-not. When the RDF/XML branch lands, the runnable count is the number to
-watch, and `readCase`'s `leanReadable` field is the one line to change.
+That was the state BEFORE `Syntax/RdfXml.lean` landed (same day). The
+sentence "the Lean tree has no RDF/XML-to-triples mapping" is now
+false and the probe below runs the corpus.
 
-The F\* `owl_runner` numbers, for comparison and NOT on the same
-denominator (the F\* runner selects the subset it drives; this census
-counts every `test:TestCase`): `owl_rl_positive_entailment` 30 pass, 0
-fail (out of 30); `owl2_profile_ql` 87 pass, 0 fail (out of 87);
-`owl2_profile_el` 119 pass, 1 fail (out of 120);
-`owl2_dl_inconsistency` 126 pass, 1 fail (out of 127);
-`owl_syntax_dl_species` 319 pass, 2 fail, 2 skip (out of 323).
+### Measured against the real corpus, second entry (2026-08-22, after RDF/XML)
+
+`Harness/OwlProbe.lean` now parses every case's
+`test:rdfXmlPremiseOntology` / `…ConclusionOntology` /
+`…NonConclusionOntology` with `RdfXml.parseRdfXml` (base = the case
+IRI, as the F\* runner does), merges `owl:imports` from the catalog's
+wrapper nodes (port of `load_imports_into_premise`), runs `OWL.RL.step`
+round by round under fuel 100 and a wall-clock cap read between driving
+triples, and judges each (case, test type) unit the way
+`bin/owl-runner/owl_runner.ml` does — that runner scores a case once per
+test type, and `ProfileIdentificationTest` is tallied, never judged, in
+both trees. The match rule for PositiveEntailmentTest is the F\*
+runner's relaxed `triple_matches` (a conclusion blank node matches any
+term; `Term.eqb` elsewhere), NOT `RDF/Isomorphism.lean`: entailment is
+containment modulo blank nodes, and that rule is what the F\* scores
+were produced with. Functional-syntax-only cases are `unsupported` and
+stay in the denominator.
+
+Branch `lean4/owl-corpus`. Verbatim, per-closure cap 20 000 ms:
+
+    profile-RL.rdf PositiveEntailmentTest: 11 pass, 18 fail, 0 skip, 1 unsupported (out of 30)
+    profile-RL.rdf NegativeEntailmentTest: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)
+    profile-RL.rdf ConsistencyTest: 75 pass, 0 fail, 0 skip, 1 unsupported (out of 76)
+    profile-RL.rdf InconsistencyTest: 10 pass, 1 fail, 0 skip, 3 unsupported (out of 14)
+    profile-RL.rdf: 102 pass, 19 fail, 0 skip, 5 unsupported (out of 126)
+    HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1227 closure_rounds=428 clashes=10 cap_hits=0 parse_failures=0 wall_ms=82
+    profile-EL.rdf: 95 pass, 21 fail, 1 skip, 4 unsupported (out of 121)
+    HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1098 closure_rounds=409 clashes=4 cap_hits=0 parse_failures=0 wall_ms=70
+    profile-QL.rdf: 76 pass, 11 fail, 0 skip, 0 unsupported (out of 87)
+    HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=303 clashes=5 cap_hits=0 parse_failures=0 wall_ms=57
+    type-positive-entailment.rdf PositiveEntailmentTest: 93 pass, 110 fail, 0 skip, 3 unsupported (out of 206)
+    type-positive-entailment.rdf ConsistencyTest: 198 pass, 5 fail, 0 skip, 3 unsupported (out of 206)
+    type-positive-entailment.rdf: 291 pass, 115 fail, 0 skip, 6 unsupported (out of 412)
+    HARNESS-DIAG-OWL type-positive-entailment.rdf: cases=206 units=412 triples_parsed=28902 closure_rounds=1544 clashes=0 cap_hits=10 parse_failures=0 wall_ms=326261
+    type-inconsistency.rdf InconsistencyTest: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+    type-inconsistency.rdf: 29 pass, 84 fail, 1 skip, 14 unsupported (out of 128)
+    HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5258 closure_rounds=425 clashes=29 cap_hits=0 parse_failures=0 wall_ms=1570
+    type-consistency.rdf PositiveEntailmentTest: 93 pass, 110 fail, 0 skip, 3 unsupported (out of 206)
+    type-consistency.rdf NegativeEntailmentTest: 23 pass, 0 fail, 0 skip, 0 unsupported (out of 23)
+    type-consistency.rdf ConsistencyTest: 337 pass, 8 fail, 0 skip, 9 unsupported (out of 354)
+    type-consistency.rdf: 453 pass, 118 fail, 0 skip, 12 unsupported (out of 583)
+    HARNESS-DIAG-OWL type-consistency.rdf: cases=354 units=583 triples_parsed=41248 closure_rounds=2111 clashes=0 cap_hits=12 parse_failures=1 wall_ms=396557
+
+Six-catalog sum: 1046 pass, 368 fail, 2 skip, 41 unsupported (out of
+1457 units over 931 cases); 78 605 triples parsed, 5 220 closure
+rounds, 48 clashes, 22 closure cap hits, 1 parse failure. The
+denominators agree with the F\* runner's per-type lines where it
+publishes them (profile-RL PE 30; profile-QL 20+3+58+6 = 87;
+profile-EL 29+6+72+14 = 121 with its one functional-syntax skip
+outside the F\* denominator; type-inconsistency 128 with one
+RDF-BASED-only skip). The type catalogs overlap each other and the
+profile catalogs, so the sum is a sum of units, not of distinct tests.
+
+**Every FAIL is named and falls into one of four causes.**
+
+* `cap:` — 16 units (10 + 12 closures hit the 20 s cap; a capped
+  closure still passes a PositiveEntailmentTest when the conclusion is
+  already present). WebOnt-miscellaneous-001/002/011 (2 900–3 000
+  triple premises) do not finish ONE round in 20 s: the specification
+  evaluator's round is quadratic in the graph. WebOnt-description-
+  logic-204/206/661/664 hit the cap after 3–4 rounds. Never a pass.
+* `parser:` — 1 unit. `FS2RDF-literals-ar` (type-consistency) puts an
+  `rdf:XMLLiteral` value as ELEMENT content under `rdf:datatype`; RDF/XML
+  §7.2.16 allows only text there (XML content needs
+  `rdf:parseType="Literal"`). `Parser.RDFXML.fst` accepts the shape by a
+  non-spec extension this port chose not to copy (decision 4 of the
+  RDF/XML stage above). Not an `RdfXml.lean` bug; left as a FAIL.
+* `closure-gap:` on RL-profile catalogs — every one is a row this port
+  scoped out, by name: the F\* `[ext]` differentFrom-synthesis family
+  (`fp_diff_to_diff`: owl2-rl-rules-fp/ifp-differentFrom;
+  `pdw_to_differentFrom`: New-Feature-DisjointObjectProperties-001/002,
+  DisjointDataProperties-002; `cax_dw_to_differentFrom`:
+  WebOnt-disjointWith-001; differentFrom symmetry: WebOnt-differentFrom-
+  001); the comprehension-witness family (`svf2_existential_witness`,
+  `minc1_bridge`, `cls_svf_thing_*`: bnode2somevaluesfrom,
+  somevaluesfrom2bnode, WebOnt-someValuesFrom-003, New-Feature-
+  ObjectQCR-002, WebOnt-I5.26-010, WebOnt-I5.5-005); `cls_hasself1/2`
+  (New-Feature-SelfRestriction-001/002) and the reflexive-property
+  extension (New-Feature-ReflexiveProperty-001); the chain bridge
+  (chain2trans1); disjointWith → complementOf (DisjointClasses-001/003);
+  annotation propagation across equivalentClass
+  (`owl_rule_named_equivClass_to_sameAs_mode`, WebOnt-I4.6-005-Direct);
+  the `owl_rl_closure_with_reflexivity` wrapper that types every subject
+  `owl:Thing` (New-Feature-Keys-001 needs `Peter rdf:type owl:Thing`
+  before prp-key fires; WebOnt-Thing-003 needs an owl:Thing instance
+  for cls-nothing2); Table 7 / datatype map (dt-diff: New-Feature-Keys-
+  002/006; xsd hierarchy and `rdfs:Datatype` axioms: WebOnt-I5.8-006/
+  008/009/011; bottom/top property axioms: New-Feature-Bottom*Property-
+  001); and the DL-only inconsistencies (WebOnt-Restriction-001/002).
+* `closure-gap:` on the type catalogs — dominated by OWL DL
+  entailments the F\* runner reaches only under `--regime dl` (RL
+  closure + `Tableau` refuter + witness rules): 61 of the 84
+  type-inconsistency fails are `WebOnt-description-logic-*`; the 110
+  type-positive-entailment fails are the WebOnt-Class / cardinality /
+  unionOf / oneOf / equivalentClass / FunctionalProperty families plus
+  the nine `rdfbased-sem-prop-*-type` cases (built-in annotation
+  properties typed `owl:AnnotationProperty` — an `[axm]` table) and the
+  `rdfbased-sem-restrict-*` Table 8 rows scm-svf1/2, scm-avf1/2, scm-hv
+  (listed above as not ported). The eq-diff2/eq-diff3/prp-adp rows
+  "omitted for size only" cost `rdfbased-sem-ndis-alldifferent-fw`,
+  `…-fw-distinctmembers`, `…-alldisjointproperties-fw`,
+  WebOnt-AllDifferent-001 and WebOnt-distinctMembers-001.
+
+Sabotage (done, then restored): with `caxScoFor` removed from
+`conclusionsList`, profile-RL drops from 102 pass to 98 pass — WebOnt-
+imports-011 [PE] and WebOnt-description-logic-101/103/104
+[Inconsistency] flip to FAIL, and the engine self-check line prints
+`cax-sco fires = false`. (The probe imports `RLClosure` rather than
+`RLTheorems` so that this check can even build: with `RLTheorems`
+imported, the T4 completeness proof refuses the sabotaged list — a
+second, stronger gate.)
+
+The F\* `owl_runner` numbers, with the manifest and regime each is over
+(`docs/test-results/latest.json`): `owl_rl_positive_entailment` 30
+pass, 0 fail (out of 30) — profile-RL.rdf, PositiveEntailmentTest line
+only, RL regime; `owl2_profile_ql` 87 pass, 0 fail (out of 87) —
+profile-QL.rdf, four types, RL regime; `owl2_profile_el` 119 pass, 1
+fail (out of 120) — profile-EL.rdf, four types, RL regime;
+`owl2_dl_inconsistency` 126 pass, 1 fail (out of 127) —
+type-inconsistency.rdf, DL regime; `owl_syntax_dl_species` 319 pass,
+2 fail, 2 skip (out of 323) — syntax-dl.rdf, `--species` mode (not a
+closure run; not attempted here). No F\* line is published for
+type-positive-entailment.rdf or type-consistency.rdf.
 
 The 98 `#guard`s in `RLTests.lean` are NOT a conformance score and are
 not offered as one: they are hand-written fixtures, and iron rule #6 is
@@ -1902,6 +2013,21 @@ position), the CSV leniency, the budget give-up, the `rs:ResultSet`
 decoder with `rs:index`, `mf:include`, `sd:entailmentRegime` in both
 shapes and `qt:serviceData`. Sabotaging `compareSelectRows` to
 always-true fails the build at those guards.
+
+### OWL tableau: the ∃-witness rule (2026-08-22, second rung)
+
+`exWitness` added to `OWL/Tableau.lean`'s clash calculus with its
+freshness side condition (`x ∉ indsOf A`), and `refuted_sound`
+extended. The predicted hard part — "fresh individuals need model
+extension" — dissolved: assignments are TOTAL functions `Ind → δ`, so
+soundness only bends the assignment at the fresh name toward the
+semantic witness that `∃r.C` guarantees, and `satisfies_agree` (new)
+shows the rest of the ABox cannot see the change because satisfaction
+reads the assignment only at an assertion's named individuals.
+`derives_inds` (new) proves the forward rules invent no names, which
+turns ABox-freshness into the `x ≠ a` the edge case needs. Checked at
+build time: `∃r.⊥` and the textbook `(∃r.C) ⊓ (∀r.¬C)` refutations.
+Axiom base unchanged.
 
 ## Stage: EXISTS gets its proper shape — `QueryPattern` in the AST, active graph in conditions (2026-08-22)
 

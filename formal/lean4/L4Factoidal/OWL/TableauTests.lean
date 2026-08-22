@@ -31,6 +31,22 @@ example : Refuted [.inst "a" (.disj .bot .bot)] :=
 example : Refuted [.inst "a" (.all "r" .bot), .rel "r" "a" "b"] :=
   .botClash (.allE (.hyp (.head _)) (.hyp (.tail _ (.head _))))
 
+/-- The ∃-rule feeding a clash: `a ∈ ∃r.⊥` is refuted through a fresh
+    witness that must inhabit owl:Nothing. -/
+example : Refuted [.inst "a" (.ex "r" .bot)] :=
+  .exWitness "x" (.hyp (.head _)) (by decide)
+    (.botClash (.hyp (.tail _ (.head _))))
+
+/-- The textbook unsatisfiable concept: `a ∈ (∃r.C) ⊓ (∀r.¬C)`. The
+    fresh witness gets `C` from the ∃-half and `¬C` from the ∀-half
+    pushed across the new edge — complement clash. -/
+example : Refuted
+    [.inst "a" (.conj (.ex "r" (.atom "C")) (.all "r" (.neg (.atom "C"))))] :=
+  .exWitness "x" (.conjE1 (.hyp (.head _))) (by decide)
+    (.clash
+      (.hyp (.tail _ (.head _)))
+      (.allE (.conjE2 (.hyp (.tail _ (.tail _ (.head _))))) (.hyp (.head _))))
+
 -- Axiom audit. Expected base (proof policy in
 -- skills/factoidal-lean-basics): at most propext / Classical.choice /
 -- Quot.sound. Measured at landing (2026-08-22): derives_sound is
