@@ -37,6 +37,15 @@ can step through — no SMT solver in the loop.
    rows, RDF 1.2 triple-term matching, the language-tag and
    XMLLiteral equality edge cases.
 
+6. [`L4Factoidal/SPARQL/Expr.lean`](L4Factoidal/SPARQL/Expr.lean) — the §17 expression language: effective boolean value (§17.2.2), scaled-decimal numerics, the three-valued logic table, the builtins; every host dependency (NOW, EXISTS, extension functions, SERVICE) is an explicit `EvalEnv` parameter, not an assumption.
+7. [`L4Factoidal/SPARQL/Query.lean`](L4Factoidal/SPARQL/Query.lean) + [`PropertyPath.lean`](L4Factoidal/SPARQL/PropertyPath.lean) — the query layer: GRAPH, BIND, VALUES, sub-SELECT, LATERAL, SERVICE, property paths (§18.4), solution modifiers, aggregates (§18.5.1), SELECT/ASK/CONSTRUCT; [`QueryTheorems.lean`](L4Factoidal/SPARQL/QueryTheorems.lean) proves ORDER BY is a permutation and the DISTINCT laws.
+8. [`L4Factoidal/SPARQL/Results.lean`](L4Factoidal/SPARQL/Results.lean) and siblings — the four results formats (XML/JSON/CSV/TSV), with the SRJ N-row shape theorem.
+9. [`L4Factoidal/RDFS/RdfsCore.lean`](L4Factoidal/RDFS/RdfsCore.lean) — the six-rule core-RDFS fragment as a derivation relation (the spec), [`Closure.lean`](L4Factoidal/RDFS/Closure.lean) (the engine), [`ClosureTheorems.lean`](L4Factoidal/RDFS/ClosureTheorems.lean) (extensive, sound, complete at saturation).
+10. [`L4Factoidal/Syntax/`](L4Factoidal/Syntax/) — N-Triples, N-Quads, Turtle, TriG, RFC 3986 IRI resolution; [`Harness/`](Harness/) runs the real W3C manifests (`lake exe l4w3c <manifest.ttl>`).
+11. [`L4Factoidal/RDF/Isomorphism.lean`](L4Factoidal/RDF/Isomorphism.lean) and [`RDF/Canonical.lean`](L4Factoidal/RDF/Canonical.lean) — blank-node isomorphism (witness-returning, soundness proved) and RDFC-1.0 (hash-algorithm-agile; 86 of 86 on the W3C suite) over [`Crypto/SHA2.lean`](L4Factoidal/Crypto/SHA2.lean).
+12. [`L4Factoidal/XML/`](L4Factoidal/XML/) and [`JSON/`](L4Factoidal/JSON/) — the generic parsers the RDF syntaxes and results formats build on.
+13. [`Wasm/`](Wasm/) — the C ABI and build for the WebAssembly export; skill `lean4-wasm-export` has the pipeline.
+
 `PORT_NOTES.md` records the F\* correspondence, the translation
 decisions, and the assumption report against the originals.
 
