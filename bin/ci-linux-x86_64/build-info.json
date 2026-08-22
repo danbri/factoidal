@@ -1,8 +1,8 @@
 {
   "platform": "linux-x86_64",
   "runner_os": "Linux",
-  "timestamp_utc": "2026-08-22T14:10:23Z",
-  "source_sha": "c82bcd3e2e760b0a9df96585e4100c2812a411f7",
+  "timestamp_utc": "2026-08-22T14:17:51Z",
+  "source_sha": "b2d17e8cd0c2acc5ff8693e16a7d1da0f9bbebd3",
   "fstar_version": "F* 2025.12.15",
   "ocaml_version": "The OCaml toplevel, version 4.14.1",
   "opam_switch": "fstar",
