@@ -84,15 +84,24 @@ runner has a narrow Functional Syntax parser; this tree has none.
 An RDF/XML premise or conclusion that does not parse is a FAIL with the
 parser's message — that is a finding about the parser, not a skip.
 
-## Budget
+## Budget and engine
 
-The closure is the library's `OWL.RL.step`, iterated here round by
-round in `IO` (same stopping rule as `OWL.RL.closure`: stop when the
-length does not change) so that a wall-clock deadline can be checked
-BETWEEN rounds. The F* runner uses fuel 100 and a per-test SIGALRM cap;
-this probe uses fuel 100 and `--cap-ms` (default 30000) per closure.
-Every cap hit is counted in the diagnostics line and scores as a FAIL
-for any absence-shaped verdict.
+The closure is the library's INDEXED engine `OWL.RL.stepI`
+(`RLClosureIndexed.lean`), iterated here round by round in `IO` (same
+stopping rule as `OWL.RL.closure`: stop when the size does not change)
+so that a wall-clock deadline can be checked inside a round. The
+indexed engine computes the same list as the specification-level
+`OWL.RL.closure` at every fuel (`RLClosureIndexed.indexedClosure_eq`,
+a proved list equality), so the scores below are scores of the
+specification engine; the index only changes the wall clock. The F*
+runner uses fuel 100 and a per-test SIGALRM cap; this probe uses fuel
+100 and `--cap-ms` (default 30000) per closure. Every cap hit is
+counted in the diagnostics line and scores as a FAIL for any
+absence-shaped verdict.
+
+`--profile --case <id>` runs the LIST engine row by row with timing
+(the measurement that motivated the index), then the indexed round on
+the same input, and checks the two rounds produced the same list.
 
 ## Output grammar
 
@@ -112,6 +121,7 @@ clock, and prints scores.
 import L4Factoidal.XML.Parser
 import L4Factoidal.XML.Document
 import L4Factoidal.OWL.RLClosure
+import L4Factoidal.OWL.RLClosureIndexed
 import L4Factoidal.Syntax.RdfXml
 import Harness.Common
 
@@ -333,41 +343,42 @@ def loadImports (lookup : List ImportDoc) (allowed : List String)
 
 structure ClosureResult where
   graph  : Graph
+  index  : Index
   rounds : Nat
   capped : Bool
 
-/-- One round, `OWL.RL.step g`, computed per driving triple so the
-clock can be read INSIDE a round (a single round over a large ontology
-can take minutes, and a cap that only fires between rounds is not a
-cap). When the deadline has not passed the result is exactly
-`addAll g (axiomTriples ++ g.flatMap (conclusionsFrom g))`, i.e.
-`step g`; `none` means the deadline passed mid-round. -/
-def stepIO (g : Graph) (deadlineMs : Nat) : IO (Option Graph) := do
+/-- One round, `OWL.RL.stepI i`, computed per driving triple so the
+clock can be read INSIDE a round (a cap that only fires between rounds
+is not a cap). When the deadline has not passed the result is exactly
+`i.insertAll (stepConclusionsS (Store.ofIndex i))`, i.e. `stepI i`;
+`none` means the deadline passed mid-round. -/
+def stepIO (i : Index) (deadlineMs : Nat) : IO (Option Index) := do
+  let s := Store.ofIndex i
   let mut acc : Array Triple := #[]
-  let mut i := 0
-  for d in g do
-    acc := acc ++ (conclusionsFrom g d).toArray
-    i := i + 1
-    if i % 32 == 0 then
+  let mut n := 0
+  for d in s.graph do
+    acc := acc ++ (conclusionsFromS s d).toArray
+    n := n + 1
+    if n % 32 == 0 then
       if (← IO.monoMsNow) > deadlineMs then return none
-  return some (addAll g (axiomTriples ++ acc.toList))
+  return some (i.insertAll (axiomTriples ++ acc.toList))
 
-/-- `OWL.RL.closure` with the same stopping rule (stop when the length
+/-- `OWL.RL.closureI` with the same stopping rule (stop when the size
 did not change), one `stepIO` per loop iteration. Fuel exhausted
 without saturation counts as a cap hit too. -/
 def closureIO (g : Graph) (fuel : Nat) (deadlineMs : Nat) : IO ClosureResult := do
-  let mut cur := g
+  let mut cur := Index.ofGraph g
   let mut rounds := 0
   for _ in [0:fuel] do
     match ← stepIO cur deadlineMs with
     | none =>
-      return { graph := cur, rounds := rounds, capped := true }
-    | some g' =>
+      return { graph := cur.toGraph, index := cur, rounds := rounds, capped := true }
+    | some i' =>
       rounds := rounds + 1
-      if g'.length = cur.length then
-        return { graph := cur, rounds := rounds, capped := false }
-      cur := g'
-  return { graph := cur, rounds := rounds, capped := true }
+      if i'.all.size = cur.all.size then
+        return { graph := cur.toGraph, index := cur, rounds := rounds, capped := false }
+      cur := i'
+  return { graph := cur.toGraph, index := cur, rounds := rounds, capped := true }
 
 /-! ## Judging -/
 
@@ -467,8 +478,14 @@ def predicateHistogram (g : Graph) : List (String × Nat) := Id.run do
     | none   => acc := acc ++ [(k, 1)]
   return acc.mergeSort (fun a b => a.2 ≥ b.2)
 
+/-- Print and flush, so a run killed by an outer timeout keeps the
+lines it already measured. -/
+def say (line : String) : IO Unit := do
+  IO.println line
+  (← IO.getStdout).flush
+
 def profileCase (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO Unit := do
-  IO.println s!"PROFILE {name} {c.id}"
+  say s!"PROFILE {name} {c.id}"
   match premiseGraph cat c with
   | .error o => IO.println (o.line c.id)
   | .ok gp =>
@@ -482,30 +499,40 @@ def profileCase (name : String) (cat : Catalog) (c : Case) (rounds : Nat) : IO U
     -- is an IO action that consumes the value, so it is forced there.
     let outRef ← IO.mkRef (#[] : Array Triple)
     let gRef ← IO.mkRef (#[] : Array Triple)
+    let idxRef ← IO.mkRef Index.empty
     let mut g := gp
     for r in [0:rounds] do
-      IO.println s!"  round {r + 1}: input triples={g.length}"
+      say s!"  round {r + 1}: input triples={g.length}"
       let tr0 ← IO.monoMsNow
       let mut all : Array Triple := #[]
-      let mut rowStats : List (String × Nat × Nat) := []
       for (nm, f) in namedRows do
         let t0 ← IO.monoMsNow
         outRef.set (g.flatMap (f g)).toArray
         let t1 ← IO.monoMsNow
         let out ← outRef.get
-        rowStats := rowStats ++ [(nm, out.size, t1 - t0)]
+        if t1 - t0 > 0 || out.size > 0 then
+          say s!"      {nm}: emitted={out.size} ms={t1 - t0}"
         all := all ++ out
       let t2 ← IO.monoMsNow
       gRef.set (addAll g (axiomTriples ++ all.toList)).toArray
       let t3 ← IO.monoMsNow
       let g' := (← gRef.get).toList
-      IO.println s!"    rows total: emitted={all.size} ms={t2 - tr0}"
-      IO.println s!"    dedup addAll: new={g'.length - g.length} ms={t3 - t2}"
-      let sorted := rowStats.mergeSort (fun a b => a.2.2 ≥ b.2.2)
-      for (nm, n, ms) in sorted do
-        if ms > 0 || n > 0 then IO.println s!"      {nm}: emitted={n} ms={ms}"
+      say s!"    list rows total: emitted={all.size} ms={t2 - tr0}"
+      say s!"    list dedup addAll: new={g'.length - g.length} ms={t3 - t2}"
+      -- The indexed engine on the same input: build, one round, and the
+      -- identity check against the list round (RLClosureIndexed's
+      -- Index.Wf.step, evaluated on corpus data).
+      let t4 ← IO.monoMsNow
+      idxRef.set (Index.ofGraph g)
+      let t5 ← IO.monoMsNow
+      let idx ← idxRef.get
+      idxRef.set (stepI idx)
+      let t6 ← IO.monoMsNow
+      let idx' ← idxRef.get
+      say s!"    indexed build: ms={t5 - t4}  indexed round: new={idx'.all.size - idx.all.size} \
+ms={t6 - t5}  same list as the list round: {decide (idx'.toGraph = g')}"
       if g'.length = g.length then
-        IO.println s!"    saturated after {r + 1} rounds"
+        say s!"    saturated after {r + 1} rounds"
         break
       g := g'
 
@@ -559,7 +586,7 @@ def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outc
   match res with
   | .error o => return (o, m)
   | .ok r =>
-    let clash := detectClash r.graph
+    let clash := detectClashI r.index
     let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
     if clash then return (.fail s!"clash: detectClash fired on a premise asserted consistent ({r.graph.length} triples)", m)
     else if r.capped then
@@ -573,7 +600,7 @@ def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Ou
   match res with
   | .error o => return (o, m)
   | .ok r =>
-    let clash := detectClash r.graph
+    let clash := detectClashI r.index
     let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
     if clash then return (.pass, m)
     else if r.capped then

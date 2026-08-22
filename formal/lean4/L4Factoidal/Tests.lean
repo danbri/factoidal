@@ -8,6 +8,7 @@ The scenario mirrors the running example of the F* tree's hub posts
 cases the F* source treats specially.
 -/
 import L4Factoidal.SPARQL.Invariants
+import L4Factoidal.OWL.RLClosureIndexed
 
 namespace L4Factoidal.Tests
 
@@ -155,5 +156,7 @@ output for each is at most Lean's own `propext` / `Quot.sound` /
 #print axioms L4Factoidal.SPARQL.evalBgp_mono
 #print axioms L4Factoidal.SPARQL.Binding.lookup_merge
 #print axioms L4Factoidal.RDF.Literal.termEq_iff_eq
+#print axioms L4Factoidal.OWL.RL.indexedClosure_eq
+#print axioms L4Factoidal.OWL.RL.detectClashI_closureI
 
 end L4Factoidal.Tests
