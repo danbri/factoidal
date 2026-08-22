@@ -9,6 +9,7 @@ are the unit-level checks that fail the BUILD when a clause regresses
 (the sabotage discipline of `skills/factoidal-lean-basics`).
 -/
 import L4Factoidal.SHACL.Report
+import L4Factoidal.SHACL.Sparql
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.RDF.Isomorphism
 
@@ -269,5 +270,112 @@ def sparqlTargetDoc : String :=
 
 #guard (decodeShapesGraph (ttl sparqlTargetDoc)).unsupported
          == ["sh:target (SPARQL-based targets)"]
+
+/-! ### SHACL-SPARQL Part 2 — the evaluator
+
+`Sparql.lean`. These pin the clauses the W3C `sparql/*` manifests
+exercise; the suite itself is run by `lake exe l4shacl`. Every query
+below uses full IRIs — a `sh:sparql` query text carries no ambient
+prefix map unless the shape declares `sh:prefixes` (§5.2). -/
+
+/-- Validate a document against itself with SHACL-SPARQL enabled; the
+raw graph is passed twice because §5.3.1's `$shapesGraph` needs the
+shapes graph's own triples. -/
+def runSparql (body : String) : ValidationReport :=
+  let g := ttl body
+  validateWithSparql g g (decodeShapesGraph g)
+
+/-! #### §5.1 every SELECT solution is a validation result -/
+
+def sparqlSelectDoc : String :=
+  "ex:S a sh:NodeShape ; sh:targetNode ex:bob ; sh:sparql [ " ++
+  "sh:select \"SELECT $this ?value WHERE { $this <http://example.org/name> ?value }\" ] . " ++
+  "ex:bob ex:name \"A\", \"B\" ."
+
+#guard (runSparql sparqlSelectDoc).conforms == false
+#guard (runSparql sparqlSelectDoc).results.length == 2
+#guard components (runSparql sparqlSelectDoc) == [shSPARQLConstraintComponent,
+                                                  shSPARQLConstraintComponent]
+#guard (runSparql sparqlSelectDoc).failure == none
+
+/-! #### §5.3 `$this` is pre-bound INSIDE the pattern
+
+The whole WHERE clause is one FILTER, so a post-hoc join of a
+`{this ↦ focus}` row would leave `$this` unbound while the FILTER runs
+and would find nothing. One result means the substitution reached the
+FILTER expression (the `sparql/pre-binding/pre-binding-001` shape). -/
+
+def prebindFilterDoc : String :=
+  "ex:S a sh:NodeShape ; sh:targetNode ex:bob ; sh:sparql [ " ++
+  "sh:select \"SELECT $this WHERE { FILTER ($this = <http://example.org/bob>) }\" ] ."
+
+#guard (runSparql prebindFilterDoc).conforms == false
+#guard (runSparql prebindFilterDoc).results.length == 1
+#guard (runSparql prebindFilterDoc).results.map (·.focus) == [.iri (exIri "bob")]
+
+-- The focus node is still in the result rows after substitution:
+-- `SELECT $this` projects it through the pre-binding row.
+#guard (runSparql prebindFilterDoc).results.map (·.value) == [some (.iri (exIri "bob"))]
+
+/-! #### §5.3.2 the pre-binding restrictions are failures, not results -/
+
+def minusDoc : String :=
+  "ex:S a sh:NodeShape ; sh:targetNode ex:bob ; sh:sparql [ " ++
+  "sh:select \"SELECT $this WHERE { $this ?p ?o MINUS { ?x ?y ?z } }\" ] . " ++
+  "ex:bob ex:name \"A\" ."
+
+#guard (runSparql minusDoc).failure.isSome
+#guard (runSparql minusDoc).results.isEmpty
+
+def serviceDoc : String :=
+  "ex:S a sh:NodeShape ; sh:targetNode ex:bob ; sh:sparql [ " ++
+  "sh:select \"SELECT $this WHERE { SERVICE <http://example.org/sparql> { $this ?p ?o } }\" ] ."
+
+#guard (runSparql serviceDoc).failure.isSome
+
+def bindPreboundDoc : String :=
+  "ex:S a sh:NodeShape ; sh:targetNode ex:bob ; sh:sparql [ " ++
+  "sh:select \"SELECT $this WHERE { BIND (<http://example.org/x> AS $this) }\" ] ."
+
+#guard (runSparql bindPreboundDoc).failure.isSome
+
+-- A sub-SELECT that DOES project `$this` is accepted; `SELECT *`
+-- counts as not projecting (`pre-binding-006` versus `-007`).
+#guard (prebindingUnsupported (.subSelect
+          (.mk (.select (.vars [.var "this"])) [] .empty none [] {} none none))).isNone
+#guard (prebindingUnsupported (.subSelect
+          (.mk (.select .all) [] .empty none [] {} none none))).isSome
+
+/-! #### §5.3.1 `$PATH` renders as SPARQL 1.1 property-path syntax -/
+
+#guard pathToSparql (.pred (exIri "name")) == "<http://example.org/name>"
+#guard pathToSparql (.inverse (.pred (exIri "name"))) == "^<http://example.org/name>"
+#guard pathToSparql (.seq [.pred (exIri "a"), .inverse (.pred (exIri "b"))])
+         == "<http://example.org/a>/(^<http://example.org/b>)"
+#guard pathToSparql (.zeroOrMore (.alt [.pred (exIri "a"), .pred (exIri "b")]))
+         == "(<http://example.org/a>|<http://example.org/b>)*"
+#guard substitutePath "SELECT $this WHERE { $this $PATH ?value }" (some (.pred (exIri "age")))
+         == "SELECT $this WHERE { $this <http://example.org/age> ?value }"
+
+/-! #### §6 a SPARQL-based constraint component
+
+`ex:C` is recognised structurally (a `sh:parameter` plus a validator),
+its `sh:maxVal` parameter is bound on the PROPERTY shape `ex:P`, and
+the ASK validator runs once per value node (§6.2.1). -/
+
+def askComponentDoc : String :=
+  "ex:C sh:parameter [ sh:path ex:maxVal ] ; " ++
+  "sh:validator [ sh:ask \"ASK { FILTER ($value <= $maxVal) }\" ] . " ++
+  "ex:S a sh:NodeShape ; sh:targetNode ex:bob ; sh:property ex:P . " ++
+  "ex:P sh:path ex:age ; ex:maxVal 10 . " ++
+  "ex:bob ex:age 5, 20 ."
+
+#guard (runSparql askComponentDoc).conforms == false
+#guard (runSparql askComponentDoc).results.length == 1
+#guard components (runSparql askComponentDoc) == [exIri "C"]
+#guard (runSparql askComponentDoc).results.map (fun v =>
+          match v.value with
+          | some (.literal l) => l.val.lexicalForm
+          | _ => "") == ["20"]
 
 end L4Factoidal.SHACL.Tests

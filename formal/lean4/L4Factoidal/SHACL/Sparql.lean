@@ -130,10 +130,32 @@ def substVarTP (name : VarName) (t : Term) (tp : TriplePattern) : TriplePattern 
 
 /-- The expression form of a term (F\* `term_to_expr_opt`): a blank
 node and a triple term have none, so an `Expr.var` for them is left
-alone. -/
+alone.
+
+A pre-bound variable must behave in an expression EXACTLY as the same
+binding would in the solution mapping, so a numeric or boolean literal
+becomes the promoted `Expr` constructor, not `Expr.lit`. `Expr.var`
+promotes a literal binding through `literalPromote` (SPARQL §17.1),
+while `Expr.lit` does not — substituting `Expr.lit "5"^^xsd:integer`
+into `FILTER($value <= $maxVal)` would compare the two LEXICALLY and
+answer `"5" > "10"`. `termToExpr_evalIn_eq_literalPromote`
+(`SparqlTheorems.lean`) pins the agreement. The F\* `term_to_expr_opt`
+returns the un-promoted `E_Literal` and has the same lexical-compare
+exposure (`SPARQL11.Algebra.fst:4013`); the vendored SHACL-SPARQL
+fixtures do not exercise it. -/
 def termToExpr? : Term → Option Expr
   | .iri i => some (.iri i)
-  | .literal l => some (.lit l)
+  | .literal l =>
+    if l.val.datatype == RDF.xsdInteger then
+      match parseIntString l.val.lexicalForm with
+      | some n => some (.numericLit n)
+      | none => some (.lit l)
+    else if l.val.datatype == RDF.xsdDecimal then some (.decimalLit l.val.lexicalForm)
+    else if l.val.datatype == RDF.xsdDouble || l.val.datatype == SPARQL.xsdFloat then
+      some (.doubleLit l.val.lexicalForm)
+    else if l.val.datatype == RDF.xsdBoolean then
+      some (.boolLit (l.val.lexicalForm == "true" || l.val.lexicalForm == "1"))
+    else some (.lit l)
   | _ => none
 
 mutual
@@ -401,18 +423,27 @@ def SparqlOutcome.concat : List SparqlOutcome → SparqlOutcome
   | [] => .empty
   | o :: rest => o.append (SparqlOutcome.concat rest)
 
-/-- Parse the query text (after `$PATH` substitution), check §5.3.2,
-and hand the pre-bound query to `k`. Every rejection path is a
+/-- The pre-bound query of a SHACL-SPARQL constraint (§5.3), or the
+reason SHACL requires it to be rejected: a parse error, or a §5.3.2
+construct that pre-binding does not support. Named separately from the
+evaluation below so a specification can quantify over it. -/
+def preboundQuery (queryText : String) (path : Option Path)
+    (binds : List (VarName × Term)) : Except String Query :=
+  match parseSparql (substitutePath queryText path) with
+  | .error e => .error s!"query parse error: {e.msg}"
+  | .ok q =>
+    match queryPrebindingUnsupported q with
+    | some why => .error s!"unsupported query: {why}"
+    | none => .ok (queryWithPrebinding q binds)
+
+/-- Run `k` on the pre-bound query. Every rejection path is a
 `failure`, never an exception. -/
 def withPreboundQuery (queryText : String) (path : Option Path)
     (binds : List (VarName × Term)) (what : String)
     (k : Query → SparqlOutcome) : SparqlOutcome :=
-  match parseSparql (substitutePath queryText path) with
-  | .error e => { results := [], failure := some s!"{what} query parse error: {e.msg}" }
-  | .ok q =>
-    match queryPrebindingUnsupported q with
-    | some why => { results := [], failure := some s!"{what} unsupported query: {why}" }
-    | none => k (queryWithPrebinding q binds)
+  match preboundQuery queryText path binds with
+  | .error e => { results := [], failure := some (what ++ " " ++ e) }
+  | .ok q => k q
 
 /-! ## §5.1 `sh:sparql` constraints
 
@@ -426,21 +457,27 @@ column and expects the property shape's own path):
   * `?message` absent → the `sh:sparql` constraint node's own
     `sh:message`, then the owning shape's, then none. -/
 
+/-- §5.3.1: what a `sh:sparql` constraint pre-binds — the focus node,
+the shapes graph (as the internal named-graph IRI) and the owning
+shape. -/
+def sparqlPrebindings (focus : Term) (s : Shape) : List (VarName × Term) :=
+  [("this", focus),
+   ("shapesGraph", .iri shaclInternalShapesGraphIri),
+   ("currentShape", shapeRefToTerm s.id)]
+
+/-- The dataset a `sh:sparql` query runs against: the data graph as
+default, the raw shapes graph under the internal `$shapesGraph` IRI. -/
+def sparqlDataset (data shapesRaw : Graph) : Dataset :=
+  { default := data,
+    named := [{ name := .iri shaclInternalShapesGraphIri, graph := shapesRaw }] }
+
 /-- One `sh:sparql` constraint against one focus node. -/
 def sparqlViolationsForFocus (data shapesRaw : Graph) (focus : Term) (s : Shape)
     (cref : ShapeRef) (queryText : String) (cmsg : Option WfLiteral)
     (csev : Severity) : SparqlOutcome :=
   let cc := Constraint.sparql cref queryText cmsg (some csev)
-  let binds : List (VarName × Term) :=
-    [("this", focus),
-     ("shapesGraph", .iri shaclInternalShapesGraphIri),
-     ("currentShape", shapeRefToTerm s.id)]
-  withPreboundQuery queryText s.path binds "sh:sparql" fun q =>
-    let ds : Dataset :=
-      { default := data,
-        named := [{ name := .iri shaclInternalShapesGraphIri, graph := shapesRaw }] }
-    let (_, rows) := evalSelect emptyEnv ds q
-    { results := rows.map fun mu =>
+  withPreboundQuery queryText s.path (sparqlPrebindings focus s) "sh:sparql" fun q =>
+    { results := ((evalSelect emptyEnv (sparqlDataset data shapesRaw) q).2).map fun mu =>
         { focus := focus,
           path := match mu.lookup "path" with
                   | some (.iri p) => some (.pred p)
@@ -500,7 +537,7 @@ def fillTemplateChars (lookup : String → Option String) : Nat → List Char �
   | fuel + 1, '{' :: '$' :: rest =>
     match splitAtCloseBrace rest with
     | some (nm, after) =>
-      (match lookup (String.mk nm) with
+      (match lookup (String.ofList nm) with
        | some v => v.toList
        | none => []) ++ fillTemplateChars lookup fuel after
     | none => '{' :: fillTemplateChars lookup fuel ('?' :: rest)
@@ -515,7 +552,7 @@ def fillMessageTemplate (tmpl : String) (params : List (VarName × Term))
               | some t => some (termToPlainString t)
               | none => none
   let cs := tmpl.toList
-  Literal.string (String.mk (fillTemplateChars lookup (cs.length + 1) cs))
+  Literal.string (String.ofList (fillTemplateChars lookup (cs.length + 1) cs))
 
 /-! ## §6 SPARQL-based constraint components
 
@@ -525,11 +562,20 @@ per FOCUS NODE and every solution is a result. Both pre-bind `$this`,
 `$value` (ASK only — a SELECT validator's own pattern determines
 `?value`) and each `sh:parameter` variable. -/
 
+/-- §6.2.1 / §6.2.2: what a constraint component pre-binds. An ASK
+validator runs per value node and pre-binds `$value` too; a SELECT
+validator's own pattern determines `?value`. -/
+def customPrebindings (focus : Term) (value : Option Term)
+    (params : List (VarName × Term)) : List (VarName × Term) :=
+  match value with
+  | some v => ("this", focus) :: ("value", v) :: params
+  | none => ("this", focus) :: params
+
 def customAskViolation (data : Graph) (focus v : Term) (s : Shape)
     (cc : Constraint) (queryText : String) (params : List (VarName × Term)) :
     SparqlOutcome :=
-  let binds : List (VarName × Term) := ("this", focus) :: ("value", v) :: params
-  withPreboundQuery queryText s.path binds "constraint component" fun q =>
+  withPreboundQuery queryText s.path (customPrebindings focus (some v) params)
+      "constraint component" fun q =>
     if evalAsk emptyEnv { default := data, named := [] } q then .empty
     else { results := [{ focus := focus, path := s.path, value := some v,
                          sourceShape := s.id, constraint := cc,
@@ -538,10 +584,9 @@ def customAskViolation (data : Graph) (focus v : Term) (s : Shape)
 def customSelectViolations (data : Graph) (focus : Term) (s : Shape)
     (cc : Constraint) (queryText : String) (params : List (VarName × Term))
     (msgTemplate : Option String) : SparqlOutcome :=
-  let binds : List (VarName × Term) := ("this", focus) :: params
-  withPreboundQuery queryText s.path binds "constraint component" fun q =>
-    let (_, rows) := evalSelect emptyEnv { default := data, named := [] } q
-    { results := rows.map fun mu =>
+  withPreboundQuery queryText s.path (customPrebindings focus none params)
+      "constraint component" fun q =>
+    { results := ((evalSelect emptyEnv { default := data, named := [] } q).2).map fun mu =>
         { focus := focus,
           path := match mu.lookup "path" with
                   | some (.iri p) => some (.pred p)
@@ -617,5 +662,89 @@ def validateWithSparql (data shapesRaw : Graph) (sgraph : ShapesGraph) :
   let out := sparqlOut.append customOut
   let results := core.results ++ out.results
   { conforms := results.isEmpty, results := results, failure := out.failure }
+
+/-! ## The specification of the SHACL-SPARQL components
+
+`Spec.Conforms` (`Validation.lean`) states SHACL Core conformance, and
+`conformance_iff` proves the Core engine realises it. The SHACL-SPARQL
+components CANNOT be folded into that relation: `conformance_iff` is an
+`iff` against `collectShapeViolations`, which by design never evaluates
+a `.sparql` or `.custom` constraint (it returns `List Violation` with
+no room for the §5.3.2 failure channel — the same reason the F\*
+dispatches these outside its Core mutual group). Adding a non-trivial
+`FocusSatisfies` clause for them would make `conformance_iff` FALSE.
+
+So the SHACL-SPARQL specification is a SIBLING of `Spec.Conforms`,
+stated here over the same data, and `Spec.GraphConformsWithSparql`
+below is the conjunction the top-level theorem targets.
+`SparqlTheorems.lean` relates each predicate to its engine function. -/
+
+namespace Spec
+
+/-- §5.1: a focus node satisfies a `sh:sparql` constraint when the
+pre-bound SELECT has no solution. A query SHACL rejects under §5.3.2
+satisfies this vacuously — rejection is a FAILURE, a separate outcome
+from non-conformance, carried by `SparqlOutcome.failure`. -/
+def SparqlSatisfies (data shapesRaw : Graph) (focus : Term) (s : Shape)
+    (queryText : String) : Prop :=
+  ∀ q, preboundQuery queryText s.path (sparqlPrebindings focus s) = .ok q →
+    (evalSelect emptyEnv (sparqlDataset data shapesRaw) q).2 = []
+
+/-- §6.2.1: a value node satisfies an ASK validator when the pre-bound
+ASK is true. -/
+def AskValidatorSatisfies (data : Graph) (focus v : Term) (s : Shape)
+    (queryText : String) (params : List (VarName × Term)) : Prop :=
+  ∀ q, preboundQuery queryText s.path (customPrebindings focus (some v) params) = .ok q →
+    evalAsk emptyEnv { default := data, named := [] } q = true
+
+/-- §6.2.2: a focus node satisfies a SELECT validator when the
+pre-bound SELECT has no solution. -/
+def SelectValidatorSatisfies (data : Graph) (focus : Term) (s : Shape)
+    (queryText : String) (params : List (VarName × Term)) : Prop :=
+  ∀ q, preboundQuery queryText s.path (customPrebindings focus none params) = .ok q →
+    (evalSelect emptyEnv { default := data, named := [] } q).2 = []
+
+/-- §6: one constraint component at one occurrence, over that
+occurrence's value nodes. -/
+def CustomSatisfies (data : Graph) (focus : Term) (s : Shape) (values : List Term) :
+    Constraint → Prop
+  | .custom _ true queryText params _ =>
+    ∀ v ∈ values, AskValidatorSatisfies data focus v s queryText params
+  | .custom _ false queryText params _ =>
+    SelectValidatorSatisfies data focus s queryText params
+  | _ => True
+
+/-- §6 through `sh:property`: a constraint component is reached at the
+focus node's own occurrence and at every occurrence of every property
+shape, down to the nesting budget. -/
+def CustomOccurrenceConforms (data : Graph) (sg : List Shape) (node : Term) (s : Shape) :
+    Nat → Prop
+  | 0 => True
+  | fuel + 1 =>
+    let values := valueNodes data node s
+    (∀ cc ∈ s.constraints, CustomSatisfies data node s values cc) ∧
+    (∀ v ∈ values, ∀ r ∈ s.propertyRefs, ∀ ps, lookupShape r sg = some ps →
+      CustomOccurrenceConforms data sg v ps fuel)
+
+/-- §5.1 at shape level: every `sh:sparql` constraint of a targeted
+shape, at every focus node. -/
+def SparqlShapeConforms (data shapesRaw : Graph) (allSubjects : List Subject) (s : Shape) :
+    Prop :=
+  ∀ fn ∈ shapeFocusNodes data allSubjects s,
+    ∀ cc ∈ s.constraints, ∀ cref q m sev, cc = .sparql cref q m sev →
+      SparqlSatisfies data shapesRaw fn s q
+
+/-- §3.1 with SHACL Part 2: SHACL Core conformance, plus every
+`sh:sparql` constraint and every constraint component of every
+targeted shape. -/
+def GraphConformsWithSparql (data shapesRaw : Graph) (sg : ShapesGraph) : Prop :=
+  GraphConforms data sg ∧
+  (∀ s ∈ sg.shapes, s.targets ≠ [] →
+     SparqlShapeConforms data shapesRaw (distinctSubjects data) s) ∧
+  (∀ s ∈ sg.shapes, s.targets ≠ [] →
+     ∀ fn ∈ shapeFocusNodes data (distinctSubjects data) s,
+       CustomOccurrenceConforms data sg.shapes fn s (validateFuel sg.shapes))
+
+end Spec
 
 end L4Factoidal.SHACL
