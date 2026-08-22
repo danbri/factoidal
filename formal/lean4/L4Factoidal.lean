@@ -29,6 +29,9 @@ import L4Factoidal.Syntax.TurtleTests
 import L4Factoidal.Syntax.TurtleTheorems
 import L4Factoidal.Syntax.SyntaxTests
 import L4Factoidal.Syntax.SyntaxTheorems
+import L4Factoidal.Syntax.RdfXml
+import L4Factoidal.Syntax.RdfXmlTests
+import L4Factoidal.Syntax.RdfXmlTheorems
 import L4Factoidal.JSON.Value
 import L4Factoidal.JSON.Parser
 import L4Factoidal.JSON.Serialize

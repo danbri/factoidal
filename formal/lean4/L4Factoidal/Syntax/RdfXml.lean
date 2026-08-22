@@ -289,6 +289,54 @@ def elementIri (st : St) (tag : String) : Option String :=
   | some e => some ((e.namespace_.getD "") ++ e.localPart)
   | none   => none
 
+/-! ## `[7.2.26] propertyAttr`
+
+An attribute that is not a namespace declaration, not in the XML
+namespace, and not one of the RDF-namespace names §7.2 consumes,
+licenses one triple whose object is a plain literal of the attribute
+value — except `rdf:type`, whose object is the IRI the value resolves
+to. -/
+
+/-- Is `a` an `xmlns` / `xmlns:*` declaration? -/
+def isNsDecl (a : XML.Attribute) : Bool :=
+  match XML.splitQName a.name with
+  | .simple "xmlns"     => true
+  | .prefixed "xmlns" _ => true
+  | _                   => false
+
+/-- The triples licensed by the property attributes of one element,
+attached to `subj`. Attributes in NO namespace (unprefixed, other than
+the RDF/XML-specific ones) contribute nothing: §7.2.26 needs a URI, and
+an unprefixed attribute name has no namespace (Namespaces in XML §6.2).
+Port of `collect_property_attributes`. -/
+def propertyAttrTriples (st : St) (subj : Subject) :
+    List XML.Attribute → List Triple
+  | [] => []
+  | a :: rest =>
+    let restTriples := propertyAttrTriples st subj rest
+    if isNsDecl a then restTriples
+    else
+      match XML.resolveAttributeName st.scope a.name with
+      | none => restTriples
+      | some e =>
+        match e.namespace_ with
+        | none => restTriples                       -- no namespace: no predicate IRI
+        | some ns =>
+          if ns == XML.xmlNsUri then restTriples    -- xml:lang / xml:base / xml:space
+          else if ns == rdfNs && rdfSyntaxAttrNames.contains e.localPart then restTriples
+          else
+            let full := ns ++ e.localPart
+            match mkIri? full with
+            | none => restTriples
+            | some p =>
+              if full == rdfTypeIri.val then
+                match mkIri? (resolveRef st a.value) with
+                | some o => { s := subj, p := p, o := Term.iri o } :: restTriples
+                | none   => restTriples
+              else
+                { s := subj, p := p, o := Term.literal (mkPlainLiteral a.value st.lang) }
+                  :: restTriples
+
 /-! ## §7.2's attribute constraints
 
 `XML/Wellformedness.lean` states these over LITERAL attribute spellings
@@ -355,6 +403,12 @@ def checkPropertyAttrs (st : St) (attrs : List XML.Attribute) : Option String :=
       some "conflicting rdf:datatype and rdf:resource (RDF/XML §7.2.14)"
     else if hasRdfAttr st "about" attrs then
       some "rdf:about on a property element (RDF/XML §7.2.14)"
+    else if hasRdfAttr st "parseType" attrs
+            && !(propertyAttrTriples st (.bnode "probe") attrs).isEmpty then
+      -- §7.2.17 / §7.2.18 / §7.2.19 each admit only `idAttr` and the
+      -- `parseType` attribute itself; a `[7.2.26] propertyAttr` alongside
+      -- one of them matches no production.
+      some "a property attribute alongside rdf:parseType (RDF/XML §7.2.17)"
     else none
 
 /-- `[7.2.23] idAttr` and `[7.2.24] nodeIdAttr` both take an `rdf-id`,
@@ -387,54 +441,6 @@ def registerId (st : St) (idValue : String) : St :=
   if st.seenIds.contains key then
     st.fail s!"rdf:ID {idValue} is used twice under the same base (RDF/XML §7.2.23)"
   else { st with seenIds := key :: st.seenIds }
-
-/-! ## `[7.2.26] propertyAttr`
-
-An attribute that is not a namespace declaration, not in the XML
-namespace, and not one of the RDF-namespace names §7.2 consumes,
-licenses one triple whose object is a plain literal of the attribute
-value — except `rdf:type`, whose object is the IRI the value resolves
-to. -/
-
-/-- Is `a` an `xmlns` / `xmlns:*` declaration? -/
-def isNsDecl (a : XML.Attribute) : Bool :=
-  match XML.splitQName a.name with
-  | .simple "xmlns"     => true
-  | .prefixed "xmlns" _ => true
-  | _                   => false
-
-/-- The triples licensed by the property attributes of one element,
-attached to `subj`. Attributes in NO namespace (unprefixed, other than
-the RDF/XML-specific ones) contribute nothing: §7.2.26 needs a URI, and
-an unprefixed attribute name has no namespace (Namespaces in XML §6.2).
-Port of `collect_property_attributes`. -/
-def propertyAttrTriples (st : St) (subj : Subject) :
-    List XML.Attribute → List Triple
-  | [] => []
-  | a :: rest =>
-    let restTriples := propertyAttrTriples st subj rest
-    if isNsDecl a then restTriples
-    else
-      match XML.resolveAttributeName st.scope a.name with
-      | none => restTriples
-      | some e =>
-        match e.namespace_ with
-        | none => restTriples                       -- no namespace: no predicate IRI
-        | some ns =>
-          if ns == XML.xmlNsUri then restTriples    -- xml:lang / xml:base / xml:space
-          else if ns == rdfNs && rdfSyntaxAttrNames.contains e.localPart then restTriples
-          else
-            let full := ns ++ e.localPart
-            match mkIri? full with
-            | none => restTriples
-            | some p =>
-              if full == rdfTypeIri.val then
-                match mkIri? (resolveRef st a.value) with
-                | some o => { s := subj, p := p, o := Term.iri o } :: restTriples
-                | none   => restTriples
-              else
-                { s := subj, p := p, o := Term.literal (mkPlainLiteral a.value st.lang) }
-                  :: restTriples
 
 /-! ## §7.3 Reification
 
