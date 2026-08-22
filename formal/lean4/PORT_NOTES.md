@@ -3774,3 +3774,26 @@ diff of passing counts:
    says verbatim "If M.rdfs:comment is an empty array, remove the
    rdfs:comment property from M", so emitting `[]` is wrong output,
    not harmless output.
+
+### CSVW: metadata validation and the error/warning line (2026-08-22)
+
+`CSVW/Validate.lean` ports `CSVW.Validate.fst`, completing the main
+CSVW module set (Dialect, Metadata, UriTemplate, Conversion, Emit,
+Formats, Json, Validate).
+
+The module exists to preserve ONE distinction. The W3C csvw suite has
+two kinds of negative test: a `ValidationTest` must produce an ERROR,
+a `WarningValidationTest` must produce a WARNING and still convert. A
+port that flagged warnings as errors would fail every warning test
+while looking stricter and more correct — the failure mode where being
+wrong looks like being careful. Severity is therefore part of the
+`Finding`, not a caller's interpretation, and `passes` ignores
+warnings by construction.
+
+Two rules carried with their classification, because both are exactly
+what a later reader would "fix" into a bug:
+- A datatype string that is not a built-in NAME is a WARNING, never a
+  rejection (the suite classifies both the non-builtin and the
+  absolute-URL case as `WarningValidationTest`).
+- A NON-STRING `@id` is graceful degradation, not an error, so it is
+  deliberately not flagged; only a blank-node `@id` is an error.

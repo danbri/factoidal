@@ -141,3 +141,5 @@ import L4Factoidal.CSVW.Formats
 import L4Factoidal.CSVW.FormatsTests
 import L4Factoidal.CSVW.Json
 import L4Factoidal.CSVW.JsonTests
+import L4Factoidal.CSVW.Validate
+import L4Factoidal.CSVW.ValidateTests
