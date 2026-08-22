@@ -38,6 +38,11 @@ a green test run.
 | `L4Factoidal/XML/Theorems.lean` | (new) | a structural well-formedness checker over the parse tree, a serialiser, the proved tag-matching theorem, and the two general claims stated as named `Prop`s |
 | `L4Factoidal/XML/Tests.lean` | (new) | 118 `#guard`s: hub post 25's two live documents, every constraint in `Parser.lean`'s header, the namespace layer, reflexivity and round-trip fixtures |
 | `L4Factoidal/XML/ConfProbe.lean` | `bin/xml-runner/xml_runner.ml` (the driver only) | the `xmlconf-probe` executable: reads W3C conformance file paths from stdin, prints a well-formed/malformed verdict per file |
+| `L4Factoidal/JSON/Value.lean` | `Parser.JSON.fst` `json_val` + accessors | `Json` (`null`/`bool`/`string`/`number`/`array`/`object`), hand-written `DecidableEq` (nested-inductive — `deriving` does not apply, see file header), `field?`/`getString?`/`getBool?`/`getArray?`/`getStringArray?` |
+| `L4Factoidal/JSON/Parser.lean` | `Parser.JSON.fst` (the parser half) | `parseJson : String → Except JsonError Json`, total via fuel (mirrors the F\* fuel discipline); indexes a `List Char`, not raw bytes — see file header on why (Lean `Char` = full Unicode scalar value; sidesteps `Parser.FastString`'s byte-slicing machinery and this toolchain's `String.Pos` API) |
+| `L4Factoidal/JSON/Serialize.lean` | `SPARQL.JSON.Escape.fst` (`json_escape`) + the writer shape of `Parser.JSONLD.fst`'s `jcanon_serialize` (NOT its JCS canonicalisation/field-sorting) | `Json.toString` (compact) and `Json.toStringPretty` (new; no F\* counterpart) |
+| `L4Factoidal/JSON/Tests.lean` | (new) | 61 `#guard`s: RFC 8259 §13 example, every escape form, surrogate-pair decode, number-lexeme preservation, rejection cases, key-order/duplicate preservation, parse∘serialize round-trips |
+| `L4Factoidal/JSON/Theorems.lean` | (new) | escape-table round-trip (exhaustive, `decide`); general literal round-trip; the STRING case general induction (`stringSegments_plain` — any length/content with no character needing escaping); a kernel-reduction finding (see file header); `RoundTripGoal` stated with the exact proof gap named (no `sorry`) |
 
 ## Translation decisions
 
@@ -290,6 +295,38 @@ the source modules.
 - `RDF.Term`, `RDF.Triple`, `RDF.Graph`: **zero** `assume val`s. The
   core data model is fully defined; nothing was assumed away, and the
   port confirms it (every ported definition is total and executable).
+- `Parser.JSON.fst`, `SPARQL.JSON.Escape.fst`: **zero** `assume val`s
+  (confirmed by grep; the one hit for the string `"assume val"` in
+  `SPARQL.JSON.Escape.fst` is a COMMENT referencing
+  `Parser.FastString.fst`'s byte-primitive `assume val`s, not a
+  declaration in either ported module). Both modules are fully defined
+  and total in F\*, and the Lean port is fully defined and total too —
+  no realisation gap on either side.
+
+## A kernel-reduction finding from the JSON port (2026-08-22)
+
+`Parser.lean`'s five mutually recursive functions
+(`parseValue`/`parseObject`/`parseMembers`/`parseArray`/`parseItems`)
+are `Tot`al by construction — every recursive call strictly decreases
+the shared `fuel : Nat` — but Lean's equation compiler evidently
+compiles this particular 5-way mutual group via WELL-FOUNDED recursion
+rather than the bare structural recursion a single `fuel`-matching
+function gets on its own (`stringSegments`, not part of this mutual
+group, decides/`rfl`s fine in isolation). Consequence: `by decide` and
+`by rfl` get "stuck" on ANY proposition mentioning `parseValue` or
+anything that calls it (including `parseJson` itself) — NOT a
+correctness problem (the compiled/`#eval`'d function is fine; `Tests.
+lean`'s 61 `#guard`s exercise it directly), but a PROOF-TACTIC one:
+kernel whnf reduction cannot unfold well-founded recursion the way it
+unfolds structural recursion. Workaround, used throughout
+`Theorems.lean`: `unfold parseValue parseObject ...` (equation-lemma
+rewriting, which works regardless of how the recursion compiles) peels
+exactly the layers a CONCRETE input needs, then `decide` closes the
+remainder once no mutual-group call remains in the goal. A fully
+general (∀-quantified) proof through this group needs the same
+technique under an explicit induction rather than one-shot `unfold` —
+see `Theorems.lean`'s `RoundTripGoal` section for exactly where this
+matters (item 3, the array/object case).
 - `SPARQL11.Algebra.fst`: **10** `assume val`s, all host-boundary
   call-outs (rule #11 of the F\* tree's own policy), none of them in
   the fragment this stage ports:
@@ -440,6 +477,17 @@ the F\* tree first (iron rule #1) rather than only in Lean.
    functions (§17.4.3.16), xsd:dateTime TIMEZONE/TZ, aggregate
    evaluation over a group, xsd type-cast constructor functions, and
    RFC 3986 BASE resolution for `IRI()`.
+0. JSON-LD, SPARQL Results JSON, and JSON Schema ports now unblocked
+   by `L4Factoidal/JSON/` (`Parser.JSONLD.fst`/`Parser.JSONResults.fst`
+   are the F\* sources; both consume `json_val`/`Json` via the same
+   `field?`/`json_get_*` shape this port kept API-compatible with).
+   Closing `Theorems.lean`'s `RoundTripGoal` gap (three named items:
+   escaped-content strings, general number lexemes, array/object
+   induction through the mutual-recursion group) is worth doing before
+   or alongside the JSON-LD port, since JSON-LD's own round-trip
+   proofs will need the same techniques one level up.
+1. The expression language (`expr`, EBV, §17 operators) and with it
+   real `Filter`/`LeftJoin` conditions.
 2. N-Triples/N-Quads parsing + serialisation (round-trip theorems —
    the F\* tree's G4/M1 program has proofs worth re-proving natively).
 3. A W3C-suite harness: build a small Lean executable that reads the
