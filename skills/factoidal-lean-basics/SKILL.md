@@ -32,7 +32,7 @@ https://github.com/danbri/factoidal/issues/466
 | Tests/demo | `Tests.lean`, `Demo.lean` | build-time guards + `#print axioms` audit; runnable tour |
 | Docs | `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence, decisions, assumption report |
 
-Measured 2026-08-22 after twelve rungs: 22721 lines, 1111 top-level definitions/types, 348 theorems, 966 build-time guards; zero `sorry`/`axiom`/`native_decide`/`partial` in the library (axiom audit: propext/Classical.choice/Quot.sound only). In flight: W3C manifest harness (lean4/w3c-harness), RDF/XML (lean4/syntax-rdfxml), JSON-LD (lean4/jsonld), SPARQL string parser (lean4/sparql-parser).
+Measured 2026-08-22, late: the library has zero `sorry`, zero user `axiom`, zero `native_decide`, and exactly ONE `@[extern]`/`opaque` family (HACL* Ed25519, `Crypto/Ed25519.lean`). ⚠️ `partial def` is NO LONGER zero: 18 occurrences across 10 files (CSVW, Geo, HTTP, JSONSchema, MathML, RIF, ShEx, Storage), all arriving with later non-core modules, none in the RDF/SPARQL/RDFS/OWL/SHACL/JSON-LD core. The proof policy below still calls `partial` debt; whether these are accepted debt or must be made total is an OPEN OWNER DECISION — do not quote a blanket 'zero partial' claim until it is settled. Re-measure before quoting: `grep -rc '^partial def' formal/lean4/L4Factoidal/`.
 
 ## Toolchain
 
@@ -97,7 +97,8 @@ Measured 2026-08-22 after twelve rungs: 22721 lines, 1111 top-level definitions/
 
 Lean's equivalents are `axiom`, `sorry`, `@[extern]`/`opaque` (host
 implementations), and `partial`. This project uses NONE of the first
-two and `partial` only in harness directory walks; `@[extern]`/`opaque`
+two. `partial` was harness-only by design, but has since entered
+non-core library modules (see the baseline note above — open decision); `@[extern]`/`opaque`
 exists in exactly ONE place — `Crypto/Ed25519.lean`, HACL\* Ed25519 via
 Lake's `extern_lib` (`lakefile.lean`, `ffi/hacl_ed25519.c`), the single
 permitted extern family under the crypto-policy skill's Lean 4
