@@ -1070,6 +1070,22 @@ def concatResults : List EvalResult → EvalResult
               | _, _ => erString combined
           | _ => .error
 
+/-- §17.4.3.3 SUBSTR applied to arguments that are already evaluated.
+Split out of the evaluator so that each evaluator arm stays a plain
+structural match — which is what lets Lean generate the equation
+lemmas the proofs in `ExprTheorems` rewrite with. -/
+def substrResult (v1 v2 : EvalResult) (vlen : Option EvalResult) : EvalResult :=
+  match v1.stringInfo?, v2 with
+  | some (s, tg, dt), .num start =>
+      if start < 0 then .error
+      else
+        let lenVal :=
+          match vlen with
+          | some (.num n) => if n ≥ 0 then some n.toNat else none
+          | _ => none
+        erStringPreserve (substrSpec s start.toNat lenVal) tg dt
+  | _, _ => .error
+
 /-- §17.4.1.3 COALESCE: the first argument that is not a type error. -/
 def coalesceResults : List EvalResult → EvalResult
   | [] => .error
@@ -1251,20 +1267,8 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
       | some s => .num (s.length : Int)
       | none => .error
   | .substr e1 e2 lenOpt =>
-      let v1 := Expr.evalIn env mu e1
-      match v1.stringInfo?, Expr.evalIn env mu e2 with
-      | some (s, tg, dt), .num start =>
-          if start < 0 then .error
-          else
-            let lenVal :=
-              match lenOpt with
-              | none => none
-              | some e3 =>
-                  match Expr.evalIn env mu e3 with
-                  | .num n => if n ≥ 0 then some n.toNat else none
-                  | _ => none
-            erStringPreserve (substrSpec s start.toNat lenVal) tg dt
-      | _, _ => .error
+      substrResult (Expr.evalIn env mu e1) (Expr.evalIn env mu e2)
+        (Expr.evalOpt env mu lenOpt)
   | .uCase e1 =>
       match (Expr.evalIn env mu e1).stringInfo? with
       | some (s, tg, dt) => erStringPreserve s.toUpper tg dt
@@ -1450,6 +1454,11 @@ and total, so an unused argument's value cannot be observed. -/
 def Expr.evalArgs (env : EvalEnv) (mu : Binding) : List Expr → List EvalResult
   | [] => []
   | e :: rest => Expr.evalIn env mu e :: Expr.evalArgs env mu rest
+
+/-- Evaluate an OPTIONAL sub-expression (SUBSTR's length argument). -/
+def Expr.evalOpt (env : EvalEnv) (mu : Binding) : Option Expr → Option EvalResult
+  | none => none
+  | some e => some (Expr.evalIn env mu e)
 
 end
 
