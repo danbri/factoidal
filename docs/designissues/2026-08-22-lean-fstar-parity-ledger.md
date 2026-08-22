@@ -39,10 +39,23 @@ SPARQL. Zero failures on either side.
 | OWL 2 profile QL | 87 pass, 0 fail | 76 pass, 11 fail (of 87) | 11 tests |
 | SPARQL entailment regimes | supported | 30 unsupported | see below |
 
+## Closed since this ledger was written
+
+**GeoSPARQL** (2026-08-22, same day): ported to Lean as
+`L4Factoidal/Geo/` — `Types` (exact-decimal geometry model), `Order`
+(`Scaled` is a linear order), `BBox` (with the pre-filter soundness
+theorem proved), `Topology` (division-free geometric kernel),
+`Wkt` (parser + decimal rendering), `Functions` (the `geof:`
+extension-function table). Scope honesty: the F\* module also carries
+linestring-vs-linestring and polygon-vs-polygon predicate pairs that
+this port does NOT yet cover — the Lean side is the kernel plus the
+point-vs-polygon fragment. The 37 W3C tests are not yet run against
+it, because that needs the harness wiring, not more geometry.
+
 ## Absent from the Lean tree
 
 Present in F\*, no Lean counterpart: ShEx (1,182 tests), RML (76+),
-RIF Core (46 of 50), CSVW (270), GeoSPARQL (37), XSLT/XPath/MathML/
+RIF Core (46 of 50), CSVW (270), XSLT/XPath/MathML/
 JSON Schema/Schematron, the XML conformance corpus (1,447 of 2,585),
 the VC/DID stack beyond the Lean `VC/` modules, the COTTAS/HDT storage
 layer, and the HTTP serving layer (`SPARQL.HTTP.*`, admin, static
