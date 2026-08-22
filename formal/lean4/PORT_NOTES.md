@@ -4908,3 +4908,77 @@ first. `#print axioms` on `closure_sound`, `closure_extensive`,
 `indexedClosure_eq`, `mem_indexedClosure_iff`, `detectClashI_closureI`,
 all fourteen new `_sound` lemmas and the two discharged value-space
 edges: `[propext, Classical.choice, Quot.sound]` and nothing else.
+
+### CSVW metadata: the parse, the pipeline, and four bugs the corpus
+found (2026-08-22)
+
+The csv2rdf runner could attempt 9 of 270 manifest entries. The other
+261 reference a metadata document, so the whole remaining denominator
+was behind a metadata parse. Three new modules and one wiring fix:
+
+- `CSVW/MetadataParse.lean` — a metadata DOCUMENT into the model
+  `Metadata.lean` already defined: `@context` (default language and
+  base), table groups and single-table documents, inline
+  `tableSchema`, columns with `titles` in all four shapes, every
+  inherited property but `textDirection`, `datatype` in both forms,
+  `dialect`, and common properties with prefix expansion. NOT parsed,
+  and each named rather than pretended: `foreignKeys`,
+  `transformations`, and a `tableSchema` given as a URL (metadata
+  DISCOVERY, which is I/O).
+- `CSVW/Common.lean` — common properties as RDF. A JSON-LD SUBSET
+  with the boundary stated: `@value`/`@type`/`@language`/`@id`,
+  arrays, nested nodes; not term definitions, `@vocab`, containers or
+  `@graph`. An unhandled shape emits NO triple rather than a guessed
+  one.
+- `CSVW/Pipeline.lean` — the join. Columns match fields BY POSITION
+  (tabular-data-model §8); `titles` derive a name, they never reorder.
+- `Formats.lean` gained DATE/TIME pattern parsing, and
+  `Conversion.prepareLexical` now actually CALLS `formatConvert`.
+
+📊 MEASURED, csv2rdf: **90 pass, 115 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)**, from 9 pass out of 9 attempted. The 58
+negative tests are NOT attempted and say so — they assert an error,
+not a graph, and need the validator's outcome.
+
+The four bugs the corpus found, all of which produce the RIGHT number
+of triples with the wrong content — the failure mode a count check
+cannot see:
+
+1. **The `action` is not always a CSV.** 236 of the 270 entries name a
+   METADATA document as their action; the CSV files come from its
+   `url`/`tables`. A runner that assumed otherwise attempted 30 of 270
+   and reported the rest as nothing at all.
+2. **The header row supplies column titles** when the metadata does
+   not (§8 step 4.6). Without that a table with no metadata gets
+   `_col.1`, `_col.2`, … as its predicates: structurally right,
+   semantically wrong. This REGRESSED tests 001–010 to failing the
+   moment the pipeline replaced the ad-hoc path, and the triple counts
+   stayed equal throughout.
+3. **`format` was never applied.** `prepareLexical` did the whitespace
+   rule and stopped, so a `date` column with `"format": "M/d/yyyy"`
+   emitted `"10/18/2010"^^xsd:date` where the value is
+   `"2010-06-02"`-shaped. Fixing it moved the score 46 → 78.
+4. **`{_name}` and the datatype aliases.** A `propertyUrl` of
+   `http://schema.org/{_name}` expanded to `http://schema.org/` for
+   every column — a whole table collapsed onto one predicate — and
+   `"datatype": "number"` minted `xsd:number`, which does not exist
+   (`number` is a CSVW alias for `xsd:double`). Fixing both moved the
+   score 78 → 90.
+
+Also fixed while here: the metadata document's own directory is the
+base for its table `url`s. `test011/tree-ops.csv-metadata.json` names
+`tree-ops.csv`, which is `test011/tree-ops.csv` on disk; resolving it
+against the tests root finds a DIFFERENT file of the same name at the
+top level.
+
+Named next steps, sized from the failure list rather than guessed:
+metadata MERGING (§5.1 — several tests supply file, link and user
+metadata and expect a defined precedence; `dc:label "file"` vs
+`"metadata"` is the visible symptom), virtual columns, and the
+`foreignKeys` reference tests whose second table the runner currently
+skips.
+
+METHOD NOTE: the `--dump=<manifest id>` switch on `l4csvw-rdf` prints
+both graphs as sorted N-Triples. Every one of the four bugs above was
+found by reading that diff, and none of them was visible in the
+score line, which said "produced 24, expected 24" throughout.

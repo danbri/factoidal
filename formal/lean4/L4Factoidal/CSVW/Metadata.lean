@@ -12,8 +12,26 @@ default, lang, null, ordered, propertyUrl, required, separator,
 textDirection, valueUrl) this carries all but `textDirection`.
 -/
 import L4Factoidal.CSVW.Dialect
+import L4Factoidal.JSON.Value
 
 namespace L4Factoidal.CSVW
+
+/-- A COMMON PROPERTY (tabular-metadata §5.8): any member of a
+    metadata object whose name is not one of the properties the
+    specification defines. It carries an expanded property IRI and a
+    JSON-LD-shaped value, and csv2rdf §6 emits it as a triple on the
+    object it annotates.
+
+    The value is kept as raw `Json` rather than decoded here on
+    purpose: §5.8 defers to JSON-LD's value shapes (`@value`/`@type`/
+    `@language`/`@id`, arrays, nested nodes), and decoding is the
+    emitter's job. Keeping the parse total and the interpretation
+    separate is what lets an unrecognised shape drop one triple
+    instead of failing the document. -/
+structure CommonProp where
+  prop  : String
+  value : L4Factoidal.JSON.Json
+deriving Repr
 
 /-- §5.11.1/§5.11.2 datatype: a named XSD/CSVW datatype, or an object
     with a base plus format and facet constraints. -/
@@ -34,6 +52,23 @@ deriving Repr, Inhabited
 def Datatype.baseName : Datatype → Option String
   | .named n => some n
   | .object b _ _ _ _ _ _ _ _ _ _ _ _ _ _ => b
+
+/-- The `format` facet, absent on the bare named form. -/
+def Datatype.formatOf : Datatype → Option String
+  | .named _ => none
+  | .object _ f _ _ _ _ _ _ _ _ _ _ _ _ _ => f
+
+def Datatype.patternOf : Datatype → Option String
+  | .named _ => none
+  | .object _ _ p _ _ _ _ _ _ _ _ _ _ _ _ => p
+
+def Datatype.groupCharOf : Datatype → Option String
+  | .named _ => none
+  | .object _ _ _ g _ _ _ _ _ _ _ _ _ _ _ => g
+
+def Datatype.decimalCharOf : Datatype → Option String
+  | .named _ => none
+  | .object _ _ _ _ d _ _ _ _ _ _ _ _ _ _ => d
 
 /-- §5.1.1 inherited properties, carried at every level above a
     column (schema / table / table-group) as well as on the column
@@ -82,6 +117,7 @@ structure Column where
   virtual        : Option Bool := none
   suppressOutput : Option Bool := none
   inherited      : Inherited := {}
+  common         : List CommonProp := []
 deriving Repr, Inhabited
 
 /-- §5.5 table schema. -/
@@ -91,6 +127,7 @@ structure TableSchema where
   rowTitles    : List String := []
   aboutUrlBase : Option String := none
   inherited    : Inherited := {}
+  common       : List CommonProp := []
 deriving Repr, Inhabited
 
 /-- §5.4 table DESCRIPTION. Named `TableDesc` because `Table` is
@@ -103,6 +140,7 @@ structure TableDesc where
   dialect   : Option Dialect := none
   suppress  : Option Bool := none
   inherited : Inherited := {}
+  common    : List CommonProp := []
 deriving Repr, Inhabited
 
 /-- §5.3 table group — the top of the metadata document. -/
@@ -111,6 +149,7 @@ structure TableGroup where
   tables    : List TableDesc := []
   dialect   : Option Dialect := none
   inherited : Inherited := {}
+  common    : List CommonProp := []
 deriving Repr, Inhabited
 
 /-- The inherited properties in force at a column, after the full

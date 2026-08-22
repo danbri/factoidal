@@ -70,6 +70,26 @@ def rowSubject (aboutRef : Option String) (rowNum : Nat) : Subject :=
   | some i => .iri i
   | none   => .bnode ("row" ++ toString rowNum)
 
+/-- The IRI a CSVW datatype NAME denotes (tabular-metadata §5.11.1).
+    Most names are XSD local names, but not all: `number`, `binary`,
+    `datetime` and `any` are CSVW ALIASES, and `xml`, `html` and
+    `json` are not XSD types at all.
+
+    Treating every name as `xsd:<name>` mints datatypes that do not
+    exist — `xsd:number` appeared on twelve triples of the csv2rdf
+    corpus before this table, where the value space is `xsd:double`
+    (measured 2026-08-22). -/
+def datatypeIriFor (base : String) : Option String :=
+  let xsd := fun (n : String) => some ("http://www.w3.org/2001/XMLSchema#" ++ n)
+  if base == "number" then xsd "double"
+  else if base == "binary" then xsd "base64Binary"
+  else if base == "datetime" then xsd "dateTime"
+  else if base == "any" then xsd "anyAtomicType"
+  else if base == "xml" then some "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
+  else if base == "html" then some "http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML"
+  else if base == "json" then some "http://www.w3.org/ns/csvw#JSON"
+  else xsd base
+
 /-- The object terms a cell contributes: value IRIs when `valueUrl`
     applied, else literals carrying the column's datatype and
     language. A language tag wins over a datatype, per RDF 1.1 (a
@@ -80,8 +100,7 @@ def cellObjects (inh : Inherited) (r : CellResult) : List Term :=
     match inh.lang with
     | some tag => Term.literal (Literal.langString lex tag)
     | none =>
-        match (inh.datatype.bind Datatype.baseName).bind
-                (fun b => toIri? ("http://www.w3.org/2001/XMLSchema#" ++ b)) with
+        match ((inh.datatype.bind Datatype.baseName).bind datatypeIriFor).bind toIri? with
         | some dt => Term.literal (typedLiteral dt lex)
         | none    => Term.literal (Literal.string lex))
   fromUrls ++ fromLits
@@ -107,16 +126,21 @@ def rowTriplesMinimal (rowNum : Nat) (cells : List (Inherited × CellResult))
     exported, because the enclosing table must link the SAME node
     with `csvw:row` — a table that mints its own label would produce
     a graph with orphan row nodes that no isomorphism check can
-    repair. -/
-def rowNode (rowNum : Nat) : Subject := .bnode ("rownode" ++ toString rowNum)
+    repair.
+
+    `tag` scopes the label to one table. A metadata document may
+    describe several tables, and keying row nodes by row NUMBER alone
+    would silently merge row 1 of every table into one blank node. -/
+def rowNode (tag : String) (rowNum : Nat) : Subject :=
+  .bnode ("rownode" ++ tag ++ "_" ++ toString rowNum)
 
 /-- Standard mode, one row: the cell triples plus the row description
     — `rdf:type csvw:Row`, `csvw:describes` linking the row node to
     the cell subject, `csvw:rownum` and `csvw:url`. -/
-def rowTriplesStandard (tableUrl : String) (rowNum sourceRow : Nat)
+def rowTriplesStandard (tag tableUrl : String) (rowNum sourceRow : Nat)
     (cells : List (Inherited × CellResult)) : List Triple :=
   let subj := rowSubject (cells.findSome? (fun (_, r) => r.aboutRef)) rowNum
-  let node := rowNode rowNum
+  let node := rowNode tag rowNum
   let core := cells.flatMap (fun (inh, r) => cellTriples inh subj r)
   let rowUrl := tableUrl ++ "#row=" ++ toString sourceRow
   let urlTriples := match toIri? rowUrl with
@@ -131,38 +155,68 @@ def rowTriplesStandard (tableUrl : String) (rowNum sourceRow : Nat)
     1-based position within the table (`rowNum`, which `csvw:rownum`
     reports and which keys the blank nodes) and the line number in
     the source file (`sourceRow`, which the `#row=` fragment
-    reports). They differ whenever the file has a header. -/
+    reports). They differ whenever the file has a header.
+
+    `subject` overrides the subject derived from the cells' `aboutUrl`
+    when the caller has already computed it (the metadata path
+    expands one row-level `aboutUrl` template rather than reading it
+    back off each cell). -/
 structure RowInput where
   rowNum    : Nat
   sourceRow : Nat
   cells     : List (Inherited × CellResult)
+  subject   : Option Subject := none
+
+/-- The subject a row's cells hang from. -/
+def RowInput.subj (r : RowInput) : Subject :=
+  match r.subject with
+  | some s => s
+  | none   => rowSubject (r.cells.findSome? (fun (_, c) => c.aboutRef)) r.rowNum
+
+/-- Minimal mode, one row, honouring an explicit subject. -/
+def rowTriplesMinimalOf (r : RowInput) : List Triple :=
+  let subj := r.subj
+  r.cells.flatMap (fun (inh, c) => cellTriples inh subj c)
+
+/-- Standard mode, one row, honouring an explicit subject. -/
+def rowTriplesStandardOf (tag tableUrl : String) (r : RowInput) : List Triple :=
+  let subj := r.subj
+  let node := rowNode tag r.rowNum
+  let rowUrl := tableUrl ++ "#row=" ++ toString r.sourceRow
+  let urlTriples := match toIri? rowUrl with
+    | some u => [(⟨node, csvwUrlProp, .iri u⟩ : Triple)]
+    | none   => []
+  [ ⟨node, rdfTypeIri, .iri csvwRowCls⟩,
+    ⟨node, csvwDescribes, subj.toTerm⟩,
+    ⟨node, csvwRownumProp, .literal (typedLiteral xsdInteger (toString r.rowNum))⟩ ]
+  ++ urlTriples ++ rowTriplesMinimalOf r
 
 /-- Standard mode, one table: a `csvw:Table` node carrying
     `csvw:url` and one `csvw:row` link per row, above the row
-    descriptions. csv2rdf §6. -/
-def tableTriplesStandard (tableNodeId tableUrl : String)
-    (rows : List RowInput) : List Triple :=
+    descriptions. csv2rdf §6. `extra` carries whatever the caller
+    attaches to the table node itself (its common properties). -/
+def tableTriplesStandard (tag tableNodeId tableUrl : String)
+    (rows : List RowInput) (extra : Subject → List Triple := fun _ => []) : List Triple :=
   let node : Subject := .bnode tableNodeId
   let urlTriples := match toIri? tableUrl with
     | some u => [(⟨node, csvwUrlProp, .iri u⟩ : Triple)]
     | none   => []
   let rowLinks := rows.map (fun r =>
-    (⟨node, csvwRowProp, (rowNode r.rowNum).toTerm⟩ : Triple))
-  let rowTs := rows.flatMap (fun r =>
-    rowTriplesStandard tableUrl r.rowNum r.sourceRow r.cells)
-  (⟨node, rdfTypeIri, .iri csvwTableCls⟩ : Triple) :: (urlTriples ++ rowLinks ++ rowTs)
+    (⟨node, csvwRowProp, (rowNode tag r.rowNum).toTerm⟩ : Triple))
+  let rowTs := rows.flatMap (rowTriplesStandardOf tag tableUrl)
+  (⟨node, rdfTypeIri, .iri csvwTableCls⟩ : Triple)
+    :: (extra node ++ urlTriples ++ rowLinks ++ rowTs)
 
-/-- Standard mode, whole output: the `csvw:TableGroup` node above one
-    table. csv2rdf emits the group even for a single table — the
-    no-metadata tests in the W3C suite all expect it, and omitting it
-    is why this path scored zero before the group and table nodes
-    existed. -/
+/-- Standard mode, whole output for ONE table. csv2rdf emits the
+    `csvw:TableGroup` even for a single table — the no-metadata tests
+    in the W3C suite all expect it, and omitting it is why this path
+    scored zero before the group and table nodes existed. -/
 def tableGroupTriplesStandard (tableUrl : String) (rows : List RowInput)
     : List Triple :=
   let group : Subject := .bnode "tablegroup"
   let tableNodeId := "table"
   [ ⟨group, rdfTypeIri, .iri csvwTableGroup⟩,
     ⟨group, csvwTableProp, (Subject.bnode tableNodeId).toTerm⟩ ]
-  ++ tableTriplesStandard tableNodeId tableUrl rows
+  ++ tableTriplesStandard "" tableNodeId tableUrl rows
 
 end L4Factoidal.CSVW
