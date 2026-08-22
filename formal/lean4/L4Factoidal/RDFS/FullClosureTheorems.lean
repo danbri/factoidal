@@ -335,37 +335,37 @@ theorem mem_fullStepConclusions_core {g : Graph} {t : Triple}
 theorem mem_fullStepConclusions_rdfD2 {g : Graph} {u t : Triple}
     (hu : u ∈ g) (h : t ∈ rdfD2For u) : t ∈ fullStepConclusions g := by
   simp only [fullStepConclusions, List.mem_append, List.mem_flatMap]
-  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩))))))
+  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl (Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩)))))))
 
 theorem mem_fullStepConclusions_rdfs4a {g : Graph} {u t : Triple}
     (hu : u ∈ g) (h : t ∈ rdfs4aFor u) : t ∈ fullStepConclusions g := by
   simp only [fullStepConclusions, List.mem_append, List.mem_flatMap]
-  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩)))))
+  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩))))))
 
 theorem mem_fullStepConclusions_rdfs4b {g : Graph} {u t : Triple}
     (hu : u ∈ g) (h : t ∈ rdfs4bFor u) : t ∈ fullStepConclusions g := by
   simp only [fullStepConclusions, List.mem_append, List.mem_flatMap]
-  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩))))
+  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩)))))
 
 theorem mem_fullStepConclusions_rdfs6 {g : Graph} {u t : Triple}
     (hu : u ∈ g) (h : t ∈ rdfs6For u) : t ∈ fullStepConclusions g := by
   simp only [fullStepConclusions, List.mem_append, List.mem_flatMap]
-  exact Or.inl (Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩)))
+  exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩))))
 
 theorem mem_fullStepConclusions_rdfs8 {g : Graph} {u t : Triple}
     (hu : u ∈ g) (h : t ∈ rdfs8For u) : t ∈ fullStepConclusions g := by
   simp only [fullStepConclusions, List.mem_append, List.mem_flatMap]
-  exact Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩))
+  exact Or.inl (Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩)))
 
 theorem mem_fullStepConclusions_rdfs10 {g : Graph} {u t : Triple}
     (hu : u ∈ g) (h : t ∈ rdfs10For u) : t ∈ fullStepConclusions g := by
   simp only [fullStepConclusions, List.mem_append, List.mem_flatMap]
-  exact Or.inl (Or.inr ⟨u, hu, h⟩)
+  exact Or.inl (Or.inl (Or.inr ⟨u, hu, h⟩))
 
 theorem mem_fullStepConclusions_rdfs12 {g : Graph} {u t : Triple}
     (hu : u ∈ g) (h : t ∈ rdfs12For u) : t ∈ fullStepConclusions g := by
   simp only [fullStepConclusions, List.mem_append, List.mem_flatMap]
-  exact Or.inr ⟨u, hu, h⟩
+  exact Or.inl (Or.inr ⟨u, hu, h⟩)
 
 theorem mem_fullStepConclusions_rdfs13 {g : Graph} {u t : Triple}
     (hu : u ∈ g) (h : t ∈ rdfs13For u) : t ∈ fullStepConclusions g := by
