@@ -2218,3 +2218,164 @@ still show only subsets of `[propext, Classical.choice, Quot.sound]`
 `skills/crypto-policy/SKILL.md` (public data, no secret) and carry
 the RFC 1321 / FIPS 180-4 vectors plus block-boundary lengths (55,
 56, 63, 64, 65 bytes) as `#guard`s.
+## Stage: the regex engine — Brzozowski derivatives, XSD patterns, fn:matches / fn:replace (2026-08-22)
+
+Port of the four pure F\* regex modules and the `regex_match` /
+`regex_replace` block of `SPARQL11.Algebra.fst` to
+`L4Factoidal/Regex/`. `grep -c "assume val"` on
+`Regex.{Syntax,Derivative,Exec,XSDPattern}.fst` gives 0, 0, 0, 0 real
+declarations (the two grep hits are the comments "no assume val"), so
+there was nothing to realise: the whole engine is total code and
+proofs, and it is ported as such. Codepoints are `Nat` as in the F\*
+(never bytes; `String.toList.map Char.toNat` in, `Char.ofNatAux` out),
+because the XPath layer needs two values above `0x10FFFF` as anchor
+sentinels.
+
+Public API for the SPARQL evaluator (`SPARQL/Expr.lean` is wired by its
+owner; the names differ from the brief only where Lean forced it —
+`matches` is a Lean keyword):
+
+| Brief | Landed | Notes |
+|---|---|---|
+| `Regex.compile (pattern flags : String) : Except RegexError Regex` | `L4Factoidal.Regex.compile : String → String → Except RegexError Compiled` | flags `i s m x q`; err:FORX0001 / FORX0002 |
+| `Regex.matches (r) (s) : Bool` | `L4Factoidal.Regex.isMatch : Compiled → String → Bool` | unanchored search; `^` / `$` are real anchors; `m` implemented |
+| `Regex.replace (r) (s) (replacement) : Except RegexError String` | `L4Factoidal.Regex.replace : Compiled → String → String → Except RegexError String` | `$N`, `\$`, `\\`; err:FORX0003 / FORX0004 |
+| `Regex.xsdPatternMatches (pattern s) : Option Bool` | `L4Factoidal.Regex.xsdPatternMatches : String → String → Option Bool` | whole-string; `none` outside the fragment |
+
+### Module correspondence
+
+| F\* | Lean | Notes |
+|---|---|---|
+| `Regex.Syntax.regex` (`R_Empty R_Eps R_Ranges R_Cat R_Alt R_Star R_And R_Not`) | `Regex/Syntax.lean` `Re` (`empty eps ranges cat alt star inter compl`) | `and` / `not` would shadow the Bool functions inside `namespace Re` |
+| `size`, `in_ranges`, `complement_from`, `complement_ranges` | `Re.size`, `inRanges`, `complementFrom`, `complementRanges` | same constants (`size` still feeds `isEmpty`'s fuel) |
+| `take_n`, `drop_n` | `List.take`, `List.drop` | core |
+| `mem` / `cat_try` / `star_try` (one mutual well-founded recursion on `[‖w‖; size; k; tag]`) | `mem` (structural on `Re`), `catTry`, `starTry` (structural on the split index, sub-languages as function arguments), `memStar` (fuel = `‖w‖`) | same language, same split order `k = ‖w‖ .. 0`; `memStar_fuel` closes the fuel |
+| `nullable` | `nullable` | |
+| `r_universal`, `ranges_cmp`, `regex_cmp`, `regex_le` | `rUniversal`, `rangesCmp`, `reCmp` (`Ordering`), `reLe` | same tag numbering |
+| `smart_alt`, `smart_and`, `smart_not`, `smart_cat`, `smart_star` | `smartAlt`, `smartAnd`, `smartNot`, `smartCat`, `smartStar` | |
+| `Regex.Derivative.deriv`, `deriv_word`, `matches` | `Regex/Derivative.lean` `deriv`, `derivWord`, `accepts` | `matches` is a Lean keyword |
+| `Regex.Exec.insert_regex`, `alt_flatten`, `and_flatten`, `has_universal`, `has_empty`, `rebuild_alt`, `rebuild_and`, `ealt`, `eand`, `nderiv` | `Regex/Exec.lean` same names in camelCase | |
+| `run_word`, `matches`, `run_word_norm`, `matches_norm` | `runWord`, `accepts`, `runWordNorm`, `acceptsNorm` | |
+| `any_char`, `dot_star`, `contains`, `search`, `anchored_prefix`, `find_from`, `find_match` | `anyChar`, `dotStar`, `contains`, `search`, `anchoredPrefix`, `findFrom`, `findMatch` | |
+| `insert_sorted`, `collect_bounds`, `collect_range_bounds`, `class_reps`, `mem_state`, `succ_states`, `add_new`, `bfs_empty`, `is_empty`, `intersection_empty`, `subsumes` | same, camelCase | fuel `1000 * (size + 1)` as in the F\* |
+| `Regex.XSDPattern.*` (constants, `single`, `dot_regex`, `hex_val`, `read_hex_n`, `char_escape`, `class_escape_ranges`, `parse_escape_atom`, `class_escape_item`, `parse_class_items`, `insert_range`, `sort_ranges`, `parse_class`, `repeat_exact`, `repeat_opt`, `read_digits_acc`, `read_uint`, `parse_brace`, `skip_lazy`, `parse_quant`, `is_atom_meta`, `parse_alt … parse_group_close`, `parse_cps`, `cps_of_string`, `parse_xsd_pattern`) | `Regex/XSDPattern.lean` same names in camelCase; `cpsOfString` lives in `Syntax.lean` | `parseClassItems` takes the input length as fuel where the F\* used `decreases (length input)` |
+| `SPARQL11.Algebra.rx_flag_has`, `rx_is_ws`, `rx_strip_ws`, `rx_replace_anchors`, `rx_begin_sentinel`, `rx_end_sentinel`, `rx_nonsent`, `rx_gap_left`, `rx_gap_right`, `rx_literal_regex`, `rx_ci_extra`, `rx_ci_ranges`, `rx_fold_ci`, `rx_dotall`, `regex_match` | `Regex/XPath.lean` `flagHas`, `isWs`, `stripWs`, `replaceAnchors`, `beginSentinel`, `endSentinel`, `nonSent`, `gapLeft`, `gapRight`, `literalRegex`, `ciExtra`, `ciRanges`, `foldCi`, `dotAll`, `regexMatch` | `regexMatch` keeps the exact F\* behaviour (unparseable pattern → `false`, `m` ignored) |
+| `rx_safe_char`, `rx_string_of_cps`, `rx_take` / `rx_drop` / `rx_slice`, `rx_leaf_ends_from`, `rx_leaf_ends`, `rx_list_max_opt`, `rx_longest_end` | `safeChar`, `stringOfCps` (in `Syntax.lean`), `List.take` / `List.drop` / `slice`, `leafEndsFrom`, `leafEnds`, `listMaxOpt`, `longestEnd` | |
+| `rx_cre` (`RC_Leaf RC_Eps RC_Cat RC_Alt RC_Star RC_Group`), `rx_cre_size`, `rx_cre_fold_ci`, `rx_cre_dotall`, `rx_cre_repeat_exact`, `rx_cre_repeat_opt` | `CRe` (`leaf eps cat alt star group`), `CRe.size`, `CRe.foldCi`, `CRe.dotAll`, `CRe.repeatExact`, `CRe.repeatOpt` | |
+| `rx_cparse_brace`, `rx_cparse_quant`, `rx_cparse_alt … rx_cparse_noncap`, `rx_parse_capturing` | `cparseBrace`, `cparseQuant`, `cparseAlt … cparseNoncap`, `parseCapturing` | groups numbered from 1, outer before nested, as in the F\* |
+| `rx_cmatch`, `rx_pick_caps`, `rx_find_cap`, `rx_group_text`, `rx_expand_template`, `rx_template_has_group`, `rx_cmatch_fuel`, `rx_replace_loop`, `regex_replace`, `string_replace` | `cmatch` (outcomes as `COut` records, caps as `Cap`), `pickCaps`, `findCap`, `groupText`, `expandTemplate`, `templateHasGroup`, `cmatchFuel`, `replaceLoop`, `regexReplace` | same mechanism: the verified engine finds the leftmost-longest span, the capturing matcher only explains the span |
+| — | `templateValid`, `validFlags`, `RegexError`, `Compiled`, `compile`, `isMatch`, `replace`, `xsdPatternMatches`, `markerClass`, `sigmaAllStar`, `isSentinelLeaf`, `absorbMarkers`, `wrapMultiline` | new: the API surface and the `m` flag |
+| `tests/unit/regex_engine_unit.ml` (F\* unit suite) | `Regex/RegexTests.lean` §1 | every case ported as a `#guard` |
+
+### Lemma status (every F\* `Lemma` of the four modules)
+
+| F\* lemma | Lean theorem (`Regex/RegexTheorems.lean`) | Status |
+|---|---|---|
+| `nullable_correct` | `nullable_correct` | proved |
+| `smart_alt_ok`, `smart_and_ok`, `smart_not_ok` | `smartAlt_ok`, `smartAnd_ok`, `smartNot_ok` | proved |
+| `take_all`, `drop_all`, `drop_below` | `List.take_length`, `List.drop_length`, `List.drop_eq_nil_iff` | core lemmas, used inline |
+| `cat_empty_left`, `cat_empty_right` | `catTry_empty_left`, `catTry_empty_right` | proved |
+| `cat_eps_left`, `cat_eps_right_below`, `cat_eps_right` | `catTry_eps_left`, `catTry_eps_right_below`, `catTry_eps_right` | proved |
+| `smart_cat_ok` | `smartCat_ok` | proved |
+| `star_try_empty`, `star_empty_lang`, `star_try_eps`, `star_eps_lang` | `starTry_empty`, `memStar_empty`, `starTry_eps`, `memStar_eps` | proved (stated for every fuel) |
+| `smart_star_ok` (non-star argument) | `smartStar_ok` | proved, same restriction; star idempotence stays deferred in both trees and is off the `nderiv` path |
+| `ranges_cmp_eq`, `regex_cmp_eq` | `rangesCmp_eq`, `reCmp_eq` | proved |
+| `take_zero`, `drop_zero`, `take_cons`, `drop_cons` | `List.take_zero`, `List.drop_zero`, `List.take_succ_cons`, `List.drop_succ_cons` | core lemmas |
+| `cat_shift` + `cat_shift_gen` | `catTry_shift` (the generic form) | proved; one theorem serves `deriv` and `nderiv` |
+| `star_shift` + `star_shift_gen` | `starTry_shift` | proved |
+| `deriv_cat_w` + `nderiv_cat_w` | `deriv_cat_w` (generic in the derivative) | proved |
+| `deriv_star_w` + `nderiv_star_w` | `deriv_star_w` | proved |
+| `deriv_correct` | `deriv_correct` | proved, full AST |
+| `deriv_word_correct`, `matches_correct` | `derivWord_correct`, `accepts_correct` | proved |
+| `insert_regex_ok`, `alt_flatten_ok`, `rebuild_alt_ok`, `has_universal_ok`, `ealt_ok` | same names, camelCase | proved |
+| `insert_regex_and_ok`, `and_flatten_ok`, `rebuild_and_ok`, `has_empty_ok`, `eand_ok` | same names, camelCase | proved |
+| `nderiv_correct`, `run_word_norm_correct`, `matches_norm_correct`, `matches_norm_eq_proven` | `nderiv_correct`, `runWordNorm_correct`, `acceptsNorm_correct`, `acceptsNorm_eq_proven` | proved |
+| — | `memStar_fuel`, `memStar_length`, `catTry_congr_right`, `starTry_congr_right`, `runWord_eq_derivWord`, `Exec.accepts_correct`, `search_correct`, `size_pos`, `mem_universal` | added (fuel and congruence plumbing the F\* does not need) |
+
+Not proved, in either tree: the derivative-class-coverage lemma behind
+`isEmpty` (the Owens–Reppy–Turon finiteness argument); `isEmpty` stays
+sound-by-construction and guard-checked, with its fuel / closure
+guarantee stated at its definition, as the F\* `is_empty` banner says.
+Nothing about the capturing matcher, the XSD parser, or the XPath flag
+rewrites is proved in either tree; the XPath layer's correctness
+argument is the F\* one (the span is decided by the proven engine; the
+capturing AST reuses the parser's leaf builders).
+
+Axiom audit: all eleven `#print axioms` lines at the end of
+`RegexTheorems.lean` show subsets of `[propext, Quot.sound]`.
+
+### Translation decisions
+
+- `mem` is structural. The F\* `mem` / `cat_try` / `star_try` are one
+  well-founded mutual recursion; Lean gets the same language with
+  `mem` structural on the regex, the enumerators structural on the
+  split index with the sub-languages as function arguments, and star
+  iteration on a fuel set to the word length. Cost: one extra lemma
+  (`memStar_fuel`) and two congruence lemmas. Benefit: every proof
+  unfolds by `simp`, and `#guard`s run the compiled code without
+  well-founded-recursion unfolding (pitfall 7).
+- `matches` → `accepts` / `acceptsNorm` / `isMatch`: `matches` is a
+  Lean keyword.
+- `fn:matches` / `fn:replace` live with the engine (`Regex/XPath.lean`),
+  not in the SPARQL algebra module where the F\* keeps them (they were
+  placed there when they retired two `assume val`s). `regexMatch` /
+  `regexReplace` reproduce the F\* functions for side-by-side
+  comparison; `compile` / `isMatch` / `replace` add the error channel
+  the evaluator needs.
+- The `m` flag is implemented (the F\* accepts it and treats `^` / `$`
+  as string anchors, which fails W3C `sparql10/regex`
+  `regex-start-end-multiline`): the input is wrapped with a sentinel
+  pair around every line, non-anchor leaves may absorb sentinel runs
+  (`absorbMarkers`), and the search gaps accept any codepoint.
+  Guarded: `^b$` + `m` on `"a\nb\nc"` is true, without `m` false;
+  `a.*c` + `sm` crosses lines; `a.c` + `m` alone does not match `"a\nc"`.
+- Error channel, all in the direction of XPath F&O: unknown flag
+  (FORX0001), unparseable pattern (FORX0002), pattern matching the
+  empty string in `replace` (FORX0003 — the F\* copies one codepoint
+  through), ill-formed template `\x` / `$x` (FORX0004 — the F\* expands
+  `\c` to `c`).
+- Non-ASCII case folding under `i` is not applied, as in the F\*;
+  `\w` is `[A-Za-z0-9_]`, as in the F\*; `$12` reads as `$1` then `2`,
+  as in the F\*.
+
+### Guards
+
+`RegexTests.lean`: 183 `#guard`s. §1 is the F\* unit suite
+`tests/unit/regex_engine_unit.ml` case for case (engine, emptiness,
+the `(a?)^25 a^25` non-blow-up, astral codepoints, the XSD parser on
+the OWL / CSVW / SHACL / ShEx fixture patterns, the clean-`none`
+cases). §2 pins the exact W3C inputs: `sparql11/functions`
+`replace01` (all eight `data3.ttl` strings), `replace02`, `replace03`
+(`(ab)|(a)` → `[1=ab][2=]cd`), `replace-case-insensitive`;
+`sparql11/service/service05` (`data05.ttl` subjects); `uuid01` /
+`struuid01`; and the full `sparql10/regex` manifest — `regex-query-001
+..004` on `regex-data-01.ttl` and the 17 quantifier / dot / flag /
+class / anchor tests on `regex-data-quantifiers.ttl`, each as a filter
+over the data strings equal to the `.srx` rows. Not a conformance
+score: the W3C files are not read by this stage.
+
+Sabotage record (2026-08-22): replacing `nderiv`'s star case by
+`nderiv c a` fails the build at 28 guards (`a*`, `(ab)*`, the
+`(a?)^25 a^25` pair, the CSVW `^-?P.*$` forms, `[0-9]+`, `ab*c`,
+`ab+c`, `ab{1,}c` …) and at `nderiv_correct` (the `rw [smartCat_ok]`
+step); replacing `deriv`'s star case by `deriv c a` fails
+`deriv_correct` (the star case's `rfl`) and the
+`Derivative.accepts (star …) == acceptsNorm …` guard. Both restored
+with `git checkout`, build green again.
+
+### Assumption report (append)
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`, no
+`@[extern]`. The F\* side had no `assume val` here either.
+
+### Findings against the F\* (not fixed here)
+
+- `SPARQL11.Algebra.fst:1364–1367` (`regex_match`): the `m` flag is
+  accepted but not modelled, so `^b$` with `m` on `"a\nb\nc"` is
+  `false`; W3C `sparql10/regex/regex-start-end-multiline.srx` expects
+  that row. `bin/darwin-arm64/w3c_runner --list` shows only the 34
+  SPARQL 1.1 suites, so the F\* score on the `sparql10/regex` manifest
+  is not measured by the committed runner.
+- `SPARQL11.Algebra.fst:1575–1577` (`regex_replace`): `^` / `$` parse
+  to eps in a replace pattern (documented there as a known limitation);
+  kept as-is in `replaceRe` so `replace` agrees with the F\*.

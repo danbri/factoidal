@@ -58,11 +58,10 @@ WHAT THIS FILE DELIBERATELY DOES NOT EVALUATE (each returns the
 constructor-level `EvalResult.error`, which IS an operator's spec
 behaviour when it cannot produce a value — never `sorry`, never a
 `partial def`):
-  * `Expr.regex` / `Expr.replace` — REGEX and REPLACE need an XPath
-    regular-expression engine (§17.4.3.14/§17.4.3.15). In the F* tree
-    those are host call-outs (`regex_match`, `regex_replace`); the Lean
-    purity doctrine wants a pure regex matcher, which is a port of its
-    own.
+  * (closed 2026-08-22) `Expr.regex` / `Expr.replace` — REGEX and
+    REPLACE (§17.4.3.14/§17.4.3.15) now run on the pure XPath engine
+    `L4Factoidal.Regex` (the port of the F* derivative engine; see
+    `regexCore` / `replaceCore`).
   * `Expr.existsPat` / `Expr.notExistsPat` — §18.6 EXISTS needs pattern
     evaluation against the active graph and the dataset, which sits
     above expressions. The pattern layer (`Query.lean`,
@@ -111,6 +110,7 @@ import L4Factoidal.Syntax.IriResolve
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Crypto.MD5
 import L4Factoidal.Crypto.SHA1
+import L4Factoidal.Regex.XPath
 
 namespace L4Factoidal.SPARQL
 
@@ -271,8 +271,8 @@ inductive Expr where
   | strAfter    (e sep : Expr)
   | concat      (es : List Expr)
   | encodeForUri (e : Expr)
-  | replace     (e pat rep : Expr) (flags : Option Expr)   -- scoped out
-  | regex       (e pat : Expr) (flags : Option Expr)       -- scoped out
+  | replace     (e pat rep : Expr) (flags : Option Expr)   -- §17.4.3.15
+  | regex       (e pat : Expr) (flags : Option Expr)       -- §17.4.3.14
   -- Numeric functions (§17.4.4)
   | abs         (e : Expr)
   | round       (e : Expr)
@@ -1324,6 +1324,33 @@ def concatResults : List EvalResult → EvalResult
               | _, _ => erString combined
           | _ => .error
 
+/-- §17.4.3.14 REGEX over the pure XPath engine (`L4Factoidal.Regex`,
+the port of the F* derivative engine behind `regex_match`). Arguments:
+text (a string literal — simple, xsd:string or language-tagged),
+pattern and flags (simple literals). An invalid pattern or flag
+(FORX0001/FORX0002) is an expression error. -/
+def regexCore (t p f : EvalResult) : EvalResult :=
+  match t.stringLiteralInfo?, p.toString?, f.toString? with
+  | some (s, _, _), some pat, some fl =>
+      match Regex.compile pat fl with
+      | .ok r    => .bool (Regex.isMatch r s)
+      | .error _ => .error
+  | _, _, _ => .error
+
+/-- §17.4.3.15 REPLACE: like REGEX, plus the replacement template
+(FORX0003 for a nullable pattern, FORX0004 for a bad template); the
+text's language tag / datatype is kept (`erStringPreserve`). -/
+def replaceCore (t p r f : EvalResult) : EvalResult :=
+  match t.stringLiteralInfo?, p.toString?, r.toString?, f.toString? with
+  | some (s, lg, dt), some pat, some rep, some fl =>
+      match Regex.compile pat fl with
+      | .ok re =>
+          match Regex.replace re s rep with
+          | .ok out  => erStringPreserve out lg dt
+          | .error _ => .error
+      | .error _ => .error
+  | _, _, _, _ => .error
+
 /-- §17.4.3.3 SUBSTR applied to arguments that are already evaluated.
 Split out of the evaluator so that each evaluator arm stays a plain
 structural match — which is what lets Lean generate the equation
@@ -1820,9 +1847,23 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
       match (Expr.evalIn env mu e1).toString? with
       | some s => erString (strEncodeUri s)
       | none => .error
-  -- SCOPED OUT: REGEX/REPLACE need an XPath regex engine (see banner).
-  | .replace _ _ _ _ => .error
-  | .regex _ _ _ => .error
+  -- §17.4.3.14 REGEX / §17.4.3.15 REPLACE, over the pure XPath regex
+  -- engine in `L4Factoidal.Regex` (F* `regex_match` / `regex_replace`,
+  -- which the F* tree reaches through its host call-out; here a port
+  -- of the same derivative engine). The text argument is a string
+  -- literal (simple, xsd:string or language-tagged — `stringLiteralInfo?`);
+  -- pattern, replacement and flags are simple literals. REPLACE keeps
+  -- the text's language tag / datatype (`erStringPreserve`). An invalid
+  -- pattern, flag or replacement template (FORX0001–FORX0004) is an
+  -- expression error, as in F&O.
+  | .regex e1 pat none =>
+      regexCore (Expr.evalIn env mu e1) (Expr.evalIn env mu pat) (erString "")
+  | .regex e1 pat (some f) =>
+      regexCore (Expr.evalIn env mu e1) (Expr.evalIn env mu pat) (Expr.evalIn env mu f)
+  | .replace e1 pat rep none =>
+      replaceCore (Expr.evalIn env mu e1) (Expr.evalIn env mu pat) (Expr.evalIn env mu rep) (erString "")
+  | .replace e1 pat rep (some f) =>
+      replaceCore (Expr.evalIn env mu e1) (Expr.evalIn env mu pat) (Expr.evalIn env mu rep) (Expr.evalIn env mu f)
 
   -- §17.4.4 numeric functions.
   | .abs e1 =>

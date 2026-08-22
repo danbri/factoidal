@@ -495,3 +495,20 @@ Sabotage check: removing cax-sco from `conclusionsList` takes
 profile-RL from 102 pass to 98 pass (WebOnt-imports-011 PE and
 WebOnt-description-logic-101/103/104 Inconsistency flip to FAIL);
 restored.
+
+### Update 2026-08-22 (evening): sparql11 query suites at full pass
+
+After the EXISTS restructure, the builtins/casts/hashes stage and the
+pure regex engine (`L4Factoidal/Regex/`) were wired into `Expr.lean`,
+`lake exe l4w3c ../../third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`
+prints, verbatim:
+
+```
+TOTAL: 356 pass, 0 fail, 0 skip, 275 unsupported (out of 631)
+```
+
+Every query-type entry (QueryEvaluationTest, CSVResultFormatTest,
+PositiveSyntaxTest11, NegativeSyntaxTest11) passes; the 275 are the
+UPDATE, Protocol, Graph Store, Service Description and entailment-regime
+types, still named and counted. The F\* runner's line for the same
+631 is 631 pass, 0 fail. The six RDF suites stay at 1078 of 1078.
