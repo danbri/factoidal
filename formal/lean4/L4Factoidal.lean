@@ -111,3 +111,10 @@ import L4Factoidal.SPARQL.GraphStore
 import L4Factoidal.SPARQL.ServiceDescription
 import L4Factoidal.SPARQL.ProtocolTests
 import L4Factoidal.SPARQL.ProtocolTheorems
+import L4Factoidal.Crypto.Ed25519
+import L4Factoidal.VC.Multibase
+import L4Factoidal.VC.DidKey
+import L4Factoidal.VC.Context
+import L4Factoidal.VC.DataIntegrity
+import L4Factoidal.VC.Tests
+import L4Factoidal.VC.Theorems

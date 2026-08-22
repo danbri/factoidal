@@ -111,7 +111,7 @@ def bytesToNat (bs : Bytes) : Nat := bytesToNatAcc 0 bs
 /-- Big-endian bytes of a number, no leading zeros; `0 ↦ []`. Port of
 `nat_to_bytes_be`. -/
 def natToBytesBE (n : Nat) : Bytes :=
-  if h : n = 0 then []
+  if _h : n = 0 then []
   else natToBytesBE (n / 256) ++ [UInt8.ofNat (n % 256)]
 termination_by n
 decreasing_by omega
@@ -141,7 +141,7 @@ def base58Digit? (c : Char) : Option Nat := indexOfChar c base58Alphabet 0
 /-- Base-58 digits of a number, most significant first; `0 ↦ []`. Port of
 `nat_to_base58_chars`, one step earlier (digits, not characters). -/
 def natToDigits58 (n : Nat) : List Nat :=
-  if h : n = 0 then []
+  if _h : n = 0 then []
   else natToDigits58 (n / 58) ++ [n % 58]
 termination_by n
 decreasing_by omega
