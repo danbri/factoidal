@@ -12,6 +12,7 @@ default, lang, null, ordered, propertyUrl, required, separator,
 textDirection, valueUrl) this carries all but `textDirection`.
 -/
 import L4Factoidal.CSVW.Dialect
+import L4Factoidal.CSVW.Formats
 import L4Factoidal.JSON.Value
 
 namespace L4Factoidal.CSVW
@@ -69,6 +70,15 @@ def Datatype.groupCharOf : Datatype → Option String
 def Datatype.decimalCharOf : Datatype → Option String
   | .named _ => none
   | .object _ _ _ _ d _ _ _ _ _ _ _ _ _ _ => d
+
+/-- The §5.11.2 value constraints, in the shape `Formats` checks. -/
+def Datatype.facets : Datatype → Facets
+  | .named _ => {}
+  | .object _ _ _ _ _ _ len minL maxL mn mx mnI mxI mnE mxE =>
+      { length := len, minLength := minL, maxLength := maxL,
+        minimum := mn, maximum := mx,
+        minInclusive := mnI, maxInclusive := mxI,
+        minExclusive := mnE, maxExclusive := mxE }
 
 /-- §5.1.1 inherited properties, carried at every level above a
     column (schema / table / table-group) as well as on the column

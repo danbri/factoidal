@@ -62,16 +62,24 @@ structure NumFmt where
   decimalChar : Char := '.'
   percent     : Bool := false
   permille    : Bool := false
+  /-- May the value carry grouping characters at all? A PATTERN that
+      does not itself contain the grouping character forbids them:
+      `##0` says "no grouping", so `1,234` is not a number in that
+      format and must not be silently regrouped into `1234`
+      (test286). With no pattern, grouping is allowed. -/
+  grouping    : Bool := true
 deriving Repr, Inhabited
 
-/-- Read the scaling suffix out of a number pattern. -/
+/-- Read the scaling suffix and the grouping permission out of a
+    number pattern. -/
 def parseNumFmt (pat : Option String) (grp dec : Char) : NumFmt :=
   match pat with
   | none   => { groupChar := grp, decimalChar := dec }
   | some p =>
       { groupChar := grp, decimalChar := dec,
         percent := p.endsWith "%" || p.startsWith "%",
-        permille := p.endsWith "‰" || p.startsWith "‰" }
+        permille := p.endsWith "‰" || p.startsWith "‰",
+        grouping := p.toList.contains grp }
 
 /-- The numeric bases a `format` may scale. -/
 def isNumericBase (b : String) : Bool :=
@@ -166,17 +174,149 @@ def groupingWellPlaced (grp : Char) (v : String) : Bool :=
   !adjacent && !atEdge
 
 def parseNumber (base : String) (nf : NumFmt) (v : String) : FmtOutcome :=
-  if !groupingWellPlaced nf.groupChar v then .invalid
+  let hasGroup := v.toList.contains nf.groupChar
+  if hasGroup && !nf.grouping then .invalid
+  else if !groupingWellPlaced nf.groupChar v then .invalid
   else
+  -- The scaling suffix may be on the VALUE as well as on the pattern:
+  -- §6.4.2 lets a cell carry its own `%` / `‰`, and `123456.789%`
+  -- under a bare `{"groupChar": ","}` must still divide by a hundred
+  -- (test170). Reading the suffix only from the pattern left the
+  -- value a hundred times too large with the right datatype on it.
+  let percent := nf.percent || v.toList.contains '%'
+  let permille := nf.permille || v.toList.contains '‰'
   let body := v.toList.filter (fun c => c != nf.groupChar && c != '%' && c != '‰')
   let body := body.map (fun c => if c == nf.decimalChar then '.' else c)
   let s := String.ofList body
   if !isXsdNumericLexical base s then .invalid
   else
     let s := if s.startsWith "+" then String.ofList (s.toList.drop 1) else s
-    if nf.percent then .valid (shiftLeft s 2)
-    else if nf.permille then .valid (shiftLeft s 3)
+    if percent then .valid (shiftLeft s 2)
+    else if permille then .valid (shiftLeft s 3)
     else .valid s
+
+
+/-! ## Value constraints (§5.11.2) and the remaining lexical spaces
+
+Three gaps the corpus exposes once formats work:
+
+  * the `minimum` / `maximum` / `min|maxInclusive` / `min|maxExclusive`
+    facets were never checked, so a cell outside its own stated range
+    still carried the column's datatype (test203);
+  * `duration` had no lexical space, so `Foo` came out as an
+    `xsd:duration` (test279);
+  * a date/time column with NO format was unchecked, so any text at
+    all took the date datatype.
+
+Each of these produced a triple whose datatype asserts something the
+value does not support — the failure a triple count cannot see.
+-/
+
+/-- Compare two decimal numerals EXACTLY, without going through a
+    float. Returns `none` if either is not a decimal numeral. -/
+def decimalCompare (a b : String) : Option Ordering :=
+  let split := fun (s : String) =>
+    let neg := s.startsWith "-"
+    let body := if neg || s.startsWith "+" then String.ofList (s.toList.drop 1) else s
+    match splitFirst '.' body.toList with
+    | some (i, f) => (neg, String.ofList i, String.ofList f)
+    | none        => (neg, body, "")
+  let (an, ai, af) := split a
+  let (bn, bi, bf) := split b
+  if !(ai ++ af).toList.all isDigit || !(bi ++ bf).toList.all isDigit then none
+  else if (ai ++ af) == "" || (bi ++ bf) == "" then none
+  else
+    -- Pad both to a common shape so a plain string comparison is a
+    -- numeric one.
+    let iw := Nat.max ai.length bi.length
+    let fw := Nat.max af.length bf.length
+    let padL := fun (s : String) => String.ofList (List.replicate (iw - s.length) '0') ++ s
+    let padR := fun (s : String) => s ++ String.ofList (List.replicate (fw - s.length) '0')
+    let ka := padL ai ++ padR af
+    let kb := padL bi ++ padR bf
+    let magnitude := compare ka kb
+    some (
+      if an && !bn then .lt
+      else if !an && bn then .gt
+      else if an && bn then magnitude.swap
+      else magnitude)
+
+/-- Ordering for a facet comparison: numeric where both sides are
+    decimal numerals, plain lexicographic otherwise — which is the
+    right thing for the canonical XSD date and time forms, since they
+    are fixed-width and big-endian by construction. -/
+def facetCompare (a b : String) : Ordering :=
+  match decimalCompare a b with
+  | some o => o
+  | none   => compare a b
+
+/-- The §5.11.2 value constraints. -/
+structure Facets where
+  length       : Option Int := none
+  minLength    : Option Int := none
+  maxLength    : Option Int := none
+  minimum      : Option String := none
+  maximum      : Option String := none
+  minInclusive : Option String := none
+  maxInclusive : Option String := none
+  minExclusive : Option String := none
+  maxExclusive : Option String := none
+deriving Repr, Inhabited
+
+/-- Does the (already normalised) lexical form satisfy every stated
+    constraint? -/
+def satisfiesFacets (f : Facets) (lex : String) : Bool :=
+  let len : Int := lex.length
+  let ge := fun (b : String) => (facetCompare lex b) != .lt
+  let le := fun (b : String) => (facetCompare lex b) != .gt
+  let gt := fun (b : String) => (facetCompare lex b) == .gt
+  let lt := fun (b : String) => (facetCompare lex b) == .lt
+  (f.length.all (· == len)) &&
+  (f.minLength.all (· ≤ len)) &&
+  (f.maxLength.all (len ≤ ·)) &&
+  (f.minimum.all ge) && (f.minInclusive.all ge) &&
+  (f.maximum.all le) && (f.maxInclusive.all le) &&
+  (f.minExclusive.all gt) && (f.maxExclusive.all lt)
+
+/-- One `nnU` component of a duration: digits, an optional fractional
+    part, and a unit letter legal in this half of the value. -/
+private def durationStep (inTime : Bool) (cs : List Char)
+    : Option (List Char) :=
+  let digits := cs.takeWhile isDigit
+  if digits.isEmpty then none
+  else
+    let after := cs.dropWhile isDigit
+    let after := match after with
+      | '.' :: t => if (t.takeWhile isDigit).isEmpty then after else t.dropWhile isDigit
+      | t        => t
+    match after with
+    | u :: t =>
+        let ok := if inTime then u == 'H' || u == 'M' || u == 'S'
+                  else u == 'Y' || u == 'M' || u == 'D'
+        if ok then some t else none
+    | [] => none
+
+/-- Walk a duration body. `fuel` is the remaining character count, so
+    the bound is exact; every step consumes at least one character. -/
+private def durationWalk : Nat → List Char → Bool → Nat → Bool
+  | 0,        _,       _,      n => n > 0
+  | _ + 1,    [],      _,      n => n > 0
+  | fuel + 1, c :: tl, inTime, n =>
+      if c == 'T' then
+        if inTime || tl.isEmpty then false else durationWalk fuel tl true n
+      else
+        match durationStep inTime (c :: tl) with
+        | some rest => durationWalk fuel rest inTime (n + 1)
+        | none      => false
+
+/-- `xsd:duration` and its two restrictions: `-?PnYnMnDTnHnMnS` with at
+    least one component present, and `T` present only when a time
+    component follows. -/
+def isDurationLexical (s : String) : Bool :=
+  let cs := (if s.startsWith "-" then s.toList.drop 1 else s.toList)
+  match cs with
+  | 'P' :: rest => durationWalk (rest.length + 1) rest false 0
+  | _           => false
 
 /-! ## Date and time formats (§5.11.3, tabular-data-model §6.4.2)
 
@@ -374,6 +514,36 @@ def parseDate (base : String) (fmt : String) (v : String) : FmtOutcome :=
     | some lex => .valid lex
     | none     => .invalid
 
+/-- The CANONICAL patterns for a date/time base — what a column with no
+    `format` must already be written in. The timezone is optional, so
+    each base offers its patterns with and without one.
+
+    Without this a date column with no format accepted any text at all
+    and stamped `xsd:date` on it. -/
+def canonicalDatePatterns (base : String) : List String :=
+  let withTz := fun (p : String) => [p, p ++ "XXX", p ++ "X"]
+  match base with
+  | "date"       => withTz "yyyy-MM-dd"
+  | "dateTime" | "datetime" | "dateTimeStamp" =>
+      withTz "yyyy-MM-ddTHH:mm:ss" ++ withTz "yyyy-MM-ddTHH:mm:ss.S"
+  | "time"       => withTz "HH:mm:ss" ++ withTz "HH:mm:ss.S"
+  | "gYear"      => withTz "yyyy"
+  | "gYearMonth" => withTz "yyyy-MM"
+  | "gMonth"     => withTz "--MM"
+  | "gMonthDay"  => withTz "--MM-dd"
+  | "gDay"       => withTz "---dd"
+  | _            => []
+
+/-- A date/time cell with NO format: it must already be in the
+    canonical XSD lexical form. -/
+def parseCanonicalDate (base : String) (v : String) : FmtOutcome :=
+  match (canonicalDatePatterns base).findSome? (fun p =>
+      match parseDate base p v with
+      | .valid lex => some lex
+      | _          => none) with
+  | some lex => .valid lex
+  | none     => .invalid
+
 /-- Top-level dispatch, mirroring the F* module's. A DURATION format
     returns `noFormat` in this slice — see the module header. -/
 def formatConvert (baseName : String) (formatStr pattern groupChar decimalChar : Option String)
@@ -392,7 +562,13 @@ def formatConvert (baseName : String) (formatStr pattern groupChar decimalChar :
   else if isDateBase baseName then
     match formatStr with
     | some f => parseDate baseName f txt
-    | none   => .noFormat
+    | none   => parseCanonicalDate baseName txt
+  else if isDurationBase baseName then
+    -- The `format` facet on a duration is an XSD REGEX, which needs an
+    -- engine this slice does not have; the LEXICAL SPACE is checkable
+    -- either way, and checking it is what stops `Foo` becoming an
+    -- `xsd:duration`.
+    if isDurationLexical txt then .valid txt else .invalid
   else .noFormat
 
 end L4Factoidal.CSVW

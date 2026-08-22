@@ -5082,3 +5082,44 @@ and both were pinning behaviour rather than the specification:
 `formatConvert "integer" none … "42" == .noFormat` (it is `.valid`,
 and the `noFormat` answer is why `3.2` reached the output typed) and
 the date guards that asserted date formats were out of scope.
+
+### CSVW: value constraints, the remaining lexical spaces, and where
+the scaling suffix lives (2026-08-22)
+
+Five more, same loop:
+
+1. **The scaling suffix may be on the VALUE, not just the pattern.**
+   §6.4.2 lets a cell carry its own `%` / `‰`, so `123456.789%` under a
+   bare `{"groupChar": ","}` still divides by a hundred. Reading the
+   suffix only from the pattern left the value a hundred times too
+   large with the right datatype on it (test170).
+2. **A pattern that does not contain the grouping character FORBIDS
+   grouping.** `##0` says "no grouping", so `1,234` is not a number in
+   that format and must not be silently regrouped (test286).
+3. **The default `propertyUrl` uses SIMPLE expansion, not fragment
+   expansion.** A column name is a template VARIABLE VALUE, so
+   reserved characters are escaped: a column titled `##0` gives
+   `#%23%230`, and passing `#` through produced `###0`, which
+   truncates the fragment.
+4. **The §5.11.2 value constraints are checked**, on the normalised
+   form, with `decimalCompare` doing an EXACT decimal comparison
+   rather than a float round trip. `minimum: 5` against a cell of `4`
+   makes the cell invalid, so it keeps its text and loses the datatype
+   (test203).
+5. **`duration` and the date/time bases have lexical spaces even with
+   no format.** A duration `format` is an XSD regex this slice cannot
+   run, but the LEXICAL SPACE is checkable either way — which is what
+   stops `Foo` becoming an `xsd:duration` (test279). Likewise a
+   date/time column with no format must already be in the canonical
+   XSD form; before this it accepted any text at all and stamped
+   `xsd:date` on it.
+
+📊 MEASURED, csv2rdf: **153 pass, 52 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 123.
+
+Two more `FormatsTests` guards were CORRECTED rather than extended
+(`formatConvert "date" none … == .noFormat`, and the duration one).
+That is now FOUR guards in this file that pinned the absence of a
+check. A `noFormat` return is not a neutral answer: it means "emit
+this text under the column's datatype unchecked", and every one of
+those guards was recording a wrong triple as expected behaviour.

@@ -77,8 +77,14 @@ private def euro : NumFmt := { groupChar := '.', decimalChar := ',' }
 -- A cell that does not match its own pattern is INVALID, not
 -- `noFormat`: a format WAS applied and the cell failed it.
 #guard formatConvert "date" (some "M/d/yyyy") none none none "2010-10-18" == .invalid
--- With no format the XSD lexical space applies as written.
-#guard formatConvert "date" none none none none "2010-10-18" == .noFormat
+-- With no format the CANONICAL XSD lexical form is required, and
+-- checked. (This guard used to expect `noFormat`, which meant any
+-- text at all took the date datatype.)
+#guard formatConvert "date" none none none none "2010-10-18"
+       == .valid "2010-10-18"
+#guard formatConvert "date" none none none none "10/18/2010" == .invalid
+#guard formatConvert "dateTime" none none none none "2010-06-02T12:34:56Z"
+       == .valid "2010-06-02T12:34:56Z"
 
 -- Time, dateTime, and the timezone forms.
 #guard formatConvert "time" (some "HH:mm:ss") none none none "12:34:56"
@@ -109,8 +115,31 @@ private def euro : NumFmt := { groupChar := '.', decimalChar := ',' }
 -- January.
 #guard formatConvert "date" (some "yyyy") none none none "1960" == .invalid
 
--- The duration `format` facet still needs the XSD regex engine.
-#guard formatConvert "duration" (some "^.$") none none none "P1D" == .noFormat
+-- The duration `format` facet is an XSD REGEX and still needs an
+-- engine this slice does not have, but the LEXICAL SPACE is checkable
+-- either way -- which is what stops `Foo` becoming an xsd:duration.
+#guard formatConvert "duration" (some "^.$") none none none "P1D" == .valid "P1D"
+#guard formatConvert "duration" none none none none "Foo" == .invalid
+#guard isDurationLexical "P1Y2M3DT4H5M6S"
+#guard isDurationLexical "-P1D"
+#guard isDurationLexical "PT1.5S"
+#guard !isDurationLexical "P"
+#guard !isDurationLexical "P1DT"
+#guard !isDurationLexical "1D"
+
+-- Value constraints (section 5.11.2), compared EXACTLY rather than
+-- through a float.
+#guard decimalCompare "4" "5" == some .lt
+#guard decimalCompare "5" "5" == some .eq
+#guard decimalCompare "-2" "1" == some .lt
+#guard decimalCompare "10.5" "10.50" == some .eq
+#guard decimalCompare "2" "10" == some .lt
+#guard satisfiesFacets { minimum := some "5" } "5"
+#guard !satisfiesFacets { minimum := some "5" } "4"
+#guard !satisfiesFacets { minExclusive := some "5" } "5"
+#guard satisfiesFacets { maxExclusive := some "5" } "4"
+#guard satisfiesFacets { minLength := some 2, maxLength := some 4 } "abc"
+#guard !satisfiesFacets { maxLength := some 2 } "abc"
 
 -- Base classification.
 #guard isNumericBase "decimal"
