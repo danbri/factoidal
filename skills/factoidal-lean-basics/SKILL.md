@@ -147,6 +147,12 @@ executable edge only.
    `.claude/worktrees/`, `npm cache clean --force`; budget ~1.5 GB
    per agent; never delete the owner's own caches
    (`~/.cache/huggingface` was 20 GB) without asking.
+   THE FIX that actually worked (9.5 GB reclaimed in one pass): the
+   bulk of a worktree is the committed platform binaries + bundles,
+   byte-identical across worktrees. On APFS, replace each worktree's
+   copy with a clone of the main checkout's file (`cmp -s` to verify
+   identical, then `cp -c main/f wt/f.tmp && mv wt/f.tmp wt/f`) —
+   blocks are shared, git sees no change, agents keep working.
 
 ## Style contract (owner priority: W3C-expert readability)
 
