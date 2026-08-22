@@ -13,6 +13,7 @@ resolution. Row and table assembly build on it.
 -/
 import L4Factoidal.CSVW.Metadata
 import L4Factoidal.CSVW.UriTemplate
+import L4Factoidal.CSVW.Formats
 
 namespace L4Factoidal.CSVW
 
@@ -51,6 +52,22 @@ def rowLookup (bindings : List (String × String)) (rowNum sourceRow : Nat)
   if v == "_row" then some (toString rowNum)
   else if v == "_sourceRow" then some (toString sourceRow)
   else (bindings.find? (fun (k, _) => k == v)).map (·.2)
+
+/-- The COLUMN-scoped variables a template sees, on top of the
+    row-scoped ones: `_name` is the column's name, `_column` its
+    1-based position among the described columns and `_sourceColumn`
+    its position in the file.
+
+    Without `_name` a `propertyUrl` of `http://schema.org/{_name}`
+    expands to `http://schema.org/` for EVERY column, so a whole table
+    collapses onto one predicate — the right number of triples, all
+    of them wrong (measured on the csv2rdf corpus, 2026-08-22). -/
+def cellLookup (row : String → Option String) (name : String)
+    (colNum sourceCol : Nat) : String → Option String := fun v =>
+  if v == "_name" then some name
+  else if v == "_column" then some (toString colNum)
+  else if v == "_sourceColumn" then some (toString sourceCol)
+  else row v
 
 /-- Worker for `splitSeparated`. -/
 partial def goSplit (sep : String) (cur : List Char) (acc : List String)
@@ -91,10 +108,32 @@ def applyDefault (dflt : Option String) (cell : String) : String :=
   if cell == "" then dflt.getD cell else cell
 
 /-- Prepare a cell's lexical form for its datatype: apply the
-    whitespace rule from §6.4.2. -/
+    whitespace rule from §6.4.2, then the datatype's `format`.
+
+    Applying the format here is not cosmetic. Without it a `date`
+    column with `"format": "M/d/yyyy"` emits its SOURCE text under an
+    `xsd:date` datatype — `"10/18/2010"^^xsd:date` where the value is
+    `"2010-10-18"^^xsd:date`. The triple count, the subject and the
+    predicate are all right and the value is wrong, which is the shape
+    of error a count-based check cannot see (measured across the
+    csv2rdf corpus, 2026-08-22).
+
+    An INVALID value keeps its written form. §6.4.2 makes a failed
+    parse a validation error, not a conversion failure: the cell is
+    still reported, and it is `Validate` that says it is bad. Dropping
+    it here would lose data on the strength of a format this module
+    might have read wrongly. -/
 def prepareLexical (dt : Option Datatype) (cell : String) : String :=
   let base := (dt.bind Datatype.baseName).getD "string"
-  if dtPreservesWs base then cell else csvwTrim cell
+  let trimmed := if dtPreservesWs base then cell else csvwTrim cell
+  match dt with
+  | none => trimmed
+  | some d =>
+      match formatConvert base (Datatype.formatOf d) (Datatype.patternOf d)
+              (Datatype.groupCharOf d) (Datatype.decimalCharOf d) trimmed with
+      | .valid lex => lex
+      | .invalid   => trimmed
+      | .noFormat  => trimmed
 
 /-- What one cell contributes, before RDF terms are built: the
     resolved property IRI reference, and the object values (several
