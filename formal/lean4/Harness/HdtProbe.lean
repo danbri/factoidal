@@ -14,6 +14,7 @@ Run from the REPOSITORY ROOT:
 or give directories or files as arguments.
 -/
 import L4Factoidal.HDT.Container
+import L4Factoidal.HDT.Dictionary
 
 open L4Factoidal.HDT
 
@@ -75,12 +76,95 @@ def skeleton (a : Bytes) (inv : Inventory) : List String :=
     | some (.error e) => s!"header RDF  : parse error: {e}"
     | none            => "header RDF  : text not decodable" ])
 
+/-! ## Stage 2 — the PFC dictionary
+
+The line shapes below match `bin/hdt-probe/hdt_probe.ml` character for
+character so `tools/hdt-tree-differential.sh` can diff the two trees'
+stage-2 output the same way it diffs the container skeleton. The
+`M/N ok` form is the F* probe's; the summary lines this probe prints
+for the user are worded (CLAUDE.md anti-pattern 25). -/
+
+/-- Decode a section, then report: how many strings came out, how many
+    the preamble declared, whether all four CRCs check, and how many
+    decoded strings map to an RDF term. -/
+def sectionDecodeLine (label : String) (a : Bytes) (sec : PfcSection) : String :=
+  match decodeSection a sec with
+  | none => s!"  {label} : DECODE FAILED (expected {sec.numstrings})"
+  | some strs =>
+      let parsed := strs.countP (fun x => (termOfString x).isSome)
+      let crc := if pfcSectionCrcOk a sec then "crc OK" else "crc MISMATCH"
+      s!"  {label} : decoded {strs.length} strings (expected {sec.numstrings}), " ++
+      s!"{crc}, term-parse {parsed}/{strs.length} ok"
+
+/-- `pfcLocate (pfcExtract id) = id` for every ID in the section. -/
+def sectionRoundTrip (a : Bytes) (sec : PfcSection) : Nat × Nat :=
+  let ids := (List.range sec.numstrings).map (· + 1)
+  let good := ids.countP (fun id =>
+    match pfcExtract a sec id with
+    | none     => false
+    | some str => pfcLocate a sec str == some id)
+  (good, sec.numstrings - good)
+
+def sectionRoundTripLine (label : String) (a : Bytes) (sec : PfcSection) : String :=
+  let (p, f) := sectionRoundTrip a sec
+  s!"  {label} : round-trip {p} pass, {f} fail (out of {sec.numstrings})"
+
+/-- `termToId (idToTerm id) = id` across a whole role space, which is
+    where the shared-section ID arithmetic is exercised. -/
+def roleRoundTrip (a : Bytes) (inv : Inventory) (role : Role) : Nat × Nat × Nat :=
+  let n := roleMaxId inv role
+  let ids := (List.range n).map (· + 1)
+  let good := ids.countP (fun id =>
+    match idToTerm a inv role id with
+    | none   => false
+    | some t => termToId a inv role t == some id)
+  (good, n - good, n)
+
+def roleRoundTripLine (label : String) (a : Bytes) (inv : Inventory) (role : Role) : String :=
+  let (p, f, n) := roleRoundTrip a inv role
+  s!"  {label} : round-trip {p} pass, {f} fail (out of {n})"
+
+def stage2 (a : Bytes) (inv : Inventory) : List String :=
+  [ "", "--- stage 2: PFC dictionary decode ---",
+    sectionDecodeLine "shared    " a inv.dictShared,
+    sectionDecodeLine "subjects  " a inv.dictSubjects,
+    sectionDecodeLine "predicates" a inv.dictPredicates,
+    sectionDecodeLine "objects   " a inv.dictObjects,
+    "", "--- stage 2: per-section round-trip (pfc_locate (pfc_extract id) = id) ---",
+    sectionRoundTripLine "shared    " a inv.dictShared,
+    sectionRoundTripLine "subjects  " a inv.dictSubjects,
+    sectionRoundTripLine "predicates" a inv.dictPredicates,
+    sectionRoundTripLine "objects   " a inv.dictObjects,
+    "", "--- stage 2: role-level round-trip (hdt_term_to_id (hdt_id_to_term id) = id) ---",
+    roleRoundTripLine "subject   " a inv .subject,
+    roleRoundTripLine "predicate " a inv .predicate,
+    roleRoundTripLine "object    " a inv .object ]
+
+/-- Every stage-2 obligation on one file, as (pass, fail). Used for
+    the probe's own summary rather than for the differential. -/
+def stage2Score (a : Bytes) (inv : Inventory) : Nat × Nat :=
+  let secs := [inv.dictShared, inv.dictSubjects, inv.dictPredicates, inv.dictObjects]
+  let crcPass := secs.countP (fun sec => pfcSectionCrcOk a sec)
+  let decodePass := secs.countP (fun sec =>
+    match decodeSection a sec with
+    | none      => false
+    | some strs => strs.length == sec.numstrings &&
+                   strs.all (fun x => (termOfString x).isSome))
+  let secRt := secs.map (sectionRoundTrip a)
+  let roleRt := [Role.subject, .predicate, .object].map (roleRoundTrip a inv)
+  let pass := crcPass + decodePass + (secRt.map (·.1)).sum + (roleRt.map (·.2.1 == 0)).countP id
+  let fail := (4 - crcPass) + (4 - decodePass) + (secRt.map (·.2)).sum +
+              (roleRt.map (·.2.1 != 0)).countP id
+  (pass, fail)
+
 def runOne (path : System.FilePath) : IO Report := do
   match ← readInventory path with
   | none => return { path := path.toString, ok := false,
                      detail := "container skeleton not parsed" }
   | some (a, inv) =>
-      return { path := path.toString, ok := true, detail := describe a inv }
+      let (p, f) := stage2Score a inv
+      return { path := path.toString, ok := f == 0,
+               detail := describe a inv ++ s!" | stage 2: {p} pass, {f} fail" }
 
 /-- Every `.hdt` under a directory, one level deep. -/
 def hdtFilesIn (dir : System.FilePath) : IO (Array System.FilePath) := do
@@ -111,7 +195,9 @@ def main (argv : List String) : IO UInt32 := do
       IO.println s!"file        : {p} ({(← IO.FS.readBinFile p).size} bytes)"
       match ← readInventory p with
       | none          => IO.println "  container skeleton not parsed"
-      | some (a, inv) => for line in skeleton a inv do IO.println line
+      | some (a, inv) =>
+          for line in skeleton a inv do IO.println line
+          for line in stage2 a inv do IO.println line
     let r ← runOne p
     if r.ok then
       pass := pass + 1

@@ -10,16 +10,16 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 78 | 43336 |
+| Engine and specification code — to port | 77 | 42817 |
 | Proofs about the F\* implementation — see below | 32 | 33861 |
 | F\*-only machinery with no Lean counterpart by design | 7 | 2861 |
-| **Total not covered** | **117** | **80058** |
+| **Total not covered** | **116** | **79539** |
 
-103 of the 220 F\* modules have a Lean counterpart.
+104 of the 220 F\* modules have a Lean counterpart.
 
-Updated 2026-08-23 after `HDT.Container` landed as
-`L4Factoidal/HDT/Container.lean`. The row below moved from three
-modules to two.
+Updated 2026-08-23 after `HDT.Container` and `HDT.Dictionary` landed
+as `L4Factoidal/HDT/Container.lean` and `Dictionary.lean`. The HDT row
+below moved from three modules to one.
 
 ### On the proof column
 
@@ -132,18 +132,22 @@ states this in its header.
 
 - `Tableau.CountingOracle` (1663)
 
-### HDT — 2 modules, 835 lines
+### HDT — 1 module, 316 lines
 
-- `HDT.Dictionary` (519)
 - `HDT.Triples` (316)
 
-`HDT.Container` (644 lines) is ported. The Lean module is 502 lines
-because three F\* definitions have no work to do in Lean: the
+`HDT.Container` (644 F\* lines) and `HDT.Dictionary` (519) are ported.
+Four F\* definitions have no work to do in Lean and are absent: the
 file-size probe (`hdt_file_size` and its two helpers), the hex decode
-(`hdt_bytes_of_hex`, `collect_bytes`), and `nat_xor`. See that
-module's header. Both readers are compared field by field over the
-two vendored fixtures by `tools/hdt-tree-differential.sh`: 2 agree, 0
-differ (out of 2), 28 skeleton lines identical per fixture.
+(`hdt_bytes_of_hex`, `collect_bytes`), `nat_xor`, and `nat_sub` —
+Lean's `Nat` subtraction already truncates at zero. See the two
+modules' headers.
+
+Both trees' readers are compared field by field over the two vendored
+fixtures by `tools/hdt-tree-differential.sh`: **2 agree, 0 differ (out
+of 2)**, 42 container and dictionary lines identical per fixture.
+Without `HDT.Triples` the Lean tree can decode an HDT file's
+dictionary but cannot enumerate its triples.
 
 ### RDFS — 2 modules, 1229 lines
 

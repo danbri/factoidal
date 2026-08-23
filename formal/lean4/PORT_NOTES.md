@@ -7335,3 +7335,91 @@ decode). Until those land, the Lean tree can say what an HDT file
 contains but cannot read a triple out of one. `bin/hdt-probe/check.sh`
 already pins the F\* side of both stages, so the target numbers are
 known before the port starts.
+
+## HDT stage 2: the PFC dictionary, and a byte/character correction
+
+`L4Factoidal/HDT/Dictionary.lean` ports
+`formal/fstar/HDT.Dictionary.fst`: CRC8 and CRC32C over the payloads
+stage 1's CRC16 does not reach, log-array integer unpacking, Plain
+Front Coding block decode, both access patterns (`decodeSection` for a
+full dump, `pfcExtract` / `pfcLocate` for lookup), the four-section ID
+space, and the dictionary-string ↔ `Term` mapping.
+
+### Four F\* definitions are absent
+
+`nat_sub` joins the three that stage 1 dropped. The F\* module defines
+a saturating subtraction because its byte offsets are `nat` and Z3
+cannot re-derive the container invariants that keep the differences
+non-negative. Lean's `Nat` subtraction already truncates at zero, so
+`a - b` IS `nat_sub a b`. `bit_divisor` also shrinks: the F\* module
+enumerates the eight shift cases to hand Z3 a positive literal, where
+Lean writes `2 ^ shift`.
+
+### One correction: the common prefix is measured in BYTES
+
+`pfc_read_suffix` in F\* takes the front-coded common prefix with
+`FStar.String.sub prev 0 plen`. `plen` is a byte count read from the
+file; `FStar.String.sub` counts CHARACTERS. The two agree on ASCII and
+diverge above 0x7F. `pfcReadSuffix` splices `prev.toUTF8.extract 0 plen`
+with the suffix bytes and decodes the result, which is what the format
+specifies.
+
+Both vendored fixtures are pure ASCII in every dictionary section, so
+no test distinguishes the two. The F\* module's own header records the
+same ASCII-only scope. This is written down as a difference, not
+claimed as a fixed defect: nothing has exercised it.
+
+The same ASCII-only caveat applies to `pfcLocate`'s binary search,
+which assumes the block heads are in the format's byte-wise order
+while Lean's `String` `<` compares codepoint sequences.
+
+### A bracketed IRI is accepted, in both trees
+
+`termOfString "<http://example.org/a>"` returns the IRI
+`<http://example.org/a>` — brackets included — rather than rejecting
+it. `isIri` (port of `RDF.Term.is_iri`) is the minimal gate the whole
+tree applies: non-empty and contains a colon. HDT stores IRIs
+unbracketed and hdt-cpp never writes a bracketed one, and the
+string↔term round trip still holds for it, so this is recorded in the
+module's `#guard`s rather than guarded against.
+
+### The measurement
+
+`lake exe l4hdt --verbose` now prints the three stage-2 blocks in the
+same line shapes as `bin/hdt-probe/hdt_probe.ml`, and
+`tools/hdt-tree-differential.sh` diffs them along with the container
+skeleton.
+
+**HDT container, F\* vs Lean 4: 2 agree, 0 differ (out of 2)** — 42
+container and dictionary lines identical per fixture, up from 28.
+
+Per fixture, matching the pins in `bin/hdt-probe/check.sh`:
+
+| | rdf-mt-test002 | rml-core-ontology |
+|---|---|---|
+| shared: decoded / expected / term-parse | 0 / 0 / 0 | 39 / 39 / 39 |
+| subjects | 1 / 1 / 1 | 45 / 45 / 45 |
+| predicates | 1 / 1 / 1 | 22 / 22 / 22 |
+| objects | 1 / 1 / 1 | 134 / 134 / 134 |
+| all four CRCs per section | OK | OK |
+| per-section ID round trip | 3 pass, 0 fail (out of 3) | 240 pass, 0 fail (out of 240) |
+| role-level round trip | 3 pass, 0 fail (out of 3) | 279 pass, 0 fail (out of 279) |
+
+The role-level figure is where the shared-section arithmetic is
+exercised: 84 subject IDs (39 shared + 45 subjects), 22 predicate IDs,
+173 object IDs (39 shared + 134 objects).
+
+Build-time `#guard`s check CRC8 and CRC32C against their published
+catalogue check values over the nine bytes `123456789` — 0xF4 for
+CRC-8/SMBUS and 0xE3069283 for CRC-32/ISCSI. Those check the
+parameters, not the code's agreement with itself.
+
+### Still absent
+
+`HDT.Triples` (316 F\* lines): the BitmapTriples decode — the two
+bitmaps, the two log-array sequences, and rank/select over them. The
+Lean tree can say what an HDT file's dictionary holds but cannot
+enumerate a triple. The F\* probe's stage 3 already pins the target
+numbers: for `rml-core-ontology.hdt`, 343 id-triples decoded with 0
+unresolved, and enumeration equal to the source `.nt` as sorted
+N-Triples.
