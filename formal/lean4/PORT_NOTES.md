@@ -10210,3 +10210,54 @@ the length test fails on the input, the round adds exactly one triple,
 the second round is the fixed point, more fuel changes nothing, and the
 derived triple is present. A zero-fuel pin shows an unsaturated closure,
 which is why the completeness statements carry the hypothesis.
+
+## Parser.RIFXML — the RIF Core XML serialization
+
+`formal/fstar/Parser.RIFXML.fst` (1,349 lines) →
+`L4Factoidal/RIF/Xml.lean`. Two stages, as in the F\* source:
+`XML.parseXML` builds the tree, and this module walks it into the
+`RIF.Syntax` AST. The XML scanner is untouched.
+
+**A namespace of its own.** `L4Factoidal.RIF.Xml`, not
+`L4Factoidal.RIF`. The presentation-syntax front end `RIF.Ps` already
+declares `parseTerm` and `parseConst`, and the root import failed on the
+clash. Keeping the two front ends in separate namespaces is also what a
+reader wants. `L4Factoidal.XML` is not opened either: both namespaces
+declare a `Document`, so the XML side is written `XML.Node` /
+`XML.Attribute` throughout.
+
+**Element names match on the LOCAL name**, as in the F\* source: the
+suite emits `Atom` and `rif:Atom` interchangeably. That accepts a
+document putting RIF names in the wrong namespace; the F\* module makes
+the same trade, and what these tests score is rule structure.
+
+**One deliberate divergence, and it is a correctness gap that this port
+does NOT close.** The F\* parser decodes an `rdf:PlainLiteral` constant —
+whose lexical space packs `text@lang` — into a language-tagged or
+`xsd:string` RDF literal. This port keeps the packed form. Two reasons,
+both about tree consistency rather than the specification:
+
+1. `RIF/Ps.lean` already produces the packed form. Decoding in one front
+   end and not the other would make the same RIF document parse to
+   different terms depending on which syntax it arrived in.
+2. `Tm.const` carries a lexical form and a symbol space with NO
+   language-tag slot, so a language-tagged literal is not representable
+   in the RIF AST at all.
+
+The fix belongs in `RIF.Translation.termOfConst`, the one place both
+front ends pass through and the place that already builds an RDF
+`Literal` (which does have `langTag`). Recorded, with the consequence
+spelled out, at <https://github.com/danbri/factoidal/issues/561>.
+
+**Fuel.** The walkers are fuel-bounded because the
+`firstChildWithLocalName` indirection defeats the termination checker —
+in Lean for the same reason as in F\*. The same generous budget is
+carried so the difference stays a nuisance rather than a semantic
+choice.
+
+**Pins.** A fact document, a `Forall`-wrapped `Implies`, an `Import`
+carrying its profile, an empty `Group`, and a bare `<Group>` fragment
+with no `Document` wrapper. Two negative pins — text that is not XML,
+and XML that is not RIF — because a parser that accepted everything
+would satisfy every positive pin. Each positive pin states what it got
+rather than that it got something.
