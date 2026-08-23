@@ -8706,3 +8706,44 @@ comments differ — this one says "0 before populate; fixed positive nat
 after" and `LazyDict`'s says nothing — and the port follows each. Two
 functions with the same name and different triggering behaviour is a
 trap, so both modules now say which one they are.
+
+## RDF.CottasStore.OnDiskIndex → `L4Factoidal/Cottas/OnDiskIndex.lean`
+
+The `.dict` reader and the companion-set boot helpers. Seven
+`assume val`s become none.
+
+The module's presence half is not duplicated: `PresenceBitmap.fst`
+opens this module and calls its `presence_test_bit`, and the Lean port
+put that function in `Cottas/PresenceBitmap.lean`, which this module
+imports.
+
+**The `ids` array is a permutation, and the fixture makes it one.**
+`ids` is sorted so `token(ids[i])` ascends, and the binary search reads
+`ids[mid]` before decoding. A fixture whose `ids` were the identity
+would pass even for a reader that searched by id, so `mkDict` builds
+one whose `ids` genuinely permutes: five tokens given in id order and
+sorted into a different order on disk. A `#guard` then finds every
+token at its own id and rejects four near-misses, including `"zebras"`
+and `"apple "`.
+
+**Codepoint order and byte order, stated rather than assumed.** The
+writer producing `ids` compares bytes; this reader compares codepoints
+through Lean's `compare`. UTF-8 preserves codepoint order under
+bytewise comparison, which is why the search works at all. Two
+`#guard`s pin that on non-ASCII pairs, and a third round-trips a
+five-token non-ASCII dictionary.
+
+**A token slice that is not valid UTF-8 is refused.** F\*'s
+`read_companion_string` is an `assume val` and nothing states what it
+does with a corrupt slice. `dictDecodeToken` goes through
+`String.fromUTF8?`.
+
+**Proved:** `presenceBitIndexBounded`, the F\* lemma
+`presence_bit_index_bounded` — every bit index this reader computes for
+an in-bounds `(rg, tok)` fits the extent the writer sized its buffer
+to. `[propext, Quot.sound]`.
+
+**The token-count cross-check.** `companionStatusOk` requires the
+`.dict` and `.presence` headers to agree on the token count, because
+they describe one column. A guard pins that a five-token dictionary
+beside a four-token bitmap is refused.

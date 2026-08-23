@@ -272,6 +272,7 @@ import L4Factoidal.RDFS.RegimeDispatch
 import L4Factoidal.RDF.VocabularyAxioms
 import L4Factoidal.Cottas.SortByKey
 import L4Factoidal.Cottas.PresenceBitmap
+import L4Factoidal.Cottas.OnDiskIndex
 import L4Factoidal.Cottas.CompoundPresenceBitmap
 import L4Factoidal.Cottas.PlanPruning
 import L4Factoidal.Cottas.PresenceWriter
