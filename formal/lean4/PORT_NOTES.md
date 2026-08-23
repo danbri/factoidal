@@ -8788,3 +8788,36 @@ recently used, so a third insert must evict `(0,1)`. A cache evicting
 by insertion order would drop `(0,0)` and still pass a size-only test.
 A second guard runs twenty puts into a cache of three and checks both
 the bound and that the survivors are the three most recent.
+
+## RDF.CottasStore.DictWriter → `L4Factoidal/Cottas/DictWriter.lean`
+
+The `.dict` serialiser, whose reader is `Cottas/OnDiskIndex.lean`. The
+two were ported separately and the `#guard`s check them against each
+other: every token of a `serializeDict` output decodes at its own id
+and encodes back through `dictEncodeToken`.
+
+**The byte-versus-codepoint defect class cannot arise here.** The F\*
+module's own comment records that it carried
+<https://github.com/danbri/factoidal/issues/445> latently until
+`RDF.Bytes.fst` stopped agreeing with `String.length` by accident — the
+two coincided only for ASCII. Same class as
+<https://github.com/danbri/factoidal/issues/551> in `HDT.Dictionary`.
+In Lean the writer works from `String.toUTF8` and the reader from
+`String.fromUTF8?`, so there is no length to pick wrongly. Guards
+round-trip `"é"`, `"ü"`, `"中"` and `"日本語"` through the whole file,
+and pin `tokByteLen "日本語" = 9` against `"日本語".length = 3`.
+
+**No live callers in either tree.** The F\* header says the import path
+uses `BaseWriter.serialize_cottas_v2`, not this format. Nothing in the
+Lean tree calls it either.
+
+**⚠️ The sortedness invariant stays a CALLER obligation**, as in F\*.
+`ids[i] = i` is correct only for tokens stored in ascending order. That
+differs from `OffsetsWriter` and `CompoundPresenceWriter`, where the
+same kind of invariant moved into the writer and was proved — the
+difference is the key type. Those sort by `Nat` and
+`Cottas/SortByKey.lean` proves that sort correct; sorting by `String`
+needs the trichotomy and transitivity of `String`'s `compare`, which
+nothing in this tree has proved. `sortTokens` is provided and
+`#guard`-checked, not proved, and that proof is what would close the
+gap.
