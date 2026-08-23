@@ -5257,3 +5257,47 @@ remaining failures, four are single-quirk (an invalid `@id` naming the
 table node, a double's exponent case, two title-language edges) and
 the rest need multi-document metadata MERGING rather than selection.
 The six skips are tables the corpus does not ship.
+
+### csv2json: a second real conformance runner on the same pipeline
+(2026-08-23)
+
+`CSVW/JsonDoc.lean` + `Harness/CsvwJsonRun.lean` (`lake exe
+l4csvw-json`) run the OTHER csvw suite — `manifest-json.jsonld` — over
+the same annotated table the RDF pipeline builds. `Json.lean` already
+had the row and document SHAPES; this is what joins them to a metadata
+document and a CSV file.
+
+📊 FIRST MEASURED RESULT: **181 pass, 23 fail, 6 skip (out of 210
+attempted)** on the very first run, then **185 pass, 19 fail** after
+one fix. That is what the shared pipeline bought: every metadata rule
+paid for on the RDF side arrived working here.
+
+Three things csv2json does NOT share with csv2rdf, each of which would
+be a wrong answer if assumed:
+
+1. **Keys are not always column names.** A cell is keyed by its column
+   name when the column has the DEFAULT `propertyUrl`, and by the
+   property URL otherwise — COMPACTED against the standard prefixes,
+   so `http://schema.org/latitude` becomes `schema:latitude` while
+   `http://www.geonames.org/ontology#countryCode`, which no prefix
+   covers, is written out whole. Both forms appear in one object in
+   test031, which is what makes the rule visible.
+2. **Values are not always strings.** A numeric column's value is a
+   JSON NUMBER and a boolean column's a JSON BOOLEAN — `42.546245`,
+   not `"42.546245"`. A value that failed its datatype stays a string,
+   because the string is what the file said and the number is a claim
+   about it.
+3. **Members that share a key MERGE into one array.** Two columns may
+   carry the same `propertyUrl`, and csv2json puts their values in one
+   member in relative order (test305/306/307). Emitting a second
+   member of the same name produces an object that is not well formed
+   as a mapping.
+
+The comparison is STRUCTURAL: object members are a SET of pairs, array
+items a SEQUENCE. That distinction is the point — csv2json fixes the
+order of `row` and `describes` (which is why `"ordered"` columns exist
+at all), while object member order carries no meaning. Comparing raw
+text would fail correct output on whitespace; ignoring array order
+would pass output that had lost the ordering the specification
+requires. JSON NUMBERS are compared as numbers, not as source text, so
+`1.0` and `1` agree.

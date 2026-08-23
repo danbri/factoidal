@@ -1,0 +1,246 @@
+/-
+Harness/CsvwJsonRun — a REAL csv2json conformance runner over the
+vendored W3C csvw corpus.
+
+Same shape as `CsvwRdfRun`, and deliberately so: the manifest is the
+suite's own `manifest-json.jsonld`, the pairing comes from each
+entry's `action` / `result`, and everything not attempted is REPORTED
+with its reason.
+
+The comparison is STRUCTURAL JSON equality that ignores the order of
+an object's members and respects the order of an array's items. That
+distinction is the whole point: csv2json fixes the order of `row` and
+`describes` (which is why `"ordered"` columns exist at all), while
+JSON object member order carries no meaning. Comparing raw text would
+fail correct output on whitespace, and comparing with array order
+ignored would pass output that had lost the ordering the specification
+requires.
+
+Usage: `lake exe l4csvw-json [tests-dir]`
+-/
+import L4Factoidal.CSVW.JsonDoc
+import L4Factoidal.JSON.Parser
+
+open L4Factoidal.CSVW
+open L4Factoidal.JSON
+open L4Factoidal.Syntax
+
+/-- Structural JSON equality: object members are a SET of pairs, array
+    items are a SEQUENCE. `fuel` bounds the nesting; a document deeper
+    than that compares unequal rather than looping. -/
+def jsonEquiv : Nat → Json → Json → Bool
+  | 0,        _, _ => false
+  | _ + 1,    .null, .null => true
+  | _ + 1,    .bool a, .bool b => a == b
+  | _ + 1,    .string a, .string b => a == b
+  | _ + 1,    .number a, .number b => normNum a == normNum b
+  | fuel + 1, .array as, .array bs =>
+      as.length == bs.length && (as.zip bs).all (fun (x, y) => jsonEquiv fuel x y)
+  | fuel + 1, .object as, .object bs =>
+      as.length == bs.length &&
+      as.all (fun (k, v) =>
+        match (bs.find? (fun (k2, _) => k2 == k)).map (·.2) with
+        | some w => jsonEquiv fuel v w
+        | none   => false)
+  | _ + 1,    _, _ => false
+where
+  /-- Two JSON numbers are the same number even when written
+      differently. The parser keeps the SOURCE TEXT, so `1.0` and `1`
+      arrive as different strings while denoting one value; comparing
+      the text would fail correct output for a reason that is not a
+      defect. -/
+  normNum (s : String) : String :=
+    let neg := s.startsWith "-"
+    let body := if neg || s.startsWith "+" then String.ofList (s.toList.drop 1) else s
+    let (ip, fp) := match body.splitOn "." with
+      | [a]    => (a, "")
+      | [a, b] => (a, b)
+      | _      => (body, "")
+    let ip := String.ofList (ip.toList.dropWhile (· == '0'))
+    let fp := String.ofList (fp.toList.reverse.dropWhile (· == '0')).reverse
+    let ip := if ip == "" then "0" else ip
+    (if neg && !(ip == "0" && fp == "") then "-" else "") ++ ip
+      ++ (if fp == "" then "" else "." ++ fp)
+
+structure JsonOutcome where
+  name   : String
+  status : String        -- "pass" | "fail" | "skip"
+  detail : String
+
+def dirOfJ (p : String) : String :=
+  match (p.splitOn "/").reverse with
+  | _ :: rest => if rest.isEmpty then "" else String.intercalate "/" rest.reverse ++ "/"
+  | []        => ""
+
+def relativeNameJ (u : String) : String :=
+  if u.startsWith "http://" || u.startsWith "https://" then
+    (u.splitOn "/").getLast?.getD u
+  else u
+
+structure JEntry where
+  id        : String
+  action    : String
+  result    : String
+  minimal   : Bool
+  metadata  : Option String
+  negative  : Bool
+
+def jsonManifestEntries (j : Json) : List JEntry :=
+  let field? (k : String) (v : Json) : Option Json :=
+    match v with
+    | .object ms => (ms.find? (fun (key, _) => key == k)).map (·.2)
+    | _ => none
+  let str? (k : String) (v : Json) : Option String :=
+    match field? k v with
+    | some (.string s) => some s
+    | _ => none
+  match field? "entries" j with
+  | some (.array es) =>
+      es.filterMap (fun e =>
+        let opt := field? "option" e
+        let minimal := match opt.bind (field? "minimal") with
+          | some (.bool b) => b
+          | _ => false
+        let implicits : List String := match field? "implicit" e with
+          | some (Json.array a) =>
+              a.filterMap (fun x => match x with
+                | Json.string s => some s
+                | _ => none)
+          | some (Json.string s) => [s]
+          | _ => []
+        let metaOpt := opt.bind (fun o => match field? "metadata" o with
+          | some (.string s) => some s
+          | _ => none)
+        let negative := match str? "type" e with
+          | some t => t.endsWith "NegativeJsonTest"
+          | none   => false
+        match str? "id" e, str? "action" e with
+        | some i, some a =>
+            let isCsv := a.endsWith ".csv"
+            let isJson := a.endsWith ".json"
+            if !isCsv && !isJson then none
+            else
+              let metadata :=
+                if isJson then some a
+                else metaOpt.orElse (fun _ =>
+                  let jsons := implicits.filter (fun f => f.endsWith ".json")
+                  (jsons.find? (fun f => f.endsWith "linked-metadata.json")).orElse
+                    (fun _ => (jsons.find? (fun f => f.endsWith (a ++ "-metadata.json"))).orElse
+                      (fun _ => (jsons.find? (fun f => f.endsWith "csv-metadata.json")).orElse
+                        (fun _ => jsons.getLast?))))
+              some { id := i, action := a, result := (str? "result" e).getD "",
+                     minimal := minimal, metadata := metadata, negative := negative }
+        | _, _ => none)
+  | _ => []
+
+def runOneJson (dir : String) (e : JEntry) : IO JsonOutcome := do
+  if e.result == "" then
+    return ⟨e.action, "skip", "entry names no expected result"⟩
+  let rp := dir ++ "/" ++ e.result
+  if !(← System.FilePath.pathExists rp) then
+    return ⟨e.action, "skip", "expected file missing: " ++ e.result⟩
+  let expectedSrc ← IO.FS.readFile rp
+  let suiteBase := "http://www.w3.org/2013/csvw/tests/"
+  let (mbase, mdir) := match e.metadata with
+    | some mf => (suiteBase ++ mf, dirOfJ mf)
+    | none    => (suiteBase ++ e.action, dirOfJ e.action)
+  let (group, ctx) ← (do
+    match e.metadata with
+    | none =>
+        pure (({ tables := [{ url := relativeNameJ e.action }] } : TableGroup), ({} : Ctx))
+    | some mf =>
+        let mp := dir ++ "/" ++ mf
+        if !(← System.FilePath.pathExists mp) then
+          pure ((({ tables := [] } : TableGroup)), ({} : Ctx))
+        else
+          let msrc ← IO.FS.readFile mp
+          match parseMetadataText msrc with
+          | some (g, c) => pure (g, c)
+          | none        => pure ((({ tables := [] } : TableGroup)), ({} : Ctx)))
+  if group.tables.isEmpty then
+    return ⟨e.action, "skip", "metadata did not parse into any table"⟩
+  let mut group := group
+  let mut resolved : List TableDesc := []
+  for t in group.tables do
+    match t.schemaRef with
+    | none => resolved := resolved ++ [t]
+    | some ref =>
+        let sp := dir ++ "/" ++ mdir ++ ref
+        if ← System.FilePath.pathExists sp then
+          let ssrc ← IO.FS.readFile sp
+          match parseSchemaText ctx ssrc with
+          | some sch => resolved := resolved ++ [{ t with schema := some sch }]
+          | none     => resolved := resolved ++ [t]
+        else resolved := resolved ++ [t]
+  group := { group with tables := resolved }
+  let mut pairs : List (TableDesc × Table) := []
+  let mut missing : Option String := none
+  for t in group.tables do
+    let path := dir ++ "/" ++ mdir ++ relativeNameJ t.url
+    if ← System.FilePath.pathExists path then
+      let src ← IO.FS.readFile path
+      pairs := pairs ++ [(t, read (effectiveDialect group t).resolve src)]
+    else
+      missing := some t.url
+  match missing with
+  | some u => return ⟨e.action, "skip", "table file not found: " ++ u⟩
+  | none => pure ()
+  let got := convertJson mbase ctx group e.minimal pairs
+  match parseJson? expectedSrc with
+  | none => return ⟨e.action, "skip", "expected .json did not parse"⟩
+  | some want =>
+      if jsonEquiv 64 got want then return ⟨e.action, "pass", ""⟩
+      else return ⟨e.action, "fail", "structural JSON mismatch"⟩
+
+def main (args : List String) : IO UInt32 := do
+  let dir := (args.filter (fun a => !a.startsWith "--")).head?
+    |>.getD "third_party/testing/csvw/tests"
+  let manifestPath := dir ++ "/manifest-json.jsonld"
+  if !(← System.FilePath.pathExists manifestPath) then
+    IO.println s!"csvw json runner: manifest not found: {manifestPath}"
+    IO.println "run tools/ensure-test-env.sh from the repository root first"
+    return 1
+  let mtext ← IO.FS.readFile manifestPath
+  match parseJson? mtext with
+  | none =>
+      IO.println "csvw json runner: manifest did not parse"
+      return 1
+  | some mjson =>
+      let dumpId := (args.find? (fun a => a.startsWith "--dump=")).map
+        (fun a => String.ofList (a.toList.drop 7))
+      let entries := jsonManifestEntries mjson
+      let total : Nat := match mjson with
+        | Json.object ms =>
+            match (ms.find? (fun (k, _) => k == "entries")).map (·.2) with
+            | some (Json.array es) => es.length
+            | _ => 0
+        | _ => 0
+      let mut pass := 0
+      let mut fail := 0
+      let mut skip := 0
+      let mut negative := 0
+      for e in entries do
+        if e.negative then
+          negative := negative + 1
+        else
+        let o ← runOneJson dir e
+        if dumpId == some e.id then
+          IO.println s!"--- {e.id} PRODUCED ---"
+        if o.status == "pass" then pass := pass + 1
+        else if o.status == "fail" then
+          fail := fail + 1
+          IO.println s!"FAIL {e.id} ({e.action} vs {e.result}): {o.detail}"
+        else
+          skip := skip + 1
+          IO.println s!"skip {e.id}: {o.detail}"
+      let attempted := pass + fail + skip
+      IO.println ""
+      IO.println s!"csv2json: {pass} pass, {fail} fail, {skip} skip (out of {attempted} attempted)"
+      IO.println s!"NOT ATTEMPTED: {negative} negative tests out of the manifest's {total} entries"
+      IO.println "  (they assert an ERROR, not a document, and need the"
+      IO.println "  validator's outcome rather than an expected .json)."
+      IO.println ""
+      IO.println "Comparison is STRUCTURAL: object members are a set, array items"
+      IO.println "a sequence. csv2json fixes the order of `row` and `describes`,"
+      IO.println "so ignoring array order would pass output that lost it."
+      return 0

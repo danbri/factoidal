@@ -221,6 +221,11 @@ structure CellOut where
   subject : Subject
   inh     : Inherited
   result  : CellResult
+  /-- The column's derived name. Carried on the cell rather than in a
+      parallel list because `suppressOutput` and virtual columns make
+      the cells a SUBSET of the columns, and a parallel list silently
+      goes out of step at the first suppressed column. -/
+  name    : String := ""
 
 /-- The blank node that carries one row's description. Named, and
     exported, because the enclosing table must link the SAME node
