@@ -148,6 +148,8 @@ extern_lib libl4hacl pkg := do
 
 @[default_target] lean_exe «l4csvw-json» where root := `Harness.CsvwJsonRun
 
+@[default_target] lean_exe «l4jsonschema» where root := `Harness.JsonSchemaRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.

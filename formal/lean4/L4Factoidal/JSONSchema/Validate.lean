@@ -22,6 +22,7 @@ whether the validator is honest:
    `multipleOf` and the range keywords are exact.
 -/
 import L4Factoidal.JSON.Value
+import L4Factoidal.Regex.XPath
 
 namespace L4Factoidal.JSONSchema
 
@@ -176,15 +177,138 @@ private def ratKeyword (spec : Json) (inst : Json) (ok : Rat → Rat → Bool) :
       | none   => .unsupported
       | some b => if ok v b then .pass else .fail
 
-/-- Validate one instance against one schema. `true`/`false` schemas
-    are the boolean forms from draft 2019-09 onward. -/
-partial def validate (schema inst : Json) : VResult :=
+/-! ## `$ref` resolution
+
+A `$ref` is a JSON POINTER into the schema DOCUMENT, so the validator
+carries the document root alongside the sub-schema being applied. A
+REMOTE ref (one naming another document) is `unsupported` rather than
+ignored: pretending a remote schema imposes nothing would pass every
+instance against it.
+
+`fuel` bounds the recursion. `$ref` makes a schema a graph, and a
+recursive schema (`{"$ref": "#"}` applied to a nested instance) walks
+it as deep as the instance is; a cycle with no instance to consume
+would otherwise not terminate. Running out of fuel is `unsupported` —
+no verdict — never a pass. -/
+
+/-- Split a JSON pointer into its unescaped tokens. `~1` is `/` and
+    `~0` is `~`, in that order (RFC 6901 §3); unescaping them the other
+    way round turns `~01` into `/` instead of `~1`. -/
+def pointerTokens (p : String) : List String :=
+  let unesc := fun (t : String) =>
+    String.intercalate "~" ((String.intercalate "/" (t.splitOn "~1")).splitOn "~0")
+  match p.splitOn "/" with
+  | _ :: rest => rest.map unesc
+  | []        => []
+
+def resolvePointer (root : Json) (toks : List String) : Option Json :=
+  toks.foldl (fun acc t =>
+    acc.bind (fun j => match j with
+      | .object ms => (ms.find? (fun (k, _) => k == t)).map (·.2)
+      | .array vs  => t.toNat?.bind (fun i => vs[i]?)
+      | _          => none)) (some root)
+
+/-- Percent-decode a pointer fragment. A `$ref` is a URI, so its
+    fragment is URI-escaped BEFORE it is a JSON pointer:
+    `#/definitions/foo%22bar` names the member `foo"bar`. Tokenising
+    without decoding looks for a member spelled with the escape and
+    finds nothing. -/
+def percentDecode (s : String) : String :=
+  let hex := fun (c : Char) =>
+    if '0' ≤ c && c ≤ '9' then some (c.toNat - '0'.toNat)
+    else if 'a' ≤ c && c ≤ 'f' then some (c.toNat - 'a'.toNat + 10)
+    else if 'A' ≤ c && c ≤ 'F' then some (c.toNat - 'A'.toNat + 10)
+    else none
+  let rec go : Nat → List Char → List Char
+    | 0,        cs => cs
+    | fuel + 1, cs =>
+        match cs with
+        | '%' :: a :: b :: rest =>
+            (match hex a, hex b with
+             | some x, some y => Char.ofNat (x * 16 + y) :: go fuel rest
+             | _, _           => '%' :: go fuel (a :: b :: rest))
+        | c :: rest => c :: go fuel rest
+        | []        => []
+  String.ofList (go s.length s.toList)
+
+/-- The registry a `$ref` to ANOTHER document resolves against: an
+    absolute URI (without its fragment) to that document's root. -/
+abbrev Registry := List (String × Json)
+
+/-- Resolve a `$ref`. `#` is the root itself; `#/a/b` is a pointer into
+    it; an absolute URI is looked up in the registry and then
+    pointed into. -/
+def resolveRefIn (reg : Registry) (root : Json) (r : String) : Option Json :=
+  let r := percentDecode r
+  if r == "#" then some root
+  else if r.startsWith "#/" then resolvePointer root (pointerTokens r)
+  else
+    -- Split the URI from its fragment, then find the document.
+    let (base, frag) := match r.splitOn "#" with
+      | [b]       => (b, "")
+      | b :: rest => (b, "#" ++ String.intercalate "#" rest)
+      | []        => (r, "")
+    match (reg.find? (fun (u, _) => u == base)).map (·.2) with
+    | none => none
+    | some doc =>
+        if frag == "" || frag == "#" then some doc
+        else if frag.startsWith "#/" then resolvePointer doc (pointerTokens frag)
+        else none
+
+def resolveRef (root : Json) (r : String) : Option Json :=
+  resolveRefIn [] root r
+
+/-- Draft-07 keywords that carry no assertion: annotations, and the
+    `definitions` container whose members are only reached through a
+    `$ref`. Listing them explicitly is what keeps `unsupported`
+    meaning "not implemented" rather than "not an assertion". -/
+def annotationKeywords : List String :=
+  ["title", "description", "default", "$comment", "examples", "$schema",
+   "$id", "definitions", "readOnly", "writeOnly", "contentMediaType",
+   "contentEncoding", "format"]
+
+/-- Validate one instance against one schema, in the context of the
+    document `root`. `true`/`false` schemas are the boolean forms from
+    draft 2019-09 onward. -/
+partial def validateIn (reg : Registry) (root : Json) (fuel : Nat)
+    (schema inst : Json) : VResult :=
+  match fuel with
+  | 0 => .unsupported
+  | fuel + 1 =>
+  let rec' := validateIn reg root fuel
   match schema with
   | .bool true  => .pass
   | .bool false => .fail
   | .object ms =>
+      -- `additionalProperties` and `additionalItems` are defined
+      -- RELATIVE to their siblings, so they need the whole object.
+      let props : List String := match field? "properties" schema with
+        | some (.object ps) => ps.map (fun (k, _) => k)
+        | _ => []
+      let patProps : List String := match field? "patternProperties" schema with
+        | some (.object ps) => ps.map (fun (k, _) => k)
+        | _ => []
+      let itemsIsTuple := match field? "items" schema with
+        | some (.array _) => true
+        | _ => false
+      let tupleLen := match field? "items" schema with
+        | some (.array ss) => ss.length
+        | _ => 0
+      -- Draft-07 §8.3: when `$ref` is present, EVERY other keyword in
+      -- the same schema object is IGNORED. Applying them alongside
+      -- the referenced schema makes a document stricter than it says
+      -- it is, and the suite's `ref.json` measures exactly that.
+      let hasRef := (field? "$ref" schema).isSome
       vall (ms.map (fun (k, v) =>
-        if k == "type" then checkType v inst
+        if hasRef && k != "$ref" then .pass
+        else if k == "$ref" then
+          (match v with
+           | .string r =>
+               (match resolveRefIn reg root r with
+                | some sub => rec' sub inst
+                | none     => .unsupported)
+           | _ => .unsupported)
+        else if k == "type" then checkType v inst
         else if k == "const" then (if jsonEq v inst then .pass else .fail)
         else if k == "enum" then
           (match v with
@@ -205,6 +329,14 @@ partial def validate (schema inst : Json) : VResult :=
            | .string s, some (n, 1) => if (s.toList.length : Int) ≤ n then .pass else .fail
            | .string _, _ => .unsupported
            | _, _ => .pass)
+        else if k == "pattern" then
+          (match inst, v with
+           | .string s, .string pat =>
+               -- UNANCHORED, per draft-07: the pattern must match
+               -- SOMEWHERE in the string, not the whole of it.
+               if L4Factoidal.Regex.regexMatch s pat "" then .pass else .fail
+           | .string _, _ => .unsupported
+           | _, _ => .pass)
         else if k == "minItems" then
           (match inst, instRat v with
            | .array a, some (n, 1) => if (a.length : Int) ≥ n then .pass else .fail
@@ -215,10 +347,36 @@ partial def validate (schema inst : Json) : VResult :=
            | .array a, some (n, 1) => if (a.length : Int) ≤ n then .pass else .fail
            | .array _, _ => .unsupported
            | _, _ => .pass)
-        else if k == "items" then
+        else if k == "uniqueItems" then
+          (match inst, v with
+           | .array a, .bool true =>
+               if (a.zipIdx).all (fun (x, i) =>
+                    (a.zipIdx).all (fun (y, j) => i == j || !(jsonEq x y)))
+               then .pass else .fail
+           | .array _, .bool false => .pass
+           | .array _, _ => .unsupported
+           | _, _ => .pass)
+        else if k == "contains" then
           (match inst with
-           | .array a => vall (a.map (fun e => validate v e))
-           | _        => .pass)
+           | .array a =>
+               if a.any (fun e => rec' v e == .pass) then .pass
+               else if a.any (fun e => rec' v e == .unsupported) then .unsupported
+               else .fail
+           | _ => .pass)
+        else if k == "items" then
+          (match inst, v with
+           -- The TUPLE form: schema i applies to item i, and any item
+           -- past the tuple is left to `additionalItems`.
+           | .array a, .array ss =>
+               vall ((a.zip ss).map (fun (e, sub) => rec' sub e))
+           | .array a, _ => vall (a.map (fun e => rec' v e))
+           | _, _ => .pass)
+        else if k == "additionalItems" then
+          (match inst with
+           | .array a =>
+               if !itemsIsTuple then .pass
+               else vall ((a.drop tupleLen).map (fun e => rec' v e))
+           | _ => .pass)
         else if k == "required" then
           (match inst, v with
            | .object _, .array names =>
@@ -226,31 +384,119 @@ partial def validate (schema inst : Json) : VResult :=
                  | .string nm => if (field? nm inst).isSome then .pass else .fail
                  | _          => .unsupported))
            | _, _ => .pass)
+        else if k == "minProperties" then
+          (match inst, instRat v with
+           | .object o, some (n, 1) => if (o.length : Int) ≥ n then .pass else .fail
+           | .object _, _ => .unsupported
+           | _, _ => .pass)
+        else if k == "maxProperties" then
+          (match inst, instRat v with
+           | .object o, some (n, 1) => if (o.length : Int) ≤ n then .pass else .fail
+           | .object _, _ => .unsupported
+           | _, _ => .pass)
         else if k == "properties" then
           (match inst, v with
-           | .object _, .object props =>
-               vall (props.map (fun (nm, sub) =>
+           | .object _, .object ps =>
+               vall (ps.map (fun (nm, sub) =>
                  match field? nm inst with
-                 | some got => validate sub got
+                 | some got => rec' sub got
                  | none     => .pass))
+           | _, _ => .pass)
+        else if k == "patternProperties" then
+          (match inst, v with
+           | .object o, .object ps =>
+               vall (o.flatMap (fun (nm, got) =>
+                 ps.filterMap (fun (pat, sub) =>
+                   if L4Factoidal.Regex.regexMatch nm pat "" then some (rec' sub got)
+                   else none)))
+           | _, _ => .pass)
+        else if k == "additionalProperties" then
+          (match inst with
+           | .object o =>
+               vall (o.filterMap (fun (nm, got) =>
+                 if props.contains nm then none
+                 else if patProps.any (fun pat =>
+                          L4Factoidal.Regex.regexMatch nm pat "") then none
+                 else some (rec' v got)))
+           | _ => .pass)
+        else if k == "propertyNames" then
+          (match inst with
+           | .object o => vall (o.map (fun (nm, _) => rec' v (.string nm)))
+           | _ => .pass)
+        else if k == "dependencies" then
+          (match inst, v with
+           | .object _, .object ds =>
+               vall (ds.map (fun (nm, dep) =>
+                 if (field? nm inst).isNone then .pass
+                 else match dep with
+                   -- The ARRAY form lists names that must also be
+                   -- present; any other form is a schema to apply.
+                   | .array names =>
+                       vall (names.map (fun n => match n with
+                         | .string req =>
+                             if (field? req inst).isSome then .pass else .fail
+                         | _ => .unsupported))
+                   | sub => rec' sub inst))
            | _, _ => .pass)
         else if k == "allOf" then
           (match v with
-           | .array ss => vall (ss.map (fun s => validate s inst))
+           | .array ss => vall (ss.map (fun s => rec' s inst))
            | _         => .unsupported)
         else if k == "anyOf" then
           (match v with
-           | .array ss => vany (ss.map (fun s => validate s inst))
+           | .array ss => vany (ss.map (fun s => rec' s inst))
            | _         => .unsupported)
+        else if k == "oneOf" then
+          (match v with
+           | .array ss =>
+               let rs := ss.map (fun s => rec' s inst)
+               if rs.any (· == .unsupported) then .unsupported
+               else if (rs.filter (· == .pass)).length == 1 then .pass else .fail
+           | _ => .unsupported)
         else if k == "not" then
-          (match validate v inst with
+          (match rec' v inst with
            | .pass => .fail
            | .fail => .pass
            | .unsupported => .unsupported)
-        -- Annotation-only keywords never affect the verdict.
-        else if ["title", "description", "default", "$comment", "examples",
-                 "$schema", "$id"].contains k then .pass
+        else if k == "if" then
+          -- `if` asserts nothing on its own: the verdict comes from
+          -- the branch it selects. An UNSUPPORTED condition leaves the
+          -- branch unknown, so the whole conditional is unsupported.
+          (match rec' v inst with
+           | .pass =>
+               (match field? "then" schema with
+                | some t => rec' t inst
+                | none   => .pass)
+           | .fail =>
+               (match field? "else" schema with
+                | some e => rec' e inst
+                | none   => .pass)
+           | .unsupported => .unsupported)
+        else if k == "then" || k == "else" then
+          -- Applied by the `if` branch above; alone they assert
+          -- nothing (draft-07 §6.6.2/§6.6.3).
+          (if (field? "if" schema).isSome then .pass else .pass)
+        else if annotationKeywords.contains k then .pass
         else .unsupported))
   | _ => .unsupported
+
+/-- Validate an instance against a whole schema DOCUMENT, with a
+    registry of other documents its `$ref`s may name.
+
+    The document REGISTERS ITSELF under its own `$id`, so a schema
+    that refers to itself by absolute URI resolves without the caller
+    supplying it. -/
+def validateWith (reg : Registry) (schema inst : Json) : VResult :=
+  let selfReg := match field? "$id" schema with
+    | some (.string i) =>
+        let base := match i.splitOn "#" with
+          | b :: _ => b
+          | []     => i
+        [(base, schema)]
+    | _ => []
+  validateIn (selfReg ++ reg) schema 64 schema inst
+
+/-- Validate an instance against a whole schema DOCUMENT. -/
+def validate (schema inst : Json) : VResult := validateWith [] schema inst
 
 end L4Factoidal.JSONSchema
