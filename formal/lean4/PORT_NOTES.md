@@ -10643,3 +10643,48 @@ stated" because the port ships no printer; two fragment printers and
 their round trips now exist. The sentence still holds for the statement
 it is about — both stop at the TOKENS, and neither says the parser
 recovers an AST — and the header now says which is which.
+
+## RIF.Core.Refinement — and a round semantics that differs
+
+`formal/fstar/RIF.Core.Refinement.fst` (364 lines) →
+`L4Factoidal/RIF/EngineTheorems.lean`. The two properties the RDFS
+closure already has, stated for `RIF.closure`:
+
+- `closure_extensive` — the fixpoint never drops an input fact, at any
+  round bound.
+- `step_licensed` — every fact one round emits is the head-instantiation
+  of SOME rule of the program under SOME substitution the body matched.
+
+**A real difference in the engines, not in the proofs.** The F\*
+`one_round_aux` fires the rules IN SEQUENCE against the graph it is
+building, so a later rule sees the earlier rules' new triples WITHIN THE
+SAME ROUND — `RIF.Core.Eval`'s own comment flags that order-dependence,
+and the F\* refinement module needs the "two-graph src/seed" idiom
+because of it: its licensing statement quantifies over a snapshot
+EXTENDING the round's input.
+
+`RIF.step` here folds over the rules accumulating into `acc`, but every
+rule matches against the round's ORIGINAL `facts`. So a round is a
+function of its input alone, rule order does not change what it derives,
+and licensing is a SINGLE-graph statement naming the round's own input.
+
+**The difference is pinned, not asserted.** For `A(x) → B(x)` and
+`B(x) → C(x)` over `A(a)`, one round here derives `B(a)` and nothing
+else — under sequential firing the same round would also derive `C(a)`.
+Two `#guard`s show rule ORDER does not change that, one shows `C(a)`
+arrives on the second round (so the difference is per-round, not in the
+limit), and one shows a single round is genuinely not enough, which is
+what makes the others say something.
+
+**What licensing does NOT say**, stated in the file: that a derived fact
+is TRUE under any semantics. It says the engine only emits
+head-instantiations of its own rules — a PROVENANCE property. Truth
+needs a model theory the RIF port does not carry, and calling this
+soundness would be reading provenance as truth.
+
+**One reusable piece.** `mem_foldl_append` — membership in an
+append-accumulating `List.foldl` is membership in the seed or in one
+item's contribution — is what keeps both licensing inductions short.
+`step_eq_fold` first rewrites `step` into that shape, naming each rule's
+contribution (`ruleContrib`) and blocked flag (`ruleBlocked`) so the
+rewrite is one `congr` rather than a case analysis.
