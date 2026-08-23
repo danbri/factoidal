@@ -1091,3 +1091,84 @@ Rules:
 Standing pin: `tests/local/cli_literal_escape_roundtrip.sh` — six literal
 classes across the `--dump` and store paths, with an anti-vacuity arm that
 corrupts the dump the exact way the bug did and requires the pin to go red.
+
+## Hazard #26 — a batching edit script reports success for edits it discarded (2026-08-23)
+
+**Symptom.** A `python3` heredoc makes five edits to one file, prints
+`ok` after each, exits 0. The build that follows is green. The
+measurement that follows is taken. The commit message describes five
+fixes. Three of them are not in the file.
+
+**Mechanism.** The script reads the file once, applies every
+replacement to the string IN MEMORY, and writes at the END:
+
+```python
+s = open(p).read()
+s = s.replace(a1, b1, 1); print("ok")     # in memory only
+assert a2 in s; s = s.replace(a2, b2, 1)  # <-- raises here
+open(p, 'w').write(s)                     # never reached
+```
+
+An `AssertionError` on ANY later replacement discards every earlier
+one — after the progress lines have already been printed. Nothing
+distinguishes this from success: the file still parses, the build
+still passes, and the suite still runs.
+
+**Cost, 2026-08-23.** The Lean OWL wave-2 commit claimed five
+performance fixes. Three were absent (the threaded search budget,
+the `labelsOf` lookup, the hoisted per-axiom label reads); a sixth
+item was defined and never called. The measurement taken against
+that build said the fixes "bought nothing", and that conclusion went
+into `PORT_NOTES.md`, the parity ledger and a GitHub issue as a
+methodology lesson about premature optimisation. With the edits
+ACTUALLY applied the same suite went from 26 m 34 s to 4 m 30 s — a
+5.9× speedup — and the score went UP by one case. The wrong lesson
+had to be retracted from three documents.
+
+**Rules.**
+
+1. **Write after each replacement, or verify the write.** One
+   `open(p,'w').write(s)` per edit, or a final `assert b1 in
+   open(p).read()` per claim.
+2. **A green build is not evidence that an edit landed.** The
+   unchanged file also builds. This is anti-pattern #27's family:
+   the tooling reports success for work that did not happen.
+3. **`grep -c` the file for every claim before writing it into a
+   commit message.** Five claims, five greps, under a minute. It
+   would have caught all three.
+4. **A measurement is a measurement OF A BUILD.** If an edit was not
+   verified to land, the number that follows is about the old code.
+   Re-measure.
+
+**Related.** Hazard #18 (a container recycle silently un-happens an
+uncommitted edit) and anti-pattern #27 (a landing drops module-list
+entries; the build exits 0 and the feature is not built) are the same
+shape: success reported for work that did not happen.
+
+## Hazard #27 — a hand-built guard proves a rule CORRECT and says nothing about whether it FIRES (2026-08-23)
+
+**Symptom.** A new engine rule is written, a `#guard` is built by
+hand to exercise it, the guard passes, the rule is landed. The corpus
+score does not move by a single case.
+
+**Cost, 2026-08-23.** The Lean OWL ≤-rule (identify two successors of
+a node over its cardinality bound) was implemented by REWRITING
+EDGES: redirect every tableau-internal edge mentioning the absorbed
+node. A hand-built graph reproducing `WebOnt-description-logic-003`
+refuted correctly. On the corpus the rule fired zero times, because
+the `--dl` regime runs a materialisation pass FIRST and that pass
+writes its own existential witnesses INTO the graph — where an edge
+cannot be rewritten at all. Every successor that mattered came from
+there.
+
+**Rule.** A synthetic input built from the rule's own preconditions
+tests the rule's LOGIC. It cannot test whether the real pipeline ever
+presents those preconditions. For a rule meant to move a suite score,
+the guard is necessary and the SCORE is the evidence — and if the
+score does not move, instrument whether the rule fired at all before
+assuming it is merely incomplete.
+
+This is `skills/measuring-inference`'s "synthetic shapes lie about
+real vocabularies", in the place it is least expected: not the data,
+the PIPELINE. The upstream stage had changed the shape of the input
+the rule was written against.
