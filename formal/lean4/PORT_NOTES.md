@@ -9743,3 +9743,43 @@ injectivity side condition. The Lean tree's index is `OWL.RL.Index`, a
 `Std.HashMap`-backed structure whose lookups are total functions with
 their own lemmas. Transcribing predicates about a data structure this
 tree does not have would be a second copy of nothing.
+
+## `RDF.Entailment.RDFS.ModelTheory` → `L4Factoidal/RDF/EntailmentRdfsModelTheory.lean`
+
+The RDF and RDFS semantic conditions, and every rule row proved TRUE
+under them.
+
+**This is what turns the transcribed tables into a specification.** The
+two `*.Spec` modules give the syntactic rule tables of §8 and §9. On
+their own they are a transcription nobody has checked against the
+semantics. `rdfsLicensed_true` closes the loop: every triple the
+licensing relation licenses is true in every interpretation that meets
+the conditions and satisfies the premises. An engine proved to emit only
+LICENSED triples is thereby proved to emit only TRUE ones — which is the
+whole point of having proved two of `RDFS.Closure`'s rows licensed in
+the previous landing.
+
+**Twenty-one lemmas, one per case of the licensing relation.** Thirteen
+rule rows, rdfD2, the two axiom families, and the three consequences
+that are not rows. Each concludes under the SAME assignment the premises
+hold under, because no row here mints a fresh blank node — which is
+exactly why the bnode-minting rows were excluded from `RdfsClosed` two
+landings ago.
+
+**Two composition theorems make it usable.**
+`rdfsStepLicensed_holds` says a pass that emits only licensed triples
+preserves truth; `rdfsStepLicensed_entails` turns that into
+`RdfsEntails`. That is the shape a fixed-point driver composes, and it
+is why the licensing relation reads its premises off the INPUT graph
+rather than off a growing accumulator.
+
+**The conditions are the weakest readings**, as at the OWL rung:
+only-if halves and IP/IC membership side conditions dropped where the
+specification's sentence is an implication rather than an equality.
+`CondSubClassOfIc` and `CondSubPropertyOfIp` are the exceptions the
+endpoint-reflexivity consequences need, and they are exactly §9's own
+"x and y are in IC" clause.
+
+`CondDomain` and `CondRange` are REUSED from `OWL.Semantics` rather
+than restated: §9 and OWL 2 RDF-Based Semantics Table 5.8 state the
+same condition, and the F\* tree shares them the same way.
