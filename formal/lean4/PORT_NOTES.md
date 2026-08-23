@@ -6101,3 +6101,47 @@ missing feature: the EXTERNAL DTD SUBSET. `<!DOCTYPE doc SYSTEM
 `valid/ext-sa/*` puts the entity definitions there. The system
 identifier is now recorded on `Doctype.systemId` — recorded, not
 fetched, because fetching needs I/O and the parser is a pure function.
+
+---
+
+## XML: an entity's replacement text is CONTENT, not characters
+
+The parser refused any entity whose replacement text held a `<`:
+"entity replacement text contains markup; unsupported". That refusal
+was honest — better than splicing markup in as text — and it rejected
+documents the specification calls well-formed. §4.4.2 (Included) says
+the replacement text is processed as though it were part of the
+document at the reference, so it is REPARSED as `[43] content` and its
+nodes spliced in.
+
+The rule that makes this work is §4.5, and getting it wrong costs a
+test either way:
+
+* a CHARACTER reference is expanded when the replacement text is
+  BUILT, so `<!ENTITY e "&#60;foo></foo>">` has the replacement text
+  `<foo></foo>` and reparsing gives an ELEMENT (`valid/sa/024`);
+* a GENERAL-entity reference is BYPASSED there and included at the
+  reference site instead, so `<!ENTITY e "&lt;foo>">` still has the
+  replacement text `&lt;foo>` and reparsing gives the TEXT `<foo>`
+  (`valid/sa/088`).
+
+A first attempt expanded everything and reparsed the result. That
+turned `&lt;` into markup and lost `valid/sa/088`. A second attempt
+kept everything raw and reparsed that. That left `&#60;` as a
+reference and lost `valid/sa/024`. The two cases are a matched pair,
+and the only version that holds both is the specification's own:
+normalise the EntityValue at declaration — character references in,
+general-entity references left alone.
+
+`parseTextContent` also has to STOP before a markup-carrying
+reference, or `<doc>a&e;b</doc>` goes down the character path and is
+rejected on the `<` that the character path is right to reject.
+
+📊 MEASURED: **1766 pass, 104 fail (out of 1870 in profile)**, from
+1744. Every `valid/sa` and `valid/not-sa` case that had been rejected
+now passes.
+
+The 104 remaining need EXTERNAL entities — `valid/ext-sa/*` puts the
+entity text in a separate file, and `o-p61fail1` and its neighbours
+put the ERROR in the `.dtd` the DOCTYPE names. `Doctype.systemId`
+records the identifier; nothing fetches it yet.

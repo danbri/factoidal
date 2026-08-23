@@ -396,4 +396,45 @@ private def wf (src : String) : Bool := isWellFormed src
 #guard !(wf "<!DOCTYPE doc [\n<!ENTITY % pe \"<!---->\">\n% pe;\n]>\n<doc/>")
 #guard wf "<!DOCTYPE doc [\n<!ENTITY % pe \"<!---->\">\n%pe;\n]>\n<doc/>"
 
+/-! ## §4.4.2 Included: an entity's replacement text is CONTENT
+
+The parser used to REFUSE any entity whose replacement text held a
+`<`: "entity replacement text contains markup; unsupported". That was
+an honest refusal rather than a wrong splice, and it still rejected
+documents the specification calls well-formed — the whole
+`valid/ext-sa` family and several `valid/sa` cases.
+
+The replacement text is now reparsed as `[43] content` and the nodes
+spliced in at the reference. -/
+
+#guard wf "<!DOCTYPE doc [<!ENTITY e \"<foo/>\">]><doc>&e;</doc>"
+#guard wf "<!DOCTYPE doc [<!ENTITY e \"<foo/>\">]><doc>a&e;b</doc>"
+-- WFC: Parsed Entity — the fragment must parse as content in full.
+#guard !(wf "<!DOCTYPE doc [<!ENTITY e \"<foo>\">]><doc>&e;</doc>")
+#guard !(wf "<!DOCTYPE doc [<!ENTITY e \"</foo>\">]><doc>&e;</doc>")
+
+/-! ## §4.5: which references are expanded to build the replacement text
+
+A CHARACTER reference is expanded when the replacement text is built;
+a GENERAL-entity reference is bypassed and included at the reference
+site instead. That difference is what decides whether a `<` in the
+text is MARKUP, and collapsing the two gets one of this pair wrong
+whichever way it falls. -/
+
+-- `&#60;` is expanded here, so the replacement text IS `<foo></foo>`
+-- and reparsing gives an ELEMENT (valid/sa/024).
+#guard wf ("<!DOCTYPE doc [<!ELEMENT doc (foo)><!ELEMENT foo (#PCDATA)>" ++
+           "<!ENTITY e \"&#60;foo></foo>\">]><doc>&e;</doc>")
+-- `&lt;` is a general entity and is bypassed, so the replacement text
+-- is still `&lt;foo>` and reparsing gives the TEXT `<foo>`
+-- (valid/sa/088).
+#guard wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+           "<!ENTITY e \"&lt;foo>\">]><doc>&e;</doc>")
+-- A character reference inside markup is expanded too (valid/sa/087).
+#guard wf ("<!DOCTYPE doc [<!ENTITY e \"<foo/&#62;\">" ++
+           "<!ELEMENT doc (foo)><!ELEMENT foo EMPTY>]><doc>&e;</doc>")
+-- CDATA inside an entity survives (valid/sa/114).
+#guard wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+           "<!ENTITY e \"<![CDATA[&foo;]]>\">]><doc>&e;</doc>")
+
 end L4Factoidal.XML.Tests

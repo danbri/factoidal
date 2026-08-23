@@ -341,10 +341,16 @@ def expandEntityValue (ents : EntityTable) (visited : List String)
     else
       let ch := charAt s pos
       if ch == '<' then
-        -- Stage-A boundary: replacement text carrying literal markup
-        -- would have to be reparsed as content, which this slice does
-        -- not do. Reject rather than accept it as text.
-        .err "entity replacement text contains markup ('<'); unsupported" pos
+        -- This function expands replacement text into CHARACTERS, and
+        -- its callers are the ones where a `<` is a well-formedness
+        -- error outright: an attribute value (WFC: No `<` in
+        -- Attribute Values) and `[9] EntityValue` inside another
+        -- entity.
+        --
+        -- CONTENT does not come here. There the replacement text is
+        -- REPARSED as `[43] content` and the nodes are spliced in
+        -- (§4.4.2 Included), which is what `parseChildren` does.
+        .err "a `<` in entity replacement text is not allowed here" pos
       else if ch == '&' then
         if pos + 1 < s.size && charAt s (pos + 1) == '#' then
           if pos + 2 ≥ s.size then .err "unterminated character reference in entity" pos
@@ -547,6 +553,42 @@ def hasCdataClose (s : Chars) (start stop : Nat) : Nat → Bool
     else if charAt s start == ']' && charAt s (start + 1) == ']' && charAt s (start + 2) == '>' then true
     else hasCdataClose s (start + 1) stop fuel
 
+/-- At `pos`, just after a `&`: the RAW replacement text of a GENERAL
+    ENTITY reference and the position after its `;`, or `none` when
+    this is not one (a character reference, a predefined entity, an
+    undeclared name, a malformed reference).
+
+    RAW, deliberately. §4.4.2 says an included parsed entity's
+    replacement text is processed AS CONTENT at the reference, so the
+    references inside it are the content parser's business, not this
+    function's. Expanding first and re-parsing the result confuses two
+    things that must stay apart: a literal `<` in the replacement text
+    is MARKUP, while a `<` that arrives from `&lt;` is a CHARACTER.
+    `<!ENTITY e "&lt;foo>">` is well-formed and its content is the
+    text `<foo>` (`valid/sa/088`); pre-expanding it produced `<foo>`
+    and then tried to parse an unclosed element.
+
+    `none` is not an error verdict — the caller falls through to the
+    ordinary text path, which produces the real message. -/
+def generalEntityRaw (ents : EntityTable) (s : Chars) (pos : Nat)
+    : Option (String × Nat) :=
+  if pos ≥ s.size || charAt s pos == '#' then none
+  else match parseName s pos with
+    | .err _ _ => none
+    | .ok name posN =>
+        if posN ≥ s.size || charAt s posN != ';' then none
+        else if isPredefinedEntity name then none
+        else (lookupEntity name ents).map (fun v => (v, posN + 1))
+
+/-- Does the reference at `pos` name an entity whose replacement text
+    carries LITERAL markup? Such a reference is not text: it is a
+    content fragment, and the text scanner must STOP before it so the
+    content parser can splice it. -/
+def entityCarriesMarkup (ents : EntityTable) (s : Chars) (pos : Nat) : Bool :=
+  match generalEntityRaw ents s pos with
+  | some (v, _) => v.toList.contains '<'
+  | none        => false
+
 /-- Character data with `[67] Reference`s resolved, up to the next `<`.
 Port of F* `parse_text_content`. -/
 def parseTextContent (ents : EntityTable) (s : Chars) (pos : Nat)
@@ -558,6 +600,13 @@ def parseTextContent (ents : EntityTable) (s : Chars) (pos : Nat)
       let ch := charAt s pos
       if ch == '<' then .ok (String.join acc.reverse) pos
       else if ch == '&' then
+        -- A reference to an entity that carries MARKUP ends the text
+        -- run: what follows is a content fragment, not characters.
+        -- Without this stop, `<doc>a&e;b</doc>` with a markup-carrying
+        -- `e` went through the character path and was rejected.
+        if entityCarriesMarkup ents s (pos + 1) then
+          .ok (String.join acc.reverse) pos
+        else
         match parseReference ents s (pos + 1) with
         | .err m p => .err m p
         | .ok decoded pos' => parseTextContent ents s pos' (decoded :: acc) fuel
@@ -777,6 +826,7 @@ def parseXmlDecl (s : Chars) (pos : Nat) : PResult XmlDecl :=
                 | none => finishXmlDecl s pos6
                     { version := vernum, encoding := none, standalone := none }
 
+
 /-! ## `[39] element` -/
 
 mutual
@@ -853,6 +903,37 @@ def parseChildren (ents : EntityTable) (s : Chars) (pos : Nat)
       -- the infoset, so emitting an empty text node would both
       -- misreport the infoset and break the serialiser round-trip
       -- (`<doc></doc>` re-parses with no child at all).
+      -- An entity whose replacement text carries MARKUP is reparsed
+      -- as `[43] content` and its nodes spliced in. §4.4.2: an
+      -- included parsed entity's replacement text is processed as
+      -- though it were part of the document at the reference.
+      --
+      -- Before this, `expandEntityValue` rejected the `<` outright,
+      -- so `<!ENTITY e "<foo/>">` with `<doc>&e;</doc>` was reported
+      -- NOT WELL-FORMED. That was an honest refusal — better than
+      -- splicing the markup in as text — and it still rejected
+      -- documents the specification calls well-formed.
+      --
+      -- **WFC: Parsed Entity.** The whole fragment must parse as
+      -- content: a fragment that stops early has a stray `</` or
+      -- worse, and the reference is then a well-formedness error
+      -- rather than a partial splice.
+      let markupFrag : Option (String × Nat) :=
+        if charAt s pos == '&' then
+          match generalEntityRaw ents s (pos + 1) with
+          | some (txt, pos') => if txt.toList.contains '<' then some (txt, pos') else none
+          | none             => none
+        else none
+      match markupFrag with
+      | some (txt, posAfter) =>
+          let farr : Chars := txt.toList.toArray
+          (match parseChildren ents farr 0 [] fuel with
+           | .err m p => .err m p
+           | .ok nodes q =>
+               if q < farr.size then
+                 .err "an entity's replacement text does not parse as content (WFC: Parsed Entity)" pos
+               else parseChildren ents s posAfter (nodes.reverse ++ acc) fuel)
+      | none =>
       match parseTextContent ents s pos [] (s.size + 1) with
       | .err m p => .err m p
       | .ok text pos' =>
@@ -1390,6 +1471,49 @@ def parseNotationDecl (s : Chars) (pos : Nat) : PResult Unit :=
           | .ok _ p5 => declEnd s p5
 
 
+/-- `[9] EntityValue` → REPLACEMENT TEXT (§4.5).
+
+    Constructing the replacement text expands CHARACTER references and
+    leaves GENERAL-entity references alone (they are "bypassed" in an
+    EntityValue, §4.4.7, and included at the reference site instead).
+    That difference decides whether a `<` in the text is MARKUP:
+
+      * `<!ENTITY e "&#60;foo></foo>">` — `&#60;` is expanded here, so
+        the replacement text IS `<foo></foo>` and reparsing it gives an
+        ELEMENT (`valid/sa/024`);
+      * `<!ENTITY e "&lt;foo>">` — `&lt;` is a general entity and is
+        bypassed, so the replacement text is still `&lt;foo>` and
+        reparsing it gives the TEXT `<foo>` (`valid/sa/088`).
+
+    Storing the raw text and expanding everything later collapses those
+    two into one, and whichever way the collapse falls, one of the pair
+    is then wrong. -/
+def normalizeEntityValue (s : Chars) (pos : Nat) (acc : List String)
+    : Nat → PResult String
+  | 0 => .ok (String.join acc.reverse) pos
+  | fuel + 1 =>
+    if pos ≥ s.size then .ok (String.join acc.reverse) pos
+    else
+      let ch := charAt s pos
+      if ch == '&' && pos + 1 < s.size && charAt s (pos + 1) == '#' then
+        if pos + 2 < s.size && charAt s (pos + 2) == 'x' then
+          match parseRefDigits isHexDigit s (pos + 3) [] (s.size + 1) with
+          | .err m p => .err m p
+          | .ok digits pos' =>
+              let cp := hexValue digits
+              if isXmlCharCode cp then
+                normalizeEntityValue s pos' (codepointToString cp :: acc) fuel
+              else .err "character reference to a non-Char codepoint" pos'
+        else
+          match parseRefDigits isDecDigit s (pos + 2) [] (s.size + 1) with
+          | .err m p => .err m p
+          | .ok digits pos' =>
+              let cp := decValue digits
+              if isXmlCharCode cp then
+                normalizeEntityValue s pos' (codepointToString cp :: acc) fuel
+              else .err "character reference to a non-Char codepoint" pos'
+      else normalizeEntityValue s (pos + 1) (String.singleton ch :: acc) fuel
+
 /-- `[70] EntityDecl ::= GEDecl | PEDecl`,
     `[71] GEDecl ::= '<!ENTITY' S Name S EntityDef S? '>'`,
     `[72] PEDecl ::= '<!ENTITY' S '%' S Name S PEDef S? '>'`,
@@ -1447,13 +1571,17 @@ def parseEntityDecl (s : Chars) (pos : Nat) (ents : EntityTable) :
               match declEnd s p6 with
               | .err m p => .err m p
               | .ok _ p7 =>
-                -- A PARAMETER entity is not a general entity, so it
-                -- never enters the table a `&name;` reference reads.
-                let ents' := if isPE then ents else
-                  match lookupEntity name ents with
-                  | some _ => ents
-                  | none   => (name, rawval) :: ents
-                .ok ents' p7
+                let rawArr : Chars := rawval.toList.toArray
+                match normalizeEntityValue rawArr 0 [] (rawArr.size + 1) with
+                | .err m p => .err m p
+                | .ok value _ =>
+                  -- A PARAMETER entity is not a general entity, so it
+                  -- never enters the table a `&name;` reference reads.
+                  let ents' := if isPE then ents else
+                    match lookupEntity name ents with
+                    | some _ => ents
+                    | none   => (name, value) :: ents
+                  .ok ents' p7
           else
             match parseExternalID s p5 with
             | .err m p => .err m p
