@@ -162,6 +162,7 @@ alias={
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
  "SPARQL11.Expression.Refinement":"SPARQL.ExprRefinement",
  "RDF.Entailment.Simple.Refinement":"RDF.EntailmentSimpleRefinement",
+ "SPARQL11.Algebra.Spec":"SPARQL.AlgebraSpec",
 }
 # ---------------------------------------------------------------------------
 # What counts as coverage.

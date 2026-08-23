@@ -10791,3 +10791,60 @@ already holds, which is what makes `Extends.cons` provable.
 
 Coverage after this landing: 190 of 220 F\* modules covered, 30 not
 covered.
+
+---
+
+## `SPARQL11.Algebra.Spec` → `SPARQL/AlgebraSpec.lean` (2026-08-23)
+
+A declarative statement of the SPARQL 1.1 algebra, transcribed from
+§18.3, §18.4 and §18.5, that computes almost nothing and mentions no
+function and no type of `SPARQL/Algebra.lean`. Its only
+project-internal import is `RDF/Core.lean`, and that single import line
+is the mechanical independence check — the same one the F\* source
+states about its `open` list.
+
+**Two layers, kept apart.** §18.5 defines each operator twice: as a SET
+of solution mappings and by a cardinality clause. Part 3 states the set
+layer, part 4 the bag layer. Distinct is why they must stay apart — its
+set layer is "the same elements", so all of its content is in
+`distinctCardSpec`, and letting the set layer stand in for the
+definition would lose the operator.
+
+**The representation is not the meaning.** A solution mapping is a
+partial function carried as an association list, because that is what
+the evaluator produces and nothing should translate at the refinement
+boundary. `SMapEq` says two lists denote one mapping; every definition
+is stated over `sval` rather than over the domain list, so it is
+insensitive to layout by construction, and `compatible_congr_left`,
+`merge_unique` and `mult_congr` check that.
+
+**One lemma pins a REPRESENTATION hazard rather than a definition.**
+`compatible_refl` looks trivial. It is worth stating because the F\*
+evaluator's `sm_compatible` is not reflexive on a duplicate-key list
+(`lemma_sm_compatible_not_refl_with_dup_keys`, 2026-07-29). Proving
+reflexivity of the SPECIFICATION relation is what places that
+difference on the representation and not on the definition. `smapWf`
+names the well-formed representations, and two `#guard`s show a
+duplicate-key list is badly formed yet denotes a perfectly good
+mapping.
+
+**Merge is a relation, not a function.** `IsMerge mu1 mu2 mu` avoids
+committing any downstream statement to a list layout;
+`mergeCanonical_isMerge` supplies the witness that keeps it from being
+vacuous, and `merge_unique` says the merge is determined up to
+`SMapEq`.
+
+**Term identity is transcribed, not delegated.** `termIdEq` is written
+out from RDF 1.1 Concepts §3.3 — same lexical form character by
+character, same datatype IRI, same language tag NOT case-folded, same
+base direction — rather than using the derived `DecidableEq`, so the
+transcription can be diffed against the specification text.
+`termIdEq_sound` and `termIdEq_complete` tie it back.
+
+**What is not here.** The refinement proof itself
+(`SPARQL11.Algebra.Refinement.fst`, 2497 lines) is a separate module
+and is not ported. Without it this file is a statement, not a result
+about the evaluator.
+
+Coverage after this landing: 191 of 220 F\* modules covered, 29 not
+covered.

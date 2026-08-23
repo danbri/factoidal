@@ -19,6 +19,7 @@ import L4Factoidal.RDF.IsomorphismTheorems
 import L4Factoidal.RDF.IsomorphismTests
 import L4Factoidal.SPARQL.PropertyPath
 import L4Factoidal.SPARQL.Algebra
+import L4Factoidal.SPARQL.AlgebraSpec
 import L4Factoidal.SPARQL.Invariants
 import L4Factoidal.RDFS.Vocabulary
 import L4Factoidal.RDFS.RdfsCore
