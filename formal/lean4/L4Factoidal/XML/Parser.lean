@@ -1086,9 +1086,344 @@ def scanAttlistIds (s : Chars) (pos gt : Nat) (acc : List (String × String)) :
   | .err _ _ => acc
   | .ok elem p1 => scanAttDefs s p1 gt elem acc gt
 
+/-! ### The internal subset's markup declarations, parsed rather than
+skipped
+
+`parseIntSubset` used to step over `<!ELEMENT`, `<!ATTLIST`,
+`<!NOTATION` and anything else beginning `<!` by scanning to the next
+`>` outside quotes. That accepts a malformed declaration, and the W3C
+conformance suite is largely made of them: `<!ENTITY foo PUBLIC "id">`
+with no system literal, a comment inside a declaration, an ATTLIST
+whose default is a bare token, an `<![INCLUDE[ ]]>` in the internal
+subset. 674 `not-wf` documents were accepted for that one reason
+(measured 2026-08-23).
+
+These productions are the grammar, and they REJECT. They do not build
+a DTD model — this parser stays non-validating, so an `<!ELEMENT`
+declaration is checked for shape and then discarded. -/
+
+/-- `[11] SystemLiteral ::= ('"' [^"]* '"') | ("'" [^']* "'")`. -/
+def parseSystemLiteral (s : Chars) (pos : Nat) : PResult String :=
+  if pos ≥ s.size then .err "expected a system literal" pos
+  else
+    let q := charAt s pos
+    if q != '"' && q != '\'' then .err "expected a quoted system literal" pos
+    else
+      let rec go (i : Nat) : Nat → PResult String
+        | 0 => .err "unterminated system literal" i
+        | f + 1 =>
+            if i ≥ s.size then .err "unterminated system literal" i
+            else if charAt s i == q then .ok (sub s (pos + 1) i) (i + 1)
+            else go (i + 1) f
+      go (pos + 1) (s.size + 1)
+
+/-- `[13] PubidChar`. -/
+def isPubidChar (c : Char) : Bool :=
+  c == ' ' || c == '\r' || c == '\n' ||
+  ('a' ≤ c && c ≤ 'z') || ('A' ≤ c && c ≤ 'Z') || ('0' ≤ c && c ≤ '9') ||
+  "-'()+,./:=?;!*#@$_%".toList.contains c
+
+/-- `[12] PubidLiteral`. Its character repertoire is RESTRICTED, and a
+    character outside it is a well-formedness error rather than a
+    curiosity. -/
+def parsePubidLiteral (s : Chars) (pos : Nat) : PResult String :=
+  match parseSystemLiteral s pos with
+  | .err m p => .err m p
+  | .ok lit p' =>
+      if lit.toList.all isPubidChar then .ok lit p'
+      else .err "character not permitted in a public identifier" pos
+
+/-- `[75] ExternalID ::= 'SYSTEM' S SystemLiteral
+                        | 'PUBLIC' S PubidLiteral S SystemLiteral`.
+    The PUBLIC form REQUIRES the system literal; without it the
+    declaration is malformed, which is what `not-wf-sa-054` checks. -/
+def parseExternalID (s : Chars) (pos : Nat) : PResult Unit :=
+  if peekLit "SYSTEM" s pos then
+    match skipSpace1 s (pos + 6) with
+    | .err m p => .err m p
+    | .ok _ p1 => match parseSystemLiteral s p1 with
+      | .err m p => .err m p
+      | .ok _ p2 => .ok () p2
+  else if peekLit "PUBLIC" s pos then
+    match skipSpace1 s (pos + 6) with
+    | .err m p => .err m p
+    | .ok _ p1 => match parsePubidLiteral s p1 with
+      | .err m p => .err m p
+      | .ok _ p2 => match skipSpace1 s p2 with
+        | .err m p => .err m p
+        | .ok _ p3 => match parseSystemLiteral s p3 with
+          | .err m p => .err m p
+          | .ok _ p4 => .ok () p4
+  else .err "expected SYSTEM or PUBLIC" pos
+
+/-- `[83] PublicID ::= 'PUBLIC' S PubidLiteral` — the NOTATION-only
+    form, which takes no system literal. -/
+def parseNotationID (s : Chars) (pos : Nat) : PResult Unit :=
+  if peekLit "PUBLIC" s pos then
+    match skipSpace1 s (pos + 6) with
+    | .err m p => .err m p
+    | .ok _ p1 => match parsePubidLiteral s p1 with
+      | .err m p => .err m p
+      | .ok _ p2 =>
+          -- The system literal is OPTIONAL here, unlike in ExternalID.
+          let p3 := skipSpace s p2
+          if p3 < s.size && (charAt s p3 == '"' || charAt s p3 == '\'') then
+            match parseSystemLiteral s p3 with
+            | .err m p => .err m p
+            | .ok _ p4 => .ok () p4
+          else .ok () p2
+  else parseExternalID s pos
+
+/-- Require `S? '>'` — the tail every markup declaration ends with. A
+    declaration that has anything else left is malformed. -/
+def declEnd (s : Chars) (pos : Nat) : PResult Unit :=
+  let p := skipSpace s pos
+  if p < s.size && charAt s p == '>' then .ok () (p + 1)
+  else .err "expected '>' at the end of a markup declaration" p
+
+/-- `[7] Nmtoken ::= (NameChar)+`. -/
+def parseNmtoken (s : Chars) (pos : Nat) : PResult Unit :=
+  let e := scanNameEnd s pos (s.size - pos + 1)
+  if e > pos then .ok () e else .err "expected an Nmtoken" pos
+
+/-- The loop of `parenList`. Fuel-based like the rest of this parser:
+    `PResult` has no `Inhabited` instance, so a `partial def` cannot
+    return one, and adding an instance to a shared result type to buy
+    one loop is the wrong trade. -/
+def parenListGo (item : Chars → Nat → PResult Unit) (conn : Char)
+    (s : Chars) (i : Nat) : Nat → PResult Unit
+  | 0 => .err "list too long" i
+  | f + 1 =>
+    let j := skipSpace s i
+    match item s j with
+    | .err m p => .err m p
+    | .ok _ k =>
+        let k2 := skipSpace s k
+        if k2 < s.size && charAt s k2 == conn then parenListGo item conn s (k2 + 1) f
+        else if k2 < s.size && charAt s k2 == ')' then .ok () (k2 + 1)
+        else .err "expected a connector or ')'" k2
+
+/-- A parenthesised list of `item`s separated by ONE connector,
+    consistently: `'(' S? item (S? conn S? item)* S? ')'`. Used for the
+    ATTLIST enumeration forms, where the connector is always `|`. -/
+def parenList (item : Chars → Nat → PResult Unit) (conn : Char)
+    (s : Chars) (pos : Nat) : PResult Unit :=
+  if pos ≥ s.size || charAt s pos != '(' then .err "expected '('" pos
+  else parenListGo item conn s (pos + 1) (s.size + 1)
+
+/-! #### `[47]–[51]` content models
+
+A content model is a GRAMMAR, not a balanced-paren blob. The suite
+tests it directly: `(a,b,c)` is not an attribute enumeration (those
+take `|`), `((root) ?)` puts whitespace before an occurrence indicator
+where the production allows none, and `(foo, bar? foo)` omits a
+connector. Stepping over the parentheses accepted all three. -/
+
+mutual
+
+/-- `[48] cp ::= (Name | choice | seq) ('?' | '*' | '+')?`. The
+    occurrence indicator binds IMMEDIATELY — no whitespace before
+    it. -/
+def parseCp (s : Chars) (pos : Nat) : Nat → PResult Unit
+  | 0 => .err "content model too deep" pos
+  | fuel + 1 =>
+  let after :=
+    if pos < s.size && charAt s pos == '(' then parseChoiceOrSeq s pos fuel
+    else match parseName s pos with
+      | .err m p => .err m p
+      | .ok _ p' => .ok () p'
+  match after with
+  | .err m p => .err m p
+  | .ok _ p =>
+      if p < s.size && (charAt s p == '?' || charAt s p == '*' || charAt s p == '+')
+      then .ok () (p + 1) else .ok () p
+
+/-- The loop of `parseChoiceOrSeq`: one member, then either the SAME
+    connector again or the closing paren. -/
+def cpListGo (s : Chars) (i : Nat) (conn : Option Char) : Nat → PResult Unit
+  | 0 => .err "content model too long" i
+  | fuel + 1 =>
+  let j := skipSpace s i
+  match parseCp s j fuel with
+  | .err m p => .err m p
+  | .ok _ k =>
+      let k2 := skipSpace s k
+      if k2 ≥ s.size then .err "unterminated content model" k2
+      else
+        let c := charAt s k2
+        if c == ')' then .ok () (k2 + 1)
+        else if c == '|' || c == ',' then
+          match conn with
+          | some c0 =>
+              if c0 == c then cpListGo s (k2 + 1) conn fuel
+              else .err "a content model mixes ',' and '|'" k2
+          | none => cpListGo s (k2 + 1) (some c) fuel
+        else .err "expected ',', '|' or ')' in a content model" k2
+
+/-- `[49] choice` / `[50] seq`: one `(`-group whose members are joined
+    by a SINGLE connector, `|` throughout or `,` throughout. -/
+def parseChoiceOrSeq (s : Chars) (pos : Nat) : Nat → PResult Unit
+  | 0 => .err "content model too deep" pos
+  | fuel + 1 =>
+  if pos ≥ s.size || charAt s pos != '(' then .err "expected '('" pos
+  else cpListGo s (pos + 1) none fuel
+
+end
+
+/-- The name list of a mixed content model. -/
+def mixedGo (s : Chars) (i : Nat) (n : Nat) : Nat → PResult Unit
+  | 0 => .err "mixed content model too long" i
+  | f + 1 =>
+  let j := skipSpace s i
+  if j ≥ s.size then .err "unterminated mixed content model" j
+  else if charAt s j == '|' then
+    let k := skipSpace s (j + 1)
+    match parseName s k with
+    | .err m p => .err m p
+    | .ok _ k' => mixedGo s k' (n + 1) f
+  else if charAt s j == ')' then
+    -- With NAMES the trailing `*` is required; with none it is
+    -- OPTIONAL — `(#PCDATA)` and `(#PCDATA)*` are both in [51], and
+    -- rejecting the second broke eight documents the suite calls
+    -- valid.
+    (if j + 1 < s.size && charAt s (j + 1) == '*' then .ok () (j + 2)
+     else if n == 0 then .ok () (j + 1)
+     else .err "a mixed content model with names must end ')*'" j)
+  else .err "expected '|' or ')' in a mixed content model" j
+
+/-- `[51] Mixed ::= '(' S? '#PCDATA' (S? '|' S? Name)* S? ')*'
+                  | '(' S? '#PCDATA' S? ')'`. With one or more names
+    the trailing `*` is REQUIRED. -/
+def parseMixed (s : Chars) (pos : Nat) : PResult Unit :=
+  match pchar '(' s pos with
+  | .err m p => .err m p
+  | .ok _ p1 =>
+      let p2 := skipSpace s p1
+      match pstring "#PCDATA" s p2 with
+      | .err m p => .err m p
+      | .ok _ p3 =>
+          mixedGo s p3 0 (s.size + 1)
+
+/-- `[46] contentspec ::= 'EMPTY' | 'ANY' | Mixed | children`. -/
+def parseContentSpec (s : Chars) (pos : Nat) : PResult Unit :=
+  if peekLit "EMPTY" s pos then .ok () (pos + 5)
+  else if peekLit "ANY" s pos then .ok () (pos + 3)
+  else if pos < s.size && charAt s pos == '(' then
+    let p := skipSpace s (pos + 1)
+    if peekLit "#PCDATA" s p then parseMixed s pos
+    else
+      -- `[47] children ::= (choice | seq) ('?' | '*' | '+')?`
+      match parseChoiceOrSeq s pos (s.size + 1) with
+      | .err m q => .err m q
+      | .ok _ q =>
+          if q < s.size && (charAt s q == '?' || charAt s q == '*' || charAt s q == '+')
+          then .ok () (q + 1) else .ok () q
+  else .err "expected a content specification" pos
+
+/-- `[45] elementdecl ::= '<!ELEMENT' S Name S contentspec S? '>'`,
+    with `[46] contentspec ::= 'EMPTY' | 'ANY' | Mixed | children`. -/
+def parseElementDecl (s : Chars) (pos : Nat) : PResult Unit :=
+  match pstring "<!ELEMENT" s pos with
+  | .err m p => .err m p
+  | .ok _ p1 => match skipSpace1 s p1 with
+    | .err m p => .err m p
+    | .ok _ p2 => match parseName s p2 with
+      | .err m p => .err m p
+      | .ok _ p3 => match skipSpace1 s p3 with
+        | .err m p => .err m p
+        | .ok _ p4 =>
+            match parseContentSpec s p4 with
+            | .err m p => .err m p
+            | .ok _ p5 => declEnd s p5
+
+/-- The ten `[54] AttType` forms. `NOTATION` takes an enumeration. -/
+def parseAttType (s : Chars) (pos : Nat) : PResult Unit :=
+  let simple := ["CDATA", "IDREFS", "IDREF", "ID", "ENTITIES", "ENTITY",
+                 "NMTOKENS", "NMTOKEN"]
+  match simple.find? (fun k => peekLit k s pos) with
+  | some k => .ok () (pos + k.length)
+  | none =>
+      if peekLit "NOTATION" s pos then
+        -- `[58] NotationType`: a `|`-separated list of NAMES.
+        match skipSpace1 s (pos + 8) with
+        | .err m p => .err m p
+        | .ok _ p1 =>
+            parenList (fun s' i => match parseName s' i with
+              | .err m p => .err m p
+              | .ok _ p' => .ok () p') '|' s p1
+      else if pos < s.size && charAt s pos == '(' then
+        -- `[59] Enumeration`: a `|`-separated list of Nmtokens. A
+        -- COMMA-separated one is an SGML-ism, not XML (not-wf
+        -- `attlist03`).
+        parenList parseNmtoken '|' s pos
+      else .err "expected an attribute type" pos
+
+/-- `[60] DefaultDecl ::= '#REQUIRED' | '#IMPLIED'
+                        | (('#FIXED' S)? AttValue)`. A BARE token is
+    NOT a default, which is what `not-wf-sa-059` checks. -/
+def parseDefaultDecl (s : Chars) (pos : Nat) : PResult Unit :=
+  if peekLit "#REQUIRED" s pos then .ok () (pos + 9)
+  else if peekLit "#IMPLIED" s pos then .ok () (pos + 8)
+  else
+    let p := if peekLit "#FIXED" s pos then
+        match skipSpace1 s (pos + 6) with
+        | .err _ _ => pos
+        | .ok _ p' => p'
+      else pos
+    if p < s.size && (charAt s p == '"' || charAt s p == '\'') then
+      match skipQuotedLiteral s (p + 1) (charAt s p) (s.size + 1) with
+      | .err m q => .err m q
+      | .ok _ p' => .ok () p'
+    else .err "expected #REQUIRED, #IMPLIED, #FIXED or a quoted default" p
+
+/-- `[52] AttlistDecl ::= '<!ATTLIST' S Name AttDef* S? '>'`. -/
+def parseAttlistDecl (s : Chars) (pos : Nat) : PResult Unit :=
+  match pstring "<!ATTLIST" s pos with
+  | .err m p => .err m p
+  | .ok _ p1 => match skipSpace1 s p1 with
+    | .err m p => .err m p
+    | .ok _ p2 => match parseName s p2 with
+      | .err m p => .err m p
+      | .ok _ p3 =>
+          let rec defs (i : Nat) : Nat → PResult Unit
+            | 0 => .err "attribute list too long" i
+            | f + 1 =>
+                let j := skipSpace s i
+                if j < s.size && charAt s j == '>' then .ok () (j + 1)
+                else if j == i then
+                  .err "expected whitespace before an attribute definition" i
+                else match parseName s j with
+                  | .err m p => .err m p
+                  | .ok _ k1 => match skipSpace1 s k1 with
+                    | .err m p => .err m p
+                    | .ok _ k2 => match parseAttType s k2 with
+                      | .err m p => .err m p
+                      | .ok _ k3 => match skipSpace1 s k3 with
+                        | .err m p => .err m p
+                        | .ok _ k4 => match parseDefaultDecl s k4 with
+                          | .err m p => .err m p
+                          | .ok _ k5 => defs k5 f
+          defs p3 (s.size + 1)
+
+/-- `[82] NotationDecl ::= '<!NOTATION' S Name S (ExternalID | PublicID)
+                           S? '>'`. -/
+def parseNotationDecl (s : Chars) (pos : Nat) : PResult Unit :=
+  match pstring "<!NOTATION" s pos with
+  | .err m p => .err m p
+  | .ok _ p1 => match skipSpace1 s p1 with
+    | .err m p => .err m p
+    | .ok _ p2 => match parseName s p2 with
+      | .err m p => .err m p
+      | .ok _ p3 => match skipSpace1 s p3 with
+        | .err m p => .err m p
+        | .ok _ p4 => match parseNotationID s p4 with
+          | .err m p => .err m p
+          | .ok _ p5 => declEnd s p5
+
 /-- `[28b] intSubset` — the internal subset body, from just after `[`
 up to and including the `]`. Collects general entity declarations and
-ATTLIST ID pairs; skips everything else structurally.
+ATTLIST ID pairs; every markup declaration is PARSED against its
+production, not stepped over.
 Port of F* `parse_int_subset`. -/
 def parseIntSubset (s : Chars) (pos : Nat) (ents : EntityTable)
     (ids : List (String × String)) : Nat → PResult (EntityTable × List (String × String))
@@ -1116,18 +1451,28 @@ def parseIntSubset (s : Chars) (pos : Nat) (ents : EntityTable)
           match parsePi s pos with
           | .err m p => .err m p
           | .ok _ pos' => parseIntSubset s pos' ents ids fuel
-        else if peekLit "<!" s pos then
-          -- [45] elementdecl / [52] AttlistDecl / [82] NotationDecl and
-          -- any other markup declaration: skipped structurally, but an
-          -- ATTLIST is read for ID-typed attributes first.
-          match skipDeclToGt s pos (s.size + 1) with
+        else if peekLit "<!ELEMENT" s pos then
+          match parseElementDecl s pos with
+          | .err m p => .err m p
+          | .ok _ pos' => parseIntSubset s pos' ents ids fuel
+        else if peekLit "<!ATTLIST" s pos then
+          match parseAttlistDecl s pos with
           | .err m p => .err m p
           | .ok _ pos' =>
-            let ids' :=
-              if peekLit "<!ATTLIST" s pos then
-                scanAttlistIds s (pos + "<!ATTLIST".length) pos' ids
-              else ids
+            -- The ID-typed attributes are read out of the region the
+            -- declaration occupies; that scan never changes the
+            -- verdict, only which names are known to be IDs.
+            let ids' := scanAttlistIds s (pos + "<!ATTLIST".length) pos' ids
             parseIntSubset s pos' ents ids' fuel
+        else if peekLit "<!NOTATION" s pos then
+          match parseNotationDecl s pos with
+          | .err m p => .err m p
+          | .ok _ pos' => parseIntSubset s pos' ents ids fuel
+        else if peekLit "<![" s pos then
+          -- `[61] conditionalSect` is an EXTERNAL-subset production.
+          -- An `<![INCLUDE[` or `<![IGNORE[` in the internal subset is
+          -- a well-formedness error (not-wf-sa-063).
+          .err "a conditional section is not allowed in the internal subset" pos
         else .err "malformed internal subset declaration" pos
       else .err "unexpected character in internal subset" pos
 

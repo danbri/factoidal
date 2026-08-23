@@ -5522,3 +5522,58 @@ skips the subset loosely instead of parsing its grammar. The other 79
 split into 36 documents wrongly rejected and the remainder.
 
 That is one defect, not 674, and it is the next XML increment.
+
+### XML: the internal DTD subset, parsed instead of skipped
+(2026-08-23)
+
+`parseIntSubset` stepped over `<!ELEMENT`, `<!ATTLIST`, `<!NOTATION`
+and anything else beginning `<!` by scanning to the next `>` outside
+quotes. That accepts a malformed declaration, and the W3C conformance
+suite is largely made of them. It was ONE defect behind 674 wrong
+verdicts.
+
+The productions are now the grammar, and they REJECT. They do not
+build a DTD model — this parser stays NON-VALIDATING, so a declaration
+is checked for shape and then discarded.
+
+- `[75] ExternalID` — the `PUBLIC` form REQUIRES its system literal.
+  `<!ENTITY foo PUBLIC "some public id">` is malformed.
+- `[12] PubidLiteral` — its character repertoire is restricted, and a
+  character outside it is an error rather than a curiosity.
+- `[45] elementdecl` with a REAL `[46] contentspec`, and `[52]
+  AttlistDecl` with a real `[54] AttType` and `[60] DefaultDecl`. A
+  bare token is not a default.
+- `[82] NotationDecl`, whose `PublicID` form takes NO system literal —
+  the one place `PUBLIC` differs from `ExternalID`.
+- `[47]–[51]` content models as a GRAMMAR, not a balanced-paren blob:
+  a model may not mix `,` and `|`, an occurrence indicator binds with
+  no whitespace before it, and `[59] Enumeration` takes `|`, so
+  `(a,b,c)` is an SGML-ism rather than an attribute type.
+- `[61] conditionalSect` is an EXTERNAL-subset production. An
+  `<![INCLUDE[` in the internal subset is a well-formedness error.
+
+📊 MEASURED: **1477 → 1706 pass, 753 → 524 fail (out of 2230 in
+profile)**.
+
+Two rules had to be got exactly right, and the runner caught both
+within minutes of writing them:
+
+1. **`(#PCDATA)*` is legal with NO names.** `[51]`'s first alternative
+   allows zero names before `)*`, so both `(#PCDATA)` and `(#PCDATA)*`
+   are in the grammar. Requiring a name before the `*` rejected eight
+   documents the suite calls valid — a strictness regression that a
+   suite-less change would have shipped.
+2. **A `valid` case must still be ACCEPTED.** The whole point of the
+   new strictness is `not-wf`; the 42 documents still wrongly rejected
+   are unchanged from before this landing, and every one of them is an
+   EXTERNAL entity reference this parser deliberately does not load.
+
+No regression: rdf manifest 1031 pass, 0 fail; csv2rdf 252 pass of
+270. The XML parser feeds RDF/XML, so those are the numbers that would
+have moved first.
+
+Residue, named: 482 `not-wf` documents still accepted (mostly external
+DTD subsets and parameter-entity replacement text, which this parser
+does not read) and 42 `valid` documents rejected for the same reason
+from the other side. Both are the external-entity boundary, not the
+internal-subset grammar.
