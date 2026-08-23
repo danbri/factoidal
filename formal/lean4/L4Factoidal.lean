@@ -265,3 +265,4 @@ import L4Factoidal.OWL.DirectMappingFilter
 import L4Factoidal.RDFS.RDFSPlus
 import L4Factoidal.RDF.Pretty
 import L4Factoidal.SPARQL.Explain
+import L4Factoidal.SPARQL.FullText

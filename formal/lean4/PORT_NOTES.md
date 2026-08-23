@@ -8030,3 +8030,64 @@ in the not-covered column rather than being counted on a guess.
 engine modules / 46,503 lines, 21 proof modules / 24,529 lines (the
 wrong measure for that column — the Lean tree has its own theorem
 layer), 6 by-design / 1,853 lines.
+
+## SPARQL.FullText — the module the Lean tree said it did not have
+
+`L4Factoidal/SPARQL/FullText.lean` ports
+`formal/fstar/SPARQL.FullText.fst` (223 lines): the `text:query`
+extension, slice 1 — exact token match, no scoring. `SPARQL/Parser.lean`
+recorded its absence in as many words ("whose encoding lives in
+`SPARQL.FullText.fst` — no Lean"). That sentence is now stale in the
+right direction.
+
+**No ranking claim.** There is no `score_bm25` and no `rank_results`;
+a caller applies `limit` in dataset order only. That is slice 1's scope.
+
+### A wrong reason, corrected before it landed
+
+The module header first said: "Lean has `String.toLower`, which is not
+the same function — it is Unicode-aware", and a `#guard` asserted the
+two folds DISAGREE on `"ÉCOLE"`.
+
+The guard failed. **Measured: Lean's `String.toLower` is ASCII-only.**
+`"ÉCOLE".toLower` is `"École"` — `Char.toLower` maps `A`–`Z` and nothing
+else — so it agrees with the F\* fold exactly on that input.
+
+The explicit fold stays, for a smaller and true reason: the tokeniser's
+floor is part of slice 1's contract and should not move because a
+standard-library function's folding scope widened in a later toolchain.
+The `#guard` now pins the AGREEMENT rather than asserting a difference
+that does not exist.
+
+Worth recording because the failure mode was the same one hazard #28 is
+about: I wrote a confident claim about a function's behaviour and gave
+it a check that would have passed either way had I stated it loosely.
+It only failed because the assertion was sharp.
+
+### Why the object argument is a tagged literal
+
+jena-text's `(property "term" limit)` is ordinary SPARQL collection
+syntax, which the parser desugars into an `rdf:first`/`rdf:rest` chain
+in a SIBLING pattern joined to the main triple — not a second triple
+pattern in the BGP a per-triple evaluation hook sees. Resolving that
+generically needs a pattern-level rewrite pass, and it is not what real
+magic-property engines do: Jena's ARQ intercepts the argument list
+during algebra compilation, before it could become literal `rdf:first`
+matching against data with no such triples.
+
+So the parser recognises `text:query` before the generic collection
+desugaring runs and encodes the resolved query into one tagged literal.
+The field and limit ride in the LEXICAL FORM, delimited by U+001F, so
+the user's raw search term is never parsed or escaped — only split out
+of its two delimiter-bounded neighbours. A `#guard` round-trips a term
+containing commas, semicolons and quotes to state that.
+
+### The guards that state what "exact token match" means
+
+- `"ell"` must NOT match `"Hello"`. That is the difference between this
+  and a `CONTAINS` filter.
+- An empty query matches anything; an empty candidate matches nothing.
+- Order and repetition do not matter, which makes it a token-SET test.
+- A literal of any other datatype decodes to nothing — the marker
+  datatype is the gate, and without it the codec would read a user's
+  ordinary string literal as a query.
