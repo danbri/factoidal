@@ -100,7 +100,7 @@ def readTurtleGraph (path : String) : IO (Option Graph) := do
   match ← readOpt path with
   | none => return none
   | some text =>
-      match L4Factoidal.Syntax.parseTurtle text (some ("file://" ++ path)) with
+      match L4Factoidal.Syntax.parseTurtle text (some ("file://" ++ path)) .rdf12 with
       | .error _ => return none
       | .ok g => return some g
 
@@ -152,7 +152,7 @@ def runManifest (path : String) : IO Score := do
       IO.println s!"  MISSING {path}"
       return {}
   | some text =>
-      match L4Factoidal.Syntax.parseTurtle text (some ("file://" ++ path)) with
+      match L4Factoidal.Syntax.parseTurtle text (some ("file://" ++ path)) .rdf12 with
       | .error e =>
           IO.println s!"  UNPARSED {path}: {e.msg} at {e.pos}"
           return {}

@@ -8,17 +8,14 @@
 # carried only that. This script runs all of them so the numbers exist
 # and stay comparable.
 #
-# ⚠️ The node-expr row reports a DENOMINATOR the probe found, not the
-# number of tests in the suite. `sht:EvalNodeExpr` is not recognised by
-# the probe, and that suite links its tests with `mf:entries` rather
-# than `mf:include`, so the probe walks in and reports "out of 2". A
-# denominator that small next to the F* column is the signal that the
-# suite is UNREAD, not that it is passing. See
-# https://github.com/danbri/factoidal/issues/553.
+# Two suites need their own runner, because `l4shacl` recognises
+# neither the `srt:` (rules) nor the `sht:EvalNodeExpr` (node-expr)
+# test types: `lake exe l4shacl-rules` and `lake exe l4shacl-nodeexpr`.
+# Both run as separate steps below. Neither row is UNREAD any more
+# (https://github.com/danbri/factoidal/issues/553).
 #
-# The rules suite is no longer in that state: `lake exe l4shacl-rules`
-# (Harness/ShaclRulesRun.lean) reads all four of its sub-manifests, and
-# this script runs it as a separate step below.
+# A Lean denominator far below the F* one still means the probe did not
+# READ those tests. It is not a pass rate.
 #
 # Usage: tools/lean-shacl-scores.sh
 # Always exits 0 — this reports, it does not gate.
@@ -40,7 +37,6 @@ S10="third_party/testing/shacl/data-shapes-test-suite/tests"
 SUITES="
 shacl 1.0 core|$S10/core/manifest.ttl|98|98
 shacl 1.2 core|$S12/core/manifest.ttl|138|138
-shacl 1.2 node-expr|$S12/node-expr/manifest.ttl|142|142
 shacl 1.2 sparql|$S12/sparql/manifest.ttl|25|25
 "
 
@@ -66,6 +62,19 @@ echo "those tests. It is not a pass rate."
 
 # The rules suite has its own runner: the `srt:` test types and the
 # `mf:entries` linking are not what `l4shacl` walks.
+NE_PROBE="formal/lean4/.lake/build/bin/l4shacl-nodeexpr"
+echo ""
+if [ -x "$NE_PROBE" ]; then
+  NLINE=$(timeout 900 "$NE_PROBE" 2>&1 | grep "TOTAL" | tail -1)
+  NP=$(echo "$NLINE" | grep -oP '\d+(?= pass)' || echo "?")
+  NF=$(echo "$NLINE" | grep -oP '\d+(?= fail)' || echo "?")
+  NT=$(echo "$NLINE" | grep -oP '\d+(?=\))' || echo "?")
+  printf '%-22s | %-28s | %s\n' "shacl 1.2 node-expr" "$NP pass, $NF fail (out of $NT)" "142 pass (out of 142)"
+else
+  printf '%-22s | %-28s | %s\n' "shacl 1.2 node-expr" "MISSING l4shacl-nodeexpr" "142 pass (out of 142)"
+  echo "(run: cd formal/lean4 && lake build l4shacl-nodeexpr)"
+fi
+
 RULES_PROBE="formal/lean4/.lake/build/bin/l4shacl-rules"
 echo ""
 if [ -x "$RULES_PROBE" ]; then

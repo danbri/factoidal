@@ -202,6 +202,9 @@ extern_lib libl4hacl pkg := do
 -- SHACL 1.2 rules suite (Harness/ShaclRulesRun.lean, L4Factoidal/SHACL/Rules.lean).
 @[default_target] lean_exe «l4shacl-rules» where root := `Harness.ShaclRulesRun
 
+-- SHACL 1.2 node-expr suite (Harness/ShaclNodeExprRun.lean, L4Factoidal/SHACL/NodeExpr.lean).
+@[default_target] lean_exe «l4shacl-nodeexpr» where root := `Harness.ShaclNodeExprRun
+
 -- Property-based probe: seeded generators + algebra/round-trip invariants
 -- (Harness/PropProbe.lean, L4Factoidal/Testing/).
 @[default_target] lean_exe «l4prop» where root := `Harness.PropProbe

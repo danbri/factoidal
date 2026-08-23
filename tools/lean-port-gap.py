@@ -90,6 +90,7 @@ alias={
  "RDF.CottasStore.PageCache":"Cottas.PageCache",
  "RDF.CottasStore.DictWriter":"Cottas.DictWriter",
  "SHACL.Rules":"SHACL.Rules",
+ "SHACL.NodeExpr":"SHACL.NodeExpr",
  "RDF.Store.Columnar.OffsetIndex":"Cottas.OffsetIndex",
  "RDF.Store.Columnar.SubjectOffsetIndex":"Cottas.SubjectOffsetIndex",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",

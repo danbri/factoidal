@@ -8860,3 +8860,57 @@ work". `filterSafe` checks only the FIRST `FILTER` in a body. Both are
 ported unchanged, because changing them would change which tests pass,
 and that is a decision about the engine rather than about the port.
 Both are marked in the module header.
+
+## SHACL.NodeExpr → `L4Factoidal/SHACL/NodeExpr.lean`, and the second unread suite
+
+SHACL 1.2 node expressions (SHACL-AF §5, the `shnex:` vocabulary). The
+evaluator reads the expression node straight off the graph and
+dispatches on which `shnex:` predicate it carries.
+
+📊 `lake exe l4shacl-nodeexpr` (`Harness/ShaclNodeExprRun.lean`),
+measured 2026-08-23: **140 pass, 0 fail, 2 unsupported (out of 142)**,
+against F\*'s 142 pass, 0 fail (out of 142). The two unsupported are
+`sht:Validate` entries in `constraints/` — ordinary validation tests
+that belong to `l4shacl`. They are COUNTED rather than dropped, so the
+denominator is the suite's own and F\*'s 142 is 140 + 2.
+
+**One function where F\* has five.** The F\* evaluator is a mutual block
+of five with a lexicographic measure `%[fuel; tag; length]`: the list
+walks recurse at the same fuel while `eval_ne` recurses at `fuel - 1`.
+Here the four helpers are not recursive — `eval_ne_list` is a
+`flatMap`, `eval_ne_flatmap` a `flatMap` with a different focus,
+`eval_ne_keyed` a `map`, `eval_ne_argvals` a `flatMap … |>.take 1` —
+each calling `evalNe` only at the already-decremented fuel, and
+`eval_ne_intersect` becomes a fold over already-computed lists. So the
+measure is `fuel` alone.
+
+**Adapted to the Lean SHACL API.** `node_conforms` in F\* calls
+`collect_shape_violations` against a materialised
+`shacl_class_closure`; the Lean validator exposes neither. `nodeConforms`
+re-targets the named shape at the single value node, clears every other
+shape's targets and asks `validate` whether the result conforms — the
+same judgment by a different route. `instancesOf` filters subjects by
+`isShaclInstance`, which walks `rdfs:subClassOf` without materialising
+triples.
+
+### 🧹 Two harness bugs of mine, caught by the first run
+
+Both produced WRONG numbers that looked plausible, so both are recorded.
+
+1. **The suites were parsed in RDF 1.1 mode.** Six files failed to
+   parse with "triple term `<<( )>>` requires RDF 1.2 mode", and each
+   counted as one failure, so the run read 138 where the suite has 142
+   — an under-reported denominator, which is the shape anti-pattern #25
+   is about. `parseTurtle` takes a `mode` argument and both runners now
+   pass `.rdf12`.
+2. **The comparison key dropped the base direction.** `keyOf` rendered
+   datatype and language tag but not `direction`, so
+   `"hello"@en--ltr` and `"hello"@en` compared equal. Three tests
+   (`langdir`, `hasLangdir`, `strlangdir`) were reported as failures
+   whose "expected" and "got" strings looked nearly identical — the
+   tell. With direction rendered, all three pass.
+
+The rule both point at: a harness that renders terms for comparison
+must render every field the data model distinguishes, and must parse
+the fixtures in the mode the suite is written for. A denominator below
+the reference tree's is a bug in the harness until proved otherwise.
