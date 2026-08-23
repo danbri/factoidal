@@ -122,6 +122,7 @@ import L4Factoidal.XML.Parser
 import L4Factoidal.XML.Document
 import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
+import L4Factoidal.OWL.FunctionalSyntax
 import L4Factoidal.Syntax.RdfXml
 import Harness.Common
 
@@ -175,6 +176,12 @@ structure Case where
   conclusion    : Option String := none
   nonConclusion : Option String := none
   fsPremise     : Bool := false
+  /-- The FUNCTIONAL-SYNTAX premise / conclusion text, when the case
+      carries one. Recording only the Boolean made every such case
+      `unsupported` even where the subset parser can read it. -/
+  fsPremiseText : Option String := none
+  fsConclusionText : Option String := none
+  fsNonConclusionText : Option String := none
   /-- `test:importedOntology` wrapper-node IRIs. -/
   imports       : List String := []
 deriving Inhabited
@@ -201,7 +208,12 @@ def readCase (attrs : List Attribute) (kids : List Node) : Case := Id.run do
       | "rdfXmlPremiseOntology"       => c := { c with premise := some (directText k) }
       | "rdfXmlConclusionOntology"    => c := { c with conclusion := some (directText k) }
       | "rdfXmlNonConclusionOntology" => c := { c with nonConclusion := some (directText k) }
-      | "fsPremiseOntology"           => c := { c with fsPremise := true }
+      | "fsPremiseOntology"           =>
+          c := { c with fsPremise := true, fsPremiseText := some (directText k) }
+      | "fsConclusionOntology"        =>
+          c := { c with fsConclusionText := some (directText k) }
+      | "fsNonConclusionOntology"     =>
+          c := { c with fsNonConclusionText := some (directText k) }
       | "importedOntology"            => c := { c with imports := c.imports ++ [res] }
       | _ => pure ()
     | _ => pure ()
@@ -424,11 +436,30 @@ def isDirectOnly (c : Case) : Bool :=
 def isRdfBasedOnly (c : Case) : Bool :=
   c.semantics.contains "RDF-BASED" && !c.semantics.contains "DIRECT"
 
+/-- A functional-syntax document the subset parser CAN read, as
+    triples. `none` when the case has none or when the parser declines
+    — the two are the same to the caller, which then reports the case
+    as `unsupported functional-syntax` rather than as an empty
+    ontology. -/
+def fsGraph (txt? : Option String) : Option Graph :=
+  txt?.bind L4Factoidal.OWL.FS.parseFunctionalSyntax
+
+/-- Is the case functional-syntax-only AND outside the subset the
+    parser reads? Only then is it `unsupported`. -/
+def isFunctionalUnread (c : Case) : Bool :=
+  isFunctionalOnly c && (fsGraph c.fsPremiseText).isNone
+
 /-- Parse the premise and merge its imports: the graph the closure
 runs on. -/
 def premiseGraph (cat : Catalog) (c : Case) : Except Harness.Outcome Graph :=
   match c.premise with
-  | none => .error (.fail "harness: no RDF/XML premise")
+  | none =>
+      -- No RDF/XML premise: fall back to the functional-syntax one,
+      -- which the OWL 2 Mapping to RDF Graphs tables turn into the
+      -- same triples an RDF/XML premise would have carried.
+      (match fsGraph c.fsPremiseText with
+       | some g => .ok g
+       | none   => .error (.fail "harness: no RDF/XML premise"))
   | some ptxt =>
     match parseDoc "premise" c.iri ptxt with
     | .error e => .error (.fail e)
@@ -561,11 +592,12 @@ ms={t6 - t5}  same set as the list round: {sameSet}  same list as step g: {sameL
       g := g'
 
 def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
-  if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
-  match c.conclusion with
-  | none => return (.fail "harness: no RDF/XML conclusion", {})
-  | some ctxt =>
-    match parseDoc "conclusion" c.iri ctxt with
+  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
+  match (match c.conclusion with
+         | some ctxt => parseDoc "conclusion" c.iri ctxt
+         | none => match fsGraph c.fsConclusionText with
+             | some g => .ok g
+             | none   => .error "harness: no RDF/XML conclusion") with
     | .error e => return (.fail e, { parseFailures := 1 })
     | .ok gc0 =>
       if gc0.isEmpty then return (.fail "parser: conclusion parsed to zero triples", { parseFailures := 1 })
@@ -584,11 +616,12 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome
             return (.fail s!"closure-gap: missing {showTriple t} (closure {r.graph.length} triples, {r.rounds} rounds)", m)
 
 def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
-  if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
-  match c.nonConclusion with
-  | none => return (.fail "harness: no RDF/XML non-conclusion", {})
-  | some ctxt =>
-    match parseDoc "non-conclusion" c.iri ctxt with
+  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
+  match (match c.nonConclusion with
+         | some ctxt => parseDoc "non-conclusion" c.iri ctxt
+         | none => match fsGraph c.fsNonConclusionText with
+             | some g => .ok g
+             | none   => .error "harness: no RDF/XML non-conclusion") with
     | .error e => return (.fail e, { parseFailures := 1 })
     | .ok gc =>
       if gc.isEmpty then return (.fail "parser: non-conclusion parsed to zero triples", { parseFailures := 1 })
@@ -605,7 +638,7 @@ def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome
           return (.fail s!"closure-gap: every non-conclusion triple was derived (unexpected entailment)", m)
 
 def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
-  if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
+  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
   let (res, m) ← premiseClosure cat c capMs
   match res with
   | .error o => return (o, m)
@@ -618,7 +651,7 @@ def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outc
     else return (.pass, m)
 
 def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
-  if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
+  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
   if isRdfBasedOnly c then return (.skip "semantics-rdf-based-only", {})
   let (res, m) ← premiseClosure cat c capMs
   match res with
