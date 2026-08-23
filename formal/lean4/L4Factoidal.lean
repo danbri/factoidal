@@ -92,6 +92,7 @@ import L4Factoidal.JSONLD.Html
 import L4Factoidal.JSONLD.ApiTests
 import L4Factoidal.JSONLD.Tests
 import L4Factoidal.JSONLD.Theorems
+import L4Factoidal.JSONLD.Frame
 import L4Factoidal.SPARQL.Tokenizer
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.ParserTests

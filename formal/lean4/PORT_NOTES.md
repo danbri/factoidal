@@ -9343,3 +9343,50 @@ template subject map.
 
 RML core suite after the `quadsOfMap` split: 60 pass, 0 fail (out of
 60) — unchanged.
+
+## `JSONLD.Frame` → `L4Factoidal/JSONLD/Frame.lean`
+
+The JSON-LD 1.1 Framing algorithm: expand, flatten to a node map, match
+nodes against the frame, embed the matched references, wrap in
+`@graph`, compact against the frame's context.
+
+📊 **jsonld-frame: 29 pass, 63 fail (out of 92)**, against the F\* tree's
+recorded 28 pass, 64 fail (out of 92). A new harness,
+`Harness/JsonLdFrameRun.lean` (`l4jsonld-frame`), reads the real
+`frame-manifest.jsonld` and compares with the same RFC 8785 rule every
+other JSON-LD runner in this project uses. Run it from the repository
+root; `lake exe` runs from `formal/lean4`, where the corpus is not.
+
+The remaining 63 need what neither tree implements: `@default`,
+`@omitDefault`, `@requireAll` OR-matching, the other `@embed` modes,
+`@reverse`, `@included`, named graphs, and value-object matching inside
+a property frame.
+
+**The frame is expanded under a different grammar, and the Lean
+expander did not have it.** `ActiveContext.frameExpansion` was already a
+field — carried so the port's shape matched the F\* source — but nothing
+read it. `JSONLD/Expand.lean` now does, in two places: an `@id` that is
+an array of IRIs or the empty object is a frame PATTERN rather than an
+invalid value, and the five framing directives survive as raw members
+instead of being dropped as keyword lookalikes. Without the second,
+the frame's own `@explicit` never reaches the algorithm, so a pair of
+`#guard`s frames the same document with and without it and shows the
+outputs differ.
+
+`expandDocument` takes `frameExpansion` with a default of `false`, so
+every existing call site is unchanged, and only the FRAME is expanded
+with it set — never the input being framed. That asymmetry is the
+algorithm's.
+
+**The top-level `@graph` follows `omitGraph`, not the result's shape.**
+The option defaults to FALSE under `json-ld-1.0` processing and TRUE
+under 1.1, which is why the suite's expected outputs are split between
+the two shapes — 35 of 92 carry a top-level `@graph` and 56 do not.
+Compaction with `compactArrays` collapses `{"@graph": [node]}` to the
+bare node and drops the key, so under 1.0 the wrapper has to be put
+back. Measuring this was what found it: wrapping unconditionally scored
+15 pass, 63 fail (out of 92); reading the option scored 29.
+
+Regression check after the expander change: toRdf 467 pass, 0 fail
+(out of 467); the other five json-ld-api manifests 791 pass, 0 fail,
+2 local-override (out of 793) — both unchanged.

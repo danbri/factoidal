@@ -107,6 +107,11 @@ extern_lib libl4hacl pkg := do
 -- REPOSITORY ROOT: it resolves the corpus relative to the CWD.
 @[default_target] lean_exe «l4jsonld-api» where root := `Harness.JsonLdApiProbe
 
+-- Real-corpus runner for the W3C json-ld-framing suite (Harness/
+-- JsonLdFrameRun.lean), the manifest neither probe above covers. Run
+-- the built binary from the REPOSITORY ROOT.
+@[default_target] lean_exe «l4jsonld-frame» where root := `Harness.JsonLdFrameRun
+
 -- Corpus census for the W3C OWL 2 test catalogs (Harness/OwlProbe.lean):
 -- reads the RDF/XML catalogs with the Lean XML parser and reports, with
 -- denominators, how many test cases carry a serialisation the Lean tree

@@ -119,6 +119,33 @@ def stringHasSpace (s : String) : Bool := s.toList.contains ' '
 
 def isBnodeShaped (s : String) : Bool := slen s ≥ 2 && charAtD s 0 == '_' && charAtD s 1 == ':'
 
+/-! ## Frame expansion
+
+JSON-LD Framing expands the FRAME document under a different grammar
+from an ordinary document: a frame may write `"@id": ["A", "B"]` or
+`"@id": {}` as a matching pattern, and it carries five directives that
+ordinary expansion does not know. `ActiveContext.frameExpansion` selects
+that grammar; it is `false` for every input document, and `true` only for
+the frame `JSONLD.Frame` expands.
+
+Without these branches the frame's directives are dropped as keyword
+LOOKALIKES — they are not ordinary Expansion vocabulary — and never
+reach the framing algorithm at all. -/
+
+/-- The five JSON-LD Framing directives. -/
+def isFramingKeyword (k : String) : Bool :=
+  k == "@explicit" || k == "@default" || k == "@omitDefault"
+    || k == "@requireAll" || k == "@embed"
+
+/-- The framing grammar for an ARRAY `@id`: every entry is an IRI string
+or the empty object (the wildcard). Anything else is not a frame
+pattern and falls through to the ordinary "invalid `@id` value". -/
+def idFrameEntriesValid : List Json → Bool
+  | [] => true
+  | .string _ :: rest => idFrameEntriesValid rest
+  | .object [] :: rest => idFrameEntriesValid rest
+  | _ => false
+
 /-- JSON-LD 1.1 API §5.2 Value Expansion, the already-`@value`-form
 case: pull out `@value` / `@language` / `@type` / `@direction` /
 `@index`, expanding a compact-IRI `@type`. `@direction` is orthogonal to
@@ -716,6 +743,24 @@ def expandOneField (loader : Loader) (ac ac0 : ActiveContext) (key : String) (va
         match expandIri ac s false with
         | none     => .ok (some [("@id", .string s)])
         | some iri => .ok (some [("@id", .string iri)])
+    -- Framing grammar: `"@id": [IRI...]` is a set of ids to match and
+    -- `"@id": {}` is the wildcard. Each string entry resolves the same
+    -- way the single-IRI case above does; the wildcard is kept as
+    -- written, because matching it is the framing algorithm's job.
+    | .array items =>
+      if ac.cur.frameExpansion && idFrameEntriesValid items then
+        .ok (some [("@id", .array (items.map (fun it =>
+          match it with
+          | .string s =>
+              if keywordLookalike s then .null
+              else match expandIri ac s false with
+                   | none     => .string s
+                   | some iri => .string iri
+          | other => other)))])
+      else .error .invalidIdValue
+    | .object [] =>
+      if ac.cur.frameExpansion then .ok (some [("@id", .object [])])
+      else .error .invalidIdValue
     | _ => .error .invalidIdValue
   else if key == "@type" then
     -- `ac0`, not `ac`: see `expandFieldsList`'s doc comment.
@@ -762,6 +807,16 @@ def expandOneField (loader : Loader) (ac ac0 : ActiveContext) (key : String) (va
   -- An ACTUAL keyword not handled above is an error; a keyword LOOKALIKE
   -- key is dropped with a warning; an at-prefixed key WITHOUT keyword
   -- form is an ordinary term key.
+  -- A framing directive is a keyword LOOKALIKE to ordinary expansion,
+  -- so without this branch the frame's own `@explicit` / `@embed` /
+  -- ... would be dropped silently, exactly like `@ignoreMe`, and the
+  -- framing algorithm would never see them. Passed through RAW: these
+  -- are booleans, strings and default-node payloads, not property
+  -- values with coercion rules of their own, and matching them is the
+  -- framing algorithm's job. Checked on the literal spelling only,
+  -- since a frame document always writes these keywords out.
+  else if ac.cur.frameExpansion && isFramingKeyword key then
+    .ok (some [(key, value)])
   else if actualKeyword key then .error .invalidLocalContext
   else if keywordLookalike key then .ok none
   else
