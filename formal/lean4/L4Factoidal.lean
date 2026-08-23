@@ -247,3 +247,4 @@ import L4Factoidal.VC.CredentialTests
 import L4Factoidal.HDT.Container
 import L4Factoidal.HDT.ContainerTheorems
 import L4Factoidal.HDT.Dictionary
+import L4Factoidal.HDT.Triples

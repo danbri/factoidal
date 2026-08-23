@@ -10,16 +10,16 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 77 | 42817 |
+| Engine and specification code — to port | 76 | 42501 |
 | Proofs about the F\* implementation — see below | 32 | 33861 |
 | F\*-only machinery with no Lean counterpart by design | 7 | 2861 |
-| **Total not covered** | **116** | **79539** |
+| **Total not covered** | **115** | **79223** |
 
-104 of the 220 F\* modules have a Lean counterpart.
+105 of the 220 F\* modules have a Lean counterpart.
 
-Updated 2026-08-23 after `HDT.Container` and `HDT.Dictionary` landed
-as `L4Factoidal/HDT/Container.lean` and `Dictionary.lean`. The HDT row
-below moved from three modules to one.
+Updated 2026-08-23 after all three HDT modules landed. The HDT group
+is now empty; see the section below for what it cost and what it
+measures.
 
 ### On the proof column
 
@@ -132,22 +132,26 @@ states this in its header.
 
 - `Tableau.CountingOracle` (1663)
 
-### HDT — 1 module, 316 lines
+### HDT — 0 modules (complete)
 
-- `HDT.Triples` (316)
+All three F\* modules are ported: `HDT.Container` (644 lines),
+`HDT.Dictionary` (519) and `HDT.Triples` (316), 1,479 lines in total.
 
-`HDT.Container` (644 F\* lines) and `HDT.Dictionary` (519) are ported.
 Four F\* definitions have no work to do in Lean and are absent: the
 file-size probe (`hdt_file_size` and its two helpers), the hex decode
 (`hdt_bytes_of_hex`, `collect_bytes`), `nat_xor`, and `nat_sub` —
-Lean's `Nat` subtraction already truncates at zero. See the two
-modules' headers.
+Lean's `Nat` subtraction already truncates at zero. Each module's
+header says which and why.
 
-Both trees' readers are compared field by field over the two vendored
-fixtures by `tools/hdt-tree-differential.sh`: **2 agree, 0 differ (out
-of 2)**, 42 container and dictionary lines identical per fixture.
-Without `HDT.Triples` the Lean tree can decode an HDT file's
-dictionary but cannot enumerate its triples.
+`tools/hdt-tree-differential.sh` runs both trees' probes over the two
+vendored fixtures and diffs their output:
+
+**HDT reader, F\* vs Lean 4: 2 agree, 0 differ (out of 2)** — 54
+container, dictionary and triples lines identical per fixture. That
+includes the strongest check either tree makes: enumerating every
+triple out of the HDT file and comparing the result with the `.nt` the
+file was built from, as sorted canonical N-Triples. Both fixtures
+report MATCH (1 triple, and 343 triples).
 
 ### RDFS — 2 modules, 1229 lines
 

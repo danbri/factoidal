@@ -7423,3 +7423,77 @@ enumerate a triple. The F\* probe's stage 3 already pins the target
 numbers: for `rml-core-ontology.hdt`, 343 id-triples decoded with 0
 unresolved, and enumeration equal to the source `.nt` as sorted
 N-Triples.
+
+## HDT stage 3: BitmapTriples, and the enumeration matches the source
+
+`L4Factoidal/HDT/Triples.lean` ports `formal/fstar/HDT.Triples.fst`.
+With it the HDT group is complete: 1,479 F\* lines across three
+modules, all ported.
+
+### The structure
+
+The Triples section holds four sub-structures in the order hdt-cpp
+writes them: bitmap(Y), bitmap(Z), log-array(Y), log-array(Z). ArrayY
+holds one predicate ID per (subject, predicate) pair in subject-major
+order, and BitmapY[i]=1 marks the last such pair for its subject.
+ArrayZ holds one object ID per triple in the same order, and
+BitmapZ[i]=1 marks the last object of its (subject, predicate) pair.
+Subject IDs are the dictionary's `Role.subject` space.
+
+So the file is a two-level SPO forest, and `childrenRange` is the one
+primitive that decodes a range at either level.
+
+`rank1` and `select1` are linear scans with no auxiliary index.
+Everything above them reaches a bitmap only through `rank1`, `select1`
+and `childrenRange` — never through `bitAt` or raw byte offsets,
+except inside those three definitions. Replacing the scans with
+superblock and block popcount counters changes those three and nothing
+else.
+
+### Differences from the F\*
+
+`nat_sub` is absent, as in stage 2. `walk_y_positions` and
+`hdt_enumerate_subjects` accumulate with `acc @ new`, which is
+quadratic in the triple count; both accumulate reversed here and
+reverse once.
+
+### The measurement
+
+`tools/hdt-tree-differential.sh` now passes each fixture's source
+document to both probes and diffs the stage-3 blocks too.
+
+**HDT reader, F\* vs Lean 4: 2 agree, 0 differ (out of 2)** — 54
+container, dictionary and triples lines identical per fixture, up from
+42.
+
+| | rdf-mt-test002 | rml-core-ontology |
+|---|---|---|
+| all six triples-section CRCs | OK | OK |
+| triple count (ArrayZ entries) | 1 | 343 |
+| (s,p) pairs (ArrayY entries) | 1 | 335 |
+| num subjects (BitmapY ones) | 1 | 84 |
+| dictionary role max, independently | 1 | 84 |
+| bitmapY `rank1(select1 k) = k+1` | 1 pass, 0 fail (out of 1) | 84 pass, 0 fail (out of 84) |
+| bitmapZ same | 1 pass, 0 fail (out of 1) | 335 pass, 0 fail (out of 335) |
+| id-triples decoded (unresolved) | 1 (0) | 343 (0) |
+| enumeration vs source, sorted N-Triples | MATCH | MATCH |
+
+The last row is the strongest check either tree makes. It enumerates
+every triple out of the HDT file, resolves all three IDs through the
+dictionary, serialises the result and the source `.nt` as canonical
+N-Triples, sorts, and compares. A single term, ID or bit decoded
+wrongly fails it. The differential script refuses to report agreement
+for a fixture whose Lean run did not reach that MATCH, so a run that
+stopped early cannot pass as a clean one.
+
+The `num subjects` row is a cross-check rather than a restatement:
+the count comes from BitmapY's ones, and the row below it comes from
+the dictionary section sizes, which are independent.
+
+### What HDT still does not do here
+
+The reader is complete; the write path is not ported and neither tree
+has one — `bin/hdt-probe/` reads, and `third_party/testing/hdt/
+mini_rdf2hdt.cpp` is how the fixtures were made. Stage 5 of the
+program plan (indexed rank/select behind the same three names) is
+open in both trees.
