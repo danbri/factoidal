@@ -10093,3 +10093,61 @@ with `refl`/`trans`/`bind`; `tryBindSubject_extends`,
 not ported) composes layer 2 with the ρdf closure to get the RDFS
 entailment regime theorem. This is the half of its input that does not
 mention entailment.
+
+## SPARQL11.EntailmentRegime.RDFS — layer 3, the composed regime theorem
+
+`formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst` (1,115 lines) →
+`L4Factoidal/SPARQL/EntailmentRegimeRdfs.lean`. It proves no new
+entailment content: it JOINS the two layers at the graph
+`RDFS.closure g fuel`, which is what the F\* banner says layer 3 is for.
+
+* Layer 1: `RDFS.closure_sound` / `RDFS.closure_complete_of_saturated`.
+* Layer 2: `SPARQL.evalBgp_instantiates_into_graph`.
+
+**Soundness is unconditional** — no fragment predicate, no saturation
+hypothesis, no groundness hypothesis:
+
+```lean
+theorem rdfsRegime_bgp_sound (g : Graph) (q : Bgp) (fuel : Nat) {mu : Binding}
+    (h : mu ∈ evalBgp q (RDFS.closure g fuel)) :
+    ∀ t ∈ instBgp q mu, RdfsLicenses g t
+```
+
+`RdfsLicenses g t` is `∃ u, RDFS.Derives g u ∧ u.eqb t = true`. The
+existential is the exact strength both layers deliver: layer 2 lands at
+`Graph.mem` and `RDFS.closure_complete_of_saturated` does too, and both
+compare with `Triple.eqb`.
+
+**The exact fragment is a COROLLARY, not the scope.**
+`rdfsRegime_bgp_sound_exact` gives `RDFS.Derives g t` outright when the
+closure is `GraphExact` and the answer triple is `TripleExact`. Reaching
+it needed three new lemmas, all proved here:
+`literalExact_eqb_eq`, `termExact_eqb_eq`, `tripleExact_eqb_eq` — the
+engine equality collapses to record equality exactly where `LitExact`
+holds, since `Literal.eqb` is coarser in only two places
+(`rdf:XMLLiteral` canonical-XML comparison, case-insensitive language
+tags) and `LitExact` rules out both. The F\* module instead SCOPES its
+whole statement to `graph_frag` / `bgp_frag`.
+
+**Completeness is CONDITIONAL and the gap is not closed here.**
+`EvalBgpCompleteAt q c mu` — "the evaluator returns `mu` whenever `mu`'s
+instantiation of `q` sits inside `c`" — is a hypothesis, not a lemma.
+The F\* tree closed its version in its own part 9; this port has not.
+`rdfsRegime_bgp_complete_conditional` and
+`rdfsRegime_ask_complete_conditional` both carry it, and the file says
+so in its header rather than leaving a reader to infer it.
+
+**Saturation is a hypothesis for a reason.** `RDFS.closure` is
+fuel-bounded, so with the fuel exhausted the closure is not the RDFS
+closure and completeness is false. Every completeness statement carries
+`step (closure g fuel) = closure g fuel`. Soundness carries no such
+hypothesis: a short closure derives less, and less is still sound. A
+`#guard` pins the zero-fuel case returning nothing.
+
+**Anti-vacuity.** Every theorem here is an implication about answers, so
+guards showing an empty evaluator would satisfy all of them and say
+nothing. The pins therefore state positive counts: the query returns 0
+rows on the raw graph and 1 over the closure, ASK is false then true, the
+instantiation has length 1, and a class the graph never mentions still
+returns nothing — the last one being what says the engine is not
+answering everything.

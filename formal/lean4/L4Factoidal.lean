@@ -293,6 +293,7 @@ import L4Factoidal.RDF.Pretty
 import L4Factoidal.SPARQL.Explain
 import L4Factoidal.SPARQL.Diagnostics
 import L4Factoidal.SPARQL.BgpRefinement
+import L4Factoidal.SPARQL.EntailmentRegimeRdfs
 import L4Factoidal.SPARQL.FullText
 import L4Factoidal.SPARQL.UpdateSandbox
 import L4Factoidal.OWL.TestsManifest
