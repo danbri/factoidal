@@ -35,14 +35,49 @@ private def nullCol : Inherited :=
 #guard (rowTriplesMinimal 1
           [(nullCol, convertCell nullCol "c" look "NA"), (nameCol, cell)]).length == 1
 
--- A language tag wins over a datatype: RDF 1.1 makes any
--- language-tagged literal rdf:langString.
+-- A language tag applies only where the value is a STRING. RDF 1.1
+-- has no language-tagged `xsd:integer`, so a stated non-string
+-- datatype WINS over an inherited `lang`. (This guard used to assert
+-- the opposite; the csv2rdf corpus expects
+-- `"string"^^xsd:normalizedString` where the old rule produced
+-- `"string"@en` — corrected 2026-08-22.)
 private def langCol : Inherited :=
   { propertyUrl := some "http://ex/p", lang := some "en",
     datatype := some (.named "integer") }
 #guard match rowTriplesMinimal 1 [(langCol, convertCell langCol "c" look "5")] with
+       | [⟨_, _, .literal l⟩] =>
+           l.val.langTag == none &&
+           l.val.datatype.val == "http://www.w3.org/2001/XMLSchema#integer"
+       | _ => false
+
+-- With no datatype stated, the language tag applies.
+private def plainLangCol : Inherited :=
+  { propertyUrl := some "http://ex/p", lang := some "en" }
+#guard match rowTriplesMinimal 1
+         [(plainLangCol, convertCell plainLangCol "c" look "5")] with
        | [⟨_, _, .literal l⟩] => l.val.langTag == some "en"
        | _ => false
+
+-- A tag that cannot be a BCP 47 tag is IGNORED, not attached: the
+-- corpus supplies `"lang": "notavalidlanguagetag"` and expects a
+-- plain literal.
+#guard isLangTagValid "en"
+#guard isLangTagValid "en-GB"
+#guard !isLangTagValid "notavalidlanguagetag"
+#guard !isLangTagValid ""
+private def badLangCol : Inherited :=
+  { propertyUrl := some "http://ex/p", lang := some "notavalidlanguagetag" }
+#guard match rowTriplesMinimal 1
+         [(badLangCol, convertCell badLangCol "c" look "x")] with
+       | [⟨_, _, .literal l⟩] => l.val.langTag == none
+       | _ => false
+
+-- A datatype NAME the specification does not list is rejected, not
+-- passed through as `xsd:<name>`. `anySimpleType` is an XSD type CSVW
+-- deliberately excludes.
+#guard datatypeIriFor "anySimpleType" == none
+#guard datatypeIriFor "anyAtomicType"
+       == some "http://www.w3.org/2001/XMLSchema#anyAtomicType"
 
 -- A datatype becomes the literal's type.
 private def intCol : Inherited :=
@@ -66,25 +101,41 @@ private def urlCol : Inherited :=
        | _ => false
 
 -- STANDARD mode adds the row description on top of the cell triples.
-#guard (rowTriplesStandard "" "http://ex/t.csv" 1 2 [(nameCol, cell)]).length
-       == 1 + 4   -- cell + type + describes + rownum + url
-#guard (rowTriplesStandard "" "http://ex/t.csv" 1 2 [(nameCol, cell)]).any
-         (fun t => t.p.val == csvwNs ++ "rownum")
-#guard (rowTriplesStandard "" "http://ex/t.csv" 1 2 [(nameCol, cell)]).any
-         (fun t => t.p.val == csvwNs ++ "describes")
+private def oneRow : RowInput :=
+  { rowNum := 1, sourceRow := 2,
+    cells := [{ subject := rowSubject none 1, inh := nameCol, result := cell }] }
+private def stdRow : List Triple := rowTriplesStandardOf "" "http://ex/t.csv" oneRow
+
+#guard stdRow.length == 1 + 4   -- cell + type + describes + rownum + url
+#guard stdRow.any (fun t => t.p.val == csvwNs ++ "rownum")
+#guard stdRow.any (fun t => t.p.val == csvwNs ++ "describes")
 -- The row node is TYPED. The W3C no-metadata tests all expect
 -- `a csvw:Row`, and its absence was a third of the missing graph.
-#guard (rowTriplesStandard "" "http://ex/t.csv" 1 2 [(nameCol, cell)]).any
-         (fun t => t.p == rdfTypeIri && t.o == Term.iri csvwRowCls)
+#guard stdRow.any (fun t => t.p == rdfTypeIri && t.o == Term.iri csvwRowCls)
 -- The `#row=` fragment reports the SOURCE row, not the table row:
 -- with a header they differ by one, and reporting the wrong one
 -- makes every row URL off by a line.
-#guard (rowTriplesStandard "" "http://ex/t.csv" 1 2 [(nameCol, cell)]).any
-         (fun t => t.o == Term.iri ⟨"http://ex/t.csv#row=2", rfl⟩)
+#guard stdRow.any (fun t => t.o == Term.iri ⟨"http://ex/t.csv#row=2", rfl⟩)
+
+-- A row with TWO subjects gets TWO `csvw:describes` triples. One per
+-- row would drop the second thing the row describes, which is the
+-- shape every event/place/offer table in the corpus has.
+private def twoSubjRow : RowInput :=
+  { rowNum := 1, sourceRow := 2,
+    cells := [{ subject := .bnode "a", inh := nameCol, result := cell },
+              { subject := .bnode "b", inh := nameCol, result := cell }] }
+#guard twoSubjRow.subjects.length == 2
+#guard (rowTriplesStandardOf "" "http://ex/t.csv" twoSubjRow).countP
+         (fun t => t.p == csvwDescribes) == 2
+-- Two cells on the SAME subject still describe it once.
+private def oneSubjRow : RowInput :=
+  { rowNum := 1, sourceRow := 2,
+    cells := [{ subject := .bnode "a", inh := nameCol, result := cell },
+              { subject := .bnode "a", inh := nameCol, result := cell }] }
+#guard oneSubjRow.subjects.length == 1
 
 -- The whole standard-mode output: group node, table node, and the
 -- links that hold them together.
-private def oneRow : RowInput := { rowNum := 1, sourceRow := 2, cells := [(nameCol, cell)] }
 private def std : List Triple := tableGroupTriplesStandard "http://ex/t.csv" [oneRow]
 
 #guard std.any (fun t => t.p == rdfTypeIri && t.o == Term.iri csvwTableGroup)

@@ -36,48 +36,37 @@ SPARQL. Zero failures on either side.
 | Area | F\* | Lean 4 | Gap |
 |---|---|---|---|
 | RDF/XML | in rdf suite | 130 pass, 2 fail (of 132, eval-isomorphic) | 2 tests |
-| OWL 2 profile QL | 87 pass, 0 fail | 76 pass, 11 fail (of 87) | 11 tests |
 | SPARQL entailment regimes | supported | 30 unsupported | see below |
 
-## Closed since this ledger was written
+Re-measured 2026-08-23: `owl2_profile_ql` is 87 pass, 0 fail (of 87),
+and the whole rdf manifest is 1031 pass, 0 fail (of 1031). The two
+RDF/XML failures are `rdfms-xml-literal-namespaces` XMLLiteral
+canonicalisation differences, reported as `notEqual` rather than as a
+comparison that gave up.
 
-**GeoSPARQL** (2026-08-22, same day): ported to Lean as
-`L4Factoidal/Geo/` — `Types` (exact-decimal geometry model), `Order`
-(`Scaled` is a linear order), `BBox` (with the pre-filter soundness
-theorem proved), `Topology` (division-free geometric kernel),
-`Wkt` (parser + decimal rendering), `Functions` (the `geof:`
-extension-function table). Scope honesty: the F\* module also carries
-linestring-vs-linestring and polygon-vs-polygon predicate pairs that
-this port does NOT yet cover — the Lean side is the kernel plus the
-point-vs-polygon fragment. The 37 W3C tests are not yet run against
-it, because that needs the harness wiring, not more geometry.
+## Suites the Lean tree now runs END TO END (measured 2026-08-23)
 
-**CSVW** (2026-08-22): the main module set is ported —
-`L4Factoidal/CSVW/` carries `Dialect` (dialect description + CSV
-reader), `Metadata` (model + §5.1.1 inheritance), `UriTemplate`,
-`Conversion` (cell rules), `Emit` (csv2rdf triples, minimal and
-standard), `Formats` (boolean + numeric), `Json` (csv2json, minimal
-and standard) and `Validate` (with the error/warning split the W3C
-suite depends on). Scope honesty: date/time patterns and the
-regex-valued duration `format` facet are NOT ported (`noFormat` is
-returned, which keeps the cell rather than rejecting it).
+Each of these has a real conformance runner, not a reader-level probe:
+the whole pipeline runs and the result is compared against the suite's
+own expected output.
 
-**csv2rdf now has a real conformance runner** (`Harness/CsvwRdfRun`,
-`lake exe l4csvw-rdf`): the whole pipeline against the suite's own
-expected `.ttl`, compared by graph isomorphism, driven by
-`manifest-rdf.jsonld`.
+| Suite | Runner | Result |
+|---|---|---|
+| csv2rdf | `l4csvw-rdf` | **252 pass, 10 fail, 6 skip (of 270)** |
+| csv2json | `l4csvw-json` | **253 pass, 9 fail, 6 skip (of 270)** |
+| JSON Schema draft-07 | `l4jsonschema` | **726 pass, 0 fail (of 726 decided), 44 undetermined (of 770)** |
+| Content MathML | `l4mathml` | **56 pass, 0 fail (of 56)** |
 
-📊 **9 pass, 0 fail, 0 comparison-gave-up, 0 skip (out of 9)** — the
-no-metadata subset, both modes. 261 of the 270 manifest entries carry
-metadata (an `implicit` member) and are NOT attempted: they need
-`@context` resolution, `tableSchema` inheritance and metadata
-discovery. That is the next CSVW increment, and it is the whole
-remaining denominator.
+Both CSVW numbers include the 58 NEGATIVE tests, scored by the
+validator: 58 pass, 0 fail on each. Each CSVW runner also cross-checks
+the validator against every POSITIVE test's metadata and reports the
+documents it wrongly rejects — currently 0. That number exists because
+a negative score can otherwise be bought with rules that reject
+everything, and nothing in the negative column would disagree.
 
-Landing that runner cost two real bugs, both recorded in
-`formal/lean4/PORT_NOTES.md`: standard-mode table and group assembly
-was missing from `Emit.lean`, and the isomorphism comparison refused
-above 16 blank nodes and reported the refusal as a difference.
+The JSON Schema residue is NAMED rather than counted: every draft-07
+assertion keyword is implemented, so the 44 undetermined are `$id`
+base-URI resolution, not a missing keyword.
 
 **Opened 2026-08-22, same day** (module set ported, W3C suites not yet
 run against the Lean side — that needs harness wiring):

@@ -4982,3 +4982,651 @@ METHOD NOTE: the `--dump=<manifest id>` switch on `l4csvw-rdf` prints
 both graphs as sorted N-Triples. Every one of the four bugs above was
 found by reading that diff, and none of them was visible in the
 score line, which said "produced 24, expected 24" throughout.
+
+### CSVW: per-cell subjects, virtual columns, and four value-level
+rules the corpus enforces (2026-08-22)
+
+Continuing the same measured loop, each step read off the
+`--dump=<manifest id>` diff rather than guessed:
+
+1. **The subject is per CELL, not per row.** `aboutUrl` is an
+   inherited property, so different columns of one row can describe
+   different things — the corpus has tables whose every row produces
+   an event, a place and an offer, each with its own `aboutUrl` and
+   each listed under that row's `csvw:describes`. `Emit` gained
+   `CellOut` (a converted cell with the subject it hangs from) and
+   `RowInput.subjects` (the DISTINCT subjects, one `csvw:describes`
+   each). A row-level subject merged all three onto one node.
+2. **VIRTUAL columns must not go through the cell rules.** A virtual
+   column has no field, so its cell is empty — and an empty cell IS
+   the null value, which `convertCell` correctly drops. Its value
+   comes from `valueUrl` alone, so the pipeline builds its
+   `CellResult` directly. Ten of twenty expected triples were missing
+   in `test033` for this reason.
+3. **Link properties need PREFIX EXPANSION after template
+   expansion.** `schema:{_name}` is not a prefixed name until
+   `{_name}` is filled in, so expansion belongs in the pipeline, not
+   the parse. Left alone, `rdf:type` and `schema:MusicEvent` pass the
+   `isIri` check — they have a colon — and produce triples on IRIs
+   that denote nothing.
+4. **A language tag applies only where the value is a STRING.** RDF
+   1.1 has no language-tagged `xsd:normalizedString`. A stated
+   non-string datatype wins over an inherited `lang`. An
+   `EmitTests` guard asserted the OPPOSITE rule ("a language tag wins
+   over a datatype") and had to be corrected — it was pinning
+   behaviour, not the specification.
+5. **An invalid language tag is ignored, not attached.** The corpus
+   supplies `"lang": "notavalidlanguagetag"` and expects a plain
+   literal. `isLangTagValid` checks the BCP 47 subtag shape.
+6. **A datatype NAME the specification does not list is rejected.**
+   `anySimpleType` and `anyType` are XSD types CSVW deliberately
+   excludes; reading every name as `xsd:<name>` put
+   `^^xsd:anySimpleType` on literals the expected graph leaves plain.
+   `csvwDatatypeNames` is the permitted list.
+
+📊 MEASURED, csv2rdf: **100 pass, 105 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 90 at the previous landing and 9
+before the metadata parse existed.
+
+Every one of these six produced the RIGHT number of triples with the
+wrong content, except (2). The score line read "produced 19, expected
+19" through four consecutive bugs.
+
+### CSVW: invalid values, invalid metadata, and the XSD numeric
+lexical spaces (2026-08-22)
+
+Six more rules, same loop — each read off the `--dump` diff, each
+producing the RIGHT triple count with wrong content:
+
+1. **A non-string LINK property normalises to the EMPTY template**,
+   not to nothing. With `"aboutUrl": true` the subject is the TABLE
+   URL — the empty template resolved against the table — not a fresh
+   blank node (tests 047/048/049).
+2. **A numeric field must be a NUMBER.** The corpus supplies
+   `"headerRowCount": "0"`, which is invalid, so the default of one
+   header row applies. Accepting the string turned the header into a
+   data row and added a whole extra row of triples.
+3. **Header titles apply only when the table has NO schema.** A
+   metadata schema REPLACES the embedded one, so a schema describing
+   no usable column leaves the columns as `_col.1`, `_col.2`, … rather
+   than falling back to the file's headings (test100 supplies
+   `"columns"` as an object instead of an array).
+4. **An invalid `tableSchema` acts as an EMPTY OBJECT** — a schema is
+   present, with no columns (test107, `"tableSchema": 1`).
+5. **An invalid column `name` is ignored** and the column falls back
+   to its title. §5.6 restricts a name to the RFC 6570 variable
+   syntax; `"name": "G I D"` with `"titles": "GID"` must produce
+   `#GID`, and taking the name verbatim produced `#G%20I%20D`
+   (test130).
+6. **A cell that fails its datatype gets NO datatype.** `CellResult.
+   literals` is now `List (String × Bool)` — the lexical form and
+   whether the datatype applies. Emitting `^^xsd:decimal` on
+   `"123,,456.789"` asserts something false about the value.
+
+And the one that moved the most: **the XSD numeric lexical spaces are
+checked even with no `format`.** The numeric path used to return
+`noFormat` whenever no pattern, `groupChar` or `decimalChar` was
+stated, so nothing was checked and every such cell got its base's
+datatype — `3.2` as an `xsd:integer`, `123.456E7` and `NaN` as
+`xsd:decimal`. `isIntegerLexical` / `isDecimalLexical` /
+`isDoubleLexical` now decide, and grouping characters must SEPARATE
+digits (two in a row is a validation error the corpus states in
+words). `datatype.format` is also read as an OBJECT, which is where
+`groupChar` actually lives.
+
+📊 MEASURED, csv2rdf: **123 pass, 82 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 100 at the previous landing.
+
+Two `FormatsTests` guards had to be CORRECTED rather than extended,
+and both were pinning behaviour rather than the specification:
+`formatConvert "integer" none … "42" == .noFormat` (it is `.valid`,
+and the `noFormat` answer is why `3.2` reached the output typed) and
+the date guards that asserted date formats were out of scope.
+
+### CSVW: value constraints, the remaining lexical spaces, and where
+the scaling suffix lives (2026-08-22)
+
+Five more, same loop:
+
+1. **The scaling suffix may be on the VALUE, not just the pattern.**
+   §6.4.2 lets a cell carry its own `%` / `‰`, so `123456.789%` under a
+   bare `{"groupChar": ","}` still divides by a hundred. Reading the
+   suffix only from the pattern left the value a hundred times too
+   large with the right datatype on it (test170).
+2. **A pattern that does not contain the grouping character FORBIDS
+   grouping.** `##0` says "no grouping", so `1,234` is not a number in
+   that format and must not be silently regrouped (test286).
+3. **The default `propertyUrl` uses SIMPLE expansion, not fragment
+   expansion.** A column name is a template VARIABLE VALUE, so
+   reserved characters are escaped: a column titled `##0` gives
+   `#%23%230`, and passing `#` through produced `###0`, which
+   truncates the fragment.
+4. **The §5.11.2 value constraints are checked**, on the normalised
+   form, with `decimalCompare` doing an EXACT decimal comparison
+   rather than a float round trip. `minimum: 5` against a cell of `4`
+   makes the cell invalid, so it keeps its text and loses the datatype
+   (test203).
+5. **`duration` and the date/time bases have lexical spaces even with
+   no format.** A duration `format` is an XSD regex this slice cannot
+   run, but the LEXICAL SPACE is checkable either way — which is what
+   stops `Foo` becoming an `xsd:duration` (test279). Likewise a
+   date/time column with no format must already be in the canonical
+   XSD form; before this it accepted any text at all and stamped
+   `xsd:date` on it.
+
+📊 MEASURED, csv2rdf: **153 pass, 52 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 123.
+
+Two more `FormatsTests` guards were CORRECTED rather than extended
+(`formatConvert "date" none … == .noFormat`, and the duration one).
+That is now FOUR guards in this file that pinned the absence of a
+check. A `noFormat` return is not a neutral answer: it means "emit
+this text under the column's datatype unchecked", and every one of
+those guards was recording a wrong triple as expected behaviour.
+
+### CSVW: integer ranges, column-name escaping, decimal patterns
+(2026-08-22)
+
+1. **An integer base's RANGE is part of its lexical space.** `1234` is
+   not an `xsd:byte` at all, and emitting it with that datatype
+   asserts a value the type does not contain. `integerBounds` carries
+   the twelve bounded bases (test172).
+2. **A column name in a default `propertyUrl` escapes `-` too.**
+   `test246` names its columns `yyyy-MM-ddTHH:mm:ss.S` and expects
+   `#yyyy%2DMM%2DddTHH%3Amm%3Ass.S` — the hyphen IS escaped while the
+   dot is not, which is neither RFC 3986's unreserved set nor simple
+   expansion. `encodeColumnName` records the set the corpus actually
+   uses, with the test that measured it.
+3. **A decimal PATTERN constrains digit counts and grouping
+   positions**, not just the separator character. Sixteen tests
+   (288–303 and 160) supply a perfectly good number and expect it
+   REJECTED for not matching its column's pattern: `1` against
+   `#,#00`, `12.34` against `#0.#`, `1,234,567` against `#,##,#00`
+   (whose secondary group is 2, so the right shape is `12,34,567`).
+   `parseNumPattern` / `regroup` / `matchesNumPattern` implement the
+   UAX #35 subset the corpus uses; prefixes, suffixes, quoting and the
+   negative subpattern are NOT read, and that is stated rather than
+   guessed at.
+
+📊 MEASURED, csv2rdf: **179 pass, 26 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 153.
+
+Running total for the day: 9 pass out of 9 attempted → 179 pass out of
+210 attempted, with the denominator itself growing from 9 to 210.
+
+### CSVW: five more rules, and one where "cannot check" is the answer
+(2026-08-22)
+
+1. **The exponent marker in a number pattern is LITERAL.** A pattern
+   written with `E` requires an `E` in the value: `10.10e10` does not
+   match `0.00E0` (test157).
+2. **An explicit `@id` on a datatype object names the literal's IRI**,
+   overriding the one its `base` would give (test242).
+3. **A column title must be LANGUAGE-COMPATIBLE to name its column.**
+   A document with `"lang": "de"` whose column states
+   `"titles": {"en": "On Street"}` has no usable title there, so the
+   column is `_col.2`. `langCompatible` implements the BCP 47
+   truncated match, with `und` matching anything (test148).
+4. **`X` is the ISO 8601 BASIC timezone form**: hours, with minutes
+   OPTIONAL. Reading only the hours left `+0800` with a trailing `00`
+   the pattern could not match (test190).
+5. **A common-property NAME must be an ABSOLUTE IRI**, not resolved
+   against the document base. `"foo": "bar"` became `<…/tests/foo>
+   "bar"` (test093) and `"@type": "Table"` became an `rdf:type` to
+   `<…/tests/Table>` (test263) — predicates the documents never wrote.
+   `absoluteIri?` requires a scheme; `@id` VALUES still resolve
+   relatively, because those really are references.
+
+And one where the honest answer is a refusal: **a `duration` with a
+`format` gets NO datatype.** The facet is an XSD regex and this slice
+has no engine for it, so the value cannot be SHOWN to satisfy it.
+test194 states `"format": "^.$"`, which no duration can match, and
+expects every cell plain — asserting the datatype anyway would claim a
+validity the code did not establish. With NO format the lexical space
+is still checkable, and it is what stops `Foo` becoming an
+`xsd:duration`.
+
+📊 MEASURED, csv2rdf: **186 pass, 19 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 179.
+
+### CSVW: four more value rules (2026-08-22)
+
+1. **The `S` count in a time pattern is the fraction-digit count,
+   exactly.** `HH:mm:ss.S` does not accept `15:02:37.143`; reading the
+   whole digit run let three digits through a one-digit pattern
+   (test247).
+2. **A `length` facet on a binary type counts decoded BYTES.**
+   `base64Binary` with `length: 19` describes the nineteen bytes of
+   "Send reinforcements", whose base64 text is twenty-eight characters
+   (test195). `facetLength` does the per-base conversion.
+3. **A BCP 47 primary subtag is 2–8 alphabetic characters.** A single
+   letter is reserved, which is what makes `a-bad-language` invalid
+   despite every subtag being well formed on its own — and the check
+   now applies to a common property's `@language` as well as to a
+   column's `lang` (test073).
+4. **A bare `@type` names a CSVW CLASS.** The metadata document's
+   `@context` IS the CSVW vocabulary, so `"@type": "Table"` means
+   `csvw:Table`; resolving it against the document base produced an
+   `rdf:type` to `<…/tests/Table>` (test263).
+
+📊 MEASURED, csv2rdf: **190 pass, 15 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 186.
+
+What is left, characterised rather than counted: six tests need
+metadata MERGING (§5.1 — file, link and user metadata combined with a
+defined precedence: 017, 034, 035, 036, 148, 149), two need the
+`notes`/table-group shape 306/307 expect, and the rest are single
+quirks (an invalid `@id` making the table node the document URL in
+102; a double's exponent case in 158). The five skips are tables the
+corpus does not ship — the metadata names a `-ref.csv` that is not in
+the tree.
+
+### CSVW: metadata discovery order, schema links, ordered lists,
+rowTitles (2026-08-22)
+
+1. **Metadata DISCOVERY has an order** (§5.2), and the runner was
+   taking the LAST `implicit` entry. The order that fits the corpus:
+   user metadata (`option.metadata`) > a `linked-metadata.json`
+   standing for the `Link` header > the file-specific
+   `<name>.csv-metadata.json` > the directory `csv-metadata.json`.
+   Picking the wrong one applies a whole different description
+   (test016 / test017 pull in opposite directions, which is what
+   forced the order out into the open).
+2. **A `tableSchema` given as a URL is a LINK, and it resolves.** The
+   parse stays pure and records `schemaRef`; the runner reads the
+   document and re-parses it as a schema. Fetching is the only part
+   that needs I/O, and it belongs outside the pure module.
+3. **`"ordered": true` makes a list-valued cell an RDF COLLECTION.**
+   csv2rdf §5 says such a column's values keep their relative order,
+   and only `rdf:first`/`rdf:rest` records that. Emitting them as
+   separate triples loses the order silently — the count is the same
+   and the graph says less (test306/307).
+4. **`rowTitles` puts `csvw:title` on the ROW node** for each named
+   column's value (test235/236).
+
+📊 MEASURED, csv2rdf: **194 pass, 10 fail, 0 comparison-gave-up, 6
+skip (out of 210 attempted)** — from 190.
+
+📊 NO REGRESSION, re-measured: rdf manifest **1031 pass, 0 fail (out of
+1031)**; SPARQL 1.1 **601 pass, 0 fail, 30 unsupported (out of 631)**.
+
+The whole day, in one line: **csv2rdf went from 9 pass out of 9
+attempted to 194 pass out of 210 attempted**, and the denominator grew
+from 9 to 210 because the metadata parse now exists. Of the ten
+remaining failures, four are single-quirk (an invalid `@id` naming the
+table node, a double's exponent case, two title-language edges) and
+the rest need multi-document metadata MERGING rather than selection.
+The six skips are tables the corpus does not ship.
+
+### csv2json: a second real conformance runner on the same pipeline
+(2026-08-23)
+
+`CSVW/JsonDoc.lean` + `Harness/CsvwJsonRun.lean` (`lake exe
+l4csvw-json`) run the OTHER csvw suite — `manifest-json.jsonld` — over
+the same annotated table the RDF pipeline builds. `Json.lean` already
+had the row and document SHAPES; this is what joins them to a metadata
+document and a CSV file.
+
+📊 FIRST MEASURED RESULT: **181 pass, 23 fail, 6 skip (out of 210
+attempted)** on the very first run, then **185 pass, 19 fail** after
+one fix. That is what the shared pipeline bought: every metadata rule
+paid for on the RDF side arrived working here.
+
+Three things csv2json does NOT share with csv2rdf, each of which would
+be a wrong answer if assumed:
+
+1. **Keys are not always column names.** A cell is keyed by its column
+   name when the column has the DEFAULT `propertyUrl`, and by the
+   property URL otherwise — COMPACTED against the standard prefixes,
+   so `http://schema.org/latitude` becomes `schema:latitude` while
+   `http://www.geonames.org/ontology#countryCode`, which no prefix
+   covers, is written out whole. Both forms appear in one object in
+   test031, which is what makes the rule visible.
+2. **Values are not always strings.** A numeric column's value is a
+   JSON NUMBER and a boolean column's a JSON BOOLEAN — `42.546245`,
+   not `"42.546245"`. A value that failed its datatype stays a string,
+   because the string is what the file said and the number is a claim
+   about it.
+3. **Members that share a key MERGE into one array.** Two columns may
+   carry the same `propertyUrl`, and csv2json puts their values in one
+   member in relative order (test305/306/307). Emitting a second
+   member of the same name produces an object that is not well formed
+   as a mapping.
+
+The comparison is STRUCTURAL: object members are a SET of pairs, array
+items a SEQUENCE. That distinction is the point — csv2json fixes the
+order of `row` and `describes` (which is why `"ordered"` columns exist
+at all), while object member order carries no meaning. Comparing raw
+text would fail correct output on whitespace; ignoring array order
+would pass output that had lost the ordering the specification
+requires. JSON NUMBERS are compared as numbers, not as source text, so
+`1.0` and `1` agree.
+
+### csv2json: four rules the JSON output does not share with the RDF
+one (2026-08-23)
+
+1. **A common property's NAME must be an absolute IRI here too.** A
+   bare `foo` or `titles` is not a property, and writing it out as a
+   member states something the document did not (test093, test275) —
+   the same rule the RDF side already enforced, applied on the JSON
+   side where it was missing.
+2. **`rdf:type` is written `@type`, and its value IS compacted.**
+   `"@type": "schema:MusicEvent"`, not an `rdf:type` member holding an
+   absolute IRI (test032). Everywhere else a `valueUrl` VALUE stays
+   absolute and only the KEY is compacted — `schema:about` is a member
+   name, never a value (test038).
+3. **A referenced object is NESTED, not listed alongside.** csv2json
+   §6 inlines a `valueUrl` that names another cell's `aboutUrl`, so
+   the event in test032 carries its place and its offer as nested
+   objects. Listing all three side by side gives a `describes` array
+   of the right length with the structure flattened out of it.
+4. **JSON numbers compare as NUMBERS, exponent expanded.** `0.0e0`,
+   `0.0` and `0` are one value; the parser keeps the source text, so
+   comparing it failed correct output for a reason that is not a
+   defect. The expansion is exact digit shifting, not a float round
+   trip.
+
+📊 MEASURED, csv2json: **195 pass, 9 fail, 6 skip (out of 210
+attempted)** — from 185. csv2rdf unchanged at 194 pass, 10 fail.
+
+### CSVW: the 58 negative tests, and the cross-check that keeps the
+validator honest (2026-08-23)
+
+Both runners now score the NEGATIVE tests, which were reported as "not
+attempted" all along: a `NegativeRdfTest`/`NegativeJsonTest` asserts
+that the metadata is REJECTED, so it is scored by
+`CSVW.Validate.validate` rather than against an expected document.
+
+`Validate.lean` was a thin slice — it caught 9 of the 58. The suite
+names every rule it wants, so they went in as a set:
+
+- `@id` must not be a blank node, on every object AND inside a common
+  property; `@type` must be a term, a prefixed name or an absolute URL
+  (`"not a link"` is none of the three), and never a blank node.
+- `tables` is required, must be an array, must not be empty, and must
+  hold objects; a table must have a `url`.
+- Common properties may carry only `@id` / `@type` / `@value` /
+  `@language`. `@context`, `@list`, `@set` and any other `@`-name
+  reject. `@value` is exclusive: not both `@type` and `@language`, and
+  no other member beside it; `@language` with no `@value` has nothing
+  to tag.
+- Datatype facets: `length` inside its own min/max, bounds that do not
+  cross, inclusive and exclusive bounds mutually exclusive on a side,
+  a non-empty range, a length facet only on a length-bearing base, a
+  value range only on an ordered one. A datatype `@id` must not be a
+  blank node NOR the URL of a built-in datatype — redefining
+  `xsd:string` is not a definition.
+- Schema structure: column names unique, virtual columns after real
+  ones, a foreign key carrying only `columnReference` and `reference`,
+  its source columns existing, and its DESTINATION table and columns
+  existing in the same document.
+- `@context` may carry only `@base` and `@language`.
+
+📊 MEASURED: **58 pass, 0 fail (out of 58)** on both suites, from 9.
+
+**The cross-check is the part worth keeping.** A negative score can be
+bought with rules that reject everything, and nothing in the negative
+column would ever disagree. So each runner also validates every
+POSITIVE test's metadata and counts the documents the validator
+wrongly rejects. It fired immediately at 3, and all three were the
+same mistake: treating a WARNING as an error. `foreignKeys` given as a
+non-array or holding a non-object member, and `titles` keyed by an
+invalid language, are `ToRdfTestWithWarnings` — the document still
+converts. That is the distinction `Validate.lean`'s own header says it
+exists to preserve, and the new rules had broken it within the hour.
+
+📊 CROSS-CHECK now reads **0** on both suites.
+
+📊 TOTALS over the whole manifest, no longer over a subset:
+**csv2rdf 252 pass, 10 fail, 6 skip (out of 270)**;
+**csv2json 253 pass, 9 fail, 6 skip (out of 270)**.
+
+### JSON Schema draft-07: the third real conformance runner
+(2026-08-23)
+
+`Harness/JsonSchemaRun.lean` (`lake exe l4jsonschema`) runs the 770
+vendored draft-07 tests through `JSONSchema/Validate.lean`. The suite's
+own `manifest.json` lists the files; each holds
+`{description, schema, tests: [{data, valid}]}` groups.
+
+📊 FIRST MEASURED RESULT: **407 pass, 1 fail (out of 408 decided), 362
+undetermined**. `Validate.lean` was a slice: `type`, `const`, `enum`,
+the numeric keywords, lengths, `items`, `required`, `properties`,
+`allOf`, `anyOf`, `not` — and nothing else.
+
+Now: **726 pass, 0 fail (out of 726 decided), 44 undetermined (out of
+770)**.
+
+What went in: `pattern` and `patternProperties` (on the verified
+`Regex` engine already in the tree), `additionalProperties`,
+`additionalItems`, `items` in its TUPLE form, `uniqueItems`,
+`contains`, `minProperties` / `maxProperties`, `propertyNames`,
+`oneOf`, `if`/`then`/`else`, `dependencies` in both forms, and `$ref`
+with JSON-pointer resolution plus a document registry.
+
+Three things worth carrying:
+
+1. **`$ref` IGNORES its siblings** (draft-07 §8.3). Applying them
+   alongside the referenced schema makes a document stricter than it
+   says it is, and `ref.json`'s "ref overrides any sibling keywords"
+   measures exactly that. It was the single decided-and-WRONG verdict
+   in the whole suite.
+2. **A `$ref` is a URI before it is a pointer.** `#/definitions/foo%22bar`
+   names the member `foo"bar`; tokenising without percent-decoding
+   looks for a member spelled with the escape and finds nothing.
+3. **The three-valued verdict is what makes the number readable.** An
+   UNDETERMINED test is counted separately, never as a pass and never
+   as a failure. The first run's 362 undetermined were the honest
+   report of a slice; folding them into `pass` would have read as
+   "770 pass" for a validator that decided fewer than half of them.
+
+The residue is NAMED: every draft-07 assertion keyword is implemented,
+so the 44 are not a missing keyword. They are `$id` base-URI
+resolution — a `$id` inside a document changing the base its `$ref`s
+resolve against. That needs base tracking through the schema tree,
+which is a distinct piece of work rather than another keyword.
+
+The runner also attributes an undetermined verdict only to names in
+KEYWORD position: inside `properties` the members are property NAMES,
+and the first version reported `foo`, `bar` and `tilde~field` as
+unimplemented keywords, which is noise that hides the real gap.
+
+### Content MathML: the fourth conformance runner, and the arithmetic
+it needed (2026-08-23)
+
+`MathML/FromXml.lean` reads Content MathML markup into the `Expr` that
+`Core.lean` evaluates, and `Harness/MathMLRun.lean` (`lake exe
+l4mathml`) runs the 56-test corpus.
+
+📊 **56 pass, 0 fail, 0 markup-not-read (out of 56)**.
+
+The XML is read by the project's OWN verified parser
+(`L4Factoidal.XML.Parser`), not a tag scanner written for the
+occasion. Entity references, CDATA, comments and attribute
+normalisation are the parser's job, and a second looser reader of the
+same syntax is a second set of bugs.
+
+`Core.eval` had the four operations and the six relations. The corpus
+needed more, and each addition is exact or it REFUSES:
+
+- `power` with a NEGATIVE integer exponent is the reciprocal; with a
+  non-integer exponent it refuses, because that is not a rational
+  power in general.
+- `root` takes an optional `<degree>` and returns the exact `n`th root
+  of a rational — both numerator and denominator must be perfect `n`th
+  powers. `root` of 2 is `undef`, not 1.414…: Content markup denotes a
+  VALUE, and a nearby float would state something the expression does
+  not.
+- `abs`, `quotient`, `rem`, `factorial`, `gcd`, `max`, `min` — the
+  integer ones refuse a fractional argument rather than truncating it.
+- **Relations CHAIN.** `eq` of three values holds when every adjacent
+  pair does. Reading only the first two would call `2 = 2 = 3` true.
+
+`undef` is an expected ANSWER in this corpus, not a skip: six tests
+assert it, and the runner scores them like any other. It also
+separates "the markup did not READ" from "the value is undefined" —
+one is a gap in the front end, the other is the answer, and reporting
+them as one number would hide a parser gap behind a correct-looking
+score.
+
+A `<cn>` reads `type="integer"` and `type="real"` through ONE decimal
+reader: an integer is a decimal with no fraction, and reading them
+apart would reject `type="integer"` written as `42.0`. `1.5e2` is
+exactly `150`, via digit shifting rather than a float.
+
+### The W3C XML Conformance Suite, scored (2026-08-23)
+
+`XML/ConfProbe.lean` read a list of paths from standard input and
+printed a verdict per file. That is a PROBE: it has no expected answer
+to compare against, so it could not say whether a verdict was RIGHT.
+Run with no input it reported "0 accepted, 0 rejected (out of 0
+files)" — a clean-looking line describing nothing.
+
+`Harness/XmlConfRun.lean` (`lake exe l4xmlconf`) reads the suite's own
+sub-manifests — the `<TEST>` elements with their `TYPE` and `URI` —
+and scores each verdict against what the suite says it should be. The
+manifests are parsed by the same verified parser the tests exercise; a
+separate manifest reader would be a second implementation of the
+syntax under test.
+
+📊 FIRST MEASURED RESULT: **1477 pass, 753 fail (out of 2230 in
+profile)**, plus 28 optional-behaviour, 63 XML 1.1 and 56 non-UTF-8
+tests reported OUT OF PROFILE rather than scored.
+
+Three things the scoring had to get right, each of which would move
+the number by hundreds:
+
+1. **A `valid` and an `invalid` case must BOTH be ACCEPTED.**
+   `invalid` means "violates the DTD", which a NON-VALIDATING parser
+   is not asked to notice. Scoring `invalid` as "must reject" would
+   have counted 57 correct verdicts as failures.
+2. **Out of profile is not failure.** XML 1.1 is a different language
+   and this parser reads UTF-8 only. Counting those as failures
+   understates the parser; folding them into passes overstates it, so
+   they are their own line.
+3. **Three sub-manifests are ENTITY BODIES, not documents.**
+   `sun-not-wf.xml` is a run of sibling `<TEST>` elements with no
+   single root, because `xmlconf.xml` includes it as an external
+   entity. Rejecting it IS the right verdict on it as a document, so
+   the runner supplies the element the entity is included into rather
+   than loosening the parser. Without that, three manifests and 159
+   tests vanished from the denominator behind a one-line notice —
+   exactly the silent narrowing this project keeps paying for.
+
+🔴 THE GAP IS NAMED: of the 753 failures, **674 are `not-wf` documents
+this parser ACCEPTS**, and they are almost all malformed INTERNAL DTD
+SUBSETS — `<!ENTITY foo PUBLIC "id">` with no system id, a comment
+inside a declaration, `<!ATTLIST doc a1 NMTOKEN v1>` with a bare
+default, an `<![INCLUDE[ ]]>` in the internal subset. `parseIntSubset`
+skips the subset loosely instead of parsing its grammar. The other 79
+split into 36 documents wrongly rejected and the remainder.
+
+That is one defect, not 674, and it is the next XML increment.
+
+### XML: the internal DTD subset, parsed instead of skipped
+(2026-08-23)
+
+`parseIntSubset` stepped over `<!ELEMENT`, `<!ATTLIST`, `<!NOTATION`
+and anything else beginning `<!` by scanning to the next `>` outside
+quotes. That accepts a malformed declaration, and the W3C conformance
+suite is largely made of them. It was ONE defect behind 674 wrong
+verdicts.
+
+The productions are now the grammar, and they REJECT. They do not
+build a DTD model — this parser stays NON-VALIDATING, so a declaration
+is checked for shape and then discarded.
+
+- `[75] ExternalID` — the `PUBLIC` form REQUIRES its system literal.
+  `<!ENTITY foo PUBLIC "some public id">` is malformed.
+- `[12] PubidLiteral` — its character repertoire is restricted, and a
+  character outside it is an error rather than a curiosity.
+- `[45] elementdecl` with a REAL `[46] contentspec`, and `[52]
+  AttlistDecl` with a real `[54] AttType` and `[60] DefaultDecl`. A
+  bare token is not a default.
+- `[82] NotationDecl`, whose `PublicID` form takes NO system literal —
+  the one place `PUBLIC` differs from `ExternalID`.
+- `[47]–[51]` content models as a GRAMMAR, not a balanced-paren blob:
+  a model may not mix `,` and `|`, an occurrence indicator binds with
+  no whitespace before it, and `[59] Enumeration` takes `|`, so
+  `(a,b,c)` is an SGML-ism rather than an attribute type.
+- `[61] conditionalSect` is an EXTERNAL-subset production. An
+  `<![INCLUDE[` in the internal subset is a well-formedness error.
+
+📊 MEASURED: **1477 → 1706 pass, 753 → 524 fail (out of 2230 in
+profile)**.
+
+Two rules had to be got exactly right, and the runner caught both
+within minutes of writing them:
+
+1. **`(#PCDATA)*` is legal with NO names.** `[51]`'s first alternative
+   allows zero names before `)*`, so both `(#PCDATA)` and `(#PCDATA)*`
+   are in the grammar. Requiring a name before the `*` rejected eight
+   documents the suite calls valid — a strictness regression that a
+   suite-less change would have shipped.
+2. **A `valid` case must still be ACCEPTED.** The whole point of the
+   new strictness is `not-wf`; the 42 documents still wrongly rejected
+   are unchanged from before this landing, and every one of them is an
+   EXTERNAL entity reference this parser deliberately does not load.
+
+No regression: rdf manifest 1031 pass, 0 fail; csv2rdf 252 pass of
+270. The XML parser feeds RDF/XML, so those are the numbers that would
+have moved first.
+
+Residue, named: 482 `not-wf` documents still accepted (mostly external
+DTD subsets and parameter-entity replacement text, which this parser
+does not read) and 42 `valid` documents rejected for the same reason
+from the other side. Both are the external-entity boundary, not the
+internal-subset grammar.
+
+### ShEx validation scored, and the quadratic JSON parser it exposed
+(2026-08-23)
+
+Two new modules and a runner:
+
+- `ShEx/FromJson.lean` — ShExJ (the JSON serialisation) into the
+  `Schema` `Schema.lean` defines. The corpus ships BOTH forms for
+  every schema (`0.shex` and `0.json`), and ShExJ is the
+  specification's own abstract syntax written down. A ShExC parser is
+  separate work; the two are not in tension, because a ShExC parser
+  produces the same `Schema`.
+- `ShEx/Satisfies.lean` — `satisfies(n, se, G)` with the SCHEMA in
+  scope, so shape REFERENCES resolve. `Shapes.lean` stops at a
+  reference and says so in its header; that is the right boundary for
+  a module without the schema, but the suite is largely made of
+  references, so nothing above it could be scored. The generalisation
+  is ONE parameter — the value check — and `Shapes.lean`'s own
+  functions are unchanged, so the EXTRA/CLOSED distinction its header
+  exists to keep straight is reused, not re-derived.
+- `Harness/ShExRun.lean` (`lake exe l4shex`).
+
+📊 MEASURED: **889 pass, 249 fail (out of 1138 decided)**, 44 not read
+(out of 1182).
+
+🔴 THE FIND: the runner did not finish in TEN MINUTES, and the cause
+was not ShEx. `JSON/Parser.lean` indexed a `List Char` by position, so
+`charAt?` walked the list and the parser was QUADRATIC in the input.
+The ShEx manifest is 747 KB. Converted to an `Array Char` — the same
+choice `XML/Parser.lean` already made, for the same reason, with its
+header saying so — the run went from **no result after 600 seconds to
+2.9 seconds**.
+
+That defect was in a shipping module, on the path of every
+JSON-driven runner in the tree, and no test caught it: the CSVW
+manifests are small enough that the quadratic cost read as "a bit
+slow". It took a 747 KB input to make it a hang.
+
+The correctness evidence SURVIVED the change. `JSON/Theorems.lean`
+inducts over `List Char` structure; restating two theorems over
+`(… : List Char).toArray` was the whole repair, and
+`stringSegments_plain` — the general round-trip induction over a body
+of ANY length — still holds. A rewrite that had to drop it would have
+been a bad trade at any speed.
+
+`refDepth` is 6, and small on purpose: `fuel` is not a step count.
+Every level re-checks each arc's value expression and `eachOf`
+re-matches each sub-expression against the whole neighbourhood, so the
+work grows like a branching factor to the fuel. A first attempt at 24
+did not finish either.
+
+No regression: csv2rdf 252 pass of 270, csv2json 253 of 270, JSON
+Schema 726 pass of 726 decided, MathML 56 of 56.

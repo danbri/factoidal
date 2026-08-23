@@ -32,6 +32,7 @@ guessing from names mistakes one for the other.
 Usage: `lake exe l4csvw-rdf [tests-dir]`
 -/
 import L4Factoidal.CSVW.Pipeline
+import L4Factoidal.CSVW.Validate
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.JSON.Parser
@@ -118,7 +119,19 @@ def manifestEntries (j : L4Factoidal.JSON.Json) : List Entry :=
               let metadata :=
                 if isJson then some a
                 else metaOpt.orElse (fun _ =>
-                  (implicits.filter (fun f => f.endsWith ".json")).getLast?)
+                  -- Metadata DISCOVERY order (§5.2): the file-specific
+                  -- `<name>.csv-metadata.json` wins over a directory
+                  -- `csv-metadata.json`. Taking the last `implicit`
+                  -- entry picked the directory one and applied the
+                  -- wrong description (test017).
+                  let jsons := implicits.filter (fun f => f.endsWith ".json")
+                  -- A `linked-metadata.json` in the `implicit` list
+                  -- stands for the `Link` header, which outranks both
+                  -- conventional locations.
+                  (jsons.find? (fun f => f.endsWith "linked-metadata.json")).orElse
+                    (fun _ => (jsons.find? (fun f => f.endsWith (a ++ "-metadata.json"))).orElse
+                      (fun _ => (jsons.find? (fun f => f.endsWith "csv-metadata.json")).orElse
+                        (fun _ => jsons.getLast?))))
               some { id := i, action := a, result := (str? "result" e).getD "",
                      minimal := minimal, metadata := metadata,
                      csvAction := if isCsv then some a else none,
@@ -189,6 +202,23 @@ def runOne (dir : String) (e : Entry) (dump : Bool := false) : IO TestOutcome :=
           | none        => pure ((({ tables := [] } : TableGroup)), ({} : Ctx)))
   if group.tables.isEmpty then
     return ⟨e.action, "skip", "metadata did not parse into any table"⟩
+  -- Resolve any `tableSchema` given as a URL. The parse records the
+  -- link and stops; fetching it is the only part that needs I/O, and
+  -- it belongs here rather than inside a pure module.
+  let mut group := group
+  let mut resolved : List TableDesc := []
+  for t in group.tables do
+    match t.schemaRef with
+    | none => resolved := resolved ++ [t]
+    | some ref =>
+        let sp := dir ++ "/" ++ mdir ++ ref
+        if ← System.FilePath.pathExists sp then
+          let ssrc ← IO.FS.readFile sp
+          match parseSchemaText ctx ssrc with
+          | some sch => resolved := resolved ++ [{ t with schema := some sch }]
+          | none     => resolved := resolved ++ [t]
+        else resolved := resolved ++ [t]
+  group := { group with tables := resolved }
   let mut pairs : List (TableDesc × Table) := []
   let mut missing : Option String := none
   for t in group.tables do
@@ -248,16 +278,47 @@ def main (args : List String) : IO UInt32 := do
       let mut fail := 0
       let mut skip := 0
       let mut budget := 0
-      let mut negative := 0
+      let mut overStrict := 0
+      let mut negPass := 0
+      let mut negFail := 0
+      let mut negSkip := 0
       for e in entries do
         if e.negative then
-          -- A negative test asserts an ERROR, not a graph. Scoring it
-          -- against an expected `.ttl` it does not have would be a
-          -- pass for the wrong reason; it needs the validator's
-          -- outcome, which this runner does not drive.
-          negative := negative + 1
+          -- A negative test asserts an ERROR, not a graph. It is
+          -- scored by the VALIDATOR: the metadata must be rejected.
+          let mp := dir ++ "/" ++ e.action
+          if !(← System.FilePath.pathExists mp) then
+            negSkip := negSkip + 1
+            IO.println s!"skip {e.id}: metadata file missing: {e.action}"
+          else
+            let msrc ← IO.FS.readFile mp
+            match L4Factoidal.JSON.parseJson? msrc with
+            | none =>
+                -- A document that will not even parse IS rejected.
+                negPass := negPass + 1
+            | some mj =>
+                if L4Factoidal.CSVW.passes (L4Factoidal.CSVW.validate mj) then
+                  negFail := negFail + 1
+                  IO.println s!"NEG-FAIL {e.id} ({e.action}): validator raised no error"
+                else negPass := negPass + 1
         else
         let mode := if e.minimal then "minimal" else "standard"
+        -- CROSS-CHECK: a validator tightened to reject the negative
+        -- tests must still ACCEPT every positive one. Without this the
+        -- negative score can be bought with rules that reject
+        -- everything, and the two numbers would never disagree.
+        match e.metadata with
+        | none => pure ()
+        | some mf =>
+            let mp := dir ++ "/" ++ mf
+            if ← System.FilePath.pathExists mp then
+              let msrc ← IO.FS.readFile mp
+              match L4Factoidal.JSON.parseJson? msrc with
+              | none => pure ()
+              | some mj =>
+                  if !L4Factoidal.CSVW.passes (L4Factoidal.CSVW.validate mj) then
+                    overStrict := overStrict + 1
+                    IO.println s!"OVER-STRICT {e.id}: the validator rejects a POSITIVE test's metadata"
         let o ← runOne dir e (dumpId == some e.id)
         if o.status == "pass" then pass := pass + 1
         else if o.status == "fail" then
@@ -271,10 +332,10 @@ def main (args : List String) : IO UInt32 := do
           IO.println s!"skip {e.id}: {o.detail}"
       let attempted := pass + fail + budget + skip
       IO.println ""
-      IO.println s!"csv2rdf: {pass} pass, {fail} fail, {budget} comparison-gave-up, {skip} skip (out of {attempted} attempted)"
-      IO.println s!"NOT ATTEMPTED: {negative} negative tests (they assert an ERROR,"
-      IO.println "  not a graph, and need the validator's outcome rather than an"
-      IO.println s!"  expected .ttl) out of the manifest's {total} entries."
+      IO.println s!"csv2rdf POSITIVE: {pass} pass, {fail} fail, {budget} comparison-gave-up, {skip} skip (out of {attempted} attempted)"
+      IO.println s!"csv2rdf NEGATIVE (validator must reject): {negPass} pass, {negFail} fail, {negSkip} skip (out of {negPass + negFail + negSkip})"
+      IO.println s!"csv2rdf TOTAL: {pass + negPass} pass, {fail + negFail} fail, {budget} comparison-gave-up, {skip + negSkip} skip (out of {total} manifest entries)"
+      IO.println s!"VALIDATOR CROSS-CHECK: {overStrict} positive tests whose metadata the validator wrongly rejects"
       IO.println ""
       IO.println "Comparison is by GRAPH ISOMORPHISM against the suite's own"
       IO.println "expected .ttl: blank-node labels are arbitrary, so triple-set"

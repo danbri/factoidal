@@ -52,6 +52,18 @@ def columnProperty (tableUrl : String) (inh : Inherited) (name : String) : Inher
   | some _ => inh
   | none   => { inh with propertyUrl := some (defaultPropertyRef tableUrl name) }
 
+/-- A link property (`aboutUrl` / `propertyUrl` / `valueUrl`) after
+    template expansion: a PREFIXED NAME is expanded, then the result is
+    resolved against the table's URL.
+
+    Prefix expansion belongs here rather than in the parse because the
+    template is expanded first: `schema:{_name}` is not a prefixed name
+    until `{_name}` is filled in. Skipping it leaves `rdf:type` and
+    `schema:MusicEvent` as opaque strings that pass the `isIri` check
+    (they have a colon) and produce triples on made-up IRIs. -/
+def linkIri? (base : String) (s : String) : Option WfIri :=
+  refIri? base (expandPrefixed s)
+
 /-- One table's rows, converted. `base` resolves the table URL and any
     `aboutUrl` the schema states. -/
 def tableRowInputs (base : String) (ctx : Ctx) (g : TableGroup) (t : TableDesc)
@@ -69,9 +81,16 @@ def tableRowInputs (base : String) (ctx : Ctx) (g : TableGroup) (t : TableDesc)
   -- instead of its own column headings — the whole graph is then
   -- structurally right and semantically wrong, which is exactly the
   -- shape of failure that survives a triple-count check.
-  let headers := match tbl.header.head? with
-    | some h => h.cells
-    | none   => []
+  -- ...but ONLY when the table description carries no schema. A
+  -- metadata document's schema REPLACES the embedded one, so a
+  -- schema that describes no usable column leaves the columns
+  -- unnamed — `_col.1`, `_col.2`, … — rather than falling back to the
+  -- file's headings. The corpus pins this: `test100` supplies
+  -- `"columns"` as an object instead of an array, and expects
+  -- `#_col.1` … `#_col.5`, not the header titles.
+  let headers := match t.schema, tbl.header.head? with
+    | none, some h => h.cells
+    | _, _         => []
   let nameOf : Column → Nat → String := fun c i =>
     match c.name with
     | some nm => nm
@@ -80,27 +99,61 @@ def tableRowInputs (base : String) (ctx : Ctx) (g : TableGroup) (t : TableDesc)
         else match headers.getD i "" with
           | "" => "_col." ++ toString (i + 1)
           | h  => h
+  -- VIRTUAL columns (§5.6) have no field in the file. They are
+  -- numbered after the real ones and read an empty cell, so a
+  -- `valueUrl` still produces its triple while a literal column would
+  -- produce nothing.
   let named := (cols.zipIdx).map (fun (c, i) =>
-    (c, nameOf c i,
-     columnProperty tableUrl (effectiveInherited g t t.schema c) (nameOf c i)))
-  -- The row-level `aboutUrl`: stated once on the schema (or inherited),
-  -- expanded per row. Reading it back off the cells instead would make
-  -- a row with a suppressed first column lose its subject.
-  let rowAbout := (t.schema.bind (fun s => s.aboutUrlBase)).orElse (fun _ =>
-    (effectiveInherited g t t.schema {}).aboutUrl)
+    let nm := nameOf c i
+    (c, nm, columnProperty tableUrl (effectiveInherited g t t.schema c) nm))
   (tbl.rows.zipIdx).map (fun (row, i) =>
     let rowNum := i + 1
     let binds := (named.map (·.2.1)).zip row.cells
     let look := rowLookup binds rowNum row.num
-    let subject := rowAbout.bind (fun tmpl =>
-      (refIri? tableUrl (UriTemplate.expand look tmpl)).map Subject.iri)
-    { rowNum := rowNum, sourceRow := row.num, subject := subject,
+    { rowNum := rowNum, sourceRow := row.num,
+      -- §5.5 `rowTitles` names the columns whose values title the ROW.
+      titles := match t.schema with
+        | some sch =>
+            named.zipIdx.filterMap (fun ((_, nm, _), k) =>
+              if sch.rowTitles.contains nm then some (row.cells.getD k "") else none)
+        | none => [],
       cells := (named.zipIdx).filterMap (fun ((c, nm, inh), k) =>
         if c.suppressOutput == some true then none
         else
-          let cell := row.cells.getD k ""
-          let look' := cellLookup look nm (k + 1) (k + 1)
-          some (inh, convertCell inh nm look' cell)) })
+          let isVirtual := c.virtual == some true
+          -- A virtual column with no `valueUrl` has nothing to say.
+          if isVirtual && inh.valueUrl.isNone then none
+          else
+            let look' := cellLookup look nm (k + 1) (k + 1)
+            let r0 :=
+              if isVirtual then
+                -- A VIRTUAL column has no field, so it must not go
+                -- through the cell rules: an empty cell IS the null
+                -- value, and `convertCell` would correctly drop it.
+                -- Its value comes from `valueUrl` alone.
+                ({ propertyRef := inh.propertyUrl.map (UriTemplate.expand look'),
+                   aboutRef    := inh.aboutUrl.map (UriTemplate.expand look'),
+                   valueRefs   := (inh.valueUrl.map (UriTemplate.expand look')).toList,
+                   literals    := [] } : CellResult)
+              else convertCell inh nm look' (row.cells.getD k "")
+            -- Resolve the link properties HERE, where the table URL is
+            -- in scope: `Emit` only checks that a reference is a
+            -- well-formed IRI, and a prefixed name like `rdf:type`
+            -- passes that check while denoting nothing.
+            let resolve := fun (u : String) =>
+              match linkIri? tableUrl u with
+              | some i => i.val
+              | none   => u
+            let r := { r0 with
+              propertyRef := r0.propertyRef.map resolve,
+              valueRefs   := r0.valueRefs.map resolve }
+            -- The subject is this CELL's `aboutUrl`, not the row's:
+            -- one row can describe several things, each under its own
+            -- `aboutUrl`, and a row-level subject merges them.
+            let subj := match r.aboutRef.bind (linkIri? tableUrl) with
+              | some iri => Subject.iri iri
+              | none     => Subject.bnode ("row" ++ toString rowNum)
+            some { subject := subj, inh := inh, result := r, name := nm }) })
 
 /-- Everything one table contributes in STANDARD mode: the
     `csvw:Table` node with its common properties, and the rows. -/
