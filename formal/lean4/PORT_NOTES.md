@@ -5380,3 +5380,53 @@ exists to preserve, and the new rules had broken it within the hour.
 📊 TOTALS over the whole manifest, no longer over a subset:
 **csv2rdf 252 pass, 10 fail, 6 skip (out of 270)**;
 **csv2json 253 pass, 9 fail, 6 skip (out of 270)**.
+
+### JSON Schema draft-07: the third real conformance runner
+(2026-08-23)
+
+`Harness/JsonSchemaRun.lean` (`lake exe l4jsonschema`) runs the 770
+vendored draft-07 tests through `JSONSchema/Validate.lean`. The suite's
+own `manifest.json` lists the files; each holds
+`{description, schema, tests: [{data, valid}]}` groups.
+
+📊 FIRST MEASURED RESULT: **407 pass, 1 fail (out of 408 decided), 362
+undetermined**. `Validate.lean` was a slice: `type`, `const`, `enum`,
+the numeric keywords, lengths, `items`, `required`, `properties`,
+`allOf`, `anyOf`, `not` — and nothing else.
+
+Now: **726 pass, 0 fail (out of 726 decided), 44 undetermined (out of
+770)**.
+
+What went in: `pattern` and `patternProperties` (on the verified
+`Regex` engine already in the tree), `additionalProperties`,
+`additionalItems`, `items` in its TUPLE form, `uniqueItems`,
+`contains`, `minProperties` / `maxProperties`, `propertyNames`,
+`oneOf`, `if`/`then`/`else`, `dependencies` in both forms, and `$ref`
+with JSON-pointer resolution plus a document registry.
+
+Three things worth carrying:
+
+1. **`$ref` IGNORES its siblings** (draft-07 §8.3). Applying them
+   alongside the referenced schema makes a document stricter than it
+   says it is, and `ref.json`'s "ref overrides any sibling keywords"
+   measures exactly that. It was the single decided-and-WRONG verdict
+   in the whole suite.
+2. **A `$ref` is a URI before it is a pointer.** `#/definitions/foo%22bar`
+   names the member `foo"bar`; tokenising without percent-decoding
+   looks for a member spelled with the escape and finds nothing.
+3. **The three-valued verdict is what makes the number readable.** An
+   UNDETERMINED test is counted separately, never as a pass and never
+   as a failure. The first run's 362 undetermined were the honest
+   report of a slice; folding them into `pass` would have read as
+   "770 pass" for a validator that decided fewer than half of them.
+
+The residue is NAMED: every draft-07 assertion keyword is implemented,
+so the 44 are not a missing keyword. They are `$id` base-URI
+resolution — a `$id` inside a document changing the base its `$ref`s
+resolve against. That needs base tracking through the schema tree,
+which is a distinct piece of work rather than another keyword.
+
+The runner also attributes an undetermined verdict only to names in
+KEYWORD position: inside `properties` the members are property NAMES,
+and the first version reported `foo`, `bar` and `tilde~field` as
+unimplemented keywords, which is noise that hides the real gap.
