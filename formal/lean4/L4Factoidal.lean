@@ -37,6 +37,7 @@ import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NQuads
 import L4Factoidal.Syntax.IriResolve
 import L4Factoidal.Syntax.Turtle
+import L4Factoidal.Syntax.TurtleSerialize
 import L4Factoidal.Syntax.TriG
 import L4Factoidal.Syntax.TurtleTests
 import L4Factoidal.Syntax.TurtleTheorems

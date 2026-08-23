@@ -38,6 +38,7 @@ alias={
  "RDF.Term":"RDF.Core","RDF.Triple":"RDF.Core","RDF.Graph.Executable":"RDF.Graph",
  "RDF.GraphIsomorphism":"RDF.Isomorphism","RDF.Indexed":"OWL.RLClosureIndexed",
  "RDF.NQuads.Serialize":"Syntax.NQuads",
+ "RDF.Turtle.Serialize":"Syntax.TurtleSerialize",
  "OWL.Closure":"OWL.RLClosure","OWL.RL.Spec":"OWL.RLRules",
  "Tableau":"OWL.Tableau","Tableau.Refute":"OWL.Refute",
  "SPARQL.HTTP.Client":"HTTP.Client","SPARQL.HTTP.RunQuery":"HTTP.RunQuery",

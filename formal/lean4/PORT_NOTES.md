@@ -9076,3 +9076,36 @@ its own guard.
 
 Measured after the port: `lake exe l4hdt` still reports 2 pass, 0 fail
 (out of 2) over the vendored `.hdt` fixtures.
+
+## RDF.Turtle.Serialize → `L4Factoidal/Syntax/TurtleSerialize.lean`
+
+The Turtle pretty-printer: a `@prefix` header, `;`-joined predicate
+lists, `,`-joined object lists, one block per subject. The Lean tree
+had NO Turtle serialiser at all before this — the false-positive audit
+in the same landing is what surfaced that, since the module had been
+counted as covered by `JSON.Serialize`.
+
+**The abbreviations are the correctness surface, and both are checked
+against the parser.** A prefixed name is emitted only when
+`Syntax.validatePnLocal` — the parser's own validator, not a second
+approximation of the grammar — accepts the local part; otherwise the
+full `<iri>` form goes out. The `a` keyword is used for `rdf:type` in
+PREDICATE position only, and a guard pins that `rdf:type` in OBJECT
+position still prints as an IRI.
+
+**The round trip is CHECKED here and could not be in F\*.** The F\*
+banner records the attempt and its outcome: the literal path goes
+through byte primitives that stay opaque to the solver, so not even
+`nq_escape_literal "a" == "a"` reduces, and wire correctness is pinned
+at the CLI level instead. In Lean `escapeLiteral` is an ordinary
+computable function, so `#guard`s run
+`parseTurtle (turtleOfGraphAuto g) = g` on four concrete graphs —
+including one whose literal carries a quote AND a backslash, and one
+whose IRI cannot be compacted so the `<…>` fallback is exercised.
+
+That is evidence at four shapes, not a theorem for all graphs, and the
+module header says which it is.
+
+**Numeric and boolean literals are not sugared**, as in F\* —
+correctness over sugar. The datatype IRI is still abbreviated, since
+that is pure compaction.
