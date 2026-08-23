@@ -124,3 +124,50 @@ it is already in progress.
 - Performance is a separate axis and is measured separately: the Lean
   evaluator is quadratic on joins
   (`docs/designissues/2026-08-22-indexing-and-join-processing.md`).
+
+---
+
+# Addendum, 2026-08-23 — six suites measured end to end
+
+Six conformance suites that this ledger listed as absent or as slices
+now have runners and measured scores. Every number below is one
+command, and the command is named.
+
+| Suite | Score | Runner |
+| --- | --- | --- |
+| csv2rdf | 270 pass, 0 fail, 0 skip (out of 270) | `lake exe l4csvw-rdf` |
+| csv2json | 270 pass, 0 fail, 0 skip (out of 270) | `lake exe l4csvw-json` |
+| JSON Schema draft-07 | 770 pass, 0 fail, 0 undetermined (out of 770) | `lake exe l4jsonschema` |
+| RML-Core | 60 pass, 0 fail (out of 60 compared) | `lake exe l4rml` |
+| Schematron | 8 pass, 0 fail (out of 8) | `lake exe l4schematron` |
+| MathML content | 56 pass, 0 fail (out of 56) | `lake exe l4mathml` |
+| ShEx validation | 1075 pass, 104 fail (out of 1179 decided) | `lake exe l4shex` |
+| XML conformance | 1840 pass, 22 fail (out of 1862 in profile) | `lake exe l4xmlconf` |
+| RIF Core | 24 pass, 2 fail (out of 26 decided) | `lake exe l4rif` |
+
+## What changed in the tree, not just in the scores
+
+- **Schematron** had a validator with two open parameters and nothing
+  to supply them. `XPath/Mini.lean` is the XPath 1.0 subset a `@test`
+  and a `@context` need, and `Schematron/FromXml.lean` reads a `.sch`.
+- **RML** had term generation and templates and nothing else. It now
+  has a JSONPath subset, a typed source value, a mapping model, a
+  graph reader, an evaluator, and dataset-isomorphism comparison.
+- **RIF** had an RDF-triple-shaped model that could not state
+  membership, subclass, positional atoms or built-ins. It is replaced
+  by a presentation-syntax parser, a three-valued built-in library, a
+  forward-chaining engine with Core safeness, and a runner.
+- **XML** read no external resource at all. `parseXMLWith` takes a
+  resolver, the external DTD subset and conditional sections are
+  parsed, parameter entities are expanded, and an entity's
+  replacement text is reparsed as content.
+
+## Still absent, and named
+
+XSLT (88 vendored cases, no engine), GRDDL, the COTTAS columnar store
+above the byte layer, `Math.*` (a computer-algebra slice: Diff,
+Matrix, Series, Simplify, Subst), `Parser.OWLFunctional`,
+`Parser.ShExC`, `XForms.Bind`, and `SPARQL.HTTP.*` beyond
+`HTTP/Server.lean`. The RIF built-in library is a named subset of
+RIF-DTB's 197, and the 13 UNDECIDED RIF cases are exactly the ones
+that need the rest.
