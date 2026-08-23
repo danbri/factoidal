@@ -174,17 +174,34 @@ def runManifest (root : String) (rel : String) (verbose : Bool) : IO Counts := d
                 -- handful of small files, all in its own directory.
                 let docDir := base ++ dirOf uri
                 let mut fetched : List (String × String) := []
+                -- An entity file this parser cannot DECODE puts the
+                -- case out of profile, the same way a non-UTF-8
+                -- DOCUMENT already is. `valid/ext-sa/007`, `008` and
+                -- `014` hold their entities in UTF-16; the parser is
+                -- UTF-8 only and says so, so the reference comes back
+                -- undeclared and the document is rejected — a
+                -- transcoding gap scored as a parser failure.
+                --
+                -- Only files the document NAMES count. A stray
+                -- undecodable file in the directory says nothing
+                -- about this case.
+                let mut entityNotUtf8 := false
                 if ← System.FilePath.isDir docDir then
                   for entry in (← System.FilePath.readDir docDir) do
                     let ep := entry.path.toString
                     if !(← System.FilePath.isDir ep) then
                       let b ← IO.FS.readBinFile ep
                       match String.fromUTF8? b with
-                      | none   => pure ()
+                      | none   =>
+                          if (text.splitOn entry.fileName).length > 1 then
+                            entityNotUtf8 := true
                       | some t => fetched := fetched ++ [(entry.fileName, t)]
                 let resolve : String → Option String := fun sysId =>
                   let name := ((sysId.splitOn "/").getLast?).getD sysId
                   (fetched.find? (fun (n, _) => n == name)).map (·.2)
+                if entityNotUtf8 then
+                  c := Counts.add c { notUtf8 := 1 }
+                else
                 let accepted := match parseXMLWith resolve text with
                   | .ok _    => true
                   | .error _ => false

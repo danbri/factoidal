@@ -6207,3 +6207,48 @@ No regression: csv2rdf 270 pass, 0 fail (out of 270), csv2json 270
 pass, 0 fail (out of 270), JSON Schema 770 pass, 0 fail (out of 770
 decided), MathML 56 pass, 0 fail (out of 56), schematron 8 pass, 0
 fail (out of 8), ShEx 1075 pass, 104 fail (out of 1179 decided).
+
+---
+
+## XML: `[9] EntityValue` and `[10] AttValue` are productions
+
+Two more families, both in the accept direction.
+
+**An entity value was a run of characters.** `normalizeEntityValue`
+copied everything through but a character reference, so
+`<!ENTITY foo "&">` was well-formed (`not-wf-sa-113`, `-114`), and so
+was `<!ENTITY e "<![CDATA[Tim & Michael]]>">` — CDATA is not
+recognised inside an entity value, so that `&` is as bare as any
+other (`not-wf-sa-159`). `[9]` admits `[^%&"]`, a PEReference or a
+Reference, and its characters must be `[2] Char` (`not-wf-sa-175`).
+§4.4.8 also puts a parameter-entity reference in an entity value out
+of bounds in the INTERNAL subset (`not-wf-sa-160`, `-162`).
+
+**An attribute DEFAULT is an attribute value**, and none of its
+constraints was checked. `expandEntityValue` already decides every
+one of them — declared, non-recursive, no `<` — so the check is a
+call rather than a new rule. The word in WFC: Entity Declared is
+"already": an entity declared AFTER the ATTLIST does not count
+(`not-wf-sa-180`). The check runs in the internal subset only, since
+the WFC is conditional on the document being standalone and an
+external subset may declare in a part not yet read.
+
+**And one denominator fix.** `valid/ext-sa/007`, `008` and `014` hold
+their entity text in UTF-16. The parser is UTF-8 only and says so, so
+the reference came back undeclared and the document was rejected — a
+transcoding gap scored as a parser failure. A case whose NAMED entity
+file will not decode now joins the non-UTF-8 bucket, where the
+non-UTF-8 documents already were. Only files the document names
+count: a stray undecodable file in the directory says nothing about
+the case.
+
+📊 MEASURED: **1840 pass, 22 fail (out of 1862 in profile)**, from
+1819 pass, 51 fail (out of 1870). Out of profile and reported: 24
+optional-behaviour, 55 XML 1.1, 64 not UTF-8, 313 editions 1–4, 59
+namespaces.
+
+The 22 left are a long tail with no shared cause: 15 accepted that
+should be rejected (`[32]` SDDecl, `[41]` Attribute, `[77]` TextDecl,
+`[28a]` and a handful of one-off errata cases) and 7 rejected that
+should be accepted (four byte-order cases, `ext02`, `o-p28pass5`,
+`valid/not-sa/023`).

@@ -1411,7 +1411,8 @@ def parseAttType (s : Chars) (pos : Nat) : PResult Unit :=
 /-- `[60] DefaultDecl ::= '#REQUIRED' | '#IMPLIED'
                         | (('#FIXED' S)? AttValue)`. A BARE token is
     NOT a default, which is what `not-wf-sa-059` checks. -/
-def parseDefaultDecl (s : Chars) (pos : Nat) : PResult Unit :=
+def parseDefaultDecl (check : Bool) (ents : EntityTable) (s : Chars) (pos : Nat)
+    : PResult Unit :=
   if peekLit "#REQUIRED" s pos then .ok () (pos + 9)
   else if peekLit "#IMPLIED" s pos then .ok () (pos + 8)
   else
@@ -1423,11 +1424,33 @@ def parseDefaultDecl (s : Chars) (pos : Nat) : PResult Unit :=
     if p < s.size && (charAt s p == '"' || charAt s p == '\'') then
       match skipQuotedLiteral s (p + 1) (charAt s p) (s.size + 1) with
       | .err m q => .err m q
-      | .ok _ p' => .ok () p'
+      | .ok _ p' =>
+        -- A DEFAULT VALUE is an `[10] AttValue`, and the
+        -- well-formedness constraints on one apply to it: every
+        -- entity it names must be DECLARED ALREADY (§4.1 WFC: Entity
+        -- Declared — "already" is the word, so an entity declared
+        -- after the ATTLIST does not count), must not RECURSE, must
+        -- not be EXTERNAL or UNPARSED (WFC: No External Entity
+        -- References), and must not carry a `<`. `expandEntityValue`
+        -- decides all of those, so the check is a call rather than a
+        -- new rule.
+        --
+        -- Only in the INTERNAL subset. The WFC is conditional on the
+        -- document being standalone, and in an external subset an
+        -- entity may be declared in a part this parser has not
+        -- reached; checking there would call well-formed documents
+        -- malformed.
+        if !check then .ok () p'
+        else
+          let body : Chars := (sub s (p + 1) (p' - 1)).toList.toArray
+          match expandEntityValue ents [] body 0 (ents.length + 1) (body.size + 1) [] with
+          | .err m _ => .err ("in an attribute default value: " ++ m) p
+          | .ok _ _  => .ok () p'
     else .err "expected #REQUIRED, #IMPLIED, #FIXED or a quoted default" p
 
 /-- `[52] AttlistDecl ::= '<!ATTLIST' S Name AttDef* S? '>'`. -/
-def parseAttlistDecl (s : Chars) (pos : Nat) : PResult Unit :=
+def parseAttlistDecl (check : Bool) (ents : EntityTable) (s : Chars) (pos : Nat)
+    : PResult Unit :=
   match pstring "<!ATTLIST" s pos with
   | .err m p => .err m p
   | .ok _ p1 => match skipSpace1 s p1 with
@@ -1450,7 +1473,7 @@ def parseAttlistDecl (s : Chars) (pos : Nat) : PResult Unit :=
                       | .err m p => .err m p
                       | .ok _ k3 => match skipSpace1 s k3 with
                         | .err m p => .err m p
-                        | .ok _ k4 => match parseDefaultDecl s k4 with
+                        | .ok _ k4 => match parseDefaultDecl check ents s k4 with
                           | .err m p => .err m p
                           | .ok _ k5 => defs k5 f
           defs p3 (s.size + 1)
@@ -1508,31 +1531,66 @@ def stripTextDecl (t : String) : String :=
     Storing the raw text and expanding everything later collapses those
     two into one, and whichever way the collapse falls, one of the pair
     is then wrong. -/
-def normalizeEntityValue (s : Chars) (pos : Nat) (acc : List String)
+def normalizeEntityValue (internal : Bool) (s : Chars) (pos : Nat) (acc : List String)
     : Nat → PResult String
   | 0 => .ok (String.join acc.reverse) pos
   | fuel + 1 =>
     if pos ≥ s.size then .ok (String.join acc.reverse) pos
     else
       let ch := charAt s pos
-      if ch == '&' && pos + 1 < s.size && charAt s (pos + 1) == '#' then
-        if pos + 2 < s.size && charAt s (pos + 2) == 'x' then
-          match parseRefDigits isHexDigit s (pos + 3) [] (s.size + 1) with
+      if !isXmlChar ch then
+        -- `[9] EntityValue` is built from `[2] Char`s, so a codepoint
+        -- outside that class is a well-formedness error rather than a
+        -- character to copy (`not-wf-sa-175`).
+        .err "character outside [2] Char in an entity value" pos
+      else if ch == '%' then
+        -- `[69] PEReference`. §4.4.8: in the INTERNAL subset a
+        -- parameter-entity reference may occur only where a markup
+        -- declaration may, so one inside an entity value there is a
+        -- well-formedness error (`not-wf-sa-160`, `not-wf-sa-162`).
+        if internal then
+          .err "a parameter-entity reference may not appear in an entity value in the internal subset" pos
+        else match parseName s (pos + 1) with
           | .err m p => .err m p
-          | .ok digits pos' =>
-              let cp := hexValue digits
-              if isXmlCharCode cp then
-                normalizeEntityValue s pos' (codepointToString cp :: acc) fuel
-              else .err "character reference to a non-Char codepoint" pos'
+          | .ok _ p1 =>
+              if p1 < s.size && charAt s p1 == ';' then
+                normalizeEntityValue internal s (p1 + 1) (sub s pos (p1 + 1) :: acc) fuel
+              else .err "expected ';' after a parameter-entity reference ([69])" p1
+      else if ch == '&' then
+        if pos + 1 < s.size && charAt s (pos + 1) == '#' then
+          if pos + 2 < s.size && charAt s (pos + 2) == 'x' then
+            match parseRefDigits isHexDigit s (pos + 3) [] (s.size + 1) with
+            | .err m p => .err m p
+            | .ok digits pos' =>
+                let cp := hexValue digits
+                if isXmlCharCode cp then
+                  normalizeEntityValue internal s pos' (codepointToString cp :: acc) fuel
+                else .err "character reference to a non-Char codepoint" pos'
+          else
+            match parseRefDigits isDecDigit s (pos + 2) [] (s.size + 1) with
+            | .err m p => .err m p
+            | .ok digits pos' =>
+                let cp := decValue digits
+                if isXmlCharCode cp then
+                  normalizeEntityValue internal s pos' (codepointToString cp :: acc) fuel
+                else .err "character reference to a non-Char codepoint" pos'
         else
-          match parseRefDigits isDecDigit s (pos + 2) [] (s.size + 1) with
-          | .err m p => .err m p
-          | .ok digits pos' =>
-              let cp := decValue digits
-              if isXmlCharCode cp then
-                normalizeEntityValue s pos' (codepointToString cp :: acc) fuel
-              else .err "character reference to a non-Char codepoint" pos'
-      else normalizeEntityValue s (pos + 1) (String.singleton ch :: acc) fuel
+          -- A bare `&` is not a character in an entity value: `[9]`
+          -- admits `[^%&"]`, a PEReference or a Reference, and nothing
+          -- else. Copying it through accepted `<!ENTITY foo "&">`
+          -- (`not-wf-sa-113`, `not-wf-sa-114`) and
+          -- `"<![CDATA[Tim & Michael]]>"` (`not-wf-sa-159` — CDATA is
+          -- not recognised inside an entity value, so the `&` there is
+          -- as bare as any other).
+          match parseName s (pos + 1) with
+          | .err _ _ => .err "a bare '&' in an entity value must begin a reference ([9] EntityValue)" pos
+          | .ok _ p1 =>
+              if p1 < s.size && charAt s p1 == ';' then
+                -- BYPASSED: a general-entity reference is left as
+                -- written and included at the reference site (§4.4.7).
+                normalizeEntityValue internal s (p1 + 1) (sub s pos (p1 + 1) :: acc) fuel
+              else .err "entity reference not terminated by ';'" p1
+      else normalizeEntityValue internal s (pos + 1) (String.singleton ch :: acc) fuel
 
 /-- `[70] EntityDecl ::= GEDecl | PEDecl`,
     `[71] GEDecl ::= '<!ENTITY' S Name S EntityDef S? '>'`,
@@ -1566,7 +1624,7 @@ def normalizeEntityValue (s : Chars) (pos : Nat) (acc : List String)
     the direction that matters: a well-formedness checker that accepts
     malformed input reports nothing, while one that rejects valid
     input at least announces itself. -/
-def parseEntityDecl (resolve : Resolver) (s : Chars) (pos : Nat)
+def parseEntityDecl (resolve : Resolver) (internal : Bool) (s : Chars) (pos : Nat)
     (ents : EntityTable) (pes : EntityTable) :
     PResult (EntityTable × EntityTable) :=
   match pstring "<!ENTITY" s pos with
@@ -1593,7 +1651,7 @@ def parseEntityDecl (resolve : Resolver) (s : Chars) (pos : Nat)
               | .err m p => .err m p
               | .ok _ p7 =>
                 let rawArr : Chars := rawval.toList.toArray
-                match normalizeEntityValue rawArr 0 [] (rawArr.size + 1) with
+                match normalizeEntityValue internal rawArr 0 [] (rawArr.size + 1) with
                 | .err m p => .err m p
                 | .ok value _ =>
                   -- A PARAMETER entity is not a general entity, so it
@@ -1729,7 +1787,7 @@ def parseSubset (resolve : Resolver) (endKind : SubsetEnd)
           | .err m p => .err m p
           | .ok _ pos' => parseSubset resolve endKind s pos' ents pes ids fuel
         else if peekLit "<!ENTITY" s pos then
-          match parseEntityDecl resolve s pos ents pes with
+          match parseEntityDecl resolve (endKind == .bracket) s pos ents pes with
           | .err m p => .err m p
           | .ok (ents', pes') pos' => parseSubset resolve endKind s pos' ents' pes' ids fuel
         else if peekLit "<?" s pos then
@@ -1741,7 +1799,7 @@ def parseSubset (resolve : Resolver) (endKind : SubsetEnd)
           | .err m p => .err m p
           | .ok _ pos' => parseSubset resolve endKind s pos' ents pes ids fuel
         else if peekLit "<!ATTLIST" s pos then
-          match parseAttlistDecl s pos with
+          match parseAttlistDecl (endKind == .bracket) ents s pos with
           | .err m p => .err m p
           | .ok _ pos' =>
             -- The ID-typed attributes are read out of the region the
@@ -1819,7 +1877,7 @@ def peScan (resolve : Resolver) (s : Chars) (pos : Nat) (pes : EntityTable)
   | fuel + 1 =>
     if pos ≥ s.size then String.join acc.reverse
     else if peekLit "<!ENTITY" s pos then
-      match parseEntityDecl resolve s pos [] pes with
+      match parseEntityDecl resolve false s pos [] pes with
       | .err _ _ =>
           -- Not a declaration this parser can read. Copy it through
           -- and let `parseSubset` produce the real message.

@@ -437,4 +437,45 @@ whichever way it falls. -/
 #guard wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
            "<!ENTITY e \"<![CDATA[&foo;]]>\">]><doc>&e;</doc>")
 
+/-! ## `[9] EntityValue` is a production, not a run of characters
+
+`normalizeEntityValue` copied every character through except a
+character reference, so a bare `&` and a `%` in the internal subset
+were accepted. Each of these is a document the parser said YES to. -/
+
+-- A bare `&` must begin a Reference (not-wf-sa-113, -114). CDATA is
+-- NOT recognised inside an entity value, so the `&` there is as bare
+-- as any other (not-wf-sa-159).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY foo \"&\">\n]>\n<doc></doc>")
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY % foo \"&\">\n]>\n<doc></doc>")
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ENTITY e \"<![CDATA[Tim & Michael]]>\">]><doc>&e;</doc>"))
+#guard wf "<!DOCTYPE doc [\n<!ENTITY foo \"&amp;\">\n]>\n<doc></doc>"
+
+-- §4.4.8: a parameter-entity reference may appear in an entity value
+-- only in the EXTERNAL subset (not-wf-sa-160, -162).
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ENTITY % e \"\"><!ENTITY foo \"%e;\">]><doc></doc>"))
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ENTITY % e1 \"\"><!ENTITY % e2 \"%e1;\">]><doc></doc>"))
+
+/-! ## An attribute DEFAULT is an `[10] AttValue`
+
+The well-formedness constraints on an attribute value apply to a
+default value too, and none of them was checked. -/
+
+-- WFC: Entity Declared, and "already" is the word — an entity
+-- declared AFTER the ATTLIST does not count (not-wf-sa-180).
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ATTLIST doc a CDATA \"&e;\"><!ENTITY e \"v\">]><doc></doc>"))
+#guard wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)><!ENTITY e \"v\">" ++
+           "<!ATTLIST doc a CDATA \"&e;\">]><doc></doc>")
+-- ...and an undeclared one is an error (not-wf-sa-078).
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ATTLIST doc a CDATA \"&foo;\">]><doc></doc>"))
+-- WFC: No Recursion (not-wf-sa-079, -080).
+#guard !(wf ("<!DOCTYPE doc [<!ENTITY e1 \"&e2;\"><!ENTITY e2 \"&e3;\">" ++
+             "<!ENTITY e3 \"&e1;\"><!ELEMENT doc (#PCDATA)>" ++
+             "<!ATTLIST doc a CDATA \"&e1;\">]><doc></doc>"))
+
 end L4Factoidal.XML.Tests
