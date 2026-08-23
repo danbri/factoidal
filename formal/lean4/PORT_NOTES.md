@@ -10491,3 +10491,53 @@ Both recorded on <https://github.com/danbri/factoidal/issues/559>, which
 now carries all six modules and the one condition that reverses each: a
 serialised or string-keyed index for the first five, a decoder needing
 an abstract column handle for `ColumnSeq`.
+
+## SPARQL payload-token lemmas — an F* impossibility that is an induction here
+
+`L4Factoidal/SPARQL/TokenizerLemmas.lean`. Groundwork for
+`SPARQL11.Parser.AskBgpRoundTrip`, and NOT a completed port of it — see
+"What is not done" below.
+
+**What F\* reports.** `SPARQL11.Parser.AskBgpRoundTrip.fst`'s banner
+declares its string round-trip stage IMPOSSIBLE, with the cause named:
+`FStar.String.sub`'s ulib specification exposes only a length
+refinement, no lemma relating its output characters to the input's
+content, so no lemma can be STATED connecting a printed payload back to
+the token extract via `substring`. It adds that this blocks every
+payload-carrying token, and that the companion `TokenRoundTrip` module's
+flagged gap has the same cause one level lower.
+
+**Why Lean is not blocked.** `SPARQL/Tokenizer.lean` never goes through
+an opaque substring: `scanIriBody`, `scanWhile` and `scanVarName`
+consume a `List Char` and return one, and `String.ofList` is applied
+once at the very end. The relationship between a printed payload and the
+scanned token is an equation about `List.append`, proved by induction on
+the payload with no library obligation.
+
+Proved: `scanWhile_append`, `scanIriBody_append`, `skipWs_of_ne_ws`,
+`processIriEscapes_id`, `nextToken_iri`, `nextToken_var`. Each states
+the RESIDUE as well as the token, because a lemma pinning only the token
+would not compose into a walk over a whole query.
+
+The side conditions are the printer's obligations and carry the content:
+an IRI body may hold no `>` and no `\`, its first character must be one
+the `<` disambiguation reads as an IRIREF rather than as less-than, and
+a variable name is drawn from what `scanVarName` accepts. Four `#guard`s
+pin those on concrete input, including `< 3` scanning as less-than and
+`<a>b>` ending at the FIRST `>`.
+
+**What is not done, and why the coverage number did not move.** Three
+pieces remain before the F\* module counts as ported: the ASK-fragment
+predicate and printer; a `tokenizeLoop` chaining lemma (the fuel is
+seeded from the whole input length, so composing per-token steps needs a
+decreasing-measure argument); and the token-level parse back to the AST,
+which is the part the F\* module DID complete. Recorded at
+<https://github.com/danbri/factoidal/issues/562>.
+
+Two Lean notes for a later reader. `conv_lhs`, `by_contra`, `tauto` and
+`ring` are Mathlib tactics and this tree has no Mathlib — use
+`conv => lhs; unfold f`, an explicit `cases h : e`, `Or.inl`, and the
+`Int` lemmas plus `omega` after generalising each product to an atom.
+And `::` binds tighter than `++`, so `'?' :: name ++ rest` is
+`('?' :: name) ++ rest`; a rewrite stated about `'?' :: (name ++ rest)`
+will not fire until `List.cons_append` has normalised the goal.

@@ -106,6 +106,7 @@ import L4Factoidal.JSONLD.Tests
 import L4Factoidal.JSONLD.Theorems
 import L4Factoidal.JSONLD.Frame
 import L4Factoidal.SPARQL.Tokenizer
+import L4Factoidal.SPARQL.TokenizerLemmas
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.ParserTests
 import L4Factoidal.SPARQL.ParserTheorems
