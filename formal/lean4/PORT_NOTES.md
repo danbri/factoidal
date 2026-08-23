@@ -5958,3 +5958,74 @@ entries)** — 212 positive and 58 negative, validator cross-check 0.
 regression elsewhere: JSON Schema 770 pass, 0 fail (out of 770
 decided), MathML 56 pass, 0 fail (out of 56), schematron 8 pass, 0
 fail (out of 8).
+
+---
+
+## ShEx: 889 → 1075 pass, and 41 fewer entries unread
+
+Six defects. Five of them made the validator ACCEPT too much, and the
+whole of that shows only in the suite's NEGATIVE half — a validator
+that accepts everything passes every positive test.
+
+1. **A `datatype` constraint checked the IRI and not the LEXICAL
+   SPACE.** ShEx 2.0 §5.4.3 requires both. `"1.0"^^xsd:integer`,
+   `"NaN"^^xsd:decimal` and `"+1"^^xsd:negativeInteger` were all
+   satisfied — 144 entries. `ShEx/XsdLexical.lean` decides the
+   lexical space per datatype IRI, and a datatype it does not decide
+   returns `none` rather than a silent `true`, so the gap stays
+   countable.
+
+   That module REUSES `CSVW/Formats.lean`'s lexical predicates rather
+   than restating them. They live under CSVW because csv2rdf needed
+   them first; their proper home is a shared `Xsd` module, and that
+   move is deferred to its own landing with the two CSVW suites (270
+   pass, 0 fail each) as its gate. A second copy of a lexical space
+   drifts silently, which is the cobbling rule #7 forbids.
+
+2. **`pattern`, `totalDigits` and `fractionDigits` were parsed and
+   never applied.** The ShExJ reader had all three fields; nothing
+   read them. `pattern` goes through `Regex.regexMatch` (`fn:matches`
+   semantics), and the digit facets count digits of the VALUE, so
+   `007.700` has two total and one fractional.
+
+3. **A stem range's EXCLUSIONS were all read as IRIs.** ShExJ writes
+   a bare string, and what it means depends on the range's KIND: an
+   IRI in an `IriStemRange`, a literal VALUE in a `LiteralStemRange`,
+   a language TAG in a `LanguageStemRange`. Reading every one as an
+   IRI made literal and language exclusions match nothing, so the
+   excluded nodes were admitted. Exclusions can also be nested STEMS
+   (`IriStem` inside an `IriStemRange`), which the old
+   `List ObjectValue` could not express at all.
+
+4. **An ordering facet could not compare an `xsd:double`.** The
+   literal writes `1.0E2`, the facet writes `100`, and
+   `compareDecimal` parsed neither side's exponent — so it returned
+   "undecidable", which the caller reports as UNSATISFIED. Twelve
+   positive tests failed on values that satisfy their facet.
+
+5. **A `pattern` on a blank node was refused.** The suite states that
+   it matches the LABEL (`1nonliteralPattern`). That is not obvious —
+   a label is not part of the graph's meaning — so the code says who
+   decided it.
+
+6. **41 entries were reported "data Turtle not read", and were.** The
+   suite's data files use relative IRIs (`<x> :p1 "p1-0"`) and its
+   entries name relative focus nodes (`"focus": "x"`), both relative
+   to the data file's own URL. The runner parsed with NO base, so the
+   graph was rejected outright. Both now resolve against the
+   retrieval URL the manifest's own `@context` gives. A told blank
+   node (`"_:abcd"`) and a typed-literal focus
+   (`{"@value": "ab", "@type": …}`) are read too — the second had been
+   read as a plain string, which is a DIFFERENT term and matched
+   nothing.
+
+📊 MEASURED: **1075 pass, 104 fail (out of 1179 decided)**, 3 not read
+(out of 1182). Was 889 pass, 249 fail (out of 1138 decided), 44 not
+read. The decided denominator grew by 41 because those entries are now
+read at all.
+
+The 104 remaining are ShEx 2.1 features, not defects in what is here:
+`EXTENDS` / `RESTRICTS` (15), cardinality on nested closed shapes
+(12), recursion through a value reference (7), and the `start` shape
+expression (9). Each is engine work with a named shape, which is why
+they are listed rather than summarised as "the rest".

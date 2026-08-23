@@ -75,6 +75,29 @@ private def vsvKindOf (ty : String) : Option VsvKind :=
   else if ty.startsWith "Language" then some .language
   else none
 
+/-- One exclusion of a stem range. A BARE STRING means whatever the
+    range's kind means: an IRI in an `IriStemRange`, a literal VALUE in
+    a `LiteralStemRange`, a language TAG in a `LanguageStemRange`.
+    Reading it as an IRI in every case is what made literal and
+    language exclusions inert. -/
+def exclusionOf (k : VsvKind) (j : Json) : Option Exclusion :=
+  match j with
+  | .string s =>
+      some (match k with
+            | .iri      => .value (.iri s)
+            | .literal  => .value (.literal s none none)
+            | .language => .lang s)
+  | .object _ =>
+      (match str? "type" j with
+       | some ty =>
+           if ty.endsWith "Stem" then
+             (match fld? "stem" j with
+              | some (.string p) => some (Exclusion.stem p)
+              | _                => none)
+           else (objectValueOf j).map Exclusion.value
+       | none => (objectValueOf j).map Exclusion.value)
+  | _ => none
+
 /-- A member of a `values` set: an exact object, a stem, a stem range
     with exclusions, or a language tag. -/
 def valueSetValueOf (j : Json) : Option ValueSetValue :=
@@ -93,7 +116,8 @@ def valueSetValueOf (j : Json) : Option ValueSetValue :=
                   | some _           => Stem.wildcard
                   | none             => Stem.wildcard
                 if ty.endsWith "StemRange" then
-                  some (.stemRange k stem ((arr "exclusions" j).filterMap objectValueOf))
+                  some (.stemRange k stem
+                    ((arr "exclusions" j).filterMap (exclusionOf k)))
                 else some (.stem k stem)
       | none => (objectValueOf j).map ValueSetValue.object
   | _ => none

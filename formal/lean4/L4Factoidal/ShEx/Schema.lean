@@ -48,11 +48,33 @@ inductive VsvKind where
   | iri | literal | language
 deriving Repr, DecidableEq, Inhabited
 
+/-- What a stem range EXCLUDES. ShExJ writes three shapes here and the
+    difference matters: a bare string, whose meaning depends on the
+    range's KIND; an explicit stem object (`IriStem`, `LiteralStem`,
+    `LanguageStem`); and a language tag.
+
+    The port had this as `List ObjectValue`, and `objectValueOf` reads
+    a bare string as an IRI. So `{"type": "LiteralStemRange", "stem":
+    "v", "exclusions": ["v1", "v2", "v3"]}` excluded three IRIs, none
+    of which a literal can be — the exclusions did nothing and every
+    excluded node was admitted. Twenty-five entries of the validation
+    suite, all of them negative tests, which is where a rule that
+    admits too much shows up.
+-/
+inductive Exclusion where
+  /-- An exact value. -/
+  | value (ov : ObjectValue)
+  /-- A language TAG, for a `LanguageStemRange`. -/
+  | lang  (tag : String)
+  /-- A nested STEM: the exclusion is itself a prefix. -/
+  | stem  (prefix' : String)
+deriving Repr, DecidableEq, Inhabited
+
 /-- A member of a `values` set. -/
 inductive ValueSetValue where
   | object    (v : ObjectValue)
   | stem      (kind : VsvKind) (s : Stem)
-  | stemRange (kind : VsvKind) (s : Stem) (exclusions : List ObjectValue)
+  | stemRange (kind : VsvKind) (s : Stem) (exclusions : List Exclusion)
   | language  (tag : String)
 deriving Repr, DecidableEq, Inhabited
 
