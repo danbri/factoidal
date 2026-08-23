@@ -8747,3 +8747,44 @@ to. `[propext, Quot.sound]`.
 `.dict` and `.presence` headers to agree on the token count, because
 they describe one column. A guard pins that a five-token dictionary
 beside a four-token bitmap is refused.
+
+## RDF.CottasStore.PageCache → `L4Factoidal/Cottas/PageCache.lean`
+
+The LRU page cache: an assoc list with age stamps, keyed by
+`(row group, column)`, evicting the smallest age past capacity.
+
+**One cache instead of two.** The F\* module carries the same LRU
+bookkeeping twice — `pcache_*` over `cottas_column` and `dpcache_*`
+over `list string` — and its own comment gives a call-site reason
+rather than a design one: "Kept as a separate small type instead of
+parameterizing `page_cache` over a type variable, to avoid touching
+every existing `page_cache`-typed call site for an unrelated change."
+Here it is polymorphic, so both are instantiations and the bounds
+lemmas are proved once instead of twice.
+
+**Three of `PageCache.Bounds.fst`'s four lemmas are proved here**:
+`replaceEntry_length`, `pcacheGet_length` and
+`pcachePut_capacity_bound`. The third is the one with content, and the
+F\* module says what it buys: an edit that drops the eviction step
+becomes a verification error rather than a production memory spike.
+Supporting lemmas: `findOldest_isSome`, `findOldest_mem`,
+`dropEntry_length_of_mem`, `entriesAfter_length_le`, `capEntries_le`.
+`pcachePut_capacity_bound` reports
+`[propext, Classical.choice, Quot.sound]`; `pcacheGet_length` reports
+`[propext]`.
+
+The fourth F\* lemma, `walk_candidate_rgs_search_limited_bound`, is
+about the LIMIT-pushdown walker in `RDF.CottasStore.fst` (2,825 lines),
+which is not ported. It is not here, and
+`RDF.CottasStore.PageCache.Bounds` stays counted as NOT covered for
+that reason.
+
+**Not ported:** the cache-wrapped decode wrappers, which call
+`Parquet.Footer`. The Lean tree has no Parquet reader.
+
+**The eviction guard tests the policy, not just the size.** `(0,0)`
+goes in, then `(0,1)`; reading `(0,0)` back makes `(0,1)` least
+recently used, so a third insert must evict `(0,1)`. A cache evicting
+by insertion order would drop `(0,0)` and still pass a size-only test.
+A second guard runs twenty puts into a cache of three and checks both
+the bound and that the survivors are the three most recent.
