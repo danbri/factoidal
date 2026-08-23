@@ -270,3 +270,4 @@ import L4Factoidal.SPARQL.UpdateSandbox
 import L4Factoidal.OWL.TestsManifest
 import L4Factoidal.RDFS.RegimeDispatch
 import L4Factoidal.RDF.VocabularyAxioms
+import L4Factoidal.Cottas.PresenceBitmap

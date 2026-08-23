@@ -48,6 +48,7 @@ alias={
  "SPARQL.Update.Sandbox":"SPARQL.UpdateSandbox",
  "OWL.Tests.Manifest":"OWL.TestsManifest",
  "RDF.Vocabulary.Axioms":"RDF.VocabularyAxioms",
+ "RDF.CottasStore.PresenceBitmap":"Cottas.PresenceBitmap",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
 }
 def leafkeys(m):

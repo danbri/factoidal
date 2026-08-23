@@ -8237,3 +8237,70 @@ container-membership rule emits what it needs for whatever finite set of
 for an infinite family. A `#guard` checks `rdf:_1` does NOT appear in
 the table — a table claiming to enumerate an infinite set would be
 duplicating the rule as well as being wrong.
+
+## The COTTAS block starts: the presence bitmap, with the I/O at the edge
+
+`L4Factoidal/Cottas/PresenceBitmap.lean` ports
+`formal/fstar/RDF.CottasStore.PresenceBitmap.fst` (257 lines) together
+with the parts of `RDF.CottasStore.OnDiskIndex.fst` that decide what the
+`.presence` bytes MEAN. (Only the presence module is claimed as covered;
+`OnDiskIndex` also carries the dictionary header and much else.)
+
+### Where the ten `assume val`s went
+
+`OnDiskIndex.fst` declares **ten** `assume val` I/O primitives —
+`mmap_companion_open`, `read_companion_u32_le`, `read_companion_byte`
+and the rest — and every read in the F\* presence module goes through
+them, served by OCaml glue that mmaps the companion at boot.
+
+None has a Lean counterpart. `IO.FS.readBinFile` returns a `ByteArray`
+and every definition here is a pure function of it; reading happens once,
+at the edge, in `openBitmap`. **The Lean tree's realisation surface for
+this module is EMPTY where the F\* tree's is ten declarations plus their
+glue.** Same shape as the HDT container, where the file-size probe and
+hex decode had nothing to do.
+
+### The safe-direction defaults ARE the contract
+
+A prune is an optimisation, so its correctness is one-sided: a `false`
+must mean "no row here"; a `true` may be wrong, in the safe direction.
+Every default is carried over:
+
+| Situation | Answer |
+|---|---|
+| `rg` or `tok` out of range | `false` |
+| byte read off the end | `true` |
+| companion did not open | `true` |
+| header invalid | `true` |
+| column unbound | `true` |
+
+The asymmetry in the first two rows is the interesting part and the
+`#guard`s state it. An out-of-range INDEX is a caller contract violation
+— a token id no dictionary produced — and `false` is correct, because no
+row can hold a token that does not exist. An out-of-range READ means the
+FILE is short, which says nothing about the data, so the only safe
+answer is to include. A port that made the two agree would be wrong in
+one of them, and would still pass a test that only exercised valid
+input.
+
+### The `#guard`s build a bitmap rather than describing one
+
+`mkPresence` writes the header and packs the bits, so the format is
+stated by construction. One guard then checks the WHOLE 3×5 grid —
+every set bit reads back and no unset bit does — which is where a
+bit-order or row-major error shows up. Checking four known-set positions
+would not catch a transposed index.
+
+### The soundness theorem, and what it does NOT establish
+
+`rgContainsToken_sound` is the contrapositive the call site needs: given
+that the bitmap agrees with the ground truth, a `false` means the token
+really is absent. It depends on **no axioms at all**.
+
+⚠️ The F\* module is explicit that the same lemma is proved *in the form
+stated* while the real obligation is elsewhere: nothing shows
+`BuiltCorrectly` HOLDS of any particular `.presence` file. That needs a
+ghost projection from the on-disk bytes to each row group's token set,
+plus a writer-side lemma that the builder respects it. Neither tree has
+either. The statement is what callers rely on; the producer-side
+obligation is open in both, and this port does not close it.
