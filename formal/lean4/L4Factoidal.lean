@@ -204,6 +204,7 @@ import L4Factoidal.OWL.FunctionalSyntaxTests
 import L4Factoidal.OWL.ClassExprTests
 import L4Factoidal.OWL.Materialise
 import L4Factoidal.OWL.MaterialiseTests
+import L4Factoidal.Testing.Enumerate
 import L4Factoidal.XSD.Facets
 import L4Factoidal.XSD.FacetsTests
 import L4Factoidal.OWL.Refute

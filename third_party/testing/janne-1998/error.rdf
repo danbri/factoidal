@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<rdf:RDF
+    xmlns:rdf="http://w3.org/TR/1999/PR-rdf-syntax-19990105#"
+    xmlns:s="http://description.org/schema/">
+
+<!-- unresolved internal reference to mybar -->
+<rdf:Bag ID="mybag">
+<rdf:li resource="http://w3.org/People/Lassila" />
+</rdf:Bag>
+
+<rdf:Description about="#mybar">
+  <s:Creator>Ora</s:Creator> 
+</rdf:Description>
+
+<!-- propertyElt with propAttr production used cannot have children -->
+<!-- Cannot nest Description inside Description -->
+
+<rdf:Description about="http://w3.org/Home/Lassila">
+  <s:Creator s:Language="fi">Janne Saarela</s:Creator>
+  <rdf:Description about="http://www.other.org/" />
+</rdf:Description>
+
+<!-- cannot have both ID and about for a Description -->
+<!-- unresolved namespace prefix 'v' -->
+<rdf:Description ID="id1"
+                 about="http://w3.org/Home/Lassila"
+                 v:Language="en" />
+
+<!-- typedNode cannot have rdf:resource, cannot have multiple typedNodes
+     within a predicate -->
+
+<rdf:Description about="http://w3.org/Home/Lassila">
+  <s:Creator>
+    <s:Person rdf:resource="http://w3.org/Home/Lassila" />
+    <s:Person rdf:ID="http://w3.org/People/Janne" />
+  </s:Creator>
+</rdf:Description>
+
+<!-- should have children -->
+
+<rdf:Alt>
+</rdf:Alt>
+
+<!-- rdf:li with rdf:resource cannot have children -->
+<rdf:Bag>
+  <rdf:li resource="http://w3.org/Home/Lassila">
+    <s:Creator rdf:resource="http://w3.org/People/Janne" />
+  </rdf:li>
+</rdf:Bag>
+
+<!-- double definition of same ID -->
+<rdf:Description ID="foo" s:Creator="http://w3.org/People/Lassila" />
+<rdf:Description ID="foo" s:Creator="http://w3.org/People/Janne" />
+
+</rdf:RDF>
