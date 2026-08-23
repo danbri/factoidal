@@ -10315,3 +10315,30 @@ refused an unbound argument, and an incomparable profile pair.
 **Two Lean-specific traps hit on the way.** `local` is a reserved
 keyword, so the builtin-pattern parameter is `localNm`. A `/-- … -/` doc
 comment cannot attach to a `mutual` block — it has to be `/-! … -/`.
+
+## Measurement: four renamed ports were missing from the alias table
+
+Found 2026-08-23 by the opposite method to the one that found the
+bare-leaf inflation. Every not-covered module was searched for by file
+name inside the Lean tree, and each of the seven hits was READ in
+context. Four were ports whose Lean header says so:
+
+| F\* module | Lean counterpart |
+|---|---|
+| `Parser.JSONLD` | `JSONLD.ToRdf` |
+| `RDF.CottasStore.PageCache.Bounds` | `Cottas.PageCache` |
+| `SPARQL.Protocol.RoundTrip` | `SPARQL.ResultsTheorems` |
+| `OWL.RL.Refinement` | `OWL.RLTheorems` |
+
+Three hits were NOT ports and stay counted as not covered:
+`OWL.Semantics.Soundness` (named under `RLTheorems`' own "What is NOT
+proved"), `RDF.Entailment.RDFS.Completeness` (the F\* module proves
+model-theoretic completeness through a Herbrand interpretation; the Lean
+`complete_of_saturated` is the syntactic statement — different
+theorems), and the `Parser.JSONLD` mention inside `JSON/Serialize.lean`,
+which cites its writer shape rather than claiming a port.
+
+Both directions of the measurement error have now bitten in one session:
+a matching rule too loose, then an alias table too sparse. Run the
+name search before quoting a coverage number, and read each hit rather
+than counting it.

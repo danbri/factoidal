@@ -44,6 +44,14 @@ alias={
  "RDF.Store.Columnar.DeltaMerge":"RDF.StoreDeltaMerge",
  "RDF.Store.Capabilities.Delta":"RDF.StoreCapabilitiesDelta",
  "RIF.Core.Conformance":"RIF.Conformance",
+  # Audited 2026-08-23 against the Lean module headers, one at a time.
+ # Each of these four Lean modules SAYS it is the counterpart; the two
+ # candidates that did NOT say so (OWL.Semantics.Soundness,
+ # RDF.Entailment.RDFS.Completeness) are deliberately left uncovered.
+ "Parser.JSONLD":"JSONLD.ToRdf",
+ "RDF.CottasStore.PageCache.Bounds":"Cottas.PageCache",
+ "SPARQL.Protocol.RoundTrip":"SPARQL.ResultsTheorems",
+ "OWL.RL.Refinement":"OWL.RLTheorems",
  "Parser.RIFXML":"RIF.Xml",
  "RDF.Entailment.RDFS.FixedPoint":"RDFS.FixedPoint",
  "SPARQL11.EntailmentRegime.RDFS":"SPARQL.EntailmentRegimeRdfs",
