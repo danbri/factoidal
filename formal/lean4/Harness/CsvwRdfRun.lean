@@ -118,7 +118,19 @@ def manifestEntries (j : L4Factoidal.JSON.Json) : List Entry :=
               let metadata :=
                 if isJson then some a
                 else metaOpt.orElse (fun _ =>
-                  (implicits.filter (fun f => f.endsWith ".json")).getLast?)
+                  -- Metadata DISCOVERY order (§5.2): the file-specific
+                  -- `<name>.csv-metadata.json` wins over a directory
+                  -- `csv-metadata.json`. Taking the last `implicit`
+                  -- entry picked the directory one and applied the
+                  -- wrong description (test017).
+                  let jsons := implicits.filter (fun f => f.endsWith ".json")
+                  -- A `linked-metadata.json` in the `implicit` list
+                  -- stands for the `Link` header, which outranks both
+                  -- conventional locations.
+                  (jsons.find? (fun f => f.endsWith "linked-metadata.json")).orElse
+                    (fun _ => (jsons.find? (fun f => f.endsWith (a ++ "-metadata.json"))).orElse
+                      (fun _ => (jsons.find? (fun f => f.endsWith "csv-metadata.json")).orElse
+                        (fun _ => jsons.getLast?))))
               some { id := i, action := a, result := (str? "result" e).getD "",
                      minimal := minimal, metadata := metadata,
                      csvAction := if isCsv then some a else none,
@@ -189,6 +201,23 @@ def runOne (dir : String) (e : Entry) (dump : Bool := false) : IO TestOutcome :=
           | none        => pure ((({ tables := [] } : TableGroup)), ({} : Ctx)))
   if group.tables.isEmpty then
     return ⟨e.action, "skip", "metadata did not parse into any table"⟩
+  -- Resolve any `tableSchema` given as a URL. The parse records the
+  -- link and stops; fetching it is the only part that needs I/O, and
+  -- it belongs here rather than inside a pure module.
+  let mut group := group
+  let mut resolved : List TableDesc := []
+  for t in group.tables do
+    match t.schemaRef with
+    | none => resolved := resolved ++ [t]
+    | some ref =>
+        let sp := dir ++ "/" ++ mdir ++ ref
+        if ← System.FilePath.pathExists sp then
+          let ssrc ← IO.FS.readFile sp
+          match parseSchemaText ctx ssrc with
+          | some sch => resolved := resolved ++ [{ t with schema := some sch }]
+          | none     => resolved := resolved ++ [t]
+        else resolved := resolved ++ [t]
+  group := { group with tables := resolved }
   let mut pairs : List (TableDesc × Table) := []
   let mut missing : Option String := none
   for t in group.tables do

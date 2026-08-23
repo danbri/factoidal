@@ -111,6 +111,12 @@ def tableRowInputs (base : String) (ctx : Ctx) (g : TableGroup) (t : TableDesc)
     let binds := (named.map (·.2.1)).zip row.cells
     let look := rowLookup binds rowNum row.num
     { rowNum := rowNum, sourceRow := row.num,
+      -- §5.5 `rowTitles` names the columns whose values title the ROW.
+      titles := match t.schema with
+        | some sch =>
+            named.zipIdx.filterMap (fun ((_, nm, _), k) =>
+              if sch.rowTitles.contains nm then some (row.cells.getD k "") else none)
+        | none => [],
       cells := (named.zipIdx).filterMap (fun ((c, nm, inh), k) =>
         if c.suppressOutput == some true then none
         else

@@ -5220,3 +5220,40 @@ quirks (an invalid `@id` making the table node the document URL in
 102; a double's exponent case in 158). The five skips are tables the
 corpus does not ship — the metadata names a `-ref.csv` that is not in
 the tree.
+
+### CSVW: metadata discovery order, schema links, ordered lists,
+rowTitles (2026-08-22)
+
+1. **Metadata DISCOVERY has an order** (§5.2), and the runner was
+   taking the LAST `implicit` entry. The order that fits the corpus:
+   user metadata (`option.metadata`) > a `linked-metadata.json`
+   standing for the `Link` header > the file-specific
+   `<name>.csv-metadata.json` > the directory `csv-metadata.json`.
+   Picking the wrong one applies a whole different description
+   (test016 / test017 pull in opposite directions, which is what
+   forced the order out into the open).
+2. **A `tableSchema` given as a URL is a LINK, and it resolves.** The
+   parse stays pure and records `schemaRef`; the runner reads the
+   document and re-parses it as a schema. Fetching is the only part
+   that needs I/O, and it belongs outside the pure module.
+3. **`"ordered": true` makes a list-valued cell an RDF COLLECTION.**
+   csv2rdf §5 says such a column's values keep their relative order,
+   and only `rdf:first`/`rdf:rest` records that. Emitting them as
+   separate triples loses the order silently — the count is the same
+   and the graph says less (test306/307).
+4. **`rowTitles` puts `csvw:title` on the ROW node** for each named
+   column's value (test235/236).
+
+📊 MEASURED, csv2rdf: **194 pass, 10 fail, 0 comparison-gave-up, 6
+skip (out of 210 attempted)** — from 190.
+
+📊 NO REGRESSION, re-measured: rdf manifest **1031 pass, 0 fail (out of
+1031)**; SPARQL 1.1 **601 pass, 0 fail, 30 unsupported (out of 631)**.
+
+The whole day, in one line: **csv2rdf went from 9 pass out of 9
+attempted to 194 pass out of 210 attempted**, and the denominator grew
+from 9 to 210 because the metadata parse now exists. Of the ten
+remaining failures, four are single-quirk (an invalid `@id` naming the
+table node, a double's exponent case, two title-language edges) and
+the rest need multi-document metadata MERGING rather than selection.
+The six skips are tables the corpus does not ship.

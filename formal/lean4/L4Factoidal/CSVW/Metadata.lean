@@ -153,6 +153,10 @@ deriving Repr, Inhabited
 structure TableDesc where
   url       : String
   schema    : Option TableSchema := none
+  /-- A `tableSchema` given as a URL rather than inline. The parse is
+      pure, so it records the LINK and leaves fetching to the caller —
+      which is the only part that needs I/O. -/
+  schemaRef : Option String := none
   dialect   : Option Dialect := none
   suppress  : Option Bool := none
   inherited : Inherited := {}
