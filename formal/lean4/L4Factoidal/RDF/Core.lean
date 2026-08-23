@@ -404,5 +404,45 @@ theorem Term.eqb_eq_of_toSubject {a b : Term} {x : Subject}
       | (cases a <;> simp_all [Term.eqb])
       | simp at hs
 
+/-! ## Symmetry of the engine equality
+
+Needed wherever a test compares a QUERY value against a STORED value
+while a second test compares two stored values against each other:
+bridging the two needs the equality to behave like a genuine
+equivalence relation, not merely a reflexive one. Transitivity is
+above; this is the other half. Harvested 2026-08-23 from the
+delta-merge correctness proof, and the F\* source proves the same
+lemmas about the same functions for the same reason. -/
+
+theorem langTagEq_symm (a b : String) : langTagEq a b = langTagEq b a := by
+  simp [langTagEq, BEq.comm]
+
+theorem langTagOptionEq_symm (a b : Option String) :
+    langTagOptionEq a b = langTagOptionEq b a := by
+  cases a <;> cases b <;> simp [langTagOptionEq, langTagEq_symm]
+
+theorem Subject.eqb_symm (a b : Subject) : a.eqb b = b.eqb a := by
+  cases a <;> cases b <;> simp [Subject.eqb, BEq.comm]
+
+theorem Literal.eqb_symm (a b : Literal) : a.eqb b = b.eqb a := by
+  unfold Literal.eqb
+  by_cases h1 : (a.datatype == rdfXMLLiteral) = true <;>
+  by_cases h2 : (b.datatype == rdfXMLLiteral) = true <;>
+    simp [h1, h2, XmlCanon.xmlCanonEq, BEq.comm, langTagOptionEq_symm]
+
+theorem Term.eqb_symm : ∀ (a b : Term), a.eqb b = b.eqb a
+  | .iri _, .iri _ => by simp [Term.eqb, BEq.comm]
+  | .bnode _, .bnode _ => by simp [Term.eqb, BEq.comm]
+  | .literal l1, .literal l2 => by simp [Term.eqb, Literal.eqb_symm]
+  | .tripleTerm s1 p1 o1, .tripleTerm s2 p2 o2 => by
+      simp [Term.eqb, Subject.eqb_symm s1 s2, Term.eqb_symm o1 o2, BEq.comm]
+  | .iri _, .bnode _ | .iri _, .literal _ | .iri _, .tripleTerm _ _ _
+  | .bnode _, .iri _ | .bnode _, .literal _ | .bnode _, .tripleTerm _ _ _
+  | .literal _, .iri _ | .literal _, .bnode _ | .literal _, .tripleTerm _ _ _
+  | .tripleTerm _ _ _, .iri _ | .tripleTerm _ _ _, .bnode _
+  | .tripleTerm _ _ _, .literal _ => by simp [Term.eqb]
+
+theorem Triple.eqb_symm (a b : Triple) : a.eqb b = b.eqb a := by
+  simp [Triple.eqb, Subject.eqb_symm a.s b.s, Term.eqb_symm a.o b.o, BEq.comm]
 
 end L4Factoidal.RDF

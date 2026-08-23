@@ -89,6 +89,55 @@ structure PatternBound where
 /-- No position bound: the all-variables pattern. -/
 def patternBoundAll : PatternBound := {}
 
+/-- Does this triple match the bound? Each bound position compares with
+the ENGINE equality of its own kind, so a bound literal object matches
+by literal equality (language-tag case, XMLLiteral canonical form) and
+not by exact field identity. Port of the per-position test inside
+`triple_matches_bound_acc`. -/
+def boundMatches (b : PatternBound) (t : Triple) : Bool :=
+  (match b.s with | none => true | some s => Subject.eqb s t.s) &&
+  (match b.p with | none => true | some p => p == t.p) &&
+  (match b.o with | none => true | some o => Term.eqb o t.o)
+
+/-- The bound test respects the engine equality on triples. Needed
+wherever a proof crosses between "does the store hold this triple"
+(`Graph.mem`, which compares two stored triples) and "does the bound
+match it" (which compares a QUERY value against a stored one). -/
+theorem boundMatches_congr (b : PatternBound) (a c : Triple) (h : Triple.eqb a c = true) :
+    boundMatches b a = boundMatches b c := by
+  simp only [Triple.eqb, Bool.and_eq_true, beq_iff_eq] at h
+  obtain ⟨⟨hs, hp⟩, ho⟩ := h
+  have hs' : a.s = c.s := Subject.eqb_eq hs
+  unfold boundMatches
+  rw [hs', hp]
+  cases b.o with
+  | none => rfl
+  | some o =>
+      have : Term.eqb o a.o = Term.eqb o c.o := by
+        cases h1 : Term.eqb o a.o with
+        | true => simp [Term.eqb_trans h1 ho]
+        | false =>
+            cases h2 : Term.eqb o c.o with
+            | true =>
+                exact absurd
+                  (Term.eqb_trans h2 (by rw [Term.eqb_symm]; exact ho)) (by rw [h1]; simp)
+            | false => rfl
+      simp [this]
+
+/-- The triples of `ts` that match `b`, in their original order.
+
+The F\* source writes this as an accumulator plus a final reverse, and
+its comment gives the reason: on the extracted OCaml a three-million-row
+bucket overflowed the stack when the recursion built its result AFTER
+the recursive call. `List.filter` has no such problem, and the two
+return the same list in the same order. -/
+def tripleMatchesBound (b : PatternBound) (ts : Graph) : Graph :=
+  ts.filter (boundMatches b)
+
+theorem mem_tripleMatchesBound (b : PatternBound) (g : Graph) (t : Triple) :
+    Graph.mem t (tripleMatchesBound b g) = (Graph.mem t g && boundMatches b t) :=
+  RDF.mem_filter_congr (boundMatches_congr b) t g
+
 /-- A solution mapping (also called a binding row). -/
 abbrev Binding := List (VarName × Term)
 

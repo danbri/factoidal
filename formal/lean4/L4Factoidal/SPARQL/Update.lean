@@ -158,10 +158,12 @@ end L4Factoidal.SPARQL
 
 namespace L4Factoidal.RDF
 
-/-- Remove every occurrence of `t` (engine equality `Triple.eqb`, the
-same comparison `Graph.mem` / `Graph.add` use). -/
-def Graph.remove (t : Triple) (g : Graph) : Graph :=
-  g.filter (fun u => !u.eqb t)
+-- `Graph.remove` used to be defined here. It moved to
+-- `RDF/Graph.lean`, beside `Graph.add` and `Graph.mem`, when the
+-- delta-merge proof needed its membership characterisation: the F\*
+-- tree keeps `graph_remove` in `RDF.Graph.Executable` with the other
+-- two, and splitting it off here put a set operation in an update
+-- module.
 
 /-- Does the store hold a graph named `i` (possibly empty)? Port of
 `has_named_graph`. -/

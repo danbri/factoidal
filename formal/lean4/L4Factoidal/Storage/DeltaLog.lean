@@ -328,6 +328,18 @@ def parseDeltaEntryPayload (bs : List UInt8) : Option (DeltaEntry × List UInt8)
     some (.create g, rest)
   else none
 
+/-! ### Batches
+
+One committed UPDATE request's worth of entries. `seq` is the commit
+order and `epoch` is the base-file generation the batch was written
+against — the epoch guard above decides whether a replay applies it. -/
+
+structure DeltaBatch where
+  seq : Nat
+  epoch : Nat
+  ops : List DeltaEntry
+  deriving Repr, DecidableEq
+
 /-! ### Build-time checks
 
 Every round trip is checked with a NON-EMPTY tail, so a parser that

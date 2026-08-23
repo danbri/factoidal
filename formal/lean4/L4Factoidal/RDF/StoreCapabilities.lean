@@ -52,7 +52,7 @@ import L4Factoidal.OWL.RLClosureIndexed
 
 namespace L4Factoidal.RDF
 
-open L4Factoidal.SPARQL (PatternBound patternBoundAll)
+open L4Factoidal.SPARQL (PatternBound patternBoundAll boundMatches tripleMatchesBound)
 
 /-! ## What a store advertises -/
 
@@ -272,10 +272,7 @@ def igSearch (i : OWL.RL.Index) (b : PatternBound) : List Triple :=
     | _,      some p, _ => i.withPred p
     | _,      _,      some o => i.withObj o
     | _,      _,      _ => i.toGraph
-  candidates.filter (fun t =>
-    (match b.s with | some s => t.s == s | none => true) &&
-    (match b.p with | some p => t.p == p | none => true) &&
-    (match b.o with | some o => t.o == o | none => true))
+  tripleMatchesBound b candidates
 
 def igEstimate (i : OWL.RL.Index) (b : PatternBound) : Nat := (igSearch i b).length
 

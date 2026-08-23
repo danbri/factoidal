@@ -41,6 +41,8 @@ alias={
  "RDF.Turtle.Serialize":"Syntax.TurtleSerialize",
  "RDF.Store.Loader":"RDF.StoreLoader",
  "RDF.Store.Capabilities":"RDF.StoreCapabilities",
+ "RDF.Store.Columnar.DeltaMerge":"RDF.StoreDeltaMerge",
+ "RDF.Store.Capabilities.Delta":"RDF.StoreCapabilitiesDelta",
  # PARTIAL. The domain-neutral maths core the F* tree keeps in
  # Math.Expr.fst is embedded in MathML/Core.lean instead: the same
  # five-constructor AST, exact rational arithmetic, exact roots,

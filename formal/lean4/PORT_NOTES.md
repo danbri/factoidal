@@ -9213,3 +9213,85 @@ touched at all once the budget is spent.
 of two non-empty in-memory members cannot enumerate cheaply and says
 `none`. A union whose non-advertising members are all EMPTY can, and
 returns the empty list — the case a blanket refusal used to get wrong.
+
+## `RDF.Store.Columnar.DeltaMerge` → `L4Factoidal/RDF/StoreDeltaMerge.lean`
+
+Merge-on-read: fold a replayed delta log into one graph's diff, then
+compose that diff with a base read result at query time. No I/O — the
+module consumes already-replayed batches and already-decoded base rows.
+
+**The theorem is the deliverable.**
+`mergeOnRead_matches_applyEntries` says that reading base-plus-delta
+returns exactly the triples that applying the SAME entries directly to
+the base graph would have produced, for any bound. It is proved for the
+whole vocabulary a delta entry can express — INSERT DATA, DELETE DATA,
+CLEAR and DROP on one graph, in sequence — by an induction over the
+entry list carrying a per-triple membership invariant.
+
+It is stated as MEMBERSHIP, not list equality, and that is the right
+statement rather than a weakening: both sides are graphs, a graph is a
+set of triples, and the two lists genuinely differ in order because
+`mergeOnRead` appends the delta's additions after the surviving base
+rows while the reference model keeps each triple where it first landed.
+A basic graph pattern has no order guarantee in SPARQL.
+
+**Four supporting results had to be proved first, and three of them
+belong to lower modules, so they landed there.**
+
+* `RDF/Core.lean`: `Triple.eqb_symm` and the four symmetry lemmas under
+  it (`langTagEq`, `langTagOptionEq`, `Subject.eqb`, `Literal.eqb`,
+  `Term.eqb`). The tree had reflexivity and transitivity but not
+  symmetry. The F\* module proves the same lemmas about the same
+  functions and records the same reason: the merge proof compares a
+  QUERY value against a STORED one in one place and two STORED values in
+  another, and bridging those needs a genuine equivalence relation.
+* `RDF/Graph.lean`: `mem_append`, `mem_graph_add`, `mem_graph_remove`
+  and `mem_filter_congr` — what membership becomes after each set
+  operation, in terms of the ENGINE equality. A `List.mem` fact says
+  nothing about `Graph.mem`, which compares with `Triple.eqb`.
+* `SPARQL/Algebra.lean`: `boundMatches`, `tripleMatchesBound`,
+  `boundMatches_congr` and `mem_tripleMatchesBound`.
+
+**`Graph.remove` moved from `SPARQL/Update.lean` to `RDF/Graph.lean`**,
+beside `Graph.add` and `Graph.mem`. The F\* tree keeps `graph_remove`
+with the other two; having it in an update module put a set operation
+somewhere a store proof could not reach without importing the SPARQL
+update stack.
+
+**`tripleMatchesBound` is `List.filter`, not the F\* accumulator.** The
+F\* source uses an accumulator plus a final reverse and its comment gives
+the reason — on the extracted OCaml, a three-million-row bucket
+overflowed the stack when the recursion built its result after the
+recursive call. Lean has no such problem and the two return the same
+list in the same order.
+
+**One proof-engineering note worth carrying forward.** The state
+invariant was first written as `if dr.cleared then … else …`, a branch
+whose CONDITION mentions the record. Every step of the induction
+rewrites that record, and the rewrite motive then fails to typecheck
+because the `Decidable` instance is pinned to the old record. Rewriting
+the invariant as one boolean expression — `composedMem` — removed the
+dependence and the induction went through. Same truth table, and the
+module says so at the definition.
+
+## `RDF.Store.Capabilities.Delta` → `L4Factoidal/RDF/StoreCapabilitiesDelta.lean`
+
+`overlay`: a base read seam plus one graph's resolved delta, as a read
+seam of the same type. No new constructor, no new field.
+
+**An empty delta is a no-op by construction** — the empty branch returns
+the wrapped seam with one flag flipped. Checked field by field against
+the unwrapped base.
+
+**Two capabilities behave differently under a live delta, for opposite
+reasons, and the module states both.** `distinctPredicates` becomes
+`none`: the base's dictionary pages were written at compaction time and
+cannot mention a predicate that exists only in the delta, so enumerating
+from them would DROP a GROUP BY row. `solveSelective` stays `some` and
+ignores `need`: it stands in for `solve`, and a caller that skips a
+`none` member drops rows, so it must answer — correctly, if without
+acceleration.
+
+**The estimate is not claimed exact, and a guard shows it.** With one
+tombstone the overlay estimates 2 where the exact count is 1. That is
+the approximation the flag permits, pinned rather than left implicit.

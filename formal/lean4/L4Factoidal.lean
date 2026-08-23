@@ -11,6 +11,8 @@ import L4Factoidal.RDF.Core
 import L4Factoidal.RDF.Graph
 import L4Factoidal.RDF.StoreLoader
 import L4Factoidal.RDF.StoreCapabilities
+import L4Factoidal.RDF.StoreDeltaMerge
+import L4Factoidal.RDF.StoreCapabilitiesDelta
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.RDF.IsomorphismTheorems
 import L4Factoidal.RDF.IsomorphismTests
