@@ -388,3 +388,69 @@ short forms:
 
 The COTTAS columnar store above the byte layer remains the only
 named absence. This addendum adds no new one.
+
+# Addendum 5, 2026-08-23 — OWL DL wave 2, and the XSD value spaces
+
+## 📊 Measured
+
+`lake exe l4owl-probe --dir third_party/testing/owl [--dl]`
+
+| Regime | Score |
+| --- | --- |
+| RL closure only | 1131 pass, 316 fail, 2 skip, 8 unsupported (out of 1457) |
+| Wave 1 | 1177 pass, 270 fail |
+| Wave 2 | 1192 pass, 255 fail, 2 skip, 8 unsupported (out of 1457) |
+
+`type-inconsistency.rdf` carries it: 30 pass, 97 fail with the RL
+closure alone becomes 80 pass, 47 fail (out of 127 decided). The F\*
+line for that catalog is 126 pass, 1 fail.
+
+`type-consistency.rdf` is unchanged and carries the SAME three
+regressions Addendum 4 named. The datatype rules added no new
+fabricated contradiction.
+
+## A new module, not only new rules
+
+`formal/lean4/L4Factoidal/XSD/Facets.lean` ports
+`formal/fstar/XSD.Facets.fst`: the OWL 2 datatype map as a decidable
+value space. It is the concrete-domain half of the DL reasoner and it
+was absent from the Lean tree entirely.
+
+Four value spaces, not one. OWL 2 Syntax §4.1 makes `owl:real`
+disjoint from `xsd:double` and `xsd:float`; §4.2 keeps those two
+apart; `xsd:dateTime` is a fourth dimension. Modelling them as one
+number line would let `"1.0"^^xsd:float` be proved equal to
+`"1.0"^^xsd:decimal`, which OWL 2 denies.
+
+Every operation in it is ONE-SIDED, and that is the whole design: an
+empty value space is a clash, which refutes an ontology, so a value
+is dropped only on a proof that it is outside. "Not proved equal" is
+not "proved distinct" — `"3.0"^^xsd:decimal` and `"3"^^xsd:integer`
+are one value, so the pair answers `false` to both predicates and
+withholds the clash.
+
+## 🔴 The cost, filed
+
+The `--dl` run takes 26 minutes 34 seconds against well under one for
+the RL closure alone. Tracked at
+https://github.com/danbri/factoidal/issues/549 , with the attribution
+measured rather than guessed: on `type-consistency.rdf` the closure
+alone is 17 s, `--dl` with the refuter off is 5 m 10 s, and `--dl` at
+the default budget is over 10 m.
+
+`--dl` is a flag, so no routine gate is affected.
+
+## The methodology note this landing earns
+
+Four performance defects were found and fixed. THREE of them —
+a per-branch search depth, list-scanning successor lookups, and
+recomputed role closures — each looked like the answer and each moved
+the number by nothing measurable. What explained
+`type-inconsistency.rdf`'s 76 seconds was a BUDGET SWEEP showing one
+case (`WebOnt-description-logic-504`) accounting for 71 of them.
+
+`skills/measuring-inference` already says to find which phase the
+time is in before optimising anything. This is the fourth time that
+rule has been paid for. The specific shape here: a plausible
+mechanism plus a code reading produced three work orders, and the
+measurement that would have ruled all three out took two minutes.
