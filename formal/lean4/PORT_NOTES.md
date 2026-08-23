@@ -8187,3 +8187,53 @@ They are replaced by one that has content: `x-rdfscor` (a near-miss for
 `x-rdfscore`) must produce a DIFFERENT closure size from `x-rdfscore`.
 If the regime match were a prefix test rather than equality, the two
 would be equal and the guard would fail.
+
+## RDF.Vocabulary.Axioms — a table generated, not retyped
+
+`L4Factoidal/RDF/VocabularyAxioms.lean` ports
+`formal/fstar/RDF.Vocabulary.Axioms.fst` (258 lines): the finite RDF and
+RDFS axiomatic triple tables from RDF 1.1 Semantics, as literal triple
+lists, auditable line by line against the specification without
+executing anything.
+
+### The two tables were extracted mechanically
+
+The 46 rows were parsed out of the F\* source — every
+`{ s = S_IRI …; p = …; o = T_IRI … }` — and re-emitted as Lean, not
+retyped. A table whose whole purpose is line-by-line auditability
+against a specification is the worst possible place for a transcription
+slip, and 46 rows by hand is where one happens.
+
+`#guard`s pin both counts (8 RDF, 38 RDFS, 46 total) and check for
+duplicates. A dropped row is the failure mode a table like this has, and
+nothing else in the tree would notice one.
+
+### ⚠️ The table is NOT wired into any closure, and that is a measured
+decision
+
+Seeding the RDFS closure with `finiteAxiomaticTriples` was attempted in
+the F\* tree and DISABLED after measurement. Every suite stayed
+byte-exact except OWL 2 profile-RL ConsistencyTests: **76 pass, 0 fail →
+75 pass, 1 fail**, with `New-Feature-ObjectQCR-002` becoming an
+unexpected inconsistency.
+
+The seeded schema axioms inflate the closure's `rdf:type` set through
+rdfs2 and rdfs3 far enough to trip the sound-but-narrow N=1
+qualified-cardinality complementOf scaffolding (issue #236) into a
+spurious cls-com clash. That is an unsoundness, not an improvement, so
+the seed is off in both trees.
+
+If re-attempting: the RDF-versus-RDFS regime split still applies. The
+bare closure under the "RDF" regime must NOT receive the RDFS rows —
+RDF Semantics scopes the two axiomatic sets to different entailment
+regimes.
+
+### The infinite families stay rule-generated
+
+`rdf:_1 rdf:type rdf:Property` and the rest of the `rdf:_n` families are
+excluded, per the specification's own note on infinitude. The
+container-membership rule emits what it needs for whatever finite set of
+`rdf:_n` IRIs appears in a given graph, and rule generation is CORRECT
+for an infinite family. A `#guard` checks `rdf:_1` does NOT appear in
+the table — a table claiming to enumerate an infinite set would be
+duplicating the rule as well as being wrong.
