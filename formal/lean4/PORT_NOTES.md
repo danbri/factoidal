@@ -7966,3 +7966,67 @@ about the AUDIT before it is evidence about the code. State the method
 next to the result, and pick a method that can see the failure you are
 looking for. Module-name matching cannot see a consolidation, so its
 silence about consolidations meant nothing.
+
+## ❌❌ The coverage figure was wrong twice, and the second method was in the tree
+
+Two corrections in one day, both because the AUDIT was wrong rather than
+because code landed. Recorded together so the next reader can tell which
+number they are looking at.
+
+| Reported | Method | Real |
+|---|---|---|
+| 120 of 220 | squashed module-name matching | 125 |
+| 125 of 220 | + definition-name matching | **130** |
+
+### What each method could not see
+
+**Module names** cannot see a CONSOLIDATION — one Lean module covering
+two F\* modules under a third name — nor a substantive rename.
+`L4Factoidal/RDF/Entailment.lean` covers BOTH `RDF.Entailment.Simple`
+and `RDF.Entailment.Regime`, and its own header says so in its first
+sentence. `Parser.CSVResults` became `SPARQL.ResultsCsvTsv`.
+
+**Definition names** are closer but still a proxy. They missed
+`RDF.Entailment.Simple` too: Lean writes `termMatch` and `matchSubject`
+where F\* writes `match_term` and `match_subj`.
+
+### The method that works, and it was sitting there
+
+**A Lean module's header names the F\* module it ports.** Extracting
+every `formal/fstar/X.fst` mention from every Lean header and reading
+the sentence around each settles it directly. Five more engine modules,
+3,015 F\* lines:
+
+| F\* module | Lines | What the Lean header says |
+|---|---|---|
+| `RDF.Entailment.RDFS.RhoDFClosure` | 1996 | "Ports the rule set of" |
+| `RDF.IRI` | 530 | "Port of" |
+| `Parser.SRX` | 291 | "Port of … (parsing)" |
+| `Parser.JSONResults` | 160 | "Port of … (parsing)" |
+| `SPARQL11.IRI.Resolve` | 38 | both F\* modules delegate to one core |
+
+It settled two the OTHER way as well, which a ratio-based audit would
+have scored as near-misses: `SPARQL.FullText` is not covered and
+`SPARQL/Parser.lean` says "no Lean" in as many words; `JSONLD.Frame` is
+not covered and `JSONLD/Expand.lean` merely lists it as a sibling. And
+`Parser.JSONLD` is claimed only as "Port of the toRdf half", so it stays
+in the not-covered column rather than being counted on a guess.
+
+### Two fixes, not one
+
+1. `tools/lean-port-gap.py` now GENERATES the classified summary
+   (engine / proof / by-design). It was hand-typed, and it drifted three
+   times in one session — once per batch of ports, because every landing
+   meant editing four numbers by hand and the classification was never
+   recomputed.
+2. The rule is written into `skills/workflow-gotchas-debugging`
+   (hazard #28) and CLAUDE.md (anti-pattern #28): an audit that finds
+   nothing is evidence about the AUDIT's reach before it is evidence
+   about the code.
+
+### Where that leaves the port
+
+**130 of 220 F\* modules have a Lean counterpart.** Not covered: 63
+engine modules / 46,503 lines, 21 proof modules / 24,529 lines (the
+wrong measure for that column — the Lean tree has its own theorem
+layer), 6 by-design / 1,853 lines.
