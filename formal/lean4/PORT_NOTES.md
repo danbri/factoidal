@@ -8954,3 +8954,51 @@ validation is not re-run here — that needs the OWL test-case manifest
 reader, which the Lean tree does not have. The `#guard`s check the
 checks; they do not reproduce the corpus number, and this note says so
 rather than letting the F\* figure read as the Lean one's.
+
+## SPARQL.Plan.AccessPath → `L4Factoidal/Cottas/AccessPath.lean`
+
+The per-row-group access-path chooser: `skip`, `offsetJump cv`, or
+`fullScan`. Built on the two modules ported just before it —
+`Cottas/OffsetIndex.lean` for the index and `Cottas/PlanPruning.lean`
+for the bounds record.
+
+`skip` is the decisive answer and the one that must be right;
+`fullScan` is the over-include and is always sound. A `#guard` walks
+every route to `fullScan` — no handle, unbound predicate, out-of-range
+row group, truncated file — and none of them reaches `skip`, because a
+`skip` on missing information would drop rows.
+
+**`chooseAccessPath_skip_sound` states the chain the F\* module leaves
+as a comment.** There, the soundness argument is prose pointing at
+`OffsetIndex.row_positions_for_count_sound`: a `skip` comes only from
+`CD_Empty`, which comes only from a zero count, which that lemma turns
+into "no matching row". Here it is one theorem with those steps
+discharged, on `[propext, Quot.sound]`.
+
+## SPARQL.Plan.Streamable → `L4Factoidal/SPARQL/PlanStreamable.lean`
+
+The parse-stream fast-path recogniser: which queries can be answered by
+folding over the parser's output without ever building a term graph.
+The F\* header carries the measurement that motivates it — a one-row
+`COUNT(*)` over 888,949 triples peaked at 731 MiB RSS on the
+materialise path and 44 MiB on the streaming one.
+
+**Two soundness conditions are carried across in force, and each gets
+its own `#guard`.**
+
+The DOMAIN SPLIT: a plain `?s ?p ?o` queries only the default graph and
+`GRAPH ?g { ?s ?p ?o }` only the union of named graphs, so on N-Quads
+input the two count DISJOINT subsets of the document and neither counts
+every line. Four guards pin `streamInDomain` on both plans against both
+kinds of item.
+
+PAIRWISE DISTINCTNESS on the named-graph shape: `GRAPH ?g { ?g ?p ?o }`
+and `GRAPH ?g { ?s ?p ?s }` carry an implicit equality that a
+position-by-position bound match does not honour, so streaming them
+would silently OVER-count. Four guards pin each rejection —
+`?g` in the subject, `?g` in the object, a repeated `?s`, a repeated
+predicate variable.
+
+**`StreamBound` is stated locally.** The F\* module reuses
+`triple_pattern_bound` from the algebra; the Lean algebra has no such
+record, so the three fields are declared here with the same shape.
