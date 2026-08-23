@@ -9783,3 +9783,52 @@ endpoint-reflexivity consequences need, and they are exactly §9's own
 `CondDomain` and `CondRange` are REUSED from `OWL.Semantics` rather
 than restated: §9 and OWL 2 RDF-Based Semantics Table 5.8 state the
 same condition, and the F\* tree shares them the same way.
+
+## `RDF.Semantics.HypothesisWitness` → `L4Factoidal/RDF/SemanticsHypothesisWitness.lean`
+
+Satisfiability witnesses for the hypotheses the refinement theorems
+restrict on.
+
+**A theorem whose hypothesis is UNSATISFIABLE proves nothing and
+verifies cleanly.** That is not hypothetical: the first draft of an
+RDFS closure-soundness theorem in the F\* tree assumed a property of
+every graph that is FALSE, and the prover reported all verification
+conditions discharged. Until that was caught the guard against a repeat
+was a paragraph of prose. This module makes it machine-checked in the
+Lean tree too.
+
+**Each bundle gets TWO witnesses, because there are two ways to say
+nothing.** A bundle satisfied by NOTHING makes `EntailsUnder` over it
+the everything-relation by vacuity. A bundle satisfied only by the
+everywhere-true IEXT makes it the everything-relation for the opposite
+reason, because every interpretation in the class satisfies every
+graph. `trivial_rdf_conditions` and `trivial_rdfs_conditions` rule out
+the first; `separating_rdf_conditions`, `separating_rdfs_conditions`,
+`separating_rejects`, `rdf_entails_not_everything` and
+`rdfs_entails_not_everything` rule out the second.
+
+The separating interpretation has two truth values, every IRI denoting
+`true` and every literal `false`, with IEXT holding when the predicate
+is `true` and either the object is `true` or the subject is `false`.
+Every condition's conclusion is reachable under it, and a triple with an
+IRI subject and a LITERAL object is not — which is the graph it refuses.
+
+**Both axiom conditions rest on one checked fact**: every triple in the
+transcribed axiomatic tables has an IRI object. That is decided by
+evaluation over the tables rather than argued, so a future table edit
+that added a literal-object row would fail here rather than silently
+weaken the witness.
+
+**The data-side predicates get a NON-EMPTY witness**, and
+`witnessExact_nonempty` says so. `GraphExact` excludes two specific
+literal shapes, so a witness that avoided them by accident — the empty
+graph above all — would not show the predicate is satisfied by anything
+interesting.
+
+**Where the honest answer is a gap, it is recorded.** The F\* module
+reaches only a DEGENERATE witness for two hypotheses and labels them.
+Neither has a counterpart here: the index predicates do not exist in
+this tree (`OWL.Semantics`'s header records why), and the chain
+predicate belongs to `RDF.Entailment.RDFS.ChainWf`, which is not ported.
+A witness module whose gaps are invisible is the same failure as a
+theorem whose hypothesis is invisible.
