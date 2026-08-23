@@ -82,13 +82,15 @@ def Tally.add (a b : Tally) : Tally :=
   { pass := a.pass + b.pass, fail := a.fail + b.fail,
     unsupported := a.unsupported + b.unsupported }
 
-/-- Run one file's groups. Returns the tally and the keywords that
-    left something undetermined. -/
-def runFile (reg : Registry) (src : String) : Tally × List String :=
+/-- Run one file's groups. Returns the tally, the keywords that left
+    something undetermined, and the DESCRIPTION of each group that did
+    — naming the undetermined cases, not just counting them, so the
+    remaining gap can be read off the run instead of guessed at. -/
+def runFile (reg : Registry) (src : String) : Tally × List String × List String :=
   match parseJson? src with
-  | none => ({ unsupported := 1 }, ["<file did not parse>"])
+  | none => ({ unsupported := 1 }, ["<file did not parse>"], [])
   | some (.array groups) =>
-      groups.foldl (fun (acc, kws) g =>
+      groups.foldl (fun (acc, kws, undec) g =>
         match field? "schema" g, field? "tests" g with
         | some schema, some (.array ts) =>
             let (t, k) := ts.foldl (fun (acc2, kws2) tc =>
@@ -100,11 +102,14 @@ def runFile (reg : Registry) (src : String) : Tally × List String :=
                   | .unsupported =>
                       (Tally.add acc2 {unsupported := 1},
                        kws2 ++ (schemaKeywords schema).filter (fun s => !kws2.contains s))
-              | some d, some _ => (Tally.add acc2 {unsupported := 1}, kws2)
+              | some _, some _ => (Tally.add acc2 {unsupported := 1}, kws2)
               | _, _ => (acc2, kws2)) (({} : Tally), kws)
-            (Tally.add acc t, k)
-        | _, _ => (acc, kws)) (({} : Tally), [])
-  | some _ => ({ unsupported := 1 }, ["<file is not an array of groups>"])
+            (Tally.add acc t, k,
+             if t.unsupported > 0 then
+               undec ++ [s!"{(str? "description" g).getD "<no description>"} ({t.unsupported})"]
+             else undec)
+        | _, _ => (acc, kws, undec)) (({} : Tally), [], [])
+  | some _ => ({ unsupported := 1 }, ["<file is not an array of groups>"], [])
 
 /-- The keywords this slice implements. Every draft-07 assertion is on
     the list, so an undetermined verdict is no longer a MISSING
@@ -165,6 +170,7 @@ def main (args : List String) : IO UInt32 := do
                 | _ => pure ()
       let mut total : Tally := {}
       let mut gaps : List String := []
+      let mut undecided : List String := []
       let mut missing := 0
       for f in files do
         let p := dir ++ "/" ++ f
@@ -173,11 +179,12 @@ def main (args : List String) : IO UInt32 := do
           IO.println s!"missing vendored file: {f}"
         else
           let src ← IO.FS.readFile p
-          let (t, kws) := runFile reg src
+          let (t, kws, un) := runFile reg src
           if t.fail > 0 then
             IO.println s!"{t.fail} decided-and-wrong in {f}"
           total := Tally.add total t
           gaps := gaps ++ kws.filter (fun k => !gaps.contains k)
+          undecided := undecided ++ un.map (fun d => f ++ ": " ++ d)
       let attempted := total.pass + total.fail
       IO.println ""
       IO.println s!"json-schema draft-07 DECIDED: {total.pass} pass, {total.fail} fail (out of {attempted} decided)"
@@ -188,14 +195,20 @@ def main (args : List String) : IO UInt32 := do
       let unported := gaps.filter (fun k =>
         !portedKeywords.contains k && !k.startsWith "<")
       IO.println ""
-      if !unported.isEmpty then
+      if total.unsupported == 0 then
+        IO.println "Every vendored test was DECIDED: no keyword, no `$ref`, and no"
+        IO.println "bound in this suite left the validator without a verdict."
+      else if !unported.isEmpty then
         IO.println "Keywords the undetermined tests mention that this slice does not implement:"
         IO.println ("  " ++ String.intercalate ", " (unported.take 40))
       else
-        IO.println "Every draft-07 ASSERTION keyword is implemented, so the undetermined"
-        IO.println "tests are not a missing keyword: they are `$ref`s this slice does not"
-        IO.println "RESOLVE -- refs into another document, which needs a document loader."
-      IO.println ""
+        IO.println "Every draft-07 ASSERTION keyword is implemented, so an undetermined"
+        IO.println "test is not a missing keyword. The groups are named below."
+      if !undecided.isEmpty then
+        IO.println "The groups left undetermined, with how many of their tests:"
+        for d in undecided do
+          IO.println s!"  {d}"
+        IO.println ""
       IO.println "An UNDETERMINED verdict is counted separately, never as a pass"
       IO.println "and never as a failure: folding it into pass would inflate the"
       IO.println "score with tests the validator did not decide, and into fail"

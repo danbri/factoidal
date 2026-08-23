@@ -5689,3 +5689,59 @@ attribute tests, a child path, and one reverse axis. `book[1]`,
 `substring-before`, and an ordering comparison against a string are
 all refused — pinned as refusals, so the boundary is a test rather
 than a promise.
+
+---
+
+## JSON Schema draft-07: 770 pass, 0 fail (out of 770), 0 undetermined
+
+The suite was at 726 pass, 0 fail (out of 726 decided) with **44
+undetermined**. Both causes were the same shape as everything else in
+this port — the validator was RIGHT about everything it decided, and
+the gap was in what it declined to decide.
+
+**32 of the 44: `$id` and the base URI (draft-07 §8.2).** A `$ref` was
+resolved as a JSON pointer into the top document, or looked up whole
+in a registry. Neither is what draft-07 says: an `$id` sets the base
+URI for everything below it, so a relative `$ref` means something
+different depending on WHERE it is written. Three rules that are not
+string concatenation:
+
+- an `$id` composes with the NEAREST enclosing base, so `a.json` →
+  `b/c.json` → `d.json` publishes `http://example.com/b/d.json`;
+- a sibling `$ref` cancels the `$id` (§8.3 makes every keyword beside
+  a `$ref` inert, `$id` included);
+- a `$ref` is validated in the referenced schema's OWN scope, so a
+  pointer written there points into ITS document. Substituting the
+  destination and keeping the pointing document's scope is the
+  suite's "naive replacement of `$ref` with its destination is not
+  correct".
+
+`collectIds` now registers EVERY `$id` in a document — anchors
+(`"#foo"`) under `<base>#foo`, documents under their resolved URI —
+and `validateIn` carries the base in force. A URN base
+(`urn:uuid:…`) takes an absolute reference whole: RFC 3986 relative
+resolution is not defined against a URN.
+
+The third rule bit while writing its own `#guard`. The first draft
+wrote `{"$id": "b.json", "$ref": "#/definitions/y"}` — which §8.3
+makes unresolvable, because the sibling `$ref` cancels the very `$id`
+the outer ref needs. The guard failed, the example was wrong, and the
+comment now says why the inner `$ref` sits under an `allOf`.
+
+**12 of the 44: a count bound written as a decimal.** `{"maxItems":
+2.0}` is `2`. Six keywords matched `instRat v` against `some (n, 1)`
+and returned `unsupported` for anything else, so six groups of the
+suite got no verdict on a perfectly ordinary schema. `countAgainst`
+scales the COUNT by the bound's denominator instead of turning the
+bound into a float, so `3 ≤ 2.0` is decided as `30 ≤ 20` and the
+arithmetic stays exact.
+
+The runner now NAMES each undetermined group with how many of its
+tests are in it, rather than printing a total. That is what turned
+"44 undetermined, presumably remote refs" into two distinct causes in
+one run — the count alone had been read as one gap for weeks, and one
+of the two had nothing to do with `$ref` at all.
+
+No regression: csv2rdf 252 pass, 10 fail (out of 270), csv2json 253
+pass, 9 fail (out of 270), MathML 56 pass, 0 fail (out of 56),
+schematron 8 pass, 0 fail (out of 8).
