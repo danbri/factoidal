@@ -163,7 +163,29 @@ def runManifest (root : String) (rel : String) (verbose : Bool) : IO Counts := d
             match String.fromUTF8? bytes with
             | none => c := Counts.add c { notUtf8 := 1 }
             | some text =>
-                let accepted := match parseXML text with
+                -- An EXTERNAL entity's text, read from disk relative
+                -- to the document that names it. The parser takes the
+                -- resolver as a PARAMETER and stays a total function;
+                -- the I/O is here, where it belongs.
+                --
+                -- Every file the document could name is read up
+                -- front, because the resolver is pure. That is
+                -- affordable: a conformance case names at most a
+                -- handful of small files, all in its own directory.
+                let docDir := base ++ dirOf uri
+                let mut fetched : List (String × String) := []
+                if ← System.FilePath.isDir docDir then
+                  for entry in (← System.FilePath.readDir docDir) do
+                    let ep := entry.path.toString
+                    if !(← System.FilePath.isDir ep) then
+                      let b ← IO.FS.readBinFile ep
+                      match String.fromUTF8? b with
+                      | none   => pure ()
+                      | some t => fetched := fetched ++ [(entry.fileName, t)]
+                let resolve : String → Option String := fun sysId =>
+                  let name := ((sysId.splitOn "/").getLast?).getD sysId
+                  (fetched.find? (fun (n, _) => n == name)).map (·.2)
+                let accepted := match parseXMLWith resolve text with
                   | .ok _    => true
                   | .error _ => false
                 -- A NON-VALIDATING parser accepts `valid` AND

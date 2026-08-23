@@ -6145,3 +6145,65 @@ The 104 remaining need EXTERNAL entities — `valid/ext-sa/*` puts the
 entity text in a separate file, and `o-p61fail1` and its neighbours
 put the ERROR in the `.dtd` the DOCTYPE names. `Doctype.systemId`
 records the identifier; nothing fetches it yet.
+
+---
+
+## XML: external entities and the external DTD subset — 1819 pass, 51 fail
+
+The parser read no external resource at all. `Doctype.systemId`
+recorded the identifier and nothing fetched it, so
+`<!DOCTYPE doc SYSTEM "p61fail1.dtd">` put the ERROR in a file the
+parser never opened, and `valid/ext-sa/*` put the entity DEFINITIONS
+there.
+
+`parseXMLWith` takes a `Resolver` — `String → Option String`, a
+system identifier to its text. A PARAMETER, not a registry: the parser
+stays a total function of explicit inputs and the I/O lives in the
+runner, which reads the document's own directory. `parseXML` is
+`parseXMLWith (fun _ => none)`, spelled out so "read nothing" stays a
+choice somebody made rather than a default nobody noticed.
+
+Four pieces:
+
+1. **An external general entity** (`<!ENTITY e SYSTEM "001.ent">`) has
+   its text fetched at declaration and enters the table like an
+   internal one. `[78] extParsedEnt` allows a leading
+   `[77] TextDecl`, which is stripped — left in place it reads as a PI
+   whose target is `xml`, which `parsePi` rejects.
+
+2. **The external subset** (`[30] extSubset`) is parsed after the
+   internal one, because §2.8 reads them in that order and §4.2 lets
+   the FIRST declaration of a name win.
+
+3. **Conditional sections** (`[61]`) — `INCLUDE` recurses, `IGNORE`
+   skips to the matching `]]>`, and both NEST. They are an
+   external-subset production, so `<![` in the internal subset stays
+   the error it was.
+
+4. **Parameter entities**, in their own table. §4.1 makes `%foo;` and
+   `&foo;` different names, so one table would have conflated them.
+
+`parseSubset` replaced `parseIntSubset`: the internal subset, the
+external subset and an INCLUDE section admit the same declarations and
+differ only in where they END (`]`, end-of-entity, `]]>`) and whether
+a conditional section is allowed. One loop with a `SubsetEnd`
+parameter, rather than three that drift apart.
+
+🔴 The piece that is not a loop: §4.4.8 lets a parameter-entity
+reference stand INSIDE a markup declaration in the external subset.
+`<!ELEMENT child1 (a ,%choice1;,c )>` puts one in the middle of a
+content model, where the declaration parser meets a `%` it has no
+production for and rejects the document. `peScan` expands references
+throughout the subset text in one left-to-right pass, collecting
+parameter entities as declarations go by. A forward reference is left
+unexpanded rather than guessed at; the declaration parser then reports
+it.
+
+📊 MEASURED: **1819 pass, 51 fail (out of 1870 in profile)**, from
+1766. 12 of the 51 are documents rejected that should be accepted, 39
+accepted that should be rejected.
+
+No regression: csv2rdf 270 pass, 0 fail (out of 270), csv2json 270
+pass, 0 fail (out of 270), JSON Schema 770 pass, 0 fail (out of 770
+decided), MathML 56 pass, 0 fail (out of 56), schematron 8 pass, 0
+fail (out of 8), ShEx 1075 pass, 104 fail (out of 1179 decided).
