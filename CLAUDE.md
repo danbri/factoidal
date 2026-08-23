@@ -332,11 +332,28 @@ rule #17").
 24. Subagent prompts ship code sketches + file:line + signatures.
 25. Never write cryptic score strings. "972/59" without labels is
     banned — write "972 pass, 59 fail (out of 1031)".
-26. No sycophantic adjectives in user-facing prose. `honest`,
-    `genuine`, `important`, `critical`, `big-picture`, `headline`,
-    `key insight`, `key finding`, etc. perform candor instead of
-    being clear. The sentence either carries weight or it doesn't.
-    Full rule + rewrites in `skills/markdown-style/SKILL.md`.
+26. **Three language bans** in prose AND code comments (owner
+    correction, 2026-08-23). Rewrite table:
+    `skills/markdown-style/SKILL.md`.
+    (a) **Sycophantic adjectives**: `honest`, `genuine`, `important`,
+    `critical`, `big-picture`, `headline`, `key insight`, `key
+    finding`.
+    (b) **Aphorisms** — a short balanced sentence written to sound
+    like a maxim. Banned examples from this repo: "A vacuous truth is
+    not an entailment", "a cap that hides which test it costs is a
+    silent cap", "Withholding is sound; manufacturing emptiness is
+    not". Write the rule as a rule. Also banned: "not X, but Y"
+    contrast pairs, and telling the reader which of your points
+    matters ("worth noting", "the point is", "this matters
+    because"). These are named patterns in the published catalogue of
+    Claude writing tics.
+    (c) **Metaphor in any statement of a SEMANTIC RULE.** "A spelling
+    difference is not a value difference" was metaphor AND factually
+    wrong — `"colour"` and `"color"` ARE different `xsd:string`
+    values. The actual rule is about whether a datatype's LEXICAL
+    MAPPING is injective. Use the specification's own term from
+    [`docs/w3c-glossary.md`](docs/w3c-glossary.md); if the term is
+    missing, add it there first.
 27. Landing an old-branch agent commit onto a much newer tip silently
     drops `build-ocaml.sh` module-list entries (auto-merge) and
     consumer `.ml` changes — the build exits 0 but the feature isn't
@@ -461,7 +478,8 @@ session.
   daemon manager, port, transport). Read when adding/debugging the
   MCP plumbing rather than using F* MCP for proofs.
 - [`markdown-style`](skills/markdown-style/SKILL.md) — clickable-link
-  rules + the no-sycophantic-adjectives rewrite list.
+  rules, the no-sycophantic-adjectives rewrite list, and the
+  aphorism/metaphor ban with its rewrite table (anti-pattern #26).
 - [`choosing-models`](skills/choosing-models/SKILL.md) — model/effort
   selection per subagent. Core rule: for all coding tasks, judge an
   appropriate lower-power model and run it in a subagent; Fable-class
@@ -507,6 +525,12 @@ session.
   reviewable-core registry: every W3C rule id → spec predicate →
   engine function → proof status, plus the trust-surface enumeration.
   UPDATE WITH EVERY PROOF LANDING (hand-curated until generated).
+- [`docs/w3c-glossary.md`](docs/w3c-glossary.md) — the cross-spec
+  architectural vocabulary: lexical space / value space / lexical
+  mapping, entailment and models, open-world and no-unique-name,
+  OWL 2 class expressions, tableau terms, conformance-testing terms,
+  and the local vocabulary that is NOT specification language. Use
+  these terms; do not paraphrase them.
 - [`docs/code-name-glossary.md`](docs/code-name-glossary.md) — Yod6 /
   Tet3 / Lamed3 / etc. decoder. **No new short-codes** — use
   descriptive names per the recovery plan.
