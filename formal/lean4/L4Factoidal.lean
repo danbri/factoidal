@@ -9,6 +9,7 @@ import L4Factoidal.Crypto.SHA1
 import L4Factoidal.RDF.XmlCanon
 import L4Factoidal.RDF.Core
 import L4Factoidal.RDF.Graph
+import L4Factoidal.RDF.StoreLoader
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.RDF.IsomorphismTheorems
 import L4Factoidal.RDF.IsomorphismTests

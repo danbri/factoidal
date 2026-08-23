@@ -39,6 +39,14 @@ alias={
  "RDF.GraphIsomorphism":"RDF.Isomorphism","RDF.Indexed":"OWL.RLClosureIndexed",
  "RDF.NQuads.Serialize":"Syntax.NQuads",
  "RDF.Turtle.Serialize":"Syntax.TurtleSerialize",
+ "RDF.Store.Loader":"RDF.StoreLoader",
+ # PARTIAL. The domain-neutral maths core the F* tree keeps in
+ # Math.Expr.fst is embedded in MathML/Core.lean instead: the same
+ # five-constructor AST, exact rational arithmetic, exact roots,
+ # factorial and eval. Absent there: `parse_decimal` and the
+ # reasoned `MV_Undef` value type (Core uses `Option`). Filed as
+ # https://github.com/danbri/factoidal/issues/557.
+ "Math.Expr":"MathML.Core",
  "OWL.Closure":"OWL.RLClosure","OWL.RL.Spec":"OWL.RLRules",
  "Tableau":"OWL.Tableau","Tableau.Refute":"OWL.Refute",
  "SPARQL.HTTP.Client":"HTTP.Client","SPARQL.HTTP.RunQuery":"HTTP.RunQuery",

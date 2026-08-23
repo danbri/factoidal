@@ -9109,3 +9109,48 @@ module header says which it is.
 **Numeric and boolean literals are not sugared**, as in F\* —
 correctness over sugar. The datatype IRI is still abbreviated, since
 that is pure compaction.
+
+## `RDF.Store.Loader` → `L4Factoidal/RDF/StoreLoader.lean`
+
+The store-loading front door: pick a parser from the file extension,
+parse the bytes, and hand back a graph or a reason it failed. It is
+small because everything below it is already ported — the value is the
+dispatch table and the failure cases, which the Lean tree did not have
+in one place before.
+
+**The measurement note that belongs with this landing.** The alias
+table previously mapped `RDF.Store.Loader` onto `JSONLD.Loader`, which
+loads a JSON-LD document and shares nothing with this module but the
+last name component. That entry was one of seven wrong matches the
+2026-08-23 heuristic audit removed (anti-pattern #31). This port makes
+the alias real.
+
+## `Math.Expr` — a port that was WRITTEN and then DELETED
+
+A 510-line `L4Factoidal/Math/Expr.lean` was written for
+`formal/fstar/Math.Expr.fst`: the exact-rational value type, the
+arithmetic, exact power and root, decimal parsing, the symbolic AST and
+a fuel-bounded evaluator. It built on its own and its `#guard`s passed.
+
+The FULL-TREE build then failed:
+
+```
+import L4Factoidal.Math.Simplify failed, environment already contains
+'L4Factoidal.Math.mAdd' from L4Factoidal.Math.Expr
+```
+
+`L4Factoidal/MathML/Core.lean` already carries the same maths core —
+the same five-constructor `Expr` AST, `normRat`/`addRat`/`mulRat`/
+`divRat`/`cmpRat`, `powNat`, `exactRootNat`/`exactRootRat`,
+`factorialInt`, `asInt` and `eval` — embedded in the MathML namespace,
+and `Math/Simplify.lean` carries a THIRD arithmetic
+(`MVal := Option (Int × Int)`) beside it.
+
+**The new file was deleted rather than landed.** A second copy of the
+arithmetic is what anti-patterns #4 and #15 are about. The alias table
+now records `Math.Expr` → `MathML.Core` as a PARTIAL cover, naming the
+two pieces that are absent from the Lean tree entirely: `parse_decimal`
+and the reasoned `MV_Undef` failure value (`MathML.Core` uses a bare
+`Option`, so a caller cannot tell "not a number" from "divided by
+zero"). The layering inversion and the suggested fix are
+<https://github.com/danbri/factoidal/issues/557>.
