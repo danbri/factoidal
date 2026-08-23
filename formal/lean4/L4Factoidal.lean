@@ -278,3 +278,5 @@ import L4Factoidal.Cottas.PresenceWriter
 import L4Factoidal.Cottas.CompoundPresenceWriter
 import L4Factoidal.Cottas.OffsetsWriter
 import L4Factoidal.Cottas.SubjectOffsetsWriter
+import L4Factoidal.Cottas.LazyDict
+import L4Factoidal.Cottas.LazyDictRegistry

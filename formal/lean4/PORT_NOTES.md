@@ -8577,3 +8577,55 @@ are different answers. Subject 1 in the fixture owns no rows and gives
 its start counts as empty rather than as an underflow, matching
 `row_positions_count_from_bounds` in
 `RDF.Store.Columnar.OffsetIndex`.
+
+## RDF.CottasStore.LazyDict → `L4Factoidal/Cottas/LazyDict.lean`
+
+The populate-on-demand column dictionary: four indexed views over one
+COTTAS column's distinct tokens (id → term, id → raw token, key → id,
+raw token → id), all populated together on the first lookup.
+
+**Ten `assume val`s become zero.** In F\* the container is
+`assume new type lazy_dict (a : Type0)` and every operation is an
+`assume val` in the `ML` effect, realised in OCaml as four `Hashtbl.t`,
+a populate thunk, a loaded flag and a mutex. Here `buildLoaded` and all
+four lookups are pure functions over `Std.HashMap`, and the only `IO`
+is `ensure`, which reads one `IO.Ref` and populates once. The
+build-time `#guard`s therefore cover the dictionary's whole meaning;
+what they do not cover is exactly the ref, and the module says so.
+
+**No abstract type needed.** F\* pins `lazy_dict` to `Type0` and keeps
+it abstract because a concrete record field propagated universe
+constraints into `SPARQL11.Store`'s mutually recursive `eval_*` block
+("Error 89: incompatible universe sets", issue #254, reverted in
+f442c13). Lean has no such constraint.
+
+**No mutex.** Two concurrent first touches would each run the populate
+thunk. That wastes work without changing the answer, since the thunk is
+a function of the file's bytes. Stated in the module header as the line
+to revisit under real concurrency.
+
+**Proved:** `lookupIdInList_mem` — a hit names a pair really in the
+list. `[propext, Quot.sound]`. The F\* originals carry no such lemma.
+
+## RDF.CottasStore.LazyDictRegistry → `L4Factoidal/Cottas/LazyDictRegistry.lean`
+
+Path-keyed lookup of a store's four column dictionaries. Five
+`assume val`s become zero.
+
+**Its F\* reason for existing does not apply here.** The F\* module is a
+universe workaround: putting `lazy_dict` fields on
+`cottas_ondisk_handle` propagated universe parameters into
+`SPARQL11.Store`'s mutual block. Lean has no such constraint, so the
+Lean `LazyDict` could sit in a handle record directly.
+
+**Its FUNCTION does apply.** Several parts of the engine open the same
+store by path and should share already-populated dictionaries. So the
+module is kept, and the keying — the whole of its content — is a pure
+`Registry β` whose `#guard`s run at `β := Nat`. The process-global ref
+and the four typed accessors are the only `IO`.
+
+The guards pin that a path is matched WHOLE: a prefix of a registered
+path, a path with one as a prefix, and a case variant are all misses.
+They also pin that re-registering replaces, which is what makes
+`unregisterLazyDicts` the fix for a store rewritten under the same
+path — the hazard the header names.
