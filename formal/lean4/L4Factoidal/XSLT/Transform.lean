@@ -110,7 +110,7 @@ inductive Instr where
   | commentI  (body : List Instr)
   | piI       (name : String) (body : List Instr)
   | copyI     (body : List Instr)
-  | copyOf    (select : String)
+  | copyOf    (select : String) (dropNs : Bool)
   | varI      (name : String) (bind : Binding) (rest : List Instr)
   /-- An element in the XSLT namespace this engine does not
       implement. Instantiating it REFUSES the transform. -/
@@ -315,15 +315,15 @@ partial def readOne (ctx : List (String × String)) (excl : List String)
             match c with | .text s => s | .cdata s => s | _ => "")))]
       | some "value-of"  => [.valueOf ((attrOf n "select").getD ".")]
       | some "copy-of"   =>
-          -- `copy-namespaces` is an XSLT 2.0 attribute, and the suite
-          -- marks the case `same-as-1.0 no`. A 1.0 engine that
-          -- ignored it would copy namespaces where the test asks for
-          -- them to be dropped and still emit a document, which reads
-          -- as a near miss instead of as an out-of-version feature
-          -- (copy-0601).
-          if (attrOf n "copy-namespaces").isSome then
-            [.unknown "copy-of with the XSLT 2.0 copy-namespaces attribute"]
-          else [.copyOf ((attrOf n "select").getD ".")]
+          -- `copy-namespaces="no"` is an XSLT 2.0 attribute. It is
+          -- implemented rather than refused because the F* engine
+          -- this module ports implements it, and because IGNORING it
+          -- is the one option that is certainly wrong: the namespaces
+          -- would be copied where the test asks for them to be
+          -- dropped, and a document of the right shape would come out
+          -- carrying declarations nobody asked for (copy-0601).
+          [.copyOf ((attrOf n "select").getD ".")
+                   ((attrOf n "copy-namespaces").getD "yes" == "no")]
       | some "apply-templates" =>
           [.applyT (attrOf n "select") ((attrOf n "mode").getD "")
                    (sortsOf c2 n) (paramsOf c2 n "with-param" (fun c ks => readBody c excl ks))]
@@ -577,6 +577,12 @@ partial def copyNode : Node → RNode
   | .pi t d     => .pi t d
   | .element t a ks => .elem t a (ks.map copyNode)
 
+/-- Drop every namespace declaration from a result subtree, for
+    `xsl:copy-of copy-namespaces="no"`. -/
+partial def stripNsDecls : RNode → RNode
+  | .elem t a ks => .elem t (a.filter (fun x => !isNsDecl x)) (ks.map stripNsDecls)
+  | other        => other
+
 /-- Copy a source item, with its subtree. Namespace declarations IN
     SCOPE on a copied element are attached to the copy: a subtree
     lifted out of its document loses the declarations its ancestors
@@ -613,6 +619,9 @@ structure Rt where
   locs    : List (Option (List Loc))
   globals : List (String × Value) := []
   self?   : Option Doc := none
+  /-- What `document(uri)` may return. Supplied by the caller — see
+      `XPath.Ctx.docs`. -/
+  docs    : List (String × Doc) := []
 deriving Inhabited
 
 def tmplOf (i : Nat) (t : Tmpl) : Template :=
@@ -760,12 +769,13 @@ partial def instOne (rt : Rt) (fuel : Nat) (vars : List (String × Value))
   | .valueOf sel => do
       let v ← evalIn rt vars nsctx it pos size sel
       some [.text v.toStr]
-  | .copyOf sel => do
+  | .copyOf sel dropNs => do
       let v ← evalIn rt vars nsctx it pos size sel
-      match v with
-      | .nodes ns => some ((normalize ns).flatMap (copyItem rt.doc))
-      | .frag ns  => some (ns.map copyNode)
-      | other     => some [.text other.toStr]
+      let out ← match v with
+        | .nodes ns => some ((normalize ns).flatMap (copyItem rt.doc))
+        | .frag ns  => some (ns.map copyNode)
+        | other     => some [RNode.text other.toStr]
+      some (if dropNs then out.map stripNsDecls else out)
   | .ifI test body => do
       let v ← evalIn rt vars nsctx it pos size test
       if v.toBool then inst rt fuel vars nsctx it pos size body else some []
@@ -932,7 +942,8 @@ partial def evalIn (rt : Rt) (vars : List (String × Value))
     (nsctx : List (String × String)) (it : Item) (pos size : Nat) (e : String)
     : Option Value :=
   evalText { doc := rt.doc, item := it, pos := pos, size := size,
-             vars := rt.globals ++ vars, nsctx := nsctx, self? := rt.self? } e
+             vars := rt.globals ++ vars, nsctx := nsctx, self? := rt.self?,
+             docs := rt.docs } e
 
 /-- Expand an attribute value template. -/
 partial def expandAvt (rt : Rt) (vars : List (String × Value))
@@ -1049,8 +1060,11 @@ def isStylesheetRoot (root : Node) : Bool :=
       (xslLocal ctx t == some "stylesheet") || (xslLocal ctx t == some "transform")
   | _ => false
 
-/-- Run a stylesheet against a source document. -/
-def transform (style : Document) (src : Document) : Outcome :=
+/-- Run a stylesheet against a source document. `docs` is what
+    `document(uri)` may return, keyed by the URI as the stylesheet
+    writes it. -/
+def transform (style : Document) (src : Document)
+    (docs : List (String × Doc) := []) : Outcome :=
   if !isStylesheetRoot style.root then
     .refused "the stylesheet root is not xsl:stylesheet or xsl:transform"
   else
@@ -1075,7 +1089,8 @@ def transform (style : Document) (src : Document) : Outcome :=
       if !unread.isEmpty then
         .refused ("unreadable match pattern(s): " ++ String.intercalate ", " unread)
       else
-        let rt0 : Rt := { st := st, doc := d, locs := locs, self? := some styleDoc }
+        let rt0 : Rt := { st := st, doc := d, locs := locs, self? := some styleDoc,
+                          docs := docs }
         -- Top-level variables are evaluated against the DOCUMENT
         -- node, in declaration order, each seeing the ones before it.
         match st.globals.foldlM (fun (acc : List (String × Value)) (nm, b, ns) =>

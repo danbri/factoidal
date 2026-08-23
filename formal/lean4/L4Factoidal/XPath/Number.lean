@@ -140,6 +140,37 @@ def ofString (s : String) : Num :=
     let m : Int := digits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat : Int)) 0
     .finite (if neg then -m else m) fp.length
 
+/-- A numeric LITERAL that may carry an exponent: `1e3`, `1.0e2`,
+    `1.5E-2`.
+
+    XPath 1.0 has no exponent in either its number LEXEME or its
+    `number()` function, so `ofString "1e3"` is NaN and stays NaN —
+    that is the 1.0 rule and changing it would change what
+    `number(.)` says about a string. This is the XPath 2.0 double
+    literal, used by the TOKENIZER only, and it is separate for
+    exactly that reason. -/
+def ofLexeme (s : String) : Num :=
+  let cs := s.toList
+  let idx := cs.findIdx? (fun c => c == 'e' || c == 'E')
+  match idx with
+  | none   => ofString s
+  | some i =>
+      let mant := ofString (String.ofList (cs.take i))
+      let rest := cs.drop (i + 1)
+      let (negE, digits) := match rest with
+        | '-' :: r => (true, r)
+        | '+' :: r => (false, r)
+        | r        => (false, r)
+      if digits.isEmpty || !(digits.all (fun c => '0' ≤ c && c ≤ '9')) then .nan
+      else
+        let e : Nat := (String.ofList digits).toNat!
+        match mant with
+        | .finite m sc =>
+            if negE then .finite m (sc + e)
+            else if e ≥ sc then .finite (m * pow10 (e - sc)) 0
+            else .finite m (sc - e)
+        | other => other
+
 end Num
 end L4Factoidal.XPath
 

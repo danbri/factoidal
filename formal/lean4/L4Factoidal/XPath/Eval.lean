@@ -66,6 +66,15 @@ structure Ctx where
   /-- The document node of the stylesheet's own source, for
       `document('')`. Absent when there is none to give. -/
   self? : Option Doc := none
+  /-- Documents `document(uri)` may return, keyed by the URI as the
+      stylesheet writes it.
+
+      I/O is a PARAMETER, not a capability of this module: nothing
+      here opens a file. The caller decides which documents exist and
+      supplies them, so `document('missing.xml')` is `none` — a
+      refusal — rather than an empty tree that a stylesheet would
+      quietly transform into nothing. -/
+  docs : List (String × Doc) := []
 deriving Inhabited
 
 /-! ## Conversions (§4.2, §4.3) -/
@@ -262,6 +271,44 @@ def availableElements : List String :=
    "xsl:sort", "xsl:template", "xsl:text", "xsl:value-of", "xsl:variable",
    "xsl:when", "xsl:with-param"]
 
+/-! ## The XPath 2.0 value comparisons -/
+
+/-- The XPath 2.0 VALUE comparisons `eq ne lt le gt ge`.
+
+    They are not XPath 1.0 and are named apart for that reason. Two
+    numbers compare numerically; anything else compares as strings by
+    codepoint. That is what the corpus asks for and no more:
+    `boolean-026` compares numbers, `boolean-027` compares string
+    literals, and `'20' lt '180.3'` is FALSE there because `2` follows
+    `1`. Widening this to the full 2.0 type system would be inventing
+    behaviour no test states. -/
+def valueCmp (op : String) (x y : Value) : Bool :=
+  let numeric := match x, y with
+    | .num _, .num _ => true
+    | _, _           => false
+  if numeric then
+    let m := x.toNum
+    let n := y.toNum
+    if op == "eq" then Num.eq m n
+    else if op == "ne" then !(Num.eq m n)
+    else if op == "lt" then Num.lt m n
+    else if op == "le" then Num.le m n
+    else if op == "gt" then Num.lt n m
+    else Num.le n m
+  else
+    let a := x.toStr
+    let b := y.toStr
+    if op == "eq" then a == b
+    else if op == "ne" then a != b
+    else if op == "lt" then a < b
+    else if op == "le" then a ≤ b
+    else if op == "gt" then b < a
+    else b ≤ a
+
+def isValueOp (op : String) : Bool :=
+  op == "eq" || op == "ne" || op == "lt" || op == "le" || op == "gt" || op == "ge"
+
+
 /-! ## The evaluator -/
 
 mutual
@@ -359,6 +406,7 @@ partial def applyPreds (c : Ctx) (cands : List Item) (preds : List Expr)
 
 /-- §3.4 comparison. The node-set cases are EXISTENTIAL. -/
 partial def cmpValues (op : String) (x y : Value) : Bool :=
+  if isValueOp op then valueCmp op x y else
   let strsOf (v : Value) : Option (List String) :=
     match v with
     | .nodes ns => some ((normalize ns).map (·.stringValue))
@@ -479,10 +527,13 @@ partial def evalCall (c : Ctx) (f : String) (args : List Expr) : Option Value :=
                   else if v.toStr == "xsl:vendor-url" then "https://github.com/danbri/factoidal"
                   else ""))
   | "document", [v] =>
-      -- Only `document('')` — the stylesheet's own tree — is
-      -- resolvable without I/O. Any other URI is `none`, so the
-      -- transform is REFUSED rather than run against an empty tree.
-      if v.toStr == "" then (c.self?.map (fun d => Value.nodes [Item.doc d])) else none
+      -- `document('')` is the stylesheet's own tree. Any other URI is
+      -- answered from `c.docs`, which the caller supplies; a URI that
+      -- is not there is `none`, so the transform is REFUSED rather
+      -- than run against an empty tree.
+      if v.toStr == "" then (c.self?.map (fun d => Value.nodes [Item.doc d]))
+      else ((c.docs.find? (fun (u, _) => u == v.toStr)).map
+             (fun (_, d) => Value.nodes [Item.doc d]))
   | _, _ => none
 
 end

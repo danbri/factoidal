@@ -86,7 +86,13 @@ inductive Expr where
   | call     (name : String) (args : List Expr)
   | or       (a b : Expr)
   | and      (a b : Expr)
-  /-- `=`, `!=`, `<`, `<=`, `>`, `>=` — the operator kept verbatim. -/
+  /-- `=`, `!=`, `<`, `<=`, `>`, `>=` — the operator kept verbatim.
+
+      Also `eq`, `ne`, `lt`, `le`, `gt`, `ge`. Those are XPath 2.0
+      VALUE comparisons, not XPath 1.0, and they are here because the
+      vendored corpus exercises them and the F* engine this module is
+      a port of implements them. They are marked as a 2.0 extension
+      wherever they appear so that no reader takes them for 1.0. -/
   | cmp      (op : String) (a b : Expr)
   /-- `+`, `-`, `*`, `div`, `mod`. -/
   | arith    (op : String) (a b : Expr)
@@ -161,8 +167,24 @@ partial def tokenize (cs : List Char) : Option (List Tok) :=
       let (fp, r2) := match r1 with
         | '.' :: r => ('.' :: r.takeWhile isDigitC, r.dropWhile isDigitC)
         | _        => ([], r1)
-      (tokenize r2).map (fun ts =>
-        .number (Num.ofString (String.ofList (ip ++ fp))) :: ts)
+      -- An EXPONENT is XPath 2.0's double literal, not XPath 1.0's
+      -- number. It is lexed here because the corpus writes `1.0e2`
+      -- and `1e3`; without it the tokenizer produced the number `1.0`
+      -- followed by a name `e2`, and the whole expression failed to
+      -- parse (boolean-026).
+      let (ep, r3) := match r2 with
+        | e :: r =>
+            if e == 'e' || e == 'E' then
+              let (sign, r') := match r with
+                | '+' :: t => (['+'], t)
+                | '-' :: t => (['-'], t)
+                | t        => ([], t)
+              let ds := r'.takeWhile isDigitC
+              if ds.isEmpty then ([], r2) else (e :: sign ++ ds, r'.dropWhile isDigitC)
+            else ([], r2)
+        | [] => ([], r2)
+      (tokenize r3).map (fun ts =>
+        .number (Num.ofLexeme (String.ofList (ip ++ fp ++ ep))) :: ts)
     else if c == '$' then
       let nm := rest.takeWhile isNameCh
       if nm.isEmpty then none
@@ -215,7 +237,13 @@ def disambiguate (ts : List Tok) : List Tok :=
     | t :: r =>
       let t' := match t with
         | .name n =>
-            if (n == "and" || n == "or" || n == "div" || n == "mod")
+            if (n == "and" || n == "or" || n == "div" || n == "mod" ||
+                -- The XPath 2.0 value comparisons, disambiguated by
+                -- exactly the same rule: an element may be called
+                -- `eq`, and `a eq b` is a comparison only where an
+                -- operator can stand.
+                n == "eq" || n == "ne" || n == "lt" || n == "le" ||
+                n == "gt" || n == "ge")
                && prevAllowsOperator prev
             then Tok.op n else t
         | .op "*" =>
@@ -275,7 +303,8 @@ partial def pEquality (ts : List Tok) : Option (Expr × List Tok) :=
 
 partial def pEqTail (acc : Expr) : List Tok → Option (Expr × List Tok)
   | .op o :: r2 =>
-      if o == "=" || o == "!=" || o == "<" || o == "<=" || o == ">" || o == ">=" then
+      if o == "=" || o == "!=" || o == "<" || o == "<=" || o == ">" || o == ">=" ||
+         o == "eq" || o == "ne" || o == "lt" || o == "le" || o == "gt" || o == "ge" then
         match pAdditive r2 with
         | some (b, r3) => pEqTail (.cmp o acc b) r3
         | none         => none

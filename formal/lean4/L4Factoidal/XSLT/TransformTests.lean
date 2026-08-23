@@ -84,10 +84,28 @@ private def ss (body : String) : String :=
 #guard (run (ss "<xsl:template match=\"doc\"><out><xsl:number/></out></xsl:template>")
             "<doc/>").startsWith "REFUSED: unimplemented XSLT element(s): xsl:number"
 
--- An XPath 2.0 comparison is not XPath 1.0, so it is a refusal and
--- not a `false` (boolean-026).
-#guard (run (ss "<xsl:template match=\"doc\"><out v=\"{1 eq 1}\"/></xsl:template>")
+-- `document(uri)` is answered from a map the CALLER supplies, so a
+-- URI nobody supplied is a refusal and not an empty tree that the
+-- stylesheet would quietly transform into nothing (select-5901).
+#guard (run (ss "<xsl:template match=\"doc\"><xsl:copy-of select=\"document('x.xml')\"/></xsl:template>")
             "<doc/>").startsWith "REFUSED:"
+
+/-! ## The two XSLT/XPath 2.0 features the corpus exercises -/
+
+-- Value comparisons: two numbers compare numerically, anything else
+-- as strings (boolean-026, boolean-027).
+#guard run (ss "<xsl:template match=\"doc\"><out a=\"{1 eq 1.0}\" b=\"{'20' lt '180.3'}\" c=\"{1.0e2 ne 1e3}\"/></xsl:template>")
+           "<doc/>" == "<out a=\"true\" b=\"false\" c=\"true\"/>"
+
+-- `copy-namespaces="no"` strips the declarations from the copied
+-- subtree. Ignoring the attribute is the one option that is certainly
+-- wrong: it copies namespaces where the test asks for them to be
+-- dropped (copy-0601).
+#guard run (ss "<xsl:template match=\"/\"><out><xsl:copy-of select=\"*\" copy-namespaces=\"no\"/></out></xsl:template>")
+           "<doc xmlns:p=\"http://p.example/\"><a/></doc>" == "<out><doc><a/></doc></out>"
+#guard run (ss "<xsl:template match=\"/\"><out><xsl:copy-of select=\"*\"/></out></xsl:template>")
+           "<doc xmlns:p=\"http://p.example/\"><a/></doc>"
+           == "<out><doc xmlns:p=\"http://p.example/\"><a/></doc></out>"
 
 /-! ## Namespaces (§7.1.1) -/
 

@@ -6426,8 +6426,9 @@ which reads a stylesheet, instantiates it and serialises the result
 tree. Runner: `lake exe l4xslt`, over the 88 vendored cases of
 `third_party/testing/xslt` (a subset of `w3c/xslt30-test`).
 
-**Score: 81 pass, 3 fail (out of 84 decided), 4 refused (out of 88
-manifest entries).**
+**Score: 84 pass, 3 fail (out of 87 decided), 1 refused (out of 88
+manifest entries).** For comparison the F* engine scores 87 pass, 0
+fail, 1 skip on the same corpus.
 
 ### Why a second XPath module rather than extending `XPath/Mini.lean`
 
@@ -6510,22 +6511,45 @@ which floors for a positive divisor — right for `floor` by accident,
 wrong for `mod`, whose remainder takes the sign of the DIVIDEND
 (§3.5).
 
+### Three features that are NOT XPath 1.0, and are implemented anyway
+
+Each is marked as an out-of-version extension where it appears, so no
+reader takes it for 1.0. Each is implemented because the F* engine
+this module ports implements it and because the alternative — ignoring
+it — is certainly wrong.
+
+- **The value comparisons `eq ne lt le gt ge`** (XPath 2.0). Two
+  numbers compare numerically; anything else compares as strings by
+  codepoint, so `'20' lt '180.3'` is FALSE. That is what
+  `boolean-026` and `boolean-027` ask for and no more; widening it to
+  the 2.0 type system would be inventing behaviour no test states.
+- **The double literal `1e3`** (XPath 2.0). Without it the tokenizer
+  produced the number `1.0` followed by a name `e2` and the whole
+  expression failed to parse. `Num.ofString` — XPath 1.0's
+  `number()` — still says NaN for `"1e3"`, because changing that
+  would change what `number(.)` says about a string; the exponent
+  lives in a separate `Num.ofLexeme` used by the TOKENIZER only.
+- **`xsl:copy-of copy-namespaces="no"`** (XSLT 2.0). Ignoring the
+  attribute would copy namespaces where the test asks for them to be
+  dropped, and emit a document of the right shape carrying
+  declarations nobody asked for.
+
 ### What the runner refuses, and why that is a third bucket
 
 `transform` returns `Outcome.refused` with a reason for an XSLT
 element outside the implemented set, a match pattern it cannot parse,
 or an expression it cannot evaluate. The runner counts those apart —
-never as a pass, never as a failure. The four:
+never as a pass, never as a failure. One case remains:
 
-- `boolean-026`, `boolean-027` — XPath 2.0 value comparisons (`eq`,
-  `lt`, …). The suite itself marks them `same-as-1.0 no`.
-- `copy-0601` — `xsl:copy-of` with the XSLT 2.0 `copy-namespaces`
-  attribute, also marked `same-as-1.0 no`. Ignoring the attribute
-  would copy namespaces where the test asks for them to be dropped
-  and still emit a document.
-- `select-5901` — `document('select-59.xml')` needs file I/O, which
-  `XPath.Eval` deliberately does not have. `document('')` is
-  resolvable without it and is implemented.
+- `select-5901` — `document('select-59.xml')`. `XPath.Eval` does no
+  I/O: `Ctx.docs` is a map the CALLER supplies, and the runner fills
+  it by scanning the stylesheet text for each `document('literal')`
+  and loading the file beside the stylesheet. `select-59.xml` is not
+  in the corpus — the vendoring renamed each environment's source
+  file — so the runner names the missing URI in the refusal. That is
+  a corpus fact, not an engine gap, and a supplied-but-absent
+  document is a refusal rather than an empty tree the stylesheet
+  would quietly transform into nothing.
 
 ### The three residual failures, named
 

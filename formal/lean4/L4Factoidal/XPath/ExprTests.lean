@@ -38,7 +38,34 @@ open L4Factoidal.XML
 /-! A partial parse is a wrong answer wearing the shape of a right
     one, so leftover tokens are a failure. -/
 #guard (parseExpr "a b").isNone
-#guard (parseExpr "1 eq 1").isNone      -- XPath 2.0 value comparison
+
+/-! ## The XPath 2.0 value comparisons and the double literal
+
+Neither is XPath 1.0. Both are here because the vendored corpus
+exercises them and the F* engine this module ports implements them;
+they are named apart so that no reader takes them for 1.0. -/
+
+#guard (parseExpr "1 eq 1").isSome
+#guard (parseExpr "'a' lt 'b'").isSome
+/-! An element may be CALLED `eq`, and `eq` is an operator only where
+    an operator can stand — the same rule as `and`, `or`, `div`. -/
+#guard (parseExpr "eq").isSome
+#guard (parseExpr "a/eq").isSome
+
+/-! Two numbers compare numerically; anything else compares as
+    strings by codepoint, so `'20' lt '180.3'` is FALSE. -/
+#guard valueCmp "lt" (.num (Num.finite 20 0)) (.num (Num.finite 1803 1))
+#guard !(valueCmp "lt" (.str "20") (.str "180.3"))
+#guard valueCmp "eq" (.num (Num.finite 1 0)) (.num (Num.finite 10 1))
+#guard !(valueCmp "eq" (.str "1") (.str "1.0"))
+
+/-! `1e3` is the XPath 2.0 double LITERAL. XPath 1.0's `number()` has
+    no exponent, so `ofString` keeps saying NaN — changing that would
+    change what `number(.)` says about a string. -/
+#guard Num.ofLexeme "1e3" == Num.finite 1000 0
+#guard Num.ofLexeme "1.0e2" == Num.finite 100 0
+#guard Num.ofLexeme "1.5E-2" == Num.finite 15 3
+#guard Num.ofString "1e3" == Num.nan
 
 /-! ## Numbers -/
 

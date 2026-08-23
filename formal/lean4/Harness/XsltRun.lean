@@ -94,6 +94,29 @@ def looseForm (s : String) : String :=
     | _, _                 => c :: acc) []
   (String.ofList dropped).trim
 
+/-- Every `document('literal')` URI a stylesheet mentions.
+
+    `XPath.Eval` does no I/O: the caller decides which documents
+    exist. The runner scans the stylesheet TEXT for the literal
+    argument of each `document(...)` call and loads the file beside
+    the stylesheet, so `document('select-59.xml')` resolves and
+    `document($computed)` does not — which is the truth, and shows up
+    as a refusal rather than as an empty tree. -/
+partial def documentUris (cs : List Char) : List String :=
+  match cs with
+  | [] => []
+  | _ =>
+      if (cs.take 9) == "document(".toList then
+        let r := (cs.drop 9).dropWhile (fun c => c == ' ')
+        match r with
+        | q :: rest =>
+            if q == '\'' || q == '"' then
+              let body := rest.takeWhile (· != q)
+              String.ofList body :: documentUris (rest.dropWhile (· != q))
+            else documentUris (cs.drop 9)
+        | [] => []
+      else documentUris cs.tail!
+
 structure Tally where
   pass    : Nat := 0
   loose   : Nat := 0
@@ -131,6 +154,20 @@ def main (args : List String) : IO UInt32 := do
             let styleSrc ← IO.FS.readFile (dir ++ "/" ++ sp)
             let srcSrc ← IO.FS.readFile (dir ++ "/" ++ src)
             let expSrc ← IO.FS.readFile (dir ++ "/" ++ exp)
+            -- The stylesheet's own directory is the base for a
+            -- relative `document()` URI.
+            let sdir := (sp.splitOn "/").dropLast
+            let mut extra : List (String × List Node) := []
+            let mut absent : List String := []
+            for u in (documentUris styleSrc.toList).eraseDups do
+              if u != "" then
+                let path := dir ++ "/" ++ String.intercalate "/" (sdir ++ [u])
+                if ← System.FilePath.pathExists path then
+                  let dtext ← IO.FS.readFile path
+                  match parseXML dtext with
+                  | .ok dd => extra := extra ++ [(u, dd.prolog ++ (dd.root :: dd.epilog))]
+                  | .error _ => absent := absent ++ [u]
+                else absent := absent ++ [u]
             match parseXML styleSrc, parseXML srcSrc with
             | .error e, _ =>
                 IO.println s!"ERROR {cat}/{name}: the stylesheet is not well-formed XML: {e.message} at {e.position}"
@@ -139,8 +176,18 @@ def main (args : List String) : IO UInt32 := do
                 IO.println s!"ERROR {cat}/{name}: the source is not well-formed XML: {e.message} at {e.position}"
                 t := { t with errors := t.errors + 1 }
             | .ok style, .ok source =>
-                match transform style source with
+                match transform style source extra with
                 | .refused why =>
+                    -- A refusal that names nothing is hard to act on.
+                    -- When the stylesheet asks for a document the
+                    -- corpus does not carry, say WHICH: the vendoring
+                    -- renamed each environment's source file, so a
+                    -- stylesheet naming it by its upstream filename
+                    -- cannot find it, and that is a corpus fact
+                    -- rather than an engine gap.
+                    let why := if absent.isEmpty then why
+                      else why ++ " (no such document in the corpus: "
+                                ++ String.intercalate ", " absent ++ ")"
                     t := { t with refused := t.refused + 1 }
                     reasons := reasons ++ [why]
                     IO.println s!"REFUSED {cat}/{name}: {why}"
