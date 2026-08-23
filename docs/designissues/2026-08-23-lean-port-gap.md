@@ -10,21 +10,56 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 61 | 40594 |
+| Engine and specification code — to port | 56 | 39192 |
 | Proofs about the F\* implementation — see below | 32 | 33861 |
 | F\*-only machinery with no Lean counterpart by design | 7 | 2861 |
-| **Total not covered** | **100** | **77302** |
+| **Total not covered** | **95** | **75900** |
 
-120 of the 220 F\* modules have a Lean counterpart.
+125 of the 220 F\* modules have a Lean counterpart.
 
 Updated 2026-08-23 after all three HDT modules and `XSD.IEEE754`
 landed, and after ONE false negative was corrected: `DID.Key` has been
 covered by `L4Factoidal/VC/DidKey.lean` all along — all 18 of its F\*
 definitions have a Lean counterpart — but the alias table did not know
-the module had been renamed on the way across. An audit of the whole
-not-covered list found no other false negative (every remaining entry
-was checked against the Lean tree by squashed name; only `DID.Key`
-matched). The HDT and XSD groups are now empty.
+the module had been renamed on the way across. The HDT and XSD groups are now empty.
+
+**CORRECTION, same day, later.** The first audit of the not-covered
+list was by squashed MODULE NAME and concluded "no other false
+negative". It was too weak and that claim was wrong. Name matching
+cannot see a CONSOLIDATION — one Lean module covering two F\* modules
+under a third name — and cannot see a rename that changes more than
+punctuation.
+
+A second audit compared DEFINITION NAMES: every `let` / `val` / `type`
+of each not-covered F\* module against every `def` / `abbrev` /
+`structure` / `inductive` / `theorem` in the Lean tree, normalised for
+case and underscores. It found four more:
+
+| F\* module | Lines | Actually covered by |
+|---|---|---|
+| `RDF.Entailment.Simple` | 182 | `L4Factoidal/RDF/Entailment.lean` |
+| `RDF.Entailment.Regime` | 271 | the same file |
+| `Parser.CSVResults` | 610 | `L4Factoidal/SPARQL/ResultsCsvTsv.lean` |
+| `RDF.Pretty` | 235 | ported this session; alias added |
+
+The first two are the consolidation case exactly: one Lean module covers
+simple entailment AND the D / RDF / RDFS regimes, which the F\* tree
+splits across two files. `Parser.CSVResults` is a rename the alias table
+did not carry.
+
+⚠️ **One narrow behavioural gap inside that coverage, recorded rather
+than papered over.** The F\* `match_term` takes a POSITION-AWARE literal
+comparison, `leq : inside_tt -> literal -> literal -> bool`, because a
+directional language string is opaque — compared case-sensitively — only
+INSIDE a triple term. Lean's `entailsWith` takes
+`leq : Literal -> Literal -> Bool` with no position flag. The coverage is
+substantive but not complete, and the difference is what the W3C
+`opaque-dir-language-string` fixtures exercise.
+
+`SPARQL11.IRI.Resolve` (38 lines) stays in the not-covered column on
+purpose: it is a pure re-export shim for `RDF.IRI`'s `resolve_iri` /
+`resolve_query_iri`, and `RDF.IRI` (530 lines) is not ported. Lean has
+`Syntax.IriResolve.resolveIri` but no `resolveQueryIri`.
 
 Second update the same day, after a batch of five more: `Dep.Reachability`,
 `RDFS.Closure.SemiNaive`, `RDF.Dataset.Graphs`, `SPARQL.Update.Analysis`

@@ -7891,3 +7891,78 @@ no check for it is an exclusion that comes back.
 
 Every `#guard` is paired with a check that the closure is strictly
 larger than its input, so none of them can pass by deriving nothing.
+
+## RDF.Pretty and SPARQL.Explain — and a measurement I got wrong
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `RDF.Pretty` | 235 | `L4Factoidal/RDF/Pretty.lean` |
+| `SPARQL.Explain` | 104 | `L4Factoidal/SPARQL/Explain.lean` |
+
+### What `RDF.Pretty` deliberately does NOT carry
+
+The F\* module used to hold `term_to_ntriples`, a SECOND N-Triples term
+renderer that wrote a literal's lexical form verbatim. It was described
+as "for display, not wire", and every consumer treated its output as
+wire: `factoidal --dump` and the COTTAS store's object column both went
+through it. That is issue #339 (dump emitted output the project's own
+parser rejected) and issue #443 (import then query DESTROYED any literal
+containing a quote, a newline or a backslash).
+
+The F\* tree DELETED the function rather than fixing it, because making
+it escape would have made it byte-identical to
+`nq_term_to_string`, and a second name for one rendering is what let the
+two drift. This port carries the same absence, and a `#guard` states the
+remaining renderer's verbatim behaviour explicitly — so nobody "fixes"
+it into a second serialiser.
+
+### `SPARQL.Explain` is absent for a DIFFERENT reason than in F\*
+
+The F\* header says the estimator loop that builds explain rows from a
+store is still in OCaml, "blocked on time-budget infra in F\*". That
+block is now gone in the Lean tree — `SPARQL.TimeBudget` is ported. The
+loop is still absent here, but because `SPARQL11.Store` is not ported.
+Different reason, same shortfall, and worth writing down rather than
+inheriting the F\* sentence unexamined.
+
+## ❌ A measurement error, and the correction
+
+Earlier in this session I wrote, in the gap document and in a GitHub
+comment: "An audit of the whole not-covered list found no other false
+negative." **That was wrong.**
+
+The audit matched squashed MODULE NAMES. That method cannot see a
+CONSOLIDATION — one Lean module covering two F\* modules under a third
+name — and cannot see a rename that changes more than punctuation. It
+found `DID.Key` and stopped, and I reported its silence as evidence.
+
+A second audit compared DEFINITION NAMES: every `let` / `val` / `type`
+of each not-covered F\* module against every `def` / `abbrev` /
+`structure` / `inductive` / `theorem` in the Lean tree, normalised for
+case and underscores. It found four more, 1,298 F\* lines:
+
+| F\* module | Lines | Actually covered by |
+|---|---|---|
+| `RDF.Entailment.Simple` | 182 | `L4Factoidal/RDF/Entailment.lean` |
+| `RDF.Entailment.Regime` | 271 | the same file |
+| `Parser.CSVResults` | 610 | `L4Factoidal/SPARQL/ResultsCsvTsv.lean` |
+| `RDF.Pretty` | 235 | ported this session |
+
+The first two are the consolidation case exactly: one Lean module covers
+simple entailment AND the D / RDF / RDFS regimes, which the F\* tree
+splits across two files. Its own header says so; a name-based audit
+could not read it.
+
+⚠️ One narrow behavioural gap inside that coverage: the F\* `match_term`
+takes a POSITION-AWARE literal comparison
+(`leq : inside_tt -> literal -> literal -> bool`), because a directional
+language string is opaque — case-sensitive — only INSIDE a triple term.
+Lean's `entailsWith` has no position flag. The coverage is substantive
+but not complete, and the difference is what the W3C
+`opaque-dir-language-string` fixtures exercise.
+
+**The rule this pays for:** an audit that finds nothing is evidence
+about the AUDIT before it is evidence about the code. State the method
+next to the result, and pick a method that can see the failure you are
+looking for. Module-name matching cannot see a consolidation, so its
+silence about consolidations meant nothing.

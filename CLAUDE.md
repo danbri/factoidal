@@ -360,7 +360,16 @@ rule #17").
     built. Verify the module list + force ancestor-safe consumer files;
     prefer a dedicated landing agent. Full text: hazard #11 in
     `skills/workflow-gotchas-debugging/SKILL.md`.
-28. A hub post's live cells run against the js/npm bundle, not the
+28. An audit that finds nothing is evidence about the AUDIT's reach
+    before it is evidence about the code. State the method next to the
+    result, and pick one that can see the failure you are looking for.
+    (2026-08-23: a squashed-module-name audit of the Lean port gap
+    reported "no other false negative"; four modules, 1,298 F* lines,
+    were already covered — the method cannot see a consolidation or a
+    substantive rename, and its silence about exactly those was read as
+    coverage. The reported figure was 120 of 220; the real one was 125.
+    Full text: hazard #28 in `skills/workflow-gotchas-debugging`.)
+29. A hub post's live cells run against the js/npm bundle, not the
     native binary. A docs landing that adds cells calling a new F\*
     feature is NOT docs-only — rebuild the bundle (the js build
     incrementally SKIPS npm-entry; force it) and gate on `node --test

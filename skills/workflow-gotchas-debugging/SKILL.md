@@ -1172,3 +1172,76 @@ This is `skills/measuring-inference`'s "synthetic shapes lie about
 real vocabularies", in the place it is least expected: not the data,
 the PIPELINE. The upstream stage had changed the shape of the input
 the rule was written against.
+
+## Hazard #28 — an audit that finds nothing is evidence about the AUDIT first (2026-08-23)
+
+**What happened.** `tools/lean-port-gap.py` measures how much of the F\*
+tree the Lean 4 port covers, by matching F\* module names against Lean
+module names. One false negative turned up by hand: `DID.Key` had been
+covered by `L4Factoidal/VC/DidKey.lean` all along and the alias table
+did not know.
+
+So I audited the rest — by squashed MODULE NAME. It found nothing more.
+I wrote, in the gap document and in a GitHub comment: "An audit of the
+whole not-covered list found no other false negative."
+
+**What was actually true.** Four more modules were already covered,
+1,298 F\* lines:
+
+| F\* module | Lines | Actually covered by |
+|---|---|---|
+| `RDF.Entailment.Simple` | 182 | `L4Factoidal/RDF/Entailment.lean` |
+| `RDF.Entailment.Regime` | 271 | the same file |
+| `Parser.CSVResults` | 610 | `L4Factoidal/SPARQL/ResultsCsvTsv.lean` |
+| `RDF.Pretty` | 235 | — |
+
+The reported coverage was 120 of 220. The real figure was 125 of 220.
+The gap document, the PORT_NOTES sections and a GitHub status comment
+all carried the wrong number for the length of the session.
+
+**Why the method could not have worked.** Module-name matching cannot
+see two things, and both were present:
+
+1. **A consolidation.** One Lean module covers simple entailment AND
+   the D / RDF / RDFS regimes, which the F\* tree splits across two
+   files. No name relates `RDF.Entailment.Simple` to `RDF.Entailment`
+   more strongly than it relates a dozen unrelated modules.
+2. **A rename that changes more than punctuation.** `Parser.CSVResults`
+   became `SPARQL.ResultsCsvTsv`. Squashing case and dots does not
+   bridge that.
+
+The audit was silent about exactly the two failure modes it was
+structurally blind to, and I read its silence as coverage.
+
+**What found them.** Comparing DEFINITION NAMES rather than module
+names: every `let` / `val` / `type` of each not-covered F\* module
+against every `def` / `abbrev` / `structure` / `inductive` / `theorem`
+in the Lean tree, normalised for case and underscores, ranked by the
+fraction of the F\* module's definitions that have a Lean counterpart.
+`RDF.Entailment.Simple` scores low on that test too (the Lean names are
+`termMatch` and `matchSubject` where F\* has `match_term` and
+`match_subj`) — it was caught by reading the Lean module's own header,
+which says in its first sentence which two things it covers.
+
+### The rules
+
+1. **An audit that finds nothing is a claim about the audit's REACH
+   before it is a claim about the code.** Say what the method can and
+   cannot see, next to the result. "Checked by squashed module name;
+   this cannot detect consolidations or substantive renames" would have
+   made the residual risk visible instead of silently absorbed.
+2. **Pick a method that can see the failure you are looking for.** The
+   question was "is this module's CONTENT present somewhere in the Lean
+   tree". Module names are a proxy for that and a weak one. Definition
+   names are closer. The module's own header is closer still, and it is
+   what actually settled it.
+3. **A correction to a measurement is not done when the number is
+   fixed.** The wrong number had already been written into a design doc,
+   PORT_NOTES and a GitHub comment. All three need the correction, and
+   the correction needs to say what the old claim was — otherwise the
+   next reader cannot tell which of the two numbers they are looking at.
+4. Same family as hazard #26 (a green build is not evidence an edit
+   landed) and hazard #27 (a passing guard is not evidence a rule
+   fires). In all three, a check produced a reassuring result while
+   being structurally incapable of detecting the thing it was trusted
+   for.

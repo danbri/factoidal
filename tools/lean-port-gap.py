@@ -31,6 +31,11 @@ alias={
  "SPARQL.Eval.TimeBudget":"SPARQL.TimeBudget",
  "OWL.DirectMapping.Filter":"OWL.DirectMappingFilter",
  "RDF.Entailment.RDFSPlus":"RDFS.RDFSPlus",
+ "RDF.Entailment.Simple":"RDF.Entailment",
+ "RDF.Entailment.Regime":"RDF.Entailment",
+ "Parser.CSVResults":"SPARQL.ResultsCsvTsv",
+ "RDF.Pretty":"RDF.Pretty",
+ "SPARQL.Explain":"SPARQL.Explain",
 }
 def leafkeys(m):
     p=m.split('.'); s={p[-1].lower()}
