@@ -45,6 +45,7 @@ alias={
  "Parser.JSONResults":"SPARQL.ResultsJson",
  "RDF.Entailment.RDFS.RhoDFClosure":"RDFS.RdfsCore",
  "SPARQL.FullText":"SPARQL.FullText",
+ "SPARQL.Update.Sandbox":"SPARQL.UpdateSandbox",
 }
 def leafkeys(m):
     p=m.split('.'); s={p[-1].lower()}

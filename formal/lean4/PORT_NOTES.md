@@ -8091,3 +8091,52 @@ containing commas, semicolons and quotes to state that.
 - A literal of any other datatype decodes to nothing — the marker
   datatype is the gate, and without it the codec would read a user's
   ordinary string literal as a query.
+
+## SPARQL.Update.Sandbox — the policy, with checks that state the threat
+
+`L4Factoidal/SPARQL/UpdateSandbox.lean` ports
+`formal/fstar/SPARQL.Update.Sandbox.fst` (323 lines). Migrated in the
+F\* tree out of `factoidal_http.ml` per iron rules #1 and #15: the policy
+is semantics, the HTTP status codes are glue.
+
+### The hand-rolled string scan disappears
+
+The F\* `replace_all_aux` walks the haystack character by character with
+`FStar.String.length` and `.sub`, and its own comment says that matches
+the previous byte-level OCaml "only when the haystack is ASCII — which
+is the case for our auth template". Lean's `String.replace` does the
+whole substitution, and `splitOn` gives the prefix, so 60 lines of scan
+become two definitions. On ASCII templates the two trees agree; on a
+non-ASCII template Lean's is codepoint-correct where the OCaml was
+byte-based, and neither tree has a test for that.
+
+`templatePrefix` scans for the literal `{authid}` ANYWHERE, not for the
+first `{`. The F\* module pins the stray-brace case with `assert_norm`;
+here it is a `#guard`:
+`templatePrefix "https://e.org/{x}/{authid}/graph"` is
+`"https://e.org/{x}/"`, not `"https://e.org/"`.
+
+### The `#guard`s say what the sandbox is FOR
+
+A policy module's tests are worth little if they only check the happy
+path, so each one states a way out of the sandbox and asserts it is
+closed:
+
+- an unwrapped template is WRAPPED, not rejected — that is the rewriting
+  half of the policy, and a port that only rejected would still pass a
+  "rejects other graphs" test;
+- a template already wrapped in the sandbox graph is NOT double-wrapped;
+- a VARIABLE graph target is rejected — a wrapper that could bind to any
+  graph is not a wrapper that targets the sandbox;
+- `DEFAULT`, `NAMED` and `ALL` are each rejected separately, because each
+  is a different way to reach outside;
+- `ADD`, `MOVE` and `COPY` check BOTH ends. A check on the destination
+  alone would let data be copied OUT of another graph, and that is the
+  one a plausible implementation gets wrong;
+- `LOAD` is rejected here as well as at the HTTP layer — two gates, on
+  purpose;
+- an update stops at the FIRST rejection, so an update whose second
+  operation is out of bounds does not have its first applied;
+- an accepted update keeps its operations IN ORDER. The accumulator is
+  reversed, and an unreversed one would pass every single-operation
+  check above.
