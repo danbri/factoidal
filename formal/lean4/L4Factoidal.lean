@@ -198,6 +198,7 @@ import L4Factoidal.RIF.Builtins
 import L4Factoidal.RIF.Engine
 import L4Factoidal.RIF.EngineTests
 import L4Factoidal.RIF.Translation
+import L4Factoidal.RIF.Conformance
 import L4Factoidal.RIF.Xml
 import L4Factoidal.JSONSchema.Validate
 import L4Factoidal.JSONSchema.Tests

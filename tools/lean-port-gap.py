@@ -43,6 +43,7 @@ alias={
  "RDF.Store.Capabilities":"RDF.StoreCapabilities",
  "RDF.Store.Columnar.DeltaMerge":"RDF.StoreDeltaMerge",
  "RDF.Store.Capabilities.Delta":"RDF.StoreCapabilitiesDelta",
+ "RIF.Core.Conformance":"RIF.Conformance",
  "Parser.RIFXML":"RIF.Xml",
  "RDF.Entailment.RDFS.FixedPoint":"RDFS.FixedPoint",
  "SPARQL11.EntailmentRegime.RDFS":"SPARQL.EntailmentRegimeRdfs",

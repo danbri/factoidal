@@ -10261,3 +10261,57 @@ with no `Document` wrapper. Two negative pins — text that is not XML,
 and XML that is not RIF — because a parser that accepted everything
 would satisfy every positive pin. Each positive pin states what it got
 rather than that it got something.
+
+## RIF.Core.Conformance — safeness and import rejection
+
+`formal/fstar/RIF.Core.Conformance.fst` (801 lines) →
+`L4Factoidal/RIF/Conformance.lean`, in the namespace
+`L4Factoidal.RIF.Conformance` alongside `RIF.Xml`.
+
+Two families of decision:
+
+- **Safeness** — W3C RIF Core §6.1: rule argument-safeness plus the
+  no-free-variables condition.
+- **Import rejection** — the RIF-RDF/OWL combination spec's per-import
+  validity conditions: a variable frame property under OWL-Direct,
+  forbidden `rif:iri` / `rdf:PlainLiteral` datatypes in an imported
+  graph, incomparable entailment profiles, an empty OWL-Direct import,
+  a constant used in two roles across the imports closure, and the two
+  OWL-Direct vocabulary-separation violations.
+
+**Structural, over the XML tree.** It reasons about `External`, `Equal`,
+`Or` and `Exists` — constructs the evaluator gives no semantics to — and
+only needs to know THAT they are present and how they interact with
+bound-ness. It also has to keep working on documents `RIF.Xml` REFUSES:
+the `Multiple_Context_Error` fixture's imported document carries a
+multi-slot frame in head position, which the single-atom-head rule
+rejects, and a conformance verdict must not depend on the rule being
+evaluable. The one exception is the vocabulary-separation check, which
+reads parsed `Atom`s because it is about the content of ground frame
+facts rather than the document's shape.
+
+**The `And` case is a FIXPOINT, not a fold.** An `Equal` chain
+`?x = ?y, ?y = ?z` needs more than one pass to settle: `?y` becomes
+bound only after `?x` does, and `?z` only after `?y`. A `#guard` pins a
+three-link chain, so a later simplification to a single fold fails
+visibly.
+
+**Narrowness stated rather than implied**, for the three checks that are
+narrower than the condition they are named after:
+`importedGraphIsEmpty` is not an OWL 2 DL well-formedness checker,
+`owlDirectSeparationInconsistent` is not an OWL 2 DL consistency
+checker, and `noFreeVariables` compares used against declared variables
+GLOBALLY rather than per-`Forall`-scope — a document declaring `?x` in
+one rule and using a different `?x` free in another would pass. No
+fixture has that shape; the limit is written down rather than left to be
+found.
+
+**Pins in BOTH directions.** A conformance checker answering `true` for
+everything passes every positive fixture, so each check has a negative
+pin beside it: an unsafe rule whose head names an unbound variable, a
+free variable never declared, a fact carrying a variable, a `b` position
+refused an unbound argument, and an incomparable profile pair.
+
+**Two Lean-specific traps hit on the way.** `local` is a reserved
+keyword, so the builtin-pattern parameter is `localNm`. A `/-- … -/` doc
+comment cannot attach to a `mutual` block — it has to be `/-! … -/`.
