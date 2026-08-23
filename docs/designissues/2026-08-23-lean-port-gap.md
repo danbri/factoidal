@@ -10,16 +10,21 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 76 | 42501 |
+| Engine and specification code — to port | 74 | 42014 |
 | Proofs about the F\* implementation — see below | 32 | 33861 |
 | F\*-only machinery with no Lean counterpart by design | 7 | 2861 |
-| **Total not covered** | **115** | **79223** |
+| **Total not covered** | **113** | **78736** |
 
-105 of the 220 F\* modules have a Lean counterpart.
+107 of the 220 F\* modules have a Lean counterpart.
 
-Updated 2026-08-23 after all three HDT modules landed. The HDT group
-is now empty; see the section below for what it cost and what it
-measures.
+Updated 2026-08-23 after all three HDT modules and `XSD.IEEE754`
+landed, and after ONE false negative was corrected: `DID.Key` has been
+covered by `L4Factoidal/VC/DidKey.lean` all along — all 18 of its F\*
+definitions have a Lean counterpart — but the alias table did not know
+the module had been renamed on the way across. An audit of the whole
+not-covered list found no other false negative (every remaining entry
+was checked against the Lean tree by squashed name; only `DID.Key`
+matched). The HDT and XSD groups are now empty.
 
 ### On the proof column
 
@@ -180,9 +185,26 @@ report MATCH (1 triple, and 343 triples).
 
 - `JSONLD.Frame` (335)
 
-### XSD — 1 modules, 292 lines
+### XSD — 0 modules (complete)
 
-- `XSD.IEEE754` (292)
+`XSD.IEEE754` (292 lines) is ported as `L4Factoidal/XSD/IEEE754.lean`:
+decimal lexical to IEEE-754 value in exact big-integer rational
+arithmetic, with no floating point in any definition.
+
+`IEEE754Tests.lean` checks it against an INDEPENDENT correctly-rounded
+implementation rather than a restatement of the same algorithm: 66
+lexicals converted by CPython's `float()` (a correctly-rounded
+`strtod`), with the bit patterns read out by `struct.pack`. **All 66
+rows match, bit for bit, in binary64 and binary32.** The table is
+chosen for the 2^53 and 2^24 boundaries, one-ulp neighbours, the
+smallest subnormal and its halfway point, `2.2250738585072011e-308`
+(the decimal that hung PHP's `strtod` in 2011), overflow to infinity,
+underflow to zero, and signed zero / infinities / NaN.
+
+### DID — 0 modules (was a false negative)
+
+`DID.Key` is covered by `L4Factoidal/VC/DidKey.lean`. The alias table
+in `tools/lean-port-gap.py` now records the rename.
 
 ### DID — 1 modules, 195 lines
 

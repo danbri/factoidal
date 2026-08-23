@@ -7497,3 +7497,73 @@ has one — `bin/hdt-probe/` reads, and `third_party/testing/hdt/
 mini_rdf2hdt.cpp` is how the fixtures were made. Stage 5 of the
 program plan (indexed rank/select behind the same three names) is
 open in both trees.
+
+## XSD.IEEE754: checked against a correctly-rounded implementation, not against itself
+
+`L4Factoidal/XSD/IEEE754.lean` ports `formal/fstar/XSD.IEEE754.fst`:
+decimal lexical to IEEE-754 value, for `xsd:double`, `xsd:float` and
+`rdf:JSON` numbers. Every definition is exact big-integer rational
+arithmetic; no floating point appears anywhere in the module.
+
+### Three F\* definitions shrink
+
+`pow2` and `pow10` become `2 ^ n` and `10 ^ n` — the F\* recursions
+exist to carry a `pos` refinement. `bitlen` becomes `Nat.log2 n + 1`
+for `n > 0`, the same function its recursion computes. `mul_pos` is
+absent: it keeps a `pos` type through a multiplication without per-site
+SMT nudging, and Lean's `Nat` multiplication carries no such
+obligation.
+
+### The test is the point
+
+A test that restates the rounding algorithm proves nothing about it.
+`IEEE754Tests.lean` holds 66 lexicals converted by CPython's `float()`
+— a correctly-rounded `strtod` — with the bit patterns read out by
+`struct.pack('>d', …)` and `struct.pack('>f', …)`, and compares them
+against this module's output through `fvalToBits64` / `fvalToBits32`.
+
+**66 rows match, bit for bit, in binary64 and binary32. 0 differ.**
+
+The table is chosen for the cases where an implementation goes wrong,
+not for round numbers:
+
+| Case | Why |
+|---|---|
+| `9007199254740992` … `95` | the 2^53 boundary: four consecutive integers pin the ties-to-even direction where doubles stop being exact |
+| `16777216`, `16777217`, `16777219` | the 2^24 boundary, same question for binary32 |
+| `1.0000000000000001` vs `…02` | one-ulp neighbours: one rounds down, one up |
+| `5e-324`, `2.5e-324`, `2.4e-324` | the smallest subnormal and its exact halfway point — ties-to-even at the bottom of the grid |
+| `2.2250738585072011e-308` | the decimal that hung PHP's `strtod` in 2011, and its normal neighbour |
+| `1.8e308`, `1e400` | overflow to infinity, at two magnitudes |
+| `1e-46` | underflow to zero, below the subnormal grid |
+| `1000`, `1e3`, `0.001e6`, `100000e-2` | one value, four lexicals |
+| 60-digit exact expansion of a double | a long digit string that must not lose the tie |
+| `-0.0`, `INF`, `-INF`, `NaN` | signed zero, both infinities, the value equal to nothing |
+
+`fvalToBits64` and `fvalToBits32` exist only for that comparison.
+Nothing in the port uses them.
+
+### Two engine defects found, filed not fixed
+
+https://github.com/danbri/factoidal/issues/552, present identically in
+BOTH trees, so neither is a port regression:
+
+1. `FILTER(?v = "1.0"^^xsd:double)` returns **zero** rows against data
+   holding `"1"^^xsd:double` and `"1.0"^^xsd:double`, where SPARQL 1.1
+   §17.3 requires two. `FILTER(?v = 1.0e0)` on the same data returns
+   two. A numeric literal TOKEN becomes a numeric expression node and
+   is promoted; a typed-literal node stays a term and never reaches
+   `numericCompare`. Repo anti-pattern #6 at a place nothing had
+   checked.
+2. `=` on two `xsd:double` operands compares EXACT DECIMAL values
+   (`parseDoubleToScaled`), not IEEE-754 values, so
+   `"9007199254740992"^^xsd:double = "9007199254740993"^^xsd:double`
+   is false where the specification makes it true — both lexicals
+   denote 2^53. `XSD.IEEE754.doubleValueEq` decides this correctly and
+   is checked against CPython on exactly that pair, but only the
+   D-entailment regime calls it. Two parts of the engine disagree
+   about which doubles are the same value.
+
+The primitives are right in both trees; what is missing is the wiring.
+`literalValueEqNumeric` and `valueCompare ∘ literalPromote` both answer
+`"1"^^xsd:double = "1.0"^^xsd:double` correctly when called directly.
