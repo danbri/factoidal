@@ -267,3 +267,5 @@ import L4Factoidal.RDF.Pretty
 import L4Factoidal.SPARQL.Explain
 import L4Factoidal.SPARQL.FullText
 import L4Factoidal.SPARQL.UpdateSandbox
+import L4Factoidal.OWL.TestsManifest
+import L4Factoidal.RDFS.RegimeDispatch

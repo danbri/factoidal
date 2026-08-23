@@ -8140,3 +8140,50 @@ closed:
 - an accepted update keeps its operations IN ORDER. The accumulator is
   reversed, and an unreversed one would pass every single-operation
   check above.
+
+## Two more: the OWL test-type classifier and the regime dispatch
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `OWL.Tests.Manifest` | 28 | `L4Factoidal/OWL/TestsManifest.lean` |
+| `RDF.Entailment.RegimeDispatch` | 53 | `L4Factoidal/RDFS/RegimeDispatch.lean` |
+
+### `TestsManifest`
+
+Five test-type IRIs, classified. The `#guard`s state the two ways a
+loose classifier goes wrong: the namespace ALONE is not a test type, and
+an unknown suffix inside the namespace is not either. A "starts with the
+namespace" check accepts both, and would count every ontology term in
+that namespace as a test.
+
+### `RegimeDispatch`, and one narrowing worth stating
+
+`x-rdfscore` selects the ρdf closure, `x-rdfsplus` selects the RDFS-Plus
+closure, and everything else falls through.
+
+The claim levels are carried over unchanged. `x-rdfscore`'s definition
+IS a theorem — on fragment data the answers are exactly the ρdf-entailed
+consequences, sound and complete. `x-rdfsplus` makes **no chain-level
+completeness claim**: every OWL row runs under proved licensing and
+truth lemmas, but `owl:sameAs` equality breaks the Herbrand construction
+behind the completeness theorem.
+
+⚠️ The fall-through is NARROWER than the F\*'s. F\* falls through to
+`OWL.Closure.entailment_closure_for_query`, which owns the W3C-named
+regimes ("RDFS", "OWL-RL", …) and performs the comprehension-witness
+strip. The Lean fall-through is `OWL.RL.closure` directly: there is no
+witness scaffolding to strip (the F\* banner notes the two new closures
+mint none either), but the W3C-named regimes are not yet split out, so a
+caller asking for `"RDFS"` gets the OWL RL closure. Stated here rather
+than left to be found.
+
+### A guard I wrote and then deleted
+
+The first version had two `#guard`s of the shape `P || !P` — written to
+say "the fall-through may or may not derive this". They are tautologies:
+they pass whatever the code does, which is the opposite of a check.
+
+They are replaced by one that has content: `x-rdfscor` (a near-miss for
+`x-rdfscore`) must produce a DIFFERENT closure size from `x-rdfscore`.
+If the regime match were a prefix test rather than equality, the two
+would be equal and the guard would fail.
