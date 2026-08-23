@@ -8304,3 +8304,73 @@ ghost projection from the on-disk bytes to each row group's token set,
 plus a writer-side lemma that the builder respects it. Neither tree has
 either. The statement is what callers rely on; the producer-side
 obligation is open in both, and this port does not close it.
+
+## The COTTAS prune chain, complete: compound bitmap and plan pruning
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `RDF.CottasStore.CompoundPresenceBitmap` | 362 | `L4Factoidal/Cottas/CompoundPresenceBitmap.lean` |
+| `SPARQL.Plan.Pruning` | 256 | `L4Factoidal/Cottas/PlanPruning.lean` |
+
+With `PresenceBitmap` these three are the whole row-group prune path:
+875 F\* lines, and about 900 more lines of OCaml `Hashtbl` mirrors that
+the F\* modules were written to retire.
+
+### Why the compound bitmap exists, stated as a check
+
+A row group can hold predicate `p` in one row and object `o` in another
+and never both in the same row. The three per-column gates cannot see
+that; the joint `(p, o)` bitmap can.
+
+The `#guard` says exactly that, on a fixture built for it. Row group 0
+holds predicate 1 and object 4 individually, so every per-column gate
+passes, and the compound gate rejects the pair:
+
+```
+#guard predicateCanMatch (some hpp) 0 (some 1)              -- present
+#guard objectCanMatch (some hp) 0 (some 4)                  -- present
+#guard !compoundPoCanMatch (some hc) 0 (some 1) (some 4)    -- not together
+#guard !rgCanMatch 0 … (some hc)                            -- ruled out
+#guard  rgCanMatch 0 … none                                 -- NOT ruled out
+```
+
+The last two lines are the pair that matters: the same query, with and
+without the compound handle, gives different answers. A port that
+dropped the compound conjunct would pass every per-column check while
+losing the entire benefit, and only that contrast catches it.
+
+### The byte order is the algorithm
+
+The pair record stores `objId` in bytes 0..3 and `predId` in bytes 4..7,
+so the whole little-endian u64 is `(predId << 32) ||| objId` — which
+means ascending u64 order IS lexicographic `(predId, objId)` order, and
+a binary search over the packed region works with no decoding at all.
+`#guard`s pin that: `pairCode 1 2 < pairCode 1 5 < pairCode 3 4`, and
+`pairCode 0 4294967295 < pairCode 1 0` for the carry boundary.
+
+### Decisive `false` versus safe `true`, again
+
+Two answers are decisive and everything else over-includes:
+
+- an EMPTY row-group pair list is `false` — the writer said there are no
+  pairs here;
+- a completed search with no hit is `false`.
+
+A TRUNCATED file over-includes. The `#guard`s put those side by side —
+the same query answering `false` on the full file and `true` on the
+truncated one — because collapsing the two is the plausible mistake and
+it is invisible on valid input.
+
+### The identity property is a theorem, not a hope
+
+`filterCandidatesByPrune` with nothing bound and no companion open is
+the IDENTITY on its input. Turning the optimisation off must not change
+an answer, and that is now proved rather than assumed.
+
+### The inherited gap, unchanged
+
+Both soundness lemmas hold GIVEN that the on-disk file agrees with the
+ground truth, and neither tree shows that of any actual file. The writer
+is in OCaml; the producer-side proof needs a ghost projection from bytes
+to each row group's contents plus a lemma that the builder respects it.
+This chain inherits that gap and does not widen it.

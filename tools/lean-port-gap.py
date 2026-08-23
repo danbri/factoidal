@@ -49,6 +49,8 @@ alias={
  "OWL.Tests.Manifest":"OWL.TestsManifest",
  "RDF.Vocabulary.Axioms":"RDF.VocabularyAxioms",
  "RDF.CottasStore.PresenceBitmap":"Cottas.PresenceBitmap",
+ "RDF.CottasStore.CompoundPresenceBitmap":"Cottas.CompoundPresenceBitmap",
+ "SPARQL.Plan.Pruning":"Cottas.PlanPruning",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
 }
 def leafkeys(m):
