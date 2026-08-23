@@ -19,6 +19,7 @@ requires.
 Usage: `lake exe l4csvw-json [tests-dir]`
 -/
 import L4Factoidal.CSVW.JsonDoc
+import L4Factoidal.CSVW.Validate
 import L4Factoidal.JSON.Parser
 import L4Factoidal.JSON.Serialize
 
@@ -251,11 +252,44 @@ def main (args : List String) : IO UInt32 := do
       let mut pass := 0
       let mut fail := 0
       let mut skip := 0
-      let mut negative := 0
+      let mut overStrict := 0
+      let mut negPass := 0
+      let mut negFail := 0
+      let mut negSkip := 0
       for e in entries do
         if e.negative then
-          negative := negative + 1
+          -- A negative test asserts an ERROR, not a document. It is
+          -- scored by the VALIDATOR: the metadata must be rejected.
+          let mp := dir ++ "/" ++ e.action
+          if !(← System.FilePath.pathExists mp) then
+            negSkip := negSkip + 1
+            IO.println s!"skip {e.id}: metadata file missing: {e.action}"
+          else
+            let msrc ← IO.FS.readFile mp
+            match parseJson? msrc with
+            | none => negPass := negPass + 1
+            | some mj =>
+                if L4Factoidal.CSVW.passes (L4Factoidal.CSVW.validate mj) then
+                  negFail := negFail + 1
+                  IO.println s!"NEG-FAIL {e.id} ({e.action}): validator raised no error"
+                else negPass := negPass + 1
         else
+        -- CROSS-CHECK: a validator tightened to reject the negative
+        -- tests must still ACCEPT every positive one. Without this the
+        -- negative score can be bought with rules that reject
+        -- everything, and the two numbers would never disagree.
+        match e.metadata with
+        | none => pure ()
+        | some mf =>
+            let mp := dir ++ "/" ++ mf
+            if ← System.FilePath.pathExists mp then
+              let msrc ← IO.FS.readFile mp
+              match parseJson? msrc with
+              | none => pure ()
+              | some mj =>
+                  if !L4Factoidal.CSVW.passes (L4Factoidal.CSVW.validate mj) then
+                    overStrict := overStrict + 1
+                    IO.println s!"OVER-STRICT {e.id}: the validator rejects a POSITIVE test's metadata"
         let o ← runOneJson dir e (dumpId == some e.id)
         if o.status == "pass" then pass := pass + 1
         else if o.status == "fail" then
@@ -266,10 +300,10 @@ def main (args : List String) : IO UInt32 := do
           IO.println s!"skip {e.id}: {o.detail}"
       let attempted := pass + fail + skip
       IO.println ""
-      IO.println s!"csv2json: {pass} pass, {fail} fail, {skip} skip (out of {attempted} attempted)"
-      IO.println s!"NOT ATTEMPTED: {negative} negative tests out of the manifest's {total} entries"
-      IO.println "  (they assert an ERROR, not a document, and need the"
-      IO.println "  validator's outcome rather than an expected .json)."
+      IO.println s!"csv2json POSITIVE: {pass} pass, {fail} fail, {skip} skip (out of {attempted} attempted)"
+      IO.println s!"csv2json NEGATIVE (validator must reject): {negPass} pass, {negFail} fail, {negSkip} skip (out of {negPass + negFail + negSkip})"
+      IO.println s!"csv2json TOTAL: {pass + negPass} pass, {fail + negFail} fail, {skip + negSkip} skip (out of {total} manifest entries)"
+      IO.println s!"VALIDATOR CROSS-CHECK: {overStrict} positive tests whose metadata the validator wrongly rejects"
       IO.println ""
       IO.println "Comparison is STRUCTURAL: object members are a set, array items"
       IO.println "a sequence. csv2json fixes the order of `row` and `describes`,"
