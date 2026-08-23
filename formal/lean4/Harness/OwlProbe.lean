@@ -415,27 +415,28 @@ def closureIO (g : Graph) (fuel : Nat) (deadlineMs : Nat) : IO ClosureResult := 
 def closureFuel : Nat := 100
 
 /-- The refuter's DEFAULT budget per premise, overridable with
-`--refute-budget N`. The budget is threaded through the branch
-search, so it bounds the whole search and not each branch. Running
-out answers `none` — not refuted — so the cap withholds a verdict
-rather than inventing one.
+`--refute-budget N`. The budget is THREADED through the branch
+search, so it bounds the whole search rather than each branch, and
+the cost is close to linear in it. Running out answers `none` — not
+refuted — so the cap withholds a verdict rather than inventing one.
 
-📊 Measured on `type-inconsistency.rdf`, 2026-08-23:
+📊 Measured on `type-inconsistency.rdf`, 2026-08-23, out of 127
+decided:
 
 | Budget | Score | Wall |
 | --- | --- | --- |
-| 6 | 80 pass, 47 fail (out of 127 decided) | 2.8 s |
-| 16 | 80 pass, 47 fail | 5.2 s |
-| 24 | 81 pass, 46 fail | 76 s |
+| 16 | 88 pass, 39 fail | 1.9 s |
+| 24 | 90 pass, 37 fail | 2.2 s |
+| 40 | 90 pass, 37 fail | 2.8 s |
+| 64 | 92 pass, 35 fail | 3.5 s |
+| 200 | 92 pass, 35 fail | 6.6 s |
+| 400 | 92 pass, 35 fail | 9.6 s |
 
-The whole difference between 16 and 24 is ONE case,
-`WebOnt-description-logic-504` — a FaCT-derived 3-SAT encoding whose
-branch tree is what the deeper budget buys, at 71 seconds for that
-single premise. 16 is the default because a routine gate should not
-spend a minute on one fixture; `--refute-budget 24` reproduces the
-81. Naming the case is the point: a cap that hides which test it
-costs is a silent cap. -/
-def defaultRefuteBudget : Nat := 16
+64 is the default: it is where the curve flattens, and four seconds
+on the catalog the refuter exists for is not a cost worth trading a
+case against. Above it nothing more closes — the remaining 35 need
+rules, not budget. -/
+def defaultRefuteBudget : Nat := 64
 
 /-- Per-catalog measurement counters. -/
 structure Measure where

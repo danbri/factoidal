@@ -67,6 +67,8 @@ def owlAllDifferent : WfIri := ⟨"http://www.w3.org/2002/07/owl#AllDifferent", 
 def owlDistinctMembers : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#distinctMembers", rfl⟩
 def owlHasSelf : WfIri := ⟨"http://www.w3.org/2002/07/owl#hasSelf", rfl⟩
+def owlAllDisjointProperties : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#AllDisjointProperties", rfl⟩
 def owlBottomObjectProperty : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#bottomObjectProperty", rfl⟩
 def owlBottomDataProperty : WfIri :=
@@ -729,10 +731,76 @@ def hasSelfDisjointViolation (g : Graph) : Bool :=
 def bottomPropertyAssertion (g : Graph) : Bool :=
   g.any (fun t => isBottomProp t.p)
 
+/-- G6: `owl:Thing owl:equivalentClass owl:Nothing`, in either
+    direction. OWL 2 Direct Semantics requires a NON-EMPTY domain and
+    interprets `owl:Thing` as the whole of it, so equating it with the
+    empty class has no model. -/
+def thingIsNothing (g : Graph) : Bool :=
+  g.any (fun t =>
+    t.p == owlEquivalentClass &&
+    ((t.s == Subject.iri owlThing && t.o == Term.iri owlNothing) ||
+     (t.s == Subject.iri owlNothing && t.o == Term.iri owlThing)))
+
+/-- G7: two DIFFERENT properties declared `owl:propertyDisjointWith`
+    with a shared subject-object pair. `EXT(p) ∩ EXT(q) = ∅`, and the
+    pair is in both. -/
+def disjointPropertiesShareAPair (g : Graph) : Bool :=
+  g.any (fun t =>
+    t.p == owlPropertyDisjointWith &&
+    (match t.s, t.o with
+     | .iri p, .iri q =>
+         p != q &&
+         g.any (fun u => u.p == p &&
+           g.any (fun v => v.p == q && v.s == u.s && v.o == u.o))
+     | _, _ => false))
+
+/-- The members of every `owl:AllDisjointProperties` list. -/
+def allDisjointPropertyGroups (g : Graph) : List (List WfIri) :=
+  let st := Store.ofGraph g
+  g.filterMap (fun t =>
+    if t.p == rdfType && t.o == Term.iri owlAllDisjointProperties then
+      match firstObject st t.s owlMembers with
+      | some head => some ((walkRdfList st head 64).filterMap (fun x =>
+          match x with
+          | .iri i => some i
+          | _      => none))
+      | none      => none
+    else none)
+
+/-- G8: two members of one `owl:AllDisjointProperties` sharing a
+    pair. The group asserts the extensions are PAIRWISE disjoint, so
+    one shared pair has no model. -/
+partial def groupPairViolation (g : Graph) : List WfIri → Bool
+  | []      => false
+  | p :: tl =>
+      tl.any (fun q =>
+        g.any (fun u => u.p == p &&
+          g.any (fun v => v.p == q && v.s == u.s && v.o == u.o)))
+      || groupPairViolation g tl
+
+def allDisjointPropertiesViolation (g : Graph) : Bool :=
+  (allDisjointPropertyGroups g).any (groupPairViolation g)
+
+/-- G9: an `owl:AsymmetricProperty` with both `x p y` and `y p x`, or
+    an `owl:IrreflexiveProperty` with `x p x`. Asymmetry says
+    `(x,y) ∈ EXT(p)` implies `(y,x) ∉ EXT(p)`; irreflexivity says no
+    pair `(x,x)` is in it. -/
+def asymmetryViolation (g : Graph) : Bool :=
+  (collectTypedIris g owlAsymmetricProperty).any (fun p =>
+    g.any (fun u => u.p == p &&
+      g.any (fun v => v.p == p && v.s.toTerm == u.o && v.o == u.s.toTerm)))
+
+def irreflexivityViolation (g : Graph) : Bool :=
+  (collectTypedIris g owlIrreflexiveProperty).any (fun p =>
+    g.any (fun u => u.p == p && u.o == u.s.toTerm))
+
 def immediateInconsistency (g : Graph) : Bool :=
   allDifferentViolation g || bottomPropertyAssertion g ||
   selfDisjointPropertyInUse g ||
-  nilStructureViolation g || hasSelfDisjointViolation g
+  nilStructureViolation g || hasSelfDisjointViolation g ||
+  thingIsNothing g || disjointPropertiesShareAPair g ||
+  allDisjointPropertiesViolation g ||
+  asymmetryViolation g || irreflexivityViolation g
 
 /-! ## The TBox
 

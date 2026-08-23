@@ -370,4 +370,48 @@ private def gExistingSuccessorRightClass : Graph :=
 
 #guard !(refuted gExistingSuccessorRightClass)
 
+/-! ## Four more graph-level violations
+
+Each is a shape that has no model without any expansion at all, and
+each is paired with the nearest SATISFIABLE graph — the pairing is
+the check, because either half alone can be passed by an engine that
+has the rule backwards. -/
+
+/-! G6: OWL 2 Direct Semantics requires a NON-EMPTY domain and
+interprets `owl:Thing` as the whole of it, so equating it with the
+empty class has no model. -/
+#guard refuted [⟨.iri owlThing, owlEquivalentClass, .iri owlNothing⟩]
+#guard refuted [⟨.iri owlNothing, owlEquivalentClass, .iri owlThing⟩]
+#guard !(refuted [⟨.iri exC, owlEquivalentClass, .iri owlNothing⟩])
+
+/-! G7: two DIFFERENT properties declared disjoint, sharing a pair.
+The RL marker wants two distinct predicates and so does this. -/
+#guard refuted [⟨.iri exP, owlPropertyDisjointWith, .iri exQ⟩,
+                ⟨indI, exP, .iri exY⟩, ⟨indI, exQ, .iri exY⟩]
+/-! Different pairs on the same two properties are fine. -/
+#guard !(refuted [⟨.iri exP, owlPropertyDisjointWith, .iri exQ⟩,
+                  ⟨indI, exP, .iri exY⟩, ⟨indI, exQ, .iri exZ⟩])
+
+/-! G8: `owl:AllDisjointProperties` asserts PAIRWISE disjointness. -/
+private def gAllDisjointProps (o1 o2 : Term) : Graph :=
+  [ ⟨bn "ad", rdfType, .iri owlAllDisjointProperties⟩,
+    ⟨bn "ad", owlMembers, bnT "m1"⟩,
+    ⟨bn "m1", rdfFirst, .iri exP⟩, ⟨bn "m1", rdfRest, bnT "m2"⟩,
+    ⟨bn "m2", rdfFirst, .iri exQ⟩, ⟨bn "m2", rdfRest, .iri rdfNil⟩,
+    ⟨indI, exP, o1⟩, ⟨indI, exQ, o2⟩ ]
+
+#guard refuted (gAllDisjointProps (.iri exY) (.iri exY))
+#guard !(refuted (gAllDisjointProps (.iri exY) (.iri exZ)))
+
+/-! G9: asymmetry says `(x,y) ∈ EXT(p)` implies `(y,x) ∉ EXT(p)`;
+irreflexivity says no pair `(x,x)` is in it. -/
+#guard refuted [⟨.iri exP, rdfType, .iri owlAsymmetricProperty⟩,
+                ⟨indI, exP, .iri exY⟩, ⟨.iri exY, exP, .iri exI⟩]
+#guard !(refuted [⟨.iri exP, rdfType, .iri owlAsymmetricProperty⟩,
+                  ⟨indI, exP, .iri exY⟩])
+#guard refuted [⟨.iri exP, rdfType, .iri owlIrreflexiveProperty⟩,
+                ⟨indI, exP, .iri exI⟩]
+#guard !(refuted [⟨.iri exP, rdfType, .iri owlIrreflexiveProperty⟩,
+                  ⟨indI, exP, .iri exY⟩])
+
 end L4Factoidal.OWL.Refute

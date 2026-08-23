@@ -7179,3 +7179,68 @@ filler is not. Both hand-built guards in `RefuteTests.lean` used
 named fillers. The corpus case that exposed it used an anonymous one,
 and the failure it produced was not a wrong answer — it was a rule
 one layer up firing correctly and finding nothing.
+
+### Wave 3c — the budget the threading paid for, and four graph rules
+
+Once the budget was actually THREADED, its cost became close to
+linear in it, so the default could be raised. The old per-branch
+form could not afford that: at 24 it took 76 seconds.
+
+📊 `type-inconsistency.rdf`, out of 127 decided:
+
+| Budget | Score | Wall |
+| --- | --- | --- |
+| 16 | 88 pass, 39 fail | 1.9 s |
+| 24 | 90 pass, 37 fail | 2.2 s |
+| 40 | 90 pass, 37 fail | 2.8 s |
+| 64 | 92 pass, 35 fail | 3.5 s |
+| 200 | 92 pass, 35 fail | 6.6 s |
+| 400 | 92 pass, 35 fail | 9.6 s |
+
+64 is the new default — where the curve flattens. Above it nothing
+more closes: the rest need RULES, not budget. `WebOnt-description-
+logic-003` was one of them, and the instrumented run showed why —
+all six merge branches clashed, and only the budget stood between
+that and a verdict.
+
+Four graph-level violations added, each a shape with no model and no
+expansion needed:
+
+* **G6** — `owl:Thing owl:equivalentClass owl:Nothing`. Direct
+  Semantics requires a non-empty domain and interprets `owl:Thing`
+  as the whole of it.
+* **G7** — two DIFFERENT properties declared
+  `owl:propertyDisjointWith` sharing a subject-object pair. (G3
+  already had the self-disjoint case, which the RL marker misses for
+  the opposite reason.)
+* **G8** — two members of one `owl:AllDisjointProperties` sharing a
+  pair.
+* **G9** — an `owl:AsymmetricProperty` with a pair in both
+  directions, or an `owl:IrreflexiveProperty` with a reflexive pair.
+
+Each is pinned in `RefuteTests.lean` NEXT TO the nearest satisfiable
+graph. The pairing is the check: either half alone can be passed by
+an engine that has the rule backwards.
+
+### 📊 Where the OWL probe stands
+
+`lake exe l4owl-probe --dir third_party/testing/owl [--dl]`,
+2026-08-23:
+
+| Catalog | RL closure only | `--dl` |
+| --- | --- | --- |
+| profile-RL.rdf | 117 pass, 9 fail (out of 126) | 118 pass, 8 fail |
+| profile-EL.rdf | 102 pass, 18 fail, 1 skip (out of 121) | 110 pass, 10 fail, 1 skip |
+| profile-QL.rdf | 82 pass, 5 fail (out of 87) | 83 pass, 4 fail |
+| type-positive-entailment.rdf | 315 pass, 93 fail, 4 unsup (out of 412) | 318 pass, 90 fail, 4 unsup |
+| type-consistency.rdf | 485 pass, 94 fail, 4 unsup (out of 583) | 485 pass, 94 fail, 4 unsup |
+| type-inconsistency.rdf | 30 pass, 97 fail, 1 skip (out of 128) | 94 pass, 33 fail, 1 skip |
+| **TOTAL** | **1131 pass, 316 fail, 2 skip, 8 unsupported (out of 1457)** | **1208 pass, 239 fail, 2 skip, 8 unsupported** |
+
+4 m 50 s. The F\* line for `type-inconsistency.rdf` is 126 pass, 1
+fail (out of 127); the Lean tree reaches 94 pass, 33 fail.
+
+⚠️ `type-consistency.rdf` is unchanged in both columns and still
+hides the same trade Addendum 4 named: three positive-entailment
+cases gained, three consistency cases lost
+(`WebOnt-description-logic-018`, `-020`, `-021`).
