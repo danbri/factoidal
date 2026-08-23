@@ -198,6 +198,8 @@ import L4Factoidal.OWL.ClassExpr
 import L4Factoidal.OWL.FunctionalSyntax
 import L4Factoidal.OWL.FunctionalSyntaxTests
 import L4Factoidal.OWL.ClassExprTests
+import L4Factoidal.XForms.Bind
+import L4Factoidal.XForms.BindTests
 import L4Factoidal.GRDDL.Discovery
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.DeltaLogTests
