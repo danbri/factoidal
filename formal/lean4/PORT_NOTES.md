@@ -8683,3 +8683,26 @@ so a future caller can have them back without changing the type.
 A guard also pins that the fixture's four ranges tile the row space
 with no gap and no overlap, which is what the subject-primary global
 sort means and what makes one range per subject exact.
+
+## RDF.Store.LazyTermCache → `L4Factoidal/Cottas/LazyTermCache.lean`
+
+The two-direction term-id cache: id → typed value and canonical key →
+id. Six `assume val`s and one abstract type become none. Same
+pure-core-plus-one-`IO.Ref` shape as `LazyDict`.
+
+`LazyDict` has four directions because the COTTAS runtime needs raw
+parquet column tokens beside typed values; HDT needs two, because its
+Front-Coded dictionary IS the canonical form.
+
+**Unused in both trees, and the F\* header says why.** Issue #253 was
+scoped to replace `ballyhoo_hdt_runtime.sh`'s term-id allocator and
+closed a different way on 2026-07-06: that patch is deleted and
+`Parser.BallyhooHDT` calls the verified HDT readers directly, with no
+cache in the path. The module stays as a candidate memoisation seam.
+The port carries the same status.
+
+**`size` does not populate here, and `LazyDict.size` does.** The F\*
+comments differ — this one says "0 before populate; fixed positive nat
+after" and `LazyDict`'s says nothing — and the port follows each. Two
+functions with the same name and different triggering behaviour is a
+trap, so both modules now say which one they are.

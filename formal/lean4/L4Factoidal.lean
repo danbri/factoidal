@@ -280,5 +280,6 @@ import L4Factoidal.Cottas.OffsetsWriter
 import L4Factoidal.Cottas.SubjectOffsetsWriter
 import L4Factoidal.Cottas.LazyDict
 import L4Factoidal.Cottas.LazyDictRegistry
+import L4Factoidal.Cottas.LazyTermCache
 import L4Factoidal.Cottas.OffsetIndex
 import L4Factoidal.Cottas.SubjectOffsetIndex

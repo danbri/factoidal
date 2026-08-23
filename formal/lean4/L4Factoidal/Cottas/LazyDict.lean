@@ -142,6 +142,11 @@ def LazyDict.encodeByRawToken {α : Type} (d : LazyDict α) (t : String) :
 def LazyDict.isPopulated {α : Type} (d : LazyDict α) : IO Bool :=
   return (← d.state.get).isSome
 
+/-- The entry count, POPULATING if it has not happened yet. Contrast
+    `LazyTermCache.size`, which answers `0` on an unpopulated cache
+    because its F\* comment says so. Two functions with the same name
+    and different triggering behaviour is a trap, so both modules say
+    which one they are. -/
 def LazyDict.size {α : Type} (d : LazyDict α) : IO Nat :=
   return (← d.ensure).size
 

@@ -85,6 +85,7 @@ alias={
  "RDF.CottasStore.SubjectOffsetsWriter":"Cottas.SubjectOffsetsWriter",
  "RDF.CottasStore.LazyDict":"Cottas.LazyDict",
  "RDF.CottasStore.LazyDictRegistry":"Cottas.LazyDictRegistry",
+ "RDF.Store.LazyTermCache":"Cottas.LazyTermCache",
  "RDF.Store.Columnar.OffsetIndex":"Cottas.OffsetIndex",
  "RDF.Store.Columnar.SubjectOffsetIndex":"Cottas.SubjectOffsetIndex",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
