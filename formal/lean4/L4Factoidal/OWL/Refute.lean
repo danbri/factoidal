@@ -404,26 +404,36 @@ def differentFromAsserted (g : Graph) (a b : Term) : Bool :=
     ((t.s.toTerm == a && t.o == b) || (t.s.toTerm == b && t.o == a)))
 
 
-/-- Datatypes whose LEXICAL FORM is its own value, so two different
-    spellings are two different values.
+/-- Datatypes whose LEXICAL MAPPING is injective: distinct literals
+    in the lexical space map to distinct members of the value space,
+    so lexical inequality entails value inequality.
 
-    Only `xsd:string` qualifies here. The first version of this rule
-    said "same datatype, different lexical form" for EVERY datatype,
-    and that is false almost everywhere: `"1"` and `"01"` are one
-    `xsd:integer`, `"1.0"` and `"1.00"` one `xsd:decimal`, and two
-    `rdf:XMLLiteral`s differing only in insignificant whitespace are
-    one value — which is exactly what
-    `WebOnt-miscellaneous-202` asserts, a CONSISTENT premise the rule
-    refuted by declaring a functional property's two spellings of one
-    XML literal distinct. A refuter that reads a spelling difference
-    as a value difference invents contradictions out of formatting. -/
-def lexicalIsValue (dt : WfIri) : Bool := dt == xsdString
+    XSD Datatypes §2.1 to §2.3 give each datatype a lexical space, a
+    value space, and a lexical mapping from the first to the second.
+    That mapping is many-to-one for most datatypes. `"1"` and `"01"`
+    are distinct literals in the lexical space of `xsd:integer` and
+    map to one value; `"1.0"` and `"1.00"` likewise for
+    `xsd:decimal`; two `rdf:XMLLiteral` literals differing only in
+    insignificant whitespace map to one value after exclusive XML
+    canonicalization.
+
+    The lexical mapping of `xsd:string` is injective, so `"colour"`
+    and `"color"` are distinct values there. That is why the test is
+    per-datatype and not general.
+
+    The first version of this predicate returned `true` for every
+    datatype. `WebOnt-miscellaneous-202` asserts a CONSISTENT premise
+    with a functional datatype property whose two asserted values are
+    the same `rdf:XMLLiteral` written with different whitespace. The
+    predicate reported them distinct, the cardinality clash fired,
+    and the refuter reported no model for a premise that has one. -/
+def lexicalMappingIsInjective (dt : WfIri) : Bool := dt == xsdString
 
 def provablyDistinct (g : Graph) (a b : Term) : Bool :=
   if a == b then false
   else match a, b with
     | .literal x, .literal y =>
-        (x.val.datatype == y.val.datatype && lexicalIsValue x.val.datatype &&
+        (x.val.datatype == y.val.datatype && lexicalMappingIsInjective x.val.datatype &&
          x.val.lexicalForm != y.val.lexicalForm)
         || differentFromAsserted g a b
     | _, _ => differentFromAsserted g a b
