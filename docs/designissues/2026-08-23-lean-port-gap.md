@@ -10,12 +10,12 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 74 | 42014 |
+| Engine and specification code — to port | 69 | 41326 |
 | Proofs about the F\* implementation — see below | 32 | 33861 |
 | F\*-only machinery with no Lean counterpart by design | 7 | 2861 |
-| **Total not covered** | **113** | **78736** |
+| **Total not covered** | **108** | **78034** |
 
-107 of the 220 F\* modules have a Lean counterpart.
+112 of the 220 F\* modules have a Lean counterpart.
 
 Updated 2026-08-23 after all three HDT modules and `XSD.IEEE754`
 landed, and after ONE false negative was corrected: `DID.Key` has been
@@ -25,6 +25,11 @@ the module had been renamed on the way across. An audit of the whole
 not-covered list found no other false negative (every remaining entry
 was checked against the Lean tree by squashed name; only `DID.Key`
 matched). The HDT and XSD groups are now empty.
+
+Second update the same day, after a batch of five more: `Dep.Reachability`,
+`RDFS.Closure.SemiNaive`, `RDF.Dataset.Graphs`, `SPARQL.Update.Analysis`
+and `SPARQL.Query.Analysis`. The `Dep` group is now empty and `RDFS` is
+down to one module.
 
 ### On the proof column
 
@@ -158,10 +163,24 @@ triple out of the HDT file and comparing the result with the `.nt` the
 file was built from, as sorted canonical N-Triples. Both fixtures
 report MATCH (1 triple, and 343 triples).
 
-### RDFS — 2 modules, 1229 lines
+### RDFS — 1 module, 808 lines
 
 - `RDFS.SchemaSplit` (808)
-- `RDFS.Closure.SemiNaive` (421)
+
+`RDFS.Closure.SemiNaive` (421 lines) is ported as
+`L4Factoidal/RDFS/SemiNaive.lean`. Agreement with the naive closure is
+measured by `lake exe l4rdfs-semi`: **6 agree, 0 differ (out of 6)**
+over subclass chains and property hierarchies at 20, 50 and 100 input
+triples, with closures of 210 to 5,056 triples, and the delta loop
+reached the fixed point without the fallback in all 6 — which is what
+says the delta loop did the work rather than being bypassed.
+
+⚠️ SPEED IS NOT MEASURED. The module exists for speed and three timing
+attempts all read 0 ms while the run cost 90 s of CPU. See
+https://github.com/danbri/factoidal/issues/554. `closureSemiNaiveChecked`
+returns the naive answer whenever the delta loop is not a fixed point,
+so a hole in the delta reasoning costs a slow run, never a wrong one —
+which is what makes the module usable without that number.
 
 ### SHACL — 2 modules, 1151 lines
 
@@ -210,6 +229,12 @@ in `tools/lean-port-gap.py` now records the rename.
 
 - `DID.Key` (195)
 
-### Dep — 1 modules, 170 lines
+### Dep — 0 modules (complete)
 
-- `Dep.Reachability` (170)
+`Dep.Reachability` (170 lines) is ported. Its two theorems —
+`closedSetCatchesAll` and `noRootReaches` — carry `[propext,
+Quot.sound]` only. The F\* `reaches` is a `Type`-valued GADT because the
+proof recurses on the derivation term; in Lean it is a `Prop`-valued
+inductive proved by `induction`, and `no_root_reaches`'s
+`FStar.Classical.impl_intro` disappears because `¬P` IS `P → False`.
+

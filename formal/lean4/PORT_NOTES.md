@@ -7610,3 +7610,92 @@ https://github.com/danbri/factoidal/issues/553:
    `SHACL.Rules` (438) ported AND the probe extended. Doing the harness
    half first gives a large honest failure count instead of a silent
    zero, which is the better intermediate state.
+
+## A batch of five: Dep, RDFS delta evaluation, and three accessor modules
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `Dep.Reachability` | 170 | `L4Factoidal/Dep/Reachability.lean` |
+| `RDFS.Closure.SemiNaive` | 421 | `L4Factoidal/RDFS/SemiNaive.lean` |
+| `RDF.Dataset.Graphs` | 27 | `L4Factoidal/RDF/DatasetGraphs.lean` |
+| `SPARQL.Update.Analysis` | 31 | `L4Factoidal/SPARQL/UpdateAnalysis.lean` |
+| `SPARQL.Query.Analysis` | 53 | `L4Factoidal/SPARQL/QueryAnalysis.lean` |
+
+### `Dep.Reachability`
+
+The verified reachability core the module-liveness tool calls instead
+of an unverified Python breadth-first search. Its point is that the
+theorem's premises — `isClosed` and `contains` — are DECIDABLE and the
+driver re-checks them on the algorithm's real output, so neither the
+fuel bound nor the closure implementation is trusted.
+
+`reaches` is a `Type`-valued GADT in F\* because the proof recurses on
+the derivation term; in Lean it is a `Prop`-valued inductive proved by
+`induction`. `no_root_reaches`'s `FStar.Classical.impl_intro` and
+`introduce … with` block disappear, because `¬P` IS `P → False` in
+Lean. `#print axioms` reports `[propext, Quot.sound]` for both
+theorems.
+
+The `#guard`s check that `isClosed` REJECTS a set that is not closed.
+Without that, the checks that the algorithm's output passes `isClosed`
+would prove nothing about whether the re-check has teeth.
+
+### `RDFS.SemiNaive`
+
+Delta evaluation: apply a rule only where at least one premise is new,
+`Δout = (ΔB1 ⋈ B2_full) ∪ (B1_full ⋈ ΔB2)`. Both terms are needed;
+dropping either loses derivations.
+
+Every row of `RDFS.Closure` has the shape `Graph → Triple → List Triple`
+with the searched graph first, so one combinator (`rowDelta`) states the
+delta term once for all six rows. The F\* module writes it out by hand
+for each of its twelve.
+
+`closureSemiNaiveChecked` runs the delta loop and then applies one full
+naive `step`. If that adds nothing, the result is a fixed point of the
+naive step containing the input, and since the naive closure is the
+least such fixed point the two are equal. If it adds something, the
+result is discarded and `closureFix` runs. **A hole in the delta
+reasoning costs a slow run, never a wrong answer.**
+
+**Measured**, `lake exe l4rdfs-semi`:
+
+**delta vs naive closure: 6 agree, 0 differ (out of 6)** — subclass
+chains and property hierarchies at 20, 50 and 100 input triples,
+closures of 210 to 5,056 triples.
+
+**delta loop reached the fixpoint without the fallback: 6 of 6.** This
+second line is the one that matters: a run where the fallback fired
+would still report `agree`, because the fallback returns the naive
+answer. Reporting only the first line would be a vacuous pass.
+
+⚠️ **Speed is NOT measured, and the module exists for speed.** Three
+timing attempts all reported 0 ms for both closures while the process
+spent 90 s of CPU on a run whose largest input is 100 triples. The
+clock and the forcing technique both work — a standalone binary using
+the same `clockAfter` reports 5723 ms for a 20-million-step fold — so
+what is unestablished is where the 90 s goes. `isNaiveFixpoint` and
+`sameGraph` are both superlinear in the closure size and either could
+dominate, but that is a hypothesis, not a measurement. The harness
+prints no speed column, because one that always reads 0 reads as
+"instant" when the truth is "not measured". Tracked in
+https://github.com/danbri/factoidal/issues/554.
+
+### The three accessor modules
+
+`RDF.Dataset.Graphs` is `FROM NAMED`'s universe as a pair list plus a
+named-graph lookup. Its F\* `graph_ref` is `iri` with a comment saying
+the type also carries the `_:<label>` blank-node graph-name convention;
+Lean's `NamedGraph.name` is already `Subject`, so the convention is in
+the type rather than in a comment on a string.
+
+`SPARQL.Update.Analysis` is `updateHasLoad`, which the HTTP layer
+consults before rejecting an update with 501. `SPARQL.Query.Analysis`
+is `bgpsInQuery`, which the explain dump walks. Both were migrated out
+of OCaml in the F\* tree per iron rule #1 and stay that way here.
+
+`SPARQL.QueryAnalysis`'s `#guard`s compare rendered forms rather than
+values: `TriplePattern` derives `Repr` and not `BEq`. The order check
+asserts BOTH that `collectBgpsAux` returns last-seen-first AND that
+`bgpsInQuery` returns source order, so a reverse that silently stopped
+happening would fail.

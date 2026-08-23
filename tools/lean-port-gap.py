@@ -20,6 +20,10 @@ alias={
  "MathML.Content":"MathML.Core","MathML.Present":"MathML.Core",
  "RDF.Store.Columnar.DeltaLog":"Storage.DeltaLog","RDF.Bytes":"Storage.Bytes",
  "DID.Key":"VC.DidKey",
+ "RDFS.Closure.SemiNaive":"RDFS.SemiNaive",
+ "SPARQL.Update.Analysis":"SPARQL.UpdateAnalysis",
+ "SPARQL.Query.Analysis":"SPARQL.QueryAnalysis",
+ "RDF.Dataset.Graphs":"RDF.DatasetGraphs",
 }
 def leafkeys(m):
     p=m.split('.'); s={p[-1].lower()}

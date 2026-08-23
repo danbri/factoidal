@@ -213,3 +213,9 @@ extern_lib libl4hacl pkg := do
 -- third_party/testing/hdt/ with their published SHA-256 digests. Run
 -- from the REPOSITORY ROOT.
 @[default_target] lean_exe «l4hdt» where root := `Harness.HdtProbe
+
+-- Delta (semi-naive) RDFS closure against the naive one: agreement and
+-- wall-clock, on the subclass-chain shape issue #340 is about
+-- (Harness/RdfsSemiNaive.lean). The module exists for speed, so this
+-- measures speed as well as agreement.
+@[default_target] lean_exe «l4rdfs-semi» where root := `Harness.RdfsSemiNaive

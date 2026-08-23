@@ -250,3 +250,8 @@ import L4Factoidal.HDT.Dictionary
 import L4Factoidal.HDT.Triples
 import L4Factoidal.XSD.IEEE754
 import L4Factoidal.XSD.IEEE754Tests
+import L4Factoidal.Dep.Reachability
+import L4Factoidal.RDFS.SemiNaive
+import L4Factoidal.RDF.DatasetGraphs
+import L4Factoidal.SPARQL.UpdateAnalysis
+import L4Factoidal.SPARQL.QueryAnalysis
