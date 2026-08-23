@@ -5430,3 +5430,46 @@ The runner also attributes an undetermined verdict only to names in
 KEYWORD position: inside `properties` the members are property NAMES,
 and the first version reported `foo`, `bar` and `tilde~field` as
 unimplemented keywords, which is noise that hides the real gap.
+
+### Content MathML: the fourth conformance runner, and the arithmetic
+it needed (2026-08-23)
+
+`MathML/FromXml.lean` reads Content MathML markup into the `Expr` that
+`Core.lean` evaluates, and `Harness/MathMLRun.lean` (`lake exe
+l4mathml`) runs the 56-test corpus.
+
+📊 **56 pass, 0 fail, 0 markup-not-read (out of 56)**.
+
+The XML is read by the project's OWN verified parser
+(`L4Factoidal.XML.Parser`), not a tag scanner written for the
+occasion. Entity references, CDATA, comments and attribute
+normalisation are the parser's job, and a second looser reader of the
+same syntax is a second set of bugs.
+
+`Core.eval` had the four operations and the six relations. The corpus
+needed more, and each addition is exact or it REFUSES:
+
+- `power` with a NEGATIVE integer exponent is the reciprocal; with a
+  non-integer exponent it refuses, because that is not a rational
+  power in general.
+- `root` takes an optional `<degree>` and returns the exact `n`th root
+  of a rational — both numerator and denominator must be perfect `n`th
+  powers. `root` of 2 is `undef`, not 1.414…: Content markup denotes a
+  VALUE, and a nearby float would state something the expression does
+  not.
+- `abs`, `quotient`, `rem`, `factorial`, `gcd`, `max`, `min` — the
+  integer ones refuse a fractional argument rather than truncating it.
+- **Relations CHAIN.** `eq` of three values holds when every adjacent
+  pair does. Reading only the first two would call `2 = 2 = 3` true.
+
+`undef` is an expected ANSWER in this corpus, not a skip: six tests
+assert it, and the runner scores them like any other. It also
+separates "the markup did not READ" from "the value is undefined" —
+one is a gap in the front end, the other is the answer, and reporting
+them as one number would hide a parser gap behind a correct-looking
+score.
+
+A `<cn>` reads `type="integer"` and `type="real"` through ONE decimal
+reader: an integer is a decimal with no fraction, and reading them
+apart would reject `type="integer"` written as `42.0`. `1.5e2` is
+exactly `150`, via digit shifting rather than a float.
