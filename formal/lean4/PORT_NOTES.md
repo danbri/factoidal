@@ -6748,3 +6748,122 @@ consumer would accept and act on. Only a second reader of the same
 document caught them. Where a format has two serialisations, the
 differential between them is worth more than any expectation file we
 could write, because it needs no blessing and cannot go stale.
+
+## OWL DL: the class-expression reasoner, steps 2 and 3
+
+`L4Factoidal/OWL/ClassExpr.lean` (step 1) reads a class expression
+out of a graph. Two consumers read that one AST, which is what makes
+a disagreement between them about what a restriction MEANS impossible
+by construction:
+
+* `Materialise.lean` (step 2, `formal/fstar/Tableau.fst` §§5–9) —
+  POSITIVE-SOUND membership. It writes entailed `rdf:type` triples
+  and never detects unsatisfiability.
+* `Refute.lean` (step 3 wave 1, `formal/fstar/Tableau.Refute.fst`) —
+  the REFUTATION calculus. It answers "no model exists" and never
+  writes a triple.
+
+Tracked at https://github.com/danbri/factoidal/issues/548 .
+
+### Three values, and which one is missing from each side
+
+`Materialise.isMember` answers `some true` / `some false` / `none`.
+`Refute.refute` answers `some false` / `none` — and has no
+`some true` ON PURPOSE.
+
+The F* module does return `Some true` for a saturated clash-free
+branch, and its own header then tells callers to treat it exactly
+like `None`, because the calculus is incomplete. A value that no
+caller may act on is a trap: sooner or later something scores
+"consistent" on it. Wave 1 does not have the value to misuse.
+
+`none` is always sound on both sides. It means the caller falls back
+to the OWL RL closure, which decides fewer things and decides them
+right.
+
+### The positive-soundness gate, and what it refuses
+
+`cePositiveSound` decides which `some true` may be WRITTEN INTO the
+graph. It admits `named`, `hasValue`, `someOf`, `minCard`,
+`minQualCard` and Boolean combinations of those. It refuses:
+
+* `allOf` — a successor this graph has not seen could violate the
+  filler, so "every KNOWN successor is in C" does not entail `∀p.C`;
+* `maxCard`, `exactCard` and their qualified forms — a positive
+  membership needs `owl:sameAs` reasoning or a unique-name
+  assumption, and the module has neither;
+* `complement` — needs classical negation.
+
+The gate is STRUCTURAL: a refused shape anywhere inside a Boolean
+combination closes it. Withholding an entailment is sound; asserting
+one a model can falsify is not.
+
+### No unique-name assumption, stated twice because it is where
+refuters go wrong
+
+Two different IRIs may denote one individual unless the graph says
+`owl:differentFrom`. So:
+
+* a successor COUNT is a lower bound. `≥ k` may fire on it; `≤ k`
+  may not, except in the trivial `k = 0` case;
+* `≤ 1 p` with two named successors is NOT refuted. Adding one
+  `owl:differentFrom` triple between them refutes it. Both readings
+  are pinned in `RefuteTests.lean`, next to each other, because the
+  pair is the check — either alone can be passed by an engine that
+  has the rule backwards.
+
+### An existential witness is never counted
+
+`Materialise` and `Refute` both mint witnesses, and both keep them
+out of cardinality counts. A witness may coincide with an existing
+successor in some model; counting one fabricates a clash. A
+`hasValue` edge is different — it holds in every model — so it IS
+counted. `REdge.counts` carries the distinction in the type.
+
+Witness minting is deterministic (the blank node's name is a
+function of the individual and the property) and depth-capped. The
+determinism is what makes a second pass mint nothing new; without it
+a cyclic TBox grows the graph without end.
+
+### The defect step 2 found in step 1
+
+`ClassExpr.parseCeOfSubject` called `parseClassExpr`, which maps
+every IRI straight to `named` without reading anything. So a NAMED
+class expression — an IRI subject carrying `owl:onProperty` and
+`owl:someValuesFrom`, which OWL 2 RDF-Based semantics says denotes
+exactly `∃p.C` — came back as the opaque class itself, and every
+membership it entails went unwritten. The marker-reading body is now
+`parseCeMarkers`, shared by both entries.
+
+The defect was invisible until a consumer asked the function for
+something only it could answer. A parser with no consumer is a
+parser with no test.
+
+### A quadratic dedup, and the shape of that bug
+
+The materialisation pass deduplicated subjects with
+`acc.contains s` plus `acc ++ [s]` — quadratic in both halves, run
+over every subject of a CLOSED graph. On the 41 384-triple
+`type-consistency` premise that turned a two-minute probe run into
+one still going after fifteen minutes. A hash set makes it one pass.
+
+Worth naming because of how it presented: not as a wrong answer, not
+as a crash, but as a run that never came back. The measurement was
+the only thing that could have caught it, and only because there was
+a BEFORE number to compare against.
+
+`materialiseWithBudget` now caps the membership pass by (individual,
+class expression) pairs and REPORTS the cap. The probe scores a
+budget hit as a cap hit, so an absence verdict on a capped premise is
+a failure rather than a pass — the same rule the closure budget
+already follows.
+
+### The probe's `--dl` regime
+
+`lake exe l4owl-probe --dir third_party/testing/owl --dl` runs the
+materialisation pass between two closures and consults the refuter on
+both consistency judges. A refutation of a premise the catalog
+asserts CONSISTENT is scored as a FAILURE. A refuter measured only on
+the cases it is meant to close cannot be caught fabricating a
+contradiction; scoring both directions from one flag is what makes
+the number mean something.
