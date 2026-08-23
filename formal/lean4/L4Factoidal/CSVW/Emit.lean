@@ -58,6 +58,10 @@ def csvwTableGroup : WfIri := ⟨"http://www.w3.org/ns/csvw#TableGroup", rfl⟩
 def csvwTableCls   : WfIri := ⟨"http://www.w3.org/ns/csvw#Table", rfl⟩
 def csvwRowCls     : WfIri := ⟨"http://www.w3.org/ns/csvw#Row", rfl⟩
 def csvwTableProp  : WfIri := ⟨"http://www.w3.org/ns/csvw#table", rfl⟩
+
+/-- `csvw:note` — the property a `notes` annotation is emitted on
+    (csv2rdf §5, table and table-group notes). -/
+def csvwNoteProp   : WfIri := ⟨"http://www.w3.org/ns/csvw#note", rfl⟩
 def csvwRowProp    : WfIri := ⟨"http://www.w3.org/ns/csvw#row", rfl⟩
 def csvwUrlProp    : WfIri := ⟨"http://www.w3.org/ns/csvw#url", rfl⟩
 def csvwRownumProp : WfIri := ⟨"http://www.w3.org/ns/csvw#rownum", rfl⟩
@@ -283,9 +287,8 @@ def rowTriplesStandardOf (tag tableUrl : String) (r : RowInput) : List Triple :=
     `csvw:url` and one `csvw:row` link per row, above the row
     descriptions. csv2rdf §6. `extra` carries whatever the caller
     attaches to the table node itself (its common properties). -/
-def tableTriplesStandard (tag tableNodeId tableUrl : String)
+def tableTriplesStandard (tag : String) (node : Subject) (tableUrl : String)
     (rows : List RowInput) (extra : Subject → List Triple := fun _ => []) : List Triple :=
-  let node : Subject := .bnode tableNodeId
   let urlTriples := match toIri? tableUrl with
     | some u => [(⟨node, csvwUrlProp, .iri u⟩ : Triple)]
     | none   => []
@@ -302,9 +305,9 @@ def tableTriplesStandard (tag tableNodeId tableUrl : String)
 def tableGroupTriplesStandard (tableUrl : String) (rows : List RowInput)
     : List Triple :=
   let group : Subject := .bnode "tablegroup"
-  let tableNodeId := "table"
+  let node : Subject := .bnode "table"
   [ ⟨group, rdfTypeIri, .iri csvwTableGroup⟩,
-    ⟨group, csvwTableProp, (Subject.bnode tableNodeId).toTerm⟩ ]
-  ++ tableTriplesStandard "" tableNodeId tableUrl rows
+    ⟨group, csvwTableProp, node.toTerm⟩ ]
+  ++ tableTriplesStandard "" node tableUrl rows
 
 end L4Factoidal.CSVW

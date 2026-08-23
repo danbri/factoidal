@@ -6,6 +6,8 @@ import L4Factoidal.CSVW.Pipeline
 
 namespace L4Factoidal.CSVW
 
+open L4Factoidal.RDF
+
 private def suite : String := "http://www.w3.org/2013/csvw/tests/"
 
 /-! ## §5.2: discovered metadata that does not reference the requested
@@ -51,5 +53,48 @@ puts `"@base": "test273/"` on a document at the top level, so its
 #guard describesTable (effectiveBase (suite ++ "test273-metadata.json")
                         { base := some "test273/" })
          { tables := [{ url := "action.csv" }] } (suite ++ "test273/action.csv")
+
+/-! ## §5.4 `suppressOutput`, `@id`, and `notes` -/
+
+private def twoRows : Table :=
+  { header := [{ num := 1, cells := ["a"] }],
+    rows := [{ num := 2, cells := ["x"] }] }
+
+private def plainTable : TableDesc := { url := "t.csv" }
+private def hushed : TableDesc := { url := "s.csv", suppress := some true }
+
+-- A suppressed table contributes NOTHING: no rows, no table node, no
+-- link from the group. csv2json honoured this and csv2rdf did not, so
+-- test034 emitted 105 triples where 60 were expected.
+#guard (convert (suite ++ "m.json") {} { tables := [hushed] } false
+          [(hushed, twoRows)]).length == 1     -- the TableGroup type triple alone
+#guard (convert (suite ++ "m.json") {} { tables := [hushed] } true
+          [(hushed, twoRows)]) == []
+
+-- `@id` makes the table node an IRI; absent, it is a blank node.
+#guard tableNodeOf (suite ++ "m.json") 0 plainTable == Subject.bnode "table0"
+#guard (match tableNodeOf (suite ++ "m.json") 0
+              { url := "t.csv", id := some "http://example.org/tree-ops-ext" } with
+        | .iri i => i.val == "http://example.org/tree-ops-ext"
+        | _      => false)
+-- An `@id` that is present but NOT A STRING makes the table take the
+-- metadata document's own URL. That is observed from test102, which
+-- writes `"@id": 1` and expects every triple on
+-- `<…/test102-metadata.json>`; the specification says the value is
+-- invalid and does not say what identity remains.
+#guard (match tableNodeOf (suite ++ "test102-metadata.json") 0
+              { url := "t.csv", idNonString := true } with
+        | .iri i => i.val == suite ++ "test102-metadata.json"
+        | _      => false)
+
+-- An explicit `@value` object with no `@language` is a PLAIN literal.
+-- The default language applies to a bare string, not to a value
+-- object that states its value and states no language; re-tagging it
+-- put `"text/plain"@en` where test036 expects `"text/plain"`.
+#guard commonLeafTerm (suite ++ "m.json") (some "en")
+         (.object [("@value", .string "text/plain")])
+       == some (Term.literal (Literal.string "text/plain"))
+#guard commonLeafTerm (suite ++ "m.json") (some "en") (.string "text/plain")
+       == some (Term.literal (Literal.langString "text/plain" "en"))
 
 end L4Factoidal.CSVW

@@ -112,7 +112,13 @@ def relativeNameJ (u : String) : String :=
 def suiteRelativeJ (base : String) (u : String) : String :=
   let suite := "http://www.w3.org/2013/csvw/tests/"
   let abs := L4Factoidal.Syntax.resolveIri base u
-  if abs.startsWith suite then String.ofList (abs.toList.drop suite.length)
+  -- The QUERY is not part of the path on disk. It stays in the IRIs
+  -- the conversion emits — test118 expects `<action.csv?query#name>`
+  -- — and is dropped only here, where a URL becomes a file.
+  let noQuery := match abs.splitOn "?" with
+    | b :: _ => b
+    | []     => abs
+  if noQuery.startsWith suite then String.ofList (noQuery.toList.drop suite.length)
   else relativeNameJ u
 
 structure JEntry where
@@ -159,8 +165,17 @@ def jsonManifestEntries (j : Json) : List JEntry :=
           | none   => false
         match str? "id" e, str? "action" e with
         | some i, some a =>
-            let isCsv := a.endsWith ".csv"
-            let isJson := a.endsWith ".json"
+            -- A retrieval URL may carry a QUERY: two entries name
+            -- `…csv?query`, and dropping them because the string does
+            -- not end in `.csv` narrowed the denominator by two
+            -- without saying so. The query is part of the URL — it
+            -- stays in every emitted IRI — and is stripped only when
+            -- the URL is turned into a path on disk.
+            let stem := match a.splitOn "?" with
+              | b :: _ => b
+              | []     => a
+            let isCsv := stem.endsWith ".csv"
+            let isJson := stem.endsWith ".json"
             if !isCsv && !isJson then none
             else
               let metadata := if isJson then some a else metaOpt

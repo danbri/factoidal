@@ -5861,3 +5861,61 @@ Remaining csv2rdf failures: test034 and test035 (a table group whose
 output is nearly twice the expected size), test036 (embedded metadata
 in the CSV), test102 (`"@id": 1`, where the expected output names the
 metadata document as the table node).
+
+---
+
+## csv2rdf: 270 pass, 0 fail, 0 skip — the whole manifest
+
+Five more defects, closing the csv2rdf suite.
+
+1. **`suppressOutput` on a TABLE was honoured by csv2json and ignored
+   by csv2rdf.** test034 emitted 105 triples where 60 were expected —
+   the two lookup tables it marks `suppressOutput` were converted in
+   full. A suppressed table is still READ (other tables' foreign keys
+   refer to it) and contributes nothing: no rows, no table node, no
+   link from the group.
+
+2. **`@id` on a table was parsed nowhere and used nowhere.** test036
+   states `"@id": "http://example.org/tree-ops-ext"` and every triple
+   about the table hangs off that IRI instead of a blank node. The
+   group's `csvw:table` link has to agree, so the node is computed by
+   one function (`tableNodeOf`) that both the link and the triples
+   call.
+
+3. **`notes` were not emitted.** A `notes` entry becomes a
+   `csvw:note` triple, and its value is read exactly as a common
+   property's value is — so it routes through `commonTriples` rather
+   than being duplicated. test036's note is a nested `oa:Annotation`
+   with its own `oa:hasBody`, which is the nested-node case that code
+   already handled.
+
+4. **An explicit `@value` object with no `@language` was being
+   language-tagged.** The document's default language applies to a
+   BARE STRING; `{"@value": "text/plain"}` is how JSON-LD says "this
+   string, untagged". The port re-tagged it and produced
+   `"text/plain"@en` where test036 expects `"text/plain"`.
+
+5. **Two manifest entries were never attempted, and the denominator
+   never said so.** test116 and test118 name `…csv?query`, and the
+   entry filter tested `action.endsWith ".csv"`. The query is part of
+   the URL — it appears in every emitted IRI, and test118 expects
+   `<action.csv?query#name>` — and is stripped only where a URL
+   becomes a path on disk. Both then pass with no further rule:
+   test116's file metadata describes `test116.csv`, which is NOT the
+   requested `test116.csv?query`, so §5.2 ignores it; test118's
+   directory metadata writes `"url": "action.csv?query"` and matches.
+
+One rule here is OBSERVED FROM THE CORPUS rather than derived from
+the specification, and is labelled as such in the source: an `@id`
+that is present but not a string makes the table take the metadata
+document's own URL. test102 writes `"@id": 1` under the comment "@id
+takes a URI, not an integer" and expects every triple on
+`<…/test102-metadata.json>`. The specification says the value is
+invalid; it does not say what identity the table then has. Falling
+back to a blank node — the obvious reading — gives a graph of the
+right SIZE with a different subject.
+
+📊 MEASURED: **csv2rdf 270 pass, 0 fail, 0 comparison-gave-up, 0 skip
+(out of 270 manifest entries)** — 212 positive and 58 negative.
+Validator cross-check 0. csv2json is at **264 pass, 6 fail, 0 skip
+(out of 270)**.

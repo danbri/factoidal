@@ -152,6 +152,22 @@ deriving Repr, Inhabited
     one) and conflating them would be a real bug, not a naming nit. -/
 structure TableDesc where
   url       : String
+  /-- `@id` (§5.4): the IRI the table's node takes. Absent means the
+      node is a blank node, which is what most of the corpus expects;
+      test036 states `"@id": "http://example.org/tree-ops-ext"` and
+      every triple about the table hangs off that IRI instead. -/
+  id        : Option String := none
+  /-- `@id` was PRESENT but not a string, so it names nothing. Kept
+      apart from `id = none` because the two behave differently: an
+      absent `@id` leaves a blank node, while an unusable one makes
+      the table take the metadata document's own URL. -/
+  idNonString : Bool := false
+  /-- `notes` (§5.4): annotations on the table, emitted as
+      `csvw:note`. The value is kept as raw `Json` for the same reason
+      a common property is — §5.8's JSON-LD value shapes are the
+      emitter's business, and a shape this port does not read must
+      drop one triple rather than fail the document. -/
+  notes     : List L4Factoidal.JSON.Json := []
   schema    : Option TableSchema := none
   /-- A `tableSchema` given as a URL rather than inline. The parse is
       pure, so it records the LINK and leaves fetching to the caller —
@@ -166,6 +182,8 @@ deriving Repr, Inhabited
 /-- §5.3 table group — the top of the metadata document. -/
 structure TableGroup where
   id        : Option String := none
+  /-- `notes` on the GROUP, emitted as `csvw:note` on its node. -/
+  notes     : List L4Factoidal.JSON.Json := []
   tables    : List TableDesc := []
   dialect   : Option Dialect := none
   inherited : Inherited := {}

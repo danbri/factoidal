@@ -348,8 +348,18 @@ def parseTable (ctx : Ctx) (j : Json) : Option TableDesc :=
   match jStrField? "url" j with
   | none     => none
   | some url =>
+      let notesOf : Json → List Json := fun v => match v with
+        | .array ns => ns
+        | .null     => []
+        | other     => [other]
       some
         { url       := url
+          id        := jStrField? "@id" j
+          idNonString := match jField? "@id" j with
+            | some (.string _) => false
+            | some _           => true
+            | none             => false
+          notes     := (jField? "notes" j).map notesOf |>.getD []
           schema    := match jField? "tableSchema" j with
             | some (.object _) =>
                 ((jField? "tableSchema" j).bind asObject?).map (parseSchema ctx)
@@ -398,6 +408,11 @@ def parseMetadata (j : Json) : Option (TableGroup × Ctx) :=
         | none, some gs => { t with schema := some gs }
         | _, _          => t)
       some ({ id        := jStrField? "@id" j
+              notes     := (match jField? "notes" j with
+                            | some (.array ns) => ns
+                            | some .null       => []
+                            | some other       => [other]
+                            | none             => [])
               tables    := tables
               dialect   := (jField? "dialect" j).map parseDialect
               inherited := parseInherited j
