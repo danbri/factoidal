@@ -5919,3 +5919,42 @@ right SIZE with a different subject.
 (out of 270 manifest entries)** — 212 positive and 58 negative.
 Validator cross-check 0. csv2json is at **264 pass, 6 fail, 0 skip
 (out of 270)**.
+
+---
+
+## csv2json: 270 pass, 0 fail, 0 skip — both CSVW suites complete
+
+Four defects on the JSON side, after the shared metadata work above
+took it from 253 to 265.
+
+1. **`NaN` / `INF` / `-INF` were emitted as bare JSON numbers.** They
+   are not JSON numbers, so the document was not JSON at all. That is
+   the one defect in this whole run that ANNOUNCED itself — the
+   runner's own comparison could not parse the output. Every other
+   one produced a well-formed document of the right shape.
+
+2. **A numeric cell kept its lexical form.** csv2json emits a JSON
+   NUMBER, and JSON has no lexical space to preserve: `10.10e1` and
+   `101.0` are the same number and the corpus writes the second
+   (test155). The RDF output does keep the lexical form, because an
+   RDF literal's lexical form is part of its identity; a JSON
+   number's is not. `resolveExponent` folds the exponent into the
+   digits, using the same decimal-point shift the `%` / `‰` scaling
+   uses — generalised from `Nat` to `Int` so it can move the point
+   right as well as left.
+
+3. **One row title was wrapped in an array.** csv2json writes
+   `"titles": "Andorra"` for a single title (test235, test236).
+
+4. **`@id` and `notes` were missing from the table object**, and
+   `suppressOutput` was honoured in minimal mode only. The `@id`
+   comes from `tableNodeOf`, the same function the RDF path uses for
+   the table's subject, so the two outputs cannot disagree about
+   which table is which.
+
+📊 MEASURED: **csv2json 270 pass, 0 fail, 0 skip (out of 270 manifest
+entries)** — 212 positive and 58 negative, validator cross-check 0.
+**csv2rdf stays at 270 pass, 0 fail, 0 skip (out of 270).** No
+regression elsewhere: JSON Schema 770 pass, 0 fail (out of 770
+decided), MathML 56 pass, 0 fail (out of 56), schematron 8 pass, 0
+fail (out of 8).

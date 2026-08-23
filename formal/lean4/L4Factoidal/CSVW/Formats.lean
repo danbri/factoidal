@@ -226,22 +226,57 @@ def isDurationBase (b : String) : Bool :=
     power of ten), used for percent and per-mille. Done on the digit
     string rather than by float arithmetic, so `12.5%` becomes exactly
     `0.125` and not a binary approximation. -/
-def shiftLeft (s : String) (n : Nat) : String :=
+def shiftPoint (s : String) (byRight : Int) : String :=
   let neg := s.startsWith "-"
   let body := if neg then String.ofList (s.toList.drop 1) else s
+  let body := if body.startsWith "+" then String.ofList (body.toList.drop 1) else body
   let (ip, fp) := match splitFirst '.' body.toList with
     | some (a, b) => (a, b)
     | none        => (body.toList, [])
   let digits := ip ++ fp
-  let pointPos : Int := (ip.length : Int) - (n : Int)
+  let pointPos : Int := (ip.length : Int) + byRight
+  -- Pad on the LEFT when the point lands before the first digit.
   let (digits, pointPos) :=
     if pointPos ≤ 0 then
       (List.replicate (1 - pointPos).toNat '0' ++ digits, (1 : Int))
     else (digits, pointPos)
+  -- ...and on the RIGHT when it lands past the last one, which a
+  -- POSITIVE shift can do and a negative one cannot. `shiftLeft`
+  -- never needed this case.
+  let digits :=
+    if pointPos > (digits.length : Int)
+    then digits ++ List.replicate (pointPos - (digits.length : Int)).toNat '0'
+    else digits
   let cut := pointPos.toNat
   let ipOut := String.ofList (digits.take cut)
   let fpOut := String.ofList (digits.drop cut)
   (if neg then "-" else "") ++ ipOut ++ (if fpOut == "" then "" else "." ++ fpOut)
+
+/-- Move the decimal point LEFT by `n` places — the `%` / `‰` scaling. -/
+def shiftLeft (s : String) (n : Nat) : String := shiftPoint s (-(n : Int))
+
+/-- The three doubles that are NOT numbers. -/
+def isSpecialDouble (s : String) : Bool :=
+  s == "NaN" || s == "INF" || s == "-INF" || s == "+INF"
+
+/-- A numeric lexical form with its EXPONENT resolved into the digits:
+    `10.10e1` becomes `101.0`, `0.0e0` becomes `0.0`.
+
+    csv2json emits a numeric cell as a JSON NUMBER, and JSON has no
+    lexical space to preserve — `10.10e1` and `101.0` are the same
+    number, and the corpus writes the second (test155). The RDF output
+    keeps the lexical form, because an RDF literal's lexical form is
+    part of its identity; the JSON output cannot, because a JSON
+    number's is not. -/
+def resolveExponent (s : String) : String :=
+  if isSpecialDouble s then s
+  else
+    match splitFirst 'e' s.toList, splitFirst 'E' s.toList with
+    | some (m, e), _ | none, some (m, e) =>
+        (match (String.ofList e).toInt? with
+         | some n => shiftPoint (String.ofList m) n
+         | none   => s)
+    | none, none => s
 
 /-! ## Value constraints (§5.11.2) and the remaining lexical spaces
 

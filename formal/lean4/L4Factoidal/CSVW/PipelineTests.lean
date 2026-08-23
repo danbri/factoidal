@@ -2,11 +2,12 @@
 L4Factoidal.CSVW.PipelineTests — build-time checks for the two rules
 metadata DISCOVERY turns on.
 -/
-import L4Factoidal.CSVW.Pipeline
+import L4Factoidal.CSVW.JsonDoc
 
 namespace L4Factoidal.CSVW
 
 open L4Factoidal.RDF
+open L4Factoidal.JSON
 
 private def suite : String := "http://www.w3.org/2013/csvw/tests/"
 
@@ -96,5 +97,39 @@ private def hushed : TableDesc := { url := "s.csv", suppress := some true }
        == some (Term.literal (Literal.string "text/plain"))
 #guard commonLeafTerm (suite ++ "m.json") (some "en") (.string "text/plain")
        == some (Term.literal (Literal.langString "text/plain" "en"))
+
+/-! ## csv2json value shapes
+
+Three of these produced output of the right SHAPE with a wrong type or
+a missing member; the fourth produced output that was not JSON. -/
+
+-- `NaN`, `INF` and `-INF` are not JSON numbers. Emitting them bare
+-- made the document unparseable, which is the only reason the defect
+-- announced itself instead of sitting as a quiet mismatch.
+#guard jsonValueOf (some "double") true "NaN" == Json.string "NaN"
+#guard jsonValueOf (some "double") true "-INF" == Json.string "-INF"
+
+-- A numeric cell is a JSON NUMBER, so its exponent is resolved: JSON
+-- has no lexical space to preserve. The RDF output keeps the lexical
+-- form, because an RDF literal's lexical form is part of its
+-- identity; a JSON number's is not.
+#guard jsonValueOf (some "double") true "10.10e1" == Json.number "101.0"
+#guard jsonValueOf (some "double") true "0.0e0" == Json.number "0.0"
+#guard jsonValueOf (some "decimal") true "10.1" == Json.number "10.1"
+#guard jsonValueOf (some "integer") true "10" == Json.number "10"
+-- A cell whose datatype does NOT apply keeps its text.
+#guard jsonValueOf (some "integer") false "abc" == Json.string "abc"
+
+-- Exponent resolution on its own.
+#guard resolveExponent "10.10e1" == "101.0"
+#guard resolveExponent "0.0e0" == "0.0"
+#guard resolveExponent "1e3" == "1000"
+#guard resolveExponent "1.5e-2" == "0.015"
+#guard resolveExponent "INF" == "INF"
+#guard resolveExponent "42" == "42"
+-- `shiftLeft` is the same function with the sign flipped, and its
+-- old behaviour is unchanged.
+#guard shiftLeft "123456.789" 2 == "1234.56789"
+#guard shiftLeft "123" 2 == "1.23"
 
 end L4Factoidal.CSVW
