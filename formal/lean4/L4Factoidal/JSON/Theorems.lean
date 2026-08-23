@@ -78,28 +78,28 @@ theorem escapeChar_formfeed  : escapeChar '\x0C' = "\\f"  := by decide
 theorem escapeChar_ctrl_soh  : escapeChar '\x01' = "\\u0001" := by decide
 
 theorem escape_roundtrip_quote :
-    parseString ['"', '\\', '"', '"'] 0 = .ok ("\"", 4) := by decide
+    parseString (['"', '\\', '"', '"'] : List Char).toArray 0 = .ok ("\"", 4) := by decide
 theorem escape_roundtrip_backslash :
-    parseString ['"', '\\', '\\', '"'] 0 = .ok ("\\", 4) := by decide
+    parseString (['"', '\\', '\\', '"'] : List Char).toArray 0 = .ok ("\\", 4) := by decide
 theorem escape_roundtrip_slash :
-    parseString ['"', '\\', '/', '"'] 0 = .ok ("/", 4) := by decide
+    parseString (['"', '\\', '/', '"'] : List Char).toArray 0 = .ok ("/", 4) := by decide
 theorem escape_roundtrip_backspace :
-    parseString ['"', '\\', 'b', '"'] 0 = .ok ("\x08", 4) := by decide
+    parseString (['"', '\\', 'b', '"'] : List Char).toArray 0 = .ok ("\x08", 4) := by decide
 theorem escape_roundtrip_formfeed :
-    parseString ['"', '\\', 'f', '"'] 0 = .ok ("\x0C", 4) := by decide
+    parseString (['"', '\\', 'f', '"'] : List Char).toArray 0 = .ok ("\x0C", 4) := by decide
 theorem escape_roundtrip_lf :
-    parseString ['"', '\\', 'n', '"'] 0 = .ok ("\n", 4) := by decide
+    parseString (['"', '\\', 'n', '"'] : List Char).toArray 0 = .ok ("\n", 4) := by decide
 theorem escape_roundtrip_cr :
-    parseString ['"', '\\', 'r', '"'] 0 = .ok ("\r", 4) := by decide
+    parseString (['"', '\\', 'r', '"'] : List Char).toArray 0 = .ok ("\r", 4) := by decide
 theorem escape_roundtrip_tab :
-    parseString ['"', '\\', 't', '"'] 0 = .ok ("\t", 4) := by decide
+    parseString (['"', '\\', 't', '"'] : List Char).toArray 0 = .ok ("\t", 4) := by decide
 theorem escape_roundtrip_ctrl_soh :
-    parseString ['"', '\\', 'u', '0', '0', '0', '1', '"'] 0 = .ok ("\x01", 8) := by decide
+    parseString (['"', '\\', 'u', '0', '0', '0', '1', '"'] : List Char).toArray 0 = .ok ("\x01", 8) := by decide
 -- The one entry that is not a single-escape decode: a UTF-16
 -- surrogate PAIR (`😀`) combining to U+1F600 (😀), the
 -- supplementary-plane case `Parser.lean`'s `escapePiece` hand-writes.
 theorem escape_roundtrip_surrogate_pair :
-    parseString ['"', '\\', 'u', 'd', '8', '3', 'd', '\\', 'u', 'd', 'e', '0', '0', '"'] 0 =
+    parseString (['"', '\\', 'u', 'd', '8', '3', 'd', '\\', 'u', 'd', 'e', '0', '0', '"'] : List Char).toArray 0 =
       .ok ("😀", 14) := by decide
 
 #print axioms escape_roundtrip_surrogate_pair
@@ -189,10 +189,8 @@ consumed and `x` immediately next — port-local analogue of
 parser's cursor lands on the right character at every inductive step
 below. -/
 theorem charAt_append_right (pre : List Char) (x : Char) (rest : List Char) :
-    charAt? (pre ++ (x :: rest)) pre.length = some x := by
-  induction pre with
-  | nil => rfl
-  | cons c pre ih => simp [charAt?, List.length_cons]
+    charAt? (pre ++ (x :: rest)).toArray pre.length = some x := by
+  simp [charAt?]
 
 theorem not_special_facts (c : Char) (h : isSpecialChar c = false) :
     c ≠ '"' ∧ c ≠ '\\' ∧ ¬ (c.toNat < 0x20) := by
@@ -231,7 +229,7 @@ theorem stringSegments_plain :
     ∀ (pre cs tail : List Char) (acc : String) (fuel : Nat),
       (∀ c ∈ cs, isSpecialChar c = false) →
       fuel ≥ cs.length + 1 →
-      stringSegments (pre ++ cs ++ ('"' :: tail)) pre.length acc fuel =
+      stringSegments (pre ++ cs ++ ('"' :: tail)).toArray pre.length acc fuel =
         .ok (acc ++ String.ofList cs, pre.length + cs.length + 1) := by
   intro pre cs
   induction cs generalizing pre with
