@@ -244,3 +244,71 @@ The COTTAS columnar store above the byte layer, `Math.*` (Diff,
 Matrix, Series, Simplify, Subst), `Parser.OWLFunctional`,
 `Parser.ShExC`, `XForms.Bind`, and `SPARQL.HTTP.*` beyond
 `HTTP/Server.lean`.
+
+# Addendum 3, 2026-08-23 — ShExC, and what the "still absent" list now says
+
+## ShExC
+
+`L4Factoidal/ShEx/Compact.lean` reads the ShEx compact syntax into
+the same `Schema` AST that `ShEx/FromJson.lean` builds from ShExJ.
+`ShEx/SchemaEq.lean` compares two schemas. `Harness/ShExCRun.lean`
+runs both front doors over every fixture in
+`third_party/testing/shex/schemas/` — each ships a `.shex` and a
+`.json` twin of the SAME schema — and reports the two trees' verdict.
+
+| Suite | Score | Runner |
+| --- | --- | --- |
+| ShExC compact syntax | 442 match, 0 mismatch, 0 declined (out of 442) | `lake exe l4shexc` |
+| ShEx validation | 1075 pass, 104 fail (out of 1179 decided) | `lake exe l4shex` |
+
+The validation score is unchanged by this landing: the two readers
+now agree without either moving.
+
+A DECLINED schema is counted apart from a mismatch. A construct
+outside the implemented grammar is visibly unparsed, never a schema
+that validates the wrong graphs — and keeping the buckets apart is
+what made the work tractable. The first run read 365 match, 53
+mismatch, 24 declined: the refusals named exactly two grammar holes
+and the mismatches four content defects. One number would have
+covered six unrelated causes.
+
+⚠️ The differential's limit is worth stating: it certifies that the
+two readers build the SAME tree, not that either tree is right. What
+protects against a shared error is that the two were written from
+different specifications — the compact grammar and the ShExJ schema —
+and that the validation suite exercises the result against real
+graphs.
+
+Eight defects and the fixtures that paid for them are in
+`formal/lean4/PORT_NOTES.md` § "ShExC"; each is pinned in
+`L4Factoidal/ShEx/CompactTests.lean`. The one worth repeating here:
+numeric facets were compared as SPELLINGS, so `MININCLUSIVE 05`,
+`5.0` and `05.00E0` each differed from `5`. That single defect
+accounted for 48 of the 53 mismatches — a disagreement about
+spelling, reported as a disagreement about the schema.
+
+## Correction to the earlier "still absent" list
+
+Addendum 2 ended with a list that later landings have overtaken.
+What it named, and where each now is:
+
+| Named absent in Addendum 2 | Now |
+| --- | --- |
+| `Math.*` (Diff, Matrix, Series, Simplify, Subst) | landed, `L4Factoidal/Math/` |
+| `Parser.OWLFunctional` | landed, `L4Factoidal/OWL/FunctionalSyntax.lean` |
+| `Parser.ShExC` | landed, `L4Factoidal/ShEx/Compact.lean` (this addendum) |
+| `XForms.Bind` | landed, `L4Factoidal/XForms/Bind.lean` |
+| `SPARQL.HTTP.*` beyond `HTTP/Server.lean` | landed, `L4Factoidal/HTTP/{Client,RunQuery,Ops}.lean` |
+| The COTTAS columnar store above the byte layer | 🔴 still absent |
+
+Standing rule this correction earns: a "still absent" list is a
+measurement with a date on it, and it decays. Re-derive it from the
+tree rather than copying it forward.
+
+## Next
+
+The executable OWL DL tableau refuter,
+https://github.com/danbri/factoidal/issues/548 — the F* modules total
+7,867 lines (`Tableau.fst` 1,522, `Tableau.Refute.fst` 4,682,
+`Tableau.CountingOracle.fst` 1,663). Step 1, the class-expression AST
+and graph reader (`L4Factoidal/OWL/ClassExpr.lean`), is done.
