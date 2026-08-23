@@ -1350,3 +1350,55 @@ This is the same family as hazards #25, #26, #27, #28 and #29: a check
 returned a reassuring result while being structurally unable to detect
 what it was trusted for. Here the check was arithmetic over a list, and
 the list was the stale part.
+
+## Hazard #31 — a name-similarity heuristic silently inflates a coverage count (2026-08-23)
+
+`tools/lean-port-gap.py` decided that an F\* module had a Lean
+counterpart if an explicit alias matched, OR if the last name component
+matched, OR if the last two matched. The bare last-component rule is
+the problem.
+
+Adding `L4Factoidal/HDT/Store.lean` made `SPARQL11.Store` — 1,452 lines,
+not ported, not close to ported — disappear from the not-covered list,
+because both names end in `Store`. The count went UP by two when one
+module landed, and the second increment was a module that had not been
+touched.
+
+Auditing the rest found fourteen modules resting on a bare-leaf match.
+Seven were wrong: `SPARQL11.Store` ← `HDT.Store`, `RIF.Core.Tests` ←
+any of fifteen `*.Tests` modules, `RDF.Store.Loader` ←
+`JSONLD.Loader`, `Math.Expr` ← `SPARQL.Expr`, `SPARQL.Protocol.Client`
+← `HTTP.Client`, and two `*.Serialize` modules ← `JSON.Serialize`.
+
+The count had been over by five for the whole session before this
+landing, and the heuristic predates it.
+
+### The worse half: a broken alias hidden by the heuristic
+
+Two aliases pointed at `RDF.Serialize`, a Lean module that DOES NOT
+EXIST. The alias silently did nothing, the leaf rule matched
+`JSON.Serialize` instead, and both modules counted as covered. A lookup
+table whose misses are absorbed by a fallback cannot report its own
+breakage.
+
+### The rules
+
+1. **Coverage is an explicit decision, not a name resemblance.** Only
+   an alias, or a match on the last TWO name components, counts. A
+   bare last-component match is a suggestion to audit, never a result.
+2. **A lookup miss must be loud.** The tool now prints every alias
+   whose target module is absent, before the report. A silent
+   fallback behind a table is how a broken entry survives.
+3. **A count that moves without a cause is a bug report.** One module
+   landed and the number rose by two. That is the signal; chase it
+   before writing the number down.
+4. **Audit by reading the target's own header.** Each alias kept after
+   this audit was verified against the Lean module's own "Port of
+   `formal/fstar/<X>.fst`" line, or — for the three RIF modules, which
+   carry no such line — by subject matter, which is the weaker
+   evidence class and is labelled as such in the table.
+
+This is the third measurement defect in this tool in one day (hazards
+#28, #30, #31). All three shared a shape: the tool answered, the answer
+looked reasonable, and nothing in the output said which evidence it
+rested on.

@@ -252,6 +252,7 @@ import L4Factoidal.HDT.Container
 import L4Factoidal.HDT.ContainerTheorems
 import L4Factoidal.HDT.Dictionary
 import L4Factoidal.HDT.Triples
+import L4Factoidal.HDT.Store
 import L4Factoidal.XSD.IEEE754
 import L4Factoidal.XSD.IEEE754Tests
 import L4Factoidal.Dep.Reachability

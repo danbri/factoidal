@@ -37,7 +37,7 @@ alias={
  "Parser.Combinators":"Syntax.Lexing","Parser.TurtleScanner":"Syntax.Lexing",
  "RDF.Term":"RDF.Core","RDF.Triple":"RDF.Core","RDF.Graph.Executable":"RDF.Graph",
  "RDF.GraphIsomorphism":"RDF.Isomorphism","RDF.Indexed":"OWL.RLClosureIndexed",
- "RDF.NQuads.Serialize":"RDF.Serialize","RDF.Turtle.Serialize":"RDF.Serialize",
+ "RDF.NQuads.Serialize":"Syntax.NQuads",
  "OWL.Closure":"OWL.RLClosure","OWL.RL.Spec":"OWL.RLRules",
  "Tableau":"OWL.Tableau","Tableau.Refute":"OWL.Refute",
  "SPARQL.HTTP.Client":"HTTP.Client","SPARQL.HTTP.RunQuery":"HTTP.RunQuery",
@@ -95,20 +95,69 @@ alias={
  "SPARQL.Plan.AccessPath":"Cottas.AccessPath",
  "SPARQL.Plan.Streamable":"SPARQL.PlanStreamable",
  "RML.Sources":"RML.Sources",
+ "Parser.BallyhooHDT":"HDT.Store",
+ # Verified 2026-08-23 by reading the Lean module header's own "Port of
+ # formal/fstar/<X>.fst" line. These used to ride on a bare leaf-name
+ # match; see the coverage rule below.
+ "Parser.WKT":"Geo.Wkt",
+ "SPARQL11.Algebra":"SPARQL.Algebra",
+ "SPARQL11.Parser":"SPARQL.Parser",
+ "RDF.Vocabulary":"RDFS.Vocabulary",
+ # Verified by SUBJECT MATTER rather than a header citation: the Lean
+ # RIF modules are the RIF Core abstract syntax, the RIF-DTB built-ins,
+ # and forward chaining over RIF Core. The evaluator differs in design
+ # (substitutions where F* threads solution mappings), so this is the
+ # weaker evidence class and is labelled as such.
+ "RIF.Core.Syntax":"RIF.Syntax",
+ "RIF.Core.Builtins":"RIF.Builtins",
+ "RIF.Core.Eval":"RIF.Engine",
+ "RIF.Core.Tests":"RIF.EngineTests",
  "RDF.Store.Columnar.OffsetIndex":"Cottas.OffsetIndex",
  "RDF.Store.Columnar.SubjectOffsetIndex":"Cottas.SubjectOffsetIndex",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
 }
+# ---------------------------------------------------------------------------
+# What counts as coverage.
+#
+# An explicit alias, or a match on the LAST TWO name components. A bare
+# last-component match does NOT count.
+#
+# It used to. On 2026-08-23 a new `HDT/Store.lean` made `SPARQL11.Store`
+# (1,452 lines) vanish from the not-covered list, because both end in
+# "Store". Auditing the rest found thirteen more modules resting on a
+# bare leaf match, of which seven were wrong the same way -- including
+# two whose alias TARGET does not exist (`RDF.Serialize`), so the broken
+# alias was silently rescued by the leaf match and the breakage was
+# invisible. See hazard #31 in skills/workflow-gotchas-debugging.
+#
+# Everything genuine that relied on a bare leaf match is now an explicit
+# alias, each verified by reading the Lean module's own header.
+# ---------------------------------------------------------------------------
 def leafkeys(m):
-    p=m.split('.'); s={p[-1].lower()}
-    if len(p)>1: s.add((p[-2]+"."+p[-1]).lower())
-    return s
-lidx=set()
-for m in ln: lidx |= leafkeys(m)
-covered,missing=[],[]
+    p = m.split('.')
+    return {(p[-2] + "." + p[-1]).lower()} if len(p) > 1 else {p[-1].lower()}
+
+lidx = set()
+for m in ln:
+    lidx |= leafkeys(m)
+
+covered, missing, broken_alias = [], [], []
 for m in fs:
-    if (m in alias and alias[m] in ln) or (leafkeys(m) & lidx): covered.append(m)
-    else: missing.append(m)
+    if m in alias:
+        if alias[m] in ln:
+            covered.append(m)
+            continue
+        broken_alias.append((m, alias[m]))
+    if leafkeys(m) & lidx:
+        covered.append(m)
+    else:
+        missing.append(m)
+
+if broken_alias:
+    print("BROKEN ALIASES -- the target Lean module does not exist:")
+    for m, t in broken_alias:
+        print(f"  {m} -> {t}")
+    print()
 def lines(m):
     try: return sum(1 for _ in open(os.path.join(FSTAR_DIR, m + ".fst"),encoding='utf-8',errors='replace'))
     except: return 0

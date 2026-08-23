@@ -388,7 +388,19 @@ rule #17").
     tool crash on a fresh container. Fail loudly on an empty walk, and
     write generated reports to a temp path. Full text: hazard #30 in
     `skills/workflow-gotchas-debugging`.)
-31. A hub post's live cells run against the js/npm bundle, not the
+31. Coverage is an explicit decision, never a name resemblance. A
+    matching last name component is a suggestion to audit, not a
+    result; and a lookup table whose misses fall through to a
+    heuristic cannot report its own breakage. (2026-08-23: adding
+    `HDT/Store.lean` made `SPARQL11.Store` — 1,452 lines, unported —
+    vanish from the Lean port gap's not-covered list, because both end
+    in `Store`. The audit found seven such false positives and two
+    aliases pointing at a Lean module that does not exist, hidden
+    because the leaf rule matched something else. The reported count
+    had been over by five. A count that moves without a cause is a bug
+    report: chase it before writing the number down. Full text: hazard
+    #31 in `skills/workflow-gotchas-debugging`.)
+32. A hub post's live cells run against the js/npm bundle, not the
     native binary. A docs landing that adds cells calling a new F\*
     feature is NOT docs-only — rebuild the bundle (the js build
     incrementally SKIPS npm-entry; force it) and gate on `node --test

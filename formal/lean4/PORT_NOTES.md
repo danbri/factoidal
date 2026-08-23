@@ -9044,3 +9044,35 @@ RML and csv2rdf path and takes no dialect; `csvParseRowsDialect` adds
 the CSVW §8 `trim` and `skipColumns`. A guard pins that the two agree
 when the dialect is the default, which is what makes the no-dialect
 path byte-for-byte unchanged.
+
+## Parser.BallyhooHDT → `L4Factoidal/HDT/Store.lean`
+
+The store boundary between a SPARQL backend and the three verified HDT
+reader stages. The F\* header records what it retired: this file used to
+shell out to an external `hdtSearch` CLI through 555 lines of
+unverified OCaml (`ballyhoo_hdt_runtime.sh`, the #253 debt), and stage
+4 deleted that runtime.
+
+**The port goes one step further on I/O.** The F\* reader still reaches
+file bytes through `Parquet.Footer`'s byte-range primitive;
+`HDT/Container.lean` reads the file once with `IO.FS.readBinFile`. So
+`openGraphStore` is the only `IO` in the whole Lean HDT stack, and
+`search`, `estimate`, every `encode*` and every `decode*` are pure
+functions of a `ByteArray`.
+
+**The decode sentinels are carried across unchanged and pinned.** Every
+id reaching a decode came from a successful encode or a navigation
+result, so the failure branches are unreachable in practice — but they
+must be total, and the sentinels
+(`urn:factoidal:hdt-decode-error`, a `hdt-decode-error` blank node)
+make a failure VISIBLE rather than silently dropped. Guards check that
+all three differ from each other and that id 0 is refused before the
+dictionary is consulted.
+
+**A row missing any position yields no triple**, rather than being
+completed with a sentinel: the sentinels are for a decode that was
+attempted and failed, not for an absent position. That distinction has
+its own guard.
+
+Measured after the port: `lake exe l4hdt` still reports 2 pass, 0 fail
+(out of 2) over the vendored `.hdt` fixtures.
