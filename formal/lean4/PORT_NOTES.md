@@ -5473,3 +5473,52 @@ A `<cn>` reads `type="integer"` and `type="real"` through ONE decimal
 reader: an integer is a decimal with no fraction, and reading them
 apart would reject `type="integer"` written as `42.0`. `1.5e2` is
 exactly `150`, via digit shifting rather than a float.
+
+### The W3C XML Conformance Suite, scored (2026-08-23)
+
+`XML/ConfProbe.lean` read a list of paths from standard input and
+printed a verdict per file. That is a PROBE: it has no expected answer
+to compare against, so it could not say whether a verdict was RIGHT.
+Run with no input it reported "0 accepted, 0 rejected (out of 0
+files)" — a clean-looking line describing nothing.
+
+`Harness/XmlConfRun.lean` (`lake exe l4xmlconf`) reads the suite's own
+sub-manifests — the `<TEST>` elements with their `TYPE` and `URI` —
+and scores each verdict against what the suite says it should be. The
+manifests are parsed by the same verified parser the tests exercise; a
+separate manifest reader would be a second implementation of the
+syntax under test.
+
+📊 FIRST MEASURED RESULT: **1477 pass, 753 fail (out of 2230 in
+profile)**, plus 28 optional-behaviour, 63 XML 1.1 and 56 non-UTF-8
+tests reported OUT OF PROFILE rather than scored.
+
+Three things the scoring had to get right, each of which would move
+the number by hundreds:
+
+1. **A `valid` and an `invalid` case must BOTH be ACCEPTED.**
+   `invalid` means "violates the DTD", which a NON-VALIDATING parser
+   is not asked to notice. Scoring `invalid` as "must reject" would
+   have counted 57 correct verdicts as failures.
+2. **Out of profile is not failure.** XML 1.1 is a different language
+   and this parser reads UTF-8 only. Counting those as failures
+   understates the parser; folding them into passes overstates it, so
+   they are their own line.
+3. **Three sub-manifests are ENTITY BODIES, not documents.**
+   `sun-not-wf.xml` is a run of sibling `<TEST>` elements with no
+   single root, because `xmlconf.xml` includes it as an external
+   entity. Rejecting it IS the right verdict on it as a document, so
+   the runner supplies the element the entity is included into rather
+   than loosening the parser. Without that, three manifests and 159
+   tests vanished from the denominator behind a one-line notice —
+   exactly the silent narrowing this project keeps paying for.
+
+🔴 THE GAP IS NAMED: of the 753 failures, **674 are `not-wf` documents
+this parser ACCEPTS**, and they are almost all malformed INTERNAL DTD
+SUBSETS — `<!ENTITY foo PUBLIC "id">` with no system id, a comment
+inside a declaration, `<!ATTLIST doc a1 NMTOKEN v1>` with a bare
+default, an `<![INCLUDE[ ]]>` in the internal subset. `parseIntSubset`
+skips the subset loosely instead of parsing its grammar. The other 79
+split into 36 documents wrongly rejected and the remainder.
+
+That is one defect, not 674, and it is the next XML increment.
