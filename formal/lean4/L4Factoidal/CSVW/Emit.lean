@@ -62,6 +62,10 @@ def csvwRowProp    : WfIri := ⟨"http://www.w3.org/ns/csvw#row", rfl⟩
 def csvwUrlProp    : WfIri := ⟨"http://www.w3.org/ns/csvw#url", rfl⟩
 def csvwRownumProp : WfIri := ⟨"http://www.w3.org/ns/csvw#rownum", rfl⟩
 def csvwDescribes  : WfIri := ⟨"http://www.w3.org/ns/csvw#describes", rfl⟩
+def csvwTitleProp  : WfIri := ⟨"http://www.w3.org/ns/csvw#title", rfl⟩
+def rdfFirst       : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#first", rfl⟩
+def rdfRest        : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#rest", rfl⟩
+def rdfNil         : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#nil", rfl⟩
 
 /-- A row's subject: the aboutUrl if it resolves, else a blank node
     keyed by the row number so every cell of a row shares it. -/
@@ -161,14 +165,40 @@ def cellObjects (inh : Inherited) (r : CellResult) : List Term :=
         | none    => Term.literal (Literal.string lex))
   fromUrls ++ fromLits
 
+/-- An RDF collection over `os`, rooted at a blank node keyed by
+    `tag`. Returns the head term and the triples. -/
+def collectionOf (tag : String) (os : List Term) : Term × List Triple :=
+  let rec go : Nat → List Term → Term × List Triple
+    | _,        []      => (.iri rdfNil, [])
+    | 0,        _       => (.iri rdfNil, [])
+    | fuel + 1, o :: tl =>
+        let node : Subject := .bnode (tag ++ "_" ++ toString fuel)
+        let (restTerm, restTs) := go fuel tl
+        (node.toTerm,
+         [(⟨node, rdfFirst, o⟩ : Triple), ⟨node, rdfRest, restTerm⟩] ++ restTs)
+  go os.length os
+
 /-- Triples for one cell. Nothing is emitted when the predicate does
     not resolve to a valid IRI — the F* module's rule, kept because a
     malformed predicate is a metadata error, not a licence to invent
-    a term. -/
-def cellTriples (inh : Inherited) (subj : Subject) (r : CellResult) : List Triple :=
+    a term.
+
+    `ordered` turns a list-valued cell into an RDF COLLECTION rather
+    than a bag of triples: csv2rdf §5 says the values of a column with
+    `"ordered": true` keep their relative order, and only a collection
+    records that. Emitting them as separate triples loses the order
+    silently — the count is the same and the graph says less
+    (test306). `tag` keys the collection's blank nodes. -/
+def cellTriples (inh : Inherited) (subj : Subject) (r : CellResult)
+    (tag : String := "") : List Triple :=
   match r.propertyRef.bind toIri? with
   | none   => []
-  | some p => (cellObjects inh r).map (fun o => ⟨subj, p, o⟩)
+  | some p =>
+      let os := cellObjects inh r
+      if inh.ordered == some true && os.length > 1 then
+        let (head, ts) := collectionOf tag os
+        (⟨subj, p, head⟩ : Triple) :: ts
+      else os.map (fun o => ⟨subj, p, o⟩)
 
 /-- Minimal mode, one row: the cell triples only. `cells` pairs each
     column's effective inherited properties with its converted
@@ -213,6 +243,10 @@ structure RowInput where
   rowNum    : Nat
   sourceRow : Nat
   cells     : List CellOut
+  /-- §5.5 `rowTitles`: the values of the columns the schema names as
+      row titles. They become `csvw:title` triples on the ROW node,
+      not on the row's subject. -/
+  titles    : List String := []
 
 /-- The DISTINCT subjects a row describes, in first-appearance order.
     One `csvw:describes` triple each. -/
@@ -221,7 +255,8 @@ def RowInput.subjects (r : RowInput) : List Subject :=
 
 /-- Minimal mode, one row. -/
 def rowTriplesMinimalOf (r : RowInput) : List Triple :=
-  r.cells.flatMap (fun c => cellTriples c.inh c.subject c.result)
+  (r.cells.zipIdx).flatMap (fun (c, i) =>
+    cellTriples c.inh c.subject c.result ("lst" ++ toString r.rowNum ++ "_" ++ toString i))
 
 /-- Standard mode, one row: the cell triples plus the row description
     — `rdf:type csvw:Row`, one `csvw:describes` per distinct subject,
@@ -235,6 +270,8 @@ def rowTriplesStandardOf (tag tableUrl : String) (r : RowInput) : List Triple :=
   [ ⟨node, rdfTypeIri, .iri csvwRowCls⟩,
     ⟨node, csvwRownumProp, .literal (typedLiteral xsdInteger (toString r.rowNum))⟩ ]
   ++ r.subjects.map (fun s => (⟨node, csvwDescribes, s.toTerm⟩ : Triple))
+  ++ r.titles.map (fun t =>
+       (⟨node, csvwTitleProp, .literal (Literal.string t)⟩ : Triple))
   ++ urlTriples ++ rowTriplesMinimalOf r
 
 /-- Standard mode, one table: a `csvw:Table` node carrying

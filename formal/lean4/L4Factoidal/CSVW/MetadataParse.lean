@@ -353,8 +353,8 @@ def parseTable (ctx : Ctx) (j : Json) : Option TableDesc :=
           schema    := match jField? "tableSchema" j with
             | some (.object _) =>
                 ((jField? "tableSchema" j).bind asObject?).map (parseSchema ctx)
-            -- A STRING is a link to another document: metadata
-            -- discovery, which is I/O and not modelled here.
+            -- A STRING is a LINK to a schema document. Recorded in
+            -- `schemaRef` below; the parse stays pure.
             | some (.string _) => none
             -- Any other value is INVALID and, per the corpus, acts as
             -- an EMPTY OBJECT: the table has a schema with no columns,
@@ -364,6 +364,9 @@ def parseTable (ctx : Ctx) (j : Json) : Option TableDesc :=
             -- predicate (test107).
             | some _           => some ({} : TableSchema)
             | none             => none
+          schemaRef := match jField? "tableSchema" j with
+            | some (.string u) => some u
+            | _                => none
           dialect   := (jField? "dialect" j).map parseDialect
           suppress  := jBoolField? "suppressOutput" j
           inherited := parseInherited j
@@ -407,5 +410,10 @@ def parseMetadata (j : Json) : Option (TableGroup × Ctx) :=
 /-- Parse a metadata document from its source text. -/
 def parseMetadataText (src : String) : Option (TableGroup × Ctx) :=
   (parseJson? src).bind parseMetadata
+
+/-- Parse a standalone SCHEMA document — what a `tableSchema` URL
+    points at. -/
+def parseSchemaText (ctx : Ctx) (src : String) : Option TableSchema :=
+  (parseJson? src).bind (fun j => (asObject? j).map (parseSchema ctx))
 
 end L4Factoidal.CSVW
