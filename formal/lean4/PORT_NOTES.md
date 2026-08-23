@@ -6252,3 +6252,88 @@ should be rejected (`[32]` SDDecl, `[41]` Attribute, `[77]` TextDecl,
 `[28a]` and a handful of one-off errata cases) and 7 rejected that
 should be accepted (four byte-order cases, `ext02`, `o-p28pass5`,
 `valid/not-sa/023`).
+
+---
+
+## RML-Core: a suite that had no runner — 60 pass, 0 fail (out of 60)
+
+`RML/Mapping.lean` held term generation and templates and nothing
+else: no mapping reader, no source reader, no evaluator, no runner.
+Five modules close that.
+
+- `RML/JsonPath.lean` — the JSONPath SUBSET an `rml:iterator` and an
+  `rml:reference` need, with the accepted grammar stated in full. A
+  path outside it does not parse and selects NOTHING; the corpus
+  writes one malformed path and it is a negative case.
+- `RML/Value.lean` — a source value and the datatype it carries by
+  itself. A JSON source is TYPED and RML says so: a reference to `10`
+  produces `"10"^^xsd:integer`. A record cannot be a
+  `String → Option String` lookup, because the type is already gone
+  by the time the term is built.
+- `RML/Model.lean` — the mapping as a value, kept apart from the
+  graph it is read out of and from the evaluation that runs it. A
+  mapping graph is arbitrary RDF and reading it fails in many ways;
+  evaluation is a total function. Mixing them makes "this mapping is
+  malformed" and "this record has no value" the same kind of answer.
+- `RML/FromGraph.lean` — the reader.
+- `RML/Eval.lean` — the evaluator. Sources are SUPPLIED, not read:
+  reading a file needs I/O, and deciding what a mapping means does
+  not.
+- `Harness/RmlRun.lean` (`lake exe l4rml`).
+
+📊 MEASURED: **60 pass, 0 fail, 0 comparison-gave-up (out of 60
+compared)**; 15 NEGATIVE cases not attempted (this slice has no
+mapping validator, so it makes no claim about them); 1 fixture not
+read.
+
+That last one is the corpus's, not the parser's: `RMLTC0027b`'s
+`output.nq` writes `<http://example.com/Person/Emily Smith>`, and an
+`IRIREF` may not contain a space. The runner names the file and the
+reason rather than reporting a bare parse failure.
+
+### The comparison is one graph isomorphism over the whole DATASET
+
+A dataset is not a bag of graphs to compare one at a time: a blank
+node may appear in the default graph AND in a named one, and matching
+each graph separately would let two different datasets pass. Every
+quad is encoded as a triple whose predicate carries the graph name —
+both parts percent-encoded, so the encoding is injective — and the
+two encoded graphs are compared once. Blank nodes then have to line up
+ACROSS graphs, which is what dataset isomorphism means.
+
+### Eight defects, and what each one looked like
+
+Every one of them produced a graph of the RIGHT SHAPE:
+
+1. `defaultTermType` reads the FORM only, so a subject map written
+   `rml:subjectMap [ rml:reference "$.FirstName" ]` defaulted to a
+   LITERAL and produced no subject. POSITION decides this, and only
+   the caller knows the position (`asIri` / `asLiteral`).
+2. `rml:baseIRI` was not read, so a template producing `Carlos` was
+   not an IRI and generated nothing.
+3. A join condition was stored as a reference STRING, so
+   `rml:childMap [ rml:template … ]` lost its template.
+4. The `rml:subject` SHORTCUT was read in a branch of its own, which
+   dropped the predicate-object maps with it.
+5. `rml:subjectMap [ rml:termType rml:BlankNode ]` states a term type
+   and NO form, meaning a fresh blank node per record. `generateTerm`
+   had no form to work from.
+6. A `rml:languageMap` went through the IRI default, so
+   `{$.language}-{$.region}` produced `http://example.com/en-GB`
+   where the tag `en-GB` was meant. A `rml:datatypeMap` is the
+   opposite case and does want an IRI.
+7. A TEMPLATE over a multi-valued reference produces one term per
+   COMBINATION. Taking the first lost half of `RMLTC0025c` — with
+   the right predicate and the right objects on the half that
+   survived.
+8. Graph maps UNION across levels, they do not override. Treating a
+   predicate-object map's graph as a replacement put one quad in one
+   graph where the corpus expects it in two.
+
+### Scope
+
+RML-Core only. `rml-io`, `rml-cc`, `rml-fnml` and `rml-star` are laid
+out differently and need modules this port does not have — function
+maps, RDF-star terms, collections and containers, non-file sources.
+Pointing the runner at them reports almost everything NOT READ, which
+is the truth about them and not a score.

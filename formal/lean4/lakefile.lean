@@ -160,6 +160,10 @@ extern_lib libl4hacl pkg := do
 -- .sch, XPath/Mini supplies Validate's `select` and `evalTest`.
 @[default_target] lean_exe «l4schematron» where root := `Harness.SchematronRun
 
+-- RML-Core test cases: mapping.ttl + source + output.nq, compared by
+-- DATASET isomorphism (Harness/RmlRun.lean).
+@[default_target] lean_exe «l4rml» where root := `Harness.RmlRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.

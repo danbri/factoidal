@@ -9,6 +9,7 @@ A term map produces terms from a data record three ways: a CONSTANT,
 a REFERENCE to a field, or a TEMPLATE with `{field}` placeholders.
 -/
 import L4Factoidal.RDF.Core
+import L4Factoidal.Syntax.IriResolve
 
 namespace L4Factoidal.RML
 
@@ -117,8 +118,19 @@ def expandTemplate (segs : List TemplateSegment) (tt : TermType)
 
 /-! ## Term generation -/
 
-private def mkIri? (s : String) : Option Term :=
-  if h : isIri s then some (.iri ⟨s, h⟩) else none
+/-- Build an IRI term, resolving a RELATIVE result against the base
+    IRI when one is in force.
+
+    `rml:baseIRI` is a property of the TRIPLES MAP, and a template
+    like `"{$.fname}"` produces a relative reference that means
+    nothing without it. Without resolution the term is not an IRI at
+    all and the map produces no triple, which is how `RMLTC0026b`
+    through `RMLTC0026d` came out empty. -/
+private def mkIri? (base : Option String) (s : String) : Option Term :=
+  let abs := match base with
+    | none   => s
+    | some b => if isIri s then s else L4Factoidal.Syntax.resolveIri b s
+  if h : isIri abs then some (.iri ⟨abs, h⟩) else none
 
 /-- Build a literal, honouring datatype then language. A language tag
     wins, since RDF 1.1 types every tagged literal `rdf:langString`. -/
@@ -144,7 +156,8 @@ def defaultTermType : TermMapForm → TermType
 /-- Generate the term a map produces from one record. `none` means
     NO TERM — an unresolved reference, or a value that is not a valid
     IRI where one is required. -/
-def generateTerm (tm : TermMap) (lookup : String → Option String) : Option Term :=
+def generateTerm (base : Option String) (tm : TermMap) (lookup : String → Option String)
+    : Option Term :=
   let tt := tm.termType.getD (defaultTermType tm.form)
   match tm.form with
   | .constant t => some t
@@ -156,9 +169,9 @@ def generateTerm (tm : TermMap) (lookup : String → Option String) : Option Ter
           match tt with
           | .literal   => some (mkLiteral tm v)
           | .blankNode => some (.bnode v)
-          | .uri       => mkIri? (encodeUriSafe v)
-          | .unsafeIri => mkIri? v
-          | .iri       => mkIri? v
+          | .uri       => mkIri? base (encodeUriSafe v)
+          | .unsafeIri => mkIri? base v
+          | .iri       => mkIri? base v
   | .template raw =>
       match expandTemplate (parseTemplate raw) tt lookup with
       | none   => none
@@ -166,6 +179,6 @@ def generateTerm (tm : TermMap) (lookup : String → Option String) : Option Ter
           match tt with
           | .literal   => some (mkLiteral tm v)
           | .blankNode => some (.bnode v)
-          | _          => mkIri? v
+          | _          => mkIri? base v
 
 end L4Factoidal.RML

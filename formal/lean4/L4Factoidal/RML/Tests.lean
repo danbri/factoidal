@@ -39,42 +39,42 @@ private def rec1 : String → Option String
 
 -- Constant maps pass their term through.
 private def constMap : TermMap := { form := .constant (.literal (Literal.string "k")) }
-#guard (generateTerm constMap rec1).isSome
+#guard (generateTerm none constMap rec1).isSome
 
 -- A reference defaults to a LITERAL; a template defaults to an IRI.
 #guard defaultTermType (.reference "id") == .literal
 #guard defaultTermType (.template "x") == .iri
 
-#guard match generateTerm { form := .reference "id" } rec1 with
+#guard match generateTerm none { form := .reference "id" } rec1 with
        | some (.literal l) => l.val.lexicalForm == "7"
        | _ => false
-#guard match generateTerm { form := .template "http://ex/{id}" } rec1 with
+#guard match generateTerm none { form := .template "http://ex/{id}" } rec1 with
        | some (.iri i) => i.val == "http://ex/7"
        | _ => false
 
 -- An unresolved reference generates NO TERM.
-#guard generateTerm { form := .reference "missing" } rec1 == none
-#guard generateTerm { form := .unknown } rec1 == none
+#guard generateTerm none { form := .reference "missing" } rec1 == none
+#guard generateTerm none { form := .unknown } rec1 == none
 
 -- A value that is not a valid IRI where one is required generates no
 -- term rather than a malformed one.
-#guard generateTerm { form := .reference "bad", termType := some .iri } rec1 == none
+#guard generateTerm none { form := .reference "bad", termType := some .iri } rec1 == none
 
 -- Datatype and language on a literal-producing map; a language tag
 -- wins, per RDF 1.1.
-#guard match generateTerm
+#guard match generateTerm none
          { form := .reference "id",
            datatype := some "http://www.w3.org/2001/XMLSchema#integer" } rec1 with
        | some (.literal l) => l.val.datatype.val == "http://www.w3.org/2001/XMLSchema#integer"
        | _ => false
-#guard match generateTerm
+#guard match generateTerm none
          { form := .reference "name", language := some "de",
            datatype := some "http://www.w3.org/2001/XMLSchema#integer" } rec1 with
        | some (.literal l) => l.val.langTag == some "de"
        | _ => false
 
 -- A blank-node term type uses the value as the label.
-#guard match generateTerm
+#guard match generateTerm none
          { form := .reference "id", termType := some .blankNode } rec1 with
        | some (.bnode b) => b == "7"
        | _ => false
