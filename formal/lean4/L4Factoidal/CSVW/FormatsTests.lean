@@ -28,7 +28,10 @@ private def euro : NumFmt := { groupChar := '.', decimalChar := ',' }
 #guard parseNumber "decimal" {} "1,234.56" == .valid "1234.56"
 #guard parseNumber "decimal" {} "42" == .valid "42"
 #guard parseNumber "decimal" {} "-42" == .valid "-42"
-#guard parseNumber "decimal" {} "+42" == .valid "42"
+-- A written `+` SURVIVES: it is in the `xsd:decimal` lexical space
+-- and test283 expects `"+1"^^xsd:decimal`. This guard used to pin the
+-- opposite, and pinned a lost sign.
+#guard parseNumber "decimal" {} "+42" == .valid "+42"
 
 -- Malformed numbers are rejected.
 #guard parseNumber "decimal" {} "abc" == .invalid
@@ -38,7 +41,12 @@ private def euro : NumFmt := { groupChar := '.', decimalChar := ',' }
 -- lexical space still applies.
 #guard parseNumber "integer" {} "3.2" == .invalid
 #guard parseNumber "decimal" {} "123.456E7" == .invalid
-#guard parseNumber "double" {} "123.456E7" == .valid "123.456E7"
+-- The exponent marker is written lowercase, matching every expected
+-- file in the corpus. This guard used to pin `E`, which no expected
+-- file uses. See `normalizeDoubleLexical` for why that is a stated
+-- deviation from the XSD canonical mapping rather than an instance
+-- of it.
+#guard parseNumber "double" {} "123.456E7" == .valid "123.456e7"
 #guard parseNumber "decimal" {} "NaN" == .invalid
 #guard parseNumber "double" {} "NaN" == .valid "NaN"
 #guard parseNumber "double" {} "-INF" == .valid "-INF"
@@ -181,5 +189,79 @@ private def pat (p : String) : NumPattern := parseNumPattern p ',' '.'
 #guard isDateBase "dateTime"
 #guard isDurationBase "dayTimeDuration"
 #guard !(isNumericBase "string")
+
+/-! ## Number-pattern group sizes (UAX #35)
+
+A SECONDARY group size exists only when the pattern has two or more
+separators. With one, the run before it is the "and any further
+digits" placeholder, not a size. Reading `#,#00`'s leading `#` as a
+secondary size of ONE demanded `1,2,3,4,567` and rejected
+`1,234,567` — the value test282 expects, produced as a plain string
+with the right predicate and no datatype. -/
+
+#guard (parseNumPattern "#,#00" ',' '.').primaryGroup == some 3
+#guard (parseNumPattern "#,#00" ',' '.').secondaryGroup == some 3
+#guard (parseNumPattern "#,##,#00" ',' '.').primaryGroup == some 3
+#guard (parseNumPattern "#,##,#00" ',' '.').secondaryGroup == some 2
+#guard (parseNumPattern "##0" ',' '.').primaryGroup == none
+
+#guard matchesNumPattern (parseNumPattern "#,#00" ',' '.') ',' '.' "1,234,567"
+#guard matchesNumPattern (parseNumPattern "#,#00" ',' '.') ',' '.' "1,234"
+#guard !(matchesNumPattern (parseNumPattern "#,#00" ',' '.') ',' '.' "1,2,3,4,567")
+#guard matchesNumPattern (parseNumPattern "#,##,#00" ',' '.') ',' '.' "12,34,567"
+#guard !(matchesNumPattern (parseNumPattern "#,##,#00" ',' '.') ',' '.' "1,234,567")
+
+/-! ## A written `+` survives, unless scaling rebuilds the number
+
+`+` is in the `xsd:decimal` lexical space. test283's `+0` column
+expects `"+1"^^xsd:decimal`, and its `%000` column expects `%+123` to
+become `1.23`. Stripping the sign unconditionally lost what the
+document wrote. -/
+
+#guard formatConvert "decimal" none (some "+0") none none "+1" == .valid "+1"
+#guard formatConvert "decimal" none (some "-0") none none "-1" == .valid "-1"
+#guard formatConvert "decimal" none (some "%000") none none "%+123" == .valid "1.23"
+#guard formatConvert "decimal" none (some "%000") none none "%-123" == .valid "-1.23"
+#guard formatConvert "decimal" none (some "000‰") none none "123‰" == .valid "0.123"
+
+/-! ## A `double` lexical writes its exponent marker lowercase
+
+This follows the corpus, and says so: XSD's canonical mapping writes
+`E` and normalises the mantissa, so `10.10E1` would canonically be
+`1.010E2`. Every expected file in the CSVW suite instead keeps the
+mantissa and writes `e` — `"0.0e0"^^xsd:double` in test158.ttl — and
+no expected file in the corpus uses `E`. -/
+
+#guard normalizeDoubleLexical "0.0E0" == "0.0e0"
+#guard normalizeDoubleLexical "10.10E1" == "10.10e1"
+#guard normalizeDoubleLexical "INF" == "INF"
+#guard normalizeDoubleLexical "NaN" == "NaN"
+#guard formatConvert "double" none (some "#0.###E#0") none none "0.0E0" == .valid "0.0e0"
+
+/-! ## A duration `format` is a REGULAR EXPRESSION, and is now checked
+
+tabular-metadata §5.11.3: "the datatype format annotation provides a
+regular expression for the string values". The branch used to return
+`.invalid` for ANY stated format, on the ground that satisfaction
+could not be shown without an engine. The tree has one. Refusing to
+decide and deciding NO produce the same output — a plain literal —
+which is why the shortcut survived unnoticed through nine rows of
+test193.
+
+The lexical space is still checked alongside the pattern: a cell must
+BE a duration and match. -/
+
+#guard formatConvert "duration" (some "^-?P.*$") none none none "PT130S" == .valid "PT130S"
+#guard formatConvert "dayTimeDuration" (some "^-?P.DT.*$") none none none "P1DT2H"
+       == .valid "P1DT2H"
+#guard formatConvert "yearMonthDuration" (some "^-?P.Y20M$") none none none "P0Y20M"
+       == .valid "P0Y20M"
+-- test194 states a format no duration can match, and expects every
+-- cell plain.
+#guard formatConvert "duration" (some "^.$") none none none "PT130S" == .invalid
+-- Not a duration at all: rejected whether or not a format is stated.
+#guard formatConvert "duration" (some "^-?P.*$") none none none "Foo" == .invalid
+#guard formatConvert "duration" none none none none "Foo" == .invalid
+#guard formatConvert "duration" none none none none "PT130S" == .valid "PT130S"
 
 end L4Factoidal.CSVW

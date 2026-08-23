@@ -14,6 +14,7 @@ caller treats as "keep the cell as written" rather than as a
 rejection. That is the conservative direction: a format we cannot
 read must never reject a value it might have accepted.
 -/
+import L4Factoidal.Regex.XPath
 
 namespace L4Factoidal.CSVW
 
@@ -107,10 +108,19 @@ def parseNumPattern (pat : String) (grp dec : Char) : NumPattern :=
   -- run after the last separator, the secondary the run before it.
   let groups := (String.ofList ip).splitOn (String.mk [grp])
   let sizes := groups.map (·.length)
+  -- A SECONDARY group size exists only when the pattern has TWO or
+  -- more separators. With one, the run before it is not a group-size
+  -- declaration — it is the "and any further digits" placeholder —
+  -- so the secondary size equals the primary. `#,#00` says groups of
+  -- three, and `1,234,567` matches it; reading the leading `#` as a
+  -- secondary size of ONE demanded `1,2,3,4,567` and rejected the
+  -- value the corpus expects (test282). `#,##,#00` is the case with a
+  -- genuine secondary size: primary 3, secondary 2, so `12,34,567`.
   let (primary, secondary) := match sizes.reverse with
-    | last :: prev :: _ => (some last, some prev)
-    | [_]               => (none, none)
-    | []                => (none, none)
+    | last :: prev :: _ :: _ => (some last, some prev)
+    | last :: _ :: []        => (some last, some last)
+    | [_]                    => (none, none)
+    | []                     => (none, none)
   { minInt := (ip.filter (· == '0')).length
     minFrac := (fp.filter (· == '0')).length
     maxFrac := fp.length
@@ -431,6 +441,25 @@ def integerBounds (base : String) : Option String × Option String :=
   | "negativeInteger"    => (none, some "-1")
   | _                    => (none, none)
 
+/-- The lexical form a `double` / `float` value carries in the RDF
+    output: the same digits, with the exponent marker written `e`.
+
+    This follows the corpus, and the corpus is not XSD-canonical here.
+    XSD's canonical mapping for `double` writes `E` and normalises the
+    mantissa to one digit before the point, so `10.10E1` would be
+    `1.010E2`. Every expected file in the CSVW suite instead keeps the
+    mantissa as parsed and writes a lowercase `e` — `"0.0e0"^^xsd:double`
+    in test158.ttl — and no expected file anywhere in the corpus uses
+    `E`. Conformance is measured against those files, so this
+    normalisation matches them and says plainly that it is a
+    deviation from the XSD canonical mapping rather than an instance
+    of it. The VALUE is the same either way; only the lexical form
+    differs, and RDF literal equality is lexical, which is why the
+    difference is visible at all. -/
+def normalizeDoubleLexical (s : String) : String :=
+  if s == "NaN" || s == "INF" || s == "-INF" || s == "+INF" then s
+  else String.ofList (s.toList.map (fun c => if c == 'E' then 'e' else c))
+
 /-- Which lexical space a numeric base uses. -/
 def isXsdNumericLexical (base : String) (s : String) : Bool :=
   if base == "decimal" then isDecimalLexical s
@@ -476,10 +505,20 @@ def parseNumber (base : String) (nf : NumFmt) (v : String) : FmtOutcome :=
   let s := String.ofList body
   if !isXsdNumericLexical base s then .invalid
   else
-    let s := if s.startsWith "+" then String.ofList (s.toList.drop 1) else s
-    if percent then .valid (shiftLeft s 2)
-    else if permille then .valid (shiftLeft s 3)
-    else .valid s
+    -- A leading `+` is dropped only where SCALING rebuilds the number
+    -- anyway. With no scaling the value passes through AS WRITTEN:
+    -- `+` is in the `xsd:decimal` lexical space, and the corpus keeps
+    -- it — the `+0` column of test283 expects `"+1"^^xsd:decimal`,
+    -- while its `%000` column expects `%+123` to become `1.23`.
+    -- Stripping unconditionally lost the sign the document wrote.
+    let stripPlus := fun (x : String) =>
+      if x.startsWith "+" then String.ofList (x.toList.drop 1) else x
+    let norm := fun (x : String) =>
+      if base == "double" || base == "float" || base == "number"
+      then normalizeDoubleLexical x else x
+    if percent then .valid (norm (shiftLeft (stripPlus s) 2))
+    else if permille then .valid (norm (shiftLeft (stripPlus s) 3))
+    else .valid (norm s)
 
 
 /-! ## Date and time formats (§5.11.3, tabular-data-model §6.4.2)
@@ -739,19 +778,29 @@ def formatConvert (baseName : String) (formatStr pattern groupChar decimalChar :
     | some f => parseDate baseName f txt
     | none   => parseCanonicalDate baseName txt
   else if isDurationBase baseName then
-    -- The `format` facet on a duration is an XSD REGEX, which needs an
-    -- engine this slice does not have. Two cases, and the difference
-    -- matters:
-    --   * NO format: the LEXICAL SPACE is still checkable, and
-    --     checking it is what stops `Foo` becoming an `xsd:duration`;
-    --   * a format: the value cannot be SHOWN to satisfy it, so no
-    --     datatype is asserted. The corpus agrees — test194 states
-    --     `"format": "^.$"`, which no duration can match, and expects
-    --     every cell plain. Asserting the datatype anyway would claim
-    --     a validity this code did not establish.
-    match formatStr with
-    | some _ => .invalid
-    | none   => if isDurationLexical txt then .valid txt else .invalid
+    -- The `format` facet on a duration is a REGULAR EXPRESSION
+    -- (tabular-metadata §5.11.3: "the datatype format annotation
+    -- provides a regular expression for the string values"), matched
+    -- the way `fn:matches` matches — a search, with `^` and `$` as
+    -- anchors. The tree HAS that engine, so the format is now
+    -- CHECKED rather than treated as unknowable.
+    --
+    -- Before this the format branch returned `.invalid` outright, on
+    -- the ground that satisfaction could not be shown. That was the
+    -- right call while there was no engine, and it was still wrong
+    -- about nine rows of test193, whose formats every cell matches.
+    -- Refusing to decide and deciding NO are the same output here —
+    -- a plain literal — which is exactly why the shortcut survived:
+    -- the count was right and the datatype was missing.
+    --
+    -- The lexical space is checked as well as the format. A cell must
+    -- BE a duration and match the pattern; test194 states
+    -- `"format": "^.$"`, which no duration matches, and expects every
+    -- cell plain.
+    if !isDurationLexical txt then .invalid
+    else match formatStr with
+      | none   => .valid txt
+      | some f => if L4Factoidal.Regex.regexMatch txt f "" then .valid txt else .invalid
   else .noFormat
 
 end L4Factoidal.CSVW

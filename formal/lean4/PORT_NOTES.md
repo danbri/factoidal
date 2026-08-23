@@ -5808,3 +5808,56 @@ at that column (§5.1.1), and the context language is the fallback.
 csv2json **261 pass, 7 fail, 0 skip (out of 270)**. Validator
 cross-check 0 in both — no positive test's metadata is wrongly
 rejected. Every skip is gone from both runners.
+
+---
+
+## CSVW value formats: four defects, all with the right triple count
+
+csv2rdf went 260 → **264 pass, 4 fail, 0 skip (out of 270)**; csv2json
+261 → **262 pass, 6 fail, 0 skip (out of 270)**. Every one of the four
+produced the RIGHT NUMBER of triples with the wrong content, which is
+the failure shape this port keeps meeting.
+
+1. **A duration `format` is a regular expression, and was not being
+   read as one.** tabular-metadata §5.11.3 says so outright. The
+   branch returned `.invalid` for ANY stated format, on the ground
+   that satisfaction could not be shown without an engine. The tree
+   HAS one (`Regex.regexMatch`, `fn:matches` semantics — a search
+   with `^`/`$` as anchors). Refusing to decide and deciding NO
+   produce the same output here, a plain literal, which is exactly
+   why the shortcut survived: nine rows of test193 were reported
+   plain and the count never moved.
+
+2. **A secondary group size only exists with two separators.**
+   `#,#00` under UAX #35 means groups of three; the leading `#` is
+   the "and any further digits" placeholder, not a size. Reading it
+   as a secondary size of ONE demanded `1,2,3,4,567`, so
+   `1,234,567` came out as a plain string with the right predicate
+   and no datatype (test282). `#,##,#00` is the genuine case:
+   primary 3, secondary 2.
+
+3. **A written `+` was stripped unconditionally.** `+` is in the
+   `xsd:decimal` lexical space, and test283's `+0` column expects
+   `"+1"^^xsd:decimal` while its `%000` column expects `%+123` to
+   become `1.23`. The sign is now dropped only where SCALING rebuilds
+   the number anyway.
+
+4. **A `double` writes its exponent marker lowercase.** test158
+   expects `"0.0e0"^^xsd:double`, and no expected file in the corpus
+   uses `E`. This is a stated DEVIATION from XSD's canonical mapping,
+   not an instance of it: canonical `double` writes `E` and
+   normalises the mantissa, so `10.10E1` would canonically be
+   `1.010E2`. The value is the same either way; RDF literal equality
+   is lexical, which is the only reason the difference is visible.
+
+Two existing `#guard`s had to be CORRECTED rather than extended —
+`parseNumber "decimal" {} "+42" == .valid "42"` and `parseNumber
+"double" {} "123.456E7" == .valid "123.456E7"`. Each pinned the defect
+it was written beside. That is now four separate landings in this port
+where a guard preserved a wrong answer; the check is always the same
+one — does the corpus agree with what this guard says?
+
+Remaining csv2rdf failures: test034 and test035 (a table group whose
+output is nearly twice the expected size), test036 (embedded metadata
+in the CSV), test102 (`"@id": 1`, where the expected output names the
+metadata document as the table node).
