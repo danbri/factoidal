@@ -385,6 +385,18 @@ carries the F\* module's result, not when a file with a matching name
 exists. Aliasing this one would have moved the number by one and made
 it mean less.
 
+**The rule applied a second time, deliberately.**
+`SPARQL/AlgebraRefinement.lean` is layer 1 of the port of
+`SPARQL11.Algebra.Refinement` (2497 lines): UNION at both layers,
+FILTER at both layers under the congruence hypothesis the F\* source
+also names, and the compatibility bridge with its witness. JOIN,
+LEFTJOIN, EXTEND, PROJECT, DISTINCT and the BGP vertical are not in it.
+No alias was added, and `SPARQL11.Algebra.Refinement` stays on the
+not-covered list. The count did not move, and that is the correct
+outcome rather than a failure — the ninth and tenth corrections
+together say a still count and a moving count are each only as good as
+the reason you can give for them.
+
 ### Tenth: the alias edit that was not there
 
 `RDF.Entailment.RDFS.Completeness` was ported and the alias added. The

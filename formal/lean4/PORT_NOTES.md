@@ -10941,3 +10941,56 @@ the count did not move, and the reason was a `git stash` cycle that had
 dropped the edit to `tools/lean-port-gap.py`. See the tenth correction
 in `docs/designissues/2026-08-23-lean-port-gap.md`, and the extended
 rule 2 in `skills/counting-coverage/SKILL.md`.
+
+---
+
+## `SPARQL11.Algebra.Refinement` layer 1 → `SPARQL/AlgebraRefinement.lean` (2026-08-23)
+
+**Partial by design, and the count does not move.** The F\* module is
+2,497 lines. This is its first layer. `SPARQL11.Algebra.Refinement`
+stays on the not-covered list and no alias was added — see the ninth
+correction in `docs/designissues/2026-08-23-lean-port-gap.md`.
+
+**In:** UNION at the set and bag layers, unconditionally. FILTER at both
+layers under `FExprCongr`. The compatibility bridge and its witness.
+**Out:** JOIN, LEFTJOIN, EXTEND, PROJECT, DISTINCT, the BGP vertical.
+
+**FILTER needs a hypothesis, and the hypothesis is the F\* source's own
+finding FC-1.** The evaluator applies the condition to each ROW of the
+list; §18.5 applies it to the MAPPING. Those agree only if the
+condition cannot tell two lists denoting one mapping apart. It is a
+hypothesis here rather than a theorem because this module's `FExpr` is
+§18.5's abstract predicate, exactly as the specification states it.
+
+**The compatibility bridge is where the two sides genuinely differ.**
+`Binding.compatible` decides agreement with `Term.eqb`, which bottoms
+out in `Literal.eqb` — language-tag case folded, `rdf:XMLLiteral`
+lexical forms compared by exclusive canonical XML. `Compatible` demands
+`t1 = t2`. So the engine's test is strictly COARSER:
+`compatible_of_Compatible` holds, its converse does not, and
+`compatible_not_Compatible_of_coarse` is the witness. Same shape as
+finding SR-2 in the F\* source and finding SE-1 on the
+simple-entailment vertical.
+
+**A second hypothesis the F\* banner predicts.** `compatible_of_Compatible`
+needs `noRepeats (sdom mu1)`. `Binding.compatible` tests EVERY pair in
+the list; `sval` sees only the first binding for a variable. A
+duplicate-key list therefore makes the two disagree, and the
+specification's own header says exactly this about `sm_compatible` in
+the F\* tree — it pins the difference on the REPRESENTATION.
+
+**Why the concrete witness pair is a `#guard`, not a `decide`.**
+`langTagEq` calls `String.toLower`, which is `String.mapAux`, and the
+kernel does not reduce it: `decide` gets stuck at
+`(String.mapAux Char.toLower "en" "en".startPos).1.1.toList`. So the
+theorem is stated over ABSTRACT literals with the conflation as a
+hypothesis, and two `#guard`s carry the satisfiability evidence on the
+compiled evaluator. They are what stop the theorem being vacuous, and
+they run on every `lake build`. The abstract form is also stronger: it
+holds of every pair the engine conflates, not only of `"x"@en` versus
+`"x"@EN`.
+
+**One reusable piece.** `binding_lookup_eq_sval` — the engine's
+`Binding.lookup` and the specification's `sval` are the same partial
+function, written with different argument order and `=` against `==`.
+Every later join lemma will need it.
