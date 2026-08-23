@@ -19,7 +19,9 @@ requires.
 Usage: `lake exe l4csvw-json [tests-dir]`
 -/
 import L4Factoidal.CSVW.JsonDoc
+import L4Factoidal.CSVW.Validate
 import L4Factoidal.JSON.Parser
+import L4Factoidal.JSON.Serialize
 
 open L4Factoidal.CSVW
 open L4Factoidal.JSON
@@ -45,22 +47,47 @@ def jsonEquiv : Nat → Json → Json → Bool
   | _ + 1,    _, _ => false
 where
   /-- Two JSON numbers are the same number even when written
-      differently. The parser keeps the SOURCE TEXT, so `1.0` and `1`
-      arrive as different strings while denoting one value; comparing
-      the text would fail correct output for a reason that is not a
-      defect. -/
+      differently. The parser keeps the SOURCE TEXT, so `1.0`, `1` and
+      `0.0e0` arrive as different strings while denoting one value;
+      comparing the text would fail correct output for a reason that is
+      not a defect. The EXPONENT is expanded here rather than
+      approximated through a float, so the comparison stays exact. -/
   normNum (s : String) : String :=
-    let neg := s.startsWith "-"
-    let body := if neg || s.startsWith "+" then String.ofList (s.toList.drop 1) else s
-    let (ip, fp) := match body.splitOn "." with
-      | [a]    => (a, "")
-      | [a, b] => (a, b)
-      | _      => (body, "")
-    let ip := String.ofList (ip.toList.dropWhile (· == '0'))
-    let fp := String.ofList (fp.toList.reverse.dropWhile (· == '0')).reverse
-    let ip := if ip == "" then "0" else ip
-    (if neg && !(ip == "0" && fp == "") then "-" else "") ++ ip
-      ++ (if fp == "" then "" else "." ++ fp)
+    let cs := s.toList
+    let (mantChars, expChars) :=
+      match cs.findIdx? (fun c => c == 'e' || c == 'E') with
+      | some i => (cs.take i, cs.drop (i + 1))
+      | none   => (cs, [])
+    let exp : Int :=
+      if expChars.isEmpty then 0
+      else
+        let neg := expChars.head? == some '-'
+        let ds := expChars.filter Char.isDigit
+        let v : Int := (String.ofList ds).toNat!
+        if neg then -v else v
+    let neg := mantChars.head? == some '-'
+    let body := if neg || mantChars.head? == some '+' then mantChars.drop 1 else mantChars
+    let (ip, fp) := match body.findIdx? (· == '.') with
+      | some i => (body.take i, body.drop (i + 1))
+      | none   => (body, [])
+    let digits := ip ++ fp
+    -- The decimal point sits `ip.length + exp` places from the left.
+    let pointPos : Int := (ip.length : Int) + exp
+    let (digits, pointPos) :=
+      if pointPos ≤ 0 then
+        (List.replicate (1 - pointPos).toNat '0' ++ digits, (1 : Int))
+      else (digits, pointPos)
+    let digits :=
+      if pointPos > digits.length then
+        digits ++ List.replicate (pointPos.toNat - digits.length) '0'
+      else digits
+    let cut := pointPos.toNat
+    let ipOut := (digits.take cut).dropWhile (· == '0')
+    let fpOut := (digits.drop cut).reverse.dropWhile (· == '0') |>.reverse
+    let ipStr := if ipOut.isEmpty then "0" else String.ofList ipOut
+    let fpStr := String.ofList fpOut
+    (if neg && !(ipStr == "0" && fpStr == "") then "-" else "")
+      ++ ipStr ++ (if fpStr == "" then "" else "." ++ fpStr)
 
 structure JsonOutcome where
   name   : String
@@ -133,7 +160,9 @@ def jsonManifestEntries (j : Json) : List JEntry :=
         | _, _ => none)
   | _ => []
 
-def runOneJson (dir : String) (e : JEntry) : IO JsonOutcome := do
+/-- `--dump=<manifest id>` prints both documents. A diagnostic; the
+    score is computed the same either way. -/
+def runOneJson (dir : String) (e : JEntry) (dump : Bool := false) : IO JsonOutcome := do
   if e.result == "" then
     return ⟨e.action, "skip", "entry names no expected result"⟩
   let rp := dir ++ "/" ++ e.result
@@ -189,6 +218,11 @@ def runOneJson (dir : String) (e : JEntry) : IO JsonOutcome := do
   match parseJson? expectedSrc with
   | none => return ⟨e.action, "skip", "expected .json did not parse"⟩
   | some want =>
+      if dump then do
+        IO.println s!"--- {e.id} PRODUCED ---"
+        IO.println (Json.toStringPretty got)
+        IO.println s!"--- {e.id} EXPECTED ---"
+        IO.println (Json.toStringPretty want)
       if jsonEquiv 64 got want then return ⟨e.action, "pass", ""⟩
       else return ⟨e.action, "fail", "structural JSON mismatch"⟩
 
@@ -218,14 +252,45 @@ def main (args : List String) : IO UInt32 := do
       let mut pass := 0
       let mut fail := 0
       let mut skip := 0
-      let mut negative := 0
+      let mut overStrict := 0
+      let mut negPass := 0
+      let mut negFail := 0
+      let mut negSkip := 0
       for e in entries do
         if e.negative then
-          negative := negative + 1
+          -- A negative test asserts an ERROR, not a document. It is
+          -- scored by the VALIDATOR: the metadata must be rejected.
+          let mp := dir ++ "/" ++ e.action
+          if !(← System.FilePath.pathExists mp) then
+            negSkip := negSkip + 1
+            IO.println s!"skip {e.id}: metadata file missing: {e.action}"
+          else
+            let msrc ← IO.FS.readFile mp
+            match parseJson? msrc with
+            | none => negPass := negPass + 1
+            | some mj =>
+                if L4Factoidal.CSVW.passes (L4Factoidal.CSVW.validate mj) then
+                  negFail := negFail + 1
+                  IO.println s!"NEG-FAIL {e.id} ({e.action}): validator raised no error"
+                else negPass := negPass + 1
         else
-        let o ← runOneJson dir e
-        if dumpId == some e.id then
-          IO.println s!"--- {e.id} PRODUCED ---"
+        -- CROSS-CHECK: a validator tightened to reject the negative
+        -- tests must still ACCEPT every positive one. Without this the
+        -- negative score can be bought with rules that reject
+        -- everything, and the two numbers would never disagree.
+        match e.metadata with
+        | none => pure ()
+        | some mf =>
+            let mp := dir ++ "/" ++ mf
+            if ← System.FilePath.pathExists mp then
+              let msrc ← IO.FS.readFile mp
+              match parseJson? msrc with
+              | none => pure ()
+              | some mj =>
+                  if !L4Factoidal.CSVW.passes (L4Factoidal.CSVW.validate mj) then
+                    overStrict := overStrict + 1
+                    IO.println s!"OVER-STRICT {e.id}: the validator rejects a POSITIVE test's metadata"
+        let o ← runOneJson dir e (dumpId == some e.id)
         if o.status == "pass" then pass := pass + 1
         else if o.status == "fail" then
           fail := fail + 1
@@ -235,10 +300,10 @@ def main (args : List String) : IO UInt32 := do
           IO.println s!"skip {e.id}: {o.detail}"
       let attempted := pass + fail + skip
       IO.println ""
-      IO.println s!"csv2json: {pass} pass, {fail} fail, {skip} skip (out of {attempted} attempted)"
-      IO.println s!"NOT ATTEMPTED: {negative} negative tests out of the manifest's {total} entries"
-      IO.println "  (they assert an ERROR, not a document, and need the"
-      IO.println "  validator's outcome rather than an expected .json)."
+      IO.println s!"csv2json POSITIVE: {pass} pass, {fail} fail, {skip} skip (out of {attempted} attempted)"
+      IO.println s!"csv2json NEGATIVE (validator must reject): {negPass} pass, {negFail} fail, {negSkip} skip (out of {negPass + negFail + negSkip})"
+      IO.println s!"csv2json TOTAL: {pass + negPass} pass, {fail + negFail} fail, {skip + negSkip} skip (out of {total} manifest entries)"
+      IO.println s!"VALIDATOR CROSS-CHECK: {overStrict} positive tests whose metadata the validator wrongly rejects"
       IO.println ""
       IO.println "Comparison is STRUCTURAL: object members are a set, array items"
       IO.println "a sequence. csv2json fixes the order of `row` and `describes`,"

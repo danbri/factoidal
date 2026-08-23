@@ -5301,3 +5301,82 @@ text would fail correct output on whitespace; ignoring array order
 would pass output that had lost the ordering the specification
 requires. JSON NUMBERS are compared as numbers, not as source text, so
 `1.0` and `1` agree.
+
+### csv2json: four rules the JSON output does not share with the RDF
+one (2026-08-23)
+
+1. **A common property's NAME must be an absolute IRI here too.** A
+   bare `foo` or `titles` is not a property, and writing it out as a
+   member states something the document did not (test093, test275) —
+   the same rule the RDF side already enforced, applied on the JSON
+   side where it was missing.
+2. **`rdf:type` is written `@type`, and its value IS compacted.**
+   `"@type": "schema:MusicEvent"`, not an `rdf:type` member holding an
+   absolute IRI (test032). Everywhere else a `valueUrl` VALUE stays
+   absolute and only the KEY is compacted — `schema:about` is a member
+   name, never a value (test038).
+3. **A referenced object is NESTED, not listed alongside.** csv2json
+   §6 inlines a `valueUrl` that names another cell's `aboutUrl`, so
+   the event in test032 carries its place and its offer as nested
+   objects. Listing all three side by side gives a `describes` array
+   of the right length with the structure flattened out of it.
+4. **JSON numbers compare as NUMBERS, exponent expanded.** `0.0e0`,
+   `0.0` and `0` are one value; the parser keeps the source text, so
+   comparing it failed correct output for a reason that is not a
+   defect. The expansion is exact digit shifting, not a float round
+   trip.
+
+📊 MEASURED, csv2json: **195 pass, 9 fail, 6 skip (out of 210
+attempted)** — from 185. csv2rdf unchanged at 194 pass, 10 fail.
+
+### CSVW: the 58 negative tests, and the cross-check that keeps the
+validator honest (2026-08-23)
+
+Both runners now score the NEGATIVE tests, which were reported as "not
+attempted" all along: a `NegativeRdfTest`/`NegativeJsonTest` asserts
+that the metadata is REJECTED, so it is scored by
+`CSVW.Validate.validate` rather than against an expected document.
+
+`Validate.lean` was a thin slice — it caught 9 of the 58. The suite
+names every rule it wants, so they went in as a set:
+
+- `@id` must not be a blank node, on every object AND inside a common
+  property; `@type` must be a term, a prefixed name or an absolute URL
+  (`"not a link"` is none of the three), and never a blank node.
+- `tables` is required, must be an array, must not be empty, and must
+  hold objects; a table must have a `url`.
+- Common properties may carry only `@id` / `@type` / `@value` /
+  `@language`. `@context`, `@list`, `@set` and any other `@`-name
+  reject. `@value` is exclusive: not both `@type` and `@language`, and
+  no other member beside it; `@language` with no `@value` has nothing
+  to tag.
+- Datatype facets: `length` inside its own min/max, bounds that do not
+  cross, inclusive and exclusive bounds mutually exclusive on a side,
+  a non-empty range, a length facet only on a length-bearing base, a
+  value range only on an ordered one. A datatype `@id` must not be a
+  blank node NOR the URL of a built-in datatype — redefining
+  `xsd:string` is not a definition.
+- Schema structure: column names unique, virtual columns after real
+  ones, a foreign key carrying only `columnReference` and `reference`,
+  its source columns existing, and its DESTINATION table and columns
+  existing in the same document.
+- `@context` may carry only `@base` and `@language`.
+
+📊 MEASURED: **58 pass, 0 fail (out of 58)** on both suites, from 9.
+
+**The cross-check is the part worth keeping.** A negative score can be
+bought with rules that reject everything, and nothing in the negative
+column would ever disagree. So each runner also validates every
+POSITIVE test's metadata and counts the documents the validator
+wrongly rejects. It fired immediately at 3, and all three were the
+same mistake: treating a WARNING as an error. `foreignKeys` given as a
+non-array or holding a non-object member, and `titles` keyed by an
+invalid language, are `ToRdfTestWithWarnings` — the document still
+converts. That is the distinction `Validate.lean`'s own header says it
+exists to preserve, and the new rules had broken it within the hour.
+
+📊 CROSS-CHECK now reads **0** on both suites.
+
+📊 TOTALS over the whole manifest, no longer over a subset:
+**csv2rdf 252 pass, 10 fail, 6 skip (out of 270)**;
+**csv2json 253 pass, 9 fail, 6 skip (out of 270)**.
