@@ -30,6 +30,7 @@ alias={
  "SPARQL.Eval.Limits":"SPARQL.EvalLimits",
  "SPARQL.Eval.TimeBudget":"SPARQL.TimeBudget",
  "OWL.DirectMapping.Filter":"OWL.DirectMappingFilter",
+ "RDF.Entailment.RDFSPlus":"RDFS.RDFSPlus",
 }
 def leafkeys(m):
     p=m.split('.'); s={p[-1].lower()}

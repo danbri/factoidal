@@ -7844,3 +7844,50 @@ stack on long lists — issue #94 on the Turtle path, and the 2026-04-26
 BGP filter-map incident. Lean's `List.append` already has a
 tail-recursive `@[implemented_by]`, so the module's reason for existing
 is absent. It joins `Parser.FastString.*` in the by-design column.
+
+## RDFS-Plus, and a rule row that would have gone missing quietly
+
+`L4Factoidal/RDFS/RDFSPlus.lean` ports
+`formal/fstar/RDF.Entailment.RDFSPlus.fst` (93 lines): RDFS plus a small
+practical OWL subset — `owl:sameAs` (symmetry, transitivity,
+substitution into subject, object and predicate position),
+`owl:inverseOf`, `owl:SymmetricProperty`, `owl:TransitiveProperty`,
+`owl:FunctionalProperty`, `owl:InverseFunctionalProperty`,
+`owl:equivalentClass`, `owl:equivalentProperty`.
+
+The claim level is carried over unchanged: every row has a proved
+licensing and truth-preservation lemma in the F\* tree, and **no
+chain-level completeness is claimed for this tier**. `owl:sameAs`
+introduces equality reasoning, and the Herbrand construction behind the
+ρdf completeness theorem does not survive quotienting by sameAs
+classes.
+
+### The row that had no Lean counterpart
+
+The F\* step calls `owl_rule_inverseOf_domain_range_flip`, which
+`L4Factoidal/OWL/RLClosure.lean` did not have. It is now there as
+`inverseOfDomRngFlipFor`, next to prp-inv1 and prp-inv2 — that is its
+home when the rest of `OWL.Closure` lands, not the RDFS-Plus module.
+
+The row is not in OWL 2 RL/RDF Table 9. It is sound under both Direct
+and RDF-Based Semantics because the extension of an inverse property
+pair is the transposition of the other's, and without it the closure
+derives the INSTANCE-level consequences but not the schema triple. W3C
+SPARQL entailment `sparqldl-11` is what catches the absence.
+
+Dropping it silently was the real risk: the closure would still reach a
+fixed point, still pass every `#guard` about sameAs and transitivity,
+and derive fewer schema triples than the F\* one. The `#guard` that
+`{ :parent owl:inverseOf :child . :parent rdfs:domain :Person }` yields
+`:child rdfs:range :Person` is what makes the row load-bearing.
+
+### `eq-ref` stays out, and a check keeps it out
+
+`x owl:sameAs x` for every node is deliberately absent — a noise row
+that manufactures one triple per node without feeding any downstream
+rule, excluded for the same reason `RDFS.Closure`'s step excludes rdfs6
+and rdfs10. Two `#guard`s assert it does NOT appear. An exclusion with
+no check for it is an exclusion that comes back.
+
+Every `#guard` is paired with a check that the closure is strictly
+larger than its input, so none of them can pass by deriving nothing.
