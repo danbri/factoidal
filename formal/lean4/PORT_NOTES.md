@@ -10028,3 +10028,68 @@ The reason the F\* module gives for keeping these renderers beside the
 types they describe — a missing case fails the totality check instead of
 printing nothing — carries over unchanged to Lean's exhaustiveness
 check.
+
+## SPARQL11.Algebra.BGPRefinement — what an answer of evalBgp MEANS
+
+`formal/fstar/SPARQL11.Algebra.BGPRefinement.fst` (2,234 lines) →
+`L4Factoidal/SPARQL/BgpRefinement.lean`. Layer 2 of the query-rung
+reduction: substitute a solution back into the basic graph pattern and
+every triple lands inside the graph.
+
+```lean
+theorem evalBgp_instantiates_into_graph (b : Bgp) (g : Graph) {mu : Binding}
+    (h : mu ∈ evalBgp b g) : ∀ t ∈ instBgp b mu, Graph.mem t g = true
+```
+
+**No second substitution was written.** The F\* `instantiate_tp` /
+`instantiate_bgp` live in `SPARQL11.Algebra.fst`; the Lean tree already
+had them as `instSubject` / `instObject` / `instTriple` in
+`SPARQL.Update` (the INSERT-template instantiator) and
+`constructPredicate` in `SPARQL.Query`. `instTriple fresh mu tp` at
+`fresh := id` IS `instantiate_tp tp mu`, so `instBgp` is one line over
+it and every lemma is stated about the shipping function. A private copy
+would have let the two drift, and the theorem would then be about the
+copy. `fresh` exists because SPARQL 1.1 Update §4.1.3 makes a blank node
+written in a TEMPLATE fresh per solution; a basic graph pattern being
+matched has no such rule, so `id` is the correct instance rather than a
+convenience.
+
+**The conclusion is `Graph.mem`, and `t ∈ g` is FALSE.** `Graph.mem`
+compares with `Triple.eqb`, the engine equality; list membership
+compares structurally. Two places in the matcher keep a term that is
+only `eqb`-equal to the graph's own:
+
+* `tryBindTerm`'s var case, when the variable is ALREADY bound — the
+  binding is not updated, so the substitution returns the first term
+  bound to that variable;
+* `tryBindTerm`'s literal case — the pattern's own literal is kept and
+  only compared.
+
+A pattern writing a language tag `en` against a graph holding `EN`
+matches, because `langTagEq` is case-insensitive, and the instantiated
+triple is then not a member of the graph list. Four `#guard`s pin that
+case in both directions, with a length pin so neither quantified guard
+is vacuous.
+
+The F\* module takes the other route: `bgp_frag` demands exact literal
+constants, so the two literals coincide and the F\* conclusion can be
+structural. This port proves the theorem for EVERY basic graph pattern
+with no fragment predicate. The two agree where both apply; this one
+also covers patterns the F\* fragment excludes.
+
+**Triple terms are proved, not excluded** — the `tripleTerm` arms of
+every lemma are discharged, including the one where an instantiated
+object position must be read back as a subject.
+
+Supporting lemmas, all proved: `Extends` (a match only ADDS bindings)
+with `refl`/`trans`/`bind`; `tryBindSubject_extends`,
+`tryBindTerm_extends`, `tpMatch_extends`, `evalBgpFrom_extends`;
+`instSubject_mono`, `constructPredicate_mono`, `instObject_mono`,
+`instTriple_mono`; `toTerm_toSubject?`, `toSubject?_of_eqb_toTerm`,
+`constructPredicate_of_instObject`; `tryBindSubject_inst`,
+`tryBindTerm_inst`, `tpMatch_inst`.
+
+**What this is FOR.** `SPARQL11.EntailmentRegime.RDFS` (1,115 lines,
+not ported) composes layer 2 with the ρdf closure to get the RDFS
+entailment regime theorem. This is the half of its input that does not
+mention entailment.
