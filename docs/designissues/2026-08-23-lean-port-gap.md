@@ -10,12 +10,12 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 65 | 41019 |
+| Engine and specification code — to port | 62 | 40687 |
 | Proofs about the F\* implementation — see below | 32 | 33861 |
 | F\*-only machinery with no Lean counterpart by design | 7 | 2861 |
-| **Total not covered** | **104** | **77727** |
+| **Total not covered** | **101** | **77395** |
 
-116 of the 220 F\* modules have a Lean counterpart.
+119 of the 220 F\* modules have a Lean counterpart.
 
 Updated 2026-08-23 after all three HDT modules and `XSD.IEEE754`
 landed, and after ONE false negative was corrected: `DID.Key` has been
@@ -32,7 +32,21 @@ and `SPARQL.Query.Analysis`. The `Dep` group is now empty and `RDFS` is
 down to one module.
 
 Third: `RDF.Canonical.Manifest`, `RDF.Dataset.Merge`, `RDF.Format` and
-`SPARQL.JSON.Escape`.
+`SPARQL.JSON.Escape`. Fourth: `SPARQL.Eval.Limits`,
+`SPARQL.Eval.TimeBudget` and `OWL.DirectMapping.Filter`.
+
+### `RDF.List.Helpers` is a by-design non-port
+
+`RDF.List.Helpers` (195 lines) is tail-recursive replacements for
+`FStar.List.Tot`'s `append` and `concatMap`, which are straightforward
+structural recursions that overflow the OCaml stack on long lists —
+issue #94 on the Turtle parser path, and the 2026-04-26 BGP filter-map
+incident. Lean's `List.append` already carries a tail-recursive
+`@[implemented_by]` version, so the module's reason for existing is
+absent. It belongs with `Parser.FastString.*` in the "no Lean
+counterpart by design" column rather than in the to-port column;
+recorded here because a bare module count would otherwise read it as an
+omission.
 
 ### On the proof column
 

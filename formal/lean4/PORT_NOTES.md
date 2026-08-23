@@ -7768,3 +7768,79 @@ than the rendered string — a double-encoding that round-trips through
 One more guard states a rule that is easy to get wrong in the other
 direction: 0x7F DEL is NOT escaped. "Control character" and "byte below
 0x20" are different sets, and only the second one is the rule.
+
+## A batch of three: the two circuit breakers and the annotation filter
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `SPARQL.Eval.Limits` | 128 | `L4Factoidal/SPARQL/EvalLimits.lean` |
+| `SPARQL.Eval.TimeBudget` | 133 | `L4Factoidal/SPARQL/TimeBudget.lean` |
+| `OWL.DirectMapping.Filter` | 71 | `L4Factoidal/OWL/DirectMappingFilter.lean` |
+
+### `EvalLimits`: both properties proved, not demoted
+
+The F\* module proves the row cap's two properties, and so does this
+one — `takeCapped_length_le_cap` is what makes the breaker a breaker,
+and `takeCapped_unlimited_id` is what makes a disabled cap free. Both
+carry `[propext, Quot.sound]`.
+
+One restatement: the F\* helper lemma puts an `if taken >= max_rows`
+inside its conclusion. Here `taken < c.maxRows` is a hypothesis and the
+at-cap case is its own lemma. Same content, and Lean's `omega` closes
+the arithmetic without the `if` in the way.
+
+The `#guard`s state the sentinel in the direction that is easiest to get
+backwards: a cap of 0 is UNLIMITED, not "keep nothing". Getting it wrong
+turns "no cap" into "every query returns empty".
+
+### `TimeBudget`: the Lean tree's realisation surface here is EMPTY
+
+The F\* module carries one `assume val now_ms : unit -> ML int`. It is
+its only OCaml realisation, acceptable under iron rule #11(a) as pure
+I/O, with its own stub patch (`202_now_ms.sh`).
+
+This module mentions no clock at all. `mkBudgetSecs`, `mkBudgetMs` and
+`pollAt` take the current reading as an ARGUMENT; the caller reads
+`IO.monoMsNow` once, at the edge. That is the rule `SPARQL/Expr.lean`'s
+`EvalEnv.now` already states for §17.4.5.1 `NOW()` — "read once, at the
+edge, and passed in; never an ambient clock call" — applied to the same
+kind of dependency. So the F\* tree's one `assume val` here has no Lean
+counterpart, and the budget logic is a total function of its inputs.
+
+The F\* `ML`-effect `poll` becomes `pollAt`; a caller writes
+`pollAt b (← IO.monoMsNow)`.
+
+The `#guard`s pin the sentinel round-trip that matters: `mkBudgetSecs
+now 0` must be `noBudget` and NOT a deadline equal to `now`. A deadline
+equal to `now` is already expired, so getting it backwards turns "no
+timeout" into "already timed out". They also pin the tolerated
+backward jump the F\* header describes: a clock that goes backwards
+un-expires the budget rather than trapping it.
+
+### `DirectMappingFilter`: the declarations survive the filter
+
+Triples whose predicate is declared `rdf:type owl:AnnotationProperty`
+(or the legacy `owl:OntologyProperty`) are excluded before an
+OWL-Direct closure sees the graph.
+
+The DECLARATION triples themselves survive, because their predicate is
+`rdf:type` and `rdf:type` is never itself so declared. The mapping
+specification excludes annotation ASSERTIONS, not the declarations that
+identify them, and a filter written as "drop every triple mentioning an
+annotation property" gets this wrong. It is a `#guard`.
+
+The F\* module's scope note is carried over verbatim in substance: this
+is the "declared in the same graph being filtered" case, which is what
+the vendored RIF Core corpus exercises. The built-in OWL 2 annotation
+properties that need no declaration, and the `owl:annotated*`
+reification triples, are NOT handled — no corpus test exercises them
+and adding them speculatively is anti-pattern #4.
+
+### And one module that will not be ported
+
+`RDF.List.Helpers` (195 lines) is tail-recursive replacements for
+`FStar.List.Tot`'s `append` and `concatMap`, which overflow the OCaml
+stack on long lists — issue #94 on the Turtle path, and the 2026-04-26
+BGP filter-map incident. Lean's `List.append` already has a
+tail-recursive `@[implemented_by]`, so the module's reason for existing
+is absent. It joins `Parser.FastString.*` in the by-design column.

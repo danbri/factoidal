@@ -27,6 +27,9 @@ alias={
  "RDF.Canonical.Manifest":"RDF.CanonicalManifest",
  "RDF.Dataset.Merge":"RDF.DatasetMerge",
  "SPARQL.JSON.Escape":"SPARQL.JsonEscape",
+ "SPARQL.Eval.Limits":"SPARQL.EvalLimits",
+ "SPARQL.Eval.TimeBudget":"SPARQL.TimeBudget",
+ "OWL.DirectMapping.Filter":"OWL.DirectMappingFilter",
 }
 def leafkeys(m):
     p=m.split('.'); s={p[-1].lower()}
