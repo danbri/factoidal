@@ -266,11 +266,28 @@ def differentFromAsserted (g : Graph) (a b : Term) : Bool :=
     t.p == owlDifferentFrom &&
     ((t.s.toTerm == a && t.o == b) || (t.s.toTerm == b && t.o == a)))
 
+/-- Datatypes whose LEXICAL FORM is its own value, so two different
+    spellings are two different values.
+
+    Only `xsd:string` qualifies here. The first version of this rule
+    said "same datatype, different lexical form" for EVERY datatype,
+    and that is false almost everywhere: `"1"` and `"01"` are one
+    `xsd:integer`, `"1.0"` and `"1.00"` one `xsd:decimal`, and two
+    `rdf:XMLLiteral`s differing only in insignificant whitespace are
+    one value — which is exactly what
+    `WebOnt-miscellaneous-202` asserts, a CONSISTENT premise the rule
+    refuted by declaring a functional property's two spellings of one
+    XML literal distinct. A refuter that reads a spelling difference
+    as a value difference invents contradictions out of formatting. -/
+def lexicalIsValue (dt : WfIri) : Bool := dt == xsdString
+
 def provablyDistinct (g : Graph) (a b : Term) : Bool :=
   if a == b then false
   else match a, b with
     | .literal x, .literal y =>
-        x.val.datatype == y.val.datatype && x.val.lexicalForm != y.val.lexicalForm
+        (x.val.datatype == y.val.datatype && lexicalIsValue x.val.datatype &&
+         x.val.lexicalForm != y.val.lexicalForm)
+        || differentFromAsserted g a b
     | _, _ => differentFromAsserted g a b
 
 /-- Is there a subset of `ts` of size `n` whose members are PAIRWISE

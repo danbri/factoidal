@@ -6867,3 +6867,74 @@ asserts CONSISTENT is scored as a FAILURE. A refuter measured only on
 the cases it is meant to close cannot be caught fabricating a
 contradiction; scoring both directions from one flag is what makes
 the number mean something.
+
+### The `--dl` regime, measured
+
+`lake exe l4owl-probe --dir third_party/testing/owl` with and
+without `--dl`, 2026-08-23:
+
+| Catalog | RL closure only | RL + materialisation + refuter |
+| --- | --- | --- |
+| profile-RL.rdf | 117 pass, 9 fail (out of 126) | 118 pass, 8 fail |
+| profile-EL.rdf | 102 pass, 18 fail, 1 skip (out of 121) | 107 pass, 13 fail, 1 skip |
+| profile-QL.rdf | 82 pass, 5 fail (out of 87) | 82 pass, 5 fail |
+| type-positive-entailment.rdf | 315 pass, 93 fail, 4 unsupported (out of 412) | 318 pass, 90 fail, 4 unsupported |
+| type-consistency.rdf | 485 pass, 94 fail, 4 unsupported (out of 583) | 485 pass, 94 fail, 4 unsupported |
+| type-inconsistency.rdf | 30 pass, 97 fail, 1 skip (out of 128) | 67 pass, 60 fail, 1 skip |
+| **TOTAL** | **1131 pass, 316 fail, 2 skip, 8 unsupported (out of 1457)** | **1177 pass, 270 fail, 2 skip, 8 unsupported** |
+
+The F\* line for the one catalog that has one:
+`owl2_dl_inconsistency` is 126 pass, 1 fail (out of 127) on
+`type-inconsistency.rdf`. Wave 1 reaches 67 pass, 60 fail (out of
+127 decided). The 60 are what waves 2 and later are for.
+
+⚠️ `type-consistency.rdf` is UNCHANGED at 485 pass, 94 fail — and
+that is a net figure hiding a trade, which is exactly what
+anti-pattern #3 forbids leaving unsaid. `--dl` GAINS three
+positive-entailment cases in that catalog (`WebOnt-someValuesFrom-001`,
+`-003`, `somevaluesfrom2bnode`) and LOSES three consistency cases
+(`WebOnt-description-logic-018`, `-020`, `-021`), where the RL clash
+detector fires on the materialised graph. Those three are the named
+residue of this landing.
+
+### Three defects the corpus found in one afternoon
+
+**A spelling difference is not a value difference.** The refuter's
+first `provablyDistinct` said two literals are distinct when they
+share a datatype and differ in lexical form. That is false almost
+everywhere: `"1"` and `"01"` are one `xsd:integer`, `"1.0"` and
+`"1.00"` one `xsd:decimal`, and two `rdf:XMLLiteral`s differing only
+in insignificant whitespace are one value. `WebOnt-miscellaneous-202`
+asserts exactly that last case as CONSISTENT, with a functional
+property carrying two spellings of one XML literal — and the rule
+refuted it. Distinctness is now claimed only for `xsd:string`, where
+the lexical form IS the value.
+
+The general shape: a refuter that reads formatting as meaning
+invents contradictions out of whitespace, and it does so
+CONFIDENTLY, on a premise a human would call obviously satisfiable.
+
+**A witness must not be counted, including by consumers.** The
+materialisation pass writes its existential witness into the graph,
+and the RL clash detector downstream counts blank nodes like any
+other name. On three consistent `WebOnt-description-logic` premises
+that counted witness fired the detector against a bound the
+individual's REAL successors do not exceed. The pass now WITHHOLDS a
+witness where a max-cardinality bound or an `owl:FunctionalProperty`
+declaration could be breached.
+
+Stripping every witness edge from the output was tried first and
+measured WORSE — ten `type-inconsistency` passes and five across the
+profile catalogs lost to save three — because the closure does real
+work on the witnesses it can count soundly. The measurement is what
+settled it; the first fix was the more obviously "correct" one.
+
+**A vacuous truth is not an entailment.** `∀p.C` is `some true` for
+an individual with no known `p`-successor, and the blank-node
+membership pass wrote that membership into the graph, where the
+closure propagated it through `rdfs:subClassOf`. It is not entailed:
+an unseen successor could violate the filler. The positive-soundness
+gate now applies to the blank-node pass as well as the named one.
+The F\* module gates only its named pass; this is the stricter
+reading, and it is the one that keeps `materialise`'s output
+entailed by its input.

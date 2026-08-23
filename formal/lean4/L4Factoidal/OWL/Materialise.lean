@@ -315,6 +315,42 @@ def alreadyHasWitness (st : Store) (i : Subject) (p : WfIri) (c : ClassExpr)
   | .unknown => !succs.isEmpty
   | _        => anyIsMember st succs c 32 == some true
 
+/-- The at-most bound this class expression puts on `p`, if any. -/
+def maxBoundOn (p : WfIri) : ClassExpr → Option Nat
+  | .maxCard k q        => if q == p then some k else none
+  | .exactCard k q      => if q == p then some k else none
+  | .maxQualCard k q _  => if q == p then some k else none
+  | .exactQualCard k q _ => if q == p then some k else none
+  | _                   => none
+
+/-- Would minting a `p`-witness for `i` push it past an at-most bound
+    `i` already carries?
+
+    A witness is a MODEL-CONSTRUCTION device: it may coincide with an
+    existing successor, so it must never be counted against a
+    cardinality bound. The tableau states that rule for itself, but
+    this pass writes its witness INTO THE GRAPH, and the RL clash
+    detector downstream counts blank nodes like any other name. On
+    `WebOnt-description-logic-018` / `-020` / `-021` — three premises
+    the catalog asserts CONSISTENT — that counted witness fired the
+    clash detector against a bound the individual's REAL successors
+    do not exceed.
+
+    Withholding the witness where a bound could be breached fixes it
+    without hiding the witness from the pass that needs it. Stripping
+    every witness edge from the output was tried instead and measured
+    WORSE: it cost ten `type-inconsistency` passes and five across
+    the profile catalogs to save these three, because the closure's
+    clash detection does real work on the witnesses it can count
+    soundly. -/
+def witnessBreachesBound (st : Store) (i : Subject) (p : WfIri) : Bool :=
+  let have' := (successors st i p).length
+  let functional :=
+    (st.withSubjPred (.iri p) rdfType).any (fun t => t.o == Term.iri owlFunctionalProperty)
+  let bounds := (st.withSubjPred i rdfType).filterMap (fun t =>
+    maxBoundOn p (parseClassExpr st t.o 32))
+  (functional && have' ≥ 1) || bounds.any (fun k => have' ≥ k)
+
 /-- The witness triples one existential class expression demands, over
     every individual the graph types with it. -/
 def witnessesForCe (st : Store) (ceS : Subject) (ce : ClassExpr) : List Triple :=
@@ -323,7 +359,7 @@ def witnessesForCe (st : Store) (ceS : Subject) (ce : ClassExpr) : List Triple :
   | some (p, c) =>
     let typed := (st.withPredObj rdfType ceS.toTerm).map (·.s)
     typed.foldl (fun acc i =>
-      if alreadyHasWitness st i p c then acc
+      if alreadyHasWitness st i p c || witnessBreachesBound st i p then acc
       else
         let bw := witnessBNodeId i p
         let edge : Triple := { s := i, p := p, o := .bnode bw }
@@ -402,14 +438,60 @@ def membershipsForCe (st : Store) (individuals : List Subject) (ceS : Subject)
     (ce : ClassExpr) : List Triple :=
   individuals.flatMap (fun i => membershipForPair st i ceS ce)
 
+/-- The individuals that could possibly satisfy `ce`, from the index
+    rather than by trying them all.
+
+    Every shape the positive-soundness gate admits, except an empty
+    `minCard`, REQUIRES an edge or an assertion — `∃p.C` and
+    `≥ k p` (k ≥ 1) need a `p`-edge, `hasValue p v` needs the edge
+    `(· p v)` itself. An individual without one cannot be a member,
+    so `isMember` would answer `none` for it after doing the lookup
+    anyway.
+
+    This is a pure speed restriction: it removes calls whose answer
+    is already known, never a call that could have said `some true`.
+    Trying every individual against every class expression is the
+    product that made the pass the slowest thing in the probe. -/
+partial def candidatesFor (st : Store) (ce : ClassExpr) (individuals : List Subject)
+    : List Subject :=
+  let withEdge (p : WfIri) : List Subject :=
+    ((st.withPred p).map (·.s)).eraseDups.filter (individuals.contains ·)
+  match ce with
+  | .hasValue p v   => ((st.withPredObj p v).map (·.s)).eraseDups.filter
+                         (individuals.contains ·)
+  | .someOf p _     => withEdge p
+  | .minCard k p    => if k == 0 then individuals else withEdge p
+  | .minQualCard k p _ => if k == 0 then individuals else withEdge p
+  -- Every conjunct must hold, so the smallest conjunct's candidate
+  -- set already bounds the intersection.
+  | .intersection cs =>
+      cs.foldl (fun acc c =>
+        let here := candidatesFor st c individuals
+        if here.length < acc.length then here else acc) individuals
+  -- One disjunct is enough, so the candidates are the union.
+  | .union cs => (cs.flatMap (fun c => candidatesFor st c individuals)).eraseDups
+  | _ => individuals
+
 /-- Over the blank-node class expressions. `parseClassExpr` reads the
-    markers on the node itself. -/
+    markers on the node itself.
+
+    The positive-soundness gate applies HERE TOO, not only to the
+    named pass. `∀p.C` is `some true` for an individual with no known
+    `p`-successor — vacuously — but that membership is not ENTAILED:
+    an unseen successor could violate the filler. Writing it puts a
+    triple into the graph that the closure then propagates through
+    `rdfs:subClassOf`, so one unentailed membership becomes a set of
+    unentailed conclusions. The F* module gates only its named pass;
+    gating both is the stricter reading, and it is the one that keeps
+    `materialise`'s output entailed by its input. -/
 def membershipsForBNodeCes (st : Store) (individuals : List Subject)
     (ces : List Subject) : List Triple :=
   ces.flatMap (fun ceS =>
     match parseClassExpr st ceS.toTerm 32 with
     | .unknown => []
-    | ce       => membershipsForCe st individuals ceS ce)
+    | ce       => if cePositiveSound ce
+                  then membershipsForCe st (candidatesFor st ce individuals) ceS ce
+                  else [])
 
 /-- Over the NAMED class expressions, behind the positive-soundness
     gate. `parseCeOfSubject` is used rather than `parseClassExpr`
@@ -422,7 +504,7 @@ def membershipsForNamedCes (st : Store) (individuals : List Subject)
     | .named _   => []
     | .unknown   => []
     | ce         => if cePositiveSound ce
-                    then membershipsForCe st individuals ceS ce
+                    then membershipsForCe st (candidatesFor st ce individuals) ceS ce
                     else [])
 
 /-! ## Structural subclass axioms

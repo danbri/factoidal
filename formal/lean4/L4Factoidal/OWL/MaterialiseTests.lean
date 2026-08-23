@@ -282,4 +282,33 @@ private def gNamedAll : Graph :=
 #guard entails [] ⟨indI, rdfType, .iri exC⟩ == none
 #guard entails gMat ⟨indI, rdfType, bnT "r"⟩ == some true
 
+
+
+/-! ## A witness is withheld where it could breach a bound
+
+The pass writes its witness INTO the graph, and the RL clash
+detector downstream counts blank nodes like any other name. On
+`WebOnt-description-logic-018` / `-020` / `-021` — three premises
+the catalog asserts CONSISTENT — that counted witness fired the
+clash detector against a bound the individual's real successors do
+not exceed. Withholding the witness where a bound could be breached
+is sound: a withheld witness only loses labels. -/
+
+private def gBoundedWitness : Graph :=
+  [ ⟨bn "r", owlOnProperty, .iri exP⟩,
+    ⟨bn "r", owlSomeValuesFrom, .iri exC⟩,
+    ⟨indI, rdfType, bnT "r"⟩,
+    ⟨.iri exP, rdfType, .iri owlFunctionalProperty⟩,
+    ⟨indI, exP, .iri exY⟩ ]
+
+#guard (introduceWitnesses gBoundedWitness).length == gBoundedWitness.length
+
+/-! Drop the functional declaration and the same graph mints one —
+the withholding is the bound, not the successor. -/
+
+private def gUnboundedWitness : Graph :=
+  gBoundedWitness.filter (fun t => t.o != Term.iri owlFunctionalProperty)
+
+#guard (introduceWitnesses gUnboundedWitness).length > gUnboundedWitness.length
+
 end L4Factoidal.OWL.Mat
