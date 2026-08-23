@@ -34,6 +34,7 @@ import L4Factoidal.RDF.EntailmentTests
 import L4Factoidal.RDF.EntailmentSimpleSpec
 import L4Factoidal.RDF.EntailmentRdfSpec
 import L4Factoidal.RDF.EntailmentRdfsSpec
+import L4Factoidal.RDF.Semantics
 import L4Factoidal.SPARQL.Expr
 import L4Factoidal.SPARQL.ExprTheorems
 import L4Factoidal.SPARQL.Query

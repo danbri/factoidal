@@ -51,6 +51,7 @@ alias={
  "RDF.Entailment.Simple.Spec":"RDF.EntailmentSimpleSpec",
  "RDF.Entailment.RDF.Spec":"RDF.EntailmentRdfSpec",
  "RDF.Entailment.RDFS.Spec":"RDF.EntailmentRdfsSpec",
+ "RDF.Entailment.Simple.ModelTheory":"RDF.Semantics",
  # PARTIAL. The domain-neutral maths core the F* tree keeps in
  # Math.Expr.fst is embedded in MathML/Core.lean instead: the same
  # five-constructor AST, exact rational arithmetic, exact roots,

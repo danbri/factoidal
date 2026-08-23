@@ -9652,3 +9652,46 @@ NOT fire when the middle term is a literal, which is the clause an
 implementation is most likely to drop.
 
 Regression: rdf-turtle 313 pass, 0 fail (out of 313) — unchanged.
+
+## `RDF.Entailment.Simple.ModelTheory` → `L4Factoidal/RDF/Semantics.lean`
+
+The model-theoretic side of the entailment ladder, and the
+INTERPOLATION LEMMA proved in both directions.
+
+The three `*.Spec` modules transcribe the SYNTACTIC characterisations.
+This module supplies the structures those characterisations are
+supposed to be about — interpretations, denotation, satisfaction,
+entailment, ICEXT — so the two sides are related by proof instead of by
+assertion.
+
+**RDF 1.1 Semantics §5.2 is the DEFINITION**: "A graph G simply entails
+a graph E when every interpretation which satisfies G also satisfies
+E." §5.3's "a subgraph of G is an instance of E" is a LEMMA about it,
+not the definition, and `interpolationLemma` proves the `iff` rather
+than assuming it. `simpleEntails_iff_mt` then carries the tree's own
+decision procedure across: when it says yes, it is saying something
+about every interpretation.
+
+**The enlargements are named, and the completeness proof is where they
+had to be checked.** The interpretation record is a SUPERSET of the
+genuine simple interpretations — `iext` totalised over the domain
+rather than typed on IP, `iLit` total, assignments total. Each enlarges
+the class, which makes a SOUNDNESS result stronger and a COMPLETENESS
+result harder. `interpolationComplete` is where that bill comes due,
+and it is paid: the Herbrand record is buildable in the enlarged type.
+
+**`iTt` is the quarantine point.** An RDF 1.2 triple term has no
+denotation in either baseline's model theory, so the Herbrand
+interpretation gives it a CONSTANT — which would make two distinct
+triple terms denote one resource. That is why both graphs carry a
+triple-term-free hypothesis, and why the hypothesis is on the theorem
+rather than hidden in the construction.
+
+**The interpretation core comes from `OWL.Semantics.fst`**, which is
+NOT thereby covered: its thirty-odd OWL semantic-condition bundles are
+absent, and only the core plus `icext` is here. The alias table records
+`RDF.Entailment.Simple.ModelTheory` alone.
+
+`subjTerm_of_toSubject?` moved from `EntailmentRdfsSpec` to
+`EntailmentSimpleSpec`, beside `subjTerm`, since three modules now need
+it.

@@ -75,6 +75,17 @@ def subjTerm : Subject → Term
   | .iri i => .iri i
   | .bnode b => .bnode b
 
+/-- `Term.toSubject?` and `subjTerm` are inverse where the first
+succeeds. The generalized-RDF side condition of several rule rows
+arrives as a `toSubject?` success while the specification states it as
+a `subjTerm` equation; this is the bridge. -/
+theorem subjTerm_of_toSubject? : ∀ {t : Term} {s : Subject},
+    t.toSubject? = some s → subjTerm s = t
+  | .iri _, _, h => by simp [Term.toSubject?] at h; subst h; rfl
+  | .bnode _, _, h => by simp [Term.toSubject?] at h; subst h; rfl
+  | .literal _, _, h => by simp [Term.toSubject?] at h
+  | .tripleTerm _ _ _, _, h => by simp [Term.toSubject?] at h
+
 /-- `gs` is the result of replacing the blank nodes of `ps` by `M`, in
 subject position: an IRI is not a blank node so it is unchanged; a
 blank node `b` becomes `M b`, and that is the subject `gs` exactly when

@@ -283,17 +283,6 @@ rows are proved here; they are the ones whose premises are linked
 through `subjTerm`, which is where a transcription is most likely to
 diverge from the table. -/
 
-/-- `Term.toSubject?` and `subjTerm` are inverse where the first
-succeeds. Used by the licence proofs below, where the row's own
-generalized-RDF side condition arrives as a `toSubject?` success and
-the specification states it as a `subjTerm` equation. -/
-theorem subjTerm_of_toSubject? : ∀ {t : Term} {s : Subject},
-    t.toSubject? = some s → subjTerm s = t
-  | .iri _, _, h => by simp [Term.toSubject?] at h; subst h; rfl
-  | .bnode _, _, h => by simp [Term.toSubject?] at h; subst h; rfl
-  | .literal _, _, h => by simp [Term.toSubject?] at h
-  | .tripleTerm _ _ _, _, h => by simp [Term.toSubject?] at h
-
 /-- Every conclusion `rdfs11For g t` produces is an rdfs11 derivation
 from `g` — given that `t` itself is in `g`, which is how the row is
 called. -/
