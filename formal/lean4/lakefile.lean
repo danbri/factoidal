@@ -156,6 +156,10 @@ extern_lib libl4hacl pkg := do
 
 @[default_target] lean_exe «l4shex» where root := `Harness.ShExRun
 
+-- ISO Schematron conformance runner: Schematron/FromXml reads the
+-- .sch, XPath/Mini supplies Validate's `select` and `evalTest`.
+@[default_target] lean_exe «l4schematron» where root := `Harness.SchematronRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.

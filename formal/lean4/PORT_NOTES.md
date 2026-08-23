@@ -5630,3 +5630,62 @@ did not finish either.
 
 No regression: csv2rdf 252 pass of 270, csv2json 253 of 270, JSON
 Schema 726 pass of 726 decided, MathML 56 of 56.
+
+---
+
+## Schematron: an XPath 1.0 subset, and 8 pass, 0 fail (out of 8)
+
+`Schematron/Validate.lean` was ported early and left TWO parameters
+open — `select` (does a rule's `@context` claim this node?) and
+`evalTest` (what does this `@test` evaluate to?) — because the purity
+doctrine keeps host services as arguments rather than a global
+registry. Nothing supplied them, so the module had never met a
+document. Three modules close that:
+
+- `XPath/Mini.lean` — an XPath 1.0 SUBSET over the project's own XML
+  tree. Its header states the accepted grammar in full and the ten
+  functions it knows. Everything else REFUSES with a reason, and the
+  refusal becomes `Schematron.TestResult.undecided`.
+- `Schematron/FromXml.lean` — reads a `.sch` into `Schematron.Schema`.
+  Names are matched on the LOCAL part, because the XML parser is
+  deliberately non-namespace and a Schematron document writes
+  `sch:pattern`.
+- `Harness/SchematronRun.lean` (`lake exe l4schematron`).
+
+📊 MEASURED: **8 pass, 0 fail (out of 8 decided)**, 0 undecided (out
+of 8 cases in `third_party/testing/schematron/manifest.json`).
+
+🔴 THE FIND, again in the shape this port keeps producing: **both bugs
+returned a confident answer of the right type.** Neither crashed,
+neither refused, and the runner counted both as decided.
+
+1. `takeName` used `takeWhile isNameC`, and `:` is a name character
+   because a QName writes `sch:pattern`. So `preceding-sibling::row`
+   came back as ONE name and parsed as a CHILD step looking for an
+   element literally called `preceding-sibling::row`. No document has
+   one, so `count(…)` was 0, `0 < 1` was TRUE, and the assertion that
+   should have fired reported a clean document. A misparse that
+   yields a DEFINITE answer is worse than one that refuses: the
+   refusal is counted apart, the wrong answer is counted as a pass.
+2. `stepFrom` located the context node among its parent's children
+   with `findIdx? (· == ctx)` — a STRUCTURAL comparison. `<row/><row/>`
+   are equal VALUES, so the second row was found at index 0 and both
+   rows reported zero preceding siblings. A sibling position is
+   IDENTITY, not a value; `resolvePath` now carries the index, and the
+   ancestor chain carries each ancestor's index too.
+
+Bug 1 masked bug 2: with the axis misparsed, the identity defect could
+not show. Fixing the parse turned one silent pass into a visible
+failure, which is the only reason the second bug was found at all.
+
+Both are pinned by `#guard` in `XPath/MiniTests.lean`, each with the
+wrong answer it produced written next to it. `FromXmlTests.lean` pins
+the reader, including that `assert` and `report` survive the read as
+DIFFERENT things — the inversion `Validate.applyAssertion` depends on.
+
+The undecided count is 0 here, and that is a fact about this corpus,
+not a claim about XPath. Eight cases use `count`, `not`, `false`,
+attribute tests, a child path, and one reverse axis. `book[1]`,
+`substring-before`, and an ordering comparison against a string are
+all refused — pinned as refusals, so the boundary is a test rather
+than a promise.
