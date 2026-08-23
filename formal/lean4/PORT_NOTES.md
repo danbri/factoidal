@@ -10342,3 +10342,51 @@ Both directions of the measurement error have now bitten in one session:
 a matching rule too loose, then an alias table too sparse. Run the
 name search before quoting a coverage number, and read each hit rather
 than counting it.
+
+## Parser.BallyhooCOTTAS — the eager-load COTTAS dataset store
+
+`formal/fstar/Parser.BallyhooCOTTAS.fst` (241 lines) →
+`L4Factoidal/Cottas/Ballyhoo.lean`.
+
+**The eleven `assume val`s become a record of functions.** The F\* module
+declares an abstract `cottas_handle` and eleven assumed operations over
+it — open, close, summary, named graphs, four encoders, four decoders,
+`search` — each realised in OCaml glue. Lean's port has no `assume val`
+and no axiom: the operations are fields of `StoreOps`, supplied by
+whoever builds the store. This is the same move `RDF.StoreCapabilities`
+already made for the backend tag.
+
+Two things follow, both gains:
+
+1. The derived functions get ordinary equations, so they can be
+   REASONED about. The F\* module's own comments record that three of
+   them were lifted out of glue (issue #448 wave 2) precisely so their
+   relationship to `search` would be stated rather than implicit. Here
+   the relationship is definitional and the comments become theorems:
+   `estimate_eq_search_length`, `predicatePresent_iff`,
+   `graphCandidates_present` and `graphCandidates_complete` — the last
+   two saying the candidate filter is exact in BOTH directions, so a
+   caller that skipped a graph it returns would drop rows and a caller
+   that trusted it would miss none.
+2. A test can build a `StoreOps` from a list of quads with no file and
+   no glue, which is exactly what the pins do.
+
+**The decoders return `Option`, and the F\* ones do not.**
+`cottas_decode_subject : … -> Tot subject` is total in F\* because its
+OCaml realisation RAISES on an unknown reference and F\* cannot see that.
+A reference the dictionary does not hold has no subject, so the Lean
+type says so, and `rowToQuad` drops such a row exactly as it already
+drops a row with an unbound position.
+
+**The three-state graph bound is kept, and so is its reason.**
+`GraphBound` is `unbound` / `default` / `named`, not `Option GraphRef`:
+the optional form conflated "no constraint on the graph column" with
+"the caller means the default graph", which let a plain basic graph
+pattern over the default graph union in every named graph's rows. Three
+`#guard`s pin that the three states give three different answers.
+
+**The documented sharp edge is pinned rather than reproduced silently.**
+On the eager-load path an UNKNOWN graph IRI encodes to `unbound` — no
+constraint — rather than to an empty result. That is the F\* behaviour
+on the same path, it is the dead-code path there too, and a `#guard`
+records it so a later reader meets it as a known edge instead of a bug.
