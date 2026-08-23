@@ -8629,3 +8629,57 @@ path, a path with one as a prefix, and a case variant are all misses.
 They also pin that re-registering replaces, which is what makes
 `unregisterLazyDicts` the fix for a store rewritten under the same
 path — the hazard the header names.
+
+## RDF.Store.Columnar.OffsetIndex → `L4Factoidal/Cottas/OffsetIndex.lean`
+
+The `.p.offsets` reader: per `(row group, predicate)`, the ascending
+row positions inside that row group whose predicate token is that
+predicate. Built on the handle `Cottas/OffsetsWriter.lean` opens, so
+the two halves share one header parser and cannot drift apart about the
+layout. The F\* reader composes `OnDiskIndex.fst`'s
+`read_companion_u32_le` / `read_companion_u64_le` /
+`mmap_companion_open` `assume val`s over an mmap.
+
+**⚠️ The F\* soundness predicate is weaker than its own comment.**
+`offsets_built_correctly`'s comment says a correctly built file's
+"count successful u32 reads at start_off..start_off+4*(count-1) yield
+exactly that ground-truth list". The predicate says only
+`cv.cv_count = length (rows_with_pred rg p)`. A file whose counts are
+right and whose row positions are all wrong satisfies it.
+
+`OffsetsBuiltCorrectly` is the faithful port of the predicate, so
+`rowPositionsFor_count_sound` is the same theorem the F\* module has.
+`OffsetsBuiltCorrectlyStrong` states what the comment describes. Three
+`#guard`s make the difference visible: the fixture satisfies both, and
+a second ground truth with the SAME counts and different positions
+satisfies the count predicate and fails the strong one.
+
+**Non-vacuity.** The soundness theorem's hypotheses are checked
+satisfiable by a `#guard` over the fixture's whole grid, so the theorem
+is about a file that exists.
+
+**`empty` versus `noInfo`.** `empty` is the decisive answer the index
+exists for — skip the row group. `noInfo` is the over-include. A guard
+pins that a truncated file gives `noInfo` and never `empty`: collapsing
+those two would turn a read failure into a skip and drop rows.
+
+## RDF.Store.Columnar.SubjectOffsetIndex → `L4Factoidal/Cottas/SubjectOffsetIndex.lean`
+
+The `.s.offsets` reader, on the handle `SubjectOffsetsWriter` opens.
+One contiguous global row range per subject.
+
+`rangeForSubject_count_sound` depends on NO axioms. Its hypotheses are
+checked satisfiable by a `#guard` that compares the fixture's four
+ranges against a ground truth, including the empty subject the theorem
+is about.
+
+**One constructor fewer than F\*.** The F\* `subject_range_decision`
+keeps "out-of-range subject id" distinct from "no info" while noting
+that today's only caller treats them the same. Here it is one
+constructor, with the reason written down: nothing in the tree consumes
+the distinction, and `rangeForSubject` still separates the two cases,
+so a future caller can have them back without changing the type.
+
+A guard also pins that the fixture's four ranges tile the row space
+with no gap and no overlap, which is what the subject-primary global
+sort means and what makes one range per subject exact.
