@@ -157,6 +157,10 @@ import L4Factoidal.ShEx.Validation
 import L4Factoidal.ShEx.Tests
 import L4Factoidal.ShEx.Shapes
 import L4Factoidal.ShEx.ShapesTests
+import L4Factoidal.ShEx.FromJson
+import L4Factoidal.ShEx.SchemaEq
+import L4Factoidal.ShEx.Compact
+import L4Factoidal.ShEx.CompactTests
 import L4Factoidal.RML.Mapping
 import L4Factoidal.RML.Tests
 import L4Factoidal.RML.JsonPath

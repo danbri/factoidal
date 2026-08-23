@@ -173,6 +173,11 @@ extern_lib libl4hacl pkg := do
 -- and compared with the suite's own assert-xml file (Harness/XsltRun.lean).
 @[default_target] lean_exe «l4xslt» where root := `Harness.XsltRun
 
+-- ShExC differential: every schemas/*.shex read by ShEx/Compact and
+-- compared with the ShExJ twin the same directory ships
+-- (Harness/ShExCRun.lean).
+@[default_target] lean_exe «l4shexc» where root := `Harness.ShExCRun
+
 -- GRDDL conformance over the vendored W3C GRDDL suite: GRDDL/Discovery
 -- finds the transformations, XSLT/Transform runs them, RdfXml reads the
 -- output, and graphs are compared by isomorphism (Harness/GrddlRun.lean).

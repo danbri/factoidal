@@ -6657,3 +6657,94 @@ The remaining 15 are real: multi-transformation merges that come up
 short (`three-transforms` produces 1 of 3, `four-transforms` 2 of 4,
 `multiprofile` 5 of 8), which is the one-level-not-a-fixpoint limit
 `Discovery.lean`'s header states.
+
+## ShExC: 442 match, 0 mismatch, 0 declined (out of 442)
+
+`L4Factoidal/ShEx/Compact.lean` reads the ShEx compact syntax.
+`Harness/ShExCRun.lean` (`lake exe l4shexc`) is a DIFFERENTIAL runner
+over `third_party/testing/shex/schemas/`: every fixture there ships a
+`.shex` and a ShExJ `.json` twin of the same schema, so the corpus is
+its own oracle. The compact reader builds a tree, `FromJson.lean`
+builds a tree from the JSON, and `SchemaEq.lean` compares them.
+
+📊 MEASURED: **442 match, 0 mismatch, 0 declined (out of 442 `.shex`
+files)**. The ShEx validation suite is unchanged at **1075 pass, 104
+fail (out of 1179 decided)**, 3 not read — the two readers now agree
+without either moving.
+
+### Why a differential and not an expectation file
+
+A ShExC parser has no separate ground truth: the schema IS the
+answer. Comparing the two front doors turns the corpus into the
+oracle and points at a disagreement without either side having to be
+blessed. The runner keeps four buckets — match, mismatch, declined,
+no reference — and a REFUSAL is never scored as a mismatch: a
+construct outside the implemented grammar is visibly unparsed, never
+a schema that validates the wrong graphs.
+
+That separation is what made the work tractable. The first run read
+365 match, 53 mismatch, 24 declined. The 24 refusals named exactly
+two grammar holes; the 53 mismatches were four content defects. Had
+refusals been folded into the failures, one number would have covered
+six unrelated causes.
+
+### The defects, and what each produced
+
+Every one produced a schema of the RIGHT SHAPE with wrong content, or
+a refusal where an answer existed. Each is pinned in
+`L4Factoidal/ShEx/CompactTests.lean` beside the fixture that paid for
+it.
+
+1. **`//` was scanned as an empty regular expression.** The regex
+   scanner reached `/` first and read `//` as a PATTERN with no
+   characters, leaving the annotation's predicate and object as loose
+   tokens. Every annotated schema then died at the closing brace
+   ("expected '}', found //" — `1inversedotAnnot3`, `kitchenSink`,
+   `_all` and 11 more). `//` is now punctuation, tested before the
+   regex branch.
+2. **`@fr` had no token.** `@` was punctuation only, so a language
+   tag in a value set reached the shape-reference reader and refused
+   with "expected an IRI, found @" (9 fixtures). A shape label always
+   carries a colon or angle brackets and a language tag never does,
+   so one character of lookahead in the tokenizer separates them.
+   `@~` — EVERY language — is a language stem whose stem is empty,
+   and stays `punct "@"` because there is no tag to carry.
+3. **A wildcard stem range took the wrong kind.** `[. - "v1"]` is a
+   `LiteralStemRange` and `[. - @fr-be]` a `LanguageStemRange`; only
+   the exclusions say which. Assuming an `IriStemRange` built a range
+   over a family the excluded nodes cannot belong to, so the
+   exclusions did nothing. The kind now travels with each exclusion
+   and the range reads it off them.
+4. **`{` after a node constraint was always a shape definition.**
+   `ex:literal ["a" "b"]{2,3}` made `2` a predicate and refused the
+   whole schema (`kitchenSink`). A `{` followed by a number is a
+   repeat range; the guard file pins BOTH readings so the fix is not
+   a licence to drop shape definitions.
+5. **A shape definition's own annotations were left on the floor.**
+   `<S1> { … } // <p> <o>` — the statement reader then saw a loose
+   `//` where the next shape label belonged (4 fixtures).
+6. **Numeric facets were compared as spellings.** `MININCLUSIVE 05`,
+   `5`, `5.0` and `05.00E0` all denote five, and the ShExJ twin
+   writes whichever form its serialiser chose. `canonNumericLexeme`
+   now normalises on both sides — a disagreement about spelling was
+   being reported as a disagreement about the schema, and this one
+   defect accounted for 48 of the 53 mismatches.
+7. **A UCHAR was carried through verbatim.** `<http://a.example/p1>`
+   built a predicate spelled with the escape rather than `.../p1` — a
+   different IRI, so a different schema. In a regular expression the
+   rule is narrower: a UCHAR is a way of WRITING a character and is
+   decoded, while every other backslash escape belongs to the pattern
+   and is carried through untouched. Decoding all of them would turn
+   `\t` into a tab and change what the pattern matches; decoding none
+   left `a` where the twin has `a`.
+8. **A language tag kept its case.** RDF 1.1 Concepts §3.3 puts the
+   lowercase form in the value space: `"x"@en-UK` and `"x"@en-uk` are
+   one literal. Both readers now lowercase.
+
+### The rule this corpus keeps teaching
+
+Defects 3, 6, 7 and 8 all produced a well-formed schema that a
+consumer would accept and act on. Only a second reader of the same
+document caught them. Where a format has two serialisations, the
+differential between them is worth more than any expectation file we
+could write, because it needs no blessing and cannot go stale.

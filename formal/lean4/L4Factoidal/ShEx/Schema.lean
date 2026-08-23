@@ -78,6 +78,54 @@ inductive ValueSetValue where
   | language  (tag : String)
 deriving Repr, DecidableEq, Inhabited
 
+/-- A numeric facet's value in ONE form, whatever lexeme wrote it.
+
+    `MININCLUSIVE 05`, `5`, `5.0`, `05.00E0` all denote five, and the
+    ShExJ twin writes whichever the JSON serialiser chose. Keeping
+    the lexeme verbatim made the two front doors disagree on ten
+    corpus schemas that differ only in leading zeros, a trailing
+    `.0`, or an `E0` — a disagreement about spelling reported as a
+    disagreement about the schema. -/
+def canonNumericLexeme (lex : String) : String :=
+  let cs := lex.toList
+  let (neg, cs) := match cs with
+    | '-' :: r => (true, r)
+    | '+' :: r => (false, r)
+    | _        => (false, cs)
+  let (mant, expPart) :=
+    match cs.findIdx? (fun c => c == 'e' || c == 'E') with
+    | some i => (cs.take i, cs.drop (i + 1))
+    | none   => (cs, [])
+  let exp : Int :=
+    match expPart with
+    | [] => 0
+    | _  =>
+      let (eneg, ed) := match expPart with
+        | '-' :: r => (true, r)
+        | '+' :: r => (false, r)
+        | _        => (false, expPart)
+      let v : Int := (String.ofList ed).foldl
+        (fun a c => a * 10 + (Int.ofNat (c.toNat - '0'.toNat))) 0
+      if eneg then -v else v
+  let (intPart, fracPart) :=
+    match mant.findIdx? (· == '.') with
+    | some i => (mant.take i, mant.drop (i + 1))
+    | none   => (mant, [])
+  let digits := intPart ++ fracPart
+  let point : Int := (intPart.length : Int) + exp
+  let (digits, point) :=
+    if point < 0 then (List.replicate point.natAbs '0' ++ digits, (0 : Int))
+    else if point > (digits.length : Int) then
+      (digits ++ List.replicate (point - (digits.length : Int)).natAbs '0',
+       (digits.length : Int) + (point - (digits.length : Int)))
+    else (digits, point)
+  let cut := point.toNat
+  let hd := (digits.take cut).dropWhile (· == '0')
+  let tl := (digits.drop cut).reverse.dropWhile (· == '0') |>.reverse
+  let hdS := if hd.isEmpty then "0" else String.ofList hd
+  let body := if tl.isEmpty then hdS else hdS ++ "." ++ String.ofList tl
+  if neg && !(hdS == "0" && tl.isEmpty) then "-" ++ body else body
+
 /-- §5.4 node constraint. Numeric facets are verbatim lexemes — see
     the module header. -/
 structure NodeConstraint where

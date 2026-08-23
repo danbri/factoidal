@@ -65,7 +65,7 @@ def objectValueOf (j : Json) : Option ObjectValue :=
   | .string s => some (.iri s)
   | .object _ =>
       match str? "value" j with
-      | some v => some (.literal v (str? "language" j) (str? "type" j))
+      | some v => some (.literal v ((str? "language" j).map String.toLower) (str? "type" j))
       | none   => (str? "@id" j).map ObjectValue.iri
   | _ => none
 
@@ -106,7 +106,8 @@ def valueSetValueOf (j : Json) : Option ValueSetValue :=
   | .object _ =>
       match str? "type" j with
       | some ty =>
-          if ty == "Language" then (str? "languageTag" j).map ValueSetValue.language
+          if ty == "Language" then
+            ((str? "languageTag" j).map String.toLower).map ValueSetValue.language
           else
             match vsvKindOf ty with
             | none => (objectValueOf j).map ValueSetValue.object
@@ -132,13 +133,25 @@ def nodeConstraintOf (j : Json) : NodeConstraint :=
     pattern := str? "pattern" j
     flags := str? "flags" j
     minInclusive := (fld? "mininclusive" j |>.orElse (fun _ => fld? "minInclusive" j)).bind
-      (fun x => match x with | .number n => some n | .string s => some s | _ => none)
+      (fun x => match x with
+                | .number n => some (canonNumericLexeme n)
+                | .string s => some (canonNumericLexeme s)
+                | _         => none)
     maxInclusive := (fld? "maxinclusive" j |>.orElse (fun _ => fld? "maxInclusive" j)).bind
-      (fun x => match x with | .number n => some n | .string s => some s | _ => none)
+      (fun x => match x with
+                | .number n => some (canonNumericLexeme n)
+                | .string s => some (canonNumericLexeme s)
+                | _         => none)
     minExclusive := (fld? "minexclusive" j |>.orElse (fun _ => fld? "minExclusive" j)).bind
-      (fun x => match x with | .number n => some n | .string s => some s | _ => none)
+      (fun x => match x with
+                | .number n => some (canonNumericLexeme n)
+                | .string s => some (canonNumericLexeme s)
+                | _         => none)
     maxExclusive := (fld? "maxexclusive" j |>.orElse (fun _ => fld? "maxExclusive" j)).bind
-      (fun x => match x with | .number n => some n | .string s => some s | _ => none)
+      (fun x => match x with
+                | .number n => some (canonNumericLexeme n)
+                | .string s => some (canonNumericLexeme s)
+                | _         => none)
     totalDigits := int? "totaldigits" j |>.orElse (fun _ => int? "totalDigits" j)
     fractionDigits := int? "fractiondigits" j |>.orElse (fun _ => int? "fractionDigits" j) }
 
