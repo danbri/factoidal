@@ -312,3 +312,79 @@ https://github.com/danbri/factoidal/issues/548 — the F* modules total
 7,867 lines (`Tableau.fst` 1,522, `Tableau.Refute.fst` 4,682,
 `Tableau.CountingOracle.fst` 1,663). Step 1, the class-expression AST
 and graph reader (`L4Factoidal/OWL/ClassExpr.lean`), is done.
+
+# Addendum 4, 2026-08-23 — the OWL DL reasoner, steps 2 and 3
+
+Tracked at https://github.com/danbri/factoidal/issues/548 . Step 1
+(the class-expression AST and graph reader) landed earlier; steps 2
+and 3 wave 1 land here, with step 4's wiring.
+
+## 📊 Measured
+
+`lake exe l4owl-probe --dir third_party/testing/owl [--dl]`
+
+| Regime | Score |
+| --- | --- |
+| RL closure only | 1131 pass, 316 fail, 2 skip, 8 unsupported (out of 1457) |
+| RL + materialisation + refuter (`--dl`) | 1177 pass, 270 fail, 2 skip, 8 unsupported (out of 1457) |
+
+Most of it is one catalog: `type-inconsistency.rdf` goes from 30
+pass, 97 fail to 67 pass, 60 fail (out of 127 decided). The F\* line
+for that catalog is 126 pass, 1 fail, so wave 1 closes about half the
+distance.
+
+⚠️ `type-consistency.rdf` reads 485 pass, 94 fail in BOTH columns,
+and that is a net figure hiding a trade: `--dl` gains three
+positive-entailment cases there and loses three consistency cases
+(`WebOnt-description-logic-018`, `-020`, `-021`) where the RL clash
+detector fires on the materialised graph. Named residue, not a
+wash.
+
+## The design decision worth carrying forward
+
+`Refute.refute` answers `some false` or `none`. It has **no
+`some true`**.
+
+The F\* module returns `Some true` for a saturated clash-free branch
+and its own header then instructs callers to treat it exactly like
+`None`, because the calculus is incomplete. A value that no caller
+may act on is a trap — sooner or later something scores "consistent"
+on it. Wave 1 does not have the value to misuse.
+
+The same discipline shows up twice more in this landing:
+
+* `cePositiveSound` gates what a `some true` may WRITE into a graph,
+  and the gate is structural — a refused shape anywhere inside a
+  Boolean combination closes it;
+* `materialiseWithBudget` caps the membership pass and REPORTS the
+  cap, and the probe scores a budget hit as a cap hit, so an absence
+  verdict on a capped premise is a failure rather than a pass.
+
+## Three defects, and what each says about refuters
+
+Full war stories in `formal/lean4/PORT_NOTES.md` § "OWL DL". The
+short forms:
+
+1. **A spelling difference is not a value difference.** Two literals
+   sharing a datatype and differing in lexical form are not
+   necessarily different values — `"1"` and `"01"` are one
+   `xsd:integer`. `WebOnt-miscellaneous-202` asserts the
+   `rdf:XMLLiteral` whitespace case as CONSISTENT, and the rule
+   refuted it. A refuter that reads formatting as meaning invents
+   contradictions out of whitespace, CONFIDENTLY, on premises a human
+   would call obviously satisfiable.
+2. **A witness must not be counted, including by consumers.** The
+   tableau states that rule for itself, but the materialisation pass
+   writes its witness into the graph and the RL clash detector counts
+   blank nodes like any other name. The rule has to hold downstream
+   too. The first fix — strip every witness edge — was the more
+   obviously "correct" one and measured WORSE by twelve cases; the
+   measurement settled it.
+3. **A vacuous truth is not an entailment.** `∀p.C` holds vacuously
+   of an individual with no known successor, and that membership is
+   not entailed under the open world assumption.
+
+## Correction to Addendum 3's "still absent" list
+
+The COTTAS columnar store above the byte layer remains the only
+named absence. This addendum adds no new one.
