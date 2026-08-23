@@ -164,6 +164,10 @@ extern_lib libl4hacl pkg := do
 -- DATASET isomorphism (Harness/RmlRun.lean).
 @[default_target] lean_exe «l4rml» where root := `Harness.RmlRun
 
+-- RIF Core conformance: syntax and entailment cases from the W3C
+-- suite (Harness/RifRun.lean).
+@[default_target] lean_exe «l4rif» where root := `Harness.RifRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.

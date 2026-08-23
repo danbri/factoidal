@@ -6337,3 +6337,83 @@ out differently and need modules this port does not have — function
 maps, RDF-star terms, collections and containers, non-file sources.
 Pointing the runner at them reports almost everything NOT READ, which
 is the truth about them and not a score.
+
+---
+
+## RIF Core: a second suite that had no runner — 24 pass, 2 fail (out of 26 decided)
+
+`RIF/Core.lean` modelled a RIF rule as RDF TRIPLES. That could not
+state what the corpus asks: no membership, no subclass, no positional
+atoms, no built-ins, so `ex:a # ex:D` and
+`pred:literal-not-identical("1"^^xs:integer "1"^^xs:string)` were
+both unsayable. It is REPLACED rather than kept beside the new
+modules — two models of one thing is exactly the confusion its own
+header warned about, and nothing else in the tree imported it.
+
+Five modules and a runner:
+
+- `RIF/Syntax.lean` — the abstract syntax. A constant is a LEXICAL
+  FORM plus a SYMBOL SPACE, not an RDF term: RIF has `rif:iri`,
+  `rif:local` and every XSD datatype as symbol spaces, and
+  `pred:literal-not-identical` compares the PAIR.
+- `RIF/Ps.lean` — the Presentation Syntax parser, grammar stated in
+  full. 80 of the corpus's 80 documents parse.
+- `RIF/Builtins.lean` — the built-in library, three-valued.
+- `RIF/Engine.lean` — bounded forward chaining, local-constant
+  scoping, and Core SAFENESS.
+- `Harness/RifRun.lean` (`lake exe l4rif`), which also carries the
+  RDF-compatibility mapping: a triple is a frame, `rdf:type` is
+  membership, `rdfs:subClassOf` is subclass.
+
+📊 MEASURED: **24 pass, 2 fail (out of 26 decided)**; 13 UNDECIDED,
+1 not read, 6 import-rejection cases not attempted.
+
+### UNDECIDED is the whole point here
+
+RIF-DTB defines **197 built-ins**. This slice decides a named subset.
+A rule whose body needs one of the others cannot fire, so the closure
+is INCOMPLETE, and an entailment read off it is a guess. `entails`
+returns `.undecided`, and the runner counts those apart — 13 of them,
+all the date/time, duration, list and binary families.
+
+The same rule covers an IMPORT under an entailment regime this port
+does not implement. Reading an OWL-Direct import as plain RDF made
+`Non-Annotation_Entailment` entail a triple that OWL keeps inside an
+annotation — a wrong answer produced with complete confidence, which
+is the failure mode this whole discipline exists to catch.
+
+### Seven defects, six of them found by a case that said the opposite
+
+1. `(* … *)` is an ANNOTATION, not a comment. Treating `(` as an open
+   paren made every annotated document unparsable.
+2. `-` is a name character, so `ex:a->1` scanned as the name `ex:a-`.
+   A frame written without spaces is ordinary RIF.
+3. A conclusion file is a BARE FORMULA with no prologue, and its
+   prefixes come from the premise beside it — or, where the premise
+   only imports a graph, from that graph's own `@prefix` lines.
+4. `pred:is-literal-T` asks about the VALUE SPACE, not the datatype
+   IRI: `"1"^^xs:integer` IS a literal of `xs:decimal`. Comparing
+   IRIs made 24 of the corpus's assertions false and the rule they
+   guarded never fired.
+5. `1` and `true` are the same `xs:boolean` VALUE. Comparing lexical
+   forms made `pred:boolean-less-than("0" "1")` false.
+6. A local constant is DOCUMENT-scoped: the premise's `_p` and the
+   conclusion's are different symbols. Spelling them the same made
+   the premise entail the conclusion, which `Local_Predicate` and
+   `Local_Constant` say must not happen.
+7. SAFENESS is part of being a RIF Core document and a parser cannot
+   see it. Boundness PROPAGATES in two ways the first version missed:
+   `?x = ?y` binds `?y` once `?x` is, and `pred:iri-string` binds
+   either side from the other. One pass over the body called two
+   ordinary documents unsafe.
+
+Named residue: `EBusiness_Contract` and
+`RDF_Combination_Constant_Equivalence_4` are decided and WRONG — the
+second needs RDF constant equivalence (a plain literal and an
+`xs:string` literal denoting one thing), which is a semantics
+question rather than a missing built-in.
+
+No regression: csv2rdf 270 pass, 0 fail (out of 270), csv2json 270
+pass, 0 fail (out of 270), JSON Schema 770 pass, 0 fail (out of 770
+decided), RML-Core 60 pass, 0 fail (out of 60), schematron 8 pass, 0
+fail (out of 8).

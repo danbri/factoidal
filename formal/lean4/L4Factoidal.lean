@@ -165,8 +165,11 @@ import L4Factoidal.RML.Model
 import L4Factoidal.RML.FromGraph
 import L4Factoidal.RML.Eval
 import L4Factoidal.RML.EvalTests
-import L4Factoidal.RIF.Core
-import L4Factoidal.RIF.Tests
+import L4Factoidal.RIF.Syntax
+import L4Factoidal.RIF.Ps
+import L4Factoidal.RIF.Builtins
+import L4Factoidal.RIF.Engine
+import L4Factoidal.RIF.EngineTests
 import L4Factoidal.JSONSchema.Validate
 import L4Factoidal.JSONSchema.Tests
 import L4Factoidal.XPath.Number
