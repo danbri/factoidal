@@ -153,7 +153,7 @@ def tableRowInputs (base : String) (ctx : Ctx) (g : TableGroup) (t : TableDesc)
             let subj := match r.aboutRef.bind (linkIri? tableUrl) with
               | some iri => Subject.iri iri
               | none     => Subject.bnode ("row" ++ toString rowNum)
-            some { subject := subj, inh := inh, result := r }) })
+            some { subject := subj, inh := inh, result := r, name := nm }) })
 
 /-- Everything one table contributes in STANDARD mode: the
     `csvw:Table` node with its common properties, and the rows. -/

@@ -67,17 +67,32 @@ returned, which keeps the cell rather than rejecting it).
 expected `.ttl`, compared by graph isomorphism, driven by
 `manifest-rdf.jsonld`.
 
-📊 **9 pass, 0 fail, 0 comparison-gave-up, 0 skip (out of 9)** — the
-no-metadata subset, both modes. 261 of the 270 manifest entries carry
-metadata (an `implicit` member) and are NOT attempted: they need
-`@context` resolution, `tableSchema` inheritance and metadata
-discovery. That is the next CSVW increment, and it is the whole
-remaining denominator.
+📊 **194 pass, 10 fail, 0 comparison-gave-up, 6 skip (out of 210
+attempted)**, re-measured 2026-08-22 after the metadata parse landed.
+The 58 negative tests are NOT attempted and the runner says so: they
+assert an error rather than a graph, and need the validator's outcome.
 
-Landing that runner cost two real bugs, both recorded in
-`formal/lean4/PORT_NOTES.md`: standard-mode table and group assembly
-was missing from `Emit.lean`, and the isomorphism comparison refused
-above 16 blank nodes and reported the refusal as a difference.
+The runner started the day at **9 pass out of 9 attempted** — only the
+no-metadata subset was reachable, because 261 of the 270 manifest
+entries reference a metadata document. `CSVW/MetadataParse`,
+`CSVW/Common` and `CSVW/Pipeline` closed that, and the denominator
+went from 9 to 210.
+
+Getting there cost about twenty real bugs, every one of them recorded
+in `formal/lean4/PORT_NOTES.md` with the test that found it. The
+pattern worth carrying forward: **almost all of them produced the
+RIGHT number of triples with the wrong content** — a `date` column
+emitting its source text under `xsd:date`, a `propertyUrl` template
+collapsing every column of a table onto one predicate, `xsd:number`
+minted from a CSVW alias, a refusal to compare reported as a
+difference. The score line read "produced 19, expected 19" through
+four consecutive bugs, which is why the runner grew a
+`--dump=<manifest id>` switch that prints both graphs as sorted
+N-Triples.
+
+Still open: multi-document metadata MERGING (as opposed to selection,
+which works), and a handful of single quirks. The six skips are tables
+the corpus does not ship.
 
 **Opened 2026-08-22, same day** (module set ported, W3C suites not yet
 run against the Lean side — that needs harness wiring):
