@@ -5188,3 +5188,35 @@ is still checkable, and it is what stops `Foo` becoming an
 
 📊 MEASURED, csv2rdf: **186 pass, 19 fail, 0 comparison-gave-up, 5
 skip (out of 210 attempted)** — from 179.
+
+### CSVW: four more value rules (2026-08-22)
+
+1. **The `S` count in a time pattern is the fraction-digit count,
+   exactly.** `HH:mm:ss.S` does not accept `15:02:37.143`; reading the
+   whole digit run let three digits through a one-digit pattern
+   (test247).
+2. **A `length` facet on a binary type counts decoded BYTES.**
+   `base64Binary` with `length: 19` describes the nineteen bytes of
+   "Send reinforcements", whose base64 text is twenty-eight characters
+   (test195). `facetLength` does the per-base conversion.
+3. **A BCP 47 primary subtag is 2–8 alphabetic characters.** A single
+   letter is reserved, which is what makes `a-bad-language` invalid
+   despite every subtag being well formed on its own — and the check
+   now applies to a common property's `@language` as well as to a
+   column's `lang` (test073).
+4. **A bare `@type` names a CSVW CLASS.** The metadata document's
+   `@context` IS the CSVW vocabulary, so `"@type": "Table"` means
+   `csvw:Table`; resolving it against the document base produced an
+   `rdf:type` to `<…/tests/Table>` (test263).
+
+📊 MEASURED, csv2rdf: **190 pass, 15 fail, 0 comparison-gave-up, 5
+skip (out of 210 attempted)** — from 186.
+
+What is left, characterised rather than counted: six tests need
+metadata MERGING (§5.1 — file, link and user metadata combined with a
+defined precedence: 017, 034, 035, 036, 148, 149), two need the
+`notes`/table-group shape 306/307 expect, and the rest are single
+quirks (an invalid `@id` making the table node the document URL in
+102; a double's exponent case in 158). The five skips are tables the
+corpus does not ship — the metadata names a `-ref.csv` that is not in
+the tree.

@@ -300,10 +300,24 @@ structure Facets where
   maxExclusive : Option String := none
 deriving Repr, Inhabited
 
+/-- The LENGTH a `length` / `minLength` / `maxLength` facet counts.
+    §5.11.2 measures the VALUE, not its lexical form, so a binary type
+    counts decoded BYTES: `base64Binary` with `length: 19` describes
+    the nineteen bytes of "Send reinforcements", whose base64 text is
+    twenty-eight characters, and `hexBinary` with `length: 2` describes
+    two bytes written as four hex digits (test195). -/
+def facetLength (base : String) (lex : String) : Int :=
+  if base == "hexBinary" then (lex.length + 1) / 2
+  else if base == "base64Binary" then
+    -- 4 base64 characters carry 3 bytes, less one per `=` of padding.
+    let pad := (lex.toList.filter (· == '=')).length
+    (lex.length / 4) * 3 - pad
+  else lex.length
+
 /-- Does the (already normalised) lexical form satisfy every stated
     constraint? -/
-def satisfiesFacets (f : Facets) (lex : String) : Bool :=
-  let len : Int := lex.length
+def satisfiesFacetsFor (base : String) (f : Facets) (lex : String) : Bool :=
+  let len : Int := facetLength base lex
   let ge := fun (b : String) => (facetCompare lex b) != .lt
   let le := fun (b : String) => (facetCompare lex b) != .gt
   let gt := fun (b : String) => (facetCompare lex b) == .gt
@@ -314,6 +328,10 @@ def satisfiesFacets (f : Facets) (lex : String) : Bool :=
   (f.minimum.all ge) && (f.minInclusive.all ge) &&
   (f.maximum.all le) && (f.maxInclusive.all le) &&
   (f.minExclusive.all gt) && (f.maxExclusive.all lt)
+
+/-- The same check with no base-specific length rule. -/
+def satisfiesFacets (f : Facets) (lex : String) : Bool :=
+  satisfiesFacetsFor "string" f lex
 
 /-- One `nnU` component of a duration: digits, an optional fractional
     part, and a unit letter legal in this half of the value. -/
@@ -603,7 +621,11 @@ private def matchDatePattern : Nat → List Char → List Char → DateParts →
         match inp with
         | '.' :: t =>
             let (v, r) := takeRun t
-            if v == "" then none
+            -- The number of `S`s is the number of fractional digits,
+            -- exactly. `HH:mm:ss.S` does not accept `15:02:37.143`
+            -- (test247); reading the whole digit run regardless let
+            -- three digits through a one-digit pattern.
+            if v == "" || v.length != sRun.length then none
             else matchDatePattern fuel rest r { p with frac := some v }
         | _ => matchDatePattern fuel rest inp p
       else
