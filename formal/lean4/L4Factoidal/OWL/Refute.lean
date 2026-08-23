@@ -883,7 +883,19 @@ def depthOf (st : RState) (i : Subject) : Nat :=
     the depth and count caps. The filler is put on each witness. -/
 def ensureWitnesses (g : Graph) (st : RState) (i : Subject) (p : WfIri)
     (k : Nat) (c : ClassExpr) : RState × Bool :=
-  let have' := (successorsOf g st i p false).length
+  -- `∃p.C` is DISCHARGED by a successor that carries `C`, not by any
+  -- successor at all. Counting successors alone was the defect that
+  -- made the ≤-rule fire and find nothing: the materialisation pass
+  -- writes its own `p`-successors into the graph, and an existential
+  -- whose filler is anonymous (`∃f2.¬p1`) gets an edge from it but no
+  -- type — so the count said "discharged", no witness was minted, and
+  -- the filler was never put on any node. Every merge branch then
+  -- pooled labels that did not include it and stayed open
+  -- (WebOnt-description-logic-003 and its family).
+  let succs := successorsOf g st i p false
+  let have' := match c with
+    | .unknown => succs.length
+    | _        => (successorsInFiller st c succs).length
   if have' ≥ k then (st, false)
   else if depthOf st i ≥ maxWitnessDepth then (st, false)
   else

@@ -7129,3 +7129,53 @@ guards against exactly this and says reading them literally
 MANUFACTURES refutations of consistent premises; the guard is now
 ported. It changed no score on this corpus, which is what a
 soundness guard that is not yet being violated looks like.
+
+### Wave 3b — the one line the ≤-rule was waiting on
+
+After the ≤-rule landed, `type-inconsistency.rdf` moved by ONE case.
+Following hazard #27's own rule — instrument whether the rule fires
+before assuming it is incomplete — a scratch driver ran
+`WebOnt-description-logic-003` through the real pipeline and printed
+the state:
+
+```
+premise triples: 36
+closed: 136 triples, 3 rounds
+materialised: 144 triples
+reclosed: 166 triples
+axioms: 67, nodes: 23
+quiet after 1 rounds
+pendingMerge: (some 6)
+  merge bw_f1 <- bw_f3 => open'
+  merge bw_f1 <- bw_f2 => open'
+  … all six open'
+refute 16: none
+```
+
+The rule FIRED — six candidate pairs — and every branch stayed open.
+The pooled labels of the merged nodes did not contain the
+contradiction, because one filler had never been put on any node at
+all.
+
+`ensureWitnesses` tested whether `i` had `k` `p`-successors. It has
+to test whether `i` has `k` `p`-successors CARRYING THE FILLER. The
+difference is invisible while every existential's filler is a named
+class, because the materialisation pass emits `(_:bw rdf:type C)`
+for those. For an anonymous filler — `∃f2.¬p1`, where `¬p1` is a
+blank node — it emits the EDGE ONLY. The count then said
+"discharged", no witness was minted, and `¬p1` was never a label
+anywhere.
+
+One line, seven cases:
+
+📊 `type-inconsistency.rdf`, out of 127 decided: 81 pass, 46 fail →
+**88 pass, 39 fail**. TOTAL 1193 → **1200 pass, 247 fail (out of
+1457)**, in 4 m 33 s. No catalog regressed.
+
+The shape worth keeping: an existential rule that counts EDGES
+instead of MEMBERSHIPS is right on every example whose filler is
+named, and silently drops the obligation on every example whose
+filler is not. Both hand-built guards in `RefuteTests.lean` used
+named fillers. The corpus case that exposed it used an anonymous one,
+and the failure it produced was not a wrong answer — it was a rule
+one layer up firing correctly and finding nothing.

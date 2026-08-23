@@ -337,4 +337,37 @@ MANUFACTURES refutations of consistent premises. -/
 #guard isScaffoldBNode (bnT "__rl_comp__http://e/C")
 #guard !(isScaffoldBNode (bnT "ordinary"))
 
+/-! ## `∃p.C` is discharged by a successor CARRYING `C`
+
+Not by any successor at all. An existential whose filler is
+anonymous gets an edge from the materialisation pass but no type, so
+counting successors said "discharged", no witness was minted, and the
+filler was never put on any node — the ≤-rule then pooled labels that
+did not include it and every branch stayed open
+(`WebOnt-description-logic-003` and its family; seven cases turned on
+this one line). -/
+
+private def gExistingSuccessorWrongClass : Graph :=
+  [ ⟨bn "r", owlOnProperty, .iri exP⟩,
+    ⟨bn "r", owlSomeValuesFrom, .iri owlNothing⟩,
+    ⟨indI, rdfType, bnT "r"⟩,
+    -- An asserted p-successor that is NOT in the filler. The
+    -- obligation is still open, so a witness must be minted and the
+    -- filler put on it — which refutes, since the filler is empty.
+    ⟨indI, exP, .iri exY⟩ ]
+
+#guard refuted gExistingSuccessorWrongClass
+
+/-! With the successor already in the filler the obligation IS
+discharged and nothing is minted. -/
+
+private def gExistingSuccessorRightClass : Graph :=
+  [ ⟨bn "r", owlOnProperty, .iri exP⟩,
+    ⟨bn "r", owlSomeValuesFrom, .iri exC⟩,
+    ⟨indI, rdfType, bnT "r"⟩,
+    ⟨indI, exP, .iri exY⟩,
+    ⟨.iri exY, rdfType, .iri exC⟩ ]
+
+#guard !(refuted gExistingSuccessorRightClass)
+
 end L4Factoidal.OWL.Refute
