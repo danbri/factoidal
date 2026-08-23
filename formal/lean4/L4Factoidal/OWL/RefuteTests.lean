@@ -273,4 +273,68 @@ this calculus is incomplete, so an open branch proves nothing. -/
 #guard refute [⟨indI, rdfType, .iri exC⟩] fuel == none
 #guard refute [] fuel == none
 
+/-! ## The ≤-rule: identifying witness successors
+
+`f1`, `f2` and `f3` are functional with `f3 ⊑ f1` and `f3 ⊑ f2`, and
+`U ≡ ∃f1.p1 ⊓ ∃f2.¬p1 ⊓ ∃f3.p2`. An individual in `U` has an
+`f1`-witness in `p1`, an `f2`-witness in `¬p1`, and an `f3`-witness
+in `p2`. Functionality forces the `f3`-witness to BE the `f1`-witness
+and BE the `f2`-witness, so one element is in `p1` and in `¬p1`.
+
+No clash rule sees this without the ≤-rule: `clashForLabel`'s
+`maxCard` case counts only PROVABLY DISTINCT successors and never
+counts witnesses at all. Seventeen `WebOnt-description-logic`
+inconsistency fixtures are this shape. -/
+
+private def exU : WfIri := ⟨"http://e/U", rfl⟩
+private def exP1 : WfIri := ⟨"http://e/p1", rfl⟩
+private def exP2 : WfIri := ⟨"http://e/p2", rfl⟩
+private def exF1 : WfIri := ⟨"http://e/f1", rfl⟩
+private def exF2 : WfIri := ⟨"http://e/f2", rfl⟩
+private def exF3 : WfIri := ⟨"http://e/f3", rfl⟩
+
+private def gFunctionalMerge : Graph :=
+  [ ⟨.iri exU, owlEquivalentClass, bnT "i"⟩,
+    ⟨bn "i", owlIntersectionOf, bnT "l1"⟩,
+    ⟨bn "l1", rdfFirst, bnT "r1"⟩, ⟨bn "l1", rdfRest, bnT "l2"⟩,
+    ⟨bn "l2", rdfFirst, bnT "r2"⟩, ⟨bn "l2", rdfRest, bnT "l3"⟩,
+    ⟨bn "l3", rdfFirst, bnT "r3"⟩, ⟨bn "l3", rdfRest, .iri rdfNil⟩,
+    ⟨bn "r1", owlOnProperty, .iri exF1⟩, ⟨bn "r1", owlSomeValuesFrom, .iri exP1⟩,
+    ⟨bn "r2", owlOnProperty, .iri exF2⟩, ⟨bn "r2", owlSomeValuesFrom, bnT "nc"⟩,
+    ⟨bn "nc", owlComplementOf, .iri exP1⟩,
+    ⟨bn "r3", owlOnProperty, .iri exF3⟩, ⟨bn "r3", owlSomeValuesFrom, .iri exP2⟩,
+    ⟨.iri exF1, rdfType, .iri owlFunctionalProperty⟩,
+    ⟨.iri exF2, rdfType, .iri owlFunctionalProperty⟩,
+    ⟨.iri exF3, rdfType, .iri owlFunctionalProperty⟩,
+    ⟨.iri exF3, rdfsSubPropertyOf, .iri exF1⟩,
+    ⟨.iri exF3, rdfsSubPropertyOf, .iri exF2⟩,
+    ⟨bn "x", rdfType, .iri exU⟩ ]
+
+#guard refuted gFunctionalMerge
+
+/-! Drop the subproperty axioms and the same graph is satisfiable:
+three separate successors on three unrelated functional properties
+breach nothing. A refuter that merged them anyway would refute an
+ontology with a model. -/
+
+private def gNoSubProperty : Graph :=
+  gFunctionalMerge.filter (fun t => t.p != rdfsSubPropertyOf)
+
+#guard !(refuted gNoSubProperty)
+
+/-! A NAMED individual is never a merge candidate. Its graph-asserted
+edges cannot be rewritten, and a clash read off a half-merged state
+is fabricated. -/
+#guard !(isMergeableTerm (.iri exP1))
+#guard isMergeableTerm (bnT "w")
+
+/-! ## Closure scaffolding is inert
+
+The OWL RL closure materialises `__rl_`-prefixed blank nodes as
+support triples, with an encoding that is deliberately looser than
+the class expression they resemble. Reading one literally
+MANUFACTURES refutations of consistent premises. -/
+#guard isScaffoldBNode (bnT "__rl_comp__http://e/C")
+#guard !(isScaffoldBNode (bnT "ordinary"))
+
 end L4Factoidal.OWL.Refute

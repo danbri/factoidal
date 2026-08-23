@@ -7017,3 +7017,115 @@ free.
 The default is 16. `--refute-budget 24` reproduces the 81, and the
 whole difference is `WebOnt-description-logic-504`. A cap that hides
 which test it costs is a silent cap; this one names it.
+
+## CORRECTION to the wave-2 performance section above
+
+The section "Four performance defects fixed in wave 2, each
+measured" is **wrong**, and so is the sentence that says three of the
+four bought nothing. What actually happened is worse and more useful.
+
+Three of those four edits **were never applied to the file.** The
+scripts that made them read the file, made every replacement in
+memory, and wrote it back at the END — so an `AssertionError` on a
+LATER replacement discarded every earlier one, after the script had
+already printed its progress. The build that followed compiled the
+UNCHANGED file, reported success, and the measurement that followed
+measured the unchanged file. Then the commit message said the fixes
+had landed.
+
+Verified afterwards by grepping the file for each change: the
+indexed successor lookups and the memoised role closures WERE
+present; the threaded search budget, the `labelsOf` lookup and the
+hoisted per-axiom label reads were NOT. A fourth item,
+`differentFromIdx`, was defined and never called — dead code
+described in a commit message as a fix.
+
+📊 With all of them actually applied, the whole `--dl` run goes from
+**26 minutes 34 seconds to 4 minutes 30 seconds** — a 5.9× speedup —
+and the score goes UP by one case. So the conclusion "three of the
+four bought nothing" was drawn from a measurement of code that did
+not contain them.
+
+### The rules this buys
+
+1. **A script that edits a file must write after EACH replacement,
+   or verify the write.** All-or-nothing batching plus per-step
+   progress printing is a lie generator: the output says four edits
+   landed, the file has one.
+2. **A green build is not evidence that an edit landed.** The
+   unchanged file also builds.
+3. **Before writing a performance claim into a commit message, GREP
+   THE FILE for the change.** One `grep -c` per claim. The wave-2
+   commit made five claims and three were false; one `grep -c` each
+   would have caught all three in under a minute.
+4. **A measurement is a measurement OF A BUILD.** Record which build,
+   and re-measure after any edit that was not verified to land.
+
+This is the same family as anti-pattern #27 (an agent commit landing
+on a newer tip silently drops module-list entries — the build exits 0
+and the feature is not built). Both are: the tooling reported success
+for work that did not happen.
+
+## Wave 3: the ≤-rule, and the run that got 5.9× faster
+
+📊 `lake exe l4owl-probe --dir third_party/testing/owl --dl`
+
+| Catalog | RL only | Wave 1 | Wave 2 | Wave 3 |
+| --- | --- | --- | --- | --- |
+| profile-RL.rdf | 117 pass, 9 fail (out of 126) | 118 pass, 8 fail | 118 pass, 8 fail | 118 pass, 8 fail |
+| profile-EL.rdf | 102 pass, 18 fail, 1 skip (out of 121) | 107 pass, 13 fail | 109 pass, 11 fail | 109 pass, 11 fail |
+| profile-QL.rdf | 82 pass, 5 fail (out of 87) | 82 pass, 5 fail | 82 pass, 5 fail | 82 pass, 5 fail |
+| type-positive-entailment.rdf | 315 pass, 93 fail, 4 unsup (out of 412) | 318 pass, 90 fail | 318 pass, 90 fail | 318 pass, 90 fail |
+| type-consistency.rdf | 485 pass, 94 fail, 4 unsup (out of 583) | 485 pass, 94 fail | 485 pass, 94 fail | 485 pass, 94 fail |
+| type-inconsistency.rdf | 30 pass, 97 fail, 1 skip (out of 128) | 67 pass, 60 fail | 80 pass, 47 fail | 81 pass, 46 fail |
+| **TOTAL** | **1131 pass, 316 fail** | **1177 pass, 270 fail** | **1192 pass, 255 fail** | **1193 pass, 254 fail (out of 1457)** |
+
+| | Wall |
+| --- | --- |
+| Wave 2 as committed | 26 m 34 s |
+| Wave 3, with the wave-2 fixes actually applied | 4 m 30 s |
+
+### The ≤-rule, and why the first version of it did nothing
+
+`clashForLabel`'s `maxCard` case counts only PROVABLY DISTINCT
+successors and never counts witnesses at all. A node with more
+successors than `≤ k p` allows, none of them forced apart, is not
+seen by it — and that is the shape of seventeen
+`WebOnt-description-logic` inconsistency fixtures. The SHIQ ≤-rule
+closes it: identify two successors not yet forced apart, pool their
+labels, and keep going.
+
+The first implementation REWROTE EDGES: redirect every `extra` edge
+mentioning the absorbed node, move its labels, drop its node. On an
+isolated hand-built graph it worked and `refute` returned
+`some false`. On the corpus it changed NOTHING.
+
+The reason: the `--dl` regime runs the materialisation pass FIRST,
+and that pass writes its own existential witnesses INTO the graph.
+By the time the refuter sees them they are graph-asserted blank
+nodes, not entries in `extra` — and an edge in the input graph cannot
+be rewritten. Every successor that mattered came from there.
+
+The fix is the F\* module's own answer for named individuals, applied
+to all of them: identification at READ TIME. `RState.ident` records
+(absorbed, representative) pairs; `labelsOf` pools the group's labels
+and `successorsOf` maps its results through the representative, so a
+merge REDUCES the count a `≤ k` bound is measured against without
+touching an edge.
+
+⚠️ Worth keeping: the hand-built guard passed for the rewriting
+version. A single synthetic graph proved the rule correct and said
+nothing about whether it would ever FIRE on the real input — which is
+the `measuring-inference` lesson about synthetic shapes lying about
+real vocabularies, in the one place I did not expect it.
+
+### Closure scaffolding is now inert
+
+`RLRules.lean` materialises `__rl_`-prefixed blank nodes as support
+triples for blank-node conclusion matching, with an encoding
+deliberately looser than the class expression they resemble. The
+refuter was parsing them as real class expressions. The F\* module
+guards against exactly this and says reading them literally
+MANUFACTURES refutations of consistent premises; the guard is now
+ported. It changed no score on this corpus, which is what a
+soundness guard that is not yet being violated looks like.

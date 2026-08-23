@@ -228,6 +228,17 @@ structure RState where
       per round, and a list scan of the whole graph at each of them
       is what made `type-inconsistency` take 78 seconds. -/
   store      : Store := Store.ofGraph []
+  /-- Terms this branch HYPOTHESISES to denote one domain element,
+      as (absorbed, representative) pairs. The ≤-rule writes them;
+      `labelsOf` and `successorsOf` read them.
+
+      Identification is done at READ TIME, not by rewriting edges.
+      An edge asserted in the input graph cannot be rewritten at all,
+      and the materialisation pass puts its own existential witnesses
+      INTO the graph — so an edge-rewriting merge silently missed
+      every successor that came from there, which is most of them on
+      the real path. Pooling at read time covers both. -/
+  ident      : List (Term × Term) := []
 
 def maxWitnessDepth : Nat := 3
 def maxGeneratedWitnesses : Nat := 6
@@ -237,8 +248,39 @@ def maxGeneratedWitnesses : Nat := 6
 def memCe (c : ClassExpr) (ls : List ClassExpr) : Bool :=
   ls.any (fun l => ceEq c l)
 
+/-- The representative of a term under this branch's
+    identifications. -/
+partial def repOf (st : RState) (t : Term) : Term :=
+  match st.ident.find? (fun q => q.1 == t) with
+  | some (_, r) => if r == t then t else repOf st r
+  | none        => t
+
+def identifiedWith (st : RState) (t : Term) : List Term :=
+  if st.ident.isEmpty then [t]
+  else
+    let r := repOf st t
+    (t :: r :: (st.ident.filterMap (fun q =>
+      if repOf st q.1 == r then some q.1 else none))).eraseDups
+
+/-- `addLabel` keeps ONE entry per subject, so the unidentified case
+    is a LOOKUP and not a gather. The `filter`-then-`flatMap` version
+    this replaces scanned the whole node list to the end every time,
+    and `clashNodes` calls it once per node — quadratic in the node
+    count, per round.
+
+    With identifications present the read is POOLED across the group:
+    once two terms are identified, a clash entailed by the UNION of
+    their labels has to be visible from either one. -/
 def labelsOf (st : RState) (i : Subject) : List ClassExpr :=
-  (st.nodes.filter (fun n => n.id == i)).flatMap (·.labels)
+  if st.ident.isEmpty then
+    match st.nodes.find? (fun n => n.id == i) with
+    | some n => n.labels
+    | none   => []
+  else
+    ((identifiedWith st i.toTerm).filterMap termAsSubject).flatMap (fun j =>
+      match st.nodes.find? (fun n => n.id == j) with
+      | some n => n.labels
+      | none   => [])
 
 /-- Add one label. `unknown` is never stored: it constrains nothing
     and would only make the label sets longer. The Boolean says
@@ -328,14 +370,20 @@ def supsOf (st : RState) (p : WfIri) : List WfIri :=
 def successorsOf (_g : Graph) (st : RState) (i : Subject) (p : WfIri)
     (counted : Bool) : List Term :=
   let roles := subsOf st p
-  let fromGraph := roles.flatMap (fun r => (st.store.withSubjPred i r).map (·.o))
-  let viaInverse := roles.flatMap (fun r =>
-    (inversesOf st.inv r).flatMap (fun r' =>
-      (st.store.withPredObj r' i.toTerm).map (·.s.toTerm)))
+  let selves := (identifiedWith st i.toTerm).filterMap termAsSubject
+  let fromGraph := selves.flatMap (fun j =>
+    roles.flatMap (fun r => (st.store.withSubjPred j r).map (·.o)))
+  let viaInverse := selves.flatMap (fun j =>
+    roles.flatMap (fun r =>
+      (inversesOf st.inv r).flatMap (fun r' =>
+        (st.store.withPredObj r' j.toTerm).map (·.s.toTerm))))
   let fromExtra := st.extra.filterMap (fun e =>
-    if e.s == i && roles.contains e.p && (!counted || e.counts) then some e.o
-    else none)
-  (fromGraph ++ viaInverse ++ fromExtra).eraseDups
+    if selves.contains e.s && roles.contains e.p && (!counted || e.counts)
+    then some e.o else none)
+  let raw := (fromGraph ++ viaInverse ++ fromExtra).eraseDups
+  -- Identified successors collapse to ONE term, which is what makes a
+  -- merge REDUCE the count a `≤ k` bound is measured against.
+  if st.ident.isEmpty then raw else (raw.map (repOf st)).eraseDups
 
 /-- `Trans(r)` holds for `r` and for its inverse alike. -/
 def roleIsTransitive (st : RState) (r : WfIri) : Bool :=
@@ -353,14 +401,6 @@ def differentFromAsserted (g : Graph) (a b : Term) : Bool :=
     t.p == owlDifferentFrom &&
     ((t.s.toTerm == a && t.o == b) || (t.s.toTerm == b && t.o == a)))
 
-/-- The indexed form, for the paths that run per label per round. -/
-def differentFromIdx (st : RState) (a b : Term) : Bool :=
-  (match termAsSubject a with
-   | some sa => (st.store.withSubjPred sa owlDifferentFrom).any (fun t => t.o == b)
-   | none    => false)
-  || (match termAsSubject b with
-      | some sb => (st.store.withSubjPred sb owlDifferentFrom).any (fun t => t.o == a)
-      | none    => false)
 
 /-- Datatypes whose LEXICAL FORM is its own value, so two different
     spellings are two different values.
@@ -777,16 +817,33 @@ partial def normalizeUnsatList (us : List WfIri) : List ClassExpr → List Class
 
 end
 
+/-- A blank node the OWL RL closure minted as SCAFFOLDING.
+
+    `RLRules.lean` materialises canonical restriction-membership
+    blank nodes (`__rl_comp__…`, `__rl_minc1__…`) as SUPPORT triples
+    for the corpus's blank-node conclusion matching. Their encoding
+    is deliberately loose — membership is asserted on a weaker
+    condition than the class expression they resemble would require —
+    so reading one literally as a class expression MANUFACTURES
+    refutations of consistent premises. Every class expression this
+    module parses maps them to `unknown`, which is inert in labels,
+    axioms and branching. Dropping a constraint is always sound. -/
+def isScaffoldBNode : Term → Bool
+  | .bnode b => b.startsWith "__rl_"
+  | _        => false
+
 /-- Normalise BETWEEN parse and NNF, so the NNF negation of a
     normalised bottom simplifies (`nnfNeg owl:Nothing = owl:Thing`)
     and the two spellings of a complement pair converge. Normalising
     AFTER the NNF would leave `∃q.¬first:Nothing` beside
     `∃q.owl:Thing` — one extension, two expressions, no match. -/
 def parseNnfWith (us : List WfIri) (st : Store) (t : Term) : ClassExpr :=
-  nnf (normalizeUnsat us (parseClassExpr st t 32))
+  if isScaffoldBNode t then .unknown
+  else nnf (normalizeUnsat us (parseClassExpr st t 32))
 
 def parseNnfSubjectWith (us : List WfIri) (st : Store) (sub : Subject) : ClassExpr :=
-  nnf (normalizeUnsat us (parseCeOfSubject st sub))
+  if isScaffoldBNode sub.toTerm then .unknown
+  else nnf (normalizeUnsat us (parseCeOfSubject st sub))
 
 def parseNnf (st : Store) (t : Term) : ClassExpr := nnf (parseClassExpr st t 32)
 
@@ -953,12 +1010,18 @@ def edgeEntailsMembership (g : Graph) (st : RState) (i : Subject) (a : ClassExpr
     rules see it. -/
 def applyAxiomsEdges (tb : List (ClassExpr × ClassExpr)) (g : Graph) (st : RState)
     (i : Subject) : RState × Bool :=
-  tb.foldl (fun (acc : RState × Bool) (a, d) =>
-    if !(memCe a (labelsOf acc.1 i)) && edgeEntailsMembership g acc.1 i a then
-      let (s1, c1) := addLabel acc.1 i a
+  -- The node's label read is HOISTED and refreshed only when an axiom
+  -- actually fires — the sole way the labels change in this loop.
+  -- Reading them per AXIOM costs one node-list walk per axiom per
+  -- node per round.
+  let (st', ch, _) := tb.foldl (fun (acc : RState × Bool × List ClassExpr) (a, d) =>
+    let (s0, c0, ls) := acc
+    if !(memCe a ls) && edgeEntailsMembership g s0 i a then
+      let (s1, c1) := addLabel s0 i a
       let (s2, c2) := addLabel s1 i d
-      (s2, acc.2 || c1 || c2)
-    else acc) (st, false)
+      (s2, c0 || c1 || c2, labelsOf s2 i)
+    else acc) (st, false, labelsOf st i)
+  (st', ch)
 
 /-- Fire an axiom whose left-hand side is an INTERSECTION when every
     conjunct is present as a SEPARATE label.
@@ -970,16 +1033,18 @@ def applyAxiomsEdges (tb : List (ClassExpr × ClassExpr)) (g : Graph) (st : RSta
     left-hand side and hence in the right-hand side. -/
 def applyAxiomsConj (tb : List (ClassExpr × ClassExpr)) (st : RState) (i : Subject)
     : RState × Bool :=
-  tb.foldl (fun (acc : RState × Bool) (a, d) =>
+  let (st', ch, _) := tb.foldl (fun (acc : RState × Bool × List ClassExpr) (a, d) =>
+    let (s0, c0, ls) := acc
     match a with
     | .intersection cs =>
-        if cs.isEmpty || memCe a (labelsOf acc.1 i) then acc
-        else if cs.all (fun c => memCe c (labelsOf acc.1 i)) then
-          let (s1, c1) := addLabel acc.1 i a
+        if cs.isEmpty || memCe a ls then acc
+        else if cs.all (fun c => memCe c ls) then
+          let (s1, c1) := addLabel s0 i a
           let (s2, c2) := addLabel s1 i d
-          (s2, acc.2 || c1 || c2)
+          (s2, c0 || c1 || c2, labelsOf s2 i)
         else acc
-    | _ => acc) (st, false)
+    | _ => acc) (st, false, labelsOf st i)
+  (st', ch)
 
 /-- `owl:FunctionalProperty p` is a global `≤ 1 p` on every node,
     which folds the functionality constraint into the existing
@@ -1002,6 +1067,92 @@ def onePass (tb : List (ClassExpr × ClassExpr)) (g : Graph) (st : RState)
     let (s3, c3) := applyAxiomsEdges tb g byLabel.1 n.id
     let (s4, c4) := applyAxiomsConj tb s3 n.id
     (s4, byLabel.2 || c3 || c4)) (st1, ch1)
+
+/-! ## The ≤-rule: merging witness successors
+
+`clashForLabel`'s `maxCard` case fires only on PROVABLY DISTINCT
+successors, and it never counts witnesses. So a node with more
+successors than `≤ k p` allows, whose successors are not forced
+apart, is not caught by it at all — and the commonest shape is
+exactly that: two separate `∃`-witnesses, or a witness and an
+asserted successor of a subrole, widened together by a role
+hierarchy or an `owl:FunctionalProperty` declaration. Seventeen of
+the `WebOnt-description-logic` inconsistency fixtures are that shape.
+
+The standard SHIQ ≤-rule closes it: pick two successors not yet
+forced apart and IDENTIFY them, merging labels and redirecting
+edges, until the count is within `k` or a clash appears.
+
+**Why triggering on witnesses is sound.** If `≤ k p` holds of `i` in
+every model and `i` has more than `k` successors as TERMS, then in
+every model some two of those terms denote one domain element — that
+is what `≤ k p` says, by pigeonhole. WHICH pair coincides is a
+choice the rule makes arbitrarily, so for REFUTATION every choice
+must close: the search branches over every mergeable pair and
+requires ALL of them to clash, exactly as it does for a union's
+disjuncts.
+
+**Why only witnesses may be merged.** A witness blank node never
+appears in the input graph, so every edge that could mention it
+lives in `extra` and can be COMPLETELY redirected. A named
+individual's graph-asserted edges cannot be rewritten this way, so
+merging one in would leave a half-merged state — and a clash read
+off a half-merged state is fabricated. Excluding named individuals
+withholds refutations; including them would invent them.
+
+A pair already forced apart is never offered: merging a provably
+distinct pair is unsound, not merely unhelpful. -/
+
+/-- A blank node stands for an EXISTENTIAL witness rather than for a
+    named individual — whether this module minted it (`_:tw_`), the
+    materialisation pass minted it (`_:bw_`), or the document carries
+    it. All three are existentially quantified, so identifying two of
+    them is a choice a model may make.
+
+    A NAMED individual is excluded. Merging one is a further wave;
+    withholding it loses refutations, which is the safe direction. -/
+def isMergeableTerm : Term → Bool
+  | .bnode _ => true
+  | _        => false
+
+private def witnessPairs (g : Graph) (succs : List Term) (k : Nat)
+    : List (Term × Term) :=
+  if succs.length ≤ k then []
+  else
+    let ws := succs.filter isMergeableTerm
+    ws.flatMap (fun a =>
+      ws.filterMap (fun b =>
+        if a != b && !(provablyDistinct g a b) then some (a, b) else none))
+
+/-- The witness pairs a `≤ k p` label could be forced to identify. -/
+def mergePairsForLabel (g : Graph) (st : RState) (i : Subject) (l : ClassExpr)
+    : List (Term × Term) :=
+  match l with
+  | .maxCard k p       => witnessPairs g (successorsOf g st i p false) k
+  | .maxQualCard k p _ => witnessPairs g (successorsOf g st i p false) k
+  | _                  => []
+
+/-- Identify `a` with `b`: ONE entry in the branch's identification
+    list. Nothing is rewritten — `labelsOf` and `successorsOf` pool
+    the group when they read it.
+
+    Rewriting was tried first and does not work here. An edge
+    asserted in the INPUT GRAPH cannot be rewritten at all, and the
+    materialisation pass writes its own existential witnesses into
+    the graph, so a rewriting merge silently missed every successor
+    that came from there — which on the real path is most of
+    them. -/
+def mergeInto (st : RState) (a b : Term) : RState :=
+  if repOf st a == repOf st b then st
+  else { st with ident := st.ident ++ [(repOf st a, repOf st b)] }
+
+/-- The first node whose `≤` label forces a merge, and the choices. -/
+def pendingMerge (g : Graph) (st : RState) : Option (List (Term × Term)) :=
+  st.nodes.findSome? (fun n =>
+    n.labels.findSome? (fun l =>
+      match mergePairsForLabel g st n.id l with
+      | []    => none
+      | pairs => some pairs))
 
 /-! ## The search
 
@@ -1027,39 +1178,65 @@ def pendingUnion (st : RState) : Option (Subject × List ClassExpr) :=
           else some (n.id, cs)
       | _ => none)))
 
+/-- The search, with the budget THREADED through the branches rather
+    than handed to each in full.
+
+    A per-branch budget lets a node with `d` choices grow a tree of
+    `d^budget` states: siblings each get the whole allowance and the
+    total is the product. A threaded budget makes them draw from ONE
+    pool, so the search costs what the pool says and no more. Running
+    out answers `out`, which the caller reads as "not refuted" — the
+    same withholding as every other cap here.
+
+    Returns the verdict and what is left. -/
 partial def search (tb : List (ClassExpr × ClassExpr)) (g : Graph) (st : RState)
-    (fuel : Nat) : Verdict :=
-  match fuel with
-  | 0     => .out
+    (budget : Nat) : Verdict × Nat :=
+  match budget with
+  | 0     => (.out, 0)
   | n + 1 =>
-    if clashNodes g st then .clash
+    if clashNodes g st then (.clash, n)
     else
       let (st', changed) := onePass tb g st
       if changed then search tb g st' n
-      else if clashNodes g st' then .clash
+      else if clashNodes g st' then (.clash, n)
       else
         match pendingUnion st' with
-        | none          => .open'
-        | some (i, cs)  =>
-          -- Every disjunct must close for the union to refute the
-          -- node. One branch out of fuel makes the whole answer
+        | some (i, cs) =>
+          -- EVERY disjunct must close for the union to refute the
+          -- node. One branch out of budget makes the whole answer
           -- indeterminate: it might have stayed open.
-          let rec tryAll : List ClassExpr → Verdict
-            | []      => .clash
+          let rec tryAll (ds : List ClassExpr) (b : Nat) : Verdict × Nat :=
+            match ds with
+            | []      => (.clash, b)
             | c :: tl =>
                 let (sb, _) := addLabel { st' with
                   nodes := st'.nodes.map (fun m =>
                     if m.id == i then
                       { m with labels := m.labels.filter (fun l =>
                           match l with
-                          | .union ds => !(ClassExpr.beqList ds cs)
+                          | .union es => !(ClassExpr.beqList es cs)
                           | _         => true) }
                     else m) } i c
-                match search tb g sb n with
-                | .clash => tryAll tl
-                | .open' => .open'
-                | .out   => .out
-          tryAll cs
+                match search tb g sb b with
+                | (.clash, b') => tryAll tl b'
+                | (.open', b') => (.open', b')
+                | (.out, b')   => (.out, b')
+          tryAll cs n
+        | none =>
+          -- No union left. The ≤-rule may still force a choice, and
+          -- every mergeable pair must close.
+          match pendingMerge g st' with
+          | none       => (.open', n)
+          | some pairs =>
+            let rec tryMerges (ps : List (Term × Term)) (b : Nat) : Verdict × Nat :=
+              match ps with
+              | []           => (.clash, b)
+              | (x, y) :: tl =>
+                  match search tb g (mergeInto st' x y) b with
+                  | (.clash, b') => tryMerges tl b'
+                  | (.open', b') => (.open', b')
+                  | (.out, b')   => (.out, b')
+            tryMerges pairs n
 
 /-! ## The entry point -/
 
@@ -1086,10 +1263,10 @@ def initState (g : Graph) : RState :=
     refuted, which covers both "the budget ran out" and "the
     expansion went quiet without a clash". There is no `some true`:
     see the module header. -/
-def refute (g : Graph) (fuel : Nat) : Option Bool :=
+def refute (g : Graph) (budget : Nat) : Option Bool :=
   if immediateInconsistency g then some false
   else
-    match search (collectAxioms g) g (initState g) fuel with
+    match (search (collectAxioms g) g (initState g) budget).1 with
     | .clash => some false
     | _      => none
 
