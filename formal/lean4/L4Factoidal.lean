@@ -202,6 +202,8 @@ import L4Factoidal.OWL.ClassExpr
 import L4Factoidal.OWL.FunctionalSyntax
 import L4Factoidal.OWL.FunctionalSyntaxTests
 import L4Factoidal.OWL.ClassExprTests
+import L4Factoidal.OWL.Materialise
+import L4Factoidal.OWL.MaterialiseTests
 import L4Factoidal.HTTP.Client
 import L4Factoidal.HTTP.ClientTests
 import L4Factoidal.HTTP.RunQuery

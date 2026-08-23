@@ -209,7 +209,20 @@ partial def parseClassExpr (st : Store) (t : Term) (fuel : Nat) : ClassExpr :=
     | .bnode _ =>
       (match termAsSubject t with
        | none => .unknown
-       | some s =>
+       | some s => parseCeMarkers st s n)
+    | _ => .unknown
+
+/-- The class expression a SUBJECT's OWN markers denote, with `n` the
+    already-decremented fuel.
+
+    Split out of `parseClassExpr` because a NAMED class expression
+    exists: OWL 2 RDF-Based semantics lets an IRI subject carry
+    `owl:onProperty` / `owl:unionOf` / `owl:intersectionOf` and denote
+    exactly that class. `parseClassExpr` maps every IRI straight to
+    `named` — correct where an IRI appears as a FILLER, since the
+    filler's own definition is the closure's business — so it can
+    never see those markers. Reading them needs this entry. -/
+partial def parseCeMarkers (st : Store) (s : Subject) (n : Nat) : ClassExpr :=
          match firstObject st s owlIntersectionOf with
          | some head => .intersection (parseClassExprList st (walkRdfList st head (n + 1)) n)
          | none =>
@@ -270,8 +283,7 @@ partial def parseClassExpr (st : Store) (t : Term) (fuel : Nat) : ClassExpr :=
               match cardinalityValue st s owlCardinality with
               | some k => .exactCard k p
               | none   => .unknown)
-         | _ => .unknown)
-    | _ => .unknown
+         | _ => .unknown
 
 partial def parseClassExprList (st : Store) (ts : List Term) (fuel : Nat)
     : List ClassExpr :=
@@ -279,11 +291,23 @@ partial def parseClassExprList (st : Store) (ts : List Term) (fuel : Nat)
 
 end
 
-/-- The class expression a SUBJECT denotes. -/
+/-- The class expression a SUBJECT denotes, read from its OWN
+    markers.
+
+    This is NOT `parseClassExpr` applied to the subject as a term. For
+    an IRI subject that function answers `named` without looking at
+    anything, so a NAMED restriction — `z owl:onProperty p ;
+    owl:someValuesFrom C`, which OWL 2 RDF-Based semantics says
+    denotes exactly `∃ p. C` — came back as the opaque class `z` and
+    every membership it entails went unwritten. A subject with no
+    markers at all still falls back to `named` for an IRI, which is
+    what it denotes, and to `unknown` for a blank node, which denotes
+    nothing this reader can name. -/
 def parseCeOfSubject (st : Store) (s : Subject) : ClassExpr :=
-  let t : Term := match s with
-    | .iri i   => .iri i
-    | .bnode b => .bnode b
-  parseClassExpr st t (st.graph.length + 8)
+  match parseCeMarkers st s (st.graph.length + 8) with
+  | .unknown => (match s with
+                 | .iri i   => .named i
+                 | .bnode _ => .unknown)
+  | ce       => ce
 
 end L4Factoidal.OWL
