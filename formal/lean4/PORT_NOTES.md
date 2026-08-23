@@ -10736,3 +10736,58 @@ form and is applied twice to one string.
 
 Coverage after this landing: 189 of 220 F\* modules covered, 31 not
 covered.
+
+---
+
+## `RDF.Entailment.Simple.Refinement` → `RDF/EntailmentSimpleRefinement.lean` (2026-08-23)
+
+**An engine gap came out first.** The F\* module proves the shipping
+backtracking search COMPLETE for the specification. Stating that in Lean
+found the statement false of the port: `matchObject` bound a top-level
+blank node but fell straight to `termMatch` for an RDF 1.2 triple term,
+and `termMatch` compares a triple term's subject and interior object by
+identity. So `a p <<( a p _:b )>>` matched only a premise carrying the
+same interior label, and `simpleEntails` answered `false` on a pair the
+substitution `_:b` to `c` relates. The F\* `match_term`
+(`RDF.Entailment.Simple.fst:94`) always recursed; the port had dropped
+the recursion. The arm now recurses, and
+`entailsSimple_tripleTerm_interior_bnode` pins the witness.
+
+**Sound and complete, both unconditional — unlike the F\* source.** The
+F\* soundness half carries a `graph_exact` side condition, with
+`simple_entails_not_sound_unconditionally` as the witness that it cannot
+be dropped. The cause is named in that module's banner: the shipping
+`literal_eq` folds language-tag case and compares two
+`rdf:XMLLiteral`-typed literals by exclusive canonical XML, so it is
+strictly coarser than literal term equality. This tree's
+`literalStrictEq` is `==` on `Literal`, whose `BEq` comes from
+`DecidableEq`, so it IS literal term equality and neither half needs a
+side condition. Reporting the F\* condition here would name a
+restriction the Lean statement does not carry. The coarser comparisons
+live in the regime variants (`literalValueEq D`), whose specification is
+model-theoretic and is not ported.
+
+**Two properties of the search, proved apart.** Completeness cannot go
+through "the search finds the witness mapping", which is false — the
+search commits to the first candidate that works and may return a
+different mapping than the given substitution describes. So:
+
+1. `searchInstance_isSome` — the route the witness substitution picks
+   out succeeds, so `List.findSome?` returns SOMETHING. It claims
+   `isSome` and nothing about which mapping.
+2. `searchInstance_certifies` — whatever it returns, `instanceCert`
+   re-checks successfully.
+
+`entailsWith_complete` composes them.
+
+**The idiom that carries a step's match to the end.** Each matcher's
+soundness lemma is stated for EVERY later mapping, not only for the one
+it returns: `∀ m', Extends m' m1 → ps.instance? m'.toFun = some gs`.
+That quantifier is what lets an early triple's match survive the
+bindings the later triples add, and it removes the need for a separate
+"the label stays bound" invariant. `Mapping.lookup` reads the first
+entry, so a prepend could shadow; the search never prepends a label it
+already holds, which is what makes `Extends.cons` provable.
+
+Coverage after this landing: 190 of 220 F\* modules covered, 30 not
+covered.

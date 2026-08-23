@@ -176,16 +176,33 @@ def matchSubject (m : Mapping) (hs gs : Subject) : Option Mapping :=
       | some t => if t == gs.toTerm then some m else none
       | none   => some ((b, gs.toTerm) :: m)
 
-/-- Match the conclusion object `ho` against the premise object `go`.
-An unbound blank node binds to `go` when `bindable go`. -/
+/-- Match the conclusion object `ho` against the premise object `go`,
+threading the binding. An unbound blank node binds to `go` when
+`bindable go`; an RDF 1.2 triple term is entered componentwise, so a
+blank node INSIDE a triple term binds like any other.
+
+The interior recursion is not decoration. Without it the object arm
+fell straight to `termMatch`, which compares a triple term's subject
+and interior object by identity — so `_:a p <<( x q _:b )>>` could
+match only a premise whose interior blank node carried the SAME label,
+and the decision procedure answered `false` on entailments that hold.
+`entailsSimple_tripleTerm_interior_bnode` in
+`RDF/EntailmentSimpleRefinement.lean` pins the witness. The F* source's
+`match_term` (`RDF.Entailment.Simple.fst:94`) always recursed; this arm
+did not, and the port carried the gap until 2026-08-23. -/
 def matchObject (leq : Literal → Literal → Bool) (bindable : Term → Bool)
-    (m : Mapping) (ho go : Term) : Option Mapping :=
-  match ho with
-  | .bnode b =>
+    (m : Mapping) : Term → Term → Option Mapping
+  | .bnode b, go =>
       match m.lookup b with
       | some t => if t == go then some m else none
       | none   => if bindable go then some ((b, go) :: m) else none
-  | _ => if termMatch leq go ho then some m else none
+  | .tripleTerm ps pp po, .tripleTerm gs gp go =>
+      if pp == gp then
+        match matchSubject m ps gs with
+        | some m1 => matchObject leq bindable m1 po go
+        | none    => none
+      else none
+  | ho, go => if termMatch leq go ho then some m else none
 
 /-- Backtracking search for an instance mapping: structural on the
 conclusion triples, breadth over the premise triples. -/

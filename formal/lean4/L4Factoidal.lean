@@ -32,6 +32,7 @@ import L4Factoidal.RDFS.SchemaSplit
 import L4Factoidal.RDF.Datatypes
 import L4Factoidal.RDF.Entailment
 import L4Factoidal.RDF.EntailmentTheorems
+import L4Factoidal.RDF.EntailmentSimpleRefinement
 import L4Factoidal.RDF.EntailmentTests
 import L4Factoidal.RDF.EntailmentSimpleSpec
 import L4Factoidal.RDF.EntailmentRdfSpec
