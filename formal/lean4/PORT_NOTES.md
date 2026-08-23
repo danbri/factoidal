@@ -9869,3 +9869,42 @@ the theorem.
 
 `Graph.renameBnodes` is reused rather than redefined; the F\* module
 defines its own only because its tree keeps that operation elsewhere.
+
+## `RDF.Entailment.RDFS.DatatypeClash` → `L4Factoidal/RDF/EntailmentRdfsDatatypeClash.lean`
+
+D-inconsistency detection under RDFS D-entailment, for the two shapes
+that are decidable: an ill-formed literal under a recognised datatype,
+and a range declaration onto a recognised datatype used with a literal
+of a different one.
+
+**The recognised-datatype gate is the whole design.** An unrecognised
+datatype's lexical form is not checked at all — that is the rdf-mt
+suite's own framing, where a test passes when the implementation is
+"configured to recognize all the datatypes in the list of recognized
+datatypes". Four `#guard`s pin the gate in both directions, because a
+detector that ignored it would report clashes the semantics does not
+require.
+
+**Rule (b) gates on the RANGE's target only, not on the literal's own
+datatype.** The fact being decided is membership in `C`'s value space,
+and `C` is recognised — which is why a fixture whose only recognised
+datatype is `xsd:integer`, with a plain-literal object typed
+`xsd:string`, is still a clash.
+
+**The whole graph is threaded through, and that is not stylistic.**
+Searching the shrinking recursion suffix instead would silently miss a
+clash whenever the matching literal triple sorts BEFORE the
+`rdfs:range` declaration — exactly the order the rdf-mt range-clash
+fixtures come in. The F\* source records that its own single-parameter
+version failed its vacuity guards for this reason; a `#guard` here
+checks the reversed order directly.
+
+**Incomplete BY DESIGN, and the file says so.** A graph whose only
+inconsistency is a malformed `rdf:XMLLiteral` under a datatype the
+literal checker does not model is reported as "not proven
+inconsistent" — correctly, not silently — and a caller must not paper
+that over as a pass.
+
+`literalIllFormed` is reused verbatim from `RDF.Datatypes` rather than
+re-derived: it already carries the whitespace-strict numeric lexical
+grammar the XSD whitespace-facet tests probe.
