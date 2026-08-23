@@ -359,6 +359,32 @@ The engine arm now recurses, and
 `entailsSimple_tripleTerm_interior_bnode` pins the witness that used to
 decide `false`.
 
+### Ninth: a partial port that does NOT move the count
+
+`RDF.NTriples.RoundTrip` (1504 lines) got a partial port —
+`Syntax/NTriplesRoundTrip.lean` carries the serialiser-injectivity half
+and the print-safe IRI fragment — and is still counted as NOT covered.
+
+The F\* source reaches an IRI round trip through a character-list
+detour. The Lean module does not, and the reason is worth separating
+from the F\* one. F\*'s obstacle is that its scanner reads bytes
+through `assume val` primitives with no base-value equations, so no
+branch fires for any input. Lean's parser has no such obstacle: it
+reduces, it runs, and the module's `#guard`s execute it. What stops the
+theorem is that `readIriRefBody` has ten match arms, two carrying six-
+and ten-character escape patterns, and generating Lean's per-arm
+equation lemmas for it exhausts the container's memory —
+`#check @readIriRefBody.eq_11`, alone in a file, is killed by the OOM
+killer before any proof is attempted.
+
+Filed as <https://github.com/danbri/factoidal/issues/565> with the
+scanner refactor that unblocks it.
+
+The rule this sets: a module counts as covered when the Lean side
+carries the F\* module's result, not when a file with a matching name
+exists. Aliasing this one would have moved the number by one and made
+it mean less.
+
 ## Not covered, by group
 
 | Group | Modules | F* lines |

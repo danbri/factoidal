@@ -10848,3 +10848,46 @@ about the evaluator.
 
 Coverage after this landing: 191 of 220 F\* modules covered, 29 not
 covered.
+
+---
+
+## `RDF.NTriples.RoundTrip` → `Syntax/NTriplesRoundTrip.lean` (2026-08-23, PARTIAL)
+
+**Counted as NOT covered.** The module carries the serialiser-injectivity
+half and the print-safe IRI fragment; the F\* source also reaches an IRI
+round trip, and this does not. Aliasing it would move the coverage
+number without carrying the result.
+
+**Two different blockers, easy to confuse.** The F\* source's Finding 1
+is that its parser is unreachable for ANY input: every byte goes through
+five `assume val` FastString primitives and the axiom set has no
+base-VALUE fact, so `fs_byte_at "<" 0 == 0x3C` fails. Its Finding 2(b)
+is that the F\* serialiser routes every literal through
+`nq_escape_literal`, blocking literals on the serialiser side — which is
+why the F\* fragment is IRIs and blank nodes only.
+
+Neither transfers. `readIriRefBody` and `escapeLiteral` are ordinary
+Lean functions over `List Char`; they reduce and the module's `#guard`s
+run them. What stops the Lean round trip is that `readIriRefBody` has
+ten match arms, two carrying six- and ten-character escape patterns, and
+Lean's per-arm equation-lemma generation for it exhausts the container's
+memory. Measured: `#check @readIriRefBody.eq_11`, in a file whose only
+other content is the import, is killed by the OOM killer. The step lemma
+elaborates in about 34 seconds and several gigabytes in isolation and
+does not survive being placed next to any other declaration.
+
+Filed as <https://github.com/danbri/factoidal/issues/565> with the
+refactor — split the scanner into a shallow-match one-character step
+function plus a driver — that unblocks it. That touches a shipping
+parser with its own test surface, so it is separate work.
+
+**Why a fragment at all, and this part IS proved.** `RDF.isIri` asks
+only for a non-empty string containing a colon, so `a:b>c` is a
+well-formed `WfIri` and is not print-safe: serialising it emits
+`<a:b>c>` and the parser stops at the first `>`, recovering `a:b` and
+leaving `c>` unread. A `#guard` runs that witness. No unrestricted
+round-trip statement is true whatever proof machinery arrives, and
+`iriPrintSafe` names the IRIs on which the two sides agree.
+
+Coverage after this landing: unchanged at 191 of 220 covered, 29 not
+covered.
