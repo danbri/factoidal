@@ -168,6 +168,11 @@ extern_lib libl4hacl pkg := do
 -- suite (Harness/RifRun.lean).
 @[default_target] lean_exe «l4rif» where root := `Harness.RifRun
 
+-- XSLT 1.0 conformance over the vendored w3c/xslt30-test subset:
+-- XSLT/Transform runs the stylesheet, the result tree is serialised
+-- and compared with the suite's own assert-xml file (Harness/XsltRun.lean).
+@[default_target] lean_exe «l4xslt» where root := `Harness.XsltRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.

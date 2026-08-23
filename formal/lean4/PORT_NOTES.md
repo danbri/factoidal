@@ -6417,3 +6417,144 @@ No regression: csv2rdf 270 pass, 0 fail (out of 270), csv2json 270
 pass, 0 fail (out of 270), JSON Schema 770 pass, 0 fail (out of 770
 decided), RML-Core 60 pass, 0 fail (out of 60), schematron 8 pass, 0
 fail (out of 8).
+
+## XSLT 1.0 and a real XPath 1.0 engine (2026-08-23)
+
+Landed `L4Factoidal/XPath/{Data,Expr,Eval}.lean` — the XPath 1.0 data
+model, grammar and evaluator — and `L4Factoidal/XSLT/Transform.lean`,
+which reads a stylesheet, instantiates it and serialises the result
+tree. Runner: `lake exe l4xslt`, over the 88 vendored cases of
+`third_party/testing/xslt` (a subset of `w3c/xslt30-test`).
+
+**Score: 81 pass, 3 fail (out of 84 decided), 4 refused (out of 88
+manifest entries).**
+
+### Why a second XPath module rather than extending `XPath/Mini.lean`
+
+`Mini` addresses a node by a `/tag[i]/tag[j]` PATH STRING built from
+ELEMENTS ONLY. That is the right model for Schematron, whose findings
+name a node to a human. It cannot carry XSLT: `text()`, `comment()`,
+`processing-instruction()` and `node()` address nodes that path has no
+name for. Extending `Mini` would have changed the node identity
+Schematron already depends on, so `Full` is a second model in its own
+namespace (`L4Factoidal.XPath.Full`) and `Mini` is untouched.
+
+The namespace split was forced by the library root failing to import:
+both models need a type called `Step` and a function called `eval`,
+and they are different types and different functions. That failure is
+the good outcome — the alternative is two `Step`s shadowing each
+other.
+
+### Twelve defects, and what each of them produced
+
+Every one produced a document of the RIGHT SHAPE with the wrong
+content. None produced an error.
+
+1. **`::` scanned into the name.** `:` is a Name character, so
+   `self::a` tokenised as ONE name that the node-test reader took for
+   a child element called `self::a`. The pattern parsed cleanly and
+   matched nothing. `[5] QName` carries at most one colon; the
+   tokenizer now stops before a second.
+2. **Insertion sort skipped past equal keys.** `xsl:sort` is stable
+   (§10). Skipping while `y ≤ x` put a node after its equals; the fix
+   skips only while `y` is STRICTLY smaller. `sort-001` sorts `Hello`
+   and `617-939-5938`, both NaN, and asks for them in document order
+   in the ascending AND the descending pass — 11 sort cases at once.
+3. **`|` split inside predicates.** Splitting `match="*[self::a|
+   self::b]"` on every `|` gave two fragments, neither of which
+   parses, so the template matched nothing while the stylesheet
+   looked fine. The splitter now tracks brackets and quotes.
+4. **A name-only template has no pattern.** Running the empty string
+   through the pattern parser made it unreadable and refused the whole
+   stylesheet for a template that matches nothing by design.
+5. **`data-type` and `order` are ATTRIBUTE VALUE TEMPLATES.** Taking
+   `data-type="{$typer}"` literally made it neither `number` nor
+   `text`, and the engine fell back to a text sort: a correctly
+   ordered list under the wrong ordering.
+6. **A FilterExpr's predicate saw a one-element context.** Encoding
+   `(a|b|c)[last()]` as a `self::node()` step with the predicate
+   attached gave every node `last() = 1`, so the filter kept
+   everything. `Expr.filter` now evaluates the predicate against the
+   whole filtered set.
+7. **A comment split one text node into two.** §3.4 strips a
+   whitespace-only text node from the stylesheet. A comment between
+   two runs of character data splits what is one text node in the
+   prepared stylesheet, the first half often whitespace-only.
+   Stripping before merging deleted indentation the transform is
+   supposed to emit.
+8. **An empty text node is not a node.** Keeping one made an element
+   with no content serialise as `<td></td>` rather than `<td/>` — the
+   same infoset, a different document under the canonical comparison
+   the suite makes.
+9. **`exclude-result-prefixes` was ignored.** Every literal result
+   element carried every namespace declaration in scope on it,
+   including ones the stylesheet had explicitly excluded.
+10. **`xsl:element` with an unprefixed name said nothing about its
+    namespace.** §7.1.2 puts such a name in the DEFAULT namespace,
+    which may be NONE; emitting no declaration let the element
+    inherit the enclosing result element's default namespace and
+    become a different element.
+11. **A redeclared prefix moved to the end of the context.** That
+    list is the order the result element's declarations are written
+    in, so a stylesheet that redeclares a prefix to the same URI
+    produced the right declarations in the wrong order.
+12. **A node-set from a second document was walked against the
+    first.** `document('')//ped:test` carries addresses that only
+    mean something against the stylesheet's own tree; reading them
+    against the source tree silently selected nothing.
+
+Two arithmetic rules were also written out rather than left to
+whichever `/` Lean's `Int` denotes: `Int.fdiv` for `floor`/`ceiling`
+and `Int.tdiv` for `mod` and `div`. Lean's `/` on `Int` is Euclidean,
+which floors for a positive divisor — right for `floor` by accident,
+wrong for `mod`, whose remainder takes the sign of the DIVIDEND
+(§3.5).
+
+### What the runner refuses, and why that is a third bucket
+
+`transform` returns `Outcome.refused` with a reason for an XSLT
+element outside the implemented set, a match pattern it cannot parse,
+or an expression it cannot evaluate. The runner counts those apart —
+never as a pass, never as a failure. The four:
+
+- `boolean-026`, `boolean-027` — XPath 2.0 value comparisons (`eq`,
+  `lt`, …). The suite itself marks them `same-as-1.0 no`.
+- `copy-0601` — `xsl:copy-of` with the XSLT 2.0 `copy-namespaces`
+  attribute, also marked `same-as-1.0 no`. Ignoring the attribute
+  would copy namespaces where the test asks for them to be dropped
+  and still emit a document.
+- `select-5901` — `document('select-59.xml')` needs file I/O, which
+  `XPath.Eval` deliberately does not have. `document('')` is
+  resolvable without it and is implemented.
+
+### The three residual failures, named
+
+- `copy-3102` — namespace declarations in a different ORDER. The
+  suite's expected files are not self-consistent about this: sorting
+  by prefix (what C14N does) fixes this case and breaks
+  `conflict-resolution-1301` and `copy-3701`, whose expected files
+  keep declaration order with the default namespace NOT first.
+  Declaration order matches the most of them.
+- `node-1601` — the order of the `namespace::` axis, which XPath 1.0
+  leaves implementation-defined. The expected file's order is neither
+  declaration order, nor its reverse, nor alphabetical.
+- `namespace-4801` — `xsl:copy` of a node from the stylesheet's OWN
+  document. Defect 12 fixed the path evaluation; the copy still reads
+  its namespace context from the primary document, because `Rt` holds
+  one document. Fixing it means threading the document through
+  `Item`.
+
+### A comparison artifact worth writing down
+
+49 of the 84 decided cases first landed in the whitespace bucket for
+ONE reason: the vendored expected files carry CRLF line endings, and
+every XML processor — this project's parser included — applies §2.11
+line-end normalisation on input. Comparing engine output against the
+RAW BYTES of the expected file therefore differed on every line of
+every document that has one. Applying §2.11 to the expected text is
+reading it as XML rather than as bytes; it is not a loosening of the
+comparison. The runner's remaining `pass-loose` bucket applies the
+same whitespace collapse to both sides.
+
+No regression: `lake build` green over 511 targets, which runs every
+`#guard` in the tree.
