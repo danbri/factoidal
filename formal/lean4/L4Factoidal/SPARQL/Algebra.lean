@@ -68,6 +68,27 @@ shadow later ones (matching the F* representation exactly). -/
 
 abbrev VarName := String
 
+/-! ## The constants a triple pattern pins
+
+Port of `triple_pattern_bound` from `formal/fstar/SPARQL11.Algebra.fst`.
+A physical store answers a pattern by its BOUND positions: whichever of
+subject, predicate and object the pattern fixes to a constant. Variables
+are `none`.
+
+It lives in the algebra, as in the F\* source, so that every store
+reader and every planner sees the same record without importing a plan
+module. `SPARQL.PlanStreamable`'s `StreamBound` is now an abbreviation
+of this record — it had been a second copy of the same three fields,
+written when the Lean algebra had no such type. -/
+structure PatternBound where
+  s : Option Subject := none
+  p : Option WfIri := none
+  o : Option Term := none
+  deriving Repr, DecidableEq, Inhabited
+
+/-- No position bound: the all-variables pattern. -/
+def patternBoundAll : PatternBound := {}
+
 /-- A solution mapping (also called a binding row). -/
 abbrev Binding := List (VarName × Term)
 

@@ -72,15 +72,14 @@ inductive StreamGoal where
   | ask
   deriving DecidableEq, Repr, Inhabited
 
-/-- The constants a triple pattern pins, position by position. The F\*
-    module reuses `triple_pattern_bound` from the algebra; the Lean
-    algebra has no such record, so it is stated here with the same
-    three fields. -/
-structure StreamBound where
-  s : Option Subject := none
-  p : Option WfIri := none
-  o : Option Term := none
-  deriving Repr, Inhabited
+/-- The constants a triple pattern pins, position by position.
+
+    This WAS a second copy of the algebra's own three-field record,
+    written when the Lean algebra had no `triple_pattern_bound`
+    counterpart. The algebra now carries `PatternBound`, so this is an
+    abbreviation of it and the store readers and the streaming planner
+    share one type, as they do in the F\* source. -/
+abbrev StreamBound := PatternBound
 
 structure StreamPlan where
   domain : StreamDomain

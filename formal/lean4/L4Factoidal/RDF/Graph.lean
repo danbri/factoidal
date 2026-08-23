@@ -228,4 +228,35 @@ theorem graphMem_of_graphMem_eqb {g : Graph} {u t : Triple}
   obtain ⟨v, hv, hve⟩ := exists_of_graphMem h
   exact graphMem_of_exists ⟨v, hv, Triple.eqb_trans hve he⟩
 
+/-! ## Which triple positions a reader actually needs
+
+Port of `col_need` from `formal/fstar/RDF.Graph.Executable.fst`. A
+columnar reader that already knows a row matches still has to decode
+the row's three positions to build a `Triple`. When the caller consumes
+only some of them — an OPTIONAL or FILTER that projects one variable —
+the rest need not be decoded at all. This record is how a caller says
+which ones it needs.
+
+It lives HERE, in the lowest module that both the store readers and the
+algebra can see, for the same reason the F\* source puts it in
+`RDF.Graph.Executable`: it inverts nobody's dependency edge.
+
+Narrowing `ColNeed` may only change WHICH positions are cheaply
+decoded, never which rows match or their order. It carries no flag for
+the graph column, because the graph column is always decoded whatever
+the query shape. -/
+structure ColNeed where
+  s : Bool
+  p : Bool
+  o : Bool
+  deriving Repr, DecidableEq, Inhabited
+
+/-- All three positions needed — the "decode everything" baseline, and
+the safe default for a caller that has not computed a real `ColNeed`. -/
+def colNeedAll : ColNeed := { s := true, p := true, o := true }
+
+/-- No position needed. Only safe when the caller genuinely consumes
+none of the pattern's variables. -/
+def colNeedNone : ColNeed := { s := false, p := false, o := false }
+
 end L4Factoidal.RDF

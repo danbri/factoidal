@@ -9154,3 +9154,62 @@ and the reasoned `MV_Undef` failure value (`MathML.Core` uses a bare
 `Option`, so a caller cannot tell "not a number" from "divided by
 zero"). The layering inversion and the suggested fix are
 <https://github.com/danbri/factoidal/issues/557>.
+
+## `RDF.Store.Capabilities` → `L4Factoidal/RDF/StoreCapabilities.lean`
+
+The store capability seam: one record of functions in place of the
+backend tag six dispatchers used to match on. `StoreCaps` is the read
+seam, `StoreWriteCaps` the write seam, `Store` the pair, `DatasetCaps`
+the graph-scoped composition, and `unionCaps` the read-only federation.
+
+**The split is kept, and it is the reason this port could land at
+all.** The F\* module carries only the types, the in-memory builder and
+the union combinator; the COTTAS-on-disk builder and the delta overlay
+live in sibling modules so this one reaches no file or memory-map call.
+Those two siblings are NOT ported here, because each needs a module the
+Lean tree still lacks — `RDF.CottasStore` and
+`RDF.Store.Columnar.DeltaMerge`.
+
+**Three types moved to the home the F\* tree gives them.**
+
+* `ColNeed` is now in `RDF/Graph.lean`, matching `RDF.Graph.Executable`.
+* `PatternBound` is now in `SPARQL/Algebra.lean`, matching
+  `SPARQL11.Algebra`. `SPARQL/PlanStreamable.lean`'s `StreamBound` had
+  been a second copy of the same three fields — its own comment said so
+  ("the Lean algebra has no such record") — and is now an abbreviation
+  of `PatternBound`. One record, two readers, as in F\*.
+* `DeltaEntry` and its payload bytes are now in
+  `Storage/DeltaLog.lean`. That module had been ported framing-only, so
+  the write seam had no entry type to refer to. Sections 3 and 4 of
+  `RDF.Store.Columnar.DeltaLog.fst` — length-prefixed strings, terms,
+  subjects, triples, graph names and the five-constructor payload — are
+  now there with round-trip `#guard`s that all carry a NON-EMPTY tail,
+  so a parser that consumed the wrong number of bytes fails the check
+  instead of passing on a buffer that ended where it stopped.
+
+**Two limits are inherited from F\* and both are refusals.** A triple
+term serialises to a bare tag byte and `parseTerm` refuses tag 3, so it
+cannot round-trip through the delta log; the F\* banner says the same.
+A `rdf:dirLangString` literal serialises its language tag but not its
+direction, so the parsed literal has a tag and no direction, which
+`literalWf` rejects — the record is refused rather than accepted with
+the direction silently dropped. Both are pinned by `#guard`.
+
+**The `Option` fields mean opposite things and the module says so.**
+`distinctPredicates` is a pure fast path: `none` costs time.
+`solveSelective` STANDS IN for `solve`: a caller that reads `none` for
+one member of a composition and skips that member drops rows. The
+guards check that the selective answer equals the plain answer at three
+different `ColNeed` values.
+
+**The union's LIMIT pushdown is the per-member form, not the naive
+one.** Solving every member in full and then truncating returns the
+same list at a different cost: a member with real on-disk pushdown would
+be made to decode its whole result before the union threw it away. Each
+member is asked for its remaining budget only, and a later member is not
+touched at all once the budget is spent.
+
+**The empty-member rule for DISTINCT predicates is checked.** A union
+of two non-empty in-memory members cannot enumerate cheaply and says
+`none`. A union whose non-advertising members are all EMPTY can, and
+returns the empty list — the case a blanket refusal used to get wrong.

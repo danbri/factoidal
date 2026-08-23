@@ -40,6 +40,7 @@ alias={
  "RDF.NQuads.Serialize":"Syntax.NQuads",
  "RDF.Turtle.Serialize":"Syntax.TurtleSerialize",
  "RDF.Store.Loader":"RDF.StoreLoader",
+ "RDF.Store.Capabilities":"RDF.StoreCapabilities",
  # PARTIAL. The domain-neutral maths core the F* tree keeps in
  # Math.Expr.fst is embedded in MathML/Core.lean instead: the same
  # five-constructor AST, exact rational arithmetic, exact roots,
