@@ -10541,3 +10541,57 @@ Two Lean notes for a later reader. `conv_lhs`, `by_contra`, `tauto` and
 And `::` binds tighter than `++`, so `'?' :: name ++ rest` is
 `('?' :: name) ++ rest`; a rewrite stated about `'?' :: (name ++ rest)`
 will not fire until `List.cons_append` has normalised the goal.
+
+## The ASK string round-trip — the stage F* reports as impossible
+
+`L4Factoidal/SPARQL/TokenizeChain.lean` and
+`L4Factoidal/SPARQL/AskRoundTrip.lean`, on top of
+`TokenizerLemmas.lean`.
+
+```lean
+theorem tokenize_printAsk (b : FragBgp) (h : FragBgpOk b) :
+    tokensOf (tokenize (printAsk b)) = expectedTokens b
+```
+
+Printing a fragment `ASK { s p o . … }` query and tokenizing the result
+gives back the tokens it was printed from — the stage
+`SPARQL11.Parser.AskBgpRoundTrip.fst` reports as IMPOSSIBLE, for a
+`FStar.String.sub` interface reason `TokenizerLemmas.lean`'s header
+records in full.
+
+**The two halves are complementary, and neither tree has both.** The F\*
+module's own stage list marks (1) the fragment predicate, (2) the
+printer, (3) the fuel-cost formula, and (b)–(d) the token-level parse
+back to the AST as DONE, and (a) the string round-trip plus (e) the full
+string-to-AST theorem as IMPOSSIBLE. This tree now has (1), (2) and (a);
+it does NOT have (b)–(d) or (e). So the module is not ported, and the
+coverage number does not move — what changed is which half is missing.
+
+**Fuel stopped mattering first.** `tokenizeLoop_fuel` proves that above
+the input length the fuel does not change the answer, and it needs no
+knowledge of `nextToken`: the loop already carries its own progress
+guard (`if rest.length ≥ cs.length then stop`), so a recursive call
+always shrinks the list and a strong induction on that length is enough.
+`tokenizeLoop_cons` is then a plain unfolding, and the walk over a
+printed query is an induction with no arithmetic side conditions.
+
+**The printer emits no whitespace** — `ASK{<a><b><c>.}`. Every token
+boundary in the fragment is unambiguous without one, so the proof needs
+no reasoning about `skipWs` beyond "the next character is not
+whitespace". A space-inserting printer would be equally correct and
+would add an offset to every step.
+
+**`nextToken_ask` needs TWO side conditions**, and the second is easy to
+miss: the character after the keyword may not be a name character (or
+the keyword would be longer) and may not be `:` (or the whole thing is a
+prefixed name, not a keyword). The first does not imply the second,
+because `:` is not a name character.
+
+**The side conditions are pinned as failures, not just as hypotheses.**
+An IRI body containing `>` prints to text that tokenizes to something
+SHORTER than expected — the token closes early — and a body starting
+with a digit makes `<` scan as the less-than operator. Both are `#guard`s
+asserting the round trip FAILS, so neither hypothesis can be mistaken
+for bookkeeping.
+
+Recorded at <https://github.com/danbri/factoidal/issues/562>.
