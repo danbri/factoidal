@@ -89,6 +89,7 @@ alias={
  "RDF.CottasStore.OnDiskIndex":"Cottas.OnDiskIndex",
  "RDF.CottasStore.PageCache":"Cottas.PageCache",
  "RDF.CottasStore.DictWriter":"Cottas.DictWriter",
+ "SHACL.Rules":"SHACL.Rules",
  "RDF.Store.Columnar.OffsetIndex":"Cottas.OffsetIndex",
  "RDF.Store.Columnar.SubjectOffsetIndex":"Cottas.SubjectOffsetIndex",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",

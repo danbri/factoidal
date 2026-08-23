@@ -115,6 +115,7 @@ import L4Factoidal.SHACL.Sparql
 import L4Factoidal.SHACL.ShaclTests
 import L4Factoidal.SHACL.ShaclTheorems
 import L4Factoidal.SHACL.SparqlTheorems
+import L4Factoidal.SHACL.Rules
 import L4Factoidal.Testing.Gen
 import L4Factoidal.Testing.Props
 import L4Factoidal.Testing.GenTests

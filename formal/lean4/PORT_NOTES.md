@@ -8821,3 +8821,42 @@ needs the trichotomy and transitivity of `String`'s `compare`, which
 nothing in this tree has proved. `sortTokens` is provided and
 `#guard`-checked, not proved, and that proof is what would close the
 gap.
+
+## SHACL.Rules → `L4Factoidal/SHACL/Rules.lean`, and a suite that now runs
+
+The `.srl` rule-language evaluator: SHACL 1.2 Rules. `RULE` / `DATA`
+blocks translate to SPARQL CONSTRUCT queries and a bottom-up fixpoint
+applies them until nothing is added.
+
+`Harness/ShaclRulesRun.lean` (`lake exe l4shacl-rules`) reads the four
+sub-manifests. The Lean tree had never run this suite: the `l4shacl`
+probe does not recognise the `srt:` test types and the rules manifests
+link entries with `mf:entries` rather than `mf:include`, so it walked
+in and reported "out of 0" —
+<https://github.com/danbri/factoidal/issues/553>.
+
+📊 Measured 2026-08-23:
+
+| Sub-suite | Lean | F\* |
+|---|---|---|
+| `rules/syntax` | 51 pass, 11 fail (out of 62) | 62 pass, 0 fail (out of 62) |
+| `rules/wellformed` | 7 pass, 0 fail (out of 7) | 7 pass, 0 fail (out of 7) |
+| `rules/stratification` | 8 pass, 0 fail (out of 8) | 8 pass, 0 fail (out of 8) |
+| `rules/eval` | 11 pass, 0 fail (out of 11) | 11 pass, 0 fail (out of 11) |
+| **total** | **77 pass, 11 fail (out of 88)** | **88 pass, 0 fail (out of 88)** |
+
+**All 11 failures are one cause, and it is not in this module.** The
+Lean SPARQL 1.2 parser does not accept reifying triple patterns
+`<< s p o >>` or annotation blocks `{| … |}`. Its own header already
+declared that absence; what was missing was a number, and this is it.
+Filed with the reproduction and the eleven file names as
+<https://github.com/danbri/factoidal/issues/556>.
+
+**⚠️ Two approximations carried over from F\* with its own words.**
+`srlStratifiable` is "a conservative approximation" — it flags
+new-term recursion and negation over derived data, and the F\* comment
+says a full negative-cycle analysis over the predicate graph "is future
+work". `filterSafe` checks only the FIRST `FILTER` in a body. Both are
+ported unchanged, because changing them would change which tests pass,
+and that is a decision about the engine rather than about the port.
+Both are marked in the module header.

@@ -199,6 +199,9 @@ extern_lib libl4hacl pkg := do
 -- SHACL Core probe over the W3C shacl test suite (Harness/ShaclProbe.lean).
 @[default_target] lean_exe «l4shacl» where root := `Harness.ShaclProbe
 
+-- SHACL 1.2 rules suite (Harness/ShaclRulesRun.lean, L4Factoidal/SHACL/Rules.lean).
+@[default_target] lean_exe «l4shacl-rules» where root := `Harness.ShaclRulesRun
+
 -- Property-based probe: seeded generators + algebra/round-trip invariants
 -- (Harness/PropProbe.lean, L4Factoidal/Testing/).
 @[default_target] lean_exe «l4prop» where root := `Harness.PropProbe
