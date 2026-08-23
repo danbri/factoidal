@@ -77,6 +77,7 @@ import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
 import L4Factoidal.OWL.RLTheorems
 import L4Factoidal.OWL.RLTests
+import L4Factoidal.OWL.Semantics
 import L4Factoidal.OWL.Tableau
 import L4Factoidal.OWL.TableauTheorems
 import L4Factoidal.OWL.TableauTests

@@ -9695,3 +9695,51 @@ absent, and only the core plus `icext` is here. The alias table records
 `subjTerm_of_toSubject?` moved from `EntailmentRdfsSpec` to
 `EntailmentSimpleSpec`, beside `subjTerm`, since three modules now need
 it.
+
+## `OWL.Semantics` → `L4Factoidal/OWL/Semantics.lean`
+
+The semantic conditions the OWL RL rules read, each cited to its OWL 2
+RDF-Based Semantics table row, plus the semantic sequences (`SeqIs`)
+those rows are indexed by. The interpretation structure itself landed
+with `RDF.Semantics` in the previous commit; this completes the module.
+
+**Every condition is the WEAKEST reading its row implies.** Only-if
+halves and IP/IC membership side conditions are dropped unless the row
+is itself an iff. Dropping a condition ENLARGES the interpretation
+class, and a soundness result over a larger class is stronger — so a
+rule proved sound against these is sound against genuine OWL 2
+RDF-Based interpretations.
+
+Three rows ARE full iffs, because two engine rules read opposite halves
+of one condition: `sameAsIdentity`, `hasValue` (cls-hv1 forward, cls-hv2
+backward) and `inverseOf` (prp-inv1, prp-inv2). Weakening any of those
+would leave the second rule of its pair unlicensed.
+
+**The pilot bundle is proved satisfiable BOTH ways, and that is the
+point.** A bundle nothing satisfies makes every `EntailsUnder`
+statement about it vacuously true. So does a bundle satisfied only by
+the interpretation whose IEXT is everywhere true, which satisfies every
+graph and would leave `PilotEntails` as the everything-relation.
+`trivial_satisfies_pilot` rules out the first; `separating_satisfies_
+pilot` with `separating_rejects` and `pilot_not_everything` rule out the
+second.
+
+The separating interpretation needs its own shape, and the reason is
+recorded: `CondSameAsIdentity` is an IFF, so an everywhere-true IEXT
+fails it. IEXT of the resource `owl:sameAs` denotes is the diagonal and
+every other resource relates everything — which needs `owl:sameAs` to
+denote something no other IRI does. That is the only place in the file
+where two IRIs have to be told apart.
+
+The F\* tree keeps these witnesses in `RDF.Semantics.HypothesisWitness`,
+written after a draft theorem whose hypothesis was FALSE verified
+cleanly and proved nothing.
+
+**Five predicates did NOT come across, and the reason is structural.**
+The F\* module carries `ig_wf_pred`, `ig_wf_sp`, `ig_wf_subj`,
+`ig_wf_obj` and `ig_wf_po` — hypotheses about the shape of its
+string-keyed `indexed_graph` bucket snapshot, each needing a key
+injectivity side condition. The Lean tree's index is `OWL.RL.Index`, a
+`Std.HashMap`-backed structure whose lookups are total functions with
+their own lemmas. Transcribing predicates about a data structure this
+tree does not have would be a second copy of nothing.
