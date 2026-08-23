@@ -9602,3 +9602,53 @@ rather than by enumeration), `rdfD2_stepLicensed`, and
 The finite table is REUSED from `RDF.VocabularyAxioms` rather than
 copied. One `#guard` pins the thing about rdfD2 that is easy to get
 backwards: the conclusion's subject is the premise's PREDICATE.
+
+## `RDF.Entailment.RDFS.Spec` → `L4Factoidal/RDF/EntailmentRdfsSpec.lean`
+
+Rung three: RDF 1.1 Semantics §9's thirteen-row rule table, the
+axiomatic triples, the two condition-level consequences that are NOT
+rows, RDFS-closedness, and the ρdf fragment. The definitions compute
+nothing about the engine.
+
+**The quantifier order is the content.** `RdfsLicensed g t` reads its
+premises off `g`, the INPUT graph, never off a growing accumulator.
+That is what makes per-row soundness compose through a fixed-point
+driver, and it is strictly stronger than "licensed by the output".
+
+**Four rows are specified and NOT implemented**: rdfs4a, rdfs4b, rdfs8
+and rdfs13 are absent from both trees' core closures. Writing them down
+is what makes the gap visible. The two bnode-minting rows are excluded
+from `RdfsClosed` for the reason rung two excludes rdfD1 — a graph
+closed under a name-minting rule is not finite.
+
+**Two consequences are named apart because they are not rows.** §9
+states reflexivity of the subclass and subproperty extensions as
+SEMANTIC CONDITIONS, which makes `xxx rdfs:subClassOf xxx` hold for any
+ENDPOINT of a subclass triple, with no `rdf:type` premise — a different
+route from rdfs10's. Naming it is what lets a reflexivity harvest carry
+a licence instead of being a witness of unsoundness.
+`RdfsMemberSubproperty` is the third of the family: RDFS-entailed by the
+EMPTY graph, but not itself axiomatic.
+
+**The engine appears only in the theorems, and only in one direction.**
+`rdfs11For_derives` and `rdfs5For_derives` prove that every conclusion
+those two rows emit is a derivation the table licenses, and
+`rdfs11_licensed` carries one of them up to `RdfsLicensed`. They are
+the transitivity pair — the rows whose two premises are linked through
+`subjTerm`, which is where a transcription is most likely to diverge
+from the table.
+
+`subjTerm_of_toSubject?` is the bridge the proofs need: the row's own
+generalized-RDF side condition arrives as a `Term.toSubject?` success
+and the specification states it as a `subjTerm` equation.
+
+**The remaining obligation is named in the file.** rdfs7, rdfs2, rdfs3
+and rdfs9 have no licence theorem yet; each needs its own extraction of
+a DECLARATION premise from the fold, rather than the two-triples-of-one-
+shape pattern the transitivity pair follows.
+
+A `#guard` pins the generalized-RDF side condition itself: rdfs11 does
+NOT fire when the middle term is a literal, which is the clause an
+implementation is most likely to drop.
+
+Regression: rdf-turtle 313 pass, 0 fail (out of 313) — unchanged.
