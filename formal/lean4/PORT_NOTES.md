@@ -6029,3 +6029,75 @@ The 104 remaining are ShEx 2.1 features, not defects in what is here:
 (12), recursion through a value reference (7), and the `start` shape
 expression (9). Each is engine work with a named shape, which is why
 they are listed rather than summarised as "the rest".
+
+---
+
+## XML conformance: a lenient DTD parser, and a denominator that asked
+## the wrong questions
+
+Was 1706 pass, 524 fail (out of 2230 in profile). Now **1744 pass, 126
+fail (out of 1870 in profile)**. Two halves, and they are different
+kinds of change — one fixed the parser, the other fixed the question.
+
+**The parser: `[70]`–`[76]`, `[28]` and `[69]` were barely checked.**
+`parseEntityDecl` SKIPPED TO THE NEXT `>` for every shape but a quoted
+entity value, and `parseDoctype` scanned over anything at all between
+the root Name and the internal subset. So all of these were accepted
+as well-formed:
+
+- `<!ENTITY foo PUBLIC "some public id">` — `[75]`'s PUBLIC form
+  requires a SystemLiteral;
+- `<!ENTITY e PUBLIC "whatever""e.ent">` — and the space between the
+  two literals;
+- `<!ENTITY ent PUBLIC"PublicID" "nop.ent">` — and the space after
+  `PUBLIC`;
+- `<!ENTITY e "whatever" -- a comment -->` — a declaration ends at
+  `S? '>'`;
+- `<!ENTITY foo SYSTEM "foo.eps"NDATA eps>` — `[76]` begins with `S`;
+- `<!ENTITY %pe "…">` — `[72]` requires the space after `%`;
+- `<!ENTITY ge CDATA "…">` — `CDATA` is not an `[73]` EntityDef;
+- `<!ENTITY % pe SYSTEM "n.ent" NDATA unknot>` — `[74]` admits no
+  NDataDecl;
+- `<!DOCTYPE doc -- a comment -- []>` — `[28]` admits `(S ExternalID)?`
+  between the Name and the subset and nothing else;
+- `% pe;` — `[69]` is `'%' Name ';'`, with no space.
+
+Every one is a document the parser said YES to. That is the direction
+that hides: a checker which ACCEPTS malformed input reports nothing,
+while one that rejects valid input announces itself on the next run.
+
+**The denominator: 372 cases were being scored that this parser is not
+asked about.**
+
+- **313 for editions 1–4 only.** The suite marks each case with the
+  EDITIONS of XML 1.0 it is about, and the runner ignored the
+  attribute. The Fifth Edition REPLACED Appendix B's enumerated
+  BaseChar / CombiningChar / Digit / Extender classes with the ranges
+  this parser uses, so `EDITION="1 2 3 4"` asks a question the Fifth
+  Edition does not ask. All 313 were `not-wf` cases scored as
+  failures.
+- **59 Namespaces-in-XML cases.** `rmt-ns10-004` is
+  `<a:foo xmlns:a="…"/>` with an undeclared prefix: namespace-ill-formed
+  and XML-well-formed. This parser is NON-NAMESPACE by design and its
+  header says so, so it accepted them correctly and was marked wrong.
+  The namespace layer is `XML/Namespaces.lean` and is measured
+  separately.
+
+Neither group is folded into PASSES. They are reported in buckets of
+their own, beside the XML 1.1 and non-UTF-8 buckets that were already
+there — the parser is not being asked, so neither a pass nor a failure
+is the truth about it. Nine cases that had been passing by accident
+moved out of the score with the rest of their edition, which is why
+the pass count fell while the parser got stricter.
+
+📊 MEASURED: **1744 pass, 126 fail (out of 1870 in profile)**; out of
+profile and reported: 24 optional-behaviour, 55 XML 1.1, 56 not UTF-8,
+313 editions 1–4, 59 namespaces.
+
+The 126 remaining are 84 documents accepted that should be rejected
+and 42 rejected that should be accepted. Most of both need the same
+missing feature: the EXTERNAL DTD SUBSET. `<!DOCTYPE doc SYSTEM
+"p61fail1.dtd">` puts the error in a file the parser never opens, and
+`valid/ext-sa/*` puts the entity definitions there. The system
+identifier is now recorded on `Doctype.systemId` — recorded, not
+fetched, because fetching needs I/O and the parser is a pure function.

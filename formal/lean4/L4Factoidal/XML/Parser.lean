@@ -949,45 +949,8 @@ def skipPeReference (s : Chars) (pos : Nat) : Nat → PResult Unit
     else if charAt s pos == ';' then .ok () (pos + 1)
     else skipPeReference s (pos + 1) fuel
 
-/-- One `[70] EntityDecl`. A general internal entity
-(`<!ENTITY Name "value">`) is added to the table (first declaration
-wins, §4.2); a parameter entity (`<!ENTITY % …>`) and an external
-entity (SYSTEM / PUBLIC) are skipped without a binding.
-Port of F* `parse_entity_decl`. -/
-def parseEntityDecl (s : Chars) (pos : Nat) (ents : EntityTable) :
-    PResult EntityTable :=
-  match pstring "<!ENTITY" s pos with
-  | .err m p => .err m p
-  | .ok _ p1 =>
-    match skipSpace1 s p1 with
-    | .err m p => .err m p
-    | .ok _ p2 =>
-      if p2 < s.size && charAt s p2 == '%' then
-        match skipDeclToGt s p2 (s.size + 1) with
-        | .err m p => .err m p
-        | .ok _ p' => .ok ents p'
-      else
-        match parseName s p2 with
-        | .err m p => .err m p
-        | .ok name p3 =>
-          match skipSpace1 s p3 with
-          | .err m p => .err m p
-          | .ok _ p4 =>
-            if p4 < s.size && (charAt s p4 == '"' || charAt s p4 == '\'') then
-              match readEntityValueRaw s (p4 + 1) (p4 + 1) (charAt s p4) (s.size + 1) with
-              | .err m p => .err m p
-              | .ok rawval p5 =>
-                match skipDeclToGt s p5 (s.size + 1) with
-                | .err m p => .err m p
-                | .ok _ p6 =>
-                  let ents' := match lookupEntity name ents with
-                    | some _ => ents
-                    | none => (name, rawval) :: ents
-                  .ok ents' p6
-            else
-              match skipDeclToGt s p4 (s.size + 1) with
-              | .err m p => .err m p
-              | .ok _ p' => .ok ents p'
+-- `parseEntityDecl` used to live here. It now sits below
+-- `parseExternalID`, which it needs.
 
 /-! ### `[52] AttlistDecl` — reading out the `[54] AttType` = `ID` pairs
 
@@ -1137,13 +1100,13 @@ def parsePubidLiteral (s : Chars) (pos : Nat) : PResult String :=
                         | 'PUBLIC' S PubidLiteral S SystemLiteral`.
     The PUBLIC form REQUIRES the system literal; without it the
     declaration is malformed, which is what `not-wf-sa-054` checks. -/
-def parseExternalID (s : Chars) (pos : Nat) : PResult Unit :=
+def parseExternalIDSys (s : Chars) (pos : Nat) : PResult String :=
   if peekLit "SYSTEM" s pos then
     match skipSpace1 s (pos + 6) with
     | .err m p => .err m p
     | .ok _ p1 => match parseSystemLiteral s p1 with
       | .err m p => .err m p
-      | .ok _ p2 => .ok () p2
+      | .ok sys p2 => .ok sys p2
   else if peekLit "PUBLIC" s pos then
     match skipSpace1 s (pos + 6) with
     | .err m p => .err m p
@@ -1153,8 +1116,14 @@ def parseExternalID (s : Chars) (pos : Nat) : PResult Unit :=
         | .err m p => .err m p
         | .ok _ p3 => match parseSystemLiteral s p3 with
           | .err m p => .err m p
-          | .ok _ p4 => .ok () p4
+          | .ok sys p4 => .ok sys p4
   else .err "expected SYSTEM or PUBLIC" pos
+
+/-- The same production with the system identifier discarded. -/
+def parseExternalID (s : Chars) (pos : Nat) : PResult Unit :=
+  match parseExternalIDSys s pos with
+  | .err m p => .err m p
+  | .ok _ p  => .ok () p
 
 /-- `[83] PublicID ::= 'PUBLIC' S PubidLiteral` — the NOTATION-only
     form, which takes no system literal. -/
@@ -1420,6 +1389,92 @@ def parseNotationDecl (s : Chars) (pos : Nat) : PResult Unit :=
           | .err m p => .err m p
           | .ok _ p5 => declEnd s p5
 
+
+/-- `[70] EntityDecl ::= GEDecl | PEDecl`,
+    `[71] GEDecl ::= '<!ENTITY' S Name S EntityDef S? '>'`,
+    `[72] PEDecl ::= '<!ENTITY' S '%' S Name S PEDef S? '>'`,
+    `[73] EntityDef ::= EntityValue | (ExternalID NDataDecl?)`,
+    `[74] PEDef ::= EntityValue | ExternalID`,
+    `[76] NDataDecl ::= S 'NDATA' S Name`.
+
+    The previous version SKIPPED TO THE NEXT `>` for every shape but a
+    quoted entity value, so the whole of [73]–[76] went unchecked and
+    the following were all accepted as well-formed:
+
+      * `<!ENTITY foo PUBLIC "some public id">` — [75] PUBLIC requires
+        a SystemLiteral after the PubidLiteral (`not-wf-sa-054`);
+      * `<!ENTITY e "whatever" -- a comment -->` — a declaration ends
+        at `S? '>'` and nothing else (`not-wf-sa-057`);
+      * `<!ENTITY e PUBLIC "whatever""e.ent">` — [75] requires the
+        space between the two literals (`not-wf-sa-061`);
+      * `<!ENTITY foo SYSTEM "foo.eps"NDATA eps>` — [76] begins with
+        `S` (`not-wf-sa-069`, `o-p76fail1`);
+      * `<!ENTITY %pe "…">` — [72] requires the space after `%`
+        (`o-p72fail2`);
+      * `<!ENTITY ge CDATA "…">` — `CDATA` is not an [73] EntityDef
+        (`o-p73fail1`);
+      * `<!ENTITY % pe SYSTEM "nop.ent" NDATA unknot>` — [74] PEDef
+        admits no NDataDecl (`o-p74fail1`);
+      * `<!ENTITY ent PUBLIC"PublicID" "nop.ent">` — [75] requires the
+        space after `PUBLIC` (`o-p75fail1`).
+
+    Every one of those is a document the parser said YES to, which is
+    the direction that matters: a well-formedness checker that accepts
+    malformed input reports nothing, while one that rejects valid
+    input at least announces itself. -/
+def parseEntityDecl (s : Chars) (pos : Nat) (ents : EntityTable) :
+    PResult EntityTable :=
+  match pstring "<!ENTITY" s pos with
+  | .err m p => .err m p
+  | .ok _ p1 =>
+    match skipSpace1 s p1 with
+    | .err m p => .err m p
+    | .ok _ p2 =>
+      let isPE := p2 < s.size && charAt s p2 == '%'
+      match (if isPE then skipSpace1 s (p2 + 1) else PResult.ok () p2) with
+      | .err m p => .err m p
+      | .ok _ p3 =>
+      match parseName s p3 with
+      | .err m p => .err m p
+      | .ok name p4 =>
+        match skipSpace1 s p4 with
+        | .err m p => .err m p
+        | .ok _ p5 =>
+          if p5 < s.size && (charAt s p5 == '"' || charAt s p5 == '\'') then
+            match readEntityValueRaw s (p5 + 1) (p5 + 1) (charAt s p5) (s.size + 1) with
+            | .err m p => .err m p
+            | .ok rawval p6 =>
+              match declEnd s p6 with
+              | .err m p => .err m p
+              | .ok _ p7 =>
+                -- A PARAMETER entity is not a general entity, so it
+                -- never enters the table a `&name;` reference reads.
+                let ents' := if isPE then ents else
+                  match lookupEntity name ents with
+                  | some _ => ents
+                  | none   => (name, rawval) :: ents
+                .ok ents' p7
+          else
+            match parseExternalID s p5 with
+            | .err m p => .err m p
+            | .ok _ p6 =>
+              let p7 := skipSpace s p6
+              if p7 < s.size && peekLit "NDATA" s p7 then
+                if isPE then
+                  .err "NDATA is not permitted on a parameter entity ([74] PEDef)" p7
+                else if p7 == p6 then
+                  .err "expected space before NDATA ([76] NDataDecl)" p7
+                else match skipSpace1 s (p7 + 5) with
+                  | .err m p => .err m p
+                  | .ok _ p8 => match parseName s p8 with
+                    | .err m p => .err m p
+                    | .ok _ p9 => match declEnd s p9 with
+                      | .err m p => .err m p
+                      | .ok _ p10 => .ok ents p10
+              else match declEnd s p6 with
+                | .err m p => .err m p
+                | .ok _ p' => .ok ents p'
+
 /-- `[28b] intSubset` — the internal subset body, from just after `[`
 up to and including the `]`. Collects general entity declarations and
 ATTLIST ID pairs; every markup declaration is PARSED against its
@@ -1435,9 +1490,15 @@ def parseIntSubset (s : Chars) (pos : Nat) (ents : EntityTable)
       if ch == ']' then .ok (ents, ids) (pos + 1)
       else if isXmlSpace ch then parseIntSubset s (pos + 1) ents ids fuel
       else if ch == '%' then
-        match skipPeReference s (pos + 1) (s.size + 1) with
-        | .err m p => .err m p
-        | .ok _ pos' => parseIntSubset s pos' ents ids fuel
+        -- `[69] PEReference ::= '%' Name ';'`. Scanning to the next
+        -- `;` accepted `% pe;`, which has a space where the Name must
+        -- start (`o-p69fail2`), and `%;`, which has no Name at all.
+        (match parseName s (pos + 1) with
+         | .err m p => .err m p
+         | .ok _ p1 =>
+             if p1 < s.size && charAt s p1 == ';' then
+               parseIntSubset s (p1 + 1) ents ids fuel
+             else .err "expected ';' after a parameter-entity reference ([69])" p1)
       else if ch == '<' then
         if peekLit "<!--" s pos then
           match parseComment s pos with
@@ -1507,19 +1568,33 @@ def parseDoctype (s : Chars) (pos : Nat) : PResult Doctype :=
       match parseName s p2 with
       | .err m p => .err m p
       | .ok rootName p3 =>
-        match skipToSubsetOrGt s p3 (s.size + 1) with
+        -- `(S ExternalID)?`. `skipToSubsetOrGt` used to scan over
+        -- ANYTHING here, so `<!DOCTYPE doc -- a comment -- []>` was
+        -- accepted (`not-wf-sa-056`) — a comment is not part of
+        -- `[28]`, and neither is anything else between the Name and
+        -- the subset.
+        let p3s := skipSpace s p3
+        match (if p3s > p3 && p3s < s.size &&
+                  (peekLit "SYSTEM" s p3s || peekLit "PUBLIC" s p3s)
+               then (match parseExternalIDSys s p3s with
+                     | .err m p  => PResult.err m p
+                     | .ok sys p => PResult.ok (some sys) p)
+               else PResult.ok none p3) with
         | .err m p => .err m p
-        | .ok _ p4 =>
+        | .ok sysId p3' =>
+          let p4 := skipSpace s p3'
           if p4 < s.size && charAt s p4 == '[' then
             match parseIntSubset s (p4 + 1) [] [] (s.size + 1) with
             | .err m p => .err m p
             | .ok (ents, ids) p5 =>
               let p6 := skipSpace s p5
               if p6 < s.size && charAt s p6 == '>' then
-                .ok { rootName := rootName, entities := ents, idAttrs := ids } (p6 + 1)
+                .ok { rootName := rootName, entities := ents, idAttrs := ids,
+                      systemId := sysId } (p6 + 1)
               else .err "DOCTYPE: expected '>' after internal subset" p6
           else if p4 < s.size && charAt s p4 == '>' then
-            .ok { rootName := rootName, entities := [], idAttrs := [] } (p4 + 1)
+            .ok { rootName := rootName, entities := [], idAttrs := [],
+                  systemId := sysId } (p4 + 1)
           else .err "DOCTYPE: expected '[' or '>'" p4
 
 /-! ## `[27] Misc` — the prolog and epilog

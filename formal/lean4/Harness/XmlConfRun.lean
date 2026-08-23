@@ -61,13 +61,17 @@ structure Counts where
   optional    : Nat := 0   -- TYPE="error": behaviour is optional
   xml11       : Nat := 0   -- a different language
   notUtf8     : Nat := 0   -- the parser does not transcode
+  otherEdition : Nat := 0  -- EDITION says the case is not about 1.0 5e
+  namespaces  : Nat := 0   -- a Namespaces-in-XML case, not an XML 1.0 one
   fileMissing : Nat := 0
 deriving Repr, Inhabited
 
 def Counts.add (a b : Counts) : Counts :=
   { scored := a.scored + b.scored, pass := a.pass + b.pass, fail := a.fail + b.fail,
     optional := a.optional + b.optional, xml11 := a.xml11 + b.xml11,
-    notUtf8 := a.notUtf8 + b.notUtf8, fileMissing := a.fileMissing + b.fileMissing }
+    notUtf8 := a.notUtf8 + b.notUtf8, otherEdition := a.otherEdition + b.otherEdition,
+    namespaces := a.namespaces + b.namespaces,
+    fileMissing := a.fileMissing + b.fileMissing }
 
 /-- The sub-manifests, relative to the suite root. Listed rather than
     discovered so the denominator is stable and a missing file is
@@ -81,6 +85,21 @@ def subManifests : List String :=
     "eduni/namespaces/1.0/rmt-ns10.xml", "eduni/namespaces/1.1/rmt-ns11.xml",
     "eduni/namespaces/errata-1e/errata1e.xml", "eduni/xml-1.1/xml11.xml",
     "eduni/misc/ht-bh.xml" ]
+
+/-- Is this sub-manifest the NAMESPACES suite? Those cases test
+    Namespaces in XML, not XML 1.0: `rmt-ns10-004` is
+    `<a:foo xmlns:a="…"/>` with an undeclared prefix, which is
+    namespace-ill-formed and XML-well-formed. This parser is
+    NON-NAMESPACE by design and its header says so, so it accepts them
+    correctly and the runner scored 23 of them as failures.
+
+    They are not passes either — the parser is not being asked the
+    question — so they go in a bucket of their own, the same treatment
+    XML 1.1 and non-UTF-8 already get. Scoring a non-namespace parser
+    against a namespace suite measures a layer that is deliberately
+    somewhere else (`XML/Namespaces.lean`). -/
+def isNamespaceSuite (rel : String) : Bool :=
+  rel.startsWith "eduni/namespaces/"
 
 def runManifest (root : String) (rel : String) (verbose : Bool) : IO Counts := do
   let path := root ++ "/" ++ rel
@@ -117,7 +136,22 @@ def runManifest (root : String) (rel : String) (verbose : Bool) : IO Counts := d
         let uri := (attr? "URI" t).getD ""
         let ver := (attr? "VERSION" t).getD "1.0"
         let id := (attr? "ID" t).getD "?"
+        -- The suite marks which EDITIONS of XML 1.0 a case is about.
+        -- The Fifth Edition REPLACED Appendix B's enumerated
+        -- BaseChar / CombiningChar / Digit / Extender classes with
+        -- the ranges this parser uses, so a case marked
+        -- `EDITION="1 2 3 4"` asks a question the Fifth Edition does
+        -- not ask — 297 of them, all `not-wf`, all scored as failures
+        -- because the runner ignored the attribute. They are NOT
+        -- passes either: the parser is not being asked, so the honest
+        -- place for them is a bucket of their own.
+        let edition := attr? "EDITION" t
+        let appliesHere := match edition with
+          | none    => true
+          | some es => (es.splitOn " ").contains "5"
         if uri == "" then pure ()
+        else if isNamespaceSuite rel then c := Counts.add c { namespaces := 1 }
+        else if !appliesHere then c := Counts.add c { otherEdition := 1 }
         else if ver == "1.1" then c := Counts.add c { xml11 := 1 }
         else if ty == "error" then c := Counts.add c { optional := 1 }
         else
@@ -159,7 +193,9 @@ def main (args : List String) : IO UInt32 := do
   IO.println ""
   IO.println s!"xml conformance SCORED: {total.pass} pass, {total.fail} fail (out of {total.scored} in profile)"
   IO.println s!"OUT OF PROFILE, reported not scored: {total.optional} optional-behaviour (TYPE=error),"
-  IO.println s!"  {total.xml11} XML 1.1, {total.notUtf8} not UTF-8 (this parser does not transcode)"
+  IO.println s!"  {total.xml11} XML 1.1, {total.notUtf8} not UTF-8 (this parser does not transcode),"
+  IO.println s!"  {total.otherEdition} for editions 1-4 only (this parser follows the Fifth Edition),"
+  IO.println s!"  {total.namespaces} Namespaces-in-XML cases (this parser is non-namespace)"
   if total.fileMissing > 0 then
     IO.println s!"  {total.fileMissing} referenced files not on disk"
   IO.println ""

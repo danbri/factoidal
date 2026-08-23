@@ -345,4 +345,55 @@ Lean's standard foundations; no `sorry`, no user `axiom`, no
 #print axioms parseXML
 #print axioms isNamespaceWellFormed
 
+/-! ## `[70]`–`[76]` EntityDecl, `[28]` doctypedecl, `[69]` PEReference
+
+Each `#guard` below pins a document the parser said YES to. A
+well-formedness checker that ACCEPTS malformed input reports nothing;
+one that rejects valid input at least announces itself, which is why
+the accept direction is the one that hides. -/
+
+private def wf (src : String) : Bool := isWellFormed src
+
+-- [75]: the PUBLIC form requires a SystemLiteral after the
+-- PubidLiteral (not-wf-sa-054), and the space between them
+-- (not-wf-sa-061).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY foo PUBLIC \"some public id\">\n]>\n<doc></doc>")
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY e PUBLIC \"whatever\"\"e.ent\">\n]>\n<doc></doc>")
+-- ...and the space after `PUBLIC` itself (o-p75fail1).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY ent PUBLIC\"PublicID\" \"nop.ent\">\n]>\n<doc/>")
+#guard wf "<!DOCTYPE doc [\n<!ENTITY e PUBLIC \"whatever\" \"e.ent\">\n]>\n<doc></doc>"
+
+-- A declaration ends at `S? '>'` and nothing else (not-wf-sa-057).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY e \"whatever\" -- a comment -->\n]>\n<doc></doc>")
+
+-- [76] NDataDecl begins with S (not-wf-sa-069, o-p76fail1).
+#guard !(wf ("<!DOCTYPE doc [\n<!NOTATION eps SYSTEM \"eps.exe\">\n" ++
+             "<!ENTITY foo SYSTEM \"foo.eps\"NDATA eps>\n]>\n<doc></doc>"))
+#guard wf ("<!DOCTYPE doc [\n<!NOTATION eps SYSTEM \"eps.exe\">\n" ++
+           "<!ENTITY foo SYSTEM \"foo.eps\" NDATA eps>\n]>\n<doc></doc>")
+
+-- [72] PEDecl requires the space after `%` (o-p72fail2), and [74]
+-- PEDef admits no NDataDecl (o-p74fail1).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY %pe \"<!---->\">\n]>\n<doc/>")
+#guard wf "<!DOCTYPE doc [\n<!ENTITY % pe \"<!---->\">\n]>\n<doc/>"
+#guard !(wf ("<!DOCTYPE doc [\n<!NOTATION unknot PUBLIC \"Unknown\">\n" ++
+             "<!ENTITY % pe SYSTEM \"nop.ent\" NDATA unknot>\n]>\n<doc/>"))
+
+-- [73] EntityDef is an EntityValue or an ExternalID; `CDATA` is
+-- neither (o-p73fail1).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY ge CDATA \"replacement text\">\n]>\n<doc/>")
+
+-- [28] admits `(S ExternalID)?` between the Name and the subset, and
+-- nothing else — a comment there is not part of the production
+-- (not-wf-sa-056).
+#guard !(wf "<!DOCTYPE doc -- a comment -- []>\n<doc></doc>")
+#guard wf "<!DOCTYPE doc []>\n<doc></doc>"
+#guard wf "<!DOCTYPE doc SYSTEM \"doc.dtd\">\n<doc></doc>"
+#guard wf "<!DOCTYPE doc PUBLIC \"pub\" \"doc.dtd\" []>\n<doc></doc>"
+
+-- [69] PEReference is `'%' Name ';'`: no space, and a Name is
+-- required (o-p69fail2).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY % pe \"<!---->\">\n% pe;\n]>\n<doc/>")
+#guard wf "<!DOCTYPE doc [\n<!ENTITY % pe \"<!---->\">\n%pe;\n]>\n<doc/>"
+
 end L4Factoidal.XML.Tests
