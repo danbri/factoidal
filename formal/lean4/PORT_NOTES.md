@@ -9530,3 +9530,39 @@ pattern against an expected one at all.
 Regression: sparql11 601 pass, 0 fail, 30 unsupported (out of 631) —
 unchanged. The rif-core runner is unaffected by construction: its root
 imports `RIF.Engine`, not this module.
+
+## `RDF.Entailment.Simple.Spec` → `L4Factoidal/RDF/EntailmentSimpleSpec.lean`
+
+Simple entailment, transcribed from RDF 1.1 Semantics §4 (INSTANCE) and
+§5.3 (the interpolation lemma), computing nothing and calling nothing.
+
+**Why the tree now has two definitions of one relation, and what the
+second one buys.** `RDF.Entailment` already defines `SimpleEntails`
+through `Triple.instance?`, a total FUNCTION that computes the
+substituted triple — the right shape for the decision procedure to be
+proved against, and what the tree's soundness theorem talks about. This
+module states the same relation the way the specification states it: a
+RELATION, one clause per term kind. Without it, "the decision procedure
+is sound" is a statement about a definition this project wrote. With
+`spec_iff_simpleEntails` proved, that definition is tied to a
+transcription a reader can check against the specification's own
+sentences with no algorithm in the way.
+
+**Three theorems.** `tripleInst_iff` relates the relational and computed
+forms one triple at a time (through `subjInst_iff` and `termInst_iff`,
+which recurse into RDF 1.2 triple terms). `spec_iff_simpleEntails`
+lifts it to graphs. `spec_iff_instanceSubgraphForm` proves the collapse
+the specification's own wording invites: "a subgraph of A is an
+instance of B" names an INTERMEDIATE graph, and the form a refinement
+proof uses does not. Right to left is immediate; left to right has to
+BUILD that graph, and the witness is `b.filterMap (Triple.instance? m)`
+— the image of `b` itself. The F\* tree proves the same equivalence in
+a sibling module, so it is checked in both trees rather than assumed in
+either.
+
+**The side condition is kept out of the specification.** `LitExact`
+names the literals where the tree's two coarser literal branches —
+case-insensitive language tags, and `rdf:XMLLiteral` by canonical XML —
+cannot fire. Both are D-entailment behaviours and neither is licensed by
+SIMPLE entailment, so they belong to a soundness proof's hypothesis and
+not to the transcription.
