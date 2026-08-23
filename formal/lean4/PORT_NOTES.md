@@ -6938,3 +6938,82 @@ gate now applies to the blank-node pass as well as the named one.
 The F\* module gates only its named pass; this is the stricter
 reading, and it is the one that keeps `materialise`'s output
 entailed by its input.
+
+### Wave 2, and the cost of it
+
+`lake exe l4owl-probe --dir third_party/testing/owl --dl`, 2026-08-23:
+
+| Catalog | RL closure only | Wave 1 | Wave 2 |
+| --- | --- | --- | --- |
+| profile-RL.rdf | 117 pass, 9 fail (out of 126) | 118 pass, 8 fail | 118 pass, 8 fail |
+| profile-EL.rdf | 102 pass, 18 fail, 1 skip (out of 121) | 107 pass, 13 fail | 109 pass, 11 fail |
+| profile-QL.rdf | 82 pass, 5 fail (out of 87) | 82 pass, 5 fail | 82 pass, 5 fail |
+| type-positive-entailment.rdf | 315 pass, 93 fail, 4 unsupported (out of 412) | 318 pass, 90 fail | 318 pass, 90 fail |
+| type-consistency.rdf | 485 pass, 94 fail, 4 unsupported (out of 583) | 485 pass, 94 fail | 485 pass, 94 fail |
+| type-inconsistency.rdf | 30 pass, 97 fail, 1 skip (out of 128) | 67 pass, 60 fail | 80 pass, 47 fail |
+| **TOTAL** | **1131 pass, 316 fail** | **1177 pass, 270 fail** | **1192 pass, 255 fail (out of 1457)** |
+
+Wave 2 added the role box (bottom and top properties), the TBox rules
+(edge-proved membership, conjunction introduction, provably-empty
+named classes normalised to `owl:Nothing`), and
+`L4Factoidal/XSD/Facets.lean` — the OWL 2 datatype map as a decidable
+value space, which the two datatype clash rules read.
+
+⚠️ The `--dl` run takes **26 minutes 34 seconds**. The RL closure
+alone over the same corpus takes well under one. This is a named
+performance gap, not a hidden one, and it is why `--dl` is a flag and
+not the default.
+
+Where the time is, measured on `type-consistency.rdf` alone (the
+worst catalog):
+
+| Regime | Wall |
+| --- | --- |
+| RL closure only | 17 s |
+| `--dl --refute-budget 1` (materialisation, refuter effectively off) | 5 m 10 s |
+| `--dl` (default budget 16) | over 10 m |
+
+So the materialisation pass plus its second closure is about five
+minutes, and the refuter adds more. Both halves need work; neither is
+a single hot spot.
+
+### Four performance defects fixed in wave 2, each measured
+
+Named because each was found by a NUMBER and not by reading, and
+because the first fix in two of the four cases was the wrong one:
+
+1. **A per-branch search depth is a product, not a sum.** Giving each
+   branch the full depth lets a node with `d` disjuncts grow a tree
+   of `d^depth` states. The budget is now THREADED, so siblings draw
+   from one pool.
+2. **`labelsOf` was a `filter`-then-`flatMap` over the node list.**
+   Ids are unique, so it is a lookup; `clashNodes` calls it once per
+   node, which made it quadratic per round.
+3. **The successor lookups scanned the graph as a LIST.** They now
+   read the indexed store, which the tree already had.
+4. **The sub- and superproperty closures were fixpoints recomputed
+   per property per node per round.** They are computed once at
+   `initState`.
+
+Fixes 1, 3 and 4 each looked like the answer and each moved
+`type-inconsistency` by nothing at all. What actually moved it was
+finding, by a budget sweep, that ONE case
+(`WebOnt-description-logic-504`) accounted for 71 of the 76 seconds.
+The lesson is the one `skills/measuring-inference` already states:
+find which phase the time is in BEFORE fixing anything. Four
+plausible mechanisms became four work orders, and three of them were
+free.
+
+### The `--refute-budget` sweep
+
+📊 `type-inconsistency.rdf`, out of 127 decided:
+
+| Budget | Score | Wall |
+| --- | --- | --- |
+| 6 | 80 pass, 47 fail | 2.8 s |
+| 16 | 80 pass, 47 fail | 5.2 s |
+| 24 | 81 pass, 46 fail | 76 s |
+
+The default is 16. `--refute-budget 24` reproduces the 81, and the
+whole difference is `WebOnt-description-logic-504`. A cap that hides
+which test it costs is a silent cap; this one names it.
