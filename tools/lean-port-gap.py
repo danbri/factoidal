@@ -81,6 +81,7 @@ alias={
  "SPARQL.Plan.Pruning":"Cottas.PlanPruning",
  "RDF.CottasStore.PresenceWriter":"Cottas.PresenceWriter",
  "RDF.CottasStore.CompoundPresenceWriter":"Cottas.CompoundPresenceWriter",
+ "RDF.CottasStore.OffsetsWriter":"Cottas.OffsetsWriter",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
 }
 def leafkeys(m):

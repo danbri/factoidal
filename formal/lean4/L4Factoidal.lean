@@ -270,8 +270,10 @@ import L4Factoidal.SPARQL.UpdateSandbox
 import L4Factoidal.OWL.TestsManifest
 import L4Factoidal.RDFS.RegimeDispatch
 import L4Factoidal.RDF.VocabularyAxioms
+import L4Factoidal.Cottas.SortByKey
 import L4Factoidal.Cottas.PresenceBitmap
 import L4Factoidal.Cottas.CompoundPresenceBitmap
 import L4Factoidal.Cottas.PlanPruning
 import L4Factoidal.Cottas.PresenceWriter
 import L4Factoidal.Cottas.CompoundPresenceWriter
+import L4Factoidal.Cottas.OffsetsWriter

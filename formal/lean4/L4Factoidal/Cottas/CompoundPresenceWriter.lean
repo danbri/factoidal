@@ -33,6 +33,7 @@ than by comment.
 -/
 import L4Factoidal.Cottas.CompoundPresenceBitmap
 import L4Factoidal.Cottas.PresenceWriter
+import L4Factoidal.Cottas.SortByKey
 
 namespace L4Factoidal.Cottas
 
@@ -63,89 +64,20 @@ assumes. -/
 
 def pairCodeOf (x : Nat × Nat) : Nat := pairCode x.1 x.2
 
-/-- Every code in the list is greater than `c`. -/
-def allCodesGt (c : Nat) : List (Nat × Nat) → Bool
-  | []      => true
-  | y :: ys => c < pairCodeOf y && allCodesGt c ys
+/-- Strictly ascending by `pairCode`, hence duplicate-free — the order
+    `rgCouldContainPair`'s binary search assumes. -/
+def sortedByCode : List (Nat × Nat) → Bool := sortedByKey pairCodeOf
 
-/-- Strictly ascending by code, hence duplicate-free. -/
-def sortedByCode : List (Nat × Nat) → Bool
-  | []      => true
-  | x :: xs => allCodesGt (pairCodeOf x) xs && sortedByCode xs
+def sortPairs : List (Nat × Nat) → List (Nat × Nat) := sortByKey pairCodeOf
 
-def insertPair (x : Nat × Nat) : List (Nat × Nat) → List (Nat × Nat)
-  | []      => [x]
-  | y :: ys =>
-      if pairCodeOf x == pairCodeOf y then y :: ys
-      else if pairCodeOf x < pairCodeOf y then x :: y :: ys
-      else y :: insertPair x ys
+/-! ### The reader's precondition, proved of the writer's output
 
-def sortPairs : List (Nat × Nat) → List (Nat × Nat)
-  | []      => []
-  | x :: xs => insertPair x (sortPairs xs)
+The sort and its proof live in `Cottas/SortByKey.lean`, shared with
+`OffsetsWriter`, which needs the same property for its subject-id
+buckets. -/
 
-/-! ### The reader's precondition, proved of the writer's output -/
-
-theorem allCodesGt_weaken (c d : Nat) (l : List (Nat × Nat))
-    (hcd : c < d) (h : allCodesGt d l = true) : allCodesGt c l = true := by
-  induction l with
-  | nil => simp [allCodesGt]
-  | cons y ys ih =>
-      simp only [allCodesGt, Bool.and_eq_true, decide_eq_true_eq] at h ⊢
-      exact ⟨by omega, ih h.2⟩
-
-theorem allCodesGt_insertPair (c : Nat) (x : Nat × Nat) (l : List (Nat × Nat))
-    (hx : c < pairCodeOf x) (hl : allCodesGt c l = true) :
-    allCodesGt c (insertPair x l) = true := by
-  induction l with
-  | nil =>
-      simp only [insertPair, allCodesGt, Bool.and_eq_true, decide_eq_true_eq]
-      exact ⟨hx, trivial⟩
-  | cons y ys ih =>
-      simp only [allCodesGt, Bool.and_eq_true, decide_eq_true_eq] at hl
-      rcases Nat.lt_trichotomy (pairCodeOf x) (pairCodeOf y) with h | h | h
-      · have hne : ¬ (pairCodeOf x = pairCodeOf y) := by omega
-        simp only [insertPair, beq_iff_eq, hne, if_false, h, if_pos,
-                   allCodesGt, Bool.and_eq_true, decide_eq_true_eq]
-        exact ⟨hx, hl.1, hl.2⟩
-      · simp only [insertPair, beq_iff_eq, h, if_pos, allCodesGt,
-                   Bool.and_eq_true, decide_eq_true_eq]
-        exact ⟨hl.1, hl.2⟩
-      · have hne : ¬ (pairCodeOf x = pairCodeOf y) := by omega
-        have hnl : ¬ (pairCodeOf x < pairCodeOf y) := by omega
-        simp only [insertPair, beq_iff_eq, hne, hnl, if_false,
-                   allCodesGt, Bool.and_eq_true, decide_eq_true_eq]
-        exact ⟨hl.1, ih hl.2⟩
-
-theorem insertPair_sorted (x : Nat × Nat) (l : List (Nat × Nat))
-    (hl : sortedByCode l = true) : sortedByCode (insertPair x l) = true := by
-  induction l with
-  | nil =>
-      simp only [insertPair, sortedByCode, allCodesGt, Bool.and_eq_true]
-      exact ⟨trivial, trivial⟩
-  | cons y ys ih =>
-      simp only [sortedByCode, Bool.and_eq_true] at hl
-      rcases Nat.lt_trichotomy (pairCodeOf x) (pairCodeOf y) with h | h | h
-      · have hne : ¬ (pairCodeOf x = pairCodeOf y) := by omega
-        have hgt : allCodesGt (pairCodeOf x) (y :: ys) = true := by
-          simp only [allCodesGt, Bool.and_eq_true, decide_eq_true_eq]
-          exact ⟨h, allCodesGt_weaken _ _ _ h hl.1⟩
-        simp only [insertPair, beq_iff_eq, hne, if_false, h, if_pos,
-                   sortedByCode, Bool.and_eq_true]
-        exact ⟨hgt, hl.1, hl.2⟩
-      · simp only [insertPair, beq_iff_eq, h, if_pos, sortedByCode,
-                   Bool.and_eq_true]
-        exact ⟨hl.1, hl.2⟩
-      · have hne : ¬ (pairCodeOf x = pairCodeOf y) := by omega
-        have hnl : ¬ (pairCodeOf x < pairCodeOf y) := by omega
-        simp only [insertPair, beq_iff_eq, hne, hnl, if_false,
-                   sortedByCode, Bool.and_eq_true]
-        exact ⟨allCodesGt_insertPair _ _ _ h hl.1, ih hl.2⟩
-
-theorem sortPairs_sorted (l : List (Nat × Nat)) : sortedByCode (sortPairs l) = true := by
-  induction l with
-  | nil => simp [sortPairs, sortedByCode]
-  | cons x xs ih => exact insertPair_sorted x (sortPairs xs) ih
+theorem sortPairs_sorted (l : List (Nat × Nat)) : sortedByCode (sortPairs l) = true :=
+  sortByKey_sorted pairCodeOf l
 
 /-! ## The offset index -/
 

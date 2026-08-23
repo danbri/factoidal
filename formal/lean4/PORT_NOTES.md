@@ -8500,3 +8500,49 @@ see anti-pattern #29.
 **Cross-check.** A `#guard` compares `buildCompoundPresence` byte for
 byte against `CompoundPresenceBitmap.mkCompound`, the reader module's
 own independently written fixture builder.
+
+## `L4Factoidal/Cottas/SortByKey.lean` — not a port
+
+An insertion sort keyed by a `Nat`, with `sortByKey_sorted`. It exists
+because two COTTAS writers need the same property: the reader binary-
+searches a region, so the writer must emit that region strictly
+ascending by a key. `CompoundPresenceWriter` keys pairs by `pairCode`,
+`OffsetsWriter` keys subject ids by themselves. The order is STRICT, so
+one predicate states ascending order and duplicate-freedom together.
+
+`CompoundPresenceWriter.sortPairs_sorted` was proved standalone first
+and now delegates here; the proof exists once.
+
+## RDF.CottasStore.OffsetsWriter → `L4Factoidal/Cottas/OffsetsWriter.lean`
+
+The `.p.offsets` serialiser: `(row group, predicate)` to the sorted
+subject ids of that bucket.
+
+**Same three changes as `CompoundPresenceWriter`, plus one more.**
+
+1. It writes the whole file rather than only the 16-byte `COTO` header.
+2. It uses BYTE offsets. `parse_offsets` in F\* reads the last index
+   entry as a COUNT OF SUBJECT IDS, while the OCaml writer sets
+   `cur = data_offset0 = 16 + 8 * (num_rgs * num_preds + 1)` and
+   advances by `4 * bucket_length` — its own comment says "byte offset
+   where row-list starts". So the F\* parser returns `None` on every
+   `.p.offsets` file the project writes. This confirms point 3 of
+   <https://github.com/danbri/factoidal/issues/555>, which asked
+   whether this module carried the same fault as
+   `CompoundPresenceWriter`. It does.
+3. Each bucket is sorted and de-duplicated by the writer, and
+   `buildOffsets_bucketsSorted` proves it, via the shared
+   `sortByKey_sorted`.
+4. **An out-of-range subject id fails the write instead of truncating
+   it.** F\*'s `serialize_u32_list` returns `[]` at the first entry at
+   or above 2^32, which drops every remaining payload byte while the
+   header still declares the full count. The result is a short file
+   that no reader can parse, produced with no error at write time.
+   `buildOffsets` returns `none` for the whole file.
+
+**Checked, not proved.** `#guard`s cover the round trip at five shapes,
+each bucket read back at its own `(rg, pred)` coordinates (a
+multiset-only check would pass on symmetric buckets), out-of-range
+coordinates, a truncated payload, the three COTTAS magic numbers being
+distinct, and the F\* count rule applied to a real file. Writer-reader
+agreement is not proved, as in `PresenceWriter`.
