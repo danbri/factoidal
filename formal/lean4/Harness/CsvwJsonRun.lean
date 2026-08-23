@@ -104,12 +104,28 @@ def relativeNameJ (u : String) : String :=
     (u.splitOn "/").getLast?.getD u
   else u
 
+/-- The on-disk path a metadata `url` names: resolve it against the
+    metadata document's base and strip the suite's own base URL. This
+    is what an `@context` `@base` needs — test273 puts `"@base":
+    "test273/"` on a top-level metadata document, so its `"url":
+    "action.csv"` names `test273/action.csv`. -/
+def suiteRelativeJ (base : String) (u : String) : String :=
+  let suite := "http://www.w3.org/2013/csvw/tests/"
+  let abs := L4Factoidal.Syntax.resolveIri base u
+  if abs.startsWith suite then String.ofList (abs.toList.drop suite.length)
+  else relativeNameJ u
+
 structure JEntry where
   id        : String
   action    : String
   result    : String
   minimal   : Bool
   metadata  : Option String
+  /-- Metadata the processor would DISCOVER, in §5.2 precedence order.
+      A list rather than a choice because a candidate that does not
+      reference the requested file MUST be ignored and the next one
+      tried. Same rule, same reason, as `CsvwRdfRun`. -/
+  metaCandidates : List String
   negative  : Bool
 
 def jsonManifestEntries (j : Json) : List JEntry :=
@@ -147,16 +163,19 @@ def jsonManifestEntries (j : Json) : List JEntry :=
             let isJson := a.endsWith ".json"
             if !isCsv && !isJson then none
             else
-              let metadata :=
-                if isJson then some a
-                else metaOpt.orElse (fun _ =>
-                  let jsons := implicits.filter (fun f => f.endsWith ".json")
-                  (jsons.find? (fun f => f.endsWith "linked-metadata.json")).orElse
-                    (fun _ => (jsons.find? (fun f => f.endsWith (a ++ "-metadata.json"))).orElse
-                      (fun _ => (jsons.find? (fun f => f.endsWith "csv-metadata.json")).orElse
-                        (fun _ => jsons.getLast?))))
+              let metadata := if isJson then some a else metaOpt
+              let jsons := if isJson then [] else implicits.filter (fun f => f.endsWith ".json")
+              let ordered :=
+                (jsons.filter (fun f => f.endsWith "linked-metadata.json")) ++
+                (jsons.filter (fun f => f.endsWith (a ++ "-metadata.json"))) ++
+                (jsons.filter (fun f => f.endsWith "csv-metadata.json" &&
+                                        !(f.endsWith (a ++ "-metadata.json")))) ++
+                jsons
+              let candidates := ordered.foldl (fun acc f =>
+                if acc.contains f then acc else acc ++ [f]) ([] : List String)
               some { id := i, action := a, result := (str? "result" e).getD "",
-                     minimal := minimal, metadata := metadata, negative := negative }
+                     minimal := minimal, metadata := metadata,
+                     metaCandidates := candidates, negative := negative }
         | _, _ => none)
   | _ => []
 
@@ -170,22 +189,35 @@ def runOneJson (dir : String) (e : JEntry) (dump : Bool := false) : IO JsonOutco
     return ⟨e.action, "skip", "expected file missing: " ++ e.result⟩
   let expectedSrc ← IO.FS.readFile rp
   let suiteBase := "http://www.w3.org/2013/csvw/tests/"
-  let (mbase, mdir) := match e.metadata with
-    | some mf => (suiteBase ++ mf, dirOfJ mf)
-    | none    => (suiteBase ++ e.action, dirOfJ e.action)
-  let (group, ctx) ← (do
-    match e.metadata with
-    | none =>
-        pure (({ tables := [{ url := relativeNameJ e.action }] } : TableGroup), ({} : Ctx))
-    | some mf =>
-        let mp := dir ++ "/" ++ mf
-        if !(← System.FilePath.pathExists mp) then
-          pure ((({ tables := [] } : TableGroup)), ({} : Ctx))
-        else
-          let msrc ← IO.FS.readFile mp
-          match parseMetadataText msrc with
-          | some (g, c) => pure (g, c)
-          | none        => pure ((({ tables := [] } : TableGroup)), ({} : Ctx)))
+  let readMeta : String → IO (Option (TableGroup × Ctx × String)) := fun mf => do
+    let mp := dir ++ "/" ++ mf
+    if !(← System.FilePath.pathExists mp) then pure none
+    else
+      let msrc ← IO.FS.readFile mp
+      match parseMetadataText msrc with
+      | some (g, c) => pure (some (g, c, effectiveBase (suiteBase ++ mf) c))
+      | none        => pure none
+  let requested := suiteBase ++ e.action
+  let mut chosen : Option (TableGroup × Ctx × String) := none
+  match e.metadata with
+  | some mf => chosen ← readMeta mf
+  | none =>
+      -- §5.2: DISCOVERED metadata that does not reference the
+      -- requested file MUST be ignored, so a non-matching candidate
+      -- falls through to the next.
+      for mf in e.metaCandidates do
+        if chosen.isNone then
+          match ← readMeta mf with
+          | some (g, c, b) =>
+              if describesTable b g requested then chosen := some (g, c, b)
+          | none => pure ()
+  -- The fallback table takes the ABSOLUTE requested URL: resolving a
+  -- relative one against a base that already ends in it doubles the
+  -- directory.
+  let (group, ctx, mbase) := match chosen with
+    | some (g, c, b) => (g, c, b)
+    | none           => (({ tables := [{ url := requested }] } : TableGroup),
+                         ({} : Ctx), requested)
   if group.tables.isEmpty then
     return ⟨e.action, "skip", "metadata did not parse into any table"⟩
   let mut group := group
@@ -194,7 +226,7 @@ def runOneJson (dir : String) (e : JEntry) (dump : Bool := false) : IO JsonOutco
     match t.schemaRef with
     | none => resolved := resolved ++ [t]
     | some ref =>
-        let sp := dir ++ "/" ++ mdir ++ ref
+        let sp := dir ++ "/" ++ suiteRelativeJ mbase ref
         if ← System.FilePath.pathExists sp then
           let ssrc ← IO.FS.readFile sp
           match parseSchemaText ctx ssrc with
@@ -205,7 +237,7 @@ def runOneJson (dir : String) (e : JEntry) (dump : Bool := false) : IO JsonOutco
   let mut pairs : List (TableDesc × Table) := []
   let mut missing : Option String := none
   for t in group.tables do
-    let path := dir ++ "/" ++ mdir ++ relativeNameJ t.url
+    let path := dir ++ "/" ++ suiteRelativeJ mbase t.url
     if ← System.FilePath.pathExists path then
       let src ← IO.FS.readFile path
       pairs := pairs ++ [(t, read (effectiveDialect group t).resolve src)]

@@ -201,20 +201,35 @@ def langCompatible (want have' : Option String) : Bool :=
       String.ofList (w.toList.take k) == String.ofList (h.toList.take k)
 
 /-- §5.6 column-name derivation: an explicit `name`, else the first
-    title whose LANGUAGE is compatible with the document's, else the
+    title whose language IS the document's default language, else the
     positional `_col.N` form the spec mandates. `n` is the 1-based
     column position.
 
-    The language check is not optional. A document with `"lang": "de"`
-    whose column states `"titles": {"en": "On Street"}` has no usable
-    title for that column, so it is `_col.2` — taking the English
-    title anyway names the column after a title the document does not
-    offer in its own language (test148). -/
+    The comparison is EQUALITY of tags, not the truncated BCP 47
+    matching `langCompatible` performs, and the two rules are
+    different on purpose:
+
+    * matching a CSV HEADER against a column's titles uses truncated
+      matching, which is what `langCompatible` is for and what the
+      comment quoted on test148 and test149 describes;
+    * deriving the column NAME takes "the first titles value having
+      the same language tag as default language" — an exact tag. A
+      document with `"lang": "en"` and `"titles": {"en-US": "On
+      Street"}` therefore has NO usable title for that column and the
+      name is `_col.2` (test149), and so is one with `"lang": "de"`
+      against an `en` title (test148).
+
+    An UNTAGGED title is not skipped by this. §5.1.3 says a
+    natural-language property written as a plain string carries the
+    default language, so its tag equals the document's by
+    construction — which is why every plain-titled column in a
+    `"lang": "de"` document still takes its title as its name. -/
 def columnName (c : Column) (n : Nat) (preferLang : Option String) : String :=
   match c.name with
   | some nm => nm
   | none =>
-      match c.titlesLang.find? (fun (_, l) => langCompatible preferLang l) with
+      let deflt := preferLang.getD "und"
+      match c.titlesLang.find? (fun (_, l) => (l.getD deflt) == deflt) with
       | some (t, _) => t
       | none        => "_col." ++ toString n
 

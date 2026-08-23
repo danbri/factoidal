@@ -5745,3 +5745,66 @@ of the two had nothing to do with `$ref` at all.
 No regression: csv2rdf 252 pass, 10 fail (out of 270), csv2json 253
 pass, 9 fail (out of 270), MathML 56 pass, 0 fail (out of 56),
 schematron 8 pass, 0 fail (out of 8).
+
+---
+
+## CSVW: metadata discovery, `@base`, and exact-tag column naming
+
+csv2rdf was 252 pass, 10 fail, 6 skip (out of 270); csv2json was 253
+pass, 9 fail, 6 skip. All six skips read "table file not found", which
+looks like a missing fixture and was not one. Three separate rules:
+
+**§5.2 — discovered metadata that does not reference the requested
+file MUST be ignored.** Five tests (117, 119, 120, 122, 123) put a
+`csv-metadata.json` beside a CSV it does not describe. The runner
+picked it up, the converter went looking for the table that document
+DID name, and the run reported a missing file. The candidates are now
+kept in discovery order — `Link` header, then
+`<file>-metadata.json`, then the directory's `csv-metadata.json` —
+and the first one that references the request wins; if none does, the
+CSV is converted on its own. test122 and test123 need exactly that
+fall-through: their first candidate does not describe the file and
+their second does.
+
+`describesTable` is in `CSVW/Pipeline.lean`, not in the runner. The
+runner's job is to read candidate files; which one describes the
+request is the specification's decision.
+
+**§5.1 — `@base` in the `@context` moves the document's base URL.**
+`Ctx.base` was parsed and then never used. test273 sets `"@base":
+"test273/"` on a metadata document at the top level, so its `"url":
+"action.csv"` names `test273/action.csv`. Disk paths now come from
+resolving the url against the effective base and stripping the
+suite's base URL, instead of concatenating a directory prefix.
+
+That change exposed a second defect in the same place: the no-metadata
+fallback built its table from the manifest's RELATIVE action name and
+resolved it against a base that already ended in it, giving
+`tests/test119/test119/action.csv`. The file was not found, and had it
+been found the emitted subject would have carried the doubled path.
+The fallback now takes the absolute requested URL.
+
+**§5.6 — the column NAME takes a title whose language tag EQUALS the
+document's.** The port used `langCompatible`, which truncates to the
+shorter tag — so `"lang": "en"` accepted an `en-US` title (test149)
+and, before the inherited-language fix below, `"lang": "de"` accepted
+an `en` one (test148). Two different rules had been conflated:
+
+* matching a CSV HEADER against a column's titles uses truncated
+  matching, which is what the comment quoted in both tests describes;
+* deriving the column NAME takes "the first titles value having the
+  same language tag as default language" — an exact tag.
+
+An untagged title still works, and not by an exception: §5.1.3 says a
+natural-language property written as a plain string carries the
+default language, so its tag equals the document's by construction.
+
+A third fix was needed to see the second: `nameOf` read the language
+from the `@context` only, so a table-level `"lang": "de"` was
+invisible and every title matched. The language is the one INHERITED
+at that column (§5.1.1), and the context language is the fallback.
+
+📊 MEASURED: csv2rdf **260 pass, 8 fail, 0 skip (out of 270)**;
+csv2json **261 pass, 7 fail, 0 skip (out of 270)**. Validator
+cross-check 0 in both — no positive test's metadata is wrongly
+rejected. Every skip is gone from both runners.

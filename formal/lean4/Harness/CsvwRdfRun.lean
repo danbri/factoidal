@@ -50,6 +50,21 @@ def relativeName (u : String) : String :=
     (u.splitOn "/").getLast?.getD u
   else u
 
+/-- The on-disk path a metadata `url` names, relative to the tests
+    directory: resolve it against the metadata document's base and
+    strip the suite's own base URL.
+
+    Resolving rather than concatenating a directory prefix is what a
+    processor does, and it is what an `@context` `@base` needs —
+    test273 sets `"@base": "test273/"` on a metadata document at the
+    top level, so its `"url": "action.csv"` names `test273/action.csv`
+    and a directory-prefix rule looks in the wrong place. -/
+def suiteRelative (base : String) (u : String) : String :=
+  let suite := "http://www.w3.org/2013/csvw/tests/"
+  let abs := L4Factoidal.Syntax.resolveIri base u
+  if abs.startsWith suite then String.ofList (abs.toList.drop suite.length)
+  else relativeName u
+
 structure TestOutcome where
   name   : String
   status : String        -- "pass" | "fail" | "skip"
@@ -61,8 +76,15 @@ structure Entry where
   action  : String
   result  : String
   minimal : Bool
-  /-- The metadata document to use, if the entry has one. -/
+  /-- The metadata document to use, when the entry names one outright
+      — the action IS metadata, or `option.metadata` supplies it. -/
   metadata : Option String
+  /-- Metadata the processor would DISCOVER, in §5.2 precedence order:
+      the `Link` header first, then `<file>-metadata.json`, then the
+      directory's `csv-metadata.json`. A list rather than a choice
+      because a candidate that does not reference the requested file
+      MUST be ignored and the next one tried (test122, test123). -/
+  metaCandidates : List String
   /-- The CSV file, when the entry starts from one. `none` means the
       tables come from the metadata document's own `url`/`tables`. -/
   csvAction : Option String
@@ -117,23 +139,31 @@ def manifestEntries (j : L4Factoidal.JSON.Json) : List Entry :=
               -- document; `option.metadata` only names a USER metadata
               -- file that accompanies a CSV action.
               let metadata :=
-                if isJson then some a
-                else metaOpt.orElse (fun _ =>
-                  -- Metadata DISCOVERY order (§5.2): the file-specific
-                  -- `<name>.csv-metadata.json` wins over a directory
-                  -- `csv-metadata.json`. Taking the last `implicit`
-                  -- entry picked the directory one and applied the
-                  -- wrong description (test017).
-                  let jsons := implicits.filter (fun f => f.endsWith ".json")
-                  -- A `linked-metadata.json` in the `implicit` list
-                  -- stands for the `Link` header, which outranks both
-                  -- conventional locations.
-                  (jsons.find? (fun f => f.endsWith "linked-metadata.json")).orElse
-                    (fun _ => (jsons.find? (fun f => f.endsWith (a ++ "-metadata.json"))).orElse
-                      (fun _ => (jsons.find? (fun f => f.endsWith "csv-metadata.json")).orElse
-                        (fun _ => jsons.getLast?))))
+                if isJson then some a else metaOpt
+              -- Metadata DISCOVERY order (§5.2): the `Link` header
+              -- first (a `linked-metadata.json` in `implicit` stands
+              -- for it), then the file-specific
+              -- `<name>-metadata.json`, then the directory's
+              -- `csv-metadata.json`. Taking the LAST `implicit` entry
+              -- picked the directory one and applied the wrong
+              -- description (test017).
+              --
+              -- All three are kept, in order, rather than one being
+              -- chosen here: a candidate that does not reference the
+              -- requested file must be ignored and the next tried,
+              -- and only the file's contents can say which that is.
+              let jsons := if isJson then [] else implicits.filter (fun f => f.endsWith ".json")
+              let ordered :=
+                (jsons.filter (fun f => f.endsWith "linked-metadata.json")) ++
+                (jsons.filter (fun f => f.endsWith (a ++ "-metadata.json"))) ++
+                (jsons.filter (fun f => f.endsWith "csv-metadata.json" &&
+                                        !(f.endsWith (a ++ "-metadata.json")))) ++
+                jsons
+              let candidates := ordered.foldl (fun acc f =>
+                if acc.contains f then acc else acc ++ [f]) ([] : List String)
               some { id := i, action := a, result := (str? "result" e).getD "",
                      minimal := minimal, metadata := metadata,
+                     metaCandidates := candidates,
                      csvAction := if isCsv then some a else none,
                      negative := negative }
         | _, _ => none)
@@ -184,22 +214,43 @@ def runOne (dir : String) (e : Entry) (dump : Bool := false) : IO TestOutcome :=
   -- The metadata document's location is the base for everything the
   -- metadata says: a relative `url` inside it resolves against that
   -- file, not against the CSV. Getting this wrong moves every subject.
-  let (mbase, mdir) := match e.metadata with
-    | some mf => (suiteBase ++ mf, dirOf mf)
-    | none    => (suiteBase ++ e.action, dirOf e.action)
-  let (group, ctx) ← (do
-    match e.metadata with
-    | none =>
-        pure (({ tables := [{ url := relativeName e.action }] } : TableGroup), ({} : Ctx))
-    | some mf =>
-        let mp := dir ++ "/" ++ mf
-        if !(← System.FilePath.pathExists mp) then
-          pure ((({ tables := [] } : TableGroup)), ({} : Ctx))
-        else
-          let msrc ← IO.FS.readFile mp
-          match parseMetadataText msrc with
-          | some (g, c) => pure (g, c)
-          | none        => pure ((({ tables := [] } : TableGroup)), ({} : Ctx)))
+  -- Read one metadata document: its parsed group, its context, and
+  -- the base URL everything in it resolves against — its own
+  -- location, moved by an `@context` `@base` if it has one.
+  let readMeta : String → IO (Option (TableGroup × Ctx × String)) := fun mf => do
+    let mp := dir ++ "/" ++ mf
+    if !(← System.FilePath.pathExists mp) then pure none
+    else
+      let msrc ← IO.FS.readFile mp
+      match parseMetadataText msrc with
+      | some (g, c) => pure (some (g, c, effectiveBase (suiteBase ++ mf) c))
+      | none        => pure none
+  let requested := suiteBase ++ e.action
+  let mut chosen : Option (TableGroup × Ctx × String) := none
+  match e.metadata with
+  | some mf => chosen ← readMeta mf
+  | none =>
+      -- DISCOVERED metadata: take the first candidate that actually
+      -- references the requested file. §5.2 says one that does not
+      -- MUST be ignored, so a non-matching candidate falls through to
+      -- the next rather than stopping the run (test117/119/120/122/123).
+      for mf in e.metaCandidates do
+        if chosen.isNone then
+          match ← readMeta mf with
+          | some (g, c, b) =>
+              if describesTable b g requested then chosen := some (g, c, b)
+          | none => pure ()
+  -- No metadata, or none that describes the request: the CSV is
+  -- converted on its own, which is what the spec's fallback says.
+  -- The fallback table takes the ABSOLUTE requested URL, not the
+  -- manifest's relative name. Resolving a relative one against a base
+  -- that already ends in it doubled the directory
+  -- (`tests/test119/test119/action.csv`), so the file was not found
+  -- and the emitted subject would have been wrong in the same way.
+  let (group, ctx, mbase) := match chosen with
+    | some (g, c, b) => (g, c, b)
+    | none           => (({ tables := [{ url := requested }] } : TableGroup),
+                         ({} : Ctx), requested)
   if group.tables.isEmpty then
     return ⟨e.action, "skip", "metadata did not parse into any table"⟩
   -- Resolve any `tableSchema` given as a URL. The parse records the
@@ -211,7 +262,7 @@ def runOne (dir : String) (e : Entry) (dump : Bool := false) : IO TestOutcome :=
     match t.schemaRef with
     | none => resolved := resolved ++ [t]
     | some ref =>
-        let sp := dir ++ "/" ++ mdir ++ ref
+        let sp := dir ++ "/" ++ suiteRelative mbase ref
         if ← System.FilePath.pathExists sp then
           let ssrc ← IO.FS.readFile sp
           match parseSchemaText ctx ssrc with
@@ -222,7 +273,7 @@ def runOne (dir : String) (e : Entry) (dump : Bool := false) : IO TestOutcome :=
   let mut pairs : List (TableDesc × Table) := []
   let mut missing : Option String := none
   for t in group.tables do
-    let path := dir ++ "/" ++ mdir ++ relativeName t.url
+    let path := dir ++ "/" ++ suiteRelative mbase t.url
     if ← System.FilePath.pathExists path then
       let src ← IO.FS.readFile path
       pairs := pairs ++ [(t, read (effectiveDialect group t).resolve src)]
