@@ -8914,3 +8914,43 @@ The rule both point at: a harness that renders terms for comparison
 must render every field the data model distinguishes, and must parse
 the fixtures in the mode the suite is written for. A denominator below
 the reference tree's is a bug in the harness until proved otherwise.
+
+## OWL2.SyntaxDL → `L4Factoidal/OWL/SyntaxDL.lean`
+
+The OWL 2 DL species checker: given the RDF graphs of a W3C OWL 2 test
+case's documents, decide `test:DL` against `test:FULL`. Purely
+syntax-directed — no reasoning, no closure. Nine per-triple checks plus
+punning, non-simple properties under cardinality, and the document
+header discipline.
+
+**The scope note is carried across because it is measured, not
+aspirational.** The F\* header records that the checks are the subset of
+the Mapping to RDF Graphs reverse mapping and the Structural
+Specification global restrictions "that the corpus actually
+discriminates on, validated check-by-check against all 489
+species-annotated cases in `third_party/testing/owl/all.rdf` (323
+species-DL, 166 species-FULL-only)". Two graph-identical premise pairs
+carry opposite verdicts, which is why `speciesIsDl` takes the
+conclusion document as well as the premise.
+
+**Every check gets a MINIMAL PAIR in the `#guard`s**: a graph that
+passes and the same graph perturbed so exactly one check fires. A
+checker tested only on violations would not distinguish "rejects
+everything" from "rejects the right thing". The pairs cover reserved
+subjects, undeclared predicates, the `rdf:type` object rule, the
+`owl:onProperty` filler, an object property with a literal object,
+datatype usability, `rdf:List` node arity, punning, and the header
+rule — including that a BLANK NODE typed both `owl:Class` and
+`owl:Restriction` is legitimate, which is what the `"I"` key prefix in
+the punning check protects.
+
+The last pair is the difference between the two entry points: a
+header-less graph with a clean body is rejected by `speciesIsDl` and
+accepted by `speciesIsDlFunctional`, because a successful
+functional-syntax parse proves the `Ontology(…)` header.
+
+**Not yet measured against the corpus.** The F\* module's 489-case
+validation is not re-run here — that needs the OWL test-case manifest
+reader, which the Lean tree does not have. The `#guard`s check the
+checks; they do not reproduce the corpus number, and this note says so
+rather than letting the F\* figure read as the Lean one's.

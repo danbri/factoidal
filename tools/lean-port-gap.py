@@ -91,6 +91,7 @@ alias={
  "RDF.CottasStore.DictWriter":"Cottas.DictWriter",
  "SHACL.Rules":"SHACL.Rules",
  "SHACL.NodeExpr":"SHACL.NodeExpr",
+ "OWL2.SyntaxDL":"OWL.SyntaxDL",
  "RDF.Store.Columnar.OffsetIndex":"Cottas.OffsetIndex",
  "RDF.Store.Columnar.SubjectOffsetIndex":"Cottas.SubjectOffsetIndex",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
