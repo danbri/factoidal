@@ -198,6 +198,12 @@ import L4Factoidal.OWL.ClassExpr
 import L4Factoidal.OWL.FunctionalSyntax
 import L4Factoidal.OWL.FunctionalSyntaxTests
 import L4Factoidal.OWL.ClassExprTests
+import L4Factoidal.HTTP.Client
+import L4Factoidal.HTTP.ClientTests
+import L4Factoidal.HTTP.RunQuery
+import L4Factoidal.HTTP.RunQueryTests
+import L4Factoidal.HTTP.Ops
+import L4Factoidal.HTTP.OpsTests
 import L4Factoidal.Math.Subst
 import L4Factoidal.Math.Simplify
 import L4Factoidal.Math.Diff
@@ -207,6 +213,12 @@ import L4Factoidal.Math.Tests
 import L4Factoidal.Math.Sigmoid
 import L4Factoidal.Math.SigmoidTests
 import L4Factoidal.XForms.Bind
+import L4Factoidal.HTTP.Client
+import L4Factoidal.HTTP.ClientTests
+import L4Factoidal.HTTP.RunQuery
+import L4Factoidal.HTTP.RunQueryTests
+import L4Factoidal.HTTP.Ops
+import L4Factoidal.HTTP.OpsTests
 import L4Factoidal.Math.Subst
 import L4Factoidal.Math.Simplify
 import L4Factoidal.Math.Diff
