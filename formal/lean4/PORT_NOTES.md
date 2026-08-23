@@ -8452,3 +8452,51 @@ The READER over-includes on a short file — the safe answer at query
 time. The PARSER refuses one. Both are right for their job: a query must
 not lose rows, and a caller round-tripping a file wants to know it is
 truncated. `#guard`s state both.
+
+## RDF.CottasStore.CompoundPresenceWriter → `L4Factoidal/Cottas/CompoundPresenceWriter.lean`
+
+The `.po.presence` serialiser: the writer whose reader is
+`Cottas/CompoundPresenceBitmap.lean`.
+
+**Wider than the F\* module, for the `PresenceWriter` reason.** F\*
+writes the 20-byte `COPO` header and leaves the row-group offset index
+and the packed pair codes to the OCaml glue, because building them as
+an F\* list costs millions of cons cells at corpus scale. `ByteArray`
+has no such cost, so `buildCompoundPresence` writes the whole file.
+
+**The offset convention is corrected, not carried over.** The F\*
+module's `parse_compound_presence` reads the last offset entry as a
+COUNT OF PAIRS. The OCaml writer and the F\* reader both use BYTE
+OFFSETS from the start of the file, so the F\* parser returns `None` on
+every `.po.presence` file the project writes, and its round-trip lemma
+covers no real file. Only `serialize_compound_presence_header` is on
+the shipping path, which is why it survived. Filed as
+<https://github.com/danbri/factoidal/issues/555>. The Lean module uses
+byte offsets and carries a `#guard` that computes the F\* rule on a
+real file and shows the requested count exceeds the file size.
+
+**The reader's precondition moves from a comment to a proof.** The
+binary search in `rgCouldContainPair` needs each row group's pair list
+sorted ascending by `pairCode`. In F\* that is a caller obligation,
+written in a comment as "NOT enforced here". Here
+`buildCompoundPresence` sorts and de-duplicates, and
+
+```lean
+theorem sortPairs_sorted (l : List (Nat × Nat)) : sortedByCode (sortPairs l) = true
+```
+
+proves the output satisfies it. `#print axioms` reports
+`[propext, Quot.sound]`. The two supporting lemmas are
+`allCodesGt_weaken` and `allCodesGt_insertPair`; strict `<` in
+`allCodesGt` makes duplicate-freedom part of the same statement.
+
+**Not proved: writer-reader agreement.** As in `PresenceWriter`, the
+`#guard`s check `rgCouldContainPair` against the ground-truth pair set
+over the whole `predDictSize × objDictSize` grid at four shapes. That
+is computational evidence, not a proof for all shapes, and the module
+says so. No theorem taking the agreement as a hypothesis was written —
+see anti-pattern #29.
+
+**Cross-check.** A `#guard` compares `buildCompoundPresence` byte for
+byte against `CompoundPresenceBitmap.mkCompound`, the reader module's
+own independently written fixture builder.

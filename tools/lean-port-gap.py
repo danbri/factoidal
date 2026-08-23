@@ -1,6 +1,34 @@
-D="/tmp/claude-0/-home-user-factoidal/55df18c7-5121-5dfd-9568-3f65b4548058/scratchpad"
-fs=[l.strip() for l in open(D+"/fstar-modules.txt") if l.strip()]
-ln=set(l.strip() for l in open(D+"/lean-modules.txt") if l.strip())
+# Both module lists are DERIVED from the repository on every run.
+#
+# They used to be read from two text files in the session scratchpad.
+# That directory is per-session and is deleted with the container, so
+# the tool either crashed on a fresh session or -- worse -- read a
+# snapshot taken before the newest ports and reported a stale count.
+# It did exactly that on 2026-08-23: a landed module was reported as
+# not covered because the cached Lean list predated it. A measurement
+# tool must not depend on a cache the measurer has to remember to
+# refresh. See hazard #28 in skills/workflow-gotchas-debugging.
+import os, sys
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FSTAR_DIR = os.path.join(REPO, "formal", "fstar")
+LEAN_DIR = os.path.join(REPO, "formal", "lean4", "L4Factoidal")
+import tempfile
+D = os.environ.get("LEAN_PORT_GAP_OUT", tempfile.gettempdir())
+
+fs = sorted(f[:-4] for f in os.listdir(FSTAR_DIR) if f.endswith(".fst"))
+
+ln = set()
+for root, _dirs, files in os.walk(LEAN_DIR):
+    for f in files:
+        if not f.endswith(".lean"):
+            continue
+        rel = os.path.relpath(os.path.join(root, f), LEAN_DIR)
+        ln.add(rel[:-5].replace(os.sep, "."))
+
+if not fs or not ln:
+    sys.exit("lean-port-gap: found %d F* and %d Lean modules -- wrong "
+             "working tree?" % (len(fs), len(ln)))
 alias={
  "Parser.XML":"XML.Parser","Parser.NTriples":"Syntax.NTriples","Parser.NQuads":"Syntax.NQuads",
  "Parser.Turtle":"Syntax.Turtle","Parser.TriG":"Syntax.TriG","Parser.RDFXML":"Syntax.RdfXml",
@@ -52,6 +80,7 @@ alias={
  "RDF.CottasStore.CompoundPresenceBitmap":"Cottas.CompoundPresenceBitmap",
  "SPARQL.Plan.Pruning":"Cottas.PlanPruning",
  "RDF.CottasStore.PresenceWriter":"Cottas.PresenceWriter",
+ "RDF.CottasStore.CompoundPresenceWriter":"Cottas.CompoundPresenceWriter",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
 }
 def leafkeys(m):
@@ -65,7 +94,7 @@ for m in fs:
     if (m in alias and alias[m] in ln) or (leafkeys(m) & lidx): covered.append(m)
     else: missing.append(m)
 def lines(m):
-    try: return sum(1 for _ in open("/home/user/factoidal/formal/fstar/"+m+".fst",encoding='utf-8',errors='replace'))
+    try: return sum(1 for _ in open(os.path.join(FSTAR_DIR, m + ".fst"),encoding='utf-8',errors='replace'))
     except: return 0
 from collections import defaultdict
 g=defaultdict(list)
@@ -82,7 +111,8 @@ for k,n,tot,ms in rows:
     out.append(f"### {k} — {n} modules, {tot} lines\n")
     for m in ms: out.append(f"- `{m}` ({lines(m)} lines)")
     out.append("")
-open(D+"/gap.md","w").write("\n".join(out))
+GAP_MD = os.path.join(D, "gap.md")
+open(GAP_MD, "w").write("\n".join(out))
 print("\n".join(out[:22]))
 
 # ---------------------------------------------------------------------------
@@ -126,3 +156,4 @@ out.append("")
 out.append(f"{len(covered)} of {len(fs)} F\\* modules have a Lean counterpart.")
 
 print('\n'.join(out))
+print("\nfull group listing written to " + GAP_MD)

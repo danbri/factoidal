@@ -379,7 +379,16 @@ rule #17").
     obligation, closed" took `BuiltCorrectly` with re-indexed bounds as
     a hypothesis. Full text: hazard #29 in
     `skills/workflow-gotchas-debugging`.)
-30. A hub post's live cells run against the js/npm bundle, not the
+30. A measurement tool must derive its inputs from the repository on
+    every run. A cached file list reports the cache, not the tree, and
+    says nothing about being old. (2026-08-23:
+    `tools/lean-port-gap.py` read its Lean module list from the
+    session scratchpad and reported a module as not covered minutes
+    after its Lean file landed; the same cache would have made the
+    tool crash on a fresh container. Fail loudly on an empty walk, and
+    write generated reports to a temp path. Full text: hazard #30 in
+    `skills/workflow-gotchas-debugging`.)
+31. A hub post's live cells run against the js/npm bundle, not the
     native binary. A docs landing that adds cells calling a new F\*
     feature is NOT docs-only — rebuild the bundle (the js build
     incrementally SKIPS npm-entry; force it) and gate on `node --test

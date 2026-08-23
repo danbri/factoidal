@@ -1306,7 +1306,47 @@ by the type checker, which was perfectly happy, and not by any test.
    is what produced the bad theorem in the first place.
 5. Same family as hazard #24's vacuous theorems (unsatisfiable
    hypotheses), #26 (a green build is not evidence an edit landed), #27
-   (a passing guard is not evidence a rule fires) and #28 (an audit that
-   finds nothing is evidence about the audit). In all of them a check
+   (a passing guard is not evidence a rule fires), #28 (an audit that
+   finds nothing is evidence about the audit) and #30 (a tool that
+   reads a cached input reports the cache). In all of them a check
    returned a reassuring result while being structurally incapable of
    detecting what it was trusted for.
+
+## Hazard #30 — a measurement tool that reads a cached input reports the cache, not the tree (2026-08-23)
+
+`tools/lean-port-gap.py` answers one question: which F\* modules have a
+Lean counterpart. It read both module lists from two text files in the
+session scratchpad.
+
+The F\* list stayed right, because `formal/fstar/` had not changed. The
+Lean list was a snapshot taken earlier in the session, so the tool
+reported a module as NOT COVERED minutes after its Lean file landed in
+the tree. The number the tool exists to produce was wrong, and nothing
+in its output said the input was old.
+
+The second failure mode is worse and had not fired yet: the scratchpad
+directory is per-session and is deleted with the container, so on a
+fresh session the tool would have crashed, or — if someone recreated
+the files from an older checkout — reported an older answer with no
+warning.
+
+### The rule
+
+**A measurement tool derives its inputs from the repository on every
+run.** If a tool needs a list of files, it walks for them. A cached
+input is acceptable only when the tool verifies the cache is current
+and fails loudly when it is not.
+
+Two supporting habits:
+
+- **Fail on an empty walk.** `lean-port-gap.py` now exits non-zero if
+  either walk returns zero modules. A wrong working directory then
+  produces an error rather than "0 of 0 covered".
+- **Write reports to a temp path, not the repository root**, unless the
+  report is a tracked artefact. A generated file that lands in the tree
+  turns up in the next `git status` and gets committed by accident.
+
+This is the same family as hazards #25, #26, #27, #28 and #29: a check
+returned a reassuring result while being structurally unable to detect
+what it was trusted for. Here the check was arithmetic over a list, and
+the list was the stale part.
