@@ -13,6 +13,7 @@ import L4Factoidal.RDF.StoreLoader
 import L4Factoidal.RDF.StoreCapabilities
 import L4Factoidal.RDF.StoreDeltaMerge
 import L4Factoidal.RDF.StoreCapabilitiesDelta
+import L4Factoidal.RDF.StoreCombine
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.RDF.IsomorphismTheorems
 import L4Factoidal.RDF.IsomorphismTests
@@ -290,6 +291,7 @@ import L4Factoidal.OWL.DirectMappingFilter
 import L4Factoidal.RDFS.RDFSPlus
 import L4Factoidal.RDF.Pretty
 import L4Factoidal.SPARQL.Explain
+import L4Factoidal.SPARQL.Diagnostics
 import L4Factoidal.SPARQL.FullText
 import L4Factoidal.SPARQL.UpdateSandbox
 import L4Factoidal.OWL.TestsManifest

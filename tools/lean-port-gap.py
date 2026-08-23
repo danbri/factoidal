@@ -43,6 +43,8 @@ alias={
  "RDF.Store.Capabilities":"RDF.StoreCapabilities",
  "RDF.Store.Columnar.DeltaMerge":"RDF.StoreDeltaMerge",
  "RDF.Store.Capabilities.Delta":"RDF.StoreCapabilitiesDelta",
+ "RDF.Store.Combine":"RDF.StoreCombine",
+ "SPARQL.Diagnostics":"SPARQL.Diagnostics",
  "RML.VirtualSource":"RML.VirtualSource",
  "JSONLD.Frame":"JSONLD.Frame",
  "RDFS.SchemaSplit":"RDFS.SchemaSplit",

@@ -9962,3 +9962,69 @@ these four F\* modules are the design to follow. Recorded at
 "F\*-only machinery with no Lean counterpart by design", and tests
 that class BEFORE the proof suffixes, since `RDF.Indexed.Completeness`
 ends in `.Completeness`.
+
+## RDF.Store.Combine — folding several datasets into one
+
+`formal/fstar/RDF.Store.Combine.fst` (85 lines) →
+`L4Factoidal/RDF/StoreCombine.lean`.
+
+The F\* fold regroups `dataset_backend` named graphs by IRI, and has to
+inspect the `graph_backend` tag to keep unions FLAT: when a bucket
+already holds a `GB_Union` it appends to that union's member list, and
+when the bucket holds a single backend it wraps both into a fresh
+two-element union.
+
+The Lean seam has no tag. `unionCaps : List StoreCaps → StoreCaps` takes
+a member list, so the fold collects the list per IRI and calls
+`unionCaps` once at the end. Flatness comes from collecting before
+combining, not from an arm that maintains it.
+
+**Copied verbatim: the no-wrapper rule.** A one-element input list is
+returned unchanged, and a bucket with one member becomes that member.
+`unionCaps [c]` is NOT `c` — it overwrites `flags`, setting
+`supportsUpdate := false` and `estimateIsExact := false`. Wrapping a
+lone in-memory store would silently demote it from an exact estimate to
+an approximate one and from writable to read-only. Two `#guard`s pin
+that, one for the whole dataset and one for a single-member bucket.
+
+**Order proved, not asserted.** `combineNamed_solve` states that the
+rows for any name are every input's rows for that name, concatenated in
+input order, and it holds for names no input carries (both sides empty).
+`combineDatasetCaps_default_solve` states the same for the default
+graph, and all three arms of the combiner satisfy it — the empty list
+because `unionCaps []` solves to nothing, the one-element list because
+`flatMap` over a singleton is that element's own rows.
+
+**One deliberate keep from the F\* fold:** duplicate names WITHIN one
+input dataset all contribute. `datasetCapsLookupNamed` returns a first
+match, so a dataset carrying the same name twice would otherwise lose
+its second entry on combination. `capsForName` filters rather than
+looks up, and the theorems are stated in those terms.
+
+## SPARQL.Diagnostics — trace strings, minus the backend tag
+
+`formal/fstar/SPARQL.Diagnostics.fst` (78 lines) →
+`L4Factoidal/SPARQL/Diagnostics.lean`.
+
+`queryFormString` is a direct port. The other two renderers diverge, and
+the file's header states the trade.
+
+The F\* `graph_backend_kind_string` prints a constructor name —
+`GB_List`, `GB_HDT`, `GB_Union[...]` — so a person can match a trace
+line to the `--data` / `--data-cottas` / `--data-hdt` flag that produced
+it. There is no such constructor in the Lean tree: `StoreCaps` replaced
+the backend tag with a record of functions, which is the change the seam
+exists to make.
+
+`storeCapsKindString` renders `StoreCapsFlags` instead —
+`Store[+named +update +stream +exact -decodefail]`. That is the
+information the tag stood in for, stated as what the store CAN DO rather
+than what it IS. What it loses: two stores with identical flags render
+identically, so an HDT file and a bare COTTAS base are not
+distinguishable from a trace line. A `#guard` pins that sameness, so a
+later reader meets it as a recorded trade rather than as a defect.
+
+The reason the F\* module gives for keeping these renderers beside the
+types they describe — a missing case fails the totality check instead of
+printing nothing — carries over unchanged to Lean's exhaustiveness
+check.
