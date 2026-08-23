@@ -173,6 +173,11 @@ extern_lib libl4hacl pkg := do
 -- and compared with the suite's own assert-xml file (Harness/XsltRun.lean).
 @[default_target] lean_exe «l4xslt» where root := `Harness.XsltRun
 
+-- GRDDL conformance over the vendored W3C GRDDL suite: GRDDL/Discovery
+-- finds the transformations, XSLT/Transform runs them, RdfXml reads the
+-- output, and graphs are compared by isomorphism (Harness/GrddlRun.lean).
+@[default_target] lean_exe «l4grddl» where root := `Harness.GrddlRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.

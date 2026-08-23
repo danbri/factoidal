@@ -6582,3 +6582,78 @@ same whitespace collapse to both sides.
 
 No regression: `lake build` green over 511 targets, which runs every
 `#guard` in the tree.
+
+## GRDDL (2026-08-23)
+
+Landed `L4Factoidal/GRDDL/Discovery.lean` — a port of
+`formal/fstar/GRDDL.Discovery.fst` — and `Harness/GrddlRun.lean`
+(`lake exe l4grddl`) over the 68 tests of the vendored W3C GRDDL
+suite. GRDDL was blocked on XSLT and became reachable the moment the
+engine landed: a GRDDL transformation IS an XSLT stylesheet.
+
+**Score: 19 pass, 22 fail (out of 41 decided); 10 name no
+transformation this stage can follow, 17 need a document the vendored
+docroot does not carry, 0 refused (out of 68 manifest entries).** The
+F* runner scores 18 pass, 50 fail (out of 68) on the same corpus,
+counting every non-pass as a failure.
+
+### What the runner buckets apart, and why
+
+A GRDDL result is a GRAPH, compared by isomorphism — blank-node
+labels are not part of what one means. Beyond pass and fail there are
+three buckets, each carrying the name of what is missing:
+
+- **no transformation found** — the source names no transformation
+  this stage can follow and is not itself RDF/XML, so there is
+  nothing to glean;
+- **unavailable** — a document the test needs is not mirrored under
+  `docroot/`. The IRI is printed. This runner makes no network
+  request, and a case that would need one is not a failure of the
+  engine;
+- **refused** — a stylesheet the engine declined, or output that is
+  not well-formed RDF/XML, with the reason. This is now ZERO.
+
+### Three engine gaps the corpus found, all in XSLT
+
+1. **`xsl:message` was unimplemented**, so six cases refused. §13
+   sends its content to a message stream, never to the result tree,
+   so it contributes no nodes; `terminate="yes"` ends processing,
+   which is a refusal rather than a partial document.
+2. **`xsl:import` and `xsl:include` were unimplemented**, so ten
+   `inline-rdf` cases refused with nothing said about why. Both are
+   implemented, with import PRECEDENCE (§2.6.2) carried on every
+   template and `xsl:call-template` resolved by precedence rather
+   than by document order. As with `document()`, the imported trees
+   are supplied by the CALLER: `XSLT.importHrefs` says which hrefs a
+   stylesheet wants, the runner fetches them from the docroot, and
+   nothing in the engine opens a file.
+3. **A `call-template` naming no template failed silently deep inside
+   instantiation.** It is now named up front, which is what turned
+   those ten cases from an opaque refusal into an honest
+   "unavailable": the stylesheet imports
+   `http://www.w3.org/2003/g/xml-attributes`, which the vendoring did
+   not capture.
+
+### One GRDDL defect, worth its own line
+
+The transform's output describes the SOURCE — `rdf:about=""` denotes
+it — so a relative reference in that output resolves against the
+source's EFFECTIVE base, which a root `xml:base` or an XHTML
+`<base href>` may move. Using the fetch IRI instead named the wrong
+subject while producing exactly the right NUMBER of triples: six
+cases differed in one IRI and nothing else.
+
+### Seven of the 22 failures are corpus drift, and the runner says so
+
+Several vendored inputs were re-fetched from a W3C server that had
+upgraded its own links to `https`, while the expected-output files
+beside them still say `http`. A transform can then be exactly right
+and still produce a different IRI. The runner reports which failures
+differ ONLY by that scheme — as a SUB-COUNT of the failures, never as
+a separate bucket, because the two graphs really are different
+graphs.
+
+The remaining 15 are real: multi-transformation merges that come up
+short (`three-transforms` produces 1 of 3, `four-transforms` 2 of 4,
+`multiprofile` 5 of 8), which is the one-level-not-a-fixpoint limit
+`Discovery.lean`'s header states.

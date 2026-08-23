@@ -111,6 +111,11 @@ inductive Instr where
   | piI       (name : String) (body : List Instr)
   | copyI     (body : List Instr)
   | copyOf    (select : String) (dropNs : Bool)
+  /-- §13 `xsl:message`. Its content goes to a MESSAGE stream, never
+      to the result tree, so it contributes no nodes. `terminate` is
+      carried because `yes` ends processing, which is a refusal and
+      not an empty document. -/
+  | messageI  (terminate : Bool) (body : List Instr)
   | varI      (name : String) (bind : Binding) (rest : List Instr)
   /-- An element in the XSLT namespace this engine does not
       implement. Instantiating it REFUSES the transform. -/
@@ -131,6 +136,11 @@ structure Tmpl where
   name     : String := ""
   mode     : String := ""
   priority : Option Int := none
+  /-- §2.6.2 import precedence: 0 for the principal stylesheet, lower
+      for each imported one. A higher-precedence template wins
+      outright, whatever its priority — that is the whole point of
+      `xsl:import`. -/
+  importPrec : Int := 0
   order    : Nat := 0
   params   : List (String × Binding) := []
   body     : List Instr := []
@@ -360,6 +370,8 @@ partial def readOne (ctx : List (String × String)) (excl : List String)
       | some "processing-instruction" =>
           [.piI ((attrOf n "name").getD "") (readBody c2 excl kids)]
       | some "copy"     => [.copyI (readBody c2 excl kids)]
+      | some "message"  =>
+          [.messageI ((attrOf n "terminate").getD "no" == "yes") (readBody c2 excl kids)]
       | some "sort"     => []            -- consumed by the parent
       | some "fallback" => []            -- §15: only used when the parent is absent
       | some other      => [.unknown other]
@@ -396,7 +408,8 @@ def splitAlternatives (pat : String) : List String :=
     template rules, and its priority is the alternative's own. Taking
     the maximum over alternatives instead lets a specific alternative
     raise the priority of a general one. -/
-def readStylesheet (root : Node) : Stylesheet :=
+partial def readStylesheetWith (imports : List (String × Node)) (fuel : Nat)
+    (prec : Int) (root : Node) : Stylesheet :=
   let ctx0 := extendNs [("xml", "http://www.w3.org/XML/1998/namespace")] root
   let excl0 := ((attrsOfNode root).filterMap (fun a =>
     if a.name == "exclude-result-prefixes" || a.name == "extension-element-prefixes"
@@ -439,7 +452,8 @@ def readStylesheet (root : Node) : Stylesheet :=
                 order := i
                 params := params
                 body := readBody c2 excl0 bodyKids
-                nsctx := c2 }
+                nsctx := c2
+                importPrec := prec }
             let pat := (attrOf c "match").getD ""
             if pat == "" then { st with templates := st.templates ++ [base] }
             else
@@ -455,6 +469,29 @@ def readStylesheet (root : Node) : Stylesheet :=
             { st with outputMethod := (attrOf c "method").getD st.outputMethod
                       indent := (attrOf c "indent").getD "no" == "yes"
                       omitDecl := (attrOf c "omit-xml-declaration").getD "no" == "yes" }
+        | some "import" | some "include" =>
+            -- The imported/included stylesheet's own tree is supplied
+            -- by the CALLER (`importHrefs` says which hrefs it wants);
+            -- nothing here opens a file. An href nobody supplied
+            -- contributes no templates, and the `call-template` check
+            -- in `transform` then names what is missing rather than
+            -- letting the stylesheet run half-loaded.
+            let isImport := xslLocal c2 t == some "import"
+            (match (attrOf c "href").bind (fun h =>
+                     (imports.find? (fun (k, _) => k == h)).map (·.2)) with
+             | none      => st
+             | some tree =>
+                 if fuel == 0 then st
+                 else
+                   let sub := readStylesheetWith imports (fuel - 1)
+                     (if isImport then prec - 1 else prec) tree
+                   -- The sub-stylesheet's templates come FIRST, so
+                   -- the principal stylesheet's own `docOrder`
+                   -- tiebreak still favours what it declares itself.
+                   { st with templates := sub.templates ++ st.templates
+                             globals := sub.globals ++ st.globals
+                             stripSpace := sub.stripSpace ++ st.stripSpace
+                             preserveSpace := sub.preserveSpace ++ st.preserveSpace })
         | some "strip-space" =>
             { st with stripSpace := st.stripSpace ++ splitWs ((attrOf c "elements").getD "") }
         | some "preserve-space" =>
@@ -626,7 +663,7 @@ deriving Inhabited
 
 def tmplOf (i : Nat) (t : Tmpl) : Template :=
   { matchPattern := t.pat, name := t.name, mode := t.mode,
-    priority := t.priority, importPrec := 0, docOrder := i }
+    priority := t.priority, importPrec := t.importPrec, docOrder := i }
 
 /-- §5.5 selection: among the templates whose pattern matches this
     node in this mode, the one `Templates.better` prefers. -/
@@ -733,8 +770,15 @@ partial def rnodeToNode : RNode → Option Node
 
 /-! ## Instantiation (§7) -/
 
+/-- §2.6.2: a named template is resolved by IMPORT PRECEDENCE, not by
+    document order. Taking the first match would let an imported
+    stylesheet's template beat the importing one's override, which
+    defeats the point of `xsl:import`. -/
 def findNamedTmpl (rt : Rt) (nm : String) : Option Tmpl :=
-  rt.st.templates.find? (fun t => t.name == nm)
+  (rt.st.templates.filter (fun t => t.name == nm)).foldl (fun acc t =>
+    match acc with
+    | none   => some t
+    | some b => if t.importPrec > b.importPrec then some t else acc) none
 
 mutual
 
@@ -762,6 +806,14 @@ partial def instOne (rt : Rt) (fuel : Nat) (vars : List (String × Value))
     : Instr → Option (List RNode)
   | .textN s => some [.text s]
   | .unknown _ => none
+  | .messageI terminate body =>
+      -- §13: the content is instantiated (it may have side conditions
+      -- worth evaluating) and then DISCARDED — a message is not part
+      -- of the result tree. `terminate="yes"` ends processing, which
+      -- is a refusal: a partial document is not the transform's
+      -- output.
+      if terminate then none
+      else (inst rt fuel vars nsctx it pos size body).map (fun _ => [])
   | .varI nm b rest => do
       let v ← evalBinding rt fuel vars nsctx it pos size b
       inst rt fuel ((vars.filter (fun (k, _) => k != nm)) ++ [(nm, v)])
@@ -867,7 +919,7 @@ partial def instOne (rt : Rt) (fuel : Nat) (vars : List (String × Value))
   | .callT nm ps =>
       if fuel == 0 then none
       else match findNamedTmpl rt nm with
-        | none   => none
+        | none   => none      -- reported by `missingNamedTemplates`
         | some t => do
             let bound ← bindParams rt fuel vars nsctx it pos size t.params ps
             inst rt (fuel - 1) bound t.nsctx it pos size t.body
@@ -1020,6 +1072,22 @@ partial def stripWsIn (st : Stylesheet) (n : Node) : Node :=
 
 /-! ## Reporting what the engine could not read -/
 
+/-- The `href` of every `xsl:import` and `xsl:include` a stylesheet
+    element declares, with `true` marking an IMPORT (lower precedence)
+    and `false` an INCLUDE (the same precedence). Exposed so the
+    caller can fetch them — the fetch is I/O, the meaning is not. -/
+def importHrefs (root : Node) : List (Bool × String) :=
+  let ctx := extendNs [("xml", "http://www.w3.org/XML/1998/namespace")] root
+  (elemsOf root).filterMap (fun c =>
+    match c with
+    | .element t _ _ =>
+        let c2 := extendNs ctx c
+        match xslLocal c2 t with
+        | some "import"  => (attrOf c "href").map (fun h => (true, h))
+        | some "include" => (attrOf c "href").map (fun h => (false, h))
+        | _              => none
+    | _ => none)
+
 mutual
 
 partial def unknownIn : List Instr → List String
@@ -1033,6 +1101,7 @@ partial def unknownOne : Instr → List String
   | .ifI _ b        => unknownIn b
   | .choose ws o    => ws.flatMap (fun (_, b) => unknownIn b) ++ unknownIn o
   | .elemI _ _ b | .attrI _ _ b | .commentI b | .piI _ b | .copyI b => unknownIn b
+  | .messageI _ b   => unknownIn b
   | .varI _ b r     => bindUnknown b ++ unknownIn r
   | .applyT _ _ _ ps | .callT _ ps => ps.flatMap (fun (_, b) => bindUnknown b)
   | _ => []
@@ -1040,6 +1109,27 @@ partial def unknownOne : Instr → List String
 partial def bindUnknown : Binding → List String
   | .sel _   => []
   | .body is => unknownIn is
+
+/-- Every `xsl:call-template` name an instruction tree mentions. -/
+partial def calledIn : List Instr → List String
+  | []     => []
+  | i :: r => calledOne i ++ calledIn r
+
+partial def calledOne : Instr → List String
+  | .callT nm ps    => nm :: ps.flatMap (fun (_, b) => bindCalled b)
+  | .lre _ _ _ b    => calledIn b
+  | .forEach _ _ b  => calledIn b
+  | .ifI _ b        => calledIn b
+  | .choose ws o    => ws.flatMap (fun (_, b) => calledIn b) ++ calledIn o
+  | .elemI _ _ b | .attrI _ _ b | .commentI b | .piI _ b | .copyI b => calledIn b
+  | .messageI _ b   => calledIn b
+  | .varI _ b r     => bindCalled b ++ calledIn r
+  | .applyT _ _ _ ps => ps.flatMap (fun (_, b) => bindCalled b)
+  | _ => []
+
+partial def bindCalled : Binding → List String
+  | .sel _   => []
+  | .body is => calledIn is
 
 end
 
@@ -1064,14 +1154,25 @@ def isStylesheetRoot (root : Node) : Bool :=
     `document(uri)` may return, keyed by the URI as the stylesheet
     writes it. -/
 def transform (style : Document) (src : Document)
-    (docs : List (String × Doc) := []) : Outcome :=
+    (docs : List (String × Doc) := [])
+    (imports : List (String × Node) := []) : Outcome :=
   if !isStylesheetRoot style.root then
     .refused "the stylesheet root is not xsl:stylesheet or xsl:transform"
   else
-    let st := readStylesheet style.root
+    let st := readStylesheetWith imports 8 0 style.root
     let missing := (st.templates.flatMap (fun t => unknownIn t.body)).eraseDups
     if !missing.isEmpty then
       .refused ("unimplemented XSLT element(s): " ++ String.intercalate ", " missing)
+    else
+    -- A `call-template` whose name no template carries would fail
+    -- deep inside instantiation with nothing said about it. Naming it
+    -- up front is what tells a reader the stylesheet is incomplete —
+    -- usually because an `xsl:import` target was not supplied.
+    let unresolved := ((st.templates.flatMap (fun t => calledIn t.body)).eraseDups).filter
+      (fun nm => !(st.templates.any (fun t => t.name == nm)))
+    if !unresolved.isEmpty then
+      .refused ("xsl:call-template names no such template: "
+                ++ String.intercalate ", " unresolved)
     else
       let d : Doc := src.prolog ++ (stripWsIn st src.root :: src.epilog)
       let styleDoc : Doc := style.prolog ++ (style.root :: style.epilog)

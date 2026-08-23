@@ -194,6 +194,7 @@ import L4Factoidal.XSLT.Templates
 import L4Factoidal.XSLT.Tests
 import L4Factoidal.XSLT.Transform
 import L4Factoidal.XSLT.TransformTests
+import L4Factoidal.GRDDL.Discovery
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.DeltaLogTests
 import L4Factoidal.VC.Credential
