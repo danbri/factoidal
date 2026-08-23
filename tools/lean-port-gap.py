@@ -247,11 +247,29 @@ BY_DESIGN_PREFIXES = ("Parser.FastString",)
 # so there is no separator character, no composite string key, and no side
 # condition to discharge: `OWL.RLClosureIndexed.Wf.ofGraph` holds for every
 # graph. See docs/designissues/2026-08-23-lean-port-gap.md.
+# Two more, 2026-08-23, for the SAME structural reason.
+#  * OWL.Semantics.MemLemmas is membership-preservation infrastructure
+#    for the F* bucket_tree build: tree_ok / lemma_slt_tree_ok /
+#    lemma_build_bucket_ok plus five lemma_build_indexed_wf_* rows, and
+#    lemmas about List.Tot.sortWith / partition / rev that exist ONLY
+#    because that build sorts and partitions. The Lean index does
+#    neither -- Index.ofGraph folds HashMap.insert, BucketWf is an
+#    equation between a lookup and a filter -- and OWL/RLTheorems.lean
+#    proves the same soundness results without any of it.
+#  * RDF.CottasStore.ColumnSeq is `assume new type cottas_column` plus
+#    O(1) accessors, realised in OCaml as `string option array`. Its own
+#    banner gives the reason: the F*-pure decoders produce
+#    `list (option string)` and every walk cons-cell-chases, so F* needs
+#    an array-shaped abstract type to retire the OCaml perf shim. Lean
+#    has Array natively and totally; `Array.size`, `arr[i]?` and
+#    `Array.toList` are the whole module.
 BY_DESIGN_EXACT = {"RDF.List.Helpers",
                    "RDF.Indexed.KeyInjectivity",
                    "RDF.Indexed.Completeness",
                    "RDF.Entailment.RDFS.SepFree",
-                   "RDF.Entailment.RDFS.ChainWf"}
+                   "RDF.Entailment.RDFS.ChainWf",
+                   "OWL.Semantics.MemLemmas",
+                   "RDF.CottasStore.ColumnSeq"}
 
 def classify(m):
     # BY-DESIGN is tested FIRST: `RDF.Indexed.Completeness` ends in a

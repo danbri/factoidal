@@ -10,9 +10,9 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 13 | 20016 |
+| Engine and specification code — to port | 11 | 19411 |
 | Proofs about the F\* implementation — see below | 9 | 12811 |
-| F\*-only machinery with no Lean counterpart by design | 12 | 5735 |
+| F\*-only machinery with no Lean counterpart by design | 14 | 6340 |
 | **Total not covered** | **34** | **38562** |
 
 186 of 220 F\* modules have a Lean counterpart.
@@ -168,16 +168,36 @@ than the F\* one and carries no side condition, so a module-for-module
 port of the four repair modules would produce four Lean files that
 prove nothing the tree does not already have.
 
+`OWL.Semantics.MemLemmas` (442 lines) joined them on 2026-08-23, for
+the same reason one level up. About half of it IS that index machinery —
+`tree_ok`, `lemma_tree_ok_lookup`, `lemma_slt_tree_ok`,
+`lemma_build_bucket_ok`, and five `lemma_build_indexed_wf_*`
+instantiations. The other half is lemmas about `List.Tot.sortWith`,
+`partition` and `rev`, which exist ONLY because the `bucket_tree` build
+sorts and partitions. The Lean index does neither, so there is nothing
+for a membership-preservation lemma to preserve through, and
+`OWL/RLTheorems.lean` proves the same OWL RL soundness results with none
+of it.
+
+`RDF.CottasStore.ColumnSeq` (163 lines) joined on the same day for a
+different absence. It is `assume new type cottas_column` plus O(1)
+accessors, realised in OCaml as `string option array`, with a list
+bridge. Its own banner gives the reason: the F\*-pure decoders produce
+`list (option string)`, every walk cons-cell-chases through the heap,
+and F\* needs a comparable array shape to retire the OCaml perf shim.
+Lean has `Array` natively and totally — `Array.size`, `arr[i]?` and
+`Array.toList` are the entire module, with no abstract type and no
+assumed accessor.
+
 Two consequences a later reader needs:
 
 1. The gap in `L4Factoidal/RDF/SemanticsHypothesisWitness.lean` § 4 —
    "no witness for `ig_wf_sp` or `closure_chain_wf`" — is a gap in the
    F\* tree only. In Lean those hypotheses are absent from the
    statements, so there is nothing to witness.
-2. This is a claim about the CURRENT Lean index. If the Lean tree ever
-   adopts a serialised or string-keyed index — for an on-disk store,
-   say — the obligation comes back and these four modules become the
-   design to follow. Tracked at
+2. This is a claim about the CURRENT Lean structures. A serialised or
+   string-keyed index brings the first five back; a decoder that needs
+   an abstract column handle brings `ColumnSeq` back. Tracked at
    <https://github.com/danbri/factoidal/issues/559>.
 
 

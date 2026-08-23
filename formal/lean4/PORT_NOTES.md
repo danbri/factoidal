@@ -10454,3 +10454,40 @@ validator: the certificate for `x = 0` with `x ≥ 1` is accepted, one
 with a negative multiplier on a `≥` row is refused, one whose combined
 coefficients are not zero is refused, and the searcher finds nothing for
 a satisfiable system.
+
+## Two more not ported by design: MemLemmas and ColumnSeq
+
+Added to the by-design column 2026-08-23, alongside the four
+index-key-repair modules already there.
+
+**`OWL.Semantics.MemLemmas` (442 F\* lines)** is membership-preservation
+infrastructure for the F\* `bucket_tree` build. About half of it IS that
+index machinery — `tree_ok`, `lemma_tree_ok_lookup`,
+`lemma_slt_tree_ok`, `lemma_build_bucket_ok`, and five
+`lemma_build_indexed_wf_*` instantiations. The other half is lemmas
+about `List.Tot.sortWith`, `partition` and `rev`, which exist ONLY
+because that build sorts and partitions.
+
+The Lean index does neither. `Index.ofGraph` folds `HashMap.insert`;
+`BucketWf` is an equation between a lookup and a filter; `Wf.ofGraph`
+holds for every graph with no hypothesis. There is nothing for a
+membership-preservation lemma to preserve through, and
+`OWL/RLTheorems.lean` proves the same OWL RL soundness results with none
+of it.
+
+**`RDF.CottasStore.ColumnSeq` (163 F\* lines)** is `assume new type
+cottas_column` plus O(1) accessors, realised in OCaml as
+`string option array`, with a list bridge. Its own banner gives the
+reason: the F\*-pure decoders in `Parquet.Footer` produce
+`list (option string)`, every walk cons-cell-chases through the heap,
+and F\* needs an array-shaped abstract type to retire the OCaml perf
+shim.
+
+Lean has `Array` natively and totally. `Array.size`, `arr[i]?` and
+`Array.toList` are the entire module — no abstract type, no assumed
+accessor, no bridge.
+
+Both recorded on <https://github.com/danbri/factoidal/issues/559>, which
+now carries all six modules and the one condition that reverses each: a
+serialised or string-keyed index for the first five, a decoder needing
+an abstract column handle for `ColumnSeq`.
