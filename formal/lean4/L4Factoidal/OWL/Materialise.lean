@@ -60,6 +60,7 @@ Two different IRIs may denote one individual unless the graph says
 exact figure: `minCard` can fire on it, `maxCard` cannot.
 -/
 import L4Factoidal.OWL.ClassExpr
+import Std.Data.HashSet
 
 namespace L4Factoidal.OWL.Mat
 
@@ -357,8 +358,18 @@ def isNamedCeSubject (st : Store) (s : Subject) : Bool :=
       (firstObject st s owlIntersectionOf).isSome ||
       (firstObject st s owlUnionOf).isSome
 
+/-- Duplicates out, first-appearance order kept.
+
+    The obvious `foldl` with `acc.contains s` and `acc ++ [s]` is
+    QUADRATIC in both halves, and the pass runs it over every subject
+    of a closed graph. On the 41 384-triple `type-consistency`
+    premise that turned a two-minute probe run into one still going
+    after fifteen; a hash set makes it one pass. -/
 private def dedupSubjects (xs : List Subject) : List Subject :=
-  xs.foldl (fun acc s => if acc.contains s then acc else acc ++ [s]) []
+  let (out, _) := xs.foldl (fun (acc : List Subject × Std.HashSet Subject) s =>
+    if acc.2.contains s then acc else (acc.1 ++ [s], acc.2.insert s))
+    ([], (∅ : Std.HashSet Subject))
+  out
 
 def collectCeBNodes (st : Store) : List Subject :=
   dedupSubjects (st.graph.filterMap (fun t =>
@@ -482,16 +493,34 @@ def introduceWitnesses (g : Graph) : Graph :=
     caller runs the closure afterwards to propagate the new
     `rdf:type` triples through `rdfs:subClassOf`; running the pair to
     saturation is a separate decision with its own cost. -/
-def materialise (g : Graph) : Graph :=
+def materialiseWithBudget (g : Graph) (budget : Nat) : Graph × Bool :=
   let g1 := introduceWitnesses g
   let st := Store.ofIndex (Index.ofGraph g1)
   let individuals := collectIndividuals st
+  let bnodeCes    := collectCeBNodes st
+  let namedCes    := collectNamedCeSubjects st
   let structural  := eqcExpansion st
   let booleans    := directBooleanSubclasses st
-  let bnodeMems   := membershipsForBNodeCes st individuals (collectCeBNodes st)
-  let namedMems   := membershipsForNamedCes st individuals (collectNamedCeSubjects st)
-  RL.addAll (RL.addAll (RL.addAll (RL.addAll g1 structural) booleans) bnodeMems)
-    namedMems
+  let pairs := individuals.length * (bnodeCes.length + namedCes.length)
+  if pairs > budget then
+    -- The membership pass is one `isMember` per (individual, class
+    -- expression) PAIR, so its cost is the product. Over budget, the
+    -- structural axioms still land and the memberships do not, and
+    -- the caller is TOLD — a cap that reports itself is a known gap;
+    -- a silent one is a wrong answer wearing a right one's clothes.
+    (RL.addAll (RL.addAll g1 structural) booleans, true)
+  else
+    let bnodeMems := membershipsForBNodeCes st individuals bnodeCes
+    let namedMems := membershipsForNamedCes st individuals namedCes
+    (RL.addAll (RL.addAll (RL.addAll (RL.addAll g1 structural) booleans) bnodeMems)
+       namedMems, false)
+
+/-- The default budget: 400 000 (individual, class expression) pairs.
+    Chosen from the corpus — the largest OWL premise that finishes
+    the pass sits well under it — not from a principle. -/
+def defaultBudget : Nat := 400000
+
+def materialise (g : Graph) : Graph := (materialiseWithBudget g defaultBudget).1
 
 /-- Is `(i rdf:type C)` provable by class-expression reasoning?
     `none` means the caller should fall back to the closure. A named
