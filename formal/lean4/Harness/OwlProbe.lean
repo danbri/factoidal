@@ -414,10 +414,28 @@ def closureIO (g : Graph) (fuel : Nat) (deadlineMs : Nat) : IO ClosureResult := 
 
 def closureFuel : Nat := 100
 
-/-- Expansion rounds the refuter gets per premise. Running out is
-`none` — not refuted — so the cap withholds a verdict rather than
-inventing one. -/
-def refuteFuel : Nat := 40
+/-- The refuter's DEFAULT budget per premise, overridable with
+`--refute-budget N`. The budget is threaded through the branch
+search, so it bounds the whole search and not each branch. Running
+out answers `none` — not refuted — so the cap withholds a verdict
+rather than inventing one.
+
+📊 Measured on `type-inconsistency.rdf`, 2026-08-23:
+
+| Budget | Score | Wall |
+| --- | --- | --- |
+| 6 | 80 pass, 47 fail (out of 127 decided) | 2.8 s |
+| 16 | 80 pass, 47 fail | 5.2 s |
+| 24 | 81 pass, 46 fail | 76 s |
+
+The whole difference between 16 and 24 is ONE case,
+`WebOnt-description-logic-504` — a FaCT-derived 3-SAT encoding whose
+branch tree is what the deeper budget buys, at 71 seconds for that
+single premise. 16 is the default because a routine gate should not
+spend a minute on one fixture; `--refute-budget 24` reproduces the
+81. Naming the case is the point: a cap that hides which test it
+costs is a silent cap. -/
+def defaultRefuteBudget : Nat := 16
 
 /-- Per-catalog measurement counters. -/
 structure Measure where
@@ -673,7 +691,7 @@ def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
         else
           return (.fail s!"closure-gap: every non-conclusion triple was derived (unexpected entailment)", m)
 
-def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
+def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
     : IO (Harness.Outcome × Measure) := do
   if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
   let (res, m) ← premiseClosure cat c capMs dl
@@ -686,7 +704,7 @@ def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
     -- refuter, and it has to be visible as a failure — a refuter
     -- scored only on the cases it is meant to close cannot be caught
     -- fabricating a contradiction.
-    let refuted := dl && L4Factoidal.OWL.Refute.refute r.graph refuteFuel == some false
+    let refuted := dl && L4Factoidal.OWL.Refute.refute r.graph rb == some false
     let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
     if clash then return (.fail s!"clash: detectClash fired on a premise asserted consistent ({r.graph.length} triples)", m)
     else if refuted then
@@ -695,7 +713,7 @@ def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
       return (.fail s!"cap: absence verdict on a closure that hit the budget after {r.rounds} rounds", m)
     else return (.pass, m)
 
-def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
+def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
     : IO (Harness.Outcome × Measure) := do
   if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
   if isRdfBasedOnly c then return (.skip "semantics-rdf-based-only", {})
@@ -704,7 +722,7 @@ def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
   | .error o => return (o, m)
   | .ok r =>
     let clash := detectClashI r.index
-    let refuted := dl && L4Factoidal.OWL.Refute.refute r.graph refuteFuel == some false
+    let refuted := dl && L4Factoidal.OWL.Refute.refute r.graph rb == some false
     let m := { m with clashes := m.clashes + (if clash || refuted then 1 else 0) }
     if clash || refuted then return (.pass, m)
     else if r.capped then
@@ -714,12 +732,12 @@ def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
 def testTypes : List String :=
   ["PositiveEntailmentTest", "NegativeEntailmentTest", "ConsistencyTest", "InconsistencyTest"]
 
-def judge (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
+def judge (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
     : String → IO (Harness.Outcome × Measure)
   | "PositiveEntailmentTest" => judgePositive cat c capMs dl
   | "NegativeEntailmentTest" => judgeNegative cat c capMs dl
-  | "ConsistencyTest"        => judgeConsistency cat c capMs dl
-  | "InconsistencyTest"      => judgeInconsistency cat c capMs dl
+  | "ConsistencyTest"        => judgeConsistency cat c capMs dl rb
+  | "InconsistencyTest"      => judgeInconsistency cat c capMs dl rb
   | ty                       => pure (.unsupported s!"test type {ty}", {})
 
 /-- The cause tag of a FAIL reason: the text before the first `:`. -/
@@ -744,14 +762,15 @@ def bumpType (l : List (String × Harness.Score)) (ty : String) (o : Harness.Out
   | some _ => l.map (fun p => if p.1 == ty then (p.1, p.2.bump o) else p)
   | none   => l ++ [(ty, Harness.Score.bump {} o)]
 
-def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (dl : Bool) (verbose : Bool)
+def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (dl : Bool) (rb : Nat)
+    (verbose : Bool)
     : IO CatalogResult := do
   let t0 ← IO.monoMsNow
   let mut r : CatalogResult := {}
   for c in cat.cases do
     for ty in testTypes do
       if c.types.contains ty then
-        let (o, m) ← judge cat c capMs dl ty
+        let (o, m) ← judge cat c capMs dl rb ty
         let label := s!"{c.id} [{ty}]"
         -- A cap hit is named even when the unit still scored (a
         -- conclusion found before the budget, a clash on a truncated
@@ -840,6 +859,8 @@ structure Opts where
   so both numbers can be measured from the same binary and the
   difference attributed to the pass. -/
   dl : Bool := false
+  /-- `--refute-budget N`: the refuter's per-premise budget. -/
+  refuteBudget : Nat := defaultRefuteBudget
 
 def parseArgs : List String → Opts → Opts
   | [], o => o
@@ -851,6 +872,8 @@ def parseArgs : List String → Opts → Opts
   | "--rounds" :: n :: rest, o => parseArgs rest { o with rounds := n.toNat!.max 1 }
   | "--indexed-only" :: rest, o => parseArgs rest { o with indexedOnly := true }
   | "--dl" :: rest, o => parseArgs rest { o with dl := true }
+  | "--refute-budget" :: n :: rest, o =>
+      parseArgs rest { o with refuteBudget := n.toNat!.max 1 }
   | a :: rest, o =>
       if a.endsWith ".rdf" then parseArgs rest { o with only := o.only ++ [a] }
       else parseArgs rest { o with dir := a }
@@ -940,7 +963,8 @@ def main (args : List String) : IO UInt32 := do
   IO.println "Lean OWL 2 RL/RDF probe — corpus census + closure run"
   IO.println s!"corpus dir: {dir}  closure fuel: {closureFuel}  per-closure cap: {o.capMs} ms"
   IO.println (if o.dl then
-    "regime: RL closure + class-expression materialisation + tableau refuter (--dl)"
+    s!"regime: RL closure + class-expression materialisation + tableau refuter \
+(--dl), refuter budget {o.refuteBudget}"
   else "regime: RL closure only")
   let (scoOk, unrelatedAbsent) := engineSelfCheck
   IO.println s!"engine self-check: cax-sco fires = {scoOk}, \
@@ -961,7 +985,7 @@ unrelated triple absent = {!unrelatedAbsent}"
       | none => notRead := notRead ++ [name]
       | some cat =>
         printCensus name cat.cases
-        let r ← runCatalog name cat o.capMs o.dl o.verbose
+        let r ← runCatalog name cat o.capMs o.dl o.refuteBudget o.verbose
         total := total.add r.score
         totalM := totalM.add r.measure
         totalCases := totalCases + cat.cases.length
