@@ -219,11 +219,28 @@ PROOF_SUFFIXES = (".Spec", ".Refinement", ".ModelTheory", ".Completeness",
                   ".Axioms", ".RoundTrip", ".Soundness")
 PROOF_EXACT = {"OWL.Semantics"}
 BY_DESIGN_PREFIXES = ("Parser.FastString",)
-BY_DESIGN_EXACT = {"RDF.List.Helpers"}
+# The four index-key-repair modules (2026-08-23). The F* index builds a
+# composite bucket key by concatenating strings, and that key is not
+# injective, because `is_iri` admits U+001F. KeyInjectivity proves the
+# one-sided injectivity, SepFree proves that every RDFS closure row keeps
+# a graph free of U+001F, ChainWf folds the rows into the chain, and
+# RDF.Indexed.Completeness proves the bucket coverage direction from three
+# FStar.String.compare axioms. The Lean index is a `Std.HashMap` keyed on
+# STRUCTURED values (`Subject`, `WfIri`, `Subject x WfIri`, `WfIri x Term`),
+# so there is no separator character, no composite string key, and no side
+# condition to discharge: `OWL.RLClosureIndexed.Wf.ofGraph` holds for every
+# graph. See docs/designissues/2026-08-23-lean-port-gap.md.
+BY_DESIGN_EXACT = {"RDF.List.Helpers",
+                   "RDF.Indexed.KeyInjectivity",
+                   "RDF.Indexed.Completeness",
+                   "RDF.Entailment.RDFS.SepFree",
+                   "RDF.Entailment.RDFS.ChainWf"}
 
 def classify(m):
-    if m.endswith(PROOF_SUFFIXES) or m in PROOF_EXACT: return "proof"
+    # BY-DESIGN is tested FIRST: `RDF.Indexed.Completeness` ends in a
+    # PROOF_SUFFIX, and the by-design reason is the stronger statement.
     if m.startswith(BY_DESIGN_PREFIXES) or m in BY_DESIGN_EXACT: return "bydesign"
+    if m.endswith(PROOF_SUFFIXES) or m in PROOF_EXACT: return "proof"
     return "engine"
 
 buckets = {"engine": [], "proof": [], "bydesign": []}

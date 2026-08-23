@@ -10,9 +10,9 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 27 | 33098 |
-| Proofs about the F\* implementation — see below | 14 | 20794 |
-| F\*-only machinery with no Lean counterpart by design | 6 | 1853 |
+| Engine and specification code — to port | 24 | 31070 |
+| Proofs about the F\* implementation — see below | 11 | 18940 |
+| F\*-only machinery with no Lean counterpart by design | 12 | 5735 |
 | **Total not covered** | **47** | **55745** |
 
 173 of 220 F\* modules have a Lean counterpart.
@@ -124,6 +124,61 @@ and reject invalid sequences. Lean's `String` and `Char` are
 codepoint types and `Char` is a valid scalar value by construction,
 so that machinery has no counterpart. `L4Factoidal/XML/Document.lean`
 states this in its header.
+
+`RDF.Indexed.KeyInjectivity` (963 lines), `RDF.Indexed.Completeness`
+(651), `RDF.Entailment.RDFS.SepFree` (697) and
+`RDF.Entailment.RDFS.ChainWf` (368) — 2,679 lines — were reclassified
+into this column on 2026-08-23. All four repair ONE property of the
+F\* index: its bucket key is built by concatenating strings with a
+U+001F separator, and that key is not injective, because `is_iri`
+admits U+001F. `RDF.Semantics.HypothesisWitness.theorem_sp_key_not_injective`
+exhibits the collision. The four modules are the repair:
+
+- `KeyInjectivity` proves the key injective as soon as ONE side is
+  free of U+001F, and discharges `ig_wf_sp (build_indexed g)` from the
+  per-graph side condition `graph_sp_sep_free g`.
+- `SepFree` proves, row by row, that every RDF and RDFS closure rule
+  sends a U+001F-free graph to a U+001F-free graph, because a
+  one-graph discharge does not carry through a closure CHAIN.
+- `ChainWf` folds those rows into one step lemma and inducts it over
+  `closure_iter`, giving `closure_chain_wf g` from `graph_sep_free g`.
+- `RDF.Indexed.Completeness` proves the coverage direction — every
+  triple of `g` with predicate `p` IS served by `p`'s bucket — through
+  three interface axioms about `FStar.String.compare`, because the
+  keys are strings and the buckets are sorted by string order.
+
+None of that obligation exists in the Lean tree.
+`L4Factoidal/OWL/RLClosureIndexed.lean` keys its five buckets on
+STRUCTURED values — `Subject`, `WfIri`, `Subject × WfIri`,
+`WfIri × Term` — in a `Std.HashMap`. There is no separator character,
+so there is no collision to exclude, no side condition to propagate,
+and no string-order axiom to assume. The well-formedness statement is
+
+    def BucketWf {κ : Type} [BEq κ] [Hashable κ]
+        (m : Std.HashMap κ (List Triple)) (key : Triple → κ) (g : Graph) : Prop :=
+      ∀ k, (m.getD k []).reverse = g.filter (fun u => key u == k)
+
+and `Index.Wf.ofGraph (g : Graph) : Wf (ofGraph g) g` holds for EVERY
+graph, with no hypothesis. `Wf.withSubjPred_eq` and its four siblings
+then give both directions at once — the bucket lookup EQUALS the list
+filter, so soundness and completeness are the same equation — and
+`closureI_toGraph` lifts it to a per-fuel list equality between the
+indexed closure and the list closure. The Lean statement is stronger
+than the F\* one and carries no side condition, so a module-for-module
+port of the four repair modules would produce four Lean files that
+prove nothing the tree does not already have.
+
+Two consequences a later reader needs:
+
+1. The gap in `L4Factoidal/RDF/SemanticsHypothesisWitness.lean` § 4 —
+   "no witness for `ig_wf_sp` or `closure_chain_wf`" — is a gap in the
+   F\* tree only. In Lean those hypotheses are absent from the
+   statements, so there is nothing to witness.
+2. This is a claim about the CURRENT Lean index. If the Lean tree ever
+   adopts a serialised or string-keyed index — for an on-disk store,
+   say — the obligation comes back and these four modules become the
+   design to follow. Tracked at
+   <https://github.com/danbri/factoidal/issues/559>.
 
 
 ### Third: the tool read a cache instead of the repository

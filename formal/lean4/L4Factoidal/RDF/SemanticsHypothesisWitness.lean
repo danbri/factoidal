@@ -239,19 +239,25 @@ theorem witnessExact_ttFree : GraphTtFree witnessExact := by
 predicate and show nothing. -/
 theorem witnessExact_nonempty : witnessExact ≠ [] := by simp [witnessExact]
 
-/-! ## 4. Where the honest answer is a GAP
+/-! ## 4. Where the answer is a GAP
 
 The F\* module reaches only a DEGENERATE witness for two hypotheses —
 the index well-formedness predicate on a composite key, and the closure
 chain well-formedness predicate — and labels them as such rather than
 quietly omitting them.
 
-Neither has a counterpart here. The index hypotheses do not exist in
-this tree at all: `OWL.Semantics`'s own header records why, since the
-Lean index is a `Std.HashMap`-backed structure whose lookups are total
-functions rather than string-keyed buckets needing a key-injectivity
-side condition. The chain predicate belongs to
-`RDF.Entailment.RDFS.ChainWf`, which is not ported.
+Neither has a counterpart here, and the reason is the same for both:
+the Lean index (`OWL.RLClosureIndexed`) keys its buckets on STRUCTURED
+values in a `Std.HashMap` — `Subject`, `WfIri`, `Subject × WfIri`,
+`WfIri × Term` — instead of on strings concatenated with a U+001F
+separator. So there is no key-injectivity side condition to discharge
+(`Index.Wf.ofGraph` holds for every graph, with no hypothesis), and
+therefore no separator-freeness invariant to carry through the closure
+chain either. `RDF.Entailment.RDFS.ChainWf` and
+`RDF.Indexed.KeyInjectivity` are not ported for that reason, not from
+neglect; see
+<https://github.com/danbri/factoidal/issues/559> and the F\*-only
+section of `docs/designissues/2026-08-23-lean-port-gap.md`.
 
 Recording that is the point. A witness module whose gaps are invisible
 is the same failure as a theorem whose hypothesis is invisible. -/

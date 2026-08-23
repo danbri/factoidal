@@ -9908,3 +9908,57 @@ that over as a pass.
 `literalIllFormed` is reused verbatim from `RDF.Datatypes` rather than
 re-derived: it already carries the whitespace-strict numeric lexical
 grammar the XSD whitespace-facet tests probe.
+
+## Not ported by design: the four F* index-key-repair modules
+
+`RDF.Indexed.KeyInjectivity` (963 F\* lines),
+`RDF.Entailment.RDFS.SepFree` (697), `RDF.Indexed.Completeness` (651)
+and `RDF.Entailment.RDFS.ChainWf` (368) — 2,679 lines together — have
+no Lean counterpart and will not get one.
+
+**What they repair.** The F\* index builds its bucket key by
+concatenating strings with a U+001F separator. That key is not
+injective, because `is_iri` admits U+001F, and
+`RDF.Semantics.HypothesisWitness.theorem_sp_key_not_injective`
+exhibits the collision. `KeyInjectivity` recovers injectivity from a
+one-sided U+001F-free side condition and discharges
+`ig_wf_sp (build_indexed g)` from it. `SepFree` proves row by row that
+every RDF and RDFS closure rule sends a U+001F-free graph to a
+U+001F-free graph, because the one-graph discharge does not carry
+through a closure CHAIN. `ChainWf` folds the rows into one step lemma
+and inducts it over `closure_iter`. `RDF.Indexed.Completeness` proves
+the bucket-coverage direction from three interface axioms about
+`FStar.String.compare`, because the keys are strings and the buckets
+are sorted by string order.
+
+**Why none of it applies here.** `OWL/RLClosureIndexed.lean` keys its
+five buckets on STRUCTURED values in a `Std.HashMap` — `Subject`,
+`WfIri`, `Term`, `Subject × WfIri`, `WfIri × Term`. There is no
+separator character, no composite string key, and no string ordering
+in the picture. The well-formedness statement is an equation between a
+lookup and a filter:
+
+```lean
+def BucketWf {κ : Type} [BEq κ] [Hashable κ]
+    (m : Std.HashMap κ (List Triple)) (key : Triple → κ) (g : Graph) : Prop :=
+  ∀ k, (m.getD k []).reverse = g.filter (fun u => key u == k)
+```
+
+`Index.Wf.ofGraph (g : Graph) : Wf (ofGraph g) g` holds for every
+graph with no hypothesis; `Wf.withSubjPred_eq` and its four siblings
+give soundness and completeness as one equality; `closureI_toGraph`
+lifts it to a per-fuel LIST equality between the indexed closure and
+the list closure. Porting the four modules would add four files
+proving nothing the tree does not already have, under weaker
+hypotheses.
+
+**The one thing that would change this.** If the Lean tree adopts a
+serialised or string-keyed index — for an on-disk store, or a wasm
+export with a flat key space — the injectivity obligation returns and
+these four F\* modules are the design to follow. Recorded at
+<https://github.com/danbri/factoidal/issues/559>.
+
+`tools/lean-port-gap.py` now classifies all four as
+"F\*-only machinery with no Lean counterpart by design", and tests
+that class BEFORE the proof suffixes, since `RDF.Indexed.Completeness`
+ends in `.Completeness`.
