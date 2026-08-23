@@ -10151,3 +10151,62 @@ rows on the raw graph and 1 over the closure, ASK is false then true, the
 instantiation has length 1, and a class the graph never mentions still
 returns nothing — the last one being what says the engine is not
 answering everything.
+
+## RDF.Entailment.RDFS.FixedPoint — the length test, and why Lean can close it
+
+`formal/fstar/RDF.Entailment.RDFS.FixedPoint.fst` (1,566 lines) →
+`L4Factoidal/RDFS/FixedPoint.lean`.
+
+`closure` stops when one round leaves the graph LENGTH unchanged. A
+length test is not obviously a fixed-point test: a round that both ADDS
+a triple and DROPS one leaves the length alone while the content
+changes, and every completeness result downstream rests on that stopping
+rule meaning what it says.
+
+**The F\* module could not close it.** Its banner records the finding:
+the length test is faithful there only modulo a key-injectivity gap, and
+that gap is WIDER than the index-key one, because `graph_dedup_sort`'s
+key folds literal content through an ad hoc `"^^"` join rather than a
+control-character separator. So it proves saturation-stability in the
+form its machinery supports and stops at the length-test theorem, with
+section 8 giving the combinatorial fact that blocks it.
+
+**Why this tree can.** The blockage follows from one design decision.
+The F\* round ends in `graph_dedup_sort` — a full re-sort by string key
+with key-duplicates dropped, so a round can add and drop at once.
+`RDFS.step` is `addAll g (stepConclusions g)`, and `addAll` folds
+`Graph.add`, which appends or does nothing: it never drops, never
+reorders, never consults a key. A round cannot lose a triple, so the
+length can only stay equal by nothing having been added — and that IS
+the fixed point.
+
+What the module carries:
+
+- `StepSaturated` — the semantic fixed point, membership-wise in the
+  engine equality, with no length bookkeeping in it.
+- `ConclusionsPresent` — the rule-by-rule form.
+- `lengthTest_faithful` — the three are ONE condition, in both
+  directions, with no key-injectivity hypothesis, no canonicity
+  hypothesis and no fragment. This is the F\* module's theorem (a).
+- `step_extensive` — unconditional. The F\* version needs a
+  `no_dup_keys` canonicity hypothesis for the final dedup-sort; there is
+  no dedup-sort here for it to attach to.
+- `closure_eq_of_stepSaturated` — the loop cannot walk past a fixed
+  point, at any fuel.
+- `closure_complete_of_stepSaturated` — what the faithfulness BUYS: the
+  stopping rule the engine runs is the condition the completeness
+  theorem needs.
+
+**Not claimed:** that the F\* proof is wrong. The obligation is absent
+under a different `add`. If this tree adopts a key-sorted dedup for the
+closure round, the obligation returns and the F\* module is the account
+to follow. Recorded at
+<https://github.com/danbri/factoidal/issues/560>; sibling finding at
+<https://github.com/danbri/factoidal/issues/559>.
+
+**Anti-vacuity.** A fixed-point module is satisfied vacuously by a graph
+on which no rule fires, so the pins use a graph where rdfs9 DOES fire:
+the length test fails on the input, the round adds exactly one triple,
+the second round is the fixed point, more fuel changes nothing, and the
+derived triple is present. A zero-fuel pin shows an unsaturated closure,
+which is why the completeness statements carry the hypothesis.
