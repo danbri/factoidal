@@ -277,3 +277,4 @@ import L4Factoidal.Cottas.PlanPruning
 import L4Factoidal.Cottas.PresenceWriter
 import L4Factoidal.Cottas.CompoundPresenceWriter
 import L4Factoidal.Cottas.OffsetsWriter
+import L4Factoidal.Cottas.SubjectOffsetsWriter

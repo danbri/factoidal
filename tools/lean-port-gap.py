@@ -82,6 +82,7 @@ alias={
  "RDF.CottasStore.PresenceWriter":"Cottas.PresenceWriter",
  "RDF.CottasStore.CompoundPresenceWriter":"Cottas.CompoundPresenceWriter",
  "RDF.CottasStore.OffsetsWriter":"Cottas.OffsetsWriter",
+ "RDF.CottasStore.SubjectOffsetsWriter":"Cottas.SubjectOffsetsWriter",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
 }
 def leafkeys(m):

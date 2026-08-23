@@ -8546,3 +8546,34 @@ multiset-only check would pass on symmetric buckets), out-of-range
 coordinates, a truncated payload, the three COTTAS magic numbers being
 distinct, and the F\* count rule applied to a real file. Writer-reader
 agreement is not proved, as in `PresenceWriter`.
+
+## RDF.CottasStore.SubjectOffsetsWriter → `L4Factoidal/Cottas/SubjectOffsetsWriter.lean`
+
+The `.s.offsets` file: one contiguous global row range per subject.
+Simpler than `.p.offsets` because `BaseWriter` sorts rows by
+`(s, p, o, g)` subject-primary, so a subject occupies ONE range and a
+`(start, end)` pair per subject is exact.
+
+**This module does NOT carry the offset-unit fault of
+<https://github.com/danbri/factoidal/issues/555>.** Its element count
+comes from the header field `num_subjects`, never from a payload entry,
+so the question the other two writers get wrong does not arise here.
+Its F\* round-trip lemma covers the files the project writes.
+
+**Proved:** `unflattenRanges_flattenRanges`, the Lean counterpart of
+`lemma_unflatten_flatten`. `#print axioms` reports `[propext]`. The
+byte-level round trip is `#guard`-checked at four shapes and is not
+proved — that needs inverse lemmas for `readU32Le` and `readU64Le` over
+`ByteArray`, which no module in this tree has yet.
+
+**One change:** an endpoint at or above 2^64 fails the whole write.
+F\*'s shared `serialize_u64_list` returns `[]` at the first such entry,
+dropping the rest of the payload while the header still declares the
+full subject count.
+
+**A distinction the guards pin:** an empty range and an absent subject
+are different answers. Subject 1 in the fixture owns no rows and gives
+`some 0`; subject 3 is not in the file and gives `none`. An end before
+its start counts as empty rather than as an underflow, matching
+`row_positions_count_from_bounds` in
+`RDF.Store.Columnar.OffsetIndex`.
