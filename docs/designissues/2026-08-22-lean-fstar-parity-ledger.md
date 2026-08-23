@@ -171,3 +171,76 @@ Matrix, Series, Simplify, Subst), `Parser.OWLFunctional`,
 `HTTP/Server.lean`. The RIF built-in library is a named subset of
 RIF-DTB's 197, and the 13 UNDECIDED RIF cases are exactly the ones
 that need the rest.
+
+---
+
+# Addendum 2, 2026-08-23 — XSLT and GRDDL
+
+The two suites the first addendum listed first under "still absent"
+now have engines and measured scores. XSLT came first because GRDDL
+depends on it: a GRDDL transformation IS an XSLT stylesheet.
+
+| Suite | Lean score | F\* score | Runner |
+| --- | --- | --- | --- |
+| XSLT 1.0 | 84 pass, 3 fail (out of 87 decided), 1 refused (of 88) | 87 pass, 0 fail, 1 skip (of 88) | `lake exe l4xslt` |
+| GRDDL | 19 pass, 22 fail (out of 41 decided) (of 68) | 18 pass, 50 fail (of 68) | `lake exe l4grddl` |
+
+## What landed in the tree
+
+- **A real XPath 1.0 engine.** `XPath/{Data,Expr,Eval}.lean`: the
+  data model with node IDENTITY as an address, the whole grammar
+  (thirteen axes, predicates on every step, unions, arithmetic,
+  filter expressions), and an evaluator with the §4 function library.
+  It is a SECOND model beside `XPath/Mini.lean`, in namespace
+  `L4Factoidal.XPath.Full`, because `Mini` addresses nodes by an
+  element-only path string that cannot name a text, comment or PI
+  node — and changing `Mini` would change the node identity
+  Schematron depends on.
+- **An XSLT 1.0 engine.** `XSLT/Transform.lean`: stylesheet reading,
+  template instantiation, attribute value templates, variables and
+  parameters, modes, sorting, `xsl:import`/`xsl:include` with import
+  precedence, result-tree serialisation with namespace fixup.
+  `XSLT/Templates.lean`'s §5.5 conflict resolution, which was already
+  ported, is what it feeds.
+- **GRDDL discovery.** `GRDDL/Discovery.lean`: the four ways a
+  document names a transformation (§2 attribute, §4 profile-gated
+  links, §5 profile documents, §3 namespace documents), and the §7
+  merge.
+
+## Three features that are NOT in the 1.0 specifications
+
+`eq ne lt le gt ge` (XPath 2.0 value comparisons), the `1e3` double
+literal (XPath 2.0), and `xsl:copy-of copy-namespaces="no"` (XSLT
+2.0). Each is implemented because the F\* engine implements it and
+because ignoring it is certainly wrong; each is marked as an
+out-of-version extension where it appears.
+
+## I/O is a parameter, everywhere
+
+Neither engine opens a file. `document(uri)` reads a map the caller
+supplies; `XSLT.importHrefs` says which `xsl:import` targets a
+stylesheet wants and the caller fetches them; the GRDDL runner
+fetches namespace and profile documents from the vendored docroot.
+A URI nobody supplied is a REFUSAL, never an empty tree the
+stylesheet would quietly transform into nothing.
+
+## The residue, named
+
+- XSLT: namespace declaration ORDER on one case (the suite's own
+  expected files are not self-consistent about it), the
+  implementation-defined `namespace::` axis order on one, `xsl:copy`
+  of a node from a second document on one, and one case whose
+  `document()` target the vendoring did not capture.
+- GRDDL: 17 cases need a document the vendored docroot does not
+  carry; 10 name no transformation this stage can follow; 7 of the 22
+  failures differ ONLY by the http/https scheme, which is vendoring
+  drift rather than a transform defect. The 15 real failures are
+  multi-transformation merges that come up short — the
+  one-level-not-a-fixpoint limit `Discovery.lean` states.
+
+## Still absent after this
+
+The COTTAS columnar store above the byte layer, `Math.*` (Diff,
+Matrix, Series, Simplify, Subst), `Parser.OWLFunctional`,
+`Parser.ShExC`, `XForms.Bind`, and `SPARQL.HTTP.*` beyond
+`HTTP/Server.lean`.
