@@ -43,6 +43,7 @@ alias={
  "RDF.Store.Capabilities":"RDF.StoreCapabilities",
  "RDF.Store.Columnar.DeltaMerge":"RDF.StoreDeltaMerge",
  "RDF.Store.Capabilities.Delta":"RDF.StoreCapabilitiesDelta",
+ "Tableau.CountingOracle":"OWL.CountingOracle",
  "Parser.BallyhooCOTTAS":"Cottas.Ballyhoo",
  "RIF.Core.Conformance":"RIF.Conformance",
   # Audited 2026-08-23 against the Lean module headers, one at a time.

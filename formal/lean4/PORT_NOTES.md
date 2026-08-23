@@ -10390,3 +10390,67 @@ On the eager-load path an UNKNOWN graph IRI encodes to `unbound` — no
 constraint — rather than to an empty result. That is the F\* behaviour
 on the same path, it is the dead-code path there too, and a `#guard`
 records it so a later reader meets it as a known edge instead of a bug.
+
+## Tableau.CountingOracle — the counting fragment, decided not delegated
+
+`formal/fstar/Tableau.CountingOracle.fst` (1,663 lines) →
+`L4Factoidal/OWL/CountingOracle.lean`.
+
+The refutation tableau decides OWL 2 DL consistency for everything
+except finite-model cardinality COUNTING, where the contradiction is a
+linear system over the sizes of named classes. This module is that
+fragment: recognised, extracted, encoded, and — for the systems the
+corpus produces — decided inside the verified boundary.
+
+**The single `assume val` becomes a PARAMETER.** F\* assumes
+`z3_check_sat : string -> nat -> Tot z3_verdict`, realised by glue that
+returns `Z3_Unknown` in its Phase 0. Lean has no `assume val` and no
+axiom, so `SatOracle` is a function a caller supplies and `noOracle` is
+the Phase-0 stub written out. This is not a workaround: an assumed value
+is a fact the proof rests on, a parameter is an input the theorems
+quantify over. `classSizeUnsat` never consults the oracle, and its
+soundness theorem holds for every oracle, because the decision is the
+Farkas validator rather than the solver.
+
+**What is proved.** `farkasSound`: when `farkasCheck` accepts a
+multiplier vector, NO integer assignment satisfies the system. The
+supporting arithmetic — `zeros_len`, `vscale_len`, `vadd_len`,
+`comb_len`, `linDot_zeros`, `linDot_vscale`, `linDot_vadd`, `comb_dot`,
+`weighted_ge` — is all proved, with no Mathlib: `Int.mul_add`,
+`Int.mul_assoc`, `Int.add_mul`, `Int.mul_le_mul_of_nonneg_left`, and
+`omega` after generalising each product to an atom (`omega` rejects
+nonlinear terms, which is why the products are generalised first).
+`classSizeUnsat_sound` lifts it to the system built from a graph.
+
+**What is NOT proved, and the header says so in the same words the F\*
+banner does.** That UNSAT of the class-size system IMPLIES the closure
+is inconsistent under Direct Semantics. The FIBER / BIJECTION /
+DISJOINT-UNION / ONEOF arguments licensing each row are prose in both
+trees. `classSizeUnsat g = true` reads "the linear system this module
+builds from `g` has no integer solution, and that is proved" — NOT "`g`
+is inconsistent, and that is proved". A reader who took the theorem for
+a consistency result would be taking prose for a proof.
+
+**One structural improvement over the F\* layout.** F\* has two copies
+of the class-size relation readers — one emitting SMT text (§6b), one
+emitting `lin_constraint` records (§8b) — and a comment saying they
+mirror each other. Here the readers (`fiberOf`, `bijOf`, `unionPairOf`,
+`classHasOneOf`) are written ONCE and both the SMT encoder and the
+linear-system builder call them, so the two describe one system by
+construction rather than by inspection.
+
+**dl-909 is still not decided, on purpose.** Its class-size system is
+genuinely satisfiable — the all-empty assignment with `|only-d| ≥ 1` is
+a model — so no certificate exists and the checker returns false.
+Deriving `|finite| ≥ 1` would need an unsound nonemptiness rule.
+
+**Pins in both directions.** The min-2-above-max-1 clash extracts two
+axioms that SHARE one count variable (the pin that would fail if the
+key were per-triple); a datatype facet and an authored `owl:complementOf`
+each take a graph OUT of the fragment; an engine-generated `__rl_`
+complement does NOT, which is the pin stopping the reject scan from
+over-reaching; a graph with no counting construct is rejected. For the
+validator: the certificate for `x = 0` with `x ≥ 1` is accepted, one
+with a negative multiplier on a `≥` row is refused, one whose combined
+coefficients are not zero is refused, and the searcher finds nothing for
+a satisfiable system.
