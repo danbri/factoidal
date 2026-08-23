@@ -9002,3 +9002,45 @@ predicate variable.
 **`StreamBound` is stated locally.** The F\* module reuses
 `triple_pattern_bound` from the algebra; the Lean algebra has no such
 record, so the three fields are declared here with the same shape.
+
+## RML.Sources → `L4Factoidal/RML/Sources.lean`
+
+The RML logical-source iterator model: source rows, the CSV logical
+source (an RFC 4180 tokenizer plus the header-row binding model), and
+the iterate / reference entry points for both JSON and CSV.
+
+**The JSONPath half was already here.** `RML/JsonPath.lean` ports the
+same subset, surveyed from the same corpus, so this module calls it
+rather than restating the grammar. `jsonIterate` and
+`jsonReferenceValues` are thin wrappers.
+
+**The CSV tokenizer stays local, for the F\* module's own reason.** The
+SPARQL 1.1 CSV/TSV RESULTS format is a different dialect — bare IRIs
+and typed-literal lexical conventions belong to that format, not to
+arbitrary tabular data — so reusing it would import conventions RML
+does not have.
+
+**Two data-error rules that must NOT be best-effort**, both from the
+vendored suites, both making the whole source empty rather than
+partially usable, and both pinned by `#guard`:
+
+* an invalid iterator path (`"$.students[*]]"`, RMLTC0002g) gives NO
+  iterations, not a best-effort parse of the well-formed prefix;
+* a data row whose field count differs from the header's
+  (RMLSTC0010a/b) invalidates the WHOLE source — no rows at all —
+  rather than truncating or padding that row.
+
+"Returns fewer rows" and "returns no rows" are easy to confuse and only
+one is right, so both guards state the count.
+
+**The scanner is structural where F\* uses fuel.** The F\* version
+indexes a string by position with `fuel = length + 1`; here the
+character list decreases structurally, and matching `'"' :: '"' :: rest`
+as one pattern makes the doubled-quote escape a structural step too.
+Same tokenizer, no fuel argument.
+
+**The dialect layer is kept separate.** `csvParseRows` is the normative
+RML and csv2rdf path and takes no dialect; `csvParseRowsDialect` adds
+the CSVW §8 `trim` and `skipColumns`. A guard pins that the two agree
+when the dialect is the default, which is what makes the no-dialect
+path byte-for-byte unchanged.

@@ -94,6 +94,7 @@ alias={
  "OWL2.SyntaxDL":"OWL.SyntaxDL",
  "SPARQL.Plan.AccessPath":"Cottas.AccessPath",
  "SPARQL.Plan.Streamable":"SPARQL.PlanStreamable",
+ "RML.Sources":"RML.Sources",
  "RDF.Store.Columnar.OffsetIndex":"Cottas.OffsetIndex",
  "RDF.Store.Columnar.SubjectOffsetIndex":"Cottas.SubjectOffsetIndex",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",

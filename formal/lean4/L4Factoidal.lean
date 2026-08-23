@@ -166,6 +166,7 @@ import L4Factoidal.ShEx.CompactTests
 import L4Factoidal.RML.Mapping
 import L4Factoidal.RML.Tests
 import L4Factoidal.RML.JsonPath
+import L4Factoidal.RML.Sources
 import L4Factoidal.RML.Value
 import L4Factoidal.RML.Model
 import L4Factoidal.RML.FromGraph
