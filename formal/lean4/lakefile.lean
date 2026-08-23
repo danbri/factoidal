@@ -154,6 +154,8 @@ extern_lib libl4hacl pkg := do
 
 @[default_target] lean_exe «l4xmlconf» where root := `Harness.XmlConfRun
 
+@[default_target] lean_exe «l4shex» where root := `Harness.ShExRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.

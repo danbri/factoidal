@@ -5577,3 +5577,56 @@ DTD subsets and parameter-entity replacement text, which this parser
 does not read) and 42 `valid` documents rejected for the same reason
 from the other side. Both are the external-entity boundary, not the
 internal-subset grammar.
+
+### ShEx validation scored, and the quadratic JSON parser it exposed
+(2026-08-23)
+
+Two new modules and a runner:
+
+- `ShEx/FromJson.lean` — ShExJ (the JSON serialisation) into the
+  `Schema` `Schema.lean` defines. The corpus ships BOTH forms for
+  every schema (`0.shex` and `0.json`), and ShExJ is the
+  specification's own abstract syntax written down. A ShExC parser is
+  separate work; the two are not in tension, because a ShExC parser
+  produces the same `Schema`.
+- `ShEx/Satisfies.lean` — `satisfies(n, se, G)` with the SCHEMA in
+  scope, so shape REFERENCES resolve. `Shapes.lean` stops at a
+  reference and says so in its header; that is the right boundary for
+  a module without the schema, but the suite is largely made of
+  references, so nothing above it could be scored. The generalisation
+  is ONE parameter — the value check — and `Shapes.lean`'s own
+  functions are unchanged, so the EXTRA/CLOSED distinction its header
+  exists to keep straight is reused, not re-derived.
+- `Harness/ShExRun.lean` (`lake exe l4shex`).
+
+📊 MEASURED: **889 pass, 249 fail (out of 1138 decided)**, 44 not read
+(out of 1182).
+
+🔴 THE FIND: the runner did not finish in TEN MINUTES, and the cause
+was not ShEx. `JSON/Parser.lean` indexed a `List Char` by position, so
+`charAt?` walked the list and the parser was QUADRATIC in the input.
+The ShEx manifest is 747 KB. Converted to an `Array Char` — the same
+choice `XML/Parser.lean` already made, for the same reason, with its
+header saying so — the run went from **no result after 600 seconds to
+2.9 seconds**.
+
+That defect was in a shipping module, on the path of every
+JSON-driven runner in the tree, and no test caught it: the CSVW
+manifests are small enough that the quadratic cost read as "a bit
+slow". It took a 747 KB input to make it a hang.
+
+The correctness evidence SURVIVED the change. `JSON/Theorems.lean`
+inducts over `List Char` structure; restating two theorems over
+`(… : List Char).toArray` was the whole repair, and
+`stringSegments_plain` — the general round-trip induction over a body
+of ANY length — still holds. A rewrite that had to drop it would have
+been a bad trade at any speed.
+
+`refDepth` is 6, and small on purpose: `fuel` is not a step count.
+Every level re-checks each arc's value expression and `eachOf`
+re-matches each sub-expression against the whole neighbourhood, so the
+work grows like a branching factor to the fuel. A first attempt at 24
+did not finish either.
+
+No regression: csv2rdf 252 pass of 270, csv2json 253 of 270, JSON
+Schema 726 pass of 726 decided, MathML 56 of 56.

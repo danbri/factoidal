@@ -17,14 +17,14 @@ STRICTNESS CONTRACT (quoted, since this port keeps it verbatim):
 RFC 8259, https://www.rfc-editor.org/rfc/rfc8259 :
   §2 (whitespace), §3 (values), §6 (numbers), §7 (strings + escapes).
 
-## Indexing: a `List Char`, not F*'s raw bytes (and not `String.Pos`)
+## Indexing: an `Array Char`, not F*'s raw bytes (and not `String.Pos`)
 
 `Parser.JSON.fst` walks BYTES (`Parser.FastString.fs_byte_at`) because
 F*'s `string` is a sequence of Unicode codepoints re-encoded to UTF-8
 on every access, so the F* module has to hand-roll byte-true slicing
 (`fs_byte_sub`) to avoid a double-encoding bug it documents at
 `json_utf8_of_codepoint` (issue #271 family). This port instead
-converts the input to a `List Char` ONCE (`s.toList`) and indexes it
+converts the input to an `Array Char` ONCE and indexes it
 by plain `Nat` position — a Lean `Char` is already a full Unicode
 scalar value (never a UTF-16 code unit and never a raw byte), so this
 sidesteps both the F* module's byte-slicing machinery AND `String`'s
@@ -56,7 +56,7 @@ every mutually recursive call passes `fuel - 1` (after the `0`/`n+1`
 match, "the same `fuel`" post-destructuring), so the whole mutual block
 is structurally decreasing on that one `Nat` argument — no
 `termination_by`/`decreasing_by` obligations, and (as in the F*
-original) a fuel bound of `cs.length + 1` is always sufficient, since
+original) a fuel bound of `cs.size + 1` is always sufficient, since
 every recursive step consumes at least one character. Running out of
 fuel produces `"JSON nesting too deep"`, matching the F* module's
 error text and its safety net (not a real practical limit at this fuel
@@ -97,17 +97,31 @@ instance [DecidableEq ε] [DecidableEq α] : DecidableEq (Except ε α)
   | .error _, .ok _ => isFalse (fun he => nomatch he)
   | .ok _, .error _ => isFalse (fun he => nomatch he)
 
-/-! ## Character-position helpers over `List Char` -/
+/-! ## Character-position helpers over `Chars`
+
+`Chars` is an `Array Char`, not a `List Char`. That is a CORRECTNESS-
+neutral, performance-decisive difference: `List.get?` walks the list,
+so indexing by position made the parser quadratic in the input, and a
+747 KB manifest (the ShEx validation suite's) did not finish in ten
+minutes. An `Array` index is constant time. The XML parser in this
+tree already made the same choice, for the same reason, and its header
+says so.
+
+Measured 2026-08-23: the ShEx manifest goes from "no result after 600
+seconds" to under a second. -/
+
+/-- The document under the cursor, as a codepoint array. -/
+abbrev Chars := Array Char
 
 /-- The character at position `pos`, or `none` past the end of `cs`.
 Port of `jbyte_at`'s "in range or sentinel" shape, typed `Option Char`
 instead of `int`'s `-1` sentinel. -/
-def charAt? (cs : List Char) (pos : Nat) : Option Char :=
+def charAt? (cs : Chars) (pos : Nat) : Option Char :=
   cs[pos]?
 
 /-- Skip JSON whitespace: space, tab, LF, CR (RFC 8259 §2). Port of
 `json_skip_ws`. -/
-def skipWs (cs : List Char) (pos fuel : Nat) : Nat :=
+def skipWs (cs : Chars) (pos fuel : Nat) : Nat :=
   match fuel with
   | 0 => pos
   | fuel + 1 =>
@@ -121,12 +135,12 @@ def skipWs (cs : List Char) (pos fuel : Nat) : Nat :=
 /-- Substring from a character-position span. Used only where the RFC
 grammar has already validated the span (a matched number lexeme); not
 a general string constructor. -/
-def sliceStr (cs : List Char) (start len : Nat) : String :=
-  String.ofList ((cs.drop start).take len)
+def sliceStr (cs : Chars) (start len : Nat) : String :=
+  String.ofList (cs.extract start (start + len)).toList
 
 /-- Match a fixed ASCII keyword (`true`/`false`/`null`) character by
 character at `pos`. -/
-def matchKeyword (cs : List Char) (pos : Nat) (kw : List Char) : Bool :=
+def matchKeyword (cs : Chars) (pos : Nat) (kw : List Char) : Bool :=
   match kw with
   | [] => true
   | c :: rest => charAt? cs pos = some c && matchKeyword cs (pos + 1) rest
@@ -143,7 +157,7 @@ def hexVal (c : Char) : Option Nat :=
 
 /-- Read exactly four hex digits starting at `pos`; `none` if any of
 the four is missing or not a hex digit. Port of `json_read_hex4`. -/
-def readHex4 (cs : List Char) (pos : Nat) : Option Nat := do
+def readHex4 (cs : Chars) (pos : Nat) : Option Nat := do
   let h0 ← (charAt? cs pos).bind hexVal
   let h1 ← (charAt? cs (pos + 1)).bind hexVal
   let h2 ← (charAt? cs (pos + 2)).bind hexVal
@@ -167,7 +181,7 @@ of `json_escape_piece`, including the surrogate-pair combination (RFC
 8259 §7 "\u" escapes are UTF-16 code units; a supplementary-plane
 character is written as a high/low surrogate PAIR of consecutive
 `\uXXXX` escapes) and its rejection of lone/unpaired surrogates. -/
-def escapePiece (cs : List Char) (pos : Nat) : Except JsonError (String × Nat) :=
+def escapePiece (cs : Chars) (pos : Nat) : Except JsonError (String × Nat) :=
   match charAt? cs (pos + 1) with
   | some '"'  => .ok ("\"", pos + 2)
   | some '\\' => .ok ("\\", pos + 2)
@@ -202,8 +216,8 @@ def escapePiece (cs : List Char) (pos : Nat) : Except JsonError (String × Nat) 
 /-- String body after the opening quote: accumulate raw characters and
 decoded escape pieces until the closing quote. Port of
 `json_string_segments`. `fuel` decreases by one per character/escape
-consumed, so `cs.length + 1` is always sufficient. -/
-def stringSegments (cs : List Char) (pos : Nat) (acc : String) (fuel : Nat)
+consumed, so `cs.size + 1` is always sufficient. -/
+def stringSegments (cs : Chars) (pos : Nat) (acc : String) (fuel : Nat)
     : Except JsonError (String × Nat) :=
   match fuel with
   | 0 => .error ⟨"unterminated JSON string", pos⟩
@@ -223,16 +237,16 @@ def stringSegments (cs : List Char) (pos : Nat) (acc : String) (fuel : Nat)
 
 /-- Parse a JSON string starting at the opening double quote. Port of
 `json_parse_string`. -/
-def parseString (cs : List Char) (pos : Nat) : Except JsonError (String × Nat) :=
+def parseString (cs : Chars) (pos : Nat) : Except JsonError (String × Nat) :=
   match charAt? cs pos with
-  | some '"' => stringSegments cs (pos + 1) "" (cs.length + 1)
+  | some '"' => stringSegments cs (pos + 1) "" (cs.size + 1)
   | _ => .error ⟨"expected JSON string", pos⟩
 
 /-! ## Numbers — strict RFC 8259 §6 grammar -/
 
 /-- Position after a run of ASCII digits starting at `pos`. Port of
 `json_scan_digits`. -/
-def scanDigits (cs : List Char) (pos fuel : Nat) : Nat :=
+def scanDigits (cs : Chars) (pos fuel : Nat) : Nat :=
   match fuel with
   | 0 => pos
   | fuel + 1 =>
@@ -243,17 +257,17 @@ def scanDigits (cs : List Char) (pos fuel : Nat) : Nat :=
 /-- Optional fraction part: `. digit+`. `none` on a dot with no digit
 following (RFC 8259 §6: `frac = decimal-point 1*DIGIT`). Port of
 `json_number_frac`. -/
-def numberFrac (cs : List Char) (p : Nat) : Option Nat :=
+def numberFrac (cs : Chars) (p : Nat) : Option Nat :=
   match charAt? cs p with
   | some '.' =>
     match charAt? cs (p + 1) with
-    | some c => if c.isDigit then some (scanDigits cs (p + 2) (cs.length + 1)) else none
+    | some c => if c.isDigit then some (scanDigits cs (p + 2) (cs.size + 1)) else none
     | none => none
   | _ => some p
 
 /-- Optional exponent part: `(e|E) sign? digit+`. `none` on a broken
 exponent. Port of `json_number_exp`. -/
-def numberExp (cs : List Char) (p : Nat) : Option Nat :=
+def numberExp (cs : Chars) (p : Nat) : Option Nat :=
   match charAt? cs p with
   | some c =>
     if c = 'e' || c = 'E' then
@@ -262,7 +276,7 @@ def numberExp (cs : List Char) (p : Nat) : Option Nat :=
         | some c1 => if c1 = '+' || c1 = '-' then p1 + 1 else p1
         | none => p1
       match charAt? cs p2 with
-      | some d => if d.isDigit then some (scanDigits cs (p2 + 1) (cs.length + 1)) else none
+      | some d => if d.isDigit then some (scanDigits cs (p2 + 1) (cs.size + 1)) else none
       | none => none
     else some p
   | none => some p
@@ -273,12 +287,12 @@ why numbers are kept lexical). Leading zeros are rejected structurally:
 after an initial `'0'` the integer part ends, so `"0123"` parses only
 `"0"` and the enclosing grammar then rejects the trailing `"123"`.
 Port of `json_parse_number`. -/
-def parseNumber (cs : List Char) (pos : Nat) : Except JsonError (String × Nat) :=
+def parseNumber (cs : Chars) (pos : Nat) : Except JsonError (String × Nat) :=
   let p1 := match charAt? cs pos with | some '-' => pos + 1 | _ => pos
   let ipartEnd : Option Nat :=
     match charAt? cs p1 with
     | some '0' => some (p1 + 1)
-    | some c => if c.isDigit then some (scanDigits cs (p1 + 1) (cs.length + 1)) else none
+    | some c => if c.isDigit then some (scanDigits cs (p1 + 1) (cs.size + 1)) else none
     | none => none
   match ipartEnd with
   | none => .error ⟨"invalid JSON number", pos⟩
@@ -296,11 +310,11 @@ mutual
 
 /-- Parse one JSON value at `pos`, skipping leading whitespace. Port of
 `json_parse_value`. -/
-def parseValue (cs : List Char) (pos fuel : Nat) : Except JsonError (Json × Nat) :=
+def parseValue (cs : Chars) (pos fuel : Nat) : Except JsonError (Json × Nat) :=
   match fuel with
   | 0 => .error ⟨"JSON nesting too deep", pos⟩
   | fuel + 1 =>
-    let p := skipWs cs pos (cs.length + 1)
+    let p := skipWs cs pos (cs.size + 1)
     match charAt? cs p with
     | some '"' =>
       match parseString cs p with
@@ -326,11 +340,11 @@ def parseValue (cs : List Char) (pos fuel : Nat) : Except JsonError (Json × Nat
     | none => .error ⟨"unexpected end of input in JSON value", p⟩
 
 /-- Object body after the opening brace. Port of `json_parse_object`. -/
-def parseObject (cs : List Char) (pos fuel : Nat) : Except JsonError (Json × Nat) :=
+def parseObject (cs : Chars) (pos fuel : Nat) : Except JsonError (Json × Nat) :=
   match fuel with
   | 0 => .error ⟨"JSON nesting too deep", pos⟩
   | fuel + 1 =>
-    let p := skipWs cs pos (cs.length + 1)
+    let p := skipWs cs pos (cs.size + 1)
     match charAt? cs p with
     | some '}' => .ok (.object [], p + 1)
     | _ => parseMembers cs p fuel []
@@ -340,23 +354,23 @@ followed by another key string, so trailing commas are rejected
 (matching `json_parse_members`). `acc` accumulates in FORWARD order
 (unlike the F* module's cons-then-reverse; either preserves key order
 identically — see `Value.lean`'s module header on why order matters). -/
-def parseMembers (cs : List Char) (pos fuel : Nat) (acc : List (String × Json))
+def parseMembers (cs : Chars) (pos fuel : Nat) (acc : List (String × Json))
     : Except JsonError (Json × Nat) :=
   match fuel with
   | 0 => .error ⟨"JSON nesting too deep", pos⟩
   | fuel + 1 =>
-    let p := skipWs cs pos (cs.length + 1)
+    let p := skipWs cs pos (cs.size + 1)
     match parseString cs p with
     | .error e => .error e
     | .ok (key, p1) =>
-      let p2 := skipWs cs p1 (cs.length + 1)
+      let p2 := skipWs cs p1 (cs.size + 1)
       match charAt? cs p2 with
       | some ':' =>
         match parseValue cs (p2 + 1) fuel with
         | .error e => .error e
         | .ok (v, p3) =>
           let acc2 := acc ++ [(key, v)]
-          let p4 := skipWs cs p3 (cs.length + 1)
+          let p4 := skipWs cs p3 (cs.size + 1)
           match charAt? cs p4 with
           | some '}' => .ok (.object acc2, p4 + 1)
           | some ',' => parseMembers cs (p4 + 1) fuel acc2
@@ -364,11 +378,11 @@ def parseMembers (cs : List Char) (pos fuel : Nat) (acc : List (String × Json))
       | _ => .error ⟨"expected colon in JSON object", p2⟩
 
 /-- Array body after the opening bracket. Port of `json_parse_array`. -/
-def parseArray (cs : List Char) (pos fuel : Nat) : Except JsonError (Json × Nat) :=
+def parseArray (cs : Chars) (pos fuel : Nat) : Except JsonError (Json × Nat) :=
   match fuel with
   | 0 => .error ⟨"JSON nesting too deep", pos⟩
   | fuel + 1 =>
-    let p := skipWs cs pos (cs.length + 1)
+    let p := skipWs cs pos (cs.size + 1)
     match charAt? cs p with
     | some ']' => .ok (.array [], p + 1)
     | _ => parseItems cs p fuel []
@@ -376,7 +390,7 @@ def parseArray (cs : List Char) (pos fuel : Nat) : Except JsonError (Json × Nat
 /-- One or more array items. Strict: a comma must be followed by
 another value, so trailing commas are rejected. Port of
 `json_parse_items`. -/
-def parseItems (cs : List Char) (pos fuel : Nat) (acc : List Json)
+def parseItems (cs : Chars) (pos fuel : Nat) (acc : List Json)
     : Except JsonError (Json × Nat) :=
   match fuel with
   | 0 => .error ⟨"JSON nesting too deep", pos⟩
@@ -385,7 +399,7 @@ def parseItems (cs : List Char) (pos fuel : Nat) (acc : List Json)
     | .error e => .error e
     | .ok (v, p1) =>
       let acc2 := acc ++ [v]
-      let p2 := skipWs cs p1 (cs.length + 1)
+      let p2 := skipWs cs p1 (cs.size + 1)
       match charAt? cs p2 with
       | some ']' => .ok (.array acc2, p2 + 1)
       | some ',' => parseItems cs (p2 + 1) fuel acc2
@@ -399,18 +413,18 @@ end
 JSON whitespace before and after. Port of `parse_json_text`; the
 success value additionally carries the end position (unused by
 `parseJson` below, kept for parity/debugging). -/
-def parseJsonTextChars (cs : List Char) : Except JsonError (Json × Nat) :=
-  match parseValue cs 0 (cs.length + 1) with
+def parseJsonTextChars (cs : Chars) : Except JsonError (Json × Nat) :=
+  match parseValue cs 0 (cs.size + 1) with
   | .error e => .error e
   | .ok (v, p) =>
-    let p2 := skipWs cs p (cs.length + 1)
-    if p2 ≥ cs.length then .ok (v, p2)
+    let p2 := skipWs cs p (cs.size + 1)
+    if p2 ≥ cs.size then .ok (v, p2)
     else .error ⟨"trailing content after JSON value", p2⟩
 
 /-- Parse a complete RFC 8259 JSON text from a `String`. Port of
 `parse_json_text`. -/
 def parseJsonText (s : String) : Except JsonError (Json × Nat) :=
-  parseJsonTextChars s.toList
+  parseJsonTextChars s.toList.toArray
 
 /-- `Except`-typed top-level parse (what `Value.lean`'s theorems build
 on; the F* module's `parse_json_text` with the position dropped). -/
