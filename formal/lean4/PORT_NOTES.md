@@ -9390,3 +9390,56 @@ back. Measuring this was what found it: wrapping unconditionally scored
 Regression check after the expander change: toRdf 467 pass, 0 fail
 (out of 467); the other five json-ld-api manifests 791 pass, 0 fail,
 2 local-override (out of 793) — both unchanged.
+
+## `RDFS.SchemaSplit` → `L4Factoidal/RDFS/SchemaSplit.lean`
+
+Close the class and property hierarchy once, on the schema alone, then
+push the result at the instance data — instead of letting the two
+transitivity rows re-derive the whole transitive closure on every round
+of the general loop.
+
+**The side condition, and why it is needed.** RDFS is reflective: a
+graph that says `:p rdfs:subPropertyOf rdfs:subClassOf` and `:A :p :B`
+makes an ordinary DATA triple inject a schema edge, and any design that
+closes the schema first and never revisits it loses that derivation.
+Three clauses block the first-order routes. The F\* banner carries the
+row-by-row enumeration behind them and it is not repeated here — anyone
+extending the rule table has to re-run it there.
+
+**The enumeration is not load-bearing at runtime, and that is the part
+worth carrying over.** The dispatcher does not trust it: it runs the
+fast path, then CHECKS that the loop derived no schema edge the
+pre-computed closure did not already carry, and takes the general loop
+if that fails. `schemaStableCheck` is the stated hypothesis of the
+equivalence claim, not the runtime gate. All three fallbacks — a dense
+schema fragment, a walk that exhausted its budget, a failed post-hoc
+check — go to the untouched general loop.
+
+**Three theorems, matching the F\* module's.**
+`schemaStableCheck_sound` and `_complete` say the detector decides
+exactly the declarative condition; completeness is what rules out a
+detector that is merely `false`, which would make the fast branch dead
+code. `emitEdge_shape` and `emitFromNode_shape` pin that every emitted
+triple carries the WALKED predicate and the WALKED source — a wrong
+predicate would silently move data into the schema fragment and a wrong
+subject would fabricate an edge nothing licenses.
+`scBfs_visited_grows` says the walk never drops a node it justified.
+
+**The equivalence claim is checked the same way the F\* module checks
+it — by measurement, not proof.** `agrees` compares
+`closureFixDispatch` against `closureFix` as SETS at seven graphs,
+including the reflective witness that VIOLATES the side condition,
+where the post-hoc check is what has to catch the injection. Three more
+guards keep it from passing vacuously: the closure really does derive
+rows on the test graph, the dispatcher really does take its fast branch
+there, and the derived subclass conclusion is present in its answer.
+
+**What the Lean tree splits differently.** The F\* dispatcher wraps
+`rdfs_closure_with_reflexivity`, whose reflexivity harvest sits in the
+same module as the twelve rows. In Lean the six recursive rows are
+`RDFS.Closure` and the harvest is in `RDFS.FullClosure`, so the
+dispatcher here wraps `RDFS.closureFix` — the ρdf core closure — and the
+F\* module's two-pass reflexivity shape has no counterpart to reproduce.
+
+Regression check: 914 pass, 0 fail, 30 unsupported (out of 944) on the
+rdf-turtle and sparql11 manifests — unchanged.

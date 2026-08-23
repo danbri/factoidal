@@ -26,6 +26,7 @@ import L4Factoidal.RDFS.ClosureTheorems
 import L4Factoidal.RDFS.ClosureTests
 import L4Factoidal.RDFS.FullClosure
 import L4Factoidal.RDFS.FullClosureTheorems
+import L4Factoidal.RDFS.SchemaSplit
 import L4Factoidal.RDF.Datatypes
 import L4Factoidal.RDF.Entailment
 import L4Factoidal.RDF.EntailmentTheorems

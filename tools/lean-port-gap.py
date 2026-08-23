@@ -45,6 +45,7 @@ alias={
  "RDF.Store.Capabilities.Delta":"RDF.StoreCapabilitiesDelta",
  "RML.VirtualSource":"RML.VirtualSource",
  "JSONLD.Frame":"JSONLD.Frame",
+ "RDFS.SchemaSplit":"RDFS.SchemaSplit",
  # PARTIAL. The domain-neutral maths core the F* tree keeps in
  # Math.Expr.fst is embedded in MathML/Core.lean instead: the same
  # five-constructor AST, exact rational arithmetic, exact roots,
