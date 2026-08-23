@@ -224,6 +224,43 @@ def percentEncodeChars (cs : List Char) : List Char := cs.flatMap percentEncodeC
 
 def percentEncode (s : String) : String := String.ofList (percentEncodeChars s.toList)
 
+/-! ## Response media types (F\* Part 6, the part the client needs)
+
+The full Accept-header negotiation is still absent — the protocol tests
+assert on status class, not on the response media type. What a CLIENT
+needs is the other direction: read the media type a server ACTUALLY sent
+and pick the parser. That is `mediaTypeToFormat`, and
+`SPARQL.ProtocolClient` dispatches on it. -/
+
+/-- The response media types this project can produce or parse. -/
+inductive ResponseFormat where
+  | json        -- application/sparql-results+json
+  | xml         -- application/sparql-results+xml (SRX)
+  | csv         -- text/csv
+  | tsv         -- text/tab-separated-values
+  | turtle      -- text/turtle (CONSTRUCT and DESCRIBE only)
+  | nTriples    -- application/n-triples (CONSTRUCT and DESCRIBE only)
+  | text        -- text/plain, the generic fallback
+  deriving DecidableEq, Repr, Inhabited
+
+/-- A media type to the format it names, comparing case-insensitively
+after trimming. `*/*` returns `none` so a caller can tell "the client
+asked for anything" from "a type I do not know". -/
+def mediaTypeToFormat (mt : String) : Option ResponseFormat :=
+  match asciiLower (trimWs mt) with
+  | "application/sparql-results+json" => some .json
+  | "application/json"                => some .json
+  | "application/sparql-results+xml"  => some .xml
+  | "application/xml"                 => some .xml
+  | "text/xml"                        => some .xml
+  | "text/csv"                        => some .csv
+  | "text/tab-separated-values"       => some .tsv
+  | "text/turtle"                     => some .turtle
+  | "application/x-turtle"            => some .turtle
+  | "application/n-triples"           => some .nTriples
+  | "text/plain"                      => some .text
+  | _                                 => none
+
 /-! ## Split utilities (F* Part 4) -/
 
 /-- Split at the FIRST occurrence of `sep`: `(before, some after)`,

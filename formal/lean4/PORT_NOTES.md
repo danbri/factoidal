@@ -9443,3 +9443,41 @@ F\* module's two-pass reflexivity shape has no counterpart to reproduce.
 
 Regression check: 914 pass, 0 fail, 30 unsupported (out of 944) on the
 rdf-turtle and sparql11 manifests — unchanged.
+
+## `SPARQL.Protocol.Client` → `L4Factoidal/SPARQL/ProtocolClient.lean`
+
+The client half of SPARQL 1.1 Protocol §2.1: build a query request by
+any of the three dispatch methods, and turn a parsed HTTP response into
+a typed result. It parses nothing itself — it DISPATCHES to the result
+and graph parsers the tree already has.
+
+**`ResponseFormat` and `mediaTypeToFormat` landed in
+`SPARQL/Protocol.lean`**, which is where the F\* tree keeps them. That
+module's own header had listed content negotiation as NOT PORTED, with
+the reason that the protocol tests assert on status class rather than
+media type. That reason holds for the SERVER direction. A client needs
+the other direction — read the media type a server actually sent, pick
+the parser — so the half the client needs is now there and the header
+says which half is still absent.
+
+**Sniffing the query form is a bias, not a decision, and the module
+proves it cannot become one.** `sniffQueryKind` skips the prologue and
+returns the first form keyword, without tracking literals or comments,
+so it can be wrong. It feeds only the Accept header's q-value ORDER, and
+a `#guard` checks that BOTH orderings list every media type this client
+can parse — so a wrong guess costs ordering, never a 406. Response
+handling goes by the response's actual `Content-Type`.
+
+**The three failure shapes are kept distinct and checked apart**: a
+malformed body is `parseError`, an unrecognised media type is
+`unknownContentType` carrying the raw body, and a non-2xx status is
+`httpError` carrying status and body so the server's own error detail
+survives. Collapsing any two would hide which one happened. The status
+test is on the CLASS, pinned at 199, 204, 299 and 300.
+
+One guard is there because §2.1.2 is easy to get wrong: direct POST puts
+the query in the BODY but still sends the graph-URI parameters in the
+QUERY STRING.
+
+Regression: 601 pass, 0 fail, 30 unsupported (out of 631) on the
+sparql11 manifest — unchanged.

@@ -114,6 +114,7 @@ import L4Factoidal.SPARQL.GraphStore
 import L4Factoidal.SPARQL.ServiceDescription
 import L4Factoidal.SPARQL.ProtocolTests
 import L4Factoidal.SPARQL.ProtocolTheorems
+import L4Factoidal.SPARQL.ProtocolClient
 import L4Factoidal.SHACL.Vocabulary
 import L4Factoidal.SHACL.Shapes
 import L4Factoidal.SHACL.Validation
