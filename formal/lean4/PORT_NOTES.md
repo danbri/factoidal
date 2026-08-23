@@ -10688,3 +10688,51 @@ item's contribution — is what keeps both licensing inductions short.
 `step_eq_fold` first rewrites `step` into that shape, naming each rule's
 contribution (`ruleContrib`) and blocked flag (`ruleBlocked`) so the
 rewrite is one `congr` rather than a case analysis.
+
+---
+
+## `SPARQL11.Expression.Refinement` → `SPARQL/ExprRefinement.lean` (2026-08-23)
+
+**Not already covered, despite the overlap.** `SPARQL/ExprTheorems.lean`
+already proves the §17.2.2 rows and the §17.3 truth tables. It states
+them about the engine's own `ebv`, `boolAnd`, `boolOr` and `boolNot`.
+The F\* module does something else: it writes a SECOND transcription of
+each W3C table, from the specification text, and then proves the engine
+equal to it. That second transcription is what was missing, so the two
+Lean modules are kept side by side.
+
+**What the second transcription buys.** F\* issue #365 recorded two
+places where the engine and the table had drifted apart: a non-empty
+`rdf:langString` literal read as truthy (the table's String row is the
+un-tagged case only), and `.and`/`.or`/`.not` folding a type error into
+a definite Boolean instead of propagating it. The F\* tree found both by
+comparing the engine against `ebv_spec`/`spec_and`, then aligned the
+engine. The Lean port was made from the aligned engine, so
+`ebvSpec_agrees` and `specAnd_agrees` hold with no carve-out — and
+`ebvSpec_langString`, `eval_and_true_error_agrees`,
+`eval_or_false_error_agrees` and `eval_not_error_agrees` pin the four
+former divergence witnesses so a later edit cannot reopen them.
+
+**The evaluator-arm theorems are unconditional.** `eval_and_matches_spec`
+and its two siblings take no hypothesis about the operands, so no row of
+the table can be lost through a hypothesis that never holds — the
+vacuous-theorem check the F\* tree applies to the same statements.
+
+**§17.4.1.7 needed new groundwork.** The plain-string equality lemma
+needs `strCompare a b = 0 ↔ a = b`; the Lean tree only had reflexivity
+in one direction. The chain is `intCompare_eq_zero_iff` →
+`listCharCompare_eq_zero_iff` (induction, with `Char.ext` over
+`UInt32.toNat` injectivity for the head character) →
+`strCompare_eq_zero_iff` (via `String.ofList_toList`), plus the Boolean
+forms `intCompare_beq_zero` and `strCompare_beq_zero` that the operator
+mapping actually applies. The F\* side gets the same fact from
+`SO.string_compare_zero_iff_eq`.
+
+**Out of scope here as in the F\* source.** General cross-lexical value
+equality over decimals and doubles ("1.0" = "1.00") needs a spec for
+what the scaled-value parse computes. The two reflexivity theorems
+included need no such spec: the parse is a total function of the lexical
+form and is applied twice to one string.
+
+Coverage after this landing: 189 of 220 F\* modules covered, 31 not
+covered.

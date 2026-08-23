@@ -160,6 +160,7 @@ alias={
  "RDF.Store.Columnar.OffsetIndex":"Cottas.OffsetIndex",
  "RDF.Store.Columnar.SubjectOffsetIndex":"Cottas.SubjectOffsetIndex",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
+ "SPARQL11.Expression.Refinement":"SPARQL.ExprRefinement",
 }
 # ---------------------------------------------------------------------------
 # What counts as coverage.
