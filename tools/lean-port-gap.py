@@ -43,6 +43,7 @@ alias={
  "RDF.Store.Capabilities":"RDF.StoreCapabilities",
  "RDF.Store.Columnar.DeltaMerge":"RDF.StoreDeltaMerge",
  "RDF.Store.Capabilities.Delta":"RDF.StoreCapabilitiesDelta",
+ "SPARQL11.Parser.TokenRoundTrip":"SPARQL.TokenRoundTrip",
  "Tableau.CountingOracle":"OWL.CountingOracle",
  "Parser.BallyhooCOTTAS":"Cottas.Ballyhoo",
  "RIF.Core.Conformance":"RIF.Conformance",

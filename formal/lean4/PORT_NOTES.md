@@ -10595,3 +10595,51 @@ asserting the round trip FAILS, so neither hypothesis can be mistaken
 for bookkeeping.
 
 Recorded at <https://github.com/danbri/factoidal/issues/562>.
+
+## SPARQL11.Parser.TokenRoundTrip — a WIDER fragment than the F* one
+
+`formal/fstar/SPARQL11.Parser.TokenRoundTrip.fst` (1,391 lines) →
+`L4Factoidal/SPARQL/TokenRoundTrip.lean`, with
+`L4Factoidal/SPARQL/SkipWsLemmas.lean` underneath.
+
+```lean
+theorem tokenize_printTokens (ts : List Token) (h : ∀ t ∈ ts, TokOk t) :
+    tokensOf (tokenize (String.ofList (printTokens ts))) = ts ++ [Token.eof]
+```
+
+**The fragment is wider, in both directions the F\* module names as out
+of reach.** The F\* fragment is the single-character delimiters and the
+single- and two-character operators. Its own FINDING says the
+payload-free KEYWORDS were left out because the lexer reaches them
+through `scan_word` + `keyword_of_word`, so its combinator lemmas do not
+transfer; and the companion `AskBgpRoundTrip.fst` later reports that the
+real obstruction is one level lower, in `FStar.String.sub`'s interface,
+and blocks every PAYLOAD-carrying token too. Neither obstruction exists
+here, so this fragment adds `iri`, `var`, `a` and `ASK` to the twenty
+single-character tokens.
+
+**Twenty tokens, one theorem.** `tokChar : Token → Option Char` is the
+table, and `nextToken_tokChar` is a single induction over it rather than
+twenty near-identical lemmas. The tokenizer's if-chain is decided per
+character by `simp`, which is what makes one proof cover all of them.
+
+**The separator needed a fuel argument of its own.** Every token is
+printed with a space after it — the same disambiguation the F\* module
+uses — so the walk has to step over a leading space at each turn. That
+is `nextToken_cons_ws`, and it rests on `skipWsComments_fuel`: `skipWs`
+seeds its fuel from the remaining input length, so dropping a character
+changes the fuel as well as the list. The proof needs
+`scanToEol_length` (a comment scan returns a suffix) to make the `#`
+branch well-founded.
+
+**The separator is pinned as load-bearing, not assumed.** Three
+`#guard`s show what happens without it: `<a>` lexes as one IRI token,
+`!=` as one `ne` token, and `! =` as two. A printer that omitted the
+space would not round-trip, and the pins say so rather than the prose.
+
+**`ParserTheorems.lean`'s header was stale and is updated in the same
+landing** (iron rule #14). It said the round-trip theorem "is not
+stated" because the port ships no printer; two fragment printers and
+their round trips now exist. The sentence still holds for the statement
+it is about — both stop at the TOKENS, and neither says the parser
+recovers an AST — and the header now says which is which.

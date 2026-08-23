@@ -109,6 +109,8 @@ import L4Factoidal.SPARQL.Tokenizer
 import L4Factoidal.SPARQL.TokenizerLemmas
 import L4Factoidal.SPARQL.TokenizeChain
 import L4Factoidal.SPARQL.AskRoundTrip
+import L4Factoidal.SPARQL.SkipWsLemmas
+import L4Factoidal.SPARQL.TokenRoundTrip
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.ParserTests
 import L4Factoidal.SPARQL.ParserTheorems
