@@ -244,3 +244,5 @@ import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.DeltaLogTests
 import L4Factoidal.VC.Credential
 import L4Factoidal.VC.CredentialTests
+import L4Factoidal.HDT.Container
+import L4Factoidal.HDT.ContainerTheorems

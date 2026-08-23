@@ -206,3 +206,10 @@ extern_lib libl4hacl pkg := do
 -- Differential harness: the same (data, query) through the F* native
 -- binary and the Lean evaluator (Harness/Differential.lean).
 @[default_target] lean_exe «l4diff» where root := `Harness.Differential
+
+-- HDT v1 container reader over the vendored hdt-cpp fixtures
+-- (Harness/HdtProbe.lean). Directory-driven, not manifest-driven: the
+-- HDT format has no W3C test suite, so the corpus is the two files in
+-- third_party/testing/hdt/ with their published SHA-256 digests. Run
+-- from the REPOSITORY ROOT.
+@[default_target] lean_exe «l4hdt» where root := `Harness.HdtProbe

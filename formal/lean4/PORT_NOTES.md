@@ -7244,3 +7244,94 @@ fail (out of 127); the Lean tree reaches 94 pass, 33 fail.
 hides the same trade Addendum 4 named: three positive-entailment
 cases gained, three consistency cases lost
 (`WebOnt-description-logic-018`, `-020`, `-021`).
+
+## HDT: the container reader, and a fixture pair that nothing measured
+
+`third_party/testing/hdt/` has held two HDT v1 files since 2026-07-28.
+They were written by the reference implementation, hdt-cpp 1.3.3, and
+the directory's README records a published SHA-256 for each. The F\*
+tree reads them. The Lean tree had no reader, so the fixtures
+contributed no Lean number at all.
+
+`L4Factoidal/HDT/Container.lean` is the port of
+`formal/fstar/HDT.Container.fst`. It parses the container skeleton:
+the Global control information (`$HDT` cookie, format IRI, properties,
+CRC16), the Header control information and its N-Triples metadata
+text, the Dictionary control information and the byte boundaries of
+its four Plain-Front-Coding sections, and the Triples control
+information. Every control block's CRC16 is checked.
+
+### Three F\* definitions have no work to do here
+
+The F\* module is 644 lines; the Lean module is 502. The difference is
+not compression — it is three definitions that exist only to work
+around the F\* tree's I/O boundary.
+
+| F\* definition | Why it exists there | Why it is absent here |
+|---|---|---|
+| `hdt_file_size`, `hdt_probe_fail_pow`, `hdt_size_bsearch` | `Parquet.Footer.parquet_read_range_hex` does not report a file size, so the size is discovered by an exponential probe and a binary search over read attempts | `IO.FS.readBinFile` returns a `ByteArray` and `.size` is a field |
+| `hdt_bytes_of_hex`, `collect_bytes` | that boundary hands back a hex STRING, which must be decoded before anything can index it | `readBinFile` gives bytes |
+| `nat_xor` | bitwise XOR built out of `/`, `%` and `*`, because `FStar.UInt32`'s stdint externals have no js_of_ocaml realisation | `UInt16.xor` is a primitive |
+
+The container parsing itself is ported rule for rule.
+
+### One deliberate difference, and it is a correction
+
+`bytes_to_string_acc` in F\* maps each byte through
+`Parser.NTriples.safe_char_of_int`: one character per byte, Latin-1
+style. In OCaml that reproduces the file's bytes, because an OCaml
+string IS a byte string. A Lean `String` is UTF-8, so the same
+per-byte mapping re-encodes every byte above 0x7F as two bytes and
+corrupts UTF-8 header metadata. `bytesToString` decodes the range as
+UTF-8 first and falls back to the per-byte mapping only when the range
+is not valid UTF-8. On ASCII input — every control block — the two
+agree byte for byte. Neither fixture has non-ASCII header metadata, so
+this difference is not yet exercised by a test.
+
+### The measurement
+
+`lake exe l4hdt` (Harness/HdtProbe.lean), from the repository root:
+
+**HDT container: 2 pass, 0 fail (out of 2).**
+
+A pass count of 2 is weak evidence on its own. The stronger check is
+`tools/hdt-tree-differential.sh`, which runs both trees' probes with
+`--verbose` and diffs the output. Both print the same skeleton: every
+control block's byte offsets, format IRI, property string and CRC16
+(stored AND computed), the header data range, the four PFC sections'
+boundaries, string counts, packed byte counts and block sizes, the
+triples data offset, and the header triple count from each tree's own
+N-Triples parser.
+
+**HDT container, F\* vs Lean 4: 2 agree, 0 differ (out of 2)** — 28
+skeleton lines identical per fixture. One line of wording differs (the
+F\* probe names its parser module, the Lean probe does not) and the
+script normalises it rather than leaving a difference to appear every
+run.
+
+Both fixtures report `format=<http://purl.org/HDT/hdt#HDTv1>`, 22
+header triples, `order=1`, and dictionary string counts of
+(shared 0, subjects 1, predicates 1, objects 1) for
+`rdf-mt-test002.hdt` and (39, 45, 22, 134) for
+`rml-core-ontology.hdt`.
+
+### The two lemmas
+
+`L4Factoidal/HDT/ContainerTheorems.lean` ports
+`lemma_parse_control_info_rejects_bad_cookie` and
+`lemma_bad_global_cookie_rejects_container`. The module is a READER,
+so the writer/reader round-trip property that applies to companion-file
+modules has nothing to say about it. What its consumers rely on is
+that a corrupted container is refused rather than accepted as some
+other structure. Both hold by unfolding, and `#print axioms` reports
+`[propext, Classical.choice, Quot.sound]` for each — no `sorry`, no
+`axiom`, no `native_decide`.
+
+### Still absent
+
+`HDT.Dictionary` (519 F\* lines, the PFC dictionary decode and the
+ID↔term mapping) and `HDT.Triples` (316 lines, the bitmap triples
+decode). Until those land, the Lean tree can say what an HDT file
+contains but cannot read a triple out of one. `bin/hdt-probe/check.sh`
+already pins the F\* side of both stages, so the target numbers are
+known before the port starts.

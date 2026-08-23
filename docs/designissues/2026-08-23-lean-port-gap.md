@@ -10,12 +10,16 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 79 | 43980 |
+| Engine and specification code — to port | 78 | 43336 |
 | Proofs about the F\* implementation — see below | 32 | 33861 |
 | F\*-only machinery with no Lean counterpart by design | 7 | 2861 |
-| **Total not covered** | **118** | **80702** |
+| **Total not covered** | **117** | **80058** |
 
-102 of the 220 F\* modules have a Lean counterpart.
+103 of the 220 F\* modules have a Lean counterpart.
+
+Updated 2026-08-23 after `HDT.Container` landed as
+`L4Factoidal/HDT/Container.lean`. The row below moved from three
+modules to two.
 
 ### On the proof column
 
@@ -128,11 +132,18 @@ states this in its header.
 
 - `Tableau.CountingOracle` (1663)
 
-### HDT — 3 modules, 1479 lines
+### HDT — 2 modules, 835 lines
 
-- `HDT.Container` (644)
 - `HDT.Dictionary` (519)
 - `HDT.Triples` (316)
+
+`HDT.Container` (644 lines) is ported. The Lean module is 502 lines
+because three F\* definitions have no work to do in Lean: the
+file-size probe (`hdt_file_size` and its two helpers), the hex decode
+(`hdt_bytes_of_hex`, `collect_bytes`), and `nat_xor`. See that
+module's header. Both readers are compared field by field over the
+two vendored fixtures by `tools/hdt-tree-differential.sh`: 2 agree, 0
+differ (out of 2), 28 skeleton lines identical per fixture.
 
 ### RDFS — 2 modules, 1229 lines
 
