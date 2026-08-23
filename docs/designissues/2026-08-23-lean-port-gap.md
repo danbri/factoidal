@@ -10,12 +10,12 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 69 | 41326 |
+| Engine and specification code — to port | 65 | 41019 |
 | Proofs about the F\* implementation — see below | 32 | 33861 |
 | F\*-only machinery with no Lean counterpart by design | 7 | 2861 |
-| **Total not covered** | **108** | **78034** |
+| **Total not covered** | **104** | **77727** |
 
-112 of the 220 F\* modules have a Lean counterpart.
+116 of the 220 F\* modules have a Lean counterpart.
 
 Updated 2026-08-23 after all three HDT modules and `XSD.IEEE754`
 landed, and after ONE false negative was corrected: `DID.Key` has been
@@ -30,6 +30,9 @@ Second update the same day, after a batch of five more: `Dep.Reachability`,
 `RDFS.Closure.SemiNaive`, `RDF.Dataset.Graphs`, `SPARQL.Update.Analysis`
 and `SPARQL.Query.Analysis`. The `Dep` group is now empty and `RDFS` is
 down to one module.
+
+Third: `RDF.Canonical.Manifest`, `RDF.Dataset.Merge`, `RDF.Format` and
+`SPARQL.JSON.Escape`.
 
 ### On the proof column
 

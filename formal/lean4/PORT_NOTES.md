@@ -7699,3 +7699,72 @@ values: `TriplePattern` derives `Repr` and not `BEq`. The order check
 asserts BOTH that `collectBgpsAux` returns last-seen-first AND that
 `bgpsInQuery` returns source order, so a reverse that silently stopped
 happening would fail.
+
+## A batch of four: manifests, blank-node scoping, format labels, JSON escaping
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `RDF.Canonical.Manifest` | 38 | `L4Factoidal/RDF/CanonicalManifest.lean` |
+| `RDF.Dataset.Merge` | 69 | `L4Factoidal/RDF/DatasetMerge.lean` |
+| `RDF.Format` | 103 | `L4Factoidal/RDF/Format.lean` |
+| `SPARQL.JSON.Escape` | 97 | `L4Factoidal/SPARQL/JsonEscape.lean` |
+
+### `RDF.Dataset.Merge`: a difference the type system absorbs
+
+`rename_graph_name` in F\* takes a plain string and tests for a `"_:"`
+prefix, because the F\* `named_graph`'s name slot is IRI-typed and
+blank-node graph labels ride inside it as the literal string
+`"_:<label>"` — the Parser.NQuads convention, also used by TriG and
+JSON-LD. Lean's `NamedGraph.name` is `Subject`, which is `iri | bnode`,
+so a blank-node graph name IS a blank node and the prefix goes straight
+on its label. The string-prefix test disappears, and with it the chance
+of a graph name that merely LOOKS like a blank node being renamed.
+
+The `#guard`s state the bug the module exists for — the Jena ARQ probe's
+graph-09 and graph-10b, where `_:x` from two separately loaded files
+joined — as a check that `_:x` from two documents does NOT collide after
+renaming, and that `_:x` used twice WITHIN one document still does.
+Both directions are needed: a rename that freshened every occurrence
+would pass the first and fail the second.
+
+### `RDF.Format`: two tables that must not be one
+
+`format_of_extension` takes a LEADING DOT (`".ttl"`); `format_of_string`
+takes a bare label (`"ttl"`). The F\* name `format_of_string` is
+`formatOfLabel` here, because both functions take a string and only
+their guards say they are not interchangeable. Those guards are
+explicit: `formatOfExtension "ttl"` is `none` and
+`formatOfLabel ".ttl"` is `none`.
+
+The F\* module uses an `if`/`else if` chain rather than a `match` on
+string literals because KaRaMeL's C extraction rejects the latter
+(warning 250). Lean has no such constraint; the chain is kept so the two
+trees' tables are one diff apart rather than a restructure apart.
+
+### `SPARQL.JSON.Escape`: the byte-versus-codepoint trap, twice
+
+The F\* module's header records what its first implementation got wrong,
+and both failures are the same distinction:
+
+1. Escape pairs mirrored relative to a final `rev` — `"n\\"` instead of
+   `"\\n"`. The npm bundle was the first strict-JSON consumer and
+   crashed on it.
+2. Pass-through bytes at or above 0x80 double-encoded, because the walk
+   read BYTES while the extracted `string_of_list` re-encoded each list
+   element as a UTF-8 CODEPOINT. `"café"` became `"cafÃ©"`.
+
+F\* fixed both by slicing maximal runs of non-special bytes with
+`fs_byte_sub`, which is byte-transparent.
+
+The Lean tree has no `Parser.FastString` counterpart by design, so this
+walks `String.toUTF8` and builds a `ByteArray`, decoding once at the
+end. A byte at or above 0x80 is copied into the output buffer and never
+passes through `Char`, so failure 2 cannot occur; the escape strings are
+byte literals, so failure 1 cannot occur. The `#guard`s check both
+anyway, and they check the BYTE LENGTH of `"café"` and `"日本語"` rather
+than the rendered string — a double-encoding that round-trips through
+`Char` can still print plausibly.
+
+One more guard states a rule that is easy to get wrong in the other
+direction: 0x7F DEL is NOT escaped. "Control character" and "byte below
+0x20" are different sets, and only the second one is the rule.

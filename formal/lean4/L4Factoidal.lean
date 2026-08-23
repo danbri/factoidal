@@ -255,3 +255,7 @@ import L4Factoidal.RDFS.SemiNaive
 import L4Factoidal.RDF.DatasetGraphs
 import L4Factoidal.SPARQL.UpdateAnalysis
 import L4Factoidal.SPARQL.QueryAnalysis
+import L4Factoidal.RDF.CanonicalManifest
+import L4Factoidal.RDF.DatasetMerge
+import L4Factoidal.RDF.Format
+import L4Factoidal.SPARQL.JsonEscape

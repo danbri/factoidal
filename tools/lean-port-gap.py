@@ -24,6 +24,9 @@ alias={
  "SPARQL.Update.Analysis":"SPARQL.UpdateAnalysis",
  "SPARQL.Query.Analysis":"SPARQL.QueryAnalysis",
  "RDF.Dataset.Graphs":"RDF.DatasetGraphs",
+ "RDF.Canonical.Manifest":"RDF.CanonicalManifest",
+ "RDF.Dataset.Merge":"RDF.DatasetMerge",
+ "SPARQL.JSON.Escape":"SPARQL.JsonEscape",
 }
 def leafkeys(m):
     p=m.split('.'); s={p[-1].lower()}
