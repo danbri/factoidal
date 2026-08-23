@@ -237,6 +237,316 @@ This makes the important audit question machine-readable:
 > which transformation of which signed dataset, using which executable
 > and which test evidence?
 
+## Evidence profile v0.1
+
+The first profile should be intentionally small. It should be rich
+enough to describe one RDFS closure run and one VC Data Integrity
+verification, but not so broad that it tries to become a general proof
+ontology.
+
+Namespace:
+
+```turtle
+@prefix fxev: <https://factoidal.dev/ns/evidence#> .
+```
+
+Core classes:
+
+| Term | Kind | Meaning |
+|---|---|---|
+| `fxev:EvidencePackage` | class | A named bundle of claims about one processing event. |
+| `fxev:VerifiedRun` | class | A run whose evidence includes at least one theorem-backed claim. |
+| `fxev:SemanticClaim` | class | A claim in an RDF/RDFS/OWL/SPARQL object logic. |
+| `fxev:SoftwareClaim` | class | A theorem, invariant, or measured gate about implementation behavior. |
+| `fxev:ByteIdentityClaim` | class | A claim connecting files, parsed graphs, datasets, canonical bytes, and hashes. |
+| `fxev:CryptographicClaim` | class | A signature, hash, key, or proof-verification result. |
+| `fxev:PolicyProfile` | class | A reusable bundle of permitted regimes, cryptosuites, theorem floors, and test floors. |
+| `fxev:Refusal` | class | A typed refusal to make a stronger claim. |
+
+Core predicates:
+
+| Term | Range shape | Meaning |
+|---|---|---|
+| `fxev:claim` | claim node | Adds a typed claim to an evidence package. |
+| `fxev:claimKind` | IRI | One of semantic, software, byte identity, cryptographic. |
+| `fxev:sourceArtifact` | IRI/literal | The input file, document, dataset, or graph identifier. |
+| `fxev:resultArtifact` | IRI/literal | The output file, document, dataset, or graph identifier. |
+| `fxev:canonicalArtifact` | IRI/literal | The canonical byte representation used for hashing or comparison. |
+| `fxev:digest` | literal | Hash of a source, result, canonical artifact, or report. |
+| `fxev:algorithm` | IRI/literal | Canonicalization, hash, signing, parser, closure, or validation algorithm. |
+| `fxev:regime` | IRI/literal | RDF, RDFS, D-entailment, OWL-RL, OWL-RDF-Based, OWL-Direct, SHACL, etc. |
+| `fxev:fragment` | IRI/literal | The explicit fragment restriction under which a theorem is valid. |
+| `fxev:theorem` | IRI | Stable theorem URI. |
+| `fxev:theoremStatus` | IRI/literal | Proved, assumed, carried hypothesis, measured, refused, unsupported. |
+| `fxev:proofProfile` | IRI/literal | The strength of a proof claim, such as soundness-not-completeness or licensing-not-truth. |
+| `fxev:testReport` | IRI | Machine-readable report or dashboard artifact. |
+| `fxev:implementation` | IRI/literal | Git commit, binary, wasm bundle, Lean executable, F* runner, or extracted path. |
+| `fxev:trustBoundary` | IRI/literal | Extraction, FFI, HACL*, host clock, network, context loader, or storage boundary. |
+| `fxev:verifiedBy` | IRI/literal | F*, Lean 4, W3C suite, differential harness, signature verifier, or human audit. |
+| `fxev:verificationMethod` | IRI/literal | A VC Data Integrity verification method, key identifier, or equivalent signing authority reference. |
+| `fxev:policyProfile` | `fxev:PolicyProfile` | The policy bundle this evidence package claims to satisfy. |
+| `fxev:refusesClaim` | `fxev:Refusal` | A stronger claim this package explicitly does not make. |
+| `fxev:reason` | literal | Human-readable reason for a refusal, unsupported case, or scoped claim boundary. |
+
+Named controlled values should be IRIs, not free text, once the profile
+stabilizes. During the first documentation pass, short literal names
+are acceptable if the page states their intended URI.
+
+Recommended first controlled values:
+
+| Value | Meaning |
+|---|---|
+| `fxev:Semantic` | Object-logic graph claim. |
+| `fxev:SoftwareCorrectness` | Program theorem or implementation gate. |
+| `fxev:ByteIdentity` | Bytes-to-graph or graph-to-bytes claim. |
+| `fxev:Cryptographic` | Signature/hash/key claim. |
+| `fxev:Proved` | Machine-checked theorem, no carried hypothesis beyond stated imports/logic base. |
+| `fxev:Measured` | Empirical test, benchmark, or conformance score. |
+| `fxev:CarriedHypothesis` | The theorem exists but depends on a named hypothesis. |
+| `fxev:Unsupported` | The implementation refuses the case explicitly. |
+| `fxev:SoundnessNotCompleteness` | Truth preservation is claimed; completeness is not. |
+| `fxev:LicensingNotTruth` | A rule is structurally licensed, but model-theoretic truth preservation is not claimed. |
+
+## Worked example: RDFS closure run
+
+This is the smallest useful semantic evidence package. It claims that
+a closure output is sound, not that it is complete for all RDFS
+entailment.
+
+```turtle
+@prefix fxev: <https://factoidal.dev/ns/evidence#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<#rdfs-run-001> a fxev:EvidencePackage, fxev:VerifiedRun ;
+  fxev:policyProfile fxev:RegulatedRdfsSoundnessProfile ;
+  fxev:claim <#input-byte-identity>,
+             <#rdfs-soundness>,
+             <#implementation-gate>,
+             <#known-nonclaim> ;
+  prov:generatedAtTime "2026-08-23T00:00:00Z"^^xsd:dateTime .
+
+<#input-byte-identity> a fxev:ByteIdentityClaim ;
+  fxev:claimKind fxev:ByteIdentity ;
+  fxev:sourceArtifact <sha256:INPUT_DATASET_HASH> ;
+  fxev:canonicalArtifact <sha256:INPUT_CANONICAL_NQUADS_HASH> ;
+  fxev:algorithm "RDFC-1.0 canonical N-Quads" ;
+  fxev:verifiedBy "Factoidal RDF.Canonical / W3C rdf-canon suite" ;
+  fxev:testReport <https://danbri.github.io/factoidal/test-results/latest.json> .
+
+<#rdfs-soundness> a fxev:SemanticClaim ;
+  fxev:claimKind fxev:Semantic ;
+  fxev:sourceArtifact <sha256:INPUT_DATASET_HASH> ;
+  fxev:resultArtifact <sha256:RDFS_CLOSURE_DATASET_HASH> ;
+  fxev:regime "RDFS" ;
+  fxev:fragment "RDF 1.1 graph fragment named by the theorem" ;
+  fxev:theorem <urn:factoidal:theorem:RDF.Entailment.RDFS:rdfs_closure_entails> ;
+  fxev:theoremStatus fxev:CarriedHypothesis ;
+  fxev:proofProfile fxev:SoundnessNotCompleteness ;
+  fxev:trustBoundary "index completeness, dedup/string-key faithfulness where still carried" .
+
+<#implementation-gate> a fxev:SoftwareClaim ;
+  fxev:claimKind fxev:SoftwareCorrectness ;
+  fxev:implementation <git:COMMIT> ;
+  fxev:algorithm "formal/fstar RDFS closure, extracted runtime path" ;
+  fxev:verifiedBy "F* verification plus W3C rdf-mt/rdfs-regime tests" ;
+  fxev:testReport <https://danbri.github.io/factoidal/test-results/latest.json> .
+
+<#known-nonclaim> a fxev:Refusal ;
+  fxev:refusesClaim "complete RDFS entailment for unrestricted RDF graphs" ;
+  fxev:reason "The current proof surface records soundness and fragment-bounded completeness only; unrestricted completeness is not claimed." .
+```
+
+Important details:
+
+- The semantic claim names soundness separately from byte identity.
+- The theorem status carries hypotheses when the current F* theorem
+  does.
+- The package refuses unrestricted completeness explicitly instead of
+  letting readers infer it from the word "verified".
+- A later implementation can mechanically fill the hashes, commit, and
+  theorem URI once those identifiers are stable.
+
+## Worked example: VC Data Integrity verification
+
+This package verifies a signed JSON-LD credential and records what that
+verification does and does not say.
+
+```turtle
+@prefix fxev: <https://factoidal.dev/ns/evidence#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<#vc-run-001> a fxev:EvidencePackage, fxev:VerifiedRun ;
+  fxev:policyProfile fxev:RegulatedCredentialProfile ;
+  fxev:claim <#vc-document-identity>,
+             <#vc-context-shape>,
+             <#vc-proof-verification>,
+             <#vc-semantic-nonclaim> ;
+  prov:generatedAtTime "2026-08-23T00:00:00Z"^^xsd:dateTime .
+
+<#vc-document-identity> a fxev:ByteIdentityClaim ;
+  fxev:claimKind fxev:ByteIdentity ;
+  fxev:sourceArtifact <sha256:SIGNED_VC_JSONLD_HASH> ;
+  fxev:canonicalArtifact <sha256:VC_RDFC_CANONICAL_HASH> ;
+  fxev:algorithm "JSON-LD toRdf + RDFC-1.0 canonicalization" ;
+  fxev:trustBoundary "JSON-LD context loading and context cache policy" .
+
+<#vc-context-shape> a fxev:SoftwareClaim ;
+  fxev:claimKind fxev:SoftwareCorrectness ;
+  fxev:algorithm "VC structural validation and proof-options construction" ;
+  fxev:verifiedBy "Factoidal VC.DataIntegrity / VC tests" ;
+  fxev:theoremStatus fxev:Measured .
+
+<#vc-proof-verification> a fxev:CryptographicClaim ;
+  fxev:claimKind fxev:Cryptographic ;
+  fxev:algorithm "eddsa-rdfc-2022" ;
+  fxev:digest "sha256(proofConfigCanonical) || sha256(documentCanonical)" ;
+  fxev:verificationMethod "did:key:..." ;
+  fxev:trustBoundary "HACL* Ed25519 extern family; key-control policy external to Factoidal" ;
+  fxev:verifiedBy "VC Data Integrity verifier" ;
+  fxev:theoremStatus fxev:Measured .
+
+<#vc-semantic-nonclaim> a fxev:Refusal ;
+  fxev:refusesClaim "the credential subject assertion is true" ;
+  fxev:reason "A valid Data Integrity proof establishes document integrity and signer binding, not real-world truth or authorization." .
+```
+
+Important details:
+
+- Signature verification is a cryptographic claim, not a semantic
+  claim.
+- JSON-LD context handling is a trust boundary and must be visible.
+- A valid credential can still fail a policy profile, SHACL shape,
+  authorization rule, or real-world truth check.
+- The same evidence package can later include semantic claims if the
+  credential is processed through RDFS/OWL/SHACL rules.
+
+## Worked example: transformation evidence
+
+Transformations are where regulated deployments will most often lose
+auditability. A mapping or enrichment step should produce its own
+evidence package, even if the input and output are later signed.
+
+```turtle
+<#transform-run-001> a fxev:EvidencePackage, fxev:VerifiedRun ;
+  fxev:claim <#mapping-byte-identity>,
+             <#mapping-software-claim>,
+             <#mapping-semantic-claim> .
+
+<#mapping-byte-identity> a fxev:ByteIdentityClaim ;
+  fxev:sourceArtifact <sha256:SOURCE_TABLE_HASH> ;
+  fxev:resultArtifact <sha256:OUTPUT_RDF_HASH> ;
+  fxev:algorithm "CSVW/RML transform profile" .
+
+<#mapping-software-claim> a fxev:SoftwareClaim ;
+  fxev:implementation <git:COMMIT> ;
+  fxev:verifiedBy "F*/Lean transform tests or theorem, as available" ;
+  fxev:theoremStatus fxev:Measured .
+
+<#mapping-semantic-claim> a fxev:SemanticClaim ;
+  fxev:regime "RDF" ;
+  fxev:proofProfile "construction claim, not entailment" ;
+  fxev:refusesClaim "semantic entailment from the source table alone" .
+```
+
+This separates construction from entailment. A CSVW or RML mapping can
+be deterministic and verified as a transformation without implying that
+the source table logically entails the generated RDF under RDF Model
+Theory.
+
+## Regulated policy bundles
+
+The profile should support named bundles. These are not code forks.
+They are declarative requirements that a run can satisfy or refuse.
+
+### `fxev:RegulatedRdfsSoundnessProfile`
+
+Minimum requirements:
+
+- RDF 1.1 or RDF 1.2 syntax mode stated.
+- Canonicalization algorithm and hash algorithm stated.
+- RDFS regime and fragment stated.
+- Soundness theorem URI stated.
+- Completeness status stated as one of complete, fragment-complete,
+  carried hypothesis, or not claimed.
+- W3C test-report URI attached.
+- Implementation commit attached.
+- All trust boundaries listed.
+
+Intended uses: controlled vocabulary normalization, regulated
+classification pipelines, life-sciences metadata enrichment, and
+financial product taxonomy expansion.
+
+### `fxev:RegulatedCredentialProfile`
+
+Minimum requirements:
+
+- VC Data Model version stated.
+- JSON-LD context policy stated.
+- RDFC/JCS canonicalization path stated.
+- Cryptosuite stated.
+- Verification method stated.
+- HACL*/crypto boundary stated.
+- Structural validation result stated.
+- Signature result stated.
+- Policy authorization result stated separately from signature result.
+
+Intended uses: public-sector credentials, verifiable professional
+licences, clinical-trial attestations, and supply-chain claims.
+
+### `fxev:TransformationAuditProfile`
+
+Minimum requirements:
+
+- Source artifact hash.
+- Mapping artifact hash.
+- Output artifact hash.
+- Transformation language and version.
+- Determinism or non-determinism policy.
+- Semantic claim kind: construction, entailment, validation, or
+  enrichment.
+- Test or theorem evidence.
+- Refusal of stronger claims that are not established.
+
+Intended uses: CSVW/RML table-to-RDF conversion, JSON-LD framing,
+XSLT/XML transformations, evidence extraction, and reporting pipelines.
+
+## Theorem URI scheme
+
+The theorem registry should mint stable URIs before emitters are
+implemented. A simple first scheme:
+
+```text
+urn:factoidal:theorem:<tree>:<module>:<name>
+```
+
+Examples:
+
+```text
+urn:factoidal:theorem:fstar:RDF.Entailment.RDFS:rdfs_closure_entails
+urn:factoidal:theorem:fstar:RDF.Canonical:canonicalize_to_nquads_sorted
+urn:factoidal:theorem:lean:RDF.Canonical:issuer_injective
+urn:factoidal:theorem:lean:RDFS.FullClosure:fullClosure_saturated_complete
+```
+
+The URI is not the proof. It is a stable handle for a proof inventory
+row that records:
+
+- source tree: F* or Lean;
+- module and theorem name;
+- commit where the theorem was checked;
+- exact statement;
+- assumptions and imported trust base;
+- proof status;
+- related W3C section;
+- related test suite;
+- whether it is semantic, software-correctness, byte-identity, or
+  cryptographic evidence.
+
+The first emitter should refuse to cite a theorem URI unless that URI
+exists in a generated registry.
+
 ## F* and Lean roles
 
 Use F* as the shipping proof/extraction spine for the product runtime.
@@ -296,6 +606,54 @@ derive reporting categories. RDFC and Data Integrity can make the
 record tamper-evident. The weak point is transformation provenance:
 every mapping, enrichment, and inference step needs an evidence node,
 not only the final signed output.
+
+## Issue #563 task breakdown
+
+This page is the build-out surface for issue #563. The immediate work
+should stay documentation-first until the claim vocabulary and example
+graphs are stable.
+
+1. **Define the minimal `fxev:` evidence vocabulary.**
+   The v0.1 vocabulary above is the first draft. It should be reviewed
+   against RDF/RDFS/OWL semantic claims, F*/Lean theorem rows, byte
+   identity claims, and VC Data Integrity verification before any
+   emitter depends on it.
+2. **Link theorem-registry rows to stable theorem URIs.**
+   The URI scheme above is a draft. The next documentation step is to
+   extend the generated theorem registry with stable IDs, exact theorem
+   statements, source tree, commit, assumptions, W3C section, and claim
+   kind.
+3. **Draft one concrete evidence graph example for an RDFS closure
+   run.**
+   The `#rdfs-run-001` example above is the first draft. It should be
+   tightened with one real W3C or local fixture, real input/output
+   hashes, and real theorem-registry URIs.
+4. **Draft one concrete evidence graph example for VC Data Integrity
+   verification.**
+   The `#vc-run-001` example above is the first draft. It should be
+   tightened with one real fixture, the actual verification method,
+   canonical document hash, proof-config hash, signature result, and
+   context-cache policy.
+5. **Turn the examples into acceptance criteria or subtasks on #563.**
+   The tracker should carry these six items as subtasks so progress is
+   visible without reading the whole design note.
+6. **Implement emitters/checkers only after the vocabulary is stable.**
+   No runtime code should be written until at least the vocabulary, one
+   RDFS example, one VC example, and theorem URI policy have survived a
+   review pass. The first implementation should be a narrow emitter for
+   one fixture, not a generalized framework.
+
+Definition of done for the documentation phase:
+
+- `fxev:` has a minimal term table with class/predicate meanings.
+- The theorem URI scheme is tied to generated theorem-registry rows.
+- One RDFS closure evidence graph uses real hashes and theorem IDs.
+- One VC Data Integrity evidence graph uses real hashes, method IDs,
+  context policy, and signature result.
+- The page explicitly labels semantic, software-correctness,
+  byte-identity, and cryptographic claims.
+- #563 has matching subtasks or acceptance criteria.
+- No emitters/checkers are started before the profile stabilizes.
 
 ## Gaps to track
 
