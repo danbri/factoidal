@@ -63,12 +63,21 @@ def jsonValueOf (base : Option String) (ok : Bool) (lex : String) : Json :=
   else if isNumericBase b then .number lex
   else .string lex
 
+/-- `rdf:type` is written `@type` in csv2json, and its value is
+    COMPACTED — `"@type": "schema:MusicEvent"`, not an `rdf:type`
+    member holding an absolute IRI (test032). -/
+def rdfTypeIriStr : String := "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+
 /-- The members one cell contributes, or none when it is null. -/
 def cellMembers (tableUrl colName : String) (c : CellOut) : List (String × Json) :=
-  let key := jsonKeyFor tableUrl colName c.result.propertyRef
+  let isType := c.result.propertyRef == some rdfTypeIriStr
+  let key := if isType then "@type" else jsonKeyFor tableUrl colName c.result.propertyRef
   let base := c.inh.datatype.bind Datatype.baseName
   let vals :=
-    (c.result.valueRefs.map (fun u => Json.string (compactIri u)))
+    -- A `valueUrl` VALUE stays an absolute IRI. Only the KEY is
+    -- compacted: `schema:about` is a member name, never a value
+    -- (test038). The exception is `@type`, whose value IS compacted.
+    (c.result.valueRefs.map (fun u => Json.string (if isType then compactIri u else u)))
     ++ (c.result.literals.map (fun (lex, ok) => jsonValueOf base ok lex))
   match vals with
   | []  => []
@@ -96,8 +105,24 @@ def commonJson : Nat → Json → Option Json
                 if k.startsWith "@" && k != "@type" then none
                 else (commonJson fuel v).map (fun j => (compactIri (expandPrefixed k), j)))))
 
+/-- A common property's name must be an ABSOLUTE IRI here for the same
+    reason it must in the RDF output: a bare `foo` or `titles` is not a
+    property, and writing it out as a member states something the
+    document did not (test093, test275). -/
 def commonMembers (ps : List CommonProp) : List (String × Json) :=
-  ps.filterMap (fun cp => (commonJson 16 cp.value).map (fun j => (compactIri cp.prop, j)))
+  ps.filterMap (fun cp =>
+    match absoluteIri? cp.prop with
+    | none   => none
+    | some _ => (commonJson 16 cp.value).map (fun j => (compactIri cp.prop, j)))
+
+/-- Does `j` mention the IRI `id` anywhere but in its own `@id`? -/
+def jsonMentions : Nat → String → Json → Bool
+  | 0,        _,  _ => false
+  | _ + 1,    id, .string s => s == id
+  | fuel + 1, id, .array vs => vs.any (jsonMentions fuel id)
+  | fuel + 1, id, .object ms =>
+      ms.any (fun (k, v) => k != "@id" && jsonMentions fuel id v)
+  | _ + 1,    _,  _ => false
 
 /-- Merge members that share a KEY into one array member, keeping
     first-appearance order.
@@ -116,17 +141,54 @@ def mergeMembers (ms : List (String × Json)) : List (String × Json) :=
     | vs  => (k, .array (vs.flatMap (fun v =>
                 match v with | .array xs => xs | x => [x]))))
 
+/-- Substitute a nested object for a reference to it. Bounded by
+    `fuel`; a reference chain deeper than that is left as the plain
+    IRI rather than looped over. -/
+def substituteRefs (subs : List (String × Json)) : Nat → Json → Json
+  | 0,        j => j
+  | fuel + 1, j =>
+      match j with
+      | .string s =>
+          match (subs.find? (fun (k, _) => k == s)).map (·.2) with
+          | some o => substituteRefs subs fuel o
+          | none   => .string s
+      | .array vs => .array (vs.map (substituteRefs subs fuel))
+      | .object ms =>
+          .object (ms.map (fun (k, v) =>
+            (k, if k == "@id" then v else substituteRefs subs fuel v)))
+      | other => other
+
 /-- One row's `describes` array: one object per DISTINCT subject, in
     first-appearance order, each carrying `@id` when its subject is an
-    IRI. -/
+    IRI.
+
+    An object whose `@id` is REFERENCED by another object of the same
+    row is NESTED inside it rather than listed alongside. csv2json §6
+    inlines a `valueUrl` that names another cell's `aboutUrl`, so the
+    event in test032 carries its place and its offer as nested
+    objects; listing all three side by side gives an array of the
+    right length with the structure flattened out of it. -/
 def describesOf (tableUrl : String) (r : RowInput) : List Json :=
-  r.subjects.map (fun s =>
-    let idPair := match s with
-      | .iri i   => [("@id", Json.string i.val)]
-      | .bnode _ => []
+  let objs := r.subjects.map (fun s =>
+    let idStr := match s with
+      | .iri i   => some i.val
+      | .bnode _ => none
+    let idPair := match idStr with
+      | some v => [("@id", Json.string v)]
+      | none   => []
     let members := (r.cells.filter (fun c => c.subject == s)).flatMap
       (fun c => cellMembers tableUrl c.name c)
-    .object (idPair ++ mergeMembers members))
+    (idStr, Json.object (idPair ++ mergeMembers members)))
+  -- Which ids does some OTHER object mention?
+  let mentions : List String := objs.flatMap (fun (own, o) =>
+    (objs.filterMap (·.1)).filter (fun id =>
+      own != some id && jsonMentions 8 id o))
+  let subs : List (String × Json) := objs.filterMap (fun (id, o) =>
+    id.bind (fun i => if mentions.contains i then some (i, o) else none))
+  objs.filterMap (fun (id, o) =>
+    match id with
+    | some i => if mentions.contains i then none else some (substituteRefs subs 8 o)
+    | none   => some (substituteRefs subs 8 o))
 
 /-- Standard mode, one row. -/
 def rowJsonOf (tableUrl : String) (r : RowInput) : Json :=

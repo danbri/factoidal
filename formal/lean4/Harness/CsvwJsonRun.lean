@@ -20,6 +20,7 @@ Usage: `lake exe l4csvw-json [tests-dir]`
 -/
 import L4Factoidal.CSVW.JsonDoc
 import L4Factoidal.JSON.Parser
+import L4Factoidal.JSON.Serialize
 
 open L4Factoidal.CSVW
 open L4Factoidal.JSON
@@ -45,22 +46,47 @@ def jsonEquiv : Nat → Json → Json → Bool
   | _ + 1,    _, _ => false
 where
   /-- Two JSON numbers are the same number even when written
-      differently. The parser keeps the SOURCE TEXT, so `1.0` and `1`
-      arrive as different strings while denoting one value; comparing
-      the text would fail correct output for a reason that is not a
-      defect. -/
+      differently. The parser keeps the SOURCE TEXT, so `1.0`, `1` and
+      `0.0e0` arrive as different strings while denoting one value;
+      comparing the text would fail correct output for a reason that is
+      not a defect. The EXPONENT is expanded here rather than
+      approximated through a float, so the comparison stays exact. -/
   normNum (s : String) : String :=
-    let neg := s.startsWith "-"
-    let body := if neg || s.startsWith "+" then String.ofList (s.toList.drop 1) else s
-    let (ip, fp) := match body.splitOn "." with
-      | [a]    => (a, "")
-      | [a, b] => (a, b)
-      | _      => (body, "")
-    let ip := String.ofList (ip.toList.dropWhile (· == '0'))
-    let fp := String.ofList (fp.toList.reverse.dropWhile (· == '0')).reverse
-    let ip := if ip == "" then "0" else ip
-    (if neg && !(ip == "0" && fp == "") then "-" else "") ++ ip
-      ++ (if fp == "" then "" else "." ++ fp)
+    let cs := s.toList
+    let (mantChars, expChars) :=
+      match cs.findIdx? (fun c => c == 'e' || c == 'E') with
+      | some i => (cs.take i, cs.drop (i + 1))
+      | none   => (cs, [])
+    let exp : Int :=
+      if expChars.isEmpty then 0
+      else
+        let neg := expChars.head? == some '-'
+        let ds := expChars.filter Char.isDigit
+        let v : Int := (String.ofList ds).toNat!
+        if neg then -v else v
+    let neg := mantChars.head? == some '-'
+    let body := if neg || mantChars.head? == some '+' then mantChars.drop 1 else mantChars
+    let (ip, fp) := match body.findIdx? (· == '.') with
+      | some i => (body.take i, body.drop (i + 1))
+      | none   => (body, [])
+    let digits := ip ++ fp
+    -- The decimal point sits `ip.length + exp` places from the left.
+    let pointPos : Int := (ip.length : Int) + exp
+    let (digits, pointPos) :=
+      if pointPos ≤ 0 then
+        (List.replicate (1 - pointPos).toNat '0' ++ digits, (1 : Int))
+      else (digits, pointPos)
+    let digits :=
+      if pointPos > digits.length then
+        digits ++ List.replicate (pointPos.toNat - digits.length) '0'
+      else digits
+    let cut := pointPos.toNat
+    let ipOut := (digits.take cut).dropWhile (· == '0')
+    let fpOut := (digits.drop cut).reverse.dropWhile (· == '0') |>.reverse
+    let ipStr := if ipOut.isEmpty then "0" else String.ofList ipOut
+    let fpStr := String.ofList fpOut
+    (if neg && !(ipStr == "0" && fpStr == "") then "-" else "")
+      ++ ipStr ++ (if fpStr == "" then "" else "." ++ fpStr)
 
 structure JsonOutcome where
   name   : String
@@ -133,7 +159,9 @@ def jsonManifestEntries (j : Json) : List JEntry :=
         | _, _ => none)
   | _ => []
 
-def runOneJson (dir : String) (e : JEntry) : IO JsonOutcome := do
+/-- `--dump=<manifest id>` prints both documents. A diagnostic; the
+    score is computed the same either way. -/
+def runOneJson (dir : String) (e : JEntry) (dump : Bool := false) : IO JsonOutcome := do
   if e.result == "" then
     return ⟨e.action, "skip", "entry names no expected result"⟩
   let rp := dir ++ "/" ++ e.result
@@ -189,6 +217,11 @@ def runOneJson (dir : String) (e : JEntry) : IO JsonOutcome := do
   match parseJson? expectedSrc with
   | none => return ⟨e.action, "skip", "expected .json did not parse"⟩
   | some want =>
+      if dump then do
+        IO.println s!"--- {e.id} PRODUCED ---"
+        IO.println (Json.toStringPretty got)
+        IO.println s!"--- {e.id} EXPECTED ---"
+        IO.println (Json.toStringPretty want)
       if jsonEquiv 64 got want then return ⟨e.action, "pass", ""⟩
       else return ⟨e.action, "fail", "structural JSON mismatch"⟩
 
@@ -223,9 +256,7 @@ def main (args : List String) : IO UInt32 := do
         if e.negative then
           negative := negative + 1
         else
-        let o ← runOneJson dir e
-        if dumpId == some e.id then
-          IO.println s!"--- {e.id} PRODUCED ---"
+        let o ← runOneJson dir e (dumpId == some e.id)
         if o.status == "pass" then pass := pass + 1
         else if o.status == "fail" then
           fail := fail + 1
