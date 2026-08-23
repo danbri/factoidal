@@ -9566,3 +9566,39 @@ case-insensitive language tags, and `rdf:XMLLiteral` by canonical XML —
 cannot fire. Both are D-entailment behaviours and neither is licensed by
 SIMPLE entailment, so they belong to a soundness proof's hypothesis and
 not to the transcription.
+
+## `RDF.Entailment.RDF.Spec` → `L4Factoidal/RDF/EntailmentRdfSpec.lean`
+
+Rung two of the entailment ladder, transcribed from RDF 1.1 Semantics
+§8: the two-row rule table, the axiomatic triples, and what it means
+for a graph to be RDF-closed. Like the simple-entailment transcription
+it computes nothing about the engine.
+
+**The datatype set stays a parameter.** §8 defines RDF entailment
+"recognizing D", with `rdf:langString` and `xsd:string` always in D.
+Fixing D would make the rdfD1 row unstatable without prejudging which
+datatypes an implementation recognises.
+
+**rdfD1 is specified and NOT implemented, on purpose.** Neither tree
+implements it. It is here so the rule table is COMPLETE in the document
+and the gap is visible — a table with a row quietly missing reads as a
+table with no gap. Its conclusion MINTS a fresh blank node, so the
+relation carries the label as an explicit parameter plus a freshness
+condition rather than hiding it in an existential: a rule that may
+invent a name is not a function of its premise alone.
+
+**rdfD1 is also why `RdfClosed` names only rdfD2.** A graph closed
+under a rule that mints fresh blank nodes is not finite. The
+specification text handles this the same way, by taking the closure
+"towards E".
+
+**Three bridges named rather than left implicit**, so a proof can cite
+them instead of re-noticing a disjunct: `finiteRdfAxioms_sound` (the
+transcribed table is sound for the semantic-side recognizer — soundness
+only, since the `rdf:_n` family is infinite and is handled by a schema
+rather than by enumeration), `rdfD2_stepLicensed`, and
+`rdfClosed_absorbs_rdfD2`.
+
+The finite table is REUSED from `RDF.VocabularyAxioms` rather than
+copied. One `#guard` pins the thing about rdfD2 that is easy to get
+backwards: the conclusion's subject is the premise's PREDICATE.
