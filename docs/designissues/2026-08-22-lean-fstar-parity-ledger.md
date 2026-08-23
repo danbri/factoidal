@@ -454,3 +454,80 @@ time is in before optimising anything. This is the fourth time that
 rule has been paid for. The specific shape here: a plausible
 mechanism plus a code reading produced three work orders, and the
 measurement that would have ruled all three out took two minutes.
+
+# Addendum 6, 2026-08-23 — wave 3, and a CORRECTION to Addendum 5
+
+## 🔴 Correction first
+
+Addendum 5 ends with a methodology note headed "The methodology note
+this landing earns", which says three of four performance fixes
+"each looked like the answer and each moved the number by nothing
+measurable", and draws the lesson that a plausible mechanism plus a
+code reading produced three work orders that a two-minute
+measurement would have ruled out.
+
+**That note is wrong.** Three of those edits were never applied to
+the file at all. The scripts that made them wrote the file only at
+the end, so an assertion failure on a later replacement discarded
+every earlier one — after the script had printed its progress. The
+build that followed compiled the unchanged file and passed. The
+measurement that followed measured the unchanged file.
+
+Verified by grepping the file for each change: the indexed successor
+lookups and the memoised role closures were present; the threaded
+search budget, the `labelsOf` lookup and the hoisted per-axiom label
+reads were not. A sixth item was defined and never called.
+
+📊 With all of them ACTUALLY applied, the `--dl` run goes from
+**26 minutes 34 seconds to 4 minutes 30 seconds** — 5.9× — and the
+score goes UP by one case. So the fixes did not "buy nothing"; they
+were absent.
+
+The real lesson is a different one, and it is now
+`skills/workflow-gotchas-debugging` hazard #26: a green build is not
+evidence that an edit landed, and one `grep -c` per claim before
+writing a commit message would have caught all three in under a
+minute.
+
+## 📊 Wave 3 measured
+
+| Regime | Score | Wall |
+| --- | --- | --- |
+| RL closure only | 1131 pass, 316 fail, 2 skip, 8 unsupported (out of 1457) | under 1 m |
+| Wave 1 | 1177 pass, 270 fail | — |
+| Wave 2 as committed | 1192 pass, 255 fail | 26 m 34 s |
+| Wave 3 | 1193 pass, 254 fail, 2 skip, 8 unsupported (out of 1457) | 4 m 30 s |
+
+`type-inconsistency.rdf` reaches 81 pass, 46 fail (out of 127
+decided); the F\* line for that catalog is 126 pass, 1 fail.
+`type-consistency.rdf` is unchanged with the same three regressions
+Addendum 4 named.
+
+## The ≤-rule, and the second thing it taught
+
+The SHIQ ≤-rule identifies two successors of a node that is over its
+cardinality bound and whose successors are not forced apart. Seventeen
+`WebOnt-description-logic` inconsistency fixtures need it.
+
+The first implementation REWROTE EDGES and passed a hand-built guard
+reproducing one of those fixtures. On the corpus it fired ZERO times:
+the `--dl` regime runs the materialisation pass first, and that pass
+writes its own existential witnesses INTO the graph, where an edge
+cannot be rewritten. Identification is now done at READ TIME —
+`RState.ident` records pairs, `labelsOf` pools the group and
+`successorsOf` maps through the representative.
+
+That is `skills/workflow-gotchas-debugging` hazard #27: a synthetic
+input built from a rule's own preconditions tests the rule's LOGIC
+and cannot test whether the real pipeline ever presents those
+preconditions. The upstream stage had changed the shape of the input
+the rule was written against.
+
+## Also in wave 3
+
+Closure scaffolding (`__rl_`-prefixed blank nodes, materialised by
+`RLRules.lean` as support triples with a deliberately loose encoding)
+now parses to `unknown`. The F\* module guards against this and says
+reading it literally MANUFACTURES refutations of consistent premises.
+It moved no score, which is what a soundness guard that is not yet
+being violated looks like.
