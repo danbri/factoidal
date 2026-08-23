@@ -51,6 +51,7 @@ alias={
  "RDF.CottasStore.PresenceBitmap":"Cottas.PresenceBitmap",
  "RDF.CottasStore.CompoundPresenceBitmap":"Cottas.CompoundPresenceBitmap",
  "SPARQL.Plan.Pruning":"Cottas.PlanPruning",
+ "RDF.CottasStore.PresenceWriter":"Cottas.PresenceWriter",
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
 }
 def leafkeys(m):

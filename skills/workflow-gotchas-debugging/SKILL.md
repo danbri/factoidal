@@ -1245,3 +1245,68 @@ which says in its first sentence which two things it covers.
    fires). In all three, a check produced a reassuring result while
    being structurally incapable of detecting the thing it was trusted
    for.
+
+## Hazard #29 — a theorem that assumes its own conclusion type-checks fine (2026-08-23)
+
+**What happened.** Porting `RDF.CottasStore.PresenceWriter` to Lean put
+the `.presence` WRITER and the `.presence` READER in one tree as pure
+functions of a `ByteArray`. Both trees' soundness lemma for the
+row-group prune holds only GIVEN `BuiltCorrectly` — the on-disk bitmap
+agrees with the ground truth — and neither tree proves that premise,
+because in the F\* tree the writer is OCaml.
+
+So the port ended with a theorem, under a section heading reading "the
+producer-side obligation, closed":
+
+```lean
+theorem buildPresence_correct …
+    (hagree : ∀ rg tok, rg < numRgs → tok < numTokens →
+                rgContainsToken h rg tok = occurs rg tok) :
+    BuiltCorrectly h occurs
+```
+
+It type-checked. It is worthless. `BuiltCorrectly h occurs` unfolds to
+`∀ rg tok, rg < h.header.numRgs → tok < h.header.numTokens →
+rgContainsToken h rg tok = occurs rg tok`, and two other hypotheses said
+`h.header.numRgs = numRgs` and `h.header.numTokens = numTokens`. The
+hypothesis IS the conclusion with its bounds re-indexed. The proof body
+was `exact hagree …`.
+
+**What it would have cost.** The commit message, the design doc and a
+`PORT_NOTES` section would all have said an open proof obligation was
+discharged. Anyone later reading "the producer-side obligation is
+closed" would have stopped looking for the real proof. The reader's own
+`rgContainsToken_sound` would then have appeared to rest on a proved
+premise when it rests on nothing.
+
+**How it was caught.** By re-reading the statement against the
+definition of `BuiltCorrectly` before writing the commit message — not
+by the type checker, which was perfectly happy, and not by any test.
+
+### The rules
+
+1. **A hypothesis that restates the conclusion is not a hypothesis.**
+   Before claiming a theorem discharges an obligation, unfold the
+   conclusion and check no premise contains it. `Prop`-valued
+   definitions make this easy to miss, because the two read differently
+   at the source level while being the same statement.
+2. **The proof body is the tell.** `exact h` for some hypothesis `h`,
+   where the theorem claims to establish something substantive, means
+   the work is in the hypothesis and the caller has to supply it.
+3. **Delete it; do not weaken it.** A theorem that assumes its
+   conclusion is worse than no theorem, because it makes prose claim the
+   obligation is met. What replaced it here is a paragraph naming what
+   would actually close the gap (a bit-packing lemma over a `UInt8` fold
+   of `|||`) and what is established instead (computational evidence at
+   four shapes, including two that cross byte boundaries).
+4. **State the difference the port DID make, separately from the one it
+   did not.** Here: the proof is now POSSIBLE — both sides are pure
+   functions in one tree instead of split across an OCaml writer — and
+   it is not done. Those are two different sentences and collapsing them
+   is what produced the bad theorem in the first place.
+5. Same family as hazard #24's vacuous theorems (unsatisfiable
+   hypotheses), #26 (a green build is not evidence an edit landed), #27
+   (a passing guard is not evidence a rule fires) and #28 (an audit that
+   finds nothing is evidence about the audit). In all of them a check
+   returned a reassuring result while being structurally incapable of
+   detecting what it was trusted for.

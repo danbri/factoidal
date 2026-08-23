@@ -369,7 +369,17 @@ rule #17").
     substantive rename, and its silence about exactly those was read as
     coverage. The reported figure was 120 of 220; the real one was 125.
     Full text: hazard #28 in `skills/workflow-gotchas-debugging`.)
-29. A hub post's live cells run against the js/npm bundle, not the
+29. A theorem whose hypothesis restates its conclusion type-checks
+    and proves nothing. Before claiming a theorem discharges an
+    obligation, unfold the conclusion and check no premise contains it;
+    a proof body of `exact h` is the tell. Delete such a theorem, never
+    weaken it -- it makes commit messages and design docs claim the
+    obligation is met. (2026-08-23, `Cottas.PresenceWriter`: a
+    `buildPresence_correct` under the heading "the producer-side
+    obligation, closed" took `BuiltCorrectly` with re-indexed bounds as
+    a hypothesis. Full text: hazard #29 in
+    `skills/workflow-gotchas-debugging`.)
+30. A hub post's live cells run against the js/npm bundle, not the
     native binary. A docs landing that adds cells calling a new F\*
     feature is NOT docs-only — rebuild the bundle (the js build
     incrementally SKIPS npm-entry; force it) and gate on `node --test

@@ -8374,3 +8374,81 @@ ground truth, and neither tree shows that of any actual file. The writer
 is in OCaml; the producer-side proof needs a ghost projection from bytes
 to each row group's contents plus a lemma that the builder respects it.
 This chain inherits that gap and does not widen it.
+
+## The presence writer, and a theorem I nearly shipped that proved nothing
+
+`L4Factoidal/Cottas/PresenceWriter.lean` ports
+`formal/fstar/RDF.CottasStore.PresenceWriter.fst` (242 lines): the
+`.presence` serialiser, migrated in the F\* tree out of the OCaml glue
+because the file-format header is a rule-#11 decision.
+
+### The Lean port is WIDER than the F\*, for a concrete reason
+
+The F\* module writes the HEADER and leaves the BITMAP to OCaml. Its own
+comment gives the reason: a parliament-sized `.presence` is about
+12.5 MB, and materialising that as an F\* `list FStar.Char.char` would
+allocate millions of cons cells. So it ships two entry points and the
+round-trip lemma covers only the small one.
+
+`ByteArray` is a packed buffer with no cons-cell cost, so there is no
+reason to split the cases. `buildPresence` writes the whole file,
+bitmap included.
+
+### ❌ And then a theorem that assumed its own conclusion
+
+That widening put the writer and the reader in one tree as pure
+functions, which makes the producer-side obligation PROVABLE for the
+first time — `PresenceBitmap`'s soundness lemma holds only given
+`BuiltCorrectly`, and neither tree proves it because the F\* writer is
+OCaml.
+
+So the module ended with a theorem under the heading "the producer-side
+obligation, closed":
+
+```lean
+theorem buildPresence_correct …
+    (hagree : ∀ rg tok, rg < numRgs → tok < numTokens →
+                rgContainsToken h rg tok = occurs rg tok) :
+    BuiltCorrectly h occurs
+```
+
+It type-checked. It is worthless. `BuiltCorrectly h occurs` unfolds to
+exactly `hagree` with its bounds re-indexed through two other
+hypotheses, and the proof body was `exact hagree …`. The theorem assumes
+what it claims.
+
+It is DELETED, not weakened. A theorem that assumes its conclusion is
+worse than none, because it makes the commit message and this document
+say an open obligation is discharged — and the next reader stops looking
+for the real proof.
+
+Caught by re-reading the statement against the definition before writing
+the commit message. Not by the type checker, which was happy, and not by
+any test. Now hazard #29 and anti-pattern #29.
+
+### What is established, and what would close the gap
+
+**Established:** the `#guard`s check that the writer and the reader
+agree at EVERY in-range position, at four shapes including `1 × 17` and
+`8 × 8` — both of which cross byte boundaries — and that the fixtures
+set and clear real bits, so the agreement is not vacuous. Plus the
+serialise/parse round trip, and refusal of a wrong magic, a wrong
+version, and a short bitmap.
+
+**Not established:** the same statement for all sizes. That needs a
+bit-packing lemma — byte `bitIndex / 8` of `buildBitmapBytes` has bit
+`bitIndex % 8` set exactly when `occurs` holds there — which means
+reasoning about a `UInt8` fold of `|||` against powers of two.
+
+**What the port DID change:** the proof is now POSSIBLE rather than
+structurally blocked. Both sides are pure functions in one tree instead
+of split across an OCaml writer. That is a different sentence from "the
+obligation is closed", and collapsing the two is what produced the bad
+theorem.
+
+### One asymmetry worth naming
+
+The READER over-includes on a short file — the safe answer at query
+time. The PARSER refuses one. Both are right for their job: a query must
+not lose rows, and a caller round-tripping a file wants to know it is
+truncated. `#guard`s state both.
