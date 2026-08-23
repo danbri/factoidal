@@ -9832,3 +9832,40 @@ this tree (`OWL.Semantics`'s header records why), and the chain
 predicate belongs to `RDF.Entailment.RDFS.ChainWf`, which is not ported.
 A witness module whose gaps are invisible is the same failure as a
 theorem whose hypothesis is invisible.
+
+## `RDF.Entailment.Simple.Boundary` → `L4Factoidal/RDF/EntailmentSimpleBoundary.lean`
+
+The document-in, verdict-out path, and label independence.
+
+**What the module does NOT claim, stated first in its own header**: it
+does not claim the N-Triples parser implements the N-Triples grammar.
+That needs a declarative grammar semantics — "document D denotes graph
+G", transcribed from the Recommendation — and a proof that the parser
+computes it. Neither tree has one. Nothing here substitutes for it, and
+the composition theorem exists precisely to ISOLATE the parser as the
+one remaining unproven link.
+
+**Label independence is the part with mathematical content.** A
+parser's abstract graph is determined only up to its choice of
+blank-node labels: `_:b0` from a document and `_:genid1` from a
+generated-label path are the same graph, and RDF 1.1 Concepts §3.4 says
+so. If the verdict could depend on those labels, no theorem about
+abstract graphs would transfer to documents.
+
+**Injectivity is required and is not decoration.** Relabelling by an
+ARBITRARY map can only specialise the pattern — a non-injective map
+merges blank nodes, and a merged pattern is harder to satisfy — so
+`spec_rename_specialises` needs no inverse. The converse does, and the
+injectivity is supplied as a RECORDED INVERSE rather than an abstract
+property, because the transported substitution is the original composed
+with that inverse and the left-inverse equation is what makes it work.
+
+**One deliberate weakening from the F\* statement, and it is named in
+the file.** The F\* theorem is about its shipping BOOLEAN, because that
+tree has the decision procedure's completeness. This tree has soundness
+only, so the theorem here is about the RELATION and a `#guard` checks
+the boolean's invariance on a concrete relabelled pair — evidence, not
+the theorem.
+
+`Graph.renameBnodes` is reused rather than redefined; the F\* module
+defines its own only because its tree keeps that operation elsewhere.

@@ -80,6 +80,7 @@ import L4Factoidal.OWL.RLTests
 import L4Factoidal.OWL.Semantics
 import L4Factoidal.RDF.EntailmentRdfsModelTheory
 import L4Factoidal.RDF.SemanticsHypothesisWitness
+import L4Factoidal.RDF.EntailmentSimpleBoundary
 import L4Factoidal.OWL.Tableau
 import L4Factoidal.OWL.TableauTheorems
 import L4Factoidal.OWL.TableauTests
