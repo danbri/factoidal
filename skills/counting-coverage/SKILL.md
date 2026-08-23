@@ -39,14 +39,30 @@ if fstar_module in ALIASES: covered(ALIASES[fstar_module])
 elif last_two(fstar_module) == last_two(lean_module): covered()
 ```
 
-## Rule 2 — a count that moves with no cause is a bug report
+## Rule 2 — a count that moves with no cause is a bug report, and so
+is a count that does not move when it should
 
 If the number changes and you cannot name the commit that changed it,
 stop and find out why. Do not write the new number down.
 
-Why. The `Store` collision above showed up exactly this way: the count
-jumped after a commit that added an unrelated file. The jump was the
-whole warning, and it was easy to read as progress.
+The converse is the same rule. If you landed a port and the number did
+NOT move, that is a bug report too.
+
+Why, both directions:
+
+- The `Store` collision above showed up as a jump: the count rose after
+  a commit that added an unrelated file. The jump was the whole
+  warning, and it was easy to read as progress.
+- A ported module was verified, building, and aliased — and the count
+  stayed put. A `git stash` / `git stash pop` cycle between two
+  measurements had dropped the edit to the tool. The Lean file was on
+  disk; the tool had never heard of it. Nothing on screen looked wrong,
+  because the unchanged number was the correct figure for the state
+  BEFORE the landing.
+
+So: after ANY alias edit, `grep` the tool for the entry you just added,
+before you read the tool's output. One command, and it is the only
+check that sees this failure.
 
 Ask, every time the number moves:
 
@@ -125,13 +141,15 @@ read as coverage.
 
 1. Did the tool walk the tree this run?
 2. Does any match rest on one shared name part?
-3. Did the number move? Can you name the commit?
-4. Did every alias resolve to a file that exists?
-5. For each newly covered item, did you read the file?
-6. For each newly covered item, does it carry the whole result?
-7. Can you state the method next to the number?
+3. Did the number move? Can you name the commit? If it did not move,
+   can you say why not?
+4. Is the alias you just added actually in the tool? (`grep` it.)
+5. Did every alias resolve to a file that exists?
+6. For each newly covered item, did you read the file?
+7. For each newly covered item, does it carry the whole result?
+8. Can you state the method next to the number?
 
-Seven yes answers, then publish.
+Eight yes answers, then publish.
 
 ## Related
 

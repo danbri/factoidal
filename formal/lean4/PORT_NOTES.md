@@ -10891,3 +10891,53 @@ round-trip statement is true whatever proof machinery arrives, and
 
 Coverage after this landing: unchanged at 191 of 220 covered, 29 not
 covered.
+
+---
+
+## `RDF.Entailment.RDFS.Completeness` → `RDFS/RhoDfCompleteness.lean` (2026-08-23)
+
+**The converse half of the RDFS rung.** `RDF/EntailmentRdfsModelTheory.lean`
+proves every rule row TRUE under the semantic conditions. This module
+proves the other direction on a named fragment: on a ρdf-CLOSED graph,
+ρdf entailment and simple entailment pick out the same pairs.
+
+**Saturation is the whole argument.** The canonical model is the
+Herbrand interpretation of the closed graph, reused unchanged from the
+simple rung. Each of the six ρdf conditions is discharged the same way:
+read the two Herbrand premises back as triples of `c`, name the ρdf
+rule instance whose conclusion is wanted, and let `RhoDfClosed c` put
+that conclusion in `c`. That third move is where closedness does the
+work, and it is why the theorem is about closed graphs rather than
+arbitrary ones.
+
+**Two conditions of the fragment, each earned by one rule.** `rdfs3`
+moves a term from object into subject position, so it cannot fire on a
+literal or triple term; `rdfs7` moves a term into a predicate slot, so
+a `rdfs:subPropertyOf` object must be an IRI. Only `herb_cond_range`
+and `herb_cond_subPropertyOf` take the fragment hypothesis — the other
+four do not, and their statements say so.
+
+**Naming.** `RDF/EntailmentRdfsSpec.lean` already has `RhoDfGraph`,
+which says the ρdf vocabulary never occurs outside the predicate slot.
+That is a different condition. This module's predicate is
+`RhoDfModelFragGraph`, and the header says why the two exist.
+
+**Finding C-1 is carried as theorems, not as prose.** The F\* module
+records that "RDFS entailment = simple entailment of the RDFS closure"
+is false and cannot be repaired by narrowing the fragment. The first
+witness is now a pair: `rdfsEntails_subclassSelfLoop` (from
+`[X rdfs:subClassOf Y]`, RDFS entails `[X rdfs:subClassOf X]`, through
+`CondSubClassOfIc` then `CondSubClassOfRefl`) and
+`rhoDf_not_entails_subclassSelfLoop` (the same pair is not
+ρdf-entailed, by the Herbrand countermodel). The second theorem depends
+on `herbrand_rhoDfConditions`, so the countermodel is admissible rather
+than merely asserted.
+
+Coverage after this landing: 192 of 220 F\* modules covered, 28 not
+covered.
+
+**A measurement note belongs with this landing.** The alias was added,
+the count did not move, and the reason was a `git stash` cycle that had
+dropped the edit to `tools/lean-port-gap.py`. See the tenth correction
+in `docs/designissues/2026-08-23-lean-port-gap.md`, and the extended
+rule 2 in `skills/counting-coverage/SKILL.md`.
