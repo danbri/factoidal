@@ -7567,3 +7567,46 @@ BOTH trees, so neither is a port regression:
 The primitives are right in both trees; what is missing is the wiring.
 `literalValueEqNumeric` and `valueCompare ∘ literalPromote` both answer
 `"1"^^xsd:double = "1.0"^^xsd:double` correctly when called directly.
+
+## SHACL: the 1.2 suite was vendored and never run
+
+`l4shacl` takes a manifest path, so the SHACL 1.2 suite was always
+reachable. Its default is the SHACL 1.0 `data-shapes-test-suite`, and
+that is the only row the dashboard carried. Pointing it at the other
+manifests, with `tools/lean-shacl-scores.sh`:
+
+| Suite | Lean 4 | F\* |
+|---|---|---|
+| shacl 1.0 core | 98 pass, 0 fail (out of 98) | 98 pass (out of 98) |
+| shacl 1.2 core | 103 pass, 30 fail (out of 133) | 138 pass (out of 138) |
+| shacl 1.2 node-expr | 0 pass, 2 fail (out of 2) | 142 pass (out of 142) |
+| shacl 1.2 sparql | 22 pass, 3 fail (out of 25) | 25 pass (out of 25) |
+| shacl 1.2 rules | 0 pass, 0 fail (out of 0) | 88 pass (out of 88) |
+
+⚠️ `out of 2` and `out of 0` are not pass rates. The probe did not READ
+those tests: the shnex tests are typed `sht:EvalNodeExpr` and link
+entries with `mf:entries`, while `Harness/ShaclProbe.lean` recognises
+`sht:Validate` and walks `mf:include`; the rules directory has no
+`manifest.ttl` at all, only `manifest-rules.ttl`, whose tests use
+`srt:` types. Pointed at the right file the probe reports
+`zero_tests=1` in its `HARNESS-DIAG` line, so the diagnostic that
+exists to catch this did fire.
+
+The script labels the unread rows as unread, because printing `out of
+0` beside `out of 88` without saying so is anti-pattern #3.
+
+Three separable pieces of work, filed as
+https://github.com/danbri/factoidal/issues/553:
+
+1. 30 real failures on shacl 1.2 core, read correctly and answered
+   wrongly — 13 in `core/node`, 11 in `core/property`, 3 in
+   `core/targets`, 2 in `core/misc`, 1 in `core/validation-reports`.
+   `sh:targetWhere` and `sh:conformanceDisallows` look like
+   unimplemented SHACL 1.2 features rather than bugs in existing code.
+   The core denominator is also 133 against the F\* tree's 138, so five
+   more are unread even in the row that mostly works.
+2. 3 failures on shacl 1.2 sparql.
+3. node-expr and rules need `SHACL.NodeExpr` (713 F\* lines) and
+   `SHACL.Rules` (438) ported AND the probe extended. Doing the harness
+   half first gives a large honest failure count instead of a silent
+   zero, which is the better intermediate state.
