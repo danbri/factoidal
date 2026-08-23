@@ -532,6 +532,11 @@ session.
   — wall-clock + Monitor + lock-cleanup pattern for long autonomous
   sessions. Read when kicking long background builds, when "the
   job has been silent for a while," or before a multi-hour solo run.
+- [`counting-coverage`](skills/counting-coverage/SKILL.md) — how to
+  count what a port or migration has covered without the number lying.
+  **Read before writing any coverage number, before adding an alias-table
+  entry, and whenever a count moves and you cannot name the commit that
+  moved it.** Core rule: a name is a hint, coverage is a decision.
 - [`issue-management`](skills/issue-management/SKILL.md) — **read
   before any status report, plan, or issue reference.** GitHub issues
   are the only durable work record; every issue reference is a full
