@@ -202,15 +202,19 @@ def joinHolds (js : List JoinCondition) (child parent : Json) : Bool :=
     let ps := joinValues j.parent parent
     cs.any (fun c => ps.contains c))
 
-/-- The quads one triples map generates. `docFor` supplies a source
-    document by path, and `parents` the other triples maps a
-    `rml:parentTriplesMap` can name. -/
-def quadsOfMap (all : Mapping) (docFor : String → Option Json) (tm : TriplesMap)
-    : List QuadOut :=
-  match docFor tm.source.path with
-  | none => []
-  | some doc =>
-      ((recordsOf tm.source doc).zipIdx).flatMap (fun (rec', i) =>
+/-- The quads one triples map generates from an ALREADY-INDEXED record
+    list.
+
+    The index travels WITH each record rather than being its position
+    in this list, and that is the point: a caller that narrows the list
+    — the virtual source's row pushdown — must keep each record's
+    ORIGINAL index, because `anonLabel` turns it into a blank-node
+    label. Renumbering after a filter moves every blank node the row
+    generates, which is
+    <https://github.com/danbri/factoidal/issues/558>. -/
+def quadsOfRecords (all : Mapping) (docFor : String → Option Json) (tm : TriplesMap)
+    (recs : List (Json × Nat)) : List QuadOut :=
+      recs.flatMap (fun (rec', i) =>
         let subjs := subjectsOf tm rec' i
         let sgraphs := graphTermsOf tm.base tm.graphs rec'
         subjs.flatMap (fun s =>
@@ -249,6 +253,15 @@ def quadsOfMap (all : Mapping) (docFor : String → Option Json) (tm : TriplesMa
               preds.flatMap (fun p => objs.flatMap (fun o =>
                 graphs.map (fun g => ({ s := s, p := p, o := o, g := g } : QuadOut)))))
           typeQuads ++ pomQuads))
+
+/-- The quads one triples map generates. `docFor` supplies a source
+    document by path, and `all` the other triples maps a
+    `rml:parentTriplesMap` can name. -/
+def quadsOfMap (all : Mapping) (docFor : String → Option Json) (tm : TriplesMap)
+    : List QuadOut :=
+  match docFor tm.source.path with
+  | none => []
+  | some doc => quadsOfRecords all docFor tm ((recordsOf tm.source doc).zipIdx)
 
 /-- `rml:defaultGraph` names the default graph, so a graph map that
     produces it is the same as producing none. -/

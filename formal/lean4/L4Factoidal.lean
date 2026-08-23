@@ -177,6 +177,7 @@ import L4Factoidal.RML.Model
 import L4Factoidal.RML.FromGraph
 import L4Factoidal.RML.Eval
 import L4Factoidal.RML.EvalTests
+import L4Factoidal.RML.VirtualSource
 import L4Factoidal.RIF.Syntax
 import L4Factoidal.RIF.Ps
 import L4Factoidal.RIF.Builtins
