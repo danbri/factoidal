@@ -9481,3 +9481,52 @@ QUERY STRING.
 
 Regression: 601 pass, 0 fail, 30 unsupported (out of 631) on the
 sparql11 manifest — unchanged.
+
+## `RIF.Core.Translation` → `L4Factoidal/RIF/Translation.lean`
+
+RIF Core to SPARQL algebra: the RIF/RDF/OWL combination spec's
+desugaring (`o[p->v]`, `o # c`, `sub ## sup`), the positional-atom
+encoding, conditions to basic graph patterns, rule heads to CONSTRUCT
+templates.
+
+**This gives the Lean tree a SECOND route to RIF answers, and the
+checks use it.** The F\* tree answers RIF by translating to SPARQL and
+running the SPARQL engine; the Lean tree already answers it by direct
+forward chaining (`RIF.Engine`). So this port replaces nothing. The
+last block of `#guard`s runs one rule both ways — the engine's closure,
+and the translated body pattern evaluated against the same facts with
+the head instantiated — and compares the answers. A bug shared by both
+routes would defeat that, so it is evidence rather than proof; what it
+catches is a translation that quietly loses a conjunct or mis-places an
+argument, which is exactly what the encoding below invites.
+
+**The positional-atom encoding is internal bookkeeping, and every rule
+in it is pinned.** Arity 2 is the direct triple. Arity 0 and 1 have no
+subject-object pair, arity ≥ 3 has no triple at all, so those reify
+through a fixed subject or an anchor blank node with one
+`urn:rif-uniterm:argᵢ` satellite per argument. Three properties are
+checked rather than asserted:
+
+* the arity-1 argument goes in OBJECT position, so a body variable binds
+  the genuine value and a literal argument needs no encoding at all;
+* the anchors are FUNCTIONS OF THE VALUE — equal values reach the same
+  label, different values and different datatypes do not — which is what
+  makes the assertion side and the query side agree;
+* two distinct atom occurrences get distinct anchor variables, without
+  which two atoms in one body would be forced to describe one fact.
+
+**Partiality stays hard where it means something.** A literal subject is
+genuinely ill-typed in the three RDF-shaped atoms and stays `none`; in
+the positional atom's own subject slot it is not ill-typed and takes the
+deterministic blank node. A failure inside a conjunction rejects the
+whole body, because a body that silently loses a conjunct matches too
+much. `translateProgramDiag` reports WHICH rule failed rather than
+leaving a caller to count.
+
+`PatternTerm`, `PatternSubject` and `TriplePattern` gained
+`DecidableEq` in `SPARQL/Algebra.lean` — needed to compare a translated
+pattern against an expected one at all.
+
+Regression: sparql11 601 pass, 0 fail, 30 unsupported (out of 631) —
+unchanged. The rif-core runner is unaffected by construction: its root
+imports `RIF.Engine`, not this module.

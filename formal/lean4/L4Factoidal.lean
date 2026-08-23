@@ -186,6 +186,7 @@ import L4Factoidal.RIF.Ps
 import L4Factoidal.RIF.Builtins
 import L4Factoidal.RIF.Engine
 import L4Factoidal.RIF.EngineTests
+import L4Factoidal.RIF.Translation
 import L4Factoidal.JSONSchema.Validate
 import L4Factoidal.JSONSchema.Tests
 import L4Factoidal.XPath.Number

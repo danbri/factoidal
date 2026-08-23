@@ -229,14 +229,14 @@ inductive PatternTerm where
   | bnode      (b : BNodeId)
   | literal    (l : WfLiteral)
   | tripleTerm (s p o : PatternTerm)
-  deriving Repr
+  deriving Repr, DecidableEq
 
 inductive PatternSubject where
   | var        (v : VarName)
   | iri        (i : WfIri)
   | bnode      (b : BNodeId)
   | tripleTerm (s p o : PatternTerm)
-  deriving Repr
+  deriving Repr, DecidableEq
 
 /-- A triple pattern: subject, predicate, object — SPARQL 1.1 allows
 a variable in any position (§18.1.6). -/
@@ -244,7 +244,7 @@ structure TriplePattern where
   s : PatternSubject
   p : PatternTerm
   o : PatternTerm
-  deriving Repr
+  deriving Repr, DecidableEq
 
 /-- A Basic Graph Pattern (§18.1.7): a list of triple patterns. -/
 abbrev Bgp := List TriplePattern
