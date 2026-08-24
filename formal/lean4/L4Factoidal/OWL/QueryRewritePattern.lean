@@ -129,39 +129,49 @@ def findFlatMarkers (b : Bgp) : List (String × CeCombinator) :=
 
 /-! ## Rewriting one BGP for one marker -/
 
-/-- Apply the marker's combinator. The intersection arm reuses layer 2
-directly; the union arm builds one branch per operand over the shared
-residue. -/
-def rewriteBgpForMarker (b : Bgp) (k : String) (c : CeCombinator) :
-    Option QueryPattern :=
-  match c with
-  | .intersect =>
-      match extractFlatIntersection b k with
-      | none => none
-      | some operands =>
-          let listHead := (bgpFindFirstObj b k owlIntersectionOf).getD (.bnode k)
-          let chain := collectionChainKeys b listHead
-          some (.bgp (rewriteBgpIntersection k chain operands b))
-  | .union =>
-      match extractFlatUnion b k with
-      | none => none
-      | some operands =>
-          let listHead := (bgpFindFirstObj b k owlUnionOf).getD (.bnode k)
-          let chain := collectionChainKeys b listHead
-          let residue := rewriteBgpStripMarker k chain b
-          let consumers := rewriteBgpCollectConsumers k b
-          some (buildUnionPattern (operands.map (buildUnionBranch residue consumers)))
+/-- One intersection marker, applied in place. The BGP stays a BGP:
+only a union escalates out of one. -/
+def rewriteBgpOneIntersection (k : String) (b : Bgp) : Bgp :=
+  match extractFlatIntersection b k with
+  | none => b
+  | some operands =>
+      let chain :=
+        match bgpFindFirstObj b k owlIntersectionOf with
+        | some listHead => collectionChainKeys b listHead
+        | none => []
+      rewriteBgpIntersection k chain operands b
 
-/-- Apply every flat marker the BGP carries, left to right. A BGP with
-no marker comes back unchanged, which is what makes the traversal safe
-to run on every query. -/
+/-- One union marker. This is where the BGP becomes a union ladder. -/
+def rewriteBgpOneUnion (k : String) (b : Bgp) : QueryPattern :=
+  match extractFlatUnion b k with
+  | none => .bgp b
+  | some operands =>
+      let chain :=
+        match bgpFindFirstObj b k owlUnionOf with
+        | some listHead => collectionChainKeys b listHead
+        | none => []
+      let residue := rewriteBgpStripMarker k chain b
+      let consumers := rewriteBgpCollectConsumers k b
+      buildUnionPattern (operands.map (buildUnionBranch residue consumers))
+
+/-- EVERY intersection marker, in order, then the FIRST union marker.
+
+The first Lean version of this function applied only the first marker
+of either kind, so a BGP carrying two intersection markers, or an
+intersection followed by a union, was rewritten differently from the F*
+tree. The F* source's own comment states the order -- "Apply all
+intersection markers first (in order), then the first union marker" --
+and remaining union markers in one BGP are left for the nested pass. -/
 def rewriteBgpFlat (b : Bgp) : QueryPattern :=
-  match findFlatMarkers b with
-  | [] => .bgp b
-  | (k, c) :: _ =>
-      match rewriteBgpForMarker b k c with
-      | some p => p
-      | none => .bgp b
+  let markers := findFlatMarkers b
+  let interKeys := markers.foldl (fun acc kc =>
+    match kc.2 with | .intersect => acc ++ [kc.1] | _ => acc) []
+  let unionKeys := markers.foldl (fun acc kc =>
+    match kc.2 with | .union => acc ++ [kc.1] | _ => acc) []
+  let bAfterInter := interKeys.foldl (fun cur k => rewriteBgpOneIntersection k cur) b
+  match unionKeys with
+  | [] => .bgp bAfterInter
+  | k :: _ => rewriteBgpOneUnion k bAfterInter
 
 /-! ## The traversal
 
@@ -194,7 +204,7 @@ is the "safe to apply unconditionally" claim, for the fragment the
 traversal can reach. -/
 theorem rewritePattern_bgp_noMarker (b : Bgp) (h : findFlatMarkers b = []) :
     rewritePattern (.bgp b) = .bgp b := by
-  simp only [rewritePattern, rewriteBgpFlat, h]
+  simp only [rewritePattern, rewriteBgpFlat, h, List.foldl_nil]
 
 /-! ## Build-time checks -/
 

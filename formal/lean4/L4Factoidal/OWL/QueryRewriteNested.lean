@@ -317,7 +317,66 @@ class expression keeps bag semantics. -/
 def rewriteQueryPattern (p : QueryPattern) : QueryPattern :=
   rewritePatternNested (QueryRewriteJoins.normaliseJoins p)
 
-/-! ## 8. Facts -/
+/-! ## 8. The rest of the F* module
+
+Five definitions the rewriter itself never calls. They are here because
+a port that skips a definition on the reader's judgement of whether it
+matters is a port with an unrecorded hole; the fact that they are
+unreferenced is stated, not used as a reason to leave them out.
+
+* `concatBgps` and `combinatorOfPred` have NO call site in the F*
+  module at all. `combinator_of_pred`'s own comment says it is "kept
+  for backward compatibility / external readers".
+* `tpIsCeMarkerPredicate`, `bgpHasCeMarker` and `patternHasCeMarker`
+  are a diagnostic cluster used only by each other. `rewrite_query`'s
+  comment records that `ggp_has_ce_marker` is "kept for diagnostics but
+  no longer drives a top-level sm_distinct flip" — the union DISTINCT
+  is applied locally at each emission site instead. -/
+
+def concatBgps (bs : List Bgp) : Bgp := bs.foldl (fun acc b => acc ++ b) []
+
+/-- The wide predicate classifier, including `owl:someValuesFrom` and
+`owl:allValuesFrom`. `combinatorOfPredFlat` plus the restriction-filler
+guard is what the rewriter actually uses. -/
+def combinatorOfPred (p : WfIri) : Option MarkerKind :=
+  if p == owlIntersectionOf then some (.flat .intersect)
+  else if p == owlUnionOf then some (.flat .union)
+  else if p == owlSomeValuesFrom then some (.restriction .someValuesFrom)
+  else if p == owlAllValuesFrom then some (.restriction .allValuesFrom)
+  else (combinatorOfCardPred p).map MarkerKind.restriction
+
+def tpIsCeMarkerPredicate (tp : TriplePattern) : Bool :=
+  match tp.p with
+  | .iri p =>
+      p == owlIntersectionOf || p == owlUnionOf || p == owlComplementOf ||
+      p == owlSomeValuesFrom || p == owlAllValuesFrom ||
+      p == owlMinCardinality || p == owlMaxCardinality || p == owlCardinality ||
+      p == owlMinQualifiedCardinality || p == owlMaxQualifiedCardinality ||
+      p == owlQualifiedCardinality
+  | _ => false
+
+def bgpHasCeMarker (b : Bgp) : Bool := b.any tpIsCeMarkerPredicate
+
+/-- Port of `ggp_has_ce_marker`. Like `rewritePatternNested`, it does
+not descend into a sub-select. -/
+def patternHasCeMarker : QueryPattern → Bool
+  | .bgp b => bgpHasCeMarker b
+  | .join a b => patternHasCeMarker a || patternHasCeMarker b
+  | .leftJoin a b _ => patternHasCeMarker a || patternHasCeMarker b
+  | .filter _ a => patternHasCeMarker a
+  | .union a b => patternHasCeMarker a || patternHasCeMarker b
+  | .minus a b => patternHasCeMarker a || patternHasCeMarker b
+  | .graph _ a => patternHasCeMarker a
+  | .lateral a b => patternHasCeMarker a || patternHasCeMarker b
+  | .bind _ _ a => patternHasCeMarker a
+  | .values _ _ => false
+  | .service _ _ a => patternHasCeMarker a
+  | .serviceVar _ _ a => patternHasCeMarker a
+  | .subSelect _ => false
+  | .propertyPath _ _ _ => false
+  | .empty => false
+
+/-! ## 9. Facts -/
 
 /-- A BGP with no marker is returned unchanged. -/
 theorem rewriteBgpNested_noMarker (b : Bgp) (h : findMarkers b = []) :
@@ -418,6 +477,25 @@ private def dualRoleTriple : TriplePattern :=
 #guard isNestedBookkeeping [("d", .flat .intersect)] ["d"] dualRoleTriple == true
 #guard isNestedBookkeeping [("d", .flat .intersect)] [] dualRoleTriple == false
 #guard isCeMetaPred rdfFirst (.iri cA) == false
+
+/-! The diagnostic cluster agrees with the marker search on the
+intersection example, and reports nothing on a plain BGP. -/
+#guard bgpHasCeMarker bgpIntersect == true
+#guard bgpHasCeMarker bgpPlain == false
+#guard patternHasCeMarker (.union (.bgp bgpPlain) (.bgp bgpIntersect)) == true
+#guard patternHasCeMarker (.bgp bgpPlain) == false
+
+/-! `concatBgps` is plain concatenation. -/
+#guard (concatBgps [bgpPlain, bgpPlain]).length == 2
+#guard (concatBgps ([] : List Bgp)).length == 0
+
+/-! The wide predicate classifier covers what the flat one does not. -/
+#guard combinatorOfPred owlIntersectionOf == some (MarkerKind.flat .intersect)
+#guard combinatorOfPred owlSomeValuesFrom
+        == some (MarkerKind.restriction .someValuesFrom)
+#guard combinatorOfPred owlMaxQualifiedCardinality
+        == some (MarkerKind.restriction .maxCardinality)
+#guard combinatorOfPred rdfType == (none : Option MarkerKind)
 
 /-! ## Axiom audit -/
 

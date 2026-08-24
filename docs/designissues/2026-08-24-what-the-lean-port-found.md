@@ -1,13 +1,13 @@
 # What the Lean port found, and why the findings have one shape
 
-Written 2026-08-24, after 24 landings on branch
+Written 2026-08-24, after 26 landings on branch
 `claude/autoexec-scratchpad-assess-37oeok`.
 
-The Lean 4 port started from zero code on 2026-08-22. It now covers 194
-of 220 F\* modules: 335 files, 116,592 lines, `lake build` green at 792
+The Lean 4 port started from zero code on 2026-08-22. It now covers 197
+of 220 F\* modules: 339 files, 118,126 lines, `lake build` green at 800
 jobs, zero `sorry`, zero user `axiom`, zero `native_decide`.
 
-The line count is not the result. The result is seventeen findings.
+The line count is not the result. The result is nineteen findings.
 Thirteen of them have the same shape, and this document says what that
 shape is and what follows from it.
 
@@ -52,6 +52,29 @@ finite graph produces that triple. Both halves are now theorems:
 This one is about RDFS. It would appear in any faithful formalisation,
 in any language, with any representation. It is here as the control: it
 shows the method can tell the two kinds of finding apart.
+
+### Group E — two defects the PORT introduced, caught by auditing back
+
+These are not findings about the F\* tree. They are findings about the
+port, and they are here because the method that caught them is the same
+method the rest of this document rests on, run in the other direction.
+
+Before claiming `OWL.QueryRewrite` covered, every `let` in its 1,799
+lines was matched against a Lean definition by hand — a
+definition-level audit, not a module-name match. It found two places
+where the Lean code had drifted from the source:
+
+| # | Defect | Effect |
+|---|---|---|
+| E1 | `rewriteBgpFlat` applied only the FIRST flat marker of either kind. The F\* `rewrite_bgp_flat` applies EVERY intersection marker in order, then the first union marker. | A BGP carrying two intersection markers, or an intersection followed by a union, was rewritten differently in the two trees. |
+| E2 | The `someValuesFrom` arm of `expandCeSubject` accepted any `PatternTerm` as `owl:onProperty` and put it in the predicate position. The F\* arm matches `Some (PT_IRI p_iri)` and falls back to the leaf otherwise. | A restriction with a variable predicate produced `subj ?v ?_sv_k` in Lean and the pre-rewrite triple in F\*. |
+
+Both are fixed, and both now carry a `#guard`. What they say about the
+method: the differential comparison only means something if the two
+sides are transcriptions of each other, and the ONLY thing that checks
+that is reading the source again, definition by definition. A module
+that builds, proves theorems and passes its own tests can still have
+drifted, because its tests were written from the same misreading.
 
 ### Group D — one proof-hygiene failure
 
@@ -185,8 +208,8 @@ probed, never released. The prediction was right about the cause and
 wrong about the profile, which is the kind of error a first pass makes
 and a trace corrects.
 
-**2. The remaining 26 modules are three different jobs.** 14 want no
-port and are counted above. 9 are engine code, 15,172 lines, and 5 of
+**2. The remaining 23 modules are three different jobs.** 14 want no
+port and are counted above. 6 are engine code, 13,198 lines, and 4 of
 those are the COTTAS and Parquet group that [#566](https://github.com/danbri/factoidal/issues/566)
 may change. 3 are proof modules, 7,975 lines, and `OWL.Semantics.Soundness`
 is 3,865 of them.

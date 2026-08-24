@@ -11785,3 +11785,79 @@ first.
 **Status.** Coverage 195 to 196 of 220. The remaining not-covered list
 is 24 modules: 7 engine (14,997 lines), 3 proof (7,975), 14 by design
 (8,993).
+
+---
+
+## `OWL.QueryRewrite` completed — four arms, five leftovers, and two port defects
+
+The module is now covered. Getting there took three things, and the
+third is the one worth reading.
+
+**1. The four held-back expander arms are ported.** Universal
+restriction, the three cardinality kinds and `owl:complementOf` are
+transcribed from the F\* source, including their stated limits: minimum
+cardinality over-approximates for N >= 2; maximum cardinality falls
+back to the leaf for N >= 2 and for unqualified N = 1; exact
+cardinality emits the minimum side only for N >= 1; universal
+restriction supports a named-class or union filler and nothing else;
+complement targets DISJOINTNESS rather than absence, because a
+`FILTER NOT EXISTS` would be closed-world.
+
+**The `maxQualifiedCardinality` 1 narrowness is REPRODUCED, not
+repaired.** The anchor triple multiplies rows per P-edge and drops
+individuals for which max-1 holds vacuously
+(<https://github.com/danbri/factoidal/issues/236>). A repair here would
+make the two trees compute different things, and the differential
+comparison is what makes every finding in
+`docs/designissues/2026-08-24-what-the-lean-port-found.md` checkable.
+Repairing it is a separate decision, better taken with both trees in
+hand than during a transcription. An earlier note in this file recorded
+the port as blocked on that decision; it was not — faithful
+transcription is the port's job, and repair is the deviation that needs
+sign-off.
+
+`expandCeSubject_unhandled_is_leaf` was DELETED rather than weakened. It
+said the unported arms produce the leaf, which is now false. Three
+theorems replace it and are true of the finished expander: a restriction
+with no IRI-valued `owl:onProperty`, a complement whose target is not a
+named class, and running out of fuel each produce the pre-rewrite
+triple.
+
+**2. Five definitions the rewriter never calls are ported anyway.**
+`concatBgps` and `combinatorOfPred` have no call site in the F\* module;
+`tpIsCeMarkerPredicate`, `bgpHasCeMarker` and `patternHasCeMarker` are a
+diagnostic cluster used only by each other, and `rewrite_query`'s
+comment records that the last of them "no longer drives a top-level
+sm_distinct flip". Skipping a definition because a reader judges it
+unimportant leaves an unrecorded hole; the judgement is written down
+instead.
+
+**3. The audit that made coverage a decision found two port defects.**
+Before claiming the module covered, every `let` in its 1,799 lines was
+matched to a Lean definition by hand. Thirty names differ in spelling
+and each was resolved individually — vocabulary IRIs that live in
+`OWL/Vocabulary.lean`, renames such as `ps_marker_key` to
+`subjectMarkerKey`, and `rewrite_query_for_owl_direct`, which is an
+alias of `rewrite_query`.
+
+It also found this, which no build failure and no existing test would
+have:
+
+* `rewriteBgpFlat` applied only the FIRST flat marker of either kind.
+  The F\* `rewrite_bgp_flat` applies EVERY intersection marker in order,
+  then the first union marker. A BGP with two intersection markers, or
+  an intersection followed by a union, was rewritten differently in the
+  two trees.
+* The `someValuesFrom` arm accepted any `PatternTerm` as
+  `owl:onProperty` and put it in the predicate position. The F\* arm
+  matches `Some (PT_IRI p_iri)` and falls back to the leaf. `patternIri`
+  is now the guard on every arm that reads `owl:onProperty`.
+
+Both are fixed and both carry a `#guard`. The lesson is recorded as
+group E in the findings document: a module that builds, proves its
+theorems and passes its own tests can still have drifted, because its
+tests were written from the same misreading. The only thing that checks
+a transcription is reading the source again, definition by definition.
+
+**Status.** Coverage 196 to 197 of 220. Not covered is 23 modules:
+6 engine (13,198 lines), 3 proof (7,975), 14 by design (8,993).

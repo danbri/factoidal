@@ -167,6 +167,20 @@ alias={
  "SPARQL11.Algebra.Spec":"SPARQL.AlgebraSpec",
  "RDF.List.Helpers":"RDF.ListHelpers",
  "RDF.Store.Capabilities.Cottas":"RDF.StoreCapabilitiesCottas",
+ # OWL.QueryRewrite is ported across seven Lean modules under
+ # L4Factoidal/OWL/QueryRewrite*.lean. The alias points at the last of
+ # them. Coverage here is an explicit decision backed by a
+ # definition-level audit, not a name match: every `let` in the 1,799-line
+ # F* module was matched to a Lean definition on 2026-08-24, and the 30
+ # names whose spelling differs were each resolved by hand (vocabulary
+ # IRIs that live in OWL/Vocabulary.lean, renames such as ps_marker_key ->
+ # subjectMarkerKey, and rewrite_query_for_owl_direct, which is an alias
+ # of rewrite_query). The audit also FOUND two port defects, both fixed in
+ # the same landing: rewrite_bgp_flat applied only the first marker where
+ # the F* source applies every intersection then the first union, and the
+ # someValuesFrom arm accepted a variable owl:onProperty where the F*
+ # source falls back to the leaf.
+ "OWL.QueryRewrite":"OWL.QueryRewriteNested",
 }
 # ---------------------------------------------------------------------------
 # What counts as coverage.
