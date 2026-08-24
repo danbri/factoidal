@@ -12658,3 +12658,50 @@ Coverage for `RDF.CottasStore` is still NOT claimed: candidate planning
 (`plan_candidate_rgs`, the dictionary cache, the compound predicate-object
 prune, the subject-range prune) and the public search/estimate/count
 entry points remain.
+
+## RDF.CottasStore, layer 5 — candidate-row-group planning
+
+`Cottas/OnDiskPlan.lean` ports `plan_candidate_rgs` and everything under
+it: the dictionary cache and its populate loop, `list_string_mem`, the
+per-column candidate computation, and the sorted merge intersection.
+The dictionary-page read is I/O and becomes `DictReader`, a parameter.
+
+**"Never wrong answers", as a theorem.** The F\* source states the
+safety rule twice in comments — a row group absent from the dictionary
+cache is INCLUDED, a "safe fallback that may cost a wasted data-page
+decode, never wrong answers". That is the claim the entire pruning
+design rests on, and the one a later edit is most likely to break, since
+making the planner one notch more selective looks like a pure speed win
+right up until it drops a row group that held a match.
+`planCandidateRgs_complete` proves it under one hypothesis,
+`DictReaderSound`: a dictionary page, when present, lists every token its
+column holds in that row group. It may list more, and it may be absent;
+it may not omit. That is the Parquet dictionary-page contract, and
+stating it rather than assuming it is what makes the conclusion
+checkable.
+
+**Two facts the F\* source needs and does not establish.**
+
+1. `list_nat_intersect_sorted` is a merge, so it is correct only on
+   ascending inputs — unsorted inputs silently drop elements. Nothing in
+   the F\* tree says its inputs are sorted.
+   `computeCandidateRgs_eq_filter` proves the per-column planner IS
+   `(List.range rgCount).filter`, which gives sortedness for free
+   (`computeCandidateRgs_sorted`).
+2. The planner intersects REPEATEDLY, so the second intersection's left
+   input is a previous intersection's output.
+   `intersectSortedRgLists_sublist` proves the result is a sublist of the
+   left input, so sortedness survives the chain. Without it the merge is
+   being fed something it is only correct on by accident.
+
+`planCandidateRgs_unbounded` closes the loop with layer 3: with no bound
+on any column the plan is every row group, which
+`walkRange_eq_walkCandidates` already showed is the unpruned scan.
+
+Only completeness of the intersection is proved, not soundness. That is
+deliberate: dropping a needed row group is a wrong answer, keeping an
+unneeded one is a wasted decode. The safety claim needs the first.
+
+Coverage for `RDF.CottasStore` is still NOT claimed: the compound
+predicate-object prune, the subject-range prune, and the public
+search/estimate/count entry points remain.
