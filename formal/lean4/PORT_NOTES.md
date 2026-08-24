@@ -12971,3 +12971,44 @@ rewritten. `span_append_of_stopped` and `readBlankNodeLabel_local`.
 language-tag readers, and the `readNQuad11` composition, without which
 `RDF.NQuads.Streaming`'s streaming-equals-batch theorem cannot be
 stated. <https://github.com/danbri/factoidal/issues/570>.
+
+## Locality, third round — and the wall that stops it
+
+`Syntax/LocalityLiteral.lean` adds `readLangTagRun_local`. That is the
+only new result, and the reason is worth recording.
+
+⚠️ **`readStringLiteralBody` cannot be unfolded in this container.** It
+has nineteen arms, two of which match on four and eight `hexVal`
+scrutinees at once. Any tactic that unfolds it forces those apart.
+Measured three ways — functional induction with `simp_all`, a single
+`rw` then `simp_all`, and a per-arm `Except.map` helper with `simp only`
+— peaking at 10.5 to 12 GB and taking SIGKILL, or timing out while still
+climbing. The memory climbs steadily from the start in every case, so it
+is the unfolding, not a runaway in one branch.
+
+This is <https://github.com/danbri/factoidal/issues/565> again, one
+reader over. That issue was the same shape for `readIriRefBody` — ten
+arms, equation generation exhausted memory — and the fix was
+`Syntax/IriScan.lean`: a non-recursive step classifier plus a three-arm
+recursion whose equations are provable. `readIriRefBody_local` exists
+today only because that refactor already happened. Filed as
+<https://github.com/danbri/factoidal/issues/574>.
+
+**What that blocks.** `readNQuad11` locality composes from the
+sub-readers. Proved so far: `readIriRefBody_local`, `readIriRef_local`,
+`readBlankNodeLabel_local` (with `BnodeStopsInside`),
+`readLangTagRun_local`, `span_append_of_stopped`. Blocked:
+`readStringLiteralBody`, `readStringLiteralQuoted`, hence `readLiteral`,
+`readObject11`, `readNQuad11`, hence
+`RDF.NQuads.Streaming`'s streaming-equals-batch theorem
+(<https://github.com/danbri/factoidal/issues/570>).
+
+`readDatatype_local` is not blocked in principle — it delegates to
+`readIriRef`, already proved — but it is downstream of the literal
+reader in the only composition that needs it, so landing it alone would
+be a lemma with nothing to feed. It goes in with the rest once 574
+clears.
+
+**Why the module is split.** `LocalityLiteral.lean` exists for a build
+reason, not a conceptual one: the elaboration above was heavy enough to
+kill `Syntax.Locality` when attempted inside it.
