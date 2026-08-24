@@ -57,6 +57,7 @@ import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.ResultsXml
 import L4Factoidal.SPARQL.ResultsJson
 import L4Factoidal.SPARQL.ResultsCsvTsv
+import L4Factoidal.OWL.QueryEval
 
 open L4Factoidal.RDF
 open L4Factoidal.RDF.Canonical
@@ -287,8 +288,15 @@ def recognizedDatatypesOf (names : List String) : Except String (List WfIri) := 
 def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   -- Entailment-regime tests: pick the regime now; the closure is
   -- applied to the fixtures once they are loaded.
+  -- The F* runner's preference order puts the OWL regimes first.
+  -- OWL-Direct and OWL-RDF-Based both evaluate as: OWL 2 RL closure of
+  -- every fixture graph, then the OWL query path (rewrite +
+  -- query-time canonical materialisation, `OWL/QueryEval.lean`).
+  let owlRegime : Bool :=
+    tc.entailmentRegimes.contains "OWL-RDF-Based"
+      || tc.entailmentRegimes.contains "OWL-Direct"
   let regime? : Option Regime ←
-    if tc.entailmentRegimes.isEmpty then pure none
+    if tc.entailmentRegimes.isEmpty || owlRegime then pure none
     else match pickRegime tc.entailmentRegimes with
       | some r => pure (some r)
       | none => return .ofOutcome (.unsupported
@@ -306,7 +314,11 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   -- SPARQL 1.1 Entailment Regimes: answers are simple-entailment
   -- answers over the regime's closure of the active graph, with the
   -- minimal datatype map (the suite names no recognised datatypes).
-  let ds := match regime? with
+  let ds := if owlRegime then
+              { default := L4Factoidal.OWL.RL.closureFix ds0.default,
+                named := ds0.named.map (fun ng =>
+                  { ng with graph := L4Factoidal.OWL.RL.closureFix ng.graph }) }
+            else match regime? with
             | some r => closeDataset r (withMinimalD []) ds0
             | none   => ds0
   let some rf := tc.resultFile
@@ -322,7 +334,8 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   let ordered := q.modifier.orderBy.isSome
   match q.form, expected with
   | .select _, .rows erows csv =>
-      let arows := (evalSelect env ds q).2
+      let arows := if owlRegime then L4Factoidal.OWL.QueryEval.evalSelectOwl env ds q
+                   else (evalSelect env ds q).2
       let n := erows.length + arows.length
       return (match compareSelectRows ordered csv erows arows with
         | .equal    => { outcome := .pass, rowsCompared := n }
@@ -331,11 +344,13 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
             { outcome := .fail s!"solution-bijection budget exceeded ({erows.length} expected rows, {arows.length} actual)",
               budgetExceeded := true, rowsCompared := n })
   | .ask, .boolean b =>
-      let a := evalAsk env ds q
+      let a := if owlRegime then L4Factoidal.OWL.QueryEval.evalAskOwl env ds q
+               else evalAsk env ds q
       return (if a == b then { outcome := .pass, rowsCompared := 1 }
               else { outcome := .fail s!"ASK boolean mismatch: expected {b}, got {a}", rowsCompared := 1 })
   | .construct _, .graph g =>
-      let got := evalConstruct env ds q
+      let got := if owlRegime then L4Factoidal.OWL.QueryEval.evalConstructOwl env ds q
+                 else evalConstruct env ds q
       let r := isoResult
         s!"CONSTRUCT graph not isomorphic to the expected one (got {got.length} triples, expected {g.length})"
         (Graph.isomorphicOutcome got g)

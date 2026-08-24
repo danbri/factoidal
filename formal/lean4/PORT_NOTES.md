@@ -13506,3 +13506,33 @@ rules out both wrong answers (0 rows, extra rows) at once.
 ⓘ Backport candidate for the F\* tree, per the owner's ruling that the
 trees should behave the same: replace the closure's over-typing +
 anchor filtering with proof-gated query-time materialisation.
+
+## OWL entailment regimes wired into the Lean runner — 2026-08-24
+
+`Harness/Run.lean`: a test naming `OWL-Direct` or `OWL-RDF-Based` now
+runs — OWL 2 RL closure (`RL.closureFix`) of every fixture graph, then
+the OWL query path (`QueryEval.evalSelectOwl` / `evalAskOwl` /
+`evalConstructOwl`, which includes the query-time canonical
+materialisation) — instead of being declared unsupported wholesale.
+This is the blindness that hid the parent7 defect: the regime tests
+existed, and the runner refused all thirty.
+
+📊 sparql11 `entailment` suite, Lean runner:
+
+* before: 40 pass, 0 fail, 30 unsupported (out of 70)
+* after: **59 pass, 7 fail, 4 unsupported (out of 70)**
+
+The 4 unsupported name the RIF regime only. The 7 failures are real
+and now visible; F\* passes all 70. The failure shapes:
+
+* three tests expect entailed members of restrictions the rewrite's
+  BGP expansion cannot reach (`min 1` through `owl:equivalentClass`,
+  `some Female`, `paper-sparqldl-Q3`);
+* two tests get EXTRA rows binding closure-introduced blank nodes
+  (`_:anon_*`) — answers under the regimes must not expose blank nodes
+  the queried graph does not have;
+* `sparqldl-11` needs `rdfs:domain`/`owl:Thing` schema answers;
+  `simple 2` under investigation.
+
+Each is a work item against the F\* score, not a regression: every one
+of these tests reported "unsupported" yesterday.
