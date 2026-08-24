@@ -12541,3 +12541,40 @@ with a trailing byte is a rejection, not a truncation).
 Not yet ported: the row-group filters and counts, the row-group and
 candidate walks, and the public search/estimate/count entry points.
 Coverage is NOT claimed for `RDF.CottasStore` yet.
+
+## RDF.CottasStore, layer 2 — the row-group filters and counts
+
+`Cottas/OnDiskFilter.lean` ports the five near-identical walks over one
+row group: `filter_zipped_rows_seq`, `filter_zipped_rows_tok_seq`,
+`count_zipped_rows_seq`, `filter_zipped_rows` and `count_zipped_rows`.
+The F\* comments state three relations between them — "identical match
+logic", "same as `filter_zipped_rows` but counts only", "legacy
+list-shape filter retained" — and nothing checks any of them. Five
+near-identical recursions is the shape where an edit lands in four.
+
+Proved: `countSeq_eq_filterTokSeq_length_start` (the count IS the length
+of the filter's answer), `filterSeq_eq_map_filterTokSeq_start` (the
+reference-shaped filter is the token-shaped one with `buildQpRow`
+mapped over it), `countList_eq_filterListTok_length` and
+`filterList_eq_map_filterListTok` (the same pair for the list shape),
+`filterTokSeq_sound` (every row returned matches all four bounds).
+
+**A wrong claim caught before landing, and how.** The first draft's
+header warned that the indexed and list shapes recover differently from
+a misaligned row group: the indexed walk skips a short column's index
+and CONTINUES, the list walk stops dead. Its evidence was a pair of
+`#guard`s — a three-cell column for one shape against a one-cell list
+for the other. That is two functions on two different inputs, which
+cannot show a difference between the functions.
+
+The claim is false. A column's size is fixed, so `i < c.size` is
+monotone in `i`: once any column is exhausted the indexed walk skips
+every remaining index, so it contributes rows for exactly the indices
+below the shortest column, which is the set the list walk reaches.
+`filterTokSeq_eq_filterListTok_start` proves the two shapes return the
+same list when the indexed walk is given `rowGroupRowCount` — misaligned
+row group included. The `#guard`s now compare the two shapes on ONE
+input.
+
+Coverage for `RDF.CottasStore` is still NOT claimed: the row-group and
+candidate walks and the public search/estimate/count entry points remain.
