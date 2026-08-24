@@ -12380,3 +12380,57 @@ escape hatch.
 **Status.** `RDF.CottasStore.BaseWriter` stays NOT covered: four layers
 of five, with the Parquet page, schema, row-group and file-metadata
 builders left. Coverage stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterFile.lean` — layer 5 of `RDF.CottasStore.BaseWriter`
+
+The Parquet file structure: page headers, schema, column metadata and
+chunks, row groups, file metadata, and the whole-file assembly.
+
+**The layout, as a theorem.** A Parquet file is
+`PAR1 | pages | metadata | metadata length (LE u32) | PAR1`. The
+trailing length comes BEFORE the closing magic, and that is what lets a
+reader seek to the metadata rather than scan for it.
+`serializeCottas_shape` states the five parts in order, because a file
+that loses either magic or the length is unreadable by any tool rather
+than subtly wrong.
+
+**Offsets are cumulative, and that is the part that breaks.** Each
+column chunk records where its data page starts. `buildRowGroup`
+threads a running offset through the four columns and hands the next
+one out; `buildRowGroups` chains that across row groups starting at
+`magicHeader.length`, because the pages begin after `PAR1`, not at
+zero. An offset short by those four bytes gives a file every byte of
+which is correct except where it says the data is.
+`magicHeader_length` and `rowGroup_nextOffset` pin both halves.
+
+**Two schema details found by cross-checking, not by reasoning.** The
+F\* source records both, and both are `#guard`ed here so a later
+tidy-up cannot drop them as redundant:
+
+* A schema leaf carries `converted_type = UTF8` (field 6). Without it
+  DuckDB presents the column as BLOB rather than VARCHAR — found by a
+  `parquet_scan` cross-check.
+* Field 1 of the file metadata stamps 445, not the Parquet-conventional
+  1, so the reader can reject a store this writer did not produce. An
+  owner decision at
+  <https://github.com/danbri/factoidal/issues/445>: no migration path,
+  no back-compatible reader.
+
+**Two Lean traps.** `meta` is a reserved token, so the row-group
+record's field is `metaBytes`. And `String.toUTF8` does not reduce in
+the kernel, so `magicHeader` is a literal byte list with a `#guard`
+tying it back to `"PAR1"` — a computed form makes every fact about the
+header uncheckable at build time, which is how the first draft ended up
+unable to prove that four bytes are four bytes.
+
+**Status, from a definition-level audit.** 124 F\* names, 61 unmatched
+by spelling. Most resolve as renames or as accumulator variants the
+Lean port folds into their non-accumulator forms. Twenty do NOT: the
+eight writer-v2 builders that actually EMIT an RLE_DICTIONARY page
+(layer 4 has the sizing and the choice; layer 5 wires only the v1 DLBA
+path into `serializeCottas`), `build_dictionary_page_header`, and
+eleven hex round-trip lemmas about the version field.
+`RDF.CottasStore.BaseWriter` therefore stays NOT covered, and coverage
+stays 198 of 220.
