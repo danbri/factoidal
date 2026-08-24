@@ -297,33 +297,109 @@ let graph_cell_match (expected : option string) (actual : string)
 
 // ---- Row-group walk -------------------------------------------------
 
-// Phase 2.7-mini Phase 2 (issue #118): id→raw-token lookup, mirror of
-// the token→id assume-vals declared further below.
+// ---- The token dictionary, as a value with a stated contract --------
 //
-// Why: `id_to_raw_token` walks `h.coh_*_raw` assoc-lists which are
-// EMPTY on Bet7-lazy-opened handles (Bet7 defers their construction).
-// On Bet7 handles, `id_to_raw_token` falls through to a sentinel
-// `"\x00cottas_decode_oor"` which never matches a real column-token,
-// so the bound-query F* path silently degenerates: ALL row-groups
-// become "candidates" (compute_candidate_rgs_loop's safe-fallback)
-// and the executor walks them looking for matches that never come.
-// Net symptom: every bound query on a Bet7 handle hits the 30s
-// timeout (post-2.5e regression, masked through 7cf9ebc by stale
-// binaries).
+// History (2026-08-24). Eight of this module's ten `assume val`s were
+// the two directions of ONE token dictionary:
 //
-// The OCaml runtime carries this data in
-// `Cottas_ondisk_runtime.fast_tables.ft_id_to_*_tok : (int, string)
-// Hashtbl.t`, populated by `Cottas_ondisk_lazy.ensure_*_loaded`. These
-// four assume-vals expose that lookup to the F* spec, just like
-// Phase 1's `ondisk_lookup_*_id_global` did for the inverse direction.
-assume val ondisk_id_to_subj_token_global :
-  (path : string) -> (id : nat) -> Tot (option string)
-assume val ondisk_id_to_pred_token_global :
-  (path : string) -> (id : nat) -> Tot (option string)
-assume val ondisk_id_to_obj_token_global :
-  (path : string) -> (id : nat) -> Tot (option string)
-assume val ondisk_id_to_graph_token_global :
-  (path : string) -> (id : nat) -> Tot (option string)
+//   ondisk_id_to_{subj,pred,obj,graph}_token_global   id    -> token
+//   ondisk_lookup_{subj,pred,obj,graph}_id_global     token -> id
+//
+// None of the eight was input/output, so none of them qualified under
+// CLAUDE.md rule #11. They were assumed for a performance reason the
+// old banner stated plainly: `id_to_raw_token` and `revmap_lookup` walk
+// `h.coh_*_raw` / `h.coh_*_raw_revmap`, and those assoc-lists are EMPTY
+// on a lazily-opened handle (the lazy open defers building them to keep
+// handle-open under 5 s on the parliament corpus). The OCaml runtime
+// answers from `Cottas_ondisk_runtime.fast_tables` hash tables instead,
+// populated on first touch by `Cottas_ondisk_lazy.ensure_*_loaded`.
+//
+// The correctness requirement was then written as a PROSE COMMENT:
+// "the assume-val outcome must be observably equivalent to
+// `revmap_lookup h.coh_*_raw_revmap tok` on a fully-populated handle".
+// An `assume val` has no body, so nothing in the tree could check that
+// sentence. It is now `token_tables_agree_with`, a Type0 predicate;
+// `tables_of_handle` is the instance a populated handle determines and
+// `tables_of_handle_agree` proves it satisfies the predicate; and
+// `build_qp_row_agrees` derives the consequence a caller needs -- under
+// agreement the fast tables and the handle's own assoc-lists build the
+// SAME row. The Lean 4 port carries the same three names
+// (`TokenTables.AgreesWith` / `tablesOfHandle_agrees` /
+// `buildQpRow_agrees`) in
+// formal/lean4/L4Factoidal/Cottas/OnDiskStore.lean.
+//
+// What is left assumed is ONE value, not eight functions:
+// `ondisk_token_tables_global`, the deferred read of the four
+// dictionary columns of the store file at `path`. That is the same
+// file read `cottas_ondisk_open` performs, moved later in time, and it
+// is the only thing here that touches a disk.
+//
+// Why a path-keyed lookup and not a field on `cottas_ondisk_handle`:
+// issue #254 Commit 2a put per-handle dictionary fields on that record
+// and cascaded a universe-polymorphism constraint into SPARQL11.Store's
+// mutually-recursive `eval_*_backend` block (Error 89, reverted in
+// f442c13). RDF.CottasStore.LazyDictRegistry records the same finding
+// and the same remedy.
+noeq type cottas_token_tables = {
+  // id -> raw column-token string, per column.
+  ctt_id_to_subj_token  : string -> nat -> Tot (option string);
+  ctt_id_to_pred_token  : string -> nat -> Tot (option string);
+  ctt_id_to_obj_token   : string -> nat -> Tot (option string);
+  ctt_id_to_graph_token : string -> nat -> Tot (option string);
+  // raw column-token string -> id, per column.
+  ctt_lookup_subj_id    : string -> string -> Tot (option nat);
+  ctt_lookup_pred_id    : string -> string -> Tot (option nat);
+  ctt_lookup_obj_id     : string -> string -> Tot (option nat);
+  ctt_lookup_graph_id   : string -> string -> Tot (option nat);
+}
+
+// The tables a FULLY-POPULATED handle already determines: read the four
+// raw-token lists forwards and the four raw-keyed reverse maps
+// backwards. This is the definition the old soundness comment named.
+// The `string` argument is the store path; a handle's own lists answer
+// for that handle whatever path is asked, so it is ignored here.
+let tables_of_handle (h : cottas_ondisk_handle) : Tot cottas_token_tables = {
+  ctt_id_to_subj_token  = (fun _ i -> list_nth h.coh_subjects_raw i);
+  ctt_id_to_pred_token  = (fun _ i -> list_nth h.coh_predicates_raw i);
+  ctt_id_to_obj_token   = (fun _ i -> list_nth h.coh_objects_raw i);
+  ctt_id_to_graph_token = (fun _ i -> list_nth h.coh_graphs_raw i);
+  ctt_lookup_subj_id    = (fun _ t -> revmap_lookup h.coh_subj_raw_revmap t);
+  ctt_lookup_pred_id    = (fun _ t -> revmap_lookup h.coh_pred_raw_revmap t);
+  ctt_lookup_obj_id     = (fun _ t -> revmap_lookup h.coh_obj_raw_revmap t);
+  ctt_lookup_graph_id   = (fun _ t -> revmap_lookup h.coh_graph_raw_revmap t);
+}
+
+// The soundness sentence, as a proposition. `tt` agrees with `h` when
+// every one of the eight directions answers, at `h`'s own path, what
+// `h`'s own lists would answer.
+let token_tables_agree_with
+  (tt : cottas_token_tables) (h : cottas_ondisk_handle) : Type0 =
+  (forall (i : nat). tt.ctt_id_to_subj_token  h.coh_path i == list_nth h.coh_subjects_raw   i) /\
+  (forall (i : nat). tt.ctt_id_to_pred_token  h.coh_path i == list_nth h.coh_predicates_raw i) /\
+  (forall (i : nat). tt.ctt_id_to_obj_token   h.coh_path i == list_nth h.coh_objects_raw    i) /\
+  (forall (i : nat). tt.ctt_id_to_graph_token h.coh_path i == list_nth h.coh_graphs_raw     i) /\
+  (forall (t : string). tt.ctt_lookup_subj_id  h.coh_path t == revmap_lookup h.coh_subj_raw_revmap  t) /\
+  (forall (t : string). tt.ctt_lookup_pred_id  h.coh_path t == revmap_lookup h.coh_pred_raw_revmap  t) /\
+  (forall (t : string). tt.ctt_lookup_obj_id   h.coh_path t == revmap_lookup h.coh_obj_raw_revmap   t) /\
+  (forall (t : string). tt.ctt_lookup_graph_id h.coh_path t == revmap_lookup h.coh_graph_raw_revmap t)
+
+// The predicate is inhabited, and by the intended instance.
+let tables_of_handle_agree (h : cottas_ondisk_handle)
+  : Lemma (token_tables_agree_with (tables_of_handle h) h) = ()
+
+// The one remaining dictionary assumption: the deferred read of the
+// four dictionary columns of the store at `path`. Rule #11 pure I/O --
+// the same file `cottas_ondisk_open` reads, read later. Its realisation
+// (experimental_ocaml_glue/cottas_ondisk_zzzzzzzzzzzzzzzzz_token_lookup_runtime.sh)
+// is a thin dispatch shim over `Cottas_ondisk_lazy.ensure_*_loaded` plus
+// `Hashtbl.find_opt`; it carries no semantic decision and no byte layout.
+//
+// Its obligation is NOT assumed anywhere: it is
+// `token_tables_agree_with (ondisk_token_tables_global h.coh_path) h`,
+// and every consequence below is proved FROM that hypothesis rather
+// than from this val's type.
+assume val ondisk_token_tables_global :
+  (path : string) -> Tot cottas_token_tables
 
 // Query-time scope for GB_CottasOnDisk (issue #267). Replaces the
 // former `option iri` second field of that constructor, which let
@@ -353,12 +429,32 @@ type cottas_ondisk_graph_scope =
 // Parser.BallyhooCOTTAS.cottas_build_bound_qp) still yields `None`,
 // matching its pre-existing "no constraint" contract; no live
 // GB_CottasOnDisk caller produces it.
-let graph_bound_to_raw_token (path : string) (gb : cottas_graph_bound)
+let graph_bound_to_raw_token_with
+  (tt : cottas_token_tables) (path : string) (gb : cottas_graph_bound)
   : Tot (option string) =
   match gb with
   | CGB_Unbound -> None
   | CGB_Default -> Some "DEFAULT"
-  | CGB_Named r -> ondisk_id_to_graph_token_global path r
+  | CGB_Named r -> tt.ctt_id_to_graph_token path r
+
+// Under agreement the assumed tables and the handle's own raw-token
+// list resolve a graph bound to the SAME token.
+let graph_bound_to_raw_token_agrees
+  (tt : cottas_token_tables) (h : cottas_ondisk_handle)
+  (gb : cottas_graph_bound)
+  : Lemma (requires token_tables_agree_with tt h)
+          (ensures  graph_bound_to_raw_token_with tt h.coh_path gb ==
+                    graph_bound_to_raw_token_with (tables_of_handle h) h.coh_path gb) =
+  match gb with
+  | CGB_Unbound -> ()
+  | CGB_Default -> ()
+  | CGB_Named r -> ()
+
+// Runtime instantiation at the store path. Keeps the pre-existing
+// signature so no caller changes.
+let graph_bound_to_raw_token (path : string) (gb : cottas_graph_bound)
+  : Tot (option string) =
+  graph_bound_to_raw_token_with (ondisk_token_tables_global path) path gb
 
 // Bet7-aware mirror of `id_to_raw_token`. Used by cottas_ondisk_search
 // / _estimate / _search_limited to translate the user-supplied
@@ -376,61 +472,68 @@ let id_to_raw_token_via_global
   | None -> None
   | Some i -> lookup path i
 
-// Phase 2.7-mini (issue #118): token→id lookup for the search hot path.
+// Build the cottas_qp_row for a matched row, over an arbitrary token
+// dictionary. Graph "DEFAULT" gives cqpr_g = None.
 //
-// The F* spec layer says: "given the raw column-token string `tok`,
-// return the term-id `i` such that `list_nth raws i = Some tok`, if
-// it exists; else None". Operationally we MIGHT walk the
-// `coh_*_raw_revmap` assoc-list (which is what `revmap_lookup` does),
-// but on Bet7-lazy-opened handles those F*-side assoc-lists are EMPTY
-// — Bet7 defers their construction to keep handle-open under 5 s for
-// the parliament corpus. The OCaml runtime carries the data in
-// `Cottas_ondisk_runtime.fast_tables.ft_*_tok_to_id` (Hashtbl<string,
-// int>), populated lazily by `Cottas_ondisk_lazy.ensure_*_loaded` on
-// first-touch.
-//
-// These four assume-vals are the F* boundary for that lazy lookup.
-// Their realisation (cottas_token_lookup_runtime.sh) is a thin
-// rule-#11(c) dispatch shim: ensure_loaded + Hashtbl.find_opt. The
-// F* spec treats them as oracles. Without this 2.7-mini bridge,
-// Phase 2.5e (retiring the OCaml `search_fast` dispatch shim in
-// favour of the F*-extracted `cottas_ondisk_search` body) returns
-// zero rows on Bet7-opened handles because `build_qp_row` can't
-// resolve any token to an id.
-//
-// Soundness: the assume-val outcome must be observably equivalent to
-// `revmap_lookup h.coh_*_raw_revmap tok` on a fully-populated handle.
-// The OCaml realisation upholds this by populating the same data the
-// F* revmap would have held, just in a different (Hashtbl) shape.
-assume val ondisk_lookup_subj_id_global :
-  (path : string) -> (token : string) -> Tot (option nat)
-assume val ondisk_lookup_pred_id_global :
-  (path : string) -> (token : string) -> Tot (option nat)
-assume val ondisk_lookup_obj_id_global :
-  (path : string) -> (token : string) -> Tot (option nat)
-assume val ondisk_lookup_graph_id_global :
-  (path : string) -> (token : string) -> Tot (option nat)
+// The token->id direction the spec layer wants is: "given the raw
+// column-token string `tok`, return the term-id `i` such that
+// `list_nth raws i = Some tok`, if it exists; else None". That is
+// exactly `revmap_lookup h.coh_*_raw_revmap tok`, which is what
+// `tables_of_handle` supplies. The lazily-opened handle cannot answer
+// it (its assoc-lists are empty), so the runtime passes the tables the
+// lazy loader built instead -- and `build_qp_row_agrees` below is the
+// statement that doing so changes no answer.
+let build_qp_row_with
+  (tt : cottas_token_tables)
+  (h : cottas_ondisk_handle)
+  (s_tok p_tok o_tok g_tok : string)
+  : Tot cottas_qp_row =
+  let s_id = tt.ctt_lookup_subj_id h.coh_path s_tok in
+  let p_id = tt.ctt_lookup_pred_id h.coh_path p_tok in
+  let o_id = tt.ctt_lookup_obj_id  h.coh_path o_tok in
+  let g_id =
+    if g_tok = "DEFAULT" then None
+    else tt.ctt_lookup_graph_id h.coh_path g_tok in
+  { cqpr_s = s_id; cqpr_p = p_id; cqpr_o = o_id; cqpr_g = g_id; }
 
-// Build the cottas_qp_row for a matched row. Look up each token's id
-// via the OCaml-realised `ondisk_lookup_*_id_global` shim, which
-// honours Bet7's lazy populate. Graph "DEFAULT" → cqpr_g = None.
+// The consequence the old prose comment asked for, as a theorem. Under
+// agreement, the lazily-populated tables and the handle's own
+// assoc-lists build the SAME row, so the fast path refines the
+// assoc-list specification instead of being a second specification.
+// The hypothesis is agreement on the eight dictionary directions; the
+// conclusion is row equality, which appears in no premise.
+let build_qp_row_agrees
+  (tt : cottas_token_tables) (h : cottas_ondisk_handle)
+  (s_tok p_tok o_tok g_tok : string)
+  : Lemma (requires token_tables_agree_with tt h)
+          (ensures  build_qp_row_with tt h s_tok p_tok o_tok g_tok ==
+                    build_qp_row_with (tables_of_handle h) h s_tok p_tok o_tok g_tok) = ()
+
+// A default-graph cell always yields an absent graph ref, whichever
+// tables are used. Pinned so a later edit cannot make the DEFAULT
+// sentinel resolve through the dictionary (issue #267's failure mode).
+let build_qp_row_default_graph
+  (tt : cottas_token_tables) (h : cottas_ondisk_handle)
+  (s_tok p_tok o_tok : string)
+  : Lemma ((build_qp_row_with tt h s_tok p_tok o_tok "DEFAULT").cqpr_g == None) = ()
+
+// Runtime instantiation at the store path. Keeps the pre-existing
+// signature so the row walkers below need no change. The tables come
+// from the lazy loader; `build_qp_row_agrees` is what says that is
+// sound, given `token_tables_agree_with (ondisk_token_tables_global
+// h.coh_path) h`.
 let build_qp_row
   (h : cottas_ondisk_handle)
   (s_tok p_tok o_tok g_tok : string)
   : Tot cottas_qp_row =
-  let s_id = ondisk_lookup_subj_id_global h.coh_path s_tok in
-  let p_id = ondisk_lookup_pred_id_global h.coh_path p_tok in
-  let o_id = ondisk_lookup_obj_id_global  h.coh_path o_tok in
-  let g_id =
-    if g_tok = "DEFAULT" then None
-    else ondisk_lookup_graph_id_global h.coh_path g_tok in
-  { cqpr_s = s_id; cqpr_p = p_id; cqpr_o = o_id; cqpr_g = g_id; }
+  build_qp_row_with (ondisk_token_tables_global h.coh_path) h s_tok p_tok o_tok g_tok
 
 // ----------------------------------------------------------------------
 // Direct token -> term parsing (SEARCH selectivity, 2026-07-06 follow-up
 // to the count-exact fix, docs/designissues/2026-07-05-disk-backed-db-
 // perf-review.md). `build_qp_row` above round-trips every matched row's
-// ALREADY-DECODED column token through `ondisk_lookup_*_id_global`
+// ALREADY-DECODED column token through `cottas_token_tables`'s
+// `ctt_lookup_*_id` direction
 // (token -> corpus-wide id) so `cottas_ondisk_row_to_quad` can later
 // recover a typed term via `list_nth ds.cods_handle.coh_subjects id` --
 // but `coh_subjects`/`coh_predicates`/`coh_objects` are populated by the
@@ -878,7 +981,7 @@ let rec walk_row_groups_search_global
 // fix targets the id-round-trip on OUTPUT construction, not column
 // decode), but folds through `filter_zipped_rows_tok_seq` instead of
 // `filter_zipped_rows_seq`, so no matched row ever touches
-// `ondisk_lookup_*_id_global` / Bet7. No `h` needed except for the
+// `cottas_token_tables` / the lazy loader. No `h` needed except for the
 // path used to drive the page-cache decode.
 let rec walk_row_groups_search_tok_global
   (path : string)
@@ -1570,8 +1673,8 @@ let plan_candidate_rgs
 //     `RDF.CottasStore.DictWriter.fst`'s `ids[i] = i` invariant: dict
 //     ids ARE the sorted rank).
 //
-//     This is DELIBERATELY NOT `ondisk_lookup_pred_id_global` /
-//     `_obj_id_global` (issue #297, found 2026-07-06 building the
+//     This is DELIBERATELY NOT `cottas_token_tables.ctt_lookup_pred_id`
+//     / `ctt_lookup_obj_id` (issue #297, found 2026-07-06 building the
 //     roadmap-item-4 regression pin, see
 //     docs/designissues/2026-07-05-disk-backed-db-perf-review.md):
 //     those resolve through the Bet7 lazy-runtime revmap
@@ -1586,7 +1689,7 @@ let plan_candidate_rgs
 //     the one row group that actually contains the pair — a wrong
 //     `0` answer, not a slow one. `build_qp_row` below still uses the
 //     Bet7 revmap ids for ITS OWN internal round-trip (encode via
-//     `ondisk_lookup_*_id_global`, decode via
+//     `ctt_lookup_*_id`, decode via
 //     `id_to_raw_token_via_global`, both ends of the SAME revmap) —
 //     that use is self-consistent and untouched by this fix.
 //
@@ -2447,9 +2550,10 @@ let cottas_ondisk_search_limited
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp) (limit : nat)
   : Tot (list cottas_qp_row_tok) =
   let h = ds.cods_handle in
-  let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
-  let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
-  let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
+  let tt = ondisk_token_tables_global h.coh_path in
+  let bound_s = id_to_raw_token_via_global tt.ctt_id_to_subj_token h.coh_path bound.cbqp_s in
+  let bound_p = id_to_raw_token_via_global tt.ctt_id_to_pred_token h.coh_path bound.cbqp_p in
+  let bound_o = id_to_raw_token_via_global tt.ctt_id_to_obj_token  h.coh_path bound.cbqp_o in
   // issue #267: cbqp_g is now a 3-way cottas_graph_bound (Unbound /
   // Default / Named), not a plain option; graph_bound_to_raw_token
   // resolves CGB_Default to the literal "DEFAULT" sentinel token

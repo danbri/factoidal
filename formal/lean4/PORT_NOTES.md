@@ -13422,3 +13422,25 @@ The homomorphism itself,
 induction over the chunk list carrying: the text consumed so far ends
 with a newline, the stored offset is its length, and parsing it from
 zero gives the stored dataset (<https://github.com/danbri/factoidal/issues/570>).
+
+## Streaming equals batch — 2026-08-24
+
+`Syntax/NQuadsHomomorphism.lean`: `streamParse11_eq_batch` — whatever
+dataset the chunk fold produces, parsing the whole document at once
+produces the same one. Proved by the fold invariant
+(`foldl_feedChunk_inv`): the text consumed so far ends at a line
+boundary, the stored offset equals its length, and parsing it from
+position zero yields the stored dataset; each `feedChunk` step extends
+the invariant by `parseQuadLines11_concat`.
+
+Axioms `[propext, Classical.choice, Quot.sound]`; no `sorry`, no user
+`axiom`, no `native_decide`. `NQuadsStreaming.lean`'s "not proved here"
+header section is replaced by a pointer to the proof.
+
+Stated for a fold that ends without error. Equating the ERROR cases
+needs the converse concatenation direction recorded in
+`NQuadsConcat.lean`'s header.
+
+Remaining for `RDF.NQuads.Streaming` coverage: the generic-consumer
+half (`stream_consume` / `batch_consume` and their agreement theorem),
+next.

@@ -66,22 +66,17 @@ first is a defect the F\* design has:
   the same positions to the same readers, so no shift lemma is needed
   to compare them.
 
-## What is NOT proved here
+## Where the homomorphism lives
 
-The homomorphism itself:
-
-    finish (chunks.foldl (feedChunk mode) initialState)
-      = parseNQuads (String.ofList chunks.flatten)
-
-It needs the parser's line-boundary concatenation lemma — that parsing
-`a ++ b` where `a` ends in a newline equals parsing `b` from the state
-parsing `a` reached. That is the F* module's own
-`lemma_parse_nquads_acc_concat_line_general`, and it is the bulk of its
-3,438 lines. Tracked, not assumed:
+The streaming-equals-batch theorem is PROVED: `streamParse11_eq_batch`
+in `Syntax/NQuadsHomomorphism.lean`, from the line-boundary
+concatenation lemma `parseQuadLines11_concat` in
+`Syntax/NQuadsConcat.lean` — the counterpart of the F* module's
+`lemma_parse_nquads_acc_concat_line_general`.
 <https://github.com/danbri/factoidal/issues/570>.
 
-`streamParse_single_chunk` is the case that needs no such lemma, and it
-is proved.
+`streamParse_single_chunk` below is the special case that needs no
+concatenation lemma.
 
 No `sorry`, no user `axiom`, no `native_decide`.
 -/
