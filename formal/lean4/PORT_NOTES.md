@@ -12085,3 +12085,65 @@ and its roughly thirty token-level parse lemmas are about the F\*
 parser's own internals. Coverage stays 198 of 220. Marking it covered
 because the module exists and builds would be exactly the name
 resemblance `skills/counting-coverage` forbids.
+
+---
+
+## `Syntax/NQuadsStreaming.lean` — layer 1 of `RDF.NQuads.Streaming`
+
+The F\* module answers a precise version of the owner's question: a
+consumer folds over ARBITRARY byte-chunk boundaries — as bytes arrive
+off a socket, with no guarantee a boundary lands on a line boundary —
+and the claim is that this gives the same dataset as parsing the whole
+input at once.
+
+**The wall the F\* module walked around, and why Lean has none.** Its
+banner records a decision taken DURING the work, not going in: build
+the splitter on `FStar.String.list_of_string` at the CODEPOINT level
+rather than on `Parser.FastString`'s byte-indexed `fs_byte_sub`.
+Proving "slice at k, slice from k, concatenate, get the input back"
+through `fs_byte_sub` needs a bridging lemma routing through
+`utf8_decode_all (utf8_bytes s)`, and recovering `s` from that
+composition is the SINGLE-DECODER ROUND TRIP theorem
+`Parser.FastString.Spec.fst`'s own banner documents as ATTEMPTED and
+PARKED after three tries
+(<https://github.com/danbri/factoidal/issues/374>).
+
+The Lean parser works on `List Char` throughout. The split is a list
+split and `splitCompleteLines_reconstruct` is a short induction. There
+is no byte layer to bridge and nothing to park — the same shape as
+findings A1 and A9c.
+
+**Three theorems, each a property the fold depends on.**
+`splitCompleteLines_reconstruct` says nothing is lost at a boundary.
+`splitCompleteLines_carry_no_newline` says the carry is a genuine
+partial line, never a whole one held back.
+`splitCompleteLines_complete_ends_newline` says what reaches the parser
+is whole lines.
+
+**Fuel is never threaded across a boundary.** `parseFrom` computes it
+from the list it is given — the same `length + 1` discipline
+`parseNQuads` uses for a whole document — so each call gets its own
+provably-sufficient budget. `parseFrom_fuel_is_local` states that.
+
+**What is proved and what is checked.** `streamParse_single_chunk` is
+proved: it is the case that needs no line-boundary concatenation lemma.
+The mid-boundary behaviour is CHECKED — two lines streamed as two
+chunks split mid-line, as three chunks with both boundaries mid-line,
+and with a boundary exactly on the newline, each giving the dataset the
+batch parse gives.
+
+The homomorphism itself is NOT proved. It needs
+`lemma_parse_nquads_acc_concat_line_general`'s Lean counterpart, and
+the scaffolding around that lemma is the bulk of the F\* module's 3,438
+lines. Tracked as <https://github.com/danbri/factoidal/issues/570>.
+
+**A build-time cost worth naming.** Every `#guard` runs at build time,
+and a streaming check with N chunks makes N parser calls. A first
+version used realistic `http://example.org/...` IRIs and a
+one-chunk-per-character case; `lake env lean` on that single file did
+not finish in ten minutes. The checks now use short `<a:1>`-style IRIs
+and at most three chunks, which exercises exactly the same boundary
+cases. A `#guard` that takes minutes is a test nobody will keep.
+
+**Coverage is NOT claimed.** `RDF.NQuads.Streaming` stays not covered
+while its headline theorem is unproved. Coverage stays 198 of 220.
