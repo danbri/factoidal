@@ -147,21 +147,23 @@ def fixedNow : String := "2026-08-22T00:00:00Z"
 
 def fmtParseError (e : ParseError) : String := s!"{e.msg} (offset {e.pos})"
 
-/-- Parse one data fixture by extension (port of `load_dataset`). -/
-def parseDataFile (path text : String) : Except String Dataset :=
+/-- Parse one data fixture by extension (port of `load_dataset`).
+`mode` is the suite's RDF version: the sparql12 suites' fixtures carry
+triple terms and reifiers, which `.rdf11` rejects. -/
+def parseDataFile (path text : String) (mode : Mode := .rdf11) : Except String Dataset :=
   let base := "file://" ++ path
   let ofGraph (r : Except ParseError Graph) : Except String Dataset :=
     match r with
     | .ok g    => .ok { default := g, named := [] }
     | .error e => .error (fmtParseError e)
-  if path.endsWith ".nt" then ofGraph (parseNTriples text .rdf11)
-  else if path.endsWith ".nq" then (parseNQuads text .rdf11).mapError fmtParseError
-  else if path.endsWith ".trig" then (parseTriG text (some base) .rdf11).mapError fmtParseError
+  if path.endsWith ".nt" then ofGraph (parseNTriples text mode)
+  else if path.endsWith ".nq" then (parseNQuads text mode).mapError fmtParseError
+  else if path.endsWith ".trig" then (parseTriG text (some base) mode).mapError fmtParseError
   else if path.endsWith ".rdf" then
     match RdfXml.parseRdfXml text (some base) with
     | .ok g    => .ok { default := g, named := [] }
     | .error e => .error s!"{e}"
-  else ofGraph (parseTurtle text (some base) .rdf11)
+  else ofGraph (parseTurtle text (some base) mode)
 
 /-- Merge two datasets: default graphs by union, named graphs
 appended (a later `qt:graphData` binding wins a name collision by
@@ -171,20 +173,21 @@ def mergeDatasets (a b : Dataset) : Dataset :=
 
 /-- Read and parse every fixture of a test. `.error o` carries the
 outcome to report (skip for a missing file, fail for a parse error). -/
-def loadFixtures (tc : TestCase) : IO (Except Outcome (Dataset × List (Iri × Graph))) := do
+def loadFixtures (tc : TestCase) (mode : Mode := .rdf11) :
+    IO (Except Outcome (Dataset × List (Iri × Graph))) := do
   let mut ds : Dataset := Dataset.empty
   for df in tc.dataFiles do
     match ← readOpt df with
     | none      => return .error (.skip s!"file missing: {df}")
     | some text =>
-      match parseDataFile df text with
+      match parseDataFile df text mode with
       | .error e => return .error (.fail s!"data parse error in {basename df}: {e}")
       | .ok d    => ds := mergeDatasets ds d
   for (iri, path) in tc.graphData do
     match ← readOpt path with
     | none      => return .error (.skip s!"file missing: {path}")
     | some text =>
-      match parseDataFile path text with
+      match parseDataFile path text mode with
       | .error e => return .error (.fail s!"graph data parse error in {basename path}: {e}")
       | .ok d    =>
         if h : isIri iri = true then
@@ -195,7 +198,7 @@ def loadFixtures (tc : TestCase) : IO (Except Outcome (Dataset × List (Iri × G
     match ← readOpt path with
     | none      => return .error (.skip s!"file missing: {path}")
     | some text =>
-      match parseDataFile path text with
+      match parseDataFile path text mode with
       | .error e => return .error (.fail s!"service data parse error in {basename path}: {e}")
       | .ok d    => services := services ++ [(endpoint, d.default)]
   return .ok (ds, services)
@@ -208,7 +211,7 @@ inductive Expected where
 
 /-- Decode the expected file by extension (the `.srx/.srj/.tsv/.csv`
 and `.ttl` branches of `run_query_eval_test`). -/
-def parseExpected (rf text : String) : Except String Expected :=
+def parseExpected (rf text : String) (mode : Mode := .rdf11) : Except String Expected :=
   let ofResult (label : String) (csv : Bool) (r : Except ResultsError QueryResult) :
       Except String Expected :=
     match r with
@@ -220,7 +223,7 @@ def parseExpected (rf text : String) : Except String Expected :=
   else if rf.endsWith ".tsv" then ofResult "TSV" false (parseTsv text)
   else if rf.endsWith ".csv" then ofResult "CSV" true (parseCsv text)
   else if rf.endsWith ".ttl" then
-    match parseTurtle text (some ("file://" ++ rf)) .rdf11 with
+    match parseTurtle text (some ("file://" ++ rf)) mode with
     | .error e => .error s!"Turtle: {fmtParseError e}"
     | .ok g    =>
       if isRsResultSet g then
@@ -391,8 +394,10 @@ def rifSaturateDataset (tc : TestCase) (ds : Dataset) :
   let saturated := L4Factoidal.RIF.Saturate.saturateGraph "rules" doc.rules merged
   return .ok { ds with default := saturated }
 
-/-- One `QueryEvaluationTest` / `CSVResultFormatTest`. -/
-def runQueryEvaluation (tc : TestCase) : IO RunResult := do
+/-- One `QueryEvaluationTest` / `CSVResultFormatTest`. `mode` is the
+suite's RDF version; a `.rdf12` suite parses its queries with the
+SPARQL 1.2 grammar. -/
+def runQueryEvaluation (tc : TestCase) (mode : Mode := .rdf11) : IO RunResult := do
   -- Entailment-regime tests: pick the regime now; the closure is
   -- applied to the fixtures once they are loaded.
   -- The F* runner's preference order puts the OWL regimes first.
@@ -413,10 +418,11 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
     | return .ofOutcome (.skip "mf:action carries no qt:query")
   let some qtext ← readOpt qf
     | return .ofOutcome (.skip s!"file missing: {qf}")
-  match parseSparql qtext (some ("file://" ++ qf)) with
+  let sv : SparqlVersion := if mode == .rdf12 then .v12 else .v11
+  match parseSparql qtext (some ("file://" ++ qf)) sv with
   | .error e => return .ofOutcome (.fail s!"SPARQL parse: {fmtParseError e}")
   | .ok q =>
-  match ← loadFixtures tc with
+  match ← loadFixtures tc mode with
   | .error o => return .ofOutcome o
   | .ok (ds0, services) =>
   -- SPARQL 1.1 Entailment Regimes: answers are simple-entailment
@@ -477,7 +483,7 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
     | return .ofOutcome (.skip "no mf:result")
   let some rtext ← readOpt rf
     | return .ofOutcome (.skip s!"result file missing: {rf}")
-  match parseExpected rf rtext with
+  match parseExpected rf rtext mode with
   | .error e => return .ofOutcome (.fail s!"expected-result parse error: {e}")
   | .ok expected =>
   -- EXISTS needs no hook: `evalSelect` / `evalAsk` / `evalConstruct`
@@ -518,12 +524,14 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
 /-- `PositiveSyntaxTest11` / `NegativeSyntaxTest11`: the query file is
 `mf:action` itself (a file IRI), parsed with its own `file:` IRI as
 BASE. -/
-def runSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
+def runSyntaxTest (positive : Bool) (tc : TestCase) (mode : Mode := .rdf11) :
+    IO RunResult := do
   let some qf := (match tc.action with | some a => some a | none => tc.queryFile)
     | return .ofOutcome (.skip "no query file in mf:action")
   let some text ← readOpt qf
     | return .ofOutcome (.skip s!"file missing: {qf}")
   let res := parseSparql text (some ("file://" ++ qf))
+              (if mode == .rdf12 then .v12 else .v11)
   return .ofOutcome (
     if positive then
       match res with
@@ -558,21 +566,21 @@ def runSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
 
 /-- Read `data` files into the default graph and `graphData` files
 into named graphs (the F* `load_dataset` + `load_triples` fold). -/
-def loadUpdateStore (dataFiles : List String) (graphData : List (String × String)) :
-    IO (Except Outcome Dataset) := do
+def loadUpdateStore (dataFiles : List String) (graphData : List (String × String))
+    (mode : Mode := .rdf11) : IO (Except Outcome Dataset) := do
   let mut ds : Dataset := Dataset.empty
   for df in dataFiles do
     match ← readOpt df with
     | none      => return .error (.skip s!"file missing: {df}")
     | some text =>
-      match parseDataFile df text with
+      match parseDataFile df text mode with
       | .error e => return .error (.fail s!"data parse error in {basename df}: {e}")
       | .ok d    => ds := mergeDatasets ds d
   for (iri, path) in graphData do
     match ← readOpt path with
     | none      => return .error (.skip s!"file missing: {path}")
     | some text =>
-      match parseDataFile path text with
+      match parseDataFile path text mode with
       | .error e => return .error (.fail s!"graph data parse error in {basename path}: {e}")
       | .ok d    =>
         if h : isIri iri = true then
@@ -958,9 +966,9 @@ def runTest (mode : Mode) (assumedBase : Option String) (manifestDir : String)
                  triplesCompared := quadCount ds }
 
   /- ### SPARQL 1.1 Query (sparql11 suites) — see the section above. -/
-  | "QueryEvaluationTest" | "CSVResultFormatTest" => runQueryEvaluation tc
-  | "PositiveSyntaxTest11" | "PositiveSyntaxTest" => runSyntaxTest true tc
-  | "NegativeSyntaxTest11" | "NegativeSyntaxTest" => runSyntaxTest false tc
+  | "QueryEvaluationTest" | "CSVResultFormatTest" => runQueryEvaluation tc mode
+  | "PositiveSyntaxTest11" | "PositiveSyntaxTest" => runSyntaxTest true tc mode
+  | "NegativeSyntaxTest11" | "NegativeSyntaxTest" => runSyntaxTest false tc mode
 
   /- ### SPARQL 1.1 Update (sparql11 suites) — see the section above. -/
   | "UpdateEvaluationTest"       => runUpdateEvaluation tc

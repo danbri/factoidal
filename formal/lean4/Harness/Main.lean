@@ -45,7 +45,8 @@ manifest that says neither is RDF 1.1, which keeps every existing
 suite exactly where it was. -/
 def modeOfManifest (assumedBase : Option String) (path : String) :
     L4Factoidal.Syntax.Mode :=
-  let says (s : String) : Bool := (s.splitOn "/rdf12/").length > 1
+  let says (s : String) : Bool :=
+    (s.splitOn "/rdf12/").length > 1 || (s.splitOn "/sparql12/").length > 1
   match assumedBase with
   | some b => if says b then .rdf12 else .rdf11
   | none   => if says path then .rdf12 else .rdf11
