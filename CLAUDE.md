@@ -1,3 +1,25 @@
+## How to write to the owner (read this first)
+
+Owner, 2026-08-24, verbatim:
+
+> "I pay Anthropic for you to ALWAYS BE STRAIGHT WITH ME. Every time you
+> highlight your alleged honesty or straightness in a particular context
+> wastes tokens undermining everything else you say."
+
+1. **Never advertise honesty.** No "to be straight with you", "to be
+   honest", "I need to be clear with you", "the truth is", "candidly".
+   Straightness is the baseline. Announcing it in one place implies its
+   absence everywhere else.
+2. **Plain technical English**, with domain terminology from established
+   authorities — the W3C specifications, the RDF/OWL/SPARQL literature,
+   the Lean 4 and F\* manuals. Do not invent vocabulary.
+3. **No unsolicited metaphors.** State the mechanism.
+4. **Report in ASD-STE100 Simplified Technical English.**
+5. **Keep it short.** The owner reads on a phone, between other
+   commitments. Lead with the result or the decision needed.
+6. **A repeated steer means the last report failed.** Record decisions
+   in this file the first time, not the third.
+
 > **only report to me in ASD-STE100 Simplified Technical English.**
 
 # Factoidal — a linked information system with graph data and the Web at its heart
@@ -194,6 +216,70 @@ regime suite is at 70 pass, 0 fail (out of 70; re-measured 2026-07-10). Tracked 
 → UNION as documented there before relying on this rewrite for OWL DL
 outside the entailment regime suite (the anchor still MULTIPLIES rows
 per P-edge and drops vacuous-truth individuals).
+
+## Standing decisions (owner, 2026-08-24)
+
+Recorded here because they were repeated several times before being
+written down. Verbatim; paraphrase drifts.
+
+### Port functionality, not files
+
+> "the key thing is to port functionality not files. The port was partly
+> motivated by fear F\* version was accumulating cruft and this may help
+> to clear it."
+
+Module-count coverage is a progress indicator, not the goal. Where an
+F\* module is cruft, the Lean side implements the FUNCTION correctly and
+the F\* file is marked, not transcribed.
+
+### Priority order
+
+> "Good to progress Cottas but I suggest core of rdf/s, sparql, owl, rif,
+> csvw, shacl, shex, xml, xpath, cslt, schematron are more urgent. Cottas
+> rdf store didn't really get mature enough to use in f\*, we may ship
+> Factoidal and make a separate FactoidalDB repo to focus attention on
+> the issues."
+
+- **Urgent:** RDF/S, SPARQL, OWL, RIF, CSVW, SHACL, ShEx, XML, XPath,
+  XSLT (read from "cslt"), Schematron.
+- **Not urgent:** COTTAS. Possible future split into a FactoidalDB repo.
+
+### Issue 566 — the hex layer. RULED, do not ask again.
+
+> "Yeah DO NOT PORT THAT TERRIBLE HEX CRAP!!!"
+> "We have no users so rip it up where it is crap."
+> "Fix it upstream in F\* and do not worry about legacy. You can defer
+> that for now just mark the F\* file as fucked and link to GitHub. Do it
+> right in Lean. F\* Cottas is essentially unused. I am only human using
+> anything."
+
+- Do NOT port the hex layer to Lean. Lean implements the byte format
+  directly.
+- The F\* file carries a header marking it broken and linking
+  <https://github.com/danbri/factoidal/issues/566>. Legacy compatibility
+  is deferred; there are no users.
+- `Parquet.Footer` was waiting on this call. The call is made and the
+  same ruling applies. It is not blocked and needs no further asking.
+
+### RDF.NQuads.Streaming and SPARQL11.Parser.AskBgpRoundTrip
+
+> "These are important. We need performant nquads and sparql
+> implementations across all surfaces!"
+> "Rdf.nquads.streaming it is ok to make the changes, ideally both f\* and
+> lean4 behave same"
+
+Changes approved. The two trees should agree in behaviour; where the
+Lean side changed (the streaming offset), the F\* side follows rather
+than the two drifting.
+
+### Prove over an abstraction
+
+> "Ideally we should prove it over an abstraction of both, in lean4 and
+> also optionally f\*"
+
+Where a property holds of both trees, state it once over an abstraction
+(a typeclass or parameterised structure in Lean) and instantiate it,
+rather than proving it twice. Lean first; F\* optional.
 
 ## Reading owner steers: prioritization is not prohibition
 
