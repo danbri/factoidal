@@ -12870,3 +12870,56 @@ theorem precisely enough to prove it.
 Engine modules 3 → 2, lines down by exactly 852 — this module's own
 length. Remaining: 2 engine (`Parquet.Footer`, `RDF.NQuads.Streaming`),
 3 proof, 14 by design.
+
+## Parser locality — the wall both trees hit, and a coverage entry that was wrong
+
+`Syntax/Locality.lean` starts the Lean counterpart of
+`Parser.NTriples.Locality`, and its landing corrects a defect in
+`tools/lean-port-gap.py`.
+
+**The tooling defect.** `Parser.NTriples.Locality` was classified
+by-design — "no Lean counterpart because the reason it exists is absent
+in Lean" — and it was the ONLY entry in that set with no reason recorded
+beside it. Every other one carries its argument. This one could not,
+because the argument is false.
+
+The F\* module's banner says why it exists: two theorems,
+`theorem_stream_eq_batch` and the N-Triples round trip, both need "a
+reader behaves identically on `complete ^ carry` at any position inside
+`complete` as it does on `complete` alone", and F\* cannot reach that
+cheaply because Z3 has no associativity theory for
+`FStar.String.strcat` over symbolic operands.
+
+The Lean tree does not escape that obligation. A list-based reader can
+still read past the end of a prefix: `List.span isBnodeChar` stops at
+end-of-input on `_:abc` and consumes the `d` on `_:abcd`. So
+`readBlankNodeLabel` is NOT local without a stopped-short side
+condition, and two `#guard`s exhibit the pair. What differs is the
+register — list suffixes rather than byte offsets, so the proofs are
+structural inductions — which is a reason the Lean version is smaller,
+not a reason it is unnecessary.
+
+Reclassified as PROOF (the module's own header calls it PROOF-ONLY and
+it is not in `build-ocaml.sh`), with the argument written down. Coverage
+does not move: 201 either way. Only the reason changed, and now there is
+one.
+
+**What is proved.** The pilot the F\* program itself chose — the IRI
+scanner: `iriEmitAt_local`, `iriEmitAt_ne_close`, and
+`iriNextStep_close_local` (a step that closed an IRIREF closes at the
+same place on longer input).
+
+**What is not, named.** `iriNextStep_emit_local` and everything above
+it: `readIriRefBody`, `readIriRef`, `readBlankNodeLabel`, `readLiteral`,
+and the `readNQuad11` composition. Without those,
+`RDF.NQuads.Streaming`'s streaming-equals-batch theorem cannot be stated
+in this tree either, which is why that module stays uncovered. The emit
+case is not blocked on an idea — it is the close case's analysis with
+the two escape arms surviving instead of discarded — but it is left
+unproved rather than half-proved, because a named gap is checkable and a
+weakened theorem is not. Tracked at
+<https://github.com/danbri/factoidal/issues/570>.
+
+⚠️ A `#guard` in that module also pins that the step is NOT local when
+input runs out mid-escape: `\u00` alone fails, `A` emits. That is
+the side condition earning its place in the statement.

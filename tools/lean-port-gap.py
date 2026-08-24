@@ -361,7 +361,33 @@ print("\n".join(out[:22]))
 # ---------------------------------------------------------------------------
 PROOF_SUFFIXES = (".Spec", ".Refinement", ".ModelTheory", ".Completeness",
                   ".Axioms", ".RoundTrip", ".Soundness")
-PROOF_EXACT = {"OWL.Semantics"}
+# Parser.NTriples.Locality MOVED here from BY_DESIGN_EXACT, 2026-08-24.
+# It was the only entry in that set with NO reason recorded beside it,
+# and the reason it would have needed is false. Its own banner says it
+# exists because two theorems -- theorem_stream_eq_batch (task #48) and
+# the N-Triples round trip -- both need "a reader behaves identically on
+# `complete ^ carry` at any position inside `complete` as it does on
+# `complete` alone", and that F* cannot get there cheaply because Z3 has
+# no associativity theory for FStar.String.strcat over symbolic operands.
+#
+# The Lean tree does NOT escape that obligation. A list-based reader can
+# still read past the end of a prefix: `List.span isBnodeChar` on
+# "_:abc" stops at end-of-input and on "_:abc" ++ "d" consumes the d as
+# well, so `readBlankNodeLabel` is not local without a stopped-short
+# side condition. Two #guards in Syntax/Locality.lean exhibit that pair.
+# What IS different is the register -- list suffixes instead of byte
+# offsets, so the proofs are structural inductions -- which is a reason
+# the Lean version is smaller, not a reason it is unnecessary.
+#
+# PROOF rather than engine: the module's own header calls it PROOF-ONLY
+# and it is not in build-ocaml.sh. Syntax/Locality.lean is the Lean
+# tree's counterpart layer, carrying the pilot the F* program itself
+# chose (the IRI scanner) plus the refutation that fixes the side
+# condition. The emit-step case and everything above it remain unproved
+# and are named in that module's header;
+# https://github.com/danbri/factoidal/issues/570 tracks the streaming
+# theorem that needs them.
+PROOF_EXACT = {"OWL.Semantics", "Parser.NTriples.Locality"}
 BY_DESIGN_PREFIXES = ("Parser.FastString",)
 # The four index-key-repair modules (2026-08-23). The F* index builds a
 # composite bucket key by concatenating strings, and that key is not
@@ -406,8 +432,7 @@ BY_DESIGN_EXACT = {"RDF.Indexed.KeyInjectivity",
                    "RDF.Entailment.RDFS.SepFree",
                    "RDF.Entailment.RDFS.ChainWf",
                    "OWL.Semantics.MemLemmas",
-                   "RDF.CottasStore.ColumnSeq",
-                   "Parser.NTriples.Locality"}
+                   "RDF.CottasStore.ColumnSeq"}
 
 def classify(m):
     # BY-DESIGN is tested FIRST: `RDF.Indexed.Completeness` ends in a
