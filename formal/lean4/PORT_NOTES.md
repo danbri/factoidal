@@ -13012,3 +13012,46 @@ clears.
 **Why the module is split.** `LocalityLiteral.lean` exists for a build
 reason, not a conceptual one: the elaboration above was heavy enough to
 kill `Syntax.Locality` when attempted inside it.
+
+## The string-literal reader, split — issue 574 cleared
+
+`readStringLiteralBody` is now a non-recursive step (`strLitNextStep`)
+plus a three-arm recursion, the shape `Syntax/IriScan.lean` gave the
+IRIREF body for
+<https://github.com/danbri/factoidal/issues/565>. This clears
+<https://github.com/danbri/factoidal/issues/574>.
+
+**Why it was needed.** As one nineteen-arm recursion, unfolding this
+reader forced apart the `\u` and `\U` arms' four- and eight-way `hexVal`
+matches. Measured at 10.5 to 12 GB before SIGKILL, three ways. Split, the
+step-locality lemma proves in seconds.
+
+**How it is gated.** The committed nineteen-arm definition is kept as
+`readStringLiteralBodyLegacy`, a private differential oracle with no
+callers, and 27 `#guard`s compare the two across every arm: plain text,
+immediate close, text after the close, all eight ECHARs, both UCHAR
+forms, bad hex, truncated escapes, an unknown escape, a trailing
+backslash, a surrogate codepoint, raw newline and carriage return, and
+unterminated input. Three further guards pin decoded VALUES, so the
+table is not merely self-consistent.
+
+⚠️ Both sides are compared through `toOption`, so a difference in an
+error MESSAGE would not be caught — the failing arms are pinned by both
+sides agreeing on `none`, not on which error. That is stated next to the
+table.
+
+The oracle should be deleted once the table has run green for a while,
+the same lifecycle the IRIREF swap used.
+
+**What the split cost, and what repaid it.** The recursion is now on
+`cs.length`, so it no longer reduces by `rfl` — eleven concrete
+`rfl` proofs in `SyntaxTheorems.lean` had to be redone. Three arm
+equations (`readStringLiteralBody_close` / `_fail` / `_emit`) plus nine
+literal-shaped `@[simp]` lemmas restore the property, and the two UCHAR
+theorems and the surrogate-rejection theorem now go through the arm
+equations explicitly. Those equations are the point: the nineteen-arm
+version had NO usable equations, which is what 574 was.
+
+**Gate.** `lake build` green at 850 jobs. W3C suites through the changed
+lexer: N-Triples 70 pass, 0 fail (out of 70); N-Quads 87 pass, 0 fail
+(out of 87); Turtle 313 pass, 0 fail (out of 313).

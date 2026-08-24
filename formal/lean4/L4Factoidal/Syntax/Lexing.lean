@@ -241,30 +241,130 @@ def readIriRef (pos : Nat) : List Char → Except ParseError (String × Nat × L
 
 `STRING_LITERAL_QUOTED ::= '"' ([^#x22#x5C#xA#xD] | ECHAR | UCHAR)* '"'` -/
 
-/-- The body of a double-quoted string literal, decoding [153s] ECHAR
-(`\t \b \n \r \f \" \' \\`) and [26] UCHAR (`\uXXXX`/`\UXXXXXXXX`)
-escapes, and rejecting a raw (unescaped) newline or carriage return. -/
-def readStringLiteralBody (pos : Nat) : List Char → Except ParseError (String × Nat × List Char)
+/-! ### The string-literal body, split into a step and a recursion
+
+⚠️ This is the shape `Syntax/IriScan.lean` gave the IRIREF body for
+<https://github.com/danbri/factoidal/issues/565>, applied to the literal
+body for <https://github.com/danbri/factoidal/issues/574>. The reason is
+the same: as ONE nineteen-arm recursion, unfolding this reader forces
+apart the `\u` and `\U` arms' four- and eight-way `hexVal` matches, and
+the elaboration exhausts memory (measured at 10.5-12 GB, three ways,
+before it is killed). Nothing downstream could rewrite with it, which
+left `readNQuad11` locality — and hence the streaming-equals-batch
+theorem — unstatable.
+
+Split, the step is non-recursive and the recursion has three arms, so
+both are provable. Behaviour is unchanged: `readStringLiteralBodyLegacy`
+below is the committed nineteen-arm definition, kept as a DIFFERENTIAL
+ORACLE and `#guard`ed against the new one across an input table covering
+every arm. It has no callers and should be deleted once that table has
+run green for a while — the same lifecycle the IRIREF swap used. -/
+
+/-- One step of the literal body: close on `"`, emit one decoded
+character, or fail. Non-recursive, which is the whole point. -/
+inductive StrLitStep where
+  | close (rest : List Char)
+  | emit  (c : Char) (width : Nat) (rest : List Char)
+  | fail  (err : ParseError)
+  deriving Repr
+
+/-- The tail shared by the `\u` and `\U` arms. Factored out for the same
+reason `iriEmitAt` is: it keeps `strLitNextStep` free of `let`, so
+`split` can see through it. -/
+def strLitEmitAt (cp pos width : Nat) (rest : List Char) : StrLitStep :=
+  match codepointToChar cp pos with
+  | .error e => .fail e
+  | .ok c => .emit c width rest
+
+def strLitNextStep (pos : Nat) : List Char → StrLitStep
+  | [] => .fail ⟨"unterminated string literal (expected '\"')", pos⟩
+  | '"' :: rest => .close rest
+  | '\\' :: 't' :: rest => .emit '\t' 2 rest
+  | '\\' :: 'b' :: rest => .emit (Char.ofNat 0x08) 2 rest
+  | '\\' :: 'n' :: rest => .emit '\n' 2 rest
+  | '\\' :: 'r' :: rest => .emit '\r' 2 rest
+  | '\\' :: 'f' :: rest => .emit (Char.ofNat 0x0C) 2 rest
+  | '\\' :: '"' :: rest => .emit '"' 2 rest
+  | '\\' :: '\'' :: rest => .emit '\'' 2 rest
+  | '\\' :: '\\' :: rest => .emit '\\' 2 rest
+  | '\\' :: 'u' :: h0 :: h1 :: h2 :: h3 :: rest =>
+      match hexVal h0, hexVal h1, hexVal h2, hexVal h3 with
+      | some d0, some d1, some d2, some d3 =>
+          strLitEmitAt (d0 * 4096 + d1 * 256 + d2 * 16 + d3) pos 6 rest
+      | _, _, _, _ => .fail ⟨"invalid hex digit in \\u escape", pos⟩
+  | '\\' :: 'u' :: _ => .fail ⟨"incomplete \\u escape", pos⟩
+  | '\\' :: 'U' :: h0 :: h1 :: h2 :: h3 :: h4 :: h5 :: h6 :: h7 :: rest =>
+      match hexVal h0, hexVal h1, hexVal h2, hexVal h3,
+            hexVal h4, hexVal h5, hexVal h6, hexVal h7 with
+      | some d0, some d1, some d2, some d3, some d4, some d5, some d6, some d7 =>
+          strLitEmitAt (d0 * 268435456 + d1 * 16777216 + d2 * 1048576 + d3 * 65536
+                      + d4 * 4096 + d5 * 256 + d6 * 16 + d7) pos 10 rest
+      | _, _, _, _, _, _, _, _ => .fail ⟨"invalid hex digit in \\U escape", pos⟩
+  | '\\' :: 'U' :: _ => .fail ⟨"incomplete \\U escape", pos⟩
+  | '\\' :: [] => .fail ⟨"backslash at end of string literal", pos⟩
+  | '\\' :: c :: _ => .fail ⟨s!"invalid escape: \\{c}", pos⟩
+  | '\n' :: _ => .fail ⟨"unescaped newline in string literal", pos⟩
+  | '\r' :: _ => .fail ⟨"unescaped carriage return in string literal", pos⟩
+  | c :: rest => .emit c 1 rest
+
+theorem strLitEmitAt_emit {cp pos width : Nat} {rest : List Char}
+    {c : Char} {w : Nat} {r : List Char}
+    (h : strLitEmitAt cp pos width rest = .emit c w r) : r = rest := by
+  unfold strLitEmitAt at h
+  split at h
+  · exact absurd h (by simp)
+  · simp only [StrLitStep.emit.injEq] at h; exact h.2.2.symm
+
+/-- The step consumes at least one character, which is the whole
+termination argument. -/
+theorem strLitNextStep_emit_shorter {pos : Nat} {cs : List Char} {c : Char}
+    {w : Nat} {rest : List Char} (h : strLitNextStep pos cs = .emit c w rest) :
+    rest.length < cs.length := by
+  unfold strLitNextStep at h
+  split at h <;> (try split at h)
+    <;> first
+      | (rw [strLitEmitAt_emit h]; simp; omega)
+      | (rw [strLitEmitAt_emit h]; omega)
+      | (simp_all; omega)
+      | simp_all
+
+def readStringLiteralBody (pos : Nat) (cs : List Char) :
+    Except ParseError (String × Nat × List Char) :=
+  match h : strLitNextStep pos cs with
+  | .close rest => .ok ("", pos + 1, rest)
+  | .fail e => .error e
+  | .emit c w rest =>
+      have : rest.length < cs.length := strLitNextStep_emit_shorter h
+      (readStringLiteralBody (pos + w) rest).map
+        (fun (s, p, r) => (c.toString ++ s, p, r))
+termination_by cs.length
+
+/-- ⚠️ DIFFERENTIAL ORACLE, not a live definition. This is the committed
+nineteen-arm body, kept only so the split version above can be `#guard`ed
+against it arm by arm. No callers; delete once the table has run green.
+Decodes [153s] ECHAR (`\t \b \n \r \f \" \' \\`) and [26] UCHAR
+(`\uXXXX`/`\UXXXXXXXX`), rejecting a raw newline or carriage return. -/
+private def readStringLiteralBodyLegacy (pos : Nat) : List Char → Except ParseError (String × Nat × List Char)
   | [] => .error ⟨"unterminated string literal (expected '\"')", pos⟩
   | '"' :: rest => .ok ("", pos + 1, rest)
   | '\\' :: 't' :: rest =>
-      (readStringLiteralBody (pos + 2) rest).map (fun (s, p, r) => ("\t" ++ s, p, r))
+      (readStringLiteralBodyLegacy (pos + 2) rest).map (fun (s, p, r) => ("\t" ++ s, p, r))
   | '\\' :: 'b' :: rest =>
-      (readStringLiteralBody (pos + 2) rest).map
+      (readStringLiteralBodyLegacy (pos + 2) rest).map
         (fun (s, p, r) => ((Char.ofNat 0x08).toString ++ s, p, r))
   | '\\' :: 'n' :: rest =>
-      (readStringLiteralBody (pos + 2) rest).map (fun (s, p, r) => ("\n" ++ s, p, r))
+      (readStringLiteralBodyLegacy (pos + 2) rest).map (fun (s, p, r) => ("\n" ++ s, p, r))
   | '\\' :: 'r' :: rest =>
-      (readStringLiteralBody (pos + 2) rest).map (fun (s, p, r) => ("\r" ++ s, p, r))
+      (readStringLiteralBodyLegacy (pos + 2) rest).map (fun (s, p, r) => ("\r" ++ s, p, r))
   | '\\' :: 'f' :: rest =>
-      (readStringLiteralBody (pos + 2) rest).map
+      (readStringLiteralBodyLegacy (pos + 2) rest).map
         (fun (s, p, r) => ((Char.ofNat 0x0C).toString ++ s, p, r))
   | '\\' :: '"' :: rest =>
-      (readStringLiteralBody (pos + 2) rest).map (fun (s, p, r) => ("\"" ++ s, p, r))
+      (readStringLiteralBodyLegacy (pos + 2) rest).map (fun (s, p, r) => ("\"" ++ s, p, r))
   | '\\' :: '\'' :: rest =>
-      (readStringLiteralBody (pos + 2) rest).map (fun (s, p, r) => ("'" ++ s, p, r))
+      (readStringLiteralBodyLegacy (pos + 2) rest).map (fun (s, p, r) => ("'" ++ s, p, r))
   | '\\' :: '\\' :: rest =>
-      (readStringLiteralBody (pos + 2) rest).map (fun (s, p, r) => ("\\" ++ s, p, r))
+      (readStringLiteralBodyLegacy (pos + 2) rest).map (fun (s, p, r) => ("\\" ++ s, p, r))
   | '\\' :: 'u' :: h0 :: h1 :: h2 :: h3 :: rest =>
       match hexVal h0, hexVal h1, hexVal h2, hexVal h3 with
       | some d0, some d1, some d2, some d3 =>
@@ -272,7 +372,7 @@ def readStringLiteralBody (pos : Nat) : List Char → Except ParseError (String 
           match codepointToChar cp pos with
           | .error e => .error e
           | .ok c =>
-              (readStringLiteralBody (pos + 6) rest).map
+              (readStringLiteralBodyLegacy (pos + 6) rest).map
                 (fun (s, p, r) => (c.toString ++ s, p, r))
       | _, _, _, _ => .error ⟨"invalid hex digit in \\u escape", pos⟩
   | '\\' :: 'u' :: _ => .error ⟨"incomplete \\u escape", pos⟩
@@ -285,7 +385,7 @@ def readStringLiteralBody (pos : Nat) : List Char → Except ParseError (String 
           match codepointToChar cp pos with
           | .error e => .error e
           | .ok c =>
-              (readStringLiteralBody (pos + 10) rest).map
+              (readStringLiteralBodyLegacy (pos + 10) rest).map
                 (fun (s, p, r) => (c.toString ++ s, p, r))
       | _, _, _, _, _, _, _, _ => .error ⟨"invalid hex digit in \\U escape", pos⟩
   | '\\' :: 'U' :: _ => .error ⟨"incomplete \\U escape", pos⟩
@@ -294,7 +394,156 @@ def readStringLiteralBody (pos : Nat) : List Char → Except ParseError (String 
   | '\n' :: _ => .error ⟨"unescaped newline in string literal", pos⟩
   | '\r' :: _ => .error ⟨"unescaped carriage return in string literal", pos⟩
   | c :: rest =>
-      (readStringLiteralBody (pos + 1) rest).map (fun (s, p, r) => (c.toString ++ s, p, r))
+      (readStringLiteralBodyLegacy (pos + 1) rest).map (fun (s, p, r) => (c.toString ++ s, p, r))
+
+/-! ### Arm equations
+
+The split definition recurses on `cs.length`, so it does NOT reduce by
+`rfl` the way the nineteen-arm structural version did. These three
+equations restore that: they are what `simp` needs to evaluate a
+concrete literal, and what any later proof needs to rewrite with. Naming
+them is the point of the split — the nineteen-arm version had no
+usable equations at all, which is
+<https://github.com/danbri/factoidal/issues/574>. -/
+
+@[simp] theorem readStringLiteralBody_close (pos : Nat) (cs rest : List Char)
+    (h : strLitNextStep pos cs = .close rest) :
+    readStringLiteralBody pos cs = .ok ("", pos + 1, rest) := by
+  rw [readStringLiteralBody]; split <;> simp_all
+
+@[simp] theorem readStringLiteralBody_fail (pos : Nat) (cs : List Char)
+    (e : ParseError) (h : strLitNextStep pos cs = .fail e) :
+    readStringLiteralBody pos cs = .error e := by
+  rw [readStringLiteralBody]; split <;> simp_all
+
+@[simp] theorem readStringLiteralBody_emit (pos : Nat) (cs r : List Char)
+    (c : Char) (w : Nat) (h : strLitNextStep pos cs = .emit c w r) :
+    readStringLiteralBody pos cs
+      = (readStringLiteralBody (pos + w) r).map
+          (fun (s, p, rr) => (c.toString ++ s, p, rr)) := by
+  rw [readStringLiteralBody]; split <;> simp_all
+
+/-! ### Literal-shaped reductions
+
+The nineteen-arm version reduced by `rfl` on a concrete input; the split
+version recurses on length and does not. These restore that for the
+shapes downstream proofs actually use, each derived from the arm
+equations above in one line. -/
+
+@[simp] theorem readStringLiteralBody_quote (pos : Nat) (rest : List Char) :
+    readStringLiteralBody pos ('"' :: rest) = .ok ("", pos + 1, rest) :=
+  readStringLiteralBody_close pos _ rest rfl
+
+@[simp] theorem readStringLiteralBody_tab (pos : Nat) (rest : List Char) :
+    readStringLiteralBody pos ('\\' :: 't' :: rest)
+      = (readStringLiteralBody (pos + 2) rest).map
+          (fun (s, p, r) => ("\t" ++ s, p, r)) :=
+  readStringLiteralBody_emit pos _ rest '\t' 2 rfl
+
+@[simp] theorem readStringLiteralBody_bs (pos : Nat) (rest : List Char) :
+    readStringLiteralBody pos ('\\' :: 'b' :: rest)
+      = (readStringLiteralBody (pos + 2) rest).map
+          (fun (s, p, r) => ((Char.ofNat 0x08).toString ++ s, p, r)) :=
+  readStringLiteralBody_emit pos _ rest (Char.ofNat 0x08) 2 rfl
+
+@[simp] theorem readStringLiteralBody_lf (pos : Nat) (rest : List Char) :
+    readStringLiteralBody pos ('\\' :: 'n' :: rest)
+      = (readStringLiteralBody (pos + 2) rest).map
+          (fun (s, p, r) => ("\n" ++ s, p, r)) :=
+  readStringLiteralBody_emit pos _ rest '\n' 2 rfl
+
+@[simp] theorem readStringLiteralBody_cr (pos : Nat) (rest : List Char) :
+    readStringLiteralBody pos ('\\' :: 'r' :: rest)
+      = (readStringLiteralBody (pos + 2) rest).map
+          (fun (s, p, r) => ("\r" ++ s, p, r)) :=
+  readStringLiteralBody_emit pos _ rest '\r' 2 rfl
+
+@[simp] theorem readStringLiteralBody_ff (pos : Nat) (rest : List Char) :
+    readStringLiteralBody pos ('\\' :: 'f' :: rest)
+      = (readStringLiteralBody (pos + 2) rest).map
+          (fun (s, p, r) => ((Char.ofNat 0x0C).toString ++ s, p, r)) :=
+  readStringLiteralBody_emit pos _ rest (Char.ofNat 0x0C) 2 rfl
+
+@[simp] theorem readStringLiteralBody_dq (pos : Nat) (rest : List Char) :
+    readStringLiteralBody pos ('\\' :: '"' :: rest)
+      = (readStringLiteralBody (pos + 2) rest).map
+          (fun (s, p, r) => ("\"" ++ s, p, r)) :=
+  readStringLiteralBody_emit pos _ rest '"' 2 rfl
+
+@[simp] theorem readStringLiteralBody_sq (pos : Nat) (rest : List Char) :
+    readStringLiteralBody pos ('\\' :: '\'' :: rest)
+      = (readStringLiteralBody (pos + 2) rest).map
+          (fun (s, p, r) => ("'" ++ s, p, r)) :=
+  readStringLiteralBody_emit pos _ rest '\'' 2 rfl
+
+@[simp] theorem readStringLiteralBody_esc (pos : Nat) (rest : List Char) :
+    readStringLiteralBody pos ('\\' :: '\\' :: rest)
+      = (readStringLiteralBody (pos + 2) rest).map
+          (fun (s, p, r) => ("\\" ++ s, p, r)) :=
+  readStringLiteralBody_emit pos _ rest '\\' 2 rfl
+
+/-! ### The differential table
+
+Every arm of the legacy definition, run against the split one. Both
+sides are compared through `toOption` on the decoded text and the
+remainder, because `ParseError` carries a message and the kernel does
+not reduce `String` equality — a message-level difference would not be
+caught here, and the arms below that FAIL are pinned by both sides
+agreeing on `none`, not on which error. -/
+
+private def strLitSame (cs : List Char) : Bool :=
+  (readStringLiteralBody 0 cs).toOption.map (fun x => (x.1, x.2.1, x.2.2))
+    == (readStringLiteralBodyLegacy 0 cs).toOption.map
+         (fun x => (x.1, x.2.1, x.2.2))
+
+/-! Plain text, immediate close, and text after the close. -/
+#guard strLitSame "abc\"".toList
+#guard strLitSame "\"".toList
+#guard strLitSame "abc\" rest".toList
+#guard strLitSame "".toList
+
+/-! Every ECHAR. -/
+#guard strLitSame "\\t\"".toList
+#guard strLitSame "\\b\"".toList
+#guard strLitSame "\\n\"".toList
+#guard strLitSame "\\r\"".toList
+#guard strLitSame "\\f\"".toList
+#guard strLitSame "\\\"\"".toList
+#guard strLitSame "\\'\"".toList
+#guard strLitSame "\\\\\"".toList
+
+/-! Both UCHAR forms, well formed. -/
+#guard strLitSame "\\u0041\"".toList
+#guard strLitSame "\\U0001F600\"".toList
+#guard strLitSame "a\\u0041b\"".toList
+
+/-! Malformed escapes: bad hex, truncated, unknown, trailing backslash. -/
+#guard strLitSame "\\uZZZZ\"".toList
+#guard strLitSame "\\u00\"".toList
+#guard strLitSame "\\UZZZZZZZZ\"".toList
+#guard strLitSame "\\U0001\"".toList
+#guard strLitSame "\\q\"".toList
+#guard strLitSame "\\".toList
+
+/-! A UCHAR naming a surrogate, which `codepointToChar` rejects. -/
+#guard strLitSame "\\uD800\"".toList
+
+/-! Raw newline and carriage return, both rejected. -/
+#guard strLitSame "a\nb\"".toList
+#guard strLitSame "a\rb\"".toList
+
+/-! Unterminated. -/
+#guard strLitSame "abc".toList
+#guard strLitSame "\\u0041".toList
+
+/-! And the decoded values themselves, so the table is not only
+self-consistent. -/
+#guard (readStringLiteralBody 0 "a\\u0041b\" x".toList).toOption.map (fun x => x.1)
+        == some "aAb"
+#guard (readStringLiteralBody 0 "a\\u0041b\" x".toList).toOption.map (fun x => x.2.2)
+        == some " x".toList
+#guard (readStringLiteralBody 0 "\\t\"".toList).toOption.map (fun x => x.1)
+        == some "\t"
 
 /-- STRING_LITERAL_QUOTED: `'"' ... '"'`, `pos` pointing at the opening
 quote. Port of `parse_string_literal`. -/

@@ -70,45 +70,53 @@ escape `\\`, and decoding that escape recovers the single backslash. -/
 theorem echar_backslash_write : escapeLiteral "\\" = "\\\\" := rfl
 
 theorem echar_backslash_read :
-    readStringLiteralBody 0 ['\\', '\\', '"'] = .ok ("\\", 3, []) := rfl
+    readStringLiteralBody 0 ['\\', '\\', '"'] = .ok ("\\", 3, []) := by
+  simp [Except.map]
 
 /-- `"` round-trips. -/
 theorem echar_quote_write : escapeLiteral "\"" = "\\\"" := rfl
 
 theorem echar_quote_read :
-    readStringLiteralBody 0 ['\\', '"', '"'] = .ok ("\"", 3, []) := rfl
+    readStringLiteralBody 0 ['\\', '"', '"'] = .ok ("\"", 3, []) := by
+  simp [Except.map]
 
 /-- LF (`\n`) round-trips. -/
 theorem echar_lf_write : escapeLiteral "\n" = "\\n" := rfl
 
 theorem echar_lf_read :
-    readStringLiteralBody 0 ['\\', 'n', '"'] = .ok ("\n", 3, []) := rfl
+    readStringLiteralBody 0 ['\\', 'n', '"'] = .ok ("\n", 3, []) := by
+  simp [Except.map]
 
 /-- CR (`\r`) round-trips. -/
 theorem echar_cr_write : escapeLiteral "\r" = "\\r" := rfl
 
 theorem echar_cr_read :
-    readStringLiteralBody 0 ['\\', 'r', '"'] = .ok ("\r", 3, []) := rfl
+    readStringLiteralBody 0 ['\\', 'r', '"'] = .ok ("\r", 3, []) := by
+  simp [Except.map]
 
 /-- TAB (`\t`) round-trips. -/
 theorem echar_tab_write : escapeLiteral "\t" = "\\t" := rfl
 
 theorem echar_tab_read :
-    readStringLiteralBody 0 ['\\', 't', '"'] = .ok ("\t", 3, []) := rfl
+    readStringLiteralBody 0 ['\\', 't', '"'] = .ok ("\t", 3, []) := by
+  simp [Except.map]
 
 /-- `\b` (backspace, U+0008) — DECODE-only: `escapeLiteral` never emits
 this form (a raw backspace byte passes through unescaped), but
 `readStringLiteralBody` still accepts it per [153s] ECHAR. -/
 theorem echar_backspace_read :
-    readStringLiteralBody 0 ['\\', 'b', '"'] = .ok ((Char.ofNat 0x08).toString, 3, []) := rfl
+    readStringLiteralBody 0 ['\\', 'b', '"'] = .ok ((Char.ofNat 0x08).toString, 3, []) := by
+  simp [readStringLiteralBody, strLitNextStep, strLitEmitAt, Except.map]
 
 /-- `\f` (form feed, U+000C) — decode-only, same reasoning as `\b`. -/
 theorem echar_formfeed_read :
-    readStringLiteralBody 0 ['\\', 'f', '"'] = .ok ((Char.ofNat 0x0C).toString, 3, []) := rfl
+    readStringLiteralBody 0 ['\\', 'f', '"'] = .ok ((Char.ofNat 0x0C).toString, 3, []) := by
+  simp [Except.map]
 
 /-- `\'` (apostrophe) — decode-only, same reasoning as `\b`. -/
 theorem echar_apostrophe_read :
-    readStringLiteralBody 0 ['\\', '\'', '"'] = .ok ("'", 3, []) := rfl
+    readStringLiteralBody 0 ['\\', '\'', '"'] = .ok ("'", 3, []) := by
+  simp [Except.map]
 
 /-! ## UCHAR round-trip — one concrete `\uXXXX` and one `\UXXXXXXXX`
 
@@ -126,14 +134,33 @@ independent of how a given Unicode character happens to be spelled in
 Lean source. -/
 def codepointsOf (s : String) : List Nat := s.toList.map Char.toNat
 
+set_option maxRecDepth 100000 in
 theorem uchar_u4_read :
     (readStringLiteralBody 0 ['\\', 'u', '0', '0', 'E', '9', '"']).map
-      (fun (s, p, r) => (codepointsOf s, p, r)) = .ok ([0xE9], 7, []) := rfl
+      (fun (s, p, r) => (codepointsOf s, p, r)) = .ok ([0xE9], 7, []) := by
+  have hstep : strLitNextStep 0 ['\\', 'u', '0', '0', 'E', '9', '"']
+      = .emit 'é' 6 ['"'] := by
+    show strLitEmitAt 233 0 6 ['"'] = _
+    simp [strLitEmitAt, codepointToChar,
+          show Nat.isValidChar 233 = True from by simp [Nat.isValidChar]]
+  rw [readStringLiteralBody_emit 0 _ ['"'] 'é' 6 hstep,
+      readStringLiteralBody_quote]
+  rfl
 
+set_option maxRecDepth 100000 in
 theorem uchar_u8_read :
     (readStringLiteralBody 0
       ['\\', 'U', '0', '0', '0', '1', 'F', '6', '0', '3', '"']).map
-      (fun (s, p, r) => (codepointsOf s, p, r)) = .ok ([0x1F603], 11, []) := rfl
+      (fun (s, p, r) => (codepointsOf s, p, r)) = .ok ([0x1F603], 11, []) := by
+  have hstep : strLitNextStep 0
+      ['\\', 'U', '0', '0', '0', '1', 'F', '6', '0', '3', '"']
+      = .emit (Char.ofNat 0x1F603) 10 ['"'] := by
+    show strLitEmitAt 128515 0 10 ['"'] = _
+    simp [strLitEmitAt, codepointToChar, Char.ofNat,
+          show Nat.isValidChar 128515 = True from by simp [Nat.isValidChar]]
+  rw [readStringLiteralBody_emit 0 _ ['"'] (Char.ofNat 0x1F603) 10 hstep,
+      readStringLiteralBody_quote]
+  rfl
 
 /-- A surrogate codepoint in a `\u` escape is REJECTED, never silently
 replaced (the property `Syntax.Lexing.codepointToChar`'s doc comment
@@ -143,7 +170,15 @@ negative `#guard` in `Syntax.SyntaxTests`): `\uD800` decodes to a
 theorem uchar_surrogate_rejected :
     readStringLiteralBody 0 ['\\', 'u', 'D', '8', '0', '0', '"'] =
       .error ⟨"surrogate or out-of-range codepoint U+" ++
-                String.ofList (Nat.toDigits 16 0xD800) ++ " in escape", 0⟩ := rfl
+                String.ofList (Nat.toDigits 16 0xD800) ++ " in escape", 0⟩ := by
+  have hstep : strLitNextStep 0 ['\\', 'u', 'D', '8', '0', '0', '"']
+      = .fail ⟨"surrogate or out-of-range codepoint U+" ++
+                String.ofList (Nat.toDigits 16 0xD800) ++ " in escape", 0⟩ := by
+    show strLitEmitAt 55296 0 6 ['"'] = _
+    simp [strLitEmitAt, codepointToChar,
+          show Nat.isValidChar 55296 = False from by simp [Nat.isValidChar],
+          toString, ToString.toString]
+  exact readStringLiteralBody_fail 0 _ _ hstep
 
 /-! ## (c) The general round-trip theorem — base case
 
