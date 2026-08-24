@@ -13229,3 +13229,43 @@ The restart lemma for `parseQuadLinesAcc` (fuel monotonicity plus the
 per-line locality above), then `splitCompleteLines` and the
 stream-equals-batch theorem, which is what covers `RDF.NQuads.Streaming`
 (<https://github.com/danbri/factoidal/issues/570>).
+
+## Every reader hands back a suffix — 2026-08-24
+
+`Syntax/LocalitySuffix.lean`. The locality modules say a reader answers
+the same on longer input; this one says WHERE the answer sits — the
+remainder is a suffix of the input — and `readNQuad11_dot` says more:
+the statement's terminating `.` is still findable in the input,
+immediately before the remainder.
+
+That last one is what the streaming fold needs. A chunk is cut after its
+last newline, so the text handed to the parser ends with a newline. If a
+statement's remainder were empty the input would end with the `.`
+instead, and `readNQuad11_dot` refutes it. Without that,
+`readNQuad11_local` cannot be applied at all, because its side condition
+is exactly "the remainder is not empty".
+
+The step functions carry the argument: every arm of `iriNextStep` and
+`strLitNextStep` consumes a prefix of fixed length, so the remainder is
+`cs.drop w`, and a drop is a suffix. `iriNextStep_emit_drop` and
+`strLitNextStep_emit_drop` state that; the rest is transitivity.
+
+⚠️ The blank-node reader is the one place where the suffix is not
+immediate. Its trailing-dot branch hands back `'.' :: afterBody`, and
+that dot came out of the LABEL rather than out of the input at that
+position, so the proof splits the label at its last character to find
+it again.
+
+Nineteen theorems, axioms `[propext, Classical.choice, Quot.sound]` or
+less, no `sorry`, no user `axiom`, no `native_decide`.
+
+✅ Build green at 854 jobs.
+
+### Next
+
+`parseQuadLinesAcc` fuel monotonicity (a run that already succeeded
+cannot notice more fuel), then the line-boundary concatenation lemma
+that `Syntax/NQuadsStreaming.lean`'s header names as the one thing
+missing, then the homomorphism
+`finish (chunks.foldl feedChunk initialState) = parseNQuads (…)`
+(<https://github.com/danbri/factoidal/issues/570>).
