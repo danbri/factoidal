@@ -12923,3 +12923,51 @@ weakened theorem is not. Tracked at
 ⚠️ A `#guard` in that module also pins that the step is NOT local when
 input runs out mid-escape: `\u00` alone fails, `A` emits. That is
 the side condition earning its place in the statement.
+
+## Locality, continued — and a definition of mine that was false
+
+Four more results in `Syntax/Locality.lean`, and a correction to the
+module landed one commit earlier.
+
+**The correction.** That landing defined locality with the side
+condition "the reader stopped with a non-empty remainder". The
+definition is FALSE. `readBlankNodeLabel` pushes a trailing `.` BACK
+into its remainder, because §19.8 forbids a label ending in a dot. So on
+`_:ab.` it answers `("ab", 4, ['.'])` — remainder non-empty — while its
+span still ran to the end of the input. One more character gives
+`("ab.c", 6, [])`, a different label.
+
+Measured, not reasoned:
+
+```
+readBlankNodeLabel 0 "_:ab."      = .ok ("ab",   4, ['.'])
+readBlankNodeLabel 0 "_:ab." ++ "c" = .ok ("ab.c", 6, [])
+```
+
+The general lesson is now in the module header: no condition on a
+reader's OUTPUT can express "it stopped because of something it saw",
+because a reader may hand back characters it chose not to keep. The
+condition belongs on the INPUT and is per-reader. `ReaderLocal` is gone;
+`BnodeStopsInside` replaced it for this reader, and `readIriRefBody`
+turned out to need no condition at all — a successful IRI parse means
+the closing `>` was seen.
+
+The proof is what found this. The `droppedList = []` branch would not
+close, and the reason it would not close was that the statement was
+wrong.
+
+**Newly proved.** `iriNextStep_emit_local` — the gap named in the
+previous landing, now closed: the same case analysis as the close case
+with the two escape arms surviving instead of discarded, plus the
+plain-character arm where the equation compiler leaves `c ≠ '\'` as two
+negative facts about the tail rather than one about the head.
+`readIriRefBody_local` and `readIriRef_local` — the recursion above it,
+via three non-dependent arm equations, because the shipping definition's
+`match h : iriNextStep pos cs with` binds the step's own equation for
+its termination argument and a dependent match cannot have its scrutinee
+rewritten. `span_append_of_stopped` and `readBlankNodeLabel_local`.
+
+**Still open**, and unchanged in kind: the literal, datatype and
+language-tag readers, and the `readNQuad11` composition, without which
+`RDF.NQuads.Streaming`'s streaming-equals-batch theorem cannot be
+stated. <https://github.com/danbri/factoidal/issues/570>.
