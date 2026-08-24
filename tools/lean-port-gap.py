@@ -162,6 +162,7 @@ alias={
  "RDF.Entailment.RegimeDispatch":"RDFS.RegimeDispatch",
  "SPARQL11.Expression.Refinement":"SPARQL.ExprRefinement",
  "RDF.Entailment.RDFS.Completeness":"RDFS.RhoDfCompleteness",
+ "RDF.NTriples.RoundTrip":"Syntax.NTriplesRoundTrip",
  "RDF.Entailment.Simple.Refinement":"RDF.EntailmentSimpleRefinement",
  "SPARQL11.Algebra.Spec":"SPARQL.AlgebraSpec",
 }

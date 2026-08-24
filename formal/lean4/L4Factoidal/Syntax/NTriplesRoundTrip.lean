@@ -241,77 +241,175 @@ theorem iriNextStep_safe {pos : Nat} {c : Char} {rest : List Char}
   unfold iriNextStep
   split <;> simp_all
 
-/-- **The round trip on the print-safe fragment.** The scanner reads
-back exactly the characters the serialiser wrote, stops at the closing
-`>`, reports the offset just past it, and leaves nothing unread. -/
-theorem readIriRefBody_printSafe (pos : Nat) : ∀ cs : List Char,
+/-- **The scanner half of the round trip.** Stated with a TRAILING
+REMAINDER, because in a serialised triple the IRI is followed by the
+rest of the line. The scanner reads back exactly the characters the
+serialiser wrote, stops at the closing `>`, reports the offset just
+past it, and hands the remainder on untouched. -/
+theorem readIriRefBody_printSafe (pos : Nat) : ∀ cs tail : List Char,
     cs.all IriSafeChar = true →
-    readIriRefBody pos (cs ++ ['>']) = .ok (String.ofList cs, pos + cs.length + 1, [])
-  | [], _ => by
-      have : iriNextStep pos ['>'] = .close [] := rfl
+    readIriRefBody pos (cs ++ '>' :: tail)
+      = .ok (String.ofList cs, pos + cs.length + 1, tail)
+  | [], tail, _ => by
+      have : iriNextStep pos ('>' :: tail) = .close tail := rfl
       simpa using readIriRefBody_close this
-  | c :: tl, h => by
+  | c :: tl, tail, h => by
       simp only [List.all_cons, Bool.and_eq_true] at h
-      rw [List.cons_append,
-          readIriRefBody_emit (iriNextStep_safe (pos := pos) h.1),
-          readIriRefBody_printSafe (pos + 1) tl h.2]
       have hstr : c.toString ++ String.ofList tl = String.ofList (c :: tl) := by
         first
           | rfl
-          | simp [Char.toString, String.ofList_cons]
-          | simp [Char.toString, String.ofList, String.singleton]
           | (apply String.ext; simp [Char.toString])
       have harith : pos + 1 + tl.length + 1 = pos + (tl.length + 1) + 1 := by omega
+      rw [List.cons_append,
+          readIriRefBody_emit (iriNextStep_safe (pos := pos) h.1),
+          readIriRefBody_printSafe (pos + 1) tl tail h.2]
       simp only [Except.map, List.length_cons, hstr, harith]
 
-/-- And at the whole-token entry point the serialiser uses. -/
-theorem readIriRef_toNTriples (i : WfIri) (h : iriPrintSafe i.val = true) :
-    readIriRef 0 (Subject.toNTriples (.iri i)).toList
-      = .ok (i.val, i.val.length + 2, []) := by
-  have hs : (Subject.toNTriples (.iri i)).toList = '<' :: (i.val.toList ++ ['>']) := by
-    simp [Subject.toNTriples]
-  rw [hs]
-  show readIriRefBody 1 (i.val.toList ++ ['>']) = _
-  rw [readIriRefBody_printSafe 1 i.val.toList h]
-  have hlen : i.val.toList.length = i.val.length := rfl
-  have harith : 1 + i.val.toList.length + 1 = i.val.length + 2 := by omega
-  rw [String.ofList_toList, harith]
+/-- The serialised form of an IRI term, followed by whatever comes next. -/
+private theorem iriChars (i : WfIri) (tail : List Char) :
+    ("<" ++ i.val ++ ">").toList ++ tail = '<' :: (i.val.toList ++ '>' :: tail) := by
+  simp
+
+/-- At the token entry point, with a remainder. -/
+theorem readIriRef_printSafe (pos : Nat) (i : WfIri) (tail : List Char)
+    (h : iriPrintSafe i.val = true) :
+    readIriRef pos ('<' :: (i.val.toList ++ '>' :: tail))
+      = .ok (i.val, pos + i.val.length + 2, tail) := by
+  have harith : pos + 1 + i.val.toList.length + 1 = pos + i.val.length + 2 := by
+    have : i.val.toList.length = i.val.length := rfl
+    omega
+  show readIriRefBody (pos + 1) (i.val.toList ++ '>' :: tail) = _
+  rw [readIriRefBody_printSafe (pos + 1) i.val.toList tail h,
+      String.ofList_toList, harith]
 
 /-- Re-validating an IRI that is already well formed returns the same
 `WfIri`. `WfIri` is a subtype, so the proof component is irrelevant. -/
 theorem mkIri_val (pos : Nat) (i : WfIri) : mkIri pos i.val = .ok i := by
   simp only [mkIri, dif_pos i.property]
 
-/-- **The subject round trip.** One step further out than
-`readIriRef_toNTriples`: through `readSubject`, which re-validates the
-scanned string, so the term recovered is the term serialised — not
-merely the same characters. -/
-theorem readSubject_toNTriples (i : WfIri) (h : iriPrintSafe i.val = true) :
-    readSubject 0 (Subject.toNTriples (.iri i)).toList
-      = .ok (.iri i, i.val.length + 2, []) := by
-  have hs : (Subject.toNTriples (.iri i)).toList = '<' :: (i.val.toList ++ ['>']) := by
-    simp [Subject.toNTriples]
-  have hiri : readIriRef 0 ('<' :: (i.val.toList ++ ['>']))
-      = .ok (i.val, i.val.length + 2, []) := by
-    rw [← hs]; exact readIriRef_toNTriples i h
-  rw [hs]
-  simp only [readSubject, hiri, mkIri_val]
+/-- **Subject position**, through the parser's re-validation — so the
+term recovered is the term serialised, not merely the same characters. -/
+theorem readSubject_printSafe (pos : Nat) (i : WfIri) (tail : List Char)
+    (h : iriPrintSafe i.val = true) :
+    readSubject pos ('<' :: (i.val.toList ++ '>' :: tail))
+      = .ok (.iri i, pos + i.val.length + 2, tail) := by
+  simp only [readSubject, readIriRef_printSafe pos i tail h, mkIri_val]
 
-/-! ## What remains before this module covers `RDF.NTriples.RoundTrip`
+/-- **Predicate position.** Same shape; the predicate slot is an IRI
+with no alternative. -/
+theorem readPredicate_printSafe (pos : Nat) (i : WfIri) (tail : List Char)
+    (h : iriPrintSafe i.val = true) :
+    readPredicate pos ('<' :: (i.val.toList ++ '>' :: tail))
+      = .ok (i, pos + i.val.length + 2, tail) := by
+  simp only [readPredicate, readIriRef_printSafe pos i tail h, mkIri_val]
 
-The F\* module also carries the object-position term round trip and
-`checkpoint_a_closed_triple_round_trip`, a whole-triple statement. Those
-are not here, so `RDF.NTriples.RoundTrip` stays on the not-covered list
-and no alias was added — the count did not move, and that is the
-correct outcome rather than a measurement fault
-(`skills/counting-coverage` rule 2). -/
+/-- **Object position**, RDF 1.1 reader. -/
+theorem readObject11_printSafe (pos : Nat) (i : WfIri) (tail : List Char)
+    (h : iriPrintSafe i.val = true) :
+    readObject11 pos ('<' :: (i.val.toList ++ '>' :: tail))
+      = .ok (.iri i, pos + i.val.length + 2, tail) := by
+  simp only [readObject11, readIriRef_printSafe pos i tail h, mkIri_val]
+
+/-! ## The closed-triple round trip
+
+The counterpart of the F\* module's
+`checkpoint_a_closed_triple_round_trip`: serialise a triple whose three
+positions are all print-safe IRIs, parse it back, and recover the triple
+that was written.
+
+The offset is existentially quantified. It is parser bookkeeping rather
+than round-trip content, and the structural claims that matter — the
+recovered TRIPLE and the unread REMAINDER — are both pinned. -/
+
+/-- `skipWs` stops immediately at a non-whitespace character. -/
+private theorem skipWs_nonWs (pos : Nat) {c : Char} {rest : List Char}
+    (h : isNtWs c = false) : skipWs pos (c :: rest) = (pos, c :: rest) := by
+  simp [skipWs, List.span, List.span.loop, h]
+
+/-- ...and consumes exactly one space when the next character is not
+whitespace, which is the only shape a serialised triple presents. -/
+private theorem skipWs_oneSpace (pos : Nat) {c : Char} {rest : List Char}
+    (h : isNtWs c = false) : skipWs pos (' ' :: c :: rest) = (pos + 1, c :: rest) := by
+  simp only [isNtWs, Bool.or_eq_false_iff, decide_eq_false_iff_not] at h
+  simp [skipWs, List.span, List.span.loop, isNtWs, h.1, h.2]
+
+private theorem isNtWs_lt : isNtWs '<' = false := by decide
+private theorem isNtWs_dot : isNtWs '.' = false := by decide
+
+/-- The serialised form of a closed triple, as a character list. -/
+private theorem closedTripleChars (s p o : WfIri) :
+    (Subject.toNTriples (.iri s) ++ " <" ++ p.val ++ "> " ++ ("<" ++ o.val ++ ">")
+      ++ " .\n").toList
+    = '<' :: (s.val.toList ++ '>' :: ' ' :: '<' ::
+        (p.val.toList ++ '>' :: ' ' :: '<' ::
+          (o.val.toList ++ '>' :: ' ' :: '.' :: ['\n']))) := by
+  simp [Subject.toNTriples]
+
+/-- **The closed-triple round trip.** -/
+theorem readTriple11_closed_roundTrip (s p o : WfIri)
+    (hs : iriPrintSafe s.val = true) (hp : iriPrintSafe p.val = true)
+    (ho : iriPrintSafe o.val = true) :
+    ∃ n, readTriple11 0
+        (Subject.toNTriples (.iri s) ++ " <" ++ p.val ++ "> "
+          ++ ("<" ++ o.val ++ ">") ++ " .\n").toList
+      = .ok ({ s := .iri s, p := p, o := .iri o }, n, ['\n']) := by
+  rw [closedTripleChars]
+  simp only [readTriple11, skipWs_nonWs _ isNtWs_lt,
+             readSubject_printSafe _ _ _ hs,
+             skipWs_oneSpace _ isNtWs_lt,
+             readPredicate_printSafe _ _ _ hp,
+             readObject11_printSafe _ _ _ ho,
+             skipWs_oneSpace _ isNtWs_dot]
+  exact ⟨_, rfl⟩
+
+/-- And the serialiser really does produce that string, so the theorem
+above is about the shipping output rather than a hand-built one. -/
+theorem tripleToNTriples_closed (s p o : WfIri) (mode : Mode) :
+    Triple.toNTriples mode { s := .iri s, p := p, o := .iri o }
+      = .ok (Subject.toNTriples (.iri s) ++ " <" ++ p.val ++ "> "
+             ++ ("<" ++ o.val ++ ">") ++ " .\n") := rfl
+
+/-! ## What this module carries of `RDF.NTriples.RoundTrip`
+
+Its four results, and one of them strengthened:
+
+| F\* | here |
+|---|---|
+| `lemma_iri_round_trip` | `readIriRef_printSafe` |
+| `lemma_subject_iri_round_trip` | `readSubject_printSafe` |
+| `lemma_term_iri_round_trip` | `readObject11_printSafe` |
+| `checkpoint_a_closed_triple_round_trip` | `readTriple11_closed_roundTrip` |
+| serialiser injectivity | `subject_toNTriples_injective`, `term_toNTriples_injective` |
+
+The F\* checkpoint is stated for ONE CONCRETE TRIPLE — its own banner
+says so: subject, predicate and object are the three shortest `wf_iri`
+witnesses, `"x:"`, `"y:"` and `"z:"`, and the recovered position is the
+literal `16`. `readTriple11_closed_roundTrip` is universally quantified
+over any three print-safe IRIs, so this side is strictly stronger.
+`lemma_pws_one_space` has a direct counterpart in `skipWs_oneSpace`.
+
+**What is NOT ported, and why that is not a gap.** The F\* module's
+remaining dozen results — `lemma_build_string_*`,
+`lemma_list_of_build_string_general`,
+`lemma_string_is_build_string_general`, `nth_byte_index_iri`,
+`lemma_utf8_enc_char_iri_safe`, the `lemma_scan_iri_end_*` family — are
+all about walking UTF-8 BYTES. They exist because `FStar.String` is
+byte-indexed through axiomatised primitives, so reading one character
+means reasoning about one to four bytes and their lead and continuation
+ranges. `List Char` needs none of it.
+
+That is the same shape as the fourteen modules the port classifies as
+wanting no Lean counterpart, and it is why this module counts as
+covered while carrying about a third of the F\* file's declarations. See
+`docs/designissues/2026-08-24-what-the-lean-port-found.md`. -/
 
 /-! ## Axiom audit -/
 
 #print axioms subject_toNTriples_injective
 #print axioms term_toNTriples_injective
 #print axioms readIriRefBody_printSafe
-#print axioms readIriRef_toNTriples
-#print axioms readSubject_toNTriples
+#print axioms readIriRef_printSafe
+#print axioms readSubject_printSafe
+#print axioms readTriple11_closed_roundTrip
 
 end L4Factoidal.Syntax.NTriplesRoundTrip

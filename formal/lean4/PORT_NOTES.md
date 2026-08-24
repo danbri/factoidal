@@ -11214,3 +11214,43 @@ by `rfl` and needs `String.ext`. And `i.val.toList.length =
 i.val.length` IS `rfl`, so `by simp` on it fails with "no progress" —
 `simp` cannot make progress on a goal that is already closed by
 reflexivity.
+
+---
+
+## `RDF.NTriples.RoundTrip` — COVERED (2026-08-24)
+
+📊 **192 → 193 of 220.** The commit is this one; the enabling commits
+are `d09e828b224`, `fbbd2c4628a`, `80ee4521da2` (the scanner split) and
+`cf5ca30bfe9` (the IRI round trip).
+
+Generalising the scanner lemma over a TRAILING REMAINDER is what
+unlocked the rest: in a serialised triple each IRI is followed by more
+line, so a theorem returning rest `[]` cannot be chained.
+`readIriRefBody_printSafe` now takes a tail, and subject, predicate and
+object positions follow in three lines each.
+
+**The closed-triple round trip is stronger than the F\* one.** F\*'s
+`checkpoint_a_closed_triple_round_trip` is stated for ONE CONCRETE
+TRIPLE — `"x:"`, `"y:"`, `"z:"`, recovered position literal `16`, as its
+own banner says. `readTriple11_closed_roundTrip` quantifies over any
+three print-safe IRIs. The offset is existentially quantified because
+it is parser bookkeeping; the recovered TRIPLE and the unread REMAINDER
+are both pinned, and `tripleToNTriples_closed` shows the input really is
+the shipping serialiser's output rather than a hand-built lookalike.
+
+**Why covered while carrying about a third of the declarations.** The
+F\* module's other dozen results are UTF-8 byte-walking lemmas —
+`lemma_build_string_*`, `nth_byte_index_iri`,
+`lemma_utf8_enc_char_iri_safe`, the `lemma_scan_iri_end_*` family. They
+exist because `FStar.String` is byte-indexed through axiomatised
+primitives, so reading one character means reasoning about one to four
+bytes and their lead and continuation ranges. `List Char` needs none of
+them. Instance twelve of the pattern in
+`docs/designissues/2026-08-24-what-the-lean-port-found.md`, and the same
+reason the fourteen by-design modules want no counterpart.
+
+**Traps.** `skipWs` goes through `List.span.loop`, which does not reduce
+under `simp` without `isNtWs` unfolded IN THE HYPOTHESIS as well as the
+goal — `simp only [isNtWs, ...] at h` first. And an existential witness
+cannot be supplied by `refine ⟨_, ?_⟩` before the goal is reduced;
+reduce first, then `exact ⟨_, rfl⟩`.
