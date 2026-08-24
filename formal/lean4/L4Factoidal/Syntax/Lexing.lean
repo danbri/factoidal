@@ -276,6 +276,26 @@ def strLitEmitAt (cp pos width : Nat) (rest : List Char) : StrLitStep :=
   | .error e => .fail e
   | .ok c => .emit c width rest
 
+/-- Decode four hexadecimal digits into a codepoint. Factored out of the
+`\u` arm so that arm's inner match has TWO cases, not sixteen: a proof
+that reasons about the arm splits on one `Option Nat`, not on four at
+once. Behaviour is unchanged and the `#guard` table against
+`readStringLiteralBodyLegacy` is the check on that. -/
+def hex4 (a b c d : Char) : Option Nat :=
+  match hexVal a, hexVal b, hexVal c, hexVal d with
+  | some d0, some d1, some d2, some d3 => some (d0 * 4096 + d1 * 256 + d2 * 16 + d3)
+  | _, _, _, _ => none
+
+/-- Decode eight hexadecimal digits into a codepoint. Same reason as
+`hex4`: the `\U` arm otherwise splits on eight `Option Nat` scrutinees at
+once, which is 256 cases. -/
+def hex8 (a b c d e f g h : Char) : Option Nat :=
+  match hexVal a, hexVal b, hexVal c, hexVal d, hexVal e, hexVal f, hexVal g, hexVal h with
+  | some d0, some d1, some d2, some d3, some d4, some d5, some d6, some d7 =>
+      some (d0 * 268435456 + d1 * 16777216 + d2 * 1048576 + d3 * 65536
+          + d4 * 4096 + d5 * 256 + d6 * 16 + d7)
+  | _, _, _, _, _, _, _, _ => none
+
 def strLitNextStep (pos : Nat) : List Char → StrLitStep
   | [] => .fail ⟨"unterminated string literal (expected '\"')", pos⟩
   | '"' :: rest => .close rest
@@ -288,18 +308,14 @@ def strLitNextStep (pos : Nat) : List Char → StrLitStep
   | '\\' :: '\'' :: rest => .emit '\'' 2 rest
   | '\\' :: '\\' :: rest => .emit '\\' 2 rest
   | '\\' :: 'u' :: h0 :: h1 :: h2 :: h3 :: rest =>
-      match hexVal h0, hexVal h1, hexVal h2, hexVal h3 with
-      | some d0, some d1, some d2, some d3 =>
-          strLitEmitAt (d0 * 4096 + d1 * 256 + d2 * 16 + d3) pos 6 rest
-      | _, _, _, _ => .fail ⟨"invalid hex digit in \\u escape", pos⟩
+      match hex4 h0 h1 h2 h3 with
+      | some cp => strLitEmitAt cp pos 6 rest
+      | none => .fail ⟨"invalid hex digit in \\u escape", pos⟩
   | '\\' :: 'u' :: _ => .fail ⟨"incomplete \\u escape", pos⟩
   | '\\' :: 'U' :: h0 :: h1 :: h2 :: h3 :: h4 :: h5 :: h6 :: h7 :: rest =>
-      match hexVal h0, hexVal h1, hexVal h2, hexVal h3,
-            hexVal h4, hexVal h5, hexVal h6, hexVal h7 with
-      | some d0, some d1, some d2, some d3, some d4, some d5, some d6, some d7 =>
-          strLitEmitAt (d0 * 268435456 + d1 * 16777216 + d2 * 1048576 + d3 * 65536
-                      + d4 * 4096 + d5 * 256 + d6 * 16 + d7) pos 10 rest
-      | _, _, _, _, _, _, _, _ => .fail ⟨"invalid hex digit in \\U escape", pos⟩
+      match hex8 h0 h1 h2 h3 h4 h5 h6 h7 with
+      | some cp => strLitEmitAt cp pos 10 rest
+      | none => .fail ⟨"invalid hex digit in \\U escape", pos⟩
   | '\\' :: 'U' :: _ => .fail ⟨"incomplete \\U escape", pos⟩
   | '\\' :: [] => .fail ⟨"backslash at end of string literal", pos⟩
   | '\\' :: c :: _ => .fail ⟨s!"invalid escape: \\{c}", pos⟩

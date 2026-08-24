@@ -13055,3 +13055,79 @@ version had NO usable equations, which is what 574 was.
 **Gate.** `lake build` green at 850 jobs. W3C suites through the changed
 lexer: N-Triples 70 pass, 0 fail (out of 70); N-Quads 87 pass, 0 fail
 (out of 87); Turtle 313 pass, 0 fail (out of 313).
+
+## String-literal locality, and the hex4 / hex8 factoring — 2026-08-24
+
+`Syntax/LocalityLiteral.lean` now carries the string-literal reader's
+locality, which the module header used to say was blocked. A reader is
+LOCAL when a run that stopped inside its input answers the same on
+longer input, with the remainder grown by exactly what was appended.
+That is what a streaming N-Quads fold needs from every reader: a chunk
+boundary must not change how the text before it parses.
+
+Proved, all with axioms `[propext, Classical.choice, Quot.sound]` or
+less, no `sorry`, no user `axiom`, no `native_decide`:
+
+* `strLitNextStep_emit_local`, `strLitNextStep_close_local`
+* `readStringLiteralBody_local`, `readStringLiteralQuoted_local`
+* `readLangTagRun_local` (kept, unchanged)
+
+### What was in the way, and what moved it
+
+The step/recursion split landed earlier cleared
+<https://github.com/danbri/factoidal/issues/574> for the RECURSION. It
+did not clear it for the STEP. `strLitNextStep`'s `\u` arm matched on
+four `hexVal` results at once and its `\U` arm on eight, so a proof
+that reached those arms split into 16 and 256 cases, with the other
+seventeen arms already split around them. `simp_all` over that reached
+10.5-12 GB and took SIGKILL.
+
+`hex4` and `hex8` (in `Syntax/Lexing.lean`) decode the digits into one
+`Option Nat`, so each arm now splits two ways. The refactor changes no
+behaviour, and the check on that is the `#guard` table already in the
+file: 27 inputs run through both the split reader and
+`readStringLiteralBodyLegacy`, at build time. ✅ Build green at 850
+jobs with the table in it.
+
+The second obstacle was not memory. Lean's equation compiler turns
+overlapping patterns into a case tree, so an arm reached only because
+the earlier arms failed does not carry those failures as hypotheses:
+the plain-character arm gives `c` and `rest` and nothing saying `c` is
+not a quote. `strLitNextStep_plain` and `strLitNextStep_badEscape`
+state the guards and prove them by `unfold` then `split`. `grind`
+closes the case `simp_all` leaves, because it instantiates a
+hypothesis carrying binders.
+
+### Gate
+
+✅ Lean W3C runner, re-measured after the change:
+
+* N-Triples 70 pass, 0 fail (out of 70)
+* N-Quads 87 pass, 0 fail (out of 87)
+* Turtle 313 pass, 0 fail (out of 313)
+
+### What this does not yet reach
+
+`RDF.NQuads.Streaming` (3,438 F\* lines) is still not covered. The chain
+from here is `readDatatype` -> `readLiteral` -> `readObject11` ->
+`readNQuad11` -> the restart lemma for `parseQuadLinesAcc` -> the
+stream-equals-batch theorem.
+
+⚠️ `readLiteral` will carry side conditions, and they are real, not
+bookkeeping. In RDF 1.1 mode the reader branches on what follows the
+closing quote: `@` starts a language tag, `^^` starts a datatype,
+anything else ends the literal as `xsd:string`. If the remainder after
+the quote is empty, or is exactly `['^']`, then appending text CHANGES
+which branch fires. The theorem must exclude those two shapes. Both are
+excluded in practice by the line terminator, which is why the streaming
+use is not blocked by them.
+
+Worth recording about the F\* side: `RDF.NQuads.Streaming` does not
+prove reader locality at all. It takes `line_witness` values as
+hypotheses and shifts them with `lemma_*_shift`, because
+`parse_nquads_acc` walks a `string` with an integer offset and a
+restart at an offset needs those shifts. The Lean parser walks a
+`List Char`, so a restart is the same function on a suffix, and
+locality is provable outright instead of assumed. That is the
+differential experiment paying out: the witness machinery is a property
+of F\*'s string representation, not of N-Quads.
