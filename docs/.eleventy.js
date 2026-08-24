@@ -99,6 +99,11 @@ module.exports = function(eleventyConfig) {
   // the build (and therefore the real asset paths it precaches) exists.
   eleventyConfig.addPassthroughCopy("sw.js");
 
+  // Live proof/evidence design note runner. Kept as a real module file
+  // rather than inline Markdown so the script is not entity-escaped by
+  // the Markdown renderer.
+  eleventyConfig.addPassthroughCopy("designissues/proof-evidence-runner.js");
+
   // Expose the build version to templates (base.njk uses it to
   // cache-bust the SW registration URL) so it's computed exactly once
   // per build, in one place, shared with the sw.js stamping below.

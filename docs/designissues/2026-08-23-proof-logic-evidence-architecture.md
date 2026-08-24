@@ -307,6 +307,196 @@ Recommended first controlled values:
 | `fxev:SoundnessNotCompleteness` | Truth preservation is claimed; completeness is not. |
 | `fxev:LicensingNotTruth` | A rule is structurally licensed, but model-theoretic truth preservation is not claimed. |
 
+## Live Factoidal evidence runner
+
+The panel below is an exploratory executable sketch, not a stable
+emitter/checker. It uses the same-origin `@factoidal/core` browser
+package mirrored under this docs site:
+
+- core-RDFS fragment and closure calls use `coreRdfsCheck` and
+  `coreRdfsClosure`;
+- the derived-fact query tries the WASM query engine first and falls
+  back to the JS engine if this browser does not support that path;
+- VC Data Integrity uses Factoidal's `eddsa-rdfc-2022` wrappers over
+  HACL* WebAssembly crypto;
+- the generated Turtle is still demo evidence, not a normative report
+  format.
+
+<section id="fxev-live-runner" class="fxev-live-runner" aria-labelledby="fxev-live-title">
+  <style>
+    .fxev-live-runner {
+      margin: 1.5rem 0;
+      border: 1px solid #cfd8d3;
+      border-radius: 8px;
+      background: #f7fbf8;
+      color: #202a24;
+      overflow: hidden;
+    }
+    .fxev-live-runner * { box-sizing: border-box; }
+    .fxev-runner-head {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem;
+      border-bottom: 1px solid #dce5df;
+      background: #eef6f1;
+    }
+    .fxev-runner-head h3 {
+      margin: 0;
+      font-size: 1.1rem;
+      line-height: 1.25;
+    }
+    .fxev-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+    }
+    .fxev-actions button {
+      border: 1px solid #2d6a4f;
+      background: #2d6a4f;
+      color: #fff;
+      border-radius: 6px;
+      padding: .45rem .7rem;
+      font: inherit;
+      cursor: pointer;
+    }
+    .fxev-actions button.secondary {
+      background: transparent;
+      color: #2d6a4f;
+    }
+    .fxev-actions button:disabled {
+      opacity: .55;
+      cursor: progress;
+    }
+    .fxev-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1px;
+      background: #dce5df;
+    }
+    .fxev-pane {
+      min-width: 0;
+      padding: 1rem;
+      background: #fff;
+    }
+    .fxev-pane h4 {
+      margin: 0 0 .5rem;
+      font-size: .95rem;
+    }
+    .fxev-pane label {
+      display: block;
+      margin: .65rem 0 .25rem;
+      color: #43514a;
+      font-size: .78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .fxev-pane textarea,
+    .fxev-pane pre {
+      width: 100%;
+      min-height: 9rem;
+      margin: 0;
+      border: 1px solid #d7dfda;
+      border-radius: 6px;
+      background: #fbfdfb;
+      color: #1d2520;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow: auto;
+    }
+    .fxev-pane textarea {
+      resize: vertical;
+      padding: .75rem;
+    }
+    .fxev-pane pre {
+      padding: .75rem;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .fxev-status {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: .5rem;
+      padding: .75rem 1rem;
+      border-top: 1px solid #dce5df;
+      background: #f2f7f4;
+      font-size: .82rem;
+    }
+    .fxev-status span {
+      display: inline-flex;
+      min-height: 2rem;
+      align-items: center;
+      border: 1px solid #d7dfda;
+      border-radius: 999px;
+      padding: .2rem .7rem;
+      background: #fff;
+      color: #33433a;
+    }
+    @media (prefers-color-scheme: dark) {
+      .fxev-live-runner {
+        border-color: #33433a;
+        background: #141a17;
+        color: #d6dbe1;
+      }
+      .fxev-runner-head {
+        border-bottom-color: #33433a;
+        background: #18211c;
+      }
+      .fxev-actions button.secondary { color: #7fd0a7; }
+      .fxev-grid { background: #33433a; }
+      .fxev-pane { background: #121417; }
+      .fxev-pane label { color: #aab8b0; }
+      .fxev-pane textarea,
+      .fxev-pane pre {
+        border-color: #33433a;
+        background: #1a1f1c;
+        color: #d6dbe1;
+      }
+      .fxev-status {
+        border-top-color: #33433a;
+        background: #171d1a;
+      }
+      .fxev-status span {
+        border-color: #33433a;
+        background: #121417;
+        color: #d6dbe1;
+      }
+    }
+  </style>
+  <div class="fxev-runner-head">
+    <h3 id="fxev-live-title">Run the evidence profile</h3>
+    <div class="fxev-actions">
+      <button type="button" data-fxev-run="all">Run both</button>
+      <button type="button" class="secondary" data-fxev-run="rdfs">RDFS only</button>
+      <button type="button" class="secondary" data-fxev-run="vc">VC only</button>
+    </div>
+  </div>
+  <div class="fxev-grid">
+    <div class="fxev-pane">
+      <h4>RDFS closure input</h4>
+      <label for="fxev-rdfs-input">Editable Turtle</label>
+      <textarea id="fxev-rdfs-input" spellcheck="false"></textarea>
+      <label for="fxev-rdfs-output">Generated evidence graph</label>
+      <pre id="fxev-rdfs-output">Press "Run both" or "RDFS only".</pre>
+    </div>
+    <div class="fxev-pane">
+      <h4>VC Data Integrity input</h4>
+      <label for="fxev-vc-doc">Canonical document N-Quads</label>
+      <textarea id="fxev-vc-doc" spellcheck="false"></textarea>
+      <label for="fxev-vc-config">Canonical proof config N-Quads</label>
+      <textarea id="fxev-vc-config" spellcheck="false"></textarea>
+      <label for="fxev-vc-output">Generated evidence graph</label>
+      <pre id="fxev-vc-output">Press "Run both" or "VC only".</pre>
+    </div>
+  </div>
+  <div class="fxev-status" aria-live="polite">
+    <span id="fxev-package-status">package: not loaded</span>
+    <span id="fxev-wasm-status">query engine: pending</span>
+    <span id="fxev-crypto-status">crypto: pending</span>
+  </div>
+  <script type="module" src="{{ '/designissues/proof-evidence-runner.js' | url }}"></script>
+</section>
+
 ## Worked example: RDFS closure run
 
 This is the smallest useful semantic evidence package. It claims that
