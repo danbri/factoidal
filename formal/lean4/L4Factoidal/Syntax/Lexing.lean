@@ -121,13 +121,136 @@ def isIriForbiddenCodepoint (cp : Nat) : Bool :=
   cp = 0x7B || cp = 0x7D || cp = 0x7C || cp = 0x5C ||
   cp = 0x5E || cp = 0x60
 
-/-- IRIREF body: the content between `<` and `>`, decoding `\u`/`\U`
-UCHAR escapes and rejecting raw control characters (`<= 0x20`), the
-forbidden-codepoint set (both raw and escaped), and any escape other than
-`\u`/`\U` (IRIREF admits ONLY UCHAR, never ECHAR — `\"` is not legal
-inside `<...>`). Structural recursion on the input list: every branch
-either terminates or recurses on a direct constructor-pattern suffix. -/
-def readIriRefBody (pos : Nat) : List Char → Except ParseError (String × Nat × List Char)
+/-! ### IRIREF body: the content between `<` and `>`, decoding
+`\u`/`\U` escapes.
+
+Split into a non-recursive step classifier plus a three-arm
+recursion (issue 565): as one ten-arm well-founded recursion, Lean
+could not generate its equation lemmas -- the generation exhausts
+memory -- so nothing downstream could rewrite with it and the
+N-Triples round trip could not be stated. The behaviour is unchanged;
+`Syntax/IriScan.lean` carries the equations and the pinned outputs. -/
+
+/-- What the next characters of an IRIREF body are. `width` is how many
+characters the step consumed, which is what makes the recursion below
+terminate and what advances `pos`. -/
+inductive IriStep where
+  | close (rest : List Char)
+  | emit  (c : Char) (width : Nat) (rest : List Char)
+  | fail  (err : ParseError)
+  deriving Repr
+
+/-- The tail shared by the `\\u` and `\\U` arms: reject a forbidden
+codepoint, then decode. Factored out so `iriNextStep` carries no `let`,
+which is what lets `split` see through it in the proof below. -/
+def iriEmitAt (cp pos width : Nat) (rest : List Char) (which : String) : IriStep :=
+  if isIriForbiddenCodepoint cp then
+    .fail ⟨"IRI-forbidden codepoint in " ++ which ++ " escape", pos⟩
+  else
+    match codepointToChar cp pos with
+    | .error e => .fail e
+    | .ok c => .emit c width rest
+
+theorem iriEmitAt_emit {cp pos width : Nat} {rest : List Char} {which : String}
+    {c : Char} {w : Nat} {r : List Char}
+    (h : iriEmitAt cp pos width rest which = .emit c w r) : r = rest := by
+  unfold iriEmitAt at h
+  split at h
+  · exact absurd h (by simp)
+  · split at h
+    · exact absurd h (by simp)
+    · simp only [IriStep.emit.injEq] at h; exact h.2.2.symm
+
+/-- One step, with every deep pattern of the original in it and no
+recursion. Transcribed arm for arm from `Lexing.readIriRefBody`. -/
+def iriNextStep (pos : Nat) : List Char → IriStep
+  | [] => .fail ⟨"unterminated IRIREF (expected '>')", pos⟩
+  | '>' :: rest => .close rest
+  | '\\' :: 'u' :: h0 :: h1 :: h2 :: h3 :: rest =>
+      match hexVal h0, hexVal h1, hexVal h2, hexVal h3 with
+      | some d0, some d1, some d2, some d3 =>
+          iriEmitAt (d0 * 4096 + d1 * 256 + d2 * 16 + d3) pos 6 rest "\\u"
+      | _, _, _, _ => .fail ⟨"invalid hex digit in \\u escape", pos⟩
+  | '\\' :: 'u' :: _ => .fail ⟨"incomplete \\u escape in IRIREF", pos⟩
+  | '\\' :: 'U' :: h0 :: h1 :: h2 :: h3 :: h4 :: h5 :: h6 :: h7 :: rest =>
+      match hexVal h0, hexVal h1, hexVal h2, hexVal h3,
+            hexVal h4, hexVal h5, hexVal h6, hexVal h7 with
+      | some d0, some d1, some d2, some d3, some d4, some d5, some d6, some d7 =>
+          iriEmitAt (d0 * 268435456 + d1 * 16777216 + d2 * 1048576 + d3 * 65536
+                   + d4 * 4096 + d5 * 256 + d6 * 16 + d7) pos 10 rest "\\U"
+      | _, _, _, _, _, _, _, _ => .fail ⟨"invalid hex digit in \\U escape", pos⟩
+  | '\\' :: 'U' :: _ => .fail ⟨"incomplete \\U escape in IRIREF", pos⟩
+  | '\\' :: [] => .fail ⟨"backslash at end of IRIREF", pos⟩
+  | '\\' :: _ :: _ => .fail ⟨"invalid escape in IRIREF (only \\u/\\U permitted)", pos⟩
+  | c :: rest =>
+      if c.toNat ≤ 0x20 || isIriForbiddenCodepoint c.toNat then
+        .fail ⟨"invalid character in IRIREF", pos⟩
+      else
+        .emit c 1 rest
+
+/-- The step consumes at least one character. This is the whole
+termination argument, and it is provable arm by arm because
+`iriNextStep` does not recurse. -/
+theorem iriNextStep_emit_shorter {pos : Nat} {cs : List Char}
+    {c : Char} {w : Nat} {rest : List Char}
+    (h : iriNextStep pos cs = .emit c w rest) : rest.length < cs.length := by
+  unfold iriNextStep at h
+  split at h
+  · exact absurd h (by simp)
+  · exact absurd h (by simp)
+  · rename_i h0 h1 h2 h3 tail _
+    split at h
+    · have := iriEmitAt_emit h; subst this; simp; omega
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+  · rename_i h0 h1 h2 h3 h4 h5 h6 h7 tail _
+    split at h
+    · have := iriEmitAt_emit h; subst this; simp; omega
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+  · exact absurd h (by simp)
+  · exact absurd h (by simp)
+  · split at h
+    · exact absurd h (by simp)
+    · simp only [IriStep.emit.injEq] at h
+      obtain ⟨-, -, hr⟩ := h
+      subst hr
+      simp
+
+/-- The body scanner, recursing on a three-constructor result. Its own
+equations are three small ones. -/
+def readIriRefBody (pos : Nat) (cs : List Char) :
+    Except ParseError (String × Nat × List Char) :=
+  match h : iriNextStep pos cs with
+  | .close rest => .ok ("", pos + 1, rest)
+  | .fail e => .error e
+  | .emit c w rest =>
+      have : rest.length < cs.length := iriNextStep_emit_shorter h
+      (readIriRefBody (pos + w) rest).map (fun (s, p, r) => (c.toString ++ s, p, r))
+termination_by cs.length
+
+
+/-! ### SCAFFOLDING — the pre-split scanner, kept as a differential oracle
+
+The ten-arm structural recursion `readIriRefBody` used to be. It is kept
+only so `Syntax/IriScan.lean` can `#guard` the new scanner against it on
+a table of inputs, which turns "was the transcription faithful" from a
+judgement into a build-time check.
+
+Its equation lemmas still cannot be generated — that is issue 565 and the
+reason for the split — but EVALUATION is unaffected, and evaluation is
+all `#guard` needs.
+
+NOT `private`, because its only consumer is `Syntax/IriScan.lean` and
+`private` in Lean 4 is module-scoped. That is the sole reason it is
+exported; nothing else may call it.
+
+REMOVAL CONDITION: delete this, and the differential guards that use it,
+in the commit after the swap lands green. It has no other purpose and
+must not acquire one.
+-/
+
+def readIriRefBodyLegacy (pos : Nat) : List Char → Except ParseError (String × Nat × List Char)
   | [] => .error ⟨"unterminated IRIREF (expected '>')", pos⟩
   | '>' :: rest => .ok ("", pos + 1, rest)
   | '\\' :: 'u' :: h0 :: h1 :: h2 :: h3 :: rest =>
@@ -140,7 +263,7 @@ def readIriRefBody (pos : Nat) : List Char → Except ParseError (String × Nat 
             match codepointToChar cp pos with
             | .error e => .error e
             | .ok c =>
-                (readIriRefBody (pos + 6) rest).map
+                (readIriRefBodyLegacy (pos + 6) rest).map
                   (fun (s, p, r) => (c.toString ++ s, p, r))
       | _, _, _, _ => .error ⟨"invalid hex digit in \\u escape", pos⟩
   | '\\' :: 'u' :: _ => .error ⟨"incomplete \\u escape in IRIREF", pos⟩
@@ -156,7 +279,7 @@ def readIriRefBody (pos : Nat) : List Char → Except ParseError (String × Nat 
             match codepointToChar cp pos with
             | .error e => .error e
             | .ok c =>
-                (readIriRefBody (pos + 10) rest).map
+                (readIriRefBodyLegacy (pos + 10) rest).map
                   (fun (s, p, r) => (c.toString ++ s, p, r))
       | _, _, _, _, _, _, _, _ => .error ⟨"invalid hex digit in \\U escape", pos⟩
   | '\\' :: 'U' :: _ => .error ⟨"incomplete \\U escape in IRIREF", pos⟩
@@ -167,7 +290,7 @@ def readIriRefBody (pos : Nat) : List Char → Except ParseError (String × Nat 
       if cp ≤ 0x20 || isIriForbiddenCodepoint cp then
         .error ⟨"invalid character in IRIREF", pos⟩
       else
-        (readIriRefBody (pos + 1) rest).map (fun (s, p, r) => (c.toString ++ s, p, r))
+        (readIriRefBodyLegacy (pos + 1) rest).map (fun (s, p, r) => (c.toString ++ s, p, r))
 
 /-- IRIREF: `'<' ... '>'`, `pos` pointing at the opening `<`. Port of
 `parse_iri_raw` (well-formedness against `RDF.isIri` is checked one layer
