@@ -23,7 +23,9 @@ That gate mattered, because the tree's own tests barely reach this code:
 of the 325 `#guard`s in `SyntaxTests`, `TurtleTests` and `RdfXmlTests`,
 exactly one touches an escape inside an IRIREF, and it is a rejection
 case. No test in any suite decodes a `\u` or `\U` inside `<…>`. That
-gap is tracked separately and is not closed by this module.
+gap is tracked as
+<https://github.com/danbri/factoidal/issues/567> and is not closed by
+this module.
 
 ## One deliberate difference
 

@@ -11132,3 +11132,49 @@ is a separate landing so that a transcription error meets the 325
 
 **Axiom note.** Both theorems report `[propext, Quot.sound]` — narrower
 than the usual three, with no `Classical.choice`.
+
+---
+
+## The IRIREF scanner swap (2026-08-24)
+
+Step 1 of the three on
+<https://github.com/danbri/factoidal/issues/565>. `Syntax.Lexing`'s
+`readIriRefBody` is now the split scanner, so its equation lemmas can be
+generated — `readIriRefBody_close`, `readIriRefBody_fail`,
+`readIriRefBody_emit`, all in `Syntax/IriScan.lean`. That is what the
+N-Triples round trip needs and what the ten-arm version could not
+supply.
+
+**How it was gated, and why the obvious gate was not enough.** The old
+scanner was kept for one commit as `readIriRefBodyLegacy` and the two
+were `#guard`ed against each other over 36 inputs — every escape width,
+every forbidden codepoint, malformed escapes, a surrogate, raw control
+characters, unterminated and empty input — agreeing on answer, error
+position AND error message. The next commit deleted the oracle and kept
+its certified answers as 39 literals.
+
+The reason for that ceremony: of the 325 `#guard`s in `SyntaxTests`,
+`TurtleTests` and `RdfXmlTests`, exactly one touches an escape inside an
+IRIREF, and it is a rejection case. No test in any suite decodes a `\u`
+or `\U` inside `<…>`. An earlier status message in this session claimed
+those 325 guards would catch a transcription error here. They would
+not. Filed as
+<https://github.com/danbri/factoidal/issues/567>.
+
+**A negative control was run.** Setting one expected offset to a wrong
+value makes the build error, so the pinned table is not vacuous. Worth
+doing whenever a table of expectations replaces a differential check —
+otherwise the table's silence proves nothing.
+
+**One deliberate difference.** The old scanner was STRUCTURAL recursion
+on the input list; the new one is well-founded recursion on `cs.length`,
+because the step classifier returns a `rest` Lean cannot see as a
+structural subterm. Behaviour is unchanged, but definitional unfolding
+differs, so a proof that relied on the old one reducing by `rfl` needs
+one of the three equations instead.
+
+**Traps paid for again.** `/-- … -/` cannot attach to a `#guard` (use
+`/-! … -/`); `"\u{1F600}"` is not a valid Lean literal here (use
+`String.singleton (Char.ofNat 0x1F600)`); and `private` in Lean 4 is
+module-scoped, so an oracle consumed by a sibling module cannot be
+private.
