@@ -12147,3 +12147,60 @@ cases. A `#guard` that takes minutes is a test nobody will keep.
 
 **Coverage is NOT claimed.** `RDF.NQuads.Streaming` stays not covered
 while its headline theorem is unproved. Coverage stays 198 of 220.
+
+---
+
+## `Syntax/LexShift.lean` — the lemma two open proofs were both waiting on
+
+Two remaining proofs needed the same fact, and neither could finish
+without it: the N-Quads streaming homomorphism
+(<https://github.com/danbri/factoidal/issues/570>) and the SPARQL
+ASK-BGP string round trip
+(<https://github.com/danbri/factoidal/issues/569>). Both reduce to
+"parsing `a ++ b` factors through the state parsing `a` reached", and
+in both the only obstacle is that the parser threads a character
+POSITION so an error can say where it happened. Positions inside `b`
+are then offset by `a.length`.
+
+**The reusable fact:** shifting the starting position shifts the
+reported position and changes nothing else.
+
+`Shifts f` states it once — running `f` from `pos + d` leaves the same
+remaining input and reports `d` more. `skipWs`, `skipToEol`,
+`skipComment` and `skipEol` each satisfy it, by ordinary induction on
+the input list. `Shifts.comp` composes them, and
+`skipWsCommentEol_shifts` is the three-step tail the quad-line loop runs
+after every quad.
+
+**`parseQuadLinesAcc_shift` is the payoff.** The whole quad-line loop
+shifts: fuel and the dataset are untouched, and only the reported
+position moves. It takes the quad reader's own shift property as an
+explicit HYPOTHESIS (`QuadReaderShifts`) rather than assuming it, so the
+residual for BOTH open issues is now one named lemma about
+`readNQuad11` and `readNQuad12` — not an open-ended homomorphism.
+
+**Four traps paid for here, all about `simp` and matches.**
+
+1. `Shifts` is a DEFINITION, so `simp` cannot use `skipWs_shifts`
+   directly. The four `*_shift` corollaries restate the same facts as
+   bare equations, which is the form `simp` needs. Without them the
+   rewrite silently does not fire and the `split` that follows splits on
+   an un-rewritten scrutinee.
+2. `rw` will not rewrite the SCRUTINEE of a match. The quad step is
+   `match mode with | .rdf11 => readNQuad11 pos cs | …`, so the proof
+   has to `cases mode` first and let the match reduce; a hypothesis
+   stated over `(match mode with …)` applied to arguments does not match
+   the goal's `match mode with … applied` form either.
+3. `split` on `match step with | .error … | .ok …` numbers its cases in
+   DEFINITION order, so `h_1` is the error case. Writing the branches in
+   the other order gives an inaccessible `ParseError` where a `Nat` was
+   expected, which is a confusing way to learn the ordering.
+4. A recursive call that looks like it should unify and does not is
+   usually carrying the wrong ARGUMENT, not the wrong shape: the ok
+   branch continues with `addQuad ds t g`, not `ds`, and passing `ds`
+   produced a page of unification output about positions that were
+   already correct.
+
+**Coverage is unchanged at 198 of 220.** This module is scaffolding for
+two ports, not a port of its own — there is no F\* module named
+`LexShift`. Counting it would be inventing coverage.
