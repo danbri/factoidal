@@ -48,6 +48,7 @@ below exhibits an IRI outside it.
 No `sorry`, no user `axiom`, no `native_decide`.
 -/
 import L4Factoidal.Syntax.NTriples
+import L4Factoidal.Syntax.IriScan
 
 namespace L4Factoidal.Syntax.NTriplesRoundTrip
 
@@ -168,35 +169,26 @@ shown to fire for any input. That obstacle does not exist here.
 `readIriRefBody` is an ordinary Lean function over `List Char`; it
 reduces, it runs, and the `#guard`s below execute it.
 
-A DIFFERENT obstacle does exist, and it is worth naming precisely
-because it is easy to mistake for the F\* one. `readIriRefBody` has ten
-match arms, two of which carry six- and ten-character escape patterns
-(`'\\' :: 'u' :: h0 :: h1 :: h2 :: h3 :: rest` and the `\U` form).
-Lean generates one equation lemma per arm on first use, and generating
-them for THIS function exhausts the memory available in this
-environment: `#check @readIriRefBody.eq_11` alone is killed, before any
-proof is attempted. So is `unfold readIriRefBody; split <;> simp_all`,
-which needs the same machinery.
+A DIFFERENT obstacle used to exist, and it is worth keeping the record
+because it is easy to mistake for the F\* one. `readIriRefBody` had ten
+match arms, two carrying six- and ten-character escape patterns. Lean
+generates one equation lemma per arm, and generating them for THAT
+function exhausted the memory available here: `#check
+@readIriRefBody.eq_11` alone was killed before any proof was attempted.
 
-Measured, not assumed: `#check @readIriRefBody.eq_11` on its own, in a
-file whose only other content is the import, is killed by the OOM
-killer. The step lemma
-`readIriRefBody pos (c :: tl) = (readIriRefBody (pos+1) tl).map (c.toString ++ ·)`
-was drafted and proved in a smaller context at roughly 34 seconds and
-several gigabytes; it does not survive being placed in a file with
-anything else.
+**That obstacle is gone.** The scanner was split into a non-recursive
+step classifier plus a three-arm recursion
+(<https://github.com/danbri/factoidal/issues/565>, commits
+`d09e828b224`, `fbbd2c4628a`, `80ee4521da2`), its three equations are
+proved in `Syntax/IriScan.lean`, and the round trip below uses them.
+The induction is the three lines this section predicted.
 
-**What that means for the round trip.** It is provable — the function
-has the equations, the induction over the character list is
-three lines, and nothing about the port blocks it. It needs the scanner
-split into a small step function over one character plus a driver, so
-each arm's equation lemma is generated from a shallow match. That is a
-change to a shipping parser with its own test surface, so it is a
-separate piece of work, tracked rather than smuggled into this landing.
-
-**What is NOT claimed here.** No round-trip theorem. This module proves
-serialiser injectivity — the F\* module's own result — and pins the
-fragment. Saying more would be reporting an intention as a theorem.
+**What IS claimed now.** `readIriRefBody_printSafe` and
+`readIriRef_toNTriples`: on the print-safe fragment the scanner reads
+back exactly what the serialiser wrote, stops at the closing `>`,
+reports the offset just past it, and leaves nothing unread. Together
+with the injectivity results above, that is both directions on the
+fragment.
 
 ## Why the fragment is a fragment
 
@@ -224,9 +216,102 @@ theorem above would generalise. -/
           (.iri ⟨"http://example.org/a", by decide⟩)).toList).toOption.map
          (fun r => r.1) == some "http://example.org/a"
 
+/-! ## The round trip, now that the scanner has equations
+
+`Syntax.Lexing`'s scanner was split (<https://github.com/danbri/factoidal/issues/565>)
+and `Syntax/IriScan.lean` proves its three equations. The obstacle
+described above is gone, and the statement this module could previously
+only pin with `#guard`s is a theorem.
+
+The induction is the three lines the section above predicted: a safe
+character always takes the `emit` arm, so the scanner walks the IRI one
+character at a time and stops at the `>` the serialiser appended. -/
+
+/-- A print-safe character takes the plain-emit arm. It is neither `>`
+nor `\`, both of which `IriSafeChar` excludes — `>` through the
+forbidden-codepoint set, which contains `0x3E`. -/
+theorem iriNextStep_safe {pos : Nat} {c : Char} {rest : List Char}
+    (h : IriSafeChar c = true) : iriNextStep pos (c :: rest) = .emit c 1 rest := by
+  simp only [IriSafeChar, Bool.and_eq_true, decide_eq_true_eq, bne_iff_ne,
+             Bool.not_eq_true'] at h
+  obtain ⟨⟨hgt, hforb⟩, hbs⟩ := h
+  have hgt' : ¬ (c.toNat ≤ 0x20) := by omega
+  have hne : c ≠ '>' := by
+    intro hc; subst hc; simp [isIriForbiddenCodepoint] at hforb
+  unfold iriNextStep
+  split <;> simp_all
+
+/-- **The round trip on the print-safe fragment.** The scanner reads
+back exactly the characters the serialiser wrote, stops at the closing
+`>`, reports the offset just past it, and leaves nothing unread. -/
+theorem readIriRefBody_printSafe (pos : Nat) : ∀ cs : List Char,
+    cs.all IriSafeChar = true →
+    readIriRefBody pos (cs ++ ['>']) = .ok (String.ofList cs, pos + cs.length + 1, [])
+  | [], _ => by
+      have : iriNextStep pos ['>'] = .close [] := rfl
+      simpa using readIriRefBody_close this
+  | c :: tl, h => by
+      simp only [List.all_cons, Bool.and_eq_true] at h
+      rw [List.cons_append,
+          readIriRefBody_emit (iriNextStep_safe (pos := pos) h.1),
+          readIriRefBody_printSafe (pos + 1) tl h.2]
+      have hstr : c.toString ++ String.ofList tl = String.ofList (c :: tl) := by
+        first
+          | rfl
+          | simp [Char.toString, String.ofList_cons]
+          | simp [Char.toString, String.ofList, String.singleton]
+          | (apply String.ext; simp [Char.toString])
+      have harith : pos + 1 + tl.length + 1 = pos + (tl.length + 1) + 1 := by omega
+      simp only [Except.map, List.length_cons, hstr, harith]
+
+/-- And at the whole-token entry point the serialiser uses. -/
+theorem readIriRef_toNTriples (i : WfIri) (h : iriPrintSafe i.val = true) :
+    readIriRef 0 (Subject.toNTriples (.iri i)).toList
+      = .ok (i.val, i.val.length + 2, []) := by
+  have hs : (Subject.toNTriples (.iri i)).toList = '<' :: (i.val.toList ++ ['>']) := by
+    simp [Subject.toNTriples]
+  rw [hs]
+  show readIriRefBody 1 (i.val.toList ++ ['>']) = _
+  rw [readIriRefBody_printSafe 1 i.val.toList h]
+  have hlen : i.val.toList.length = i.val.length := rfl
+  have harith : 1 + i.val.toList.length + 1 = i.val.length + 2 := by omega
+  rw [String.ofList_toList, harith]
+
+/-- Re-validating an IRI that is already well formed returns the same
+`WfIri`. `WfIri` is a subtype, so the proof component is irrelevant. -/
+theorem mkIri_val (pos : Nat) (i : WfIri) : mkIri pos i.val = .ok i := by
+  simp only [mkIri, dif_pos i.property]
+
+/-- **The subject round trip.** One step further out than
+`readIriRef_toNTriples`: through `readSubject`, which re-validates the
+scanned string, so the term recovered is the term serialised — not
+merely the same characters. -/
+theorem readSubject_toNTriples (i : WfIri) (h : iriPrintSafe i.val = true) :
+    readSubject 0 (Subject.toNTriples (.iri i)).toList
+      = .ok (.iri i, i.val.length + 2, []) := by
+  have hs : (Subject.toNTriples (.iri i)).toList = '<' :: (i.val.toList ++ ['>']) := by
+    simp [Subject.toNTriples]
+  have hiri : readIriRef 0 ('<' :: (i.val.toList ++ ['>']))
+      = .ok (i.val, i.val.length + 2, []) := by
+    rw [← hs]; exact readIriRef_toNTriples i h
+  rw [hs]
+  simp only [readSubject, hiri, mkIri_val]
+
+/-! ## What remains before this module covers `RDF.NTriples.RoundTrip`
+
+The F\* module also carries the object-position term round trip and
+`checkpoint_a_closed_triple_round_trip`, a whole-triple statement. Those
+are not here, so `RDF.NTriples.RoundTrip` stays on the not-covered list
+and no alias was added — the count did not move, and that is the
+correct outcome rather than a measurement fault
+(`skills/counting-coverage` rule 2). -/
+
 /-! ## Axiom audit -/
 
 #print axioms subject_toNTriples_injective
 #print axioms term_toNTriples_injective
+#print axioms readIriRefBody_printSafe
+#print axioms readIriRef_toNTriples
+#print axioms readSubject_toNTriples
 
 end L4Factoidal.Syntax.NTriplesRoundTrip

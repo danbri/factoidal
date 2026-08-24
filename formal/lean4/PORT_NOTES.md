@@ -11178,3 +11178,39 @@ one of the three equations instead.
 `String.singleton (Char.ofNat 0x1F600)`); and `private` in Lean 4 is
 module-scoped, so an oracle consumed by a sibling module cannot be
 private.
+
+---
+
+## The N-Triples IRI round trip — step 2 of #565 (2026-08-24)
+
+The scanner split unblocked what `Syntax/NTriplesRoundTrip.lean`'s own
+header had recorded as unprovable. That header is now corrected in
+place, with the record of why it was true kept.
+
+**Proved.** `readIriRefBody_printSafe`: on the print-safe fragment the
+scanner reads back exactly the characters the serialiser wrote, stops
+at the closing `>`, reports the offset just past it, and leaves nothing
+unread. `readIriRef_toNTriples` at the token entry point, and
+`readSubject_toNTriples` one step further out — through the parser's
+re-validation, so the term recovered is the term serialised rather than
+merely the same characters. `mkIri_val` is the re-validation step:
+`WfIri` is a subtype, so the proof component is irrelevant.
+
+The induction is the three lines the module predicted. A safe character
+always takes the `emit` arm, because `IriSafeChar` excludes both `>`
+(through the forbidden-codepoint set, which contains `0x3E`) and `\`.
+
+📊 **The coverage count did NOT move, and that is correct.**
+`RDF.NTriples.RoundTrip` also carries the object-position term round
+trip and `checkpoint_a_closed_triple_round_trip`, a whole-triple
+statement. Neither is here, so no alias was added and the module stays
+on the not-covered list. Checked before writing that: the tool has no
+alias for it, so the still count is a genuine not-covered rather than a
+dropped edit — the failure mode the tenth correction records.
+
+**Traps.** `String` is byte-array backed in this toolchain, so
+`c.toString ++ String.ofList tl = String.ofList (c :: tl)` does not hold
+by `rfl` and needs `String.ext`. And `i.val.toList.length =
+i.val.length` IS `rfl`, so `by simp` on it fails with "no progress" —
+`simp` cannot make progress on a goal that is already closed by
+reflexivity.
