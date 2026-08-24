@@ -11723,3 +11723,65 @@ Changing it would have been a silent behaviour edit dressed as a port.
 Nine `#guard` checks, one of them the satisfiability evidence hazard #24
 asks for before a theorem with hypotheses is trusted. `lake build` green
 at 796 jobs. Coverage 194 to 195 of 220; this landing is the cause.
+
+---
+
+## `OWL/QueryRewriteNested.lean` + `OWL/QueryEval.lean` — layer 7 and the entry point
+
+Layer 7 is the part of `OWL.QueryRewrite` that finds markers ANYWHERE
+in a BGP, including inside another marker's filler, plus the nested BGP
+rewrite and `rewriteQueryPattern`. `OWL/QueryEval.lean` is the 51-line
+F\* wiring module that composes the rewrite with the three top-level
+evaluators.
+
+**One marker type, two Lean types.** The F\* `ce_combinator` is one type
+carrying the flat combinators and the restriction family. The Lean
+layers had split it into `CeCombinator` and `Restriction`, which is
+better for the classifier and useless for the marker list, so
+`MarkerKind` puts them back together.
+
+**Three passes, in the F\* order.** `findFlatMarkersAcc`, then
+`addRestrictionMarkersAcc` over the BGP, then `addInnerRestrictionsAcc`
+walking transitively into fillers with fuel of BGP length plus one.
+`owl:someValuesFrom` is added only when its filler is itself nested,
+because a named filler is already handled by the closure;
+`owl:allValuesFrom` and `owl:complementOf` are added unconditionally,
+and the F\* source gives the reason for complement — the closure has no
+canonical materialisation for class complement, so the rewriter is the
+only path.
+
+**The OR that has to stay an OR.** `isNestedBookkeeping` strips a triple
+when its subject is a marker and its predicate is class-expression meta,
+OR when its subject is on some marker's `rdf:first`/`rdf:rest` chain.
+The F\* source records why this is not an `else if`: a nested class
+expression can have the parser reuse one blank node as BOTH a marker and
+a list cell. Two `#guard` checks pin the case where the two readings
+differ — `isNestedBookkeeping [("d", …)] ["d"] dualRoleTriple` is `true`
+while the same triple with an empty chain list is `false`, and
+`isCeMetaPred rdfFirst _` is `false`, so an `else if` on `isMarker`
+would have kept the triple. A later edit that makes it an `else if`
+fails the build.
+
+**`OWL.QueryRewrite` is still NOT covered, and that is the right
+answer.** Layer 5 deliberately holds back the universal restriction, the
+three cardinality arms and `owl:complementOf` in `expandCeSubject`,
+because porting them faithfully reproduces the
+<https://github.com/danbri/factoidal/issues/236> narrowness and fixing
+them makes the two trees stop computing the same thing. That is an owner
+decision. An alias for `OWL.QueryRewrite` was added, measured, and
+REMOVED for exactly that reason: coverage is an explicit decision, and
+seven layers of machinery is not the same as a complete module.
+`OWL.QueryEval` IS covered, and it is the cause of 195 to 196.
+
+**Traps paid for here.** All five earlier rewrite layers share ONE
+namespace, `L4Factoidal.OWL.QueryRewriteCore`, whatever the file is
+called; opening a namespace named after the file fails. `cases tp.p` on
+a projection inside a `foldl` body makes `generalize` produce an
+ill-typed motive — prove the branch condition constant as its own lemma
+(`isAnyTopConsumer_nil`) and rewrite with it instead. `QueryPattern`
+derives no `BEq`, so a `#guard` comparing two patterns has to project
+first.
+
+**Status.** Coverage 195 to 196 of 220. The remaining not-covered list
+is 24 modules: 7 engine (14,997 lines), 3 proof (7,975), 14 by design
+(8,993).
