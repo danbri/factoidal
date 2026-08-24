@@ -11381,3 +11381,48 @@ unrelated triple that must survive untouched, plus the no-marker case.
 Two of them assert the NEGATIVE: after rewriting, no triple is
 bookkeeping and none is a consumer. Those are what would catch a
 partial deletion.
+
+---
+
+## `OWL.QueryRewrite` layer 3 → `OWL/QueryRewritePattern.lean` (2026-08-24)
+
+The UNION ladder, the marker scan, and the `QueryPattern` traversal.
+With this the FLAT path — Phase 3 in the F\* source, `owl:intersectionOf`
+and `owl:unionOf` over named classes — is complete end to end: find the
+markers, extract the operands, rewrite the BGP, assemble the branches.
+
+Phase 4's nested class expressions and the restriction combinators
+(`owl:someValuesFrom`, `owl:allValuesFrom`, the cardinality family,
+`owl:complementOf`) are not here, so the module stays not covered and
+no alias was added. Coverage remains 193 of 220.
+
+**Why the union branch gets a DISTINCT sub-select.** SPARQL `UNION` is
+bag-semantic; OWL `unionOf` is set-theoretic. One `?x` matching two
+operands would contribute two rows. The wrapper dedupes the CE-expanded
+portion without forcing DISTINCT on the user's outer projection, which
+would break bag-semantic queries that never mentioned OWL.
+
+That placement is the same discipline as the internal-variable strip,
+and the two now sit on opposite sides of the same rule: the wrap
+belongs at the CE-emission site, the strip at the FINAL projection.
+`SPARQL/RewriteVarStrip.lean` proves the strip half
+(`strip_inside_join_admits_spurious_row`); this layer implements the
+wrap half.
+
+**Only 2+ branches are wrapped.** A zero-branch union collapses to
+`empty` and a one-branch union to the BGP itself; neither can
+duplicate, so wrapping would be dead AST. Two `#guard`s pin both
+special cases, because they are the ones a later simplification would
+quietly drop.
+
+**What is proved.** `unionLadder_leaves`: the left-deep ladder contains
+exactly the branches it was given, in order. A fold that builds a
+left-deep tree is easy to write so it drops the head or re-associates,
+and neither shows up in a spot check.
+`rewritePattern_bgp_noMarker`: a BGP with no flat marker comes back
+unchanged — the "safe to apply unconditionally" claim the F\* banner
+asserts, for the fragment the traversal reaches.
+
+**One deliberate hole, named in the code.** `rewritePattern` does NOT
+descend into `.subSelect`, because that carries a whole `Query` and
+needs the Query-level pass. The F\* source puts it in the same place.
