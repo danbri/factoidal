@@ -12024,3 +12024,64 @@ it.
 **Status.** `SPARQL11.Store` is covered. Coverage 197 to 198 of 220.
 Not covered is 22 modules: 5 engine (11,746 lines), 3 proof (7,975),
 14 by design (8,993).
+
+---
+
+## `SPARQL/AskBgpRoundTrip.lean` — the impossibility, resolved at its cause
+
+`SPARQL11.Parser.AskBgpRoundTrip.fst` is proof-only and marks its
+headline result IMPOSSIBLE. Its header names the cause exactly:
+
+> `FStar.String.sub`'s specification in this ulib snapshot exposes ONLY
+> a length refinement, no lemma relating its output characters to the
+> input string's content — so no lemma can be stated, let alone proved,
+> connecting a printed payload string back to the token.
+
+and notes the obstruction blocks EVERY payload-carrying token, with a
+sibling module's own flagged gap having the same cause one level lower.
+
+**The wall is the host library's string interface, and nothing else.**
+The Lean tokenizer works on `List Char` end to end: `scanIriBody` and
+`scanVarName` are ordinary list recursions. So the lemma F\* cannot
+STATE is here an ordinary induction, and both payload scans the F\*
+header names are proved:
+
+* `scanIriBody_printed` — scanning a printed IRIREF body returns the IRI
+  text and the rest of the input.
+* `scanWhileVar_printed` and `scanVarName_printed` — the same for a
+  variable name.
+
+That is finding A1 made concrete. It is not about RDF, not about
+SPARQL, and not about the parser.
+
+**The hypotheses are RDF facts, not proof conveniences.**
+`scanIriBody_printed` needs the IRI text to carry no `>` and no
+backslash: `>` ends the IRIREF and a backslash starts an escape, so an
+IRI carrying either does not print and scan back to itself. That is
+§19.8 [139]'s own character rule. Two `#guard` checks exhibit a text
+that fails it, so the side condition cannot be mistaken for decoration.
+`scanVarName_printed` needs [143] VAR1's character class, checked the
+same way.
+
+**One faithfulness decision.** The F\* fragment predicate excludes one
+specific IRI — the full-text query predicate — because that predicate
+routes the object grammar through a bespoke argument form. The Lean
+version takes the excluded list as a PARAMETER rather than hard-coding
+an IRI into a syntactic fragment, and a `#guard` exercises the
+exclusion.
+
+**What is proved and what is checked, said plainly.** The payload
+lemmas are proved. The end-to-end string round trip is CHECKED by
+`#guard` on three concrete queries — printed, tokenized, compared
+against the expected tokens, and parsed back to an AST. The general
+theorem needs two mechanical steps first: fuel normalisation for
+`tokenizeLoop`, and a per-token consumption lemma so its no-progress
+guard can be shown never to fire. Both are written up in
+<https://github.com/danbri/factoidal/issues/569>.
+
+**Coverage is NOT claimed.** `SPARQL11.Parser.AskBgpRoundTrip` stays
+not covered while its headline theorem is a check rather than a proof,
+and its roughly thirty token-level parse lemmas are about the F\*
+parser's own internals. Coverage stays 198 of 220. Marking it covered
+because the module exists and builds would be exactly the name
+resemblance `skills/counting-coverage` forbids.
