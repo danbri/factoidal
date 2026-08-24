@@ -11289,3 +11289,52 @@ stays not covered and no alias was added.
 **The doc-comment trap, hit a third time.** `/-- … -/` cannot attach to
 a `#guard`. It is in these notes twice already and still cost a build
 cycle. When adding guards, write `/-! … -/` first and never the other.
+
+---
+
+## `OWL.QueryRewrite` layer 1 → `OWL/QueryRewriteCore.lean` (2026-08-24)
+
+Partial. The F\* module is 1,799 lines, 961 of them code, 83 top-level
+declarations. This is the layer underneath the rewrite: node identity
+for anonymous nodes, the RDF-collection walk through a BGP, and the two
+flat extractors. `OWL.QueryRewrite` stays not covered and no alias was
+added.
+
+**What is here.** `markerKey` / `subjectMarkerKey` / `sameAnonNode`
+(a marker bnode reaches the rewriter either as a real
+`PatternTerm.bnode` or as a variable the runner renamed to
+`_bnode_<id>`, and both must key the same), `bgpFindFirstObj`,
+`walkCollectionAcc` / `walkCollection` fuel-bounded by the BGP length,
+and `extractFlatIntersection` / `extractFlatUnion`.
+
+**One property worth having before anything is built on this.**
+`walkCollection_mem` and `extractFlatIntersection_mem`: every operand
+the walk returns is the object of a triple already in the BGP. That is
+what stops the rewrite emitting a class the query never mentioned — the
+kind of claim a rewriter needs before it can be trusted to preserve
+answers. It rests on `bgpFindFirstObj_mem`, which is the same statement
+one layer down.
+
+**Why the walk is fuel-bounded.** Each step consumes one
+`rdf:first`/`rdf:rest` pair, so the BGP length bounds it, exactly as in
+the F\* source. A truncated or malformed collection returns what it
+collected rather than failing, and the caller decides — `#guard`s pin
+both the well-formed and the truncated case.
+
+**Known narrowness, unchanged.** CLAUDE.md records the shipping rewrite
+as sound-but-narrow at
+<https://github.com/danbri/factoidal/issues/236>. This layer only
+decides what the operands are; it does not touch that.
+
+**What remains for the module.** The rewrite itself, the `GraphPattern`
+traversal that finds candidate `?x rdf:type _:c` triples, the UNION
+construction for `owl:unionOf`, and the Phase 4 nested cases. Also
+`OWL.QueryEval` (51 lines), whose composition and strip placement are
+already ported in `SPARQL/RewriteVarStrip.lean` with the rewrite as a
+parameter — porting the rewrite fills that parameter and covers both
+modules.
+
+**Namespace note.** `strStartsWith` lives in `L4Factoidal.SPARQL`
+(`SPARQL/Expr.lean`), `rdfFirst`/`rdfRest`/`rdfNil` in
+`L4Factoidal.RDFS`, and `owlIntersectionOf`/`owlUnionOf` in
+`L4Factoidal.OWL.RL` — not `L4Factoidal.OWL`. Three separate opens.
