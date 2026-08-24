@@ -12705,3 +12705,71 @@ unneeded one is a wasted decode. The safety claim needs the first.
 Coverage for `RDF.CottasStore` is still NOT claimed: the compound
 predicate-object prune, the subject-range prune, and the public
 search/estimate/count entry points remain.
+
+## RDF.CottasStore, layer 6 — the public entry points
+
+`Cottas/OnDiskSearch.lean` ports `cottas_ondisk_search_tok`,
+`cottas_ondisk_search_limited_tok`, `cottas_ondisk_estimate_tok`, the
+bound builder and the row-to-quad conversions. The store's I/O surface
+becomes `StoreIo`, one record.
+
+`searchTok_eq_fullScan` is what every layer below was for: under prunes
+that only drop row groups holding no match, the pruned search returns
+exactly what an unpruned scan of every row group returns. `PruneSound`
+names the property a future prune has to satisfy, and nothing else about
+it has to be re-argued. Supported by `walkCandidatesTok_sublist_eq`,
+which is where `Nodup` earns its place — it is what rules out a skipped
+row-group index reappearing later in the candidate list.
+
+Also proved: `searchTok_sound` (soundness survives the entry point) and
+`searchLimitedTok_prefix` (LIMIT at the entry point is the unlimited
+search truncated).
+
+The compound predicate-object prune and the subject-offset prune are
+modelled as opaque `List Nat → List Nat` parameters rather than
+transcribed. That is deliberate: `compound_po_dict_encode` resolves ids
+through the `.p.dict` sorted-rank id space, NOT through
+`ondisk_lookup_*_id_global`'s first-occurrence-order space, and the F\*
+source documents at length that mixing them prunes the one row group
+holding the pair — a wrong zero, not a slow query. Keeping the prune
+opaque keeps that choice outside the port instead of transcribing an
+id-space confusion into a second tree.
+
+## RDF.CottasStore, layer 7 — exact counting, distinct predicates, the subject-range prune
+
+`Cottas/OnDiskCount.lean`.
+
+⚠️ **The selective exact-count is not the full count.**
+`count_selective_matches_seq` was added so `COUNT(*)` over `{ ?s a ?o }`
+stops decoding the subject and object columns it never reads. The F\*
+source presents it as the same quantity computed cheaper. The full count
+requires all four cells to decode before counting a row; the selective
+count requires only the graph cell, because `bound_col_match` on an
+absent bound returns `true` without inspecting anything. A row with a
+null in an UNBOUND column is therefore counted by one and dropped by the
+other. `countSelective_eq_countSeq` proves the equality under the
+conditions that make them agree — four columns of equal length, every
+cell present — and a `#guard` pair exhibits the divergence on a row that
+violates the second. Raised at
+<https://github.com/danbri/factoidal/issues/572>.
+
+`collectDistinct_none_of_missing` states the opposite recovery from
+layer 3's: one missing dictionary page aborts the WHOLE distinct-predicate
+answer rather than contributing zero predicates for that row group. The
+F\* banner asks for exactly that, and the contrast with the row-group
+walk is deliberate in the source.
+
+**A finding that turned out not to be one.** The subject-range overlap
+test reduces, on an empty range `[s, s)`, to `s < cumEnd && cumStart < s`
+— true for any row group strictly containing `s`. Checking the caller
+before writing that up: `cottas_ondisk_subject_candidate_rgs` returns
+`Some []` when the subject's range count is zero, three lines before it
+would call the loop. So the loop never sees an empty range, and this is a
+caller-enforced precondition, not a defect.
+`rangeOverlaps_empty_reports_overlap` records it as such, because the
+precondition appears nowhere in the loop's own type.
+
+Two `#guard`s in this module's first draft asserted false things, both
+mine: one put a predicate token in the subject bound position, and one
+expected the empty-range case to prune to nothing. Both were caught by
+the build, and the second is what sent me to read the caller.
