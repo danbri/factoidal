@@ -20,7 +20,7 @@ and what follows from it.
 | A1 | `SPARQL11.Parser.AskBgpRoundTrip.fst` declares the payload-token round trip IMPOSSIBLE. `FStar.String.sub` exposes only a length refinement, so no branch of the scanner fires for any input. In Lean the tokenizer works on `List Char` end to end, and the same statement is an ordinary induction. | [#562](https://github.com/danbri/factoidal/issues/562) |
 | A2 | `RDF.Entailment.RDFS.FixedPoint.fst` stops short of its theorem (a). In Lean the closure length test IS a fixed-point test, because `Graph.add t g = if g.mem t then g else g ++ [t]` — a membership-guarded append, never a key-sorted dedup. The theorem closes. | [#560](https://github.com/danbri/factoidal/issues/560) |
 | A3 | Six F\* modules, 3,284 lines, exist to repair one non-injective composite string bucket key, or to supply the proof infrastructure that repair needs. The Lean tree needs none of them. | [#559](https://github.com/danbri/factoidal/issues/559) |
-| A4 | `Parquet.Footer.fst` reads every byte of a Parquet file as a two-character hex string. All three of its I/O `assume val`s return hex text; the word `hex` appears 701 times in 3,349 lines. | [#566](https://github.com/danbri/factoidal/issues/566) |
+| A4 | `Parquet.Footer.fst` reads every byte of a Parquet file as a two-character hex string. All three of its I/O `assume val`s return hex text; the word `hex` appears 701 times in 3,349 lines. Confirmed on the hot path 2026-08-24: two full hex round trips per column chunk, and the OCaml side already holds the raw bytes. | [#566](https://github.com/danbri/factoidal/issues/566) |
 | A5 | `Literal.eqb` folds language-tag case and compares `rdf:XMLLiteral` lexical forms by exclusive canonical XML. It is strictly coarser than literal term equality. The same over-coarse test was reached from the SPARQL end (finding SR-2) and from the simple-entailment end (finding SE-1). | `SPARQL/AlgebraRefinement.lean` |
 | A6 | `Binding.compatible` tests every pair in the association list. `sval` sees only the first binding for a variable. So the engine decides a relation on LISTS and the specification states one on MAPPINGS, and they disagree on a duplicate-key list. | `SPARQL/AlgebraRefinement.lean` |
 | A7 | Adding `HDT/Store.lean` made `SPARQL11.Store` — 1,452 lines, no Lean counterpart at all — disappear from the not-covered list, and took five more modules with it. Both names end in `Store`. | hazard #31 |
@@ -137,14 +137,44 @@ recomputes the total on every run.
 
 ## 5. What follows
 
-**1. `Parquet.Footer` is the largest untested instance.** A4 is the
-same shape as A3, at 3,349 lines instead of 3,284, and it has not yet
-been through the differential experiment. The owner's suspicion, raised
-2026-08-23 — *"we already have a basic SPARQL and it builds on Parquet
-so the huge size in F\* is suspicious"* — matches what group A predicts.
-[#566](https://github.com/danbri/factoidal/issues/566) lists the five
-questions a review must answer, in order. The first is whether the hex
-route is on the hot path or only on the footer probe.
+**1. `Parquet.Footer` is the largest instance, and question 1 is now
+answered.** A4 is the same shape as A3, at 3,349 lines instead of
+3,284. The owner's suspicion, raised 2026-08-23 — *"we already have a
+basic SPARQL and it builds on Parquet so the huge size in F\* is
+suspicious"* — was well founded.
+
+Traced 2026-08-24 (structure, not yet benchmarked). The hex route is on
+the HOT PATH: `parquet_read_range_hex` is called at data-page offsets,
+and `parquet_zstd_decompress_hex` decompresses column-chunk data. One
+compressed column chunk makes this journey: raw bytes → hex text in
+OCaml → bytes again inside the C stub → `ZSTD_decompress` → hex text
+again in C → per-byte hex indexing in F\*. Two full hex round trips and
+four allocations, and steps 2, 4 and 6 exist only to change the type at
+the F\*/OCaml boundary.
+
+The finding that makes it fixable: **the OCaml side already has the raw
+bytes.** `parquet_read_range` and `parquet_read_tail` are defined in
+the glue at lines 113 and 126; `parquet_read_range_hex` calls the first
+and then hex-encodes. The C stub decodes hex to bytes internally before
+`ZSTD_decompress` and re-encodes after. Both sides want bytes. Only the
+F\* type signature wants hex. So this is a boundary-type change, not a
+rewrite of the Thrift decoder.
+
+The representation also forced two caches into `experimental_ocaml_glue`,
+and their own comments record the cost that bought them: without the
+file-bytes cache, *"hundreds of file-opens per SELECT and hundreds of
+zstd decompressions; the daemon hangs"*; without the hex cache, a query
+walking every row group *"re-hex-encodes the SAME parquet-page byte
+ranges once per sibling probe function"*. Neither cache has any
+eviction.
+
+⚠️ **A correction to this document's own first-pass claim.** The
+2026-08-23 report said the cost was "twice the memory, as text". That
+was wrong. With the caches the real shape is the whole file held once
+as raw bytes, plus a hex string retained for every distinct range ever
+probed, never released. The prediction was right about the cause and
+wrong about the profile, which is the kind of error a first pass makes
+and a trace corrects.
 
 **2. The remaining 28 modules are three different jobs.** 14 want no
 port and are counted above. 10 are engine code, 18,020 lines, and 6 of
