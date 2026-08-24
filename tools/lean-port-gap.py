@@ -38,6 +38,42 @@ alias={
  "RDF.Term":"RDF.Core","RDF.Triple":"RDF.Core","RDF.Graph.Executable":"RDF.Graph",
  "RDF.GraphIsomorphism":"RDF.Isomorphism","RDF.Indexed":"OWL.RLClosureIndexed",
  "RDF.NQuads.Serialize":"Syntax.NQuads",
+ # RDF.NQuads.Streaming is ported across Syntax/NQuadsStreaming.lean
+ # (splitter + dataset chunk fold), Syntax/NQuadsConcat.lean (the
+ # line-boundary concatenation lemma), Syntax/NQuadsHomomorphism.lean
+ # (streamParse11_eq_batch) and Syntax/NQuadsFold.lean (the generic
+ # consumer: foldQuadLinesAcc / streamConsume / batchConsume /
+ # streamConsume11_eq_batch, with fuel independence and concatenation
+ # proved once over the accumulator type and the dataset case obtained
+ # by parseQuadLinesAcc_eq_fold). Definition-level audit, 2026-08-24:
+ # 118 F* names, every one resolved by hand.
+ #  * ~40 splitter/stream/consumer names map directly (is_nl -> isNl,
+ #    split_complete_lines -> splitCompleteLines and its three
+ #    invariants, stream_state/feed_chunk/finish/stream_parse ->
+ #    StreamState/feedChunk/finish/streamParse, feed_chunk_consume /
+ #    finish_consume / stream_consume / batch_consume -> feedChunkC /
+ #    finishC / streamConsume / batchConsume, fold_nquads_acc_eq_
+ #    parse_nquads_acc -> parseQuadLinesAcc_eq_fold, the staged
+ #    single-chunk/no-newline/ends-in-newline theorems subsumed by the
+ #    general streamParse11_eq_batch / streamConsume11_eq_batch).
+ #  * ~55 names are the witness-and-shift machinery (line_witness,
+ #    blank/comment/quad_ok/quad_fail witnesses, lw_*, chain_*,
+ #    shift_line_witness, every lemma_*_step_shift / _restart /
+ #    _full_via_chain / _skip_blanks). ABSENT BY DESIGN, replaced by a
+ #    different decomposition: the F* parser walks a string by integer
+ #    offset, so a mid-document restart needs witnesses shifted to the
+ #    new offsets; the Lean parser walks a List Char and restarts on a
+ #    suffix at the true offset, so the same obligations are carried by
+ #    Syntax/LocalitySkips, LocalitySuffix, LocalityCount and
+ #    foldQuadLines11_fuel_indep instead.
+ #  * 7 names are F*-string workarounds (cong_string_of_list,
+ #    empty_string_concat_left/right, string_concat_assoc,
+ #    lemma_fs_byte_index_concat, lemma_byte_index_at_middle,
+ #    concat_all): List.append lemmas and List.flatten in Lean core.
+ #  * quad_step and never_stop are adapter/flag glue for F*'s
+ #    fold_nquads signature; the Lean consume takes Triple and
+ #    Option Subject directly and the fold has no early-stop hook.
+ "RDF.NQuads.Streaming":"Syntax.NQuadsStreaming",
  "RDF.Turtle.Serialize":"Syntax.TurtleSerialize",
  "RDF.Store.Loader":"RDF.StoreLoader",
  "RDF.Store.Capabilities":"RDF.StoreCapabilities",
