@@ -597,20 +597,21 @@ def quadCount (ds : Dataset) : Nat :=
   ds.default.length + (ds.named.map (fun ng => ng.graph.length)).sum
 
 /-- One `UpdateEvaluationTest`. -/
-def runUpdateEvaluation (tc : TestCase) : IO RunResult := do
+def runUpdateEvaluation (tc : TestCase) (mode : Mode := .rdf11) : IO RunResult := do
   let some qf := tc.queryFile
     | return .ofOutcome (.skip "mf:action carries no ut:request")
   let some text ← readOpt qf
     | return .ofOutcome (.skip s!"file missing: {qf}")
-  match parseSparqlUpdate text (some ("file://" ++ qf)) with
+  match parseSparqlUpdate text (some ("file://" ++ qf))
+          (if mode == .rdf12 then .v12 else .v11) with
   | .error e => return .ofOutcome (.fail s!"Update parse: {fmtParseError e}")
   | .ok u =>
   if u.hasNonSilentLoad then
     return .ofOutcome (.skip "non-silent LOAD not yet implemented (no HTTP fetch)")
-  match ← loadUpdateStore tc.dataFiles tc.graphData with
+  match ← loadUpdateStore tc.dataFiles tc.graphData mode with
   | .error o => return .ofOutcome o
   | .ok input =>
-  match ← loadUpdateStore tc.updateResultData tc.updateResultGraphData with
+  match ← loadUpdateStore tc.updateResultData tc.updateResultGraphData mode with
   | .error o => return .ofOutcome o
   | .ok expected =>
   let env : EvalEnv := { now := some fixedNow, base := u.base }
@@ -627,12 +628,14 @@ def runUpdateEvaluation (tc : TestCase) : IO RunResult := do
 /-- `PositiveUpdateSyntaxTest11` / `NegativeUpdateSyntaxTest11`: the
 request file is `mf:action` itself, parsed with its own `file:` IRI
 as BASE. -/
-def runUpdateSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
+def runUpdateSyntaxTest (positive : Bool) (tc : TestCase) (mode : Mode := .rdf11) :
+    IO RunResult := do
   let some qf := (match tc.action with | some a => some a | none => tc.queryFile)
     | return .ofOutcome (.skip "no update file in mf:action")
   let some text ← readOpt qf
     | return .ofOutcome (.skip s!"file missing: {qf}")
   let res := parseSparqlUpdate text (some ("file://" ++ qf))
+              (if mode == .rdf12 then .v12 else .v11)
   return .ofOutcome (
     if positive then
       match res with
@@ -971,9 +974,9 @@ def runTest (mode : Mode) (assumedBase : Option String) (manifestDir : String)
   | "NegativeSyntaxTest11" | "NegativeSyntaxTest" => runSyntaxTest false tc mode
 
   /- ### SPARQL 1.1 Update (sparql11 suites) — see the section above. -/
-  | "UpdateEvaluationTest"       => runUpdateEvaluation tc
-  | "PositiveUpdateSyntaxTest11" => runUpdateSyntaxTest true tc
-  | "NegativeUpdateSyntaxTest11" => runUpdateSyntaxTest false tc
+  | "UpdateEvaluationTest"       => runUpdateEvaluation tc mode
+  | "PositiveUpdateSyntaxTest11" => runUpdateSyntaxTest true tc mode
+  | "NegativeUpdateSyntaxTest11" => runUpdateSyntaxTest false tc mode
 
   /- ### RDF 1.1 Semantics (rdf-mt) — see "RDF 1.1 Semantics" above. -/
   | "PositiveEntailmentTest" => runEntailmentTest mode true tc
