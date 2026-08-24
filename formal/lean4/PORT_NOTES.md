@@ -12493,3 +12493,51 @@ fact those lemmas establish is `#guard`ed here.
 The audit and its reasoning are written into the alias in
 `tools/lean-port-gap.py`, so the claim is checkable rather than
 asserted. Coverage 198 to 199 of 220.
+
+## RDF.CottasStore, layer 1 — the handle and the dictionary boundary
+
+`Cottas/OnDiskStore.lean` ports the part of `RDF.CottasStore` that needs
+no file: the handle record, the canonical dictionary keys, the
+term/token conversions in both directions, and the predicate-presence
+and named-graph answers the handle gives from its own fields.
+
+**Ten `assume val`s, and what each became.** Two are real I/O
+(`cottas_ondisk_open`, `cottas_ondisk_close`) and are not in this layer.
+The other eight are the two directions of one dictionary
+(`ondisk_id_to_*_token_global`, `ondisk_lookup_*_id_global`), assumed in
+F\* only because a lazily-opened handle keeps its assoc-lists empty and
+the OCaml runtime answers from a hash table. They are now the fields of
+`TokenTables`, taken as a parameter.
+
+The F\* source states the correctness requirement as a comment:
+
+> "Soundness: the assume-val outcome must be observably equivalent to
+> `revmap_lookup h.coh_*_raw_revmap tok` on a fully-populated handle."
+
+Nothing in F\* can check that — an `assume val` has no body to compare
+against. Here it is `TokenTables.AgreesWith`, `tablesOfHandle` is the
+instance that satisfies it, and `buildQpRow_agrees` is the consequence:
+under agreement the fast path and the assoc-list path build the same
+row.
+
+**One finding.** `idToRawToken` and `idToRawTokenViaGlobal` are the same
+id→token step by two routes, and they DIVERGE out of range.
+`idToRawToken` returns the `\x00`-prefixed sentinel, which matches no
+row, so the query returns nothing. `idToRawTokenViaGlobal` returns
+`none`, which `cellMatch` reads as NO CONSTRAINT, so the query returns
+every row on that column. Opposite answers, and neither signature says
+so. Every F\* caller short-circuits an unresolvable bound before this
+point, so it is not live today.
+`idToRawTokenViaGlobal_outOfRange_differs` states it so a later edit
+meets a theorem instead of rediscovering it.
+
+Proved: `listNth_eq_getElem?` (the engine's index helper is the standard
+one), `namedGraphsAux_nth` (a graph's reference IS its dictionary
+position), `graphCellMatch_default` (a default-graph bound matches the
+`"DEFAULT"` cell and nothing else — issue 267's fix as an iff),
+`idToRawToken_outOfRange`, `tokenToSubject_partial_falls_back` (a cell
+with a trailing byte is a rejection, not a truncation).
+
+Not yet ported: the row-group filters and counts, the row-group and
+candidate walks, and the public search/estimate/count entry points.
+Coverage is NOT claimed for `RDF.CottasStore` yet.
