@@ -12578,3 +12578,43 @@ input.
 
 Coverage for `RDF.CottasStore` is still NOT claimed: the row-group and
 candidate walks and the public search/estimate/count entry points remain.
+
+## RDF.CottasStore, layer 3 — the walks over row groups
+
+`Cottas/OnDiskWalk.lean` ports the row-group loops. The F\* source has
+two ways of choosing which row groups to visit — a contiguous range
+driven by fuel, and an explicit candidate list from
+`plan_candidate_rgs` — and about a dozen near-identical recursions
+across search, estimate, token-shaped, cached and global variants.
+
+The column read is I/O (`pcache_decode_in_row_group` and its global and
+table-indexed siblings, `assume val` underneath). `ColumnReader` is that
+read taken as a parameter: row-group index and column index to an
+optional column.
+
+Proved: `allRgs_eq_range` (the F\* count-up-then-reverse loop is
+`List.range`), `walkRange_eq_walkCandidates` (the unpruned range scan
+and the candidate walk over every row group are one walk — the
+assumption the whole pruning design rests on, since if they disagreed
+then turning pruning on would change results rather than only time),
+`walkRangeCount_eq_length` and `walkCandidatesCount_eq_length`,
+`walkCandidatesTok_sound` (layer 2's per-row-group soundness carried
+through the loop).
+
+**Fuel is observable, not decoration.** The F\* range walk stops when
+either the fuel or the row-group count runs out. Lean does not need the
+fuel to terminate, so a port could drop it — but a caller passing fuel
+below the row-group count gets a partial scan with no error, which the
+`#guard`s now pin.
+
+⚠️ **Filed rather than fixed:** a row group whose columns fail to decode
+is skipped and the walk continues, so a corrupt row group and an empty
+one give the same answer and no caller can tell them apart. The F\*
+comment says "skipped (silently empty)". Transcribed as-is, exhibited by
+a `#guard`, and raised for a decision at
+<https://github.com/danbri/factoidal/issues/571> — changing the recovery
+is a behaviour change on the shipping query path, not a refactor.
+
+Coverage for `RDF.CottasStore` is still NOT claimed: the LIMIT-pushdown
+walks, the candidate planning, and the public search/estimate/count
+entry points remain.
