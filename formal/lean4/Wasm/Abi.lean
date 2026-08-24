@@ -46,7 +46,14 @@ Scope limits of the shim, stated plainly:
 Totality: every function here is total (`Nat` fuel where the recursion is
 not structural), per the project's no-`sorry`/no-`partial` policy.
 -/
-import L4Factoidal
+-- Targeted imports, not the L4Factoidal umbrella: the wasm module
+-- initializes every module its root imports, so the umbrella pays
+-- init cost (and init RISK) for all 374 modules when the ABI needs a
+-- fraction of them. This list is the v1 surface's import closure —
+-- extend it op by op, never back to the umbrella.
+import L4Factoidal.RDF.Graph
+import L4Factoidal.SPARQL.Query
+import L4Factoidal.Syntax.NQuads
 
 namespace L4Wasm
 

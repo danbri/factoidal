@@ -137,7 +137,17 @@ gen_one() {
 }
 export -f gen_one
 export CORE_C LEAN_SRC
-{ echo "$LEAN_SRC/Init.lean"; find "$LEAN_SRC/Init" -name '*.lean'; } \
+# Init always; plus the Std subset the library imports (Std.Data.HashMap
+# / HashSet arrived with RLClosureIndexed and the COTTAS lazy dicts —
+# their initializers pull the Std/Data + Std/Classes import closure).
+# Std.Time / Std.Net / Std.Internal.UV are NOT regenerated: their C
+# references libuv definitions the wasm link has only declarations for.
+STD_DIRS=""
+for d in "$LEAN_SRC/Std/Data" "$LEAN_SRC/Std/Classes" "$LEAN_SRC/Std/Do"; do
+  [ -d "$d" ] && STD_DIRS="$STD_DIRS $d"
+done
+{ echo "$LEAN_SRC/Init.lean"; find "$LEAN_SRC/Init" -name '*.lean'; \
+  [ -n "$STD_DIRS" ] && find $STD_DIRS -name '*.lean'; true; } \
   | xargs -P 8 -I{} bash -c 'gen_one "$@"' _ {}
 echo "  core C files: $(ls "$CORE_C"/*.c | wc -l | tr -d ' ')"
 
@@ -217,10 +227,22 @@ echo "  runtime objects: $(ls "$RT_OBJ"/*.o | wc -l | tr -d ' ') (incl. mimalloc
 say "step 6 — compile our library's C, the shim and the stub"
 rm -f "$LIB_OBJ"/*.o
 # Wasm/Main.c is the NATIVE CLI driver: it defines `main` and pulls in
-# lean_setup_args. It must never be linked into the wasm module.
+# lean_setup_args. It must never be linked into the wasm module — and
+# neither may ANY Harness executable root: every Harness_* unit
+# carries its own `_lean_main` (the runners l4w3c, l4shacl, l4rif, …),
+# and linking two of them is a duplicate-symbol error. The wasm module
+# is the LIBRARY plus Wasm_{Abi,Exports}; executables stay native.
 while IFS= read -r f; do
-  b="$(echo "${f#$LEAN_DIR/.lake/build/ir/}" | sed 's|/|_|g; s|\.c$||')"
+  rel="${f#$LEAN_DIR/.lake/build/ir/}"
+  b="$(echo "$rel" | sed 's|/|_|g; s|\.c$||')"
   [ "$b" = "Wasm_Main" ] && continue
+  case "$b" in Harness_*) continue;; esac
+  # Lake never deletes the ir of a module that was deleted or renamed;
+  # a stale .c whose .lean source is gone duplicates symbols with the
+  # module that replaced it (RIF/Core.c vs RIF/Syntax.c). Compile only
+  # C whose source module still exists.
+  src="$LEAN_DIR/${rel%.c}.lean"
+  [ -f "$src" ] || { echo "  (skipping stale ir: $rel — no $src)"; continue; }
   emcc $CFLAGS -c "$f" -o "$LIB_OBJ/$b.o"
 done < <(find "$LEAN_DIR/.lake/build/ir" -name '*.c')
 emcc $CFLAGS -c "$LEAN_DIR/Wasm/l4_shim.c"  -o "$LIB_OBJ/l4_shim.o"
