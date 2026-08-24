@@ -33,7 +33,7 @@ whole query record is rebuilt from its own fields.
 
 No `sorry`, no user `axiom`, no `native_decide`.
 -/
-import L4Factoidal.OWL.QueryRewriteNested
+import L4Factoidal.OWL.QueryMaterialise
 import L4Factoidal.SPARQL.Query
 
 namespace L4Factoidal.OWL.QueryEval
@@ -41,6 +41,7 @@ namespace L4Factoidal.OWL.QueryEval
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.OWL.QueryRewriteNested
+open L4Factoidal.OWL.QueryMaterialise (augmentForQuery)
 
 /-! ## 1. The rewrite, at the query level
 
@@ -73,20 +74,27 @@ Each one fills the rewrite parameter of the matching wrapper in
 `SPARQL/RewriteVarStrip.lean`. -/
 
 /-- SELECT with the OWL rewrite, and the internal-variable strip on the
-final projection. -/
+final projection. The dataset is augmented first
+(`QueryMaterialise.augmentForQuery`): each
+maximum-qualified-cardinality-one shape in the query gets a canonical
+restriction node whose members are exactly the individuals
+`Mat.isMember` proves — the sound replacement for the F\* closure's
+over-typed canonical node. -/
 def evalSelectOwl (env : EvalEnv) (ds : Dataset) (q : Query) : SolutionSeq :=
-  SPARQL.evalSelectQueryOwl rewriteQuery (evalSelect env ds) Prod.snd q
+  SPARQL.evalSelectQueryOwl rewriteQuery
+    (evalSelect env (augmentForQuery ds q)) Prod.snd q
 
 /-- The projected variable list of the rewritten query. Reported
 alongside the rows, as `evalSelect` does. -/
 def evalSelectOwlVars (env : EvalEnv) (ds : Dataset) (q : Query) : List VarName :=
-  (evalSelect env ds (rewriteQuery q)).fst
+  (evalSelect env (augmentForQuery ds q) (rewriteQuery q)).fst
 
 def evalAskOwl (env : EvalEnv) (ds : Dataset) (q : Query) : Bool :=
-  SPARQL.evalAskQueryOwl rewriteQuery (evalAsk env ds) q
+  SPARQL.evalAskQueryOwl rewriteQuery (evalAsk env (augmentForQuery ds q)) q
 
 def evalConstructOwl (env : EvalEnv) (ds : Dataset) (q : Query) : Graph :=
-  SPARQL.evalConstructQueryOwl rewriteQuery (evalConstruct env ds) q
+  SPARQL.evalConstructQueryOwl rewriteQuery
+    (evalConstruct env (augmentForQuery ds q)) q
 
 /-! ## 3. Facts
 
@@ -95,13 +103,16 @@ it: SELECT strips, the other two do not. -/
 
 theorem evalSelectOwl_is_strip (env : EvalEnv) (ds : Dataset) (q : Query) :
     evalSelectOwl env ds q
-      = stripRewriteInternalVars (evalSelect env ds (rewriteQuery q)).snd := rfl
+      = stripRewriteInternalVars
+          (evalSelect env (augmentForQuery ds q) (rewriteQuery q)).snd := rfl
 
 theorem evalAskOwl_no_strip (env : EvalEnv) (ds : Dataset) (q : Query) :
-    evalAskOwl env ds q = evalAsk env ds (rewriteQuery q) := rfl
+    evalAskOwl env ds q
+      = evalAsk env (augmentForQuery ds q) (rewriteQuery q) := rfl
 
 theorem evalConstructOwl_no_strip (env : EvalEnv) (ds : Dataset) (q : Query) :
-    evalConstructOwl env ds q = evalConstruct env ds (rewriteQuery q) := rfl
+    evalConstructOwl env ds q
+      = evalConstruct env (augmentForQuery ds q) (rewriteQuery q) := rfl
 
 /-- A query whose pattern is one marker-free BGP is rewritten to
 itself. This is the BGP case of the F* banner's claim that the rewriter

@@ -13475,3 +13475,34 @@ pass, 0 fail (out of 70); N-Quads 87 pass, 0 fail (out of 87); Turtle
 Next: the `skills/counting-coverage` definition-level audit of
 `RDF.NQuads.Streaming.fst` against the Lean modules, before any
 coverage number moves.
+
+## The parent7 query path answers correctly — 2026-08-24
+
+`OWL/QueryMaterialise.lean` + wiring in `OWL/QueryEval.lean`, pinned by
+`OWL/QueryEvalRegimeTests.lean`.
+
+Measured before: the W3C entailment test parent7 returned 0 rows
+through `evalSelectOwl`; the correct answer is one row (`:Dudley`).
+Cause: the rewrite's shape search expects a canonical restriction node
+in the data, which the F\* closure materialises (over-broadly, filtered
+by the anchor — <https://github.com/danbri/factoidal/issues/236>) and
+the Lean closure never did.
+
+Repair: `augmentForQuery` adds, per maximum-qualified-cardinality-one
+shape in the query, one canonical node with its four shape triples and
+one membership triple per individual `Mat.isMember` PROVES (the
+filler-bound rule). Every added membership is entailed; unprovable
+memberships are not added. Measured on the fixture: five triples
+added, member set exactly `{Dudley}` — no `Bob` (successor of unknown
+class), no over-typing.
+
+Measured after: 1 row, `?parent = :Dudley`, through the full pipeline
+(Turtle parse → RL closure → SPARQL parse → rewrite → eval). The pin
+runs that pipeline at build time and requires exactly one row, which
+rules out both wrong answers (0 rows, extra rows) at once.
+
+✅ Build green at 868 jobs. Lean W3C runner unchanged.
+
+ⓘ Backport candidate for the F\* tree, per the owner's ruling that the
+trees should behave the same: replace the closure's over-typing +
+anchor filtering with proof-gated query-time materialisation.
