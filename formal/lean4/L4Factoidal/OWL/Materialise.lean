@@ -43,9 +43,20 @@ It EXCLUDES:
 * `allOf p c` — a successor this graph has not seen could violate
   `c`, so "every KNOWN successor is in `c`" does not entail
   `∀ p. c`;
-* `maxCard` / `exactCard` / `maxQualCard` / `exactQualCard` — a
-  positive membership needs `owl:sameAs` reasoning or a unique-name
-  assumption, and this module has neither;
+* `maxCard` / `exactCard` / `maxQualCard` / `exactQualCard` — in
+  general a positive membership needs `owl:sameAs` reasoning or a
+  unique-name assumption, and this module has neither. ⚠️ ONE
+  EXCEPTION is proved and does not need either: if `i` is in
+  `∀ p. {a₁ … a_m}` then every `p`-filler of `i` is one of `m` named
+  individuals, so `i` has at most `m` DISTINCT `p`-fillers whatever
+  the graph asserts. `fillerBoundAtMost` reads that bound and
+  `isMember` uses it for `maxCard` and `maxQualCard`. The gate still
+  refuses the SHAPE, because a shape cannot say whether a bound
+  exists; the answer is available to a direct caller.
+  ⚠️ Note also that the `k = 0` answers here are NOT entailments —
+  they read an empty search as a proof, which the open world
+  assumption does not allow. The gate is what keeps them out of the
+  graph. See the checks in `MaterialiseTests`;
 * `complement` — needs classical negation.
 
 Refuting those is the refutation calculus's job
@@ -147,19 +158,26 @@ partial def isMember (st : Store) (i : Subject) (ce : ClassExpr) (fuel : Nat)
     -- `k` proves membership; falling short proves nothing.
     | .minCard k p => if (successors st i p).length ≥ k then some true else none
 
-    -- `≤ k p` and `= k p`: provable here only in the trivial case —
-    -- `k = 0` with no known successor. Anything else needs the
-    -- provable-distinctness machinery of the refutation calculus.
+    -- `≤ k p` and `= k p`. Two ways to prove one, and no others:
+    -- `k = 0` with no known successor, or a FILLER BOUND — `i` is in
+    -- some `∀ p. {a₁ … a_m}` with `m ≤ k`, so it cannot have more
+    -- than `k` distinct `p`-fillers whatever else the graph says.
+    -- Anything else needs the provable-distinctness machinery of the
+    -- refutation calculus.
     | .maxCard k p =>
-        if k == 0 && (successors st i p).isEmpty then some true else none
+        if k == 0 && (successors st i p).isEmpty then some true
+        else if fillerBoundAtMost st i p k n then some true else none
     | .exactCard k p =>
         if k == 0 && (successors st i p).isEmpty then some true else none
 
     | .minQualCard k p c =>
         if countQualSuccessors st (successors st i p) c n ≥ k then some true else none
+    -- A filler bound carries to the qualified form: at most `k`
+    -- `p`-fillers in total is at most `k` of them in `c`, for any `c`.
     | .maxQualCard k p c =>
         if k == 0 && countQualSuccessors st (successors st i p) c n == 0
-        then some true else none
+        then some true
+        else if fillerBoundAtMost st i p k n then some true else none
     | .exactQualCard k p c =>
         if k == 0 && countQualSuccessors st (successors st i p) c n == 0
         then some true else none
@@ -236,6 +254,23 @@ partial def unionMember (st : Store) (i : Subject) (cs : List ClassExpr)
       match unionMember st i tl fuel with
       | some true => some true
       | _         => none
+
+/-- Is there a proof that `i` has AT MOST `k` distinct `p`-fillers?
+
+    One sound source, and the only one this module reads: `i` is in a
+    universal restriction `∀ p. {a₁ … a_m}` with `m ≤ k`. Every
+    `p`-filler of `i` is then one of the `m` listed individuals, and a
+    set of `m` things cannot hold more than `m` distinct things. The
+    conclusion needs no distinctness reasoning and holds however many
+    `p`-edges the graph asserts — including none.
+
+    `false` means "not proved here", never "false". -/
+partial def fillerBoundAtMost (st : Store) (i : Subject) (p : WfIri) (k : Nat)
+    (fuel : Nat) : Bool :=
+  (successors st i rdfType).any (fun t =>
+    match parseClassExpr st t fuel with
+    | .allOf q (.oneOf members) => q == p && members.length ≤ k
+    | _ => false)
 
 /-- How many of `ys` are PROVABLY in `c`. A successor whose
     membership is unknown does not count, so this under-counts — the

@@ -129,6 +129,53 @@ private def gTwo : Graph :=
 #guard ask [] (.maxCard 0 exP) == some true
 #guard ask gTwo (.maxCard 0 exP) == none
 
+/-! ## A filler bound proves a maximum cardinality
+
+`i` is in `∀ P. {y}`, so every `P`-filler of `i` is `y`. One
+individual cannot be two distinct individuals, so `i` has at most one
+DISTINCT `P`-filler — however many `P`-edges the graph asserts, and
+whatever `owl:sameAs` does or does not say. This is entailment-sound
+and needs no unique-name assumption, which is the exception the module
+header records to "a positive maximum cardinality needs `owl:sameAs`
+reasoning or a unique-name assumption". -/
+
+private def gBound : Graph :=
+  [ ⟨indI, rdfType, bnT "r"⟩,
+    ⟨bn "r", rdfType, .iri owlRestriction⟩,
+    ⟨bn "r", owlOnProperty, .iri exP⟩,
+    ⟨bn "r", owlAllValuesFrom, bnT "o"⟩,
+    ⟨bn "o", rdfType, .iri owlClass⟩,
+    ⟨bn "o", owlOneOf, bnT "l"⟩,
+    ⟨bn "l", rdfFirst, .iri exY⟩,
+    ⟨bn "l", rdfRest, .iri rdfNil⟩,
+    ⟨indI, exP, .iri exY⟩ ]
+
+#guard ask gBound (.maxCard 1 exP) == some true
+#guard ask gBound (.maxQualCard 1 exP (.named exC)) == some true
+
+/-! A bound of `m` proves `≤ k` only for `k ≥ m`, so a bound of one
+does not prove "at most zero". -/
+#guard ask gBound (.maxCard 0 exP) == none
+
+/-! ## ⚠️ The `k = 0` answers are NOT entailments
+
+Recorded because `isMember` reads like an entailment oracle and is not
+one for these two shapes. `maxCard 0` answers `some true` from an
+EMPTY search, and `maxQualCard 0` answers `some true` when no
+successor is PROVABLY in the filler. Under the open world assumption
+neither is entailed: an unseen `P`-edge may exist, and `exY` may turn
+out to be a `C`.
+
+`cePositiveSound` is what keeps these out of the graph. They are
+fenced off by the write gate, not by their own logic, so a caller that
+reaches `isMember` directly gets them.
+<https://github.com/danbri/factoidal/issues/236> -/
+
+private def gUnknownFiller : Graph := [ ⟨indI, exP, .iri exY⟩ ]
+
+#guard ask gUnknownFiller (.maxQualCard 0 exP (.named exC)) == some true
+#guard !cePositiveSound (.maxQualCard 0 exP (.named exC))
+
 /-! ## Qualified counting UNDER-counts
 
 A successor whose membership in the filler is unknown does not count.
