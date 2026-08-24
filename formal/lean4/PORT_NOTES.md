@@ -12284,3 +12284,51 @@ pins the case where the two differ — one codepoint, two bytes.
 
 **Status.** `RDF.CottasStore.BaseWriter` stays NOT covered: two layers
 of about five. Coverage stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterColumn.lean` — layer 3 of `RDF.CottasStore.BaseWriter`
+
+The column encoders. The F\* banner explains the format choice:
+DELTA_LENGTH_BYTE_ARRAY for every column, not RLE_DICTIONARY, because
+DLBA is correct for ANY cardinality and is the simpler encoder to get
+bit-exact on a first pass. Dictionary encoding for the low-cardinality
+columns is a size optimisation, not a correctness requirement.
+
+**`min_delta` is the TRUE block minimum, and that is not a detail.** A
+longer value followed by a shorter one gives a NEGATIVE delta.
+Subtracting the true minimum is what makes every adjusted value
+non-negative so it can be bit-packed at all; encoding `min_delta = 0`
+would produce a value the packer cannot represent.
+`dlbaDeltas_negative_when_shrinking` exhibits the shrinking case as a
+theorem rather than leaving it to a reader to imagine.
+
+**Two adjacent header fields, two different encoders.** `first_value`
+is zigzagged as a NAT, `min_delta` as an INT. They sit next to each
+other in the block header, and using one encoder for both is right only
+when the value is zero.
+
+**`packedBits_whole_bytes`** says the packed bit list is a whole number
+of bytes: the values are padded to `miniblocks * 32` and each
+contributes `bitWidth` bits, so the total is a multiple of 8 whatever
+the width. That is what lets `packBitsToBytes` consume the list exactly,
+with no leftover — the function's own precondition, now proved rather
+than assumed by every call site.
+
+**The definition-level section is always one run.** Every row's term is
+present — a default-graph quad stores the `DEFAULT` sentinel, never a
+Parquet null — so it is one RLE run of `value_count` copies of level 1
+behind a little-endian 32-bit length. The empty case is genuinely empty
+rather than a zero-length run, which a reader would otherwise try to
+decode.
+
+**A guard caught a mistake in its own expected value.** The first
+`defLevelSection 3` check expected `[3, 0, 0, 0, …]`, reading the
+32-bit prefix as the VALUE count. It is the BYTE length of the run
+section, which is 2. The check failed at build time and the expected
+value was corrected — which is the point of pinning bytes rather than
+lengths.
+
+**Status.** `RDF.CottasStore.BaseWriter` stays NOT covered: three
+layers of about five, with dictionary encoding and the Parquet page and
+metadata builders left. Coverage stays 198 of 220.
