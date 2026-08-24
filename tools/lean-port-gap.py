@@ -165,6 +165,7 @@ alias={
  "RDF.NTriples.RoundTrip":"Syntax.NTriplesRoundTrip",
  "RDF.Entailment.Simple.Refinement":"RDF.EntailmentSimpleRefinement",
  "SPARQL11.Algebra.Spec":"SPARQL.AlgebraSpec",
+ "RDF.List.Helpers":"RDF.ListHelpers",
 }
 # ---------------------------------------------------------------------------
 # What counts as coverage.
@@ -270,8 +271,18 @@ BY_DESIGN_PREFIXES = ("Parser.FastString",)
 #    an array-shaped abstract type to retire the OCaml perf shim. Lean
 #    has Array natively and totally; `Array.size`, `arr[i]?` and
 #    `Array.toList` are the whole module.
-BY_DESIGN_EXACT = {"RDF.List.Helpers",
-                   "RDF.Indexed.KeyInjectivity",
+#  * RDF.List.Helpers WAS on this list and was removed 2026-08-24. The
+#    by-design reasoning was right about the CAUSE -- Lean core ships
+#    `List.appendTR` and `List.flatMapTR` under `@[csimp]`, so the
+#    compiler substitutes a tail-recursive version with no call-site
+#    change and the stack-overflow incidents that produced the F* module
+#    cannot recur. It was wrong to conclude no counterpart was wanted.
+#    `RDF/ListHelpers.lean` transcribes the three F* functions arm for
+#    arm, so the two trees can be compared on the SPARQL/RIF hot path,
+#    and `appendTr_eq_core` proves the F* accumulator and
+#    `List.appendTR` are the same algorithm. The module is now COVERED,
+#    which is why the count moved from 193 to 194 in that landing.
+BY_DESIGN_EXACT = {"RDF.Indexed.KeyInjectivity",
                    "RDF.Indexed.Completeness",
                    "RDF.Entailment.RDFS.SepFree",
                    "RDF.Entailment.RDFS.ChainWf",

@@ -11559,3 +11559,52 @@ equality would be false; one claiming set equality is what §18.5 says.
 **Status of the module.** Two layers in — UNION and FILTER, then JOIN.
 `SPARQL11.Algebra.Refinement` is 2,497 F\* lines and stays not covered.
 Coverage 193 of 220.
+
+---
+
+## `RDF/ListHelpers.lean` — `RDF.List.Helpers`, and a by-design entry that was half wrong
+
+The F\* module gives tail-recursive `append`, `concatMap` and `assoc`
+with equivalence proofs against the standard library. Its header names
+the two stack-overflow incidents that paid for it: the Turtle parser
+path (<https://github.com/danbri/factoidal/issues/94>) and the BGP
+filter-map path, 2026-04-26.
+
+**Lean core already ships two of the three.** `List.appendTR` and
+`List.flatMapTR` exist, each tagged with a `@[csimp]` lemma
+(`List.append_eq_appendTR`, `List.flatMap_eq_flatMapTR`). A `@[csimp]`
+lemma rewrites the definition at CODE GENERATION time, so the compiled
+program runs the tail-recursive version while every proof still sees the
+structural one. No call site changes. The F\* tree has no such
+mechanism, so the same work there is a module of hand-written functions,
+hand-written equivalence lemmas, and an edit at every call site.
+
+**`appendTr_eq_core` is the sharper result.** `List.appendTR as bs` is
+`as.reverse.reverseAux bs` — reverse the left list, then `reverseAux` it
+onto the right. That is the F\* `append_aux` accumulator strategy, arm
+for arm. Two independent implementations reached one function, and the
+theorem says so rather than a comment claiming it.
+
+`concatMapTr` and `List.flatMapTR` are NOT the same algorithm: the F\*
+version accumulates a reversed list, the Lean core version accumulates
+into an `Array`. Both equal `flatMap`, which is what
+`concatMapTr_eq_core` states. The difference is allocation, not result.
+
+**Why it was ported although the coverage tool called it by design.**
+`RDF.List.Helpers` was in `BY_DESIGN_EXACT` in `tools/lean-port-gap.py`.
+The reasoning was right about the cause and wrong about the conclusion.
+The three F\* functions run on the SPARQL and RIF hot path, so a
+differential comparison of the two trees needs both sides to exist. The
+transcription is arm for arm against the F\* source; the two core-library
+theorems are extra checks the port buys, not substitutes for it.
+
+The by-design entry is now removed with the reason recorded in the tool.
+Coverage moved 193 to 194, and this landing is the cause.
+
+`assocTr` is stated over `BEq`, because Lean's `List.lookup` is
+`BEq`-based while F\*'s `assoc` takes an `eqtype`. The F\* header says
+`assoc_tr` exists for naming symmetry rather than for stack safety, and
+that reading carries over: `List.lookup` is already tail-recursive.
+
+Eleven `#guard` checks, five `#print axioms` lines, all `[propext]` or
+`[propext, Quot.sound]`. `lake build` green at 792 jobs.

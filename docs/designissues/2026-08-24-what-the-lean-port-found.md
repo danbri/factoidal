@@ -1,19 +1,19 @@
 # What the Lean port found, and why the findings have one shape
 
-Written 2026-08-24, after 22 landings on branch
+Written 2026-08-24, after 24 landings on branch
 `claude/autoexec-scratchpad-assess-37oeok`.
 
-The Lean 4 port started from zero code on 2026-08-22. It now covers 192
-of 220 F\* modules: 325 files, 114,232 lines, `lake build` green at 772
+The Lean 4 port started from zero code on 2026-08-22. It now covers 194
+of 220 F\* modules: 335 files, 116,592 lines, `lake build` green at 792
 jobs, zero `sorry`, zero user `axiom`, zero `native_decide`.
 
-The line count is not the result. The result is sixteen findings.
-Twelve of them have the same shape, and this document says what that
+The line count is not the result. The result is seventeen findings.
+Thirteen of them have the same shape, and this document says what that
 shape is and what follows from it.
 
 ## 1. The evidence
 
-### Group A — twelve findings with one shape
+### Group A — thirteen findings with one shape
 
 | # | Finding | Where |
 |---|---|---|
@@ -29,6 +29,7 @@ shape is and what follows from it.
 | A9b | The F\* proof that `C rdfs:subClassOf C` is not an axiomatic triple needs `--fuel 50 --z3rlimit 600 --split_queries always` and must EXCLUDE one unrelated symbol's facts, because that symbol's definition equation in the SMT context tips a borderline `assert_norm`. Raising the budget did not recover it. The Lean proof is a case split on a finite table with no budget, no splitting and no filtering. | `RDFS/ReflexivityWitness.lean` |
 | A9c | `Parser.NTriples.Locality` is 2,848 lines of proof-only code, not in the extraction build, written because Z3 has no associativity or identity theory for `FStar.String.strcat` over symbolic operands — `"" ^ s == s` fails. It restates two blocked theorems over byte reads to route around that. `List.nil_append` and `List.append_assoc` are in Lean's standard library, and one of the two theorems it exists to unblock was proved in Lean as a three-line induction using no locality lemma. | see the twelfth correction in `2026-08-23-lean-port-gap.md` |
 | A10 | Lean has its own wall, in a different place. `readIriRefBody` has ten match arms; generating its per-arm equation lemmas exhausts the container's memory. And the kernel does not reduce `String.mapAux`, so `decide` cannot evaluate `"en".toLower = "EN".toLower`. | [#565](https://github.com/danbri/factoidal/issues/565) |
+| A11 | `RDF.List.Helpers.fst` is 195 lines of hand-written tail-recursive `append` and `concatMap` plus their equivalence proofs, written after two stack-overflow incidents. Lean core ships both — `List.appendTR` and `List.flatMapTR` — tagged `@[csimp]`, so the compiler substitutes them at code generation and no call site changes. `appendTr_eq_core` shows the F\* accumulator and `List.appendTR` are the same algorithm, reached twice. | `RDF/ListHelpers.lean` |
 
 ### Group B — two ordinary defects, no pattern
 
@@ -184,11 +185,19 @@ probed, never released. The prediction was right about the cause and
 wrong about the profile, which is the kind of error a first pass makes
 and a trace corrects.
 
-**2. The remaining 28 modules are three different jobs.** 14 want no
-port and are counted above. 10 are engine code, 18,020 lines, and 6 of
+**2. The remaining 26 modules are three different jobs.** 14 want no
+port and are counted above. 9 are engine code, 15,172 lines, and 5 of
 those are the COTTAS and Parquet group that [#566](https://github.com/danbri/factoidal/issues/566)
-may change. 4 are proof modules, 9,479 lines, and `OWL.Semantics.Soundness`
+may change. 3 are proof modules, 7,975 lines, and `OWL.Semantics.Soundness`
 is 3,865 of them.
+
+The "want no port" bucket is a judgement, and A11 is the case where it
+was half wrong. `RDF.List.Helpers` was on that list, correctly, because
+Lean core makes the stack-overflow problem disappear. It was ported
+anyway, because the F\* functions run on the SPARQL and RIF hot path and
+a differential comparison needs both sides to exist. Read the bucket as
+"no Lean counterpart is REQUIRED", never as "no Lean counterpart is
+wanted".
 
 **3. The measurement rules are the same rules.** A7, A8 and A9 are the
 coverage tool committing the same error as the code it measures. They
